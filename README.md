@@ -102,6 +102,12 @@ byte-for-byte reproducible), and deploys it to GitHub Pages.
 version and checksum; a scheduled workflow there proposes upgrades as pull
 requests.
 
+## Contributing
+
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first: it explains how the
+files fit together and the rules that keep the engine, exports and viewers
+consistent.
+
 ## License
 
 [MIT](LICENSE)
