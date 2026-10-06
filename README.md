@@ -40,7 +40,8 @@ circuit is saved in the browser.
 - Modified nodal analysis; Newton-Raphson with source stepping for the DC
   operating point; backward-Euler transient.
 - Tubes use [Koren's](https://www.normankoren.com/Audio/Tubemodspice_article.html)
-  triode and pentode equations, plus grid conduction and screen current.
+  published triode and pentode equations, unmodified, so parameters and
+  exported models are interchangeable with Koren-style SPICE models,, plus grid conduction and screen current.
   Rectifiers are vacuum diodes (Child–Langmuir, perveance from datasheet drops).
 - Transformers are coupled inductors with a leakage factor; inductors and
   windings carry their current as an unknown, so a shorted winding is
@@ -60,13 +61,19 @@ separate solve of the Koren equation and its small-signal gain, an output
 transformer against its turns ratio, and a choke-input supply against an RK4
 integration of the same circuit (agreement within 0.02 %).
 
-Tube models are also checked against published datasheet operating points.
-**Some models are currently off by more than 20 %** — 12AX7, 12AT7 and 6SN7GT
-on the small-signal side; 300B, 2A3, 6V6GT, 6L6GC and EL34 among power tubes
-(6V6GT and 6L6GC draw about 3× the datasheet current). EL84, 12AU7 and 6SL7GT
-are within tolerance. Treat absolute bias currents for the affected tubes as
-approximate until they are refitted; each one is tracked as a `todo` test in
-[`tests/engine.test.mjs`](tests/engine.test.mjs).
+Every amplifier tube is fitted to, and tested against, its published
+datasheet operating points: plate current, and where the datasheet gives them,
+transconductance, plate resistance and screen current. Sources are listed per
+tube in [`tests/datasheets.mjs`](tests/datasheets.mjs). Fitted currents are
+within a few percent of the datasheets; a triode-connected pentode is fitted to
+the same tube's pentode model, so both modes agree. Full simulations of the
+EL84 and 6V6GT datasheet test circuits (cathode-biased) land on the published
+current and dissipation.
+
+Limits worth knowing: a model is exact only near the points it was fitted to,
+and production tubes vary ±20 % or more; the pentode plate equation cannot
+match plate resistance at two different screen voltages (6L6GC and 6V6GT are
+within ±35 %); and the 6P45S has only a pulse-current specification to fit.
 
 ## Run it locally
 

@@ -401,13 +401,13 @@
     const safe = name.replace(/[^A-Za-z0-9]/g, "_");
     const head = `* ${name} — Koren ${kind} model${metrics ? ` (fitted: R² ${metrics.r2.toFixed(4)}, RMSE ${metrics.rmse.toFixed(3)} mA)` : " (tube database)"}\n* Generated ${new Date().toISOString().slice(0, 10)} by the Vacuum Tube Curve Tracer\n`;
     if (kind === "pentode") return head + `.SUBCKT ${safe} A G1 G2 K
-BP  A  K  I=pwr(max(V(G2,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G1,K)/max(V(G2,K),1e-3)))),0),${m.x})/${m.kg}*atan(max(V(A,K),0)/${m.kvb})*${(2 / Math.PI).toFixed(6)}
+BP  A  K  I=pwr(max(V(G2,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G1,K)/max(V(G2,K),1e-3)))),0),${m.x})*${(2 / m.kg).toPrecision(6)}*atan(max(V(A,K),0)/${m.kvb})
 BS  G2 K  I=pwr(max(V(G1,K)+V(G2,K)/${m.mu},0),${m.x})/${m.kg2 || 1500}
 BG  G1 K  I=if(V(G1,K)>0,${(0.2 / m.kg).toPrecision(4)}*pwr(V(G1,K),1.5),0)
 .ENDS ${safe}
 `;
     return head + `.SUBCKT ${safe} A G K
-BP  A  K  I=pwr(max(V(A,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G,K)/sqrt(${m.kvb}+V(A,K)*V(A,K))))),0),${m.x})/${m.kg}
+BP  A  K  I=pwr(max(V(A,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G,K)/sqrt(${m.kvb}+V(A,K)*V(A,K))))),0),${m.x})*${(2 / m.kg).toPrecision(6)}
 BG  G  K  I=if(V(G,K)>0,${(0.2 / m.kg).toPrecision(4)}*pwr(V(G,K),1.5),0)
 .ENDS ${safe}
 `;

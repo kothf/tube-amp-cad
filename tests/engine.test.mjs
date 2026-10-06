@@ -1,13 +1,15 @@
 /**
  * Circuit engine accuracy tests (node --test).
  * Every case is checked against an independent result: closed-form circuit
- * theory, a separate bisection solve of the Koren equation, or an RK4
- * integration of the same circuit written as plain ODEs.
+ * theory, a separate bisection solve of the Koren equation, an RK4
+ * integration of the same circuit written as plain ODEs, or published
+ * datasheet operating points.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
+import { datasheetFor } from "./datasheets.mjs";
 
 // The engine and tube database are browser scripts that attach to globalThis
 for (const f of ["tube-db.js", "sim-engine.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
@@ -167,30 +169,67 @@ test("shorted inductor or winding does not crash the solver", () => {
   assert.ok(r.ok, r.error);
 });
 
-// Datasheet regression: published single-tube class-A operating points.
-// Models outside ±20 % are tracked as known issues (todo): reported in every
-// run, not blocking. Refit the model, then remove it from KNOWN_OFF.
-const DATASHEET = [
-  // tube, Va, Vg2 (pentodes), Vg1, Ia mA, Ig2 mA, source
-  ["12AX7", 250, null, -2, 1.2, null, "RCA 12AX7A"],
-  ["12AU7", 250, null, -8.5, 10.5, null, "RCA 12AU7A"],
-  ["12AT7", 250, null, -2, 10, null, "RCA 12AT7"],
-  ["6SN7GT", 250, null, -8, 9, null, "RCA 6SN7GTB"],
-  ["6SL7GT", 250, null, -2, 2.3, null, "RCA 6SL7GT"],
-  ["300B", 300, null, -61, 60, null, "Western Electric 300B"],
-  ["2A3", 250, null, -45, 60, null, "RCA 2A3"],
-  ["EL84", 250, 250, -7.3, 48, 5.5, "Philips EL84"],
-  ["6V6GT", 250, 250, -12.5, 45, 4.5, "RCA 6V6GT"],
-  ["6L6GC", 250, 250, -14, 72, 5, "RCA 6L6GC"],
-  ["EL34", 250, 250, -13.5, 100, 14.9, "Philips EL34"],
-];
-const KNOWN_OFF = new Set(["12AX7", "12AT7", "6SN7GT", "300B", "2A3", "6V6GT", "6L6GC", "EL34"]);
+// Datasheet regression: every amplifier tube against its published operating
+// points (tests/datasheets.mjs, also the input of scripts/fit-tubes.mjs).
+// Tolerances: Ia ±10 %, gm ±15 %, Ig2 ±20 %, rp ±15 % (triodes) / ±40 %
+// (pentodes: Koren's atan plate term cannot match rp at two screen voltages).
+const mA = (kind, p, pt, vg) => 1e3 * (kind === "pentode" ? E.Koren.pentodeIa(pt.va, vg, pt.vg2, p) : E.Koren.triodeIa(pt.va, vg, p));
+function biasFor(kind, p, pt) {
+  let lo = -pt.va, hi = 0;
+  for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; mA(kind, p, pt, m) < pt.ia ? (lo = m) : (hi = m); }
+  return (lo + hi) / 2;
+}
 
-for (const [name, va, vg2, vg1, ia, ig2, src] of DATASHEET) {
-  test(`datasheet: ${name} Ia at Va=${va} V, Vg1=${vg1} V (${src})`, { todo: KNOWN_OFF.has(name) && "model needs refitting" }, () => {
-    const k = tube(name).koren;
-    const got = vg2 ? E.Koren.pentodeIa(va, vg1, vg2, k.Pentode) : E.Koren.triodeIa(va, vg1, k.Triode);
-    near(got * 1e3, ia, 0.2, `${name} Ia (mA)`);
-    if (ig2) near(E.Koren.screenI(vg1, vg2, k.Pentode) * 1e3, ig2, 0.2, `${name} Ig2 (mA)`);
+test("every amplifier tube has datasheet reference data", () => {
+  const missing = globalThis.TUBE_DATABASE.filter(t => t.category !== "rectifier" && !datasheetFor(t.commonName)).map(t => t.commonName);
+  assert.deepEqual(missing, []);
+});
+
+for (const t of globalThis.TUBE_DATABASE.filter(t => t.category !== "rectifier")) {
+  const ds = datasheetFor(t.commonName);
+  if (!ds) continue;
+  const p = ds.kind === "pentode" ? t.koren.Pentode : t.koren.Triode;
+  for (const pt of ds.points) {
+    const where = `Va=${pt.va} V${pt.vg2 ? `, Vg2=${pt.vg2} V` : ""}${pt.vg === null ? "" : `, Vg1=${pt.vg} V`}`;
+    test(`datasheet: ${t.commonName} at ${where} (${ds.source})`, () => {
+      const vg = pt.vg === null ? biasFor(ds.kind, p, pt) : pt.vg;
+      if (pt.vg === null) assert.ok(vg < 0 && vg > -pt.va / 2, `${t.commonName}: bias for ${pt.ia} mA is ${vg.toFixed(2)} V`);
+      else near(mA(ds.kind, p, pt, vg), pt.ia, 0.1, `${t.commonName} Ia (mA)`);
+      if (pt.gm) near((mA(ds.kind, p, pt, vg + 0.02) - mA(ds.kind, p, pt, vg - 0.02)) / 0.04, pt.gm, 0.15, `${t.commonName} gm (mA/V)`);
+      if (pt.rp) {
+        const h = Math.max(0.5, pt.va * 0.002);
+        const rp = (2 * h) / (mA(ds.kind, p, { ...pt, va: pt.va + h }, vg) - mA(ds.kind, p, { ...pt, va: pt.va - h }, vg));
+        near(rp, pt.rp, ds.kind === "pentode" ? 0.4 : 0.15, `${t.commonName} rp (kΩ)`);
+      }
+      if (pt.ig2) near(1e3 * E.Koren.screenI(vg, pt.vg2, p), pt.ig2, 0.2, `${t.commonName} Ig2 (mA)`);
+    });
+  }
+  if (t.koren.Pentode) {
+    test(`${t.commonName}: triode-connected model matches the pentode strapped as a triode`, () => {
+      const P = t.koren.Pentode, T = t.koren.Triode, va = Math.min(250, t.vg2Max);
+      for (const frac of [0.25, 0.5, 1]) {
+        // grid bias giving `frac` of the zero-bias strapped current
+        const full = E.Koren.pentodeIa(va, 0, va, P) + E.Koren.screenI(0, va, P);
+        let lo = -va, hi = 0;
+        for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; E.Koren.pentodeIa(va, m, va, P) + E.Koren.screenI(m, va, P) < frac * full ? (lo = m) : (hi = m); }
+        const vg = (lo + hi) / 2;
+        near(E.Koren.triodeIa(va, vg, T), E.Koren.pentodeIa(va, vg, va, P) + E.Koren.screenI(vg, va, P), 0.1, `${t.commonName} strapped current at Vg1=${vg.toFixed(1)} V`);
+      }
+    });
+  }
+}
+
+// Circuit level: the datasheets' own cathode-biased test conditions, solved by
+// the full simulator. Checks bias, current and the resulting dissipation.
+for (const [name, rk, ia, ig2, src] of [["EL84", 135, 48, 5.5, "Philips EL84"], ["6V6GT", 250, 45, 4.5, "RCA 6V6GT"]]) {
+  test(`${name} self-biased with Rk = ${rk} Ω settles at the datasheet current (${src})`, () => {
+    const r = E.simulate({ nodeCount: 4, elements: [
+      { id: "B", kind: "V", nodes: [1, 0], v: 250 },
+      { id: "V1", kind: "PENTODE", nodes: [1, 2, 1, 3], model: tube(name).koren.Pentode },
+      { id: "Rg", kind: "R", nodes: [2, 0], r: 470e3 }, { id: "Rk", kind: "R", nodes: [3, 0], r: rk }] });
+    assert.ok(r.ok, r.error);
+    const vk = r.dc.nodes[3], ik = (vk / rk) * 1e3;
+    near(ik, ia + ig2, 0.1, `${name} cathode current (mA)`);
+    near((250 - vk) * (ik - ig2) / 1e3, (250 * ia) / 1e3, 0.12, `${name} plate dissipation (W)`);
   });
 }
