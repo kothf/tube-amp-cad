@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vacuum Tube Curve Tracer</title>
+  <meta name="description" content="Plate curves of 40 vacuum tubes with the simulated operating point and load line of your circuit from the Tube Amp CAD.">
+  <style>
+    :root {
+      --bg: #0a0e14; --panel: #0f151e; --panel2: #131b26; --line: #223044; --text: #e6edf3; --muted: #8b949e;
+      --accent: #00e5ff; --amber: #ffd54f; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    a { color: var(--accent); }
+    header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .brand { font-weight: 700; letter-spacing: .5px; white-space: nowrap; margin-right: 8px; }
+    .brand b { color: var(--accent); }
+    .link { font-size: 12px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+    .link::before { content: "●"; margin-right: 6px; }
+    .link.ok::before { color: var(--ok); } .link.idle::before { color: var(--muted); } .link.bad { color: var(--bad); }
+    .spacer { flex: 1; }
+    .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+    .btn:hover { border-color: #3a5170; }
+    .btn.primary { color: var(--accent); border-color: #1d5566; }
+
+    main { display: grid; grid-template-columns: 250px 1fr 270px; min-height: 0; }
+    .col { background: var(--panel); overflow-y: auto; padding: 10px 12px; min-height: 0; }
+    .col.left { border-right: 1px solid var(--line); }
+    .col.right { border-left: 1px solid var(--line); }
+    h2, h3 { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+    h2:first-child, h3:first-child { margin-top: 2px; }
+    h3 small { color: var(--accent); letter-spacing: 0; text-transform: none; font-weight: 600; margin-left: 4px; }
+    .muted { color: var(--muted); } .small { font-size: 12px; }
+    .list-item { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; width: 100%; text-align: left; background: var(--panel2); border: 1px solid transparent; border-radius: 6px; padding: 5px 8px; margin-bottom: 3px; cursor: pointer; }
+    .list-item:hover { border-color: var(--line); }
+    .list-item.active { border-color: var(--accent); background: #0d3442; }
+    .list-item em { font-style: normal; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+    .list-item em.bad { color: var(--bad); }
+    .search { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; margin-bottom: 6px; }
+    .chips { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+    .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 99px; padding: 2px 9px; font-size: 11px; cursor: pointer; }
+    .chip.active { border-color: var(--accent); color: var(--accent); }
+    #tube-list { max-height: 34vh; overflow-y: auto; }
+    .socket-wrap { display: flex; flex-direction: column; align-items: center; }
+    #socket-note { font-size: 11px; color: var(--warn); margin-top: 4px; }
+
+    .center { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto 1fr auto; }
+    .plot-head { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    #plot-title { font-weight: 600; }
+    .opts { display: flex; gap: 10px; margin-left: auto; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+    .opts label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    #plot { width: 100%; height: 100%; display: block; min-height: 0; }
+    .plot-foot { display: flex; gap: 14px; align-items: center; padding: 4px 12px; border-top: 1px solid var(--line); flex-wrap: wrap; min-height: 26px; }
+    #legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+    #legend i { display: inline-block; width: 12px; height: 3px; margin-right: 5px; vertical-align: middle; }
+    #plot-readout { margin-left: auto; font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--text); }
+
+    .kv { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #1a2433; font-size: 12px; }
+    .kv span { color: var(--muted); }
+    .kv b { font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+    .kv.warn b { color: var(--warn); } .kv.bad b { color: var(--bad); }
+    .bar { height: 5px; background: #1a2433; border-radius: 3px; margin: 4px 0 2px; overflow: hidden; }
+    .bar div { height: 100%; }
+    .row { display: grid; grid-template-columns: 1fr 90px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+    .row input { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; width: 100%; }
+
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 10; }
+    .modal[hidden] { display: none; }
+    .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(760px, 94vw); padding: 14px; }
+    .modal-box h2 { color: var(--accent); font-size: 14px; text-transform: none; letter-spacing: 0; }
+    .modal-box textarea { width: 100%; height: 32vh; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font: 12px ui-monospace, Menlo, monospace; padding: 8px; }
+    .modal-actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+    #fit-status { font-size: 12px; color: var(--muted); margin: 6px 0; }
+
+    @media (max-width: 1000px) {
+      body { overflow: auto; }
+      main { grid-template-columns: 1fr; }
+      .center { height: 70vh; }
+      #tube-list { max-height: 30vh; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">⚡ <b>Vacuum Tube</b> Curve Tracer</div>
+    <span id="link-status" class="link idle">Looking for the Circuit CAD…</span>
+    <span class="spacer"></span>
+    <button class="btn primary" id="btn-open-cad" title="Build and simulate circuits">Circuit CAD ↗</button>
+    <button class="btn" id="btn-model" title="LTspice model of this tube; fit the model to measured points">Tube model &amp; fitter</button>
+    <button class="btn" id="btn-png" title="Save the chart as PNG">PNG</button>
+  </header>
+
+  <main>
+    <section class="col left">
+      <h2>In the circuit</h2>
+      <div id="circuit-tubes"></div>
+      <h2>Tube library</h2>
+      <input id="tube-search" class="search" type="search" placeholder="Search 6N2P, EL34, 300B…">
+      <div class="chips">
+        <button class="chip active" data-f="all">All</button>
+        <button class="chip" data-f="triode">Triodes</button>
+        <button class="chip" data-f="pentode">Pentodes</button>
+        <button class="chip" data-f="fav">★ Popular</button>
+      </div>
+      <div id="tube-list"></div>
+      <h2>Socket <small id="socket-name" class="muted"></small></h2>
+      <div class="socket-wrap">
+        <canvas id="socket" width="200" height="200"></canvas>
+        <div id="socket-note"></div>
+      </div>
+    </section>
+
+    <section class="center">
+      <div class="plot-head">
+        <span id="plot-title"></span>
+        <div class="opts">
+          <label><input type="checkbox" id="opt-traj"> Load line</label>
+          <label><input type="checkbox" id="opt-bias"> Bias curve</label>
+          <label><input type="checkbox" id="opt-pa"> Pa max</label>
+          <label><input type="checkbox" id="opt-pa70"> 70% Pa</label>
+        </div>
+      </div>
+      <canvas id="plot" aria-label="Plate characteristic curves"></canvas>
+      <div class="plot-foot"><div id="legend"></div><span id="plot-readout"></span></div>
+    </section>
+
+    <section class="col right" id="hud"></section>
+  </main>
+
+  <div class="modal" id="model-modal" hidden>
+    <div class="modal-box">
+      <h2>Tube model &amp; curve fitter</h2>
+      <p class="muted small">LTspice subcircuit of the displayed tube (Koren equations, same as the simulator). To model your own tube, upload measured points as CSV rows <code>Va, Vg, Ia_mA[, Vg2]</code>; the fitted curves are drawn dashed on the chart.</p>
+      <div class="modal-actions">
+        <button class="btn" id="btn-fit-upload">Upload measured CSV…</button>
+        <button class="btn" id="btn-fit-sample">Fit synthetic sample data</button>
+        <button class="btn" id="btn-fit-clear">Clear fit</button>
+        <input type="file" id="csv-input" accept=".csv,.txt" hidden>
+      </div>
+      <div id="fit-status"></div>
+      <textarea id="model-text" spellcheck="false" readonly></textarea>
+      <div class="modal-actions" style="justify-content:flex-end">
+        <button class="btn" id="btn-model-copy">Copy</button>
+        <button class="btn" id="btn-model-download">Download .sub</button>
+        <button class="btn" id="btn-modal-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="tube-db.js?v=dev"></script>
+  <script src="sim-engine.js?v=dev"></script>
+  <script src="cad-components.js?v=dev"></script>
+  <script src="tracer-app.js?v=dev"></script>
+</body>
+</html>

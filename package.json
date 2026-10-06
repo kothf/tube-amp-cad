@@ -1,0 +1,30 @@
+{
+  "name": "tube-amp-cad",
+  "version": "3.0.0",
+  "description": "Browser schematic editor and circuit simulator for vacuum-tube amplifiers, with a curve tracer, oscilloscope and spectrum analyzer.",
+  "private": true,
+  "license": "MIT",
+  "author": "kothf (https://aerocat.tech)",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kothf/tube-amp-cad.git"
+  },
+  "homepage": "https://kothf.github.io/tube-amp-cad/",
+  "keywords": ["vacuum tube", "valve amplifier", "circuit simulator", "spice", "koren", "schematic editor"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "npm run test:engine && npm run test:e2e",
+    "test:engine": "node --test tests/engine.test.mjs",
+    "test:e2e": "node tests/e2e.mjs",
+    "test:dist": "node tests/e2e.mjs dist/tube-amp-cad",
+    "package": "node scripts/package.mjs",
+    "release-notes": "node scripts/release-notes.mjs",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

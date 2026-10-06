@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spectrum Analyzer — Tube Amp CAD</title>
+  <style>
+    :root { --bg: #070b10; --panel: #111823; --panel2: #18212e; --line: #26344a; --text: #e6edf3; --muted: #8b949e; --accent: #00e5ff; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+    button, select { font: inherit; color: inherit; }
+    header { display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: linear-gradient(#141c27, #0e141d); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .brand { font-weight: 800; letter-spacing: .5px; }
+    .brand span { color: var(--accent); font-weight: 600; margin-left: 6px; }
+    .status { font-size: 12px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 99px; white-space: nowrap; }
+    .status::before { content: "●"; margin-right: 6px; }
+    .status.ok::before { color: var(--ok); } .status.idle::before { color: var(--muted); } .status.bad { color: var(--bad); }
+    .spacer { flex: 1; }
+    .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+    select { background: #0b1118; border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+    main { display: grid; grid-template-columns: 1fr 320px; gap: 12px; padding: 12px; min-height: 0; }
+    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+    #screen { width: 100%; height: 100%; display: block; border-radius: 6px; min-height: 0; }
+    .foot { padding: 8px 4px 0; font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
+    .foot b { color: var(--text); }
+    aside { overflow-y: auto; min-height: 0; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+    .card h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+    .card h3 b { color: var(--accent); letter-spacing: 0; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .row span { color: var(--muted); font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font: 12px ui-monospace, Menlo, monospace; }
+    th { text-align: right; color: var(--muted); font-weight: 500; font-size: 11px; padding: 2px 4px; }
+    td { text-align: right; padding: 2px 4px; border-top: 1px dashed #1a2433; }
+    th:first-child, td:first-child { text-align: left; }
+    .muted { color: var(--muted); font-size: 12px; }
+    @media (max-width: 900px) { body { overflow: auto; } main { grid-template-columns: 1fr; } .bezel { height: 60vh; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Spectrum Analyzer<span>FFT</span></div>
+    <span id="status" class="status idle">Waiting for the Circuit CAD…</span>
+    <span class="spacer"></span>
+    <label class="muted">Scope part <select id="scope-select"></select></label>
+    <label class="muted">Input <select id="src"><option value="ch1">CH1</option><option value="ch2">CH2</option></select></label>
+    <button class="btn" id="btn-cad">Circuit CAD ↗</button>
+  </header>
+  <main>
+    <div class="bezel">
+      <canvas id="screen" aria-label="Spectrum display"></canvas>
+      <div class="foot" id="foot"></div>
+    </div>
+    <aside>
+      <div class="card">
+        <h3>Frequency &amp; amplitude</h3>
+        <div class="row"><span>Span</span><select id="span"><option value="auto">Auto (10 harmonics)</option><option value="1000">0 – 1 kHz</option><option value="5000">0 – 5 kHz</option><option value="10000">0 – 10 kHz</option><option value="20000">0 – 20 kHz</option><option value="50000">0 – 50 kHz</option></select></div>
+        <div class="row"><span>Units</span><select id="units"><option value="dbc">dBc (re fundamental)</option><option value="dbv">dBV (re 1 Vrms)</option></select></div>
+        <div class="row"><span>Scale</span><select id="scale"><option value="10">10 dB/div</option><option value="5">5 dB/div</option></select></div>
+      </div>
+      <div class="card">
+        <h3>Harmonic distortion <b id="thd"></b></h3>
+        <table><thead><tr><th>Harmonic</th><th>Freq</th><th>Level</th><th>%</th></tr></thead><tbody id="harm"></tbody></table>
+        <p class="muted">Harmonics of the signal generator frequency, measured over an exact whole number of cycles (no windowing error).</p>
+      </div>
+      <div class="card">
+        <h3>Other components</h3>
+        <table><tbody id="spurs"></tbody></table>
+      </div>
+    </aside>
+  </main>
+
+  <script src="instrument-common.js?v=dev"></script>
+  <script>
+  (function () {
+    "use strict";
+    const I = Instrument, $ = id => document.getElementById(id);
+    const S = { src: "ch1", span: "auto", units: "dbc", scale: 10 };
+    const params = new URLSearchParams(location.search);
+    if (params.get("ch") === "ch2") S.src = "ch2";
+    $("src").value = S.src;
+
+    // Line spectrum of one whole-period capture: bins at k / T
+    function spectrum(a, dt, fMaxWanted) {
+      const P = a.length - 1, T = P * dt, df = 1 / T;
+      let mean = 0; for (let i = 0; i < P; i++) mean += a[i]; mean /= P;
+      const K = Math.min(Math.floor(fMaxWanted / df), Math.floor(P / 2) - 1);
+      const lines = [];
+      for (let k = 1; k <= K; k++) {
+        let re = 0, im = 0; const w = 2 * Math.PI * k / P;
+        for (let i = 0; i < P; i++) { const v = a[i] - mean; re += v * Math.cos(w * i); im -= v * Math.sin(w * i); }
+        lines.push({ f: k * df, vpk: 2 * Math.hypot(re, im) / P });
+      }
+      return { lines, df, dc: mean };
+    }
+
+    function draw() {
+      const cv = $("screen"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+      if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+      const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const st = I.status(); $("status").className = "status " + st.cls; $("status").textContent = st.text;
+      ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
+      const padL = 52, padR = 16, padT = 24, padB = 30, gw = W - padL - padR, gh = H - padT - padB;
+      ctx.strokeStyle = "rgba(0,180,216,0.16)"; ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(padL + i * gw / 10, padT); ctx.lineTo(padL + i * gw / 10, padT + gh); ctx.stroke(); }
+      for (let j = 0; j <= 10; j++) { ctx.beginPath(); ctx.moveTo(padL, padT + j * gh / 10); ctx.lineTo(padL + gw, padT + j * gh / 10); ctx.stroke(); }
+      ctx.font = "11px ui-monospace, Menlo, monospace";
+
+      const sc = I.scope(), a = sc && sc[S.src];
+      if (!a) {
+        ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center";
+        ctx.fillText(sc ? `${S.src.toUpperCase()} of ${sc.label} is not connected` : "NO SIGNAL", padL + gw / 2, padT + gh / 2);
+        ctx.textAlign = "left"; $("harm").innerHTML = ""; $("spurs").innerHTML = ""; $("thd").textContent = ""; $("foot").textContent = ""; return;
+      }
+      const dt = sc.dt, fSig = (I.result && I.result.fSig) || 0;
+      const fNyq = 0.5 / dt;
+      const span = Math.min(S.span === "auto" ? (fSig ? fSig * 10.5 : 10000) : parseFloat(S.span), fNyq * 0.8);
+      const sp = spectrum(a, dt, span);
+      // fundamental: the line at fSig, else the largest line
+      let fund = fSig ? sp.lines.reduce((b, l) => Math.abs(l.f - fSig) < Math.abs(b.f - fSig) ? l : b, sp.lines[0]) : sp.lines.reduce((b, l) => l.vpk > b.vpk ? l : b, sp.lines[0]);
+      if (!fund) return;
+      const f0 = fund.f;
+      const refDb = S.units === "dbc" ? 20 * Math.log10(Math.max(fund.vpk, 1e-15)) : 20 * Math.log10(Math.SQRT1_2);
+      const db = v => 20 * Math.log10(Math.max(v, 1e-15)) - refDb;            // dBc, or dBV (vpk -> rms)
+      const top = S.units === "dbc" ? 0 : Math.ceil(db(fund.vpk) / 10) * 10, bottom = top - S.scale * 10;
+      const X = f => padL + f / span * gw, Y = d => padT + (top - d) / (top - bottom) * gh;
+      ctx.fillStyle = "#6a82a0"; ctx.textAlign = "right";
+      for (let j = 0; j <= 10; j++) ctx.fillText(String(top - j * S.scale), padL - 6, padT + j * gh / 10 + 4);
+      ctx.textAlign = "center";
+      if (S.span === "auto" && f0 > 0) { for (let k = 0; k * f0 <= span; k += 2) ctx.fillText(I.fmt(k * f0, "Hz"), padL + k * f0 / span * gw, padT + gh + 16); }
+      else for (let i = 0; i <= 10; i += 2) ctx.fillText(I.fmt(span * i / 10, "Hz"), padL + i * gw / 10, padT + gh + 16);
+      ctx.textAlign = "left"; ctx.fillStyle = "#c9d6e3";
+      ctx.fillText(`${S.units === "dbc" ? "dBc" : "dBV"} · ${S.scale} dB/div · resolution ${I.fmt(sp.df, "Hz")}`, padL, 14);
+      // stems
+      ctx.save(); ctx.beginPath(); ctx.rect(padL, padT, gw, gh); ctx.clip();
+      const harmonicOf = l => f0 > 0 && Math.abs(l.f / f0 - Math.round(l.f / f0)) < 1e-6 ? Math.round(l.f / f0) : 0;
+      sp.lines.forEach(l => {
+        const d = db(l.vpk); if (d < bottom) return;
+        const h = harmonicOf(l);
+        ctx.strokeStyle = h === 1 ? "#00e5ff" : (h > 1 ? "#ffd54f" : "#7a8aa0");
+        ctx.lineWidth = h ? 2 : 1;
+        ctx.beginPath(); ctx.moveTo(X(l.f), Y(bottom)); ctx.lineTo(X(l.f), Y(d)); ctx.stroke();
+        if (h >= 1 && h <= 10) { ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = "center"; ctx.fillText(h === 1 ? "F" : "H" + h, X(l.f), Math.max(padT + 10, Y(d) - 6)); }
+      });
+      ctx.restore(); ctx.textAlign = "left";
+
+      // harmonic table and THD
+      let rows = "", sum2 = 0;
+      for (let h = 1; h <= 10; h++) {
+        const f = f0 * h; const l = sp.lines.find(x => Math.abs(x.f - f) < sp.df / 2);
+        if (!l) break;
+        const pct = l.vpk / fund.vpk * 100; if (h > 1) sum2 += l.vpk * l.vpk;
+        rows += `<tr><td>${h === 1 ? "Fundamental" : "H" + h}</td><td>${I.fmt(f, "Hz")}</td><td>${h === 1 ? I.fmt(l.vpk / Math.SQRT2, "Vrms") : (20 * Math.log10(Math.max(l.vpk / fund.vpk, 1e-12))).toFixed(1) + " dBc"}</td><td>${h === 1 ? "100" : pct < 0.01 ? "<0.01" : pct.toFixed(pct < 1 ? 3 : 2)}</td></tr>`;
+      }
+      const thd = 100 * Math.sqrt(sum2) / fund.vpk;
+      $("harm").innerHTML = rows;
+      $("thd").textContent = "THD " + (thd < 0.01 ? "<0.01" : thd.toFixed(thd < 1 ? 3 : 2)) + " %";
+      const spurs = sp.lines.filter(l => !harmonicOf(l) && l.vpk / fund.vpk > 1e-4).sort((p, q) => q.vpk - p.vpk).slice(0, 6);
+      $("spurs").innerHTML = spurs.length ? spurs.map(l => `<tr><td>${I.fmt(l.f, "Hz")}</td><td>${(20 * Math.log10(l.vpk / fund.vpk)).toFixed(1)} dBc</td></tr>`).join("") : `<tr><td class="muted">None above −80 dBc (e.g. no mains hum)</td></tr>`;
+      $("foot").innerHTML = `Fundamental <b>${I.fmt(f0, "Hz")}</b> · <b>${I.fmt(fund.vpk / Math.SQRT2, "Vrms")}</b> · THD <b>${thd.toFixed(3)} %</b> · DC <b>${I.fmt(sp.dc, "V")}</b>`;
+    }
+
+    const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
+    bindSel("src", v => S.src = v); bindSel("span", v => S.span = v); bindSel("units", v => S.units = v); bindSel("scale", v => S.scale = parseFloat(v));
+    $("btn-cad").addEventListener("click", () => window.open("circuit_sandbox.html", "tube_cad"));
+    I.bindScopeSelect($("scope-select"));
+    I.onUpdate(draw);
+    window.addEventListener("resize", draw);
+    setInterval(() => { if (!I.result) draw(); }, 1500);
+    draw();
+    window.Spectrum = { state: S, draw };
+  })();
+  </script>
+</body>
+</html>

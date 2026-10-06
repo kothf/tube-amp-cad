@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tube Amp CAD — Circuit Editor &amp; Simulator</title>
+  <style>
+    :root {
+      --bg: #0a0e14; --panel: #0f151e; --panel2: #131b26; --line: #223044; --text: #e6edf3; --muted: #8b949e;
+      --accent: #00e5ff; --amber: #ffd54f; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
+    button, input, select { font: inherit; color: inherit; }
+
+    /* toolbar */
+    header { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .brand { font-weight: 700; letter-spacing: .5px; margin-right: 8px; white-space: nowrap; }
+    .brand b { color: var(--accent); }
+    .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+    .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+    .btn:hover { border-color: #3a5170; }
+    .btn.active { background: #0d3442; border-color: var(--accent); color: var(--accent); }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .btn.danger { color: var(--bad); }
+    .btn.wide { width: 100%; margin-top: 6px; }
+    .btn.link { color: var(--accent); }
+    #zoom-label { min-width: 46px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .spacer { flex: 1; }
+
+    main { display: grid; grid-template-columns: 210px 1fr 280px; min-height: 0; }
+
+    /* palette */
+    #palette { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 8px; }
+    .pal-group { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 12px 2px 6px; }
+    .pal-group:first-child { margin-top: 2px; }
+    .pal-sub { font-size: 11px; color: var(--accent); margin: 8px 2px 4px; }
+    .pal-item { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; width: 100%; text-align: left; background: var(--panel2); border: 1px solid transparent; border-radius: 6px; padding: 5px 8px; margin-bottom: 3px; cursor: pointer; }
+    .pal-item:hover { border-color: var(--line); }
+    .pal-item.active { border-color: var(--accent); background: #0d3442; }
+    .pal-item em { font-style: normal; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 95px; }
+    .pal-item.tube span { font-family: ui-monospace, Menlo, monospace; }
+    .pal-search { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; margin-bottom: 4px; }
+
+    /* canvas */
+    #stage { position: relative; min-width: 0; min-height: 0; }
+    #cad { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+
+    /* inspector */
+    #inspector { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 10px 12px; }
+    .insp-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; color: var(--accent); }
+    .insp-sub { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 12px 0 4px; }
+    .row { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .row span { color: var(--muted); font-size: 12px; }
+    .row input, .row select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; }
+    .row input.invalid { border-color: var(--bad); }
+    .range-wrap { display: flex; align-items: center; gap: 6px; }
+    .range-wrap input { flex: 1; min-width: 0; }
+    .range-wrap span { min-width: 36px; text-align: right; color: var(--text); }
+    .kv { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #1a2433; font-size: 12px; }
+    .kv span { color: var(--muted); }
+    .kv b { font-family: ui-monospace, Menlo, monospace; font-weight: 600; text-align: right; }
+    .kv.warn b { color: var(--warn); } .kv.bad b { color: var(--bad); }
+    .insp-help { color: var(--muted); font-size: 12px; margin: 6px 0; }
+    .insp-help.warn { color: var(--warn); } .insp-help.ok { color: var(--ok); }
+    .insp-actions { display: flex; gap: 6px; margin-top: 12px; }
+    .insp-actions .btn { flex: 1; }
+    .help-list { padding-left: 16px; margin: 4px 0; color: var(--muted); font-size: 12px; }
+    .help-list li { margin-bottom: 5px; }
+    .help-list b { color: var(--text); }
+    kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: 11px; }
+
+    /* status bar */
+    footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
+    .sim-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+    .sim-status::before { content: "●"; margin-right: 6px; }
+    .sim-status.ok::before { color: var(--ok); } .sim-status.busy::before { color: var(--accent); }
+    .sim-status.warn::before { color: var(--warn); } .sim-status.error { color: var(--bad); } .sim-status.idle::before { color: var(--muted); }
+    #status-hover { color: var(--muted); font-family: ui-monospace, Menlo, monospace; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* SPICE modal */
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 10; }
+    .modal[hidden] { display: none; }
+    .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(760px, 94vw); padding: 14px; }
+    .modal-box textarea { width: 100%; height: 50vh; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: 12px ui-monospace, Menlo, monospace; padding: 8px; }
+    .modal-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+
+    @media (max-width: 900px) {
+      main { grid-template-columns: 160px 1fr; }
+      #inspector { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">⚡ <b>Tube Amp</b> CAD</div>
+    <button class="btn" id="btn-new" title="Clear the sheet">New</button>
+    <button class="btn" id="btn-open" title="Open a saved circuit (.json)">Open…</button>
+    <button class="btn" id="btn-save" title="Download this circuit as .json">Save</button>
+    <input type="file" id="file-input" accept=".json,application/json" hidden>
+    <span class="sep"></span>
+    <button class="btn" id="btn-undo" title="Undo (Ctrl+Z)">↶</button>
+    <button class="btn" id="btn-redo" title="Redo (Ctrl+Y)">↷</button>
+    <span class="sep"></span>
+    <button class="btn" id="btn-tool-select" title="Select / move (V)">Select</button>
+    <button class="btn" id="btn-tool-wire" title="Draw wires from anywhere (W)">Wire</button>
+    <button class="btn" id="btn-rotate" title="Rotate selection (R)">⟳</button>
+    <button class="btn" id="btn-delete" title="Delete selection (Del)">🗑</button>
+    <span class="sep"></span>
+    <button class="btn" id="btn-zoom-out" title="Zoom out (−)">−</button>
+    <span id="zoom-label">100%</span>
+    <button class="btn" id="btn-zoom-in" title="Zoom in (+)">+</button>
+    <button class="btn" id="btn-zoom-fit" title="Fit circuit (F)">Fit</button>
+    <button class="btn active" id="btn-volts" title="Show DC node voltages">Voltages</button>
+    <span class="spacer"></span>
+    <button class="btn" id="btn-spice" title="Export netlist for LTspice">SPICE</button>
+    <span class="sep"></span>
+    <button class="btn link" id="btn-open-tracer" title="Plate curves with this circuit's operating point">Curve tracer ↗</button>
+    <button class="btn link" id="btn-open-scope" title="Full oscilloscope for the first scope part">Oscilloscope ↗</button>
+    <button class="btn link" id="btn-open-spectrum" title="FFT of a scope part's channels">Spectrum ↗</button>
+  </header>
+
+  <main>
+    <nav id="palette" aria-label="Parts"></nav>
+    <div id="stage"><canvas id="cad" aria-label="Schematic"></canvas></div>
+    <aside id="inspector" aria-label="Inspector"></aside>
+  </main>
+
+  <footer>
+    <span id="status-sim" class="sim-status idle">Ready</span>
+    <span id="status-hover"></span>
+  </footer>
+
+  <div class="modal" id="spice-modal" hidden>
+    <div class="modal-box">
+      <div class="insp-title">SPICE netlist (LTspice)</div>
+      <textarea id="spice-text" spellcheck="false" readonly></textarea>
+      <div class="modal-actions">
+        <button class="btn" id="btn-spice-copy">Copy</button>
+        <button class="btn" id="btn-spice-download">Download .cir</button>
+        <button class="btn" id="btn-spice-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="tube-db.js?v=dev"></script>
+  <script src="sim-engine.js?v=dev"></script>
+  <script src="cad-components.js?v=dev"></script>
+  <script src="cad-app.js?v=dev"></script>
+</body>
+</html>
