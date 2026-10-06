@@ -6,6 +6,31 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-10-07
+
+### Fixed
+- Tube currents and dissipation now match the datasheets. Every amplifier
+  tube was refitted to its published operating points; previously many were
+  far off, e.g. 845 15× too high, 6S19P 8×, 6V6GT/6L6GC 3×, 300B 2.4×, while
+  12AX7, 12AT7, 6N2P and ECC88 ran at about half current and the GM-70 had
+  µ 11.5 instead of 6.
+- Triode-connected pentodes are fitted to the same tube's pentode model, so
+  switching a pentode to triode mode no longer changes the tube.
+- Ratings: 12AU7 Va max 330 V; 6P45S Va max 400 V, Ik max 500 mA.
+
+### Changed
+- The engine and both SPICE exports use Koren's published equations exactly
+  (the `(1 + sgn(E1))` factor was missing, and the pentode plate term was
+  normalised by 2/π). Koren parameters are now interchangeable with other
+  Koren-style SPICE models. Saved circuits will show different, correct,
+  operating points.
+
+### Added
+- `tests/datasheets.mjs`: reference operating points with sources for all
+  35 amplifier tubes; `scripts/fit-tubes.mjs` fits the models to them.
+- Tests: every tube against its datasheet; triode/pentode mode consistency;
+  EL84 and 6V6GT datasheet cathode-bias circuits simulated end to end.
+
 ## [3.0.0] - 2026-10-07
 
 First release as a standalone project (previously developed inside
@@ -32,8 +57,8 @@ First release as a standalone project (previously developed inside
 
 ### Known issues
 - Several tube models deviate from datasheet operating points by more than
-  20 % (12AX7, 12AT7, 6SN7GT, 300B, 2A3, 6V6GT, 6L6GC, EL34). They are listed
-  as `todo` tests in `tests/engine.test.mjs`; see README › Accuracy.
+  20 % (fixed in 3.1.0).
 
-[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/kothf/tube-amp-cad/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/kothf/tube-amp-cad/releases/tag/v3.0.0

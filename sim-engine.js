@@ -18,7 +18,9 @@
   "use strict";
 
   // ---------------------------------------------------------------------------
-  // Tube models (Norman Koren). Same Ia equations as the curve tracer plot.
+  // Tube models: Norman Koren's published equations, unmodified, so parameter
+  // sets are interchangeable with Koren-style SPICE models. The (1 + sgn(E1))
+  // factor is 2 whenever E1 > 0. Same functions drive the curve tracer plot.
   // ---------------------------------------------------------------------------
   function softplus(x) {
     if (x > 60) return x;
@@ -30,13 +32,13 @@
     triodeIa(vak, vgk, p) {
       if (vak <= 0) return 0;
       const e1 = (vak / p.kp) * softplus(p.kp * (1 / p.mu + vgk / Math.sqrt(p.kvb + vak * vak)));
-      return e1 > 0 ? Math.pow(e1, p.x) / p.kg : 0;
+      return e1 > 0 ? (2 * Math.pow(e1, p.x)) / p.kg : 0;
     },
     pentodeIa(vak, vgk, vg2k, p) {
       if (vak <= 0 || vg2k <= 0) return 0;
       const e1 = (vg2k / p.kp) * softplus(p.kp * (1 / p.mu + vgk / vg2k));
       if (e1 <= 0) return 0;
-      return (Math.pow(e1, p.x) / p.kg) * Math.atan(vak / p.kvb) * (2 / Math.PI);
+      return ((2 * Math.pow(e1, p.x)) / p.kg) * Math.atan(vak / p.kvb);
     },
     // Screen current (Koren): Ig2 = (Vg1 + Vg2/mu)^x / kg2
     screenI(vgk, vg2k, p) {

@@ -1286,12 +1286,12 @@
         }
         case "TRIODE": {
           const m = e.model, name = `TRIODE_${(S.comps.find(c => c.id === e.id) || {}).params.tube.replace(/[^A-Za-z0-9]/g, "_")}`;
-          if (!models.has(name)) { models.add(name); lines.push(`.subckt ${name} A G K`, `Bp A K I=pwr(max(V(A,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G,K)/sqrt(${m.kvb}+V(A,K)*V(A,K))))),0),${m.x})/${m.kg}`, `Bg G K I=if(V(G,K)>0,${0.2 / m.kg}*pwr(V(G,K),1.5),0)`, `.ends`); }
+          if (!models.has(name)) { models.add(name); lines.push(`.subckt ${name} A G K`, `Bp A K I=pwr(max(V(A,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G,K)/sqrt(${m.kvb}+V(A,K)*V(A,K))))),0),${m.x})*${2 / m.kg}`, `Bg G K I=if(V(G,K)>0,${0.2 / m.kg}*pwr(V(G,K),1.5),0)`, `.ends`); }
           lines.push(`X${id} ${nd.join(" ")} ${name}`); break;
         }
         case "PENTODE": {
           const m = e.model, name = `PENTODE_${(S.comps.find(c => c.id === e.id) || {}).params.tube.replace(/[^A-Za-z0-9]/g, "_")}`;
-          if (!models.has(name)) { models.add(name); lines.push(`.subckt ${name} A G1 G2 K`, `Bp A K I=pwr(max(V(G2,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G1,K)/max(V(G2,K),1e-3)))),0),${m.x})/${m.kg}*atan(max(V(A,K),0)/${m.kvb})*${2 / Math.PI}`, `Bs G2 K I=pwr(max(V(G1,K)+V(G2,K)/${m.mu},0),${m.x})/${m.kg2 || 1500}`, `Bg G1 K I=if(V(G1,K)>0,${0.2 / m.kg}*pwr(V(G1,K),1.5),0)`, `.ends`); }
+          if (!models.has(name)) { models.add(name); lines.push(`.subckt ${name} A G1 G2 K`, `Bp A K I=pwr(max(V(G2,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G1,K)/max(V(G2,K),1e-3)))),0),${m.x})*${2 / m.kg}*atan(max(V(A,K),0)/${m.kvb})`, `Bs G2 K I=pwr(max(V(G1,K)+V(G2,K)/${m.mu},0),${m.x})/${m.kg2 || 1500}`, `Bg G1 K I=if(V(G1,K)>0,${0.2 / m.kg}*pwr(V(G1,K),1.5),0)`, `.ends`); }
           lines.push(`X${id} ${nd.join(" ")} ${name}`); break;
         }
       }

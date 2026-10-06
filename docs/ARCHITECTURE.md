@@ -23,7 +23,7 @@ Static, framework-free JS (classic `<script>` files, no build step). There are *
 
 ## Rules
 
-1. **One tube database.** Edit tubes only in `tube-db.js`. Rectifier tubes are simulated as vacuum diodes with perveance from `RECTIFIER_PERVEANCE` in `sim-engine.js` (their Koren "triode" params in the DB are placeholders and give absurd currents).
+1. **One tube database.** Edit tubes only in `tube-db.js` (Koren parameters via `scripts/fit-tubes.mjs`, see below). Rectifier tubes are simulated as vacuum diodes with perveance from `RECTIFIER_PERVEANCE` in `sim-engine.js` (their Koren "triode" params in the DB are placeholders and give absurd currents).
 2. **Koren equations must stay identical** in `sim-engine.js` (`Koren.*`) and in exported SPICE (`cad-app.js` `spiceNetlist`, `tracer-app.js` `subckt`). The plot in the tracer calls the engine's functions directly.
 3. **Adding a part:** add an entry to `LIB` in `cad-components.js` (pins on multiples of 10, `bbox`, `defaults`, `fields`, `build`) and a symbol in `DRAW`; put it in `PALETTE`. `build()` may allocate internal nodes with `alloc()`. Inductive branches get a 1 µΩ series term in the engine so wiring shorts can't make the matrix singular.
 4. **Steady state:** captures are a whole number of base periods (harmonic analysis relies on it). Settling uses per-node relative change with a 1 V floor plus a decay-rate estimate; don't loosen it — coupling-cap outputs otherwise keep a false DC offset.
@@ -31,20 +31,25 @@ Static, framework-free JS (classic `<script>` files, no build step). There are *
 6. **Cache busting:** every local `<script src>` in the four pages carries `?v=dev` in the source; `npm run package` stamps the release version into all of them (and fails if a page has none). `cad-app.js` passes its own `?v=` to `sim-worker.js`, which passes it to `importScripts("sim-engine.js")`, so the worker never mixes versions. Never hand-edit version strings.
 7. **No duplicated controls across windows:** circuit edits, generator settings and probing (wiring a scope) live in the CAD only; viewers have display controls only.
 
-## Tube model accuracy (known issue)
+## Tube models
 
-`Koren.triodeIa` / `pentodeIa` compute `E1^x / kg1` and omit the
-`(1 + sgn(E1))` factor of Koren's published equations (= 2 for a conducting
-tube). Parameter sets copied verbatim from Koren's tables (12AX7) therefore
-give half the published current, while most other entries in `tube-db.js` were
-tuned against this engine and err in both directions (6V6GT/6L6GC ~3× high).
+`Koren.*` implement Norman Koren's published equations exactly, including the
+`(1 + sgn(E1))` factor (= 2 while conducting) and, for pentodes,
+`atan(Va/kvb)` without normalisation. Parameter sets are therefore directly
+interchangeable with Koren-style SPICE models. Grid and screen currents are
+the documented extras (`gridI`, `screenI`).
 
-`tests/engine.test.mjs` checks models against datasheet operating points and
-lists the failing tubes in `KNOWN_OFF` (reported as `todo`). To fix a tube,
-refit its parameters for the engine's equation against several points of the
-datasheet plate curves (not a single bias point), confirm the SPICE export and
-the tracer still agree (rule 2), remove it from `KNOWN_OFF`, and note the
-change in `CHANGELOG.md` — saved circuits will simulate differently.
+Parameters come from `scripts/fit-tubes.mjs`, which fits each tube to its
+datasheet points in `tests/datasheets.mjs` (Ia, gm, rp, Ig2; bias solved from
+Ia where only cathode-bias conditions are published), with weak priors for
+what the data cannot pin down (x ≈ 1.35, pentode µ(g1-g2), Ig2 ≈ 10 % of Ia).
+The triode-connected model of a pentode is fitted to that pentode with g2
+strapped to the anode.
+
+To add or correct a tube: add its datasheet entry (with the source), run
+`node scripts/fit-tubes.mjs <name>` to review, then `--write`, and run
+`npm test` (every tube is checked against its entry). Note the change in
+`CHANGELOG.md`: saved circuits will simulate differently.
 
 ## Testing
 
