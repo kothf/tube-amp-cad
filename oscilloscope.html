@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oscilloscope — Tube Amp CAD</title>
+  <style>
+    :root { --bg: #070b10; --panel: #111823; --panel2: #18212e; --line: #26344a; --text: #e6edf3; --muted: #8b949e; --ch1: #ffe23d; --ch2: #00e5ff; --accent: #00b4d8; --ok: #3fb950; --bad: #ff7b72; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+    button, select { font: inherit; color: inherit; }
+    header { display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: linear-gradient(#141c27, #0e141d); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .brand { font-weight: 800; letter-spacing: .5px; }
+    .brand span { color: var(--accent); font-weight: 600; margin-left: 6px; }
+    .status { font-size: 12px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 99px; white-space: nowrap; }
+    .status::before { content: "●"; margin-right: 6px; }
+    .status.ok::before { color: var(--ok); } .status.idle::before { color: var(--muted); } .status.bad { color: var(--bad); }
+    .spacer { flex: 1; }
+    .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+    .btn:hover { border-color: #3a5170; }
+    .btn.active { background: #0b3a48; border-color: var(--accent); color: #7fe8ff; }
+    select { background: #0b1118; border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+    main { display: grid; grid-template-columns: 1fr 300px; gap: 12px; padding: 12px; min-height: 0; }
+    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+    #screen { width: 100%; height: 100%; display: block; border-radius: 6px; min-height: 0; }
+    .meas { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 4px 0; font: 12px ui-monospace, Menlo, monospace; }
+    .meas b { font-weight: 600; } .c1 { color: var(--ch1); } .c2 { color: var(--ch2); }
+    aside { overflow-y: auto; min-height: 0; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+    .card h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .row span { color: var(--muted); font-size: 12px; }
+    .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .seg .btn { padding: 4px 0; text-align: center; font-size: 12px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    @media (max-width: 900px) { body { overflow: auto; } main { grid-template-columns: 1fr; } .bezel { height: 60vh; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Oscilloscope<span>2-channel</span></div>
+    <span id="status" class="status idle">Waiting for the Circuit CAD…</span>
+    <span class="spacer"></span>
+    <label class="muted">Scope part <select id="scope-select"></select></label>
+    <button class="btn" id="btn-cad">Circuit CAD ↗</button>
+  </header>
+  <main>
+    <div class="bezel">
+      <canvas id="screen" aria-label="Oscilloscope screen"></canvas>
+      <div class="meas" id="meas"></div>
+    </div>
+    <aside>
+      <div class="card">
+        <h3>Display</h3>
+        <div class="seg" id="mode">
+          <button class="btn active" data-v="dual">Dual</button><button class="btn" data-v="ch1">CH1</button><button class="btn" data-v="ch2">CH2</button><button class="btn" data-v="xy">X-Y</button>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="btn-autoset" style="width:100%">Autoset</button></div>
+      </div>
+      <div class="card">
+        <h3><span class="c1">CH1</span></h3>
+        <div class="row"><span>Volts/div</span><select id="ch1-vdiv"></select></div>
+        <div class="row"><span>Coupling</span><select id="ch1-cpl"><option value="dc">DC</option><option value="ac">AC</option><option value="gnd">GND</option></select></div>
+      </div>
+      <div class="card">
+        <h3><span class="c2">CH2</span></h3>
+        <div class="row"><span>Volts/div</span><select id="ch2-vdiv"></select></div>
+        <div class="row"><span>Coupling</span><select id="ch2-cpl"><option value="dc">DC</option><option value="ac">AC</option><option value="gnd">GND</option></select></div>
+      </div>
+      <div class="card">
+        <h3>Horizontal &amp; trigger</h3>
+        <div class="row"><span>Time/div</span><select id="tdiv"></select></div>
+        <div class="row"><span>Trigger source</span><select id="trig-src"><option value="ch1">CH1</option><option value="ch2">CH2</option></select></div>
+        <div class="row"><span>Slope</span><select id="trig-slope"><option value="rising">Rising</option><option value="falling">Falling</option></select></div>
+        <p class="muted">The simulator computes one steady-state window; longer timebases repeat it periodically, as a real scope would show a steady signal.</p>
+      </div>
+    </aside>
+  </main>
+
+  <script src="instrument-common.js?v=dev"></script>
+  <script>
+  (function () {
+    "use strict";
+    const I = Instrument, $ = id => document.getElementById(id);
+    const VDIV = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
+    const TDIV = [1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2];
+    const S = { mode: "dual", ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", trig: { src: "ch1", slope: "rising" } };
+
+    const fill = (sel, list, unit) => { sel.innerHTML = `<option value="auto">Auto</option>` + list.map(v => `<option value="${v}">${I.fmt(v, unit)}/div</option>`).join(""); };
+    fill($("ch1-vdiv"), VDIV, "V"); fill($("ch2-vdiv"), VDIV, "V"); fill($("tdiv"), TDIV, "s");
+
+    const stats = (a) => { let mn = Infinity, mx = -Infinity, s = 0; for (const v of a) { mn = Math.min(mn, v); mx = Math.max(mx, v); s += v; } const mean = s / a.length; let q = 0; for (const v of a) q += (v - mean) ** 2; return { min: mn, max: mx, pp: mx - mn, mean, rms: Math.sqrt(q / a.length) }; };
+    const pick = (list, need) => list.find(v => v >= need * 0.9999) || list[list.length - 1];
+
+    function channels(sc) {
+      const out = {};
+      ["ch1", "ch2"].forEach(k => {
+        const raw = sc && sc[k];
+        if (!raw) return;
+        const st = stats(raw), cpl = S[k].cpl;
+        const off = cpl === "ac" ? st.mean : 0;
+        const peak = cpl === "gnd" ? 0 : Math.max(Math.abs(st.max - off), Math.abs(st.min - off));
+        const vdiv = S[k].vdiv === "auto" ? pick(VDIV, Math.max(peak, 1e-6) / 3.5) : parseFloat(S[k].vdiv);
+        out[k] = { raw, st, off, vdiv, cpl };
+      });
+      return out;
+    }
+    function freqOf(a, dt) {
+      const st = stats(a); let n = 0, first = -1, last = -1;
+      for (let i = 1; i < a.length; i++) if (a[i - 1] < st.mean && a[i] >= st.mean) { n++; if (first < 0) first = i; last = i; }
+      return n >= 2 ? (n - 1) / ((last - first) * dt) : null;
+    }
+
+    function draw() {
+      const cv = $("screen"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+      if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+      const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const st = I.status(); $("status").className = "status " + st.cls; $("status").textContent = st.text;
+      ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
+      const pad = 26, gw = W - 2 * pad, gh = H - 2 * pad - 10, x0 = pad, y0 = pad + 6;
+      // graticule
+      ctx.strokeStyle = "rgba(0,180,216,0.16)"; ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(x0 + i * gw / 10, y0); ctx.lineTo(x0 + i * gw / 10, y0 + gh); ctx.stroke(); }
+      for (let j = 0; j <= 8; j++) { ctx.beginPath(); ctx.moveTo(x0, y0 + j * gh / 8); ctx.lineTo(x0 + gw, y0 + j * gh / 8); ctx.stroke(); }
+      ctx.strokeStyle = "rgba(0,229,255,0.35)";
+      for (let i = 0; i <= 50; i++) { const x = x0 + i * gw / 50; ctx.beginPath(); ctx.moveTo(x, y0 + gh / 2 - 3); ctx.lineTo(x, y0 + gh / 2 + 3); ctx.stroke(); }
+      for (let j = 0; j <= 40; j++) { const y = y0 + j * gh / 40; ctx.beginPath(); ctx.moveTo(x0 + gw / 2 - 3, y); ctx.lineTo(x0 + gw / 2 + 3, y); ctx.stroke(); }
+
+      const sc = I.scope();
+      const ch = channels(sc);
+      const any = ch.ch1 || ch.ch2;
+      ctx.font = "12px ui-monospace, Menlo, monospace";
+      if (!any) {
+        ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center";
+        ctx.fillText(sc ? "No input connected — wire CH1 / CH2 of " + sc.label + " in the CAD" : "NO SIGNAL", x0 + gw / 2, y0 + gh / 2 - 12);
+        ctx.textAlign = "left"; $("meas").innerHTML = ""; return;
+      }
+      const dt = sc.dt, N = (any.raw).length, P = N - 1;   // capture is whole periods: sample P == sample 0
+      const at = (a, i) => a[((i % P) + P) % P];
+      const fSig = (I.result && I.result.fSig) || 1 / (P * dt);
+      const tdiv = S.tdiv === "auto" ? pick(TDIV, 2 / fSig / 10) : parseFloat(S.tdiv);
+      const span = 10 * tdiv, M = Math.max(2, Math.round(span / dt));
+      // trigger
+      const trigCh = ch[S.trig.src] || any, lvl = trigCh.st.mean;
+      let start = 0;
+      for (let i = 1; i <= P; i++) {
+        const a = at(trigCh.raw, i - 1), b = at(trigCh.raw, i);
+        if (S.trig.slope === "rising" ? (a < lvl && b >= lvl) : (a > lvl && b <= lvl)) { start = i; break; }
+      }
+      const glow = (color) => { ctx.strokeStyle = color; ctx.globalAlpha = 0.18; ctx.lineWidth = 5; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1.7; ctx.stroke(); };
+      ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, gw, gh); ctx.clip();
+      if (S.mode === "xy" && ch.ch1 && ch.ch2) {
+        ctx.beginPath();
+        for (let i = 0; i <= P; i++) {
+          const vx = (ch.ch1.cpl === "gnd" ? 0 : at(ch.ch1.raw, i) - ch.ch1.off) / ch.ch1.vdiv, vy = (ch.ch2.cpl === "gnd" ? 0 : at(ch.ch2.raw, i) - ch.ch2.off) / ch.ch2.vdiv;
+          const px = x0 + gw / 2 + vx * gw / 10, py = y0 + gh / 2 - vy * gh / 8;
+          i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        glow("#7fffd4");
+      } else {
+        [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k, color]) => {
+          const c = ch[k]; if (!c || (S.mode !== "dual" && S.mode !== k)) return;
+          const stepPx = Math.max(1, Math.floor(M / (gw * 1.5)));
+          ctx.beginPath();
+          for (let i = 0; i <= M; i += stepPx) {
+            const v = c.cpl === "gnd" ? 0 : (at(c.raw, start + i) - c.off) / c.vdiv;
+            const px = x0 + i / M * gw, py = y0 + gh / 2 - Math.max(-4.4, Math.min(4.4, v)) * gh / 8;
+            i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+          }
+          glow(color);
+          ctx.fillStyle = color; ctx.fillText(k === "ch1" ? "1▸" : "2▸", 2, y0 + gh / 2 + (k === "ch1" ? -6 : 10));
+        });
+      }
+      ctx.restore();
+      // readout
+      ctx.fillStyle = "#ffe23d"; let tx = x0;
+      if (ch.ch1) { const s = `CH1 ${I.fmt(ch.ch1.vdiv, "V")}${ch.ch1.cpl === "ac" ? "~" : ""}`; ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+      ctx.fillStyle = "#00e5ff";
+      if (ch.ch2) { const s = `CH2 ${I.fmt(ch.ch2.vdiv, "V")}${ch.ch2.cpl === "ac" ? "~" : ""}`; ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+      ctx.fillStyle = "#c9d6e3"; ctx.fillText(`M ${I.fmt(tdiv, "s")}   Trig ${S.trig.src.toUpperCase()} ${S.trig.slope === "rising" ? "↑" : "↓"}`, tx, 16);
+
+      // measurements
+      let h = "";
+      [["ch1", "c1"], ["ch2", "c2"]].forEach(([k, cls]) => {
+        const c = ch[k]; if (!c) return;
+        const f = freqOf(c.raw, dt);
+        h += `<span class="${cls}">${k.toUpperCase()}: <b>${I.fmt(c.st.pp, "Vpp")}</b> · ${I.fmt(c.st.rms, "Vrms")} AC · ${I.fmt(c.st.mean, "V")} DC · ${f ? I.fmt(f, "Hz") : "—"}</span>`;
+      });
+      if (ch.ch1 && ch.ch2 && fSig) {
+        const a = I.dft(ch.ch1.raw, fSig, dt), b = I.dft(ch.ch2.raw, fSig, dt);
+        if (a.amp > 1e-9 && b.amp > 1e-9) {
+          let ph = (b.phase - a.phase) * 180 / Math.PI; ph = ((ph + 540) % 360) - 180;
+          h += `<span>CH1/CH2 at ${I.fmt(fSig, "Hz")}: <b>${(a.amp / b.amp).toPrecision(3)}×</b> (${(20 * Math.log10(a.amp / b.amp)).toFixed(1)} dB), phase <b>${(-ph).toFixed(0)}°</b></span>`;
+        }
+      }
+      $("meas").innerHTML = h;
+    }
+
+    // controls
+    document.querySelectorAll("#mode .btn").forEach(b => b.addEventListener("click", () => { S.mode = b.dataset.v; document.querySelectorAll("#mode .btn").forEach(x => x.classList.toggle("active", x === b)); draw(); }));
+    const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
+    bindSel("ch1-vdiv", v => S.ch1.vdiv = v); bindSel("ch2-vdiv", v => S.ch2.vdiv = v);
+    bindSel("ch1-cpl", v => S.ch1.cpl = v); bindSel("ch2-cpl", v => S.ch2.cpl = v);
+    bindSel("tdiv", v => S.tdiv = v); bindSel("trig-src", v => S.trig.src = v); bindSel("trig-slope", v => S.trig.slope = v);
+    $("btn-autoset").addEventListener("click", () => {
+      S.ch1.vdiv = S.ch2.vdiv = S.tdiv = "auto";
+      // AC-couple a channel whose DC level hides its signal
+      const ch = channels(I.scope());
+      ["ch1", "ch2"].forEach(k => { const c = ch[k]; if (c && Math.abs(c.st.mean) > 4 * c.st.pp) S[k].cpl = "ac"; $(k + "-cpl").value = S[k].cpl; $(k + "-vdiv").value = "auto"; });
+      $("tdiv").value = "auto"; draw();
+    });
+    $("btn-cad").addEventListener("click", () => window.open("circuit_sandbox.html", "tube_cad"));
+    I.bindScopeSelect($("scope-select"));
+    I.onUpdate(draw);
+    window.addEventListener("resize", draw);
+    setInterval(() => { if (!I.result) draw(); }, 1500);
+    draw();
+    window.Scope = { state: S, draw };
+  })();
+  </script>
+</body>
+</html>
