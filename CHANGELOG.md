@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-10-07
+
+### Added
+- Changeover switch part (SPDT): a common contact and two throws, A and B.
+  Double-click it on the sheet, or pick the position in the inspector, to
+  flip it. Sections named like SA1.1 and SA1.2 are one ganged switch and
+  always flip together, so a single circuit can hold both configurations of
+  an amplifier, e.g. triode and pentode connection of the output tubes.
+
 ## [3.4.0] - 2026-10-07
 
 ### Added
