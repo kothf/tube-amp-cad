@@ -171,8 +171,7 @@ test("shorted inductor or winding does not crash the solver", () => {
 
 // Datasheet regression: every amplifier tube against its published operating
 // points (tests/datasheets.mjs, also the input of scripts/fit-tubes.mjs).
-// Tolerances: Ia ±10 %, gm ±15 %, Ig2 ±20 %, rp ±15 % (triodes) / ±40 %
-// (pentodes: Koren's atan plate term cannot match rp at two screen voltages).
+// Tolerances: Ia ±10 %, gm ±15 %, Ig2 ±20 %, rp ±15 %.
 const mA = (kind, p, pt, vg) => 1e3 * (kind === "pentode" ? E.Koren.pentodeIa(pt.va, vg, pt.vg2, p) : E.Koren.triodeIa(pt.va, vg, p));
 function biasFor(kind, p, pt) {
   let lo = -pt.va, hi = 0;
@@ -199,9 +198,9 @@ for (const t of globalThis.TUBE_DATABASE.filter(t => t.category !== "rectifier")
       if (pt.rp) {
         const h = Math.max(0.5, pt.va * 0.002);
         const rp = (2 * h) / (mA(ds.kind, p, { ...pt, va: pt.va + h }, vg) - mA(ds.kind, p, { ...pt, va: pt.va - h }, vg));
-        near(rp, pt.rp, ds.kind === "pentode" ? 0.4 : 0.15, `${t.commonName} rp (kΩ)`);
+        near(rp, pt.rp, 0.15, `${t.commonName} rp (kΩ)`);
       }
-      if (pt.ig2) near(1e3 * E.Koren.screenI(vg, pt.vg2, p), pt.ig2, 0.2, `${t.commonName} Ig2 (mA)`);
+      if (pt.ig2) near(1e3 * E.Koren.screenI(vg, pt.vg2, p, pt.va), pt.ig2, 0.2, `${t.commonName} Ig2 (mA)`);
     });
   }
   if (t.koren.Pentode) {
@@ -209,11 +208,11 @@ for (const t of globalThis.TUBE_DATABASE.filter(t => t.category !== "rectifier")
       const P = t.koren.Pentode, T = t.koren.Triode, va = Math.min(250, t.vg2Max);
       for (const frac of [0.25, 0.5, 1]) {
         // grid bias giving `frac` of the zero-bias strapped current
-        const full = E.Koren.pentodeIa(va, 0, va, P) + E.Koren.screenI(0, va, P);
+        const full = E.Koren.pentodeIa(va, 0, va, P) + E.Koren.screenI(0, va, P, va);
         let lo = -va, hi = 0;
-        for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; E.Koren.pentodeIa(va, m, va, P) + E.Koren.screenI(m, va, P) < frac * full ? (lo = m) : (hi = m); }
+        for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; E.Koren.pentodeIa(va, m, va, P) + E.Koren.screenI(m, va, P, va) < frac * full ? (lo = m) : (hi = m); }
         const vg = (lo + hi) / 2;
-        near(E.Koren.triodeIa(va, vg, T), E.Koren.pentodeIa(va, vg, va, P) + E.Koren.screenI(vg, va, P), 0.1, `${t.commonName} strapped current at Vg1=${vg.toFixed(1)} V`);
+        near(E.Koren.triodeIa(va, vg, T), E.Koren.pentodeIa(va, vg, va, P) + E.Koren.screenI(vg, va, P, va), 0.1, `${t.commonName} strapped current at Vg1=${vg.toFixed(1)} V`);
       }
     });
   }
@@ -233,3 +232,29 @@ for (const [name, rk, ia, ig2, src] of [["EL84", 135, 48, 5.5, "Philips EL84"], 
     near((250 - vk) * (ik - ig2) / 1e3, (250 * ia) / 1e3, 0.12, `${name} plate dissipation (W)`);
   });
 }
+
+// Large signal: the published single-ended class-A results at full drive
+// (output power, THD and average currents) simulated in the datasheet's own
+// circuit. Tolerances: power ±10 %, THD ±30 %, currents ±12 %.
+const { seStage } = await import("../scripts/fit-tubes.mjs");
+for (const ds of (await import("./datasheets.mjs")).DATASHEETS.filter(d => d.largeSignal)) {
+  for (const ls of ds.largeSignal) {
+    test(`full drive: ${ds.tube} single-ended, ${ls.b} V into ${ls.rl} Ω (${ds.source})`, () => {
+      const m = seStage(tube(ds.tube).koren.Pentode, ls);
+      assert.ok(m, "simulates");
+      near(m.pout, ls.pout, 0.1, `${ds.tube} output power (W)`);
+      near(m.thd, ls.thd, 0.3, `${ds.tube} THD (%)`);
+      if (ls.ia) near(m.ia, ls.ia, 0.12, `${ds.tube} average plate current at full drive (mA)`);
+      if (ls.ig2) near(m.ig2, ls.ig2, 0.12, `${ds.tube} average screen current at full drive (mA)`);
+    });
+  }
+}
+
+test("pentode screen current rises as the plate swings into the knee (current conservation)", () => {
+  const P = tube("EL84").koren.Pentode;
+  const ig2 = va => E.Koren.screenI(0, 250, P, va), ia = va => E.Koren.pentodeIa(va, 0, 250, P);
+  assert.ok(ig2(20) > 3 * ig2(250), `Ig2 at 20 V ${(ig2(20) * 1e3).toFixed(1)} mA vs ${(ig2(250) * 1e3).toFixed(1)} mA at 250 V`);
+  // cathode current stays within ±35 % of its high-voltage value through the knee
+  const ik = va => ia(va) + ig2(va);
+  for (const va of [15, 30, 60, 120]) near(ik(va), ik(250), 0.35, `Ik at Va=${va} V`);
+});

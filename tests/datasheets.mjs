@@ -9,6 +9,11 @@
  *   mu        -> triodes: amplification factor; pentodes: µ(g1-g2).
  *               Used as a soft prior when the point has no gm/rp pair.
  *   alias     -> electrically equivalent type; uses the referenced data.
+ *   largeSignal -> pentodes: published single-ended class-A results at full
+ *               drive (B+, cathode resistor rk or fixed bias, load rl, drive
+ *               vrms, output power, THD, average Ia/Ig2 at full drive). The
+ *               fitter simulates that circuit to set the knee and the screen
+ *               share; the reference tests measure it in the app.
  * Rectifiers are not listed: they are simulated as vacuum diodes (perveance
  * from the datasheet drop, sim-engine.js RECTIFIER_PERVEANCE).
  */
@@ -66,20 +71,26 @@ export const DATASHEETS = [
     { va: 120, vg: -19.25, ia: 550, gm: 40 }] },
   // ---- pentodes / beam tetrodes (single tube, class A1) ---------------------
   { tube: "EL84", kind: "pentode", mu: 19, source: "Philips EL84", points: [
-    { va: 250, vg2: 250, vg: -7.3, ia: 48, ig2: 5.5, gm: 11.3, rp: 38 }] },
+    { va: 250, vg2: 250, vg: -7.3, ia: 48, ig2: 5.5, gm: 11.3, rp: 38 }],
+    // single-ended class A at full drive (cathode bias; B+ includes the 7.2 V cathode rise)
+    largeSignal: [{ b: 257, rk: 135, rl: 5200, vrms: 4.3, pout: 5.7, thd: 10, ia: 49.5, ig2: 10.8 }] },
   { tube: "6P14P-EV", alias: "EL84", source: "6П14П = EL84" },
   { tube: "EL34", kind: "pentode", mu: 11, source: "Philips EL34", points: [
     { va: 250, vg2: 250, vg: -13.5, ia: 100, ig2: 14.9, gm: 11, rp: 15 }] },
   { tube: "6P27S", alias: "EL34", source: "6П27С = EL34" },
   { tube: "6V6GT", kind: "pentode", mu: 9.8, source: "RCA 6V6GT", points: [
     { va: 250, vg2: 250, vg: -12.5, ia: 45, ig2: 4.5, gm: 4.1, rp: 52 },
-    { va: 315, vg2: 225, vg: -13, ia: 34, ig2: 2.2, gm: 3.75, rp: 77 }] },
+    { va: 315, vg2: 225, vg: -13, ia: 34, ig2: 2.2, gm: 3.75, rp: 77 }],
+    largeSignal: [
+      { b: 250, vg2: 250, bias: -12.5, rl: 5000, vrms: 12.5 / Math.SQRT2, pout: 4.5, thd: 8, ia: 47, ig2: 7.0 },
+      { b: 315, vg2: 225, bias: -13, rl: 8500, vrms: 13 / Math.SQRT2, pout: 5.5, thd: 12, ia: 35, ig2: 6.0 }] },
   { tube: "6P6S", alias: "6V6GT", source: "6П6С = 6V6GT" },
   { tube: "6P1P", kind: "pentode", mu: 9.5, source: "6П1П handbook (Ia 44 mA, S 4.9 mA/V; 6AQ5 class)", points: [
     { va: 250, vg2: 250, vg: -12.5, ia: 44, gm: 4.9 }] },
   { tube: "6L6GC", kind: "pentode", mu: 8, source: "RCA 6L6GC", points: [
     { va: 250, vg2: 250, vg: -14, ia: 72, ig2: 5, gm: 6.0, rp: 22.5 },
-    { va: 350, vg2: 250, vg: -18, ia: 54, ig2: 2.5, gm: 5.2, rp: 33 }] },
+    { va: 350, vg2: 250, vg: -18, ia: 54, ig2: 2.5, gm: 5.2, rp: 33 }],
+    largeSignal: [{ b: 250, vg2: 250, bias: -14, rl: 2500, vrms: 14 / Math.SQRT2, pout: 6.5, thd: 10 }] },
   { tube: "6P3S-E", alias: "6L6GC", source: "6П3С-Е = 6L6" },
   { tube: "KT88", kind: "pentode", mu: 8, source: "GE 6550A (KT88 class)", points: [
     { va: 250, vg2: 250, vg: -14, ia: 140, ig2: 12, gm: 11, rp: 15 }] },

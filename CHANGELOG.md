@@ -6,6 +6,28 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-10-07
+
+### Fixed
+- Pentodes and beam tetrodes now deliver their datasheet output power. In
+  single-ended class A at full drive: EL84 5.9 W (Philips 5.7 W), 6V6GT
+  4.5 W and 5.3 W (RCA 4.5 W and 5.5 W), 6L6GC 6.4 W (RCA 6.5 W), with THD
+  and full-drive currents close to the published values. Previously power
+  was 15-21 % low and screen current did not rise at full drive.
+- Pentode plate resistance now matches the datasheets at every published
+  operating point (within 4 %, previously up to ±35 %).
+
+### Changed
+- New pentode model: Koren's space-charge term with a separate knee (`vk`)
+  and slope (`lam`) for the plate, and current conservation in the knee (a
+  share `ks` of what the plate cannot take goes to the screen). Pentode
+  parameters therefore differ from Koren's; triodes are unchanged. Both
+  SPICE exports use the new equations (`TubeSimEngine.Spice`), and the curve
+  tracer's fitter fits the slope `lam` for pentodes. Saved circuits with
+  pentodes will show different, more accurate, results.
+- `tests/datasheets.mjs` gains published full-drive results, which the fitter
+  simulates; pentode rp tolerance in the tests tightened to ±15 %.
+
 ## [3.2.0] - 2026-10-07
 
 ### Added
@@ -99,7 +121,8 @@ First release as a standalone project (previously developed inside
 - Several tube models deviate from datasheet operating points by more than
   20 % (fixed in 3.1.0).
 
-[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.3.0...HEAD
+[3.3.0]: https://github.com/kothf/tube-amp-cad/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/kothf/tube-amp-cad/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/kothf/tube-amp-cad/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/kothf/tube-amp-cad/compare/v3.0.0...v3.1.0

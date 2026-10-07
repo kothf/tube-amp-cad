@@ -13,7 +13,7 @@ var TUBE_DATABASE = [
     hasPin9Shield: true,
     vaMax: 300, paMax: 1.0, ikMax: 10, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 95.05, kg: 1057, kp: 529, kvb: 328.3, x: 1.16 } },
+    koren: { Triode: { mu: 97.36, kg: 1018, kp: 475.7, kvb: 456.6, x: 1.17 } },
     pinout: [
       { pin: 1, sym: "A2", role: "Plate 2", isPlate: true },
       { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
@@ -34,7 +34,7 @@ var TUBE_DATABASE = [
     hasPin9Shield: true,
     vaMax: 300, paMax: 2.2, ikMax: 25, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 36.06, kg: 755.6, kp: 305.6, kvb: 180.1, x: 1.35 } },
+    koren: { Triode: { mu: 35.63, kg: 783.9, kp: 349.9, kvb: 180.1, x: 1.35 } },
     pinout: [
       { pin: 1, sym: "A2", role: "Plate 2", isPlate: true }, { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
       { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
@@ -51,7 +51,7 @@ var TUBE_DATABASE = [
     hasPin9Shield: true,
     vaMax: 300, paMax: 1.8, ikMax: 20, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 32.53, kg: 223.1, kp: 213.3, kvb: 127.6, x: 1.29 } },
+    koren: { Triode: { mu: 32.78, kg: 220.8, kp: 198.9, kvb: 156.5, x: 1.29 } },
     pinout: [
       { pin: 1, sym: "A2", role: "Plate 2", isPlate: true }, { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
       { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
@@ -68,7 +68,7 @@ var TUBE_DATABASE = [
     hasPin9Shield: true,
     vaMax: 300, paMax: 4.8, ikMax: 45, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 19.94, kg: 381.2, kp: 159.6, kvb: 110, x: 1.35 } },
+    koren: { Triode: { mu: 19.94, kg: 381, kp: 158.4, kvb: 110, x: 1.35 } },
     pinout: [
       { pin: 1, sym: "A2", role: "Plate 2", isPlate: true }, { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
       { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
@@ -84,7 +84,7 @@ var TUBE_DATABASE = [
     heaterWarning: "Octal Pins 7 & 8: 6.3V @ 0.6A.",
     vaMax: 330, paMax: 2.75, ikMax: 20, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 21.64, kg: 1286, kp: 129.4, kvb: 381.5, x: 1.3 } },
+    koren: { Triode: { mu: 22.01, kg: 1294, kp: 119.8, kvb: 1043, x: 1.32 } },
     pinout: [
       { pin: 1, sym: "G1", role: "Grid 1", isGrid: true }, { pin: 2, sym: "A1", role: "Plate 1", isPlate: true },
       { pin: 3, sym: "K1", role: "Cathode 1", isCathode: true }, { pin: 4, sym: "G2", role: "Grid 2", isGrid: true },
@@ -99,7 +99,7 @@ var TUBE_DATABASE = [
     heaterWarning: "Extremely high Gm (45mA/V). Requires grid stopper resistor to prevent VHF oscillation!",
     vaMax: 200, paMax: 7.8, ikMax: 60, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 57.01, kg: 51.92, kp: 278, kvb: 79.98, x: 1.36 } },
+    koren: { Triode: { mu: 53.41, kg: 60.01, kp: 404.8, kvb: 80.01, x: 1.35 } },
     pinout: [
       { pin: 1, sym: "A", role: "Plate", isPlate: true }, { pin: 2, sym: "G", role: "Grid", isGrid: true },
       { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
@@ -117,7 +117,7 @@ var TUBE_DATABASE = [
     hasPin9CenterTap: true,
     vaMax: 300, paMax: 1.0, ikMax: 8, vg2Max: 0,
     isFavorite: false,
-    koren: { Triode: { mu: 118.9, kg: 722, kp: 522.9, kvb: 9987, x: 1.1 } },
+    koren: { Triode: { mu: 121.4, kg: 694.4, kp: 511.6, kvb: 10140, x: 1.1 } },
     pinout: [
       { pin: 1, sym: "A2", role: "Plate 2", isPlate: true }, { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
       { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "H1", role: "Heater 1", isHeater: true },
@@ -134,7 +134,7 @@ var TUBE_DATABASE = [
     hasPin9CenterTap: true,
     vaMax: 330, paMax: 2.75, ikMax: 20, vg2Max: 0,
     isFavorite: false,
-    koren: { Triode: { mu: 21.88, kg: 1262, kp: 69.5, kvb: 334.8, x: 1.31 } },
+    koren: { Triode: { mu: 22.02, kg: 1259, kp: 68.9, kvb: 493, x: 1.31 } },
     pinout: [
       { pin: 1, sym: "A2", role: "Plate 2", isPlate: true }, { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
       { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "H1", role: "Heater 1", isHeater: true },
@@ -150,7 +150,7 @@ var TUBE_DATABASE = [
     heaterWarning: "Octal Pins 7 & 8: 6.3V @ 0.6A.",
     vaMax: 300, paMax: 2.5, ikMax: 20, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 21.64, kg: 1286, kp: 129.4, kvb: 380.9, x: 1.3 } },
+    koren: { Triode: { mu: 22.01, kg: 1294, kp: 119.8, kvb: 1041, x: 1.32 } },
     pinout: [
       { pin: 1, sym: "G1", role: "Grid 1", isGrid: true }, { pin: 2, sym: "A1", role: "Plate 1", isPlate: true },
       { pin: 3, sym: "K1", role: "Cathode 1", isCathode: true }, { pin: 4, sym: "G2", role: "Grid 2", isGrid: true },
@@ -167,9 +167,9 @@ var TUBE_DATABASE = [
     vaMax: 400, paMax: 14.0, ikMax: 65, vg2Max: 300,
     isFavorite: true,
     koren: {
-      Pentode: { mu: 19.24, kg: 658.7, kp: 145.7, kvb: 48.85, x: 1.4, kg2: 2059 },
-      Ultralinear: { mu: 19.24, kg: 658.7, kp: 145.7, kvb: 48.85, x: 1.4, kg2: 2059 },
-      Triode: { mu: 17.82, kg: 759.1, kp: 190.7, kvb: 0.000005647, x: 1.58 }
+      Pentode: { vk: 31.4, ks: 1.077, mu: 19.1, kg: 531.3, kp: 255.5, lam: 1575, x: 1.37, kg2: 2001 },
+      Ultralinear: { vk: 31.4, ks: 1.077, mu: 19.1, kg: 531.3, kp: 255.5, lam: 1575, x: 1.37, kg2: 2001 },
+      Triode: { mu: 18.43, kg: 550.6, kp: 1422, kvb: 47.45, x: 1.47 }
     },
     pinout: [
       { pin: 1, sym: "NC", role: "Internal Connection" }, { pin: 2, sym: "G1", role: "Control Grid", isGrid: true },
@@ -187,9 +187,9 @@ var TUBE_DATABASE = [
     vaMax: 450, paMax: 20.5, ikMax: 90, vg2Max: 300,
     isFavorite: true,
     koren: {
-      Pentode: { mu: 8.798, kg: 3329, kp: 25.99, kvb: 72.64, x: 1.63, kg2: 16620 },
-      Ultralinear: { mu: 8.798, kg: 3329, kp: 25.99, kvb: 72.64, x: 1.63, kg2: 16620 },
-      Triode: { mu: 8.058, kg: 5002, kp: 26.29, kvb: 4.072e-17, x: 1.8 }
+      Pentode: { vk: 34.89, ks: 0.7458, mu: 8.798, kg: 3006, kp: 27.43, lam: 1398, x: 1.63, kg2: 16720 },
+      Ultralinear: { vk: 34.89, ks: 0.7458, mu: 8.798, kg: 3006, kp: 27.43, lam: 1398, x: 1.63, kg2: 16720 },
+      Triode: { mu: 8.209, kg: 4139, kp: 27.88, kvb: 2.537e-16, x: 1.77 }
     },
     pinout: [
       { pin: 1, sym: "NC", role: "No Connection" }, { pin: 2, sym: "H", role: "Heater", isHeater: true },
@@ -206,9 +206,9 @@ var TUBE_DATABASE = [
     vaMax: 800, paMax: 25.0, ikMax: 150, vg2Max: 425,
     isFavorite: true,
     koren: {
-      Pentode: { mu: 11, kg: 620.1, kp: 43.95, kvb: 58.81, x: 1.35, kg2: 1348 },
-      Ultralinear: { mu: 11, kg: 620.1, kp: 43.95, kvb: 58.81, x: 1.35, kg2: 1348 },
-      Triode: { mu: 9.891, kg: 888.2, kp: 47.87, kvb: 0.000001774, x: 1.56 }
+      Pentode: { vk: 34.89, ks: 0.7458, mu: 11, kg: 555.5, kp: 43.98, lam: 1250, x: 1.35, kg2: 1348 },
+      Ultralinear: { vk: 34.89, ks: 0.7458, mu: 11, kg: 555.5, kp: 43.98, lam: 1250, x: 1.35, kg2: 1348 },
+      Triode: { mu: 10.34, kg: 618.3, kp: 47.78, kvb: 0.000008302, x: 1.47 }
     },
     pinout: [
       { pin: 1, sym: "G3", role: "Suppressor Grid 3" }, { pin: 2, sym: "H", role: "Heater", isHeater: true },
@@ -225,9 +225,9 @@ var TUBE_DATABASE = [
     vaMax: 1000, paMax: 40.0, ikMax: 230, vg2Max: 300,
     isFavorite: true,
     koren: {
-      Pentode: { mu: 7.997, kg: 647.6, kp: 18.3, kvb: 30, x: 1.34, kg2: 723.4 },
-      Ultralinear: { mu: 7.997, kg: 647.6, kp: 18.3, kvb: 30, x: 1.34, kg2: 723.4 },
-      Triode: { mu: 9.867, kg: 355.9, kp: 17.38, kvb: 0.000006142, x: 1.42 }
+      Pentode: { vk: 34.89, ks: 0.7458, mu: 5.875, kg: 674.3, kp: 24.08, lam: 4241, x: 1.23, kg2: 674.3 },
+      Ultralinear: { vk: 34.89, ks: 0.7458, mu: 5.875, kg: 674.3, kp: 24.08, lam: 4241, x: 1.23, kg2: 674.3 },
+      Triode: { mu: 5.741, kg: 506, kp: 31.42, kvb: 6.897e-112, x: 1.27 }
     },
     pinout: [
       { pin: 1, sym: "H", role: "Heater 12.6V", isHeater: true }, { pin: 2, sym: "G1", role: "Control Grid", isGrid: true },
@@ -244,7 +244,7 @@ var TUBE_DATABASE = [
     isDHT: true,
     vaMax: 360, paMax: 15.0, ikMax: 65, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 4.174, kg: 1245, kp: 67.74, kvb: 181.6, x: 1.34 } },
+    koren: { Triode: { mu: 4.176, kg: 1243, kp: 66.96, kvb: 186.5, x: 1.34 } },
     pinout: [
       { pin: 1, sym: "NC", role: "No Connection" }, { pin: 2, sym: "F+", role: "Filament / Cathode (+)", isHeater: true, isCathode: true },
       { pin: 3, sym: "A", role: "Plate", isPlate: true }, { pin: 4, sym: "NC", role: "No Connection" },
@@ -261,9 +261,9 @@ var TUBE_DATABASE = [
     vaMax: 300, paMax: 12.0, ikMax: 65, vg2Max: 300,
     isFavorite: true,
     koren: {
-      Pentode: { mu: 19.24, kg: 656.8, kp: 147.9, kvb: 48.86, x: 1.39, kg2: 2055 },
-      Ultralinear: { mu: 19.24, kg: 656.8, kp: 147.9, kvb: 48.86, x: 1.39, kg2: 2055 },
-      Triode: { mu: 17.82, kg: 756.1, kp: 195, kvb: 0.000003004, x: 1.57 }
+      Pentode: { vk: 31.41, ks: 1.077, mu: 19.1, kg: 531.3, kp: 255.8, lam: 1575, x: 1.37, kg2: 2001 },
+      Ultralinear: { vk: 31.41, ks: 1.077, mu: 19.1, kg: 531.3, kp: 255.8, lam: 1575, x: 1.37, kg2: 2001 },
+      Triode: { mu: 18.43, kg: 550.6, kp: 1260, kvb: 47.44, x: 1.47 }
     },
     pinout: [
       { pin: 1, sym: "NC", role: "No Connection" }, { pin: 2, sym: "G1", role: "Control Grid", isGrid: true },
@@ -281,9 +281,9 @@ var TUBE_DATABASE = [
     vaMax: 800, paMax: 25.0, ikMax: 150, vg2Max: 425,
     isFavorite: true,
     koren: {
-      Pentode: { mu: 11, kg: 619.3, kp: 44, kvb: 58.81, x: 1.35, kg2: 1347 },
-      Ultralinear: { mu: 11, kg: 619.3, kp: 44, kvb: 58.81, x: 1.35, kg2: 1347 },
-      Triode: { mu: 9.892, kg: 887, kp: 47.93, kvb: 0.000001345, x: 1.56 }
+      Pentode: { vk: 34.89, ks: 0.7458, mu: 11, kg: 555.5, kp: 43.98, lam: 1250, x: 1.35, kg2: 1348 },
+      Ultralinear: { vk: 34.89, ks: 0.7458, mu: 11, kg: 555.5, kp: 43.98, lam: 1250, x: 1.35, kg2: 1348 },
+      Triode: { mu: 10.34, kg: 618.3, kp: 47.78, kvb: 0.000008026, x: 1.47 }
     },
     pinout: [
       { pin: 1, sym: "G3", role: "Suppressor Grid 3" }, { pin: 2, sym: "H", role: "Heater", isHeater: true },
@@ -300,9 +300,9 @@ var TUBE_DATABASE = [
     vaMax: 800, paMax: 42.0, ikMax: 230, vg2Max: 600,
     isFavorite: true,
     koren: {
-      Pentode: { mu: 8.056, kg: 1010, kp: 53, kvb: 42.85, x: 1.38, kg2: 4168 },
-      Ultralinear: { mu: 8.056, kg: 1010, kp: 53, kvb: 42.85, x: 1.38, kg2: 4168 },
-      Triode: { mu: 7.464, kg: 1279, kp: 65.11, kvb: 0.000001082, x: 1.54 }
+      Pentode: { vk: 34.89, ks: 0.7458, mu: 8.024, kg: 780.2, kp: 67.6, lam: 1851, x: 1.36, kg2: 4000 },
+      Ultralinear: { vk: 34.89, ks: 0.7458, mu: 8.024, kg: 780.2, kp: 67.6, lam: 1851, x: 1.36, kg2: 4000 },
+      Triode: { mu: 7.71, kg: 900.5, kp: 80.05, kvb: 0.00001537, x: 1.45 }
     },
     pinout: [
       { pin: 1, sym: "NC", role: "Metal Base" }, { pin: 2, sym: "H", role: "Heater", isHeater: true },
@@ -319,7 +319,7 @@ var TUBE_DATABASE = [
     isDHT: true,
     vaMax: 450, paMax: 40.0, ikMax: 100, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 4.006, kg: 1292, kp: 63.13, kvb: 167.4, x: 1.38 } },
+    koren: { Triode: { mu: 3.988, kg: 1321, kp: 70.4, kvb: 160.1, x: 1.38 } },
     pinout: [
       { pin: 1, sym: "F+", role: "Filament / Cathode (+)", isHeater: true, isCathode: true },
       { pin: 2, sym: "A", role: "Plate (HV!)", isPlate: true },
@@ -376,7 +376,7 @@ var TUBE_DATABASE = [
     type: "Dual High-Mu Octal Triode", category: "small_signal", origin: "Soviet", socket: "Octal K8A", pinCount: 8,
     vh: 6.3, ih: 0.30, heaterWarning: "Octal Pins 7 & 8: 6.3V @ 0.3A.",
     vaMax: 275, paMax: 1.1, ikMax: 10, vg2Max: 0,
-    koren: { Triode: { mu: 67.89, kg: 1670, kp: 519.8, kvb: 375.4, x: 1.22 } },
+    koren: { Triode: { mu: 68.98, kg: 1624, kp: 442.1, kvb: 478.8, x: 1.22 } },
     pinout: [
       { pin: 1, sym: "G1", role: "Grid 1", isGrid: true }, { pin: 2, sym: "A1", role: "Plate 1", isPlate: true },
       { pin: 3, sym: "K1", role: "Cathode 1", isCathode: true }, { pin: 4, sym: "G2", role: "Grid 2", isGrid: true },
@@ -389,7 +389,7 @@ var TUBE_DATABASE = [
     type: "Dual Common-Cathode Triode", category: "small_signal", origin: "Soviet", socket: "Octal K8A", pinCount: 8,
     vh: 6.3, ih: 0.80, heaterWarning: "Heater 0.8A @ 6.3V (Pins 7 & 8). Common Cathode on Pin 8!",
     vaMax: 300, paMax: 5.5, ikMax: 30, vg2Max: 0,
-    koren: { Triode: { mu: 34.22, kg: 620.5, kp: 197.4, kvb: 259.5, x: 1.15 } },
+    koren: { Triode: { mu: 35.01, kg: 592.5, kp: 188.1, kvb: 585.7, x: 1.16 } },
     pinout: [
       { pin: 1, sym: "G1", role: "Grid 1", isGrid: true }, { pin: 2, sym: "A1", role: "Plate 1", isPlate: true },
       { pin: 3, sym: "G2", role: "Grid 2", isGrid: true }, { pin: 4, sym: "A2", role: "Plate 2", isPlate: true },
@@ -402,7 +402,7 @@ var TUBE_DATABASE = [
     type: "Single High-Gm Triode", category: "small_signal", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
     vh: 6.3, ih: 0.30, heaterWarning: "Pins 4 & 5: 6.3V. Gm = 19.5 mA/V. Excellent phono input tube.",
     vaMax: 160, paMax: 3.0, ikMax: 20, vg2Max: 0,
-    koren: { Triode: { mu: 54.53, kg: 108.8, kp: 303.1, kvb: 90.05, x: 1.36 } },
+    koren: { Triode: { mu: 51.21, kg: 129, kp: 433.5, kvb: 90.15, x: 1.35 } },
     pinout: [
       { pin: 1, sym: "A", role: "Plate", isPlate: true }, { pin: 2, sym: "G", role: "Grid", isGrid: true },
       { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
@@ -433,7 +433,7 @@ var TUBE_DATABASE = [
     vh: 12.6, ih: 0.15, heaterWarning: "Pins 4-5: 12.6V, Pin 9: Center tap for 6.3V.",
     hasPin9CenterTap: true,
     vaMax: 300, paMax: 2.5, ikMax: 15, vg2Max: 0,
-    koren: { Triode: { mu: 67.18, kg: 389.2, kp: 384.6, kvb: 6886, x: 1.12 } },
+    koren: { Triode: { mu: 65.76, kg: 407.2, kp: 568.4, kvb: 7675, x: 1.13 } },
     pinout: [
       { pin: 1, sym: "A2", role: "Plate 2", isPlate: true }, { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
       { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "H1", role: "Heater 1", isHeater: true },
@@ -448,7 +448,7 @@ var TUBE_DATABASE = [
     vh: 12.6, ih: 0.15, heaterWarning: "Dual 12.6V / 6.3V heater system.",
     hasPin9CenterTap: true,
     vaMax: 300, paMax: 1.5, ikMax: 12, vg2Max: 0,
-    koren: { Triode: { mu: 44.74, kg: 1364, kp: 250.4, kvb: 234.3, x: 1.23 } },
+    koren: { Triode: { mu: 44.04, kg: 1411, kp: 266, kvb: 291.6, x: 1.23 } },
     pinout: [
       { pin: 1, sym: "A2", role: "Plate 2", isPlate: true }, { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
       { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "H1", role: "Heater 1", isHeater: true },
@@ -462,7 +462,7 @@ var TUBE_DATABASE = [
     type: "Dual High-Mu Octal Triode", category: "small_signal", origin: "Western", socket: "Octal K8A", pinCount: 8,
     vh: 6.3, ih: 0.30, heaterWarning: "Octal pins 7 & 8: 6.3V @ 0.3A.",
     vaMax: 300, paMax: 1.0, ikMax: 8, vg2Max: 0,
-    koren: { Triode: { mu: 67.89, kg: 1670, kp: 519.8, kvb: 375.4, x: 1.22 } },
+    koren: { Triode: { mu: 68.98, kg: 1624, kp: 442.1, kvb: 478.8, x: 1.22 } },
     pinout: [
       { pin: 1, sym: "G1", role: "Grid 1", isGrid: true }, { pin: 2, sym: "A1", role: "Plate 1", isPlate: true },
       { pin: 3, sym: "K1", role: "Cathode 1", isCathode: true }, { pin: 4, sym: "G2", role: "Grid 2", isGrid: true },
@@ -475,7 +475,7 @@ var TUBE_DATABASE = [
     type: "Single High-Gm Triode", category: "small_signal", origin: "Western", socket: "Noval B9A", pinCount: 9,
     vh: 6.3, ih: 0.30, heaterWarning: "Pins 4 & 5: 6.3V. Western Electric gold grid planar triode.",
     vaMax: 200, paMax: 4.5, ikMax: 35, vg2Max: 0,
-    koren: { Triode: { mu: 46.53, kg: 97.78, kp: 250, kvb: 100, x: 1.36 } },
+    koren: { Triode: { mu: 44.04, kg: 111.7, kp: 349.2, kvb: 100, x: 1.35 } },
     pinout: [
       { pin: 1, sym: "A", role: "Plate", isPlate: true }, { pin: 2, sym: "G", role: "Grid", isGrid: true },
       { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
@@ -491,9 +491,9 @@ var TUBE_DATABASE = [
     vh: 6.3, ih: 0.50, heaterWarning: "Noval 9-pin equivalent of 6V6 / 6AQ5.",
     vaMax: 250, paMax: 12.0, ikMax: 55, vg2Max: 250,
     koren: {
-      Pentode: { mu: 9.773, kg: 2801, kp: 87.19, kvb: 30, x: 1.46, kg2: 9656 },
-      Ultralinear: { mu: 9.773, kg: 2801, kp: 87.19, kvb: 30, x: 1.46, kg2: 9656 },
-      Triode: { mu: 9.35, kg: 2645, kp: 114.2, kvb: 0.00000297, x: 1.57 }
+      Pentode: { vk: 34.89, ks: 0.7458, mu: 9.759, kg: 2113, kp: 133.1, lam: 2000, x: 1.45, kg2: 8451 },
+      Ultralinear: { vk: 34.89, ks: 0.7458, mu: 9.759, kg: 2113, kp: 133.1, lam: 2000, x: 1.45, kg2: 8451 },
+      Triode: { mu: 9.493, kg: 2257, kp: 1767, kvb: 12.34, x: 1.53 }
     },
     pinout: [
       { pin: 1, sym: "G1", role: "Control Grid", isGrid: true }, { pin: 2, sym: "K", role: "Cathode", isCathode: true },
@@ -510,9 +510,9 @@ var TUBE_DATABASE = [
     vaMax: 350, paMax: 14.0, ikMax: 60, vg2Max: 310,
     isFavorite: true,
     koren: {
-      Pentode: { mu: 10.71, kg: 2277, kp: 31.61, kvb: 45.92, x: 1.43, kg2: 7728 },
-      Ultralinear: { mu: 10.71, kg: 2277, kp: 31.61, kvb: 45.92, x: 1.43, kg2: 7728 },
-      Triode: { mu: 10.11, kg: 2503, kp: 31.49, kvb: 0.000002709, x: 1.57 }
+      Pentode: { vk: 37.51, ks: 0.5649, mu: 10.64, kg: 2783, kp: 28.12, lam: 2192, x: 1.57, kg2: 10780 },
+      Ultralinear: { vk: 37.51, ks: 0.5649, mu: 10.64, kg: 2783, kp: 28.12, lam: 2192, x: 1.57, kg2: 10780 },
+      Triode: { mu: 10.42, kg: 3086, kp: 28.16, kvb: 28.24, x: 1.66 }
     },
     pinout: [
       { pin: 1, sym: "NC", role: "No Connection" }, { pin: 2, sym: "H", role: "Heater", isHeater: true },
@@ -528,9 +528,9 @@ var TUBE_DATABASE = [
     vaMax: 400, paMax: 35.0, ikMax: 500, vg2Max: 300,
     isFavorite: true,
     koren: {
-      Pentode: { mu: 5.5, kg: 187.1, kp: 30, kvb: 22, x: 1.35, kg2: 802.3 },
-      Ultralinear: { mu: 5.5, kg: 187.1, kp: 30, kvb: 22, x: 1.35, kg2: 802.3 },
-      Triode: { mu: 5.266, kg: 168.1, kp: 32.44, kvb: 0.000003127, x: 1.43 }
+      Pentode: { vk: 34.89, ks: 0.7458, mu: 5.5, kg: 149.3, kp: 30, lam: 1454, x: 1.35, kg2: 596.8 },
+      Ultralinear: { vk: 34.89, ks: 0.7458, mu: 5.5, kg: 149.3, kp: 30, lam: 1454, x: 1.35, kg2: 596.8 },
+      Triode: { mu: 5.187, kg: 188.9, kp: 33.45, kvb: 19.2, x: 1.46 }
     },
     pinout: [
       { pin: 1, sym: "G1", role: "Control Grid", isGrid: true }, { pin: 2, sym: "G2", role: "Screen Grid", isScreen: true },
@@ -546,7 +546,7 @@ var TUBE_DATABASE = [
     vh: 6.3, ih: 6.60, heaterWarning: "EXTREME CURRENT: Dual heaters draw 6.6A @ 6.3V! Internal Rp ~ 80 Ohms.",
     vaMax: 450, paMax: 60.0, ikMax: 600, vg2Max: 0,
     isFavorite: true,
-    koren: { Triode: { mu: 2.875, kg: 528.2, kp: 38.7, kvb: 56.42, x: 1.6 } },
+    koren: { Triode: { mu: 2.875, kg: 525.8, kp: 44.85, kvb: 47.84, x: 1.6 } },
     pinout: [
       { pin: 1, sym: "H1", role: "Heater 1", isHeater: true }, { pin: 2, sym: "A", role: "Plate", isPlate: true },
       { pin: 3, sym: "G", role: "Grid", isGrid: true }, { pin: 4, sym: "K", role: "Cathode", isCathode: true },
@@ -560,7 +560,7 @@ var TUBE_DATABASE = [
     vh: 20.0, ih: 3.0, heaterWarning: "DANGER: High Voltage Plate up to 1000V! Filament is 20V @ 3.0A. Carbon graphite anode.",
     isDHT: true,
     vaMax: 1200, paMax: 125.0, ikMax: 200, vg2Max: 0,
-    koren: { Triode: { mu: 6.422, kg: 860.9, kp: 65.63, kvb: 220, x: 1.35 } },
+    koren: { Triode: { mu: 6.171, kg: 1064, kp: 88.86, kvb: 220, x: 1.35 } },
     pinout: [
       { pin: 1, sym: "F+", role: "Filament (+)", isHeater: true, isCathode: true },
       { pin: 2, sym: "A", role: "Plate (1000V+)", isPlate: true },
@@ -575,9 +575,9 @@ var TUBE_DATABASE = [
     vh: 6.3, ih: 0.45, heaterWarning: "Octal Pins 2 & 7: 6.3V @ 0.45A.",
     vaMax: 350, paMax: 14.0, ikMax: 60, vg2Max: 310,
     koren: {
-      Pentode: { mu: 10.71, kg: 2277, kp: 31.61, kvb: 45.92, x: 1.43, kg2: 7728 },
-      Ultralinear: { mu: 10.71, kg: 2277, kp: 31.61, kvb: 45.92, x: 1.43, kg2: 7728 },
-      Triode: { mu: 10.11, kg: 2503, kp: 31.49, kvb: 0.000004095, x: 1.57 }
+      Pentode: { vk: 37.51, ks: 0.5649, mu: 10.64, kg: 2783, kp: 28.12, lam: 2192, x: 1.57, kg2: 10780 },
+      Ultralinear: { vk: 37.51, ks: 0.5649, mu: 10.64, kg: 2783, kp: 28.12, lam: 2192, x: 1.57, kg2: 10780 },
+      Triode: { mu: 10.42, kg: 3086, kp: 28.16, kvb: 28.28, x: 1.66 }
     },
     pinout: [
       { pin: 1, sym: "NC", role: "No Connection" }, { pin: 2, sym: "H", role: "Heater", isHeater: true },
@@ -592,9 +592,9 @@ var TUBE_DATABASE = [
     vh: 6.3, ih: 0.90, heaterWarning: "Octal pins 2 & 7: 6.3V @ 0.9A.",
     vaMax: 500, paMax: 30.0, ikMax: 110, vg2Max: 450,
     koren: {
-      Pentode: { mu: 8.798, kg: 3329, kp: 25.99, kvb: 72.64, x: 1.63, kg2: 16620 },
-      Ultralinear: { mu: 8.798, kg: 3329, kp: 25.99, kvb: 72.64, x: 1.63, kg2: 16620 },
-      Triode: { mu: 8.045, kg: 4998, kp: 26.31, kvb: 2.067e-22, x: 1.8 }
+      Pentode: { vk: 34.89, ks: 0.7458, mu: 8.798, kg: 3006, kp: 27.43, lam: 1398, x: 1.63, kg2: 16720 },
+      Ultralinear: { vk: 34.89, ks: 0.7458, mu: 8.798, kg: 3006, kp: 27.43, lam: 1398, x: 1.63, kg2: 16720 },
+      Triode: { mu: 8.127, kg: 4486, kp: 27.81, kvb: 1.513e-21, x: 1.78 }
     },
     pinout: [
       { pin: 1, sym: "NC", role: "No Connection" }, { pin: 2, sym: "H", role: "Heater", isHeater: true },
@@ -609,7 +609,7 @@ var TUBE_DATABASE = [
     vh: 2.5, ih: 2.5, heaterWarning: "FILAMENT IS 2.5V @ 2.5A! Directly heated cathode. Requires high-current low-voltage supply.",
     isDHT: true,
     vaMax: 300, paMax: 15.0, ikMax: 70, vg2Max: 0,
-    koren: { Triode: { mu: 4.179, kg: 1239, kp: 64.76, kvb: 176.5, x: 1.34 } },
+    koren: { Triode: { mu: 4.181, kg: 1237, kp: 64.06, kvb: 181.2, x: 1.34 } },
     pinout: [
       { pin: 1, sym: "F+", role: "Filament / Cathode (+)", isHeater: true, isCathode: true },
       { pin: 2, sym: "A", role: "Plate", isPlate: true },
@@ -623,7 +623,7 @@ var TUBE_DATABASE = [
     vh: 10.0, ih: 3.25, heaterWarning: "DANGER: Plate voltage up to 1000V-1200V! Filament is 10.0V @ 3.25A.",
     isDHT: true,
     vaMax: 1250, paMax: 100.0, ikMax: 150, vg2Max: 0,
-    koren: { Triode: { mu: 5.657, kg: 2679, kp: 60.16, kvb: 239.9, x: 1.36 } },
+    koren: { Triode: { mu: 5.633, kg: 2715, kp: 62.12, kvb: 239.6, x: 1.36 } },
     pinout: [
       { pin: 1, sym: "F+", role: "Filament (+)", isHeater: true, isCathode: true },
       { pin: 2, sym: "A", role: "Plate (1000V+)", isPlate: true },

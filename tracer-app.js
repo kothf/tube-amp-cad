@@ -364,7 +364,9 @@
     }
     h += `<h3>Ratings</h3>` + kv("Va max", t.vaMax + " V") + kv("Pa max", t.paMax + " W") + kv("Ik max", t.ikMax + " mA") + (t.vg2Max ? kv("Vg2 max", t.vg2Max + " V") : "") + kv("Heater", `${t.vh} V · ${t.ih} A`);
     const m = d.model;
-    h += `<h3>Koren model (${d.kind})</h3>` + kv("µ", m.mu) + kv("kg1", m.kg) + kv("kp", m.kp) + kv("kvb", m.kvb) + kv("x", m.x) + (m.kg2 ? kv("kg2", m.kg2) : "");
+    h += d.kind === "pentode"
+      ? `<h3>Pentode model</h3>` + kv("µ (g1–g2)", m.mu) + kv("kg1", m.kg) + kv("kp", m.kp) + kv("x", m.x) + kv("knee vk", m.vk + " V") + kv("slope λ", m.lam + " V") + kv("kg2", m.kg2) + kv("screen share ks", m.ks)
+      : `<h3>Koren model (triode)</h3>` + kv("µ", m.mu) + kv("kg1", m.kg) + kv("kp", m.kp) + kv("kvb", m.kvb) + kv("x", m.x);
     $("hud").innerHTML = h;
     const vin = $("vg2-preview");
     if (vin) vin.onchange = () => { const v = parseFloat(vin.value); if (v > 0) { S.vg2Preview = v; renderAll(); } };
@@ -374,8 +376,11 @@
   // Curve fitter (Nelder-Mead on measured points) and LTspice model export
   // ---------------------------------------------------------------------------
   function fitKoren(points, init, kind, vg2) {
-    let p = [init.mu, init.kg, init.kp, init.kvb, init.x];
-    const model = par => ({ mu: par[0], kg: par[1], kp: par[2], kvb: par[3], x: par[4] });
+    // the 4th parameter is kvb for triodes and the plate slope lam for pentodes;
+    // a pentode's knee (vk) and screen terms (kg2, ks) are kept from the library model
+    const shape = kind === "pentode" ? "lam" : "kvb";
+    let p = [init.mu, init.kg, init.kp, init[shape], init.x];
+    const model = par => ({ ...(kind === "pentode" ? { vk: init.vk, kg2: init.kg2, ks: init.ks } : {}), mu: par[0], kg: par[1], kp: par[2], [shape]: par[3], x: par[4] });
     const pred = (pt, par) => (kind === "pentode" ? Koren.pentodeIa(pt.va, pt.vg, pt.vg2 || vg2, model(par)) : Koren.triodeIa(pt.va, pt.vg, model(par))) * 1000;
     const f = par => { if (par[0] <= 0.5 || par[1] <= 1 || par[2] <= 1 || par[3] <= 0.1 || par[4] < 1 || par[4] > 2) return 1e30; let s = 0; for (const pt of points) { const e = pred(pt, par) - pt.iaMa; s += e * e; } return s; };
     let simplex = [p.slice()];
@@ -392,7 +397,6 @@
     }
     simplex.sort((a, b) => f(a) - f(b));
     const opt = simplex[0], params = model(opt);
-    if (kind === "pentode") params.kg2 = init.kg2 || 1500;
     let ssRes = 0, ssTot = 0; const mean = points.reduce((s, q) => s + q.iaMa, 0) / points.length;
     points.forEach(pt => { const e = pt.iaMa - pred(pt, opt); ssRes += e * e; ssTot += (pt.iaMa - mean) ** 2; });
     return { params, r2: Math.max(0, 1 - ssRes / Math.max(ssTot, 1e-12)), rmse: Math.sqrt(ssRes / points.length) };
@@ -400,17 +404,12 @@
   function subckt(name, kind, m, metrics) {
     const safe = name.replace(/[^A-Za-z0-9]/g, "_");
     const head = `* ${name} — Koren ${kind} model${metrics ? ` (fitted: R² ${metrics.r2.toFixed(4)}, RMSE ${metrics.rmse.toFixed(3)} mA)` : " (tube database)"}\n* Generated ${new Date().toISOString().slice(0, 10)} by the Vacuum Tube Curve Tracer\n`;
-    if (kind === "pentode") return head + `.SUBCKT ${safe} A G1 G2 K
-BP  A  K  I=pwr(max(V(G2,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G1,K)/max(V(G2,K),1e-3)))),0),${m.x})*${(2 / m.kg).toPrecision(6)}*atan(max(V(A,K),0)/${m.kvb})
-BS  G2 K  I=pwr(max(V(G1,K)+V(G2,K)/${m.mu},0),${m.x})/${m.kg2 || 1500}
-BG  G1 K  I=if(V(G1,K)>0,${(0.2 / m.kg).toPrecision(4)}*pwr(V(G1,K),1.5),0)
-.ENDS ${safe}
-`;
-    return head + `.SUBCKT ${safe} A G K
-BP  A  K  I=pwr(max(V(A,K)/${m.kp}*ln(1+exp(${m.kp}*(1/${m.mu}+V(G,K)/sqrt(${m.kvb}+V(A,K)*V(A,K))))),0),${m.x})*${(2 / m.kg).toPrecision(6)}
-BG  G  K  I=if(V(G,K)>0,${(0.2 / m.kg).toPrecision(4)}*pwr(V(G,K),1.5),0)
-.ENDS ${safe}
-`;
+    if (kind === "pentode") {
+      const x = TubeSimEngine.Spice.pentode(m);
+      return head + `.SUBCKT ${safe} A G1 G2 K\nBP  A  K  I=${x.plate}\nBS  G2 K  I=${x.screen}\nBG  G1 K  I=${x.grid}\n.ENDS ${safe}\n`;
+    }
+    const x = TubeSimEngine.Spice.triode(m);
+    return head + `.SUBCKT ${safe} A G K\nBP  A  K  I=${x.plate}\nBG  G  K  I=${x.grid}\n.ENDS ${safe}\n`;
   }
   function openModelModal() {
     const d = current();
