@@ -237,6 +237,49 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     `EL34 point Va ${k.va.toFixed(1)} V, Ia ${(k.ia * 1e3).toFixed(2)} mA reads Vg ${k.vg.toFixed(2)} V (curve drawn at −10 V)`);
 }
 
+// --- 5. A ganged changeover switch, flipped with a double-click --------------
+{
+  // two sections, SA1.1 and SA1.2, each choosing between two loads on its own 10 V supply
+  const ids = await cad.evaluate(async () => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+    const pin = (c, id) => C.compPins(c).find(p => p.id === id);
+    const wire = (a, b, hFirst) => C.lRoute(a.x, a.y, b.x, b.y, hFirst !== false).forEach(s => C.addSegment(...s));
+    const out = [];
+    for (const [i, x0] of [[1, 200], [2, 600]]) {
+      const B = add("vdc", { v: 10 }, x0, 300), SW = add("switch", {}, x0 + 100, 240);
+      SW.label = `SA1.${i}`;
+      const Ra = add("resistor", { r: 1000 }, x0 + 200, 260, 1), Rb = add("resistor", { r: 2000 }, x0 + 260, 300, 1);
+      const g = add("ground", {}, x0, 380);
+      wire(pin(B, "+"), pin(SW, "C"), false); wire(pin(SW, "A"), pin(Ra, "1"), true); wire(pin(SW, "B"), pin(Rb, "1"), true);
+      wire(pin(B, "-"), pin(g, "G")); wire(pin(Ra, "2"), { x: x0 + 200, y: 380 }); wire(pin(Rb, "2"), { x: x0 + 260, y: 380 }); wire({ x: x0, y: 380 }, { x: x0 + 260, y: 380 });
+      out.push({ sw: SW.id, a: Ra.id, b: Rb.id });
+    }
+    S.view = { scale: 1, ox: 0, oy: 0 }; C.commit();
+    return out;
+  });
+  const settle = () => cad.evaluate(async () => { const S = TubeCAD.state, s0 = S.sim.seq, t0 = performance.now(); while ((S.sim.seq === s0 || S.sim.busy) && performance.now() - t0 < 10000) await new Promise(r => setTimeout(r, 50)); });
+  const read = () => cad.evaluate(ids => {
+    const S = TubeCAD.state, T = TubeCAD.topo(), v = (id, p) => S.sim.result.dc.nodes[T.pinNet.get(`${id}:${p}`)];
+    return ids.map(k => ({ pos: S.comps.find(c => c.id === k.sw).params.pos, va: v(k.a, "1"), vb: v(k.b, "1") }));
+  }, ids);
+  await settle();
+  let r = await read();
+  check(r.every(k => k.pos === "A" && Math.abs(k.va - 10) < 0.01 && Math.abs(k.vb) < 0.01), `switch at A feeds load A: ${r.map(k => `${k.va.toFixed(2)} V / ${k.vb.toFixed(2)} V`).join(", ")}`);
+  const sw = await cad.evaluate(id => TubeCAD.state.comps.find(c => c.id === id), ids[0].sw);
+  const [px, py] = await toScreen(sw.x, sw.y);
+  await cad.mouse.dblclick(px, py);
+  await settle();
+  r = await read();
+  check(r.every(k => k.pos === "B" && Math.abs(k.vb - 10) < 0.01 && Math.abs(k.va) < 0.01), `double-click on SA1.1 flips both sections to B: ${r.map(k => `${k.va.toFixed(2)} V / ${k.vb.toFixed(2)} V`).join(", ")}`);
+  await cad.evaluate(id => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.comps.add(id); TubeCAD.commit(); }, ids[1].sw);
+  await cad.locator("#inspector .row", { hasText: "Position" }).locator("select").selectOption("A");
+  await settle();
+  r = await read();
+  check(r.every(k => k.pos === "A"), "the inspector's Position flips the whole gang back to A");
+  check(/^R\S* .* 0\.01$/m.test(await cad.evaluate(() => TubeCAD.spiceNetlist())), "SPICE export includes the closed contact");
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 

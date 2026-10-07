@@ -94,6 +94,16 @@
       ctx.beginPath(); ctx.moveTo(-7, -8); ctx.lineTo(7, 0); ctx.lineTo(-7, 8); ctx.closePath(); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
       line(ctx, [7, -8, 7, 8]);
     },
+    switch(ctx, c) {
+      // changeover (SPDT): common on the left, throws A (top) and B (bottom) on the right
+      line(ctx, [-30, 0, -12, 0]); line(ctx, [12, -10, 30, -10]); line(ctx, [12, 10, 30, 10]);
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.beginPath(); ctx.arc(-12, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+      for (const y of [-10, 10]) { ctx.beginPath(); ctx.arc(12, y, 2.5, 0, Math.PI * 2); ctx.stroke(); }
+      line(ctx, [-12, 0, 10, c.params.pos === "B" ? 12 : -12]);
+      ctx.font = "8px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textAlign = "center";
+      ctx.fillText("A", 22, -13); ctx.fillText("B", 22, 19);
+    },
     ground(ctx) {
       line(ctx, [0, 0, 0, 8]); line(ctx, [-12, 8, 12, 8]); line(ctx, [-7, 13, 7, 13]); line(ctx, [-2, 18, 2, 18]);
     },
@@ -231,6 +241,19 @@
         const mid = alloc();
         out.push({ id: c.id + "#dcr", kind: "R", nodes: [net("1"), mid], r: Math.max(c.params.dcr, 1e-3) });
         out.push({ id: c.id, kind: "L", nodes: [mid, net("2")], l: Math.max(c.params.l, 1e-9) });
+      }
+    },
+    switch: {
+      name: "Switch (changeover)", prefix: "SA", group: "Passive", bbox: [-30, -14, 30, 14],
+      defaults: { pos: "A" },
+      pins: () => [{ id: "C", x: -30, y: 0, name: "common" }, { id: "A", x: 30, y: -10, name: "throw A" }, { id: "B", x: 30, y: 10, name: "throw B" }],
+      value: c => "→ " + c.params.pos,
+      fields: [{ key: "pos", label: "Position", kind: "select", options: [["A", "A (upper throw)"], ["B", "B (lower throw)"]] }],
+      // the closed contact is 10 mΩ; the open one 10 GΩ, so a node left on it never floats
+      build: (c, net, alloc, out) => {
+        const on = c.params.pos === "B" ? "B" : "A", off = on === "A" ? "B" : "A";
+        out.push({ id: c.id + "#on", kind: "R", nodes: [net("C"), net(on)], r: 0.01 });
+        out.push({ id: c.id + "#off", kind: "R", nodes: [net("C"), net(off)], r: 1e10 });
       }
     },
     speaker: {
@@ -418,7 +441,7 @@
 
   // Palette layout
   const PALETTE = [
-    { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"]] },
+    { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"], ["switch"]] },
     { group: "Transformers", items: [["opt_se"], ["opt_pp"], ["ptx"]] },
     { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["siggen"], ["ground"]] },
     { group: "Semiconductors", items: [["diode"]] },

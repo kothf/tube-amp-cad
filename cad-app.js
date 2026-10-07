@@ -648,6 +648,14 @@
     const m = evPos(e);
     const c = hitComp(m.wx, m.wy);
     if (c && c.type === "scope" && !S.wiring) window.open("oscilloscope.html?scope=" + encodeURIComponent(c.id), "tube_scope_" + c.id);
+    if (c && c.type === "switch" && !S.wiring) { setSwitch(c, c.params.pos === "B" ? "A" : "B"); updateInspector(); }
+  }
+  // Sections of one switch share its name before the dot (SA1.1, SA1.2) and always move together.
+  function switchGang(c) { const i = c.label.lastIndexOf("."); return i > 0 ? c.label.slice(0, i) : null; }
+  function setSwitch(c, pos) {
+    const g = switchGang(c);
+    S.comps.forEach(k => { if (k === c || (g && k.type === "switch" && switchGang(k) === g)) k.params.pos = pos; });
+    commit();
   }
 
   function onWheel(e) {
@@ -1038,7 +1046,7 @@
         el = document.createElement("select");
         f.options.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; el.appendChild(o); });
         el.value = String(c.params[f.key]);
-        el.addEventListener("change", () => { c.params[f.key] = el.value; commit(); });
+        el.addEventListener("change", () => { if (c.type === "switch" && f.key === "pos") setSwitch(c, el.value); else { c.params[f.key] = el.value; commit(); } });
       } else if (f.kind === "range") {
         const wrap = document.createElement("div"); wrap.className = "range-wrap";
         const r = document.createElement("input"); r.type = "range"; r.min = f.min; r.max = f.max; r.step = f.step; r.value = c.params[f.key];
@@ -1065,6 +1073,11 @@
         p.textContent = `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A (not simulated)`;
         host.appendChild(p);
       }
+    }
+    if (c.type === "switch") {
+      const p = document.createElement("p"); p.className = "insp-help";
+      p.textContent = "Double-click the switch on the sheet to flip it. Sections named like SA1.1 and SA1.2 are one switch and flip together.";
+      host.appendChild(p);
     }
     if (c.type === "scope") {
       const b = document.createElement("button"); b.className = "btn wide"; b.textContent = "Open full oscilloscope ↗";
@@ -1166,6 +1179,7 @@
         <li><b>Move:</b> drag parts (wires follow) or drag a wire segment sideways.</li>
         <li><b>View:</b> wheel zooms, <kbd>Space</kbd>/middle-drag pans, <kbd>F</kbd> fits.</li>
         <li><b>Measure:</b> hover a wire for its voltage; wire an Oscilloscope to see waveforms; double-click it for the full scope.</li>
+        <li><b>Switch:</b> double-click to flip it; sections named SA1.1, SA1.2… flip together.</li>
       </ul>`;
   }
   function circuitReadout() {
@@ -1336,6 +1350,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, commit, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, commit, setSwitch, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
