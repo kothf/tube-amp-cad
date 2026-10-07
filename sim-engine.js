@@ -519,11 +519,12 @@
     const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D");
     const devTrace = {};
     devIdx.forEach(e => { devTrace[e.id + (e.part ? "#" + e.part : "")] = { i: new Float32Array(nCap), ig2: e.kind === "PENTODE" ? new Float32Array(nCap) : null }; });
-    // A rectified supply has no true DC solution: the DC pass above only
-    // estimates it (each transformer half held at 0.95 of its peak). Then the
-    // reported DC values are the averages over the settled capture window,
-    // what a meter reads; the estimate is kept as dcEstimate.
-    const averaged = circ.els.some(e => e.dcValue !== undefined);
+    // A circuit run from AC (a rectified supply) has no true DC solution: the
+    // DC pass above only estimates it (a power transformer's halves held at 0.95
+    // of their peak) or, behind AC mains, starts it from zero. Then the reported
+    // DC values are the averages over the settled capture window, what a meter
+    // reads; the estimate is kept as dcEstimate.
+    const averaged = circ.els.some(e => e.dcValue !== undefined || e.acMains);
     const nodeSum = new Float64Array(nodeCount), devSum = {};
     const record = (k) => {
       for (let i = 1; i < nodeCount; i++) nodes[i][k] = x[i - 1];
