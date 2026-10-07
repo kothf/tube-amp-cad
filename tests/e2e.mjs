@@ -130,6 +130,33 @@ await spectrum.waitForFunction(() => /\d/.test(document.getElementById("thd").te
 const thd = parseFloat((await spectrum.textContent("#thd")).replace(/[^\d.]/g, ""));
 check(Math.abs(thd - circuit.thd) / circuit.thd < 0.1, `spectrum THD ${thd} % matches the CAD's ${circuit.thd.toFixed(3)} % (±10 %)`);
 
+// --- 3b. Auto-ranging a DC-coupled plate: the trace must use the screen ------
+const probe = await cad.evaluate(async v1 => {
+  const C = TubeCAD, S = C.state;
+  const pin = (c, id) => C.compPins(c).find(p => p.id === id);
+  const wire = (a, b, hFirst) => C.lRoute(a.x, a.y, b.x, b.y, hFirst !== false).forEach(s => C.addSegment(...s));
+  const Co = S.comps.find(c => c.type === "capacitor" && c.label === "C3") || S.comps.filter(c => c.type === "capacitor").pop();
+  const SC2 = C.makeComp("scope", {}, 820, 160, 0); S.comps.push(SC2);
+  // CH1 taps the plate wire just left of the coupling capacitor; COM to ground
+  const p1 = pin(SC2, "CH1"), coA = pin(Co, "1"), tap = { x: coA.x - 10, y: coA.y };
+  wire(p1, { x: tap.x, y: p1.y }, true); wire({ x: tap.x, y: p1.y }, tap, false);
+  const com = pin(SC2, "COM"), g = C.makeComp("ground", {}, com.x, com.y + 40, 0); S.comps.push(g); wire(com, pin(g, "G"), false);
+  const seq0 = S.sim.seq; C.commit();
+  const t0 = performance.now();
+  while ((S.sim.seq === seq0 || S.sim.busy) && performance.now() - t0 < 15000) await new Promise(r => setTimeout(r, 50));
+  const T = C.topo();
+  return { id: SC2.id, err: S.sim.error, onPlate: T.pinNet.get(`${SC2.id}:CH1`) === T.pinNet.get(`${v1}:A`) };
+}, circuit.v1);
+check(!probe.err && probe.onPlate, "second scope probes the 12AX7 plate directly (DC coupled)");
+const scope2 = await open("scope2", `oscilloscope.html?scope=${probe.id}`);
+await scope2.waitForFunction(() => window.Scope && window.Scope.view(), null, { timeout: 5000 }).catch(() => {});
+const pv = await scope2.evaluate(() => window.Scope.view());
+const top = (pv.ch1.max - pv.ch1.off) / pv.ch1.vdiv, bottom = (pv.ch1.min - pv.ch1.off) / pv.ch1.vdiv;
+check(pv.ch1.offset > 100 && top <= 4 && bottom >= -4 && top - bottom > 3,
+  `auto shows the plate swing on ${(top - bottom).toFixed(1)} divisions at ${pv.ch1.vdiv} V/div with a ${pv.ch1.offset} V offset (was a flat line at 100 V/div)`);
+check(Math.abs(pv.f - 1000) < 5 && pv.tdiv === 2e-4, `timebase locks to the measured ${pv.f.toFixed(0)} Hz (${pv.tdiv * 1e6} µs/div)`);
+await scope2.close();
+
 // --- 4. Curve tracer follows the tube selected in the CAD -------------------
 const tracer = await open("tracer", "index.html");
 await tracer.waitForFunction(() => document.getElementById("plot-title").textContent.length > 0);

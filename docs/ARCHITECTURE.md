@@ -15,6 +15,7 @@ Static, framework-free JS (classic `<script>` files, no build step). There are *
 | `cad-components.js` | `CadLib`: part library (pins on a 10 px grid, symbols, inspector fields, `build()` → solver elements), `parseEng`/`fmtEng`. |
 | `cad-app.js` + `circuit_sandbox.html` | **Tube Amp CAD**: editor, live simulation, inspector, on-canvas scope screens, SPICE export, broadcast of results. |
 | `tracer-app.js` + `index.html` | **Curve Tracer** (viewer): plate curves, operating point + simulated load line of a circuit tube, tube library, pinout, Koren fitter, LTspice `.subckt`. |
+| `scope-math.js` | `ScopeMath`: oscilloscope auto-ranging shared by the scope window and the on-canvas scope screens — volts/div with automatic position offset, timebase from the measured fundamental, Schmitt-trigger edges. Pure functions, unit-tested in `tests/scope.test.mjs`. |
 | `instrument-common.js`, `oscilloscope.html`, `spectrum_analyzer.html` | Full instrument windows bound to an Oscilloscope *part* in the circuit (`?scope=<partId>`). |
 
 **Data flow:** the CAD is the only place a circuit is edited. After each simulation it posts one `SIM_RESULT` message on `BroadcastChannel("tube_cad_v2")` (tubes with DC point + trajectory + metrics, scope channel arrays, speaker power). Other windows only listen and send `REQUEST_STATE` on load. Nothing ever broadcasts back, so there are no sync loops.

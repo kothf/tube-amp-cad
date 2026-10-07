@@ -79,38 +79,30 @@
   </main>
 
   <script src="instrument-common.js?v=dev"></script>
+  <script src="scope-math.js?v=dev"></script>
   <script>
   (function () {
     "use strict";
     const I = Instrument, $ = id => document.getElementById(id);
-    const VDIV = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
-    const TDIV = [1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2];
+    const SM = ScopeMath, VDIV = SM.VDIV, TDIV = SM.TDIV;
     const S = { mode: "dual", ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", trig: { src: "ch1", slope: "rising" } };
 
     const fill = (sel, list, unit) => { sel.innerHTML = `<option value="auto">Auto</option>` + list.map(v => `<option value="${v}">${I.fmt(v, unit)}/div</option>`).join(""); };
     fill($("ch1-vdiv"), VDIV, "V"); fill($("ch2-vdiv"), VDIV, "V"); fill($("tdiv"), TDIV, "s");
-
-    const stats = (a) => { let mn = Infinity, mx = -Infinity, s = 0; for (const v of a) { mn = Math.min(mn, v); mx = Math.max(mx, v); s += v; } const mean = s / a.length; let q = 0; for (const v of a) q += (v - mean) ** 2; return { min: mn, max: mx, pp: mx - mn, mean, rms: Math.sqrt(q / a.length) }; };
-    const pick = (list, need) => list.find(v => v >= need * 0.9999) || list[list.length - 1];
 
     function channels(sc) {
       const out = {};
       ["ch1", "ch2"].forEach(k => {
         const raw = sc && sc[k];
         if (!raw) return;
-        const st = stats(raw), cpl = S[k].cpl;
-        const off = cpl === "ac" ? st.mean : 0;
-        const peak = cpl === "gnd" ? 0 : Math.max(Math.abs(st.max - off), Math.abs(st.min - off));
-        const vdiv = S[k].vdiv === "auto" ? pick(VDIV, Math.max(peak, 1e-6) / 3.5) : parseFloat(S[k].vdiv);
-        out[k] = { raw, st, off, vdiv, cpl };
+        out[k] = { raw, cpl: S[k].cpl, ...SM.channel(raw, S[k].vdiv, S[k].cpl) };
       });
       return out;
     }
-    function freqOf(a, dt) {
-      const st = stats(a); let n = 0, first = -1, last = -1;
-      for (let i = 1; i < a.length; i++) if (a[i - 1] < st.mean && a[i] >= st.mean) { n++; if (first < 0) first = i; last = i; }
-      return n >= 2 ? (n - 1) / ((last - first) * dt) : null;
-    }
+
+    // the selected trigger source, unless it is a flat line and the other channel isn't
+    const triggerChannel = ch => ch[S.trig.src] && !SM.isFlat(ch[S.trig.src].st) ? ch[S.trig.src]
+      : (ch.ch1 && !SM.isFlat(ch.ch1.st) ? ch.ch1 : ch.ch2 || ch.ch1);
 
     function draw() {
       const cv = $("screen"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
@@ -137,17 +129,15 @@
         ctx.textAlign = "left"; $("meas").innerHTML = ""; return;
       }
       const dt = sc.dt, N = (any.raw).length, P = N - 1;   // capture is whole periods: sample P == sample 0
-      const at = (a, i) => a[((i % P) + P) % P];
-      const fSig = (I.result && I.result.fSig) || 1 / (P * dt);
-      const tdiv = S.tdiv === "auto" ? pick(TDIV, 2 / fSig / 10) : parseFloat(S.tdiv);
+      const at = SM.at;
+      // timebase from the measured fundamental of the trigger channel; the CAD's
+      // generator frequency is only the fallback (e.g. for a DC-only probe)
+      const trigCh = triggerChannel(ch);
+      const tb = SM.timebase(trigCh.raw, dt, I.result && I.result.fSig);
+      const fSig = (I.result && I.result.fSig) || tb.f;
+      const tdiv = S.tdiv === "auto" ? tb.tdiv : parseFloat(S.tdiv);
       const span = 10 * tdiv, M = Math.max(2, Math.round(span / dt));
-      // trigger
-      const trigCh = ch[S.trig.src] || any, lvl = trigCh.st.mean;
-      let start = 0;
-      for (let i = 1; i <= P; i++) {
-        const a = at(trigCh.raw, i - 1), b = at(trigCh.raw, i);
-        if (S.trig.slope === "rising" ? (a < lvl && b >= lvl) : (a > lvl && b <= lvl)) { start = i; break; }
-      }
+      const start = SM.triggerIndex(trigCh.raw, S.trig.slope);
       const glow = (color) => { ctx.strokeStyle = color; ctx.globalAlpha = 0.18; ctx.lineWidth = 5; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1.7; ctx.stroke(); };
       ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, gw, gh); ctx.clip();
       if (S.mode === "xy" && ch.ch1 && ch.ch2) {
@@ -169,22 +159,26 @@
             i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
           }
           glow(color);
-          ctx.fillStyle = color; ctx.fillText(k === "ch1" ? "1▸" : "2▸", 2, y0 + gh / 2 + (k === "ch1" ? -6 : 10));
+          // channel marker at its 0 V (DC) or mean (AC) level, pinned to the edge when off screen
+          const lv = c.cpl === "gnd" ? 0 : (c.cpl === "ac" ? 0 : -c.off / c.vdiv), my = y0 + gh / 2 - Math.max(-4, Math.min(4, lv)) * gh / 8;
+          const arrow = lv > 4 ? "▴" : lv < -4 ? "▾" : "▸";
+          ctx.fillStyle = color; ctx.fillText((k === "ch1" ? "1" : "2") + arrow, 2, my + 4 + (k === "ch1" ? -5 : 5));
         });
       }
       ctx.restore();
       // readout
       ctx.fillStyle = "#ffe23d"; let tx = x0;
-      if (ch.ch1) { const s = `CH1 ${I.fmt(ch.ch1.vdiv, "V")}${ch.ch1.cpl === "ac" ? "~" : ""}`; ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+      const label = (n, c) => `CH${n} ${I.fmt(c.vdiv, "V")}${c.cpl === "ac" ? "~" : ""}${c.offset ? ` offset ${I.fmt(c.offset, "V")}` : ""}`;
+      if (ch.ch1) { const s = label(1, ch.ch1); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
       ctx.fillStyle = "#00e5ff";
-      if (ch.ch2) { const s = `CH2 ${I.fmt(ch.ch2.vdiv, "V")}${ch.ch2.cpl === "ac" ? "~" : ""}`; ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+      if (ch.ch2) { const s = label(2, ch.ch2); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
       ctx.fillStyle = "#c9d6e3"; ctx.fillText(`M ${I.fmt(tdiv, "s")}   Trig ${S.trig.src.toUpperCase()} ${S.trig.slope === "rising" ? "↑" : "↓"}`, tx, 16);
 
       // measurements
       let h = "";
       [["ch1", "c1"], ["ch2", "c2"]].forEach(([k, cls]) => {
         const c = ch[k]; if (!c) return;
-        const f = freqOf(c.raw, dt);
+        const f = SM.fundamental(c.raw, dt);
         h += `<span class="${cls}">${k.toUpperCase()}: <b>${I.fmt(c.st.pp, "Vpp")}</b> · ${I.fmt(c.st.rms, "Vrms")} AC · ${I.fmt(c.st.mean, "V")} DC · ${f ? I.fmt(f, "Hz") : "—"}</span>`;
       });
       if (ch.ch1 && ch.ch2 && fSig) {
@@ -205,9 +199,11 @@
     bindSel("tdiv", v => S.tdiv = v); bindSel("trig-src", v => S.trig.src = v); bindSel("trig-slope", v => S.trig.slope = v);
     $("btn-autoset").addEventListener("click", () => {
       S.ch1.vdiv = S.ch2.vdiv = S.tdiv = "auto";
-      // AC-couple a channel whose DC level hides its signal
       const ch = channels(I.scope());
-      ["ch1", "ch2"].forEach(k => { const c = ch[k]; if (c && Math.abs(c.st.mean) > 4 * c.st.pp) S[k].cpl = "ac"; $(k + "-cpl").value = S[k].cpl; $(k + "-vdiv").value = "auto"; });
+      ["ch1", "ch2"].forEach(k => { if (S[k].cpl === "gnd") S[k].cpl = "dc"; $(k + "-cpl").value = S[k].cpl; $(k + "-vdiv").value = "auto"; });
+      // trigger on the channel with the largest visible swing
+      const live = ["ch1", "ch2"].filter(k => ch[k] && !SM.isFlat(ch[k].st)).sort((p, q) => ch[q].st.pp / ch[q].vdiv - ch[p].st.pp / ch[p].vdiv);
+      if (live.length) { S.trig.src = live[0]; $("trig-src").value = live[0]; }
       $("tdiv").value = "auto"; draw();
     });
     $("btn-cad").addEventListener("click", () => window.open("circuit_sandbox.html", "tube_cad"));
@@ -216,7 +212,12 @@
     window.addEventListener("resize", draw);
     setInterval(() => { if (!I.result) draw(); }, 1500);
     draw();
-    window.Scope = { state: S, draw };
+    // current scaling, for tests and debugging
+    window.Scope = { state: S, draw, view: () => { const sc = I.scope(), ch = channels(sc), any = ch.ch1 || ch.ch2; if (!any) return null;
+      const t = triggerChannel(ch);
+      const tb = SM.timebase(t.raw, sc.dt, I.result && I.result.fSig);
+      const strip = c => c && { vdiv: c.vdiv, off: c.off, offset: c.offset, min: c.st.min, max: c.st.max };
+      return { ch1: strip(ch.ch1), ch2: strip(ch.ch2), tdiv: S.tdiv === "auto" ? tb.tdiv : +S.tdiv, f: tb.f }; } };
   })();
   </script>
 </body>
