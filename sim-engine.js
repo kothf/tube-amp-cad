@@ -64,13 +64,21 @@
     }
   };
 
-  // Rectifier tubes: perveance per anode (A/V^1.5) from datasheet drops
+  // Rectifier tubes: perveance per anode (A/V^1.5).
+  // Soviet kenotrons: Katsnelson & Larionov 1981, from the guaranteed minimum
+  // anode current (P = Ia / Ua^1.5), i.e. a worst-case tube. Each reproduces the
+  // book's minimum rectified current in its own test circuit (tests/engine.test.mjs).
+  // Western tubes: typical drops from the maker's datasheet.
   const RECTIFIER_PERVEANCE = {
-    "5U4G": 6.4e-4,   // ~50 V @ 225 mA
-    "5Ts3S": 6.4e-4,  // 5Ц3С, 5U4G class
-    "5Ts4S": 1.4e-3,  // 5Ц4С / 5Z4, ~20 V @ 125 mA
-    "GZ34": 3.5e-3,   // 5AR4, ~17 V @ 250 mA
-    "6Ts4P": 6.8e-4   // 6Ц4П / EZ90, ~22 V @ 70 mA
+    "5Ts3S": 3.464e-4,  // 5Ц3С  p. 72: ≥ 225 mA at 75 V
+    "5Ts4S": 8.485e-4,  // 5Ц4С  p. 73: ≥ 300 mA at 50 V
+    "5Ts8S": 4.619e-4,  // 5Ц8С  p. 74: ≥ 300 mA at 75 V
+    "5Ts9S": 2.771e-4,  // 5Ц9С  p. 75: ≥ 180 mA at 75 V
+    "6Ts4P": 4.243e-4,  // 6Ц4П  p. 75: ≥ 150 mA at 50 V
+    "6Ts5S": 1.154e-4,  // 6Ц5С  p. 76: no emission test; set so the test circuit gives the printed 70 mA
+    "6Ts13P": 7.826e-4, // 6Ц13П p. 77: ≥ 70 mA at 20 V (single anode)
+    "5U4G": 6.4e-4,     // RCA: ~50 V @ 225 mA
+    "GZ34": 3.5e-3      // Mullard 5AR4: ~17 V @ 250 mA
   };
 
   // ---------------------------------------------------------------------------

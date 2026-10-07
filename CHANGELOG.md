@@ -6,6 +6,29 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.18.0] - 2026-10-08
+
+### Added
+- **Tube database from Katsnelson & Larionov, «Отечественные приёмно-
+  усилительные лампы и их зарубежные аналоги» (Energoizdat, 1981)**: 56 more
+  Soviet receiving tubes (99 in all), with the handbook's heater data, limits
+  and Western analogs, the page in each entry, and Koren models fitted to the
+  handbook's rated operating points (Ia, S, µ or Ri; cathode-biased points with
+  Ug1 = −Ik·Rk). Triode-pentodes (6Ф1П, 6Ф3П, 6Ф4П, 6Ф5П) are two entries.
+- The curve tracer shows each tube's source: handbook page, analogs and limits.
+- New kenotrons 5Ц8С, 5Ц9С, 6Ц5С, 6Ц13П.
+
+### Changed
+- The 21 Soviet tubes already in the library (6Н1П, 6Н2П, 6Н23П, 6Н6П, 6Н7С,
+  6Н8С, 6Н9С, 6С3П, 6С19П, 6С33С, 6С45П, 6П1П, 6П3С-Е, 6П6С, 6П14П, 6П27С,
+  6Ф3П, 5Ц3С, 5Ц4С, 6Ц4П …) now take their ratings and reference points from
+  the handbook instead of Western equivalents' datasheets, and were refitted.
+  Notably 6Ф3П pentode: Pa 8 W (ECL82: 7 W); 6П14П: Pa 14 W.
+- Kenotron perveance from the handbook's guaranteed minimum anode current
+  (a worst-case tube): each reproduces the handbook's minimum rectified current
+  in its test circuit. 5Ц4С drops a little more than before.
+- Tube fitter: finer grid steps for the triode-strapped fit of high-µ pentodes.
+
 ## [3.17.0] - 2026-10-08
 
 ### Added

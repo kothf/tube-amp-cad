@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vacuum Tube Curve Tracer</title>
-  <meta name="description" content="Plate curves of 40 vacuum tubes with the simulated operating point and load line of your circuit from the Tube Amp CAD.">
+  <meta name="description" content="Plate curves of 99 vacuum tubes with the simulated operating point and load line of your circuit from the Tube Amp CAD.">
   <style>
     :root {
       --bg: #0a0e14; --panel: #0f151e; --panel2: #131b26; --line: #223044; --text: #e6edf3; --muted: #8b949e;
@@ -46,6 +46,7 @@
     #tube-list { max-height: 34vh; overflow-y: auto; }
     .socket-wrap { display: flex; flex-direction: column; align-items: center; }
     #socket-note { font-size: 11px; color: var(--warn); margin-top: 4px; }
+    #socket-source { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
     .center { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto 1fr auto auto; }
     .plot-head { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -118,6 +119,7 @@
       <div class="socket-wrap">
         <canvas id="socket" width="200" height="200"></canvas>
         <div id="socket-note"></div>
+        <div id="socket-source"></div>
       </div>
     </section>
 

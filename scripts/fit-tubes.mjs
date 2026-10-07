@@ -118,7 +118,8 @@ function fitStrapped(P, start, vaRef) {
   const pts = [];
   for (const va of [0.4, 0.6, 0.8, 1, 1.2, 1.4].map(f => f * vaRef)) {
     const i0 = strapped(P, va, 0);
-    for (let vg = 0; vg > -va; vg -= va / 80) {
+    // grid steps fine enough for high-µ tubes, whose cutoff is near -va/µ
+    for (let vg = 0; vg > -va; vg -= Math.min(va / 80, va / (P.mu * 20))) {
       const i = strapped(P, va, vg);
       if (i < 0.04 * i0) break;
       pts.push({ va, vg, i });
