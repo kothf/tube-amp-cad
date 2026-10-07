@@ -39,11 +39,16 @@ jobs:
 
       - run: npm ci
 
-      - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
+      - name: Browser for the tests (the runner's Google Chrome; Playwright's Chromium if missing)
+        run: |
+          if chrome="$(command -v google-chrome || command -v google-chrome-stable)"; then
+            echo "CHROMIUM_PATH=$chrome" >> "$GITHUB_ENV"; "$chrome" --version
+          else
+            npx playwright install --with-deps chromium
+          fi
 
-      - name: Engine + browser tests (source)
-        run: npm test
+      - name: Engine tests (source)
+        run: npm run test:engine
 
       - name: Package
         run: npm run package -- "${GITHUB_REF_NAME#v}"
@@ -62,6 +67,17 @@ jobs:
             --title "Tube Amp CAD $GITHUB_REF_NAME" \
             --notes-file release-notes.md \
             --verify-tag
+
+      # Starts the site's vendor update as soon as the release exists (it opens the
+      # PR that pins this version). Needs a SITE_DISPATCH_TOKEN secret: a token
+      # allowed to run workflows in kothf/astro_source-new_theme. Without it the
+      # step is skipped and the release script dispatches the update instead.
+      - name: Ask aerocat.tech to pick up this release
+        env:
+          SITE_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$SITE_TOKEN" ]; then echo "::notice::No SITE_DISPATCH_TOKEN secret: the vendor update was not dispatched"; exit 0; fi
+          GH_TOKEN="$SITE_TOKEN" gh workflow run vendor-update.yml --repo kothf/astro_source-new_theme --ref main
 
       - uses: actions/configure-pages@v6
 
