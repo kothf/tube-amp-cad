@@ -88,6 +88,28 @@
     "374AX": [360, 138, 775.2, 50.06, 236.4, 5.843, 6.294, 146.5, "5 V CT 3 A, 6.3 V CT 3.5 A"],
     "374BX": [375, 201, 794.7, 53.34, 160, 3.8, 4.2, 104.0, "5 V CT 3 A, 6.3 V CT 6 A"]
   };
+  // Real single-ended output transformers: Hammond 125SE "universal" series, from
+  // each part's drawing (hammfg.com/files/parts/pdf/<model>.pdf). One primary
+  // (BRN B+, BLU anode) and a secondary BLK (0) with taps ORG / GRN / YEL / WHT:
+  // the tap sets the turns ratio, so the reflected impedance follows the load
+  // (e.g. GRN: 8 Ω -> 10 kΩ, 4 Ω -> 5 kΩ).
+  //   [rated W, max DC mA, primary DCR Ω, primary inductance H (1 kHz, 1 V),
+  //    secondary DCR mΩ BLK–ORG, –GRN, –YEL, –WHT]
+  const HAMMOND_SE = {
+    "125ASE": [3, 25, 242, 5.0, 272, 366, 500, 700],
+    "125BSE": [5, 45, 354, 4.5, 300, 400, 570, 798],
+    "125CSE": [8, 60, 200, 9.28, 232, 312, 428, 595],
+    "125DSE": [10, 70, 126.5, 4.48, 238, 315, 438, 600],
+    "125ESE": [15, 80, 103, 5.43, 167, 225, 297, 412],
+    "125FSE": [20, 90, 105, 6.41, 141, 186, 251, 342],
+    "125GSE": [25, 100, 53.2, 8.23, 127, 165, 217, 294]
+  };
+  // turns ratio of each tap: the load (Ω) it is rated for on the 10 kΩ primary
+  const SE_TAPS = { ORG: 4, GRN: 8, YEL: 16, WHT: 32 };
+  const OUTPUT_TX = {};
+  Object.entries(HAMMOND_SE).forEach(([k, [w, ma, rp, lp, ...rs]]) => {
+    OUTPUT_TX[k] = { name: "Hammond " + k, w, ma, rp, lp, rs: { ORG: rs[0] / 1000, GRN: rs[1] / 1000, YEL: rs[2] / 1000, WHT: rs[3] / 1000 } };
+  });
   const POWER_TX = {};
   Object.entries(HAMMOND).forEach(([k, [v, ma, nlv, nlvBias, iex, rp1, rp2, rhv, heaters]]) => {
     POWER_TX[k] = { name: "Hammond " + k, rated: `${v}-0-${v} V ${ma} mA`, nlv: nlv / 2, nlvBias, vRef: 120, iex: iex / 1000, rp1, rp2, rHalf: rhv / 2, heaters,
@@ -279,6 +301,7 @@
       ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(6, -40 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
       line(ctx, [6, -40, 20, -40]); line(ctx, [6, 0, 20, 0]); line(ctx, [6, 40, 20, 40]);
     },
+    opt_cat(ctx, c) { DRAW.opt_se(ctx, c); },
     opt_se(ctx) {
       ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(-12, -30 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
       ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(12, -30 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
@@ -443,6 +466,31 @@
         out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), a], r: Math.max(p.dcrp, 1e-3) });
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(p.dcrs, 1e-3) });
         out.push({ id: c.id, kind: "XFMR", nodes: [], lp: Math.max(p.lp, 1e-3), k: 0.999, primaryTurns: 1,
+          windings: [{ a: a, b: net("P2"), turns: 1 }, { a: s, b: net("S2"), turns: 1 / n }] });
+      }
+    },
+    opt_cat: {
+      name: "Output transformer (SE catalog)", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
+      defaults: { model: "125ESE", tap: "GRN" },
+      pins: () => [{ id: "P1", x: -40, y: -30, name: "primary BRN (B+)" }, { id: "P2", x: -40, y: 30, name: "primary BLU (anode)" },
+        { id: "S1", x: 40, y: -30, name: "secondary tap" }, { id: "S2", x: 40, y: 30, name: "secondary BLK (0)" }],
+      value: c => `${c.params.model} ${c.params.tap}`,
+      fields: [
+        { key: "model", label: "Model", kind: "select", options: () => Object.entries(OUTPUT_TX).map(([k, m]) => [k, `${m.name} · ${m.w} W, ${m.ma} mA DC`]) },
+        { key: "tap", label: "Secondary tap", kind: "select", options: Object.entries(SE_TAPS).map(([t, z]) => [t, `${t}: ${z} Ω → 10 kΩ, ${z / 2} Ω → 5 kΩ${z >= 8 ? `, ${z / 4} Ω → 2.5 kΩ` : ""}`]) }
+      ],
+      info: c => {
+        const m = OUTPUT_TX[c.params.model] || OUTPUT_TX["125ESE"], z = SE_TAPS[c.params.tap] || 8;
+        return `${m.name}, universal single-ended: ${m.w} W, ${m.ma} mA DC max, 100 Hz–15 kHz. ` +
+          `Primary BRN (B+) – BLU (anode) ${m.rp} Ω, ${m.lp} H; secondary BLK – ${c.params.tap} ${(m.rs[c.params.tap] * 1000).toFixed(0)} mΩ. ` +
+          `Turns ratio ${Math.sqrt(10000 / z).toFixed(1)}:1, so the primary sees 10 kΩ with ${z} Ω, 5 kΩ with ${z / 2} Ω, 2.5 kΩ with ${z / 4} Ω on the secondary.`;
+      },
+      build: (c, net, alloc, out) => {
+        const m = OUTPUT_TX[c.params.model] || OUTPUT_TX["125ESE"], z = SE_TAPS[c.params.tap] || 8, n = Math.sqrt(10000 / z);
+        const a = alloc(), s = alloc();
+        out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), a], r: m.rp });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(m.rs[c.params.tap] || 0.2, 1e-3) });
+        out.push({ id: c.id, kind: "XFMR", nodes: [], lp: m.lp, k: 0.999, primaryTurns: 1,
           windings: [{ a: a, b: net("P2"), turns: 1 }, { a: s, b: net("S2"), turns: 1 / n }] });
       }
     },
@@ -713,12 +761,12 @@
   // Palette layout
   const PALETTE = [
     { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"], ["switch"]] },
-    { group: "Transformers", items: [["opt_se"], ["opt_pp"], ["ptx"], ["ptx_cat"]] },
+    { group: "Transformers", items: [["opt_se"], ["opt_cat"], ["opt_pp"], ["ptx"], ["ptx_cat"]] },
     { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["mains"], ["siggen"], ["ground"], ["offsheet"]] },
     { group: "Semiconductors", items: [["diode"]] },
     { group: "Instruments", items: [["scope"]] },
     { group: "Document", items: [["frame"], ["note"]] }
   ];
 
-  root.CadLib = { LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

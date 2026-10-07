@@ -21,7 +21,8 @@ circuit is saved in the browser.
   as a vector PDF and exports a SPICE netlist.
 - **Real transformers** — 25 Hammond 300-series power transformers modelled
   from the maker's drawings (voltages, winding resistances, excitation), fed
-  from an AC mains source you wire to the primary.
+  from an AC mains source you wire to the primary, and the seven Hammond
+  125SE single-ended output transformers (tap, DCR, inductance, DC rating).
 - **IEC drawings** — symbols to IEC 60617, reference designations with the
   classic letter codes (R1, C1, L1, T1, VL1.1 … as in ГОСТ 2.710, with
   automatic renumbering in reading order), resistor power ratings marked in the
@@ -50,8 +51,9 @@ circuit is saved in the browser.
   voltage with ΔT and ΔV on the scope, frequency and level on the analyzer,
   and Vg, dissipation, gm, rp and µ at a point of the plate curves, with the
   load line through two points.
-- **41 tubes** — Western and Soviet small-signal triodes (12AX7, 6N2P, 6SN7…),
-  power tubes (EL84, EL34, 6V6, KT88, 300B, 845, GU-50…) and rectifiers
+- **43 tubes** — Western and Soviet small-signal triodes (12AX7, 6N2P, 6SN7…),
+  power tubes (EL84, EL34, 6V6, KT88, 300B, 845, GU-50…), the triode-pentode
+  6Ф3П / ECL82 as two sections, and rectifiers
   (5U4G, GZ34, 5Ts3S…), with pinouts and ratings.
 
 | Curve tracer | Oscilloscope |

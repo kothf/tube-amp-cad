@@ -342,6 +342,11 @@
   function netDC(net) { const r = S.sim.result; return r && net !== undefined && r.dc.nodes[net] !== undefined ? r.dc.nodes[net] : null; }
   function netWave(net) { const r = S.sim.result; return r && r.tran && net !== undefined && net > 0 ? r.tran.nodes[net] : null; }
   function pinNetOf(c, pid) { const T = S.sim.topo || topo(); return T.pinNet.get(c.id + ":" + pid); }
+  // DC current in a catalog output transformer's primary (from the drop across its DCR)
+  function otDcCurrent(c) {
+    const m = CadLib.OUTPUT_TX[c.params.model], va = netDC(pinNetOf(c, "P1")), vb = netDC(pinNetOf(c, "P2"));
+    return !m || va === null || vb === null ? null : (va - vb) / m.rp;
+  }
   // average power in a resistor: from the steady-state waveform when there is one, else DC
   function resistorPower(c) {
     const wa = waveOf(c, "1"), wb = waveOf(c, "2");
@@ -1382,7 +1387,11 @@
         const i = dev && dev.main ? -dev.main.i : null;
         h += kv("Current supplied", fmtEng(i, "A", 2)) + kv("Power", fmtEng(i !== null ? i * c.params.v : null, "W", 2)); return h;
       }
-      case "opt_se": case "opt_pp": {
+      case "opt_se": case "opt_cat": case "opt_pp": {
+        if (c.type === "opt_cat") {
+          const i = otDcCurrent(c), m = CadLib.OUTPUT_TX[c.params.model];
+          if (i !== null && m) h += kv("Primary DC current", `${fmtEng(i, "A", 2)} · ${Math.round(i * 1000 / m.ma * 100)}% of ${m.ma} mA`, i * 1000 > m.ma ? "bad" : i * 1000 > 0.9 * m.ma ? "warn" : "");
+        }
         h += kv("Secondary", fmtEng(Math.sqrt(pAvg("S1", "S2", 1)), "Vrms", 2)); return h;
       }
       case "scope": {
@@ -1429,7 +1438,7 @@
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
     const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], vdc: [["+", "-"]], siggen: [["+", "-"]],
-      opt_se: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
+      opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
       const na = T.pinNet.get(c.id + ":" + a), nb = T.pinNet.get(c.id + ":" + b);
@@ -1438,6 +1447,7 @@
     if (shorted.length) issues.push("Shorted by wiring: " + shorted.join(", "));
     if (S.sim.error) issues.push(S.sim.error);
     (S.sim.warnings || []).forEach(w => issues.push(w));
+    S.comps.forEach(c => { if (c.type !== "opt_cat") return; const i = otDcCurrent(c), m = CadLib.OUTPUT_TX[c.params.model]; if (i !== null && m && i * 1000 > m.ma) issues.push(`${c.label} (${m.name}) carries ${(i * 1000).toFixed(0)} mA DC, more than its ${m.ma} mA rating.`); });
     S.comps.forEach(c => { if (c.type !== "resistor" || !+c.params.w) return; const p = resistorPower(c); if (p !== null && p > +c.params.w) issues.push(`${c.label} dissipates ${fmtEng(p, "W", 2)}, more than its ${+c.params.w} W rating.`); });
     S.comps.forEach(c => { if (c.type !== "tube") return; const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier" && d.dc.vak * d.dc.ia > d.paMax) issues.push(`${c.label} over dissipation (${(d.dc.vak * d.dc.ia).toFixed(1)} W > ${d.paMax} W).`); });
     h += `<div class="insp-sub">Checks</div>` + (issues.length ? issues.map(i => `<p class="insp-help warn">⚠ ${i}</p>`).join("") : `<p class="insp-help ok">✓ No problems found.</p>`);

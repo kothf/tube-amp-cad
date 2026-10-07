@@ -11,7 +11,8 @@
  *   alias     -> electrically equivalent type; uses the referenced data.
  *   largeSignal -> pentodes: published single-ended class-A results at full
  *               drive (B+, cathode resistor rk or fixed bias, load rl, drive
- *               vrms, output power, THD, average Ia/Ig2 at full drive). The
+ *               vrms, output power, THD, average Ia/Ig2 at full drive; rg2: an
+ *               unbypassed screen series resistor, vg2: a separate screen supply). The
  *               fitter simulates that circuit to set the knee and the screen
  *               share; the reference tests measure it in the app.
  * Rectifiers are not listed: they are simulated as vacuum diodes (perveance
@@ -43,6 +44,9 @@ export const DATASHEETS = [
     { va: 250, vg: -6, ia: 6, gm: 3.1, rp: 11.3 }] },
   { tube: "6N1P-VI", kind: "triode", mu: 35, source: "6Н1П handbook (Ia 7.5 mA, S 4.35 mA/V, µ 35; cathode bias)", points: [
     { va: 250, vg: null, ia: 7.5, gm: 4.35, rp: 8.05 }] },
+  { tube: "6F3P-T", kind: "triode", mu: 70, source: "Philips ECL82 (= 6Ф3П), triode section; 6Ф3П handbook", points: [
+    { va: 100, vg: 0, ia: 3.5, gm: 2.5, rp: 28 },
+    { va: 170, vg: -1.5, ia: 2.5, gm: 2.5 }] },
   { tube: "6N23P-EV", kind: "triode", mu: 33, source: "Philips ECC88 (= 6Н23П)", points: [
     { va: 90, vg: -1.3, ia: 15, gm: 12.5, rp: 2.6 }] },
   { tube: "6N6P", kind: "triode", mu: 20, source: "6Н6П handbook (Ia 30 mA, S 11 mA/V, µ 20, Ri 1.8 k)", points: [
@@ -76,6 +80,17 @@ export const DATASHEETS = [
     largeSignal: [{ b: 257, rk: 135, rl: 5200, vrms: 4.3, pout: 5.7, thd: 10, ia: 49.5, ig2: 10.8 }] },
   { tube: "6P14P-EV", alias: "EL84", source: "6П14П = EL84" },
   { tube: "6P14P", alias: "EL84", source: "6П14П = EL84" },
+  // 6Ф3П = ECL82: pentode section (Philips ECL82 typical characteristics; class A with
+  // Rk 330 Ω, unbypassed 470 Ω screen resistor, Ra 4.5 kΩ at 200 V). The published full-drive
+  // screen current (13.3 mA) is left out: the Koren screen model reaches it only with a screen
+  // share ks far above 1, which would draw more than the whole space current near Va = 0.
+  { tube: "6F3P-P", kind: "pentode", mu: 9.5, source: "Philips ECL82 (= 6Ф3П), pentode section", points: [
+    // rp at 100 V (15 kΩ) is left out: one Koren model cannot also give 16-20 kΩ at 170-200 V,
+    // where the tube works in an output stage
+    { va: 100, vg2: 100, vg: -6, ia: 26, ig2: 5, gm: 6.8 },
+    { va: 170, vg2: 170, vg: -11.5, ia: 41, ig2: 8, gm: 7.5, rp: 16 },
+    { va: 200, vg2: 200, vg: -16, ia: 35, ig2: 7, gm: 6.4, rp: 20 }],
+    largeSignal: [{ b: 200, rk: 330, rg2: 470, rl: 4500, vrms: 6.7, pout: 3.3, thd: 10, ia: 37 }] },
   { tube: "EL34", kind: "pentode", mu: 11, source: "Philips EL34", points: [
     { va: 250, vg2: 250, vg: -13.5, ia: 100, ig2: 14.9, gm: 11, rp: 15 }] },
   { tube: "6P27S", alias: "EL34", source: "6П27С = EL34" },
