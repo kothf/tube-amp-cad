@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.10.0] - 2026-10-07
+
+### Changed
+- Reference designations use the two-letter subclass codes of IEC 81346-2:2009
+  (Table 2): RA resistor, potentiometer, diode and inductor ("limiting a flow
+  of electrical energy"), CA capacitor, TA transformer, TB rectifier tube, KF
+  amplifying tube ("electronic tube"), GF signal generator, PJ loudspeaker,
+  PH oscilloscope, SF selector switch; ideal supplies and mains keep the main
+  class G. The "-" prefix is the product aspect sign of IEC 81346-1 rule 7.
+- Labels are placed as IEC 61082-1 7.1.6.1 and 7.1.2.5 require: designation
+  and technical data to the left of symbols with mainly vertical terminal
+  lines, above those with mainly horizontal ones, data below the designation.
+- Electron tubes drawn as IEC 60617 S00746: envelope S00063 as a capsule,
+  indirectly heated cathode S00696 (hook with its lead down) and heater S00698,
+  suppressor grid tied to the cathode inside the envelope.
+- The oscilloscope carries the IEC 60617 S00922 symbol next to its name.
+
 ## [3.9.0] - 2026-10-07
 
 ### Added
