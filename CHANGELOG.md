@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.15.0] - 2026-10-07
+
+### Added
+- **Several sheets in one circuit.** File → Add sheet… places a further
+  drawing frame (any format) to the right of the last one, with the same title
+  block data. Sheets are numbered automatically (1/3, 2/3 …), a Sheet list in
+  the toolbar zooms to one, and Save as PDF writes one page per sheet, each
+  with only its own parts.
+- **Sheet connector** (Sources): joins every connector of the same signal name,
+  on any sheet, into one net, so supply rails and signals can continue on
+  another sheet and the simulation still sees one circuit. Each connector shows
+  the sheet and grid zone of its partners (IEC 61082-1 cross-reference); one
+  without a partner is flagged.
+
 ## [3.14.0] - 2026-10-07
 
 ### Changed

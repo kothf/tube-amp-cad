@@ -218,6 +218,11 @@
       field(0, 27, 55, "Date of issue", p.date); field(55, 27, 55, "Lang.", p.lang); field(110, 27, 35, "Sheet", p.sheet); field(145, 27, 35, "Standards", "IEC 61082", 2.6);
       ctx.restore();
     },
+    // sheet connector (interruption point, IEC 61082-1 6.4): conductor end with an open
+    // arrow; the signal name and the cross-reference are drawn upright by the app
+    offsheet(ctx) {
+      line(ctx, [0, 0, 8, 0]); line(ctx, [8, -6, 20, 0, 8, 6, 8, -6]);
+    },
     ground(ctx) {
       line(ctx, [0, 0, 0, 8]); line(ctx, [-12, 8, 12, 8]); line(ctx, [-7, 13, 7, 13]); line(ctx, [-2, 18, 2, 18]);
     },
@@ -655,6 +660,17 @@
       fields: [],
       build: () => {}
     },
+    offsheet: {
+      name: "Sheet connector", prefix: "", group: "Sources", noLabel: true,
+      // the arrow plus room for the name beyond its tip (for picking)
+      bbox: c => [0, -10, 26 + 7 * String(c.params.name || "").length, 10],
+      defaults: { name: "+B" },
+      pins: () => [{ id: "1", x: 0, y: 0 }],
+      value: c => c.params.name || "",
+      fields: [{ key: "name", label: "Signal name", kind: "text" }],
+      info: () => "Joins every sheet connector with the same signal name, on any sheet, as if wired. Use it to carry a supply rail or a signal to another sheet; the cross-reference next to it gives the sheet and grid zone of its partners (IEC 61082-1).",
+      build: () => {}
+    },
     scope: {
       name: "Oscilloscope", prefix: "P", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true,
       defaults: { ch1: "auto", ch2: "auto", time: "auto", coupling1: "dc", coupling2: "dc", probe: "10x" },
@@ -681,7 +697,7 @@
   const PALETTE = [
     { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"], ["switch"]] },
     { group: "Transformers", items: [["opt_se"], ["opt_pp"], ["ptx"], ["ptx_cat"]] },
-    { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["mains"], ["siggen"], ["ground"]] },
+    { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["mains"], ["siggen"], ["ground"], ["offsheet"]] },
     { group: "Semiconductors", items: [["diode"]] },
     { group: "Instruments", items: [["scope"]] },
     { group: "Document", items: [["frame"], ["note"]] }

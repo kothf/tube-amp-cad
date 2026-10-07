@@ -26,7 +26,10 @@ circuit is saved in the browser.
   classic letter codes (R1, C1, L1, T1, VL1.1 … as in ГОСТ 2.710, with
   automatic renumbering in reading order),
   and an IEC 61082 sheet: drawing frame with reference grid and an ISO 7200
-  title block.
+  title block. A circuit can span several sheets (File → Add sheet…): sheet
+  connectors with the same signal name join their wires across sheets, show
+  where their partners are (sheet / grid zone), and Save as PDF writes one page
+  per sheet.
 - **Live or on demand** — the circuit re-simulates after every edit, or turn
   *Live* off and press *▶ Simulate*; either way slow power supplies are run
   until they have fully settled.

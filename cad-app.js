@@ -86,6 +86,9 @@
     S.comps.forEach(c => compPins(c).forEach(p => { const k = key(p.x, p.y); find(k); bump(k); if (!pinAt.has(k)) pinAt.set(k, []); pinAt.get(k).push({ c, p }); }));
     let groundRoot = null;
     S.comps.forEach(c => { if (c.type === "ground") { const p = compPins(c)[0]; const r = find(key(p.x, p.y)); if (groundRoot === null) groundRoot = r; else union(r, groundRoot); } });
+    // sheet connectors with the same signal name are one net (as if wired)
+    const byName = new Map();
+    S.comps.forEach(c => { if (c.type !== "offsheet") return; const n = connName(c); if (!n) return; const r = find(key(c.x, c.y)); if (byName.has(n)) union(r, byName.get(n)); else byName.set(n, r); });
     if (groundRoot !== null) groundRoot = find(groundRoot);
     const netOfRoot = new Map();
     let next = 1;
@@ -103,6 +106,37 @@
     return { pinNet, wireNet, nodeCount: next, hasGround: groundRoot !== null, pinConnected, junctions, degree, pinAt };
   }
   function topo() { if (!S.topo) S.topo = computeTopology(); return S.topo; }
+  const connName = c => String(c.params.name || "").trim().toUpperCase();
+
+  // ---------------------------------------------------------------------------
+  // Sheets: every drawing frame is a sheet, numbered left to right, then top to bottom
+  // ---------------------------------------------------------------------------
+  function frames() { return S.comps.filter(c => c.type === "frame").sort((a, b) => (a.y - b.y > 200 ? 1 : b.y - a.y > 200 ? -1 : a.x - b.x)); }
+  // the sheet number shown in a frame: its "Sheet" field ("2/3" -> 2), else its position
+  function sheetNo(f, list) { const m = /^\s*(\d+)/.exec(f.params.sheet || ""); return m ? m[1] : String((list || frames()).indexOf(f) + 1); }
+  // keep automatic sheet fields ("1/1", "2/3", empty) numbered as frames are added or removed
+  function numberSheets() {
+    const list = frames();
+    if (list.every(f => !f.params.sheet || /^\d+\/\d+$/.test(f.params.sheet))) list.forEach((f, i) => { f.params.sheet = `${i + 1}/${list.length}`; });
+  }
+  // sheet and reference-grid zone of a point, e.g. "2/B7" (IEC 61082-1 cross-reference)
+  function zoneOf(x, y) {
+    const list = frames();
+    for (const f of list) {
+      const g = CadLib.sheetGeom(f), lx = x - f.x, ly = y - f.y;
+      if (lx < 0 || ly < 0 || lx > g.W || ly > g.H) continue;
+      const col = Math.min(g.cols, Math.max(1, Math.floor((lx - g.fx1) / ((g.fx2 - g.fx1) / g.cols)) + 1));
+      const row = Math.min(g.rows, Math.max(1, Math.floor((ly - g.fy1) / ((g.fy2 - g.fy1) / g.rows)) + 1));
+      return { frame: f, text: (list.length > 1 ? sheetNo(f, list) + "/" : "") + "ABCDEFGHJKLMNPRSTUVWXYZ"[row - 1] + col };
+    }
+    return null;
+  }
+  // where the partners of a sheet connector are
+  function connRefs(c) {
+    const n = connName(c);
+    return S.comps.filter(k => k !== c && k.type === "offsheet" && connName(k) === n).map(k => (zoneOf(k.x, k.y) || {}).text).filter(Boolean)
+      .filter((t, i, a) => a.indexOf(t) === i);
+  }
 
   // ---------------------------------------------------------------------------
   // Wire normalisation: split at T-junctions / pins, merge straight runs
@@ -170,6 +204,7 @@
   }
   function commit() {
     normalizeWires();
+    numberSheets();
     S.history = S.history.slice(0, S.hIndex + 1);
     S.history.push(snapshot());
     if (S.history.length > 150) S.history.shift();
@@ -180,6 +215,7 @@
   function redo() { if (S.hIndex < S.history.length - 1) { S.hIndex++; restore(S.history[S.hIndex]); } }
   function circuitChanged() {
     S.topo = null;
+    updateSheetNav();
     if (S.trans && !S.trans.stale && !S.trans.running) { S.trans.stale = true; if (channel) channel.postMessage(transientMessage()); }
     try { localStorage.setItem(STORAGE_KEY, snapshot()); } catch (e) {}
     scheduleSim();
@@ -970,6 +1006,17 @@
         ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.stroke();
       });
     }
+    if (c.type === "offsheet") {
+      const d = [[1, 0], [0, 1], [-1, 0], [0, -1]][c.rot & 3], tx = c.x + d[0] * 26, ty = c.y + d[1] * 26;
+      const refs = connRefs(c), align = d[0] > 0 ? "left" : d[0] < 0 ? "right" : "center";
+      ctx.textAlign = align; ctx.font = "bold 11px ui-monospace, Menlo, monospace"; ctx.fillStyle = sel ? COL.bodySel : COL.text;
+      const vy = d[1] > 0 ? ty + 8 : d[1] < 0 ? ty - 14 : ty + 4;
+      ctx.fillText(c.params.name || "", tx, vy);
+      ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = refs.length ? COL.value : "#ff7b72";
+      ctx.fillText(refs.length ? refs.join(", ") : "no partner", tx, vy + 12);
+      ctx.textAlign = "left";
+      return;
+    }
     // labels
     if (def.noLabel) return;
     const b = compBBox(c);
@@ -1354,6 +1401,7 @@
         <li><b>Simulate:</b> <i>Live</i> re-simulates after every edit. Turn it off to simulate only on <i>▶ Simulate</i> (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>), which always runs until the circuit has settled.</li>
         <li><b>Switch:</b> double-click to flip it; sections named SF1.1, SF1.2… flip together.</li>
         <li><b>Standards:</b> symbols follow IEC 60617 and designations use the classic letter codes (R, C, L, T, VL, VD, SA, BA, G, P; ГОСТ 2.710). Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
+        <li><b>Several sheets:</b> File → Add sheet… places a further sheet; pick one in the Sheet list to zoom to it. Carry a rail or signal to another sheet with <i>Sheet connectors</i> (Sources) of the same name: they join like a wire and show the sheet/zone of their partners. Save as PDF writes one page per sheet.</li>
       </ul>`;
     const rb = host.querySelector("#btn-renumber"); if (rb) rb.addEventListener("click", renumber);
   }
@@ -1366,6 +1414,8 @@
     if (hasCircuit() && !T.hasGround) issues.push("No ground symbol.");
     const open = [];
     S.comps.forEach(c => { if (c.type === "scope") return; compPins(c).forEach(p => { if (!T.pinConnected.get(c.id + ":" + p.id)) { if (c.type === "opt_pp" && (p.id === "U1" || p.id === "U2")) return; open.push(`${c.label || LIB[c.type].name}.${p.id}`); } }); });
+    const lonely = S.comps.filter(c => c.type === "offsheet" && !connRefs(c).length && !S.comps.some(k => k !== c && k.type === "offsheet" && connName(k) === connName(c))).map(c => c.params.name || "(no name)");
+    if (lonely.length) issues.push("Sheet connectors without a partner: " + lonely.join(", "));
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
     const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], vdc: [["+", "-"]], siggen: [["+", "-"]],
@@ -1402,12 +1452,49 @@
   // a sheet with only document parts (frame, notes) holds no circuit yet
   const hasCircuit = () => S.comps.some(c => c.type !== "frame" && c.type !== "note");
   // New circuit: a sheet with an IEC 61082 drawing frame (format and orientation chosen in a dialog)
-  function newSheet() { document.getElementById("new-modal").hidden = false; document.getElementById("new-title").focus(); }
+  // the format dialog serves both New (a fresh circuit) and Add sheet (one more frame)
+  function openSheetDialog(mode) {
+    const m = document.getElementById("new-modal"); m.dataset.mode = mode;
+    m.querySelector(".insp-title").textContent = mode === "add" ? "Add sheet" : "New circuit";
+    m.querySelector(".insp-help").textContent = mode === "add"
+      ? "A further sheet of this circuit, to the right of the last one, with the same title block. Join wires between sheets with Sheet connectors (Sources) of the same name."
+      : "The sheet starts with an IEC 61082 drawing frame: ISO 5457 border, reference grid and an ISO 7200 title block.";
+    document.getElementById("new-title").placeholder = mode === "add" ? "Sheet title (empty: same as sheet 1)" : "e.g. 2 × EL84 single-ended amplifier";
+    document.getElementById("btn-new-create").textContent = mode === "add" ? "Add" : "Create";
+    m.hidden = false; document.getElementById("new-title").focus();
+  }
   function newCircuit(opts) {
     opts = Object.assign({ size: "A3", orient: "landscape", title: "" }, opts);
     const f = makeComp("frame", { size: opts.size, orient: opts.orient, title: opts.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
     S.comps = [f]; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
     commit(); fitView();
+  }
+  // Add sheet: a new frame to the right of the last one, with the same title block data
+  function addSheet(opts) {
+    const list = frames(), last = list[list.length - 1], first = list[0];
+    const p = Object.assign({}, first ? first.params : { date: new Date().toISOString().slice(0, 10) }, { size: opts.size, orient: opts.orient, sheet: "" });
+    if (opts.title) p.title = opts.title;
+    let x = 0, y = 0;
+    if (last) { const b = compBBox(last); x = Math.ceil((b.x2 + 100) / 100) * 100; y = first.y; }   // on the grid, so parts drawn on it snap into place
+    const f = makeComp("frame", p, x, y, 0); f.x = x; f.y = y;
+    S.comps.push(f);
+    commit(); updateSheetNav(); fitSheet(f);
+    return f;
+  }
+  function fitBox(x1, y1, x2, y2) {
+    const W = canvas.clientWidth, H = canvas.clientHeight, m = 40;
+    const s = Math.min(3, Math.max(0.05, Math.min((W - 2 * m) / Math.max(x2 - x1, 1), (H - 2 * m) / Math.max(y2 - y1, 1))));
+    S.view.scale = s; S.view.ox = W / 2 - (x1 + x2) / 2 * s; S.view.oy = H / 2 - (y1 + y2) / 2 * s;
+    updateZoomLabel(); render();
+  }
+  function fitSheet(f) { const b = compBBox(f); fitBox(b.x1, b.y1, b.x2, b.y2); const nav = document.getElementById("sheet-nav"); if (nav) nav.value = f.id; }
+  // the Sheet selector in the toolbar: all sheets, or zoom to one
+  function updateSheetNav() {
+    const nav = document.getElementById("sheet-nav"); if (!nav) return;
+    const list = frames(), cur = nav.value;
+    nav.hidden = list.length < 2;
+    nav.innerHTML = `<option value="">All sheets</option>` + list.map((f, i) => `<option value="${f.id}">Sheet ${sheetNo(f, list)}${f.params.title ? " · " + f.params.title.replace(/[<&]/g, "") : ""}</option>`).join("");
+    nav.value = list.some(f => f.id === cur) ? cur : "";
   }
   // file name from the title block (or a default)
   function baseName() {
@@ -1418,9 +1505,9 @@
   // page is that sheet (A4…A1, landscape or portrait, 1:1); without one, the drawing's bounds.
   function exportPDF(download) {
     const MMU = CadLib.MM, k = 72 / 25.4 / MMU;         // pt per drawing unit
-    const f = S.comps.find(c => c.type === "frame");
+    const list = frames(), f = list[0];
     let page;
-    if (f) { const g = CadLib.sheetGeom(f); page = { widthPt: g.W * k, heightPt: g.H * k, k, ox: f.x, oy: f.y }; }
+    if (f) page = list.map(fr => { const g = CadLib.sheetGeom(fr); return { widthPt: g.W * k, heightPt: g.H * k, k, ox: fr.x, oy: fr.y, frame: fr }; });
     else {
       let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
       S.comps.forEach(c => { const b = compBBox(c); x1 = Math.min(x1, b.x1 - 60); y1 = Math.min(y1, b.y1 - 40); x2 = Math.max(x2, b.x2 + 60); y2 = Math.max(y2, b.y2 + 40); });
@@ -1428,25 +1515,29 @@
       if (!isFinite(x1)) { x1 = 0; y1 = 0; x2 = 1188; y2 = 840; }
       page = { widthPt: (x2 - x1) * k, heightPt: (y2 - y1) * k, k, ox: x1, oy: y1 };
     }
-    const bytes = PdfExport.buildPdf(page, pc => drawSheet(pc), { title: f && f.params.title });
+    const bytes = PdfExport.buildPdf(page, (pc, i) => drawSheet(pc, Array.isArray(page) ? page[i].frame : null), { title: f && f.params.title });
     if (download !== false) {
       const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
       a.download = baseName() + ".pdf"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      setStatus("ok", `Saved ${baseName()}.pdf (${Math.round(bytes.length / 1024)} kB)`);
+      setStatus("ok", `Saved ${baseName()}.pdf (${list.length > 1 ? list.length + " sheets, " : ""}${Math.round(bytes.length / 1024)} kB)`);
     }
     return bytes;
   }
-  // the printable drawing: frame, conductors, junctions and parts (no grid, tags or selection)
-  function drawSheet(target) {
+  // the printable drawing: frame, conductors, junctions and parts (no grid, tags or selection);
+  // with a frame given, only what lies on that sheet
+  function drawSheet(target, frame) {
     const keep = ctx; ctx = target; S.printing = true;
     try {
       const T = topo();
-      S.comps.forEach(c => { if (c.type === "frame") drawComp(c, false, false); });
+      let on = () => true;
+      if (frame) { const b = compBBox(frame); on = (x1, y1, x2, y2) => x2 >= b.x1 && x1 <= b.x2 && y2 >= b.y1 && y1 <= b.y2; }
+      const onComp = c => { const b = compBBox(c); return on(b.x1, b.y1, b.x2, b.y2); };
+      S.comps.forEach(c => { if (c.type === "frame" && (!frame || c === frame)) drawComp(c, false, false); });
       ctx.lineCap = "round"; ctx.strokeStyle = "#3fb950"; ctx.lineWidth = 2;
-      S.wires.forEach(w => { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); });
+      S.wires.forEach(w => { if (!on(Math.min(w.x1, w.x2), Math.min(w.y1, w.y2), Math.max(w.x1, w.x2), Math.max(w.y1, w.y2))) return; ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); });
       ctx.fillStyle = "#3fb950";
-      T.junctions.forEach(j => { ctx.beginPath(); ctx.arc(j.x, j.y, 4, 0, Math.PI * 2); ctx.fill(); });
-      S.comps.forEach(c => { if (c.type !== "frame") drawComp(c, false, false); });
+      T.junctions.forEach(j => { if (!on(j.x, j.y, j.x, j.y)) return; ctx.beginPath(); ctx.arc(j.x, j.y, 4, 0, Math.PI * 2); ctx.fill(); });
+      S.comps.forEach(c => { if (c.type !== "frame" && onComp(c)) drawComp(c, false, false); });
     } finally { ctx = keep; S.printing = false; }
   }
   // The page shows no confirm() dialogs in some hosts; ask through the status bar instead
@@ -1546,14 +1637,21 @@
     menuList.addEventListener("click", closeMenu);
     document.addEventListener("click", e => { if (!menu.contains(e.target)) closeMenu(); });
     document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
-    bind("btn-new", newSheet);
+    bind("btn-new", () => openSheetDialog("new"));
+    bind("btn-add-sheet", () => openSheetDialog("add"));
+    document.getElementById("sheet-nav").addEventListener("change", e => { const f = S.comps.find(c => c.id === e.target.value); if (f) fitSheet(f); else fitView(); });
     bind("btn-pdf", () => exportPDF());
     // New dialog: format and orientation of the drawing frame
     const pickSeg = id => { const host = document.getElementById(id); host.querySelectorAll(".btn").forEach(b => b.addEventListener("click", () => host.querySelectorAll(".btn").forEach(x => x.classList.toggle("active", x === b)))); return () => host.querySelector(".btn.active").dataset.v; };
     const newSize = pickSeg("new-size"), newOrient = pickSeg("new-orient");
     document.getElementById("new-title").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("btn-new-create").click(); });
     bind("btn-new-cancel", () => { document.getElementById("new-modal").hidden = true; });
-    bind("btn-new-create", () => { document.getElementById("new-modal").hidden = true; newCircuit({ size: newSize(), orient: newOrient(), title: document.getElementById("new-title").value.trim() }); document.getElementById("new-title").value = ""; });
+    bind("btn-new-create", () => {
+      const m = document.getElementById("new-modal"), opts = { size: newSize(), orient: newOrient(), title: document.getElementById("new-title").value.trim() };
+      m.hidden = true;
+      if (m.dataset.mode === "add") addSheet(opts); else { newCircuit(opts); updateSheetNav(); }
+      document.getElementById("new-title").value = "";
+    });
     bind("btn-open", () => document.getElementById("file-input").click());
     document.getElementById("file-input").addEventListener("change", e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; });
     bind("btn-save", saveFile);
@@ -1584,10 +1682,11 @@
     S.topo = null;
     setTool("select");
     updateInspector();
+    updateSheetNav();
     requestAnimationFrame(() => { fitView(); scheduleSim(0); });
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, newCircuit, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, newCircuit, addSheet, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
