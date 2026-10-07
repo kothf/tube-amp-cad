@@ -6,14 +6,23 @@
     result: null,
     at: 0,
     scopeId: new URLSearchParams(location.search).get("scope"),
-    listeners: []
+    listeners: [],
+    // this window's version, from its own script URL (?v=x.y.z), to compare with the CAD's
+    version: (() => { const sc = document.currentScript; const q = sc && sc.src.split("?")[1]; return q ? "?" + q : ""; })(),
+    cad: null,        // last status line of the CAD { kind, text, busy }
+    problem: null     // why the CAD does not respond, shown instead of the normal status
   };
   const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tube_cad_v2") : null;
   if (bc) {
     bc.onmessage = e => {
       if (!e.data) return;
-      if (e.data.type === "SIM_RESULT") { Inst.result = e.data; Inst.at = Date.now(); }
-      else if (e.data.type === "TRANSIENT_RESULT") Inst.transient = e.data;   // power-on transient from the CAD
+      const d = e.data;
+      if (d.version !== undefined) Inst.problem = d.version === Inst.version ? null
+        : `The Circuit CAD tab runs another version (${(d.version || "?").replace("?v=", "")}, this window ${(Inst.version || "?").replace("?v=", "")}): reload both tabs.`;
+      if (d.type === "SIM_RESULT") { Inst.result = d; Inst.at = Date.now(); }
+      else if (d.type === "TRANSIENT_RESULT") Inst.transient = d;   // power-on transient from the CAD
+      else if (d.type === "SIM_STATUS") Inst.cad = Object.assign({ at: Date.now() }, d);
+      else if (d.type === "ACK") { if (pending[d.id]) { clearTimeout(pending[d.id]); delete pending[d.id]; } }
       else return;
       Inst.listeners.forEach(f => f());
     };
@@ -22,7 +31,21 @@
 
   Inst.transient = null;
   /** Ask the CAD: { type: "RUN_SIM" } | { type: "RUN_TRANSIENT", tStop } | { type: "STOP_TRANSIENT" } */
-  Inst.send = msg => { if (bc) bc.postMessage(msg); };
+  // A request the CAD must acknowledge within 2 s; a CAD tab opened before an
+  // update ignores requests it does not know, and the window says so.
+  const pending = {};
+  let reqId = 0;
+  Inst.send = msg => {
+    if (!bc) return;
+    const id = ++reqId;
+    pending[id] = setTimeout(() => {
+      delete pending[id];
+      Inst.problem = Inst.result ? "The Circuit CAD did not answer: it is probably an older version still open. Reload the CAD tab (Ctrl+Shift+R) and try again."
+        : "No Circuit CAD is open: open it, load the circuit, then try again.";
+      Inst.listeners.forEach(f => f());
+    }, 2000);
+    bc.postMessage(Object.assign({ id }, msg));
+  };
   Inst.transientScope = () => { const t = Inst.transient; if (!t || !t.scopes) return null; const id = (Inst.scope() || {}).id || Inst.scopeId; return t.scopes.find(x => x.id === id) || t.scopes[0] || null; };
   Inst.onUpdate = f => Inst.listeners.push(f);
   Inst.scopes = () => (Inst.result && Inst.result.ok && Inst.result.scopes) || [];
@@ -44,11 +67,14 @@
     Inst.onUpdate(fill); fill();
   };
   Inst.status = () => {
+    if (Inst.problem) return { cls: "bad", text: Inst.problem };
+    if (Inst.cad && Inst.cad.busy) return { cls: "idle", text: "CAD: " + Inst.cad.text };
     const r = Inst.result;
     if (!r) return { cls: "idle", text: "Waiting for the Circuit CAD…" };
     if (!r.ok) return { cls: "bad", text: r.error || "Circuit not simulated" };
     if (!Inst.scopes().length) return { cls: "idle", text: "Add an Oscilloscope part to the circuit and wire its inputs" };
-    return { cls: "ok", text: "Live from CAD · " + Inst.scope().label };
+    const c = Inst.cad, recent = c && !c.busy && c.kind !== "idle" && Date.now() - (c.at || 0) < 15000;
+    return { cls: "ok", text: "Live from CAD · " + Inst.scope().label + (recent ? " · " + c.text : "") };
   };
 
   // Engineering format, e.g. 0.0021 -> "2.1m"

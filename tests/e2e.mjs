@@ -434,7 +434,8 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await sp.click("#btn-sim");
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq > s0 && !TubeCAD.state.sim.busy, seq0, { timeout: 30000 });
-  check(true, "▶ Simulate on the oscilloscope runs the CAD's simulation until settled");
+  const st = await sp.evaluate(() => document.getElementById("status").textContent);
+  check(/Simulated in/.test(st), `▶ Simulate on the oscilloscope runs the CAD's simulation until settled; the scope shows it ("${st}")`);
   // power-on: 0.5 s
   await sp.click('#analysis .btn[data-v="startup"]');
   await sp.selectOption("#t-stop", "0.5");
@@ -460,6 +461,24 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await sp.waitForFunction(() => Instrument.transient && Instrument.transient.stale, null, { timeout: 5000 }).catch(() => {});
   check(await sp.evaluate(() => !!Instrument.transient.stale), "editing the circuit marks the power-on record as changed");
   await sp.close();
+}
+
+// --- 10. An instrument window tells when the CAD does not answer -----------------
+{
+  // a separate browser context: no CAD tab at all
+  const c2 = await browser.newContext();
+  const lone = await c2.newPage();
+  await lone.goto(U("oscilloscope.html"));
+  await lone.click("#btn-sim");
+  await lone.waitForFunction(() => /No Circuit CAD is open/.test(document.getElementById("status").textContent), null, { timeout: 5000 }).catch(() => {});
+  check(/No Circuit CAD is open/.test(await lone.textContent("#status")), `without a CAD, ▶ Simulate says so ("${(await lone.textContent("#status")).trim()}")`);
+  // a CAD of another version (e.g. a tab opened before an update) is reported
+  const fake = await c2.newPage();
+  await fake.goto(U("markers.js"));   // any same-origin page to post from
+  await fake.evaluate(() => new BroadcastChannel("tube_cad_v2").postMessage({ type: "SIM_RESULT", version: "?v=0.0.1", ok: false, error: "x", scopes: [] }));
+  await lone.waitForFunction(() => /another version/.test(document.getElementById("status").textContent), null, { timeout: 5000 }).catch(() => {});
+  check(/another version/.test(await lone.textContent("#status")), "a CAD tab of another version is reported");
+  await c2.close();
 }
 
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);

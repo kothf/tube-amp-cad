@@ -160,7 +160,7 @@
       if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
       const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const st = I.status(); $("status").className = "status " + st.cls; $("status").textContent = st.text;
-      if (S.analysis === "startup" && I.transient) { const t = I.transient; $("status").className = "status " + (t.running ? "idle" : t.ok ? "ok" : "bad"); $("status").textContent = t.running ? `Power-on transient… ${Math.round((t.progress || 0) * 100)} %` : t.ok ? `Power-on transient · ${I.fmt(t.tStop, "s")}${t.stale ? " · circuit changed" : ""}` : (t.error || "Power-on transient failed"); }
+      if (S.analysis === "startup" && I.transient && !I.problem) { const t = I.transient; $("status").className = "status " + (t.running ? "idle" : t.ok ? "ok" : "bad"); $("status").textContent = t.running ? `Power-on transient… ${Math.round((t.progress || 0) * 100)} %` : t.ok ? `Power-on transient · ${I.fmt(t.tStop, "s")}${t.stale ? " · circuit changed" : ""}` : (t.error || "Power-on transient failed"); }
       ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
       const pad = 26, gw = W - 2 * pad, gh = H - 2 * pad - 10, x0 = pad, y0 = pad + 6;
       // graticule

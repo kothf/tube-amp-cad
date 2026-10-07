@@ -390,7 +390,7 @@
   }
   function buildSummary() {
     const r = S.sim.result;
-    const summary = { type: "SIM_RESULT", at: Date.now(), selectedTubeId: lastTubeId, ok: !!r, error: S.sim.error, warnings: S.sim.warnings || [], empty: !S.comps.length, fSig: signalFreq(), tubes: [], scopes: [], speakers: [] };
+    const summary = { type: "SIM_RESULT", version: VERSION, at: Date.now(), selectedTubeId: lastTubeId, ok: !!r, error: S.sim.error, warnings: S.sim.warnings || [], empty: !S.comps.length, fSig: signalFreq(), tubes: [], scopes: [], speakers: [] };
     if (!r) return summary;
     summary.elapsedMs = r.elapsedMs;
     S.comps.forEach(c => {
@@ -421,7 +421,10 @@
       if (!lastSummary) lastSummary = buildSummary(); lastSummary.selectedTubeId = lastTubeId; channel.postMessage(lastSummary);
       if (S.trans) channel.postMessage(transientMessage());
     }
-    else if (m.type === "RUN_SIM") runSim("full");                       // ▶ Simulate in an instrument window
+    // requests from instrument windows are acknowledged at once, so a window can
+    // tell a CAD that does not understand them (an older version still open)
+    else if (/^(RUN_SIM|RUN_TRANSIENT|STOP_TRANSIENT)$/.test(m.type)) channel.postMessage({ type: "ACK", req: m.type, id: m.id, version: VERSION });
+    if (m.type === "RUN_SIM") runSim("full");                            // ▶ Simulate in an instrument window
     else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop);
     else if (m.type === "STOP_TRANSIENT") stopTransient();
   };
@@ -433,7 +436,7 @@
   S.trans = null;           // { seq, running, progress, tStop, ok, error, dt, scopes: [{ id, label, ch1: {min,max}, ch2 }] }
   function transientMessage() {
     const t = S.trans;
-    return { type: "TRANSIENT_RESULT", running: !!t.running, progress: t.progress || 0, tStop: t.tStop, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
+    return { type: "TRANSIENT_RESULT", version: VERSION, running: !!t.running, progress: t.progress || 0, tStop: t.tStop, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
       dt: t.dt, elapsedMs: t.elapsedMs, scopes: t.scopes || [] };
   }
   function stopTransient() {
@@ -1082,6 +1085,8 @@
     const el = document.getElementById("status-sim");
     el.className = "sim-status " + kind;
     el.textContent = text;
+    // instrument windows show what the CAD is doing (e.g. after their ▶ Simulate)
+    if (channel) { try { channel.postMessage({ type: "SIM_STATUS", kind, text, busy: kind === "busy", version: VERSION }); } catch (e) {} }
   }
   function setTool(t) {
     S.tool = t;
