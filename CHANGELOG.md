@@ -6,6 +6,27 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-10-07
+
+### Fixed
+- Oscilloscope auto mode: a signal riding on a DC level (a plate, a supply
+  rail) no longer collapses to a flat line. Auto volts/div now fits the swing
+  and shifts the trace with a position offset (shown as "offset 150V" in the
+  window, "+" on the schematic screens); manual volts/div repositions the
+  same way when the trace would leave the screen.
+- Auto time/div follows the frequency measured on the probed signal instead
+  of always the signal generator's (e.g. 100 Hz supply ripple next to a 1 kHz
+  generator).
+- Frequency readout and trigger use a Schmitt trigger, so harmonics, ripple
+  or noise near the level no longer cause extra edges or a jumping trace.
+- DC levels are shown as a line at their real height instead of magnifying
+  solver noise to full screen; the schematic scope screens trigger correctly
+  across the whole capture.
+
+### Changed
+- The scope window and the scope screens on the schematic share one
+  auto-ranging module (`scope-math.js`); time/div now ranges 1 µs - 200 ms.
+
 ## [3.1.0] - 2026-10-07
 
 ### Fixed
@@ -59,6 +80,7 @@ First release as a standalone project (previously developed inside
 - Several tube models deviate from datasheet operating points by more than
   20 % (fixed in 3.1.0).
 
-[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.1.1...HEAD
+[3.1.1]: https://github.com/kothf/tube-amp-cad/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/kothf/tube-amp-cad/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/kothf/tube-amp-cad/releases/tag/v3.0.0

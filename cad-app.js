@@ -848,33 +848,15 @@
     ctx.textAlign = "left";
   }
 
-  // 1-2-5 volts/div
-  function niceDiv(range, divs) {
-    const raw = Math.max(range, 1e-6) / divs;
-    const p = Math.pow(10, Math.floor(Math.log10(raw)));
-    for (const m of [1, 2, 5, 10]) if (m * p >= raw) return m * p;
-    return 10 * p;
-  }
+  // Scaling of the on-canvas scope screens: same auto-ranging as the
+  // oscilloscope window (scope-math.js)
   function scopeView(c, chans) {
-    // returns display window (start index, count) and per-channel scaling
-    const dt = chans.dt, n = (chans.ch1 || chans.ch2).length;
-    const f = signalFreq();
-    let span = c.params.time === "auto" ? (f ? 2 / f : n * dt) : parseFloat(c.params.time) * 10;
-    span = Math.min(span, (n - 1) * dt);
-    const count = Math.max(2, Math.round(span / dt));
-    // trigger on CH1 (or CH2) rising through its mean
-    const trig = chans.ch1 || chans.ch2;
-    const st = stats(trig);
-    let start = 0;
-    for (let i = 1; i < n - count; i++) if (trig[i - 1] < st.mean && trig[i] >= st.mean) { start = i; break; }
-    const ch = (arr, vd, coupling) => {
-      if (!arr) return null;
-      const s = stats(arr.subarray(start, start + count));
-      const off = coupling === "ac" ? s.mean : 0;
-      const span = coupling === "ac" ? Math.max(Math.abs(s.max - off), Math.abs(s.min - off)) : Math.max(Math.abs(s.max), Math.abs(s.min));
-      const vdiv = vd === "auto" ? niceDiv(span * 2, 6) : parseFloat(vd);
-      return { arr, off, vdiv, s };
-    };
+    const SM = ScopeMath, dt = chans.dt, live = [chans.ch1, chans.ch2].filter(a => a && !SM.isFlat(SM.stats(a)));
+    const trig = live[0] || chans.ch1 || chans.ch2;
+    const tdiv = c.params.time === "auto" ? SM.timebase(trig, dt, signalFreq()).tdiv : parseFloat(c.params.time);
+    const count = Math.max(2, Math.round((10 * tdiv) / dt));
+    const start = SM.triggerIndex(trig, "rising");
+    const ch = (arr, vd, coupling) => arr ? { arr, ...SM.channel(arr, vd === "auto" ? "auto" : parseFloat(vd), coupling) } : null;
     return { start, count, span: count * dt, c1: ch(chans.ch1, c.params.ch1, c.params.coupling1), c2: ch(chans.ch2, c.params.ch2, c.params.coupling2) };
   }
   function drawScopeScreen(c) {
@@ -894,15 +876,16 @@
       if (!ch) return;
       ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.beginPath();
       for (let i = 0; i < v.count; i++) {
-        const val = (ch.arr[v.start + i] - ch.off) / ch.vdiv;
+        const val = (ScopeMath.at(ch.arr, v.start + i) - ch.off) / ch.vdiv;
         const px = x0 + i / (v.count - 1) * w, py = y0 + h / 2 - Math.max(-4.2, Math.min(4.2, val)) * h / 8;
         i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
       }
       ctx.stroke();
     };
     plot(v.c1, "#ffd54f"); plot(v.c2, "#00e5ff");
-    ctx.fillStyle = "#ffd54f"; if (v.c1) ctx.fillText(fmtEng(v.c1.vdiv, "V") + "/div" + (c.params.coupling1 === "ac" ? " AC" : ""), x0 + 2, y0 + h + 10);
-    ctx.fillStyle = "#00e5ff"; if (v.c2) ctx.fillText(fmtEng(v.c2.vdiv, "V") + "/div" + (c.params.coupling2 === "ac" ? " AC" : ""), x0 + 44, y0 + h + 10);
+    // "+" marks a channel shown with a position offset (its DC level is off screen)
+    ctx.fillStyle = "#ffd54f"; if (v.c1) ctx.fillText(fmtEng(v.c1.vdiv, "V") + "/div" + (c.params.coupling1 === "ac" ? " AC" : v.c1.offset ? "+" : ""), x0 + 2, y0 + h + 10);
+    ctx.fillStyle = "#00e5ff"; if (v.c2) ctx.fillText(fmtEng(v.c2.vdiv, "V") + "/div" + (c.params.coupling2 === "ac" ? " AC" : v.c2.offset ? "+" : ""), x0 + 44, y0 + h + 10);
     ctx.fillStyle = "#8b949e"; ctx.fillText(fmtEng(v.span / 10, "s") + "/div", x0 + 88, y0 + h + 10);
   }
 
