@@ -209,7 +209,13 @@
   // Netlist + simulation
   // ---------------------------------------------------------------------------
   let worker = null, simTimer = null;
-  try { worker = new Worker("sim-worker.js" + VERSION); worker.onmessage = e => onSimResult(e.data); } catch (e) { worker = null; }
+  function startWorker() { try { worker = new Worker("sim-worker.js" + VERSION); worker.onmessage = e => onSimResult(e.data); } catch (e) { worker = null; } }
+  startWorker();
+  // "live" runs after every edit within a short time budget; "full" runs until
+  // the periodic steady state is reached (slow supplies need seconds of solver time)
+  const RUN_OPTIONS = { live: { budgetMs: 2500 }, full: { budgetMs: 120000, maxPeriods: 20000 } };
+  const LIVE_KEY = "tubecad_live";
+  S.sim.live = (() => { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch (e) { return true; } })();
 
   function buildNetlist() {
     const T = topo();
@@ -225,23 +231,55 @@
 
   function scheduleSim(delay) {
     clearTimeout(simTimer);
-    simTimer = setTimeout(runSim, delay === undefined ? 150 : delay);
+    if (!S.sim.live) {
+      // manual mode: the old result no longer matches the circuit
+      if (S.sim.busy) cancelRun();
+      S.sim.result = null; S.sim.error = null; S.sim.warnings = [];
+      setStatus("idle", S.comps.length ? "Circuit changed · press Simulate (Ctrl+Enter)" : "Empty sheet");
+      broadcast();
+      return;
+    }
+    simTimer = setTimeout(() => runSim("live"), delay === undefined ? 150 : delay);
   }
-  function runSim() {
+  function cancelRun() {
+    if (worker) { worker.terminate(); startWorker(); }
+    S.sim.busy = false; S.sim.pending = false; S.sim.seq++;
+    simButton();
+  }
+  function simButton() {
+    const b = document.getElementById("btn-sim");
+    if (b) { const stop = S.sim.busy && S.sim.mode === "full"; b.textContent = stop ? "■ Stop" : "▶ Simulate"; b.classList.toggle("active", stop); }
+  }
+  function setLive(on) {
+    S.sim.live = on;
+    try { localStorage.setItem(LIVE_KEY, on ? "1" : "0"); } catch (e) {}
+    const b = document.getElementById("btn-live"); if (b) b.classList.toggle("active", on);
+    if (on) scheduleSim(0);
+    else if (!S.sim.busy) setStatus("idle", "Live off · edits wait for ▶ Simulate (Ctrl+Enter)");
+  }
+  function runSim(mode) {
+    mode = mode === "full" ? "full" : "live";
     const T = topo();
     if (!S.comps.length) { S.sim.result = null; S.sim.error = null; setStatus("idle", "Empty sheet"); broadcast(); render(); return; }
     if (!T.hasGround) { S.sim.result = null; S.sim.error = "Add a ground symbol to simulate"; setStatus("warn", S.sim.error); broadcast(); render(); updateInspector(); return; }
-    if (S.sim.busy) { S.sim.pending = true; return; }
+    if (S.sim.busy) {
+      // a full run is long: a new request replaces it; quick runs queue
+      if (S.sim.mode === "full" || mode === "full") cancelRun();
+      else { S.sim.pending = true; return; }
+    }
     const netlist = buildNetlist();
-    S.sim.busy = true; S.sim.netlist = netlist; S.sim.topoForRun = T;
+    S.sim.busy = true; S.sim.mode = mode; S.sim.netlist = netlist; S.sim.topoForRun = T;
     const seq = ++S.sim.seq;
-    setStatus("busy", "Simulating…");
-    if (worker) worker.postMessage({ seq, netlist });
-    else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist) }), 0);
+    setStatus("busy", mode === "full" ? "Simulating until settled…" : "Simulating…");
+    simButton();
+    if (worker) worker.postMessage({ seq, netlist, options: RUN_OPTIONS[mode] });
+    else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, RUN_OPTIONS[mode]) }), 0);
   }
   function onSimResult({ seq, result }) {
+    if (seq !== S.sim.seq) return;   // a cancelled run
     S.sim.busy = false;
-    if (seq === S.sim.seq) {
+    simButton();
+    {
       S.sim.result = result.ok ? result : null;
       S.sim.error = result.ok ? null : result.error;
       S.sim.warnings = result.warnings || [];
@@ -249,7 +287,12 @@
       if (result.ok) {
         const tr = result.tran;
         const what = tr && tr.fBase ? `${fmtEng(tr.samples * tr.dt, "s")} window, ${tr.periods} cycles to settle` : "DC operating point";
-        setStatus(S.sim.warnings.length ? "warn" : "ok", `Simulated in ${result.elapsedMs} ms · ${what}` + (S.sim.warnings.length ? " · " + S.sim.warnings[0] : ""));
+        const took = result.elapsedMs >= 1000 ? (result.elapsedMs / 1000).toFixed(1) + " s" : result.elapsedMs + " ms";
+        // a quick live run that ran out of time continues as a full run in the background
+        const more = tr && !tr.settled && S.sim.mode === "live" && S.sim.live && !S.sim.pending;
+        if (more) S.sim.warnings = S.sim.warnings.filter(w => !/^Not fully settled/.test(w));
+        setStatus(S.sim.warnings.length ? "warn" : "ok", `Simulated in ${took} · ${what}` + (result.dcAveraged ? " · DC values averaged over the window" : "") + (S.sim.warnings.length ? " · " + S.sim.warnings[0] : ""));
+        if (more) { broadcast(); updateInspector(true); render(); runSim("full"); setStatus("busy", "Preliminary result shown · settling fully…"); return; }
       } else setStatus("error", result.error);
       broadcast();
       updateInspector(true);
@@ -676,6 +719,7 @@
     else if (k === "w" || k === "W") setTool(S.tool === "wire" ? "select" : "wire");
     else if (k === "v" && !ctrl) setTool("select");
     else if (k === "f" || k === "F") fitView();
+    else if (ctrl && k === "Enter") { runSim("full"); e.preventDefault(); }
     else if (ctrl && (k === "z" || k === "Z")) { e.shiftKey ? redo() : undo(); e.preventDefault(); }
     else if (ctrl && (k === "y" || k === "Y")) { redo(); e.preventDefault(); }
     else if (ctrl && (k === "c" || k === "C")) { copySelection(); }
@@ -1179,6 +1223,7 @@
         <li><b>Move:</b> drag parts (wires follow) or drag a wire segment sideways.</li>
         <li><b>View:</b> wheel zooms, <kbd>Space</kbd>/middle-drag pans, <kbd>F</kbd> fits.</li>
         <li><b>Measure:</b> hover a wire for its voltage; wire an Oscilloscope to see waveforms; double-click it for the full scope.</li>
+        <li><b>Simulate:</b> <i>Live</i> re-simulates after every edit. Turn it off to simulate only on <i>▶ Simulate</i> (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>), which always runs until the circuit has settled.</li>
         <li><b>Switch:</b> double-click to flip it; sections named SA1.1, SA1.2… flip together.</li>
       </ul>`;
   }
@@ -1330,6 +1375,9 @@
     bind("btn-zoom-in", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1.25));
     bind("btn-zoom-out", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 0.8));
     bind("btn-zoom-fit", fitView);
+    bind("btn-live", () => setLive(!S.sim.live));
+    bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
+    document.getElementById("btn-live").classList.toggle("active", S.sim.live);
     bind("btn-volts", () => { S.showVolts = !S.showVolts; document.getElementById("btn-volts").classList.toggle("active", S.showVolts); render(); });
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
@@ -1350,6 +1398,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, commit, setSwitch, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

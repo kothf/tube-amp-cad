@@ -280,6 +280,55 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(/^R\S* .* 0\.01$/m.test(await cad.evaluate(() => TubeCAD.spiceNetlist())), "SPICE export includes the closed contact");
 }
 
+// --- 6. A slow kenotron supply: settles fully, DC readouts are real averages --
+{
+  const ids = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+    const pin = (c, id) => C.compPins(c).find(p => p.id === id);
+    const wire = (a, b, hFirst) => C.lRoute(a.x, a.y, b.x, b.y, hFirst !== false).forEach(s => C.addSegment(...s));
+    // 350-0-350 V, 5Ц4С, 10 µF - 0.6 H - 220 µF into 3 kΩ: an LC that rings at ~14 Hz
+    const TX = add("ptx", { vrms: 350, freq: "50", rw: 60 }, 200, 300), V = add("tube", { tube: "5Ts4S" }, 360, 300, 3);
+    const C1 = add("capacitor", { c: 10e-6 }, 460, 340, 1), L = add("inductor", { l: 0.6, dcr: 26 }, 520, 300), C2 = add("electrolytic", { c: 220e-6 }, 580, 340, 1);
+    const RL = add("resistor", { r: 3000 }, 640, 340, 1), g = add("ground", {}, 220, 420);
+    wire(pin(TX, "HT1"), { x: 290, y: 260 }, true); wire({ x: 290, y: 260 }, { x: 290, y: 280 }); wire({ x: 290, y: 280 }, pin(V, "A2"), true);
+    wire(pin(TX, "HT2"), { x: 290, y: 340 }, true); wire({ x: 290, y: 340 }, { x: 290, y: 320 }); wire({ x: 290, y: 320 }, pin(V, "A1"), true);
+    wire(pin(TX, "CT"), { x: 250, y: 300 }, true); wire({ x: 250, y: 300 }, { x: 250, y: 400 }); wire({ x: 250, y: 400 }, { x: 640, y: 400 }); wire({ x: 220, y: 400 }, { x: 250, y: 400 }); wire({ x: 220, y: 400 }, pin(g, "G"));
+    wire(pin(V, "K"), pin(L, "1"), true); wire(pin(C1, "1"), { x: 460, y: 300 }); wire(pin(L, "2"), { x: 640, y: 300 }, true); wire(pin(C2, "+"), { x: 580, y: 300 }); wire(pin(RL, "1"), { x: 640, y: 300 });
+    [pin(C1, "2"), pin(C2, "-"), pin(RL, "2")].forEach(p => wire(p, { x: p.x, y: 400 }));
+    // a live run gets almost no time, so it must hand over to a background full run
+    C.runOptions.live.budgetMs = 1;
+    window.__statuses = [];
+    new MutationObserver(() => window.__statuses.push(document.getElementById("status-sim").textContent)).observe(document.getElementById("status-sim"), { childList: true, characterData: true, subtree: true });
+    S.view = { scale: 1, ox: 0, oy: 0 }; C.commit();
+    return { out: RL.id };
+  });
+  // the live run runs out of time on this supply and continues in the background until settled
+  const done = () => cad.waitForFunction(() => { const S = TubeCAD.state; return !S.sim.busy && S.sim.result; }, null, { timeout: 120000 });
+  await cad.waitForTimeout(300); await done();
+  const r = await cad.evaluate(id => {
+    const S = TubeCAD.state, T = TubeCAD.topo(), r = S.sim.result, n = T.pinNet.get(`${id}:1`), w = r.tran.nodes[n];
+    let m = 0; for (let i = 0; i < w.length - 1; i++) m += w[i]; m /= w.length - 1;
+    const res = { settled: r.tran.settled, warn: S.sim.warnings, averaged: r.dcAveraged, dc: r.dc.nodes[n], mean: m, estimate: r.dcEstimate.nodes[n], status: document.getElementById("status-sim").textContent, handover: window.__statuses.some(t => /settling fully/.test(t)) };
+    TubeCAD.runOptions.live.budgetMs = 2500;
+    return res;
+  }, ids.out);
+  check(r.handover && r.settled && !r.warn.some(w => /settled/.test(w)), `an unsettled live run continues in the background until settled ("${r.status}")`);
+  check(r.averaged && Math.abs(r.dc - r.mean) < 0.01, `DC readout ${r.dc.toFixed(1)} V is the average of the settled waveform (${r.mean.toFixed(1)} V), not the estimate ${r.estimate.toFixed(1)} V`);
+  // manual mode: edits wait for the Simulate button
+  await cad.getByRole("button", { name: "Live" }).click();
+  await cad.evaluate(id => { const S = TubeCAD.state; S.comps.find(c => c.id === id).params.r = 2500; TubeCAD.commit(); }, ids.out);
+  await cad.waitForTimeout(400);
+  const idle = await cad.evaluate(() => ({ busy: TubeCAD.state.sim.busy, result: !!TubeCAD.state.sim.result, status: document.getElementById("status-sim").textContent }));
+  check(!idle.busy && !idle.result && /press Simulate/.test(idle.status), `with Live off an edit waits for Simulate ("${idle.status}")`);
+  await cad.getByRole("button", { name: /Simulate/ }).click();
+  await done();
+  const after = await cad.evaluate(() => ({ settled: TubeCAD.state.sim.result.tran.settled, status: document.getElementById("status-sim").textContent }));
+  check(after.settled, `▶ Simulate runs until settled ("${after.status}")`);
+  await cad.getByRole("button", { name: "Live" }).click();
+  check(await cad.evaluate(() => TubeCAD.state.sim.live), "Live switches back on");
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 
