@@ -519,12 +519,25 @@
     const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D");
     const devTrace = {};
     devIdx.forEach(e => { devTrace[e.id + (e.part ? "#" + e.part : "")] = { i: new Float32Array(nCap), ig2: e.kind === "PENTODE" ? new Float32Array(nCap) : null }; });
+    // A rectified supply has no true DC solution: the DC pass above only
+    // estimates it (each transformer half held at 0.95 of its peak). Then the
+    // reported DC values are the averages over the settled capture window,
+    // what a meter reads; the estimate is kept as dcEstimate.
+    const averaged = circ.els.some(e => e.dcValue !== undefined);
+    const nodeSum = new Float64Array(nodeCount), devSum = {};
     const record = (k) => {
       for (let i = 1; i < nodeCount; i++) nodes[i][k] = x[i - 1];
+      const acc = averaged && k < nCap - 1;   // the last sample repeats the first: one exact window
+      if (acc) for (let i = 1; i < nodeCount; i++) nodeSum[i] += x[i - 1];
       devIdx.forEach(e => {
         const s = deviceState(e, x), tr = devTrace[e.id + (e.part ? "#" + e.part : "")];
         tr.i[k] = s.ia !== undefined ? s.ia : s.i;
         if (tr.ig2) tr.ig2[k] = s.ig2;
+      });
+      if (acc) circ.els.forEach((e, j) => {
+        if (!e.id) return;
+        const s = deviceState(e, x), d = devSum[j] || (devSum[j] = { e, sum: {} });
+        for (const f in s) if (typeof s[f] === "number") d.sum[f] = (d.sum[f] || 0) + s[f];
       });
     };
     record(0);
@@ -536,6 +549,17 @@
       record(s);
     }
     result.tran = { dt: h, samples: nCap, nodes, devices: devTrace, periods, settled, fBase: fMin };
+    if (averaged && nCap > 1) {
+      const n = nCap - 1, avg = { nodes: Array.from(nodeSum, v => v / n), devices: {} };
+      avg.nodes[0] = 0;
+      Object.values(devSum).forEach(({ e, sum }) => {
+        const m = {}; for (const f in sum) m[f] = sum[f] / n;
+        avg.devices[e.id] = Object.assign(avg.devices[e.id] || {}, { [e.kind === "VDIODE" ? e.part || "d" : "main"]: m });
+      });
+      result.dcEstimate = result.dc;
+      result.dc = avg;
+      result.dcAveraged = true;
+    }
     result.ok = true;
     result.elapsedMs = Date.now() - t0;
     return result;

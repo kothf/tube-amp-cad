@@ -282,6 +282,8 @@ await powerStage({ name: "2A3 single-ended, 250 V, −45 V, 2.5 kΩ", tube: "2A3
   compare(name, "ripple frequency (scope)", sc.ch1.f, 100, { rel: 0.01 }, "full-wave: 2 × 50 Hz", " Hz");
   compare(name, "ripple Vpp (scope)", sc.ch1.vpp, ripple, { rel: 0.15 }, "Idc / (2·f·C), sawtooth approximation", " V");
   compare(name, "DC output (scope)", sc.ch1.dc, vpk - ripple / 2, { rel: 0.015 }, "Vpk − Vdiode − ripple/2", " V");
+  const tag = await cad.evaluate(() => { const S = TubeCAD.state, T = TubeCAD.topo(), R = S.comps.find(c => c.type === "resistor" && c.params.r === 3000); return S.sim.result.dc.nodes[T.pinNet.get(`${R.id}:1`)]; });
+  compare(name, "DC readout on the schematic", tag, sc.ch1.dc, { rel: 0.003 }, "scope DC average (a meter)", " V");
   compare(name, "analyzer fundamental", sp.f0, 100, { rel: 0.01 }, "ripple at 100 Hz", " Hz");
 }
 

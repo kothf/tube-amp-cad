@@ -6,6 +6,26 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-10-07
+
+### Added
+- **Simulate** button and a **Live** switch in the toolbar. Live (the
+  default) re-simulates after every edit; with Live off, edits wait for
+  ▶ Simulate (Ctrl+Enter). ▶ Simulate always runs until the circuit has
+  settled, with a two-minute limit; click it again to stop.
+
+### Fixed
+- Circuits with a rectified supply now show real DC values. A rectifier has no
+  true DC solution, and the node voltages and tube operating points used to
+  come from a rough estimate (each transformer half held at 0.95 of its peak):
+  a supply that settles at 351 V could read 431 V. They are now the averages
+  over the settled waveform, the values a meter reads.
+- Slow supplies (a choke and large capacitors ringing at a few hertz) now
+  settle fully. When a live run runs out of time, the preliminary result is
+  shown and the simulation continues in the background until it has settled;
+  the next edit cancels it. An unsettled supply made distortion readings too
+  high and inconsistent from run to run.
+
 ## [3.5.0] - 2026-10-07
 
 ### Added
