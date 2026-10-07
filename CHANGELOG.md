@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-10-07
+
+### Added
+- Power-on view in the oscilloscope is zoomable: it opens a few periods wide
+  (the circuit's own timebase) at power-on, keeping every simulation step, so
+  waveforms show as waveforms instead of a solid envelope. Zoom with the mouse
+  wheel or Time/div (up to the whole record), scroll with the overview strip
+  under the screen (the whole record with the visible window marked; click or
+  drag), Shift+wheel, ← → by a division, Home/End. Markers keep their absolute
+  time while scrolling.
+
+### Changed
+- One window per tool: the Oscilloscope, Spectrum, Curve tracer and Circuit
+  CAD buttons bring an already open window to the front instead of opening
+  another; asking for a different scope part switches the open oscilloscope
+  or analyzer to it. (`windows.js`)
+
 ## [3.11.1] - 2026-10-07
 
 ### Fixed

@@ -436,7 +436,7 @@
   S.trans = null;           // { seq, running, progress, tStop, ok, error, dt, scopes: [{ id, label, ch1: {min,max}, ch2 }] }
   function transientMessage() {
     const t = S.trans;
-    return { type: "TRANSIENT_RESULT", version: VERSION, running: !!t.running, progress: t.progress || 0, tStop: t.tStop, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
+    return { type: "TRANSIENT_RESULT", version: VERSION, seq: t.seq, running: !!t.running, progress: t.progress || 0, tStop: t.tStop, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
       dt: t.dt, elapsedMs: t.elapsedMs, scopes: t.scopes || [] };
   }
   function stopTransient() {
@@ -468,14 +468,14 @@
       const scopes = [];
       if (result.ok) map.forEach(p => {
         let sc = scopes.find(x => x.id === p.id); if (!sc) scopes.push(sc = { id: p.id, label: p.label });
-        sc[p.ch] = { min: Array.from(result.min[p.k]), max: Array.from(result.max[p.k]) };
+        sc[p.ch] = { min: result.min[p.k], max: result.max[p.k] };
       });
       Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, elapsedMs: result.elapsedMs, scopes, progress: 1 });
       if (channel) channel.postMessage(transientMessage());
       if (result.ok) setStatus("ok", `Power-on transient: ${fmtEng(tStop, "s")} of circuit time in ${(result.elapsedMs / 1000).toFixed(1)} s · ${result.steps} steps`);
       else setStatus("error", "Power-on transient: " + result.error);
     };
-    const options = { tStop, probes, maxPoints: 4000, budgetMs: 600000 };
+    const options = { tStop, probes, maxPoints: 250000, budgetMs: 600000 };   // every step, for zooming in the scope
     if (!tWorker) { setTimeout(() => done(TubeSimEngine.startup(netlist, options)), 0); return; }
     tWorker.onmessage = e => {
       const d = e.data;
@@ -762,7 +762,7 @@
   function onDblClick(e) {
     const m = evPos(e);
     const c = hitComp(m.wx, m.wy);
-    if (c && c.type === "scope" && !S.wiring) window.open("oscilloscope.html?scope=" + encodeURIComponent(c.id), "tube_scope_" + c.id);
+    if (c && c.type === "scope" && !S.wiring) ToolWindows.open("oscilloscope.html", { scope: c.id });
     if (c && c.type === "switch" && !S.wiring) { setSwitch(c, c.params.pos === "B" ? "A" : "B"); updateInspector(); }
   }
   // Renumber reference designations (IEC 81346-2 class code + number) in
@@ -1250,10 +1250,10 @@
     }
     if (c.type === "scope") {
       const b = document.createElement("button"); b.className = "btn wide"; b.textContent = "Open full oscilloscope ↗";
-      b.addEventListener("click", () => window.open("oscilloscope.html?scope=" + encodeURIComponent(c.id), "tube_scope_" + c.id));
+      b.addEventListener("click", () => ToolWindows.open("oscilloscope.html", { scope: c.id }));
       host.appendChild(b);
       const b2 = document.createElement("button"); b2.className = "btn wide"; b2.textContent = "Open spectrum analyzer ↗";
-      b2.addEventListener("click", () => window.open("spectrum_analyzer.html?scope=" + encodeURIComponent(c.id), "tube_spectrum_" + c.id));
+      b2.addEventListener("click", () => ToolWindows.open("spectrum_analyzer.html", { scope: c.id }));
       host.appendChild(b2);
     }
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
@@ -1511,9 +1511,9 @@
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
     bind("btn-spice-download", () => { const blob = new Blob([document.getElementById("spice-text").value], { type: "text/plain" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "tube-circuit.cir"; a.click(); });
-    bind("btn-open-tracer", () => window.open("index.html", "tube_curve_tracer"));
-    bind("btn-open-scope", () => { const sc = S.comps.find(c => c.type === "scope"); window.open("oscilloscope.html" + (sc ? "?scope=" + encodeURIComponent(sc.id) : ""), "tube_scope_" + (sc ? sc.id : "any")); });
-    bind("btn-open-spectrum", () => { const sc = S.comps.find(c => c.type === "scope"); window.open("spectrum_analyzer.html" + (sc ? "?scope=" + encodeURIComponent(sc.id) : ""), "tube_spectrum_" + (sc ? sc.id : "any")); });
+    bind("btn-open-tracer", () => ToolWindows.open("index.html"));
+    bind("btn-open-scope", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("oscilloscope.html", sc ? { scope: sc.id } : null); });
+    bind("btn-open-spectrum", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("spectrum_analyzer.html", sc ? { scope: sc.id } : null); });
 
     let saved = null;
     try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}

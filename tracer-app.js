@@ -565,7 +565,7 @@
     ["traj", "pa", "pa70", "bias"].forEach(k => { const el = $("opt-" + k); el.checked = S.opts[k]; el.addEventListener("change", () => { S.opts[k] = el.checked; drawPlot(); }); });
     initPicker();
     window.addEventListener("resize", drawPlot);
-    $("btn-open-cad").addEventListener("click", () => window.open("circuit_sandbox.html", "tube_cad"));
+    $("btn-open-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
     $("btn-model").addEventListener("click", openModelModal);
     $("btn-png").addEventListener("click", () => { const a = document.createElement("a"); a.href = $("plot").toDataURL("image/png"); a.download = current().tube.commonName + "-curves.png"; a.click(); });
     $("btn-modal-close").addEventListener("click", () => { $("model-modal").hidden = true; });
