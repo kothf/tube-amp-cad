@@ -47,12 +47,26 @@ what the data cannot pin down (x ≈ 1.35, pentode µ(g1-g2), Ig2 ≈ 10 % of Ia
 The triode-connected model of a pentode is fitted to that pentode with g2
 strapped to the anode.
 
+Known limitation: Koren's screen current depends only on Vg1 and Vg2, not on
+the plate voltage, so in a pentode driven hard enough for the plate to swing
+into the knee, screen current, average cathode current and output power come
+out 15–20 % low (EL84 and 6V6GT in `tests/reference.mjs`, reported as
+KNOWN). Fixing it needs a screen-current term that rises at low Va, fitted to
+published curves.
+
 To add or correct a tube: add its datasheet entry (with the source), run
 `node scripts/fit-tubes.mjs <name>` to review, then `--write`, and run
 `npm test` (every tube is checked against its entry). Note the change in
 `CHANGELOG.md`: saved circuits will simulate differently.
 
 ## Testing
+
+- `npm run test:reference` — reference circuits built through the editor and
+  measured through the instrument windows (oscilloscope `#meas`, analyzer
+  harmonic table) against datasheet and textbook values. Circuits are wired by
+  a small router that puts every stub and track on the half grid (5 mod 10),
+  where no pin can be, and each net is verified from the CAD's topology before
+  anything is measured.
 
 - `npm run test:engine` — Node's test runner loads `tube-db.js` and
   `sim-engine.js` with `vm.runInThisContext` (they are browser scripts that

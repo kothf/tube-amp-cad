@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-07
+
+### Added
+- Scope probe setting: 10× (10 MΩ load, the new default) or 1× (1 MΩ). The
+  fixed 1 MΩ input used to pull a 12AX7 plate down by 14 V and cost 3 % gain.
+- Reference-circuit tests (`npm run test:reference`): a 12AX7 stage, a 12AU7
+  cathode follower, EL84 / 6V6GT / 2A3 single-ended stages, an RC filter, a
+  full-wave rectifier and generator waveforms, measured through the scope and
+  spectrum analyzer and compared with datasheet and textbook results.
+
+### Fixed
+- Spectrum analyzer: the fundamental is measured on the analysed input, not
+  taken from the signal generator (power-supply ripple was analysed as if the
+  fundamental were 50 Hz instead of 100 Hz).
+- Square-wave generator: edges now have a 1 % rise time; an ideal step let
+  floating-point rounding put the two captured periods' edges at different
+  samples, producing spurious half-harmonic lines at −43 dBc.
+- Analyzer shows absent harmonics as "< −120 dBc" instead of −240.0.
+
 ## [3.1.1] - 2026-10-07
 
 ### Fixed
@@ -80,7 +99,8 @@ First release as a standalone project (previously developed inside
 - Several tube models deviate from datasheet operating points by more than
   20 % (fixed in 3.1.0).
 
-[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/kothf/tube-amp-cad/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/kothf/tube-amp-cad/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/kothf/tube-amp-cad/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/kothf/tube-amp-cad/releases/tag/v3.0.0
