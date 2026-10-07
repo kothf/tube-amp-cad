@@ -397,8 +397,8 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const at = (x, y) => labels.find(l => l[1] === x && l[2] === y);
   // IEC 81346-2:2009: resistors and inductors are both RA (limiting a flow of electrical energy)
   check(at(200, 200)[3] === "RA1" && at(200, 400)[3] === "RA2" && at(450, 500)[3] === "RA3" && at(600, 300)[3] === "RA4", `RA objects numbered in reading order: ${labels.filter(l => /^RA/.test(l[3])).map(l => l[3]).sort().join(" ")}`);
-  check(at(300, 300)[3] === "KF1.1" && at(500, 300)[3] === "KF1.2" && at(100, 300)[3] === "TB1", `dual triode sections stay one object (-KF1.1, -KF1.2); the rectifier tube is TB (-TB1)`);
-  check(at(400, 500)[3] === "CA1" && at(200, 200)[4] === "-RA1", `capacitor -CA1, shown with the "-" prefix`);
+  check(at(300, 300)[3] === "KF1.1" && at(500, 300)[3] === "KF1.2" && at(100, 300)[3] === "TB1", `dual triode sections stay one object (KF1.1, KF1.2); the rectifier tube is TB (TB1)`);
+  check(at(400, 500)[3] === "CA1" && at(200, 200)[4] === "RA1", `capacitor CA1; designations shown without the "-" prefix`);
   // drawing frame: placed from the palette, selectable by its title block only
   await cad.getByRole("button", { name: /Drawing frame/ }).click();
   await clickAt(0, 0);
@@ -538,8 +538,8 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const offs = [...pdf.slice(xref).matchAll(/^(\d{10}) 00000 n $/gm)].map(m => +m[1]);
   check(pdf.startsWith("%PDF-1.4") && /\/MediaBox \[0 0 595.276 841.89\]/.test(pdf) && pdf.slice(xref, xref + 4) === "xref" && offs.every((o, i) => pdf.slice(o).startsWith(`${i + 1} 0 obj`)),
     `Save as PDF: a valid A4 portrait PDF (${pdf.length} bytes, ${offs.length} objects, cross-reference table checks out)`);
-  check(/\(-RA1\) Tj/.test(pdf) && /\(Test stage\) Tj/.test(pdf) && /\/BaseFont \/Courier/.test(pdf) && !/rgb|#/.test(pdf.slice(0, xref).replace(/\/Title \([^)]*\)/, "")),
-    "the PDF holds the drawing as vector paths and text (designation -RA1, title block), black on white");
+  check(/\(RA1\) Tj/.test(pdf) && /\(Test stage\) Tj/.test(pdf) && /\/BaseFont \/Courier/.test(pdf) && !/rgb|#/.test(pdf.slice(0, xref).replace(/\/Title \([^)]*\)/, "")),
+    "the PDF holds the drawing as vector paths and text (designation RA1, title block), black on white");
 }
 
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
