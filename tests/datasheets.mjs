@@ -75,6 +75,7 @@ export const DATASHEETS = [
     // single-ended class A at full drive (cathode bias; B+ includes the 7.2 V cathode rise)
     largeSignal: [{ b: 257, rk: 135, rl: 5200, vrms: 4.3, pout: 5.7, thd: 10, ia: 49.5, ig2: 10.8 }] },
   { tube: "6P14P-EV", alias: "EL84", source: "6П14П = EL84" },
+  { tube: "6P14P", alias: "EL84", source: "6П14П = EL84" },
   { tube: "EL34", kind: "pentode", mu: 11, source: "Philips EL34", points: [
     { va: 250, vg2: 250, vg: -13.5, ia: 100, ig2: 14.9, gm: 11, rp: 15 }] },
   { tube: "6P27S", alias: "EL34", source: "6П27С = EL34" },

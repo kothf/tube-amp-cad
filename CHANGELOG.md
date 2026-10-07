@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.16.1] - 2026-10-07
+
+### Fixed
+- The 6П14П had one database entry shared with the military 6П14П-ЕВ, with
+  the -ЕВ's 14 W anode dissipation limit. The ordinary **6П14П** now has its
+  own entry with the handbook limits (Pa 12 W, Va 300 V, as the EL84), so the
+  dissipation readout and the checks judge it against 12 W.
+
 ## [3.16.0] - 2026-10-07
 
 ### Added
