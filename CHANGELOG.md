@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.16.4] - 2026-10-08
+
+### Fixed
+- Curve tracer legend: every line on the plot is explained, with a swatch in
+  the same style (solid, dashed, ring, shaded) and a tooltip. Added: the
+  70 % Pa line, the shaded area over Pa max, picked points A, B, the line
+  through them, measured points of a model fit.
+- Curve tracer: the plot is redrawn when it changes size without the window
+  resizing (e.g. when the legend wraps to a second line), so clicks land on
+  the point under the pointer.
+
 ## [3.16.3] - 2026-10-07
 
 ### Fixed

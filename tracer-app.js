@@ -324,13 +324,20 @@
     // title
     $("plot-title").textContent = `${t.commonName} · ${d.kind === "pentode" ? `pentode, Vg2 = ${fmtEng(d.vg2, "V", 0)}` : (tubeKind(t) === "pentode" ? "triode-connected" : "triode")}` + (ct ? ` · ${ct.label} in circuit` : " · library preview");
     // legend
+    // legend: one entry for everything drawn, with a swatch in the same style
+    const item = (cls, c, text, tip) => `<span title="${tip}"><i class="${cls}" style="--c:${c}"></i>${text}</span>`;
     $("legend").innerHTML = [
-      `<span><i style="background:#29b6f6"></i>Plate curves (Vg step ${+gStep.toFixed(2)} V)</span>`,
-      ct && S.opts.bias ? `<span><i style="background:#3fb950"></i>Curve at circuit bias ${fmtEng(ct.dc.vgk, "V", 2)}</span>` : "",
-      traj ? `<span><i style="background:#ffd54f"></i>Simulated load line</span>` : "",
-      ct ? `<span><i style="background:#00e5ff"></i>Operating point</span>` : "",
-      S.opts.pa ? `<span><i style="background:#ff3344"></i>Pa max ${t.paMax} W</span>` : "",
-      S.fit ? `<span><i style="background:#ba68c8"></i>Fitted model</span>` : ""
+      item("", "#29b6f6", `Plate curves, Vg step ${+gStep.toFixed(2)} V`, "Anode current against anode voltage at fixed grid voltages; each curve's grid voltage is at its right end"),
+      ct && S.opts.bias ? item("dash", "#3fb950", `Curve at circuit bias ${fmtEng(ct.dc.vgk, "V", 2)}`, "The plate curve at the grid voltage the circuit actually sets") : "",
+      traj ? item("", "#ffd54f", "Simulated load line (arrow: direction)", "The path of the operating point through one cycle of the signal; its slope is the load the tube sees") : "",
+      ct ? item("ring", "#00e5ff", "Operating point Q", "Anode voltage and current with no signal (DC bias)") : "",
+      S.opts.pa ? item("", "#ff3344", `Pa max ${t.paMax} W`, "Maximum anode dissipation: Va × Ia = Pa max") : "",
+      S.opts.pa ? item("area", "#ff3344", "Over Pa max", "Above the curve the anode dissipates more than its rating") : "",
+      S.opts.pa70 ? item("dash", "#ffb300", `70% of Pa max (${+(0.7 * t.paMax).toFixed(1)} W)`, "A comfortable limit for long tube life") : "",
+      S.fit ? item("dash", "#ba68c8", "Fitted model", "Model curves fitted to the measured points") : "",
+      S.fit ? item("dot", "#b9f6ca", "Measured points", "The points the model was fitted to") : "",
+      pts.some(Boolean) ? item("ring", "#ff8ad8", "Picked points A, B", "Click the plot to pick; values are shown below the plot") : "",
+      pts.length === 2 && pts[0] && pts[1] ? item("dash", "#ff8ad8", "Line through A and B", "Its slope gives the load resistance; the value is shown below the plot") : ""
     ].join("");
   }
 
@@ -565,6 +572,9 @@
     ["traj", "pa", "pa70", "bias"].forEach(k => { const el = $("opt-" + k); el.checked = S.opts[k]; el.addEventListener("change", () => { S.opts[k] = el.checked; drawPlot(); }); });
     initPicker();
     window.addEventListener("resize", drawPlot);
+    // the plot also changes size when the legend below it wraps to another line: redraw,
+    // so clicks map onto the plot as it is shown
+    if (window.ResizeObserver) { let size = ""; new ResizeObserver(() => { const c = $("plot"), k = c.clientWidth + "x" + c.clientHeight; if (k !== size) { size = k; drawPlot(); } }).observe($("plot")); }
     $("btn-open-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
     $("btn-model").addEventListener("click", openModelModal);
     $("btn-png").addEventListener("click", () => { const a = document.createElement("a"); a.href = $("plot").toDataURL("image/png"); a.download = current().tube.commonName + "-curves.png"; a.click(); });
