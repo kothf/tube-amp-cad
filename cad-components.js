@@ -274,35 +274,42 @@
       line(ctx, [12, -30, 40, -30]); line(ctx, [12, 30, 40, 30]);
     },
     tube(ctx, c) {
+      // IEC 60617: envelope S00063 (capsule), anode S00703, grids S00705 (dashed),
+      // indirectly heated cathode S00696 (a hook with its lead down) and its
+      // heater S00698 (an inner arc whose leads leave the envelope, not wired here);
+      // pentode as S00746 with the suppressor grid tied to the cathode inside
       const t = tubeByName(c.params.tube), kind = tubeKind(t), conn = c.params.connection || kind;
       ctx.strokeStyle = c._sel ? COL.bodySel : COL.tube;
       ctx.fillStyle = COL.fill;
-      ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, -8, 26, Math.PI, 2 * Math.PI); ctx.lineTo(26, 14); ctx.arc(0, 14, 26, 0, Math.PI); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.lineWidth = 1.6;
+      const cathode = () => {
+        ctx.beginPath(); ctx.moveTo(0, 50); ctx.lineTo(0, 24); ctx.arc(8, 24, 8, Math.PI, 2 * Math.PI); ctx.lineTo(16, 27); ctx.stroke();
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(6.5, 46); ctx.lineTo(6.5, 32); ctx.arc(10, 32, 3.5, Math.PI, 2 * Math.PI); ctx.lineTo(13.5, 46); ctx.stroke();
+        ctx.lineWidth = 1.6;
+      };
       if (kind === "rectifier") {
-        line(ctx, [-20, -50, -20, -30]); line(ctx, [20, -50, 20, -30]);
-        line(ctx, [-26, -14, -14, -14]); line(ctx, [14, -14, 26, -14]);
-        line(ctx, [-20, -14, -20, -30]); line(ctx, [20, -14, 20, -30]);
-        line(ctx, [-12, 14, 12, 14]); line(ctx, [0, 14, 0, 50]);
+        line(ctx, [-24, -16, -14, -16]); line(ctx, [-20, -16, -20, -50]);
+        line(ctx, [14, -16, 24, -16]); line(ctx, [20, -16, 20, -50]);
+        cathode();
         return;
       }
-      // anode
-      line(ctx, [-12, -18, 12, -18]); line(ctx, [0, -18, 0, -50]);
-      // cathode
-      line(ctx, [-12, 18, 12, 18]); line(ctx, [-12, 18, -12, 22]); line(ctx, [0, 18, 0, 50]);
+      line(ctx, [-12, -22, 12, -22]); line(ctx, [0, -22, 0, -50]);       // anode
+      cathode();
       ctx.setLineDash([3, 3]);
       if (conn === "pentode") {
-        line(ctx, [-16, 4, 16, 4]);                       // G1
-        line(ctx, [-16, -7, 16, -7]);                      // G2
-        line(ctx, [-16, 11, 14, 11]);                      // G3 (tied to K)
+        line(ctx, [-15, 0, 15, 0]);                        // G1
+        line(ctx, [-15, -10, 15, -10]);                    // G2
+        line(ctx, [-15, 10, 15, 10]);                      // G3
         ctx.setLineDash([]);
-        line(ctx, [-16, 4, -50, 4, -50, 0]);
-        line(ctx, [16, -7, 50, -7, 50, -10]);
-        line(ctx, [14, 11, 18, 11, 18, 18, 12, 18]);
+        line(ctx, [-50, 0, -15, 0]);
+        line(ctx, [15, -10, 50, -10]);
+        line(ctx, [15, 10, 18, 10, 18, 24, 16, 26]);       // G3 to the cathode
       } else {
-        line(ctx, [-16, 2, 16, 2]);
+        line(ctx, [-15, 0, 15, 0]);
         ctx.setLineDash([]);
-        line(ctx, [-16, 2, -50, 2, -50, 0]);
+        line(ctx, [-50, 0, -15, 0]);
       }
       ctx.setLineDash([]);
     },
@@ -321,7 +328,7 @@
   // ---------------------------------------------------------------------------
   const LIB = {
     resistor: {
-      name: "Resistor", prefix: "R", group: "Passive", bbox: [-30, -10, 30, 10],
+      name: "Resistor", prefix: "RA", group: "Passive", bbox: [-30, -10, 30, 10],
       defaults: { r: 100e3 },
       pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }],
       value: c => fmtEng(c.params.r, "Ω"),
@@ -329,7 +336,7 @@
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "R", nodes: [net("1"), net("2")], r: Math.max(c.params.r, 1e-3) })
     },
     pot: {
-      name: "Potentiometer", prefix: "R", group: "Passive", bbox: [-30, -22, 30, 10],
+      name: "Potentiometer", prefix: "RA", group: "Passive", bbox: [-30, -22, 30, 10],
       defaults: { r: 1e6, pos: 0.5, taper: "lin" },
       pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }, { id: "W", x: 0, y: -20, name: "wiper" }],
       value: c => fmtEng(c.params.r, "Ω") + " " + Math.round(c.params.pos * 100) + "%",
@@ -363,7 +370,7 @@
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "C", nodes: [net("+"), net("-")], c: Math.max(c.params.c, 1e-15) })
     },
     inductor: {
-      name: "Inductor / choke", prefix: "CB", group: "Passive", bbox: [-30, -12, 30, 6],
+      name: "Inductor / choke", prefix: "RA", group: "Passive", bbox: [-30, -12, 30, 6],
       defaults: { l: 5, dcr: 100 },
       pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }],
       value: c => fmtEng(c.params.l, "H"),
@@ -375,7 +382,7 @@
       }
     },
     switch: {
-      name: "Switch (changeover)", prefix: "S", group: "Passive", bbox: [-30, -14, 30, 14],
+      name: "Switch (changeover)", prefix: "SF", group: "Passive", bbox: [-30, -14, 30, 14],
       defaults: { pos: "A" },
       pins: () => [{ id: "C", x: -30, y: 0, name: "common" }, { id: "A", x: 30, y: -10, name: "throw A" }, { id: "B", x: 30, y: 10, name: "throw B" }],
       value: c => "→ " + c.params.pos,
@@ -388,7 +395,7 @@
       }
     },
     speaker: {
-      name: "Speaker", prefix: "P", group: "Passive", bbox: [-6, -20, 16, 20],
+      name: "Speaker", prefix: "PJ", group: "Passive", bbox: [-6, -20, 16, 20],
       defaults: { r: 8 },
       pins: () => [{ id: "+", x: 0, y: -20 }, { id: "-", x: 0, y: 20 }],
       value: c => fmtEng(c.params.r, "Ω"),
@@ -396,7 +403,7 @@
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "R", nodes: [net("+"), net("-")], r: Math.max(c.params.r, 0.1) })
     },
     opt_se: {
-      name: "Output transformer (SE)", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
+      name: "Output transformer (SE)", prefix: "TA", group: "Transformers", bbox: [-40, -34, 40, 34],
       defaults: { zp: 5000, zs: 8, lp: 20, dcrp: 150, dcrs: 0.5 },
       pins: () => [{ id: "P1", x: -40, y: -30, name: "primary (B+)" }, { id: "P2", x: -40, y: 30, name: "primary (anode)" }, { id: "S1", x: 40, y: -30 }, { id: "S2", x: 40, y: 30 }],
       value: c => fmtEng(c.params.zp, "") + ":" + fmtEng(c.params.zs, "Ω"),
@@ -417,7 +424,7 @@
       }
     },
     opt_pp: {
-      name: "Output transformer (PP / UL)", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
+      name: "Output transformer (PP / UL)", prefix: "TA", group: "Transformers", bbox: [-40, -44, 40, 44],
       defaults: { zaa: 8000, zs: 8, lp: 30, tap: 43, dcrp: 120, dcrs: 0.4 },
       pins: () => [
         { id: "P1", x: -40, y: -40, name: "anode 1" }, { id: "U1", x: -40, y: -20, name: "UL tap 1" }, { id: "CT", x: -40, y: 0, name: "centre tap (B+)" },
@@ -446,7 +453,7 @@
       }
     },
     ptx: {
-      name: "Power transformer (HT)", prefix: "T", group: "Transformers", bbox: [-40, -44, 20, 44],
+      name: "Power transformer (HT)", prefix: "TA", group: "Transformers", bbox: [-40, -44, 20, 44],
       defaults: { vrms: 300, freq: 50, rw: 60 },
       pins: () => [{ id: "HT1", x: 20, y: -40 }, { id: "CT", x: 20, y: 0, name: "centre tap" }, { id: "HT2", x: 20, y: 40 }],
       value: c => c.params.vrms + "-0-" + c.params.vrms + "V",
@@ -466,7 +473,7 @@
       }
     },
     ptx_cat: {
-      name: "Power transformer (catalog)", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
+      name: "Power transformer (catalog)", prefix: "TA", group: "Transformers", bbox: [-40, -44, 40, 44],
       defaults: { model: "373BX", tap: "230", bias: "no" },
       // primary on the left (wire an AC mains source to it), HV winding on the right
       pins: c => {
@@ -529,8 +536,9 @@
       }
     },
     tube: {
-      // amplifying tubes treat signals (K); a rectifier transforms AC to DC (T)
-      name: "Vacuum tube", prefix: "K", prefixFor: c => tubeKind(tubeByName(c.params.tube)) === "rectifier" ? "T" : "K", group: "Tubes", bbox: [-50, -50, 50, 50],
+      // IEC 81346-2:2009 KF "processing of electrical signals: electronic valve, electronic tube";
+      // a rectifier tube is TB "converting electrical energy, changing its form: rectifier"
+      name: "Vacuum tube", prefix: "KF", prefixFor: c => tubeKind(tubeByName(c.params.tube)) === "rectifier" ? "TB" : "KF", group: "Tubes", bbox: [-50, -50, 50, 50],
       defaults: { tube: "12AX7", connection: "triode" },
       pins: c => {
         const t = tubeByName(c.params.tube), kind = tubeKind(t);
@@ -559,7 +567,7 @@
       }
     },
     diode: {
-      name: "Silicon diode", prefix: "R", group: "Semiconductors", bbox: [-20, -9, 20, 9],
+      name: "Silicon diode", prefix: "RA", group: "Semiconductors", bbox: [-20, -9, 20, 9],
       defaults: { model: "1N4007" },
       pins: () => [{ id: "A", x: -20, y: 0, name: "anode" }, { id: "K", x: 20, y: 0, name: "cathode" }],
       value: c => c.params.model,
@@ -586,7 +594,7 @@
       }
     },
     siggen: {
-      name: "Signal generator", prefix: "G", group: "Sources", bbox: [-16, -30, 16, 30],
+      name: "Signal generator", prefix: "GF", group: "Sources", bbox: [-16, -30, 16, 30],
       defaults: { wave: "sine", freq: 1000, amp: 1, offset: 0, phase: 0, rs: 50 },
       pins: () => [{ id: "+", x: 0, y: -30, name: "output" }, { id: "-", x: 0, y: 30, name: "common" }],
       value: c => fmtEng(c.params.amp, "Vpk") + " " + fmtEng(c.params.freq, "Hz"),
@@ -647,7 +655,7 @@
       build: () => {}
     },
     scope: {
-      name: "Oscilloscope", prefix: "P", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true,
+      name: "Oscilloscope", prefix: "PH", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true,
       defaults: { ch1: "auto", ch2: "auto", time: "auto", coupling1: "dc", coupling2: "dc", probe: "10x" },
       pins: () => [{ id: "CH1", x: -80, y: -30 }, { id: "CH2", x: -80, y: -10 }, { id: "COM", x: -80, y: 30, name: "common" }],
       value: () => "",

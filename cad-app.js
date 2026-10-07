@@ -719,7 +719,7 @@
     });
     commit();
   }
-  // Sections of one switch share its name before the dot (S1.1, S1.2) and always move together.
+  // Sections of one switch share its name before the dot (SF1.1, SF1.2) and always move together.
   function switchGang(c) { const i = c.label.lastIndexOf("."); return i > 0 ? c.label.slice(0, i) : null; }
   function setSwitch(c, pos) {
     const g = switchGang(c);
@@ -906,27 +906,42 @@
     ctx.fillStyle = sel ? COL.bodySel : COL.text;
     const vertical = (b.y2 - b.y1) > (b.x2 - b.x1) * 1.2 && c.type !== "tube";
     if (c.type === "scope") {
-      ctx.textAlign = "left"; ctx.fillText(desig(c) + "  oscilloscope", b.x1 + 10, b.y1 - 6);
+      // IEC 60617 S00922 oscilloscope: circle with a time-base trace
+      ctx.save(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(b.x1 + 18, b.y1 - 11, 8, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(b.x1 + 13, b.y1 - 8); ctx.lineTo(b.x1 + 20, b.y1 - 15); ctx.lineTo(b.x1 + 20, b.y1 - 8); ctx.lineTo(b.x1 + 24, b.y1 - 12); ctx.stroke(); ctx.restore();
+      ctx.textAlign = "left"; ctx.fillText(desig(c) + "  oscilloscope", b.x1 + 32, b.y1 - 6);
       ctx.font = "9px ui-monospace, monospace"; ctx.fillStyle = "#ffd54f"; ctx.fillText("CH1", c.x - 88, c.y - 34); ctx.fillStyle = "#00e5ff"; ctx.fillText("CH2", c.x - 88, c.y - 14); ctx.fillStyle = "#8b949e"; ctx.fillText("COM", c.x - 88, c.y + 26);
       return;
     }
+    // IEC 61082-1 7.1.6.1 / 7.1.2.5: the reference designation goes to the left of a
+    // symbol with mainly vertical terminal lines and above one with mainly horizontal
+    // ones; technical data on the same side, below (or right of) the designation
     if (c.type === "tube") {
+      if ((c.rot & 1) === 0) {   // anode up, cathode down: text to the left, clear of the grid lead
+        ctx.textAlign = "right";
+        ctx.fillText(desig(c), c.x - 30, c.y - 28);
+        ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
+        ctx.fillText(val, c.x - 30, c.y - 15);
+      } else {
+        ctx.textAlign = "center";
+        ctx.fillText(desig(c), c.x, b.y1 - 17);
+        ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
+        ctx.fillText(val, c.x, b.y1 - 5);
+      }
       ctx.textAlign = "left";
-      ctx.fillText(desig(c), c.x + 34, c.y + 26);
-      ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
-      ctx.fillText(val, c.x + 34, c.y + 39);
       return;
     }
     if (vertical) {
-      ctx.textAlign = "left";
-      ctx.fillText(desig(c), b.x2 + 5, c.y - 2);
+      ctx.textAlign = "right";
+      ctx.fillText(desig(c), b.x1 - 5, c.y - 2);
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
-      ctx.fillText(val, b.x2 + 5, c.y + 11);
+      ctx.fillText(val, b.x1 - 5, c.y + 11);
     } else {
       ctx.textAlign = "center";
-      ctx.fillText(desig(c), c.x, b.y1 - 5);
+      ctx.fillText(desig(c), c.x, b.y1 - (val ? 17 : 5));
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
-      ctx.fillText(val, c.x, b.y2 + 12);
+      if (val) ctx.fillText(val, c.x, b.y1 - 5);
     }
     ctx.textAlign = "left";
   }
@@ -1158,7 +1173,7 @@
     }
     if (c.type === "switch") {
       const p = document.createElement("p"); p.className = "insp-help";
-      p.textContent = "Double-click the switch on the sheet to flip it. Sections named like S1.1 and S1.2 are one switch and flip together.";
+      p.textContent = "Double-click the switch on the sheet to flip it. Sections named like SF1.1 and SF1.2 are one switch and flip together.";
       host.appendChild(p);
     }
     if (c.type === "scope") {
@@ -1263,7 +1278,7 @@
         <li><b>View:</b> wheel zooms, <kbd>Space</kbd>/middle-drag pans, <kbd>F</kbd> fits.</li>
         <li><b>Measure:</b> hover a wire for its voltage; wire an Oscilloscope to see waveforms; double-click it for the full scope.</li>
         <li><b>Simulate:</b> <i>Live</i> re-simulates after every edit. Turn it off to simulate only on <i>▶ Simulate</i> (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>), which always runs until the circuit has settled.</li>
-        <li><b>Switch:</b> double-click to flip it; sections named S1.1, S1.2… flip together.</li>
+        <li><b>Switch:</b> double-click to flip it; sections named SF1.1, SF1.2… flip together.</li>
         <li><b>Standards:</b> symbols follow IEC 60617 and designations IEC 81346 (shown with the "-" prefix). Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
       </ul>`;
     const rb = host.querySelector("#btn-renumber"); if (rb) rb.addEventListener("click", renumber);

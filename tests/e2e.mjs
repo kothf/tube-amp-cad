@@ -55,12 +55,12 @@ await cad.mouse.move(mx, my); await cad.keyboard.press("r"); await cad.mouse.cli
 await cad.getByRole("button", { name: /^Capacitor/ }).click();
 await clickAt(500, 300);
 let s = await state();
-const R1 = s.comps.find(c => c.label === "R1"), C1 = s.comps.find(c => c.label === "CA1");
-check(R1 && R1.rot === 1 && C1 && C1.x === 500, "parts placed from the palette with IEC 81346 class codes (R1, CA1), rotated with R, snapped to the grid");
+const R1 = s.comps.find(c => c.label === "RA1"), C1 = s.comps.find(c => c.label === "CA1");
+check(R1 && R1.rot === 1 && C1 && C1.x === 500, "parts placed from the palette with IEC 81346-2 class codes (RA1, CA1), rotated with R, snapped to the grid");
 
 const a = await pin(R1.id, "2"), b = await pin(C1.id, "1");
 await clickAt(a.x, a.y); await clickAt(a.x, b.y); await clickAt(b.x, b.y);
-check(await sameNet(`${R1.id}:2`, `${C1.id}:1`), "wire drawn pin → corner → pin connects R1 to CA1");
+check(await sameNet(`${R1.id}:2`, `${C1.id}:1`), "wire drawn pin → corner → pin connects RA1 to CA1");
 
 const [cx, cy] = await toScreen(500, 300), [dx, dy] = await toScreen(540, 340);
 await cad.mouse.move(cx, cy); await cad.mouse.down(); await cad.mouse.move(dx, dy, { steps: 5 }); await cad.mouse.up();
@@ -204,7 +204,7 @@ const [tx, ty] = await cad.evaluate(id => { const S = TubeCAD.state, c = S.comps
 await cad.mouse.click(tx, ty);
 await tracer.waitForFunction(() => document.getElementById("plot-title").textContent.includes("in circuit"), null, { timeout: 5000 }).catch(() => {});
 const title = await tracer.textContent("#plot-title");
-check(title.includes("12AX7") && title.includes("K1 in circuit"), `clicking K1 in the CAD shows it on the curve tracer ("${title.trim()}")`);
+check(title.includes("12AX7") && title.includes("KF1 in circuit"), `clicking KF1 in the CAD shows it on the curve tracer ("${title.trim()}")`);
 // pick points: the operating point (snapped), then a free point on the plot
 {
   const q = await tracer.evaluate(() => { const ct = TubeTracer.current().circuit; return { ...TubeTracer.toScreen(ct.dc.vak, ct.dc.ia), vgk: ct.dc.vgk, vak: ct.dc.vak, ia: ct.dc.ia }; });
@@ -391,9 +391,10 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await cad.getByRole("button", { name: /Renumber designations/ }).click();
   const labels = await cad.evaluate(() => TubeCAD.state.comps.map(c => [c.type, c.x, c.y, c.label, TubeCAD.desig(c)]));
   const at = (x, y) => labels.find(l => l[1] === x && l[2] === y);
-  check(at(200, 200)[3] === "R1" && at(200, 400)[3] === "R2" && at(600, 300)[3] === "R3", `resistors numbered in reading order: ${["R1", "R2", "R3"].map(n => labels.find(l => l[3] === n) ? n : "?").join(" ")}`);
-  check(at(300, 300)[3] === "K1.1" && at(500, 300)[3] === "K1.2" && at(100, 300)[3] === "T1", `dual triode sections stay one object (-K1.1, -K1.2); the rectifier tube is class T (-T1)`);
-  check(at(400, 500)[3] === "CA1" && at(450, 500)[3] === "CB1" && at(200, 200)[4] === "-R1", `capacitor -CA1, inductor -CB1, shown with the "-" prefix`);
+  // IEC 81346-2:2009: resistors and inductors are both RA (limiting a flow of electrical energy)
+  check(at(200, 200)[3] === "RA1" && at(200, 400)[3] === "RA2" && at(450, 500)[3] === "RA3" && at(600, 300)[3] === "RA4", `RA objects numbered in reading order: ${labels.filter(l => /^RA/.test(l[3])).map(l => l[3]).sort().join(" ")}`);
+  check(at(300, 300)[3] === "KF1.1" && at(500, 300)[3] === "KF1.2" && at(100, 300)[3] === "TB1", `dual triode sections stay one object (-KF1.1, -KF1.2); the rectifier tube is TB (-TB1)`);
+  check(at(400, 500)[3] === "CA1" && at(200, 200)[4] === "-RA1", `capacitor -CA1, shown with the "-" prefix`);
   // drawing frame: placed from the palette, selectable by its title block only
   await cad.getByRole("button", { name: /Drawing frame/ }).click();
   await clickAt(0, 0);
