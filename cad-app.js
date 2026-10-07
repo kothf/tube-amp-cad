@@ -1192,7 +1192,7 @@
     // tubes from the shared database
     addGroup("Tubes");
     const search = document.createElement("input");
-    search.type = "search"; search.placeholder = "Search 40 tubes…"; search.className = "pal-search";
+    search.type = "search"; search.placeholder = `Search ${TUBE_DATABASE.length} tubes…`; search.className = "pal-search";
     host.appendChild(search);
     const list = document.createElement("div");
     host.appendChild(list);

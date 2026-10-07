@@ -165,6 +165,14 @@
     }
     $("socket-name").textContent = tube.socket;
     $("socket-note").textContent = tube.heaterWarning || "";
+    // where the data comes from: the handbook page with its rated point and limits
+    const b = tube.book, src = $("socket-source");
+    if (src) {
+      if (b) {
+        const L = b.limits || {}, lim = [L.va && `Ua ${L.va} V`, L.vg2 && `Ug2 ${L.vg2} V`, L.pa && `Pa ${L.pa} W`, L.pg2 && `Pg2 ${L.pg2} W`, (L.ik || L.ia) && `Ik ${L.ik || L.ia} mA`, L.vkh && `Uk-h ${L.vkh} V`, L.i_rect_ma && `rectified ${L.i_rect_ma} mA`, L.v_inverse && `inverse ${L.v_inverse} V`].filter(Boolean);
+        src.textContent = `${b.name}: ${b.source}, p. ${b.page}` + (b.analogs ? ` · analogs ${b.analogs.join(", ")}` : "") + (lim.length ? ` · limits ${lim.join(", ")}` : "") + (pins.length ? "" : " · pinout not entered");
+      } else src.textContent = "Not in Katsnelson & Larionov 1981: maker's datasheet.";
+    }
   }
 
   // ---------------------------------------------------------------------------

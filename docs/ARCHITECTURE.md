@@ -9,7 +9,7 @@ Static, framework-free JS (classic `<script>` files, no build step). There are *
 
 | File | Role |
 |------|------|
-| `tube-db.js` | `var TUBE_DATABASE` — the **single** tube database (40 tubes: Koren params per mode, ratings, pinouts). Shared by every page. |
+| `tube-db.js` | `var TUBE_DATABASE` — the **single** tube database (99 tubes: Koren params per mode, ratings, pinouts; Soviet tubes from Katsnelson & Larionov 1981, with the page in each entry's `book` field). Shared by every page. |
 | `sim-engine.js` | `TubeSimEngine`: circuit solver (MNA + Newton-Raphson, backward-Euler transient, periodic steady state with MPE extrapolation). Koren tube models, vacuum/silicon diodes, coupled-winding transformers. With a rectified supply (sources with `dcValue`) the DC pass is only an estimate, so `result.dc` holds the averages over the settled capture window (`dcAveraged`, estimate kept in `dcEstimate`). `startup(netlist, { tStop, probes: [[node, ref]], maxPoints })` is the power-on transient from a cold start, returning min/max envelopes per probe (the CAD runs it in a second worker for the oscilloscope). Options of `simulate`: `budgetMs`, `maxPeriods`; the CAD runs a short "live" budget and continues unsettled runs as a "full" one. |
 | `sim-worker.js` | Runs the engine in a Web Worker for the CAD. |
 | `cad-components.js` | `CadLib`: part library (pins on a 10 px grid, symbols, inspector fields, `build()` → solver elements), `parseEng`/`fmtEng`. |

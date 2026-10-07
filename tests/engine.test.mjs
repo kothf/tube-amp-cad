@@ -21,14 +21,32 @@ const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
 const near = (actual, expected, relTol, msg) =>
   assert.ok(Math.abs(actual - expected) <= relTol * Math.abs(expected), `${msg}: got ${actual}, expected ${expected} ±${relTol * 100}%`);
 
-test("tube database: 43 tubes, every amplifier tube has Koren parameters", () => {
+test("tube database: 99 tubes, every amplifier tube has Koren parameters", () => {
   const db = globalThis.TUBE_DATABASE;
-  assert.equal(db.length, 43);
+  assert.equal(db.length, 99);
   for (const t of db) {
     if (t.category === "rectifier") assert.ok(E.RECTIFIER_PERVEANCE[t.commonName], `${t.commonName}: rectifier perveance`);
     else for (const k of ["mu", "kg", "kp", "kvb", "x"]) assert.ok(t.koren.Triode[k] > 0, `${t.commonName}: Triode.${k}`);
   }
 });
+
+// Katsnelson & Larionov 1981 rectifier test circuits: Ua rms per anode, load, reservoir C,
+// guaranteed minimum rectified current (5Ц9С: the load printed as 22 kΩ is 2.2 kΩ)
+for (const [name, ua, rn, c, anodes, minMa, page] of [["5Ts3S", 500, 2000, 4e-6, 2, 230, 72], ["5Ts4S", 500, 4700, 4e-6, 2, 122, 73],
+  ["5Ts8S", 500, 1000, 4e-6, 2, 400, 74], ["5Ts9S", 500, 2200, 4e-6, 2, 190, 75], ["6Ts4P", 350, 5200, 8e-6, 2, 75, 75],
+  ["6Ts5S", 400, 5700, 8e-6, 2, 70, 76], ["6Ts13P", 650, 5000, 4e-6, 1, 120, 77]]) {
+  test(`${name} in the K&L 1981 test circuit (p. ${page}) delivers at least ${minMa} mA`, () => {
+    const P = E.RECTIFIER_PERVEANCE[name];
+    const els = [{ id: "S1", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 50, amp: ua * Math.SQRT2, offset: 0 },
+      { id: "D1", kind: "VDIODE", nodes: [1, 3], perveance: P }, { id: "C", kind: "C", nodes: [3, 0], c }, { id: "R", kind: "R", nodes: [3, 0], r: rn }];
+    if (anodes === 2) els.push({ id: "S2", kind: "VSRC", nodes: [2, 0], wave: "sine", freq: 50, amp: ua * Math.SQRT2, offset: 0, phase: 180 }, { id: "D2", kind: "VDIODE", nodes: [2, 3], perveance: P });
+    const r = E.simulate({ nodeCount: 4, elements: els }, { budgetMs: 20000 });
+    assert.ok(r.ok, r.error);
+    const v = r.tran.nodes[3]; let sum = 0; for (let i = 0; i < v.length - 1; i++) sum += v[i];
+    const ma = sum / (v.length - 1) / rn * 1000;
+    assert.ok(ma >= minMa * 0.99 && ma < minMa * 1.15, `${name}: ${ma.toFixed(1)} mA (book minimum ${minMa} mA)`);
+  });
+}
 
 test("resistor divider: exact DC solution", () => {
   const r = E.simulate({ nodeCount: 3, elements: [
@@ -198,7 +216,7 @@ for (const t of globalThis.TUBE_DATABASE.filter(t => t.category !== "rectifier")
       if (pt.rp) {
         const h = Math.max(0.5, pt.va * 0.002);
         const rp = (2 * h) / (mA(ds.kind, p, { ...pt, va: pt.va + h }, vg) - mA(ds.kind, p, { ...pt, va: pt.va - h }, vg));
-        near(rp, pt.rp, 0.15, `${t.commonName} rp (kΩ)`);
+        near(rp, pt.rp, (pt.tol && pt.tol.rp) || 0.15, `${t.commonName} rp (kΩ)`);
       }
       if (pt.ig2) near(1e3 * E.Koren.screenI(vg, pt.vg2, p, pt.va), pt.ig2, 0.2, `${t.commonName} Ig2 (mA)`);
     });

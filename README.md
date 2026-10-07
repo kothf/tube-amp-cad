@@ -51,10 +51,14 @@ circuit is saved in the browser.
   voltage with ΔT and ΔV on the scope, frequency and level on the analyzer,
   and Vg, dissipation, gm, rp and µ at a point of the plate curves, with the
   load line through two points.
-- **43 tubes** — Western and Soviet small-signal triodes (12AX7, 6N2P, 6SN7…),
-  power tubes (EL84, EL34, 6V6, KT88, 300B, 845, GU-50…), the triode-pentode
-  6Ф3П / ECL82 as two sections, and rectifiers
-  (5U4G, GZ34, 5Ts3S…), with pinouts and ratings.
+- **99 tubes** — the Soviet receiving tubes from Katsnelson & Larionov,
+  «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981):
+  triodes and double triodes (6С2С, 6С33С, 6Н1П…6Н33Б), voltage and output
+  pentodes (6Ж1П, 6Ж32П, 6П1П, 6П3С, 6П14П, 6П27С…), triode-pentodes as two
+  sections (6Ф1П, 6Ф3П, 6Ф4П, 6Ф5П) and kenotrons (5Ц3С, 5Ц4С, 6Ц4П…), with
+  the handbook's ratings and models fitted to its rated operating points; plus
+  Western tubes from their makers' datasheets (12AX7, EL84, EL34, KT88, 300B,
+  845, GZ34…).
 
 | Curve tracer | Oscilloscope |
 |---|---|
