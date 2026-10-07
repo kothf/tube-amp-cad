@@ -129,9 +129,24 @@
   function line(ctx, pts) { ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke(); }
 
   const DRAW = {
-    resistor(ctx) {
+    resistor(ctx, c) {
       line(ctx, [-30, 0, -15, 0]); line(ctx, [15, 0, 30, 0]);
       ctx.fillStyle = COL.fill; ctx.fillRect(-15, -6, 30, 12); ctx.strokeRect(-15, -6, 30, 12);
+      // rated power marked inside the body (ГОСТ 2.728-74): 0.125 W //, 0.25 W /, 0.5 W —,
+      // 1 W |, 2 W ||, above that the watts in Roman numerals (III, V, X, XX)
+      const w = +c.params.w, X = x => { line(ctx, [x - 3, -4, x + 3, 4]); line(ctx, [x - 3, 4, x + 3, -4]); };
+      if (!w) return;
+      ctx.save(); ctx.lineWidth = 1.4;
+      if (w === 0.125) { line(ctx, [-6, 4, -2, -4]); line(ctx, [2, 4, 6, -4]); }
+      else if (w === 0.25) line(ctx, [-2, 4, 2, -4]);
+      else if (w === 0.5) line(ctx, [-8, 0, 8, 0]);
+      else if (w === 1) line(ctx, [0, -4, 0, 4]);
+      else if (w === 2) { line(ctx, [-3, -4, -3, 4]); line(ctx, [3, -4, 3, 4]); }
+      else if (w === 3) { line(ctx, [-5, -4, -5, 4]); line(ctx, [0, -4, 0, 4]); line(ctx, [5, -4, 5, 4]); }
+      else if (w === 5) line(ctx, [-4, -4, 0, 4, 4, -4]);
+      else if (w === 10) X(0);
+      else if (w === 20) { X(-4); X(4); }
+      ctx.restore();
     },
     pot(ctx, c) {
       line(ctx, [-30, 0, -15, 0]); line(ctx, [15, 0, 30, 0]);
@@ -335,10 +350,12 @@
   const LIB = {
     resistor: {
       name: "Resistor", prefix: "R", group: "Passive", bbox: [-30, -10, 30, 10],
-      defaults: { r: 100e3 },
+      defaults: { r: 100e3, w: "" },
       pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }],
-      value: c => fmtEng(c.params.r, "Ω"),
-      fields: [{ key: "r", label: "Resistance", unit: "Ω", kind: "eng" }],
+      // the rating is marked in the body; the text repeats it from 1 W up (small ones are the usual default)
+      value: c => fmtEng(c.params.r, "Ω") + (+c.params.w >= 1 ? " " + (+c.params.w) + "W" : ""),
+      fields: [{ key: "r", label: "Resistance", unit: "Ω", kind: "eng" },
+        { key: "w", label: "Power rating", kind: "select", options: [["", "Not specified"], ["0.125", "0.125 W"], ["0.25", "0.25 W"], ["0.5", "0.5 W"], ["1", "1 W"], ["2", "2 W"], ["3", "3 W"], ["5", "5 W"], ["10", "10 W"], ["20", "20 W"]] }],
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "R", nodes: [net("1"), net("2")], r: Math.max(c.params.r, 1e-3) })
     },
     pot: {

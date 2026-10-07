@@ -588,6 +588,18 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(streams.length === 2 && !/\(R1\) Tj/.test(streams[0]) && /\(R1\) Tj/.test(streams[1]) && /\(\+B\) Tj/.test(streams[0]) && /\(\+b \) Tj/.test(streams[1]), "each PDF page holds only the parts on its own sheet");
 }
 
+// --- 14. Resistor power rating ----------------------------------------------------
+{
+  // the 1 kΩ load of section 13 across 300 V dissipates 90 W; rate it 10 W
+  const v = await cad.evaluate(() => { const l = TubeCAD.state.comps.find(c => c.type === "resistor"); l.params.w = "10"; TubeCAD.state.sel.comps.clear(); TubeCAD.commit(); return CadLib.LIB.resistor.value(l); });
+  await cad.evaluate(() => TubeCAD.runSim("full"));
+  await cad.waitForFunction(() => { const S = TubeCAD.state; return S.sim.result && !S.sim.busy; }, null, { timeout: 30000 });
+  await cad.waitForFunction(() => /dissipates/.test(document.getElementById("inspector").textContent), null, { timeout: 10000 }).catch(() => {});
+  const r = await cad.evaluate(() => { const l = TubeCAD.state.comps.find(c => c.type === "resistor"); return { p: TubeCAD.resistorPower(l), text: document.getElementById("inspector").textContent, small: CadLib.LIB.resistor.value({ params: { r: 470e3, w: "0.25" } }) }; });
+  check(v === "1kΩ 10W" && r.small === "470kΩ", `the value text carries ratings from 1 W up ("${v}"; a 0.25 W part reads "${r.small}" and shows it by the mark in its body)`);
+  check(Math.abs(r.p - 90) < 1 && /R1 dissipates 90(\.0+)? ?W, more than its 10 W rating/.test(r.text), `the circuit checks flag a resistor beyond its rating (${r.p.toFixed(1)} W in a 10 W part)`);
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 
