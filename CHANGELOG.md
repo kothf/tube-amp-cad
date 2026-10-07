@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.16.0] - 2026-10-07
+
+### Added
+- **Power rating for resistors** (0.125 … 20 W, or not specified). The symbol
+  shows it inside the body as in ГОСТ 2.728 (// 0.125 W, / 0.25 W, — 0.5 W,
+  | 1 W, || 2 W, Roman numerals from 3 W), and the value text repeats it from
+  1 W up. The inspector gives the simulated average power as a share of the
+  rating (amber above 60 %, red above 100 %), and the circuit checks list every
+  resistor run beyond its rating.
+
 ## [3.15.0] - 2026-10-07
 
 ### Added

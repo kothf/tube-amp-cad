@@ -24,7 +24,8 @@ circuit is saved in the browser.
   from an AC mains source you wire to the primary.
 - **IEC drawings** — symbols to IEC 60617, reference designations with the
   classic letter codes (R1, C1, L1, T1, VL1.1 … as in ГОСТ 2.710, with
-  automatic renumbering in reading order),
+  automatic renumbering in reading order), resistor power ratings marked in the
+  symbol (ГОСТ 2.728) and checked against the simulated dissipation,
   and an IEC 61082 sheet: drawing frame with reference grid and an ISO 7200
   title block. A circuit can span several sheets (File → Add sheet…): sheet
   connectors with the same signal name join their wires across sheets, show

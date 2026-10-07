@@ -342,6 +342,13 @@
   function netDC(net) { const r = S.sim.result; return r && net !== undefined && r.dc.nodes[net] !== undefined ? r.dc.nodes[net] : null; }
   function netWave(net) { const r = S.sim.result; return r && r.tran && net !== undefined && net > 0 ? r.tran.nodes[net] : null; }
   function pinNetOf(c, pid) { const T = S.sim.topo || topo(); return T.pinNet.get(c.id + ":" + pid); }
+  // average power in a resistor: from the steady-state waveform when there is one, else DC
+  function resistorPower(c) {
+    const wa = waveOf(c, "1"), wb = waveOf(c, "2");
+    if (wa && wb) { let s = 0; for (let i = 0; i < wa.length; i++) { const v = wa[i] - wb[i]; s += v * v; } return s / wa.length / c.params.r; }
+    const va = netDC(pinNetOf(c, "1")), vb = netDC(pinNetOf(c, "2"));
+    return va === null || vb === null ? null : (va - vb) * (va - vb) / c.params.r;
+  }
   function waveOf(c, pid) {
     const n = pinNetOf(c, pid), r = S.sim.result;
     if (!r || !r.tran) return null;
@@ -1350,8 +1357,11 @@
       }
       case "resistor": case "pot": {
         if (c.type === "pot") { h += kv("Wiper DC", fmtEng(netDC(pinNetOf(c, "W")), "V", 2)); return h; }
-        const v = vAcross("1", "2"), p = pAvg("1", "2", c.params.r);
-        h += kv("Voltage (DC)", fmtEng(v, "V", 2)) + kv("Current (DC)", fmtEng(v / c.params.r, "A", 2)) + kv("Power (avg)", fmtEng(p, "W", 2), p > 1 ? "warn" : "");
+        const v = vAcross("1", "2"), p = resistorPower(c), w = +c.params.w;
+        h += kv("Voltage (DC)", fmtEng(v, "V", 2)) + kv("Current (DC)", fmtEng(v / c.params.r, "A", 2));
+        // rated: share of the rating (over 60 % runs hot: derate about 2×); unrated: flag above 1 W
+        h += w ? kv("Power (avg)", `${fmtEng(p, "W", 2)} · ${Math.round(p / w * 100)}% of ${w} W`, p > w ? "bad" : p > 0.6 * w ? "warn" : "")
+               : kv("Power (avg)", fmtEng(p, "W", 2), p > 1 ? "warn" : "");
         return h;
       }
       case "capacitor": case "electrolytic": {
@@ -1428,6 +1438,7 @@
     if (shorted.length) issues.push("Shorted by wiring: " + shorted.join(", "));
     if (S.sim.error) issues.push(S.sim.error);
     (S.sim.warnings || []).forEach(w => issues.push(w));
+    S.comps.forEach(c => { if (c.type !== "resistor" || !+c.params.w) return; const p = resistorPower(c); if (p !== null && p > +c.params.w) issues.push(`${c.label} dissipates ${fmtEng(p, "W", 2)}, more than its ${+c.params.w} W rating.`); });
     S.comps.forEach(c => { if (c.type !== "tube") return; const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier" && d.dc.vak * d.dc.ia > d.paMax) issues.push(`${c.label} over dissipation (${(d.dc.vak * d.dc.ia).toFixed(1)} W > ${d.paMax} W).`); });
     h += `<div class="insp-sub">Checks</div>` + (issues.length ? issues.map(i => `<p class="insp-help warn">⚠ ${i}</p>`).join("") : `<p class="insp-help ok">✓ No problems found.</p>`);
     return h;
@@ -1687,6 +1698,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, newCircuit, addSheet, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
