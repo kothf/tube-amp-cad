@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.14.0] - 2026-10-07
+
+### Changed
+- Reference designations use the classic letter codes instead of the
+  IEC 81346-2 class codes: R resistors and potentiometers, C capacitors,
+  L chokes, T transformers, VL tubes (rectifiers too), VD diodes, SA
+  switches, BA speakers, G sources, P oscilloscopes. New parts get them, and
+  "Renumber designations" converts an existing circuit.
+
 ## [3.13.1] - 2026-10-07
 
 ### Changed
