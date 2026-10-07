@@ -91,6 +91,8 @@
     .menu-item { white-space: nowrap; display: flex; justify-content: space-between; gap: 16px; width: 100%; background: none; border: 0; color: var(--text); font: inherit; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
     .menu-item:hover, .menu-item:focus { background: var(--panel2, #18212e); outline: none; }
     .menu-item kbd { color: var(--muted); font: 11px ui-monospace, monospace; border: 0; background: none; }
+    #sheet-nav[hidden] { display: none; }
+    #sheet-nav { max-width: 220px; }
     .menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
     .new-form { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin: 10px 0; }
     .new-form .seg { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -109,6 +111,7 @@
       <button class="btn" id="btn-file" aria-haspopup="true" aria-expanded="false">File ▾</button>
       <div class="menu-list" role="menu" hidden>
         <button class="menu-item" role="menuitem" id="btn-new">New…<kbd>with frame</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-add-sheet">Add sheet…<kbd>next sheet</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-open">Open…<kbd>Ctrl+O</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <div class="menu-sep"></div>
@@ -130,6 +133,7 @@
     <span id="zoom-label">100%</span>
     <button class="btn" id="btn-zoom-in" title="Zoom in (+)">+</button>
     <button class="btn" id="btn-zoom-fit" title="Fit circuit (F)">Fit</button>
+    <select id="sheet-nav" class="btn" title="Show one sheet" hidden></select>
     <button class="btn active" id="btn-volts" title="Show DC node voltages">Voltages</button>
     <span class="sep"></span>
     <button class="btn active" id="btn-live" title="Live: re-simulate after every edit (a run that does not settle in time continues in the background)">Live</button>

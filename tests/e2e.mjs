@@ -542,6 +542,52 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     "the PDF holds the drawing as vector paths and text (designation R1, title block), black on white");
 }
 
+// --- 13. Several sheets, joined by sheet connectors -------------------------------
+{
+  // the A4 portrait sheet from section 12 holds R1; add a second sheet from the File menu
+  await cad.locator("#btn-file").click();
+  await cad.getByRole("menuitem", { name: /Add sheet/ }).click();
+  check(await cad.locator("#new-modal .insp-title").textContent() === "Add sheet", "File → Add sheet… opens the format dialog for a further sheet");
+  await cad.locator('#new-size .btn[data-v="A4"]').click();
+  await cad.locator('#new-orient .btn[data-v="landscape"]').click();
+  await cad.locator("#new-title").fill("Output stage");
+  await cad.locator("#btn-new-create").click();
+  const sh = await cad.evaluate(() => TubeCAD.frames().map(f => ({ x: f.x, y: f.y, sheet: f.params.sheet, title: f.params.title, size: f.params.size, orient: f.params.orient, w: CadLib.sheetGeom(f).W })));
+  check(sh.every(f => f.x % 10 === 0 && f.y % 10 === 0), `sheets lie on the drawing grid (x ${sh.map(f => f.x).join(", ")})`);
+  check(sh.length === 2 && sh[0].sheet === "1/2" && sh[1].sheet === "2/2" && sh[1].x >= sh[0].x + sh[0].w && sh[1].y === sh[0].y && sh[1].title === "Output stage" && sh[1].orient === "landscape",
+    `the new sheet sits right of sheet 1 and both are numbered (${sh.map(s => s.sheet).join(", ")})`);
+  const nav = await cad.evaluate(() => { const n = document.getElementById("sheet-nav"); return { hidden: n.hidden, opts: [...n.options].map(o => o.textContent) }; });
+  check(!nav.hidden && nav.opts.length === 3 && /^Sheet 2 · Output stage/.test(nav.opts[2]), `the Sheet selector lists both sheets (${nav.opts.join(" | ")})`);
+  // a 300 V supply on sheet 1 feeds a 1 kΩ load on sheet 2 through two "+B" connectors
+  const r = await cad.evaluate(() => {
+    const S = TubeCAD.state, C = TubeCAD, [f1, f2] = C.frames();
+    S.comps = S.comps.filter(c => c.type === "frame"); S.wires = [];
+    const add = (t, p, x, y, rot) => { const c = C.makeComp(t, p, x, y, rot || 0); S.comps.push(c); return c; };
+    const v = add("vdc", { v: 300 }, f1.x + 300, f1.y + 300), g1 = add("ground", {}, f1.x + 300, f1.y + 330);
+    const k1 = add("offsheet", { name: "+B" }, f1.x + 400, f1.y + 270, 0);
+    const k2 = add("offsheet", { name: "+b " }, f2.x + 200, f2.y + 270, 2), load = add("resistor", { r: 1000 }, f2.x + 300, f2.y + 300, 1), g2 = add("ground", {}, f2.x + 300, f2.y + 330);
+    S.wires.push({ id: "wa", x1: f1.x + 300, y1: f1.y + 270, x2: f1.x + 400, y2: f1.y + 270 }, { id: "wb", x1: f2.x + 200, y1: f2.y + 270, x2: f2.x + 300, y2: f2.y + 270 });
+    C.commit();
+    const T = C.topo();
+    return { same: T.pinNet.get(v.id + ":+") === T.pinNet.get(load.id + ":1"), net: T.pinNet.get(load.id + ":1"), refs1: C.connRefs(k1), refs2: C.connRefs(k2), zone: C.zoneOf(k2.x, k2.y).text };
+  });
+  check(r.same && r.net > 0, "connectors with the same name (case and spaces ignored) join their wires into one net across sheets");
+  check(r.refs1.length === 1 && r.refs1[0] === r.zone && /^2\/[A-H]\d$/.test(r.zone) && /^1\/[A-H]\d$/.test(r.refs2[0] || ""), `each connector shows where its partner is (sheet 1 → ${r.refs1}, sheet 2 → ${r.refs2})`);
+  await cad.evaluate(() => TubeCAD.runSim("full"));
+  await cad.waitForFunction(() => { const S = TubeCAD.state; return S.sim.result && !S.sim.busy; }, null, { timeout: 30000 });
+  const vLoad = await cad.evaluate(() => { const S = TubeCAD.state, T = TubeCAD.topo(), l = S.comps.find(c => c.type === "resistor"); return S.sim.result.dc.nodes[T.pinNet.get(l.id + ":1")]; });
+  check(Math.abs(vLoad - 300) < 1, `the simulation sees the joined net: the load on sheet 2 gets ${vLoad && vLoad.toFixed(1)} V from the supply on sheet 1`);
+  const pdf = await cad.evaluate(() => { const b = TubeCAD.exportPDF(false); let s = ""; for (const c of b) s += String.fromCharCode(c); return s; });
+  const xref = +pdf.match(/startxref\n(\d+)/)[1];
+  const offs = [...pdf.slice(xref).matchAll(/^(\d{10}) 00000 n $/gm)].map(m => +m[1]);
+  const pages = pdf.match(/\/Type \/Page\b/g) || [];
+  check(pages.length === 2 && /\/Count 2/.test(pdf) && /\/MediaBox \[0 0 595.276 841.89\]/.test(pdf) && /\/MediaBox \[0 0 841.89 595.276\]/.test(pdf) && offs.every((o, i) => pdf.slice(o).startsWith(`${i + 1} 0 obj`)),
+    `Save as PDF writes one page per sheet (${pages.length} pages: A4 portrait and A4 landscape, cross-reference table checks out)`);
+  // each page holds only its own sheet: the load's designation is on page 2 only
+  const streams = [...pdf.matchAll(/stream\n([\s\S]*?)\nendstream/g)].map(m => m[1]);
+  check(streams.length === 2 && !/\(R1\) Tj/.test(streams[0]) && /\(R1\) Tj/.test(streams[1]) && /\(\+B\) Tj/.test(streams[0]) && /\(\+b \) Tj/.test(streams[1]), "each PDF page holds only the parts on its own sheet");
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 

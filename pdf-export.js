@@ -137,28 +137,35 @@
     }
   }
 
-  /** Assemble a one-page PDF. Returns a Uint8Array. */
-  function buildPdf(page, draw, meta) {
-    const c = new PdfCanvas(page);
-    draw(c);
-    const content = c.out.join("\n");
+  /** Assemble a PDF with one page per entry of `pages` (or a single page);
+      draw(canvas, pageIndex) paints each one. Returns a Uint8Array. */
+  function buildPdf(pages, draw, meta) {
+    if (!Array.isArray(pages)) pages = [pages];
+    const n = pages.length;
     // Info strings in PDFDocEncoding (Latin-1 range as octal escapes)
     const esc = t => [...String(t || "")].map(ch => { const c = ch.codePointAt(0); return ch === "(" || ch === ")" || ch === "\\" ? "\\" + ch : c >= 32 && c <= 126 ? ch : c <= 0xff ? "\\" + c.toString(8).padStart(3, "0") : "?"; }).join("");
+    // objects: 1 catalog, 2 pages, 3 info, 4-5 fonts, then a page and its content per page
+    const kids = pages.map((_, i) => `${6 + 2 * i} 0 R`).join(" ");
     const objs = [
       "<< /Type /Catalog /Pages 2 0 R >>",
-      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(page.widthPt)} ${num(page.heightPt)}] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>`,
+      `<< /Type /Pages /Kids [${kids}] /Count ${n} >>`,
+      `<< /Title (${esc(meta && meta.title)}) /Creator (Tube Amp CAD) /Producer (Tube Amp CAD) >>`,
       "<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>",
-      "<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold /Encoding /WinAnsiEncoding >>",
-      `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
-      `<< /Title (${esc(meta && meta.title)}) /Creator (Tube Amp CAD) /Producer (Tube Amp CAD) >>`
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold /Encoding /WinAnsiEncoding >>"
     ];
+    pages.forEach((page, i) => {
+      const c = new PdfCanvas(page);
+      draw(c, i);
+      const content = c.out.join("\n");
+      objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(page.widthPt)} ${num(page.heightPt)}] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents ${7 + 2 * i} 0 R >>`,
+        `<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+    });
     let pdf = "%PDF-1.4\n%âãÏÓ\n";
     const offs = [];
     objs.forEach((o, i) => { offs.push(pdf.length); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; });
     const xref = pdf.length;
     pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, "0") + " 00000 n \n").join("");
-    pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R /Info 7 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R /Info 3 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
     const bytes = new Uint8Array(pdf.length);
     for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff;
     return bytes;
