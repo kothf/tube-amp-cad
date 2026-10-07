@@ -37,7 +37,9 @@ circuit is saved in the browser.
 - **Curve tracer** — select a tube in the schematic and see its plate curves
   with the simulated load line, operating point, dissipation, gain and THD.
 - **Oscilloscope & spectrum analyzer** — drop a scope part on the schematic and
-  open it full-window, or view harmonic distortion on the analyzer.
+  open it full-window, or view harmonic distortion on the analyzer. The scope
+  also shows the power-on transient: the first seconds after switch-on, with
+  the supply charging from cold.
 - **Markers** — click any of these graphs to place markers A and B: time and
   voltage with ΔT and ΔV on the scope, frequency and level on the analyzer,
   and Vg, dissipation, gm, rp and µ at a point of the plate curves, with the

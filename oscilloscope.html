@@ -46,6 +46,7 @@
     <span id="status" class="status idle">Waiting for the Circuit CAD…</span>
     <span class="spacer"></span>
     <label class="muted">Scope part <select id="scope-select"></select></label>
+    <button class="btn" id="btn-sim" title="Simulate in the CAD: until settled (steady state), or the power-on transient">▶ Simulate</button>
     <button class="btn" id="btn-cad">Circuit CAD ↗</button>
   </header>
   <main>
@@ -55,6 +56,14 @@
       <div class="marks" id="marks"></div>
     </div>
     <aside>
+      <div class="card">
+        <h3>Analysis</h3>
+        <div class="seg" id="analysis" style="grid-template-columns: 1fr 1fr">
+          <button class="btn active" data-v="steady">Steady state</button><button class="btn" data-v="startup">Power-on</button>
+        </div>
+        <div class="row" style="margin-top:8px"><span>Duration</span><select id="t-stop"><option value="0.1">0.1 s</option><option value="0.2">0.2 s</option><option value="0.5">0.5 s</option><option value="1" selected>1 s</option><option value="2">2 s</option></select></div>
+        <p class="muted" id="analysis-note">Steady state: the settled circuit, one window repeated like a triggered scope.</p>
+      </div>
       <div class="card">
         <h3>Display</h3>
         <div class="seg" id="mode">
@@ -90,7 +99,7 @@
     "use strict";
     const I = Instrument, $ = id => document.getElementById(id);
     const SM = ScopeMath, VDIV = SM.VDIV, TDIV = SM.TDIV;
-    const S = { mode: "dual", ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", trig: { src: "ch1", slope: "rising" } };
+    const S = { mode: "dual", analysis: "steady", tStop: 1, ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", trig: { src: "ch1", slope: "rising" } };
 
     const fill = (sel, list, unit) => { sel.innerHTML = `<option value="auto">Auto</option>` + list.map(v => `<option value="${v}">${I.fmt(v, unit)}/div</option>`).join(""); };
     fill($("ch1-vdiv"), VDIV, "V"); fill($("ch2-vdiv"), VDIV, "V"); fill($("tdiv"), TDIV, "s");
@@ -105,6 +114,43 @@
       return out;
     }
 
+    // Power-on record: each bucket holds the min and max of its samples. The trace
+    // is the envelope; markers and readouts use the bucket midpoint (raw).
+    function startupChannels(ts) {
+      const out = {};
+      ["ch1", "ch2"].forEach(k => {
+        const d = ts && ts[k]; if (!d || !d.min.length) return;
+        const n = d.min.length, mid = new Float32Array(n + 2), inter = new Float32Array(2 * n + 1);
+        for (let i = 0; i < n; i++) { mid[i] = (d.min[i] + d.max[i]) / 2; inter[2 * i] = d.min[i]; inter[2 * i + 1] = d.max[i]; }
+        mid[n] = mid[n + 1] = mid[n - 1]; inter[2 * n] = inter[2 * n - 1];
+        const cpl = S[k].cpl === "ac" ? "dc" : S[k].cpl;   // AC coupling means nothing for a one-shot record
+        out[k] = { raw: mid, min: d.min, max: d.max, cpl, ...SM.channel(inter, S[k].vdiv, cpl) };
+      });
+      return out;
+    }
+    // Final level and swing (last 5 % of the record), peak, and the settling time:
+    // when the signal's envelope (sliding max/min over 1 % of the record, so an
+    // audio signal counts by its amplitude, not by its phase) last left ±2 % of
+    // its final level and swing.
+    function settleInfo(c, dt) {
+      const n = c.min.length, w = Math.max(1, Math.round(n / 100)), hi = new Float32Array(n), lo = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        let a = -Infinity, b = Infinity;
+        for (let j = Math.max(0, i - w); j <= Math.min(n - 1, i + w); j++) { if (c.max[j] > a) a = c.max[j]; if (c.min[j] < b) b = c.min[j]; }
+        hi[i] = a; lo[i] = b;
+      }
+      const tail = Math.max(1, Math.round(n * 0.05));
+      let f = 0, sw = 0;
+      for (let i = n - tail; i < n; i++) { f += (hi[i] + lo[i]) / 2; sw += hi[i] - lo[i]; }
+      f /= tail; sw /= tail;
+      let pk = -Infinity, pkAt = 0, mn = Infinity;
+      for (let i = 0; i < n; i++) { if (c.max[i] > pk) { pk = c.max[i]; pkAt = i; } if (c.min[i] < mn) mn = c.min[i]; }
+      const tol = 0.02 * Math.max(Math.abs(f), sw, 1e-3 / 0.02);
+      let last = -1;
+      for (let i = 0; i < n; i++) if (Math.abs((hi[i] + lo[i]) / 2 - f) > tol || Math.abs(hi[i] - lo[i] - sw) > tol) last = i;
+      return { final: f, swing: sw, peak: pk, peakAt: (pkAt + 0.5) * dt, min: mn, settle: last < 0 ? 0 : (last + 1) * dt, settled: last < n - tail };
+    }
+
     // the selected trigger source, unless it is a flat line and the other channel isn't
     const triggerChannel = ch => ch[S.trig.src] && !SM.isFlat(ch[S.trig.src].st) ? ch[S.trig.src]
       : (ch.ch1 && !SM.isFlat(ch.ch1.st) ? ch.ch1 : ch.ch2 || ch.ch1);
@@ -114,6 +160,7 @@
       if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
       const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const st = I.status(); $("status").className = "status " + st.cls; $("status").textContent = st.text;
+      if (S.analysis === "startup" && I.transient) { const t = I.transient; $("status").className = "status " + (t.running ? "idle" : t.ok ? "ok" : "bad"); $("status").textContent = t.running ? `Power-on transient… ${Math.round((t.progress || 0) * 100)} %` : t.ok ? `Power-on transient · ${I.fmt(t.tStop, "s")}${t.stale ? " · circuit changed" : ""}` : (t.error || "Power-on transient failed"); }
       ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
       const pad = 26, gw = W - 2 * pad, gh = H - 2 * pad - 10, x0 = pad, y0 = pad + 6;
       // graticule
@@ -124,10 +171,11 @@
       for (let i = 0; i <= 50; i++) { const x = x0 + i * gw / 50; ctx.beginPath(); ctx.moveTo(x, y0 + gh / 2 - 3); ctx.lineTo(x, y0 + gh / 2 + 3); ctx.stroke(); }
       for (let j = 0; j <= 40; j++) { const y = y0 + j * gh / 40; ctx.beginPath(); ctx.moveTo(x0 + gw / 2 - 3, y); ctx.lineTo(x0 + gw / 2 + 3, y); ctx.stroke(); }
 
+      ctx.font = "12px ui-monospace, Menlo, monospace";
+      if (S.analysis === "startup") { drawStartup(ctx, x0, y0, gw, gh); return; }
       const sc = I.scope();
       const ch = channels(sc);
       const any = ch.ch1 || ch.ch2;
-      ctx.font = "12px ui-monospace, Menlo, monospace";
       if (!any) {
         ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center";
         ctx.fillText(sc ? "No input connected — wire CH1 / CH2 of " + sc.label + " in the CAD" : "NO SIGNAL", x0 + gw / 2, y0 + gh / 2 - 12);
@@ -204,6 +252,57 @@
       renderMarks();
     }
 
+    function drawStartup(ctx, x0, y0, gw, gh) {
+      const t = I.transient, ts = I.transientScope();
+      const msg = (lines) => { ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center"; lines.forEach((l, i) => ctx.fillText(l, x0 + gw / 2, y0 + gh / 2 - 12 + i * 18)); ctx.textAlign = "left"; $("meas").innerHTML = ""; G = null; renderMarks(); };
+      if (t && t.running) {
+        const p = Math.max(0, Math.min(1, t.progress || 0));
+        ctx.strokeStyle = "#26344a"; ctx.strokeRect(x0 + gw * 0.2, y0 + gh / 2 + 14, gw * 0.6, 10);
+        ctx.fillStyle = "#00b4d8"; ctx.fillRect(x0 + gw * 0.2, y0 + gh / 2 + 14, gw * 0.6 * p, 10);
+        return msg([`Simulating the first ${I.fmt(t.tStop, "s")} after power-on… ${Math.round(p * 100)} %`]);
+      }
+      if (!t) return msg([`Power-on transient: press ▶ Simulate to run the first ${I.fmt(S.tStop, "s")} after switch-on.`, "Every capacitor starts empty and every source switches on at t = 0."]);
+      if (!t.ok) return msg([`Power-on transient: ${t.error || "failed"}`]);
+      const ch = startupChannels(ts), any = ch.ch1 || ch.ch2;
+      if (!any) return msg([ts ? "No input connected — wire CH1 / CH2 of " + ts.label + " in the CAD" : "This scope part was not in the simulated circuit"]);
+      const n = any.min.length, dt = t.dt, M = n - 1;
+      G = { x0, y0, gw, gh, dt, M, P: n, start: 0, ch, xy: false, startup: true };
+      const ys = (c, v) => y0 + gh / 2 - Math.max(-4.4, Math.min(4.4, c.cpl === "gnd" ? 0 : (v - c.off) / c.vdiv)) * gh / 8;
+      ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, gw, gh); ctx.clip();
+      [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k, color]) => {
+        const c = ch[k]; if (!c || (S.mode !== "dual" && S.mode !== k && S.mode !== "xy")) return;
+        const step = Math.max(1, Math.floor(n / (gw * 2)));
+        ctx.beginPath();
+        for (let i = 0; i < n; i += step) { const px = x0 + i / M * gw; i ? ctx.lineTo(px, ys(c, c.max[i])) : ctx.moveTo(px, ys(c, c.max[i])); }
+        for (let i = n - 1 - ((n - 1) % step); i >= 0; i -= step) ctx.lineTo(x0 + i / M * gw, ys(c, c.min[i]));
+        ctx.closePath(); ctx.fillStyle = color; ctx.globalAlpha = 0.3; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.stroke();
+        const lv = c.cpl === "gnd" ? 0 : -c.off / c.vdiv, my = y0 + gh / 2 - Math.max(-4, Math.min(4, lv)) * gh / 8;
+        ctx.fillStyle = color; ctx.fillText((k === "ch1" ? "1" : "2") + (lv > 4 ? "▴" : lv < -4 ? "▾" : "▸"), 2 - x0 + x0, my + 4 + (k === "ch1" ? -5 : 5));
+      });
+      ctx.restore();
+      pick.list.forEach((m, i) => { const p = markerPos(m); if (p) MarkerPicker.draw(ctx, p.x, p.y, MarkerPicker.LETTERS[i], m.ch === "ch2" ? "#00e5ff" : "#ffe23d"); });
+      if (hover) {
+        const x = x0 + hover.i / M * gw; ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + gh); ctx.stroke(); ctx.setLineDash([]);
+        cursorLabel(ctx, x, [[fmtT(hover.i * dt), "#c9d6e3"], ...KEYS.filter(shown).map(k => [`${k.toUpperCase()} ${I.fmt(valueAt(ch[k], hover.i), "V")}`, k === "ch1" ? "#ffe23d" : "#00e5ff"])]);
+      }
+      ctx.fillStyle = "#ffe23d"; let tx = x0;
+      const label = (nn, c) => `CH${nn} ${I.fmt(c.vdiv, "V")}${c.offset ? ` offset ${I.fmt(c.offset, "V")}` : ""}`;
+      if (ch.ch1) { const s = label(1, ch.ch1); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+      ctx.fillStyle = "#00e5ff";
+      if (ch.ch2) { const s = label(2, ch.ch2); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+      ctx.fillStyle = t.stale ? "#ff9e64" : "#c9d6e3";
+      ctx.fillText(`M ${I.fmt(t.tStop / 10, "s")}   Power-on 0 … ${I.fmt(t.tStop, "s")}${t.stale ? "   circuit changed since — ▶ Simulate again" : ""}`, tx, 16);
+      let h = "";
+      [["ch1", "c1"], ["ch2", "c2"]].forEach(([k, cls]) => {
+        const c = ch[k]; if (!c) return;
+        const q = settleInfo(c, dt);
+        h += `<span class="${cls}">${k.toUpperCase()}: final <b>${I.fmt(q.final, "V")}</b>${q.swing > 1e-3 * Math.max(1, Math.abs(q.final)) ? ` (${I.fmt(q.swing, "Vpp")})` : ""} · peak ${I.fmt(q.peak, "V")} at ${I.fmt(q.peakAt, "s")} · ${q.settled ? `within ±2 % from <b>${I.fmt(q.settle, "s")}</b>` : "<b>not settled yet</b>"}</span>`;
+      });
+      $("meas").innerHTML = h;
+      renderMarks();
+    }
+
     // --- markers: A and B on a trace (time + voltage), or on the X-Y figure --
     let G = null, hover = null;
     const KEYS = ["ch1", "ch2"];
@@ -238,7 +337,9 @@
     function reading(m) {
       if (!markerPos(m)) return null;
       if (m.xy) return { v1: SM.at(G.ch.ch1.raw, m.i), v2: SM.at(G.ch.ch2.raw, m.i) };
-      return { t: m.t, ch: m.ch, v: valueAt(G.ch[m.ch], m.t / G.dt) };
+      const r = { t: m.t, ch: m.ch, v: valueAt(G.ch[m.ch], m.t / G.dt) };
+      if (G.startup) { const c = G.ch[m.ch], j = Math.min(c.min.length - 1, Math.round(m.t / G.dt)); r.lo = c.min[j]; r.hi = c.max[j]; }
+      return r;
     }
     const cursorLabel = (ctx, x, parts) => MarkerPicker.label(ctx, x, G.y0 + 4, G.x0, G.x0 + G.gw, parts);
     const fmtT = t => (t >= 0 ? "+" : "") + I.fmt(t, "s", Math.abs(t) < 1e-9 ? 0 : undefined);
@@ -250,7 +351,7 @@
         const L = MarkerPicker.LETTERS[i];
         h += r.v1 !== undefined
           ? `<span>${L}: <b class="c1">X ${I.fmt(r.v1, "V")}</b> <b class="c2">Y ${I.fmt(r.v2, "V")}</b></span>`
-          : `<span class="${r.ch === "ch1" ? "c1" : "c2"}">${L} ${r.ch.toUpperCase()}: <b>${I.fmt(r.v, "V")}</b> at ${fmtT(r.t)}</span>`;
+          : `<span class="${r.ch === "ch1" ? "c1" : "c2"}">${L} ${r.ch.toUpperCase()}: <b>${I.fmt(r.v, "V")}</b>${r.hi - r.lo > 1e-3 * Math.max(1, Math.abs(r.v)) ? ` (${I.fmt(r.lo, "V")} … ${I.fmt(r.hi, "V")})` : ""} at ${fmtT(r.t)}</span>`;
       });
       if (rs.length === 2 && rs[0] && rs[1]) {
         if (rs[0].t !== undefined) {
@@ -270,7 +371,7 @@
     });
 
     // controls
-    document.querySelectorAll("#mode .btn").forEach(b => b.addEventListener("click", () => { S.mode = b.dataset.v; if ((S.mode === "xy") !== !!(G && G.xy)) pick.clear(); document.querySelectorAll("#mode .btn").forEach(x => x.classList.toggle("active", x === b)); draw(); }));
+    document.querySelectorAll("#mode .btn").forEach(b => b.addEventListener("click", () => { if (S.analysis === "startup" && b.dataset.v === "xy") return; S.mode = b.dataset.v; if ((S.mode === "xy") !== !!(G && G.xy)) pick.clear(); document.querySelectorAll("#mode .btn").forEach(x => x.classList.toggle("active", x === b)); draw(); }));
     const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
     bindSel("ch1-vdiv", v => S.ch1.vdiv = v); bindSel("ch2-vdiv", v => S.ch2.vdiv = v);
     bindSel("ch1-cpl", v => S.ch1.cpl = v); bindSel("ch2-cpl", v => S.ch2.cpl = v);
@@ -285,13 +386,35 @@
       $("tdiv").value = "auto"; draw();
     });
     $("btn-cad").addEventListener("click", () => window.open("circuit_sandbox.html", "tube_cad"));
+    // analysis: steady state (the CAD's settled result) or the power-on transient
+    const syncAnalysis = () => {
+      const st = S.analysis === "startup", t = I.transient, running = st && t && t.running;
+      document.querySelectorAll("#analysis .btn").forEach(x => x.classList.toggle("active", x.dataset.v === S.analysis));
+      ["tdiv", "trig-src", "trig-slope"].forEach(id => { $(id).disabled = st; });
+      $("analysis-note").textContent = st ? "Power-on: the circuit starts cold (capacitors empty) and every source switches on at t = 0. Traces show the envelope of each signal."
+        : "Steady state: the settled circuit, one window repeated like a triggered scope.";
+      $("btn-sim").textContent = running ? "■ Stop" : "▶ Simulate"; $("btn-sim").classList.toggle("active", !!running);
+    };
+    document.querySelectorAll("#analysis .btn").forEach(b => b.addEventListener("click", () => {
+      if (S.analysis === b.dataset.v) return;
+      S.analysis = b.dataset.v; pick.clear(); if (S.analysis === "startup" && S.mode === "xy") { S.mode = "dual"; document.querySelectorAll("#mode .btn").forEach(x => x.classList.toggle("active", x.dataset.v === "dual")); }
+      syncAnalysis(); draw();
+    }));
+    $("t-stop").addEventListener("change", e => { S.tStop = +e.target.value; draw(); });
+    $("btn-sim").addEventListener("click", () => {
+      if (S.analysis !== "startup") { I.send({ type: "RUN_SIM" }); return; }
+      const t = I.transient;
+      if (t && t.running) I.send({ type: "STOP_TRANSIENT" }); else I.send({ type: "RUN_TRANSIENT", tStop: S.tStop });
+    });
+    I.onUpdate(syncAnalysis);
+    syncAnalysis();
     I.bindScopeSelect($("scope-select"));
     I.onUpdate(draw);
     window.addEventListener("resize", draw);
     setInterval(() => { if (!I.result) draw(); }, 1500);
     draw();
     // current scaling, for tests and debugging
-    window.Scope = { state: S, draw,
+    window.Scope = { state: S, draw, settleInfo, startupChannels,
       // canvas position of a channel's trace at a fraction of the screen width
       screenPoint: (k, frac) => { const c = G && G.ch[k]; if (!c) return null; const i = frac * G.M; return { x: G.x0 + frac * G.gw, y: screenY(c, valueAt(c, i)) }; },
       markers: () => pick.list.map(m => ({ ...m, pos: markerPos(m), reading: reading(m) })), view: () => { const sc = I.scope(), ch = channels(sc), any = ch.ch1 || ch.ch2; if (!any) return null;
