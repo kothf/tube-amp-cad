@@ -55,7 +55,13 @@
     #plot { width: 100%; height: 100%; display: block; min-height: 0; }
     .plot-foot { display: flex; gap: 14px; align-items: center; padding: 4px 12px; border-top: 1px solid var(--line); flex-wrap: wrap; min-height: 26px; }
     #legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
-    #legend i { display: inline-block; width: 12px; height: 3px; margin-right: 5px; vertical-align: middle; }
+    /* legend swatches drawn like the plot: solid or dashed line, dot, ring, shaded area */
+    #legend span { white-space: nowrap; }
+    #legend i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--c); margin-right: 5px; vertical-align: middle; }
+    #legend i.dash { border-top-style: dashed; }
+    #legend i.dot { width: 6px; height: 6px; border: 0; border-radius: 50%; background: var(--c); }
+    #legend i.ring { width: 7px; height: 7px; border: 2px solid var(--c); border-radius: 50%; }
+    #legend i.area { height: 9px; border: 1px solid var(--c); border-width: 2px 0 0; background: color-mix(in srgb, var(--c) 18%, transparent); }
     .picks { display: flex; gap: 2px 18px; flex-wrap: wrap; align-items: center; align-content: flex-start; padding: 4px 12px 6px; min-height: 62px; font: 12px ui-monospace, Menlo, monospace; color: var(--text); }
     .picks b { color: #ff8ad8; } .picks .hint { color: var(--muted); font-family: system-ui, sans-serif; font-size: 11px; }
     .picks .btn { padding: 1px 8px; font-size: 11px; margin-left: auto; }

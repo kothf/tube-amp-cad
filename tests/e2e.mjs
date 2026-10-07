@@ -226,6 +226,11 @@ check(title.includes("12AX7") && title.includes("VL1 in circuit"), `clicking VL1
     `12AX7 at Q: gm ${(p[0].gm * 1e3).toFixed(2)} mA/V, rp ${(p[0].rp / 1e3).toFixed(1)} kΩ, µ ${p[0].mu.toFixed(1)}`);
   const R = (p[1].va - p[0].va) / (p[0].ia - p[1].ia), txt = await tracer.textContent("#picks");
   check(/load line [\d.]+k?Ω/.test(txt), `A→B load line ${(R / 1e3).toFixed(1)} kΩ shown ("${(txt.match(/load line [^(]*/) || [""])[0].trim()}")`);
+  // the legend names everything drawn: with every option on and A, B picked
+  for (const id of ["opt-bias", "opt-pa", "opt-pa70", "opt-traj"]) if (!(await tracer.isChecked("#" + id))) await tracer.check("#" + id);
+  const legend = await tracer.evaluate(() => [...document.querySelectorAll("#legend span")].map(s => s.textContent));
+  const want = [/^Plate curves/, /^Curve at circuit bias/, /^Operating point/, /^Pa max/, /^Over Pa max/, /^70% of Pa max/, /^Picked points A, B/, /^Line through A and B/];
+  check(want.every(r => legend.some(t => r.test(t))), `the legend explains every line drawn (${legend.join(" | ")})`);
 }
 await tracer.getByRole("button", { name: /EL34/ }).first().click();
 check((await tracer.textContent("#plot-title")).includes("EL34"), "the tracer's own tube library still works");
