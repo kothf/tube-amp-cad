@@ -329,6 +329,44 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(await cad.evaluate(() => TubeCAD.state.sim.live), "Live switches back on");
 }
 
+// --- 7. Catalog power transformer: Hammond 373BX against its drawing -----------
+{
+  await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear(); S.view = { scale: 1, ox: 0, oy: 0 }; TubeCAD.commit(); });
+  await cad.getByRole("button", { name: /^Power transformer \(catalog\)/ }).click();
+  await clickAt(200, 300);
+  const placed = await cad.evaluate(() => TubeCAD.state.comps.find(c => c.type === "ptx_cat"));
+  check(placed && placed.params.model === "373BX" && placed.params.tap === "230", "Hammond 373BX placed from the palette (230 V tap)");
+  // RMS of HT1-CT, bias-CT and HT2-CT with a load on HT1
+  const measure = (params, load) => cad.evaluate(async ([id, params, load]) => {
+    const C = TubeCAD, S = C.state, T0 = S.comps.find(c => c.id === id);
+    Object.assign(T0.params, params);
+    S.comps = [T0]; S.wires = [];
+    const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+    const add = (type, prm, x, y, rot) => { const c = C.makeComp(type, prm, x, y, rot || 0); S.comps.push(c); return c; };
+    const g = add("ground", {}, 300, 320), R1 = add("resistor", { r: load }, 300, 240, 1), R2 = add("resistor", { r: 1e7 }, 360, 300, 1), Rb = add("resistor", { r: 1e7 }, 420, 260, 1);
+    C.lRoute(pin(T0, "CT").x, pin(T0, "CT").y, 300, 300, true).forEach(s => C.addSegment(...s)); C.addSegment(300, 300, 300, 320);
+    C.addSegment(300, 270, 300, 300);
+    C.lRoute(pin(T0, "HT1").x, pin(T0, "HT1").y, 300, 210, true).forEach(s => C.addSegment(...s));
+    C.lRoute(pin(T0, "HT2").x, pin(T0, "HT2").y, 360, 330, true).forEach(s => C.addSegment(...s)); C.addSegment(360, 270, 360, 260); C.addSegment(360, 260, 300, 260);
+    if (pin(T0, "B")) { C.lRoute(pin(T0, "B").x, pin(T0, "B").y, 420, 230, true).forEach(s => C.addSegment(...s)); C.addSegment(420, 290, 420, 300); C.addSegment(420, 300, 360, 300); }
+    const s0 = S.sim.seq; C.commit(); const t0 = performance.now();
+    while ((S.sim.seq === s0 || S.sim.busy) && performance.now() - t0 < 20000) await new Promise(r => setTimeout(r, 50));
+    const T = C.topo(), tr = S.sim.result.tran, v = (c, p) => tr.nodes[T.pinNet.get(`${c.id}:${p}`)];
+    const rms = (a, b) => { let q = 0; const n = a.length - 1; for (let i = 0; i < n; i++) q += (a[i] - (b ? b[i] : 0)) ** 2; return Math.sqrt(q / n); };
+    const ct = v(T0, "CT");
+    return { open: S.sim.error, ht1: rms(v(T0, "HT1"), ct), ht2: rms(v(T0, "HT2"), ct), bias: pin(T0, "B") ? rms(v(T0, "B"), ct) : null };
+  }, [placed.id, params, load]);
+  let m = await measure({ tap: "230", mains: 230, bias: "yes" }, 1e7);
+  check(Math.abs(m.ht1 - 370.3) < 0.5 && Math.abs(m.ht2 - 370.3) < 0.5 && Math.abs(m.bias - 52.19) < 0.2,
+    `no load on the 230 V tap: ${m.ht1.toFixed(1)} / ${m.ht2.toFixed(1)} Vrms per half, bias tap ${m.bias.toFixed(2)} V (drawing: 370.3 V, 52.19 V)`);
+  m = await measure({ tap: "240", mains: 230, bias: "no" }, 1e7);
+  check(Math.abs(m.ht1 - 370.3 * 230 / 240) < 0.5, `230 V mains on the 240 V tap: ${m.ht1.toFixed(1)} V per half (370.3 × 230/240 = ${(370.3 * 230 / 240).toFixed(1)} V)`);
+  m = await measure({ tap: "230", mains: 230, bias: "no" }, 2000);
+  const r = await cad.evaluate(() => CadLib.powerTxHalf("373BX", 230, 230).r);
+  check(Math.abs(m.ht1 - 370.3 * 2000 / (2000 + r)) < 0.5 && r > 44.55 && r < 80,
+    `2 kΩ on one half: ${m.ht1.toFixed(1)} V, from 44.55 Ω winding + reflected primary = ${r.toFixed(1)} Ω`);
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 

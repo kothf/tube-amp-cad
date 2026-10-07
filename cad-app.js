@@ -848,7 +848,7 @@
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate((c.rot & 3) * Math.PI / 2);
-    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "ptx" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
+    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "ptx" || c.type === "ptx_cat" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
     DRAW[c.type](ctx, c);
@@ -1056,7 +1056,7 @@
     const host = document.getElementById("inspector");
     const c = selectedComp();
     announceSelectedTube(c);
-    const sig = c ? c.id + ":" + c.type + ":" + c.params.tube + ":" + c.params.connection : (S.sel.wires.size ? "wires" : "none") + S.sel.comps.size;
+    const sig = c ? c.id + ":" + c.type + ":" + c.params.tube + ":" + c.params.connection + ":" + (c.type === "ptx_cat" ? [c.params.model, c.params.mains, c.params.tap].join("/") : "") : (S.sel.wires.size ? "wires" : "none") + S.sel.comps.size;
     if (!liveOnly || sig !== inspectorFor) {
       inspectorFor = sig;
       host.innerHTML = "";
@@ -1088,7 +1088,7 @@
         el = input("number", c.params[f.key], v => { const n = parseFloat(v); if (!isFinite(n)) { flash(el); return; } c.params[f.key] = Math.min(f.max !== undefined ? f.max : Infinity, Math.max(f.min !== undefined ? f.min : -Infinity, n)); commit(); });
       } else if (f.kind === "select") {
         el = document.createElement("select");
-        f.options.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; el.appendChild(o); });
+        (typeof f.options === "function" ? f.options(c) : f.options).forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; el.appendChild(o); });
         el.value = String(c.params[f.key]);
         el.addEventListener("change", () => { if (c.type === "switch" && f.key === "pos") setSwitch(c, el.value); else { c.params[f.key] = el.value; commit(); } });
       } else if (f.kind === "range") {
@@ -1117,6 +1117,11 @@
         p.textContent = `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A (not simulated)`;
         host.appendChild(p);
       }
+    }
+    if (def.info) {
+      const p = document.createElement("p"); p.className = "insp-help";
+      p.textContent = def.info(c);
+      host.appendChild(p);
     }
     if (c.type === "switch") {
       const p = document.createElement("p"); p.className = "insp-help";
