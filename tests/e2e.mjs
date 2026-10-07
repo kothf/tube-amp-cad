@@ -130,6 +130,46 @@ await spectrum.waitForFunction(() => /\d/.test(document.getElementById("thd").te
 const thd = parseFloat((await spectrum.textContent("#thd")).replace(/[^\d.]/g, ""));
 check(Math.abs(thd - circuit.thd) / circuit.thd < 0.1, `spectrum THD ${thd} % matches the CAD's ${circuit.thd.toFixed(3)} % (±10 %)`);
 
+// --- 3a. Markers: pick points on the scope and analyzer with the mouse -------
+const canvasAt = async (page, p) => { const r = await page.locator("#screen").boundingBox(); return [r.x + p.x, r.y + p.y]; };
+{
+  const f = await scope.evaluate(() => window.Scope.view().f);
+  const pA = await scope.evaluate(() => window.Scope.screenPoint("ch1", 0.1));
+  // one period later on the same trace: 1 ms of a 2 ms screen at 200 µs/div
+  const pB = await scope.evaluate(() => window.Scope.screenPoint("ch1", 0.6));
+  await scope.mouse.click(...await canvasAt(scope, pA));
+  await scope.mouse.click(...await canvasAt(scope, pB));
+  const m = await scope.evaluate(() => window.Scope.markers());
+  const st = await scope.evaluate(() => { const a = Instrument.scope().ch1; return { min: Math.min(...a), max: Math.max(...a) }; });
+  check(m.length === 2 && m.every(k => k.ch === "ch1" && k.reading.v >= st.min - 1e-6 && k.reading.v <= st.max + 1e-6),
+    `scope markers A, B land on the CH1 trace (${m.map(k => k.reading && k.reading.v.toFixed(3) + " V").join(", ")})`);
+  const dT = m[1].reading.t - m[0].reading.t, dV = m[1].reading.v - m[0].reading.v;
+  check(Math.abs(dT - 1 / f) < 0.01 / f && Math.abs(dV) < 0.02 * (st.max - st.min),
+    `one period apart: ΔT ${(dT * 1e3).toFixed(3)} ms (1/ΔT ${(1 / dT).toFixed(0)} Hz), ΔV ${dV.toFixed(3)} V`);
+  check(/ΔT [\d.]+ms \(1\/ΔT 1k?Hz\)|ΔT 1ms \(1\/ΔT 1kHz\)/.test(await scope.textContent("#marks")), `readout: "${(await scope.textContent("#marks")).match(/ΔT[^·]*/)[0].trim()}"`);
+  // drag B a little, double-click A away, Esc clears
+  const [bx, by] = await canvasAt(scope, m[1].pos);
+  await scope.mouse.move(bx, by); await scope.mouse.down(); await scope.mouse.move(bx + 40, by, { steps: 4 }); await scope.mouse.up();
+  const moved = await scope.evaluate(() => window.Scope.markers());
+  check(moved.length === 2 && moved[1].t > m[1].t, "dragging marker B moves it along the trace");
+  await scope.mouse.dblclick(...await canvasAt(scope, moved[0].pos));
+  check((await scope.evaluate(() => window.Scope.markers())).length === 1, "double-click removes a marker");
+  await scope.keyboard.press("Escape");
+  check((await scope.evaluate(() => window.Scope.markers())).length === 0, "Esc clears the markers");
+}
+{
+  const fund = 1000;
+  const p1 = await spectrum.evaluate(() => window.Spectrum.linePoint(1000)), p2 = await spectrum.evaluate(() => window.Spectrum.linePoint(2000));
+  // click a little above each stem: the marker snaps to the line
+  await spectrum.mouse.click(...await canvasAt(spectrum, { x: p1.x + 3, y: p1.y - 15 }));
+  await spectrum.mouse.click(...await canvasAt(spectrum, { x: p2.x - 3, y: p2.y - 15 }));
+  const m = await spectrum.evaluate(() => window.Spectrum.markers());
+  const h2 = await spectrum.evaluate(() => parseFloat([...document.querySelectorAll("#harm tr")].find(r => r.cells[0].textContent === "H2").cells[2].textContent));
+  check(m.length === 2 && m[0].reading.f === fund && m[0].reading.h === 1 && m[1].reading.h === 2,
+    `analyzer markers snap to the fundamental and H2 (${m.map(k => k.reading.f + " Hz").join(", ")})`);
+  check(Math.abs(m[1].reading.dbc - h2) < 0.06, `marker B reads H2 at ${m[1].reading.dbc.toFixed(2)} dBc, as the harmonic table (${h2} dBc)`);
+}
+
 // --- 3b. Auto-ranging a DC-coupled plate: the trace must use the screen ------
 const probe = await cad.evaluate(async v1 => {
   const C = TubeCAD, S = C.state;
@@ -165,8 +205,37 @@ await cad.mouse.click(tx, ty);
 await tracer.waitForFunction(() => document.getElementById("plot-title").textContent.includes("in circuit"), null, { timeout: 5000 }).catch(() => {});
 const title = await tracer.textContent("#plot-title");
 check(title.includes("12AX7") && title.includes("V1 in circuit"), `clicking V1 in the CAD shows it on the curve tracer ("${title.trim()}")`);
+// pick points: the operating point (snapped), then a free point on the plot
+{
+  const q = await tracer.evaluate(() => { const ct = TubeTracer.current().circuit; return { ...TubeTracer.toScreen(ct.dc.vak, ct.dc.ia), vgk: ct.dc.vgk, vak: ct.dc.vak, ia: ct.dc.ia }; });
+  const r = await tracer.locator("#plot").boundingBox();
+  await tracer.mouse.click(r.x + q.x + 4, r.y + q.y - 3);
+  const free = await tracer.evaluate(() => TubeTracer.toScreen(250, 0));
+  await tracer.mouse.click(r.x + free.x, r.y + free.y - 2);
+  const p = await tracer.evaluate(() => TubeTracer.picks());
+  check(p.length === 2 && p[0].q && Math.abs(p[0].vg - q.vgk) < 1e-9,
+    `click near the Q point snaps to it: Va ${p[0] && p[0].va.toFixed(1)} V, Vg ${p[0] && p[0].vg.toFixed(3)} V`);
+  // the model solved for Vg puts the tube back on the operating point
+  const vg = await tracer.evaluate(([va, ia]) => TubeTracer.vgFor(TubeTracer.current(), va, ia), [q.vak, q.ia]);
+  check(Math.abs(vg - q.vgk) < 0.02, `Vg from the model at Q: ${vg.toFixed(3)} V vs simulated ${q.vgk.toFixed(3)} V`);
+  check(p[1] && Math.abs(p[1].va - 250) < 2 && p[0].mu > 80 && p[0].mu < 110 && p[0].rp > 40e3 && p[0].rp < 120e3,
+    `12AX7 at Q: gm ${(p[0].gm * 1e3).toFixed(2)} mA/V, rp ${(p[0].rp / 1e3).toFixed(1)} kΩ, µ ${p[0].mu.toFixed(1)}`);
+  const R = (p[1].va - p[0].va) / (p[0].ia - p[1].ia), txt = await tracer.textContent("#picks");
+  check(/load line [\d.]+k?Ω/.test(txt), `A→B load line ${(R / 1e3).toFixed(1)} kΩ shown ("${(txt.match(/load line [^(]*/) || [""])[0].trim()}")`);
+}
 await tracer.getByRole("button", { name: /EL34/ }).first().click();
 check((await tracer.textContent("#plot-title")).includes("EL34"), "the tracer's own tube library still works");
+check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching tubes clears the picked points");
+{
+  // a free pick on the EL34 curves: Vg solved from the model reproduces the picked current
+  const pt = await tracer.evaluate(() => TubeTracer.toScreen(250, TubeTracer.iaOf(250, -10)));
+  const r = await tracer.locator("#plot").boundingBox();
+  await tracer.mouse.click(r.x + pt.x, r.y + pt.y);
+  const [k] = await tracer.evaluate(() => TubeTracer.picks());
+  const back = await tracer.evaluate(([va, vg]) => TubeTracer.iaOf(va, vg), [k.va, k.vg]);
+  check(Math.abs(k.vg + 10) < 0.5 && Math.abs(back - k.ia) < 1e-6 * Math.max(1, k.ia * 1e3),
+    `EL34 point Va ${k.va.toFixed(1)} V, Ia ${(k.ia * 1e3).toFixed(2)} mA reads Vg ${k.vg.toFixed(2)} V (curve drawn at −10 V)`);
+}
 
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);

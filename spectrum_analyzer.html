@@ -20,10 +20,13 @@
     .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
     select { background: #0b1118; border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
     main { display: grid; grid-template-columns: 1fr 320px; gap: 12px; padding: 12px; min-height: 0; }
-    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: 1fr auto auto; min-height: 0; }
     #screen { width: 100%; height: 100%; display: block; border-radius: 6px; min-height: 0; }
     .foot { padding: 8px 4px 0; font: 12px ui-monospace, Menlo, monospace; color: var(--muted); }
     .foot b { color: var(--text); }
+    .marks { display: flex; gap: 6px 18px; flex-wrap: wrap; align-items: center; padding: 6px 4px 0; font: 12px ui-monospace, Menlo, monospace; color: #c9d6e3; min-height: 40px; align-content: flex-start; }
+    .marks b { font-weight: 600; color: #fff; } .marks .hint { color: var(--muted); font-family: system-ui, sans-serif; }
+    .marks .btn { padding: 1px 8px; font-size: 11px; margin-left: auto; }
     aside { overflow-y: auto; min-height: 0; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
     .card h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
@@ -51,6 +54,7 @@
     <div class="bezel">
       <canvas id="screen" aria-label="Spectrum display"></canvas>
       <div class="foot" id="foot"></div>
+      <div class="marks" id="marks"></div>
     </div>
     <aside>
       <div class="card">
@@ -73,6 +77,7 @@
 
   <script src="instrument-common.js?v=dev"></script>
   <script src="scope-math.js?v=dev"></script>
+  <script src="markers.js?v=dev"></script>
   <script>
   (function () {
     "use strict";
@@ -83,7 +88,14 @@
     $("src").value = S.src;
 
     // Line spectrum of one whole-period capture: bins at k / T
+    // (cached: pointer moves redraw the screen without recomputing it)
+    let cache = null;
     function spectrum(a, dt, fMaxWanted) {
+      if (cache && cache.a === a && cache.dt === dt && cache.f === fMaxWanted) return cache.sp;
+      cache = { a, dt, f: fMaxWanted, sp: lineSpectrum(a, dt, fMaxWanted) };
+      return cache.sp;
+    }
+    function lineSpectrum(a, dt, fMaxWanted) {
       const P = a.length - 1, T = P * dt, df = 1 / T;
       let mean = 0; for (let i = 0; i < P; i++) mean += a[i]; mean /= P;
       const K = Math.min(Math.floor(fMaxWanted / df), Math.floor(P / 2) - 1);
@@ -112,7 +124,7 @@
       if (!a) {
         ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center";
         ctx.fillText(sc ? `${S.src.toUpperCase()} of ${sc.label} is not connected` : "NO SIGNAL", padL + gw / 2, padT + gh / 2);
-        ctx.textAlign = "left"; $("harm").innerHTML = ""; $("spurs").innerHTML = ""; $("thd").textContent = ""; $("foot").textContent = ""; return;
+        ctx.textAlign = "left"; $("harm").innerHTML = ""; $("spurs").innerHTML = ""; $("thd").textContent = ""; $("foot").textContent = ""; G = null; renderMarks(); return;
       }
       // fundamental of the analysed signal itself (e.g. 100 Hz ripple even when a
       // 1 kHz generator sets the simulation); the CAD's frequency is the fallback
@@ -122,7 +134,7 @@
       const sp = spectrum(a, dt, span);
       // fundamental: the line nearest fSig, else the largest line
       let fund = fSig ? sp.lines.reduce((b, l) => Math.abs(l.f - fSig) < Math.abs(b.f - fSig) ? l : b, sp.lines[0]) : sp.lines.reduce((b, l) => l.vpk > b.vpk ? l : b, sp.lines[0]);
-      if (!fund) return;
+      if (!fund) { G = null; renderMarks(); return; }
       const f0 = fund.f;
       const refDb = S.units === "dbc" ? 20 * Math.log10(Math.max(fund.vpk, 1e-15)) : 20 * Math.log10(Math.SQRT1_2);
       const db = v => 20 * Math.log10(Math.max(v, 1e-15)) - refDb;            // dBc, or dBV (vpk -> rms)
@@ -147,6 +159,13 @@
         if (h >= 1 && h <= 10) { ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = "center"; ctx.fillText(h === 1 ? "F" : "H" + h, X(l.f), Math.max(padT + 10, Y(d) - 6)); }
       });
       ctx.restore(); ctx.textAlign = "left";
+      G = { X, Y, padL, padT, gw, gh, span, bottom, lines: sp.lines, db, fund, harmonicOf, dbUnit: S.units === "dbc" ? "dBc" : "dBV" };
+      if (hover) {
+        const x = X(hover.f), r = reading(hover);
+        ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gh); ctx.stroke(); ctx.setLineDash([]);
+        if (r) MarkerPicker.label(ctx, x, padT + 4, padL, padL + gw, [[I.fmt(r.f, "Hz") + (r.h ? ` ${r.h === 1 ? "F" : "H" + r.h}` : ""), "#c9d6e3"], [`${lvl(r.level)} ${G.dbUnit}`, "#ff8ad8"], [I.fmt(r.vrms, "Vrms"), "#8b949e"]]);
+      }
+      pick.list.forEach((m, i) => { const p = markerPos(m); if (p) MarkerPicker.draw(ctx, p.x, p.y, MarkerPicker.LETTERS[i], "#ff8ad8"); });
 
       // harmonic table and THD
       let rows = "", sum2 = 0;
@@ -161,8 +180,49 @@
       $("thd").textContent = "THD " + (thd < 0.01 ? "<0.01" : thd.toFixed(thd < 1 ? 3 : 2)) + " %";
       const spurs = sp.lines.filter(l => !harmonicOf(l) && l.vpk / fund.vpk > 1e-4).sort((p, q) => q.vpk - p.vpk).slice(0, 6);
       $("spurs").innerHTML = spurs.length ? spurs.map(l => `<tr><td>${I.fmt(l.f, "Hz")}</td><td>${(20 * Math.log10(l.vpk / fund.vpk)).toFixed(1)} dBc</td></tr>`).join("") : `<tr><td class="muted">None above −80 dBc (e.g. no mains hum)</td></tr>`;
+      renderMarks();
       $("foot").innerHTML = `Fundamental <b>${I.fmt(f0, "Hz")}</b> · <b>${I.fmt(fund.vpk / Math.SQRT2, "Vrms")}</b> · THD <b>${thd.toFixed(3)} %</b> · DC <b>${I.fmt(sp.dc, "V")}</b>`;
     }
+
+    // --- markers: A and B on spectral lines (frequency + level) ---------------
+    let G = null, hover = null;
+    const lineAt = f => G && G.lines.find(l => Math.abs(l.f - f) < 1e-6 * Math.max(1, f));
+    const stemTop = l => G.Y(Math.max(G.bottom, G.db(l.vpk)));
+    function snap(x, y) {
+      if (!G || !G.lines.length || x < G.padL - 8 || x > G.padL + G.gw + 8) return null;   // any height: the fundamental touches the top
+      // the stem nearest the pointer (a click on or just above a stem picks it),
+      // else the line nearest in frequency
+      let best = null, bd = Infinity;
+      G.lines.forEach(l => {
+        const dx = Math.abs(G.X(l.f) - x); if (dx > 8) return;
+        const top = Math.max(G.padT, stemTop(l)), d = dx + Math.max(0, top - y) * 0.5 + Math.max(0, y - (G.padT + G.gh));
+        if (d < bd) { bd = d; best = l; }
+      });
+      if (!best) best = G.lines.reduce((b, l) => Math.abs(G.X(l.f) - x) < Math.abs(G.X(b.f) - x) ? l : b);
+      return { f: best.f };
+    }
+    function markerPos(m) {
+      const l = lineAt(m.f); if (!l || l.f > G.span) return null;
+      return { x: G.X(l.f), y: Math.max(G.padT, stemTop(l)) };
+    }
+    function reading(m) {
+      const l = lineAt(m.f); if (!l) return null;
+      const h = G.harmonicOf(l);
+      return { f: l.f, h, vrms: l.vpk / Math.SQRT2, level: G.db(l.vpk), dbc: 20 * Math.log10(Math.max(l.vpk, 1e-15) / G.fund.vpk) };
+    }
+    const lvl = d => d < -200 ? "< −200" : d.toFixed(1);
+    const describe = r => `${I.fmt(r.f, "Hz")}${r.h ? ` (${r.h === 1 ? "F" : "H" + r.h})` : ""}: <b>${lvl(r.level)} ${G.dbUnit}</b> · ${I.fmt(r.vrms, "Vrms")}`;
+    function renderMarks() {
+      const el = $("marks"), rs = pick.list.map(reading);
+      let h = "";
+      rs.forEach((r, i) => { if (r) h += `<span>${MarkerPicker.LETTERS[i]} ${describe(r)}</span>`; });
+      if (rs.length === 2 && rs[0] && rs[1]) h += `<span>B−A: <b>${I.fmt(rs[1].f - rs[0].f, "Hz")}</b>, <b>${(rs[1].level - rs[0].level).toFixed(1)} dB</b></span>`;
+      if (!h && G) h = `<span class="hint">Click a spectral line to place marker A, then B, to read its frequency and level. Drag to move, double-click to remove.</span>`;
+      if (pick.list.length) h += `<button class="btn" id="marks-clear" title="Remove the markers (Esc)">Clear markers</button>`;
+      el.innerHTML = h;
+      const b = $("marks-clear"); if (b) b.onclick = () => pick.clear();
+    }
+    const pick = MarkerPicker($("screen"), { snap, pos: markerPos, hover: m => { hover = m; draw(); }, change: () => draw() });
 
     const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
     bindSel("src", v => S.src = v); bindSel("span", v => S.span = v); bindSel("units", v => S.units = v); bindSel("scale", v => S.scale = parseFloat(v));
@@ -172,7 +232,7 @@
     window.addEventListener("resize", draw);
     setInterval(() => { if (!I.result) draw(); }, 1500);
     draw();
-    window.Spectrum = { state: S, draw };
+    window.Spectrum = { state: S, draw, linePoint: f => markerPos({ f }), markers: () => pick.list.map(m => ({ ...m, pos: markerPos(m), reading: reading(m) })) };
   })();
   </script>
 </body>

@@ -25,6 +25,10 @@ circuit is saved in the browser.
   with the simulated load line, operating point, dissipation, gain and THD.
 - **Oscilloscope & spectrum analyzer** — drop a scope part on the schematic and
   open it full-window, or view harmonic distortion on the analyzer.
+- **Markers** — click any of these graphs to place markers A and B: time and
+  voltage with ΔT and ΔV on the scope, frequency and level on the analyzer,
+  and Vg, dissipation, gm, rp and µ at a point of the plate curves, with the
+  load line through two points.
 - **40 tubes** — Western and Soviet small-signal triodes (12AX7, 6N2P, 6SN7…),
   power tubes (EL84, EL34, 6V6, KT88, 300B, 845, GU-50…) and rectifiers
   (5U4G, GZ34, 5Ts3S…), with pinouts and ratings.
