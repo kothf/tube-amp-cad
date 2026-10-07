@@ -516,6 +516,28 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await win.close();
 }
 
+// --- 12. File menu: New with a drawing frame, Save as PDF --------------------------
+{
+  await cad.locator("#btn-file").click();
+  check(await cad.locator(".menu-list").isVisible(), "File menu opens");
+  await cad.getByRole("menuitem", { name: /New/ }).click();
+  await cad.locator('#new-size .btn[data-v="A4"]').click();
+  await cad.locator('#new-orient .btn[data-v="portrait"]').click();
+  await cad.locator("#new-title").fill("Test stage");
+  await cad.locator("#btn-new-create").click();
+  const f = await cad.evaluate(() => { const S = TubeCAD.state, fr = S.comps.find(c => c.type === "frame"); return fr && { n: S.comps.length, w: S.wires.length, p: fr.params, g: CadLib.sheetGeom(fr) }; });
+  check(f && f.n === 1 && f.w === 0 && f.p.size === "A4" && f.p.orient === "portrait" && f.p.title === "Test stage" && f.g.W === 210 * 4 && f.g.H === 297 * 4 && f.g.tb.x2 - f.g.tb.x1 === 180 * 4,
+    `New… creates an empty sheet with an A4 portrait frame (${f && f.g.W / 4} × ${f && f.g.H / 4} mm, title block ${f && (f.g.tb.x2 - f.g.tb.x1) / 4} mm wide)`);
+  await cad.evaluate(() => { const S = TubeCAD.state, C = TubeCAD; const r = C.makeComp("resistor", { r: 4700 }, 400, 400, 0); S.comps.push(r); C.commit(); });
+  const pdf = await cad.evaluate(() => { const b = TubeCAD.exportPDF(false); let s = ""; for (const c of b) s += String.fromCharCode(c); return s; });
+  const xref = +pdf.match(/startxref\n(\d+)/)[1];
+  const offs = [...pdf.slice(xref).matchAll(/^(\d{10}) 00000 n $/gm)].map(m => +m[1]);
+  check(pdf.startsWith("%PDF-1.4") && /\/MediaBox \[0 0 595.276 841.89\]/.test(pdf) && pdf.slice(xref, xref + 4) === "xref" && offs.every((o, i) => pdf.slice(o).startsWith(`${i + 1} 0 obj`)),
+    `Save as PDF: a valid A4 portrait PDF (${pdf.length} bytes, ${offs.length} objects, cross-reference table checks out)`);
+  check(/\(-RA1\) Tj/.test(pdf) && /\(Test stage\) Tj/.test(pdf) && /\/BaseFont \/Courier/.test(pdf) && !/rgb|#/.test(pdf.slice(0, xref).replace(/\/Title \([^)]*\)/, "")),
+    "the PDF holds the drawing as vector paths and text (designation -RA1, title block), black on white");
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 
