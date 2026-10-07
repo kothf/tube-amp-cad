@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-10-07
+
+### Added
+- **▶ Simulate** button in the oscilloscope window. In steady state it asks the
+  CAD for a full run until the circuit has settled.
+- **Power-on** analysis in the oscilloscope: the circuit starts cold (every
+  node at 0 V, capacitors empty) and every source switches on at t = 0; the
+  scope shows the first 0.1, 0.2, 0.5, 1 or 2 s. Traces are drawn as the
+  envelope of each signal (min and max per time bucket), so an audio signal
+  stays readable while the supply charges. Readouts give the final level and
+  swing, the peak and when the signal settles within ±2 %; markers read time,
+  voltage and the envelope range. The run happens in its own worker with a
+  progress bar and can be stopped; editing the circuit marks the record as
+  changed. Engine: `TubeSimEngine.startup(netlist, { tStop, probes, maxPoints })`
+  with differential probes.
+
 ## [3.10.0] - 2026-10-07
 
 ### Changed

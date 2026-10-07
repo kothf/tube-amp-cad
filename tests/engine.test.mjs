@@ -288,3 +288,20 @@ test("transformer-fed kenotron supply converges for any node order (round-off fl
   const spread = Math.max(...results) - Math.min(...results);
   assert.ok(results[0] > 300 && results[0] < 450 && spread < 0.2, `DC output ${results.map(v => v.toFixed(2)).join(", ")} V`);
 });
+
+test("power-on transient: RC charge from cold follows 1 - e^(-t/RC), probes are differential", () => {
+  // 100 V -> 10 kΩ -> node 2 -> 10 µF -> node 3 -> 1 Ω -> ground; probe [2, 3] reads the capacitor alone
+  const nl = { nodeCount: 4, elements: [
+    { id: "b", kind: "V", nodes: [1, 0], v: 100 }, { id: "r", kind: "R", nodes: [1, 2], r: 10e3 },
+    { id: "c", kind: "C", nodes: [2, 3], c: 10e-6 }, { id: "rs", kind: "R", nodes: [3, 0], r: 1 }] };
+  const r = E.startup(nl, { tStop: 0.5, probes: [[2, 3], 2], maxPoints: 500 });
+  assert.ok(r.ok, r.error);
+  const tau = 10001 * 10e-6;
+  for (const t of [0.05, 0.1, 0.2, 0.4]) {
+    const i = Math.round(t / r.dt - 0.5), v = (r.min[0][i] + r.max[0][i]) / 2;
+    near(v, 100 * (1 - Math.exp(-t / tau)), 0.01, `Vc at ${t} s`);
+  }
+  assert.ok(r.min[0][0] < 1, "starts empty");
+  // the single-node probe also sees the 1 Ω resistor's drop (current x 1 Ω), a few mV more early on
+  assert.ok(r.max[1][0] > r.max[0][0], "a probe against ground differs from the differential one");
+});

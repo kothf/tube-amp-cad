@@ -180,6 +180,7 @@
   function redo() { if (S.hIndex < S.history.length - 1) { S.hIndex++; restore(S.history[S.hIndex]); } }
   function circuitChanged() {
     S.topo = null;
+    if (S.trans && !S.trans.stale && !S.trans.running) { S.trans.stale = true; if (channel) channel.postMessage(transientMessage()); }
     try { localStorage.setItem(STORAGE_KEY, snapshot()); } catch (e) {}
     scheduleSim();
     updateInspector();
@@ -416,8 +417,74 @@
   }
   if (channel) channel.onmessage = e => {
     const m = e.data || {};
-    if (m.type === "REQUEST_STATE") { if (!lastSummary) lastSummary = buildSummary(); lastSummary.selectedTubeId = lastTubeId; channel.postMessage(lastSummary); }
+    if (m.type === "REQUEST_STATE") {
+      if (!lastSummary) lastSummary = buildSummary(); lastSummary.selectedTubeId = lastTubeId; channel.postMessage(lastSummary);
+      if (S.trans) channel.postMessage(transientMessage());
+    }
+    else if (m.type === "RUN_SIM") runSim("full");                       // ▶ Simulate in an instrument window
+    else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop);
+    else if (m.type === "STOP_TRANSIENT") stopTransient();
   };
+
+  // ---------------------------------------------------------------------------
+  // Power-on transient for the oscilloscopes (own worker, so live runs go on)
+  // ---------------------------------------------------------------------------
+  let tWorker = null;
+  S.trans = null;           // { seq, running, progress, tStop, ok, error, dt, scopes: [{ id, label, ch1: {min,max}, ch2 }] }
+  function transientMessage() {
+    const t = S.trans;
+    return { type: "TRANSIENT_RESULT", running: !!t.running, progress: t.progress || 0, tStop: t.tStop, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
+      dt: t.dt, elapsedMs: t.elapsedMs, scopes: t.scopes || [] };
+  }
+  function stopTransient() {
+    if (tWorker) { tWorker.terminate(); tWorker = null; }
+    if (S.trans && S.trans.running) { S.trans.running = false; S.trans.error = "Stopped"; if (channel) channel.postMessage(transientMessage()); setStatus("idle", "Power-on transient stopped"); }
+  }
+  function runTransient(tStop) {
+    tStop = Math.min(5, Math.max(0.01, +tStop || 1));
+    const T = topo();
+    if (!T.hasGround) { S.trans = { running: false, ok: false, error: "Add a ground symbol to simulate", tStop }; if (channel) channel.postMessage(transientMessage()); return; }
+    stopTransient();
+    const netlist = buildNetlist(), probes = [], map = [];
+    S.comps.filter(c => c.type === "scope").forEach(c => {
+      const com = T.pinNet.get(c.id + ":COM");
+      ["CH1", "CH2"].forEach(pid => {
+        if (!T.pinConnected.get(c.id + ":" + pid)) return;
+        map.push({ id: c.id, label: c.label, ch: pid.toLowerCase(), k: probes.length });
+        probes.push([T.pinNet.get(c.id + ":" + pid), com]);
+      });
+    });
+    const seq = (S.trans && S.trans.seq || 0) + 1;
+    S.trans = { seq, running: true, progress: 0, tStop };
+    if (channel) channel.postMessage(transientMessage());
+    setStatus("busy", `Power-on transient, first ${fmtEng(tStop, "s")}…`);
+    try { tWorker = new Worker("sim-worker.js" + VERSION); } catch (e) { tWorker = null; }
+    const done = result => {
+      if (!S.trans || S.trans.seq !== seq) return;
+      tWorker = null;
+      const scopes = [];
+      if (result.ok) map.forEach(p => {
+        let sc = scopes.find(x => x.id === p.id); if (!sc) scopes.push(sc = { id: p.id, label: p.label });
+        sc[p.ch] = { min: Array.from(result.min[p.k]), max: Array.from(result.max[p.k]) };
+      });
+      Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, elapsedMs: result.elapsedMs, scopes, progress: 1 });
+      if (channel) channel.postMessage(transientMessage());
+      if (result.ok) setStatus("ok", `Power-on transient: ${fmtEng(tStop, "s")} of circuit time in ${(result.elapsedMs / 1000).toFixed(1)} s · ${result.steps} steps`);
+      else setStatus("error", "Power-on transient: " + result.error);
+    };
+    const options = { tStop, probes, maxPoints: 4000, budgetMs: 600000 };
+    if (!tWorker) { setTimeout(() => done(TubeSimEngine.startup(netlist, options)), 0); return; }
+    tWorker.onmessage = e => {
+      const d = e.data;
+      if (d.progress !== undefined && !d.result) {
+        if (!S.trans || S.trans.seq !== seq) return;
+        S.trans.progress = d.progress;
+        if (channel) channel.postMessage(transientMessage());
+        setStatus("busy", `Power-on transient, first ${fmtEng(tStop, "s")}: ${Math.round(d.progress * 100)} %`);
+      } else done(d.result);
+    };
+    tWorker.postMessage({ seq, netlist, options, kind: "startup" });
+  }
 
   // ---------------------------------------------------------------------------
   // View transforms
@@ -1454,6 +1521,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, renumber, desig, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

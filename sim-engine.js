@@ -595,6 +595,59 @@
     }
   };
 
-  const Engine = { Koren, Spice, RECTIFIER_PERVEANCE, simulate, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix };
+  // ---------------------------------------------------------------------------
+  // Power-on transient: the circuit starts cold (every node at 0 V, capacitors
+  // empty, no current in inductors) and all sources switch on at t = 0. Steps
+  // through tStop and returns only the probed nodes, compressed to at most
+  // maxPoints buckets, each holding the minimum and maximum of its samples, so
+  // an audio signal over a second of supply settling still shows its envelope.
+  //   opts: { tStop, probes: [[node, refNode]...], maxPoints, budgetMs, onProgress(f) }
+  //   each probe reads v(node) - v(refNode), like a scope channel against its common
+  // ---------------------------------------------------------------------------
+  function startup(netlist, opts) {
+    opts = opts || {};
+    const t0 = Date.now(), tStop = Math.max(opts.tStop || 1, 1e-4), budgetMs = opts.budgetMs || 300000;
+    const circ = buildCircuit(netlist), n = circ.nUnk;
+    const result = { ok: false, warnings: [] };
+    if (circ.nNodes < 2) { result.error = "Circuit is empty"; return result; }
+    circ.els.forEach(e => { delete e._vlast; });
+    const freqs = circ.els.filter(e => e.kind === "VSRC" && e.freq > 0 && e.amp !== 0).map(e => e.freq);
+    const fMax = freqs.length ? Math.max.apply(null, freqs) : 0;
+    // 40 steps per period of the fastest source, at least 2000 steps over the run
+    let h = Math.min(fMax ? 1 / (40 * fMax) : Infinity, tStop / 2000);
+    const steps = Math.ceil(tStop / h); h = tStop / steps;
+    const probes = (opts.probes || []).map(p => Array.isArray(p) ? p : [p, 0]).filter(([a, b]) => a >= 0 && a < circ.nNodes && b >= 0 && b < circ.nNodes);
+    const nOut = Math.min(opts.maxPoints || 4000, steps), per = steps / nOut;
+    const mins = probes.map(() => new Float32Array(nOut)), maxs = probes.map(() => new Float32Array(nOut));
+    mins.forEach(a => a.fill(Infinity)); maxs.forEach(a => a.fill(-Infinity));
+    const step = (xprev, tNext, hh, depth) => {
+      const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev }, { gmin: 1e-12 });
+      if (r.ok) return r.x;
+      if ((depth || 0) >= 3) return null;
+      let xs = xprev;
+      for (let k = 1; k <= 8; k++) { xs = step(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
+      return xs;
+    };
+    let x = new Array(n).fill(0), lastProg = 0;
+    const record = (s, x) => {
+      const b = Math.min(nOut - 1, Math.floor(s / per));
+      probes.forEach(([p, q], j) => { const v = vn(x, p) - vn(x, q); if (v < mins[j][b]) mins[j][b] = v; if (v > maxs[j][b]) maxs[j][b] = v; });
+    };
+    record(0, x);
+    for (let s = 1; s <= steps; s++) {
+      const nx = step(x, s * h, h);
+      if (!nx) { result.error = "Transient did not converge at t=" + (s * h * 1000).toFixed(3) + " ms"; return result; }
+      x = nx; record(s, x);
+      if (opts.onProgress && s / steps - lastProg >= 0.02) { lastProg = s / steps; opts.onProgress(lastProg); }
+      if (Date.now() - t0 > budgetMs) { result.error = `Stopped after ${(s * h).toFixed(3)} s of circuit time: the run took longer than ${Math.round(budgetMs / 1000)} s`; return result; }
+    }
+    result.ok = true;
+    result.tStop = tStop; result.h = h; result.steps = steps; result.points = nOut; result.dt = tStop / nOut;
+    result.probes = probes; result.min = mins; result.max = maxs;
+    result.elapsedMs = Date.now() - t0;
+    return result;
+  }
+
+  const Engine = { Koren, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix };
   root.TubeSimEngine = Engine;
 })(globalThis);

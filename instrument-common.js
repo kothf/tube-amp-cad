@@ -11,13 +11,19 @@
   const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tube_cad_v2") : null;
   if (bc) {
     bc.onmessage = e => {
-      if (!e.data || e.data.type !== "SIM_RESULT") return;
-      Inst.result = e.data; Inst.at = Date.now();
+      if (!e.data) return;
+      if (e.data.type === "SIM_RESULT") { Inst.result = e.data; Inst.at = Date.now(); }
+      else if (e.data.type === "TRANSIENT_RESULT") Inst.transient = e.data;   // power-on transient from the CAD
+      else return;
       Inst.listeners.forEach(f => f());
     };
     bc.postMessage({ type: "REQUEST_STATE" });
   }
 
+  Inst.transient = null;
+  /** Ask the CAD: { type: "RUN_SIM" } | { type: "RUN_TRANSIENT", tStop } | { type: "STOP_TRANSIENT" } */
+  Inst.send = msg => { if (bc) bc.postMessage(msg); };
+  Inst.transientScope = () => { const t = Inst.transient; if (!t || !t.scopes) return null; const id = (Inst.scope() || {}).id || Inst.scopeId; return t.scopes.find(x => x.id === id) || t.scopes[0] || null; };
   Inst.onUpdate = f => Inst.listeners.push(f);
   Inst.scopes = () => (Inst.result && Inst.result.ok && Inst.result.scopes) || [];
   Inst.scope = () => { const s = Inst.scopes(); return s.find(x => x.id === Inst.scopeId) || s[0] || null; };

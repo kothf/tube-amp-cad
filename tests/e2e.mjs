@@ -412,6 +412,56 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(await cad.evaluate(() => !TubeCAD.buildNetlist().elements.some(e => /frame/.test(e.id))), "the frame adds nothing to the simulation");
 }
 
+// --- 9. Oscilloscope: ▶ Simulate and the power-on transient -----------------------
+{
+  // 100 V switched onto 10 kΩ + 10 µF (τ = 0.1 s); the scope watches the capacitor
+  const ids = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+    const pin = (c, id) => C.compPins(c).find(p => p.id === id);
+    const wire = (a, b, hFirst) => C.lRoute(a.x, a.y, b.x, b.y, hFirst !== false).forEach(s => C.addSegment(...s));
+    const B = add("vdc", { v: 100 }, 200, 300), R = add("resistor", { r: 10e3 }, 300, 240), Cc = add("electrolytic", { c: 10e-6 }, 400, 300, 1), SC = add("scope", {}, 620, 300), g = add("ground", {}, 200, 400);
+    wire(pin(B, "+"), pin(R, "1")); wire(pin(R, "2"), { x: 400, y: 240 }); wire({ x: 400, y: 240 }, pin(Cc, "+"));
+    wire(pin(SC, "CH1"), { x: 400, y: 270 }, true);
+    wire(pin(B, "-"), pin(g, "G")); wire(pin(Cc, "-"), { x: 400, y: 400 }); wire({ x: 400, y: 400 }, pin(g, "G")); wire(pin(SC, "COM"), { x: 520, y: 330 }, true); wire({ x: 520, y: 330 }, { x: 520, y: 400 }); wire({ x: 520, y: 400 }, { x: 400, y: 400 });
+    S.view = { scale: 1, ox: 0, oy: 0 }; C.commit();
+    return { scope: SC.id };
+  });
+  await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, null, { timeout: 30000 });
+  const sp = await open("scope-tran", `oscilloscope.html?scope=${ids.scope}`);
+  await sp.waitForFunction(() => /Live from CAD/.test(document.getElementById("status").textContent), null, { timeout: 8000 });
+  // ▶ Simulate in steady state asks the CAD for a full run
+  const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+  await sp.click("#btn-sim");
+  await cad.waitForFunction(s0 => TubeCAD.state.sim.seq > s0 && !TubeCAD.state.sim.busy, seq0, { timeout: 30000 });
+  check(true, "▶ Simulate on the oscilloscope runs the CAD's simulation until settled");
+  // power-on: 0.5 s
+  await sp.click('#analysis .btn[data-v="startup"]');
+  await sp.selectOption("#t-stop", "0.5");
+  await sp.click("#btn-sim");
+  await sp.waitForFunction(() => Instrument.transient && !Instrument.transient.running && Instrument.transient.ok, null, { timeout: 60000 });
+  const tr = await sp.evaluate(() => {
+    const t = Instrument.transient, ch = Scope.startupChannels(Instrument.transientScope()).ch1, q = Scope.settleInfo(ch, t.dt);
+    const at = s => ch.raw[Math.round(s / t.dt - 0.5)];
+    return { at0: at(0.0005), atTau: at(0.1), final: q.final, settle: q.settle, meas: document.getElementById("meas").textContent, status: document.getElementById("status").textContent };
+  });
+  const exp = s => 100 * (1 - Math.exp(-s / 0.1));
+  check(Math.abs(tr.atTau - exp(0.1)) < 1.5 && Math.abs(tr.final - exp(0.4875)) < 1 && tr.at0 < 2,
+    `power-on RC charge: ${tr.atTau.toFixed(1)} V at τ (63.2 V), ${tr.final.toFixed(1)} V at the end (${exp(0.4875).toFixed(1)} V)`);
+  check(/final/.test(tr.meas) && Math.abs(tr.settle - 0.1 * Math.log(1 / 0.02 * (1 - Math.exp(-4.875)))) < 0.04, `settling readout: ${tr.meas.trim()}`);
+  // a marker on the record reads time and voltage
+  const box = await sp.locator("#screen").boundingBox();
+  const p = await sp.evaluate(() => Scope.screenPoint("ch1", 0.2));
+  await sp.mouse.click(box.x + p.x, box.y + p.y);
+  const mk = await sp.evaluate(() => Scope.markers()[0] && Scope.markers()[0].reading);
+  check(mk && Math.abs(mk.t - 0.1) < 0.005 && Math.abs(mk.v - exp(mk.t)) < 1.5, `marker on the power-on record: ${mk && mk.v.toFixed(1)} V at ${mk && (mk.t * 1000).toFixed(1)} ms`);
+  // editing the circuit marks the record stale
+  await cad.evaluate(() => { const S = TubeCAD.state; S.comps.find(c => c.type === "resistor").params.r = 20e3; TubeCAD.commit(); });
+  await sp.waitForFunction(() => Instrument.transient && Instrument.transient.stale, null, { timeout: 5000 }).catch(() => {});
+  check(await sp.evaluate(() => !!Instrument.transient.stale), "editing the circuit marks the power-on record as changed");
+  await sp.close();
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 
