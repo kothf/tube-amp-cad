@@ -190,6 +190,13 @@
   }
 
   let plotGeom = null;
+  // the plot geometry as shown now: redraw first if the canvas changed size since the
+  // last draw (a layout shift that the resize observer has not handled yet)
+  function geom() {
+    const cv = $("plot");
+    if (!plotGeom || plotGeom.W !== cv.clientWidth || plotGeom.H !== cv.clientHeight) drawPlot();
+    return plotGeom;
+  }
   function drawPlot() {
     const cv = $("plot"), dpr = window.devicePixelRatio || 1;
     const W = cv.clientWidth, H = cv.clientHeight;
@@ -213,7 +220,7 @@
     const padL = 58, padR = 70, padT = 18, padB = 44;
     const pw = W - padL - padR, ph = H - padT - padB;
     const X = va => padL + va / vaMax * pw, Y = ia => padT + ph - ia / iaMax * ph;
-    plotGeom = { padL, padT, pw, ph, vaMax, iaMax, X, Y };
+    plotGeom = { padL, padT, pw, ph, vaMax, iaMax, X, Y, W, H };
 
     // grid + labels
     ctx.font = "11px ui-monospace, Menlo, monospace"; ctx.textBaseline = "middle";
@@ -380,7 +387,7 @@
     return { va: m.va, ia: m.ia, vg: null, on: null };
   }
   function snapPoint(x, y) {
-    const g = plotGeom; if (!g) return null;
+    const g = geom(); if (!g) return null;
     if (x < g.padL - 6 || x > g.padL + g.pw + 6 || y < g.padT - 6 || y > g.padT + g.ph + 6) return null;
     const ct = current().circuit;
     if (ct && Math.hypot(g.X(ct.dc.vak) - x, g.Y(ct.dc.ia) - y) <= SNAP) return { q: true };
@@ -426,7 +433,7 @@
   function initPicker() {
     pick = MarkerPicker($("plot"), {
       snap: snapPoint,
-      pos: m => { const p = pointOf(m); return p && plotGeom ? { x: plotGeom.X(p.va), y: plotGeom.Y(p.ia) } : null; },
+      pos: m => { const p = pointOf(m), g = geom(); return p && g ? { x: g.X(p.va), y: g.Y(p.ia) } : null; },
       hover: m => {
         const p = m && pointOf(m);
         S.hover = p || null;
@@ -603,6 +610,6 @@
   }
 
   window.TubeTracer = { state: S, renderAll, fitKoren, current, vgFor,
-    toScreen: (va, ia) => plotGeom && { x: plotGeom.X(va), y: plotGeom.Y(ia) }, iaOf: (va, vg) => iaOf(current(), va, vg), picks: () => pick.list.map(m => { const p = pointOf(m); return p && { ...m, ...describePoint(p) }; }) };
+    toScreen: (va, ia) => { const g = geom(); return g && { x: g.X(va), y: g.Y(ia) }; }, iaOf: (va, vg) => iaOf(current(), va, vg), picks: () => pick.list.map(m => { const p = pointOf(m); return p && { ...m, ...describePoint(p) }; }) };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
