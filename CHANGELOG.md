@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.16.3] - 2026-10-07
+
+### Fixed
+- 6П14П limits taken from the Soviet handbook table (Предельные
+  эксплуатационные данные): anode dissipation **14 W** (3.16.1 wrongly used
+  the Philips EL84's 12 W), screen 2.2 W, cathode–heater 100 V. The 6П14П-ЕВ
+  entry notes its own limits (14 W, cathode–heater 200 V).
+
 ## [3.16.2] - 2026-10-07
 
 ### Fixed

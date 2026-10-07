@@ -163,8 +163,10 @@ var TUBE_DATABASE = [
     nameGost: "6П14П", nameWestern: "6P14P (EL84)", commonName: "6P14P",
     type: "Power Output Pentode", category: "power", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
     vh: 6.3, ih: 0.76,
-    heaterWarning: "Noval B9A. Pins 4 & 5: 6.3V @ 0.76A. Envelope runs hot (>180°C) in Class A!",
-    vaMax: 300, paMax: 12.0, ikMax: 65, vg2Max: 300,     // 6П14П handbook / Philips EL84
+    heaterWarning: "Noval B9A. Pins 4 & 5: 6.3V @ 0.76A. Cathode–heater max 100 V. Envelope runs hot (>180°C) in Class A!",
+    // 6П14П handbook limits: Pa 14 W, Pg2 2.2 W, Va 300 V above 8 W (400 V below), Ik 65 mA, Uk-h 100 V
+    // (the Philips EL84 is rated 12 W)
+    vaMax: 300, paMax: 14.0, ikMax: 65, vg2Max: 300,
     isFavorite: true,
     koren: {
       Pentode: { vk: 31.4, ks: 1.077, mu: 19.1, kg: 531.3, kp: 255.5, lam: 1575, x: 1.37, kg2: 2001 },
@@ -184,6 +186,7 @@ var TUBE_DATABASE = [
     type: "Power Output Pentode", category: "power", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
     vh: 6.3, ih: 0.76,
     heaterWarning: "Noval B9A. Pins 4 & 5: 6.3V @ 0.76A. Envelope runs hot (>180°C) in Class A!",
+    // 6П14П-ЕВ handbook limits: Pa 14 W, Pg2 2 W, Va 300 V above 8 W (400 V below, 500 V cut off), Ik 65 mA, Uk-h 200 V
     vaMax: 400, paMax: 14.0, ikMax: 65, vg2Max: 300,
     isFavorite: true,
     koren: {
