@@ -765,10 +765,11 @@
     if (c && c.type === "scope" && !S.wiring) ToolWindows.open("oscilloscope.html", { scope: c.id });
     if (c && c.type === "switch" && !S.wiring) { setSwitch(c, c.params.pos === "B" ? "A" : "B"); updateInspector(); }
   }
-  // Renumber reference designations (IEC 81346-2 class code + number) in
-  // reading order of the diagram: left to right, then top to bottom. Parts
-  // whose labels share a base before a dot (a dual triode -K1.1/-K1.2, the
-  // sections -S1.1/-S1.2 of one switch) stay one object with their sections.
+  // Renumber reference designations (classic letter code + number: R, C, L, T,
+  // VL ... as in ГОСТ 2.710) in reading order of the diagram: left to right,
+  // then top to bottom. Parts whose labels share a base before a dot (a dual
+  // triode VL1.1/VL1.2, the sections SA1.1/SA1.2 of one switch) stay one
+  // object with their sections.
   function renumber() {
     const groups = new Map();
     S.comps.forEach(c => {
@@ -789,7 +790,7 @@
     });
     commit();
   }
-  // Sections of one switch share its name before the dot (SF1.1, SF1.2) and always move together.
+  // Sections of one switch share its name before the dot (SA1.1, SA1.2) and always move together.
   function switchGang(c) { const i = c.label.lastIndexOf("."); return i > 0 ? c.label.slice(0, i) : null; }
   function setSwitch(c, pos) {
     const g = switchGang(c);
@@ -943,9 +944,7 @@
     }
   }
 
-  // Reference designation as shown on the diagram: the label as typed, e.g. RA1,
-  // KF1.2 (the IEC 81346-1 aspect prefix "-" is left off, as is usual on a
-  // single schematic; type it into the label to show it)
+  // Reference designation as shown on the diagram: the label as typed, e.g. R1, VL1.2
   function desig(c) { return c.label || ""; }
   function drawComp(c, sel, ghost) {
     const def = LIB[c.type];
@@ -1344,7 +1343,7 @@
 
   function buildCircuitPanel(host) {
     host.innerHTML = `<div class="insp-title">Circuit</div><div id="insp-live" class="insp-live"></div>
-      <button class="btn wide" id="btn-renumber" title="Class code (IEC 81346-2) and number for every part, in reading order">Renumber designations (IEC 81346)</button>
+      <button class="btn wide" id="btn-renumber" title="Letter code (R, C, L, T, VL …) and number for every part, in reading order">Renumber designations</button>
       <div class="insp-sub">How to</div>
       <ul class="help-list">
         <li><b>Place:</b> pick a part on the left, click the sheet. <kbd>R</kbd> rotates while placing, <kbd>Shift</kbd>-click places several.</li>
@@ -1354,7 +1353,7 @@
         <li><b>Measure:</b> hover a wire for its voltage; wire an Oscilloscope to see waveforms; double-click it for the full scope.</li>
         <li><b>Simulate:</b> <i>Live</i> re-simulates after every edit. Turn it off to simulate only on <i>▶ Simulate</i> (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>), which always runs until the circuit has settled.</li>
         <li><b>Switch:</b> double-click to flip it; sections named SF1.1, SF1.2… flip together.</li>
-        <li><b>Standards:</b> symbols follow IEC 60617 and designations IEC 81346. Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
+        <li><b>Standards:</b> symbols follow IEC 60617 and designations use the classic letter codes (R, C, L, T, VL, VD, SA, BA, G, P; ГОСТ 2.710). Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
       </ul>`;
     const rb = host.querySelector("#btn-renumber"); if (rb) rb.addEventListener("click", renumber);
   }

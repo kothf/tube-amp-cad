@@ -59,12 +59,12 @@ await cad.mouse.move(mx, my); await cad.keyboard.press("r"); await cad.mouse.cli
 await cad.getByRole("button", { name: /^Capacitor/ }).click();
 await clickAt(500, 300);
 let s = await state();
-const R1 = s.comps.find(c => c.label === "RA1"), C1 = s.comps.find(c => c.label === "CA1");
-check(R1 && R1.rot === 1 && C1 && C1.x === 500, "parts placed from the palette with IEC 81346-2 class codes (RA1, CA1), rotated with R, snapped to the grid");
+const R1 = s.comps.find(c => c.label === "R1"), C1 = s.comps.find(c => c.label === "C1");
+check(R1 && R1.rot === 1 && C1 && C1.x === 500, "parts placed from the palette with letter codes (R1, C1), rotated with R, snapped to the grid");
 
 const a = await pin(R1.id, "2"), b = await pin(C1.id, "1");
 await clickAt(a.x, a.y); await clickAt(a.x, b.y); await clickAt(b.x, b.y);
-check(await sameNet(`${R1.id}:2`, `${C1.id}:1`), "wire drawn pin → corner → pin connects RA1 to CA1");
+check(await sameNet(`${R1.id}:2`, `${C1.id}:1`), "wire drawn pin → corner → pin connects R1 to C1");
 
 const [cx, cy] = await toScreen(500, 300), [dx, dy] = await toScreen(540, 340);
 await cad.mouse.move(cx, cy); await cad.mouse.down(); await cad.mouse.move(dx, dy, { steps: 5 }); await cad.mouse.up();
@@ -179,7 +179,7 @@ const probe = await cad.evaluate(async v1 => {
   const C = TubeCAD, S = C.state;
   const pin = (c, id) => C.compPins(c).find(p => p.id === id);
   const wire = (a, b, hFirst) => C.lRoute(a.x, a.y, b.x, b.y, hFirst !== false).forEach(s => C.addSegment(...s));
-  const Co = S.comps.find(c => c.type === "capacitor" && c.label === "CA3") || S.comps.filter(c => c.type === "capacitor").pop();
+  const Co = S.comps.find(c => c.type === "capacitor" && c.label === "C3") || S.comps.filter(c => c.type === "capacitor").pop();
   const SC2 = C.makeComp("scope", {}, 820, 160, 0); S.comps.push(SC2);
   // CH1 taps the plate wire just left of the coupling capacitor; COM to ground
   const p1 = pin(SC2, "CH1"), coA = pin(Co, "1"), tap = { x: coA.x - 10, y: coA.y };
@@ -208,7 +208,7 @@ const [tx, ty] = await cad.evaluate(id => { const S = TubeCAD.state, c = S.comps
 await cad.mouse.click(tx, ty);
 await tracer.waitForFunction(() => document.getElementById("plot-title").textContent.includes("in circuit"), null, { timeout: 5000 }).catch(() => {});
 const title = await tracer.textContent("#plot-title");
-check(title.includes("12AX7") && title.includes("KF1 in circuit"), `clicking KF1 in the CAD shows it on the curve tracer ("${title.trim()}")`);
+check(title.includes("12AX7") && title.includes("VL1 in circuit"), `clicking VL1 in the CAD shows it on the curve tracer ("${title.trim()}")`);
 // pick points: the operating point (snapped), then a free point on the plot
 {
   const q = await tracer.evaluate(() => { const ct = TubeTracer.current().circuit; return { ...TubeTracer.toScreen(ct.dc.vak, ct.dc.ia), vgk: ct.dc.vgk, vak: ct.dc.vak, ia: ct.dc.ia }; });
@@ -381,7 +381,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(Math.abs(m.ht1 / expect - 1) < 0.01, `2 kΩ on one half: ${m.ht1.toFixed(1)} V, expected ${expect.toFixed(1)} V from 44.55 Ω winding + reflected primary (${r.toFixed(1)} Ω)`);
 }
 
-// --- 8. IEC 61082 sheet, IEC 81346 designations -------------------------------
+// --- 8. IEC 61082 sheet, letter-code designations ---------------------------
 {
   await cad.evaluate(() => {
     const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
@@ -395,10 +395,10 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await cad.getByRole("button", { name: /Renumber designations/ }).click();
   const labels = await cad.evaluate(() => TubeCAD.state.comps.map(c => [c.type, c.x, c.y, c.label, TubeCAD.desig(c)]));
   const at = (x, y) => labels.find(l => l[1] === x && l[2] === y);
-  // IEC 81346-2:2009: resistors and inductors are both RA (limiting a flow of electrical energy)
-  check(at(200, 200)[3] === "RA1" && at(200, 400)[3] === "RA2" && at(450, 500)[3] === "RA3" && at(600, 300)[3] === "RA4", `RA objects numbered in reading order: ${labels.filter(l => /^RA/.test(l[3])).map(l => l[3]).sort().join(" ")}`);
-  check(at(300, 300)[3] === "KF1.1" && at(500, 300)[3] === "KF1.2" && at(100, 300)[3] === "TB1", `dual triode sections stay one object (KF1.1, KF1.2); the rectifier tube is TB (TB1)`);
-  check(at(400, 500)[3] === "CA1" && at(200, 200)[4] === "RA1", `capacitor CA1; designations shown without the "-" prefix`);
+  // classic letter codes: R resistors, L chokes, C capacitors, VL every tube (rectifiers too)
+  check(at(200, 200)[3] === "R1" && at(200, 400)[3] === "R2" && at(600, 300)[3] === "R3" && at(450, 500)[3] === "L1", `resistors numbered in reading order, the choke is L1: ${labels.filter(l => /^[RL]\d/.test(l[3])).map(l => l[3]).sort().join(" ")}`);
+  check(at(100, 300)[3] === "VL1" && at(300, 300)[3] === "VL2.1" && at(500, 300)[3] === "VL2.2", `tubes are VL (rectifier VL1); dual triode sections stay one object (VL2.1, VL2.2)`);
+  check(at(400, 500)[3] === "C1" && at(200, 200)[4] === "R1", `capacitor C1; designations shown as R1, no prefix`);
   // drawing frame: placed from the palette, selectable by its title block only
   await cad.getByRole("button", { name: /Drawing frame/ }).click();
   await clickAt(0, 0);
@@ -538,8 +538,8 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const offs = [...pdf.slice(xref).matchAll(/^(\d{10}) 00000 n $/gm)].map(m => +m[1]);
   check(pdf.startsWith("%PDF-1.4") && /\/MediaBox \[0 0 595.276 841.89\]/.test(pdf) && pdf.slice(xref, xref + 4) === "xref" && offs.every((o, i) => pdf.slice(o).startsWith(`${i + 1} 0 obj`)),
     `Save as PDF: a valid A4 portrait PDF (${pdf.length} bytes, ${offs.length} objects, cross-reference table checks out)`);
-  check(/\(RA1\) Tj/.test(pdf) && /\(Test stage\) Tj/.test(pdf) && /\/BaseFont \/Courier/.test(pdf) && !/rgb|#/.test(pdf.slice(0, xref).replace(/\/Title \([^)]*\)/, "")),
-    "the PDF holds the drawing as vector paths and text (designation RA1, title block), black on white");
+  check(/\(R1\) Tj/.test(pdf) && /\(Test stage\) Tj/.test(pdf) && /\/BaseFont \/Courier/.test(pdf) && !/rgb|#/.test(pdf.slice(0, xref).replace(/\/Title \([^)]*\)/, "")),
+    "the PDF holds the drawing as vector paths and text (designation R1, title block), black on white");
 }
 
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
