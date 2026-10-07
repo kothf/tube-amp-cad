@@ -6,6 +6,27 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.13.0] - 2026-10-07
+
+### Added
+- **File menu** in the toolbar: New…, Open… (Ctrl+O), Save (Ctrl+S), Save as
+  PDF and Export SPICE netlist.
+- **Save as PDF**: the sheet as a vector PDF, black on white like a printed
+  IEC 61082 document: one page the size of the drawing frame (A4 to A1,
+  landscape or portrait, at 1:1), or the drawing's bounds without a frame.
+  Lines, symbols and the title block stay vector; text is real text (Courier),
+  Ω and → are drawn as glyphs. (`pdf-export.js`)
+- **New…** asks for the sheet: format A4, A3, A2 or A1 and landscape or
+  portrait, plus a title; every new circuit starts with that drawing frame.
+  A first visit opens an A3 landscape sheet. The drawing frame part has a
+  portrait option; on A4 portrait its title block spans the 180 mm width.
+- Saved files take their name from the title block (identification number,
+  or title).
+
+### Changed
+- A sheet with only a frame and notes counts as empty: no "No ground symbol"
+  warning before the first part is placed.
+
 ## [3.12.0] - 2026-10-07
 
 ### Added

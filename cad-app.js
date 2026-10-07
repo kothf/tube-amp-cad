@@ -236,7 +236,7 @@
       // manual mode: the old result no longer matches the circuit
       if (S.sim.busy) cancelRun();
       S.sim.result = null; S.sim.error = null; S.sim.warnings = [];
-      setStatus("idle", S.comps.length ? "Circuit changed · press Simulate (Ctrl+Enter)" : "Empty sheet");
+      setStatus("idle", hasCircuit() ? "Circuit changed · press Simulate (Ctrl+Enter)" : "Empty sheet");
       broadcast();
       return;
     }
@@ -261,7 +261,7 @@
   function runSim(mode) {
     mode = mode === "full" ? "full" : "live";
     const T = topo();
-    if (!S.comps.length) { S.sim.result = null; S.sim.error = null; setStatus("idle", "Empty sheet"); broadcast(); render(); return; }
+    if (!hasCircuit()) { S.sim.result = null; S.sim.error = null; setStatus("idle", "Empty sheet"); broadcast(); render(); return; }
     if (!T.hasGround) { S.sim.result = null; S.sim.error = "Add a ground symbol to simulate"; setStatus("warn", S.sim.error); broadcast(); render(); updateInspector(); return; }
     if (S.sim.busy) {
       // a full run is long: a new request replaces it; quick runs queue
@@ -816,6 +816,8 @@
     else if (k === "v" && !ctrl) setTool("select");
     else if (k === "f" || k === "F") fitView();
     else if (ctrl && k === "Enter") { runSim("full"); e.preventDefault(); }
+    else if (ctrl && (k === "s" || k === "S")) { saveFile(); e.preventDefault(); }
+    else if (ctrl && (k === "o" || k === "O")) { document.getElementById("file-input").click(); e.preventDefault(); }
     else if (ctrl && (k === "z" || k === "Z")) { e.shiftKey ? redo() : undo(); e.preventDefault(); }
     else if (ctrl && (k === "y" || k === "Y")) { redo(); e.preventDefault(); }
     else if (ctrl && (k === "c" || k === "C")) { copySelection(); }
@@ -956,10 +958,10 @@
     delete c._sel;
     ctx.restore();
 
-    if (c.type === "scope") drawScopeScreen(c);
+    if (c.type === "scope" && !S.printing) drawScopeScreen(c);
 
     // pins
-    if (!ghost) {
+    if (!ghost && !S.printing) {
       const T = topo();
       compPins(c).forEach(p => {
         const conn = T.pinConnected.get(c.id + ":" + p.id);
@@ -1361,7 +1363,7 @@
     S.comps.forEach(c => { counts[c.type] = (counts[c.type] || 0) + 1; });
     let h = kv("Parts", S.comps.length) + kv("Wire segments", S.wires.length) + kv("Nets", T.nodeCount);
     const issues = [];
-    if (S.comps.length && !T.hasGround) issues.push("No ground symbol.");
+    if (hasCircuit() && !T.hasGround) issues.push("No ground symbol.");
     const open = [];
     S.comps.forEach(c => { if (c.type === "scope") return; compPins(c).forEach(p => { if (!T.pinConnected.get(c.id + ":" + p.id)) { if (c.type === "opt_pp" && (p.id === "U1" || p.id === "U2")) return; open.push(`${c.label || LIB[c.type].name}.${p.id}`); } }); });
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
@@ -1397,10 +1399,55 @@
   // ---------------------------------------------------------------------------
   // File operations, SPICE export
   // ---------------------------------------------------------------------------
-  function newSheet() {
-    if (S.comps.length && !confirmInline("Clear the sheet? (Undo restores it)")) return;
-    S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+  // a sheet with only document parts (frame, notes) holds no circuit yet
+  const hasCircuit = () => S.comps.some(c => c.type !== "frame" && c.type !== "note");
+  // New circuit: a sheet with an IEC 61082 drawing frame (format and orientation chosen in a dialog)
+  function newSheet() { document.getElementById("new-modal").hidden = false; document.getElementById("new-title").focus(); }
+  function newCircuit(opts) {
+    opts = Object.assign({ size: "A3", orient: "landscape", title: "" }, opts);
+    const f = makeComp("frame", { size: opts.size, orient: opts.orient, title: opts.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
+    S.comps = [f]; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
     commit(); fitView();
+  }
+  // file name from the title block (or a default)
+  function baseName() {
+    const f = S.comps.find(c => c.type === "frame"), t = f && (f.params.docno || f.params.title);
+    return (t ? t.replace(/[^\w.\- ]+/g, "").trim().replace(/\s+/g, "-") : "") || "tube-circuit";
+  }
+  // Save as PDF: the sheet in vector form, black on white. With a drawing frame the
+  // page is that sheet (A4…A1, landscape or portrait, 1:1); without one, the drawing's bounds.
+  function exportPDF(download) {
+    const MMU = CadLib.MM, k = 72 / 25.4 / MMU;         // pt per drawing unit
+    const f = S.comps.find(c => c.type === "frame");
+    let page;
+    if (f) { const g = CadLib.sheetGeom(f); page = { widthPt: g.W * k, heightPt: g.H * k, k, ox: f.x, oy: f.y }; }
+    else {
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+      S.comps.forEach(c => { const b = compBBox(c); x1 = Math.min(x1, b.x1 - 60); y1 = Math.min(y1, b.y1 - 40); x2 = Math.max(x2, b.x2 + 60); y2 = Math.max(y2, b.y2 + 40); });
+      S.wires.forEach(w => { x1 = Math.min(x1, w.x1, w.x2); y1 = Math.min(y1, w.y1, w.y2); x2 = Math.max(x2, w.x1, w.x2); y2 = Math.max(y2, w.y1, w.y2); });
+      if (!isFinite(x1)) { x1 = 0; y1 = 0; x2 = 1188; y2 = 840; }
+      page = { widthPt: (x2 - x1) * k, heightPt: (y2 - y1) * k, k, ox: x1, oy: y1 };
+    }
+    const bytes = PdfExport.buildPdf(page, pc => drawSheet(pc), { title: f && f.params.title });
+    if (download !== false) {
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      a.download = baseName() + ".pdf"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      setStatus("ok", `Saved ${baseName()}.pdf (${Math.round(bytes.length / 1024)} kB)`);
+    }
+    return bytes;
+  }
+  // the printable drawing: frame, conductors, junctions and parts (no grid, tags or selection)
+  function drawSheet(target) {
+    const keep = ctx; ctx = target; S.printing = true;
+    try {
+      const T = topo();
+      S.comps.forEach(c => { if (c.type === "frame") drawComp(c, false, false); });
+      ctx.lineCap = "round"; ctx.strokeStyle = "#3fb950"; ctx.lineWidth = 2;
+      S.wires.forEach(w => { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); });
+      ctx.fillStyle = "#3fb950";
+      T.junctions.forEach(j => { ctx.beginPath(); ctx.arc(j.x, j.y, 4, 0, Math.PI * 2); ctx.fill(); });
+      S.comps.forEach(c => { if (c.type !== "frame") drawComp(c, false, false); });
+    } finally { ctx = keep; S.printing = false; }
   }
   // The page shows no confirm() dialogs in some hosts; ask through the status bar instead
   let pendingConfirm = 0;
@@ -1413,7 +1460,7 @@
   }
   function saveFile() {
     const blob = new Blob([JSON.stringify({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, null, 1)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "tube-circuit.json"; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = baseName() + ".json"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
   function openFile(file) {
@@ -1492,7 +1539,21 @@
     window.addEventListener("resize", render);
 
     buildPalette();
+    // File menu
+    const menu = document.getElementById("file-menu"), menuList = menu.querySelector(".menu-list"), menuBtn = document.getElementById("btn-file");
+    const closeMenu = () => { menuList.hidden = true; menuBtn.setAttribute("aria-expanded", "false"); };
+    menuBtn.addEventListener("click", e => { e.stopPropagation(); menuList.hidden = !menuList.hidden; menuBtn.setAttribute("aria-expanded", String(!menuList.hidden)); });
+    menuList.addEventListener("click", closeMenu);
+    document.addEventListener("click", e => { if (!menu.contains(e.target)) closeMenu(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
     bind("btn-new", newSheet);
+    bind("btn-pdf", () => exportPDF());
+    // New dialog: format and orientation of the drawing frame
+    const pickSeg = id => { const host = document.getElementById(id); host.querySelectorAll(".btn").forEach(b => b.addEventListener("click", () => host.querySelectorAll(".btn").forEach(x => x.classList.toggle("active", x === b)))); return () => host.querySelector(".btn.active").dataset.v; };
+    const newSize = pickSeg("new-size"), newOrient = pickSeg("new-orient");
+    document.getElementById("new-title").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("btn-new-create").click(); });
+    bind("btn-new-cancel", () => { document.getElementById("new-modal").hidden = true; });
+    bind("btn-new-create", () => { document.getElementById("new-modal").hidden = true; newCircuit({ size: newSize(), orient: newOrient(), title: document.getElementById("new-title").value.trim() }); document.getElementById("new-title").value = ""; });
     bind("btn-open", () => document.getElementById("file-input").click());
     document.getElementById("file-input").addEventListener("change", e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; });
     bind("btn-save", saveFile);
@@ -1518,6 +1579,7 @@
     let saved = null;
     try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (saved) { try { const d = JSON.parse(saved); S.comps = (d.comps || []).filter(c => LIB[c.type]); S.wires = d.wires || []; } catch (e) {} }
+    else S.comps = [makeComp("frame", { size: "A3", orient: "landscape", date: new Date().toISOString().slice(0, 10) }, 0, 0, 0)];   // first visit: an A3 sheet
     S.history = [snapshot()]; S.hIndex = 0;
     S.topo = null;
     setTool("select");
@@ -1526,6 +1588,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, newCircuit, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

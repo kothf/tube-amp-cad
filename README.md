@@ -17,7 +17,8 @@ circuit is saved in the browser.
 
 - **Schematic editor** — place parts from the palette, wire them, drag parts or
   wire segments, zoom and pan. Every net shows its DC voltage; hover a wire to
-  measure it. Save/open as JSON or export a SPICE netlist.
+  measure it. The File menu saves and opens circuits (JSON), saves the sheet
+  as a vector PDF and exports a SPICE netlist.
 - **Real transformers** — 25 Hammond 300-series power transformers modelled
   from the maker's drawings (voltages, winding resistances, excitation), fed
   from an AC mains source you wire to the primary.

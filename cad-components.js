@@ -113,11 +113,12 @@
   const MM = 4;
   const SHEETS = { A4: [297, 210], A3: [420, 297], A2: [594, 420], A1: [841, 594], A0: [1189, 841] };
   function sheetGeom(c) {
-    const [wmm, hmm] = SHEETS[c.params.size] || SHEETS.A2;
+    const [lw, lh] = SHEETS[c.params.size] || SHEETS.A2, portrait = c.params.orient === "portrait";
+    const wmm = portrait ? lh : lw, hmm = portrait ? lw : lh;
     const W = wmm * MM, H = hmm * MM, L = 20 * MM, M = 10 * MM;            // filing margin left, 10 mm elsewhere
     const fx1 = L, fy1 = M, fx2 = W - M, fy2 = H - M;                        // drawing frame
     const cols = Math.max(2, Math.round((fx2 - fx1) / (50 * MM))), rows = Math.max(2, Math.round((fy2 - fy1) / (50 * MM)));
-    const tbW = 180 * MM, tbH = 36 * MM;                                     // title block, max 180 mm wide
+    const tbW = Math.min(180 * MM, fx2 - fx1), tbH = 36 * MM;                // title block, max 180 mm wide
     return { W, H, fx1, fy1, fx2, fy2, cols, rows, tb: { x1: fx2 - tbW, y1: fy2 - tbH, x2: fx2, y2: fy2 } };
   }
 
@@ -632,11 +633,12 @@
           !(lx > g.fx1 + t && lx < g.fx2 - t && ly > g.fy1 + t && ly < g.fy2 - t);
         return inTb || nearFrame;
       },
-      defaults: { size: "A2", title: "", docno: "", rev: "A", sheet: "1/1", date: "", creator: "", approver: "", owner: "", dept: "", reference: "", doctype: "Circuit diagram", status: "Released", lang: "en" },
+      defaults: { size: "A2", orient: "landscape", title: "", docno: "", rev: "A", sheet: "1/1", date: "", creator: "", approver: "", owner: "", dept: "", reference: "", doctype: "Circuit diagram", status: "Released", lang: "en" },
       pins: () => [],
-      value: c => c.params.size,
+      value: c => c.params.size + (c.params.orient === "portrait" ? " portrait" : ""),
       fields: [
-        { key: "size", label: "Sheet size", kind: "select", options: Object.keys(SHEETS).map(k => [k, `${k} landscape (${SHEETS[k][0]} × ${SHEETS[k][1]} mm)`]) },
+        { key: "size", label: "Sheet size", kind: "select", options: Object.keys(SHEETS).map(k => [k, `${k} (${SHEETS[k][0]} × ${SHEETS[k][1]} mm)`]) },
+        { key: "orient", label: "Orientation", kind: "select", options: [["landscape", "Landscape"], ["portrait", "Portrait"]] },
         { key: "title", label: "Title", kind: "text" }, { key: "docno", label: "Identification number", kind: "text" },
         { key: "rev", label: "Revision", kind: "text" }, { key: "sheet", label: "Sheet", kind: "text" }, { key: "date", label: "Date of issue", kind: "text" },
         { key: "creator", label: "Created by", kind: "text" }, { key: "approver", label: "Approved by", kind: "text" }, { key: "owner", label: "Legal owner", kind: "text" },
