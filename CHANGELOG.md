@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-10-07
+
+### Added
+- **AC mains** source part (voltage, 50/60 Hz, source resistance) to feed a
+  power transformer's primary. Its neutral is tied to ground through 100 MΩ,
+  so the primary circuit needs no ground symbol.
+- The catalog power transformer now offers 25 Hammond 300-series models,
+  369AX to 374BX (125-0-125 V to 375-0-375 V, 58 to 460 mA), each with the
+  no-load voltages, winding resistances and excitation current from its
+  drawing.
+
+### Changed
+- The catalog power transformer is a real transformer with primary pins
+  instead of containing its own mains supply: wire an AC mains source to P1
+  and P2. The primary tap (100-120 V with the primaries in parallel, 200-240 V
+  in series) sets the turns ratio; primary and HV winding resistances and the
+  magnetizing inductance are simulated. Circuits saved with 3.7.0 need an AC
+  mains source wired to the primary.
+
 ## [3.7.0] - 2026-10-07
 
 ### Added

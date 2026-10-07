@@ -52,26 +52,58 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Real power transformers, from the makers' drawings. nlv: no-load volts of
-  // each HV half (and of the bias tap) at the reference primary voltage vRef;
-  // rHalf: DC resistance of one HV half; rPri: of one 120 V primary winding.
+  // Real power transformers: Hammond 300 series, from each part's drawing
+  // (hammfg.com/files/parts/pdf/<model>.pdf). All have two 120 V primaries
+  // tapped at 100 / 110 / 120 V, a centre-tapped HV winding with a 50 V bias
+  // tap, and heater windings (listed, not simulated).
+  //   [rated V per HV half under load, rated mA, no-load V across the whole HV
+  //    winding and from the centre tap to the bias tap (120 V on one primary,
+  //    60 Hz), max excitation mA at 120 V 60 Hz, DCR of the two primaries and of
+  //    the whole HV winding (Ω, 20 °C), heaters]
   // ---------------------------------------------------------------------------
-  const POWER_TX = {
-    "373BX": {
-      name: "Hammond 373BX", nlv: 370.3, nlvBias: 52.19, vRef: 120, rHalf: 89.10 / 2, rPri: (3.687 + 4.007) / 2,
-      taps: [100, 110, 120, 200, 220, 230, 240], rated: "350-0-350 V 201 mA (700 V CT), 50 V bias tap, 5 V 3 A, 6.3 V CT 5 A; 187 VA",
-      source: "Hammond drawing 373BX rev. 0: no-load 740.6 V CT at 120 V, DCR 89.10 Ω HV, 3.687 / 4.007 Ω primaries"
-    }
+  const HAMMOND = {
+    "369AX": [125, 115, 270.4, 50.06, 80, 19.45, 21.36, 86.39, "6.3 V CT 2 A"],
+    "369BX": [150, 86, 322.6, 50.06, 80, 19.45, 21.36, 129.9, "6.3 V CT 2 A"],
+    "369EX": [190, 75, 417.7, 50.06, 80, 19.45, 21.36, 264.5, "6.3 V CT 2.5 A"],
+    "369JX": [250, 69, 549.7, 50.06, 80, 19.45, 21.36, 353.4, "6.3 V CT 2.5 A"],
+    "370AX": [240, 58, 520.1, 50.06, 80, 19.45, 21.36, 333.2, "6.3 V CT 2.5 A"],
+    "370BX": [275, 58, 601.4, 49.96, 71, 18.26, 19.62, 434.8, "5 V CT 2 A, 6.3 V CT 2 A"],
+    "370CX": [275, 75, 608.8, 50.0, 77, 14.39, 15.81, 361.3, "6.3 V CT 0.6 A, 6.3 V CT 2.5 A"],
+    "370DX": [275, 104, 605.3, 50.02, 85, 11.97, 12.94, 232.8, "5 V CT 2 A, 6.3 V CT 3 A"],
+    "370EX": [275, 144, 595.2, 50.06, 236.4, 5.843, 6.294, 138.1, "5 V CT 3 A, 6.3 V CT 4 A"],
+    "370FX": [275, 173, 586.3, 50.13, 132, 4.541, 4.902, 106.0, "5 V CT 3 A, 6.3 V CT 5 A"],
+    "370HX": [275, 230, 581.8, 51.84, 221, 3.075, 3.328, 71.2, "5 V CT 3 A, 6.3 V CT 6 A"],
+    "370JX": [250, 161, 520.6, 52.44, 208, 3.124, 3.382, 64.46, "5 V CT 3 A, 6.3 V CT 6 A"],
+    "370KX": [250, 322, 528.0, 52.8, 232, 2.501, 2.726, 42.43, "5 V CT 6 A, 6.3 V CT 6 A"],
+    "370LX": [275, 460, 574.1, 52.35, 387, 1.118, 1.247, 26.81, "5 V CT 6 A, 6.3 V CT 9 A"],
+    "372BX": [300, 115, 646.3, 50.12, 128.4, 7.915, 8.652, 208.8, "5 V CT 2 A, 6.3 V CT 3 A"],
+    "372DX": [300, 144, 648.0, 50.06, 236.4, 5.843, 6.294, 121.4, "5 V CT 3 A, 6.3 V CT 4 A"],
+    "372FX": [300, 173, 641.0, 50.13, 132, 4.541, 4.902, 116.4, "5 V CT 3 A, 6.3 V CT 5 A"],
+    "372HX": [300, 230, 650.8, 50.0, 253.2, 3.652, 3.968, 77.16, "5 V CT 3 A, 6.3 V CT 6 A"],
+    "372JX": [300, 288, 629.2, 52.17, 86.4, 1.957, 2.141, 49.74, "5 V CT 4 A, 6.3 V CT 8 A"],
+    "373BX": [350, 201, 740.6, 52.19, 150, 3.687, 4.007, 89.1, "5 V CT 3 A, 6.3 V CT 5 A"],
+    "373DX": [350, 104, 760.5, 50.03, 151.2, 7.533, 8.099, 229.7, "5 V CT 2 A, 6.3 V CT 3 A"],
+    "373EX": [325, 345, 679.5, 52.6, 294, 1.505, 1.66, 42.11, "5 V CT 6 A, 6.3 V CT 9 A"],
+    "373FX": [325, 460, 676.7, 52.46, 400, 1.05, 1.137, 28.6, "5 V CT 6 A, 6.3 V CT 9 A"],
+    "374AX": [360, 138, 775.2, 50.06, 236.4, 5.843, 6.294, 146.5, "5 V CT 3 A, 6.3 V CT 3.5 A"],
+    "374BX": [375, 201, 794.7, 53.34, 160, 3.8, 4.2, 104.0, "5 V CT 3 A, 6.3 V CT 6 A"]
   };
-  // EMF and source resistance of one HV half for a mains voltage and tap: the
-  // primary resistance (two windings in series on a 200-240 V tap, in parallel
-  // on 100-120 V) is reflected through the turns ratio
-  function powerTxHalf(model, mains, tap) {
-    const m = POWER_TX[model] || POWER_TX["373BX"], t = tap || 230;
-    const k = (mains || t) / t;
-    const rPri = t > 150 ? 2 * m.rPri * (t / 2) / 120 : (m.rPri / 2) * t / 120;
-    const nHalf = m.nlv / t;   // HV half volts per primary volt on this tap
-    return { emf: m.nlv * k, emfBias: m.nlvBias * k, r: m.rHalf + rPri * nHalf * nHalf, m };
+  const POWER_TX = {};
+  Object.entries(HAMMOND).forEach(([k, [v, ma, nlv, nlvBias, iex, rp1, rp2, rhv, heaters]]) => {
+    POWER_TX[k] = { name: "Hammond " + k, rated: `${v}-0-${v} V ${ma} mA`, nlv: nlv / 2, nlvBias, vRef: 120, iex: iex / 1000, rp1, rp2, rHalf: rhv / 2, heaters,
+      taps: [100, 110, 120, 200, 220, 230, 240] };
+  });
+  // The transformer for a primary tap: two 120 V windings in series on a
+  // 200-240 V tap (both at tap/2), in parallel on 100-120 V. Winding "turns" are
+  // volts at no load: tap volts on the primary give nlv on each HV half.
+  // Magnetizing inductance from the maximum excitation current (a lower bound).
+  function powerTx(model, tap) {
+    const m = POWER_TX[model] || POWER_TX["373BX"], t = +tap || 230, series = t > 150;
+    const f = (series ? t / 2 : t) / m.vRef;                      // fraction of each 120 V winding in use
+    const rPri = series ? (m.rp1 + m.rp2) * f : (m.rp1 * f * m.rp2 * f) / (m.rp1 * f + m.rp2 * f);
+    const l120 = m.vRef / (2 * Math.PI * 60 * m.iex);             // one full 120 V winding
+    const lPri = l120 * Math.pow(series ? 2 * f : f, 2);
+    return { m, tap: t, series, rPri, lPri, nlv: m.nlv, nlvBias: m.nlvBias, rHalf: m.rHalf };
   }
 
   // ---------------------------------------------------------------------------
@@ -141,8 +173,19 @@
       ctx.beginPath(); for (let i = 0; i <= 20; i++) { const x = -8 + i * 0.8, y = -5 * Math.sin(i / 20 * Math.PI * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
     },
     ptx_cat(ctx, c) {
-      DRAW.ptx(ctx, c);
-      if (c.params.bias === "yes") line(ctx, [6, -20, 20, -20]);
+      // primary (left), iron core, centre-tapped HV secondary (right)
+      ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(-12, -30 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+      ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(12, -40 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
+      line(ctx, [-2, -42, -2, 42]); line(ctx, [2, -42, 2, 42]);
+      line(ctx, [-40, -30, -12, -30]); line(ctx, [-40, 30, -12, 30]);
+      line(ctx, [12, -40, 40, -40]); line(ctx, [12, 0, 40, 0]); line(ctx, [12, 40, 40, 40]);
+      if (c.params.bias === "yes") line(ctx, [12, -20, 40, -20]);
+    },
+    mains(ctx) {
+      line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
+      ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); for (let i = 0; i <= 20; i++) { const x = -8 + i * 0.8, y = -5 * Math.sin(i / 20 * Math.PI * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+      ctx.font = "8px ui-monospace, monospace"; ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = "center"; ctx.fillText("~", 0, -18);
     },
     ptx(ctx) {
       // AC source + secondary with centre tap; pins on the right
@@ -362,38 +405,64 @@
       }
     },
     ptx_cat: {
-      name: "Power transformer (catalog)", prefix: "TP", group: "Transformers", bbox: [-40, -44, 20, 44],
-      defaults: { model: "373BX", mains: 230, tap: "230", freq: "50", bias: "no" },
+      name: "Power transformer (catalog)", prefix: "TP", group: "Transformers", bbox: [-40, -44, 40, 44],
+      defaults: { model: "373BX", tap: "230", bias: "no" },
+      // primary on the left (wire an AC mains source to it), HV winding on the right
       pins: c => {
-        const p = [{ id: "HT1", x: 20, y: -40 }, { id: "CT", x: 20, y: 0, name: "centre tap" }, { id: "HT2", x: 20, y: 40 }];
-        if (c.params.bias === "yes") p.splice(1, 0, { id: "B", x: 20, y: -20, name: "bias tap" });
+        const p = [{ id: "P1", x: -40, y: -30, name: "primary" }, { id: "P2", x: -40, y: 30, name: "primary" },
+          { id: "HT1", x: 40, y: -40 }, { id: "CT", x: 40, y: 0, name: "centre tap" }, { id: "HT2", x: 40, y: 40 }];
+        if (c.params.bias === "yes") p.push({ id: "B", x: 40, y: -20, name: "bias tap" });
         return p;
       },
-      value: c => `${c.params.model}/${c.params.tap}V`,
+      value: c => `${c.params.model} ${c.params.tap}V`,
       fields: [
-        { key: "model", label: "Model", kind: "select", options: Object.entries(POWER_TX).map(([k, m]) => [k, m.name]) },
-        { key: "mains", label: "Mains voltage", unit: "Vrms", kind: "number", min: 50, max: 260 },
-        { key: "tap", label: "Primary tap", kind: "select", options: c => (POWER_TX[c.params.model] || POWER_TX["373BX"]).taps.map(t => [String(t), t + " V"]) },
-        { key: "freq", label: "Mains frequency", kind: "select", options: [["50", "50 Hz"], ["60", "60 Hz"]] },
+        { key: "model", label: "Model", kind: "select", options: () => Object.entries(POWER_TX).map(([k, m]) => [k, `${m.name} · ${m.rated}`]) },
+        { key: "tap", label: "Primary tap", kind: "select", options: c => (POWER_TX[c.params.model] || POWER_TX["373BX"]).taps.map(t => [String(t), t + (t > 150 ? " V (primaries in series)" : " V (primaries in parallel)")]) },
         { key: "bias", label: "Bias tap pin", kind: "select", options: [["no", "Hidden"], ["yes", "Shown (≈50 V)"]] }
       ],
-      info: c => { const h = powerTxHalf(c.params.model, c.params.mains, +c.params.tap); return `${h.m.rated}. Simulated: ${h.emf.toFixed(1)} Vrms per half at no load behind ${h.r.toFixed(1)} Ω (winding + reflected primary). Data: ${h.m.source}.`; },
+      info: c => {
+        const h = powerTx(c.params.model, c.params.tap), m = h.m;
+        return `${m.name}: ${m.rated} under load, 50 V bias tap, heaters ${m.heaters} (not simulated). ` +
+          `${h.tap} V on the primary gives ${h.nlv.toFixed(1)} V per HV half at no load (${(h.nlv * 2).toFixed(1)} V CT). ` +
+          `DCR ${(h.rHalf).toFixed(1)} Ω per half, primary ${h.rPri.toFixed(2)} Ω; magnetizing ${h.lPri.toFixed(1)} H. Wire an AC mains source to the primary.`;
+      },
       build: (c, net, alloc, out) => {
-        const p = c.params, h = powerTxHalf(p.model, p.mains, +p.tap), f = parseFloat(p.freq) || 50;
-        const vpk = h.emf * Math.SQRT2, n1 = alloc(), n2 = alloc();
-        out.push({ id: c.id + "#rw2", kind: "R", nodes: [net("HT2"), n2], r: h.r });
-        out.push({ id: c.id + "#b", kind: "VSRC", nodes: [net("CT"), n2], wave: "sine", freq: f, amp: vpk, dcValue: -0.95 * vpk });
-        if (p.bias === "yes") {
-          // the bias tap sits on the HT1 half, 50 V from the centre tap
-          const fb = h.emfBias / h.emf, nb = alloc();
-          out.push({ id: c.id + "#rwb", kind: "R", nodes: [net("B"), nb], r: h.r * fb });
-          out.push({ id: c.id + "#ab", kind: "VSRC", nodes: [nb, net("CT")], wave: "sine", freq: f, amp: vpk * fb, dcValue: 0.95 * vpk * fb });
-          out.push({ id: c.id + "#rw1", kind: "R", nodes: [net("HT1"), n1], r: h.r * (1 - fb) });
-          out.push({ id: c.id + "#a", kind: "VSRC", nodes: [n1, nb], wave: "sine", freq: f, amp: vpk * (1 - fb), dcValue: 0.95 * vpk * (1 - fb) });
+        const h = powerTx(c.params.model, c.params.tap), bias = c.params.bias === "yes";
+        const pa = alloc(), h1 = alloc(), h2 = alloc();
+        out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), pa], r: Math.max(h.rPri, 1e-3) });
+        const windings = [{ a: pa, b: net("P2"), turns: h.tap }];
+        if (bias) {   // the bias tap sits on the HT1 half, 50 V from the centre tap: HT1 -> B -> CT
+          const fb = h.nlvBias / h.nlv, bb = alloc();
+          out.push({ id: c.id + "#r1", kind: "R", nodes: [net("HT1"), h1], r: h.rHalf * (1 - fb) });
+          windings.push({ a: h1, b: net("B"), turns: h.nlv - h.nlvBias });
+          out.push({ id: c.id + "#rb", kind: "R", nodes: [net("B"), bb], r: h.rHalf * fb });
+          windings.push({ a: bb, b: net("CT"), turns: h.nlvBias });
         } else {
-          out.push({ id: c.id + "#rw1", kind: "R", nodes: [net("HT1"), n1], r: h.r });
-          out.push({ id: c.id + "#a", kind: "VSRC", nodes: [n1, net("CT")], wave: "sine", freq: f, amp: vpk, dcValue: 0.95 * vpk });
+          out.push({ id: c.id + "#r1", kind: "R", nodes: [net("HT1"), h1], r: h.rHalf });
+          windings.push({ a: h1, b: net("CT"), turns: h.nlv });
         }
+        out.push({ id: c.id + "#r2", kind: "R", nodes: [net("HT2"), h2], r: h.rHalf });
+        windings.push({ a: net("CT"), b: h2, turns: h.nlv });
+        out.push({ id: c.id, kind: "XFMR", nodes: [], lp: h.lPri, k: 0.999, primaryTurns: h.tap, windings });
+      }
+    },
+    mains: {
+      name: "AC mains", prefix: "AC", group: "Sources", bbox: [-16, -30, 16, 30],
+      defaults: { vrms: 230, freq: "50", rs: 0.5 },
+      pins: () => [{ id: "L", x: 0, y: -30, name: "line" }, { id: "N", x: 0, y: 30, name: "neutral" }],
+      value: c => c.params.vrms + "V " + c.params.freq + "Hz",
+      fields: [
+        { key: "vrms", label: "Voltage", unit: "Vrms", kind: "number", min: 1, max: 480 },
+        { key: "freq", label: "Frequency", kind: "select", options: [["50", "50 Hz"], ["60", "60 Hz"]] },
+        { key: "rs", label: "Source resistance", unit: "Ω", kind: "eng" }
+      ],
+      info: () => "Feeds a power transformer's primary. Neutral is tied to ground through 100 MΩ (the earth bond), so the primary circuit needs no ground symbol.",
+      build: (c, net, alloc, out) => {
+        const p = c.params, mid = alloc();
+        // starts at the voltage peak (cosine): a transformer then draws no inrush and settles at once
+        out.push({ id: c.id, kind: "VSRC", nodes: [mid, net("N")], wave: "sine", freq: parseFloat(p.freq) || 50, amp: p.vrms * Math.SQRT2, phase: 90, acMains: true });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("L"), mid], r: Math.max(p.rs, 1e-3) });
+        out.push({ id: c.id + "#earth", kind: "R", nodes: [net("N"), 0], r: 1e8 });
       }
     },
     tube: {
@@ -505,10 +574,10 @@
   const PALETTE = [
     { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"], ["switch"]] },
     { group: "Transformers", items: [["opt_se"], ["opt_pp"], ["ptx"], ["ptx_cat"]] },
-    { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["siggen"], ["ground"]] },
+    { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["mains"], ["siggen"], ["ground"]] },
     { group: "Semiconductors", items: [["diode"]] },
     { group: "Instruments", items: [["scope"]] }
   ];
 
-  root.CadLib = { LIB, DRAW, COL, PALETTE, POWER_TX, powerTxHalf, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { LIB, DRAW, COL, PALETTE, POWER_TX, powerTx, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

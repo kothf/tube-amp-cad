@@ -848,7 +848,7 @@
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate((c.rot & 3) * Math.PI / 2);
-    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "ptx" || c.type === "ptx_cat" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
+    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
     DRAW[c.type](ctx, c);
@@ -1056,7 +1056,7 @@
     const host = document.getElementById("inspector");
     const c = selectedComp();
     announceSelectedTube(c);
-    const sig = c ? c.id + ":" + c.type + ":" + c.params.tube + ":" + c.params.connection + ":" + (c.type === "ptx_cat" ? [c.params.model, c.params.mains, c.params.tap].join("/") : "") : (S.sel.wires.size ? "wires" : "none") + S.sel.comps.size;
+    const sig = c ? c.id + ":" + c.type + ":" + c.params.tube + ":" + c.params.connection + ":" + (c.type === "ptx_cat" ? [c.params.model, c.params.tap, c.params.bias].join("/") : "") : (S.sel.wires.size ? "wires" : "none") + S.sel.comps.size;
     if (!liveOnly || sig !== inspectorFor) {
       inspectorFor = sig;
       host.innerHTML = "";
