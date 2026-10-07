@@ -943,9 +943,10 @@
     }
   }
 
-  // Reference designation as shown on the diagram (IEC 81346-1): the product
-  // aspect prefix "-" before the class code and number, e.g. -R1, -K1.2
-  function desig(c) { const l = c.label || ""; return !l || /^[-=+]/.test(l) ? l : "-" + l; }
+  // Reference designation as shown on the diagram: the label as typed, e.g. RA1,
+  // KF1.2 (the IEC 81346-1 aspect prefix "-" is left off, as is usual on a
+  // single schematic; type it into the label to show it)
+  function desig(c) { return c.label || ""; }
   function drawComp(c, sel, ghost) {
     const def = LIB[c.type];
     ctx.save();
@@ -1353,7 +1354,7 @@
         <li><b>Measure:</b> hover a wire for its voltage; wire an Oscilloscope to see waveforms; double-click it for the full scope.</li>
         <li><b>Simulate:</b> <i>Live</i> re-simulates after every edit. Turn it off to simulate only on <i>▶ Simulate</i> (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>), which always runs until the circuit has settled.</li>
         <li><b>Switch:</b> double-click to flip it; sections named SF1.1, SF1.2… flip together.</li>
-        <li><b>Standards:</b> symbols follow IEC 60617 and designations IEC 81346 (shown with the "-" prefix). Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
+        <li><b>Standards:</b> symbols follow IEC 60617 and designations IEC 81346. Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
       </ul>`;
     const rb = host.querySelector("#btn-renumber"); if (rb) rb.addEventListener("click", renumber);
   }

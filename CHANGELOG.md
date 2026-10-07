@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.13.1] - 2026-10-07
+
+### Changed
+- Designations on the diagram and in the PDF no longer get the IEC 81346
+  "-" prefix: parts show as RA1, CA1, KF1.2. A prefix typed into a label
+  (-, = or +) is still shown as typed.
+
 ## [3.13.0] - 2026-10-07
 
 ### Added
