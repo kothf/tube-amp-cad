@@ -22,6 +22,7 @@
       if (d.type === "SIM_RESULT") { Inst.result = d; Inst.at = Date.now(); }
       else if (d.type === "TRANSIENT_RESULT") Inst.transient = d;   // power-on transient from the CAD
       else if (d.type === "SIM_STATUS") Inst.cad = Object.assign({ at: Date.now() }, d);
+      else if (d.type === "SELECT_SCOPE") { if (d.target === window.name && d.id) Inst.selectScope(d.id); return; }
       else if (d.type === "ACK") { if (pending[d.id]) { clearTimeout(pending[d.id]); delete pending[d.id]; } }
       else return;
       Inst.listeners.forEach(f => f());

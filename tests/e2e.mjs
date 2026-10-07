@@ -456,6 +456,16 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await sp.mouse.click(box.x + p.x, box.y + p.y);
   const mk = await sp.evaluate(() => Scope.markers()[0] && Scope.markers()[0].reading);
   check(mk && Math.abs(mk.t - 0.1) < 0.005 && Math.abs(mk.v - exp(mk.t)) < 1.5, `marker on the power-on record: ${mk && mk.v.toFixed(1)} V at ${mk && (mk.t * 1000).toFixed(1)} ms`);
+  // zoom with the wheel, scroll with the overview strip
+  const v0 = await sp.evaluate(() => Scope.startupView());
+  const sb = await sp.locator("#screen").boundingBox();
+  await sp.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  for (let i = 0; i < 3; i++) await sp.mouse.wheel(0, -100);
+  const v1 = await sp.evaluate(() => Scope.startupView());
+  const ob = await sp.locator("#overview").boundingBox();
+  await sp.mouse.click(ob.x + 26 + (ob.width - 52) * 0.75, ob.y + ob.height / 2);
+  const v2 = await sp.evaluate(() => Scope.startupView());
+  check(v1.span < v0.span / 4 && Math.abs(v2.pos + v2.span / 2 - 0.375) < 0.02, `wheel zooms in (${(v0.span * 1000).toFixed(0)} → ${(v1.span * 1000).toFixed(0)} ms window), the overview strip scrolls (window at ${(v2.pos * 1000).toFixed(0)} ms)`);
   // editing the circuit marks the record stale
   await cad.evaluate(() => { const S = TubeCAD.state; S.comps.find(c => c.type === "resistor").params.r = 20e3; TubeCAD.commit(); });
   await sp.waitForFunction(() => Instrument.transient && Instrument.transient.stale, null, { timeout: 5000 }).catch(() => {});
@@ -479,6 +489,31 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await lone.waitForFunction(() => /another version/.test(document.getElementById("status").textContent), null, { timeout: 5000 }).catch(() => {});
   check(/another version/.test(await lone.textContent("#status")), "a CAD tab of another version is reported");
   await c2.close();
+}
+
+// --- 11. One window per tool: buttons bring the open window to the front ----------
+{
+  const opened = [];
+  const onPage = p => opened.push(p);
+  ctx.on("page", onPage);
+  const two = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = [];
+    const a = C.makeComp("scope", {}, 300, 300, 0), b = C.makeComp("scope", {}, 300, 500, 0); S.comps.push(a, b); C.commit(); return [a.id, b.id];
+  });
+  await cad.getByRole("button", { name: /Oscilloscope ↗/ }).click();
+  await cad.waitForTimeout(800);
+  await cad.getByRole("button", { name: /Oscilloscope ↗/ }).click();
+  await cad.waitForTimeout(800);
+  check(opened.length === 1, `the toolbar's Oscilloscope button twice opens one window (${opened.length})`);
+  const win = opened[0];
+  await win.waitForFunction(() => window.Instrument, null, { timeout: 8000 }).catch(() => {});
+  // double-clicking the second scope part on the sheet switches the open window to it
+  const sc2 = await cad.evaluate(id => { const S = TubeCAD.state, c = S.comps.find(k => k.id === id), r = document.getElementById("cad").getBoundingClientRect(); return [r.left + c.x * S.view.scale + S.view.ox, r.top + c.y * S.view.scale + S.view.oy]; }, two[1]);
+  await cad.mouse.dblclick(sc2[0], sc2[1]);
+  await win.waitForFunction(id => Instrument.scopeId === id, two[1], { timeout: 5000 }).catch(() => {});
+  check(opened.length === 1 && await win.evaluate(id => Instrument.scopeId === id && new URL(location.href).searchParams.get("scope") === id, two[1]), "double-clicking another scope part switches the open oscilloscope instead of opening a new one");
+  ctx.off("page", onPage);
+  await win.close();
 }
 
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);

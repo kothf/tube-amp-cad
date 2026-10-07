@@ -75,6 +75,7 @@
     </aside>
   </main>
 
+  <script src="windows.js?v=dev"></script>
   <script src="instrument-common.js?v=dev"></script>
   <script src="scope-math.js?v=dev"></script>
   <script src="markers.js?v=dev"></script>
@@ -226,7 +227,7 @@
 
     const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
     bindSel("src", v => S.src = v); bindSel("span", v => S.span = v); bindSel("units", v => S.units = v); bindSel("scale", v => S.scale = parseFloat(v));
-    $("btn-cad").addEventListener("click", () => window.open("circuit_sandbox.html", "tube_cad"));
+    $("btn-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
     I.bindScopeSelect($("scope-select"));
     I.onUpdate(draw);
     window.addEventListener("resize", draw);
