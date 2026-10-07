@@ -52,6 +52,29 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Real power transformers, from the makers' drawings. nlv: no-load volts of
+  // each HV half (and of the bias tap) at the reference primary voltage vRef;
+  // rHalf: DC resistance of one HV half; rPri: of one 120 V primary winding.
+  // ---------------------------------------------------------------------------
+  const POWER_TX = {
+    "373BX": {
+      name: "Hammond 373BX", nlv: 370.3, nlvBias: 52.19, vRef: 120, rHalf: 89.10 / 2, rPri: (3.687 + 4.007) / 2,
+      taps: [100, 110, 120, 200, 220, 230, 240], rated: "350-0-350 V 201 mA (700 V CT), 50 V bias tap, 5 V 3 A, 6.3 V CT 5 A; 187 VA",
+      source: "Hammond drawing 373BX rev. 0: no-load 740.6 V CT at 120 V, DCR 89.10 Ω HV, 3.687 / 4.007 Ω primaries"
+    }
+  };
+  // EMF and source resistance of one HV half for a mains voltage and tap: the
+  // primary resistance (two windings in series on a 200-240 V tap, in parallel
+  // on 100-120 V) is reflected through the turns ratio
+  function powerTxHalf(model, mains, tap) {
+    const m = POWER_TX[model] || POWER_TX["373BX"], t = tap || 230;
+    const k = (mains || t) / t;
+    const rPri = t > 150 ? 2 * m.rPri * (t / 2) / 120 : (m.rPri / 2) * t / 120;
+    const nHalf = m.nlv / t;   // HV half volts per primary volt on this tap
+    return { emf: m.nlv * k, emfBias: m.nlvBias * k, r: m.rHalf + rPri * nHalf * nHalf, m };
+  }
+
+  // ---------------------------------------------------------------------------
   // Drawing helpers (local coordinates, already rotated by the caller)
   // ---------------------------------------------------------------------------
   const COL = { body: "#58a6ff", bodySel: "#00e5ff", tube: "#e6edf3", hot: "#ff7b72", text: "#e6edf3", value: "#79c0ff", fill: "#0d1420" };
@@ -116,6 +139,10 @@
       line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
       ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); for (let i = 0; i <= 20; i++) { const x = -8 + i * 0.8, y = -5 * Math.sin(i / 20 * Math.PI * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+    },
+    ptx_cat(ctx, c) {
+      DRAW.ptx(ctx, c);
+      if (c.params.bias === "yes") line(ctx, [6, -20, 20, -20]);
     },
     ptx(ctx) {
       // AC source + secondary with centre tap; pins on the right
@@ -334,6 +361,41 @@
         out.push({ id: c.id + "#b", kind: "VSRC", nodes: [net("CT"), n2], wave: "sine", freq: f, amp: vpk, dcValue: -0.95 * vpk });
       }
     },
+    ptx_cat: {
+      name: "Power transformer (catalog)", prefix: "TP", group: "Transformers", bbox: [-40, -44, 20, 44],
+      defaults: { model: "373BX", mains: 230, tap: "230", freq: "50", bias: "no" },
+      pins: c => {
+        const p = [{ id: "HT1", x: 20, y: -40 }, { id: "CT", x: 20, y: 0, name: "centre tap" }, { id: "HT2", x: 20, y: 40 }];
+        if (c.params.bias === "yes") p.splice(1, 0, { id: "B", x: 20, y: -20, name: "bias tap" });
+        return p;
+      },
+      value: c => `${c.params.model}/${c.params.tap}V`,
+      fields: [
+        { key: "model", label: "Model", kind: "select", options: Object.entries(POWER_TX).map(([k, m]) => [k, m.name]) },
+        { key: "mains", label: "Mains voltage", unit: "Vrms", kind: "number", min: 50, max: 260 },
+        { key: "tap", label: "Primary tap", kind: "select", options: c => (POWER_TX[c.params.model] || POWER_TX["373BX"]).taps.map(t => [String(t), t + " V"]) },
+        { key: "freq", label: "Mains frequency", kind: "select", options: [["50", "50 Hz"], ["60", "60 Hz"]] },
+        { key: "bias", label: "Bias tap pin", kind: "select", options: [["no", "Hidden"], ["yes", "Shown (≈50 V)"]] }
+      ],
+      info: c => { const h = powerTxHalf(c.params.model, c.params.mains, +c.params.tap); return `${h.m.rated}. Simulated: ${h.emf.toFixed(1)} Vrms per half at no load behind ${h.r.toFixed(1)} Ω (winding + reflected primary). Data: ${h.m.source}.`; },
+      build: (c, net, alloc, out) => {
+        const p = c.params, h = powerTxHalf(p.model, p.mains, +p.tap), f = parseFloat(p.freq) || 50;
+        const vpk = h.emf * Math.SQRT2, n1 = alloc(), n2 = alloc();
+        out.push({ id: c.id + "#rw2", kind: "R", nodes: [net("HT2"), n2], r: h.r });
+        out.push({ id: c.id + "#b", kind: "VSRC", nodes: [net("CT"), n2], wave: "sine", freq: f, amp: vpk, dcValue: -0.95 * vpk });
+        if (p.bias === "yes") {
+          // the bias tap sits on the HT1 half, 50 V from the centre tap
+          const fb = h.emfBias / h.emf, nb = alloc();
+          out.push({ id: c.id + "#rwb", kind: "R", nodes: [net("B"), nb], r: h.r * fb });
+          out.push({ id: c.id + "#ab", kind: "VSRC", nodes: [nb, net("CT")], wave: "sine", freq: f, amp: vpk * fb, dcValue: 0.95 * vpk * fb });
+          out.push({ id: c.id + "#rw1", kind: "R", nodes: [net("HT1"), n1], r: h.r * (1 - fb) });
+          out.push({ id: c.id + "#a", kind: "VSRC", nodes: [n1, nb], wave: "sine", freq: f, amp: vpk * (1 - fb), dcValue: 0.95 * vpk * (1 - fb) });
+        } else {
+          out.push({ id: c.id + "#rw1", kind: "R", nodes: [net("HT1"), n1], r: h.r });
+          out.push({ id: c.id + "#a", kind: "VSRC", nodes: [n1, net("CT")], wave: "sine", freq: f, amp: vpk, dcValue: 0.95 * vpk });
+        }
+      }
+    },
     tube: {
       name: "Vacuum tube", prefix: "V", group: "Tubes", bbox: [-50, -50, 50, 50],
       defaults: { tube: "12AX7", connection: "triode" },
@@ -442,11 +504,11 @@
   // Palette layout
   const PALETTE = [
     { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"], ["switch"]] },
-    { group: "Transformers", items: [["opt_se"], ["opt_pp"], ["ptx"]] },
+    { group: "Transformers", items: [["opt_se"], ["opt_pp"], ["ptx"], ["ptx_cat"]] },
     { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["siggen"], ["ground"]] },
     { group: "Semiconductors", items: [["diode"]] },
     { group: "Instruments", items: [["scope"]] }
   ];
 
-  root.CadLib = { LIB, DRAW, COL, PALETTE, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { LIB, DRAW, COL, PALETTE, POWER_TX, powerTxHalf, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

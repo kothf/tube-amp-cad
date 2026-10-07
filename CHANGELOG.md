@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-10-07
+
+### Added
+- Catalog power transformer part, starting with the Hammond 373BX
+  (350-0-350 V 201 mA, 50 V bias tap). Pick the mains voltage and the primary
+  tap (100-240 V); the part derives each HV half's no-load voltage and source
+  resistance (winding plus the reflected primary) from Hammond's drawing:
+  740.6 V CT no-load at 120 V, 89.10 Ω HV, 3.687 / 4.007 Ω primaries. The
+  50 V bias tap can be shown as a pin. Leakage inductance is not modelled.
+
 ## [3.6.0] - 2026-10-07
 
 ### Added

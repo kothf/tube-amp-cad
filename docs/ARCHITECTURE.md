@@ -27,11 +27,12 @@ Static, framework-free JS (classic `<script>` files, no build step). There are *
 
 1. **One tube database.** Edit tubes only in `tube-db.js` (Koren parameters via `scripts/fit-tubes.mjs`, see below). Rectifier tubes are simulated as vacuum diodes with perveance from `RECTIFIER_PERVEANCE` in `sim-engine.js` (their Koren "triode" params in the DB are placeholders and give absurd currents).
 2. **Koren equations must stay identical** in `sim-engine.js` (`Koren.*`) and in exported SPICE (`cad-app.js` `spiceNetlist`, `tracer-app.js` `subckt`). The plot in the tracer calls the engine's functions directly.
-3. **Adding a part:** add an entry to `LIB` in `cad-components.js` (pins on multiples of 10, `bbox`, `defaults`, `fields`, `build`) and a symbol in `DRAW`; put it in `PALETTE`. `build()` may allocate internal nodes with `alloc()`. Inductive branches get a 1 µΩ series term in the engine so wiring shorts can't make the matrix singular.
-4. **Steady state:** captures are a whole number of base periods (harmonic analysis relies on it). Settling uses per-node relative change with a 1 V floor plus a decay-rate estimate; don't loosen it — coupling-cap outputs otherwise keep a false DC offset.
-5. **Rendering:** no `requestAnimationFrame` loops and no `shadowBlur` on traces. Pages redraw only on data/setting changes (instrument pages idle at 0% CPU).
-6. **Cache busting:** every local `<script src>` in the four pages carries `?v=dev` in the source; `npm run package` stamps the release version into all of them (and fails if a page has none). `cad-app.js` passes its own `?v=` to `sim-worker.js`, which passes it to `importScripts("sim-engine.js")`, so the worker never mixes versions. Never hand-edit version strings.
-7. **No duplicated controls across windows:** circuit edits, generator settings and probing (wiring a scope) live in the CAD only; viewers have display controls only.
+3. **Real power transformers** live in `POWER_TX` in `cad-components.js` (no-load volts per HV half and bias tap at a reference primary voltage, DCRs, taps); `powerTxHalf()` turns mains and tap into EMF and source resistance for the `ptx_cat` part.
+4. **Adding a part:** add an entry to `LIB` in `cad-components.js` (pins on multiples of 10, `bbox`, `defaults`, `fields`, `build`) and a symbol in `DRAW`; put it in `PALETTE`. `build()` may allocate internal nodes with `alloc()`. Inductive branches get a 1 µΩ series term in the engine so wiring shorts can't make the matrix singular.
+5. **Steady state:** captures are a whole number of base periods (harmonic analysis relies on it). Settling uses per-node relative change with a 1 V floor plus a decay-rate estimate; don't loosen it — coupling-cap outputs otherwise keep a false DC offset.
+6. **Rendering:** no `requestAnimationFrame` loops and no `shadowBlur` on traces. Pages redraw only on data/setting changes (instrument pages idle at 0% CPU).
+7. **Cache busting:** every local `<script src>` in the four pages carries `?v=dev` in the source; `npm run package` stamps the release version into all of them (and fails if a page has none). `cad-app.js` passes its own `?v=` to `sim-worker.js`, which passes it to `importScripts("sim-engine.js")`, so the worker never mixes versions. Never hand-edit version strings.
+8. **No duplicated controls across windows:** circuit edits, generator settings and probing (wiring a scope) live in the CAD only; viewers have display controls only.
 
 ## Tube models
 
