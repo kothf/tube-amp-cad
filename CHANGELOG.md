@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.18.1] - 2026-10-08
+
+### Fixed
+- Curve tracer: a click right after the layout shifted (switching tubes changes
+  the source line under the socket) is mapped through the plot as now shown;
+  3.18.0 was not published because this failed in CI.
+
 ## [3.18.0] - 2026-10-08
 
 ### Added
