@@ -39,9 +39,13 @@ circuit is saved in the browser.
 
 - Modified nodal analysis; Newton-Raphson with source stepping for the DC
   operating point; backward-Euler transient.
-- Tubes use [Koren's](https://www.normankoren.com/Audio/Tubemodspice_article.html)
-  published triode and pentode equations, unmodified, so parameters and
-  exported models are interchangeable with Koren-style SPICE models,, plus grid conduction and screen current.
+- Triodes use [Koren's](https://www.normankoren.com/Audio/Tubemodspice_article.html)
+  published equation, unmodified, so their parameters are interchangeable
+  with Koren-style SPICE models. Pentodes keep Koren's space-charge term but
+  divide the current between plate and screen with a separate knee and slope,
+  sending what the plate loses in the knee to the screen, so full-power
+  behaviour matches the datasheets. Grid conduction and screen current are
+  included, and the exported SPICE models use exactly the same equations.
   Rectifiers are vacuum diodes (Child–Langmuir, perveance from datasheet drops).
 - Transformers are coupled inductors with a leakage factor; inductors and
   windings carry their current as an unknown, so a shorted winding is
@@ -73,7 +77,7 @@ current and dissipation.
 **Reference circuits.** `npm run test:reference` builds classic circuits in the
 editor and measures them through the oscilloscope and spectrum analyzer
 windows, the way a user would, against published or textbook results
-(63 comparisons). Highlights:
+(75 comparisons). Highlights:
 
 | Circuit | Measured | Reference |
 |---|---|---|
@@ -82,8 +86,10 @@ windows, the way a user would, against published or textbook results
 | 12AU7 cathode follower, Rk 810 Ω: cathode, gain | 8.53 V, 0.622× | 8.5 V, 0.618× |
 | RC low-pass at its corner: gain, phase | 0.703×, −45.0° | 0.707×, −45.0° |
 | 2A3 single-ended, 250 V / −45 V / 2.5 kΩ | 3.8 W, 3.2 % THD, 60.2 mA | 3.5 W, 5 %, 60 mA (RCA) |
-| EL84 single-ended (Philips conditions) | 4.6 W, 12 % THD, 51.9 mA | 5.7 W, 10 %, 53.5 mA |
-| 6V6GT single-ended (RCA conditions) | 3.5 W, 7.4 % THD, 49.5 mA | 4.5 W, 8 %, 49.5 mA |
+| EL84 single-ended (Philips conditions) | 5.9 W, 11 % THD; 53.9 / 55.9 mA | 5.7 W, 10 %; 53.5 / 60.3 mA (idle / full drive) |
+| 6V6GT single-ended, 250 V (RCA) | 4.5 W, 9.6 % THD; 50.1 / 57.0 mA | 4.5 W, 8 %; 49.5 / 54 mA |
+| 6V6GT single-ended, 315 V / 225 V (RCA) | 5.3 W, 12.0 % THD | 5.5 W, 12 % |
+| 6L6GC single-ended (RCA) | 6.4 W, 10.6 % THD, 76.9 mA | 6.5 W, 10 %, 77 mA |
 | Full-wave rectifier, 300-0-300 V, 100 µF, 3 kΩ: DC, ripple | 417 V, 12.6 Vpp @ 100 Hz | 416 V, ≈13.9 Vpp (I/2fC) |
 | Square / triangle into the analyzer: H3…H9 | within 0.07 dB | Fourier series |
 
@@ -92,12 +98,10 @@ The scope's probes load the circuit like real ones (10 MΩ with the default
 bench.
 
 Limits worth knowing: a model is exact only near the points it was fitted to,
-and production tubes vary ±20 % or more; the pentode plate equation cannot
-match plate resistance at two different screen voltages (6L6GC and 6V6GT are
-within ±35 %); the 6P45S has only a pulse-current specification to fit; and
-pentodes driven to full power give 15–20 % less power and average current
-than their datasheets, because Koren's screen-current equation does not rise
-as the plate swings down into the knee (triodes are not affected).
+and production tubes vary ±20 % or more; the 6P45S has only a pulse-current
+specification to fit; and the knee of pentodes without published full-power
+data (EL34, KT88, 6P1P, GU-50, 6P45S) is the median of the EL84, 6V6GT and
+6L6GC fits rather than their own.
 
 ## Run it locally
 

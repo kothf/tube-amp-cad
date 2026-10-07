@@ -34,17 +34,29 @@
       const e1 = (vak / p.kp) * softplus(p.kp * (1 / p.mu + vgk / Math.sqrt(p.kvb + vak * vak)));
       return e1 > 0 ? (2 * Math.pow(e1, p.x)) / p.kg : 0;
     },
-    pentodeIa(vak, vgk, vg2k, p) {
-      if (vak <= 0 || vg2k <= 0) return 0;
+    // Pentode / beam tetrode. Koren's space-charge term Is sets the current
+    // available; how it divides between plate and screen depends on the plate
+    // voltage. tanh(Va/vk) is the knee and (1 + Va/lam) the slope above it, so
+    // knee sharpness and plate resistance are independent (Koren's single
+    // atan(Va/kvb) ties them together and gives far too soft a knee). Whatever
+    // the plate cannot take in the knee partly goes to the screen (ks), which
+    // is why real screen current rises when the plate swings low.
+    pentodeIs(vgk, vg2k, p) {
+      if (vg2k <= 0) return 0;
       const e1 = (vg2k / p.kp) * softplus(p.kp * (1 / p.mu + vgk / vg2k));
-      if (e1 <= 0) return 0;
-      return ((2 * Math.pow(e1, p.x)) / p.kg) * Math.atan(vak / p.kvb);
+      return e1 > 0 ? (2 * Math.pow(e1, p.x)) / p.kg : 0;
     },
-    // Screen current (Koren): Ig2 = (Vg1 + Vg2/mu)^x / kg2
-    screenI(vgk, vg2k, p) {
+    pentodeIa(vak, vgk, vg2k, p) {
+      if (vak <= 0) return 0;
+      return Koren.pentodeIs(vgk, vg2k, p) * Math.tanh(vak / p.vk) * (1 + vak / p.lam);
+    },
+    // Screen current: Koren's (Vg1 + Vg2/mu)^x / kg2 plus the knee share
+    screenI(vgk, vg2k, p, vak) {
       if (vg2k <= 0) return 0;
       const e = vgk + vg2k / p.mu;
-      return e > 0 ? Math.pow(e, p.x) / (p.kg2 || 1500) : 0;
+      const base = e > 0 ? Math.pow(e, p.x) / (p.kg2 || 1500) : 0;
+      if (vak === undefined || !p.ks) return base;
+      return base + p.ks * Koren.pentodeIs(vgk, vg2k, p) * (1 - Math.tanh(Math.max(vak, 0) / p.vk));
     },
     // Grid conduction above 0 V (Child-Langmuir), scaled with tube size
     gridI(vgk, p) {
@@ -293,7 +305,7 @@
             stampNonlinear(nd, V => {
               const vak = V[0] - V[3], vgk = V[1] - V[3], vg2k = V[2] - V[3];
               const ia = Koren.pentodeIa(vak, vgk, vg2k, p);
-              const ig2 = Koren.screenI(vgk, vg2k, p), ig = Koren.gridI(vgk, p);
+              const ig2 = Koren.screenI(vgk, vg2k, p, vak), ig = Koren.gridI(vgk, p);
               return [ia, ig, ig2, -(ia + ig + ig2)];
             }, V0);
             break;
@@ -354,7 +366,7 @@
     }
     if (e.kind === "PENTODE") {
       const vak = v[0] - v[3], vgk = v[1] - v[3], vg2k = v[2] - v[3];
-      return { vak, vgk, vg2k, ia: Koren.pentodeIa(vak, vgk, vg2k, e.model), ig2: Koren.screenI(vgk, vg2k, e.model), ig: Koren.gridI(vgk, e.model) };
+      return { vak, vgk, vg2k, ia: Koren.pentodeIa(vak, vgk, vg2k, e.model), ig2: Koren.screenI(vgk, vg2k, e.model, vak), ig: Koren.gridI(vgk, e.model) };
     }
     if (e.kind === "VDIODE") { const vd = v[0] - v[1]; return { vd, i: vd > 0 ? e.perveance * Math.pow(vd, 1.5) : 0 }; }
     if (e.kind === "D") { const vd = v[0] - v[1]; return { vd, i: (e.is || 2.5e-9) * (Math.exp(Math.min(vd / ((e.n || 1.75) * 0.025852), 80)) - 1) }; }
@@ -529,6 +541,24 @@
     return result;
   }
 
-  const Engine = { Koren, RECTIFIER_PERVEANCE, simulate, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix };
+  // Behavioural-source expressions for SPICE export: the exact equations above
+  const g = v => Number(v.toPrecision(6));
+  const Spice = {
+    triode: m => ({
+      plate: `pwr(max(V(A,K)/${g(m.kp)}*ln(1+exp(${g(m.kp)}*(1/${g(m.mu)}+V(G,K)/sqrt(${g(m.kvb)}+V(A,K)*V(A,K))))),0),${g(m.x)})*${g(2 / m.kg)}`,
+      grid: `if(V(G,K)>0,${g(0.2 / m.kg)}*pwr(V(G,K),1.5),0)`
+    }),
+    pentode: m => {
+      const is = `pwr(max(V(G2,K)/${g(m.kp)}*ln(1+exp(${g(m.kp)}*(1/${g(m.mu)}+V(G1,K)/max(V(G2,K),1e-3)))),0),${g(m.x)})*${g(2 / m.kg)}`;
+      const va = "max(V(A,K),0)";
+      return {
+        plate: `${is}*tanh(${va}/${g(m.vk)})*(1+${va}/${g(m.lam)})`,
+        screen: `pwr(max(V(G1,K)+V(G2,K)/${g(m.mu)},0),${g(m.x)})/${g(m.kg2 || 1500)}+${g(m.ks || 0)}*${is}*(1-tanh(${va}/${g(m.vk)}))`,
+        grid: `if(V(G1,K)>0,${g(0.2 / m.kg)}*pwr(V(G1,K),1.5),0)`
+      };
+    }
+  };
+
+  const Engine = { Koren, Spice, RECTIFIER_PERVEANCE, simulate, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix };
   root.TubeSimEngine = Engine;
 })(globalThis);

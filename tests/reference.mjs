@@ -227,17 +227,17 @@ for (const bypass of [true, false]) {
 // =================================================================================
 // 5. Single-ended output stages at published class-A operating conditions
 // =================================================================================
-const PENTODE_LIMIT = "pentode at full drive: in Koren's equations screen current does not rise as the plate swings into the knee, so average current and power come out low (docs/ARCHITECTURE.md)";
-async function powerStage({ name, tube, pentode, zp, bias, rk, drive, quiet, full, published, source }) {
+async function powerStage({ name, tube, pentode, zp, bias, rk, drive, quiet, full, published, source, b = 250, vg2 }) {
   const parts = {
-    B: ["vdc", { v: 250 }], T: ["opt_se", { zp, zs: 8, lp: 30, dcrp: 0.001, dcrs: 0.001 }], V1: ["tube", { tube }],
+    B: ["vdc", { v: b }], T: ["opt_se", { zp, zs: 8, lp: 30, dcrp: 0.001, dcrs: 0.001 }], V1: ["tube", { tube }],
     SPK: ["speaker", { r: 8 }], G: ["siggen", { freq: 1000, amp: drive, offset: bias || 0 }],
     Rs: ["resistor", { r: rk || 1 }], SC: ["scope", {}], SI: ["scope", {}]
   };
   const grid = pentode ? "V1.G1" : "V1.G";
   const nets = [["B.+", "T.P1"], ["T.P2", "V1.A"], ["T.S1", "SPK.+", "SC.CH1"], ["V1.K", "Rs.1", "SI.CH1"],
     ["GND", "B.-", "T.S2", "SPK.-", "Rs.2", "G.-", "SC.COM", "SI.COM"]];
-  if (pentode) nets[0].push("V1.G2");
+  if (pentode && vg2) { parts.B2 = ["vdc", { v: vg2 }]; nets.push(["B2.+", "V1.G2"]); nets[4].push("B2.-"); }
+  else if (pentode) nets[0].push("V1.G2");
   if (rk) {   // cathode bias: bypassed cathode resistor, grid leak and coupling cap
     Object.assign(parts, { Ck: ["electrolytic", { c: 1000e-6 }], Rg: ["resistor", { r: 470e3 }], Cin: ["capacitor", { c: 1e-6 }] });
     nets[3].push("Ck.+"); nets[4].push("Ck.-", "Rg.2"); nets.push([grid, "Rg.1", "Cin.2"], ["G.+", "Cin.1", "SC.CH2"]);
@@ -246,21 +246,24 @@ async function powerStage({ name, tube, pentode, zp, bias, rk, drive, quiet, ful
   compare(name, "wiring", c.wiringOk && !c.open.length && !c.error ? 1 : 0, 1, { abs: 0 }, "netlist check");
   const sc = await scopeReading(c.scopes.SC), si = await scopeReading(c.scopes.SI), sp = await spectrumReading(c.scopes.SC);
   const pout = sc.ch1.vrms ** 2 / 8;
-  const largeSignal = pentode ? { known: PENTODE_LIMIT } : {};
-  compare(name, `output power at ${(drive / Math.SQRT2).toFixed(1)} Vrms drive (scope, 8 Ω)`, pout, published.pout, { rel: 0.2, ...largeSignal }, source, " W");
+  compare(name, `output power at ${(drive / Math.SQRT2).toFixed(1)} Vrms drive (scope, 8 Ω)`, pout, published.pout, { rel: 0.1 }, source, " W");
   compare(name, "THD at that power (analyzer)", sp.thd, published.thd, { rel: 0.4 }, source, " %");
-  if (full) compare(name, "cathode current at full drive (scope on Rk)", si.ch1.dc / rk * 1000, full, { rel: 0.1, ...largeSignal }, source, " mA");
+  if (full) compare(name, "cathode current at full drive (scope on Rk)", si.ch1.dc / (rk || 1) * 1000, full, { rel: 0.1 }, source, " mA");
   // quiescent current: from the cathode resistor's DC voltage with no signal
   const q = await build({ ...parts, G: ["siggen", { freq: 1000, amp: 1e-3, offset: bias || 0 }] }, nets);
   const sq = await scopeReading(q.scopes.SI);
   compare(name, "quiescent cathode current (scope on Rk)", sq.ch1.dc / (rk || 1) * 1000, quiet, { rel: 0.1 }, source, " mA");
 }
 
-await powerStage({ name: "EL84 single-ended, 250 V, Rk 135 Ω, 5.2 kΩ", tube: "EL84", pentode: true, zp: 5200, rk: 135, drive: 4.3 * Math.SQRT2,
+await powerStage({ name: "EL84 single-ended, 250 V (+7 V cathode), Rk 135 Ω, 5.2 kΩ", tube: "EL84", pentode: true, b: 257, zp: 5200, rk: 135, drive: 4.3 * Math.SQRT2,
   quiet: 48 + 5.5, full: 49.5 + 10.8, published: { pout: 5.7, thd: 10 },
   source: "Philips EL84: 5.7 W at 10 % with Vi 4.3 Vrms; Ia + Ig2 = 48 + 5.5 mA at rest, 49.5 + 10.8 mA at full drive" });
 await powerStage({ name: "6V6GT single-ended, 250 V, −12.5 V, 5 kΩ", tube: "6V6GT", pentode: true, zp: 5000, bias: -12.5, drive: 12.5,
-  quiet: 45 + 4.5, published: { pout: 4.5, thd: 8 }, source: "RCA 6V6GT: 4.5 W at 8 % THD, 12.5 V peak drive; Ia 45 + Ig2 4.5 mA" });
+  quiet: 45 + 4.5, full: 47 + 7.0, published: { pout: 4.5, thd: 8 }, source: "RCA 6V6GT: 4.5 W at 8 % THD, 12.5 V peak drive; Ia + Ig2 = 45 + 4.5 mA at rest, 47 + 7.0 mA at full drive" });
+await powerStage({ name: "6V6GT single-ended, 315 V, screen 225 V, −13 V, 8.5 kΩ", tube: "6V6GT", pentode: true, b: 315, vg2: 225, zp: 8500, bias: -13, drive: 13,
+  quiet: 34 + 2.2, full: 35 + 6.0, published: { pout: 5.5, thd: 12 }, source: "RCA 6V6GT: 5.5 W at 12 % THD, 13 V peak drive; Ia + Ig2 = 34 + 2.2 mA at rest, 35 + 6.0 mA at full drive" });
+await powerStage({ name: "6L6GC single-ended, 250 V, −14 V, 2.5 kΩ", tube: "6L6GC", pentode: true, zp: 2500, bias: -14, drive: 14,
+  quiet: 72 + 5, published: { pout: 6.5, thd: 10 }, source: "RCA 6L6GC: 6.5 W at 10 % THD, 14 V peak drive; Ia + Ig2 = 72 + 5 mA at rest" });
 await powerStage({ name: "2A3 single-ended, 250 V, −45 V, 2.5 kΩ", tube: "2A3", zp: 2500, bias: -45, drive: 45,
   quiet: 60, published: { pout: 3.5, thd: 5 }, source: "RCA 2A3: 3.5 W at 5 % THD, 45 V peak drive; Ia 60 mA" });
 

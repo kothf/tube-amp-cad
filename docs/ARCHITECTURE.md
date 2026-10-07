@@ -34,25 +34,36 @@ Static, framework-free JS (classic `<script>` files, no build step). There are *
 
 ## Tube models
 
-`Koren.*` implement Norman Koren's published equations exactly, including the
-`(1 + sgn(E1))` factor (= 2 while conducting) and, for pentodes,
-`atan(Va/kvb)` without normalisation. Parameter sets are therefore directly
-interchangeable with Koren-style SPICE models. Grid and screen currents are
-the documented extras (`gridI`, `screenI`).
+Triodes: `Koren.triodeIa` is Norman Koren's published equation exactly,
+including the `(1 + sgn(E1))` factor (= 2 while conducting), so triode
+parameters are interchangeable with Koren-style SPICE models.
+
+Pentodes and beam tetrodes keep Koren's space-charge term but replace how the
+current divides between plate and screen:
+
+    Is  = 2·E1^x / kg,  E1 = (Vg2/kp)·ln(1 + exp(kp·(1/µ + Vg1/Vg2)))
+    Ia  = Is · tanh(Va/vk) · (1 + Va/lam)
+    Ig2 = (Vg1 + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va/vk))
+
+Koren's `atan(Va/kvb)` ties the knee to the plate resistance: fitted to a
+datasheet rp it gives a knee so soft that single-ended stages lost ~20 % of
+their output power, and his screen current ignores the plate voltage. Here
+`vk` (knee) and `lam` (slope, hence rp) are independent, and part (`ks`) of
+the current the plate cannot take in the knee goes to the screen, as in real
+tubes. `TubeSimEngine.Spice` emits these same equations for both SPICE
+exports. Grid conduction is `gridI`.
 
 Parameters come from `scripts/fit-tubes.mjs`, which fits each tube to its
 datasheet points in `tests/datasheets.mjs` (Ia, gm, rp, Ig2; bias solved from
 Ia where only cathode-bias conditions are published), with weak priors for
-what the data cannot pin down (x ≈ 1.35, pentode µ(g1-g2), Ig2 ≈ 10 % of Ia).
+what the data cannot pin down (x ≈ 1.35, pentode µ(g1-g2), Ig2 ≈ 10 % of Ia
+well above the knee, kg2 ≥ kg). For pentodes with published single-ended
+full-drive results (`largeSignal`: EL84, 6V6GT, 6L6GC) the knee `vk` and
+screen share `ks` are fitted by simulating that circuit in the engine and
+matching output power, THD and average currents; the other pentodes use the
+median of those fits. A full refit takes about five minutes.
 The triode-connected model of a pentode is fitted to that pentode with g2
 strapped to the anode.
-
-Known limitation: Koren's screen current depends only on Vg1 and Vg2, not on
-the plate voltage, so in a pentode driven hard enough for the plate to swing
-into the knee, screen current, average cathode current and output power come
-out 15–20 % low (EL84 and 6V6GT in `tests/reference.mjs`, reported as
-KNOWN). Fixing it needs a screen-current term that rises at low Va, fitted to
-published curves.
 
 To add or correct a tube: add its datasheet entry (with the source), run
 `node scripts/fit-tubes.mjs <name>` to review, then `--write`, and run
