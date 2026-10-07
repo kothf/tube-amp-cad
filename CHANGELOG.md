@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.16.2] - 2026-10-07
+
+### Fixed
+- **Fit** (button or F) fits the sheet chosen in the Sheet list; with "All
+  sheets" chosen it fits every sheet. It used to always fit everything.
+
 ## [3.16.1] - 2026-10-07
 
 ### Fixed

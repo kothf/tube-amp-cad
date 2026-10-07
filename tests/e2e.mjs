@@ -558,6 +558,21 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     `the new sheet sits right of sheet 1 and both are numbered (${sh.map(s => s.sheet).join(", ")})`);
   const nav = await cad.evaluate(() => { const n = document.getElementById("sheet-nav"); return { hidden: n.hidden, opts: [...n.options].map(o => o.textContent) }; });
   check(!nav.hidden && nav.opts.length === 3 && /^Sheet 2 · Output stage/.test(nav.opts[2]), `the Sheet selector lists both sheets (${nav.opts.join(" | ")})`);
+  // Fit follows the Sheet list: one sheet when one is chosen, all sheets otherwise
+  const view = () => cad.evaluate(() => ({ ...TubeCAD.state.view }));
+  const ids = await cad.evaluate(() => TubeCAD.frames().map(f => f.id));
+  await cad.locator("#sheet-nav").selectOption(ids[1]);
+  const v2 = await view();
+  await cad.evaluate(() => { TubeCAD.state.view.ox += 500; TubeCAD.state.view.scale *= 2; });
+  await cad.locator("#btn-zoom-fit").click();
+  const v2fit = await view();
+  await cad.locator("#sheet-nav").selectOption("");
+  const vAll = await view();
+  await cad.evaluate(() => { TubeCAD.state.view.oy -= 300; });
+  await cad.keyboard.press("f");
+  const vAllFit = await view();
+  const same = (a, b) => Math.abs(a.scale - b.scale) < 1e-6 && Math.abs(a.ox - b.ox) < 0.5 && Math.abs(a.oy - b.oy) < 0.5;
+  check(same(v2, v2fit) && same(vAll, vAllFit) && !same(v2, vAll), "Fit (button or F) fits the sheet chosen in the Sheet list, and all sheets when none is chosen");
   // a 300 V supply on sheet 1 feeds a 1 kΩ load on sheet 2 through two "+B" connectors
   const r = await cad.evaluate(() => {
     const S = TubeCAD.state, C = TubeCAD, [f1, f2] = C.frames();

@@ -858,7 +858,7 @@
     else if (k === "r" || k === "R") { if (!ctrl) rotateSelection(); }
     else if (k === "w" || k === "W") setTool(S.tool === "wire" ? "select" : "wire");
     else if (k === "v" && !ctrl) setTool("select");
-    else if (k === "f" || k === "F") fitView();
+    else if (k === "f" || k === "F") fitCurrent();
     else if (ctrl && k === "Enter") { runSim("full"); e.preventDefault(); }
     else if (ctrl && (k === "s" || k === "S")) { saveFile(); e.preventDefault(); }
     else if (ctrl && (k === "o" || k === "O")) { document.getElementById("file-input").click(); e.preventDefault(); }
@@ -1498,6 +1498,11 @@
     S.view.scale = s; S.view.ox = W / 2 - (x1 + x2) / 2 * s; S.view.oy = H / 2 - (y1 + y2) / 2 * s;
     updateZoomLabel(); render();
   }
+  // Fit: the sheet chosen in the Sheet list, or everything when "All sheets" is chosen
+  function fitCurrent() {
+    const nav = document.getElementById("sheet-nav"), f = nav && !nav.hidden && S.comps.find(c => c.id === nav.value && c.type === "frame");
+    if (f) fitSheet(f); else fitView();
+  }
   function fitSheet(f) { const b = compBBox(f); fitBox(b.x1, b.y1, b.x2, b.y2); const nav = document.getElementById("sheet-nav"); if (nav) nav.value = f.id; }
   // the Sheet selector in the toolbar: all sheets, or zoom to one
   function updateSheetNav() {
@@ -1672,7 +1677,7 @@
     bind("btn-rotate", rotateSelection); bind("btn-delete", deleteSelection);
     bind("btn-zoom-in", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1.25));
     bind("btn-zoom-out", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 0.8));
-    bind("btn-zoom-fit", fitView);
+    bind("btn-zoom-fit", fitCurrent);
     bind("btn-live", () => setLive(!S.sim.live));
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
     document.getElementById("btn-live").classList.toggle("active", S.sim.live);
