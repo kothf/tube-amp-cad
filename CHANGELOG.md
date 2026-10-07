@@ -6,6 +6,28 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.17.0] - 2026-10-08
+
+### Added
+- **6Ф3П / ECL82 / 6BM8** triode-pentode as two library entries, 6F3P-T
+  (triode section) and 6F3P-P (pentode section), so one bulb is drawn as
+  VL1.1 and VL1.2. Models fitted to the Philips ECL82 data (both sections,
+  and class A at full drive: 3.3 W into 4.5 kΩ); limits from the same sheet
+  (pentode 7 W, screen 2 W, 50 mA; triode 1 W).
+- **Output transformer (SE catalog)**: the seven Hammond 125SE universal
+  single-ended transformers (125ASE … 125GSE) with the primary resistance,
+  inductance, secondary tap resistances and DC rating from Hammond's drawings.
+  The secondary tap (ORG / GRN / YEL / WHT) sets the turns ratio. The
+  inspector shows the primary DC current against the rating, and the checks
+  flag it when it is exceeded.
+- Tube fitter: an unbypassed screen resistor (`rg2`) in the published
+  full-drive test circuit.
+
+### Changed
+- Tube fitter: the screen share `ks` is limited to 1.5. Larger values let the
+  screen draw more than the whole space current near Va = 0, which the
+  solver cannot follow at power-on.
+
 ## [3.16.4] - 2026-10-08
 
 ### Fixed

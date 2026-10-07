@@ -202,6 +202,44 @@ var TUBE_DATABASE = [
       { pin: 9, sym: "G2", role: "Screen Grid 2", isScreen: true }
     ]
   },
+  // 6Ф3П = ECL82 / 6BM8: a triode and an output pentode in one bulb. The two sections
+  // are separate entries, drawn as VL1.1 and VL1.2. Limits: Philips ECL82 (1960).
+  {
+    nameGost: "6Ф3П (пентод)", nameWestern: "6F3P / ECL82 / 6BM8 pentode section", commonName: "6F3P-P",
+    type: "Triode-Pentode, Pentode Section", category: "power", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
+    vh: 6.3, ih: 0.78,
+    heaterWarning: "Noval B9A. Pins 4 & 5: 6.3V @ 0.78A (whole bulb). Pentode: Pa 7 W, Pg2 2 W, Ik 50 mA, cathode–heater 150 V.",
+    vaMax: 300, paMax: 7.0, ikMax: 50, vg2Max: 300,
+    isFavorite: true,
+    koren: {
+      Pentode: { vk: 18.88, ks: 0.01, mu: 9.569, kg: 547.8, kp: 77.29, lam: 520.3, x: 1.17, kg2: 1042 },
+      Ultralinear: { vk: 18.88, ks: 0.01, mu: 9.569, kg: 547.8, kp: 77.29, lam: 520.3, x: 1.17, kg2: 1042 },
+      Triode: { mu: 8.636, kg: 740.1, kp: 140.7, kvb: 0.00003746, x: 1.4 }
+    },
+    pinout: [
+      { pin: 1, sym: "GT", role: "Triode Grid", isGrid: true }, { pin: 2, sym: "G1", role: "Pentode Control Grid", isGrid: true },
+      { pin: 3, sym: "KP", role: "Pentode Cathode, G3 & Shield", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "AP", role: "Pentode Plate", isPlate: true },
+      { pin: 7, sym: "G2", role: "Pentode Screen Grid", isScreen: true }, { pin: 8, sym: "KT", role: "Triode Cathode", isCathode: true },
+      { pin: 9, sym: "AT", role: "Triode Plate", isPlate: true }
+    ]
+  },
+  {
+    nameGost: "6Ф3П (триод)", nameWestern: "6F3P / ECL82 / 6BM8 triode section", commonName: "6F3P-T",
+    type: "Triode-Pentode, Triode Section", category: "small_signal", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
+    vh: 6.3, ih: 0.78,
+    heaterWarning: "Noval B9A. Pins 4 & 5: 6.3V @ 0.78A (whole bulb). Triode: Pa 1 W, Ik 15 mA, cathode–heater 100 V.",
+    vaMax: 300, paMax: 1.0, ikMax: 15, vg2Max: 0,
+    isFavorite: true,
+    koren: { Triode: { mu: 65.33, kg: 907.3, kp: 844.8, kvb: 297.9, x: 1.1 } },
+    pinout: [
+      { pin: 1, sym: "GT", role: "Triode Grid", isGrid: true }, { pin: 2, sym: "G1", role: "Pentode Control Grid", isGrid: true },
+      { pin: 3, sym: "KP", role: "Pentode Cathode, G3 & Shield", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "AP", role: "Pentode Plate", isPlate: true },
+      { pin: 7, sym: "G2", role: "Pentode Screen Grid", isScreen: true }, { pin: 8, sym: "KT", role: "Triode Cathode", isCathode: true },
+      { pin: 9, sym: "AT", role: "Triode Plate", isPlate: true }
+    ]
+  },
   {
     nameGost: "6П3С / 6П3С-Е", nameWestern: "6P3S-E (6L6-GC Equivalent)", commonName: "6P3S-E",
     type: "Beam Power Tetrode", category: "power", origin: "Soviet", socket: "Octal K8A", pinCount: 8,

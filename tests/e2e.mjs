@@ -620,6 +620,30 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(Math.abs(r.p - 90) < 1 && /R1 dissipates 90(\.0+)? ?W, more than its 10 W rating/.test(r.text), `the circuit checks flag a resistor beyond its rating (${r.p.toFixed(1)} W in a 10 W part)`);
 }
 
+// --- 15. Catalog output transformer (Hammond 125SE) ------------------------------
+{
+  // 300 V through the 125ESE primary (103 Ω) into 3 kΩ: 97 mA DC, over its 80 mA rating
+  const r = await cad.evaluate(() => {
+    const S = TubeCAD.state, C = TubeCAD, f = C.frames()[0];
+    S.comps = S.comps.filter(c => c.type === "frame"); S.wires = [];
+    const add = (t, p, x, y, rot) => { const c = C.makeComp(t, p, x, y, rot || 0); S.comps.push(c); return c; };
+    const v = add("vdc", { v: 300 }, f.x + 300, f.y + 300), g = add("ground", {}, f.x + 300, f.y + 330);
+    const t = add("opt_cat", { model: "125ESE", tap: "GRN" }, f.x + 500, f.y + 300), rl = add("resistor", { r: 3000 }, f.x + 400, f.y + 400, 1);
+    const sp = add("speaker", { r: 4 }, f.x + 600, f.y + 300), g2 = add("ground", {}, f.x + 400, f.y + 430), g3 = add("ground", {}, f.x + 600, f.y + 330);
+    const P = (c, id) => C.compPins(c).find(p => p.id === id);
+    const w = (a, b) => S.wires.push({ id: "w" + S.wires.length, x1: a.x, y1: a.y, x2: b.x, y2: a.y }, { id: "w" + S.wires.length + "b", x1: b.x, y1: a.y, x2: b.x, y2: b.y });
+    w(P(v, "+"), P(t, "P1")); w(P(t, "P2"), P(rl, "1")); w(P(t, "S1"), P(sp, "+")); w(P(t, "S2"), P(sp, "-"));
+    C.commit();
+    return { value: CadLib.LIB.opt_cat.value(t), info: CadLib.LIB.opt_cat.info(t) };
+  });
+  await cad.evaluate(() => TubeCAD.runSim("full"));
+  await cad.waitForFunction(() => { const S = TubeCAD.state; return S.sim.result && !S.sim.busy; }, null, { timeout: 30000 });
+  await cad.waitForFunction(() => /125ESE\) carries/.test(document.getElementById("inspector").textContent), null, { timeout: 10000 }).catch(() => {});
+  const txt = await cad.evaluate(() => document.getElementById("inspector").textContent);
+  check(r.value === "125ESE GRN" && /103 Ω/.test(r.info) && /5 kΩ with 4 Ω/.test(r.info), `the Hammond 125SE list gives the model's data ("${r.value}": ${r.info.slice(0, 60)}…)`);
+  check(/T1 \(Hammond 125ESE\) carries 9\d mA DC, more than its 80 mA rating/.test(txt), `the checks flag DC current beyond the output transformer's rating (${(txt.match(/carries \d+ mA/) || ["?"])[0]})`);
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 

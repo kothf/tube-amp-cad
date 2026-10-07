@@ -141,7 +141,8 @@ const SIM = globalThis.TubeSimEngine;
 /** Output power, THD and average currents of a pentode in a single-ended
     class-A stage with an ideal 8 Ω output transformer, at 1 kHz. */
 export function seStage(P, ls) {
-  const n = Math.sqrt(ls.rl / 8), cathode = ls.rk ? 6 : 0, screen = ls.vg2 && ls.vg2 !== ls.b ? 5 : 1;
+  // screen: from B+, from its own supply (vg2), or through an unbypassed series resistor (rg2)
+  const n = Math.sqrt(ls.rl / 8), cathode = ls.rk ? 6 : 0, screen = (ls.vg2 && ls.vg2 !== ls.b) || ls.rg2 ? 5 : 1;
   const els = [
     { id: "B", kind: "V", nodes: [1, 0], v: ls.b },
     { id: "T", kind: "XFMR", nodes: [], lp: 30, k: 0.999, primaryTurns: 1, windings: [{ a: 1, b: 2, turns: 1 }, { a: 3, b: 0, turns: 1 / n }] },
@@ -149,7 +150,8 @@ export function seStage(P, ls) {
     { id: "SPK", kind: "R", nodes: [3, 0], r: 8 },
     { id: "G", kind: "VSRC", nodes: [4, 0], wave: "sine", freq: 1000, amp: ls.vrms * Math.SQRT2, offset: ls.bias || 0 }
   ];
-  if (screen === 5) els.push({ id: "B2", kind: "V", nodes: [5, 0], v: ls.vg2 });
+  if (ls.rg2) els.push({ id: "RG2", kind: "R", nodes: [1, 5], r: ls.rg2 });
+  else if (screen === 5) els.push({ id: "B2", kind: "V", nodes: [5, 0], v: ls.vg2 });
   if (ls.rk) els.push({ id: "RK", kind: "R", nodes: [6, 0], r: ls.rk }, { id: "CK", kind: "C", nodes: [6, 0], c: 1e-3 });
   const r = SIM.simulate({ nodeCount: 7, elements: els }, { budgetMs: 8000 });
   if (!r.ok) return null;
@@ -165,7 +167,8 @@ export function seStage(P, ls) {
 function largeSignalCost(P0, list) {
   return v => {
     const vk = Math.exp(v[0]), ks = Math.exp(v[1]);
-    if (vk < 2 || vk > 150 || ks < 0.01 || ks > 5) return 1e6;
+    // ks above ~1 would let the screen draw more than the whole space current near Va = 0
+    if (vk < 2 || vk > 150 || ks < 0.01 || ks > 1.5) return 1e6;
     let c = 0.01 * sq(lr(vk, 20));
     for (const ls of list) {
       const m = seStage({ ...P0, vk, ks }, ls);
