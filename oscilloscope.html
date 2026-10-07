@@ -22,10 +22,13 @@
     .btn.active { background: #0b3a48; border-color: var(--accent); color: #7fe8ff; }
     select { background: #0b1118; border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
     main { display: grid; grid-template-columns: 1fr 300px; gap: 12px; padding: 12px; min-height: 0; }
-    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: 1fr auto auto; min-height: 0; }
     #screen { width: 100%; height: 100%; display: block; border-radius: 6px; min-height: 0; }
     .meas { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 4px 0; font: 12px ui-monospace, Menlo, monospace; }
     .meas b { font-weight: 600; } .c1 { color: var(--ch1); } .c2 { color: var(--ch2); }
+    .marks { display: flex; gap: 6px 18px; flex-wrap: wrap; align-items: center; padding: 6px 4px 0; font: 12px ui-monospace, Menlo, monospace; color: #c9d6e3; min-height: 40px; align-content: flex-start; }
+    .marks b { font-weight: 600; } .marks .hint { color: var(--muted); font-family: system-ui, sans-serif; }
+    .marks .btn { padding: 1px 8px; font-size: 11px; margin-left: auto; }
     aside { overflow-y: auto; min-height: 0; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
     .card h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
@@ -49,6 +52,7 @@
     <div class="bezel">
       <canvas id="screen" aria-label="Oscilloscope screen"></canvas>
       <div class="meas" id="meas"></div>
+      <div class="marks" id="marks"></div>
     </div>
     <aside>
       <div class="card">
@@ -80,6 +84,7 @@
 
   <script src="instrument-common.js?v=dev"></script>
   <script src="scope-math.js?v=dev"></script>
+  <script src="markers.js?v=dev"></script>
   <script>
   (function () {
     "use strict";
@@ -126,7 +131,7 @@
       if (!any) {
         ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center";
         ctx.fillText(sc ? "No input connected — wire CH1 / CH2 of " + sc.label + " in the CAD" : "NO SIGNAL", x0 + gw / 2, y0 + gh / 2 - 12);
-        ctx.textAlign = "left"; $("meas").innerHTML = ""; return;
+        ctx.textAlign = "left"; $("meas").innerHTML = ""; G = null; renderMarks(); return;
       }
       const dt = sc.dt, N = (any.raw).length, P = N - 1;   // capture is whole periods: sample P == sample 0
       const at = SM.at;
@@ -138,6 +143,7 @@
       const tdiv = S.tdiv === "auto" ? tb.tdiv : parseFloat(S.tdiv);
       const span = 10 * tdiv, M = Math.max(2, Math.round(span / dt));
       const start = SM.triggerIndex(trigCh.raw, S.trig.slope);
+      G = { x0, y0, gw, gh, dt, M, P, start, ch, xy: S.mode === "xy" && !!(ch.ch1 && ch.ch2) };
       const glow = (color) => { ctx.strokeStyle = color; ctx.globalAlpha = 0.18; ctx.lineWidth = 5; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1.7; ctx.stroke(); };
       ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, gw, gh); ctx.clip();
       if (S.mode === "xy" && ch.ch1 && ch.ch2) {
@@ -166,6 +172,12 @@
         });
       }
       ctx.restore();
+      // markers
+      pick.list.forEach((m, i) => { const p = markerPos(m); if (p) MarkerPicker.draw(ctx, p.x, p.y, MarkerPicker.LETTERS[i], m.ch === "ch2" ? "#00e5ff" : m.ch === "ch1" ? "#ffe23d" : "#7fffd4"); });
+      if (hover && !G.xy) {
+        const x = x0 + hover.i / M * gw; ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + gh); ctx.stroke(); ctx.setLineDash([]);
+        cursorLabel(ctx, x, [[fmtT(hover.i * dt), "#c9d6e3"], ...KEYS.filter(shown).map(k => [`${k.toUpperCase()} ${I.fmt(valueAt(ch[k], hover.i), "V")}`, k === "ch1" ? "#ffe23d" : "#00e5ff"])]);
+      }
       // readout
       ctx.fillStyle = "#ffe23d"; let tx = x0;
       const label = (n, c) => `CH${n} ${I.fmt(c.vdiv, "V")}${c.cpl === "ac" ? "~" : ""}${c.offset ? ` offset ${I.fmt(c.offset, "V")}` : ""}`;
@@ -189,10 +201,76 @@
         }
       }
       $("meas").innerHTML = h;
+      renderMarks();
     }
 
+    // --- markers: A and B on a trace (time + voltage), or on the X-Y figure --
+    let G = null, hover = null;
+    const KEYS = ["ch1", "ch2"];
+    const shown = k => G && G.ch[k] && (S.mode === "dual" || S.mode === k);
+    // channel value at a fractional display index (linear between samples)
+    const valueAt = (c, i) => { const j = Math.floor(i), f = i - j, a = SM.at(c.raw, G.start + j), b = SM.at(c.raw, G.start + j + 1); return a + (b - a) * f; };
+    const screenY = (c, v) => G.y0 + G.gh / 2 - Math.max(-4.4, Math.min(4.4, c.cpl === "gnd" ? 0 : (v - c.off) / c.vdiv)) * G.gh / 8;
+    const xyPoint = i => { const a = G.ch.ch1, b = G.ch.ch2, vx = a.cpl === "gnd" ? 0 : (SM.at(a.raw, i) - a.off) / a.vdiv, vy = b.cpl === "gnd" ? 0 : (SM.at(b.raw, i) - b.off) / b.vdiv;
+      return { x: G.x0 + G.gw / 2 + vx * G.gw / 10, y: G.y0 + G.gh / 2 - vy * G.gh / 8 }; };
+    function snap(x, y) {
+      if (!G || x < G.x0 - 4 || x > G.x0 + G.gw + 4 || y < G.y0 - 4 || y > G.y0 + G.gh + 4) return null;
+      if (G.xy) {
+        // nearest point of the X-Y figure
+        let best = 0, bd = Infinity;
+        for (let i = 0; i < G.P; i++) { const p = xyPoint(i), d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < bd) { bd = d; best = i; } }
+        return { xy: true, i: best };
+      }
+      const i = Math.max(0, Math.min(G.M, (x - G.x0) / G.gw * G.M));
+      // the visible trace nearest the pointer at that time
+      const ks = KEYS.filter(shown); if (!ks.length) return null;
+      const k = ks.reduce((b, k) => Math.abs(screenY(G.ch[k], valueAt(G.ch[k], i)) - y) < Math.abs(screenY(G.ch[b], valueAt(G.ch[b], i)) - y) ? k : b);
+      return { ch: k, t: i * G.dt };
+    }
+    function markerPos(m) {
+      if (!G) return null;
+      if (m.xy) return G.xy ? xyPoint(m.i) : null;
+      if (G.xy || !shown(m.ch)) return null;
+      const i = m.t / G.dt; if (i > G.M + 1e-6) return null;
+      return { x: G.x0 + i / G.M * G.gw, y: screenY(G.ch[m.ch], valueAt(G.ch[m.ch], i)) };
+    }
+    // what a marker reads now: time from the trigger and the channel voltage(s)
+    function reading(m) {
+      if (!markerPos(m)) return null;
+      if (m.xy) return { v1: SM.at(G.ch.ch1.raw, m.i), v2: SM.at(G.ch.ch2.raw, m.i) };
+      return { t: m.t, ch: m.ch, v: valueAt(G.ch[m.ch], m.t / G.dt) };
+    }
+    const cursorLabel = (ctx, x, parts) => MarkerPicker.label(ctx, x, G.y0 + 4, G.x0, G.x0 + G.gw, parts);
+    const fmtT = t => (t >= 0 ? "+" : "") + I.fmt(t, "s", Math.abs(t) < 1e-9 ? 0 : undefined);
+    function renderMarks() {
+      const el = $("marks"), rs = pick.list.map(reading);
+      let h = "";
+      rs.forEach((r, i) => {
+        if (!r) return;
+        const L = MarkerPicker.LETTERS[i];
+        h += r.v1 !== undefined
+          ? `<span>${L}: <b class="c1">X ${I.fmt(r.v1, "V")}</b> <b class="c2">Y ${I.fmt(r.v2, "V")}</b></span>`
+          : `<span class="${r.ch === "ch1" ? "c1" : "c2"}">${L} ${r.ch.toUpperCase()}: <b>${I.fmt(r.v, "V")}</b> at ${fmtT(r.t)}</span>`;
+      });
+      if (rs.length === 2 && rs[0] && rs[1]) {
+        if (rs[0].t !== undefined) {
+          const dT = rs[1].t - rs[0].t, dV = rs[1].v - rs[0].v;
+          h += `<span>ΔT <b>${I.fmt(dT, "s")}</b>${Math.abs(dT) > 1e-12 ? ` (1/ΔT ${I.fmt(1 / Math.abs(dT), "Hz")})` : ""} · ΔV <b>${I.fmt(dV, "V")}</b></span>`;
+        } else h += `<span>ΔX <b>${I.fmt(rs[1].v1 - rs[0].v1, "V")}</b> · ΔY <b>${I.fmt(rs[1].v2 - rs[0].v2, "V")}</b></span>`;
+      }
+      if (!h && G) h = `<span class="hint">Click a trace to place marker A, then B, to measure time and voltage. Drag to move, double-click to remove.</span>`;
+      if (pick.list.length) h += `<button class="btn" id="marks-clear" title="Remove the markers (Esc)">Clear markers</button>`;
+      el.innerHTML = h;
+      const b = $("marks-clear"); if (b) b.onclick = () => pick.clear();
+    }
+    const pick = MarkerPicker($("screen"), {
+      snap, pos: markerPos,
+      hover: m => { hover = m && !m.xy ? { i: m.t / G.dt } : null; draw(); },
+      change: () => draw()
+    });
+
     // controls
-    document.querySelectorAll("#mode .btn").forEach(b => b.addEventListener("click", () => { S.mode = b.dataset.v; document.querySelectorAll("#mode .btn").forEach(x => x.classList.toggle("active", x === b)); draw(); }));
+    document.querySelectorAll("#mode .btn").forEach(b => b.addEventListener("click", () => { S.mode = b.dataset.v; if ((S.mode === "xy") !== !!(G && G.xy)) pick.clear(); document.querySelectorAll("#mode .btn").forEach(x => x.classList.toggle("active", x === b)); draw(); }));
     const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
     bindSel("ch1-vdiv", v => S.ch1.vdiv = v); bindSel("ch2-vdiv", v => S.ch2.vdiv = v);
     bindSel("ch1-cpl", v => S.ch1.cpl = v); bindSel("ch2-cpl", v => S.ch2.cpl = v);
@@ -213,7 +291,10 @@
     setInterval(() => { if (!I.result) draw(); }, 1500);
     draw();
     // current scaling, for tests and debugging
-    window.Scope = { state: S, draw, view: () => { const sc = I.scope(), ch = channels(sc), any = ch.ch1 || ch.ch2; if (!any) return null;
+    window.Scope = { state: S, draw,
+      // canvas position of a channel's trace at a fraction of the screen width
+      screenPoint: (k, frac) => { const c = G && G.ch[k]; if (!c) return null; const i = frac * G.M; return { x: G.x0 + frac * G.gw, y: screenY(c, valueAt(c, i)) }; },
+      markers: () => pick.list.map(m => ({ ...m, pos: markerPos(m), reading: reading(m) })), view: () => { const sc = I.scope(), ch = channels(sc), any = ch.ch1 || ch.ch2; if (!any) return null;
       const t = triggerChannel(ch);
       const tb = SM.timebase(t.raw, sc.dt, I.result && I.result.fSig);
       const strip = c => c && { vdiv: c.vdiv, off: c.off, offset: c.offset, min: c.st.min, max: c.st.max };

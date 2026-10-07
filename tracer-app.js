@@ -205,7 +205,7 @@
     const padL = 58, padR = 70, padT = 18, padB = 44;
     const pw = W - padL - padR, ph = H - padT - padB;
     const X = va => padL + va / vaMax * pw, Y = ia => padT + ph - ia / iaMax * ph;
-    plotGeom = { padL, padT, pw, ph, vaMax, iaMax };
+    plotGeom = { padL, padT, pw, ph, vaMax, iaMax, X, Y };
 
     // grid + labels
     ctx.font = "11px ui-monospace, Menlo, monospace"; ctx.textBaseline = "middle";
@@ -302,8 +302,25 @@
       if (va >= 0 && va <= vaMax && ia >= 0 && ia <= iaMax) {
         ctx.strokeStyle = "rgba(230,237,243,0.25)"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(X(va), padT); ctx.lineTo(X(va), padT + ph); ctx.moveTo(padL, Y(ia)); ctx.lineTo(padL + pw, Y(ia)); ctx.stroke();
+        const r = describePoint(S.hover);
+        MarkerPicker.label(ctx, X(va), Y(ia) > padT + ph / 2 ? padT + 4 : padT + ph - 80, padL, padL + pw, [
+          [`Va ${va.toFixed(1)} V  Ia ${(ia * 1000).toFixed(2)} mA`, "#e6edf3"],
+          [`Vg ${r.vg === null ? "—" : r.vg.toFixed(2) + " V"}${S.hover.on ? `  (${S.hover.on})` : ""}`, "#29b6f6"],
+          [`Pa ${r.pa.toFixed(2)} W (${Math.round(r.paPct)}% of max)`, r.paPct > 100 ? "#ff7b72" : "#8fa6c2"],
+          ...(r.gm !== undefined ? [[`gm ${(r.gm * 1000).toFixed(2)} mA/V  rp ${isFinite(r.rp) ? fmtEng(r.rp, "Ω", 2) : "∞"}  µ ${r.mu.toFixed(1)}`, "#8fa6c2"]] : [])
+        ]);
       }
     }
+    // picked points A, B and the load line through them
+    const pts = pick ? pick.list.map(pointOf) : [];
+    if (pts.length === 2 && pts[0] && pts[1] && Math.abs(pts[1].va - pts[0].va) > 1e-9) {
+      const k = (pts[1].ia - pts[0].ia) / (pts[1].va - pts[0].va), iaAt = va => pts[0].ia + k * (va - pts[0].va);
+      ctx.save(); ctx.beginPath(); ctx.rect(padL, padT, pw, ph); ctx.clip();
+      ctx.beginPath(); ctx.moveTo(X(0), Y(iaAt(0))); ctx.lineTo(X(vaMax), Y(iaAt(vaMax)));
+      ctx.strokeStyle = "rgba(255,138,216,0.8)"; ctx.setLineDash([7, 4]); ctx.lineWidth = 1.4; ctx.stroke(); ctx.setLineDash([]);
+      ctx.restore();
+    }
+    pts.forEach((p, i) => { if (p) MarkerPicker.draw(ctx, X(p.va), Y(p.ia), MarkerPicker.LETTERS[i], "#ff8ad8"); });
     // title
     $("plot-title").textContent = `${t.commonName} · ${d.kind === "pentode" ? `pentode, Vg2 = ${fmtEng(d.vg2, "V", 0)}` : (tubeKind(t) === "pentode" ? "triode-connected" : "triode")}` + (ct ? ` · ${ct.label} in circuit` : " · library preview");
     // legend
@@ -317,16 +334,97 @@
     ].join("");
   }
 
-  function onPlotMove(e) {
-    if (!plotGeom) return;
-    const r = $("plot").getBoundingClientRect(), g = plotGeom;
-    const x = e.clientX - r.left, y = e.clientY - r.top;
-    const va = (x - g.padL) / g.pw * g.vaMax, ia = (g.padT + g.ph - y) / g.ph * g.iaMax;
-    if (va < 0 || va > g.vaMax || ia < 0 || ia > g.iaMax) { S.hover = null; $("plot-readout").textContent = ""; drawPlot(); return; }
-    S.hover = { va, ia };
+  // ---------------------------------------------------------------------------
+  // Picking points: A and B, snapped to the operating point or the load line
+  // ---------------------------------------------------------------------------
+  const SNAP = 10;                 // px
+  /** Grid voltage that puts the tube at (va, ia): the model solved for Vg. */
+  function vgFor(d, va, ia) {
+    if (va <= 0 || ia <= 0) return null;
+    let lo = -Math.max(va, d.vg2 || 0) / d.model.mu * 4 - 20, hi = 50;
+    if (iaOf(d, va, hi) < ia) return null;
+    for (let n = 0; n < 80; n++) { const m = (lo + hi) / 2; if (iaOf(d, va, m) < ia) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+  /** Small-signal parameters at a point of the curves. */
+  function smallSignal(d, va, vg) {
+    const hv = Math.max(0.5, va * 0.005), hg = 0.01;
+    const gm = (iaOf(d, va, vg + hg) - iaOf(d, va, vg - hg)) / (2 * hg);
+    const ga = (iaOf(d, va + hv, vg) - iaOf(d, Math.max(0, va - hv), vg)) / (va + hv - Math.max(0, va - hv));
+    const rp = ga > 1e-12 ? 1 / ga : Infinity;
+    return { gm, rp, mu: gm * rp };
+  }
+  /** Where a marker is now (it follows the simulation for Q / load-line picks). */
+  function pointOf(m) {
+    const ct = current().circuit;
+    if (m.q) return ct ? { va: ct.dc.vak, ia: ct.dc.ia, vg: ct.dc.vgk, on: "operating point" } : null;
+    if (m.traj !== undefined) {
+      const tr = ct && ct.traj; if (!tr || m.traj >= tr.vak.length) return null;
+      return { va: tr.vak[m.traj], ia: tr.ia[m.traj], vg: tr.vgk ? tr.vgk[m.traj] : null, on: "load line" };
+    }
+    return { va: m.va, ia: m.ia, vg: null, on: null };
+  }
+  function snapPoint(x, y) {
+    const g = plotGeom; if (!g) return null;
+    if (x < g.padL - 6 || x > g.padL + g.pw + 6 || y < g.padT - 6 || y > g.padT + g.ph + 6) return null;
+    const ct = current().circuit;
+    if (ct && Math.hypot(g.X(ct.dc.vak) - x, g.Y(ct.dc.ia) - y) <= SNAP) return { q: true };
+    const tr = ct && ct.traj && S.opts.traj ? ct.traj : null;
+    if (tr && tr.vak) {
+      let best = -1, bd = SNAP;
+      for (let k = 0; k < tr.vak.length; k++) { const dd = Math.hypot(g.X(tr.vak[k]) - x, g.Y(tr.ia[k]) - y); if (dd < bd) { bd = dd; best = k; } }
+      if (best >= 0) return { traj: best };
+    }
+    const va = Math.max(0, Math.min(g.vaMax, (x - g.padL) / g.pw * g.vaMax)), ia = Math.max(0, Math.min(g.iaMax, (g.padT + g.ph - y) / g.ph * g.iaMax));
+    return { va, ia };
+  }
+  /** Everything worth knowing about a point on the curves. */
+  function describePoint(p) {
     const d = current();
-    $("plot-readout").textContent = `Va ${va.toFixed(1)} V · Ia ${(ia * 1000).toFixed(2)} mA · Pa ${(va * ia).toFixed(2)} W (${Math.round(va * ia / d.tube.paMax * 100)}% of max)`;
-    drawPlot();
+    const vg = p.vg !== null && p.vg !== undefined ? p.vg : vgFor(d, p.va, p.ia);
+    const out = { va: p.va, ia: p.ia, pa: p.va * p.ia, paPct: p.va * p.ia / d.tube.paMax * 100, vg, on: p.on };
+    if (vg !== null && p.ia > 0) Object.assign(out, smallSignal(d, p.va, vg));
+    return out;
+  }
+  const fmtPoint = r => `Va ${r.va.toFixed(1)} V · Ia ${(r.ia * 1000).toFixed(2)} mA · Vg ${r.vg === null ? "—" : r.vg.toFixed(2) + " V"} · Pa ${r.pa.toFixed(2)} W (${Math.round(r.paPct)}%)`;
+  const fmtSmall = r => r.gm !== undefined ? ` · gm ${(r.gm * 1000).toFixed(2)} mA/V · rp ${isFinite(r.rp) ? fmtEng(r.rp, "Ω", 2) : "∞"} · µ ${r.mu.toFixed(1)}` : "";
+  function renderPicks() {
+    if (!pick) return;
+    const rs = pick.list.map(pointOf).map(p => p && describePoint(p));
+    let h = "";
+    rs.forEach((r, i) => { if (r) h += `<span><b>${MarkerPicker.LETTERS[i]}</b>${r.on ? ` (${r.on})` : ""}: ${fmtPoint(r)}${fmtSmall(r)}</span>`; });
+    if (rs.length === 2 && rs[0] && rs[1]) {
+      const dVa = rs[1].va - rs[0].va, dIa = rs[1].ia - rs[0].ia;
+      let line = `<span><b>A→B</b>: ΔVa ${dVa.toFixed(1)} V · ΔIa ${(dIa * 1000).toFixed(2)} mA`;
+      if (Math.abs(dIa) > 1e-12 && Math.abs(dVa) > 1e-9 && dVa * dIa < 0) {
+        const R = -dVa / dIa, va0 = rs[0].va + rs[0].ia * R;
+        line += ` · load line <b>${fmtEng(R, "Ω", 2)}</b> (Va ${va0.toFixed(0)} V at Ia = 0, ${fmtEng(va0 / R, "A", 2)} at Va = 0)`;
+      } else if (Math.abs(dIa) > 1e-12) line += ` · slope ${fmtEng(dVa / dIa, "Ω", 2)}`;
+      h += line + "</span>";
+    }
+    if (!h) h = `<span class="hint">Click the plot to pick point A, then B: Vg, gm, rp and µ there, and the load line through both. Points snap to the operating point and the simulated load line. Drag to move, double-click to remove.</span>`;
+    else h += `<button class="btn" id="picks-clear" title="Remove the points (Esc)">Clear points</button>`;
+    $("picks").innerHTML = h;
+    const b = $("picks-clear"); if (b) b.onclick = () => pick.clear();
+  }
+  let pick = null;
+  function initPicker() {
+    pick = MarkerPicker($("plot"), {
+      snap: snapPoint,
+      pos: m => { const p = pointOf(m); return p && plotGeom ? { x: plotGeom.X(p.va), y: plotGeom.Y(p.ia) } : null; },
+      hover: m => {
+        const p = m && pointOf(m);
+        S.hover = p || null;
+        drawPlot();
+      },
+      change: () => { drawPlot(); renderPicks(); }
+    });
+  }
+  // a different tube (or a library pick) starts without points
+  let pickKey = null;
+  function syncPickKey() {
+    const v = S.view || {}, key = v.source === "circuit" ? "c:" + v.id : "l:" + v.name;
+    if (key !== pickKey) { pickKey = key; if (pick) pick.reset(); }
   }
 
   // ---------------------------------------------------------------------------
@@ -455,7 +553,8 @@
   // ---------------------------------------------------------------------------
   function renderAll() {
     const d = current();
-    renderLink(); renderCircuitList(); renderLibrary(); drawPinout(d.tube); renderHud(); drawPlot();
+    syncPickKey();
+    renderLink(); renderCircuitList(); renderLibrary(); drawPinout(d.tube); renderHud(); drawPlot(); renderPicks();
   }
 
   function init() {
@@ -464,8 +563,7 @@
       S.filter = ch.dataset.f; document.querySelectorAll(".chip").forEach(c => c.classList.toggle("active", c === ch)); renderLibrary();
     }));
     ["traj", "pa", "pa70", "bias"].forEach(k => { const el = $("opt-" + k); el.checked = S.opts[k]; el.addEventListener("change", () => { S.opts[k] = el.checked; drawPlot(); }); });
-    $("plot").addEventListener("mousemove", onPlotMove);
-    $("plot").addEventListener("mouseleave", () => { S.hover = null; $("plot-readout").textContent = ""; drawPlot(); });
+    initPicker();
     window.addEventListener("resize", drawPlot);
     $("btn-open-cad").addEventListener("click", () => window.open("circuit_sandbox.html", "tube_cad"));
     $("btn-model").addEventListener("click", openModelModal);
@@ -486,6 +584,7 @@
     renderAll();
   }
 
-  window.TubeTracer = { state: S, renderAll, fitKoren, current };
+  window.TubeTracer = { state: S, renderAll, fitKoren, current, vgFor,
+    toScreen: (va, ia) => plotGeom && { x: plotGeom.X(va), y: plotGeom.Y(ia) }, iaOf: (va, vg) => iaOf(current(), va, vg), picks: () => pick.list.map(m => { const p = pointOf(m); return p && { ...m, ...describePoint(p) }; }) };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

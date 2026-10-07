@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-10-07
+
+### Added
+- Markers on every graph: click to place marker A, then B; drag to move,
+  double-click to remove, Esc to clear. A hover cursor shows the values under
+  the pointer.
+  - Oscilloscope: markers sit on a trace and read time and voltage, with ΔT,
+    1/ΔT and ΔV between them (X and Y in X-Y mode).
+  - Spectrum analyzer: markers snap to a spectral line and read its
+    frequency, harmonic number and level, with the difference between them.
+  - Curve tracer: a picked point reads Va, Ia, the grid voltage that puts the
+    tube there (the model solved for Vg), plate dissipation, and gm, rp and µ
+    at that point. Points snap to the operating point and the simulated load
+    line. Two points draw the load line through them and give its resistance.
+
+### Changed
+- The hover readouts of the curve tracer now sit on the plot, so the plot no
+  longer changes size while the pointer moves.
+
 ## [3.3.0] - 2026-10-07
 
 ### Fixed
@@ -121,7 +140,8 @@ First release as a standalone project (previously developed inside
 - Several tube models deviate from datasheet operating points by more than
   20 % (fixed in 3.1.0).
 
-[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.3.0...HEAD
+[Unreleased]: https://github.com/kothf/tube-amp-cad/compare/v3.4.0...HEAD
+[3.4.0]: https://github.com/kothf/tube-amp-cad/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/kothf/tube-amp-cad/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/kothf/tube-amp-cad/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/kothf/tube-amp-cad/compare/v3.1.0...v3.1.1
