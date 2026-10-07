@@ -258,3 +258,33 @@ test("pentode screen current rises as the plate swings into the knee (current co
   const ik = va => ia(va) + ig2(va);
   for (const va of [15, 30, 60, 120]) near(ik(va), ik(250), 0.35, `Ik at Va=${va} V`);
 });
+
+test("transformer-fed kenotron supply converges for any node order (round-off floor)", () => {
+  // mains 230 V -> 230:370-0-370 transformer -> 5Ц4С -> 10 µF - 0.6 H - 220 µF -> 2.9 kΩ.
+  // Hundreds of volts on some nodes put Newton's last updates at the round-off
+  // level; whether they met a fixed 1 µV test used to depend on node numbering.
+  const base = [
+    { id: "ac", kind: "VSRC", nodes: [1, 2], wave: "sine", freq: 50, amp: 230 * Math.SQRT2, phase: 90, acMains: true },
+    { id: "earth", kind: "R", nodes: [2, 0], r: 1 },
+    { id: "rp", kind: "R", nodes: [1, 3], r: 7.4 },
+    { id: "r1", kind: "R", nodes: [4, 5], r: 44.6 }, { id: "r2", kind: "R", nodes: [6, 7], r: 44.6 },
+    { id: "tx", kind: "XFMR", nodes: [], lp: 7.8, k: 0.999, primaryTurns: 230, windings: [{ a: 3, b: 2, turns: 230 }, { a: 5, b: 0, turns: 370.3 }, { a: 0, b: 7, turns: 370.3 }] },
+    { id: "v", part: "a1", kind: "VDIODE", nodes: [4, 8], perveance: E.RECTIFIER_PERVEANCE["5Ts4S"] },
+    { id: "v", part: "a2", kind: "VDIODE", nodes: [6, 8], perveance: E.RECTIFIER_PERVEANCE["5Ts4S"] },
+    { id: "c1", kind: "C", nodes: [8, 0], c: 10e-6 }, { id: "l", kind: "L", nodes: [8, 9], l: 0.6 }, { id: "rl", kind: "R", nodes: [9, 10], r: 26 },
+    { id: "c2", kind: "C", nodes: [10, 0], c: 220e-6 }, { id: "load", kind: "R", nodes: [10, 0], r: 2900 }
+  ];
+  const results = [];
+  for (let seed = 1; seed <= 6; seed++) {
+    // a reproducible shuffle of node numbers 1..10 and of the element order
+    let s = seed * 9301 + 49297;
+    const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+    const perm = [0, ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].sort(() => rnd() - 0.5)];
+    const els = base.map(e => Object.assign({}, e, { nodes: e.nodes.map(n => perm[n]), windings: e.windings && e.windings.map(w => ({ a: perm[w.a], b: perm[w.b], turns: w.turns })) })).sort(() => rnd() - 0.5);
+    const r = E.simulate({ nodeCount: 11, elements: els }, { budgetMs: 60000, maxPeriods: 4000 });
+    assert.ok(r.ok, `node order ${seed}: ${r.error}`);
+    results.push(r.dc.nodes[perm[10]]);
+  }
+  const spread = Math.max(...results) - Math.min(...results);
+  assert.ok(results[0] > 300 && results[0] < 450 && spread < 0.2, `DC output ${results.map(v => v.toFixed(2)).join(", ")} V`);
+});

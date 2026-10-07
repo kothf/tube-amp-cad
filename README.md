@@ -21,6 +21,10 @@ circuit is saved in the browser.
 - **Real transformers** — 25 Hammond 300-series power transformers modelled
   from the maker's drawings (voltages, winding resistances, excitation), fed
   from an AC mains source you wire to the primary.
+- **IEC drawings** — symbols to IEC 60617, reference designations to
+  IEC 81346 (-R1, -CA1, -K1.1 … with automatic renumbering in reading order),
+  and an IEC 61082 sheet: drawing frame with reference grid and an ISO 7200
+  title block.
 - **Live or on demand** — the circuit re-simulates after every edit, or turn
   *Live* off and press *▶ Simulate*; either way slow power supplies are run
   until they have fully settled.
