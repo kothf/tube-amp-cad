@@ -50,7 +50,7 @@ circuit is saved in the browser.
   voltage with ΔT and ΔV on the scope, frequency and level on the analyzer,
   and Vg, dissipation, gm, rp and µ at a point of the plate curves, with the
   load line through two points.
-- **40 tubes** — Western and Soviet small-signal triodes (12AX7, 6N2P, 6SN7…),
+- **41 tubes** — Western and Soviet small-signal triodes (12AX7, 6N2P, 6SN7…),
   power tubes (EL84, EL34, 6V6, KT88, 300B, 845, GU-50…) and rectifiers
   (5U4G, GZ34, 5Ts3S…), with pinouts and ratings.
 

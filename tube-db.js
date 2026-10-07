@@ -160,7 +160,27 @@ var TUBE_DATABASE = [
   },
   // ---------------- Power Output Soviet (GOST) ----------------
   {
-    nameGost: "6П14П / 6П14П-ЕВ", nameWestern: "6P14P-EV (EL84 / 7189 Heavy Duty)", commonName: "6P14P-EV",
+    nameGost: "6П14П", nameWestern: "6P14P (EL84)", commonName: "6P14P",
+    type: "Power Output Pentode", category: "power", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
+    vh: 6.3, ih: 0.76,
+    heaterWarning: "Noval B9A. Pins 4 & 5: 6.3V @ 0.76A. Envelope runs hot (>180°C) in Class A!",
+    vaMax: 300, paMax: 12.0, ikMax: 65, vg2Max: 300,     // 6П14П handbook / Philips EL84
+    isFavorite: true,
+    koren: {
+      Pentode: { vk: 31.4, ks: 1.077, mu: 19.1, kg: 531.3, kp: 255.5, lam: 1575, x: 1.37, kg2: 2001 },
+      Ultralinear: { vk: 31.4, ks: 1.077, mu: 19.1, kg: 531.3, kp: 255.5, lam: 1575, x: 1.37, kg2: 2001 },
+      Triode: { mu: 18.43, kg: 550.6, kp: 1422, kvb: 47.45, x: 1.47 }
+    },
+    pinout: [
+      { pin: 1, sym: "NC", role: "Internal Connection" }, { pin: 2, sym: "G1", role: "Control Grid", isGrid: true },
+      { pin: 3, sym: "K", role: "Cathode & Grid 3", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "NC", role: "Internal Connection" },
+      { pin: 7, sym: "A", role: "Plate / Anode", isPlate: true }, { pin: 8, sym: "NC", role: "Internal Connection" },
+      { pin: 9, sym: "G2", role: "Screen Grid 2", isScreen: true }
+    ]
+  },
+  {
+    nameGost: "6П14П-ЕВ", nameWestern: "6P14P-EV (military, EL84 / 7189 Heavy Duty)", commonName: "6P14P-EV",
     type: "Power Output Pentode", category: "power", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
     vh: 6.3, ih: 0.76,
     heaterWarning: "Noval B9A. Pins 4 & 5: 6.3V @ 0.76A. Envelope runs hot (>180°C) in Class A!",
