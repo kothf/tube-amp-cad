@@ -6,6 +6,42 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-10-07
+
+### Added
+- Drawings to IEC standards:
+  - **IEC 61082-1 sheet:** a *Drawing frame* part (A4 to A0 landscape, 4 drawing
+    units per mm) with an ISO 5457 frame, a reference grid of 50 mm zones
+    (columns 1…n, rows A…, without I and O) and an ISO 7200 title block whose
+    fields are edited in the inspector. Only its frame lines and title block
+    are clickable, so parts drawn inside stay selectable.
+  - *Text note* part for notes and supply-line markings.
+  - **IEC 81346 reference designations:** parts are named with the entry class
+    codes of IEC 81346-2:2019 (R, CA capacitor, CB inductor, T transformer and
+    rectifier tube, K amplifying tube, G sources, P loudspeaker and
+    oscilloscope, S switch) and shown with the product-aspect prefix, e.g.
+    -R1, -K1.2. *Renumber designations* numbers every part in reading order,
+    keeping the sections of one object together (-K1.1/-K1.2, -S1.1/-S1.2).
+
+### Changed
+- Symbols redrawn to IEC 60617: polarized capacitor with two straight plates
+  and "+", inductor core as one line, change-over contact without contact
+  circles, ideal voltage source with the conductor through the circle,
+  signal generator as a static generator (square with G and a sine), AC mains
+  as a voltage source with "~".
+- New parts get IEC 81346 class codes instead of R/C/L/V/SA/TP/GEN/XSC
+  prefixes; saved circuits keep their labels until renumbered.
+- The AC mains source's neutral is earthed solidly (TN) instead of through
+  100 MΩ.
+
+### Fixed
+- A transient could fail with "did not converge" depending only on how the
+  parts were numbered: Newton's last updates stalled at a few microvolts of
+  round-off and never met the 1 µV test, or bounced across a rectifier's
+  turn-on. A stalled update below 100 µV now counts as converged, a bouncing
+  iteration takes half a step, and a failing step is retried in 1/8 and then
+  1/64 sub-steps. A floating mains primary made this worse and is now earthed.
+
 ## [3.8.0] - 2026-10-07
 
 ### Added

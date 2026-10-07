@@ -56,7 +56,7 @@
     });
   }
   function compBBox(c) {
-    const b = LIB[c.type].bbox;
+    const b = typeof LIB[c.type].bbox === "function" ? LIB[c.type].bbox(c) : LIB[c.type].bbox;
     const a = rotPt(b[0], b[1], c.rot), d = rotPt(b[2], b[3], c.rot);
     return { x1: c.x + Math.min(a[0], d[0]), y1: c.y + Math.min(a[1], d[1]), x2: c.x + Math.max(a[0], d[0]), y2: c.y + Math.max(a[1], d[1]) };
   }
@@ -201,7 +201,7 @@
       const t = tubeByName(c.params.tube);
       c.params.connection = tubeKind(t) === "pentode" ? "pentode" : "triode";
     }
-    c.label = def.noLabel ? "" : nextLabel(def.prefix);
+    c.label = def.noLabel ? "" : nextLabel(def.prefixFor ? def.prefixFor(c) : def.prefix);
     return c;
   }
 
@@ -453,8 +453,10 @@
   }
   function hitComp(x, y) {
     for (let i = S.comps.length - 1; i >= 0; i--) {
-      const b = compBBox(S.comps[i]);
-      if (x >= b.x1 - 2 && x <= b.x2 + 2 && y >= b.y1 - 2 && y <= b.y2 + 2) return S.comps[i];
+      const c = S.comps[i], def = LIB[c.type];
+      if (def.hit) { if (def.hit(c, x, y)) return c; continue; }
+      const b = compBBox(c);
+      if (x >= b.x1 - 2 && x <= b.x2 + 2 && y >= b.y1 - 2 && y <= b.y2 + 2) return c;
     }
     return null;
   }
@@ -693,7 +695,31 @@
     if (c && c.type === "scope" && !S.wiring) window.open("oscilloscope.html?scope=" + encodeURIComponent(c.id), "tube_scope_" + c.id);
     if (c && c.type === "switch" && !S.wiring) { setSwitch(c, c.params.pos === "B" ? "A" : "B"); updateInspector(); }
   }
-  // Sections of one switch share its name before the dot (SA1.1, SA1.2) and always move together.
+  // Renumber reference designations (IEC 81346-2 class code + number) in
+  // reading order of the diagram: left to right, then top to bottom. Parts
+  // whose labels share a base before a dot (a dual triode -K1.1/-K1.2, the
+  // sections -S1.1/-S1.2 of one switch) stay one object with their sections.
+  function renumber() {
+    const groups = new Map();
+    S.comps.forEach(c => {
+      const def = LIB[c.type]; if (def.noLabel) return;
+      const cls = def.prefixFor ? def.prefixFor(c) : def.prefix, l = c.label || "", i = l.lastIndexOf(".");
+      const base = i > 0 ? l.slice(0, i) : null, key = base ? cls + "|" + base : c.id;
+      if (!groups.has(key)) groups.set(key, { cls, members: [] });
+      groups.get(key).members.push(c);
+    });
+    const pos = c => [Math.round(c.x / 10), Math.round(c.y / 10)];
+    const order = (a, b) => { const [ax, ay] = pos(a), [bx, by] = pos(b); return ax - bx || ay - by; };
+    const list = [...groups.values()].map(g => { g.members.sort(order); return g; }).sort((a, b) => order(a.members[0], b.members[0]));
+    const next = {};
+    list.forEach(g => {
+      const n = next[g.cls] = (next[g.cls] || 0) + 1;
+      if (g.members.length > 1 || (g.members[0].label || "").includes(".")) g.members.forEach((c, k) => { c.label = `${g.cls}${n}.${k + 1}`; });
+      else g.members[0].label = g.cls + n;
+    });
+    commit();
+  }
+  // Sections of one switch share its name before the dot (S1.1, S1.2) and always move together.
   function switchGang(c) { const i = c.label.lastIndexOf("."); return i > 0 ? c.label.slice(0, i) : null; }
   function setSwitch(c, pos) {
     const g = switchGang(c);
@@ -780,6 +806,8 @@
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
     const T = topo();
 
+    // drawing sheets lie behind everything
+    S.comps.forEach(c => { if (c.type === "frame") drawComp(c, S.sel.comps.has(c.id), false); });
     // wires
     ctx.lineCap = "round";
     S.wires.forEach(w => {
@@ -800,7 +828,7 @@
     T.junctions.forEach(j => { ctx.beginPath(); ctx.arc(j.x, j.y, 4, 0, Math.PI * 2); ctx.fill(); });
 
     // components
-    S.comps.forEach(c => drawComp(c, S.sel.comps.has(c.id), false));
+    S.comps.forEach(c => { if (c.type !== "frame") drawComp(c, S.sel.comps.has(c.id), false); });
 
     // voltage tags
     if (S.showVolts && S.sim.result) drawVoltTags(T);
@@ -843,6 +871,9 @@
     }
   }
 
+  // Reference designation as shown on the diagram (IEC 81346-1): the product
+  // aspect prefix "-" before the class code and number, e.g. -R1, -K1.2
+  function desig(c) { const l = c.label || ""; return !l || /^[-=+]/.test(l) ? l : "-" + l; }
   function drawComp(c, sel, ghost) {
     const def = LIB[c.type];
     ctx.save();
@@ -862,7 +893,7 @@
       const T = topo();
       compPins(c).forEach(p => {
         const conn = T.pinConnected.get(c.id + ":" + p.id);
-        if (conn) return;
+        if (conn || (c.type === "scope" && /^CH/.test(p.id))) return;   // probe inputs are optional
         ctx.strokeStyle = "#ff7b72"; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.stroke();
       });
@@ -875,25 +906,25 @@
     ctx.fillStyle = sel ? COL.bodySel : COL.text;
     const vertical = (b.y2 - b.y1) > (b.x2 - b.x1) * 1.2 && c.type !== "tube";
     if (c.type === "scope") {
-      ctx.textAlign = "left"; ctx.fillText(c.label + "  oscilloscope", b.x1 + 10, b.y1 - 6);
+      ctx.textAlign = "left"; ctx.fillText(desig(c) + "  oscilloscope", b.x1 + 10, b.y1 - 6);
       ctx.font = "9px ui-monospace, monospace"; ctx.fillStyle = "#ffd54f"; ctx.fillText("CH1", c.x - 88, c.y - 34); ctx.fillStyle = "#00e5ff"; ctx.fillText("CH2", c.x - 88, c.y - 14); ctx.fillStyle = "#8b949e"; ctx.fillText("COM", c.x - 88, c.y + 26);
       return;
     }
     if (c.type === "tube") {
       ctx.textAlign = "left";
-      ctx.fillText(c.label, c.x + 34, c.y + 26);
+      ctx.fillText(desig(c), c.x + 34, c.y + 26);
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
       ctx.fillText(val, c.x + 34, c.y + 39);
       return;
     }
     if (vertical) {
       ctx.textAlign = "left";
-      ctx.fillText(c.label, b.x2 + 5, c.y - 2);
+      ctx.fillText(desig(c), b.x2 + 5, c.y - 2);
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
       ctx.fillText(val, b.x2 + 5, c.y + 11);
     } else {
       ctx.textAlign = "center";
-      ctx.fillText(c.label, c.x, b.y1 - 5);
+      ctx.fillText(desig(c), c.x, b.y1 - 5);
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
       ctx.fillText(val, c.x, b.y2 + 12);
     }
@@ -1084,6 +1115,8 @@
           if (!isFinite(n) || (!allowNeg && n < 0) || (n === 0 && !["offset", "rs", "v"].includes(f.key))) { flash(el); return; }
           c.params[f.key] = n; commit();
         });
+      } else if (f.kind === "text") {
+        el = input("text", c.params[f.key] || "", v => { c.params[f.key] = v; commit(); });
       } else if (f.kind === "number") {
         el = input("number", c.params[f.key], v => { const n = parseFloat(v); if (!isFinite(n)) { flash(el); return; } c.params[f.key] = Math.min(f.max !== undefined ? f.max : Infinity, Math.max(f.min !== undefined ? f.min : -Infinity, n)); commit(); });
       } else if (f.kind === "select") {
@@ -1125,7 +1158,7 @@
     }
     if (c.type === "switch") {
       const p = document.createElement("p"); p.className = "insp-help";
-      p.textContent = "Double-click the switch on the sheet to flip it. Sections named like SA1.1 and SA1.2 are one switch and flip together.";
+      p.textContent = "Double-click the switch on the sheet to flip it. Sections named like S1.1 and S1.2 are one switch and flip together.";
       host.appendChild(p);
     }
     if (c.type === "scope") {
@@ -1221,6 +1254,7 @@
 
   function buildCircuitPanel(host) {
     host.innerHTML = `<div class="insp-title">Circuit</div><div id="insp-live" class="insp-live"></div>
+      <button class="btn wide" id="btn-renumber" title="Class code (IEC 81346-2) and number for every part, in reading order">Renumber designations (IEC 81346)</button>
       <div class="insp-sub">How to</div>
       <ul class="help-list">
         <li><b>Place:</b> pick a part on the left, click the sheet. <kbd>R</kbd> rotates while placing, <kbd>Shift</kbd>-click places several.</li>
@@ -1229,8 +1263,10 @@
         <li><b>View:</b> wheel zooms, <kbd>Space</kbd>/middle-drag pans, <kbd>F</kbd> fits.</li>
         <li><b>Measure:</b> hover a wire for its voltage; wire an Oscilloscope to see waveforms; double-click it for the full scope.</li>
         <li><b>Simulate:</b> <i>Live</i> re-simulates after every edit. Turn it off to simulate only on <i>▶ Simulate</i> (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>), which always runs until the circuit has settled.</li>
-        <li><b>Switch:</b> double-click to flip it; sections named SA1.1, SA1.2… flip together.</li>
+        <li><b>Switch:</b> double-click to flip it; sections named S1.1, S1.2… flip together.</li>
+        <li><b>Standards:</b> symbols follow IEC 60617 and designations IEC 81346 (shown with the "-" prefix). Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
       </ul>`;
+    const rb = host.querySelector("#btn-renumber"); if (rb) rb.addEventListener("click", renumber);
   }
   function circuitReadout() {
     const T = topo();
@@ -1403,6 +1439,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, renumber, desig, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

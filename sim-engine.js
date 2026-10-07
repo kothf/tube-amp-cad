@@ -211,6 +211,7 @@
       for (let t = 0; t < m; t++) addB(nodes[t], rhs[t]);
     };
 
+    let lastDv = null, stall = 0;
     for (let iter = 0; iter < maxIter; iter++) {
       A.fill(0); b.fill(0);
       for (let i = 1; i < circ.nNodes; i++) addA(i, i, gmin);
@@ -319,8 +320,11 @@
       // Damped update on node voltages
       let maxDv = 0;
       for (let i = 0; i < circ.nNodes - 1; i++) maxDv = Math.max(maxDv, Math.abs(sol[i] - x[i]));
-      const scale = maxDv > maxStep ? maxStep / maxDv : 1;
+      let scale = maxDv > maxStep ? maxStep / maxDv : 1;
       let conv = scale === 1;
+      // an iteration that is not getting closer (bouncing across a device's
+      // turn-on, say) takes half a step
+      if (iter >= 8 && lastDv !== null && maxDv > 0.9 * lastDv && maxDv > 1e-4) { scale *= 0.5; conv = false; }
       for (let i = 0; i < n; i++) {
         const nx = x[i] + (sol[i] - x[i]) * scale;
         if (i < circ.nNodes - 1 && Math.abs(nx - x[i]) > 1e-6 + 1e-6 * Math.abs(nx)) conv = false;
@@ -328,6 +332,13 @@
       }
       if (!isFinite(maxDv)) return { ok: false, x, error: "numerical overflow" };
       if (conv && iter > 0) return { ok: true, x, iter };
+      // Round-off floor: with hundreds of volts on some nodes the solution can
+      // settle into a microvolt-level wobble that never meets the 1 µV test
+      // (whether it does depends on node order). An update below 100 µV that
+      // has stopped shrinking for a few iterations is converged.
+      if (maxDv < 1e-4 && lastDv !== null && maxDv > 0.5 * lastDv) { if (++stall >= 3) return { ok: true, x, iter }; }
+      else stall = 0;
+      lastDv = maxDv;
     }
     return { ok: false, x, error: "no convergence" };
   }
@@ -442,19 +453,19 @@
     const captureSteps = Math.round(capture / h);
 
     let x = dc.x.slice(), t = 0;
-    const step = (xprev, tNext, hh) => {
-      let r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev }, { gmin: 1e-12 });
+    // a step that does not converge is retried as 8 sub-steps, and each of those
+    // again as 8 (h/64), before the run gives up
+    const step = (xprev, tNext, hh, depth) => {
+      const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev }, { gmin: 1e-12 });
       if (r.ok) return r.x;
-      // retry with sub-steps
+      if ((depth || 0) >= 2) return null;
       let xs = xprev;
       for (let k = 1; k <= 8; k++) {
-        r = newtonSolve(circ, xs, { h: hh / 8, t: tNext - hh + hh * k / 8, prev: xs }, { gmin: 1e-12 });
-        if (!r.ok) return null;
-        xs = r.x;
+        xs = step(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1);
+        if (!xs) return null;
       }
       return xs;
     };
-
     const runPeriod = (hh, nSteps) => {
       for (let s = 0; s < nSteps; s++) {
         t += hh;

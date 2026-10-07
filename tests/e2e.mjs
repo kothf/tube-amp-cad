@@ -55,12 +55,12 @@ await cad.mouse.move(mx, my); await cad.keyboard.press("r"); await cad.mouse.cli
 await cad.getByRole("button", { name: /^Capacitor/ }).click();
 await clickAt(500, 300);
 let s = await state();
-const R1 = s.comps.find(c => c.label === "R1"), C1 = s.comps.find(c => c.label === "C1");
-check(R1 && R1.rot === 1 && C1 && C1.x === 500, "parts placed from the palette, rotated with R, snapped to the grid");
+const R1 = s.comps.find(c => c.label === "R1"), C1 = s.comps.find(c => c.label === "CA1");
+check(R1 && R1.rot === 1 && C1 && C1.x === 500, "parts placed from the palette with IEC 81346 class codes (R1, CA1), rotated with R, snapped to the grid");
 
 const a = await pin(R1.id, "2"), b = await pin(C1.id, "1");
 await clickAt(a.x, a.y); await clickAt(a.x, b.y); await clickAt(b.x, b.y);
-check(await sameNet(`${R1.id}:2`, `${C1.id}:1`), "wire drawn pin → corner → pin connects R1 to C1");
+check(await sameNet(`${R1.id}:2`, `${C1.id}:1`), "wire drawn pin → corner → pin connects R1 to CA1");
 
 const [cx, cy] = await toScreen(500, 300), [dx, dy] = await toScreen(540, 340);
 await cad.mouse.move(cx, cy); await cad.mouse.down(); await cad.mouse.move(dx, dy, { steps: 5 }); await cad.mouse.up();
@@ -175,7 +175,7 @@ const probe = await cad.evaluate(async v1 => {
   const C = TubeCAD, S = C.state;
   const pin = (c, id) => C.compPins(c).find(p => p.id === id);
   const wire = (a, b, hFirst) => C.lRoute(a.x, a.y, b.x, b.y, hFirst !== false).forEach(s => C.addSegment(...s));
-  const Co = S.comps.find(c => c.type === "capacitor" && c.label === "C3") || S.comps.filter(c => c.type === "capacitor").pop();
+  const Co = S.comps.find(c => c.type === "capacitor" && c.label === "CA3") || S.comps.filter(c => c.type === "capacitor").pop();
   const SC2 = C.makeComp("scope", {}, 820, 160, 0); S.comps.push(SC2);
   // CH1 taps the plate wire just left of the coupling capacitor; COM to ground
   const p1 = pin(SC2, "CH1"), coA = pin(Co, "1"), tap = { x: coA.x - 10, y: coA.y };
@@ -204,7 +204,7 @@ const [tx, ty] = await cad.evaluate(id => { const S = TubeCAD.state, c = S.comps
 await cad.mouse.click(tx, ty);
 await tracer.waitForFunction(() => document.getElementById("plot-title").textContent.includes("in circuit"), null, { timeout: 5000 }).catch(() => {});
 const title = await tracer.textContent("#plot-title");
-check(title.includes("12AX7") && title.includes("V1 in circuit"), `clicking V1 in the CAD shows it on the curve tracer ("${title.trim()}")`);
+check(title.includes("12AX7") && title.includes("K1 in circuit"), `clicking K1 in the CAD shows it on the curve tracer ("${title.trim()}")`);
 // pick points: the operating point (snapped), then a free point on the plot
 {
   const q = await tracer.evaluate(() => { const ct = TubeTracer.current().circuit; return { ...TubeTracer.toScreen(ct.dc.vak, ct.dc.ia), vgk: ct.dc.vgk, vak: ct.dc.vak, ia: ct.dc.ia }; });
@@ -239,7 +239,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
 
 // --- 5. A ganged changeover switch, flipped with a double-click --------------
 {
-  // two sections, SA1.1 and SA1.2, each choosing between two loads on its own 10 V supply
+  // two sections, S1.1 and S1.2, each choosing between two loads on its own 10 V supply
   const ids = await cad.evaluate(async () => {
     const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
     const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
@@ -248,7 +248,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     const out = [];
     for (const [i, x0] of [[1, 200], [2, 600]]) {
       const B = add("vdc", { v: 10 }, x0, 300), SW = add("switch", {}, x0 + 100, 240);
-      SW.label = `SA1.${i}`;
+      SW.label = `S1.${i}`;
       const Ra = add("resistor", { r: 1000 }, x0 + 200, 260, 1), Rb = add("resistor", { r: 2000 }, x0 + 260, 300, 1);
       const g = add("ground", {}, x0, 380);
       wire(pin(B, "+"), pin(SW, "C"), false); wire(pin(SW, "A"), pin(Ra, "1"), true); wire(pin(SW, "B"), pin(Rb, "1"), true);
@@ -271,7 +271,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await cad.mouse.dblclick(px, py);
   await settle();
   r = await read();
-  check(r.every(k => k.pos === "B" && Math.abs(k.vb - 10) < 0.01 && Math.abs(k.va) < 0.01), `double-click on SA1.1 flips both sections to B: ${r.map(k => `${k.va.toFixed(2)} V / ${k.vb.toFixed(2)} V`).join(", ")}`);
+  check(r.every(k => k.pos === "B" && Math.abs(k.vb - 10) < 0.01 && Math.abs(k.va) < 0.01), `double-click on S1.1 flips both sections to B: ${r.map(k => `${k.va.toFixed(2)} V / ${k.vb.toFixed(2)} V`).join(", ")}`);
   await cad.evaluate(id => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.comps.add(id); TubeCAD.commit(); }, ids[1].sw);
   await cad.locator("#inspector .row", { hasText: "Position" }).locator("select").selectOption("A");
   await settle();
@@ -375,6 +375,40 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const r = await cad.evaluate(() => { const h = CadLib.powerTx("373BX", 230); return h.rHalf + (h.rPri + 0.5) * Math.pow(h.nlv / h.tap, 2); });
   const expect = 370.3 * 2000 / (2000 + r);
   check(Math.abs(m.ht1 / expect - 1) < 0.01, `2 kΩ on one half: ${m.ht1.toFixed(1)} V, expected ${expect.toFixed(1)} V from 44.55 Ω winding + reflected primary (${r.toFixed(1)} Ω)`);
+}
+
+// --- 8. IEC 61082 sheet, IEC 81346 designations -------------------------------
+{
+  await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+    // placed out of reading order, with a dual triode in two sections
+    add("resistor", {}, 600, 300); add("resistor", {}, 200, 400); add("resistor", {}, 200, 200);
+    const a = add("tube", { tube: "12AX7" }, 500, 300), b = add("tube", { tube: "12AX7" }, 300, 300); a.label = "X.2"; b.label = "X.1";
+    add("tube", { tube: "5Ts4S" }, 100, 300); add("electrolytic", {}, 400, 500); add("inductor", {}, 450, 500);
+    S.view = { scale: 0.25, ox: 40, oy: 40 }; C.commit();
+  });
+  await cad.getByRole("button", { name: /Renumber designations/ }).click();
+  const labels = await cad.evaluate(() => TubeCAD.state.comps.map(c => [c.type, c.x, c.y, c.label, TubeCAD.desig(c)]));
+  const at = (x, y) => labels.find(l => l[1] === x && l[2] === y);
+  check(at(200, 200)[3] === "R1" && at(200, 400)[3] === "R2" && at(600, 300)[3] === "R3", `resistors numbered in reading order: ${["R1", "R2", "R3"].map(n => labels.find(l => l[3] === n) ? n : "?").join(" ")}`);
+  check(at(300, 300)[3] === "K1.1" && at(500, 300)[3] === "K1.2" && at(100, 300)[3] === "T1", `dual triode sections stay one object (-K1.1, -K1.2); the rectifier tube is class T (-T1)`);
+  check(at(400, 500)[3] === "CA1" && at(450, 500)[3] === "CB1" && at(200, 200)[4] === "-R1", `capacitor -CA1, inductor -CB1, shown with the "-" prefix`);
+  // drawing frame: placed from the palette, selectable by its title block only
+  await cad.getByRole("button", { name: /Drawing frame/ }).click();
+  await clickAt(0, 0);
+  const fr = await cad.evaluate(() => { const f = TubeCAD.state.comps.find(c => c.type === "frame"); const g = CadLib.sheetGeom(f); return { id: f.id, x: f.x, y: f.y, g }; });
+  check(fr.g.cols === 11 && fr.g.rows === 8, `A2 frame with an 11 × 8 reference grid (50 mm zones)`);
+  await cad.keyboard.press("Escape");
+  await clickAt(200, 200);
+  const sel1 = await cad.evaluate(() => [...TubeCAD.state.sel.comps].map(id => TubeCAD.state.comps.find(c => c.id === id).type));
+  await clickAt(fr.x + fr.g.tb.x1 + 40, fr.y + fr.g.tb.y1 + 40);
+  const sel2 = await cad.evaluate(() => [...TubeCAD.state.sel.comps].map(id => TubeCAD.state.comps.find(c => c.id === id).type));
+  check(sel1.join() === "resistor" && sel2.join() === "frame", `a click inside the sheet picks the part (${sel1}); the title block picks the frame (${sel2})`);
+  const title = cad.locator("#inspector .row", { hasText: /^Title/ }).locator("input");
+  await title.fill("Test amplifier"); await title.press("Enter");
+  check(await cad.evaluate(() => TubeCAD.state.comps.find(c => c.type === "frame").params.title) === "Test amplifier", "title block field edited in the inspector");
+  check(await cad.evaluate(() => !TubeCAD.buildNetlist().elements.some(e => /frame/.test(e.id))), "the frame adds nothing to the simulation");
 }
 
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);

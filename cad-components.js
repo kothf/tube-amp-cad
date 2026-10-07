@@ -107,6 +107,21 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Drawing sheet (IEC 61082-1: ISO 5457 frame with a reference grid, ISO 7200
+  // title block). 4 drawing units per millimetre; landscape sheets.
+  // ---------------------------------------------------------------------------
+  const MM = 4;
+  const SHEETS = { A4: [297, 210], A3: [420, 297], A2: [594, 420], A1: [841, 594], A0: [1189, 841] };
+  function sheetGeom(c) {
+    const [wmm, hmm] = SHEETS[c.params.size] || SHEETS.A2;
+    const W = wmm * MM, H = hmm * MM, L = 20 * MM, M = 10 * MM;            // filing margin left, 10 mm elsewhere
+    const fx1 = L, fy1 = M, fx2 = W - M, fy2 = H - M;                        // drawing frame
+    const cols = Math.max(2, Math.round((fx2 - fx1) / (50 * MM))), rows = Math.max(2, Math.round((fy2 - fy1) / (50 * MM)));
+    const tbW = 180 * MM, tbH = 36 * MM;                                     // title block, max 180 mm wide
+    return { W, H, fx1, fy1, fx2, fy2, cols, rows, tb: { x1: fx2 - tbW, y1: fy2 - tbH, x2: fx2, y2: fy2 } };
+  }
+
+  // ---------------------------------------------------------------------------
   // Drawing helpers (local coordinates, already rotated by the caller)
   // ---------------------------------------------------------------------------
   const COL = { body: "#58a6ff", bodySel: "#00e5ff", tube: "#e6edf3", hot: "#ff7b72", text: "#e6edf3", value: "#79c0ff", fill: "#0d1420" };
@@ -129,15 +144,16 @@
       ctx.lineWidth = 2.5; line(ctx, [-4, -11, -4, 11]); line(ctx, [4, -11, 4, 11]);
     },
     electrolytic(ctx) {
-      line(ctx, [-20, 0, -4, 0]); line(ctx, [7, 0, 20, 0]);
-      ctx.lineWidth = 2.5; line(ctx, [-4, -11, -4, 11]);
-      ctx.beginPath(); ctx.arc(16, 0, 12, Math.PI * 0.78, Math.PI * 1.22); ctx.stroke();
-      ctx.lineWidth = 1.2; line(ctx, [-13, -10, -9, -10]); line(ctx, [-11, -12, -11, -8]);
+      // IEC 60617 S00571 polarized capacitor: two plates, "+" at the positive one
+      line(ctx, [-20, 0, -4, 0]); line(ctx, [4, 0, 20, 0]);
+      ctx.lineWidth = 2.5; line(ctx, [-4, -11, -4, 11]); line(ctx, [4, -11, 4, 11]);
+      ctx.lineWidth = 1.2; line(ctx, [-14, -10, -8, -10]); line(ctx, [-11, -13, -11, -7]);
     },
     inductor(ctx) {
       line(ctx, [-30, 0, -20, 0]); line(ctx, [20, 0, 30, 0]);
+      // IEC 60617 S00585 inductor with magnetic core: one line parallel to the winding
       ctx.beginPath(); for (let i = 0; i < 4; i++) ctx.arc(-15 + i * 10, 0, 5, Math.PI, 0); ctx.stroke();
-      line(ctx, [-20, -8, 20, -8]); line(ctx, [-20, -10, 20, -10]);
+      line(ctx, [-20, -9, 20, -9]);
     },
     speaker(ctx) {
       line(ctx, [0, -20, 0, -8, -4, -8]); line(ctx, [0, 20, 0, 8, -4, 8]);
@@ -150,27 +166,72 @@
       line(ctx, [7, -8, 7, 8]);
     },
     switch(ctx, c) {
-      // changeover (SPDT): common on the left, throws A (top) and B (bottom) on the right
-      line(ctx, [-30, 0, -12, 0]); line(ctx, [12, -10, 30, -10]); line(ctx, [12, 10, 30, 10]);
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.beginPath(); ctx.arc(-12, 0, 2.5, 0, Math.PI * 2); ctx.fill();
-      for (const y of [-10, 10]) { ctx.beginPath(); ctx.arc(12, y, 2.5, 0, Math.PI * 2); ctx.stroke(); }
-      line(ctx, [-12, 0, 10, c.params.pos === "B" ? 12 : -12]);
+      // IEC 60617 change-over contact: common on the left, fixed contacts A (top)
+      // and B (bottom) as line ends with a seat; the blade rests on the closed one
+      line(ctx, [-30, 0, -12, 0]); line(ctx, [8, -10, 30, -10]); line(ctx, [8, 10, 30, 10]);
+      line(ctx, [8, -10, 8, -6]); line(ctx, [8, 10, 8, 6]);
+      line(ctx, [-12, 0, 8, c.params.pos === "B" ? 6 : -6]);
       ctx.font = "8px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textAlign = "center";
       ctx.fillText("A", 22, -13); ctx.fillText("B", 22, 19);
+    },
+    note(ctx, c) {
+      ctx.fillStyle = c._sel ? COL.bodySel : COL.text; ctx.font = `${+c.params.size || 12}px ui-monospace, monospace`;
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText(c.params.text || "", 0, 0);
+    },
+    frame(ctx, c) {
+      const g = sheetGeom(c), p = c.params, z = 5 * MM;                     // reference-grid band 5 mm
+      ctx.save();
+      ctx.strokeStyle = c._sel ? COL.bodySel : "#8b949e"; ctx.fillStyle = ctx.strokeStyle;
+      ctx.lineWidth = 0.7; ctx.strokeRect(0, 0, g.W, g.H);                  // trimmed sheet
+      ctx.lineWidth = 2.8; ctx.strokeRect(g.fx1, g.fy1, g.fx2 - g.fx1, g.fy2 - g.fy1);   // frame, 0.7 mm
+      ctx.lineWidth = 0.7; ctx.strokeRect(g.fx1 + z, g.fy1 + z, g.fx2 - g.fx1 - 2 * z, g.fy2 - g.fy1 - 2 * z);
+      ctx.font = `${3.5 * MM}px ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const cw = (g.fx2 - g.fx1) / g.cols, rh = (g.fy2 - g.fy1) / g.rows;
+      for (let i = 0; i < g.cols; i++) {
+        const x = g.fx1 + (i + 0.5) * cw;
+        if (i) { line(ctx, [g.fx1 + i * cw, g.fy1, g.fx1 + i * cw, g.fy1 + z]); line(ctx, [g.fx1 + i * cw, g.fy2 - z, g.fx1 + i * cw, g.fy2]); }
+        ctx.fillText(String(i + 1), x, g.fy1 + z / 2); ctx.fillText(String(i + 1), x, g.fy2 - z / 2);
+      }
+      for (let j = 0; j < g.rows; j++) {
+        const y = g.fy1 + (j + 0.5) * rh, ch = "ABCDEFGHJKLMNPRSTUVWXYZ"[j] || "?";   // I and O are not used
+        if (j) { line(ctx, [g.fx1, g.fy1 + j * rh, g.fx1 + z, g.fy1 + j * rh]); line(ctx, [g.fx2 - z, g.fy1 + j * rh, g.fx2, g.fy1 + j * rh]); }
+        ctx.fillText(ch, g.fx1 + z / 2, y); ctx.fillText(ch, g.fx2 - z / 2, y);
+      }
+      // title block (ISO 7200): identification and descriptive fields
+      const t = g.tb, X = v => t.x1 + v * MM, Y = v => t.y1 + v * MM;
+      ctx.fillStyle = COL.fill; ctx.fillRect(t.x1, t.y1, t.x2 - t.x1, t.y2 - t.y1);
+      ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 2.8; ctx.strokeRect(t.x1, t.y1, t.x2 - t.x1, t.y2 - t.y1); ctx.lineWidth = 0.7;
+      [[0, 9, 180, 9], [0, 18, 180, 18], [0, 27, 110, 27], [110, 0, 110, 36], [145, 18, 145, 36], [55, 27, 55, 36], [70, 0, 70, 18], [145, 0, 145, 9]].forEach(([a, b, c2, d]) => line(ctx, [X(a), Y(b), X(c2), Y(d)]));
+      // each field: a small caption and its value, shrunk to fit the field width (w mm)
+      const field = (x, y, w, label, val, size) => {
+        ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = "#8b949e"; ctx.font = `${2 * MM}px ui-monospace, monospace`; ctx.fillText(label, X(x + 1), Y(y + 0.8));
+        let h = (size || 3.5) * MM; ctx.font = `${h}px ui-monospace, monospace`;
+        const tw = ctx.measureText(val || "").width, room = (w - 2) * MM;
+        if (tw > room) { h = Math.max(1.6 * MM, h * room / tw); ctx.font = `${h}px ui-monospace, monospace`; }
+        ctx.fillStyle = COL.text; ctx.fillText(val || "", X(x + 1), Y(y + 3.4 + ((size || 3.5) - h / MM) / 2));
+      };
+      field(0, 0, 70, "Responsible department", p.dept); field(70, 0, 40, "Technical reference", p.reference);
+      field(110, 0, 35, "Document type", p.doctype); field(145, 0, 35, "Document status", p.status);
+      field(0, 9, 70, "Created by", p.creator); field(70, 9, 40, "Approved by", p.approver); field(110, 9, 70, "Legal owner", p.owner);
+      field(0, 18, 110, "Title", p.title, 5); field(110, 18, 35, "Identification number", p.docno, 4.2); field(145, 18, 35, "Rev.", p.rev);
+      field(0, 27, 55, "Date of issue", p.date); field(55, 27, 55, "Lang.", p.lang); field(110, 27, 35, "Sheet", p.sheet); field(145, 27, 35, "Standards", "IEC 61082", 2.6);
+      ctx.restore();
     },
     ground(ctx) {
       line(ctx, [0, 0, 0, 8]); line(ctx, [-12, 8, 12, 8]); line(ctx, [-7, 13, 7, 13]); line(ctx, [-2, 18, 2, 18]);
     },
     vdc(ctx) {
-      line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
+      // IEC 60617 ideal voltage source: circle, the conductor drawn through it; "+" at the positive terminal
+      line(ctx, [0, -30, 0, 30]);
       ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
-      ctx.lineWidth = 1.5; line(ctx, [-4, -6, 4, -6]); line(ctx, [0, -10, 0, -2]); line(ctx, [-4, 6, 4, 6]);
+      ctx.lineWidth = 1.2; line(ctx, [6, -24, 12, -24]); line(ctx, [9, -27, 9, -21]);
     },
     siggen(ctx) {
+      // IEC 60617 static generator (square with G), qualified with a sine for alternating output
       line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
-      ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); for (let i = 0; i <= 20; i++) { const x = -8 + i * 0.8, y = -5 * Math.sin(i / 20 * Math.PI * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+      ctx.fillStyle = COL.fill; ctx.fillRect(-14, -14, 28, 28); ctx.strokeRect(-14, -14, 28, 28);
+      ctx.fillStyle = ctx.strokeStyle; ctx.font = "bold 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("G", 0, 1);
+      ctx.lineWidth = 1.2; ctx.beginPath(); for (let i = 0; i <= 16; i++) { const x = -6 + i * 0.75, y = 8 - 2.5 * Math.sin(i / 16 * Math.PI * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
     },
     ptx_cat(ctx, c) {
       // primary (left), iron core, centre-tapped HV secondary (right)
@@ -182,10 +243,10 @@
       if (c.params.bias === "yes") line(ctx, [12, -20, 40, -20]);
     },
     mains(ctx) {
+      // IEC 60617 voltage source with the qualifying symbol for alternating current
       line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
       ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); for (let i = 0; i <= 20; i++) { const x = -8 + i * 0.8, y = -5 * Math.sin(i / 20 * Math.PI * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
-      ctx.font = "8px ui-monospace, monospace"; ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = "center"; ctx.fillText("~", 0, -18);
+      ctx.beginPath(); for (let i = 0; i <= 20; i++) { const x = -8 + i * 0.8, y = -4 * Math.sin(i / 20 * Math.PI * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
     },
     ptx(ctx) {
       // AC source + secondary with centre tap; pins on the right
@@ -268,7 +329,7 @@
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "R", nodes: [net("1"), net("2")], r: Math.max(c.params.r, 1e-3) })
     },
     pot: {
-      name: "Potentiometer", prefix: "VR", group: "Passive", bbox: [-30, -22, 30, 10],
+      name: "Potentiometer", prefix: "R", group: "Passive", bbox: [-30, -22, 30, 10],
       defaults: { r: 1e6, pos: 0.5, taper: "lin" },
       pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }, { id: "W", x: 0, y: -20, name: "wiper" }],
       value: c => fmtEng(c.params.r, "Ω") + " " + Math.round(c.params.pos * 100) + "%",
@@ -286,7 +347,7 @@
       }
     },
     capacitor: {
-      name: "Capacitor", prefix: "C", group: "Passive", bbox: [-20, -12, 20, 12],
+      name: "Capacitor", prefix: "CA", group: "Passive", bbox: [-20, -12, 20, 12],
       defaults: { c: 0.1e-6 },
       pins: () => [{ id: "1", x: -20, y: 0 }, { id: "2", x: 20, y: 0 }],
       value: c => fmtEng(c.params.c, "F"),
@@ -294,7 +355,7 @@
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "C", nodes: [net("1"), net("2")], c: Math.max(c.params.c, 1e-15) })
     },
     electrolytic: {
-      name: "Electrolytic cap", prefix: "C", group: "Passive", bbox: [-20, -12, 20, 12],
+      name: "Electrolytic cap", prefix: "CA", group: "Passive", bbox: [-20, -12, 20, 12],
       defaults: { c: 47e-6 },
       pins: () => [{ id: "+", x: -20, y: 0 }, { id: "-", x: 20, y: 0 }],
       value: c => fmtEng(c.params.c, "F"),
@@ -302,7 +363,7 @@
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "C", nodes: [net("+"), net("-")], c: Math.max(c.params.c, 1e-15) })
     },
     inductor: {
-      name: "Inductor / choke", prefix: "L", group: "Passive", bbox: [-30, -12, 30, 6],
+      name: "Inductor / choke", prefix: "CB", group: "Passive", bbox: [-30, -12, 30, 6],
       defaults: { l: 5, dcr: 100 },
       pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }],
       value: c => fmtEng(c.params.l, "H"),
@@ -314,7 +375,7 @@
       }
     },
     switch: {
-      name: "Switch (changeover)", prefix: "SA", group: "Passive", bbox: [-30, -14, 30, 14],
+      name: "Switch (changeover)", prefix: "S", group: "Passive", bbox: [-30, -14, 30, 14],
       defaults: { pos: "A" },
       pins: () => [{ id: "C", x: -30, y: 0, name: "common" }, { id: "A", x: 30, y: -10, name: "throw A" }, { id: "B", x: 30, y: 10, name: "throw B" }],
       value: c => "→ " + c.params.pos,
@@ -327,7 +388,7 @@
       }
     },
     speaker: {
-      name: "Speaker", prefix: "SPK", group: "Passive", bbox: [-6, -20, 16, 20],
+      name: "Speaker", prefix: "P", group: "Passive", bbox: [-6, -20, 16, 20],
       defaults: { r: 8 },
       pins: () => [{ id: "+", x: 0, y: -20 }, { id: "-", x: 0, y: 20 }],
       value: c => fmtEng(c.params.r, "Ω"),
@@ -385,7 +446,7 @@
       }
     },
     ptx: {
-      name: "Power transformer (HT)", prefix: "TP", group: "Transformers", bbox: [-40, -44, 20, 44],
+      name: "Power transformer (HT)", prefix: "T", group: "Transformers", bbox: [-40, -44, 20, 44],
       defaults: { vrms: 300, freq: 50, rw: 60 },
       pins: () => [{ id: "HT1", x: 20, y: -40 }, { id: "CT", x: 20, y: 0, name: "centre tap" }, { id: "HT2", x: 20, y: 40 }],
       value: c => c.params.vrms + "-0-" + c.params.vrms + "V",
@@ -405,7 +466,7 @@
       }
     },
     ptx_cat: {
-      name: "Power transformer (catalog)", prefix: "TP", group: "Transformers", bbox: [-40, -44, 40, 44],
+      name: "Power transformer (catalog)", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
       defaults: { model: "373BX", tap: "230", bias: "no" },
       // primary on the left (wire an AC mains source to it), HV winding on the right
       pins: c => {
@@ -447,7 +508,7 @@
       }
     },
     mains: {
-      name: "AC mains", prefix: "AC", group: "Sources", bbox: [-16, -30, 16, 30],
+      name: "AC mains", prefix: "G", group: "Sources", bbox: [-16, -30, 16, 30],
       defaults: { vrms: 230, freq: "50", rs: 0.5 },
       pins: () => [{ id: "L", x: 0, y: -30, name: "line" }, { id: "N", x: 0, y: 30, name: "neutral" }],
       value: c => c.params.vrms + "V " + c.params.freq + "Hz",
@@ -456,17 +517,20 @@
         { key: "freq", label: "Frequency", kind: "select", options: [["50", "50 Hz"], ["60", "60 Hz"]] },
         { key: "rs", label: "Source resistance", unit: "Ω", kind: "eng" }
       ],
-      info: () => "Feeds a power transformer's primary. Neutral is tied to ground through 100 MΩ (the earth bond), so the primary circuit needs no ground symbol.",
+      info: () => "Feeds a power transformer's primary. The neutral is earthed, as in TN mains (bonded to ground inside the part), so the primary circuit needs no ground symbol.",
       build: (c, net, alloc, out) => {
         const p = c.params, mid = alloc();
         // starts at the voltage peak (cosine): a transformer then draws no inrush and settles at once
         out.push({ id: c.id, kind: "VSRC", nodes: [mid, net("N")], wave: "sine", freq: parseFloat(p.freq) || 50, amp: p.vrms * Math.SQRT2, phase: 90, acMains: true });
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("L"), mid], r: Math.max(p.rs, 1e-3) });
-        out.push({ id: c.id + "#earth", kind: "R", nodes: [net("N"), 0], r: 1e8 });
+        // neutral solidly earthed: a primary tied to ground only weakly leaves its common-mode
+        // voltage ill-conditioned, and Newton then wobbles at round-off level
+        out.push({ id: c.id + "#earth", kind: "R", nodes: [net("N"), 0], r: 1 });
       }
     },
     tube: {
-      name: "Vacuum tube", prefix: "V", group: "Tubes", bbox: [-50, -50, 50, 50],
+      // amplifying tubes treat signals (K); a rectifier transforms AC to DC (T)
+      name: "Vacuum tube", prefix: "K", prefixFor: c => tubeKind(tubeByName(c.params.tube)) === "rectifier" ? "T" : "K", group: "Tubes", bbox: [-50, -50, 50, 50],
       defaults: { tube: "12AX7", connection: "triode" },
       pins: c => {
         const t = tubeByName(c.params.tube), kind = tubeKind(t);
@@ -495,7 +559,7 @@
       }
     },
     diode: {
-      name: "Silicon diode", prefix: "D", group: "Semiconductors", bbox: [-20, -9, 20, 9],
+      name: "Silicon diode", prefix: "R", group: "Semiconductors", bbox: [-20, -9, 20, 9],
       defaults: { model: "1N4007" },
       pins: () => [{ id: "A", x: -20, y: 0, name: "anode" }, { id: "K", x: 20, y: 0, name: "cathode" }],
       value: c => c.params.model,
@@ -508,7 +572,7 @@
       }
     },
     vdc: {
-      name: "DC supply", prefix: "B", group: "Sources", bbox: [-16, -30, 16, 30],
+      name: "DC supply", prefix: "G", group: "Sources", bbox: [-16, -30, 16, 30],
       defaults: { v: 300, rs: 0 },
       pins: () => [{ id: "+", x: 0, y: -30 }, { id: "-", x: 0, y: 30 }],
       value: c => fmtEng(c.params.v, "V"),
@@ -522,7 +586,7 @@
       }
     },
     siggen: {
-      name: "Signal generator", prefix: "GEN", group: "Sources", bbox: [-16, -30, 16, 30],
+      name: "Signal generator", prefix: "G", group: "Sources", bbox: [-16, -30, 16, 30],
       defaults: { wave: "sine", freq: 1000, amp: 1, offset: 0, phase: 0, rs: 50 },
       pins: () => [{ id: "+", x: 0, y: -30, name: "output" }, { id: "-", x: 0, y: 30, name: "common" }],
       value: c => fmtEng(c.params.amp, "Vpk") + " " + fmtEng(c.params.freq, "Hz"),
@@ -540,6 +604,40 @@
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("+"), mid], r: Math.max(p.rs, 1e-3) });
       }
     },
+    note: {
+      name: "Text note", prefix: "", group: "Document", noLabel: true, noRotate: true,
+      bbox: c => { const h = +c.params.size || 12, w = Math.max(20, String(c.params.text || "").length * h * 0.62); return [0, -h, w, 3]; },
+      defaults: { text: "Note", size: "12" },
+      pins: () => [],
+      value: () => "",
+      fields: [{ key: "text", label: "Text", kind: "text" }, { key: "size", label: "Text height", kind: "select", options: [["10", "2.5 mm"], ["12", "3 mm"], ["14", "3.5 mm"], ["20", "5 mm"]] }],
+      build: () => {}
+    },
+    frame: {
+      name: "Drawing frame + title block", prefix: "", group: "Document", noLabel: true, noRotate: true,
+      bbox: c => { const g = sheetGeom(c); return [0, 0, g.W, g.H]; },
+      // only the frame lines and the title block pick it up, so parts inside stay clickable
+      hit: (c, x, y) => {
+        const g = sheetGeom(c), lx = x - c.x, ly = y - c.y, t = 6 * MM, tb = g.tb;
+        const inTb = lx >= tb.x1 && lx <= tb.x2 && ly >= tb.y1 && ly <= tb.y2;
+        const nearFrame = lx >= g.fx1 - t && lx <= g.fx2 + t && ly >= g.fy1 - t && ly <= g.fy2 + t &&
+          !(lx > g.fx1 + t && lx < g.fx2 - t && ly > g.fy1 + t && ly < g.fy2 - t);
+        return inTb || nearFrame;
+      },
+      defaults: { size: "A2", title: "", docno: "", rev: "A", sheet: "1/1", date: "", creator: "", approver: "", owner: "", dept: "", reference: "", doctype: "Circuit diagram", status: "Released", lang: "en" },
+      pins: () => [],
+      value: c => c.params.size,
+      fields: [
+        { key: "size", label: "Sheet size", kind: "select", options: Object.keys(SHEETS).map(k => [k, `${k} landscape (${SHEETS[k][0]} × ${SHEETS[k][1]} mm)`]) },
+        { key: "title", label: "Title", kind: "text" }, { key: "docno", label: "Identification number", kind: "text" },
+        { key: "rev", label: "Revision", kind: "text" }, { key: "sheet", label: "Sheet", kind: "text" }, { key: "date", label: "Date of issue", kind: "text" },
+        { key: "creator", label: "Created by", kind: "text" }, { key: "approver", label: "Approved by", kind: "text" }, { key: "owner", label: "Legal owner", kind: "text" },
+        { key: "dept", label: "Responsible department", kind: "text" }, { key: "reference", label: "Technical reference", kind: "text" },
+        { key: "doctype", label: "Document type", kind: "text" }, { key: "status", label: "Document status", kind: "text" }, { key: "lang", label: "Language", kind: "text" }
+      ],
+      info: c => { const g = sheetGeom(c); return `IEC 61082-1 sheet: ISO 5457 frame with a ${g.cols} × ${g.rows} reference grid (columns 1–${g.cols}, rows A–${"ABCDEFGHJKLMNPRSTUVWXYZ"[g.rows - 1]}) and an ISO 7200 title block. Scale: 4 drawing units per mm (a resistor body is 7.5 × 3 mm).`; },
+      build: () => {}
+    },
     ground: {
       name: "Ground", prefix: "GND", group: "Sources", bbox: [-12, -2, 12, 20], noLabel: true,
       defaults: {},
@@ -549,7 +647,7 @@
       build: () => {}
     },
     scope: {
-      name: "Oscilloscope", prefix: "XSC", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true,
+      name: "Oscilloscope", prefix: "P", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true,
       defaults: { ch1: "auto", ch2: "auto", time: "auto", coupling1: "dc", coupling2: "dc", probe: "10x" },
       pins: () => [{ id: "CH1", x: -80, y: -30 }, { id: "CH2", x: -80, y: -10 }, { id: "COM", x: -80, y: 30, name: "common" }],
       value: () => "",
@@ -576,8 +674,9 @@
     { group: "Transformers", items: [["opt_se"], ["opt_pp"], ["ptx"], ["ptx_cat"]] },
     { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["mains"], ["siggen"], ["ground"]] },
     { group: "Semiconductors", items: [["diode"]] },
-    { group: "Instruments", items: [["scope"]] }
+    { group: "Instruments", items: [["scope"]] },
+    { group: "Document", items: [["frame"], ["note"]] }
   ];
 
-  root.CadLib = { LIB, DRAW, COL, PALETTE, POWER_TX, powerTx, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);
