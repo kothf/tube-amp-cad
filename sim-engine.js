@@ -121,7 +121,10 @@
   function waveValue(el, t, scale) {
     const w = 2 * Math.PI * el.freq * t + (el.phase || 0) * Math.PI / 180;
     let s;
-    if (el.wave === "square") s = Math.sin(w) >= 0 ? 1 : -1;
+    // square: a clipped triangle, i.e. edges with a 1 % rise time like a real
+    // generator. An ideal step makes each sample on an edge depend on float
+    // rounding of sin() and gives two periods different edges (spurious lines).
+    if (el.wave === "square") s = Math.max(-1, Math.min(1, 50 * (2 / Math.PI) * Math.asin(Math.sin(w))));
     else if (el.wave === "triangle") s = (2 / Math.PI) * Math.asin(Math.sin(w));
     else s = Math.sin(w);
     return scale * ((el.offset || 0) + el.amp * s);

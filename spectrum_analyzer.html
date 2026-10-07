@@ -62,7 +62,7 @@
       <div class="card">
         <h3>Harmonic distortion <b id="thd"></b></h3>
         <table><thead><tr><th>Harmonic</th><th>Freq</th><th>Level</th><th>%</th></tr></thead><tbody id="harm"></tbody></table>
-        <p class="muted">Harmonics of the signal generator frequency, measured over an exact whole number of cycles (no windowing error).</p>
+        <p class="muted">Harmonics of the fundamental measured on this input, computed over an exact whole number of cycles (no windowing error).</p>
       </div>
       <div class="card">
         <h3>Other components</h3>
@@ -72,6 +72,7 @@
   </main>
 
   <script src="instrument-common.js?v=dev"></script>
+  <script src="scope-math.js?v=dev"></script>
   <script>
   (function () {
     "use strict";
@@ -113,11 +114,13 @@
         ctx.fillText(sc ? `${S.src.toUpperCase()} of ${sc.label} is not connected` : "NO SIGNAL", padL + gw / 2, padT + gh / 2);
         ctx.textAlign = "left"; $("harm").innerHTML = ""; $("spurs").innerHTML = ""; $("thd").textContent = ""; $("foot").textContent = ""; return;
       }
-      const dt = sc.dt, fSig = (I.result && I.result.fSig) || 0;
+      // fundamental of the analysed signal itself (e.g. 100 Hz ripple even when a
+      // 1 kHz generator sets the simulation); the CAD's frequency is the fallback
+      const dt = sc.dt, fSig = ScopeMath.fundamental(a, dt) || (I.result && I.result.fSig) || 0;
       const fNyq = 0.5 / dt;
       const span = Math.min(S.span === "auto" ? (fSig ? fSig * 10.5 : 10000) : parseFloat(S.span), fNyq * 0.8);
       const sp = spectrum(a, dt, span);
-      // fundamental: the line at fSig, else the largest line
+      // fundamental: the line nearest fSig, else the largest line
       let fund = fSig ? sp.lines.reduce((b, l) => Math.abs(l.f - fSig) < Math.abs(b.f - fSig) ? l : b, sp.lines[0]) : sp.lines.reduce((b, l) => l.vpk > b.vpk ? l : b, sp.lines[0]);
       if (!fund) return;
       const f0 = fund.f;
@@ -151,7 +154,7 @@
         const f = f0 * h; const l = sp.lines.find(x => Math.abs(x.f - f) < sp.df / 2);
         if (!l) break;
         const pct = l.vpk / fund.vpk * 100; if (h > 1) sum2 += l.vpk * l.vpk;
-        rows += `<tr><td>${h === 1 ? "Fundamental" : "H" + h}</td><td>${I.fmt(f, "Hz")}</td><td>${h === 1 ? I.fmt(l.vpk / Math.SQRT2, "Vrms") : (20 * Math.log10(Math.max(l.vpk / fund.vpk, 1e-12))).toFixed(1) + " dBc"}</td><td>${h === 1 ? "100" : pct < 0.01 ? "<0.01" : pct.toFixed(pct < 1 ? 3 : 2)}</td></tr>`;
+        rows += `<tr><td>${h === 1 ? "Fundamental" : "H" + h}</td><td>${I.fmt(f, "Hz")}</td><td>${h === 1 ? I.fmt(l.vpk / Math.SQRT2, "Vrms") : (l.vpk / fund.vpk < 1e-6 ? "< −120 dBc" : (20 * Math.log10(l.vpk / fund.vpk)).toFixed(1) + " dBc")}</td><td>${h === 1 ? "100" : pct < 0.01 ? "<0.01" : pct.toFixed(pct < 1 ? 3 : 2)}</td></tr>`;
       }
       const thd = 100 * Math.sqrt(sum2) / fund.vpk;
       $("harm").innerHTML = rows;

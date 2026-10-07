@@ -70,10 +70,34 @@ the same tube's pentode model, so both modes agree. Full simulations of the
 EL84 and 6V6GT datasheet test circuits (cathode-biased) land on the published
 current and dissipation.
 
+**Reference circuits.** `npm run test:reference` builds classic circuits in the
+editor and measures them through the oscilloscope and spectrum analyzer
+windows, the way a user would, against published or textbook results
+(63 comparisons). Highlights:
+
+| Circuit | Measured | Reference |
+|---|---|---|
+| 12AX7, 370 V / 100 kΩ / 1.6 kΩ bypassed: plate, cathode | 246 V, 1.94 V | 250 V, 1.92 V (RCA 12AX7A point) |
+| same stage: gain bypassed / unbypassed | 61.9× / 30.8× | 61.5× / 30.9× (µ·Ra/(Ra+rp…), RCA µ, rp) |
+| 12AU7 cathode follower, Rk 810 Ω: cathode, gain | 8.53 V, 0.622× | 8.5 V, 0.618× |
+| RC low-pass at its corner: gain, phase | 0.703×, −45.0° | 0.707×, −45.0° |
+| 2A3 single-ended, 250 V / −45 V / 2.5 kΩ | 3.8 W, 3.2 % THD, 60.2 mA | 3.5 W, 5 %, 60 mA (RCA) |
+| EL84 single-ended (Philips conditions) | 4.6 W, 12 % THD, 51.9 mA | 5.7 W, 10 %, 53.5 mA |
+| 6V6GT single-ended (RCA conditions) | 3.5 W, 7.4 % THD, 49.5 mA | 4.5 W, 8 %, 49.5 mA |
+| Full-wave rectifier, 300-0-300 V, 100 µF, 3 kΩ: DC, ripple | 417 V, 12.6 Vpp @ 100 Hz | 416 V, ≈13.9 Vpp (I/2fC) |
+| Square / triangle into the analyzer: H3…H9 | within 0.07 dB | Fourier series |
+
+The scope's probes load the circuit like real ones (10 MΩ with the default
+10× probes, 1 MΩ at 1×), so readings on high-impedance nodes behave as on a
+bench.
+
 Limits worth knowing: a model is exact only near the points it was fitted to,
 and production tubes vary ±20 % or more; the pentode plate equation cannot
 match plate resistance at two different screen voltages (6L6GC and 6V6GT are
-within ±35 %); and the 6P45S has only a pulse-current specification to fit.
+within ±35 %); the 6P45S has only a pulse-current specification to fit; and
+pentodes driven to full power give 15–20 % less power and average current
+than their datasheets, because Koren's screen-current equation does not rise
+as the plate swings down into the knee (triodes are not affected).
 
 ## Run it locally
 

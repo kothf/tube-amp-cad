@@ -396,7 +396,7 @@
     },
     scope: {
       name: "Oscilloscope", prefix: "XSC", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true,
-      defaults: { ch1: "auto", ch2: "auto", time: "auto", coupling1: "dc", coupling2: "dc" },
+      defaults: { ch1: "auto", ch2: "auto", time: "auto", coupling1: "dc", coupling2: "dc", probe: "10x" },
       pins: () => [{ id: "CH1", x: -80, y: -30 }, { id: "CH2", x: -80, y: -10 }, { id: "COM", x: -80, y: 30, name: "common" }],
       value: () => "",
       fields: [
@@ -404,11 +404,14 @@
         { key: "coupling1", label: "CH1 coupling", kind: "select", options: [["dc", "DC"], ["ac", "AC"]] },
         { key: "ch2", label: "CH2 volts/div", kind: "select", options: [["auto", "Auto"], ["0.01", "10 mV"], ["0.1", "100 mV"], ["0.5", "0.5 V"], ["1", "1 V"], ["5", "5 V"], ["10", "10 V"], ["50", "50 V"], ["100", "100 V"]] },
         { key: "coupling2", label: "CH2 coupling", kind: "select", options: [["dc", "DC"], ["ac", "AC"]] },
+        { key: "probe", label: "Probes", kind: "select", options: [["10x", "10× (10 MΩ load)"], ["1x", "1× (1 MΩ load)"]] },
         { key: "time", label: "Time/div", kind: "select", options: [["auto", "Auto (2 cycles)"], ["0.0001", "0.1 ms"], ["0.0002", "0.2 ms"], ["0.0005", "0.5 ms"], ["0.001", "1 ms"], ["0.002", "2 ms"], ["0.005", "5 ms"]] }
       ],
       build: (c, net, alloc, out) => {
-        out.push({ id: c.id + "#in1", kind: "R", nodes: [net("CH1"), net("COM")], r: 1e6 });
-        out.push({ id: c.id + "#in2", kind: "R", nodes: [net("CH2"), net("COM")], r: 1e6 });
+        // the probes load the circuit like a real scope: 10 MΩ with 10× probes, 1 MΩ direct
+        const rin = c.params.probe === "1x" ? 1e6 : 10e6;
+        out.push({ id: c.id + "#in1", kind: "R", nodes: [net("CH1"), net("COM")], r: rin });
+        out.push({ id: c.id + "#in2", kind: "R", nodes: [net("CH2"), net("COM")], r: rin });
       }
     }
   };
