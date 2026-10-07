@@ -39,13 +39,17 @@ jobs:
 
       - run: npm ci
 
-      - name: Browser for the tests (the runner's Google Chrome; Playwright's Chromium if missing)
-        run: |
-          if chrome="$(command -v google-chrome || command -v google-chrome-stable)"; then
-            echo "CHROMIUM_PATH=$chrome" >> "$GITHUB_ENV"; "$chrome" --version
-          else
-            npx playwright install --with-deps chromium
-          fi
+      # Playwright's headless Chromium, kept between runs (keyed by the locked
+      # Playwright version). The runner image already has Chrome's system
+      # libraries, so no apt step; full Google Chrome would run the tests 2x slower.
+      - name: Cache Playwright's browser
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Browser for the tests
+        run: npx playwright install --only-shell chromium || npx playwright install --with-deps --only-shell chromium
 
       - name: Engine tests (source)
         run: npm run test:engine
