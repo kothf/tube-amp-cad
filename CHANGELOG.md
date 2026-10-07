@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.11.1] - 2026-10-07
+
+### Fixed
+- The oscilloscope's ▶ Simulate and Power-on did nothing, without saying why,
+  when the Circuit CAD tab had been opened before the update: the older CAD
+  ignores requests it does not know. The CAD now acknowledges every request
+  and reports its version; the oscilloscope says when no CAD answers within
+  2 s or when the CAD tab runs another version, and asks to reload it.
+- ▶ Simulate in steady state showed no feedback: the scope now shows what the
+  CAD is doing ("CAD: Simulating until settled…") and the result ("Simulated
+  in 3.1 s").
+
 ## [3.11.0] - 2026-10-07
 
 ### Added
