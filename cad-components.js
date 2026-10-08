@@ -705,6 +705,9 @@
         { key: "wave", label: "Waveform", kind: "select", options: [["sine", "Sine"], ["square", "Square"], ["triangle", "Triangle"]] },
         { key: "freq", label: "Frequency", unit: "Hz", kind: "eng" },
         { key: "amp", label: "Amplitude", unit: "Vpk", kind: "eng" },
+        // the same amplitude as RMS and as dBV (0 dBV = 1 Vrms), using the waveform's crest factor
+        { key: "amp", label: "Amplitude", unit: "Vrms", kind: "level", as: "rms" },
+        { key: "amp", label: "Level", unit: "dBV", kind: "level", as: "dbv" },
         { key: "offset", label: "DC offset", unit: "V", kind: "eng" },
         { key: "phase", label: "Phase", kind: "select", options: [["0", "0°"], ["90", "90°"], ["180", "180° (inverted)"], ["270", "270°"]] },
         { key: "rs", label: "Output impedance", unit: "Ω", kind: "eng" }

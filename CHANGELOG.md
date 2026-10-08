@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.22.0] - 2026-10-08
+
+### Added
+- The signal generator's amplitude can be typed in **Vrms** and **dBV**
+  (0 dBV = 1 Vrms) as well as Vpk. The three fields stay in step, and the
+  RMS value uses the waveform's crest factor (√2 for sine, 1 for square,
+  √3 for triangle).
+
 ## [3.21.1] - 2026-10-08
 
 ### Added

@@ -79,6 +79,18 @@ await cad.evaluate(id => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.w
 const field = cad.locator("#inspector .row", { hasText: "Resistance" }).locator("input");
 await field.fill("4.7k"); await field.press("Enter");
 check((await state()).comps.find(c => c.id === R1.id).params.r === 4700, 'inspector parses "4.7k" as 4700 Ω');
+// signal generator: the amplitude can be typed as Vpk, Vrms or dBV and the other two follow
+const GEN = await cad.evaluate(() => { const C = TubeCAD, S = C.state, g = C.makeComp("siggen", {}, 600, 300, 0); S.comps.push(g); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(g.id); C.commit(); return g.id; });
+const genRow = t => cad.locator("#inspector .row", { hasText: t }).locator("input");
+await genRow("dBV").fill("-20"); await genRow("dBV").press("Enter");
+let gp = (await state()).comps.find(c => c.id === GEN).params;
+check(Math.abs(gp.amp - 0.1 * Math.SQRT2) < 1e-9, "−20 dBV on a sine generator sets 141 mVpk");
+check(/^100m/.test(await genRow("Vrms").inputValue()), "the Vrms field follows the dBV entry");
+await genRow("Vrms").fill("2"); await genRow("Vrms").press("Enter");
+check(await genRow("dBV").inputValue() === "6.02", "2 Vrms shows as 6.02 dBV");
+await cad.locator("#inspector .row", { hasText: "Waveform" }).locator("select").selectOption("square");
+check(await genRow("dBV").inputValue() === "9.03", "a square wave of the same peak reads 3 dB hotter");
+await cad.evaluate(id => { const S = TubeCAD.state; S.comps = S.comps.filter(c => c.id !== id); TubeCAD.commit(); }, GEN);
 await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
 check((await state()).comps.some(c => c.params.r === 4700), "circuit survives a reload (autosave)");
 

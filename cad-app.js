@@ -1284,6 +1284,16 @@
           if (!isFinite(n) || (!allowNeg && n < 0) || (n === 0 && !["offset", "rs", "v"].includes(f.key))) { flash(el); return; }
           c.params[f.key] = n; commit();
         });
+      } else if (f.kind === "level") {
+        // RMS / dBV view of a peak amplitude: Vrms = Vpk / crest factor (√2 sine, 1 square, √3 triangle)
+        const crest = { sine: Math.SQRT2, square: 1, triangle: Math.sqrt(3) }[c.params.wave] || Math.SQRT2;
+        const rms = c.params[f.key] / crest;
+        const shown = f.as === "dbv" ? (rms > 0 ? (20 * Math.log10(rms)).toFixed(2).replace(/\.?0+$/, "") : "-inf") : fmtEng(rms, "");
+        el = input("text", shown, v => {
+          const n = f.as === "dbv" ? parseFloat(String(v).replace(/dBV?/i, "").replace("−", "-")) : parseEng(v);
+          if (!isFinite(n) || (f.as !== "dbv" && n <= 0)) { flash(el); return; }
+          c.params[f.key] = (f.as === "dbv" ? Math.pow(10, n / 20) : n) * crest; commit();
+        });
       } else if (f.kind === "text") {
         el = input("text", c.params[f.key] || "", v => { c.params[f.key] = v; commit(); });
       } else if (f.kind === "number") {
