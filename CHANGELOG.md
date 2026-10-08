@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.21.1] - 2026-10-08
+
+### Added
+- A **Zoom** chip in the top-right corner of the curve tracer, oscilloscope and
+  spectrum analyzer graphs. Hovering it (or focusing it with Tab) lists the
+  mouse controls for that graph: wheel, Ctrl+wheel, Shift+wheel, right-drag,
+  how to reset the view, and click for markers.
+
 ## [3.21.0] - 2026-10-08
 
 ### Added

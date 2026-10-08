@@ -520,6 +520,13 @@
       pan: dx => moveTime(-dx / G.gw * (G.startup ? G.vw.span : G.span)),
       scroll: dir => moveTime(dir * (G.startup ? G.vw.span : G.span) / 10)
     });
+    PlotZoom.hint($("screen"), [
+      ["Wheel", "time/div, zooming at the pointer"],
+      ["Ctrl + wheel", "volts/div"],
+      ["Shift + wheel", "move along the time axis"],
+      ["Right-drag", "move the trace (or Shift + drag)"],
+      ["Autoset", "back to the automatic view"],
+      ["Click", "place marker A, then B"]]);
     window.addEventListener("keydown", e => {
       if (S.analysis !== "startup" || !G || !G.startup || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
       if (e.key === "ArrowRight") { scrollBy(G.vw.tdiv); e.preventDefault(); }

@@ -234,7 +234,6 @@
       rs.forEach((r, i) => { if (r) h += `<span>${MarkerPicker.LETTERS[i]} ${describe(r)}</span>`; });
       if (rs.length === 2 && rs[0] && rs[1]) h += `<span>B−A: <b>${I.fmt(rs[1].f - rs[0].f, "Hz")}</b>, <b>${(rs[1].level - rs[0].level).toFixed(1)} dB</b></span>`;
       if (!h && G) h = `<span class="hint">Click a spectral line to place marker A, then B, to read its frequency and level. Drag to move, double-click to remove.</span>`;
-      if (!pick.list.length && G) h += `<span class="hint">Mouse wheel zooms the frequency axis, Ctrl+wheel the level axis; Shift+wheel or right-drag moves.</span>`;
       if (pick.list.length) h += `<button class="btn" id="marks-clear" title="Remove the markers (Esc)">Clear markers</button>`;
       if (S.zoom) h += `<button class="btn" id="zoom-reset" title="Show the whole span again"${pick.list.length ? ' style="margin-left:0"' : ""}>Reset zoom</button>`;
       el.innerHTML = h;
@@ -270,6 +269,13 @@
         draw();
       }
     });
+    PlotZoom.hint($("screen"), [
+      ["Wheel", "zoom the frequency axis at the pointer"],
+      ["Ctrl + wheel", "zoom the level axis"],
+      ["Shift + wheel", "move along the frequency axis"],
+      ["Right-drag", "move the view (or Shift + drag)"],
+      ["Reset zoom", "button under the screen: the whole span"],
+      ["Click", "place marker A, then B on a line"]]);
 
     const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
     bindSel("src", v => S.src = v); bindSel("span", v => { S.span = v; S.zoom = null; }); bindSel("units", v => { S.units = v; S.zoom = null; }); bindSel("scale", v => { S.scale = parseFloat(v); S.zoom = null; });

@@ -430,7 +430,7 @@
       } else if (Math.abs(dIa) > 1e-12) line += ` · slope ${fmtEng(dVa / dIa, "Ω", 2)}`;
       h += line + "</span>";
     }
-    if (!h) h = `<span class="hint">Click the plot to pick point A, then B: Vg, gm, rp and µ there, and the load line through both. Points snap to the operating point and the simulated load line. Drag to move, double-click to remove. Mouse wheel zooms, Ctrl+wheel zooms the current axis only, right-drag or Shift+drag pans.</span>`;
+    if (!h) h = `<span class="hint">Click the plot to pick point A, then B: Vg, gm, rp and µ there, and the load line through both. Points snap to the operating point and the simulated load line. Drag to move, double-click to remove.</span>`;
     else h += `<button class="btn" id="picks-clear" title="Remove the points (Esc)">Clear points</button>`;
     $("picks").innerHTML = h;
     const b = $("picks-clear"); if (b) b.onclick = () => pick.clear();
@@ -467,6 +467,12 @@
       }
     });
     $("btn-zoom-reset").addEventListener("click", () => { S.zoom = null; drawPlot(); });
+    PlotZoom.hint(cv, [
+      ["Wheel", "zoom in / out at the pointer"],
+      ["Ctrl + wheel", "zoom the current axis only"],
+      ["Right-drag", "move the view (or Shift + drag)"],
+      ["Reset zoom", "button above the plot: the whole plot"],
+      ["Click", "pick point A, then B"]]);
   }
 
   let pick = null;

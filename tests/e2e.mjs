@@ -304,6 +304,13 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const zp = await tracer.evaluate(() => TubeTracer.view());
   check(zp.v0 < z.v0 && Math.abs((zp.v1 - zp.v0) - (z.v1 - z.v0)) < 1e-6, `tracer: right-drag pans (Va ${zp.v0.toFixed(0)}–${zp.v1.toFixed(0)} V)`);
   check((await tracer.evaluate(() => TubeTracer.picks())).length === 1, "tracer: zooming and panning place no points");
+  for (const [name, page] of [["tracer", tracer], ["scope", scope], ["analyzer", spectrum]]) {
+    const hidden = !(await page.isVisible(".pz-pop"));
+    await page.hover(".pz-chip");
+    const txt = await page.textContent(".pz-pop");
+    check(hidden && await page.isVisible(".pz-pop") && /Wheel/.test(txt) && /Ctrl \+ wheel/.test(txt) && /Right-drag/.test(txt), `${name}: hovering the Zoom chip lists the mouse controls`);
+    await page.mouse.move(0, 0);
+  }
   await tracer.click("#btn-zoom-reset");
   const back = await tracer.evaluate(() => TubeTracer.view());
   check(back.v0 === 0 && back.v1 === full.vaMax && back.i1 === full.iaMax && !(await tracer.isVisible("#btn-zoom-reset")), "tracer: Reset zoom shows the whole plot");
