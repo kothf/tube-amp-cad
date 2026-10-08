@@ -30,6 +30,17 @@ test("tube database: 99 tubes, every amplifier tube has Koren parameters", () =>
   }
 });
 
+test("tube database: every handbook tube has its book pinout with heater, anode and cathode", () => {
+  for (const t of globalThis.TUBE_DATABASE.filter(t => t.book)) {
+    const pins = t.pinout.map(p => p.pin), name = `${t.book.name} (p. ${t.book.page})`;
+    assert.equal(new Set(pins).size, pins.length, `${name}: a pin listed twice`);
+    assert.ok(pins.every(p => Number.isInteger(p) && p >= 1 && p <= t.pinCount), `${name}: pin outside 1…${t.pinCount}`);
+    assert.ok(t.pinout.filter(p => p.isHeater).length >= 2, `${name}: heater pins`);
+    assert.ok(t.pinout.some(p => p.isPlate) || /top cap/.test(t.socket), `${name}: anode pin`);
+    assert.ok(t.pinout.some(p => p.isCathode) || t.pinout.some(p => p.role === "Filament") || /cathode is joined/.test(t.heaterWarning), `${name}: cathode pin`);
+  }
+});
+
 // Katsnelson & Larionov 1981 rectifier test circuits: Ua rms per anode, load, reservoir C,
 // guaranteed minimum rectified current (5Ц9С: the load printed as 22 kΩ is 2.2 kΩ)
 for (const [name, ua, rn, c, anodes, minMa, page] of [["5Ts3S", 500, 2000, 4e-6, 2, 230, 72], ["5Ts4S", 500, 4700, 4e-6, 2, 122, 73],

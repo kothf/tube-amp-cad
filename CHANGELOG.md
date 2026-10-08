@@ -6,6 +6,28 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.18.2] - 2026-10-08
+
+### Added
+- Pin connections for all 73 handbook tubes, read from the electrode drawing on
+  each tube's page in Katsnelson & Larionov 1981 (the 56 tubes added in 3.18.0
+  had none). Heater notes give the book's heater pins; directly heated
+  rectifiers say which pin carries B+.
+
+### Fixed
+- Base types and pin counts come from the handbook's outline drawings instead
+  of being guessed from the text: 5Ц8С and 5Ц9С (5 pins, numbered to 8), 6С41С
+  (7), 6П36С (9 + anode top cap), 6П41С (9), 6Ж32П, 6С66П (noval), 6Ж4 and 6П9
+  (octal, metal); subminiature and nuvistor tubes show their wire leads.
+- Pinouts that disagreed with the handbook drawing: 6П1П, 6Ц4П (7-pin base,
+  anodes 1 and 7), 6С3П, 6С19П, 6С45П-Е, 6С33С (heater in two halves, 1–2 and
+  6–7), 6Н7С (heater 2–7, common cathode 8), 6Ф3П (pentode cathode 2, control
+  grid 3) and 6П27С (no separate suppressor pin).
+- Three book drawings are faulty and are noted in the tube's heater note: 6Ж5П
+  (heater printed as 4–5; taken as 3–4), 6С7Б (grid lead unnumbered; lead 4)
+  and 6Ж32П (control grid printed as 7, a shield pin; control and suppressor
+  grid pins left out).
+
 ## [3.18.1] - 2026-10-08
 
 ### Fixed

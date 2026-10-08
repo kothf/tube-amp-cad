@@ -140,7 +140,7 @@
     ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#0c1017"; ctx.beginPath(); ctx.arc(cx, cy, radius * 0.28, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#354457"; ctx.stroke();
     ctx.fillStyle = "#8ba0bc"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(tube.socket.split(" ")[0], cx, cy);
+    ctx.fillText(tube.socket.split(/[ ,(]/)[0], cx, cy);
     const n = tube.pinCount, pins = tube.pinout || [], pr = radius * 0.68;
     for (let i = 1; i <= n; i++) {
       const pd = pins.find(p => p.pin === i) || { pin: i, sym: String(i) };
