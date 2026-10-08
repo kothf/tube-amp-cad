@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.19.0] - 2026-10-08
+
+### Added
+- Tube symbols in the schematic show their pin numbers beside each terminal
+  line: anode, grids and cathode, and the heater pins under the heater leads
+  (IEC 61082-1 terminal designations). A dual tube's section follows its
+  designation (VL1.1, VL1.2), triode-pentodes use the triode or pentode
+  section, a top-cap anode reads "cap", and directly heated tubes show the
+  filament pins at the cathode. The numbers are printed in the PDF too.
+
 ## [3.18.2] - 2026-10-08
 
 ### Added

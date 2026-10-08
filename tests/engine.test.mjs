@@ -41,6 +41,17 @@ test("tube database: every handbook tube has its book pinout with heater, anode 
   }
 });
 
+test("schematic tube symbols: pin numbers of the section, from the handbook pinout", () => {
+  runInThisContext(readFileSync(new URL("../cad-components.js", import.meta.url), "utf8"), { filename: "cad-components.js" });
+  const pins = (t, label, connection) => globalThis.CadLib.LIB.tube.pinNumbers({ params: { tube: t, connection }, label });
+  assert.deepEqual([pins("6N23P-EV", "VL2.1"), pins("6N23P-EV", "VL2.2")].map(p => [p.A, p.G, p.K, p.H]), [["6", "7", "8", "4,5"], ["1", "2", "3", "4,5"]]);
+  assert.deepEqual(pins("6F3P-P", "VL1.2", "pentode"), { A: "6", G: "3", G1: "3", G2: "7", K: "2", H: "4,5" });   // K&L p. 355
+  assert.equal(pins("6F3P-T", "VL1.1").A, "9");
+  assert.deepEqual(pins("5Ts4S", "VL1"), { A1: "6", A2: "4", K: "8", H: "2,8" });                                    // filament is the cathode
+  assert.equal(pins("6P36S").A, "cap");
+  assert.equal(pins("6R5P", "VL1.2", "pentode").G1, "6");
+});
+
 // Katsnelson & Larionov 1981 rectifier test circuits: Ua rms per anode, load, reservoir C,
 // guaranteed minimum rectified current (5Ц9С: the load printed as 22 kΩ is 2.2 kΩ)
 for (const [name, ua, rn, c, anodes, minMa, page] of [["5Ts3S", 500, 2000, 4e-6, 2, 230, 72], ["5Ts4S", 500, 4700, 4e-6, 2, 122, 73],

@@ -994,6 +994,25 @@
 
   // Reference designation as shown on the diagram: the label as typed, e.g. R1, VL1.2
   function desig(c) { return c.label || ""; }
+
+  // Tube pin numbers beside the terminal lines, outside the envelope (IEC 61082-1 terminal
+  // designations): [terminal, point on its lead, side to write on] in symbol coordinates
+  const TUBE_PIN_SPOTS = [["A", 0, -40, 1, 0], ["A1", -20, -40, -1, 0], ["A2", 20, -40, 1, 0],
+    ["G", -40, 0, 0, 1], ["G1", -40, 0, 0, 1], ["G2", 40, -10, 0, -1], ["K", 0, 44, -1, 0], ["H", 10, 47, 0, 1]];
+  function drawPinNumbers(c, sel) {
+    const nums = LIB.tube.pinNumbers(c), ids = new Set(compPins(c).map(p => p.id).concat("H"));
+    ctx.save();
+    ctx.font = "9px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = sel ? COL.bodySel : COL.value;
+    for (const [id, x, y, nx, ny] of TUBE_PIN_SPOTS) {
+      if (!nums[id] || !ids.has(id)) continue;
+      const [px, py] = rotPt(x, y, c.rot), [dx, dy] = rotPt(nx, ny, c.rot);
+      ctx.textAlign = dx > 0 ? "left" : dx < 0 ? "right" : "center";
+      ctx.textBaseline = dy > 0 ? "top" : dy < 0 ? "bottom" : "middle";
+      ctx.fillText(nums[id], c.x + px + dx * 4, c.y + py + dy * 3);
+    }
+    ctx.restore();
+  }
   function drawComp(c, sel, ghost) {
     const def = LIB[c.type];
     ctx.save();
@@ -1049,6 +1068,7 @@
     // symbol with mainly vertical terminal lines and above one with mainly horizontal
     // ones; technical data on the same side, below (or right of) the designation
     if (c.type === "tube") {
+      drawPinNumbers(c, sel);
       if ((c.rot & 1) === 0) {   // anode up, cathode down: text to the left, clear of the grid lead
         ctx.textAlign = "right";
         ctx.fillText(desig(c), c.x - 30, c.y - 28);
