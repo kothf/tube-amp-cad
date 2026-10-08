@@ -255,7 +255,7 @@
       [["ch1", "c1"], ["ch2", "c2"]].forEach(([k, cls]) => {
         const c = ch[k]; if (!c) return;
         const f = SM.fundamental(c.raw, dt);
-        h += `<span class="${cls}">${k.toUpperCase()}: <b>${I.fmt(c.st.pp, "Vpp")}</b> · ${I.fmt(c.st.rms, "Vrms")} AC · ${I.fmt(c.st.mean, "V")} DC · ${f ? I.fmt(f, "Hz") : "—"}</span>`;
+        h += `<span class="${cls}">${k.toUpperCase()}: <b>${I.fmt(c.st.pp, "Vpp")}</b> · ${I.fmt(c.st.rms, "Vrms")} AC (${I.dbv(c.st.rms)}) · ${I.fmt(c.st.mean, "V")} DC · ${f ? I.fmt(f, "Hz") : "—"}</span>`;
       });
       if (ch.ch1 && ch.ch2 && fSig) {
         const a = I.dft(ch.ch1.raw, fSig, dt), b = I.dft(ch.ch2.raw, fSig, dt);

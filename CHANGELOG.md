@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.23.0] - 2026-10-08
+
+### Added
+- **dBV readouts:** the oscilloscope gives each channel's AC level in dBV next
+  to Vrms. The spectrum analyzer shows the fundamental in dBV in the footer and
+  the harmonic table, other components in dBV next to dBc, and markers read
+  dBV as well when the screen is in dBc. In dBV mode the harmonic table lists
+  the harmonics in dBV.
+- **File → Save as…** (Ctrl+Shift+S) saves the circuit as JSON under a new
+  name.
+- **Save writes back to the opened file.** In browsers with the File System
+  Access API (Chrome, Edge), Save (Ctrl+S) on a circuit opened from a file, or
+  saved once with Save as, first asks "Overwrite name.json?" and then writes
+  that file. You can choose Overwrite, Save as… or Cancel. The window title
+  shows the current file name. In other browsers, Save asks for a file name
+  and downloads the file.
+
 ## [3.22.0] - 2026-10-08
 
 ### Added

@@ -78,6 +78,8 @@
     return { cls: "ok", text: "Live from CAD · " + Inst.scope().label + (recent ? " · " + c.text : "") };
   };
 
+  // RMS voltage as dBV (0 dBV = 1 Vrms), e.g. 0.1 -> "−20.0 dBV"
+  Inst.dbv = vrms => !(vrms > 1e-12) ? "−∞ dBV" : (20 * Math.log10(vrms)).toFixed(1).replace(/^-/, "−") + " dBV";
   // Engineering format, e.g. 0.0021 -> "2.1m"
   Inst.fmt = (v, unit, digits) => {
     if (v === null || v === undefined || !isFinite(v)) return "—";

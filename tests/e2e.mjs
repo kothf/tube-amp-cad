@@ -91,6 +91,28 @@ check(await genRow("dBV").inputValue() === "6.02", "2 Vrms shows as 6.02 dBV");
 await cad.locator("#inspector .row", { hasText: "Waveform" }).locator("select").selectOption("square");
 check(await genRow("dBV").inputValue() === "9.03", "a square wave of the same peak reads 3 dB hotter");
 await cad.evaluate(id => { const S = TubeCAD.state; S.comps = S.comps.filter(c => c.id !== id); TubeCAD.commit(); }, GEN);
+// File → Open keeps the file, Save asks before it overwrites it, Save as writes a new one
+await cad.evaluate(() => {
+  const json = JSON.stringify({ app: "TubeAmpCAD", version: 2, comps: TubeCAD.state.comps, wires: TubeCAD.state.wires });
+  window.__writes = [];
+  const fake = name => ({ name, getFile: async () => new File([json], name, { type: "application/json" }),
+    createWritable: async () => { let buf = ""; return { write: async t => { buf += t; }, close: async () => { window.__writes.push({ name, text: buf }); } }; } });
+  window.showOpenFilePicker = async () => [fake("amp.json")];
+  window.showSaveFilePicker = async o => { window.__saveAsSuggested = o.suggestedName; return fake("copy.json"); };
+});
+await cad.click("#btn-file"); await cad.click("#btn-open");
+await cad.waitForFunction(() => /^amp\.json/.test(document.title));
+await cad.keyboard.press("Control+s");
+check(await cad.isVisible("#save-modal") && /Overwrite amp\.json/.test(await cad.textContent("#save-msg")), "Save on an opened file asks before overwriting it");
+await cad.click("#btn-save-cancel");
+check((await cad.evaluate(() => window.__writes.length)) === 0, "Cancel leaves the file alone");
+await cad.click("#btn-file"); await cad.click("#btn-save"); await cad.click("#btn-save-ok");
+await cad.waitForFunction(() => window.__writes.length === 1);
+const wr = await cad.evaluate(() => window.__writes[0]);
+check(wr.name === "amp.json" && JSON.parse(wr.text).comps.length === (await state()).comps.length, "Overwrite writes the circuit back to the opened file");
+await cad.keyboard.press("Control+Shift+s");
+await cad.waitForFunction(() => window.__writes.length === 2);
+check((await cad.evaluate(() => [window.__saveAsSuggested, window.__writes[1].name, document.title])).join("|").startsWith("amp.json|copy.json|copy.json"), "Save as (Ctrl+Shift+S) suggests the current name, writes the new file and makes it the current one");
 await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
 check((await state()).comps.some(c => c.params.r === 4700), "circuit survives a reload (autosave)");
 
@@ -153,6 +175,10 @@ check((await scope.textContent("#status")).includes("Live from CAD"), "oscillosc
 const ratio = parseFloat((meas.match(/CH1\/CH2 at [^:]+: ([\d.]+)×/) || [])[1]);
 check(Math.abs(ratio - circuit.gain) / circuit.gain < 0.05, `scope CH1/CH2 ${ratio}× matches the CAD stage gain (±5 %)`);
 check(/phase -?1[78]\d°/.test(meas), "common-cathode output is inverted (~180°)");
+// "1.23Vrms AC (1.8 dBV)": each channel's dBV agrees with its RMS value
+const engV = s => parseFloat(s) * ({ m: 1e-3, "µ": 1e-6, k: 1e3 }[s.replace(/^[-\d.]+/, "")[0]] || 1);
+const dbvPairs = [...meas.matchAll(/([-\d.]+[mµk]?)Vrms AC \(([−\d.]+) dBV\)/g)].map(x => [engV(x[1]), parseFloat(x[2].replace("−", "-"))]);
+check(dbvPairs.length === 2 && dbvPairs.every(([v, d]) => Math.abs(20 * Math.log10(v) - d) < 0.1), `scope shows each channel in dBV (${dbvPairs.map(([v, d]) => v.toPrecision(3) + " Vrms = " + d + " dBV").join(", ")})`);
 
 const spectrum = await open("spectrum", `spectrum_analyzer.html?scope=${circuit.scope}`);
 await spectrum.waitForFunction(() => /\d/.test(document.getElementById("thd").textContent), null, { timeout: 5000 }).catch(() => {});
@@ -196,6 +222,9 @@ const canvasAt = async (page, p) => { const r = await page.locator("#screen").bo
   const h2 = await spectrum.evaluate(() => parseFloat([...document.querySelectorAll("#harm tr")].find(r => r.cells[0].textContent === "H2").cells[2].textContent));
   check(m.length === 2 && m[0].reading.f === fund && m[0].reading.h === 1 && m[1].reading.h === 2,
     `analyzer markers snap to the fundamental and H2 (${m.map(k => k.reading.f + " Hz").join(", ")})`);
+  const sfoot = await spectrum.textContent("#foot"), fm = sfoot.match(/([-\d.]+[mµk]?)Vrms \(([−\d.]+) dBV\)/);
+  check(fm && Math.abs(20 * Math.log10(engV(fm[1])) - parseFloat(fm[2].replace("−", "-"))) < 0.1, `analyzer gives the fundamental in dBV (${fm && fm[0]})`);
+  check(/A 1kHz \(F\): [−\d.]+ dBc · [−\d.]+ dBV/.test(await spectrum.textContent("#marks")), "analyzer markers in dBc also read dBV");
   check(Math.abs(m[1].reading.dbc - h2) < 0.06, `marker B reads H2 at ${m[1].reading.dbc.toFixed(2)} dBc, as the harmonic table (${h2} dBc)`);
 }
 
