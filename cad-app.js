@@ -739,6 +739,7 @@
   function onMouseDown(e) {
     canvas.focus();
     const m = evPos(e);
+    if (e.button === 0 && !S.spaceDown) S.lastClick = { x: m.wx, y: m.wy };   // Fit picks the sheet clicked last
     if (e.button === 1 || (e.button === 0 && S.spaceDown)) { S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
     if (e.button === 2) { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } return; }
     if (e.button !== 0) return;
@@ -1561,10 +1562,33 @@
     S.view.scale = s; S.view.ox = W / 2 - (x1 + x2) / 2 * s; S.view.oy = H / 2 - (y1 + y2) / 2 * s;
     updateZoomLabel(); render();
   }
-  // Fit: the sheet chosen in the Sheet list, or everything when "All sheets" is chosen
+  // Fit (button or F): the sheet you are working on, which is the one holding the selection,
+  // else the one clicked last (while it is on screen), else the one filling most of the
+  // view. When that sheet already fills the view, or no sheet is on screen, everything.
+  function currentSheet() {
+    const list = frames(); if (!list.length) return null;
+    const box = f => compBBox(f), inside = (b, x, y) => x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2;
+    const W = canvas.clientWidth, H = canvas.clientHeight, v1 = toWorld(0, 0), v2 = toWorld(W, H);
+    const visible = b => Math.max(0, Math.min(b.x2, v2.x) - Math.max(b.x1, v1.x)) * Math.max(0, Math.min(b.y2, v2.y) - Math.max(b.y1, v1.y));
+    const at = (x, y) => list.find(f => inside(box(f), x, y));
+    const sel = S.comps.find(c => S.sel.comps.has(c.id));
+    if (sel) { if (sel.type === "frame") return sel; const b = compBBox(sel), f = at((b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2); if (f) return f; }
+    const w = S.wires.find(w => S.sel.wires.has(w.id));
+    if (w) { const f = at((w.x1 + w.x2) / 2, (w.y1 + w.y2) / 2); if (f) return f; }
+    if (S.lastClick) { const f = at(S.lastClick.x, S.lastClick.y); if (f && visible(box(f)) > 0) return f; }
+    let best = null, area = 0;
+    list.forEach(f => { const a = visible(box(f)); if (a > area) { area = a; best = f; } });
+    return best;
+  }
   function fitCurrent() {
-    const nav = document.getElementById("sheet-nav"), f = nav && !nav.hidden && S.comps.find(c => c.id === nav.value && c.type === "frame");
-    if (f) fitSheet(f); else fitView();
+    const f = currentSheet();
+    if (f) {
+      const before = [S.view.scale, S.view.ox, S.view.oy];
+      fitSheet(f);
+      if (Math.abs(S.view.scale / before[0] - 1) > 0.01 || Math.abs(S.view.ox - before[1]) > 2 || Math.abs(S.view.oy - before[2]) > 2) return;
+    }
+    const nav = document.getElementById("sheet-nav"); if (nav) nav.value = "";
+    fitView();
   }
   function fitSheet(f) { const b = compBBox(f); fitBox(b.x1, b.y1, b.x2, b.y2); const nav = document.getElementById("sheet-nav"); if (nav) nav.value = f.id; }
   // the Sheet selector in the toolbar: all sheets, or zoom to one

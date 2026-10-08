@@ -688,21 +688,37 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     `the new sheet sits right of sheet 1 and both are numbered (${sh.map(s => s.sheet).join(", ")})`);
   const nav = await cad.evaluate(() => { const n = document.getElementById("sheet-nav"); return { hidden: n.hidden, opts: [...n.options].map(o => o.textContent) }; });
   check(!nav.hidden && nav.opts.length === 3 && /^Sheet 2 · Output stage/.test(nav.opts[2]), `the Sheet selector lists both sheets (${nav.opts.join(" | ")})`);
-  // Fit follows the Sheet list: one sheet when one is chosen, all sheets otherwise
+  // Fit fits the sheet you are on: the one holding the selection, else the one clicked last,
+  // else the one filling most of the view; pressed again on a fitted sheet it shows all sheets
   const view = () => cad.evaluate(() => ({ ...TubeCAD.state.view }));
-  const ids = await cad.evaluate(() => TubeCAD.frames().map(f => f.id));
-  await cad.locator("#sheet-nav").selectOption(ids[1]);
-  const v2 = await view();
-  await cad.evaluate(() => { TubeCAD.state.view.ox += 500; TubeCAD.state.view.scale *= 2; });
-  await cad.locator("#btn-zoom-fit").click();
-  const v2fit = await view();
-  await cad.locator("#sheet-nav").selectOption("");
-  const vAll = await view();
-  await cad.evaluate(() => { TubeCAD.state.view.oy -= 300; });
-  await cad.keyboard.press("f");
-  const vAllFit = await view();
   const same = (a, b) => Math.abs(a.scale - b.scale) < 1e-6 && Math.abs(a.ox - b.ox) < 0.5 && Math.abs(a.oy - b.oy) < 0.5;
-  check(same(v2, v2fit) && same(vAll, vAllFit) && !same(v2, vAll), "Fit (button or F) fits the sheet chosen in the Sheet list, and all sheets when none is chosen");
+  const ids = await cad.evaluate(() => TubeCAD.frames().map(f => f.id));
+  const forget = () => cad.evaluate(() => { const S = TubeCAD.state; S.lastClick = null; S.sel.comps.clear(); S.sel.wires.clear(); });
+  await cad.locator("#sheet-nav").selectOption(ids[0]); const v1 = await view();
+  await cad.locator("#sheet-nav").selectOption(ids[1]); const v2 = await view();
+  await cad.locator("#sheet-nav").selectOption(""); const vAll = await view();
+  // looking at sheet 2 (panned a little off), nothing chosen in the list or clicked
+  await cad.locator("#sheet-nav").selectOption(ids[1]); await forget();
+  await cad.evaluate(() => { const v = TubeCAD.state.view; v.ox += 60; v.scale *= 1.1; document.getElementById("sheet-nav").value = ""; });
+  await cad.locator("#btn-zoom-fit").click();
+  const looked = await view();
+  await cad.keyboard.press("f");
+  const again = await view();
+  // all sheets in view: a click on sheet 2, then F
+  await forget();
+  const p1 = await cad.evaluate(id => { const f = TubeCAD.state.comps.find(c => c.id === id), v = TubeCAD.state.view, r = document.getElementById("cad").getBoundingClientRect();
+    return { x: r.left + (f.x + 40) * v.scale + v.ox, y: r.top + (f.y + 40) * v.scale + v.oy }; }, ids[1]);
+  await cad.mouse.click(p1.x, p1.y); await cad.keyboard.press("Escape");
+  await cad.keyboard.press("f");
+  const clicked = await view();
+  // a part selected on sheet 1 wins over the click on sheet 2
+  const onSheet1 = await cad.evaluate(id => { const S = TubeCAD.state;
+    const part = S.comps.find(c => c.type !== "frame" && (TubeCAD.zoneOf(c.x, c.y) || {}).frame?.id === id); if (part) S.sel.comps.add(part.id); return !!part; }, ids[0]);
+  await cad.keyboard.press("f");
+  const selected = await view();
+  await forget();
+  check(onSheet1 && same(looked, v2) && same(again, vAll) && same(clicked, v2) && same(selected, v1) && !same(v1, v2) && !same(v2, vAll),
+    "Fit (button or F) fits the sheet in view, the clicked one, or the one with the selection; again on a fitted sheet shows all sheets");
   // a 300 V supply on sheet 1 feeds a 1 kΩ load on sheet 2 through two "+B" connectors
   const r = await cad.evaluate(() => {
     const S = TubeCAD.state, C = TubeCAD, [f1, f2] = C.frames();
