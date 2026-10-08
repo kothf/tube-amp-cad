@@ -52,6 +52,10 @@ circuit is saved in the browser.
   voltage with ΔT and ΔV on the scope, frequency and level on the analyzer,
   and Vg, dissipation, gm, rp and µ at a point of the plate curves, with the
   load line through two points.
+- **Mouse zoom** — on the plate curves, the oscilloscope and the analyzer the
+  mouse wheel zooms in at the pointer (time/div on the scope, the frequency
+  axis on the analyzer, both axes on the curves), Ctrl+wheel zooms the
+  vertical axis only, and right-drag or Shift+drag moves the view.
 - **99 tubes** — the Soviet receiving tubes from Katsnelson & Larionov,
   «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981):
   triodes and double triodes (6С2С, 6С33С, 6Н1П…6Н33Б), voltage and output

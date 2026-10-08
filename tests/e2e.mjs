@@ -187,6 +187,38 @@ const canvasAt = async (page, p) => { const r = await page.locator("#screen").bo
   check(Math.abs(m[1].reading.dbc - h2) < 0.06, `marker B reads H2 at ${m[1].reading.dbc.toFixed(2)} dBc, as the harmonic table (${h2} dBc)`);
 }
 
+// --- 3a2. Mouse zoom on the scope and the analyzer ---------------------------------
+{
+  const r = await scope.locator("#screen").boundingBox(), cx = r.x + r.width * 0.3, cy = r.y + r.height / 2;
+  const before = await scope.evaluate(() => window.Scope.view().tdiv);
+  await scope.mouse.move(cx, cy); await scope.mouse.wheel(0, -100);
+  const after = await scope.evaluate(() => ({ tdiv: +window.Scope.state.tdiv, hpos: window.Scope.state.hpos }));
+  check(after.tdiv < before && after.hpos > 0, `scope: the wheel zooms in on the time axis at the pointer (${before * 1e6} → ${after.tdiv * 1e6} µs/div, position ${(after.hpos * 1e6).toFixed(0)} µs)`);
+  const v0 = await scope.evaluate(() => window.Scope.view().ch1.vdiv);
+  await scope.keyboard.down("Control"); await scope.mouse.wheel(0, -100); await scope.keyboard.up("Control");
+  const v1 = await scope.evaluate(() => window.Scope.view().ch1.vdiv);
+  check(v1 < v0, `scope: Ctrl+wheel steps volts/div (${v0} → ${v1} V/div)`);
+  await scope.mouse.down({ button: "right" }); await scope.mouse.move(cx + 100, cy, { steps: 4 }); await scope.mouse.up({ button: "right" });
+  const h2 = await scope.evaluate(() => window.Scope.state.hpos);
+  check(h2 < after.hpos, `scope: right-drag moves the trace along the time axis (position ${(h2 * 1e6).toFixed(0)} µs)`);
+  check((await scope.evaluate(() => window.Scope.markers())).length === 0, "scope: zooming and dragging place no markers");
+  await scope.click("#btn-autoset");
+  const reset = await scope.evaluate(() => ({ tdiv: window.Scope.state.tdiv, hpos: window.Scope.state.hpos }));
+  check(reset.tdiv === "auto" && reset.hpos === 0, "scope: Autoset resets the zoom and position");
+}
+{
+  const r = await spectrum.locator("#screen").boundingBox(), p1 = await spectrum.evaluate(() => window.Spectrum.linePoint(2000));
+  await spectrum.mouse.move(r.x + p1.x, r.y + r.height / 2);
+  for (let i = 0; i < 4; i++) await spectrum.mouse.wheel(0, -100);
+  const z = await spectrum.evaluate(() => window.Spectrum.state.zoom), p2 = await spectrum.evaluate(() => window.Spectrum.linePoint(2000));
+  check(z && z.fb - z.fa < 6000 && z.fa < 2000 && z.fb > 2000 && Math.abs(p2.x - p1.x) < 3, `analyzer: the wheel zooms the frequency axis around the pointer (${z && z.fa.toFixed(0)}–${z && z.fb.toFixed(0)} Hz, H2 stays under the pointer)`);
+  await spectrum.keyboard.down("Control"); await spectrum.mouse.wheel(0, -300); await spectrum.keyboard.up("Control");
+  const z2 = await spectrum.evaluate(() => window.Spectrum.state.zoom);
+  check(z2.top - z2.bottom < 100, `analyzer: Ctrl+wheel zooms the level axis (${(z2.top - z2.bottom).toFixed(0)} dB shown)`);
+  await spectrum.click("#zoom-reset");
+  check(await spectrum.evaluate(() => window.Spectrum.state.zoom === null), "analyzer: Reset zoom shows the whole span");
+}
+
 // --- 3b. Auto-ranging a DC-coupled plate: the trace must use the screen ------
 const probe = await cad.evaluate(async v1 => {
   const C = TubeCAD, S = C.state;
@@ -257,6 +289,24 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const back = await tracer.evaluate(([va, vg]) => TubeTracer.iaOf(va, vg), [k.va, k.vg]);
   check(Math.abs(k.vg + 10) < 0.5 && Math.abs(back - k.ia) < 1e-6 * Math.max(1, k.ia * 1e3),
     `EL34 point Va ${k.va.toFixed(1)} V, Ia ${(k.ia * 1e3).toFixed(2)} mA reads Vg ${k.vg.toFixed(2)} V (curve drawn at −10 V)`);
+}
+
+{
+  // mouse zoom on the curves: in at the pointer, pan with right-drag, Reset zoom
+  const r = await tracer.locator("#plot").boundingBox(), full = await tracer.evaluate(() => TubeTracer.view());
+  const pt = await tracer.evaluate(() => TubeTracer.toScreen(250, 0.05));
+  await tracer.mouse.move(r.x + pt.x, r.y + pt.y);
+  for (let i = 0; i < 3; i++) await tracer.mouse.wheel(0, -100);
+  const z = await tracer.evaluate(() => TubeTracer.view()), pt2 = await tracer.evaluate(() => TubeTracer.toScreen(250, 0.05));
+  check(z.v1 - z.v0 < full.vaMax * 0.6 && z.i1 - z.i0 < full.iaMax * 0.6 && Math.hypot(pt2.x - pt.x, pt2.y - pt.y) < 2 && await tracer.isVisible("#btn-zoom-reset"),
+    `tracer: the wheel zooms in around the pointer (Va ${z.v0.toFixed(0)}–${z.v1.toFixed(0)} V, Ia ${(z.i0 * 1e3).toFixed(0)}–${(z.i1 * 1e3).toFixed(0)} mA)`);
+  await tracer.mouse.down({ button: "right" }); await tracer.mouse.move(r.x + pt.x + 80, r.y + pt.y, { steps: 4 }); await tracer.mouse.up({ button: "right" });
+  const zp = await tracer.evaluate(() => TubeTracer.view());
+  check(zp.v0 < z.v0 && Math.abs((zp.v1 - zp.v0) - (z.v1 - z.v0)) < 1e-6, `tracer: right-drag pans (Va ${zp.v0.toFixed(0)}–${zp.v1.toFixed(0)} V)`);
+  check((await tracer.evaluate(() => TubeTracer.picks())).length === 1, "tracer: zooming and panning place no points");
+  await tracer.click("#btn-zoom-reset");
+  const back = await tracer.evaluate(() => TubeTracer.view());
+  check(back.v0 === 0 && back.v1 === full.vaMax && back.i1 === full.iaMax && !(await tracer.isVisible("#btn-zoom-reset")), "tracer: Reset zoom shows the whole plot");
 }
 
 // --- 5. A ganged changeover switch, flipped with a double-click --------------

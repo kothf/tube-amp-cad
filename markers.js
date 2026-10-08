@@ -29,7 +29,7 @@
     canvas.style.cursor = "crosshair";
 
     canvas.addEventListener("pointerdown", e => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || e.shiftKey) return;     // Shift+drag pans (PlotZoom)
       const [x, y] = xy(e);
       const i = near(x, y);
       if (i >= 0) { drag = i; canvas.setPointerCapture(e.pointerId); return; }
@@ -93,5 +93,51 @@
     ctx.restore();
   };
 
+  /** Mouse zoom and pan on a canvas graph, shared by the three instruments:
+       wheel                    zoom in / out at the pointer
+       Ctrl+wheel               zoom the vertical axis only
+       Shift+wheel              scroll sideways
+       right-drag, Shift+drag   pan
+     PlotZoom(canvas, {
+       inside(x, y)      -> bool    pointer over the graph area (CSS px)
+       zoom(x, y, k, vertical)      scale the view by k around (x, y): k < 1 zooms in
+       pan(dx, dy)                  move the view with the pointer by (dx, dy) px
+       scroll(dir)                  Shift+wheel: one step left (-1) or right (+1); pan is used if absent
+     }) */
+  function PlotZoom(canvas, h) {
+    const xy = e => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    canvas.addEventListener("wheel", e => {
+      const [x, y] = xy(e);
+      if (!h.inside(x, y)) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+      const dx = e.deltaX * unit, dy = e.deltaY * unit;
+      if (e.shiftKey || Math.abs(dx) > Math.abs(dy)) {
+        const d = e.shiftKey && !dx ? dy : dx; if (!d) return;
+        if (h.scroll) h.scroll(Math.sign(d)); else h.pan(-Math.sign(d) * canvas.clientWidth / 10, 0);
+        return;
+      }
+      if (!dy) return;
+      // one mouse-wheel notch (100 px) is about ×1.25; a touchpad's small steps zoom smoothly
+      h.zoom(x, y, Math.exp(Math.max(-300, Math.min(300, dy)) * 0.0022), e.ctrlKey || e.metaKey);
+    }, { passive: false });
+    let last = null;
+    canvas.addEventListener("pointerdown", e => {
+      if (!(e.button === 2 || e.button === 1 || (e.button === 0 && e.shiftKey))) return;
+      const [x, y] = xy(e); if (!h.inside(x, y)) return;
+      e.preventDefault(); last = [x, y]; canvas.setPointerCapture(e.pointerId); canvas.style.cursor = "grabbing";
+    });
+    canvas.addEventListener("pointermove", e => {
+      if (!last) return;
+      const [x, y] = xy(e), dx = x - last[0], dy = y - last[1]; last = [x, y];
+      if (dx || dy) h.pan(dx, dy);
+    });
+    const end = () => { if (last) { last = null; canvas.style.cursor = "crosshair"; } };
+    canvas.addEventListener("pointerup", end);
+    canvas.addEventListener("pointercancel", end);
+    canvas.addEventListener("contextmenu", e => { const [x, y] = xy(e); if (h.inside(x, y)) e.preventDefault(); });
+  }
+
   root.MarkerPicker = MarkerPicker;
+  root.PlotZoom = PlotZoom;
 })(typeof window !== "undefined" ? window : globalThis);
