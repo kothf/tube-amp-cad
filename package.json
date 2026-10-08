@@ -1,6 +1,6 @@
 {
   "name": "tube-amp-cad",
-  "version": "3.25.0",
+  "version": "3.26.0",
   "description": "Browser schematic editor and circuit simulator for vacuum-tube amplifiers, with a curve tracer, oscilloscope and spectrum analyzer.",
   "private": true,
   "license": "MIT",

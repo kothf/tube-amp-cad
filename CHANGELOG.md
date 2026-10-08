@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.26.0] - 2026-10-08
+
+### Changed
+- **Fit (button or F) fits the sheet you are working on**, without choosing
+  it in the Sheet list first. It picks the sheet with the selected part or
+  wire, else the sheet you clicked last (while it is on screen), else the sheet
+  that fills most of the view. Pressing Fit again when that sheet already
+  fills the view shows all sheets, and so does Fit with no sheet on screen.
+
 ## [3.25.0] - 2026-10-08
 
 ### Added
