@@ -1203,8 +1203,9 @@
     };
     PALETTE.forEach(g => {
       addGroup(g.group);
-      g.items.forEach(([type, params, label]) => {
-        const def = LIB[type];
+      g.items.forEach(it => {
+        if (it.sub) { const h = document.createElement("div"); h.className = "pal-sub"; h.textContent = it.sub; host.appendChild(h); return; }
+        const [type, params, label] = it, def = LIB[type];
         const p = Object.assign({}, def.defaults, params || {});
         addItem(label || def.name, def.value({ params: p }), type, params);
       });
@@ -1309,7 +1310,7 @@
         el.value = c.params.tube;
         el.addEventListener("change", () => { c.params.tube = el.value; c.params.connection = tubeKind(tubeByName(el.value)) === "pentode" ? "pentode" : "triode"; commit(); });
       }
-      host.appendChild(row(f.label + (f.unit && f.kind !== "range" ? ` (${f.unit})` : ""), el));
+      host.appendChild(row(f.label + (f.unit && f.kind !== "range" ? ` (${f.unit})` : ""), el, f.wide || f.kind === "tube"));
     });
     if (c.type === "tube") {
       const t = tubeByName(c.params.tube);
@@ -1474,8 +1475,8 @@
     return h;
   }
 
-  function row(label, el) {
-    const d = document.createElement("label"); d.className = "row";
+  function row(label, el, wide) {
+    const d = document.createElement("label"); d.className = "row" + (wide ? " wide" : "");
     const s = document.createElement("span"); s.textContent = label;
     d.appendChild(s); d.appendChild(el); return d;
   }

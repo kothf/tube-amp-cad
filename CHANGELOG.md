@@ -6,6 +6,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.20.0] - 2026-10-08
+
+### Changed
+- The Transformers palette is split into two sections: **Generic** (single-ended
+  output, push-pull / UL output, power transformer with mains: you set the
+  impedances, inductance and resistances) and **Manufactured** (the Hammond
+  125SE output and 300-series power transformers: you pick a model and tap).
+  The parts are named the same way in the inspector.
+- Model and tap lists in the inspector take the full panel width and use short
+  labels, so they are no longer cut off (the details stay in the text below).
+- Transformer symbols draw the magnetic core as one line between the windings
+  (IEC 60617, as on the choke), not two. The push-pull UL taps are solid leads
+  like the other terminals, not dashed.
+- The DC supply (B+ and bias) is drawn as a cell (IEC 60617): long thin plate
+  for the positive pole, short thick plate for the negative. Before, it was a
+  circle with the conductor drawn straight through it, which reads like a short
+  circuit. A negative supply (bias) shows its positive plate at the bottom pin.
+
 ## [3.19.1] - 2026-10-08
 
 ### Fixed
