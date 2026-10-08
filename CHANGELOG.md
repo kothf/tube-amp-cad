@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.25.0] - 2026-10-08
+
+### Added
+- While a simulation is running, the inspector's **Operating point** and
+  **Checks** headings show its readiness (for example "◌ 48 %"). Values and
+  warnings shown there during a run, such as a resistor beyond its rating,
+  come from an unfinished, preliminary result and can still change. The
+  marker goes away when the run finishes.
+
 ## [3.24.0] - 2026-10-08
 
 ### Added
