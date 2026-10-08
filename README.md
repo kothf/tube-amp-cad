@@ -17,8 +17,9 @@ circuit is saved in the browser.
 
 - **Schematic editor** — place parts from the palette, wire them, drag parts or
   wire segments, zoom and pan. Every net shows its DC voltage; hover a wire to
-  measure it. The File menu saves and opens circuits (JSON), saves the sheet
-  as a vector PDF and exports a SPICE netlist.
+  measure it. The File menu opens and saves circuits (JSON) — in Chrome and
+  Edge, Save writes back to the opened file after asking, and Save as picks a
+  new one — saves the sheet as a vector PDF and exports a SPICE netlist.
 - **Real transformers** — 25 Hammond 300-series power transformers modelled
   from the maker's drawings (voltages, winding resistances, excitation), fed
   from an AC mains source you wire to the primary, and the seven Hammond
@@ -45,7 +46,9 @@ circuit is saved in the browser.
 - **Curve tracer** — select a tube in the schematic and see its plate curves
   with the simulated load line, operating point, dissipation, gain and THD.
 - **Oscilloscope & spectrum analyzer** — drop a scope part on the schematic and
-  open it full-window, or view harmonic distortion on the analyzer. The scope
+  open it full-window, or view harmonic distortion on the analyzer. Levels
+  read in Vrms and dBV (the generator's amplitude can be set in Vpk, Vrms or
+  dBV too). The scope
   also shows the power-on transient: the first seconds after switch-on, with
   the supply charging from cold.
 - **Markers** — click any of these graphs to place markers A and B: time and

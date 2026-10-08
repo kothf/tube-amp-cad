@@ -865,8 +865,8 @@
     else if (k === "v" && !ctrl) setTool("select");
     else if (k === "f" || k === "F") fitCurrent();
     else if (ctrl && k === "Enter") { runSim("full"); e.preventDefault(); }
-    else if (ctrl && (k === "s" || k === "S")) { saveFile(); e.preventDefault(); }
-    else if (ctrl && (k === "o" || k === "O")) { document.getElementById("file-input").click(); e.preventDefault(); }
+    else if (ctrl && (k === "s" || k === "S")) { e.shiftKey ? saveFileAs() : saveFile(); e.preventDefault(); }
+    else if (ctrl && (k === "o" || k === "O")) { openDialog(); e.preventDefault(); }
     else if (ctrl && (k === "z" || k === "Z")) { e.shiftKey ? redo() : undo(); e.preventDefault(); }
     else if (ctrl && (k === "y" || k === "Y")) { redo(); e.preventDefault(); }
     else if (ctrl && (k === "c" || k === "C")) { copySelection(); }
@@ -1519,6 +1519,7 @@
     opts = Object.assign({ size: "A3", orient: "landscape", title: "" }, opts);
     const f = makeComp("frame", { size: opts.size, orient: opts.orient, title: opts.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
     S.comps = [f]; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+    setCurFile(null, "");
     commit(); fitView();
   }
   // Add sheet: a new frame to the right of the last one, with the same title block data
@@ -1606,10 +1607,61 @@
     setStatus("warn", msg + " — click again to confirm.");
     return false;
   }
-  function saveFile() {
-    const blob = new Blob([JSON.stringify({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, null, 1)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = baseName() + ".json"; a.click();
+  // The file this circuit came from or was last saved to. With the File System Access API
+  // (Chromium) we keep its handle, so Save can write it again (after asking); other browsers
+  // only download, so there Save works like Save as
+  let curFile = { handle: null, name: "" };
+  const FS_API = typeof window.showSaveFilePicker === "function";
+  const JSON_TYPES = [{ description: "Tube Amp CAD circuit", accept: { "application/json": [".json"] } }];
+  const circuitJSON = () => JSON.stringify({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, null, 1);
+  function setCurFile(handle, name) {
+    curFile = { handle: handle || null, name: name || "" };
+    document.title = (name ? name + " — " : "") + "Tube Amp CAD — Circuit Editor & Simulator";
+  }
+  async function writeHandle(h) {
+    try {
+      const w = await h.createWritable(); await w.write(circuitJSON()); await w.close();
+      setCurFile(h, h.name); setStatus("ok", "Saved " + h.name);
+    } catch (err) { setStatus("error", "Could not save " + h.name + ": " + err.message); }
+  }
+  function downloadJSON(name) {
+    const blob = new Blob([circuitJSON()], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setCurFile(null, name); setStatus("ok", "Downloaded " + name);
+  }
+  const jsonName = n => { n = String(n || "").trim().replace(/[\\/:*?"<>|]+/g, "-"); return n ? (/\.json$/i.test(n) ? n : n + ".json") : ""; };
+  // Save: the opened (or last saved) file is overwritten after a confirmation; otherwise Save as
+  function saveFile() {
+    if (!curFile.handle) { saveFileAs(); return; }
+    saveDialog("overwrite");
+  }
+  async function saveFileAs() {
+    const suggested = curFile.name || baseName() + ".json";
+    if (!FS_API) { saveDialog("name", suggested); return; }
+    let h;
+    try { h = await window.showSaveFilePicker({ suggestedName: suggested, types: JSON_TYPES }); }
+    catch (err) { if (err.name !== "AbortError") setStatus("error", "Save as: " + err.message); return; }
+    await writeHandle(h);
+  }
+  // overwrite: "Overwrite name.json?"; name: a file name for the download (browsers without the API)
+  function saveDialog(mode, suggested) {
+    const m = document.getElementById("save-modal"), inp = document.getElementById("save-name");
+    m.dataset.mode = mode;
+    document.getElementById("save-msg").textContent = mode === "overwrite"
+      ? `Overwrite ${curFile.name} with the current circuit? The previous contents of the file are replaced.`
+      : "This browser cannot write files directly, so the circuit is downloaded under this name.";
+    inp.hidden = mode !== "name"; inp.value = suggested || "";
+    document.getElementById("btn-save-as-alt").hidden = mode !== "overwrite";
+    document.getElementById("btn-save-ok").textContent = mode === "overwrite" ? "Overwrite" : "Download";
+    m.hidden = false;
+    (mode === "name" ? inp : document.getElementById("btn-save-ok")).focus();
+    if (mode === "name") inp.select();
+  }
+  function saveDialogOk() {
+    const m = document.getElementById("save-modal"); m.hidden = true;
+    if (m.dataset.mode === "overwrite") writeHandle(curFile.handle);
+    else { const n = jsonName(document.getElementById("save-name").value); if (n) downloadJSON(n); else setStatus("warn", "Not saved: no file name"); }
   }
   // A circuit from a file or from browser storage: part defaults filled in and wires
   // split where another wire or a pin ends on them, so both load paths give the same nets
@@ -1620,16 +1672,25 @@
     normalizeWires();
     S.topo = null;
   }
-  function openFile(file) {
+  function openFile(file, handle) {
     const rd = new FileReader();
     rd.onload = () => {
       try {
         loadCircuit(JSON.parse(rd.result));
         S.sel.comps.clear(); S.sel.wires.clear();
+        setCurFile(handle, file.name);
         commit(); fitView();
       } catch (err) { setStatus("error", "Could not open file: " + err.message); }
     };
     rd.readAsText(file);
+  }
+  // Open: with the File System Access API the handle is kept, so Save can write the file back
+  async function openDialog() {
+    if (typeof window.showOpenFilePicker !== "function") { document.getElementById("file-input").click(); return; }
+    let h;
+    try { [h] = await window.showOpenFilePicker({ types: JSON_TYPES }); }
+    catch (err) { if (err.name !== "AbortError") setStatus("error", "Open: " + err.message); return; }
+    try { openFile(await h.getFile(), h); } catch (err) { setStatus("error", "Could not open file: " + err.message); }
   }
 
   function spiceNetlist() {
@@ -1716,9 +1777,15 @@
       if (m.dataset.mode === "add") addSheet(opts); else { newCircuit(opts); updateSheetNav(); }
       document.getElementById("new-title").value = "";
     });
-    bind("btn-open", () => document.getElementById("file-input").click());
+    bind("btn-open", openDialog);
     document.getElementById("file-input").addEventListener("change", e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; });
     bind("btn-save", saveFile);
+    bind("btn-save-as", saveFileAs);
+    bind("btn-save-cancel", () => { document.getElementById("save-modal").hidden = true; });
+    bind("btn-save-as-alt", () => { document.getElementById("save-modal").hidden = true; saveFileAs(); });
+    bind("btn-save-ok", saveDialogOk);
+    document.getElementById("save-name").addEventListener("keydown", e => { if (e.key === "Enter") saveDialogOk(); });
+    document.getElementById("save-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("save-modal").hidden = true; });
     bind("btn-undo", undo); bind("btn-redo", redo);
     bind("btn-tool-select", () => { S.placing = null; setTool("select"); });
     bind("btn-tool-wire", () => { S.placing = null; setTool(S.tool === "wire" ? "select" : "wire"); });
