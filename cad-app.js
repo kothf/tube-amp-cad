@@ -1600,14 +1600,21 @@
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = baseName() + ".json"; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
+  // A circuit from a file or from browser storage: part defaults filled in and wires
+  // split where another wire or a pin ends on them, so both load paths give the same nets
+  function loadCircuit(d) {
+    if (!d || !Array.isArray(d.comps) || !Array.isArray(d.wires)) throw new Error("not a Tube Amp CAD file");
+    d.comps.forEach(c => { if (!LIB[c.type]) throw new Error("unknown part " + c.type); c.params = Object.assign({}, LIB[c.type].defaults, c.params); });
+    S.comps = d.comps; S.wires = d.wires;
+    normalizeWires();
+    S.topo = null;
+  }
   function openFile(file) {
     const rd = new FileReader();
     rd.onload = () => {
       try {
-        const d = JSON.parse(rd.result);
-        if (!Array.isArray(d.comps) || !Array.isArray(d.wires)) throw new Error("not a Tube Amp CAD file");
-        d.comps.forEach(c => { if (!LIB[c.type]) throw new Error("unknown part " + c.type); c.params = Object.assign({}, LIB[c.type].defaults, c.params); });
-        S.comps = d.comps; S.wires = d.wires; S.sel.comps.clear(); S.sel.wires.clear();
+        loadCircuit(JSON.parse(rd.result));
+        S.sel.comps.clear(); S.sel.wires.clear();
         commit(); fitView();
       } catch (err) { setStatus("error", "Could not open file: " + err.message); }
     };
@@ -1722,7 +1729,7 @@
 
     let saved = null;
     try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}
-    if (saved) { try { const d = JSON.parse(saved); S.comps = (d.comps || []).filter(c => LIB[c.type]); S.wires = d.wires || []; } catch (e) {} }
+    if (saved) { try { const d = JSON.parse(saved); d.comps = (d.comps || []).filter(c => LIB[c.type]); loadCircuit(d); } catch (e) { S.comps = []; S.wires = []; } }
     else S.comps = [makeComp("frame", { size: "A3", orient: "landscape", date: new Date().toISOString().slice(0, 10) }, 0, 0, 0)];   // first visit: an A3 sheet
     S.history = [snapshot()]; S.hIndex = 0;
     S.topo = null;

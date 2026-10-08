@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.19.1] - 2026-10-08
+
+### Fixed
+- A circuit restored from browser storage at start-up now goes through the same
+  loading as File → Open (part defaults filled in, wires split where another
+  wire or a pin ends on them). Before, a stored circuit with a wire ending on
+  the middle of another wire (a T joint) came back with that joint open, and
+  the simulation could fail ("Transient did not converge").
+
 ## [3.19.0] - 2026-10-08
 
 ### Added

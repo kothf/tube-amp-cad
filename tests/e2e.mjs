@@ -82,6 +82,19 @@ check((await state()).comps.find(c => c.id === R1.id).params.r === 4700, 'inspec
 await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
 check((await state()).comps.some(c => c.params.r === 4700), "circuit survives a reload (autosave)");
 
+// a stored circuit whose wire ends on another wire's middle (a T joint) loads with the joint
+// connected, as File → Open does: a cap teed onto the line between two resistors
+const saved = await cad.evaluate(() => localStorage.getItem("tubecad_circuit_v2"));
+await cad.evaluate(() => localStorage.setItem("tubecad_circuit_v2", JSON.stringify({
+  comps: [{ id: "ra", type: "resistor", x: 100, y: 100, rot: 0, params: { r: 1000 }, label: "R1" },
+    { id: "rb", type: "resistor", x: 300, y: 100, rot: 0, params: { r: 1000 }, label: "R2" },
+    { id: "ca", type: "capacitor", x: 200, y: 200, rot: 1, params: { c: 1e-6 }, label: "C1" }],
+  wires: [{ id: "w1", x1: 130, y1: 100, x2: 270, y2: 100 }, { id: "w2", x1: 200, y1: 100, x2: 200, y2: 180 }] })));
+await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
+check(await sameNet("ra:2", "ca:1") && await sameNet("rb:1", "ca:1"), "a stored circuit with a T joint loads connected (same as File → Open)");
+await cad.evaluate(s => { localStorage.setItem("tubecad_circuit_v2", s); }, saved);
+await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
+
 // --- 2. A 12AX7 stage with generator and scope, simulated in the worker ------
 const circuit = await cad.evaluate(async () => {
   const C = TubeCAD, S = C.state; S.comps = []; S.wires = [];
