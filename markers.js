@@ -138,6 +138,42 @@
     canvas.addEventListener("contextmenu", e => { const [x, y] = xy(e); if (h.inside(x, y)) e.preventDefault(); });
   }
 
+  /** A "Zoom" chip in the top-right corner of a graph; hovering it lists the mouse controls.
+      rows: [[keys, what it does], ...] */
+  PlotZoom.hint = (canvas, rows) => {
+    if (!document.getElementById("pz-style")) {
+      const st = document.createElement("style"); st.id = "pz-style";
+      st.textContent = `
+        .pz-hint { position: absolute; z-index: 5; font: 11px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
+        .pz-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; cursor: help;
+          background: rgba(3,8,13,0.8); border: 1px solid rgba(139,148,158,0.35); color: #8b949e; user-select: none; }
+        .pz-chip svg { width: 12px; height: 12px; }
+        .pz-hint:hover .pz-chip, .pz-hint:focus-within .pz-chip { color: #e6edf3; border-color: #00b4d8; }
+        .pz-pop { display: none; position: absolute; right: 0; top: calc(100% + 4px); width: max-content; max-width: 360px; padding: 7px 10px;
+          background: rgba(13,18,25,0.97); border: 1px solid #26344a; border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.45); color: #c9d6e3; }
+        .pz-hint:hover .pz-pop, .pz-hint:focus-within .pz-pop { display: block; }
+        .pz-pop div { display: grid; grid-template-columns: 108px auto; gap: 10px; padding: 2px 0; }
+        .pz-pop b { font-weight: 600; color: #e6edf3; white-space: nowrap; }
+        .pz-pop kbd { font: 10px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px solid #3a5170; border-bottom-width: 2px; border-radius: 3px; background: #18212e; color: #e6edf3; }`;
+      document.head.appendChild(st);
+    }
+    const host = canvas.parentElement;
+    if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    const el = document.createElement("div"); el.className = "pz-hint";
+    const key = t => t.replace(/(Ctrl|Shift|Esc)/g, "<kbd>$1</kbd>");
+    el.innerHTML = `<span class="pz-chip" tabindex="0" aria-label="Zoom controls"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6.5" cy="6.5" r="4.5"/><path d="M10 10l4.5 4.5M4.5 6.5h4M6.5 4.5v4"/></svg>Zoom</span>` +
+      `<div class="pz-pop" role="tooltip">${rows.map(([k, t]) => `<div><b>${key(k)}</b><span>${t}</span></div>`).join("")}</div>`;
+    host.appendChild(el);
+    const place = () => {
+      el.style.top = (canvas.offsetTop + 6) + "px";
+      el.style.right = (host.clientWidth - canvas.offsetLeft - canvas.offsetWidth + 6) + "px";
+    };
+    place();
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(place).observe(canvas);
+    window.addEventListener("resize", place);
+    return el;
+  };
+
   root.MarkerPicker = MarkerPicker;
   root.PlotZoom = PlotZoom;
 })(typeof window !== "undefined" ? window : globalThis);
