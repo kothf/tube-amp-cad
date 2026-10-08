@@ -282,7 +282,7 @@
     ptx_cat(ctx, c) {
       // primary (left), iron core, centre-tapped HV secondary (right)
       ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(-12, -30 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
-      ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(12, -40 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
+      ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(12, -40 + 5 + i * 10, 5, Math.PI * 1.5, Math.PI / 2, true); ctx.stroke();
       line(ctx, [0, -42, 0, 42]);
       line(ctx, [-40, -30, -12, -30]); line(ctx, [-40, 30, -12, 30]);
       line(ctx, [12, -40, 40, -40]); line(ctx, [12, 0, 40, 0]); line(ctx, [12, 40, 40, 40]);
@@ -301,20 +301,20 @@
       line(ctx, [-26, -12, -26, -30, -13, -30]); line(ctx, [-26, 12, -26, 30, -13, 30]);
       ctx.beginPath(); for (let i = 0; i < 4; i++) ctx.arc(-13, -30 + 7.5 + i * 15, 7.5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
       line(ctx, [-2, -40, -2, 40]);
-      ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(6, -40 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
+      ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(6, -40 + 5 + i * 10, 5, Math.PI * 1.5, Math.PI / 2, true); ctx.stroke();
       line(ctx, [6, -40, 20, -40]); line(ctx, [6, 0, 20, 0]); line(ctx, [6, 40, 20, 40]);
     },
     opt_cat(ctx, c) { DRAW.opt_se(ctx, c); },
     opt_se(ctx) {
       ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(-12, -30 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
-      ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(12, -30 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
+      ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(12, -30 + 5 + i * 10, 5, Math.PI * 1.5, Math.PI / 2, true); ctx.stroke();
       line(ctx, [0, -32, 0, 32]);
       line(ctx, [-40, -30, -12, -30]); line(ctx, [-40, 30, -12, 30]); line(ctx, [12, -30, 40, -30]); line(ctx, [12, 30, 40, 30]);
       ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(-20, -24, 2, 0, Math.PI * 2); ctx.arc(20, -24, 2, 0, Math.PI * 2); ctx.fill();
     },
     opt_pp(ctx) {
       ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(-12, -40 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
-      ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(12, -30 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
+      ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(12, -30 + 5 + i * 10, 5, Math.PI * 1.5, Math.PI / 2, true); ctx.stroke();
       line(ctx, [0, -42, 0, 42]);
       line(ctx, [-40, -40, -12, -40]); line(ctx, [-40, 40, -12, 40]); line(ctx, [-40, 0, -12, 0]);
       line(ctx, [-40, -20, -12, -20]); line(ctx, [-40, 20, -12, 20]);

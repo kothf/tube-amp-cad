@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.20.1] - 2026-10-08
+
+### Fixed
+- Transformer secondaries (on the right of the symbol) no longer have a stray
+  vertical line down the inside of the winding. Each turn was drawn bottom to
+  top, so the path joined the top of one turn to the bottom of the next with a
+  straight stroke. The schematic and the PDF are both fixed.
+
 ## [3.20.0] - 2026-10-08
 
 ### Changed
