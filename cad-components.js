@@ -263,11 +263,14 @@
     ground(ctx) {
       line(ctx, [0, 0, 0, 8]); line(ctx, [-12, 8, 12, 8]); line(ctx, [-7, 13, 7, 13]); line(ctx, [-2, 18, 2, 18]);
     },
-    vdc(ctx) {
-      // IEC 60617 ideal voltage source: circle, the conductor drawn through it; "+" at the positive terminal
-      line(ctx, [0, -30, 0, 30]);
-      ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
-      ctx.lineWidth = 1.2; line(ctx, [6, -24, 12, -24]); line(ctx, [9, -27, 9, -21]);
+    vdc(ctx, c) {
+      // IEC 60617 S00898 cell: the long thin plate is the positive pole, the short thick one
+      // the negative. A negative voltage (bias supply) puts the long plate at the "-" pin.
+      const s = c && +c.params.v < 0 ? -1 : 1;
+      line(ctx, [0, -30, 0, -4]); line(ctx, [0, 4, 0, 30]);
+      line(ctx, [-14, -4 * s, 14, -4 * s]);
+      ctx.save(); ctx.lineWidth = 4; line(ctx, [-7, 4 * s, 7, 4 * s]); ctx.restore();
+      ctx.lineWidth = 1.2; line(ctx, [8, -12 * s, 14, -12 * s]); line(ctx, [11, -12 * s - 3, 11, -12 * s + 3]);
     },
     siggen(ctx) {
       // IEC 60617 static generator (square with G), qualified with a sine for alternating output
@@ -280,7 +283,7 @@
       // primary (left), iron core, centre-tapped HV secondary (right)
       ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(-12, -30 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
       ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(12, -40 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
-      line(ctx, [-2, -42, -2, 42]); line(ctx, [2, -42, 2, 42]);
+      line(ctx, [0, -42, 0, 42]);
       line(ctx, [-40, -30, -12, -30]); line(ctx, [-40, 30, -12, 30]);
       line(ctx, [12, -40, 40, -40]); line(ctx, [12, 0, 40, 0]); line(ctx, [12, 40, 40, 40]);
       if (c.params.bias === "yes") line(ctx, [12, -20, 40, -20]);
@@ -295,9 +298,9 @@
       // AC source + secondary with centre tap; pins on the right
       ctx.beginPath(); ctx.arc(-26, 0, 12, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); for (let i = 0; i <= 16; i++) { const x = -33 + i * 0.9, y = -4 * Math.sin(i / 16 * Math.PI * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
-      line(ctx, [-26, -12, -26, -30, -10, -30]); line(ctx, [-26, 12, -26, 30, -10, 30]);
-      ctx.beginPath(); for (let i = 0; i < 4; i++) ctx.arc(-10, -30 + 7.5 + i * 15, 7.5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
-      line(ctx, [-4, -40, -4, 40]); line(ctx, [-1, -40, -1, 40]);
+      line(ctx, [-26, -12, -26, -30, -13, -30]); line(ctx, [-26, 12, -26, 30, -13, 30]);
+      ctx.beginPath(); for (let i = 0; i < 4; i++) ctx.arc(-13, -30 + 7.5 + i * 15, 7.5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+      line(ctx, [-2, -40, -2, 40]);
       ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(6, -40 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
       line(ctx, [6, -40, 20, -40]); line(ctx, [6, 0, 20, 0]); line(ctx, [6, 40, 20, 40]);
     },
@@ -305,16 +308,16 @@
     opt_se(ctx) {
       ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(-12, -30 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
       ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(12, -30 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
-      line(ctx, [-2, -32, -2, 32]); line(ctx, [2, -32, 2, 32]);
+      line(ctx, [0, -32, 0, 32]);
       line(ctx, [-40, -30, -12, -30]); line(ctx, [-40, 30, -12, 30]); line(ctx, [12, -30, 40, -30]); line(ctx, [12, 30, 40, 30]);
       ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(-20, -24, 2, 0, Math.PI * 2); ctx.arc(20, -24, 2, 0, Math.PI * 2); ctx.fill();
     },
     opt_pp(ctx) {
       ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(-12, -40 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
       ctx.beginPath(); for (let i = 0; i < 6; i++) ctx.arc(12, -30 + 5 + i * 10, 5, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
-      line(ctx, [-2, -42, -2, 42]); line(ctx, [2, -42, 2, 42]);
+      line(ctx, [0, -42, 0, 42]);
       line(ctx, [-40, -40, -12, -40]); line(ctx, [-40, 40, -12, 40]); line(ctx, [-40, 0, -12, 0]);
-      ctx.setLineDash([2, 2]); line(ctx, [-40, -20, -12, -20]); line(ctx, [-40, 20, -12, 20]); ctx.setLineDash([]);
+      line(ctx, [-40, -20, -12, -20]); line(ctx, [-40, 20, -12, 20]);
       line(ctx, [12, -30, 40, -30]); line(ctx, [12, 30, 40, 30]);
     },
     tube(ctx, c) {
@@ -449,7 +452,7 @@
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "R", nodes: [net("+"), net("-")], r: Math.max(c.params.r, 0.1) })
     },
     opt_se: {
-      name: "Output transformer (SE)", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
+      name: "Output transformer, single-ended (generic)", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
       defaults: { zp: 5000, zs: 8, lp: 20, dcrp: 150, dcrs: 0.5 },
       pins: () => [{ id: "P1", x: -40, y: -30, name: "primary (B+)" }, { id: "P2", x: -40, y: 30, name: "primary (anode)" }, { id: "S1", x: 40, y: -30 }, { id: "S2", x: 40, y: 30 }],
       value: c => fmtEng(c.params.zp, "") + ":" + fmtEng(c.params.zs, "Ω"),
@@ -470,14 +473,14 @@
       }
     },
     opt_cat: {
-      name: "Output transformer (SE catalog)", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
+      name: "Output transformer, single-ended (Hammond 125SE)", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
       defaults: { model: "125ESE", tap: "GRN" },
       pins: () => [{ id: "P1", x: -40, y: -30, name: "primary BRN (B+)" }, { id: "P2", x: -40, y: 30, name: "primary BLU (anode)" },
         { id: "S1", x: 40, y: -30, name: "secondary tap" }, { id: "S2", x: 40, y: 30, name: "secondary BLK (0)" }],
       value: c => `${c.params.model} ${c.params.tap}`,
       fields: [
-        { key: "model", label: "Model", kind: "select", options: () => Object.entries(OUTPUT_TX).map(([k, m]) => [k, `${m.name} · ${m.w} W, ${m.ma} mA DC`]) },
-        { key: "tap", label: "Secondary tap", kind: "select", options: Object.entries(SE_TAPS).map(([t, z]) => [t, `${t}: ${z} Ω → 10 kΩ, ${z / 2} Ω → 5 kΩ${z >= 8 ? `, ${z / 4} Ω → 2.5 kΩ` : ""}`]) }
+        { key: "model", label: "Model", kind: "select", options: () => Object.entries(OUTPUT_TX).map(([k, m]) => [k, `${k} · ${m.w} W, ${m.ma} mA`]), wide: true },
+        { key: "tap", label: "Secondary tap", kind: "select", options: Object.entries(SE_TAPS).map(([t, z]) => [t, `${t}: ${z} Ω → 10k, ${z / 2} Ω → 5k`]), wide: true }
       ],
       info: c => {
         const m = OUTPUT_TX[c.params.model] || OUTPUT_TX["125ESE"], z = SE_TAPS[c.params.tap] || 8;
@@ -495,7 +498,7 @@
       }
     },
     opt_pp: {
-      name: "Output transformer (PP / UL)", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
+      name: "Output transformer, push-pull / UL (generic)", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
       defaults: { zaa: 8000, zs: 8, lp: 30, tap: 43, dcrp: 120, dcrs: 0.4 },
       pins: () => [
         { id: "P1", x: -40, y: -40, name: "anode 1" }, { id: "U1", x: -40, y: -20, name: "UL tap 1" }, { id: "CT", x: -40, y: 0, name: "centre tap (B+)" },
@@ -524,7 +527,7 @@
       }
     },
     ptx: {
-      name: "Power transformer (HT)", prefix: "T", group: "Transformers", bbox: [-40, -44, 20, 44],
+      name: "Power transformer with mains (generic)", prefix: "T", group: "Transformers", bbox: [-40, -44, 20, 44],
       defaults: { vrms: 300, freq: 50, rw: 60 },
       pins: () => [{ id: "HT1", x: 20, y: -40 }, { id: "CT", x: 20, y: 0, name: "centre tap" }, { id: "HT2", x: 20, y: 40 }],
       value: c => c.params.vrms + "-0-" + c.params.vrms + "V",
@@ -544,7 +547,7 @@
       }
     },
     ptx_cat: {
-      name: "Power transformer (catalog)", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
+      name: "Power transformer (Hammond 300 series)", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
       defaults: { model: "373BX", tap: "230", bias: "no" },
       // primary on the left (wire an AC mains source to it), HV winding on the right
       pins: c => {
@@ -555,8 +558,8 @@
       },
       value: c => `${c.params.model} ${c.params.tap}V`,
       fields: [
-        { key: "model", label: "Model", kind: "select", options: () => Object.entries(POWER_TX).map(([k, m]) => [k, `${m.name} · ${m.rated}`]) },
-        { key: "tap", label: "Primary tap", kind: "select", options: c => (POWER_TX[c.params.model] || POWER_TX["373BX"]).taps.map(t => [String(t), t + (t > 150 ? " V (primaries in series)" : " V (primaries in parallel)")]) },
+        { key: "model", label: "Model", kind: "select", options: () => Object.entries(POWER_TX).map(([k, m]) => [k, `${k} · ${m.rated}`]), wide: true },
+        { key: "tap", label: "Primary tap", kind: "select", options: c => (POWER_TX[c.params.model] || POWER_TX["373BX"]).taps.map(t => [String(t), t + (t > 150 ? " V (primaries in series)" : " V (primaries in parallel)")]), wide: true },
         { key: "bias", label: "Bias tap pin", kind: "select", options: [["no", "Hidden"], ["yes", "Shown (≈50 V)"]] }
       ],
       info: c => {
@@ -791,7 +794,11 @@
   // Palette layout
   const PALETTE = [
     { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"], ["switch"]] },
-    { group: "Transformers", items: [["opt_se"], ["opt_cat"], ["opt_pp"], ["ptx"], ["ptx_cat"]] },
+    { group: "Transformers", items: [
+      { sub: "Generic: set the values yourself" },
+      ["opt_se", null, "Output, single-ended"], ["opt_pp", null, "Output, push-pull / UL"], ["ptx", null, "Power, with mains"],
+      { sub: "Manufactured: Hammond catalog" },
+      ["opt_cat", null, "Output 125SE"], ["ptx_cat", null, "Power 300"]] },
     { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["mains"], ["siggen"], ["ground"], ["offsheet"]] },
     { group: "Semiconductors", items: [["diode"]] },
     { group: "Instruments", items: [["scope"]] },

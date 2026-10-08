@@ -354,7 +354,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
 // --- 7. Catalog power transformer fed from an AC mains part: Hammond drawings --
 {
   await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear(); S.view = { scale: 1, ox: 0, oy: 0 }; TubeCAD.commit(); });
-  await cad.getByRole("button", { name: /^Power transformer \(catalog\)/ }).click();
+  await cad.getByRole("button", { name: /^Power 300/ }).click();
   await clickAt(300, 300);
   const placed = await cad.evaluate(() => TubeCAD.state.comps.find(c => c.type === "ptx_cat"));
   const models = await cad.evaluate(() => Object.keys(CadLib.POWER_TX));
