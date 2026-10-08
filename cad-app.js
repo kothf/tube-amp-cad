@@ -246,7 +246,7 @@
   // Netlist + simulation
   // ---------------------------------------------------------------------------
   let worker = null, simTimer = null;
-  function startWorker() { try { worker = new Worker("sim-worker.js" + VERSION); worker.onmessage = e => onSimResult(e.data); } catch (e) { worker = null; } }
+  function startWorker() { try { worker = new Worker("sim-worker.js" + VERSION); worker.onmessage = e => { if (e.data.result) onSimResult(e.data); else onSimProgress(e.data); }; } catch (e) { worker = null; } }
   startWorker();
   // "live" runs after every edit within a short time budget; "full" runs until
   // the periodic steady state is reached (slow supplies need seconds of solver time)
@@ -307,10 +307,17 @@
     const netlist = buildNetlist();
     S.sim.busy = true; S.sim.mode = mode; S.sim.netlist = netlist; S.sim.topoForRun = T;
     const seq = ++S.sim.seq;
-    setStatus("busy", mode === "full" ? "Simulating until settled…" : "Simulating…");
+    simBusy(mode === "full" ? "Simulating until settled…" : "Simulating…");
     simButton();
     if (worker) worker.postMessage({ seq, netlist, options: RUN_OPTIONS[mode] });
     else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, RUN_OPTIONS[mode]) }), 0);
+  }
+  // the busy text of the running steady-state simulation, with its readiness in percent
+  function simBusy(text) { S.sim.busyText = text; S.sim.progress = 0; setStatus("busy", text, 0); }
+  function onSimProgress({ seq, progress }) {
+    if (seq !== S.sim.seq || !S.sim.busy) return;
+    S.sim.progress = progress;
+    setStatus("busy", `${S.sim.busyText.replace(/…$/, "")}: ${Math.floor(progress * 100)} %`, progress);
   }
   function onSimResult({ seq, result }) {
     if (seq !== S.sim.seq) return;   // a cancelled run
@@ -329,7 +336,7 @@
         const more = tr && !tr.settled && S.sim.mode === "live" && S.sim.live && !S.sim.pending;
         if (more) S.sim.warnings = S.sim.warnings.filter(w => !/^Not fully settled/.test(w));
         setStatus(S.sim.warnings.length ? "warn" : "ok", `Simulated in ${took} · ${what}` + (result.dcAveraged ? " · DC values averaged over the window" : "") + (S.sim.warnings.length ? " · " + S.sim.warnings[0] : ""));
-        if (more) { broadcast(); updateInspector(true); render(); runSim("full"); setStatus("busy", "Preliminary result shown · settling fully…"); return; }
+        if (more) { broadcast(); updateInspector(true); render(); runSim("full"); simBusy("Preliminary result shown · settling fully…"); return; }
       } else setStatus("error", result.error);
       broadcast();
       updateInspector(true);
@@ -531,7 +538,7 @@
         if (!S.trans || S.trans.seq !== seq) return;
         S.trans.progress = d.progress;
         if (channel) channel.postMessage(transientMessage());
-        setStatus("busy", `Power-on transient, first ${fmtEng(tStop, "s")}: ${Math.round(d.progress * 100)} %`);
+        setStatus("busy", `Power-on transient, first ${fmtEng(tStop, "s")}: ${Math.floor(d.progress * 100)} %`, d.progress);
       } else done(d.result);
     };
     tWorker.postMessage({ seq, netlist, options, kind: "startup" });
@@ -1162,12 +1169,16 @@
   // ---------------------------------------------------------------------------
   // UI: palette, toolbar, inspector, status
   // ---------------------------------------------------------------------------
-  function setStatus(kind, text) {
+  // progress: readiness 0…1 of a running simulation (shown as a bar under the status text)
+  function setStatus(kind, text, progress) {
     const el = document.getElementById("status-sim");
     el.className = "sim-status " + kind;
     el.textContent = text;
+    const bar = kind === "busy" && progress !== undefined;
+    el.classList.toggle("progress", bar);
+    el.style.setProperty("--progress", bar ? (progress * 100).toFixed(1) + "%" : "0%");
     // instrument windows show what the CAD is doing (e.g. after their ▶ Simulate)
-    if (channel) { try { channel.postMessage({ type: "SIM_STATUS", kind, text, busy: kind === "busy", version: VERSION }); } catch (e) {} }
+    if (channel) { try { channel.postMessage({ type: "SIM_STATUS", kind, text, busy: kind === "busy", progress: bar ? progress : null, version: VERSION }); } catch (e) {} }
   }
   function setTool(t) {
     S.tool = t;

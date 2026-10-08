@@ -6,6 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.24.0] - 2026-10-08
+
+### Added
+- **Simulation readiness in percent.** While the circuit simulates in the
+  background, the CAD status bar shows how far it has got (for example
+  "Preliminary result shown · settling fully: 48 %"), with a thin progress bar
+  under the text. The curve tracer, oscilloscope and spectrum analyzer show the
+  same status and bar in their status pill until the result arrives. The
+  percentage covers the DC operating point (5 %), settling to steady state
+  (how far the cycle-to-cycle change has fallen towards the settling target,
+  up to 88 %) and the capture of the display window (to 100 %). It only rises.
+  A quick live run that runs out of time stops at its settling percentage
+  instead of jumping ahead, and the full run that follows counts again from
+  the start.
+
 ## [3.23.0] - 2026-10-08
 
 ### Added

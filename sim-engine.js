@@ -435,6 +435,16 @@
     const nodeCount = circ.nNodes;
     const result = { ok: false, nodeCount, warnings: [] };
     if (nodeCount < 2) { result.error = "Circuit is empty"; return result; }
+    // readiness 0…1 for opts.onProgress: DC 5 %, settling to 88 %, the capture to 100 %;
+    // never goes back, and is reported at most every 1 % and 100 ms
+    let progDone = 0, progAt = 0;
+    const progress = f => {
+      if (!opts.onProgress || !(f > progDone)) return;
+      progDone = f;
+      const now = Date.now();
+      if (f < 1 && now - progAt < (opts.progressMs !== undefined ? opts.progressMs : 100)) return;
+      progAt = now; opts.onProgress(f);
+    };
 
     const dc = dcOperatingPoint(circ);
     if (!dc.ok) {
@@ -445,6 +455,7 @@
     }
     result.dc = { nodes: [0].concat(dc.x.slice(0, nodeCount - 1)), devices: {} };
     circ.els.forEach(e => { if (e.id) result.dc.devices[e.id] = Object.assign(result.dc.devices[e.id] || {}, { [e.kind === "VDIODE" ? e.part || "d" : "main"]: deviceState(e, dc.x) }); });
+    progress(0.05);
 
     // Time base from sources
     const freqs = circ.els.filter(e => e.kind === "VSRC" && e.freq > 0 && e.amp !== 0).map(e => e.freq);
@@ -500,7 +511,7 @@
     if (freqs.length) {
       const coarseSteps = Math.max(1, Math.min(stepsPerPeriod, Math.round(period / Math.min(period / 200, 1 / (20 * fMax)))));
       const hc = period / coarseSteps;
-      let hist = [x.slice()], lastChange = Infinity;
+      let hist = [x.slice()], lastChange = Infinity, worst = 0;
       while (periods < maxPeriods) {
         const start = x.slice();
         if (!runPeriod(hc, coarseSteps)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
@@ -511,6 +522,11 @@
         const lambda = isFinite(lastChange) && lastChange > 0 ? Math.min(change / lastChange, 0.9999) : 1;
         const remaining = lambda < 1 ? change * lambda / (1 - lambda) : Infinity;
         if (periods >= 3 && change < 1e-4 && remaining < 1e-4) { settled = true; break; }
+        // settling progress: how far the per-period change has fallen, on a log scale,
+        // from its largest value towards the 1e-4 target
+        const off = Math.max(change, isFinite(remaining) ? remaining : change, 1e-4);
+        worst = Math.max(worst, off);
+        if (worst > 1e-4) progress(0.05 + 0.83 * Math.max(0, Math.min(1, Math.log(worst / off) / Math.log(worst / 1e-4))));
         hist.push(x.slice());
         if (hist.length >= 7 && !opts.noExtrapolate) {
           const xe = mpeExtrapolate(hist);
@@ -527,6 +543,8 @@
         if (!runPeriod(h, stepsPerPeriod)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
         if (periodChange(x, start) < 1e-4) break;
       }
+      // a run that stopped unsettled (out of time) holds its percentage: it is not nearly done
+      if (settled) progress(0.88);
       if (!settled) result.warnings.push("Not fully settled after " + periods + " cycles (large time constants); waveforms may still drift.");
       result.extrapolations = extrapolations;
     }
@@ -567,6 +585,7 @@
       if (!nx) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
       x = nx;
       record(s);
+      if ((s & 63) === 0 && settled) progress(0.88 + 0.12 * s / nCap);
     }
     result.tran = { dt: h, samples: nCap, nodes, devices: devTrace, periods, settled, fBase: fMin };
     if (averaged && nCap > 1) {
@@ -580,6 +599,7 @@
       result.dc = avg;
       result.dcAveraged = true;
     }
+    if (settled) progress(1);
     result.ok = true;
     result.elapsedMs = Date.now() - t0;
     return result;
