@@ -39,6 +39,8 @@
         renderAll();
         return;
       }
+      // the CAD is simulating: show it (with its readiness) until the result arrives
+      if (m.type === "SIM_STATUS") { S.cadBusy = m.busy ? { text: m.text, progress: m.progress } : null; renderLink(); return; }
       if (m.type !== "SIM_RESULT") return;
       S.circuit = m; S.lastSeen = Date.now();
       const tubes = m.tubes || [];
@@ -57,6 +59,9 @@
   function renderLink() {
     const el = $("link-status");
     const c = S.circuit;
+    const busy = S.cadBusy, bar = busy && typeof busy.progress === "number";
+    el.style.setProperty("--progress", bar ? (busy.progress * 100).toFixed(1) + "%" : "0%");
+    if (busy) { el.className = "link idle" + (bar ? " progress" : ""); el.textContent = "CAD: " + busy.text; return; }
     if (!c) { el.className = "link idle"; el.innerHTML = `No circuit linked — <a href="circuit_sandbox.html" target="tube_cad">open the Circuit CAD ↗</a>`; return; }
     if (c.empty) { el.className = "link idle"; el.textContent = "CAD open · empty sheet"; return; }
     if (!c.ok) { el.className = "link bad"; el.textContent = "CAD: " + (c.error || "not simulated"); return; }

@@ -1,7 +1,7 @@
 /* Runs the circuit engine off the UI thread.
    Message in:  { seq, netlist, options }                      steady state (simulate)
                 { seq, netlist, options, kind: "startup" }      power-on transient
-   Message out: { seq, result }, and for a transient also { seq, progress } along the way. */
+   Message out: { seq, result }, and { seq, progress } (0…1) along the way. */
 importScripts("sim-engine.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
 
 self.onmessage = (e) => {
@@ -9,7 +9,7 @@ self.onmessage = (e) => {
   let result;
   try {
     if (kind === "startup") result = TubeSimEngine.startup(netlist, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) }));
-    else result = TubeSimEngine.simulate(netlist, options || {});
+    else result = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) }));
   } catch (err) {
     result = { ok: false, error: "Engine error: " + (err && err.message ? err.message : err) };
   }

@@ -15,6 +15,7 @@
     .brand span { color: var(--accent); font-weight: 600; margin-left: 6px; }
     .status { font-size: 12px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 99px; white-space: nowrap; }
     .status::before { content: "●"; margin-right: 6px; }
+    .status.progress { background: linear-gradient(var(--accent), var(--accent)) no-repeat left bottom / var(--progress) 2px; }
     .status.ok::before { color: var(--ok); } .status.idle::before { color: var(--muted); } .status.bad { color: var(--bad); }
     .spacer { flex: 1; }
     .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
@@ -173,7 +174,7 @@
       const cv = $("screen"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
       if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
       const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const st = I.status(); $("status").className = "status " + st.cls; $("status").textContent = st.text;
+      I.showStatus($("status"));
       if (S.analysis === "startup" && I.transient && !I.problem) { const t = I.transient; $("status").className = "status " + (t.running ? "idle" : t.ok ? "ok" : "bad"); $("status").textContent = t.running ? `Power-on transient… ${Math.round((t.progress || 0) * 100)} %` : t.ok ? `Power-on transient · ${I.fmt(t.tStop, "s")}${t.stale ? " · circuit changed" : ""}` : (t.error || "Power-on transient failed"); }
       ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
       const pad = 26, gw = W - 2 * pad, gh = H - 2 * pad - 10, x0 = pad, y0 = pad + 6;

@@ -67,9 +67,15 @@
     sel.addEventListener("change", () => Inst.selectScope(sel.value));
     Inst.onUpdate(fill); fill();
   };
+  // the status pill: text, plus a readiness bar along its bottom while the CAD simulates
+  Inst.showStatus = el => {
+    const st = Inst.status(), bar = typeof st.progress === "number";
+    el.className = "status " + st.cls + (bar ? " progress" : ""); el.textContent = st.text;
+    el.style.setProperty("--progress", bar ? (st.progress * 100).toFixed(1) + "%" : "0%");
+  };
   Inst.status = () => {
     if (Inst.problem) return { cls: "bad", text: Inst.problem };
-    if (Inst.cad && Inst.cad.busy) return { cls: "idle", text: "CAD: " + Inst.cad.text };
+    if (Inst.cad && Inst.cad.busy) return { cls: "idle", text: "CAD: " + Inst.cad.text, progress: Inst.cad.progress };
     const r = Inst.result;
     if (!r) return { cls: "idle", text: "Waiting for the Circuit CAD…" };
     if (!r.ok) return { cls: "bad", text: r.error || "Circuit not simulated" };

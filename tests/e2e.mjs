@@ -175,6 +175,13 @@ check((await scope.textContent("#status")).includes("Live from CAD"), "oscillosc
 const ratio = parseFloat((meas.match(/CH1\/CH2 at [^:]+: ([\d.]+)×/) || [])[1]);
 check(Math.abs(ratio - circuit.gain) / circuit.gain < 0.05, `scope CH1/CH2 ${ratio}× matches the CAD stage gain (±5 %)`);
 check(/phase -?1[78]\d°/.test(meas), "common-cathode output is inverted (~180°)");
+// a simulation reports its readiness to the tool windows while it runs
+await scope.evaluate(() => { window.__st = []; const bc = new BroadcastChannel("tube_cad_v2"); bc.onmessage = e => { if (e.data && e.data.type === "SIM_STATUS") window.__st.push(e.data); }; });
+await cad.evaluate(() => TubeCAD.runSim("full"));
+await scope.waitForFunction(() => window.__st.some(s => !s.busy), null, { timeout: 30000 }).catch(() => {});
+const sts = await scope.evaluate(() => window.__st.filter(s => s.busy && typeof s.progress === "number").map(s => [s.progress, s.text]));
+check(sts.length >= 1 && sts.every(([p, t]) => p >= 0 && p <= 1 && (p === 0 || /\d+ %$/.test(t))) && sts.every(([p], i) => !i || p >= sts[i - 1][0]),
+  `the tool windows get the simulation's readiness (${sts.map(([, t]) => t.replace(/^.*: /, "")).join(", ")})`);
 // "1.23Vrms AC (1.8 dBV)": each channel's dBV agrees with its RMS value
 const engV = s => parseFloat(s) * ({ m: 1e-3, "µ": 1e-6, k: 1e3 }[s.replace(/^[-\d.]+/, "")[0]] || 1);
 const dbvPairs = [...meas.matchAll(/([-\d.]+[mµk]?)Vrms AC \(([−\d.]+) dBV\)/g)].map(x => [engV(x[1]), parseFloat(x[2].replace("−", "-"))]);

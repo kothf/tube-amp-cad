@@ -20,6 +20,7 @@
     .brand b { color: var(--accent); }
     .link { font-size: 12px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
     .link::before { content: "●"; margin-right: 6px; }
+    .link.progress { background: linear-gradient(var(--accent), var(--accent)) no-repeat left bottom / var(--progress) 2px; }
     .link.ok::before { color: var(--ok); } .link.idle::before { color: var(--muted); } .link.bad { color: var(--bad); }
     .spacer { flex: 1; }
     .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }

@@ -89,6 +89,22 @@ test("RC low-pass at 1 kHz matches |H| = 1/sqrt(1+(f/fc)^2)", () => {
   near(pp(r.tran.nodes[2]) / 2, 1 / Math.sqrt(1 + (1000 / fc) ** 2), 0.02, "RC gain");
 });
 
+test("simulate reports its readiness: rising from DC to 100 %", () => {
+  // a half-wave rectifier charging a reservoir cap from 0 V through 1 kΩ: ~100 cycles to settle
+  const seen = [];
+  const r = E.simulate({ nodeCount: 4, elements: [
+    { id: "G", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 50, amp: 10 },
+    { id: "R1", kind: "R", nodes: [1, 3], r: 1000 },
+    { id: "D", kind: "D", nodes: [3, 2], is: 1e-12, n: 1.5 },
+    { id: "C", kind: "C", nodes: [2, 0], c: 100e-6 },
+    { id: "R", kind: "R", nodes: [2, 0], r: 10e3 }] }, { budgetMs: 20000, maxPeriods: 20000, noExtrapolate: true, progressMs: 0, onProgress: f => seen.push(f) });
+  assert.ok(r.ok, r.error);
+  assert.ok(seen.length >= 3, `progress reported ${seen.length} times`);
+  assert.ok(seen.every((f, i) => f > 0 && f <= 1 && (i === 0 || f > seen[i - 1])), "progress only rises, within 0…1: " + seen.map(f => f.toFixed(2)).join(" "));
+  assert.equal(seen[seen.length - 1], 1, "ends at 100 %");
+  assert.ok(seen.some(f => f > 0.1 && f < 0.88), "reports along the settling: " + seen.map(f => f.toFixed(2)).join(" "));
+});
+
 test("R-L divider at 1 kHz matches |H| = 1/sqrt(1+(wL/R)^2)", () => {
   const L = 0.2;
   const r = E.simulate({ nodeCount: 3, elements: [
