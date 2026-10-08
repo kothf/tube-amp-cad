@@ -18,6 +18,7 @@
     vg2Preview: 250,
     opts: { traj: true, pa: true, pa70: true, bias: true },
     fit: null,                   // { points, params, r2, rmse, kind }
+    zoom: null,                  // visible part of the plot { v0, v1, i0, i1 } (V, A), null = all
     hover: null
   };
 
@@ -219,15 +220,20 @@
 
     const padL = 58, padR = 70, padT = 18, padB = 44;
     const pw = W - padL - padR, ph = H - padT - padB;
-    const X = va => padL + va / vaMax * pw, Y = ia => padT + ph - ia / iaMax * ph;
-    plotGeom = { padL, padT, pw, ph, vaMax, iaMax, X, Y, W, H };
+    // the visible window: all of it, or the zoomed part (kept inside the full range)
+    const z = clampZoom(S.zoom, vaMax, iaMax); S.zoom = z;
+    const v0 = z ? z.v0 : 0, v1 = z ? z.v1 : vaMax, i0 = z ? z.i0 : 0, i1 = z ? z.i1 : iaMax;
+    const X = va => padL + (va - v0) / (v1 - v0) * pw, Y = ia => padT + ph - (ia - i0) / (i1 - i0) * ph;
+    const vaAt = px => v0 + px / pw * (v1 - v0), iaCap = i1 + (i1 - i0);
+    plotGeom = { padL, padT, pw, ph, vaMax, iaMax, v0, v1, i0, i1, X, Y, W, H };
+    $("btn-zoom-reset").style.visibility = z ? "visible" : "hidden";   // keeps its place: the plot must not move
 
     // grid + labels
     ctx.font = "11px ui-monospace, Menlo, monospace"; ctx.textBaseline = "middle";
-    const vStep = niceStep(vaMax / 10), iStep = niceStep(iaMax / 8);
+    const vStep = niceStep((v1 - v0) / 10), iStep = niceStep((i1 - i0) / 8);
     ctx.strokeStyle = "rgba(60,80,110,0.35)"; ctx.lineWidth = 1; ctx.fillStyle = "#6a82a0";
-    for (let v = 0; v <= vaMax + 1e-9; v += vStep) { ctx.beginPath(); ctx.moveTo(X(v), padT); ctx.lineTo(X(v), padT + ph); ctx.stroke(); ctx.textAlign = "center"; ctx.fillText(String(+v.toFixed(3)), X(v), padT + ph + 14); }
-    for (let i = 0; i <= iaMax + 1e-12; i += iStep) { ctx.beginPath(); ctx.moveTo(padL, Y(i)); ctx.lineTo(padL + pw, Y(i)); ctx.stroke(); ctx.textAlign = "right"; ctx.fillText(String(+(i * 1000).toFixed(3)), padL - 8, Y(i)); }
+    for (let v = Math.ceil(v0 / vStep - 1e-9) * vStep; v <= v1 + 1e-9; v += vStep) { ctx.beginPath(); ctx.moveTo(X(v), padT); ctx.lineTo(X(v), padT + ph); ctx.stroke(); ctx.textAlign = "center"; ctx.fillText(String(+v.toFixed(3)), X(v), padT + ph + 14); }
+    for (let i = Math.ceil(i0 / iStep - 1e-9) * iStep; i <= i1 + 1e-12; i += iStep) { ctx.beginPath(); ctx.moveTo(padL, Y(i)); ctx.lineTo(padL + pw, Y(i)); ctx.stroke(); ctx.textAlign = "right"; ctx.fillText(String(+(i * 1000).toFixed(3)), padL - 8, Y(i)); }
     ctx.fillStyle = "#8fa6c2"; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "center";
     ctx.fillText("Plate voltage Va (V)", padL + pw / 2, H - 10);
     ctx.save(); ctx.translate(16, padT + ph / 2); ctx.rotate(-Math.PI / 2); ctx.fillText("Plate current Ia (mA)", 0, 0); ctx.restore();
@@ -239,16 +245,16 @@
     if (S.opts.pa) {
       ctx.beginPath();
       let first = true;
-      for (let px = 0; px <= pw; px += 2) { const va = Math.max(px / pw * vaMax, 1); const ia = t.paMax / va; const y = Y(Math.min(ia, iaMax * 2)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
+      for (let px = 0; px <= pw; px += 2) { const va = Math.max(vaAt(px), 1); const ia = t.paMax / va; const y = Y(Math.min(ia, iaCap)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
       ctx.lineTo(padL + pw, padT); ctx.lineTo(padL, padT); ctx.closePath();
       ctx.fillStyle = "rgba(255,51,68,0.07)"; ctx.fill();
       ctx.beginPath(); first = true;
-      for (let px = 0; px <= pw; px += 2) { const va = Math.max(px / pw * vaMax, 1); const y = Y(Math.min(t.paMax / va, iaMax * 2)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
+      for (let px = 0; px <= pw; px += 2) { const va = Math.max(vaAt(px), 1); const y = Y(Math.min(t.paMax / va, iaCap)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
       ctx.strokeStyle = "#ff3344"; ctx.lineWidth = 1.8; ctx.stroke();
     }
     if (S.opts.pa70) {
       ctx.beginPath(); let first = true;
-      for (let px = 0; px <= pw; px += 2) { const va = Math.max(px / pw * vaMax, 1); const y = Y(Math.min(0.7 * t.paMax / va, iaMax * 2)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
+      for (let px = 0; px <= pw; px += 2) { const va = Math.max(vaAt(px), 1); const y = Y(Math.min(0.7 * t.paMax / va, iaCap)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
       ctx.strokeStyle = "rgba(255,179,0,0.7)"; ctx.setLineDash([5, 5]); ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
     }
 
@@ -259,8 +265,8 @@
     for (let vg = 0, k = 0; vg >= cutoff * 1.05 && k < 16; vg -= gStep, k++) {
       ctx.beginPath(); let first = true, lastY = null;
       for (let px = 0; px <= pw; px += 2) {
-        const va = px / pw * vaMax, ia = iaOf(d, va, vg);
-        const y = Y(ia); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; lastY = y;
+        const va = vaAt(px), ia = iaOf(d, va, vg);
+        const y = Y(Math.max(i0 - (i1 - i0), Math.min(ia, iaCap))); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; lastY = y;
       }
       ctx.strokeStyle = "rgba(41,182,246,0.85)"; ctx.lineWidth = 1.3; ctx.stroke();
       if (lastY > padT + 8 && lastY < padT + ph - 4) labels.push([vg, lastY]);
@@ -269,7 +275,7 @@
     if (ct && S.opts.bias) {
       const vg = ct.dc.vgk;
       ctx.beginPath(); let first = true;
-      for (let px = 0; px <= pw; px += 2) { const va = px / pw * vaMax; const y = Y(iaOf(d, va, vg)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
+      for (let px = 0; px <= pw; px += 2) { const va = vaAt(px); const y = Y(Math.min(iaOf(d, va, vg), iaCap)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
       ctx.strokeStyle = "#3fb950"; ctx.setLineDash([3, 3]); ctx.lineWidth = 1.6; ctx.stroke(); ctx.setLineDash([]);
     }
     // fitted model + measured points
@@ -278,7 +284,7 @@
       const vgs = [...new Set(S.fit.points.map(p => p.vg))];
       vgs.forEach(vg => {
         ctx.beginPath(); let first = true;
-        for (let px = 0; px <= pw; px += 3) { const va = px / pw * vaMax; const y = Y(iaOf(fd, va, vg)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
+        for (let px = 0; px <= pw; px += 3) { const va = vaAt(px); const y = Y(Math.min(iaOf(fd, va, vg), iaCap)); first ? ctx.moveTo(padL + px, y) : ctx.lineTo(padL + px, y); first = false; }
         ctx.strokeStyle = "rgba(186,104,200,0.9)"; ctx.setLineDash([6, 4]); ctx.lineWidth = 1.3; ctx.stroke(); ctx.setLineDash([]);
       });
       ctx.fillStyle = "#b9f6ca";
@@ -314,7 +320,7 @@
     // hover crosshair
     if (S.hover) {
       const { va, ia } = S.hover;
-      if (va >= 0 && va <= vaMax && ia >= 0 && ia <= iaMax) {
+      if (va >= v0 && va <= v1 && ia >= i0 && ia <= i1) {
         ctx.strokeStyle = "rgba(230,237,243,0.25)"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(X(va), padT); ctx.lineTo(X(va), padT + ph); ctx.moveTo(padL, Y(ia)); ctx.lineTo(padL + pw, Y(ia)); ctx.stroke();
         const r = describePoint(S.hover);
@@ -331,7 +337,7 @@
     if (pts.length === 2 && pts[0] && pts[1] && Math.abs(pts[1].va - pts[0].va) > 1e-9) {
       const k = (pts[1].ia - pts[0].ia) / (pts[1].va - pts[0].va), iaAt = va => pts[0].ia + k * (va - pts[0].va);
       ctx.save(); ctx.beginPath(); ctx.rect(padL, padT, pw, ph); ctx.clip();
-      ctx.beginPath(); ctx.moveTo(X(0), Y(iaAt(0))); ctx.lineTo(X(vaMax), Y(iaAt(vaMax)));
+      ctx.beginPath(); ctx.moveTo(X(v0), Y(iaAt(v0))); ctx.lineTo(X(v1), Y(iaAt(v1)));
       ctx.strokeStyle = "rgba(255,138,216,0.8)"; ctx.setLineDash([7, 4]); ctx.lineWidth = 1.4; ctx.stroke(); ctx.setLineDash([]);
       ctx.restore();
     }
@@ -397,7 +403,7 @@
       for (let k = 0; k < tr.vak.length; k++) { const dd = Math.hypot(g.X(tr.vak[k]) - x, g.Y(tr.ia[k]) - y); if (dd < bd) { bd = dd; best = k; } }
       if (best >= 0) return { traj: best };
     }
-    const va = Math.max(0, Math.min(g.vaMax, (x - g.padL) / g.pw * g.vaMax)), ia = Math.max(0, Math.min(g.iaMax, (g.padT + g.ph - y) / g.ph * g.iaMax));
+    const va = Math.max(g.v0, Math.min(g.v1, g.v0 + (x - g.padL) / g.pw * (g.v1 - g.v0))), ia = Math.max(g.i0, Math.min(g.i1, g.i0 + (g.padT + g.ph - y) / g.ph * (g.i1 - g.i0)));
     return { va, ia };
   }
   /** Everything worth knowing about a point on the curves. */
@@ -424,11 +430,45 @@
       } else if (Math.abs(dIa) > 1e-12) line += ` · slope ${fmtEng(dVa / dIa, "Ω", 2)}`;
       h += line + "</span>";
     }
-    if (!h) h = `<span class="hint">Click the plot to pick point A, then B: Vg, gm, rp and µ there, and the load line through both. Points snap to the operating point and the simulated load line. Drag to move, double-click to remove.</span>`;
+    if (!h) h = `<span class="hint">Click the plot to pick point A, then B: Vg, gm, rp and µ there, and the load line through both. Points snap to the operating point and the simulated load line. Drag to move, double-click to remove. Mouse wheel zooms, Ctrl+wheel zooms the current axis only, right-drag or Shift+drag pans.</span>`;
     else h += `<button class="btn" id="picks-clear" title="Remove the points (Esc)">Clear points</button>`;
     $("picks").innerHTML = h;
     const b = $("picks-clear"); if (b) b.onclick = () => pick.clear();
   }
+  // ---------------------------------------------------------------------------
+  // Zoom: mouse wheel at the pointer, Ctrl+wheel for the current axis only,
+  // right-drag or Shift+drag to pan; never beyond the full plot
+  // ---------------------------------------------------------------------------
+  function clampZoom(z, vaMax, iaMax) {
+    if (!z) return null;
+    const fit = (a, b, full) => {
+      let w = Math.min(b - a, full); a = Math.max(0, Math.min(full - w, a));
+      return [a, a + w];
+    };
+    const [v0, v1] = fit(z.v0, z.v1, vaMax), [i0, i1] = fit(z.i0, z.i1, iaMax);
+    return v1 - v0 >= vaMax * 0.999 && i1 - i0 >= iaMax * 0.999 ? null : { v0, v1, i0, i1 };
+  }
+  function initZoom() {
+    const cv = $("plot");
+    const view = () => { const g = geom(); return { g, z: { v0: g.v0, v1: g.v1, i0: g.i0, i1: g.i1 } }; };
+    PlotZoom(cv, {
+      inside: (x, y) => { const g = geom(); return g && x >= g.padL && x <= g.padL + g.pw && y >= g.padT && y <= g.padT + g.ph; },
+      zoom: (x, y, k, vertical) => {
+        const { g, z } = view();
+        const va = g.v0 + (x - g.padL) / g.pw * (g.v1 - g.v0), ia = g.i0 + (g.padT + g.ph - y) / g.ph * (g.i1 - g.i0);
+        const kv = vertical ? 1 : Math.max(k, g.vaMax / 1000 / (g.v1 - g.v0)), ki = Math.max(k, g.iaMax / 1000 / (g.i1 - g.i0));
+        S.zoom = { v0: va - (va - z.v0) * kv, v1: va + (z.v1 - va) * kv, i0: ia - (ia - z.i0) * ki, i1: ia + (z.i1 - ia) * ki };
+        drawPlot();
+      },
+      pan: (dx, dy) => {
+        const { g, z } = view(), dv = -dx / g.pw * (g.v1 - g.v0), di = dy / g.ph * (g.i1 - g.i0);
+        S.zoom = { v0: z.v0 + dv, v1: z.v1 + dv, i0: z.i0 + di, i1: z.i1 + di };
+        drawPlot();
+      }
+    });
+    $("btn-zoom-reset").addEventListener("click", () => { S.zoom = null; drawPlot(); });
+  }
+
   let pick = null;
   function initPicker() {
     pick = MarkerPicker($("plot"), {
@@ -446,7 +486,7 @@
   let pickKey = null;
   function syncPickKey() {
     const v = S.view || {}, key = v.source === "circuit" ? "c:" + v.id : "l:" + v.name;
-    if (key !== pickKey) { pickKey = key; if (pick) pick.reset(); }
+    if (key !== pickKey) { pickKey = key; S.zoom = null; if (pick) pick.reset(); }
   }
 
   // ---------------------------------------------------------------------------
@@ -586,6 +626,7 @@
     }));
     ["traj", "pa", "pa70", "bias"].forEach(k => { const el = $("opt-" + k); el.checked = S.opts[k]; el.addEventListener("change", () => { S.opts[k] = el.checked; drawPlot(); }); });
     initPicker();
+    initZoom();
     window.addEventListener("resize", drawPlot);
     // the plot also changes size when the legend below it wraps to another line: redraw,
     // so clicks map onto the plot as it is shown
@@ -610,6 +651,6 @@
   }
 
   window.TubeTracer = { state: S, renderAll, fitKoren, current, vgFor,
-    toScreen: (va, ia) => { const g = geom(); return g && { x: g.X(va), y: g.Y(ia) }; }, iaOf: (va, vg) => iaOf(current(), va, vg), picks: () => pick.list.map(m => { const p = pointOf(m); return p && { ...m, ...describePoint(p) }; }) };
+    toScreen: (va, ia) => { const g = geom(); return g && { x: g.X(va), y: g.Y(ia) }; }, view: () => { const g = geom(); return g && { v0: g.v0, v1: g.v1, i0: g.i0, i1: g.i1, vaMax: g.vaMax, iaMax: g.iaMax }; }, iaOf: (va, vg) => iaOf(current(), va, vg), picks: () => pick.list.map(m => { const p = pointOf(m); return p && { ...m, ...describePoint(p) }; }) };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

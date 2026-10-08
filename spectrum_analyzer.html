@@ -83,7 +83,7 @@
   (function () {
     "use strict";
     const I = Instrument, $ = id => document.getElementById(id);
-    const S = { src: "ch1", span: "auto", units: "dbc", scale: 10 };
+    const S = { src: "ch1", span: "auto", units: "dbc", scale: 10, zoom: null };   // zoom: { fa, fb, top, bottom } visible part, null = all
     const params = new URLSearchParams(location.search);
     if (params.get("ch") === "ch2") S.src = "ch2";
     $("src").value = S.src;
@@ -116,9 +116,6 @@
       const st = I.status(); $("status").className = "status " + st.cls; $("status").textContent = st.text;
       ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
       const padL = 52, padR = 16, padT = 24, padB = 30, gw = W - padL - padR, gh = H - padT - padB;
-      ctx.strokeStyle = "rgba(0,180,216,0.16)"; ctx.lineWidth = 1;
-      for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(padL + i * gw / 10, padT); ctx.lineTo(padL + i * gw / 10, padT + gh); ctx.stroke(); }
-      for (let j = 0; j <= 10; j++) { ctx.beginPath(); ctx.moveTo(padL, padT + j * gh / 10); ctx.lineTo(padL + gw, padT + j * gh / 10); ctx.stroke(); }
       ctx.font = "11px ui-monospace, Menlo, monospace";
 
       const sc = I.scope(), a = sc && sc[S.src];
@@ -139,15 +136,33 @@
       const f0 = fund.f;
       const refDb = S.units === "dbc" ? 20 * Math.log10(Math.max(fund.vpk, 1e-15)) : 20 * Math.log10(Math.SQRT1_2);
       const db = v => 20 * Math.log10(Math.max(v, 1e-15)) - refDb;            // dBc, or dBV (vpk -> rms)
-      const top = S.units === "dbc" ? 0 : Math.ceil(db(fund.vpk) / 10) * 10, bottom = top - S.scale * 10;
-      const X = f => padL + f / span * gw, Y = d => padT + (top - d) / (top - bottom) * gh;
-      ctx.fillStyle = "#6a82a0"; ctx.textAlign = "right";
-      for (let j = 0; j <= 10; j++) ctx.fillText(String(top - j * S.scale), padL - 6, padT + j * gh / 10 + 4);
-      ctx.textAlign = "center";
-      if (S.span === "auto" && f0 > 0) { for (let k = 0; k * f0 <= span; k += 2) ctx.fillText(I.fmt(k * f0, "Hz"), padL + k * f0 / span * gw, padT + gh + 16); }
-      else for (let i = 0; i <= 10; i += 2) ctx.fillText(I.fmt(span * i / 10, "Hz"), padL + i * gw / 10, padT + gh + 16);
+      const fullTop = S.units === "dbc" ? 0 : Math.ceil(db(fund.vpk) / 10) * 10, fullBottom = fullTop - S.scale * 10;
+      // the visible window: the whole span and range, or the zoomed part of it
+      const z = clampZoom(S.zoom, span, fullTop, fullBottom); S.zoom = z;
+      const fa = z ? z.fa : 0, fb = z ? z.fb : span, top = z ? z.top : fullTop, bottom = z ? z.bottom : fullBottom;
+      const X = f => padL + (f - fa) / (fb - fa) * gw, Y = d => padT + (top - d) / (top - bottom) * gh;
+      ctx.strokeStyle = "rgba(0,180,216,0.16)"; ctx.lineWidth = 1;
+      const vline = x => { ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gh); ctx.stroke(); };
+      const hline = y => { ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + gw, y); ctx.stroke(); };
+      ctx.fillStyle = "#6a82a0";
+      if (!z) {
+        for (let i = 0; i <= 10; i++) vline(padL + i * gw / 10);
+        for (let j = 0; j <= 10; j++) hline(padT + j * gh / 10);
+        ctx.textAlign = "right";
+        for (let j = 0; j <= 10; j++) ctx.fillText(String(top - j * S.scale), padL - 6, padT + j * gh / 10 + 4);
+        ctx.textAlign = "center";
+        if (S.span === "auto" && f0 > 0) { for (let k = 0; k * f0 <= span; k += 2) ctx.fillText(I.fmt(k * f0, "Hz"), X(k * f0), padT + gh + 16); }
+        else for (let i = 0; i <= 10; i += 2) ctx.fillText(I.fmt(span * i / 10, "Hz"), padL + i * gw / 10, padT + gh + 16);
+      } else {
+        // zoomed: grid on round values of the visible window
+        const fs = I.niceStep((fb - fa) / 10), ds = I.niceStep((top - bottom) / 10);
+        ctx.textAlign = "center";
+        for (let k = Math.ceil(fa / fs - 1e-9); k * fs <= fb + 1e-9; k++) { vline(X(k * fs)); if (k % 2 === 0) ctx.fillText(I.fmt(k * fs, "Hz"), X(k * fs), padT + gh + 16); }
+        ctx.textAlign = "right";
+        for (let k = Math.ceil(bottom / ds - 1e-9); k * ds <= top + 1e-9; k++) { hline(Y(k * ds)); ctx.fillText(String(+(k * ds).toFixed(2)), padL - 6, Y(k * ds) + 4); }
+      }
       ctx.textAlign = "left"; ctx.fillStyle = "#c9d6e3";
-      ctx.fillText(`${S.units === "dbc" ? "dBc" : "dBV"} · ${S.scale} dB/div · resolution ${I.fmt(sp.df, "Hz")}`, padL, 14);
+      ctx.fillText(`${S.units === "dbc" ? "dBc" : "dBV"} · ${z ? `zoomed: ${I.fmt(fa, "Hz")} – ${I.fmt(fb, "Hz")}, ${+(top - bottom).toFixed(1)} dB` : S.scale + " dB/div"} · resolution ${I.fmt(sp.df, "Hz")}`, padL, 14);
       // stems
       ctx.save(); ctx.beginPath(); ctx.rect(padL, padT, gw, gh); ctx.clip();
       const harmonicOf = l => f0 > 0 && Math.abs(l.f / f0 - Math.round(l.f / f0)) < 1e-6 ? Math.round(l.f / f0) : 0;
@@ -160,7 +175,7 @@
         if (h >= 1 && h <= 10) { ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = "center"; ctx.fillText(h === 1 ? "F" : "H" + h, X(l.f), Math.max(padT + 10, Y(d) - 6)); }
       });
       ctx.restore(); ctx.textAlign = "left";
-      G = { X, Y, padL, padT, gw, gh, span, bottom, lines: sp.lines, db, fund, harmonicOf, dbUnit: S.units === "dbc" ? "dBc" : "dBV" };
+      G = { X, Y, padL, padT, gw, gh, span, fa, fb, top, bottom, fullTop, fullBottom, lines: sp.lines, db, fund, harmonicOf, dbUnit: S.units === "dbc" ? "dBc" : "dBV" };
       if (hover) {
         const x = X(hover.f), r = reading(hover);
         ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gh); ctx.stroke(); ctx.setLineDash([]);
@@ -203,7 +218,7 @@
       return { f: best.f };
     }
     function markerPos(m) {
-      const l = lineAt(m.f); if (!l || l.f > G.span) return null;
+      const l = lineAt(m.f); if (!l || l.f < G.fa - 1e-9 || l.f > G.fb + 1e-9) return null;
       return { x: G.X(l.f), y: Math.max(G.padT, stemTop(l)) };
     }
     function reading(m) {
@@ -219,14 +234,45 @@
       rs.forEach((r, i) => { if (r) h += `<span>${MarkerPicker.LETTERS[i]} ${describe(r)}</span>`; });
       if (rs.length === 2 && rs[0] && rs[1]) h += `<span>B−A: <b>${I.fmt(rs[1].f - rs[0].f, "Hz")}</b>, <b>${(rs[1].level - rs[0].level).toFixed(1)} dB</b></span>`;
       if (!h && G) h = `<span class="hint">Click a spectral line to place marker A, then B, to read its frequency and level. Drag to move, double-click to remove.</span>`;
+      if (!pick.list.length && G) h += `<span class="hint">Mouse wheel zooms the frequency axis, Ctrl+wheel the level axis; Shift+wheel or right-drag moves.</span>`;
       if (pick.list.length) h += `<button class="btn" id="marks-clear" title="Remove the markers (Esc)">Clear markers</button>`;
+      if (S.zoom) h += `<button class="btn" id="zoom-reset" title="Show the whole span again"${pick.list.length ? ' style="margin-left:0"' : ""}>Reset zoom</button>`;
       el.innerHTML = h;
       const b = $("marks-clear"); if (b) b.onclick = () => pick.clear();
+      const zr = $("zoom-reset"); if (zr) zr.onclick = () => { S.zoom = null; draw(); };
     }
     const pick = MarkerPicker($("screen"), { snap, pos: markerPos, hover: m => { hover = m; draw(); }, change: () => draw() });
 
+    // --- zoom: wheel = frequency axis at the pointer, Ctrl+wheel = level axis, right-drag moves --
+    function clampZoom(z, span, top, bottom) {
+      if (!z) return null;
+      const fw = Math.min(z.fb - z.fa, span), fa = Math.max(0, Math.min(span - fw, z.fa));
+      const dw = Math.min(z.top - z.bottom, top - bottom), t = Math.min(top, Math.max(bottom + dw, z.top));
+      return fw >= span * 0.999 && dw >= (top - bottom) * 0.999 ? null : { fa, fb: fa + fw, top: t, bottom: t - dw };
+    }
+    const win = () => ({ fa: G.fa, fb: G.fb, top: G.top, bottom: G.bottom });
+    PlotZoom($("screen"), {
+      inside: (x, y) => !!G && x >= G.padL && x <= G.padL + G.gw && y >= G.padT && y <= G.padT + G.gh,
+      zoom: (x, y, k, vertical) => {
+        const z = win();
+        if (vertical) {
+          const d = z.top - (y - G.padT) / G.gh * (z.top - z.bottom), kk = Math.max(k, 1 / (z.top - z.bottom));   // down to 1 dB in view
+          S.zoom = { ...z, top: d + (z.top - d) * kk, bottom: d - (d - z.bottom) * kk };
+        } else {
+          const f = z.fa + (x - G.padL) / G.gw * (z.fb - z.fa), kk = Math.max(k, G.span / 2000 / (z.fb - z.fa));
+          S.zoom = { ...z, fa: f - (f - z.fa) * kk, fb: f + (z.fb - f) * kk };
+        }
+        draw();
+      },
+      pan: (dx, dy) => {
+        const z = win(), df = -dx / G.gw * (z.fb - z.fa), dd = dy / G.gh * (z.top - z.bottom);
+        S.zoom = { fa: z.fa + df, fb: z.fb + df, top: z.top + dd, bottom: z.bottom + dd };
+        draw();
+      }
+    });
+
     const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
-    bindSel("src", v => S.src = v); bindSel("span", v => S.span = v); bindSel("units", v => S.units = v); bindSel("scale", v => S.scale = parseFloat(v));
+    bindSel("src", v => S.src = v); bindSel("span", v => { S.span = v; S.zoom = null; }); bindSel("units", v => { S.units = v; S.zoom = null; }); bindSel("scale", v => { S.scale = parseFloat(v); S.zoom = null; });
     $("btn-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
     I.bindScopeSelect($("scope-select"));
     I.onUpdate(draw);

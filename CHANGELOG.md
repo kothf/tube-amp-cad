@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.21.0] - 2026-10-08
+
+### Added
+- Mouse zoom on the curve tracer: the wheel zooms the plate curves in and out
+  at the pointer, Ctrl+wheel zooms the current axis only, and right-drag or
+  Shift+drag pans. Grid, curves, Pa max lines and picked points follow the
+  zoom; **Reset zoom** shows the whole plot again.
+- Mouse zoom on the oscilloscope in steady state: the wheel steps Time/div and
+  keeps the point under the pointer in place (the trigger point moves, shown as
+  "Pos" in the readout). Ctrl+wheel steps Volts/div of the displayed channels,
+  and Shift+wheel or right-drag moves along the time axis. Autoset resets the
+  view. The power-on view also gets Ctrl+wheel and right-drag.
+- Mouse zoom on the spectrum analyzer: the wheel zooms the frequency axis at
+  the pointer, Ctrl+wheel the level axis, and Shift+wheel or right-drag moves.
+  The grid follows round values of the zoomed window; **Reset zoom** (or a new
+  span, unit or scale) shows the whole span.
+
 ## [3.20.1] - 2026-10-08
 
 ### Fixed
