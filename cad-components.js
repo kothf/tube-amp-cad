@@ -616,6 +616,36 @@
         if ((c.params.connection || kind) === "pentode") return [{ id: "A", x: 0, y: -50, name: "anode" }, { id: "G1", x: -50, y: 0, name: "control grid" }, { id: "G2", x: 50, y: -10, name: "screen grid" }, { id: "K", x: 0, y: 50, name: "cathode" }];
         return [{ id: "A", x: 0, y: -50, name: "anode" }, { id: "G", x: -50, y: 0, name: "grid" }, { id: "K", x: 0, y: 50, name: "cathode" }];
       },
+      // Pin numbers per symbol terminal, from the tube's pinout: { A, G, G1, G2, K, A1, A2, H }.
+      // A dual tube's section comes from the designation suffix (VL1.2 → section 2).
+      pinNumbers: c => {
+        const t = tubeByName(c.params.tube);
+        if (!t || !t.pinout || !t.pinout.length) return {};
+        const kind = tubeKind(t), po = t.pinout, has = s => po.some(p => p.sym === s);
+        const sec = (/\.(\d+)$/.exec(c.label || "") || [])[1] === "2" ? 2 : 1, q = sec === 2 ? "\"" : "'";
+        const tp = has("AT") ? (/-P$/.test(t.commonName) ? "P" : "T") : null;
+        const twin = kind !== "rectifier" && !tp && has("A1") && has("A2");
+        const pick = cands => { for (const s of cands) { const n = po.filter(p => p.sym === s).map(p => p.pin); if (n.length) return n; } return []; };
+        const filament = po.filter(p => p.isHeater && /^(F|K_H)/.test(p.sym)).map(p => p.pin);
+        const heater = po.filter(p => p.isHeater).map(p => p.pin);
+        const cap = /top cap/.test(t.socket) ? ["cap"] : [];
+        const out = {};
+        let k = pick(tp ? ["K" + tp] : twin ? ["K" + sec, "K", "K_H"] : ["K", "K_H"]);
+        if (!k.length) k = filament.length ? filament : heater;
+        if (kind === "rectifier") {
+          out.A1 = pick(["A1", "A"]); if (!out.A1.length) out.A1 = cap;
+          out.A2 = pick(["A2"]);
+        } else {
+          out.A = pick(tp ? ["A" + tp] : twin ? ["A" + sec] : ["A"]); if (!out.A.length) out.A = cap;
+          out.G = pick(tp === "T" ? ["GT"] : twin ? ["G" + sec, "G1" + q] : ["G", "G1"]);
+          out.G1 = pick(["G1" + q, "G1"]);
+          out.G2 = pick(["G2" + q, "G2"]);
+        }
+        out.K = k;
+        if (heater.some(p => !k.includes(p))) out.H = heater;
+        for (const key in out) out[key] = out[key].join(",");
+        return out;
+      },
       value: c => c.params.tube + (tubeKind(tubeByName(c.params.tube)) === "pentode" && c.params.connection === "triode" ? " (triode)" : ""),
       fields: [
         { key: "tube", label: "Tube type", kind: "tube" },
