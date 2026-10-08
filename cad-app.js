@@ -313,11 +313,21 @@
     else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, RUN_OPTIONS[mode]) }), 0);
   }
   // the busy text of the running steady-state simulation, with its readiness in percent
-  function simBusy(text) { S.sim.busyText = text; S.sim.progress = 0; setStatus("busy", text, 0); }
+  function simBusy(text) { S.sim.busyText = text; S.sim.progress = 0; setStatus("busy", text, 0); updatePct(); }
   function onSimProgress({ seq, progress }) {
     if (seq !== S.sim.seq || !S.sim.busy) return;
     S.sim.progress = progress;
     setStatus("busy", `${S.sim.busyText.replace(/…$/, "")}: ${Math.floor(progress * 100)} %`, progress);
+    updatePct();
+  }
+  // the inspector's Operating point and Checks headings carry the readiness while a run is
+  // going: the values and warnings under them come from an unfinished simulation
+  const simPct = () => S.sim.busy
+    ? ` <span class="sim-pct" title="Simulation still running: these values and checks may still change">${Math.floor((S.sim.progress || 0) * 100)} %</span>` : "";
+  function updatePct() {
+    const els = document.querySelectorAll("#inspector .sim-pct");
+    if (!els.length) { if (S.sim.busy) updateInspector(true); return; }
+    els.forEach(e => { e.textContent = Math.floor((S.sim.progress || 0) * 100) + " %"; });
   }
   function onSimResult({ seq, result }) {
     if (seq !== S.sim.seq) return;   // a cancelled run
@@ -1372,8 +1382,8 @@
 
   function liveReadout(c) {
     const r = S.sim.result;
-    if (!r) return `<div class="insp-sub">Operating point</div><p class="insp-help">${S.sim.error || "Not simulated yet."}</p>`;
-    let h = `<div class="insp-sub">Operating point</div>`;
+    if (!r) return `<div class="insp-sub">Operating point${simPct()}</div><p class="insp-help">${S.sim.error || (S.sim.busy ? "Simulating…" : "Not simulated yet.")}</p>`;
+    let h = `<div class="insp-sub">Operating point${simPct()}</div>`;
     const vAcross = (a, b) => { const na = pinNetOf(c, a), nb = pinNetOf(c, b); const va = netDC(na), vb = netDC(nb); return va === null || vb === null ? null : va - vb; };
     const pAvg = (a, b, R) => { const wa = waveOf(c, a), wb = waveOf(c, b); if (!wa || !wb) { const v = vAcross(a, b); return v === null ? null : v * v / R; } let s = 0; for (let i = 0; i < wa.length; i++) { const v = wa[i] - wb[i]; s += v * v; } return s / wa.length / R; };
     switch (c.type) {
@@ -1492,7 +1502,7 @@
     S.comps.forEach(c => { if (c.type !== "opt_cat") return; const i = otDcCurrent(c), m = CadLib.OUTPUT_TX[c.params.model]; if (i !== null && m && i * 1000 > m.ma) issues.push(`${c.label} (${m.name}) carries ${(i * 1000).toFixed(0)} mA DC, more than its ${m.ma} mA rating.`); });
     S.comps.forEach(c => { if (c.type !== "resistor" || !+c.params.w) return; const p = resistorPower(c); if (p !== null && p > +c.params.w) issues.push(`${c.label} dissipates ${fmtEng(p, "W", 2)}, more than its ${+c.params.w} W rating.`); });
     S.comps.forEach(c => { if (c.type !== "tube") return; const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier" && d.dc.vak * d.dc.ia > d.paMax) issues.push(`${c.label} over dissipation (${(d.dc.vak * d.dc.ia).toFixed(1)} W > ${d.paMax} W).`); });
-    h += `<div class="insp-sub">Checks</div>` + (issues.length ? issues.map(i => `<p class="insp-help warn">⚠ ${i}</p>`).join("") : `<p class="insp-help ok">✓ No problems found.</p>`);
+    h += `<div class="insp-sub">Checks${simPct()}</div>` + (issues.length ? issues.map(i => `<p class="insp-help warn">⚠ ${i}</p>`).join("") : `<p class="insp-help ok">✓ No problems found.</p>`);
     return h;
   }
 
