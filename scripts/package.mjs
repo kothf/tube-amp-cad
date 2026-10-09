@@ -22,7 +22,7 @@ const version = (process.argv[2] || pkg.version).replace(/^v/, "");
 if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) throw new Error(`Not a semver version: ${version}`);
 
 // Everything the app needs at runtime; nothing else ships.
-const RUNTIME = ["index.html", "circuit_sandbox.html", "oscilloscope.html", "spectrum_analyzer.html", "tube-db.js", "sim-engine.js", "sim-worker.js", "cad-components.js", "cad-app.js", "tracer-app.js", "instrument-common.js", "scope-math.js", "markers.js", "windows.js", "pdf-export.js", "LICENSE"];
+const RUNTIME = ["index.html", "circuit_sandbox.html", "oscilloscope.html", "spectrum_analyzer.html", "tube-db.js", "sim-engine.js", "sim-worker.js", "cad-components.js", "cad-app.js", "tracer-app.js", "instrument-common.js", "scope-math.js", "markers.js", "windows.js", "pdf-export.js", "bom.js", "LICENSE"];
 
 const dist = join(root, "dist");
 const out = join(dist, "tube-amp-cad");

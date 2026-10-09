@@ -882,6 +882,7 @@
     else if (k === "w" || k === "W") setTool(S.tool === "wire" ? "select" : "wire");
     else if (k === "v" && !ctrl) setTool("select");
     else if (k === "f" || k === "F") fitCurrent();
+    else if ((k === "b" || k === "B") && !ctrl) toggleBom();
     else if (ctrl && k === "Enter") { runSim("full"); e.preventDefault(); }
     else if (ctrl && (k === "s" || k === "S")) { e.shiftKey ? saveFileAs() : saveFile(); e.preventDefault(); }
     else if (ctrl && (k === "o" || k === "O")) { openDialog(); e.preventDefault(); }
@@ -1290,6 +1291,7 @@
     }
     const live = document.getElementById("insp-live");
     if (live) live.innerHTML = c ? liveReadout(c) : circuitReadout();
+    renderBom();
   }
 
   function buildCompInspector(host, c) {
@@ -1370,6 +1372,7 @@
       b2.addEventListener("click", () => ToolWindows.open("spectrum_analyzer.html", { scope: c.id }));
       host.appendChild(b2);
     }
+    if (!def.noLabel) host.appendChild(row("Part number (BOM)", input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); })));
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
     host.appendChild(live);
     const act = document.createElement("div"); act.className = "insp-actions";
@@ -1643,6 +1646,104 @@
       S.comps.forEach(c => { if (c.type !== "frame" && onComp(c)) drawComp(c, false, false); });
     } finally { ctx = keep; S.printing = false; }
   }
+  // ---------------------------------------------------------------------------
+  // Bill of materials: a panel under the schematic (B), exported as TXT, CSV, XLSX or PDF
+  // ---------------------------------------------------------------------------
+  const BOM_KEY = "tubecad_bom";
+  const bomOpts = { open: false, sockets: true, bench: false, height: 0 };
+  try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
+  const saveBomOpts = () => { try { localStorage.setItem(BOM_KEY, JSON.stringify(bomOpts)); } catch (e) {} };
+  let bomStale = false;
+  // simulated worst case of a part: resistor dissipation (against its rating), capacitor peak voltage
+  function partStress(c) {
+    if (!S.sim.result) return null;
+    if (c.type === "resistor") {
+      const p = resistorPower(c);
+      return p === null ? null : { v: p, text: fmtEng(p, "W"), warn: +c.params.w > 0 && p > +c.params.w };
+    }
+    if (c.type === "capacitor" || c.type === "electrolytic") {
+      const [a, b] = c.type === "capacitor" ? ["1", "2"] : ["+", "-"], wa = waveOf(c, a), wb = waveOf(c, b);
+      const va = netDC(pinNetOf(c, a)), vb = netDC(pinNetOf(c, b));
+      let v = null;
+      if (wa && wb) { v = 0; for (let i = 0; i < wa.length; i++) v = Math.max(v, Math.abs(wa[i] - wb[i])); }
+      else if (va !== null && vb !== null) v = Math.abs(va - vb);
+      if (v === null) return null;
+      const reversed = c.type === "electrolytic" && va !== null && vb !== null && va - vb < -1;
+      return { v, text: fmtEng(v, "V"), warn: reversed, note: "reversed" };
+    }
+    return null;
+  }
+  function bomData() {
+    const f = frames()[0], p = f ? f.params : {};
+    return { rows: BomLib.build(S.comps, { sockets: bomOpts.sockets, bench: bomOpts.bench, stress: partStress }),
+      title: p.title || "", docno: p.docno || "", rev: p.rev || "", date: p.date || new Date().toISOString().slice(0, 10) };
+  }
+  const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  function renderBom() {
+    const host = document.getElementById("bom");
+    if (!host || host.hidden) return;
+    // don't rebuild under a part number being typed; catch up when it loses focus
+    const a = document.activeElement;
+    if (a && a.tagName === "INPUT" && host.contains(a) && a.closest("#bom-table")) { bomStale = true; return; }
+    bomStale = false;
+    const bom = bomData(), table = document.getElementById("bom-table");
+    const parts = bom.rows.reduce((n, r) => n + r.qty, 0);
+    document.getElementById("bom-count").textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (S.sim.result ? "" : " · simulate for the Sim. max column") : "";
+    if (!bom.rows.length) { table.innerHTML = `<tbody><tr><td class="bom-empty">No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.</td></tr></tbody>`; return; }
+    const tip = { sim: "Simulated worst case: resistor dissipation, capacitor peak voltage", partno: "Your order or manufacturer number; saved with the circuit" };
+    table.innerHTML = `<thead><tr>${BomLib.COLUMNS.map(c => `<th${tip[c.key] ? ` title="${tip[c.key]}"` : ""}>${c.title}</th>`).join("")}</tr></thead><tbody>` +
+      bom.rows.map((r, i) => `<tr data-i="${i}"${r.ids.some(id => S.sel.comps.has(id)) ? ' class="sel"' : ""}>
+        <td class="n">${r.item}</td><td class="n">${r.qty}</td><td class="mono">${esc(r.refs)}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.value)}</td>
+        <td>${esc(r.rating)}</td><td class="mono${r.warn ? " warn" : ""}">${esc(r.sim)}</td>
+        <td>${r.socket ? "" : `<input type="text" value="${esc(r.partno)}" spellcheck="false" aria-label="Part number for ${esc(r.refs)}">`}</td></tr>`).join("") + "</tbody>";
+    table.querySelectorAll("tbody tr").forEach(tr => {
+      const r = bom.rows[+tr.dataset.i];
+      tr.addEventListener("click", e => {
+        if (e.target.tagName === "INPUT") return;
+        // select the line's parts on the sheet (a socket line selects its tubes)
+        const ids = r.socket ? S.comps.filter(c => c.type === "tube" && r.refList.includes(String(c.label || "").replace(/\.\d+$/, ""))).map(c => c.id) : r.ids;
+        S.sel.comps = new Set(ids); S.sel.wires.clear(); updateInspector(); render();
+      });
+      const inp = tr.querySelector("input");
+      if (inp) {
+        inp.addEventListener("change", () => { const v = inp.value.trim(); S.comps.forEach(c => { if (r.ids.includes(c.id)) c.params.partno = v; }); bomStale = false; inp.blur(); commit(); });
+        inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); else if (e.key === "Escape") { inp.value = r.partno; inp.blur(); } });
+        inp.addEventListener("blur", () => { if (bomStale) setTimeout(renderBom, 0); });
+      }
+    });
+  }
+  function toggleBom(on) {
+    const host = document.getElementById("bom");
+    bomOpts.open = on === undefined ? host.hidden : !!on; saveBomOpts();
+    host.hidden = !bomOpts.open;
+    document.getElementById("btn-bom").classList.toggle("active", bomOpts.open);
+    renderBom(); render();
+  }
+  function exportBom(fmt) {
+    const bom = bomData(), name = baseName() + "-BOM." + fmt;
+    const [data, type] = fmt === "txt" ? [BomLib.toTxt(bom), "text/plain;charset=utf-8"] : fmt === "csv" ? [BomLib.toCsv(bom), "text/csv;charset=utf-8"]
+      : fmt === "xlsx" ? [BomLib.toXlsx(bom), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] : [BomLib.toPdf(bom), "application/pdf"];
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], { type }));
+    a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    setStatus("ok", `Saved ${name} (${bom.rows.length} lines, ${bom.rows.reduce((n, r) => n + r.qty, 0)} parts)`);
+    return data;
+  }
+  function initBom() {
+    const host = document.getElementById("bom"), center = document.getElementById("center");
+    const setH = h => { bomOpts.height = h; host.style.setProperty("--bom-h", h + "px"); };
+    if (bomOpts.height) setH(bomOpts.height);
+    ["sockets", "bench"].forEach(k => { const el = document.getElementById("bom-" + k); el.checked = bomOpts[k]; el.addEventListener("change", () => { bomOpts[k] = el.checked; saveBomOpts(); renderBom(); }); });
+    host.querySelectorAll("[data-bom]").forEach(b => b.addEventListener("click", () => exportBom(b.dataset.bom)));
+    bind("btn-bom", () => toggleBom()); bind("btn-bom-menu", () => toggleBom(true)); bind("btn-bom-close", () => toggleBom(false));
+    host.querySelector(".bom-grip").addEventListener("mousedown", e => {
+      e.preventDefault();
+      const y0 = e.clientY, h0 = host.offsetHeight, max = center.clientHeight - 120;
+      const move = ev => { setH(Math.round(Math.max(120, Math.min(max, h0 + y0 - ev.clientY)))); render(); };
+      const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); saveBomOpts(); };
+      window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+    });
+    if (bomOpts.open) toggleBom(true);
+  }
   // The page shows no confirm() dialogs in some hosts; ask through the status bar instead
   let pendingConfirm = 0;
   function confirmInline(msg) {
@@ -1846,6 +1947,7 @@
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
     bind("btn-spice-download", () => { const blob = new Blob([document.getElementById("spice-text").value], { type: "text/plain" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "tube-circuit.cir"; a.click(); });
+    initBom();
     bind("btn-open-tracer", () => ToolWindows.open("index.html"));
     bind("btn-open-scope", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("oscilloscope.html", sc ? { scope: sc.id } : null); });
     bind("btn-open-spectrum", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("spectrum_analyzer.html", sc ? { scope: sc.id } : null); });
@@ -1863,6 +1965,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

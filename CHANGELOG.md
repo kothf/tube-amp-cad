@@ -6,6 +6,26 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.27.0] - 2026-10-09
+
+### Added
+- **Bill of materials.** The *BOM* button in the toolbar (also File → Bill of
+  materials, or the `B` key) opens a parts list in a panel under the
+  schematic; drag its top edge to resize it. Equal parts share a line with
+  their designators as ranges (R1-R4, R7), the sections of a dual tube or a
+  ganged switch (VL1.1, VL1.2) count as one part, and a line per tube base
+  lists the sockets. Columns: item, quantity, designators, description, value,
+  rating / data (resistor wattage, choke DCR, transformer rating, tube base),
+  the simulated worst case (resistor dissipation, flagged beyond its rating;
+  capacitor peak voltage; a reversed electrolytic is flagged) and a part
+  number. Type the part number in the list or in the inspector; it is saved
+  with the circuit, and parts with different numbers get separate lines.
+  Clicking a line selects its parts. Sources and instruments are left out
+  unless *Sources & instruments* is ticked.
+- **BOM export** as TXT (aligned table), CSV (UTF-8, opens in Excel), XLSX
+  (Excel workbook with frozen header and filter) or PDF (A4 landscape), named
+  after the title block's identification number.
+
 ## [3.26.0] - 2026-10-08
 
 ### Changed

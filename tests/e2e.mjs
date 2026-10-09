@@ -31,7 +31,7 @@ let failures = 0;
 const check = (cond, msg) => { console.log(`${cond ? "PASS" : "FAIL"} ${msg}`); if (!cond) failures++; };
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--no-sandbox"] });
-const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 } });
+const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
 const errors = [], missing = [];
 const open = async (name, page) => {
   const p = await ctx.newPage();
@@ -783,6 +783,64 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const txt = await cad.evaluate(() => document.getElementById("inspector").textContent);
   check(r.value === "125ESE GRN" && /103 Ω/.test(r.info) && /5 kΩ with 4 Ω/.test(r.info), `the Hammond 125SE list gives the model's data ("${r.value}": ${r.info.slice(0, 60)}…)`);
   check(/T1 \(Hammond 125ESE\) carries 9\d mA DC, more than its 80 mA rating/.test(txt), `the checks flag DC current beyond the output transformer's rating (${(txt.match(/carries \d+ mA/) || ["?"])[0]})`);
+}
+
+// --- Bill of materials -------------------------------------------------------
+{
+  await cad.evaluate(() => {
+    const S = TubeCAD.state, C = TubeCAD, f = C.frames()[0];
+    f.params.title = "BOM test"; f.params.docno = "TA-001";
+    S.comps = S.comps.filter(c => c.type === "frame"); S.wires = [];
+    const add = (t, p, x, y, label) => { const c = C.makeComp(t, p, f.x + x, f.y + y, 0); if (label) c.label = label; S.comps.push(c); return c; };
+    ["R1", "R2", "R3", "R4"].forEach((l, i) => add("resistor", { r: 100e3 }, 200 + 80 * i, 200, l));
+    add("resistor", { r: 1500, w: "0.5" }, 200, 300, "R5"); add("resistor", { r: 1500, w: "0.5" }, 280, 300, "R7");
+    add("capacitor", { c: 22e-9 }, 200, 400, "C1"); add("electrolytic", { c: 100e-6 }, 280, 400, "C2");
+    add("tube", { tube: "12AX7" }, 500, 300, "VL1.1"); add("tube", { tube: "12AX7" }, 650, 300, "VL1.2"); add("tube", { tube: "EL84", connection: "pentode" }, 800, 300, "VL2");
+    add("opt_cat", { model: "125ESE", tap: "GRN" }, 950, 300, "T1"); add("ground", {}, 200, 500); add("vdc", { v: 300 }, 300, 500, "G1");
+    C.commit();
+  });
+  const bom = await cad.evaluate(() => TubeCAD.bomData());
+  const line = v => bom.rows.find(r => r.value === v);
+  check(line("100kΩ") && line("100kΩ").qty === 4 && line("100kΩ").refs === "R1-R4", `equal parts share one line with a designator range (${line("100kΩ") && line("100kΩ").refs})`);
+  check(line("1.5kΩ") && line("1.5kΩ").refs === "R5, R7" && line("1.5kΩ").rating === "0.5 W", "the power rating goes in the Rating column");
+  check(line("12AX7") && line("12AX7").qty === 1 && line("12AX7").refs === "VL1", "both sections of a dual triode (VL1.1, VL1.2) count as one tube");
+  check(!bom.rows.some(r => /DC supply|Ground/.test(r.desc)), "sources and ground are left out by default");
+  const sock = bom.rows.filter(r => r.desc === "Tube socket");
+  check(sock.length === 1 && sock[0].value === "Noval B9A" && sock[0].qty === 2, `tube sockets are counted per base (${sock.map(r => r.qty + " × " + r.value).join(", ")})`);
+  check(bom.rows.map(r => r.item).join() === bom.rows.map((_, i) => i + 1).join() && bom.rows[0].refs.startsWith("C"), "lines are numbered in designator order");
+
+  await cad.keyboard.press("Escape"); await cad.locator("#cad").focus(); await cad.keyboard.press("b");
+  check(await cad.isVisible("#bom") && (await cad.locator("#bom-table tbody tr").count()) === bom.rows.length, "B opens the BOM panel under the schematic with every line");
+  const inp = cad.locator("#bom-table tr", { hasText: "R1-R4" }).locator("input");
+  await inp.fill("Vishay MRS25 100K"); await inp.press("Enter");
+  const pn = await cad.evaluate(() => TubeCAD.state.comps.filter(c => c.params.partno === "Vishay MRS25 100K").map(c => c.label).sort().join());
+  check(pn === "R1,R2,R3,R4", `a part number typed in the BOM is stored on each part of the line (${pn})`);
+  await cad.locator("#bom-table tr", { hasText: "125ESE" }).locator("td").first().click();
+  check(await cad.evaluate(() => [...TubeCAD.state.sel.comps].map(id => TubeCAD.state.comps.find(c => c.id === id).label).join()) === "T1", "clicking a BOM line selects its parts on the sheet");
+  await cad.check("#bom-bench");
+  check(await cad.locator("#bom-table tr", { hasText: "DC supply" }).count() === 1, "Sources & instruments adds the bench supply");
+  await cad.uncheck("#bom-bench");
+
+  const files = {};
+  for (const fmt of ["txt", "csv", "xlsx", "pdf"]) {
+    const [dl] = await Promise.all([cad.waitForEvent("download"), cad.click(`#bom [data-bom="${fmt}"]`)]);
+    const path = await dl.path(); files[fmt] = { name: dl.suggestedFilename(), data: await readFile(path) };
+  }
+  const txt = files.txt.data.toString("utf8"), csv = files.csv.data.toString("utf8");
+  check(files.txt.name === "TA-001-BOM.txt" && /BILL OF MATERIALS/.test(txt) && /R1-R4\s+Resistor\s+100kΩ/.test(txt) && /Vishay MRS25 100K/.test(txt), "TXT export: aligned table with the part numbers");
+  check(csv.startsWith("﻿Item,Qty,Designators") && csv.includes('"R5, R7"') && csv.split("\r\n").filter(Boolean).length === bom.rows.length + 1, "CSV export: header, one row per line, quoted lists, UTF-8 mark");
+  const x = files.xlsx.data, entries = [];
+  for (let o = 0; o + 30 < x.length && x.readUInt32LE(o) === 0x04034b50;) {
+    const n = x.readUInt16LE(o + 26), size = x.readUInt32LE(o + 18), name = x.toString("utf8", o + 30, o + 30 + n), body = x.subarray(o + 30 + n, o + 30 + n + size);
+    entries.push({ name, crcOk: (await cad.evaluate(a => BomLib.crc32(new Uint8Array(a)), [...body])) === x.readUInt32LE(o + 14), body: body.toString("utf8") });
+    o += 30 + n + size;
+  }
+  const sheet = (entries.find(e => e.name === "xl/worksheets/sheet1.xml") || {}).body || "";
+  check(files.xlsx.name.endsWith(".xlsx") && entries.length === 7 && entries.every(e => e.crcOk) && sheet.includes("R1-R4") && sheet.includes("<autoFilter"), `XLSX export: a valid zip of ${entries.length} parts with the table`);
+  const pdfs = files.pdf.data.toString("latin1");
+  check(pdfs.startsWith("%PDF-1.4") && /\(BILL OF MATERIALS\) Tj/.test(pdfs) && /\(R1-R4\) Tj/.test(pdfs) && /page 1 of 1/.test(pdfs), "PDF export: a page with the title and the table");
+  await cad.keyboard.press("b");
+  check(!(await cad.isVisible("#bom")), "B closes the panel again");
 }
 
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
