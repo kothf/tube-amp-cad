@@ -50,8 +50,10 @@
       default: return [x, y];
     }
   }
-  // a mirrored part (transistors: params.flip) is flipped left to right before it is rotated
-  const flipX = c => (c.params && c.params.flip === "yes" ? -1 : 1);
+  // Mirror: any part that can be rotated can also be flipped left to right (params.flip),
+  // applied before the rotation. Parts added to the library get it automatically.
+  const canMirror = type => !!LIB[type] && !LIB[type].noRotate;
+  const flipX = c => (c.params && c.params.flip === "yes" && canMirror(c.type) ? -1 : 1);
   function compPins(c) {
     const f = flipX(c);
     return LIB[c.type].pins(c).map(p => {
@@ -698,9 +700,9 @@
     commit();
   }
   function mirrorSelection() {
-    if (S.placing) { if (LIB[S.placing.type].canFlip) { S.placing.params = Object.assign({}, S.placing.params, { flip: S.placing.params && S.placing.params.flip === "yes" ? "no" : "yes" }); render(); } return; }
+    if (S.placing) { if (canMirror(S.placing.type)) { S.placing.params = Object.assign({}, S.placing.params, { flip: S.placing.params && S.placing.params.flip === "yes" ? "no" : "yes" }); render(); } return; }
     let any = false;
-    S.comps.forEach(c => { if (S.sel.comps.has(c.id) && LIB[c.type].canFlip) { c.params.flip = c.params.flip === "yes" ? "no" : "yes"; any = true; } });
+    S.comps.forEach(c => { if (S.sel.comps.has(c.id) && canMirror(c.type)) { c.params.flip = c.params.flip === "yes" ? "no" : "yes"; any = true; } });
     if (any) commit();
   }
   function rotateSelection() {
@@ -1112,7 +1114,7 @@
     ctx.fillStyle = sel ? COL.bodySel : COL.value;
     for (const [id, x, y, nx, ny] of TUBE_PIN_SPOTS) {
       if (!nums[id] || !ids.has(id)) continue;
-      const [px, py] = rotPt(x, y, c.rot), [dx, dy] = rotPt(nx, ny, c.rot);
+      const f = flipX(c), [px, py] = rotPt(f * x, y, c.rot), [dx, dy] = rotPt(f * nx, ny, c.rot);
       ctx.textAlign = dx > 0 ? "left" : dx < 0 ? "right" : "center";
       ctx.textBaseline = dy > 0 ? "top" : dy < 0 ? "bottom" : "middle";
       ctx.fillText(nums[id], c.x + px + dx * 4, c.y + py + dy * 3);
@@ -1124,12 +1126,22 @@
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate((c.rot & 3) * Math.PI / 2);
-    if (flipX(c) < 0) ctx.scale(-1, 1);
+    const mirrored = flipX(c) < 0, ownFill = Object.prototype.hasOwnProperty.call(ctx, "fillText"), prevFill = ctx.fillText;
+    if (mirrored) {
+      ctx.scale(-1, 1);
+      // text inside a symbol (switch A/B, generator G) stays readable: un-mirror it about its anchor
+      ctx.fillText = function (t, x, y, mw) {
+        this.save(); this.translate(x, y); this.scale(-1, 1);
+        const a = this.textAlign; this.textAlign = a === "left" || a === "start" ? "right" : a === "right" || a === "end" ? "left" : a;
+        prevFill.call(this, t, 0, 0, mw); this.restore();
+      };
+    }
     ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
     DRAW[c.type](ctx, c);
     delete c._sel;
+    if (mirrored) { if (ownFill) ctx.fillText = prevFill; else delete ctx.fillText; }
     ctx.restore();
 
     if (c.type === "scope" && !S.printing) drawScopeScreen(c);
@@ -1182,11 +1194,12 @@
     // ones; technical data on the same side, below (or right of) the designation
     if (c.type === "tube") {
       drawPinNumbers(c, sel);
-      if ((c.rot & 1) === 0) {   // anode up, cathode down: text to the left, clear of the grid lead
-        ctx.textAlign = "right";
-        ctx.fillText(desig(c), c.x - 30, c.y - 28);
+      if ((c.rot & 1) === 0) {   // anode up, cathode down: text above the control-grid lead (left, or right when mirrored)
+        const side = ((c.rot & 2) ? -1 : 1) * flipX(c);        // -1: grid on the right
+        ctx.textAlign = side > 0 ? "right" : "left";
+        ctx.fillText(desig(c), c.x - 30 * side, c.y - 28);
         ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
-        ctx.fillText(val, c.x - 30, c.y - 15);
+        ctx.fillText(val, c.x - 30 * side, c.y - 15);
       } else {
         ctx.textAlign = "center";
         ctx.fillText(desig(c), c.x, b.y1 - 17);
@@ -1529,7 +1542,7 @@
     const def = LIB[c.type];
     host.innerHTML = `<div class="insp-title">${def.name}</div>`;
     if (!def.noLabel) host.appendChild(row("Designator", input("text", c.label, v => { c.label = v.trim() || c.label; commit(); })));
-    def.fields.forEach(f => {
+    (canMirror(c.type) ? def.fields.concat([CadLib.FLIP_FIELD]) : def.fields).forEach(f => {
       if (f.when && !f.when(c)) return;
       let el;
       if (f.kind === "eng") {
@@ -1607,8 +1620,9 @@
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
     host.appendChild(live);
     const act = document.createElement("div"); act.className = "insp-actions";
-    act.innerHTML = `<button class="btn" data-a="rot" ${def.noRotate ? "disabled" : ""}>⟳ Rotate (R)</button><button class="btn danger" data-a="del">Delete (Del)</button>`;
+    act.innerHTML = `<button class="btn" data-a="rot" ${def.noRotate ? "disabled" : ""}>⟳ Rotate (R)</button><button class="btn" data-a="mir" ${canMirror(c.type) ? "" : "disabled"}>⇋ Mirror (M)</button><button class="btn danger" data-a="del">Delete (Del)</button>`;
     act.querySelector('[data-a="rot"]').onclick = rotateSelection;
+    act.querySelector('[data-a="mir"]').onclick = mirrorSelection;
     act.querySelector('[data-a="del"]').onclick = deleteSelection;
     host.appendChild(act);
   }
@@ -1720,7 +1734,7 @@
       <button class="btn wide" id="btn-renumber" title="Letter code (R, C, L, T, VL …) and number for every part, in reading order">Renumber designations</button>
       <div class="insp-sub">How to</div>
       <ul class="help-list">
-        <li><b>Place:</b> pick a part on the left, click the sheet. <kbd>R</kbd> rotates while placing, <kbd>Shift</kbd>-click places several.</li>
+        <li><b>Place:</b> pick a part on the left, click the sheet. <kbd>R</kbd> rotates and <kbd>M</kbd> mirrors (also while placing), <kbd>Shift</kbd>-click places several.</li>
         <li><b>Wire:</b> click a pin, click corners, finish on a pin or wire. <kbd>W</kbd> starts wires anywhere.</li>
         <li><b>Move:</b> drag parts (wires follow) or drag a wire segment sideways.</li>
         <li><b>View:</b> wheel zooms, <kbd>Space</kbd>/middle-drag pans, <kbd>F</kbd> fits.</li>
