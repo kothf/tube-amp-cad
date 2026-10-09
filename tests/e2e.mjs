@@ -246,13 +246,24 @@ const canvasAt = async (page, p) => { const r = await page.locator("#screen").bo
 {
   const r = await scope.locator("#screen").boundingBox(), cx = r.x + r.width * 0.3, cy = r.y + r.height / 2;
   const before = await scope.evaluate(() => window.Scope.view().tdiv);
+  const ax0 = await scope.evaluate(() => window.Scope.axes());
+  const tval = t => { const m = /^(-?[\d.]+)([kmµn]?)s$/.exec(t); return m ? +m[1] * { k: 1e3, "": 1, m: 1e-3, "µ": 1e-6, n: 1e-9 }[m[2]] : NaN; };
+  check(ax0 && ax0.h.length === 11 && ax0.left.length === 9 && ax0.right.length === 9 && Math.abs(tval(ax0.h[10]) - tval(ax0.h[0]) - 10 * before) < before * 0.01 && /V$/.test(ax0.left[0]),
+    `scope: time axis (${ax0 && ax0.h[0]} … ${ax0 && ax0.h[10]}) and volt axes for CH1 (${ax0 && ax0.left[0]} … ${ax0 && ax0.left[8]}) and CH2 (${ax0 && ax0.right[0]} … ${ax0 && ax0.right[8]})`);
+  check(ax0 && new Set(ax0.left).size === 9 && new Set(ax0.h).size === 11, "scope: neighbouring axis labels never print alike");
   await scope.mouse.move(cx, cy); await scope.mouse.wheel(0, -100);
   const after = await scope.evaluate(() => ({ tdiv: +window.Scope.state.tdiv, hpos: window.Scope.state.hpos }));
+  const ax1 = await scope.evaluate(() => window.Scope.axes());
+  // after zooming at the pointer the window starts between steps: labels stay at round multiples of the new time/div, inside the window
+  check(ax1.hv.length >= 10 && ax1.hv.every(v => Math.abs(v / after.tdiv - Math.round(v / after.tdiv)) < 1e-6 && v >= after.hpos - after.tdiv * 0.01 && v <= after.hpos + 10.01 * after.tdiv) && ax1.h.every(t => Math.abs(tval(t) / after.tdiv - Math.round(tval(t) / after.tdiv)) < 1e-3),
+    `scope: the time axis follows the zoom at round values (${ax1.h[0]} … ${ax1.h[ax1.h.length - 1]}, window from ${(after.hpos * 1e3).toFixed(4)} ms)`);
   check(after.tdiv < before && after.hpos > 0, `scope: the wheel zooms in on the time axis at the pointer (${before * 1e6} → ${after.tdiv * 1e6} µs/div, position ${(after.hpos * 1e6).toFixed(0)} µs)`);
   const v0 = await scope.evaluate(() => window.Scope.view().ch1.vdiv);
   await scope.keyboard.down("Control"); await scope.mouse.wheel(0, -100); await scope.keyboard.up("Control");
   const v1 = await scope.evaluate(() => window.Scope.view().ch1.vdiv);
   check(v1 < v0, `scope: Ctrl+wheel steps volts/div (${v0} → ${v1} V/div)`);
+  const ax2 = await scope.evaluate(() => window.Scope.axes());
+  check(ax2.left.join() !== ax1.left.join(), `scope: the CH1 volt axis follows volts/div (${ax1.left[0]} → ${ax2.left[0]} at the top)`);
   await scope.mouse.down({ button: "right" }); await scope.mouse.move(cx + 100, cy, { steps: 4 }); await scope.mouse.up({ button: "right" });
   const h2 = await scope.evaluate(() => window.Scope.state.hpos);
   check(h2 < after.hpos, `scope: right-drag moves the trace along the time axis (position ${(h2 * 1e6).toFixed(0)} µs)`);
