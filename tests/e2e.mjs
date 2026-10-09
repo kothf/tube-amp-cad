@@ -10,7 +10,7 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 
 const root = resolve(process.argv[2] || ".");
 // workers refuse to load unless .js is served as JavaScript
@@ -30,7 +30,8 @@ const U = page => `http://localhost:${server.address().port}/${page}`;
 let failures = 0;
 const check = (cond, msg) => { console.log(`${cond ? "PASS" : "FAIL"} ${msg}`); if (!cond) failures++; };
 
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--no-sandbox"] });
+// BROWSER=webkit runs the suite in the Safari engine
+const browser = process.env.BROWSER === "webkit" ? await webkit.launch() : await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--no-sandbox"] });
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
 const errors = [], missing = [];
 const open = async (name, page) => {
@@ -123,9 +124,12 @@ await cad.click("#btn-file"); await cad.click("#btn-save"); await cad.click("#bt
 await cad.waitForFunction(() => window.__writes.length === 1);
 const wr = await cad.evaluate(() => window.__writes[0]);
 check(wr.name === "amp.json" && JSON.parse(wr.text).comps.length === (await state()).comps.length, "Overwrite writes the circuit back to the opened file");
-await cad.keyboard.press("Control+Shift+s");
-await cad.waitForFunction(() => window.__writes.length === 2);
-check((await cad.evaluate(() => [window.__saveAsSuggested, window.__writes[1].name, document.title])).join("|").startsWith("amp.json|copy.json|copy.json"), "Save as (Ctrl+Shift+S) suggests the current name, writes the new file and makes it the current one");
+// Save as through the File System Access API: Chromium only (Safari has no picker; Save as downloads there)
+if (process.env.BROWSER !== "webkit") {
+  await cad.keyboard.press("Control+Shift+s");
+  await cad.waitForFunction(() => window.__writes.length === 2);
+  check((await cad.evaluate(() => [window.__saveAsSuggested, window.__writes[1].name, document.title])).join("|").startsWith("amp.json|copy.json|copy.json"), "Save as (Ctrl+Shift+S) suggests the current name, writes the new file and makes it the current one");
+}
 await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
 check((await state()).comps.some(c => c.params.r === 4700), "circuit survives a reload (autosave)");
 
@@ -592,6 +596,8 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await sp.click("#btn-sim");
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq > s0 && !TubeCAD.state.sim.busy, seq0, { timeout: 30000 });
+  // the result reaches the scope window by BroadcastChannel a moment later
+  await sp.waitForFunction(() => /Simulated in/.test(document.getElementById("status").textContent), null, { timeout: 5000 }).catch(() => {});
   const st = await sp.evaluate(() => document.getElementById("status").textContent);
   check(/Simulated in/.test(st), `▶ Simulate on the oscilloscope runs the CAD's simulation until settled; the scope shows it ("${st}")`);
   // power-on: 0.5 s
