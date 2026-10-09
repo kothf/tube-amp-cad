@@ -25,7 +25,8 @@
       tracks: [],           // { layer, w, pts: [[x, y], ...] }
       vias: [],             // { x, y, drill, pad }
       holes: [],            // mounting holes (not plated): { x, y, d }
-      texts: []             // { x, y, text, size, layer: "F.SilkS" | "B.SilkS" | "F.Cu" | "B.Cu", rot }
+      texts: [],            // { x, y, text, size, layer: "F.SilkS" | "B.SilkS" | "F.Cu" | "B.Cu", rot }
+      zones: []             // copper pours: { net: name, layer, pts: [[x, y]...] | null (the whole board), thermal, gap, spoke }
     };
   }
   // Design rules for valve circuits: generous widths and clearances, more for high voltage.
@@ -36,6 +37,7 @@
       track: 1.0, power: 2.0, minTrack: 0.4,                       // widths, mm
       clearance: 0.6, hvClearance: 2.0, hvVolts: 60, edgeClearance: 0.5,
       viaDrill: 0.8, viaPad: 1.8, minDrill: 0.6, minAnnular: 0.3,
+      maskExpansion: 0.05, tentVias: true,                        // solder mask: opening around pads; vias covered
       netClass: {},                                               // net name -> "Signal" | "Power" | "HV"
       checks: { clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true }
     };
@@ -67,6 +69,7 @@
       rules: { ...d.rules, ...(b.rules || {}), netClass: { ...((b.rules || {}).netClass || {}) }, checks: { ...d.rules.checks, ...((b.rules || {}).checks || {}) } },
       holes: Array.isArray(b.holes) ? b.holes : [],
       texts: Array.isArray(b.texts) ? b.texts : [],
+      zones: Array.isArray(b.zones) ? b.zones.filter(z => z && COPPER.includes(z.layer)) : [],
       parts: b.parts && typeof b.parts === "object" ? b.parts : {},
       tracks: Array.isArray(b.tracks) ? b.tracks.filter(t => t && Array.isArray(t.pts) && t.pts.length >= 2 && COPPER.includes(t.layer)) : [],
       vias: Array.isArray(b.vias) ? b.vias : []
@@ -262,6 +265,33 @@
     if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1]) : socket(m[1]);
     if ((m = /^WIRE-(\d+)$/.exec(name))) return wirePads(pinNames && pinNames.length === +m[1] ? pinNames : Array.from({ length: +m[1] }, (_, i) => String(i + 1)));
     return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stroke font for silkscreen and copper text: what the screen shows is what the Gerbers
+  // get. Glyphs on a 4 × 6 grid (y down, the baseline at 6), strokes separated by "|".
+  // ---------------------------------------------------------------------------
+  const GLYPHS = {
+    A: "0,6 0,2 2,0 4,2 4,6|0,3.5 4,3.5", B: "0,0 0,6 3,6 4,5 4,4 3,3 0,3|0,0 3,0 4,1 4,2 3,3", C: "4,1 3,0 1,0 0,1 0,5 1,6 3,6 4,5", D: "0,0 0,6 2,6 4,4 4,2 2,0 0,0",
+    E: "4,0 0,0 0,6 4,6|0,3 3,3", F: "4,0 0,0 0,6|0,3 3,3", G: "4,1 3,0 1,0 0,1 0,5 1,6 3,6 4,5 4,3 2,3", H: "0,0 0,6|4,0 4,6|0,3 4,3", I: "1,0 3,0|2,0 2,6|1,6 3,6",
+    J: "4,0 4,5 3,6 1,6 0,5", K: "0,0 0,6|4,0 0,4|1,3 4,6", L: "0,0 0,6 4,6", M: "0,6 0,0 2,3 4,0 4,6", N: "0,6 0,0 4,6 4,0", O: "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0",
+    P: "0,6 0,0 3,0 4,1 4,2 3,3 0,3", Q: "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0|2,4 4,6", R: "0,6 0,0 3,0 4,1 4,2 3,3 0,3|2,3 4,6", S: "4,1 3,0 1,0 0,1 0,2 1,3 3,3 4,4 4,5 3,6 1,6 0,5",
+    T: "0,0 4,0|2,0 2,6", U: "0,0 0,5 1,6 3,6 4,5 4,0", V: "0,0 2,6 4,0", W: "0,0 1,6 2,3 3,6 4,0", X: "0,0 4,6|4,0 0,6", Y: "0,0 2,3 4,0|2,3 2,6", Z: "0,0 4,0 0,6 4,6",
+    0: "1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0|0.5,5 3.5,1", 1: "1,1 2,0 2,6|1,6 3,6", 2: "0,1 1,0 3,0 4,1 4,2 0,6 4,6", 3: "0,1 1,0 3,0 4,1 4,2 3,3 4,4 4,5 3,6 1,6 0,5|1,3 3,3",
+    4: "3,6 3,0 0,4 4,4", 5: "4,0 0,0 0,3 3,3 4,4 4,5 3,6 0,6", 6: "4,1 3,0 1,0 0,1 0,5 1,6 3,6 4,5 4,4 3,3 0,3", 7: "0,0 4,0 1,6",
+    8: "1,0 3,0 4,1 4,2 3,3 1,3 0,4 0,5 1,6 3,6 4,5 4,4 3,3|1,3 0,2 0,1 1,0", 9: "0,5 1,6 3,6 4,5 4,1 3,0 1,0 0,1 0,2 1,3 4,3",
+    "-": "1,3 3,3", "+": "0,3 4,3|2,1 2,5", ".": "2,5.4 2,6", ",": "2,5 1.4,7", "/": "0,6 4,0", "(": "3,0 2,1 2,5 3,6", ")": "1,0 2,1 2,5 1,6", ":": "2,1.6 2,2.2|2,4.4 2,5",
+    "=": "0,2 4,2|0,4 4,4", "_": "0,6 4,6", "'": "2,0 2,1.5", "\"": "1,0 1,1.5|3,0 3,1.5", "%": "0,6 4,0|0,0 1,0 1,1 0,1 0,0|3,5 4,5 4,6 3,6 3,5", "×": "1,2 3,4|3,2 1,4",
+    "·": "1.8,3 2.2,3", "µ": "0,7.5 0,2|0,5 1,6 3,6 4,5|4,2 4,6", "Ω": "0,6 1,6 1,5 0,3.5 0,1 1,0 3,0 4,1 4,3.5 3,5 3,6 4,6", "#": "1,0 1,6|3,0 3,6|0,2 4,2|0,4 4,4",
+    "~": "0,3.5 1,2.5 3,3.5 4,2.5", "<": "4,1 0,3 4,5", ">": "0,1 4,3 0,5", "!": "2,0 2,4|2,5.4 2,6", "?": "0,1 1,0 3,0 4,1 4,2 2,3.5 2,4|2,5.4 2,6", "&": "4,6 0.5,2 0.5,1 1.5,0 2.5,1 2.5,2 0,4 0,5 1,6 2.5,6 4,4"
+  };
+  /** Text as strokes, centred on (x, y): size is the cap height; rot in 90° steps (counter-clockwise
+      on screen), mirror for the bottom side. Returns { w: stroke width, lines: [[[x, y]...]...], width } */
+  function strokeText(text, x, y, size, rot, mirror) {
+    const u = size / 6, chars = [...String(text)].map(c => (GLYPHS[c] ? c : c.toUpperCase())), adv = 6 * u, W = Math.max(0, chars.length * adv - 2 * u), lines = [];
+    const tf = (px, py) => { let X = px - W / 2, Y = py - 3 * u; for (let r = 0; r < ((rot || 0) & 3); r++) [X, Y] = [Y, -X]; if (mirror) X = -X; return [+(x + X).toFixed(4), +(y + Y).toFixed(4)]; };
+    chars.forEach((ch, i) => { const g = GLYPHS[ch]; if (g) g.split("|").forEach(st => lines.push(st.split(" ").map(pt => { const [a, b] = pt.split(",").map(Number); return tf(i * adv + a * u, b * u); }))); });
+    return { w: +Math.max(0.12, size / 8).toFixed(3), lines, width: W };
   }
 
   // Pin order of each transistor package, pad 1 first, from the maker's drawing. Parts marked
@@ -477,10 +507,23 @@
   }
   const shareLayer = (a, b) => a.layers.some(l => b.layers.includes(l));
   const gap = (a, b) => segSeg(a.s, b.s) - a.r - b.r;
+  /** A track entering a pad may come as close to the same footprint's other pads as that pad
+      itself is: the part's own pin spacing (a noval socket's pins are 1.3 mm apart, whatever the
+      voltage) is a limit no layout can beat. Returns that spacing to padIt when the segment s
+      ends in another pad of padIt's footprint, else null. */
+  function entryGap(s, padIt, items) {
+    let best = null;
+    items.forEach(q => {
+      if (q.kind !== "pad" || q === padIt || q.pad.part !== padIt.pad.part) return;
+      const inside = (x, y) => segDist(q.s[0], q.s[1], q.s[2], q.s[3], x, y) <= q.r + 1e-6;
+      if (inside(s[0], s[1]) || inside(s[2], s[3])) { const g = gap(q, padIt); best = best === null ? g : Math.max(best, g); }
+    });
+    return best;
+  }
 
   /** Copper connectivity: which items touch (union-find), what each cluster's nets are, the
       ratsnest (shortest links still missing per net), unrouted count and shorts */
-  function connectivity(board, pads) {
+  function connectivity(board, pads, fills) {
     const items = copperItems(board, pads), n = items.length, par = items.map((_, i) => i);
     const find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
@@ -488,6 +531,8 @@
       if (a.kind === "pad" && b.kind === "pad") continue;          // pads only join through copper
       if (shareLayer(a, b) && gap(a, b) <= 1e-6) par[find(i)] = find(j);
     }
+    // a copper pour joins everything each of its pieces reaches
+    (fills || []).forEach(f => f.links.forEach(list => list.forEach(i => { if (i < n) par[find(i)] = find(list[0]); })));
     const cl = new Map();   // root -> { nets:Set, pads:[] }
     items.forEach((it, i) => { const r = find(i); if (!cl.has(r)) cl.set(r, { nets: new Set(), pads: [], items: [] }); const c = cl.get(r); c.items.push(it); if (it.kind === "pad") { c.pads.push(it.pad); if (it.pad.net !== null) c.nets.add(it.pad.net); } });
     items.forEach((it, i) => { it.cluster = find(i); it.net = cl.get(it.cluster).nets.size === 1 ? [...cl.get(it.cluster).nets][0] : (cl.get(it.cluster).nets.size ? "short" : null); });
@@ -510,6 +555,146 @@
     return { items, clusters: cl, rats, unrouted, shorts };
   }
 
+  // ---------------------------------------------------------------------------
+  // Copper pours. A pour is the zone's polygon (or the whole board inside the edge clearance)
+  // minus a clearance around every copper item of another net, holes and copper text; its own
+  // net's pads join through thermal reliefs (a gap and four spokes), its tracks and vias solidly.
+  // A raster of the result (0.2 mm cells) finds the pieces: which items each piece reaches
+  // (that is the connectivity) and the islands that reach none, which are removed.
+  // The result is a list of drawing operations, the same for the screen, the Gerbers and PDFs:
+  // { pol: "D" (copper) | "C" (clear), t: "region", pts } | { t: "flash", shape: "C"|"R"|"O", x, y, w, h } | { t: "line", w, pts }
+  // ---------------------------------------------------------------------------
+  const RES = 0.2;
+  function pip(x, y, poly) {
+    let ins = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) ins = !ins; }
+    return ins;
+  }
+  /** The outline as a polygon (corner arcs in steps), inset by d */
+  function outlinePoly(o, d) {
+    const R = Math.max(0, Math.min(o.r || 0, o.w / 2, o.h / 2)), r = Math.max(0, R - d), pts = [];
+    const c = (cx, cy, a0) => { for (let k = 0; k <= (r > 0 ? 8 : 0); k++) { const a = (a0 + k * 90 / 8) * Math.PI / 180; pts.push([+(cx + r * Math.cos(a)).toFixed(4), +(cy + r * Math.sin(a)).toFixed(4)]); } };
+    const m = Math.max(R, d);
+    c(o.w - m, m, -90); c(o.w - m, o.h - m, 0); c(m, o.h - m, 90); c(m, m, 180);
+    return pts;
+  }
+  function zonePoly(board, z) {
+    const o = board.outline, e = board.rules.edgeClearance;
+    if (z.pts && z.pts.length >= 3) return z.pts.map(([x, y]) => [Math.max(e, Math.min(o.w - e, x)), Math.max(e, Math.min(o.h - e, y))]);
+    return outlinePoly(o, e);
+  }
+  const flashOf = (p, grow) => ({ t: "flash", shape: p.shape === "rect" ? "R" : Math.abs(p.w - p.h) < 1e-6 ? "C" : "O", x: p.x, y: p.y, w: +(p.w + 2 * grow).toFixed(4), h: +(p.h + 2 * grow).toFixed(4) });
+  // a copper item (capsule) grown by c, as an operation
+  function itemOp(pol, it, c) {
+    if (it.kind === "pad") return { pol, ...flashOf(it.pad, c) };
+    const [x1, y1, x2, y2] = it.s;
+    return { pol, t: "line", w: +(2 * (it.r + c)).toFixed(4), pts: [[x1, y1], [x2, y2]] };
+  }
+  /** Paint operations into a grid (1 = copper) */
+  function rasterise(ops, nx, ny) {
+    const g = new Uint8Array(nx * ny);
+    const cell = (x1, y1, x2, y2, test, v) => {
+      const i1 = Math.max(0, Math.floor(x1 / RES)), i2 = Math.min(nx - 1, Math.ceil(x2 / RES)), j1 = Math.max(0, Math.floor(y1 / RES)), j2 = Math.min(ny - 1, Math.ceil(y2 / RES));
+      for (let j = j1; j <= j2; j++) { const y = (j + 0.5) * RES; for (let i = i1; i <= i2; i++) { const x = (i + 0.5) * RES; if (test(x, y)) g[j * nx + i] = v; } }
+    };
+    ops.forEach(op => {
+      const v = op.pol === "C" ? 0 : 1;
+      if (op.t === "region") {
+        const P = op.pts;
+        for (let j = 0; j < ny; j++) {
+          const y = (j + 0.5) * RES, xs = [];
+          for (let a = 0, b = P.length - 1; a < P.length; b = a++) { const [xa, ya] = P[a], [xb, yb] = P[b]; if ((ya > y) !== (yb > y)) xs.push(xa + (y - ya) * (xb - xa) / (yb - ya)); }
+          xs.sort((p, q) => p - q);
+          for (let k = 0; k + 1 < xs.length; k += 2) { const i1 = Math.max(0, Math.ceil(xs[k] / RES - 0.5)), i2 = Math.min(nx - 1, Math.floor(xs[k + 1] / RES - 0.5)); for (let i = i1; i <= i2; i++) g[j * nx + i] = v; }
+        }
+      } else if (op.t === "flash") {
+        const { x, y, w, h } = op;
+        if (op.shape === "R") cell(x - w / 2, y - h / 2, x + w / 2, y + h / 2, (px, py) => Math.abs(px - x) <= w / 2 && Math.abs(py - y) <= h / 2, v);
+        else { const r = Math.min(w, h) / 2, l = Math.max(w, h) / 2 - r, s = w >= h ? [x - l, y, x + l, y] : [x, y - l, x, y + l]; cell(x - w / 2, y - h / 2, x + w / 2, y + h / 2, (px, py) => segDist(s[0], s[1], s[2], s[3], px, py) <= r, v); }
+      } else if (op.t === "line") {
+        const r = op.w / 2;
+        for (let k = 0; k + 1 < op.pts.length; k++) { const [x1, y1] = op.pts[k], [x2, y2] = op.pts[k + 1]; cell(Math.min(x1, x2) - r, Math.min(y1, y2) - r, Math.max(x1, x2) + r, Math.max(y1, y2) + r, (px, py) => segDist(x1, y1, x2, y2, px, py) <= r, v); }
+      }
+    });
+    return g;
+  }
+  /** Fill every pour. conn: the connectivity without pours (gives the items and their nets).
+      Returns per zone { zone, layer, net, ops, links: [[item index...] per piece], pieces, islands, unknownNet } */
+  function fillZones(board, model, conn, hv) {
+    const R = board.rules, zones = board.zones || [], o = board.outline;
+    if (!zones.length || !model) return [];
+    const byName = {}; Object.entries(model.names).forEach(([n, nm]) => { byName[nm] = isNaN(+n) ? n : +n; });
+    const cls = n => (n === null || n === undefined || n === "short" ? "Signal" : netClassOf(n, model.names, hv, R));
+    // an item's net: from the copper it touches, else the net stored on the track or via
+    const netOf = it => {
+      if (it.net !== null && it.net !== undefined) return it.net;
+      const stored = it.kind === "track" ? board.tracks[it.ti].net : it.kind === "via" ? board.vias[it.vi].net : null;
+      return stored && byName[stored] !== undefined ? byName[stored] : null;
+    };
+    const nx = Math.max(1, Math.ceil(o.w / RES)), ny = Math.max(1, Math.ceil(o.h / RES));
+    return zones.map((z, zi) => {
+      const net = byName[z.net], L = z.layer, poly = zonePoly(board, z), zc = classRule(cls(net), R).clearance;
+      const need = n => Math.max(zc, classRule(cls(n), R).clearance), gapT = z.gap > 0 ? z.gap : 0.5, spoke = z.spoke > 0 ? z.spoke : 0.8;
+      const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]), bx1 = Math.min(...xs), bx2 = Math.max(...xs), by1 = Math.min(...ys), by2 = Math.max(...ys);
+      const near = (s, r) => Math.max(s[0], s[2]) + r >= bx1 && Math.min(s[0], s[2]) - r <= bx2 && Math.max(s[1], s[3]) + r >= by1 && Math.min(s[1], s[3]) - r <= by2;
+      const ops = [{ pol: "D", t: "region", pts: poly }], own = [], others = [];
+      conn.items.forEach(it => {
+        if (!it.layers.includes(L)) return;
+        const n = netOf(it);
+        if (net !== undefined && n === net) { if (it.kind === "pad" && z.thermal !== false) own.push(it); return; }
+        const c = need(n); others.push({ it, c });
+        if (near(it.s, it.r + c)) ops.push(itemOp("C", it, c));
+      });
+      (board.holes || []).forEach(h => { if (near([h.x, h.y, h.x, h.y], h.d / 2 + zc)) ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: +(h.d + 2 * zc).toFixed(4), h: +(h.d + 2 * zc).toFixed(4) }); });
+      (board.texts || []).filter(t => t.layer === L).forEach(t => { const st = strokeText(t.text, t.x, t.y, t.size, t.rot, L === "B.Cu"); st.lines.forEach(l => ops.push({ pol: "C", t: "line", w: +(st.w + 2 * zc).toFixed(4), pts: l })); });
+      // thermal reliefs: the gap around the pad, then spokes that stay in the pour and clear of other nets
+      const spokes = [];
+      own.forEach(it => {
+        const p = it.pad; ops.push({ pol: "C", ...flashOf(p, gapT) });
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+          const len = (dx ? p.w : p.h) / 2 + gapT + spoke, s = [p.x, p.y, +(p.x + dx * len).toFixed(4), +(p.y + dy * len).toFixed(4)];
+          if (!pip(s[2], s[3], poly)) return;
+          if (others.some(({ it: q, c }) => segSeg(s, q.s) - spoke / 2 - q.r < c - 1e-6)) return;
+          if ((board.holes || []).some(h => segDist(s[0], s[1], s[2], s[3], h.x, h.y) - spoke / 2 - h.d / 2 < zc - 1e-6)) return;
+          spokes.push({ pol: "D", t: "line", w: spoke, pts: [[s[0], s[1]], [s[2], s[3]]] });
+        });
+      });
+      ops.push(...spokes);
+      // the pieces: flood fill the raster
+      const g = rasterise(ops, nx, ny), lab = new Int32Array(nx * ny);
+      let pieces = 0; const stack = [];
+      for (let k = 0; k < g.length; k++) {
+        if (!g[k] || lab[k]) continue;
+        lab[k] = ++pieces; stack.push(k);
+        while (stack.length) { const c = stack.pop(), i = c % nx, j = (c - i) / nx; [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]].forEach(([a, b]) => { if (a < 0 || b < 0 || a >= nx || b >= ny) return; const q = b * nx + a; if (g[q] && !lab[q]) { lab[q] = pieces; stack.push(q); } }); }
+      }
+      const hit = Array.from({ length: pieces + 1 }, () => []);
+      conn.items.forEach((it, idx) => {
+        if (!it.layers.includes(L)) return;
+        const [x1, y1, x2, y2] = it.s, m = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / RES)), seen = new Set();
+        for (let k = 0; k <= m; k++) {
+          const i = Math.floor((x1 + (x2 - x1) * k / m) / RES), j = Math.floor((y1 + (y2 - y1) * k / m) / RES);
+          if (i < 0 || j < 0 || i >= nx || j >= ny) continue;
+          const l = lab[j * nx + i]; if (l && !seen.has(l)) { seen.add(l); hit[l].push(idx); }
+        }
+      });
+      // islands: pieces that reach no item are removed (cleared in runs, one cell wider all round)
+      let islands = 0;
+      for (let l = 1; l <= pieces; l++) if (!hit[l].length) islands++;
+      if (islands) for (let j = 0; j < ny; j++) {
+        let i = 0;
+        while (i < nx) {
+          const l = lab[j * nx + i];
+          if (!l || hit[l].length) { i++; continue; }
+          let e = i; while (e + 1 < nx && lab[j * nx + e + 1] && !hit[lab[j * nx + e + 1]].length) e++;
+          ops.push({ pol: "C", t: "flash", shape: "R", x: +((i + e + 1) / 2 * RES).toFixed(4), y: +((j + 0.5) * RES).toFixed(4), w: +((e - i + 3) * RES).toFixed(4), h: +(3 * RES).toFixed(4) });
+          i = e + 1;
+        }
+      }
+      return { zone: zi, layer: L, net: net === undefined ? null : net, ops, links: hit.filter(h => h.length > 1), pieces: pieces - islands, islands, unknownNet: net === undefined };
+    });
+  }
+
   /** Design-rule check. Kinds: clearance (copper of different nodes closer than their net
       classes allow; holes against copper), short, edge (copper or parts over or too near the
       outline), unplaced, annular (ring around a hole too thin), drill (hole below the minimum),
@@ -522,7 +707,12 @@
       const a = items[i], b = items[j];
       if (a.cluster === b.cluster || !shareLayer(a, b)) continue;
       if (a.kind === "pad" && b.kind === "pad" && a.pad.part === b.pad.part) continue;   // within a footprint: the maker's spacing
-      const ca = cls(a.net), cb = cls(b.net), need = Math.max(classRule(ca, R).clearance, classRule(cb, R).clearance), g = gap(a, b);
+      const ca = cls(a.net), cb = cls(b.net), g = gap(a, b);
+      let need = Math.max(classRule(ca, R).clearance, classRule(cb, R).clearance);
+      if (g < need - 1e-6 && a.kind !== b.kind && (a.kind === "pad" || b.kind === "pad") && (a.kind === "track" || b.kind === "track")) {
+        const [t, p] = a.kind === "track" ? [a, b] : [b, a], eg = entryGap(t.s, p, items);
+        if (eg !== null) need = Math.min(need, eg - 0.02);
+      }
       if (g < need - 1e-6) {
         const [x, y] = nearest(a.s, b.s), hvx = ca === "HV" || cb === "HV";
         out.push({ kind: "clearance", x, y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${need} mm${hvx ? " (high voltage)" : ""}`, between: [label(a), label(b)] });
@@ -576,6 +766,16 @@
         if (t.w < want - 1e-6) out.push({ kind: "class", x: p[0], y: p[1], msg: `Track on ${model.names[it.net] || it.net} (${c}) is ${t.w} mm; the class asks ${want} mm` });
       }
     });
+    // pours: a net that is not in the schematic; pours of different nets overlapping on a layer
+    (board.zones || []).forEach((z, i) => {
+      const P = zonePoly(board, z);
+      if (!Object.values(model.names).includes(z.net)) out.push({ kind: "check", x: P[0][0], y: P[0][1], msg: `Copper pour on ${z.layer}: net ${z.net || "(none)"} is not in the schematic` });
+      (board.zones || []).slice(i + 1).forEach(z2 => {
+        if (z2.layer !== z.layer || z2.net === z.net) return;
+        const Q = zonePoly(board, z2), hitP = P.find(p => pip(p[0], p[1], Q)) || Q.find(q => pip(q[0], q[1], P));
+        if (hitP) out.push({ kind: "clearance", x: hitP[0], y: hitP[1], msg: `Copper pours of ${z.net} and ${z2.net} overlap on ${z.layer}` });
+      });
+    });
     if (on("pinout")) model.parts.forEach(g => { const m = g.members[0].params.model; if (PINOUT[m] && PINOUT[m][1] === "verify" && g.place) out.push({ kind: "check", x: g.place.x, y: g.place.y, msg: `${g.ref} (${m}): pinouts differ between makers — check the ${g.fp.name} pin order against your part's datasheet` }); });
     return out;
   }
@@ -615,5 +815,5 @@
     const s = new Set(); Object.entries(netVolts || {}).forEach(([n, v]) => { if (Math.abs(v) > (limit || 60)) s.add(isNaN(+n) ? n : +n); }); return s;
   }
 
-  root.BoardCore = { DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { entryGap, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

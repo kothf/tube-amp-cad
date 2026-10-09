@@ -6,6 +6,55 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.38.0] - 2026-10-09
+
+### Added
+- **Gerber + drill files** for a board maker, as one ZIP:
+  - copper, solder mask and silkscreen of both sides, and the outline
+    (RS-274X with X2 attributes);
+  - plated and non-plated Excellon drill files;
+  - a README with the board's specification.
+
+  Checked with an independent Gerber reader (pygerber).
+- **Print set (PDF)**: assembly drawing, top and bottom copper at 1:1, and a
+  drill map with its table. A 50 mm bar on each page checks the printer's
+  scale.
+- **Toner transfer (PDF)**: the top copper mirrored, the bottom copper
+  unmirrored.
+- **Copper pours** (*Pour* tool, *+ GND plane* for the whole bottom layer):
+  - clearance by net class to everything else, the edge and mounting holes;
+  - thermal reliefs on the pour's own pads;
+  - islands removed;
+  - real connectivity (the ratsnest counts what the pour reaches);
+  - stitching vias take the pour's net;
+  - corners can be dragged.
+- **Nets** tab: class, connections left to route and track length per net.
+  Click a net to highlight it (or press <kbd>`</kbd>).
+- **Cross-probing** between the board and the schematic: selecting a part in
+  one selects it in the other.
+- **Live clearance while routing:** a halo shows the needed clearance. A
+  segment that would come too close is refused (Shift+click places it
+  anyway).
+- **Track editing:**
+  - drag a segment sideways and its neighbours keep their 45° directions;
+  - <kbd>U</kbd> selects the whole connected track;
+  - Shift+click adds tracks to the selection;
+  - set the width of all selected tracks at once.
+- Solder-mask rules: the opening around pads, and covered vias.
+- Silkscreen and copper text use a stroke font, so the screen shows what the
+  Gerbers contain (Ω and µ included).
+
+### Changed
+- A track entering a tube pin may pass that socket's other pins as closely as
+  the pin itself does. The high-voltage clearance is otherwise impossible to
+  meet between noval pins, which are 1.3 mm apart.
+
+### Fixed
+- The old "bottom copper, mirrored, for transfer" SVG had toner transfer the
+  wrong way round. For toner transfer the top copper must be mirrored and the
+  bottom copper not. The Toner transfer PDF does it right; the separate
+  top/bottom copper SVGs are replaced by the PDFs.
+
 ## [3.37.0] - 2026-10-09
 
 ### Added

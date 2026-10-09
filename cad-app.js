@@ -606,6 +606,7 @@
     else if (/^(RUN_SIM|RUN_TRANSIENT|STOP_TRANSIENT|BOARD_SAVE)$/.test(m.type)) channel.postMessage({ type: "ACK", req: m.type, id: m.id, version: VERSION });
     if (m.type === "BOARD_HELLO") sendBoardNetlist(true);                    // a board window opened: netlist and the stored board
     else if (m.type === "BOARD_SAVE") storeBoard(m.doc);
+    else if (m.type === "BOARD_SELECT") selectFromBoard(m.ids);
     if (m.type === "RUN_SIM") runSim("full");                            // ▶ Simulate in an instrument window
     else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop);
     else if (m.type === "STOP_TRANSIENT") stopTransient();
@@ -1633,7 +1634,26 @@
   }
 
   let inspectorFor = null;
+  // Cross-probing with the Board window: a part selected there is selected (and shown) here;
+  // a selection made here goes to the board. probeSig keeps a selection from echoing back.
+  let probeSig = "";
+  const selSig = () => [...S.sel.comps].sort().join(",");
+  function selectFromBoard(ids) {
+    const want = new Set(ids || []), cs = S.comps.filter(c => want.has(c.id));
+    if (!cs.length) return;
+    S.sel.comps.clear(); S.sel.wires.clear(); cs.forEach(c => S.sel.comps.add(c.id));
+    probeSig = selSig();
+    const b = compBBox(cs[0]), cx = (b.x1 + b.x2) / 2, cy = (b.y1 + b.y2) / 2, sx = cx * S.view.scale + S.view.ox, sy = cy * S.view.scale + S.view.oy;
+    if (sx < 40 || sy < 40 || sx > canvas.clientWidth - 40 || sy > canvas.clientHeight - 40) { S.view.ox = canvas.clientWidth / 2 - cx * S.view.scale; S.view.oy = canvas.clientHeight / 2 - cy * S.view.scale; }
+    updateInspector(); render();
+  }
+  function probeBoard() {
+    const sig = selSig(); if (sig === probeSig) return;
+    probeSig = sig;
+    if (channel) { try { channel.postMessage({ type: "CAD_SELECT", ids: [...S.sel.comps] }); } catch (e) {} }
+  }
   function updateInspector(liveOnly) {
+    probeBoard();
     const host = document.getElementById("inspector");
     const c = selectedComp();
     announceSelectedTube(c);
@@ -2508,6 +2528,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, updateInspector, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

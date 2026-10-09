@@ -7,8 +7,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
-const B = globalThis.BoardCore, L = globalThis.CadLib;
+for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+const B = globalThis.BoardCore, L = globalThis.CadLib, F = globalThis.BoardFab;
 
 // a small amplifier as the CAD sends it: a 12AX7 (two sections) with plate and cathode
 // resistors, an MPSA42 follower, an output transformer off the board, a supply
@@ -203,4 +203,112 @@ test("every part has a through-hole footprint, and every footprint it offers tak
   const dpdt = B.footprint("TOGGLE-DPDT");
   assert.deepEqual(dpdt.pads.map(p => p.name), ["1.A", "1.C", "1.B", "2.A", "2.C", "2.B"]);
   assert.deepEqual(B.footprint("XFMR-EI76-PP").pads.map(p => p.name), ["P1", "U1", "CT", "U2", "P2", "S1", "S2"]);
+});
+
+// a placed board for the pour and fabrication tests: GND pour on the bottom, holes, a text
+function fabBoard() {
+  const board = B.newBoard(); B.sync(board, NETLIST); board.outline = { w: 120, h: 90, r: 4 };
+  const at = { VL1: [30, 30], R1: [60, 15], R2: [30, 55], C1: [55, 55], VT1: [75, 30], G1: [15, 78], T1: [95, 60] };
+  Object.values(board.parts).forEach(p => { Object.assign(p, { x: at[p.ref][0], y: at[p.ref][1] }); if (p.ref === "T1") p.fp = "TERM-5.08-4"; });
+  board.holes = B.cornerHoles(board.outline, 3.2, 5);
+  board.texts.push({ x: 60, y: 84, text: "TEST", size: 2, layer: "F.SilkS", rot: 0 });
+  board.zones.push({ net: "GND", layer: "B.Cu", pts: null, thermal: true, gap: 0.5, spoke: 0.8 });
+  return board;
+}
+function analyse(board) {
+  const m = B.model(board, NETLIST), hv = B.hvNets(NETLIST.volts, board.rules.hvVolts), c0 = B.connectivity(board, m.pads), fills = B.fillZones(board, m, c0, hv);
+  return { m, hv, c0, fills, conn: B.connectivity(board, m.pads, fills) };
+}
+
+test("stroke font: centred text, rotation and mirror", () => {
+  const t = B.strokeText("R1", 10, 20, 1.2, 0, false), xs = t.lines.flat().map(p => p[0]), ys = t.lines.flat().map(p => p[1]);
+  assert.ok(Math.abs((Math.min(...xs) + Math.max(...xs)) / 2 - 10) < 0.15 && Math.abs((Math.min(...ys) + Math.max(...ys)) / 2 - 20) < 0.05, "centred");
+  assert.ok(Math.abs(Math.max(...ys) - Math.min(...ys) - 1.2) < 1e-6, "cap height = size");
+  const m = B.strokeText("R1", 0, 0, 1.2, 0, true), r = B.strokeText("R1", 0, 0, 1.2, 1, false), n = B.strokeText("R1", 0, 0, 1.2, 0, false);
+  assert.deepEqual(m.lines[0][0], [-n.lines[0][0][0] || 0, n.lines[0][0][1]], "mirror flips x");
+  assert.ok(Math.max(...r.lines.flat().map(p => Math.abs(p[0]))) < 0.61, "rotated: the text runs up the y axis");
+  assert.ok(B.strokeText("1kΩ µF", 0, 0, 2).lines.length >= 8, "Ω and µ have glyphs");
+});
+
+test("copper pour: joins its net's pads by thermal spokes, keeps every other net's clearance, removes islands", () => {
+  const board = fabBoard(), { m, c0, fills, conn } = analyse(board), f = fills[0];
+  assert.equal(fills.length, 1);
+  assert.ok(c0.rats.some(r => m.names[r.net] === "GND"), "before the pour GND is unrouted");
+  assert.ok(!conn.rats.some(r => m.names[r.net] === "GND"), "the pour connects every GND pad");
+  assert.ok(conn.unrouted < c0.unrouted);
+  // rasterise the pour and measure its distance to other nets' pads: never under their clearance
+  const nx = Math.ceil(board.outline.w / B.RES), ny = Math.ceil(board.outline.h / B.RES), g = B.rasterise(f.ops, nx, ny), hv = B.hvNets(NETLIST.volts, 60);
+  let worst = Infinity;
+  m.pads.filter(p => p.netName !== "GND").forEach(p => {
+    const need = B.classRule(B.netClassOf(p.net, m.names, hv, board.rules), board.rules).clearance, r = Math.max(p.w, p.h) / 2 + need + 1;
+    for (let j = Math.max(0, Math.floor((p.y - r) / B.RES)); j <= Math.min(ny - 1, (p.y + r) / B.RES); j++) for (let i = Math.max(0, Math.floor((p.x - r) / B.RES)); i <= Math.min(nx - 1, (p.x + r) / B.RES); i++) {
+      if (!g[j * nx + i]) continue;
+      const x = (i + 0.5) * B.RES, y = (j + 0.5) * B.RES, d = (p.shape === "rect" ? Math.max(Math.abs(x - p.x) - p.w / 2, Math.abs(y - p.y) - p.h / 2) : Math.hypot(x - p.x, y - p.y) - p.w / 2) - need;
+      worst = Math.min(worst, d);
+    }
+  });
+  assert.ok(worst > -B.RES, `pour copper within a cell of the clearance at worst (${worst.toFixed(3)} mm)`);
+  // a closed loop of track with no net encloses pour that reaches nothing: an island, removed
+  board.tracks.push({ layer: "B.Cu", w: 1, pts: [[80, 70], [110, 70], [110, 85], [80, 85], [80, 70]] });
+  const a2 = analyse(board), f2 = a2.fills[0], g2 = B.rasterise(f2.ops, nx, ny);
+  assert.ok(f2.islands >= 1, "the inside of the loop is an island");
+  assert.equal(g2[Math.floor(77.5 / B.RES) * nx + Math.floor(95 / B.RES)], 0, "and it is removed");
+  // a via with the GND net stored, in the pour, joins it (a stitching via); with another net it is cleared
+  board.tracks.pop(); board.vias.push({ x: 100, y: 20, drill: 0.8, pad: 1.8, net: "GND" });
+  const a3 = analyse(board), vi = a3.conn.items.findIndex(it => it.kind === "via"), gp = a3.conn.items.findIndex(it => it.kind === "pad" && it.pad.netName === "GND");
+  assert.equal(a3.conn.items[vi].cluster, a3.conn.items[gp].cluster, "the stitching via is part of the GND copper");
+  // two pours of different nets overlapping on one layer
+  board.zones.push({ net: "B+", layer: "B.Cu", pts: [[10, 10], [40, 10], [40, 40], [10, 40]] });
+  assert.ok(B.drc(board, a3.m, a3.conn, a3.hv).some(d => /pours of GND and B\+ overlap/.test(d.msg)));
+});
+
+test("Gerber files: X2 header, apertures before use, balanced regions, y up; Excellon holes; ZIP; PDF", () => {
+  const board = fabBoard(), { m, fills } = analyse(board), files = F.fabFiles(board, m, fills, { base: "t", title: "Test", version: "9.9.9" });
+  const names = Object.keys(files);
+  ["F_Cu", "B_Cu", "F_Mask", "B_Mask", "F_Silkscreen", "B_Silkscreen", "Edge_Cuts"].forEach(l => assert.ok(names.includes(`t-${l}.gbr`), l));
+  assert.ok(names.includes("t-PTH.drl") && names.includes("t-NPTH.drl") && names.includes("t-README.txt"));
+  for (const [n, txt] of Object.entries(files)) {
+    if (!n.endsWith(".gbr")) continue;
+    const lines = txt.trim().split("\n"), defined = new Set();
+    assert.ok(lines.includes("%FSLAX46Y46*%") && lines.includes("%MOMM*%") && lines.some(l => l.startsWith("%TF.FileFunction,")), n);
+    assert.equal(lines[lines.length - 1], "M02*", n);
+    assert.equal(lines.filter(l => l === "G36*").length, lines.filter(l => l === "G37*").length, n);
+    lines.forEach(l => { let k; if ((k = /^%ADD(\d+)/.exec(l))) defined.add(k[1]); if ((k = /^D(\d+)\*$/.exec(l))) assert.ok(defined.has(k[1]), `${n}: D${k[1]} defined before use`); });
+    lines.forEach(l => assert.ok(/^(G04 .*|%.*%|G0[1-4]\*|G3[67]\*|G75\*|D\d+\*|X-?\d+Y-?\d+D0[123]\*|M02\*)$/.test(l), `${n}: ${l}`));
+  }
+  assert.ok(/%TF.FilePolarity,Negative\*%/.test(files["t-F_Mask.gbr"]), "mask files are negative");
+  assert.ok(/%LPC\*%/.test(files["t-B_Cu.gbr"]) && /G36\*/.test(files["t-B_Cu.gbr"]), "the pour: a region and clearances");
+  // a pad flash at board (x, y) lands at X = x, Y = h − y (y up), in nanometres
+  const p = m.pads.find(q => q.ref === "R1" && q.num === "1");
+  assert.ok(files["t-F_Cu.gbr"].includes(`X${Math.round(p.x * 1e6)}Y${Math.round((board.outline.h - p.y) * 1e6)}D03*`));
+  const pth = files["t-PTH.drl"], npth = files["t-NPTH.drl"];
+  assert.equal(pth.split("\n").filter(l => /^X/.test(l)).length, m.pads.length + board.vias.length);
+  assert.equal(npth.split("\n").filter(l => /^X/.test(l)).length, 4);
+  assert.ok(/^M48\n/.test(pth) && /METRIC/.test(pth) && /T1C3\.200/.test(npth) && /M30\n$/.test(pth));
+  // the ZIP: every entry's CRC matches its data
+  const z = F.zip(files), dv = new DataView(z.buffer);
+  let off = 0, count = 0;
+  while (dv.getUint32(off, true) === 0x04034b50) {
+    const crc = dv.getUint32(off + 14, true), size = dv.getUint32(off + 18, true), nl = dv.getUint16(off + 26, true), el = dv.getUint16(off + 28, true);
+    const data = z.subarray(off + 30 + nl + el, off + 30 + nl + el + size);
+    assert.equal(F.crc32(data), crc); off += 30 + nl + el + size; count++;
+  }
+  assert.equal(count, names.length);
+  const pdf = F.pdfPages(board, m, fills, "print", { title: "Test" }), text = Buffer.from(pdf).toString("latin1");
+  assert.ok(text.startsWith("%PDF") && /\/Count 4/.test(text) && /\/MediaBox \[0 0 841\.89 595\.276\]/.test(text), "four A4 landscape pages");
+  assert.ok(/\/Count 2/.test(Buffer.from(F.pdfPages(board, m, fills, "toner", {})).toString("latin1")), "toner transfer: two pages");
+});
+
+test("a track entering a tube pin may pass the socket's other pins as closely as the pin itself does, not closer", () => {
+  const board = fabBoard(), { m } = analyse(board), hv = B.hvNets(NETLIST.volts, 60);
+  const p6 = m.pads.find(p => p.ref === "VL1" && p.num === "6"), cx = board.parts[Object.keys(board.parts).find(k => board.parts[k].ref === "VL1")].x, cy = 30;
+  const ux = (p6.x - cx) / Math.hypot(p6.x - cx, p6.y - cy), uy = (p6.y - cy) / Math.hypot(p6.x - cx, p6.y - cy);
+  // radially out of pin 6 (the anode, 150 V: HV, 2 mm clearance), 2 mm wide
+  board.tracks.push({ layer: "F.Cu", w: 2, pts: [[p6.x, p6.y], [+(p6.x + ux * 8).toFixed(3), +(p6.y + uy * 8).toFixed(3)]] });
+  let a = analyse(board), bad = B.drc(board, a.m, a.conn, hv).filter(d => d.kind === "clearance" && d.between.some(x => /^track/.test(x)));
+  assert.equal(bad.length, 0, bad.map(d => d.msg + " " + d.between).join("; "));
+  // the same track pushed 0.8 mm sideways no longer enters pin 6: the full HV clearance applies to pins 5 and 7
+  board.tracks[board.tracks.length - 1].pts = board.tracks[board.tracks.length - 1].pts.map(([x, y]) => [x - uy * 0.8, y + ux * 0.8]);
+  a = analyse(board); bad = B.drc(board, a.m, a.conn, hv).filter(d => d.kind === "clearance" && d.between.some(x => /^track/.test(x)));
+  assert.ok(bad.length > 0);
 });

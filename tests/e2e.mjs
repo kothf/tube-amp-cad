@@ -1160,7 +1160,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.mouse.click(cv.x + a[0], cv.y + a[1]); await bd.mouse.move(cv.x + b[0], cv.y + b[1], { steps: 4 }); await bd.mouse.click(cv.x + b[0], cv.y + b[1]);
   await bd.waitForTimeout(150);
   const after = await bd.evaluate(() => { const S = BoardApp.state, it = S.conn.items.find(x => x.kind === "track"); return { un: S.conn.unrouted, tracks: S.board.tracks.length, net: it && S.model.names[it.net], shorts: S.conn.shorts.length }; });
-  check(before.placed === 0 && after.tracks >= 1 && after.un === before.un - 1 && after.net === m0.anode && !after.shorts, `routing a track with the mouse joins R1 to the anode on ${after.net}: ${before.un} → ${after.un} connections to route`);
+  check(before.placed === 0 && after.tracks >= 1 && after.un === before.un - 1 && after.net === m0.anode && !after.shorts, `routing a track with the mouse joins R1 to the anode on ${after.net}: ${before.un} → ${after.un} connections to route${after.tracks ? "" : " — " + await bd.textContent("#st-msg")}`);
   await cad.waitForFunction(() => TubeCAD.state.board && TubeCAD.state.board.tracks.length >= 1, null, { timeout: 5000 }).catch(() => {});
   check(await cad.evaluate(() => TubeCAD.state.board.tracks.length >= 1 && JSON.parse(localStorage.getItem("tubecad_board_v1")).tracks.length >= 1), "the track is saved with the circuit (CAD and browser storage)");
   // a track from the anode to the grid is a short; undo takes it away
@@ -1238,6 +1238,74 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.locator('.layer[data-l="F.Cu"] .nm').click();
   check(solo === "B.Cu" && all && await bd.evaluate(() => BoardApp.state.layer === "F.Cu" && document.getElementById("layer").value === "F.Cu") && await bd.locator('.layer.active[data-l="F.Cu"]').count() === 1,
     "Layers: \"only\" shows a single layer and again all; clicking a copper layer makes it the active one");
+
+  // cross-probing: a part picked in the board's list is selected in the schematic, and back
+  await bd.locator('#parts .item', { hasText: "R2" }).first().click();
+  await cad.waitForFunction(() => { const S = TubeCAD.state, c = S.comps.find(x => x.label === "R2"); return c && S.sel.comps.has(c.id) && S.sel.comps.size === 1; }, null, { timeout: 4000 }).catch(() => {});
+  const xp1 = await cad.evaluate(() => { const S = TubeCAD.state, c = S.comps.find(x => x.label === "R2"); return S.sel.comps.has(c.id) && S.sel.comps.size === 1; });
+  await cad.evaluate(() => { const S = TubeCAD.state, c = S.comps.find(x => x.label === "R3"); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id); TubeCAD.updateInspector(); });
+  await bd.waitForFunction(() => { const S = BoardApp.state; return S.sel && S.sel.kind === "part" && S.board.parts[S.sel.key].ref === "R3"; }, null, { timeout: 4000 }).catch(() => {});
+  const xp2 = await bd.evaluate(() => { const S = BoardApp.state; return !!(S.sel && S.sel.kind === "part" && S.board.parts[S.sel.key].ref === "R3"); });
+  check(xp1 && xp2, `cross-probing: R2 picked on the board is selected in the schematic (${xp1}); R3 selected in the schematic is selected on the board (${xp2})`);
+
+  // a GND plane over the bottom layer, from the board inspector: it fills and joins every GND pad
+  await bd.locator("#pcb").focus(); await bd.keyboard.press("Escape"); await bd.keyboard.press("Escape");
+  const gndBefore = await bd.evaluate(() => BoardApp.state.conn.rats.filter(r => BoardApp.state.model.names[r.net] === "GND").length);
+  await bd.locator("#inspector button", { hasText: "plane (bottom)" }).click();
+  const gp = await bd.evaluate(() => { const S = BoardApp.state; return { zones: S.board.zones.length, net: S.board.zones[0] && S.board.zones[0].net, fills: S.fills.length, ops: S.fills[0] ? S.fills[0].ops.length : 0, gnd: S.conn.rats.filter(r => S.model.names[r.net] === "GND" && [[r.x1, r.y1], [r.x2, r.y2]].every(([x, y]) => x > 0 && y > 0 && x < S.board.outline.w && y < S.board.outline.h)).length }; });
+  check(gp.zones === 1 && gp.net === "GND" && gp.fills === 1 && gp.ops > 5 && gndBefore > 0 && gp.gnd === 0, `the GND plane button pours the bottom layer and joins every GND pad on the board (GND links to route there: ${gndBefore} → ${gp.gnd})`);
+  await cad.waitForFunction(() => (TubeCAD.state.board.zones || []).length === 1, null, { timeout: 4000 }).catch(() => {});
+  check(await cad.evaluate(() => (TubeCAD.state.board.zones || []).length === 1), "the pour is saved with the circuit");
+
+  // Nets tab: click a net to highlight it, again to turn it off
+  await bd.click('[data-tab="nets"]');
+  const nNets = await bd.locator("#nets .net").count();
+  await bd.locator("#nets .net").first().click();
+  const hl1 = await bd.evaluate(() => BoardApp.state.netHL);
+  await bd.locator("#nets .net").first().click();
+  const hl2 = await bd.evaluate(() => BoardApp.state.netHL);
+  check(nNets > 3 && hl1 !== null && hl2 === null && await bd.isVisible("#nets") && !(await bd.isVisible("#parts")), `the Nets tab lists ${nNets} nets; a click highlights one (${hl1}) and a second click turns it off`);
+  await bd.click('[data-tab="parts"]');
+
+  // routing onto a pad of another net is refused (too close); Shift+click places it anyway
+  await bd.evaluate(() => BoardApp.fit()); await bd.waitForTimeout(100);
+  Object.assign(cv, await bd.locator("#pcb").boundingBox());
+  const pr = await bd.evaluate(() => { const S = BoardApp.state, a = S.model.pads.find(p => p.ref === "R2" && p.net !== null), c = S.model.pads.find(p => p.part !== a.part && p.net !== null && p.net !== a.net && p.netName !== "GND"); return [BoardApp.toScreen(a.x, a.y), BoardApp.toScreen(c.x, c.y)]; });
+  const nT0 = await bd.evaluate(() => BoardApp.state.board.tracks.length);
+  await bd.locator("#pcb").focus(); await bd.keyboard.press("x");
+  await bd.mouse.click(cv.x + pr[0][0], cv.y + pr[0][1]); await bd.mouse.move(cv.x + pr[1][0], cv.y + pr[1][1], { steps: 5 }); await bd.mouse.click(cv.x + pr[1][0], cv.y + pr[1][1]);
+  const refused = await bd.evaluate(() => BoardApp.state.board.tracks.length), why = await bd.textContent("#st-msg");
+  await bd.keyboard.down("Shift"); await bd.mouse.click(cv.x + pr[1][0], cv.y + pr[1][1]); await bd.keyboard.up("Shift");
+  const forced = await bd.evaluate(() => ({ n: BoardApp.state.board.tracks.length, short: BoardApp.state.conn.shorts.length }));
+  check(refused === nT0 && /Too close to/.test(why) && forced.n > nT0 && forced.short > 0, `a segment onto another net's pad is refused ("${why.slice(0, 60)}…"); Shift+click places it (and the check reports the short)`);
+  await bd.keyboard.press("Escape"); await bd.keyboard.press("Control+z"); await bd.keyboard.press("Escape");
+
+  // drag a track segment sideways: the next segment follows, the end gets a jog; U selects the whole track
+  await bd.evaluate(() => { BoardApp.state.board.tracks.push({ layer: "F.Cu", w: 1, pts: [[20, 80], [32.7, 80], [32.7, 92.7]] }); BoardApp.commit(); });
+  const ti = await bd.evaluate(() => BoardApp.state.board.tracks.length - 1);
+  const s0 = await bd.evaluate(() => BoardApp.toScreen(26.35, 80)), s1 = await bd.evaluate(() => BoardApp.toScreen(26.35, 82.54));
+  await bd.mouse.move(cv.x + s0[0], cv.y + s0[1]); await bd.mouse.down(); await bd.mouse.move(cv.x + s1[0], cv.y + s1[1], { steps: 4 }); await bd.mouse.up();
+  const dragged = await bd.evaluate(i => BoardApp.state.board.tracks[i].pts, ti);
+  const okDrag = dragged.length === 4 && Math.abs(dragged[1][0] - 20) < 1e-3 && Math.abs(dragged[1][1] - 82.54) < 1e-3 && Math.abs(dragged[2][0] - 32.7) < 1e-3 && Math.abs(dragged[2][1] - 82.54) < 1e-3;
+  check(okDrag, `dragging a segment moves it 2.54 mm, the corner slides along the next segment and the start gets a jog (${JSON.stringify(dragged)})`);
+  await bd.evaluate(i => { const S = BoardApp.state, t = S.board.tracks[i]; S.board.tracks.push({ layer: "F.Cu", w: 1, pts: [t.pts[3], [45.4, 92.7]] }); BoardApp.commit(); }, ti);
+  await bd.mouse.move(cv.x + s1[0], cv.y + s1[1]); await bd.keyboard.press("u");
+  const uSel = await bd.evaluate(() => BoardApp.state.sel);
+  check(uSel && uSel.kind === "tracks" && uSel.list.length === 2, `U selects the whole connected track (${uSel && uSel.list && uSel.list.length} pieces)`);
+  await bd.keyboard.press("Delete");
+
+  // manufacturing outputs: the Gerber ZIP (the board is unfinished: confirm) and the print PDF
+  bd.once("dialog", d => d.accept());
+  await bd.click("#btn-export");
+  const [zipDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-gerber")]);
+  const zipBuf = await readFile(await zipDl.path());
+  await bd.click("#btn-export");
+  const [pdfDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-pdf")]);
+  const pdfBuf = await readFile(await pdfDl.path());
+  const zipNames = [...zipBuf.toString("latin1").matchAll(/[\w.-]+\.(?:gbr|drl|txt)/g)].map(m => m[0]);
+  check(/gerbers\.zip$/.test(zipDl.suggestedFilename()) && zipBuf.slice(0, 2).toString() === "PK" && zipNames.some(n => /-B_Cu\.gbr$/.test(n)) && zipNames.some(n => /-PTH\.drl$/.test(n)) && /G36\*/.test(zipBuf.toString("latin1")),
+    `Export → Gerber + drill files gives ${zipDl.suggestedFilename()} with the copper, mask, silkscreen, outline and drill files (the pour as a region)`);
+  check(/-prints\.pdf$/.test(pdfDl.suggestedFilename()) && pdfBuf.slice(0, 4).toString() === "%PDF" && /\/Count 4/.test(pdfBuf.toString("latin1")), `Export → Print set gives a four-page PDF (${pdfDl.suggestedFilename()})`);
   await bd.close();
 }
 
