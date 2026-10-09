@@ -740,6 +740,7 @@
     canvas.focus();
     const m = evPos(e);
     if (e.button === 0 && !S.spaceDown) S.lastClick = { x: m.wx, y: m.wy };   // Fit picks the sheet clicked last
+    if (e.button === 0) bomSelShown = "";   // a click on the sheet shows its selection in the BOM again
     if (e.button === 1 || (e.button === 0 && S.spaceDown)) { S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
     if (e.button === 2) { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } return; }
     if (e.button !== 0) return;
@@ -1653,7 +1654,7 @@
   const bomOpts = { open: false, sockets: true, bench: false, height: 0 };
   try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
   const saveBomOpts = () => { try { localStorage.setItem(BOM_KEY, JSON.stringify(bomOpts)); } catch (e) {} };
-  let bomStale = false;
+  let bomStale = false, bomSelShown = "";
   // simulated worst case of a part: resistor dissipation (against its rating), capacitor peak voltage
   function partStress(c) {
     if (!S.sim.result) return null;
@@ -1696,6 +1697,16 @@
         <td class="n">${r.item}</td><td class="n">${r.qty}</td><td class="mono">${esc(r.refs)}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.value)}</td>
         <td>${esc(r.rating)}</td><td class="mono${r.warn ? " warn" : ""}">${esc(r.sim)}</td>
         <td>${r.socket ? "" : `<input type="text" value="${esc(r.partno)}" spellcheck="false" aria-label="Part number for ${esc(r.refs)}">`}</td></tr>`).join("") + "</tbody>";
+    // a new selection on the sheet scrolls its line into view and flashes it
+    const sel = [...S.sel.comps].sort().join(), first = table.querySelector("tbody tr.sel");
+    if (sel !== bomSelShown) {
+      bomSelShown = sel;
+      if (first) {
+        const box = table.parentElement, head = table.querySelector("thead").offsetHeight, top = first.offsetTop - head;
+        if (top < box.scrollTop || first.offsetTop + first.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = Math.max(0, top - (box.clientHeight - head - first.offsetHeight) / 2);
+        table.querySelectorAll("tbody tr.sel").forEach(tr => tr.classList.add("flash"));
+      }
+    }
     table.querySelectorAll("tbody tr").forEach(tr => {
       const r = bom.rows[+tr.dataset.i];
       tr.addEventListener("click", e => {
@@ -1715,7 +1726,7 @@
   function toggleBom(on) {
     const host = document.getElementById("bom");
     bomOpts.open = on === undefined ? host.hidden : !!on; saveBomOpts();
-    host.hidden = !bomOpts.open;
+    host.hidden = !bomOpts.open; bomSelShown = "";
     document.getElementById("btn-bom").classList.toggle("active", bomOpts.open);
     renderBom(); render();
   }

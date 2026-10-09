@@ -93,6 +93,8 @@
     #bom-table tbody tr { cursor: pointer; }
     #bom-table tbody tr:hover { background: #111a25; }
     #bom-table tbody tr.sel { background: #0d3442; }
+    #bom-table tbody tr.flash { animation: bom-flash .9s ease-out; }
+    @keyframes bom-flash { from { background: #1d6a80; } to { background: #0d3442; } }
     #bom-table td.warn { color: var(--warn); }
     #bom-table input { width: 100%; min-width: 110px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; font: inherit; }
     .bom-empty { color: var(--muted); padding: 14px; font-size: 12px; }

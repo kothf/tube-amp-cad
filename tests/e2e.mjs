@@ -817,6 +817,24 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(pn === "R1,R2,R3,R4", `a part number typed in the BOM is stored on each part of the line (${pn})`);
   await cad.locator("#bom-table tr", { hasText: "125ESE" }).locator("td").first().click();
   check(await cad.evaluate(() => [...TubeCAD.state.sel.comps].map(id => TubeCAD.state.comps.find(c => c.id === id).label).join()) === "T1", "clicking a BOM line selects its parts on the sheet");
+  {
+    // a part clicked on the sheet brings its line into view in a short, scrolled-away list
+    await cad.evaluate(() => { document.getElementById("bom").style.setProperty("--bom-h", "150px"); TubeCAD.fitView(); });
+    await cad.waitForTimeout(100);
+    await cad.evaluate(() => { document.querySelector("#bom .bom-scroll").scrollTop = 0; });
+    const t1 = await cad.evaluate(() => { const c = TubeCAD.state.comps.find(c => c.label === "T1"); return { x: c.x, y: c.y + 10 }; });
+    const [px, py] = await toScreen(t1.x, t1.y);
+    // the toolbar may have wrapped since the start, so measure the canvas again
+    const cb = await cad.locator("#cad").boundingBox();
+    const [sx, sy] = await cad.evaluate(([x, y]) => { const v = TubeCAD.state.view; return [x * v.scale + v.ox, y * v.scale + v.oy]; }, [t1.x, t1.y]);
+    await cad.mouse.click(cb.x + sx, cb.y + sy);
+    const vis = await cad.evaluate(() => {
+      const box = document.querySelector("#bom .bom-scroll"), tr = document.querySelector("#bom-table tbody tr.sel"), b = box.getBoundingClientRect(), r = tr && tr.getBoundingClientRect();
+      return { text: tr ? tr.textContent : "", scrolled: box.scrollTop > 0, inView: !!r && r.top >= b.top + document.querySelector("#bom-table thead").offsetHeight - 1 && r.bottom <= b.bottom + 1 };
+    });
+    check(/125ESE/.test(vis.text) && vis.scrolled && vis.inView, `selecting T1 on the sheet scrolls the BOM to its highlighted line`);
+    await cad.evaluate(() => document.getElementById("bom").style.removeProperty("--bom-h"));
+  }
   await cad.check("#bom-bench");
   check(await cad.locator("#bom-table tr", { hasText: "DC supply" }).count() === 1, "Sources & instruments adds the bench supply");
   await cad.uncheck("#bom-bench");

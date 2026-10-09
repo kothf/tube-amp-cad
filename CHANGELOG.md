@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.27.1] - 2026-10-09
+
+### Changed
+- **The BOM follows the selection.** Selecting a part on the schematic
+  scrolls the bill of materials to its line, which is highlighted and flashes
+  briefly. Opening the panel with a part selected shows its line too.
+
 ## [3.27.0] - 2026-10-09
 
 ### Added
