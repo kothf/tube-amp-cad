@@ -861,6 +861,65 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(!(await cad.isVisible("#bom")), "B closes the panel again");
 }
 
+// --- Transistors, zener, LED; current stickers ------------------------------------
+{
+  for (const name of ["NPN transistor", "PNP transistor", "NPN, high voltage", "N-MOSFET, depletion", "P-MOSFET", "Zener diode", "LED"])
+    check(await cad.getByRole("button", { name: new RegExp("^" + name.replace(/[()]/g, "\\$&")) }).count() > 0, `palette offers "${name}" under Semiconductors`);
+  // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
+  await cad.evaluate(() => {
+    const S = TubeCAD.state, C = TubeCAD; S.comps = []; S.wires = [];
+    const add = (t, p, x, y, rot, label) => { const c = C.makeComp(t, p, x, y, rot || 0); if (label) c.label = label; S.comps.push(c); return c; };
+    const poly = (...pts) => { for (let i = 0; i + 3 < pts.length; i += 2) S.wires.push({ id: "s" + S.wires.length, x1: pts[i], y1: pts[i + 1], x2: pts[i + 2], y2: pts[i + 3] }); };
+    add("vdc", { v: 300 }, 200, 300, 0, "G1"); add("ground", {}, 200, 330);
+    add("resistor", { r: 47000 }, 400, 200, 1, "R1"); add("tube", { tube: "12AX7" }, 400, 320, 0, "VL1");
+    add("led", { color: "red" }, 400, 400, 1, "HL1"); add("ground", {}, 400, 420);
+    add("resistor", { r: 1e6 }, 300, 360, 1, "R2"); add("ground", {}, 300, 390);
+    add("npn", { model: "MJE340" }, 550, 300, 0, "VT1"); add("resistor", { r: 33000, w: "2" }, 560, 380, 1, "R3"); add("ground", {}, 560, 410);
+    add("zener", { model: "1N4742A" }, 700, 380, 3, "VD1"); add("resistor", { r: 15000, w: "10" }, 700, 200, 1, "R4"); add("ground", {}, 700, 400);
+    poly(200, 270, 200, 150, 400, 150, 400, 170); poly(400, 230, 400, 270); poly(400, 370, 400, 380);
+    poly(350, 320, 300, 320, 300, 330); poly(400, 250, 520, 250, 520, 300);
+    poly(560, 270, 560, 150, 400, 150); poly(560, 330, 560, 350);
+    poly(560, 150, 700, 150, 700, 170); poly(700, 230, 700, 360);
+    C.commit(); C.runSim("full");
+  });
+  await cad.waitForFunction(() => { const S = TubeCAD.state; return S.sim.result && !S.sim.busy; }, null, { timeout: 30000 });
+  const r = await cad.evaluate(() => {
+    const S = TubeCAD.state, C = TubeCAD, g = l => S.comps.find(c => c.label === l), dev = l => (S.sim.result.dc.devices[g(l).id] || {}).main, v = n => S.sim.result.dc.nodes[n];
+    const net = (l, p) => C.topo().pinNet.get(g(l).id + ":" + p), wc = C.wireCurrents().currents, pins = C.pinCurrents();
+    const seg = (x1, y1, x2, y2) => { const w = S.wires.find(w => (w.x1 === x1 && w.y1 === y1 && w.x2 === x2 && w.y2 === y2) || (w.x1 === x2 && w.y1 === y2 && w.x2 === x1 && w.y2 === y1)); return w ? (w.x1 === x1 && w.y1 === y1 ? 1 : -1) * wc.get(w.id) : null; };
+    return { err: S.sim.error, vz: v(net("VD1", "K")), vled: v(net("HL1", "A")), q: dev("VT1"), ia: dev("VL1").ia, supply: -dev("G1").i,
+      rail: seg(200, 150, 400, 150), r1: seg(400, 230, 400, 250), base: seg(400, 250, 520, 250), anode: seg(400, 250, 400, 270), emitter: seg(560, 330, 560, 350),
+      zener: seg(700, 230, 700, 360), pinR4: pins.get(g("R4").id + ":1"), checks: document.getElementById("inspector").textContent };
+  });
+  check(!r.err && Math.abs(r.vz - 12) < 0.3, `the 1N4742A holds ${r.vz.toFixed(2)} V (12 V zener at ~19 mA)`);
+  // red LED: 1.8 V at 10 mA, 2·Vt per e-fold below (plus 5 Ω), so ~1.70 V at the 12AX7's 1.4 mA
+  const vled = 2 * 0.025852 * Math.log(r.ia / (0.01 / Math.exp(1.8 / (2 * 0.025852)))) + 5 * r.ia;
+  check(Math.abs(r.vled - vled) < 0.005, `the red LED biases the 12AX7 cathode at ${r.vled.toFixed(3)} V (expected ${vled.toFixed(3)} V at ${(r.ia * 1e3).toFixed(2)} mA)`);
+  check(r.q && r.q.vbe > 0.55 && r.q.vbe < 0.75 && r.q.ic > 5e-3 && r.q.ic < 9e-3 && r.q.pd > 0.3 && r.q.pd < 0.7, `MJE340 follower: Vbe ${r.q.vbe.toFixed(3)} V, Ic ${(r.q.ic * 1e3).toFixed(2)} mA, ${r.q.pd.toFixed(2)} W`);
+  check(Math.abs(Math.abs(r.rail) - Math.abs(r.supply)) < 1e-6, `the B+ rail wire carries the supply current (${(r.rail * 1e3).toFixed(2)} mA)`);
+  check(Math.abs(r.r1 - (r.base + r.anode)) < 1e-8 && Math.abs(r.anode - r.ia) < 1e-6 && Math.abs(r.base - r.q.ib) < 1e-6, `R1's current splits at the junction into the anode (${(r.anode * 1e3).toFixed(3)} mA) and the base (${(r.base * 1e6).toFixed(1)} µA)`);
+  check(Math.abs(r.emitter - (r.q.ic + r.q.ib)) < 1e-6, `the emitter wire carries Ic + Ib (${(r.emitter * 1e3).toFixed(3)} mA)`);
+  check(Math.abs(r.zener - r.pinR4) < 1e-6 && r.zener > 0.018, `the zener branch carries R4's current down (${(r.zener * 1e3).toFixed(2)} mA)`);
+  await cad.evaluate(() => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.comps.add(S.comps.find(c => c.label === "VT1").id); TubeCAD.commit(); });
+  await cad.waitForFunction(() => { const S = TubeCAD.state; return S.sim.result && !S.sim.busy; }, null, { timeout: 30000 });
+  const insp = await cad.textContent("#inspector");
+  check(/NPN transistor/.test(insp) && /hFE \(Ic\/Ib\)\d+/.test(insp) && /Dissipation.*of 20 W/.test(insp), "the inspector shows Vce, Vbe, Ic, Ib, hFE and dissipation against the rating");
+  const spice = await cad.evaluate(() => TubeCAD.spiceNetlist());
+  check(/^QVT|^Q\S+ N\d+ N\d+ N\d+ QN_MJE340$/m.test(spice) && /\.model QN_MJE340 NPN\(IS=/.test(spice), "SPICE export writes the transistor as a Q element with its .model");
+  const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => [r.refs, r.desc, r.value, r.rating, r.sim].join("|")));
+  check(bom.some(l => l.startsWith("VT1|Transistor, NPN|MJE340|300 V, 0.5 A, 20 W, TO-126|")) && bom.some(l => /^VD1\|Zener diode\|1N4742A\|12 V, 1 W\|/.test(l)) && bom.some(l => /^HL1\|LED, red\|/.test(l)), `the BOM lists the transistor, zener and LED with their ratings`);
+  // stickers: drawn when Currents is on (the canvas changes when it is turned off)
+  const shot = () => cad.locator("#cad").screenshot();
+  const on = await shot(); await cad.click("#btn-amps"); const off = await shot(); await cad.click("#btn-amps");
+  check(!on.equals(off) && await cad.evaluate(() => TubeCAD.state.showAmps), "Currents toggles the current stickers on the wires");
+  // hovering a wire reports its current too
+  const cb = await cad.locator("#cad").boundingBox();
+  const [hx, hy] = await cad.evaluate(() => { const v = TubeCAD.state.view; return [300 * v.scale + v.ox, 150 * v.scale + v.oy]; });
+  await cad.mouse.move(cb.x + hx, cb.y + hy);
+  const hov = await cad.textContent("#status-hover");
+  check(/I →\d/.test(hov) && /mA DC/.test(hov), `hovering the rail shows its current ("${hov.trim()}")`);
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 

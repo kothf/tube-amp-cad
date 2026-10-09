@@ -82,6 +82,44 @@
   };
 
   // ---------------------------------------------------------------------------
+  // Semiconductors. Currents into each terminal for terminal voltages V.
+  // BJT (nodes C, B, E): SPICE Gummel-Poon without the low-current
+  // recombination terms: IS, BF, BR, NF, VAF (Early), IKF (high-injection knee).
+  // MOSFET (nodes D, G, S): square law (SPICE level 1: VTO, KP, LAMBDA) with the
+  // overdrive smoothed over 50 mV around threshold, so the current and its
+  // derivative stay continuous; drain and source swap when Vds reverses.
+  // pol: +1 NPN / N-channel, -1 PNP / P-channel. The body diode of a MOSFET
+  // and capacitances are separate D and C elements (see cad-components.js).
+  // ---------------------------------------------------------------------------
+  const VT = 0.025852;
+  const Semi = {
+    bjt(V, m) {
+      const p = m.pol, vbe = p * (V[1] - V[2]), vbc = p * (V[1] - V[0]);
+      const If = m.is * (Math.exp(Math.min(vbe / ((m.nf || 1) * VT), 80)) - 1), Ir = m.is * (Math.exp(Math.min(vbc / VT, 80)) - 1);
+      const q1 = 1 / Math.max(1 - vbc / (m.vaf || 1e9), 0.05), q2 = m.ikf ? Math.max(If, 0) / m.ikf : 0;
+      const qb = q1 * (1 + Math.sqrt(1 + 4 * q2)) / 2;
+      const icc = (If - Ir) / qb, ib = If / m.bf + Ir / (m.br || 1), ic = icc - Ir / (m.br || 1);
+      return [p * ic, p * ib, -p * (ic + ib)];
+    },
+    mos(V, m) {
+      const p = m.pol;
+      let vds = p * (V[0] - V[2]), vgs = p * (V[1] - V[2]), sw = 1;
+      if (vds < 0) { vds = -vds; vgs = p * (V[1] - V[0]); sw = -1; }
+      const s = 0.05, vov = s * softplus((vgs - m.vto * p) / s);
+      const id = (vds < vov ? m.kp * (vov - vds / 2) * vds : m.kp / 2 * vov * vov) * (1 + (m.lambda || 0) * vds);
+      return [p * sw * id, 0, -p * sw * id];
+    }
+  };
+  // SPICE pnjlim: limits a junction voltage step so exp() cannot run away between iterations
+  function pnjlim(vnew, vold, nVt, vcrit) {
+    if (vold !== undefined && vnew > vcrit && Math.abs(vnew - vold) > 2 * nVt) {
+      if (vold > 0) { const arg = 1 + (vnew - vold) / nVt; vnew = arg > 0 ? vold + nVt * Math.log(arg) : vcrit; }
+      else vnew = nVt * Math.log(vnew / nVt);
+    }
+    return vnew;
+  }
+
+  // ---------------------------------------------------------------------------
   // Dense linear solve with partial pivoting (in place)
   // ---------------------------------------------------------------------------
   function solveLinear(A, b, n) {
@@ -201,12 +239,14 @@
     const stampG = (a, c, g) => { addA(a, a, g); addA(c, c, g); addA(a, c, -g); addA(c, a, -g); };
     // Nonlinear device: currents into each terminal I(V) linearized at V0
     // I(V) ~= I0 + J (V - V0)  ->  A += J,  b += J V0 - I0
-    const stampNonlinear = (nodes, fn, V0) => {
+    // dAbs: a fixed difference step (V) for exponential devices, where 1 ppm of a
+    // few hundred volts would already be a coarse step
+    const stampNonlinear = (nodes, fn, V0, dAbs) => {
       const I0 = fn(V0);
       const m = nodes.length;
       const rhs = I0.map(v => -v);
       for (let s = 0; s < m; s++) {
-        const d = 1e-6 * Math.max(1, Math.abs(V0[s]));
+        const d = dAbs || 1e-6 * Math.max(1, Math.abs(V0[s]));
         const Vp = V0.slice(); Vp[s] += d;
         const Ip = fn(Vp);
         for (let t = 0; t < m; t++) {
@@ -222,6 +262,7 @@
     let lastDv = null, stall = 0;
     for (let iter = 0; iter < maxIter; iter++) {
       A.fill(0); b.fill(0);
+      let limited = false;   // a junction voltage was limited: this iterate is not a solution yet
       for (let i = 1; i < circ.nNodes; i++) addA(i, i, gmin);
 
       for (const e of circ.els) {
@@ -278,12 +319,10 @@
           case "D": {
             const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852;
             const vcrit = nVt * Math.log(nVt / (Math.SQRT2 * Is));
-            let vd = vn(x, nd[0]) - vn(x, nd[1]);
-            // pnjlim-style limiting against the previous iterate
-            if (e._vlast !== undefined && vd > vcrit && Math.abs(vd - e._vlast) > 2 * nVt) {
-              if (e._vlast > 0) { const arg = 1 + (vd - e._vlast) / nVt; vd = arg > 0 ? e._vlast + nVt * Math.log(arg) : vcrit; }
-              else vd = nVt * Math.log(vd / nVt);
-            }
+            const raw = vn(x, nd[0]) - vn(x, nd[1]);
+            // limited against the previous iterate (pnjlim)
+            const vd = pnjlim(raw, e._vlast, nVt, vcrit);
+            if (Math.abs(vd - raw) > 1e-9) limited = true;
             e._vlast = vd;
             const ex = Math.exp(Math.min(vd / nVt, 80));
             const id = Is * (ex - 1), gd = Is * ex / nVt + 1e-12;
@@ -298,6 +337,21 @@
             stampNonlinear(nd, V => { const v = V[0] - V[1]; const i = v > 0 ? P * Math.pow(v, 1.5) : 0; return [i, -i]; }, V0);
             break;
           }
+          case "BJT": {
+            // junction voltages limited against the last iterate, the device linearized there
+            const p = e.model.pol, nVt = (e.model.nf || 1) * VT, vcrit = nVt * Math.log(nVt / (Math.SQRT2 * e.model.is));
+            const V = nd.map(k => vn(x, k));
+            const rbe = p * (V[1] - V[2]), rbc = p * (V[1] - V[0]);
+            const vbe = pnjlim(rbe, e._vbe, nVt, vcrit), vbc = pnjlim(rbc, e._vbc, VT, VT * Math.log(VT / (Math.SQRT2 * e.model.is)));
+            if (Math.abs(vbe - rbe) > 1e-9 || Math.abs(vbc - rbc) > 1e-9) limited = true;
+            e._vbe = vbe; e._vbc = vbc;
+            const vb = V[2] + p * vbe;
+            stampNonlinear(nd, W => Semi.bjt(W, e.model), [vb - p * vbc, vb, V[2]], 1e-7);
+            break;
+          }
+          case "MOS":
+            stampNonlinear(nd, W => Semi.mos(W, e.model), nd.map(k => vn(x, k)), 1e-6);
+            break;
           case "TRIODE": {
             const p = e.model;
             const V0 = nd.map(k => vn(x, k));   // A, G, K
@@ -339,12 +393,12 @@
         x[i] = nx;
       }
       if (!isFinite(maxDv)) return { ok: false, x, error: "numerical overflow" };
-      if (conv && iter > 0) return { ok: true, x, iter };
+      if (conv && iter > 0 && !limited) return { ok: true, x, iter };
       // Round-off floor: with hundreds of volts on some nodes the solution can
       // settle into a microvolt-level wobble that never meets the 1 µV test
       // (whether it does depends on node order). An update below 100 µV that
       // has stopped shrinking for a few iterations is converged.
-      if (maxDv < 1e-4 && lastDv !== null && maxDv > 0.5 * lastDv) { if (++stall >= 3) return { ok: true, x, iter }; }
+      if (maxDv < 1e-4 && lastDv !== null && maxDv > 0.5 * lastDv && !limited) { if (++stall >= 3) return { ok: true, x, iter }; }
       else stall = 0;
       lastDv = maxDv;
     }
@@ -353,7 +407,7 @@
 
   function dcOperatingPoint(circ) {
     const zero = new Array(circ.nUnk).fill(0);
-    circ.els.forEach(e => { delete e._vlast; });
+    circ.els.forEach(e => { delete e._vlast; delete e._vbe; delete e._vbc; });
     let r = newtonSolve(circ, zero, { dc: true }, { gmin: 1e-9 });
     if (r.ok) return r;
     // gmin stepping
@@ -387,12 +441,49 @@
       const vak = v[0] - v[3], vgk = v[1] - v[3], vg2k = v[2] - v[3];
       return { vak, vgk, vg2k, ia: Koren.pentodeIa(vak, vgk, vg2k, e.model), ig2: Koren.screenI(vgk, vg2k, e.model, vak), ig: Koren.gridI(vgk, e.model) };
     }
+    if (e.kind === "BJT") {
+      const [ic, ib] = Semi.bjt(v, e.model), p = e.model.pol;
+      return { vce: p * (v[0] - v[2]), vbe: p * (v[1] - v[2]), ic: p * ic, ib: p * ib, pd: (v[0] - v[2]) * ic + (v[1] - v[2]) * ib };
+    }
+    if (e.kind === "MOS") { const [id] = Semi.mos(v, e.model), p = e.model.pol; return { vds: p * (v[0] - v[2]), vgs: p * (v[1] - v[2]), id: p * id, pd: (v[0] - v[2]) * id }; }
     if (e.kind === "VDIODE") { const vd = v[0] - v[1]; return { vd, i: vd > 0 ? e.perveance * Math.pow(vd, 1.5) : 0 }; }
     if (e.kind === "D") { const vd = v[0] - v[1]; return { vd, i: (e.is || 2.5e-9) * (Math.exp(Math.min(vd / ((e.n || 1.75) * 0.025852), 80)) - 1) }; }
     if (e.kind === "R") { const vd = v[0] - v[1]; return { vd, i: vd / e.r }; }
     if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") return { i: x[e.branch], vd: v[0] - v[1] };
     if (e.kind === "C") return { vd: v[0] - v[1] };
     return {};
+  }
+
+  // Current flowing from each node into an element: [[node, i], ...]. Capacitors
+  // carry none at DC and none on average over a settled window.
+  function terminalCurrents(e, x) {
+    const nd = e.nodes, v = nd.map(k => vn(x, k)), two = i => [[nd[0], i], [nd[1], -i]];
+    switch (e.kind) {
+      case "R": return two((v[0] - v[1]) / Math.max(e.r, 1e-6));
+      case "C": return two(0);
+      case "L": case "V": case "VSRC": return two(x[e.branch]);
+      case "D": return two(deviceState(e, x).i);
+      case "VDIODE": return two(deviceState(e, x).i);
+      case "XFMR": { const out = []; e.windings.forEach((w, j) => { const i = x[e.branches[j]]; out.push([w.a, i], [w.b, -i]); }); return out; }
+      case "TRIODE": { const s = deviceState(e, x); return [[nd[0], s.ia], [nd[1], s.ig], [nd[2], -(s.ia + s.ig)]]; }
+      case "PENTODE": { const s = deviceState(e, x); return [[nd[0], s.ia], [nd[1], s.ig], [nd[2], s.ig2], [nd[3], -(s.ia + s.ig + s.ig2)]]; }
+      case "BJT": return Semi.bjt(v, e.model).map((i, k) => [nd[k], i]);
+      case "MOS": return Semi.mos(v, e.model).map((i, k) => [nd[k], i]);
+      default: return [];
+    }
+  }
+  // flat list [id, node, i, ...] of the terminal currents of every element with an id;
+  // called again with the same list, adds to it (for averaging over a window)
+  function currentsOf(circ, x, out) {
+    let k = 0;
+    circ.els.forEach(e => {
+      if (!e.id) return;
+      terminalCurrents(e, x).forEach(([node, i]) => {
+        if (out.length <= k) out.push(e.id, node, 0);
+        out[k + 2] += i; k += 3;
+      });
+    });
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -455,6 +546,7 @@
     }
     result.dc = { nodes: [0].concat(dc.x.slice(0, nodeCount - 1)), devices: {} };
     circ.els.forEach(e => { if (e.id) result.dc.devices[e.id] = Object.assign(result.dc.devices[e.id] || {}, { [e.kind === "VDIODE" ? e.part || "d" : "main"]: deviceState(e, dc.x) }); });
+    result.dc.currents = currentsOf(circ, dc.x, []);
     progress(0.05);
 
     // Time base from sources
@@ -562,7 +654,7 @@
     // DC values are the averages over the settled capture window, what a meter
     // reads; the estimate is kept as dcEstimate.
     const averaged = circ.els.some(e => e.dcValue !== undefined || e.acMains);
-    const nodeSum = new Float64Array(nodeCount), devSum = {};
+    const nodeSum = new Float64Array(nodeCount), devSum = {}, curSum = [];
     const record = (k) => {
       for (let i = 1; i < nodeCount; i++) nodes[i][k] = x[i - 1];
       const acc = averaged && k < nCap - 1;   // the last sample repeats the first: one exact window
@@ -572,6 +664,7 @@
         tr.i[k] = s.ia !== undefined ? s.ia : s.i;
         if (tr.ig2) tr.ig2[k] = s.ig2;
       });
+      if (acc) currentsOf(circ, x, curSum);
       if (acc) circ.els.forEach((e, j) => {
         if (!e.id) return;
         const s = deviceState(e, x), d = devSum[j] || (devSum[j] = { e, sum: {} });
@@ -589,7 +682,7 @@
     }
     result.tran = { dt: h, samples: nCap, nodes, devices: devTrace, periods, settled, fBase: fMin };
     if (averaged && nCap > 1) {
-      const n = nCap - 1, avg = { nodes: Array.from(nodeSum, v => v / n), devices: {} };
+      const n = nCap - 1, avg = { nodes: Array.from(nodeSum, v => v / n), devices: {}, currents: curSum.map((v, k) => (k % 3 === 2 ? v / n : v)) };
       avg.nodes[0] = 0;
       Object.values(devSum).forEach(({ e, sum }) => {
         const m = {}; for (const f in sum) m[f] = sum[f] / n;
@@ -676,6 +769,6 @@
     return result;
   }
 
-  const Engine = { Koren, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix };
+  const Engine = { Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix };
   root.TubeSimEngine = Engine;
 })(globalThis);

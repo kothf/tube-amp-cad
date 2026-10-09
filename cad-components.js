@@ -150,6 +150,39 @@
   const COL = { body: "#58a6ff", bodySel: "#00e5ff", tube: "#e6edf3", hot: "#ff7b72", text: "#e6edf3", value: "#79c0ff", fill: "#0d1420" };
   function line(ctx, pts) { ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke(); }
 
+  // filled arrowhead with its tip at (x, y), pointing along (dx, dy)
+  function arrowHead(ctx, x, y, dx, dy, len, half) {
+    const l = Math.hypot(dx, dy), ux = dx / l, uy = dy / l;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - ux * len - uy * half, y - uy * len + ux * half); ctx.lineTo(x - ux * len + uy * half, y - uy * len - ux * half); ctx.closePath();
+    ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+  }
+  // IEC 60617 S00687 / S00688 transistor with envelope: base bar, collector and emitter at
+  // an angle, the emitter arrow pointing out (NPN) or in (PNP)
+  function drawBjt(ctx, c, pol) {
+    ctx.beginPath(); ctx.arc(3, 0, 19, 0, Math.PI * 2); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
+    line(ctx, [-30, 0, -8, 0]);
+    ctx.lineWidth = 3; line(ctx, [-8, -11, -8, 11]); ctx.lineWidth = 2;
+    line(ctx, [-8, -5, 10, -15, 10, -30]);
+    line(ctx, [-8, 5, 10, 15, 10, 30]);
+    if (pol > 0) arrowHead(ctx, 8, 13.9, 18, 10, 7, 3.5);
+    else arrowHead(ctx, -5, 6.7, -18, -10, 7, 3.5);
+  }
+  // IEC 60617 S00706-S00709 insulated-gate FET with envelope: gate lead on the source side,
+  // channel broken (enhancement) or solid (depletion), substrate arrow in (N) or out (P), tied to the source
+  function drawMos(ctx, c, pol) {
+    const m = MOSFETS[c.params.model] || {}, depletion = pol > 0 ? m.vto < 0 : m.vto > 0;
+    ctx.beginPath(); ctx.arc(3, 0, 19, 0, Math.PI * 2); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
+    line(ctx, [-30, 10, -11, 10]); line(ctx, [-11, -10, -11, 10]);
+    ctx.lineWidth = 2.5;
+    if (depletion) line(ctx, [-5, -12, -5, 12]);
+    else { line(ctx, [-5, -12, -5, -6]); line(ctx, [-5, -3, -5, 3]); line(ctx, [-5, 6, -5, 12]); }
+    ctx.lineWidth = 2;
+    line(ctx, [-5, -9, 10, -9, 10, -30]);
+    line(ctx, [-5, 9, 10, 9, 10, 30]);
+    line(ctx, [-5, 0, 10, 0, 10, 9]);
+    if (pol > 0) arrowHead(ctx, -4, 0, -1, 0, 7, 3.5); else arrowHead(ctx, 9, 0, 1, 0, 7, 3.5);
+  }
+
   const DRAW = {
     resistor(ctx, c) {
       line(ctx, [-30, 0, -15, 0]); line(ctx, [15, 0, 30, 0]);
@@ -203,6 +236,24 @@
       ctx.beginPath(); ctx.moveTo(-7, -8); ctx.lineTo(7, 0); ctx.lineTo(-7, 8); ctx.closePath(); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
       line(ctx, [7, -8, 7, 8]);
     },
+    zener(ctx) {
+      DRAW.diode(ctx);
+      // IEC 60617 S00661 breakdown diode: the cathode bar bent at its ends
+      line(ctx, [3, -11, 7, -8]); line(ctx, [7, 8, 11, 11]);
+    },
+    led(ctx) {
+      DRAW.diode(ctx);
+      // IEC 60617 S00641 light-emitting diode: two arrows pointing away
+      ctx.lineWidth = 1.3;
+      [[0, -9], [7, -7]].forEach(([x, y]) => {
+        line(ctx, [x, y, x + 7, y - 9]);
+        ctx.beginPath(); ctx.moveTo(x + 7, y - 9); ctx.lineTo(x + 2.6, y - 7.2); ctx.lineTo(x + 6, y - 4.6); ctx.closePath(); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+      });
+    },
+    npn(ctx, c) { drawBjt(ctx, c, 1); },
+    pnp(ctx, c) { drawBjt(ctx, c, -1); },
+    nmos(ctx, c) { drawMos(ctx, c, 1); },
+    pmos(ctx, c) { drawMos(ctx, c, -1); },
     switch(ctx, c) {
       // IEC 60617 change-over contact: common on the left, fixed contacts A (top)
       // and B (bottom) as line ends with a seat; the blade rests on the closed one
@@ -365,6 +416,91 @@
       line(ctx, [-80, -30, -70, -30]); line(ctx, [-80, -10, -70, -10]); line(ctx, [-80, 30, -70, 30]);
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Semiconductors used around tube amplifiers: current sources and cascodes
+  // (MPSA42/92, MJE340/350, DN2540, LND150), regulators and followers (IRF820,
+  // IRF840, IRF9640), bias and protection (zeners, LEDs), small-signal helpers.
+  // BJTs: Gummel-Poon parameters (is A, bf, br, vaf V, ikf A) from the widely
+  // distributed SPICE models where one exists (2N2222A, 2N3904, 2N3906,
+  // 2N2907A); the others are set to the datasheet's typical gain at the usual
+  // operating current. MOSFETs: threshold vto (V; negative for depletion
+  // N-channel parts), kp (A/V²) from the datasheet's transfer curve. Ratings:
+  // v (Vceo / Vds max), i (A), p (W at 25 °C case for power parts, free air else).
+  // cbe/cbc, cgs/cgd: junction and gate capacitances (F) for the transient.
+  // ---------------------------------------------------------------------------
+  const pf = 1e-12;
+  const BJTS = {
+    "2N2222A": { pol: 1, is: 14.34e-15, bf: 255.9, br: 6.092, vaf: 74.03, ikf: 0.2847, cbe: 25 * pf, cbc: 8 * pf, v: 40, i: 0.6, p: 0.5, pkg: "TO-18", use: "general purpose" },
+    "2N3904": { pol: 1, is: 6.734e-15, bf: 416.4, br: 0.7371, vaf: 74.03, ikf: 0.06678, cbe: 8 * pf, cbc: 4 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
+    "BC547B": { pol: 1, is: 7e-15, bf: 290, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.1, p: 0.5, pkg: "TO-92", use: "small signal, low noise" },
+    "BD139": { pol: 1, is: 1e-13, bf: 150, br: 5, vaf: 100, ikf: 1, cbe: 100 * pf, cbc: 30 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
+    "MPSA42": { pol: 1, is: 1e-14, bf: 120, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 3 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
+    "MJE340": { pol: 1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 15 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" },
+    "2N2907A": { pol: -1, is: 650.6e-18, bf: 231.7, br: 3.563, vaf: 115.7, ikf: 1.079, cbe: 30 * pf, cbc: 8 * pf, v: 60, i: 0.6, p: 0.4, pkg: "TO-18", use: "general purpose" },
+    "2N3906": { pol: -1, is: 1.41e-15, bf: 180.7, br: 4.977, vaf: 18.7, ikf: 0.08, cbe: 10 * pf, cbc: 4.5 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
+    "BC557B": { pol: -1, is: 1e-14, bf: 250, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.1, p: 0.5, pkg: "TO-92", use: "small signal, low noise" },
+    "BD140": { pol: -1, is: 1e-13, bf: 150, br: 5, vaf: 100, ikf: 1, cbe: 100 * pf, cbc: 40 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
+    "MPSA92": { pol: -1, is: 1e-14, bf: 100, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 6 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
+    "MJE350": { pol: -1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 20 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" }
+  };
+  const MOSFETS = {
+    "2N7000": { pol: 1, vto: 2.1, kp: 0.17, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.2, p: 0.4, pkg: "TO-92", use: "small signal switch" },
+    "BS170": { pol: 1, vto: 2.1, kp: 0.2, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.5, p: 0.83, pkg: "TO-92", use: "small signal switch" },
+    "IRF510": { pol: 1, vto: 3.5, kp: 1.5, lambda: 0.005, cgs: 160 * pf, cgd: 20 * pf, v: 100, i: 5.6, p: 43, pkg: "TO-220", use: "follower, regulator" },
+    "IRF820": { pol: 1, vto: 3.8, kp: 0.9, lambda: 0.002, cgs: 335 * pf, cgd: 25 * pf, v: 500, i: 2.5, p: 50, pkg: "TO-220", use: "HV regulator, gyrator, follower" },
+    "IRF840": { pol: 1, vto: 3.9, kp: 2.5, lambda: 0.002, cgs: 1180 * pf, cgd: 120 * pf, v: 500, i: 8, p: 125, pkg: "TO-220", use: "HV regulator, follower" },
+    "DN2540": { pol: 1, vto: -2.0, kp: 0.15, lambda: 0.002, cgs: 190 * pf, cgd: 10 * pf, v: 400, i: 0.5, p: 15, pkg: "TO-220", use: "depletion, CCS / cascode" },
+    "LND150": { pol: 1, vto: -2.0, kp: 0.001, lambda: 0.005, cgs: 7 * pf, cgd: 0.5 * pf, v: 500, i: 0.03, p: 0.74, pkg: "TO-92", use: "depletion, low-current CCS" },
+    "BS250": { pol: -1, vto: -2.5, kp: 0.1, lambda: 0.01, cgs: 25 * pf, cgd: 5 * pf, v: 45, i: 0.23, p: 0.83, pkg: "TO-92", use: "small signal switch" },
+    "IRF9610": { pol: -1, vto: -3.5, kp: 0.5, lambda: 0.003, cgs: 150 * pf, cgd: 20 * pf, v: 200, i: 1.8, p: 20, pkg: "TO-220", use: "HV CCS, follower" },
+    "IRF9640": { pol: -1, vto: -3.5, kp: 1.5, lambda: 0.003, cgs: 1100 * pf, cgd: 100 * pf, v: 200, i: 11, p: 125, pkg: "TO-220", use: "HV regulator, CCS" }
+  };
+  // zener: breakdown bv (V) at the test current izt (A), dynamic resistance zzt (Ω), power p (W)
+  const ZENERS = {
+    "1N4733A": { bv: 5.1, izt: 0.049, zzt: 7, p: 1 }, "1N4742A": { bv: 12, izt: 0.021, zzt: 9, p: 1 }, "1N4744A": { bv: 15, izt: 0.017, zzt: 14, p: 1 },
+    "1N4750A": { bv: 27, izt: 0.0095, zzt: 35, p: 1 }, "1N4764A": { bv: 100, izt: 0.0025, zzt: 350, p: 1 },
+    "1N5378B": { bv: 100, izt: 0.012, zzt: 90, p: 5 }, "1N5388B": { bv: 200, izt: 0.005, zzt: 480, p: 5 }
+  };
+  // LEDs, as used for cathode bias: forward voltage vf at 10 mA (emission coefficient 2), max current i (A)
+  const LEDS = { red: { vf: 1.8, i: 0.02 }, yellow: { vf: 2.0, i: 0.02 }, green: { vf: 2.1, i: 0.02 }, blue: { vf: 3.0, i: 0.02 } };
+  const ledIs = vf => 0.01 / Math.exp(vf / (2 * 0.025852));
+  const semiRating = m => `${m.v} V, ${m.i} A, ${m.p} W, ${m.pkg}`;
+  const semiOptions = (tab, pol) => () => Object.entries(tab).filter(([, m]) => m.pol === pol).map(([k, m]) => [k, `${k} · ${m.v} V ${m.i} A ${m.p} W · ${m.use}`]);
+  // BJT and MOSFET parts: same pins (C/D up, B/G left, E/S down) for both polarities
+  function bjtPart(pol) {
+    const def = pol > 0 ? "2N3904" : "2N3906";
+    return {
+      name: pol > 0 ? "NPN transistor" : "PNP transistor", prefix: "VT", group: "Semiconductors", bbox: [-30, -30, 22, 30],
+      defaults: { model: def },
+      pins: () => [{ id: "C", x: 10, y: -30, name: "collector" }, { id: "B", x: -30, y: 0, name: "base" }, { id: "E", x: 10, y: 30, name: "emitter" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(BJTS, pol), wide: true }],
+      info: c => { const m = BJTS[c.params.model] || BJTS[def]; return `${c.params.model} (${m.use}): Vceo ${m.v} V, Ic ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: Gummel-Poon, hFE ≈ ${Math.round(m.bf)}, Early voltage ${Math.round(m.vaf)} V.`; },
+      build: (c, net, alloc, out) => {
+        const m = Object.assign({}, BJTS[c.params.model] || BJTS[def], { pol });
+        out.push({ id: c.id, kind: "BJT", nodes: [net("C"), net("B"), net("E")], model: { pol, is: m.is, bf: m.bf, br: m.br, vaf: m.vaf, ikf: m.ikf, nf: 1 } });
+        out.push({ id: c.id + "#cbe", kind: "C", nodes: [net("B"), net("E")], c: m.cbe }, { id: c.id + "#cbc", kind: "C", nodes: [net("B"), net("C")], c: m.cbc });
+      }
+    };
+  }
+  function mosPart(pol) {
+    const def = pol > 0 ? "IRF820" : "IRF9610";
+    return {
+      name: pol > 0 ? "N-channel MOSFET" : "P-channel MOSFET", prefix: "VT", group: "Semiconductors", bbox: [-30, -30, 22, 30],
+      defaults: { model: def },
+      pins: () => [{ id: "D", x: 10, y: -30, name: "drain" }, { id: "G", x: -30, y: 10, name: "gate" }, { id: "S", x: 10, y: 30, name: "source" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(MOSFETS, pol), wide: true }],
+      info: c => { const m = MOSFETS[c.params.model] || MOSFETS[def]; return `${c.params.model} (${m.use}): Vds ${m.v} V, Id ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: square law, ${m.vto < 0 === pol > 0 ? "depletion, Vgs(off)" : "threshold"} ${m.vto} V, Kp ${m.kp} A/V²; body diode included.`; },
+      build: (c, net, alloc, out) => {
+        const m = MOSFETS[c.params.model] || MOSFETS[def], d = net("D"), g = net("G"), s = net("S");
+        out.push({ id: c.id, kind: "MOS", nodes: [d, g, s], model: { pol, vto: m.vto, kp: m.kp, lambda: m.lambda } });
+        out.push({ id: c.id + "#body", kind: "D", nodes: pol > 0 ? [s, d] : [d, s], is: 1e-12, n: 1.5 });
+        out.push({ id: c.id + "#cgs", kind: "C", nodes: [g, s], c: m.cgs }, { id: c.id + "#cgd", kind: "C", nodes: [g, d], c: m.cgd });
+      }
+    };
+  }
 
   // ---------------------------------------------------------------------------
   // Library
@@ -682,6 +818,41 @@
         out.push({ id: c.id + "#rs", kind: "R", nodes: [mid, net("K")], r: 0.05 });
       }
     },
+    zener: {
+      name: "Zener diode", prefix: "VD", group: "Semiconductors", bbox: [-20, -10, 20, 10],
+      defaults: { model: "1N4742A" },
+      pins: () => [{ id: "A", x: -20, y: 0, name: "anode" }, { id: "K", x: 20, y: 0, name: "cathode" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", options: () => Object.entries(ZENERS).map(([k, z]) => [k, `${k} · ${z.bv} V ${z.p} W`]), wide: true }],
+      info: c => { const z = ZENERS[c.params.model] || ZENERS["1N4742A"]; return `${c.params.model}: ${z.bv} V at ${z.izt * 1000} mA, ${z.zzt} Ω dynamic resistance, ${z.p} W. Conducts forward like a silicon diode; reverse current flows above the zener voltage.`; },
+      // forward junction A -> K; breakdown path K -> rz -> junction -> offset -> A, which together
+      // drop bv at izt with zzt dynamic resistance
+      build: (c, net, alloc, out) => {
+        const z = ZENERS[c.params.model] || ZENERS["1N4742A"], a = net("A"), k = net("K"), m1 = alloc(), m2 = alloc();
+        const isb = 1e-14, vj = 0.025852 * Math.log(z.izt / isb), rz = Math.max(z.zzt - 0.025852 / z.izt, 0.1);
+        out.push({ id: c.id, kind: "D", nodes: [a, k], is: 2.5e-9, n: 1.75 });
+        out.push({ id: c.id + "#zz", kind: "R", nodes: [k, m1], r: rz });
+        out.push({ id: c.id + "#bd", kind: "D", nodes: [m1, m2], is: isb, n: 1 });
+        out.push({ id: c.id + "#bv", kind: "V", nodes: [m2, a], v: z.bv - vj - z.izt * rz });
+      }
+    },
+    led: {
+      name: "LED", prefix: "HL", group: "Semiconductors", bbox: [-20, -20, 20, 9],
+      defaults: { color: "red" },
+      pins: () => [{ id: "A", x: -20, y: 0, name: "anode" }, { id: "K", x: 20, y: 0, name: "cathode" }],
+      value: c => c.params.color + " LED",
+      fields: [{ key: "color", label: "Colour", kind: "select", options: () => Object.entries(LEDS).map(([k, l]) => [k, `${k[0].toUpperCase() + k.slice(1)} · ${l.vf} V at 10 mA`]) }],
+      info: c => { const l = LEDS[c.params.color] || LEDS.red; return `${l.vf} V at 10 mA, ${l.i * 1000} mA max. In the cathode of a triode it is a low-impedance bias source (no bypass capacitor needed).`; },
+      build: (c, net, alloc, out) => {
+        const l = LEDS[c.params.color] || LEDS.red, mid = alloc();
+        out.push({ id: c.id, kind: "D", nodes: [net("A"), mid], is: ledIs(l.vf), n: 2 });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [mid, net("K")], r: 5 });
+      }
+    },
+    npn: bjtPart(1),
+    pnp: bjtPart(-1),
+    nmos: mosPart(1),
+    pmos: mosPart(-1),
     vdc: {
       name: "DC supply", prefix: "G", group: "Sources", bbox: [-16, -30, 16, 30],
       defaults: { v: 300, rs: 0 },
@@ -803,10 +974,12 @@
       { sub: "Manufactured: Hammond catalog" },
       ["opt_cat", null, "Output 125SE"], ["ptx_cat", null, "Power 300"]] },
     { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["mains"], ["siggen"], ["ground"], ["offsheet"]] },
-    { group: "Semiconductors", items: [["diode"]] },
+    { group: "Semiconductors", items: [["diode"], ["zener"], ["led"],
+      { sub: "Transistors" }, ["npn"], ["pnp"], ["npn", { model: "MJE340" }, "NPN, high voltage"], ["pnp", { model: "MJE350" }, "PNP, high voltage"],
+      ["nmos", null, "N-MOSFET"], ["nmos", { model: "DN2540" }, "N-MOSFET, depletion"], ["pmos", null, "P-MOSFET"]] },
     { group: "Instruments", items: [["scope"]] },
     { group: "Document", items: [["frame"], ["note"]] }
   ];
 
-  root.CadLib = { LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);
