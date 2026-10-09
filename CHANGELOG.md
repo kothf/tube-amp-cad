@@ -6,6 +6,28 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.31.0] - 2026-10-09
+
+### Changed
+- **Voltage and current stickers no longer cover anything.** Each sticker
+  goes where it covers no text, no part symbol and no other sticker. The
+  drawing records every text it prints (designations, values, pin numbers,
+  connector names, notes, the title block), and the placement tries every
+  wire of the net, or every segment of the current's run, at several points
+  and on both sides. A sticker crosses a wire only when nothing else is
+  free. When there is no free spot at all, it is left out: hovering the wire
+  still shows its voltage and current. Placement is recomputed only when the
+  circuit or the result changes, so panning and zooming stay fast.
+
+### Added
+- **Mirror (M)** for transistors and MOSFETs: flips the symbol left to
+  right, so a part can take its base or gate from either side with the
+  collector or drain up or down. It's also a field in the inspector. A
+  complementary output pair can then be drawn without crossing wires.
+- Parts: BC107 (NPN) and BC177 (PNP), and the IRF540 / IRF9540 power
+  MOSFETs. MOSFET thresholds are the middle of each datasheet range, and Kp
+  comes from its gfs (IRF540 2.2, IRF9540 1.75 A/V²).
+
 ## [3.30.0] - 2026-10-09
 
 ### Added

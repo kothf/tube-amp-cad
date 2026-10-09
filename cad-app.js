@@ -50,14 +50,18 @@
       default: return [x, y];
     }
   }
+  // a mirrored part (transistors: params.flip) is flipped left to right before it is rotated
+  const flipX = c => (c.params && c.params.flip === "yes" ? -1 : 1);
   function compPins(c) {
+    const f = flipX(c);
     return LIB[c.type].pins(c).map(p => {
-      const [x, y] = rotPt(p.x, p.y, c.rot);
+      const [x, y] = rotPt(f * p.x, p.y, c.rot);
       return { id: p.id, name: p.name, x: c.x + x, y: c.y + y };
     });
   }
   function compBBox(c) {
-    const b = typeof LIB[c.type].bbox === "function" ? LIB[c.type].bbox(c) : LIB[c.type].bbox;
+    let b = typeof LIB[c.type].bbox === "function" ? LIB[c.type].bbox(c) : LIB[c.type].bbox;
+    if (flipX(c) < 0) b = [-b[2], b[1], -b[0], b[3]];
     const a = rotPt(b[0], b[1], c.rot), d = rotPt(b[2], b[3], c.rot);
     return { x1: c.x + Math.min(a[0], d[0]), y1: c.y + Math.min(a[1], d[1]), x2: c.x + Math.max(a[0], d[0]), y2: c.y + Math.max(a[1], d[1]) };
   }
@@ -693,6 +697,12 @@
     S.sel.comps = keep; S.sel.wires.clear();
     commit();
   }
+  function mirrorSelection() {
+    if (S.placing) { if (LIB[S.placing.type].canFlip) { S.placing.params = Object.assign({}, S.placing.params, { flip: S.placing.params && S.placing.params.flip === "yes" ? "no" : "yes" }); render(); } return; }
+    let any = false;
+    S.comps.forEach(c => { if (S.sel.comps.has(c.id) && LIB[c.type].canFlip) { c.params.flip = c.params.flip === "yes" ? "no" : "yes"; any = true; } });
+    if (any) commit();
+  }
   function rotateSelection() {
     if (S.placing) { if (!LIB[S.placing.type].noRotate) S.placing.rot = (S.placing.rot + 1) & 3; render(); return; }
     let any = false;
@@ -949,6 +959,7 @@
     if (k === "Escape") { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else { S.sel.comps.clear(); S.sel.wires.clear(); updateInspector(); render(); } }
     else if ((k === "Delete" || k === "Backspace")) { deleteSelection(); e.preventDefault(); }
     else if (k === "r" || k === "R") { if (!ctrl) rotateSelection(); }
+    else if ((k === "m" || k === "M") && !ctrl) mirrorSelection();
     else if (k === "w" || k === "W") setTool(S.tool === "wire" ? "select" : "wire");
     else if (k === "v" && !ctrl) setTool("select");
     else if (k === "f" || k === "F") fitCurrent();
@@ -1016,8 +1027,13 @@
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
     const T = topo();
 
-    // drawing sheets lie behind everything
+    // drawing sheets lie behind everything; every text the sheet and parts print is recorded
+    // so the stickers can keep clear of it
+    textBoxes = [];
+    ctx.fillText = function (t, x, y, mw) { recordText(this, String(t), x, y); return CanvasRenderingContext2D.prototype.fillText.call(this, t, x, y, mw); };
+    recordingFrame = true;
     S.comps.forEach(c => { if (c.type === "frame") drawComp(c, S.sel.comps.has(c.id), false); });
+    recordingFrame = false;
     // wires
     ctx.lineCap = "round";
     S.wires.forEach(w => {
@@ -1039,10 +1055,10 @@
 
     // components
     S.comps.forEach(c => { if (c.type !== "frame") drawComp(c, S.sel.comps.has(c.id), false); });
+    delete ctx.fillText;
 
-    // voltage tags
-    if (S.showVolts && S.sim.result) drawVoltTags(T);
-    if (S.showAmps && S.sim.result) drawCurrentTags();
+    // voltage and current stickers
+    if ((S.showVolts || S.showAmps) && S.sim.result) drawStickers(T);
 
     // placing ghost
     if (S.placing) {
@@ -1108,6 +1124,7 @@
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate((c.rot & 3) * Math.PI / 2);
+    if (flipX(c) < 0) ctx.scale(-1, 1);
     ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
@@ -1246,13 +1263,36 @@
     ctx.fillStyle = "#8b949e"; ctx.fillText(fmtEng(v.span / 10, "s") + "/div", x0 + 88, y0 + h + 10);
   }
 
-  // Current stickers: one per run of wire carrying the same current, on its longest
-  // segment, below a horizontal wire and left of a vertical one (the voltage tag sits
-  // above / right). A run continues through a point where nothing else takes current:
-  // a bend, or a junction whose other branches (a capacitor, say) carry none at DC.
-  function drawCurrentTags() {
-    const wc = wireCurrents(); if (!wc) return;
-    const { currents, adj, pinDraw } = wc, byId = new Map(S.wires.map(w => [w.id, w]));
+  // ---------------------------------------------------------------------------
+  // Voltage and current stickers. Each is placed where it covers nothing: the
+  // drawing records every text it prints (designations, values, pin numbers,
+  // connector names, notes), and part symbols and wires count as taken too.
+  // A voltage sticker may sit on any wire of its net, a current sticker on any
+  // segment of its run, at several points along it and on either side; the
+  // first free spot in order of preference wins (voltage above / right of a
+  // wire, current below / left), else the one that covers least. Placement is
+  // recomputed only when the circuit, the result or the switches change.
+  // ---------------------------------------------------------------------------
+  let textBoxes = [], stickerCache = null, recordingFrame = false;
+  const TAG_H = 12;
+  // record the world-space box of a text drawn with the current transform
+  function recordText(c2, t, x, y) {
+    const m = c2.getTransform(), fs = parseFloat((/([\d.]+)px/.exec(c2.font) || [, 10])[1]), w = c2.measureText(t).width;
+    const al = c2.textAlign, bl = c2.textBaseline;
+    const x0 = al === "center" ? x - w / 2 : al === "right" || al === "end" ? x - w : x;
+    const y0 = bl === "middle" ? y - fs / 2 : bl === "top" || bl === "hanging" ? y : bl === "bottom" ? y - fs : y - 0.8 * fs;
+    const { scale, ox, oy } = S.view;
+    let X1 = Infinity, Y1 = Infinity, X2 = -Infinity, Y2 = -Infinity;
+    [[x0, y0], [x0 + w, y0], [x0, y0 + fs], [x0 + w, y0 + fs]].forEach(([px, py]) => {
+      const X = ((m.a * px + m.c * py + m.e) / dpr - ox) / scale, Y = ((m.b * px + m.d * py + m.f) / dpr - oy) / scale;
+      X1 = Math.min(X1, X); Y1 = Math.min(Y1, Y); X2 = Math.max(X2, X); Y2 = Math.max(Y2, Y);
+    });
+    if (isFinite(X1)) textBoxes.push({ x1: X1, y1: Y1, x2: X2, y2: Y2, frame: recordingFrame });
+  }
+  const overlap = (a, b) => Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)) * Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+  // the runs of wire that carry one current: segments joined where nothing else takes current
+  function currentRuns(wc) {
+    const { currents, adj, pinDraw } = wc;
     const parent = new Map(), find = a => { while (parent.get(a) !== a) { parent.set(a, parent.get(parent.get(a))); a = parent.get(a); } return a; };
     currents.forEach((i, id) => parent.set(id, id));
     adj.forEach((l, k) => {
@@ -1260,41 +1300,114 @@
       const big = l.filter(e => Math.abs(currents.get(e.w.id)) >= 1e-6);
       if (big.length === 2) parent.set(find(big[0].w.id), find(big[1].w.id));
     });
-    const best = new Map(), len = w => Math.abs(w.x2 - w.x1) + Math.abs(w.y2 - w.y1);
-    currents.forEach((i, id) => { const r = find(id), b = best.get(r), w = byId.get(id); if (w && (!b || len(w) > len(byId.get(b)))) best.set(r, id); });
+    const runs = new Map();
+    currents.forEach((i, id) => { const r = find(id); if (!runs.has(r)) runs.set(r, []); runs.get(r).push(id); });
+    return [...runs.values()];
+  }
+  function placeStickers(T) {
+    ctx.save(); ctx.font = "9px ui-monospace, monospace";
+    const width = t => ctx.measureText(t).width + 6;
+    const len = w => Math.abs(w.x2 - w.x1) + Math.abs(w.y2 - w.y1);
+    // what is already on the sheet; text and symbols weigh more than crossing a wire
+    const obst = [];
+    textBoxes.forEach(b => obst.push({ ...b, k: 10 }));
+    S.comps.forEach(c => {
+      if (c.type === "frame") { const g = CadLib.sheetGeom(c); obst.push({ x1: c.x + g.tb.x1, y1: c.y + g.tb.y1, x2: c.x + g.tb.x2, y2: c.y + g.tb.y2, k: 10 }); return; }
+      if (c.type === "note") return;   // its text is recorded
+      const b = compBBox(c); obst.push({ x1: b.x1 - 1, y1: b.y1 - 1, x2: b.x2 + 1, y2: b.y2 + 1, k: 5 });
+    });
+    S.wires.forEach(w => obst.push({ x1: Math.min(w.x1, w.x2) - 1.5, y1: Math.min(w.y1, w.y2) - 1.5, x2: Math.max(w.x1, w.x2) + 1.5, y2: Math.max(w.y1, w.y2) + 1.5, k: 1 }));
+    const placed = [];
+    // hard: covering a text, a symbol or another sticker (never accepted); soft: crossing a wire
+    const cost = r => {
+      let hard = 0, soft = 0;
+      for (const o of obst) { const a = overlap(r, o); if (a) { if (o.k > 1) hard += a * o.k; else soft += a; } }
+      for (const p of placed) hard += overlap(r, p) * 20;
+      return hard > 0.5 ? 1e6 + hard : soft;
+    };
+    // candidate spots along a list of wires (preferred first); side: "a" = above / right, "b" = below / left
+    const place = (txt, wires, side, style) => {
+      const tw = width(txt);
+      let best = null;
+      for (const w of wires) {
+        const h = isH(w), L = len(w);
+        const ts = L >= 60 ? [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.1, 0.9] : L >= 30 ? [0.5, 0.3, 0.7, 0.15, 0.85] : [0.5, 0.25, 0.75];
+        for (const t of ts) for (const gap of [3, 9, 15]) for (const sd of side === "a" ? ["a", "b"] : ["b", "a"]) {
+          const mx = w.x1 + (w.x2 - w.x1) * t, my = w.y1 + (w.y2 - w.y1) * t;
+          const x = h ? mx - tw / 2 : sd === "a" ? mx + gap + 1 : mx - tw - gap - 1;
+          const y = h ? (sd === "a" ? my - TAG_H - gap : my + gap) : my - TAG_H / 2;
+          const r = { x1: x, y1: y, x2: x + tw, y2: y + TAG_H }, c = cost(r);
+          if (!best || c < best.c - 1e-9) best = { r, c };
+          if (c === 0) break;
+        }
+        if (best && best.c === 0) break;
+      }
+      // no spot clear of text, symbols and other stickers: leave it out (hovering the wire still reads it)
+      if (best && best.c < 1e6) { placed.push(best.r); out.push({ txt, ...style, x: best.r.x1, y: best.r.y1, w: tw, c: best.c }); }
+      else hidden.push(txt);
+    };
+    const out = [], hidden = [];
+    const byLen = (a, b) => (isH(b) - isH(a)) || len(b) - len(a);
+    if (S.showVolts) {
+      const nets = new Map();
+      S.wires.forEach(w => { const n = T.wireNet.get(w.id); if (n === 0 || n === undefined) return; if (!nets.has(n)) nets.set(n, []); nets.get(n).push(w); });
+      nets.forEach((ws, n) => {
+        const v = netDC(n); if (v === null) return;
+        place(fmtEng(v, "V", Math.abs(v) >= 100 ? 0 : 1), ws.sort(byLen), "a", { kind: "v", fg: "#ffd54f", line: "rgba(255,213,79,0.35)" });
+      });
+    }
+    if (S.showAmps) {
+      const wc = wireCurrents();
+      if (wc) {
+        const byId = new Map(S.wires.map(w => [w.id, w]));
+        currentRuns(wc).forEach(ids => {
+          const ws = ids.map(id => byId.get(id)).filter(w => w && len(w) >= 20).sort(byLen); if (!ws.length) return;
+          const w = ws[0], i = wc.currents.get(w.id); if (!(Math.abs(i) >= 1e-6)) return;
+          // the arrow follows the direction on whichever segment the sticker lands
+          const lab = x => { const h = isH(x), j = wc.currents.get(x.id), fwd = j > 0 === (h ? x.x2 > x.x1 : x.y2 > x.y1); return (h ? (fwd ? "→" : "←") : (fwd ? "↓" : "↑")) + fmtEng(Math.abs(j), "A"); };
+          // try each segment with its own arrow; keep the first free spot
+          const before = out.length, saved = placed.length;
+          let pick = null;
+          const hid = hidden.length;
+          for (const x of ws) {
+            place(lab(x), [x], "b", { kind: "i", fg: "#d2a8ff", line: "rgba(210,168,255,0.45)" });
+            if (out.length === before) continue;          // no room on this segment
+            const s = out.pop(); placed.pop();
+            if (!pick || s.c < pick.c) pick = s;
+            if (s.c === 0) break;
+          }
+          out.length = before; placed.length = saved; hidden.length = hid;
+          if (pick) { out.push(pick); placed.push({ x1: pick.x, y1: pick.y, x2: pick.x + pick.w, y2: pick.y + TAG_H }); }
+          else hidden.push(lab(ws[0]));
+        });
+      }
+    }
+    ctx.restore();
+    out.hidden = hidden;
+    return out;
+  }
+  function drawStickers(T) {
+    const key = [S.history[S.hIndex], S.sim.result, S.showVolts, S.showAmps, S.wires];
+    if (S.drag || !stickerCache || stickerCache.key.some((k, i) => k !== key[i])) stickerCache = { key, list: placeStickers(T) };
     ctx.font = "9px ui-monospace, monospace";
-    best.forEach(id => {
-      const w = byId.get(id), i = currents.get(id);
-      if (!w || !(Math.abs(i) >= 1e-6) || len(w) < 20) return;
-      const h = isH(w), fwd = i > 0 === (h ? w.x2 > w.x1 : w.y2 > w.y1);
-      const txt = (h ? (fwd ? "→" : "←") : (fwd ? "↓" : "↑")) + fmtEng(Math.abs(i), "A");
-      const mx = (w.x1 + w.x2) / 2, my = (w.y1 + w.y2) / 2, tw = ctx.measureText(txt).width + 6;
-      const tx = h ? mx - tw / 2 : mx - tw - 4, ty = h ? my + 3 : my - 6;
-      ctx.fillStyle = "rgba(10,14,20,0.85)"; ctx.fillRect(tx, ty, tw, 12);
-      ctx.strokeStyle = "rgba(210,168,255,0.45)"; ctx.lineWidth = 0.8; ctx.strokeRect(tx, ty, tw, 12);
-      ctx.fillStyle = "#d2a8ff"; ctx.fillText(txt, tx + 3, ty + 9);
+    stickerCache.list.forEach(t => {
+      ctx.fillStyle = "rgba(10,14,20,0.85)"; ctx.fillRect(t.x, t.y, t.w, TAG_H);
+      ctx.strokeStyle = t.line; ctx.lineWidth = 0.8; ctx.strokeRect(t.x, t.y, t.w, TAG_H);
+      ctx.fillStyle = t.fg; ctx.fillText(t.txt, t.x + 3, t.y + 9);
     });
   }
-  function drawVoltTags(T) {
-    const placed = new Set();
-    ctx.font = "9px ui-monospace, monospace";
-    // one tag per net at its first horizontal wire's midpoint (or first wire)
-    const byNet = new Map();
-    S.wires.forEach(w => { const n = T.wireNet.get(w.id); if (n === 0 || n === undefined) return; const cur = byNet.get(n); const len = Math.abs(w.x2 - w.x1) + Math.abs(w.y2 - w.y1); if (!cur || (isH(w) && !isH(cur)) || (isH(w) === isH(cur) && len > Math.abs(cur.x2 - cur.x1) + Math.abs(cur.y2 - cur.y1))) byNet.set(n, w); });
-    byNet.forEach((w, n) => {
-      const v = netDC(n);
-      if (v === null) return;
-      const txt = fmtEng(v, "V", Math.abs(v) >= 100 ? 0 : 1);
-      const mx = (w.x1 + w.x2) / 2, my = (w.y1 + w.y2) / 2;
-      const k = Math.round(mx / 30) + ":" + Math.round(my / 20);
-      if (placed.has(k)) return; placed.add(k);
-      const tw = ctx.measureText(txt).width + 6;
-      const tx = isH(w) ? mx - tw / 2 : mx + 4, ty = isH(w) ? my - 15 : my - 6;
-      ctx.fillStyle = "rgba(10,14,20,0.85)"; ctx.fillRect(tx, ty, tw, 12);
-      ctx.strokeStyle = "rgba(255,213,79,0.35)"; ctx.lineWidth = 0.8; ctx.strokeRect(tx, ty, tw, 12);
-      ctx.fillStyle = "#ffd54f"; ctx.fillText(txt, tx + 3, ty + 9);
-    });
+  // for tests: how many stickers and how many still cover a text or another sticker
+  function stickerReport() {
+    const list = (stickerCache && stickerCache.list) || [];
+    const box = t => ({ x1: t.x, y1: t.y, x2: t.x + t.w, y2: t.y + TAG_H });
+    const onText = list.filter(t => textBoxes.some(b => overlap(box(t), b) > 0.5)).map(t => t.txt);
+    const onOther = list.filter((t, i) => list.some((u, j) => j !== i && overlap(box(t), box(u)) > 0.5)).map(t => t.txt);
+    // texts of the drawing itself that run into each other (labels placed too close)
+    const textClash = [], parts = textBoxes.filter(b => !b.frame), grow = b => ({ x1: b.x1 - 1, y1: b.y1 - 1, x2: b.x2 + 1, y2: b.y2 + 1 });   // touching counts
+    for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) if (overlap(grow(parts[i]), parts[j]) > 2) textClash.push([parts[i], parts[j]].map(b => [Math.round(b.x1), Math.round(b.y1)]));
+    return { count: list.length, hidden: list.hidden || [], textClash, volts: list.filter(t => t.kind === "v").length, amps: list.filter(t => t.kind === "i").length, onText, onOther, list: list.map(t => ({ txt: t.txt, kind: t.kind, ...box(t) })) };
   }
+
 
   // ---------------------------------------------------------------------------
   // UI: palette, toolbar, inspector, status
@@ -2238,6 +2351,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

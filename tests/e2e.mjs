@@ -973,6 +973,24 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(/^QVT|^Q\S+ N\d+ N\d+ N\d+ QN_MJE340$/m.test(spice) && /\.model QN_MJE340 NPN\(IS=/.test(spice), "SPICE export writes the transistor as a Q element with its .model");
   const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => [r.refs, r.desc, r.value, r.rating, r.sim].join("|")));
   check(bom.some(l => l.startsWith("VT1|Transistor, NPN|MJE340|300 V, 0.5 A, 20 W, TO-126|")) && bom.some(l => /^VD1\|Zener diode\|1N4742A\|12 V, 1 W\|/.test(l)) && bom.some(l => /^HL1\|LED, red\|/.test(l)), `the BOM lists the transistor, zener and LED with their ratings`);
+  // stickers keep clear of every text and of each other
+  await cad.evaluate(() => TubeCAD.fitView()); await cad.waitForTimeout(150);
+  const sr = await cad.evaluate(() => TubeCAD.stickerReport());
+  check(sr.volts >= 6 && sr.amps >= 8 && !sr.onText.length && !sr.onOther.length, `voltage and current stickers cover no text and no other sticker (${sr.volts} voltages, ${sr.amps} currents${sr.hidden.length ? `, ${sr.hidden.length} left out for want of room` : ""})`);
+  // a designation sitting right where a sticker would go moves the sticker, not onto the text
+  const moved = await cad.evaluate(async () => {
+    const S = TubeCAD.state, C = TubeCAD, rail = S.wires.find(w => w.y1 === 150 && w.y2 === 150 && Math.min(w.x1, w.x2) === 200);
+    const before = TubeCAD.stickerReport().list.find(t => t.kind === "v" && t.txt === "300V");
+    const n = C.makeComp("note", { text: "NOTE OVER THE RAIL STICKER", size: "12" }, Math.round(before.x1 / 10) * 10 - 20, Math.round(before.y2 / 10) * 10, 0); S.comps.push(n); C.commit();
+    await new Promise(r => setTimeout(r, 150));
+    const rep = TubeCAD.stickerReport(), after = rep.list.find(t => t.kind === "v" && t.txt === "300V");
+    S.comps = S.comps.filter(c => c !== n); C.commit();
+    return { before, after, onText: rep.onText, rail: !!rail };
+  });
+  check(moved.after && (moved.after.x1 !== moved.before.x1 || moved.after.y1 !== moved.before.y1) && !moved.onText.length, `a text placed over a sticker pushes the sticker to a free spot (300V moved from ${Math.round(moved.before.x1)},${Math.round(moved.before.y1)} to ${moved.after && Math.round(moved.after.x1)},${moved.after && Math.round(moved.after.y1)})`);
+  // Mirror (M): the transistor takes its base from the other side
+  const mir = await cad.evaluate(() => { const S = TubeCAD.state, q = S.comps.find(c => c.label === "VT1"), pin = id => TubeCAD.compPins(q).find(p => p.id === id); const b0 = pin("B").x - q.x; S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(q.id); TubeCAD.mirrorSelection(); const r = { b0, b1: pin("B").x - q.x, c1: pin("C").y - q.y, flip: q.params.flip }; TubeCAD.undo(); return r; });
+  check(mir.b0 === -30 && mir.b1 === 30 && mir.c1 === -30 && mir.flip === "yes", "Mirror (M) flips a transistor left to right: the base moves to the other side, the collector stays on top");
   // stickers: drawn when Currents is on (the canvas changes when it is turned off)
   const shot = () => cad.locator("#cad").screenshot();
   const on = await shot(); await cad.click("#btn-amps"); const off = await shot(); await cad.click("#btn-amps");
