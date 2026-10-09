@@ -255,6 +255,22 @@ the circuit file, so one file holds both.
   - A track entering a tube pin may pass the socket's other pins as closely as
     the pin itself does: the socket's own pin spacing is a limit no layout can
     beat.
+- **Several at once:** drag a box over empty space to select what lies inside
+  it (left to right) or what it touches (right to left); <kbd>Shift</kbd>+click
+  adds or removes single things. Drag any selected item and everything
+  selected moves. <kbd>R</kbd> turns the group 90° about its middle, the
+  arrows nudge it one grid step (<kbd>Shift</kbd>: ten). The inspector aligns
+  the selected parts (left, centre, right, top, middle, bottom) or spreads
+  them evenly.
+- **Locking:** <kbd>L</kbd> locks the selection (parts, tracks, vias, texts,
+  holes, pours, keep-outs). Locked things cannot be dragged, nudged, turned or
+  deleted, and show a padlock. The mounting holes from Board setup come
+  locked.
+- **Keep-out areas** (*Keep-out*, <kbd>K</kbd>): on either or both copper
+  layers, forbidding tracks, vias, copper pour and, if you choose, parts. Use
+  them under a power transformer, round the mains entry or along heater
+  wiring. Routing refuses to enter them, pours leave them empty, and the check
+  reports anything inside.
 - **Editing tracks:** drag a segment sideways and its neighbours follow (a 45°
   corner stays 45°; a track's end gets a jog). <kbd>U</kbd> selects the whole
   connected track, so <kbd>Del</kbd> removes it or the inspector sets its
@@ -267,8 +283,8 @@ the circuit file, so one file holds both.
     vias solidly; a via dropped in a pour takes its net (stitching);
   - pieces that reach nothing (islands) are removed, and the ratsnest counts
     only what the pour really joins.
-- **Nets** tab: every net with its class, what is left to route, and its track
-  length. Click a net (or point and press <kbd>`</kbd>) to highlight it and dim
+- **Nets** tab: every net with its class, its DC current, what is left to
+  route, and its track length. Click a net (or point and press <kbd>`</kbd>) to highlight it and dim
   everything else.
 - **Cross-probing:** a part picked on the board is selected in the schematic,
   and a part selected in the schematic is selected (and shown) on the board.
@@ -282,6 +298,7 @@ the circuit file, so one file holds both.
   - signal and power track widths and the minimum track;
   - via drill and pad, minimum drill, minimum annular ring;
   - the solder-mask opening around pads, and whether vias are covered;
+  - the warming allowed at a track's DC current (°C, for the current check);
   - which checks run.
 
   **Net classes** sort every net into Signal, Power or HV: automatically, from
@@ -292,6 +309,12 @@ the circuit file, so one file holds both.
   - shorts;
   - copper or parts over or near the board edge;
   - annular rings, drills, minimum and class track widths;
+  - **track width for the current**: each net's DC current comes from the
+    simulation, and a track narrower than IPC-2221 asks for that current
+    (outer layer, the board's copper weight, the allowed warming) is an
+    error. Routing starts wide enough on its own;
+  - parts overlapping (courtyards), anything inside a keep-out area;
+  - silkscreen over pads and unconnected track ends (warnings);
   - parts not placed yet;
   - pinouts to check.
 
@@ -333,7 +356,7 @@ the circuit file, so one file holds both.
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | simulate until settled |
 | <kbd>F1</kbd> or <kbd>?</kbd> | help |
 
-In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Backspace</kbd> takes back the last corner while routing.
+In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Backspace</kbd> takes back the last corner while routing.
 
 ## How the simulator works
 

@@ -11,7 +11,7 @@
   const VERSION = (() => { const sc = document.currentScript; const q = sc && sc.src.split("?")[1]; return q ? "?" + q : ""; })();
   const LAYER_INFO = [
     ["F.Cu", "Top copper", "#e5534b"], ["B.Cu", "Bottom copper", "#4d8fdc"], ["zones", "Copper pours", "#8b949e"], ["F.SilkS", "Top silkscreen", "#e6edf3"], ["B.SilkS", "Bottom silkscreen", "#b392f0"],
-    ["Edge.Cuts", "Board outline", "#ffd54f"], ["Holes", "Mounting holes", "#9aa7b4"], ["rats", "Ratsnest", "#c9d1d9"], ["drc", "Rule markers", "#ff7b72"]
+    ["Edge.Cuts", "Board outline", "#ffd54f"], ["keepouts", "Keep-out areas", "#ff9e3d"], ["Holes", "Mounting holes", "#9aa7b4"], ["rats", "Ratsnest", "#c9d1d9"], ["drc", "Rule markers", "#ff7b72"]
   ];
   const COLORS = Object.fromEntries(LAYER_INFO.map(([k, , c]) => [k, c]));
   COLORS.pad = "#d4a72c";
@@ -19,7 +19,7 @@
   const S = {
     netlist: null, board: B.newBoard(), model: null, conn: null, drc: [], hv: new Set(),
     view: { scale: 5, ox: 40, oy: 40 }, tool: "select", layer: "F.Cu", grid: 1.27, dim: 0.5,
-    sel: null,              // { kind: "part", key } | { kind: "track" | "via" | "text" | "hole" | "zone", i } | { kind: "tracks", list }
+    sel: null,              // { kind: "part", key } | { kind: "track" | "via" | "text" | "hole" | "zone" | "keepout", i } | { kind: "multi", parts, tracks, vias, texts, holes }
     fills: [],              // filled copper pours (BoardCore.fillZones), refilled on every change
     netHL: null,            // the highlighted net (Nets tab, ` key)
     poly: null,             // a pour outline being drawn: [[x, y]...]
@@ -103,7 +103,8 @@
     if (!(S.board.zones || []).length) S.fills = [];
     else if (!light) S.fills = B.fillZones(S.board, S.model, c0, S.hv);
     S.conn = S.fills.length ? B.connectivity(S.board, S.model.pads, S.fills) : c0;
-    S.drc = B.drc(S.board, S.model, S.conn, S.hv);
+    S.amps = B.netCurrents(S.netlist);
+    S.drc = B.drc(S.board, S.model, S.conn, S.hv, S.fills, S.netlist);
   }
   function checkSync() {
     if (!S.netlist) return;
@@ -164,16 +165,27 @@
     return null;
   }
   const hitTrack = (x, y) => { const h = hitSeg(x, y); return h ? h.i : -1; };
-  // pours: a corner handle of the selected one, or the pour under the point (the active layer first)
-  function hitZoneCorner(x, y) {
-    if (!S.sel || S.sel.kind !== "zone") return -1;
-    const z = S.board.zones[S.sel.i]; if (!z || !z.pts) return -1;
-    return z.pts.findIndex(p => Math.hypot(p[0] - x, p[1] - y) <= 6 / S.view.scale);
+  // pours and keep-outs (areas) are picked by their outline (inside, the copper and parts under them
+  // stay selectable); the selected one's corners are handles
+  const AREAS = { zone: "zones", keepout: "keepouts" };
+  const areaPoly = (kind, a) => (kind === "zone" ? B.zonePoly(S.board, a) : a.pts);
+  const areaShown = (kind, a) => (kind === "zone" ? S.show.zones && S.show[a.layer] : S.show.keepouts && B.koLayers(a).some(l => S.show[l]));
+  function hitAreaCorner(x, y) {
+    if (!S.sel || !AREAS[S.sel.kind]) return -1;
+    const a = S.board[AREAS[S.sel.kind]][S.sel.i]; if (!a || !a.pts) return -1;
+    return a.pts.findIndex(p => Math.hypot(p[0] - x, p[1] - y) <= 6 / S.view.scale);
   }
-  function hitZone(x, y) {
-    if (!S.show.zones) return -1;
-    const order = S.board.zones.map((z, i) => i).sort((a, b) => (S.board.zones[b].layer === S.layer) - (S.board.zones[a].layer === S.layer));
-    return order.find(i => { const z = S.board.zones[i]; return S.show[z.layer] && B.pip(x, y, B.zonePoly(S.board, z)); }) ?? -1;
+  function hitArea(x, y) {
+    const tol = 5 / S.view.scale;
+    for (const kind of ["keepout", "zone"]) {
+      const list = S.board[AREAS[kind]] || [];
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (!areaShown(kind, list[i])) continue;
+        const P = areaPoly(kind, list[i]);
+        for (let k = 0, j = P.length - 1; k < P.length; j = k++) if (B.segDist(P[j][0], P[j][1], P[k][0], P[k][1], x, y) <= tol) return { kind, i };
+      }
+    }
+    return null;
   }
   const hitVia = (x, y) => S.board.vias.findIndex(v => Math.hypot(v.x - x, v.y - y) <= (v.pad || S.board.rules.viaPad) / 2);
   const hitHole = (x, y) => (S.show.Holes ? S.board.holes.findIndex(h => Math.hypot(h.x - x, h.y - y) <= h.d / 2 + 0.6) : -1);
@@ -208,6 +220,7 @@
         if (g < need - 1e-6 && it.kind === "pad") { const eg = B.entryGap(s, it, S.conn.items); if (eg !== null) need = Math.min(need, eg - 0.02); }
         if (g < need - 1e-6) { const [x, y] = it.kind === "pad" ? [it.pad.x, it.pad.y] : [(it.s[0] + it.s[2]) / 2, (it.s[1] + it.s[3]) / 2]; return { x, y, g, need, what: it.kind === "pad" ? `${it.pad.ref}-${it.pad.num}` : it.kind === "via" ? "a via" : "a track", net: netName(it.net) }; }
       }
+      for (const ko of S.board.keepouts) if (ko.tracks !== false && B.koLayers(ko).includes(r.layer) && B.segInPoly(s, ko.pts, w2)) return { x: s[2], y: s[3], g: 0, need: 0, what: ko.name ? `keep-out "${ko.name}"` : "a keep-out area", net: "", ko: true };
       for (const h of S.board.holes) { const g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < mine - 1e-6) return { x: h.x, y: h.y, g, need: mine, what: "a mounting hole", net: "" }; }
     }
     return null;
@@ -217,12 +230,15 @@
     const at = netAt(x, y);
     if (!at) { msg("Start a track on a pad (or on a routed track)"); return; }
     const start = at.pad ? [at.pad.x, at.pad.y] : [snap(x), snap(y)];
-    S.route = { net: at.net, layer: S.layer, w: trackWidth(at.net), pts: [start], segs: [] };
-    msg(`Routing ${netName(at.net)} (${classOf(at.net)}, ${S.route.w} mm) on ${S.layer}: click corners, end on a pad of the same net; V: via, Backspace: undo a corner, Esc: stop`);
+    // the class width, or wider when the net's DC current asks for it (IPC-2221)
+    const I = (S.amps || {})[at.net], wI = Math.ceil(B.currentWidth(I, S.board.rules, S.board.stackup) * 20) / 20;
+    S.route = { net: at.net, layer: S.layer, w: Math.max(trackWidth(at.net), wI), pts: [start], segs: [] };
+    msg(`Routing ${netName(at.net)} (${classOf(at.net)}${I ? `, ${B.fmtA(I)}` : ""}, ${S.route.w} mm) on ${S.layer}: click corners, end on a pad of the same net; V: via, Backspace: undo a corner, Esc: stop`);
     render();
   }
   function routeClick(e) {
     const r = S.route, tgt = routeTarget(), last = r.pts[r.pts.length - 1], bad = routeCheck();
+    if (bad && bad.ko && !(e && e.shiftKey)) { msg(`Not through ${bad.what}: route around it, or Shift+click to place it anyway`); return; }
     if (bad && !(e && e.shiftKey)) { msg(`Too close to ${bad.what}${bad.net ? " on " + bad.net : ""}: ${Math.max(0, bad.g).toFixed(2)} mm < ${bad.need} mm. Choose another way, or Shift+click to place it anyway`); return; }
     if (Math.hypot(tgt[0] - last[0], tgt[1] - last[1]) < 1e-6) { finishRoute(); return; }
     bend(last, tgt).forEach(p => r.pts.push(p));
@@ -254,11 +270,12 @@
   // ---------------------------------------------------------------------------
   const TOOL_HELP = { select: "Select: drag parts, vias, texts and holes; drag the board's corner handle to resize it", route: "Route: click a pad to start a track",
     via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Measure: click two points",
-    pour: "Copper pour: click the corners on the active layer, double-click (or click the first corner) to close; Backspace: take back a corner" };
+    pour: "Copper pour: click the corners on the active layer, double-click (or click the first corner) to close; Backspace: take back a corner",
+    keepout: "Keep-out area: click the corners, double-click to close; no tracks, vias or pour may enter it (set in the inspector)" };
   function setTool(t) {
     if (S.route && t !== "route") finishRoute();
     if (t !== "measure") S.measure = null;
-    if (t !== "pour") S.poly = null;
+    if (t !== S.tool || (t !== "pour" && t !== "keepout")) S.poly = null;
     S.tool = t;
     document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
     if (canvas) canvas.style.cursor = t === "select" ? "" : "crosshair";
@@ -270,6 +287,7 @@
     const sx = snap(x), sy = snap(y), R = S.board.rules;
     if (S.tool === "via") {
       // a via dropped in a pour takes its net (a stitching via)
+      if (S.board.keepouts.some(k => k.vias !== false && B.pip(sx, sy, k.pts))) { msg("Not here: a keep-out area forbids vias"); return; }
       const zi = S.board.zones.findIndex(z => B.pip(sx, sy, B.zonePoly(S.board, z)));
       S.board.vias.push({ x: sx, y: sy, drill: R.viaDrill, pad: R.viaPad, net: zi >= 0 ? S.board.zones[zi].net : undefined }); S.sel = { kind: "via", i: S.board.vias.length - 1 }; commit("Via placed"); }
     else if (S.tool === "hole") { S.board.holes.push({ x: sx, y: sy, d: 3.2 }); S.sel = { kind: "hole", i: S.board.holes.length - 1 }; commit("Mounting hole placed (Ø 3.2 mm, M3): change it in the inspector"); }
@@ -281,10 +299,15 @@
   }
 
   const defaultNet = () => { const names = S.model ? [...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))] : []; return names.includes("GND") ? "GND" : names.sort()[0] || "GND"; };
-  function closePour() {
+  function closePoly() {
     const pts = tidy((S.poly || []).concat([S.poly[0]])).slice(0, -1);
     S.poly = null;
-    if (pts.length < 3) { msg("A pour needs at least three corners"); render(); return; }
+    if (pts.length < 3) { msg("An area needs at least three corners"); render(); return; }
+    if (S.tool === "keepout") {
+      S.board.keepouts.push({ name: "", pts, layers: ["F.Cu", "B.Cu"], tracks: true, vias: true, pour: true, parts: false });
+      S.sel = { kind: "keepout", i: S.board.keepouts.length - 1 }; setTool("select");
+      commit("Keep-out area: no tracks, vias or pour on either layer (the inspector sets what it forbids)"); return;
+    }
     S.board.zones.push({ net: defaultNet(), layer: S.layer, pts, thermal: true, gap: 0.5, spoke: 0.8 });
     S.sel = { kind: "zone", i: S.board.zones.length - 1 }; setTool("select");
     commit(`Copper pour on ${S.layer}, net ${defaultNet()}: change its net in the inspector`);
@@ -316,9 +339,9 @@
     if (ti < 0 && S.sel && S.sel.kind === "track") ti = S.sel.i;
     if (ti < 0 || !S.conn) { msg("Point at a track (or select one), then U"); return; }
     const it = S.conn.items.find(x => x.kind === "track" && x.ti === ti), list = [...new Set(S.conn.items.filter(x => x.kind === "track" && x.cluster === it.cluster).map(x => x.ti))];
-    S.sel = { kind: "tracks", list }; msg(`${list.length} track${list.length > 1 ? "s" : ""} selected: Del removes them, the inspector sets their width`); renderPanels(); render();
+    S.sel = simplify({ ...newMulti(), tracks: list }); msg(`${list.length} track${list.length > 1 ? "s" : ""} selected: Del removes them, the inspector sets their width`); renderPanels(); render();
   }
-  const trackSelected = i => S.sel && ((S.sel.kind === "track" && S.sel.i === i) || (S.sel.kind === "tracks" && S.sel.list.includes(i)));
+  const trackSelected = i => isSel("track", i);
   function ensureVisible(x, y) { const [sx, sy] = [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy]; if (sx < 40 || sy < 40 || sx > canvas.clientWidth - 40 || sy > canvas.clientHeight - 40) centerOn(x, y); }
 
   // ---------------------------------------------------------------------------
@@ -330,10 +353,10 @@
     const [sx, sy] = evPos(e), [x, y] = toWorld(sx, sy);
     if (e.button === 1 || e.button === 2 || S.space) { S.drag = { kind: "pan", sx, sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
     if (S.tool === "route") { if (S.route) routeClick(e); else startRoute(x, y); return; }
-    if (S.tool === "pour") {
+    if (S.tool === "pour" || S.tool === "keepout") {
       const pt = [snap(x), snap(y)];
       if (!S.poly) S.poly = [pt];
-      else if (S.poly.length >= 3 && Math.hypot(pt[0] - S.poly[0][0], pt[1] - S.poly[0][1]) <= 6 / S.view.scale + 1e-6) closePour();
+      else if (S.poly.length >= 3 && Math.hypot(pt[0] - S.poly[0][0], pt[1] - S.poly[0][1]) <= 6 / S.view.scale + 1e-6) closePoly();
       else S.poly.push(pt);
       render(); return;
     }
@@ -341,28 +364,39 @@
     if (S.tool !== "select") { placeAt(x, y); return; }
     if (onHandle(x, y)) { S.drag = { kind: "outline", w0: S.board.outline.w, h0: S.board.outline.h, mx: x, my: y, moved: false }; return; }
     let zc;
-    if ((zc = hitZoneCorner(x, y)) >= 0) { const z = S.board.zones[S.sel.i]; S.drag = { kind: "zcorner", i: S.sel.i, k: zc, x0: z.pts[zc][0], y0: z.pts[zc][1], mx: x, my: y, moved: false }; return; }
-    const grab = (kind, i) => { const obj = S.board[LISTS[kind]][i]; S.sel = { kind, i }; S.drag = { kind, i, x0: obj.x, y0: obj.y, mx: x, my: y, moved: false }; renderPanels(); render(); };
-    let i;
-    if ((i = hitVia(x, y)) >= 0) return grab("via", i);
-    if ((i = hitHole(x, y)) >= 0) return grab("hole", i);
-    if ((i = hitText(x, y)) >= 0) return grab("text", i);
-    // a track right under the pointer (not just near it) wins over the part body it crosses
-    const seg = hitPad(x, y) ? null : hitSeg(x, y, 1);
-    const g = seg ? null : hitPart(x, y);
-    if (g) { selectPart(g); S.drag = { kind: "part", key: g.key, x0: g.place.x, y0: g.place.y, mx: x, my: y, moved: false }; renderPanels(); render(); return; }
-    const sg = seg || hitSeg(x, y);
-    if (sg) {
-      if (e.shiftKey && S.sel && (S.sel.kind === "track" || S.sel.kind === "tracks")) {
-        const list = S.sel.kind === "tracks" ? S.sel.list.slice() : [S.sel.i], at = list.indexOf(sg.i);
-        if (at >= 0) list.splice(at, 1); else list.push(sg.i);
-        S.sel = list.length ? { kind: "tracks", list } : null;
-      } else { S.sel = { kind: "track", i: sg.i }; S.drag = { kind: "seg", i: sg.i, k: sg.k, pts0: S.board.tracks[sg.i].pts.map(p => p.slice()), mx: x, my: y, moved: false }; }
+    if ((zc = hitAreaCorner(x, y)) >= 0) {
+      const list = AREAS[S.sel.kind], a = S.board[list][S.sel.i];
+      S.drag = a.locked ? { kind: "locked" } : { kind: "corner", list, i: S.sel.i, k: zc, x0: a.pts[zc][0], y0: a.pts[zc][1], mx: x, my: y, moved: false }; return;
+    }
+    // what is under the pointer: vias, holes, texts, then a track right under it, a part, a track near it
+    let hit = null, i;
+    if ((i = hitVia(x, y)) >= 0) hit = { kind: "via", id: i };
+    else if ((i = hitHole(x, y)) >= 0) hit = { kind: "hole", id: i };
+    else if ((i = hitText(x, y)) >= 0) hit = { kind: "text", id: i };
+    else {
+      const seg = hitPad(x, y) ? null : hitSeg(x, y, 1), g = seg ? null : hitPart(x, y);
+      if (g) hit = { kind: "part", id: g.key };
+      else { const sg = seg || hitSeg(x, y); if (sg) hit = { kind: "track", id: sg.i, k: sg.k }; }
+    }
+    if (hit) {
+      if (e.shiftKey) { toggleSel(hit.kind, hit.id); renderPanels(); render(); return; }
+      if (S.sel && S.sel.kind === "multi" && isSel(hit.kind, hit.id)) { const items = selItems(); S.drag = { kind: "group", items, base: snapshot(items), mx: x, my: y, moved: false }; return; }
+      if (hit.kind === "part") selectPart(S.model.parts.find(g => g.key === hit.id)); else S.sel = { kind: hit.kind, i: hit.id };
+      const o = objOf(hit.kind, hit.id);
+      if (o.locked) S.drag = { kind: "locked" };
+      else if (hit.kind === "track") S.drag = { kind: "seg", i: hit.id, k: hit.k, pts0: o.pts.map(p => p.slice()), mx: x, my: y, moved: false };
+      else if (hit.kind === "part") S.drag = { kind: "part", key: hit.id, x0: o.x, y0: o.y, mx: x, my: y, moved: false };
+      else S.drag = { kind: hit.kind, i: hit.id, x0: o.x, y0: o.y, mx: x, my: y, moved: false };
       renderPanels(); render(); return;
     }
-    const zi = hitZone(x, y);
-    if (zi >= 0) { S.sel = { kind: "zone", i: zi }; const z = S.board.zones[zi]; if (z.pts) S.drag = { kind: "zone", i: zi, pts0: z.pts.map(p => p.slice()), mx: x, my: y, moved: false }; renderPanels(); render(); return; }
-    S.sel = null; renderPanels(); render();
+    const ar = hitArea(x, y);
+    if (ar) {
+      S.sel = { kind: ar.kind, i: ar.i }; const a = S.board[AREAS[ar.kind]][ar.i];
+      if (a.locked) S.drag = { kind: "locked" }; else if (a.pts) S.drag = { kind: "area", list: AREAS[ar.kind], i: ar.i, pts0: a.pts.map(p => p.slice()), mx: x, my: y, moved: false };
+      renderPanels(); render(); return;
+    }
+    // empty space: a selection box (dragged left to right: what lies inside; right to left: what it touches)
+    S.drag = { kind: "box", x0: x, y0: y, x1: x, y1: y, add: e.shiftKey, moved: false };
   }
   function onMove(e) {
     if (!canvas) return;
@@ -373,13 +407,20 @@
     if (d && d.kind === "part") {
       const bp = S.board.parts[d.key], nx = snap(d.x0 + x - d.mx), ny = snap(d.y0 + y - d.my);
       if (nx !== bp.x || ny !== bp.y) { bp.x = nx; bp.y = ny; d.moved = true; analyse(true); render(); }
+    } else if (d && d.kind === "group") {
+      const dx = snap(x - d.mx), dy = snap(y - d.my);
+      if (dx !== d.dx || dy !== d.dy) { d.dx = dx; d.dy = dy; moveItems(d.items, d.base, dx, dy); d.moved = !!(dx || dy); analyse(true); render(); }
     } else if (d && d.kind === "seg") {
       const t = S.board.tracks[d.i], np = dragSeg(d.pts0, d.k, x - d.mx, y - d.my);
       if (JSON.stringify(np) !== JSON.stringify(t.pts)) { t.pts = np; d.moved = true; analyse(true); render(); }
-    } else if (d && d.kind === "zcorner") {
-      const p = S.board.zones[d.i].pts[d.k]; p[0] = snap(d.x0 + x - d.mx); p[1] = snap(d.y0 + y - d.my); d.moved = true; render();
-    } else if (d && d.kind === "zone") {
-      const dx = snap(x - d.mx), dy = snap(y - d.my); S.board.zones[d.i].pts = d.pts0.map(p => [p[0] + dx, p[1] + dy]); d.moved = !!(dx || dy); render();
+    } else if (d && d.kind === "corner") {
+      const p = S.board[d.list][d.i].pts[d.k]; p[0] = snap(d.x0 + x - d.mx); p[1] = snap(d.y0 + y - d.my); d.moved = true; render();
+    } else if (d && d.kind === "area") {
+      const dx = snap(x - d.mx), dy = snap(y - d.my); S.board[d.list][d.i].pts = d.pts0.map(p => [p[0] + dx, p[1] + dy]); d.moved = !!(dx || dy); render();
+    } else if (d && d.kind === "box") {
+      d.x1 = x; d.y1 = y; d.moved = Math.hypot(d.x1 - d.x0, d.y1 - d.y0) * S.view.scale > 4; render();
+    } else if (d && d.kind === "locked") {
+      if (!d.noted) { d.noted = true; lockedNote(); }
     } else if (d && LISTS[d.kind]) {
       const o = S.board[LISTS[d.kind]][d.i]; o.x = snap(d.x0 + x - d.mx); o.y = snap(d.y0 + y - d.my); d.moved = true; analyse(true); render();
     } else if (d && d.kind === "outline") {
@@ -394,6 +435,11 @@
   }
   function onUp() {
     const d = S.drag; S.drag = null;
+    if (d && d.kind === "box") {
+      if (d.moved) { boxSelect(d.x0, d.y0, d.x1, d.y1, d.x1 < d.x0, d.add); const n = selItems().length; msg(n ? `${n} selected: drag one to move them all, R turns them, arrows nudge, L locks, the inspector aligns` : "Nothing in the box"); }
+      else if (!d.add) S.sel = null;
+      renderPanels(); render(); return;
+    }
     if (d && d.kind === "seg" && d.moved) S.board.tracks[d.i].pts = tidy(S.board.tracks[d.i].pts);
     if (d && d.kind !== "pan" && d.moved) commit(d.kind === "outline" ? `Board ${S.board.outline.w} × ${S.board.outline.h} mm` : undefined);
   }
@@ -416,7 +462,9 @@
     if (e.code === "Backquote") { const p = hitPad(S.mouse[0], S.mouse[1]), ti = hitTrack(S.mouse[0], S.mouse[1]); highlightNet(p ? p.net : ti >= 0 ? netOfTrack(ti) : null); return; }
     if (S.poly && e.key === "Escape") { S.poly = null; render(); return; }
     if (S.poly && e.key === "Backspace") { e.preventDefault(); S.poly.pop(); if (!S.poly.length) S.poly = null; render(); return; }
-    if (S.poly && e.key === "Enter") { closePour(); return; }
+    if (S.poly && e.key === "Enter") { closePoly(); return; }
+    const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (ARROWS[e.key] && S.sel && !S.route) { e.preventDefault(); const k = S.grid * (e.shiftKey ? 10 : 1); nudge(ARROWS[e.key][0] * k, ARROWS[e.key][1] * k); return; }
     if (e.key === "Escape") { if (S.route) finishRoute(); else if (S.measure) { S.measure = null; render(); } else { S.sel = null; setTool("select"); renderPanels(); } return; }
     if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); render(); return; }
     if ((e.key === "Delete" || e.key === "Backspace") && S.sel) { e.preventDefault(); deleteSel(); return; }
@@ -432,26 +480,135 @@
     else if (L === "s") setTool("select");
     else if (L === "p") setTool("pour");
     else if (L === "u") selectConnected();
+    else if (L === "k") setTool("keepout");
+    else if (L === "l") lockSel();
     else if (L === "r") rotateSel();
     else if (L === "m") flipSel();
     else if (L === "f") fit();
     else if (e.key === "?") toggle("help-modal");
   }
+  // ---------------------------------------------------------------------------
+  // Selection of several things (box, Shift+click, U): { kind: "multi", parts: [keys], tracks, vias, texts, holes: [indices] }
+  // ---------------------------------------------------------------------------
+  const MLIST = { track: "tracks", via: "vias", text: "texts", hole: "holes" };
+  const newMulti = () => ({ kind: "multi", parts: [], tracks: [], vias: [], texts: [], holes: [] });
+  function asMulti(s) {
+    const m = newMulti(); if (!s || AREAS[s.kind]) return m;
+    if (s.kind === "multi") { Object.keys(m).forEach(k => { if (Array.isArray(s[k])) m[k] = s[k].slice(); }); return m; }
+    if (s.kind === "part") m.parts.push(s.key); else if (MLIST[s.kind]) m[MLIST[s.kind]].push(s.i);
+    return m;
+  }
+  function simplify(m) {
+    const n = m.parts.length + m.tracks.length + m.vias.length + m.texts.length + m.holes.length;
+    if (!n) return null; if (n > 1) return m;
+    if (m.parts.length) return { kind: "part", key: m.parts[0] };
+    for (const [k, l] of Object.entries(MLIST)) if (m[l].length) return { kind: k, i: m[l][0] };
+    return null;
+  }
+  function toggleSel(kind, id) {
+    const m = asMulti(S.sel), arr = kind === "part" ? m.parts : m[MLIST[kind]], at = arr.indexOf(id);
+    if (at >= 0) arr.splice(at, 1); else arr.push(id);
+    S.sel = simplify(m);
+  }
+  function isSel(kind, id) {
+    const s = S.sel; if (!s) return false;
+    if (s.kind === "multi") return (kind === "part" ? s.parts : s[MLIST[kind]] || []).includes(id);
+    return kind === "part" ? s.kind === "part" && s.key === id : s.kind === kind && s.i === id;
+  }
+  const objOf = (kind, id) => (kind === "part" ? S.board.parts[id] : (S.board[MLIST[kind] || AREAS[kind]] || [])[id]);
+  const isLocked = (kind, id) => !!(objOf(kind, id) || {}).locked;
+  function selItems() {
+    const s = S.sel; if (!s) return [];
+    if (s.kind === "multi") return [...s.parts.map(k => ["part", k]), ...Object.entries(MLIST).flatMap(([k, l]) => s[l].map(i => [k, i]))];
+    return [[s.kind, s.kind === "part" ? s.key : s.i]];
+  }
+  function boxSelect(x1, y1, x2, y2, crossing, add) {
+    const bx1 = Math.min(x1, x2), bx2 = Math.max(x1, x2), by1 = Math.min(y1, y2), by2 = Math.max(y1, y2), R = [[bx1, by1], [bx2, by1], [bx2, by2], [bx1, by2]];
+    const inside = (x, y) => x >= bx1 && x <= bx2 && y >= by1 && y <= by2;
+    const box = b => (crossing ? !(b.x2 < bx1 || b.x1 > bx2 || b.y2 < by1 || b.y1 > by2) : inside(b.x1, b.y1) && inside(b.x2, b.y2));
+    const pt = (x, y, r) => box({ x1: x - r, y1: y - r, x2: x + r, y2: y + r });
+    const m = add ? asMulti(S.sel) : newMulti(), put = (arr, v) => { if (!arr.includes(v)) arr.push(v); };
+    if (S.model) S.model.parts.forEach(g => { if (g.place && box(partBox(g))) put(m.parts, g.key); });
+    S.board.tracks.forEach((t, i) => { if (!S.show[t.layer]) return; if (crossing ? t.pts.some((p, k) => k && B.segInPoly([t.pts[k - 1][0], t.pts[k - 1][1], p[0], p[1]], R, 0)) : t.pts.every(p => inside(p[0], p[1]))) put(m.tracks, i); });
+    S.board.vias.forEach((v, i) => { if (pt(v.x, v.y, (v.pad || S.board.rules.viaPad) / 2)) put(m.vias, i); });
+    if (S.show.Holes) S.board.holes.forEach((h, i) => { if (pt(h.x, h.y, h.d / 2)) put(m.holes, i); });
+    S.board.texts.forEach((t, i) => { if (S.show[t.layer] && box(textBox(t))) put(m.texts, i); });
+    S.sel = simplify(m);
+  }
+  // positions of the selected things, to move them all from where they started (locked ones stay)
+  const snapshot = items => items.map(([k, id]) => { const o = objOf(k, id); return o.pts ? o.pts.map(p => p.slice()) : [o.x, o.y]; });
+  function moveItems(items, base, dx, dy) {
+    items.forEach(([k, id], n) => {
+      const o = objOf(k, id); if (!o || o.locked) return;
+      if (o.pts) o.pts = base[n].map(p => [+(p[0] + dx).toFixed(4), +(p[1] + dy).toFixed(4)]);
+      else if (o.x !== undefined) { o.x = +(base[n][0] + dx).toFixed(4); o.y = +(base[n][1] + dy).toFixed(4); }
+    });
+  }
+  const lockedNote = () => msg("Locked: it stays put. Select it and press L to unlock");
+  function nudge(dx, dy) {
+    const it = selItems(); if (!it.length) return;
+    if (it.every(([k, id]) => isLocked(k, id))) { lockedNote(); return; }
+    moveItems(it, snapshot(it), dx, dy); commit();
+  }
+  function lockSel() {
+    const it = selItems(); if (!it.length) { msg("Select something, then L locks it in place"); return; }
+    const lock = !it.every(([k, id]) => isLocked(k, id));
+    it.forEach(([k, id]) => { const o = objOf(k, id); if (!o) return; if (lock) o.locked = true; else delete o.locked; });
+    commit(lock ? `Locked ${it.length} item${it.length > 1 ? "s" : ""}: they cannot be moved by mistake (L again unlocks)` : `Unlocked ${it.length} item${it.length > 1 ? "s" : ""}`);
+  }
   function rotateSel() {
-    if (!S.sel) return;
-    if (S.sel.kind === "part") { const p = S.board.parts[S.sel.key]; p.rot = ((p.rot || 0) + 1) & 3; commit(); }
-    else if (S.sel.kind === "text") { const t = S.board.texts[S.sel.i]; t.rot = ((t.rot || 0) + 1) & 3; commit(); }
+    const it = selItems(); if (!it.length) return;
+    if (it.some(([k, id]) => isLocked(k, id))) { lockedNote(); return; }
+    if (it.length === 1 && (it[0][0] === "part" || it[0][0] === "text")) { const o = objOf(it[0][0], it[0][1]); o.rot = ((o.rot || 0) + 1) & 3; commit(); return; }
+    // a group turns 90° (counter-clockwise on screen) about its middle, snapped to the grid
+    const pts = [];
+    it.forEach(([k, id]) => { const o = objOf(k, id); if (o.pts) pts.push(...o.pts); else if (o.x !== undefined) pts.push([o.x, o.y]); });
+    if (!pts.length) return;
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), cx = snap((Math.min(...xs) + Math.max(...xs)) / 2), cy = snap((Math.min(...ys) + Math.max(...ys)) / 2);
+    const T = ([x, y]) => [+(cx + (y - cy)).toFixed(4), +(cy - (x - cx)).toFixed(4)];
+    it.forEach(([k, id]) => {
+      const o = objOf(k, id);
+      if (o.pts) { o.pts = o.pts.map(T); return; }
+      [o.x, o.y] = T([o.x, o.y]);
+      // a mirrored (bottom-side) footprint or text turns the other way in its own frame
+      if (k === "part") o.rot = ((o.rot || 0) + (o.side === "B" ? 3 : 1)) & 3;
+      if (k === "text") o.rot = ((o.rot || 0) + (o.layer.startsWith("B") ? 3 : 1)) & 3;
+    });
+    commit(`Turned ${it.length} items 90°`);
   }
   function flipSel() {
     if (!S.sel) return;
-    if (S.sel.kind === "part") { const p = S.board.parts[S.sel.key]; p.side = p.side === "B" ? "F" : "B"; commit(`${p.ref} is now on the ${p.side === "B" ? "bottom" : "top"} side`); }
+    if (S.sel.kind === "multi") { msg("M moves one part at a time to the other side"); return; }
+    if (S.sel.kind === "part") { const p = S.board.parts[S.sel.key]; if (p.locked) { lockedNote(); return; } p.side = p.side === "B" ? "F" : "B"; commit(`${p.ref} is now on the ${p.side === "B" ? "bottom" : "top"} side`); }
     else if (S.sel.kind === "text") { const t = S.board.texts[S.sel.i]; t.layer = { "F.SilkS": "B.SilkS", "B.SilkS": "F.SilkS", "F.Cu": "B.Cu", "B.Cu": "F.Cu" }[t.layer]; commit(); }
   }
   function deleteSel() {
-    const s = S.sel; if (!s) return;
-    if (s.kind === "tracks") { s.list.slice().sort((a, b) => b - a).forEach(i => S.board.tracks.splice(i, 1)); S.sel = null; commit(`${s.list.length} tracks removed`); }
-    else if (LISTS[s.kind]) { S.board[LISTS[s.kind]].splice(s.i, 1); S.sel = null; commit(); }
-    else msg("Parts come from the schematic: delete them there (then Update from schematic)");
+    const it = selItems(); if (!it.length) return;
+    const parts = it.filter(([k]) => k === "part").length, locked = it.filter(([k, id]) => k !== "part" && isLocked(k, id)).length, del = it.filter(([k, id]) => k !== "part" && !isLocked(k, id));
+    if (!del.length) { msg(parts ? "Parts come from the schematic: delete them there (then Update from schematic)" : "Locked: press L to unlock it first"); return; }
+    const by = {}; del.forEach(([k, i]) => { const l = MLIST[k] || AREAS[k]; (by[l] = by[l] || []).push(i); });
+    Object.entries(by).forEach(([l, idx]) => idx.sort((a, b) => b - a).forEach(i => S.board[l].splice(i, 1)));
+    S.sel = null;
+    commit(`Deleted ${del.length}${locked ? `; ${locked} locked kept` : ""}${parts ? "; parts stay (they come from the schematic)" : ""}`);
+  }
+  // align and distribute the selected parts by their outlines (locked parts count, but stay)
+  function alignParts(how) {
+    const s = S.sel; if (!s || s.kind !== "multi" || !S.model) return;
+    const gs = s.parts.map(k => S.model.parts.find(g => g.key === k)).filter(g => g && g.place); if (gs.length < 2) return;
+    const bs = gs.map(partBox), X1 = Math.min(...bs.map(b => b.x1)), X2 = Math.max(...bs.map(b => b.x2)), Y1 = Math.min(...bs.map(b => b.y1)), Y2 = Math.max(...bs.map(b => b.y2));
+    const move = (i, dx, dy) => { const bp = S.board.parts[gs[i].key]; if (bp.locked) return; bp.x = +(bp.x + dx).toFixed(4); bp.y = +(bp.y + dy).toFixed(4); };
+    const cxs = bs.map(b => (b.x1 + b.x2) / 2), cys = bs.map(b => (b.y1 + b.y2) / 2);
+    if (how === "left") bs.forEach((b, i) => move(i, X1 - b.x1, 0));
+    else if (how === "right") bs.forEach((b, i) => move(i, X2 - b.x2, 0));
+    else if (how === "hcenter") bs.forEach((b, i) => move(i, (X1 + X2) / 2 - cxs[i], 0));
+    else if (how === "top") bs.forEach((b, i) => move(i, 0, Y1 - b.y1));
+    else if (how === "bottom") bs.forEach((b, i) => move(i, 0, Y2 - b.y2));
+    else if (how === "vcenter") bs.forEach((b, i) => move(i, 0, (Y1 + Y2) / 2 - cys[i]));
+    else if (how === "hdist" || how === "vdist") {
+      const c = how === "hdist" ? cxs : cys, order = c.map((v, i) => i).sort((a, b) => c[a] - c[b]), a = c[order[0]], z = c[order[order.length - 1]], step = (z - a) / (order.length - 1);
+      order.forEach((i, n) => { const t = a + n * step - c[i]; move(i, how === "hdist" ? t : 0, how === "vdist" ? t : 0); });
+    }
+    commit({ left: "Aligned left", right: "Aligned right", hcenter: "Centred on one vertical line", top: "Aligned to the top", bottom: "Aligned to the bottom", vcenter: "Centred on one horizontal line", hdist: "Spread evenly across", vdist: "Spread evenly down" }[how] + ` (${gs.length} parts)`);
   }
   function fit() {
     if (!canvas) return;
@@ -492,7 +649,7 @@
     fs.forEach(f => BoardFab.paint(pc, f.ops, COLORS[layer], "erase"));
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = alpha; ctx.drawImage(pourCanvas, 0, 0); ctx.restore();
   }
-  const selColor = (kind, i, c) => (S.sel && S.sel.kind === kind && S.sel.i === i ? "#00e5ff" : c);
+  const selColor = (kind, i, c) => (isSel(kind, i) ? "#00e5ff" : c);
   function draw() {
     queued = false;
     const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -532,7 +689,7 @@
       S.board.texts.forEach((t, i) => { if (t.layer === L) drawText(t, selColor("text", i, COLORS[L])); });
       if (S.model) S.model.parts.forEach(g => {
         if (!g.place || (g.place.side || "F") !== side) return;
-        const sel = S.sel && S.sel.kind === "part" && S.sel.key === g.key;
+        const sel = isSel("part", g.key);
         // the silkscreen as it will be made (outline and reference in the stroke font)
         const ops = BoardFab.partSilk(g); if (px > 0.15) ops.forEach(o => { if (o.t === "line") o.w = Math.max(o.w, px); });
         BoardFab.paint(ctx, ops, sel ? "#00e5ff" : COLORS[L], "erase");
@@ -575,9 +732,32 @@
       ctx.beginPath(); P.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
       if (sel && z.pts) { ctx.fillStyle = "#00e5ff"; z.pts.forEach(p => ctx.fillRect(p[0] - 3 * px, p[1] - 3 * px, 6 * px, 6 * px)); }
     });
+    // keep-out areas: hatched, dashed orange
+    if (S.show.keepouts) S.board.keepouts.forEach((k, i) => {
+      if (!B.koLayers(k).some(l => S.show[l])) return;
+      const P = k.pts, sel = S.sel && S.sel.kind === "keepout" && S.sel.i === i, col = sel ? "#00e5ff" : COLORS.keepouts;
+      const xs = P.map(p => p[0]), ys = P.map(p => p[1]), x1 = Math.min(...xs), x2 = Math.max(...xs), y1 = Math.min(...ys), y2 = Math.max(...ys), step = Math.max(1.2, 9 * px);
+      ctx.save(); ctx.beginPath(); P.forEach((p, n) => (n ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.clip();
+      ctx.strokeStyle = col; ctx.globalAlpha = 0.35; ctx.lineWidth = Math.max(0.08, px); ctx.beginPath();
+      for (let t = x1 - (y2 - y1); t < x2; t += step) { ctx.moveTo(t, y2); ctx.lineTo(t + (y2 - y1), y1); }
+      ctx.stroke(); ctx.restore();
+      ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.1, (sel ? 1.8 : 1.2) * px); ctx.setLineDash([6 * px, 4 * px]);
+      ctx.beginPath(); P.forEach((p, n) => (n ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+      if (k.name) { ctx.fillStyle = col; ctx.font = `${11 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(k.name, x1 + 3 * px, y1 + 3 * px); }
+      if (sel) { ctx.fillStyle = "#00e5ff"; P.forEach(p => ctx.fillRect(p[0] - 3 * px, p[1] - 3 * px, 6 * px, 6 * px)); }
+    });
+    // a padlock on locked parts and holes
+    const lockMark = (x, y) => { const u = 4 * px; ctx.strokeStyle = "#9aa7b4"; ctx.fillStyle = "#9aa7b4"; ctx.lineWidth = Math.max(0.08, px); ctx.fillRect(x - u, y - u * 0.2, 2 * u, 1.5 * u); ctx.beginPath(); ctx.arc(x, y - u * 0.2, u * 0.65, Math.PI, 0); ctx.stroke(); };
+    if (S.model) S.model.parts.forEach(g => { if (g.place && S.board.parts[g.key].locked) { const b = partBox(g), w = B.strokeText(g.ref, 0, 0, 1.27).width; lockMark((b.x1 + b.x2) / 2 + w / 2 + 1 + 5 * px, b.y1 - 0.4 - 0.9); } });
+    if (S.show.Holes) S.board.holes.forEach(h => { if (h.locked) lockMark(h.x + h.d / 2 + 4 * px, h.y - h.d / 2); });
+    // the selection box: solid when it takes what lies inside, dashed when it takes what it touches
+    if (S.drag && S.drag.kind === "box" && S.drag.moved) {
+      const d = S.drag, cross = d.x1 < d.x0; ctx.strokeStyle = cross ? "#7ee787" : "#58a6ff"; ctx.fillStyle = cross ? "rgba(126,231,135,0.08)" : "rgba(88,166,255,0.08)";
+      ctx.lineWidth = px; ctx.setLineDash(cross ? [5 * px, 4 * px] : []); ctx.fillRect(d.x0, d.y0, d.x1 - d.x0, d.y1 - d.y0); ctx.strokeRect(d.x0, d.y0, d.x1 - d.x0, d.y1 - d.y0); ctx.setLineDash([]);
+    }
     if (S.poly) {
       const pts = S.poly.concat([[snap(S.mouse[0]), snap(S.mouse[1])]]);
-      ctx.strokeStyle = COLORS[S.layer]; ctx.lineWidth = Math.max(0.1, 1.5 * px); ctx.setLineDash([5 * px, 4 * px]);
+      ctx.strokeStyle = S.tool === "keepout" ? COLORS.keepouts : COLORS[S.layer]; ctx.lineWidth = Math.max(0.1, 1.5 * px); ctx.setLineDash([5 * px, 4 * px]);
       ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); if (pts.length > 2) ctx.lineTo(pts[0][0], pts[0][1]); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = COLORS[S.layer]; S.poly.forEach(p => ctx.fillRect(p[0] - 2.5 * px, p[1] - 2.5 * px, 5 * px, 5 * px));
     }
@@ -616,7 +796,7 @@
     if (S.show.drc) S.drc.forEach(d => {
       if (d.kind === "unplaced") return;
       const r = Math.max(0.8, 6 * px);
-      ctx.strokeStyle = d.kind === "check" || d.kind === "class" ? "#ffb300" : "#ff7b72"; ctx.lineWidth = Math.max(0.12, 1.5 * px);
+      ctx.strokeStyle = NOTE.includes(d.kind) ? "#ffb300" : "#ff7b72"; ctx.lineWidth = Math.max(0.12, 1.5 * px);
       ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(d.x - r * 0.6, d.y - r * 0.6); ctx.lineTo(d.x + r * 0.6, d.y + r * 0.6); ctx.moveTo(d.x + r * 0.6, d.y - r * 0.6); ctx.lineTo(d.x - r * 0.6, d.y + r * 0.6); ctx.stroke();
     });
@@ -627,7 +807,7 @@
     $("st-drc").textContent = S.model ? (errs ? `${errs} rule violation${errs > 1 ? "s" : ""}` : "No rule violations") : "";
     $("st-drc").style.color = errs ? "var(--bad)" : "var(--ok)";
   }
-  const NOTE = ["unplaced", "check", "class"];
+  const NOTE = ["unplaced", "check", "class", "silk", "dangling"];
   const errors = () => S.drc.filter(d => !NOTE.includes(d.kind)).length;
 
   // ---------------------------------------------------------------------------
@@ -638,7 +818,7 @@
     if (!M) { host.innerHTML = `<p class="help">The parts arrive from the Circuit CAD.</p>`; $("parts-count").textContent = ""; }
     else {
       const unplaced = new Set(S.drc.filter(d => d.kind === "unplaced").map(d => d.msg.split(" ")[0]));
-      const row = g => `<button class="item${S.sel && S.sel.kind === "part" && S.sel.key === g.key ? " active" : ""}" data-key="${esc(g.key)}"><span>${esc(g.ref)}</span><em>${esc(g.fp ? g.fp.name : "")}</em></button>`;
+      const row = g => `<button class="item${isSel("part", g.key) ? " active" : ""}" data-key="${esc(g.key)}"><span>${esc(g.ref)}</span><em>${esc(g.fp ? g.fp.name : "")}</em></button>`;
       const on = M.parts.filter(g => !unplaced.has(g.ref)), off = M.parts.filter(g => unplaced.has(g.ref));
       host.innerHTML = (off.length ? `<button class="btn" id="btn-arrange" style="width:100%;margin:2px 0 6px" title="Pack the parts waiting below the board into rows inside the outline: a starting point for your placement">Place all on the board</button><h2>To place <small>${off.length}</small></h2>${off.map(row).join("")}` : "") + `<h2>On the board <small>${on.length}</small></h2>${on.map(row).join("")}`;
       $("parts-count").textContent = `${M.parts.length}`;
@@ -649,7 +829,7 @@
     renderInspector();
     const dh = $("drc"), list = S.drc.slice().sort((a, b) => NOTE.includes(a.kind) - NOTE.includes(b.kind));
     $("drc-count").textContent = list.length ? String(list.length) : "";
-    dh.innerHTML = list.length ? list.slice(0, 200).map((d, i) => `<button class="drc ${d.kind === "class" ? "check" : d.kind}" data-i="${i}">${esc(d.msg)}${d.between ? ` <span class="help">(${esc(d.between.join(" – "))})</span>` : ""}</button>`).join("") : `<p class="help">${M ? "No problems." : ""}</p>`;
+    dh.innerHTML = list.length ? list.slice(0, 200).map((d, i) => `<button class="drc ${NOTE.includes(d.kind) && d.kind !== "unplaced" ? "check" : d.kind}" data-i="${i}">${esc(d.msg)}${d.between ? ` <span class="help">(${esc(d.between.join(" – "))})</span>` : ""}</button>`).join("") : `<p class="help">${M ? "No problems." : ""}</p>`;
     dh.querySelectorAll(".drc").forEach(b => b.addEventListener("click", () => { const d = list[+b.dataset.i]; if (S.view.scale < 8) S.view.scale = 8; centerOn(d.x, d.y); }));
     renderLayers(); renderNets();
   }
@@ -661,11 +841,11 @@
     S.conn.rats.forEach(r => { todo[r.net] = (todo[r.net] || 0) + 1; });
     S.board.tracks.forEach((t, i) => { const n = netOfTrack(i); if (n === null) return; for (let k = 0; k + 1 < t.pts.length; k++) len[n] = (len[n] || 0) + Math.hypot(t.pts[k + 1][0] - t.pts[k][0], t.pts[k + 1][1] - t.pts[k][1]); });
     const pour = new Set(S.fills.map(f => f.net));
-    const rows = nets.map(n => ({ n, name: netName(n), cls: classOf(n), pads: M.pads.filter(p => p.net === n).length, todo: todo[n] || 0, len: len[n] || 0 }))
+    const rows = nets.map(n => ({ n, name: netName(n), cls: classOf(n), pads: M.pads.filter(p => p.net === n).length, todo: todo[n] || 0, len: len[n] || 0, I: (S.amps || {})[n] || 0 }))
       .filter(r => r.pads > 1 || r.len).sort((a, b) => (b.todo > 0) - (a.todo > 0) || a.name.localeCompare(b.name, undefined, { numeric: true }));
     $("nets-count").textContent = String(rows.length);
-    host.innerHTML = `<p class="help">Click a net to highlight it (again: off), or point at a pad and press the key left of 1 (\`).</p>` + rows.map(r => `<button class="net${r.n === S.netHL ? " active" : ""}" data-n="${esc(r.n)}" title="${esc(r.name)}: ${r.pads} pads, ${r.len.toFixed(1)} mm of track${pour.has(r.n) ? ", copper pour" : ""}">
-      <span class="nm">${esc(r.name)}</span><span class="cls cls-${r.cls}">${r.cls}</span><span class="${r.todo ? "todo" : "done"}">${r.todo ? `${r.todo} to route` : pour.has(r.n) ? "pour ✓" : "✓"}</span></button>`).join("");
+    host.innerHTML = `<p class="help">Click a net to highlight it (again: off), or point at a pad and press the key left of 1 (\`).</p>` + rows.map(r => `<button class="net${r.n === S.netHL ? " active" : ""}" data-n="${esc(r.n)}" title="${esc(r.name)}: ${r.pads} pads, ${r.len.toFixed(1)} mm of track${pour.has(r.n) ? ", copper pour" : ""}${r.I ? `, ${B.fmtA(r.I)} DC: ${B.currentWidth(r.I, S.board.rules, S.board.stackup)} mm wide at least` : ""}">
+      <span class="nm">${esc(r.name)}${r.I >= 0.001 ? ` <small class="help">${B.fmtA(r.I)}</small>` : ""}</span><span class="cls cls-${r.cls}">${r.cls}</span><span class="${r.todo ? "todo" : "done"}">${r.todo ? `${r.todo} to route` : pour.has(r.n) ? "pour ✓" : "✓"}</span></button>`).join("");
     host.querySelectorAll(".net").forEach(b => b.addEventListener("click", () => { const n = isNaN(+b.dataset.n) ? b.dataset.n : +b.dataset.n; highlightNet(n); }));
   }
   // layers: colour, visibility, active copper layer (click its name), "only" shows that layer alone
@@ -692,6 +872,7 @@
     else { el = document.createElement("input"); el.value = value; el.addEventListener("change", () => { const n = type === "text" ? el.value : parseFloat(String(el.value).replace(",", ".")); if (type !== "text" && !isFinite(n)) { el.classList.add("invalid"); return; } onSet(n); }); el.addEventListener("keydown", e => { if (e.key === "Enter") el.blur(); }); }
     row.appendChild(el); return row;
   }
+  const lockField = o => field("Position", o.locked ? "locked" : "free", v => { if (v === "locked") o.locked = true; else delete o.locked; commit(); }, [["free", "Free"], ["locked", "Locked (L)"]]);
   const delBtn = () => { const b = document.createElement("button"); b.className = "btn"; b.textContent = "Delete (Del)"; b.onclick = deleteSel; return b; };
   function renderInspector() {
     const h = $("inspector"); h.innerHTML = "";
@@ -705,6 +886,7 @@
       h.appendChild(field("Y (mm)", +bp.y.toFixed(3), v => { bp.y = v; commit(); }));
       h.appendChild(field("Rotation", bp.rot || 0, v => { bp.rot = +v; commit(); }, [["0", "0°"], ["1", "90°"], ["2", "180°"], ["3", "270°"]]));
       h.appendChild(field("Side", bp.side || "F", v => { bp.side = v; commit(); }, [["F", "Top"], ["B", "Bottom (mirrored)"]]));
+      h.appendChild(lockField(bp));
       const pinCheck = B.PINOUT[g.members[0].params.model];
       h.insertAdjacentHTML("beforeend", `<p class="help">${esc(g.fp.title)}${B.isOffboard(g) ? " — a chassis-mounted part: wire it to these pads" : ""}.</p>` +
         (pinCheck && pinCheck[1] === "verify" ? `<p class="help warn">Check pinout: makers differ for the ${esc(g.members[0].params.model)}.</p>` : "") +
@@ -718,14 +900,36 @@
       h.innerHTML = `<div class="insp-title">Track</div>` + kv("Net", esc(net === null ? "not connected" : netName(net)), net === "short" ? "bad" : "") + kv("Class", `${classOf(net)} · ${trackWidth(net)} mm`) + kv("Length", len.toFixed(2) + " mm");
       h.appendChild(field("Layer", t.layer, v => { t.layer = v; commit(); }, [["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
       h.appendChild(field("Width (mm)", t.w, v => { if (v > 0) { t.w = v; commit(); } }));
-      h.appendChild(delBtn()); return;
+      const I = net !== null && net !== "short" ? (S.amps || {})[net] : 0, need = B.currentWidth(I, R, S.board.stackup);
+      if (I) h.insertAdjacentHTML("beforeend", kv("DC current", `${B.fmtA(I)} · needs ${need} mm`, need > t.w ? "bad" : "ok"));
+      h.appendChild(lockField(t)); h.appendChild(delBtn()); return;
     }
-    if (s && s.kind === "tracks") {
-      const ts = s.list.map(i => S.board.tracks[i]).filter(Boolean); if (!ts.length) { S.sel = null; return renderInspector(); }
-      const len = ts.reduce((a, t) => a + t.pts.slice(1).reduce((b, p, k) => b + Math.hypot(p[0] - t.pts[k][0], p[1] - t.pts[k][1]), 0), 0);
-      h.innerHTML = `<div class="insp-title">${ts.length} tracks</div>` + kv("Length", len.toFixed(1) + " mm") + kv("Widths", [...new Set(ts.map(t => t.w))].join(", ") + " mm");
-      h.appendChild(field("Set width (mm)", ts[0].w, v => { if (v > 0) { ts.forEach(t => { t.w = v; }); commit(`Width ${v} mm on ${ts.length} tracks`); } }));
-      h.appendChild(delBtn()); return;
+    if (s && s.kind === "multi") {
+      const ts = s.tracks.map(i => S.board.tracks[i]).filter(Boolean), n = selItems().length, nl = selItems().filter(([k, id]) => isLocked(k, id)).length;
+      const what = [[s.parts.length, "part"], [ts.length, "track"], [s.vias.length, "via"], [s.texts.length, "text"], [s.holes.length, "hole"]].filter(([c]) => c).map(([c, w]) => `${c} ${w}${c > 1 ? "s" : ""}`).join(", ");
+      h.innerHTML = `<div class="insp-title">${n} selected</div><p class="help">${what}${nl ? ` · ${nl} locked` : ""}. Drag one to move them all; R turns them, arrows nudge (Shift: ×10), L locks.</p>`;
+      if (s.parts.length >= 2) {
+        h.insertAdjacentHTML("beforeend", `<h2>Align parts</h2><div class="align">${[["left", "⇤ Left"], ["hcenter", "↔ Centre"], ["right", "Right ⇥"], ["top", "⤒ Top"], ["vcenter", "↕ Middle"], ["bottom", "Bottom ⤓"]].map(([k, t]) => `<button class="btn" data-al="${k}">${t}</button>`).join("")}</div>` +
+          (s.parts.length >= 3 ? `<div class="align">${[["hdist", "Spread across"], ["vdist", "Spread down"]].map(([k, t]) => `<button class="btn" data-al="${k}">${t}</button>`).join("")}</div>` : ""));
+        h.querySelectorAll("[data-al]").forEach(b => { b.onclick = () => alignParts(b.dataset.al); });
+      }
+      if (ts.length) {
+        const len = ts.reduce((a, t) => a + t.pts.slice(1).reduce((b, p, k) => b + Math.hypot(p[0] - t.pts[k][0], p[1] - t.pts[k][1]), 0), 0);
+        h.insertAdjacentHTML("beforeend", kv("Track length", len.toFixed(1) + " mm") + kv("Widths", [...new Set(ts.map(t => t.w))].join(", ") + " mm"));
+        h.appendChild(field("Set track width (mm)", ts[0].w, v => { if (v > 0) { ts.forEach(t => { t.w = v; }); commit(`Width ${v} mm on ${ts.length} tracks`); } }));
+      }
+      const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;margin-top:8px";
+      const lk = document.createElement("button"); lk.className = "btn"; lk.textContent = nl === n ? "Unlock (L)" : "Lock (L)"; lk.onclick = lockSel;
+      row.appendChild(lk); row.appendChild(delBtn()); h.appendChild(row); return;
+    }
+    if (s && s.kind === "keepout") {
+      const k = S.board.keepouts[s.i]; if (!k) { S.sel = null; return renderInspector(); }
+      const L = B.koLayers(k), yes = [["yes", "Not allowed"], ["no", "Allowed"]];
+      h.innerHTML = `<div class="insp-title">Keep-out area</div><p class="help">Nothing it forbids may enter it: the check reports it, routing refuses it, pours leave it empty. Typical: under a power transformer, round a mains entry, by a heater.</p>`;
+      h.appendChild(field("Name", k.name || "", v => { k.name = v; commit(); }, "text"));
+      h.appendChild(field("Layers", L.length === 2 ? "both" : L[0], v => { k.layers = v === "both" ? ["F.Cu", "B.Cu"] : [v]; commit(); }, [["both", "Both copper layers"], ["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
+      [["tracks", "Tracks"], ["vias", "Vias"], ["pour", "Copper pour"], ["parts", "Parts"]].forEach(([key, t]) => h.appendChild(field(t, (key === "parts" ? !!k.parts : k[key] !== false) ? "yes" : "no", v => { k[key] = v === "yes"; commit(); }, yes)));
+      h.appendChild(lockField(k)); h.appendChild(delBtn()); return;
     }
     if (s && s.kind === "zone") {
       const z = S.board.zones[s.i]; if (!z) { S.sel = null; return renderInspector(); }
@@ -738,6 +942,7 @@
       h.appendChild(field("Pads of its net", z.thermal === false ? "solid" : "thermal", v => { z.thermal = v === "thermal"; commit(); }, [["thermal", "Thermal reliefs (easy to solder)"], ["solid", "Solid (more current)"]]));
       h.appendChild(field("Thermal gap (mm)", z.gap || 0.5, v => { if (v > 0) { z.gap = v; commit(); } }));
       h.appendChild(field("Spoke width (mm)", z.spoke || 0.8, v => { if (v > 0) { z.spoke = v; commit(); } }));
+      h.appendChild(lockField(z));
       h.insertAdjacentHTML("beforeend", `<p class="help">Keeps each other net's clearance (by its class), the edge clearance and the mounting holes clear. Pieces that reach nothing are removed.</p>`);
       h.appendChild(delBtn()); return;
     }
@@ -746,6 +951,7 @@
       h.innerHTML = `<div class="insp-title">Via</div>`;
       h.appendChild(field("X (mm)", v.x, n => { v.x = n; commit(); })); h.appendChild(field("Y (mm)", v.y, n => { v.y = n; commit(); }));
       h.appendChild(field("Drill (mm)", v.drill || R.viaDrill, n => { if (n > 0) { v.drill = n; commit(); } })); h.appendChild(field("Pad (mm)", v.pad || R.viaPad, n => { if (n > 0) { v.pad = n; commit(); } }));
+      h.appendChild(lockField(v));
       if (S.model) { const nets = [""].concat([...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))].sort()); h.appendChild(field("Net (stitching)", v.net || "", n => { v.net = n || undefined; commit(); }, nets.map(n => [n, n || "from its tracks"]))); }
       h.appendChild(delBtn()); return;
     }
@@ -755,7 +961,7 @@
       h.appendChild(field("X (mm)", hl.x, n => { hl.x = n; commit(); })); h.appendChild(field("Y (mm)", hl.y, n => { hl.y = n; commit(); }));
       h.appendChild(field("Diameter (mm)", hl.d, n => { if (n > 0) { hl.d = n; commit(); } }));
       h.insertAdjacentHTML("beforeend", `<p class="help">Not plated. The dashed ring is the copper clearance.</p>`);
-      h.appendChild(delBtn()); return;
+      h.appendChild(lockField(hl)); h.appendChild(delBtn()); return;
     }
     if (s && s.kind === "text") {
       const t = S.board.texts[s.i]; if (!t) { S.sel = null; return renderInspector(); }
@@ -764,7 +970,7 @@
       h.appendChild(field("Height (mm)", t.size, v => { if (v > 0.3) { t.size = v; commit(); } }));
       h.appendChild(field("Layer", t.layer, v => { t.layer = v; commit(); }, [["F.SilkS", "Top silkscreen"], ["B.SilkS", "Bottom silkscreen (mirrored)"], ["F.Cu", "Top copper"], ["B.Cu", "Bottom copper (mirrored)"]]));
       h.appendChild(field("Rotation", t.rot || 0, v => { t.rot = +v; commit(); }, [["0", "0°"], ["1", "90°"], ["2", "180°"], ["3", "270°"]]));
-      h.appendChild(delBtn()); return;
+      h.appendChild(lockField(t)); h.appendChild(delBtn()); return;
     }
     const M = S.model, c = S.conn, errs = errors();
     h.innerHTML = `<div class="insp-title">Board</div>` + kv("Size", `${o.w} × ${o.h} mm${o.r ? `, r ${o.r}` : ""}`) +
@@ -788,7 +994,8 @@
   // Design rules window: rules, checks, net classes; edited on a copy, Apply commits
   // ---------------------------------------------------------------------------
   let draft = null;
-  const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class", pinout: "Pinouts to check" };
+  const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class",
+    current: "Track width for the current", courtyard: "Parts overlapping", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", pinout: "Pinouts to check" };
   function openRules() {
     draft = JSON.parse(JSON.stringify(S.board.rules));
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; el.classList.remove("invalid"); });
@@ -887,7 +1094,7 @@
     canvas = $("pcb"); ctx = canvas.getContext("2d"); dpr = window.devicePixelRatio || 1; canvas.tabIndex = 0;
     canvas.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
-    canvas.addEventListener("dblclick", () => { if (S.route) finishRoute(); else if (S.poly) closePour(); });
+    canvas.addEventListener("dblclick", () => { if (S.route) finishRoute(); else if (S.poly) closePoly(); });
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("contextmenu", e => e.preventDefault());
     window.addEventListener("keydown", onKey); window.addEventListener("keyup", e => { if (e.key === " ") S.space = false; });
@@ -905,7 +1112,7 @@
     $("rules-reset").onclick = () => { const nc = draft.netClass; draft = { ...B.defaultRules(), netClass: nc }; $("rules-tent").checked = true; document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; }); document.querySelectorAll("#rules-checks [data-c]").forEach(el => { el.checked = true; }); rulesNets(); };
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => el.addEventListener("change", rulesNets));
     $("setup-apply").onclick = applySetup; $("setup-cancel").onclick = () => { $("setup-modal").hidden = true; };
-    $("holes-corners").onclick = () => { const o = readOutline() || S.board.outline, d = +$("hole-d").value, inset = parseFloat($("hole-inset").value) || 5; setupHoles = B.cornerHoles(o, d, inset); holesNow(); };
+    $("holes-corners").onclick = () => { const o = readOutline() || S.board.outline, d = +$("hole-d").value, inset = parseFloat($("hole-inset").value) || 5; setupHoles = B.cornerHoles(o, d, inset).map(h => ({ ...h, locked: true })); holesNow(); };
     $("holes-clear").onclick = () => { setupHoles = []; holesNow(); };
     $("btn-cad").onclick = () => ToolWindows.open("circuit_sandbox.html");
     $("btn-help").onclick = () => { $("help-modal").hidden = false; }; $("btn-help-close").onclick = () => { $("help-modal").hidden = true; };

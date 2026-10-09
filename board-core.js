@@ -26,7 +26,8 @@
       vias: [],             // { x, y, drill, pad }
       holes: [],            // mounting holes (not plated): { x, y, d }
       texts: [],            // { x, y, text, size, layer: "F.SilkS" | "B.SilkS" | "F.Cu" | "B.Cu", rot }
-      zones: []             // copper pours: { net: name, layer, pts: [[x, y]...] | null (the whole board), thermal, gap, spoke }
+      zones: [],            // copper pours: { net: name, layer, pts: [[x, y]...] | null (the whole board), thermal, gap, spoke, locked }
+      keepouts: []          // { name, pts, layers: ["F.Cu", "B.Cu"], tracks, vias, pour, parts (true: not allowed), locked }
     };
   }
   // Design rules for valve circuits: generous widths and clearances, more for high voltage.
@@ -38,8 +39,9 @@
       clearance: 0.6, hvClearance: 2.0, hvVolts: 60, edgeClearance: 0.5,
       viaDrill: 0.8, viaPad: 1.8, minDrill: 0.6, minAnnular: 0.3,
       maskExpansion: 0.05, tentVias: true,                        // solder mask: opening around pads; vias covered
+      tempRise: 10,                                               // °C a track may warm up at its DC current (IPC-2221, outer layer)
       netClass: {},                                               // net name -> "Signal" | "Power" | "HV"
-      checks: { clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true }
+      checks: { clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, keepout: true, silk: true, dangling: true }
     };
   }
   const CLASSES = ["Signal", "Power", "HV"];
@@ -48,6 +50,19 @@
     if (CLASSES.includes(m)) return m;
     if (hv && hv.has(net)) return "HV";
     return names[net] === "GND" ? "Power" : "Signal";
+  }
+  /** Track width (mm) for a DC current on an outer layer: IPC-2221, I = 0.048 · ΔT^0.44 · A^0.725
+      (A in mil²), copper thickness from the stack-up */
+  function currentWidth(I, R, stackup) {
+    const a = Math.abs(I || 0); if (!a) return 0;
+    const area = Math.pow(a / (0.048 * Math.pow(R.tempRise > 0 ? R.tempRise : 10, 0.44)), 1 / 0.725), tMil = ((stackup && stackup.copper) || 35) / 25.4;
+    return +(area / tMil * 0.0254).toFixed(3);
+  }
+  /** The DC current a net's copper must carry: the largest current into any pin on it */
+  function netCurrents(netlist) {
+    const out = {};
+    (netlist.parts || []).forEach(p => p.pins.forEach(q => { if (q.net === undefined || q.net === null || !Number.isFinite(q.i)) return; out[q.net] = Math.max(out[q.net] || 0, Math.abs(q.i)); }));
+    return out;
   }
   const classRule = (cls, R) => ({ track: cls === "Signal" ? R.track : R.power, clearance: cls === "HV" ? R.hvClearance : R.clearance });
   // signed distance from the board edge, positive inside (a rectangle with rounded corners)
@@ -70,6 +85,7 @@
       holes: Array.isArray(b.holes) ? b.holes : [],
       texts: Array.isArray(b.texts) ? b.texts : [],
       zones: Array.isArray(b.zones) ? b.zones.filter(z => z && COPPER.includes(z.layer)) : [],
+      keepouts: Array.isArray(b.keepouts) ? b.keepouts.filter(k => k && Array.isArray(k.pts) && k.pts.length >= 3) : [],
       parts: b.parts && typeof b.parts === "object" ? b.parts : {},
       tracks: Array.isArray(b.tracks) ? b.tracks.filter(t => t && Array.isArray(t.pts) && t.pts.length >= 2 && COPPER.includes(t.layer)) : [],
       vias: Array.isArray(b.vias) ? b.vias : []
@@ -129,8 +145,9 @@
       [{ t: "circle", x: 0, y: 0, r: 2.8 }, { t: "line", x1: -2.4, y1: 1.5, x2: -3.2, y2: 2.3 }]);
   }
   function inline(pkg, pitch, order, L, W, tab, d, dr) {
-    const n = order.length, x0 = -(n - 1) / 2 * pitch, silk = [{ t: "rect", x: -L / 2, y: -W / 2, w: L, h: W }];
-    if (tab) silk.push({ t: "line", x1: -L / 2, y1: -W / 2 + 1.2, x2: L / 2, y2: -W / 2 + 1.2 });
+    // a package with a tab stands behind its pins (the body above the pad row); one without sits over them
+    const n = order.length, x0 = -(n - 1) / 2 * pitch, y0 = tab ? -W - (d || 2) / 2 - 0.4 : -W / 2, silk = [{ t: "rect", x: -L / 2, y: y0, w: L, h: W }];
+    if (tab) silk.push({ t: "line", x1: -L / 2, y1: y0 + 1.2, x2: L / 2, y2: y0 + 1.2 });
     return fp(`${pkg}-${order}`, `${pkg}, pins ${order.split("").join("-")} (tab at the top)`, [...order].map((c, i) => pad(i + 1, x0 + i * pitch, 0, d || 2, dr || 1.05, i ? "circle" : "rect", c)), silk);
   }
   const to126 = order => inline("TO-126", 2.29, order, 8, 3.2, false);
@@ -142,7 +159,7 @@
   }
   function led3() {
     return fp("LED-3MM", "LED 3 mm (flat side and square pad: cathode)", [pad(1, -1.27, 0, 1.6, 0.8, "rect", "K"), pad(2, 1.27, 0, 1.6, 0.8, "circle", "A")],
-      [{ t: "circle", x: 0, y: 0, r: 1.9 }, { t: "line", x1: -1.9, y1: -1, x2: -1.9, y2: 1 }]);
+      [{ t: "circle", x: 0, y: 0, r: 2.4 }, { t: "line", x1: -2.4, y1: -1.2, x2: -2.4, y2: 1.2 }]);
   }
   // potentiometers, board mount, pins 1 · wiper · 2 in a row, the shaft above them
   const POTS = { "9MM": [2.5, 9.8, 10, 1.8, 1.0, 3.5, "Alpha 9 mm"], "16MM": [5, 16, 15, 2.2, 1.2, 3.5, "Alpha 16 mm"], "24MM": [7.5, 24, 22, 2.6, 1.4, 3.5, "24 mm (Alps RK27 style)"] };
@@ -153,7 +170,7 @@
   }
   function trim3296() {
     return fp("TRIM-3296W", "Trimmer 3296W, 9.5 × 4.8 mm, pins 2.54 mm (1 · wiper · 2)", [pad(1, -2.54, 0, 1.6, 0.8, "rect", "1"), pad(2, 0, 0, 1.6, 0.8, "circle", "W"), pad(3, 2.54, 0, 1.6, 0.8, "circle", "2")],
-      [{ t: "rect", x: -4.75, y: -2.4, w: 9.5, h: 4.8 }, { t: "circle", x: -3.4, y: -1.1, r: 0.8 }]);
+      [{ t: "rect", x: -4.75, y: -2.4, w: 9.5, h: 4.8 }, { t: "circle", x: -3.9, y: -1.5, r: 0.6 }]);
   }
   // ceramic disc and silver mica capacitors (the small values in valve circuits)
   function disc(pitch) {
@@ -185,7 +202,7 @@
     if (kind === "RCA") return fp("JACK-RCA", "RCA (phono) socket, board mount, front at the bottom", [pad(1, 0, 0, 2.4, 1.3, "rect", "+"), pad(2, -3.5, 5, 3, 1.8, "circle", "-")],
       [{ t: "rect", x: -6, y: -3, w: 12, h: 13 }, { t: "line", x1: -4, y1: 10, x2: -4, y2: 13 }, { t: "line", x1: 4, y1: 10, x2: 4, y2: 13 }, { t: "line", x1: -4, y1: 13, x2: 4, y2: 13 }]);
     if (kind === "3.5") return fp("JACK-3.5", "3.5 mm jack, board mount (tip +, ring unused, sleeve −), front at the bottom", [pad(1, 2.5, -2, 1.8, 1.0, "rect", "+"), pad(2, 0, 3, 1.8, 1.0, "circle", "R"), pad(3, -2.5, -2, 1.8, 1.0, "circle", "-")],
-      [{ t: "rect", x: -3.5, y: -6, w: 7, h: 14 }, { t: "rect", x: -2.5, y: 8, w: 5, h: 2.5 }]);
+      [{ t: "rect", x: -4.5, y: -6, w: 9, h: 14 }, { t: "rect", x: -2.5, y: 8, w: 5, h: 2.5 }]);
     return fp("JACK-6.35", "6.35 mm (1/4\") jack, board mount (tip +, sleeve −, switch unused), front at the bottom", [pad(1, 5, -6, 2.6, 1.5, "rect", "+"), pad(2, -5, -6, 2.6, 1.5, "circle", "-"), pad(3, 5, 0, 2.6, 1.5, "circle", "SW")],
       [{ t: "rect", x: -8, y: -11, w: 16, h: 21 }, { t: "rect", x: -5, y: 10, w: 10, h: 3 }]);
   }
@@ -638,6 +655,7 @@
       const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]), bx1 = Math.min(...xs), bx2 = Math.max(...xs), by1 = Math.min(...ys), by2 = Math.max(...ys);
       const near = (s, r) => Math.max(s[0], s[2]) + r >= bx1 && Math.min(s[0], s[2]) - r <= bx2 && Math.max(s[1], s[3]) + r >= by1 && Math.min(s[1], s[3]) - r <= by2;
       const ops = [{ pol: "D", t: "region", pts: poly }], own = [], others = [];
+      (board.keepouts || []).forEach(k => { if (k.pour !== false && koLayers(k).includes(L)) ops.push({ pol: "C", t: "region", pts: k.pts }); });
       conn.items.forEach(it => {
         if (!it.layers.includes(L)) return;
         const n = netOf(it);
@@ -695,12 +713,53 @@
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // A part's silkscreen in board coordinates (outline lines, circles as polylines, the reference
+  // above it in the stroke font), as drawing operations; the editor, the Gerbers and the check use it
+  // ---------------------------------------------------------------------------
+  const SILK_W = 0.15, REF_H = 1.27;
+  function partBox(g) {
+    const pts = [[g.fp.box[0], g.fp.box[1]], [g.fp.box[2], g.fp.box[1]], [g.fp.box[0], g.fp.box[3]], [g.fp.box[2], g.fp.box[3]]].map(p => place(p, g.place));
+    return { x1: Math.min(...pts.map(p => p[0])), y1: Math.min(...pts.map(p => p[1])), x2: Math.max(...pts.map(p => p[0])), y2: Math.max(...pts.map(p => p[1])) };
+  }
+  function partSilk(g, noRef) {
+    const r4 = v => +(+v).toFixed(4), P = pt => place(pt, g.place).map(r4), ops = [];
+    g.fp.silk.forEach(s => {
+      let pts;
+      if (s.t === "line") pts = [[s.x1, s.y1], [s.x2, s.y2]];
+      else if (s.t === "rect") pts = [[s.x, s.y], [s.x + s.w, s.y], [s.x + s.w, s.y + s.h], [s.x, s.y + s.h], [s.x, s.y]];
+      else if (s.t === "circle") {
+        const a0 = (s.from || 0), a1 = s.to === undefined ? 360 : s.to, n = Math.max(8, Math.ceil(Math.abs(a1 - a0) / 7.5));
+        pts = Array.from({ length: n + 1 }, (_, k) => { const a = (a0 + (a1 - a0) * k / n) * Math.PI / 180; return [s.x + s.r * Math.cos(a), s.y + s.r * Math.sin(a)]; });
+      }
+      if (pts) ops.push({ pol: "D", t: "line", w: SILK_W, pts: pts.map(P) });
+    });
+    if (!noRef) {
+      const b = partBox(g), st = strokeText(g.ref, (b.x1 + b.x2) / 2, b.y1 - 0.4 - REF_H / 2, REF_H, 0, g.place.side === "B");
+      st.lines.forEach(l => ops.push({ pol: "D", t: "line", w: st.w, pts: l, ref: true }));
+    }
+    return ops;
+  }
+  // does segment s cross polygon P (an end inside, or an edge crossing)?
+  function segInPoly(s, P, r) {
+    if (pip(s[0], s[1], P) || pip(s[2], s[3], P)) return true;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) if (segSeg(s, [P[j][0], P[j][1], P[i][0], P[i][1]]) <= (r || 0)) return true;
+    return false;
+  }
+  const boxPoly = b => [[b.x1, b.y1], [b.x2, b.y1], [b.x2, b.y2], [b.x1, b.y2]];
+  function polyHitsPoly(A, Bp) {
+    if (A.some(p => pip(p[0], p[1], Bp)) || Bp.some(p => pip(p[0], p[1], A))) return true;
+    for (let i = 0, j = A.length - 1; i < A.length; j = i++) if (segInPoly([A[j][0], A[j][1], A[i][0], A[i][1]], Bp, 0)) return true;
+    return false;
+  }
+  const koLayers = k => (Array.isArray(k.layers) && k.layers.length ? k.layers : COPPER);
+
   /** Design-rule check. Kinds: clearance (copper of different nodes closer than their net
       classes allow; holes against copper), short, edge (copper or parts over or too near the
       outline), unplaced, annular (ring around a hole too thin), drill (hole below the minimum),
       width (track below the minimum), class (track narrower than its net class), pinout
       (footprints whose pin order differs between makers). rules.checks turns kinds off. */
-  function drc(board, model, conn, hvNets) {
+  function drc(board, model, conn, hvNets, fills, netlist) {
     const out = [], R = board.rules, on = k => !R.checks || R.checks[k] !== false, items = conn.items, hv = hvNets || new Set(), o = board.outline;
     const cls = net => (net === null || net === "short" ? "Signal" : netClassOf(net, model.names, hv, R));
     if (on("clearance")) for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
@@ -776,9 +835,54 @@
         if (hitP) out.push({ kind: "clearance", x: hitP[0], y: hitP[1], msg: `Copper pours of ${z.net} and ${z2.net} overlap on ${z.layer}` });
       });
     });
+    // DC current: a track narrower than its net's current needs (IPC-2221 at the allowed rise)
+    const amps = netlist ? netCurrents(netlist) : {};
+    if (on("current")) board.tracks.forEach((t, ti) => {
+      const it = items.find(x => x.kind === "track" && x.ti === ti); if (!it || it.net === null || it.net === "short") return;
+      const I = amps[it.net], need = currentWidth(I, R, board.stackup);
+      if (need > t.w + 1e-6) out.push({ kind: "current", x: t.pts[0][0], y: t.pts[0][1], msg: `Track on ${model.names[it.net] || it.net} carries ${fmtA(I)}: ${t.w} mm < ${need} mm for a ${R.tempRise || 10} °C rise` });
+    });
+    // courtyards: parts on the same side overlapping
+    const onBoard = model.parts.filter(g => g.place && g.fp && !placedOff.has(g.key)).map(g => ({ g, b: partBox(g) }));
+    if (on("courtyard")) onBoard.forEach((a, i) => onBoard.slice(i + 1).forEach(b => {
+      if ((a.g.place.side || "F") !== (b.g.place.side || "F")) return;
+      const x1 = Math.max(a.b.x1, b.b.x1), x2 = Math.min(a.b.x2, b.b.x2), y1 = Math.max(a.b.y1, b.b.y1), y2 = Math.min(a.b.y2, b.b.y2);
+      if (x2 - x1 > 0.05 && y2 - y1 > 0.05) out.push({ kind: "courtyard", x: (x1 + x2) / 2, y: (y1 + y2) / 2, msg: `${a.g.ref} and ${b.g.ref} overlap (courtyards)` });
+    }));
+    // keep-out areas
+    if (on("keepout")) (board.keepouts || []).forEach(k => {
+      const P = k.pts, L = koLayers(k), nm = k.name ? `keep-out "${k.name}"` : "a keep-out area";
+      if (k.tracks !== false) board.tracks.forEach(t => { if (!L.includes(t.layer)) return; for (let s = 0; s + 1 < t.pts.length; s++) { const sg = [t.pts[s][0], t.pts[s][1], t.pts[s + 1][0], t.pts[s + 1][1]]; if (segInPoly(sg, P, t.w / 2)) { out.push({ kind: "keepout", x: (sg[0] + sg[2]) / 2, y: (sg[1] + sg[3]) / 2, msg: `A track on ${t.layer} runs through ${nm}` }); break; } } });
+      if (k.vias !== false) board.vias.forEach(v => { const r = (v.pad || R.viaPad) / 2; if (segInPoly([v.x, v.y, v.x, v.y], P, r)) out.push({ kind: "keepout", x: v.x, y: v.y, msg: `A via in ${nm}` }); });
+      if (k.parts) onBoard.forEach(({ g, b }) => { if (polyHitsPoly(boxPoly(b), P)) out.push({ kind: "keepout", x: g.place.x, y: g.place.y, msg: `${g.ref} is in ${nm}` }); });
+    });
+    // silkscreen over pads (the maker clips it: a warning) — the reference and outlines of each part
+    if (on("silk")) onBoard.forEach(({ g }) => {
+      const side = g.place.side || "F", hit = partSilk(g).find(op => op.pts.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && (op.ref || pd.part !== g.key) &&
+        segSeg([op.pts[k - 1][0], op.pts[k - 1][1], p[0], p[1]], padCapsule(pd).s) < padCapsule(pd).r + op.w / 2)));
+      if (hit) out.push({ kind: "silk", x: hit.pts[0][0], y: hit.pts[0][1], msg: `${g.ref}: ${hit.ref ? "its reference" : "silkscreen"} lies over a pad (${side === "B" ? "bottom" : "top"}); the maker clips it` });
+    });
+    if (on("silk")) (board.texts || []).filter(t => /SilkS$/.test(t.layer)).forEach(t => {
+      const st = strokeText(t.text, t.x, t.y, t.size, t.rot, t.layer[0] === "B");
+      const over = st.lines.some(l => l.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && segSeg([l[k - 1][0], l[k - 1][1], p[0], p[1]], padCapsule(pd).s) < padCapsule(pd).r + st.w / 2)));
+      if (over) out.push({ kind: "silk", x: t.x, y: t.y, msg: `The text "${t.text}" lies over a pad; the maker clips it` });
+    });
+    // track ends that touch nothing (other copper, or a pour of their net)
+    if (on("dangling")) {
+      const inPour = new Set(); (fills || []).forEach(f => f.links.forEach(l => l.forEach(i => inPour.add(i))));
+      board.tracks.forEach((t, ti) => {
+        [t.pts[0], t.pts[t.pts.length - 1]].forEach(([x, y], end) => {
+          const mine = items.findIndex(it => it.kind === "track" && it.ti === ti && it.k === (end ? t.pts.length - 2 : 0));
+          if (inPour.has(mine)) return;
+          const touch = items.some(it => !(it.kind === "track" && it.ti === ti) && it.layers.includes(t.layer) && segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) <= it.r + t.w / 2 + 1e-6);
+          if (!touch) out.push({ kind: "dangling", x, y, msg: `A track end on ${t.layer} is not connected` });
+        });
+      });
+    }
     if (on("pinout")) model.parts.forEach(g => { const m = g.members[0].params.model; if (PINOUT[m] && PINOUT[m][1] === "verify" && g.place) out.push({ kind: "check", x: g.place.x, y: g.place.y, msg: `${g.ref} (${m}): pinouts differ between makers — check the ${g.fp.name} pin order against your part's datasheet` }); });
     return out;
   }
+  const fmtA = I => (Math.abs(I) >= 1 ? `${Math.abs(I).toFixed(2)} A` : `${(Math.abs(I) * 1000).toPrecision(3)} mA`);
   /** Each net with its class (manual or automatic), voltage, width and clearance — for the rules window */
   function netTable(board, model, hv, volts) {
     const R = board.rules, nets = [...new Set(model.pads.filter(p => p.net !== null).map(p => p.net))];
@@ -815,5 +919,5 @@
     const s = new Set(); Object.entries(netVolts || {}).forEach(([n, v]) => { if (Math.abs(v) > (limit || 60)) s.add(isNaN(+n) ? n : +n); }); return s;
   }
 
-  root.BoardCore = { entryGap, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

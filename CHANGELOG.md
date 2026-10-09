@@ -6,6 +6,44 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.39.0] - 2026-10-09
+
+### Added
+- **Board Design — several things at once:**
+  - box selection (left to right: what lies inside; right to left: what it
+    touches), and Shift+click to add or remove;
+  - drag any selected item to move them all;
+  - R turns the group 90° about its middle (bottom-side parts turn the right
+    way);
+  - the arrow keys nudge (Shift: ten grid steps);
+  - Align left / centre / right / top / middle / bottom, and Spread across /
+    down, for the selected parts.
+- **Locking** (L): locked parts, tracks, vias, texts, holes, pours and
+  keep-outs cannot be dragged, nudged, turned or deleted, and show a
+  padlock. The mounting holes from Board setup come locked.
+- **Keep-out areas** (K): per layer, forbidding tracks, vias, copper pour and
+  optionally parts. Routing refuses to enter them, pours leave them empty,
+  and the check reports anything inside.
+- **Track width for the current:**
+  - the CAD sends each pin's DC current from the simulation, and the check
+    reports tracks narrower than IPC-2221 asks (outer layer, the board's
+    copper weight, an allowed warming set in the rules, 10 °C by default);
+  - routing starts wide enough on its own;
+  - the Nets tab and the track inspector show the current.
+- More checks: overlapping parts (courtyards), silkscreen over pads and
+  unconnected track ends (warnings).
+
+### Changed
+- Pours and keep-outs are picked by their outline, so a click inside a
+  ground plane can start a selection box.
+- The Board window's link back to the schematic is now "CAD ↗", so the
+  toolbar fits on one row at 1600 px.
+
+### Fixed
+- Seven footprints had silkscreen over their own pads: TRIM-3296W, LED-3MM,
+  TO-220 and TO-247 (the body is now drawn behind the pins, as on the real
+  part), and JACK-3.5. A test now checks all 117 footprints.
+
 ## [3.38.0] - 2026-10-09
 
 ### Added

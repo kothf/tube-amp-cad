@@ -11,7 +11,7 @@
 (function (root) {
   "use strict";
   const B = () => root.BoardCore;
-  const SILK_W = 0.15, EDGE_W = 0.1, REF_H = 1.27;
+  const EDGE_W = 0.1;
   const r4 = v => +(+v).toFixed(4);
 
   // parts entirely outside the outline (still waiting below the board) are left out of the outputs
@@ -24,28 +24,7 @@
     });
     return keep;
   }
-  function partBox(g) {
-    const C = B(), pts = [[g.fp.box[0], g.fp.box[1]], [g.fp.box[2], g.fp.box[1]], [g.fp.box[0], g.fp.box[3]], [g.fp.box[2], g.fp.box[3]]].map(p => C.place(p, g.place));
-    return { x1: Math.min(...pts.map(p => p[0])), y1: Math.min(...pts.map(p => p[1])), x2: Math.max(...pts.map(p => p[0])), y2: Math.max(...pts.map(p => p[1])) };
-  }
-  /** Silkscreen of one part in board coordinates: footprint lines, rectangles and circles (as
-      polylines), and its reference above it */
-  function partSilk(g) {
-    const C = B(), P = pt => C.place(pt, g.place).map(r4), ops = [];
-    g.fp.silk.forEach(s => {
-      let pts;
-      if (s.t === "line") pts = [[s.x1, s.y1], [s.x2, s.y2]];
-      else if (s.t === "rect") pts = [[s.x, s.y], [s.x + s.w, s.y], [s.x + s.w, s.y + s.h], [s.x, s.y + s.h], [s.x, s.y]];
-      else if (s.t === "circle") {
-        const a0 = (s.from || 0), a1 = s.to === undefined ? 360 : s.to, n = Math.max(8, Math.ceil(Math.abs(a1 - a0) / 7.5));
-        pts = Array.from({ length: n + 1 }, (_, k) => { const a = (a0 + (a1 - a0) * k / n) * Math.PI / 180; return [s.x + s.r * Math.cos(a), s.y + s.r * Math.sin(a)]; });
-      }
-      if (pts) ops.push({ pol: "D", t: "line", w: SILK_W, pts: pts.map(P) });
-    });
-    const b = partBox(g), st = C.strokeText(g.ref, (b.x1 + b.x2) / 2, b.y1 - 0.4 - REF_H / 2, REF_H, 0, g.place.side === "B");
-    st.lines.forEach(l => ops.push({ pol: "D", t: "line", w: st.w, pts: l }));
-    return ops;
-  }
+  const partBox = g => B().partBox(g), partSilk = g => B().partSilk(g);
   const textOps = (t, mirror) => { const st = B().strokeText(t.text, t.x, t.y, t.size, t.rot, mirror); return st.lines.map(l => ({ pol: "D", t: "line", w: st.w, pts: l })); };
 
   /** Drawing operations of a layer: F.Cu, B.Cu (pours, then tracks, pads, vias, text),
