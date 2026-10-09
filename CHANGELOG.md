@@ -6,6 +6,33 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.36.0] - 2026-10-09
+
+### Added
+- **Board Design** (PCB) window, opened with *Board ↗* in the CAD. It takes
+  its parts and nets from the schematic and is saved inside the circuit file.
+  - Through-hole footprints: axial resistors by power rating, film boxes,
+    radial electrolytics, TO-92/18/126/220 with each part's pinout, LEDs,
+    pots, tube sockets (B9A, B7G, Magnoval, octal, UX4) with dual-tube
+    sections sharing one socket, and wire pads for chassis parts.
+  - Placement with rotate and bottom side, *Place all on the board*, and an
+    update banner when the schematic changes.
+  - 45° routing on two copper layers with vias, ratsnest, net highlight.
+  - Tools: Select, Route, Via, Text, Mounting hole, Measure; corner handle
+    resizes the board.
+  - **Design rules** window: clearances (separate high-voltage clearance),
+    edge clearance, track widths, via and drill sizes, annular ring, which
+    checks run, and **net classes** (Signal / Power / HV, automatic from the
+    simulated DC voltage or set per net).
+  - Live design-rule check: clearance (also to mounting holes), shorts,
+    board edge, annular ring, drill, minimum and class track width,
+    unplaced parts, pinouts to verify.
+  - **Board setup** window: size, corner radius, mounting holes in the
+    corners, board thickness and copper weight.
+  - **Layers** panel: show, hide or solo each layer, pick the active copper
+    layer, dim the inactive copper.
+  - Export: board SVG at 1:1, top copper, mirrored bottom copper, board JSON.
+
 ## [3.35.1] - 2026-10-09
 
 3.35.0 was tagged but never published: a timing-dependent test failed on the

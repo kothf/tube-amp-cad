@@ -1,11 +1,11 @@
-/* One window per tool: the Circuit CAD, the curve tracer, the oscilloscope and
-   the spectrum analyzer. A button brings an open window to the front (and, for
+/* One window per tool: the Circuit CAD, the curve tracer, the oscilloscope, the
+   spectrum analyzer and the Board Design. A button brings an open window to the front (and, for
    an instrument, switches it to the requested scope part) instead of opening
    another one. Each page names its own window, so a window is found whether a
    button or a reload opened it. */
 (function (root) {
   "use strict";
-  const NAMES = { "circuit_sandbox.html": "tube_cad", "index.html": "tube_curve_tracer", "oscilloscope.html": "tube_scope", "spectrum_analyzer.html": "tube_spectrum" };
+  const NAMES = { "circuit_sandbox.html": "tube_cad", "index.html": "tube_curve_tracer", "oscilloscope.html": "tube_scope", "spectrum_analyzer.html": "tube_spectrum", "board.html": "tube_board" };
   const page = location.pathname.split("/").pop() || "index.html";
   if (NAMES[page]) window.name = NAMES[page];
   const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tube_cad_v2") : null;

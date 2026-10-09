@@ -222,6 +222,7 @@
   function redo() { if (S.hIndex < S.history.length - 1) { S.hIndex++; restore(S.history[S.hIndex]); } }
   function circuitChanged() {
     S.topo = null;
+    scheduleBoardNetlist();
     updateSheetNav();
     if (S.trans && !S.trans.stale && !S.trans.running) { S.trans.stale = true; if (channel) channel.postMessage(transientMessage()); }
     try { localStorage.setItem(STORAGE_KEY, snapshot()); } catch (e) {}
@@ -557,9 +558,41 @@
     });
     return summary;
   }
+  // ---------------------------------------------------------------------------
+  // Board Design: the board window takes the netlist from here; the CAD keeps the board
+  // document with the circuit (file and browser storage). The board window sends its
+  // document back (BOARD_SAVE); the CAD stores it without echoing, so nothing loops.
+  // ---------------------------------------------------------------------------
+  const BOARD_KEY = "tubecad_board_v1";
+  S.board = null;
+  function boardNetlist() {
+    const T = topo(), skip = new Set(["frame", "note", "ground", "offsheet", "scope"]);
+    const parts = S.comps.filter(c => !skip.has(c.type)).map(c => ({ id: c.id, type: c.type, label: c.label, params: c.params,
+      pins: compPins(c).map(p => ({ id: p.id, name: p.name || p.id, net: T.pinNet.get(c.id + ":" + p.id) })) }));
+    const names = {};
+    if (T.hasGround) names[0] = "GND";
+    S.comps.forEach(c => { if (c.type === "offsheet" && String(c.params.name || "").trim()) { const n = T.pinNet.get(c.id + ":1"); if (n !== 0) names[n] = String(c.params.name).trim(); } });
+    // DC level per net from the last result, for the high-voltage clearance rule
+    const volts = {};
+    if (S.sim.result && S.sim.topo === T) Object.keys(names).concat([...new Set([...T.pinNet.values()])]).forEach(n => { const v = netDC(+n); if (v !== null) volts[n] = v; });
+    const f = frames()[0];
+    return { parts, names, volts, title: f ? f.params.title || "" : "", docno: f ? f.params.docno || "" : "" };
+  }
+  let boardTimer = 0;
+  function sendBoardNetlist(withBoard) {
+    if (!channel) return;
+    try { channel.postMessage({ type: "BOARD_NETLIST", version: VERSION, netlist: boardNetlist(), board: withBoard ? S.board : undefined, replace: !!withBoard }); } catch (e) {}
+  }
+  const scheduleBoardNetlist = () => { clearTimeout(boardTimer); boardTimer = setTimeout(() => sendBoardNetlist(false), 250); };
+  function storeBoard(doc) {
+    S.board = doc || null;
+    try { if (S.board) localStorage.setItem(BOARD_KEY, JSON.stringify(S.board)); else localStorage.removeItem(BOARD_KEY); } catch (e) {}
+  }
+
   let lastSummary = null;
   function broadcast() {
     lastSummary = buildSummary();
+    scheduleBoardNetlist();
     if (channel) { try { channel.postMessage(lastSummary); } catch (e) {} }
   }
   if (channel) channel.onmessage = e => {
@@ -570,7 +603,9 @@
     }
     // requests from instrument windows are acknowledged at once, so a window can
     // tell a CAD that does not understand them (an older version still open)
-    else if (/^(RUN_SIM|RUN_TRANSIENT|STOP_TRANSIENT)$/.test(m.type)) channel.postMessage({ type: "ACK", req: m.type, id: m.id, version: VERSION });
+    else if (/^(RUN_SIM|RUN_TRANSIENT|STOP_TRANSIENT|BOARD_SAVE)$/.test(m.type)) channel.postMessage({ type: "ACK", req: m.type, id: m.id, version: VERSION });
+    if (m.type === "BOARD_HELLO") sendBoardNetlist(true);                    // a board window opened: netlist and the stored board
+    else if (m.type === "BOARD_SAVE") storeBoard(m.doc);
     if (m.type === "RUN_SIM") runSim("full");                            // ▶ Simulate in an instrument window
     else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop);
     else if (m.type === "STOP_TRANSIENT") stopTransient();
@@ -1909,7 +1944,9 @@
     const f = makeComp("frame", { size: opts.size, orient: opts.orient, title: opts.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
     S.comps = [f]; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
     setCurFile(null, "");
+    storeBoard(null);
     commit(); fitView();
+    sendBoardNetlist(true);
   }
   // Add sheet: a new frame to the right of the last one, with the same title block data
   function addSheet(opts) {
@@ -2231,7 +2268,7 @@
   let curFile = { handle: null, name: "" };
   const FS_API = typeof window.showSaveFilePicker === "function";
   const JSON_TYPES = [{ description: "Tube Amp CAD circuit", accept: { "application/json": [".json"] } }];
-  const circuitJSON = () => JSON.stringify({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, null, 1);
+  const circuitJSON = () => JSON.stringify(Object.assign({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, S.board ? { board: S.board } : {}), null, 1);
   function setCurFile(handle, name) {
     curFile = { handle: handle || null, name: name || "" };
     document.title = (name ? name + " — " : "") + "Tube Amp CAD — Circuit Editor & Simulator";
@@ -2294,10 +2331,13 @@
     const rd = new FileReader();
     rd.onload = () => {
       try {
-        loadCircuit(JSON.parse(rd.result));
+        const d = JSON.parse(rd.result);
+        loadCircuit(d);
+        storeBoard(d.board || null);
         S.sel.comps.clear(); S.sel.wires.clear();
         setCurFile(handle, file.name);
         commit(); fitStart();
+        sendBoardNetlist(true);                 // an open board window switches to this file's board
       } catch (err) { setStatus("error", "Could not open file: " + err.message); }
     };
     rd.readAsText(file);
@@ -2447,13 +2487,17 @@
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
     bind("btn-spice-download", () => { const blob = new Blob([document.getElementById("spice-text").value], { type: "text/plain" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "tube-circuit.cir"; a.click(); });
     initBom();
+    bind("btn-open-board", () => ToolWindows.open("board.html"));
     bind("btn-open-tracer", () => ToolWindows.open("index.html"));
     bind("btn-open-scope", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("oscilloscope.html", sc ? { scope: sc.id } : null); });
     bind("btn-open-spectrum", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("spectrum_analyzer.html", sc ? { scope: sc.id } : null); });
 
     let saved = null;
     try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}
-    if (saved) { try { const d = JSON.parse(saved); d.comps = (d.comps || []).filter(c => LIB[c.type]); loadCircuit(d); } catch (e) { S.comps = []; S.wires = []; } }
+    if (saved) {
+      try { const d = JSON.parse(saved); d.comps = (d.comps || []).filter(c => LIB[c.type]); loadCircuit(d); } catch (e) { S.comps = []; S.wires = []; }
+      try { S.board = JSON.parse(localStorage.getItem(BOARD_KEY)) || null; } catch (e) { S.board = null; }
+    }
     else S.comps = [makeComp("frame", { size: "A3", orient: "landscape", date: new Date().toISOString().slice(0, 10) }, 0, 0, 0)];   // first visit: an A3 sheet
     S.history = [snapshot()]; S.hIndex = 0;
     S.topo = null;
@@ -2464,6 +2508,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

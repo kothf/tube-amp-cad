@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Board Design — Tube Amp CAD</title>
+  <meta name="description" content="PCB layout for circuits from the Tube Amp CAD: footprints, tracks on two layers, ratsnest and design-rule checks.">
+  <style>
+    :root {
+      --bg: #0a0e14; --panel: #0f151e; --panel2: #131b26; --line: #223044; --text: #e6edf3; --muted: #8b949e;
+      --accent: #00e5ff; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300;
+      --fcu: #e5534b; --bcu: #4d8fdc; --pad: #d4a72c; --silk: #e6edf3; --bsilk: #b392f0; --edge: #ffd54f;
+    }
+    * { box-sizing: border-box; }
+    :root { color-scheme: dark; }
+    select { -webkit-appearance: none; appearance: none; color: var(--text);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b949e' stroke-width='1.5'/%3E%3C/svg%3E") !important;
+      background-repeat: no-repeat !important; background-position: right 7px center !important; background-size: 10px 6px !important; padding-right: 22px !important; }
+    select option, select optgroup { background-color: #0f151e; color: #e6edf3; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto auto 1fr auto; overflow: hidden; }
+    button, input, select { font: inherit; color: inherit; }
+    header { grid-row: 1; } #banner { grid-row: 2; } main { grid-row: 3; } footer { grid-row: 4; }   /* fixed rows: the banner may be hidden */
+    header { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .brand { font-weight: 700; letter-spacing: .5px; margin-right: 6px; white-space: nowrap; }
+    .brand b { color: var(--accent); }
+    .sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; }
+    .spacer { flex: 1; }
+    .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+    .btn:hover { border-color: #3a5170; }
+    .btn.active { background: #0d3442; border-color: var(--accent); color: var(--accent); }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .btn.link { color: var(--accent); }
+    .btn.warn { color: var(--warn); border-color: #6b5313; }
+    select.btn { padding: 5px 8px; }
+    .status { font-size: 12px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+    .status::before { content: "●"; margin-right: 6px; }
+    .status.ok::before { color: var(--ok); } .status.idle::before { color: var(--muted); } .status.bad { color: var(--bad); }
+    #banner { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: #2a210a; border-bottom: 1px solid #6b5313; color: var(--warn); font-size: 12px; }
+    #banner[hidden] { display: none; }
+    main { display: grid; grid-template-columns: 220px 1fr 290px; min-height: 0; }
+    .col { background: var(--panel); overflow-y: auto; padding: 8px 10px; min-height: 0; }
+    .col.left { border-right: 1px solid var(--line); }
+    .col.right { border-left: 1px solid var(--line); }
+    h2 { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 12px 0 6px; display: flex; justify-content: space-between; }
+    h2:first-child { margin-top: 2px; }
+    h2 small { letter-spacing: 0; text-transform: none; font-weight: 400; }
+    .item { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; width: 100%; text-align: left; background: var(--panel2); border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; margin-bottom: 3px; cursor: pointer; }
+    .item:hover { border-color: var(--line); }
+    .item.active { border-color: var(--accent); background: #0d3442; }
+    .item span { font-family: ui-monospace, Menlo, monospace; }
+    .item em { font-style: normal; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+    #stage { position: relative; min-width: 0; min-height: 0; }
+    #pcb { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+    .insp-title { font-weight: 700; font-size: 14px; color: var(--accent); margin-bottom: 6px; }
+    .row { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .row span { color: var(--muted); font-size: 12px; }
+    .row input, .row select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+    .row input.invalid { border-color: var(--bad); }
+    .kv { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px dashed #1a2433; font-size: 12px; }
+    .kv span { color: var(--muted); } .kv b { font-family: ui-monospace, Menlo, monospace; font-weight: 600; text-align: right; }
+    .kv.bad b { color: var(--bad); } .kv.ok b { color: var(--ok); }
+    .help { color: var(--muted); font-size: 12px; margin: 6px 0; }
+    .help.warn { color: var(--warn); }
+    .drc { display: block; width: 100%; text-align: left; background: none; border: 0; border-left: 3px solid var(--bad); padding: 3px 6px; margin: 3px 0; cursor: pointer; font-size: 12px; color: var(--text); }
+    .drc.check, .drc.unplaced { border-left-color: var(--warn); }
+    .drc:hover { background: var(--panel2); }
+    .tools { display: flex; gap: 2px; }
+    .tools .btn { padding: 5px 8px; }
+    .layer { display: grid; grid-template-columns: 16px 14px 1fr auto auto; align-items: center; gap: 6px; font-size: 12px; padding: 3px 4px; border-radius: 5px; border: 1px solid transparent; }
+    .layer.active { border-color: var(--accent); background: #0d3442; }
+    .layer .nm { cursor: pointer; }
+    .layer .nm:hover { color: var(--accent); }
+    .layer .solo { background: none; border: 1px solid var(--line); border-radius: 4px; font-size: 10px; padding: 0 5px; cursor: pointer; color: var(--muted); }
+    .layer .solo:hover { color: var(--text); }
+    .layer .tag { font-size: 10px; color: var(--accent); }
+    .sw { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+    .opacity { display: grid; grid-template-columns: 1fr 90px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .dlg h3 { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+    .dlg .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+    .dlg table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .dlg th { text-align: left; color: var(--muted); font-weight: 600; padding: 3px 6px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+    .dlg td { padding: 2px 6px; border-bottom: 1px dashed #1a2433; font-family: ui-monospace, Menlo, monospace; }
+    .dlg td select { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; }
+    .dlg .nets { max-height: 230px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
+    .dlg .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 18px; font-size: 12px; }
+    .dlg .checks label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+    .dlg .actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 12px; }
+    .cls-HV { color: var(--bad); } .cls-Power { color: var(--warn); } .cls-Signal { color: var(--text); }
+    .pads { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); max-height: 180px; overflow-y: auto; }
+    .pads div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dashed #1a2433; }
+    footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
+    footer span { white-space: nowrap; }
+    #st-pos { margin-left: auto; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 30; }
+    .modal[hidden] { display: none; }
+    .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(680px, 94vw); max-height: 86vh; overflow-y: auto; padding: 14px 16px; }
+    .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12px; }
+    kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: 11px; justify-self: start; }
+    .menu { position: relative; }
+    .menu-list { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 230px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+    .menu-list[hidden] { display: none; }
+    .menu-item { display: flex; justify-content: space-between; width: 100%; background: none; border: 0; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
+    .menu-item:hover { background: var(--panel2); }
+    .menu-item small { color: var(--muted); }
+    @media (max-width: 1000px) { main { grid-template-columns: 1fr; } .col.left, .col.right { display: none; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">⚡ <b>Board</b> Design</div>
+    <span id="status" class="status idle">Looking for the Circuit CAD…</span>
+    <span class="sep"></span>
+    <button class="btn" id="btn-undo" title="Undo (Ctrl+Z)">↶</button>
+    <button class="btn" id="btn-redo" title="Redo (Ctrl+Y)">↷</button>
+    <span class="sep"></span>
+    <div class="tools" role="toolbar" aria-label="Tools">
+      <button class="btn active" data-tool="select" title="Select and move footprints, tracks, vias, texts and holes; drag the board's corner handle to resize it (Esc)">Select</button>
+      <button class="btn" data-tool="route" title="Route a track from a pad (X); V changes layer with a via">Route</button>
+      <button class="btn" data-tool="via" title="Place a via (Shift+V)">Via</button>
+      <button class="btn" data-tool="text" title="Place a text on the silkscreen or copper (T)">Text</button>
+      <button class="btn" data-tool="hole" title="Place a mounting hole (H)">Hole</button>
+      <button class="btn" data-tool="measure" title="Measure a distance: click, click (D)">Measure</button>
+    </div>
+    <select class="btn" id="layer" title="Copper layer for new tracks (V while routing)"><option value="F.Cu">Top (F.Cu)</option><option value="B.Cu">Bottom (B.Cu)</option></select>
+    <select class="btn" id="grid" title="Grid"><option value="0.635">0.635 mm</option><option value="1.27" selected>1.27 mm</option><option value="2.54">2.54 mm</option><option value="0.5">0.5 mm</option><option value="1">1 mm</option></select>
+    <button class="btn" id="btn-fit" title="Fit the board (F)">Fit</button>
+    <span class="spacer"></span>
+    <button class="btn" id="btn-setup" title="Board setup: outline, corners, mounting holes, layer stack">Setup…</button>
+    <button class="btn" id="btn-rules" title="Design rules: clearances, widths, vias, net classes and the checks to run">Rules…</button>
+    <button class="btn" id="btn-sync" title="Update from the schematic: bring parts added to or removed from it onto the board">Update</button>
+    <div class="menu" id="export-menu">
+      <button class="btn" id="btn-export" aria-haspopup="true">Export ▾</button>
+      <div class="menu-list" hidden>
+        <button class="menu-item" id="ex-svg">Board drawing (SVG)<small>all layers, 1:1 mm</small></button>
+        <button class="menu-item" id="ex-fcu">Top copper (SVG)<small>as seen from the top</small></button>
+        <button class="menu-item" id="ex-bcu">Bottom copper (SVG)<small>mirrored, for transfer</small></button>
+        <button class="menu-item" id="ex-json">Board file (JSON)<small>this layout</small></button>
+      </div>
+    </div>
+    <button class="btn" id="btn-help" title="Help and shortcuts (F1)">?</button>
+    <button class="btn link" id="btn-cad" title="Back to the schematic">Circuit CAD ↗</button>
+  </header>
+  <div id="banner" hidden><span id="banner-text"></span><button class="btn warn" id="banner-sync">Update from schematic</button></div>
+
+  <main>
+    <section class="col left">
+      <h2>Parts <small id="parts-count"></small></h2>
+      <div id="parts"></div>
+    </section>
+    <div id="stage"><canvas id="pcb" aria-label="Printed circuit board"></canvas></div>
+    <aside class="col right">
+      <div id="inspector"></div>
+      <h2>Design rules check <small id="drc-count"></small></h2>
+      <div id="drc"></div>
+      <h2>Layers <small>click a copper layer to make it active</small></h2>
+      <div class="layers" id="layers"></div>
+      <div class="opacity"><span>Inactive copper</span><input type="range" id="dim" min="0.1" max="1" step="0.05" value="0.5"></div>
+    </aside>
+  </main>
+
+  <footer>
+    <span id="st-msg">Ready</span>
+    <span id="st-rats"></span>
+    <span id="st-drc"></span>
+    <span id="st-pos"></span>
+  </footer>
+
+  <div class="modal" id="help-modal" hidden>
+    <div class="modal-box">
+      <div class="insp-title">Board Design: help</div>
+      <p class="help">The board takes its parts and connections from the schematic in the Circuit CAD, which keeps the layout in the circuit file (File → Save there). New parts wait in a row below the board: drag them onto it. Thin lines (the ratsnest) show connections still to route; route them as tracks on the top or bottom copper. The design-rule check lists clearances that are too small (high-voltage nets need more), shorts, copper off the board and parts not placed yet.</p>
+      <div class="keys">
+        <kbd>X</kbd><span>route a track: click a pad, click corners, finish on a pad of the same net (or double-click)</span>
+        <kbd>V</kbd><span>while routing: change layer and drop a via; otherwise switch the active copper layer</span>
+        <kbd>Backspace</kbd><span>while routing: take back the last segment</span>
+        <kbd>Shift+V</kbd><span>via tool: click to place a via</span>
+        <kbd>T</kbd><span>text tool: click to place a text on the active side's silkscreen</span>
+        <kbd>H</kbd><span>mounting-hole tool</span>
+        <kbd>D</kbd><span>measure: click, click; the distance stays until the next click or Esc</span>
+        <kbd>R</kbd><span>rotate the selected footprint or text 90°</span>
+        <kbd>M</kbd><span>move the selected footprint to the other side (bottom / top)</span>
+        <kbd>Del</kbd><span>delete the selected track, via, text or hole</span>
+        <kbd>F</kbd><span>fit the board</span>
+        <kbd>Esc</kbd><span>end routing / clear the selection</span>
+        <kbd>Ctrl+Z</kbd><span>undo · <kbd>Ctrl+Y</kbd> redo</span>
+        <kbd>wheel</kbd><span>zoom at the pointer; right- or middle-drag, or Space-drag, pans</span>
+      </div>
+      <p class="help">Tube sockets are drawn from the component side: the pins run counter-clockwise from the gap. Footprints marked “check pinout” have pin orders that differ between makers.</p>
+      <div style="text-align:right"><button class="btn" id="btn-help-close">Close</button></div>
+    </div>
+  </div>
+
+  <div class="modal" id="rules-modal" hidden>
+    <div class="modal-box dlg" style="width: min(760px, 96vw)">
+      <div class="insp-title">Design rules</div>
+      <p class="help">Valve circuits run at several hundred volts: nets above the high-voltage threshold (from the simulation) get the HV clearance and the power-track width. Every net belongs to a class: automatically (HV by voltage, GND is Power, the rest Signal) or as you set it below.</p>
+      <div class="grid2">
+        <div>
+          <h3>Clearances</h3>
+          <div class="row"><span>Signal and power (mm)</span><input data-r="clearance"></div>
+          <div class="row"><span>High voltage (mm)</span><input data-r="hvClearance"></div>
+          <div class="row"><span>HV above (V DC)</span><input data-r="hvVolts"></div>
+          <div class="row"><span>To the board edge (mm)</span><input data-r="edgeClearance"></div>
+          <h3>Tracks</h3>
+          <div class="row"><span>Signal width (mm)</span><input data-r="track"></div>
+          <div class="row"><span>Power / HV width (mm)</span><input data-r="power"></div>
+          <div class="row"><span>Minimum width (mm)</span><input data-r="minTrack"></div>
+        </div>
+        <div>
+          <h3>Vias and holes</h3>
+          <div class="row"><span>Via drill (mm)</span><input data-r="viaDrill"></div>
+          <div class="row"><span>Via pad (mm)</span><input data-r="viaPad"></div>
+          <div class="row"><span>Minimum drill (mm)</span><input data-r="minDrill"></div>
+          <div class="row"><span>Minimum annular ring (mm)</span><input data-r="minAnnular"></div>
+          <h3>Checks</h3>
+          <div class="checks" id="rules-checks"></div>
+        </div>
+      </div>
+      <h3>Net classes</h3>
+      <div class="nets"><table><thead><tr><th>Net</th><th>Pads</th><th>DC</th><th>Class</th><th>Width</th><th>Clearance</th></tr></thead><tbody id="rules-nets"></tbody></table></div>
+      <div class="actions"><button class="btn" id="rules-reset" title="The default rules (net class choices are kept)">Defaults</button><span class="spacer"></span><button class="btn" id="rules-cancel">Cancel</button><button class="btn active" id="rules-apply">Apply</button></div>
+    </div>
+  </div>
+
+  <div class="modal" id="setup-modal" hidden>
+    <div class="modal-box dlg" style="width: min(560px, 96vw)">
+      <div class="insp-title">Board setup</div>
+      <h3>Outline</h3>
+      <div class="row"><span>Width (mm)</span><input data-o="w"></div>
+      <div class="row"><span>Height (mm)</span><input data-o="h"></div>
+      <div class="row"><span>Corner radius (mm)</span><input data-o="r"></div>
+      <h3>Mounting holes</h3>
+      <div class="row"><span>Hole diameter (mm)</span><select id="hole-d"><option value="2.7">2.7 (M2.5)</option><option value="3.2" selected>3.2 (M3)</option><option value="3.7">3.7 (M3.5)</option><option value="4.3">4.3 (M4)</option></select></div>
+      <div class="row"><span>Inset from the edges (mm)</span><input id="hole-inset" value="5"></div>
+      <p class="help" id="holes-now"></p>
+      <div style="display:flex; gap:6px"><button class="btn" id="holes-corners">Put one in each corner</button><button class="btn" id="holes-clear">Remove all</button></div>
+      <h3>Layer stack</h3>
+      <div class="row"><span>Copper layers</span><select disabled><option>2 layers</option></select></div>
+      <div class="row"><span>Board thickness (mm)</span><select data-s="thickness"><option value="0.8">0.8</option><option value="1">1.0</option><option value="1.2">1.2</option><option value="1.6">1.6</option><option value="2">2.0</option></select></div>
+      <div class="row"><span>Copper (µm)</span><select data-s="copper"><option value="18">18 (½ oz)</option><option value="35">35 (1 oz)</option><option value="70">70 (2 oz)</option></select></div>
+      <div class="actions"><button class="btn" id="setup-cancel">Cancel</button><button class="btn active" id="setup-apply">Apply</button></div>
+    </div>
+  </div>
+
+  <script src="windows.js?v=dev"></script>
+  <script src="panels.js?v=dev"></script>
+  <script src="tube-db.js?v=dev"></script>
+  <script src="sim-engine.js?v=dev"></script>
+  <script src="cad-components.js?v=dev"></script>
+  <script src="board-core.js?v=dev"></script>
+  <script src="board-app.js?v=dev"></script>
+</body>
+</html>
