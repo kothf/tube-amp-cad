@@ -97,6 +97,17 @@
     .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(680px, 94vw); max-height: 86vh; overflow-y: auto; padding: 14px 16px; }
     .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12px; }
     kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: 11px; justify-self: start; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+    .tab { flex: 1; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; cursor: pointer; font-weight: 600; }
+    .tab.active { border-color: var(--accent); color: var(--accent); }
+    .tab small { color: var(--muted); font-weight: 400; }
+    .net { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; width: 100%; background: none; border: 1px solid transparent; border-radius: 5px; padding: 3px 6px; text-align: left; cursor: pointer; font-size: 12px; }
+    .net:hover { background: var(--panel2); }
+    .net.active { border-color: var(--accent); background: var(--panel2); }
+    .net .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .net .todo { color: var(--bad); }
+    .net .done { color: var(--ok); }
+    .net .cls { font-size: 10px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--line); }
     .menu { position: relative; }
     .menu-list { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 230px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
     .menu-list[hidden] { display: none; }
@@ -120,6 +131,7 @@
       <button class="btn" data-tool="via" title="Place a via (Shift+V)">Via</button>
       <button class="btn" data-tool="text" title="Place a text on the silkscreen or copper (T)">Text</button>
       <button class="btn" data-tool="hole" title="Place a mounting hole (H)">Hole</button>
+      <button class="btn" data-tool="pour" title="Copper pour (ground plane): click the corners, double-click to close (P). Board inspector: one click for a ground plane over the whole board">Pour</button>
       <button class="btn" data-tool="measure" title="Measure a distance: click, click (D)">Measure</button>
     </div>
     <select class="btn" id="layer" title="Copper layer for new tracks (V while routing)"><option value="F.Cu">Top (F.Cu)</option><option value="B.Cu">Bottom (B.Cu)</option></select>
@@ -132,9 +144,10 @@
     <div class="menu" id="export-menu">
       <button class="btn" id="btn-export" aria-haspopup="true">Export ▾</button>
       <div class="menu-list" hidden>
+        <button class="menu-item" id="ex-gerber">Gerber + drill files (ZIP)<small>for the board maker</small></button>
+        <button class="menu-item" id="ex-pdf">Print set (PDF)<small>assembly, copper 1:1, drill map</small></button>
+        <button class="menu-item" id="ex-toner">Toner transfer (PDF)<small>copper 1:1, ready to iron on</small></button>
         <button class="menu-item" id="ex-svg">Board drawing (SVG)<small>all layers, 1:1 mm</small></button>
-        <button class="menu-item" id="ex-fcu">Top copper (SVG)<small>as seen from the top</small></button>
-        <button class="menu-item" id="ex-bcu">Bottom copper (SVG)<small>mirrored, for transfer</small></button>
         <button class="menu-item" id="ex-json">Board file (JSON)<small>this layout</small></button>
       </div>
     </div>
@@ -145,8 +158,9 @@
 
   <main>
     <section class="col left">
-      <h2>Parts <small id="parts-count"></small></h2>
+      <div class="tabs" role="tablist"><button class="tab active" data-tab="parts" role="tab">Parts <small id="parts-count"></small></button><button class="tab" data-tab="nets" role="tab">Nets <small id="nets-count"></small></button></div>
       <div id="parts"></div>
+      <div id="nets" hidden></div>
     </section>
     <div id="stage"><canvas id="pcb" aria-label="Printed circuit board"></canvas></div>
     <aside class="col right">
@@ -177,6 +191,11 @@
         <kbd>Shift+V</kbd><span>via tool: click to place a via</span>
         <kbd>T</kbd><span>text tool: click to place a text on the active side's silkscreen</span>
         <kbd>H</kbd><span>mounting-hole tool</span>
+        <kbd>P</kbd><span>copper pour: click the corners, double-click (or click the first corner) to close; the pour fills around other nets with clearance and joins its net's pads with thermal spokes</span>
+        <kbd>U</kbd><span>select the whole connected track under the pointer (or of the selected track)</span>
+        <kbd>`</kbd><span>highlight the net under the pointer (again: off); the Nets tab lists every net</span>
+        <kbd>drag</kbd><span>a track segment moves sideways and its neighbours follow (45° kept)</span>
+        <kbd>Shift+click</kbd><span>while routing: place a segment that breaks the clearance anyway (normally refused)</span>
         <kbd>D</kbd><span>measure: click, click; the distance stays until the next click or Esc</span>
         <kbd>R</kbd><span>rotate the selected footprint or text 90°</span>
         <kbd>M</kbd><span>move the selected footprint to the other side (bottom / top)</span>
@@ -213,6 +232,9 @@
           <div class="row"><span>Via pad (mm)</span><input data-r="viaPad"></div>
           <div class="row"><span>Minimum drill (mm)</span><input data-r="minDrill"></div>
           <div class="row"><span>Minimum annular ring (mm)</span><input data-r="minAnnular"></div>
+          <h3>Solder mask</h3>
+          <div class="row"><span>Opening around pads (mm)</span><input data-r="maskExpansion" data-min="0"></div>
+          <div class="checks"><label><input type="checkbox" id="rules-tent"> Cover vias with mask</label></div>
           <h3>Checks</h3>
           <div class="checks" id="rules-checks"></div>
         </div>
@@ -248,7 +270,9 @@
   <script src="tube-db.js?v=dev"></script>
   <script src="sim-engine.js?v=dev"></script>
   <script src="cad-components.js?v=dev"></script>
+  <script src="pdf-export.js?v=dev"></script>
   <script src="board-core.js?v=dev"></script>
+  <script src="board-fab.js?v=dev"></script>
   <script src="board-app.js?v=dev"></script>
 </body>
 </html>

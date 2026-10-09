@@ -10,7 +10,7 @@
   const B = BoardCore, $ = id => document.getElementById(id);
   const VERSION = (() => { const sc = document.currentScript; const q = sc && sc.src.split("?")[1]; return q ? "?" + q : ""; })();
   const LAYER_INFO = [
-    ["F.Cu", "Top copper", "#e5534b"], ["B.Cu", "Bottom copper", "#4d8fdc"], ["F.SilkS", "Top silkscreen", "#e6edf3"], ["B.SilkS", "Bottom silkscreen", "#b392f0"],
+    ["F.Cu", "Top copper", "#e5534b"], ["B.Cu", "Bottom copper", "#4d8fdc"], ["zones", "Copper pours", "#8b949e"], ["F.SilkS", "Top silkscreen", "#e6edf3"], ["B.SilkS", "Bottom silkscreen", "#b392f0"],
     ["Edge.Cuts", "Board outline", "#ffd54f"], ["Holes", "Mounting holes", "#9aa7b4"], ["rats", "Ratsnest", "#c9d1d9"], ["drc", "Rule markers", "#ff7b72"]
   ];
   const COLORS = Object.fromEntries(LAYER_INFO.map(([k, , c]) => [k, c]));
@@ -19,7 +19,11 @@
   const S = {
     netlist: null, board: B.newBoard(), model: null, conn: null, drc: [], hv: new Set(),
     view: { scale: 5, ox: 40, oy: 40 }, tool: "select", layer: "F.Cu", grid: 1.27, dim: 0.5,
-    sel: null,              // { kind: "part", key } | { kind: "track" | "via" | "text" | "hole", i }
+    sel: null,              // { kind: "part", key } | { kind: "track" | "via" | "text" | "hole" | "zone", i } | { kind: "tracks", list }
+    fills: [],              // filled copper pours (BoardCore.fillZones), refilled on every change
+    netHL: null,            // the highlighted net (Nets tab, ` key)
+    poly: null,             // a pour outline being drawn: [[x, y]...]
+    routeBad: null,         // while routing: where the next segment breaks the clearance
     route: null,            // { net, layer, pts: [[x, y]...], w, segs: [] }
     measure: null,          // { a: [x, y], b: [x, y] | null }
     drag: null, hover: null, mouse: [0, 0], space: false,
@@ -32,7 +36,8 @@
   const toWorld = (sx, sy) => [(sx - S.view.ox) / S.view.scale, (sy - S.view.oy) / S.view.scale];
   const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const kv = (k, v, cls) => `<div class="kv${cls ? " " + cls : ""}"><span>${k}</span><b>${v}</b></div>`;
-  const LISTS = { track: "tracks", via: "vias", text: "texts", hole: "holes" };
+  const LISTS = { track: "tracks", via: "vias", text: "texts", hole: "holes", zone: "zones" };
+  const appVersion = () => VERSION.replace(/^\?v=/, "") || "dev";
 
   // ---------------------------------------------------------------------------
   // Link with the CAD: BOARD_HELLO asks for the netlist and the stored board; the CAD
@@ -58,8 +63,16 @@
       if (m.replace || placed) fit();
       render(); renderPanels();
       S.cad = true; status("ok", linkText());
+    } else if (m.type === "CAD_SELECT" && S.model) {
+      // the schematic's selection: select the same part here (without echoing it back)
+      const ids = new Set(m.ids || []), g = S.model.parts.find(p => p.members.some(x => ids.has(x.id)));
+      if (g) { S.sel = { kind: "part", key: g.key }; if (g.place) ensureVisible(g.place.x, g.place.y); renderPanels(); render(); }
+      else if (S.sel && S.sel.kind === "part") { S.sel = null; renderPanels(); render(); }
     } else if (m.type === "ACK" && pendingAck[m.id]) { clearTimeout(pendingAck[m.id]); delete pendingAck[m.id]; S.saved = true; status("ok", linkText()); }
   };
+  // cross-probing: a part selected here is selected in the schematic too
+  function probe(g) { if (bc && g) bc.postMessage({ type: "BOARD_SELECT", ids: g.members.map(m => m.id) }); }
+  function selectPart(g) { S.sel = { kind: "part", key: g.key }; probe(g); }
   function hello() {
     if (!bc) { status("bad", "This browser cannot talk to the Circuit CAD window"); return; }
     bc.postMessage({ type: "BOARD_HELLO" });
@@ -81,11 +94,15 @@
   // ---------------------------------------------------------------------------
   // Model and checks
   // ---------------------------------------------------------------------------
-  function analyse() {
-    if (!S.netlist) { S.model = null; S.conn = null; S.drc = []; return; }
+  // light: while dragging, keep the pours as they were filled (they refill when the drag ends)
+  function analyse(light) {
+    if (!S.netlist) { S.model = null; S.conn = null; S.drc = []; S.fills = []; return; }
     S.hv = B.hvNets(S.netlist.volts, S.board.rules.hvVolts);
     S.model = B.model(S.board, S.netlist);
-    S.conn = B.connectivity(S.board, S.model.pads);
+    const c0 = B.connectivity(S.board, S.model.pads);
+    if (!(S.board.zones || []).length) S.fills = [];
+    else if (!light) S.fills = B.fillZones(S.board, S.model, c0, S.hv);
+    S.conn = S.fills.length ? B.connectivity(S.board, S.model.pads, S.fills) : c0;
     S.drc = B.drc(S.board, S.model, S.conn, S.hv);
   }
   function checkSync() {
@@ -105,6 +122,15 @@
   const netName = n => (n === null || n === undefined ? "no net" : n === "short" ? "SHORT" : (S.model && S.model.names[n]) || String(n));
   const classOf = n => (n === null || n === undefined || n === "short" || !S.model ? "Signal" : B.netClassOf(n, S.model.names, S.hv, S.board.rules));
   const trackWidth = n => B.classRule(classOf(n), S.board.rules).track;
+  const storedNet = n => (n === null || n === undefined || n === "short" ? undefined : netName(n));
+  const netOfTrack = ti => { const it = S.conn && S.conn.items.find(it => it.kind === "track" && it.ti === ti); return it ? it.net : null; };
+  // a track's points without repeats and without corners that are not corners
+  function tidy(pts) {
+    const out = [];
+    pts.forEach(p => { const q = out[out.length - 1]; if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-6) out.push([+p[0].toFixed(4), +p[1].toFixed(4)]); });
+    for (let k = out.length - 2; k >= 1; k--) { const [a, b, c] = [out[k - 1], out[k], out[k + 1]]; if (Math.abs((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])) < 1e-6 && (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]) > 0) out.splice(k, 1); }
+    return out;
+  }
 
   // ---------------------------------------------------------------------------
   // History
@@ -132,14 +158,26 @@
     for (let i = S.model.parts.length - 1; i >= 0; i--) { const g = S.model.parts[i]; if (!g.place) continue; const b = partBox(g); if (x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2) return g; }
     return null;
   }
-  function hitTrack(x, y) {
-    const tol = 3 / S.view.scale;
-    for (let i = S.board.tracks.length - 1; i >= 0; i--) { const t = S.board.tracks[i]; if (!S.show[t.layer]) continue; for (let k = 0; k + 1 < t.pts.length; k++) if (B.segDist(t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1], x, y) <= t.w / 2 + tol) return i; }
-    return -1;
+  function hitSeg(x, y, tolPx) {
+    const tol = (tolPx === undefined ? 3 : tolPx) / S.view.scale;
+    for (let i = S.board.tracks.length - 1; i >= 0; i--) { const t = S.board.tracks[i]; if (!S.show[t.layer]) continue; for (let k = 0; k + 1 < t.pts.length; k++) if (B.segDist(t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1], x, y) <= t.w / 2 + tol) return { i, k }; }
+    return null;
+  }
+  const hitTrack = (x, y) => { const h = hitSeg(x, y); return h ? h.i : -1; };
+  // pours: a corner handle of the selected one, or the pour under the point (the active layer first)
+  function hitZoneCorner(x, y) {
+    if (!S.sel || S.sel.kind !== "zone") return -1;
+    const z = S.board.zones[S.sel.i]; if (!z || !z.pts) return -1;
+    return z.pts.findIndex(p => Math.hypot(p[0] - x, p[1] - y) <= 6 / S.view.scale);
+  }
+  function hitZone(x, y) {
+    if (!S.show.zones) return -1;
+    const order = S.board.zones.map((z, i) => i).sort((a, b) => (S.board.zones[b].layer === S.layer) - (S.board.zones[a].layer === S.layer));
+    return order.find(i => { const z = S.board.zones[i]; return S.show[z.layer] && B.pip(x, y, B.zonePoly(S.board, z)); }) ?? -1;
   }
   const hitVia = (x, y) => S.board.vias.findIndex(v => Math.hypot(v.x - x, v.y - y) <= (v.pad || S.board.rules.viaPad) / 2);
   const hitHole = (x, y) => (S.show.Holes ? S.board.holes.findIndex(h => Math.hypot(h.x - x, h.y - y) <= h.d / 2 + 0.6) : -1);
-  function textBox(t) { const w = t.text.length * t.size * 0.62, h = t.size; return (t.rot & 1) ? { x1: t.x - h / 2, y1: t.y - w / 2, x2: t.x + h / 2, y2: t.y + w / 2 } : { x1: t.x - w / 2, y1: t.y - h / 2, x2: t.x + w / 2, y2: t.y + h / 2 }; }
+  function textBox(t) { const w = Math.max(t.size, B.strokeText(t.text, 0, 0, t.size).width), h = t.size; return (t.rot & 1) ? { x1: t.x - h / 2, y1: t.y - w / 2, x2: t.x + h / 2, y2: t.y + w / 2 } : { x1: t.x - w / 2, y1: t.y - h / 2, x2: t.x + w / 2, y2: t.y + h / 2 }; }
   const hitText = (x, y) => S.board.texts.findIndex(t => { if (!S.show[t.layer]) return false; const b = textBox(t); return x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2; });
   // the board's resize handle: its bottom-right corner
   const onHandle = (x, y) => { const o = S.board.outline, t = 6 / S.view.scale; return S.show["Edge.Cuts"] && Math.abs(x - o.w) <= t && Math.abs(y - o.h) <= t; };
@@ -158,6 +196,22 @@
     const d = Math.min(ax, ay);
     return [ax > ay ? [b[0] - Math.sign(dx) * d, a[1]] : [a[0], b[1] - Math.sign(dy) * d], b];
   }
+  // the clearance of the segments to the pointer against other nets' copper, holes and the edge
+  function routeCheck() {
+    const r = S.route; if (!r || !S.conn) return null;
+    const pts = [r.pts[r.pts.length - 1]].concat(bend(r.pts[r.pts.length - 1], routeTarget())), R = S.board.rules, mine = B.classRule(classOf(r.net), R).clearance, w2 = r.w / 2;
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const s = [pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]];
+      for (const it of S.conn.items) {
+        if (!it.layers.includes(r.layer) || (it.net === r.net && r.net !== null)) continue;
+        let need = Math.max(mine, B.classRule(classOf(it.net), R).clearance); const g = B.segSeg(s, it.s) - w2 - it.r;
+        if (g < need - 1e-6 && it.kind === "pad") { const eg = B.entryGap(s, it, S.conn.items); if (eg !== null) need = Math.min(need, eg - 0.02); }
+        if (g < need - 1e-6) { const [x, y] = it.kind === "pad" ? [it.pad.x, it.pad.y] : [(it.s[0] + it.s[2]) / 2, (it.s[1] + it.s[3]) / 2]; return { x, y, g, need, what: it.kind === "pad" ? `${it.pad.ref}-${it.pad.num}` : it.kind === "via" ? "a via" : "a track", net: netName(it.net) }; }
+      }
+      for (const h of S.board.holes) { const g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < mine - 1e-6) return { x: h.x, y: h.y, g, need: mine, what: "a mounting hole", net: "" }; }
+    }
+    return null;
+  }
   function routeTarget() { const [x, y] = S.mouse, p = hitPad(x, y); return p ? [p.x, p.y] : [snap(x), snap(y)]; }
   function startRoute(x, y) {
     const at = netAt(x, y);
@@ -167,8 +221,9 @@
     msg(`Routing ${netName(at.net)} (${classOf(at.net)}, ${S.route.w} mm) on ${S.layer}: click corners, end on a pad of the same net; V: via, Backspace: undo a corner, Esc: stop`);
     render();
   }
-  function routeClick() {
-    const r = S.route, tgt = routeTarget(), last = r.pts[r.pts.length - 1];
+  function routeClick(e) {
+    const r = S.route, tgt = routeTarget(), last = r.pts[r.pts.length - 1], bad = routeCheck();
+    if (bad && !(e && e.shiftKey)) { msg(`Too close to ${bad.what}${bad.net ? " on " + bad.net : ""}: ${Math.max(0, bad.g).toFixed(2)} mm < ${bad.need} mm. Choose another way, or Shift+click to place it anyway`); return; }
     if (Math.hypot(tgt[0] - last[0], tgt[1] - last[1]) < 1e-6) { finishRoute(); return; }
     bend(last, tgt).forEach(p => r.pts.push(p));
     const p = hitPad(tgt[0], tgt[1]);
@@ -181,7 +236,7 @@
   function routeVia() {
     const r = S.route, last = r.pts[r.pts.length - 1];
     if (r.pts.length > 1) r.segs.push({ layer: r.layer, w: r.w, pts: r.pts.slice() });
-    S.board.vias.push({ x: last[0], y: last[1], drill: S.board.rules.viaDrill, pad: S.board.rules.viaPad });
+    S.board.vias.push({ x: last[0], y: last[1], drill: S.board.rules.viaDrill, pad: S.board.rules.viaPad, net: storedNet(r.net) });
     r.layer = r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last];
     setLayer(r.layer); analyse(); render();
   }
@@ -190,7 +245,7 @@
     if (r.pts.length > 1) r.segs.push({ layer: r.layer, w: r.w, pts: r.pts });
     S.route = null;
     if (!r.segs.length) { render(); return; }
-    r.segs.forEach(t => S.board.tracks.push({ layer: t.layer, w: +t.w.toFixed(3), pts: t.pts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]) }));
+    r.segs.forEach(t => { const pts = tidy(t.pts); if (pts.length > 1) S.board.tracks.push({ layer: t.layer, w: +t.w.toFixed(3), pts, net: storedNet(r.net) }); });
     commit();
   }
 
@@ -198,10 +253,12 @@
   // Tools: select, route, via, text, mounting hole, measure
   // ---------------------------------------------------------------------------
   const TOOL_HELP = { select: "Select: drag parts, vias, texts and holes; drag the board's corner handle to resize it", route: "Route: click a pad to start a track",
-    via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Measure: click two points" };
+    via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Measure: click two points",
+    pour: "Copper pour: click the corners on the active layer, double-click (or click the first corner) to close; Backspace: take back a corner" };
   function setTool(t) {
     if (S.route && t !== "route") finishRoute();
     if (t !== "measure") S.measure = null;
+    if (t !== "pour") S.poly = null;
     S.tool = t;
     document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
     if (canvas) canvas.style.cursor = t === "select" ? "" : "crosshair";
@@ -211,7 +268,10 @@
   function setLayer(l) { S.layer = l; $("layer").value = l; renderLayers(); render(); }
   function placeAt(x, y) {
     const sx = snap(x), sy = snap(y), R = S.board.rules;
-    if (S.tool === "via") { S.board.vias.push({ x: sx, y: sy, drill: R.viaDrill, pad: R.viaPad }); S.sel = { kind: "via", i: S.board.vias.length - 1 }; commit("Via placed"); }
+    if (S.tool === "via") {
+      // a via dropped in a pour takes its net (a stitching via)
+      const zi = S.board.zones.findIndex(z => B.pip(sx, sy, B.zonePoly(S.board, z)));
+      S.board.vias.push({ x: sx, y: sy, drill: R.viaDrill, pad: R.viaPad, net: zi >= 0 ? S.board.zones[zi].net : undefined }); S.sel = { kind: "via", i: S.board.vias.length - 1 }; commit("Via placed"); }
     else if (S.tool === "hole") { S.board.holes.push({ x: sx, y: sy, d: 3.2 }); S.sel = { kind: "hole", i: S.board.holes.length - 1 }; commit("Mounting hole placed (Ø 3.2 mm, M3): change it in the inspector"); }
     else if (S.tool === "text") {
       S.board.texts.push({ x: sx, y: sy, text: "TEXT", size: 1.5, layer: S.layer === "B.Cu" ? "B.SilkS" : "F.SilkS", rot: 0 });
@@ -219,6 +279,47 @@
       const inp = document.querySelector("#inspector input"); if (inp) { inp.focus(); inp.select(); }
     }
   }
+
+  const defaultNet = () => { const names = S.model ? [...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))] : []; return names.includes("GND") ? "GND" : names.sort()[0] || "GND"; };
+  function closePour() {
+    const pts = tidy((S.poly || []).concat([S.poly[0]])).slice(0, -1);
+    S.poly = null;
+    if (pts.length < 3) { msg("A pour needs at least three corners"); render(); return; }
+    S.board.zones.push({ net: defaultNet(), layer: S.layer, pts, thermal: true, gap: 0.5, spoke: 0.8 });
+    S.sel = { kind: "zone", i: S.board.zones.length - 1 }; setTool("select");
+    commit(`Copper pour on ${S.layer}, net ${defaultNet()}: change its net in the inspector`);
+  }
+  function groundPlane(layer) {
+    S.board.zones.push({ net: defaultNet(), layer: layer || "B.Cu", pts: null, thermal: true, gap: 0.5, spoke: 0.8 });
+    S.sel = { kind: "zone", i: S.board.zones.length - 1 };
+    commit(`${defaultNet()} pour over the whole ${layer === "F.Cu" ? "top" : "bottom"} layer`);
+  }
+  // drag a track segment sideways: its neighbours keep their direction (45° stays 45°), a
+  // segment at a track's end gets a jog
+  function inter(p1, p2, p3, p4) {
+    const d = (p1[0] - p2[0]) * (p3[1] - p4[1]) - (p1[1] - p2[1]) * (p3[0] - p4[0]); if (Math.abs(d) < 1e-9) return null;
+    const a = p1[0] * p2[1] - p1[1] * p2[0], b = p3[0] * p4[1] - p3[1] * p4[0];
+    return [(a * (p3[0] - p4[0]) - (p1[0] - p2[0]) * b) / d, (a * (p3[1] - p4[1]) - (p1[1] - p2[1]) * b) / d];
+  }
+  function dragSeg(P, k, dx, dy) {
+    const a = P[k], b = P[k + 1], ux = b[0] - a[0], uy = b[1] - a[1], L = Math.hypot(ux, uy); if (!L) return P;
+    const nx = -uy / L, ny = ux / L, d = Math.round((dx * nx + dy * ny) / S.grid) * S.grid; if (!d) return P;
+    const a2 = [a[0] + nx * d, a[1] + ny * d], b2 = [b[0] + nx * d, b[1] + ny * d], res = P.slice(0, k).map(p => p.slice());
+    let q;
+    if (k > 0 && (q = inter(P[k - 1], P[k], a2, b2))) res.push(q); else res.push(a.slice(), a2);
+    if (k + 2 < P.length && (q = inter(P[k + 1], P[k + 2], a2, b2))) res.push(q); else res.push(b2, b.slice());
+    return res.concat(P.slice(k + 2).map(p => p.slice()));
+  }
+  // U: the whole connected track (all segments of the copper it belongs to, on both layers)
+  function selectConnected() {
+    let ti = hitTrack(S.mouse[0], S.mouse[1]);
+    if (ti < 0 && S.sel && S.sel.kind === "track") ti = S.sel.i;
+    if (ti < 0 || !S.conn) { msg("Point at a track (or select one), then U"); return; }
+    const it = S.conn.items.find(x => x.kind === "track" && x.ti === ti), list = [...new Set(S.conn.items.filter(x => x.kind === "track" && x.cluster === it.cluster).map(x => x.ti))];
+    S.sel = { kind: "tracks", list }; msg(`${list.length} track${list.length > 1 ? "s" : ""} selected: Del removes them, the inspector sets their width`); renderPanels(); render();
+  }
+  const trackSelected = i => S.sel && ((S.sel.kind === "track" && S.sel.i === i) || (S.sel.kind === "tracks" && S.sel.list.includes(i)));
+  function ensureVisible(x, y) { const [sx, sy] = [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy]; if (sx < 40 || sy < 40 || sx > canvas.clientWidth - 40 || sy > canvas.clientHeight - 40) centerOn(x, y); }
 
   // ---------------------------------------------------------------------------
   // Mouse and keyboard
@@ -228,18 +329,39 @@
     canvas.focus();
     const [sx, sy] = evPos(e), [x, y] = toWorld(sx, sy);
     if (e.button === 1 || e.button === 2 || S.space) { S.drag = { kind: "pan", sx, sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
-    if (S.tool === "route") { if (S.route) routeClick(); else startRoute(x, y); return; }
+    if (S.tool === "route") { if (S.route) routeClick(e); else startRoute(x, y); return; }
+    if (S.tool === "pour") {
+      const pt = [snap(x), snap(y)];
+      if (!S.poly) S.poly = [pt];
+      else if (S.poly.length >= 3 && Math.hypot(pt[0] - S.poly[0][0], pt[1] - S.poly[0][1]) <= 6 / S.view.scale + 1e-6) closePour();
+      else S.poly.push(pt);
+      render(); return;
+    }
     if (S.tool === "measure") { const p = hitPad(x, y), pt = p ? [p.x, p.y] : [snap(x), snap(y)]; S.measure = !S.measure || S.measure.b ? { a: pt, b: null } : { a: S.measure.a, b: pt }; render(); return; }
     if (S.tool !== "select") { placeAt(x, y); return; }
     if (onHandle(x, y)) { S.drag = { kind: "outline", w0: S.board.outline.w, h0: S.board.outline.h, mx: x, my: y, moved: false }; return; }
+    let zc;
+    if ((zc = hitZoneCorner(x, y)) >= 0) { const z = S.board.zones[S.sel.i]; S.drag = { kind: "zcorner", i: S.sel.i, k: zc, x0: z.pts[zc][0], y0: z.pts[zc][1], mx: x, my: y, moved: false }; return; }
     const grab = (kind, i) => { const obj = S.board[LISTS[kind]][i]; S.sel = { kind, i }; S.drag = { kind, i, x0: obj.x, y0: obj.y, mx: x, my: y, moved: false }; renderPanels(); render(); };
     let i;
     if ((i = hitVia(x, y)) >= 0) return grab("via", i);
     if ((i = hitHole(x, y)) >= 0) return grab("hole", i);
     if ((i = hitText(x, y)) >= 0) return grab("text", i);
-    const g = hitPart(x, y);
-    if (g) { S.sel = { kind: "part", key: g.key }; S.drag = { kind: "part", key: g.key, x0: g.place.x, y0: g.place.y, mx: x, my: y, moved: false }; renderPanels(); render(); return; }
-    const ti = hitTrack(x, y); if (ti >= 0) { S.sel = { kind: "track", i: ti }; renderPanels(); render(); return; }
+    // a track right under the pointer (not just near it) wins over the part body it crosses
+    const seg = hitPad(x, y) ? null : hitSeg(x, y, 1);
+    const g = seg ? null : hitPart(x, y);
+    if (g) { selectPart(g); S.drag = { kind: "part", key: g.key, x0: g.place.x, y0: g.place.y, mx: x, my: y, moved: false }; renderPanels(); render(); return; }
+    const sg = seg || hitSeg(x, y);
+    if (sg) {
+      if (e.shiftKey && S.sel && (S.sel.kind === "track" || S.sel.kind === "tracks")) {
+        const list = S.sel.kind === "tracks" ? S.sel.list.slice() : [S.sel.i], at = list.indexOf(sg.i);
+        if (at >= 0) list.splice(at, 1); else list.push(sg.i);
+        S.sel = list.length ? { kind: "tracks", list } : null;
+      } else { S.sel = { kind: "track", i: sg.i }; S.drag = { kind: "seg", i: sg.i, k: sg.k, pts0: S.board.tracks[sg.i].pts.map(p => p.slice()), mx: x, my: y, moved: false }; }
+      renderPanels(); render(); return;
+    }
+    const zi = hitZone(x, y);
+    if (zi >= 0) { S.sel = { kind: "zone", i: zi }; const z = S.board.zones[zi]; if (z.pts) S.drag = { kind: "zone", i: zi, pts0: z.pts.map(p => p.slice()), mx: x, my: y, moved: false }; renderPanels(); render(); return; }
     S.sel = null; renderPanels(); render();
   }
   function onMove(e) {
@@ -250,20 +372,29 @@
     if (d && d.kind === "pan") { S.view.ox = d.ox + sx - d.sx; S.view.oy = d.oy + sy - d.sy; render(); return; }
     if (d && d.kind === "part") {
       const bp = S.board.parts[d.key], nx = snap(d.x0 + x - d.mx), ny = snap(d.y0 + y - d.my);
-      if (nx !== bp.x || ny !== bp.y) { bp.x = nx; bp.y = ny; d.moved = true; analyse(); render(); }
+      if (nx !== bp.x || ny !== bp.y) { bp.x = nx; bp.y = ny; d.moved = true; analyse(true); render(); }
+    } else if (d && d.kind === "seg") {
+      const t = S.board.tracks[d.i], np = dragSeg(d.pts0, d.k, x - d.mx, y - d.my);
+      if (JSON.stringify(np) !== JSON.stringify(t.pts)) { t.pts = np; d.moved = true; analyse(true); render(); }
+    } else if (d && d.kind === "zcorner") {
+      const p = S.board.zones[d.i].pts[d.k]; p[0] = snap(d.x0 + x - d.mx); p[1] = snap(d.y0 + y - d.my); d.moved = true; render();
+    } else if (d && d.kind === "zone") {
+      const dx = snap(x - d.mx), dy = snap(y - d.my); S.board.zones[d.i].pts = d.pts0.map(p => [p[0] + dx, p[1] + dy]); d.moved = !!(dx || dy); render();
     } else if (d && LISTS[d.kind]) {
-      const o = S.board[LISTS[d.kind]][d.i]; o.x = snap(d.x0 + x - d.mx); o.y = snap(d.y0 + y - d.my); d.moved = true; analyse(); render();
+      const o = S.board[LISTS[d.kind]][d.i]; o.x = snap(d.x0 + x - d.mx); o.y = snap(d.y0 + y - d.my); d.moved = true; analyse(true); render();
     } else if (d && d.kind === "outline") {
-      const o = S.board.outline; o.w = Math.max(10, snap(d.w0 + x - d.mx)); o.h = Math.max(10, snap(d.h0 + y - d.my)); d.moved = true; analyse(); render();
+      const o = S.board.outline; o.w = Math.max(10, snap(d.w0 + x - d.mx)); o.h = Math.max(10, snap(d.h0 + y - d.my)); d.moved = true; analyse(true); render();
     }
     const p = hitPad(x, y);
     S.hover = p ? p.net : null;
     canvas.style.cursor = S.tool === "select" && onHandle(x, y) ? "nwse-resize" : S.tool === "select" ? "" : "crosshair";
     $("st-pos").textContent = `x ${x.toFixed(2)}  y ${y.toFixed(2)} mm` + (p ? ` · ${p.ref}-${p.num}${p.name !== p.num ? " (" + p.name + ")" : ""} · ${p.netName || "no net"} (${classOf(p.net)})` : "");
+    if (S.route) S.routeBad = routeCheck();
     if (S.route || p || S.measure || S.tool !== "select") render();
   }
   function onUp() {
     const d = S.drag; S.drag = null;
+    if (d && d.kind === "seg" && d.moved) S.board.tracks[d.i].pts = tidy(S.board.tracks[d.i].pts);
     if (d && d.kind !== "pan" && d.moved) commit(d.kind === "outline" ? `Board ${S.board.outline.w} × ${S.board.outline.h} mm` : undefined);
   }
   function onWheel(e) {
@@ -273,6 +404,7 @@
     render();
   }
   const MODALS = ["help-modal", "rules-modal", "setup-modal"];
+  function highlightNet(n) { S.netHL = n === null || n === undefined || n === S.netHL ? null : n; msg(S.netHL === null ? "Net highlight off" : `Highlighting ${netName(S.netHL)} (again: off)`); renderNets(); render(); }
   function onKey(e) {
     const tag = (e.target.tagName || "").toUpperCase();
     if (e.key === "F1") { e.preventDefault(); toggle("help-modal"); return; }
@@ -281,6 +413,10 @@
     if (!MODALS.every(id => $(id).hidden)) return;
     const ctrl = e.ctrlKey || e.metaKey, L = /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(e.key).toLowerCase();
     if (e.key === " ") { S.space = true; e.preventDefault(); return; }
+    if (e.code === "Backquote") { const p = hitPad(S.mouse[0], S.mouse[1]), ti = hitTrack(S.mouse[0], S.mouse[1]); highlightNet(p ? p.net : ti >= 0 ? netOfTrack(ti) : null); return; }
+    if (S.poly && e.key === "Escape") { S.poly = null; render(); return; }
+    if (S.poly && e.key === "Backspace") { e.preventDefault(); S.poly.pop(); if (!S.poly.length) S.poly = null; render(); return; }
+    if (S.poly && e.key === "Enter") { closePour(); return; }
     if (e.key === "Escape") { if (S.route) finishRoute(); else if (S.measure) { S.measure = null; render(); } else { S.sel = null; setTool("select"); renderPanels(); } return; }
     if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); render(); return; }
     if ((e.key === "Delete" || e.key === "Backspace") && S.sel) { e.preventDefault(); deleteSel(); return; }
@@ -294,6 +430,8 @@
     else if (L === "h") setTool("hole");
     else if (L === "d") setTool("measure");
     else if (L === "s") setTool("select");
+    else if (L === "p") setTool("pour");
+    else if (L === "u") selectConnected();
     else if (L === "r") rotateSel();
     else if (L === "m") flipSel();
     else if (L === "f") fit();
@@ -311,7 +449,8 @@
   }
   function deleteSel() {
     const s = S.sel; if (!s) return;
-    if (LISTS[s.kind]) { S.board[LISTS[s.kind]].splice(s.i, 1); S.sel = null; commit(); }
+    if (s.kind === "tracks") { s.list.slice().sort((a, b) => b - a).forEach(i => S.board.tracks.splice(i, 1)); S.sel = null; commit(`${s.list.length} tracks removed`); }
+    else if (LISTS[s.kind]) { S.board[LISTS[s.kind]].splice(s.i, 1); S.sel = null; commit(); }
     else msg("Parts come from the schematic: delete them there (then Update from schematic)");
   }
   function fit() {
@@ -335,12 +474,23 @@
     c.beginPath(); c.moveTo(r, 0); c.lineTo(o.w - r, 0); c.arcTo(o.w, 0, o.w, r, r); c.lineTo(o.w, o.h - r); c.arcTo(o.w, o.h, o.w - r, o.h, r);
     c.lineTo(r, o.h); c.arcTo(0, o.h, 0, o.h - r, r); c.lineTo(0, r); c.arcTo(0, 0, r, 0, r); c.closePath();
   }
+  // texts in the stroke font the Gerbers use
   function drawText(t, color) {
-    ctx.save(); ctx.translate(t.x, t.y);
-    if (t.layer.startsWith("B")) ctx.scale(-1, 1);
-    ctx.rotate(-(t.rot || 0) * Math.PI / 2);
-    ctx.fillStyle = color; ctx.font = `bold ${t.size}px ui-monospace, Menlo, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(t.text, 0, 0); ctx.restore();
+    const st = B.strokeText(t.text, t.x, t.y, t.size, t.rot, t.layer.startsWith("B"));
+    ctx.strokeStyle = color; ctx.lineWidth = st.w; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    st.lines.forEach(l => { ctx.beginPath(); l.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); });
+  }
+  // a copper layer's pours, painted apart (their clearances cut only the pour) and laid on the board
+  let pourCanvas = null;
+  function drawPours(layer, alpha) {
+    const fs = S.fills.filter(f => f.layer === layer); if (!fs.length) return;
+    if (!pourCanvas) pourCanvas = document.createElement("canvas");
+    if (pourCanvas.width !== canvas.width || pourCanvas.height !== canvas.height) { pourCanvas.width = canvas.width; pourCanvas.height = canvas.height; }
+    const pc = pourCanvas.getContext("2d"), { scale, ox, oy } = S.view;
+    pc.setTransform(1, 0, 0, 1, 0, 0); pc.clearRect(0, 0, pourCanvas.width, pourCanvas.height);
+    pc.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
+    fs.forEach(f => BoardFab.paint(pc, f.ops, COLORS[layer], "erase"));
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = alpha; ctx.drawImage(pourCanvas, 0, 0); ctx.restore();
   }
   const selColor = (kind, i, c) => (S.sel && S.sel.kind === kind && S.sel.i === i ? "#00e5ff" : c);
   function draw() {
@@ -358,19 +508,21 @@
     if (S.show["Edge.Cuts"]) { ctx.strokeStyle = COLORS["Edge.Cuts"]; ctx.lineWidth = Math.max(0.15, 1.2 * px); ctx.stroke(); }
     // copper: the inactive layer dimmed underneath, the active one on top
     const order = S.layer === "F.Cu" ? ["B.Cu", "F.Cu"] : ["F.Cu", "B.Cu"];
-    const hl = S.hover !== null && S.hover !== undefined ? S.hover : S.route ? S.route.net : null;
-    const netOfTrack = ti => { const it = S.conn && S.conn.items.find(it => it.kind === "track" && it.ti === ti); return it ? it.net : null; };
+    const NH = S.netHL, hl = NH !== null ? NH : S.hover !== null && S.hover !== undefined ? S.hover : S.route ? S.route.net : null;
     order.forEach(layer => {
       if (!S.show[layer]) return;
-      ctx.globalAlpha = layer === S.layer ? 0.92 : S.dim;
+      const base = layer === S.layer ? 0.92 : S.dim;
+      if (S.show.zones) drawPours(layer, (layer === S.layer ? 0.5 : S.dim * 0.55) * (NH !== null ? 0.4 : 1));
       ctx.lineCap = "round"; ctx.lineJoin = "round";
       S.board.tracks.forEach((t, i) => {
         if (t.layer !== layer) return;
-        const sel = S.sel && S.sel.kind === "track" && S.sel.i === i, lit = hl !== null && netOfTrack(i) === hl;
+        const sel = trackSelected(i), n = netOfTrack(i), lit = hl !== null && n === hl;
+        ctx.globalAlpha = NH !== null && !lit && !sel ? base * 0.25 : base;
         ctx.strokeStyle = sel ? "#00e5ff" : COLORS[layer]; ctx.lineWidth = t.w;
         ctx.beginPath(); t.pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke();
         if (lit && !sel) { ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = t.w * 0.35; ctx.stroke(); }
       });
+      ctx.globalAlpha = base;
       S.board.texts.forEach((t, i) => { if (t.layer === layer) drawText(t, selColor("text", i, COLORS[layer])); });
       ctx.globalAlpha = 1;
     });
@@ -381,22 +533,11 @@
       if (S.model) S.model.parts.forEach(g => {
         if (!g.place || (g.place.side || "F") !== side) return;
         const sel = S.sel && S.sel.kind === "part" && S.sel.key === g.key;
-        ctx.strokeStyle = sel ? "#00e5ff" : COLORS[L]; ctx.lineWidth = Math.max(0.15, px);
-        ctx.save(); ctx.translate(g.place.x, g.place.y);
-        if (side === "B") ctx.scale(-1, 1);
-        ctx.rotate(-(g.place.rot || 0) * Math.PI / 2);
-        g.fp.silk.forEach(s => {
-          ctx.beginPath();
-          if (s.t === "line") { ctx.moveTo(s.x1, s.y1); ctx.lineTo(s.x2, s.y2); }
-          else if (s.t === "rect") ctx.rect(s.x, s.y, s.w, s.h);
-          else if (s.t === "circle") ctx.arc(s.x, s.y, s.r, (s.from || 0) * Math.PI / 180, (s.to === undefined ? 360 : s.to) * Math.PI / 180);
-          ctx.stroke();
-        });
-        ctx.restore();
+        // the silkscreen as it will be made (outline and reference in the stroke font)
+        const ops = BoardFab.partSilk(g); if (px > 0.15) ops.forEach(o => { if (o.t === "line") o.w = Math.max(o.w, px); });
+        BoardFab.paint(ctx, ops, sel ? "#00e5ff" : COLORS[L], "erase");
         const b = partBox(g);
-        ctx.fillStyle = sel ? "#00e5ff" : COLORS[L]; ctx.font = `bold ${Math.max(1.2, 11 * px)}px ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-        ctx.fillText(g.ref, (b.x1 + b.x2) / 2, b.y1 - 0.3);
-        if (scale > 6) { ctx.font = `${Math.max(1, 9 * px)}px ui-monospace, monospace`; ctx.fillStyle = "#8b949e"; ctx.textBaseline = "top"; ctx.fillText(g.value, (b.x1 + b.x2) / 2, b.y2 + 0.3); }
+        if (scale > 6) { ctx.font = `${Math.max(1, 9 * px)}px ui-monospace, monospace`; ctx.fillStyle = "#8b949e"; ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText(g.value, (b.x1 + b.x2) / 2, b.y2 + 0.3); }
         if (sel) { ctx.strokeStyle = "rgba(0,229,255,0.6)"; ctx.setLineDash([4 * px, 3 * px]); ctx.lineWidth = px; ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1); ctx.setLineDash([]); }
       });
     });
@@ -404,7 +545,7 @@
     if (S.model && (S.show["F.Cu"] || S.show["B.Cu"])) {
       S.model.pads.forEach(p => {
         const lit = hl !== null && p.net === hl;
-        ctx.fillStyle = p.conflict ? "#ff7b72" : lit ? "#ffe680" : COLORS.pad;
+        ctx.fillStyle = p.conflict ? "#ff7b72" : lit ? "#ffe680" : NH !== null ? "#5c4a14" : COLORS.pad;
         ctx.beginPath();
         if (p.shape === "rect") ctx.rect(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h); else ctx.ellipse(p.x, p.y, p.w / 2, p.h / 2, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -423,13 +564,36 @@
       ctx.beginPath(); ctx.arc(h.x, h.y, h.d / 2 + S.board.rules.clearance, 0, Math.PI * 2); ctx.setLineDash([2 * px, 2 * px]); ctx.stroke(); ctx.setLineDash([]);
     });
     if (S.show.rats && S.conn) {
-      ctx.strokeStyle = "rgba(230,237,243,0.55)"; ctx.lineWidth = Math.max(0.08, 0.8 * px);
-      S.conn.rats.forEach(r => { ctx.beginPath(); ctx.moveTo(r.x1, r.y1); ctx.lineTo(r.x2, r.y2); ctx.stroke(); });
+      ctx.lineWidth = Math.max(0.08, 0.8 * px);
+      S.conn.rats.forEach(r => { ctx.strokeStyle = NH === null ? "rgba(230,237,243,0.55)" : r.net === NH ? "rgba(255,230,128,0.95)" : "rgba(230,237,243,0.12)"; ctx.beginPath(); ctx.moveTo(r.x1, r.y1); ctx.lineTo(r.x2, r.y2); ctx.stroke(); });
+    }
+    // pour outlines (dashed), the selected one with its corner handles; a pour being drawn
+    if (S.show.zones) S.board.zones.forEach((z, i) => {
+      if (!S.show[z.layer]) return;
+      const P = B.zonePoly(S.board, z), sel = S.sel && S.sel.kind === "zone" && S.sel.i === i;
+      ctx.strokeStyle = sel ? "#00e5ff" : COLORS[z.layer]; ctx.lineWidth = Math.max(0.1, (sel ? 1.6 : 1) * px); ctx.setLineDash([5 * px, 4 * px]);
+      ctx.beginPath(); P.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+      if (sel && z.pts) { ctx.fillStyle = "#00e5ff"; z.pts.forEach(p => ctx.fillRect(p[0] - 3 * px, p[1] - 3 * px, 6 * px, 6 * px)); }
+    });
+    if (S.poly) {
+      const pts = S.poly.concat([[snap(S.mouse[0]), snap(S.mouse[1])]]);
+      ctx.strokeStyle = COLORS[S.layer]; ctx.lineWidth = Math.max(0.1, 1.5 * px); ctx.setLineDash([5 * px, 4 * px]);
+      ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); if (pts.length > 2) ctx.lineTo(pts[0][0], pts[0][1]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = COLORS[S.layer]; S.poly.forEach(p => ctx.fillRect(p[0] - 2.5 * px, p[1] - 2.5 * px, 5 * px, 5 * px));
     }
     if (S.route) {
-      const r = S.route, pts = r.pts.concat(bend(r.pts[r.pts.length - 1], routeTarget()));
-      ctx.strokeStyle = COLORS[r.layer]; ctx.globalAlpha = 0.75; ctx.lineWidth = r.w; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      const r = S.route, pts = r.pts.concat(bend(r.pts[r.pts.length - 1], routeTarget())), bad = S.routeBad;
+      const need = B.classRule(classOf(r.net), S.board.rules).clearance, tail = [r.pts[r.pts.length - 1]].concat(bend(r.pts[r.pts.length - 1], routeTarget()));
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      // the clearance halo of the segments being placed: red when they come too close
+      ctx.strokeStyle = bad ? "rgba(255,80,80,0.28)" : "rgba(0,229,255,0.13)"; ctx.lineWidth = r.w + 2 * need;
+      ctx.beginPath(); tail.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke();
+      ctx.strokeStyle = bad ? "#ff5050" : COLORS[r.layer]; ctx.globalAlpha = 0.75; ctx.lineWidth = r.w;
       ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); ctx.globalAlpha = 1;
+      if (bad) {
+        ctx.strokeStyle = "#ff5050"; ctx.lineWidth = Math.max(0.12, 1.5 * px); ctx.beginPath(); ctx.arc(bad.x, bad.y, Math.max(1, 8 * px), 0, Math.PI * 2); ctx.stroke();
+        $("st-msg").textContent = `Too close to ${bad.what}${bad.net ? " (" + bad.net + ")" : ""}: ${Math.max(0, bad.g).toFixed(2)} < ${bad.need} mm — Shift+click places it anyway`;
+      }
       r.segs.forEach(t => { ctx.strokeStyle = COLORS[t.layer]; ctx.lineWidth = t.w; ctx.beginPath(); t.pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); });
     }
     // placement ghost for the via / hole / text tools
@@ -478,7 +642,7 @@
       const on = M.parts.filter(g => !unplaced.has(g.ref)), off = M.parts.filter(g => unplaced.has(g.ref));
       host.innerHTML = (off.length ? `<button class="btn" id="btn-arrange" style="width:100%;margin:2px 0 6px" title="Pack the parts waiting below the board into rows inside the outline: a starting point for your placement">Place all on the board</button><h2>To place <small>${off.length}</small></h2>${off.map(row).join("")}` : "") + `<h2>On the board <small>${on.length}</small></h2>${on.map(row).join("")}`;
       $("parts-count").textContent = `${M.parts.length}`;
-      host.querySelectorAll(".item").forEach(b => b.addEventListener("click", () => { const g = M.parts.find(x => x.key === b.dataset.key); S.sel = { kind: "part", key: g.key }; centerOn(g.place.x, g.place.y); renderPanels(); }));
+      host.querySelectorAll(".item").forEach(b => b.addEventListener("click", () => { const g = M.parts.find(x => x.key === b.dataset.key); selectPart(g); centerOn(g.place.x, g.place.y); renderPanels(); }));
       const ab = $("btn-arrange");
       if (ab) ab.onclick = () => { const left = B.arrange(S.board, M, off.map(g => g.key)); commit(left ? `${left} part${left > 1 ? "s" : ""} did not fit: make the board larger` : `Placed ${off.length} parts in rows on the board`); fit(); };
     }
@@ -487,7 +651,22 @@
     $("drc-count").textContent = list.length ? String(list.length) : "";
     dh.innerHTML = list.length ? list.slice(0, 200).map((d, i) => `<button class="drc ${d.kind === "class" ? "check" : d.kind}" data-i="${i}">${esc(d.msg)}${d.between ? ` <span class="help">(${esc(d.between.join(" – "))})</span>` : ""}</button>`).join("") : `<p class="help">${M ? "No problems." : ""}</p>`;
     dh.querySelectorAll(".drc").forEach(b => b.addEventListener("click", () => { const d = list[+b.dataset.i]; if (S.view.scale < 8) S.view.scale = 8; centerOn(d.x, d.y); }));
-    renderLayers();
+    renderLayers(); renderNets();
+  }
+  // nets: class, pads, connections still to route, routed length; click to highlight
+  function renderNets() {
+    const host = $("nets"), M = S.model;
+    if (!M || !S.conn) { host.innerHTML = `<p class="help">The nets arrive from the Circuit CAD.</p>`; $("nets-count").textContent = ""; return; }
+    const nets = [...new Set(M.pads.filter(p => p.net !== null).map(p => p.net))], todo = {}, len = {};
+    S.conn.rats.forEach(r => { todo[r.net] = (todo[r.net] || 0) + 1; });
+    S.board.tracks.forEach((t, i) => { const n = netOfTrack(i); if (n === null) return; for (let k = 0; k + 1 < t.pts.length; k++) len[n] = (len[n] || 0) + Math.hypot(t.pts[k + 1][0] - t.pts[k][0], t.pts[k + 1][1] - t.pts[k][1]); });
+    const pour = new Set(S.fills.map(f => f.net));
+    const rows = nets.map(n => ({ n, name: netName(n), cls: classOf(n), pads: M.pads.filter(p => p.net === n).length, todo: todo[n] || 0, len: len[n] || 0 }))
+      .filter(r => r.pads > 1 || r.len).sort((a, b) => (b.todo > 0) - (a.todo > 0) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+    $("nets-count").textContent = String(rows.length);
+    host.innerHTML = `<p class="help">Click a net to highlight it (again: off), or point at a pad and press the key left of 1 (\`).</p>` + rows.map(r => `<button class="net${r.n === S.netHL ? " active" : ""}" data-n="${esc(r.n)}" title="${esc(r.name)}: ${r.pads} pads, ${r.len.toFixed(1)} mm of track${pour.has(r.n) ? ", copper pour" : ""}">
+      <span class="nm">${esc(r.name)}</span><span class="cls cls-${r.cls}">${r.cls}</span><span class="${r.todo ? "todo" : "done"}">${r.todo ? `${r.todo} to route` : pour.has(r.n) ? "pour ✓" : "✓"}</span></button>`).join("");
+    host.querySelectorAll(".net").forEach(b => b.addEventListener("click", () => { const n = isNaN(+b.dataset.n) ? b.dataset.n : +b.dataset.n; highlightNet(n); }));
   }
   // layers: colour, visibility, active copper layer (click its name), "only" shows that layer alone
   function renderLayers() {
@@ -541,11 +720,33 @@
       h.appendChild(field("Width (mm)", t.w, v => { if (v > 0) { t.w = v; commit(); } }));
       h.appendChild(delBtn()); return;
     }
+    if (s && s.kind === "tracks") {
+      const ts = s.list.map(i => S.board.tracks[i]).filter(Boolean); if (!ts.length) { S.sel = null; return renderInspector(); }
+      const len = ts.reduce((a, t) => a + t.pts.slice(1).reduce((b, p, k) => b + Math.hypot(p[0] - t.pts[k][0], p[1] - t.pts[k][1]), 0), 0);
+      h.innerHTML = `<div class="insp-title">${ts.length} tracks</div>` + kv("Length", len.toFixed(1) + " mm") + kv("Widths", [...new Set(ts.map(t => t.w))].join(", ") + " mm");
+      h.appendChild(field("Set width (mm)", ts[0].w, v => { if (v > 0) { ts.forEach(t => { t.w = v; }); commit(`Width ${v} mm on ${ts.length} tracks`); } }));
+      h.appendChild(delBtn()); return;
+    }
+    if (s && s.kind === "zone") {
+      const z = S.board.zones[s.i]; if (!z) { S.sel = null; return renderInspector(); }
+      const f = S.fills.find(x => x.zone === s.i), nets = S.model ? [...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))].sort((a, b) => (b === "GND") - (a === "GND") || a.localeCompare(b, undefined, { numeric: true })) : [z.net];
+      if (!nets.includes(z.net)) nets.unshift(z.net);
+      h.innerHTML = `<div class="insp-title">Copper pour</div>` + (f ? kv("Pieces", f.pieces + (f.islands ? ` · ${f.islands} island${f.islands > 1 ? "s" : ""} removed` : "")) : "");
+      h.appendChild(field("Net", z.net, v => { z.net = v; commit(); }, nets.map(n => [n, n])));
+      h.appendChild(field("Layer", z.layer, v => { z.layer = v; commit(); }, [["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
+      h.appendChild(field("Area", z.pts ? "poly" : "board", v => { if (v === "board") { z.pts = null; } else if (!z.pts) { const o = S.board.outline, e = 3; z.pts = [[e, e], [o.w - e, e], [o.w - e, o.h - e], [e, o.h - e]]; } commit(); }, [["board", "The whole board"], ["poly", "Its own outline (drag the corners)"]]));
+      h.appendChild(field("Pads of its net", z.thermal === false ? "solid" : "thermal", v => { z.thermal = v === "thermal"; commit(); }, [["thermal", "Thermal reliefs (easy to solder)"], ["solid", "Solid (more current)"]]));
+      h.appendChild(field("Thermal gap (mm)", z.gap || 0.5, v => { if (v > 0) { z.gap = v; commit(); } }));
+      h.appendChild(field("Spoke width (mm)", z.spoke || 0.8, v => { if (v > 0) { z.spoke = v; commit(); } }));
+      h.insertAdjacentHTML("beforeend", `<p class="help">Keeps each other net's clearance (by its class), the edge clearance and the mounting holes clear. Pieces that reach nothing are removed.</p>`);
+      h.appendChild(delBtn()); return;
+    }
     if (s && s.kind === "via") {
       const v = S.board.vias[s.i]; if (!v) { S.sel = null; return renderInspector(); }
       h.innerHTML = `<div class="insp-title">Via</div>`;
       h.appendChild(field("X (mm)", v.x, n => { v.x = n; commit(); })); h.appendChild(field("Y (mm)", v.y, n => { v.y = n; commit(); }));
       h.appendChild(field("Drill (mm)", v.drill || R.viaDrill, n => { if (n > 0) { v.drill = n; commit(); } })); h.appendChild(field("Pad (mm)", v.pad || R.viaPad, n => { if (n > 0) { v.pad = n; commit(); } }));
+      if (S.model) { const nets = [""].concat([...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))].sort()); h.appendChild(field("Net (stitching)", v.net || "", n => { v.net = n || undefined; commit(); }, nets.map(n => [n, n || "from its tracks"]))); }
       h.appendChild(delBtn()); return;
     }
     if (s && s.kind === "hole") {
@@ -575,6 +776,12 @@
     const b1 = document.createElement("button"); b1.className = "btn"; b1.textContent = "Board setup…"; b1.onclick = openSetup;
     const b2 = document.createElement("button"); b2.className = "btn"; b2.textContent = "Design rules…"; b2.onclick = openRules;
     wrap.appendChild(b1); wrap.appendChild(b2); h.appendChild(wrap);
+    if (M) {
+      const gp = document.createElement("button"); gp.className = "btn"; gp.style.marginTop = "6px";
+      gp.textContent = `+ ${defaultNet()} plane (bottom)`;
+      gp.title = "A copper pour of the ground net over the whole bottom layer, with clearance to everything else and thermal reliefs on its pads";
+      gp.onclick = () => groundPlane("B.Cu"); h.appendChild(gp);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -585,13 +792,15 @@
   function openRules() {
     draft = JSON.parse(JSON.stringify(S.board.rules));
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; el.classList.remove("invalid"); });
+    $("rules-tent").checked = draft.tentVias !== false;
     $("rules-checks").innerHTML = Object.keys(CHECK_NAMES).map(k => `<label><input type="checkbox" data-c="${k}" ${draft.checks[k] !== false ? "checked" : ""}> ${CHECK_NAMES[k]}</label>`).join("");
     rulesNets();
     $("rules-modal").hidden = false;
   }
   function readRules() {
     let ok = true;
-    document.querySelectorAll("#rules-modal [data-r]").forEach(el => { const v = parseFloat(String(el.value).replace(",", ".")); if (!(v > 0)) { el.classList.add("invalid"); ok = false; } else { el.classList.remove("invalid"); draft[el.dataset.r] = v; } });
+    document.querySelectorAll("#rules-modal [data-r]").forEach(el => { const v = parseFloat(String(el.value).replace(",", ".")), good = el.dataset.min !== undefined ? v >= +el.dataset.min : v > 0; if (!good) { el.classList.add("invalid"); ok = false; } else { el.classList.remove("invalid"); draft[el.dataset.r] = v; } });
+    draft.tentVias = $("rules-tent").checked;
     document.querySelectorAll("#rules-checks [data-c]").forEach(el => { draft.checks[el.dataset.c] = el.checked; });
     return ok;
   }
@@ -656,6 +865,16 @@
     return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${o.w}mm" height="${o.h}mm" viewBox="0 0 ${o.w} ${o.h}"><g${tr}>${parts.join("")}</g></svg>\n`;
   }
   const svgText = (t, fill) => `<text x="0" y="0" transform="translate(${t.x} ${t.y})${t.layer.startsWith("B") ? " scale(-1 1)" : ""} rotate(${-(t.rot || 0) * 90})" font-family="monospace" font-weight="bold" font-size="${t.size}" text-anchor="middle" dominant-baseline="middle" fill="${fill}">${esc(t.text)}</text>`;
+  // manufacturing outputs: ask first when the board is not finished
+  function fabReady(what) {
+    const off = S.drc.filter(d => d.kind === "unplaced").length, errs = errors(), todo = S.conn ? S.conn.unrouted : 0;
+    if (!S.model) { msg("Open the Circuit CAD first: the board needs its parts"); return false; }
+    const why = [off ? `${off} part${off > 1 ? "s are" : " is"} not on the board (left out)` : "", todo ? `${todo} connection${todo > 1 ? "s" : ""} not routed` : "", errs ? `${errs} rule violation${errs > 1 ? "s" : ""}` : ""].filter(Boolean);
+    return !why.length || confirm(`${what}: the board is not finished —\n• ${why.join("\n• ")}\n\nExport anyway?`);
+  }
+  const fabMeta = () => ({ base: baseName(), title: (S.netlist && (S.netlist.title || S.netlist.docno)) || baseName(), version: appVersion() });
+  function exportGerber() { if (!fabReady("Gerber files")) return; download(BoardFab.zip(BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta())), baseName() + "-gerbers.zip", "application/zip"); }
+  function exportPdf(kind) { if (!S.model) return; download(BoardFab.pdfPages(S.board, S.model, S.fills, kind, fabMeta()), baseName() + (kind === "toner" ? "-toner-transfer.pdf" : "-prints.pdf"), "application/pdf"); }
   function download(text, name, type) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); msg("Saved " + name); }
   const baseName = () => ((S.netlist && (S.netlist.docno || S.netlist.title)) || "board").replace(/[^\w.\- ]+/g, "").trim().replace(/\s+/g, "-") || "board";
 
@@ -668,7 +887,7 @@
     canvas = $("pcb"); ctx = canvas.getContext("2d"); dpr = window.devicePixelRatio || 1; canvas.tabIndex = 0;
     canvas.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
-    canvas.addEventListener("dblclick", () => { if (S.route) finishRoute(); });
+    canvas.addEventListener("dblclick", () => { if (S.route) finishRoute(); else if (S.poly) closePour(); });
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("contextmenu", e => e.preventDefault());
     window.addEventListener("keydown", onKey); window.addEventListener("keyup", e => { if (e.key === " ") S.space = false; });
@@ -683,7 +902,7 @@
     $("btn-sync").onclick = syncNow; $("banner-sync").onclick = syncNow;
     $("btn-setup").onclick = openSetup; $("btn-rules").onclick = openRules;
     $("rules-apply").onclick = applyRules; $("rules-cancel").onclick = () => { $("rules-modal").hidden = true; };
-    $("rules-reset").onclick = () => { const nc = draft.netClass; draft = { ...B.defaultRules(), netClass: nc }; document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; }); document.querySelectorAll("#rules-checks [data-c]").forEach(el => { el.checked = true; }); rulesNets(); };
+    $("rules-reset").onclick = () => { const nc = draft.netClass; draft = { ...B.defaultRules(), netClass: nc }; $("rules-tent").checked = true; document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; }); document.querySelectorAll("#rules-checks [data-c]").forEach(el => { el.checked = true; }); rulesNets(); };
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => el.addEventListener("change", rulesNets));
     $("setup-apply").onclick = applySetup; $("setup-cancel").onclick = () => { $("setup-modal").hidden = true; };
     $("holes-corners").onclick = () => { const o = readOutline() || S.board.outline, d = +$("hole-d").value, inset = parseFloat($("hole-inset").value) || 5; setupHoles = B.cornerHoles(o, d, inset); holesNow(); };
@@ -694,11 +913,13 @@
     $("btn-export").onclick = e => { e.stopPropagation(); list.hidden = !list.hidden; };
     document.addEventListener("click", e => { if (!menu.contains(e.target)) list.hidden = true; });
     $("ex-svg").onclick = () => { list.hidden = true; download(svgDoc(["F.Cu", "B.Cu", "F.SilkS", "Edge.Cuts"], false), baseName() + "-board.svg", "image/svg+xml"); };
-    $("ex-fcu").onclick = () => { list.hidden = true; download(svgDoc(["F.Cu"], false), baseName() + "-F_Cu.svg", "image/svg+xml"); };
-    $("ex-bcu").onclick = () => { list.hidden = true; download(svgDoc(["B.Cu"], true), baseName() + "-B_Cu-mirrored.svg", "image/svg+xml"); };
+    $("ex-gerber").onclick = () => { list.hidden = true; exportGerber(); };
+    $("ex-pdf").onclick = () => { list.hidden = true; exportPdf("print"); };
+    $("ex-toner").onclick = () => { list.hidden = true; exportPdf("toner"); };
+    document.querySelectorAll("[data-tab]").forEach(t => { t.onclick = () => { document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x === t)); $("parts").hidden = t.dataset.tab !== "parts"; $("nets").hidden = t.dataset.tab !== "nets"; }; });
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { state: S, analyse, commit, syncNow, fit, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

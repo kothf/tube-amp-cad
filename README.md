@@ -248,14 +248,40 @@ the circuit file, so one file holds both.
 - **Routing.** <kbd>X</kbd>: click a pad, click the corners (45° bends), end on
   a pad of the same net. <kbd>V</kbd> changes layer with a via. The track width
   comes from the net's class. The ratsnest shows what is still to route.
+  - While routing, a halo shows the clearance the net's class needs. It turns
+    red, and the click is refused, when the next segment would come too close
+    to another net's copper or a mounting hole (<kbd>Shift</kbd>+click places
+    it anyway).
+  - A track entering a tube pin may pass the socket's other pins as closely as
+    the pin itself does: the socket's own pin spacing is a limit no layout can
+    beat.
+- **Editing tracks:** drag a segment sideways and its neighbours follow (a 45°
+  corner stays 45°; a track's end gets a jog). <kbd>U</kbd> selects the whole
+  connected track, so <kbd>Del</kbd> removes it or the inspector sets its
+  width. <kbd>Shift</kbd>+click adds tracks to the selection.
+- **Copper pours** (*Pour*, or *+ GND plane* in the board inspector for the
+  whole bottom layer):
+  - the pour keeps each other net's clearance (by its class), the edge
+    clearance and the mounting holes clear;
+  - its net's pads join through thermal reliefs (or solidly), its tracks and
+    vias solidly; a via dropped in a pour takes its net (stitching);
+  - pieces that reach nothing (islands) are removed, and the ratsnest counts
+    only what the pour really joins.
+- **Nets** tab: every net with its class, what is left to route, and its track
+  length. Click a net (or point and press <kbd>`</kbd>) to highlight it and dim
+  everything else.
+- **Cross-probing:** a part picked on the board is selected in the schematic,
+  and a part selected in the schematic is selected (and shown) on the board.
 - **Tools:** Select, Route, Via, Text (silkscreen or copper), Mounting hole,
-  Measure. The board's corner handle resizes it.
+  Pour, Measure. The board's corner handle resizes it. Silkscreen text uses a
+  stroke font, so the screen shows what the board maker gets.
 - **Design rules** (*Rules…*):
   - clearances, with a separate high-voltage clearance for nets above a
     threshold voltage;
   - the board-edge clearance;
   - signal and power track widths and the minimum track;
   - via drill and pad, minimum drill, minimum annular ring;
+  - the solder-mask opening around pads, and whether vias are covered;
   - which checks run.
 
   **Net classes** sort every net into Signal, Power or HV: automatically, from
@@ -272,12 +298,23 @@ the circuit file, so one file holds both.
   Click an entry to go to it.
 - **Board setup** (*Setup…*): outline size, corner radius, mounting holes (one
   in each corner, M2.5–M4, chosen inset), board thickness and copper weight.
-- **Layers:** top and bottom copper, both silkscreens, outline, mounting holes,
+- **Layers:** top and bottom copper, copper pours, both silkscreens, outline, mounting holes,
   ratsnest and rule markers. Each can be shown or hidden, or shown alone
   (*only*). Click a copper layer to make it active, and dim the inactive
   copper with the slider.
-- **Export:** the board drawing as SVG at 1:1 mm, the top copper, the bottom
-  copper mirrored (for toner transfer), and the board file as JSON.
+- **Export:**
+  - **Gerber + drill files (ZIP)**, ready to upload to a board maker (JLCPCB,
+    PCBWay, Aisler…): copper, solder mask and silkscreen of both sides, the
+    outline (Gerber RS-274X with X2 attributes), plated and non-plated drill
+    files (Excellon), and a README with the board's specification. Parts not
+    on the board are left out; an unfinished board (unrouted, rule violations)
+    asks first.
+  - **Print set (PDF)**: assembly drawing, top and bottom copper at 1:1, and a
+    drill map with its table. Each page has a 50 mm bar to check the printer's
+    scale.
+  - **Toner transfer (PDF)**: the top copper mirrored and the bottom copper as
+    seen from the top, each meant to be ironed toner side onto its copper.
+  - The board drawing as SVG at 1:1 mm, and the board file as JSON.
 
 ## Keyboard shortcuts
 
@@ -296,7 +333,7 @@ the circuit file, so one file holds both.
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | simulate until settled |
 | <kbd>F1</kbd> or <kbd>?</kbd> | help |
 
-In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Backspace</kbd> takes back the last corner while routing.
+In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Backspace</kbd> takes back the last corner while routing.
 
 ## How the simulator works
 
