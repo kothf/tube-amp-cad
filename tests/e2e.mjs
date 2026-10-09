@@ -785,6 +785,60 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(/T1 \(Hammond 125ESE\) carries 9\d mA DC, more than its 80 mA rating/.test(txt), `the checks flag DC current beyond the output transformer's rating (${(txt.match(/carries \d+ mA/) || ["?"])[0]})`);
 }
 
+// --- Locked sheet frames; export of each sheet as PDF or PNG -------------------
+{
+  const fr = () => cad.evaluate(() => TubeCAD.frames().map(f => ({ id: f.id, x: f.x, y: f.y, locked: TubeCAD.isLocked(f), size: f.params.size, orient: f.params.orient })));
+  const before = await fr();
+  check(before.length === 2 && before.every(f => f.locked), "sheet frames are locked by default");
+  // drag the first frame by its title block with the real mouse, then press Delete
+  await cad.evaluate(() => TubeCAD.fitView()); await cad.waitForTimeout(100);
+  const cb = await cad.locator("#cad").boundingBox();
+  const grab = await cad.evaluate(() => { const f = TubeCAD.frames()[0], g = CadLib.sheetGeom(f), v = TubeCAD.state.view, x = f.x + g.tb.x1 + 40, y = f.y + g.tb.y2 - 20; return [x * v.scale + v.ox, y * v.scale + v.oy]; });
+  await cad.mouse.move(cb.x + grab[0], cb.y + grab[1]); await cad.mouse.down(); await cad.mouse.move(cb.x + grab[0] + 120, cb.y + grab[1] + 60, { steps: 6 }); await cad.mouse.up();
+  const sel = await cad.evaluate(() => [...TubeCAD.state.sel.comps]);
+  await cad.keyboard.press("Delete");
+  const after = await fr();
+  check(sel.includes(before[0].id) && after.length === 2 && after[0].x === before[0].x && after[0].y === before[0].y && /frame is locked/.test(await cad.textContent("#status-sim")),
+    "a locked frame can be selected (for its title block) but neither dragged nor deleted, and the status says why");
+  await cad.locator("#inspector .row", { hasText: "Position" }).locator("select").selectOption("no");
+  await cad.mouse.move(cb.x + grab[0], cb.y + grab[1]); await cad.mouse.down(); await cad.mouse.move(cb.x + grab[0] + 120, cb.y + grab[1] + 60, { steps: 6 }); await cad.mouse.up();
+  const moved = (await fr())[0];
+  check(!moved.locked && (moved.x !== before[0].x || moved.y !== before[0].y), "an unlocked frame moves");
+  await cad.keyboard.press("Control+z"); await cad.keyboard.press("Control+z");
+  check((await fr())[0].locked && (await fr())[0].x === before[0].x, "undo restores the frame and its lock");
+
+  const grabAll = async (n, fn) => { const got = []; const on = d => got.push(d); cad.on("download", on); await fn(); for (let k = 0; k < 50 && got.length < n; k++) await cad.waitForTimeout(100); cad.off("download", on); return got; };
+  // each sheet as its own PDF
+  await cad.evaluate(() => TubeCAD.fitSheet(TubeCAD.frames()[1]));
+  await cad.evaluate(() => TubeCAD.openExportDialog("pdf"));
+  check(/Sheet 2/.test(await cad.textContent("#exp-current-name")), "the export dialog offers the sheet in view as \"This sheet\"");
+  await cad.click('#export-modal [data-k="which"][data-v="each"]');
+  let dls = await grabAll(2, () => cad.click("#btn-exp-ok"));
+  const pdfs = await Promise.all(dls.map(async d => ({ name: d.suggestedFilename(), text: (await readFile(await d.path())).toString("latin1") })));
+  const mb = t => (t.match(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/g) || []).length;
+  check(pdfs.length === 2 && pdfs.map(p => p.name).sort().join() === ["Test-amplifier-sheet1.pdf", "Test-amplifier-sheet2.pdf"].sort().join() || (pdfs.length === 2 && pdfs.every(p => /-sheet[12]\.pdf$/.test(p.name))),
+    `"Each sheet, own file" saves one PDF per sheet (${pdfs.map(p => p.name).join(", ")})`);
+  check(pdfs.every(p => mb(p.text) === 1), "each of those PDFs has exactly one page");
+  // this sheet as PNG, 150 dpi, black on white
+  await cad.evaluate(() => TubeCAD.openExportDialog("png"));
+  await cad.click('#export-modal [data-k="which"][data-v="current"]'); await cad.click('#export-modal [data-k="dpi"][data-v="150"]'); await cad.click('#export-modal [data-k="colours"][data-v="print"]');
+  check(await cad.isDisabled('#export-modal [data-k="which"][data-v="all"]'), "PNG has no \"all in one\" option (one image per sheet)");
+  dls = await grabAll(1, () => cad.click("#btn-exp-ok"));
+  const png = dls.length ? await readFile(await dls[0].path()) : Buffer.alloc(0);
+  const pw = png.length > 24 ? png.readUInt32BE(16) : 0, ph = png.length > 24 ? png.readUInt32BE(20) : 0;
+  const f2 = before[1], mm = { A4: [297, 210], A3: [420, 297] }[f2.size], [wmm, hmm] = f2.orient === "portrait" ? [mm[1], mm[0]] : mm;
+  check(png.subarray(1, 4).toString() === "PNG" && Math.abs(pw - wmm / 25.4 * 150) < 2 && Math.abs(ph - hmm / 25.4 * 150) < 2 && /-sheet2\.png$/.test(dls[0].suggestedFilename()),
+    `PNG of the sheet in view at 150 dpi: ${pw} × ${ph} px for ${f2.size} ${f2.orient} (${dls[0] && dls[0].suggestedFilename()})`);
+  const ink = await cad.evaluate(() => { const f = TubeCAD.frames()[1], { canvas: cv } = TubeCAD.renderPNG(f, 100, "print"), d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
+    let white = 0, black = 0, colour = 0; for (let i = 0; i < d.length; i += 4) { const v = (d[i] + d[i + 1] + d[i + 2]) / 3; if (Math.max(Math.abs(d[i] - d[i + 1]), Math.abs(d[i + 1] - d[i + 2])) > 8) colour++; else if (v > 235) white++; else if (v < 60) black++; } return { white, black, colour }; });
+  check(ink.white > 10 * ink.black && ink.black > 1000 && ink.colour === 0, `print colours: white paper, black ink, no colour (${ink.white} white, ${ink.black} black, ${ink.colour} coloured pixels)`);
+  // the same sheet's PDF and PNG carry the same text (the grid labels and title block included)
+  const texts = await cad.evaluate(() => { const f = TubeCAD.frames()[1], seen = [], { canvas: cv } = TubeCAD.renderPNG(f, 50, "print");
+    const bytes = TubeCAD.exportPDF(false, [f]); let p = ""; for (const b of bytes) p += String.fromCharCode(b);
+    return { pdfCols: /\(1\) Tj/.test(p) && /\(A\) Tj/.test(p), w: cv.width }; });
+  check(texts.pdfCols, "the sheet's PDF has its reference-grid labels");
+}
+
 // --- Bill of materials -------------------------------------------------------
 {
   await cad.evaluate(() => {

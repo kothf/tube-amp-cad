@@ -909,10 +909,11 @@
           !(lx > g.fx1 + t && lx < g.fx2 - t && ly > g.fy1 + t && ly < g.fy2 - t);
         return inTb || nearFrame;
       },
-      defaults: { size: "A2", orient: "landscape", title: "", docno: "", rev: "A", sheet: "1/1", date: "", creator: "", approver: "", owner: "", dept: "", reference: "", doctype: "Circuit diagram", status: "Released", lang: "en" },
+      defaults: { locked: "yes", size: "A2", orient: "landscape", title: "", docno: "", rev: "A", sheet: "1/1", date: "", creator: "", approver: "", owner: "", dept: "", reference: "", doctype: "Circuit diagram", status: "Released", lang: "en" },
       pins: () => [],
       value: c => c.params.size + (c.params.orient === "portrait" ? " portrait" : ""),
       fields: [
+        { key: "locked", label: "Position", kind: "select", options: [["yes", "Locked (cannot be moved or deleted)"], ["no", "Unlocked"]], wide: true },
         { key: "size", label: "Sheet size", kind: "select", options: Object.keys(SHEETS).map(k => [k, `${k} (${SHEETS[k][0]} × ${SHEETS[k][1]} mm)`]) },
         { key: "orient", label: "Orientation", kind: "select", options: [["landscape", "Landscape"], ["portrait", "Portrait"]] },
         { key: "title", label: "Title", kind: "text" }, { key: "docno", label: "Identification number", kind: "text" },
