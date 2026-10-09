@@ -435,12 +435,14 @@
   const BJTS = {
     "2N2222A": { pol: 1, is: 14.34e-15, bf: 255.9, br: 6.092, vaf: 74.03, ikf: 0.2847, cbe: 25 * pf, cbc: 8 * pf, v: 40, i: 0.6, p: 0.5, pkg: "TO-18", use: "general purpose" },
     "2N3904": { pol: 1, is: 6.734e-15, bf: 416.4, br: 0.7371, vaf: 74.03, ikf: 0.06678, cbe: 8 * pf, cbc: 4 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
+    "BC107": { pol: 1, is: 7e-15, bf: 200, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.1, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
     "BC547B": { pol: 1, is: 7e-15, bf: 290, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.1, p: 0.5, pkg: "TO-92", use: "small signal, low noise" },
     "BD139": { pol: 1, is: 1e-13, bf: 150, br: 5, vaf: 100, ikf: 1, cbe: 100 * pf, cbc: 30 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
     "MPSA42": { pol: 1, is: 1e-14, bf: 120, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 3 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
     "MJE340": { pol: 1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 15 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" },
     "2N2907A": { pol: -1, is: 650.6e-18, bf: 231.7, br: 3.563, vaf: 115.7, ikf: 1.079, cbe: 30 * pf, cbc: 8 * pf, v: 60, i: 0.6, p: 0.4, pkg: "TO-18", use: "general purpose" },
     "2N3906": { pol: -1, is: 1.41e-15, bf: 180.7, br: 4.977, vaf: 18.7, ikf: 0.08, cbe: 10 * pf, cbc: 4.5 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
+    "BC177": { pol: -1, is: 1e-14, bf: 150, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.1, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
     "BC557B": { pol: -1, is: 1e-14, bf: 250, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.1, p: 0.5, pkg: "TO-92", use: "small signal, low noise" },
     "BD140": { pol: -1, is: 1e-13, bf: 150, br: 5, vaf: 100, ikf: 1, cbe: 100 * pf, cbc: 40 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
     "MPSA92": { pol: -1, is: 1e-14, bf: 100, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 6 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
@@ -450,11 +452,13 @@
     "2N7000": { pol: 1, vto: 2.1, kp: 0.26, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.2, p: 0.4, pkg: "TO-92", use: "small signal switch" },
     "BS170": { pol: 1, vto: 2.1, kp: 0.1, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.5, p: 0.83, pkg: "TO-92", use: "small signal switch" },
     "IRF510": { pol: 1, vto: 3.0, kp: 0.25, lambda: 0.005, cgs: 160 * pf, cgd: 20 * pf, v: 100, i: 5.6, p: 43, pkg: "TO-220", use: "follower, regulator" },
+    "IRF540": { pol: 1, vto: 3.0, kp: 2.2, lambda: 0.005, cgs: 1580 * pf, cgd: 120 * pf, v: 100, i: 28, p: 150, pkg: "TO-220", use: "power output, follower" },
     "IRF820": { pol: 1, vto: 3.0, kp: 0.75, lambda: 0.002, cgs: 335 * pf, cgd: 25 * pf, v: 500, i: 2.5, p: 50, pkg: "TO-220", use: "HV regulator, gyrator, follower" },
     "IRF840": { pol: 1, vto: 3.0, kp: 2.5, lambda: 0.002, cgs: 1180 * pf, cgd: 120 * pf, v: 500, i: 8, p: 125, pkg: "TO-220", use: "HV regulator, follower" },
     "DN2540": { pol: 1, vto: -2.0, kp: 0.15, lambda: 0.002, cgs: 190 * pf, cgd: 10 * pf, v: 400, i: 0.5, p: 15, pkg: "TO-220", use: "depletion, CCS / cascode" },
     "LND150": { pol: 1, vto: -2.0, kp: 0.001, lambda: 0.005, cgs: 7 * pf, cgd: 0.5 * pf, v: 500, i: 0.03, p: 0.74, pkg: "TO-92", use: "depletion, low-current CCS" },
     "BS250": { pol: -1, vto: -2.25, kp: 0.056, lambda: 0.01, cgs: 25 * pf, cgd: 5 * pf, v: 45, i: 0.23, p: 0.83, pkg: "TO-92", use: "small signal switch" },
+    "IRF9540": { pol: -1, vto: -3.0, kp: 1.75, lambda: 0.005, cgs: 1200 * pf, cgd: 200 * pf, v: 100, i: 19, p: 150, pkg: "TO-220", use: "power output, follower" },
     "IRF9610": { pol: -1, vto: -3.0, kp: 0.45, lambda: 0.003, cgs: 150 * pf, cgd: 20 * pf, v: 200, i: 1.8, p: 20, pkg: "TO-220", use: "HV CCS, follower" },
     "IRF9640": { pol: -1, vto: -3.0, kp: 1.27, lambda: 0.003, cgs: 1100 * pf, cgd: 100 * pf, v: 200, i: 11, p: 125, pkg: "TO-220", use: "HV regulator, CCS" }
   };
@@ -469,6 +473,9 @@
   const ledIs = vf => 0.01 / Math.exp(vf / (2 * 0.025852));
   const semiRating = m => `${m.v} V, ${m.i} A, ${m.p} W, ${m.pkg}`;
   const semiOptions = (tab, pol) => () => Object.entries(tab).filter(([, m]) => m.pol === pol).map(([k, m]) => [k, `${k} · ${m.v} V ${m.i} A ${m.p} W · ${m.use}`]);
+  // Mirror (M): flips the symbol left to right before rotation, so a transistor can take
+  // its base or gate from either side with the collector / drain up or down
+  const FLIP_FIELD = { key: "flip", label: "Mirror (M)", kind: "select", options: [["no", "No"], ["yes", "Mirrored left–right"]] };
   // BJT and MOSFET parts: same pins (C/D up, B/G left, E/S down) for both polarities
   function bjtPart(pol) {
     const def = pol > 0 ? "2N3904" : "2N3906";
@@ -477,7 +484,8 @@
       defaults: { model: def },
       pins: () => [{ id: "C", x: 10, y: -30, name: "collector" }, { id: "B", x: -30, y: 0, name: "base" }, { id: "E", x: 10, y: 30, name: "emitter" }],
       value: c => c.params.model,
-      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(BJTS, pol), wide: true }],
+      canFlip: true,
+      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(BJTS, pol), wide: true }, FLIP_FIELD],
       info: c => { const m = BJTS[c.params.model] || BJTS[def]; return `${c.params.model} (${m.use}): Vceo ${m.v} V, Ic ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: Gummel-Poon, hFE ≈ ${Math.round(m.bf)}, Early voltage ${Math.round(m.vaf)} V.`; },
       build: (c, net, alloc, out) => {
         const m = Object.assign({}, BJTS[c.params.model] || BJTS[def], { pol });
@@ -493,7 +501,8 @@
       defaults: { model: def },
       pins: () => [{ id: "D", x: 10, y: -30, name: "drain" }, { id: "G", x: -30, y: 10, name: "gate" }, { id: "S", x: 10, y: 30, name: "source" }],
       value: c => c.params.model,
-      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(MOSFETS, pol), wide: true }],
+      canFlip: true,
+      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(MOSFETS, pol), wide: true }, FLIP_FIELD],
       info: c => { const m = MOSFETS[c.params.model] || MOSFETS[def]; return `${c.params.model} (${m.use}): Vds ${m.v} V, Id ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: square law, ${m.vto < 0 === pol > 0 ? "depletion, Vgs(off)" : "threshold"} ${m.vto} V, Kp ${m.kp} A/V²; body diode included.`; },
       build: (c, net, alloc, out) => {
         const m = MOSFETS[c.params.model] || MOSFETS[def], d = net("D"), g = net("G"), s = net("S");
