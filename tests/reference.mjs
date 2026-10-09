@@ -11,7 +11,7 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 
 const root = resolve(process.argv[2] || ".");
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
@@ -27,7 +27,8 @@ const server = createServer(async (req, res) => {
 }).listen(0);
 const U = p => `http://localhost:${server.address().port}/${p}`;
 
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--no-sandbox"] });
+// BROWSER=webkit runs the suite in the Safari engine
+const browser = process.env.BROWSER === "webkit" ? await webkit.launch() : await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--no-sandbox"] });
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 const errors = [];
 const cad = await ctx.newPage();
