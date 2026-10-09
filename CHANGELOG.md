@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.32.0] - 2026-10-09
+
+### Added
+- **Mirror (M) for every part that can be rotated:** resistors,
+  capacitors, chokes, switches, transformers, tubes, sources, diodes,
+  transistors and any part added later. Only the oscilloscope, the drawing
+  frame and text notes can't be mirrored. Use the *M* key (also while
+  placing), the *⇋ Mirror* button or the *Mirror* field in the inspector.
+  Text inside a symbol (the switch's A/B, the generator's G) stays readable,
+  and tube pin numbers and polarity marks move with their pins. A mirrored
+  tube's designation moves above the control grid, which is now on the
+  right.
+
 ## [3.31.0] - 2026-10-09
 
 ### Changed

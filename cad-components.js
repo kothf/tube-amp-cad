@@ -473,8 +473,8 @@
   const ledIs = vf => 0.01 / Math.exp(vf / (2 * 0.025852));
   const semiRating = m => `${m.v} V, ${m.i} A, ${m.p} W, ${m.pkg}`;
   const semiOptions = (tab, pol) => () => Object.entries(tab).filter(([, m]) => m.pol === pol).map(([k, m]) => [k, `${k} · ${m.v} V ${m.i} A ${m.p} W · ${m.use}`]);
-  // Mirror (M): flips the symbol left to right before rotation, so a transistor can take
-  // its base or gate from either side with the collector / drain up or down
+  // Mirror (M), for every part that can be rotated: the inspector field is added by the CAD
+  // (cad-app.js), so new parts get it without listing it here
   const FLIP_FIELD = { key: "flip", label: "Mirror (M)", kind: "select", options: [["no", "No"], ["yes", "Mirrored left–right"]] };
   // BJT and MOSFET parts: same pins (C/D up, B/G left, E/S down) for both polarities
   function bjtPart(pol) {
@@ -484,8 +484,7 @@
       defaults: { model: def },
       pins: () => [{ id: "C", x: 10, y: -30, name: "collector" }, { id: "B", x: -30, y: 0, name: "base" }, { id: "E", x: 10, y: 30, name: "emitter" }],
       value: c => c.params.model,
-      canFlip: true,
-      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(BJTS, pol), wide: true }, FLIP_FIELD],
+      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(BJTS, pol), wide: true }],
       info: c => { const m = BJTS[c.params.model] || BJTS[def]; return `${c.params.model} (${m.use}): Vceo ${m.v} V, Ic ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: Gummel-Poon, hFE ≈ ${Math.round(m.bf)}, Early voltage ${Math.round(m.vaf)} V.`; },
       build: (c, net, alloc, out) => {
         const m = Object.assign({}, BJTS[c.params.model] || BJTS[def], { pol });
@@ -501,8 +500,7 @@
       defaults: { model: def },
       pins: () => [{ id: "D", x: 10, y: -30, name: "drain" }, { id: "G", x: -30, y: 10, name: "gate" }, { id: "S", x: 10, y: 30, name: "source" }],
       value: c => c.params.model,
-      canFlip: true,
-      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(MOSFETS, pol), wide: true }, FLIP_FIELD],
+      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(MOSFETS, pol), wide: true }],
       info: c => { const m = MOSFETS[c.params.model] || MOSFETS[def]; return `${c.params.model} (${m.use}): Vds ${m.v} V, Id ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: square law, ${m.vto < 0 === pol > 0 ? "depletion, Vgs(off)" : "threshold"} ${m.vto} V, Kp ${m.kp} A/V²; body diode included.`; },
       build: (c, net, alloc, out) => {
         const m = MOSFETS[c.params.model] || MOSFETS[def], d = net("D"), g = net("G"), s = net("S");
@@ -993,5 +991,5 @@
     { group: "Document", items: [["frame"], ["note"]] }
   ];
 
-  root.CadLib = { LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);
