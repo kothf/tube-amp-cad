@@ -567,8 +567,10 @@
   S.board = null;
   function boardNetlist() {
     const T = topo(), skip = new Set(["frame", "note", "ground", "offsheet", "scope"]);
+    // DC current into each pin from the last result (the board sizes tracks by it)
+    const PI = S.sim.result && S.sim.topo === T ? pinCurrents() : null;
     const parts = S.comps.filter(c => !skip.has(c.type)).map(c => ({ id: c.id, type: c.type, label: c.label, params: c.params,
-      pins: compPins(c).map(p => ({ id: p.id, name: p.name || p.id, net: T.pinNet.get(c.id + ":" + p.id) })) }));
+      pins: compPins(c).map(p => { const k = c.id + ":" + p.id, i = PI && PI.get(k); return { id: p.id, name: p.name || p.id, net: T.pinNet.get(k), i: Number.isFinite(i) ? +i.toPrecision(4) : undefined }; }) }));
     const names = {};
     if (T.hasGround) names[0] = "GND";
     S.comps.forEach(c => { if (c.type === "offsheet" && String(c.params.name || "").trim()) { const n = T.pinNet.get(c.id + ":1"); if (n !== 0) names[n] = String(c.params.name).trim(); } });

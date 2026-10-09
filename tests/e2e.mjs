@@ -1291,8 +1291,48 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.evaluate(i => { const S = BoardApp.state, t = S.board.tracks[i]; S.board.tracks.push({ layer: "F.Cu", w: 1, pts: [t.pts[3], [45.4, 92.7]] }); BoardApp.commit(); }, ti);
   await bd.mouse.move(cv.x + s1[0], cv.y + s1[1]); await bd.keyboard.press("u");
   const uSel = await bd.evaluate(() => BoardApp.state.sel);
-  check(uSel && uSel.kind === "tracks" && uSel.list.length === 2, `U selects the whole connected track (${uSel && uSel.list && uSel.list.length} pieces)`);
+  check(uSel && uSel.kind === "multi" && uSel.tracks.length === 2, `U selects the whole connected track (${uSel && uSel.tracks && uSel.tracks.length} pieces)`);
   await bd.keyboard.press("Delete");
+
+  // several parts at once: a box from empty space selects R2 and R3; Align top; drag one, both move; R turns both; L locks them
+  await bd.evaluate(() => { const S = BoardApp.state, k = r => S.model.parts.find(g => g.ref === r).key; Object.assign(S.board.parts[k("R2")], { x: 25.4, y: 87.63, rot: 0, side: "F" }); Object.assign(S.board.parts[k("R3")], { x: 45.72, y: 90.17, rot: 0, side: "F" }); S.sel = null; BoardApp.commit(); });
+  const W = (x, y) => bd.evaluate(([x, y]) => BoardApp.toScreen(x, y), [x, y]).then(([a, b]) => [cv.x + a, cv.y + b]);
+  let q0 = await W(12, 82), q1 = await W(58, 95);
+  await bd.mouse.move(q0[0], q0[1]); await bd.mouse.down(); await bd.mouse.move(q1[0], q1[1], { steps: 6 }); await bd.mouse.up();
+  const boxSel = await bd.evaluate(() => { const s = BoardApp.state.sel; return s && s.kind === "multi" ? s.parts.map(k => BoardApp.state.board.parts[k].ref).sort().join(",") : JSON.stringify(s); });
+  check(boxSel === "R2,R3", `a box dragged over empty space selects the parts inside it (${boxSel})`);
+  await bd.locator('#inspector [data-al="top"]').click();
+  const tops = await bd.evaluate(() => { const S = BoardApp.state; return ["R2", "R3"].map(r => { const g = S.model.parts.find(x => x.ref === r), b = BoardCore.partBox(g); return +b.y1.toFixed(3); }); });
+  check(tops[0] === tops[1], `Align top lines the two parts up (${tops.join(" = ")})`);
+  const pos0 = await bd.evaluate(() => ["R2", "R3"].map(r => { const p = Object.values(BoardApp.state.board.parts).find(x => x.ref === r); return [p.x, p.y]; }));
+  const r2c = await W(pos0[0][0], pos0[0][1]), r2d = await W(pos0[0][0] + 5.08, pos0[0][1]);
+  await bd.mouse.move(r2c[0], r2c[1] - 1); await bd.mouse.down(); await bd.mouse.move(r2d[0], r2d[1] - 1, { steps: 5 }); await bd.mouse.up();
+  const pos1 = await bd.evaluate(() => ["R2", "R3"].map(r => { const p = Object.values(BoardApp.state.board.parts).find(x => x.ref === r); return [p.x, p.y]; }));
+  check(pos1.every((p, i) => Math.abs(p[0] - pos0[i][0] - 5.08) < 1e-3 && Math.abs(p[1] - pos0[i][1]) < 1e-3), `dragging one selected part moves the whole selection 5.08 mm (${JSON.stringify(pos1)})`);
+  await bd.keyboard.press("r");
+  const rot = await bd.evaluate(() => ["R2", "R3"].map(r => Object.values(BoardApp.state.board.parts).find(x => x.ref === r).rot));
+  check(rot[0] === 1 && rot[1] === 1, "R turns the selection 90° (each part and their places about the middle)");
+  await bd.keyboard.press("l");
+  const before2 = await bd.evaluate(() => JSON.stringify(Object.values(BoardApp.state.board.parts).filter(x => /^R[23]$/.test(x.ref)).map(p => [p.x, p.y])));
+  await bd.keyboard.press("ArrowRight");
+  const r2now = await bd.evaluate(() => { const p = Object.values(BoardApp.state.board.parts).find(x => x.ref === "R2"); return BoardApp.toScreen(p.x, p.y); });
+  await bd.mouse.move(cv.x + r2now[0], cv.y + r2now[1]); await bd.mouse.down(); await bd.mouse.move(cv.x + r2now[0] + 60, cv.y + r2now[1], { steps: 5 }); await bd.mouse.up();
+  const after2 = await bd.evaluate(() => JSON.stringify(Object.values(BoardApp.state.board.parts).filter(x => /^R[23]$/.test(x.ref)).map(p => [p.x, p.y])));
+  const lockedNow = await bd.evaluate(() => Object.values(BoardApp.state.board.parts).filter(x => /^R[23]$/.test(x.ref)).every(p => p.locked));
+  check(lockedNow && before2 === after2 && /Locked/.test(await bd.textContent("#st-msg")), "L locks the selection: arrows and dragging leave it where it is");
+  await bd.evaluate(() => { const S = BoardApp.state; S.sel = { kind: "multi", parts: S.model.parts.filter(g => /^R[23]$/.test(g.ref)).map(g => g.key), tracks: [], vias: [], texts: [], holes: [] }; });
+  await bd.keyboard.press("l");
+  check(await bd.evaluate(() => Object.values(BoardApp.state.board.parts).filter(x => /^R[23]$/.test(x.ref)).every(p => !p.locked)), "L again unlocks");
+
+  // a keep-out drawn with the mouse (K, four corners, double-click); the check reports a track through it
+  await bd.keyboard.press("Escape"); await bd.keyboard.press("k");
+  for (const [x, y] of [[100, 60], [125, 60], [125, 80]]) { const q = await W(x, y); await bd.mouse.click(q[0], q[1]); }
+  const qk = await W(100, 80); await bd.mouse.click(qk[0], qk[1]); await bd.mouse.dblclick(qk[0], qk[1]);
+  const kos = await bd.evaluate(() => BoardApp.state.board.keepouts.map(k => k.pts.length));
+  await bd.evaluate(() => { BoardApp.state.board.tracks.push({ layer: "B.Cu", w: 1, pts: [[95, 70], [128, 70]] }); BoardApp.commit(); });
+  const koMsg = await bd.evaluate(() => BoardApp.state.drc.filter(d => d.kind === "keepout").map(d => d.msg).join("; "));
+  check(kos.length === 1 && kos[0] === 4 && /runs through a keep-out area/.test(koMsg), `K draws a keep-out area (${kos.join(",")} corners); a track through it is reported (${koMsg})`);
+  await bd.evaluate(() => { BoardApp.state.board.tracks.pop(); BoardApp.commit(); });
 
   // manufacturing outputs: the Gerber ZIP (the board is unfinished: confirm) and the print PDF
   bd.once("dialog", d => d.accept());

@@ -108,6 +108,9 @@
     .net .todo { color: var(--bad); }
     .net .done { color: var(--ok); }
     .net .cls { font-size: 10px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--line); }
+    .align { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 4px 0; }
+    .align .btn { padding: 4px 2px; font-size: 12px; }
+    .tools .btn { padding-left: 8px; padding-right: 8px; }
     .menu { position: relative; }
     .menu-list { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 230px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
     .menu-list[hidden] { display: none; }
@@ -132,6 +135,7 @@
       <button class="btn" data-tool="text" title="Place a text on the silkscreen or copper (T)">Text</button>
       <button class="btn" data-tool="hole" title="Place a mounting hole (H)">Hole</button>
       <button class="btn" data-tool="pour" title="Copper pour (ground plane): click the corners, double-click to close (P). Board inspector: one click for a ground plane over the whole board">Pour</button>
+      <button class="btn" data-tool="keepout" title="Keep-out area: no tracks, vias, pour (or parts) inside; click the corners, double-click to close (K)">Keep-out</button>
       <button class="btn" data-tool="measure" title="Measure a distance: click, click (D)">Measure</button>
     </div>
     <select class="btn" id="layer" title="Copper layer for new tracks (V while routing)"><option value="F.Cu">Top (F.Cu)</option><option value="B.Cu">Bottom (B.Cu)</option></select>
@@ -152,7 +156,7 @@
       </div>
     </div>
     <button class="btn" id="btn-help" title="Help and shortcuts (F1)">?</button>
-    <button class="btn link" id="btn-cad" title="Back to the schematic">Circuit CAD ↗</button>
+    <button class="btn link" id="btn-cad" title="Back to the schematic (the Circuit CAD window)">CAD ↗</button>
   </header>
   <div id="banner" hidden><span id="banner-text"></span><button class="btn warn" id="banner-sync">Update from schematic</button></div>
 
@@ -192,6 +196,11 @@
         <kbd>T</kbd><span>text tool: click to place a text on the active side's silkscreen</span>
         <kbd>H</kbd><span>mounting-hole tool</span>
         <kbd>P</kbd><span>copper pour: click the corners, double-click (or click the first corner) to close; the pour fills around other nets with clearance and joins its net's pads with thermal spokes</span>
+        <kbd>drag on empty space</kbd><span>select what lies inside the box (left to right) or what it touches (right to left); Shift adds</span>
+        <kbd>Shift+click</kbd><span>add a part, track, via, text or hole to the selection (or take it out)</span>
+        <kbd>arrows</kbd><span>nudge the selection one grid step (Shift: ten); R turns a selection 90° about its middle</span>
+        <kbd>L</kbd><span>lock the selection in place (again: unlock); locked things cannot be dragged, nudged, turned or deleted</span>
+        <kbd>K</kbd><span>keep-out area: click the corners, double-click to close</span>
         <kbd>U</kbd><span>select the whole connected track under the pointer (or of the selected track)</span>
         <kbd>`</kbd><span>highlight the net under the pointer (again: off); the Nets tab lists every net</span>
         <kbd>drag</kbd><span>a track segment moves sideways and its neighbours follow (45° kept)</span>
@@ -225,6 +234,7 @@
           <div class="row"><span>Signal width (mm)</span><input data-r="track"></div>
           <div class="row"><span>Power / HV width (mm)</span><input data-r="power"></div>
           <div class="row"><span>Minimum width (mm)</span><input data-r="minTrack"></div>
+          <div class="row" title="Tracks are checked for the DC current of their net from the simulation (IPC-2221, outer layer)"><span>Allowed warming at DC current (°C)</span><input data-r="tempRise"></div>
         </div>
         <div>
           <h3>Vias and holes</h3>

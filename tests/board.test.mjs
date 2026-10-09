@@ -312,3 +312,77 @@ test("a track entering a tube pin may pass the socket's other pins as closely as
   a = analyse(board); bad = B.drc(board, a.m, a.conn, hv).filter(d => d.kind === "clearance" && d.between.some(x => /^track/.test(x)));
   assert.ok(bad.length > 0);
 });
+
+test("track width for a DC current (IPC-2221, outer layer) and the current of each net from the simulation", () => {
+  const R = B.defaultRules();
+  // 1 A at a 10 °C rise on 35 µm copper needs about 0.30 mm (the IPC-2221 chart)
+  assert.ok(Math.abs(B.currentWidth(1, R, { copper: 35 }) - 0.30) < 0.02, String(B.currentWidth(1, R, { copper: 35 })));
+  assert.ok(B.currentWidth(1, R, { copper: 70 }) < B.currentWidth(1, R, { copper: 35 }) / 1.9, "twice the copper, half the width");
+  assert.ok(B.currentWidth(1, { ...R, tempRise: 20 }, { copper: 35 }) < B.currentWidth(1, R, { copper: 35 }), "more warming allowed, narrower");
+  assert.equal(B.currentWidth(0, R, { copper: 35 }), 0);
+  const nl = JSON.parse(JSON.stringify(NETLIST));
+  nl.parts.find(p => p.id === "g1").pins.forEach(q => { q.i = q.id === "+" ? -3 : 3; });   // 3 A out of the supply (an exaggerated load)
+  nl.parts.find(p => p.id === "r1").pins.forEach(q => { q.i = q.id === "1" ? 0.0012 : -0.0012; });
+  const amps = B.netCurrents(nl);
+  assert.equal(amps[1], 3); assert.equal(amps[2], 0.0012);
+  // a 1 mm track on B+ (3 A needs ≈ 1.3 mm) is reported; the check names the current
+  const board = B.newBoard(); B.sync(board, nl);
+  Object.values(board.parts).forEach((p, i) => Object.assign(p, { x: 20 + (i % 4) * 30, y: 20 + Math.floor(i / 4) * 30 }));
+  const m = B.model(board, nl), r1 = m.pads.find(p => p.ref === "R1" && p.num === "1");
+  board.tracks.push({ layer: "F.Cu", w: 1, pts: [[r1.x, r1.y], [r1.x, r1.y - 8]] });
+  const m2 = B.model(board, nl), c = B.connectivity(board, m2.pads), d = B.drc(board, m2, c, new Set(), [], nl).filter(x => x.kind === "current");
+  assert.equal(d.length, 1); assert.ok(/carries 3\.00 A: 1 mm < 1\.\d+ mm for a 10 °C rise/.test(d[0].msg), d[0].msg);
+});
+
+test("rule checks: overlapping parts, keep-out areas (and pours keep out of them), silkscreen over pads, unconnected track ends", () => {
+  const board = fabBoard();
+  let { m, conn, fills } = analyse(board);
+  const kinds = () => B.drc(board, m, conn, new Set(), fills, NETLIST);
+  assert.ok(!kinds().some(d => ["courtyard", "keepout", "dangling"].includes(d.kind)), kinds().filter(d => ["courtyard", "keepout", "dangling", "silk"].includes(d.kind)).map(d => d.msg).join("; "));
+  // R2 moved onto C1: courtyards overlap, and R2's reference lies over C1's pads
+  const k = ref => Object.keys(board.parts).find(x => board.parts[x].ref === ref);
+  Object.assign(board.parts[k("R2")], { x: 55, y: 57 });
+  ({ m, conn, fills } = analyse(board));
+  assert.ok(kinds().some(d => d.kind === "courtyard" && /R2 and C1|C1 and R2/.test(d.msg)));
+  Object.assign(board.parts[k("R2")], { x: 30, y: 55 });
+  // a keep-out on the bottom copper: no pour inside, a track through it, a via in it, a part in it when parts are forbidden
+  board.keepouts.push({ name: "mains", pts: [[80, 55], [110, 55], [110, 85], [80, 85]], layers: ["B.Cu"], tracks: true, vias: true, pour: true, parts: true });
+  board.tracks.push({ layer: "B.Cu", w: 1, pts: [[70, 75], [100, 75]] });
+  board.vias.push({ x: 95, y: 70, drill: 0.8, pad: 1.8 });
+  ({ m, conn, fills } = analyse(board));
+  const nx = Math.ceil(board.outline.w / B.RES), g = B.rasterise(fills[0].ops, nx, Math.ceil(board.outline.h / B.RES));
+  assert.equal(g[Math.floor(82 / B.RES) * nx + Math.floor(105 / B.RES)], 0, "the GND pour leaves the keep-out empty");
+  const ko = kinds().filter(d => d.kind === "keepout").map(d => d.msg);
+  assert.ok(ko.some(t => /track on B.Cu runs through keep-out "mains"/.test(t)) && ko.some(t => /via in keep-out "mains"/.test(t)) && ko.some(t => /T1 is in keep-out "mains"/.test(t)), ko.join("; "));
+  // the track's left end touches nothing: unconnected
+  assert.ok(kinds().some(d => d.kind === "dangling" && Math.abs(d.x - 70) < 1e-6));
+  // a top silkscreen text over a pad is a warning
+  board.texts.push({ x: 60, y: 15, text: "OVER R1", size: 2, layer: "F.SilkS", rot: 0 });
+  ({ m, conn, fills } = analyse(board));
+  assert.ok(kinds().some(d => d.kind === "silk" && /text "OVER R1"/.test(d.msg)), kinds().filter(d => d.kind === "silk").map(d => d.msg).join("; "));
+});
+
+test("no footprint has silkscreen over its own pads", () => {
+  const seen = new Set(), bad = [];
+  for (const [type, def] of Object.entries(L.LIB)) {
+    if (["note", "frame", "ground", "offsheet", "scope"].includes(type)) continue;
+    const params = { ...(def.defaults || {}) }, pins = typeof def.pins === "function" ? def.pins({ params }) : def.pins;
+    const variants = type === "tube" ? globalThis.TUBE_DATABASE.map(t => ({ tube: t.commonName })) : [{}];
+    for (const v of variants) for (const sec of type === "switch" ? [1, 2] : [1]) {
+      const nl = { parts: Array.from({ length: sec }, (_, k) => ({ id: "c" + k, type, label: sec > 1 ? `X1.${k + 1}` : "X1", params: { ...params, ...v }, pins: pins.map(p => ({ id: p.id, net: 1 })) })) };
+      const [g] = B.physicalParts(nl);
+      for (const o of g.options) {
+        if (seen.has(o)) continue; seen.add(o);
+        const f = B.footprint(o, g.members.flatMap(m => m.pins.map(p => (sec > 1 ? m.label.split(".").pop() + "." : "") + p.id)));
+        const G = { ...g, fp: f, place: { x: 0, y: 0, rot: 0, side: "F" } };
+        const over = B.partSilk(G, true).some(op => op.pts.some((p, k) => k && f.pads.some(pd => {
+          const r = Math.min(pd.w, pd.h) / 2, l = Math.max(pd.w, pd.h) / 2 - r, s = pd.w >= pd.h ? [pd.x - l, pd.y, pd.x + l, pd.y] : [pd.x, pd.y - l, pd.x, pd.y + l];
+          return B.segSeg([op.pts[k - 1][0], op.pts[k - 1][1], p[0], p[1]], s) < (pd.shape === "rect" ? r * 1.15 : r) + op.w / 2;
+        })));
+        if (over) bad.push(o);
+      }
+    }
+  }
+  assert.ok(seen.size > 100, `${seen.size} footprints checked`);
+  assert.deepEqual(bad, []);
+});
