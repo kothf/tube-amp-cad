@@ -30,6 +30,7 @@
     topo: null,
     sim: { seq: 0, busy: false, pending: false, result: null, netlist: null, nodeOfPin: null, error: null, at: 0 },
     showVolts: true,
+    showAmps: true,
     hover: null,
     clipboard: null,
     idCounter: 1
@@ -359,6 +360,66 @@
   function netDC(net) { const r = S.sim.result; return r && net !== undefined && r.dc.nodes[net] !== undefined ? r.dc.nodes[net] : null; }
   function netWave(net) { const r = S.sim.result; return r && r.tran && net !== undefined && net > 0 ? r.tran.nodes[net] : null; }
   function pinNetOf(c, pid) { const T = S.sim.topo || topo(); return T.pinNet.get(c.id + ":" + pid); }
+  // DC current flowing from the net into each part's pin ("compId:pinId" -> A), summed
+  // from the solver elements' terminal currents (averaged over the window when the DC
+  // readouts are). A part with two pins on one net leaves them out: the split is unknown.
+  function pinCurrents() {
+    const r = S.sim.result;
+    if (!r || !r.dc.currents) return null;
+    if (S.sim.pinI && S.sim.pinI.result === r) return S.sim.pinI.map;
+    const T = S.sim.topo || topo(), byComp = new Map(), cur = r.dc.currents;
+    for (let k = 0; k < cur.length; k += 3) {
+      const id = String(cur[k]), h = id.indexOf("#"), cid = h < 0 ? id : id.slice(0, h);
+      let m = byComp.get(cid); if (!m) byComp.set(cid, m = new Map());
+      m.set(cur[k + 1], (m.get(cur[k + 1]) || 0) + cur[k + 2]);
+    }
+    const map = new Map();
+    S.comps.forEach(c => {
+      const m = byComp.get(c.id); if (!m) return;
+      const pins = compPins(c), nets = pins.map(p => T.pinNet.get(c.id + ":" + p.id));
+      pins.forEach((p, i) => { if (nets[i] !== undefined && nets.indexOf(nets[i]) === i && nets.lastIndexOf(nets[i]) === i) map.set(c.id + ":" + p.id, m.get(nets[i]) || 0); });
+    });
+    S.sim.pinI = { result: r, map };
+    return map;
+  }
+  function pinCurrent(c, pid) { const m = pinCurrents(), v = m && m.get(c.id + ":" + pid); return v === undefined ? null : v; }
+  // DC current in each wire segment (wire id -> A, positive from (x1,y1) to (x2,y2)).
+  // In the wiring of a net, a loose end whose pins draw a known current passes it on to
+  // the next point, and so on inwards; segments stay unknown only in loops or between
+  // points with an unknown current (ground symbols, sheet connectors), at most one of which
+  // a tree can absorb.
+  function wireCurrents() {
+    const pins = pinCurrents(); if (!pins) return null;
+    const draw = new Map(), hasPin = new Set();   // point -> current drawn from the wiring there (consumed below)
+    const free = new Set();
+    S.comps.forEach(c => compPins(c).forEach(p => {
+      const k = key(p.x, p.y), v = pins.get(c.id + ":" + p.id);
+      hasPin.add(k);
+      if (v === undefined) free.add(k); else draw.set(k, (draw.get(k) || 0) + v);
+    }));
+    const adj = new Map();
+    const link = (k, w, other) => { if (!adj.has(k)) adj.set(k, []); adj.get(k).push({ w, other }); };
+    S.wires.forEach(w => { const a = key(w.x1, w.y1), b = key(w.x2, w.y2); link(a, w, b); link(b, w, a); });
+    const deg = new Map(), out = new Map();
+    adj.forEach((l, k) => deg.set(k, l.length));
+    const queue = [...adj.keys()].filter(k => deg.get(k) === 1);
+    while (queue.length) {
+      const k = queue.pop();
+      if (deg.get(k) !== 1 || free.has(k)) continue;
+      const e = adj.get(k).find(e => !out.has(e.w.id)); if (!e) continue;
+      const i = draw.get(k) || 0;                   // flows along the segment towards k
+      out.set(e.w.id, key(e.w.x2, e.w.y2) === k ? i : -i);
+      deg.set(k, 0);
+      draw.set(e.other, (draw.get(e.other) || 0) + i);
+      deg.set(e.other, deg.get(e.other) - 1);
+      if (deg.get(e.other) === 1) queue.push(e.other);
+    }
+    // what the pins draw at each point, for the stickers
+    const pinDraw = new Map();
+    S.comps.forEach(c => compPins(c).forEach(p => { const v = pins.get(c.id + ":" + p.id), k = key(p.x, p.y); pinDraw.set(k, v === undefined ? NaN : (pinDraw.get(k) || 0) + v); }));
+    return { currents: out, adj, pinDraw };
+  }
+
   // DC current in a catalog output transformer's primary (from the drop across its DCR)
   function otDcCurrent(c) {
     const m = CadLib.OUTPUT_TX[c.params.model], va = netDC(pinNetOf(c, "P1")), vb = netDC(pinNetOf(c, "P2"));
@@ -900,12 +961,12 @@
 
   function updateHover(m) {
     const pin = hitPin(m.wx, m.wy);
-    let net, label = "";
+    let net, label = "", wireI = "";
     const T = S.sim.topo || topo();
     if (pin) { net = T.pinNet.get(pin.c.id + ":" + pin.p.id); label = `${pin.c.label || LIB[pin.c.type].name} ${pin.p.name || pin.p.id}`; }
     else {
       const w = hitWire(m.wx, m.wy);
-      if (w) { net = (S.sim.topo || topo()).wireNet.get(w.id); label = "wire"; }
+      if (w) { net = (S.sim.topo || topo()).wireNet.get(w.id); label = "wire"; const wc = S.sim.result && wireCurrents(), i = wc ? wc.currents.get(w.id) : undefined; if (typeof i === "number") wireI = (isH(w) ? (i > 0 === w.x2 > w.x1 ? "→" : "←") : (i > 0 === w.y2 > w.y1 ? "↓" : "↑")) + fmtEng(Math.abs(i), "A", 2); }
     }
     let cursor = "";
     if (S.spaceDown) cursor = "grab";
@@ -915,7 +976,7 @@
     const el = document.getElementById("status-hover");
     if (net === undefined) { el.textContent = `x ${snap(m.wx)}  y ${snap(m.wy)}`; return; }
     const dc = netDC(net), wave = netWave(net), st = wave ? stats(wave) : null;
-    el.textContent = `${label}: ` + (net === 0 ? "ground (0 V)" : (dc === null ? "not simulated" : `DC ${fmtEng(dc, "V", 2)}` + (st && st.pp > 1e-4 ? ` · AC ${fmtEng(st.pp, "Vpp", 2)} · avg ${fmtEng(st.mean, "V", 2)}` : "")));
+    el.textContent = `${label}: ` + (net === 0 ? "ground (0 V)" : (dc === null ? "not simulated" : `DC ${fmtEng(dc, "V", 2)}` + (st && st.pp > 1e-4 ? ` · AC ${fmtEng(st.pp, "Vpp", 2)} · avg ${fmtEng(st.mean, "V", 2)}` : "") + (wireI ? ` · I ${wireI} DC` : "")));
   }
 
   // ---------------------------------------------------------------------------
@@ -973,6 +1034,7 @@
 
     // voltage tags
     if (S.showVolts && S.sim.result) drawVoltTags(T);
+    if (S.showAmps && S.sim.result) drawCurrentTags();
 
     // placing ghost
     if (S.placing) {
@@ -1158,6 +1220,35 @@
     ctx.fillStyle = "#8b949e"; ctx.fillText(fmtEng(v.span / 10, "s") + "/div", x0 + 88, y0 + h + 10);
   }
 
+  // Current stickers: one per run of wire carrying the same current, on its longest
+  // segment, below a horizontal wire and left of a vertical one (the voltage tag sits
+  // above / right). A run continues through a point where nothing else takes current:
+  // a bend, or a junction whose other branches (a capacitor, say) carry none at DC.
+  function drawCurrentTags() {
+    const wc = wireCurrents(); if (!wc) return;
+    const { currents, adj, pinDraw } = wc, byId = new Map(S.wires.map(w => [w.id, w]));
+    const parent = new Map(), find = a => { while (parent.get(a) !== a) { parent.set(a, parent.get(parent.get(a))); a = parent.get(a); } return a; };
+    currents.forEach((i, id) => parent.set(id, id));
+    adj.forEach((l, k) => {
+      if (l.some(e => !currents.has(e.w.id)) || !(Math.abs(pinDraw.get(k) || 0) < 1e-6)) return;
+      const big = l.filter(e => Math.abs(currents.get(e.w.id)) >= 1e-6);
+      if (big.length === 2) parent.set(find(big[0].w.id), find(big[1].w.id));
+    });
+    const best = new Map(), len = w => Math.abs(w.x2 - w.x1) + Math.abs(w.y2 - w.y1);
+    currents.forEach((i, id) => { const r = find(id), b = best.get(r), w = byId.get(id); if (w && (!b || len(w) > len(byId.get(b)))) best.set(r, id); });
+    ctx.font = "9px ui-monospace, monospace";
+    best.forEach(id => {
+      const w = byId.get(id), i = currents.get(id);
+      if (!w || !(Math.abs(i) >= 1e-6) || len(w) < 20) return;
+      const h = isH(w), fwd = i > 0 === (h ? w.x2 > w.x1 : w.y2 > w.y1);
+      const txt = (h ? (fwd ? "→" : "←") : (fwd ? "↓" : "↑")) + fmtEng(Math.abs(i), "A");
+      const mx = (w.x1 + w.x2) / 2, my = (w.y1 + w.y2) / 2, tw = ctx.measureText(txt).width + 6;
+      const tx = h ? mx - tw / 2 : mx - tw - 4, ty = h ? my + 3 : my - 6;
+      ctx.fillStyle = "rgba(10,14,20,0.85)"; ctx.fillRect(tx, ty, tw, 12);
+      ctx.strokeStyle = "rgba(210,168,255,0.45)"; ctx.lineWidth = 0.8; ctx.strokeRect(tx, ty, tw, 12);
+      ctx.fillStyle = "#d2a8ff"; ctx.fillText(txt, tx + 3, ty + 9);
+    });
+  }
   function drawVoltTags(T) {
     const placed = new Set();
     ctx.font = "9px ui-monospace, monospace";
@@ -1432,6 +1523,27 @@
         if (c.type === "electrolytic" && v < -0.5) h += `<p class="insp-help warn">Reverse-biased electrolytic.</p>`;
         return h;
       }
+      case "npn": case "pnp": case "nmos": case "pmos": {
+        const dev = r.dc.devices[c.id], d = dev && dev.main, m = (c.type === "npn" || c.type === "pnp" ? CadLib.BJTS : CadLib.MOSFETS)[c.params.model];
+        if (!d || !m) return h + `<p class="insp-help">No data.</p>`;
+        const bip = c.type === "npn" || c.type === "pnp", vMain = bip ? d.vce : d.vds, iMain = bip ? d.ic : d.id;
+        h += kv(bip ? "Vce" : "Vds", fmtEng(vMain, "V", 2), Math.abs(vMain) > m.v ? "bad" : Math.abs(vMain) > 0.8 * m.v ? "warn" : "");
+        h += kv(bip ? "Vbe" : "Vgs", fmtEng(bip ? d.vbe : d.vgs, "V", 3));
+        h += kv(bip ? "Ic" : "Id", fmtEng(iMain, "A", 2), Math.abs(iMain) > m.i ? "bad" : "");
+        if (bip) h += kv("Ib", fmtEng(d.ib, "A", 2)) + kv("hFE (Ic/Ib)", Math.abs(d.ib) > 1e-12 ? (d.ic / d.ib).toFixed(0) : "—");
+        h += kv("Dissipation", `${fmtEng(d.pd, "W", 2)} · ${Math.round(d.pd / m.p * 100)}% of ${m.p} W`, d.pd > m.p ? "bad" : d.pd > 0.6 * m.p ? "warn" : "");
+        if (bip && d.vce < 0.3 && d.ic > 1e-6) h += `<p class="insp-help warn">Saturated (Vce below 0.3 V).</p>`;
+        if (!bip && Math.abs(iMain) < 1e-6) h += `<p class="insp-help">Off: Vgs below the threshold.</p>`;
+        if (m.p > 2) h += `<p class="insp-help">Rated ${m.p} W with the case at 25 °C: needs a heatsink well before that.</p>`;
+        return h;
+      }
+      case "zener": case "led": case "diode": {
+        const v = vAcross("A", "K"), i = pinCurrent(c, "A");
+        h += kv("Voltage (A–K)", fmtEng(v, "V", 3)) + kv("Current (A→K)", fmtEng(i, "A", 2));
+        if (c.type === "zener") { const z = CadLib.ZENERS[c.params.model], p = Math.abs(v * i); if (z) h += kv("Dissipation", `${fmtEng(p, "W", 2)} · ${Math.round(p / z.p * 100)}% of ${z.p} W`, p > z.p ? "bad" : p > 0.6 * z.p ? "warn" : ""); }
+        if (c.type === "led") { const l = CadLib.LEDS[c.params.color]; if (l && i > l.i) h += `<p class="insp-help warn">Above the ${l.i * 1000} mA maximum.</p>`; }
+        return h;
+      }
       case "inductor": {
         const v = vAcross("1", "2"); h += kv("DC current", fmtEng(v / Math.max(c.params.dcr, 1e-3), "A", 2)) + kv("DC drop", fmtEng(v, "V", 2)); return h;
       }
@@ -1494,7 +1606,7 @@
     if (lonely.length) issues.push("Sheet connectors without a partner: " + lonely.join(", "));
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
-    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], vdc: [["+", "-"]], siggen: [["+", "-"]],
+    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], vdc: [["+", "-"]], siggen: [["+", "-"]],
       opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
@@ -1506,6 +1618,15 @@
     (S.sim.warnings || []).forEach(w => issues.push(w));
     S.comps.forEach(c => { if (c.type !== "opt_cat") return; const i = otDcCurrent(c), m = CadLib.OUTPUT_TX[c.params.model]; if (i !== null && m && i * 1000 > m.ma) issues.push(`${c.label} (${m.name}) carries ${(i * 1000).toFixed(0)} mA DC, more than its ${m.ma} mA rating.`); });
     S.comps.forEach(c => { if (c.type !== "resistor" || !+c.params.w) return; const p = resistorPower(c); if (p !== null && p > +c.params.w) issues.push(`${c.label} dissipates ${fmtEng(p, "W", 2)}, more than its ${+c.params.w} W rating.`); });
+    S.comps.forEach(c => {
+      if (!/^(npn|pnp|nmos|pmos)$/.test(c.type) || !S.sim.result) return;
+      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = (c.type === "npn" || c.type === "pnp" ? CadLib.BJTS : CadLib.MOSFETS)[c.params.model];
+      if (!d || !m) return;
+      const v = Math.abs(d.vce !== undefined ? d.vce : d.vds);
+      if (d.pd > m.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}, more than its ${m.p} W rating.`);
+      if (v > m.v) issues.push(`${c.label} (${c.params.model}) has ${v.toFixed(0)} V across it, more than its ${m.v} V rating.`);
+    });
+    S.comps.forEach(c => { if (c.type !== "zener" || !S.sim.result) return; const z = CadLib.ZENERS[c.params.model], v = netDC(pinNetOf(c, "A")), w = netDC(pinNetOf(c, "K")), i = pinCurrent(c, "A"); if (z && v !== null && w !== null && i !== null && Math.abs((v - w) * i) > z.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(Math.abs((v - w) * i), "W", 2)}, more than its ${z.p} W rating.`); });
     S.comps.forEach(c => { if (c.type !== "tube") return; const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier" && d.dc.vak * d.dc.ia > d.paMax) issues.push(`${c.label} over dissipation (${(d.dc.vak * d.dc.ia).toFixed(1)} W > ${d.paMax} W).`); });
     h += `<div class="insp-sub">Checks${simPct()}</div>` + (issues.length ? issues.map(i => `<p class="insp-help warn">⚠ ${i}</p>`).join("") : `<p class="insp-help ok">✓ No problems found.</p>`);
     return h;
@@ -1655,7 +1776,8 @@
   try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
   const saveBomOpts = () => { try { localStorage.setItem(BOM_KEY, JSON.stringify(bomOpts)); } catch (e) {} };
   let bomStale = false, bomSelShown = "";
-  // simulated worst case of a part: resistor dissipation (against its rating), capacitor peak voltage
+  // simulated worst case of a part: dissipation of resistors, transistors and zeners (against
+  // their ratings), capacitor peak voltage, LED current
   function partStress(c) {
     if (!S.sim.result) return null;
     if (c.type === "resistor") {
@@ -1671,6 +1793,17 @@
       if (v === null) return null;
       const reversed = c.type === "electrolytic" && va !== null && vb !== null && va - vb < -1;
       return { v, text: fmtEng(v, "V"), warn: reversed, note: "reversed" };
+    }
+    if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) {
+      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = (c.type === "npn" || c.type === "pnp" ? CadLib.BJTS : CadLib.MOSFETS)[c.params.model];
+      return d && m ? { v: d.pd, text: fmtEng(d.pd, "W"), warn: d.pd > m.p } : null;
+    }
+    if (c.type === "zener" || c.type === "led") {
+      const i = pinCurrent(c, "A"), va = netDC(pinNetOf(c, "A")), vk = netDC(pinNetOf(c, "K"));
+      if (i === null || va === null || vk === null) return null;
+      if (c.type === "led") { const l = CadLib.LEDS[c.params.color]; return { v: Math.abs(i), text: fmtEng(Math.abs(i), "A"), warn: !!l && i > l.i }; }
+      const z = CadLib.ZENERS[c.params.model], p = Math.abs((va - vk) * i);
+      return { v: p, text: fmtEng(p, "W"), warn: !!z && p > z.p };
     }
     return null;
   }
@@ -1691,7 +1824,7 @@
     const parts = bom.rows.reduce((n, r) => n + r.qty, 0);
     document.getElementById("bom-count").textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (S.sim.result ? "" : " · simulate for the Sim. max column") : "";
     if (!bom.rows.length) { table.innerHTML = `<tbody><tr><td class="bom-empty">No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.</td></tr></tbody>`; return; }
-    const tip = { sim: "Simulated worst case: resistor dissipation, capacitor peak voltage", partno: "Your order or manufacturer number; saved with the circuit" };
+    const tip = { sim: "Simulated worst case: dissipation (resistors, transistors, zeners), capacitor peak voltage, LED current", partno: "Your order or manufacturer number; saved with the circuit" };
     table.innerHTML = `<thead><tr>${BomLib.COLUMNS.map(c => `<th${tip[c.key] ? ` title="${tip[c.key]}"` : ""}>${c.title}</th>`).join("")}</tr></thead><tbody>` +
       bom.rows.map((r, i) => `<tr data-i="${i}"${r.ids.some(id => S.sel.comps.has(id)) ? ' class="sel"' : ""}>
         <td class="n">${r.item}</td><td class="n">${r.qty}</td><td class="mono">${esc(r.refs)}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.value)}</td>
@@ -1867,6 +2000,18 @@
         case "V": lines.push(`V${id} ${nd[0]} ${nd[1]} DC ${e.v}`); break;
         case "VSRC": lines.push(e.wave === "sine" ? `V${id} ${nd[0]} ${nd[1]} SIN(${e.offset || 0} ${e.amp} ${e.freq})` : `V${id} ${nd[0]} ${nd[1]} PULSE(${(e.offset || 0) - e.amp} ${(e.offset || 0) + e.amp} 0 ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0 : 0.5 / e.freq} ${1 / e.freq})`); break;
         case "D": lines.push(`D${id} ${nd[0]} ${nd[1]} DMOD_${id}`); lines.push(`.model DMOD_${id} D(Is=${e.is} N=${e.n})`); break;
+        case "BJT": {
+          const m = e.model, mn = `Q${m.pol > 0 ? "N" : "P"}_${(S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id}`.replace(/[^A-Za-z0-9_]/g, "_");
+          lines.push(`Q${id} ${nd.join(" ")} ${mn}`);
+          if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NPN" : "PNP"}(IS=${m.is} BF=${m.bf} BR=${m.br} NF=${m.nf || 1} VAF=${m.vaf} IKF=${m.ikf})`); }
+          break;
+        }
+        case "MOS": {
+          const m = e.model, mn = `M${m.pol > 0 ? "N" : "P"}_${(S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id}`.replace(/[^A-Za-z0-9_]/g, "_");
+          lines.push(`M${id} ${nd[0]} ${nd[1]} ${nd[2]} ${nd[2]} ${mn}`);
+          if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NMOS" : "PMOS"}(LEVEL=1 VTO=${m.vto} KP=${m.kp} LAMBDA=${m.lambda || 0})`); }
+          break;
+        }
         case "VDIODE": lines.push(`B${id}${e.part || ""} ${nd[0]} ${nd[1]} I=${e.perveance}*pwr(max(V(${nd[0]},${nd[1]}),0),1.5)`); break;
         case "XFMR": {
           const AL = e.lp / Math.pow(e.primaryTurns, 2), names = [];
@@ -1954,6 +2099,7 @@
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
     document.getElementById("btn-live").classList.toggle("active", S.sim.live);
     bind("btn-volts", () => { S.showVolts = !S.showVolts; document.getElementById("btn-volts").classList.toggle("active", S.showVolts); render(); });
+    bind("btn-amps", () => { S.showAmps = !S.showAmps; document.getElementById("btn-amps").classList.toggle("active", S.showAmps); render(); });
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
@@ -1976,6 +2122,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

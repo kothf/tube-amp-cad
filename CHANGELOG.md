@@ -6,6 +6,41 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.28.0] - 2026-10-09
+
+### Added
+- **Transistors and more semiconductors** in the Semiconductors palette, all
+  simulated with the rest of the circuit (DC, transient, steady state):
+  - NPN: 2N2222A, 2N3904, BC547B, BD139, MPSA42, MJE340. PNP: 2N2907A,
+    2N3906, BC557B, BD140, MPSA92, MJE350. Gummel-Poon model (gain, Early
+    voltage, high-current knee) with junction capacitances. The models for
+    2N2222A, 2N3904, 2N3906 and 2N2907A use the published SPICE parameters;
+    the others are set to their datasheet's typical gain.
+  - N-channel MOSFETs: 2N7000, BS170, IRF510, IRF820, IRF840, and the
+    depletion DN2540 and LND150 for current sources. P-channel: BS250,
+    IRF9610, IRF9640. Square-law model with body diode and gate
+    capacitances.
+  - Zener diodes 1N4733A … 1N5388B (5.1–200 V, 1 W and 5 W), and LEDs
+    (red, yellow, green, blue) for cathode bias.
+  - IEC 60617 symbols. The letter codes are VT for transistors, VD for
+    zeners and HL for LEDs.
+  - The inspector shows each transistor's operating point (Vce/Vds, Vbe/Vgs,
+    Ic/Id, Ib, hFE) and its dissipation against the rating. The checks flag
+    over-dissipation and voltage beyond Vceo / Vds. SPICE export writes Q
+    and M elements with their `.model` lines. The BOM lists the ratings and
+    the simulated dissipation.
+- **Current stickers on the wires.** Each run of wire shows its DC current
+  and direction (for example "↓1.38mA") next to the voltage tag. The
+  *Currents* button turns them on and off, and hovering a wire shows its
+  current in the status bar. Currents come from every part's terminal
+  currents, averaged over the window for rectified supplies, and are passed
+  along the wiring, so a junction shows how the current splits.
+
+### Fixed
+- The solver could accept an iteration in which a diode's junction voltage
+  had just been limited as converged. A diode could then stay off when it
+  should conduct (seen with LEDs).
+
 ## [3.27.1] - 2026-10-09
 
 ### Changed

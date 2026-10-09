@@ -361,3 +361,74 @@ test("power-on transient: RC charge from cold follows 1 - e^(-t/RC), probes are 
   // the single-node probe also sees the 1 Ω resistor's drop (current x 1 Ω), a few mV more early on
   assert.ok(r.max[1][0] > r.max[0][0], "a probe against ground differs from the differential one");
 });
+
+// --- Semiconductors -----------------------------------------------------------
+const bisect = (f, lo, hi) => { for (let k = 0; k < 200; k++) { const m = (lo + hi) / 2; if (f(lo) * f(m) <= 0) hi = m; else lo = m; } return (lo + hi) / 2; };
+
+test("BJT: 2N3904 common emitter matches a nested bisection of the Gummel-Poon equations", () => {
+  const m = { pol: 1, is: 6.734e-15, bf: 416.4, br: 0.7371, nf: 1, vaf: 74.03, ikf: 0.06678 }, Vcc = 12, Rb = 1e6, Rc = 2200, VT = 0.025852;
+  // the collector voltage for a given base voltage, then the base voltage that the base resistor feeds
+  const vcFor = vb => bisect(vc => Vcc - vc - Rc * E.Semi.bjt([vc, vb, 0], m)[0], -1, Vcc + 1);
+  const vb = bisect(v => (Vcc - v) / Rb - E.Semi.bjt([vcFor(v), v, 0], m)[1], 0.3, 0.9), vc = vcFor(vb);
+  const r = E.simulate({ nodeCount: 4, elements: [{ id: "v", kind: "V", nodes: [1, 0], v: Vcc }, { id: "rb", kind: "R", nodes: [1, 2], r: Rb },
+    { id: "rc", kind: "R", nodes: [1, 3], r: Rc }, { id: "q", kind: "BJT", nodes: [3, 2, 0], model: m }] });
+  assert.ok(r.ok, r.error);
+  near(r.dc.nodes[2], vb, 1e-4, "Vbe"); near(r.dc.nodes[3], vc, 1e-3, "Vce");
+  const q = r.dc.devices.q.main;
+  near(q.ic, (Vcc - vc) / Rc, 1e-3, "Ic");
+  // forward active: Ic ≈ Is·e^(Vbe/Vt)·(1 + Vcb/VAF), reduced by the high-injection knee 2/(1 + √(1 + 4·If/IKF))
+  const If = m.is * Math.exp(vb / VT);
+  near(q.ic, If * (1 + (vc - vb) / m.vaf) * 2 / (1 + Math.sqrt(1 + 4 * If / m.ikf)), 0.01, "Ic from the exponential law");
+});
+
+test("PNP current source on a 300 V rail sets (Vref − Vbe)/Re", () => {
+  const m = { pol: -1, is: 1e-13, bf: 100, br: 4, nf: 1, vaf: 200, ikf: 0.3 };
+  // base held 5 V below the rail by a divider, 1 kΩ emitter resistor to the rail, 47 kΩ load
+  const r = E.simulate({ nodeCount: 5, elements: [{ id: "v", kind: "V", nodes: [1, 0], v: 300 }, { id: "re", kind: "R", nodes: [1, 2], r: 1000 },
+    { id: "ra", kind: "R", nodes: [1, 3], r: 1000 }, { id: "rb", kind: "R", nodes: [3, 0], r: 59000 }, { id: "q", kind: "BJT", nodes: [4, 3, 2], model: m },
+    { id: "rl", kind: "R", nodes: [4, 0], r: 47000 }] });
+  assert.ok(r.ok, r.error);
+  const q = r.dc.devices.q.main, ie = (300 - r.dc.nodes[2]) / 1000;
+  assert.ok(q.vbe > 0.55 && q.vbe < 0.75, `Veb ${q.vbe}`);
+  near(ie, (300 - r.dc.nodes[3] - q.vbe) / 1000, 1e-6, "emitter current = (Vref − Veb)/Re");
+  near(q.ic, ie * m.bf / (m.bf + 1), 0.05, "Ic = α·Ie");
+});
+
+test("MOSFET: source follower with source resistor solves the square law", () => {
+  const m = { pol: 1, vto: 3.8, kp: 0.9, lambda: 0 }, Vg = 100, Rs = 10e3;
+  const r = E.simulate({ nodeCount: 4, elements: [{ id: "v", kind: "V", nodes: [1, 0], v: 300 }, { id: "vg", kind: "V", nodes: [2, 0], v: Vg },
+    { id: "m", kind: "MOS", nodes: [1, 2, 3], model: m }, { id: "rs", kind: "R", nodes: [3, 0], r: Rs }] });
+  assert.ok(r.ok, r.error);
+  // Id = Kp/2·(Vg − Id·Rs − Vto)²  ->  quadratic in Id
+  const a = m.kp / 2 * Rs * Rs, b = -(m.kp * Rs * (Vg - m.vto) + 1), c = m.kp / 2 * (Vg - m.vto) ** 2;
+  const id = (-b - Math.sqrt(b * b - 4 * a * c)) / (2 * a);
+  near(r.dc.devices.m.main.id, id, 1e-4, "Id");
+  near(r.dc.nodes[3], id * Rs, 1e-4, "source voltage");
+});
+
+test("MOSFET: depletion part conducts at Vgs = 0, P-channel mirrors N-channel", () => {
+  const dep = { pol: 1, vto: -2, kp: 0.15, lambda: 0 };
+  const r = E.simulate({ nodeCount: 3, elements: [{ id: "v", kind: "V", nodes: [1, 0], v: 100 }, { id: "rd", kind: "R", nodes: [1, 2], r: 1e5 },
+    { id: "m", kind: "MOS", nodes: [2, 0, 0], model: dep }] });
+  assert.ok(r.ok && r.dc.devices.m.main.id > 0.99e-3, "Vgs = 0 conducts (load-limited to ~1 mA)");
+  const n = E.Semi.mos([50, 6, 0], { pol: 1, vto: 3, kp: 1, lambda: 0.01 }), p = E.Semi.mos([-50, -6, 0], { pol: -1, vto: -3, kp: 1, lambda: 0.01 });
+  near(-p[0], n[0], 1e-12, "mirrored drain current");
+});
+
+test("terminal currents obey KCL at every node, also averaged over a rectifier's window", () => {
+  const kcl = (cur, nodeCount) => { const s = new Array(nodeCount).fill(0); for (let k = 0; k < cur.length; k += 3) s[cur[k + 1]] += cur[k + 2]; return s; };
+  // tube stage with a BJT follower
+  const t = tube("12AX7"), bjt = { pol: 1, is: 1e-13, bf: 100, br: 4, nf: 1, vaf: 200, ikf: 0.3 };
+  let r = E.simulate({ nodeCount: 5, elements: [{ id: "b", kind: "V", nodes: [1, 0], v: 300 }, { id: "ra", kind: "R", nodes: [1, 2], r: 100e3 },
+    { id: "v", kind: "TRIODE", nodes: [2, 0, 3], model: t.koren.Triode }, { id: "rk", kind: "R", nodes: [3, 0], r: 1500 },
+    { id: "q", kind: "BJT", nodes: [1, 2, 4], model: bjt }, { id: "re", kind: "R", nodes: [4, 0], r: 47e3 }] });
+  assert.ok(r.ok, r.error);
+  kcl(r.dc.currents, 5).slice(1).forEach((s, i) => assert.ok(Math.abs(s) < 1e-6, `node ${i + 1}: ${s} A`));
+  // half-wave rectifier: the diode's average current equals the load's (the capacitor's averages to zero)
+  r = E.simulate({ nodeCount: 3, elements: [{ id: "s", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 50, amp: 100, dcValue: 95 },
+    { id: "d", kind: "D", nodes: [1, 2], is: 7e-9, n: 1.8 }, { id: "c", kind: "C", nodes: [2, 0], c: 100e-6 }, { id: "r", kind: "R", nodes: [2, 0], r: 10e3 }] }, { budgetMs: 20000 });
+  assert.ok(r.ok && r.dcAveraged, r.error);
+  const at = (id, node) => { for (let k = 0; k < r.dc.currents.length; k += 3) if (r.dc.currents[k] === id && r.dc.currents[k + 1] === node) return r.dc.currents[k + 2]; };
+  near(at("d", 1), at("r", 2), 0.01, "average diode current = load current");
+  near(at("r", 2), r.dc.nodes[2] / 10e3, 1e-6, "load current = average voltage / R");
+});

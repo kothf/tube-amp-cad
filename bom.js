@@ -33,6 +33,10 @@
       case "ptx_cat": { const m = L.POWER_TX[p.model] || {}; return ["Power transformer", m.name || p.model, m.rated + "; heaters " + m.heaters]; }
       case "tube": { const t = L.tubeByName(p.tube); return ["Vacuum tube" + (t && t.type ? ", " + t.type.toLowerCase() : ""), p.tube, t && t.socket ? t.socket : ""]; }
       case "diode": return ["Diode", p.model, ""];
+      case "zener": { const z = L.ZENERS[p.model] || {}; return ["Zener diode", p.model, z.bv + " V, " + z.p + " W"]; }
+      case "led": { const l = L.LEDS[p.color] || {}; return ["LED, " + p.color, "", l.vf + " V at 10 mA, " + l.i * 1000 + " mA max"]; }
+      case "npn": case "pnp": { const m = L.BJTS[p.model]; return ["Transistor, " + c.type.toUpperCase(), p.model, m ? L.semiRating(m) : ""]; }
+      case "nmos": case "pmos": { const m = L.MOSFETS[p.model], dep = m && (c.type === "nmos" ? m.vto < 0 : m.vto > 0); return ["MOSFET, " + (c.type === "nmos" ? "N" : "P") + "-channel" + (dep ? ", depletion" : ""), p.model, m ? L.semiRating(m) : ""]; }
       case "vdc": return ["DC supply (bench)", f(p.v, "V"), ""];
       case "siggen": return ["Signal generator (bench)", "", ""];
       case "mains": return ["AC mains", p.vrms + " V " + p.freq + " Hz", ""];
