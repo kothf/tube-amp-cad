@@ -218,18 +218,28 @@ The **Board ↗** button opens the PCB layout of the circuit. The board takes it
 parts and connections from the schematic, and the CAD saves the layout inside
 the circuit file, so one file holds both.
 
-- **Footprints** chosen for each part, through-hole as valve amplifiers are
-  built:
-  - resistors by power rating (10.16 mm lead spacing at ¼ W up to 40.64 mm at
-    10 W), film boxes by value, electrolytics by size;
-  - transistors in TO-92, TO-18, TO-126 and TO-220 with each part's own pin
-    order (pinouts that differ between makers are flagged);
+- **Footprints**: every part has a through-hole footprint, chosen from its
+  values, as valve amplifiers are built:
+  - resistors by power rating (10.16 mm lead spacing at ¼ W up to 50.8 mm at
+    20 W);
+  - capacitors: film boxes by value, ceramic disc / silver mica for the
+    small values, axial film;
+  - electrolytics: radial by size, snap-in cans (Ø22–35 mm) and axial cans;
+  - diodes and zeners from DO-35 to DO-201, 3 and 5 mm LEDs;
+  - transistors in TO-92, TO-18, TO-126, TO-220 and TO-247 with each part's
+    own pin order (pinouts that differ between makers are flagged);
+  - pots (9, 16 and 24 mm) and a 3296W trimmer;
   - real tube sockets (B9A noval, B7G, Magnoval, octal, UX4), drawn from the
     component side; both sections of a dual tube share one socket, each on
     its own pins;
-  - wire pads for chassis-mounted parts: transformers, chokes, speakers,
-    supplies, input jacks.
+  - board-mount EI transformers and chokes (EI30 to EI96, primary on one
+    side, secondary on the other), with pins named as in the schematic;
+  - toggle switches (SPDT, DPDT for a two-section switch), screw terminals
+    (5.08 mm, 7.5 mm for mains), RCA, 3.5 mm and 6.35 mm jacks.
 
+  Dimensions are typical: check them against the part you buy. Parts that
+  live on the chassis (transformers, chokes, speaker, pots) can instead get
+  wire pads or a screw terminal.
   Every part's footprint can be changed in the inspector.
 - **Placement.** New parts wait in a row below the board. Drag them on, or
   *Place all on the board* for a first arrangement. <kbd>R</kbd> rotates,

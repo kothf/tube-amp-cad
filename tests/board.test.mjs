@@ -36,7 +36,7 @@ test("every footprint option of every part and every tube resolves to pads", () 
       : type === "nmos" || type === "pmos" ? Object.keys(L.MOSFETS).filter(k => (L.MOSFETS[k].pol > 0) === (type === "nmos")).map(model => ({ model })) : type === "zener" ? Object.keys(L.ZENERS).map(model => ({ model })) : [{}];
     for (const params of variants) {
       const g = B.physicalParts({ parts: [part("x", type, "X1", params, Object.fromEntries(L.LIB[type].pins({ params: Object.assign({}, L.LIB[type].defaults, params) }).map(p => [p.id, 1])))] })[0];
-      for (const name of g.options) { const f = B.footprint(name, ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"].slice(0, +(/WIRE-(\d+)/.exec(name) || [])[1] || 0)); assert.ok(f && f.pads.length > 0, `${type} ${JSON.stringify(params)}: ${name}`); }
+      for (const name of g.options) { const f = B.footprint(name, ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"].slice(0, +(/(?:WIRE|TERM-[\d.]+)-(\d+)$/.exec(name) || [])[1] || 0)); assert.ok(f && f.pads.length > 0, `${type} ${JSON.stringify(params)}: ${name}`); }
     }
   }
 });
@@ -71,7 +71,9 @@ test("transistor pads follow the part's pin order (MPSA42: E-B-C from pad 1)", (
   assert.equal(m.parts.find(g => g.ref === "VT1").fp.name, "TO-92-EBC");
   assert.deepEqual(q.map(p => [p.num, p.name, p.net]), [["1", "E", 8], ["2", "B", 2], ["3", "C", 1]]);
   assert.equal(m.parts.find(g => g.ref === "R1").fp.name, "AXIAL-12.7", "a 0.5 W resistor gets 12.7 mm lead spacing");
-  assert.equal(m.parts.find(g => g.ref === "T1").fp.name, "WIRE-4", "the output transformer is wired from the chassis");
+  const t1 = m.parts.find(g => g.ref === "T1");
+  assert.equal(t1.fp.name, "XFMR-EI66-SE", "the output transformer gets a board-mount EI footprint");
+  assert.ok(t1.options.includes("WIRE-4") && t1.options.includes("TERM-5.08-4"), "or wire pads / a screw terminal to a chassis-mounted one");
   assert.deepEqual(m.pads.filter(p => p.ref === "T1").map(p => p.name), ["P1", "P2", "S1", "S2"]);
   assert.equal(m.names[1], "B+"); assert.equal(m.names[0], "GND");
 });
@@ -133,6 +135,7 @@ test("rotation and the bottom side move pads as the footprint turns and mirrors"
 test("design rules: edge clearance (rounded corners too), holes, rings, drills, minimum and class widths", () => {
   const board = B.newBoard(); B.sync(board, NETLIST);
   Object.values(board.parts).forEach((p, i) => Object.assign(p, { x: 20 + (i % 4) * 30, y: 20 + Math.floor(i / 4) * 30 }));
+  Object.values(board.parts).forEach(p => { if (p.fp.startsWith("XFMR")) p.fp = "WIRE-4"; });   // the transformer wired from the chassis
   board.outline = { w: 160, h: 100, r: 10 };
   // the rounded corner: the board's corner point is outside, its centre is inside
   assert.ok(B.edgeDist(0.5, 0.5, board.outline) < 0 && B.edgeDist(10, 10, board.outline) > 0);
@@ -176,4 +179,28 @@ test("board setup: corner mounting holes sit inset from each corner; an older bo
   assert.deepEqual(holes.map(h => [h.x, h.y]), [[5, 5], [95, 5], [5, 55], [95, 55]]);
   const old = B.normaliseBoard({ outline: { w: 80, h: 50 }, rules: { clearance: 0.8 }, parts: {}, tracks: [] });
   assert.deepEqual([old.outline.r, old.rules.clearance, old.rules.hvVolts, old.holes.length, old.texts.length, old.rules.checks.edge, old.stackup.thickness], [0, 0.8, 60, 0, 0, true, 1.6]);
+});
+
+test("every part has a through-hole footprint, and every footprint it offers takes all its pins", () => {
+  const L = globalThis.CadLib.LIB;
+  for (const [type, def] of Object.entries(L)) {
+    if (["note", "frame", "ground", "offsheet", "scope"].includes(type)) continue;
+    const params = { ...(def.defaults || {}) }, pins = (typeof def.pins === "function" ? def.pins({ params }) : def.pins);
+    for (const sections of type === "switch" ? [1, 2] : [1]) {
+      const nl = { parts: Array.from({ length: sections }, (_, k) => ({ id: "c" + k, type, label: sections > 1 ? `X1.${k + 1}` : "X1", params, pins: pins.map((p, i) => ({ id: p.id, net: k * 10 + i + 1 })) })) };
+      const [g] = B.physicalParts(nl);
+      if (type !== "tube") assert.ok(!/^WIRE-/.test(g.options[0]), `${type}: a real footprint by default, not wire pads (${g.options[0]})`);
+      for (const o of g.options) {
+        const f = B.footprint(o, g.members.flatMap(m => m.pins.map(p => (sections > 1 ? m.label.split(".").pop() + "." : "") + p.id)));
+        assert.ok(f, `${type}: ${o}`);
+        assert.equal(new Set(f.pads.map(p => p.num)).size, f.pads.length, `${o}: pad numbers unique`);
+        if (type === "tube") continue;
+        const got = new Set([...B.padMap(g, f).values()].flat().map(x => x.comp + ":" + x.pin));
+        g.members.forEach(m => m.pins.forEach(p => assert.ok(got.has(m.id + ":" + p.id), `${type} ×${sections} on ${o}: pin ${p.id} has a pad`)));
+      }
+    }
+  }
+  const dpdt = B.footprint("TOGGLE-DPDT");
+  assert.deepEqual(dpdt.pads.map(p => p.name), ["1.A", "1.C", "1.B", "2.A", "2.C", "2.B"]);
+  assert.deepEqual(B.footprint("XFMR-EI76-PP").pads.map(p => p.name), ["P1", "U1", "CT", "U2", "P2", "S1", "S2"]);
 });
