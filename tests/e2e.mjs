@@ -927,10 +927,10 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await cad.reload(); await cad.waitForFunction(() => window.TubeCAD); await cad.waitForTimeout(300);
   const nav = await cad.evaluate(() => [document.getElementById("sheet-nav").value, TubeCAD.frames()[0].id]);
   check(two >= 2 && nav[0] === nav[1], `a circuit with ${two} sheets opens on sheet 1, not on all of them at once`);
-  await cad.evaluate(() => TubeCAD.runSim("full"));
-  const texts = [];
-  for (let i = 0; i < 40; i++) { const t = await cad.evaluate(() => [document.getElementById("btn-sim").textContent, TubeCAD.state.sim.busy]); if (!t[1]) break; texts.push(t[0]); await cad.waitForTimeout(25); }
+  // record every text the button shows, so a run that finishes at once is caught too
+  await cad.evaluate(() => { const b = document.getElementById("btn-sim"); window.__simTexts = []; new MutationObserver(() => window.__simTexts.push(b.textContent)).observe(b, { childList: true, characterData: true, subtree: true }); TubeCAD.runSim("full"); });
   await cad.waitForFunction(() => !TubeCAD.state.sim.busy, null, { timeout: 30000 });
+  const texts = await cad.evaluate(() => window.__simTexts);
   check(texts.some(t => /■ Stop · \d+ %/.test(t)) && /^▶ Simulate$/.test(await cad.textContent("#btn-sim")), `▶ Simulate shows the run's progress (${texts[texts.length - 1] || "—"}) and goes back when it is done`);
 }
 

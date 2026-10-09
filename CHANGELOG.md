@@ -6,7 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.35.0] - 2026-10-09
+## [3.35.1] - 2026-10-09
+
+3.35.0 was tagged but never published: a timing-dependent test failed on the
+release machine. 3.35.1 makes that test independent of timing and contains
+the same changes:
 
 ### Added
 - **Logarithmic frequency axis** in the spectrum analyzer (*Frequency axis*
