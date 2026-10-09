@@ -6,6 +6,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.33.0] - 2026-10-09
+
+### Added
+- **Resizable side panels in every window:** the CAD's parts palette and
+  inspector, the curve tracer's tube list and readout, and the oscilloscope's
+  and spectrum analyzer's control panels. Drag a panel's edge to resize it,
+  or double-click the edge to reset it. Each window remembers its widths. A
+  panel stops before the schematic or screen gets too narrow (360 px). On
+  narrow screens, where the panels stack, the layout stays as before.
+- **D** duplicates the selection, like Ctrl+D.
+
+### Fixed
+- **Keyboard shortcuts work in any keyboard layout.** With a Russian (or
+  other non-Latin) layout active, R, M, W, V, F, B and the Ctrl shortcuts
+  (Z, Y, S, O, C, V, D, A) did nothing, because they were matched on the
+  typed character ("к" instead of "r"). They now go by the key's position,
+  as printed on a US keyboard.
+
 ## [3.32.0] - 2026-10-09
 
 ### Added

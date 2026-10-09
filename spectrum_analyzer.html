@@ -77,6 +77,7 @@
   </main>
 
   <script src="windows.js?v=dev"></script>
+  <script src="panels.js?v=dev"></script>
   <script src="instrument-common.js?v=dev"></script>
   <script src="scope-math.js?v=dev"></script>
   <script src="markers.js?v=dev"></script>
@@ -287,6 +288,9 @@
     I.bindScopeSelect($("scope-select"));
     I.onUpdate(draw);
     window.addEventListener("resize", draw);
+    // control panel width: drag its left edge (double-click resets)
+    Panels.columns(document.querySelector("main"), { key: "spectrum", minViewport: 900, minCenter: 360,
+      cols: [{ index: 1, side: "right", def: 320, min: 240, max: 640 }], template: w => `1fr ${w[0]}px` });
     setInterval(() => { if (!I.result) draw(); }, 1500);
     draw();
     window.Spectrum = { state: S, draw, linePoint: f => markerPos({ f }), markers: () => pick.list.map(m => ({ ...m, pos: markerPos(m), reading: reading(m) })) };

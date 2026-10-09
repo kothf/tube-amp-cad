@@ -956,27 +956,29 @@
   function onKeyDown(e) {
     const tag = (e.target.tagName || "").toUpperCase();
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-    const k = e.key, ctrl = e.ctrlKey || e.metaKey;
+    const k = e.key, ctrl = e.ctrlKey || e.metaKey, L = /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(k).toLowerCase();
     if (k === " ") { S.spaceDown = true; canvas.style.cursor = "grab"; e.preventDefault(); return; }
     if (k === "Escape") { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else { S.sel.comps.clear(); S.sel.wires.clear(); updateInspector(); render(); } }
     else if ((k === "Delete" || k === "Backspace")) { deleteSelection(); e.preventDefault(); }
-    else if (k === "r" || k === "R") { if (!ctrl) rotateSelection(); }
-    else if ((k === "m" || k === "M") && !ctrl) mirrorSelection();
-    else if (k === "w" || k === "W") setTool(S.tool === "wire" ? "select" : "wire");
-    else if (k === "v" && !ctrl) setTool("select");
-    else if (k === "f" || k === "F") fitCurrent();
-    else if ((k === "b" || k === "B") && !ctrl) toggleBom();
+    // letters by physical key (e.code), so the shortcuts work in any keyboard layout
+    // (with a Cyrillic layout e.key is "к" for R); other keys by e.key
+    else if (L === "r") { if (!ctrl) rotateSelection(); }
+    else if (L === "m" && !ctrl) mirrorSelection();
+    else if (L === "w" && !ctrl) setTool(S.tool === "wire" ? "select" : "wire");
+    else if (L === "v" && !ctrl) setTool("select");
+    else if (L === "f" && !ctrl) fitCurrent();
+    else if (L === "b" && !ctrl) toggleBom();
+    else if (L === "d") { if (copySelection()) paste(40, 40); e.preventDefault(); }   // D or Ctrl+D duplicates
     else if (ctrl && k === "Enter") { runSim("full"); e.preventDefault(); }
-    else if (ctrl && (k === "s" || k === "S")) { e.shiftKey ? saveFileAs() : saveFile(); e.preventDefault(); }
-    else if (ctrl && (k === "o" || k === "O")) { openDialog(); e.preventDefault(); }
-    else if (ctrl && (k === "z" || k === "Z")) { e.shiftKey ? redo() : undo(); e.preventDefault(); }
-    else if (ctrl && (k === "y" || k === "Y")) { redo(); e.preventDefault(); }
-    else if (ctrl && (k === "c" || k === "C")) { copySelection(); }
-    else if (ctrl && (k === "v" || k === "V")) { paste(40, 40); e.preventDefault(); }
-    else if (ctrl && (k === "d" || k === "D")) { if (copySelection()) paste(40, 40); e.preventDefault(); }
-    else if (ctrl && (k === "a" || k === "A")) { S.comps.forEach(c => S.sel.comps.add(c.id)); S.wires.forEach(w => S.sel.wires.add(w.id)); updateInspector(); render(); e.preventDefault(); }
-    else if (k === "+" || k === "=") zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1.2);
-    else if (k === "-") zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1 / 1.2);
+    else if (ctrl && L === "s") { e.shiftKey ? saveFileAs() : saveFile(); e.preventDefault(); }
+    else if (ctrl && L === "o") { openDialog(); e.preventDefault(); }
+    else if (ctrl && L === "z") { e.shiftKey ? redo() : undo(); e.preventDefault(); }
+    else if (ctrl && L === "y") { redo(); e.preventDefault(); }
+    else if (ctrl && L === "c") { copySelection(); }
+    else if (ctrl && L === "v") { paste(40, 40); e.preventDefault(); }
+    else if (ctrl && L === "a") { S.comps.forEach(c => S.sel.comps.add(c.id)); S.wires.forEach(w => S.sel.wires.add(w.id)); updateInspector(); render(); e.preventDefault(); }
+    else if (k === "+" || k === "=" || e.code === "NumpadAdd" || e.code === "Equal") zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1.2);
+    else if (k === "-" || e.code === "NumpadSubtract" || e.code === "Minus") zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1 / 1.2);
   }
   function onKeyUp(e) { if (e.key === " ") { S.spaceDown = false; canvas.style.cursor = ""; } }
 
@@ -1530,7 +1532,7 @@
       if (c) buildCompInspector(host, c);
       else if (S.sel.comps.size || S.sel.wires.size) {
         host.innerHTML = `<div class="insp-title">${S.sel.comps.size} part(s), ${S.sel.wires.size} wire segment(s)</div>
-          <p class="insp-help">Drag to move · R rotates parts · Del deletes · Ctrl+D duplicates.<br>Drag a wire segment sideways to move it; connected wires follow.</p>`;
+          <p class="insp-help">Drag to move · R rotates parts · Del deletes · D duplicates · M mirrors.<br>Drag a wire segment sideways to move it; connected wires follow.</p>`;
       } else buildCircuitPanel(host);
     }
     const live = document.getElementById("insp-live");
@@ -2292,6 +2294,10 @@
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("resize", render);
+    // palette and inspector widths: drag the edges (double-click resets)
+    Panels.columns(document.querySelector("main"), { key: "cad", minViewport: 900, minCenter: 360,
+      cols: [{ index: 0, side: "left", def: 210, min: 150, max: 480 }, { index: 2, side: "right", def: 280, min: 200, max: 700 }],
+      template: w => `${w[0]}px 1fr ${w[1]}px` });
 
     buildPalette();
     // File menu
