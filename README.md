@@ -24,6 +24,7 @@ Firefox is not tested.
 - [Measuring on the schematic](#measuring-on-the-schematic)
 - [Drawings, documents and exports](#drawings-documents-and-exports)
 - [Instruments](#instruments)
+- [Board Design](#board-design)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [How the simulator works](#how-the-simulator-works)
 - [Accuracy](#accuracy)
@@ -209,6 +210,65 @@ Firefox is not tested.
 The windows talk to each other in the browser. The CAD broadcasts each result,
 and the instruments only listen, so you can arrange them on several monitors.
 
+## Board Design
+
+![Board Design: two 12AX7 stages placed on a 140 × 84 mm board with rounded corners and four M3 holes, the ratsnest still to route, layers and rules on the right](docs/board.png)
+
+The **Board ↗** button opens the PCB layout of the circuit. The board takes its
+parts and connections from the schematic, and the CAD saves the layout inside
+the circuit file, so one file holds both.
+
+- **Footprints** chosen for each part, through-hole as valve amplifiers are
+  built:
+  - resistors by power rating (10.16 mm lead spacing at ¼ W up to 40.64 mm at
+    10 W), film boxes by value, electrolytics by size;
+  - transistors in TO-92, TO-18, TO-126 and TO-220 with each part's own pin
+    order (pinouts that differ between makers are flagged);
+  - real tube sockets (B9A noval, B7G, Magnoval, octal, UX4), drawn from the
+    component side; both sections of a dual tube share one socket, each on
+    its own pins;
+  - wire pads for chassis-mounted parts: transformers, chokes, speakers,
+    supplies, input jacks.
+
+  Every part's footprint can be changed in the inspector.
+- **Placement.** New parts wait in a row below the board. Drag them on, or
+  *Place all on the board* for a first arrangement. <kbd>R</kbd> rotates,
+  <kbd>M</kbd> moves a part to the bottom side. When the schematic changes, a
+  banner offers the update; placed parts keep their spot.
+- **Routing.** <kbd>X</kbd>: click a pad, click the corners (45° bends), end on
+  a pad of the same net. <kbd>V</kbd> changes layer with a via. The track width
+  comes from the net's class. The ratsnest shows what is still to route.
+- **Tools:** Select, Route, Via, Text (silkscreen or copper), Mounting hole,
+  Measure. The board's corner handle resizes it.
+- **Design rules** (*Rules…*):
+  - clearances, with a separate high-voltage clearance for nets above a
+    threshold voltage;
+  - the board-edge clearance;
+  - signal and power track widths and the minimum track;
+  - via drill and pad, minimum drill, minimum annular ring;
+  - which checks run.
+
+  **Net classes** sort every net into Signal, Power or HV: automatically, from
+  its simulated DC voltage (above 60 V by default is HV) and GND being Power,
+  or as you set it per net.
+- **Design-rule check**, live:
+  - clearance between nets and to mounting holes;
+  - shorts;
+  - copper or parts over or near the board edge;
+  - annular rings, drills, minimum and class track widths;
+  - parts not placed yet;
+  - pinouts to check.
+
+  Click an entry to go to it.
+- **Board setup** (*Setup…*): outline size, corner radius, mounting holes (one
+  in each corner, M2.5–M4, chosen inset), board thickness and copper weight.
+- **Layers:** top and bottom copper, both silkscreens, outline, mounting holes,
+  ratsnest and rule markers. Each can be shown or hidden, or shown alone
+  (*only*). Click a copper layer to make it active, and dim the inactive
+  copper with the slider.
+- **Export:** the board drawing as SVG at 1:1 mm, the top copper, the bottom
+  copper mirrored (for toner transfer), and the board file as JSON.
+
 ## Keyboard shortcuts
 
 | Key | Action |
@@ -225,6 +285,8 @@ and the instruments only listen, so you can arrange them on several monitors.
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd> | save / save as / open |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | simulate until settled |
 | <kbd>F1</kbd> or <kbd>?</kbd> | help |
+
+In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Backspace</kbd> takes back the last corner while routing.
 
 ## How the simulator works
 

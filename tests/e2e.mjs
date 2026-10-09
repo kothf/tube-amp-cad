@@ -1136,6 +1136,111 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(/I →\d/.test(hov) && /mA DC/.test(hov), `hovering the rail shows its current ("${hov.trim()}")`);
 }
 
+// --- Board Design ------------------------------------------------------------------
+{
+  const [bd] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-open-board")]);
+  bd.on("pageerror", e => errors.push(`board: ${e.message}`));
+  await bd.waitForFunction(() => window.BoardApp && BoardApp.state.model, null, { timeout: 10000 });
+  const m0 = await bd.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.map(g => `${g.ref}:${g.fp.name}`), unplaced: S.drc.filter(d => d.kind === "unplaced").length, status: document.getElementById("status").textContent,
+    anode: (S.model.pads.find(p => p.ref === "VL1" && p.num === "6") || {}).netName, cathode: (S.model.pads.find(p => p.ref === "VL1" && p.num === "8") || {}).netName }; });
+  check(m0.parts.length === 9 && m0.parts.includes("VL1:SOCKET-B9A") && m0.parts.includes("VT1:TO-126-ECB") && m0.parts.includes("VD1:DIODE-10.16") && m0.parts.includes("HL1:LED-5MM") && m0.parts.includes("G1:WIRE-2") && /Linked to CAD/.test(m0.status),
+    `the Board window takes the schematic's parts with footprints (${m0.parts.join(", ")})`);
+  check(m0.unplaced === 9 && m0.anode && m0.anode !== m0.cathode, `new parts wait below the board; the 12AX7's pins carry the schematic's nets (anode ${m0.anode}, cathode ${m0.cathode})`);
+  await cad.waitForFunction(() => TubeCAD.state.board && Object.keys(TubeCAD.state.board.parts).length === 9, null, { timeout: 5000 }).catch(() => {});
+  check(await cad.evaluate(() => !!TubeCAD.state.board && Object.keys(TubeCAD.state.board.parts).length === 9), "the CAD keeps the board with the circuit");
+  // place everything, then put R1 straight above the anode pin (6), so the track drops onto it clear of the other pins
+  await bd.click("#btn-arrange");
+  await bd.evaluate(() => { const S = BoardApp.state; S.board.outline.h = 160; const k = r => S.model.parts.find(g => g.ref === r).key; Object.assign(S.board.parts[k("VL1")], { x: 70, y: 130, rot: 0 }); const p6 = BoardCore.footprint("SOCKET-B9A").pads[5]; Object.assign(S.board.parts[k("R1")], { x: 70 + p6.x - 5.08, y: 100, rot: 0 }); BoardApp.commit(); BoardApp.fit(); });
+  await bd.waitForTimeout(150);
+  const before = await bd.evaluate(() => ({ un: BoardApp.state.conn.unrouted, placed: BoardApp.state.drc.filter(d => d.kind === "unplaced").length }));
+  // route R1 pad 2 to the anode (pin 6) with the mouse: X, click, click
+  const cv = await bd.locator("#pcb").boundingBox(), sp = (ref, num) => bd.evaluate(([ref, num]) => { const p = BoardApp.state.model.pads.find(q => q.ref === ref && q.num === num); return BoardApp.toScreen(p.x, p.y); }, [ref, num]);
+  const a = await sp("R1", "2"), b = await sp("VL1", "6");
+  await bd.locator("#pcb").focus(); await bd.keyboard.press("x");
+  await bd.mouse.click(cv.x + a[0], cv.y + a[1]); await bd.mouse.move(cv.x + b[0], cv.y + b[1], { steps: 4 }); await bd.mouse.click(cv.x + b[0], cv.y + b[1]);
+  await bd.waitForTimeout(150);
+  const after = await bd.evaluate(() => { const S = BoardApp.state, it = S.conn.items.find(x => x.kind === "track"); return { un: S.conn.unrouted, tracks: S.board.tracks.length, net: it && S.model.names[it.net], shorts: S.conn.shorts.length }; });
+  check(before.placed === 0 && after.tracks >= 1 && after.un === before.un - 1 && after.net === m0.anode && !after.shorts, `routing a track with the mouse joins R1 to the anode on ${after.net}: ${before.un} → ${after.un} connections to route`);
+  await cad.waitForFunction(() => TubeCAD.state.board && TubeCAD.state.board.tracks.length >= 1, null, { timeout: 5000 }).catch(() => {});
+  check(await cad.evaluate(() => TubeCAD.state.board.tracks.length >= 1 && JSON.parse(localStorage.getItem("tubecad_board_v1")).tracks.length >= 1), "the track is saved with the circuit (CAD and browser storage)");
+  // a track from the anode to the grid is a short; undo takes it away
+  await bd.evaluate(() => { const S = BoardApp.state, p6 = S.model.pads.find(p => p.ref === "VL1" && p.num === "6"), p7 = S.model.pads.find(p => p.ref === "VL1" && p.num === "7"); S.board.tracks.push({ layer: "B.Cu", w: 1, pts: [[p6.x, p6.y], [p7.x, p7.y]] }); BoardApp.commit(); });
+  const shortTxt = await bd.textContent("#drc");
+  await bd.keyboard.press("Control+z"); await bd.waitForTimeout(100);
+  check(/Short between/.test(shortTxt) && await bd.evaluate(() => BoardApp.state.conn.shorts.length === 0 && BoardApp.state.board.tracks.length === 1), "a track joining two nets is reported as a short; Ctrl+Z removes it");
+  // the board survives a reload of its window (it comes back from the CAD)
+  await bd.waitForTimeout(500);
+  await bd.reload(); await bd.waitForFunction(() => window.BoardApp && BoardApp.state.model, null, { timeout: 10000 });
+  check(await bd.evaluate(() => BoardApp.state.board.tracks.length === 1 && BoardApp.state.drc.filter(d => d.kind === "unplaced").length === 0), "reopening the Board window brings the layout back from the CAD");
+  // export: the board drawing as SVG
+  await bd.click("#btn-export");
+  const [dl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-svg")]);
+  const svg = (await readFile(await dl.path())).toString();
+  check(/<svg[^>]+width="[\d.]+mm"/.test(svg) && /<polyline/.test(svg) && (svg.match(/<circle/g) || []).length > 20, `the board exports as an SVG drawing at 1:1 mm (${dl.suggestedFilename()})`);
+  // a new part in the schematic: the board offers it
+  await cad.evaluate(() => { const S = TubeCAD.state, c = TubeCAD.makeComp("resistor", { r: 1e3 }, 1200, 700, 0); c.label = "R9"; S.comps.push(c); TubeCAD.commit(); });
+  await bd.waitForFunction(() => !document.getElementById("banner").hidden, null, { timeout: 5000 }).catch(() => {});
+  const ban = await bd.textContent("#banner-text");
+  await bd.click("#banner-sync");
+  check(/1 new part \(R9\)/.test(ban) && await bd.evaluate(() => BoardApp.state.model.parts.some(g => g.ref === "R9") && document.getElementById("banner").hidden), `a part added in the schematic is offered and brought in by Update ("${ban.trim()}")`);
+  await cad.evaluate(() => { const S = TubeCAD.state; S.comps = S.comps.filter(c => c.label !== "R9"); TubeCAD.commit(); });
+  await bd.waitForTimeout(400); await bd.evaluate(() => BoardApp.syncNow());
+
+  // Design rules window: the nets with their classes; B+ (300 V) is HV automatically, a class set by hand sticks
+  await bd.click("#btn-rules");
+  const nets = await bd.evaluate(() => [...document.querySelectorAll("#rules-nets tr")].map(tr => [...tr.cells].map(c => c.textContent.trim())));
+  const rail = nets.find(r => /^300 V$/.test(r[2]));
+  check(await bd.isVisible("#rules-modal") && rail && /Auto \(HV\)/.test(rail[3]) && rail[4] === "2" && rail[5] === "2", `Design rules lists every net with its class: the 300 V rail is HV automatically (${rail && rail.join(" | ")})`);
+  await bd.fill('#rules-modal [data-r="clearance"]', "0.8"); await bd.press('#rules-modal [data-r="clearance"]', "Tab");
+  const anodeSel = bd.locator("#rules-nets select").filter({ has: bd.locator("option") }).nth(1);
+  const netNameSet = await anodeSel.getAttribute("data-net");
+  await anodeSel.selectOption("HV");
+  await bd.click("#rules-apply");
+  const rr = await bd.evaluate(n => ({ c: BoardApp.state.board.rules.clearance, cls: BoardApp.state.board.rules.netClass[n] }), netNameSet);
+  check(!(await bd.isVisible("#rules-modal")) && rr.c === 0.8 && rr.cls === "HV", `Apply keeps the edited clearance (0.8 mm) and the class set by hand (${netNameSet} → HV)`);
+  await cad.waitForFunction(n => TubeCAD.state.board.rules.clearance === 0.8 && TubeCAD.state.board.rules.netClass[n] === "HV", netNameSet, { timeout: 5000 }).catch(() => {});
+  check(await cad.evaluate(() => TubeCAD.state.board.rules.clearance === 0.8), "the rules are saved with the board in the circuit");
+
+  // Board setup: size, rounded corners, a mounting hole in each corner
+  await bd.click("#btn-setup");
+  await bd.fill('#setup-modal [data-o="w"]', "120"); await bd.fill('#setup-modal [data-o="h"]', "90"); await bd.fill('#setup-modal [data-o="r"]', "4");
+  await bd.click("#holes-corners"); await bd.click("#setup-apply");
+  const su = await bd.evaluate(() => ({ o: BoardApp.state.board.outline, holes: BoardApp.state.board.holes.map(h => [h.x, h.y, h.d]) }));
+  check(su.o.w === 120 && su.o.h === 90 && su.o.r === 4 && su.holes.length === 4 && su.holes[3][0] === 115 && su.holes[3][2] === 3.2, `Board setup: 120 × 90 mm, 4 mm corners, four M3 holes 5 mm in (${JSON.stringify(su.holes)})`);
+
+  // tools with the mouse: via, text, hole, measure; the corner handle resizes the board
+  const at = (x, y) => bd.evaluate(([x, y]) => BoardApp.toScreen(x, y), [x, y]).then(([sx, sy]) => [cv.x + sx, cv.y + sy]);
+  await bd.evaluate(() => BoardApp.fit()); await bd.waitForTimeout(100);
+  const cv2 = await bd.locator("#pcb").boundingBox(); Object.assign(cv, cv2);
+  const count = () => bd.evaluate(() => { const b = BoardApp.state.board; return [b.vias.length, b.texts.length, b.holes.length]; });
+  const n0 = await count();
+  await bd.click('[data-tool="via"]'); let p = await at(60, 20); await bd.mouse.click(p[0], p[1]);
+  await bd.click('[data-tool="hole"]'); p = await at(60, 45); await bd.mouse.click(p[0], p[1]);
+  await bd.click('[data-tool="text"]'); p = await at(60, 70); await bd.mouse.click(p[0], p[1]);
+  await bd.fill("#inspector input", "TUBE AMP"); await bd.press("#inspector input", "Enter");
+  const n1 = await count(), txt = await bd.evaluate(() => BoardApp.state.board.texts.slice(-1)[0]);
+  check(n1[0] === n0[0] + 1 && n1[1] === n0[1] + 1 && n1[2] === n0[2] + 1 && txt.text === "TUBE AMP" && txt.layer === "F.SilkS", `the Via, Hole and Text tools place a via, a mounting hole and a silkscreen text ("${txt.text}")`);
+  // grid points (1.27 mm): 30 × 40 grid steps = 38.1 × 50.8 mm, 63.5 mm apart
+  await bd.click('[data-tool="measure"]'); p = await at(12.7, 12.7); await bd.mouse.click(p[0], p[1]); p = await at(50.8, 63.5); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
+  const meas = await bd.evaluate(() => BoardApp.state.measured);
+  check(meas && Math.abs(meas.d - 63.5) < 0.01 && /Measure: 63\.50 mm/.test(await bd.textContent("#st-msg")), `Measure reads the distance between two clicks, snapped to the grid (${meas && meas.d.toFixed(2)} mm for 38.1 × 50.8)`);
+  await bd.click('[data-tool="select"]');
+  const hc = await at(120, 90), to = await at(130, 100);
+  await bd.mouse.move(hc[0], hc[1]); await bd.mouse.down(); await bd.mouse.move(to[0], to[1], { steps: 4 }); await bd.mouse.up();
+  const o2 = await bd.evaluate(() => BoardApp.state.board.outline);
+  check(Math.abs(o2.w - 130) < 1.3 && Math.abs(o2.h - 100) < 1.3, `dragging the board's corner handle resizes it (${o2.w} × ${o2.h} mm)`);
+
+  // layers: "only" shows one layer alone (again: all), clicking a copper layer's name makes it active
+  await bd.locator('.layer[data-l="B.Cu"] .solo').click();
+  const solo = await bd.evaluate(() => Object.entries(BoardApp.state.show).filter(([, v]) => v).map(([k]) => k).join(","));
+  await bd.locator('.layer[data-l="B.Cu"] .solo').click();
+  const all = await bd.evaluate(() => Object.values(BoardApp.state.show).every(Boolean));
+  await bd.locator('.layer[data-l="F.Cu"] .nm').click();
+  check(solo === "B.Cu" && all && await bd.evaluate(() => BoardApp.state.layer === "F.Cu" && document.getElementById("layer").value === "F.Cu") && await bd.locator('.layer.active[data-l="F.Cu"]').count() === 1,
+    "Layers: \"only\" shows a single layer and again all; clicking a copper layer makes it the active one");
+  await bd.close();
+}
+
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 
