@@ -639,6 +639,10 @@
     initPicker();
     initZoom();
     window.addEventListener("resize", drawPlot);
+    // tube list and readout widths: drag the edges (double-click resets)
+    Panels.columns(document.querySelector("main"), { key: "tracer", minViewport: 1000, minCenter: 360,
+      cols: [{ index: 0, side: "left", def: 250, min: 180, max: 520 }, { index: 2, side: "right", def: 270, min: 200, max: 600 }],
+      template: w => `${w[0]}px 1fr ${w[1]}px` });
     // the plot also changes size when the legend below it wraps to another line: redraw,
     // so clicks map onto the plot as it is shown
     if (window.ResizeObserver) { let size = ""; new ResizeObserver(() => { const c = $("plot"), k = c.clientWidth + "x" + c.clientHeight; if (k !== size) { size = k; drawPlot(); } }).observe($("plot")); }

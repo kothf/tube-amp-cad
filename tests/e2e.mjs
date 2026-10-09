@@ -75,6 +75,19 @@ check((await state()).comps.length === 0, "Ctrl+A, Delete clears the sheet");
 await cad.keyboard.press("Control+z");
 check((await state()).comps.length === 2, "Ctrl+Z restores it");
 
+{
+  // shortcuts go by the physical key, so they work in a Cyrillic layout too (R types "к", M "ь", D "в", Z "я")
+  const ru = (key, code, ctrl) => cad.evaluate(([key, code, ctrl]) => window.dispatchEvent(new KeyboardEvent("keydown", { key, code, ctrlKey: !!ctrl, bubbles: true })), [key, code, ctrl]);
+  await cad.evaluate(id => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(id); }, C1.id);
+  const r0 = (await state()).comps.find(c => c.id === C1.id).rot, n0 = (await state()).comps.length;
+  await ru("к", "KeyR"); const r1 = (await state()).comps.find(c => c.id === C1.id).rot;
+  await ru("ь", "KeyM"); const f1 = (await state()).comps.find(c => c.id === C1.id).params.flip;
+  await ru("в", "KeyD"); const n1 = (await state()).comps.length;
+  await ru("я", "KeyZ", true); await ru("я", "KeyZ", true); await ru("я", "KeyZ", true);
+  const back = (await state()).comps.find(c => c.id === C1.id);
+  check(r1 === ((r0 + 1) & 3) && f1 === "yes" && n1 === n0 + 1 && back.rot === r0 && back.params.flip !== "yes" && (await state()).comps.length === n0,
+    "with a Russian keyboard layout R rotates, M mirrors, D duplicates and Ctrl+Z undoes (keys go by physical position)");
+}
 await cad.evaluate(id => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(id); TubeCAD.commit(); }, R1.id);
 const field = cad.locator("#inspector .row", { hasText: "Resistance" }).locator("input");
 await field.fill("4.7k"); await field.press("Enter");
@@ -848,6 +861,38 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     const bytes = TubeCAD.exportPDF(false, [f]); let p = ""; for (const b of bytes) p += String.fromCharCode(b);
     return { pdfCols: /\(1\) Tj/.test(p) && /\(A\) Tj/.test(p), w: cv.width }; });
   check(texts.pdfCols, "the sheet's PDF has its reference-grid labels");
+}
+
+// --- Resizable side panels in every window --------------------------------------
+{
+  const drag = async (page, sel, dx) => {
+    const h = page.locator(sel), b = await h.boundingBox();
+    await page.mouse.move(b.x + b.width / 2, b.y + 200); await page.mouse.down(); await page.mouse.move(b.x + b.width / 2 + dx, b.y + 200, { steps: 5 }); await page.mouse.up();
+  };
+  const width = (page, sel) => page.evaluate(sel => document.querySelector(sel).getBoundingClientRect().width, sel);
+  const handles = page => page.evaluate(() => document.querySelectorAll(".panel-split").length);
+  // CAD: inspector (right) and palette (left)
+  const i0 = await width(cad, "#inspector"), p0 = await width(cad, "#palette"), c0 = await cad.evaluate(() => document.getElementById("cad").clientWidth);
+  await drag(cad, ".panel-split >> nth=1", -120);
+  await drag(cad, ".panel-split >> nth=0", 60);
+  const i1 = await width(cad, "#inspector"), p1 = await width(cad, "#palette"), c1 = await cad.evaluate(() => document.getElementById("cad").clientWidth);
+  check(await handles(cad) === 2 && Math.abs(i1 - i0 - 120) < 3 && Math.abs(p1 - p0 - 60) < 3 && Math.abs((c0 - c1) - 180) < 4,
+    `CAD: dragging the panel edges resizes the inspector (${Math.round(i0)} → ${Math.round(i1)} px) and the palette (${Math.round(p0)} → ${Math.round(p1)} px); the schematic gives way`);
+  await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
+  check(Math.abs(await width(cad, "#inspector") - i1) < 3, "CAD: the panel widths are kept after a reload");
+  await cad.locator(".panel-split >> nth=1").dblclick();
+  check(Math.abs(await width(cad, "#inspector") - 280) < 3, "CAD: double-clicking an edge resets the panel");
+  await drag(cad, ".panel-split >> nth=1", -2000);
+  check(await cad.evaluate(() => document.getElementById("cad").clientWidth) >= 355, "CAD: a panel can't be dragged so wide that the schematic disappears");
+  await cad.locator(".panel-split >> nth=1").dblclick(); await cad.locator(".panel-split >> nth=0").dblclick();
+  // tracer, scope and analyzer
+  for (const [page, name, sel, nth, dx] of [[tracer, "curve tracer", ".col.right", 1, -100], [scope, "oscilloscope", "main > :nth-child(2)", 0, -100], [spectrum, "spectrum analyzer", "main > :nth-child(2)", 0, -100]]) {
+    const w0 = await width(page, sel);
+    await drag(page, `.panel-split >> nth=${nth}`, dx);
+    const w1 = await width(page, sel);
+    check(Math.abs(w1 - w0 + dx) < 3, `${name}: the side panel resizes by dragging its edge (${Math.round(w0)} → ${Math.round(w1)} px)`);
+    await page.locator(`.panel-split >> nth=${nth}`).dblclick();
+  }
 }
 
 // --- Bill of materials -------------------------------------------------------
