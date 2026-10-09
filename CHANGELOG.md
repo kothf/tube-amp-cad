@@ -6,6 +6,38 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.34.0] - 2026-10-09
+
+### Added
+- **One search box for every part** at the top of the palette. It finds
+  part names, part numbers (2N3904, IRF540, 1N4742A, 125ESE, 373BX …),
+  tubes (EL84, 6N2P, 300B …) and values: "47k" offers a 47 kΩ resistor or
+  potentiometer, "100n" a 100 nF capacitor, "47u" a capacitor or
+  electrolytic, "5H" a choke, "300V" a supply. Enter picks the first match,
+  Esc clears the search.
+- **Collapsible palette groups:** click a group title to fold it, and the
+  browser remembers the state. Transformers, Semiconductors, Instruments,
+  Document and Tubes start folded, so the palette fits a Full HD screen.
+  The Tubes group lists the popular tubes, with *Show all 99 tubes*.
+- **Help window** (F1, ? or the ? button): how-to and every keyboard
+  shortcut. It replaces the long how-to text in the inspector.
+- **Power summary** in the inspector when nothing is selected: output into
+  the speakers, tube, transistor and resistor dissipation, and the power the
+  DC supplies deliver.
+- **Mirror button in the toolbar**, and drawn icons for undo, redo, rotate,
+  mirror and delete in place of characters and emoji that looked different
+  on every OS.
+
+### Fixed
+- **Safari:** every dropdown (tube type, model, sheet list, all scope and
+  analyzer settings) showed white boxes with near-invisible text. The pages
+  now draw their own dark dropdowns, the same in every browser.
+- The Mirror field was blank for parts saved before Mirror existed. It now
+  shows "No", and a dropdown whose saved value isn't in its list shows the
+  default.
+- The inspector's Rotate / Mirror / Delete buttons no longer overflow its
+  default width.
+
 ## [3.33.0] - 2026-10-09
 
 ### Added

@@ -11,6 +11,14 @@
       --accent: #00e5ff; --amber: #ffd54f; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300;
     }
     * { box-sizing: border-box; }
+    /* dropdowns drawn by the page, not the OS: Safari otherwise shows white native boxes
+       with the page's light text (unreadable); the same look in every browser */
+    :root { color-scheme: dark; }
+    select { -webkit-appearance: none; appearance: none; color: var(--text);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b949e' stroke-width='1.5'/%3E%3C/svg%3E") !important;
+      background-repeat: no-repeat !important; background-position: right 7px center !important; background-size: 10px 6px !important; padding-right: 22px !important; }
+    select:not([class]), select.btn { background-color: var(--panel2, #131b26); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+    select option, select optgroup { background-color: #0f151e; color: #e6edf3; }
     html, body { height: 100%; margin: 0; }
     body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
     button, input, select, textarea { font: inherit; color: inherit; }
