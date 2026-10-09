@@ -127,6 +127,7 @@
     .new-form .seg { display: flex; gap: 6px; flex-wrap: wrap; }
     #save-name { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: inherit; }
     #save-name[hidden] { display: none; }
+    .new-form[hidden] { display: none; }
     .new-form input[type=text] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: inherit; }
 
     @media (max-width: 900px) {
@@ -147,7 +148,9 @@
         <button class="menu-item" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" role="menuitem" id="btn-pdf">Save as PDF<kbd>vector</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-pdf">Save as PDF<kbd>all sheets</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-export">Export sheet…<kbd>PDF / PNG</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-png">Export PNG…<kbd>image</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-spice">Export SPICE netlist…<kbd>LTspice</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-bom-menu">Bill of materials<kbd>B</kbd></button>
       </div>
@@ -223,6 +226,30 @@
       <div class="modal-actions">
         <button class="btn" id="btn-new-cancel">Cancel</button>
         <button class="btn active" id="btn-new-create">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="export-modal" hidden>
+    <div class="modal-box" style="width: min(520px, 94vw)">
+      <div class="insp-title">Export</div>
+      <div class="new-form">
+        <span>Format</span>
+        <div class="seg"><button class="btn" data-k="fmt" data-v="pdf">PDF (vector)</button><button class="btn" data-k="fmt" data-v="png">PNG (image)</button></div>
+        <span>Sheets</span>
+        <div class="seg"><button class="btn" data-k="which" data-v="current">This sheet</button><button class="btn" data-k="which" data-v="each">Each sheet, own file</button><button class="btn" data-k="which" data-v="all">All in one PDF</button></div>
+      </div>
+      <p class="insp-help">This sheet: <b id="exp-current-name"></b> (the selected, last clicked or most visible one).</p>
+      <div class="new-form" id="exp-png-opts">
+        <span>Resolution</span>
+        <div class="seg"><button class="btn" data-k="dpi" data-v="150">150 dpi</button><button class="btn" data-k="dpi" data-v="300">300 dpi</button><button class="btn" data-k="dpi" data-v="600">600 dpi</button></div>
+        <span>Colours</span>
+        <div class="seg"><button class="btn" data-k="colours" data-v="print">Black on white</button><button class="btn" data-k="colours" data-v="screen">As on screen</button></div>
+      </div>
+      <p class="insp-help" id="exp-summary"></p>
+      <div class="modal-actions">
+        <button class="btn" id="btn-exp-cancel">Cancel</button>
+        <button class="btn active" id="btn-exp-ok">Export</button>
       </div>
     </div>
   </div>

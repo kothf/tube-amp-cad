@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.29.0] - 2026-10-09
+
+### Added
+- **Locked sheet frames.** A drawing frame can no longer be dragged or
+  deleted by accident. You can still click it to edit the title block. The
+  status bar says why it stays put, and a padlock in the filing margin shows
+  the lock. To move or delete a frame, set *Position* to *Unlocked* in its
+  inspector. Frames are locked by default, including those in older files.
+- **File → Export sheet… (PDF / PNG).** Export *this sheet* (the selected,
+  last clicked or most visible one), *each sheet as its own file*
+  (`name-sheet1.pdf`, `name-sheet2.pdf` …), or all sheets in one PDF as
+  before.
+- **PNG export** at 150, 300 or 600 dpi, black on white like the PDF or in
+  the editor's colours, one image per sheet. Very large sheets are reduced
+  to fit the browser's canvas limit, and the status bar says so.
+
 ## [3.28.0] - 2026-10-09
 
 ### Added

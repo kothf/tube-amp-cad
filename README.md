@@ -19,7 +19,7 @@ circuit is saved in the browser.
   wire segments, zoom and pan. Every net shows its DC voltage; hover a wire to
   measure it. The File menu opens and saves circuits (JSON) — in Chrome and
   Edge, Save writes back to the opened file after asking, and Save as picks a
-  new one — saves the sheet as a vector PDF and exports a SPICE netlist.
+  new one — saves the sheets as a vector PDF (all in one file, or each sheet as its own file), exports PNG images (150–600 dpi) and a SPICE netlist. Sheet frames are locked against accidental moves.
 - **Semiconductors** — NPN/PNP transistors (2N2222A, 2N3904, MPSA42/92,
   MJE340/350 …), N/P MOSFETs including the depletion DN2540 and LND150 for
   current sources, zener diodes and LEDs (cathode bias), simulated together
