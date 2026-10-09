@@ -182,6 +182,11 @@ check(!circuit.error && circuit.open.length === 0, `12AX7 stage simulates with e
 if (circuit.error || !circuit.ia) { console.log(`\nsimulation failed: ${circuit.error}`); process.exit(1); }
 check(circuit.ia > 0.4e-3 && circuit.ia < 1.5e-3 && circuit.vak > 100 && circuit.vak < 200, `operating point Ia ${(circuit.ia * 1e3).toFixed(2)} mA, Vak ${circuit.vak.toFixed(1)} V`);
 check(circuit.gain > 40 && circuit.gain < 70, `stage gain ${circuit.gain.toFixed(1)}× (12AX7, 100k plate load)`);
+{
+  // the curve tracer gets one closed cycle of the load line, not the whole capture
+  const tj = await cad.evaluate(() => { const t = TubeCAD.buildSummary().tubes.find(x => x.traj); if (!t) return null; const a = t.traj.vak, n = a.length, pp = Math.max(...a) - Math.min(...a); return { n, gap: Math.abs(a[0] - a[n - 1]) / pp, pp, win: TubeCAD.state.sim.result.tran.samples * TubeCAD.state.sim.result.tran.dt }; });
+  check(tj && tj.gap < 0.02 && tj.pp > 1, `the load line sent to the curve tracer is one closed signal cycle (${tj && tj.n} points, ends ${tj && (tj.gap * 100).toFixed(2)} % of the swing apart; capture ${tj && (tj.win * 1e3).toFixed(1)} ms)`);
+}
 check(circuit.ms < 10000, `simulation finished in ${(circuit.ms / 1000).toFixed(1)} s`);
 
 // --- 3. Instruments receive the live result ---------------------------------
@@ -215,6 +220,16 @@ const spectrum = await open("spectrum", `spectrum_analyzer.html?scope=${circuit.
 await spectrum.waitForFunction(() => /\d/.test(document.getElementById("thd").textContent), null, { timeout: 5000 }).catch(() => {});
 const thd = parseFloat((await spectrum.textContent("#thd")).replace(/[^\d.]/g, ""));
 check(Math.abs(thd - circuit.thd) / circuit.thd < 0.1, `spectrum THD ${thd} % matches the CAD's ${circuit.thd.toFixed(3)} % (±10 %)`);
+{
+  await spectrum.selectOption("#fx", "log");
+  const lg = await spectrum.evaluate(() => { const S = window.Spectrum, x = f => S.linePoint(f).x; return { v: S.view(), d1: x(2000) - x(1000), d2: x(4000) - x(2000), d3: x(8000) - x(4000) }; });
+  check(lg.v.log && lg.v.fa > 0 && Math.abs(lg.d1 - lg.d2) < 1.5 && Math.abs(lg.d2 - lg.d3) < 1.5 && lg.d1 > 20, `analyzer: logarithmic frequency axis, each octave equally wide (${lg.d1.toFixed(1)}, ${lg.d2.toFixed(1)}, ${lg.d3.toFixed(1)} px)`);
+  const r = await spectrum.locator("#screen").boundingBox(), p1 = await spectrum.evaluate(() => window.Spectrum.linePoint(2000));
+  await spectrum.mouse.move(r.x + p1.x, r.y + r.height / 2); await spectrum.mouse.wheel(0, -100); await spectrum.waitForTimeout(100);
+  const p2 = await spectrum.evaluate(() => window.Spectrum.linePoint(2000)), v2 = await spectrum.evaluate(() => window.Spectrum.view());
+  check(v2.fb / v2.fa < lg.v.fb / lg.v.fa && Math.abs(p2.x - p1.x) < 3, "analyzer: zooming a log axis keeps the frequency under the pointer");
+  await spectrum.evaluate(() => { window.Spectrum.state.zoom = null; }); await spectrum.selectOption("#fx", "lin");
+}
 
 // --- 3a. Markers: pick points on the scope and analyzer with the mouse -------
 const canvasAt = async (page, p) => { const r = await page.locator("#screen").boundingBox(); return [r.x + p.x, r.y + p.y]; };
@@ -327,6 +342,9 @@ const top = (pv.ch1.max - pv.ch1.off) / pv.ch1.vdiv, bottom = (pv.ch1.min - pv.c
 check(pv.ch1.offset > 100 && top <= 4 && bottom >= -4 && top - bottom > 3,
   `auto shows the plate swing on ${(top - bottom).toFixed(1)} divisions at ${pv.ch1.vdiv} V/div with a ${pv.ch1.offset} V offset (was a flat line at 100 V/div)`);
 check(Math.abs(pv.f - 1000) < 5 && pv.tdiv === 2e-4, `timebase locks to the measured ${pv.f.toFixed(0)} Hz (${pv.tdiv * 1e6} µs/div)`);
+const sc2ui = await scope2.evaluate(() => ({ ch1: document.getElementById("card-ch1").classList.contains("off"), ch2: document.getElementById("card-ch2").classList.contains("off"), nc: getComputedStyle(document.querySelector("#card-ch2 .nc")).display, ov: document.getElementById("overview").getBoundingClientRect().height }));
+check(!sc2ui.ch1 && sc2ui.ch2 && sc2ui.nc !== "none", "scope: an unconnected channel's settings are greyed and marked \"not connected\"");
+check(sc2ui.ov === 0, "scope: no empty strip under the screen in steady state (the power-on overview takes no room when hidden)");
 await scope2.close();
 
 // --- 4. Curve tracer follows the tube selected in the CAD -------------------
@@ -901,6 +919,19 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     check(Math.abs(w1 - w0 + dx) < 3, `${name}: the side panel resizes by dragging its edge (${Math.round(w0)} → ${Math.round(w1)} px)`);
     await page.locator(`.panel-split >> nth=${nth}`).dblclick();
   }
+}
+
+// --- Opening on sheet 1, progress on ▶ Simulate, one-cycle load line ------------------
+{
+  const two = await cad.evaluate(() => TubeCAD.frames().length);
+  await cad.reload(); await cad.waitForFunction(() => window.TubeCAD); await cad.waitForTimeout(300);
+  const nav = await cad.evaluate(() => [document.getElementById("sheet-nav").value, TubeCAD.frames()[0].id]);
+  check(two >= 2 && nav[0] === nav[1], `a circuit with ${two} sheets opens on sheet 1, not on all of them at once`);
+  await cad.evaluate(() => TubeCAD.runSim("full"));
+  const texts = [];
+  for (let i = 0; i < 40; i++) { const t = await cad.evaluate(() => [document.getElementById("btn-sim").textContent, TubeCAD.state.sim.busy]); if (!t[1]) break; texts.push(t[0]); await cad.waitForTimeout(25); }
+  await cad.waitForFunction(() => !TubeCAD.state.sim.busy, null, { timeout: 30000 });
+  check(texts.some(t => /■ Stop · \d+ %/.test(t)) && /^▶ Simulate$/.test(await cad.textContent("#btn-sim")), `▶ Simulate shows the run's progress (${texts[texts.length - 1] || "—"}) and goes back when it is done`);
 }
 
 // --- Bill of materials -------------------------------------------------------

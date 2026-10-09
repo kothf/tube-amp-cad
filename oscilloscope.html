@@ -41,6 +41,10 @@
     .marks .btn { padding: 1px 8px; font-size: 11px; margin-left: auto; }
     aside { overflow-y: auto; min-height: 0; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+    #overview[hidden] { display: none; }   /* its display: block would otherwise keep the space */
+    .card .nc { display: none; text-transform: none; letter-spacing: 0; font-weight: 400; }
+    .card.off .nc { display: inline; }
+    .card.off .row { opacity: .45; }
     .card h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
     .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
     .row span { color: var(--muted); font-size: 12px; }
@@ -82,13 +86,13 @@
         </div>
         <div class="row" style="margin-top:8px"><button class="btn" id="btn-autoset" style="width:100%">Autoset</button></div>
       </div>
-      <div class="card">
-        <h3><span class="c1">CH1</span></h3>
+      <div class="card" id="card-ch1">
+        <h3><span class="c1">CH1</span><small class="nc">not connected</small></h3>
         <div class="row"><span>Volts/div</span><select id="ch1-vdiv"></select></div>
         <div class="row"><span>Coupling</span><select id="ch1-cpl"><option value="dc">DC</option><option value="ac">AC</option><option value="gnd">GND</option></select></div>
       </div>
-      <div class="card">
-        <h3><span class="c2">CH2</span></h3>
+      <div class="card" id="card-ch2">
+        <h3><span class="c2">CH2</span><small class="nc">not connected</small></h3>
         <div class="row"><span>Volts/div</span><select id="ch2-vdiv"></select></div>
         <div class="row"><span>Coupling</span><select id="ch2-cpl"><option value="dc">DC</option><option value="ac">AC</option><option value="gnd">GND</option></select></div>
       </div>
@@ -221,6 +225,8 @@
     }
     const vAxis = (c, color) => c && { center: c.cpl === "gnd" ? 0 : c.off, step: c.vdiv, unit: "V", color, ac: c.cpl === "ac" };
 
+    // a channel with no probe wired in the CAD: its settings greyed, "not connected" in the title
+    function markChannels(ch) { ["ch1", "ch2"].forEach(k => { const c = $("card-" + k); if (c) c.classList.toggle("off", !(ch && ch[k])); }); }
     function draw() {
       const cv = $("screen"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
       if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
@@ -244,6 +250,7 @@
       const sc = I.scope();
       const ch = channels(sc);
       const any = ch.ch1 || ch.ch2;
+      markChannels(ch);
       if (!any) {
         ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center";
         ctx.fillText(sc ? "No input connected — wire CH1 / CH2 of " + sc.label + " in the CAD" : "NO SIGNAL", x0 + gw / 2, y0 + gh / 2 - 12);
@@ -384,6 +391,7 @@
       if (!t) return msg([`Power-on transient: press ▶ Simulate to run the first ${I.fmt(S.tStop, "s")} after switch-on.`, "Every capacitor starts empty and every source switches on at t = 0."]);
       if (!t.ok) return msg([`Power-on transient: ${t.error || "failed"}`]);
       const ch = startupChannels(ts), any = ch.ch1 || ch.ch2;
+      markChannels(ch);
       if (!any) return msg([ts ? "No input connected — wire CH1 / CH2 of " + ts.label + " in the CAD" : "This scope part was not in the simulated circuit"]);
       const n = any.min.length, dt = t.dt, vw = viewOf(t);
       const i0 = Math.round(vw.pos / dt), count = vw.span / dt;
