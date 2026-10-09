@@ -6,6 +6,27 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.30.0] - 2026-10-09
+
+### Added
+- **Scale labels on the oscilloscope screen.** The time axis runs below the
+  graticule: time from the trigger point in steady state, time after
+  power-on in the power-on view. CH1's volts are on the left and CH2's on
+  the right, each with its own volts/div and offset. In AC coupling they
+  show volts around the mean. In X-Y mode CH1 is along the bottom and CH2 up
+  the side. The labels follow zoom and position:
+  - wheel, Ctrl+wheel, dragging, the Time/div and Volts/div lists and
+    Autoset all move them;
+  - they always sit on round values, whole multiples of the time/div or
+    volts/div, so after zooming at the pointer they shift with the trace
+    rather than showing odd numbers;
+  - all labels on one axis share one unit prefix.
+- The power-on overview strip lines up with the screen's grid.
+
+### Fixed
+- The channel level markers (1▸, 2▸) on the left of the scope screen are
+  visible again in steady state. The screen's clipping had hidden them.
+
 ## [3.29.1] - 2026-10-09
 
 ### Changed

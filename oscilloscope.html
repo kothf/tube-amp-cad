@@ -170,6 +170,48 @@
     const triggerChannel = ch => ch[S.trig.src] && !SM.isFlat(ch[S.trig.src].st) ? ch[S.trig.src]
       : (ch.ch1 && !SM.isFlat(ch.ch1.st) ? ch.ch1 : ch.ch2 || ch.ch1);
 
+    // Axes: labels at round values (whole multiples of the time/div or volts/div),
+    // placed where those values fall, so they follow zoom, position, volts/div and
+    // offset; unpanned they sit on the graticule lines. All labels on an axis share
+    // one SI prefix (from the largest) and the decimals the step needs.
+    function axisText(values, step, unit) {
+      const big = Math.max(...values.map(Math.abs), Math.abs(step));
+      const P = [[1e3, "k"], [1, ""], [1e-3, "m"], [1e-6, "µ"], [1e-9, "n"]], [f, p] = P.find(([f]) => big >= f * 0.9995) || P[P.length - 1];
+      const d = Math.max(0, Math.min(4, Math.ceil(-Math.log10(Math.abs(step) / f) - 1e-9)));
+      return values.map(v => { const x = v / f; return (Math.abs(x) < 0.5 * Math.pow(10, -d) ? "0" : x.toFixed(d)) + p + unit; });
+    }
+    // the multiples of step in [lo, hi]
+    const ticks = (lo, hi, step) => { const out = []; for (let k = Math.ceil(lo / step - 1e-6); k <= Math.floor(hi / step + 1e-6); k++) out.push(k * step); return out; };
+    // h: { start, step, unit, color }: the time (or XY volts) at the left edge, per division;
+    // left / right: { center, step, unit, color, ac }: the value at mid-screen, per division
+    function drawAxes(ctx, h, left, right) {
+      const g = G, out = {};
+      ctx.save(); ctx.font = "10px ui-monospace, Menlo, monospace"; ctx.textBaseline = "middle"; ctx.lineWidth = 1;
+      if (h) {
+        const vals = ticks(h.start, h.start + 10 * h.step, h.step), txt = axisText(vals, h.step, h.unit);
+        const wmax = Math.max(0, ...txt.map(t => ctx.measureText(t).width)), stride = Math.max(1, Math.ceil((wmax + 10) / (g.gw / 10)));
+        ctx.fillStyle = ctx.strokeStyle = h.color;
+        vals.forEach((v, i) => {
+          const x = g.x0 + (v - h.start) / h.step * g.gw / 10;
+          ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(x, g.y0 + g.gh); ctx.lineTo(x, g.y0 + g.gh + 4); ctx.stroke(); ctx.globalAlpha = 1;
+          if (i % stride) return;
+          ctx.textAlign = x < g.x0 + 12 ? "left" : x > g.x0 + g.gw - 12 ? "right" : "center";
+          ctx.fillText(txt[i], x, g.y0 + g.gh + 13);
+        });
+        out.h = txt; out.hv = vals;
+      }
+      [[left, "right", g.x0 - 22], [right, "left", g.x0 + g.gw + 5]].forEach(([a, align, x], side) => {
+        if (!a) return;
+        const c = a.ac ? 0 : a.center, vals = ticks(c - 4 * a.step, c + 4 * a.step, a.step).reverse(), txt = axisText(vals, a.step, a.unit);
+        ctx.fillStyle = a.color; ctx.textAlign = align;
+        vals.forEach((v, j) => ctx.fillText((a.ac && v > 0 ? "+" : "") + txt[j], x, g.y0 + g.gh / 2 - (v - c) / a.step * g.gh / 8));
+        out[side ? "right" : "left"] = txt;
+      });
+      ctx.restore();
+      g.axes = out;
+    }
+    const vAxis = (c, color) => c && { center: c.cpl === "gnd" ? 0 : c.off, step: c.vdiv, unit: "V", color, ac: c.cpl === "ac" };
+
     function draw() {
       const cv = $("screen"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
       if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
@@ -177,7 +219,8 @@
       I.showStatus($("status"));
       if (S.analysis === "startup" && I.transient && !I.problem) { const t = I.transient; $("status").className = "status " + (t.running ? "idle" : t.ok ? "ok" : "bad"); $("status").textContent = t.running ? `Power-on transient… ${Math.round((t.progress || 0) * 100)} %` : t.ok ? `Power-on transient · ${I.fmt(t.tStop, "s")}${t.stale ? " · circuit changed" : ""}` : (t.error || "Power-on transient failed"); }
       ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
-      const pad = 26, gw = W - 2 * pad, gh = H - 2 * pad - 10, x0 = pad, y0 = pad + 6;
+      // margins: volt scales left (CH1) and right (CH2), the time scale below
+      const x0 = 64, y0 = 32, gw = W - 2 * x0, gh = H - y0 - 26;
       // graticule
       ctx.strokeStyle = "rgba(0,180,216,0.16)"; ctx.lineWidth = 1;
       for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(x0 + i * gw / 10, y0); ctx.lineTo(x0 + i * gw / 10, y0 + gh); ctx.stroke(); }
@@ -210,6 +253,15 @@
       const org = Math.round(S.hpos / dt), start = SM.triggerIndex(trigCh.raw, S.trig.slope) + org;
       G = { x0, y0, gw, gh, dt, M, P, start, org, tdiv, span, ch, xy: S.mode === "xy" && !!(ch.ch1 && ch.ch2) };
       const glow = (color) => { ctx.strokeStyle = color; ctx.globalAlpha = 0.18; ctx.lineWidth = 5; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1.7; ctx.stroke(); };
+      if (G.xy) {   // CH1 along the bottom, CH2 up the left
+        const a = vAxis(ch.ch1, "#ffe23d");
+        drawAxes(ctx, { start: (a.ac ? 0 : a.center) - 5 * a.step, step: a.step, unit: "V", color: "#ffe23d" }, vAxis(ch.ch2, "#00e5ff"), null);
+      } else {
+        const on = k => ch[k] && (S.mode === "dual" || S.mode === k);
+        drawAxes(ctx, { start: org * dt, step: tdiv, unit: "s", color: "#c9d6e3" },
+          on("ch1") ? vAxis(ch.ch1, "#ffe23d") : on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null, on("ch1") && on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null);
+      }
+      const levels = [];
       ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, gw, gh); ctx.clip();
       if (S.mode === "xy" && ch.ch1 && ch.ch2) {
         ctx.beginPath();
@@ -233,10 +285,12 @@
           // channel marker at its 0 V (DC) or mean (AC) level, pinned to the edge when off screen
           const lv = c.cpl === "gnd" ? 0 : (c.cpl === "ac" ? 0 : -c.off / c.vdiv), my = y0 + gh / 2 - Math.max(-4, Math.min(4, lv)) * gh / 8;
           const arrow = lv > 4 ? "▴" : lv < -4 ? "▾" : "▸";
-          ctx.fillStyle = color; ctx.fillText((k === "ch1" ? "1" : "2") + arrow, 2, my + 4 + (k === "ch1" ? -5 : 5));
+          levels.push([color, (k === "ch1" ? "1" : "2") + arrow, my + 4 + (k === "ch1" ? -5 : 5)]);
         });
       }
       ctx.restore();
+      // the level markers sit in the margin, outside the clipped screen
+      levels.forEach(([color, t, y]) => { ctx.fillStyle = color; ctx.fillText(t, x0 - 16, y); });
       // markers
       pick.list.forEach((m, i) => { const p = markerPos(m); if (p) MarkerPicker.draw(ctx, p.x, p.y, MarkerPicker.LETTERS[i], m.ch === "ch2" ? "#00e5ff" : m.ch === "ch1" ? "#ffe23d" : "#7fffd4"); });
       if (hover && !G.xy) {
@@ -326,6 +380,12 @@
       const i0 = Math.round(vw.pos / dt), count = vw.span / dt;
       G = { x0, y0, gw, gh, dt, M: count, P: n, start: i0, org: i0, ch, xy: false, startup: true, t, vw };
       const ys = (c, v) => y0 + gh / 2 - Math.max(-4.4, Math.min(4.4, c.cpl === "gnd" ? 0 : (v - c.off) / c.vdiv)) * gh / 8;
+      {   // time after power-on along the bottom; volts as in steady state
+        const on = k => ch[k] && (S.mode === "dual" || S.mode === k || S.mode === "xy");
+        drawAxes(ctx, { start: vw.pos, step: vw.tdiv, unit: "s", color: "#c9d6e3" },
+          on("ch1") ? vAxis(ch.ch1, "#ffe23d") : on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null, on("ch1") && on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null);
+      }
+      const levels = [];
       ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, gw, gh); ctx.clip();
       const glow = color => { ctx.strokeStyle = color; ctx.globalAlpha = 0.18; ctx.lineWidth = 5; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1.7; ctx.stroke(); };
       [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k, color]) => {
@@ -333,9 +393,10 @@
         if (trace(ctx, c, i0, count, x0, gw, ys) === "fill") { ctx.fillStyle = color; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke(); }
         else glow(color);
         const lv = c.cpl === "gnd" ? 0 : -c.off / c.vdiv, my = y0 + gh / 2 - Math.max(-4, Math.min(4, lv)) * gh / 8;
-        ctx.fillStyle = color; ctx.fillText((k === "ch1" ? "1" : "2") + (lv > 4 ? "▴" : lv < -4 ? "▾" : "▸"), 2, my + 4 + (k === "ch1" ? -5 : 5));
+        levels.push([color, (k === "ch1" ? "1" : "2") + (lv > 4 ? "▴" : lv < -4 ? "▾" : "▸"), my + 4 + (k === "ch1" ? -5 : 5)]);
       });
       ctx.restore();
+      levels.forEach(([color, t, y]) => { ctx.fillStyle = color; ctx.fillText(t, x0 - 16, y); });
       pick.list.forEach((m, i) => { const p = markerPos(m); if (p) MarkerPicker.draw(ctx, p.x, p.y, MarkerPicker.LETTERS[i], m.ch === "ch2" ? "#00e5ff" : "#ffe23d"); });
       if (hover) {
         const x = x0 + hover.i / count * gw; ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + gh); ctx.stroke(); ctx.setLineDash([]);
@@ -365,7 +426,7 @@
       if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
       const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
-      const pad = 26, gw = W - 2 * pad;
+      const pad = 64, gw = W - 2 * pad;               // lines up with the screen's grid
       [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k, color]) => {
         const c = ch[k]; if (!c || (S.mode !== "dual" && S.mode !== k)) return;
         const ys = (c, v) => H / 2 - Math.max(-4.4, Math.min(4.4, c.cpl === "gnd" ? 0 : (v - c.off) / c.vdiv)) * (H - 6) / 9;
@@ -537,7 +598,7 @@
     });
     { // overview strip: click or drag to center the window there
       const ov = $("overview");
-      const go = e => { if (!G || !G.startup) return; const r = ov.getBoundingClientRect(), frac = (e.clientX - r.left - 26) / (r.width - 52); S.view.pos = frac * G.t.tStop - G.vw.span / 2; draw(); };
+      const go = e => { if (!G || !G.startup) return; const r = ov.getBoundingClientRect(), frac = (e.clientX - r.left - 64) / (r.width - 128); S.view.pos = frac * G.t.tStop - G.vw.span / 2; draw(); };
       ov.addEventListener("pointerdown", e => { ov.setPointerCapture(e.pointerId); go(e); });
       ov.addEventListener("pointermove", e => { if (e.buttons & 1) go(e); });
       ov.addEventListener("wheel", e => { if (!G || !G.startup) return; e.preventDefault(); scrollBy(Math.sign(e.deltaY || e.deltaX) * G.vw.span / 2); }, { passive: false });
@@ -571,7 +632,7 @@
     setInterval(() => { if (!I.result) draw(); }, 1500);
     draw();
     // current scaling, for tests and debugging
-    window.Scope = { state: S, draw, settleInfo, startupChannels, zoomTo, startupView: () => G && G.startup ? { tdiv: G.vw.tdiv, pos: G.vw.pos, span: G.vw.span } : null,
+    window.Scope = { state: S, draw, axes: () => G && G.axes, settleInfo, startupChannels, zoomTo, startupView: () => G && G.startup ? { tdiv: G.vw.tdiv, pos: G.vw.pos, span: G.vw.span } : null,
       // canvas position of a channel's trace at a fraction of the screen width
       screenPoint: (k, frac) => { const c = G && G.ch[k]; if (!c) return null; const i = frac * G.M; return { x: G.x0 + frac * G.gw, y: screenY(c, valueAt(c, i)) }; },
       markers: () => pick.list.map(m => ({ ...m, pos: markerPos(m), reading: reading(m) })), view: () => { const sc = I.scope(), ch = channels(sc), any = ch.ch1 || ch.ch2; if (!any) return null;
