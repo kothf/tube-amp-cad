@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.29.1] - 2026-10-09
+
+### Changed
+- **MOSFET models follow their datasheets more closely.** The threshold is
+  now the middle of the datasheet's min–max range (IRF510/820/840 3.0 V,
+  IRF9610/9640 −3.0 V, BS250 −2.25 V). Kp comes from the forward
+  transconductance at the datasheet's test current, Kp = gfs² / 2·Id
+  (IRF510 0.25, IRF820 0.75, IRF9640 1.27, 2N7000 0.26, BS170 0.1,
+  BS250 0.056 A/V²). Saved circuits with these parts simulate differently.
+  Checked against a published IRF820 follower: 3.5 mA and 0.47 W, as in the
+  source.
+
+### Fixed
+- Transistor and MOSFET designations sit beside the symbol, on the side away
+  from the base or gate lead. Above the symbol, the collector or drain lead
+  ran through the text.
+
 ## [3.29.0] - 2026-10-09
 
 ### Added
