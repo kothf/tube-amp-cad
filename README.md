@@ -20,6 +20,12 @@ circuit is saved in the browser.
   measure it. The File menu opens and saves circuits (JSON) — in Chrome and
   Edge, Save writes back to the opened file after asking, and Save as picks a
   new one — saves the sheet as a vector PDF and exports a SPICE netlist.
+- **Bill of materials** — the *BOM* button (or `B`) opens the parts list under
+  the schematic: equal parts on one line with designator ranges (R1-R4), both
+  sections of a dual tube counted once, a tube-socket line per base, the
+  simulated worst case (resistor dissipation, capacitor peak voltage) and a
+  part number you can type in, saved with the circuit. Click a line to select
+  its parts. Export it as TXT, CSV, XLSX or PDF.
 - **Real transformers** — 25 Hammond 300-series power transformers modelled
   from the maker's drawings (voltages, winding resistances, excitation), fed
   from an AC mains source you wire to the primary, and the seven Hammond

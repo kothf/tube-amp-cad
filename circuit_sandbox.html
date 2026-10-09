@@ -74,6 +74,29 @@
     .help-list b { color: var(--text); }
     kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: 11px; }
 
+    /* bill of materials, under the schematic */
+    #center { display: grid; grid-template-rows: 1fr auto; min-width: 0; min-height: 0; }
+    #bom { position: relative; display: flex; flex-direction: column; height: var(--bom-h, 34vh); min-height: 120px; background: var(--panel); border-top: 1px solid var(--line); }
+    #bom[hidden] { display: none; }
+    .bom-grip { position: absolute; top: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; z-index: 2; }
+    .bom-head { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; font-size: 12px; }
+    .bom-head b { color: var(--accent); font-size: 13px; }
+    .bom-head label { display: flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
+    .bom-head .btn { padding: 2px 9px; font-size: 12px; }
+    .muted { color: var(--muted); }
+    .bom-scroll { overflow: auto; flex: 1; min-height: 0; }
+    #bom-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    #bom-table th { position: sticky; top: 0; background: var(--panel2); color: var(--muted); font-weight: 600; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; z-index: 1; }
+    #bom-table td { padding: 3px 8px; border-bottom: 1px dashed #1a2433; vertical-align: top; }
+    #bom-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    #bom-table td.mono { font-family: ui-monospace, Menlo, monospace; }
+    #bom-table tbody tr { cursor: pointer; }
+    #bom-table tbody tr:hover { background: #111a25; }
+    #bom-table tbody tr.sel { background: #0d3442; }
+    #bom-table td.warn { color: var(--warn); }
+    #bom-table input { width: 100%; min-width: 110px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; font: inherit; }
+    .bom-empty { color: var(--muted); padding: 14px; font-size: 12px; }
+
     /* status bar */
     footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
     .sim-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
@@ -124,6 +147,7 @@
         <div class="menu-sep"></div>
         <button class="menu-item" role="menuitem" id="btn-pdf">Save as PDF<kbd>vector</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-spice">Export SPICE netlist…<kbd>LTspice</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-bom-menu">Bill of materials<kbd>B</kbd></button>
       </div>
     </div>
     <input type="file" id="file-input" accept=".json,application/json" hidden>
@@ -146,6 +170,7 @@
     <button class="btn active" id="btn-live" title="Live: re-simulate after every edit (a run that does not settle in time continues in the background)">Live</button>
     <button class="btn" id="btn-sim" title="Simulate until fully settled (Ctrl+Enter); click again to stop">▶ Simulate</button>
     <span class="spacer"></span>
+    <button class="btn" id="btn-bom" title="Bill of materials under the schematic; export TXT, CSV, XLSX or PDF (B)">BOM</button>
     <button class="btn link" id="btn-open-tracer" title="Plate curves with this circuit's operating point">Curve tracer ↗</button>
     <button class="btn link" id="btn-open-scope" title="Full oscilloscope for the first scope part">Oscilloscope ↗</button>
     <button class="btn link" id="btn-open-spectrum" title="FFT of a scope part's channels">Spectrum ↗</button>
@@ -153,7 +178,25 @@
 
   <main>
     <nav id="palette" aria-label="Parts"></nav>
-    <div id="stage"><canvas id="cad" aria-label="Schematic"></canvas></div>
+    <div id="center">
+      <div id="stage"><canvas id="cad" aria-label="Schematic"></canvas></div>
+      <section id="bom" aria-label="Bill of materials" hidden>
+        <div class="bom-grip" title="Drag to resize"></div>
+        <div class="bom-head">
+          <b>Bill of materials</b><span id="bom-count" class="muted"></span>
+          <label title="One socket line per tube base"><input type="checkbox" id="bom-sockets"> Tube sockets</label>
+          <label title="DC supplies, signal generators, mains and oscilloscopes"><input type="checkbox" id="bom-bench"> Sources &amp; instruments</label>
+          <span class="spacer"></span>
+          <span class="muted">Export</span>
+          <button class="btn" data-bom="txt" title="Plain-text table">TXT</button>
+          <button class="btn" data-bom="csv" title="Comma-separated, UTF-8">CSV</button>
+          <button class="btn" data-bom="xlsx" title="Excel workbook">XLSX</button>
+          <button class="btn" data-bom="pdf" title="A4 landscape">PDF</button>
+          <button class="btn" id="btn-bom-close" title="Close (B)">✕</button>
+        </div>
+        <div class="bom-scroll"><table id="bom-table"></table></div>
+      </section>
+    </div>
     <aside id="inspector" aria-label="Inspector"></aside>
   </main>
 
@@ -212,6 +255,7 @@
   <script src="cad-components.js?v=dev"></script>
   <script src="scope-math.js?v=dev"></script>
   <script src="pdf-export.js?v=dev"></script>
+  <script src="bom.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>
