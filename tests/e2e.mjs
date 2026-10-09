@@ -1143,7 +1143,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.waitForFunction(() => window.BoardApp && BoardApp.state.model, null, { timeout: 10000 });
   const m0 = await bd.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.map(g => `${g.ref}:${g.fp.name}`), unplaced: S.drc.filter(d => d.kind === "unplaced").length, status: document.getElementById("status").textContent,
     anode: (S.model.pads.find(p => p.ref === "VL1" && p.num === "6") || {}).netName, cathode: (S.model.pads.find(p => p.ref === "VL1" && p.num === "8") || {}).netName }; });
-  check(m0.parts.length === 9 && m0.parts.includes("VL1:SOCKET-B9A") && m0.parts.includes("VT1:TO-126-ECB") && m0.parts.includes("VD1:DIODE-10.16") && m0.parts.includes("HL1:LED-5MM") && m0.parts.includes("G1:WIRE-2") && /Linked to CAD/.test(m0.status),
+  check(m0.parts.length === 9 && m0.parts.includes("VL1:SOCKET-B9A") && m0.parts.includes("VT1:TO-126-ECB") && m0.parts.includes("VD1:DIODE-10.16") && m0.parts.includes("HL1:LED-5MM") && m0.parts.includes("G1:TERM-5.08-2") && /Linked to CAD/.test(m0.status),
     `the Board window takes the schematic's parts with footprints (${m0.parts.join(", ")})`);
   check(m0.unplaced === 9 && m0.anode && m0.anode !== m0.cathode, `new parts wait below the board; the 12AX7's pins carry the schematic's nets (anode ${m0.anode}, cathode ${m0.cathode})`);
   await cad.waitForFunction(() => TubeCAD.state.board && Object.keys(TubeCAD.state.board.parts).length === 9, null, { timeout: 5000 }).catch(() => {});

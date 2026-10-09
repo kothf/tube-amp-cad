@@ -125,20 +125,87 @@
     return fp(`TO-18-${order}`, `TO-18 metal can, pins ${order.split("").join("-")}`, [...order].map((n, i) => pad(i + 1, pos[i][0], pos[i][1], 1.3, 0.7, i ? "circle" : "rect", n)),
       [{ t: "circle", x: 0, y: 0, r: 2.8 }, { t: "line", x1: -2.4, y1: 1.5, x2: -3.2, y2: 2.3 }]);
   }
-  function inline(pkg, pitch, order, L, W, tab) {
+  function inline(pkg, pitch, order, L, W, tab, d, dr) {
     const n = order.length, x0 = -(n - 1) / 2 * pitch, silk = [{ t: "rect", x: -L / 2, y: -W / 2, w: L, h: W }];
     if (tab) silk.push({ t: "line", x1: -L / 2, y1: -W / 2 + 1.2, x2: L / 2, y2: -W / 2 + 1.2 });
-    return fp(`${pkg}-${order}`, `${pkg}, pins ${order.split("").join("-")} (tab at the top)`, [...order].map((c, i) => pad(i + 1, x0 + i * pitch, 0, 2, 1.05, i ? "circle" : "rect", c)), silk);
+    return fp(`${pkg}-${order}`, `${pkg}, pins ${order.split("").join("-")} (tab at the top)`, [...order].map((c, i) => pad(i + 1, x0 + i * pitch, 0, d || 2, dr || 1.05, i ? "circle" : "rect", c)), silk);
   }
   const to126 = order => inline("TO-126", 2.29, order, 8, 3.2, false);
   const to220 = order => inline("TO-220", 2.54, order, 10.4, 4.6, true);
+  const to247 = order => inline("TO-247", 5.45, order, 15.9, 5, true, 2.6, 1.4);
   function led5() {
     return fp("LED-5MM", "LED 5 mm (flat side and square pad: cathode)", [pad(1, -1.27, 0, 1.8, 0.9, "rect", "K"), pad(2, 1.27, 0, 1.8, 0.9, "circle", "A")],
       [{ t: "circle", x: 0, y: 0, r: 2.9 }, { t: "line", x1: -2.9, y1: -1.6, x2: -2.9, y2: 1.6 }]);
   }
-  function pot16() {
-    return fp("POT-16MM", "Potentiometer 16 mm, board mount (1 · wiper · 2)", [pad(1, -5, 0, 2.2, 1.2, "rect", "1"), pad(2, 0, 0, 2.2, 1.2, "circle", "W"), pad(3, 5, 0, 2.2, 1.2, "circle", "2")],
-      [{ t: "rect", x: -8, y: -17, w: 16, h: 15 }, { t: "circle", x: 0, y: -9.5, r: 3.5 }]);
+  function led3() {
+    return fp("LED-3MM", "LED 3 mm (flat side and square pad: cathode)", [pad(1, -1.27, 0, 1.6, 0.8, "rect", "K"), pad(2, 1.27, 0, 1.6, 0.8, "circle", "A")],
+      [{ t: "circle", x: 0, y: 0, r: 1.9 }, { t: "line", x1: -1.9, y1: -1, x2: -1.9, y2: 1 }]);
+  }
+  // potentiometers, board mount, pins 1 · wiper · 2 in a row, the shaft above them
+  const POTS = { "9MM": [2.5, 9.8, 10, 1.8, 1.0, 3.5, "Alpha 9 mm"], "16MM": [5, 16, 15, 2.2, 1.2, 3.5, "Alpha 16 mm"], "24MM": [7.5, 24, 22, 2.6, 1.4, 3.5, "24 mm (Alps RK27 style)"] };
+  function pot(size) {
+    const [P, W, H, d, dr, sh, t] = POTS[size];
+    return fp(`POT-${size}`, `Potentiometer ${t}, board mount (1 · wiper · 2)`, [pad(1, -P, 0, d, dr, "rect", "1"), pad(2, 0, 0, d, dr, "circle", "W"), pad(3, P, 0, d, dr, "circle", "2")],
+      [{ t: "rect", x: -W / 2, y: -H - 2, w: W, h: H }, { t: "circle", x: 0, y: -H / 2 - 2, r: sh }]);
+  }
+  function trim3296() {
+    return fp("TRIM-3296W", "Trimmer 3296W, 9.5 × 4.8 mm, pins 2.54 mm (1 · wiper · 2)", [pad(1, -2.54, 0, 1.6, 0.8, "rect", "1"), pad(2, 0, 0, 1.6, 0.8, "circle", "W"), pad(3, 2.54, 0, 1.6, 0.8, "circle", "2")],
+      [{ t: "rect", x: -4.75, y: -2.4, w: 9.5, h: 4.8 }, { t: "circle", x: -3.4, y: -1.1, r: 0.8 }]);
+  }
+  // ceramic disc and silver mica capacitors (the small values in valve circuits)
+  function disc(pitch) {
+    return fp(`DISC-${pitch}`, `Ceramic disc / silver mica, ${pitch} mm lead spacing`, [pad(1, -pitch / 2, 0, 1.6, 0.8), pad(2, pitch / 2, 0, 1.6, 0.8)],
+      [{ t: "rect", x: -pitch / 2 - 1.6, y: -1.4, w: pitch + 3.2, h: 2.8 }]);
+  }
+  // axial electrolytics (the classic can, lying down) and snap-in cans for the HT reservoir
+  const ECAP_AXIAL = { 20.32: [12, 8], 25.4: [16, 10], 30.48: [20, 13], 40.64: [30, 16], 50.8: [38, 22] };
+  function ecapAxial(pitch) {
+    const [L, D] = ECAP_AXIAL[pitch], h = pitch / 2;
+    return fp(`ECAP-AXIAL-${pitch}`, `Axial electrolytic Ø${D} × ${L} mm, ${pitch} mm lead spacing (+ at the square pad)`,
+      [pad(1, -h, 0, 2.2, 1.1, "rect", "+"), pad(2, h, 0, 2.2, 1.1, "circle", "-")],
+      [{ t: "rect", x: -L / 2, y: -D / 2, w: L, h: D }, { t: "line", x1: -h + 1.4, y1: 0, x2: -L / 2, y2: 0 }, { t: "line", x1: L / 2, y1: 0, x2: h - 1.4, y2: 0 }, { t: "line", x1: -L / 2 + 1.5, y1: -D / 2 + 1.5, x2: -L / 2 + 3.5, y2: -D / 2 + 1.5 }, { t: "line", x1: -L / 2 + 2.5, y1: -D / 2 + 0.5, x2: -L / 2 + 2.5, y2: -D / 2 + 2.5 }]);
+  }
+  const SNAPIN = [22, 25, 30, 35];
+  function snapin(D) {
+    return fp(`SNAPIN-D${D}`, `Snap-in electrolytic Ø${D} mm, 10 mm pin spacing (+ at the square pad)`,
+      [pad(1, -5, 0, 3.2, 2.0, "rect", "+"), pad(2, 5, 0, 3.2, 2.0, "circle", "-")],
+      [{ t: "circle", x: 0, y: 0, r: D / 2 }, { t: "line", x1: -D / 2 + 2, y1: -3, x2: -D / 2 + 5, y2: -3 }, { t: "line", x1: -D / 2 + 3.5, y1: -4.5, x2: -D / 2 + 3.5, y2: -1.5 }]);
+  }
+  // screw terminal blocks: 5.08 mm, or 7.5 mm for mains; the pads take the part's pin names
+  function terminal(pitch, names) {
+    const n = names.length, x0 = -(n - 1) / 2 * pitch, big = pitch >= 7, d = big ? 3.0 : 2.6, dr = big ? 1.5 : 1.3, W = n * pitch, H = big ? 10 : 8;
+    return fp(`TERM-${pitch}-${n}`, `Screw terminal, ${n} way, ${pitch} mm pitch (wire entry at the top)`, names.map((nm, i) => pad(i + 1, x0 + i * pitch, 0, d, dr, i ? "circle" : "rect", nm)),
+      [{ t: "rect", x: -W / 2, y: -H / 2, w: W, h: H }, { t: "line", x1: -W / 2, y1: -H / 2 + 1.5, x2: W / 2, y2: -H / 2 + 1.5 }]);
+  }
+  // board-mount jacks: input (RCA, 3.5 mm) and speaker / input (6.35 mm); tip is +, sleeve −
+  function jack(kind) {
+    if (kind === "RCA") return fp("JACK-RCA", "RCA (phono) socket, board mount, front at the bottom", [pad(1, 0, 0, 2.4, 1.3, "rect", "+"), pad(2, -3.5, 5, 3, 1.8, "circle", "-")],
+      [{ t: "rect", x: -6, y: -3, w: 12, h: 13 }, { t: "line", x1: -4, y1: 10, x2: -4, y2: 13 }, { t: "line", x1: 4, y1: 10, x2: 4, y2: 13 }, { t: "line", x1: -4, y1: 13, x2: 4, y2: 13 }]);
+    if (kind === "3.5") return fp("JACK-3.5", "3.5 mm jack, board mount (tip +, ring unused, sleeve −), front at the bottom", [pad(1, 2.5, -2, 1.8, 1.0, "rect", "+"), pad(2, 0, 3, 1.8, 1.0, "circle", "R"), pad(3, -2.5, -2, 1.8, 1.0, "circle", "-")],
+      [{ t: "rect", x: -3.5, y: -6, w: 7, h: 14 }, { t: "rect", x: -2.5, y: 8, w: 5, h: 2.5 }]);
+    return fp("JACK-6.35", "6.35 mm (1/4\") jack, board mount (tip +, sleeve −, switch unused), front at the bottom", [pad(1, 5, -6, 2.6, 1.5, "rect", "+"), pad(2, -5, -6, 2.6, 1.5, "circle", "-"), pad(3, 5, 0, 2.6, 1.5, "circle", "SW")],
+      [{ t: "rect", x: -8, y: -11, w: 16, h: 21 }, { t: "rect", x: -5, y: 10, w: 10, h: 3 }]);
+  }
+  // toggle switches, board mount: SPDT (A · C · B) or DPDT (two rows, one per section)
+  function toggle(poles) {
+    const pads = [];
+    for (let k = 0; k < poles; k++) ["A", "C", "B"].forEach((nm, i) => pads.push(pad(pads.length + 1, (i - 1) * 4.7, (k - (poles - 1) / 2) * 4.7, 2.6, 1.6, pads.length ? "circle" : "rect", poles > 1 ? `${k + 1}.${nm}` : nm)));
+    return fp(`TOGGLE-${poles > 1 ? "DPDT" : "SPDT"}`, `Toggle switch ${poles > 1 ? "DPDT" : "SPDT"}, board mount (A · common · B${poles > 1 ? ", one row per section" : ""})`, pads,
+      [{ t: "rect", x: -6.5, y: -4 - (poles - 1) * 2.35, w: 13, h: 8 + (poles - 1) * 4.7 }]);
+  }
+  // EI-core transformers and chokes, board mount: the pin rows on the two long sides.
+  // Kinds: SE (P1 P2 | S1 S2), PP (P1 U1 CT U2 P2 | S1 S2), PT (mains AC1 AC2 | HT1 CT HT2),
+  // PTP (P1 P2 | HT1 CT HT2); CHOKE: 1 2.
+  const EI = [30, 38, 42, 48, 54, 66, 76, 96];
+  const XF = { SE: [["P1", "P2"], ["S1", "S2"], "single-ended output transformer"], PP: [["P1", "U1", "CT", "U2", "P2"], ["S1", "S2"], "push-pull output transformer"],
+    PT: [["AC1", "AC2"], ["HT1", "CT", "HT2"], "power transformer (mains primary AC1–AC2)"], PTP: [["P1", "P2"], ["HT1", "CT", "HT2"], "power transformer"], CHOKE: [["1", "2"], [], "choke"] };
+  function ei(size, kind) {
+    const [top, bot, what] = XF[kind], W = size, D = Math.round(size * 0.85), big = size >= 54, pitch = size <= 42 ? 5.08 : 7.62;
+    const d = big ? 3.0 : 2.4, dr = big ? 1.6 : 1.2, pads = [];
+    [[top, -D / 2 + 3], [bot, D / 2 - 3]].forEach(([row, y]) => row.forEach((nm, i) => pads.push(pad(pads.length + 1, (i - (row.length - 1) / 2) * pitch, y, d, dr, pads.length ? "circle" : "rect", nm))));
+    const name = kind === "CHOKE" ? `CHOKE-EI${size}` : `XFMR-EI${size}-${kind}`;
+    return fp(name, `EI${size} ${what}, board mount, ${W} × ${D} mm`, pads,
+      [{ t: "rect", x: -W / 2, y: -D / 2, w: W, h: D }, { t: "rect", x: -W * 0.3, y: -D / 2 + 6, w: W * 0.6, h: D - 12 }]);
   }
   // Tube sockets, top (component) side. Viewed from below, the pins run clockwise from the
   // gap or key; seen from above that is counter-clockwise, so pin k sits at 90° − k·step
@@ -179,8 +246,19 @@
     if ((m = /^TO-18-([A-Z]{3})$/.exec(name))) return to18(m[1]);
     if ((m = /^TO-126-([A-Z]{3})$/.exec(name))) return to126(m[1]);
     if ((m = /^TO-220-([A-Z]{3})$/.exec(name))) return to220(m[1]);
+    if ((m = /^TO-247-([A-Z]{3})$/.exec(name))) return to247(m[1]);
     if (name === "LED-5MM") return led5();
-    if (name === "POT-16MM") return pot16();
+    if (name === "LED-3MM") return led3();
+    if ((m = /^POT-(\w+)$/.exec(name)) && POTS[m[1]]) return pot(m[1]);
+    if (name === "TRIM-3296W") return trim3296();
+    if ((m = /^DISC-([\d.]+)$/.exec(name)) && ["2.54", "5.08", "7.62"].includes(m[1])) return disc(+m[1]);
+    if ((m = /^ECAP-AXIAL-([\d.]+)$/.exec(name)) && ECAP_AXIAL[m[1]]) return ecapAxial(+m[1]);
+    if ((m = /^SNAPIN-D(\d+)$/.exec(name)) && SNAPIN.includes(+m[1])) return snapin(+m[1]);
+    if ((m = /^TERM-([\d.]+)-(\d+)$/.exec(name)) && ["5.08", "7.5"].includes(m[1])) return terminal(+m[1], pinNames && pinNames.length === +m[2] ? pinNames : Array.from({ length: +m[2] }, (_, i) => String(i + 1)));
+    if ((m = /^JACK-(RCA|3\.5|6\.35)$/.exec(name))) return jack(m[1]);
+    if ((m = /^TOGGLE-(SPDT|DPDT)$/.exec(name))) return toggle(m[1] === "DPDT" ? 2 : 1);
+    if ((m = /^XFMR-EI(\d+)-(SE|PP|PTP|PT)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], m[2]);
+    if ((m = /^CHOKE-EI(\d+)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], "CHOKE");
     if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1]) : socket(m[1]);
     if ((m = /^WIRE-(\d+)$/.exec(name))) return wirePads(pinNames && pinNames.length === +m[1] ? pinNames : Array.from({ length: +m[1] }, (_, i) => String(i + 1)));
     return null;
@@ -213,7 +291,6 @@
   // (VL1.1 / VL1.2, SA1.1 / SA1.2) are one physical part with one footprint.
   // ---------------------------------------------------------------------------
   const SKIP = new Set(["frame", "note", "ground", "offsheet", "scope"]);
-  const OFFBOARD = new Set(["inductor", "switch", "speaker", "opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat", "mains", "vdc", "siggen"]);
   function physicalParts(netlist) {
     const L = root.CadLib, groups = new Map();
     (netlist.parts || []).forEach(p => {
@@ -236,31 +313,50 @@
   // footprints that fit a part, the default first
   function fpOptions(g) {
     const L = root.CadLib, p = g.members[0].params, t = g.type, wires = g.members.reduce((s, m) => s + m.pins.length, 0);
-    const axials = Object.keys(AXIAL).map(k => "AXIAL-" + k);
+    const axials = Object.keys(AXIAL).map(k => "AXIAL-" + k), first = (d, all) => [d, ...all.filter(a => a !== d)];
+    const diodes = ["DIODE-7.62", "DIODE-10.16", "DIODE-12.7", "DIODE-15.24", "DIODE-20.32"], t2 = "TERM-5.08-2";
+    const eiFor = (kind, size) => first(kind === "CHOKE" ? `CHOKE-EI${size}` : `XFMR-EI${size}-${kind}`, EI.map(s => (kind === "CHOKE" ? `CHOKE-EI${s}` : `XFMR-EI${s}-${kind}`)));
     switch (t) {
-      case "resistor": { const d = "AXIAL-" + (AXIAL_FOR_WATTS[String(p.w || "")] || 10.16); return [d, ...axials.filter(a => a !== d), "WIRE-2"]; }
-      case "pot": return ["POT-16MM", "WIRE-3"];
-      case "capacitor": { const d = "BOX-" + boxFor(p.c); return [d, ...Object.keys(BOX).map(k => "BOX-" + k).filter(a => a !== d), "WIRE-2"]; }
-      case "electrolytic": { const [D, P] = radialFor(p.c), d = `RADIAL-D${D}-P${P}`; return [d, ...RADIAL.map(([a, b]) => `RADIAL-D${a}-P${b}`).filter(a => a !== d), "WIRE-2"]; }
-      case "diode": { const d = p.model === "1N4148" ? "DIODE-7.62" : "DIODE-10.16"; return [d, ...["DIODE-7.62", "DIODE-10.16", "DIODE-15.24"].filter(a => a !== d)]; }
-      case "zener": { const z = L.ZENERS[p.model] || {}, d = z.p >= 5 ? "DIODE-15.24" : "DIODE-10.16"; return [d, ...["DIODE-7.62", "DIODE-10.16", "DIODE-15.24"].filter(a => a !== d)]; }
-      case "led": return ["LED-5MM", "WIRE-2"];
+      case "resistor": { const d = "AXIAL-" + (AXIAL_FOR_WATTS[String(p.w || "")] || 10.16); return [...first(d, axials), "WIRE-2"]; }
+      case "pot": return ["POT-16MM", "POT-24MM", "POT-9MM", "TRIM-3296W", "TERM-5.08-3", "WIRE-3"];
+      case "capacitor": {
+        const boxes = Object.keys(BOX).map(k => "BOX-" + k), discs = ["DISC-5.08", "DISC-2.54", "DISC-7.62"];
+        return p.c <= 1e-9 ? [...discs, ...boxes, ...axials, "WIRE-2"] : [...first("BOX-" + boxFor(p.c), boxes), ...discs, ...axials, "WIRE-2"];
+      }
+      case "electrolytic": {
+        const [D, P] = radialFor(p.c), d = `RADIAL-D${D}-P${P}`;
+        return [...first(d, RADIAL.map(([a, b]) => `RADIAL-D${a}-P${b}`)), ...SNAPIN.map(x => `SNAPIN-D${x}`), ...Object.keys(ECAP_AXIAL).map(k => `ECAP-AXIAL-${k}`), "WIRE-2"];
+      }
+      case "diode": return first(p.model === "1N4148" ? "DIODE-7.62" : "DIODE-10.16", diodes);
+      case "zener": { const z = L.ZENERS[p.model] || {}; return first(z.p >= 5 ? "DIODE-15.24" : "DIODE-10.16", diodes); }
+      case "led": return ["LED-5MM", "LED-3MM", "WIRE-2"];
+      case "inductor": { const l = +p.l || 0; return l < 0.05 ? [...first("AXIAL-15.24", axials), ...eiFor("CHOKE", 42), t2, "WIRE-2"] : [...eiFor("CHOKE", l <= 1 ? 42 : l <= 5 ? 54 : 66), ...axials, t2, "WIRE-2"]; }
+      case "opt_se": case "opt_cat": return [...eiFor("SE", 66), "TERM-5.08-4", "WIRE-4"];
+      case "opt_pp": return [...eiFor("PP", 76), "TERM-5.08-7", "WIRE-7"];
+      case "ptx": return [...eiFor("PT", 76), "TERM-5.08-3", "WIRE-3"];
+      case "ptx_cat": return [...eiFor("PTP", 76), "TERM-5.08-5", "WIRE-5"];
+      case "switch": return g.members.length === 1 ? ["TOGGLE-SPDT", "TERM-5.08-3", "WIRE-3"] : g.members.length === 2 ? ["TOGGLE-DPDT", `TERM-5.08-${wires}`, `WIRE-${wires}`] : [`TERM-5.08-${wires}`, `WIRE-${wires}`];
+      case "speaker": return [t2, "JACK-6.35", "WIRE-2"];
+      case "siggen": return ["JACK-RCA", "JACK-6.35", "JACK-3.5", t2, "WIRE-2"];
+      case "vdc": return [t2, "TERM-7.5-2", "WIRE-2"];
+      case "mains": return ["TERM-7.5-2", t2, "WIRE-2"];
       case "npn": case "pnp": case "nmos": case "pmos": {
         const m = (t === "npn" || t === "pnp" ? L.BJTS : L.MOSFETS)[p.model] || {}, order = (PINOUT[p.model] || [t[1] === "m" ? "GDS" : "EBC"])[0];
         const pkg = /TO-220/.test(m.pkg) ? "TO-220" : /TO-126/.test(m.pkg) ? "TO-126" : /TO-18/.test(m.pkg) ? "TO-18" : "TO-92";
-        const all = ["TO-92", "TO-18", "TO-126", "TO-220"].map(k => `${k}-${order}`);
+        const all = ["TO-92", "TO-18", "TO-126", "TO-220", "TO-247"].map(k => `${k}-${order}`);
         return [`${pkg}-${order}`, ...all.filter(a => a !== `${pkg}-${order}`), "WIRE-3"];
       }
       case "tube": { const d = socketFor(L.tubeByName(p.tube)); return [d, ...["SOCKET-B9A", "SOCKET-B7G", "SOCKET-B9D", "SOCKET-OCTAL", "SOCKET-UX4"].filter(a => a !== d), `WIRE-${wires}`]; }
       default: return [`WIRE-${wires}`];
     }
   }
-  const isOffboard = g => OFFBOARD.has(g.type);
+  // wired to a chassis-mounted part (wire pads or a screw terminal) rather than soldered in
+  const isOffboard = g => !!(g.fp && /^(WIRE|TERM)-/.test(g.fp.name));
   // which schematic pins land on each pad: Map padNum -> [{ comp, pin }]
   function padMap(g, f) {
     const L = root.CadLib, map = new Map(), add = (num, comp, pin) => { num = String(num); if (!map.has(num)) map.set(num, []); map.get(num).push({ comp, pin }); };
     const one = g.members[0];
-    if (/^WIRE-/.test(f.name)) { let k = 1; g.members.forEach(m => m.pins.forEach(p => add(k++, m.id, p.id))); return map; }
+    if (/^(WIRE|TERM)-/.test(f.name)) { let k = 1; g.members.forEach(m => m.pins.forEach(p => add(k++, m.id, p.id))); return map; }
     if (g.type === "tube") {
       // pin numbers from the tube's pinout; a dual tube's sections each bring their own
       g.members.forEach(m => {
@@ -273,10 +369,11 @@
     f.pads.forEach(p => { byName[p.name] = p.num; });
     const SEM = { resistor: { 1: "1", 2: "2" }, capacitor: { 1: "1", 2: "2" }, electrolytic: { "+": "1", "-": "2" }, inductor: { 1: "1", 2: "2" },
       diode: { K: "1", A: "2" }, zener: { K: "1", A: "2" }, led: { K: "1", A: "2" }, pot: { 1: "1", W: "2", 2: "3" } };
-    one.pins.forEach(p => {
-      const num = SEM[g.type] ? SEM[g.type][p.id] : byName[p.id];
-      if (num) add(num, one.id, p.id);
-    });
+    // sections of one part (a DPDT switch) find their pads as "1.A", "2.A" …
+    (SEM[g.type] ? [one] : g.members).forEach((m, k) => m.pins.forEach(p => {
+      const num = SEM[g.type] ? SEM[g.type][p.id] : byName[g.members.length > 1 ? `${k + 1}.${p.id}` : p.id];
+      if (num) add(num, m.id, p.id);
+    }));
     return map;
   }
 

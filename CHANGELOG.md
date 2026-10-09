@@ -6,6 +6,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.37.0] - 2026-10-09
+
+### Added
+- **Through-hole footprints for every part** in Board Design. Before, the
+  transformers, chokes, switches, speaker, mains, supplies and the signal
+  generator only got wire pads. Now each part has a real footprint by
+  default:
+  - board-mount EI transformers and chokes, EI30–EI96, pins named as in the
+    schematic;
+  - toggle switches SPDT / DPDT;
+  - screw terminals 5.08 mm and 7.5 mm (mains);
+  - RCA, 3.5 mm and 6.35 mm jacks.
+- More choices for the other parts: pots 9 and 24 mm, a 3296W trimmer,
+  ceramic disc / silver mica and axial film capacitors, snap-in and axial
+  electrolytics, DO-201 diodes, 3 mm LEDs, TO-247.
+- Wire pads and screw terminals stay available for parts mounted on the
+  chassis.
+
 ## [3.36.0] - 2026-10-09
 
 ### Added
