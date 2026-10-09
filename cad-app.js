@@ -1179,6 +1179,18 @@
       ctx.textAlign = "left";
       return;
     }
+    if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) {
+      // beside the envelope, on the side away from the base / gate lead (the collector and
+      // emitter leads run on through the space above and below)
+      const bp = compPins(c).find(p => p.id === "B" || p.id === "G"), right = bp.x < c.x - 5;
+      ctx.textAlign = right ? "left" : "right";
+      const tx = right ? b.x2 + 5 : b.x1 - 5;
+      ctx.fillText(desig(c), tx, c.y - 2);
+      ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
+      ctx.fillText(val, tx, c.y + 11);
+      ctx.textAlign = "left";
+      return;
+    }
     if (vertical) {
       ctx.textAlign = "right";
       ctx.fillText(desig(c), b.x1 - 5, c.y - 2);

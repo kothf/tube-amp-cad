@@ -425,7 +425,9 @@
   // distributed SPICE models where one exists (2N2222A, 2N3904, 2N3906,
   // 2N2907A); the others are set to the datasheet's typical gain at the usual
   // operating current. MOSFETs: threshold vto (V; negative for depletion
-  // N-channel parts), kp (A/V²) from the datasheet's transfer curve. Ratings:
+  // N-channel parts) at the middle of the datasheet's min-max range, kp (A/V²)
+  // from its forward transconductance gfs at the test current (kp = gfs²/2Id;
+  // depletion parts from Idss). Ratings:
   // v (Vceo / Vds max), i (A), p (W at 25 °C case for power parts, free air else).
   // cbe/cbc, cgs/cgd: junction and gate capacitances (F) for the transient.
   // ---------------------------------------------------------------------------
@@ -445,16 +447,16 @@
     "MJE350": { pol: -1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 20 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" }
   };
   const MOSFETS = {
-    "2N7000": { pol: 1, vto: 2.1, kp: 0.17, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.2, p: 0.4, pkg: "TO-92", use: "small signal switch" },
-    "BS170": { pol: 1, vto: 2.1, kp: 0.2, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.5, p: 0.83, pkg: "TO-92", use: "small signal switch" },
-    "IRF510": { pol: 1, vto: 3.5, kp: 1.5, lambda: 0.005, cgs: 160 * pf, cgd: 20 * pf, v: 100, i: 5.6, p: 43, pkg: "TO-220", use: "follower, regulator" },
-    "IRF820": { pol: 1, vto: 3.8, kp: 0.9, lambda: 0.002, cgs: 335 * pf, cgd: 25 * pf, v: 500, i: 2.5, p: 50, pkg: "TO-220", use: "HV regulator, gyrator, follower" },
-    "IRF840": { pol: 1, vto: 3.9, kp: 2.5, lambda: 0.002, cgs: 1180 * pf, cgd: 120 * pf, v: 500, i: 8, p: 125, pkg: "TO-220", use: "HV regulator, follower" },
+    "2N7000": { pol: 1, vto: 2.1, kp: 0.26, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.2, p: 0.4, pkg: "TO-92", use: "small signal switch" },
+    "BS170": { pol: 1, vto: 2.1, kp: 0.1, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.5, p: 0.83, pkg: "TO-92", use: "small signal switch" },
+    "IRF510": { pol: 1, vto: 3.0, kp: 0.25, lambda: 0.005, cgs: 160 * pf, cgd: 20 * pf, v: 100, i: 5.6, p: 43, pkg: "TO-220", use: "follower, regulator" },
+    "IRF820": { pol: 1, vto: 3.0, kp: 0.75, lambda: 0.002, cgs: 335 * pf, cgd: 25 * pf, v: 500, i: 2.5, p: 50, pkg: "TO-220", use: "HV regulator, gyrator, follower" },
+    "IRF840": { pol: 1, vto: 3.0, kp: 2.5, lambda: 0.002, cgs: 1180 * pf, cgd: 120 * pf, v: 500, i: 8, p: 125, pkg: "TO-220", use: "HV regulator, follower" },
     "DN2540": { pol: 1, vto: -2.0, kp: 0.15, lambda: 0.002, cgs: 190 * pf, cgd: 10 * pf, v: 400, i: 0.5, p: 15, pkg: "TO-220", use: "depletion, CCS / cascode" },
     "LND150": { pol: 1, vto: -2.0, kp: 0.001, lambda: 0.005, cgs: 7 * pf, cgd: 0.5 * pf, v: 500, i: 0.03, p: 0.74, pkg: "TO-92", use: "depletion, low-current CCS" },
-    "BS250": { pol: -1, vto: -2.5, kp: 0.1, lambda: 0.01, cgs: 25 * pf, cgd: 5 * pf, v: 45, i: 0.23, p: 0.83, pkg: "TO-92", use: "small signal switch" },
-    "IRF9610": { pol: -1, vto: -3.5, kp: 0.5, lambda: 0.003, cgs: 150 * pf, cgd: 20 * pf, v: 200, i: 1.8, p: 20, pkg: "TO-220", use: "HV CCS, follower" },
-    "IRF9640": { pol: -1, vto: -3.5, kp: 1.5, lambda: 0.003, cgs: 1100 * pf, cgd: 100 * pf, v: 200, i: 11, p: 125, pkg: "TO-220", use: "HV regulator, CCS" }
+    "BS250": { pol: -1, vto: -2.25, kp: 0.056, lambda: 0.01, cgs: 25 * pf, cgd: 5 * pf, v: 45, i: 0.23, p: 0.83, pkg: "TO-92", use: "small signal switch" },
+    "IRF9610": { pol: -1, vto: -3.0, kp: 0.45, lambda: 0.003, cgs: 150 * pf, cgd: 20 * pf, v: 200, i: 1.8, p: 20, pkg: "TO-220", use: "HV CCS, follower" },
+    "IRF9640": { pol: -1, vto: -3.0, kp: 1.27, lambda: 0.003, cgs: 1100 * pf, cgd: 100 * pf, v: 200, i: 11, p: 125, pkg: "TO-220", use: "HV regulator, CCS" }
   };
   // zener: breakdown bv (V) at the test current izt (A), dynamic resistance zzt (Ω), power p (W)
   const ZENERS = {
