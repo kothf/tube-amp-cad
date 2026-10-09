@@ -955,9 +955,12 @@
 
   function onKeyDown(e) {
     const tag = (e.target.tagName || "").toUpperCase();
+    if (e.key === "F1") { const m = document.getElementById("help-modal"); m.hidden = !m.hidden; e.preventDefault(); return; }   // also while typing
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
     const k = e.key, ctrl = e.ctrlKey || e.metaKey, L = /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(k).toLowerCase();
     if (k === " ") { S.spaceDown = true; canvas.style.cursor = "grab"; e.preventDefault(); return; }
+    if (k === "?") { const m = document.getElementById("help-modal"); m.hidden = !m.hidden; e.preventDefault(); return; }
+    if (k === "Escape" && !document.getElementById("help-modal").hidden) { document.getElementById("help-modal").hidden = true; return; }
     if (k === "Escape") { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else { S.sel.comps.clear(); S.sel.wires.clear(); updateInspector(); render(); } }
     else if ((k === "Delete" || k === "Backspace")) { deleteSelection(); e.preventDefault(); }
     // letters by physical key (e.code), so the shortcuts work in any keyboard layout
@@ -1457,55 +1460,114 @@
     canvas.focus();
   }
 
+  // ---------------------------------------------------------------------------
+  // Parts palette: collapsible groups (state kept per browser) and one search box for
+  // parts, part numbers (2N3904, IRF540, 125ESE …), tubes and values ("47k" → 47 kΩ resistor)
+  // ---------------------------------------------------------------------------
+  const PAL_KEY = "tubecad_palette";
+  const palState = { closed: { Transformers: true, Semiconductors: true, Instruments: true, Document: true, Tubes: true }, allTubes: false };
+  try { Object.assign(palState, JSON.parse(localStorage.getItem(PAL_KEY)) || {}); } catch (e) {}
+  const savePal = () => { try { localStorage.setItem(PAL_KEY, JSON.stringify(palState)); } catch (e) {} };
+  const escH = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  function palItem(label, sub, type, params, extraClass, title) {
+    const b = document.createElement("button");
+    b.className = "pal-item" + (extraClass ? " " + extraClass : "");
+    b.innerHTML = `<span>${escH(label)}</span>${sub ? `<em>${escH(sub)}</em>` : ""}`;
+    b.title = title || "Click, then click on the sheet to place (Shift-click places several)";
+    b.addEventListener("click", () => startPlacing(type, params, b));
+    return b;
+  }
+  const tubeItem = t => palItem(t.commonName, t.type.replace(/ (Triode|Pentode|Tetrode|Rectifier)$/, ""), "tube", { tube: t.commonName }, "tube", `${t.nameWestern} · ${t.nameGost} · Pa max ${t.paMax} W`);
+  // everything the search can find: [group, label, sub, type, params, text to match]
+  function searchables() {
+    const L = CadLib, out = [];
+    PALETTE.forEach(g => g.items.forEach(it => {
+      if (it.sub) return;
+      const [type, params, label] = it, def = LIB[type], p = Object.assign({}, def.defaults, params || {}), sub = def.value({ params: p });
+      out.push([g.group, label || def.name, sub, type, params, `${label || ""} ${def.name} ${sub} ${type}`]);
+    }));
+    Object.entries(L.BJTS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "NPN" : "PNP"} · ${k}`, `${m.v} V ${m.p} W`, m.pol > 0 ? "npn" : "pnp", { model: k }, `${k} transistor bjt ${m.pol > 0 ? "npn" : "pnp"} ${m.use}`]));
+    Object.entries(L.MOSFETS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "N" : "P"}-MOSFET · ${k}`, `${m.v} V ${m.p} W`, m.pol > 0 ? "nmos" : "pmos", { model: k }, `${k} mosfet fet ${m.use}`]));
+    Object.entries(L.ZENERS).forEach(([k, z]) => out.push(["Semiconductors", `Zener · ${k}`, `${z.bv} V ${z.p} W`, "zener", { model: k }, `${k} zener ${z.bv}v`]));
+    Object.keys(L.LEDS).forEach(k => out.push(["Semiconductors", `LED · ${k}`, `${L.LEDS[k].vf} V`, "led", { color: k }, `led ${k}`]));
+    ["1N4007", "UF4007", "1N4148"].forEach(k => out.push(["Semiconductors", `Diode · ${k}`, "", "diode", { model: k }, `${k} diode rectifier`]));
+    Object.entries(L.OUTPUT_TX).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `${m.w} W ${m.ma} mA`, "opt_cat", { model: k }, `${k} ${m.name} output transformer single-ended`]));
+    Object.entries(L.POWER_TX).forEach(([k, m]) => out.push(["Transformers", `Power · ${m.name}`, m.rated, "ptx_cat", { model: k }, `${k} ${m.name} power transformer ${m.rated}`]));
+    TUBE_DATABASE.forEach(t => out.push(["Tubes", t, "", "tube", { tube: t.commonName }, `${t.commonName} ${t.nameGost} ${t.nameWestern} ${t.type}`]));
+    return out;
+  }
+  // a typed value becomes the part it describes: 47k → resistor, 100n / 100nF → capacitor, 47u → electrolytic, 5H → choke
+  function valueHits(q) {
+    const m = /^([\d.,]+\s*(?:meg|[pnuµmkKMG])?)\s*(Ω|ohm|r|f|h|v)?$/i.exec(q.trim()); if (!m) return [];
+    const v = parseEng(m[1].replace(/\s+/g, "")); if (!(v > 0)) return [];
+    const u = (m[2] || "").toLowerCase(), out = [];
+    if (u === "f" || (!u && /[pnuµ]$/i.test(m[1]))) { out.push(["Value", "Capacitor", fmtEng(v, "F"), "capacitor", { c: v }]); if (v >= 1e-6) out.push(["Value", "Electrolytic cap", fmtEng(v, "F"), "electrolytic", { c: v }]); }
+    else if (u === "h") out.push(["Value", "Inductor / choke", fmtEng(v, "H"), "inductor", { l: v }]);
+    else if (u === "v") out.push(["Value", "DC supply", fmtEng(v, "V"), "vdc", { v }]);
+    else { out.push(["Value", "Resistor", fmtEng(v, "Ω"), "resistor", { r: v }]); out.push(["Value", "Potentiometer", fmtEng(v, "Ω"), "pot", { r: v }]); }
+    return out;
+  }
   function buildPalette() {
     const host = document.getElementById("palette");
     host.innerHTML = "";
-    const addGroup = (title) => { const h = document.createElement("div"); h.className = "pal-group"; h.textContent = title; host.appendChild(h); };
-    const addItem = (label, sub, type, params, extraClass) => {
-      const b = document.createElement("button");
-      b.className = "pal-item" + (extraClass ? " " + extraClass : "");
-      b.innerHTML = `<span>${label}</span>${sub ? `<em>${sub}</em>` : ""}`;
-      b.title = "Click, then click on the sheet to place (Shift-click places several)";
-      b.addEventListener("click", () => startPlacing(type, params, b));
-      host.appendChild(b);
-      return b;
-    };
-    PALETTE.forEach(g => {
-      addGroup(g.group);
-      g.items.forEach(it => {
-        if (it.sub) { const h = document.createElement("div"); h.className = "pal-sub"; h.textContent = it.sub; host.appendChild(h); return; }
-        const [type, params, label] = it, def = LIB[type];
-        const p = Object.assign({}, def.defaults, params || {});
-        addItem(label || def.name, def.value({ params: p }), type, params);
-      });
-    });
-    // tubes from the shared database
-    addGroup("Tubes");
     const search = document.createElement("input");
-    search.type = "search"; search.placeholder = `Search ${TUBE_DATABASE.length} tubes…`; search.className = "pal-search";
+    search.type = "search"; search.className = "pal-search"; search.id = "pal-search";
+    search.placeholder = "Search parts, 2N3904, EL84, 47k…"; search.setAttribute("aria-label", "Search parts");
     host.appendChild(search);
-    const list = document.createElement("div");
-    host.appendChild(list);
-    const fill = () => {
-      const q = search.value.trim().toLowerCase();
-      list.innerHTML = "";
-      [["triode", "Triodes"], ["pentode", "Pentodes & beam tetrodes"], ["rectifier", "Rectifiers"]].forEach(([kind, title]) => {
-        const tubes = TUBE_DATABASE.filter(t => tubeKind(t) === kind && (!q || (t.commonName + " " + t.nameGost + " " + t.nameWestern + " " + t.type).toLowerCase().includes(q)));
-        if (!tubes.length) return;
-        const h = document.createElement("div"); h.className = "pal-sub"; h.textContent = title; list.appendChild(h);
-        tubes.forEach(t => {
-          const b = document.createElement("button");
-          b.className = "pal-item tube";
-          b.innerHTML = `<span>${t.commonName}</span><em>${t.type.replace(/ (Triode|Pentode|Tetrode|Rectifier)$/, "")}</em>`;
-          b.title = `${t.nameWestern} · ${t.nameGost} · Pa max ${t.paMax} W`;
-          b.addEventListener("click", () => startPlacing("tube", { tube: t.commonName }, b));
-          list.appendChild(b);
+    const body = document.createElement("div"); host.appendChild(body);
+    const index = searchables();
+    const group = (title, count) => {
+      const h = document.createElement("button"); h.className = "pal-group" + (palState.closed[title] ? " closed" : ""); h.type = "button";
+      h.innerHTML = `<span class="chev">▾</span>${escH(title)}${count ? `<small>${count}</small>` : ""}`;
+      h.setAttribute("aria-expanded", String(!palState.closed[title]));
+      const box = document.createElement("div"); box.className = "pal-box"; box.hidden = !!palState.closed[title];
+      h.addEventListener("click", () => { palState.closed[title] = !palState.closed[title]; savePal(); h.classList.toggle("closed"); box.hidden = !!palState.closed[title]; h.setAttribute("aria-expanded", String(!box.hidden)); });
+      body.appendChild(h); body.appendChild(box);
+      return box;
+    };
+    const browse = () => {
+      body.innerHTML = "";
+      PALETTE.forEach(g => {
+        const box = group(g.group);
+        g.items.forEach(it => {
+          if (it.sub) { const h = document.createElement("div"); h.className = "pal-sub"; h.textContent = it.sub; box.appendChild(h); return; }
+          const [type, params, label] = it, def = LIB[type], p = Object.assign({}, def.defaults, params || {});
+          box.appendChild(palItem(label || def.name, def.value({ params: p }), type, params));
         });
       });
+      // tubes: the popular ones, or all of them by kind
+      const box = group("Tubes", TUBE_DATABASE.length);
+      const toggle = document.createElement("button"); toggle.type = "button"; toggle.className = "pal-more";
+      toggle.textContent = palState.allTubes ? "Show popular tubes only" : `Show all ${TUBE_DATABASE.length} tubes`;
+      toggle.addEventListener("click", () => { palState.allTubes = !palState.allTubes; savePal(); browse(); });
+      if (palState.allTubes) {
+        [["triode", "Triodes"], ["pentode", "Pentodes & beam tetrodes"], ["rectifier", "Rectifiers"]].forEach(([kind, title]) => {
+          const h = document.createElement("div"); h.className = "pal-sub"; h.textContent = title; box.appendChild(h);
+          TUBE_DATABASE.filter(t => tubeKind(t) === kind).forEach(t => box.appendChild(tubeItem(t)));
+        });
+      } else TUBE_DATABASE.filter(t => t.isFavorite).forEach(t => box.appendChild(tubeItem(t)));
+      box.appendChild(toggle);
     };
-    search.addEventListener("input", fill);
-    fill();
+    const find = q => {
+      body.innerHTML = "";
+      const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+      const hits = valueHits(q).concat(index.filter(e => words.every(w => e[5].toLowerCase().includes(w))));
+      if (!hits.length) { body.innerHTML = `<p class="pal-none">Nothing found for “${escH(q)}”.</p>`; return; }
+      let last = null;
+      hits.slice(0, 80).forEach(([g, label, sub, type, params]) => {
+        if (g !== last) { const h = document.createElement("div"); h.className = "pal-sub"; h.textContent = g; body.appendChild(h); last = g; }
+        body.appendChild(type === "tube" && typeof label === "object" ? tubeItem(label) : palItem(label, sub, type, params));
+      });
+    };
+    const update = () => { const q = search.value.trim(); if (q) find(q); else browse(); };
+    search.addEventListener("input", update);
+    search.addEventListener("keydown", e => {
+      if (e.key === "Enter") { const first = body.querySelector(".pal-item"); if (first) first.click(); }
+      else if (e.key === "Escape") { search.value = ""; update(); search.blur(); }
+    });
+    update();
   }
+
 
   function selectedComp() { return S.sel.comps.size === 1 && !S.sel.wires.size ? S.comps.find(c => S.sel.comps.has(c.id)) : null; }
 
@@ -1572,6 +1634,7 @@
         el = document.createElement("select");
         (typeof f.options === "function" ? f.options(c) : f.options).forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; el.appendChild(o); });
         el.value = String(c.params[f.key]);
+        if (el.selectedIndex < 0) el.selectedIndex = 0;   // a setting the part was saved without (e.g. Mirror) shows its default
         el.addEventListener("change", () => { if (c.type === "switch" && f.key === "pos") setSwitch(c, el.value); else { c.params[f.key] = el.value; commit(); } });
       } else if (f.kind === "range") {
         const wrap = document.createElement("div"); wrap.className = "range-wrap";
@@ -1622,7 +1685,7 @@
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
     host.appendChild(live);
     const act = document.createElement("div"); act.className = "insp-actions";
-    act.innerHTML = `<button class="btn" data-a="rot" ${def.noRotate ? "disabled" : ""}>⟳ Rotate (R)</button><button class="btn" data-a="mir" ${canMirror(c.type) ? "" : "disabled"}>⇋ Mirror (M)</button><button class="btn danger" data-a="del">Delete (Del)</button>`;
+    act.innerHTML = `<button class="btn" data-a="rot" title="Rotate (R)" ${def.noRotate ? "disabled" : ""}>⟳ Rotate</button><button class="btn" data-a="mir" title="Mirror left–right (M)" ${canMirror(c.type) ? "" : "disabled"}>⇋ Mirror</button><button class="btn danger" data-a="del" title="Delete (Del)">✕ Delete</button>`;
     act.querySelector('[data-a="rot"]').onclick = rotateSelection;
     act.querySelector('[data-a="mir"]').onclick = mirrorSelection;
     act.querySelector('[data-a="del"]').onclick = deleteSelection;
@@ -1734,25 +1797,34 @@
   function buildCircuitPanel(host) {
     host.innerHTML = `<div class="insp-title">Circuit</div><div id="insp-live" class="insp-live"></div>
       <button class="btn wide" id="btn-renumber" title="Letter code (R, C, L, T, VL …) and number for every part, in reading order">Renumber designations</button>
-      <div class="insp-sub">How to</div>
-      <ul class="help-list">
-        <li><b>Place:</b> pick a part on the left, click the sheet. <kbd>R</kbd> rotates and <kbd>M</kbd> mirrors (also while placing), <kbd>Shift</kbd>-click places several.</li>
-        <li><b>Wire:</b> click a pin, click corners, finish on a pin or wire. <kbd>W</kbd> starts wires anywhere.</li>
-        <li><b>Move:</b> drag parts (wires follow) or drag a wire segment sideways.</li>
-        <li><b>View:</b> wheel zooms, <kbd>Space</kbd>/middle-drag pans, <kbd>F</kbd> fits.</li>
-        <li><b>Measure:</b> hover a wire for its voltage; wire an Oscilloscope to see waveforms; double-click it for the full scope.</li>
-        <li><b>Simulate:</b> <i>Live</i> re-simulates after every edit. Turn it off to simulate only on <i>▶ Simulate</i> (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>), which always runs until the circuit has settled.</li>
-        <li><b>Switch:</b> double-click to flip it; sections named SF1.1, SF1.2… flip together.</li>
-        <li><b>Standards:</b> symbols follow IEC 60617 and designations use the classic letter codes (R, C, L, T, VL, VD, SA, BA, G, P; ГОСТ 2.710). Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
-        <li><b>Several sheets:</b> File → Add sheet… places a further sheet; pick one in the Sheet list to zoom to it. Carry a rail or signal to another sheet with <i>Sheet connectors</i> (Sources) of the same name: they join like a wire and show the sheet/zone of their partners. Save as PDF writes one page per sheet.</li>
-      </ul>`;
+      <p class="insp-help">Click a part to see and edit it. Help and keyboard shortcuts: <kbd>F1</kbd> or the <b>?</b> button.</p>`;
     const rb = host.querySelector("#btn-renumber"); if (rb) rb.addEventListener("click", renumber);
   }
+  // where the power goes: output into speakers, dissipation per kind of part, what the DC supplies deliver
+  function powerSummary() {
+    const r = S.sim.result; if (!r) return "";
+    let out = 0, tubes = 0, res = 0, semi = 0, sup = 0, haveSup = false;
+    S.comps.forEach(c => {
+      if (c.type === "speaker") { const a = waveOf(c, "+"), b = waveOf(c, "-"); if (a && b) { let m = 0; for (let i = 0; i < a.length; i++) { const v = a[i] - b[i]; m += v * v; } out += m / a.length / c.params.r; } }
+      else if (c.type === "resistor") { const p = resistorPower(c); if (p) res += p; }
+      else if (c.type === "tube") { const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier") tubes += (d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia) + (d.dc.vg2k && d.dc.ig2 ? d.dc.vg2k * d.dc.ig2 : 0); }
+      else if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) semi += d.pd; }
+      else if (c.type === "vdc") { const d = (r.dc.devices[c.id] || {}).main; if (d) { sup += -d.i * c.params.v; haveSup = true; } }
+    });
+    let h = `<div class="insp-sub">Power</div>`;
+    if (out > 0) h += kv("Output (speakers)", fmtEng(out, "W", 2));
+    if (tubes > 0) h += kv("Tubes (anode + screen)", fmtEng(tubes, "W", 2));
+    if (semi > 0) h += kv("Transistors", fmtEng(semi, "W", 2));
+    if (res > 0) h += kv("Resistors", fmtEng(res, "W", 2));
+    if (haveSup) h += kv("From DC supplies", fmtEng(sup, "W", 2));
+    return h;
+  }
+
   function circuitReadout() {
     const T = topo();
     const counts = {};
     S.comps.forEach(c => { counts[c.type] = (counts[c.type] || 0) + 1; });
-    let h = kv("Parts", S.comps.length) + kv("Wire segments", S.wires.length) + kv("Nets", T.nodeCount);
+    let h = kv("Parts · wires · nets", `${S.comps.length} · ${S.wires.length} · ${T.nodeCount}`) + powerSummary();
     const issues = [];
     if (hasCircuit() && !T.hasGround) issues.push("No ground symbol.");
     const open = [];
@@ -2341,6 +2413,10 @@
     bind("btn-tool-select", () => { S.placing = null; setTool("select"); });
     bind("btn-tool-wire", () => { S.placing = null; setTool(S.tool === "wire" ? "select" : "wire"); });
     bind("btn-rotate", rotateSelection); bind("btn-delete", deleteSelection);
+    bind("btn-mirror", mirrorSelection);
+    bind("btn-help", () => { document.getElementById("help-modal").hidden = false; });
+    bind("btn-help-close", () => { document.getElementById("help-modal").hidden = true; });
+    document.getElementById("help-modal").addEventListener("click", e => { if (e.target.id === "help-modal") e.target.hidden = true; });
     bind("btn-zoom-in", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1.25));
     bind("btn-zoom-out", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 0.8));
     bind("btn-zoom-fit", fitCurrent);

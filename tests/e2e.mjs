@@ -494,6 +494,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
 // --- 7. Catalog power transformer fed from an AC mains part: Hammond drawings --
 {
   await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear(); S.view = { scale: 1, ox: 0, oy: 0 }; TubeCAD.commit(); });
+  if (await cad.getByRole("button", { name: /^Power 300/ }).count() === 0) await cad.locator(".pal-group", { hasText: "Transformers" }).click();
   await cad.getByRole("button", { name: /^Power 300/ }).click();
   await clickAt(300, 300);
   const placed = await cad.evaluate(() => TubeCAD.state.comps.find(c => c.type === "ptx_cat"));
@@ -558,6 +559,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(at(100, 300)[3] === "VL1" && at(300, 300)[3] === "VL2.1" && at(500, 300)[3] === "VL2.2", `tubes are VL (rectifier VL1); dual triode sections stay one object (VL2.1, VL2.2)`);
   check(at(400, 500)[3] === "C1" && at(200, 200)[4] === "R1", `capacitor C1; designations shown as R1, no prefix`);
   // drawing frame: placed from the palette, selectable by its title block only
+  if (await cad.getByRole("button", { name: /Drawing frame/ }).count() === 0) await cad.locator(".pal-group", { hasText: "Document" }).click();
   await cad.getByRole("button", { name: /Drawing frame/ }).click();
   await clickAt(0, 0);
   const fr = await cad.evaluate(() => { const f = TubeCAD.state.comps.find(c => c.type === "frame"); const g = CadLib.sheetGeom(f); return { id: f.id, x: f.x, y: f.y, g }; });
@@ -979,6 +981,21 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
 
 // --- Transistors, zener, LED; current stickers ------------------------------------
 {
+  // groups fold: Semiconductors starts closed, a click opens it and the browser remembers
+  check(await cad.getByRole("button", { name: /^NPN transistor/ }).count() === 0, "palette: the Semiconductors group starts folded");
+  await cad.locator(".pal-group", { hasText: "Semiconductors" }).click();
+  check(await cad.evaluate(() => JSON.parse(localStorage.getItem("tubecad_palette")).closed.Semiconductors) === false, "palette: an opened group is remembered");
+  // one search box for parts, part numbers, tubes and values
+  const search = cad.locator("#pal-search");
+  await search.fill("2n2222");
+  const hit = await cad.locator("#palette .pal-item").allTextContents();
+  await search.fill("el84"); const tubes = await cad.locator("#palette .pal-item").allTextContents();
+  await search.fill("47k"); const val = await cad.locator("#palette .pal-item").first().textContent();
+  await search.press("Enter");
+  const placing = await cad.evaluate(() => TubeCAD.state.placing);
+  await cad.keyboard.press("Escape"); await search.fill(""); await cad.keyboard.press("Escape");
+  check(hit.length === 1 && /NPN · 2N2222A/.test(hit[0]) && tubes.some(t => /^EL84/.test(t)) && /Resistor\s*47kΩ/.test(val) && placing && placing.type === "resistor" && placing.params.r === 47000,
+    `palette search finds part numbers (${hit[0]}), tubes (EL84) and values ("47k" → ${val && val.replace(/\s+/g, " ")}; Enter picks it)`);
   for (const name of ["NPN transistor", "PNP transistor", "NPN, high voltage", "N-MOSFET, depletion", "P-MOSFET", "Zener diode", "LED"])
     check(await cad.getByRole("button", { name: new RegExp("^" + name.replace(/[()]/g, "\\$&")) }).count() > 0, `palette offers "${name}" under Semiconductors`);
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
@@ -1024,6 +1041,21 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(/^QVT|^Q\S+ N\d+ N\d+ N\d+ QN_MJE340$/m.test(spice) && /\.model QN_MJE340 NPN\(IS=/.test(spice), "SPICE export writes the transistor as a Q element with its .model");
   const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => [r.refs, r.desc, r.value, r.rating, r.sim].join("|")));
   check(bom.some(l => l.startsWith("VT1|Transistor, NPN|MJE340|300 V, 0.5 A, 20 W, TO-126|")) && bom.some(l => /^VD1\|Zener diode\|1N4742A\|12 V, 1 W\|/.test(l)) && bom.some(l => /^HL1\|LED, red\|/.test(l)), `the BOM lists the transistor, zener and LED with their ratings`);
+  // nothing selected: the inspector sums up where the power goes
+  await cad.evaluate(() => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.wires.clear(); TubeCAD.commit(); });
+  await cad.waitForFunction(() => { const S = TubeCAD.state; return S.sim.result && !S.sim.busy; }, null, { timeout: 30000 });
+  await cad.waitForTimeout(150);
+  const ins = await cad.textContent("#inspector");
+  const sup = +((/From DC supplies([\d.]+)W/.exec(ins) || [])[1]);
+  check(/Power/.test(ins) && /Transistors[\d.]+m?W/.test(ins) && /Resistors[\d.]+W/.test(ins) && sup > 8 && sup < 9, `with nothing selected the inspector shows the power summary (DC supplies ${sup} W = 300 V × 27.6 mA)`);
+  // help: F1 opens the window with the shortcut list, Esc closes it; the toolbar mirrors too
+  await cad.locator("#cad").focus(); await cad.keyboard.press("F1");
+  const help = await cad.isVisible("#help-modal") && /Ctrl\+Enter/.test(await cad.textContent("#help-modal"));
+  await cad.keyboard.press("Escape");
+  check(help && !(await cad.isVisible("#help-modal")), "F1 opens the help with every keyboard shortcut; Esc closes it");
+  const mb = await cad.evaluate(() => { const S = TubeCAD.state, q = S.comps.find(c => c.label === "VT1"); S.sel.comps.clear(); S.sel.comps.add(q.id); document.getElementById("btn-mirror").click(); const f = q.params.flip; TubeCAD.undo(); return f; });
+  check(mb === "yes", "the toolbar's Mirror button mirrors the selection");
+  check(await cad.evaluate(() => [...document.querySelectorAll("select")].every(s => getComputedStyle(s).appearance === "none" || getComputedStyle(s).webkitAppearance === "none")), "every dropdown is drawn by the page (dark in Safari too)");
   // stickers keep clear of every text and of each other
   await cad.evaluate(() => TubeCAD.fitView()); await cad.waitForTimeout(150);
   const sr = await cad.evaluate(() => TubeCAD.stickerReport());
