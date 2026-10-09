@@ -299,12 +299,17 @@
     if (traj && traj.vak && traj.vak.length > 1) {
       ctx.beginPath();
       traj.vak.forEach((v, i) => { const x = X(v), y = Y(traj.ia[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-      ctx.strokeStyle = "#ffd54f"; ctx.lineWidth = 2.4; ctx.stroke();
-      // direction arrow
-      const n = traj.vak.length, i0 = Math.floor(n * 0.2), i1 = Math.min(n - 1, i0 + 3);
-      const ax = X(traj.vak[i1]), ay = Y(traj.ia[i1]), ang = Math.atan2(ay - Y(traj.ia[i0]), ax - X(traj.vak[i0]));
-      ctx.fillStyle = "#ffd54f"; ctx.beginPath(); ctx.moveTo(ax, ay);
-      ctx.lineTo(ax - 10 * Math.cos(ang - 0.4), ay - 10 * Math.sin(ang - 0.4)); ctx.lineTo(ax - 10 * Math.cos(ang + 0.4), ay - 10 * Math.sin(ang + 0.4)); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#ffd54f"; ctx.lineWidth = 1.8; ctx.lineJoin = "round"; ctx.stroke();
+      // direction arrows at three points of the cycle
+      const n = traj.vak.length;
+      ctx.fillStyle = "#ffd54f";
+      [0.12, 0.45, 0.78].forEach(fr => {
+        const i0 = Math.floor(n * fr), i1 = Math.min(n - 1, i0 + 4);
+        const ax = X(traj.vak[i1]), ay = Y(traj.ia[i1]), ang = Math.atan2(ay - Y(traj.ia[i0]), ax - X(traj.vak[i0]));
+        if (Math.hypot(ax - X(traj.vak[i0]), ay - Y(traj.ia[i0])) < 0.5) return;
+        ctx.beginPath(); ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - 9 * Math.cos(ang - 0.42), ay - 9 * Math.sin(ang - 0.42)); ctx.lineTo(ax - 9 * Math.cos(ang + 0.42), ay - 9 * Math.sin(ang + 0.42)); ctx.closePath(); ctx.fill();
+      });
     }
     // Q point
     if (ct) {
@@ -355,7 +360,7 @@
     $("legend").innerHTML = [
       item("", "#29b6f6", `Plate curves, Vg step ${+gStep.toFixed(2)} V`, "Anode current against anode voltage at fixed grid voltages; each curve's grid voltage is at its right end"),
       ct && S.opts.bias ? item("dash", "#3fb950", `Curve at circuit bias ${fmtEng(ct.dc.vgk, "V", 2)}`, "The plate curve at the grid voltage the circuit actually sets") : "",
-      traj ? item("", "#ffd54f", "Simulated load line (arrow: direction)", "The path of the operating point through one cycle of the signal; its slope is the load the tube sees") : "",
+      traj ? item("", "#ffd54f", "Simulated load line, one cycle (arrows: direction)", "The path of the operating point through the last cycle of the signal; its slope is the load the tube sees, an ellipse when the load is reactive") : "",
       ct ? item("ring", "#00e5ff", "Operating point Q", "Anode voltage and current with no signal (DC bias)") : "",
       S.opts.pa ? item("", "#ff3344", `Pa max ${t.paMax} W`, "Maximum anode dissipation: Va × Ia = Pa max") : "",
       S.opts.pa ? item("area", "#ff3344", "Over Pa max", "Above the curve the anode dissipates more than its rating") : "",

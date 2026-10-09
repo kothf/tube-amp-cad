@@ -6,6 +6,33 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.35.0] - 2026-10-09
+
+### Added
+- **Logarithmic frequency axis** in the spectrum analyzer (*Frequency axis*
+  setting). Decade lines at 1…9 × 10ⁿ, with labels placed where they fit.
+  Wheel zoom and dragging work in decades, and the frequency under the
+  pointer stays put. Mains hum (50/100 Hz) and the harmonics are now
+  readable in one view.
+- **Progress on ▶ Simulate:** the button shows how far a run has got
+  ("■ Stop · 48 %" for a full run, "▶ Simulate · 8 %" for a live one), with
+  a bar along its bottom edge.
+
+### Changed
+- **A circuit with several sheets opens on sheet 1** instead of showing all
+  sheets small. The Sheet list, or pressing F a second time, still shows
+  them all.
+- **Curve tracer:** the simulated load line is the last whole cycle of the
+  signal, drawn thin with three direction arrows. Before, it showed every
+  cycle of the capture, and with a rectified supply the ripple moved each
+  one slightly, so they smeared into a thick band.
+- **Oscilloscope:** an unconnected channel's settings are greyed out and
+  its title says "not connected".
+
+### Fixed
+- Oscilloscope: the empty strip under the screen in steady state is gone.
+  The hidden power-on overview had still taken its 50 px.
+
 ## [3.34.0] - 2026-10-09
 
 ### Added

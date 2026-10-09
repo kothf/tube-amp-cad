@@ -290,9 +290,15 @@
     S.sim.busy = false; S.sim.pending = false; S.sim.seq++;
     simButton();
   }
+  // ▶ Simulate shows how far a run has got: a bar along its bottom edge and the percentage
+  // (■ Stop 48 % while a full run can be stopped)
   function simButton() {
-    const b = document.getElementById("btn-sim");
-    if (b) { const stop = S.sim.busy && S.sim.mode === "full"; b.textContent = stop ? "■ Stop" : "▶ Simulate"; b.classList.toggle("active", stop); }
+    const b = document.getElementById("btn-sim"); if (!b) return;
+    const stop = S.sim.busy && S.sim.mode === "full", pct = Math.floor((S.sim.progress || 0) * 100);
+    b.textContent = stop ? `■ Stop · ${pct} %` : S.sim.busy ? `▶ Simulate · ${pct} %` : "▶ Simulate";
+    b.classList.toggle("active", stop);
+    b.classList.toggle("progress", S.sim.busy);
+    b.style.setProperty("--progress", (S.sim.busy ? pct : 0) + "%");
   }
   function setLive(on) {
     S.sim.live = on;
@@ -320,12 +326,13 @@
     else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, RUN_OPTIONS[mode]) }), 0);
   }
   // the busy text of the running steady-state simulation, with its readiness in percent
-  function simBusy(text) { S.sim.busyText = text; S.sim.progress = 0; setStatus("busy", text, 0); updatePct(); }
+  function simBusy(text) { S.sim.busyText = text; S.sim.progress = 0; setStatus("busy", text, 0); updatePct(); simButton(); }
   function onSimProgress({ seq, progress }) {
     if (seq !== S.sim.seq || !S.sim.busy) return;
     S.sim.progress = progress;
     setStatus("busy", `${S.sim.busyText.replace(/…$/, "")}: ${Math.floor(progress * 100)} %`, progress);
     updatePct();
+    simButton();
   }
   // the inspector's Operating point and Checks headings carry the readiness while a run is
   // going: the values and warnings under them come from an unfinished simulation
@@ -467,6 +474,14 @@
     return g ? g.params.freq : (S.sim.result && S.sim.result.tran ? S.sim.result.tran.fBase : 0);
   }
 
+  // the load line for the curve tracer: the last whole cycle of the signal. The capture holds
+  // many cycles (a whole number of mains periods), and with a rectified supply the ripple moves
+  // each one a little; drawn together they smear into a band
+  function oneCycle(t) {
+    const f = signalFreq(), n = t.vak.length, per = f && t.dt ? Math.round(1 / (f * t.dt)) : 0;
+    const cut = a => (a && per > 4 && per < n ? a.subarray(n - per - 1) : a);
+    return { vak: decimate(cut(t.vak), 600), vgk: decimate(cut(t.vgk), 600), vg2k: decimate(cut(t.vg2k), 600), ia: decimate(cut(t.ia), 600) };
+  }
   // Tube operating data (DC + trajectory) for inspector and the curve tracer
   function tubeData(c) {
     const r = S.sim.result;
@@ -530,7 +545,7 @@
         const d = tubeData(c);
         if (d && d.kind !== "rectifier") {
           summary.tubes.push({ id: c.id, label: c.label, tube: d.tube, kind: d.kind, model: d.model, paMax: d.paMax, vaMax: d.vaMax, dc: d.dc, metrics: d.metrics || null,
-            traj: d.traj ? { vak: decimate(d.traj.vak, 600), vgk: decimate(d.traj.vgk, 600), vg2k: decimate(d.traj.vg2k, 600), ia: decimate(d.traj.ia, 600) } : null });
+            traj: d.traj ? oneCycle(d.traj) : null });
         }
       } else if (c.type === "scope") {
         const ch = scopeChannels(c);
@@ -1942,6 +1957,8 @@
     const nav = document.getElementById("sheet-nav"); if (nav) nav.value = "";
     fitView();
   }
+  // opening a circuit: its first sheet when it has several (the Sheet list and F show all)
+  function fitStart() { const list = frames(); if (list.length > 1) fitSheet(list[0]); else fitView(); }
   function fitSheet(f) { const b = compBBox(f); fitBox(b.x1, b.y1, b.x2, b.y2); const nav = document.getElementById("sheet-nav"); if (nav) nav.value = f.id; }
   // the Sheet selector in the toolbar: all sheets, or zoom to one
   function updateSheetNav() {
@@ -2280,7 +2297,7 @@
         loadCircuit(JSON.parse(rd.result));
         S.sel.comps.clear(); S.sel.wires.clear();
         setCurFile(handle, file.name);
-        commit(); fitView();
+        commit(); fitStart();
       } catch (err) { setStatus("error", "Could not open file: " + err.message); }
     };
     rd.readAsText(file);
@@ -2443,10 +2460,10 @@
     setTool("select");
     updateInspector();
     updateSheetNav();
-    requestAnimationFrame(() => { fitView(); scheduleSim(0); });
+    requestAnimationFrame(() => { fitStart(); scheduleSim(0); });
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
