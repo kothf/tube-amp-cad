@@ -19,6 +19,7 @@
     return {
       app: "TubeAmpCAD-Board", version: DOC_VERSION, units: "mm",
       outline: { w: 160, h: 100, r: 0 },          // r: corner radius
+      sheet: { size: "auto", orient: "landscape" },   // the drawing sheet round the board: auto | A4..A0 | none
       stackup: { layers: 2, thickness: 1.6, copper: 35 },   // mm, µm
       rules: defaultRules(),
       parts: {},            // key -> { ref, fp, x, y, rot, side }   key: the schematic part ids, joined by "+"
@@ -81,6 +82,7 @@
       ...d, ...b,
       outline: { ...d.outline, ...(b.outline || {}) },
       stackup: { ...d.stackup, ...(b.stackup || {}) },
+      sheet: { ...d.sheet, ...(b.sheet || {}) },
       rules: { ...d.rules, ...(b.rules || {}), netClass: { ...((b.rules || {}).netClass || {}) }, checks: { ...d.rules.checks, ...((b.rules || {}).checks || {}) } },
       holes: Array.isArray(b.holes) ? b.holes : [],
       texts: Array.isArray(b.texts) ? b.texts : [],

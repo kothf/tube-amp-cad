@@ -335,6 +335,22 @@ the circuit file, so one file holds both.
 - **Tools:** Select, Route, Via, Text (silkscreen or copper), Mounting hole,
   Pour, Measure. The board's corner handle resizes it. Silkscreen text uses a
   stroke font, so the screen shows what the board maker gets.
+- **Measure** sticks to the board. Its ends snap to:
+  - the centres of pads, vias and holes;
+  - track corners and ends;
+  - the board's corners, edge middles and centre;
+  - failing those, onto a track, a hole's rim or the board edge.
+
+  The pointer shows the snap point and its name. <kbd>Shift</kbd>+click
+  measures on the grid only.
+- **Grid, axes and sheet:**
+  - The grid covers the whole screen as lines or dots, or is off (<kbd>G</kbd>).
+  - X / Y axes run through the board's origin, its top-left corner, with a
+    millimetre scale (<kbd>A</kbd>).
+  - The board lies on a drawing sheet: the ISO 5457 frame, reference grid and
+    ISO 7200 title block of the Circuit CAD's frames, with fields taken from
+    the schematic. *Setup…* sets the size (Auto, A4–A0, None) and the
+    orientation. <kbd>Shift</kbd>+<kbd>F</kbd> shows the whole sheet.
 - **Design rules** (*Rules…*):
   - clearances, with a separate high-voltage clearance for nets above a
     threshold voltage;
@@ -412,7 +428,7 @@ the circuit file, so one file holds both.
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | simulate until settled |
 | <kbd>F1</kbd> or <kbd>?</kbd> | help |
 
-In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>3</kbd> 3D view, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Backspace</kbd> takes back the last corner while routing.
+In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>3</kbd> 3D view, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Shift</kbd>+<kbd>F</kbd> fit the sheet, <kbd>G</kbd> grid style, <kbd>A</kbd> axes, <kbd>Backspace</kbd> takes back the last corner while routing.
 
 ## How the simulator works
 

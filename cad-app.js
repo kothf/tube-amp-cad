@@ -596,7 +596,7 @@
     const volts = {};
     if (S.sim.result && S.sim.topo === T) Object.keys(names).concat([...new Set([...T.pinNet.values()])]).forEach(n => { const v = netDC(+n); if (v !== null) volts[n] = v; });
     const f = frames()[0];
-    return { parts, names, volts, title: f ? f.params.title || "" : "", docno: f ? f.params.docno || "" : "", tubes: usedCustomTubes() };
+    return { parts, names, volts, title: f ? f.params.title || "" : "", docno: f ? f.params.docno || "" : "", frame: f ? { ...f.params } : null, tubes: usedCustomTubes() };
   }
   let boardTimer = 0;
   function sendBoardNetlist(withBoard) {

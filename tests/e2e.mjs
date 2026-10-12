@@ -1235,6 +1235,25 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.click('[data-tool="measure"]'); p = await at(12.7, 12.7); await bd.mouse.click(p[0], p[1]); p = await at(50.8, 63.5); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
   const meas = await bd.evaluate(() => BoardApp.state.measured);
   check(meas && Math.abs(meas.d - 63.5) < 0.01 && /Measure: 63\.50 mm/.test(await bd.textContent("#st-msg")), `Measure reads the distance between two clicks, snapped to the grid (${meas && meas.d.toFixed(2)} mm for 38.1 × 50.8)`);
+  // the ruler sticks: near a corner hole's centre, then near the board's corner (not on the grid)
+  p = await at(5.6, 5.4); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]); p = await at(119.5, 89.6); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
+  const stuck = await bd.evaluate(() => BoardApp.state.measured);
+  check(stuck && Math.abs(stuck.d - Math.hypot(115, 85)) < 0.01 && stuck.from === "hole Ø3.2" && stuck.to === "board corner" && /hole Ø3\.2 → board corner/.test(await bd.textContent("#st-msg")),
+    `Measure sticks to a hole's centre and the board's corner (${stuck && stuck.d.toFixed(2)} mm, ${stuck && stuck.from} → ${stuck && stuck.to}); Shift measures on the grid only`);
+  // the drawing sheet round the board (smallest that fits: A4 for 120 × 90), grid and axes from the keyboard (Russian layout too)
+  const sheet = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return s && { size: s.size, x: s.x, y: s.y, w: s.w, type: s.params.doctype }; });
+  const ruKey = (key, code) => bd.evaluate(([key, code]) => window.dispatchEvent(new KeyboardEvent("keydown", { key, code, bubbles: true })), [key, code]);
+  await ruKey("п", "KeyG"); const gs1 = await bd.evaluate(() => BoardApp.state.gridStyle);
+  await ruKey("ф", "KeyA"); const ax1 = await bd.evaluate(() => BoardApp.state.axes);
+  await ruKey("п", "KeyG"); await ruKey("п", "KeyG"); await ruKey("ф", "KeyA");
+  const back = await bd.evaluate(() => [BoardApp.state.gridStyle, BoardApp.state.axes, document.getElementById("grid-style").value]);
+  check(sheet && sheet.size === "A4" && sheet.x < 0 && sheet.y < 0 && sheet.w === 297 && sheet.type === "PCB layout" && gs1 === "dots" && ax1 === false && back.join() === "lines,true,lines",
+    `the board lies on an ${sheet && sheet.size} sheet with frame and title block; G cycles the grid (lines → dots → off), A toggles the X / Y axes`);
+  await bd.click("#btn-setup"); await bd.selectOption("#sheet-size", "A3"); await bd.selectOption("#sheet-orient", "portrait"); await bd.click("#setup-apply");
+  const sh3 = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return [s.size, s.w, s.h]; });
+  await cad.waitForFunction(() => TubeCAD.state.board.sheet && TubeCAD.state.board.sheet.size === "A3", null, { timeout: 4000 }).catch(() => {});
+  check(sh3.join() === "A3,297,420" && await cad.evaluate(() => TubeCAD.state.board.sheet.orient === "portrait"), `Board setup sets the sheet (A3 portrait, ${sh3[1]} × ${sh3[2]} mm), saved with the circuit`);
+  await bd.evaluate(() => { BoardApp.state.board.sheet = { size: "auto", orient: "landscape" }; BoardApp.commit(); BoardApp.fit(); }); await bd.waitForTimeout(100);
   await bd.click('[data-tool="select"]');
   const hc = await at(120, 90), to = await at(130, 100);
   await bd.mouse.move(hc[0], hc[1]); await bd.mouse.down(); await bd.mouse.move(to[0], to[1], { steps: 4 }); await bd.mouse.up();

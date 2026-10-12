@@ -6,6 +6,35 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.45.0] - 2026-10-12
+
+### Added
+- **Board Design: Measure sticks to the board.** Its ends snap to:
+  - the centres of pads, vias and holes;
+  - track corners and ends;
+  - the board's corners, edge middles and centre;
+  - pour and keep-out corners, texts and part origins;
+  - failing those, the nearest point of a track, a hole's rim or the board
+    edge.
+
+  A marker shows the snap point and its name. The readout adds the angle and
+  says what each end stuck to. <kbd>Shift</kbd>+click measures on the grid
+  only.
+- **Board Design: X / Y axes** through the board's origin, with a millimetre
+  scale that stays at the screen edge when the origin is off screen
+  (<kbd>A</kbd> or the Axes button).
+- **Board Design: a screen grid** of lines, with every tenth line stronger.
+  Dots or off are the other choices (<kbd>G</kbd> or the toolbar). The choice
+  is kept in the browser.
+- **Board Design: a drawing sheet** round the board, with the Circuit CAD's
+  ISO 5457 frame, reference grid and ISO 7200 title block:
+  - the title block's fields come from the schematic's first frame, with
+    document type "PCB layout";
+  - *Setup…* sets the size (Auto picks the smallest sheet that fits; A4–A0;
+    None) and the orientation;
+  - the status bar shows the pointer's grid zone (e.g. B3);
+  - <kbd>Shift</kbd>+<kbd>F</kbd> fits the whole sheet.
+
 ## [3.44.0] - 2026-10-12
 
 ### Added

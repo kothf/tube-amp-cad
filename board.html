@@ -146,11 +146,13 @@
       <button class="btn" data-tool="hole" title="Place a mounting hole (H)">Hole</button>
       <button class="btn" data-tool="pour" title="Copper pour (ground plane): click the corners, double-click to close (P). Board inspector: one click for a ground plane over the whole board">Pour</button>
       <button class="btn" data-tool="keepout" title="Keep-out area: no tracks, vias, pour (or parts) inside; click the corners, double-click to close (K)">Keep-out</button>
-      <button class="btn" data-tool="measure" title="Measure a distance: click, click (D)">Measure</button>
+      <button class="btn" data-tool="measure" title="Measure a distance: click, click (D). The ends stick to pads, vias, holes, track corners and the board's corners and edges; Shift: the grid only">Measure</button>
     </div>
     <select class="btn" id="layer" title="Copper layer for new tracks (V while routing)"><option value="F.Cu">Top (F.Cu)</option><option value="B.Cu">Bottom (B.Cu)</option></select>
     <select class="btn" id="grid" title="Grid"><option value="0.635">0.635 mm</option><option value="1.27" selected>1.27 mm</option><option value="2.54">2.54 mm</option><option value="0.5">0.5 mm</option><option value="1">1 mm</option></select>
-    <button class="btn" id="btn-fit" title="Fit the board (F)">Fit</button>
+    <select class="btn" id="grid-style" title="How the grid is shown (G)"><option value="lines">Grid lines</option><option value="dots">Grid dots</option><option value="off">No grid</option></select>
+    <button class="btn" id="btn-axes" title="X / Y axes through the board's origin, with a millimetre scale (A)">Axes</button>
+    <button class="btn" id="btn-fit" title="Fit the board (F); Shift+F or Shift+click: the whole drawing sheet">Fit</button>
     <button class="btn" id="btn-3d" title="The board in 3D with its parts (3); export it as STEP">3D</button>
     <span class="spacer"></span>
     <button class="btn" id="btn-setup" title="Board setup: outline, corners, mounting holes, layer stack">Setup…</button>
@@ -229,11 +231,13 @@
         <kbd>`</kbd><span>highlight the net under the pointer (again: off); the Nets tab lists every net</span>
         <kbd>drag</kbd><span>a track segment moves sideways and its neighbours follow (45° kept)</span>
         <kbd>Shift+click</kbd><span>while routing: place a segment that breaks the clearance anyway (normally refused)</span>
-        <kbd>D</kbd><span>measure: click, click; the distance stays until the next click or Esc</span>
+        <kbd>D</kbd><span>measure: click, click; the distance stays until the next click or Esc. The ends stick to pad, via and hole centres, track corners and ends, the board's corners, edge middles and centre (then onto a track, a hole's rim or the board edge); Shift+click: the grid only</span>
+        <kbd>G</kbd><span>grid: lines, dots or off</span>
+        <kbd>A</kbd><span>X / Y axes through the board's origin (its top-left corner) with a millimetre scale</span>
         <kbd>R</kbd><span>rotate the selected footprint or text 90°</span>
         <kbd>M</kbd><span>move the selected footprint to the other side (bottom / top)</span>
         <kbd>Del</kbd><span>delete the selected track, via, text or hole</span>
-        <kbd>F</kbd><span>fit the board</span>
+        <kbd>F</kbd><span>fit the board · <kbd>Shift+F</kbd> the whole drawing sheet (Setup… sets its size)</span>
         <kbd>Esc</kbd><span>end routing / clear the selection</span>
         <kbd>Ctrl+Z</kbd><span>undo · <kbd>Ctrl+Y</kbd> redo</span>
         <kbd>wheel</kbd><span>zoom at the pointer; right- or middle-drag, or Space-drag, pans</span>
@@ -291,6 +295,10 @@
       <div class="row"><span>Inset from the edges (mm)</span><input id="hole-inset" value="5"></div>
       <p class="help" id="holes-now"></p>
       <div style="display:flex; gap:6px"><button class="btn" id="holes-corners">Put one in each corner</button><button class="btn" id="holes-clear">Remove all</button></div>
+      <h3>Drawing sheet</h3>
+      <div class="row"><span>Sheet size</span><select id="sheet-size"><option value="auto">Auto (smallest that fits)</option><option value="A4">A4 (297 × 210 mm)</option><option value="A3">A3 (420 × 297 mm)</option><option value="A2">A2 (594 × 420 mm)</option><option value="A1">A1 (841 × 594 mm)</option><option value="A0">A0 (1189 × 841 mm)</option><option value="none">None (no frame)</option></select></div>
+      <div class="row"><span>Orientation</span><select id="sheet-orient"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></div>
+      <p class="help">The board is drawn on the sheet with an ISO 5457 frame, reference grid and ISO 7200 title block like the Circuit CAD's frames; the title block takes its fields from the schematic's first frame.</p>
       <h3>Layer stack</h3>
       <div class="row"><span>Copper layers</span><select disabled><option>2 layers</option></select></div>
       <div class="row"><span>Board thickness (mm)</span><select data-s="thickness"><option value="0.8">0.8</option><option value="1">1.0</option><option value="1.2">1.2</option><option value="1.6">1.6</option><option value="2">2.0</option></select></div>

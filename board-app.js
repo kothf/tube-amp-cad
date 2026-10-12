@@ -25,13 +25,19 @@
     poly: null,             // a pour outline being drawn: [[x, y]...]
     routeBad: null,         // while routing: where the next segment breaks the clearance
     route: null,            // { net, layer, pts: [[x, y]...], w, segs: [] }
-    measure: null,          // { a: [x, y], b: [x, y] | null }
+    measure: null,          // { a: [x, y], b: [x, y] | null, sa, sb: what each end stuck to }
+    snapHint: null,         // the measure tool: where the pointer sticks (snapPoint)
+    gridStyle: "lines", axes: true,   // the screen grid (lines | dots | off) and the X / Y axes
     drag: null, hover: null, mouse: [0, 0], space: false,
     history: [], hIndex: -1,
     show: Object.fromEntries(LAYER_INFO.map(([k]) => [k, true])),
     cad: false, saved: true, linked: false, pendingSync: null
   };
   let canvas, ctx, dpr = 1, queued = false;
+  // the grid style and the axes are this viewer's preference (kept in the browser)
+  const VIEW_KEY = "tubecad_board_view";
+  try { const v = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}"); if (["lines", "dots", "off"].includes(v.gridStyle)) S.gridStyle = v.gridStyle; if (typeof v.axes === "boolean") S.axes = v.axes; } catch (e) { /* no storage */ }
+  const keepView = () => { try { localStorage.setItem(VIEW_KEY, JSON.stringify({ gridStyle: S.gridStyle, axes: S.axes })); } catch (e) { /* no storage */ } };
   const snap = v => Math.round(v / S.grid) * S.grid;
   const toWorld = (sx, sy) => [(sx - S.view.ox) / S.view.scale, (sy - S.view.oy) / S.view.scale];
   const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -285,6 +291,43 @@
     render();
   }
   function setLayer(l) { S.layer = l; $("layer").value = l; renderLayers(); render(); }
+  // Measure sticks to what is on the board: the centres of pads, vias and holes, track corners
+  // and ends, the board's corners, edge middles and centre, area corners, texts and part
+  // origins; failing those, onto a track's centre line, a hole's rim or the board edge; else
+  // the grid. Shift (or Alt): the grid only. Returns { p: [x, y], what, shape: centre | corner | on | grid }
+  const SNAP_PX = 10;
+  function snapPoint(x, y, gridOnly) {
+    const grid = { p: [snap(x), snap(y)], what: "grid", shape: "grid" };
+    if (gridOnly) return grid;
+    const tol = SNAP_PX / S.view.scale, o = S.board.outline, copper = S.show["F.Cu"] || S.show["B.Cu"];
+    let best = null, bd = tol;
+    const at = (px, py, what, shape) => { const d = Math.hypot(px - x, py - y); if (d <= bd) { bd = d; best = { p: [+px.toFixed(4), +py.toFixed(4)], what, shape }; } };
+    if (S.model && copper) S.model.pads.forEach(p => at(p.x, p.y, `pad ${p.ref}-${p.num}`, "centre"));
+    if (copper) S.board.vias.forEach(v => at(v.x, v.y, "via", "centre"));
+    if (S.show.Holes) S.board.holes.forEach(h => at(h.x, h.y, `hole Ø${h.d}`, "centre"));
+    S.board.tracks.forEach(t => { if (S.show[t.layer]) t.pts.forEach((p, k) => at(p[0], p[1], k && k < t.pts.length - 1 ? "track corner" : "track end", "corner")); });
+    if (S.show["Edge.Cuts"]) {
+      [[0, 0], [o.w, 0], [0, o.h], [o.w, o.h]].forEach(p => at(p[0], p[1], "board corner", "corner"));
+      [[o.w / 2, 0], [o.w / 2, o.h], [0, o.h / 2], [o.w, o.h / 2]].forEach(p => at(p[0], p[1], "middle of the board edge", "corner"));
+      at(o.w / 2, o.h / 2, "board centre", "centre");
+    }
+    if (S.show.zones) S.board.zones.forEach(z => { if (z.pts && S.show[z.layer]) z.pts.forEach(p => at(p[0], p[1], "pour corner", "corner")); });
+    if (S.show.keepouts) S.board.keepouts.forEach(k => k.pts.forEach(p => at(p[0], p[1], "keep-out corner", "corner")));
+    S.board.texts.forEach(t => { if (S.show[t.layer]) at(t.x, t.y, `text "${t.text}"`, "centre"); });
+    if (S.model) S.model.parts.forEach(g => { if (g.place) at(g.place.x, g.place.y, `${g.ref} origin`, "centre"); });
+    if (best) return best;
+    const pad = S.model && copper && hitPad(x, y);
+    if (pad) return { p: [pad.x, pad.y], what: `pad ${pad.ref}-${pad.num}`, shape: "centre" };
+    // onto a line: the nearest point of a track's centre line, a hole's rim or the board edge
+    const on = (ax, ay, bx, by, what) => {
+      const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy; if (!L) return;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L)); at(ax + t * dx, ay + t * dy, what, "on");
+    };
+    S.board.tracks.forEach(t => { if (S.show[t.layer]) for (let k = 0; k + 1 < t.pts.length; k++) on(t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1], "on a track"); });
+    if (S.show.Holes) S.board.holes.forEach(h => { const d = Math.hypot(x - h.x, y - h.y); if (d > 1e-9) at(h.x + (x - h.x) / d * h.d / 2, h.y + (y - h.y) / d * h.d / 2, "hole rim", "on"); });
+    if (S.show["Edge.Cuts"]) [[0, 0, o.w, 0], [o.w, 0, o.w, o.h], [o.w, o.h, 0, o.h], [0, o.h, 0, 0]].forEach(([a, b, c, d]) => on(a, b, c, d, "board edge"));
+    return best || grid;
+  }
   function placeAt(x, y) {
     const sx = snap(x), sy = snap(y), R = S.board.rules;
     if (S.tool === "via") {
@@ -362,7 +405,7 @@
       else S.poly.push(pt);
       render(); return;
     }
-    if (S.tool === "measure") { const p = hitPad(x, y), pt = p ? [p.x, p.y] : [snap(x), snap(y)]; S.measure = !S.measure || S.measure.b ? { a: pt, b: null } : { a: S.measure.a, b: pt }; render(); return; }
+    if (S.tool === "measure") { const sp = snapPoint(x, y, e.shiftKey || e.altKey); S.measure = !S.measure || S.measure.b ? { a: sp.p, sa: sp, b: null } : { ...S.measure, b: sp.p, sb: sp }; render(); return; }
     if (S.tool !== "select") { placeAt(x, y); return; }
     if (onHandle(x, y)) { S.drag = { kind: "outline", w0: S.board.outline.w, h0: S.board.outline.h, mx: x, my: y, moved: false }; return; }
     let zc;
@@ -430,8 +473,10 @@
     }
     const p = hitPad(x, y);
     S.hover = p ? p.net : null;
+    S.snapHint = S.tool === "measure" ? snapPoint(x, y, e.shiftKey || e.altKey) : null;
     canvas.style.cursor = S.tool === "select" && onHandle(x, y) ? "nwse-resize" : S.tool === "select" ? "" : "crosshair";
-    $("st-pos").textContent = `x ${x.toFixed(2)}  y ${y.toFixed(2)} mm` + (p ? ` · ${p.ref}-${p.num}${p.name !== p.num ? " (" + p.name + ")" : ""} · ${p.netName || "no net"} (${classOf(p.net)})` : "");
+    const zone = sheetZone(x, y);
+    $("st-pos").textContent = `x ${x.toFixed(2)}  y ${y.toFixed(2)} mm` + (zone ? ` · ${zone}` : "") + (p ? ` · ${p.ref}-${p.num}${p.name !== p.num ? " (" + p.name + ")" : ""} · ${p.netName || "no net"} (${classOf(p.net)})` : "");
     if (S.route) S.routeBad = routeCheck();
     if (S.route || p || S.measure || S.tool !== "select") render();
   }
@@ -488,7 +533,9 @@
     else if (L === "l") lockSel();
     else if (L === "r") rotateSel();
     else if (L === "m") flipSel();
-    else if (L === "f") fit();
+    else if (L === "f") (e.shiftKey ? fitSheet() : fit());
+    else if (L === "g") setGridStyle({ lines: "dots", dots: "off", off: "lines" }[S.gridStyle]);
+    else if (L === "a") setAxes(!S.axes);
     else if (e.key === "?") toggle("help-modal");
   }
   // ---------------------------------------------------------------------------
@@ -623,6 +670,47 @@
     S.view = { scale: s, ox: W / 2 - (x1 + x2) / 2 * s, oy: H / 2 - (y1 + y2) / 2 * s };
     render();
   }
+  // Shift+F: the whole drawing sheet
+  function fitSheet() {
+    const sh = sheetPlace(); if (!sh) { fit(); return; }
+    const W = canvas.clientWidth, H = canvas.clientHeight, m = 20, s = Math.max(0.5, Math.min(40, Math.min((W - 2 * m) / sh.w, (H - 2 * m) / sh.h)));
+    S.view = { scale: s, ox: W / 2 - (sh.x + sh.w / 2) * s, oy: H / 2 - (sh.y + sh.h / 2) * s };
+    render();
+  }
+  function setGridStyle(v) { S.gridStyle = v; $("grid-style").value = v; keepView(); msg({ lines: "Grid: lines (G: dots)", dots: "Grid: dots (G: off)", off: "Grid off (G: lines)" }[v]); render(); }
+  function setAxes(on) { S.axes = on; $("btn-axes").classList.toggle("active", on); keepView(); msg(on ? "X / Y axes shown (A: hide)" : "Axes hidden (A: show)"); render(); }
+
+  // ---------------------------------------------------------------------------
+  // Drawing sheet: the board on an ISO 5457 sheet with the reference grid and the ISO 7200
+  // title block, as the Circuit CAD draws its frames (CadLib.DRAW.frame, 4 units per mm).
+  // The board stays at the origin; the sheet is laid round it, the board centred above the
+  // title block. Size "auto": the smallest landscape-or-chosen sheet the board fits on.
+  // ---------------------------------------------------------------------------
+  const SHEET_ORDER = ["A4", "A3", "A2", "A1", "A0"];
+  function sheetPlace() {
+    const sh = S.board.sheet || {}, o = S.board.outline, L = window.CadLib;
+    if (!L || sh.size === "none") return null;
+    const orient = sh.orient === "portrait" ? "portrait" : "landscape", MM = L.MM;
+    const geom = size => L.sheetGeom({ params: { size, orient } });
+    // room for the board: inside the reference-grid band, above the title block (or beside it)
+    const room = (g, tb) => ({ x1: g.fx1 / MM + 5, x2: g.fx2 / MM - 5, y1: g.fy1 / MM + 5, y2: (tb ? g.tb.y1 / MM : g.fy2 / MM - 5) });
+    const fits = (g, tb) => { const r = room(g, tb); return o.w + 10 <= r.x2 - r.x1 && o.h + 10 <= r.y2 - r.y1; };
+    const size = L.SHEETS[sh.size] ? sh.size : SHEET_ORDER.find(k => fits(geom(k), true)) || SHEET_ORDER.find(k => fits(geom(k), false)) || "A0";
+    const g = geom(size), r = room(g, fits(g, true));
+    const x = Math.round((r.x1 + r.x2) / 2 - o.w / 2), y = Math.round((r.y1 + r.y2) / 2 - o.h / 2);
+    const f = (S.netlist && S.netlist.frame) || {};
+    const params = { ...L.LIB.frame.defaults, ...f, title: f.title || (S.netlist && S.netlist.title) || "", docno: f.docno || (S.netlist && S.netlist.docno) || "",
+      size, orient, doctype: "PCB layout", sheet: "1/1" };
+    return { size, orient, g, x: -x, y: -y, w: g.W / MM, h: g.H / MM, params, MM };
+  }
+  // the reference-grid zone of a board point, e.g. "B3" (as the Circuit CAD shows it)
+  function sheetZone(x, y) {
+    const sh = sheetPlace(); if (!sh) return "";
+    const g = sh.g, lx = (x - sh.x) * sh.MM, ly = (y - sh.y) * sh.MM;
+    if (lx < g.fx1 || lx > g.fx2 || ly < g.fy1 || ly > g.fy2) return "";
+    const col = Math.min(g.cols, Math.floor((lx - g.fx1) / ((g.fx2 - g.fx1) / g.cols)) + 1), row = Math.min(g.rows, Math.floor((ly - g.fy1) / ((g.fy2 - g.fy1) / g.rows)) + 1);
+    return "ABCDEFGHJKLMNPRSTUVWXYZ"[row - 1] + col;
+  }
   function centerOn(x, y) { const W = canvas.clientWidth, H = canvas.clientHeight; S.view.ox = W / 2 - x * S.view.scale; S.view.oy = H / 2 - y * S.view.scale; render(); }
   const toggle = id => { $(id).hidden = !$(id).hidden; };
 
@@ -659,12 +747,14 @@
     const W = canvas.clientWidth, H = canvas.clientHeight;
     if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = "#070b10"; ctx.fillRect(0, 0, W, H);
-    const { scale, ox, oy } = S.view;
-    const g = S.grid * Math.max(1, Math.ceil(6 / (S.grid * scale))), [gx1, gy1] = toWorld(0, 0), [gx2, gy2] = toWorld(W, H);
-    ctx.fillStyle = "#16202c";
-    for (let x = Math.floor(gx1 / g) * g; x <= gx2; x += g) for (let y = Math.floor(gy1 / g) * g; y <= gy2; y += g) ctx.fillRect(x * scale + ox - 0.75, y * scale + oy - 0.75, 1.5, 1.5);
+    const { scale, ox, oy } = S.view, sheet = sheetPlace();
+    // the paper of the drawing sheet, then the grid over the whole screen, then the sheet's frame
+    if (sheet) { ctx.fillStyle = "#0c121b"; ctx.fillRect(ox + sheet.x * scale, oy + sheet.y * scale, sheet.w * scale, sheet.h * scale); }
+    drawGrid(W, H);
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
     const px = 1 / scale, o = S.board.outline;
+    if (sheet) { ctx.save(); ctx.translate(sheet.x, sheet.y); ctx.scale(1 / sheet.MM, 1 / sheet.MM); CadLib.DRAW.frame(ctx, { params: sheet.params }); ctx.restore(); }
+    if (S.axes) axisLines(W, H);
     outlinePath(ctx, o); ctx.fillStyle = "#0c1712"; ctx.fill();
     if (S.show["Edge.Cuts"]) { ctx.strokeStyle = COLORS["Edge.Cuts"]; ctx.lineWidth = Math.max(0.15, 1.2 * px); ctx.stroke(); }
     // copper: the inactive layer dimmed underneath, the active one on top
@@ -786,16 +876,24 @@
       ctx.globalAlpha = 0.5; ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = Math.max(0.1, px);
       ctx.beginPath(); ctx.arc(x, y, S.tool === "via" ? R.viaPad / 2 : S.tool === "hole" ? 1.6 : 0.6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
     }
+    if (S.tool === "measure" && S.snapHint && !(S.measure && S.measure.b)) snapMark(S.snapHint, px);
     if (S.measure) {
-      const a = S.measure.a, b = S.measure.b || (() => { const p = hitPad(S.mouse[0], S.mouse[1]); return p ? [p.x, p.y] : [snap(S.mouse[0]), snap(S.mouse[1])]; })();
+      const m = S.measure, hint = S.snapHint || snapPoint(S.mouse[0], S.mouse[1]), a = m.a, b = m.b || hint.p, sb = m.b ? m.sb : hint;
+      const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy);
+      // the legs (Δx, Δy) faint, the distance dashed, the ends marked where they stuck
+      ctx.strokeStyle = "rgba(0,229,255,0.35)"; ctx.lineWidth = Math.max(0.06, 0.8 * px); ctx.setLineDash([2 * px, 3 * px]);
+      if (dx && dy) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
       ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = Math.max(0.1, 1.2 * px); ctx.setLineDash([4 * px, 3 * px]);
       ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
-      const dx = b[0] - a[0], dy = b[1] - a[1], txt = `${Math.hypot(dx, dy).toFixed(2)} mm  (Δx ${dx.toFixed(2)}, Δy ${dy.toFixed(2)})`;
+      if (m.sa) snapMark(m.sa, px, true);
+      if (m.b && sb) snapMark(sb, px, true);
+      const ang = d ? Math.atan2(-dy, dx) * 180 / Math.PI : 0, txt = `${d.toFixed(2)} mm  (Δx ${dx.toFixed(2)}, Δy ${dy.toFixed(2)}, ${ang.toFixed(1)}°)`;
       ctx.font = `${12 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
       const tw = ctx.measureText(txt).width; ctx.fillStyle = "rgba(7,11,16,0.85)"; ctx.fillRect(b[0] + 6 * px, b[1] - 18 * px, tw + 8 * px, 16 * px);
       ctx.fillStyle = "#00e5ff"; ctx.fillText(txt, b[0] + 10 * px, b[1] - 4 * px);
-      S.measured = { d: Math.hypot(dx, dy), dx, dy };
-      $("st-msg").textContent = "Measure: " + txt;
+      S.measured = { d, dx, dy, from: m.sa ? m.sa.what : "grid", to: sb ? sb.what : "grid" };
+      const ends = [S.measured.from, S.measured.to].some(w => w !== "grid") ? ` · ${S.measured.from} → ${S.measured.to}` : "";
+      $("st-msg").textContent = "Measure: " + txt + ends;
     }
     if (S.show.drc) S.drc.forEach(d => {
       if (d.kind === "unplaced") return;
@@ -806,10 +904,89 @@
     });
     // the board's resize handle (select tool)
     if (S.tool === "select" && S.show["Edge.Cuts"]) { const t = 5 * px; ctx.fillStyle = COLORS["Edge.Cuts"]; ctx.fillRect(o.w - t, o.h - t, 2 * t, 2 * t); }
+    if (S.axes) axisMarks(W, H);
     const c = S.conn, errs = errors();
     $("st-rats").textContent = c ? (c.unrouted ? `${c.unrouted} connection${c.unrouted > 1 ? "s" : ""} to route` : "All connections routed") : "";
     $("st-drc").textContent = S.model ? (errs ? `${errs} rule violation${errs > 1 ? "s" : ""}` : "No rule violations") : "";
     $("st-drc").style.color = errs ? "var(--bad)" : "var(--ok)";
+  }
+  // where the measure tool sticks: a circle on a centre, a square on a corner or end, a diamond on
+  // a line; with its name next to it (not on the ends of a measurement already placed)
+  function snapMark(sp, px, quiet) {
+    if (sp.shape === "grid") return;
+    const [x, y] = sp.p, r = 5 * px;
+    ctx.strokeStyle = "#ffe680"; ctx.lineWidth = Math.max(0.08, 1.5 * px); ctx.beginPath();
+    if (sp.shape === "centre") ctx.arc(x, y, r, 0, Math.PI * 2);
+    else if (sp.shape === "corner") ctx.rect(x - r, y - r, 2 * r, 2 * r);
+    else { ctx.moveTo(x, y - r * 1.3); ctx.lineTo(x + r * 1.3, y); ctx.lineTo(x, y + r * 1.3); ctx.lineTo(x - r * 1.3, y); ctx.closePath(); }
+    ctx.stroke();
+    if (quiet) return;
+    ctx.font = `${11 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    const tw = ctx.measureText(sp.what).width; ctx.fillStyle = "rgba(7,11,16,0.85)"; ctx.fillRect(x + 7 * px, y + 6 * px, tw + 6 * px, 14 * px);
+    ctx.fillStyle = "#ffe680"; ctx.fillText(sp.what, x + 10 * px, y + 8 * px);
+  }
+  // the screen grid (in screen pixels): lines with every tenth stronger, or dots; coarser when zoomed out
+  function drawGrid(W, H) {
+    if (S.gridStyle === "off") return;
+    const { scale, ox, oy } = S.view, lines = S.gridStyle === "lines", n = Math.max(1, Math.ceil((lines ? 8 : 6) / (S.grid * scale))), g = S.grid * n;
+    const [gx1, gy1] = toWorld(0, 0), [gx2, gy2] = toWorld(W, H);
+    if (!lines) {
+      ctx.fillStyle = "#16202c";
+      for (let x = Math.floor(gx1 / g) * g; x <= gx2; x += g) for (let y = Math.floor(gy1 / g) * g; y <= gy2; y += g) ctx.fillRect(x * scale + ox - 0.75, y * scale + oy - 0.75, 1.5, 1.5);
+      return;
+    }
+    ctx.lineWidth = 1;
+    [false, true].forEach(major => {
+      ctx.strokeStyle = major ? "#1a2533" : "#111923"; ctx.beginPath();
+      for (let i = Math.floor(gx1 / g); i * g <= gx2; i++) if ((i % 10 === 0) === major) { const sx = Math.round(i * g * scale + ox) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, H); }
+      for (let j = Math.floor(gy1 / g); j * g <= gy2; j++) if ((j % 10 === 0) === major) { const sy = Math.round(j * g * scale + oy) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(W, sy); }
+      ctx.stroke();
+    });
+  }
+  // X / Y axes through the board's origin (its top-left corner; y grows downwards, as in the
+  // Gerbers' view from the top): the lines under the board, the arrows and the millimetre scale
+  // on top. When the origin is off screen the scale sticks to the screen edge.
+  const AX = { x: "#ff8a80", y: "#7ee787" };
+  function axisLines(W, H) {
+    const { ox, oy } = S.view;
+    ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.lineWidth = 1; ctx.globalAlpha = 0.45;
+    if (oy >= 0 && oy <= H) { ctx.strokeStyle = AX.x; ctx.beginPath(); ctx.moveTo(0, Math.round(oy) + 0.5); ctx.lineTo(W, Math.round(oy) + 0.5); ctx.stroke(); }
+    if (ox >= 0 && ox <= W) { ctx.strokeStyle = AX.y; ctx.beginPath(); ctx.moveTo(Math.round(ox) + 0.5, 0); ctx.lineTo(Math.round(ox) + 0.5, H); ctx.stroke(); }
+    ctx.restore();
+  }
+  function axisMarks(W, H) {
+    const { scale, ox, oy } = S.view;
+    ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const step = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].find(s => s * scale >= 60) || 1000;
+    const yx = Math.max(2, Math.min(H - 18, oy)), xy = Math.max(2, Math.min(W - 40, ox));   // where the scales run
+    ctx.font = "10px ui-monospace, monospace"; ctx.lineWidth = 1;
+    // X scale
+    ctx.strokeStyle = AX.x; ctx.fillStyle = AX.x; ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.beginPath();
+    for (let v = Math.ceil(-ox / scale / step) * step; v * scale + ox <= W; v += step) {
+      const sx = Math.round(v * scale + ox) + 0.5; ctx.moveTo(sx, yx); ctx.lineTo(sx, yx + 5);
+      if (v && Math.abs(sx - xy) > 24 && !(yx === oy && sx > ox && sx < ox + 76)) ctx.fillText(String(v), sx, yx + 6);   // clear of the X arrow
+    }
+    ctx.stroke();
+    // Y scale
+    ctx.strokeStyle = AX.y; ctx.fillStyle = AX.y; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.beginPath();
+    for (let v = Math.ceil(-oy / scale / step) * step; v * scale + oy <= H; v += step) {
+      const sy = Math.round(v * scale + oy) + 0.5; ctx.moveTo(xy, sy); ctx.lineTo(xy + 5, sy);
+      if (v && Math.abs(sy - yx) > 14 && !(xy === ox && sy > oy && sy < oy + 76)) ctx.fillText(String(v), xy + 7, sy);   // clear of the Y arrow
+    }
+    ctx.stroke();
+    // the origin: two arrows, X to the right and Y down
+    if (ox > -40 && ox < W + 40 && oy > -40 && oy < H + 40) {
+      const arrow = (dx, dy, col, label) => {
+        const L = 46, ex = ox + dx * L, ey = oy + dy * L;
+        ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ex + dx * 8, ey + dy * 8); ctx.lineTo(ex - dy * 4, ey + dx * 4); ctx.lineTo(ex + dy * 4, ey - dx * 4); ctx.closePath(); ctx.fill();
+        ctx.font = "bold 12px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(label, ex + dx * 16 + dy * 9, ey + dy * 16 + dx * 9);
+      };
+      arrow(1, 0, AX.x, "X"); arrow(0, 1, AX.y, "Y");
+      ctx.fillStyle = "#e6edf3"; ctx.beginPath(); ctx.arc(ox, oy, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.fillText("0,0", ox - 4, oy - 3);
+    }
+    ctx.restore();
   }
   const NOTE = ["unplaced", "check", "class", "silk", "dangling"];
   const errors = () => S.drc.filter(d => !NOTE.includes(d.kind)).length;
@@ -1037,6 +1214,7 @@
     document.querySelectorAll("#setup-modal [data-o]").forEach(el => { el.value = o[el.dataset.o] || 0; el.classList.remove("invalid"); });
     document.querySelectorAll("#setup-modal [data-s]").forEach(el => { el.value = String(S.board.stackup[el.dataset.s]); });
     setupHoles = S.board.holes.slice(); holesNow();
+    const sh = S.board.sheet || {}; $("sheet-size").value = sh.size || "auto"; $("sheet-orient").value = sh.orient || "landscape";
     $("setup-modal").hidden = false;
   }
   const holesNow = () => { $("holes-now").textContent = setupHoles.length ? `${setupHoles.length} mounting hole${setupHoles.length > 1 ? "s" : ""}: ${setupHoles.map(h => `Ø${h.d} at ${h.x.toFixed(1)}, ${h.y.toFixed(1)}`).slice(0, 4).join("; ")}` : "No mounting holes."; };
@@ -1050,6 +1228,7 @@
     S.board.outline = { ...S.board.outline, ...o, r: Math.min(o.r, o.w / 2, o.h / 2) };
     document.querySelectorAll("#setup-modal [data-s]").forEach(el => { S.board.stackup[el.dataset.s] = +el.value; });
     S.board.holes = setupHoles;
+    S.board.sheet = { size: $("sheet-size").value, orient: $("sheet-orient").value };
     $("setup-modal").hidden = true; commit(`Board ${S.board.outline.w} × ${S.board.outline.h} mm`); fit();
   }
 
@@ -1157,7 +1336,9 @@
     $("layer").onchange = e => setLayer(e.target.value);
     $("grid").onchange = e => { S.grid = +e.target.value; render(); };
     $("dim").oninput = e => { S.dim = +e.target.value; render(); };
-    $("btn-fit").onclick = fit; $("btn-undo").onclick = undo; $("btn-redo").onclick = redo;
+    $("btn-fit").onclick = e => (e.shiftKey ? fitSheet() : fit());
+    $("grid-style").value = S.gridStyle; $("grid-style").onchange = e => setGridStyle(e.target.value);
+    $("btn-axes").classList.toggle("active", S.axes); $("btn-axes").onclick = () => setAxes(!S.axes); $("btn-undo").onclick = undo; $("btn-redo").onclick = redo;
     $("btn-sync").onclick = syncNow; $("banner-sync").onclick = syncNow;
     $("btn-setup").onclick = openSetup; $("btn-rules").onclick = openRules;
     $("rules-apply").onclick = applyRules; $("rules-cancel").onclick = () => { $("rules-modal").hidden = true; };
@@ -1186,6 +1367,6 @@
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
