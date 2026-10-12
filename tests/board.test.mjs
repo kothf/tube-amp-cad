@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js", "board-3d.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
 const B = globalThis.BoardCore, L = globalThis.CadLib, F = globalThis.BoardFab;
 
 // a small amplifier as the CAD sends it: a 12AX7 (two sections) with plate and cathode
@@ -385,4 +385,61 @@ test("no footprint has silkscreen over its own pads", () => {
   }
   assert.ok(seen.size > 100, `${seen.size} footprints checked`);
   assert.deepEqual(bad, []);
+});
+
+// a solid is closed and outward: every edge used once each way, positive volume (divergence theorem)
+function solidVolume(sol) {
+  let vol = 0; const V = sol.verts;
+  sol.faces.forEach(f => f.loops.forEach(l => { for (let i = 1; i + 1 < l.length; i++) { const [a, b, c] = [V[l[0]], V[l[i]], V[l[i + 1]]]; vol += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6; } }));
+  return vol;
+}
+function solidCheck(sol) {
+  const uses = new Map();
+  sol.faces.forEach(f => f.loops.forEach(l => l.forEach((a, i) => { const b = l[(i + 1) % l.length], k = `${a}>${b}`; uses.set(k, (uses.get(k) || 0) + 1); })));
+  for (const [k, n] of uses) { const [a, b] = k.split(">"); if (n !== 1 || uses.get(`${b}>${a}`) !== 1) return `edge ${k} used ${n}× / back ${uses.get(`${b}>${a}`) || 0}×`; }
+  const vol = solidVolume(sol);
+  return vol > 0 ? null : `volume ${vol}`;
+}
+
+test("3D: every footprint's body and the drilled board are closed, outward solids; the board's volume is right", () => {
+  const D3 = globalThis.Board3D, seen = new Set();
+  for (const [type, def] of Object.entries(L.LIB)) {
+    if (["note", "frame", "ground", "offsheet", "scope"].includes(type)) continue;
+    const params = { ...(def.defaults || {}) }, pins = typeof def.pins === "function" ? def.pins({ params }) : def.pins;
+    for (const sec of type === "switch" ? [1, 2] : [1]) {
+      const nl = { parts: Array.from({ length: sec }, (_, k) => ({ id: "c" + k, type, label: sec > 1 ? `X1.${k + 1}` : "X1", params, pins: pins.map(p => ({ id: p.id, net: 1 })) })) };
+      const [g] = B.physicalParts(nl);
+      for (const o of g.options.concat(type === "tube" ? ["SOCKET-B9A", "SOCKET-B7G", "SOCKET-B9D", "SOCKET-OCTAL", "SOCKET-UX4"] : [])) {
+        if (seen.has(o)) continue; seen.add(o);
+        const fp = B.footprint(o, g.members.flatMap(m => m.pins.map(p => (sec > 1 ? m.label.split(".").pop() + "." : "") + p.id)));
+        for (const side of ["F", "B"]) for (const rot of [0, 1]) {
+          const bodies = D3.partBodies({ ...g, fp, place: { x: 50, y: 40, rot, side } }, 1.6, { tubes: true });
+          assert.ok(bodies.length > 0, o);
+          bodies.forEach(b => { const err = solidCheck(b); assert.equal(err, null, `${o} ${side} rot ${rot}: ${b.name}: ${err}`); });
+        }
+      }
+    }
+  }
+  assert.ok(seen.size > 100);
+  const board = fabBoard(), { m } = analyse(board), sc = D3.scene(board, m, {});
+  assert.equal(solidCheck(sc.board), null);
+  const o = board.outline, holes = m.pads.reduce((a, p) => a + Math.PI * (p.drill / 2) ** 2, 0) + board.holes.reduce((a, h) => a + Math.PI * (h.d / 2) ** 2, 0);
+  const expect = (o.w * o.h - (4 - Math.PI) * o.r * o.r - holes) * 1.6, vol = solidVolume(sc.board);
+  assert.ok(Math.abs(vol - expect) / expect < 0.003, `board volume ${vol.toFixed(1)} vs ${expect.toFixed(1)} mm³`);
+  assert.equal(sc.board.faces.filter(f => f.loops.length > 1).length, 2, "top and bottom faces carry the holes");
+  assert.ok(sc.bodies.some(b => b.alpha < 1), "valves in glass");
+});
+
+test("STEP: AP214 header, one solid per body, every reference defined, colours", () => {
+  const D3 = globalThis.Board3D, board = fabBoard(), { m } = analyse(board), sc = D3.scene(board, m, {});
+  const txt = D3.step(sc, { title: "Test 'board'", version: "9.9.9", file: "t.step", date: "2026-10-09T12:00:00" });
+  assert.ok(txt.startsWith("ISO-10303-21;\nHEADER;") && txt.trimEnd().endsWith("END-ISO-10303-21;"));
+  assert.ok(/FILE_SCHEMA\(\('AUTOMOTIVE_DESIGN \{ 1 0 10303 214 1 1 1 1 \}'\)\);/.test(txt));
+  assert.ok(txt.includes("PRODUCT('Test ''board''','Test ''board''','',"), "quotes doubled");
+  assert.equal((txt.match(/MANIFOLD_SOLID_BREP\(/g) || []).length, sc.bodies.length + 1);
+  assert.equal((txt.match(/STYLED_ITEM\(/g) || []).length, sc.bodies.length + 1);
+  assert.ok(/SURFACE_STYLE_TRANSPARENT\(/.test(txt), "glass is transparent");
+  const defined = new Set([...txt.matchAll(/^#(\d+)=/gm)].map(x => x[1]));
+  for (const x of txt.matchAll(/#(\d+)(?!\d|=)/g)) assert.ok(defined.has(x[1]), `#${x[1]} is defined`);
+  assert.ok(!/NaN|Infinity/.test(txt), "no broken numbers");
 });

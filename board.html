@@ -111,6 +111,16 @@
     .align { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 4px 0; }
     .align .btn { padding: 4px 2px; font-size: 12px; }
     .tools .btn { padding-left: 8px; padding-right: 8px; }
+    #stage { position: relative; }
+    #view3d { position: absolute; inset: 0; z-index: 5; background: #070b10; }
+    #view3d[hidden] { display: none; }
+    #gl3d { width: 100%; height: 100%; display: block; cursor: grab; }
+    .bar3d { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; pointer-events: none; }
+    .bar3d > * { pointer-events: auto; }
+    .bar3d label { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; color: var(--muted); font-size: 12px; }
+    .hint3d { position: absolute; bottom: 8px; left: 10px; color: var(--muted); font-size: 11px; pointer-events: none; }
+    .preview3d { width: 100%; height: 190px; display: block; border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; background: #070b10; cursor: grab; }
+    #status { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .menu { position: relative; }
     .menu-list { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 230px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
     .menu-list[hidden] { display: none; }
@@ -122,7 +132,7 @@
 </head>
 <body>
   <header>
-    <div class="brand">⚡ <b>Board</b> Design</div>
+    <div class="brand" title="Board Design">⚡ <b>Board</b></div>
     <span id="status" class="status idle">Looking for the Circuit CAD…</span>
     <span class="sep"></span>
     <button class="btn" id="btn-undo" title="Undo (Ctrl+Z)">↶</button>
@@ -141,6 +151,7 @@
     <select class="btn" id="layer" title="Copper layer for new tracks (V while routing)"><option value="F.Cu">Top (F.Cu)</option><option value="B.Cu">Bottom (B.Cu)</option></select>
     <select class="btn" id="grid" title="Grid"><option value="0.635">0.635 mm</option><option value="1.27" selected>1.27 mm</option><option value="2.54">2.54 mm</option><option value="0.5">0.5 mm</option><option value="1">1 mm</option></select>
     <button class="btn" id="btn-fit" title="Fit the board (F)">Fit</button>
+    <button class="btn" id="btn-3d" title="The board in 3D with its parts (3); export it as STEP">3D</button>
     <span class="spacer"></span>
     <button class="btn" id="btn-setup" title="Board setup: outline, corners, mounting holes, layer stack">Setup…</button>
     <button class="btn" id="btn-rules" title="Design rules: clearances, widths, vias, net classes and the checks to run">Rules…</button>
@@ -151,6 +162,7 @@
         <button class="menu-item" id="ex-gerber">Gerber + drill files (ZIP)<small>for the board maker</small></button>
         <button class="menu-item" id="ex-pdf">Print set (PDF)<small>assembly, copper 1:1, drill map</small></button>
         <button class="menu-item" id="ex-toner">Toner transfer (PDF)<small>copper 1:1, ready to iron on</small></button>
+        <button class="menu-item" id="ex-step">3D model (STEP)<small>board and parts, for a chassis CAD</small></button>
         <button class="menu-item" id="ex-svg">Board drawing (SVG)<small>all layers, 1:1 mm</small></button>
         <button class="menu-item" id="ex-json">Board file (JSON)<small>this layout</small></button>
       </div>
@@ -166,7 +178,18 @@
       <div id="parts"></div>
       <div id="nets" hidden></div>
     </section>
-    <div id="stage"><canvas id="pcb" aria-label="Printed circuit board"></canvas></div>
+    <div id="stage"><canvas id="pcb" aria-label="Printed circuit board"></canvas>
+      <div id="view3d" hidden>
+        <canvas id="gl3d" aria-label="The board in 3D"></canvas>
+        <div class="bar3d">
+          <button class="btn" data-view="iso">Iso</button><button class="btn" data-view="top">Top</button><button class="btn" data-view="bottom">Bottom</button><button class="btn" data-view="front">Front</button><button class="btn" data-view="side">Side</button>
+          <label><input type="checkbox" id="v3-parts" checked> Parts</label><label><input type="checkbox" id="v3-tubes" checked> Valves</label>
+          <span class="spacer"></span>
+          <button class="btn" id="v3-png">Save PNG</button><button class="btn" id="v3-step">Export STEP</button><button class="btn" id="v3-close" title="Back to the layout (Esc or 3)">✕ Layout</button>
+        </div>
+        <div class="hint3d">Drag: turn · right-drag or Shift+drag: move · wheel: zoom</div>
+      </div>
+    </div>
     <aside class="col right">
       <div id="inspector"></div>
       <h2>Design rules check <small id="drc-count"></small></h2>
@@ -195,6 +218,7 @@
         <kbd>Shift+V</kbd><span>via tool: click to place a via</span>
         <kbd>T</kbd><span>text tool: click to place a text on the active side's silkscreen</span>
         <kbd>H</kbd><span>mounting-hole tool</span>
+        <kbd>3</kbd><span>the board in 3D (again, or Esc: back); Export → 3D model (STEP) for a chassis CAD</span>
         <kbd>P</kbd><span>copper pour: click the corners, double-click (or click the first corner) to close; the pour fills around other nets with clearance and joins its net's pads with thermal spokes</span>
         <kbd>drag on empty space</kbd><span>select what lies inside the box (left to right) or what it touches (right to left); Shift adds</span>
         <kbd>Shift+click</kbd><span>add a part, track, via, text or hole to the selection (or take it out)</span>
@@ -283,6 +307,8 @@
   <script src="pdf-export.js?v=dev"></script>
   <script src="board-core.js?v=dev"></script>
   <script src="board-fab.js?v=dev"></script>
+  <script src="board-3d.js?v=dev"></script>
+  <script src="board-3d-view.js?v=dev"></script>
   <script src="board-app.js?v=dev"></script>
 </body>
 </html>

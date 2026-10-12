@@ -141,7 +141,7 @@
     if (S.history.length > 200) S.history.shift();
     S.hIndex = S.history.length - 1;
   }
-  function refresh() { analyse(); checkSync(); save(); render(); renderPanels(); }
+  function refresh() { analyse(); checkSync(); save(); render(); renderPanels(); if (viewer && !$("view3d").hidden) { clearTimeout(v3Timer); v3Timer = setTimeout(() => build3D(false), 150); } }
   function commit(text) { pushHistory(); refresh(); if (text) msg(text); }
   function undo() { if (S.hIndex > 0) { S.hIndex--; S.board = JSON.parse(S.history[S.hIndex]); S.sel = null; refresh(); } }
   function redo() { if (S.hIndex < S.history.length - 1) { S.hIndex++; S.board = JSON.parse(S.history[S.hIndex]); S.sel = null; refresh(); } }
@@ -456,6 +456,8 @@
     if (e.key === "F1") { e.preventDefault(); toggle("help-modal"); return; }
     if (e.key === "Escape") { const open = MODALS.find(id => !$(id).hidden); if (open) { $(open).hidden = true; return; } }
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    if (!$("view3d").hidden) { if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); } return; }
+    if (e.code === "Digit3" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); open3D(); return; }
     if (!MODALS.every(id => $(id).hidden)) return;
     const ctrl = e.ctrlKey || e.metaKey, L = /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(e.key).toLowerCase();
     if (e.key === " ") { S.space = true; e.preventDefault(); return; }
@@ -882,6 +884,7 @@
       const bp = S.board.parts[g.key];
       h.innerHTML = `<div class="insp-title">${esc(g.ref)} <small class="help">${esc(g.value)}</small></div>`;
       h.appendChild(field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.map(n => { const f = B.footprint(n); return [n, f ? f.title.replace(/^(.{0,40}).*$/, "$1") + ` (${n})` : n]; })));
+      partPreview(h, g);
       h.appendChild(field("X (mm)", +bp.x.toFixed(3), v => { bp.x = v; commit(); }));
       h.appendChild(field("Y (mm)", +bp.y.toFixed(3), v => { bp.y = v; commit(); }));
       h.appendChild(field("Rotation", bp.rot || 0, v => { bp.rot = +v; commit(); }, [["0", "0°"], ["1", "90°"], ["2", "180°"], ["3", "270°"]]));
@@ -1072,6 +1075,53 @@
     return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${o.w}mm" height="${o.h}mm" viewBox="0 0 ${o.w} ${o.h}"><g${tr}>${parts.join("")}</g></svg>\n`;
   }
   const svgText = (t, fill) => `<text x="0" y="0" transform="translate(${t.x} ${t.y})${t.layer.startsWith("B") ? " scale(-1 1)" : ""} rotate(${-(t.rot || 0) * 90})" font-family="monospace" font-weight="bold" font-size="${t.size}" text-anchor="middle" dominant-baseline="middle" fill="${fill}">${esc(t.text)}</text>`;
+  // ---------------------------------------------------------------------------
+  // 3D: the board with its parts (Board3D solids in the Viewer3D), its faces textured with the
+  // real copper, mask openings, silkscreen and holes; STEP export of the same solids
+  // ---------------------------------------------------------------------------
+  let viewer = null, v3Timer = 0, pvCanvas = null, pv = null;
+  function boardTexture(side) {
+    const o = S.board.outline, k = Math.min(10, 4096 / Math.max(o.w, o.h)), c = document.createElement("canvas");
+    c.width = Math.max(2, Math.round(o.w * k)); c.height = Math.max(2, Math.round(o.h * k));
+    const x = c.getContext("2d"); x.scale(k, k);
+    const [cu, mask, silk] = side === "top" ? ["F.Cu", "F.Mask", "F.SilkS"] : ["B.Cu", "B.Mask", "B.SilkS"], ops = l => BoardFab.layerOps(S.board, S.model, S.fills, l);
+    const P = B.outlinePoly(o, 0); x.fillStyle = "#14532d"; x.beginPath(); P.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]))); x.closePath(); x.fill();
+    BoardFab.paint(x, ops(cu), "#1f7a3e", "#14532d");          // copper under the mask: a lighter green
+    BoardFab.paint(x, ops(mask), "#d4a72c", "#14532d");        // mask openings: tinned pads
+    BoardFab.paint(x, ops(silk), "#f2f2ea", "#14532d");
+    x.globalCompositeOperation = "destination-out"; x.fillStyle = "#000";
+    const d = BoardFab.drills(S.board, S.model);
+    d.pth.concat(d.npth).forEach(([dia, pts]) => pts.forEach(([hx, hy]) => { x.beginPath(); x.arc(hx, hy, +dia / 2, 0, Math.PI * 2); x.fill(); }));
+    return c;
+  }
+  function build3D(frame) {
+    if (!viewer || !S.model) return;
+    const sc = Board3D.scene(S.board, S.model, { tubes: $("v3-tubes").checked, parts: $("v3-parts").checked });
+    viewer.setScene([sc.board, ...sc.bodies], { top: boardTexture("top"), bottom: boardTexture("bottom") }, frame);
+  }
+  function open3D() {
+    if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return; }
+    if (S.route) finishRoute();
+    $("view3d").hidden = false;
+    if (!viewer) { viewer = new Viewer3D($("gl3d")); if (!viewer.ok) { viewer = null; $("view3d").hidden = true; msg("This browser cannot draw 3D (no WebGL)"); return; } }
+    build3D(true); msg("3D view: drag to turn, right-drag to move, wheel to zoom; 3 or Esc goes back to the layout");
+  }
+  function close3D() { $("view3d").hidden = true; render(); }
+  function exportStep() {
+    if (!S.model) return;
+    const name = baseName() + ".step", sc = Board3D.scene(S.board, S.model, { tubes: $("v3-tubes").checked });
+    download(Board3D.step(sc, { title: fabMeta().title, version: appVersion(), file: name }), name, "application/step");
+  }
+  // the selected part in 3D, on a small piece of board, turning slowly (drag to turn it yourself)
+  function partPreview(h, g) {
+    if (typeof Viewer3D === "undefined") return;
+    if (!pvCanvas) { pvCanvas = document.createElement("canvas"); pvCanvas.className = "preview3d"; pvCanvas.title = "3D model of the part: drag to turn, wheel to zoom"; pv = new Viewer3D(pvCanvas, { spin: true }); if (!pv.ok) { pv = null; return; } }
+    if (!pv) return;
+    h.appendChild(pvCanvas);
+    const key = g.key + "|" + g.fp.name;
+    if (pv.key !== key) { pv.key = key; pv.spin = true; pv.lastView = "iso"; pv.setScene(Board3D.preview(g, { tubes: true }), null, true); } else pv.draw();
+  }
+
   // manufacturing outputs: ask first when the board is not finished
   function fabReady(what) {
     const off = S.drc.filter(d => d.kind === "unplaced").length, errs = errors(), todo = S.conn ? S.conn.unrouted : 0;
@@ -1121,12 +1171,19 @@
     document.addEventListener("click", e => { if (!menu.contains(e.target)) list.hidden = true; });
     $("ex-svg").onclick = () => { list.hidden = true; download(svgDoc(["F.Cu", "B.Cu", "F.SilkS", "Edge.Cuts"], false), baseName() + "-board.svg", "image/svg+xml"); };
     $("ex-gerber").onclick = () => { list.hidden = true; exportGerber(); };
+    $("ex-step").onclick = () => { list.hidden = true; exportStep(); };
+    $("btn-3d").onclick = () => ($("view3d").hidden ? open3D() : close3D());
+    $("v3-close").onclick = close3D; $("v3-step").onclick = exportStep;
+    $("v3-png").onclick = () => { if (!viewer) return; const a = document.createElement("a"); a.href = viewer.png(); a.download = baseName() + "-3d.png"; a.click(); msg("Saved " + a.download); };
+    document.querySelectorAll("[data-view]").forEach(b => { b.onclick = () => viewer && viewer.view(b.dataset.view); });
+    ["v3-parts", "v3-tubes"].forEach(id => { $(id).onchange = () => build3D(false); });
+    window.addEventListener("resize", () => { if (viewer && !$("view3d").hidden) viewer.draw(); });
     $("ex-pdf").onclick = () => { list.hidden = true; exportPdf("print"); };
     $("ex-toner").onclick = () => { list.hidden = true; exportPdf("toner"); };
     document.querySelectorAll("[data-tab]").forEach(t => { t.onclick = () => { document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x === t)); $("parts").hidden = t.dataset.tab !== "parts"; $("nets").hidden = t.dataset.tab !== "nets"; }; });
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

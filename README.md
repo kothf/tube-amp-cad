@@ -325,7 +325,19 @@ the circuit file, so one file holds both.
   ratsnest and rule markers. Each can be shown or hidden, or shown alone
   (*only*). Click a copper layer to make it active, and dim the inactive
   copper with the slider.
+- **3D** (*3D* button or <kbd>3</kbd>): the board with every part, valves in
+  their glass on the sockets, transformers with core and coil, the copper,
+  tinned pads and silkscreen on both faces. Drag to turn, right-drag to move,
+  wheel to zoom; Iso, Top, Bottom, Front and Side views; parts and valves can
+  be hidden; *Save PNG*. The inspector shows the selected part in 3D, turning
+  slowly, and follows a footprint change.
+
+  ![The board in 3D: two 12AX7 valves on their noval sockets, electrolytics, resistors and terminal blocks on a green board](docs/board-3d.png)
 - **Export:**
+  - **3D model (STEP)**, AP214, of the board (with its holes) and every part,
+    in colour, for fitting the board into a chassis in FreeCAD, KiCad or any
+    mechanical CAD. Checked with OpenCascade: every solid valid, colours read.
+    The part bodies are typical shapes and sizes, not a maker's model.
   - **Gerber + drill files (ZIP)**, ready to upload to a board maker (JLCPCB,
     PCBWay, Aisler…): copper, solder mask and silkscreen of both sides, the
     outline (Gerber RS-274X with X2 attributes), plated and non-plated drill
@@ -356,7 +368,7 @@ the circuit file, so one file holds both.
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | simulate until settled |
 | <kbd>F1</kbd> or <kbd>?</kbd> | help |
 
-In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Backspace</kbd> takes back the last corner while routing.
+In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>3</kbd> 3D view, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Backspace</kbd> takes back the last corner while routing.
 
 ## How the simulator works
 

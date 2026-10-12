@@ -1346,6 +1346,27 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(/gerbers\.zip$/.test(zipDl.suggestedFilename()) && zipBuf.slice(0, 2).toString() === "PK" && zipNames.some(n => /-B_Cu\.gbr$/.test(n)) && zipNames.some(n => /-PTH\.drl$/.test(n)) && /G36\*/.test(zipBuf.toString("latin1")),
     `Export → Gerber + drill files gives ${zipDl.suggestedFilename()} with the copper, mask, silkscreen, outline and drill files (the pour as a region)`);
   check(/-prints\.pdf$/.test(pdfDl.suggestedFilename()) && pdfBuf.slice(0, 4).toString() === "%PDF" && /\/Count 4/.test(pdfBuf.toString("latin1")), `Export → Print set gives a four-page PDF (${pdfDl.suggestedFilename()})`);
+  // 3D: the selected part turns in the inspector; the board in 3D (3 / Esc); STEP of board and parts
+  await bd.locator('#parts .item', { hasText: "VL1" }).first().click();
+  await bd.waitForTimeout(300);
+  const gl = await bd.evaluate(() => !!document.createElement("canvas").getContext("webgl"));
+  if (gl) {
+    const pv1 = await bd.evaluate(() => { const v = BoardApp.preview(); return v && document.querySelector("#inspector .preview3d") ? { key: v.key, n: v.batches.length, glass: v.batches.some(b => b.k === "glass") } : null; });
+    await bd.locator("#inspector select").first().selectOption("SOCKET-OCTAL");
+    await bd.waitForTimeout(300);
+    const pv2 = await bd.evaluate(() => BoardApp.preview() && BoardApp.preview().key);
+    check(pv1 && pv1.n > 0 && pv1.glass && /SOCKET-B9A/.test(pv1.key) && /SOCKET-OCTAL/.test(pv2), `the inspector shows the part in 3D (${pv1 && pv1.key}) and follows a footprint change (${pv2})`);
+    await bd.keyboard.press("Control+z");
+    await bd.click("#btn-3d"); await bd.waitForTimeout(400);
+    const v3 = await bd.evaluate(() => { const v = BoardApp.viewer(); return { shown: !document.getElementById("view3d").hidden, kinds: v ? [...new Set(v.batches.map(b => b.k))].sort().join(",") : "" }; });
+    await bd.click('[data-view="bottom"]'); await bd.locator("#gl3d").focus().catch(() => {}); await bd.keyboard.press("Escape");
+    check(v3.shown && v3.kinds === "bottom,glass,solid,top" && await bd.evaluate(() => document.getElementById("view3d").hidden), `3D shows the board (textured top and bottom), the parts and the valves' glass (${v3.kinds}); Esc goes back to the layout`);
+  } else check(true, "this browser has no WebGL here: the 3D checks are skipped");
+  await bd.click("#btn-export");
+  const [stepDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-step")]);
+  const stepTxt = (await readFile(await stepDl.path())).toString("latin1");
+  const nSolids = (stepTxt.match(/MANIFOLD_SOLID_BREP\(/g) || []).length;
+  check(/\.step$/.test(stepDl.suggestedFilename()) && stepTxt.startsWith("ISO-10303-21;") && /AUTOMOTIVE_DESIGN/.test(stepTxt) && nSolids > 20 && /END-ISO-10303-21;\s*$/.test(stepTxt), `Export → 3D model (STEP) gives ${stepDl.suggestedFilename()} with ${nSolids} solids (AP214)`);
   await bd.close();
 }
 

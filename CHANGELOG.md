@@ -6,6 +6,30 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.40.0] - 2026-10-12
+
+### Added
+- **3D view of the board** (*3D* button, or <kbd>3</kbd>):
+  - every part has a body: resistors and diodes with their leads, film,
+    disc and electrolytic capacitors, transistors, LEDs, pots, valves in
+    glass on their sockets, EI transformers and chokes, terminal blocks,
+    jacks, switches;
+  - the board's top and bottom faces carry the real copper, tinned pads,
+    silkscreen and holes;
+  - drag to turn, right-drag to move, wheel to zoom; Iso, Top, Bottom, Front
+    and Side views; parts and valves can be hidden; *Save PNG*.
+- **3D view of each part:** the inspector shows the selected part in 3D on a
+  piece of board with its pads, turning slowly (drag to turn it), and
+  follows a footprint change.
+- **Export → 3D model (STEP)** (and *Export STEP* in the 3D view): STEP AP214
+  of the board with its holes and every part, in colour, for a chassis in
+  FreeCAD, KiCad or any mechanical CAD. Each body is a closed B-rep;
+  OpenCascade reads every solid as valid, with its colour.
+
+### Changed
+- The Board window's title is shortened to "Board", and the status text
+  shrinks, so the toolbar with its new 3D button stays on one row.
+
 ## [3.39.0] - 2026-10-09
 
 ### Added
