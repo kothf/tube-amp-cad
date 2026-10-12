@@ -241,7 +241,7 @@
   }
   function makeComp(type, params, x, y, rot) {
     const def = LIB[type];
-    const c = { id: newId("c"), type, x: snap(x), y: snap(y), rot: def.noRotate ? 0 : (rot || 0), params: Object.assign({}, def.defaults, params || {}) };
+    const c = { id: newId("c"), type, x: snap(x), y: snap(y), rot: def.noRotate ? 0 : (rot || 0), params: Object.assign({}, def.defaults, def.newDefaults || {}, params || {}) };
     if (type === "tube") {
       const t = tubeByName(c.params.tube);
       c.params.connection = tubeKind(t) === "pentode" ? "pentode" : "triode";
@@ -452,6 +452,23 @@
     if (n === 0) return new Float32Array(r.tran.samples);
     return r.tran.nodes[n] || null;
   }
+  // a speaker's voltage and current over the captured cycle: the current through Re for the
+  // Thiele–Small model (its inner node), V/R for the resistor
+  function speakerWave(c) {
+    const a = waveOf(c, "+"), b = waveOf(c, "-"), r = S.sim.result;
+    if (!a || !b) return null;
+    const n = a.length, v = new Float32Array(n), i = new Float32Array(n);
+    let inner = null;
+    if (c.params.model === "ts") { const e = buildNetlist().elements.find(x => x.id === c.id + "#re"); inner = e && r.tran.nodes[e.nodes[1]]; }
+    const re = c.params.model === "ts" ? CadLib.speakerTS(c.params).re : Math.max(c.params.r, 0.1);
+    for (let k = 0; k < n; k++) { v[k] = a[k] - b[k]; i[k] = inner ? (a[k] - inner[k]) / re : v[k] / re; }
+    return { v, i };
+  }
+  function speakerPower(c) {
+    const w = speakerWave(c); if (!w) return null;
+    let p = 0, vv = 0; for (let k = 0; k < w.v.length; k++) { p += w.v[k] * w.i[k]; vv += w.v[k] * w.v[k]; }
+    return { p: p / w.v.length, vrms: Math.sqrt(vv / w.v.length) };
+  }
   function stats(a) {
     if (!a || !a.length) return null;
     let mn = Infinity, mx = -Infinity, s = 0;
@@ -492,7 +509,7 @@
     if (!dev) return null;
     if (kind === "rectifier") return { kind, a1: dev.a1, a2: dev.a2 };
     const conn = c.params.connection === "pentode" && t.koren.Pentode ? "pentode" : "triode";
-    const d = { kind: conn, tube: t.commonName, label: c.label, id: c.id, dc: dev.main, paMax: t.paMax, vaMax: t.vaMax, model: conn === "pentode" ? t.koren.Pentode : t.koren.Triode };
+    const d = { kind: conn, tube: t.commonName, label: c.label, id: c.id, dc: dev.main, paMax: t.paMax, vaMax: t.vaMax, model: conn === "pentode" ? t.koren.Pentode : t.koren.Triode || t.koren.Pentode };
     if (r.tran) {
       const A = waveOf(c, "A"), K = waveOf(c, "K"), G = waveOf(c, conn === "pentode" ? "G1" : "G"), G2 = conn === "pentode" ? waveOf(c, "G2") : null;
       const I = r.tran.devices[c.id] ? r.tran.devices[c.id].i : null;
@@ -538,7 +555,7 @@
   }
   function buildSummary() {
     const r = S.sim.result;
-    const summary = { type: "SIM_RESULT", version: VERSION, at: Date.now(), selectedTubeId: lastTubeId, ok: !!r, error: S.sim.error, warnings: S.sim.warnings || [], empty: !S.comps.length, fSig: signalFreq(), tubes: [], scopes: [], speakers: [] };
+    const summary = { type: "SIM_RESULT", version: VERSION, at: Date.now(), selectedTubeId: lastTubeId, ok: !!r, error: S.sim.error, warnings: S.sim.warnings || [], empty: !S.comps.length, fSig: signalFreq(), tubes: [], scopes: [], speakers: [], customTubes: usedCustomTubes() };
     if (!r) return summary;
     summary.elapsedMs = r.elapsedMs;
     S.comps.forEach(c => {
@@ -552,8 +569,8 @@
         const ch = scopeChannels(c);
         if (ch) summary.scopes.push({ id: c.id, label: c.label, dt: ch.dt, ch1: ch.ch1 ? Array.from(ch.ch1) : null, ch2: ch.ch2 ? Array.from(ch.ch2) : null });
       } else if (c.type === "speaker") {
-        const a = waveOf(c, "+"), b = waveOf(c, "-");
-        if (a && b) { let p = 0; for (let i = 0; i < a.length; i++) { const v = a[i] - b[i]; p += v * v; } p /= a.length * c.params.r; summary.speakers.push({ label: c.label, pAvg: p, r: c.params.r }); }
+        const sp = speakerPower(c);
+        if (sp) summary.speakers.push({ label: c.label, pAvg: sp.p, r: c.params.r });
       }
     });
     return summary;
@@ -578,7 +595,7 @@
     const volts = {};
     if (S.sim.result && S.sim.topo === T) Object.keys(names).concat([...new Set([...T.pinNet.values()])]).forEach(n => { const v = netDC(+n); if (v !== null) volts[n] = v; });
     const f = frames()[0];
-    return { parts, names, volts, title: f ? f.params.title || "" : "", docno: f ? f.params.docno || "" : "" };
+    return { parts, names, volts, title: f ? f.params.title || "" : "", docno: f ? f.params.docno || "" : "", tubes: usedCustomTubes() };
   }
   let boardTimer = 0;
   function sendBoardNetlist(withBoard) {
@@ -1632,7 +1649,7 @@
     if (!isTube) { selectedTubeId = null; return; }
     if (c.id === selectedTubeId) return;
     selectedTubeId = lastTubeId = c.id;
-    if (channel) { try { channel.postMessage({ type: "SELECT_TUBE", id: c.id, tube: c.params.tube, label: c.label }); } catch (e) {} }
+    if (channel) { try { channel.postMessage({ type: "SELECT_TUBE", id: c.id, tube: c.params.tube, label: c.label, def: window.SpiceModel && SpiceModel.isCustom(tubeByName(c.params.tube)) ? tubeByName(c.params.tube) : undefined }); } catch (e) {} }
   }
 
   let inspectorFor = null;
@@ -1705,9 +1722,9 @@
       } else if (f.kind === "select") {
         el = document.createElement("select");
         (typeof f.options === "function" ? f.options(c) : f.options).forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; el.appendChild(o); });
-        el.value = String(c.params[f.key]);
+        el.value = String(f.get ? f.get(c) : c.params[f.key]);
         if (el.selectedIndex < 0) el.selectedIndex = 0;   // a setting the part was saved without (e.g. Mirror) shows its default
-        el.addEventListener("change", () => { if (c.type === "switch" && f.key === "pos") setSwitch(c, el.value); else { c.params[f.key] = el.value; commit(); } });
+        el.addEventListener("change", () => { if (c.type === "switch" && f.key === "pos") setSwitch(c, el.value); else if (f.apply) { f.apply(c, el.value); commit(); } else { c.params[f.key] = el.value; commit(); } });
       } else if (f.kind === "range") {
         const wrap = document.createElement("div"); wrap.className = "range-wrap";
         const r = document.createElement("input"); r.type = "range"; r.min = f.min; r.max = f.max; r.step = f.step; r.value = c.params[f.key];
@@ -1716,22 +1733,34 @@
         r.addEventListener("change", () => commit());
         wrap.appendChild(r); wrap.appendChild(lab); el = wrap;
       } else if (f.kind === "tube") {
-        el = document.createElement("select");
-        [["triode", "Triodes"], ["pentode", "Pentodes & beam tetrodes"], ["rectifier", "Rectifiers"]].forEach(([kind, title]) => {
+        const sel = document.createElement("select"), custom = t => window.SpiceModel && SpiceModel.isCustom(t);
+        [["triode", "Triodes"], ["pentode", "Pentodes & beam tetrodes"], ["rectifier", "Rectifiers"], ["custom", "Imported (SPICE models)"]].forEach(([kind, title]) => {
+          const list = TUBE_DATABASE.filter(t => (kind === "custom" ? custom(t) : !custom(t) && tubeKind(t) === kind));
+          if (!list.length) return;
           const g = document.createElement("optgroup"); g.label = title;
-          TUBE_DATABASE.filter(t => tubeKind(t) === kind).forEach(t => { const o = document.createElement("option"); o.value = t.commonName; o.textContent = `${t.commonName} — ${t.type}`; g.appendChild(o); });
-          el.appendChild(g);
+          list.forEach(t => { const o = document.createElement("option"); o.value = t.commonName; o.textContent = `${t.commonName} — ${t.type}`; g.appendChild(o); });
+          sel.appendChild(g);
         });
-        el.value = c.params.tube;
-        el.addEventListener("change", () => { c.params.tube = el.value; c.params.connection = tubeKind(tubeByName(el.value)) === "pentode" ? "pentode" : "triode"; commit(); });
+        sel.value = c.params.tube;
+        sel.addEventListener("change", () => { c.params.tube = sel.value; c.params.connection = tubeKind(tubeByName(sel.value)) === "pentode" ? "pentode" : "triode"; commit(); });
+        // a model of your own: paste or open a SPICE subcircuit
+        const imp = document.createElement("button"); imp.className = "btn"; imp.id = "btn-import-spice"; imp.textContent = "Import SPICE model…";
+        imp.title = "Use a tube model from Koren, Ayumi, Duncan, Reefman or a maker's library: paste or open its .SUBCKT";
+        const done = entry => { c.params.tube = entry.commonName; c.params.connection = tubeKind(entry) === "pentode" ? "pentode" : "triode"; buildPalette(); commit(); setStatus("ok", `${entry.commonName} imported (${entry.custom.sub}) and set on ${c.label}`); };
+        done.inUse = name => S.comps.some(k => k.type === "tube" && k.params.tube === name); done.changed = () => { buildPalette(); updateInspector(); };
+        imp.onclick = () => SpiceImport.open(done);
+        el = document.createElement("div"); el.className = "tube-pick"; el.appendChild(sel); el.appendChild(imp);
       }
       host.appendChild(row(f.label + (f.unit && f.kind !== "range" ? ` (${f.unit})` : ""), el, f.wide || f.kind === "tube"));
     });
+    if (c.type === "speaker" && c.params.model === "ts") host.appendChild(speakerPlot(c));
     if (c.type === "tube") {
       const t = tubeByName(c.params.tube);
       if (t) {
         const p = document.createElement("p"); p.className = "insp-help";
-        p.textContent = `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A (not simulated)`;
+        p.textContent = t.custom
+          ? `Imported SPICE model ${t.custom.sub}${t.custom.like ? ` · socket, pinout and heater of the ${t.custom.like}` : ""} · Va max ${t.vaMax} V · Pa max ${t.paMax} W`
+          : `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A (not simulated)`;
         host.appendChild(p);
       }
     }
@@ -1838,8 +1867,11 @@
         const v = vAcross("1", "2"); h += kv("DC current", fmtEng(v / Math.max(c.params.dcr, 1e-3), "A", 2)) + kv("DC drop", fmtEng(v, "V", 2)); return h;
       }
       case "speaker": {
-        const p = pAvg("+", "-", c.params.r);
-        h += kv("Output power", fmtEng(p, "W", 2)) + kv("Voltage", fmtEng(Math.sqrt(p * c.params.r), "Vrms", 2)); return h;
+        const sp = speakerPower(c), f = signalFreq();
+        if (sp) h += kv("Output power", fmtEng(sp.p, "W", 2)) + kv("Voltage", fmtEng(sp.vrms, "Vrms", 2));
+        else { const p = pAvg("+", "-", c.params.r); h += kv("Output power", fmtEng(p, "W", 2)); }
+        if (c.params.model === "ts" && f) { const [z, ph] = CadLib.speakerZ(c.params, f); h += kv(`Impedance at ${fmtEng(f, "Hz")}`, `${fmtEng(z, "Ω", 3)} · ${ph >= 0 ? "+" : ""}${ph.toFixed(0)}°`); }
+        return h;
       }
       case "vdc": {
         const dev = r.dc.devices[c.id];
@@ -1877,7 +1909,7 @@
     const r = S.sim.result; if (!r) return "";
     let out = 0, tubes = 0, res = 0, semi = 0, sup = 0, haveSup = false;
     S.comps.forEach(c => {
-      if (c.type === "speaker") { const a = waveOf(c, "+"), b = waveOf(c, "-"); if (a && b) { let m = 0; for (let i = 0; i < a.length; i++) { const v = a[i] - b[i]; m += v * v; } out += m / a.length / c.params.r; } }
+      if (c.type === "speaker") { const sp = speakerPower(c); if (sp) out += sp.p; }
       else if (c.type === "resistor") { const p = resistorPower(c); if (p) res += p; }
       else if (c.type === "tube") { const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier") tubes += (d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia) + (d.dc.vg2k && d.dc.ig2 ? d.dc.vg2k * d.dc.ig2 : 0); }
       else if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) semi += d.pd; }
@@ -1926,9 +1958,41 @@
       if (v > m.v) issues.push(`${c.label} (${c.params.model}) has ${v.toFixed(0)} V across it, more than its ${m.v} V rating.`);
     });
     S.comps.forEach(c => { if (c.type !== "zener" || !S.sim.result) return; const z = CadLib.ZENERS[c.params.model], v = netDC(pinNetOf(c, "A")), w = netDC(pinNetOf(c, "K")), i = pinCurrent(c, "A"); if (z && v !== null && w !== null && i !== null && Math.abs((v - w) * i) > z.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(Math.abs((v - w) * i), "W", 2)}, more than its ${z.p} W rating.`); });
-    S.comps.forEach(c => { if (c.type !== "tube") return; const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier" && d.dc.vak * d.dc.ia > d.paMax) issues.push(`${c.label} over dissipation (${(d.dc.vak * d.dc.ia).toFixed(1)} W > ${d.paMax} W).`); });
+    // tubes: the plate's average dissipation over the signal cycle (with a reactive load the
+    // path may cross the Pa max curve for part of a cycle, which is normal); the DC value without signal
+    S.comps.forEach(c => {
+      if (c.type !== "tube") return; const d = tubeData(c); if (!d || !d.dc || d.kind === "rectifier") return;
+      const avg = d.metrics ? d.metrics.pAvg : null, dc = d.dc.vak * d.dc.ia;
+      if (avg !== null && avg > d.paMax) issues.push(`${c.label} over dissipation: ${avg.toFixed(1)} W on average over the signal cycle > ${d.paMax} W.`);
+      else if (avg === null && dc > d.paMax) issues.push(`${c.label} over dissipation (${dc.toFixed(1)} W > ${d.paMax} W).`);
+    });
     h += `<div class="insp-sub">Checks${simPct()}</div>` + (issues.length ? issues.map(i => `<p class="insp-help warn">⚠ ${i}</p>`).join("") : `<p class="insp-help ok">✓ No problems found.</p>`);
     return h;
+  }
+
+  // a loudspeaker's impedance (solid) and phase (dotted) from 10 Hz to 20 kHz, the nominal value dashed
+  function speakerPlot(c) {
+    const wrap = document.createElement("div"); wrap.className = "spk-plot";
+    const cv = document.createElement("canvas"); cv.width = 300; cv.height = 150; cv.id = "spk-plot"; wrap.appendChild(cv);
+    const x = cv.getContext("2d"), W = cv.width, H = cv.height, L = 30, Rm = 28, T = 8, B = 18, f1 = 10, f2 = 20000;
+    const pts = Array.from({ length: 161 }, (_, i) => { const f = f1 * Math.pow(f2 / f1, i / 160); return [f, ...CadLib.speakerZ(c.params, f)]; });
+    const zmax = Math.max(...pts.map(p => p[1])) * 1.1, X = f => L + (W - L - Rm) * Math.log(f / f1) / Math.log(f2 / f1), Y = z => H - B - (H - B - T) * z / zmax, P = ph => T + (H - B - T) * (90 - ph) / 180;
+    x.fillStyle = "#0b0f14"; x.fillRect(0, 0, W, H); x.font = "9px ui-monospace, monospace";
+    [10, 100, 1000, 10000].forEach(f => { x.strokeStyle = "#1b2430"; x.beginPath(); x.moveTo(X(f), T); x.lineTo(X(f), H - B); x.stroke(); x.fillStyle = "#6e7781"; x.fillText(f >= 1000 ? f / 1000 + "k" : String(f), X(f) - 6, H - 5); });
+    [0, 0.5, 1].forEach(k => { const z = zmax / 1.1 * k; x.fillStyle = "#6e7781"; x.fillText(z.toFixed(0), 3, Y(z) + 3); });
+    x.font = "9px sans-serif"; x.fillText("|Z| Ω", L + 3, T + 8); x.font = "9px ui-monospace, monospace";
+    ["+90°", "0°", "−90°"].forEach((t, k) => { x.fillStyle = "#6e7781"; x.fillText(t, W - Rm + 3, T + (H - B - T) * k / 2 + 3); });
+    x.strokeStyle = "#8b949e"; x.setLineDash([4, 3]); x.beginPath(); x.moveTo(L, Y(c.params.r)); x.lineTo(W - Rm, Y(c.params.r)); x.stroke(); x.setLineDash([]);
+    x.strokeStyle = "#ffd54f"; x.lineWidth = 1.5; x.beginPath(); pts.forEach(([f, z], i) => (i ? x.lineTo(X(f), Y(z)) : x.moveTo(X(f), Y(z)))); x.stroke();
+    x.strokeStyle = "#58a6ff"; x.lineWidth = 1; x.setLineDash([2, 2]); x.beginPath(); pts.forEach(([f, , ph], i) => (i ? x.lineTo(X(f), P(ph)) : x.moveTo(X(f), P(ph)))); x.stroke(); x.setLineDash([]);
+    // the resonance peak near fs, and the lowest point between it and the voice coil's rise
+    const fs = c.params.fs, near = pts.filter(p => p[0] > fs / 3 && p[0] < fs * 3), peak = (near.length ? near : pts).reduce((a, p) => (p[1] > a[1] ? p : a));
+    const above = pts.filter(p => p[0] > peak[0] && p[0] < 10000), dip = above.reduce((a, p) => (p[1] < a[1] ? p : a), above[0] || peak);
+    const ph = pts.reduce((a, p) => (Math.abs(p[2]) > Math.abs(a) ? p[2] : a), 0);
+    const note = document.createElement("p"); note.className = "insp-help";
+    note.textContent = `Impedance (yellow) and phase (blue): ${peak[1].toFixed(0)} Ω at ${peak[0].toFixed(0)} Hz, ${dip[1].toFixed(1)} Ω at ${dip[0] >= 1000 ? (dip[0] / 1000).toFixed(1) + " kHz" : dip[0].toFixed(0) + " Hz"} at the lowest above it, phase up to ${ph >= 0 ? "+" : ""}${ph.toFixed(0)}°. The tube sees this through the output transformer.`;
+    wrap.appendChild(note);
+    return wrap;
   }
 
   function row(label, el, wide) {
@@ -2290,7 +2354,9 @@
   let curFile = { handle: null, name: "" };
   const FS_API = typeof window.showSaveFilePicker === "function";
   const JSON_TYPES = [{ description: "Tube Amp CAD circuit", accept: { "application/json": [".json"] } }];
-  const circuitJSON = () => JSON.stringify(Object.assign({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, S.board ? { board: S.board } : {}), null, 1);
+  // imported SPICE tubes the circuit uses travel inside the file, so it opens anywhere
+  function usedCustomTubes() { return [...new Set(S.comps.filter(c => c.type === "tube").map(c => c.params.tube))].map(tubeByName).filter(t => window.SpiceModel && SpiceModel.isCustom(t)); }
+  const circuitJSON = () => { const tubes = usedCustomTubes(); return JSON.stringify(Object.assign({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, tubes.length ? { tubes } : {}, S.board ? { board: S.board } : {}), null, 1); };
   function setCurFile(handle, name) {
     curFile = { handle: handle || null, name: name || "" };
     document.title = (name ? name + " — " : "") + "Tube Amp CAD — Circuit Editor & Simulator";
@@ -2354,6 +2420,7 @@
     rd.onload = () => {
       try {
         const d = JSON.parse(rd.result);
+        if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { setStatus("warn", e.message); } }); buildPalette(); }
         loadCircuit(d);
         storeBoard(d.board || null);
         S.sel.comps.clear(); S.sel.wires.clear();
@@ -2409,15 +2476,22 @@
           lines.push(`K${id} ${names.join(" ")} ${e.k}`);
           break;
         }
-        case "TRIODE": {
-          const m = e.model, name = `TRIODE_${(S.comps.find(c => c.id === e.id) || {}).params.tube.replace(/[^A-Za-z0-9]/g, "_")}`;
-          if (!models.has(name)) { const x = TubeSimEngine.Spice.triode(m); models.add(name); lines.push(`.subckt ${name} A G K`, `Bp A K I=${x.plate}`, `Bg G K I=${x.grid}`, `.ends`); }
-          lines.push(`X${id} ${nd.join(" ")} ${name}`); break;
-        }
-        case "PENTODE": {
-          const m = e.model, name = `PENTODE_${(S.comps.find(c => c.id === e.id) || {}).params.tube.replace(/[^A-Za-z0-9]/g, "_")}`;
-          if (!models.has(name)) { const x = TubeSimEngine.Spice.pentode(m); models.add(name); lines.push(`.subckt ${name} A G1 G2 K`, `Bp A K I=${x.plate}`, `Bs G2 K I=${x.screen}`, `Bg G1 K I=${x.grid}`, `.ends`); }
-          lines.push(`X${id} ${nd.join(" ")} ${name}`); break;
+        case "TRIODE": case "PENTODE": {
+          if (e.model.spice) {
+            // an imported model goes out as it came in; its pins wired by their roles
+            const sp = e.model.spice, tri = e.kind === "TRIODE", at = { A: nd[0], G: nd[1], G2: tri ? nd[0] : nd[2], K: nd[tri ? 2 : 3] };
+            if (!models.has("spice:" + sp.sub)) { models.add("spice:" + sp.sub); lines.push(`* imported model ${sp.sub}`, ...sp.text.trim().split("\n")); }
+            lines.push(`X${id} ${sp.roles.map(r => at[r] !== undefined ? at[r] : at.K).join(" ")} ${sp.sub}`);
+          } else if (e.kind === "TRIODE") {
+            const m = e.model, name = `TRIODE_${(S.comps.find(c => c.id === e.id) || {}).params.tube.replace(/[^A-Za-z0-9]/g, "_")}`;
+            if (!models.has(name)) { const x = TubeSimEngine.Spice.triode(m); models.add(name); lines.push(`.subckt ${name} A G K`, `Bp A K I=${x.plate}`, `Bg G K I=${x.grid}`, `.ends`); }
+            lines.push(`X${id} ${nd.join(" ")} ${name}`);
+          } else {
+            const m = e.model, name = `PENTODE_${(S.comps.find(c => c.id === e.id) || {}).params.tube.replace(/[^A-Za-z0-9]/g, "_")}`;
+            if (!models.has(name)) { const x = TubeSimEngine.Spice.pentode(m); models.add(name); lines.push(`.subckt ${name} A G1 G2 K`, `Bp A K I=${x.plate}`, `Bs G2 K I=${x.screen}`, `Bg G1 K I=${x.grid}`, `.ends`); }
+            lines.push(`X${id} ${nd.join(" ")} ${name}`);
+          }
+          break;
         }
       }
       k++;
@@ -2530,6 +2604,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, updateInspector, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, updateInspector, circuitJSON, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

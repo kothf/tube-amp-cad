@@ -32,6 +32,8 @@
   if (channel) {
     channel.onmessage = e => {
       const m = e.data || {};
+      // imported SPICE tubes the CAD uses: known here too
+      if (window.SpiceModel) [m.def].concat(m.customTubes || []).forEach(t => { if (t) try { SpiceModel.register(t); } catch (err) { /* a built-in of that name */ } });
       if (m.type === "SELECT_TUBE") {
         // tube selected in the CAD editor: show it, overriding a library pick
         const inCircuit = S.circuit && (S.circuit.tubes || []).some(t => t.id === m.id);
@@ -83,11 +85,11 @@
     }
     const tube = tubeByName(S.view && S.view.name) || tubeByName("12AX7");
     const kind = tubeKind(tube) === "pentode" ? "pentode" : "triode";
-    return { tube, kind, model: kind === "pentode" ? tube.koren.Pentode : tube.koren.Triode, vg2: kind === "pentode" ? S.vg2Preview : null, circuit: null };
+    return { tube, kind, model: kind === "pentode" ? tube.koren.Pentode : tube.koren.Triode || tube.koren.Pentode, vg2: kind === "pentode" ? S.vg2Preview : null, circuit: null };
   }
   function iaOf(d, va, vg, model) {
     const m = model || d.model;
-    return d.kind === "pentode" ? Koren.pentodeIa(va, vg, d.vg2, m) : Koren.triodeIa(va, vg, m);
+    return TubeSimEngine.Tube.ia(d.kind, m, va, vg, d.vg2);
   }
 
   // ---------------------------------------------------------------------------
@@ -540,7 +542,8 @@
     }
     h += `<h3>Ratings</h3>` + kv("Va max", t.vaMax + " V") + kv("Pa max", t.paMax + " W") + kv("Ik max", t.ikMax + " mA") + (t.vg2Max ? kv("Vg2 max", t.vg2Max + " V") : "") + kv("Heater", `${t.vh} V · ${t.ih} A`);
     const m = d.model;
-    h += d.kind === "pentode"
+    if (m.spice) h += `<h3>Imported SPICE model</h3>` + kv("Subcircuit", m.spice.sub) + kv("Pins", m.spice.roles.join(" · ")) + kv("µ (estimated)", m.mu) + (t.custom && t.custom.like ? kv("Socket and ratings like", t.custom.like) : "");
+    else h += d.kind === "pentode"
       ? `<h3>Pentode model</h3>` + kv("µ (g1–g2)", m.mu) + kv("kg1", m.kg) + kv("kp", m.kp) + kv("x", m.x) + kv("knee vk", m.vk + " V") + kv("slope λ", m.lam + " V") + kv("kg2", m.kg2) + kv("screen share ks", m.ks)
       : `<h3>Koren model (triode)</h3>` + kv("µ", m.mu) + kv("kg1", m.kg) + kv("kp", m.kp) + kv("kvb", m.kvb) + kv("x", m.x);
     $("hud").innerHTML = h;
@@ -590,13 +593,16 @@
   function openModelModal() {
     const d = current();
     const m = S.fit && S.fit.tube === d.tube.commonName ? S.fit.params : d.model;
+    if (m.spice) { $("model-text").value = m.spice.text; $("fit-status").textContent = "The imported SPICE model, as it runs. Upload measured points to fit a Koren model to your tube instead."; $("model-modal").hidden = false; return; }
     $("model-text").value = subckt(d.tube.commonName, S.fit && S.fit.tube === d.tube.commonName ? S.fit.kind : d.kind, m, S.fit && S.fit.tube === d.tube.commonName ? S.fit : null);
     $("fit-status").textContent = S.fit ? `Fitted ${S.fit.tube}: R² = ${S.fit.r2.toFixed(4)} · RMSE = ${S.fit.rmse.toFixed(3)} mA · ${S.fit.points.length} points` : "Showing the database model. Upload measured points (CSV: Va, Vg, Ia_mA[, Vg2]) to fit your own tube.";
     $("model-modal").hidden = false;
   }
   function runFit(points) {
     const d = current();
-    const r = fitKoren(points, d.model, d.kind, d.vg2 || 250);
+    // an imported SPICE model has no Koren parameters: start from the tube it is like
+    const init = d.model.spice ? ((t => t && (d.kind === "pentode" ? t.koren.Pentode : t.koren.Triode))(tubeByName(d.tube.custom && d.tube.custom.like)) || (d.kind === "pentode" ? tubeByName("EL34").koren.Pentode : tubeByName("12AX7").koren.Triode)) : d.model;
+    const r = fitKoren(points, init, d.kind, d.vg2 || 250);
     S.fit = Object.assign(r, { points, kind: d.kind, vg2: d.vg2 || 250, tube: d.tube.commonName });
     renderAll(); openModelModal();
   }

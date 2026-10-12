@@ -89,13 +89,39 @@ Firefox is not tested.
 
 | Group | Parts |
 |---|---|
-| Passive | resistor (with power rating, marked in the symbol per ГОСТ 2.728), potentiometer (lin/log), capacitor, electrolytic, choke with DCR, changeover switch (ganged sections), speaker |
+| Passive | resistor (with power rating, marked in the symbol per ГОСТ 2.728), potentiometer (lin/log), capacitor, electrolytic, choke with DCR, changeover switch (ganged sections), speaker: an ideal resistor, or a **loudspeaker** from its Thiele–Small parameters (Re, Le, fs, Qms, Qes; typical guitar and hi-fi drivers to start from) with its impedance and phase curve in the inspector |
 | Transformers | generic single-ended and push-pull/UL output transformers and a generic power transformer; the seven **Hammond 125SE** output transformers and 25 **Hammond 300-series** power transformers, modelled from the maker's drawings (winding resistances, inductance, excitation, no-load voltages, ratings) |
-| Tubes | **99 tubes**: the Soviet receiving tubes from Katsnelson & Larionov, «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981), including triodes and double triodes (6С2С, 6С33С, 6Н1П…6Н33Б), voltage and output pentodes (6Ж1П, 6Ж32П, 6П1П, 6П3С, 6П14П, 6П27С…), triode-pentodes as two sections (6Ф1П, 6Ф3П, 6Ф4П, 6Ф5П) and kenotrons (5Ц3С, 5Ц4С, 6Ц4П…), with the handbook's ratings and pinouts; plus Western tubes from their makers' datasheets (12AX7, EL84, EL34, KT88, 300B, 845, GZ34…). Pentodes can be used triode-connected. |
+| Tubes | **99 tubes**: the Soviet receiving tubes from Katsnelson & Larionov, «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981), including triodes and double triodes (6С2С, 6С33С, 6Н1П…6Н33Б), voltage and output pentodes (6Ж1П, 6Ж32П, 6П1П, 6П3С, 6П14П, 6П27С…), triode-pentodes as two sections (6Ф1П, 6Ф3П, 6Ф4П, 6Ф5П) and kenotrons (5Ц3С, 5Ц4С, 6Ц4П…), with the handbook's ratings and pinouts; plus Western tubes from their makers' datasheets (12AX7, EL84, EL34, KT88, 300B, 845, GZ34…). Pentodes can be used triode-connected. **Import SPICE model…** adds any tube model of your own (see below). |
 | Semiconductors | silicon diodes (1N4007, UF4007, 1N4148); zener diodes 1N4733A … 1N5388B (5.1–200 V, 1 W and 5 W); LEDs (red, yellow, green, blue) for cathode bias; **NPN** 2N2222A, 2N3904, BC107, BC547B, BD139, MPSA42, MJE340 and **PNP** 2N2907A, 2N3906, BC177, BC557B, BD140, MPSA92, MJE350; **N-MOSFETs** 2N7000, BS170, IRF510, IRF540, IRF820, IRF840 and the depletion DN2540 and LND150 for current sources; **P-MOSFETs** BS250, IRF9540, IRF9610, IRF9640 |
 | Sources | DC supply (B+, bias), AC mains (feeds a power transformer), signal generator (sine, square, triangle; Vpk, Vrms or dBV), ground, sheet connector |
 | Instruments | two-channel oscilloscope (its screen live on the schematic, full window on double-click) |
 | Document | IEC 61082 drawing frame with title block, text note |
+
+### Your own tube models (SPICE import)
+
+*Import SPICE model…* in a tube's inspector adds a tube from any SPICE model:
+Norman Koren's, Ayumi's, Duncan's, Derk Reefman's or a maker's library.
+Paste the `.SUBCKT … .ENDS` text or open the file.
+
+- **It runs as written.** Behavioural sources (`B`, `E`/`G VALUE={…}`, linear
+  `E`/`G`) and their expressions are evaluated directly, with `.PARAM`,
+  `.FUNC`, `PARAMS:`, continuation lines, unit suffixes and the usual
+  functions (`exp`, `ln`, `pwr`, `pwrs`, `uramp`, `limit`, `if`, `atan`, `tanh`
+  …). Internal nodes are solved too, such as the grid-current resistor and
+  diode of Koren's models. Capacitors are left out, since the simulator's
+  tubes have none.
+- **Pins:** read from the model's comment (`; P G K`, `A G2 G1 K` …). Without
+  a comment, the assignment that behaves like a tube is chosen. You can always
+  change it, and the curves show at once whether it is right.
+- **What it's like:** each imported tube takes its socket, pinout and heater
+  from a tube you choose, so the board footprint and the warnings work. Pa
+  and Va maximums are set in the dialog.
+- **Where it's kept:** in the browser, and inside every circuit file that
+  uses it, so the file opens on another computer. The curve tracer shows it
+  with its model, and the SPICE netlist export writes the subcircuit as
+  imported.
+- **Checked:** Koren's published 12AX7 model gives the same currents as the
+  built-in Koren equations with the same parameters.
 
 ## Measuring on the schematic
 
@@ -375,7 +401,9 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
 `sim-engine.js` is a small SPICE-style engine with no dependencies:
 
 - **Solver.** Modified nodal analysis. Newton-Raphson with gmin and source
-  stepping for the DC operating point, then a backward-Euler transient.
+  stepping for the DC operating point, then a transient with Gear's
+  second-order method (BDF2), which keeps resonances such as a loudspeaker's
+  at their true Q, without trapezoidal ringing at a rectifier's switching.
 - **Triodes** use [Koren's](https://www.normankoren.com/Audio/Tubemodspice_article.html)
   published equation unmodified, so their parameters are interchangeable with
   Koren-style SPICE models.
@@ -385,6 +413,13 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   datasheets.
 - Grid conduction and screen current are included, and the exported SPICE
   models use exactly the same equations.
+- **Imported SPICE models** run through the same entry point as the Koren
+  equations (`TubeSimEngine.Tube`). They are compiled once per run, in the
+  simulation worker too, and cost about twice the built-in models.
+- **Loudspeakers** in the Thiele–Small model are the voice coil (Re, Le) in
+  series with the motional impedance, a parallel R‖L‖C at fs. The output power
+  is the average of voltage times current, and the tube checks use the
+  plate's average dissipation over the signal cycle.
 - **Rectifier tubes** are vacuum diodes (Child–Langmuir, with perveance from
   datasheet drops).
 - **Transistors** use the SPICE Gummel-Poon model (IS, BF, BR, VAF, IKF)

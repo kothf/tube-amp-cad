@@ -235,7 +235,7 @@ for (const bypass of [true, false]) {
 async function powerStage({ name, tube, pentode, zp, bias, rk, drive, quiet, full, published, source, b = 250, vg2 }) {
   const parts = {
     B: ["vdc", { v: b }], T: ["opt_se", { zp, zs: 8, lp: 30, dcrp: 0.001, dcrs: 0.001 }], V1: ["tube", { tube }],
-    SPK: ["speaker", { r: 8 }], G: ["siggen", { freq: 1000, amp: drive, offset: bias || 0 }],
+    SPK: ["speaker", { r: 8, model: "res" }], G: ["siggen", { freq: 1000, amp: drive, offset: bias || 0 }],
     Rs: ["resistor", { r: rk || 1 }], SC: ["scope", {}], SI: ["scope", {}]
   };
   const grid = pentode ? "V1.G1" : "V1.G";

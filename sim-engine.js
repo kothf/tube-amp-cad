@@ -5,7 +5,7 @@
    - Modified Nodal Analysis; node 0 is ground.
    - Newton-Raphson for nonlinear devices (vacuum tubes, diodes) with damped
      steps, gmin stepping and source stepping as DC fallbacks.
-   - Transient: backward-Euler companions for capacitors; inductors and
+   - Transient: Gear-2 (BDF2) companions for capacitors (backward Euler for a first step); inductors and
      coupled windings (transformers) carry their branch current as an unknown,
      so they are exact shorts at DC.
    - Periodic steady state: repeat the slowest source period until the
@@ -62,6 +62,21 @@
     gridI(vgk, p) {
       return vgk > 0 ? (0.2 / p.kg) * Math.pow(vgk, 1.5) : 0;
     }
+  };
+  // One entry for every tube model: Koren's equations, or an imported SPICE model
+  // (spice-model.js) when the parameters carry one ({ spice: { text, sub, roles } }).
+  const Tube = {
+    /** [ia, ig] */
+    triode(vak, vgk, p) {
+      if (p.spice) return root.SpiceModel.tube(p.spice).triode(vak, vgk);
+      return [Koren.triodeIa(vak, vgk, p), Koren.gridI(vgk, p)];
+    },
+    /** [ia, ig, ig2] */
+    pentode(vak, vgk, vg2k, p) {
+      if (p.spice) return root.SpiceModel.tube(p.spice).pentode(vak, vgk, vg2k);
+      return [Koren.pentodeIa(vak, vgk, vg2k, p), Koren.gridI(vgk, p), Koren.screenI(vgk, vg2k, p, vak)];
+    },
+    ia(kind, p, vak, vgk, vg2k) { return kind === "pentode" ? Tube.pentode(vak, vgk, vg2k, p)[0] : Tube.triode(vak, vgk, p)[0]; }
   };
 
   // Rectifier tubes: perveance per anode (A/V^1.5).
@@ -259,6 +274,11 @@
       for (let t = 0; t < m; t++) addB(nodes[t], rhs[t]);
     };
 
+    // integration: backward Euler (a0 = 1, a1 = −1), or Gear's second-order BDF2 (3/2, −2, 1/2)
+    // when the step before was as long as this one: second-order accurate, so resonances keep
+    // their Q, and still strongly damped at high frequencies (no trapezoidal ringing at a
+    // rectifier's switching)
+    const P2 = !mode.dc && mode.prev2 ? mode.prev2 : null, ID0 = P2 ? 1.5 : 1, ID1 = P2 ? -2 : -1, ID2 = 0.5;
     let lastDv = null, stall = 0;
     for (let iter = 0; iter < maxIter; iter++) {
       A.fill(0); b.fill(0);
@@ -271,10 +291,11 @@
           case "R": stampG(nd[0], nd[1], 1 / Math.max(e.r, 1e-6)); break;
           case "C":
             if (!mode.dc) {
-              const g = e.c / mode.h;
-              const vprev = vn(mode.prev, nd[0]) - vn(mode.prev, nd[1]);
-              stampG(nd[0], nd[1], g);
-              addB(nd[0], g * vprev); addB(nd[1], -g * vprev);
+              // i = C/h · (a0·v + a1·v₋₁ + a2·v₋₂): backward Euler, or Gear-2 with history
+              const k = e.c / mode.h, v1 = vn(mode.prev, nd[0]) - vn(mode.prev, nd[1]);
+              const hist = k * (ID1 * v1 + (P2 ? ID2 * (vn(P2, nd[0]) - vn(P2, nd[1])) : 0));
+              stampG(nd[0], nd[1], ID0 * k);
+              addB(nd[0], -hist); addB(nd[1], hist);
             }
             break;
           case "L": {
@@ -283,7 +304,7 @@
             if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
             if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
             addAu(br, br, -R_SERIES);   // keeps a shorted inductor solvable
-            if (!mode.dc) { addAu(br, br, -e.l / mode.h); b[br] += -(e.l / mode.h) * mode.prev[br]; }
+            if (!mode.dc) { const k = e.l / mode.h; addAu(br, br, -ID0 * k); b[br] += k * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0)); }
             break;
           }
           case "XFMR": {
@@ -296,11 +317,11 @@
               if (!mode.dc) {
                 let hist = 0;
                 for (let k = 0; k < W; k++) {
-                  const m = e.Lmat[j * W + k] / mode.h;
-                  addAu(br, e.branches[k], -m);
-                  hist += m * mode.prev[e.branches[k]];
+                  const m = e.Lmat[j * W + k] / mode.h, bk = e.branches[k];
+                  addAu(br, bk, -ID0 * m);
+                  hist += m * (ID1 * mode.prev[bk] + (P2 ? ID2 * P2[bk] : 0));
                 }
-                b[br] += -hist;
+                b[br] += hist;
               }
             }
             break;
@@ -356,8 +377,7 @@
             const p = e.model;
             const V0 = nd.map(k => vn(x, k));   // A, G, K
             stampNonlinear(nd, V => {
-              const vak = V[0] - V[2], vgk = V[1] - V[2];
-              const ia = Koren.triodeIa(vak, vgk, p), ig = Koren.gridI(vgk, p);
+              const [ia, ig] = Tube.triode(V[0] - V[2], V[1] - V[2], p);
               return [ia, ig, -(ia + ig)];
             }, V0);
             break;
@@ -366,9 +386,7 @@
             const p = e.model;
             const V0 = nd.map(k => vn(x, k));   // A, G1, G2, K
             stampNonlinear(nd, V => {
-              const vak = V[0] - V[3], vgk = V[1] - V[3], vg2k = V[2] - V[3];
-              const ia = Koren.pentodeIa(vak, vgk, vg2k, p);
-              const ig2 = Koren.screenI(vgk, vg2k, p, vak), ig = Koren.gridI(vgk, p);
+              const [ia, ig, ig2] = Tube.pentode(V[0] - V[3], V[1] - V[3], V[2] - V[3], p);
               return [ia, ig, ig2, -(ia + ig + ig2)];
             }, V0);
             break;
@@ -435,11 +453,13 @@
     const v = e.nodes.map(k => vn(x, k));
     if (e.kind === "TRIODE") {
       const vak = v[0] - v[2], vgk = v[1] - v[2];
-      return { vak, vgk, ia: Koren.triodeIa(vak, vgk, e.model), ig: Koren.gridI(vgk, e.model) };
+      const [ia, ig] = Tube.triode(vak, vgk, e.model);
+      return { vak, vgk, ia, ig };
     }
     if (e.kind === "PENTODE") {
       const vak = v[0] - v[3], vgk = v[1] - v[3], vg2k = v[2] - v[3];
-      return { vak, vgk, vg2k, ia: Koren.pentodeIa(vak, vgk, vg2k, e.model), ig2: Koren.screenI(vgk, vg2k, e.model, vak), ig: Koren.gridI(vgk, e.model) };
+      const [ia, ig, ig2] = Tube.pentode(vak, vgk, vg2k, e.model);
+      return { vak, vgk, vg2k, ia, ig2, ig };
     }
     if (e.kind === "BJT") {
       const [ic, ib] = Semi.bjt(v, e.model), p = e.model.pol;
@@ -564,17 +584,22 @@
     const captureSteps = Math.round(capture / h);
 
     let x = dc.x.slice(), t = 0;
+    // BDF2 history: the solution one step before x and that step's length (reset whenever
+    // the step changes, the state is extrapolated, or a step had to be subdivided)
+    let xBack = null, hBack = 0;
     // a step that does not converge is retried as 8 sub-steps, and each of those
     // again as 8 (h/64), before the run gives up
     const step = (xprev, tNext, hh, depth) => {
-      const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev }, { gmin: 1e-12 });
-      if (r.ok) return r.x;
+      const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
+      const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
+      if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
       if ((depth || 0) >= 2) return null;
       let xs = xprev;
       for (let k = 1; k <= 8; k++) {
         xs = step(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1);
         if (!xs) return null;
       }
+      if (!depth) xBack = null;
       return xs;
     };
     const runPeriod = (hh, nSteps) => {
@@ -623,7 +648,7 @@
         if (hist.length >= 7 && !opts.noExtrapolate) {
           const xe = mpeExtrapolate(hist);
           // accept the jump only if it lands somewhere sane
-          if (xe && xe.every(isFinite) && periodChange(xe, x) < 0.5) { x = xe; extrapolations++; }
+          if (xe && xe.every(isFinite) && periodChange(xe, x) < 0.5) { x = xe; xBack = null; extrapolations++; }
           hist = [x.slice()];
         }
         lastChange = change;
@@ -741,12 +766,15 @@
     const nOut = Math.min(opts.maxPoints || 4000, steps), per = steps / nOut;
     const mins = probes.map(() => new Float32Array(nOut)), maxs = probes.map(() => new Float32Array(nOut));
     mins.forEach(a => a.fill(Infinity)); maxs.forEach(a => a.fill(-Infinity));
+    let xBack = null, hBack = 0;          // BDF2 history, as in simulate()
     const step = (xprev, tNext, hh, depth) => {
-      const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev }, { gmin: 1e-12 });
-      if (r.ok) return r.x;
+      const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
+      const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
+      if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
       if ((depth || 0) >= 3) return null;
       let xs = xprev;
       for (let k = 1; k <= 8; k++) { xs = step(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
+      if (!depth) xBack = null;
       return xs;
     };
     let x = new Array(n).fill(0), lastProg = 0;
@@ -769,6 +797,6 @@
     return result;
   }
 
-  const Engine = { Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix };
+  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix };
   root.TubeSimEngine = Engine;
 })(globalThis);

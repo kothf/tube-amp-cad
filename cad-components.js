@@ -40,6 +40,32 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Loudspeakers: typical drivers (look up your own driver's datasheet for exact values)
+  // ---------------------------------------------------------------------------
+  const SPEAKER_PRESETS = [
+    { id: "g12-8", name: "12″ guitar speaker, 8 Ω (typical)", r: 8, re: 6.4, le: 0.5e-3, fs: 80, qms: 5.5, qes: 0.7 },
+    { id: "g12-16", name: "12″ guitar speaker, 16 Ω (typical)", r: 16, re: 13.2, le: 1e-3, fs: 80, qms: 5.5, qes: 0.7 },
+    { id: "g12-4", name: "12″ guitar speaker, 4 Ω (typical)", r: 4, re: 3.4, le: 0.25e-3, fs: 80, qms: 5.5, qes: 0.65 },
+    { id: "g10-8", name: "10″ guitar speaker, 8 Ω (typical)", r: 8, re: 6.0, le: 0.4e-3, fs: 95, qms: 5, qes: 0.65 },
+    { id: "hf8-8", name: "8″ full-range hi-fi, 8 Ω (typical)", r: 8, re: 6.2, le: 0.25e-3, fs: 50, qms: 3.5, qes: 0.45 },
+    { id: "w10-8", name: "10″ hi-fi woofer, 8 Ω (typical)", r: 8, re: 5.8, le: 1.2e-3, fs: 30, qms: 4, qes: 0.4 }
+  ];
+  /** The electrical equivalent of a Thiele–Small driver: Re, Le in series, then Res ‖ Lces ‖ Ces */
+  function speakerTS(p) {
+    const re = Math.max(+p.re || 0.1, 0.05), fs = Math.max(+p.fs || 50, 1), qes = Math.max(+p.qes || 0.5, 0.01), qms = Math.max(+p.qms || 5, 0.01), w = 2 * Math.PI * fs;
+    return { re, le: Math.max(+p.le || 0, 0), res: re * qms / qes, lces: re / (w * qes), ces: qes / (w * re) };
+  }
+  /** Impedance of a speaker at f: [|Z|, phase in degrees] */
+  function speakerZ(p, f) {
+    if (p.model !== "ts") return [Math.max(p.r, 0.1), 0];
+    const m = speakerTS(p), w = 2 * Math.PI * f;
+    // motional admittance Y = 1/Res + 1/(jωL) + jωC
+    const yr = 1 / m.res, yi = w * m.ces - 1 / (w * m.lces), d = yr * yr + yi * yi;
+    const zr = m.re + yr / d, zi = w * m.le - yi / d;
+    return [Math.hypot(zr, zi), Math.atan2(zi, zr) * 180 / Math.PI];
+  }
+
+  // ---------------------------------------------------------------------------
   // Tube catalog from the shared database
   // ---------------------------------------------------------------------------
   function tubeByName(name) {
@@ -588,13 +614,36 @@
         out.push({ id: c.id + "#off", kind: "R", nodes: [net("C"), net(off)], r: 1e10 });
       }
     },
+    // A loudspeaker: an ideal resistor, or its Thiele–Small electrical model: the voice
+    // coil (Re, Le) in series with the motional impedance, a parallel R‖L‖C resonant at fs:
+    //   Res = Re·Qms/Qes, Lces = Re / (2π·fs·Qes), Ces = Qes / (2π·fs·Re)
+    // Old circuits keep the resistor (the default); a speaker placed now starts as a typical driver.
     speaker: {
       name: "Speaker", prefix: "BA", group: "Passive", bbox: [-6, -20, 16, 20],
-      defaults: { r: 8 },
+      defaults: { r: 8, model: "res", re: 6.4, le: 0.5e-3, fs: 80, qms: 5.5, qes: 0.7 },
+      newDefaults: { model: "ts" },
       pins: () => [{ id: "+", x: 0, y: -20 }, { id: "-", x: 0, y: 20 }],
-      value: c => fmtEng(c.params.r, "Ω"),
-      fields: [{ key: "r", label: "Impedance", unit: "Ω", kind: "eng" }],
-      build: (c, net, alloc, out) => out.push({ id: c.id, kind: "R", nodes: [net("+"), net("-")], r: Math.max(c.params.r, 0.1) })
+      value: c => fmtEng(c.params.r, "Ω") + (c.params.model === "ts" ? ` · fs ${fmtEng(c.params.fs, "Hz")}` : ""),
+      fields: [
+        { key: "model", label: "Model", kind: "select", options: [["ts", "Loudspeaker (Thiele–Small)"], ["res", "Resistor (ideal load)"]] },
+        { key: "r", label: "Nominal impedance", unit: "Ω", kind: "eng" },
+        { key: "preset", label: "Driver", kind: "select", when: c => c.params.model === "ts", options: () => [["custom", "Your datasheet values"]].concat(SPEAKER_PRESETS.map(p => [p.id, p.name])),
+          get: c => (SPEAKER_PRESETS.find(p => ["r", "re", "le", "fs", "qms", "qes"].every(k => Math.abs(p[k] - c.params[k]) <= 1e-9 * Math.max(1, Math.abs(p[k])))) || { id: "custom" }).id,
+          apply: (c, v) => { const p = SPEAKER_PRESETS.find(q => q.id === v); if (p) ["r", "re", "le", "fs", "qms", "qes"].forEach(k => { c.params[k] = p[k]; }); } },
+        { key: "re", label: "Re (voice coil, DC)", unit: "Ω", kind: "eng", when: c => c.params.model === "ts" },
+        { key: "le", label: "Le (voice coil)", unit: "H", kind: "eng", when: c => c.params.model === "ts" },
+        { key: "fs", label: "fs (resonance)", unit: "Hz", kind: "eng", when: c => c.params.model === "ts" },
+        { key: "qms", label: "Qms", kind: "number", min: 0.1, max: 100, when: c => c.params.model === "ts" },
+        { key: "qes", label: "Qes", kind: "number", min: 0.05, max: 20, when: c => c.params.model === "ts" }
+      ],
+      build: (c, net, alloc, out) => {
+        const p = c.params;
+        if (p.model !== "ts") { out.push({ id: c.id, kind: "R", nodes: [net("+"), net("-")], r: Math.max(p.r, 0.1) }); return; }
+        const m = speakerTS(p), n1 = alloc(), n2 = alloc();
+        out.push({ id: c.id + "#re", kind: "R", nodes: [net("+"), n1], r: m.re });
+        if (m.le > 0) out.push({ id: c.id + "#le", kind: "L", nodes: [n1, n2], l: m.le }); else out.push({ id: c.id + "#le", kind: "R", nodes: [n1, n2], r: 1e-6 });
+        out.push({ id: c.id + "#res", kind: "R", nodes: [n2, net("-")], r: m.res }, { id: c.id + "#lces", kind: "L", nodes: [n2, net("-")], l: m.lces }, { id: c.id + "#ces", kind: "C", nodes: [n2, net("-")], c: m.ces });
+      }
     },
     opt_se: {
       name: "Output transformer, single-ended (generic)", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
@@ -810,7 +859,7 @@
         } else if ((c.params.connection || kind) === "pentode" && t.koren.Pentode) {
           out.push({ id: c.id, kind: "PENTODE", nodes: [net("A"), net("G1"), net("G2"), net("K")], model: t.koren.Pentode });
         } else {
-          out.push({ id: c.id, kind: "TRIODE", nodes: [net("A"), net("G"), net("K")], model: t.koren.Triode });
+          out.push({ id: c.id, kind: "TRIODE", nodes: [net("A"), net("G"), net("K")], model: t.koren.Triode || t.koren.Pentode });
         }
       }
     },
@@ -991,5 +1040,5 @@
     { group: "Document", items: [["frame"], ["note"]] }
   ];
 
-  root.CadLib = { FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

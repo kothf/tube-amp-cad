@@ -1371,6 +1371,58 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
 }
 
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
+// --- SPICE tube models (import dialog) and the loudspeaker model ----------------------------
+{
+  const KOREN = (await readFile(new URL("./spice.test.mjs", import.meta.url), "utf8")).match(/const KOREN_12AX7 = `([\s\S]*?)`;/)[1];
+  await cad.bringToFront();
+  // the 12AX7 stage again, then its tube swapped for Koren's own published model, pasted into the dialog
+  const v1 = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = [];
+    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+    const pin = (c, id) => C.compPins(c).find(p => p.id === id), wire = (a, b, h) => C.lRoute(a.x, a.y, b.x, b.y, h !== false).forEach(q => C.addSegment(...q));
+    const gnd = (p, x, y) => { const g = add("ground", {}, x ?? p.x, y ?? p.y + 40); wire(p, pin(g, "G"), false); };
+    const V1 = add("tube", { tube: "12AX7" }, 400, 300), Ra = add("resistor", { r: 100e3 }, 400, 160, 1), B = add("vdc", { v: 250 }, 560, 120);
+    const Rk = add("resistor", { r: 1500 }, 400, 420, 1), Ck = add("electrolytic", { c: 47e-6 }, 470, 420, 1), Rg = add("resistor", { r: 1e6 }, 300, 380, 1), Cin = add("capacitor", { c: 0.1e-6 }, 250, 300);
+    const G = add("siggen", { amp: 0.5, freq: 1000 }, 180, 360), Co = add("capacitor", { c: 0.1e-6 }, 500, 220), RL = add("resistor", { r: 470e3 }, 580, 290, 1);
+    wire(pin(B, "+"), pin(Ra, "1"), true); gnd(pin(B, "-")); wire(pin(Ra, "2"), pin(V1, "A"));
+    wire(pin(V1, "K"), pin(Rk, "1")); wire(pin(Rk, "1"), pin(Ck, "+"), true); gnd(pin(Rk, "2")); gnd(pin(Ck, "-"));
+    wire(pin(Cin, "2"), pin(V1, "G")); wire(pin(Rg, "1"), { x: 300, y: 300 }); gnd(pin(Rg, "2"));
+    wire(pin(G, "+"), pin(Cin, "1"), false); gnd(pin(G, "-")); wire(pin(V1, "A"), pin(Co, "1"), false); wire(pin(Co, "2"), pin(RL, "1")); gnd(pin(RL, "2"));
+    S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(V1.id); C.commit(); C.updateInspector();
+    return V1.id;
+  });
+  await cad.click("#btn-import-spice");
+  await cad.fill("#spimp-text", KOREN);
+  await cad.waitForFunction(() => !document.getElementById("spimp-add").disabled, null, { timeout: 5000 }).catch(() => {});
+  const dlg = await cad.evaluate(() => ({ roles: [...document.querySelectorAll("#spimp-pins select")].map(s => s.value), name: document.getElementById("spimp-name").value, like: document.getElementById("spimp-like").value, est: document.getElementById("spimp-est").textContent }));
+  const mu = +((/µ ([\d.]+)/.exec(dlg.est) || [])[1]);
+  check(dlg.roles.join(",") === "A,G,K" && dlg.name === "12AX7 (SPICE)" && dlg.like === "12AX7" && mu > 85 && mu < 105, `Import SPICE model: Koren's 12AX7 file is read, its pins P G K from the comment, like the 12AX7, curves drawn (µ ${mu})`);
+  const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+  await cad.click("#spimp-add");
+  await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, seq0, { timeout: 20000 }).catch(() => {});
+  const run = await cad.evaluate(id => { const c = TubeCAD.state.comps.find(k => k.id === id), d = TubeCAD.tubeData(c); return { tube: c.params.tube, err: TubeCAD.state.sim.error, vak: d && d.dc.vak, gain: d && d.metrics && d.metrics.gain }; }, v1);
+  check(run.tube === "12AX7 (SPICE)" && !run.err && run.vak > 120 && run.vak < 220 && run.gain > 40 && run.gain < 90, `the stage simulates with the imported model (Va ${run.vak && run.vak.toFixed(1)} V, gain ${run.gain && run.gain.toFixed(1)}×)`);
+  const file = await cad.evaluate(() => JSON.parse(TubeCAD.circuitJSON())), net = await cad.evaluate(() => TubeCAD.spiceNetlist());
+  check(file.tubes && file.tubes.length === 1 && /\.SUBCKT 12AX7 1 2 3/.test(file.tubes[0].custom.text) && file.tubes[0].socket === "Noval B9A", "the circuit file carries the imported model (and its socket), so it opens on any computer");
+  check(/\* imported model 12AX7/.test(net) && /^X\S+ \S+ \S+ \S+ 12AX7$/m.test(net) && /G1 1 3 VALUE=/.test(net), "the SPICE netlist export includes the imported subcircuit as written, wired by its pin roles");
+  check(await cad.evaluate(() => /Imported SPICE model 12AX7/.test(document.getElementById("inspector").textContent)), "the tube's inspector says it runs an imported model");
+  await cad.reload(); await cad.waitForFunction(() => window.TubeCAD && TubeCAD.state.comps.length > 5);
+  check(await cad.evaluate(() => TubeCAD.state.comps.some(c => c.params.tube === "12AX7 (SPICE)") && TUBE_DATABASE.some(t => t.commonName === "12AX7 (SPICE)" && t.custom)), "after a reload the imported tube is still in the list (kept in the browser)");
+
+  // the curve tracer, open since earlier, learns the imported tube from the CAD and shows its model
+  if (!tracer.isClosed()) {
+    await cad.evaluate(() => { const S = TubeCAD.state, c = S.comps.find(k => k.params.tube === "12AX7 (SPICE)"); S.sel.comps.clear(); S.sel.comps.add(c.id); TubeCAD.updateInspector(); TubeCAD.runSim("full"); });
+    await tracer.waitForFunction(() => /Imported SPICE model/.test(document.getElementById("hud").textContent), null, { timeout: 15000 }).catch(() => {});
+    check(await tracer.evaluate(() => /Imported SPICE model/.test(document.getElementById("hud").textContent) && /12AX7 \(SPICE\)/.test(document.getElementById("plot-title").textContent)), "the curve tracer shows the imported tube and its model");
+  }
+  // the loudspeaker: a speaker placed now is a typical 8 Ω guitar driver, with its impedance curve
+  const spk = await cad.evaluate(() => { const C = TubeCAD, S = C.state, c = C.makeComp("speaker", {}, 900, 300, 0); S.comps.push(c); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id); C.commit(); C.updateInspector(); return c.id; });
+  const sp1 = await cad.evaluate(() => ({ plot: !!document.querySelector("#inspector #spk-plot"), note: (document.querySelector("#inspector .spk-plot p") || {}).textContent || "", driver: [...document.querySelectorAll("#inspector .row")].find(r => /Driver/.test(r.textContent)).querySelector("select").value }));
+  check(sp1.plot && sp1.driver === "g12-8" && /56 Ω at 81 Hz/.test(sp1.note), `a new speaker is a Thiele–Small driver with its impedance curve (${sp1.note.slice(0, 60)}…)`);
+  await cad.locator("#inspector .row", { hasText: "Model" }).locator("select").selectOption("res");
+  const sp2 = await cad.evaluate(id => ({ plot: !!document.querySelector("#inspector #spk-plot"), kinds: (() => { const n = TubeCAD.buildNetlist().elements.filter(e => e.id.startsWith(id)); return n.map(e => e.kind).join(""); })() }), spk);
+  check(!sp2.plot && sp2.kinds === "R", "set to Resistor it is an ideal 8 Ω load again (as in circuits saved before)");
+}
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 
 await browser.close();

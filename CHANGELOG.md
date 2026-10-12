@@ -6,6 +6,43 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.41.0] - 2026-10-12
+
+### Added
+- **Import SPICE model…** (a tube's inspector) adds any tube model as a tube
+  of your own: Koren, Ayumi, Duncan, Reefman or a maker's library.
+  - Paste the subcircuit or open the file; it runs as written, behavioural
+    sources and all, with `.PARAM`, `.FUNC`, internal nodes (grid-current
+    networks) and the usual functions.
+  - Pin roles come from the model's comment, or from how it behaves; the
+    dialog draws its curves with µ, gm and rp as you set them.
+  - Each imported tube is "like" an existing one (socket, pinout, heater)
+    with its own Pa and Va maximums.
+  - It is kept in the browser and inside every circuit file that uses it;
+    the curve tracer, the Board window and the SPICE netlist export know it.
+  - Koren's published 12AX7 model reproduces the built-in Koren equations;
+    imported models simulate about half as fast as the built-in ones.
+- **Loudspeaker model:** the speaker can be a Thiele–Small driver (Re, Le,
+  fs, Qms, Qes) instead of an ideal resistor, with typical guitar and hi-fi
+  drivers to start from and its impedance and phase curve in the inspector.
+  A speaker placed now starts as a typical 8 Ω 12″ guitar speaker; circuits
+  saved before keep their resistor.
+
+### Changed
+- **Transient simulation uses Gear's second-order method (BDF2)** instead of
+  backward Euler (which stays for a first step and for rescue sub-steps).
+  - Backward Euler damped resonances: a loudspeaker's impedance peak came
+    out 9 % low.
+  - BDF2 keeps them at their true Q and still does not ring at a rectifier's
+    switching.
+  - The 76 comparisons with published circuits all still pass; an RC
+    filter's gain now comes out at exactly 0.707.
+- Output power into a speaker is now the average of voltage times current
+  (true power into a reactive load).
+- The tube dissipation warning uses the plate's average dissipation over the
+  signal cycle when a signal runs, the figure that matters with a reactive
+  load. Before, it used the DC operating point only.
+
 ## [3.40.0] - 2026-10-12
 
 ### Added

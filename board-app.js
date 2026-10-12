@@ -53,6 +53,8 @@
       if (m.version !== undefined && m.version !== VERSION) status("bad", `The Circuit CAD runs another version (${(m.version || "?").replace("?v=", "")}): reload both tabs.`);
       S.linked = true;
       if (m.replace) { S.board = B.normaliseBoard(m.board); S.history = []; S.hIndex = -1; S.sel = null; S.route = null; }
+      // imported SPICE tubes of the circuit: their socket and pinout come with them
+      if (window.SpiceModel && Array.isArray(m.netlist.tubes)) m.netlist.tubes.forEach(t => { try { SpiceModel.register(t); } catch (e) { /* a built-in of that name */ } });
       S.netlist = m.netlist;
       // a new board (or one without parts) takes the schematic's parts at once
       let placed = false;

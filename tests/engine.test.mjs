@@ -432,3 +432,24 @@ test("terminal currents obey KCL at every node, also averaged over a rectifier's
   near(at("d", 1), at("r", 2), 0.01, "average diode current = load current");
   near(at("r", 2), r.dc.nodes[2] / 10e3, 1e-6, "load current = average voltage / R");
 });
+
+test("loudspeaker (Thiele–Small): the simulated current matches the impedance formula; the resistor model stays a resistor", () => {
+  if (!globalThis.CadLib) runInThisContext(readFileSync(new URL("../cad-components.js", import.meta.url), "utf8"), { filename: "cad-components.js" });
+  const L = globalThis.CadLib, p = { ...L.SPEAKER_PRESETS[0], model: "ts" }, m = L.speakerTS(p);
+  // closed form at resonance: Re + Res (+ the voice coil's jωLe)
+  const w0 = 2 * Math.PI * p.fs, zfs = L.speakerZ(p, p.fs);
+  near(zfs[0], Math.hypot(p.re + m.res, w0 * p.le), 1e-9, "|Z(fs)|");
+  near(1 / Math.sqrt(m.lces * m.ces), w0, 1e-9, "motional resonance at fs");
+  assert.ok(m.res > 40 && m.res < 60, `a guitar speaker peaks at a few tens of ohms (${(p.re + m.res).toFixed(0)} Ω)`);
+  for (const f of [30, 80, 400, 6000]) {
+    const els = [{ id: "G", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: f, amp: 1 }];
+    let n = 2; L.LIB.speaker.build({ id: "S", params: p }, pid => (pid === "+" ? 1 : 0), () => n++, els);
+    const r = E.simulate({ nodeCount: n, elements: els }), inner = els.find(e => e.id === "S#re").nodes[1];
+    assert.ok(r.ok, r.error);
+    const i = Array.from(r.tran.nodes[1], (v, k) => (v - r.tran.nodes[inner][k]) / p.re);
+    near(1 / (pp(i) / 2), L.speakerZ(p, f)[0], 0.02, `|Z| at ${f} Hz from the simulated current`);
+  }
+  const els = []; L.LIB.speaker.build({ id: "S", params: { ...p, model: "res" } }, pid => (pid === "+" ? 1 : 0), () => 99, els);
+  assert.deepEqual(els.map(e => [e.kind, e.r]), [["R", 8]]);
+  assert.deepEqual(L.speakerZ({ ...p, model: "res" }, 1000), [8, 0]);
+});

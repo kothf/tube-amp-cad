@@ -128,6 +128,19 @@
     .modal[hidden] { display: none; }
     .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(760px, 94vw); padding: 14px; }
     .modal-box textarea { width: 100%; height: 50vh; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: 12px ui-monospace, Menlo, monospace; padding: 8px; }
+    .spk-plot canvas { width: 100%; border: 1px solid var(--line); border-radius: 6px; margin-top: 6px; }
+    .tube-pick { display: flex; flex-direction: column; gap: 4px; }
+    .tube-pick .btn { align-self: flex-start; }
+    .spimp { width: min(1060px, 96vw) !important; max-height: 92vh; overflow-y: auto; }
+    .spimp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 12px; }
+    .spimp textarea { height: 300px !important; }
+    .spimp-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+    .spimp-form { display: grid; grid-template-columns: 96px 1fr; gap: 6px 8px; align-items: center; margin-bottom: 8px; }
+    .spimp-form input, .spimp-form select { width: 100%; }
+    .spimp-pin { display: grid; grid-template-columns: 60px 1fr; gap: 6px; align-items: center; margin-bottom: 3px; }
+    #spimp-plot { width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+    .spimp-item { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; margin: 3px 0; }
+    @media (max-width: 900px) { .spimp-grid { grid-template-columns: 1fr; } }
     .modal-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
     .menu { position: relative; }
     .menu-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
@@ -345,7 +358,9 @@
   <script src="windows.js?v=dev"></script>
   <script src="panels.js?v=dev"></script>
   <script src="tube-db.js?v=dev"></script>
+  <script src="spice-model.js?v=dev"></script>
   <script src="sim-engine.js?v=dev"></script>
+  <script src="spice-import.js?v=dev"></script>
   <script src="cad-components.js?v=dev"></script>
   <script src="scope-math.js?v=dev"></script>
   <script src="pdf-export.js?v=dev"></script>

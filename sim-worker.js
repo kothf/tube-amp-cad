@@ -2,7 +2,7 @@
    Message in:  { seq, netlist, options }                      steady state (simulate)
                 { seq, netlist, options, kind: "startup" }      power-on transient
    Message out: { seq, result }, and { seq, progress } (0…1) along the way. */
-importScripts("sim-engine.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
+importScripts("spice-model.js" + self.location.search, "sim-engine.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
 
 self.onmessage = (e) => {
   const { seq, netlist, options, kind } = e.data;
