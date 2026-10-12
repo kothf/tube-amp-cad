@@ -53,7 +53,8 @@ Firefox is not tested.
     duplicates, <kbd>Del</kbd> deletes, with undo and redo.
   - Mirror works for every part that can rotate, including any part added to
     the library later. So a complementary pair, or a tube taking its grid from
-    the right, can be drawn without crossing wires.
+    the right, can be drawn without crossing wires. The oscilloscope mirrors
+    too, so its inputs can come in from the right; its screen stays upright.
 - **Inspector (right).** Every value of the selected part: resistance
   ("4.7k"), tube type, transformer model and tap, generator level in Vpk, Vrms
   or dBV. With a simulation result it adds:

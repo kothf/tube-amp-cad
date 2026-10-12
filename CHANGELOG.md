@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.44.0] - 2026-10-12
+
+### Added
+- **Mirror for the oscilloscope** (M, the toolbar button or the inspector's
+  Mirror field). Its CH1, CH2 and COM inputs and their names move to the
+  right-hand side, so the scope can sit left of what it measures. The screen
+  stays upright and readable, and the scope still does not rotate.
+
 ## [3.43.0] - 2026-10-12
 
 ### Added

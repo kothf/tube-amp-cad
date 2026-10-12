@@ -1003,7 +1003,8 @@
       build: () => {}
     },
     scope: {
-      name: "Oscilloscope", prefix: "P", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true,
+      // its screen stays upright (no rotation), but it mirrors: the inputs then come in on the right
+      name: "Oscilloscope", prefix: "P", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true, mirror: true,
       defaults: { ch1: "auto", ch2: "auto", time: "auto", coupling1: "dc", coupling2: "dc", probe: "10x" },
       pins: () => [{ id: "CH1", x: -80, y: -30 }, { id: "CH2", x: -80, y: -10 }, { id: "COM", x: -80, y: 30, name: "common" }],
       value: () => "",

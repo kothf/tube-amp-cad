@@ -1105,18 +1105,29 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   // Mirror (M): the transistor takes its base from the other side
   const mir = await cad.evaluate(() => { const S = TubeCAD.state, q = S.comps.find(c => c.label === "VT1"), pin = id => TubeCAD.compPins(q).find(p => p.id === id); const b0 = pin("B").x - q.x; S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(q.id); TubeCAD.mirrorSelection(); const r = { b0, b1: pin("B").x - q.x, c1: pin("C").y - q.y, flip: q.params.flip }; TubeCAD.undo(); return r; });
   check(mir.b0 === -30 && mir.b1 === 30 && mir.c1 === -30 && mir.flip === "yes", "Mirror (M) flips a transistor left to right: the base moves to the other side, the collector stays on top");
-  // Mirror works for every part that rotates, new ones included, and not for the scope, frame or notes
+  // Mirror works for every part that rotates, new ones included, and the oscilloscope; not for the frame or notes
   const mall = await cad.evaluate(() => {
     const C = TubeCAD, L = CadLib.LIB, bad = [], skip = [];
     for (const type of Object.keys(L)) {
       const c = C.makeComp(type, {}, 5000, 5000, 0);
-      if (L[type].noRotate) { c.params.flip = "yes"; if (C.compPins(c).some((p, i) => p.x !== C.compPins(Object.assign({}, c, { params: { ...c.params, flip: "no" } }))[i].x)) bad.push(type + " (should not mirror)"); skip.push(type); continue; }
+      if (L[type].noRotate && !L[type].mirror) { c.params.flip = "yes"; if (C.compPins(c).some((p, i) => p.x !== C.compPins(Object.assign({}, c, { params: { ...c.params, flip: "no" } }))[i].x)) bad.push(type + " (should not mirror)"); skip.push(type); continue; }
       const a = C.compPins(c); c.params.flip = "yes"; const b = C.compPins(c);
       if (a.some((p, i) => b[i].x - 5000 !== -(p.x - 5000) || b[i].y !== p.y)) bad.push(type);
     }
     return { bad, skip };
   });
-  check(!mall.bad.length && mall.skip.sort().join() === "frame,note,scope", `Mirror flips the pins of every rotatable part left to right (${mall.bad.length ? "wrong: " + mall.bad.join(", ") : "all " + (await cad.evaluate(() => Object.keys(CadLib.LIB).length)) + " types checked"}; scope, frame, note stay put)`);
+  check(!mall.bad.length && mall.skip.sort().join() === "frame,note", `Mirror flips the pins of every rotatable part, and the oscilloscope, left to right (${mall.bad.length ? "wrong: " + mall.bad.join(", ") : "all " + (await cad.evaluate(() => Object.keys(CadLib.LIB).length)) + " types checked"}; frame and notes stay put)`);
+  // the oscilloscope mirrored: its inputs on the right, the Mirror field in its inspector, the screen still upright (no rotation)
+  const scm = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state, c = C.makeComp("scope", {}, 5000, 5000, 0); S.comps.push(c);
+    S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id); C.updateInspector();
+    const field = [...document.querySelectorAll("#inspector .row")].some(r => /Mirror/.test(r.textContent));
+    C.mirrorSelection(); const pins = C.compPins(c).map(p => p.x - 5000), rot0 = c.rot;
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "r", code: "KeyR", bubbles: true }));
+    const out = { field, flip: c.params.flip, pins, rot: c.rot, rot0 };
+    S.comps = S.comps.filter(k => k !== c); C.commit(); return out;
+  });
+  check(scm.field && scm.flip === "yes" && scm.pins.every(x => x === 80) && scm.rot === 0, `the oscilloscope mirrors: its CH1, CH2 and COM inputs move to the right (${scm.pins.join(", ")}); it still does not rotate`);
   const mins = await cad.evaluate(async () => {
     const S = TubeCAD.state, cap = S.comps.find(c => c.type === "zener"); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(cap.id); TubeCAD.commit();
     await new Promise(r => setTimeout(r, 50));

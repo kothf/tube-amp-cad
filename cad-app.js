@@ -51,8 +51,9 @@
     }
   }
   // Mirror: any part that can be rotated can also be flipped left to right (params.flip),
-  // applied before the rotation. Parts added to the library get it automatically.
-  const canMirror = type => !!LIB[type] && !LIB[type].noRotate;
+  // applied before the rotation. Parts added to the library get it automatically; a part
+  // that does not rotate mirrors when its definition says so (mirror: true, the oscilloscope).
+  const canMirror = type => !!LIB[type] && (!LIB[type].noRotate || !!LIB[type].mirror);
   const flipX = c => (c.params && c.params.flip === "yes" && canMirror(c.type) ? -1 : 1);
   function compPins(c) {
     const f = flipX(c);
@@ -1258,10 +1259,12 @@
     if (c.type === "scope") {
       // IEC 60617 S00922 oscilloscope: circle with a time-base trace
       ctx.save(); ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.arc(b.x1 + 18, b.y1 - 11, 8, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(b.x1 + 13, b.y1 - 8); ctx.lineTo(b.x1 + 20, b.y1 - 15); ctx.lineTo(b.x1 + 20, b.y1 - 8); ctx.lineTo(b.x1 + 24, b.y1 - 12); ctx.stroke(); ctx.restore();
-      ctx.textAlign = "left"; ctx.fillText(desig(c) + "  oscilloscope", b.x1 + 32, b.y1 - 6);
-      ctx.font = "9px ui-monospace, monospace"; ctx.fillStyle = "#ffd54f"; ctx.fillText("CH1", c.x - 88, c.y - 34); ctx.fillStyle = "#00e5ff"; ctx.fillText("CH2", c.x - 88, c.y - 14); ctx.fillStyle = "#8b949e"; ctx.fillText("COM", c.x - 88, c.y + 26);
+      // the title over the body's left edge; the input names over their stubs, on whichever side they are
+      const tx = c.x - 80, lx = flipX(c) < 0 ? c.x + 72 : c.x - 88;
+      ctx.beginPath(); ctx.arc(tx + 18, b.y1 - 11, 8, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx + 13, b.y1 - 8); ctx.lineTo(tx + 20, b.y1 - 15); ctx.lineTo(tx + 20, b.y1 - 8); ctx.lineTo(tx + 24, b.y1 - 12); ctx.stroke(); ctx.restore();
+      ctx.textAlign = "left"; ctx.fillText(desig(c) + "  oscilloscope", tx + 32, b.y1 - 6);
+      ctx.font = "9px ui-monospace, monospace"; ctx.fillStyle = "#ffd54f"; ctx.fillText("CH1", lx, c.y - 34); ctx.fillStyle = "#00e5ff"; ctx.fillText("CH2", lx, c.y - 14); ctx.fillStyle = "#8b949e"; ctx.fillText("COM", lx, c.y + 26);
       return;
     }
     // IEC 61082-1 7.1.6.1 / 7.1.2.5: the reference designation goes to the left of a
