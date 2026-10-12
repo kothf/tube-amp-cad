@@ -2362,6 +2362,7 @@
   // (docs: the README's Accuracy section and tests/reference.mjs)
   // ---------------------------------------------------------------------------
   const EXAMPLES = [
+    { file: "06-gubin-6n23p-6p14p.json", title: "Gubin three-tube amplifier", tag: "tubes", about: "Igor Gubin's stereo single-ended amplifier (radionic.ru): 6N23P-EV direct-coupled to 6P14P, pentode / triode switch, 3–4 dB feedback; simulated 3.4 W at 1.9 % THD, 5 W at 10 % into 4 Ω" },
     { file: "03-12ax7-ccs-vs-resistor.json", title: "12AX7: plate resistor vs current source", tag: "tube + transistor", about: "J. Broskie, TubeCAD (2000): the same 12AX7 stage loaded by 150k (gain 70) and by an MPSA92 current source (gain 100), side by side" },
     { file: "04-12ax7-irf820-follower.json", title: "12AX7 stage + IRF820 follower", tag: "tube + MOSFET", about: "The GE 12AX7 data sheet's resistance-coupled stage (gain 50, 40 Vrms at 5 % THD) driving an IRF820 source follower" },
     { file: "05-10w-mosfet-amplifier.json", title: "10 W complementary MOSFET amplifier", tag: "MOSFETs", about: "homemade-circuits.com, fig. 1: BC177 input, BC107 driver, IRF540 / IRF9540 followers into 8 Ω (A3 sheet)" },

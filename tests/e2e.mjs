@@ -1429,7 +1429,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const before = await cad.evaluate(() => TubeCAD.state.comps.length);
   await cad.click("#btn-file");
   const items = await cad.locator("#examples-list .menu-item").allTextContents();
-  check(items.length === 5 && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `File → Examples lists the ${items.length} circuits checked against published sources`);
+  check(items.length === 6 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `File → Examples lists the ${items.length} circuits drawn from published sources`);
   cad.once("dialog", d => d.accept());
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.locator("#examples-list .menu-item", { hasText: "12AX7: plate resistor" }).click();
@@ -1447,7 +1447,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
     res.push(await cad.evaluate(f => ({ f, ok: !!TubeCAD.state.sim.result && TubeCAD.state.sim.result.ok && !TubeCAD.state.sim.error, parts: TubeCAD.state.comps.length }), e));
   }
-  check(res.every(r => r.ok && r.parts > 15), `all five examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
+  check(res.length === 6 && res.every(r => r.ok && r.parts > 15), `all six examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
 }
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 

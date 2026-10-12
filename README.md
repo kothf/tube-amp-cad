@@ -125,11 +125,12 @@ Paste the `.SUBCKT … .ENDS` text or open the file.
 
 ### Examples
 
-**File → Examples** opens circuits drawn from published sources and checked
-against them (see [Accuracy](#accuracy)):
+**File → Examples** opens circuits drawn from published sources and compared
+with them (see [Accuracy](#accuracy)):
 
 | Example | Parts | Source |
 |---|---|---|
+| Gubin three-tube amplifier | tubes | Igor Gubin, radionic.ru: stereo single-ended 6N23P-EV + 2 × 6P14P, no coupling capacitors, pentode / triode switch |
 | 12AX7: plate resistor vs current source | tube + transistor | J. Broskie, TubeCAD (2000): gain 70 with a 150k plate resistor, 100 with an MPSA92 current source |
 | 12AX7 stage + IRF820 follower | tube + MOSFET | The GE 12AX7 data sheet's resistance-coupled stage (gain 50) driving a MOSFET follower |
 | 10 W complementary MOSFET amplifier | MOSFETs | homemade-circuits.com, fig. 1 |

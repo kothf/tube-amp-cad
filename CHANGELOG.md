@@ -6,6 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.43.0] - 2026-10-12
+
+### Added
+- **Example: Gubin's three-tube amplifier** (File → Examples), drawn from
+  Igor Gubin's article on radionic.ru:
+  - stereo single-ended, 6N23P-EV (one triode per channel) direct-coupled to
+    6P14P;
+  - the two-section pentode / triode switch;
+  - feedback from the output transformer's secondary to the first cathode;
+  - the +350 V and +275 V supply rails.
+
+  Simulated into 4 Ω: 3.4 W at 1.9 % THD, 5 W at 10 %. Notes on the sheet
+  give the supply, the output transformer's data, and how the simulation
+  compares with the article's operating points.
+
 ## [3.42.0] - 2026-10-12
 
 ### Added
