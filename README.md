@@ -123,6 +123,22 @@ Paste the `.SUBCKT … .ENDS` text or open the file.
 - **Checked:** Koren's published 12AX7 model gives the same currents as the
   built-in Koren equations with the same parameters.
 
+### Examples
+
+**File → Examples** opens circuits drawn from published sources and checked
+against them (see [Accuracy](#accuracy)):
+
+| Example | Parts | Source |
+|---|---|---|
+| 12AX7: plate resistor vs current source | tube + transistor | J. Broskie, TubeCAD (2000): gain 70 with a 150k plate resistor, 100 with an MPSA92 current source |
+| 12AX7 stage + IRF820 follower | tube + MOSFET | The GE 12AX7 data sheet's resistance-coupled stage (gain 50) driving a MOSFET follower |
+| 10 W complementary MOSFET amplifier | MOSFETs | homemade-circuits.com, fig. 1 |
+| 2N3904 common emitter, RE unbypassed | transistor | University of Washington lab notes (2017), bench measurements |
+| 2N3904 common emitter, RE bypassed | transistor | the same, with 10 µF across RE |
+
+An example opens untitled, so *Save* asks for a new name. Ctrl+Z brings back
+the circuit that was on the sheet.
+
 ## Measuring on the schematic
 
 - **Voltage and current on every wire.**

@@ -1,0 +1,408 @@
+{
+ "app": "TubeAmpCAD",
+ "version": 2,
+ "comps": [
+  {
+   "id": "c2_6783",
+   "type": "frame",
+   "x": 0,
+   "y": 0,
+   "rot": 0,
+   "params": {
+    "locked": "yes",
+    "size": "A4",
+    "orient": "landscape",
+    "title": "2N3904 common-emitter amplifier, unbypassed RE",
+    "docno": "VAL-01",
+    "rev": "A",
+    "sheet": "1/1",
+    "date": "2026-10-09",
+    "creator": "A. Dumchin",
+    "approver": "",
+    "owner": "A. Dumchin",
+    "dept": "",
+    "reference": "UW BEE 332 Lab 2, sec. 3-4",
+    "doctype": "Circuit diagram",
+    "status": "Validation",
+    "lang": "en"
+   },
+   "label": ""
+  },
+  {
+   "id": "c3_7406",
+   "type": "vdc",
+   "x": 160,
+   "y": 380,
+   "rot": 0,
+   "params": {
+    "v": 10.1,
+    "rs": 0
+   },
+   "label": "G1"
+  },
+  {
+   "id": "c4_5631",
+   "type": "ground",
+   "x": 160,
+   "y": 410,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c5_6441",
+   "type": "resistor",
+   "x": 400,
+   "y": 260,
+   "rot": 1,
+   "params": {
+    "r": 42400,
+    "w": ""
+   },
+   "label": "R1"
+  },
+  {
+   "id": "c6_2972",
+   "type": "resistor",
+   "x": 520,
+   "y": 260,
+   "rot": 1,
+   "params": {
+    "r": 5030,
+    "w": ""
+   },
+   "label": "R3"
+  },
+  {
+   "id": "c7_7142",
+   "type": "npn",
+   "x": 510,
+   "y": 380,
+   "rot": 0,
+   "params": {
+    "model": "2N3904"
+   },
+   "label": "VT1"
+  },
+  {
+   "id": "c8_9485",
+   "type": "resistor",
+   "x": 400,
+   "y": 460,
+   "rot": 1,
+   "params": {
+    "r": 6680,
+    "w": ""
+   },
+   "label": "R2"
+  },
+  {
+   "id": "c9_7220",
+   "type": "ground",
+   "x": 400,
+   "y": 490,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c10_197",
+   "type": "resistor",
+   "x": 520,
+   "y": 470,
+   "rot": 1,
+   "params": {
+    "r": 983,
+    "w": ""
+   },
+   "label": "R4"
+  },
+  {
+   "id": "c11_909",
+   "type": "ground",
+   "x": 520,
+   "y": 500,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c12_3119",
+   "type": "electrolytic",
+   "x": 320,
+   "y": 380,
+   "rot": 2,
+   "params": {
+    "c": 0.00001
+   },
+   "label": "C1"
+  },
+  {
+   "id": "c13_9626",
+   "type": "siggen",
+   "x": 260,
+   "y": 450,
+   "rot": 0,
+   "params": {
+    "wave": "sine",
+    "freq": 1000,
+    "amp": 0.5,
+    "offset": 0,
+    "phase": 0,
+    "rs": 50
+   },
+   "label": "G2"
+  },
+  {
+   "id": "c14_6385",
+   "type": "ground",
+   "x": 260,
+   "y": 480,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c15_3494",
+   "type": "offsheet",
+   "x": 230,
+   "y": 400,
+   "rot": 2,
+   "params": {
+    "name": "VIN"
+   },
+   "label": ""
+  },
+  {
+   "id": "c16_5704",
+   "type": "offsheet",
+   "x": 600,
+   "y": 320,
+   "rot": 0,
+   "params": {
+    "name": "VOUT"
+   },
+   "label": ""
+  },
+  {
+   "id": "c17_9878",
+   "type": "scope",
+   "x": 840,
+   "y": 420,
+   "rot": 0,
+   "params": {
+    "ch1": "auto",
+    "ch2": "auto",
+    "time": "auto",
+    "coupling1": "dc",
+    "coupling2": "dc",
+    "probe": "10x"
+   },
+   "label": "P1"
+  },
+  {
+   "id": "c18_7176",
+   "type": "offsheet",
+   "x": 740,
+   "y": 390,
+   "rot": 2,
+   "params": {
+    "name": "VOUT"
+   },
+   "label": ""
+  },
+  {
+   "id": "c19_9145",
+   "type": "offsheet",
+   "x": 700,
+   "y": 410,
+   "rot": 2,
+   "params": {
+    "name": "VIN"
+   },
+   "label": ""
+  },
+  {
+   "id": "c20_4229",
+   "type": "ground",
+   "x": 750,
+   "y": 470,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c21_8885",
+   "type": "note",
+   "x": 100,
+   "y": 600,
+   "rot": 0,
+   "params": {
+    "text": "Bench measurement (N. Hamilton, UW BEE 332, 2017), actual part values: R1 6.68k, R2 42.4k, RC 5.03k, RE 983R, VDD 10.1 V.",
+    "size": "10"
+   },
+   "label": ""
+  },
+  {
+   "id": "c22_7499",
+   "type": "note",
+   "x": 100,
+   "y": 620,
+   "rot": 0,
+   "params": {
+    "text": "Measured: VB 1.344 V, VE 0.7096 V, VC 6.540 V, Av -4.72 at 1 Vpp 1 kHz.",
+    "size": "10"
+   },
+   "label": ""
+  }
+ ],
+ "wires": [
+  {
+   "id": "w0",
+   "x1": 160,
+   "y1": 350,
+   "x2": 160,
+   "y2": 200
+  },
+  {
+   "id": "w1",
+   "x1": 160,
+   "y1": 200,
+   "x2": 400,
+   "y2": 200
+  },
+  {
+   "id": "w23_5542",
+   "x1": 400,
+   "y1": 200,
+   "x2": 520,
+   "y2": 200
+  },
+  {
+   "id": "w2",
+   "x1": 400,
+   "y1": 200,
+   "x2": 400,
+   "y2": 230
+  },
+  {
+   "id": "w3",
+   "x1": 520,
+   "y1": 200,
+   "x2": 520,
+   "y2": 230
+  },
+  {
+   "id": "w4",
+   "x1": 520,
+   "y1": 290,
+   "x2": 520,
+   "y2": 320
+  },
+  {
+   "id": "w24_9277",
+   "x1": 520,
+   "y1": 320,
+   "x2": 520,
+   "y2": 350
+  },
+  {
+   "id": "w5",
+   "x1": 520,
+   "y1": 410,
+   "x2": 520,
+   "y2": 440
+  },
+  {
+   "id": "w6",
+   "x1": 340,
+   "y1": 380,
+   "x2": 400,
+   "y2": 380
+  },
+  {
+   "id": "w7",
+   "x1": 400,
+   "y1": 380,
+   "x2": 480,
+   "y2": 380
+  },
+  {
+   "id": "w8",
+   "x1": 400,
+   "y1": 290,
+   "x2": 400,
+   "y2": 380
+  },
+  {
+   "id": "w9",
+   "x1": 400,
+   "y1": 380,
+   "x2": 400,
+   "y2": 430
+  },
+  {
+   "id": "w10",
+   "x1": 260,
+   "y1": 420,
+   "x2": 260,
+   "y2": 400
+  },
+  {
+   "id": "w25_1393",
+   "x1": 260,
+   "y1": 400,
+   "x2": 260,
+   "y2": 380
+  },
+  {
+   "id": "w11",
+   "x1": 260,
+   "y1": 380,
+   "x2": 300,
+   "y2": 380
+  },
+  {
+   "id": "w12",
+   "x1": 260,
+   "y1": 400,
+   "x2": 230,
+   "y2": 400
+  },
+  {
+   "id": "w13",
+   "x1": 520,
+   "y1": 320,
+   "x2": 600,
+   "y2": 320
+  },
+  {
+   "id": "w14",
+   "x1": 740,
+   "y1": 390,
+   "x2": 760,
+   "y2": 390
+  },
+  {
+   "id": "w15",
+   "x1": 700,
+   "y1": 410,
+   "x2": 760,
+   "y2": 410
+  },
+  {
+   "id": "w16",
+   "x1": 760,
+   "y1": 450,
+   "x2": 750,
+   "y2": 450
+  },
+  {
+   "id": "w17",
+   "x1": 750,
+   "y1": 450,
+   "x2": 750,
+   "y2": 470
+  }
+ ]
+}

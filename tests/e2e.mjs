@@ -1423,6 +1423,32 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const sp2 = await cad.evaluate(id => ({ plot: !!document.querySelector("#inspector #spk-plot"), kinds: (() => { const n = TubeCAD.buildNetlist().elements.filter(e => e.id.startsWith(id)); return n.map(e => e.kind).join(""); })() }), spk);
   check(!sp2.plot && sp2.kinds === "R", "set to Resistor it is an ideal 8 Ω load again (as in circuits saved before)");
 }
+// --- Examples in the File menu ------------------------------------------------------------
+{
+  await cad.bringToFront();
+  const before = await cad.evaluate(() => TubeCAD.state.comps.length);
+  await cad.click("#btn-file");
+  const items = await cad.locator("#examples-list .menu-item").allTextContents();
+  check(items.length === 5 && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `File → Examples lists the ${items.length} circuits checked against published sources`);
+  cad.once("dialog", d => d.accept());
+  const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+  await cad.locator("#examples-list .menu-item", { hasText: "12AX7: plate resistor" }).click();
+  await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, seq0, { timeout: 30000 }).catch(() => {});
+  const ex = await cad.evaluate(() => { const S = TubeCAD.state, f = S.comps.find(c => c.type === "frame"); return { docno: f && f.params.docno, n: S.comps.length, err: S.sim.error, title: document.title, status: document.getElementById("status") ? document.getElementById("status").textContent : "" }; });
+  check(ex.docno === "VAL-03" && ex.n === 38 && !ex.err && !/03-12ax7/.test(ex.title), `the example opens (VAL-03, ${ex.n} parts), simulates, and stays untitled so Save asks for a new name`);
+  await cad.keyboard.press("Control+z");
+  check(await cad.evaluate(n => TubeCAD.state.comps.length === n, before), "Ctrl+Z brings back the circuit that was on the sheet");
+  // every example opens and simulates without an error
+  const res = [];
+  for (const e of await cad.evaluate(() => TubeCAD.EXAMPLES.map(x => x.file))) {
+    const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+    cad.once("dialog", d => d.accept());
+    await cad.evaluate(f => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => x.file === f)), e);
+    await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
+    res.push(await cad.evaluate(f => ({ f, ok: !!TubeCAD.state.sim.result && TubeCAD.state.sim.result.ok && !TubeCAD.state.sim.error, parts: TubeCAD.state.comps.length }), e));
+  }
+  check(res.every(r => r.ok && r.parts > 15), `all five examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
+}
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 
 await browser.close();

@@ -158,6 +158,7 @@
     .help-keys kbd { justify-self: start; }
     #help-modal .modal-box { width: min(720px, 94vw); max-height: 86vh; overflow-y: auto; }
     #help-modal h3 { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+    .menu-head { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px 2px; }
     .menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
     .new-form { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin: 10px 0; }
     .new-form .seg { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -183,6 +184,9 @@
         <button class="menu-item" role="menuitem" id="btn-open">Open…<kbd>Ctrl+O</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
+        <div class="menu-sep"></div>
+        <div class="menu-head">Examples</div>
+        <div id="examples-list"></div>
         <div class="menu-sep"></div>
         <button class="menu-item" role="menuitem" id="btn-pdf">Save as PDF<kbd>all sheets</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-export">Export sheet…<kbd>PDF / PNG</kbd></button>

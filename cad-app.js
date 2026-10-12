@@ -2357,6 +2357,42 @@
   // imported SPICE tubes the circuit uses travel inside the file, so it opens anywhere
   function usedCustomTubes() { return [...new Set(S.comps.filter(c => c.type === "tube").map(c => c.params.tube))].map(tubeByName).filter(t => window.SpiceModel && SpiceModel.isCustom(t)); }
   const circuitJSON = () => { const tubes = usedCustomTubes(); return JSON.stringify(Object.assign({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, tubes.length ? { tubes } : {}, S.board ? { board: S.board } : {}), null, 1); };
+  // ---------------------------------------------------------------------------
+  // Examples (File menu): circuits drawn from published sources and checked against them
+  // (docs: the README's Accuracy section and tests/reference.mjs)
+  // ---------------------------------------------------------------------------
+  const EXAMPLES = [
+    { file: "03-12ax7-ccs-vs-resistor.json", title: "12AX7: plate resistor vs current source", tag: "tube + transistor", about: "J. Broskie, TubeCAD (2000): the same 12AX7 stage loaded by 150k (gain 70) and by an MPSA92 current source (gain 100), side by side" },
+    { file: "04-12ax7-irf820-follower.json", title: "12AX7 stage + IRF820 follower", tag: "tube + MOSFET", about: "The GE 12AX7 data sheet's resistance-coupled stage (gain 50, 40 Vrms at 5 % THD) driving an IRF820 source follower" },
+    { file: "05-10w-mosfet-amplifier.json", title: "10 W complementary MOSFET amplifier", tag: "MOSFETs", about: "homemade-circuits.com, fig. 1: BC177 input, BC107 driver, IRF540 / IRF9540 followers into 8 Ω (A3 sheet)" },
+    { file: "01-2n3904-ce-unbypassed.json", title: "2N3904 common emitter, RE unbypassed", tag: "transistor", about: "University of Washington lab notes (2017), with the bench-measured part values: gain −4.7" },
+    { file: "02-2n3904-ce-bypassed.json", title: "2N3904 common emitter, RE bypassed", tag: "transistor", about: "The same stage with 10 µF across RE: gain about −115, distorting at 50 mVpp in" }
+  ];
+  async function openExample(ex) {
+    if (S.comps.length && !confirm(`Open the example "${ex.title}"?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.`)) return;
+    try {
+      const r = await fetch("examples/" + ex.file + VERSION);
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      const d = await r.json();
+      if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { /* a built-in of that name */ } }); buildPalette(); }
+      loadCircuit(d);
+      storeBoard(d.board || null);
+      S.sel.comps.clear(); S.sel.wires.clear();
+      setCurFile(null, "");                       // untitled: Save asks for a name, the example stays as it is
+      commit(); fitStart();
+      sendBoardNetlist(true);
+      setStatus("ok", `Example: ${ex.title}. ${ex.about}.`);
+    } catch (err) { setStatus("error", `Could not open the example: ${err.message}`); }
+  }
+  function buildExamplesMenu() {
+    const host = document.getElementById("examples-list"); if (!host) return;
+    EXAMPLES.forEach(ex => {
+      const b = document.createElement("button"); b.className = "menu-item"; b.setAttribute("role", "menuitem"); b.dataset.example = ex.file;
+      b.title = ex.about; b.innerHTML = `${ex.title}<kbd>${ex.tag}</kbd>`;
+      b.addEventListener("click", () => openExample(ex));
+      host.appendChild(b);
+    });
+  }
   function setCurFile(handle, name) {
     curFile = { handle: handle || null, name: name || "" };
     document.title = (name ? name + " — " : "") + "Tube Amp CAD — Circuit Editor & Simulator";
@@ -2554,6 +2590,7 @@
       document.getElementById("new-title").value = "";
     });
     bind("btn-open", openDialog);
+    buildExamplesMenu();
     document.getElementById("file-input").addEventListener("change", e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; });
     bind("btn-save", saveFile);
     bind("btn-save-as", saveFileAs);
@@ -2604,6 +2641,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, updateInspector, circuitJSON, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

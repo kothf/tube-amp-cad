@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.42.0] - 2026-10-12
+
+### Added
+- **File → Examples**: the five circuits drawn from published sources and
+  checked against them:
+  - 12AX7 with a plate resistor vs a current source (Broskie);
+  - 12AX7 stage with an IRF820 follower (GE data sheet);
+  - the 10 W MOSFET amplifier;
+  - the 2N3904 stages with RE unbypassed and bypassed (University of
+    Washington).
+
+  An example opens untitled, so *Save* asks for a new name, and Ctrl+Z
+  brings back the previous circuit.
+
 ## [3.41.0] - 2026-10-12
 
 ### Added
