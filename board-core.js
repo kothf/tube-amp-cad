@@ -131,7 +131,8 @@
   // electrolytics: radial, diameter / lead spacing; pad 1 (square) is +
   const RADIAL = [[5, 2], [6.3, 2.5], [8, 3.5], [10, 5], [12.5, 5], [16, 7.5], [18, 7.5], [22, 10], [25, 10], [30, 10], [35, 10]];
   function radial(D, P) {
-    const big = D >= 22, d = big ? 2.6 : 1.8, dr = big ? 1.4 : 0.9;
+    // the 2 and 2.5 mm pitches take 1.6 mm pads (0.8 mm drill) as KiCad's CP_Radial do: 1.8 mm pads left 0.2 mm between them
+    const big = D >= 22, small = P <= 2.5, d = big ? 2.6 : small ? 1.6 : 1.8, dr = big ? 1.4 : small ? 0.8 : 0.9;
     return fp(`RADIAL-D${D}-P${P}`, `Electrolytic, Ø${D} mm, ${P} mm lead spacing (+ at the square pad)`,
       [pad(1, -P / 2, 0, d, dr, "rect", "+"), pad(2, P / 2, 0, d, dr, "circle", "-")],
       [{ t: "circle", x: 0, y: 0, r: D / 2 }, { t: "line", x1: -D / 2 - 1.2, y1: -D / 2, x2: -D / 2 - 1.2, y2: -D / 2 + 2 }, { t: "line", x1: -D / 2 - 2.2, y1: -D / 2 + 1, x2: -D / 2 - 0.2, y2: -D / 2 + 1 }]);
@@ -914,6 +915,13 @@
           const touch = items.some(it => !(it.kind === "track" && it.ti === ti) && it.layers.includes(t.layer) && segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) <= it.r + t.w / 2 + 1e-6);
           if (!touch) out.push({ kind: "dangling", x, y, msg: `A track end on ${t.layer} is not connected` });
         });
+      });
+      // a via should join copper on both layers (copper, or a pour of its net)
+      items.forEach((v, k) => {
+        if (v.kind !== "via") return;
+        const on = COPPER.filter(L => inPour.has(k) && (fills || []).some(f => f.layer === L && f.links.some(l => l.includes(k))) ||
+          items.some(it => it !== v && it.layers.includes(L) && segSeg(it.s, v.s) <= it.r + v.r + 1e-6));
+        if (on.length < 2) out.push({ kind: "dangling", x: v.s[0], y: v.s[1], msg: on.length ? `A via joins copper on ${on[0]} only` : "A via is not connected" });
       });
     }
     if (on("pinout")) model.parts.forEach(g => { const m = g.members[0].params.model; if (PINOUT[m] && PINOUT[m][1] === "verify" && g.place) out.push({ kind: "check", x: g.place.x, y: g.place.y, msg: `${g.ref} (${m}): pinouts differ between makers — check the ${g.fp.name} pin order against your part's datasheet` }); });

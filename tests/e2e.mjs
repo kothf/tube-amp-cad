@@ -1478,6 +1478,25 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
       const on = p => Math.abs(p[1] - run[1]) < 1e-6 && p[0] > t1[0][1][0] && p[0] < t1[0][2][0];
       check(t2.length === 2 && on(t2[1][0]) && on(t2[1][t2[1].length - 1]) && !st.route && st.dangling === 0, `a route starts on a track and ends on a track exactly on their centre lines, and finishes there (${JSON.stringify(t2[1])})`);
       await bd.keyboard.press("Control+z");
+      // a corner clicked on copper already joined to the route's start is a corner: ending there would join nothing
+      const nT = (await tracks()).length;
+      await click(Bq[0], Bq[1]); await click(mid[0], run[1]);
+      const stay = await bd.evaluate(() => ({ open: !!BoardApp.state.route, n: BoardApp.state.route ? BoardApp.state.route.pts.length : 0 }));
+      await bd.keyboard.press("Escape"); if ((await tracks()).length > nT) await bd.keyboard.press("Control+z");
+      check(stay.open && stay.n >= 2 && (await tracks()).length === nT, `a route from a routed pad crosses its own track without ending there (${JSON.stringify(stay)})`);
+      // V drops a via and goes on on the other layer; Esc right after it takes the unused via back
+      const v0 = await bd.evaluate(() => BoardApp.state.board.vias.length);
+      await click(Bq[0], Bq[1]); await click(Bq[0] + 8, Bq[1] + 8); await bd.keyboard.press("v");
+      const mid1 = await bd.evaluate(() => ({ vias: BoardApp.state.board.vias.length, layer: BoardApp.state.route && BoardApp.state.route.layer }));
+      // the route goes on from its own via on the other layer
+      await click(Bq[0] + 16, Bq[1] + 8);
+      const goes = await bd.evaluate(() => BoardApp.state.route && BoardApp.state.route.pts.length);
+      await bd.keyboard.press("Backspace");
+      await bd.keyboard.press("Escape");
+      const end1 = await bd.evaluate(() => ({ vias: BoardApp.state.board.vias.length, tracks: BoardApp.state.board.tracks.length }));
+      if (end1.tracks > nT) await bd.keyboard.press("Control+z");
+      await bd.evaluate(() => BoardApp.setLayer("F.Cu"));
+      check(mid1.vias === v0 + 1 && mid1.layer === "B.Cu" && goes >= 2 && end1.vias === v0, `V places a via and switches the route to B.Cu, the route goes on from its own via; Esc right after it removes the unused via (${JSON.stringify({ mid1, goes, end1 })})`);
       // dragging the second part: the track's end follows its pad, the connection holds
       await bd.keyboard.press("Escape"); await bd.keyboard.press("s");
       const body = await bd.evaluate(id => { const g = BoardApp.state.model.parts.find(g => g.ref === id.split("-")[0]); const b = g.fp.box; const p = BoardCore.place([(b[0] + b[2]) / 2, b[3] - 0.6], g.place); return p; }, ids[1]);

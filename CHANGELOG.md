@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.48.3] - 2026-10-13
+
+### Fixed
+- **Board Design: a route can go on from its own via.** After V (via, other layer), the next segment was refused as "too close to a via on no net": the new via is not joined to its net until the route ends, so the check took it for foreign copper. The route now ignores its own vias.
+- **Board Design: Esc right after V removes the unused via**, unless it already joins copper or a pour on the new layer (a via down to the ground plane stays). Before, it stayed on the board, and when nothing had been routed yet it was not even in the undo history.
+- **Board Design: a via that joins nothing, or copper on one layer only, is reported** by the design-rule check (as loose track ends already were).
+- **Board Design: the first corner of a route no longer ends it on the route's own copper.** Clicking a corner over a track already joined to the start ended the route there, joining nothing. Later in the route such a click still ends it (a deliberate loop back onto the net).
+- **Board Design: small electrolytics (Ø5 mm / 2 mm and Ø6.3 mm / 2.5 mm pitch) take 1.6 mm pads with a 0.8 mm drill**, as KiCad's CP_Radial do; the 1.8 mm pads left only 0.2 mm between them. The footprint test now asks every footprint for more than 0.2 mm between pads.
+
 ## [3.48.2] - 2026-10-13
 
 ### Fixed

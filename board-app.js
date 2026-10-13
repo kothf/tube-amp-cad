@@ -285,6 +285,7 @@
       const s = [pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]];
       for (const it of S.conn.items) {
         if (!it.layers.includes(r.layer) || (it.net === r.net && r.net !== null)) continue;
+        if (it.kind === "via" && (r.vias || []).includes(it.vi)) continue;   // the route's own via: not joined to its net until the route ends
         let need = Math.max(mine, B.classRule(classOf(it.net), R).clearance); const g = B.segSeg(s, it.s) - w2 - it.r;
         if (g < need - 1e-6 && it.kind === "pad") { const eg = B.entryGap(s, it, S.conn.items); if (eg !== null) need = Math.min(need, eg - 0.02); }
         if (g < need - 1e-6 && it.kind === "track" && B.anchoredOk({ s, r: w2 }, it, g, need, S.conn.items)) continue;
@@ -303,10 +304,13 @@
     const [x, y] = S.mouse, r = S.route, p = hitPad(x, y);
     if (p) return { p: [p.x, p.y], end: true, what: `${p.ref}-${p.num}` };
     if (r && S.conn) {
+      // on the first corner, copper already joined to where the route began is a corner, not the end
+      // (ending there would join nothing); later it ends the route (a loop back onto the net)
+      const home = r.pts.length === 1 ? routeHome() : null;
       const vi = hitVia(x, y), vit = vi >= 0 && S.conn.items.find(it => it.kind === "via" && it.vi === vi);
-      if (vit && vit.net === r.net) { const v = S.board.vias[vi]; return { p: [v.x, v.y], end: true, what: "via" }; }
+      if (vit && vit.net === r.net && vit.cluster !== home) { const v = S.board.vias[vi]; return { p: [v.x, v.y], end: true, what: "via" }; }
       const h = hitSeg(x, y), tit = h && S.board.tracks[h.i].layer === r.layer && S.conn.items.find(it => it.kind === "track" && it.ti === h.i);
-      if (tit && tit.net === r.net && !(r.pts.length === 1 && h.i === r.from)) return { p: onTrack(h.i, x, y, r.pts[r.pts.length - 1]), end: true, what: "track" };
+      if (tit && tit.net === r.net && tit.cluster !== home && !(r.pts.length === 1 && h.i === r.from)) return { p: onTrack(h.i, x, y, r.pts[r.pts.length - 1]), end: true, what: "track" };
     }
     let gx = snap(x), gy = snapY(y);
     if (r) {
@@ -318,6 +322,13 @@
       gx = near(gx, xs, x); gy = near(gy, ys, y);
     }
     return { p: [gx, gy], end: false, what: "grid" };
+  }
+  // the copper cluster the route starts from: the pad, via or track under its first point
+  function routeHome() {
+    const r = S.route, [x, y] = r.pts[0], its = S.conn.items;
+    const it = its.find(it => it.kind === "pad" && Math.hypot(it.pad.x - x, it.pad.y - y) < 1e-6) || its.find(it => it.kind === "via" && Math.hypot(it.s[0] - x, it.s[1] - y) < 1e-6)
+      || its.find(it => it.kind === "track" && it.layers.includes(r.layer) && B.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) < 1e-4);
+    return it ? it.cluster : null;
   }
   function startRoute(x, y) {
     const at = netAt(x, y);
@@ -347,14 +358,20 @@
     const r = S.route, last = r.pts[r.pts.length - 1];
     if (r.pts.length > 1) r.segs.push({ layer: r.layer, w: r.w, pts: r.pts.slice() });
     S.board.vias.push({ x: last[0], y: last[1], drill: S.board.rules.viaDrill, pad: S.board.rules.viaPad, net: storedNet(r.net) });
-    r.layer = r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last];
+    r.layer = r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last]; r.via = S.board.vias.length - 1; (r.vias = r.vias || []).push(r.via);
     setLayer(r.layer); analyse(); render();
   }
   function finishRoute() {
     const r = S.route; if (!r) return;
+    // stopped right after a via (V, then Esc): the via goes too, unless it already joins copper
+    // or a pour on the new layer (a via down to the ground plane stays)
+    const vi = r.pts.length === 1 && r.via === S.board.vias.length - 1 ? r.via : -1;
+    const joins = vi >= 0 && S.conn && (() => { const k = S.conn.items.findIndex(it => it.kind === "via" && it.vi === vi), v = S.conn.items[k];
+      return !v || S.conn.items.some(it => it !== v && it.layers.includes(r.layer) && B.segSeg(it.s, v.s) <= it.r + v.r + 1e-6) || (S.fills || []).some(f => f.layer === r.layer && f.links.some(l => l.includes(k))); })();
+    if (vi >= 0 && !joins) S.board.vias.pop();
     if (r.pts.length > 1) r.segs.push({ layer: r.layer, w: r.w, pts: r.pts });
     S.route = null;
-    if (!r.segs.length) { render(); return; }
+    if (!r.segs.length) { if (vi >= 0) { if (joins) commit(); else analyse(); } render(); return; }
     r.segs.forEach(t => { const pts = tidy(t.pts); if (pts.length > 1) S.board.tracks.push({ layer: t.layer, w: +t.w.toFixed(3), pts, net: storedNet(r.net) }); });
     commit();
   }

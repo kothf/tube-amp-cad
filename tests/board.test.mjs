@@ -45,7 +45,7 @@ test("every footprint option of every part and every tube resolves to pads", () 
         f.pads.forEach((a, i) => f.pads.slice(i + 1).forEach(b => {
           const g = isRound(a) && isRound(b) ? Math.hypot(a.x - b.x, a.y - b.y) - (a.w + b.w) / 2 : isRound(a) ? box(b, a.x, a.y) - a.w / 2 : isRound(b) ? box(a, b.x, b.y) - b.w / 2
             : Math.max(Math.abs(a.x - b.x) - (a.w + b.w) / 2, Math.abs(a.y - b.y) - (a.h + b.h) / 2);
-          assert.ok(g > 0.1, `${name}: pads ${a.num} and ${b.num} are ${g.toFixed(2)} mm apart`);
+          assert.ok(g > 0.2, `${name}: pads ${a.num} and ${b.num} are ${g.toFixed(2)} mm apart`);
         }));
       }
     }
@@ -473,4 +473,17 @@ test("part values: picofarad capacitors keep their value (a 100 pF capacitor rea
   assert.equal(L.fmtEng(4e-16, "V"), "0V", "solver round-off still reads as zero");
   const g = B.physicalParts({ parts: [part("c9", "capacitor", "C9", { c: 220e-12 }, { 1: 1, 2: 0 })] })[0];
   assert.equal(g.value, "220pF");
+});
+
+test("a via that joins nothing, or copper on one layer only, is reported", () => {
+  const board = B.newBoard(); B.sync(board, NETLIST);
+  Object.assign(board.parts.r1, { x: 30, y: 30, rot: 0 });
+  const dang = () => { const m = B.model(board, NETLIST), c = B.connectivity(board, m.pads); return B.drc(board, m, c, new Set()).filter(d => d.kind === "dangling").map(d => d.msg); };
+  board.vias.push({ x: 60, y: 60, drill: 0.8, pad: 1.8 });
+  assert.deepEqual(dang(), ["A via is not connected"]);
+  const p = B.model(board, NETLIST).pads.find(q => q.ref === "R1" && q.num === "2");
+  board.tracks.push({ layer: "F.Cu", w: 1, pts: [[p.x, p.y], [60, p.y], [60, 60]] });
+  assert.deepEqual(dang(), ["A via joins copper on F.Cu only"]);
+  board.tracks.push({ layer: "B.Cu", w: 1, pts: [[60, 60], [70, 60], [70, 40]] });
+  assert.deepEqual(dang(), ["A track end on B.Cu is not connected"], "joined on both layers: only the new track's loose end is left");
 });
