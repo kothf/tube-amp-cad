@@ -216,6 +216,8 @@
   const hitHole = (x, y) => (S.show.Holes ? S.board.holes.findIndex(h => Math.hypot(h.x - x, h.y - y) <= h.d / 2 + 0.6) : -1);
   function textBox(t) { const w = Math.max(t.size, B.strokeText(t.text, 0, 0, t.size).width), h = t.size; return (t.rot & 1) ? { x1: t.x - h / 2, y1: t.y - w / 2, x2: t.x + h / 2, y2: t.y + w / 2 } : { x1: t.x - w / 2, y1: t.y - h / 2, x2: t.x + w / 2, y2: t.y + h / 2 }; }
   const hitText = (x, y) => S.board.texts.findIndex(t => { if (!S.show[t.layer]) return false; const b = textBox(t); return x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2; });
+  // the board's edge (outside the handle): dragging it moves the board on the drawing sheet
+  const onEdge = (x, y) => S.show["Edge.Cuts"] && !!sheetPlace() && Math.abs(B.edgeDist(x, y, S.board.outline)) <= 6 / S.view.scale;
   // the board's resize handle: its top-right corner (the origin, bottom left, stays put)
   const onHandle = (x, y) => { const o = S.board.outline, t = 6 / S.view.scale; return S.show["Edge.Cuts"] && Math.abs(x - o.w) <= t && Math.abs(y) <= t; };
   function netAt(x, y) {
@@ -457,6 +459,7 @@
       if (a.locked) S.drag = { kind: "locked" }; else if (a.pts) S.drag = { kind: "area", list: AREAS[ar.kind], i: ar.i, pts0: a.pts.map(p => p.slice()), mx: x, my: y, moved: false };
       renderPanels(); render(); return;
     }
+    if (onEdge(x, y)) { const p = sheetPlace(); S.drag = { kind: "board", x0: p.x, y0: p.y, sx, sy, ox: S.view.ox, oy: S.view.oy, moved: false }; return; }
     // empty space: a selection box (dragged left to right: what lies inside; right to left: what it touches)
     S.drag = { kind: "box", x0: x, y0: y, x1: x, y1: y, add: e.shiftKey, moved: false };
   }
@@ -485,13 +488,17 @@
       if (!d.noted) { d.noted = true; lockedNote(); }
     } else if (d && LISTS[d.kind]) {
       const o = S.board[LISTS[d.kind]][d.i]; o.x = snap(d.x0 + x - d.mx); o.y = snapY(d.y0 + y - d.my); d.moved = true; analyse(true); render();
+    } else if (d && d.kind === "board") {
+      // the sheet stays still on the screen and the board slides over it
+      const dx = snap((sx - d.sx) / S.view.scale), dy = snap((sy - d.sy) / S.view.scale);
+      const sh = dx || dy || d.moved ? pinSheet() : {}; sh.x = +(d.x0 - dx).toFixed(4); sh.y = +(d.y0 - dy).toFixed(4); S.view.ox = d.ox + dx * S.view.scale; S.view.oy = d.oy + dy * S.view.scale; d.moved = !!(dx || dy); render();
     } else if (d && d.kind === "outline") {
       const o = S.board.outline; o.w = Math.max(10, snap(d.w0 + x - d.mx)); setHeight(Math.max(10, snap(d.h0 + (d.sy - sy) / S.view.scale))); d.moved = true; analyse(true); render();
     }
     const p = hitPad(x, y);
     S.hover = p ? p.net : null;
     S.snapHint = S.tool === "measure" ? snapPoint(x, y, e.shiftKey || e.altKey) : null;
-    canvas.style.cursor = S.tool === "select" && onHandle(x, y) ? "nesw-resize" : S.tool === "select" ? "" : "crosshair";
+    canvas.style.cursor = S.tool === "select" && onHandle(x, y) ? "nesw-resize" : S.tool === "select" && onEdge(x, y) ? "move" : S.tool === "select" ? "" : "crosshair";
     const zone = sheetZone(x, y);
     $("st-pos").textContent = `x ${x.toFixed(2)}  y ${showY(y).toFixed(2)} mm` + (zone ? ` · ${zone}` : "") + (p ? ` · ${p.ref}-${p.num}${p.name !== p.num ? " (" + p.name + ")" : ""} · ${p.netName || "no net"} (${classOf(p.net)})` : "");
     if (S.route) S.routeBad = routeCheck();
@@ -505,7 +512,7 @@
       renderPanels(); render(); return;
     }
     if (d && d.kind === "seg" && d.moved) S.board.tracks[d.i].pts = tidy(S.board.tracks[d.i].pts);
-    if (d && d.kind !== "pan" && d.moved) commit(d.kind === "outline" ? `Board ${S.board.outline.w} × ${S.board.outline.h} mm` : undefined);
+    if (d && d.kind !== "pan" && d.moved) commit(d.kind === "outline" ? `Board ${S.board.outline.w} × ${S.board.outline.h} mm` : d.kind === "board" ? `Board moved on the sheet: origin ${onSheet().map(v => v.toFixed(2)).join(", ")} mm from the sheet's bottom-left corner (the sheet is locked)` : undefined);
   }
   function onWheel(e) {
     e.preventDefault();
@@ -737,6 +744,27 @@
     if (on && sh.size === "none") { msg("There is no sheet to lock: choose a format first"); sheetUi(); return; }
     if (on) { const p = sheetPlace(); S.board.sheet = { ...sh, size: p.size, locked: true, x: p.x, y: p.y }; commit(`Drawing sheet ${p.size} locked in place (unlock: it follows the board again)`); }
     else { S.board.sheet = { size: sh.size, orient: sh.orient }; commit("Drawing sheet unlocked: it follows the board"); }
+  }
+  // the sheet locked where it is now (moving the board on it needs a sheet that stays put)
+  function pinSheet() {
+    const sh = S.board.sheet || {}, p = sheetPlace();
+    if (!sh.locked) S.board.sheet = { ...sh, size: p.size, locked: true, x: p.x, y: p.y };
+    return S.board.sheet;
+  }
+  // the origin (the board's bottom-left corner) from the sheet's bottom-left corner, mm
+  function onSheet() { const p = sheetPlace(); return p ? [-p.x, +(p.y + p.h - S.board.outline.h).toFixed(4)] : null; }
+  function moveOnSheet(X, Y) {
+    const p = sheetPlace(); if (!p) return;
+    const sh = pinSheet(), x = -X, y = +(S.board.outline.h + Y - p.h).toFixed(4), dx = sh.x - x, dy = sh.y - y;
+    sh.x = x; sh.y = y; S.view.ox += dx * S.view.scale; S.view.oy += dy * S.view.scale;
+    commit(`Board on the sheet at ${X}, ${Y} mm (the sheet is locked)`);
+  }
+  function centreOnSheet() {
+    const sh = S.board.sheet || {}, before = sheetPlace(); if (!before) return;
+    S.board.sheet = { size: before.size, orient: before.orient }; const p = sheetPlace();
+    S.board.sheet = { ...S.board.sheet, locked: !!sh.locked, ...(sh.locked ? { x: p.x, y: p.y } : {}) };
+    S.view.ox += (before.x - p.x) * S.view.scale; S.view.oy += (before.y - p.y) * S.view.scale;
+    commit("Board centred on the sheet, above the title block");
   }
   function sheetUi() {
     const sh = S.board.sheet || {}, el = $("sheet-pick");
@@ -1208,6 +1236,13 @@
     const b1 = document.createElement("button"); b1.className = "btn"; b1.textContent = "Board setup…"; b1.onclick = openSetup;
     const b2 = document.createElement("button"); b2.className = "btn"; b2.textContent = "Design rules…"; b2.onclick = openRules;
     wrap.appendChild(b1); wrap.appendChild(b2); h.appendChild(wrap);
+    const at = onSheet();
+    if (at) {
+      h.insertAdjacentHTML("beforeend", `<h2>On the sheet</h2><p class="help">Where the origin (the board's bottom-left corner) lies from the sheet's bottom-left corner. Drag the board's edge to move it; that locks the sheet.</p>`);
+      h.appendChild(field("X (mm)", at[0], v => moveOnSheet(v, at[1])));
+      h.appendChild(field("Y (mm)", at[1], v => moveOnSheet(at[0], v)));
+      const c = document.createElement("button"); c.className = "btn"; c.textContent = "Centre on the sheet"; c.title = "Put the board back in the middle of the sheet, above the title block"; c.onclick = centreOnSheet; if ((S.board.sheet || {}).locked) h.appendChild(c);
+    }
     if (M) {
       const gp = document.createElement("button"); gp.className = "btn"; gp.style.marginTop = "6px";
       gp.textContent = `+ ${defaultNet()} plane (bottom)`;
@@ -1416,6 +1451,6 @@
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

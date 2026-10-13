@@ -1280,6 +1280,16 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(shC.join() === "A1,portrait,594,true,true" && await cad.evaluate(() => TubeCAD.state.board.sheet.locked === true), `a locked sheet takes a new format (${shC.slice(0, 3).join(" ")}) and stays locked; saved with the circuit`);
   await bd.click("#btn-sheet-lock");
   check(await bd.evaluate(() => !BoardApp.state.board.sheet.locked && !BoardApp.sheetPlace().locked), "Lock sheet again unlocks it: the sheet follows the board");
+  // drag the board's edge: the board moves on the sheet (the sheet stays still on the screen and gets locked)
+  const on0 = await bd.evaluate(() => BoardApp.onSheet()), shS0 = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return BoardApp.toScreen(s.x, s.y); });
+  const oh = await bd.evaluate(() => BoardApp.state.board.outline.h), e0 = await at(0, oh / 2), e1 = await at(25.4, oh / 2 - 12.7);
+  await bd.mouse.move(e0[0], e0[1]); await bd.mouse.down(); await bd.mouse.move(e1[0], e1[1], { steps: 5 }); await bd.mouse.up();
+  const on1 = await bd.evaluate(() => BoardApp.onSheet()), shS1 = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return BoardApp.toScreen(s.x, s.y); });
+  check(Math.abs(on1[0] - on0[0] - 25.4) < 1e-6 && Math.abs(on1[1] - on0[1] - 12.7) < 1e-6 && Math.hypot(shS1[0] - shS0[0], shS1[1] - shS0[1]) < 0.5 && await bd.evaluate(() => BoardApp.state.board.sheet.locked),
+    `dragging the board's edge moves it on the sheet (origin ${on0.join(", ")} → ${on1.join(", ")} mm from the sheet's corner); the sheet stays still and is locked`);
+  await bd.evaluate(() => BoardApp.moveOnSheet(40, 30)); const on2 = await bd.evaluate(() => BoardApp.onSheet());
+  await bd.evaluate(() => BoardApp.centreOnSheet()); const on3 = await bd.evaluate(() => BoardApp.onSheet());
+  check(on2.join() === "40,30" && on3.join() === on0.join(), `the board inspector sets the position on the sheet (40, 30) and centres it again (${on3.join(", ")})`);
   await bd.evaluate(() => { BoardApp.state.board.sheet = { size: "auto", orient: "landscape" }; BoardApp.commit(); BoardApp.fit(); });
 
   // layers: "only" shows one layer alone (again: all), clicking a copper layer's name makes it active

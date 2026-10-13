@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.47.0] - 2026-10-13
+
+### Added
+- **Board Design: move the board on the drawing sheet.** Drag the board's
+  edge: the board slides over the sheet, which stays still and is locked.
+  The board inspector shows the origin's position from the sheet's bottom-left
+  corner, takes new X / Y values, and has *Centre on the sheet* to put the
+  board back above the title block.
+
 ## [3.46.0] - 2026-10-13
 
 ### Added

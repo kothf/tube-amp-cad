@@ -354,6 +354,9 @@ the circuit file, so one file holds both.
     the schematic. The toolbar's sheet list (or *Setup…*) sets the format:
     Auto, A4–A0 landscape or portrait, or None. *Lock sheet* keeps the sheet
     where it is while the board changes; unlocked, it follows the board.
+    Drag the board's edge to move the board on the sheet; that locks the
+    sheet. The board inspector sets the position as numbers and can centre
+    the board again.
     <kbd>Shift</kbd>+<kbd>F</kbd> shows the whole sheet.
 - **Design rules** (*Rules…*):
   - clearances, with a separate high-voltage clearance for nets above a
