@@ -336,6 +336,11 @@ the circuit file, so one file holds both.
   Pour, Measure. The board's top-right corner handle resizes it; the origin
   stays put. Silkscreen text uses a
   stroke font, so the screen shows what the board maker gets.
+- **Routing** starts on a pad, a track or a via and ends on any of them on the
+  same net, exactly on the copper. Corners line up with the net's pads, so
+  tracks run straight into pads that are off the grid. <kbd>/</kbd> puts the
+  diagonal first; the route does so by itself when straight-first would come
+  too close. Dragging a part takes the ends of its tracks along.
 - **Measure** sticks to the board. Its ends snap to:
   - the centres of pads, vias and holes;
   - track corners and ends;

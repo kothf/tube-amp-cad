@@ -216,7 +216,7 @@
       <div class="insp-title">Board Design: help</div>
       <p class="help">The board takes its parts and connections from the schematic in the Circuit CAD, which keeps the layout in the circuit file (File → Save there). New parts wait in a row below the board: drag them onto it. Thin lines (the ratsnest) show connections still to route; route them as tracks on the top or bottom copper. The design-rule check lists clearances that are too small (high-voltage nets need more), shorts, copper off the board and parts not placed yet.</p>
       <div class="keys">
-        <kbd>X</kbd><span>route a track: click a pad, click corners, finish on a pad of the same net (or double-click)</span>
+        <kbd>X</kbd><span>route a track: click a pad (or a track or via of the net), click corners, finish on a pad, track or via of the same net (or double-click). Corners line up with the net's pads, so tracks run straight into pads off the grid. <kbd>/</kbd> diagonal first (it turns that way by itself when straight-first would come too close); <kbd>Backspace</kbd> or <kbd>Ctrl+Z</kbd> takes back a corner</span>
         <kbd>V</kbd><span>while routing: change layer and drop a via; otherwise switch the active copper layer</span>
         <kbd>Backspace</kbd><span>while routing: take back the last segment</span>
         <kbd>Shift+V</kbd><span>via tool: click to place a via</span>
@@ -232,6 +232,7 @@
         <kbd>U</kbd><span>select the whole connected track under the pointer (or of the selected track)</span>
         <kbd>`</kbd><span>highlight the net under the pointer (again: off); the Nets tab lists every net</span>
         <kbd>drag</kbd><span>a track segment moves sideways and its neighbours follow (45° kept)</span>
+        <kbd>drag part</kbd><span>the ends of the tracks on its pads come along</span>
         <kbd>Shift+click</kbd><span>while routing: place a segment that breaks the clearance anyway (normally refused)</span>
         <kbd>D</kbd><span>measure: click, click; the distance stays until the next click or Esc. The ends stick to pad, via and hole centres, track corners and ends, the board's corners, edge middles and centre (then onto a track, a hole's rim or the board edge); Shift+click: the grid only</span>
         <kbd>drag edge</kbd><span>drag the board's edge to move the board on the drawing sheet (this locks the sheet); the board inspector sets the position by numbers or centres it again</span>

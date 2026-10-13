@@ -223,23 +223,64 @@
   const onHandle = (x, y) => { const o = S.board.outline, t = 6 / S.view.scale; return S.show["Edge.Cuts"] && Math.abs(x - o.w) <= t && Math.abs(y) <= t; };
   function netAt(x, y) {
     const p = hitPad(x, y); if (p) return { net: p.net, pad: p };
-    const ti = hitTrack(x, y); if (ti >= 0 && S.conn) { const it = S.conn.items.find(it => it.kind === "track" && it.ti === ti); if (it && it.net !== null && it.net !== "short") return { net: it.net, track: ti }; }
+    const vi = hitVia(x, y); if (vi >= 0 && S.conn) { const it = S.conn.items.find(it => it.kind === "via" && it.vi === vi); if (it && it.net !== null && it.net !== "short") { const v = S.board.vias[vi]; return { net: it.net, at: [v.x, v.y] }; } }
+    const h = hitSeg(x, y); if (h && S.conn) { const it = S.conn.items.find(it => it.kind === "track" && it.ti === h.i); if (it && it.net !== null && it.net !== "short") return { net: it.net, track: h.i, at: onTrack(h.i, x, y) }; }
     return null;
+  }
+  // the point of track ti a route joins at: a corner or end within 8 px; else where a straight or
+  // 45° line from the route's last corner (from) meets it near the pointer; else the nearest point
+  // of its centre line (so the new copper really touches it, on or off the grid)
+  function onTrack(ti, x, y, from) {
+    const t = S.board.tracks[ti], tol = 8 / S.view.scale;
+    let best = null, bd = Infinity;
+    t.pts.forEach(p => { const d = Math.hypot(p[0] - x, p[1] - y); if (d <= tol && d < bd) { bd = d; best = p.slice(); } });
+    if (best) return best;
+    if (from) {
+      const reach = Math.max(tol, S.grid * 1.5);
+      for (let k = 0; k + 1 < t.pts.length; k++) {
+        const [a, b] = [t.pts[k], t.pts[k + 1]], ex = b[0] - a[0], ey = b[1] - a[1];
+        [[1, 0], [0, 1], [1, 1], [1, -1]].forEach(([ux, uy]) => {
+          const den = ux * ey - uy * ex; if (Math.abs(den) < 1e-9) return;
+          const u = ((from[0] - a[0]) * uy - (from[1] - a[1]) * ux) / -den;   // along the track segment
+          if (u < -1e-9 || u > 1 + 1e-9) return;
+          const q = [a[0] + u * ex, a[1] + u * ey], d = Math.hypot(q[0] - x, q[1] - y);
+          if (d <= reach && d < bd) { bd = d; best = [+q[0].toFixed(4), +q[1].toFixed(4)]; }
+        });
+      }
+      if (best) return best;
+    }
+    for (let k = 0; k + 1 < t.pts.length; k++) {
+      const [a, b] = [t.pts[k], t.pts[k + 1]], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy;
+      const u = L ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L)) : 0, q = [a[0] + u * dx, a[1] + u * dy], d = Math.hypot(q[0] - x, q[1] - y);
+      if (d < bd) { bd = d; best = [+q[0].toFixed(4), +q[1].toFixed(4)]; }
+    }
+    return best;
   }
 
   // ---------------------------------------------------------------------------
   // Routing: from a pad, 45° bends (straight first, then the diagonal), V changes layer with a via
   // ---------------------------------------------------------------------------
-  function bend(a, b) {
+  // alt: the diagonal first, then straight
+  function bend(a, b, alt) {
     const dx = b[0] - a[0], dy = b[1] - a[1], ax = Math.abs(dx), ay = Math.abs(dy);
-    if (!ax || !ay || Math.abs(ax - ay) < 1e-6) return [b];
+    if (ax < 1e-6 || ay < 1e-6 || Math.abs(ax - ay) < 1e-6) return [b];
     const d = Math.min(ax, ay);
+    if (alt) return [[a[0] + Math.sign(dx) * d, a[1] + Math.sign(dy) * d], b];
     return [ax > ay ? [b[0] - Math.sign(dx) * d, a[1]] : [a[0], b[1] - Math.sign(dy) * d], b];
   }
+  // the segments from the last corner to the pointer: straight first (or the diagonal first after
+  // /), and the other way round by itself when only that one keeps the clearance
+  function routeTail() {
+    const r = S.route, last = r.pts[r.pts.length - 1], t = routeTarget();
+    const a = [last].concat(bend(last, t.p, r.flip)), badA = tailCheck(a);
+    if (!badA) return { pts: a, t, bad: null };
+    const b = [last].concat(bend(last, t.p, !r.flip)), badB = tailCheck(b);
+    return badB ? { pts: a, t, bad: badA } : { pts: b, t, bad: null };
+  }
   // the clearance of the segments to the pointer against other nets' copper, holes and the edge
-  function routeCheck() {
-    const r = S.route; if (!r || !S.conn) return null;
-    const pts = [r.pts[r.pts.length - 1]].concat(bend(r.pts[r.pts.length - 1], routeTarget())), R = S.board.rules, mine = B.classRule(classOf(r.net), R).clearance, w2 = r.w / 2;
+  function routeCheck() { return S.route && S.conn ? routeTail().bad : null; }
+  function tailCheck(pts) {
+    const r = S.route, R = S.board.rules, mine = B.classRule(classOf(r.net), R).clearance, w2 = r.w / 2;
     for (let k = 0; k + 1 < pts.length; k++) {
       const s = [pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]];
       for (const it of S.conn.items) {
@@ -253,28 +294,52 @@
     }
     return null;
   }
-  function routeTarget() { const [x, y] = S.mouse, p = hitPad(x, y); return p ? [p.x, p.y] : [snap(x), snapY(y)]; }
+  // where the route goes next: { p, end: the click finishes it there, what }.
+  // A pad's centre; the net's own via or track (a corner, else onto its centre line) on this
+  // layer; else the grid, lined up with the last corner and with the net's pads and vias when
+  // within half a grid step, so tracks run straight into pads that are off the grid.
+  function routeTarget() {
+    const [x, y] = S.mouse, r = S.route, p = hitPad(x, y);
+    if (p) return { p: [p.x, p.y], end: true, what: `${p.ref}-${p.num}` };
+    if (r && S.conn) {
+      const vi = hitVia(x, y), vit = vi >= 0 && S.conn.items.find(it => it.kind === "via" && it.vi === vi);
+      if (vit && vit.net === r.net) { const v = S.board.vias[vi]; return { p: [v.x, v.y], end: true, what: "via" }; }
+      const h = hitSeg(x, y), tit = h && S.board.tracks[h.i].layer === r.layer && S.conn.items.find(it => it.kind === "track" && it.ti === h.i);
+      if (tit && tit.net === r.net && !(r.pts.length === 1 && h.i === r.from)) return { p: onTrack(h.i, x, y, r.pts[r.pts.length - 1]), end: true, what: "track" };
+    }
+    let gx = snap(x), gy = snapY(y);
+    if (r) {
+      const half = S.grid / 2 + 1e-6, last = r.pts[r.pts.length - 1];
+      const xs = [last[0]], ys = [last[1]];
+      if (S.model) S.model.pads.forEach(q => { if (q.net === r.net) { xs.push(q.x); ys.push(q.y); } });
+      S.board.vias.forEach(v => { xs.push(v.x); ys.push(v.y); });
+      const near = (v, list, raw) => { let b = v, bd = half; list.forEach(c => { const d = Math.abs(c - raw); if (d < bd) { bd = d; b = c; } }); return b; };
+      gx = near(gx, xs, x); gy = near(gy, ys, y);
+    }
+    return { p: [gx, gy], end: false, what: "grid" };
+  }
   function startRoute(x, y) {
     const at = netAt(x, y);
     if (!at) { msg("Start a track on a pad (or on a routed track)"); return; }
-    const start = at.pad ? [at.pad.x, at.pad.y] : [snap(x), snapY(y)];
+    const start = at.pad ? [at.pad.x, at.pad.y] : at.at;
     // the class width, or wider when the net's DC current asks for it (IPC-2221)
     const I = (S.amps || {})[at.net], wI = Math.ceil(B.currentWidth(I, S.board.rules, S.board.stackup) * 20) / 20;
-    S.route = { net: at.net, layer: S.layer, w: Math.max(trackWidth(at.net), wI), pts: [start], segs: [] };
-    msg(`Routing ${netName(at.net)} (${classOf(at.net)}${I ? `, ${B.fmtA(I)}` : ""}, ${S.route.w} mm) on ${S.layer}: click corners, end on a pad of the same net; V: via, Backspace: undo a corner, Esc: stop`);
+    S.route = { net: at.net, layer: S.layer, w: Math.max(trackWidth(at.net), wI), pts: [start], segs: [], from: at.track, flip: false };
+    msg(`Routing ${netName(at.net)} (${classOf(at.net)}${I ? `, ${B.fmtA(I)}` : ""}, ${S.route.w} mm) on ${S.layer}: click corners, end on a pad, track or via of the same net; /: diagonal first, V: via, Backspace: undo a corner, Esc: stop`);
     render();
   }
   function routeClick(e) {
-    const r = S.route, tgt = routeTarget(), last = r.pts[r.pts.length - 1], bad = routeCheck();
+    const r = S.route, tail = routeTail(), tgt = tail.t.p, last = r.pts[r.pts.length - 1], bad = tail.bad;
     if (bad && bad.ko && !(e && e.shiftKey)) { msg(`Not through ${bad.what}: route around it, or Shift+click to place it anyway`); return; }
     if (bad && !(e && e.shiftKey)) { msg(`Too close to ${bad.what}${bad.net ? " on " + bad.net : ""}: ${Math.max(0, bad.g).toFixed(2)} mm < ${bad.need} mm. Choose another way, or Shift+click to place it anyway`); return; }
     if (Math.hypot(tgt[0] - last[0], tgt[1] - last[1]) < 1e-6) { finishRoute(); return; }
-    bend(last, tgt).forEach(p => r.pts.push(p));
+    tail.pts.slice(1).forEach(p => r.pts.push(p));
     const p = hitPad(tgt[0], tgt[1]);
     if (p && r.pts.length > 1) {
       if (p.net !== r.net) msg(`${p.ref}-${p.num} is on ${netName(p.net)}, not ${netName(r.net)}: the check will report a short`);
       finishRoute(); return;
     }
+    if (tail.t.end && r.pts.length > 1) { finishRoute(); msg(`Joined the ${tail.t.what} of ${netName(r.net)}`); return; }
     render();
   }
   function routeVia() {
@@ -450,7 +515,7 @@
       const o = objOf(hit.kind, hit.id);
       if (o.locked) S.drag = { kind: "locked" };
       else if (hit.kind === "track") S.drag = { kind: "seg", i: hit.id, k: hit.k, pts0: o.pts.map(p => p.slice()), mx: x, my: y, moved: false };
-      else if (hit.kind === "part") S.drag = { kind: "part", key: hit.id, x0: o.x, y0: o.y, mx: x, my: y, moved: false };
+      else if (hit.kind === "part") S.drag = { kind: "part", key: hit.id, x0: o.x, y0: o.y, mx: x, my: y, moved: false, ends: trackEnds([["part", hit.id]]) };
       else S.drag = { kind: hit.kind, i: hit.id, x0: o.x, y0: o.y, mx: x, my: y, moved: false };
       renderPanels(); render(); return;
     }
@@ -472,7 +537,7 @@
     if (d && d.kind === "pan") { S.view.ox = d.ox + sx - d.sx; S.view.oy = d.oy + sy - d.sy; render(); return; }
     if (d && d.kind === "part") {
       const bp = S.board.parts[d.key], nx = snap(d.x0 + x - d.mx), ny = snapY(d.y0 + y - d.my);
-      if (nx !== bp.x || ny !== bp.y) { bp.x = nx; bp.y = ny; d.moved = true; analyse(true); render(); }
+      if (nx !== bp.x || ny !== bp.y) { bp.x = nx; bp.y = ny; moveEnds(d.ends, nx - d.x0, ny - d.y0); d.moved = true; analyse(true); render(); }
     } else if (d && d.kind === "group") {
       const dx = snap(x - d.mx), dy = snap(y - d.my);
       if (dx !== d.dx || dy !== d.dy) { d.dx = dx; d.dy = dy; moveItems(d.items, d.base, dx, dy); d.moved = !!(dx || dy); analyse(true); render(); }
@@ -540,8 +605,11 @@
     const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     if (ARROWS[e.key] && S.sel && !S.route) { e.preventDefault(); const k = S.grid * (e.shiftKey ? 10 : 1); nudge(ARROWS[e.key][0] * k, ARROWS[e.key][1] * k); return; }
     if (e.key === "Escape") { if (S.route) finishRoute(); else if (S.measure) { S.measure = null; render(); } else { S.sel = null; setTool("select"); renderPanels(); } return; }
+    if (S.route && (e.code === "Slash" || e.key === "/")) { e.preventDefault(); S.route.flip = !S.route.flip; msg(S.route.flip ? "Diagonal first (/: straight first)" : "Straight first (/: diagonal first)"); S.routeBad = routeCheck(); render(); return; }
     if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); render(); return; }
     if ((e.key === "Delete" || e.key === "Backspace") && S.sel) { e.preventDefault(); deleteSel(); return; }
+    // while routing, Ctrl+Z takes back the last corner (or drops the route), not a finished track
+    if (ctrl && L === "z" && S.route && !e.shiftKey) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); else if (S.route.segs.length) finishRoute(); else { S.route = null; msg("Route dropped"); } S.routeBad = routeCheck(); render(); return; }
     if (ctrl && L === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (ctrl && L === "y") { e.preventDefault(); redo(); return; }
     if (ctrl) return;
@@ -612,14 +680,26 @@
     S.sel = simplify(m);
   }
   // positions of the selected things, to move them all from where they started (locked ones stay)
-  const snapshot = items => items.map(([k, id]) => { const o = objOf(k, id); return o.pts ? o.pts.map(p => p.slice()) : [o.x, o.y]; });
+  // (with the ends of the tracks that run into the moving parts' pads: they follow the pads)
+  const snapshot = items => Object.assign(items.map(([k, id]) => { const o = objOf(k, id); return o.pts ? o.pts.map(p => p.slice()) : [o.x, o.y]; }), { ends: trackEnds(items) });
   function moveItems(items, base, dx, dy) {
     items.forEach(([k, id], n) => {
       const o = objOf(k, id); if (!o || o.locked) return;
       if (o.pts) o.pts = base[n].map(p => [+(p[0] + dx).toFixed(4), +(p[1] + dy).toFixed(4)]);
       else if (o.x !== undefined) { o.x = +(base[n][0] + dx).toFixed(4); o.y = +(base[n][1] + dy).toFixed(4); }
     });
+    moveEnds(base.ends, dx, dy);
   }
+  // the track ends lying on the pads of the parts among items (tracks moving along are left out)
+  function trackEnds(items) {
+    if (!S.model) return [];
+    const parts = new Set(items.filter(([k, id]) => k === "part" && !isLocked(k, id)).map(([, id]) => id)), moving = new Set(items.filter(([k]) => k === "track").map(([, i]) => i));
+    if (!parts.size) return [];
+    const pads = S.model.pads.filter(p => parts.has(p.part)), out = [];
+    S.board.tracks.forEach((t, ti) => { if (moving.has(ti) || t.locked) return; [0, t.pts.length - 1].forEach(k => { const q = t.pts[k]; if (pads.some(p => Math.hypot(p.x - q[0], p.y - q[1]) < 0.01)) out.push({ ti, k, x: q[0], y: q[1] }); }); });
+    return out;
+  }
+  function moveEnds(ends, dx, dy) { (ends || []).forEach(e => { const t = S.board.tracks[e.ti]; if (t) t.pts[e.k] = [+(e.x + dx).toFixed(4), +(e.y + dy).toFixed(4)]; }); }
   const lockedNote = () => msg("Locked: it stays put. Select it and press L to unlock");
   function nudge(dx, dy) {
     const it = selItems(); if (!it.length) return;
@@ -927,8 +1007,8 @@
       ctx.fillStyle = COLORS[S.layer]; S.poly.forEach(p => ctx.fillRect(p[0] - 2.5 * px, p[1] - 2.5 * px, 5 * px, 5 * px));
     }
     if (S.route) {
-      const r = S.route, pts = r.pts.concat(bend(r.pts[r.pts.length - 1], routeTarget())), bad = S.routeBad;
-      const need = B.classRule(classOf(r.net), S.board.rules).clearance, tail = [r.pts[r.pts.length - 1]].concat(bend(r.pts[r.pts.length - 1], routeTarget()));
+      const r = S.route, rt = routeTail(), tail = rt.pts, pts = r.pts.concat(tail.slice(1)), bad = rt.bad;
+      const need = B.classRule(classOf(r.net), S.board.rules).clearance;
       ctx.lineCap = "round"; ctx.lineJoin = "round";
       // the clearance halo of the segments being placed: red when they come too close
       ctx.strokeStyle = bad ? "rgba(255,80,80,0.28)" : "rgba(0,229,255,0.13)"; ctx.lineWidth = r.w + 2 * need;

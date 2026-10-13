@@ -6,6 +6,30 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.48.0] - 2026-10-13
+
+### Fixed
+- **Board Design: routed tracks join up where they should.**
+  - **Pads off the grid.** Tracks used to get a small 45° jog next to pads
+    off the 1.27 mm grid (tube sockets, 15 mm and 7.5 mm lead spacings).
+    Corners now line up with the net's pads and vias when within half a grid
+    step, so tracks run straight in.
+  - **Starting on a track or via.** A route started on a track began at the
+    nearest grid point, which could miss the track. It now starts on the
+    track's centre line (or at its corner) or at the via's centre.
+  - **Ending on a track or via.** A route ended only on a pad. A click on the
+    net's own track or via now ends it there, on the track's centre line,
+    where a straight or 45° line from the last corner meets it.
+  - **Ctrl+Z while routing** takes back the last corner. It used to undo an
+    earlier, finished track while the route stayed open.
+
+### Added
+- **Board Design: track ends follow a moved part** (drag, arrows, several at
+  once), so its connections hold.
+- **Board Design: the route bends the other way by itself** (diagonal first)
+  when straight-first would come too close to something. <kbd>/</kbd>
+  switches between the two by hand.
+
 ## [3.47.1] - 2026-10-13
 
 ### Fixed

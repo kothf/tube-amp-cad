@@ -1442,6 +1442,61 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const stepTxt = (await readFile(await stepDl.path())).toString("latin1");
   const nSolids = (stepTxt.match(/MANIFOLD_SOLID_BREP\(/g) || []).length;
   check(/\.step$/.test(stepDl.suggestedFilename()) && stepTxt.startsWith("ISO-10303-21;") && /AUTOMOTIVE_DESIGN/.test(stepTxt) && nSolids > 20 && /END-ISO-10303-21;\s*$/.test(stepTxt), `Export → 3D model (STEP) gives ${stepDl.suggestedFilename()} with ${nSolids} solids (AP214)`);
+  // routing that joins up: a clean board with three parts of one net, routed with the mouse
+  {
+    const saved = await bd.evaluate(() => JSON.stringify(BoardApp.state.board));
+    const ids = await bd.evaluate(() => {
+      const S = BoardApp.state, c = {}, two = r => S.model.pads.filter(p => p.ref === r).length === 2;
+      S.model.pads.forEach(p => { if (p.net !== null && p.netName !== "GND") (c[p.net] = c[p.net] || []).push(p); });
+      const e = Object.values(c).find(l => l.length >= 2 && l.every(p => two(p.ref)) && new Set(l.map(p => p.ref)).size === l.length);
+      if (!e) return null;
+      S.board.tracks = []; S.board.vias = []; S.board.zones = []; S.board.keepouts = []; S.board.holes = []; S.board.texts = [];
+      S.board.outline = { w: 200, h: 150, r: 0 };
+      Object.values(S.board.parts).forEach((bp, n) => { bp.x = 10 + (n % 10) * 25; bp.y = 260 + Math.floor(n / 10) * 30; bp.rot = 0; bp.side = "F"; delete bp.locked; });
+      // the first part placed off the 1.27 mm grid (as tube sockets' pins are), the second clear of it
+      const [p, q] = e; Object.assign(S.board.parts[p.part], { x: 40.3, y: 30.2 }); Object.assign(S.board.parts[q.part], { x: 100, y: 60 });
+      BoardApp.commit(); BoardApp.fit(); return [p.ref + "-" + p.num, q.ref + "-" + q.num];
+    });
+    if (!ids) check(false, "the test circuit has a net on two two-pin parts");
+    else {
+      Object.assign(cv, await bd.locator("#pcb").boundingBox());
+      const padXY = id => bd.evaluate(id => { const p = BoardApp.state.model.pads.find(q => q.ref + "-" + q.num === id); return [p.x, p.y]; }, id);
+      const [A, Bq] = [await padXY(ids[0]), await padXY(ids[1])];
+      const click = async (x, y) => { const q = await at(x, y); await bd.mouse.move(q[0], q[1], { steps: 3 }); await bd.mouse.click(q[0], q[1]); await bd.waitForTimeout(40); };
+      const tracks = () => bd.evaluate(() => BoardApp.state.board.tracks.map(t => t.pts));
+      const un0 = await bd.evaluate(() => BoardApp.state.conn.unrouted);
+      await bd.locator("#pcb").focus(); await bd.keyboard.press("x");
+      // corners clicked a little off the pad's axis line up with it: no jog at the off-grid pad
+      await click(A[0], A[1]); await click(A[0] + 0.4, A[1] - 12); await click(Bq[0] - 0.3, A[1] - 12); await click(Bq[0], Bq[1]);
+      const t1 = await tracks(), un1 = await bd.evaluate(() => BoardApp.state.conn.unrouted);
+      const ortho = t1.length === 1 && t1[0].every((p, k) => !k || Math.abs(p[0] - t1[0][k - 1][0]) < 1e-6 || Math.abs(p[1] - t1[0][k - 1][1]) < 1e-6);
+      check(ortho && un1 === un0 - 1 && t1[0].length === 4, `a track from an off-grid pad runs straight out of it and into the other pad, no jogs (${JSON.stringify(t1[0])})`);
+      // a second track from the middle of the first (off the grid) ends on it again: both joined, nothing left dangling
+      const run = t1[0][1], mid = [(t1[0][1][0] + t1[0][2][0]) / 2 + 0.3, run[1] + 0.2];
+      await click(mid[0], mid[1]); await click(mid[0], run[1] - 8); await click(mid[0] + 10, run[1] - 8); await click(mid[0] + 10.2, run[1] + 0.3);
+      const t2 = await tracks(), st = await bd.evaluate(() => ({ route: !!BoardApp.state.route, dangling: BoardApp.state.drc.filter(d => d.kind === "dangling").length }));
+      const on = p => Math.abs(p[1] - run[1]) < 1e-6 && p[0] > t1[0][1][0] && p[0] < t1[0][2][0];
+      check(t2.length === 2 && on(t2[1][0]) && on(t2[1][t2[1].length - 1]) && !st.route && st.dangling === 0, `a route starts on a track and ends on a track exactly on their centre lines, and finishes there (${JSON.stringify(t2[1])})`);
+      await bd.keyboard.press("Control+z");
+      // dragging the second part: the track's end follows its pad, the connection holds
+      await bd.keyboard.press("Escape"); await bd.keyboard.press("s");
+      const body = await bd.evaluate(id => { const g = BoardApp.state.model.parts.find(g => g.ref === id.split("-")[0]); const b = g.fp.box; const p = BoardCore.place([(b[0] + b[2]) / 2, b[3] - 0.6], g.place); return p; }, ids[1]);
+      const d0 = await at(body[0], body[1]), d1 = await at(body[0] + 6.35, body[1] + 6.35);
+      await bd.mouse.move(d0[0], d0[1]); await bd.mouse.down(); await bd.mouse.move(d1[0], d1[1], { steps: 4 }); await bd.mouse.up(); await bd.waitForTimeout(100);
+      const B2 = await padXY(ids[1]), t3 = await tracks(), un3 = await bd.evaluate(() => BoardApp.state.conn.unrouted);
+      const end = t3[0][t3[0].length - 1];
+      check(Math.hypot(B2[0] - Bq[0], B2[1] - Bq[1]) > 5 && Math.hypot(end[0] - B2[0], end[1] - B2[1]) < 1e-3 && un3 === un1, `moving a part takes the ends of its tracks along (pad ${Bq} → ${B2}); still connected`);
+      // straight first would cross the part's own other pad: the diagonal-first way is taken by itself
+      await bd.evaluate(() => { BoardApp.state.board.tracks = []; BoardApp.commit(); });
+      const other = await bd.evaluate(id => { const [ref, num] = id.split("-"); const p = BoardApp.state.model.pads.find(q => q.ref === ref && q.num !== num); return [p.x, p.y]; }, ids[0]);
+      const far = [A[0] + 2 * (other[0] - A[0]) + 12, A[1] + 12];
+      await bd.locator("#pcb").focus(); await bd.keyboard.press("x"); await click(A[0], A[1]); const fq = await at(far[0], far[1]); await bd.mouse.move(fq[0], fq[1], { steps: 3 });
+      const auto = await bd.evaluate(() => ({ bad: BoardApp.state.routeBad, msg: document.getElementById("st-msg").textContent }));
+      await bd.keyboard.press("Escape");
+      check(!auto.bad, `the route bends the other way round by itself when straight-first would pass the part's own other pad (${auto.bad ? auto.bad.what : "clear"})`);
+    }
+    await bd.evaluate(b => { BoardApp.state.board = JSON.parse(b); BoardApp.commit(); BoardApp.fit(); }, saved);
+  }
   await bd.close();
 }
 
