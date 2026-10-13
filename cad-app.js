@@ -139,6 +139,18 @@
     }
     return null;
   }
+  // a supply rail: a connector name used this often reads as a rail (B+, GND …); its connectors
+  // show no zone list, which would repeat every place it is used on every one of them
+  const RAIL_CONNECTORS = 5;
+  const isRail = c => { const n = connName(c); return !!n && S.comps.filter(k => k.type === "offsheet" && connName(k) === n).length >= RAIL_CONNECTORS; };
+  // zone references written short: one row letter per group, its columns after it
+  // ("B2, A3, A5, B5, B8" → "A3,5 B2,5,8"; on several sheets "2/A3,5")
+  function refText(refs) {
+    const groups = new Map();
+    refs.forEach(t => { const m = /^(?:(\d+)\/)?([A-Z])(\d+)$/.exec(t); const k = m ? `${m[1] || ""}|${m[2]}` : `|${t}`; if (!groups.has(k)) groups.set(k, []); if (m) groups.get(k).push(+m[3]); });
+    return [...groups.entries()].sort(([a], [b]) => { const [sa, ra] = a.split("|"), [sb, rb] = b.split("|"); return (+sa || 0) - (+sb || 0) || ra.localeCompare(rb); })
+      .map(([k, cols]) => { const [sh, row] = k.split("|"); return (sh ? sh + "/" : "") + row + cols.sort((a, b) => a - b).join(","); }).join(" ");
+  }
   // where the partners of a sheet connector are
   function connRefs(c) {
     const n = connName(c);
@@ -1060,7 +1072,7 @@
     const pin = hitPin(m.wx, m.wy);
     let net, label = "", wireI = "";
     const T = S.sim.topo || topo();
-    if (pin) { net = T.pinNet.get(pin.c.id + ":" + pin.p.id); label = `${pin.c.label || LIB[pin.c.type].name} ${pin.p.name || pin.p.id}`; }
+    if (pin) { net = T.pinNet.get(pin.c.id + ":" + pin.p.id); label = pin.c.type === "offsheet" ? `${pin.c.params.name || "connector"} (also at ${refText(connRefs(pin.c)) || "no other place"})` : `${pin.c.label || LIB[pin.c.type].name} ${pin.p.name || pin.p.id}`; }
     else {
       const w = hitWire(m.wx, m.wy);
       if (w) { net = (S.sim.topo || topo()).wireNet.get(w.id); label = "wire"; const wc = S.sim.result && wireCurrents(), i = wc ? wc.currents.get(w.id) : undefined; if (typeof i === "number") wireI = (isH(w) ? (i > 0 === w.x2 > w.x1 ? "→" : "←") : (i > 0 === w.y2 > w.y1 ? "↓" : "↑")) + fmtEng(Math.abs(i), "A", 2); }
@@ -1245,7 +1257,7 @@
       const vy = d[1] > 0 ? ty + 8 : d[1] < 0 ? ty - 14 : ty + 4;
       ctx.fillText(c.params.name || "", tx, vy);
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = refs.length ? COL.value : "#ff7b72";
-      ctx.fillText(refs.length ? refs.join(", ") : "no partner", tx, vy + 12);
+      if (!refs.length || !isRail(c)) ctx.fillText(refs.length ? refText(refs) : "no partner", tx, vy + 12);
       ctx.textAlign = "left";
       return;
     }
@@ -2645,6 +2657,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

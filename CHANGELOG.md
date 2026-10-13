@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.49.0] - 2026-10-13
+
+### Changed
+- **Sheet connectors: shorter zone references.** The zones where a connector's partners lie are written one row letter per group with its columns after it: "B2, A3, A5, B5, D2, E2, D3, D5, E5, B8" becomes "A3,5 B2,5,8 D2,3,5 E2,5" (on several sheets: "1/A3,5 2/C1,4").
+- **Supply rails show no zone list.** A connector name used five times or more (B+, a filtered rail, a bias line) reads as a rail; listing every other place it is used on every one of its connectors only cluttered the drawing. Hovering a connector shows all its partners' zones in the status bar.
+
 ## [3.48.3] - 2026-10-13
 
 ### Fixed

@@ -784,6 +784,8 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   });
   check(r.same && r.net > 0, "connectors with the same name (case and spaces ignored) join their wires into one net across sheets");
   check(r.refs1.length === 1 && r.refs1[0] === r.zone && /^2\/[A-H]\d$/.test(r.zone) && /^1\/[A-H]\d$/.test(r.refs2[0] || ""), `each connector shows where its partner is (sheet 1 → ${r.refs1}, sheet 2 → ${r.refs2})`);
+  const short = await cad.evaluate(() => [TubeCAD.refText(["B2", "A3", "A5", "B5", "D2", "E2", "D3", "D5", "E5", "B8"]), TubeCAD.refText(["2/C4", "1/A3", "2/C1", "1/A5"])]);
+  check(short[0] === "A3,5 B2,5,8 D2,3,5 E2,5" && short[1] === "1/A3,5 2/C1,4", `zone references are written one row letter per group (${short.join(" · ")})`);
   await cad.evaluate(() => TubeCAD.runSim("full"));
   await cad.waitForFunction(() => { const S = TubeCAD.state; return S.sim.result && !S.sim.busy; }, null, { timeout: 30000 });
   const vLoad = await cad.evaluate(() => { const S = TubeCAD.state, T = TubeCAD.topo(), l = S.comps.find(c => c.type === "resistor"); return S.sim.result.dc.nodes[T.pinNet.get(l.id + ":1")]; });
