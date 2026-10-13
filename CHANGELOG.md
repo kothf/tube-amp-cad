@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.47.1] - 2026-10-13
+
+### Fixed
+- **Board Design: the board would not move on the sheet once it had a
+  whole-board copper pour** (such as the GND plane). The pour's outline, 0.5 mm
+  inside the edge, took the click. The board's edge now wins on the line and
+  just outside it; the pour is picked a little further in.
+
 ## [3.47.0] - 2026-10-13
 
 ### Added

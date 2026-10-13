@@ -216,8 +216,9 @@
   const hitHole = (x, y) => (S.show.Holes ? S.board.holes.findIndex(h => Math.hypot(h.x - x, h.y - y) <= h.d / 2 + 0.6) : -1);
   function textBox(t) { const w = Math.max(t.size, B.strokeText(t.text, 0, 0, t.size).width), h = t.size; return (t.rot & 1) ? { x1: t.x - h / 2, y1: t.y - w / 2, x2: t.x + h / 2, y2: t.y + w / 2 } : { x1: t.x - w / 2, y1: t.y - h / 2, x2: t.x + w / 2, y2: t.y + h / 2 }; }
   const hitText = (x, y) => S.board.texts.findIndex(t => { if (!S.show[t.layer]) return false; const b = textBox(t); return x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2; });
-  // the board's edge (outside the handle): dragging it moves the board on the drawing sheet
-  const onEdge = (x, y) => S.show["Edge.Cuts"] && !!sheetPlace() && Math.abs(B.edgeDist(x, y, S.board.outline)) <= 6 / S.view.scale;
+  // the board's edge (outside the handle): dragging it moves the board on the drawing sheet. It is
+  // grabbed on the line and up to 8 px outside; a pour's outline (0.5 mm in) is picked further in
+  const onEdge = (x, y) => { const d = B.edgeDist(x, y, S.board.outline) * S.view.scale; return S.show["Edge.Cuts"] && !!sheetPlace() && d >= -8 && d <= 2; };
   // the board's resize handle: its top-right corner (the origin, bottom left, stays put)
   const onHandle = (x, y) => { const o = S.board.outline, t = 6 / S.view.scale; return S.show["Edge.Cuts"] && Math.abs(x - o.w) <= t && Math.abs(y) <= t; };
   function netAt(x, y) {
@@ -453,13 +454,13 @@
       else S.drag = { kind: hit.kind, i: hit.id, x0: o.x, y0: o.y, mx: x, my: y, moved: false };
       renderPanels(); render(); return;
     }
+    if (onEdge(x, y)) { const p = sheetPlace(); S.drag = { kind: "board", x0: p.x, y0: p.y, sx, sy, ox: S.view.ox, oy: S.view.oy, moved: false }; return; }
     const ar = hitArea(x, y);
     if (ar) {
       S.sel = { kind: ar.kind, i: ar.i }; const a = S.board[AREAS[ar.kind]][ar.i];
       if (a.locked) S.drag = { kind: "locked" }; else if (a.pts) S.drag = { kind: "area", list: AREAS[ar.kind], i: ar.i, pts0: a.pts.map(p => p.slice()), mx: x, my: y, moved: false };
       renderPanels(); render(); return;
     }
-    if (onEdge(x, y)) { const p = sheetPlace(); S.drag = { kind: "board", x0: p.x, y0: p.y, sx, sy, ox: S.view.ox, oy: S.view.oy, moved: false }; return; }
     // empty space: a selection box (dragged left to right: what lies inside; right to left: what it touches)
     S.drag = { kind: "box", x0: x, y0: y, x1: x, y1: y, add: e.shiftKey, moved: false };
   }

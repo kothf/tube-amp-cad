@@ -1318,6 +1318,19 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(gp.zones === 1 && gp.net === "GND" && gp.fills === 1 && gp.ops > 5 && gndBefore > 0 && gp.gnd === 0, `the GND plane button pours the bottom layer and joins every GND pad on the board (GND links to route there: ${gndBefore} → ${gp.gnd})`);
   await cad.waitForFunction(() => (TubeCAD.state.board.zones || []).length === 1, null, { timeout: 4000 }).catch(() => {});
   check(await cad.evaluate(() => (TubeCAD.state.board.zones || []).length === 1), "the pour is saved with the circuit");
+  // with a whole-board pour the board's edge still moves the board on the sheet (twice); the pour is picked just inside it
+  await bd.locator("#pcb").focus(); await bd.keyboard.press("Escape"); await bd.evaluate(() => BoardApp.fit()); await bd.waitForTimeout(100);
+  const onP0 = await bd.evaluate(() => BoardApp.onSheet());
+  for (let k = 0; k < 2; k++) {
+    const hh = await bd.evaluate(() => BoardApp.state.board.outline.h), g0 = await at(0, hh / 2 + 3);
+    await bd.mouse.move(g0[0] - 2, g0[1]); await bd.mouse.down(); await bd.mouse.move(g0[0] + 30, g0[1], { steps: 4 }); await bd.mouse.up();
+  }
+  const onP1 = await bd.evaluate(() => BoardApp.onSheet());
+  const zIn = await bd.evaluate(() => { const [sx, sy] = BoardApp.toScreen(0.5, BoardApp.state.board.outline.h / 2 + 3); return [sx + 1, sy]; });
+  await bd.mouse.click(cv.x + zIn[0], cv.y + zIn[1]);
+  const zSel = await bd.evaluate(() => BoardApp.state.sel && BoardApp.state.sel.kind);
+  check(onP1[0] > onP0[0] + 5 && zSel === "zone", `with a GND plane the board's edge still drags the board, again and again (origin x ${onP0[0]} → ${onP1[0]} mm); the plane's outline is picked just inside the edge (${zSel})`);
+  await bd.evaluate(() => BoardApp.centreOnSheet()); await bd.keyboard.press("Escape");
 
   // Nets tab: click a net to highlight it, again to turn it off
   await bd.click('[data-tab="nets"]');
