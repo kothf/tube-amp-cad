@@ -7,6 +7,8 @@
   const { LIB, DRAW, COL, PALETTE, parseEng, fmtEng, tubeByName, tubeKind } = CadLib;
   const GRID = 10;
   const STORAGE_KEY = "tubecad_circuit_v2";
+  const FILE_KEY = "tubecad_file_v1";        // the open file's name and whether it had unsaved changes (for a reload)
+  let clean = null;                          // the circuit and board as last opened or saved (showFile)
   const CHANNEL = "tube_cad_v2";
   // cache-busting version from this script's own URL (?v=...), passed on to the worker
   const VERSION = (document.currentScript && document.currentScript.src.split("?")[1]) ? "?" + document.currentScript.src.split("?")[1] : "";
@@ -239,6 +241,7 @@
     updateSheetNav();
     if (S.trans && !S.trans.stale && !S.trans.running) { S.trans.stale = true; if (channel) channel.postMessage(transientMessage()); }
     try { localStorage.setItem(STORAGE_KEY, snapshot()); } catch (e) {}
+    showFile();
     scheduleSim();
     updateInspector();
     render();
@@ -619,6 +622,7 @@
   function storeBoard(doc) {
     S.board = doc || null;
     try { if (S.board) localStorage.setItem(BOARD_KEY, JSON.stringify(S.board)); else localStorage.removeItem(BOARD_KEY); } catch (e) {}
+    showFile();
   }
 
   let lastSummary = null;
@@ -2046,7 +2050,7 @@
     S.comps = [f]; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
     setCurFile(null, "");
     storeBoard(null);
-    commit(); fitView();
+    commit(); fitView(); markClean();
     sendBoardNetlist(true);
   }
   // Add sheet: a new frame to the right of the last one, with the same title block data
@@ -2395,7 +2399,7 @@
       storeBoard(d.board || null);
       S.sel.comps.clear(); S.sel.wires.clear();
       setCurFile(null, "");                       // untitled: Save asks for a name, the example stays as it is
-      commit(); fitStart();
+      commit(); fitStart(); markClean();
       sendBoardNetlist(true);
       setStatus("ok", `Example: ${ex.title}. ${ex.about}.`);
     } catch (err) { setStatus("error", `Could not open the example: ${err.message}`); }
@@ -2411,19 +2415,33 @@
   }
   function setCurFile(handle, name) {
     curFile = { handle: handle || null, name: name || "" };
-    document.title = (name ? name + " — " : "") + "Tube Amp CAD — Circuit Editor & Simulator";
+    showFile();
+  }
+  // the file open now, in the toolbar and the tab title; • when the circuit or its board changed since it was opened or saved
+  const boardText = () => JSON.stringify(S.board || null);
+  function markClean() { clean = { snap: snapshot(), board: boardText() }; showFile(); }
+  const isDirty = () => !clean || snapshot() !== clean.snap || boardText() !== clean.board;
+  function showFile() {
+    const el = document.getElementById("cur-file"), name = curFile.name || "Untitled", dirty = isDirty();
+    if (el) {
+      el.textContent = name; el.classList.toggle("untitled", !curFile.name);
+      if (dirty) { const d = document.createElement("span"); d.className = "dirty"; d.textContent = " •"; el.appendChild(d); }
+      el.title = (curFile.name ? `Open file: ${name}` : "Not saved to a file yet") + (dirty ? " · changes not saved (Ctrl+S)" : " · saved");
+    }
+    document.title = (dirty ? "• " : "") + name + " — Tube Amp CAD";
+    try { localStorage.setItem(FILE_KEY, JSON.stringify({ name: curFile.name, dirty })); } catch (e) {}
   }
   async function writeHandle(h) {
     try {
       const w = await h.createWritable(); await w.write(circuitJSON()); await w.close();
-      setCurFile(h, h.name); setStatus("ok", "Saved " + h.name);
+      setCurFile(h, h.name); markClean(); setStatus("ok", "Saved " + h.name);
     } catch (err) { setStatus("error", "Could not save " + h.name + ": " + err.message); }
   }
   function downloadJSON(name) {
     const blob = new Blob([circuitJSON()], { type: "application/json" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    setCurFile(null, name); setStatus("ok", "Downloaded " + name);
+    setCurFile(null, name); markClean(); setStatus("ok", "Downloaded " + name);
   }
   const jsonName = n => { n = String(n || "").trim().replace(/[\\/:*?"<>|]+/g, "-"); return n ? (/\.json$/i.test(n) ? n : n + ".json") : ""; };
   // Save: the opened (or last saved) file is overwritten after a confirmation; otherwise Save as
@@ -2477,7 +2495,7 @@
         storeBoard(d.board || null);
         S.sel.comps.clear(); S.sel.wires.clear();
         setCurFile(handle, file.name);
-        commit(); fitStart();
+        commit(); fitStart(); markClean();
         sendBoardNetlist(true);                 // an open board window switches to this file's board
       } catch (err) { setStatus("error", "Could not open file: " + err.message); }
     };
@@ -2650,6 +2668,10 @@
     else S.comps = [makeComp("frame", { size: "A3", orient: "landscape", date: new Date().toISOString().slice(0, 10) }, 0, 0, 0)];   // first visit: an A3 sheet
     S.history = [snapshot()]; S.hIndex = 0;
     S.topo = null;
+    // after a reload: the same file name, and the unsaved mark if there was one
+    let last = null; try { last = JSON.parse(localStorage.getItem(FILE_KEY)); } catch (e) {}
+    curFile = { handle: null, name: (saved && last && last.name) || "" };
+    if (!saved || !last || !last.dirty) markClean(); else showFile();
     setTool("select");
     updateInspector();
     updateSheetNav();

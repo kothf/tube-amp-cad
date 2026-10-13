@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.50.0] - 2026-10-13
+
+### Added
+- **The open file's name in the toolbar**, next to the logo, and in the browser tab's title. A yellow • marks changes not saved yet (the board's too, since it is saved with the circuit); it goes when the file is saved, or when the circuit is back as it was. A new circuit or an example reads "Untitled". The name and the mark come back after a reload.
+
 ## [3.49.0] - 2026-10-13
 
 ### Changed

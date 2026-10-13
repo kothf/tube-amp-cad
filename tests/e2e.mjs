@@ -116,6 +116,14 @@ await cad.evaluate(() => {
 });
 await cad.click("#btn-file"); await cad.click("#btn-open");
 await cad.waitForFunction(() => /^amp\.json/.test(document.title));
+const fileTag = () => cad.evaluate(() => { const el = document.getElementById("cur-file"); return { text: el.textContent, dirty: !!el.querySelector(".dirty"), title: document.title }; });
+const ft0 = await fileTag();
+// an edit marks the file as changed (•, in the toolbar and the tab title)
+await cad.evaluate(() => { const c = TubeCAD.state.comps.find(c => c.type === "resistor"); c.params.r = c.params.r * 2; TubeCAD.commit(); });
+const ft1 = await fileTag();
+await cad.evaluate(() => { const c = TubeCAD.state.comps.find(c => c.type === "resistor"); c.params.r = c.params.r / 2; TubeCAD.commit(); });
+const ft2 = await fileTag();
+check(ft0.text === "amp.json" && !ft0.dirty && ft1.dirty && /^• amp\.json/.test(ft1.title) && !ft2.dirty, `the toolbar names the open file (${ft0.text}) and marks unsaved changes (${ft1.text}); back as saved, the mark goes`);
 await cad.keyboard.press("Control+s");
 check(await cad.isVisible("#save-modal") && /Overwrite amp\.json/.test(await cad.textContent("#save-msg")), "Save on an opened file asks before overwriting it");
 await cad.click("#btn-save-cancel");
@@ -124,6 +132,7 @@ await cad.click("#btn-file"); await cad.click("#btn-save"); await cad.click("#bt
 await cad.waitForFunction(() => window.__writes.length === 1);
 const wr = await cad.evaluate(() => window.__writes[0]);
 check(wr.name === "amp.json" && JSON.parse(wr.text).comps.length === (await state()).comps.length, "Overwrite writes the circuit back to the opened file");
+check(!(await fileTag()).dirty, "after saving the file is no longer marked as changed");
 // Save as through the File System Access API: Chromium only (Safari has no picker; Save as downloads there)
 if (process.env.BROWSER !== "webkit") {
   await cad.keyboard.press("Control+Shift+s");
@@ -132,6 +141,7 @@ if (process.env.BROWSER !== "webkit") {
 }
 await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
 check((await state()).comps.some(c => c.params.r === 4700), "circuit survives a reload (autosave)");
+check(/^(copy|amp)\.json$/.test((await fileTag()).text), `the file name comes back after a reload (${(await fileTag()).text})`);
 
 // a stored circuit whose wire ends on another wire's middle (a T joint) loads with the joint
 // connected, as File → Open does: a cap teed onto the line between two resistors
