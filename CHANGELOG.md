@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.52.1] - 2026-10-13
+
+### Fixed
+- **The status line and its progress bar no longer flicker when two simulations run at once.** A steady-state run and the oscilloscope's power-on transient each wrote their own progress to the CAD's status line in turn, so the text and the bar jumped between the two (and the oscilloscope's status, which mirrors it, with them). Both now share one line ("Simulating until settled: 40 % · Power-on transient, first 1 s: 25 %") with one bar for the lower readiness; when one finishes, the other carries on alone.
+
 ## [3.52.0] - 2026-10-13
 
 ### Changed

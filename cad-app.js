@@ -343,11 +343,21 @@
     else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, RUN_OPTIONS[mode]) }), 0);
   }
   // the busy text of the running steady-state simulation, with its readiness in percent
-  function simBusy(text) { S.sim.busyText = text; S.sim.progress = 0; setStatus("busy", text, 0); updatePct(); simButton(); }
+  function simBusy(text) { S.sim.busyText = text; S.sim.progress = 0; showBusy(); updatePct(); simButton(); }
+  // the status while simulations run: the steady state and the power-on transient may run at once,
+  // so both share one line and one bar (the lower readiness), instead of taking turns at it
+  function showBusy() {
+    const jobs = [];
+    if (S.sim.busy) jobs.push([S.sim.busyText.replace(/…$/, ""), S.sim.progress || 0]);
+    if (S.trans && S.trans.running) jobs.push([`Power-on transient, first ${fmtEng(S.trans.tStop, "s")}`, S.trans.progress || 0]);
+    if (!jobs.length) return false;
+    setStatus("busy", jobs.map(([t, p]) => `${t}: ${Math.floor(p * 100)} %`).join(" · "), Math.min(...jobs.map(j => j[1])));
+    return true;
+  }
   function onSimProgress({ seq, progress }) {
     if (seq !== S.sim.seq || !S.sim.busy) return;
     S.sim.progress = progress;
-    setStatus("busy", `${S.sim.busyText.replace(/…$/, "")}: ${Math.floor(progress * 100)} %`, progress);
+    showBusy();
     updatePct();
     simButton();
   }
@@ -376,7 +386,8 @@
         // a quick live run that ran out of time continues as a full run in the background
         const more = tr && !tr.settled && S.sim.mode === "live" && S.sim.live && !S.sim.pending;
         if (more) S.sim.warnings = S.sim.warnings.filter(w => !/^Not fully settled/.test(w));
-        setStatus(S.sim.warnings.length ? "warn" : "ok", `Simulated in ${took} · ${what}` + (result.dcAveraged ? " · DC values averaged over the window" : "") + (S.sim.warnings.length ? " · " + S.sim.warnings[0] : ""));
+        if (!(S.trans && S.trans.running && showBusy()))   // the power-on transient still runs: its progress stays on the line
+          setStatus(S.sim.warnings.length ? "warn" : "ok", `Simulated in ${took} · ${what}` + (result.dcAveraged ? " · DC values averaged over the window" : "") + (S.sim.warnings.length ? " · " + S.sim.warnings[0] : ""));
         if (more) { broadcast(); updateInspector(true); render(); runSim("full"); simBusy("Preliminary result shown · settling fully…"); return; }
       } else setStatus("error", result.error);
       broadcast();
@@ -679,7 +690,7 @@
     const seq = (S.trans && S.trans.seq || 0) + 1;
     S.trans = { seq, running: true, progress: 0, tStop };
     if (channel) channel.postMessage(transientMessage());
-    setStatus("busy", `Power-on transient, first ${fmtEng(tStop, "s")}…`);
+    showBusy();
     try { tWorker = new Worker("sim-worker.js" + VERSION); } catch (e) { tWorker = null; }
     const done = result => {
       if (!S.trans || S.trans.seq !== seq) return;
@@ -691,7 +702,8 @@
       });
       Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, elapsedMs: result.elapsedMs, scopes, progress: 1 });
       if (channel) channel.postMessage(transientMessage());
-      if (result.ok) setStatus("ok", `Power-on transient: ${fmtEng(tStop, "s")} of circuit time in ${(result.elapsedMs / 1000).toFixed(1)} s · ${result.steps} steps`);
+      if (S.sim.busy && result.ok) showBusy();   // the steady state still runs: its progress stays on the line
+      else if (result.ok) setStatus("ok", `Power-on transient: ${fmtEng(tStop, "s")} of circuit time in ${(result.elapsedMs / 1000).toFixed(1)} s · ${result.steps} steps`);
       else setStatus("error", "Power-on transient: " + result.error);
     };
     const options = { tStop, probes, maxPoints: 250000, budgetMs: 600000 };   // every step, for zooming in the scope
@@ -702,7 +714,7 @@
         if (!S.trans || S.trans.seq !== seq) return;
         S.trans.progress = d.progress;
         if (channel) channel.postMessage(transientMessage());
-        setStatus("busy", `Power-on transient, first ${fmtEng(tStop, "s")}: ${Math.floor(d.progress * 100)} %`, d.progress);
+        showBusy();
       } else done(d.result);
     };
     tWorker.postMessage({ seq, netlist, options, kind: "startup" });

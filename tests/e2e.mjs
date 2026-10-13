@@ -633,8 +633,12 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   // power-on: 0.5 s
   await sp.click('#analysis .btn[data-v="startup"]');
   await sp.selectOption("#t-stop", "0.5");
+  // with a steady-state run going at the same time, the CAD's status line carries both and does not flip between them
+  await cad.evaluate(() => { window.__st = []; const el = document.getElementById("status-sim"); const tick = () => { window.__st.push(el.textContent); if (window.__st.length < 2000) requestAnimationFrame(tick); }; requestAnimationFrame(tick); TubeCAD.runSim("full"); });
   await sp.click("#btn-sim");
   await sp.waitForFunction(() => Instrument.transient && !Instrument.transient.running && Instrument.transient.ok, null, { timeout: 60000 });
+  const flips = await cad.evaluate(() => { const k = window.__st.map(t => (/settled/.test(t) ? "S" : "") + (/Power-on transient,/.test(t) ? "T" : "")).filter(Boolean); let n = 0; for (let i = 1; i < k.length; i++) if (k[i] !== k[i - 1]) n++; return { n, seq: [...new Set(k)].join(" ") }; });
+  check(flips.n <= 3, `running the steady state and the power-on transient at once: one status line for both, no flipping (${flips.n} changes: ${flips.seq})`);
   const tr = await sp.evaluate(() => {
     const t = Instrument.transient, ch = Scope.startupChannels(Instrument.transientScope()).ch1, q = Scope.settleInfo(ch, t.dt);
     const at = s => ch.raw[Math.round(s / t.dt - 0.5)];
