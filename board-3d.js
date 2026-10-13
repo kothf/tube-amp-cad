@@ -85,8 +85,8 @@
       out.push(prism("z", arc, 2, 6.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 2));
     } else if ((m = /^TO-18-/.exec(name))) {
       out.push(cylZ(0, 0, 2.75, 1.5, 1.9, C.metal, to), cylZ(0, 0, 2.35, 1.9, 6.6, C.metal, to)); pads.forEach(p => lead(p.x, p.y, 1.5));
-    } else if ((m = /^TO-(126|220|247)-/.exec(name))) {
-      const r = fp.silk.find(s => s.t === "rect"), tab = m[1] !== "126", H = { 126: 11, 220: 9.2, 247: 20.5 }[m[1]], zb = 2.5;
+    } else if ((m = /^TO-(126|220|247|3P|264)-/.exec(name))) {
+      const r = fp.silk.find(s => s.t === "rect"), tab = m[1] !== "126", H = { 126: 11, 220: 9.2, 247: 20.5, "3P": 20, 264: 26 }[m[1]], zb = 2.5;
       out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, zb, zb + H, C.black, to));
       if (tab) out.push(box(r.x, r.y, r.x + r.w, r.y + 1.3, zb, zb + H + (m[1] === "220" ? 6.3 : 0.1), C.metal, to));
       pads.forEach(p => { lead(p.x, p.y, 1.2); out.push(cylY(p.x, 1.2, 0.3, Math.min(p.y, r.y + r.h / 2), Math.max(p.y, r.y + r.h / 2), C.lead, to)); out.push(cylZ(p.x, r.y + r.h / 2, 0.3, 1.2, zb, C.lead, to)); });

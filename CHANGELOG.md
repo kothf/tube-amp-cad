@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.53.0] - 2026-10-13
+
+### Added
+- **Power transistors for amplifier output stages, with their models**, as complementary pairs:
+  - bipolar drivers 2SD669A/2SB649A, 2SC4793/2SA1837, MJE15032/MJE15033, TIP41C/TIP42C;
+  - bipolar outputs 2SC5200/2SA1943, MJL3281A/MJL1302A, MJL21194/MJL21193, and in TO-3 MJ15003/MJ15004, MJ15024/MJ15025, 2N3055/MJ2955;
+  - MOSFETs IRFP240/IRFP9240, IRFP250, IRFP460, and the laterals 2SK1058/2SJ162 and ECX10N20/ECX10P20.
+  The models are fitted to the datasheets: hFE and its fall at high current (a test checks each part's hFE inside its datasheet range at the datasheet's own test point), VBE(on), output capacitance; for MOSFETs threshold and gfs (laterals: about 3 A at 4–5 V). The bipolar model has no emitter or base resistance, so VBE at several amperes reads somewhat low.
+- **Board footprints TO-3P and TO-264** (5.45 mm pitch, larger pads), with 3D bodies; each new part gets its package and pinout (B-C-E for the TO-264 and TO-220 pairs, G-S-D for the Hitachi laterals). TO-3 parts default to three wire pads: the can is the collector and sits on the chassis heatsink.
+
 ## [3.52.1] - 2026-10-13
 
 ### Fixed

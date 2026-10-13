@@ -487,3 +487,21 @@ test("a via that joins nothing, or copper on one layer only, is reported", () =>
   board.tracks.push({ layer: "B.Cu", w: 1, pts: [[60, 60], [70, 60], [70, 40]] });
   assert.deepEqual(dang(), ["A track end on B.Cu is not connected"], "joined on both layers: only the new track's loose end is left");
 });
+
+test("power transistors: hFE inside the datasheet's range at its test point (VCE = 5 V); laterals' VGS at 3 A", () => {
+  const E = globalThis.TubeSimEngine;
+  const hfe = (m, ic) => { let lo = 0, hi = 2; for (let k = 0; k < 80; k++) { const v = (lo + hi) / 2, I = E.Semi.bjt([5 * m.pol, v * m.pol, 0], m); if (I[0] * m.pol < ic) lo = v; else hi = v; } const v = (lo + hi) / 2, I = E.Semi.bjt([5 * m.pol, v * m.pol, 0], m); return I[0] / I[1]; };
+  const points = [["2SD669A", 0.15, 60, 320], ["2SB649A", 0.15, 60, 320], ["2SC4793", 0.1, 100, 320], ["2SA1837", 0.1, 100, 320], ["MJE15032", 0.5, 50, 250], ["MJE15033", 0.5, 50, 250],
+    ["TIP41C", 3, 15, 75], ["TIP42C", 3, 15, 75], ["2SC5200", 1, 80, 160], ["2SA1943", 1, 80, 160], ["MJL3281A", 1, 75, 150], ["MJL1302A", 1, 75, 150], ["MJL21194", 8, 25, 75], ["MJL21193", 8, 25, 75],
+    ["MJ15003", 5, 25, 150], ["MJ15004", 5, 25, 150], ["MJ15024", 8, 15, 60], ["MJ15025", 8, 15, 60], ["2N3055", 4, 20, 70], ["MJ2955", 4, 20, 70]];
+  for (const [k, ic, lo, hi] of points) { const h = hfe(L.BJTS[k], ic); assert.ok(h >= lo && h <= hi, `${k}: hFE ${h.toFixed(0)} at ${ic} A, datasheet ${lo}–${hi}`); }
+  for (const k of ["2SK1058", "2SJ162", "ECX10N20", "ECX10P20"]) {   // laterals: about 3 A at 4–5 V gate-source
+    const m = L.MOSFETS[k]; let lo = 0, hi = 10;
+    for (let n = 0; n < 80; n++) { const v = (lo + hi) / 2, I = E.Semi.mos([10 * m.pol, v * m.pol, 0], m); if (I[0] * m.pol < 3) lo = v; else hi = v; }
+    assert.ok(lo > 3.5 && lo < 5.5, `${k}: VGS ${lo.toFixed(2)} V for 3 A`);
+  }
+  // a TO-3 can goes on wires (the chassis heatsink); the TO-264 and TO-3P parts on their own footprints, base or gate first
+  const fpOf = (type, model) => B.physicalParts({ parts: [part("q", type, "VT1", { model }, { C: 1, B: 2, E: 3, D: 1, G: 2, S: 3 })] })[0].defaultFp;
+  assert.equal(fpOf("npn", "2N3055"), "WIRE-3"); assert.equal(fpOf("npn", "2SC5200"), "TO-264-BCE"); assert.equal(fpOf("pnp", "MJL1302A"), "TO-264-BCE");
+  assert.equal(fpOf("nmos", "2SK1058"), "TO-3P-GSD"); assert.equal(fpOf("nmos", "IRFP240"), "TO-247-GDS");
+});

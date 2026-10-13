@@ -473,7 +473,30 @@
     "BC557B": { pol: -1, is: 1e-14, bf: 250, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.1, p: 0.5, pkg: "TO-92", use: "small signal, low noise" },
     "BD140": { pol: -1, is: 1e-13, bf: 150, br: 5, vaf: 100, ikf: 1, cbe: 100 * pf, cbc: 40 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
     "MPSA92": { pol: -1, is: 1e-14, bf: 100, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 6 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
-    "MJE350": { pol: -1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 20 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" }
+    "MJE350": { pol: -1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 20 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" },
+    // drivers and power output, as complementary pairs. Fitted to the datasheets: BF the mid-current
+    // hFE, IKF where it has fallen to about half, IS from VBE(on), CBC the output capacitance Cob.
+    // No emitter or base resistance in the model: at several amperes VBE reads somewhat low.
+    "2SD669A": { pol: 1, is: 2e-13, bf: 160, br: 5, vaf: 150, ikf: 0.8, cbe: 150 * pf, cbc: 25 * pf, v: 180, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
+    "2SC4793": { pol: 1, is: 2e-13, bf: 200, br: 5, vaf: 150, ikf: 0.5, cbe: 150 * pf, cbc: 20 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
+    "MJE15032": { pol: 1, is: 5e-13, bf: 100, br: 4, vaf: 150, ikf: 2, cbe: 400 * pf, cbc: 100 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
+    "TIP41C": { pol: 1, is: 1e-12, bf: 70, br: 4, vaf: 100, ikf: 2.5, cbe: 500 * pf, cbc: 100 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
+    "2SC5200": { pol: 1, is: 2e-12, bf: 110, br: 4, vaf: 100, ikf: 5, cbe: 1500 * pf, cbc: 200 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
+    "MJL3281A": { pol: 1, is: 3e-12, bf: 110, br: 4, vaf: 100, ikf: 8, cbe: 1500 * pf, cbc: 400 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
+    "MJL21194": { pol: 1, is: 3e-12, bf: 50, br: 3, vaf: 100, ikf: 10, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
+    "MJ15003": { pol: 1, is: 5e-12, bf: 70, br: 3, vaf: 100, ikf: 8, cbe: 2000 * pf, cbc: 1000 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "MJ15024": { pol: 1, is: 3e-12, bf: 50, br: 3, vaf: 120, ikf: 5, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "2N3055": { pol: 1, is: 1e-11, bf: 50, br: 3, vaf: 50, ikf: 3, cbe: 1500 * pf, cbc: 500 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" },
+    "2SB649A": { pol: -1, is: 2e-13, bf: 160, br: 5, vaf: 100, ikf: 0.8, cbe: 150 * pf, cbc: 40 * pf, v: 180, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
+    "2SA1837": { pol: -1, is: 2e-13, bf: 200, br: 5, vaf: 100, ikf: 0.5, cbe: 150 * pf, cbc: 30 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
+    "MJE15033": { pol: -1, is: 5e-13, bf: 100, br: 4, vaf: 120, ikf: 2, cbe: 400 * pf, cbc: 150 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
+    "TIP42C": { pol: -1, is: 1e-12, bf: 70, br: 4, vaf: 80, ikf: 2.5, cbe: 500 * pf, cbc: 150 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
+    "2SA1943": { pol: -1, is: 3e-12, bf: 110, br: 4, vaf: 80, ikf: 5, cbe: 1500 * pf, cbc: 360 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
+    "MJL1302A": { pol: -1, is: 3e-12, bf: 110, br: 4, vaf: 80, ikf: 8, cbe: 1500 * pf, cbc: 600 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
+    "MJL21193": { pol: -1, is: 3e-12, bf: 50, br: 3, vaf: 80, ikf: 10, cbe: 2000 * pf, cbc: 700 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
+    "MJ15004": { pol: -1, is: 5e-12, bf: 70, br: 3, vaf: 80, ikf: 8, cbe: 2000 * pf, cbc: 1500 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "MJ15025": { pol: -1, is: 3e-12, bf: 50, br: 3, vaf: 100, ikf: 5, cbe: 2000 * pf, cbc: 800 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "MJ2955": { pol: -1, is: 1e-11, bf: 50, br: 3, vaf: 50, ikf: 3, cbe: 1500 * pf, cbc: 700 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" }
   };
   const MOSFETS = {
     "2N7000": { pol: 1, vto: 2.1, kp: 0.26, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.2, p: 0.4, pkg: "TO-92", use: "small signal switch" },
@@ -487,7 +510,17 @@
     "BS250": { pol: -1, vto: -2.25, kp: 0.056, lambda: 0.01, cgs: 25 * pf, cgd: 5 * pf, v: 45, i: 0.23, p: 0.83, pkg: "TO-92", use: "small signal switch" },
     "IRF9540": { pol: -1, vto: -3.0, kp: 1.75, lambda: 0.005, cgs: 1200 * pf, cgd: 200 * pf, v: 100, i: 19, p: 150, pkg: "TO-220", use: "power output, follower" },
     "IRF9610": { pol: -1, vto: -3.0, kp: 0.45, lambda: 0.003, cgs: 150 * pf, cgd: 20 * pf, v: 200, i: 1.8, p: 20, pkg: "TO-220", use: "HV CCS, follower" },
-    "IRF9640": { pol: -1, vto: -3.0, kp: 1.27, lambda: 0.003, cgs: 1100 * pf, cgd: 100 * pf, v: 200, i: 11, p: 125, pkg: "TO-220", use: "HV regulator, CCS" }
+    "IRF9640": { pol: -1, vto: -3.0, kp: 1.27, lambda: 0.003, cgs: 1100 * pf, cgd: 100 * pf, v: 200, i: 11, p: 125, pkg: "TO-220", use: "HV regulator, CCS" },
+    // power output. KP from the datasheet's gfs at its test current (gfs² / 2 Id); the lateral pairs
+    // (2SK1058/2SJ162, ECX10N20/ECX10P20) start conducting near 0.2–1.5 V and have a lower gfs
+    "IRFP240": { pol: 1, vto: 3.6, kp: 2.0, lambda: 0.003, cgs: 1150 * pf, cgd: 150 * pf, v: 200, i: 20, p: 150, pkg: "TO-247", use: "power output" },
+    "IRFP250": { pol: 1, vto: 3.5, kp: 9, lambda: 0.003, cgs: 2500 * pf, cgd: 300 * pf, v: 200, i: 30, p: 190, pkg: "TO-247", use: "power output, high current" },
+    "IRFP460": { pol: 1, vto: 3.5, kp: 7, lambda: 0.002, cgs: 4100 * pf, cgd: 60 * pf, v: 500, i: 20, p: 280, pkg: "TO-247", use: "HV follower, regulator, SE output" },
+    "2SK1058": { pol: 1, vto: 0.6, kp: 0.35, lambda: 0.01, cgs: 600 * pf, cgd: 10 * pf, v: 160, i: 7, p: 100, pkg: "TO-3P", use: "lateral power output (Hitachi)" },
+    "ECX10N20": { pol: 1, vto: 0.6, kp: 0.35, lambda: 0.01, cgs: 500 * pf, cgd: 15 * pf, v: 200, i: 8, p: 125, pkg: "TO-247", use: "lateral power output (Exicon)" },
+    "IRFP9240": { pol: -1, vto: -3.5, kp: 1.2, lambda: 0.003, cgs: 1070 * pf, cgd: 130 * pf, v: 200, i: 12, p: 150, pkg: "TO-247", use: "power output" },
+    "2SJ162": { pol: -1, vto: -0.6, kp: 0.35, lambda: 0.01, cgs: 900 * pf, cgd: 40 * pf, v: 160, i: 7, p: 100, pkg: "TO-3P", use: "lateral power output (Hitachi)" },
+    "ECX10P20": { pol: -1, vto: -0.6, kp: 0.35, lambda: 0.01, cgs: 700 * pf, cgd: 30 * pf, v: 200, i: 8, p: 125, pkg: "TO-247", use: "lateral power output (Exicon)" }
   };
   // zener: breakdown bv (V) at the test current izt (A), dynamic resistance zzt (Ω), power p (W)
   const ZENERS = {

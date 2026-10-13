@@ -158,6 +158,8 @@
   const to126 = order => inline("TO-126", 2.29, order, 8, 3.2, false);
   const to220 = order => inline("TO-220", 2.54, order, 10.4, 4.6, true);
   const to247 = order => inline("TO-247", 5.45, order, 15.9, 5, true, 2.6, 1.4);
+  const to3p = order => inline("TO-3P", 5.45, order, 15.6, 4.8, true, 2.8, 1.5);     // Toshiba TO-3P(N), Hitachi 2SK1058
+  const to264 = order => inline("TO-264", 5.45, order, 19.8, 5, true, 3, 1.6);       // TO-264 / TO-3P(L): 2SC5200, MJL3281A
   function led5() {
     return fp("LED-5MM", "LED 5 mm (flat side and square pad: cathode)", [pad(1, -1.27, 0, 1.8, 0.9, "rect", "K"), pad(2, 1.27, 0, 1.8, 0.9, "circle", "A")],
       [{ t: "circle", x: 0, y: 0, r: 2.9 }, { t: "line", x1: -2.9, y1: -1.6, x2: -2.9, y2: 1.6 }]);
@@ -272,6 +274,8 @@
     if ((m = /^TO-126-([A-Z]{3})$/.exec(name))) return to126(m[1]);
     if ((m = /^TO-220-([A-Z]{3})$/.exec(name))) return to220(m[1]);
     if ((m = /^TO-247-([A-Z]{3})$/.exec(name))) return to247(m[1]);
+    if ((m = /^TO-3P-([A-Z]{3})$/.exec(name))) return to3p(m[1]);
+    if ((m = /^TO-264-([A-Z]{3})$/.exec(name))) return to264(m[1]);
     if (name === "LED-5MM") return led5();
     if (name === "LED-3MM") return led3();
     if ((m = /^POT-(\w+)$/.exec(name)) && POTS[m[1]]) return pot(m[1]);
@@ -322,7 +326,13 @@
     "2N2222A": ["EBC"], "2N3904": ["EBC"], "BC107": ["EBC"], "BC547B": ["CBE"], "BD139": ["ECB"], "MPSA42": ["EBC"], "MJE340": ["ECB"],
     "2N2907A": ["EBC"], "2N3906": ["EBC"], "BC177": ["EBC"], "BC557B": ["CBE"], "BD140": ["ECB"], "MPSA92": ["EBC"], "MJE350": ["ECB"],
     "2N7000": ["SGD"], "BS170": ["DGS"], "BS250": ["DGS", "verify"], "LND150": ["SGD", "verify"], "DN2540": ["GDS"],
-    "IRF510": ["GDS"], "IRF540": ["GDS"], "IRF820": ["GDS"], "IRF840": ["GDS"], "IRF9540": ["GDS"], "IRF9610": ["GDS"], "IRF9640": ["GDS"]
+    "IRF510": ["GDS"], "IRF540": ["GDS"], "IRF820": ["GDS"], "IRF840": ["GDS"], "IRF9540": ["GDS"], "IRF9610": ["GDS"], "IRF9640": ["GDS"],
+    // power pairs: pin 1 left, the leads down, the type printed towards you. A TO-3 can is the
+    // collector (its case); its two pins are B and E, so it goes on wires (heatsink on the chassis)
+    "2SD669A": ["ECB"], "2SB649A": ["ECB"], "2SC4793": ["BCE"], "2SA1837": ["BCE"], "MJE15032": ["BCE"], "MJE15033": ["BCE"],
+    "TIP41C": ["BCE"], "TIP42C": ["BCE"], "2SC5200": ["BCE"], "2SA1943": ["BCE"], "MJL3281A": ["BCE"], "MJL1302A": ["BCE"],
+    "MJL21194": ["BCE"], "MJL21193": ["BCE"], "MJ15003": ["BEC"], "MJ15004": ["BEC"], "MJ15024": ["BEC"], "MJ15025": ["BEC"], "2N3055": ["BEC"], "MJ2955": ["BEC"],
+    "IRFP240": ["GDS"], "IRFP250": ["GDS"], "IRFP460": ["GDS"], "IRFP9240": ["GDS"], "2SK1058": ["GSD"], "2SJ162": ["GSD"], "ECX10N20": ["GSD", "verify"], "ECX10P20": ["GSD", "verify"]
   };
   const AXIAL_FOR_WATTS = { "": 10.16, "0.125": 7.62, "0.25": 10.16, "0.5": 12.7, "1": 15.24, "2": 20.32, "3": 25.4, "5": 30.48, "10": 40.64, "20": 50.8 };
   const radialFor = c => { const u = c * 1e6; return u <= 4.7 ? [5, 2] : u <= 10 ? [6.3, 2.5] : u <= 47 ? [8, 3.5] : u <= 100 ? [10, 5] : u <= 220 ? [12.5, 5] : u <= 470 ? [16, 7.5] : u <= 1000 ? [18, 7.5] : [22, 10]; };
@@ -394,8 +404,10 @@
       case "mains": return ["TERM-7.5-2", t2, "WIRE-2"];
       case "npn": case "pnp": case "nmos": case "pmos": {
         const m = (t === "npn" || t === "pnp" ? L.BJTS : L.MOSFETS)[p.model] || {}, order = (PINOUT[p.model] || [t[1] === "m" ? "GDS" : "EBC"])[0];
-        const pkg = /TO-220/.test(m.pkg) ? "TO-220" : /TO-126/.test(m.pkg) ? "TO-126" : /TO-18/.test(m.pkg) ? "TO-18" : "TO-92";
-        const all = ["TO-92", "TO-18", "TO-126", "TO-220", "TO-247"].map(k => `${k}-${order}`);
+        const all = ["TO-92", "TO-18", "TO-126", "TO-220", "TO-247", "TO-3P", "TO-264"].map(k => `${k}-${order}`);
+        // a TO-3 can sits on the chassis heatsink, wired to the board
+        if (m.pkg === "TO-3") return ["WIRE-3", ...all];
+        const pkg = /TO-220/.test(m.pkg) ? "TO-220" : /TO-126/.test(m.pkg) ? "TO-126" : /TO-18/.test(m.pkg) ? "TO-18" : /TO-264/.test(m.pkg) ? "TO-264" : /TO-3P/.test(m.pkg) ? "TO-3P" : /TO-247/.test(m.pkg) ? "TO-247" : "TO-92";
         return [`${pkg}-${order}`, ...all.filter(a => a !== `${pkg}-${order}`), "WIRE-3"];
       }
       case "tube": { const d = socketFor(L.tubeByName(p.tube)); return [d, ...["SOCKET-B9A", "SOCKET-B7G", "SOCKET-B9D", "SOCKET-OCTAL", "SOCKET-UX4"].filter(a => a !== d), `WIRE-${wires}`]; }
