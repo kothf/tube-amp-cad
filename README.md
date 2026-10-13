@@ -450,12 +450,18 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   stepping for the DC operating point, then a transient with Gear's
   second-order method (BDF2), which keeps resonances such as a loudspeaker's
   at their true Q, without trapezoidal ringing at a rectifier's switching.
-- **The linear solve** (a dense LU on every Newton iteration, most of a run's
-  time) runs as WebAssembly: `wasm/solver.ts`, built into `sim-solver.wasm`.
-  It takes the same steps as the JavaScript `solveLinear`, two matrix
-  elements at a time with SIMD, so the results are bit for bit the same, about
-  2.7 times sooner on the 10-tube stereo amplifier. A browser without
-  WebAssembly SIMD uses the JavaScript solver.
+- **Steady state by shooting.** The steady state is the state that one
+  period of the signal maps onto itself. Newton's method finds it (Newton–GMRES:
+  each direction it needs costs one simulated period), so slow coupling,
+  cathode and filter capacitors settle in a few dozen periods instead of
+  hundreds: the 10-tube stereo amplifier in 42 periods. If it does not converge
+  in its time, plain settling with vector extrapolation carries on.
+- **Sparse linear solves.** Each Newton iteration stamps into a sparse matrix
+  (a 66-unknown amplifier has 286 nonzeros of 4356) and solves it with a sparse
+  LU (Gilbert–Peierls, as KLU: minimum-degree column order, partial pivoting),
+  whose numeric part runs as WebAssembly: `wasm/solver.ts`, built into
+  `sim-solver.wasm`, with the same steps as the JavaScript, which takes over
+  where WebAssembly is missing.
 - **Triodes** use [Koren's](https://www.normankoren.com/Audio/Tubemodspice_article.html)
   published equation unmodified, so their parameters are interchangeable with
   Koren-style SPICE models.

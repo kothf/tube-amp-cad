@@ -8,8 +8,12 @@
    - Transient: Gear-2 (BDF2) companions for capacitors (backward Euler for a first step); inductors and
      coupled windings (transformers) carry their branch current as an unknown,
      so they are exact shorts at DC.
-   - Periodic steady state: repeat the slowest source period until the
-     waveform at every node stops changing, then capture it.
+   - Periodic steady state by shooting: Newton–GMRES on the one-period map finds
+     the state a period maps onto itself (falling back to repeating periods,
+     with vector extrapolation); then the waveform is captured.
+   - Linear solves: a sparse LU (Gilbert–Peierls, minimum-degree columns,
+     partial pivoting) on the pattern stamped, its numeric part as WebAssembly
+     (wasm/solver.ts) when loaded.
 
    Netlist: { nodeCount, elements: [{ id, kind, nodes: [...], ...params }] }
    kinds: R, C, L, XFMR, V, VSRC, D, VDIODE, TRIODE, PENTODE
@@ -137,36 +141,7 @@
   // ---------------------------------------------------------------------------
   // Dense linear solve with partial pivoting (in place)
   // ---------------------------------------------------------------------------
-  // The linear solve takes most of a run's time (a dense LU per Newton iteration). It runs as
-  // WebAssembly (wasm/solver.ts, built into sim-solver.wasm) once loadWasm has the module: the same
-  // steps in the same order, row updates two at a time with SIMD, so the results are bit for bit
-  // the same. Without it (not loaded, or no WebAssembly SIMD) the JavaScript below does the work.
-  let wasmModule = null, wasm = null;
-  function loadWasm(bytes) {
-    try { wasmModule = new WebAssembly.Module(bytes); } catch (e) { wasmModule = null; }
-    return useWasm(true);
-  }
-  function useWasm(on) {
-    wasm = null;
-    if (on === false || !wasmModule) return false;
-    try { const ex = new WebAssembly.Instance(wasmModule, {}).exports; wasm = { solve: ex.solve, memory: ex.memory, view: null, n: -1 }; } catch (e) { wasm = null; }
-    return !!wasm;
-  }
   function solveLinear(A, b, n) {
-    if (wasm) {
-      const nn = n * n, need = (nn + n) * 8, mem = wasm.memory;
-      if (mem.buffer.byteLength < need) mem.grow(Math.ceil((need - mem.buffer.byteLength) / 65536));
-      if (wasm.n !== n || wasm.view.buffer !== mem.buffer) { wasm.view = new Float64Array(mem.buffer, 0, nn + n); wasm.n = n; }
-      const M = wasm.view;
-      if (A.length === nn) M.set(A); else for (let i = 0; i < nn; i++) M[i] = A[i];
-      for (let i = 0; i < n; i++) M[nn + i] = b[i];
-      if (!wasm.solve(n)) return false;
-      for (let i = 0; i < n; i++) b[i] = M[nn + i];
-      return true;
-    }
-    return solveLinearJS(A, b, n);
-  }
-  function solveLinearJS(A, b, n) {
     for (let k = 0; k < n; k++) {
       let piv = k, max = Math.abs(A[k * n + k]);
       for (let i = k + 1; i < n; i++) {
@@ -193,6 +168,159 @@
       b[i] = s / A[i * n + i];
     }
     return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sparse matrix and LU. The engine stamps into it (add); the positions used are remembered
+  // per circuit, so each stamp finds its slot at once and the solve touches only nonzeros.
+  // LU: Gilbert–Peierls (left-looking, as KLU), columns in minimum-degree order, partial pivoting.
+  // ---------------------------------------------------------------------------
+  function SparseMatrix(n) {
+    this.n = n; this.slot = new Int32Array(n * n).fill(-1);
+    this.nnz = 0; this.rows = new Int32Array(64); this.cols = new Int32Array(64); this.vals = new Float64Array(64);
+    this.dirty = true;
+    const w = Math.max(n, 1);
+    this.pinv = new Int32Array(w); this.x = new Float64Array(w); this.xi = new Int32Array(w); this.stk = new Int32Array(w); this.ps = new Int32Array(w); this.mark = new Int32Array(w);
+    this.Lp = new Int32Array(w + 1); this.Up = new Int32Array(w + 1);
+    this.Li = new Int32Array(256); this.Lx = new Float64Array(256); this.Ui = new Int32Array(256); this.Ux = new Float64Array(256);
+  }
+  const growI = (a, need) => { if (a.length >= need) return a; const b = new Int32Array(Math.max(need, a.length * 2)); b.set(a); return b; };
+  const growF = (a, need) => { if (a.length >= need) return a; const b = new Float64Array(Math.max(need, a.length * 2)); b.set(a); return b; };
+  SparseMatrix.prototype.add = function (r, c, v) {
+    let s = this.slot[r * this.n + c];
+    if (s < 0) {
+      s = this.nnz++;
+      if (s >= this.rows.length) { this.rows = growI(this.rows, s + 1); this.cols = growI(this.cols, s + 1); this.vals = growF(this.vals, s + 1); }
+      this.slot[r * this.n + c] = s; this.rows[s] = r; this.cols[s] = c; this.vals[s] = 0; this.dirty = true;
+    }
+    this.vals[s] += v;
+  };
+  SparseMatrix.prototype.clear = function () { this.vals.fill(0, 0, this.nnz); };
+  // the pattern changed: columns (CSC, rows ascending) over the slots, and the column order
+  SparseMatrix.prototype.analyse = function () {
+    const n = this.n, nz = this.nnz, cp = new Int32Array(n + 1), ri = new Int32Array(nz), cs = new Int32Array(nz);
+    for (let s = 0; s < nz; s++) cp[this.cols[s] + 1]++;
+    for (let j = 0; j < n; j++) cp[j + 1] += cp[j];
+    const next = cp.slice(0, n);
+    for (let c = 0; c < n; c++) for (let r = 0; r < n; r++) { const s = this.slot[r * n + c]; if (s >= 0) { const p = next[c]++; ri[p] = r; cs[p] = s; } }
+    this.cp = cp; this.ri = ri; this.cs = cs;
+    // minimum degree on the pattern of A + Aᵀ
+    const adj = Array.from({ length: n }, () => new Set());
+    for (let s = 0; s < nz; s++) { const r = this.rows[s], c = this.cols[s]; if (r !== c) { adj[r].add(c); adj[c].add(r); } }
+    const done = new Uint8Array(n), q = new Int32Array(n);
+    for (let k = 0; k < n; k++) {
+      let best = -1, bd = Infinity;
+      for (let v = 0; v < n; v++) if (!done[v] && adj[v].size < bd) { bd = adj[v].size; best = v; }
+      done[best] = 1; q[k] = best;
+      const nb = [...adj[best]];
+      for (const a of nb) { adj[a].delete(best); for (const c of nb) if (c !== a) adj[a].add(c); }
+    }
+    this.q = q; this.dirty = false; this.layout = -1;   // the WebAssembly copy of the pattern is out of date
+  };
+  // A x = b: b is overwritten with x; false when the matrix is singular
+  SparseMatrix.prototype.solve = function (b) {
+    if (this.dirty) this.analyse();
+    return wasm ? this.solveWasm(b) : this.solveJS(b);
+  };
+  // the WebAssembly kernel (wasm/solver.ts): the same steps as solveJS. The arrays live in its
+  // memory; the pattern's go in when it changes, the values and b on every solve.
+  SparseMatrix.prototype.solveWasm = function (b) {
+    const n = this.n, nz = this.nnz;
+    for (;;) {
+      if (wasm.owner !== this || this.layout !== wasm.layoutId) this.place();
+      const L = this.lay, mem = wasm.memory.buffer, F = new Float64Array(mem), vals = this.vals;
+      for (let s = 0; s < nz; s++) F[(L.vals >> 3) + s] = vals[s];
+      for (let i = 0; i < n; i++) F[(L.b >> 3) + i] = b[i];
+      const r = wasm.solve(n, L.tab);
+      if (r === 1) { for (let i = 0; i < n; i++) b[i] = F[(L.b >> 3) + i]; return true; }
+      if (r === 0) return false;
+      if (r === -1) this.capL *= 2; else this.capU *= 2;   // L or U needs more room: lay out again
+      this.layout = -1;
+    }
+  };
+  SparseMatrix.prototype.place = function () {
+    const n = this.n, nz = this.nnz;
+    this.capL = this.capL || 4 * nz + n; this.capU = this.capU || 4 * nz + n;
+    // byte offsets, 8-aligned: the i32 arrays, then the f64 ones
+    let off = 0; const L = {}, take = (k, count, size) => { L[k] = off; off += Math.ceil(count * size / 8) * 8; };
+    take("tab", 20, 4); take("cp", n + 1, 4); take("ri", nz, 4); take("cs", nz, 4); take("q", n, 4); take("pinv", n, 4); take("xi", n, 4); take("stk", n, 4); take("ps", n, 4); take("mark", n, 4);
+    take("Lp", n + 1, 4); take("Up", n + 1, 4); take("Li", this.capL, 4); take("Ui", this.capU, 4);
+    take("vals", nz, 8); take("b", n, 8); take("x", n, 8); take("Lx", this.capL, 8); take("Ux", this.capU, 8);
+    const mem = wasm.memory; if (mem.buffer.byteLength < off) mem.grow(Math.ceil((off - mem.buffer.byteLength) / 65536));
+    const I = new Int32Array(mem.buffer);
+    ["cp", "ri", "cs", "q", "vals", "b", "pinv", "x", "xi", "stk", "ps", "mark", "Lp", "Up", "Li", "Lx", "Ui", "Ux"].forEach((k, i) => { I[(L.tab >> 2) + i] = L[k]; });
+    I[(L.tab >> 2) + 18] = this.capL; I[(L.tab >> 2) + 19] = this.capU;
+    I.set(this.cp, L.cp >> 2); I.set(this.ri, L.ri >> 2); I.set(this.cs, L.cs >> 2); I.set(this.q, L.q >> 2);
+    this.lay = L; wasm.owner = this; this.layout = wasm.layoutId = (wasm.layoutId || 0) + 1;
+  };
+  SparseMatrix.prototype.solveJS = function (b) {
+    const n = this.n, cp = this.cp, ri = this.ri, cs = this.cs, vals = this.vals, q = this.q;
+    const pinv = this.pinv, x = this.x, xi = this.xi, stk = this.stk, ps = this.ps, mark = this.mark, Lp = this.Lp, Up = this.Up;
+    let Li = this.Li, Lx = this.Lx, Ui = this.Ui, Ux = this.Ux;
+    pinv.fill(-1); mark.fill(-1);
+    let lnz = 0, unz = 0;
+    for (let k = 0; k < n; k++) {
+      Lp[k] = lnz; Up[k] = unz;
+      const col = q[k];
+      // the rows reachable from A(:, col) through the columns of L made so far, in topological order (as CSparse's cs_reach)
+      let top = n;
+      for (let p = cp[col]; p < cp[col + 1]; p++) {
+        if (mark[ri[p]] === k) continue;
+        let head = 0; stk[0] = ri[p];
+        while (head >= 0) {
+          const r = stk[head], c = pinv[r];
+          if (mark[r] !== k) { mark[r] = k; ps[head] = c < 0 ? 0 : Lp[c]; }
+          let done = true;
+          const end = c < 0 ? 0 : Lp[c + 1];
+          for (let pp = ps[head]; pp < end; pp++) { const rr = Li[pp]; if (mark[rr] === k) continue; ps[head] = pp + 1; stk[++head] = rr; done = false; break; }
+          if (done) { head--; xi[--top] = r; }
+        }
+      }
+      for (let p = top; p < n; p++) x[xi[p]] = 0;
+      for (let p = cp[col]; p < cp[col + 1]; p++) x[ri[p]] = vals[cs[p]];
+      // x = L \ x over that pattern
+      for (let p = top; p < n; p++) {
+        const r = xi[p], c = pinv[r]; if (c < 0) continue;
+        const xr = x[r]; if (xr === 0) continue;
+        for (let pp = Lp[c] + 1; pp < Lp[c + 1]; pp++) x[Li[pp]] -= Lx[pp] * xr;
+      }
+      // U(:, k) from the rows already pivotal; the pivot: the largest of the others
+      if (unz + n - top + 1 > Ui.length) { Ui = this.Ui = growI(Ui, unz + n + 1); Ux = this.Ux = growF(Ux, unz + n + 1); }
+      let ipiv = -1, amax = -1;
+      for (let p = top; p < n; p++) {
+        const r = xi[p];
+        if (pinv[r] < 0) { const a = Math.abs(x[r]); if (a > amax) { amax = a; ipiv = r; } }
+        else { Ui[unz] = pinv[r]; Ux[unz++] = x[r]; }
+      }
+      if (ipiv < 0 || amax < 1e-300) return false;
+      const piv = x[ipiv];
+      Ui[unz] = k; Ux[unz++] = piv;
+      pinv[ipiv] = k;
+      if (lnz + n - top + 1 > Li.length) { Li = this.Li = growI(Li, lnz + n + 1); Lx = this.Lx = growF(Lx, lnz + n + 1); }
+      Li[lnz] = ipiv; Lx[lnz++] = 1;
+      for (let p = top; p < n; p++) { const r = xi[p]; if (pinv[r] < 0) { Li[lnz] = r; Lx[lnz++] = x[r] / piv; } }
+    }
+    Lp[n] = lnz; Up[n] = unz;
+    // P b, then L, then U, then the column order back
+    for (let i = 0; i < n; i++) x[pinv[i]] = b[i];
+    for (let k = 0; k < n; k++) { const v = x[k]; if (v === 0) continue; for (let p = Lp[k] + 1; p < Lp[k + 1]; p++) x[pinv[Li[p]]] -= Lx[p] * v; }
+    for (let k = n - 1; k >= 0; k--) { const d = Up[k + 1] - 1; x[k] /= Ux[d]; const v = x[k]; if (v === 0) continue; for (let p = Up[k]; p < d; p++) x[Ui[p]] -= Ux[p] * v; }
+    for (let k = 0; k < n; k++) b[q[k]] = x[k];
+    return true;
+  };
+
+  // The sparse LU's numeric part runs as WebAssembly (wasm/solver.ts, built into sim-solver.wasm)
+  // once loadWasm has the module; without it (not loaded, or no WebAssembly) solveJS does the same work.
+  let wasmModule = null, wasm = null;
+  function loadWasm(bytes) {
+    try { wasmModule = new WebAssembly.Module(bytes); } catch (e) { wasmModule = null; }
+    return useWasm(true);
+  }
+  function useWasm(on) {
+    wasm = null;
+    if (on === false || !wasmModule) return false;
+    try { const ex = new WebAssembly.Instance(wasmModule, {}).exports; wasm = { solve: ex.solve, memory: ex.memory, owner: null, layoutId: 0 }; } catch (e) { wasm = null; }
+    return !!wasm;
   }
 
   function invertMatrix(M, n) {
@@ -270,16 +398,16 @@
   function newtonSolve(circ, x0, mode, opts) {
     const n = circ.nUnk;
     const x = x0.slice();
-    const A = new Float64Array(n * n);
+    const A = circ.matrix && circ.matrix.n === n ? circ.matrix : (circ.matrix = new SparseMatrix(n));   // kept with the circuit: its pattern and column order
     const b = new Float64Array(n);
     const gmin = opts.gmin;
     const maxStep = mode.dc ? 25 : 15;
     const maxIter = mode.dc ? 300 : 60;
     const srcScale = opts.srcScale === undefined ? 1 : opts.srcScale;
 
-    const addA = (i, j, v) => { if (i > 0 && j > 0) A[(i - 1) * n + (j - 1)] += v; };
+    const addA = (i, j, v) => { if (i > 0 && j > 0) A.add(i - 1, j - 1, v); };
     const addB = (i, v) => { if (i > 0) b[i - 1] += v; };
-    const addAu = (r, c, v) => { A[r * n + c] += v; };   // raw unknown indices
+    const addAu = (r, c, v) => { A.add(r, c, v); };   // raw unknown indices
     const stampG = (a, c, g) => { addA(a, a, g); addA(c, c, g); addA(a, c, -g); addA(c, a, -g); };
     // Nonlinear device: currents into each terminal I(V) linearized at V0
     // I(V) ~= I0 + J (V - V0)  ->  A += J,  b += J V0 - I0
@@ -310,7 +438,7 @@
     const P2 = !mode.dc && mode.prev2 ? mode.prev2 : null, ID0 = P2 ? 1.5 : 1, ID1 = P2 ? -2 : -1, ID2 = 0.5;
     let lastDv = null, stall = 0;
     for (let iter = 0; iter < maxIter; iter++) {
-      A.fill(0); b.fill(0);
+      A.clear(); b.fill(0);
       let limited = false;   // a junction voltage was limited: this iterate is not a solution yet
       for (let i = 1; i < circ.nNodes; i++) addA(i, i, gmin);
 
@@ -424,7 +552,7 @@
       }
 
       const sol = Array.from(b);
-      if (!solveLinear(A, sol, n)) return { ok: false, x, error: "singular matrix" };
+      if (!A.solve(sol)) return { ok: false, x, error: "singular matrix" };
 
       // Damped update on node voltages
       let maxDv = 0;
@@ -631,12 +759,14 @@
       if (!depth) xBack = null;
       return xs;
     };
+    let peak = null;   // when set, each unknown's largest magnitude over the steps run
     const runPeriod = (hh, nSteps) => {
       for (let s = 0; s < nSteps; s++) {
         t += hh;
         const nx = step(x, t, hh);
         if (!nx) return false;
         x = nx;
+        if (peak) for (let i = 0; i < x.length; i++) { const a = Math.abs(x[i]); if (a > peak[i]) peak[i] = a; }
       }
       return true;
     };
@@ -657,8 +787,88 @@
     if (freqs.length) {
       const coarseSteps = Math.max(1, Math.min(stepsPerPeriod, Math.round(period / Math.min(period / 200, 1 / (20 * fMax)))));
       const hc = period / coarseSteps;
+      // Shooting: the steady state is the state s that one period maps onto itself, Φ(s) = s, found
+      // by Newton's method (Newton–GMRES; Aprille and Trick, Telichevesky and Kundert). Φ's Jacobian
+      // is never formed: GMRES needs it only along a few directions v, each one period from s + εv,
+      // and stops once its own residual estimate is a tenth of the start. The work follows the number
+      // of slow modes (coupling, cathode and filter capacitors, transformer magnetising currents), not
+      // the circuit's size, and the answer does not hang on rounding as an extrapolation does. A step
+      // that does not lower the residual is damped (Levenberg–Marquardt); when Newton stops gaining,
+      // or the time runs short, the plain settling below carries on from the best state found.
+      if (!opts.noShooting) {
+        // the state: node voltages (the capacitors' charge) and inductor and winding currents; a
+        // voltage source's current is no state (each step makes it anew), so it is neither moved nor compared
+        const st = [];
+        for (let i = 0; i < nodeCount - 1; i++) st.push(i);
+        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); });
+        // each part of the state weighed by its size over a period (a winding's current may pass zero
+        // just as the period starts): one period run while the peaks are noted
+        peak = new Float64Array(x.length);
+        if (!runPeriod(hc, coarseSteps)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
+        periods++;
+        const pk = peak; peak = null;
+        const nU = st.length, tB = t, target = 5e-5, D = st.map(i => (i < nodeCount - 1 ? 1 + pk[i] : 1e-3 + pk[i]));
+        const base = x.slice();   // the whole solution the state goes into (voltage source currents as a first guess)
+        const timeUp = () => Date.now() - t0 > budgetMs * 0.6 || periods >= maxPeriods - 2;
+        // one period from state s: a function of s alone, so the period starts with a backward-Euler step
+        // (which leaves slow modes a bias of the order of that step's error, as the plain settling has too)
+        const phiOf = s => { x = base.slice(); st.forEach((g, i) => { x[g] = s[i]; }); xBack = null; t = tB; periods++; return runPeriod(hc, coarseSteps) ? st.map(g => x[g]) : null; };
+        const resid = (ph, s) => ph.map((v, i) => (v - s[i]) / D[i]);
+        const dot = (a, b) => { let v = 0; for (let i = 0; i < a.length; i++) v += a[i] * b[i]; return v; };
+        const norm = v => Math.sqrt(dot(v, v));
+        // the small least squares of GMRES and of the damped step: min ‖β e₁ − H y‖² + μ‖y‖²
+        const lsq = (H, beta, mu) => {
+          const k = H.length, M = new Float64Array(k * k), g = new Float64Array(k);
+          for (let a = 0; a < k; a++) { for (let b = 0; b < k; b++) { let v = 0; for (let q = 0; q <= k; q++) v += (H[a][q] || 0) * (H[b][q] || 0); M[a * k + b] = v; } g[a] = beta * H[a][0]; }
+          let dmax = 0; for (let a = 0; a < k; a++) dmax = Math.max(dmax, M[a * k + a]);
+          for (let a = 0; a < k; a++) M[a * k + a] += mu * dmax + 1e-14 * dmax;
+          return solveLinear(M, g, k) ? g : null;
+        };
+        let s = st.map(g => x[g]), ph = phiOf(s), best = null, startRes = 0, converged = false, lastStep = Infinity;
+        while (ph && !timeUp()) {
+          const r = resid(ph, s), beta = norm(r);
+          if (!best || beta < best.res) best = { s: s.slice(), res: beta };
+          // settled: the period changes little, and so did the last Newton correction (a slow mode can change
+          // little per period while far off: the distance is about the residual over (1 − λ))
+          if (periodChange(ph, s) < target && (lastStep < 1e-4 || beta < 1e-9)) { converged = true; break; }
+          startRes = startRes || beta;
+          if (startRes > target) progress(0.05 + 0.83 * Math.max(0, Math.min(1, Math.log(startRes / beta) / Math.log(startRes / target))));
+          // GMRES (Arnoldi) on (J − I) δ = −r, in the scaled units
+          const V = [r.map(v => -v / beta)], H = [];
+          let y = null;
+          for (let j = 0; j < Math.min(nU, 60) && !timeUp(); j++) {
+            const eps = 1e-4, pv = phiOf(s.map((sv, i) => sv + eps * D[i] * V[j][i]));
+            if (!pv) break;
+            const w = pv.map((v, i) => (v - ph[i]) / D[i] / eps - V[j][i]), h = [];
+            for (let pass = 0; pass < 2; pass++) for (let q = 0; q <= j; q++) { const d = dot(V[q], w); h[q] = (h[q] || 0) + d; for (let i = 0; i < nU; i++) w[i] -= d * V[q][i]; }
+            h[j + 1] = norm(w); H.push(h);
+            y = lsq(H, beta, 0);
+            if (!y) break;
+            let rho = 0; for (let q = 0; q <= H.length; q++) { let v = q === 0 ? beta : 0; for (let a = 0; a < H.length; a++) v -= (H[a][q] || 0) * y[a]; rho += v * v; }
+            if (Math.sqrt(rho) < 0.1 * beta || h[j + 1] < 1e-12) break;
+            V.push(w.map(v => v / h[j + 1]));
+          }
+          if (!y) break;
+          // the Newton step; damped while it does not lower the residual
+          let moved = false;
+          for (const mu of [0, 1e-4, 1e-3, 1e-2, 1e-1]) {
+            const yy = mu ? lsq(H, beta, mu) : y;
+            if (!yy || timeUp()) break;
+            const sT = s.slice(); for (let a = 0; a < yy.length; a++) for (let i = 0; i < nU; i++) sT[i] += D[i] * V[a][i] * yy[a];
+            const pT = phiOf(sT);
+            if (pT && norm(resid(pT, sT)) < beta) { lastStep = 0; for (let i = 0; i < nU; i++) lastStep = Math.max(lastStep, Math.abs(sT[i] - s[i]) / D[i]); s = sT; ph = pT; moved = true; break; }
+          }
+          if (!moved || norm(resid(ph, s)) > 0.8 * beta) break;   // Newton no longer gains: the plain settling takes over
+        }
+        // carry on from the steady state found (or the nearest to it): one more period, so that x
+        // is again the whole solution, at the period's end
+        const end = converged ? s : best && best.s;
+        if (end) { phiOf(end); t = tB + period; }
+        if (converged) settled = true;
+        result.shooting = { converged, periods };
+      }
       let hist = [x.slice()], lastChange = Infinity, worst = 0;
-      while (periods < maxPeriods) {
+      while (!settled && periods < maxPeriods) {
         const start = x.slice();
         if (!runPeriod(hc, coarseSteps)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
         periods++;
@@ -683,7 +893,9 @@
         lastChange = change;
         if (Date.now() - t0 > budgetMs * 0.75) break;
       }
-      // re-settle the fast (audio) dynamics at full resolution
+      // re-settle the fast (audio) dynamics at full resolution; Gear-2's step before, on the finer
+      // grid, interpolated along the last coarse step (a backward-Euler start would kick the slow modes)
+      if (xBack && Math.abs(hBack - h) > 1e-9 * h) { xBack = x.map((v, i) => v + (xBack[i] - v) * h / hBack); hBack = h; }
       for (let k = 0; k < 2; k++) {
         const start = x.slice();
         if (!runPeriod(h, stepsPerPeriod)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
@@ -826,7 +1038,7 @@
     return result;
   }
 
-  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, solveLinearJS, invertMatrix,
+  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

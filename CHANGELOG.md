@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.52.0] - 2026-10-13
+
+### Changed
+- **Simulation is several times faster: the steady state is found by shooting, and the matrix solves are sparse.** The 10-tube stereo EL84 amplifier settles in 1.6 s in the browser (13 s in 3.51.0, 36 s before it); two of them in one circuit in 4.7 s in Node (29 s).
+  - **Shooting.** The steady state is the state that one period maps onto itself; Newton's method (Newton–GMRES on the one-period map, each direction one simulated period; Levenberg–Marquardt damping) finds it in a few dozen periods where repeating periods took hundreds (10-tube amplifier: 42 periods, was 128). Each part of the state is weighed by its size over a period. The old settling (vector extrapolation) remains as the fallback. That extrapolation's result swung with rounding (the same circuit took 128 or 230 periods); shooting does not.
+  - **Sparse solver.** The engine stamps into a sparse matrix and solves with a sparse LU (Gilbert–Peierls left-looking, minimum-degree column order on the pattern seen, partial pivoting). Its numeric part is the WebAssembly kernel now (`wasm/solver.ts` → `sim-solver.wasm`), bit for bit the same as its JavaScript fallback. Work grows about linearly with the circuit, not with its cube.
+  - **Live mode** (while editing) now settles the 10-tube amplifier within its 2.5 s, which it never did.
+- Results agree with 3.51.0 to within 0.1 % (the largest difference: 0.03 V on a 340 V node); all 76 reference comparisons pass.
+- When the settling hands over to the full-resolution steps, Gear-2's previous step is interpolated along the last coarse step instead of restarting with a backward-Euler step.
+
 ## [3.51.0] - 2026-10-13
 
 ### Changed

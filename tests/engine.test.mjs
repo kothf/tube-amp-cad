@@ -455,25 +455,50 @@ test("loudspeaker (Thiele–Small): the simulated current matches the impedance 
   assert.deepEqual(L.speakerZ({ ...p, model: "res" }, 1000), [8, 0]);
 });
 
-test("linear solver: the WebAssembly solver gives the JavaScript solver's answers bit for bit", () => {
-  assert.equal(E.solver(), "wasm", "Node runs the WebAssembly solver");
+test("sparse solver: the dense solver's answers; its WebAssembly kernel gives its JavaScript's bit for bit", () => {
+  assert.equal(E.solver(), "wasm", "Node runs the WebAssembly kernel");
   let seed = 12345; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648 - 0.5;
-  for (const n of [1, 2, 3, 7, 16, 33, 54, 80, 150]) {   // 150: more than the first 128 kB of memory
+  const sys = (n, t) => {   // sparse, MNA-like: a strong diagonal (now and then none, as a voltage source's row), a few couplings, many decades
+    const A = new Float64Array(n * n), b = new Float64Array(n);
+    for (let i = 0; i < n; i++) { if ((i + t) % 7) A[i * n + i] = (1 + Math.abs(rnd())) * 10 ** Math.round(rnd() * 8); b[i] = rnd() * 100; for (let k = 0; k < 3; k++) A[i * n + ((i * 7 + k * 13 + t) % n)] += rnd() * 10 ** Math.round(rnd() * 6); }
+    return [A, b];
+  };
+  for (const n of [1, 2, 3, 7, 16, 33, 66, 150, 300]) {
     for (let t = 0; t < 3; t++) {
-      // a sparse, MNA-like matrix: a strong diagonal, a few couplings, values over many decades
-      const A = new Float64Array(n * n), b = new Float64Array(n);
-      for (let i = 0; i < n; i++) { A[i * n + i] = (1 + Math.abs(rnd())) * 10 ** Math.round(rnd() * 8); b[i] = rnd() * 100; for (let k = 0; k < 3; k++) A[i * n + ((i * 7 + k * 13 + t) % n)] += rnd() * 10 ** Math.round(rnd() * 6); }
-      const A1 = A.slice(), b1 = b.slice(), A2 = A.slice(), b2 = b.slice();
-      const ok1 = E.solveLinearJS(A1, b1, n), ok2 = E.solveLinear(A2, b2, n);
-      assert.equal(ok2, ok1);
-      assert.deepEqual(Array.from(b2), Array.from(b1), `n = ${n}: the same solution`);
+      const [A, b] = sys(n, t), xd = b.slice();
+      if (!E.solveLinear(A.slice(), xd, n)) continue;
+      const solveWith = wasm => { E.useWasm(wasm); const M = new E.SparseMatrix(n); for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) if (A[i * n + j] !== 0) M.add(i, j, A[i * n + j]); const x = b.slice(); assert.ok(M.solve(x)); return x; };
+      const xj = solveWith(false), xw = solveWith(true);
+      assert.deepEqual(Array.from(xw), Array.from(xj), `n = ${n}: WebAssembly and JavaScript bit for bit`);
+      // the residual of the sparse answer: as small as the dense one's
+      let rs = 0, rd = 0, bn = 0;
+      for (let i = 0; i < n; i++) { let a = 0, c = 0; for (let j = 0; j < n; j++) { a += A[i * n + j] * xj[j]; c += A[i * n + j] * xd[j]; } rs = Math.max(rs, Math.abs(a - b[i])); rd = Math.max(rd, Math.abs(c - b[i])); bn = Math.max(bn, Math.abs(b[i])); }
+      assert.ok(rs <= 1e-9 * bn + 10 * rd, `n = ${n}: residual ${rs.toExponential(2)} (dense ${rd.toExponential(2)})`);
     }
   }
-  // singular: both say so
-  const S = new Float64Array([1, 2, 2, 4]);
-  assert.equal(E.solveLinear(S.slice(), new Float64Array([1, 2]), 2), false);
-  // without WebAssembly the JavaScript solver takes over
-  assert.equal(E.useWasm(false), false); assert.equal(E.solver(), "js");
-  const b3 = new Float64Array([3, 4]); assert.ok(E.solveLinear(new Float64Array([2, 0, 0, 4]), b3, 2)); assert.deepEqual(Array.from(b3), [1.5, 1]);
+  // a singular matrix is reported; the pattern may grow between solves (a new position stamped)
+  const S = new E.SparseMatrix(2); S.add(0, 0, 1); S.add(0, 1, 2); S.add(1, 0, 2); S.add(1, 1, 4);
+  assert.equal(S.solve(new Float64Array([1, 2])), false);
+  const G = new E.SparseMatrix(3); G.add(0, 0, 2); G.add(1, 1, 4); G.add(2, 2, 1);
+  let x = new Float64Array([2, 4, 1]); assert.ok(G.solve(x)); assert.deepEqual(Array.from(x), [1, 1, 1]);
+  G.clear(); G.add(0, 0, 2); G.add(1, 1, 4); G.add(2, 2, 1); G.add(0, 2, 1);
+  x = new Float64Array([3, 4, 1]); assert.ok(G.solve(x)); assert.deepEqual(Array.from(x), [1, 1, 1]);
   assert.equal(E.useWasm(true), true); assert.equal(E.solver(), "wasm");
+});
+
+test("steady state by shooting: an RC far slower than the signal settles in a few periods, to the analytic answer", () => {
+  // 1 kHz, 10 V peak through 1 kΩ into 100 µF with 100 kΩ across it: τ = (1 kΩ ∥ 100 kΩ) · 100 µF ≈ 0.1 s, a hundred periods
+  const net = { nodeCount: 3, elements: [
+    { id: "g", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 1000, amp: 10, offset: 0, phase: 0 },
+    { id: "r1", kind: "R", nodes: [1, 2], r: 1000 },
+    { id: "c", kind: "C", nodes: [2, 0], c: 100e-6 },
+    { id: "r2", kind: "R", nodes: [2, 0], r: 100e3 }] };
+  const r = E.simulate(net, { budgetMs: 60000 });
+  assert.ok(r.ok && r.tran.settled && r.shooting && r.shooting.converged, JSON.stringify(r.shooting));
+  assert.ok(r.tran.periods < 30, `${r.tran.periods} periods`);
+  // linear: the capacitor's average is 0 V, its swing 10 V / |1 + jωRC| (ωRC = 628)
+  const v = r.tran.nodes[2]; let mn = Infinity, mx = -Infinity, avg = 0; for (const a of v) { mn = Math.min(mn, a); mx = Math.max(mx, a); avg += a / v.length; }
+  const pp = 2 * 10 / Math.hypot(1, 2 * Math.PI * 1000 * 1000 * 100e-6);
+  // the average carries the backward-Euler start's small bias (about 1 mV here, on a 1 V scale), as the plain settling does
+  assert.ok(Math.abs(avg) < 2e-3 && Math.abs((mx - mn) / pp - 1) < 1e-3, `average ${avg.toExponential(2)} V, swing ${(mx - mn).toFixed(6)} V (expected ${pp.toFixed(6)})`);
 });

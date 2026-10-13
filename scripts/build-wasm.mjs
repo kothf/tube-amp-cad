@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 const root = new URL("..", import.meta.url).pathname, target = join(root, "sim-solver.wasm"), check = process.argv.includes("--check");
 const dir = mkdtempSync(join(tmpdir(), "tubecad-wasm-")), out = join(dir, "solver.wasm");
 try {
-  execFileSync(join(root, "node_modules/.bin/asc"), [join(root, "wasm/solver.ts"), "-O3", "--noAssert", "--runtime", "stub", "--enable", "simd", "--initialMemory", "2", "-o", out], { stdio: "inherit" });
+  execFileSync(join(root, "node_modules/.bin/asc"), [join(root, "wasm/solver.ts"), "-O3", "--noAssert", "--runtime", "stub", "--initialMemory", "2", "-o", out], { stdio: "inherit" });
   const bytes = readFileSync(out), sha = b => createHash("sha256").update(b).digest("hex").slice(0, 16);
   if (check) {
     const cur = existsSync(target) ? readFileSync(target) : Buffer.alloc(0);
