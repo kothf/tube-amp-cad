@@ -137,6 +137,18 @@ test("ratsnest, routing, shorts and clearance", () => {
   assert.ok(hv.length >= 1 && /high voltage/.test(hv[0].msg), "but not next to B+ (300 V): the HV clearance applies");
 });
 
+test("tracks into neighbouring TO-92 pins: only their parts outside the pads keep the clearance", () => {
+  // the MPSA42's pads 1 (E) and 2 (B) are 1.27 mm apart; 1 mm tracks ending in them are 0.27 mm apart there
+  const board = B.newBoard(); B.sync(board, NETLIST);
+  Object.assign(board.parts.q1, { x: 40, y: 40, rot: 0 });
+  const clear = () => { const m = B.model(board, NETLIST), c = B.connectivity(board, m.pads); return B.drc(board, m, c, new Set()).filter(d => d.kind === "clearance"); };
+  const m = B.model(board, NETLIST), e = m.pads.find(p => p.ref === "VT1" && p.num === "1"), b = m.pads.find(p => p.ref === "VT1" && p.num === "2");
+  board.tracks.push({ layer: "F.Cu", w: 1, pts: [[e.x, e.y], [e.x, e.y - 8]] }, { layer: "F.Cu", w: 1, pts: [[b.x, b.y], [b.x, b.y + 8]] });
+  assert.deepEqual(clear().map(d => d.msg), [], "one leaves upwards, the other downwards: no clearance error");
+  board.tracks[1].pts = [[b.x, b.y], [b.x, b.y - 8]];
+  assert.ok(clear().some(d => /0\.27 mm < 0\.6 mm/.test(d.msg)), "both run upwards side by side: an error");
+});
+
 test("rotation and the bottom side move pads as the footprint turns and mirrors", () => {
   const p = { x: 10, y: 20, rot: 1, side: "F" };
   assert.deepEqual(B.place([5, 0], p), [10, 15], "90°: a pad right of the origin goes up (counter-clockwise on screen)");
@@ -453,4 +465,12 @@ test("STEP: AP214 header, one solid per body, every reference defined, colours",
   const defined = new Set([...txt.matchAll(/^#(\d+)=/gm)].map(x => x[1]));
   for (const x of txt.matchAll(/#(\d+)(?!\d|=)/g)) assert.ok(defined.has(x[1]), `#${x[1]} is defined`);
   assert.ok(!/NaN|Infinity/.test(txt), "no broken numbers");
+});
+
+test("part values: picofarad capacitors keep their value (a 100 pF capacitor read 0F)", () => {
+  assert.equal(L.fmtEng(100e-12, "F"), "100pF");
+  assert.equal(L.fmtEng(4.7e-12, "F"), "4.7pF");
+  assert.equal(L.fmtEng(4e-16, "V"), "0V", "solver round-off still reads as zero");
+  const g = B.physicalParts({ parts: [part("c9", "capacitor", "C9", { c: 220e-12 }, { 1: 1, 2: 0 })] })[0];
+  assert.equal(g.value, "220pF");
 });

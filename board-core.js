@@ -542,6 +542,38 @@
     return best;
   }
 
+  /** Two tracks ending in neighbouring pads of one footprint (a TO-92's pins are 0.22 mm apart)
+      are as close as those pads where they enter them. Only the parts of the tracks outside their
+      pads must keep the clearance; inside, the limit is the pads' own spacing. Returns { entry:
+      the pads' gap, out: the distance between the tracks' centre lines outside their pads } when
+      segments sa and sb end in different pads of one footprint, else null. */
+  function outsidePad(s, p) {   // the part of segment s outside pad item p; null when all of it is inside
+    const inside = (x, y) => segDist(p.s[0], p.s[1], p.s[2], p.s[3], x, y) <= p.r + 1e-6;
+    let [x1, y1, x2, y2] = s; const i1 = inside(x1, y1), i2 = inside(x2, y2);
+    if (i1 && i2) return null;
+    if (!i1 && !i2) return s;
+    if (i2) [x1, y1, x2, y2] = [x2, y2, x1, y1];
+    let lo = 0, hi = 1;
+    for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (inside(x1 + (x2 - x1) * m, y1 + (y2 - y1) * m)) lo = m; else hi = m; }
+    return [x1 + (x2 - x1) * hi, y1 + (y2 - y1) * hi, x2, y2];
+  }
+  function anchorGap(sa, sb, items) {
+    const ins = (q, x, y) => segDist(q.s[0], q.s[1], q.s[2], q.s[3], x, y) <= q.r + 1e-6;
+    const ends = s => items.filter(q => q.kind === "pad" && (ins(q, s[0], s[1]) || ins(q, s[2], s[3])));
+    let best = null;
+    for (const pa of ends(sa)) for (const pb of ends(sb)) {
+      if (pa === pb || pa.pad.part !== pb.pad.part) continue;
+      const ta = outsidePad(sa, pa), tb = outsidePad(sb, pb), r = { entry: gap(pa, pb), out: ta && tb ? segSeg(ta, tb) : Infinity };
+      if (!best || r.out > best.out) best = r;
+    }
+    return best;
+  }
+  /** true when two tracks closer than need are excused by anchorGap */
+  function anchoredOk(a, b, g, need, items) {
+    const ag = anchorGap(a.s, b.s, items);
+    return !!ag && g >= ag.entry - 0.02 - 1e-6 && ag.out - a.r - b.r >= need - 1e-6;
+  }
+
   /** Copper connectivity: which items touch (union-find), what each cluster's nets are, the
       ratsnest (shortest links still missing per net), unrouted count and shorts */
   function connectivity(board, pads, fills) {
@@ -776,6 +808,7 @@
         const [t, p] = a.kind === "track" ? [a, b] : [b, a], eg = entryGap(t.s, p, items);
         if (eg !== null) need = Math.min(need, eg - 0.02);
       }
+      if (g < need - 1e-6 && a.kind === "track" && b.kind === "track" && anchoredOk(a, b, g, need, items)) continue;
       if (g < need - 1e-6) {
         const [x, y] = nearest(a.s, b.s), hvx = ca === "HV" || cb === "HV";
         out.push({ kind: "clearance", x, y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${need} mm${hvx ? " (high voltage)" : ""}`, between: [label(a), label(b)] });
@@ -923,5 +956,5 @@
     const s = new Set(); Object.entries(netVolts || {}).forEach(([n, v]) => { if (Math.abs(v) > (limit || 60)) s.add(isNaN(+n) ? n : +n); }); return s;
   }
 
-  root.BoardCore = { FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

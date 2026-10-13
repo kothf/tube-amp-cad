@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.48.2] - 2026-10-13
+
+### Fixed
+- **Capacitors below 1 nF showed as "0F"**, on the schematic and on the board (a 100 pF compensation capacitor read 0F). The formatter's zero cut-off for solver round-off now applies only to other units, so picofarads (and small inductances) show their value.
+- **Board Design: tracks into neighbouring pins of a small transistor.** Two 1 mm tracks ending in adjacent TO-92 pins are 0.27 mm apart where they enter the pads, so the router refused the second one and the check reported a clearance error, even though the pads themselves are only 0.22 mm apart. Now only the parts of the tracks outside their pads must keep the clearance; inside, the limit is the pads' own spacing. Tracks that leave adjacent pins side by side are still reported.
+
 ## [3.48.1] - 2026-10-13
 
 ### Fixed

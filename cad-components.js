@@ -25,7 +25,8 @@
   }
   function fmtEng(v, unit, digits) {
     if (v === undefined || v === null || !isFinite(v)) return "—";
-    if (Math.abs(v) < 1e-9) v = 0;   // solver round-off (e.g. 4e-16 V) reads as zero
+    // solver round-off (e.g. 4e-16 V) reads as zero; capacitance and inductance go down to pico
+    if (Math.abs(v) < (unit === "F" || unit === "H" ? 1e-15 : 1e-9)) v = 0;
     const a = Math.abs(v);
     const steps = [[1e9, "G"], [1e6, "M"], [1e3, "k"], [1, ""], [1e-3, "m"], [1e-6, "µ"], [1e-9, "n"], [1e-12, "p"]];
     if (a === 0) return "0" + (unit || "");
