@@ -38,7 +38,7 @@
   const VIEW_KEY = "tubecad_board_view";
   try { const v = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}"); if (["lines", "dots", "off"].includes(v.gridStyle)) S.gridStyle = v.gridStyle; if (typeof v.axes === "boolean") S.axes = v.axes; } catch (e) { /* no storage */ }
   const keepView = () => { try { localStorage.setItem(VIEW_KEY, JSON.stringify({ gridStyle: S.gridStyle, axes: S.axes })); } catch (e) { /* no storage */ } };
-  const snap = v => Math.round(v / S.grid) * S.grid;
+  const snap = v => +(Math.round(v / S.grid) * S.grid).toFixed(4);
   // The board's origin is its bottom-left corner, X to the right and Y up, as in the Gerbers and
   // the drill file. The document keeps y down from the top edge; the user reads and types
   // showY(y), and the grid runs from the origin (snapY).

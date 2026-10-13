@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.48.1] - 2026-10-13
+
+### Fixed
+- **Board Design: TO-92 transistors no longer short their own pins.** The footprint's round 1.4 mm pads sat on the 1.27 mm pin pitch, so neighbouring pads overlapped; a track to the base also joined the emitter and the check reported a short. The pads are now 1.05 × 1.5 mm ovals (as in KiCad's TO-92_Inline), 0.22 mm apart. The pitch leaves a 0.15 mm ring across the oval, so the annular-ring rule skips these pads. A unit test now checks that no footprint has touching pads.
+- **Board Design: dragged parts land exactly on the grid** (no more positions like 41.910000000000004 mm in the inspector).
+
 ## [3.48.0] - 2026-10-13
 
 ### Fixed

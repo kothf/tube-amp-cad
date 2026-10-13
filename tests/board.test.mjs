@@ -36,7 +36,18 @@ test("every footprint option of every part and every tube resolves to pads", () 
       : type === "nmos" || type === "pmos" ? Object.keys(L.MOSFETS).filter(k => (L.MOSFETS[k].pol > 0) === (type === "nmos")).map(model => ({ model })) : type === "zener" ? Object.keys(L.ZENERS).map(model => ({ model })) : [{}];
     for (const params of variants) {
       const g = B.physicalParts({ parts: [part("x", type, "X1", params, Object.fromEntries(L.LIB[type].pins({ params: Object.assign({}, L.LIB[type].defaults, params) }).map(p => [p.id, 1])))] })[0];
-      for (const name of g.options) { const f = B.footprint(name, ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"].slice(0, +(/(?:WIRE|TERM-[\d.]+)-(\d+)$/.exec(name) || [])[1] || 0)); assert.ok(f && f.pads.length > 0, `${type} ${JSON.stringify(params)}: ${name}`); }
+      for (const name of g.options) {
+        const f = B.footprint(name, ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"].slice(0, +(/(?:WIRE|TERM-[\d.]+)-(\d+)$/.exec(name) || [])[1] || 0));
+        assert.ok(f && f.pads.length > 0, `${type} ${JSON.stringify(params)}: ${name}`);
+        // no two pads of a footprint touch (a TO-92's round 1.4 mm pads on its 1.27 mm pitch did): a round pad as a circle, others as their box
+        const box = (p, x, y) => Math.hypot(Math.max(0, Math.abs(x - p.x) - p.w / 2), Math.max(0, Math.abs(y - p.y) - p.h / 2));
+        const isRound = p => p.shape !== "rect" && p.w === p.h;
+        f.pads.forEach((a, i) => f.pads.slice(i + 1).forEach(b => {
+          const g = isRound(a) && isRound(b) ? Math.hypot(a.x - b.x, a.y - b.y) - (a.w + b.w) / 2 : isRound(a) ? box(b, a.x, a.y) - a.w / 2 : isRound(b) ? box(a, b.x, b.y) - b.w / 2
+            : Math.max(Math.abs(a.x - b.x) - (a.w + b.w) / 2, Math.abs(a.y - b.y) - (a.h + b.h) / 2);
+          assert.ok(g > 0.1, `${name}: pads ${a.num} and ${b.num} are ${g.toFixed(2)} mm apart`);
+        }));
+      }
     }
   }
 });

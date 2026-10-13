@@ -137,8 +137,10 @@
       [{ t: "circle", x: 0, y: 0, r: D / 2 }, { t: "line", x1: -D / 2 - 1.2, y1: -D / 2, x2: -D / 2 - 1.2, y2: -D / 2 + 2 }, { t: "line", x1: -D / 2 - 2.2, y1: -D / 2 + 1, x2: -D / 2 - 0.2, y2: -D / 2 + 1 }]);
   }
   // transistors: the order is the pins from pad 1 (e.g. "EBC"), as printed in the maker's drawing
+  // oval pads 1.05 × 1.5 mm (as in KiCad's TO-92_Inline): round 1.4 mm pads on the 1.27 mm pitch would overlap.
+  // pitchRing: the pitch leaves a 0.15 mm ring across the oval, so the annular-ring rule does not apply
   function to92(order) {
-    return fp(`TO-92-${order}`, `TO-92, pins ${order.split("").join("-")}`, [...order].map((n, i) => pad(i + 1, (i - 1) * 1.27, 0, 1.4, 0.75, i ? "circle" : "rect", n)),
+    return fp(`TO-92-${order}`, `TO-92, pins ${order.split("").join("-")}`, [...order].map((n, i) => ({ ...pad(i + 1, (i - 1) * 1.27, 0, 1.05, 0.75, i ? "circle" : "rect", n), h: 1.5, pitchRing: true })),
       [{ t: "line", x1: -2.4, y1: 1.6, x2: 2.4, y2: 1.6 }, { t: "circle", x: 0, y: 0, r: 2.5, from: 200, to: 340 }]);
   }
   function to18(order) {   // pins on a 2.54 mm circle, tab next to pin 1
@@ -484,7 +486,7 @@
       f.pads.forEach(p => {
         const conns = map.get(p.num) || [], nets = [...new Set(conns.map(c => netOf[c.comp + ":" + c.pin]).filter(n => n !== undefined))];
         const [x, y] = place([p.x, p.y], bp), [w, h] = placeSize(p, bp);
-        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, net: nets.length ? nets[0] : null, pins: conns, conflict: nets.length > 1 };
+        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, pitchRing: p.pitchRing, net: nets.length ? nets[0] : null, pins: conns, conflict: nets.length > 1 };
         list.push(P); pads.push(P);
       });
       padsByPart.set(g.key, list);
@@ -810,7 +812,7 @@
         if (placedOff.has(p.part)) return;
         const k = p.part + p.num, ring = (Math.min(p.w, p.h) - p.drill) / 2;
         if (on("drill") && p.drill < R.minDrill - 1e-6 && !seen.has("d" + p.part)) { seen.add("d" + p.part); out.push({ kind: "drill", x: p.x, y: p.y, msg: `${p.ref}: drill ${p.drill} mm < ${R.minDrill} mm` }); }
-        if (on("annular") && ring < R.minAnnular - 1e-6 && !seen.has("a" + k)) { seen.add("a" + k); out.push({ kind: "annular", x: p.x, y: p.y, msg: `${p.ref}-${p.num}: annular ring ${ring.toFixed(2)} mm < ${R.minAnnular} mm` }); }
+        if (on("annular") && ring < R.minAnnular - 1e-6 && !p.pitchRing && !seen.has("a" + k)) { seen.add("a" + k); out.push({ kind: "annular", x: p.x, y: p.y, msg: `${p.ref}-${p.num}: annular ring ${ring.toFixed(2)} mm < ${R.minAnnular} mm` }); }
       });
       board.vias.forEach(v => {
         const d = v.drill || R.viaDrill, pd = v.pad || R.viaPad;
