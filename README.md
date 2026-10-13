@@ -450,6 +450,12 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   stepping for the DC operating point, then a transient with Gear's
   second-order method (BDF2), which keeps resonances such as a loudspeaker's
   at their true Q, without trapezoidal ringing at a rectifier's switching.
+- **The linear solve** (a dense LU on every Newton iteration, most of a run's
+  time) runs as WebAssembly: `wasm/solver.ts`, built into `sim-solver.wasm`.
+  It takes the same steps as the JavaScript `solveLinear`, two matrix
+  elements at a time with SIMD, so the results are bit for bit the same, about
+  2.7 times sooner on the 10-tube stereo amplifier. A browser without
+  WebAssembly SIMD uses the JavaScript solver.
 - **Triodes** use [Koren's](https://www.normankoren.com/Audio/Tubemodspice_article.html)
   published equation unmodified, so their parameters are interchangeable with
   Koren-style SPICE models.
@@ -584,6 +590,7 @@ npm ci
 npx playwright install chromium
 npm test            # engine accuracy tests, browser end-to-end tests, reference circuits
 npm run package     # dist/tube-amp-cad/ and a versioned .tar.gz
+npm run build:wasm  # sim-solver.wasm from wasm/solver.ts, after changing the solver
 ```
 
 - `npm run test:engine` runs the solver and model tests (Node, no browser).

@@ -4,7 +4,12 @@
    Message out: { seq, result }, and { seq, progress } (0…1) along the way. */
 importScripts("spice-model.js" + self.location.search, "sim-engine.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
 
-self.onmessage = (e) => {
+// the linear solver as WebAssembly (wasm/solver.ts); until it is in, or if it cannot load, the engine solves in JavaScript
+const solverReady = fetch("sim-solver.wasm" + self.location.search).then(r => (r.ok ? r.arrayBuffer() : null))
+  .then(b => (b ? TubeSimEngine.loadWasm(new Uint8Array(b)) : false)).catch(() => false);
+
+self.onmessage = async (e) => {
+  await solverReady;
   const { seq, netlist, options, kind } = e.data;
   let result;
   try {

@@ -26,6 +26,10 @@ jobs:
 
       - run: npm ci
 
+      # the committed WebAssembly solver must be the one wasm/solver.ts builds
+      - name: Solver built from its source
+        run: npm run build:wasm -- --check
+
       # Playwright's headless Chromium, kept between runs (keyed by the locked
       # Playwright version). The runner image already has Chrome's system
       # libraries, so no apt step; full Google Chrome would run the tests 2x slower.

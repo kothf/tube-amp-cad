@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.51.0] - 2026-10-13
+
+### Changed
+- **The simulator's linear solver runs as WebAssembly: about 2.7 times faster on a big circuit.** The dense LU solve on every Newton iteration took about three quarters of a run's time. It is now `wasm/solver.ts` (AssemblyScript), built into `sim-solver.wasm` by `npm run build:wasm`, which the simulation worker loads. Same steps in the same order, row updates two elements at a time with SIMD, so results are bit for bit the same as before. The 10-tube stereo EL84 amplifier settles in 13 s instead of 36 s. Where WebAssembly SIMD is missing, or the file does not load, the JavaScript solver does the work as before. CI checks that the committed `.wasm` is the one its source builds.
+
 ## [3.50.0] - 2026-10-13
 
 ### Added

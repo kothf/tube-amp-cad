@@ -1,6 +1,6 @@
 {
   "name": "tube-amp-cad",
-  "version": "3.50.0",
+  "version": "3.51.0",
   "description": "Browser schematic editor and circuit simulator for vacuum-tube amplifiers, with a curve tracer, oscilloscope and spectrum analyzer.",
   "private": true,
   "license": "MIT",
@@ -31,9 +31,11 @@
     "package": "node scripts/package.mjs",
     "release-notes": "node scripts/release-notes.mjs",
     "fit-tubes": "node scripts/fit-tubes.mjs",
-    "serve": "python3 -m http.server 8080"
+    "serve": "python3 -m http.server 8080",
+    "build:wasm": "node scripts/build-wasm.mjs"
   },
   "devDependencies": {
+    "assemblyscript": "^0.28.20",
     "playwright": "1.63.0"
   }
 }

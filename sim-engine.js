@@ -137,7 +137,36 @@
   // ---------------------------------------------------------------------------
   // Dense linear solve with partial pivoting (in place)
   // ---------------------------------------------------------------------------
+  // The linear solve takes most of a run's time (a dense LU per Newton iteration). It runs as
+  // WebAssembly (wasm/solver.ts, built into sim-solver.wasm) once loadWasm has the module: the same
+  // steps in the same order, row updates two at a time with SIMD, so the results are bit for bit
+  // the same. Without it (not loaded, or no WebAssembly SIMD) the JavaScript below does the work.
+  let wasmModule = null, wasm = null;
+  function loadWasm(bytes) {
+    try { wasmModule = new WebAssembly.Module(bytes); } catch (e) { wasmModule = null; }
+    return useWasm(true);
+  }
+  function useWasm(on) {
+    wasm = null;
+    if (on === false || !wasmModule) return false;
+    try { const ex = new WebAssembly.Instance(wasmModule, {}).exports; wasm = { solve: ex.solve, memory: ex.memory, view: null, n: -1 }; } catch (e) { wasm = null; }
+    return !!wasm;
+  }
   function solveLinear(A, b, n) {
+    if (wasm) {
+      const nn = n * n, need = (nn + n) * 8, mem = wasm.memory;
+      if (mem.buffer.byteLength < need) mem.grow(Math.ceil((need - mem.buffer.byteLength) / 65536));
+      if (wasm.n !== n || wasm.view.buffer !== mem.buffer) { wasm.view = new Float64Array(mem.buffer, 0, nn + n); wasm.n = n; }
+      const M = wasm.view;
+      if (A.length === nn) M.set(A); else for (let i = 0; i < nn; i++) M[i] = A[i];
+      for (let i = 0; i < n; i++) M[nn + i] = b[i];
+      if (!wasm.solve(n)) return false;
+      for (let i = 0; i < n; i++) b[i] = M[nn + i];
+      return true;
+    }
+    return solveLinearJS(A, b, n);
+  }
+  function solveLinearJS(A, b, n) {
     for (let k = 0; k < n; k++) {
       let piv = k, max = Math.abs(A[k * n + k]);
       for (let i = k + 1; i < n; i++) {
@@ -719,7 +748,7 @@
     }
     if (settled) progress(1);
     result.ok = true;
-    result.elapsedMs = Date.now() - t0;
+    result.elapsedMs = Date.now() - t0; result.solver = wasm ? "wasm" : "js";
     return result;
   }
 
@@ -797,6 +826,7 @@
     return result;
   }
 
-  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix };
+  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, solveLinearJS, invertMatrix,
+    loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

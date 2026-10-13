@@ -14,6 +14,7 @@ import { datasheetFor } from "./datasheets.mjs";
 // The engine and tube database are browser scripts that attach to globalThis
 for (const f of ["tube-db.js", "sim-engine.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
 const E = globalThis.TubeSimEngine;
+E.loadWasm(readFileSync(new URL("../sim-solver.wasm", import.meta.url)));   // the linear solver as WebAssembly, as the worker loads it
 const tube = name => globalThis.TUBE_DATABASE.find(t => t.commonName === name);
 
 const pp = a => Math.max(...a) - Math.min(...a);
@@ -452,4 +453,27 @@ test("loudspeaker (Thiele–Small): the simulated current matches the impedance 
   const els = []; L.LIB.speaker.build({ id: "S", params: { ...p, model: "res" } }, pid => (pid === "+" ? 1 : 0), () => 99, els);
   assert.deepEqual(els.map(e => [e.kind, e.r]), [["R", 8]]);
   assert.deepEqual(L.speakerZ({ ...p, model: "res" }, 1000), [8, 0]);
+});
+
+test("linear solver: the WebAssembly solver gives the JavaScript solver's answers bit for bit", () => {
+  assert.equal(E.solver(), "wasm", "Node runs the WebAssembly solver");
+  let seed = 12345; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648 - 0.5;
+  for (const n of [1, 2, 3, 7, 16, 33, 54, 80, 150]) {   // 150: more than the first 128 kB of memory
+    for (let t = 0; t < 3; t++) {
+      // a sparse, MNA-like matrix: a strong diagonal, a few couplings, values over many decades
+      const A = new Float64Array(n * n), b = new Float64Array(n);
+      for (let i = 0; i < n; i++) { A[i * n + i] = (1 + Math.abs(rnd())) * 10 ** Math.round(rnd() * 8); b[i] = rnd() * 100; for (let k = 0; k < 3; k++) A[i * n + ((i * 7 + k * 13 + t) % n)] += rnd() * 10 ** Math.round(rnd() * 6); }
+      const A1 = A.slice(), b1 = b.slice(), A2 = A.slice(), b2 = b.slice();
+      const ok1 = E.solveLinearJS(A1, b1, n), ok2 = E.solveLinear(A2, b2, n);
+      assert.equal(ok2, ok1);
+      assert.deepEqual(Array.from(b2), Array.from(b1), `n = ${n}: the same solution`);
+    }
+  }
+  // singular: both say so
+  const S = new Float64Array([1, 2, 2, 4]);
+  assert.equal(E.solveLinear(S.slice(), new Float64Array([1, 2]), 2), false);
+  // without WebAssembly the JavaScript solver takes over
+  assert.equal(E.useWasm(false), false); assert.equal(E.solver(), "js");
+  const b3 = new Float64Array([3, 4]); assert.ok(E.solveLinear(new Float64Array([2, 0, 0, 4]), b3, 2)); assert.deepEqual(Array.from(b3), [1.5, 1]);
+  assert.equal(E.useWasm(true), true); assert.equal(E.solver(), "wasm");
 });
