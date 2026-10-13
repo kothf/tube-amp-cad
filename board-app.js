@@ -39,6 +39,11 @@
   try { const v = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}"); if (["lines", "dots", "off"].includes(v.gridStyle)) S.gridStyle = v.gridStyle; if (typeof v.axes === "boolean") S.axes = v.axes; } catch (e) { /* no storage */ }
   const keepView = () => { try { localStorage.setItem(VIEW_KEY, JSON.stringify({ gridStyle: S.gridStyle, axes: S.axes })); } catch (e) { /* no storage */ } };
   const snap = v => Math.round(v / S.grid) * S.grid;
+  // The board's origin is its bottom-left corner, X to the right and Y up, as in the Gerbers and
+  // the drill file. The document keeps y down from the top edge; the user reads and types
+  // showY(y), and the grid runs from the origin (snapY).
+  const showY = y => +(S.board.outline.h - y).toFixed(4);
+  const snapY = v => +(S.board.outline.h - snap(S.board.outline.h - v)).toFixed(4);
   const toWorld = (sx, sy) => [(sx - S.view.ox) / S.view.scale, (sy - S.view.oy) / S.view.scale];
   const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const kv = (k, v, cls) => `<div class="kv${cls ? " " + cls : ""}"><span>${k}</span><b>${v}</b></div>`;
@@ -149,10 +154,22 @@
     if (S.history.length > 200) S.history.shift();
     S.hIndex = S.history.length - 1;
   }
-  function refresh() { analyse(); checkSync(); save(); render(); renderPanels(); if (viewer && !$("view3d").hidden) { clearTimeout(v3Timer); v3Timer = setTimeout(() => build3D(false), 150); } }
+  function refresh() { analyse(); checkSync(); save(); render(); renderPanels(); sheetUi(); if (viewer && !$("view3d").hidden) { clearTimeout(v3Timer); v3Timer = setTimeout(() => build3D(false), 150); } }
   function commit(text) { pushHistory(); refresh(); if (text) msg(text); }
-  function undo() { if (S.hIndex > 0) { S.hIndex--; S.board = JSON.parse(S.history[S.hIndex]); S.sel = null; refresh(); } }
-  function redo() { if (S.hIndex < S.history.length - 1) { S.hIndex++; S.board = JSON.parse(S.history[S.hIndex]); S.sel = null; refresh(); } }
+  function undo() { if (S.hIndex > 0) { S.hIndex--; restore(); } }
+  function redo() { if (S.hIndex < S.history.length - 1) { S.hIndex++; restore(); } }
+  // a board of another height: the screen keeps the origin (the bottom-left corner) still
+  function restore() { const h0 = S.board.outline.h; S.board = JSON.parse(S.history[S.hIndex]); S.view.oy += (h0 - S.board.outline.h) * S.view.scale; S.sel = null; S.measure = null; refresh(); }
+  // A new board height keeps the origin where it is: everything on the board (and a locked
+  // sheet) moves down by the change in the document, so only the top edge moves.
+  function setHeight(h) {
+    const b = S.board, dh = +(h - b.outline.h).toFixed(4); if (!dh) return;
+    const mv = o => { if (Number.isFinite(o.y)) o.y = +(o.y + dh).toFixed(4); }, mp = p => { p[1] = +(p[1] + dh).toFixed(4); };
+    Object.values(b.parts).forEach(mv); b.vias.forEach(mv); b.holes.forEach(mv); b.texts.forEach(mv);
+    b.tracks.forEach(t => t.pts.forEach(mp)); b.zones.forEach(z => z.pts && z.pts.forEach(mp)); b.keepouts.forEach(k => k.pts.forEach(mp));
+    if (b.sheet && b.sheet.locked && Number.isFinite(b.sheet.y)) b.sheet.y = +(b.sheet.y + dh).toFixed(4);
+    b.outline.h = h; S.view.oy -= dh * S.view.scale; S.measure = null;
+  }
 
   // ---------------------------------------------------------------------------
   // Hit testing
@@ -199,8 +216,8 @@
   const hitHole = (x, y) => (S.show.Holes ? S.board.holes.findIndex(h => Math.hypot(h.x - x, h.y - y) <= h.d / 2 + 0.6) : -1);
   function textBox(t) { const w = Math.max(t.size, B.strokeText(t.text, 0, 0, t.size).width), h = t.size; return (t.rot & 1) ? { x1: t.x - h / 2, y1: t.y - w / 2, x2: t.x + h / 2, y2: t.y + w / 2 } : { x1: t.x - w / 2, y1: t.y - h / 2, x2: t.x + w / 2, y2: t.y + h / 2 }; }
   const hitText = (x, y) => S.board.texts.findIndex(t => { if (!S.show[t.layer]) return false; const b = textBox(t); return x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2; });
-  // the board's resize handle: its bottom-right corner
-  const onHandle = (x, y) => { const o = S.board.outline, t = 6 / S.view.scale; return S.show["Edge.Cuts"] && Math.abs(x - o.w) <= t && Math.abs(y - o.h) <= t; };
+  // the board's resize handle: its top-right corner (the origin, bottom left, stays put)
+  const onHandle = (x, y) => { const o = S.board.outline, t = 6 / S.view.scale; return S.show["Edge.Cuts"] && Math.abs(x - o.w) <= t && Math.abs(y) <= t; };
   function netAt(x, y) {
     const p = hitPad(x, y); if (p) return { net: p.net, pad: p };
     const ti = hitTrack(x, y); if (ti >= 0 && S.conn) { const it = S.conn.items.find(it => it.kind === "track" && it.ti === ti); if (it && it.net !== null && it.net !== "short") return { net: it.net, track: ti }; }
@@ -233,11 +250,11 @@
     }
     return null;
   }
-  function routeTarget() { const [x, y] = S.mouse, p = hitPad(x, y); return p ? [p.x, p.y] : [snap(x), snap(y)]; }
+  function routeTarget() { const [x, y] = S.mouse, p = hitPad(x, y); return p ? [p.x, p.y] : [snap(x), snapY(y)]; }
   function startRoute(x, y) {
     const at = netAt(x, y);
     if (!at) { msg("Start a track on a pad (or on a routed track)"); return; }
-    const start = at.pad ? [at.pad.x, at.pad.y] : [snap(x), snap(y)];
+    const start = at.pad ? [at.pad.x, at.pad.y] : [snap(x), snapY(y)];
     // the class width, or wider when the net's DC current asks for it (IPC-2221)
     const I = (S.amps || {})[at.net], wI = Math.ceil(B.currentWidth(I, S.board.rules, S.board.stackup) * 20) / 20;
     S.route = { net: at.net, layer: S.layer, w: Math.max(trackWidth(at.net), wI), pts: [start], segs: [] };
@@ -276,7 +293,7 @@
   // ---------------------------------------------------------------------------
   // Tools: select, route, via, text, mounting hole, measure
   // ---------------------------------------------------------------------------
-  const TOOL_HELP = { select: "Select: drag parts, vias, texts and holes; drag the board's corner handle to resize it", route: "Route: click a pad to start a track",
+  const TOOL_HELP = { select: "Select: drag parts, vias, texts and holes; drag the board's top-right corner handle to resize it (the origin, bottom left, stays put)", route: "Route: click a pad to start a track",
     via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Measure: click two points",
     pour: "Copper pour: click the corners on the active layer, double-click (or click the first corner) to close; Backspace: take back a corner",
     keepout: "Keep-out area: click the corners, double-click to close; no tracks, vias or pour may enter it (set in the inspector)" };
@@ -297,7 +314,7 @@
   // the grid. Shift (or Alt): the grid only. Returns { p: [x, y], what, shape: centre | corner | on | grid }
   const SNAP_PX = 10;
   function snapPoint(x, y, gridOnly) {
-    const grid = { p: [snap(x), snap(y)], what: "grid", shape: "grid" };
+    const grid = { p: [snap(x), snapY(y)], what: "grid", shape: "grid" };
     if (gridOnly) return grid;
     const tol = SNAP_PX / S.view.scale, o = S.board.outline, copper = S.show["F.Cu"] || S.show["B.Cu"];
     let best = null, bd = tol;
@@ -329,7 +346,7 @@
     return best || grid;
   }
   function placeAt(x, y) {
-    const sx = snap(x), sy = snap(y), R = S.board.rules;
+    const sx = snap(x), sy = snapY(y), R = S.board.rules;
     if (S.tool === "via") {
       // a via dropped in a pour takes its net (a stitching via)
       if (S.board.keepouts.some(k => k.vias !== false && B.pip(sx, sy, k.pts))) { msg("Not here: a keep-out area forbids vias"); return; }
@@ -399,7 +416,7 @@
     if (e.button === 1 || e.button === 2 || S.space) { S.drag = { kind: "pan", sx, sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
     if (S.tool === "route") { if (S.route) routeClick(e); else startRoute(x, y); return; }
     if (S.tool === "pour" || S.tool === "keepout") {
-      const pt = [snap(x), snap(y)];
+      const pt = [snap(x), snapY(y)];
       if (!S.poly) S.poly = [pt];
       else if (S.poly.length >= 3 && Math.hypot(pt[0] - S.poly[0][0], pt[1] - S.poly[0][1]) <= 6 / S.view.scale + 1e-6) closePoly();
       else S.poly.push(pt);
@@ -407,7 +424,7 @@
     }
     if (S.tool === "measure") { const sp = snapPoint(x, y, e.shiftKey || e.altKey); S.measure = !S.measure || S.measure.b ? { a: sp.p, sa: sp, b: null } : { ...S.measure, b: sp.p, sb: sp }; render(); return; }
     if (S.tool !== "select") { placeAt(x, y); return; }
-    if (onHandle(x, y)) { S.drag = { kind: "outline", w0: S.board.outline.w, h0: S.board.outline.h, mx: x, my: y, moved: false }; return; }
+    if (onHandle(x, y)) { S.drag = { kind: "outline", w0: S.board.outline.w, h0: S.board.outline.h, mx: x, sy, moved: false }; return; }
     let zc;
     if ((zc = hitAreaCorner(x, y)) >= 0) {
       const list = AREAS[S.sel.kind], a = S.board[list][S.sel.i];
@@ -450,7 +467,7 @@
     const d = S.drag;
     if (d && d.kind === "pan") { S.view.ox = d.ox + sx - d.sx; S.view.oy = d.oy + sy - d.sy; render(); return; }
     if (d && d.kind === "part") {
-      const bp = S.board.parts[d.key], nx = snap(d.x0 + x - d.mx), ny = snap(d.y0 + y - d.my);
+      const bp = S.board.parts[d.key], nx = snap(d.x0 + x - d.mx), ny = snapY(d.y0 + y - d.my);
       if (nx !== bp.x || ny !== bp.y) { bp.x = nx; bp.y = ny; d.moved = true; analyse(true); render(); }
     } else if (d && d.kind === "group") {
       const dx = snap(x - d.mx), dy = snap(y - d.my);
@@ -459,7 +476,7 @@
       const t = S.board.tracks[d.i], np = dragSeg(d.pts0, d.k, x - d.mx, y - d.my);
       if (JSON.stringify(np) !== JSON.stringify(t.pts)) { t.pts = np; d.moved = true; analyse(true); render(); }
     } else if (d && d.kind === "corner") {
-      const p = S.board[d.list][d.i].pts[d.k]; p[0] = snap(d.x0 + x - d.mx); p[1] = snap(d.y0 + y - d.my); d.moved = true; render();
+      const p = S.board[d.list][d.i].pts[d.k]; p[0] = snap(d.x0 + x - d.mx); p[1] = snapY(d.y0 + y - d.my); d.moved = true; render();
     } else if (d && d.kind === "area") {
       const dx = snap(x - d.mx), dy = snap(y - d.my); S.board[d.list][d.i].pts = d.pts0.map(p => [p[0] + dx, p[1] + dy]); d.moved = !!(dx || dy); render();
     } else if (d && d.kind === "box") {
@@ -467,16 +484,16 @@
     } else if (d && d.kind === "locked") {
       if (!d.noted) { d.noted = true; lockedNote(); }
     } else if (d && LISTS[d.kind]) {
-      const o = S.board[LISTS[d.kind]][d.i]; o.x = snap(d.x0 + x - d.mx); o.y = snap(d.y0 + y - d.my); d.moved = true; analyse(true); render();
+      const o = S.board[LISTS[d.kind]][d.i]; o.x = snap(d.x0 + x - d.mx); o.y = snapY(d.y0 + y - d.my); d.moved = true; analyse(true); render();
     } else if (d && d.kind === "outline") {
-      const o = S.board.outline; o.w = Math.max(10, snap(d.w0 + x - d.mx)); o.h = Math.max(10, snap(d.h0 + y - d.my)); d.moved = true; analyse(true); render();
+      const o = S.board.outline; o.w = Math.max(10, snap(d.w0 + x - d.mx)); setHeight(Math.max(10, snap(d.h0 + (d.sy - sy) / S.view.scale))); d.moved = true; analyse(true); render();
     }
     const p = hitPad(x, y);
     S.hover = p ? p.net : null;
     S.snapHint = S.tool === "measure" ? snapPoint(x, y, e.shiftKey || e.altKey) : null;
-    canvas.style.cursor = S.tool === "select" && onHandle(x, y) ? "nwse-resize" : S.tool === "select" ? "" : "crosshair";
+    canvas.style.cursor = S.tool === "select" && onHandle(x, y) ? "nesw-resize" : S.tool === "select" ? "" : "crosshair";
     const zone = sheetZone(x, y);
-    $("st-pos").textContent = `x ${x.toFixed(2)}  y ${y.toFixed(2)} mm` + (zone ? ` · ${zone}` : "") + (p ? ` · ${p.ref}-${p.num}${p.name !== p.num ? " (" + p.name + ")" : ""} · ${p.netName || "no net"} (${classOf(p.net)})` : "");
+    $("st-pos").textContent = `x ${x.toFixed(2)}  y ${showY(y).toFixed(2)} mm` + (zone ? ` · ${zone}` : "") + (p ? ` · ${p.ref}-${p.num}${p.name !== p.num ? " (" + p.name + ")" : ""} · ${p.netName || "no net"} (${classOf(p.net)})` : "");
     if (S.route) S.routeBad = routeCheck();
     if (S.route || p || S.measure || S.tool !== "select") render();
   }
@@ -615,7 +632,7 @@
     const pts = [];
     it.forEach(([k, id]) => { const o = objOf(k, id); if (o.pts) pts.push(...o.pts); else if (o.x !== undefined) pts.push([o.x, o.y]); });
     if (!pts.length) return;
-    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), cx = snap((Math.min(...xs) + Math.max(...xs)) / 2), cy = snap((Math.min(...ys) + Math.max(...ys)) / 2);
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), cx = snap((Math.min(...xs) + Math.max(...xs)) / 2), cy = snapY((Math.min(...ys) + Math.max(...ys)) / 2);
     const T = ([x, y]) => [+(cx + (y - cy)).toFixed(4), +(cy - (x - cx)).toFixed(4)];
     it.forEach(([k, id]) => {
       const o = objOf(k, id);
@@ -683,8 +700,9 @@
   // ---------------------------------------------------------------------------
   // Drawing sheet: the board on an ISO 5457 sheet with the reference grid and the ISO 7200
   // title block, as the Circuit CAD draws its frames (CadLib.DRAW.frame, 4 units per mm).
-  // The board stays at the origin; the sheet is laid round it, the board centred above the
-  // title block. Size "auto": the smallest landscape-or-chosen sheet the board fits on.
+  // The sheet is laid round the board, the board centred above the title block, and follows it
+  // when it grows. Size "auto": the smallest sheet of the chosen orientation the board fits on.
+  // Locked, the sheet keeps its size and its place (x, y: its top-left corner on the board).
   // ---------------------------------------------------------------------------
   const SHEET_ORDER = ["A4", "A3", "A2", "A1", "A0"];
   function sheetPlace() {
@@ -696,12 +714,36 @@
     const room = (g, tb) => ({ x1: g.fx1 / MM + 5, x2: g.fx2 / MM - 5, y1: g.fy1 / MM + 5, y2: (tb ? g.tb.y1 / MM : g.fy2 / MM - 5) });
     const fits = (g, tb) => { const r = room(g, tb); return o.w + 10 <= r.x2 - r.x1 && o.h + 10 <= r.y2 - r.y1; };
     const size = L.SHEETS[sh.size] ? sh.size : SHEET_ORDER.find(k => fits(geom(k), true)) || SHEET_ORDER.find(k => fits(geom(k), false)) || "A0";
-    const g = geom(size), r = room(g, fits(g, true));
-    const x = Math.round((r.x1 + r.x2) / 2 - o.w / 2), y = Math.round((r.y1 + r.y2) / 2 - o.h / 2);
+    const g = geom(size), r = room(g, fits(g, true)), locked = !!sh.locked && Number.isFinite(sh.x) && Number.isFinite(sh.y);
+    const x = locked ? -sh.x : Math.round((r.x1 + r.x2) / 2 - o.w / 2), y = locked ? -sh.y : Math.round((r.y1 + r.y2) / 2 - o.h / 2);
     const f = (S.netlist && S.netlist.frame) || {};
     const params = { ...L.LIB.frame.defaults, ...f, title: f.title || (S.netlist && S.netlist.title) || "", docno: f.docno || (S.netlist && S.netlist.docno) || "",
       size, orient, doctype: "PCB layout", sheet: "1/1" };
-    return { size, orient, g, x: -x, y: -y, w: g.W / MM, h: g.H / MM, params, MM };
+    return { size, orient, g, x: -x, y: -y, w: g.W / MM, h: g.H / MM, params, MM, locked };
+  }
+  // a new format (or orientation) for the sheet; a locked sheet is laid round the board afresh
+  // and stays locked there
+  function setSheet(patch, text) {
+    const sh = { ...S.board.sheet, ...patch };
+    S.board.sheet = { size: sh.size, orient: sh.orient };
+    const p = sh.locked && sheetPlace();
+    if (p) S.board.sheet = { ...S.board.sheet, size: p.size, locked: true, x: p.x, y: p.y };
+    commit(text || (sh.size === "none" ? "No drawing sheet" : `Drawing sheet ${sheetName()}`));
+  }
+  function sheetName() { const p = sheetPlace(); return p ? `${p.size} ${p.orient}` : "none"; }
+  // Lock: the sheet stays where it is (and keeps its size) whatever happens to the board
+  function lockSheet(on) {
+    const sh = S.board.sheet || {};
+    if (on && sh.size === "none") { msg("There is no sheet to lock: choose a format first"); sheetUi(); return; }
+    if (on) { const p = sheetPlace(); S.board.sheet = { ...sh, size: p.size, locked: true, x: p.x, y: p.y }; commit(`Drawing sheet ${p.size} locked in place (unlock: it follows the board again)`); }
+    else { S.board.sheet = { size: sh.size, orient: sh.orient }; commit("Drawing sheet unlocked: it follows the board"); }
+  }
+  function sheetUi() {
+    const sh = S.board.sheet || {}, el = $("sheet-pick");
+    if (!el) return;
+    el.value = sh.size === "none" ? "none" : `${sh.size || "auto"} ${sh.orient === "portrait" ? "portrait" : "landscape"}`;
+    $("btn-sheet-lock").classList.toggle("active", !!sh.locked); $("btn-sheet-lock").disabled = sh.size === "none";
+    $("btn-sheet-lock").textContent = sh.locked ? "Sheet locked" : "Lock sheet";
   }
   // the reference-grid zone of a board point, e.g. "B3" (as the Circuit CAD shows it)
   function sheetZone(x, y) {
@@ -850,7 +892,7 @@
       ctx.lineWidth = px; ctx.setLineDash(cross ? [5 * px, 4 * px] : []); ctx.fillRect(d.x0, d.y0, d.x1 - d.x0, d.y1 - d.y0); ctx.strokeRect(d.x0, d.y0, d.x1 - d.x0, d.y1 - d.y0); ctx.setLineDash([]);
     }
     if (S.poly) {
-      const pts = S.poly.concat([[snap(S.mouse[0]), snap(S.mouse[1])]]);
+      const pts = S.poly.concat([[snap(S.mouse[0]), snapY(S.mouse[1])]]);
       ctx.strokeStyle = S.tool === "keepout" ? COLORS.keepouts : COLORS[S.layer]; ctx.lineWidth = Math.max(0.1, 1.5 * px); ctx.setLineDash([5 * px, 4 * px]);
       ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); if (pts.length > 2) ctx.lineTo(pts[0][0], pts[0][1]); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = COLORS[S.layer]; S.poly.forEach(p => ctx.fillRect(p[0] - 2.5 * px, p[1] - 2.5 * px, 5 * px, 5 * px));
@@ -872,7 +914,7 @@
     }
     // placement ghost for the via / hole / text tools
     if (["via", "hole", "text"].includes(S.tool) && !S.drag) {
-      const x = snap(S.mouse[0]), y = snap(S.mouse[1]), R = S.board.rules;
+      const x = snap(S.mouse[0]), y = snapY(S.mouse[1]), R = S.board.rules;
       ctx.globalAlpha = 0.5; ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = Math.max(0.1, px);
       ctx.beginPath(); ctx.arc(x, y, S.tool === "via" ? R.viaPad / 2 : S.tool === "hole" ? 1.6 : 0.6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
     }
@@ -887,11 +929,11 @@
       ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
       if (m.sa) snapMark(m.sa, px, true);
       if (m.b && sb) snapMark(sb, px, true);
-      const ang = d ? Math.atan2(-dy, dx) * 180 / Math.PI : 0, txt = `${d.toFixed(2)} mm  (Δx ${dx.toFixed(2)}, Δy ${dy.toFixed(2)}, ${ang.toFixed(1)}°)`;
+      const ang = d ? Math.atan2(-dy, dx) * 180 / Math.PI : 0, txt = `${d.toFixed(2)} mm  (Δx ${dx.toFixed(2)}, Δy ${(-dy || 0).toFixed(2)}, ${ang.toFixed(1)}°)`;
       ctx.font = `${12 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
       const tw = ctx.measureText(txt).width; ctx.fillStyle = "rgba(7,11,16,0.85)"; ctx.fillRect(b[0] + 6 * px, b[1] - 18 * px, tw + 8 * px, 16 * px);
       ctx.fillStyle = "#00e5ff"; ctx.fillText(txt, b[0] + 10 * px, b[1] - 4 * px);
-      S.measured = { d, dx, dy, from: m.sa ? m.sa.what : "grid", to: sb ? sb.what : "grid" };
+      S.measured = { d, dx, dy: -dy || 0, from: m.sa ? m.sa.what : "grid", to: sb ? sb.what : "grid" };
       const ends = [S.measured.from, S.measured.to].some(w => w !== "grid") ? ` · ${S.measured.from} → ${S.measured.to}` : "";
       $("st-msg").textContent = "Measure: " + txt + ends;
     }
@@ -903,7 +945,7 @@
       ctx.beginPath(); ctx.moveTo(d.x - r * 0.6, d.y - r * 0.6); ctx.lineTo(d.x + r * 0.6, d.y + r * 0.6); ctx.moveTo(d.x + r * 0.6, d.y - r * 0.6); ctx.lineTo(d.x - r * 0.6, d.y + r * 0.6); ctx.stroke();
     });
     // the board's resize handle (select tool)
-    if (S.tool === "select" && S.show["Edge.Cuts"]) { const t = 5 * px; ctx.fillStyle = COLORS["Edge.Cuts"]; ctx.fillRect(o.w - t, o.h - t, 2 * t, 2 * t); }
+    if (S.tool === "select" && S.show["Edge.Cuts"]) { const t = 5 * px; ctx.fillStyle = COLORS["Edge.Cuts"]; ctx.fillRect(o.w - t, -t, 2 * t, 2 * t); }
     if (S.axes) axisMarks(W, H);
     const c = S.conn, errs = errors();
     $("st-rats").textContent = c ? (c.unrouted ? `${c.unrouted} connection${c.unrouted > 1 ? "s" : ""} to route` : "All connections routed") : "";
@@ -926,36 +968,38 @@
     ctx.fillStyle = "#ffe680"; ctx.fillText(sp.what, x + 10 * px, y + 8 * px);
   }
   // the screen grid (in screen pixels): lines with every tenth stronger, or dots; coarser when zoomed out
+  // It runs from the origin, the board's bottom-left corner (screen y Oy), rows counted upwards.
   function drawGrid(W, H) {
     if (S.gridStyle === "off") return;
-    const { scale, ox, oy } = S.view, lines = S.gridStyle === "lines", n = Math.max(1, Math.ceil((lines ? 8 : 6) / (S.grid * scale))), g = S.grid * n;
-    const [gx1, gy1] = toWorld(0, 0), [gx2, gy2] = toWorld(W, H);
+    const { scale, ox } = S.view, Oy = originY(), lines = S.gridStyle === "lines", n = Math.max(1, Math.ceil((lines ? 8 : 6) / (S.grid * scale))), g = S.grid * n;
+    const i1 = Math.floor(-ox / scale / g), i2 = Math.ceil((W - ox) / scale / g), j1 = Math.floor((Oy - H) / scale / g), j2 = Math.ceil(Oy / scale / g);
     if (!lines) {
       ctx.fillStyle = "#16202c";
-      for (let x = Math.floor(gx1 / g) * g; x <= gx2; x += g) for (let y = Math.floor(gy1 / g) * g; y <= gy2; y += g) ctx.fillRect(x * scale + ox - 0.75, y * scale + oy - 0.75, 1.5, 1.5);
+      for (let i = i1; i <= i2; i++) for (let j = j1; j <= j2; j++) ctx.fillRect(i * g * scale + ox - 0.75, Oy - j * g * scale - 0.75, 1.5, 1.5);
       return;
     }
     ctx.lineWidth = 1;
     [false, true].forEach(major => {
       ctx.strokeStyle = major ? "#1a2533" : "#111923"; ctx.beginPath();
-      for (let i = Math.floor(gx1 / g); i * g <= gx2; i++) if ((i % 10 === 0) === major) { const sx = Math.round(i * g * scale + ox) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, H); }
-      for (let j = Math.floor(gy1 / g); j * g <= gy2; j++) if ((j % 10 === 0) === major) { const sy = Math.round(j * g * scale + oy) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(W, sy); }
+      for (let i = i1; i <= i2; i++) if ((i % 10 === 0) === major) { const sx = Math.round(i * g * scale + ox) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, H); }
+      for (let j = j1; j <= j2; j++) if ((j % 10 === 0) === major) { const sy = Math.round(Oy - j * g * scale) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(W, sy); }
       ctx.stroke();
     });
   }
-  // X / Y axes through the board's origin (its top-left corner; y grows downwards, as in the
+  const originY = () => S.view.oy + S.board.outline.h * S.view.scale;   // the origin's screen y
+  // X / Y axes through the board's origin (its bottom-left corner; y grows upwards, as in the
   // Gerbers' view from the top): the lines under the board, the arrows and the millimetre scale
   // on top. When the origin is off screen the scale sticks to the screen edge.
   const AX = { x: "#ff8a80", y: "#7ee787" };
   function axisLines(W, H) {
-    const { ox, oy } = S.view;
+    const { ox } = S.view, oy = originY();
     ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.lineWidth = 1; ctx.globalAlpha = 0.45;
     if (oy >= 0 && oy <= H) { ctx.strokeStyle = AX.x; ctx.beginPath(); ctx.moveTo(0, Math.round(oy) + 0.5); ctx.lineTo(W, Math.round(oy) + 0.5); ctx.stroke(); }
     if (ox >= 0 && ox <= W) { ctx.strokeStyle = AX.y; ctx.beginPath(); ctx.moveTo(Math.round(ox) + 0.5, 0); ctx.lineTo(Math.round(ox) + 0.5, H); ctx.stroke(); }
     ctx.restore();
   }
   function axisMarks(W, H) {
-    const { scale, ox, oy } = S.view;
+    const { scale, ox } = S.view, oy = originY();
     ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const step = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].find(s => s * scale >= 60) || 1000;
     const yx = Math.max(2, Math.min(H - 18, oy)), xy = Math.max(2, Math.min(W - 40, ox));   // where the scales run
@@ -969,12 +1013,12 @@
     ctx.stroke();
     // Y scale
     ctx.strokeStyle = AX.y; ctx.fillStyle = AX.y; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.beginPath();
-    for (let v = Math.ceil(-oy / scale / step) * step; v * scale + oy <= H; v += step) {
-      const sy = Math.round(v * scale + oy) + 0.5; ctx.moveTo(xy, sy); ctx.lineTo(xy + 5, sy);
-      if (v && Math.abs(sy - yx) > 14 && !(xy === ox && sy > oy && sy < oy + 76)) ctx.fillText(String(v), xy + 7, sy);   // clear of the Y arrow
+    for (let v = Math.ceil((oy - H) / scale / step) * step; oy - v * scale >= 0; v += step) {
+      const sy = Math.round(oy - v * scale) + 0.5; ctx.moveTo(xy, sy); ctx.lineTo(xy + 5, sy);
+      if (v && Math.abs(sy - yx) > 14 && !(xy === ox && sy < oy && sy > oy - 76)) ctx.fillText(String(v), xy + 7, sy);   // clear of the Y arrow
     }
     ctx.stroke();
-    // the origin: two arrows, X to the right and Y down
+    // the origin: two arrows, X to the right and Y up
     if (ox > -40 && ox < W + 40 && oy > -40 && oy < H + 40) {
       const arrow = (dx, dy, col, label) => {
         const L = 46, ex = ox + dx * L, ey = oy + dy * L;
@@ -982,9 +1026,9 @@
         ctx.beginPath(); ctx.moveTo(ex + dx * 8, ey + dy * 8); ctx.lineTo(ex - dy * 4, ey + dx * 4); ctx.lineTo(ex + dy * 4, ey - dx * 4); ctx.closePath(); ctx.fill();
         ctx.font = "bold 12px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(label, ex + dx * 16 + dy * 9, ey + dy * 16 + dx * 9);
       };
-      arrow(1, 0, AX.x, "X"); arrow(0, 1, AX.y, "Y");
+      arrow(1, 0, AX.x, "X"); arrow(0, -1, AX.y, "Y");
       ctx.fillStyle = "#e6edf3"; ctx.beginPath(); ctx.arc(ox, oy, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.fillText("0,0", ox - 4, oy - 3);
+      ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "right"; ctx.textBaseline = "top"; ctx.fillText("0,0", ox - 4, oy + 3);
     }
     ctx.restore();
   }
@@ -1065,7 +1109,7 @@
       h.appendChild(field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.map(n => { const f = B.footprint(n); return [n, f ? f.title.replace(/^(.{0,40}).*$/, "$1") + ` (${n})` : n]; })));
       partPreview(h, g);
       h.appendChild(field("X (mm)", +bp.x.toFixed(3), v => { bp.x = v; commit(); }));
-      h.appendChild(field("Y (mm)", +bp.y.toFixed(3), v => { bp.y = v; commit(); }));
+      h.appendChild(field("Y (mm)", +showY(bp.y).toFixed(3), v => { bp.y = showY(v); commit(); }));
       h.appendChild(field("Rotation", bp.rot || 0, v => { bp.rot = +v; commit(); }, [["0", "0°"], ["1", "90°"], ["2", "180°"], ["3", "270°"]]));
       h.appendChild(field("Side", bp.side || "F", v => { bp.side = v; commit(); }, [["F", "Top"], ["B", "Bottom (mirrored)"]]));
       h.appendChild(lockField(bp));
@@ -1131,7 +1175,7 @@
     if (s && s.kind === "via") {
       const v = S.board.vias[s.i]; if (!v) { S.sel = null; return renderInspector(); }
       h.innerHTML = `<div class="insp-title">Via</div>`;
-      h.appendChild(field("X (mm)", v.x, n => { v.x = n; commit(); })); h.appendChild(field("Y (mm)", v.y, n => { v.y = n; commit(); }));
+      h.appendChild(field("X (mm)", v.x, n => { v.x = n; commit(); })); h.appendChild(field("Y (mm)", showY(v.y), n => { v.y = showY(n); commit(); }));
       h.appendChild(field("Drill (mm)", v.drill || R.viaDrill, n => { if (n > 0) { v.drill = n; commit(); } })); h.appendChild(field("Pad (mm)", v.pad || R.viaPad, n => { if (n > 0) { v.pad = n; commit(); } }));
       h.appendChild(lockField(v));
       if (S.model) { const nets = [""].concat([...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))].sort()); h.appendChild(field("Net (stitching)", v.net || "", n => { v.net = n || undefined; commit(); }, nets.map(n => [n, n || "from its tracks"]))); }
@@ -1140,7 +1184,7 @@
     if (s && s.kind === "hole") {
       const hl = S.board.holes[s.i]; if (!hl) { S.sel = null; return renderInspector(); }
       h.innerHTML = `<div class="insp-title">Mounting hole</div>`;
-      h.appendChild(field("X (mm)", hl.x, n => { hl.x = n; commit(); })); h.appendChild(field("Y (mm)", hl.y, n => { hl.y = n; commit(); }));
+      h.appendChild(field("X (mm)", hl.x, n => { hl.x = n; commit(); })); h.appendChild(field("Y (mm)", showY(hl.y), n => { hl.y = showY(n); commit(); }));
       h.appendChild(field("Diameter (mm)", hl.d, n => { if (n > 0) { hl.d = n; commit(); } }));
       h.insertAdjacentHTML("beforeend", `<p class="help">Not plated. The dashed ring is the copper clearance.</p>`);
       h.appendChild(lockField(hl)); h.appendChild(delBtn()); return;
@@ -1217,7 +1261,7 @@
     const sh = S.board.sheet || {}; $("sheet-size").value = sh.size || "auto"; $("sheet-orient").value = sh.orient || "landscape";
     $("setup-modal").hidden = false;
   }
-  const holesNow = () => { $("holes-now").textContent = setupHoles.length ? `${setupHoles.length} mounting hole${setupHoles.length > 1 ? "s" : ""}: ${setupHoles.map(h => `Ø${h.d} at ${h.x.toFixed(1)}, ${h.y.toFixed(1)}`).slice(0, 4).join("; ")}` : "No mounting holes."; };
+  const holesNow = () => { $("holes-now").textContent = setupHoles.length ? `${setupHoles.length} mounting hole${setupHoles.length > 1 ? "s" : ""}: ${setupHoles.map(h => `Ø${h.d} at ${h.x.toFixed(1)}, ${showY(h.y).toFixed(1)}`).slice(0, 4).join("; ")}` : "No mounting holes."; };
   function readOutline() {
     const o = {}; let ok = true;
     document.querySelectorAll("#setup-modal [data-o]").forEach(el => { const v = parseFloat(String(el.value).replace(",", ".")); const min = el.dataset.o === "r" ? 0 : 10; if (!(v >= min)) { el.classList.add("invalid"); ok = false; } else o[el.dataset.o] = v; });
@@ -1225,11 +1269,14 @@
   }
   function applySetup() {
     const o = readOutline(); if (!o) return;
+    setHeight(o.h);   // the origin (bottom left) stays put; the holes kept from before move with the board
     S.board.outline = { ...S.board.outline, ...o, r: Math.min(o.r, o.w / 2, o.h / 2) };
     document.querySelectorAll("#setup-modal [data-s]").forEach(el => { S.board.stackup[el.dataset.s] = +el.value; });
     S.board.holes = setupHoles;
-    S.board.sheet = { size: $("sheet-size").value, orient: $("sheet-orient").value };
-    $("setup-modal").hidden = true; commit(`Board ${S.board.outline.w} × ${S.board.outline.h} mm`); fit();
+    const sh = S.board.sheet || {}, size = $("sheet-size").value, orient = $("sheet-orient").value;
+    $("setup-modal").hidden = true;
+    if (size !== sh.size || orient !== sh.orient) setSheet({ size, orient }, `Board ${S.board.outline.w} × ${S.board.outline.h} mm`); else commit(`Board ${S.board.outline.w} × ${S.board.outline.h} mm`);
+    fit();
   }
 
   // ---------------------------------------------------------------------------
@@ -1337,6 +1384,8 @@
     $("grid").onchange = e => { S.grid = +e.target.value; render(); };
     $("dim").oninput = e => { S.dim = +e.target.value; render(); };
     $("btn-fit").onclick = e => (e.shiftKey ? fitSheet() : fit());
+    $("sheet-pick").onchange = e => { const [size, orient] = e.target.value.split(" "); setSheet(orient ? { size, orient } : { size }); if (size !== "none") fitSheet(); };
+    $("btn-sheet-lock").onclick = () => lockSheet(!(S.board.sheet || {}).locked);
     $("grid-style").value = S.gridStyle; $("grid-style").onchange = e => setGridStyle(e.target.value);
     $("btn-axes").classList.toggle("active", S.axes); $("btn-axes").onclick = () => setAxes(!S.axes); $("btn-undo").onclick = undo; $("btn-redo").onclick = redo;
     $("btn-sync").onclick = syncNow; $("banner-sync").onclick = syncNow;
@@ -1367,6 +1416,6 @@
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

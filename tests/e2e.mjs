@@ -1255,10 +1255,32 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(sh3.join() === "A3,297,420" && await cad.evaluate(() => TubeCAD.state.board.sheet.orient === "portrait"), `Board setup sets the sheet (A3 portrait, ${sh3[1]} × ${sh3[2]} mm), saved with the circuit`);
   await bd.evaluate(() => { BoardApp.state.board.sheet = { size: "auto", orient: "landscape" }; BoardApp.commit(); BoardApp.fit(); }); await bd.waitForTimeout(100);
   await bd.click('[data-tool="select"]');
-  const hc = await at(120, 90), to = await at(130, 100);
+  // the origin is the board's bottom-left corner, Y up: the status bar reads 0, 0 there and 0, 90 at the top-left corner
+  const posAt = async (x, y) => { const q = await at(x, y); await bd.mouse.move(q[0], q[1]); return (await bd.textContent("#st-pos")).trim(); };
+  const st0 = await posAt(0, 90), st1 = await posAt(0, 0);
+  const xy = t => (t.match(/^x (-?[\d.]+) {2}y (-?[\d.]+) mm/) || []).slice(1).map(Number), near = (t, x, y) => { const [a, b] = xy(t); return Math.abs(a - x) < 0.2 && Math.abs(b - y) < 0.2; };
+  check(near(st0, 0, 0) && near(st1, 0, 90), `the origin is the bottom-left corner, Y up ("${st0}" there, "${st1}" at the top left)`);
+  // the sheet format from the toolbar; Lock sheet keeps it in place while the board grows
+  await bd.selectOption("#sheet-pick", "A3 landscape"); await bd.click("#btn-sheet-lock");
+  const shA = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return { size: s.size, x: s.x, y: s.y, locked: s.locked }; });
+  const holeA = await bd.evaluate(() => BoardApp.state.board.holes.find(h => h.x === 5 && h.y === 85));
+  // the corner handle (top right) resizes the board; the origin stays where it is
+  const hc = await at(120, 0), to = await at(130, -10), sOrigin = await at(0, 90);
   await bd.mouse.move(hc[0], hc[1]); await bd.mouse.down(); await bd.mouse.move(to[0], to[1], { steps: 4 }); await bd.mouse.up();
-  const o2 = await bd.evaluate(() => BoardApp.state.board.outline);
-  check(Math.abs(o2.w - 130) < 1.3 && Math.abs(o2.h - 100) < 1.3, `dragging the board's corner handle resizes it (${o2.w} × ${o2.h} mm)`);
+  const o2 = await bd.evaluate(() => BoardApp.state.board.outline), sOrigin2 = await at(0, o2.h);
+  const shB = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return { size: s.size, x: s.x, y: s.y, locked: s.locked }; });
+  const holeB = await bd.evaluate(() => BoardApp.state.board.holes.find(h => h.x === 5 && Math.abs(h.y - (BoardApp.state.board.outline.h - 5)) < 1e-6));
+  check(Math.abs(o2.w - 130) < 1.3 && Math.abs(o2.h - 100) < 1.3 && Math.hypot(sOrigin2[0] - sOrigin[0], sOrigin2[1] - sOrigin[1]) < 0.5 && holeA && holeB,
+    `dragging the board's top-right handle resizes it (${o2.w} × ${o2.h} mm); the origin and the bottom-left hole stay put on the screen`);
+  check(shA.size === "A3" && shA.locked && shB.size === "A3" && shB.locked && shB.x === shA.x && Math.abs(shB.y - (shA.y + o2.h - 90)) < 1e-6,
+    `the toolbar picks an A3 sheet; locked, it keeps its size and place relative to the origin while the board grows (y ${shA.y} → ${shB.y} in the document)`);
+  await bd.selectOption("#sheet-pick", "A1 portrait");
+  const shC = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return [s.size, s.orient, s.w, s.locked, document.getElementById("btn-sheet-lock").classList.contains("active")]; });
+  await cad.waitForFunction(() => TubeCAD.state.board.sheet && TubeCAD.state.board.sheet.size === "A1" && TubeCAD.state.board.sheet.locked, null, { timeout: 4000 }).catch(() => {});
+  check(shC.join() === "A1,portrait,594,true,true" && await cad.evaluate(() => TubeCAD.state.board.sheet.locked === true), `a locked sheet takes a new format (${shC.slice(0, 3).join(" ")}) and stays locked; saved with the circuit`);
+  await bd.click("#btn-sheet-lock");
+  check(await bd.evaluate(() => !BoardApp.state.board.sheet.locked && !BoardApp.sheetPlace().locked), "Lock sheet again unlocks it: the sheet follows the board");
+  await bd.evaluate(() => { BoardApp.state.board.sheet = { size: "auto", orient: "landscape" }; BoardApp.commit(); BoardApp.fit(); });
 
   // layers: "only" shows one layer alone (again: all), clicking a copper layer's name makes it active
   await bd.locator('.layer[data-l="B.Cu"] .solo').click();

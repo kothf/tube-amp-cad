@@ -139,7 +139,7 @@
     <button class="btn" id="btn-redo" title="Redo (Ctrl+Y)">↷</button>
     <span class="sep"></span>
     <div class="tools" role="toolbar" aria-label="Tools">
-      <button class="btn active" data-tool="select" title="Select and move footprints, tracks, vias, texts and holes; drag the board's corner handle to resize it (Esc)">Select</button>
+      <button class="btn active" data-tool="select" title="Select and move footprints, tracks, vias, texts and holes; drag the board's top-right corner handle to resize it; the origin, bottom left, stays put (Esc)">Select</button>
       <button class="btn" data-tool="route" title="Route a track from a pad (X); V changes layer with a via">Route</button>
       <button class="btn" data-tool="via" title="Place a via (Shift+V)">Via</button>
       <button class="btn" data-tool="text" title="Place a text on the silkscreen or copper (T)">Text</button>
@@ -153,6 +153,8 @@
     <select class="btn" id="grid-style" title="How the grid is shown (G)"><option value="lines">Grid lines</option><option value="dots">Grid dots</option><option value="off">No grid</option></select>
     <button class="btn" id="btn-axes" title="X / Y axes through the board's origin, with a millimetre scale (A)">Axes</button>
     <button class="btn" id="btn-fit" title="Fit the board (F); Shift+F or Shift+click: the whole drawing sheet">Fit</button>
+    <select class="btn" id="sheet-pick" title="The drawing sheet's format: auto (the smallest that fits the board), A4–A0 landscape or portrait, or none"><option value="auto landscape">Sheet: auto, landscape</option><option value="auto portrait">Sheet: auto, portrait</option><option value="A4 landscape">A4 landscape (297 × 210 mm)</option><option value="A4 portrait">A4 portrait (210 × 297 mm)</option><option value="A3 landscape">A3 landscape (420 × 297 mm)</option><option value="A3 portrait">A3 portrait (297 × 420 mm)</option><option value="A2 landscape">A2 landscape (594 × 420 mm)</option><option value="A2 portrait">A2 portrait (420 × 594 mm)</option><option value="A1 landscape">A1 landscape (841 × 594 mm)</option><option value="A1 portrait">A1 portrait (594 × 841 mm)</option><option value="A0 landscape">A0 landscape (1189 × 841 mm)</option><option value="A0 portrait">A0 portrait (841 × 1189 mm)</option><option value="none">No sheet</option></select>
+    <button class="btn" id="btn-sheet-lock" title="Lock the drawing sheet where it is: it keeps its size and place when the board grows or shrinks (unlocked it follows the board)">Lock sheet</button>
     <button class="btn" id="btn-3d" title="The board in 3D with its parts (3); export it as STEP">3D</button>
     <span class="spacer"></span>
     <button class="btn" id="btn-setup" title="Board setup: outline, corners, mounting holes, layer stack">Setup…</button>
@@ -233,11 +235,11 @@
         <kbd>Shift+click</kbd><span>while routing: place a segment that breaks the clearance anyway (normally refused)</span>
         <kbd>D</kbd><span>measure: click, click; the distance stays until the next click or Esc. The ends stick to pad, via and hole centres, track corners and ends, the board's corners, edge middles and centre (then onto a track, a hole's rim or the board edge); Shift+click: the grid only</span>
         <kbd>G</kbd><span>grid: lines, dots or off</span>
-        <kbd>A</kbd><span>X / Y axes through the board's origin (its top-left corner) with a millimetre scale</span>
+        <kbd>A</kbd><span>X / Y axes through the board's origin, its bottom-left corner (X to the right, Y up, as in the Gerbers), with a millimetre scale</span>
         <kbd>R</kbd><span>rotate the selected footprint or text 90°</span>
         <kbd>M</kbd><span>move the selected footprint to the other side (bottom / top)</span>
         <kbd>Del</kbd><span>delete the selected track, via, text or hole</span>
-        <kbd>F</kbd><span>fit the board · <kbd>Shift+F</kbd> the whole drawing sheet (Setup… sets its size)</span>
+        <kbd>F</kbd><span>fit the board · <kbd>Shift+F</kbd> the whole drawing sheet (the toolbar's sheet list or Setup… sets its format; Lock sheet keeps it in place)</span>
         <kbd>Esc</kbd><span>end routing / clear the selection</span>
         <kbd>Ctrl+Z</kbd><span>undo · <kbd>Ctrl+Y</kbd> redo</span>
         <kbd>wheel</kbd><span>zoom at the pointer; right- or middle-drag, or Space-drag, pans</span>
@@ -298,7 +300,7 @@
       <h3>Drawing sheet</h3>
       <div class="row"><span>Sheet size</span><select id="sheet-size"><option value="auto">Auto (smallest that fits)</option><option value="A4">A4 (297 × 210 mm)</option><option value="A3">A3 (420 × 297 mm)</option><option value="A2">A2 (594 × 420 mm)</option><option value="A1">A1 (841 × 594 mm)</option><option value="A0">A0 (1189 × 841 mm)</option><option value="none">None (no frame)</option></select></div>
       <div class="row"><span>Orientation</span><select id="sheet-orient"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></div>
-      <p class="help">The board is drawn on the sheet with an ISO 5457 frame, reference grid and ISO 7200 title block like the Circuit CAD's frames; the title block takes its fields from the schematic's first frame.</p>
+      <p class="help">The board is drawn on the sheet with an ISO 5457 frame, reference grid and ISO 7200 title block like the Circuit CAD's frames; the title block takes its fields from the schematic's first frame. Unlocked, the sheet follows the board; <b>Lock sheet</b> on the toolbar keeps it where it is.</p>
       <h3>Layer stack</h3>
       <div class="row"><span>Copper layers</span><select disabled><option>2 layers</option></select></div>
       <div class="row"><span>Board thickness (mm)</span><select data-s="thickness"><option value="0.8">0.8</option><option value="1">1.0</option><option value="1.2">1.2</option><option value="1.6">1.6</option><option value="2">2.0</option></select></div>

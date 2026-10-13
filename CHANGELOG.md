@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.46.0] - 2026-10-13
+
+### Added
+- **Board Design: the drawing sheet's format on the toolbar:** auto, A4–A0
+  landscape or portrait, or no sheet.
+- **Board Design: Lock sheet.** A locked sheet keeps its format and its place
+  when the board grows or shrinks; unlocked, it follows the board as before.
+  A new format re-centres a locked sheet round the board, and it stays locked.
+
+### Changed
+- **Board Design: the origin is now the board's bottom-left corner, X to the
+  right and Y up**, as in the Gerbers and the drill file. This applies to:
+  - the status bar, the inspector's X / Y fields and Measure's Δy;
+  - the axes, and the grid, which runs from the origin.
+
+  The resize handle is now the top-right corner, so the origin and everything
+  on the board stay put when the board is resized (in Setup… too). Saved
+  boards open unchanged.
+
 ## [3.45.0] - 2026-10-12
 
 ### Added

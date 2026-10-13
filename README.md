@@ -333,7 +333,8 @@ the circuit file, so one file holds both.
 - **Cross-probing:** a part picked on the board is selected in the schematic,
   and a part selected in the schematic is selected (and shown) on the board.
 - **Tools:** Select, Route, Via, Text (silkscreen or copper), Mounting hole,
-  Pour, Measure. The board's corner handle resizes it. Silkscreen text uses a
+  Pour, Measure. The board's top-right corner handle resizes it; the origin
+  stays put. Silkscreen text uses a
   stroke font, so the screen shows what the board maker gets.
 - **Measure** sticks to the board. Its ends snap to:
   - the centres of pads, vias and holes;
@@ -345,12 +346,15 @@ the circuit file, so one file holds both.
   measures on the grid only.
 - **Grid, axes and sheet:**
   - The grid covers the whole screen as lines or dots, or is off (<kbd>G</kbd>).
-  - X / Y axes run through the board's origin, its top-left corner, with a
-    millimetre scale (<kbd>A</kbd>).
+  - The origin is the board's bottom-left corner, X to the right and Y up, as in
+    the Gerbers. The X / Y axes run through it with a millimetre scale
+    (<kbd>A</kbd>).
   - The board lies on a drawing sheet: the ISO 5457 frame, reference grid and
     ISO 7200 title block of the Circuit CAD's frames, with fields taken from
-    the schematic. *Setup…* sets the size (Auto, A4–A0, None) and the
-    orientation. <kbd>Shift</kbd>+<kbd>F</kbd> shows the whole sheet.
+    the schematic. The toolbar's sheet list (or *Setup…*) sets the format:
+    Auto, A4–A0 landscape or portrait, or None. *Lock sheet* keeps the sheet
+    where it is while the board changes; unlocked, it follows the board.
+    <kbd>Shift</kbd>+<kbd>F</kbd> shows the whole sheet.
 - **Design rules** (*Rules…*):
   - clearances, with a separate high-voltage clearance for nets above a
     threshold voltage;
