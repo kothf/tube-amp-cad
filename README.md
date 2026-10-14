@@ -69,6 +69,8 @@ Firefox is not tested.
   - Either way, slow power supplies are run until they have fully settled.
   - The button shows the run's progress ("■ Stop · 48 %"); press it again to
     stop a long run.
+  - When a steady-state run and the oscilloscope's power-on transient run at
+    once, the status line shows both on one line with one progress bar.
 - **Checks.** Unconnected pins, shorted parts, a missing ground, sheet
   connectors without a partner, and parts beyond their ratings: tube
   dissipation, resistor power, output-transformer DC current, transistor Vce
@@ -85,6 +87,9 @@ Firefox is not tested.
     to the opened file after asking; in Safari and other browsers it
     downloads the file.
   - The circuit is also autosaved in the browser.
+  - The open file's name shows in the toolbar and the browser tab's title; a
+    yellow • marks unsaved changes (the board's too). A new circuit or an
+    example reads "Untitled".
 
 ## Parts
 
@@ -176,7 +181,10 @@ the circuit that was on the sheet.
     an ISO 7200 title block (A4 to A1, landscape or portrait). *File → Add
     sheet* adds further sheets.
   - Sheet connectors with the same signal name join their wires across
-    sheets and show where their partners are (sheet / grid zone).
+    sheets and show where their partners are, grouped by row: "A3,5 B2,5,8"
+    (on several sheets "1/A3,5 2/C1,4"). A name used five times or more (B+,
+    a bias line) reads as a supply rail and shows no list; hovering any
+    connector shows all its partners' zones in the status bar.
   - Frames are locked against accidental moves; unlock one in its inspector.
   - A circuit with several sheets opens on sheet 1. The Sheet list, or <kbd>F</kbd>
     pressed twice, shows them all.
@@ -270,8 +278,10 @@ the circuit file, so one file holds both.
     small values, axial film;
   - electrolytics: radial by size, snap-in cans (Ø22–35 mm) and axial cans;
   - diodes and zeners from DO-35 to DO-201, 3 and 5 mm LEDs;
-  - transistors in TO-92, TO-18, TO-126, TO-220 and TO-247 with each part's
-    own pin order (pinouts that differ between makers are flagged);
+  - transistors in TO-92 (oval pads, as KiCad's TO-92_Inline), TO-18, TO-126,
+    TO-220, TO-247, TO-3P and TO-264 with each part's own pin order (pinouts
+    that differ between makers are flagged); TO-3 power transistors get three
+    wire pads, as the can sits on the chassis heatsink;
   - pots (9, 16 and 24 mm) and a 3296W trimmer;
   - real tube sockets (B9A noval, B7G, Magnoval, octal, UX4), drawn from the
     component side; both sections of a dual tube share one socket, each on
@@ -292,6 +302,8 @@ the circuit file, so one file holds both.
 - **Routing.** <kbd>X</kbd>: click a pad, click the corners (45° bends), end on
   a pad of the same net. <kbd>V</kbd> changes layer with a via. The track width
   comes from the net's class. The ratsnest shows what is still to route.
+  The route goes on from its own vias; <kbd>Esc</kbd> right after <kbd>V</kbd>
+  removes the via unless it already joins copper on the new layer.
   - While routing, a halo shows the clearance the net's class needs. It turns
     red, and the click is refused, when the next segment would come too close
     to another net's copper or a mounting hole (<kbd>Shift</kbd>+click places
@@ -386,7 +398,8 @@ the circuit file, so one file holds both.
     (outer layer, the board's copper weight, the allowed warming) is an
     error. Routing starts wide enough on its own;
   - parts overlapping (courtyards), anything inside a keep-out area;
-  - silkscreen over pads and unconnected track ends (warnings);
+  - silkscreen over pads, unconnected track ends and vias that join nothing
+    or copper on one layer only (warnings);
   - parts not placed yet;
   - pinouts to check.
 
@@ -455,13 +468,16 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   each direction it needs costs one simulated period), so slow coupling,
   cathode and filter capacitors settle in a few dozen periods instead of
   hundreds: the 10-tube stereo amplifier in 42 periods. If it does not converge
-  in its time, plain settling with vector extrapolation carries on.
+  in its time, plain settling carries on, extrapolating the slowly decaying
+  response to the periodic steady state (minimal polynomial extrapolation).
 - **Sparse linear solves.** Each Newton iteration stamps into a sparse matrix
   (a 66-unknown amplifier has 286 nonzeros of 4356) and solves it with a sparse
   LU (Gilbert–Peierls, as KLU: minimum-degree column order, partial pivoting),
   whose numeric part runs as WebAssembly: `wasm/solver.ts`, built into
   `sim-solver.wasm`, with the same steps as the JavaScript, which takes over
-  where WebAssembly is missing.
+  where WebAssembly is missing. Work grows about linearly with the circuit.
+  Together with shooting, this settles the 10-tube stereo EL84 amplifier in
+  1.6 s in the browser (36 s with the dense JavaScript solver of 3.50).
 - **Triodes** use [Koren's](https://www.normankoren.com/Audio/Tubemodspice_article.html)
   published equation unmodified, so their parameters are interchangeable with
   Koren-style SPICE models.
@@ -483,7 +499,11 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
 - **Transistors** use the SPICE Gummel-Poon model (IS, BF, BR, VAF, IKF)
   with junction capacitances. The 2N2222A, 2N3904, 2N3906 and 2N2907A use
   their published SPICE parameters; the others are set to their datasheet's
-  typical gain.
+  typical gain. The power drivers and output transistors are fitted to their
+  datasheets, hFE and its fall at high current (a test checks each part's hFE
+  at the datasheet's own test point), VBE(on) and output capacitance; there
+  is no emitter or base resistance, so VBE at several amperes reads somewhat
+  low.
 - **MOSFETs** are square-law (SPICE level 1), with the overdrive smoothed
   over 50 mV around threshold, plus a body diode and gate capacitances. The
   threshold is the middle of the datasheet range, and Kp comes from the
@@ -496,10 +516,6 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
 - **Transformers** are coupled inductors with a leakage factor. Inductors and
   windings carry their current as an unknown, so a shorted winding is
   reported instead of crashing the solver.
-- **Steady state.** Supplies with large capacitors take seconds of circuit
-  time to settle. The engine detects the slowly decaying response and
-  extrapolates it to periodic steady state (minimal polynomial
-  extrapolation), typically in tens of milliseconds of compute.
 - **Currents.** Every element reports its terminal currents (averaged over
   the window with a rectified supply). The wire currents on the schematic
   are summed from these.
