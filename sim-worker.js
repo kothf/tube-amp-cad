@@ -1,8 +1,9 @@
 /* Runs the circuit engine off the UI thread.
    Message in:  { seq, netlist, options }                      steady state (simulate)
                 { seq, netlist, options, kind: "startup" }      power-on transient
+                { seq, netlist, options, kind: "bias", targets } bias finder (bias.js)
    Message out: { seq, result }, and { seq, progress } (0…1) along the way. */
-importScripts("spice-model.js" + self.location.search, "sim-engine.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
+importScripts("spice-model.js" + self.location.search, "sim-engine.js" + self.location.search, "bias.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
 
 // the linear solver as WebAssembly (wasm/solver.ts); until it is in, or if it cannot load, the engine solves in JavaScript
 const solverReady = fetch("sim-solver.wasm" + self.location.search).then(r => (r.ok ? r.arrayBuffer() : null))
@@ -13,6 +14,7 @@ self.onmessage = async (e) => {
   const { seq, netlist, options, kind } = e.data;
   let result;
   try {
+    if (kind === "bias") { self.postMessage({ seq, result: TubeBias.solve(netlist, e.data.targets, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) })) }); return; }
     if (kind === "startup") result = TubeSimEngine.startup(netlist, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) }));
     else result = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) }));
   } catch (err) {

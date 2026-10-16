@@ -17,6 +17,8 @@
 
    Netlist: { nodeCount, elements: [{ id, kind, nodes: [...], ...params }] }
    kinds: R, C, L, XFMR, V, VSRC, D, VDIODE, TRIODE, PENTODE
+   A tube may carry iScale: all its currents times that factor, as a real tube with more or
+   less emission than the model (the bias finder fits it to a measured anode current).
    ============================================================================= */
 (function (root) {
   "use strict";
@@ -531,20 +533,20 @@
             stampNonlinear(nd, W => Semi.mos(W, e.model), nd.map(k => vn(x, k)), 1e-6);
             break;
           case "TRIODE": {
-            const p = e.model;
+            const p = e.model, sc = e.iScale || 1;
             const V0 = nd.map(k => vn(x, k));   // A, G, K
             stampNonlinear(nd, V => {
               const [ia, ig] = Tube.triode(V[0] - V[2], V[1] - V[2], p);
-              return [ia, ig, -(ia + ig)];
+              return [sc * ia, sc * ig, -sc * (ia + ig)];
             }, V0);
             break;
           }
           case "PENTODE": {
-            const p = e.model;
+            const p = e.model, sc = e.iScale || 1;
             const V0 = nd.map(k => vn(x, k));   // A, G1, G2, K
             stampNonlinear(nd, V => {
               const [ia, ig, ig2] = Tube.pentode(V[0] - V[3], V[1] - V[3], V[2] - V[3], p);
-              return [ia, ig, ig2, -(ia + ig + ig2)];
+              return [sc * ia, sc * ig, sc * ig2, -sc * (ia + ig + ig2)];
             }, V0);
             break;
           }
@@ -610,13 +612,13 @@
     const v = e.nodes.map(k => vn(x, k));
     if (e.kind === "TRIODE") {
       const vak = v[0] - v[2], vgk = v[1] - v[2];
-      const [ia, ig] = Tube.triode(vak, vgk, e.model);
-      return { vak, vgk, ia, ig };
+      const [ia, ig] = Tube.triode(vak, vgk, e.model), k = e.iScale || 1;
+      return { vak, vgk, ia: k * ia, ig: k * ig };
     }
     if (e.kind === "PENTODE") {
       const vak = v[0] - v[3], vgk = v[1] - v[3], vg2k = v[2] - v[3];
-      const [ia, ig, ig2] = Tube.pentode(vak, vgk, vg2k, e.model);
-      return { vak, vgk, vg2k, ia, ig2, ig };
+      const [ia, ig, ig2] = Tube.pentode(vak, vgk, vg2k, e.model), k = e.iScale || 1;
+      return { vak, vgk, vg2k, ia: k * ia, ig2: k * ig2, ig: k * ig };
     }
     if (e.kind === "BJT") {
       const [ic, ib] = Semi.bjt(v, e.model), p = e.model.pol;

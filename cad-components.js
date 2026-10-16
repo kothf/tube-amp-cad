@@ -880,7 +880,10 @@
       value: c => c.params.tube + (tubeKind(tubeByName(c.params.tube)) === "pentode" && c.params.connection === "triode" ? " (triode)" : ""),
       fields: [
         { key: "tube", label: "Tube type", kind: "tube" },
-        { key: "connection", label: "Model", kind: "select", options: [["pentode", "Pentode / beam (A G1 G2 K)"], ["triode", "Triode-connected (A G K)"]], when: c => tubeKind(tubeByName(c.params.tube)) === "pentode" }
+        { key: "connection", label: "Model", kind: "select", options: [["pentode", "Pentode / beam (A G1 G2 K)"], ["triode", "Triode-connected (A G K)"]], when: c => tubeKind(tubeByName(c.params.tube)) === "pentode" },
+        // the bias finder (bias.js): the anode current wanted, and the one measured on the real tube
+        { key: "biasIa", label: "Target anode current", unit: "A", kind: "eng", optional: true, placeholder: "e.g. 40mA: finds the bias resistor", when: c => tubeKind(tubeByName(c.params.tube)) !== "rectifier" },
+        { key: "biasMeas", label: "Measured anode current", unit: "A", kind: "eng", optional: true, placeholder: "optional, with the parts as drawn", when: c => tubeKind(tubeByName(c.params.tube)) !== "rectifier" && c.params.biasIa > 0 }
       ],
       build: (c, net, alloc, out) => {
         const t = tubeByName(c.params.tube);

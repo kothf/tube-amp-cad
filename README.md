@@ -22,6 +22,7 @@ Firefox is not tested.
 - [The schematic editor](#the-schematic-editor)
 - [Parts](#parts)
 - [Measuring on the schematic](#measuring-on-the-schematic)
+- [Bias finder](#bias-finder)
 - [Drawings, documents and exports](#drawings-documents-and-exports)
 - [Instruments](#instruments)
 - [Board Design](#board-design)
@@ -164,6 +165,46 @@ the circuit that was on the sheet.
   channels live; double-click it for the full instrument.
 - **Power-on transient.** The oscilloscope can show the first seconds after
   switch-on: capacitors start empty and every source switches on at t = 0.
+
+## Bias finder
+
+The simulator finds the part that sets each tube's bias and marks it on the
+sheet in violet. Give a tube a target anode current and it works out the value
+that gives that current, and writes it next to the part ("→ 680Ω", or a pot's
+"→ 65%").
+
+- **Which part.** The grid's DC return is followed through the resistors that
+  carry only grid current (grid stopper, grid leak).
+  - **Cathode bias.** If the grid returns to ground or to a positive node, the
+    bias resistor is the first part on the cathode's DC path back to that
+    point. That covers a plain Rk, the upper half of a split cathode resistor
+    with feedback injected between the halves, a cathodyne's bias resistor,
+    and one resistor shared by a push-pull pair.
+  - **Fixed bias.** If the grid returns to a negative bias line, the part is
+    the pot that feeds the line, else the divider's resistor to ground, else
+    the resistor from the negative supply.
+  - **No resistor.** An LED or diode in the cathode, or zero bias, is named
+    in the tube's inspector instead.
+- **Target.** Select the tube and enter *Target anode current* (for example
+  `48mA`). The inspector hints at 70 % of Pa max at the present anode
+  voltage.
+- **The search.** A worker of its own simulates again with the signal
+  generators off (the idle bias), changing the part until the tube draws the
+  target. It changes all parts at once, usually in 4 to 6 rounds. Several
+  tubes on one part are set for their average. A resistor is rounded to E24,
+  and that value is simulated once more to give the current it really
+  produces and the power it dissipates (rate it at twice that). A pot gets
+  its wiper position. If the pot's travel cannot reach the target, the
+  inspector says so.
+- **Measured current.** Enter the anode current your tube draws in the
+  circuit as drawn under *Measured anode current*. The model's currents are
+  then scaled (its emission) until it draws the same. The value found is for
+  that tube, not the average one, and the tube's inspector shows the emission
+  it fitted.
+- **Applying it.** The resistor's or pot's inspector shows the exact value,
+  the E24 value, the anode current with it, and a *Use 680 Ω* (or *Set the
+  wiper to …*) button. The *Bias* button in the toolbar hides the marking.
+  Exports and prints never show it.
 
 ## Drawings, documents and exports
 

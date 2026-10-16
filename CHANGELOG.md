@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.54.0] - 2026-10-16
+
+### Added
+- **Bias finder: the resistor that sets each tube's bias, and the value that gives the anode current you want.** After every simulation the part that sets a tube's bias is drawn in violet. That is the cathode resistor for cathode bias (also a split cathode resistor's upper part, a cathodyne's bias resistor, or one resistor shared by a pair), or the pot or divider resistor that feeds a fixed-bias line. Give the tube a *Target anode current* in its inspector and a worker of its own simulates again with the signal off until the tube draws it. The value appears by the part ("→ 680Ω", a pot's "→ 65%"), rounded to E24 and checked by one more simulation, with the power it will dissipate. *Use 680 Ω* in the part's inspector puts it in. The *Bias* button in the toolbar hides the marking, and exports never show it.
+- **Measured anode current.** Enter what your real tube draws in the circuit as drawn, and the model's emission is fitted to it first: the value found is for that tube. The engine's tube elements take an `iScale` factor for this.
+
+
 ## [3.53.0] - 2026-10-13
 
 ### Added

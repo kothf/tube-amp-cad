@@ -69,6 +69,8 @@
     #inspector { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 10px 12px; }
     .insp-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; color: var(--accent); }
     .insp-sub { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 12px 0 4px; }
+    .insp-sub.bias { color: #d2a8ff; }
+    .btn.bias-apply { color: #d2a8ff; border-color: #d2a8ff; margin-top: 6px; }
     .sim-pct { float: right; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--accent); font-variant-numeric: tabular-nums; cursor: help; }
     .sim-pct::before { content: "◌ "; }
     .row { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -217,6 +219,7 @@
     <select id="sheet-nav" class="btn" title="Show one sheet" hidden></select>
     <button class="btn active" id="btn-volts" title="Show DC node voltages">Voltages</button>
     <button class="btn active" id="btn-amps" title="Show the DC current in the wires, with its direction">Currents</button>
+    <button class="btn active" id="btn-bias" title="Mark the resistors and pots that set each tube's bias, with the value that gives the tube's target anode current">Bias</button>
     <span class="sep"></span>
     <button class="btn active" id="btn-live" title="Live: re-simulate after every edit (a run that does not settle in time continues in the background)">Live</button>
     <button class="btn" id="btn-sim" title="Simulate until fully settled (Ctrl+Enter); click again to stop">▶ Simulate</button>
@@ -287,6 +290,7 @@
         <li><b>Move:</b> drag parts (wires follow) or drag a wire segment sideways. Sheet frames are locked; unlock one in its inspector to move it.</li>
         <li><b>View:</b> wheel zooms, <kbd>Space</kbd>/middle-drag pans, <kbd>F</kbd> fits the sheet you are on, again for all sheets.</li>
         <li><b>Measure:</b> every wire shows its DC voltage and current (Voltages / Currents); hover a wire for both. Wire an Oscilloscope to see waveforms; double-click it for the full scope.</li>
+        <li><b>Bias:</b> the resistor or pot that sets each tube's bias is drawn in violet. Give a tube a <i>Target anode current</i> in its inspector and the value that gives it appears by the part ("→ 680Ω"); <i>Use</i> in the part's inspector puts it in. A <i>Measured anode current</i> fits the model to your tube first.</li>
         <li><b>Simulate:</b> <i>Live</i> re-simulates after every edit. Turn it off to simulate only on <i>▶ Simulate</i> (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>), which always runs until the circuit has settled.</li>
         <li><b>Switch:</b> double-click to flip it; sections named SA1.1, SA1.2… flip together.</li>
         <li><b>Standards:</b> symbols follow IEC 60617 and designations use the classic letter codes (R, C, L, T, VL, VD, VT, HL, SA, BA, G, P; ГОСТ 2.710). Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
@@ -368,6 +372,7 @@
   <script src="tube-db.js?v=dev"></script>
   <script src="spice-model.js?v=dev"></script>
   <script src="sim-engine.js?v=dev"></script>
+  <script src="bias.js?v=dev"></script>
   <script src="spice-import.js?v=dev"></script>
   <script src="cad-components.js?v=dev"></script>
   <script src="scope-math.js?v=dev"></script>
