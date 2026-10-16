@@ -169,8 +169,8 @@ the circuit that was on the sheet.
 ## Bias finder
 
 The simulator finds the part that sets each tube's bias and marks it on the
-sheet in violet. Give a tube a target anode current and it works out the value
-that gives that current, and writes it next to the part ("→ 680Ω", or a pot's
+sheet in violet. Give a tube a target (an anode current, or a share of Pa max)
+and it works out the value that meets it, and writes it next to the part ("→ 680Ω", or a pot's
 "→ 65%").
 
 - **Which part.** The grid's DC return is followed through the resistors that
@@ -185,26 +185,44 @@ that gives that current, and writes it next to the part ("→ 680Ω", or a pot's
     the resistor from the negative supply.
   - **No resistor.** An LED or diode in the cathode, or zero bias, is named
     in the tube's inspector instead.
-- **Target.** Select the tube and enter *Target anode current* (for example
-  `48mA`). The inspector hints at 70 % of Pa max at the present anode
-  voltage.
+- **Target.** Select the tube and choose a *Bias target*: an anode current
+  (for example `48mA`), or a share of Pa max (70 % for single-ended class A,
+  say). A share of Pa max is solved on the idle dissipation Va·Ia, with Va
+  moving as the bias does.
 - **The search.** A worker of its own simulates again with the signal
-  generators off (the idle bias), changing the part until the tube draws the
-  target. It changes all parts at once, usually in 4 to 6 rounds. Several
-  tubes on one part are set for their average. A resistor is rounded to E24,
-  and that value is simulated once more to give the current it really
-  produces and the power it dissipates (rate it at twice that). A pot gets
-  its wiper position. If the pot's travel cannot reach the target, the
-  inspector says so.
-- **Measured current.** Enter the anode current your tube draws in the
-  circuit as drawn under *Measured anode current*. The model's currents are
-  then scaled (its emission) until it draws the same. The value found is for
-  that tube, not the average one, and the tube's inspector shows the emission
-  it fitted.
+  generators off (the idle bias), changing the part until the tube meets its
+  target. The parts can pull on each other (two bias pots on one bias
+  winding, two output tubes on one B+), so all of them are solved together
+  by Newton's method: one simulation per part for the first Jacobian, then
+  Broyden updates. Several tubes on one part are set for their average. A
+  resistor is rounded to E24, and that value is simulated once more to give
+  what it really produces: anode and cathode current, the anode dissipation
+  against Pa max, and the power in the resistor (rate it at twice that). A
+  pot gets its wiper position.
+- **Over Pa max.** A target above the tube's Pa max, or a bias that leaves the
+  anode above it at idle, is flagged in the tube's inspector and on the status
+  line. So is a target the part cannot reach. A plate load can cap the
+  dissipation below the target: from 250 V through 100 kΩ a 12AX7 dissipates
+  0.16 W at most, whatever the bias.
+- **Measured on the amp.** You can enter the anode current, the cathode
+  current, or the voltage across any resistor on the tube's cathode (the
+  usual 1 Ω sense resistor of a fixed-bias amp, or Rk itself), all read with
+  the parts as drawn. The model's currents are then scaled (its emission)
+  until it reads the same, and the value found is for that tube. One reading
+  cannot tell weak emission from a tube whose curves are shifted along the
+  grid axis, so take the result as an estimate. The tube's inspector shows
+  the emission it fitted.
+- **Bias pots.** For a pot, the inspector also shows:
+  - the anode current over its whole travel;
+  - whether that travel still covers a tube with 30 % less or more emission
+    (a fresh, unmatched tube);
+  - the value of the divider resistor in series with the pot that puts the
+    target at mid-travel, where the pot has the most room either way.
+    *Use … wiper to mid-track* puts both in.
 - **Applying it.** The resistor's or pot's inspector shows the exact value,
-  the E24 value, the anode current with it, and a *Use 680 Ω* (or *Set the
-  wiper to …*) button. The *Bias* button in the toolbar hides the marking.
-  Exports and prints never show it.
+  the E24 value, what it gives, and a *Use 680 Ω* (or *Set the wiper to …*)
+  button. The *Bias* button in the toolbar hides the marking. Exports and
+  prints never show it.
 
 ## Drawings, documents and exports
 

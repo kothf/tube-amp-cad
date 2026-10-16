@@ -127,3 +127,67 @@ test("bias: two tubes on one cathode resistor are set for their average; the sig
   const idle = withR(pair, { RK: p.value }); idle.elements.find(e => e.id === "SIG").amp = 0;
   near((ia(idle, "A") + ia(idle, "B")) / 2, 32e-3, 0.003, "average Ia with the signal off");
 });
+
+test("bias: a target as anode dissipation (Va·Ia, Va moving with the bias)", () => {
+  // EL84 cathode-biased into a 5 kΩ load
+  const net = { nodeCount: 5, elements: [
+    { id: "VB", kind: "V", nodes: [1, 0], v: 300 }, { id: "RL", kind: "R", nodes: [1, 2], r: 2000 },
+    { id: "RG", kind: "R", nodes: [3, 0], r: 470e3 }, { id: "RK", kind: "R", nodes: [4, 0], r: 270 },
+    { id: "V", kind: "PENTODE", nodes: [2, 3, 1, 4], model: EL84 }] };
+  const s = B.solve(net, [{ tube: "V", pa: 0.7 * 12 }]), p = s.parts[0];
+  assert.ok(s.ok && p.reached, s.error);
+  const r = E.simulate(withR(net, { RK: p.value }), {}).dc.devices.V.main;
+  near(r.vak * r.ia, 8.4, 0.003, "Pa with the value found");
+  near(p.at[0].pa, p.at[0].va * p.at[0].ia, 1e-9, "the reported Pa is Va·Ia at the E24 value");
+  assert.ok(p.at[0].ik > p.at[0].ia, "the cathode current includes the screen's");
+});
+
+test("bias: measured as cathode current, or as the voltage across a 1 Ω sense resistor", () => {
+  // fixed bias with a 1 Ω resistor in the cathode
+  const net = fixed(); net.nodeCount = 9; net.elements.find(e => e.id === "V2").nodes = [2, 3, 1, 8]; net.elements.push({ id: "RSENSE", kind: "R", nodes: [8, 0], r: 1 });
+  const ik0 = (() => { const d = E.simulate(withR(net, { RLOW: 6000 }), {}).dc.devices.V2.main; return d.ia + d.ig2 + d.ig; })();
+  for (const measured of [{ kind: "ik", value: 0.9 * ik0 }, { kind: "v", part: "RSENSE", value: 0.9 * ik0 * 1 }]) {
+    const n = withR(net, { RLOW: 6000 }), s = B.solve(n, [{ tube: "V2", ia: 30e-3, measured }]);
+    assert.ok(s.ok && s.parts[0].reached, s.error);
+    const k = s.emission.V2, scaled = { nodeCount: n.nodeCount, elements: n.elements.map(e => (e.id === "V2" ? Object.assign({}, e, { iScale: k }) : e)) };
+    const d = E.simulate(scaled, {}).dc.devices.V2.main;
+    near(d.ia + d.ig2 + d.ig, 0.9 * ik0, 0.003, `${measured.kind}: the fitted tube's cathode current is what was measured`);
+  }
+});
+
+test("bias: two bias pots on one bias supply pull on each other; both are found", () => {
+  // two EL84s, each with its own pot from one -50 V supply that has 2 kΩ of its own resistance
+  const net = { nodeCount: 12, elements: [
+    { id: "VB", kind: "V", nodes: [1, 0], v: 300 }, { id: "VN", kind: "V", nodes: [0, 10], v: 50 }, { id: "RSUP", kind: "R", nodes: [10, 11], r: 2000 },
+    { id: "RL1", kind: "R", nodes: [1, 2], r: 5000 }, { id: "RL2", kind: "R", nodes: [1, 4], r: 5000 },
+    { id: "P1#a", kind: "R", nodes: [11, 6], r: 5e3 }, { id: "P1#b", kind: "R", nodes: [6, 6], r: 5e3 }, { id: "R1", kind: "R", nodes: [6, 0], r: 2200 },
+    { id: "P2#a", kind: "R", nodes: [11, 7], r: 5e3 }, { id: "P2#b", kind: "R", nodes: [7, 7], r: 5e3 }, { id: "R2", kind: "R", nodes: [7, 0], r: 2200 },
+    { id: "RG1", kind: "R", nodes: [3, 6], r: 220e3 }, { id: "RG2", kind: "R", nodes: [5, 7], r: 220e3 },
+    { id: "A", kind: "PENTODE", nodes: [2, 3, 1, 0], model: EL84 }, { id: "B", kind: "PENTODE", nodes: [4, 5, 1, 0], model: EL84 }] };
+  const s = B.solve(net, [{ tube: "A", ia: 30e-3 }, { tube: "B", ia: 45e-3 }]);
+  assert.ok(s.ok && s.parts.every(p => p.reached), s.error || JSON.stringify(s.parts.map(p => p.note)));
+  const set = {}; s.parts.forEach(p => { set[p.part + "#a"] = 10e3 * p.fraction; set[p.part + "#b"] = 10e3 * (1 - p.fraction); });
+  const n = withR(net, set);
+  near(ia(n, "A"), 30e-3, 0.005, "A"); near(ia(n, "B"), 45e-3, 0.005, "B");
+  // each pot: its range, the ±30 % check, and the divider resistor for mid-travel
+  for (const p of s.parts) {
+    assert.ok(p.range && Math.min(...p.range) < p.ia[0] && Math.max(...p.range) > p.ia[0], `range ${p.range}`);
+    assert.equal(typeof p.covers.weak, "boolean");
+    assert.equal(p.mid.part, p.part === "P1" ? "R1" : "R2");
+  }
+  // both pots at mid-track with both dividers found (they move together, as they pull on each other)
+  const p1 = s.parts.find(q => q.part === "P1"), p2 = s.parts.find(q => q.part === "P2");
+  const mid = withR(net, { "P1#a": 5e3, "P1#b": 5e3, "P2#a": 5e3, "P2#b": 5e3, R1: p1.mid.value, R2: p2.mid.value });
+  near(ia(mid, "A"), 30e-3, 0.006, "A with the pots at mid-track and the dividers found"); near(ia(mid, "B"), 45e-3, 0.006, "B likewise");
+});
+
+test("bias: the divider found for a bias pot is not the grid leak on the same line", () => {
+  // rheostat from -50 V to the bias line, 15 kΩ to ground, 150 kΩ grid leak to the line
+  const net = { nodeCount: 8, elements: [
+    { id: "VB", kind: "V", nodes: [1, 0], v: 300 }, { id: "RL", kind: "R", nodes: [1, 2], r: 5000 }, { id: "VN", kind: "V", nodes: [0, 5], v: 50 },
+    { id: "P#a", kind: "R", nodes: [6, 5], r: 20e3 }, { id: "P#b", kind: "R", nodes: [5, 5], r: 13e3 }, { id: "R17", kind: "R", nodes: [6, 0], r: 15e3 },
+    { id: "R16", kind: "R", nodes: [3, 6], r: 150e3 }, { id: "V", kind: "PENTODE", nodes: [2, 3, 1, 0], model: EL84 }] };
+  const r = E.simulate(net, {});
+  assert.equal(B.detect(net, r.dc)[0].part, "P");
+  assert.equal(B.potDivider(net, r.dc, "P"), "R17");
+});

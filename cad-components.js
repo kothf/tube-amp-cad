@@ -578,6 +578,9 @@
   //   fields: inspector rows { key, label, unit, kind: "eng"|"number"|"select"|"range", options }
   //   build(c, net, alloc, out): push solver elements; net(pinId) -> node index
   // ---------------------------------------------------------------------------
+  // the bias finder's settings on a tube (circuits from 3.54 have only biasIa and biasMeas)
+  const biasBy = c => (c.params.biasBy !== undefined ? c.params.biasBy : c.params.biasIa > 0 ? "ia" : "");
+  const biasMeasBy = c => (c.params.biasMeasBy !== undefined ? c.params.biasMeasBy : c.params.biasMeas > 0 ? "ia" : "");
   const LIB = {
     resistor: {
       name: "Resistor", prefix: "R", group: "Passive", bbox: [-30, -10, 30, 10],
@@ -881,9 +884,16 @@
       fields: [
         { key: "tube", label: "Tube type", kind: "tube" },
         { key: "connection", label: "Model", kind: "select", options: [["pentode", "Pentode / beam (A G1 G2 K)"], ["triode", "Triode-connected (A G K)"]], when: c => tubeKind(tubeByName(c.params.tube)) === "pentode" },
-        // the bias finder (bias.js): the anode current wanted, and the one measured on the real tube
-        { key: "biasIa", label: "Target anode current", unit: "A", kind: "eng", optional: true, placeholder: "e.g. 40mA: finds the bias resistor", when: c => tubeKind(tubeByName(c.params.tube)) !== "rectifier" },
-        { key: "biasMeas", label: "Measured anode current", unit: "A", kind: "eng", optional: true, placeholder: "optional, with the parts as drawn", when: c => tubeKind(tubeByName(c.params.tube)) !== "rectifier" && c.params.biasIa > 0 }
+        // the bias finder (bias.js): what the bias should give (an anode current, or a share of Pa
+        // max), and what was measured on the real amp with the parts as drawn
+        { key: "biasBy", label: "Bias target", kind: "select", options: [["", "None"], ["ia", "Anode current"], ["pa", "Share of Pa max (idle)"]], get: biasBy,
+          apply: (c, v) => { c.params.biasBy = v; if (v === "pa" && !(c.params.biasPa > 0)) c.params.biasPa = 70; }, when: c => tubeKind(tubeByName(c.params.tube)) !== "rectifier" },
+        { key: "biasIa", label: "Target anode current", unit: "A", kind: "eng", optional: true, placeholder: "e.g. 40mA", when: c => biasBy(c) === "ia" },
+        { key: "biasPa", label: "Target dissipation", unit: "% of Pa max", kind: "number", min: 1, max: 150, when: c => biasBy(c) === "pa" },
+        { key: "biasMeasBy", label: "Measured on the amp", kind: "select", get: biasMeasBy, wide: true, when: c => !!biasBy(c),
+          options: c => [["", "Nothing"], ["ia", "Anode current"], ["ik", "Cathode current"]].concat(LIB.tube.senseOptions ? LIB.tube.senseOptions(c) : []) },
+        { key: "biasMeas", label: "Measured current", unit: "A", kind: "eng", optional: true, placeholder: "with the parts as drawn", when: c => !!biasBy(c) && /^i/.test(biasMeasBy(c)) },
+        { key: "biasMeasV", label: "Measured voltage", unit: "V", kind: "eng", optional: true, placeholder: "e.g. 42mV across 1 Ω", when: c => !!biasBy(c) && /^r:/.test(biasMeasBy(c)) }
       ],
       build: (c, net, alloc, out) => {
         const t = tubeByName(c.params.tube);
@@ -1078,5 +1088,5 @@
     { group: "Document", items: [["frame"], ["note"]] }
   ];
 
-  root.CadLib = { SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind, biasBy, biasMeasBy };
 })(globalThis);

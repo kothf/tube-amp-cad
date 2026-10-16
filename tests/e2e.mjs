@@ -1559,9 +1559,11 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const marked = await cad.evaluate(ids => { const P = TubeCAD.state.bias.parts; return { rk: P.has(ids.rk) && P.get(ids.rk).kind, others: P.has(ids.ra) || P.has(ids.rg) }; }, ids);
   check(marked.rk === "cathode" && !marked.others, `the bias finder marks the cathode resistor as the 12AX7's bias part (and not the plate load or the grid leak)`);
   // a target typed into the tube's inspector starts the search; the part shows the value found
+  const row = t => cad.locator("#inspector label.row", { hasText: t });
+  await row("Bias target").locator("select").selectOption("ia");
   let seq = await seqNow();
-  await cad.locator("#inspector label.row", { hasText: "Target anode current" }).locator("input").fill("1.2mA");
-  await cad.locator("#inspector label.row", { hasText: "Target anode current" }).locator("input").press("Enter");
+  await row("Target anode current").locator("input").fill("1.2mA");
+  await row("Target anode current").locator("input").press("Enter");
   await idle(seq);
   await cad.waitForFunction(() => TubeCAD.state.bias.result, null, { timeout: 60000 });
   const found = await cad.evaluate(ids => {
@@ -1582,6 +1584,27 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await idle(seq);
   const after = await cad.evaluate(ids => { const S = TubeCAD.state; return { r: S.comps.find(c => c.id === ids.rk).params.r, ia: TubeCAD.tubeData(S.comps.find(c => c.id === ids.v1)).dc.ia }; }, ids);
   check(after.r === found.p.e24 && Math.abs(after.ia - 1.2e-3) < 0.05 * 1.2e-3, `"Use" puts ${after.r} Ω in, and the stage draws ${(after.ia * 1e3).toFixed(3)} mA`);
+  // a share of Pa max as the target; above the rating it is flagged. A measurement can be the voltage across Rk
+  // (with a 10 kΩ plate load: 100 kΩ from 250 V lets a 12AX7 dissipate 0.16 W at most)
+  seq = await seqNow();
+  await cad.evaluate(ids => { const S = TubeCAD.state; S.comps.find(c => c.id === ids.ra).params.r = 10e3; S.sel.comps.clear(); S.sel.comps.add(ids.v1); TubeCAD.commit(); }, ids);
+  await idle(seq);
+  seq = await seqNow();
+  await row("Bias target").locator("select").selectOption("pa");
+  await idle(seq);
+  const pa70 = await cad.evaluate(ids => { const p = TubeCAD.state.bias.result.parts.find(q => q.part === ids.rk); return p && { pa: p.at[0].pa, reached: p.reached }; }, ids);
+  check(pa70 && pa70.reached && Math.abs(pa70.pa - 0.7) < 0.01, `a target of 70 % of Pa max gives the 12AX7 ${pa70 && pa70.pa.toFixed(3)} W (Pa max 1 W)`);
+  // 120 %: reachable from 400 V (from 250 V even zero bias stays under 1.2 W, and that is reported as out of range)
+  seq = await seqNow();
+  await cad.evaluate(() => { const S = TubeCAD.state; S.comps.find(c => c.type === "vdc").params.v = 400; TubeCAD.commit(); });
+  await idle(seq);
+  seq = await seqNow();
+  await row("Target dissipation").locator("input").fill("120"); await row("Target dissipation").locator("input").press("Enter");
+  await idle(seq);
+  const hot = await cad.evaluate(() => ({ insp: document.getElementById("inspector").textContent, status: document.getElementById("status-sim").textContent }));
+  check(/above the tube's Pa max/.test(hot.insp) && /more than its Pa max/.test(hot.insp) && /⚠ .* over its 1 W/.test(hot.status), `a target above Pa max is flagged in the inspector and the status line ("${hot.status}")`);
+  const opts = await row("Measured on the amp").locator("option").allTextContents();
+  check(opts.some(o => /^Voltage across R\d+ \(680Ω\)$/.test(o)) && opts.includes("Cathode current"), `the measurement can be the anode or cathode current, or the voltage across a cathode resistor (${opts.join(" | ")})`);
   await cad.click("#btn-bias");
   const hidden = await cad.evaluate(() => !TubeCAD.state.bias.show && !document.getElementById("btn-bias").classList.contains("active"));
   await cad.click("#btn-bias");

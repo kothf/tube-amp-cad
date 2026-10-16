@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.55.0] - 2026-10-16
+
+### Added
+- **Bias finder: a target as a share of Pa max.** *Bias target* in the tube's inspector is an anode current or a share of Pa max (70 % to start), solved on the idle anode dissipation Va·Ia. A target above Pa max, or a bias that leaves the anode above it at idle, is flagged in the inspector and on the status line, as is a target the part cannot reach.
+- **Bias finder: measure what the amp lets you measure.** *Measured on the amp* takes the anode current, the cathode current, or the voltage across any resistor on the cathode (a 1 Ω sense resistor, or Rk). The tube's inspector now also gives the cathode current and the anode dissipation at the bias found.
+- **Bias pots: range, spread and mid-travel.** The pot's inspector gives the anode current over its whole travel, whether the travel still covers a tube with 30 % less or more emission, and the divider resistor that puts the target at mid-travel, with a button that puts both in.
+
+### Changed
+- **The bias finder solves all parts together** (Newton's method with Broyden updates, the first Jacobian by one simulation per part). Bias parts that pull on each other converge now: two bias pots on one bias winding, as in a stereo fixed-bias amp, went round in circles before.
+- Circuits saved with 3.54 keep their target and measured anode current.
+
+
 ## [3.54.0] - 2026-10-16
 
 ### Added
