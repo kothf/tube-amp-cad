@@ -73,9 +73,24 @@ Firefox is not tested.
   - When a steady-state run and the oscilloscope's power-on transient run at
     once, the status line shows both on one line with one progress bar.
 - **Checks.** Unconnected pins, shorted parts, a missing ground, sheet
-  connectors without a partner, and parts beyond their ratings: tube
-  dissipation, resistor power, output-transformer DC current, transistor Vce
-  and dissipation, zener power.
+  connectors without a partner, and parts beyond their ratings: resistor
+  power, output-transformer DC current, transistor Vce and dissipation, zener
+  power, and for tubes:
+  - anode dissipation (Pa) and screen dissipation (Pg2), averaged over the
+    signal cycle; screen voltage; cathode current;
+  - heater-to-cathode voltage at its worst instant, against the rating for
+    that direction (a rectifier's or a raised cathode's "heater negative"
+    rating is often higher). The heater is taken as grounded; set *Heater DC
+    potential* on the tube for an elevated heater supply;
+  - the grid circuit resistance (grid stopper, grid leak, volume pot) against
+    the largest the tube allows with cathode or with fixed bias, where too
+    much lets the tube run away as it warms;
+  - a rectifier's rectified current and peak inverse voltage.
+
+  The tube's inspector shows each of them as a share of its rating. Ratings
+  come from Katsnelson & Larionov for the Soviet tubes and from the makers'
+  datasheets for the others (RCA, Philips, Mullard, Western Electric); a
+  rating a datasheet does not give is not checked.
 - **Layout.**
   - Drag the edge of the palette, the inspector or the BOM to resize it, and
     double-click the edge to reset it. The same goes for the side panels of

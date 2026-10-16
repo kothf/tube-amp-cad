@@ -540,7 +540,10 @@
         h += `<label class="row"><span>Screen voltage for curves</span><input type="number" id="vg2-preview" value="${S.vg2Preview}" min="10" max="${t.vg2Max || 600}" step="10"></label>`;
       }
     }
-    h += `<h3>Ratings</h3>` + kv("Va max", t.vaMax + " V") + kv("Pa max", t.paMax + " W") + kv("Ik max", t.ikMax + " mA") + (t.vg2Max ? kv("Vg2 max", t.vg2Max + " V") : "") + kv("Heater", `${t.vh} V · ${t.ih} A`);
+    const L = t.limits || {};
+    h += `<h3>Ratings</h3>` + kv("Va max", t.vaMax + " V") + kv("Pa max", t.paMax + " W") + kv("Ik max", t.ikMax + " mA") + (t.vg2Max ? kv("Vg2 max", t.vg2Max + " V") : "")
+      + (L.pg2 ? kv("Pg2 max", L.pg2 + " W") : "") + (L.vhk ? kv("Vhk max", L.vhk + " V" + (L.vhkNeg && L.vhkNeg !== L.vhk ? ` (${L.vhkNeg} V cathode positive)` : "")) : "")
+      + (L.rg ? kv("Rg max", (L.rg / 1e6) + " MΩ" + (L.rgFixed ? ` · ${L.rgFixed / 1e6} MΩ fixed bias` : " cathode bias")) : "") + kv("Heater", `${t.vh} V · ${t.ih} A`);
     const m = d.model;
     if (m.spice) h += `<h3>Imported SPICE model</h3>` + kv("Subcircuit", m.spice.sub) + kv("Pins", m.spice.roles.join(" · ")) + kv("µ (estimated)", m.mu) + (t.custom && t.custom.like ? kv("Socket and ratings like", t.custom.like) : "");
     else h += d.kind === "pentode"

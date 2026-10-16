@@ -884,6 +884,10 @@
       fields: [
         { key: "tube", label: "Tube type", kind: "tube" },
         { key: "connection", label: "Model", kind: "select", options: [["pentode", "Pentode / beam (A G1 G2 K)"], ["triode", "Triode-connected (A G K)"]], when: c => tubeKind(tubeByName(c.params.tube)) === "pentode" },
+        // the heater's DC potential, for the heater-to-cathode check: 0 V for a grounded heater or
+        // centre tap, more for a heater raised to protect cathode followers and stacked stages
+        { key: "heaterV", label: "Heater DC potential", unit: "V", kind: "number", min: -1000, max: 1000, dflt: 0,
+          when: c => { const t = tubeByName(c.params.tube); return !!t && !t.directlyHeated && !!t.limits && !!(t.limits.vhk || t.limits.vhkNeg); } },
         // the bias finder (bias.js): what the bias should give (an anode current, or a share of Pa
         // max), and what was measured on the real amp with the parts as drawn
         { key: "biasBy", label: "Bias target", kind: "select", options: [["", "None"], ["ia", "Anode current"], ["pa", "Share of Pa max (idle)"]], get: biasBy,

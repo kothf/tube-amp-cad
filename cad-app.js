@@ -558,6 +558,64 @@
     return d;
   }
 
+  // A tube's ratings beyond Va and Pa (tube-db.js t.limits): screen voltage and dissipation,
+  // cathode current, heater-to-cathode voltage, grid circuit resistance, a rectifier's peak
+  // inverse voltage and rectified current. Each: { label, value (text), share of the rating, text
+  // for the checks }. Averages over the signal cycle where there is one; Vhk and the peak inverse
+  // voltage at their worst instant. The heater is at its DC potential (the tube's Heater DC
+  // potential, 0 V: grounded or a grounded centre tap).
+  function tubeLimits(c) {
+    const r = S.sim.result, t = tubeByName(c.params.tube);
+    if (!r || !t || !t.limits || !r.dc.devices[c.id]) return [];
+    const L = t.limits, out = [], mean = a => { let s = 0; const n = Math.max(a.length - 1, 1); for (let i = 0; i < n; i++) s += a[i]; return s / n; };
+    // say(value, rating): the sentence for the checks
+    const add = (label, v, lim, unit, say) => {
+      if (!(lim > 0) || v === null || !isFinite(v)) return;
+      const f = x => fmtEng(x, unit);
+      out.push({ key: label.split(" ")[0], label, value: f(v), lim: f(lim), share: v / lim, text: `${c.label} ${say(f(v), f(lim))}.` });
+    };
+    const kWave = waveOf(c, "K"), vk = netDC(pinNetOf(c, "K")), vh = +c.params.heaterV || 0;
+    // heater to cathode: the worse of the two directions, each against its own rating
+    const vhk = () => {
+      if (t.directlyHeated || vk === null) return;
+      const s = kWave ? stats(kWave) : { min: vk, max: vk }, up = s.max - vh, down = vh - s.min;
+      const neg = L.vhkNeg || L.vhk, pos = L.vhk;
+      const a = up > 0 && neg ? up / neg : 0, b = down > 0 && pos ? down / pos : 0;
+      if (a >= b && a > 0) add("Vhk (cathode above heater)", up, neg, "V", (v, m) => `has its cathode ${v} above the heater, more than the ${m} allowed`);
+      else if (b > 0) add("Vhk (heater above cathode)", down, pos, "V", (v, m) => `has its heater ${v} above the cathode, more than the ${m} allowed`);
+    };
+    if (tubeKind(t) === "rectifier") {
+      const dev = r.dc.devices[c.id], tr = r.tran && r.tran.devices;
+      const ia = (x, part) => (tr && tr[c.id + "#" + part] ? mean(tr[c.id + "#" + part].i) : x ? x.i : 0);
+      add("Rectified current", ia(dev.a1, "a1") + ia(dev.a2, "a2"), t.ikMax / 1000, "A", (v, m) => `delivers ${v} on average, more than its ${m} rating`);
+      if (kWave) {
+        let piv = 0;
+        ["A1", "A2"].forEach(p => { const w = pinNetOf(c, p) !== undefined && waveOf(c, p); if (w) for (let i = 0; i < w.length; i++) piv = Math.max(piv, kWave[i] - w[i]); });
+        add("Peak inverse voltage", piv, L.piv, "V", (v, m) => `sees ${v} peak inverse voltage, more than its ${m} rating`);
+      }
+      vhk();
+      return out;
+    }
+    const d = tubeData(c); if (!d || !d.dc) return [];
+    const tr = r.tran && r.tran.devices[c.id], dc = d.dc;
+    if (d.kind === "pentode") {
+      add("Vg2k (screen)", dc.vg2k, L.vg2, "V", (v, m) => `has its screen at ${v}, more than its ${m} rating`);
+      const G2 = waveOf(c, "G2");
+      let pg2 = dc.vg2k * dc.ig2;
+      if (tr && tr.ig2 && G2 && kWave) { let s = 0; const n = Math.max(tr.ig2.length - 1, 1); for (let i = 0; i < n; i++) s += (G2[i] - kWave[i]) * tr.ig2[i]; pg2 = s / n; }
+      add("Pg2 (screen dissipation)", pg2, L.pg2, "W", (v, m) => `screen dissipates ${v} (average), more than its ${m} Pg2 max`);
+    }
+    const ik = (tr ? mean(tr.i) + (tr.ig2 ? mean(tr.ig2) : 0) : dc.ia + (dc.ig2 || 0)) + (dc.ig || 0);
+    add("Ik (cathode current)", ik, t.ikMax / 1000, "A", (v, m) => `draws ${v} cathode current, more than its ${m} rating`);
+    vhk();
+    const b = S.bias.tubes.get(c.id), fixed = b && (b.kind === "fixed" || b.fixed), rgLim = fixed ? L.rgFixed || L.rg : L.rg;
+    if (b && isFinite(b.rg) && b.rg > 0) add(`Grid circuit R (${fixed ? "fixed" : "cathode"} bias)`, b.rg, rgLim, "Ω", (v, m) => `has ${v} in its grid circuit, more than the ${m} allowed with ${fixed ? "fixed" : "cathode"} bias (the tube can run away as it warms)`);
+    return out;
+  }
+  function limitRows(c) {
+    return tubeLimits(c).filter(o => o.key !== "Vg2k").map(o => kv(o.label, `${o.value} · ${Math.round(o.share * 100)}% of ${o.lim}`, o.share > 1 ? "bad" : o.share > 0.85 ? "warn" : "")).join("");
+  }
+
   // ---------------------------------------------------------------------------
   // Bias finder (bias.js). Every result marks the parts that set each tube's bias, drawn in
   // their own colour. For tubes with a target anode current, a worker of its own simulates
@@ -1960,7 +2018,7 @@
       } else if (f.kind === "text") {
         el = input("text", c.params[f.key] || "", v => { c.params[f.key] = v; commit(); });
       } else if (f.kind === "number") {
-        el = input("number", c.params[f.key], v => { const n = parseFloat(v); if (!isFinite(n)) { flash(el); return; } c.params[f.key] = Math.min(f.max !== undefined ? f.max : Infinity, Math.max(f.min !== undefined ? f.min : -Infinity, n)); commit(); });
+        el = input("number", c.params[f.key] !== undefined ? c.params[f.key] : f.dflt, v => { const n = parseFloat(v); if (!isFinite(n)) { flash(el); return; } c.params[f.key] = Math.min(f.max !== undefined ? f.max : Infinity, Math.max(f.min !== undefined ? f.min : -Infinity, n)); commit(); });
       } else if (f.kind === "select") {
         el = document.createElement("select");
         (typeof f.options === "function" ? f.options(c) : f.options).forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; el.appendChild(o); });
@@ -2049,16 +2107,18 @@
         if (!d) return h + `<p class="insp-help">No data.</p>`;
         if (d.kind === "rectifier") {
           h += kv("Anode 1 current", fmtEng(d.a1 ? d.a1.i : 0, "A")) + kv("Anode 2 current", fmtEng(d.a2 ? d.a2.i : 0, "A"));
+          h += limitRows(c);
           return h + `<p class="insp-help">DC values; peak currents are higher while the reservoir cap charges.</p>`;
         }
         const dc = d.dc;
         const pa = dc.vak * dc.ia, over = pa > d.paMax;
         h += kv("Va (anode–cathode)", fmtEng(dc.vak, "V", 1), dc.vak > d.vaMax ? "bad" : "");
         h += kv(d.kind === "pentode" ? "Vg1k (bias)" : "Vgk (bias)", fmtEng(dc.vgk, "V", 2), dc.vgk > 0 ? "warn" : "");
-        if (d.kind === "pentode") h += kv("Vg2k (screen)", fmtEng(dc.vg2k, "V", 1));
+        if (d.kind === "pentode") { const l = tubeLimits(c).find(o => o.key === "Vg2k"); h += kv("Vg2k (screen)", fmtEng(dc.vg2k, "V", 1) + (l ? ` · ${Math.round(l.share * 100)}% of ${l.lim}` : ""), l && l.share > 1 ? "bad" : ""); }
         h += kv("Ia (anode current)", fmtEng(dc.ia, "A", 2));
         if (d.kind === "pentode") h += kv("Ig2 (screen current)", fmtEng(dc.ig2, "A", 2));
         h += kv("Pa (dissipation)", `${fmtEng(pa, "W", 2)} · ${Math.round(pa / d.paMax * 100)}% of ${d.paMax} W`, over ? "bad" : (pa > 0.85 * d.paMax ? "warn" : ""));
+        h += limitRows(c);
         if (d.metrics) {
           h += `<div class="insp-sub">With signal</div>`;
           h += kv("Plate swing", fmtEng(d.metrics.vakPP, "Vpp", 1)) + kv("Grid swing", fmtEng(d.metrics.vgkPP, "Vpp", 2));
@@ -2208,6 +2268,7 @@
       if (avg !== null && avg > d.paMax) issues.push(`${c.label} over dissipation: ${avg.toFixed(1)} W on average over the signal cycle > ${d.paMax} W.`);
       else if (avg === null && dc > d.paMax) issues.push(`${c.label} over dissipation (${dc.toFixed(1)} W > ${d.paMax} W).`);
     });
+    S.comps.forEach(c => { if (c.type === "tube") tubeLimits(c).forEach(o => { if (o.share > 1) issues.push(o.text); }); });
     h += `<div class="insp-sub">Checks${simPct()}</div>` + (issues.length ? issues.map(i => `<p class="insp-help warn">⚠ ${i}</p>`).join("") : `<p class="insp-help ok">✓ No problems found.</p>`);
     return h;
   }

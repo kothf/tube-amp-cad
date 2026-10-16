@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.57.0] - 2026-10-17
+
+### Added
+- **More tube ratings checked.** Besides Pa and Va, the checks and each tube's inspector now cover:
+  - screen dissipation (Pg2, averaged over the signal cycle) and screen voltage;
+  - cathode current;
+  - heater-to-cathode voltage, against the rating for each direction, with the heater grounded or at the tube's new *Heater DC potential*;
+  - the grid circuit resistance against the largest allowed with cathode or with fixed bias;
+  - a rectifier's rectified current and peak inverse voltage.
+
+  Soviet tubes take their ratings from Katsnelson & Larionov; Western tubes from their datasheets. The curve tracer lists Pg2, Vhk and Rg max with the other ratings.
+
 ## [3.56.1] - 2026-10-16
 
 ### Changed

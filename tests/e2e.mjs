@@ -1614,6 +1614,42 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await cad.click("#btn-bias");
   check(hidden, "the Bias button hides and shows the marking");
 }
+// --- Tube ratings beyond Va and Pa ----------------------------------------------------------------
+{
+  // an EL84 with fixed bias through a 1 MΩ grid leak (0.3 MΩ allowed) and its screen on 300 V with
+  // the anode pulled down by its load; a 12AT7 cathode follower with its cathode near 150 V (90 V allowed)
+  await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = [];
+    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+    const pin = (c, id) => C.compPins(c).find(p => p.id === id), wire = (a, b, h) => C.lRoute(a.x, a.y, b.x, b.y, h !== false).forEach(q => C.addSegment(...q));
+    const gnd = (p, x, y) => { const g = add("ground", {}, x ?? p.x, y ?? p.y + 40); wire(p, pin(g, "G"), false); };
+    const sup = (x, y) => { const b = add("vdc", { v: 300 }, x, y); gnd(pin(b, "-")); return pin(b, "+"); };
+    const V1 = add("tube", { tube: "EL84", connection: "pentode" }, 400, 300), RL = add("resistor", { r: 3000, w: 50 }, 400, 160, 1);
+    const RG = add("resistor", { r: 1e6 }, 300, 380, 1), VN = add("vdc", { v: -9 }, 220, 480);
+    wire(sup(560, 60), pin(RL, "1"), true); wire(pin(RL, "2"), pin(V1, "A")); wire(sup(600, 240), pin(V1, "G2"), true);
+    gnd(pin(V1, "K")); wire(pin(RG, "1"), pin(V1, "G1")); wire(pin(RG, "2"), pin(VN, "+")); gnd(pin(VN, "-"));
+    const V2 = add("tube", { tube: "12AT7" }, 900, 300), R1 = add("resistor", { r: 1e6 }, 820, 180, 1), R2 = add("resistor", { r: 1e6 }, 820, 420, 1), RK = add("resistor", { r: 47e3 }, 900, 440, 1);
+    wire(sup(1060, 120), pin(V2, "A"), true); wire(sup(700, 60), pin(R1, "1"), true); wire(pin(R1, "2"), pin(V2, "G")); wire(pin(R2, "1"), pin(V2, "G")); gnd(pin(R2, "2"));
+    wire(pin(V2, "K"), pin(RK, "1")); gnd(pin(RK, "2"));
+    S.sel.comps.clear(); S.sel.wires.clear(); C.setLive(true); C.commit(); C.fitView();
+  });
+  await cad.waitForFunction(() => { const S = TubeCAD.state; return S.sim.result && !S.sim.busy && !S.sim.pending && S.comps.length > 10; }, null, { timeout: 60000 });
+  await cad.waitForTimeout(500);
+  const sum = await cad.evaluate(() => { TubeCAD.state.sel.comps.clear(); TubeCAD.updateInspector(); return document.getElementById("inspector").textContent; });
+  check(/VL1 has 1MΩ in its grid circuit, more than the 300kΩ allowed with fixed bias/.test(sum), `the checks flag the EL84's 1 MΩ grid leak with fixed bias (0.3 MΩ allowed)`);
+  check(/VL2(\.1)? has its cathode 1\d\dV above the heater, more than the 90V allowed/.test(sum), `the checks flag the 12AT7 follower's cathode above the grounded heater`);
+  const el84 = await cad.evaluate(() => { const S = TubeCAD.state, c = S.comps.find(k => k.params.tube === "EL84"); S.sel.comps.clear(); S.sel.comps.add(c.id); TubeCAD.updateInspector(); return document.getElementById("inspector").textContent; });
+  const pg2 = (/Pg2 \(screen dissipation\)([\d.]+)(m?)W · (\d+)% of 2W/.exec(el84) || []);
+  check(pg2.length && /Ik \(cathode current\)/.test(el84) && /Grid circuit R \(fixed bias\)1MΩ · 333% of 300kΩ/.test(el84), `the EL84's inspector shows Pg2 (${pg2[1]}${pg2[2]} W, ${pg2[3]} % of 2 W), Ik and the grid circuit resistance against their ratings`);
+  // a raised heater clears the follower
+  const seq = await cad.evaluate(() => TubeCAD.state.sim.seq);
+  await cad.evaluate(() => { const S = TubeCAD.state, c = S.comps.find(k => k.params.tube === "12AT7"); S.sel.comps.clear(); S.sel.comps.add(c.id); TubeCAD.updateInspector(); });
+  const hv = cad.locator("#inspector label.row", { hasText: "Heater DC potential" }).locator("input");
+  await hv.fill("100"); await hv.press("Enter");
+  await cad.waitForFunction(seq => { const S = TubeCAD.state; return S.sim.seq > seq && S.sim.result && !S.sim.busy && !S.sim.pending; }, seq, { timeout: 60000 });
+  const raised = await cad.evaluate(() => { TubeCAD.state.sel.comps.clear(); TubeCAD.updateInspector(); return document.getElementById("inspector").textContent; });
+  check(!/VL2(\.1)? has its/.test(raised) && /VL1 has 1MΩ/.test(raised), "with the heater raised to 100 V the follower's Vhk is within its rating");
+}
 
 check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.slice(0, 3).join(", ")}` : ""}`);
 // --- SPICE tube models (import dialog) and the loudspeaker model ----------------------------

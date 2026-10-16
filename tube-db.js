@@ -1657,3 +1657,44 @@ var TUBE_DATABASE = [
     ]
   }
 ];
+
+/* Ratings beyond Va, Pa and Ik, for the CAD's checks: t.limits = { vg2, pg2 (W), vhk (V, heater
+   positive or either way), vhkNeg (V, heater negative to the cathode, as on a rectifier or a
+   cathode follower's raised cathode), rg and rgFixed (Ω, the largest grid circuit resistance
+   with cathode and with fixed bias), piv (V, a rectifier's peak inverse voltage) }. Soviet tubes
+   take them from their handbook entry (Katsnelson & Larionov), the others from the datasheets
+   below. A rating that is not known is left out and not checked. */
+var TUBE_RATINGS = {
+  "12AX7": { vhk: 180, source: "RCA 12AX7A" },
+  "12AU7": { vhk: 200, rg: 1e6, source: "RCA 12AU7A; Philips ECC82 (Rg)" },
+  "12AT7": { vhk: 90, rg: 1e6, source: "RCA 12AT7; Philips ECC81 (Rg)" },
+  "12AY7": { vhk: 90, source: "RCA 12AY7" },
+  "6SN7GT": { vhk: 200, rg: 1e6, source: "RCA 6SN7GTB" },
+  "6SL7GT": { vhk: 90, source: "RCA 6SL7GT" },
+  "6P14P-EV": { vg2: 300, pg2: 2.2, vhk: 100, rg: 1e6, source: "as 6П14П (Katsnelson & Larionov p. 299)" },
+  "EL84": { pg2: 2, vhk: 100, rg: 1e6, rgFixed: 0.3e6, source: "Philips EL84" },
+  "EL34": { pg2: 8, vhk: 100, rg: 0.7e6, rgFixed: 0.5e6, source: "Philips EL34" },
+  "6V6GT": { pg2: 2.2, vhk: 200, rg: 0.5e6, rgFixed: 0.1e6, source: "RCA 6V6GTA" },
+  "6L6GC": { pg2: 5, vhk: 200, rg: 0.5e6, rgFixed: 0.1e6, source: "RCA 6L6GC" },
+  "2A3": { rg: 0.5e6, rgFixed: 0.05e6, source: "RCA 2A3" },
+  "300B": { rg: 0.25e6, rgFixed: 0.05e6, source: "Western Electric 300B" },
+  "GZ34": { piv: 1500, source: "Mullard GZ34" },
+  "5U4G": { piv: 1550, source: "RCA 5U4GB" }
+};
+TUBE_DATABASE.forEach(t => {
+  const L = (t.book && t.book.limits) || {}, own = TUBE_RATINGS[t.commonName] || {}, out = {};
+  if (t.vg2Max > 0) out.vg2 = t.vg2Max;
+  if (L.pg2) out.pg2 = L.pg2;
+  if (L.vkh) out.vhk = L.vkh;
+  if (L.vkh_neg) out.vhkNeg = L.vkh_neg;
+  if (L.rg) out.rg = L.rg * 1e6;
+  if (L.rg_fixed) out.rgFixed = L.rg_fixed * 1e6;
+  if (L.v_inverse) out.piv = L.v_inverse;
+  ["vg2", "pg2", "vhk", "vhkNeg", "rg", "rgFixed", "piv"].forEach(k => { if (own[k]) out[k] = own[k]; });
+  out.source = own.source || (t.book ? `${t.book.source} p. ${t.book.page}` : "");
+  t.limits = out;
+  // a triode-pentode's sections share one heater and cathode-heater insulation
+  const twin = /-P$/.test(t.commonName) && TUBE_DATABASE.find(u => u.commonName === t.commonName.replace(/-P$/, "-T"));
+  if (!out.vhk && twin && twin.book && twin.book.limits.vkh) out.vhk = twin.book.limits.vkh;
+  t.directlyHeated = /(^|[^n])directly heated/i.test(t.type) || /^(5Ts3S|5Ts4S|5Ts8S|5Ts9S|5U4G|GM-70|845)$/.test(t.commonName);
+});

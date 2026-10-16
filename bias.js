@@ -53,8 +53,29 @@
     return adj;
   }
 
-  // For every tube: { tube, kind: "cathode" | "fixed", part, type: "resistor" | "pot" }, or
-  // { tube, kind: null, reason } when no single resistor sets its bias.
+  // the grid circuit's DC resistance: through the resistors of the grid's return (grid stopper,
+  // grid leak, a volume pot) to where it is fed or grounded, the lowest series sum
+  function gridResistance(adj, leak, g, region) {
+    const fed = n => n === 0 || (adj.get(n) || []).some(({ ed }) => !leak(ed));
+    const dist = new Map([[g, 0]]), done = new Set();
+    for (;;) {
+      let n = null;
+      dist.forEach((d, m) => { if (!done.has(m) && (n === null || d < dist.get(n))) n = m; });
+      if (n === null) return Infinity;
+      if (fed(n)) return dist.get(n);
+      done.add(n);
+      (adj.get(n) || []).forEach(({ ed, other }) => {
+        if (!leak(ed) || !region.has(other)) return;
+        const d = dist.get(n) + ed.e.r;
+        if (!dist.has(other) || d < dist.get(other)) dist.set(other, d);
+      });
+    }
+  }
+
+  // For every tube: { tube, kind: "cathode" | "fixed", part, type: "resistor" | "pot", rg }, or
+  // { tube, kind: null, reason, rg } when no single resistor sets its bias. rg: the grid circuit
+  // resistance (Ω; Infinity when the grid has no DC path); fixed: true for a fixed-biased grid with
+  // no part to set it.
   //   The grid's DC return is followed through resistors that carry no current (grid stopper,
   //   grid leak) to where something feeds it. A grid returned to ground or to a positive node
   //   is cathode-biased: the bias resistor is the first part on the shortest DC path from the
@@ -77,12 +98,12 @@
       }
       const feeds = [];
       region.forEach(n => { if (n !== 0) (adj.get(n) || []).forEach(({ ed, other }) => { if (!leak(ed)) feeds.push({ e: ed.e, other }); }); });
-      const res = { tube: t.id };
+      const res = { tube: t.id, rg: gridResistance(adj, leak, g, region) };
       if (!region.has(0) && !feeds.length) { out.push(Object.assign(res, { kind: null, reason: "the grid has no DC path" })); return; }
       if (!region.has(0) && V(g) < -0.5) {
         const parts = feeds.map(f => Object.assign({ other: f.other }, adjustable(netlist, f.e))).filter(p => p.part);
         const pick = parts.find(p => p.type === "pot") || parts.find(p => p.other === 0) || parts.sort((a, b) => V(a.other) - V(b.other))[0];
-        out.push(Object.assign(res, pick ? { kind: "fixed", part: pick.part, type: pick.type } : { kind: null, reason: "the negative bias supply has no resistor or pot to set it" }));
+        out.push(Object.assign(res, pick ? { kind: "fixed", part: pick.part, type: pick.type } : { kind: null, fixed: true, reason: "the negative bias supply has no resistor or pot to set it" }));
         return;
       }
       if (region.has(k)) { out.push(Object.assign(res, { kind: null, reason: Math.abs(V(g) - V(k)) < 0.05 ? "zero bias: grid and cathode return to the same point" : "the cathode is on the grid's DC return" })); return; }

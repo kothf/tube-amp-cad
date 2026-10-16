@@ -542,6 +542,7 @@
       type: `${kind === "pentode" ? "Pentode" : "Triode"} (SPICE model ${o.sub})`, category: like.category || (kind === "pentode" ? "power" : "small_signal"), origin: "SPICE import",
       socket: like.socket || "", pinCount: like.pinCount || 0, pinout: like.pinout || [], vh: like.vh || 0, ih: like.ih || 0, heaterWarning: like.heaterWarning || "",
       vaMax: +o.vaMax || like.vaMax || 300, paMax: +o.paMax || like.paMax || 1, ikMax: like.ikMax || 0, vg2Max: like.vg2Max || 0,
+      limits: like.limits ? Object.assign({}, like.limits) : {}, directlyHeated: !!like.directlyHeated,
       koren: kind === "pentode" ? { Pentode: model } : { Triode: model },
       custom: { text, sub: o.sub, roles: o.roles.slice(), like: o.like || "", kind }
     };
