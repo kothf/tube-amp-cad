@@ -130,3 +130,12 @@ test("an imported tube joins the database like an existing one, and is refused a
   assert.throws(() => S.register({ ...entry, commonName: "EL34" }), /built-in tube/);
   JSON.parse(JSON.stringify(entry));                          // plain data: it goes into files and to the worker
 });
+
+test("SPICE export of a built-in pentode: the same currents as the engine, the screen's fade-in below 2 V included", () => {
+  const m = globalThis.TUBE_DATABASE.find(t => t.commonName === "EL84").koren.Pentode, x = E.Spice.pentode(m);
+  const t = S.tube({ text: `.subckt EX A G1 G2 K\nBp A K I={${x.plate}}\nBs G2 K I={${x.screen}}\nBg G1 K I={${x.grid}}\n.ends`, sub: "EX", roles: ["A", "G", "G2", "K"] });
+  for (const [va, vg, vs] of [[250, -8, 250], [100, -2, 200], [50, 0.5, 1], [50, 0.5, 0.2], [50, 1, 1.999], [50, 1, 2.001], [20, -1, 0]]) {
+    const a = t.pentode(va, vg, vs), b = E.Tube.pentode(va, vg, vs, m);
+    for (let k = 0; k < 3; k++) assert.ok(Math.abs(a[k] - b[k]) <= 1e-9 + 1e-6 * Math.abs(b[k]), `Va ${va}, Vg ${vg}, Vg2 ${vs}: [${a}] vs [${b}]`);
+  }
+});

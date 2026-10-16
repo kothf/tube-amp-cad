@@ -207,15 +207,16 @@ and it works out the value that meets it, and writes it next to the part ("→ 6
 - **Measured on the amp.** You can enter the anode current, the cathode
   current, or the voltage across any resistor on the tube's cathode (the
   usual 1 Ω sense resistor of a fixed-bias amp, or Rk itself), all read with
-  the parts as drawn. The model's currents are then scaled (its emission)
-  until it reads the same, and the value found is for that tube. One reading
-  cannot tell weak emission from a tube whose curves are shifted along the
-  grid axis, so take the result as an estimate. The tube's inspector shows
-  the emission it fitted.
+  the parts as drawn. The model's curves are then moved along the grid axis
+  until it reads the same (its plate and screen currents, as if the grid were
+  that much more positive or negative; grid current still starts at 0 V), and
+  the value found is for that tube. The tube's inspector shows the shift. In
+  a cathode-biased stage the cathode resistor's feedback holds the current
+  steady, so even a few milliamps' difference fits as a shift of volts.
 - **Bias pots.** For a pot, the inspector also shows:
   - the anode current over its whole travel;
-  - whether that travel still covers a tube with 30 % less or more emission
-    (a fresh, unmatched tube);
+  - whether that travel still covers a tube that draws 30 % less or more
+    current (a fresh, unmatched tube);
   - the value of the divider resistor in series with the pot that puts the
     target at mid-travel, where the pot has the most room either way.
     *Use … wiper to mid-track* puts both in.
@@ -543,7 +544,9 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
 - **Pentodes** keep Koren's space-charge term but divide the current between
   plate and screen with a separate knee and slope. What the plate loses in
   the knee goes to the screen, so full-power behaviour matches the
-  datasheets.
+  datasheets. Below 2 V on the screen the currents fade in smoothly to zero
+  at 0 V (Koren's terms do not go to zero there when the grid is above the
+  cathode, and that jump stalls the solver at a cold start).
 - Grid conduction and screen current are included, and the exported SPICE
   models use exactly the same equations.
 - **Imported SPICE models** run through the same entry point as the Koren

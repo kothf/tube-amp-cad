@@ -737,8 +737,8 @@
     h += kv("Ik then (cathode)", fmtEng(st.ik, "A", 2));
     h += paRow(st, c);
     if (st.pa > paMaxOf(c)) h += `<p class="insp-help warn">At this bias the anode dissipates more than its Pa max at idle: lower the target.</p>`;
-    const em = S.bias.result.emission[c.id];
-    if (em !== undefined) h += kv("Emission vs model (fitted)", Math.round(em * 100) + " %") + `<p class="insp-help">The model's currents are scaled until it reads what you measured with the parts as drawn, so the suggestion is for your tube. One reading cannot tell weak emission from a shifted grid, so take it as an estimate.</p>`;
+    const sh = S.bias.result.shift && S.bias.result.shift[c.id];
+    if (sh !== undefined) h += kv("Grid shift vs model (fitted)", (sh >= 0 ? "+" : "") + fmtEng(sh, "V", 2)) + `<p class="insp-help">Your tube reads what you measured as if its grid were ${fmtEng(Math.abs(sh), "V", 2)} ${sh >= 0 ? "more positive" : "more negative"} than the model's, so the suggestion is for your tube. A large shift can also mean the reading, or the amp, differs from the drawing.</p>`;
     return h;
   }
   function applyBias(id, mid) {

@@ -34,7 +34,15 @@ test("bias: E24 rounding by ratio", () => {
   assert.deepEqual([697, 505, 1104, 4750, 9.6, 96e3, 1.04].map(B.e24), [680, 510, 1100, 4700, 10, 100e3, 1]);
 });
 
-test("bias: a tube's iScale scales all its currents (a tube with more or less emission than the model)", () => {
+test("bias: a tube's gridShift moves its plate and screen currents along the grid axis, not its grid conduction; iScale scales them all", () => {
+  const at = (vg, extra) => E.simulate({ nodeCount: 4, elements: [{ id: "a", kind: "V", nodes: [1, 0], v: 250 }, { id: "g", kind: "V", nodes: [2, 0], v: vg }, { id: "s", kind: "V", nodes: [3, 0], v: 250 },
+    Object.assign({ id: "T", kind: "PENTODE", nodes: [1, 2, 3, 0], model: EL84 }, extra)] }, {}).dc.devices.T.main;
+  const shifted = at(-8, { gridShift: 0.5 }), plain = at(-7.5);
+  near(shifted.ia, plain.ia, 1e-9, "plate at -8 V shifted +0.5 V = plate at -7.5 V"); near(shifted.ig2, plain.ig2, 1e-9, "screen likewise");
+  assert.equal(at(-0.2, { gridShift: 0.5 }).ig, 0, "no grid current below 0 V, whatever the shift");
+});
+
+test("bias: a tube's iScale scales all its currents (the pot check's weaker and stronger tubes)", () => {
   // electrodes held by sources: the currents are the model's, times the factor
   const net = k => ({ nodeCount: 4, elements: [{ id: "a", kind: "V", nodes: [1, 0], v: 250 }, { id: "g", kind: "V", nodes: [0, 2], v: 8 }, { id: "s", kind: "V", nodes: [3, 0], v: 250 },
     { id: "T", kind: "PENTODE", nodes: [1, 2, 3, 0], model: EL84, iScale: k }] });
@@ -85,13 +93,13 @@ test("bias: cathode resistor for a target current, checked by simulating it", ()
   near(p.power, (p.ia[0] * p.e24) ** 2 / p.e24, 0.01, "power");
 });
 
-test("bias: a measured tube: the emission fitted to the measurement, the resistor for that tube", () => {
+test("bias: a measured tube: the grid shift fitted to the measurement, the resistor for that tube", () => {
   const net = stage(), now = ia(net, "V1"), measured = 0.9 * now;
   const s = B.solve(net, [{ tube: "V1", ia: 1.2e-3, measured }]);
   assert.ok(s.ok, s.error);
-  const k = s.emission.V1;
-  assert.ok(k > 0.5 && k < 1, `emission ${k}`);
-  const scaled = n => ({ nodeCount: n.nodeCount, elements: n.elements.map(e => (e.id === "V1" ? Object.assign({}, e, { iScale: k }) : e)) });
+  const k = s.shift.V1;
+  assert.ok(k < 0 && k > -2, `grid shift ${k} V (draws less than the model: as if the grid were more negative)`);
+  const scaled = n => ({ nodeCount: n.nodeCount, elements: n.elements.map(e => (e.id === "V1" ? Object.assign({}, e, { gridShift: k }) : e)) });
   near(ia(scaled(net), "V1"), measured, 0.003, "the fitted tube draws what was measured");
   const p = s.parts[0];
   near(ia(scaled(withR(net, { RK: p.value })), "V1"), 1.2e-3, 0.003, "and the target with the resistor found");
@@ -149,7 +157,7 @@ test("bias: measured as cathode current, or as the voltage across a 1 Ω sense r
   for (const measured of [{ kind: "ik", value: 0.9 * ik0 }, { kind: "v", part: "RSENSE", value: 0.9 * ik0 * 1 }]) {
     const n = withR(net, { RLOW: 6000 }), s = B.solve(n, [{ tube: "V2", ia: 30e-3, measured }]);
     assert.ok(s.ok && s.parts[0].reached, s.error);
-    const k = s.emission.V2, scaled = { nodeCount: n.nodeCount, elements: n.elements.map(e => (e.id === "V2" ? Object.assign({}, e, { iScale: k }) : e)) };
+    const k = s.shift.V2, scaled = { nodeCount: n.nodeCount, elements: n.elements.map(e => (e.id === "V2" ? Object.assign({}, e, { gridShift: k }) : e)) };
     const d = E.simulate(scaled, {}).dc.devices.V2.main;
     near(d.ia + d.ig2 + d.ig, 0.9 * ik0, 0.003, `${measured.kind}: the fitted tube's cathode current is what was measured`);
   }

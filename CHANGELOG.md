@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.56.0] - 2026-10-16
+
+### Changed
+- **Bias finder: a measured tube is fitted by a grid shift.** The model's plate and screen currents are moved along the grid axis until it reads what you measured (grid conduction still starts at 0 V), instead of all its currents being scaled. The tube's inspector shows the shift in volts. The pot check against weaker and stronger tubes still uses 30 % less or more current.
+- **Pentode model: the currents fade in below 2 V on the screen**, smoothly to zero at 0 V. With the grid above the cathode, Koren's terms jumped from zero to a finite current as the screen passed 0 V; a cold start of a mains-fed circuit with a positive grid shift stalled on that jump ("Transient did not converge"). Above 2 V nothing changes; the exported SPICE models carry the same fade (a test compares them with the engine).
+
+
 ## [3.55.0] - 2026-10-16
 
 ### Added

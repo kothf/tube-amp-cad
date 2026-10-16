@@ -4,12 +4,10 @@
    detect(netlist, dc)            the bias part of every tube, from the circuit and its DC solution
    solve(netlist, targets, opts)  re-simulates with the signal off, changing the bias parts until
                                   each tube draws its target anode current
-     targets: [{ tube, ia, measured }]: ia the anode current wanted (A); measured, optional, the
-     anode current the real tube draws in the circuit as drawn. A measured tube first gets the
-     emission (all its currents scaled, the engine's iScale) that makes the model draw what was
-     measured, and the bias part is then found for that tube. (A shift along the grid axis would
-     do as well, but a pentode model with its grid above zero jumps where the screen passes 0 V,
-     which a cold start of a mains-fed circuit crosses.)
+     targets: [{ tube, ia | pa, measured }]: what the bias should give; measured, optional, what
+     was read on the real amp with the parts as drawn. A measured tube first gets the grid shift
+     (the engine's gridShift: its curves moved along the grid axis) that makes the model read the
+     same, and the bias part is then found for that tube.
 
    Works on the engine's netlist ({ nodeCount, elements }); a part's elements carry its id
    (a pot's two halves are "id#a" and "id#b"). Needs TubeSimEngine for solve. */
@@ -129,11 +127,14 @@
       set: (n, u) => { const f = sigmoid(u0 + u); n.elements.find(e => e.id === part + "#a").r = Math.max(total * f, 0.1); n.elements.find(e => e.id === part + "#b").r = Math.max(total * (1 - f), 0.1); } };
   }
 
-  // the circuit with each knob at u and each measured tube's emission
-  function variant(base, knobs, u, emission) {
+  // the circuit with each knob at u, each measured tube's grid shift, and (checking a pot against
+  // weaker and stronger tubes) tubes' currents scaled
+  function variant(base, knobs, u, shift, scale) {
     const nl = copyNetlist(base);
     knobs.forEach((kn, i) => kn.set(nl, u[i]));
-    emission.forEach((k, id) => { const t = nl.elements.find(e => e.id === id && isTube(e)); if (t) t.iScale = k; });
+    const tube = id => nl.elements.find(e => e.id === id && isTube(e));
+    shift.forEach((v, id) => { const t = tube(id); if (t) t.gridShift = v; });
+    if (scale) scale.forEach((k, id) => { const t = tube(id); if (t) t.iScale = k; });
     return nl;
   }
 
@@ -217,7 +218,7 @@
   //   { kind: "v", part: id, value: V }   the voltage across a resistor (a cathode sense resistor, Rk)
   //   a number: the anode current (as 3.54)
   // opts: { quiet: [ids of signal sources to switch off], budgetMs (per simulation), maxRounds, spread, onProgress(f) }
-  // returns { ok, error, detected, parts: [...], emission: { tubeId: factor }, runs, elapsedMs }
+  // returns { ok, error, detected, parts: [...], shift: { tubeId: V }, runs, elapsedMs }
   function solve(netlist, targets, opts) {
     opts = opts || {};
     const E = root.TubeSimEngine, t0 = Date.now(), maxRounds = opts.maxRounds || 10, spread = opts.spread || 0.3;
@@ -265,31 +266,31 @@
         if (ts.every(t => !!t.pa === !!ts[0].pa)) { let q = 0, w = 0; ts.forEach(t => { q += qGoal(r, t); w += goalOf(t); }); return (q - w) / w; }
         return ts.reduce((s, t) => s + (qGoal(r, t) - goalOf(t)) / goalOf(t), 0) / ts.length;
       };
-      const emission = new Map();
-      // 1. measured tubes: the emission that makes the model read what was measured
+      const shift = new Map();
+      // 1. measured tubes: the grid shift that makes the model read what was measured
       const meas = targets.filter(t => t.measured && (measOf(t).value > 0) && want.has(t.tube) && list.some(g => g.tubes.includes(t.tube)));
       const pots = list.filter(g => g.type === "pot");
       planned = 2 + (meas.length ? 3 + meas.length : 0) + (list.length ? 4 + list.length : 0) + (pots.length ? 8 + pots.length : 0);
       if (meas.length) {
-        // u = ln(emission), between a fifth and five times the model's
-        const spec = meas.map(() => ({ tol: 0.002, probe: 0.05, slopeSign: 1, maxStep: 0.7, lo: Math.log(0.2), hi: Math.log(5) }));
+        // u = the shift in volts, within ±20 V (more current: positive)
+        const spec = meas.map(() => ({ tol: 0.002, probe: 0.1, slopeSign: 1, maxStep: 3, lo: -20, hi: 20 }));
         const fit = rootAll(spec, meas.map(() => 0), u => {
-          meas.forEach((t, i) => emission.set(t.tube, Math.exp(u[i])));
-          const r = sim(variant(base, [], [], emission), true);
+          meas.forEach((t, i) => shift.set(t.tube, u[i]));
+          const r = sim(variant(base, [], [], shift), true);
           return r && meas.map(t => (qMeas(r, t) - measOf(t).value) / measOf(t).value);
         }, maxRounds + 2 * meas.length);
-        meas.forEach((t, i) => emission.set(t.tube, Math.exp(fit.u[i])));
+        meas.forEach((t, i) => shift.set(t.tube, fit.u[i]));
       }
       // 2. each group's part, for its tubes' targets
       const knobs = list.map(g => knobFor(base, g.part, g.type));
       const spec = list.map((g, i) => ({ tol: 0.002, slopeSign: knobs[i].type === "resistor" && g.kind === "cathode" ? -1 : 0, probe: knobs[i].type === "pot" ? 0.3 : 0.15, maxStep: knobs[i].type === "pot" ? 2 : 1, lo: knobs[i].lo, hi: knobs[i].hi }));
       const fit = list.length ? rootAll(spec, list.map(() => 0), u => {
-        const r = sim(variant(base, knobs, u, emission), true);
+        const r = sim(variant(base, knobs, u, shift), true);
         return r && list.map(g => groupErr(r, g));
       }, maxRounds + 2 * list.length) : { u: [], e: [], converged: true };
       // 3. the resistors rounded to E24, simulated once more for what they give
       const rounded = knobs.map((kn, i) => (kn.type === "resistor" ? Math.log(e24(kn.value(fit.u[i])) / kn.r0) : fit.u[i]));
-      const rv = list.length ? sim(variant(base, knobs, rounded, emission)) : null;
+      const rv = list.length ? sim(variant(base, knobs, rounded, shift)) : null;
       const state = (r, id) => { const d = dev(r, id); return { ia: ia(r, id), ik: ik(r, id), va: d ? d.vak : NaN, pa: pa(r, id) }; };
       const parts = list.map((g, i) => {
         const kn = knobs[i], p = { part: g.part, type: g.type, kind: g.kind, tubes: g.tubes,
@@ -306,24 +307,20 @@
         if (!p.reached) p.note = (fit.u[i] <= kn.lo + 1e-6 || fit.u[i] >= kn.hi - 1e-6) ? (kn.type === "pot" ? "the pot's travel does not reach the target: change the divider" : "the target is out of reach for this resistor") : "the target cannot be reached with this part (dissipation peaks part way, say): the closest is shown";
         return p;
       });
-      // 4. bias pots: the anode current over the whole travel; whether that covers tubes with
-      // ±spread of the emission (a fresh set of tubes); and the divider resistor that puts the
+      // 4. bias pots: the anode current over the whole travel; whether that covers tubes drawing
+      // ±spread of the current (a fresh set of tubes); and the divider resistor that puts the
       // target at mid-travel, where it is best placed for any tube
       if (pots.length) {
-        const at = (where, k) => {   // every pot at an end (or u as found), the pots' tubes' emission times k
-          const u = knobs.map((kn, i) => (list[i].type !== "pot" ? rounded[i] : where === "lo" ? kn.lo : where === "hi" ? kn.hi : rounded[i]));
-          const em = new Map(emission);
-          if (k !== 1) pots.forEach(g => g.tubes.forEach(id => em.set(id, (emission.get(id) || 1) * k)));
-          return sim(variant(base, knobs, u, em), true);
-        };
-        const ends = { lo: at("lo", 1), hi: at("hi", 1) };
+        const at = where => sim(variant(base, knobs, knobs.map((kn, i) => (list[i].type !== "pot" ? rounded[i] : where === "lo" ? kn.lo : kn.hi)), shift), true);   // every pot at one end
+        const ends = { lo: at("lo"), hi: at("hi") };
+        const scaled = k => new Map(pots.flatMap(g => g.tubes.map(id => [id, k])));
         const groupIa = (r, g) => g.tubes.reduce((s, id) => s + ia(r, id), 0) / g.tubes.length;
         // per pot: which end gives the most current; then that end with weak tubes, the other with strong ones
         const more = pots.map(g => (ends.lo && ends.hi && groupIa(ends.hi, g) > groupIa(ends.lo, g) ? "hi" : "lo"));
         const weakAtMost = sim(variant(base, knobs, knobs.map((kn, i) => { const j = pots.indexOf(list[i]); return j < 0 ? rounded[i] : more[j] === "hi" ? kn.hi : kn.lo; }),
-          new Map([...emission].concat(pots.flatMap(g => g.tubes.map(id => [id, (emission.get(id) || 1) * (1 - spread)]))))), true);
+          shift, scaled(1 - spread)), true);
         const strongAtLeast = sim(variant(base, knobs, knobs.map((kn, i) => { const j = pots.indexOf(list[i]); return j < 0 ? rounded[i] : more[j] === "hi" ? kn.lo : kn.hi; }),
-          new Map([...emission].concat(pots.flatMap(g => g.tubes.map(id => [id, (emission.get(id) || 1) * (1 + spread)]))))), true);
+          shift, scaled(1 + spread)), true);
         pots.forEach((g, j) => {
           const p = parts[list.indexOf(g)];
           if (ends.lo && ends.hi) p.range = [groupIa(ends.lo, g), groupIa(ends.hi, g)];
@@ -336,7 +333,7 @@
         if (dv.length) {
           const mid = knobs.map((kn, i) => (list[i].type === "pot" ? Math.log(0.5 / (1 - 0.5)) - Math.log(kn.f0 / (1 - kn.f0)) : rounded[i]));
           const dk = dv.map(g => knobFor(base, parts[list.indexOf(g)].divider, "resistor"));
-          const withMid = u => { const nl = variant(base, knobs, mid, emission); dk.forEach((kn, i) => kn.set(nl, u[i])); return nl; };
+          const withMid = u => { const nl = variant(base, knobs, mid, shift); dk.forEach((kn, i) => kn.set(nl, u[i])); return nl; };
           const dspec = dv.map(() => ({ tol: 0.005, probe: 0.15, maxStep: 1, lo: Math.log(0.05), hi: Math.log(20) }));
           const dfit = rootAll(dspec, dv.map(() => 0), u => { const r = sim(withMid(u), true); return r && dv.map(g => groupErr(r, g)); }, 8 + 2 * dv.length);
           const dr = dfit.u.map((u, i) => Math.log(e24(dk[i].value(u)) / dk[i].r0));
@@ -349,7 +346,7 @@
         }
       }
       if (opts.onProgress) opts.onProgress(1);
-      return { ok: true, detected, parts, emission: Object.fromEntries(emission), runs, elapsedMs: Date.now() - t0 };
+      return { ok: true, detected, parts, shift: Object.fromEntries(shift), runs, elapsedMs: Date.now() - t0 };
     } catch (err) {
       return { ok: false, error: String(err && err.message || err), runs, elapsedMs: Date.now() - t0 };
     }

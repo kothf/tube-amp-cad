@@ -17,8 +17,10 @@
 
    Netlist: { nodeCount, elements: [{ id, kind, nodes: [...], ...params }] }
    kinds: R, C, L, XFMR, V, VSRC, D, VDIODE, TRIODE, PENTODE
-   A tube may carry iScale: all its currents times that factor, as a real tube with more or
-   less emission than the model (the bias finder fits it to a measured anode current).
+   A tube element may carry gridShift (V): its plate and screen currents as if the grid were that
+   much more positive (a real tube that draws more or less than the model; the bias finder fits
+   it to a measurement), grid conduction still from 0 V; and iScale: all its currents times that
+   factor (the bias finder's check of a pot against weaker and stronger tubes).
    ============================================================================= */
 (function (root) {
   "use strict";
@@ -34,6 +36,9 @@
     return Math.log1p(Math.exp(x));
   }
 
+  // 0 at no screen voltage, rising smoothly (smoothstep s²(3 − 2s)) to 1 at SCREEN_FADE volts
+  const SCREEN_FADE = 2;
+  function screenFade(v) { if (v >= SCREEN_FADE) return 1; if (v <= 0) return 0; const s = v / SCREEN_FADE; return s * s * (3 - 2 * s); }
   const Koren = {
     triodeIa(vak, vgk, p) {
       if (vak <= 0) return 0;
@@ -47,10 +52,13 @@
     // atan(Va/kvb) ties them together and gives far too soft a knee). Whatever
     // the plate cannot take in the knee partly goes to the screen (ks), which
     // is why real screen current rises when the plate swings low.
+    // Below SCREEN_FADE volts on the screen the currents fade in (screenFade): with the grid above
+    // the cathode, Koren's terms do not go to zero as Vg2k → 0 (Is tends to 2·Vgk^x/kg), and Newton
+    // stalls on that jump (a cold start with a grid shift crosses it). Above it, unchanged.
     pentodeIs(vgk, vg2k, p) {
       if (vg2k <= 0) return 0;
       const e1 = (vg2k / p.kp) * softplus(p.kp * (1 / p.mu + vgk / vg2k));
-      return e1 > 0 ? (2 * Math.pow(e1, p.x)) / p.kg : 0;
+      return e1 > 0 ? (2 * Math.pow(e1, p.x)) / p.kg * screenFade(vg2k) : 0;
     },
     pentodeIa(vak, vgk, vg2k, p) {
       if (vak <= 0) return 0;
@@ -60,7 +68,7 @@
     screenI(vgk, vg2k, p, vak) {
       if (vg2k <= 0) return 0;
       const e = vgk + vg2k / p.mu;
-      const base = e > 0 ? Math.pow(e, p.x) / (p.kg2 || 1500) : 0;
+      const base = e > 0 ? Math.pow(e, p.x) / (p.kg2 || 1500) * screenFade(vg2k) : 0;
       if (vak === undefined || !p.ks) return base;
       return base + p.ks * Koren.pentodeIs(vgk, vg2k, p) * (1 - Math.tanh(Math.max(vak, 0) / p.vk));
     },
@@ -101,6 +109,15 @@
     "5U4G": 6.4e-4,     // RCA: ~50 V @ 225 mA
     "GZ34": 3.5e-3      // Mullard 5AR4: ~17 V @ 250 mA
   };
+
+  // ---------------------------------------------------------------------------
+  // A tube element's currents: [ia, ig] or [ia, ig, ig2], with its gridShift and iScale
+  function tubeCurrents(e, vak, vgk, vg2k) {
+    const sh = e.gridShift || 0, sc = e.iScale || 1, pent = e.kind === "PENTODE";
+    const r = pent ? Tube.pentode(vak, vgk + sh, vg2k, e.model) : Tube.triode(vak, vgk + sh, e.model);
+    const ig = sh ? (pent ? Tube.pentode(vak, vgk, vg2k, e.model) : Tube.triode(vak, vgk, e.model))[1] : r[1];
+    return pent ? [sc * r[0], sc * ig, sc * r[2]] : [sc * r[0], sc * ig];
+  }
 
   // ---------------------------------------------------------------------------
   // Semiconductors. Currents into each terminal for terminal voltages V.
@@ -533,20 +550,18 @@
             stampNonlinear(nd, W => Semi.mos(W, e.model), nd.map(k => vn(x, k)), 1e-6);
             break;
           case "TRIODE": {
-            const p = e.model, sc = e.iScale || 1;
             const V0 = nd.map(k => vn(x, k));   // A, G, K
             stampNonlinear(nd, V => {
-              const [ia, ig] = Tube.triode(V[0] - V[2], V[1] - V[2], p);
-              return [sc * ia, sc * ig, -sc * (ia + ig)];
+              const [ia, ig] = tubeCurrents(e, V[0] - V[2], V[1] - V[2]);
+              return [ia, ig, -(ia + ig)];
             }, V0);
             break;
           }
           case "PENTODE": {
-            const p = e.model, sc = e.iScale || 1;
             const V0 = nd.map(k => vn(x, k));   // A, G1, G2, K
             stampNonlinear(nd, V => {
-              const [ia, ig, ig2] = Tube.pentode(V[0] - V[3], V[1] - V[3], V[2] - V[3], p);
-              return [sc * ia, sc * ig, sc * ig2, -sc * (ia + ig + ig2)];
+              const [ia, ig, ig2] = tubeCurrents(e, V[0] - V[3], V[1] - V[3], V[2] - V[3]);
+              return [ia, ig, ig2, -(ia + ig + ig2)];
             }, V0);
             break;
           }
@@ -612,13 +627,13 @@
     const v = e.nodes.map(k => vn(x, k));
     if (e.kind === "TRIODE") {
       const vak = v[0] - v[2], vgk = v[1] - v[2];
-      const [ia, ig] = Tube.triode(vak, vgk, e.model), k = e.iScale || 1;
-      return { vak, vgk, ia: k * ia, ig: k * ig };
+      const [ia, ig] = tubeCurrents(e, vak, vgk);
+      return { vak, vgk, ia, ig };
     }
     if (e.kind === "PENTODE") {
       const vak = v[0] - v[3], vgk = v[1] - v[3], vg2k = v[2] - v[3];
-      const [ia, ig, ig2] = Tube.pentode(vak, vgk, vg2k, e.model), k = e.iScale || 1;
-      return { vak, vgk, vg2k, ia: k * ia, ig2: k * ig2, ig: k * ig };
+      const [ia, ig, ig2] = tubeCurrents(e, vak, vgk, vg2k);
+      return { vak, vgk, vg2k, ia, ig2, ig };
     }
     if (e.kind === "BJT") {
       const [ic, ib] = Semi.bjt(v, e.model), p = e.model.pol;
@@ -974,11 +989,13 @@
       grid: `if(V(G,K)>0,${g(0.2 / m.kg)}*pwr(V(G,K),1.5),0)`
     }),
     pentode: m => {
-      const is = `pwr(max(V(G2,K)/${g(m.kp)}*ln(1+exp(${g(m.kp)}*(1/${g(m.mu)}+V(G1,K)/max(V(G2,K),1e-3)))),0),${g(m.x)})*${g(2 / m.kg)}`;
+      // with the fade-in below SCREEN_FADE volts on the screen: s²(3 − 2s), s = Vg2k / SCREEN_FADE
+      const F = SCREEN_FADE, fade = `if(V(G2,K)<${F},pwr(max(V(G2,K),0)/${F},2)*(3-2*max(V(G2,K),0)/${F}),1)`;
+      const is = `pwr(max(V(G2,K)/${g(m.kp)}*ln(1+exp(${g(m.kp)}*(1/${g(m.mu)}+V(G1,K)/max(V(G2,K),1e-3)))),0),${g(m.x)})*${g(2 / m.kg)}*${fade}`;
       const va = "max(V(A,K),0)";
       return {
         plate: `${is}*tanh(${va}/${g(m.vk)})*(1+${va}/${g(m.lam)})`,
-        screen: `pwr(max(V(G1,K)+V(G2,K)/${g(m.mu)},0),${g(m.x)})/${g(m.kg2 || 1500)}+${g(m.ks || 0)}*${is}*(1-tanh(${va}/${g(m.vk)}))`,
+        screen: `pwr(max(V(G1,K)+V(G2,K)/${g(m.mu)},0),${g(m.x)})/${g(m.kg2 || 1500)}*${fade}+${g(m.ks || 0)}*${is}*(1-tanh(${va}/${g(m.vk)}))`,
         grid: `if(V(G1,K)>0,${g(0.2 / m.kg)}*pwr(V(G1,K),1.5),0)`
       };
     }
