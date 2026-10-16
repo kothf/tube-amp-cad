@@ -1560,7 +1560,11 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(marked.rk === "cathode" && !marked.others, `the bias finder marks the cathode resistor as the 12AX7's bias part (and not the plate load or the grid leak)`);
   // a target typed into the tube's inspector starts the search; the part shows the value found
   const row = t => cad.locator("#inspector label.row", { hasText: t });
+  const iaNow = await cad.evaluate(id => TubeCAD.tubeData(TubeCAD.state.comps.find(c => c.id === id)).dc.ia, ids.v1);
   await row("Bias target").locator("select").selectOption("ia");
+  const prefill = await row("Target anode current").locator("input").inputValue();
+  const pre = await cad.evaluate(id => TubeCAD.state.comps.find(c => c.id === id).params.biasIa, ids.v1);
+  check(pre === +iaNow.toPrecision(2) && prefill.trim() !== "", `choosing an anode current target prefills the simulated ${(iaNow * 1e3).toFixed(3)} mA ("${prefill}")`);
   let seq = await seqNow();
   await row("Target anode current").locator("input").fill("1.2mA");
   await row("Target anode current").locator("input").press("Enter");

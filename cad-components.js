@@ -887,8 +887,15 @@
         // the bias finder (bias.js): what the bias should give (an anode current, or a share of Pa
         // max), and what was measured on the real amp with the parts as drawn
         { key: "biasBy", label: "Bias target", kind: "select", options: [["", "None"], ["ia", "Anode current"], ["pa", "Share of Pa max (idle)"]], get: biasBy,
-          apply: (c, v) => { c.params.biasBy = v; if (v === "pa" && !(c.params.biasPa > 0)) c.params.biasPa = 70; }, when: c => tubeKind(tubeByName(c.params.tube)) !== "rectifier" },
-        { key: "biasIa", label: "Target anode current", unit: "A", kind: "eng", optional: true, placeholder: "e.g. 40mA", when: c => biasBy(c) === "ia" },
+          apply: (c, v) => {
+            c.params.biasBy = v;
+            if (v === "pa" && !(c.params.biasPa > 0)) c.params.biasPa = 70;
+            // an anode current target starts from the current the stage draws now (2 significant digits)
+            const ia = v === "ia" && !(c.params.biasIa > 0) && LIB.tube.simIa ? LIB.tube.simIa(c) : 0;
+            if (ia > 0) c.params.biasIa = +ia.toPrecision(2);
+          }, when: c => tubeKind(tubeByName(c.params.tube)) !== "rectifier" },
+        { key: "biasIa", label: "Target anode current", unit: "A", kind: "eng", optional: true,
+          placeholder: c => { const ia = LIB.tube.simIa ? LIB.tube.simIa(c) : 0; return ia > 0 ? "now " + fmtEng(ia, "A", 2) : "e.g. 40mA"; }, when: c => biasBy(c) === "ia" },
         { key: "biasPa", label: "Target dissipation", unit: "% of Pa max", kind: "number", min: 1, max: 150, when: c => biasBy(c) === "pa" },
         { key: "biasMeasBy", label: "Measured on the amp", kind: "select", get: biasMeasBy, wide: true, when: c => !!biasBy(c),
           options: c => [["", "Nothing"], ["ia", "Anode current"], ["ik", "Cathode current"]].concat(LIB.tube.senseOptions ? LIB.tube.senseOptions(c) : []) },

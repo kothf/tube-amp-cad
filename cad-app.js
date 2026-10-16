@@ -598,6 +598,8 @@
     });
     return out;
   }
+  // the anode current the simulation shows now (prefills an anode current bias target)
+  LIB.tube.simIa = c => { const d = S.sim.result && tubeData(c); return d && d.dc && d.dc.ia > 0 ? d.dc.ia : 0; };
   // the resistors on a tube's cathode, to measure the voltage across (a 1 Ω sense resistor, Rk)
   LIB.tube.senseOptions = c => {
     const T = topo(), k = T.pinNet.get(c.id + ":K");
@@ -1944,7 +1946,7 @@
           if (!isFinite(n) || (!allowNeg && n < 0) || (n === 0 && !["offset", "rs", "v"].includes(f.key))) { flash(el); return; }
           c.params[f.key] = n; commit();
         });
-        if (f.placeholder) el.placeholder = f.placeholder;
+        if (f.placeholder) el.placeholder = typeof f.placeholder === "function" ? f.placeholder(c) : f.placeholder;
       } else if (f.kind === "level") {
         // RMS / dBV view of a peak amplitude: Vrms = Vpk / crest factor (√2 sine, 1 square, √3 triangle)
         const crest = { sine: Math.SQRT2, square: 1, triangle: Math.sqrt(3) }[c.params.wave] || Math.SQRT2;

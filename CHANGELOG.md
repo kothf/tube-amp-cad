@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.56.1] - 2026-10-16
+
+### Changed
+- **Bias finder: an anode current target starts from the simulated current.** Choosing "Anode current" as a tube's bias target fills in the current the stage draws now (two digits), so it suits a 12AX7 or an EL34 alike; edit it from there. With the field empty, the hint shows the present current.
+
 ## [3.56.0] - 2026-10-16
 
 ### Changed
