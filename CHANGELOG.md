@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.58.0] - 2026-10-17
+
+### Added
+- **Bode plotter.** A new instrument window (*Bode ↗*, or *Open Bode plotter* in a scope's inspector) shows gain and phase from 1 Hz to 1 MHz at a scope's channels, or between them. It lists:
+  - gain and phase at 1 kHz;
+  - the −3 dB points;
+  - the level at 20 Hz and 20 kHz;
+  - any resonant peak.
+
+  It has markers and frequency zoom.
+- **AC analysis in the engine** (`acSweep`): the small-signal response, linearized at the idle operating point. For a mains-fed amplifier that is its averaged steady state.
+- **Tube interelectrode capacitances** from the datasheets, or a Soviet tube's Western analog, else typical values. The Miller effect now sets a stage's high-frequency corner in every simulation.
+
 ## [3.57.0] - 2026-10-17
 
 ### Added

@@ -1698,3 +1698,43 @@ TUBE_DATABASE.forEach(t => {
   if (!out.vhk && twin && twin.book && twin.book.limits.vkh) out.vhk = twin.book.limits.vkh;
   t.directlyHeated = /(^|[^n])directly heated/i.test(t.type) || /^(5Ts3S|5Ts4S|5Ts8S|5Ts9S|5U4G|GM-70|845)$/.test(t.commonName);
 });
+
+/* Interelectrode capacitances (pF) from the datasheets, for the simulation: triodes { cgk, cga, cak },
+   pentodes { cin (control grid to all but the anode), cga, cout (anode to all but the control
+   grid) }. A Soviet tube without its own entry takes its Western analog's, else typical values for
+   its kind (marked estimated). A pentode connected as a triode: its control grid's capacitance to
+   the screen (most of cin) goes to the anode with it, about a third (estimated). */
+var TUBE_CAPS = {
+  "12AX7": { cgk: 1.6, cga: 1.7, cak: 0.46, source: "RCA 12AX7A" },
+  "12AU7": { cgk: 1.6, cga: 1.5, cak: 0.5, source: "RCA 12AU7A" },
+  "12AT7": { cgk: 2.2, cga: 1.5, cak: 0.5, source: "RCA 12AT7" },
+  "12AY7": { cgk: 1.3, cga: 1.3, cak: 0.6, source: "RCA 12AY7" },
+  "6SN7GT": { cgk: 3.0, cga: 4.0, cak: 1.2, source: "RCA 6SN7GTB" },
+  "6SL7GT": { cgk: 3.0, cga: 2.8, cak: 3.8, source: "RCA 6SL7GT" },
+  "ECC88": { cgk: 3.3, cga: 1.4, cak: 1.8, source: "Philips ECC88" },
+  "300B": { cgk: 9, cga: 15, cak: 4.3, source: "Western Electric 300B" },
+  "2A3": { cgk: 7.5, cga: 16.5, cak: 5.5, source: "RCA 2A3" },
+  "EL84": { cin: 10.8, cga: 0.5, cout: 6.5, source: "Philips EL84" },
+  "EL34": { cin: 15.2, cga: 1.1, cout: 8.4, source: "Philips EL34" },
+  "KT88": { cin: 16, cga: 1.2, cout: 12, source: "GEC KT88" },
+  "6V6GT": { cin: 9, cga: 0.7, cout: 7.5, source: "RCA 6V6GT" },
+  "6L6GC": { cin: 10, cga: 0.6, cout: 6.5, source: "RCA 6L6GC" },
+  "EF86": { cin: 3.8, cga: 0.05, cout: 5.3, source: "Philips EF86" }
+};
+// the same tube under another name
+var TUBE_CAPS_LIKE = { "6N8S": "6SN7GT", "6N9S": "6SL7GT", "6S4S": "2A3", "6P3S-E": "6L6GC", "6P6S": "6V6GT", "6P14P": "EL84", "6P14P-EV": "EL84", "6P27S": "EL34" };
+TUBE_DATABASE.forEach(t => {
+  if (t.category === "rectifier" || !t.koren) return;
+  const analogs = [TUBE_CAPS_LIKE[t.commonName]].concat((t.book && t.book.analogs) || []);
+  let own = TUBE_CAPS[t.commonName], from = "";
+  if (!own) { const a = analogs.find(n => n && TUBE_CAPS[n]); if (a) { own = TUBE_CAPS[a]; from = a; } }
+  const pent = !!t.koren.Pentode, power = t.category === "power";
+  const typical = pent ? (power ? { cin: 12, cga: 0.8, cout: 7 } : { cin: 6, cga: 0.03, cout: 3 }) : (power ? { cgk: 8, cga: 15, cak: 5 } : { cgk: 2, cga: 1.6, cak: 0.6 });
+  const c = own && (pent ? own.cin : own.cgk) ? own : typical, pF = 1e-12;
+  const caps = { source: c === typical ? "typical for the kind (estimated)" : from ? `as ${from} (${c.source})` : c.source, estimated: c === typical };
+  if (pent) {
+    caps.pentode = { cin: c.cin * pF, cga: c.cga * pF, cout: c.cout * pF };
+    caps.triode = { cgk: c.cin * 2 / 3 * pF, cga: (c.cga + c.cin / 3) * pF, cak: c.cout * pF, estimated: true };
+  } else caps.triode = { cgk: c.cgk * pF, cga: c.cga * pF, cak: c.cak * pF };
+  t.caps = caps;
+});

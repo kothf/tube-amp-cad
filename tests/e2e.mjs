@@ -241,6 +241,30 @@ check(Math.abs(thd - circuit.thd) / circuit.thd < 0.1, `spectrum THD ${thd} % ma
   await spectrum.evaluate(() => { window.Spectrum.state.zoom = null; }); await spectrum.selectOption("#fx", "lin");
 }
 
+// --- 3b. Bode plotter: the small-signal response at the scope's channels -------------------------
+const bode = await open("bode", `bode.html?scope=${circuit.scope}`);
+await bode.waitForFunction(() => { const t = window.Bode && Bode.traces(); return t && t.list.length === 2; }, null, { timeout: 30000 }).catch(() => {});
+{
+  const b = await bode.evaluate(() => {
+    const T = Bode.traces(), f = T.f, k = f.findIndex(x => x >= 999.99), ch1 = T.list.find(t => t.key === "ch1"), ch2 = T.list.find(t => t.key === "ch2");
+    return { n: f.length, f0: f[0], f1: f[f.length - 1], g1: ch1 && ch1.db[k], p1: ch1 && ch1.ph[k], g2: ch2 && ch2.db[k], resp: document.getElementById("resp").textContent, foot: document.getElementById("foot").textContent, status: document.getElementById("status").textContent };
+  });
+  check(b.n > 200 && b.f0 <= 1 && b.f1 >= 1e6, `Bode: the CAD sweeps 1 Hz – 1 MHz (${b.n} frequencies) for the scope's channels (${b.foot})`);
+  check(b.g1 !== undefined && Math.abs(Math.pow(10, b.g1 / 20) - ratio) / ratio < 0.05 && Math.abs(b.g2) < 0.2, `Bode: CH1 ${b.g1 && b.g1.toFixed(2)} dB at 1 kHz (${b.g1 && Math.pow(10, b.g1 / 20).toFixed(1)}×) agrees with the scope's ${ratio}×; CH2, the generator, ${b.g2 && b.g2.toFixed(2)} dB`);
+  check(Math.abs(Math.abs(b.p1) - 180) < 5, `Bode: the common-cathode stage inverts (${b.p1 && b.p1.toFixed(1)}° at 1 kHz)`);
+  const lo = /−3 dB low([\d.]+)(m?)Hz/.exec(b.resp), hi = /−3 dB high(above )?([\d.]+)(k|M)Hz/.exec(b.resp);
+  check(lo && +lo[1] < 50 && hi && (hi[3] === "M" || +hi[2] > 20), `Bode: −3 dB at ${lo && lo[0].slice(9)} (cathode bypass and coupling capacitors) and ${hi && hi[0].slice(10)} from the generator's 50 Ω`);
+  // the Miller effect: a 100 kΩ source makes the 12AX7's input capacitance (Cgk + (1 + A)·Cga ≈ 100 pF) a pole near 16 kHz
+  const seq = await cad.evaluate(() => TubeCAD.state.sim.seq);
+  await cad.evaluate(() => { const g = TubeCAD.state.comps.find(c => c.type === "siggen"); g.params.rs = 100e3; TubeCAD.commit(); });
+  await cad.waitForFunction(s => TubeCAD.state.sim.seq > s && !TubeCAD.state.sim.busy && !TubeCAD.state.sim.pending, seq, { timeout: 30000 });
+  await bode.waitForFunction(() => { const t = /−3 dB high([\d.]+)kHz/.exec(document.getElementById("resp").textContent); return t && +t[1] < 40; }, null, { timeout: 30000 }).catch(() => {});
+  const hi2 = /−3 dB high([\d.]+)(k?)Hz/.exec(await bode.textContent("#resp"));
+  check(hi2 && hi2[2] === "k" && +hi2[1] > 8 && +hi2[1] < 30, `Bode: from a 100 kΩ source the Miller capacitance sets the top at ${hi2 && hi2[1]} kHz (1/(2π·100k·(Cgk + (1 + A)·Cga)) ≈ 16 kHz)`);
+  await cad.evaluate(() => { const g = TubeCAD.state.comps.find(c => c.type === "siggen"); g.params.rs = 50; TubeCAD.commit(); });
+  await cad.waitForFunction(() => !TubeCAD.state.sim.busy && !TubeCAD.state.sim.pending, null, { timeout: 30000 });
+}
+
 // --- 3a. Markers: pick points on the scope and analyzer with the mouse -------
 const canvasAt = async (page, p) => { const r = await page.locator("#screen").boundingBox(); return [r.x + p.x, r.y + p.y]; };
 {

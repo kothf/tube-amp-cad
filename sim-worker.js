@@ -2,6 +2,8 @@
    Message in:  { seq, netlist, options }                      steady state (simulate)
                 { seq, netlist, options, kind: "startup" }      power-on transient
                 { seq, netlist, options, kind: "bias", targets } bias finder (bias.js)
+                { seq, netlist, options, kind: "ac" }           frequency response: the quiet circuit's operating
+                                                                 point (a mains-fed one's averaged steady state), then acSweep
    Message out: { seq, result }, and { seq, progress } (0…1) along the way. */
 importScripts("spice-model.js" + self.location.search, "sim-engine.js" + self.location.search, "bias.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
 
@@ -15,6 +17,18 @@ self.onmessage = async (e) => {
   let result;
   try {
     if (kind === "bias") { self.postMessage({ seq, result: TubeBias.solve(netlist, e.data.targets, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) })) }); return; }
+    if (kind === "ac") {
+      const onProgress = f => self.postMessage({ seq, progress: 0.9 * f });
+      let op = null;
+      if (netlist.elements.some(x => x.dcValue !== undefined || x.acMains)) {
+        const r = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress }));
+        if (!r.ok) { self.postMessage({ seq, result: { ok: false, error: r.error } }); return; }
+        op = r.dc.nodes;
+      }
+      const ac = TubeSimEngine.acSweep(netlist, Object.assign({}, options, { op }));
+      self.postMessage({ seq, result: ac.ok ? { ok: true, averaged: !!op, freqs: ac.freqs, probes: ac.probes, elapsedMs: ac.elapsedMs } : ac });
+      return;
+    }
     if (kind === "startup") result = TubeSimEngine.startup(netlist, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) }));
     else result = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) }));
   } catch (err) {

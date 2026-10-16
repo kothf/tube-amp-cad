@@ -502,3 +502,47 @@ test("steady state by shooting: an RC far slower than the signal settles in a fe
   // the average carries the backward-Euler start's small bias (about 1 mV here, on a 1 V scale), as the plain settling does
   assert.ok(Math.abs(avg) < 2e-3 && Math.abs((mx - mn) / pp - 1) < 1e-3, `average ${avg.toExponential(2)} V, swing ${(mx - mn).toFixed(6)} V (expected ${pp.toFixed(6)})`);
 });
+
+// --- AC analysis (acSweep) ---------------------------------------------------------------------
+test("AC analysis: an RC low-pass is −3.01 dB and −45° at its corner, and the second-order LC shows its Q", () => {
+  const rc = E.acSweep({ nodeCount: 3, elements: [{ id: "G", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 1000, amp: 1 }, { id: "R", kind: "R", nodes: [1, 2], r: 1000 }, { id: "C", kind: "C", nodes: [2, 0], c: 1 / (2 * Math.PI * 1000 * 1000) }] },
+    { inputs: [{ id: "G" }], fStart: 100, fStop: 10000, perDecade: 10, probes: [[2, 0]] });
+  const k = 10, H = Math.hypot(rc.probes[0].re[k], rc.probes[0].im[k]);
+  near(rc.freqs[k], 1000, 1e-9, "the sweep lands on 1 kHz");
+  near(20 * Math.log10(H), -3.0103, 1e-4, "gain at the corner (dB)");
+  near(Math.atan2(rc.probes[0].im[k], rc.probes[0].re[k]) * 180 / Math.PI, -45, 1e-6, "phase at the corner");
+  // series R–L–C, output across C: at f0 the gain is Q = sqrt(L/C)/R
+  const L = 10e-3, C = 1e-6, R = 10, f0 = 1 / (2 * Math.PI * Math.sqrt(L * C));
+  const lc = E.acSweep({ nodeCount: 4, elements: [{ id: "G", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 1000, amp: 1 }, { id: "R", kind: "R", nodes: [1, 2], r: R }, { id: "L", kind: "L", nodes: [2, 3], l: L }, { id: "C", kind: "C", nodes: [3, 0], c: C }] },
+    { inputs: [{ id: "G" }], fStart: f0, fStop: f0 * 10, perDecade: 10 });
+  near(Math.hypot(lc.re[3][0], lc.im[3][0]), Math.sqrt(L / C) / R, 1e-4, "LC peak = Q");
+});
+
+test("AC analysis: a 12AX7 stage's gain matches the transient, and the Miller capacitance sets its top corner", () => {
+  const AX7 = tube("12AX7").koren.Triode, caps = tube("12AX7").caps.triode;
+  const net = rs => ({ nodeCount: 6, elements: [
+    { id: "VB", kind: "V", nodes: [1, 0], v: 250 }, { id: "RA", kind: "R", nodes: [1, 2], r: 100e3 },
+    { id: "G", kind: "VSRC", nodes: [5, 0], wave: "sine", freq: 1000, amp: 0.01 }, { id: "RS", kind: "R", nodes: [5, 3], r: rs },
+    { id: "RK", kind: "R", nodes: [4, 0], r: 1500 }, { id: "CK", kind: "C", nodes: [4, 0], c: 1e-3 }, { id: "RG", kind: "R", nodes: [3, 0], r: 1e9 },
+    { id: "V1", kind: "TRIODE", nodes: [2, 3, 4], model: AX7 },
+    { id: "CGK", kind: "C", nodes: [3, 4], c: caps.cgk }, { id: "CGA", kind: "C", nodes: [3, 2], c: caps.cga }, { id: "CAK", kind: "C", nodes: [2, 4], c: caps.cak }] });
+  const ac = E.acSweep(net(100e3), { inputs: [{ id: "G" }], fStart: 1000, fStop: 1e6, perDecade: 200 });
+  const g = ac.freqs.map((f, k) => Math.hypot(ac.re[2][k], ac.im[2][k])), A = g[0];
+  const tr = E.simulate(net(100e3), {});
+  near(A, pp(tr.tran.nodes[2]) / 0.02, 0.01, "small-signal gain at 1 kHz vs the transient's");
+  // single pole of the source resistance and the input capacitance Cgk + (1 + A)·Cga
+  const f3 = ac.freqs[g.findIndex(v => v < A / Math.SQRT2)], fMiller = 1 / (2 * Math.PI * 100e3 * (caps.cgk + (1 + A) * caps.cga));
+  near(f3, fMiller, 0.12, "−3 dB corner vs the Miller estimate");
+});
+
+test("tube database: every amplifier tube has interelectrode capacitances, from its datasheet or its analog's where known", () => {
+  for (const t of globalThis.TUBE_DATABASE) {
+    if (t.category === "rectifier") continue;
+    const c = t.caps.triode;
+    assert.ok(c && c.cgk > 0 && c.cga > 0 && c.cak > 0, `${t.commonName}: triode capacitances`);
+    if (t.koren.Pentode) assert.ok(t.caps.pentode.cin > 0 && t.caps.pentode.cout > 0, `${t.commonName}: pentode capacitances`);
+  }
+  assert.equal(tube("12AX7").caps.source, "RCA 12AX7A");
+  assert.match(tube("6P14P").caps.source, /as EL84/);
+  near(tube("EL84").caps.pentode.cin, 10.8e-12, 1e-9, "EL84 input capacitance");
+});

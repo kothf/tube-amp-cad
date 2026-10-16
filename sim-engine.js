@@ -17,6 +17,7 @@
 
    Netlist: { nodeCount, elements: [{ id, kind, nodes: [...], ...params }] }
    kinds: R, C, L, XFMR, V, VSRC, D, VDIODE, TRIODE, PENTODE
+   acSweep: the small-signal frequency response, linearized at an operating point.
    A tube element may carry gridShift (V): its plate and screen currents as if the grid were that
    much more positive (a real tube that draws more or less than the model; the bias finder fits
    it to a measurement), grid conduction still from 0 V; and iScale: all its currents times that
@@ -1057,7 +1058,120 @@
     return result;
   }
 
-  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  // ---------------------------------------------------------------------------
+  // Small-signal frequency response (AC analysis): every device linearized at an operating
+  // point, then the complex nodal equations Y(ω) = G + jωB solved at each frequency.
+  //   opts: { op: node voltages [v0 = 0, v1, …] to linearize at (the averaged steady state of
+  //           a mains-fed circuit, say; without it, the DC operating point),
+  //           inputs: [{ id, mag, phase (deg) }]: the sources driven (a source not listed is a
+  //           short: DC supplies, mains); fStart, fStop (Hz), perDecade, probes: [[node, ref]] }
+  //   returns { ok, freqs, re: [node][k], im: [node][k], probes: [{ re, im }] } (node 0, ground, is zeros)
+  // A rectifier linearized at its average voltage is off, so a supply reads as its reservoir
+  // capacitor, as it does for audio between charging pulses.
+  // ---------------------------------------------------------------------------
+  function acSweep(netlist, opts) {
+    opts = opts || {};
+    const t0 = Date.now(), circ = buildCircuit(netlist), n = circ.nUnk, nN = circ.nNodes;
+    if (nN < 2) return { ok: false, error: "Circuit is empty" };
+    let x;
+    if (opts.op) { x = new Array(n).fill(0); for (let i = 1; i < nN; i++) x[i - 1] = opts.op[i] || 0; }
+    else { const dc = dcOperatingPoint(circ); if (!dc.ok) return { ok: false, error: "DC operating point did not converge (" + dc.error + ")" }; x = dc.x; }
+    const Gm = new Float64Array(n * n), Bm = new Float64Array(n * n), rhs = new Float64Array(2 * n);
+    const at = (i, j) => i * n + j;
+    const addG = (i, j, v) => { if (i > 0 && j > 0) Gm[at(i - 1, j - 1)] += v; };
+    const addB = (i, j, v) => { if (i > 0 && j > 0) Bm[at(i - 1, j - 1)] += v; };
+    const stamp2 = (add, a, b, g) => { add(a, a, g); add(b, b, g); add(a, b, -g); add(b, a, -g); };
+    const branch = (a, b, br) => { if (a > 0) { Gm[at(a - 1, br)] += 1; Gm[at(br, a - 1)] += 1; } if (b > 0) { Gm[at(b - 1, br)] -= 1; Gm[at(br, b - 1)] -= 1; } };
+    // a device's currents into its terminals, differentiated at the operating point (central differences)
+    const jac = (nodes, fn, d) => {
+      const V0 = nodes.map(k => vn(x, k)), m = nodes.length;
+      for (let s = 0; s < m; s++) {
+        const Vp = V0.slice(), Vm = V0.slice(); Vp[s] += d; Vm[s] -= d;
+        const Ip = fn(Vp), Im = fn(Vm);
+        for (let t = 0; t < m; t++) { const J = (Ip[t] - Im[t]) / (2 * d); if (J) addG(nodes[t], nodes[s], J); }
+      }
+    };
+    const inputs = new Map((opts.inputs || []).map(i => [i.id, i]));
+    for (let i = 1; i < nN; i++) addG(i, i, 1e-12);
+    for (const e of circ.els) {
+      const nd = e.nodes;
+      switch (e.kind) {
+        case "R": stamp2(addG, nd[0], nd[1], 1 / Math.max(e.r, 1e-6)); break;
+        case "C": stamp2(addB, nd[0], nd[1], e.c); break;
+        case "L": branch(nd[0], nd[1], e.branch); Gm[at(e.branch, e.branch)] -= R_SERIES; Bm[at(e.branch, e.branch)] -= e.l; break;
+        case "XFMR": {
+          const W = e.windings.length;
+          e.windings.forEach((w, j) => {
+            branch(w.a, w.b, e.branches[j]); Gm[at(e.branches[j], e.branches[j])] -= R_SERIES;
+            for (let k = 0; k < W; k++) Bm[at(e.branches[j], e.branches[k])] -= e.Lmat[j * W + k];
+          });
+          break;
+        }
+        case "V": case "VSRC": {
+          branch(nd[0], nd[1], e.branch);
+          const inp = inputs.get(e.id);
+          if (inp) { const ph = (inp.phase || 0) * Math.PI / 180, m = inp.mag === undefined ? 1 : inp.mag; rhs[e.branch] = m * Math.cos(ph); rhs[n + e.branch] = m * Math.sin(ph); }
+          break;
+        }
+        case "D": {
+          const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852, vd = vn(x, nd[0]) - vn(x, nd[1]);
+          stamp2(addG, nd[0], nd[1], Is * Math.exp(Math.min(vd / nVt, 80)) / nVt + 1e-12);
+          break;
+        }
+        case "VDIODE": { const P = e.perveance; jac(nd, V => { const v = V[0] - V[1]; const i = v > 0 ? P * Math.pow(v, 1.5) : 0; return [i, -i]; }, 1e-3); break; }
+        case "BJT": jac(nd, W => Semi.bjt(W, e.model), 1e-6); break;
+        case "MOS": jac(nd, W => Semi.mos(W, e.model), 1e-5); break;
+        case "TRIODE": jac(nd, V => { const [ia, ig] = tubeCurrents(e, V[0] - V[2], V[1] - V[2]); return [ia, ig, -(ia + ig)]; }, 1e-3); break;
+        case "PENTODE": jac(nd, V => { const [ia, ig, ig2] = tubeCurrents(e, V[0] - V[3], V[1] - V[3], V[2] - V[3]); return [ia, ig, ig2, -(ia + ig + ig2)]; }, 1e-3); break;
+      }
+    }
+    const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, per = opts.perDecade || 40;
+    const K = Math.max(2, Math.round(Math.log10(fStop / fStart) * per) + 1);
+    const freqs = new Float64Array(K), re = [], im = [];
+    for (let i = 0; i < nN; i++) { re.push(new Float64Array(K)); im.push(new Float64Array(K)); }
+    const Ar = new Float64Array(n * n), Ai = new Float64Array(n * n), br = new Float64Array(n), bi = new Float64Array(n);
+    for (let k = 0; k < K; k++) {
+      const f = fStart * Math.pow(fStop / fStart, k / (K - 1)), w = 2 * Math.PI * f;
+      freqs[k] = f;
+      for (let i = 0; i < n * n; i++) { Ar[i] = Gm[i]; Ai[i] = w * Bm[i]; }
+      for (let i = 0; i < n; i++) { br[i] = rhs[i]; bi[i] = rhs[n + i]; }
+      // complex Gaussian elimination with partial pivoting
+      for (let c = 0; c < n; c++) {
+        let p = c, best = 0;
+        for (let r = c; r < n; r++) { const m = Ar[at(r, c)] * Ar[at(r, c)] + Ai[at(r, c)] * Ai[at(r, c)]; if (m > best) { best = m; p = r; } }
+        if (!(best > 0)) return { ok: false, error: "singular matrix at " + f.toPrecision(3) + " Hz" };
+        if (p !== c) {
+          for (let j = 0; j < n; j++) { let t = Ar[at(c, j)]; Ar[at(c, j)] = Ar[at(p, j)]; Ar[at(p, j)] = t; t = Ai[at(c, j)]; Ai[at(c, j)] = Ai[at(p, j)]; Ai[at(p, j)] = t; }
+          let t = br[c]; br[c] = br[p]; br[p] = t; t = bi[c]; bi[c] = bi[p]; bi[p] = t;
+        }
+        const pr = Ar[at(c, c)], pi = Ai[at(c, c)], pm = pr * pr + pi * pi;
+        for (let r = c + 1; r < n; r++) {
+          const xr = Ar[at(r, c)], xi = Ai[at(r, c)];
+          if (xr === 0 && xi === 0) continue;
+          const fr = (xr * pr + xi * pi) / pm, fi = (xi * pr - xr * pi) / pm;   // factor = A[r][c] / A[c][c]
+          for (let j = c + 1; j < n; j++) {
+            const ar = Ar[at(c, j)], ai = Ai[at(c, j)];
+            if (ar === 0 && ai === 0) continue;
+            Ar[at(r, j)] -= fr * ar - fi * ai; Ai[at(r, j)] -= fr * ai + fi * ar;
+          }
+          br[r] -= fr * br[c] - fi * bi[c]; bi[r] -= fr * bi[c] + fi * br[c];
+          Ar[at(r, c)] = 0; Ai[at(r, c)] = 0;
+        }
+      }
+      for (let c = n - 1; c >= 0; c--) {
+        let sr = br[c], si = bi[c];
+        for (let j = c + 1; j < n; j++) { const ar = Ar[at(c, j)], ai = Ai[at(c, j)]; if (ar === 0 && ai === 0) continue; sr -= ar * br[j] - ai * bi[j]; si -= ar * bi[j] + ai * br[j]; }
+        const pr = Ar[at(c, c)], pi = Ai[at(c, c)], pm = pr * pr + pi * pi;
+        br[c] = (sr * pr + si * pi) / pm; bi[c] = (si * pr - sr * pi) / pm;
+      }
+      for (let i = 1; i < nN; i++) { re[i][k] = br[i - 1]; im[i][k] = bi[i - 1]; }
+    }
+    // probes [[node, ref], …]: v(node) − v(ref), as a scope channel against its common
+    const probes = (opts.probes || []).map(([a, b]) => { const pr = new Float64Array(K), pi = new Float64Array(K); for (let k = 0; k < K; k++) { pr[k] = re[a][k] - re[b][k]; pi[k] = im[a][k] - im[b][k]; } return { re: pr, im: pi }; });
+    return { ok: true, freqs, re, im, probes, elapsedMs: Date.now() - t0 };
+  }
+
+  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, acSweep, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

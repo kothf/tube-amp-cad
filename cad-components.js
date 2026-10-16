@@ -916,8 +916,13 @@
           out.push({ id: c.id, part: "a2", kind: "VDIODE", nodes: [net("A2"), net("K")], perveance: P });
         } else if ((c.params.connection || kind) === "pentode" && t.koren.Pentode) {
           out.push({ id: c.id, kind: "PENTODE", nodes: [net("A"), net("G1"), net("G2"), net("K")], model: t.koren.Pentode });
+          // interelectrode capacitances (tube-db.js TUBE_CAPS): input to the cathode, output from it
+          const C = t.caps && t.caps.pentode;
+          if (C) out.push({ id: c.id + "#cin", kind: "C", nodes: [net("G1"), net("K")], c: C.cin }, { id: c.id + "#cga", kind: "C", nodes: [net("G1"), net("A")], c: C.cga }, { id: c.id + "#cout", kind: "C", nodes: [net("A"), net("K")], c: C.cout });
         } else {
           out.push({ id: c.id, kind: "TRIODE", nodes: [net("A"), net("G"), net("K")], model: t.koren.Triode || t.koren.Pentode });
+          const C = t.caps && t.caps.triode;
+          if (C) out.push({ id: c.id + "#cgk", kind: "C", nodes: [net("G"), net("K")], c: C.cgk }, { id: c.id + "#cga", kind: "C", nodes: [net("G"), net("A")], c: C.cga }, { id: c.id + "#cak", kind: "C", nodes: [net("A"), net("K")], c: C.cak });
         }
       }
     },

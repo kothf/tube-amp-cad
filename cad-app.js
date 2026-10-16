@@ -908,16 +908,18 @@
     if (m.type === "REQUEST_STATE") {
       if (!lastSummary) lastSummary = buildSummary(); lastSummary.selectedTubeId = lastTubeId; channel.postMessage(lastSummary);
       if (S.trans) channel.postMessage(transientMessage());
+      if (S.ac.msg) channel.postMessage(acMessage());
     }
     // requests from instrument windows are acknowledged at once, so a window can
     // tell a CAD that does not understand them (an older version still open)
-    else if (/^(RUN_SIM|RUN_TRANSIENT|STOP_TRANSIENT|BOARD_SAVE)$/.test(m.type)) channel.postMessage({ type: "ACK", req: m.type, id: m.id, version: VERSION });
+    else if (/^(RUN_SIM|RUN_TRANSIENT|STOP_TRANSIENT|BOARD_SAVE|RUN_AC)$/.test(m.type)) channel.postMessage({ type: "ACK", req: m.type, id: m.id, version: VERSION });
     if (m.type === "BOARD_HELLO") sendBoardNetlist(true);                    // a board window opened: netlist and the stored board
     else if (m.type === "BOARD_SAVE") storeBoard(m.doc);
     else if (m.type === "BOARD_SELECT") selectFromBoard(m.ids);
     if (m.type === "RUN_SIM") runSim("full");                            // ▶ Simulate in an instrument window
     else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop);
     else if (m.type === "STOP_TRANSIENT") stopTransient();
+    else if (m.type === "RUN_AC") runAC(m.gen);
   };
 
   // ---------------------------------------------------------------------------
@@ -979,6 +981,62 @@
       } else done(d.result);
     };
     tWorker.postMessage({ seq, netlist, options, kind: "startup" });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Frequency response for the Bode plotter window (own worker): the circuit with its signal
+  // generators quiet, linearized at that operating point; the chosen generator drives it (1 V),
+  // the others are shorts. Each scope channel's response against the scope's common.
+  // ---------------------------------------------------------------------------
+  let aWorker = null;
+  S.ac = { seq: 0, key: null, job: null, msg: null };
+  const AC_RANGE = { fStart: 1, fStop: 1e6, perDecade: 40 };
+  function acMessage(extra) { return Object.assign({ type: "AC_RESULT", version: VERSION }, S.ac.msg || { ok: false, error: "Not run yet" }, extra || {}); }
+  function runAC(gen) {
+    const T = topo(), netlist = S.sim.netlist;
+    const gens = S.comps.filter(c => c.type === "siggen").map(c => ({ id: c.id, label: desig(c) }));
+    const post = m => { S.ac.msg = m; if (channel) try { channel.postMessage(acMessage()); } catch (e) {} };
+    if (!netlist || !S.sim.result) { S.ac.key = null; post({ ok: false, error: S.sim.error || "Circuit not simulated", gens }); return; }
+    if (!gens.length) { S.ac.key = null; post({ ok: false, error: "Add a signal generator: the response is measured from it", gens }); return; }
+    const g = gens.find(x => x.id === gen) || gens[0];
+    const probes = [], map = [];
+    S.comps.filter(c => c.type === "scope").forEach(c => {
+      const com = T.pinNet.get(c.id + ":COM") || 0;
+      ["CH1", "CH2"].forEach(pid => {
+        if (!T.pinConnected.get(c.id + ":" + pid)) return;
+        map.push({ id: c.id, label: c.label, ch: pid.toLowerCase(), k: probes.length });
+        probes.push([T.pinNet.get(c.id + ":" + pid), com]);
+      });
+    });
+    const quiet = new Set(gens.map(x => x.id));
+    const nl = { nodeCount: netlist.nodeCount, elements: netlist.elements.map(e => (quiet.has(e.id) ? Object.assign({}, e, { amp: 0 }) : e)) };
+    const key = JSON.stringify([nl.elements, g.id, probes]);
+    if (key === S.ac.key && (S.ac.job || (S.ac.msg && S.ac.msg.ok !== undefined))) { if (!S.ac.job && channel) channel.postMessage(acMessage()); return; }
+    if (aWorker) { aWorker.terminate(); aWorker = null; }
+    S.ac.key = key;
+    const seq = ++S.ac.seq;
+    S.ac.job = { seq };
+    if (channel) channel.postMessage(acMessage({ running: true, progress: 0, gen: g.id, gens }));
+    const options = Object.assign({ inputs: [{ id: g.id, mag: 1 }], probes, budgetMs: 60000 }, AC_RANGE);
+    const done = res => {
+      if (S.ac.seq !== seq) return;
+      aWorker = null; S.ac.job = null;
+      const scopes = [];
+      if (res.ok) map.forEach(p => {
+        let sc = scopes.find(x => x.id === p.id); if (!sc) scopes.push(sc = { id: p.id, label: p.label, ch1: null, ch2: null });
+        sc[p.ch] = { re: Array.from(res.probes[p.k].re), im: Array.from(res.probes[p.k].im) };
+      });
+      post({ ok: !!res.ok, error: res.ok ? null : res.error, gen: g.id, gens, freqs: res.ok ? Array.from(res.freqs) : [], scopes, averaged: !!res.averaged, elapsedMs: res.elapsedMs, running: false });
+    };
+    try { aWorker = new Worker("sim-worker.js" + VERSION); } catch (e) { aWorker = null; }
+    if (!aWorker) { setTimeout(() => done(TubeSimEngine.acSweep(nl, options)), 0); return; }
+    aWorker.onmessage = e => {
+      const d = e.data;
+      if (d.seq !== seq) return;
+      if (d.result) done(d.result);
+      else if (channel) channel.postMessage(acMessage({ running: true, progress: d.progress, gen: g.id, gens }));
+    };
+    aWorker.postMessage({ seq, netlist: nl, options, kind: "ac" });
   }
 
   // ---------------------------------------------------------------------------
@@ -2081,6 +2139,9 @@
       const b2 = document.createElement("button"); b2.className = "btn wide"; b2.textContent = "Open spectrum analyzer ↗";
       b2.addEventListener("click", () => ToolWindows.open("spectrum_analyzer.html", { scope: c.id }));
       host.appendChild(b2);
+      const b3 = document.createElement("button"); b3.className = "btn wide"; b3.textContent = "Open Bode plotter ↗";
+      b3.addEventListener("click", () => ToolWindows.open("bode.html", { scope: c.id }));
+      host.appendChild(b3);
     }
     if (!def.noLabel) host.appendChild(row("Part number (BOM)", input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); })));
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
@@ -2947,6 +3008,7 @@
     bind("btn-open-tracer", () => ToolWindows.open("index.html"));
     bind("btn-open-scope", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("oscilloscope.html", sc ? { scope: sc.id } : null); });
     bind("btn-open-spectrum", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("spectrum_analyzer.html", sc ? { scope: sc.id } : null); });
+    bind("btn-open-bode", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("bode.html", sc ? { scope: sc.id } : null); });
 
     let saved = null;
     try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}

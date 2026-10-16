@@ -2,8 +2,8 @@
 
 Design and simulate vacuum-tube amplifiers in the browser. You draw a
 schematic, and a circuit simulator computes the operating points and
-waveforms. A curve tracer, an oscilloscope and a spectrum analyzer show the
-result as bench instruments would.
+waveforms. A curve tracer, an oscilloscope, a spectrum analyzer and a Bode plotter show
+the result as bench instruments would.
 
 **Live:** [kothf.github.io/tube-amp-cad](https://kothf.github.io/tube-amp-cad/) ·
 also on [aerocat.tech/tools](https://aerocat.tech/tools/)
@@ -116,7 +116,7 @@ Firefox is not tested.
 | Tubes | **99 tubes**: the Soviet receiving tubes from Katsnelson & Larionov, «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981), including triodes and double triodes (6С2С, 6С33С, 6Н1П…6Н33Б), voltage and output pentodes (6Ж1П, 6Ж32П, 6П1П, 6П3С, 6П14П, 6П27С…), triode-pentodes as two sections (6Ф1П, 6Ф3П, 6Ф4П, 6Ф5П) and kenotrons (5Ц3С, 5Ц4С, 6Ц4П…), with the handbook's ratings and pinouts; plus Western tubes from their makers' datasheets (12AX7, EL84, EL34, KT88, 300B, 845, GZ34…). Pentodes can be used triode-connected. **Import SPICE model…** adds any tube model of your own (see below). |
 | Semiconductors | silicon diodes (1N4007, UF4007, 1N4148); zener diodes 1N4733A … 1N5388B (5.1–200 V, 1 W and 5 W); LEDs (red, yellow, green, blue) for cathode bias; **NPN** 2N2222A, 2N3904, BC107, BC547B, BD139, MPSA42, MJE340 and **PNP** 2N2907A, 2N3906, BC177, BC557B, BD140, MPSA92, MJE350; **drivers and power output** in complementary pairs: 2SD669A/2SB649A, 2SC4793/2SA1837, MJE15032/MJE15033, TIP41C/TIP42C, 2SC5200/2SA1943, MJL3281A/MJL1302A, MJL21194/MJL21193, and in TO-3 (on wires, for a chassis heatsink) MJ15003/MJ15004, MJ15024/MJ15025, 2N3055/MJ2955; **N-MOSFETs** 2N7000, BS170, IRF510, IRF540, IRF820, IRF840, IRFP240, IRFP250, IRFP460, the laterals 2SK1058 and ECX10N20, and the depletion DN2540 and LND150 for current sources; **P-MOSFETs** BS250, IRF9540, IRF9610, IRF9640, IRFP9240 and the laterals 2SJ162 and ECX10P20. The power models are fitted to the datasheets (hFE and its fall at high current, VBE, capacitances; for MOSFETs threshold and transconductance); the bipolar model has no emitter or base resistance, so VBE at several amperes reads somewhat low |
 | Sources | DC supply (B+, bias), AC mains (feeds a power transformer), signal generator (sine, square, triangle; Vpk, Vrms or dBV), ground, sheet connector |
-| Instruments | two-channel oscilloscope (its screen live on the schematic, full window on double-click) |
+| Instruments | two-channel oscilloscope (its screen live on the schematic, full window on double-click), with the spectrum analyzer and the Bode plotter reading its channels |
 | Document | IEC 61082 drawing frame with title block, text note |
 
 ### Your own tube models (SPICE import)
@@ -323,6 +323,19 @@ and it works out the value that meets it, and writes it next to the part ("→ 6
   - Levels in dBc or dBV.
   - A linear or **logarithmic** frequency axis: on the log axis, 50/100 Hz
     ripple and the audio harmonics read in one view.
+- **Bode plotter.** The frequency response at a scope part's channels, from
+  1 Hz to 1 MHz:
+  - gain in dB (re the generator, or re 1 kHz) and phase, for CH1, CH2, or
+    the gain between them (CH2 ÷ CH1, one stage of a chain);
+  - the gain and phase at 1 kHz, the −3 dB points either side of it, the
+    level at 20 Hz and 20 kHz, and any peak above the 1 kHz gain (an output
+    transformer's leakage resonance, a feedback loop short of stability);
+  - markers A and B, and wheel zoom on the frequency axis.
+
+  It is the small-signal response: the generator chosen drives the circuit,
+  linearized at its idle operating point (signal off; a mains-fed supply at
+  its averaged steady state). It reruns after every simulation while the
+  window is open.
 - **Markers.** Click any graph to place markers A and B:
   - time and voltage with ΔT and ΔV on the scope;
   - frequency and level on the analyzer;
@@ -564,6 +577,18 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   cathode, and that jump stalls the solver at a cold start).
 - Grid conduction and screen current are included, and the exported SPICE
   models use exactly the same equations.
+- **Interelectrode capacitances** are part of every tube: Cgk, Cga and Cak
+  for a triode; input, Cg1a and output for a pentode. They come from the
+  datasheets (RCA, Philips, Western Electric, GEC), a Soviet tube takes its
+  Western analog's, and a tube with neither has typical values for its kind.
+  With them the Miller effect sets a stage's high-frequency corner, in the
+  transient and in the frequency response alike.
+- **Frequency response (AC analysis).** Every device is linearized at the
+  operating point (its Jacobian, by central differences of the same model
+  equations), and the complex nodal equations G + jωC are solved at each
+  frequency (dense LU, 40 frequencies per decade). Inductors and transformer
+  windings keep their inductance matrix; a rectifier at its average voltage
+  is off, so a supply reads as its reservoir capacitor.
 - **Imported SPICE models** run through the same entry point as the Koren
   equations (`TubeSimEngine.Tube`). They are compiled once per run, in the
   simulation worker too, and cost about twice the built-in models.
@@ -612,7 +637,11 @@ The test suite checks the engine against independent results:
 - a 2N3904 stage against a nested bisection of the Gummel-Poon equations, a
   MOSFET follower against the square law;
 - Kirchhoff's current law at every node, also for currents averaged over a
-  rectifier's window.
+  rectifier's window;
+- the frequency response against an RC corner (−3.01 dB, −45°) and a series
+  resonance (gain Q), a 12AX7 stage's small-signal gain against its transient
+  (within 1 %), and its top corner from a 100 kΩ source against the Miller
+  estimate 1/(2π·Rs·(Cgk + (1 + A)·Cga)).
 
 Every amplifier tube is fitted to, and tested against, its published
 datasheet operating points: plate current and, where the datasheet gives
