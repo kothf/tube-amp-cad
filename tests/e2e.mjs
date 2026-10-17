@@ -205,6 +205,20 @@ check(circuit.ms < 10000, `simulation finished in ${(circuit.ms / 1000).toFixed(
   const both = sr.ac.filter(t => /^[-\d.]+[mµk]?V ~/.test(t)), acOnly = sr.ac.filter(t => /^~/.test(t)), dcOnly = sr.list.filter(t => t.kind === "v" && !/~/.test(t.txt)).map(t => t.txt);
   check(sr.ac.every(t => /~[\d.]+[mµk]?Vrms$/.test(t)) && both.length >= 1 && acOnly.length >= 1 && dcOnly.length >= 1 && sr.signalNets >= 2,
     `voltage stickers tell AC from DC: DC + AC ${both.join(", ")}; AC only ${acOnly.join(", ")}; DC only ${dcOnly.join(", ")}; ${sr.signalNets} signal nets glow`);
+  // Animate: one signal cycle slowed down; the plate swings against the grid (inverted), AC current runs in the wires
+  await cad.click("#btn-anim"); await cad.waitForTimeout(600);
+  const an = await cad.evaluate(id => {
+    const a = TubeCAD.anim(), d = a.data, T = TubeCAD.topo(), v = TubeCAD.state.comps.find(c => c.id === id), net = p => T.pinNet.get(v.id + ":" + p);
+    const g = d.nets.get(net("G")), pl = d.nets.get(net("A")); let cor = 0; g.ac.forEach((x, i) => { cor += x * pl.ac[i]; });
+    return { on: a.on, phase: a.phase, frames: d.n, wires: d.wires.size, inverted: cor < 0, pressed: document.getElementById("btn-anim").getAttribute("aria-pressed"), legend: TubeCAD.legend() && TubeCAD.legend().rows[0] };
+  }, circuit.v1);
+  await cad.waitForTimeout(300);
+  const ph2 = await cad.evaluate(() => TubeCAD.anim().phase);
+  await cad.click("#btn-anim");
+  const off = await cad.evaluate(() => !TubeCAD.anim().on);
+  await cad.waitForTimeout(150);
+  check(an.on && an.pressed === "true" && an.frames >= 100 && an.wires >= 3 && an.inverted && ph2 !== an.phase && off && /^AC current/.test(an.legend),
+    `Animate plays the AC: ${an.frames} frames over a cycle, current in ${an.wires} wires, the plate swinging against the grid; the legend explains it; off again`);
   // the legend in the corner says what the glow and the colours mean; View ▾ → Legend hides it
   const lg = await cad.evaluate(() => TubeCAD.legend());
   await cad.evaluate(() => document.getElementById("btn-legend").click()); await cad.waitForTimeout(100);

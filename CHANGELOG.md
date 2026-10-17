@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.70.0] - 2026-10-18
+
+### Added
+- **∿ Animate** (toolbar): one cycle of the signal, slowed to 3 s, on the schematic. Dots run along each wire with its AC current, reversing each half cycle (brighter: more current); each node's wires turn orange as it swings above its DC level and blue below, so a stage's inversion, the signal current returning through the supply and through bypass capacitors can be seen. Every wire and node is scaled to its own peak. A time line shows the moment in the cycle; the legend explains the marks.
+- The simulator records every part's terminal currents at 120 instants over one signal period for it (a capacitor's as C·dV/dt).
+
 ## [3.69.0] - 2026-10-18
 
 ### Removed

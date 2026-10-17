@@ -546,3 +546,18 @@ test("tube database: every amplifier tube has interelectrode capacitances, from 
   assert.match(tube("6P14P").caps.source, /as EL84/);
   near(tube("EL84").caps.pentode.cin, 10.8e-12, 1e-9, "EL84 input capacitance");
 });
+
+test("animation frames: every element's terminal currents over one signal period; a capacitor's from C·dV/dt", () => {
+  // 1 kHz sine through 1 kΩ into 1 µF: in series, the capacitor carries the resistor's current at every instant
+  const r = E.simulate({ nodeCount: 3, elements: [{ id: "g", kind: "VSRC", nodes: [1, 0], wave: "sine", amp: 1, freq: 1000 },
+    { id: "r", kind: "R", nodes: [1, 2], r: 1000 }, { id: "c", kind: "C", nodes: [2, 0], c: 1e-6 }] }, { frameSpan: 1e-3 });
+  assert.ok(r.ok, r.error);
+  const F = r.tran.frames, at = (id, node) => { for (let k = 0; k < F.layout.length; k += 3) if (F.layout[k] === id && F.layout[k + 1] === node) return k / 3; return -1; };
+  assert.ok(F.cur.length >= 100 && F.cur.length <= 120, `${F.cur.length} frames`);
+  const span = (F.at[F.at.length - 1] - F.at[0]) * r.tran.dt;
+  assert.ok(span > 0.95e-3 && span <= 1e-3, `frames over one period (${(span * 1e3).toFixed(3)} ms)`);
+  const ir = at("r", 2), ic = at("c", 2), peak = Math.max(...F.cur.map(v => Math.abs(v[ir])));
+  // |Z| = √(1k² + (1/2π·1k·1µ)²) = 1.0126 kΩ: 0.9876 mA peak
+  near(peak, 1 / Math.hypot(1000, 1 / (2 * Math.PI * 1000 * 1e-6)), 0.02, "peak current");
+  F.cur.forEach((v, j) => assert.ok(Math.abs(v[ic] + v[ir]) < 0.04 * peak, `frame ${j}: into C ${v[ic]}, out of R ${-v[ir]}`));
+});

@@ -340,8 +340,10 @@
     const seq = ++S.sim.seq;
     simBusy(mode === "full" ? "Simulating until settled…" : "Simulating…");
     simButton();
-    if (worker) worker.postMessage({ seq, netlist, options: RUN_OPTIONS[mode] });
-    else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, RUN_OPTIONS[mode]) }), 0);
+    // the animation's frames over one period of the signal generator
+    const g = S.comps.find(c => c.type === "siggen"), options = Object.assign({}, RUN_OPTIONS[mode], g && g.params.freq > 0 ? { frameSpan: 1 / g.params.freq } : {});
+    if (worker) worker.postMessage({ seq, netlist, options });
+    else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, options) }), 0);
   }
   // the busy text of the running steady-state simulation, with its readiness in percent
   function simBusy(text) { S.sim.busyText = text; S.sim.progress = 0; showBusy(); updatePct(); simButton(); }
@@ -423,7 +425,13 @@
     const r = S.sim.result;
     if (!r || !r.dc.currents) return null;
     if (S.sim.pinI && S.sim.pinI.result === r) return S.sim.pinI.map;
-    const T = S.sim.topo || topo(), byComp = new Map(), cur = r.dc.currents;
+    const map = pinMap(r.dc.currents);
+    S.sim.pinI = { result: r, map };
+    return map;
+  }
+  // pin currents from a flat [id, node, i, ...] list (the averages, or one animation frame)
+  function pinMap(cur) {
+    const T = S.sim.topo || topo(), byComp = new Map();
     for (let k = 0; k < cur.length; k += 3) {
       const id = String(cur[k]), h = id.indexOf("#"), cid = h < 0 ? id : id.slice(0, h);
       let m = byComp.get(cid); if (!m) byComp.set(cid, m = new Map());
@@ -435,7 +443,6 @@
       const pins = compPins(c), nets = pins.map(p => T.pinNet.get(c.id + ":" + p.id));
       pins.forEach((p, i) => { if (nets[i] !== undefined && nets.indexOf(nets[i]) === i && nets.lastIndexOf(nets[i]) === i) map.set(c.id + ":" + p.id, m.get(nets[i]) || 0); });
     });
-    S.sim.pinI = { result: r, map };
     return map;
   }
   function pinCurrent(c, pid) { const m = pinCurrents(), v = m && m.get(c.id + ":" + pid); return v === undefined ? null : v; }
@@ -444,8 +451,8 @@
   // the next point, and so on inwards; segments stay unknown only in loops or between
   // points with an unknown current (ground symbols, sheet connectors), at most one of which
   // a tree can absorb.
-  function wireCurrents() {
-    const pins = pinCurrents(); if (!pins) return null;
+  function wireCurrents(given) {
+    const pins = given || pinCurrents(); if (!pins) return null;
     const draw = new Map(), hasPin = new Set();   // point -> current drawn from the wiring there (consumed below)
     const free = new Set();
     S.comps.forEach(c => compPins(c).forEach(p => {
@@ -474,6 +481,93 @@
     const pinDraw = new Map();
     S.comps.forEach(c => compPins(c).forEach(p => { const v = pins.get(c.id + ":" + p.id), k = key(p.x, p.y); pinDraw.set(k, v === undefined ? NaN : (pinDraw.get(k) || 0) + v); }));
     return { currents: out, adj, pinDraw };
+  }
+
+  // ---------------------------------------------------------------------------
+  // AC animation: one period of the signal, slowed to ANIM_S seconds. Each wire's AC current
+  // (the simulation's terminal currents at 120 instants, carried through the wiring as for the
+  // current stickers, less their average) runs as dots along it; each node's AC voltage tints
+  // its wires, orange swinging up, blue swinging down. Each is scaled to its own peak, so the
+  // microamps at a grid move as visibly as the plate's milliamps; brighter dots, more current.
+  // ---------------------------------------------------------------------------
+  const ANIM_S = 3;
+  S.anim = { on: false, phase: 0, last: 0, data: null, off: new Map(), raf: 0 };
+  function animData() {
+    const r = S.sim.result, F = r && r.tran && r.tran.frames;
+    if (!F || F.cur.length < 8) return null;
+    if (S.anim.data && S.anim.data.r === r) return S.anim.data;
+    const T = S.sim.topo || topo(), flat = F.layout.slice(), n = F.cur.length;
+    const perFrame = F.cur.map(vals => { for (let k = 0; k < vals.length; k++) flat[3 * k + 2] = vals[k]; const wc = wireCurrents(pinMap(flat)); return wc ? wc.currents : new Map(); });
+    const acOf = xs => { const m = xs.reduce((a, v) => a + v, 0) / xs.length, ac = xs.map(v => v - m); return { ac, pk: Math.max(...ac.map(Math.abs)) }; };
+    const wires = new Map(), nets = new Map();
+    S.wires.forEach(w => {
+      const xs = perFrame.map(m => m.get(w.id));
+      if (xs.every(v => v !== undefined && isFinite(v))) { const a = acOf(xs); if (a.pk >= 1e-6) wires.set(w.id, a); }
+      const net = T.wireNet.get(w.id), wave = net > 0 && r.tran.nodes[net];
+      if (wave && !nets.has(net)) { const a = acOf(F.at.map(k => wave[k])); if (a.pk >= 1e-3) nets.set(net, a); }
+    });
+    S.anim.data = { r, n, wires, nets, f: signalFreq() };
+    return S.anim.data;
+  }
+  // a quantity at the animation's phase, between its frames
+  const animAt = (a, phase) => { const n = a.length, f = phase * n, j = Math.floor(f) % n, u = f - Math.floor(f); return a[j] * (1 - u) + a[(j + 1) % n] * u; };
+  function animTick(now) {
+    if (!S.anim.on) return;
+    const d = animData();
+    const dt = S.anim.last ? Math.min(0.1, (now - S.anim.last) / 1000) : 0; S.anim.last = now;
+    if (d) {
+      S.anim.phase = (S.anim.phase + dt / ANIM_S) % 1;
+      // dots move at up to 40 units a second at the wire's peak AC current, with its sign
+      d.wires.forEach((a, id) => S.anim.off.set(id, (S.anim.off.get(id) || 0) + dt * 40 * animAt(a.ac, S.anim.phase) / a.pk));
+    }
+    render();
+    S.anim.raf = requestAnimationFrame(animTick);
+  }
+  function setAnim(on) {
+    S.anim.on = on; S.anim.last = 0;
+    const b = document.getElementById("btn-anim"); if (b) { b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); }
+    cancelAnimationFrame(S.anim.raf);
+    if (on) {
+      if (!animData()) setStatus("warn", S.sim.result ? "Nothing to animate: the circuit has no signal (add a signal generator)" : "Simulate first: the animation plays the simulated signal");
+      S.anim.raf = requestAnimationFrame(animTick);
+    }
+    render();
+  }
+  // under the wires: each node's AC voltage as a tint
+  function drawAnimTint(T) {
+    const d = S.anim.on && animData(); if (!d) return;
+    ctx.lineCap = "round";
+    S.wires.forEach(w => {
+      const a = d.nets.get(T.wireNet.get(w.id)); if (!a) return;
+      const v = animAt(a.ac, S.anim.phase) / a.pk;
+      ctx.strokeStyle = v >= 0 ? `rgba(255,150,60,${(0.12 + 0.5 * v).toFixed(3)})` : `rgba(70,160,255,${(0.12 - 0.5 * v).toFixed(3)})`;
+      ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
+    });
+  }
+  // over the wires: the AC current as moving dots (spaced 12 units, from x1,y1 towards x2,y2 when positive)
+  function drawAnimDots() {
+    const d = S.anim.on && animData(); if (!d) return;
+    d.wires.forEach((a, id) => {
+      const w = S.wires.find(q => q.id === id); if (!w) return;
+      const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 1) return;
+      const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, off = (((S.anim.off.get(id) || 0) % 12) + 12) % 12;
+      const bright = Math.max(0.35, Math.min(1, (Math.log10(a.pk) + 6.5) / 5));
+      ctx.fillStyle = `rgba(255,247,194,${bright.toFixed(2)})`;
+      for (let s = off; s <= L; s += 12) { ctx.beginPath(); ctx.arc(w.x1 + ux * s, w.y1 + uy * s, 2.2, 0, Math.PI * 2); ctx.fill(); }
+    });
+  }
+  // the time line, top left of the sheet
+  function drawAnimHud() {
+    const d = S.anim.on && animData(); if (!d) return;
+    const x = 10, y = 10, w = 250, h = 34, ph = S.anim.phase;
+    ctx.fillStyle = "rgba(10,14,20,0.88)"; ctx.fillRect(x, y, w, h); ctx.strokeStyle = "#26344a"; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = "#c9d1d9"; ctx.textAlign = "left";
+    ctx.fillText(`AC · ${fmtEng(d.f, "Hz")}, one cycle in ${ANIM_S} s · ${Math.round(ph * 360)}°`, x + 7, y + 13);
+    // one cycle of a sine, with the moment marked
+    const sx = x + 7, sw = w - 14, sy = y + 24;
+    ctx.strokeStyle = "rgba(201,209,217,0.5)"; ctx.beginPath();
+    for (let i = 0; i <= 60; i++) { const px = sx + sw * i / 60, py = sy - 5 * Math.sin(2 * Math.PI * i / 60); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+    ctx.stroke(); ctx.fillStyle = "#ffd54f"; ctx.beginPath(); ctx.arc(sx + sw * ph, sy - 5 * Math.sin(2 * Math.PI * ph), 3, 0, Math.PI * 2); ctx.fill();
   }
 
   // DC current in a catalog output transformer's primary (from the drop across its DCR)
@@ -1299,8 +1393,9 @@
     recordingFrame = false;
     // wires
     ctx.lineCap = "round";
-    // with the voltages shown, wires that carry signal (AC) get a cyan glow under them
-    if (S.showVolts && S.sim.result && S.sim.result.tran) {
+    drawAnimTint(T);
+    // with the voltages shown, wires that carry signal (AC) get a cyan glow under them (the animation tints them instead)
+    if (S.showVolts && !S.anim.on && S.sim.result && S.sim.result.tran) {
       ctx.strokeStyle = "rgba(0,229,255,0.30)"; ctx.lineWidth = 7;
       S.wires.forEach(w => { const ac = netAC(T.wireNet.get(w.id)); if (ac && ac.signal) { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); } });
     }
@@ -1310,6 +1405,7 @@
       ctx.lineWidth = sel ? 3 : 2;
       ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
     });
+    drawAnimDots();
     // dangling wire ends
     ctx.fillStyle = "#ff7b72";
     T.degree.forEach((d, k) => {
@@ -1365,12 +1461,14 @@
       ctx.textAlign = "left";
     }
     if (S.showLegend) drawLegend(H); else legendBox = null;
+    drawAnimHud();
   }
   // what the colours on the sheet mean: only the marks that are showing
   function legendRows() {
-    const r = S.sim.result; if (!r || !(S.showVolts || S.showAmps)) return [];
+    const r = S.sim.result; if (!r || !(S.showVolts || S.showAmps || S.anim.on)) return [];
     const rows = [], ac = S.showVolts && r.tran;
-    if (ac) rows.push({ glow: true, text: "signal: AC on the wire (≥ 1 % of its DC)" });
+    if (S.anim.on && animData()) rows.push({ anim: "dots", text: "AC current: dots run with it, brighter = more" }, { anim: "up", text: "node swinging up (above its DC)" }, { anim: "down", text: "node swinging down" });
+    else if (ac) rows.push({ glow: true, text: "signal: AC on the wire (≥ 1 % of its DC)" });
     if (S.showVolts) rows.push({ tag: "250V", fg: "#ffd54f", line: "rgba(255,213,79,0.35)", text: "DC voltage of the node" });
     if (ac) rows.push({ tag: "~1.2Vrms", fg: "#00e5ff", line: "rgba(0,229,255,0.45)", text: "AC on the node, rms" });
     if (S.showAmps) rows.push({ tag: "↓1.2mA", fg: "#d2a8ff", line: "rgba(210,168,255,0.45)", text: "DC current and its direction" });
@@ -1386,7 +1484,12 @@
     ctx.strokeStyle = "#26344a"; ctx.lineWidth = 1; ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
     rows.forEach((q, i) => {
       const y = y0 + 5 + i * lh + lh / 2, x = x0 + 6;
-      if (q.glow) {
+      if (q.anim) {
+        ctx.lineCap = "round";
+        if (q.anim !== "dots") { ctx.strokeStyle = q.anim === "up" ? "rgba(255,150,60,0.6)" : "rgba(70,160,255,0.6)"; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke(); }
+        ctx.strokeStyle = "#3fb950"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke();
+        if (q.anim === "dots") { ctx.fillStyle = "rgba(255,247,194,0.95)"; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(x + 8 + k * 11, y, 2.2, 0, Math.PI * 2); ctx.fill(); } }
+      } else if (q.glow) {
         ctx.lineCap = "round"; ctx.strokeStyle = "rgba(0,229,255,0.30)"; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke();
         ctx.strokeStyle = "#3fb950"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke();
       } else {
@@ -2904,6 +3007,7 @@
     bind("btn-volts", () => { S.showVolts = !S.showVolts; document.getElementById("btn-volts").classList.toggle("active", S.showVolts); render(); });
     { const b = document.getElementById("btn-legend"); b.classList.toggle("active", S.showLegend); b.setAttribute("aria-checked", String(S.showLegend)); }
     bind("btn-legend", () => { S.showLegend = !S.showLegend; document.getElementById("btn-legend").classList.toggle("active", S.showLegend); try { localStorage.setItem(LEGEND_KEY, S.showLegend ? "1" : "0"); } catch (e) {} render(); });
+    bind("btn-anim", () => setAnim(!S.anim.on));
     bind("btn-amps", () => { S.showAmps = !S.showAmps; document.getElementById("btn-amps").classList.toggle("active", S.showAmps); render(); });
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
@@ -2936,6 +3040,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData() }), setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

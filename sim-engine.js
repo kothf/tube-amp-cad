@@ -686,6 +686,18 @@
     return out;
   }
 
+  // the terminal currents at one instant of the transient, for the CAD's animation: as
+  // currentsOf, and a capacitor's C·dV/dt from the step before (h seconds earlier)
+  function instantCurrents(circ, x, xp, h, vals) {
+    let k = 0;
+    circ.els.forEach(e => {
+      if (!e.id) return;
+      const tc = e.kind === "C" ? (() => { const nd = e.nodes, i = e.c * ((vn(x, nd[0]) - vn(x, nd[1])) - (vn(xp, nd[0]) - vn(xp, nd[1]))) / h; return [[nd[0], i], [nd[1], -i]]; })() : terminalCurrents(e, x);
+      tc.forEach(([, i]) => { vals[k++] = i; });
+    });
+    return vals;
+  }
+
   // ---------------------------------------------------------------------------
   // Minimal polynomial extrapolation over period-to-period states x0..x(k+1):
   // estimates the fixed point of the period map when slow modes decay
@@ -944,7 +956,15 @@
     // reads; the estimate is kept as dcEstimate.
     const averaged = circ.els.some(e => e.dcValue !== undefined || e.acMains);
     const nodeSum = new Float64Array(nodeCount), devSum = {}, curSum = [];
+    // animation frames: every element's terminal currents at up to 120 instants over the window
+    // (options.frameSpan: one signal period, so a slow signal in a long mains window still gets them all)
+    const span = Math.max(2, Math.min(nCap - 2, opts.frameSpan > 0 ? Math.round(opts.frameSpan / h) : nCap - 2));
+    const nFr = Math.min(120, span), frAt = new Set(Array.from({ length: nFr }, (_, j) => 1 + Math.round(j * span / nFr)));
+    const frames = { layout: currentsOf(circ, x, []).map((v, k) => (k % 3 === 2 ? 0 : v)), at: [], cur: [] };
+    let xPrev = x;
     const record = (k) => {
+      if (frAt.has(k)) { frames.at.push(k); frames.cur.push(instantCurrents(circ, x, xPrev, h, new Float32Array(frames.layout.length / 3))); }
+      xPrev = x;
       for (let i = 1; i < nodeCount; i++) nodes[i][k] = x[i - 1];
       const acc = averaged && k < nCap - 1;   // the last sample repeats the first: one exact window
       if (acc) for (let i = 1; i < nodeCount; i++) nodeSum[i] += x[i - 1];
@@ -969,7 +989,7 @@
       record(s);
       if ((s & 63) === 0 && settled) progress(0.88 + 0.12 * s / nCap);
     }
-    result.tran = { dt: h, samples: nCap, nodes, devices: devTrace, periods, settled, fBase: fMin };
+    result.tran = { dt: h, samples: nCap, nodes, devices: devTrace, periods, settled, fBase: fMin, frames };
     if (averaged && nCap > 1) {
       const n = nCap - 1, avg = { nodes: Array.from(nodeSum, v => v / n), devices: {}, currents: curSum.map((v, k) => (k % 3 === 2 ? v / n : v)) };
       avg.nodes[0] = 0;
