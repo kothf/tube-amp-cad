@@ -1901,6 +1901,9 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
     const t = await cad.evaluate(() => { const S = TubeCAD.state, v = S.comps.find(c => c.label === "VL1"); S.sel.comps.clear(); S.sel.comps.add(v.id); TubeCAD.updateInspector(); return document.getElementById("inspector").innerText; });
     const rect = (t.match(/Rectified current\s+([\d.]+mA)\s+(\d+)% of 125mA/) || []), pk = (t.match(/Peak anode current\s+([\d.]+mA)\s+(\d+)% of 375mA/) || []);
+    const circuitChecks = await cad.evaluate(() => { TubeCAD.state.sel.comps.clear(); TubeCAD.updateInspector(); const t = document.getElementById("inspector").innerText; return t.slice(t.indexOf("CHECKS"), t.indexOf("Renumber")); });
+    check(/No problems found/i.test(circuitChecks) && pk[2] <= 100, `Gubin example: no warnings in the circuit's checks (the 5Ц4С's peak anode current ${pk[1]} is within 375 mA)${/No problems/i.test(circuitChecks) ? "" : ": " + circuitChecks.replace(/\s+/g, " ")}`);
+    await cad.evaluate(() => { const S = TubeCAD.state, v = S.comps.find(c => c.label === "VL1"); S.sel.comps.clear(); S.sel.comps.add(v.id); TubeCAD.updateInspector(); });
     check(rect[2] > 85 && rect[2] < 100 && pk[1], `Gubin example: the 5Ц4С delivers ${rect[1]} (${rect[2]} % of 125 mA, not of the per-anode 62 mA); peak anode current ${pk[1]} (${pk[2]} % of 375 mA)`);
     // its board: every part placed, everything routed, no rule violations
     const bw = await open("board-07", "board.html");

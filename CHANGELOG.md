@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.68.1] - 2026-10-17
+
+### Fixed
+- **Gubin example: the 5Ц4С within its peak anode current.** With 100 Ω anode resistors (R1, R2) each anode pulled 405 mA while the 6.8 µF reservoir charged, over the tube's 375 mA (datasheet: 125 mA average, 375 mA peak per anode). 180 Ω brings it to 359 mA; B+ 357 V instead of 372 V, output about 2 % lower. The board is unchanged (the same 5 W resistors).
+
 ## [3.68.0] - 2026-10-17
 
 ### Added
