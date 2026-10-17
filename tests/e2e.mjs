@@ -1698,85 +1698,8 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.close();
 }
 
-// --- Bias finder: the part that sets a tube's bias is marked; a target anode current finds its value ---
-{
-  const ids = await cad.evaluate(async () => {
-    const C = TubeCAD, S = C.state; S.comps = []; S.wires = [];
-    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
-    const pin = (c, id) => C.compPins(c).find(p => p.id === id);
-    const wire = (a, b, hFirst) => C.lRoute(a.x, a.y, b.x, b.y, hFirst !== false).forEach(s => C.addSegment(...s));
-    const gnd = (p, x, y) => { const g = add("ground", {}, x ?? p.x, y ?? p.y + 40); wire(p, pin(g, "G"), false); };
-    const V1 = add("tube", { tube: "12AX7" }, 400, 300), Ra = add("resistor", { r: 100e3 }, 400, 160, 1), B = add("vdc", { v: 250 }, 560, 120);
-    const Rk = add("resistor", { r: 1500 }, 400, 420, 1), Rg = add("resistor", { r: 1e6 }, 300, 380, 1);
-    wire(pin(B, "+"), pin(Ra, "1"), true); gnd(pin(B, "-")); wire(pin(Ra, "2"), pin(V1, "A"));
-    wire(pin(V1, "K"), pin(Rk, "1")); gnd(pin(Rk, "2"));
-    wire(pin(Rg, "1"), pin(V1, "G")); gnd(pin(Rg, "2"));
-    const seq = S.sim.seq;
-    S.sel.comps.clear(); S.sel.comps.add(V1.id); C.setLive(true); C.commit(); C.fitView();
-    return { v1: V1.id, rk: Rk.id, ra: Ra.id, rg: Rg.id, seq };
-  });
-  // a run that started after the last edit (commit debounces the solver) has finished, and so has the bias search
-  const seqNow = () => cad.evaluate(() => TubeCAD.state.sim.seq);
-  const idle = seq => cad.waitForFunction(seq => { const S = TubeCAD.state; return S.sim.seq > seq && S.sim.result && !S.sim.busy && !S.sim.pending && !S.bias.job; }, seq, { timeout: 60000 });
-  await idle(ids.seq);
-  const marked = await cad.evaluate(ids => { const P = TubeCAD.state.bias.parts; return { rk: P.has(ids.rk) && P.get(ids.rk).kind, others: P.has(ids.ra) || P.has(ids.rg) }; }, ids);
-  check(marked.rk === "cathode" && !marked.others, `the bias finder marks the cathode resistor as the 12AX7's bias part (and not the plate load or the grid leak)`);
-  // a target typed into the tube's inspector starts the search; the part shows the value found
-  const row = t => cad.locator("#inspector label.row", { hasText: t });
-  const iaNow = await cad.evaluate(id => TubeCAD.tubeData(TubeCAD.state.comps.find(c => c.id === id)).dc.ia, ids.v1);
-  await row("Bias target").locator("select").selectOption("ia");
-  const prefill = await row("Target anode current").locator("input").inputValue();
-  const pre = await cad.evaluate(id => TubeCAD.state.comps.find(c => c.id === id).params.biasIa, ids.v1);
-  check(pre === +iaNow.toPrecision(2) && prefill.trim() !== "", `choosing an anode current target prefills the simulated ${(iaNow * 1e3).toFixed(3)} mA ("${prefill}")`);
-  let seq = await seqNow();
-  await row("Target anode current").locator("input").fill("1.2mA");
-  await row("Target anode current").locator("input").press("Enter");
-  await idle(seq);
-  await cad.waitForFunction(() => TubeCAD.state.bias.result, null, { timeout: 60000 });
-  const found = await cad.evaluate(ids => {
-    const S = TubeCAD.state, r = S.bias.result, p = r.ok && r.parts.find(q => q.part === ids.rk);
-    const drawn = []; const orig = CanvasRenderingContext2D.prototype.fillText;
-    CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { drawn.push(String(t)); return orig.call(this, t, ...a); };
-    TubeCAD.fitView();   // draws again on the next frame
-    return new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => { CanvasRenderingContext2D.prototype.fillText = orig;
-      res({ ok: r.ok, err: r.error, p, drawn: drawn.filter(t => t.startsWith("→")), insp: document.getElementById("inspector").textContent, status: document.getElementById("status-sim").textContent }); })));
-  }, ids);
-  check(found.ok && found.p && found.p.reached && Math.abs(found.p.ia[0] - 1.2e-3) < 0.05 * 1.2e-3, `a 1.2 mA target finds Rk ${found.p && found.p.value.toFixed(0)} Ω, E24 ${found.p && found.p.e24} Ω (Ia ${found.p && (found.p.ia[0] * 1e3).toFixed(3)} mA)${found.err ? " " + found.err : ""}`);
-  check(found.drawn.includes("→ " + (found.p && found.p.e24 >= 1000 ? found.p.e24 / 1000 + "kΩ" : found.p && found.p.e24 + "Ω")), `the value found is written by the part on the sheet (${found.drawn.join(", ")})`);
-  check(/Bias/.test(found.insp) && /Set by/.test(found.insp) && /Suggested/.test(found.insp) && /Bias found/.test(found.status), `the tube's inspector names the bias part and the suggestion; the status line reports the search ("${found.status}")`);
-  // the resistor's inspector applies it
-  await cad.evaluate(ids => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.comps.add(ids.rk); TubeCAD.updateInspector(); }, ids);
-  seq = await seqNow();
-  await cad.locator("#inspector .bias-apply").click();
-  await idle(seq);
-  const after = await cad.evaluate(ids => { const S = TubeCAD.state; return { r: S.comps.find(c => c.id === ids.rk).params.r, ia: TubeCAD.tubeData(S.comps.find(c => c.id === ids.v1)).dc.ia }; }, ids);
-  check(after.r === found.p.e24 && Math.abs(after.ia - 1.2e-3) < 0.05 * 1.2e-3, `"Use" puts ${after.r} Ω in, and the stage draws ${(after.ia * 1e3).toFixed(3)} mA`);
-  // a share of Pa max as the target; above the rating it is flagged. A measurement can be the voltage across Rk
-  // (with a 10 kΩ plate load: 100 kΩ from 250 V lets a 12AX7 dissipate 0.16 W at most)
-  seq = await seqNow();
-  await cad.evaluate(ids => { const S = TubeCAD.state; S.comps.find(c => c.id === ids.ra).params.r = 10e3; S.sel.comps.clear(); S.sel.comps.add(ids.v1); TubeCAD.commit(); }, ids);
-  await idle(seq);
-  seq = await seqNow();
-  await row("Bias target").locator("select").selectOption("pa");
-  await idle(seq);
-  const pa70 = await cad.evaluate(ids => { const p = TubeCAD.state.bias.result.parts.find(q => q.part === ids.rk); return p && { pa: p.at[0].pa, reached: p.reached }; }, ids);
-  check(pa70 && pa70.reached && Math.abs(pa70.pa - 0.7) < 0.01, `a target of 70 % of Pa max gives the 12AX7 ${pa70 && pa70.pa.toFixed(3)} W (Pa max 1 W)`);
-  // 120 %: reachable from 400 V (from 250 V even zero bias stays under 1.2 W, and that is reported as out of range)
-  seq = await seqNow();
-  await cad.evaluate(() => { const S = TubeCAD.state; S.comps.find(c => c.type === "vdc").params.v = 400; TubeCAD.commit(); });
-  await idle(seq);
-  seq = await seqNow();
-  await row("Target dissipation").locator("input").fill("120"); await row("Target dissipation").locator("input").press("Enter");
-  await idle(seq);
-  const hot = await cad.evaluate(() => ({ insp: document.getElementById("inspector").textContent, status: document.getElementById("status-sim").textContent }));
-  check(/above the tube's Pa max/.test(hot.insp) && /more than its Pa max/.test(hot.insp) && /⚠ .* over its 1 W/.test(hot.status), `a target above Pa max is flagged in the inspector and the status line ("${hot.status}")`);
-  const opts = await row("Measured on the amp").locator("option").allTextContents();
-  check(opts.some(o => /^Voltage across R\d+ \(680Ω\)$/.test(o)) && opts.includes("Cathode current"), `the measurement can be the anode or cathode current, or the voltage across a cathode resistor (${opts.join(" | ")})`);
-  await cad.click("#btn-view"); await cad.click("#btn-bias");
-  const hidden = await cad.evaluate(() => !TubeCAD.state.bias.show && !document.getElementById("btn-bias").classList.contains("active"));
-  await cad.click("#btn-bias"); await cad.keyboard.press("Escape");
-  check(hidden, "the Bias button hides and shows the marking");
-}
+// --- No bias finder: no marking, no target fields, no menu item (it was removed as confusing) ---
+check(await cad.evaluate(() => !document.getElementById("btn-bias") && !CadLib.LIB.tube.fields.some(f => /^bias/.test(f.key)) && !("job" in TubeCAD.state.bias)), "the bias finder is gone: no Bias markers item, no bias target on tubes");
 // --- Tube ratings beyond Va and Pa ----------------------------------------------------------------
 {
   // an EL84 with fixed bias through a 1 MΩ grid leak (0.3 MΩ allowed) and its screen on 300 V with

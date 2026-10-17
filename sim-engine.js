@@ -19,9 +19,8 @@
    kinds: R, C, L, XFMR, V, VSRC, D, VDIODE, TRIODE, PENTODE
    acSweep: the small-signal frequency response, linearized at an operating point.
    A tube element may carry gridShift (V): its plate and screen currents as if the grid were that
-   much more positive (a real tube that draws more or less than the model; the bias finder fits
-   it to a measurement), grid conduction still from 0 V; and iScale: all its currents times that
-   factor (the bias finder's check of a pot against weaker and stronger tubes).
+   much more positive (a real tube that draws more or less than the model), grid conduction
+   still from 0 V; and iScale: all its currents times that factor (a weaker or stronger tube).
    ============================================================================= */
 (function (root) {
   "use strict";

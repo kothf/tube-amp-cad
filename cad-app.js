@@ -351,7 +351,6 @@
     const jobs = [];
     if (S.sim.busy) jobs.push([S.sim.busyText.replace(/…$/, ""), S.sim.progress || 0]);
     if (S.trans && S.trans.running) jobs.push([`Power-on transient, first ${fmtEng(S.trans.tStop, "s")}`, S.trans.progress || 0]);
-    if (S.bias && S.bias.job) jobs.push(["Finding bias resistors", S.bias.job.progress || 0]);
     if (!jobs.length) return false;
     setStatus("busy", jobs.map(([t, p]) => `${t}: ${Math.floor(p * 100)} %`).join(" · "), Math.min(...jobs.map(j => j[1])));
     return true;
@@ -393,7 +392,6 @@
           setStatus(S.sim.warnings.length ? "warn" : "ok", `Simulated in ${took} · ${what}` + (result.dcAveraged ? " · DC values averaged over the window" : "") + (S.sim.warnings.length ? " · " + S.sim.warnings[0] : ""));
         if (more) { broadcast(); updateInspector(true); render(); runSim("full"); simBusy("Preliminary result shown · settling fully…"); return; }
       } else setStatus("error", result.error);
-      if (result.ok) runBias();
       broadcast();
       updateInspector(true);
       render();
@@ -637,203 +635,15 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Bias finder (bias.js). Every result marks the parts that set each tube's bias, drawn in
-  // their own colour. For tubes with a target anode current, a worker of its own simulates
-  // again with the signal off and finds the value; it is written beside the part.
+  // Bias detection (bias.js): whether each tube is cathode or fixed biased and the resistance
+  // in its grid circuit, for the grid-resistor limit in the checks
   // ---------------------------------------------------------------------------
-  const BIAS_COL = "#d2a8ff";
-  const RATINGS = [0.125, 0.25, 0.5, 1, 2, 3, 5, 10, 20];
-  S.bias = { show: true, parts: new Map(), tubes: new Map(), job: null, result: null, key: null, seq: 0 };
-  let bWorker = null;
-  const compById = id => S.comps.find(c => c.id === id);
-  const labelOf = id => { const c = compById(id); return c ? desig(c) : id; };
+  S.bias = { tubes: new Map() };
   function detectBias() {
-    S.bias.parts = new Map(); S.bias.tubes = new Map();
+    S.bias.tubes = new Map();
     const r = S.sim.result;
     if (!r || !window.TubeBias || !S.sim.netlist) return;
-    TubeBias.detect(S.sim.netlist, r.dc).forEach(d => {
-      S.bias.tubes.set(d.tube, d);
-      if (!d.part) return;
-      if (!S.bias.parts.has(d.part)) S.bias.parts.set(d.part, { kind: d.kind, type: d.type, tubes: [] });
-      S.bias.parts.get(d.part).tubes.push(d.tube);
-    });
-  }
-  const paMaxOf = c => { const t = tubeByName(c.params.tube); return t ? t.paMax : 0; };
-  // each tube's target for the bias finder: an anode current, or a share of Pa max (as watts); and
-  // what was measured on the amp: the anode or cathode current, or the voltage across a resistor
-  function biasTargets() {
-    const out = [];
-    S.comps.forEach(c => {
-      if (c.type !== "tube") return;
-      const by = CadLib.biasBy(c), t = { tube: c.id };
-      if (by === "ia" && c.params.biasIa > 0) t.ia = +c.params.biasIa;
-      else if (by === "pa" && c.params.biasPa > 0 && paMaxOf(c) > 0) t.pa = c.params.biasPa / 100 * paMaxOf(c);
-      else return;
-      const mb = CadLib.biasMeasBy(c);
-      if ((mb === "ia" || mb === "ik") && c.params.biasMeas > 0) t.measured = { kind: mb, value: +c.params.biasMeas };
-      else if (/^r:/.test(mb) && c.params.biasMeasV > 0 && compById(mb.slice(2))) t.measured = { kind: "v", part: mb.slice(2), value: +c.params.biasMeasV };
-      out.push(t);
-    });
-    return out;
-  }
-  // the anode current the simulation shows now (prefills an anode current bias target)
-  LIB.tube.simIa = c => { const d = S.sim.result && tubeData(c); return d && d.dc && d.dc.ia > 0 ? d.dc.ia : 0; };
-  // the resistors on a tube's cathode, to measure the voltage across (a 1 Ω sense resistor, Rk)
-  LIB.tube.senseOptions = c => {
-    const T = topo(), k = T.pinNet.get(c.id + ":K");
-    if (k === undefined) return [];
-    return S.comps.filter(r => r.type === "resistor" && compPins(r).some(p => T.pinNet.get(r.id + ":" + p.id) === k))
-      .map(r => ["r:" + r.id, `Voltage across ${desig(r)} (${fmtEng(r.params.r, "Ω")})`]);
-  };
-  function stopBias() { if (bWorker) { bWorker.terminate(); bWorker = null; } S.bias.job = null; }
-  function runBias() {
-    const targets = biasTargets(), netlist = S.sim.netlist;
-    if (!targets.length || !netlist || !S.sim.result || !window.TubeBias) { stopBias(); S.bias.result = null; S.bias.key = null; return; }
-    const quiet = new Set(S.comps.filter(c => c.type === "siggen").map(c => c.id));
-    // the signal level does not move the bias: a new level alone does not start a new search
-    const key = JSON.stringify([netlist.elements.map(e => (quiet.has(e.id) ? Object.assign({}, e, { amp: 0 }) : e)), targets]);
-    if (key === S.bias.key) return;
-    stopBias();
-    S.bias.key = key; S.bias.result = null;
-    const seq = ++S.bias.seq;
-    S.bias.job = { seq, progress: 0 };
-    const options = { quiet: [...quiet], budgetMs: 20000 };
-    const done = res => {
-      if (S.bias.seq !== seq || !S.bias.job) return;
-      bWorker = null; S.bias.job = null; S.bias.result = res;
-      if (!showBusy()) {
-        if (!res.ok) setStatus("error", "Bias finder: " + res.error);
-        else {
-          const hot = overPa(res);
-          setStatus(hot.length || res.parts.some(p => !p.reached) ? "warn" : "ok", `Bias found in ${(res.elapsedMs / 1000).toFixed(1)} s (${res.runs} runs, signal off): ` +
-            (res.parts.length ? res.parts.map(p => `${labelOf(p.part)} → ${biasValueText(p)}`).join(" · ") : "no bias part for the tubes with a target") +
-            res.parts.filter(p => !p.reached).map(p => ` · ⚠ ${labelOf(p.part)}: target not reached`).join("") +
-            hot.map(h => ` · ⚠ ${desig(h.c)} ${fmtEng(h.pa, "W", 2)} at idle, over its ${h.m} W`).join(""));
-        }
-      }
-      updateInspector(true); render();
-    };
-    try { bWorker = new Worker("sim-worker.js" + VERSION); } catch (e) { bWorker = null; }
-    if (!bWorker) { setTimeout(() => done(TubeBias.solve(netlist, targets, options)), 0); return; }
-    bWorker.onmessage = e => {
-      const d = e.data;
-      if (d.seq !== seq || !S.bias.job) return;
-      if (d.result) done(d.result);
-      else { S.bias.job.progress = d.progress; showBusy(); updatePct(); }
-    };
-    bWorker.postMessage({ seq, netlist, options, kind: "bias", targets });
-    showBusy();
-  }
-  const biasFor = id => (S.bias.result && S.bias.result.ok ? S.bias.result.parts.find(p => p.part === id) || null : null);
-  // a pot's wiper setting (its knob, 0…1) for the share of the track between pin 1 and the wiper
-  function potPos(c, f) { return c && c.params.taper === "log" ? Math.log10(99 * f + 1) / 2 : f; }
-  function biasValueText(p) {
-    if (!p.reached && /out of reach|travel/.test(p.note || "")) return "out of range";
-    return p.type === "pot" ? Math.round(potPos(compById(p.part), p.fraction) * 100) + "%" : fmtEng(p.e24, "Ω");
-  }
-  const ratingFor = pw => RATINGS.find(w => w >= 2 * pw) || RATINGS[RATINGS.length - 1];
-  const biasKind = k => (k === "fixed" ? "fixed bias (grid)" : "cathode bias");
-  const pct = () => (S.bias.job ? ` <span class="sim-pct">${Math.floor(S.bias.job.progress * 100)} %</span>` : "");
-  // a tube's target as written: "35mA", or "5.6W (70 % of Pa max)"
-  function targetText(t, c) {
-    if (t.ia) return fmtEng(t.ia, "A", 2);
-    const m = c ? paMaxOf(c) : 0;
-    return fmtEng(t.pa, "W", 2) + (m ? ` (${Math.round(t.pa / m * 100)} % of Pa max)` : "");
-  }
-  // the anode dissipation at the bias found, against the tube's rating
-  function paRow(st, c, label) {
-    const m = paMaxOf(c), share = m ? st.pa / m : 0;
-    return kv(label || "Pa then", `${fmtEng(st.pa, "W", 2)}${m ? ` · ${Math.round(share * 100)}% of ${m} W` : ""}`, share > 1 ? "bad" : share > 0.85 ? "warn" : "");
-  }
-  // the tubes the bias found leaves above Pa max (for the status line and the inspectors)
-  function overPa(res) {
-    const out = [];
-    if (res && res.ok) res.parts.forEach(p => p.tubes.forEach((id, k) => { const c = compById(id), m = c && paMaxOf(c); if (m && p.at && p.at[k].pa > m) out.push({ c, pa: p.at[k].pa, m }); }));
-    return out;
-  }
-  // the inspector of a resistor or pot that sets a bias
-  function biasPartReadout(c) {
-    const d = S.bias.parts.get(c.id);
-    if (!d) return "";
-    const names = d.tubes.map(labelOf).join(", ");
-    let h = `<div class="insp-sub bias">Bias${pct()}</div>`;
-    h += `<p class="insp-help">Sets the ${biasKind(d.kind)} of ${names}.</p>`;
-    const p = biasFor(c.id);
-    if (!p) {
-      if (S.bias.job) return h + `<p class="insp-help">Finding the value (simulating with the signal off)…</p>`;
-      if (S.bias.result && !S.bias.result.ok) return h + `<p class="insp-help warn">${escH(S.bias.result.error)}</p>`;
-      return h + `<p class="insp-help">Give ${names} a bias target to find the value.</p>`;
-    }
-    const tubes = p.tubes.map(compById), target = p.targets.map((t, k) => targetText(t, tubes[k])).join(" · ");
-    const ia = p.ia.map(i => fmtEng(i, "A", 2)).join(" · ");
-    if (p.type === "resistor") {
-      h += kv("Exact value", fmtEng(p.value, "Ω", 3)) + kv("Nearest E24", fmtEng(p.e24, "Ω"));
-      h += kv(`Ia with ${fmtEng(p.e24, "Ω")}`, `${ia} (target ${target})`);
-      if (p.power !== undefined) h += kv("Power in it", `${fmtEng(p.power, "W", 2)} · rate ${ratingFor(p.power)} W or more`);
-    } else {
-      const pos = potPos(c, p.fraction);
-      h += kv("Wiper position", `${(pos * 100).toFixed(1)} %`) + kv("Ia there", `${ia} (target ${target})`);
-    }
-    p.tubes.forEach((id, k) => { if (p.at) h += paRow(p.at[k], tubes[k], p.tubes.length > 1 ? `Pa of ${escH(labelOf(id))}` : "Pa then"); });
-    if (p.reached && (p.type === "resistor" ? Math.abs(p.e24 - c.params.r) > 1e-9 * p.e24 : Math.abs(potPos(c, p.fraction) - c.params.pos) > 0.0005))
-      h += `<button class="btn wide bias-apply" data-bias-apply="${escH(c.id)}">${p.type === "resistor" ? `Use ${fmtEng(p.e24, "Ω")}` : `Set the wiper to ${(potPos(c, p.fraction) * 100).toFixed(1)} %`}</button>`;
-    if (!p.reached) h += `<p class="insp-help warn">${escH(p.note)}.</p>`;
-    // a bias pot: its range, whether it covers a fresh set of tubes, and the divider for mid-travel
-    if (p.type === "pot") {
-      if (p.range) h += kv("Ia over the travel", `${fmtEng(Math.min(...p.range), "A", 2)} … ${fmtEng(Math.max(...p.range), "A", 2)}`);
-      if (p.covers) {
-        const sp = Math.round(p.spread * 100), ok = p.covers.weak && p.covers.strong;
-        h += kv(`Covers tubes ±${sp} %`, ok ? "yes" : "no", ok ? "" : "warn");
-        if (!ok) h += `<p class="insp-help warn">${!p.covers.weak ? `A tube ${sp} % weaker cannot reach the target at the end of the travel.` : ""}${!p.covers.weak && !p.covers.strong ? " " : ""}${!p.covers.strong ? `A tube ${sp} % stronger cannot be turned down to it.` : ""}</p>`;
-      }
-      if (p.mid) {
-        const r = compById(p.mid.part);
-        h += kv("For mid-travel", `${escH(labelOf(p.mid.part))} ${fmtEng(p.mid.from, "Ω")} → ${fmtEng(p.mid.e24, "Ω")}` + (p.mid.ia ? ` (Ia ${p.mid.ia.map(i => fmtEng(i, "A", 2)).join(" · ")})` : ""), p.mid.reached ? "" : "warn");
-        h += `<p class="insp-help">With the target at mid-travel the pot has the most room either way for the next set of tubes.</p>`;
-        if (p.mid.reached && r && (Math.abs(r.params.r - p.mid.e24) > 1e-9 * p.mid.e24 || Math.abs(c.params.pos - potPos(c, 0.5)) > 0.0005))
-          h += `<button class="btn wide bias-apply" data-bias-mid="${escH(c.id)}">Use ${fmtEng(p.mid.e24, "Ω")} for ${escH(labelOf(p.mid.part))}, wiper to mid-track</button>`;
-      }
-    }
-    return h;
-  }
-  // the inspector of a tube: what sets its bias, and the value found for its target
-  function tubeBiasReadout(c, d) {
-    const det = S.bias.tubes.get(c.id);
-    if (!det) return "";
-    let h = `<div class="insp-sub bias">Bias${pct()}</div>`;
-    if (!det.part) return h + kv("Set by", "no resistor") + `<p class="insp-help">${escH(det.reason[0].toUpperCase() + det.reason.slice(1))}.</p>`;
-    h += kv("Set by", `${escH(labelOf(det.part))} · ${biasKind(det.kind)}`);
-    const target = biasTargets().find(t => t.tube === c.id);
-    if (!target) {
-      const hint = d && d.dc && d.dc.vak > 1 ? ` For reference, 70 % of Pa max at this Va is ${fmtEng(0.7 * d.paMax / d.dc.vak, "A", 2)}.` : "";
-      return h + `<p class="insp-help">Choose a bias target above (an anode current, or a share of Pa max) to find the value of ${escH(labelOf(det.part))}.${hint}</p>`;
-    }
-    if (target.pa > paMaxOf(c)) h += `<p class="insp-help warn">The target is above the tube's Pa max (${paMaxOf(c)} W).</p>`;
-    const p = biasFor(det.part);
-    if (!p) return h + (S.bias.job ? `<p class="insp-help">Finding the value (simulating with the signal off)…</p>` : S.bias.result && !S.bias.result.ok ? `<p class="insp-help warn">${escH(S.bias.result.error)}</p>` : "");
-    const k = p.tubes.indexOf(c.id), st = p.at[k];
-    h += kv("Suggested", `${escH(labelOf(det.part))} → ${biasValueText(p)}`, p.reached ? "" : "warn");
-    h += kv("Ia then", fmtEng(st.ia, "A", 2) + (p.tubes.length > 1 ? ` · ${p.tubes.length} tubes share it, set for their average` : ""));
-    h += kv("Ik then (cathode)", fmtEng(st.ik, "A", 2));
-    h += paRow(st, c);
-    if (st.pa > paMaxOf(c)) h += `<p class="insp-help warn">At this bias the anode dissipates more than its Pa max at idle: lower the target.</p>`;
-    const sh = S.bias.result.shift && S.bias.result.shift[c.id];
-    if (sh !== undefined) h += kv("Grid shift vs model (fitted)", (sh >= 0 ? "+" : "") + fmtEng(sh, "V", 2)) + `<p class="insp-help">Your tube reads what you measured as if its grid were ${fmtEng(Math.abs(sh), "V", 2)} ${sh >= 0 ? "more positive" : "more negative"} than the model's, so the suggestion is for your tube. A large shift can also mean the reading, or the amp, differs from the drawing.</p>`;
-    return h;
-  }
-  function applyBias(id, mid) {
-    const c = compById(id), p = biasFor(id);
-    if (!c || !p) return;
-    if (mid) {
-      const r = p.mid && compById(p.mid.part); if (!r) return;
-      r.params.r = p.mid.e24; c.params.pos = Math.round(potPos(c, 0.5) * 1000) / 1000;
-      commit();
-      setStatus("ok", `${desig(r)} set to ${fmtEng(p.mid.e24, "Ω")} and ${desig(c)} to mid-track: the bias target sits at mid-travel`);
-      return;
-    }
-    if (p.type === "resistor") c.params.r = p.e24; else c.params.pos = Math.round(potPos(c, p.fraction) * 1000) / 1000;
-    commit();
-    setStatus("ok", `${desig(c)} set to ${p.type === "resistor" ? fmtEng(p.e24, "Ω") : (c.params.pos * 100).toFixed(1) + " %"} for the bias`);
+    TubeBias.detect(S.sim.netlist, r.dc).forEach(d => S.bias.tubes.set(d.tube, d));
   }
 
   // ---------------------------------------------------------------------------
@@ -1628,9 +1438,7 @@
         prevFill.call(this, t, 0, 0, mw); this.restore();
       };
     }
-    // a part that sets a tube's bias (bias finder) in its own colour, on screen only
-    const biasPart = !ghost && !S.printing && S.bias.show && S.sim.result ? S.bias.parts.get(c.id) : null;
-    ctx.strokeStyle = sel ? COL.bodySel : biasPart ? BIAS_COL : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
+    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
     DRAW[c.type](ctx, c);
@@ -1717,20 +1525,16 @@
       ctx.textAlign = "left";
       return;
     }
-    // the bias finder's value under the part's own: "→ 270Ω", a pot's wiper "→ 64%", "→ …" while it searches
-    const biasP = biasPart && biasFor(c.id), biasTag = biasPart && (biasP ? "→ " + biasValueText(biasP) : S.bias.job && biasPart.tubes.some(id => { const t = compById(id); return t && CadLib.biasBy(t); }) ? "→ …" : "");
     if (vertical) {
       ctx.textAlign = "right";
       ctx.fillText(desig(c), b.x1 - 5, c.y - 2);
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
       ctx.fillText(val, b.x1 - 5, c.y + 11);
-      if (biasTag) { ctx.font = "bold 10px ui-monospace, monospace"; ctx.fillStyle = BIAS_COL; ctx.fillText(biasTag, b.x1 - 5, c.y + 24); }
     } else {
       ctx.textAlign = "center";
       ctx.fillText(desig(c), c.x, b.y1 - (val ? 17 : 5));
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
       if (val) ctx.fillText(val, c.x, b.y1 - 5);
-      if (biasTag) { ctx.font = "bold 10px ui-monospace, monospace"; ctx.fillStyle = BIAS_COL; ctx.fillText(biasTag, c.x, b.y2 + 12); }
     }
     ctx.textAlign = "left";
   }
@@ -2268,16 +2072,16 @@
           h += kv("Average Pa", fmtEng(d.metrics.pAvg, "W", 2), d.metrics.pAvg > d.paMax ? "bad" : "");
         }
         if (dc.vgk > 0) h += `<p class="insp-help warn">Grid is positive: grid current flows.</p>`;
-        return h + tubeBiasReadout(c, d);
+        return h;
       }
       case "resistor": case "pot": {
-        if (c.type === "pot") { h += kv("Wiper DC", fmtEng(netDC(pinNetOf(c, "W")), "V", 2)); return h + biasPartReadout(c); }
+        if (c.type === "pot") { h += kv("Wiper DC", fmtEng(netDC(pinNetOf(c, "W")), "V", 2)); return h; }
         const v = vAcross("1", "2"), p = resistorPower(c), w = +c.params.w;
         h += kv("Voltage (DC)", fmtEng(v, "V", 2)) + kv("Current (DC)", fmtEng(v / c.params.r, "A", 2));
         // rated: share of the rating (over 60 % runs hot: derate about 2×); unrated: flag above 1 W
         h += w ? kv("Power (avg)", `${fmtEng(p, "W", 2)} · ${Math.round(p / w * 100)}% of ${w} W`, p > w ? "bad" : p > 0.6 * w ? "warn" : "")
                : kv("Power (avg)", fmtEng(p, "W", 2), p > 1 ? "warn" : "");
-        return h + biasPartReadout(c);
+        return h;
       }
       case "capacitor": case "electrolytic": {
         const v = c.type === "electrolytic" ? vAcross("+", "-") : vAcross("1", "2");
@@ -3098,11 +2902,6 @@
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
     document.getElementById("btn-live").classList.toggle("active", S.sim.live);
     bind("btn-volts", () => { S.showVolts = !S.showVolts; document.getElementById("btn-volts").classList.toggle("active", S.showVolts); render(); });
-    bind("btn-bias", () => { S.bias.show = !S.bias.show; document.getElementById("btn-bias").classList.toggle("active", S.bias.show); render(); });
-    document.getElementById("inspector").addEventListener("click", e => {
-      const b = e.target.closest("[data-bias-apply], [data-bias-mid]");
-      if (b) applyBias(b.dataset.biasApply || b.dataset.biasMid, !!b.dataset.biasMid);
-    });
     { const b = document.getElementById("btn-legend"); b.classList.toggle("active", S.showLegend); b.setAttribute("aria-checked", String(S.showLegend)); }
     bind("btn-legend", () => { S.showLegend = !S.showLegend; document.getElementById("btn-legend").classList.toggle("active", S.showLegend); try { localStorage.setItem(LEGEND_KEY, S.showLegend ? "1" : "0"); } catch (e) {} render(); });
     bind("btn-amps", () => { S.showAmps = !S.showAmps; document.getElementById("btn-amps").classList.toggle("active", S.showAmps); render(); });

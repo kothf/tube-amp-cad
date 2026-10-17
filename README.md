@@ -22,7 +22,6 @@ Firefox is not tested.
 - [The schematic editor](#the-schematic-editor)
 - [Parts](#parts)
 - [Measuring on the schematic](#measuring-on-the-schematic)
-- [Bias finder](#bias-finder)
 - [Drawings, documents and exports](#drawings-documents-and-exports)
 - [Instruments](#instruments)
 - [Board Design](#board-design)
@@ -91,11 +90,11 @@ Firefox is not tested.
   come from Katsnelson & Larionov for the Soviet tubes and from the makers'
   datasheets for the others (RCA, Philips, Mullard, Western Electric); a
   rating a datasheet does not give is not checked.
-- **Toolbar.** One row: *File ▾*, *View ▾* (the Voltages, Currents and Bias markers on the schematic, and the bill of materials, ticked on or off), undo / redo, the *Select | Wire* tool, rotate / mirror / delete, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual).
+- **Toolbar.** One row: *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials, ticked on or off), undo / redo, the *Select | Wire* tool, rotate / mirror / delete, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual).
 - **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html`, opens from *Windows ▾ → Manual*, the help dialog, or **?** in each instrument. It covers:
   - a quick start, then every part and field;
   - all 99 tubes in a sortable table;
-  - every readout, the checks and the bias finder;
+  - every readout and the checks;
   - the instruments and the board layout;
   - a design cookbook, and the simulator's equations and limits.
 
@@ -194,65 +193,6 @@ the circuit that was on the sheet.
   channels live; double-click it for the full instrument.
 - **Power-on transient.** The oscilloscope can show the first seconds after
   switch-on: capacitors start empty and every source switches on at t = 0.
-
-## Bias finder
-
-The simulator finds the part that sets each tube's bias and marks it on the
-sheet in violet. Give a tube a target (an anode current, or a share of Pa max)
-and it works out the value that meets it, and writes it next to the part ("→ 680Ω", or a pot's
-"→ 65%").
-
-- **Which part.** The grid's DC return is followed through the resistors that
-  carry only grid current (grid stopper, grid leak).
-  - **Cathode bias.** If the grid returns to ground or to a positive node, the
-    bias resistor is the first part on the cathode's DC path back to that
-    point. That covers a plain Rk, the upper half of a split cathode resistor
-    with feedback injected between the halves, a cathodyne's bias resistor,
-    and one resistor shared by a push-pull pair.
-  - **Fixed bias.** If the grid returns to a negative bias line, the part is
-    the pot that feeds the line, else the divider's resistor to ground, else
-    the resistor from the negative supply.
-  - **No resistor.** An LED or diode in the cathode, or zero bias, is named
-    in the tube's inspector instead.
-- **Target.** Select the tube and choose a *Bias target*: an anode current
-  (for example `48mA`), or a share of Pa max (70 % for single-ended class A,
-  say). A share of Pa max is solved on the idle dissipation Va·Ia, with Va
-  moving as the bias does.
-- **The search.** A worker of its own simulates again with the signal
-  generators off (the idle bias), changing the part until the tube meets its
-  target. The parts can pull on each other (two bias pots on one bias
-  winding, two output tubes on one B+), so all of them are solved together
-  by Newton's method: one simulation per part for the first Jacobian, then
-  Broyden updates. Several tubes on one part are set for their average. A
-  resistor is rounded to E24, and that value is simulated once more to give
-  what it really produces: anode and cathode current, the anode dissipation
-  against Pa max, and the power in the resistor (rate it at twice that). A
-  pot gets its wiper position.
-- **Over Pa max.** A target above the tube's Pa max, or a bias that leaves the
-  anode above it at idle, is flagged in the tube's inspector and on the status
-  line. So is a target the part cannot reach. A plate load can cap the
-  dissipation below the target: from 250 V through 100 kΩ a 12AX7 dissipates
-  0.16 W at most, whatever the bias.
-- **Measured on the amp.** You can enter the anode current, the cathode
-  current, or the voltage across any resistor on the tube's cathode (the
-  usual 1 Ω sense resistor of a fixed-bias amp, or Rk itself), all read with
-  the parts as drawn. The model's curves are then moved along the grid axis
-  until it reads the same (its plate and screen currents, as if the grid were
-  that much more positive or negative; grid current still starts at 0 V), and
-  the value found is for that tube. The tube's inspector shows the shift. In
-  a cathode-biased stage the cathode resistor's feedback holds the current
-  steady, so even a few milliamps' difference fits as a shift of volts.
-- **Bias pots.** For a pot, the inspector also shows:
-  - the anode current over its whole travel;
-  - whether that travel still covers a tube that draws 30 % less or more
-    current (a fresh, unmatched tube);
-  - the value of the divider resistor in series with the pot that puts the
-    target at mid-travel, where the pot has the most room either way.
-    *Use … wiper to mid-track* puts both in.
-- **Applying it.** The resistor's or pot's inspector shows the exact value,
-  the E24 value, what it gives, and a *Use 680 Ω* (or *Set the wiper to …*)
-  button. *View ▾ → Bias markers* hides the marking. Exports and
-  prints never show it.
 
 ## Drawings, documents and exports
 

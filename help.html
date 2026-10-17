@@ -138,7 +138,7 @@
   <tr><th>Control</th><th>What it does</th></tr>
   <tr><td>File name</td><td class="wrap">The circuit file open now. A yellow • marks unsaved changes. "Untitled" for a new circuit or an example.</td></tr>
   <tr><td><span class="ui">File ▾</span></td><td class="wrap">New circuit, Add sheet, Open, Save, Save as, the Examples, Save as PDF (all sheets), Export sheet (PDF/PNG), Export PNG, Export SPICE netlist.</td></tr>
-  <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (each net's DC voltage, and its AC as ~Vrms in cyan; wires that carry the signal glow cyan), <b>Currents</b> (DC current and its direction on each wire), <b>Legend</b> (the key to those marks in the corner of the sheet), <b>Bias markers</b> (the violet marking of the parts that set each tube's bias), and the <b>Bill of materials</b> panel. A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
+  <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (each net's DC voltage, and its AC as ~Vrms in cyan; wires that carry the signal glow cyan), <b>Currents</b> (DC current and its direction on each wire), <b>Legend</b> (the key to those marks in the corner of the sheet), and the <b>Bill of materials</b> panel. A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
   <tr><td>↶ ↷</td><td class="wrap">Undo / redo (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>). Every edit can be undone, including opening an example.</td></tr>
   <tr><td><span class="ui">Select</span> | <span class="ui">Wire</span></td><td class="wrap">The tool: select and move (<kbd>V</kbd>), or draw wires from anywhere (<kbd>W</kbd>). The highlighted one is active.</td></tr>
   <tr><td>Rotate, Mirror, Delete</td><td class="wrap">Act on the selection: <kbd>R</kbd>, <kbd>M</kbd>, <kbd>Del</kbd>.</td></tr>
@@ -249,7 +249,7 @@
   <li>The <b>steady state with the signal</b>: the waveforms once every capacitor and choke has settled, over a window that is a whole number of signal periods (and of mains periods in a mains-fed circuit).</li>
 </ol>
 <p>The oscilloscope can also run the <b>power-on transient</b>: the first seconds after switch-on, with every capacitor empty.</p>
-<p>The <b>Bode plotter</b> runs a separate <b>small-signal (AC) analysis</b>, and the <b>bias finder</b> runs its own simulations in the background.</p>
+<p>The <b>Bode plotter</b> runs a separate <b>small-signal (AC) analysis</b> in the background.</p>
 
 <h3 id="sim-live">6.2 Live and on demand</h3>
 <ul>
@@ -309,37 +309,10 @@
 <p>Ratings come from Katsnelson &amp; Larionov for the Soviet tubes and from the makers' datasheets (RCA, Philips, Mullard, Western Electric) for the others. A rating a source does not give is not checked.</p>
 
 <!-- ======================================================================= -->
-<h2 id="bias">10. Bias finder</h2>
-<p>The simulator finds the part that sets each tube's bias and marks it in <span class="vio">violet</span>. Give the tube a target and it computes the value that meets it, written next to the part ("→ 680Ω", or a pot's "→ 65%").</p>
-<h3 id="bias-which">10.1 Which part</h3>
-<ul>
-  <li>The grid's DC return is followed through the resistors that carry only grid current (stopper, leak).</li>
-  <li><b>Cathode bias</b> (grid returns to ground or a positive node): the first part on the cathode's DC path back to that point. That covers a plain Rk, the upper half of a split cathode resistor with feedback between the halves, a cathodyne's bias resistor, and one resistor shared by a push-pull pair.</li>
-  <li><b>Fixed bias</b> (grid returns to a negative line): the pot feeding the line, else the divider's resistor to ground, else the resistor from the negative supply.</li>
-  <li><b>No resistor</b> (an LED or diode in the cathode, zero bias): named in the tube's inspector instead.</li>
-</ul>
-<h3 id="bias-target">10.2 Setting a target</h3>
-<ol class="steps">
-  <li>Select the tube. In <b>Bias target</b> choose <i>Anode current</i> (prefilled with what it draws now) or <i>Share of Pa max (idle)</i>.</li>
-  <li>Type the target: <code>48mA</code>, or <code>70</code> %.</li>
-  <li>The value appears by the part. Select the part: its inspector shows the exact value, the nearest E24 value and what it really gives (Ia, Ik, Pa against Pa max, power in the resistor). Press <span class="ui">Use 680 Ω</span> or <span class="ui">Set the wiper to …</span>.</li>
-</ol>
-<h3 id="bias-measured">10.3 Matching your real tube</h3>
-<p>In <b>Measured on the amp</b> enter what you measured: anode current, cathode current, or the voltage across a cathode resistor (the 1 Ω sense resistor of a fixed-bias amp, or Rk itself). The model's curves are shifted along the grid axis until it reads the same, and the bias is then found for that tube. The inspector shows the shift: a few volts is normal tube-to-tube spread.</p>
-<h3 id="bias-pots">10.4 Bias pots</h3>
-<ul>
-  <li>The anode current over the pot's whole travel.</li>
-  <li>Whether the travel still covers a tube that draws 30 % less or more (a fresh, unmatched tube).</li>
-  <li>The series resistor that puts the target at mid-travel; <span class="ui">Use … wiper to mid-track</span> puts both in.</li>
-</ul>
-<h3 id="bias-how">10.5 How it works</h3>
-<p>A separate worker simulates again with the generators off (idle bias), changing the part until the tube meets its target. Parts that pull on each other (two bias pots on one winding, two output tubes on one B+) are solved together by Newton's method with Broyden updates. A resistor is rounded to E24 and simulated once more to report what it really gives.</p>
-<div class="warn"><b>Unreachable targets</b> are flagged: a target above Pa max, a bias that leaves the anode above Pa max, or a target the load cannot allow (from 250 V through 100 kΩ a 12AX7 cannot dissipate more than 0.16 W, whatever the bias).</div>
-
 <!-- ======================================================================= -->
-<h2 id="instruments">11. Instruments</h2>
+<h2 id="instruments">10. Instruments</h2>
 <p>All instruments read an <b>Oscilloscope part</b> in the circuit: place one and wire its CH1 and CH2 where you want to measure and its COM to the reference (usually ground). With several scope parts, choose which one in the window's <b>Scope part</b> list. The scope part's inspector has <span class="ui">Oscilloscope ↗</span>, <span class="ui">Spectrum ↗</span>, <span class="ui">Bode ↗</span> buttons that open the window on that part.</p>
-<h3 id="scope">11.1 Oscilloscope</h3>
+<h3 id="scope">10.1 Oscilloscope</h3>
 <ul>
   <li>Two channels, DC or AC coupled; 10× (10 MΩ) or 1× (1 MΩ) probes that load the circuit like real ones.</li>
   <li>Auto volts/div with offset; the timebase locks to the measured frequency; edge trigger on either channel, rising or falling; X-Y mode.</li>
@@ -349,7 +322,7 @@
   <li><b>Analysis:</b> <i>Steady state</i> (the settled circuit, one window repeated as a triggered scope shows it) or <i>Power-on</i> (the first 0.1–2 s after switch-on, with an overview strip of the whole record).</li>
   <li><span class="ui">Autoset</span> resets the view.</li>
 </ul>
-<h3 id="spectrum">11.2 Spectrum analyzer</h3>
+<h3 id="spectrum">10.2 Spectrum analyzer</h3>
 <ul>
   <li>The FFT covers an exact whole number of signal cycles, so there is no windowing error and no leakage.</li>
   <li>Harmonic table H2…H10 with frequency, level and percentage, and the THD.</li>
@@ -358,7 +331,7 @@
   <li>Linear or logarithmic frequency axis: on the log axis 50/100 Hz ripple and the audio harmonics read in one view.</li>
 </ul>
 <div class="tip"><b>Reading distortion:</b> a single-ended stage makes mostly H2 (asymmetric); a balanced push-pull cancels the even harmonics and leaves H3. A rising H3, H5, H7 series means symmetrical clipping.</div>
-<h3 id="bode">11.3 Bode plotter</h3>
+<h3 id="bode">10.3 Bode plotter</h3>
 <ul>
   <li>Gain in dB and phase from 1 Hz to 1 MHz at the scope part's channels.</li>
   <li><b>Traces:</b> CH1, CH2, or CH2 ÷ CH1, the gain between the two probes (one stage of a chain).</li>
@@ -369,7 +342,7 @@
   <li>Tubes include their interelectrode capacitances, so the Miller effect sets each stage's top corner:</li>
 </ul>
 <pre>f(−3 dB, top) ≈ 1 / (2π · Rsource · (Cgk + (1 + A) · Cga))</pre>
-<h3 id="tracer">11.4 Curve tracer</h3>
+<h3 id="tracer">10.4 Curve tracer</h3>
 <ul>
   <li>Select a tube in the schematic (or pick one in the library) to see its plate curves with: the operating point; the curve at the circuit's bias; the <b>simulated load line</b> (the last whole signal cycle, an ellipse for a reactive load, with arrows for direction); the Pa max hyperbola and the over-Pa area; 70 % of Pa max.</li>
   <li>For pentodes the curves are drawn at the circuit's screen voltage (or one you choose).</li>
@@ -378,19 +351,19 @@
   <li><b>Tube model &amp; fitter:</b> the LTspice <code>.SUBCKT</code> of the tube (copy or download). To model your own tube, upload measured points as CSV rows <code>Va, Vg, Ia_mA[, Vg2]</code>: a Nelder–Mead fit of the Koren parameters is drawn dashed with its R² and RMS error.</li>
   <li><span class="ui">PNG</span> saves the chart.</li>
 </ul>
-<h3 id="markers">11.5 Markers and zoom (every graph)</h3>
+<h3 id="markers">10.5 Markers and zoom (every graph)</h3>
 <ul>
   <li><b>Click</b> to place marker A, click again for B; drag to move, double-click to remove. Scope: time and voltage with ΔT and ΔV. Analyzer and Bode: frequency and level. Curve tracer: Vg, dissipation, gm, rp and µ at a point, and the load line through A and B.</li>
   <li><b>Wheel</b> zooms at the pointer (time/div on the scope, the frequency axis on the analyzer and Bode plot, both axes on the curves); <kbd>Ctrl</kbd>+wheel zooms vertically; right-drag or <kbd>Shift</kbd>+drag moves the view. The <span class="ui">Zoom</span> button resets it.</li>
 </ul>
 
 <!-- ======================================================================= -->
-<h2 id="board">12. Board layout</h2>
+<h2 id="board">11. Board layout</h2>
 <p><span class="ui">Windows ▾</span> → <span class="ui">Board layout</span> opens the PCB of the circuit. Parts and connections come from the schematic; the layout is saved inside the circuit file.</p>
 <p>The toolbar is one row: undo and redo; the tools (Select, Route, Via, Text, Hole, Pour, Keep-out, Measure); the active copper layer and the grid; <span class="ui">View ▾</span> (grid lines, dots or none, axes, the drawing sheet's format, Lock sheet, the 3D view); Fit; then <span class="ui">Update</span> (amber when the schematic has changed), <span class="ui">Board ▾</span> (<span class="ui">Board setup…</span>, <span class="ui">Design rules…</span>), <span class="ui">Export ▾</span>, help and the way back to the schematic.</p>
-<h3 id="board-footprints">12.1 Footprints</h3>
+<h3 id="board-footprints">11.1 Footprints</h3>
 <p>Every part gets a through-hole footprint chosen from its values: resistors by power (10.16 mm at ¼ W to 50.8 mm at 20 W); film, ceramic and mica capacitors by value; radial, snap-in and axial electrolytics by size; DO-35 to DO-201 diodes; 3 and 5 mm LEDs; TO-92 to TO-264 transistors with each part's own pin order (TO-3 gets wire pads for a chassis heatsink); 9/16/24 mm pots and a 3296W trimmer; real tube sockets (B9A, B7G, Magnoval, octal, UX4) drawn from the component side, dual tubes sharing one socket; EI30–EI96 board transformers; toggle switches, screw terminals, RCA and jack sockets. Chassis parts can get wire pads or a terminal instead. Change any footprint in the inspector.</p>
-<h3 id="board-place">12.2 Placing and routing</h3>
+<h3 id="board-place">11.2 Placing and routing</h3>
 <ul>
   <li>New parts wait in a row below the board: drag them on, or <span class="ui">Place all on the board</span>, which puts each part where it sits in the schematic (the schematic's extent mapped onto the board), big parts first, each in the free spot nearest its place, electrolytics 10 mm from hot parts: the input ends up on the left and the output on the right, as on the sheet. Output and power transformers and filter chokes get wire pads by default (they sit on the chassis); a board-mount EI footprint is an option in the inspector. <kbd>R</kbd> rotates, <kbd>M</kbd> moves to the bottom side. A banner offers updates when the schematic changes; placed parts keep their spot.</li>
   <li><b>Route</b> <kbd>X</kbd>: click a pad, click corners (45° bends), end on a pad, track or via of the same net. <kbd>V</kbd> changes layer with a via; <kbd>/</kbd> puts the diagonal first; <kbd>Backspace</kbd> takes back the last corner. Width comes from the net's class. A halo shows the clearance; it turns red and refuses the click when too close (<kbd>Shift</kbd>+click forces it).</li>
@@ -403,7 +376,7 @@
   <li><b>Cross-probing:</b> selecting on the board selects in the schematic and back.</li>
   <li><b>Comfort:</b> rest the pointer on a pad, part, track or via for a card with its net, class, voltage and current; while routing the card shows the net, width, layer and length, and <kbd>W</kbd> steps the width. Right-click opens a menu for what is under the pointer (turn, flip, lock, route from a pad, a track's width or layer, a pour's shape, a via or hole right there); right-drag still pans. <kbd>+</kbd> / <kbd>−</kbd> and the zoom bar zoom, <kbd>Z</kbd> zooms to the selection, <kbd>Ctrl</kbd>+<kbd>F</kbd> finds a part or net, <kbd>\</kbd> hides the side panels. The checks and the layers fold away and stay folded; long check lists are grouped by kind. Values sit inside a part when they fit and never cover a reference.</li>
 </ul>
-<h3 id="board-rules">12.3 Design rules and checks</h3>
+<h3 id="board-rules">11.3 Design rules and checks</h3>
 <p><span class="ui">Board ▾</span> → <span class="ui">Design rules…</span> sets clearances (with a separate high-voltage clearance above a threshold voltage), the edge clearance, track widths, via and drill sizes, annular ring, solder-mask opening, and the allowed warming of a track at its DC current. <b>Net classes</b> (Signal, Power, HV) are set automatically from the simulated DC voltage, or by hand; heater nets are Power.</p>
 <p><b>Clearance by voltage.</b> On top of the classes, two nets keep the gap IPC-2221B table 6-1 asks for the largest voltage between them. The voltage is the worst case of their simulated DC levels and their swing in the simulation; the anode end of an output transformer's primary counts at twice its DC level, which is where an inductive load takes it at full drive. Pick the table for the board: <b>B2</b> bare board (0.6 mm to 150 V, 1.25 mm to 300 V, 2.5 mm to 500 V, then 0.005 mm per volt), <b>B4</b> under a permanent coating, <b>A6</b> conformally coated, or Off. A mounting hole counts as chassis, 0 V. Routing, pours and the check all use it; the net table's <b>To GND</b> column shows each net's clearance to 0 V copper.</p>
 <p><b>Heaters and shields.</b> The schematic draws a valve's anode, grids and cathode; the board also wires its heater. Every indirectly heated valve gets its heater pins on heater nets, one pair per heater voltage (<code>HTR6.3_A</code>, <code>HTR6.3_B</code>), fed from a heater-supply connector <b>XH1</b> that carries the sum of the heater currents, so the current check sizes the heater tracks. 12AX7-type valves run at 6.3 V (pins 4 + 5 against 9) or, if chosen, 12.6 V (4 to 5); a heater raised to a DC potential (the tube's <i>Heater DC potential</i>) gets its own supply at that voltage; a heater joined to its cathode (GZ34) gets a winding of its own. Directly heated valves are left alone: their filament is the cathode. Internal shield pins (6N23P pin 9) go to GND. Both can be turned off.</p>
@@ -419,7 +392,7 @@
   <li><b>Electrolytics near hot parts</b>: closer than 10 mm to a power valve, a rectifier or a resistor dissipating 1 W or more in the simulation.</li>
   <li><b>Mounting hole near each socket</b>: a board-mounted valve socket with no mounting hole within 40 mm; pulling a valve flexes the board.</li>
 </ul>
-<h3 id="board-export">12.4 3D and exports</h3>
+<h3 id="board-export">11.4 3D and exports</h3>
 <ul>
   <li><b>3D</b> (<kbd>3</kbd>): the board with every part, valves in their glass, transformers; drag to turn; Iso/Top/Bottom/Front/Side views; Save PNG.</li>
   <li><b>STEP</b> (AP214) 3D model for chassis design in FreeCAD, KiCad or any MCAD.</li>
@@ -430,17 +403,17 @@
 </ul>
 
 <!-- ======================================================================= -->
-<h2 id="files">13. Files and exports</h2>
+<h2 id="files">12. Files and exports</h2>
 <ul>
   <li><b>Open / Save / Save as</b> (JSON). In Chrome and Edge, Save writes back to the opened file after asking once; in Safari and others it downloads a file. The circuit is also autosaved in the browser.</li>
   <li>A circuit file holds the schematic, every sheet, the board layout and any imported SPICE tube models: one file is the whole project.</li>
-  <li><b>Save as PDF:</b> every sheet as a vector page. <b>Export sheet…:</b> the current sheet, each sheet as its own file, or all in one PDF; PNG at 150/300/600 dpi, black on white or in the editor's colours. Exports never show the bias markers.</li>
+  <li><b>Save as PDF:</b> every sheet as a vector page. <b>Export sheet…:</b> the current sheet, each sheet as its own file, or all in one PDF; PNG at 150/300/600 dpi, black on white or in the editor's colours.</li>
   <li><b>Export SPICE netlist:</b> an LTspice netlist; tubes as behavioural sources with the same equations the simulator uses, transistors as Q and M elements with their <code>.model</code> lines.</li>
   <li><b>Bill of materials</b> (<kbd>B</kbd>, or <span class="ui">View ▾</span>): equal parts on one line with designator ranges; tube sockets; ratings; the simulated worst case (dissipation, capacitor peak voltage, LED current); a part number you type. Click a line to select its parts. Export TXT, CSV, XLSX or PDF.</li>
 </ul>
 
 <!-- ======================================================================= -->
-<h2 id="keys">14. Keyboard shortcuts</h2>
+<h2 id="keys">13. Keyboard shortcuts</h2>
 <p>Shortcuts go by the key's position, so they work with a Russian or any other layout.</p>
 <div class="grid2">
 <div class="card"><h4>Circuit CAD</h4>
@@ -482,38 +455,38 @@
 </div>
 
 <!-- ======================================================================= -->
-<h2 id="cookbook">15. Design cookbook</h2>
+<h2 id="cookbook">14. Design cookbook</h2>
 <p>Worked procedures, with the formulas the simulator lets you check.</p>
 
-<h3 id="cb-preamp">15.1 A triode voltage amplifier</h3>
+<h3 id="cb-preamp">14.1 A triode voltage amplifier</h3>
 <ol>
   <li>Pick Va and Ia from the curve tracer: a 12AX7 at 150–200 V and 0.8–1.2 mA; a 6N2P similar; a 12AU7 / 6N8S at 8–10 mA.</li>
   <li>Plate resistor: <code>Ra = (B+ − Va) / Ia</code>. 100–220 kΩ for a 12AX7.</li>
-  <li>Cathode resistor: <code>Rk = −Vg / Ia</code> (read Vg at the operating point on the curves), or let the <a href="#bias">bias finder</a> do it: Bias target → Anode current.</li>
+  <li>Cathode resistor: <code>Rk = −Vg / Ia</code> (read Vg at the operating point on the curves),; try the nearest E24 values and read Ia in the tube's inspector.</li>
   <li>Gain, bypassed: <code>A = µ · Ra / (Ra + rp)</code>. Unbypassed: <code>A = µ · Ra / (Ra + rp + (µ + 1) · Rk)</code>. Compare with the inspector's <i>Plate/grid gain</i>.</li>
   <li>Cathode bypass corner: <code>f ≈ 1 / (2π · Ck · (Rk ‖ (Ra + rp)/(µ + 1)))</code>.</li>
   <li>Coupling capacitor corner: <code>f = 1 / (2π · Cc · (Rout + Rnext))</code>. Check both on the Bode plot.</li>
   <li>Top corner (Miller): see <a href="#bode">Bode plotter</a>.</li>
 </ol>
 
-<h3 id="cb-se">15.2 A single-ended output stage</h3>
+<h3 id="cb-se">14.2 A single-ended output stage</h3>
 <ol>
   <li>Choose the load: roughly <code>Zp ≈ 2 · Va / Ia</code> for a pentode, <code>2–3 × rp</code> for a triode.</li>
-  <li>Bias for 60–70 % of Pa max: Bias target → Share of Pa max → 70.</li>
+  <li>Bias for 60–70 % of Pa max: adjust the cathode resistor (or the bias voltage) and read Pa in the tube's inspector against Pa max.</li>
   <li>Check the output transformer's DC current rating (the check does it) and its primary inductance for the bass: <code>f−3dB ≈ (rp ‖ Zp) / (2π · Lp)</code>.</li>
   <li>Drive it to just below clipping: watch the scope for flat tops and the spectrum's THD. Read <i>Output (speakers)</i> in the circuit summary.</li>
   <li>Check Pg2 at full drive (pentodes): it is highest there.</li>
 </ol>
 
-<h3 id="cb-pp">15.3 A push-pull stage</h3>
+<h3 id="cb-pp">14.3 A push-pull stage</h3>
 <ul>
   <li>Use the push-pull OPT; drive the grids 180° apart (a phase splitter, or two generators at 0° and 180°).</li>
   <li>Ultralinear: screens to the UL taps (about 40 % for KT88/EL34, 20–25 % elsewhere).</li>
-  <li>Fixed bias: one bias pot per tube on a negative line; set each with the bias finder, and check the pot covers ±30 % tubes.</li>
+  <li>Fixed bias: one bias pot per tube on a negative line; check with the pot at both ends that it covers tubes drawing ±30 % (a fresh, unmatched set).</li>
   <li>The spectrum should show H2 cancelled and H3 dominant; a large H2 means unbalance.</li>
 </ul>
 
-<h3 id="cb-psu">15.4 A power supply</h3>
+<h3 id="cb-psu">14.4 A power supply</h3>
 <ul>
   <li>Mains → power transformer → rectifier (GZ34, 5U4G, or 1N4007s) → reservoir C → choke or resistor → filter C.</li>
   <li>Capacitor-input DC ≈ 1.2–1.4 × Vrms at load. Ripple ≈ <code>Idc / (2 · f · C)</code> peak-to-peak for full-wave.</li>
@@ -521,7 +494,7 @@
   <li>Watch the power-on transient on the scope for the turn-on surge and voltage overshoot.</li>
 </ul>
 
-<h3 id="cb-feedback">15.5 Global feedback</h3>
+<h3 id="cb-feedback">14.5 Global feedback</h3>
 <ul>
   <li>Take a resistor from the speaker to the cathode of the first stage (unbypassed part of Rk).</li>
   <li>Check stability on the Bode plot: no peak above the 1 kHz gain, and phase not reaching −180° where the loop gain is still above 1. A square wave on the scope should show little ringing.</li>
@@ -529,7 +502,7 @@
 </ul>
 
 <!-- ======================================================================= -->
-<h2 id="engine">16. How the simulator works</h2>
+<h2 id="engine">15. How the simulator works</h2>
 <ul>
   <li><b>Solver.</b> Modified nodal analysis. Newton–Raphson with gmin and source stepping for the DC operating point; transient with Gear's second-order method (BDF2), which keeps resonances at their true Q without trapezoidal ringing.</li>
   <li><b>Steady state by shooting.</b> The steady state is the state that one period maps onto itself; Newton–GMRES finds it, so slow coupling, cathode and filter capacitors settle in a few dozen periods instead of hundreds. If it does not converge in time, plain settling continues, extrapolating the slowly decaying response (minimal polynomial extrapolation).</li>
@@ -555,7 +528,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
 </ul>
 
 <!-- ======================================================================= -->
-<h2 id="accuracy">17. Accuracy and limits</h2>
+<h2 id="accuracy">16. Accuracy and limits</h2>
 <ul>
   <li>The engine is tested against closed-form results (dividers, RC/RL, resonance), an independent RK4 integration of a choke-input supply (0.02 %), Kirchhoff's law at every node, and the frequency response against RC corners and the Miller estimate.</li>
   <li>Every amplifier tube is fitted to and tested against its datasheet operating points; fitted currents are within a few percent.</li>
@@ -571,7 +544,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
 </ul></div>
 
 <!-- ======================================================================= -->
-<h2 id="faq">18. Troubleshooting and FAQ</h2>
+<h2 id="faq">17. Troubleshooting and FAQ</h2>
 <h4>The instruments say "Waiting for the Circuit CAD…"</h4>
 <p>They need the Circuit CAD window open in the same browser. Open them from its <span class="ui">Windows ▾</span> menu.</p>
 <h4>An instrument says "no scope in circuit"</h4>
@@ -583,7 +556,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
 <h4>The gain is higher than my hand calculation</h4>
 <p>Check rp and µ at your operating point in the curve tracer (markers give gm, rp, µ at a point): they change with current. See the 12AX7 note in <a href="#accuracy">Accuracy</a>.</p>
 <h4>My real amp draws a different current</h4>
-<p>Normal tube spread. Enter what you measured in <b>Measured on the amp</b> (bias finder): the model is shifted to your tube.</p>
+<p>Normal tube spread: real tubes of one type differ by ±30 % in anode current at the same bias. Adjust the cathode resistor (or the bias voltage) in the circuit until the simulation draws what you measured.</p>
 <h4>Where are my circuits kept?</h4>
 <p>The open circuit is autosaved in this browser. Save files (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to keep them safely or move them between computers.</p>
 <h4>Can I run it offline?</h4>
@@ -637,7 +610,6 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
     const groups = [
       ["Tube operating point", ["Va (anode–cathode)", "Vg1k (bias)", "Vg2k (screen)", "Ia (anode current)", "Ig2 (screen current)", "Pa (dissipation)", "Pg2 (screen dissipation)", "Ik (cathode current)", "Vhk (cathode above heater)", "Vhk (heater above cathode)", "Grid circuit R (cathode bias)", "Grid circuit R (fixed bias)", "Rectified current", "Peak inverse voltage"]],
       ["With signal", ["Plate swing", "Grid swing", "Plate/grid gain", "THD at plate", "Average Pa"]],
-      ["Bias finder", ["Set by", "Exact value", "Nearest E24", "Ia then", "Ik then (cathode)", "Pa then", "Power in it", "Ia over the travel", "For mid-travel", "Grid shift vs model (fitted)"]],
       ["Circuit summary", ["Parts · wires · nets", "From DC supplies", "Output (speakers)", "Tubes (anode + screen)", "Transistors", "Resistors"]],
       ["Other parts", ["Voltage", "Current (DC)", "Current supplied", "DC drop", "DC voltage across", "Dissipation", "Power (avg)", "Wiper DC", "Primary DC current", "Voltage (A–K)", "Current (A→K)", "hFE (Ic/Ib)", "Ib"]],
       ["Ratings (curve tracer)", ["Va max", "Pa max", "Pg2 max", "Vg2 max", "Ik max", "Vhk max", "Rg max", "Heater", "Pins"]],

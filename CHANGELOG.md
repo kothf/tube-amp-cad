@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.69.0] - 2026-10-18
+
+### Removed
+- **The bias finder.** No more violet marking of the parts that set each tube's bias, no *Bias target* / *Measured on the amp* fields on tubes, no "→ 680Ω" values by the parts or *Use …* buttons, and no *View ▾ → Bias markers*: it was more confusing than useful. Circuits saved with bias targets open as before; the targets are ignored. What stays is the check that needs it: whether a tube is cathode or fixed biased, for the largest grid resistor its datasheet allows.
+
 ## [3.68.2] - 2026-10-18
 
 ### Changed

@@ -625,9 +625,6 @@
   //   fields: inspector rows { key, label, unit, kind: "eng"|"number"|"select"|"range", options }
   //   build(c, net, alloc, out): push solver elements; net(pinId) -> node index
   // ---------------------------------------------------------------------------
-  // the bias finder's settings on a tube (circuits from 3.54 have only biasIa and biasMeas)
-  const biasBy = c => (c.params.biasBy !== undefined ? c.params.biasBy : c.params.biasIa > 0 ? "ia" : "");
-  const biasMeasBy = c => (c.params.biasMeasBy !== undefined ? c.params.biasMeasBy : c.params.biasMeas > 0 ? "ia" : "");
   const LIB = {
     resistor: {
       name: "Resistor", prefix: "R", group: "Passive", bbox: [-30, -10, 30, 10],
@@ -934,24 +931,7 @@
         // the heater's DC potential, for the heater-to-cathode check: 0 V for a grounded heater or
         // centre tap, more for a heater raised to protect cathode followers and stacked stages
         { key: "heaterV", label: "Heater DC potential", unit: "V", kind: "number", min: -1000, max: 1000, dflt: 0,
-          when: c => { const t = tubeByName(c.params.tube); return !!t && !t.directlyHeated && !!t.limits && !!(t.limits.vhk || t.limits.vhkNeg); } },
-        // the bias finder (bias.js): what the bias should give (an anode current, or a share of Pa
-        // max), and what was measured on the real amp with the parts as drawn
-        { key: "biasBy", label: "Bias target", kind: "select", options: [["", "None"], ["ia", "Anode current"], ["pa", "Share of Pa max (idle)"]], get: biasBy,
-          apply: (c, v) => {
-            c.params.biasBy = v;
-            if (v === "pa" && !(c.params.biasPa > 0)) c.params.biasPa = 70;
-            // an anode current target starts from the current the stage draws now (2 significant digits)
-            const ia = v === "ia" && !(c.params.biasIa > 0) && LIB.tube.simIa ? LIB.tube.simIa(c) : 0;
-            if (ia > 0) c.params.biasIa = +ia.toPrecision(2);
-          }, when: c => tubeKind(tubeByName(c.params.tube)) !== "rectifier" },
-        { key: "biasIa", label: "Target anode current", unit: "A", kind: "eng", optional: true,
-          placeholder: c => { const ia = LIB.tube.simIa ? LIB.tube.simIa(c) : 0; return ia > 0 ? "now " + fmtEng(ia, "A", 2) : "e.g. 40mA"; }, when: c => biasBy(c) === "ia" },
-        { key: "biasPa", label: "Target dissipation", unit: "% of Pa max", kind: "number", min: 1, max: 150, when: c => biasBy(c) === "pa" },
-        { key: "biasMeasBy", label: "Measured on the amp", kind: "select", get: biasMeasBy, wide: true, when: c => !!biasBy(c),
-          options: c => [["", "Nothing"], ["ia", "Anode current"], ["ik", "Cathode current"]].concat(LIB.tube.senseOptions ? LIB.tube.senseOptions(c) : []) },
-        { key: "biasMeas", label: "Measured current", unit: "A", kind: "eng", optional: true, placeholder: "with the parts as drawn", when: c => !!biasBy(c) && /^i/.test(biasMeasBy(c)) },
-        { key: "biasMeasV", label: "Measured voltage", unit: "V", kind: "eng", optional: true, placeholder: "e.g. 42mV across 1 Ω", when: c => !!biasBy(c) && /^r:/.test(biasMeasBy(c)) }
+          when: c => { const t = tubeByName(c.params.tube); return !!t && !t.directlyHeated && !!t.limits && !!(t.limits.vhk || t.limits.vhkNeg); } }
       ],
       build: (c, net, alloc, out) => {
         const t = tubeByName(c.params.tube);
@@ -1151,5 +1131,5 @@
     { group: "Document", items: [["frame"], ["note"]] }
   ];
 
-  root.CadLib = { bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind, biasBy, biasMeasBy };
+  root.CadLib = { bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);
