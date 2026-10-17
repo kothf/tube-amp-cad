@@ -231,6 +231,11 @@ await spectrum.waitForFunction(() => /\d/.test(document.getElementById("thd").te
 const thd = parseFloat((await spectrum.textContent("#thd")).replace(/[^\d.]/g, ""));
 check(Math.abs(thd - circuit.thd) / circuit.thd < 0.1, `spectrum THD ${thd} % matches the CAD's ${circuit.thd.toFixed(3)} % (±10 %)`);
 {
+  // Auto span marks all ten: the ones under the screen's floor get a stub with "H7↓"
+  const hs = await spectrum.evaluate(() => window.Spectrum.harmonics());
+  check(hs && hs.length === 10 && hs[0] === "F" && hs.every((t, i) => !i || t.replace("↓", "") === "H" + (i + 1)) && hs.some(t => t.endsWith("↓")), `analyzer Auto span labels all 10 harmonics, the ones under the floor too (${hs && hs.join(" ")})`);
+}
+{
   await spectrum.selectOption("#fx", "log");
   const lg = await spectrum.evaluate(() => { const S = window.Spectrum, x = f => S.linePoint(f).x; return { v: S.view(), d1: x(2000) - x(1000), d2: x(4000) - x(2000), d3: x(8000) - x(4000) }; });
   check(lg.v.log && lg.v.fa > 0 && Math.abs(lg.d1 - lg.d2) < 1.5 && Math.abs(lg.d2 - lg.d3) < 1.5 && lg.d1 > 20, `analyzer: logarithmic frequency axis, each octave equally wide (${lg.d1.toFixed(1)}, ${lg.d2.toFixed(1)}, ${lg.d3.toFixed(1)} px)`);

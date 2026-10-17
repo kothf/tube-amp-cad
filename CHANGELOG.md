@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.62.2] - 2026-10-17
+
+### Fixed
+- **Spectrum analyzer: Auto span now marks all 10 harmonics.** Harmonics weaker than the bottom of the screen (often H6–H10 of a triode stage at 10 dB/div) used to vanish from the plot. They now get a short dim stub at the floor labelled "H7↓", so every harmonic's place is shown; the levels are in the harmonic table.
+
 ## [3.62.1] - 2026-10-17
 
 ### Fixed

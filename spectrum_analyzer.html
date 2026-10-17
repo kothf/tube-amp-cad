@@ -197,16 +197,23 @@
       // stems
       ctx.save(); ctx.beginPath(); ctx.rect(padL, padT, gw, gh); ctx.clip();
       const harmonicOf = l => f0 > 0 && Math.abs(l.f / f0 - Math.round(l.f / f0)) < 1e-6 ? Math.round(l.f / f0) : 0;
+      const shown = [];   // harmonic labels on screen, for the tests
       sp.lines.forEach(l => {
-        const d = db(l.vpk); if (d < bottom || (LOG && l.f < fLo)) return;
-        const h = harmonicOf(l);
+        const d = db(l.vpk), h = harmonicOf(l); if (LOG && l.f < fLo) return;
+        // a harmonic under the floor still gets its place marked: a short dim stub and "H7↓"
+        if (d < bottom) {
+          if (h < 2 || h > 10) return;
+          ctx.strokeStyle = ctx.fillStyle = "rgba(255,213,79,0.45)"; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+          ctx.beginPath(); ctx.moveTo(X(l.f), Y(bottom)); ctx.lineTo(X(l.f), Y(bottom) - 12); ctx.stroke(); ctx.setLineDash([]);
+          ctx.textAlign = "center"; ctx.fillText("H" + h + "↓", X(l.f), Y(bottom) - 16); shown.push("H" + h + "↓"); return;
+        }
         ctx.strokeStyle = h === 1 ? "#00e5ff" : (h > 1 ? "#ffd54f" : "#7a8aa0");
         ctx.lineWidth = h ? 2 : 1;
         ctx.beginPath(); ctx.moveTo(X(l.f), Y(bottom)); ctx.lineTo(X(l.f), Y(d)); ctx.stroke();
-        if (h >= 1 && h <= 10) { ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = "center"; ctx.fillText(h === 1 ? "F" : "H" + h, X(l.f), Math.max(padT + 10, Y(d) - 6)); }
+        if (h >= 1 && h <= 10) { ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = "center"; ctx.fillText(h === 1 ? "F" : "H" + h, X(l.f), Math.max(padT + 10, Y(d) - 6)); shown.push(h === 1 ? "F" : "H" + h); }
       });
       ctx.restore(); ctx.textAlign = "left";
-      G = { X, Y, u, inv, LOG, fLo, padL, padT, gw, gh, span, fa, fb, top, bottom, fullTop, fullBottom, lines: sp.lines, db, fund, harmonicOf, dbUnit: S.units === "dbc" ? "dBc" : "dBV" };
+      G = { X, Y, u, inv, LOG, fLo, padL, padT, gw, gh, span, fa, fb, top, bottom, fullTop, fullBottom, lines: sp.lines, db, fund, harmonicOf, shown, dbUnit: S.units === "dbc" ? "dBc" : "dBV" };
       if (hover) {
         const x = X(hover.f), r = reading(hover);
         ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + gh); ctx.stroke(); ctx.setLineDash([]);
@@ -326,7 +333,7 @@
       cols: [{ index: 1, side: "right", def: 320, min: 240, max: 640 }], template: w => `1fr ${w[0]}px` });
     setInterval(() => { if (!I.result) draw(); }, 1500);
     draw();
-    window.Spectrum = { state: S, draw, view: () => G && { fa: G.fa, fb: G.fb, log: G.LOG }, linePoint: f => markerPos({ f }), markers: () => pick.list.map(m => ({ ...m, pos: markerPos(m), reading: reading(m) })) };
+    window.Spectrum = { state: S, draw, view: () => G && { fa: G.fa, fb: G.fb, log: G.LOG }, harmonics: () => G && G.shown, linePoint: f => markerPos({ f }), markers: () => pick.list.map(m => ({ ...m, pos: markerPos(m), reading: reading(m) })) };
   })();
   </script>
 </body>
