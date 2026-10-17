@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.67.0] - 2026-10-17
+
+### Added
+- **Example: Gubin stereo amplifier with a 5Ц4С supply** (GUB-245-01, three sheets: supply and two 6N23P-EV + 6P14P channels), **with its board**: 230 × 130 mm, two layers, the supply on the left, the 6P14P output stages in the middle and the shared 6N23P with the inputs on the right, the channels mirrored; 41 parts, every connection routed, a ground pour on the bottom, eight mounting holes (one by each socket), and no rule violations at IPC-2221B B2 clearances (up to 3.26 mm on the 6P14P anodes, which swing to 651 V at full drive). The transformers and the choke are wired to pads.
+- **Rectifier peak anode current** is checked against the tube's rating (5Ц4С 375 mA, 5Ц3С 750 mA, 6Ц4П 300 mA …), from the settled cycles: the current a capacitor-input filter pulls while the reservoir capacitor charges.
+
+- **Board DRC: a mounting hole under a part.** A hole needs the board clear of parts round it for the screw head, washer and standoff (Ø 7 mm for an M3 hole); a part over that area is reported (Courtyard).
+
+### Fixed
+- **5Ц4С rectified current rating: 125 mA, not 62 mA.** The book's 62 mA is per anode (its own test passes 122 mA at 500 V into 4.7 kΩ). The checks compared the tube's total with it and reported a 5Ц4С at 115 mA as 186 % overloaded.
+
 ## [3.66.0] - 2026-10-17
 
 ### Added

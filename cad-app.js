@@ -602,6 +602,12 @@
       const dev = r.dc.devices[c.id], tr = r.tran && r.tran.devices;
       const ia = (x, part) => (tr && tr[c.id + "#" + part] ? mean(tr[c.id + "#" + part].i) : x ? x.i : 0);
       add("Rectified current", ia(dev.a1, "a1") + ia(dev.a2, "a2"), t.ikMax / 1000, "A", (v, m) => `delivers ${v} on average, more than its ${m} rating`);
+      // each anode's peak, while the reservoir capacitor charges, against the book's peak anode current (settled cycles, not the switch-on surge)
+      const ipk = t.book && t.book.limits && t.book.limits.i_peak_ma;
+      if (tr && ipk) {
+        const pk = Math.max(...["a1", "a2"].map(p => { const w = tr[c.id + "#" + p]; let m = 0; if (w) for (const x of w.i) m = Math.max(m, x); return m; }));
+        add("Peak anode current", pk, ipk / 1000, "A", (v, m) => `pulls ${v} peak through an anode while the reservoir capacitor charges, more than its ${m} rating`);
+      }
       if (kWave) {
         let piv = 0;
         ["A1", "A2"].forEach(p => { const w = pinNetOf(c, p) !== undefined && waveOf(c, p); if (w) for (let i = 0; i < w.length; i++) piv = Math.max(piv, kWave[i] - w[i]); });
@@ -2243,7 +2249,7 @@
         if (d.kind === "rectifier") {
           h += kv("Anode 1 current", fmtEng(d.a1 ? d.a1.i : 0, "A")) + kv("Anode 2 current", fmtEng(d.a2 ? d.a2.i : 0, "A"));
           h += limitRows(c);
-          return h + `<p class="insp-help">DC values; peak currents are higher while the reservoir cap charges.</p>`;
+          return h + `<p class="insp-help">Anode currents are averages over the settled cycle; the peak is drawn while the reservoir capacitor charges.</p>`;
         }
         const dc = d.dc;
         const pa = dc.vak * dc.ia, over = pa > d.paMax;
@@ -2803,6 +2809,7 @@
   // ---------------------------------------------------------------------------
   const EXAMPLES = [
     { file: "06-gubin-6n23p-6p14p.json", title: "Gubin three-tube amplifier", tag: "tubes", about: "Igor Gubin's stereo single-ended amplifier (radionic.ru): 6N23P-EV direct-coupled to 6P14P, pentode / triode switch, 3–4 dB feedback; simulated 3.4 W at 1.9 % THD, 5 W at 10 % into 4 Ω" },
+    { file: "07-gubin-5ts4s-stereo.json", title: "Gubin stereo amplifier with 5Ц4С supply", tag: "tubes", about: "GUB-245-01, three sheets (Radio 4/1957; musicangel.ru Fig. 3): 373BX transformer, 5Ц4С rectifier with capacitor input and a 2.5 H choke, two 6N23P-EV + 6P14P channels; B+ 372 V, the 5Ц4С at 115 mA" },
     { file: "03-12ax7-ccs-vs-resistor.json", title: "12AX7: plate resistor vs current source", tag: "tube + transistor", about: "J. Broskie, TubeCAD (2000): the same 12AX7 stage loaded by 150k (gain 70) and by an MPSA92 current source (gain 100), side by side" },
     { file: "04-12ax7-irf820-follower.json", title: "12AX7 stage + IRF820 follower", tag: "tube + MOSFET", about: "The GE 12AX7 data sheet's resistance-coupled stage (gain 50, 40 Vrms at 5 % THD) driving an IRF820 source follower" },
     { file: "05-10w-mosfet-amplifier.json", title: "10 W complementary MOSFET amplifier", tag: "MOSFETs", about: "homemade-circuits.com, fig. 1: BC177 input, BC107 driver, IRF540 / IRF9540 followers into 8 Ω (A3 sheet)" },

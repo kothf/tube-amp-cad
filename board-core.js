@@ -1017,6 +1017,12 @@
       const x1 = Math.max(a.b.x1, b.b.x1), x2 = Math.min(a.b.x2, b.b.x2), y1 = Math.max(a.b.y1, b.b.y1), y2 = Math.min(a.b.y2, b.b.y2);
       if (x2 - x1 > 0.05 && y2 - y1 > 0.05) out.push({ kind: "courtyard", x: (x1 + x2) / 2, y: (y1 + y2) / 2, msg: `${a.g.ref} and ${b.g.ref} overlap (courtyards)` });
     }));
+    // mounting holes under a part: the screw head, its washer and the standoff (Ø 7 mm for M3: the
+    // hole's diameter plus 3.8 mm) need the board's surface free on both sides
+    if (on("courtyard")) (board.holes || []).forEach(h => onBoard.forEach(({ g, b }) => {
+      const r = h.d / 2 + 1.9, dx = Math.max(b.x1 - h.x, 0, h.x - b.x2), dy = Math.max(b.y1 - h.y, 0, h.y - b.y2);
+      if (Math.hypot(dx, dy) < r - 0.05) out.push({ kind: "courtyard", x: h.x, y: h.y, msg: `Mounting hole (Ø ${h.d} mm) under ${g.ref}: the screw head, washer and standoff need Ø ${+(2 * r).toFixed(1)} mm clear of parts` });
+    }));
     // keep-out areas
     if (on("keepout")) (board.keepouts || []).forEach(k => {
       const P = k.pts, L = koLayers(k), nm = k.name ? `keep-out "${k.name}"` : "a keep-out area";

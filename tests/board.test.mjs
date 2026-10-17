@@ -728,3 +728,14 @@ test("transistor temperature: VBE falls about 2 mV/°C, hFE rises, germanium lea
   assert.ok(s0.ic < s25.ic && s25.ic < s45.ic && s45.ic <= s60.ic * 1.0001, `IC ${[s0, s25, s45, s60].map(x => (x.ic * 1e3).toFixed(2)).join(" → ")} mA from 0 to 60 °C`);
   assert.ok(s25.vce > 2 && s60.vce < 0.3, `VCE ${s25.vce.toFixed(2)} V at 25 °C, ${s60.vce.toFixed(2)} V at 60 °C (saturated)`);
 });
+
+test("a mounting hole under a part, or so near that its screw head and standoff (Ø 7 mm for M3) would touch it, is reported", () => {
+  const board = B.newBoard(); B.sync(board, NETLIST);
+  Object.assign(board.parts.r1, { x: 30, y: 30, rot: 0 });
+  const msgs = () => B.drc(board, B.model(board, NETLIST), B.connectivity(board, B.model(board, NETLIST).pads), new Set()).filter(d => /Mounting hole/.test(d.msg)).map(d => d.msg);
+  const b = B.partBox(B.model(board, NETLIST).parts.find(g => g.ref === "R1"));
+  board.holes = [{ x: (b.x1 + b.x2) / 2, y: b.y2 + 1, d: 3.2 }];          // 1 mm below the body: the washer overlaps
+  assert.equal(msgs().length, 1); assert.match(msgs()[0], /under R1.*Ø 7 mm/);
+  board.holes = [{ x: (b.x1 + b.x2) / 2, y: b.y2 + 4, d: 3.2 }];          // 4 mm away: clear
+  assert.deepEqual(msgs(), []);
+});

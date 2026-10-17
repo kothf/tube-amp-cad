@@ -1873,7 +1873,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const before = await cad.evaluate(() => TubeCAD.state.comps.length);
   await cad.click("#btn-file");
   const items = await cad.locator("#examples-list .menu-item").allTextContents();
-  check(items.length === 6 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `File → Examples lists the ${items.length} circuits drawn from published sources`);
+  check(items.length === 7 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `File → Examples lists the ${items.length} circuits drawn from published sources`);
   cad.once("dialog", d => d.accept());
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.locator("#examples-list .menu-item", { hasText: "12AX7: plate resistor" }).click();
@@ -1891,8 +1891,26 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
     res.push(await cad.evaluate(f => ({ f, ok: !!TubeCAD.state.sim.result && TubeCAD.state.sim.result.ok && !TubeCAD.state.sim.error, parts: TubeCAD.state.comps.length }), e));
   }
-  check(res.length === 6 && res.every(r => r.ok && r.parts > 15), `all six examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
+  check(res.length === 7 && res.every(r => r.ok && r.parts > 15), `all seven examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
   check(await cad.evaluate(() => TubeCAD.state.sim.result && TubeCAD.state.sim.result.solver === "wasm"), "the simulation worker solves with WebAssembly");
+  {
+    // the Gubin supply: a 5Ц4С at 115 mA is within its 125 mA (2 × 62 mA per anode), and its peak anode current is checked against 375 mA
+    const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+    cad.once("dialog", d => d.accept());
+    await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^07-/.test(x.file))));
+    await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
+    const t = await cad.evaluate(() => { const S = TubeCAD.state, v = S.comps.find(c => c.label === "VL1"); S.sel.comps.clear(); S.sel.comps.add(v.id); TubeCAD.updateInspector(); return document.getElementById("inspector").innerText; });
+    const rect = (t.match(/Rectified current\s+([\d.]+mA)\s+(\d+)% of 125mA/) || []), pk = (t.match(/Peak anode current\s+([\d.]+mA)\s+(\d+)% of 375mA/) || []);
+    check(rect[2] > 85 && rect[2] < 100 && pk[1], `Gubin example: the 5Ц4С delivers ${rect[1]} (${rect[2]} % of 125 mA, not of the per-anode 62 mA); peak anode current ${pk[1]} (${pk[2]} % of 375 mA)`);
+    // its board: every part placed, everything routed, no rule violations
+    const bw = await open("board-07", "board.html");
+    await bw.waitForFunction(() => window.BoardApp && BoardApp.state.model && BoardApp.state.board.tracks.length > 50, null, { timeout: 15000 }).catch(() => {});
+    await bw.waitForTimeout(500);
+    const bs = await bw.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.length, placed: Object.keys(S.board.parts).length, tracks: S.board.tracks.length, vias: S.board.vias.length, un: S.conn.unrouted, drc: S.drc.map(d => d.kind + ": " + d.msg) }; });
+    check(bs.parts === 41 && bs.un === 0 && !bs.drc.length, `Gubin example's board: ${bs.parts} parts, ${bs.tracks} tracks, ${bs.vias} vias, ${bs.un} to route, ${bs.drc.length ? bs.drc.join("; ") : "no rule violations"}`);
+    await bw.close();
+    await cad.evaluate(() => { TubeCAD.state.sel.comps.clear(); TubeCAD.updateInspector(); });
+  }
 }
 // --- toolbar, hover hints and the manual ---------------------------------------
 {

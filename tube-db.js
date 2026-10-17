@@ -398,7 +398,9 @@ var TUBE_DATABASE = [
     vh: 5, ih: 2,
     book: {"source": "Katsnelson & Larionov 1981", "page": 73, "name": "5Ц4С", "purpose": "", "limits": {"v_inverse": 1350, "i_rect_ma": 62, "i_peak_ma": 375}, "test": {"ia_min": 300, "va": 50}, "rectified": {"ma_min": 122, "conditions": "Ua 500 V, Rn 4.7 kΩ, C 4 µF"}},
     heaterWarning: "Filament pins 2 & 8: 5 V @ 2 A; the filament is the cathode, so pin 8 carries the B+ output (Katsnelson & Larionov p. 73).",
-    vaMax: 500, paMax: 0, ikMax: 62, vg2Max: 0,
+    // the book's 62 mA is per anode: the tube delivers 125 mA (its own test: 122 mA at 500 V into 4.7 kΩ),
+    // as the other rectifiers here are rated, on the total
+    vaMax: 500, paMax: 0, ikMax: 125, vg2Max: 0,
     koren: { Triode: { mu: 1.0, kg: 100, kp: 40, kvb: 10, x: 1.5 } },
     pinout: [
       { pin: 2, sym: "H", role: "Heater", isHeater: true }, { pin: 4, sym: "A2", role: "Anode 2", isPlate: true },
