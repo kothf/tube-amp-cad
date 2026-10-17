@@ -1842,6 +1842,16 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     check(/No problems found/i.test(circuitChecks) && pk[2] <= 100, `Gubin example: no warnings in the circuit's checks (the 5Ц4С's peak anode current ${pk[1]} is within 375 mA)${/No problems/i.test(circuitChecks) ? "" : ": " + circuitChecks.replace(/\s+/g, " ")}`);
     await cad.evaluate(() => { const S = TubeCAD.state, v = S.comps.find(c => c.label === "VL1"); S.sel.comps.clear(); S.sel.comps.add(v.id); TubeCAD.updateInspector(); });
     check(rect[2] > 75 && rect[2] < 100 && pk[1], `Gubin example: the 5Ц4С delivers ${rect[1]} (${rect[2]} % of 125 mA, not of the per-anode 62 mA); peak anode current ${pk[1]} (${pk[2]} % of 375 mA)`);
+    // the BOM's Sim. max: worked out when the simulation finishes, with the BOM closed; every kind of part has one
+    const bomRows = await cad.evaluate(() => { const S = TubeCAD.state; return { open: !document.getElementById("bom").hidden, rows: TubeCAD.bomData().rows.map(r => [r.refs, r.sim]) }; });
+    const simOf = ref => (bomRows.rows.find(([refs]) => refs.split(/[,-]/).map(x => x.trim()).includes(ref)) || [])[1] || "";
+    check(!bomRows.open && /W$/.test(simOf("BA1")) && /A DC$/.test(simOf("L1")) && /^HT .*A DC · \d+%$/.test(simOf("T1")) && /A DC$/.test(simOf("T2")) && /%$/.test(simOf("VL1")) && /%$/.test(simOf("VL3")) && /W$/.test(simOf("R1")) && /V$/.test(simOf("C1")),
+      `BOM Sim. max for every kind of part, with the BOM closed: BA1 ${simOf("BA1")}, L1 ${simOf("L1")}, T1 ${simOf("T1")}, T2 ${simOf("T2")}, VL1 ${simOf("VL1")}, VL3 ${simOf("VL3")}`);
+    // an edit waits for its simulation: the column keeps the last run's values (not the new part value with the old voltages)
+    const kept = await cad.evaluate(async () => { const S = TubeCAD.state, r3 = S.comps.find(c => c.label === "R3"), get = () => TubeCAD.bomData().rows.find(r => r.refs === "R3").sim, before = get(); r3.params.r = 470; TubeCAD.commit(); const right = get(); const s0 = S.sim.seq;
+      while (!(S.sim.seq > s0 && !S.sim.busy && !S.sim.pending && S.sim.result)) await new Promise(r => setTimeout(r, 50)); const after = get(); r3.params.r = 330; TubeCAD.commit(); return { before, right, after }; });
+    check(kept.right === kept.before && kept.after !== kept.before, `after an edit the BOM keeps the last run's Sim. max (R3 ${kept.right}) until the new run gives ${kept.after}`);
+    await cad.waitForFunction(() => { const S = TubeCAD.state; return !S.sim.busy && !S.sim.pending && S.sim.result; }, null, { timeout: 60000 });
     // its board: every part placed, everything routed, no rule violations
     const bw = await open("board-07", "board.html");
     await bw.waitForFunction(() => window.BoardApp && BoardApp.state.model && BoardApp.state.board.tracks.length > 50, null, { timeout: 15000 }).catch(() => {});

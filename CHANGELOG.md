@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.71.0] - 2026-10-18
+
+### Changed
+- **BOM Sim. max, worked out when each simulation finishes**, whether the BOM is open or not, and kept until the next one: an edit no longer shows the new part value with the old run's voltages (a resistor changed from 330 to 470 Ω showed 2.59 W, neither run's figure). The BOM's line says when a new simulation is on its way.
+- **Sim. max for every kind of part:** loudspeakers (power), chokes (DC current), output transformers (primary DC current, against the rating of a catalog part), power transformers (HT DC current against the rating), pots (power in both halves), diodes (PIV, average and peak current, against the 1N4007 / UF4007 / 1N4148 ratings), tubes (the most-used of their ratings: Pa, Pg2, Ik, Vhk, the rectifier's currents and PIV).
+
 ## [3.70.0] - 2026-10-18
 
 ### Added

@@ -383,6 +383,9 @@
       S.sim.warnings = result.warnings || [];
       S.sim.topo = S.sim.topoForRun;
       detectBias();
+      // the BOM's Sim. max column for every part, whether the BOM is open or not
+      S.sim.stress = new Map();
+      if (result.ok) S.comps.forEach(c => { let st = null; try { st = partStress(c); } catch (e) { st = null; } if (st) S.sim.stress.set(c.id, st); });
       if (result.ok) {
         const tr = result.tran;
         const what = tr && tr.fBase ? `${fmtEng(tr.samples * tr.dt, "s")} window, ${tr.periods} cycles to settle` : "DC operating point";
@@ -2499,10 +2502,60 @@
   try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
   const saveBomOpts = () => { try { localStorage.setItem(BOM_KEY, JSON.stringify(bomOpts)); } catch (e) {} };
   let bomStale = false, bomSelShown = "";
-  // simulated worst case of a part: dissipation of resistors, transistors and zeners (against
-  // their ratings), capacitor peak voltage, LED current
+  // simulated worst case of a part, for the BOM's Sim. max column: dissipation of resistors,
+  // pots, transistors and zeners (against their ratings), capacitor peak voltage, LED current, a
+  // diode's peak inverse voltage and current, a tube's most-used rating, a choke's and a
+  // transformer's DC current, a speaker's power. v orders the parts of one BOM line.
+  const DIODE_RATE = { "1N4007": { v: 1000, i: 1 }, "UF4007": { v: 1000, i: 1 }, "1N4148": { v: 100, i: 0.2 } };
+  const share = (x, m) => (m > 0 ? ` · ${Math.round(x / m * 100)}%` : "");
   function partStress(c) {
-    if (!S.sim.result) return null;
+    const r = S.sim.result;
+    if (!r) return null;
+    if (c.type === "pot") {
+      const half = sfx => (S.sim.netlist.elements.find(e => e.id === c.id + sfx) || {}).r, [ra, rb] = [half("#a"), half("#b")];
+      if (!(ra > 0 && rb > 0)) return null;
+      const w1 = waveOf(c, "1"), ww = waveOf(c, "W"), w2 = waveOf(c, "2");
+      let p;
+      if (w1 && ww && w2) { p = 0; for (let i = 0; i < w1.length; i++) p += (w1[i] - ww[i]) ** 2 / ra + (ww[i] - w2[i]) ** 2 / rb; p /= w1.length; }
+      else { const [a, w, b] = ["1", "W", "2"].map(q => netDC(pinNetOf(c, q))); if ([a, w, b].includes(null)) return null; p = (a - w) ** 2 / ra + (w - b) ** 2 / rb; }
+      return { v: p, text: fmtEng(p, "W") };
+    }
+    if (c.type === "diode") {
+      const wa = waveOf(c, "A"), wk = waveOf(c, "K"), tr = r.tran && r.tran.devices[c.id], iav = pinCurrent(c, "A"), m = DIODE_RATE[c.params.model];
+      let piv = null, ipk = null;
+      if (wa && wk) { piv = 0; for (let i = 0; i < wa.length; i++) piv = Math.max(piv, wk[i] - wa[i]); }
+      if (tr) { ipk = 0; for (const x of tr.i) ipk = Math.max(ipk, x); }
+      if (piv === null && iav === null) return null;
+      const parts = [piv !== null ? `PIV ${fmtEng(piv, "V")}` : "", iav !== null ? `${fmtEng(Math.abs(iav), "A")} avg` : "", ipk !== null ? `${fmtEng(ipk, "A")} pk` : ""].filter(Boolean);
+      return { v: piv || 0, text: parts.join(" · "), warn: !!m && ((piv || 0) > m.v || Math.abs(iav || 0) > m.i), note: m && (piv || 0) > m.v ? "over its PIV" : "over its current" };
+    }
+    if (c.type === "tube") {
+      // its most-used rating: the largest share of any limit (Pa, Pg2, Ik, Vhk, PIV …)
+      const rows = tubeLimits(c), d = tubeData(c), t = tubeByName(c.params.tube);
+      if (d && d.kind !== "rectifier" && t && t.paMax > 0 && d.dc) { const pa = d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia; rows.push({ label: "Pa", value: fmtEng(pa, "W"), share: pa / t.paMax, text: "" }); }
+      if (!rows.length) return null;
+      const top = rows.reduce((a, b) => (b.share > a.share ? b : a));
+      return { v: top.share, text: `${top.label.replace(/ \(.*\)$/, "")} ${top.value} · ${Math.round(top.share * 100)}%`, warn: top.share > 1 };
+    }
+    if (c.type === "inductor") {
+      const v = netDC(pinNetOf(c, "1")), w = netDC(pinNetOf(c, "2")); if (v === null || w === null) return null;
+      const i = Math.abs(v - w) / Math.max(c.params.dcr, 1e-3);
+      return { v: i, text: `${fmtEng(i, "A")} DC` };
+    }
+    if (c.type === "speaker") {
+      const sp = speakerPower(c); return sp ? { v: sp.p, text: fmtEng(sp.p, "W") } : null;
+    }
+    if (c.type === "opt_se" || c.type === "opt_cat" || c.type === "opt_pp") {
+      const m = c.type === "opt_cat" ? CadLib.OUTPUT_TX[c.params.model] : null, dc = (a, b, rr) => { const va = netDC(pinNetOf(c, a)), vb = netDC(pinNetOf(c, b)); return va === null || vb === null ? null : Math.abs(va - vb) / rr; };
+      const i = c.type === "opt_cat" ? (otDcCurrent(c) === null ? null : Math.abs(otDcCurrent(c))) : c.type === "opt_se" ? dc("P1", "P2", Math.max(c.params.dcrp, 1e-3)) : Math.max(dc("P1", "CT", Math.max(c.params.dcrp / 2, 1e-3)) || 0, dc("CT", "P2", Math.max(c.params.dcrp / 2, 1e-3)) || 0);
+      if (i === null) return null;
+      return { v: i, text: `${fmtEng(i, "A")} DC${c.type === "opt_pp" ? " per half" : ""}${m ? share(i * 1000, m.ma) : ""}`, warn: !!m && i * 1000 > m.ma };
+    }
+    if (c.type === "ptx" || c.type === "ptx_cat") {
+      const i = pinCurrent(c, "CT"); if (i === null) return null;
+      const m = c.type === "ptx_cat" ? CadLib.POWER_TX[c.params.model] : null, a = Math.abs(i);
+      return { v: a, text: `HT ${fmtEng(a, "A")} DC${m ? share(a * 1000, m.ma) : ""}`, warn: !!m && a * 1000 > m.ma };
+    }
     if (c.type === "resistor") {
       const p = resistorPower(c);
       return p === null ? null : { v: p, text: fmtEng(p, "W"), warn: +c.params.w > 0 && p > +c.params.w };
@@ -2532,7 +2585,9 @@
   }
   function bomData() {
     const f = frames()[0], p = f ? f.params : {};
-    return { rows: BomLib.build(S.comps, { sockets: bomOpts.sockets, bench: bomOpts.bench, stress: partStress }),
+    // the values of the last simulation, taken when it finished: an edit since does not mix the
+    // new part values with the old voltages
+    return { rows: BomLib.build(S.comps, { sockets: bomOpts.sockets, bench: bomOpts.bench, stress: c => (S.sim.stress && S.sim.stress.get(c.id)) || null }),
       title: p.title || "", docno: p.docno || "", rev: p.rev || "", date: p.date || new Date().toISOString().slice(0, 10) };
   }
   const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -2545,7 +2600,7 @@
     bomStale = false;
     const bom = bomData(), table = document.getElementById("bom-table");
     const parts = bom.rows.reduce((n, r) => n + r.qty, 0);
-    document.getElementById("bom-count").textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (S.sim.result ? "" : " · simulate for the Sim. max column") : "";
+    document.getElementById("bom-count").textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (!S.sim.result ? " · simulate for the Sim. max column" : S.sim.busy || S.sim.pending ? " · Sim. max: the last simulation, a new one is running" : "") : "";
     if (!bom.rows.length) { table.innerHTML = `<tbody><tr><td class="bom-empty">No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.</td></tr></tbody>`; return; }
     const tip = { sim: "Simulated worst case: dissipation (resistors, transistors, zeners), capacitor peak voltage, LED current", partno: "Your order or manufacturer number; saved with the circuit" };
     table.innerHTML = `<thead><tr>${BomLib.COLUMNS.map(c => `<th${tip[c.key] ? ` title="${tip[c.key]}"` : ""}>${c.title}</th>`).join("")}</tr></thead><tbody>` +

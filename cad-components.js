@@ -139,7 +139,7 @@
   });
   const POWER_TX = {};
   Object.entries(HAMMOND).forEach(([k, [v, ma, nlv, nlvBias, iex, rp1, rp2, rhv, heaters]]) => {
-    POWER_TX[k] = { name: "Hammond " + k, rated: `${v}-0-${v} V ${ma} mA`, nlv: nlv / 2, nlvBias, vRef: 120, iex: iex / 1000, rp1, rp2, rHalf: rhv / 2, heaters,
+    POWER_TX[k] = { name: "Hammond " + k, ma, rated: `${v}-0-${v} V ${ma} mA`, nlv: nlv / 2, nlvBias, vRef: 120, iex: iex / 1000, rp1, rp2, rHalf: rhv / 2, heaters,
       taps: [100, 110, 120, 200, 220, 230, 240] };
   });
   // The transformer for a primary tap: two 120 V windings in series on a
