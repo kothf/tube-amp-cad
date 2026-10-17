@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.68.2] - 2026-10-18
+
+### Changed
+- **Gubin example takes a phone's line output.** An iPhone's USB-C to 3.5 mm adapter at full volume gives −5.6 dBV (0.525 Vrms); with the 6.2 kΩ feedback resistors that drove the 6P14P's grid past its bias (grid current, then cut-off): 14 % THD, the output no longer a sine. R11 and R12 are now 1.5 kΩ: about 9 dB of feedback instead of 4, gain 3.2 instead of 5.9, 0.07 % THD at −5.6 dBV, clipping (3 % THD) only from −3 dBV, response 6.7 Hz – 150 kHz (1 dB rise at 12 Hz). The generators are set to −5.6 dBV. The board is unchanged.
+
 ## [3.68.1] - 2026-10-17
 
 ### Fixed
