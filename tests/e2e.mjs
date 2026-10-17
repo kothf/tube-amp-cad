@@ -1849,7 +1849,8 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
       `BOM Sim. max for every kind of part, with the BOM closed: BA1 ${simOf("BA1")}, L1 ${simOf("L1")}, T1 ${simOf("T1")}, T2 ${simOf("T2")}, VL1 ${simOf("VL1")}, VL3 ${simOf("VL3")}`);
     // an edit waits for its simulation: the column keeps the last run's values (not the new part value with the old voltages)
     const kept = await cad.evaluate(async () => { const S = TubeCAD.state, r3 = S.comps.find(c => c.label === "R3"), get = () => TubeCAD.bomData().rows.find(r => r.refs === "R3").sim, before = get(); r3.params.r = 470; TubeCAD.commit(); const right = get(); const s0 = S.sim.seq;
-      while (!(S.sim.seq > s0 && !S.sim.busy && !S.sim.pending && S.sim.result)) await new Promise(r => setTimeout(r, 50)); const after = get(); r3.params.r = 330; TubeCAD.commit(); return { before, right, after }; });
+      while (!(S.sim.seq > s0 && !S.sim.busy && !S.sim.pending && S.sim.result)) await new Promise(r => setTimeout(r, 50)); const after = get(); r3.params.r = 330; TubeCAD.commit(); const s1 = S.sim.seq;
+      while (!(S.sim.seq > s1 && !S.sim.busy && !S.sim.pending && S.sim.result)) await new Promise(r => setTimeout(r, 50)); return { before, right, after }; });
     check(kept.right === kept.before && kept.after !== kept.before, `after an edit the BOM keeps the last run's Sim. max (R3 ${kept.right}) until the new run gives ${kept.after}`);
     await cad.waitForFunction(() => { const S = TubeCAD.state; return !S.sim.busy && !S.sim.pending && S.sim.result; }, null, { timeout: 60000 });
     // its board: every part placed, everything routed, no rule violations
