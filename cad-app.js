@@ -402,6 +402,19 @@
 
   // Node voltage helpers on the last result
   function netDC(net) { const r = S.sim.result; return r && net !== undefined && r.dc.nodes[net] !== undefined ? r.dc.nodes[net] : null; }
+  // AC on a net over the captured cycles: rms of the wave about its mean (null below 1 mV).
+  // signal: the AC is a real part of the node (≥ 1 % of its DC), not just a rail's ripple
+  let acCache = null;
+  // three significant figures: 20.1, 353m, 1.25
+  const acDigits = v => { const m = v / Math.pow(1000, Math.floor(Math.log10(v) / 3)); return m >= 99.95 ? 0 : m >= 9.995 ? 1 : 2; };
+  function netAC(net) {
+    const r = S.sim.result; if (!r || !r.tran || !(net > 0)) return null;
+    if (!acCache || acCache.r !== r) acCache = { r, m: new Map() };
+    if (acCache.m.has(net)) return acCache.m.get(net);
+    const st = stats(netWave(net)), dc = netDC(net);
+    const ac = st && st.rmsAC >= 1e-3 ? { rms: st.rmsAC, pp: st.pp, signal: st.rmsAC >= 0.01 * Math.abs(dc || 0) } : null;
+    acCache.m.set(net, ac); return ac;
+  }
   function netWave(net) { const r = S.sim.result; return r && r.tran && net !== undefined && net > 0 ? r.tran.nodes[net] : null; }
   function pinNetOf(c, pid) { const T = S.sim.topo || topo(); return T.pinNet.get(c.id + ":" + pid); }
   // DC current flowing from the net into each part's pin ("compId:pinId" -> A), summed
@@ -1428,7 +1441,7 @@
     const el = document.getElementById("status-hover");
     if (net === undefined) { el.textContent = `x ${snap(m.wx)}  y ${snap(m.wy)}`; return; }
     const dc = netDC(net), wave = netWave(net), st = wave ? stats(wave) : null;
-    el.textContent = `${label}: ` + (net === 0 ? "ground (0 V)" : (dc === null ? "not simulated" : `DC ${fmtEng(dc, "V", 2)}` + (st && st.pp > 1e-4 ? ` · AC ${fmtEng(st.pp, "Vpp", 2)} · avg ${fmtEng(st.mean, "V", 2)}` : "") + (wireI ? ` · I ${wireI} DC` : "")));
+    el.textContent = `${label}: ` + (net === 0 ? "ground (0 V)" : (dc === null ? "not simulated" : `DC ${fmtEng(dc, "V", 2)}` + (st && st.pp > 1e-4 ? ` · AC ${fmtEng(st.rmsAC, "Vrms", 2)} (${fmtEng(st.pp, "Vpp", 2)}) · avg ${fmtEng(st.mean, "V", 2)}` : "") + (wireI ? ` · I ${wireI} DC` : "")));
   }
 
   // ---------------------------------------------------------------------------
@@ -1469,6 +1482,11 @@
     recordingFrame = false;
     // wires
     ctx.lineCap = "round";
+    // with the voltages shown, wires that carry signal (AC) get a cyan glow under them
+    if (S.showVolts && S.sim.result && S.sim.result.tran) {
+      ctx.strokeStyle = "rgba(0,229,255,0.30)"; ctx.lineWidth = 7;
+      S.wires.forEach(w => { const ac = netAC(T.wireNet.get(w.id)); if (ac && ac.signal) { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); } });
+    }
     S.wires.forEach(w => {
       const sel = S.sel.wires.has(w.id);
       ctx.strokeStyle = sel ? "#ffd54f" : "#3fb950";
@@ -1805,7 +1823,11 @@
       S.wires.forEach(w => { const n = T.wireNet.get(w.id); if (n === 0 || n === undefined) return; if (!nets.has(n)) nets.set(n, []); nets.get(n).push(w); });
       nets.forEach((ws, n) => {
         const v = netDC(n); if (v === null) return;
-        place(fmtEng(v, "V", Math.abs(v) >= 100 ? 0 : 1), ws.sort(byLen), "a", { kind: "v", fg: "#ffd54f", line: "rgba(255,213,79,0.35)" });
+        // DC in yellow, AC after it in cyan as "~1.2Vrms"; a node with no DC on it (a signal
+        // after a coupling capacitor) shows its AC only
+        const ac = netAC(n), dcT = fmtEng(v, "V", Math.abs(v) >= 100 ? 0 : 1), acT = ac && "~" + fmtEng(ac.rms, "Vrms", acDigits(ac.rms));
+        const parts = !ac ? [[dcT, "#ffd54f"]] : Math.abs(v) < 1e-3 ? [[acT, "#00e5ff"]] : [[dcT, "#ffd54f"], [" " + acT, "#00e5ff"]];
+        place(parts.map(q => q[0]).join(""), ws.sort(byLen), "a", { kind: "v", ac: !!ac, parts, fg: "#ffd54f", line: ac && ac.signal ? "rgba(0,229,255,0.45)" : "rgba(255,213,79,0.35)" });
       });
     }
     if (S.showAmps) {
@@ -1845,7 +1867,8 @@
     stickerCache.list.forEach(t => {
       ctx.fillStyle = "rgba(10,14,20,0.85)"; ctx.fillRect(t.x, t.y, t.w, TAG_H);
       ctx.strokeStyle = t.line; ctx.lineWidth = 0.8; ctx.strokeRect(t.x, t.y, t.w, TAG_H);
-      ctx.fillStyle = t.fg; ctx.fillText(t.txt, t.x + 3, t.y + 9);
+      if (!t.parts) { ctx.fillStyle = t.fg; ctx.fillText(t.txt, t.x + 3, t.y + 9); return; }
+      let x = t.x + 3; t.parts.forEach(([s, col]) => { ctx.fillStyle = col; ctx.fillText(s, x, t.y + 9); x += ctx.measureText(s).width; });
     });
   }
   // for tests: how many stickers and how many still cover a text or another sticker
@@ -1857,7 +1880,7 @@
     // texts of the drawing itself that run into each other (labels placed too close)
     const textClash = [], parts = textBoxes.filter(b => !b.frame), grow = b => ({ x1: b.x1 - 1, y1: b.y1 - 1, x2: b.x2 + 1, y2: b.y2 + 1 });   // touching counts
     for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) if (overlap(grow(parts[i]), parts[j]) > 2) textClash.push([parts[i], parts[j]].map(b => [Math.round(b.x1), Math.round(b.y1)]));
-    return { count: list.length, hidden: list.hidden || [], textClash, volts: list.filter(t => t.kind === "v").length, amps: list.filter(t => t.kind === "i").length, onText, onOther, list: list.map(t => ({ txt: t.txt, kind: t.kind, ...box(t) })) };
+    return { count: list.length, hidden: list.hidden || [], textClash, volts: list.filter(t => t.kind === "v").length, ac: list.filter(t => t.ac).map(t => t.txt), signalNets: [...new Set(S.wires.map(w => (S.sim.topo || topo()).wireNet.get(w.id)))].filter(n => { const a = netAC(n); return a && a.signal; }).length, amps: list.filter(t => t.kind === "i").length, onText, onOther, list: list.map(t => ({ txt: t.txt, kind: t.kind, ...box(t) })) };
   }
 
 

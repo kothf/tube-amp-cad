@@ -177,6 +177,10 @@ the circuit that was on the sheet.
   - Each net carries a sticker with its DC voltage, and each run of wire one
     with its DC current and direction ("↓1.38mA"). In a mains-fed circuit
     both are averaged over the settled window, as a meter reads them.
+  - AC is marked apart from DC: a net with AC on it adds it in cyan as
+    "~20.1Vrms" after the yellow DC ("162V ~20.1Vrms"); a net with no DC
+    shows the AC alone. Wires carrying the signal (AC at least 1 % of the DC)
+    glow cyan, so the signal path stands out from supply and bias nets.
   - Currents come from every part's terminal currents and are passed along
     the wiring, so a junction shows how the current splits. On the 12AX7
     above, 1.02 mA from the plate resistor splits into 1 mA anode and 15 µA

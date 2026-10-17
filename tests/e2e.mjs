@@ -198,6 +198,14 @@ check(circuit.gain > 40 && circuit.gain < 70, `stage gain ${circuit.gain.toFixed
   check(tj && tj.gap < 0.02 && tj.pp > 1, `the load line sent to the curve tracer is one closed signal cycle (${tj && tj.n} points, ends ${tj && (tj.gap * 100).toFixed(2)} % of the swing apart; capture ${tj && (tj.win * 1e3).toFixed(1)} ms)`);
 }
 check(circuit.ms < 10000, `simulation finished in ${(circuit.ms / 1000).toFixed(1)} s`);
+{
+  // AC is marked apart from DC: "~…Vrms" after the DC in the stickers, a cyan glow on the wires that carry signal
+  await cad.waitForTimeout(150);
+  const sr = await cad.evaluate(() => TubeCAD.stickerReport());
+  const both = sr.ac.filter(t => /^[-\d.]+[mµk]?V ~/.test(t)), acOnly = sr.ac.filter(t => /^~/.test(t)), dcOnly = sr.list.filter(t => t.kind === "v" && !/~/.test(t.txt)).map(t => t.txt);
+  check(sr.ac.every(t => /~[\d.]+[mµk]?Vrms$/.test(t)) && both.length >= 1 && acOnly.length >= 1 && dcOnly.length >= 1 && sr.signalNets >= 2,
+    `voltage stickers tell AC from DC: DC + AC ${both.join(", ")}; AC only ${acOnly.join(", ")}; DC only ${dcOnly.join(", ")}; ${sr.signalNets} signal nets glow`);
+}
 
 // --- 3. Instruments receive the live result ---------------------------------
 const scope = await open("scope", `oscilloscope.html?scope=${circuit.scope}`);

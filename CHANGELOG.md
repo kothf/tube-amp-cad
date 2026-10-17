@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.63.0] - 2026-10-17
+
+### Added
+- **AC marked apart from DC on the schematic.** With *View ▾ → Voltages* on, a net's sticker shows its DC in yellow and its AC in cyan as `~20.1Vrms` (`162V ~20.1Vrms` on a plate; `~353mVrms` alone on an input or after a coupling capacitor). The wires that carry the signal (AC at least 1 % of the DC) glow cyan, so the signal path stands out from supply and bias nets; a rail's ripple is shown in its sticker without the glow. The status bar's wire readout gives the AC in Vrms as well as Vpp.
+
 ## [3.62.2] - 2026-10-17
 
 ### Fixed
