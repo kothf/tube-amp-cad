@@ -6,6 +6,29 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.62.0] - 2026-10-17
+
+### Added
+- **Board editor comfort:**
+  - **Pointer card:** rest the pointer on a pad, part, track or via to see its net, class, voltage and current. While routing, the card follows the pointer with the net, width, layer, length so far and any clearance problem.
+  - **W while routing** steps the track width: the class's, signal, power, the minimum, or what the net's current asks. Corners already placed keep their width.
+  - **Right-click menu** for what is under the pointer:
+    - a part: turn, flip side, lock, zoom to it, route from the pad or highlight its net;
+    - a track: select all of it, width presets, other layer, lock, delete;
+    - a pour: add a corner here, round the parts, over the whole board;
+    - empty board: a via, hole or text right there, Fit.
+
+    Right-drag still pans.
+  - **Zoom:** a zoom bar (− % + ⌖), <kbd>+</kbd> / <kbd>−</kbd>, and <kbd>Z</kbd> to zoom to the selection or the highlighted net.
+  - **Find** (<kbd>Ctrl</kbd>+<kbd>F</kbd>) filters the parts and nets. An exact reference comes first, and Enter selects and shows the first match.
+  - **Side panels** hide with <kbd>\\</kbd> or *View ▾ → Side panels*.
+  - The checks and the layers are sections that fold away and stay folded. Long check lists are grouped by kind.
+  - The part under the pointer is outlined, and the cursor shows it can be moved. Tool buttons show their keys on wide screens.
+
+### Changed
+- Part values sit inside the part when they fit and are left out wherever they would cover a reference or another value. Before, they printed over neighbouring references.
+- The parts list shows each part's value, with the footprint in its tooltip. The footprint list in the inspector is full width, so the names are readable.
+
 ## [3.61.0] - 2026-10-17
 
 ### Added

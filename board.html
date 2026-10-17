@@ -141,6 +141,33 @@
     @media (max-width: 1400px) { header #status { flex-basis: 120px; } select.btn { max-width: 120px; } }
     @media (max-width: 1320px) { header { padding: 6px; } select.btn { max-width: 104px; } .tools .btn { padding-left: 5px; padding-right: 5px; } header #status { min-width: 40px; } }
     .menu { position: relative; }
+    kbd.tk { font-size: 10px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; margin-left: 5px; }
+    .btn.active kbd.tk { color: var(--accent); border-color: #1d6b7a; }
+    @media (max-width: 1800px) { kbd.tk { display: none; } }
+    .find { margin-bottom: 6px; }
+    .find input { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+    .find input:focus { outline: none; border-color: var(--accent); }
+    details.sec { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 2px; }
+    details.sec > summary { list-style: none; cursor: pointer; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 6px 0; display: flex; gap: 6px; align-items: baseline; user-select: none; }
+    details.sec > summary::-webkit-details-marker { display: none; }
+    details.sec > summary::before { content: "▸"; color: var(--muted); transition: transform .12s; display: inline-block; }
+    details.sec[open] > summary::before { transform: rotate(90deg); }
+    details.sec > summary small { letter-spacing: 0; text-transform: none; font-weight: 400; margin-left: auto; }
+    details.sec > summary:hover { color: var(--text); }
+    .drc-group { font-size: 11px; color: var(--muted); margin: 6px 0 2px; display: flex; justify-content: space-between; }
+    .row.wide { grid-template-columns: 1fr; gap: 3px; }
+    #hud { position: absolute; z-index: 6; pointer-events: none; background: rgba(15,21,30,.94); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--text); white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+    #hud b { color: var(--accent); font-weight: 600; } #hud .bad { color: var(--bad); } #hud .mut { color: var(--muted); }
+    .zoombar { position: absolute; right: 10px; bottom: 10px; z-index: 6; display: inline-flex; background: rgba(15,21,30,.92); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .zb { background: none; border: 0; color: var(--text); padding: 4px 10px; cursor: pointer; font: inherit; }
+    .zb:hover { background: var(--panel2); color: var(--accent); }
+    .zb.pct { min-width: 58px; font: 12px ui-monospace, Menlo, monospace; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+    #z-sel { border-left: 1px solid var(--line); }
+    .menu-list.ctx { position: fixed; top: 0; left: 0; right: auto; min-width: 210px; max-width: 320px; z-index: 40; }
+    .ctx .menu-item { gap: 18px; }
+    .ctx .menu-item kbd { font-size: 10px; color: var(--muted); background: none; border: 0; }
+    .ctx .ctx-title { font-size: 11px; color: var(--muted); padding: 4px 10px 2px; font-family: ui-monospace, Menlo, monospace; }
+    main.bare .col { display: none; }
     .menu-list { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 230px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
     .menu-list[hidden] { display: none; }
     .menu-item { display: flex; justify-content: space-between; width: 100%; background: none; border: 0; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
@@ -158,14 +185,14 @@
       <button class="btn" id="btn-redo" title="Redo (Ctrl+Y)">↷</button>
     </div>
     <div class="tools seg-group" role="toolbar" aria-label="Tools">
-      <button class="btn active" data-tool="select" title="Select and move footprints, tracks, vias, texts and holes; drag the board's top-right corner handle to resize it; the origin, bottom left, stays put (Esc)">Select</button>
-      <button class="btn" data-tool="route" title="Route a track from a pad (X); V changes layer with a via">Route</button>
-      <button class="btn" data-tool="via" title="Place a via (Shift+V)">Via</button>
-      <button class="btn" data-tool="text" title="Place a text on the silkscreen or copper (T)">Text</button>
-      <button class="btn" data-tool="hole" title="Place a mounting hole (H)">Hole</button>
-      <button class="btn" data-tool="pour" title="Copper pour (ground plane): click the corners, double-click to close (P). Board inspector: one click for a ground plane over the whole board">Pour</button>
-      <button class="btn" data-tool="keepout" title="Keep-out area: no tracks, vias, pour (or parts) inside; click the corners, double-click to close (K)">Keep-out</button>
-      <button class="btn" data-tool="measure" title="Measure a distance: click, click (D). The ends stick to pads, vias, holes, track corners and the board's corners and edges; Shift: the grid only">Measure</button>
+      <button class="btn active" data-tool="select" title="Select and move footprints, tracks, vias, texts and holes; drag the board's top-right corner handle to resize it; the origin, bottom left, stays put (Esc)">Select<kbd class="tk">S</kbd></button>
+      <button class="btn" data-tool="route" title="Route a track from a pad (X); V changes layer with a via">Route<kbd class="tk">X</kbd></button>
+      <button class="btn" data-tool="via" title="Place a via (Shift+V)">Via<kbd class="tk">⇧V</kbd></button>
+      <button class="btn" data-tool="text" title="Place a text on the silkscreen or copper (T)">Text<kbd class="tk">T</kbd></button>
+      <button class="btn" data-tool="hole" title="Place a mounting hole (H)">Hole<kbd class="tk">H</kbd></button>
+      <button class="btn" data-tool="pour" title="Copper pour (ground plane): click the corners, double-click to close (P). Board inspector: one click for a ground plane over the whole board">Pour<kbd class="tk">P</kbd></button>
+      <button class="btn" data-tool="keepout" title="Keep-out area: no tracks, vias, pour (or parts) inside; click the corners, double-click to close (K)">Keep-out<kbd class="tk">K</kbd></button>
+      <button class="btn" data-tool="measure" title="Measure a distance: click, click (D). The ends stick to pads, vias, holes, track corners and the board's corners and edges; Shift: the grid only">Measure<kbd class="tk">D</kbd></button>
     </div>
     <select class="btn" id="layer" title="Copper layer for new tracks and pours (V; while routing V changes layer with a via)"><option value="F.Cu">Top copper</option><option value="B.Cu">Bottom copper</option></select>
     <select class="btn" id="grid" title="Grid"><option value="0.635">0.635 mm</option><option value="1.27" selected>1.27 mm</option><option value="2.54">2.54 mm</option><option value="0.5">0.5 mm</option><option value="1">1 mm</option></select>
@@ -180,6 +207,8 @@
         <div class="menu-sep"></div>
         <label class="menu-row" title="The drawing sheet's format: auto (the smallest that fits the board), A4–A0 landscape or portrait, or none"><span>Sheet</span><select id="sheet-pick" title="The drawing sheet's format: auto (the smallest that fits the board), A4–A0 landscape or portrait, or none"><option value="auto landscape">Sheet: auto, landscape</option><option value="auto portrait">Sheet: auto, portrait</option><option value="A4 landscape">A4 landscape (297 × 210 mm)</option><option value="A4 portrait">A4 portrait (210 × 297 mm)</option><option value="A3 landscape">A3 landscape (420 × 297 mm)</option><option value="A3 portrait">A3 portrait (297 × 420 mm)</option><option value="A2 landscape">A2 landscape (594 × 420 mm)</option><option value="A2 portrait">A2 portrait (420 × 594 mm)</option><option value="A1 landscape">A1 landscape (841 × 594 mm)</option><option value="A1 portrait">A1 portrait (594 × 841 mm)</option><option value="A0 landscape">A0 landscape (1189 × 841 mm)</option><option value="A0 portrait">A0 portrait (841 × 1189 mm)</option><option value="none">No sheet</option></select></label>
         <button class="menu-item check" role="menuitemcheckbox" id="btn-sheet-lock" title="Lock the drawing sheet where it is: it keeps its size and place when the board grows or shrinks (unlocked it follows the board)">Lock sheet</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item check active" role="menuitemcheckbox" id="btn-panels" title="The parts and nets on the left, the inspector, checks and layers on the right (\ hides both for more board)">Side panels<small>\</small></button>
         <div class="menu-sep"></div>
         <button class="menu-item" id="btn-3d" title="The board in 3D with its parts (3); export it as STEP">3D view<small>3</small></button>
       </div>
@@ -212,11 +241,17 @@
 
   <main>
     <section class="col left">
+      <div class="find"><input id="find" type="search" placeholder="Find a part or net" aria-label="Find a part or net" title="Filters the parts and nets (Ctrl+F); Enter selects and shows the first match"></div>
       <div class="tabs" role="tablist"><button class="tab active" data-tab="parts" role="tab">Parts <small id="parts-count"></small></button><button class="tab" data-tab="nets" role="tab">Nets <small id="nets-count"></small></button></div>
       <div id="parts"></div>
       <div id="nets" hidden></div>
     </section>
     <div id="stage"><canvas id="pcb" aria-label="Printed circuit board"></canvas>
+      <div id="hud" hidden></div>
+      <div class="zoombar" role="group" aria-label="Zoom">
+        <button class="zb" id="z-out" title="Zoom out (−)">−</button><button class="zb pct" id="z-pct" title="Zoom; 100 % is life size on a 96 dpi screen. Click: fit the board (F)">100%</button><button class="zb" id="z-in" title="Zoom in (+)">+</button><button class="zb" id="z-sel" title="Zoom to the selection, else the highlighted net (Z)">⌖</button>
+      </div>
+      <div id="ctx" class="menu-list ctx" role="menu" hidden></div>
       <div id="view3d" hidden>
         <canvas id="gl3d" aria-label="The board in 3D"></canvas>
         <div class="bar3d">
@@ -230,11 +265,11 @@
     </div>
     <aside class="col right">
       <div id="inspector"></div>
-      <h2>Design rules check <small id="drc-count"></small></h2>
-      <div id="drc"></div>
-      <h2>Layers <small>click a copper layer to make it active</small></h2>
-      <div class="layers" id="layers"></div>
-      <div class="opacity"><span>Inactive copper</span><input type="range" id="dim" min="0.1" max="1" step="0.05" value="0.5"></div>
+      <details class="sec" id="sec-drc" open><summary>Design rules check <small id="drc-count"></small></summary><div id="drc"></div></details>
+      <details class="sec" id="sec-layers" open><summary>Layers <small>click a copper layer to make it active</small></summary>
+        <div class="layers" id="layers"></div>
+        <div class="opacity"><span>Inactive copper</span><input type="range" id="dim" min="0.1" max="1" step="0.05" value="0.5"></div>
+      </details>
     </aside>
   </main>
 
@@ -252,6 +287,12 @@
       <div class="keys">
         <kbd>X</kbd><span>route a track: click a pad (or a track or via of the net), click corners, finish on a pad, track or via of the same net (or double-click). Corners line up with the net's pads, so tracks run straight into pads off the grid. <kbd>/</kbd> diagonal first (it turns that way by itself when straight-first would come too close); <kbd>Backspace</kbd> or <kbd>Ctrl+Z</kbd> takes back a corner</span>
         <kbd>V</kbd><span>while routing: change layer and drop a via; otherwise switch the active copper layer</span>
+        <kbd>W</kbd><span>while routing: the next track width (the class's, signal, power, the minimum, what the current asks); the card by the pointer shows net, width, layer and length</span>
+        <kbd>right-click</kbd><span>a menu for what is under the pointer: turn, flip or lock a part, route from a pad, a track's width or layer, a pour's shape, a via or hole right there</span>
+        <kbd>rest the pointer</kbd><span>a card shows the pad, part, track or via under it: its net, class, voltage and current</span>
+        <kbd>+ / −</kbd><span>zoom in / out (or the zoom bar, bottom right; its % fits the board) · <kbd>Z</kbd> zoom to the selection or the highlighted net</span>
+        <kbd>Ctrl+F</kbd><span>find a part or net; Enter selects (and shows) the first match, Esc clears</span>
+        <kbd>\</kbd><span>hide or show the side panels (View ▾ → Side panels)</span>
         <kbd>Backspace</kbd><span>while routing: take back the last segment</span>
         <kbd>Shift+V</kbd><span>via tool: click to place a via</span>
         <kbd>T</kbd><span>text tool: click to place a text on the active side's silkscreen</span>
@@ -279,7 +320,7 @@
         <kbd>F</kbd><span>fit the board · <kbd>Shift+F</kbd> the whole drawing sheet (View ▾ → Sheet or Board ▾ → Board setup… sets its format; View ▾ → Lock sheet keeps it in place)</span>
         <kbd>Esc</kbd><span>end routing / clear the selection</span>
         <kbd>Ctrl+Z</kbd><span>undo · <kbd>Ctrl+Y</kbd> redo</span>
-        <kbd>wheel</kbd><span>zoom at the pointer; right- or middle-drag, or Space-drag, pans</span>
+        <kbd>wheel</kbd><span>zoom at the pointer; right- or middle-drag, or Space-drag, pans (a right click without dragging opens the menu)</span>
       </div>
       <p class="help">Tube sockets are drawn from the component side: the pins run counter-clockwise from the gap. Footprints marked “check pinout” have pin orders that differ between makers.</p>
       <div style="text-align:right"><a class="btn" href="help.html#board" target="tube_help" title="Manual: board layout, rules, exports" style="margin-right:6px">Open the full manual ↗</a><button class="btn" id="btn-help-close">Close</button></div>

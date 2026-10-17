@@ -450,6 +450,13 @@ the circuit file, so one file holds both.
   everything else.
 - **Cross-probing:** a part picked on the board is selected in the schematic,
   and a part selected in the schematic is selected (and shown) on the board.
+- **Comfort:** a card at the pointer for pads, parts, tracks and vias (net,
+  class, voltage, current) and, while routing, for the route (net, width,
+  layer, length); <kbd>W</kbd> steps the width while routing; a right-click
+  menu for what is under the pointer; <kbd>+</kbd> / <kbd>−</kbd>, a zoom bar
+  and <kbd>Z</kbd> (zoom to the selection); <kbd>Ctrl</kbd>+<kbd>F</kbd> finds
+  a part or net; <kbd>\\</kbd> hides the side panels; the checks and layers
+  fold away; values never cover references.
 - **Tools:** Select, Route, Via, Text (silkscreen or copper), Mounting hole,
   Pour, Measure. The board's top-right corner handle resizes it; the origin
   stays put. Silkscreen text uses a

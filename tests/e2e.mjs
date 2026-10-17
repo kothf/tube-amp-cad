@@ -1217,6 +1217,14 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.waitForTimeout(150);
   const after = await bd.evaluate(() => { const S = BoardApp.state, it = S.conn.items.find(x => x.kind === "track"); return { un: S.conn.unrouted, tracks: S.board.tracks.length, net: it && S.model.names[it.net], shorts: S.conn.shorts.length }; });
   // a 2 mm HV track into a 2 mm pad needs no teardrop; at 0.8 mm it gets one at each end
+  // W while routing steps the width; the HUD by the pointer shows net, width, layer and length
+  {
+    const r0 = await sp("R1", "1"); await bd.click('[data-tool="route"]'); await bd.mouse.click(cv.x + r0[0], cv.y + r0[1]); await bd.mouse.move(cv.x + r0[0] + 40, cv.y + r0[1] + 5, { steps: 3 });
+    const w0 = await bd.evaluate(() => BoardApp.state.route && BoardApp.state.route.w); await bd.keyboard.press("w");
+    const w1 = await bd.evaluate(() => BoardApp.state.route && BoardApp.state.route.w), hud = await bd.evaluate(() => { const h = document.getElementById("hud"); return h.hidden ? "" : h.textContent; });
+    check(w0 && w1 && w1 !== w0 && w1 >= await bd.evaluate(() => BoardApp.state.board.rules.minTrack) && hud.includes(`${w1} mm`) && /mm ·|mm$/.test(hud), `W changes the track width while routing (${w0} → ${w1} mm); the card at the pointer shows it ("${hud.split("W width")[0].trim()}")`);
+    await bd.keyboard.press("Escape"); await bd.keyboard.press("Escape"); await bd.keyboard.press("s");
+  }
   const tears = await bd.evaluate(() => { const S = BoardApp.state, t = S.board.tracks[0], w0 = t.w, n0 = S.fills.filter(f => f.tear).length; t.w = 0.8; BoardApp.analyse(); const n1 = S.fills.filter(f => f.tear).length; t.w = w0; BoardApp.analyse(); return [n0, n1]; });
   check(tears[1] >= 1 && tears[1] > tears[0], `teardrops join a narrow track to its pads (${tears[1]} at 0.8 mm, ${tears[0]} for the 2 mm track)`);
   check(before.placed === 0 && after.tracks >= 1 && after.un === before.un - 1 && after.net === m0.anode && !after.shorts, `routing a track with the mouse joins R1 to the anode on ${after.net}: ${before.un} → ${after.un} connections to route${after.tracks ? "" : " — " + await bd.textContent("#st-msg")}`);
@@ -1483,6 +1491,43 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   {
     const nn = await bd.evaluate(() => Object.values(BoardApp.state.model.names));
     check(nn.some(n => /^VL1(\.\d)?-A$/.test(n)) && nn.some(n => /^VL1(\.\d)?-K$/.test(n)) && !nn.some(n => /^Net-\(/.test(n)), `nets are named for what they are (${nn.slice(0, 8).join(", ")} …)`);
+  }
+
+  // comfort: the find box, zoom keys and bar, the card at the pointer, the right-click menu, the side panels
+  {
+    await bd.keyboard.press("Escape"); await bd.evaluate(() => BoardApp.fit()); await bd.waitForTimeout(100);
+    await bd.keyboard.press("Control+f"); const focused = await bd.evaluate(() => document.activeElement && document.activeElement.id);
+    await bd.keyboard.type("VL1"); await bd.waitForTimeout(100);
+    const found = await bd.evaluate(() => [...document.querySelectorAll("#parts .item span")].map(e => e.textContent));
+    await bd.keyboard.press("Enter"); await bd.waitForTimeout(100);
+    const picked = await bd.evaluate(() => { const S = BoardApp.state; return S.sel && S.sel.kind === "part" && S.model.parts.find(g => g.key === S.sel.key).ref; });
+    check(focused === "find" && found[0] === "VL1" && found.length === 1 && picked === "VL1", `Ctrl+F finds a part (${found.join(", ")}); Enter selects it`);
+    await bd.fill("#find", ""); await bd.locator("#find").press("Escape");
+    // zoom keys and the zoom bar
+    await bd.locator("#pcb").focus();
+    const z0 = await bd.evaluate(() => BoardApp.state.view.scale); await bd.keyboard.press("Equal"); const z1 = await bd.evaluate(() => BoardApp.state.view.scale);
+    await bd.click("#z-out"); const z2 = await bd.evaluate(() => BoardApp.state.view.scale);
+    await bd.keyboard.press("z"); const z3 = await bd.evaluate(() => BoardApp.state.view.scale);
+    check(Math.abs(z1 / z0 - 1.25) < 1e-6 && Math.abs(z2 / z1 - 0.8) < 1e-6 && z3 > z0 && /%$/.test(await bd.textContent("#z-pct")), `+ and the zoom bar zoom in and out; Z zooms to the selection (${z0.toFixed(1)} → ${z3.toFixed(1)} px/mm, ${await bd.textContent("#z-pct")})`);
+    // the card at the pointer: a pad's net
+    const cvz = await bd.locator("#pcb").boundingBox(), pad = await bd.evaluate(() => { const p = BoardApp.state.model.pads.find(q => q.ref === "VL1" && q.num === "6"); return [...BoardApp.toScreen(p.x, p.y), p.netName]; });
+    await bd.mouse.move(cvz.x + pad[0], cvz.y + pad[1]); await bd.mouse.move(cvz.x + pad[0] + 1, cvz.y + pad[1]); await bd.waitForTimeout(600);
+    const card = await bd.evaluate(() => { const h = document.getElementById("hud"); return h.hidden ? "" : h.textContent; });
+    check(card.includes("VL1-6") && card.includes(pad[2]), `resting on a pad shows its net by the pointer ("${card}")`);
+    // right-click the valve: Turn 90° from the menu
+    const rot0 = await bd.evaluate(() => BoardApp.state.board.parts[BoardApp.state.model.parts.find(g => g.ref === "VL1").key].rot || 0);
+    const body = await bd.evaluate(() => { const g = BoardApp.state.model.parts.find(x => x.ref === "VL1"); return BoardApp.toScreen(g.place.x, g.place.y + 7.5); });
+    await bd.mouse.click(cvz.x + body[0], cvz.y + body[1], { button: "right" }); await bd.waitForTimeout(100);
+    const menu = await bd.evaluate(() => [...document.querySelectorAll("#ctx .menu-item span")].map(e => e.textContent));
+    await bd.locator("#ctx .menu-item", { hasText: "Turn 90°" }).click();
+    const rot1 = await bd.evaluate(() => BoardApp.state.board.parts[BoardApp.state.model.parts.find(g => g.ref === "VL1").key].rot || 0);
+    check(menu.includes("Turn 90°") && menu.includes("Lock") && rot1 === ((rot0 + 1) & 3) && await bd.evaluate(() => document.getElementById("ctx").hidden), `right-click on a part offers what fits it (${menu.join(", ")}); Turn 90° turns it`);
+    await bd.keyboard.press("Control+z");
+    // \ hides the side panels, again shows them
+    await bd.locator("#pcb").focus(); await bd.keyboard.press("Backslash"); const bare = await bd.evaluate(() => [document.querySelector(".col.left").offsetParent === null, document.getElementById("pcb").clientWidth]);
+    await bd.keyboard.press("Backslash"); const back2 = await bd.evaluate(() => [document.querySelector(".col.left").offsetParent !== null, document.getElementById("pcb").clientWidth]);
+    await bd.evaluate(() => BoardApp.fit()); await bd.waitForTimeout(100);
+    check(bare[0] && back2[0] && bare[1] > back2[1] + 300, `\\ hides the side panels for more board (${back2[1]} → ${bare[1]} px) and brings them back`);
   }
 
   // a keep-out drawn with the mouse (K, four corners, double-click); the check reports a track through it

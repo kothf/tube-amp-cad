@@ -560,13 +560,142 @@
   function ensureVisible(x, y) { const [sx, sy] = [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy]; if (sx < 40 || sy < 40 || sx > canvas.clientWidth - 40 || sy > canvas.clientHeight - 40) centerOn(x, y); }
 
   // ---------------------------------------------------------------------------
+  // Comfort: zoom, the card at the pointer, the route's width, the right-click menu
+  // ---------------------------------------------------------------------------
+  // the side panels hidden (\\): more room for the board
+  function setBare(on) {
+    S.bare = on; document.querySelector("main").classList.toggle("bare", on); $("btn-panels").classList.toggle("active", !on);
+    window.dispatchEvent(new Event("resize")); msg(on ? "Side panels hidden (\\ or View ▾ brings them back)" : "Side panels shown");
+  }
+  function zoomAt(f, sx, sy) {
+    if (sx === undefined) { sx = canvas.clientWidth / 2; sy = canvas.clientHeight / 2; }
+    const s = Math.max(0.5, Math.min(80, S.view.scale * f)), k = s / S.view.scale;
+    S.view.ox = sx - (sx - S.view.ox) * k; S.view.oy = sy - (sy - S.view.oy) * k; S.view.scale = s; render();
+  }
+  // the selection's extent, else the highlighted net's pads
+  function zoomToSel() {
+    const bx = []; const add = (x1, y1, x2, y2) => bx.push([x1, y1, x2, y2]);
+    selItems().forEach(([k, id]) => {
+      if (k === "part") { const g = S.model && S.model.parts.find(x => x.key === id); if (g && g.place) { const b = partBox(g); add(b.x1, b.y1, b.x2, b.y2); } }
+      else { const o = objOf(k, id); if (!o) return; if (o.pts) o.pts.forEach(p => add(p[0], p[1], p[0], p[1])); else add(o.x - 2, o.y - 2, o.x + 2, o.y + 2); }
+    });
+    if (S.sel && AREAS[S.sel.kind]) { const a = S.board[AREAS[S.sel.kind]][S.sel.i]; if (a) areaPoly(S.sel.kind, a).forEach(p => add(p[0], p[1], p[0], p[1])); }
+    if (!bx.length && S.netHL !== null && S.model) S.model.pads.filter(p => p.net === S.netHL).forEach(p => add(p.x - p.w, p.y - p.h, p.x + p.w, p.y + p.h));
+    if (!bx.length) { fit(); return; }
+    const x1 = Math.min(...bx.map(b => b[0])) - 4, y1 = Math.min(...bx.map(b => b[1])) - 4, x2 = Math.max(...bx.map(b => b[2])) + 4, y2 = Math.max(...bx.map(b => b[3])) + 4;
+    const W = canvas.clientWidth, H = canvas.clientHeight, sc = Math.max(0.5, Math.min(40, W / (x2 - x1), H / (y2 - y1)));
+    S.view.scale = sc; S.view.ox = W / 2 - (x1 + x2) / 2 * sc; S.view.oy = H / 2 - (y1 + y2) / 2 * sc; render();
+  }
+  // While routing: W steps through the useful widths (the class's, signal, power, the minimum, what the
+  // current asks); the corners placed so far keep the old width
+  function routeWidth() {
+    const r = S.route, R = S.board.rules, need = Math.ceil(B.currentWidth((S.amps || {})[r.net], R, S.board.stackup) * 20) / 20;
+    const opts = [...new Set([trackWidth(r.net), R.track, R.power, R.minTrack, need].filter(v => v >= R.minTrack - 1e-9).map(v => +(+v).toFixed(2)))].sort((a, b) => a - b);
+    const w = opts[(opts.indexOf(+r.w.toFixed(2)) + 1) % opts.length];
+    if (r.pts.length > 1) { r.segs.push({ layer: r.layer, w: r.w, pts: r.pts.slice() }); r.pts = [r.pts[r.pts.length - 1]]; }
+    r.w = w; S.routeBad = routeCheck();
+    msg(`Track width ${w} mm${w < need - 1e-9 ? ` (narrower than the ${need} mm its ${B.fmtA((S.amps || {})[r.net])} asks)` : ""} · W: next width (${opts.join(" / ")} mm)`); render(); hudNow();
+  }
+  // the card at the pointer: what is under it (after a short rest), or the route being drawn
+  let hudTimer = 0, hudAt = null;
+  const fmtV = v => (v === undefined || v === null ? "" : `${Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)} V`);
+  function hudText(x, y) {
+    if (S.route) {
+      const r = S.route, pts = r.pts.concat([[S.mouse[0], S.mouse[1]]]); let len = 0;
+      r.segs.forEach(t => { for (let k = 1; k < t.pts.length; k++) len += Math.hypot(t.pts[k][0] - t.pts[k - 1][0], t.pts[k][1] - t.pts[k - 1][1]); });
+      for (let k = 1; k < pts.length; k++) len += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
+      const bad = S.routeBad;
+      return `<b>${esc(netName(r.net))}</b> · ${r.w} mm · ${r.layer === "F.Cu" ? "top" : "bottom"} · ${len.toFixed(1)} mm` + (bad ? `<br><span class="bad">too close to ${esc(bad.what)}: ${Math.max(0, bad.g).toFixed(2)} &lt; ${bad.need} mm</span>` : "") +
+        `<br><span class="mut">W width · V via · / bend · ⌫ corner · Esc end</span>`;
+    }
+    if (S.tool !== "select" || S.drag || !S.model) return "";
+    const volts = (S.netlist && S.netlist.volts) || {}, p = hitPad(x, y);
+    const netLine = n => { const I = (S.amps || {})[n]; return `${esc(netName(n))} <span class="mut">${classOf(n)}${volts[n] !== undefined ? " · " + fmtV(volts[n]) : ""}${I ? " · " + B.fmtA(I) : ""}</span>`; };
+    if (p) return `<b>${esc(p.ref)}-${esc(p.num)}</b>${p.name !== p.num ? " " + esc(p.name) : ""} · ${p.net === null ? "<span class='mut'>no net</span>" : netLine(p.net)}`;
+    const vi = hitVia(x, y); if (vi >= 0) { const it = S.conn && S.conn.items.find(q => q.kind === "via" && q.vi === vi); return `<b>Via</b> · ${it && it.net !== null ? netLine(it.net) : "<span class='mut'>no net</span>"}`; }
+    const h = hitSeg(x, y); if (h) { const t = S.board.tracks[h.i], n = netOfTrack(h.i); return `<b>Track</b> ${t.w} mm · ${t.layer === "F.Cu" ? "top" : "bottom"} · ${n === null ? "<span class='mut'>no net</span>" : netLine(n)}`; }
+    const g = hitPart(x, y);
+    if (g) { const gr = S.gg && S.gg.byPart.get(g.key); return `<b>${esc(g.ref)}</b> ${esc(g.value || "")} <span class="mut">· ${esc(g.fp.name)}${g.place.side === "B" ? " · bottom" : ""}${g.place.locked ? " · locked" : ""}${gr ? " · ground: " + esc(gr.group) : ""}</span>`; }
+    return "";
+  }
+  function placeHud(el) {
+    const st = $("stage").getBoundingClientRect(), [mx, my] = hudAt || [0, 0], w = el.offsetWidth, h = el.offsetHeight;
+    let left = mx - st.left + 16, top = my - st.top + 18;
+    if (left + w > st.width - 6) left = mx - st.left - w - 12;
+    if (top + h > st.height - 6) top = my - st.top - h - 12;
+    el.style.left = Math.max(4, left) + "px"; el.style.top = Math.max(4, top) + "px";
+  }
+  function hudNow() { const el = $("hud"); if (!hudAt) { el.hidden = true; return; } const [x, y] = S.mouse, t = hudText(x, y); el.hidden = !t; if (t) { el.innerHTML = t; placeHud(el); } }
+  function hudMove(e) {
+    const el = $("hud"); clearTimeout(hudTimer);
+    if (e.target !== canvas || !$("ctx").hidden) { hudAt = null; el.hidden = true; return; }
+    hudAt = [e.clientX, e.clientY];
+    if (S.route) { hudNow(); return; }
+    el.hidden = true; hudTimer = setTimeout(hudNow, 380);
+  }
+
+  // the right-click menu: what can be done with the thing under the pointer
+  function closeCtx() { $("ctx").hidden = true; }
+  function openCtx(cx, cy, x, y) {
+    const items = [], it = (label, key, fn, dis) => items.push({ label, key, fn, dis }), sep = () => items.push(null);
+    let title = "";
+    const p = hitPad(x, y), vi = hitVia(x, y), hi = hitHole(x, y), ti = hitText(x, y), seg = hitSeg(x, y), g = hitPart(x, y), ar = hitArea(x, y);
+    if (vi >= 0 || hi >= 0 || ti >= 0) {
+      const kind = vi >= 0 ? "via" : hi >= 0 ? "hole" : "text", i = vi >= 0 ? vi : hi >= 0 ? hi : ti, o = objOf(kind, i);
+      S.sel = { kind, i }; title = { via: "Via", hole: "Mounting hole", text: `Text "${o.text}"` }[kind];
+      if (kind === "text") it("Turn 90°", "R", rotateSel);
+      it(o.locked ? "Unlock" : "Lock", "L", lockSel); sep(); it("Delete", "Del", deleteSel);
+    } else if (seg) {
+      const t = S.board.tracks[seg.i], n = netOfTrack(seg.i), R = S.board.rules; S.sel = { kind: "track", i: seg.i };
+      title = `Track · ${netName(n)} · ${t.w} mm`;
+      it("Select the whole track", "U", selectConnected);
+      [[R.track, "signal"], [R.power, "power"], [R.minTrack, "minimum"]].filter(([w]) => w !== t.w).forEach(([w, nm]) => it(`Width ${w} mm (${nm})`, "", () => { if (t.locked) return lockedNote(); t.w = w; commit(`Track ${w} mm`); }));
+      it(`Move to the ${t.layer === "F.Cu" ? "bottom" : "top"} layer`, "", () => { if (t.locked) return lockedNote(); t.layer = t.layer === "F.Cu" ? "B.Cu" : "F.Cu"; commit(`Track moved to ${t.layer}`); });
+      if (n !== null && n !== "short") it(`Highlight ${netName(n)}`, "`", () => highlightNet(n));
+      it(t.locked ? "Unlock" : "Lock", "L", lockSel); sep(); it("Delete", "Del", deleteSel);
+    } else if (g) {
+      selectPart(g); const bp = S.board.parts[g.key];
+      title = `${g.ref} · ${g.value || g.fp.name}`;
+      if (p) {
+        it(`Route from ${p.ref}-${p.num}`, "X", () => { setTool("route"); startRoute(p.x, p.y); });
+        if (p.net !== null) it(`Highlight ${netName(p.net)}`, "`", () => highlightNet(p.net));
+        sep();
+      }
+      it("Turn 90°", "R", rotateSel); it(`Move to the ${(bp.side || "F") === "F" ? "bottom" : "top"} side`, "M", flipSel); it(bp.locked ? "Unlock" : "Lock", "L", lockSel);
+      it("Zoom to it", "Z", zoomToSel);
+    } else if (ar) {
+      S.sel = { kind: ar.kind, i: ar.i }; const a = S.board[AREAS[ar.kind]][ar.i];
+      title = ar.kind === "zone" ? `Copper pour · ${a.net}` : "Keep-out area";
+      if (a.pts) it("Add a corner here", "", () => { if (a.locked) return lockedNote(); let best = 0, bd = Infinity; a.pts.forEach((q, k) => { const r = a.pts[(k + 1) % a.pts.length], d = B.segDist(q[0], q[1], r[0], r[1], x, y); if (d < bd) { bd = d; best = k; } }); a.pts.splice(best + 1, 0, [snap(x), snapY(y)]); commit(`Corner added: ${a.pts.length} corners`); });
+      if (ar.kind === "zone") {
+        it("Round the parts", "", () => { if (a.locked) return lockedNote(); const P = pourAround(onBoardKeys()); if (P) { a.pts = P; commit(`Pour round the parts: ${P.length} corners`); } });
+        it("Over the whole board", "", () => { if (a.locked) return lockedNote(); a.pts = boardShape(); commit("Pour over the whole board"); });
+      }
+      it(a.locked ? "Unlock" : "Lock", "L", () => { a.locked = !a.locked; commit(a.locked ? "Locked" : "Unlocked"); }); sep(); it("Delete", "Del", deleteSel);
+    } else {
+      title = `x ${x.toFixed(1)}  y ${showY(y).toFixed(1)} mm`;
+      const here = tool => () => { S.tool = tool; placeAt(snap(x), snapY(y)); setTool("select"); };
+      it("Via here", "⇧V", here("via")); it("Mounting hole here", "H", here("hole")); it("Text here", "T", here("text"));
+      sep(); it("Fit the board", "F", fit); if (S.sel) it("Zoom to the selection", "Z", zoomToSel); if (S.sel) it("Clear the selection", "Esc", () => { S.sel = null; });
+    }
+    renderPanels(); render();
+    const el = $("ctx");
+    el.innerHTML = (title ? `<div class="ctx-title">${esc(title)}</div>` : "") + items.map((m, k) => (m ? `<button class="menu-item" data-k="${k}" ${m.dis ? "disabled" : ""}><span>${esc(m.label)}</span>${m.key ? `<kbd>${esc(m.key)}</kbd>` : ""}</button>` : `<div class="menu-sep"></div>`)).join("");
+    el.querySelectorAll("[data-k]").forEach(b => b.addEventListener("click", () => { closeCtx(); items[+b.dataset.k].fn(); renderPanels(); render(); }));
+    el.hidden = false; $("hud").hidden = true;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    el.style.left = Math.min(cx, innerWidth - w - 6) + "px"; el.style.top = Math.min(cy, innerHeight - h - 6) + "px";
+  }
+
+  // ---------------------------------------------------------------------------
   // Mouse and keyboard
   // ---------------------------------------------------------------------------
   function evPos(e) { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
   function onDown(e) {
     canvas.focus();
     const [sx, sy] = evPos(e), [x, y] = toWorld(sx, sy);
-    if (e.button === 1 || e.button === 2 || S.space) { S.drag = { kind: "pan", sx, sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
+    closeCtx();
+    if (e.button === 1 || e.button === 2 || S.space) { S.drag = { kind: "pan", sx, sy, ox: S.view.ox, oy: S.view.oy, menu: e.button === 2 && !S.space && !S.route && !S.poly }; e.preventDefault(); return; }
     if (S.tool === "route") { if (S.route) routeClick(e); else startRoute(x, y); return; }
     if (S.tool === "pour" || S.tool === "keepout") {
       const pt = [snap(x), snapY(y)];
@@ -660,14 +789,19 @@
     const p = hitPad(x, y);
     S.hover = p ? p.net : null;
     S.snapHint = S.tool === "measure" ? snapPoint(x, y, e.shiftKey || e.altKey) : null;
-    canvas.style.cursor = S.tool === "select" && onHandle(x, y) ? "nesw-resize" : S.tool === "select" && onEdge(x, y) ? "move" : S.tool === "select" ? "" : "crosshair";
+    // the part under the pointer gets a faint outline and the move cursor
+    const hp = S.tool === "select" && !d && e.target === canvas ? hitPart(x, y) : null, hk = hp ? hp.key : null;
+    if (hk !== S.hoverPart) { S.hoverPart = hk; render(); }
+    canvas.style.cursor = S.tool === "select" && onHandle(x, y) ? "nesw-resize" : S.tool === "select" && (onEdge(x, y) || (hp && !p)) ? "move" : S.tool === "select" ? "" : "crosshair";
+    hudMove(e);
     const zone = sheetZone(x, y);
     $("st-pos").textContent = `x ${x.toFixed(2)}  y ${showY(y).toFixed(2)} mm` + (zone ? ` · ${zone}` : "") + (p ? ` · ${p.ref}-${p.num}${p.name !== p.num ? " (" + p.name + ")" : ""} · ${p.netName || "no net"} (${classOf(p.net)})` : "");
     if (S.route) S.routeBad = routeCheck();
     if (S.route || p || S.measure || S.tool !== "select") render();
   }
-  function onUp() {
+  function onUp(e) {
     const d = S.drag; S.drag = null;
+    if (d && d.kind === "pan" && d.menu && e && Math.hypot(S.view.ox - d.ox, S.view.oy - d.oy) < 3) { const [x, y] = toWorld(...evPos(e)); openCtx(e.clientX, e.clientY, x, y); return; }
     if (d && d.kind === "box") {
       if (d.moved) { boxSelect(d.x0, d.y0, d.x1, d.y1, d.x1 < d.x0, d.add); const n = selItems().length; msg(n ? `${n} selected: drag one to move them all, R turns them, arrows nudge, L locks, the inspector aligns` : "Nothing in the box"); }
       else if (!d.add) S.sel = null;
@@ -694,7 +828,8 @@
   function onKey(e) {
     const tag = (e.target.tagName || "").toUpperCase();
     if (e.key === "F1") { e.preventDefault(); toggle("help-modal"); return; }
-    if (e.key === "Escape") { const open = MODALS.find(id => !$(id).hidden); if (open) { $(open).hidden = true; return; } }
+    if (e.key === "Escape") { const open = MODALS.find(id => !$(id).hidden); if (open) { $(open).hidden = true; return; } if (!$("ctx").hidden) { closeCtx(); return; } }
+    if ((e.ctrlKey || e.metaKey) && (e.code === "KeyF" || String(e.key).toLowerCase() === "f")) { e.preventDefault(); $("find").focus(); $("find").select(); return; }
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
     if (!$("view3d").hidden) { if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); } return; }
     if (e.code === "Digit3" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); open3D(); return; }
@@ -716,7 +851,12 @@
     if (ctrl && L === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (ctrl && L === "y") { e.preventDefault(); redo(); return; }
     if (ctrl) return;
-    if (L === "x") setTool(S.tool === "route" ? "select" : "route");
+    if (L === "w" && S.route) routeWidth();
+    else if (e.code === "Equal" || e.code === "NumpadAdd" || e.key === "+") zoomAt(1.25);
+    else if (e.code === "Minus" || e.code === "NumpadSubtract" || e.key === "-") zoomAt(0.8);
+    else if (L === "z") zoomToSel();
+    else if (e.code === "Backslash" || e.key === "\\") setBare(!S.bare);
+    else if (L === "x") setTool(S.tool === "route" ? "select" : "route");
     else if (L === "v" && e.shiftKey) setTool("via");
     else if (L === "v") { if (S.route) routeVia(); else setLayer(S.layer === "F.Cu" ? "B.Cu" : "F.Cu"); }
     else if (L === "t") setTool("text");
@@ -1039,7 +1179,16 @@
       S.board.texts.forEach((t, i) => { if (t.layer === layer) drawText(t, selColor("text", i, COLORS[layer])); });
       ctx.globalAlpha = 1;
     });
-    // silkscreen: bottom first (mirrored footprints), then top
+    // silkscreen: bottom first (mirrored footprints), then top. Each part's value (a screen note, not
+    // silkscreen) goes inside its outline when it fits, else under it, and only where it covers no
+    // reference and no other value
+    const silk = new Map(), taken = [];
+    const overlaps = r => taken.some(t => r.x1 < t.x2 && r.x2 > t.x1 && r.y1 < t.y2 && r.y2 > t.y1);
+    if (S.model) S.model.parts.forEach(g => {
+      if (!g.place) return;
+      const ops = BoardFab.partSilk(g); silk.set(g.key, ops);
+      ops.filter(o => o.ref).forEach(o => { const xs = o.pts.map(q => q[0]), ys = o.pts.map(q => q[1]); taken.push({ x1: Math.min(...xs) - 0.3, y1: Math.min(...ys) - 0.3, x2: Math.max(...xs) + 0.3, y2: Math.max(...ys) + 0.3 }); });
+    });
     ["B", "F"].forEach(side => {
       const L = side + ".SilkS"; if (!S.show[L]) return;
       S.board.texts.forEach((t, i) => { if (t.layer === L) drawText(t, selColor("text", i, COLORS[L])); });
@@ -1047,10 +1196,16 @@
         if (!g.place || (g.place.side || "F") !== side) return;
         const sel = isSel("part", g.key);
         // the silkscreen as it will be made (outline and reference in the stroke font)
-        const ops = BoardFab.partSilk(g); if (px > 0.15) ops.forEach(o => { if (o.t === "line") o.w = Math.max(o.w, px); });
+        const ops = (silk.get(g.key) || BoardFab.partSilk(g)).map(o => (o.t === "line" && px > 0.15 ? { ...o, w: Math.max(o.w, px) } : o));
         BoardFab.paint(ctx, ops, sel ? "#00e5ff" : COLORS[L], "erase");
         const b = partBox(g);
-        if (scale > 6) { ctx.font = `${Math.max(1, 9 * px)}px ui-monospace, monospace`; ctx.fillStyle = "#8b949e"; ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText(g.value, (b.x1 + b.x2) / 2, b.y2 + 0.3); }
+        if (scale > 6 && g.value) {
+          const fh = Math.max(1, 9 * px); ctx.font = `${fh}px ui-monospace, monospace`;
+          const tw = ctx.measureText(g.value).width, cx = (b.x1 + b.x2) / 2, inside = tw <= (b.x2 - b.x1) * 0.9 && fh <= (b.y2 - b.y1) * 0.5;
+          const ty = inside ? (b.y1 + b.y2) / 2 + (g.type === "tube" ? (b.y2 - b.y1) * 0.27 : fh * 0.6) : b.y2 + 0.3, r = { x1: cx - tw / 2, x2: cx + tw / 2, y1: inside ? ty - fh / 2 : ty, y2: inside ? ty + fh / 2 : ty + fh };
+          if (!overlaps(r)) { taken.push(r); ctx.fillStyle = "#8b949e"; ctx.textAlign = "center"; ctx.textBaseline = inside ? "middle" : "top"; ctx.fillText(g.value, cx, ty); }
+        }
+        if (!sel && S.hoverPart === g.key && S.tool === "select") { ctx.strokeStyle = "rgba(230,237,243,0.35)"; ctx.setLineDash([3 * px, 3 * px]); ctx.lineWidth = px; ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1); ctx.setLineDash([]); }
         if (sel) { ctx.strokeStyle = "rgba(0,229,255,0.6)"; ctx.setLineDash([4 * px, 3 * px]); ctx.lineWidth = px; ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1); ctx.setLineDash([]); }
       });
     });
@@ -1167,6 +1322,7 @@
     // the board's resize handle (select tool)
     if (S.tool === "select" && S.show["Edge.Cuts"]) { const t = 5 * px; ctx.fillStyle = COLORS["Edge.Cuts"]; ctx.fillRect(o.w - t, -t, 2 * t, 2 * t); }
     if (S.axes) axisMarks(W, H);
+    $("z-pct").textContent = `${Math.round(S.view.scale / 3.7795 * 100)}%`;
     const c = S.conn, errs = errors();
     $("st-rats").textContent = c ? (c.unrouted ? `${c.unrouted} connection${c.unrouted > 1 ? "s" : ""} to route` : "All connections routed") : "";
     // green only when the board is finished: no violations, nothing to route; warnings in amber
@@ -1265,18 +1421,27 @@
     if (!M) { host.innerHTML = `<p class="help">The parts arrive from the Circuit CAD.</p>`; $("parts-count").textContent = ""; }
     else {
       const unplaced = new Set(S.drc.filter(d => d.kind === "unplaced").map(d => d.msg.split(" ")[0]));
-      const row = g => `<button class="item${isSel("part", g.key) ? " active" : ""}" data-key="${esc(g.key)}"><span>${esc(g.ref)}</span><em>${esc(g.fp ? g.fp.name : "")}</em></button>`;
-      const on = M.parts.filter(g => !unplaced.has(g.ref)), off = M.parts.filter(g => unplaced.has(g.ref));
-      host.innerHTML = (off.length ? `<button class="btn" id="btn-arrange" style="width:100%;margin:2px 0 6px" title="Put the parts waiting below the board where they sit in the schematic (the schematic's extent mapped onto the board), each in the free spot nearest its place: a starting point that follows the signal">Place all on the board</button><h2>To place <small>${off.length}</small></h2>${off.map(row).join("")}` : "") + `<h2>On the board <small>${on.length}</small></h2>${on.map(row).join("")}`;
+      const row = g => `<button class="item${isSel("part", g.key) ? " active" : ""}" data-key="${esc(g.key)}" title="${esc(g.ref)} ${esc(g.value || "")} · ${esc(g.fp ? g.fp.name : "")}"><span>${esc(g.ref)}</span><em>${esc(g.value || (g.fp ? g.fp.name : ""))}</em></button>`;
+      const q = (S.find || "").trim().toLowerCase(), hit = g => !q || [g.ref, g.value, g.fp && g.fp.name].some(t => String(t || "").toLowerCase().includes(q));
+      // an exact reference first, then references that start with it, then anything that contains it
+      const rank = g => { const r = g.ref.toLowerCase().replace(/'+$/, ""); return !q ? 0 : r === q ? 0 : r.startsWith(q) ? 1 : 2; };
+      const on = M.parts.filter(g => !unplaced.has(g.ref) && hit(g)).sort((a, b) => rank(a) - rank(b)), off = M.parts.filter(g => unplaced.has(g.ref) && hit(g)).sort((a, b) => rank(a) - rank(b));
+      host.innerHTML = (q && !on.length && !off.length ? `<p class="help">No part matches “${esc(S.find)}”.</p>` : "") + (off.length ? `<button class="btn" id="btn-arrange" style="width:100%;margin:2px 0 6px" title="Put the parts waiting below the board where they sit in the schematic (the schematic's extent mapped onto the board), each in the free spot nearest its place: a starting point that follows the signal">Place all on the board</button><h2>To place <small>${off.length}</small></h2>${off.map(row).join("")}` : "") + `<h2>On the board <small>${on.length}</small></h2>${on.map(row).join("")}`;
       $("parts-count").textContent = `${M.parts.length}`;
       host.querySelectorAll(".item").forEach(b => b.addEventListener("click", () => { const g = M.parts.find(x => x.key === b.dataset.key); selectPart(g); centerOn(g.place.x, g.place.y); renderPanels(); }));
       const ab = $("btn-arrange");
       if (ab) ab.onclick = () => { const left = B.arrange(S.board, M, off.map(g => g.key), S.netlist); commit(left ? `${left} part${left > 1 ? "s" : ""} did not fit: make the board larger` : `Placed ${off.length} parts where they sit in the schematic, so the signal runs across the board as on the sheet`); fit(); };
     }
     renderInspector();
-    const dh = $("drc"), list = S.drc.slice().sort((a, b) => NOTE.includes(a.kind) - NOTE.includes(b.kind));
+    const dh = $("drc"), list = S.drc.slice().sort((a, b) => NOTE.includes(a.kind) - NOTE.includes(b.kind) || String(a.kind).localeCompare(String(b.kind)));
     $("drc-count").textContent = list.length ? String(list.length) : "";
-    dh.innerHTML = list.length ? list.slice(0, 200).map((d, i) => `<button class="drc ${NOTE.includes(d.kind) && d.kind !== "unplaced" ? "check" : d.kind}" data-i="${i}">${esc(d.msg)}${d.between ? ` <span class="help">(${esc(d.between.join(" – "))})</span>` : ""}</button>`).join("") : `<p class="help">${M ? "No problems." : ""}</p>`;
+    // grouped by kind once the list grows: errors first, then warnings
+    const KN = { ...CHECK_NAMES, unplaced: "Parts not placed", check: "To check", short: "Shorts", edge: "Board edge" }, grouped = list.length > 6;
+    let lastK = null;
+    dh.innerHTML = list.length ? list.slice(0, 200).map((d, i) => {
+      const head = grouped && d.kind !== lastK ? `<div class="drc-group"><span>${esc(KN[d.kind] || d.kind)}</span><span>${list.filter(x => x.kind === d.kind).length}</span></div>` : ""; lastK = d.kind;
+      return head + `<button class="drc ${NOTE.includes(d.kind) && d.kind !== "unplaced" ? "check" : d.kind}" data-i="${i}" title="Click: show it on the board">${esc(d.msg)}${d.between ? ` <span class="help">(${esc(d.between.join(" – "))})</span>` : ""}</button>`;
+    }).join("") : `<p class="help">${M ? "No problems." : ""}</p>`;
     dh.querySelectorAll(".drc").forEach(b => b.addEventListener("click", () => { const d = list[+b.dataset.i]; if (S.view.scale < 8) S.view.scale = 8; centerOn(d.x, d.y); }));
     renderLayers(); renderNets();
   }
@@ -1289,7 +1454,7 @@
     S.board.tracks.forEach((t, i) => { const n = netOfTrack(i); if (n === null) return; for (let k = 0; k + 1 < t.pts.length; k++) len[n] = (len[n] || 0) + Math.hypot(t.pts[k + 1][0] - t.pts[k][0], t.pts[k + 1][1] - t.pts[k][1]); });
     const pour = new Set(S.fills.filter(f => !f.tear).map(f => f.net));
     const rows = nets.map(n => ({ n, name: netName(n), cls: classOf(n), pads: M.pads.filter(p => p.net === n).length, todo: todo[n] || 0, len: len[n] || 0, I: (S.amps || {})[n] || 0 }))
-      .filter(r => r.pads > 1 || r.len).sort((a, b) => (b.todo > 0) - (a.todo > 0) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+      .filter(r => (r.pads > 1 || r.len) && (!(S.find || "").trim() || r.name.toLowerCase().includes(S.find.trim().toLowerCase()))).sort((a, b) => (b.todo > 0) - (a.todo > 0) || a.name.localeCompare(b.name, undefined, { numeric: true }));
     $("nets-count").textContent = String(rows.length);
     host.innerHTML = `<p class="help">Click a net to highlight it (again: off), or point at a pad and press the key left of 1 (\`).</p>` + rows.map(r => `<button class="net${r.n === S.netHL ? " active" : ""}" data-n="${esc(r.n)}" title="${esc(r.name)}: ${r.pads} pads, ${r.len.toFixed(1)} mm of track${pour.has(r.n) ? ", copper pour" : ""}${r.I ? `, ${B.fmtA(r.I)} DC: ${B.currentWidth(r.I, S.board.rules, S.board.stackup)} mm wide at least` : ""}">
       <span class="nm">${esc(r.name)}${r.I >= 0.001 ? ` <small class="help">${B.fmtA(r.I)}</small>` : ""}</span><span class="cls cls-${r.cls}">${r.cls}</span><span class="${r.todo ? "todo" : "done"}">${r.todo ? `${r.todo} to route` : pour.has(r.n) ? "pour ✓" : "✓"}</span></button>`).join("");
@@ -1328,7 +1493,7 @@
       const g = S.model.parts.find(x => x.key === s.key); if (!g) { S.sel = null; return renderInspector(); }
       const bp = S.board.parts[g.key];
       h.innerHTML = `<div class="insp-title">${esc(g.ref)} <small class="help">${esc(g.value)}</small></div>`;
-      h.appendChild(field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.map(n => { const f = B.footprint(n); return [n, f ? f.title.replace(/^(.{0,40}).*$/, "$1") + ` (${n})` : n]; })));
+      const ff = field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.map(n => { const f = B.footprint(n); return [n, f ? `${n} — ${f.title.replace(/^(.{0,48}).*$/, "$1")}` : n]; })); ff.classList.add("wide"); h.appendChild(ff);
       partPreview(h, g);
       h.appendChild(field("X (mm)", +bp.x.toFixed(3), v => { bp.x = v; commit(); }));
       h.appendChild(field("Y (mm)", +showY(bp.y).toFixed(3), v => { bp.y = showY(v); commit(); }));
@@ -1643,7 +1808,23 @@
     window.addEventListener("keydown", onKey); window.addEventListener("keyup", e => { if (e.key === " ") S.space = false; });
     window.addEventListener("resize", render);
     Panels.columns(document.querySelector("main"), { key: "board", minViewport: 1000, minCenter: 360,
-      cols: [{ index: 0, side: "left", def: 220, min: 160, max: 480 }, { index: 2, side: "right", def: 300, min: 220, max: 640 }], template: w => `${w[0]}px 1fr ${w[1]}px` });
+      cols: [{ index: 0, side: "left", def: 220, min: 160, max: 480 }, { index: 2, side: "right", def: 300, min: 220, max: 640 }], template: w => (S.bare ? "1fr" : `${w[0]}px 1fr ${w[1]}px`) });
+    // comfort: the zoom bar, side panels, the find box, sections that remember being folded, the menu closing
+    $("z-in").onclick = () => zoomAt(1.25); $("z-out").onclick = () => zoomAt(0.8); $("z-pct").onclick = () => fit(); $("z-sel").onclick = zoomToSel;
+    $("btn-panels").onclick = () => setBare(!S.bare);
+    $("find").addEventListener("input", e => { S.find = e.target.value; renderPanels(); });
+    $("find").addEventListener("keydown", e => {
+      if (e.key === "Escape") { e.target.value = ""; S.find = ""; renderPanels(); e.target.blur(); }
+      else if (e.key === "Enter") {
+        const first = document.querySelector($("nets").hidden ? "#parts .item" : "#nets .net");
+        if (first) first.click(); if (!$("nets").hidden) zoomToSel(); e.target.blur();
+      }
+    });
+    const SEC_KEY = "tubecad_board_sections";
+    let secs = {}; try { secs = JSON.parse(localStorage.getItem(SEC_KEY) || "{}"); } catch (e) { /* no storage */ }
+    document.querySelectorAll("details.sec").forEach(d => { if (secs[d.id] === false) d.open = false; d.addEventListener("toggle", () => { secs[d.id] = d.open; try { localStorage.setItem(SEC_KEY, JSON.stringify(secs)); } catch (e) { /* no storage */ } }); });
+    document.addEventListener("mousedown", e => { if (!$("ctx").contains(e.target)) closeCtx(); });
+    canvas.addEventListener("mouseleave", () => { clearTimeout(hudTimer); hudAt = null; $("hud").hidden = true; if (S.hoverPart) { S.hoverPart = null; render(); } });
     document.querySelectorAll("[data-tool]").forEach(b => { b.onclick = () => setTool(b.dataset.tool); });
     $("layer").onchange = e => setLayer(e.target.value);
     $("grid").onchange = e => { S.grid = +e.target.value; render(); };
