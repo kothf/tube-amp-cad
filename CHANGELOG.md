@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.64.0] - 2026-10-17
+
+### Added
+- **20 germanium transistors.** USSR: MP39B, MP40A, MP41A, MP42B, MP25B, MP26B, MP38A (NPN), GT402G/GT404G, P213B. Western: AC127/AC128, AC187/AC188, OC71, NKT275, 2N404, AD149, AD161/AD162. Each has a Gummel-Poon model: VBE about 0.2 V at 1 mA, hFE inside the datasheet's range (tested at its test current), the slow transit frequency as base-emitter capacitance. USSR types are written in Latin letters with the Cyrillic name in the description, so a search for "МП39" finds them.
+- **Board footprints for germanium cans:** TO-1, TO-5 and the USSR MP flanged can, with 3D bodies. P213B and AD149 (TO-3) and AD161/AD162 go on wires, for a chassis heatsink.
+
 ## [3.63.0] - 2026-10-17
 
 ### Added

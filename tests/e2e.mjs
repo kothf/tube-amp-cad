@@ -1077,6 +1077,11 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const search = cad.locator("#pal-search");
   await search.fill("2n2222");
   const hit = await cad.locator("#palette .pal-item").allTextContents();
+  // germanium: by the Latin name, by the Cyrillic one (МП39Б), and by "germanium"
+  await search.fill("мп39"); const ge1 = await cad.locator("#palette .pal-item").allTextContents();
+  await search.fill("ac128"); const ge2 = await cad.locator("#palette .pal-item").allTextContents();
+  await search.fill("germanium"); const ge3 = await cad.locator("#palette .pal-item").count();
+  check(ge1.length === 1 && /MP39B/.test(ge1[0]) && ge2.some(t => /PNP · AC128/.test(t)) && ge3 === 20, `the search finds the germanium transistors: "мп39" → ${ge1.join("")}, "ac128" → AC128, "germanium" → ${ge3} parts`);
   await search.fill("el84"); const tubes = await cad.locator("#palette .pal-item").allTextContents();
   await search.fill("47k"); const val = await cad.locator("#palette .pal-item").first().textContent();
   await search.press("Enter");

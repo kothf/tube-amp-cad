@@ -459,6 +459,8 @@
   // cbe/cbc, cgs/cgd: junction and gate capacitances (F) for the transient.
   // ---------------------------------------------------------------------------
   const pf = 1e-12;
+  // base-emitter (diffusion) capacitance of a germanium part: gm / 2π fT at the working current ic
+  const geCbe = (ft, ic) => ic / 0.025852 / (2 * Math.PI * ft);
   const BJTS = {
     "2N2222A": { pol: 1, is: 14.34e-15, bf: 255.9, br: 6.092, vaf: 74.03, ikf: 0.2847, cbe: 25 * pf, cbc: 8 * pf, v: 40, i: 0.6, p: 0.5, pkg: "TO-18", use: "general purpose" },
     "2N3904": { pol: 1, is: 6.734e-15, bf: 416.4, br: 0.7371, vaf: 74.03, ikf: 0.06678, cbe: 8 * pf, cbc: 4 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
@@ -496,7 +498,37 @@
     "MJL21193": { pol: -1, is: 3e-12, bf: 50, br: 3, vaf: 80, ikf: 10, cbe: 2000 * pf, cbc: 700 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
     "MJ15004": { pol: -1, is: 5e-12, bf: 70, br: 3, vaf: 80, ikf: 8, cbe: 2000 * pf, cbc: 1500 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
     "MJ15025": { pol: -1, is: 3e-12, bf: 50, br: 3, vaf: 100, ikf: 5, cbe: 2000 * pf, cbc: 800 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
-    "MJ2955": { pol: -1, is: 1e-11, bf: 50, br: 3, vaf: 50, ikf: 3, cbe: 1500 * pf, cbc: 700 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" }
+    "MJ2955": { pol: -1, is: 1e-11, bf: 50, br: 3, vaf: 50, ikf: 3, cbe: 1500 * pf, cbc: 700 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" },
+    // germanium, alloy junction. IS sets VBE at about a third of silicon's (0.15–0.25 V at 1 mA
+    // for the small ones, 0.3–0.4 V at the rated current for the power ones), and the reverse
+    // leakage it brings is of the µA order Ge parts have. BF: the middle of the datasheet's hFE
+    // range; IKF where hFE has fallen to about half; VAF low, as in alloy parts. CBE from the
+    // transit frequency at a typical working current (gm / 2π fT: 1 mA small-signal, 20 mA the
+    // AC1xx output pairs, 0.2–0.3 A the power ones), so the Miller roll-off of the old parts shows
+    // in the response. v: the datasheet's VCE max (USSR: Uкэ max), i: IC max, p: Ptot at 25 °C.
+    // USSR types are written in Latin letters (MP39B = МП39Б).
+    // USSR
+    "MP39B": { pol: -1, is: 3e-7, bf: 40, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(0.5e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП39Б, germanium small signal (USSR)" },
+    "MP40A": { pol: -1, is: 3e-7, bf: 45, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 30, i: 0.02, p: 0.15, pkg: "MP", use: "МП40А, germanium small signal, 30 V (USSR)" },
+    "MP41A": { pol: -1, is: 3e-7, bf: 85, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП41А, germanium low noise, high gain (USSR)" },
+    "MP42B": { pol: -1, is: 3e-7, bf: 70, br: 5, vaf: 30, ikf: 0.15, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.1, p: 0.2, pkg: "MP", use: "МП42Б, germanium switching, fuzz (USSR)" },
+    "MP25B": { pol: -1, is: 4e-7, bf: 50, br: 5, vaf: 40, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 70 * pf, v: 40, i: 0.15, p: 0.2, pkg: "MP", use: "МП25Б, germanium 40 V (USSR)" },
+    "MP26B": { pol: -1, is: 4e-7, bf: 50, br: 5, vaf: 50, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 70 * pf, v: 70, i: 0.15, p: 0.2, pkg: "MP", use: "МП26Б, germanium 70 V (USSR)" },
+    "MP38A": { pol: 1, is: 3e-7, bf: 65, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП38А, germanium NPN small signal (USSR)" },
+    "GT402G": { pol: -1, is: 5e-7, bf: 100, br: 5, vaf: 40, ikf: 0.6, cbe: geCbe(1e6, 20e-3), cbc: 60 * pf, v: 40, i: 0.5, p: 0.6, pkg: "TO-1", use: "ГТ402Г, germanium driver / output, pairs with GT404G (USSR)" },
+    "GT404G": { pol: 1, is: 5e-7, bf: 100, br: 5, vaf: 40, ikf: 0.6, cbe: geCbe(1e6, 20e-3), cbc: 60 * pf, v: 40, i: 0.5, p: 0.6, pkg: "TO-1", use: "ГТ404Г, germanium driver / output, pairs with GT402G (USSR)" },
+    "P213B": { pol: -1, is: 2e-6, bf: 60, br: 3, vaf: 40, ikf: 3, cbe: geCbe(0.15e6, 0.3), cbc: 800 * pf, v: 45, i: 5, p: 11.5, pkg: "TO-3", use: "П213Б, germanium power output (USSR)" },
+    // Western
+    "AC127": { pol: 1, is: 4e-7, bf: 120, br: 5, vaf: 30, ikf: 0.6, cbe: geCbe(1.5e6, 20e-3), cbc: 60 * pf, v: 12, i: 0.5, p: 0.34, pkg: "TO-1", use: "germanium audio output, pairs with AC128" },
+    "AC128": { pol: -1, is: 5e-7, bf: 120, br: 5, vaf: 30, ikf: 0.8, cbe: geCbe(1e6, 20e-3), cbc: 100 * pf, v: 16, i: 1, p: 0.26, pkg: "TO-1", use: "germanium audio output, Fuzz Face" },
+    "AC187": { pol: 1, is: 5e-7, bf: 200, br: 5, vaf: 30, ikf: 1.2, cbe: geCbe(1e6, 20e-3), cbc: 80 * pf, v: 15, i: 2, p: 0.8, pkg: "TO-1", use: "germanium complementary output, pairs with AC188" },
+    "AC188": { pol: -1, is: 5e-7, bf: 200, br: 5, vaf: 30, ikf: 1.2, cbe: geCbe(1e6, 20e-3), cbc: 100 * pf, v: 15, i: 2, p: 0.8, pkg: "TO-1", use: "germanium complementary output, pairs with AC187" },
+    "OC71": { pol: -1, is: 2e-7, bf: 50, br: 5, vaf: 20, ikf: 0.03, cbe: geCbe(0.4e6, 1e-3), cbc: 40 * pf, v: 10, i: 0.05, p: 0.125, pkg: "TO-1", use: "germanium small signal (Mullard), Tone Bender" },
+    "NKT275": { pol: -1, is: 3e-7, bf: 100, br: 5, vaf: 25, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 30 * pf, v: 18, i: 0.1, p: 0.15, pkg: "TO-1", use: "germanium small signal (Newmarket), Fuzz Face" },
+    "2N404": { pol: -1, is: 2e-7, bf: 60, br: 5, vaf: 40, ikf: 0.1, cbe: geCbe(4e6, 1e-3), cbc: 20 * pf, v: 24, i: 0.15, p: 0.15, pkg: "TO-5", use: "germanium general purpose (RCA), Tone Bender" },
+    "AD149": { pol: -1, is: 1e-6, bf: 70, br: 3, vaf: 40, ikf: 3, cbe: geCbe(0.3e6, 0.2), cbc: 600 * pf, v: 30, i: 3.5, p: 32, pkg: "TO-3", use: "germanium power output (Philips)" },
+    "AD161": { pol: 1, is: 3e-7, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 150 * pf, v: 20, i: 3, p: 4, pkg: "SOT-9", use: "germanium complementary output, pairs with AD162" },
+    "AD162": { pol: -1, is: 3e-7, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 200 * pf, v: 20, i: 3, p: 6, pkg: "SOT-9", use: "germanium complementary output, pairs with AD161" }
   };
   const MOSFETS = {
     "2N7000": { pol: 1, vto: 2.1, kp: 0.26, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.2, p: 0.4, pkg: "TO-92", use: "small signal switch" },

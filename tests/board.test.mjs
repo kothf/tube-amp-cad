@@ -665,3 +665,35 @@ test("Place all: parts go where they sit in the schematic, big ones first, clear
   const m2 = B.model(board, nl), boxes = m2.parts.map(B.partBox);
   boxes.forEach((a, i) => boxes.slice(i + 1).forEach(b => assert.ok(a.x2 <= b.x1 || b.x2 <= a.x1 || a.y2 <= b.y1 || b.y2 <= a.y1, "no two courtyards overlap")));
 });
+
+test("germanium transistors: 10 USSR and 10 Western, hFE inside the datasheet's range, VBE of germanium, each simulates and has a footprint", () => {
+  const E = globalThis.TubeSimEngine;
+  // [type, IC of the hFE test (VCE = 5 V), hFE min, max]: the datasheets' ranges (USSR: h21э)
+  const GE = [["MP39B", 1e-3, 20, 60], ["MP40A", 1e-3, 20, 80], ["MP41A", 1e-3, 50, 120], ["MP42B", 10e-3, 45, 100], ["MP25B", 10e-3, 30, 80], ["MP26B", 10e-3, 30, 80],
+    ["MP38A", 1e-3, 45, 100], ["GT402G", 0.1, 60, 150], ["GT404G", 0.1, 60, 150], ["P213B", 1, 40, 150],
+    ["AC127", 0.3, 50, 200], ["AC128", 0.3, 60, 175], ["AC187", 0.3, 100, 500], ["AC188", 0.3, 100, 500], ["OC71", 3e-3, 30, 75], ["NKT275", 1e-3, 70, 150],
+    ["2N404", 12e-3, 30, 120], ["AD149", 1, 30, 100], ["AD161", 0.5, 80, 320], ["AD162", 0.5, 80, 320]];
+  assert.equal(GE.filter(([k]) => /^(MP|GT|P2)/.test(k)).length, 10, "10 USSR types");
+  const at = (m, ic) => { let lo = 0, hi = 1.5; for (let k = 0; k < 80; k++) { const v = (lo + hi) / 2, I = E.Semi.bjt([5 * m.pol, v * m.pol, 0], m); if (I[0] * m.pol < ic) lo = v; else hi = v; } const v = (lo + hi) / 2, I = E.Semi.bjt([5 * m.pol, v * m.pol, 0], m); return { vbe: v, hfe: I[0] / I[1] }; };
+  for (const [k, ic, lo, hi] of GE) {
+    const m = L.BJTS[k]; assert.ok(m, `${k} is in the library`);
+    const { vbe, hfe } = at(m, ic);
+    assert.ok(hfe >= lo && hfe <= hi, `${k}: hFE ${hfe.toFixed(0)} at ${ic} A, datasheet ${lo}–${hi}`);
+    // germanium: about 0.2 V at 1 mA (silicon 0.6–0.7 V); the power parts under 0.45 V at their test current
+    const v1 = at(m, 1e-3).vbe; assert.ok(v1 > 0.1 && v1 < 0.3, `${k}: VBE ${v1.toFixed(3)} V at 1 mA`);
+    assert.ok(vbe < 0.45, `${k}: VBE ${vbe.toFixed(3)} V at ${ic} A`);
+    // a common-emitter stage from the CAD's own part: 9 V (−9 V for PNP), base fed through Rb for IC ≈ ic/10 (1 mA at most), Rc for half the supply
+    const pol = m.pol, icq = Math.min(ic / 10, 1e-3), rc = 4.5 / icq, rb = 9 / (icq / m.bf), els = [];
+    const c = { id: "q", type: pol > 0 ? "npn" : "pnp", params: { model: k } }, nets = { C: 3, B: 2, E: 0 };
+    L.LIB[c.type].build(c, p => nets[p], null, els);
+    const r = E.simulate({ nodeCount: 4, elements: [{ id: "v", kind: "V", nodes: [1, 0], v: 9 * pol }, { id: "rb", kind: "R", nodes: [1, 2], r: rb }, { id: "rc", kind: "R", nodes: [1, 3], r: rc }, ...els] });
+    assert.ok(r.ok, `${k}: ${r.error}`);
+    const q = r.dc.devices.q.main, vce = r.dc.nodes[3] * pol;
+    assert.ok(q.vbe > 0.08 && q.vbe < 0.3 && vce > 1 && vce < 8.5, `${k}: CE stage VBE ${q.vbe.toFixed(3)} V, VCE ${vce.toFixed(2)} V`);
+    // a board footprint (wired for the chassis-mounted power cans) and its parts list line
+    const g = B.physicalParts({ parts: [part("x", c.type, "VT1", { model: k }, { C: 1, B: 2, E: 3 })] })[0];
+    const f = B.footprint(g.options[0]);
+    assert.ok(f && f.pads.length === 3, `${k}: footprint ${g.options[0]}`);
+    assert.equal(/^WIRE/.test(g.options[0]), m.pkg === "TO-3" || m.pkg === "SOT-9", `${k}: ${m.pkg} → ${g.options[0]}`);
+  }
+});

@@ -85,6 +85,12 @@
       out.push(prism("z", arc, 2, 6.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 2));
     } else if ((m = /^TO-18-/.exec(name))) {
       out.push(cylZ(0, 0, 2.75, 1.5, 1.9, C.metal, to), cylZ(0, 0, 2.35, 1.9, 6.6, C.metal, to)); pads.forEach(p => lead(p.x, p.y, 1.5));
+    } else if ((m = /^(TO-1|TO-5|MP)-/.exec(name))) {
+      // germanium cans: TO-1 tall and slim, TO-5 low and wide, the USSR MP can on its flange
+      const r = fp.silk.find(t => t.t === "circle").r, H = { "TO-1": 9, "TO-5": 6.4, MP: 9.5 }[m[1]];
+      if (m[1] === "MP") out.push(cylZ(0, 0, r, 1.5, 2.1, C.metal, to), cylZ(0, 0, r * 0.68, 2.1, 1.5 + H, C.metal, to));
+      else out.push(cylZ(0, 0, r, 1.5, 2, C.metal, to), cylZ(0, 0, r * 0.88, 2, 1.5 + H, C.metal, to));
+      pads.forEach(p => lead(p.x, p.y, 1.5));
     } else if ((m = /^TO-(126|220|247|3P|264)-/.exec(name))) {
       const r = fp.silk.find(s => s.t === "rect"), tab = m[1] !== "126", H = { 126: 11, 220: 9.2, 247: 20.5, "3P": 20, 264: 26 }[m[1]], zb = 2.5;
       out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, zb, zb + H, C.black, to));

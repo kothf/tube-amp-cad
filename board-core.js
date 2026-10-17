@@ -154,6 +154,15 @@
     return fp(`TO-18-${order}`, `TO-18 metal can, pins ${order.split("").join("-")}`, [...order].map((n, i) => pad(i + 1, pos[i][0], pos[i][1], 1.3, 0.7, i ? "circle" : "rect", n)),
       [{ t: "circle", x: 0, y: 0, r: 2.8 }, { t: "line", x1: -2.4, y1: 1.5, x2: -3.2, y2: 2.3 }]);
   }
+  // larger metal cans of the germanium era: pins on a 5.08 mm circle as in TO-18's pattern.
+  // TO-1 (AC128, OC71 size, Ø 6.1 mm), TO-5 (2N404, Ø 9.1 mm), MP (USSR МП39–МП42, МП25/26:
+  // a flanged can, Ø 11.5 mm at the flange)
+  const CANS = { "TO-1": [3.05, "TO-1 metal can"], "TO-5": [4.6, "TO-5 metal can"], "MP": [5.75, "MP flanged can (МП)"] };
+  function bigCan(pkg, order) {
+    const [r, what] = CANS[pkg], pos = [[-2.54, 0], [0, -2.54], [2.54, 0]];
+    return fp(`${pkg}-${order}`, `${what}, pins ${order.split("").join("-")}`, [...order].map((n, i) => pad(i + 1, pos[i][0], pos[i][1], 1.5, 0.8, i ? "circle" : "rect", n)),
+      [{ t: "circle", x: 0, y: 0, r }, { t: "line", x1: -r * 0.86, y1: r * 0.5, x2: -r * 0.86 - 0.8, y2: r * 0.5 + 0.8 }]);
+  }
   function inline(pkg, pitch, order, L, W, tab, d, dr) {
     // a package with a tab stands behind its pins (the body above the pad row); one without sits over them
     const n = order.length, x0 = -(n - 1) / 2 * pitch, y0 = tab ? -W - (d || 2) / 2 - 0.4 : -W / 2, silk = [{ t: "rect", x: -L / 2, y: y0, w: L, h: W }];
@@ -281,6 +290,7 @@
     if ((m = /^RADIAL-D([\d.]+)-P([\d.]+)$/.exec(name))) return radial(+m[1], +m[2]);
     if ((m = /^TO-92-([A-Z]{3})$/.exec(name))) return to92(m[1]);
     if ((m = /^TO-18-([A-Z]{3})$/.exec(name))) return to18(m[1]);
+    if ((m = /^(TO-1|TO-5|MP)-([A-Z]{3})$/.exec(name))) return bigCan(m[1], m[2]);
     if ((m = /^TO-126-([A-Z]{3})$/.exec(name))) return to126(m[1]);
     if ((m = /^TO-220-([A-Z]{3})$/.exec(name))) return to220(m[1]);
     if ((m = /^TO-247-([A-Z]{3})$/.exec(name))) return to247(m[1]);
@@ -343,6 +353,12 @@
     "2SD669A": ["ECB"], "2SB649A": ["ECB"], "2SC4793": ["BCE"], "2SA1837": ["BCE"], "MJE15032": ["BCE"], "MJE15033": ["BCE"],
     "TIP41C": ["BCE"], "TIP42C": ["BCE"], "2SC5200": ["BCE"], "2SA1943": ["BCE"], "MJL3281A": ["BCE"], "MJL1302A": ["BCE"],
     "MJL21194": ["BCE"], "MJL21193": ["BCE"], "MJ15003": ["BEC"], "MJ15004": ["BEC"], "MJ15024": ["BEC"], "MJ15025": ["BEC"], "2N3055": ["BEC"], "MJ2955": ["BEC"],
+    // germanium: the cans' leads read E, B, C round the circle from the tab (the collector is
+    // marked by a dot or the wider spacing on some makes); the USSR parts' pinouts vary by year
+    "AC127": ["EBC", "verify"], "AC128": ["EBC", "verify"], "AC187": ["EBC", "verify"], "AC188": ["EBC", "verify"], "OC71": ["EBC", "verify"], "NKT275": ["EBC", "verify"], "2N404": ["EBC"],
+    "AD149": ["BEC"], "AD161": ["ECB", "verify"], "AD162": ["ECB", "verify"], "P213B": ["BEC", "verify"],
+    "MP39B": ["EBC", "verify"], "MP40A": ["EBC", "verify"], "MP41A": ["EBC", "verify"], "MP42B": ["EBC", "verify"], "MP25B": ["EBC", "verify"], "MP26B": ["EBC", "verify"], "MP38A": ["EBC", "verify"],
+    "GT402G": ["EBC", "verify"], "GT404G": ["EBC", "verify"],
     "IRFP240": ["GDS"], "IRFP250": ["GDS"], "IRFP460": ["GDS"], "IRFP9240": ["GDS"], "2SK1058": ["GSD"], "2SJ162": ["GSD"], "ECX10N20": ["GSD", "verify"], "ECX10P20": ["GSD", "verify"]
   };
   const AXIAL_FOR_WATTS = { "": 10.16, "0.125": 7.62, "0.25": 10.16, "0.5": 12.7, "1": 15.24, "2": 20.32, "3": 25.4, "5": 30.48, "10": 40.64, "20": 50.8 };
@@ -421,7 +437,9 @@
         const m = (t === "npn" || t === "pnp" ? L.BJTS : L.MOSFETS)[p.model] || {}, order = (PINOUT[p.model] || [t[1] === "m" ? "GDS" : "EBC"])[0];
         const all = ["TO-92", "TO-18", "TO-126", "TO-220", "TO-247", "TO-3P", "TO-264"].map(k => `${k}-${order}`);
         // a TO-3 can sits on the chassis heatsink, wired to the board
-        if (m.pkg === "TO-3") return ["WIRE-3", ...all];
+        if (m.pkg === "TO-3" || m.pkg === "SOT-9") return ["WIRE-3", ...all];
+        // germanium cans: their own pattern first, the other cans next
+        if (CANS[m.pkg]) return [`${m.pkg}-${order}`, ...["TO-1", "TO-5", "MP"].filter(k => k !== m.pkg).map(k => `${k}-${order}`), ...all, "WIRE-3"];
         const pkg = /TO-220/.test(m.pkg) ? "TO-220" : /TO-126/.test(m.pkg) ? "TO-126" : /TO-18/.test(m.pkg) ? "TO-18" : /TO-264/.test(m.pkg) ? "TO-264" : /TO-3P/.test(m.pkg) ? "TO-3P" : /TO-247/.test(m.pkg) ? "TO-247" : "TO-92";
         return [`${pkg}-${order}`, ...all.filter(a => a !== `${pkg}-${order}`), "WIRE-3"];
       }
