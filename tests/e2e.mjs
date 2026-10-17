@@ -263,6 +263,10 @@ await bode.waitForFunction(() => { const t = window.Bode && Bode.traces(); retur
   check(hi2 && hi2[2] === "k" && +hi2[1] > 8 && +hi2[1] < 30, `Bode: from a 100 kΩ source the Miller capacitance sets the top at ${hi2 && hi2[1]} kHz (1/(2π·100k·(Cgk + (1 + A)·Cga)) ≈ 16 kHz)`);
   await cad.evaluate(() => { const g = TubeCAD.state.comps.find(c => c.type === "siggen"); g.params.rs = 50; TubeCAD.commit(); });
   await cad.waitForFunction(() => !TubeCAD.state.sim.busy && !TubeCAD.state.sim.pending, null, { timeout: 30000 });
+  // the instrument windows get that run a moment later (a background tab redraws late): wait until both show it
+  const last = await cad.evaluate(() => TubeCAD.state.sim.seq);
+  for (const w of [scope, spectrum]) await w.waitForFunction(s => window.Instrument && Instrument.result && Instrument.result.seq === s, last, { timeout: 10000 }).catch(() => {});
+  check(await spectrum.evaluate(s => Instrument.result.seq === s, last) && await scope.evaluate(s => Instrument.result.seq === s, last), `the scope and the analyzer show the CAD's latest run (#${last})`);
 }
 
 // --- 3a. Markers: pick points on the scope and analyzer with the mouse -------
@@ -298,8 +302,8 @@ const canvasAt = async (page, p) => { const r = await page.locator("#screen").bo
   // click a little above each stem: the marker snaps to the line
   await spectrum.mouse.click(...await canvasAt(spectrum, { x: p1.x + 3, y: p1.y - 15 }));
   await spectrum.mouse.click(...await canvasAt(spectrum, { x: p2.x - 3, y: p2.y - 15 }));
-  const m = await spectrum.evaluate(() => window.Spectrum.markers());
-  const h2 = await spectrum.evaluate(() => parseFloat([...document.querySelectorAll("#harm tr")].find(r => r.cells[0].textContent === "H2").cells[2].textContent));
+  // the markers and the harmonic table from one and the same drawing
+  const [m, h2] = await spectrum.evaluate(() => { window.Spectrum.draw(); return [window.Spectrum.markers(), parseFloat([...document.querySelectorAll("#harm tr")].find(r => r.cells[0].textContent === "H2").cells[2].textContent)]; });
   check(m.length === 2 && m[0].reading.f === fund && m[0].reading.h === 1 && m[1].reading.h === 2,
     `analyzer markers snap to the fundamental and H2 (${m.map(k => k.reading.f + " Hz").join(", ")})`);
   const sfoot = await spectrum.textContent("#foot"), fm = sfoot.match(/([-\d.]+[mµk]?)Vrms \(([−\d.]+) dBV\)/);

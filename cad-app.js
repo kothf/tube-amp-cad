@@ -843,7 +843,8 @@
   }
   function buildSummary() {
     const r = S.sim.result;
-    const summary = { type: "SIM_RESULT", version: VERSION, at: Date.now(), selectedTubeId: lastTubeId, ok: !!r, error: S.sim.error, warnings: S.sim.warnings || [], empty: !S.comps.length, fSig: signalFreq(), tubes: [], scopes: [], speakers: [], customTubes: usedCustomTubes() };
+    // seq: which run this is, so an instrument window can tell it shows the latest
+    const summary = { type: "SIM_RESULT", version: VERSION, seq: S.sim.seq, at: Date.now(), selectedTubeId: lastTubeId, ok: !!r, error: S.sim.error, warnings: S.sim.warnings || [], empty: !S.comps.length, fSig: signalFreq(), tubes: [], scopes: [], speakers: [], customTubes: usedCustomTubes() };
     if (!r) return summary;
     summary.elapsedMs = r.elapsedMs;
     S.comps.forEach(c => {

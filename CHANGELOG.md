@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.62.1] - 2026-10-17
+
+### Fixed
+- **A flaky browser test.** "Marker B reads H2 as the harmonic table" failed once in CI (−28.69 against −27.7 dBc).
+  - **Cause:** the test before it switches the generator to a 100 kΩ source and back, and waited only for the CAD to finish. The analyzer, a background tab, drew the last run a moment later, so the marker read the 100 kΩ run's spectrum: H2 −28.7 dBc, with less swing because of the Miller roll-off. The table read the 50 Ω run's.
+  - **Fix:** each result now carries its run number (`seq`). The test waits until the scope and the analyzer show the CAD's latest run, then reads the marker and the table from one drawing.
+  - The app itself was right throughout: the analyzer always ends up showing the latest run.
+
 ## [3.62.0] - 2026-10-17
 
 ### Added
