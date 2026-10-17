@@ -275,7 +275,8 @@
   // "live" runs after every edit within a short time budget; "full" runs until
   // the periodic steady state is reached (slow supplies need seconds of solver time)
   const RUN_OPTIONS = { live: { budgetMs: 2500 }, full: { budgetMs: 120000, maxPeriods: 20000 } };
-  const LIVE_KEY = "tubecad_live";
+  const LIVE_KEY = "tubecad_live", LEGEND_KEY = "tubecad_legend";
+  S.showLegend = (() => { try { return localStorage.getItem(LEGEND_KEY) !== "0"; } catch (e) { return true; } })();
   S.sim.live = (() => { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch (e) { return true; } })();
 
   function buildNetlist() {
@@ -1547,7 +1548,43 @@
       ctx.fillText("Click a pin to start a wire · wheel zooms · Space or middle-drag pans", W / 2, H / 2 + 12);
       ctx.textAlign = "left";
     }
+    if (S.showLegend) drawLegend(H); else legendBox = null;
   }
+  // what the colours on the sheet mean: only the marks that are showing
+  function legendRows() {
+    const r = S.sim.result; if (!r || !(S.showVolts || S.showAmps)) return [];
+    const rows = [], ac = S.showVolts && r.tran;
+    if (ac) rows.push({ glow: true, text: "signal: AC on the wire (≥ 1 % of its DC)" });
+    if (S.showVolts) rows.push({ tag: "250V", fg: "#ffd54f", line: "rgba(255,213,79,0.35)", text: "DC voltage of the node" });
+    if (ac) rows.push({ tag: "~1.2Vrms", fg: "#00e5ff", line: "rgba(0,229,255,0.45)", text: "AC on the node, rms" });
+    if (S.showAmps) rows.push({ tag: "↓1.2mA", fg: "#d2a8ff", line: "rgba(210,168,255,0.45)", text: "DC current and its direction" });
+    return rows;
+  }
+  function drawLegend(H) {
+    const rows = legendRows(); if (!rows.length) { legendBox = null; return; }
+    ctx.save();
+    ctx.font = "10px ui-monospace, monospace";
+    const sw = 58, lh = 16, tw = Math.max(...rows.map(q => ctx.measureText(q.text).width)), w = sw + tw + 18, h = rows.length * lh + 10, x0 = 8, y0 = H - h - 8;
+    ctx.font = "9px ui-monospace, monospace";
+    ctx.fillStyle = "rgba(10,14,20,0.88)"; ctx.fillRect(x0, y0, w, h);
+    ctx.strokeStyle = "#26344a"; ctx.lineWidth = 1; ctx.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+    rows.forEach((q, i) => {
+      const y = y0 + 5 + i * lh + lh / 2, x = x0 + 6;
+      if (q.glow) {
+        ctx.lineCap = "round"; ctx.strokeStyle = "rgba(0,229,255,0.30)"; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke();
+        ctx.strokeStyle = "#3fb950"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke();
+      } else {
+        const tw2 = ctx.measureText(q.tag).width + 6;
+        ctx.fillStyle = "rgba(10,14,20,0.85)"; ctx.fillRect(x, y - TAG_H / 2, tw2, TAG_H);
+        ctx.strokeStyle = q.line; ctx.lineWidth = 0.8; ctx.strokeRect(x, y - TAG_H / 2, tw2, TAG_H);
+        ctx.fillStyle = q.fg; ctx.fillText(q.tag, x + 3, y + 3);
+      }
+      ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = "#8b949e"; ctx.fillText(q.text, x + sw + 4, y + 3.5); ctx.font = "9px ui-monospace, monospace";
+    });
+    ctx.restore();
+    legendBox = { x: x0, y: y0, w, h, rows: rows.map(q => q.text) };
+  }
+  let legendBox = null;
 
   // Reference designation as shown on the diagram: the label as typed, e.g. R1, VL1.2
   function desig(c) { return c.label || ""; }
@@ -3059,6 +3096,8 @@
       const b = e.target.closest("[data-bias-apply], [data-bias-mid]");
       if (b) applyBias(b.dataset.biasApply || b.dataset.biasMid, !!b.dataset.biasMid);
     });
+    { const b = document.getElementById("btn-legend"); b.classList.toggle("active", S.showLegend); b.setAttribute("aria-checked", String(S.showLegend)); }
+    bind("btn-legend", () => { S.showLegend = !S.showLegend; document.getElementById("btn-legend").classList.toggle("active", S.showLegend); try { localStorage.setItem(LEGEND_KEY, S.showLegend ? "1" : "0"); } catch (e) {} render(); });
     bind("btn-amps", () => { S.showAmps = !S.showAmps; document.getElementById("btn-amps").classList.toggle("active", S.showAmps); render(); });
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
@@ -3091,6 +3130,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

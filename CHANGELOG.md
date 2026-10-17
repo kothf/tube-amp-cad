@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.66.0] - 2026-10-17
+
+### Added
+- **Legend on the schematic.** A key in the bottom-left corner of the sheet says what the marks mean: the cyan glow (a wire carrying signal, AC at least 1 % of its DC), the yellow DC voltage, the cyan ~Vrms AC, the violet DC current. It lists only the marks that are showing; *View ▾ → Legend* hides it, and the browser remembers.
+
 ## [3.65.0] - 2026-10-17
 
 ### Added

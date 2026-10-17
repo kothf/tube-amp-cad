@@ -205,6 +205,13 @@ check(circuit.ms < 10000, `simulation finished in ${(circuit.ms / 1000).toFixed(
   const both = sr.ac.filter(t => /^[-\d.]+[mµk]?V ~/.test(t)), acOnly = sr.ac.filter(t => /^~/.test(t)), dcOnly = sr.list.filter(t => t.kind === "v" && !/~/.test(t.txt)).map(t => t.txt);
   check(sr.ac.every(t => /~[\d.]+[mµk]?Vrms$/.test(t)) && both.length >= 1 && acOnly.length >= 1 && dcOnly.length >= 1 && sr.signalNets >= 2,
     `voltage stickers tell AC from DC: DC + AC ${both.join(", ")}; AC only ${acOnly.join(", ")}; DC only ${dcOnly.join(", ")}; ${sr.signalNets} signal nets glow`);
+  // the legend in the corner says what the glow and the colours mean; View ▾ → Legend hides it
+  const lg = await cad.evaluate(() => TubeCAD.legend());
+  await cad.evaluate(() => document.getElementById("btn-legend").click()); await cad.waitForTimeout(100);
+  const lgOff = await cad.evaluate(() => TubeCAD.legend());
+  await cad.evaluate(() => document.getElementById("btn-legend").click()); await cad.waitForTimeout(100);
+  check(lg && lg.rows.length === 4 && /^signal: AC/.test(lg.rows[0]) && lg.x >= 0 && lg.y > 0 && lgOff === null && await cad.evaluate(() => !!TubeCAD.legend()),
+    `the legend explains the marks (${lg && lg.rows.join(" | ")}); View ▾ → Legend hides and shows it`);
 }
 
 // --- 3. Instruments receive the live result ---------------------------------
