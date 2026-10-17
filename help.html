@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tube Amp CAD Manual</title>
+  <link rel="icon" type="image/png" href="favicon.png">
   <style>
     :root {
       --bg: #0a0e14; --panel: #0f151e; --panel2: #131b26; --line: #223044; --text: #e6edf3; --muted: #8b949e;
@@ -217,7 +218,8 @@
 <ul>
   <li><b>NPN:</b> 2N2222A, 2N3904, BC107, BC547B, BD139, MPSA42, MJE340. <b>PNP:</b> 2N2907A, 2N3906, BC177, BC557B, BD140, MPSA92, MJE350.</li>
   <li><b>Drivers and power output pairs:</b> 2SD669A/2SB649A, 2SC4793/2SA1837, MJE15032/MJE15033, TIP41C/TIP42C, 2SC5200/2SA1943, MJL3281A/MJL1302A, MJL21194/MJL21193; in TO-3 MJ15003/MJ15004, MJ15024/MJ15025, 2N3055/MJ2955.</li>
-  <li><b>Germanium:</b> USSR MP39B, MP40A, MP41A, MP42B, MP25B, MP26B (PNP), MP38A (NPN), GT402G/GT404G, P213B; Western AC127/AC128, AC187/AC188, OC71, NKT275, 2N404, AD149, AD161/AD162. USSR types are written in Latin letters (MP39B = МП39Б); the search finds them either way. The models give germanium's low VBE (about 0.2 V at 1 mA), the datasheet's hFE, and its slow transit (fT 0.15–4 MHz) as a base-emitter capacitance, so the treble roll-off of the old parts shows. Leakage (ICBO) and its strong rise with temperature are not modelled. Pinouts of germanium cans vary between makers and years: check the part you have.</li>
+  <li><b>Temperature</b> (every bipolar transistor's inspector, °C, 25 by default): the junction temperature the part is simulated at. IS follows SPICE's law with the band gap (0.67 eV germanium, 1.11 eV silicon), so VBE falls about 2 mV/°C; hFE rises as (T/298 K)^1.5; germanium leakage doubles every 10 °C. Set it to see how a fixed-bias germanium stage drifts on a warm stage or next to a tube: an AC128 on fixed bias (1.5 MΩ from −9 V, 4.7 kΩ collector load) sits at VCE 5.2 V at 0 °C, 2.9 V at 25 °C, and is saturated by 45 °C. The SPICE export carries the part's temperature (<code>temp=</code>), the temperature terms of the model (EG, XTI, XTB) and the leakage as a B source.</li>
+  <li><b>Germanium:</b> USSR MP39B, MP40A, MP41A, MP42B, MP25B, MP26B (PNP), MP38A (NPN), GT402G/GT404G, P213B; Western AC127/AC128, AC187/AC188, OC71, NKT275, 2N404, AD149, AD161/AD162. USSR types are written in Latin letters (MP39B = МП39Б); the search finds them either way. The models give germanium's low VBE (about 0.2 V at 1 mA), the datasheet's hFE, and its slow transit (fT 0.15–4 MHz) as a base-emitter capacitance, so the treble roll-off of the old parts shows. Leakage is modelled: each germanium part has a typical ICBO at 25 °C (AC128 4 µA, MP39B 5 µA, AD149 100 µA, P213B 300 µA) flowing from collector to base, which the transistor amplifies to about (hFE + 1)·ICBO; it doubles every 10 °C. The inspector shows it under <b>Leakage</b>, in amber when it makes up half of IC or more. Pinouts of germanium cans vary between makers and years: check the part you have.</li>
   <li><b>N-MOSFETs:</b> 2N7000, BS170, IRF510, IRF540, IRF820, IRF840, IRFP240, IRFP250, IRFP460, laterals 2SK1058 and ECX10N20, depletion DN2540 and LND150. <b>P-MOSFETs:</b> BS250, IRF9540, IRF9610, IRF9640, IRFP9240, laterals 2SJ162 and ECX10P20.</li>
   <li><b>Diodes:</b> 1N4007, UF4007, 1N4148. <b>Zeners:</b> 1N4733A … 1N5388B (5.1–200 V, 1 W and 5 W). <b>LEDs:</b> red, yellow, green, blue.</li>
 </ul>

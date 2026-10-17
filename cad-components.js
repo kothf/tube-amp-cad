@@ -507,28 +507,30 @@
     // AC1xx output pairs, 0.2–0.3 A the power ones), so the Miller roll-off of the old parts shows
     // in the response. v: the datasheet's VCE max (USSR: Uкэ max), i: IC max, p: Ptot at 25 °C.
     // USSR types are written in Latin letters (MP39B = МП39Б).
+    // icbo: typical collector-base leakage at 25 °C (about a third of the datasheet's maximum);
+    // it doubles every 10 °C (see bjtAt). The power parts leak the most.
     // USSR
-    "MP39B": { pol: -1, is: 3e-7, bf: 40, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(0.5e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП39Б, germanium small signal (USSR)" },
-    "MP40A": { pol: -1, is: 3e-7, bf: 45, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 30, i: 0.02, p: 0.15, pkg: "MP", use: "МП40А, germanium small signal, 30 V (USSR)" },
-    "MP41A": { pol: -1, is: 3e-7, bf: 85, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП41А, germanium low noise, high gain (USSR)" },
-    "MP42B": { pol: -1, is: 3e-7, bf: 70, br: 5, vaf: 30, ikf: 0.15, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.1, p: 0.2, pkg: "MP", use: "МП42Б, germanium switching, fuzz (USSR)" },
-    "MP25B": { pol: -1, is: 4e-7, bf: 50, br: 5, vaf: 40, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 70 * pf, v: 40, i: 0.15, p: 0.2, pkg: "MP", use: "МП25Б, germanium 40 V (USSR)" },
-    "MP26B": { pol: -1, is: 4e-7, bf: 50, br: 5, vaf: 50, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 70 * pf, v: 70, i: 0.15, p: 0.2, pkg: "MP", use: "МП26Б, germanium 70 V (USSR)" },
-    "MP38A": { pol: 1, is: 3e-7, bf: 65, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП38А, germanium NPN small signal (USSR)" },
-    "GT402G": { pol: -1, is: 5e-7, bf: 100, br: 5, vaf: 40, ikf: 0.6, cbe: geCbe(1e6, 20e-3), cbc: 60 * pf, v: 40, i: 0.5, p: 0.6, pkg: "TO-1", use: "ГТ402Г, germanium driver / output, pairs with GT404G (USSR)" },
-    "GT404G": { pol: 1, is: 5e-7, bf: 100, br: 5, vaf: 40, ikf: 0.6, cbe: geCbe(1e6, 20e-3), cbc: 60 * pf, v: 40, i: 0.5, p: 0.6, pkg: "TO-1", use: "ГТ404Г, germanium driver / output, pairs with GT402G (USSR)" },
-    "P213B": { pol: -1, is: 2e-6, bf: 60, br: 3, vaf: 40, ikf: 3, cbe: geCbe(0.15e6, 0.3), cbc: 800 * pf, v: 45, i: 5, p: 11.5, pkg: "TO-3", use: "П213Б, germanium power output (USSR)" },
+    "MP39B": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 40, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(0.5e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП39Б, germanium small signal (USSR)" },
+    "MP40A": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 45, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 30, i: 0.02, p: 0.15, pkg: "MP", use: "МП40А, germanium small signal, 30 V (USSR)" },
+    "MP41A": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 85, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП41А, germanium low noise, high gain (USSR)" },
+    "MP42B": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 70, br: 5, vaf: 30, ikf: 0.15, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.1, p: 0.2, pkg: "MP", use: "МП42Б, germanium switching, fuzz (USSR)" },
+    "MP25B": { ge: 1, icbo: 1.5e-05, pol: -1, is: 4e-7, bf: 50, br: 5, vaf: 40, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 70 * pf, v: 40, i: 0.15, p: 0.2, pkg: "MP", use: "МП25Б, germanium 40 V (USSR)" },
+    "MP26B": { ge: 1, icbo: 1.5e-05, pol: -1, is: 4e-7, bf: 50, br: 5, vaf: 50, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 70 * pf, v: 70, i: 0.15, p: 0.2, pkg: "MP", use: "МП26Б, germanium 70 V (USSR)" },
+    "MP38A": { ge: 1, icbo: 5e-06, pol: 1, is: 3e-7, bf: 65, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП38А, germanium NPN small signal (USSR)" },
+    "GT402G": { ge: 1, icbo: 1e-05, pol: -1, is: 5e-7, bf: 100, br: 5, vaf: 40, ikf: 0.6, cbe: geCbe(1e6, 20e-3), cbc: 60 * pf, v: 40, i: 0.5, p: 0.6, pkg: "TO-1", use: "ГТ402Г, germanium driver / output, pairs with GT404G (USSR)" },
+    "GT404G": { ge: 1, icbo: 1e-05, pol: 1, is: 5e-7, bf: 100, br: 5, vaf: 40, ikf: 0.6, cbe: geCbe(1e6, 20e-3), cbc: 60 * pf, v: 40, i: 0.5, p: 0.6, pkg: "TO-1", use: "ГТ404Г, germanium driver / output, pairs with GT402G (USSR)" },
+    "P213B": { ge: 1, icbo: 0.0003, pol: -1, is: 2e-6, bf: 60, br: 3, vaf: 40, ikf: 3, cbe: geCbe(0.15e6, 0.3), cbc: 800 * pf, v: 45, i: 5, p: 11.5, pkg: "TO-3", use: "П213Б, germanium power output (USSR)" },
     // Western
-    "AC127": { pol: 1, is: 4e-7, bf: 120, br: 5, vaf: 30, ikf: 0.6, cbe: geCbe(1.5e6, 20e-3), cbc: 60 * pf, v: 12, i: 0.5, p: 0.34, pkg: "TO-1", use: "germanium audio output, pairs with AC128" },
-    "AC128": { pol: -1, is: 5e-7, bf: 120, br: 5, vaf: 30, ikf: 0.8, cbe: geCbe(1e6, 20e-3), cbc: 100 * pf, v: 16, i: 1, p: 0.26, pkg: "TO-1", use: "germanium audio output, Fuzz Face" },
-    "AC187": { pol: 1, is: 5e-7, bf: 200, br: 5, vaf: 30, ikf: 1.2, cbe: geCbe(1e6, 20e-3), cbc: 80 * pf, v: 15, i: 2, p: 0.8, pkg: "TO-1", use: "germanium complementary output, pairs with AC188" },
-    "AC188": { pol: -1, is: 5e-7, bf: 200, br: 5, vaf: 30, ikf: 1.2, cbe: geCbe(1e6, 20e-3), cbc: 100 * pf, v: 15, i: 2, p: 0.8, pkg: "TO-1", use: "germanium complementary output, pairs with AC187" },
-    "OC71": { pol: -1, is: 2e-7, bf: 50, br: 5, vaf: 20, ikf: 0.03, cbe: geCbe(0.4e6, 1e-3), cbc: 40 * pf, v: 10, i: 0.05, p: 0.125, pkg: "TO-1", use: "germanium small signal (Mullard), Tone Bender" },
-    "NKT275": { pol: -1, is: 3e-7, bf: 100, br: 5, vaf: 25, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 30 * pf, v: 18, i: 0.1, p: 0.15, pkg: "TO-1", use: "germanium small signal (Newmarket), Fuzz Face" },
-    "2N404": { pol: -1, is: 2e-7, bf: 60, br: 5, vaf: 40, ikf: 0.1, cbe: geCbe(4e6, 1e-3), cbc: 20 * pf, v: 24, i: 0.15, p: 0.15, pkg: "TO-5", use: "germanium general purpose (RCA), Tone Bender" },
-    "AD149": { pol: -1, is: 1e-6, bf: 70, br: 3, vaf: 40, ikf: 3, cbe: geCbe(0.3e6, 0.2), cbc: 600 * pf, v: 30, i: 3.5, p: 32, pkg: "TO-3", use: "germanium power output (Philips)" },
-    "AD161": { pol: 1, is: 3e-7, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 150 * pf, v: 20, i: 3, p: 4, pkg: "SOT-9", use: "germanium complementary output, pairs with AD162" },
-    "AD162": { pol: -1, is: 3e-7, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 200 * pf, v: 20, i: 3, p: 6, pkg: "SOT-9", use: "germanium complementary output, pairs with AD161" }
+    "AC127": { ge: 1, icbo: 3e-06, pol: 1, is: 4e-7, bf: 120, br: 5, vaf: 30, ikf: 0.6, cbe: geCbe(1.5e6, 20e-3), cbc: 60 * pf, v: 12, i: 0.5, p: 0.34, pkg: "TO-1", use: "germanium audio output, pairs with AC128" },
+    "AC128": { ge: 1, icbo: 4e-06, pol: -1, is: 5e-7, bf: 120, br: 5, vaf: 30, ikf: 0.8, cbe: geCbe(1e6, 20e-3), cbc: 100 * pf, v: 16, i: 1, p: 0.26, pkg: "TO-1", use: "germanium audio output, Fuzz Face" },
+    "AC187": { ge: 1, icbo: 5e-06, pol: 1, is: 5e-7, bf: 200, br: 5, vaf: 30, ikf: 1.2, cbe: geCbe(1e6, 20e-3), cbc: 80 * pf, v: 15, i: 2, p: 0.8, pkg: "TO-1", use: "germanium complementary output, pairs with AC188" },
+    "AC188": { ge: 1, icbo: 5e-06, pol: -1, is: 5e-7, bf: 200, br: 5, vaf: 30, ikf: 1.2, cbe: geCbe(1e6, 20e-3), cbc: 100 * pf, v: 15, i: 2, p: 0.8, pkg: "TO-1", use: "germanium complementary output, pairs with AC187" },
+    "OC71": { ge: 1, icbo: 5e-06, pol: -1, is: 2e-7, bf: 50, br: 5, vaf: 20, ikf: 0.03, cbe: geCbe(0.4e6, 1e-3), cbc: 40 * pf, v: 10, i: 0.05, p: 0.125, pkg: "TO-1", use: "germanium small signal (Mullard), Tone Bender" },
+    "NKT275": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 100, br: 5, vaf: 25, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 30 * pf, v: 18, i: 0.1, p: 0.15, pkg: "TO-1", use: "germanium small signal (Newmarket), Fuzz Face" },
+    "2N404": { ge: 1, icbo: 2e-06, pol: -1, is: 2e-7, bf: 60, br: 5, vaf: 40, ikf: 0.1, cbe: geCbe(4e6, 1e-3), cbc: 20 * pf, v: 24, i: 0.15, p: 0.15, pkg: "TO-5", use: "germanium general purpose (RCA), Tone Bender" },
+    "AD149": { ge: 1, icbo: 0.0001, pol: -1, is: 1e-6, bf: 70, br: 3, vaf: 40, ikf: 3, cbe: geCbe(0.3e6, 0.2), cbc: 600 * pf, v: 30, i: 3.5, p: 32, pkg: "TO-3", use: "germanium power output (Philips)" },
+    "AD161": { ge: 1, icbo: 3e-05, pol: 1, is: 3e-7, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 150 * pf, v: 20, i: 3, p: 4, pkg: "SOT-9", use: "germanium complementary output, pairs with AD162" },
+    "AD162": { ge: 1, icbo: 3e-05, pol: -1, is: 3e-7, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 200 * pf, v: 20, i: 3, p: 6, pkg: "SOT-9", use: "germanium complementary output, pairs with AD161" }
   };
   const MOSFETS = {
     "2N7000": { pol: 1, vto: 2.1, kp: 0.26, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.2, p: 0.4, pkg: "TO-92", use: "small signal switch" },
@@ -568,6 +570,16 @@
   // Mirror (M), for every part that can be rotated: the inspector field is added by the CAD
   // (cad-app.js), so new parts get it without listing it here
   const FLIP_FIELD = { key: "flip", label: "Mirror (M)", kind: "select", options: [["no", "No"], ["yes", "Mirrored left–right"]] };
+  // A transistor's model at junction temperature t (°C; the data are at 25 °C), as SPICE scales
+  // it: IS ∝ (T/T0)³·exp(Eg/k·(1/T0 − 1/T)) with Eg 0.67 eV germanium, 1.11 eV silicon, so VBE
+  // falls about 2 mV/°C; BF and BR ∝ (T/T0)^1.5; vt = kT/q. Germanium leakage doubles every 10 °C.
+  const T0 = 298.15, K_Q = 8.617333e-5;
+  function bjtAt(m, t) {
+    const T = (isFinite(t) ? t : 25) + 273.15, r = T / T0, eg = m.ge ? 0.67 : 1.11;
+    return Object.assign({}, m, { is: m.is * Math.pow(r, 3) * Math.exp(eg / K_Q * (1 / T0 - 1 / T)), bf: m.bf * Math.pow(r, 1.5), br: (m.br || 1) * Math.pow(r, 1.5),
+      vt: 0.025852 * r,   // the simulator's kT/q at 25 °C, scaled
+      icbo: m.icbo ? m.icbo * Math.pow(2, (T - T0) / 10) : 0, t: T - 273.15 });
+  }
   // BJT and MOSFET parts: same pins (C/D up, B/G left, E/S down) for both polarities
   function bjtPart(pol) {
     const def = pol > 0 ? "2N3904" : "2N3906";
@@ -576,11 +588,14 @@
       defaults: { model: def },
       pins: () => [{ id: "C", x: 10, y: -30, name: "collector" }, { id: "B", x: -30, y: 0, name: "base" }, { id: "E", x: 10, y: 30, name: "emitter" }],
       value: c => c.params.model,
-      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(BJTS, pol), wide: true }],
-      info: c => { const m = BJTS[c.params.model] || BJTS[def]; return `${c.params.model} (${m.use}): Vceo ${m.v} V, Ic ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: Gummel-Poon, hFE ≈ ${Math.round(m.bf)}, Early voltage ${Math.round(m.vaf)} V.`; },
+      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(BJTS, pol), wide: true },
+        // junction temperature: the ambient, or warmer for a part that runs hot or sits by a tube
+        { key: "temp", label: "Temperature", unit: "°C", kind: "number", min: -40, max: 150, dflt: 25 }],
+      info: c => { const m = BJTS[c.params.model] || BJTS[def], t = isFinite(c.params.temp) ? c.params.temp : 25, a = bjtAt(m, t);
+        return `${c.params.model} (${m.use}): Vceo ${m.v} V, Ic ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: Gummel-Poon${m.ge ? " (germanium)" : ""} at ${t} °C, hFE ≈ ${Math.round(a.bf)}, Early voltage ${Math.round(m.vaf)} V${m.ge ? `, leakage ICBO ${fmtEng(a.icbo, "A", 2)} (${fmtEng(m.icbo, "A", 2)} at 25 °C, doubling every 10 °C)` : ""}.`; },
       build: (c, net, alloc, out) => {
-        const m = Object.assign({}, BJTS[c.params.model] || BJTS[def], { pol });
-        out.push({ id: c.id, kind: "BJT", nodes: [net("C"), net("B"), net("E")], model: { pol, is: m.is, bf: m.bf, br: m.br, vaf: m.vaf, ikf: m.ikf, nf: 1 } });
+        const m = bjtAt(Object.assign({}, BJTS[c.params.model] || BJTS[def], { pol }), c.params.temp);
+        out.push({ id: c.id, kind: "BJT", nodes: [net("C"), net("B"), net("E")], model: { pol, is: m.is, bf: m.bf, br: m.br, vaf: m.vaf, ikf: m.ikf, nf: 1, vt: m.vt, icbo: m.icbo, t: m.t, ge: m.ge ? 1 : 0 } });
         out.push({ id: c.id + "#cbe", kind: "C", nodes: [net("B"), net("E")], c: m.cbe }, { id: c.id + "#cbc", kind: "C", nodes: [net("B"), net("C")], c: m.cbc });
       }
     };
@@ -1136,5 +1151,5 @@
     { group: "Document", items: [["frame"], ["note"]] }
   ];
 
-  root.CadLib = { SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind, biasBy, biasMeasBy };
+  root.CadLib = { bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind, biasBy, biasMeasBy };
 })(globalThis);

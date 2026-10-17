@@ -2250,6 +2250,8 @@
         h += kv(bip ? "Vbe" : "Vgs", fmtEng(bip ? d.vbe : d.vgs, "V", 3));
         h += kv(bip ? "Ic" : "Id", fmtEng(iMain, "A", 2), Math.abs(iMain) > m.i ? "bad" : "");
         if (bip) h += kv("Ib", fmtEng(d.ib, "A", 2)) + kv("hFE (Ic/Ib)", Math.abs(d.ib) > 1e-12 ? (d.ic / d.ib).toFixed(0) : "—");
+        // germanium: the leakage at the part's temperature, and how much of Ic it makes up ((hFE + 1)·ICBO)
+        if (bip && m.ge) { const a = CadLib.bjtAt(m, c.params.temp), iceo = (a.bf + 1) * a.icbo; h += kv(`Leakage at ${+a.t.toFixed(1)} °C`, `ICBO ${fmtEng(a.icbo, "A", 2)} · ×hFE ≈ ${fmtEng(iceo, "A", 2)}`, Math.abs(d.ic) > 0 && iceo > 0.5 * Math.abs(d.ic) ? "warn" : ""); }
         h += kv("Dissipation", `${fmtEng(d.pd, "W", 2)} · ${Math.round(d.pd / m.p * 100)}% of ${m.p} W`, d.pd > m.p ? "bad" : d.pd > 0.6 * m.p ? "warn" : "");
         if (bip && d.vce < 0.3 && d.ic > 1e-6) h += `<p class="insp-help warn">Saturated (Vce below 0.3 V).</p>`;
         if (!bip && Math.abs(iMain) < 1e-6) h += `<p class="insp-help">Off: Vgs below the threshold.</p>`;
@@ -2912,7 +2914,15 @@
         case "BJT": {
           const m = e.model, mn = `Q${m.pol > 0 ? "N" : "P"}_${(S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id}`.replace(/[^A-Za-z0-9_]/g, "_");
           lines.push(`Q${id} ${nd.join(" ")} ${mn}`);
-          if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NPN" : "PNP"}(IS=${m.is} BF=${m.bf} BR=${m.br} NF=${m.nf || 1} VAF=${m.vaf} IKF=${m.ikf})`); }
+          // the model at 25 °C with SPICE's temperature terms; the part's temperature on the instance
+          const m0 = CadLib.BJTS[(S.comps.find(c => c.id === e.id) || { params: {} }).params.model] || m;
+          if (m.t !== undefined && Math.abs(m.t - 25) > 1e-9) lines[lines.length - 1] += ` temp=${+m.t.toFixed(2)}`;
+          if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NPN" : "PNP"}(IS=${m0.is} BF=${m0.bf} BR=${m0.br || 1} NF=${m.nf || 1} VAF=${m.vaf} IKF=${m.ikf} EG=${m.ge ? 0.67 : 1.11} XTI=3 XTB=1.5 TNOM=25)`); }
+          // germanium leakage, collector to base: ICBO at this temperature, saturating as in the simulator
+          if (m.icbo) {
+            const [hi, lo] = m.pol > 0 ? [nd[0], nd[1]] : [nd[1], nd[0]], vbc = `V(${lo},${hi})`, vt = +m.vt.toPrecision(5);   // junction voltage, B–C for NPN, C–B for PNP
+            lines.push(`B${id}_LK ${hi} ${lo} I=${m.icbo.toExponential(3)}*(${vbc}<0 ? 1-exp(${vbc}/${vt}) : -${vbc}/${vt})`);
+          }
           break;
         }
         case "MOS": {

@@ -18,7 +18,7 @@ const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css
 const server = createServer(async (req, res) => {
   const path = join(root, decodeURIComponent(new URL(req.url, "http://x").pathname).replace(/\/$/, "/index.html"));
   if (path !== root && !path.startsWith(root + sep)) { res.writeHead(403); return res.end(); }
-  // the browser asks for /favicon.ico by itself (full Chrome does; the pages declare no icon): nothing to send
+  // the browser may still ask for /favicon.ico by itself (full Chrome does; the pages declare favicon.png): nothing to send
   if (/\/favicon\.ico$/.test(path)) { res.writeHead(204); return res.end(); }
   // read first, then answer: a missing file gets one 404, not a 200 header followed by a crash
   let body;
@@ -304,8 +304,11 @@ const canvasAt = async (page, p) => { const r = await page.locator("#screen").bo
   await scope.mouse.move(bx, by); await scope.mouse.down(); await scope.mouse.move(bx + 40, by, { steps: 4 }); await scope.mouse.up();
   const moved = await scope.evaluate(() => window.Scope.markers());
   check(moved.length === 2 && moved[1].t > m[1].t, "dragging marker B moves it along the trace");
+  await scope.evaluate(() => { window.__ev = []; const c = document.getElementById("screen"); ["pointerdown", "pointerup", "dblclick", "pointermove"].forEach(t => c.addEventListener(t, e => window.__ev.push(t + " " + e.offsetX.toFixed(0) + "," + e.offsetY.toFixed(0) + " m=" + window.Scope.markers().length), true)); });
+  const pre = await scope.evaluate(() => window.Scope.markers().map(k => [k.pos.x, k.pos.y]));
   await scope.mouse.dblclick(...await canvasAt(scope, moved[0].pos));
-  check((await scope.evaluate(() => window.Scope.markers())).length === 1, "double-click removes a marker");
+  const after = await scope.evaluate(() => window.Scope.markers());
+  check(after.length === 1, "double-click removes a marker" + (after.length === 1 ? "" : ` (DEBUG pre ${JSON.stringify(pre)} target ${JSON.stringify(moved[0].pos)} after ${JSON.stringify(after.map(k => k.pos))} ev ${JSON.stringify(await scope.evaluate(() => window.__ev))})`));
   await scope.keyboard.press("Escape");
   check((await scope.evaluate(() => window.Scope.markers())).length === 0, "Esc clears the markers");
 }
@@ -1077,6 +1080,16 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const search = cad.locator("#pal-search");
   await search.fill("2n2222");
   const hit = await cad.locator("#palette .pal-item").allTextContents();
+  {
+    // germanium in the CAD: the Temperature field reaches the model, the leakage shows in the inspector and goes to SPICE
+    const ge = await cad.evaluate(() => {
+      const C = TubeCAD, L = CadLib.LIB, c = C.makeComp("pnp", { model: "AC128", temp: 45 }, 0, 0, 0), els = [];
+      L.pnp.build(c, p => ({ C: 1, B: 2, E: 0 })[p], null, els);
+      const q = els.find(e => e.kind === "BJT").model, f = L.pnp.fields.find(x => x.key === "temp");
+      return { icbo: q.icbo, t: q.t, field: !!f, info: L.pnp.info(c) };
+    });
+    check(ge.field && ge.t === 45 && Math.abs(ge.icbo / 4e-6 - 4) < 1e-6 && /leakage ICBO 16µA \(4µA at 25 °C/.test(ge.info), `germanium AC128 at 45 °C: ICBO ${(ge.icbo * 1e6).toFixed(1)} µA (4 µA at 25 °C, doubling every 10 °C)`);
+  }
   // germanium: by the Latin name, by the Cyrillic one (МП39Б), and by "germanium"
   await search.fill("мп39"); const ge1 = await cad.locator("#palette .pal-item").allTextContents();
   await search.fill("ac128"); const ge2 = await cad.locator("#palette .pal-item").allTextContents();
@@ -1132,6 +1145,12 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(/NPN transistor/.test(insp) && /hFE \(Ic\/Ib\)\d+/.test(insp) && /Dissipation.*of 20 W/.test(insp), "the inspector shows Vce, Vbe, Ic, Ib, hFE and dissipation against the rating");
   const spice = await cad.evaluate(() => TubeCAD.spiceNetlist());
   check(/^QVT|^Q\S+ N\d+ N\d+ N\d+ QN_MJE340$/m.test(spice) && /\.model QN_MJE340 NPN\(IS=/.test(spice), "SPICE export writes the transistor as a Q element with its .model");
+  {
+    // a germanium part at 45 °C: SPICE's temperature terms on the model, temp= on the instance, the leakage as a B source
+    const sp = await cad.evaluate(() => { const S = TubeCAD.state, q = S.comps.find(c => c.label === "VT1"); Object.assign(q.params, { model: "AC127", temp: 45 }); const t = TubeCAD.spiceNetlist(); Object.assign(q.params, { model: "MJE340", temp: 25 }); return t; });
+    check(/^Q\S+ N\d+ N\d+ N\d+ QN_AC127 temp=45$/m.test(sp) && /\.model QN_AC127 NPN\(IS=4e-7 .*EG=0\.67 XTI=3 XTB=1\.5 TNOM=25\)/.test(sp) && /^B\S+_LK N\d+ N\d+ I=1\.200e-5\*\(V\(N\d+,N\d+\)<0 \? 1-exp\(V\(N\d+,N\d+\)\/0\.027586\)/m.test(sp),
+      "SPICE export of a germanium transistor at 45 °C: EG 0.67 with the temperature terms, temp=45, and its leakage (12 µA) as a B source");
+  }
   const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => [r.refs, r.desc, r.value, r.rating, r.sim].join("|")));
   check(bom.some(l => l.startsWith("VT1|Transistor, NPN|MJE340|300 V, 0.5 A, 20 W, TO-126|")) && bom.some(l => /^VD1\|Zener diode\|1N4742A\|12 V, 1 W\|/.test(l)) && bom.some(l => /^HL1\|LED, red\|/.test(l)), `the BOM lists the transistor, zener and LED with their ratings`);
   // nothing selected: the inspector sums up where the power goes

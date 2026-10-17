@@ -674,7 +674,8 @@ test("germanium transistors: 10 USSR and 10 Western, hFE inside the datasheet's 
     ["AC127", 0.3, 50, 200], ["AC128", 0.3, 60, 175], ["AC187", 0.3, 100, 500], ["AC188", 0.3, 100, 500], ["OC71", 3e-3, 30, 75], ["NKT275", 1e-3, 70, 150],
     ["2N404", 12e-3, 30, 120], ["AD149", 1, 30, 100], ["AD161", 0.5, 80, 320], ["AD162", 0.5, 80, 320]];
   assert.equal(GE.filter(([k]) => /^(MP|GT|P2)/.test(k)).length, 10, "10 USSR types");
-  const at = (m, ic) => { let lo = 0, hi = 1.5; for (let k = 0; k < 80; k++) { const v = (lo + hi) / 2, I = E.Semi.bjt([5 * m.pol, v * m.pol, 0], m); if (I[0] * m.pol < ic) lo = v; else hi = v; } const v = (lo + hi) / 2, I = E.Semi.bjt([5 * m.pol, v * m.pol, 0], m); return { vbe: v, hfe: I[0] / I[1] }; };
+  const at = (m, ic) => { let lo = 0, hi = 1.5; for (let k = 0; k < 80; k++) { const v = (lo + hi) / 2, I = E.Semi.bjt([5 * m.pol, v * m.pol, 0], m); if (I[0] * m.pol < ic) lo = v; else hi = v; } const v = (lo + hi) / 2, I = E.Semi.bjt([5 * m.pol, v * m.pol, 0], m), J = E.Semi.bjt([5 * m.pol, (v + 1e-4) * m.pol, 0], m); return { vbe: v, hfe: (J[0] - I[0]) / (J[1] - I[1]) }; };
+  // hFE as the datasheet's h21э: the small-signal ratio ΔIC/ΔIB, which the leakage does not change
   for (const [k, ic, lo, hi] of GE) {
     const m = L.BJTS[k]; assert.ok(m, `${k} is in the library`);
     const { vbe, hfe } = at(m, ic);
@@ -682,8 +683,9 @@ test("germanium transistors: 10 USSR and 10 Western, hFE inside the datasheet's 
     // germanium: about 0.2 V at 1 mA (silicon 0.6–0.7 V); the power parts under 0.45 V at their test current
     const v1 = at(m, 1e-3).vbe; assert.ok(v1 > 0.1 && v1 < 0.3, `${k}: VBE ${v1.toFixed(3)} V at 1 mA`);
     assert.ok(vbe < 0.45, `${k}: VBE ${vbe.toFixed(3)} V at ${ic} A`);
-    // a common-emitter stage from the CAD's own part: 9 V (−9 V for PNP), base fed through Rb for IC ≈ ic/10 (1 mA at most), Rc for half the supply
-    const pol = m.pol, icq = Math.min(ic / 10, 1e-3), rc = 4.5 / icq, rb = 9 / (icq / m.bf), els = [];
+    // a common-emitter stage from the CAD's own part: 9 V (−9 V for PNP), base fed through Rb for IC ≈ icq, Rc for half the supply.
+    // Germanium's leakage flows on top, (hFE + 1)·ICBO: the base current is what is left, and IC well above the leakage
+    const pol = m.pol, icq = Math.max(Math.min(ic / 10, 1e-3), 4 * (m.bf + 1) * (m.icbo || 0)), rc = 4.5 / icq, rb = 9 / ((icq - (m.bf + 1) * (m.icbo || 0)) / m.bf), els = [];
     const c = { id: "q", type: pol > 0 ? "npn" : "pnp", params: { model: k } }, nets = { C: 3, B: 2, E: 0 };
     L.LIB[c.type].build(c, p => nets[p], null, els);
     const r = E.simulate({ nodeCount: 4, elements: [{ id: "v", kind: "V", nodes: [1, 0], v: 9 * pol }, { id: "rb", kind: "R", nodes: [1, 2], r: rb }, { id: "rc", kind: "R", nodes: [1, 3], r: rc }, ...els] });
@@ -696,4 +698,33 @@ test("germanium transistors: 10 USSR and 10 Western, hFE inside the datasheet's 
     assert.ok(f && f.pads.length === 3, `${k}: footprint ${g.options[0]}`);
     assert.equal(/^WIRE/.test(g.options[0]), m.pkg === "TO-3" || m.pkg === "SOT-9", `${k}: ${m.pkg} → ${g.options[0]}`);
   }
+});
+
+test("transistor temperature: VBE falls about 2 mV/°C, hFE rises, germanium leakage doubles every 10 °C and runs a fixed-bias stage into saturation", () => {
+  const E = globalThis.TubeSimEngine;
+  const vbeAt = (m, ic) => { let lo = 0, hi = 1.5; for (let k = 0; k < 80; k++) { const v = (lo + hi) / 2; if (E.Semi.bjt([5 * m.pol, v * m.pol, 0], m)[0] * m.pol < ic) lo = v; else hi = v; } return (lo + hi) / 2; };
+  for (const k of ["AC128", "MP39B", "2N3904", "BC547B"]) {
+    const m25 = L.bjtAt(L.BJTS[k], 25), m55 = L.bjtAt(L.BJTS[k], 55);
+    const tc = (vbeAt(m55, 1e-3) - vbeAt(m25, 1e-3)) / 30 * 1e3;
+    assert.ok(tc < -1.5 && tc > -2.6, `${k}: VBE ${tc.toFixed(2)} mV/°C at 1 mA`);
+    assert.ok(m55.bf > m25.bf * 1.1 && m55.bf < m25.bf * 1.3, `${k}: BF ${m25.bf.toFixed(0)} → ${m55.bf.toFixed(0)}`);
+    // at 25 °C the model is the table's own: nothing changes for circuits that never set a temperature
+    assert.equal(m25.is, L.BJTS[k].is); assert.equal(m25.bf, L.BJTS[k].bf);
+    if (L.BJTS[k].ge) assert.ok(Math.abs(m55.icbo / m25.icbo - 8) < 1e-9, `${k}: ICBO ×8 from 25 to 55 °C`); else assert.equal(m25.icbo, 0);
+  }
+  // reverse-biased CB junction alone (emitter open): the collector draws ICBO, flowing out of the base
+  const ac = L.bjtAt(L.BJTS.AC128, 25), I = E.Semi.bjt([-9, 0, 0], ac);
+  // (the junction's own saturation current, IS·(1 + 1/BR), adds a little: under a µA)
+  const own = ac.is * (1 + 1 / ac.br);
+  assert.ok(-I[0] > ac.icbo && -I[0] < ac.icbo + 2 * own && I[1] > ac.icbo, `ICBO ${(-I[0] * 1e6).toFixed(2)} µA: leakage ${ac.icbo * 1e6} µA + junction ${(own * 1e6).toFixed(2)} µA`);
+  // an AC128 on fixed base bias (Fuzz Face-like: 470 kΩ from the collector side of −9 V): IC grows with temperature, at 60 °C it saturates
+  const stage = t => {
+    const c = { id: "q", type: "pnp", params: { model: "AC128", temp: t } }, els = [];
+    L.LIB.pnp.build(c, p => ({ C: 3, B: 2, E: 0 })[p], null, els);
+    const r = E.simulate({ nodeCount: 4, elements: [{ id: "v", kind: "V", nodes: [1, 0], v: -9 }, { id: "rb", kind: "R", nodes: [1, 2], r: 1.5e6 }, { id: "rc", kind: "R", nodes: [1, 3], r: 4700 }, ...els] });
+    assert.ok(r.ok, r.error); return { ic: r.dc.devices.q.main.ic, vce: -r.dc.nodes[3] };
+  };
+  const s0 = stage(0), s25 = stage(25), s45 = stage(45), s60 = stage(60);
+  assert.ok(s0.ic < s25.ic && s25.ic < s45.ic && s45.ic <= s60.ic * 1.0001, `IC ${[s0, s25, s45, s60].map(x => (x.ic * 1e3).toFixed(2)).join(" → ")} mA from 0 to 60 °C`);
+  assert.ok(s25.vce > 2 && s60.vce < 0.3, `VCE ${s25.vce.toFixed(2)} V at 25 °C, ${s60.vce.toFixed(2)} V at 60 °C (saturated)`);
 });

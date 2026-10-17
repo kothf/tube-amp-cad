@@ -124,6 +124,10 @@
   // Semiconductors. Currents into each terminal for terminal voltages V.
   // BJT (nodes C, B, E): SPICE Gummel-Poon without the low-current
   // recombination terms: IS, BF, BR, NF, VAF (Early), IKF (high-injection knee).
+  // vt: thermal voltage kT/q at the junction temperature (the CAD scales IS, BF
+  // and BR for temperature too). icbo: the collector-base leakage of germanium,
+  // a current from collector to base that saturates once the junction is a few
+  // vt reverse-biased; the transistor then amplifies it, as ICEO = (hFE+1)·ICBO.
   // MOSFET (nodes D, G, S): square law (SPICE level 1: VTO, KP, LAMBDA) with the
   // overdrive smoothed over 50 mV around threshold, so the current and its
   // derivative stay continuous; drain and source swap when Vds reverses.
@@ -133,11 +137,13 @@
   const VT = 0.025852;
   const Semi = {
     bjt(V, m) {
-      const p = m.pol, vbe = p * (V[1] - V[2]), vbc = p * (V[1] - V[0]);
-      const If = m.is * (Math.exp(Math.min(vbe / ((m.nf || 1) * VT), 80)) - 1), Ir = m.is * (Math.exp(Math.min(vbc / VT, 80)) - 1);
+      const p = m.pol, vbe = p * (V[1] - V[2]), vbc = p * (V[1] - V[0]), vt = m.vt || VT;
+      const If = m.is * (Math.exp(Math.min(vbe / ((m.nf || 1) * vt), 80)) - 1), Ir = m.is * (Math.exp(Math.min(vbc / vt, 80)) - 1);
       const q1 = 1 / Math.max(1 - vbc / (m.vaf || 1e9), 0.05), q2 = m.ikf ? Math.max(If, 0) / m.ikf : 0;
       const qb = q1 * (1 + Math.sqrt(1 + 4 * q2)) / 2;
-      const icc = (If - Ir) / qb, ib = If / m.bf + Ir / (m.br || 1), ic = icc - Ir / (m.br || 1);
+      // leakage: icbo·(1 − e^(vbc/vt)) reverse-biased, carried on linearly (same slope) when forward
+      const xl = vbc / vt, lk = m.icbo ? m.icbo * (xl <= 0 ? 1 - Math.exp(xl) : -xl) : 0;
+      const icc = (If - Ir) / qb, ib = If / m.bf + Ir / (m.br || 1) - lk, ic = icc - Ir / (m.br || 1) + lk;
       return [p * ic, p * ib, -p * (ic + ib)];
     },
     mos(V, m) {
@@ -537,10 +543,10 @@
           }
           case "BJT": {
             // junction voltages limited against the last iterate, the device linearized there
-            const p = e.model.pol, nVt = (e.model.nf || 1) * VT, vcrit = nVt * Math.log(nVt / (Math.SQRT2 * e.model.is));
+            const p = e.model.pol, vt = e.model.vt || VT, nVt = (e.model.nf || 1) * vt, vcrit = nVt * Math.log(nVt / (Math.SQRT2 * e.model.is));
             const V = nd.map(k => vn(x, k));
             const rbe = p * (V[1] - V[2]), rbc = p * (V[1] - V[0]);
-            const vbe = pnjlim(rbe, e._vbe, nVt, vcrit), vbc = pnjlim(rbc, e._vbc, VT, VT * Math.log(VT / (Math.SQRT2 * e.model.is)));
+            const vbe = pnjlim(rbe, e._vbe, nVt, vcrit), vbc = pnjlim(rbc, e._vbc, vt, vt * Math.log(vt / (Math.SQRT2 * e.model.is)));
             if (Math.abs(vbe - rbe) > 1e-9 || Math.abs(vbc - rbc) > 1e-9) limited = true;
             e._vbe = vbe; e._vbc = vbc;
             const vb = V[2] + p * vbe;

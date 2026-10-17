@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.65.0] - 2026-10-17
+
+### Added
+- **Germanium leakage.** Every germanium transistor carries its typical collector-base leakage ICBO at 25 °C (a third of the datasheet maximum: AC128 4 µA, MP39B 5 µA, AD149 100 µA, P213B 300 µA). It flows from collector to base and the transistor amplifies it to about (hFE + 1)·ICBO, as in the real part, so fixed-bias stages sit where germanium ones do. The inspector shows the leakage and warns when it is half of IC or more.
+- **Transistor temperature.** A *Temperature* field (°C, 25 by default) on every bipolar transistor. IS scales as SPICE does with the band gap (0.67 eV germanium, 1.11 eV silicon): VBE falls about 2 mV/°C; hFE rises as (T/T0)^1.5; germanium leakage doubles every 10 °C. An AC128 on fixed bias (1.5 MΩ, 4.7 kΩ, −9 V) sits at VCE 5.2 V at 0 °C, 2.9 V at 25 °C and is saturated by 45 °C. At 25 °C every model is exactly as before.
+- **SPICE export** writes EG, XTI, XTB and TNOM in the transistor models, `temp=` on a part away from 25 °C, and the germanium leakage as a B source.
+
+### Changed
+- **The tools show the aerocat.tech icon** in the browser tab, bundled with the tool (they declared none, so the browser showed a stray one).
+
 ## [3.64.0] - 2026-10-17
 
 ### Added
