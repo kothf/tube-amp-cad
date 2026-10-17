@@ -24,30 +24,66 @@
     });
     return keep;
   }
-  const partBox = g => B().partBox(g), partSilk = g => B().partSilk(g);
+  const partBox = g => B().partBox(g), partSilk = (g, outline) => B().partSilk(g, false, outline);
   const textOps = (t, mirror) => { const st = B().strokeText(t.text, t.x, t.y, t.size, t.rot, mirror); return st.lines.map(l => ({ pol: "D", t: "line", w: st.w, pts: l })); };
 
+  // a line kept to the inside of a convex polygon (the board outline): the pieces of a polyline inside it
+  function clipToConvex(pts, poly) {
+    const n = poly.length, cx = poly.reduce((s, p) => s + p[0], 0) / n, cy = poly.reduce((s, p) => s + p[1], 0) / n;
+    // each edge as an inward half-plane a·x + b·y + c >= 0
+    const hp = poly.map((p, i) => { const q = poly[(i + 1) % n], a = p[1] - q[1], b = q[0] - p[0], c = -(a * p[0] + b * p[1]), sg = a * cx + b * cy + c >= 0 ? 1 : -1; return [a * sg, b * sg, c * sg]; });
+    const out = []; let cur = null;
+    for (let k = 1; k < pts.length; k++) {
+      const [x1, y1] = pts[k - 1], [x2, y2] = pts[k];
+      let t0 = 0, t1 = 1;
+      for (const [a, b, c] of hp) {
+        const f1 = a * x1 + b * y1 + c, f2 = a * x2 + b * y2 + c;
+        if (f1 < 0 && f2 < 0) { t0 = 1; t1 = 0; break; }
+        if (f1 < 0) t0 = Math.max(t0, f1 / (f1 - f2)); else if (f2 < 0) t1 = Math.min(t1, f1 / (f1 - f2));
+      }
+      if (t0 >= t1 - 1e-9) { cur = null; continue; }
+      const A = [r4(x1 + (x2 - x1) * t0), r4(y1 + (y2 - y1) * t0)], Bp = [r4(x1 + (x2 - x1) * t1), r4(y1 + (y2 - y1) * t1)];
+      if (cur && t0 === 0) cur.push(Bp); else { cur = [A, Bp]; out.push(cur); }
+      if (t1 < 1) cur = null;
+    }
+    return out;
+  }
+  const ring = h => B().holeRing(h);
+
   /** Drawing operations of a layer: F.Cu, B.Cu (pours, then tracks, pads, vias, text),
-      F.Mask, B.Mask (openings), F.SilkS, B.SilkS, Edge.Cuts */
+      F.Mask, B.Mask (openings), F.SilkS, B.SilkS, Edge.Cuts. fn: the Gerber X2 aperture function */
   function layerOps(board, model, fills, layer) {
     const C = B(), R = board.rules, keep = placedParts(board, model), ops = [];
-    const pads = model.pads.filter(p => keep.has(p.part));
+    const pads = model.pads.filter(p => keep.has(p.part)), holes = board.holes || [];
     if (layer === "F.Cu" || layer === "B.Cu") {
-      (fills || []).filter(f => f.layer === layer).forEach(f => ops.push(...f.ops));
-      board.tracks.filter(t => t.layer === layer).forEach(t => ops.push({ pol: "D", t: "line", w: t.w, pts: t.pts }));
-      pads.forEach(p => ops.push({ pol: "D", ...C.flashOf(p, 0) }));
-      board.vias.forEach(v => { const d = v.pad || R.viaPad; ops.push({ pol: "D", t: "flash", shape: "C", x: v.x, y: v.y, w: d, h: d }); });
-      board.texts.filter(t => t.layer === layer).forEach(t => ops.push(...textOps(t, layer === "B.Cu")));
+      (fills || []).filter(f => f.layer === layer).forEach(f => ops.push(...f.ops.map(op => (op.pol === "D" ? { ...op, fn: "Conductor" } : op))));
+      board.tracks.filter(t => t.layer === layer).forEach(t => ops.push({ pol: "D", t: "line", w: t.w, pts: t.pts, fn: "Conductor" }));
+      pads.forEach(p => ops.push({ pol: "D", ...C.flashOf(p, 0), fn: "ComponentPad" }));
+      board.vias.forEach(v => { const d = v.pad || R.viaPad; ops.push({ pol: "D", t: "flash", shape: "C", x: v.x, y: v.y, w: d, h: d, fn: "ViaPad" }); });
+      holes.filter(h => h.plated).forEach(h => { const d = ring(h); ops.push({ pol: "D", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d, fn: "WasherPad" }); });
+      board.texts.filter(t => t.layer === layer).forEach(t => ops.push(...textOps(t, layer === "B.Cu").map(o => ({ ...o, fn: "NonConductor" }))));
     } else if (layer === "F.Mask" || layer === "B.Mask") {
-      pads.forEach(p => ops.push({ pol: "D", ...C.flashOf(p, R.maskExpansion || 0) }));
-      if (!R.tentVias) board.vias.forEach(v => { const d = (v.pad || R.viaPad) + 2 * (R.maskExpansion || 0); ops.push({ pol: "D", t: "flash", shape: "C", x: v.x, y: v.y, w: r4(d), h: r4(d) }); });
+      const e = R.maskExpansion || 0;
+      pads.forEach(p => ops.push({ pol: "D", ...C.flashOf(p, e) }));
+      if (!R.tentVias) board.vias.forEach(v => { const d = (v.pad || R.viaPad) + 2 * e; ops.push({ pol: "D", t: "flash", shape: "C", x: v.x, y: v.y, w: r4(d), h: r4(d) }); });
+      // mounting holes: the ring of a plated one is bare; a plain one gets the mask off its wall
+      holes.forEach(h => { const d = r4((h.plated ? ring(h) : h.d) + 2 * e); ops.push({ pol: "D", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d }); });
     } else if (layer === "F.SilkS" || layer === "B.SilkS") {
-      const side = layer[0];
-      model.parts.forEach(g => { if (keep.has(g.key) && (g.place.side || "F") === side) ops.push(...partSilk(g)); });
-      board.texts.filter(t => t.layer === layer).forEach(t => ops.push(...textOps(t, side === "B")));
+      const side = layer[0], inside = C.outlinePoly(board.outline, 0.1), draw = [];
+      model.parts.forEach(g => { if (keep.has(g.key) && (g.place.side || "F") === side) draw.push(...partSilk(g, board.outline)); });
+      board.texts.filter(t => t.layer === layer).forEach(t => draw.push(...textOps(t, side === "B")));
+      // kept on the board, and off every opening in the mask (pads, holes) with a 0.1 mm gap: what
+      // the board maker would otherwise clip by hand
+      draw.forEach(op => { if (op.t === "line") clipToConvex(op.pts, inside).forEach(pts => ops.push({ ...op, pts })); else ops.push(op); });
+      if (ops.length) {
+        const e = (R.maskExpansion || 0) + 0.1;
+        pads.forEach(p => ops.push({ pol: "C", ...C.flashOf(p, e) }));
+        if (!R.tentVias) board.vias.forEach(v => { const d = r4((v.pad || R.viaPad) + 2 * e); ops.push({ pol: "C", t: "flash", shape: "C", x: v.x, y: v.y, w: d, h: d }); });
+        holes.forEach(h => { const d = r4((h.plated ? ring(h) : h.d) + 2 * e); ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d }); });
+      }
     } else if (layer === "Edge.Cuts") {
       const P = C.outlinePoly(board.outline, 0);
-      ops.push({ pol: "D", t: "line", w: EDGE_W, pts: P.concat([P[0]]) });
+      ops.push({ pol: "D", t: "line", w: EDGE_W, pts: P.concat([P[0]]), fn: "Profile" });
     }
     return ops;
   }
@@ -59,24 +95,48 @@
     "F.Cu": ["Copper,L1,Top", "Positive"], "B.Cu": ["Copper,L2,Bot", "Positive"], "F.Mask": ["Soldermask,Top", "Negative"], "B.Mask": ["Soldermask,Bot", "Negative"],
     "F.SilkS": ["Legend,Top", "Positive"], "B.SilkS": ["Legend,Bot", "Positive"], "Edge.Cuts": ["Profile,NP", "Positive"]
   };
+  // plain ASCII for comments and attribute values (older CAM software reads nothing else): Cyrillic
+  // transliterated, × as x, the rest dropped; commas, * and % are syntax in Gerber, so they go too
+  const CYR = { а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya" };
+  function ascii(t, attr) {
+    let o = "";
+    for (const ch of String(t || "")) {
+      const lo = ch.toLowerCase(), c = CYR[lo];
+      if (c !== undefined) o += ch === lo ? c : c.charAt(0).toUpperCase() + c.slice(1);
+      else if (ch === "×") o += "x"; else if (ch === "—" || ch === "–") o += "-"; else if (ch === "µ") o += "u"; else if (ch === "Ø") o += "D"; else if (ch === "°") o += "deg";
+      else if (/[\x20-\x7e]/.test(ch)) o += ch;
+    }
+    o = o.replace(/[*%]/g, "");
+    return attr ? o.replace(/,/g, " ") : o;
+  }
   function gerber(ops, layer, board, meta) {
     const H = board.outline.h, X = v => Math.round(v * 1e6), Y = v => Math.round((H - v) * 1e6), f6 = v => (+v).toFixed(6);
-    const ap = new Map(), key = op => (op.t === "line" ? `C,${f6(op.w)}` : op.shape === "C" ? `C,${f6(op.w)}` : `${op.shape},${f6(op.w)}X${f6(op.h)}`);
+    // one aperture per shape, size and function (a pad and a via of one size are told apart)
+    const ap = new Map(), shapeKey = op => (op.t === "line" || op.shape === "C" ? `C,${f6(op.w)}` : `${op.shape},${f6(op.w)}X${f6(op.h)}`), key = op => `${shapeKey(op)}|${op.pol === "C" ? "" : op.fn || ""}`;
     ops.forEach(op => { if (op.t !== "region" && !ap.has(key(op))) ap.set(key(op), 10 + ap.size); });
     const [func, pol] = FUNC[layer] || ["Other,Drawing", "Positive"];
-    const out = [`G04 Tube Amp CAD board: ${String((meta && meta.title) || "board").replace(/[*%]/g, "")} - ${layer}*`,
-      `%TF.GenerationSoftware,Tube Amp CAD,Board Design,${(meta && meta.version) || ""}*%`, `%TF.FileFunction,${func}*%`, `%TF.FilePolarity,${pol}*%`,
-      "%FSLAX46Y46*%", "%MOMM*%", "%LPD*%", "G01*"];
-    ap.forEach((d, k) => { const [s, dims] = k.split(","); out.push(`%ADD${d}${s},${dims}*%`); });
+    const out = [`G04 Tube Amp CAD board: ${ascii((meta && meta.title) || "board")} - ${layer}*`,
+      `%TF.GenerationSoftware,Tube Amp CAD,Board Design,${ascii((meta && meta.version) || "", true)}*%`];
+    if (meta && meta.date) out.push(`%TF.CreationDate,${meta.date}*%`);
+    out.push("%TF.SameCoordinates,Original*%", `%TF.FileFunction,${func}*%`, `%TF.FilePolarity,${pol}*%`, "%TF.Part,Single*%", "%FSLAX46Y46*%", "%MOMM*%", "%LPD*%", "G01*");
+    ap.forEach((d, k) => {
+      const [shape, fn] = k.split("|"), [s, dims] = shape.split(",");
+      if (fn) out.push(`%TA.AperFunction,${fn}*%`);
+      out.push(`%ADD${d}${s},${dims}*%`);
+      if (fn) out.push("%TD*%");
+    });
     let lp = "D", cur = -1;
     ops.forEach(op => {
       const p = op.pol === "C" ? "C" : "D";
       if (p !== lp) { out.push(`%LP${p}*%`); lp = p; }
       if (op.t === "region") {
         const P = op.pts; if (P.length < 3) return;
+        const fn = p === "D" && op.fn;
+        if (fn) out.push(`%TA.AperFunction,${fn}*%`);
         out.push("G36*", `X${X(P[0][0])}Y${Y(P[0][1])}D02*`);
         P.slice(1).forEach(q => out.push(`X${X(q[0])}Y${Y(q[1])}D01*`));
         out.push(`X${X(P[0][0])}Y${Y(P[0][1])}D01*`, "G37*");
+        if (fn) out.push("%TD*%");
         return;
       }
       const d = ap.get(key(op)); if (d !== cur) { out.push(`D${d}*`); cur = d; }
@@ -87,21 +147,22 @@
     return out.join("\n") + "\n";
   }
 
-  /** Holes: plated (pads, vias) and not plated (mounting holes), grouped by diameter */
+  /** Holes: plated (pads, vias, plated mounting holes) and not plated (mounting holes), grouped by
+      diameter and what they are for: { pth: [[dia, pts, fn]...], npth } */
   function drills(board, model) {
     const keep = placedParts(board, model), R = board.rules, pth = new Map(), npth = new Map();
-    const add = (m, d, x, y) => { const k = (+d).toFixed(3); if (!m.has(k)) m.set(k, []); m.get(k).push([x, y]); };
-    model.pads.forEach(p => { if (keep.has(p.part)) add(pth, p.drill, p.x, p.y); });
-    board.vias.forEach(v => add(pth, v.drill || R.viaDrill, v.x, v.y));
-    (board.holes || []).forEach(h => add(npth, h.d, h.x, h.y));
-    const sort = m => [...m.entries()].sort((a, b) => +a[0] - +b[0]);
+    const add = (m, d, x, y, fn) => { const k = (+d).toFixed(3) + "|" + fn; if (!m.has(k)) m.set(k, []); m.get(k).push([x, y]); };
+    model.pads.forEach(p => { if (keep.has(p.part)) add(pth, p.drill, p.x, p.y, "ComponentDrill"); });
+    board.vias.forEach(v => add(pth, v.drill || R.viaDrill, v.x, v.y, "ViaDrill"));
+    (board.holes || []).forEach(h => add(h.plated ? pth : npth, h.d, h.x, h.y, "MechanicalDrill"));
+    const sort = m => [...m.entries()].map(([k, pts]) => { const [d, fn] = k.split("|"); return [d, pts, fn]; }).sort((a, b) => +a[0] - +b[0] || a[2].localeCompare(b[2]));
     return { pth: sort(pth), npth: sort(npth) };
   }
   function excellon(tools, plated, board, meta) {
     const H = board.outline.h, f3 = v => (+v).toFixed(3);
-    const out = ["M48", `; DRILL file Tube Amp CAD ${(meta && meta.version) || ""} ${(meta && meta.title) || ""}`.trim(), "; FORMAT={-:-/ absolute / metric / decimal}",
-      `; #@! TF.FileFunction,${plated ? "Plated,1,2,PTH" : "NonPlated,1,2,NPTH"}`, "FMAT,2", "METRIC"];
-    tools.forEach(([d], i) => out.push(`T${i + 1}C${d}`));
+    const out = ["M48", `; DRILL file Tube Amp CAD ${ascii((meta && meta.version) || "")} ${ascii((meta && meta.title) || "")}`.trim(), "; FORMAT={-:-/ absolute / metric / decimal}",
+      `; #@! TF.GenerationSoftware,Tube Amp CAD,Board Design,${ascii((meta && meta.version) || "", true)}`, `; #@! TF.FileFunction,${plated ? "Plated,1,2,PTH" : "NonPlated,1,2,NPTH"}`, "FMAT,2", "METRIC"];
+    tools.forEach(([d, , fn], i) => out.push(`; #@! TA.AperFunction,${plated ? "Plated,PTH" : "NonPlated,NPTH"},${fn}`, `T${i + 1}C${d}`));
     out.push("%", "G90", "G05");
     tools.forEach(([, pts], i) => { out.push(`T${i + 1}`); pts.forEach(([x, y]) => out.push(`X${f3(x)}Y${f3(H - y)}`)); });
     out.push("M30");
@@ -116,12 +177,13 @@
     const d = drills(board, model);
     files[`${base}-PTH.drl`] = excellon(d.pth, true, board, meta);
     if (d.npth.length) files[`${base}-NPTH.drl`] = excellon(d.npth, false, board, meta);
-    const R = board.rules, st = board.stackup, n = t => t.reduce((s, [, p]) => s + p.length, 0);
+    const R = board.rules, st = board.stackup, n = t => t.reduce((s, [, p]) => s + p.length, 0), dias = t => [...new Set(t.map(x => x[0]))].join(", ");
+    const ph = (board.holes || []).filter(h => h.plated).length, nw = board.tracks.map(t => t.w);
     files[`${base}-README.txt`] = [`${(meta && meta.title) || base} — manufacturing files from Tube Amp CAD ${(meta && meta.version) || ""}`, "",
       `Board: ${board.outline.w} × ${board.outline.h} mm${board.outline.r ? `, corner radius ${board.outline.r} mm` : ""}, 2 layers, ${st.thickness} mm FR-4, ${st.copper} µm copper (${st.copper >= 70 ? 2 : 1} oz)`,
-      `Smallest track ${Math.min(R.minTrack, ...board.tracks.map(t => t.w))} mm, clearance ${R.clearance} mm (high voltage ${R.hvClearance} mm)`,
-      `Holes: ${n(d.pth)} plated (${d.pth.map(t => t[0]).join(", ")} mm)${d.npth.length ? `, ${n(d.npth)} not plated (${d.npth.map(t => t[0]).join(", ")} mm)` : ""}`,
-      `Solder mask on both sides${R.tentVias ? ", vias covered" : ""}; silkscreen on the top${board.texts.some(t => t.layer === "B.SilkS") || model.parts.some(g => g.place && g.place.side === "B") ? " and bottom" : ""}.`, "",
+      `Tracks ${nw.length ? `${Math.min(...nw)}–${Math.max(...nw)} mm wide` : "none"} (design minimum ${R.minTrack} mm); clearance ${R.clearance} mm, high voltage ${R.hvClearance} mm and more by IPC-2221B ${R.ipc || "B2"} where the voltage asks`,
+      `Holes: ${n(d.pth)} plated (${dias(d.pth)} mm${ph ? `; ${ph} of them plated mounting holes` : ""})${d.npth.length ? `, ${n(d.npth)} not plated (${dias(d.npth)} mm)` : ""}`,
+      `Solder mask on both sides${R.tentVias ? ", vias covered" : ""}; silkscreen on the top${board.texts.some(t => t.layer === "B.SilkS") || model.parts.some(g => g.place && g.place.side === "B") ? " and bottom" : ""}, kept off the pads and inside the outline.`, "",
       "Files: " + Object.keys(files).concat([`${base}-README.txt`]).join(", "), ""].join("\n");
     return files;
   }
@@ -217,14 +279,15 @@
         paint(c, layerOps(board, model, fills, what), INK, PAPER); holesPaper(c); outline(c);
         c.restore();
       } else if (what === "assembly") {
-        outline(c); paint(c, layerOps(board, model, fills, "F.SilkS"), INK, PAPER);
+        outline(c); paint(c, layerOps(board, model, fills, "F.SilkS").filter(op => op.pol !== "C"), INK, PAPER);
         c.fillStyle = INK; c.font = "1.1px monospace"; c.textAlign = "center"; c.textBaseline = "middle";
         model.parts.forEach(g => { if (!g.place || g.place.side === "B" || !placedParts(board, model).has(g.key)) return; const b = partBox(g); c.fillText(String(g.value || ""), (b.x1 + b.x2) / 2, b.y2 + 1); });
         const bottom = model.parts.filter(g => g.place && g.place.side === "B").map(g => g.ref);
         if (bottom.length) { c.textAlign = "left"; c.font = "2.4px monospace"; c.fillText(`On the bottom side: ${bottom.join(", ")}`, 0, o.h + 16); }
       } else if (what === "drill") {
         outline(c);
-        const tools = d.pth.map(t => [...t, "plated"]).concat(d.npth.map(t => [...t, "not plated"]));
+        const use = { ComponentDrill: "parts", ViaDrill: "vias", MechanicalDrill: "mounting" };
+        const tools = d.pth.map(([dia, pts, fn]) => [dia, pts, `plated, ${use[fn] || fn}`]).concat(d.npth.map(([dia, pts, fn]) => [dia, pts, `not plated, ${use[fn] || fn}`]));
         c.strokeStyle = INK; c.lineWidth = 0.15; c.lineCap = "butt";
         tools.forEach(([dia, pts], ti) => pts.forEach(([x, y]) => {
           const r = Math.max(0.6, Math.min(+dia, 2) / 2 + 0.3), s = ti % 6; c.beginPath();
@@ -245,5 +308,5 @@
     return PdfExport.buildPdf(sheets.map(() => page), draw, { title: `${title} — ${kind === "toner" ? "toner transfer" : "board prints"}` });
   }
 
-  root.BoardFab = { layerOps, gerber, drills, excellon, fabFiles, zip, crc32, paint, pdfPages, placedParts, partSilk };
+  root.BoardFab = { ascii, clipToConvex, layerOps, gerber, drills, excellon, fabFiles, zip, crc32, paint, pdfPages, placedParts, partSilk };
 })(typeof window !== "undefined" ? window : globalThis);

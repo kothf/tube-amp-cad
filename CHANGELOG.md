@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.68.0] - 2026-10-17
+
+### Added
+- **Plated mounting holes.** A mounting hole is not plated (as before) or plated: a copper ring on both sides (Ø 6 mm round an M3 hole unless set), bare of solder mask, in the plated drill file. It may take a net, GND for a grounded chassis screw, which a pour of that net joins; the check reports one its net does not reach, and a ring too thin for its hole. Set in the hole's inspector (Plating, Ring Ø, Net).
+
+### Changed
+- **Gerber export, checked by reading the files back with an independent Gerber library (gerbonara):**
+  - X2 aperture functions on copper (ComponentPad, ViaPad, Conductor, WasherPad, NonConductor) and the profile, `TF.Part` and `TF.SameCoordinates`; a pad and a via of one size get their own apertures.
+  - Excellon tools marked ComponentDrill, ViaDrill or MechanicalDrill.
+  - The silkscreen is cut to the board outline and kept 0.1 mm off every pad, hole and bare via, as the board maker would otherwise clip it; a reference that would run off the board's top edge goes under its part instead (on the screen too).
+  - Comments and attribute values are plain ASCII (Cyrillic transliterated, × as x).
+  - The README gives the board's real track widths, not just the design minimum.
+
 ## [3.67.0] - 2026-10-17
 
 ### Added

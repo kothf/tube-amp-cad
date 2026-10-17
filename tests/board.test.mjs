@@ -739,3 +739,51 @@ test("a mounting hole under a part, or so near that its screw head and standoff 
   board.holes = [{ x: (b.x1 + b.x2) / 2, y: b.y2 + 4, d: 3.2 }];          // 4 mm away: clear
   assert.deepEqual(msgs(), []);
 });
+
+test("plated mounting holes: a copper ring on both layers, joined by a pour of its net, drilled with the plated holes; checked when left unjoined", () => {
+  const board = fabBoard();
+  Object.assign(board.holes[0], { plated: true, net: "GND" });          // a grounded chassis screw, in the bottom GND pour
+  Object.assign(board.holes[1], { plated: true });                      // a plated hole with no net
+  const { m, fills, conn } = analyse(board), hv = B.hvNets(NETLIST.volts, 60);
+  const it = conn.items.find(x => x.kind === "hole" && x.hi === 0), gnd = conn.items.find(x => x.kind === "pad" && x.pad.netName === "GND");
+  assert.ok(it && Math.abs(it.r - 3) < 1e-9, "a Ø 6 mm ring round the M3 hole");
+  assert.equal(it.cluster, gnd.cluster, "the GND pour joins the grounded hole");
+  assert.equal(conn.items.find(x => x.kind === "hole" && x.hi === 1).net, null, "the other hole has no net");
+  let d = B.drc(board, m, conn, hv, fills, NETLIST);
+  assert.ok(!d.some(x => /Plated hole/.test(x.msg)), d.filter(x => /Plated hole/.test(x.msg)).map(x => x.msg).join("; "));
+  // without the pour the grounded hole is reported; a ring too thin for its hole too
+  const b2 = fabBoard(); b2.zones = []; Object.assign(b2.holes[0], { plated: true, net: "GND" }); Object.assign(b2.holes[2], { plated: true, pad: 3.4 });
+  const a2 = analyse(b2); d = B.drc(b2, a2.m, a2.conn, hv, a2.fills, NETLIST);
+  assert.ok(d.some(x => /Plated hole for GND is not connected/.test(x.msg)) && d.some(x => /Plated hole: annular ring 0\.10 mm/.test(x.msg)), d.map(x => x.msg).join("; "));
+  // the files: the ring on both copper layers and bare in both masks, the hole in the plated drill file
+  const files = F.fabFiles(board, m, fills, { base: "t", title: "Test", version: "9.9.9" }), h = board.holes[0];
+  const at = `X${Math.round(h.x * 1e6)}Y${Math.round((board.outline.h - h.y) * 1e6)}D03*`;
+  for (const l of ["F_Cu", "B_Cu", "F_Mask", "B_Mask"]) assert.ok(files[`t-${l}.gbr`].includes(at), `${l}: the ring at the hole`);
+  assert.ok(/%TA\.AperFunction,WasherPad\*%\n%ADD\d+C,6\.000000\*%/.test(files["t-F_Cu.gbr"]), "the ring is a washer pad");
+  assert.ok(/; #@! TA\.AperFunction,Plated,PTH,MechanicalDrill\nT\d+C3\.200/.test(files["t-PTH.drl"]) && files["t-PTH.drl"].includes(`X${h.x.toFixed(3)}Y${(board.outline.h - h.y).toFixed(3)}`));
+  assert.equal(files["t-NPTH.drl"].split("\n").filter(l => /^X/.test(l)).length, 2, "the two plain holes stay in the NPTH file");
+  assert.match(files["t-README.txt"], /2 of them plated mounting holes/);
+});
+
+test("Gerber X2 details: pad, via and track apertures told apart; silkscreen inside the board and off the pads; ASCII only", () => {
+  const board = fabBoard();
+  board.vias.push({ x: 100, y: 20, drill: 0.8, pad: 1.8 });
+  board.texts.push({ x: 60, y: 89.5, text: "EDGE", size: 2, layer: "F.SilkS", rot: 0 });       // over the bottom edge
+  const { m, fills } = analyse(board), files = F.fabFiles(board, m, fills, { base: "t", title: "Усилитель 2 × 4.5 W, 5Ц4С", version: "9.9.9" });
+  const cu = files["t-F_Cu.gbr"];
+  assert.ok(/%TF\.Part,Single\*%/.test(cu) && /%TF\.SameCoordinates,Original\*%/.test(cu));
+  for (const fn of ["ComponentPad", "ViaPad", "Conductor"]) assert.ok((cu + files["t-B_Cu.gbr"]).includes(`%TA.AperFunction,${fn}*%`), fn);
+  assert.ok(/%TA\.AperFunction,Profile\*%/.test(files["t-Edge_Cuts.gbr"]));
+  for (const [n, t] of Object.entries(files)) if (!n.endsWith(".txt")) assert.ok(/^[\x0a\x20-\x7e]*$/.test(t), `${n} is plain ASCII`);
+  assert.match(cu, /^G04 Tube Amp CAD board: Usilitel 2 x 4\.5 W, 5Ts4S - F\.Cu\*/);
+  // the silkscreen: every line inside the outline (0.1 mm in), and clear flashes over the pads after it
+  const ops = F.layerOps(board, m, fills, "F.SilkS"), P = B.outlinePoly(board.outline, 0.1);
+  ops.filter(o => o.t === "line").forEach(o => o.pts.forEach(([x, y]) => assert.ok(B.pip(x, y, P) || B.edgeDist(x, y, board.outline) >= 0.099, `silk at ${x}, ${y} inside`)));
+  assert.ok(ops.filter(o => o.pol === "C" && o.t === "flash").length >= m.pads.length, "every pad cut out of the silkscreen");
+  const edgeText = ops.filter(o => o.t === "line" && o.pts.some(([, y]) => y > 88));
+  assert.ok(edgeText.every(o => o.pts.every(([, y]) => y <= board.outline.h - 0.099)), "text over the edge is cut at the outline");
+  // a reference over the top edge goes under its part instead
+  const b2 = fabBoard(), k = Object.keys(b2.parts).find(q => b2.parts[q].ref === "R1"); b2.parts[k].y = 4;
+  const m2 = B.model(b2, NETLIST), g = m2.parts.find(q => q.ref === "R1"), refs = B.partSilk(g, false, b2.outline).filter(o => o.ref), box = B.partBox(g);
+  assert.ok(refs.length && refs.every(o => o.pts.every(([, y]) => y > box.y2)), "R1's reference below it at the top edge");
+});

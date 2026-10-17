@@ -279,7 +279,8 @@
     return null;
   }
   const hitVia = (x, y) => S.board.vias.findIndex(v => Math.hypot(v.x - x, v.y - y) <= (v.pad || S.board.rules.viaPad) / 2);
-  const hitHole = (x, y) => (S.show.Holes ? S.board.holes.findIndex(h => Math.hypot(h.x - x, h.y - y) <= h.d / 2 + 0.6) : -1);
+  const holeR = h => (h.plated ? B.holeRing(h) : h.d) / 2;
+  const hitHole = (x, y) => (S.show.Holes ? S.board.holes.findIndex(h => Math.hypot(h.x - x, h.y - y) <= holeR(h) + 0.6) : -1);
   function textBox(t) { const w = Math.max(t.size, B.strokeText(t.text, 0, 0, t.size).width), h = t.size; return (t.rot & 1) ? { x1: t.x - h / 2, y1: t.y - w / 2, x2: t.x + h / 2, y2: t.y + w / 2 } : { x1: t.x - w / 2, y1: t.y - h / 2, x2: t.x + w / 2, y2: t.y + h / 2 }; }
   const hitText = (x, y) => S.board.texts.findIndex(t => { if (!S.show[t.layer]) return false; const b = textBox(t); return x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2; });
   // the board's edge (outside the handle): dragging it moves the board on the drawing sheet. It is
@@ -359,7 +360,7 @@
       }
       for (const ko of S.board.keepouts) if (ko.tracks !== false && B.koLayers(ko).includes(r.layer) && B.segInPoly(s, ko.pts, w2)) return { x: s[2], y: s[3], g: 0, need: 0, what: ko.name ? `keep-out "${ko.name}"` : "a keep-out area", net: "", ko: true };
       const hn = Math.max(mine, S.clr ? S.clr.toChassis(r.net).c : 0);
-      for (const h of S.board.holes) { const g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < hn - 1e-6) return { x: h.x, y: h.y, g, need: hn, what: "a mounting hole", net: "" }; }
+      for (const h of S.board.holes) { if (h.plated) continue; const g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < hn - 1e-6) return { x: h.x, y: h.y, g, need: hn, what: "a mounting hole", net: "" }; }
     }
     return null;
   }
@@ -1186,7 +1187,7 @@
     const overlaps = r => taken.some(t => r.x1 < t.x2 && r.x2 > t.x1 && r.y1 < t.y2 && r.y2 > t.y1);
     if (S.model) S.model.parts.forEach(g => {
       if (!g.place) return;
-      const ops = BoardFab.partSilk(g); silk.set(g.key, ops);
+      const ops = BoardFab.partSilk(g, S.board.outline); silk.set(g.key, ops);
       ops.filter(o => o.ref).forEach(o => { const xs = o.pts.map(q => q[0]), ys = o.pts.map(q => q[1]); taken.push({ x1: Math.min(...xs) - 0.3, y1: Math.min(...ys) - 0.3, x2: Math.max(...xs) + 0.3, y2: Math.max(...ys) + 0.3 }); });
     });
     ["B", "F"].forEach(side => {
@@ -1196,7 +1197,7 @@
         if (!g.place || (g.place.side || "F") !== side) return;
         const sel = isSel("part", g.key);
         // the silkscreen as it will be made (outline and reference in the stroke font)
-        const ops = (silk.get(g.key) || BoardFab.partSilk(g)).map(o => (o.t === "line" && px > 0.15 ? { ...o, w: Math.max(o.w, px) } : o));
+        const ops = (silk.get(g.key) || BoardFab.partSilk(g, S.board.outline)).map(o => (o.t === "line" && px > 0.15 ? { ...o, w: Math.max(o.w, px) } : o));
         BoardFab.paint(ctx, ops, sel ? "#00e5ff" : COLORS[L], "erase");
         const b = partBox(g);
         if (scale > 6 && g.value) {
@@ -1226,10 +1227,12 @@
       ctx.fillStyle = "#070b10"; ctx.beginPath(); ctx.arc(v.x, v.y, (v.drill || S.board.rules.viaDrill) / 2, 0, Math.PI * 2); ctx.fill();
     });
     // mounting holes, with their copper clearance dashed
+    // a plated one: its copper ring, like a via's; a plain one: the copper clearance round it, dashed
     if (S.show.Holes) S.board.holes.forEach((h, i) => {
+      if (h.plated) { ctx.fillStyle = selColor("hole", i, "#c9a95c"); ctx.beginPath(); ctx.arc(h.x, h.y, B.holeRing(h) / 2, 0, Math.PI * 2); ctx.fill(); }
       ctx.fillStyle = "#070b10"; ctx.beginPath(); ctx.arc(h.x, h.y, h.d / 2, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = selColor("hole", i, COLORS.Holes); ctx.lineWidth = Math.max(0.12, px); ctx.stroke();
-      ctx.beginPath(); ctx.arc(h.x, h.y, h.d / 2 + S.board.rules.clearance, 0, Math.PI * 2); ctx.setLineDash([2 * px, 2 * px]); ctx.stroke(); ctx.setLineDash([]);
+      if (!h.plated) { ctx.beginPath(); ctx.arc(h.x, h.y, h.d / 2 + S.board.rules.clearance, 0, Math.PI * 2); ctx.setLineDash([2 * px, 2 * px]); ctx.stroke(); ctx.setLineDash([]); }
     });
     if (S.show.rats && S.conn) {
       ctx.lineWidth = Math.max(0.08, 0.8 * px);
@@ -1595,7 +1598,13 @@
       h.innerHTML = `<div class="insp-title">Mounting hole</div>`;
       h.appendChild(field("X (mm)", hl.x, n => { hl.x = n; commit(); })); h.appendChild(field("Y (mm)", showY(hl.y), n => { hl.y = showY(n); commit(); }));
       h.appendChild(field("Diameter (mm)", hl.d, n => { if (n > 0) { hl.d = n; commit(); } }));
-      h.insertAdjacentHTML("beforeend", `<p class="help">Not plated. The dashed ring is the copper clearance.</p>`);
+      h.appendChild(field("Plating", hl.plated ? "yes" : "no", v => { if (v === "yes") hl.plated = true; else { delete hl.plated; delete hl.pad; delete hl.net; } commit(); }, [["no", "Not plated (NPTH)"], ["yes", "Plated, with a copper ring (PTH)"]]));
+      if (hl.plated) {
+        h.appendChild(field("Ring Ø (mm)", B.holeRing(hl), n => { if (n > hl.d) { hl.pad = n; commit(); } }));
+        const nets = S.model ? [...new Set(Object.values(S.model.names))].sort((a, b) => (a === "GND" ? -1 : b === "GND" ? 1 : a.localeCompare(b))) : [];
+        h.appendChild(field("Net", hl.net || "", v => { if (v) hl.net = v; else delete hl.net; commit(); }, [["", "None (the screw only)"]].concat(nets.map(n => [n, n]))));
+        h.insertAdjacentHTML("beforeend", `<p class="help">Plated: a copper ring on both sides, bare of solder mask, drilled with the plated holes. Give it a net (GND for a grounded chassis screw) and a pour of that net joins it; otherwise it keeps every net's clearance as chassis copper.</p>`);
+      } else h.insertAdjacentHTML("beforeend", `<p class="help">Not plated: drilled separately (NPTH). The dashed ring is the copper clearance (the screw is at chassis potential).</p>`);
       h.appendChild(lockField(hl)); h.appendChild(delBtn()); return;
     }
     if (s && s.kind === "text") {
@@ -1743,7 +1752,9 @@
     const P = B.outlinePoly(o, 0); x.fillStyle = "#14532d"; x.beginPath(); P.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]))); x.closePath(); x.fill();
     BoardFab.paint(x, ops(cu), "#1f7a3e", "#14532d");          // copper under the mask: a lighter green
     BoardFab.paint(x, ops(mask), "#d4a72c", "#14532d");        // mask openings: tinned pads
-    BoardFab.paint(x, ops(silk), "#f2f2ea", "#14532d");
+    // the silkscreen on its own layer: its cut-outs round the pads erase silk, not the pads under it
+    const sc = document.createElement("canvas"); sc.width = c.width; sc.height = c.height; const sx = sc.getContext("2d"); sx.scale(k, k);
+    BoardFab.paint(sx, ops(silk), "#f2f2ea", "erase"); sx.globalCompositeOperation = "source-over"; x.drawImage(sc, 0, 0, o.w, o.h);
     x.globalCompositeOperation = "destination-out"; x.fillStyle = "#000";
     const d = BoardFab.drills(S.board, S.model);
     d.pth.concat(d.npth).forEach(([dia, pts]) => pts.forEach(([hx, hy]) => { x.beginPath(); x.arc(hx, hy, +dia / 2, 0, Math.PI * 2); x.fill(); }));

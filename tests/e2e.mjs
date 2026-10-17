@@ -1908,6 +1908,16 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await bw.waitForTimeout(500);
     const bs = await bw.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.length, placed: Object.keys(S.board.parts).length, tracks: S.board.tracks.length, vias: S.board.vias.length, un: S.conn.unrouted, drc: S.drc.map(d => d.kind + ": " + d.msg) }; });
     check(bs.parts === 41 && bs.un === 0 && !bs.drc.length, `Gubin example's board: ${bs.parts} parts, ${bs.tracks} tracks, ${bs.vias} vias, ${bs.un} to route, ${bs.drc.length ? bs.drc.join("; ") : "no rule violations"}`);
+    // a mounting hole made plated in the inspector, on GND: a ring the bottom pour joins, still no violations
+    const [hx, hy] = await bw.evaluate(() => { const h = BoardApp.state.board.holes[3]; BoardApp.fit(); return BoardApp.toScreen(h.x, h.y); });
+    const pcb = await bw.locator("#pcb").boundingBox();
+    await bw.mouse.click(pcb.x + hx, pcb.y + hy);
+    const sel = bw.locator("#inspector select").filter({ has: bw.locator("option[value=yes]") }).filter({ hasText: "Plated" });
+    await sel.selectOption("yes");
+    await bw.locator("#inspector select").filter({ hasText: "None (the screw only)" }).selectOption("GND");
+    await bw.waitForTimeout(300);
+    const ph = await bw.evaluate(() => { const S = BoardApp.state, h = S.board.holes[3], it = S.conn.items.find(x => x.kind === "hole" && x.hi === 3); return { h, net: it && S.model.names[it.net], drc: S.drc.map(d => d.msg), insp: document.getElementById("inspector").innerText }; });
+    check(ph.h.plated && ph.h.net === "GND" && ph.net === "GND" && !ph.drc.length && /Ring Ø/.test(ph.insp), `the hole inspector makes a mounting hole plated on GND: a Ø ${ph.h.pad || 6} mm ring the GND pour joins (${ph.net}), ${ph.drc.length ? ph.drc.join("; ") : "no rule violations"}`);
     await bw.close();
     await cad.evaluate(() => { TubeCAD.state.sel.comps.clear(); TubeCAD.updateInspector(); });
   }

@@ -462,6 +462,9 @@ the circuit file, so one file holds both.
   and <kbd>Z</kbd> (zoom to the selection); <kbd>Ctrl</kbd>+<kbd>F</kbd> finds
   a part or net; <kbd>\\</kbd> hides the side panels; the checks and layers
   fold away; values never cover references.
+- **Mounting holes** are not plated (NPTH) or plated (PTH): a plated one has a
+  copper ring on both sides (Ø 6 mm round an M3 hole by default) and may
+  take a net, GND for a grounded chassis screw, which a pour of that net joins.
 - **Tools:** Select, Route, Via, Text (silkscreen or copper), Mounting hole,
   Pour, Measure. The board's top-right corner handle resizes it; the origin
   stays put. Silkscreen text uses a
@@ -568,8 +571,13 @@ the circuit file, so one file holds both.
     The part bodies are typical shapes and sizes, not a maker's model.
   - **Gerber + drill files (ZIP)**, ready to upload to a board maker (JLCPCB,
     PCBWay, Aisler…): copper, solder mask and silkscreen of both sides, the
-    outline (Gerber RS-274X with X2 attributes), plated and non-plated drill
-    files (Excellon), and a README with the board's specification. Parts not
+    outline (Gerber RS-274X with X2 attributes: every aperture says what it
+    is, pad, via pad, conductor, washer pad or profile), plated and
+    non-plated drill files (Excellon, each tool marked component, via or
+    mechanical drill), and a README with the board's specification. The
+    silkscreen is cut to the board and kept off every pad and hole; comments
+    are plain ASCII. Checked by reading the files back with an independent
+    Gerber library (gerbonara): every pad, via and hole in place. Parts not
     on the board are left out; an unfinished board (unrouted, rule violations)
     asks first.
   - **Print set (PDF)**: assembly drawing, top and bottom copper at 1:1, and a

@@ -25,7 +25,7 @@
       parts: {},            // key -> { ref, fp, x, y, rot, side }   key: the schematic part ids, joined by "+"
       tracks: [],           // { layer, w, pts: [[x, y], ...] }
       vias: [],             // { x, y, drill, pad }
-      holes: [],            // mounting holes (not plated): { x, y, d }
+      holes: [],            // mounting holes: { x, y, d, plated, pad (ring Ø when plated), net (name, when plated) }
       texts: [],            // { x, y, text, size, layer: "F.SilkS" | "B.SilkS" | "F.Cu" | "B.Cu", rot }
       zones: [],            // copper pours: { net: name, layer, pts: [[x, y]...] | null (the whole board), thermal, gap, spoke, locked }
       keepouts: []          // { name, pts, layers: ["F.Cu", "B.Cu"], tracks, vias, pour, parts (true: not allowed), locked }
@@ -614,11 +614,15 @@
     return { s: hz ? [p.x - l, p.y, p.x + l, p.y] : [p.x, p.y - l, p.x, p.y + l], r: p.shape === "rect" ? r * 1.15 : r };
   }
   // all copper items: { kind, layers, s: segment, r, net (pads only), ref }
+  // a plated mounting hole: a copper ring on both layers (Ø 6 mm round an M3 hole unless set)
+  const holeRing = h => (h.pad > h.d ? h.pad : +(h.d + 2.8).toFixed(3));
+  const npHoles = board => (board.holes || []).filter(h => !h.plated);
   function copperItems(board, pads) {
     const items = [];
     pads.forEach((p, i) => { const c = padCapsule(p); items.push({ kind: "pad", i, layers: COPPER, s: c.s, r: c.r, pad: p }); });
     board.tracks.forEach((t, ti) => { for (let k = 0; k + 1 < t.pts.length; k++) items.push({ kind: "track", ti, k, layers: [t.layer], s: [t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1]], r: t.w / 2 }); });
     board.vias.forEach((v, vi) => items.push({ kind: "via", vi, layers: COPPER, s: [v.x, v.y, v.x, v.y], r: (v.pad || board.rules.viaPad) / 2 }));
+    (board.holes || []).forEach((h, hi) => { if (h.plated) items.push({ kind: "hole", hi, layers: COPPER, s: [h.x, h.y, h.x, h.y], r: holeRing(h) / 2 }); });
     return items;
   }
   const shareLayer = (a, b) => a.layers.some(l => b.layers.includes(l));
@@ -808,7 +812,7 @@
     // an item's net: from the copper it touches, else the net stored on the track or via
     const netOf = it => {
       if (it.net !== null && it.net !== undefined) return it.net;
-      const stored = it.kind === "track" ? board.tracks[it.ti].net : it.kind === "via" ? board.vias[it.vi].net : null;
+      const stored = it.kind === "track" ? board.tracks[it.ti].net : it.kind === "via" ? board.vias[it.vi].net : it.kind === "hole" ? board.holes[it.hi].net : null;
       return stored && byName[stored] !== undefined ? byName[stored] : null;
     };
     const nx = Math.max(1, Math.ceil(o.w / RES)), ny = Math.max(1, Math.ceil(o.h / RES)), CR = clearanceRules(board, model, hv, netlist);
@@ -829,7 +833,7 @@
       const hc = Math.max(zc, CR.toChassis(net).c);
       // other nets' teardrops: the shape and the clearance round its edges
       (tears || []).forEach(td => { if (td.layer !== L || (net !== undefined && td.net === net)) return; const c = need(td.net); ops.push({ pol: "C", t: "region", pts: td.pts }); td.pts.forEach((a, i) => { const b = td.pts[(i + 1) % td.pts.length]; ops.push({ pol: "C", t: "line", w: +(2 * c).toFixed(4), pts: [a, b] }); }); });
-      (board.holes || []).forEach(h => { if (near([h.x, h.y, h.x, h.y], h.d / 2 + hc)) ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: +(h.d + 2 * hc).toFixed(4), h: +(h.d + 2 * hc).toFixed(4) }); });
+      npHoles(board).forEach(h => { if (near([h.x, h.y, h.x, h.y], h.d / 2 + hc)) ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: +(h.d + 2 * hc).toFixed(4), h: +(h.d + 2 * hc).toFixed(4) }); });
       (board.texts || []).filter(t => t.layer === L).forEach(t => { const st = strokeText(t.text, t.x, t.y, t.size, t.rot, L === "B.Cu"); st.lines.forEach(l => ops.push({ pol: "C", t: "line", w: +(st.w + 2 * zc).toFixed(4), pts: l })); });
       // thermal reliefs: the gap around the pad, then spokes that stay in the pour and clear of other nets
       const spokes = [];
@@ -839,7 +843,7 @@
           const len = (dx ? p.w : p.h) / 2 + gapT + spoke, s = [p.x, p.y, +(p.x + dx * len).toFixed(4), +(p.y + dy * len).toFixed(4)];
           if (!pip(s[2], s[3], poly)) return;
           if (others.some(({ it: q, c }) => segSeg(s, q.s) - spoke / 2 - q.r < c - 1e-6)) return;
-          if ((board.holes || []).some(h => segDist(s[0], s[1], s[2], s[3], h.x, h.y) - spoke / 2 - h.d / 2 < hc - 1e-6)) return;
+          if (npHoles(board).some(h => segDist(s[0], s[1], s[2], s[3], h.x, h.y) - spoke / 2 - h.d / 2 < hc - 1e-6)) return;
           spokes.push({ pol: "D", t: "line", w: spoke, pts: [[s[0], s[1]], [s[2], s[3]]] });
         });
       });
@@ -888,7 +892,7 @@
     const pts = [[g.fp.box[0], g.fp.box[1]], [g.fp.box[2], g.fp.box[1]], [g.fp.box[0], g.fp.box[3]], [g.fp.box[2], g.fp.box[3]]].map(p => place(p, g.place));
     return { x1: Math.min(...pts.map(p => p[0])), y1: Math.min(...pts.map(p => p[1])), x2: Math.max(...pts.map(p => p[0])), y2: Math.max(...pts.map(p => p[1])) };
   }
-  function partSilk(g, noRef) {
+  function partSilk(g, noRef, outline) {
     const r4 = v => +(+v).toFixed(4), P = pt => place(pt, g.place).map(r4), ops = [];
     g.fp.silk.forEach(s => {
       let pts;
@@ -901,7 +905,10 @@
       if (pts) ops.push({ pol: "D", t: "line", w: SILK_W, pts: pts.map(P) });
     });
     if (!noRef) {
-      const b = partBox(g), st = strokeText(g.ref, (b.x1 + b.x2) / 2, b.y1 - 0.4 - REF_H / 2, REF_H, 0, g.place.side === "B");
+      // above the part; below it when that would leave the board (a part along the top edge)
+      const b = partBox(g), above = b.y1 - 0.4 - REF_H / 2, below = b.y2 + 0.4 + REF_H / 2;
+      const y = outline && above - REF_H / 2 < 0.5 && below + REF_H / 2 <= outline.h - 0.5 ? below : above;
+      const st = strokeText(g.ref, (b.x1 + b.x2) / 2, y, REF_H, 0, g.place.side === "B");
       st.lines.forEach(l => ops.push({ pol: "D", t: "line", w: st.w, pts: l, ref: true }));
     }
     return ops;
@@ -946,7 +953,7 @@
       }
     }
     // mounting holes against copper
-    if (on("clearance")) (board.holes || []).forEach(hl => items.forEach(it => {
+    if (on("clearance")) npHoles(board).forEach(hl => items.forEach(it => {
       const rq = CR.toChassis(it.net), g = segDist(it.s[0], it.s[1], it.s[2], it.s[3], hl.x, hl.y) - it.r - hl.d / 2, need = Math.max(classRule(cls(it.net), R).clearance, rq.c);
       if (g < need - 1e-6) out.push({ kind: "clearance", x: hl.x, y: hl.y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm to a mounting hole (its screw is at chassis potential)${rq.ipc ? `; ${Math.round(rq.v)} V: IPC-2221B ${CR.table}` : ""}`, between: [label(it), "hole"] });
     }));
@@ -983,7 +990,14 @@
         if (on("drill") && d < R.minDrill - 1e-6) out.push({ kind: "drill", x: v.x, y: v.y, msg: `Via drill ${d} mm < ${R.minDrill} mm` });
         if (on("annular") && (pd - d) / 2 < R.minAnnular - 1e-6) out.push({ kind: "annular", x: v.x, y: v.y, msg: `Via annular ring ${((pd - d) / 2).toFixed(2)} mm < ${R.minAnnular} mm` });
       });
+      (board.holes || []).forEach(h => { if (h.plated && on("annular") && (holeRing(h) - h.d) / 2 < R.minAnnular - 1e-6) out.push({ kind: "annular", x: h.x, y: h.y, msg: `Plated hole: annular ring ${((holeRing(h) - h.d) / 2).toFixed(2)} mm < ${R.minAnnular} mm` }); });
     }
+    // a plated hole given a net (a grounded screw) that its copper does not reach
+    if (on("dangling")) (board.holes || []).forEach((h, hi) => {
+      if (!h.plated || !h.net) return;
+      const it = items.find(x => x.kind === "hole" && x.hi === hi), want = Object.keys(model.names).find(k => model.names[k] === h.net);
+      if (it && (want === undefined || String(it.net) !== String(want))) out.push({ kind: "dangling", x: h.x, y: h.y, msg: want === undefined ? `Plated hole: there is no net ${h.net}` : `Plated hole for ${h.net} is not connected to it: run a track or a ${h.net} pour to its ring` });
+    });
     // track widths: the minimum, and the width of the net's class
     if (on("width") || on("class")) board.tracks.forEach((t, ti) => {
       const it = items.find(x => x.kind === "track" && x.ti === ti), p = t.pts[0];
@@ -1032,7 +1046,7 @@
     });
     // silkscreen over pads (the maker clips it: a warning) — the reference and outlines of each part
     if (on("silk")) onBoard.forEach(({ g }) => {
-      const side = g.place.side || "F", hit = partSilk(g).find(op => op.pts.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && (op.ref || pd.part !== g.key) &&
+      const side = g.place.side || "F", hit = partSilk(g, false, board.outline).find(op => op.pts.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && (op.ref || pd.part !== g.key) &&
         segSeg([op.pts[k - 1][0], op.pts[k - 1][1], p[0], p[1]], padCapsule(pd).s) < padCapsule(pd).r + op.w / 2)));
       if (hit) out.push({ kind: "silk", x: hit.pts[0][0], y: hit.pts[0][1], msg: `${g.ref}: ${hit.ref ? "its reference" : "silkscreen"} lies over a pad (${side === "B" ? "bottom" : "top"}); the maker clips it` });
     });
@@ -1072,7 +1086,7 @@
   // (or a mounting hole) than the clearance. Returns [{ layer, net, ti, pts }] (polygons).
   // ---------------------------------------------------------------------------
   function teardrops(board, conn, CR) {
-    const out = [], items = conn.items, holes = board.holes || [];
+    const out = [], items = conn.items, holes = npHoles(board);
     const ends = items.filter(it => (it.kind === "pad" && Math.abs(it.pad.w - it.pad.h) < 1e-6) || it.kind === "via");
     board.tracks.forEach((t, ti) => {
       const tr = items.find(it => it.kind === "track" && it.ti === ti); if (!tr || t.pts.length < 2) return;
@@ -1270,7 +1284,7 @@
       return { net: n, name, cls: c, manual: CLASSES.includes((R.netClass || {})[name]), volts: volts && volts[n] !== undefined ? volts[n] : null, track: r.track, clearance: r.clearance, pads: model.pads.filter(p => p.net === n).length }; })
       .sort((a, b) => Math.abs(b.volts || 0) - Math.abs(a.volts || 0) || a.name.localeCompare(b.name));
   }
-  const label = it => (it.kind === "pad" ? `${it.pad.ref}-${it.pad.num}` : it.kind === "via" ? "via" : `track (${it.layers[0]})`);
+  const label = it => (it.kind === "pad" ? `${it.pad.ref}-${it.pad.num}` : it.kind === "via" ? "via" : it.kind === "hole" ? "plated hole" : `track (${it.layers[0]})`);
   function nearest(a, b) {
     let best = null;
     const tryP = (px, py, s) => { const dx = s[2] - s[0], dy = s[3] - s[1], l2 = dx * dx + dy * dy, t = l2 ? Math.max(0, Math.min(1, ((px - s[0]) * dx + (py - s[1]) * dy) / l2)) : 0, qx = s[0] + t * dx, qy = s[1] + t * dy, d = Math.hypot(px - qx, py - qy); if (!best || d < best.d) best = { d, x: (px + qx) / 2, y: (py + qy) / 2 }; };
@@ -1473,5 +1487,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { holeRing, FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);
