@@ -1193,13 +1193,17 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const [bd] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-windows").then(() => cad.click("#btn-open-board"))]);
   bd.on("pageerror", e => errors.push(`board: ${e.message}`));
   await bd.waitForFunction(() => window.BoardApp && BoardApp.state.model, null, { timeout: 10000 });
+  const bh = await bd.evaluate(() => [document.querySelector("header").getBoundingClientRect().height, document.querySelector("header").scrollWidth <= innerWidth]);
+  check(bh[0] < 50 && bh[1], `the Board toolbar fits one row (${Math.round(bh[0])} px high, nothing cut off)`);
   const m0 = await bd.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.map(g => `${g.ref}:${g.fp.name}`), unplaced: S.drc.filter(d => d.kind === "unplaced").length, status: document.getElementById("status").textContent,
-    anode: (S.model.pads.find(p => p.ref === "VL1" && p.num === "6") || {}).netName, cathode: (S.model.pads.find(p => p.ref === "VL1" && p.num === "8") || {}).netName }; });
-  check(m0.parts.length === 9 && m0.parts.includes("VL1:SOCKET-B9A") && m0.parts.includes("VT1:TO-126-ECB") && m0.parts.includes("VD1:DIODE-10.16") && m0.parts.includes("HL1:LED-5MM") && m0.parts.includes("G1:TERM-5.08-2") && /Linked to CAD/.test(m0.status),
+    anode: (S.model.pads.find(p => p.ref === "VL1" && p.num === "6") || {}).netName, cathode: (S.model.pads.find(p => p.ref === "VL1" && p.num === "8") || {}).netName,
+    heater: ["4", "5", "9"].map(n => (S.model.pads.find(p => p.ref === "VL1" && p.num === n) || {}).netName).join(), supply: S.model.pads.filter(p => p.ref === "XH1").map(p => p.netName).join() }; });
+  check(m0.heater === "HTR6.3_A,HTR6.3_A,HTR6.3_B" && m0.supply === "HTR6.3_A,HTR6.3_B", `the 12AX7's heater gets copper: pins 4 + 5 and 9 on the 6.3 V heater nets, fed from the heater supply XH1 (${m0.heater}; XH1 ${m0.supply})`);
+  check(m0.parts.length === 10 && m0.parts.includes("XH1:TERM-5.08-2") && m0.parts.includes("VL1:SOCKET-B9A") && m0.parts.includes("VT1:TO-126-ECB") && m0.parts.includes("VD1:DIODE-10.16") && m0.parts.includes("HL1:LED-5MM") && m0.parts.includes("G1:TERM-5.08-2") && /Linked to CAD/.test(m0.status),
     `the Board window takes the schematic's parts with footprints (${m0.parts.join(", ")})`);
-  check(m0.unplaced === 9 && m0.anode && m0.anode !== m0.cathode, `new parts wait below the board; the 12AX7's pins carry the schematic's nets (anode ${m0.anode}, cathode ${m0.cathode})`);
-  await cad.waitForFunction(() => TubeCAD.state.board && Object.keys(TubeCAD.state.board.parts).length === 9, null, { timeout: 5000 }).catch(() => {});
-  check(await cad.evaluate(() => !!TubeCAD.state.board && Object.keys(TubeCAD.state.board.parts).length === 9), "the CAD keeps the board with the circuit");
+  check(m0.unplaced === 10 && m0.anode && m0.anode !== m0.cathode, `new parts wait below the board; the 12AX7's pins carry the schematic's nets (anode ${m0.anode}, cathode ${m0.cathode})`);
+  await cad.waitForFunction(() => TubeCAD.state.board && Object.keys(TubeCAD.state.board.parts).length === 10, null, { timeout: 5000 }).catch(() => {});
+  check(await cad.evaluate(() => !!TubeCAD.state.board && Object.keys(TubeCAD.state.board.parts).length === 10), "the CAD keeps the board with the circuit");
   // place everything, then put R1 straight above the anode pin (6), so the track drops onto it clear of the other pins
   await bd.click("#btn-arrange");
   await bd.evaluate(() => { const S = BoardApp.state; S.board.outline.h = 160; const k = r => S.model.parts.find(g => g.ref === r).key; Object.assign(S.board.parts[k("VL1")], { x: 70, y: 130, rot: 0 }); const p6 = BoardCore.footprint("SOCKET-B9A").pads[5]; Object.assign(S.board.parts[k("R1")], { x: 70 + p6.x - 5.08, y: 100, rot: 0 }); BoardApp.commit(); BoardApp.fit(); });
@@ -1239,7 +1243,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.waitForTimeout(400); await bd.evaluate(() => BoardApp.syncNow());
 
   // Design rules window: the nets with their classes; B+ (300 V) is HV automatically, a class set by hand sticks
-  await bd.click("#btn-rules");
+  await bd.click("#btn-board"); await bd.click("#btn-rules");
   const nets = await bd.evaluate(() => [...document.querySelectorAll("#rules-nets tr")].map(tr => [...tr.cells].map(c => c.textContent.trim())));
   const rail = nets.find(r => /^300 V$/.test(r[2]));
   check(await bd.isVisible("#rules-modal") && rail && /Auto \(HV\)/.test(rail[3]) && rail[4] === "2" && rail[5] === "2", `Design rules lists every net with its class: the 300 V rail is HV automatically (${rail && rail.join(" | ")})`);
@@ -1254,7 +1258,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(await cad.evaluate(() => TubeCAD.state.board.rules.clearance === 0.8), "the rules are saved with the board in the circuit");
 
   // Board setup: size, rounded corners, a mounting hole in each corner
-  await bd.click("#btn-setup");
+  await bd.click("#btn-board"); await bd.click("#btn-setup");
   await bd.fill('#setup-modal [data-o="w"]', "120"); await bd.fill('#setup-modal [data-o="h"]', "90"); await bd.fill('#setup-modal [data-o="r"]', "4");
   await bd.click("#holes-corners"); await bd.click("#setup-apply");
   const su = await bd.evaluate(() => ({ o: BoardApp.state.board.outline, holes: BoardApp.state.board.holes.map(h => [h.x, h.y, h.d]) }));
@@ -1287,10 +1291,10 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await ruKey("п", "KeyG"); const gs1 = await bd.evaluate(() => BoardApp.state.gridStyle);
   await ruKey("ф", "KeyA"); const ax1 = await bd.evaluate(() => BoardApp.state.axes);
   await ruKey("п", "KeyG"); await ruKey("п", "KeyG"); await ruKey("ф", "KeyA");
-  const back = await bd.evaluate(() => [BoardApp.state.gridStyle, BoardApp.state.axes, document.getElementById("grid-style").value]);
+  const back = await bd.evaluate(() => [BoardApp.state.gridStyle, BoardApp.state.axes, document.querySelector("[data-gs].active").dataset.gs]);
   check(sheet && sheet.size === "A4" && sheet.x < 0 && sheet.y < 0 && sheet.w === 297 && sheet.type === "PCB layout" && gs1 === "dots" && ax1 === false && back.join() === "lines,true,lines",
     `the board lies on an ${sheet && sheet.size} sheet with frame and title block; G cycles the grid (lines → dots → off), A toggles the X / Y axes`);
-  await bd.click("#btn-setup"); await bd.selectOption("#sheet-size", "A3"); await bd.selectOption("#sheet-orient", "portrait"); await bd.click("#setup-apply");
+  await bd.click("#btn-board"); await bd.click("#btn-setup"); await bd.selectOption("#sheet-size", "A3"); await bd.selectOption("#sheet-orient", "portrait"); await bd.click("#setup-apply");
   const sh3 = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return [s.size, s.w, s.h]; });
   await cad.waitForFunction(() => TubeCAD.state.board.sheet && TubeCAD.state.board.sheet.size === "A3", null, { timeout: 4000 }).catch(() => {});
   check(sh3.join() === "A3,297,420" && await cad.evaluate(() => TubeCAD.state.board.sheet.orient === "portrait"), `Board setup sets the sheet (A3 portrait, ${sh3[1]} × ${sh3[2]} mm), saved with the circuit`);
@@ -1299,10 +1303,12 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   // the origin is the board's bottom-left corner, Y up: the status bar reads 0, 0 there and 0, 90 at the top-left corner
   const posAt = async (x, y) => { const q = await at(x, y); await bd.mouse.move(q[0], q[1]); return (await bd.textContent("#st-pos")).trim(); };
   const st0 = await posAt(0, 90), st1 = await posAt(0, 0);
-  const xy = t => (t.match(/^x (-?[\d.]+) {2}y (-?[\d.]+) mm/) || []).slice(1).map(Number), near = (t, x, y) => { const [a, b] = xy(t); return Math.abs(a - x) < 0.2 && Math.abs(b - y) < 0.2; };
+  const xy = t => (t.match(/^x (-?[\d.]+) {2}y (-?[\d.]+) mm/) || []).slice(1).map(Number), tol = Math.max(0.2, await bd.evaluate(() => 1.5 / BoardApp.state.view.scale)), near = (t, x, y) => { const [a, b] = xy(t); return Math.abs(a - x) < tol && Math.abs(b - y) < tol; };
   check(near(st0, 0, 0) && near(st1, 0, 90), `the origin is the bottom-left corner, Y up ("${st0}" there, "${st1}" at the top left)`);
   // the sheet format from the toolbar; Lock sheet keeps it in place while the board grows
-  await bd.selectOption("#sheet-pick", "A3 landscape"); await bd.click("#btn-sheet-lock");
+  await bd.click("#btn-view"); await bd.selectOption("#sheet-pick", "A3 landscape"); await bd.click("#btn-sheet-lock");
+  check(await bd.isVisible("#view-menu .menu-list") && await bd.getAttribute("#btn-sheet-lock", "aria-checked") === "true", "View ▾ stays open while its ticks change; Lock sheet shows its tick");
+  await bd.keyboard.press("Escape");
   const shA = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return { size: s.size, x: s.x, y: s.y, locked: s.locked }; });
   const holeA = await bd.evaluate(() => BoardApp.state.board.holes.find(h => h.x === 5 && h.y === 85));
   // the corner handle (top right) resizes the board; the origin stays where it is
@@ -1315,11 +1321,11 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     `dragging the board's top-right handle resizes it (${o2.w} × ${o2.h} mm); the origin and the bottom-left hole stay put on the screen`);
   check(shA.size === "A3" && shA.locked && shB.size === "A3" && shB.locked && shB.x === shA.x && Math.abs(shB.y - (shA.y + o2.h - 90)) < 1e-6,
     `the toolbar picks an A3 sheet; locked, it keeps its size and place relative to the origin while the board grows (y ${shA.y} → ${shB.y} in the document)`);
-  await bd.selectOption("#sheet-pick", "A1 portrait");
+  await bd.click("#btn-view"); await bd.selectOption("#sheet-pick", "A1 portrait"); await bd.keyboard.press("Escape");
   const shC = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return [s.size, s.orient, s.w, s.locked, document.getElementById("btn-sheet-lock").classList.contains("active")]; });
   await cad.waitForFunction(() => TubeCAD.state.board.sheet && TubeCAD.state.board.sheet.size === "A1" && TubeCAD.state.board.sheet.locked, null, { timeout: 4000 }).catch(() => {});
   check(shC.join() === "A1,portrait,594,true,true" && await cad.evaluate(() => TubeCAD.state.board.sheet.locked === true), `a locked sheet takes a new format (${shC.slice(0, 3).join(" ")}) and stays locked; saved with the circuit`);
-  await bd.click("#btn-sheet-lock");
+  await bd.click("#btn-view"); await bd.click("#btn-sheet-lock"); await bd.keyboard.press("Escape");
   check(await bd.evaluate(() => !BoardApp.state.board.sheet.locked && !BoardApp.sheetPlace().locked), "Lock sheet again unlocks it: the sheet follows the board");
   // drag the board's edge: the board moves on the sheet (the sheet stays still on the screen and gets locked)
   const on0 = await bd.evaluate(() => BoardApp.onSheet()), shS0 = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return BoardApp.toScreen(s.x, s.y); });
@@ -1372,6 +1378,26 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const zSel = await bd.evaluate(() => BoardApp.state.sel && BoardApp.state.sel.kind);
   check(onP1[0] > onP0[0] + 5 && zSel === "zone", `with a GND plane the board's edge still drags the board, again and again (origin x ${onP0[0]} → ${onP1[0]} mm); the plane's outline is picked just inside the edge (${zSel})`);
   await bd.evaluate(() => BoardApp.centreOnSheet()); await bd.keyboard.press("Escape");
+
+  // the pour is a shape: the + in the middle of an edge, dragged, adds a corner; a double-click on a corner takes it
+  // away; "Round the parts" outlines every part on the board and the pour still shorts nothing
+  {
+    await bd.evaluate(() => { const S = BoardApp.state; S.sel = { kind: "zone", i: 0 }; BoardApp.commit(); BoardApp.fit(); }); await bd.waitForTimeout(150);
+    const zp = await bd.evaluate(() => BoardApp.state.board.zones[0].pts.map(p => p.slice()));
+    const mid = await at((zp[0][0] + zp[1][0]) / 2, (zp[0][1] + zp[1][1]) / 2 + 0.3), down = await at((zp[0][0] + zp[1][0]) / 2, (zp[0][1] + zp[1][1]) / 2 + 15);
+    await bd.mouse.move(mid[0], mid[1]); await bd.mouse.down(); await bd.mouse.move(down[0], down[1], { steps: 5 }); await bd.mouse.up();
+    const z1 = await bd.evaluate(() => BoardApp.state.board.zones[0].pts.map(p => p.slice()));
+    const nc = await at(z1[1][0], z1[1][1]); await bd.mouse.dblclick(nc[0], nc[1]);
+    const z2 = await bd.evaluate(() => BoardApp.state.board.zones[0].pts.length);
+    check(zp.length === 4 && z1.length === 5 && Math.abs(z1[1][1] - zp[0][1] - 15) < 1.3 && z2 === 4, `a pour's outline takes a new corner from the + on an edge (${zp.length} → ${z1.length} corners, dragged 15 mm in) and loses it to a double-click (${z2})`);
+    await bd.locator("#inspector button", { hasText: "Round the parts" }).click();
+    const zr = await bd.evaluate(() => { const S = BoardApp.state, o = S.board.outline, P = BoardCore.zonePoly(S.board, S.board.zones[0]);
+      const on = S.model.parts.filter(g => g.place && g.place.x > 0 && g.place.x < o.w && g.place.y > 0 && g.place.y < o.h);
+      return { n: S.board.zones[0].pts.length, shorts: S.conn.shorts.length, parts: on.length, inside: on.filter(g => BoardCore.pip(g.place.x, g.place.y, P)).length }; });
+    check(zr.n >= 4 && zr.parts > 0 && zr.inside === zr.parts && zr.shorts === 0, `"Round the parts" outlines the ${zr.parts} parts on the board (${zr.n} corners, ${zr.inside} inside); the pour keeps clear of the other nets (${zr.shorts} shorts)`);
+    await bd.locator("#inspector button", { hasText: "Board rectangle" }).click();
+    await bd.keyboard.press("Escape");
+  }
 
   // Nets tab: click a net to highlight it, again to turn it off
   await bd.click('[data-tab="nets"]');
@@ -1473,7 +1499,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     const pv2 = await bd.evaluate(() => BoardApp.preview() && BoardApp.preview().key);
     check(pv1 && pv1.n > 0 && pv1.glass && /SOCKET-B9A/.test(pv1.key) && /SOCKET-OCTAL/.test(pv2), `the inspector shows the part in 3D (${pv1 && pv1.key}) and follows a footprint change (${pv2})`);
     await bd.keyboard.press("Control+z");
-    await bd.click("#btn-3d"); await bd.waitForTimeout(400);
+    await bd.click("#btn-view"); await bd.click("#btn-3d"); await bd.waitForTimeout(400);
     const v3 = await bd.evaluate(() => { const v = BoardApp.viewer(); return { shown: !document.getElementById("view3d").hidden, kinds: v ? [...new Set(v.batches.map(b => b.k))].sort().join(",") : "" }; });
     await bd.click('[data-view="bottom"]'); await bd.locator("#gl3d").focus().catch(() => {}); await bd.keyboard.press("Escape");
     check(v3.shown && v3.kinds === "bottom,glass,solid,top" && await bd.evaluate(() => document.getElementById("view3d").hidden), `3D shows the board (textured top and bottom), the parts and the valves' glass (${v3.kinds}); Esc goes back to the layout`);

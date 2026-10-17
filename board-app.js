@@ -17,7 +17,7 @@
   COLORS.pad = "#d4a72c";
 
   const S = {
-    netlist: null, board: B.newBoard(), model: null, conn: null, drc: [], hv: new Set(),
+    netlist: null, raw: null, clr: null, board: B.newBoard(), model: null, conn: null, drc: [], hv: new Set(),
     view: { scale: 5, ox: 40, oy: 40 }, tool: "select", layer: "F.Cu", grid: 1.27, dim: 0.5,
     sel: null,              // { kind: "part", key } | { kind: "track" | "via" | "text" | "hole" | "zone" | "keepout", i } | { kind: "multi", parts, tracks, vias, texts, holes }
     fills: [],              // filled copper pours (BoardCore.fillZones), refilled on every change
@@ -66,7 +66,7 @@
       if (m.replace) { S.board = B.normaliseBoard(m.board); S.history = []; S.hIndex = -1; S.sel = null; S.route = null; }
       // imported SPICE tubes of the circuit: their socket and pinout come with them
       if (window.SpiceModel && Array.isArray(m.netlist.tubes)) m.netlist.tubes.forEach(t => { try { SpiceModel.register(t); } catch (e) { /* a built-in of that name */ } });
-      S.netlist = m.netlist;
+      S.raw = m.netlist; S.netlist = B.withHeaters(S.raw, S.board.rules);
       // a new board (or one without parts) takes the schematic's parts at once
       let placed = false;
       if (!Object.keys(S.board.parts).length && (m.netlist.parts || []).length) { const r = B.sync(S.board, S.netlist); placed = r.added.length > 0; if (placed) msg(`Placed ${r.added.length} parts below the board: drag them onto it, or Place all on the board`); }
@@ -109,12 +109,14 @@
   // ---------------------------------------------------------------------------
   // light: while dragging, keep the pours as they were filled (they refill when the drag ends)
   function analyse(light) {
+    if (S.raw) S.netlist = B.withHeaters(S.raw, S.board.rules);
     if (!S.netlist) { S.model = null; S.conn = null; S.drc = []; S.fills = []; return; }
     S.hv = B.hvNets(S.netlist.volts, S.board.rules.hvVolts);
     S.model = B.model(S.board, S.netlist);
     const c0 = B.connectivity(S.board, S.model.pads);
     if (!(S.board.zones || []).length) S.fills = [];
-    else if (!light) S.fills = B.fillZones(S.board, S.model, c0, S.hv);
+    else if (!light) S.fills = B.fillZones(S.board, S.model, c0, S.hv, S.netlist);
+    S.clr = B.clearanceRules(S.board, S.model, S.hv, S.netlist);
     S.conn = S.fills.length ? B.connectivity(S.board, S.model.pads, S.fills) : c0;
     S.amps = B.netCurrents(S.netlist);
     S.drc = B.drc(S.board, S.model, S.conn, S.hv, S.fills, S.netlist);
@@ -122,7 +124,13 @@
   function checkSync() {
     if (!S.netlist) return;
     const parts = B.physicalParts(S.netlist), keys = new Set(parts.map(g => g.key));
-    const add = parts.filter(g => !S.board.parts[g.key]).map(g => g.ref), del = Object.keys(S.board.parts).filter(k => !keys.has(k)).map(k => S.board.parts[k].ref);
+    let add = parts.filter(g => !S.board.parts[g.key]).map(g => g.ref), del = Object.keys(S.board.parts).filter(k => !keys.has(k)).map(k => S.board.parts[k].ref);
+    // the heater supplies come from the valves, not from the schematic: they follow at once
+    if (add.length + del.length && add.concat(del).every(r => /^XH\d+$/.test(r))) {
+      const r = B.sync(S.board, S.netlist); analyse(); save();
+      msg(r.added.length ? `Heater supply ${r.added.join(", ")} added below the board: it feeds the valves' heaters (Design rules… sets how)` : `Heater supply ${r.removed.join(", ")} removed`);
+      add = []; del = [];
+    }
     S.pendingSync = add.length || del.length ? { add, del } : null;
     $("banner").hidden = !S.pendingSync;
     if (S.pendingSync) $("banner-text").textContent = `The schematic changed: ${add.length ? `${add.length} new part${add.length > 1 ? "s" : ""} (${add.slice(0, 6).join(", ")}${add.length > 6 ? "…" : ""})` : ""}${add.length && del.length ? "; " : ""}${del.length ? `${del.length} removed (${del.slice(0, 6).join(", ")})` : ""}.`;
@@ -199,6 +207,53 @@
     if (!S.sel || !AREAS[S.sel.kind]) return -1;
     const a = S.board[AREAS[S.sel.kind]][S.sel.i]; if (!a || !a.pts) return -1;
     return a.pts.findIndex(p => Math.hypot(p[0] - x, p[1] - y) <= 6 / S.view.scale);
+  }
+  // the "+" in the middle of each edge of the selected area: dragging it adds a corner there
+  function hitAreaMid(x, y) {
+    if (!S.sel || !AREAS[S.sel.kind]) return -1;
+    const a = S.board[AREAS[S.sel.kind]][S.sel.i]; if (!a || !a.pts) return -1;
+    const P = a.pts;
+    return P.findIndex((p, k) => { const q = P[(k + 1) % P.length]; return Math.hypot((p[0] + q[0]) / 2 - x, (p[1] + q[1]) / 2 - y) <= 6 / S.view.scale; });
+  }
+  // a corner of the selected area removed (an area keeps three at least)
+  function dropCorner(k) {
+    const a = S.board[AREAS[S.sel.kind]][S.sel.i];
+    if (a.locked) { lockedNote(); return; }
+    if (a.pts.length <= 3) { msg("An area keeps three corners at least"); return; }
+    a.pts.splice(k, 1); commit(`Corner removed: ${a.pts.length} left`);
+  }
+  // a pour's outline over the whole board: a rectangle (the pour is cut to the outline, round corners and edge clearance included)
+  function boardShape() { const o = S.board.outline; return [[0, 0], [o.w, 0], [o.w, o.h], [0, o.h]]; }
+  // the convex hull round the given parts' courtyards, m mm out (a pour round them)
+  function hullAround(keys, m) {
+    const pts = [];
+    S.model.parts.forEach(g => { if (!g.place || !keys.includes(g.key)) return; const b = B.partBox(g); [[b.x1 - m, b.y1 - m], [b.x2 + m, b.y1 - m], [b.x2 + m, b.y2 + m], [b.x1 - m, b.y2 + m]].forEach(p => pts.push([snap(p[0]), snapY(p[1])])); });
+    if (pts.length < 3) return null;
+    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], hi = [];
+    pts.forEach(p => { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); });
+    pts.slice().reverse().forEach(p => { while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); });
+    const h = lo.slice(0, -1).concat(hi.slice(0, -1));
+    return h.length >= 3 ? h : null;
+  }
+  const onBoardKeys = () => { const o = S.board.outline; return S.model ? S.model.parts.filter(g => g.place && g.place.x >= 0 && g.place.x <= o.w && g.place.y >= 0 && g.place.y <= o.h).map(g => g.key) : []; };
+  function pourAround(keys) {
+    const P = hullAround(keys, 2); if (!P) { msg("No parts on the board to pour round"); return null; }
+    return P;
+  }
+  // refill the pours while a corner or the whole area is dragged (at most every 120 ms)
+  let liveT = 0;
+  function liveFill() { const t = performance.now(); if (t - liveT < 120) return; analyse(); liveT = performance.now(); }
+  // the selected area's handles: squares on the corners, a "+" in the middle of each edge
+  function areaHandles(P, px) {
+    ctx.fillStyle = "#00e5ff"; P.forEach(p => ctx.fillRect(p[0] - 3.5 * px, p[1] - 3.5 * px, 7 * px, 7 * px));
+    ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = Math.max(0.05, 1.2 * px);
+    P.forEach((p, k) => {
+      const q = P[(k + 1) % P.length], mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+      if (Math.hypot(q[0] - p[0], q[1] - p[1]) * S.view.scale < 24) return;
+      ctx.fillStyle = "rgba(10,14,20,0.85)"; ctx.beginPath(); ctx.arc(mx, my, 4.5 * px, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx - 2.5 * px, my); ctx.lineTo(mx + 2.5 * px, my); ctx.moveTo(mx, my - 2.5 * px); ctx.lineTo(mx, my + 2.5 * px); ctx.stroke();
+    });
   }
   function hitArea(x, y) {
     const tol = 5 / S.view.scale;
@@ -286,13 +341,14 @@
       for (const it of S.conn.items) {
         if (!it.layers.includes(r.layer) || (it.net === r.net && r.net !== null)) continue;
         if (it.kind === "via" && (r.vias || []).includes(it.vi)) continue;   // the route's own via: not joined to its net until the route ends
-        let need = Math.max(mine, B.classRule(classOf(it.net), R).clearance); const g = B.segSeg(s, it.s) - w2 - it.r;
+        let need = Math.max(mine, B.classRule(classOf(it.net), R).clearance, S.clr ? S.clr.need(r.net, it.net).c : 0); const g = B.segSeg(s, it.s) - w2 - it.r;
         if (g < need - 1e-6 && it.kind === "pad") { const eg = B.entryGap(s, it, S.conn.items); if (eg !== null) need = Math.min(need, eg - 0.02); }
         if (g < need - 1e-6 && it.kind === "track" && B.anchoredOk({ s, r: w2 }, it, g, need, S.conn.items)) continue;
         if (g < need - 1e-6) { const [x, y] = it.kind === "pad" ? [it.pad.x, it.pad.y] : [(it.s[0] + it.s[2]) / 2, (it.s[1] + it.s[3]) / 2]; return { x, y, g, need, what: it.kind === "pad" ? `${it.pad.ref}-${it.pad.num}` : it.kind === "via" ? "a via" : "a track", net: netName(it.net) }; }
       }
       for (const ko of S.board.keepouts) if (ko.tracks !== false && B.koLayers(ko).includes(r.layer) && B.segInPoly(s, ko.pts, w2)) return { x: s[2], y: s[3], g: 0, need: 0, what: ko.name ? `keep-out "${ko.name}"` : "a keep-out area", net: "", ko: true };
-      for (const h of S.board.holes) { const g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < mine - 1e-6) return { x: h.x, y: h.y, g, need: mine, what: "a mounting hole", net: "" }; }
+      const hn = Math.max(mine, S.clr ? S.clr.toChassis(r.net).c : 0);
+      for (const h of S.board.holes) { const g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < hn - 1e-6) return { x: h.x, y: h.y, g, need: hn, what: "a mounting hole", net: "" }; }
     }
     return null;
   }
@@ -461,9 +517,9 @@
     commit(`Copper pour on ${S.layer}, net ${defaultNet()}: change its net in the inspector`);
   }
   function groundPlane(layer) {
-    S.board.zones.push({ net: defaultNet(), layer: layer || "B.Cu", pts: null, thermal: true, gap: 0.5, spoke: 0.8 });
+    S.board.zones.push({ net: defaultNet(), layer: layer || "B.Cu", pts: boardShape(), thermal: true, gap: 0.5, spoke: 0.8 });
     S.sel = { kind: "zone", i: S.board.zones.length - 1 };
-    commit(`${defaultNet()} pour over the whole ${layer === "F.Cu" ? "top" : "bottom"} layer`);
+    commit(`${defaultNet()} pour over the whole ${layer === "F.Cu" ? "top" : "bottom"} layer: drag its corners, or the + on an edge for a new corner`);
   }
   // drag a track segment sideways: its neighbours keep their direction (45° stays 45°), a
   // segment at a track's end gets a jog
@@ -512,6 +568,13 @@
     if (S.tool !== "select") { placeAt(x, y); return; }
     if (onHandle(x, y)) { S.drag = { kind: "outline", w0: S.board.outline.w, h0: S.board.outline.h, mx: x, sy, moved: false }; return; }
     let zc;
+    if ((zc = hitAreaMid(x, y)) >= 0 && hitAreaCorner(x, y) < 0) {
+      const list = AREAS[S.sel.kind], a = S.board[list][S.sel.i];
+      if (a.locked) { S.drag = { kind: "locked" }; return; }
+      const p = a.pts[zc], q = a.pts[(zc + 1) % a.pts.length], np = [+((p[0] + q[0]) / 2).toFixed(4), +((p[1] + q[1]) / 2).toFixed(4)];
+      a.pts.splice(zc + 1, 0, np);
+      S.drag = { kind: "corner", list, i: S.sel.i, k: zc + 1, x0: np[0], y0: np[1], mx: x, my: y, moved: true, added: true }; render(); return;
+    }
     if ((zc = hitAreaCorner(x, y)) >= 0) {
       const list = AREAS[S.sel.kind], a = S.board[list][S.sel.i];
       S.drag = a.locked ? { kind: "locked" } : { kind: "corner", list, i: S.sel.i, k: zc, x0: a.pts[zc][0], y0: a.pts[zc][1], mx: x, my: y, moved: false }; return;
@@ -538,7 +601,9 @@
       renderPanels(); render(); return;
     }
     if (onEdge(x, y)) { const p = sheetPlace(); S.drag = { kind: "board", x0: p.x, y0: p.y, sx, sy, ox: S.view.ox, oy: S.view.oy, moved: false }; return; }
-    const ar = hitArea(x, y);
+    // inside the selected pour or keep-out, on empty space: drag the whole area
+    let ar = hitArea(x, y);
+    if (!ar && S.sel && AREAS[S.sel.kind]) { const a = S.board[AREAS[S.sel.kind]][S.sel.i]; if (a && a.pts && areaShown(S.sel.kind, a) && B.pip(x, y, areaPoly(S.sel.kind, a))) ar = { kind: S.sel.kind, i: S.sel.i }; }
     if (ar) {
       S.sel = { kind: ar.kind, i: ar.i }; const a = S.board[AREAS[ar.kind]][ar.i];
       if (a.locked) S.drag = { kind: "locked" }; else if (a.pts) S.drag = { kind: "area", list: AREAS[ar.kind], i: ar.i, pts0: a.pts.map(p => p.slice()), mx: x, my: y, moved: false };
@@ -563,9 +628,11 @@
       const t = S.board.tracks[d.i], np = dragSeg(d.pts0, d.k, x - d.mx, y - d.my);
       if (JSON.stringify(np) !== JSON.stringify(t.pts)) { t.pts = np; d.moved = true; analyse(true); render(); }
     } else if (d && d.kind === "corner") {
-      const p = S.board[d.list][d.i].pts[d.k]; p[0] = snap(d.x0 + x - d.mx); p[1] = snapY(d.y0 + y - d.my); d.moved = true; render();
+      const p = S.board[d.list][d.i].pts[d.k], nx = snap(d.x0 + x - d.mx), ny = snapY(d.y0 + y - d.my);
+      if (nx !== p[0] || ny !== p[1]) { p[0] = nx; p[1] = ny; d.moved = true; if (d.list === "zones") liveFill(); render(); }
     } else if (d && d.kind === "area") {
-      const dx = snap(x - d.mx), dy = snap(y - d.my); S.board[d.list][d.i].pts = d.pts0.map(p => [p[0] + dx, p[1] + dy]); d.moved = !!(dx || dy); render();
+      const dx = snap(x - d.mx), dy = snap(y - d.my);
+      if (dx !== d.dx || dy !== d.dy) { d.dx = dx; d.dy = dy; S.board[d.list][d.i].pts = d.pts0.map(p => [p[0] + dx, p[1] + dy]); d.moved = !!(dx || dy); if (d.list === "zones") liveFill(); render(); }
     } else if (d && d.kind === "box") {
       d.x1 = x; d.y1 = y; d.moved = Math.hypot(d.x1 - d.x0, d.y1 - d.y0) * S.view.scale > 4; render();
     } else if (d && d.kind === "locked") {
@@ -596,6 +663,13 @@
       renderPanels(); render(); return;
     }
     if (d && d.kind === "seg" && d.moved) S.board.tracks[d.i].pts = tidy(S.board.tracks[d.i].pts);
+    if (d && d.kind === "corner" && d.moved) {
+      // a corner dropped onto its neighbour (or onto the line through its neighbours) goes away
+      const P = S.board[d.list][d.i].pts, n = P.length, a = P[(d.k + n - 1) % n], b = P[d.k], c = P[(d.k + 1) % n];
+      const flat = Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) < 1e-6;
+      if (n > 3 && (flat || Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-6 || Math.hypot(b[0] - c[0], b[1] - c[1]) < 1e-6)) { P.splice(d.k, 1); commit(d.added ? undefined : `Corner merged: ${P.length} left`); return; }
+      commit(d.added ? `Corner added: ${P.length} corners (double-click a corner to remove it)` : undefined); return;
+    }
     if (d && d.kind !== "pan" && d.moved) commit(d.kind === "outline" ? `Board ${S.board.outline.w} × ${S.board.outline.h} mm` : d.kind === "board" ? `Board moved on the sheet: origin ${onSheet().map(v => v.toFixed(2)).join(", ")} mm from the sheet's bottom-left corner (the sheet is locked)` : undefined);
   }
   function onWheel(e) {
@@ -800,7 +874,8 @@
     S.view = { scale: s, ox: W / 2 - (sh.x + sh.w / 2) * s, oy: H / 2 - (sh.y + sh.h / 2) * s };
     render();
   }
-  function setGridStyle(v) { S.gridStyle = v; $("grid-style").value = v; keepView(); msg({ lines: "Grid: lines (G: dots)", dots: "Grid: dots (G: off)", off: "Grid off (G: lines)" }[v]); render(); }
+  function setGridStyle(v) { S.gridStyle = v; gridUi(); keepView(); msg({ lines: "Grid: lines (G: dots)", dots: "Grid: dots (G: off)", off: "Grid off (G: lines)" }[v]); render(); }
+  const gridUi = () => document.querySelectorAll("[data-gs]").forEach(b => b.classList.toggle("active", b.dataset.gs === S.gridStyle));
   function setAxes(on) { S.axes = on; $("btn-axes").classList.toggle("active", on); keepView(); msg(on ? "X / Y axes shown (A: hide)" : "Axes hidden (A: show)"); render(); }
 
   // ---------------------------------------------------------------------------
@@ -870,7 +945,7 @@
     if (!el) return;
     el.value = sh.size === "none" ? "none" : `${sh.size || "auto"} ${sh.orient === "portrait" ? "portrait" : "landscape"}`;
     $("btn-sheet-lock").classList.toggle("active", !!sh.locked); $("btn-sheet-lock").disabled = sh.size === "none";
-    $("btn-sheet-lock").textContent = sh.locked ? "Sheet locked" : "Lock sheet";
+    $("btn-sheet-lock").textContent = "Lock sheet";
   }
   // the reference-grid zone of a board point, e.g. "B3" (as the Circuit CAD shows it)
   function sheetZone(x, y) {
@@ -993,7 +1068,7 @@
       const P = B.zonePoly(S.board, z), sel = S.sel && S.sel.kind === "zone" && S.sel.i === i;
       ctx.strokeStyle = sel ? "#00e5ff" : COLORS[z.layer]; ctx.lineWidth = Math.max(0.1, (sel ? 1.6 : 1) * px); ctx.setLineDash([5 * px, 4 * px]);
       ctx.beginPath(); P.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
-      if (sel && z.pts) { ctx.fillStyle = "#00e5ff"; z.pts.forEach(p => ctx.fillRect(p[0] - 3 * px, p[1] - 3 * px, 6 * px, 6 * px)); }
+      if (sel && z.pts) areaHandles(z.pts, px);
     });
     // keep-out areas: hatched, dashed orange
     if (S.show.keepouts) S.board.keepouts.forEach((k, i) => {
@@ -1007,7 +1082,7 @@
       ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.1, (sel ? 1.8 : 1.2) * px); ctx.setLineDash([6 * px, 4 * px]);
       ctx.beginPath(); P.forEach((p, n) => (n ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
       if (k.name) { ctx.fillStyle = col; ctx.font = `${11 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(k.name, x1 + 3 * px, y1 + 3 * px); }
-      if (sel) { ctx.fillStyle = "#00e5ff"; P.forEach(p => ctx.fillRect(p[0] - 3 * px, p[1] - 3 * px, 6 * px, 6 * px)); }
+      if (sel) areaHandles(P, px);
     });
     // a padlock on locked parts and holes
     const lockMark = (x, y) => { const u = 4 * px; ctx.strokeStyle = "#9aa7b4"; ctx.fillStyle = "#9aa7b4"; ctx.lineWidth = Math.max(0.08, px); ctx.fillRect(x - u, y - u * 0.2, 2 * u, 1.5 * u); ctx.beginPath(); ctx.arc(x, y - u * 0.2, u * 0.65, Math.PI, 0); ctx.stroke(); };
@@ -1026,7 +1101,7 @@
     }
     if (S.route) {
       const r = S.route, rt = routeTail(), tail = rt.pts, pts = r.pts.concat(tail.slice(1)), bad = rt.bad;
-      const need = B.classRule(classOf(r.net), S.board.rules).clearance;
+      const need = bad && bad.need ? bad.need : B.classRule(classOf(r.net), S.board.rules).clearance;
       ctx.lineCap = "round"; ctx.lineJoin = "round";
       // the clearance halo of the segments being placed: red when they come too close
       ctx.strokeStyle = bad ? "rgba(255,80,80,0.28)" : "rgba(0,229,255,0.13)"; ctx.lineWidth = r.w + 2 * need;
@@ -1076,8 +1151,10 @@
     if (S.axes) axisMarks(W, H);
     const c = S.conn, errs = errors();
     $("st-rats").textContent = c ? (c.unrouted ? `${c.unrouted} connection${c.unrouted > 1 ? "s" : ""} to route` : "All connections routed") : "";
-    $("st-drc").textContent = S.model ? (errs ? `${errs} rule violation${errs > 1 ? "s" : ""}` : "No rule violations") : "";
-    $("st-drc").style.color = errs ? "var(--bad)" : "var(--ok)";
+    // green only when the board is finished: no violations, nothing to route; warnings in amber
+    const warns = S.drc.filter(d => NOTE.includes(d.kind) && d.kind !== "unplaced").length, open = c && c.unrouted;
+    $("st-drc").textContent = S.model ? (errs ? `${errs} rule violation${errs > 1 ? "s" : ""}` : "No rule violations") + (warns ? ` · ${warns} warning${warns > 1 ? "s" : ""}` : "") : "";
+    $("st-drc").style.color = errs ? "var(--bad)" : warns ? "var(--warn)" : open ? "var(--muted)" : "var(--ok)";
   }
   // where the measure tool sticks: a circle on a centre, a square on a corner or end, a diamond on
   // a line; with its name next to it (not on the ends of a measurement already placed)
@@ -1159,7 +1236,7 @@
     }
     ctx.restore();
   }
-  const NOTE = ["unplaced", "check", "class", "silk", "dangling"];
+  const NOTE = ["unplaced", "check", "class", "silk", "dangling", "stopper", "coupling", "heat", "support"];
   const errors = () => S.drc.filter(d => !NOTE.includes(d.kind)).length;
 
   // ---------------------------------------------------------------------------
@@ -1265,6 +1342,10 @@
         h.insertAdjacentHTML("beforeend", `<h2>Align parts</h2><div class="align">${[["left", "⇤ Left"], ["hcenter", "↔ Centre"], ["right", "Right ⇥"], ["top", "⤒ Top"], ["vcenter", "↕ Middle"], ["bottom", "Bottom ⤓"]].map(([k, t]) => `<button class="btn" data-al="${k}">${t}</button>`).join("")}</div>` +
           (s.parts.length >= 3 ? `<div class="align">${[["hdist", "Spread across"], ["vdist", "Spread down"]].map(([k, t]) => `<button class="btn" data-al="${k}">${t}</button>`).join("")}</div>` : ""));
         h.querySelectorAll("[data-al]").forEach(b => { b.onclick = () => alignParts(b.dataset.al); });
+        const pa = document.createElement("button"); pa.className = "btn"; pa.style.cssText = "width:100%;margin-top:4px";
+        pa.textContent = `+ ${defaultNet()} pour round these parts`; pa.title = `A copper pour of ${defaultNet()} on the active layer (${S.layer}), round the selected parts 2 mm out; it keeps clear of other nets' copper by itself, so it shorts nothing`;
+        pa.onclick = () => { const P = pourAround(s.parts); if (!P) return; S.board.zones.push({ net: defaultNet(), layer: S.layer, pts: P, thermal: true, gap: 0.5, spoke: 0.8 }); S.sel = { kind: "zone", i: S.board.zones.length - 1 }; commit(`${defaultNet()} pour round ${s.parts.length} parts on ${S.layer}: drag its corners to shape it`); };
+        h.appendChild(pa);
       }
       if (ts.length) {
         const len = ts.reduce((a, t) => a + t.pts.slice(1).reduce((b, p, k) => b + Math.hypot(p[0] - t.pts[k][0], p[1] - t.pts[k][1]), 0), 0);
@@ -1282,6 +1363,7 @@
       h.appendChild(field("Name", k.name || "", v => { k.name = v; commit(); }, "text"));
       h.appendChild(field("Layers", L.length === 2 ? "both" : L[0], v => { k.layers = v === "both" ? ["F.Cu", "B.Cu"] : [v]; commit(); }, [["both", "Both copper layers"], ["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
       [["tracks", "Tracks"], ["vias", "Vias"], ["pour", "Copper pour"], ["parts", "Parts"]].forEach(([key, t]) => h.appendChild(field(t, (key === "parts" ? !!k.parts : k[key] !== false) ? "yes" : "no", v => { k[key] = v === "yes"; commit(); }, yes)));
+      h.insertAdjacentHTML("beforeend", `<p class="help">Drag a corner to move it; drag the <b>+</b> on an edge to add one; double-click a corner to remove it.</p>`);
       h.appendChild(lockField(k)); h.appendChild(delBtn()); return;
     }
     if (s && s.kind === "zone") {
@@ -1291,7 +1373,17 @@
       h.innerHTML = `<div class="insp-title">Copper pour</div>` + (f ? kv("Pieces", f.pieces + (f.islands ? ` · ${f.islands} island${f.islands > 1 ? "s" : ""} removed` : "")) : "");
       h.appendChild(field("Net", z.net, v => { z.net = v; commit(); }, nets.map(n => [n, n])));
       h.appendChild(field("Layer", z.layer, v => { z.layer = v; commit(); }, [["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
-      h.appendChild(field("Area", z.pts ? "poly" : "board", v => { if (v === "board") { z.pts = null; } else if (!z.pts) { const o = S.board.outline, e = 3; z.pts = [[e, e], [o.w - e, e], [o.w - e, o.h - e], [e, o.h - e]]; } commit(); }, [["board", "The whole board"], ["poly", "Its own outline (drag the corners)"]]));
+      h.appendChild(field("Area", z.pts ? "poly" : "board", v => { if (v === "board") { z.pts = null; } else if (!z.pts) z.pts = boardShape(); commit(); }, [["board", "The whole board (follows its size)"], ["poly", "Its own outline (drag the corners)"]]));
+      if (z.pts) h.insertAdjacentHTML("beforeend", kv("Corners", z.pts.length));
+      const shp = document.createElement("div"); shp.className = "align"; shp.style.gridTemplateColumns = "1fr 1fr";
+      [["around", "Round the parts", "The smallest outline round every part on the board, 2 mm out; the pour keeps clear of the other nets' copper by itself"],
+       ["rect", "Board rectangle", "A rectangle over the whole board, with four corners to drag"]].forEach(([k, t, tip]) => {
+        const b = document.createElement("button"); b.className = "btn"; b.textContent = t; b.title = tip;
+        b.onclick = () => { if (z.locked) { lockedNote(); return; } const P = k === "around" ? pourAround(onBoardKeys()) : boardShape(); if (P) { z.pts = P; commit(k === "around" ? `Pour round the parts: ${P.length} corners` : "Pour over the whole board: drag its corners"); } };
+        shp.appendChild(b);
+      });
+      h.appendChild(shp);
+      h.insertAdjacentHTML("beforeend", `<p class="help">Drag a corner to move it; drag the <b>+</b> in the middle of an edge to add a corner; double-click a corner (or drop it onto its neighbour) to remove it. Drag the outline, or inside the selected pour, to move it all.</p>`);
       h.appendChild(field("Pads of its net", z.thermal === false ? "solid" : "thermal", v => { z.thermal = v === "thermal"; commit(); }, [["thermal", "Thermal reliefs (easy to solder)"], ["solid", "Solid (more current)"]]));
       h.appendChild(field("Thermal gap (mm)", z.gap || 0.5, v => { if (v > 0) { z.gap = v; commit(); } }));
       h.appendChild(field("Spoke width (mm)", z.spoke || 0.8, v => { if (v > 0) { z.spoke = v; commit(); } }));
@@ -1346,7 +1438,12 @@
       const gp = document.createElement("button"); gp.className = "btn"; gp.style.marginTop = "6px";
       gp.textContent = `+ ${defaultNet()} plane (bottom)`;
       gp.title = "A copper pour of the ground net over the whole bottom layer, with clearance to everything else and thermal reliefs on its pads";
-      gp.onclick = () => groundPlane("B.Cu"); h.appendChild(gp);
+      gp.onclick = () => groundPlane("B.Cu");
+      const gr = document.createElement("button"); gr.className = "btn"; gr.style.marginTop = "6px";
+      gr.textContent = `+ ${defaultNet()} pour round the parts`;
+      gr.title = `A ${defaultNet()} pour on the active layer (${S.layer}) round every part on the board, 2 mm out; it keeps every other net's clearance, so it shorts nothing. Drag its corners to shape it`;
+      gr.onclick = () => { const P = pourAround(onBoardKeys()); if (!P) return; S.board.zones.push({ net: defaultNet(), layer: S.layer, pts: P, thermal: true, gap: 0.5, spoke: 0.8 }); S.sel = { kind: "zone", i: S.board.zones.length - 1 }; commit(`${defaultNet()} pour round the parts on ${S.layer}: drag its corners, or the + on an edge for a new corner`); };
+      const gw = document.createElement("div"); gw.style.cssText = "display:flex;flex-wrap:wrap;gap:6px"; gw.appendChild(gp); gw.appendChild(gr); h.appendChild(gw);
     }
   }
 
@@ -1355,11 +1452,13 @@
   // ---------------------------------------------------------------------------
   let draft = null;
   const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class",
-    current: "Track width for the current", courtyard: "Parts overlapping", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", pinout: "Pinouts to check" };
+    current: "Track width for the current", courtyard: "Parts overlapping", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", pinout: "Pinouts to check",
+    stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket" };
   function openRules() {
     draft = JSON.parse(JSON.stringify(S.board.rules));
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; el.classList.remove("invalid"); });
     $("rules-tent").checked = draft.tentVias !== false;
+    $("rules-ipc").value = draft.ipc || "B2"; $("rules-heaters").checked = draft.heaters !== false; $("rules-shields").checked = draft.shields !== false; $("rules-h126").value = draft.heater126 ? "1" : "0";
     $("rules-checks").innerHTML = Object.keys(CHECK_NAMES).map(k => `<label><input type="checkbox" data-c="${k}" ${draft.checks[k] !== false ? "checked" : ""}> ${CHECK_NAMES[k]}</label>`).join("");
     rulesNets();
     $("rules-modal").hidden = false;
@@ -1368,6 +1467,7 @@
     let ok = true;
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { const v = parseFloat(String(el.value).replace(",", ".")), good = el.dataset.min !== undefined ? v >= +el.dataset.min : v > 0; if (!good) { el.classList.add("invalid"); ok = false; } else { el.classList.remove("invalid"); draft[el.dataset.r] = v; } });
     draft.tentVias = $("rules-tent").checked;
+    draft.ipc = $("rules-ipc").value; draft.heaters = $("rules-heaters").checked; draft.shields = $("rules-shields").checked; draft.heater126 = $("rules-h126").value === "1";
     document.querySelectorAll("#rules-checks [data-c]").forEach(el => { draft.checks[el.dataset.c] = el.checked; });
     return ok;
   }
@@ -1375,10 +1475,10 @@
     const tb = $("rules-nets");
     if (!S.model) { tb.innerHTML = `<tr><td colspan="6">The nets arrive from the Circuit CAD.</td></tr>`; return; }
     readRules();
-    const hv = B.hvNets(S.netlist.volts, draft.hvVolts), rows = B.netTable({ ...S.board, rules: draft }, S.model, hv, S.netlist.volts);
+    const hv = B.hvNets(S.netlist.volts, draft.hvVolts), rows = B.netTable({ ...S.board, rules: draft }, S.model, hv, S.netlist.volts), cr = B.clearanceRules({ ...S.board, rules: draft }, S.model, hv, S.netlist);
     tb.innerHTML = rows.map(r => `<tr><td>${esc(r.name)}</td><td>${r.pads}</td><td>${r.volts === null ? "—" : r.volts.toFixed(Math.abs(r.volts) >= 100 ? 0 : 1) + " V"}</td>
       <td><select data-net="${esc(r.name)}"><option value="">Auto (${esc(B.netClassOf(r.net, S.model.names, hv, { ...draft, netClass: {} }))})</option>${B.CLASSES.map(c => `<option value="${c}" ${r.manual && r.cls === c ? "selected" : ""}>${c}</option>`).join("")}</select></td>
-      <td class="cls-${r.cls}">${r.track}</td><td class="cls-${r.cls}">${r.clearance}</td></tr>`).join("");
+      <td class="cls-${r.cls}">${r.track}</td><td class="cls-${r.cls}">${+Math.max(r.clearance, cr.toChassis(r.net).c).toFixed(2)}</td></tr>`).join("");
     tb.querySelectorAll("select").forEach(sel => sel.addEventListener("change", () => { if (sel.value) draft.netClass[sel.dataset.net] = sel.value; else delete draft.netClass[sel.dataset.net]; rulesNets(); }));
   }
   function applyRules() { if (!readRules()) return; S.board.rules = draft; $("rules-modal").hidden = true; commit("Design rules applied"); }
@@ -1506,7 +1606,10 @@
     canvas = $("pcb"); ctx = canvas.getContext("2d"); dpr = window.devicePixelRatio || 1; canvas.tabIndex = 0;
     canvas.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
-    canvas.addEventListener("dblclick", () => { if (S.route) finishRoute(); else if (S.poly) closePoly(); });
+    canvas.addEventListener("dblclick", e => {
+      if (S.route) finishRoute(); else if (S.poly) closePoly();
+      else { const [x, y] = toWorld(...evPos(e)), k = hitAreaCorner(x, y); if (k >= 0) dropCorner(k); }
+    });
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("contextmenu", e => e.preventDefault());
     window.addEventListener("keydown", onKey); window.addEventListener("keyup", e => { if (e.key === " ") S.space = false; });
@@ -1520,21 +1623,32 @@
     $("btn-fit").onclick = e => (e.shiftKey ? fitSheet() : fit());
     $("sheet-pick").onchange = e => { const [size, orient] = e.target.value.split(" "); setSheet(orient ? { size, orient } : { size }); if (size !== "none") fitSheet(); };
     $("btn-sheet-lock").onclick = () => lockSheet(!(S.board.sheet || {}).locked);
-    $("grid-style").value = S.gridStyle; $("grid-style").onchange = e => setGridStyle(e.target.value);
+    gridUi(); document.querySelectorAll("[data-gs]").forEach(b => { b.onclick = () => setGridStyle(b.dataset.gs); });
     $("btn-axes").classList.toggle("active", S.axes); $("btn-axes").onclick = () => setAxes(!S.axes); $("btn-undo").onclick = undo; $("btn-redo").onclick = redo;
     $("btn-sync").onclick = syncNow; $("banner-sync").onclick = syncNow;
     $("btn-setup").onclick = openSetup; $("btn-rules").onclick = openRules;
     $("rules-apply").onclick = applyRules; $("rules-cancel").onclick = () => { $("rules-modal").hidden = true; };
     $("rules-reset").onclick = () => { const nc = draft.netClass; draft = { ...B.defaultRules(), netClass: nc }; $("rules-tent").checked = true; document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; }); document.querySelectorAll("#rules-checks [data-c]").forEach(el => { el.checked = true; }); rulesNets(); };
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => el.addEventListener("change", rulesNets));
+    $("rules-ipc").addEventListener("change", rulesNets);
     $("setup-apply").onclick = applySetup; $("setup-cancel").onclick = () => { $("setup-modal").hidden = true; };
     $("holes-corners").onclick = () => { const o = readOutline() || S.board.outline, d = +$("hole-d").value, inset = parseFloat($("hole-inset").value) || 5; setupHoles = B.cornerHoles(o, d, inset).map(h => ({ ...h, locked: true })); holesNow(); };
     $("holes-clear").onclick = () => { setupHoles = []; holesNow(); };
     $("btn-cad").onclick = () => ToolWindows.open("circuit_sandbox.html");
     $("btn-help").onclick = () => { $("help-modal").hidden = false; }; $("btn-help-close").onclick = () => { $("help-modal").hidden = true; };
-    const menu = $("export-menu"), list = menu.querySelector(".menu-list");
-    $("btn-export").onclick = e => { e.stopPropagation(); list.hidden = !list.hidden; };
-    document.addEventListener("click", e => { if (!menu.contains(e.target)) list.hidden = true; });
+    // the toolbar's menus: one open at a time; ticks keep it open, other items close it; Esc or a click elsewhere closes it
+    const menus = [...document.querySelectorAll("header .menu")], list = $("export-menu").querySelector(".menu-list");
+    const closeMenus = except => menus.forEach(m => { if (m !== except) m.querySelector(".menu-list").hidden = true; });
+    menus.forEach(m => {
+      const ml = m.querySelector(".menu-list");
+      m.querySelector(":scope > .btn").onclick = e => { e.stopPropagation(); closeMenus(m); ml.hidden = !ml.hidden; };
+      ml.addEventListener("click", e => { const it = e.target.closest(".menu-item"); if (it && !it.classList.contains("check")) ml.hidden = true; });
+    });
+    document.addEventListener("click", e => { if (!menus.some(m => m.contains(e.target))) closeMenus(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenus(); });
+    // ticks tell assistive technology their state
+    new MutationObserver(() => document.querySelectorAll("header .menu-item.check").forEach(b => b.setAttribute("aria-checked", b.classList.contains("active") ? "true" : "false")))
+      .observe(document.querySelector("header"), { subtree: true, attributes: true, attributeFilter: ["class"] });
     $("ex-svg").onclick = () => { list.hidden = true; download(svgDoc(["F.Cu", "B.Cu", "F.SilkS", "Edge.Cuts"], false), baseName() + "-board.svg", "image/svg+xml"); };
     $("ex-gerber").onclick = () => { list.hidden = true; exportGerber(); };
     $("ex-step").onclick = () => { list.hidden = true; exportStep(); };

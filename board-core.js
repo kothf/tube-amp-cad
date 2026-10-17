@@ -42,7 +42,10 @@
       maskExpansion: 0.05, tentVias: true,                        // solder mask: opening around pads; vias covered
       tempRise: 10,                                               // °C a track may warm up at its DC current (IPC-2221, outer layer)
       netClass: {},                                               // net name -> "Signal" | "Power" | "HV"
-      checks: { clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, keepout: true, silk: true, dangling: true }
+      ipc: "B2",                                                  // clearance by voltage: IPC-2221B table B2 | B4 | A6 | off
+      heaters: true, heater126: false, shields: true,             // heater wiring on the board; 12AX7-type heaters at 12.6 V; internal shields to GND
+      stopperMax: 10, couplingLen: 10, couplingGap: 2, heatGap: 10, hotWatts: 1, socketHole: 40,   // valve layout checks (mm, W)
+      checks: { clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, keepout: true, silk: true, dangling: true, stopper: true, coupling: true, heat: true, support: true }
     };
   }
   const CLASSES = ["Signal", "Power", "HV"];
@@ -50,7 +53,7 @@
     const m = R.netClass && R.netClass[names[net]];
     if (CLASSES.includes(m)) return m;
     if (hv && hv.has(net)) return "HV";
-    return names[net] === "GND" ? "Power" : "Signal";
+    return names[net] === "GND" || isHeaterNet(names[net]) ? "Power" : "Signal";
   }
   /** Track width (mm) for a DC current on an outer layer: IPC-2221, I = 0.048 · ΔT^0.44 · A^0.725
       (A in mil²), copper thickness from the stack-up */
@@ -356,7 +359,7 @@
   function physicalParts(netlist) {
     const L = root.CadLib, groups = new Map();
     (netlist.parts || []).forEach(p => {
-      if (SKIP.has(p.type) || !L.LIB[p.type]) return;
+      if (SKIP.has(p.type) || (!L.LIB[p.type] && p.type !== "heater")) return;
       const lab = String(p.label || "").trim(), i = lab.lastIndexOf("."), base = i > 0 ? lab.slice(0, i) : lab;
       const k = base ? p.type + "|" + base : p.id;
       if (!groups.has(k)) groups.set(k, { ref: base || "?", type: p.type, members: [] });
@@ -366,7 +369,7 @@
       g.members.sort((a, b) => String(a.label).localeCompare(String(b.label), undefined, { numeric: true }));
       g.key = g.members.map(m => m.id).sort().join("+");
       const first = g.members[0], def = L.LIB[g.type];
-      g.value = def.value ? def.value({ params: first.params, label: first.label }) : "";
+      g.value = g.type === "heater" ? `${first.params.v} V ~ ${fmtA(first.params.i)}` : def.value ? def.value({ params: first.params, label: first.label }) : "";
       g.options = fpOptions(g);
       g.defaultFp = g.options[0];
       return g;
@@ -402,6 +405,7 @@
       case "siggen": return ["JACK-RCA", "JACK-6.35", "JACK-3.5", t2, "WIRE-2"];
       case "vdc": return [t2, "TERM-7.5-2", "WIRE-2"];
       case "mains": return ["TERM-7.5-2", t2, "WIRE-2"];
+      case "heater": return [t2, "WIRE-2", "TERM-7.5-2"];
       case "npn": case "pnp": case "nmos": case "pmos": {
         const m = (t === "npn" || t === "pnp" ? L.BJTS : L.MOSFETS)[p.model] || {}, order = (PINOUT[p.model] || [t[1] === "m" ? "GDS" : "EBC"])[0];
         const all = ["TO-92", "TO-18", "TO-126", "TO-220", "TO-247", "TO-3P", "TO-264"].map(k => `${k}-${order}`);
@@ -425,7 +429,7 @@
       // pin numbers from the tube's pinout; a dual tube's sections each bring their own
       g.members.forEach(m => {
         const nums = L.LIB.tube.pinNumbers({ params: m.params, label: m.label });
-        m.pins.forEach(p => String(nums[p.id] || "").split(",").filter(Boolean).forEach(n => add(n.trim(), m.id, p.id)));
+        m.pins.forEach(p => String(nums[p.id] || p.pads || "").split(",").filter(Boolean).forEach(n => add(n.trim(), m.id, p.id)));
       });
       return map;
     }
@@ -644,10 +648,30 @@
     c(o.w - m, m, -90); c(o.w - m, o.h - m, 0); c(m, o.h - m, 90); c(m, m, 180);
     return pts;
   }
+  // a pour's outline cut to the board inside the edge clearance (round corners too): Sutherland-Hodgman
+  // against the inset outline, which is convex
+  function clipConvex(P, C) {
+    const cx = C.reduce((s, p) => s + p[0], 0) / C.length, cy = C.reduce((s, p) => s + p[1], 0) / C.length;
+    const cr = (a, b, p) => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+    const side = (a, b, p) => cr(a, b, p) * Math.sign(cr(a, b, [cx, cy])) >= -1e-9;
+    let out = P;
+    for (let i = 0; i < C.length && out.length; i++) {
+      const a = C[i], b = C[(i + 1) % C.length], inp = out; out = [];
+      for (let k = 0; k < inp.length; k++) {
+        const p = inp[k], q = inp[(k + 1) % inp.length], pin = side(a, b, p), qin = side(a, b, q);
+        if (pin) out.push(p);
+        if (pin !== qin) {
+          const dx = q[0] - p[0], dy = q[1] - p[1], ex = b[0] - a[0], ey = b[1] - a[1], den = dx * ey - dy * ex;
+          if (Math.abs(den) > 1e-12) { const t = ((a[0] - p[0]) * ey - (a[1] - p[1]) * ex) / den; out.push([+(p[0] + t * dx).toFixed(4), +(p[1] + t * dy).toFixed(4)]); }
+        }
+      }
+    }
+    return out;
+  }
   function zonePoly(board, z) {
-    const o = board.outline, e = board.rules.edgeClearance;
-    if (z.pts && z.pts.length >= 3) return z.pts.map(([x, y]) => [Math.max(e, Math.min(o.w - e, x)), Math.max(e, Math.min(o.h - e, y))]);
-    return outlinePoly(o, e);
+    const o = board.outline, e = board.rules.edgeClearance, inset = outlinePoly(o, e);
+    if (z.pts && z.pts.length >= 3) { const P = clipConvex(z.pts, inset); return P.length >= 3 ? P : z.pts.slice(0, 1).concat(z.pts.slice(0, 1), z.pts.slice(0, 1)); }
+    return inset;
   }
   const flashOf = (p, grow) => ({ t: "flash", shape: p.shape === "rect" ? "R" : Math.abs(p.w - p.h) < 1e-6 ? "C" : "O", x: p.x, y: p.y, w: +(p.w + 2 * grow).toFixed(4), h: +(p.h + 2 * grow).toFixed(4) });
   // a copper item (capsule) grown by c, as an operation
@@ -686,7 +710,7 @@
   }
   /** Fill every pour. conn: the connectivity without pours (gives the items and their nets).
       Returns per zone { zone, layer, net, ops, links: [[item index...] per piece], pieces, islands, unknownNet } */
-  function fillZones(board, model, conn, hv) {
+  function fillZones(board, model, conn, hv, netlist) {
     const R = board.rules, zones = board.zones || [], o = board.outline;
     if (!zones.length || !model) return [];
     const byName = {}; Object.entries(model.names).forEach(([n, nm]) => { byName[nm] = isNaN(+n) ? n : +n; });
@@ -697,10 +721,10 @@
       const stored = it.kind === "track" ? board.tracks[it.ti].net : it.kind === "via" ? board.vias[it.vi].net : null;
       return stored && byName[stored] !== undefined ? byName[stored] : null;
     };
-    const nx = Math.max(1, Math.ceil(o.w / RES)), ny = Math.max(1, Math.ceil(o.h / RES));
+    const nx = Math.max(1, Math.ceil(o.w / RES)), ny = Math.max(1, Math.ceil(o.h / RES)), CR = clearanceRules(board, model, hv, netlist);
     return zones.map((z, zi) => {
       const net = byName[z.net], L = z.layer, poly = zonePoly(board, z), zc = classRule(cls(net), R).clearance;
-      const need = n => Math.max(zc, classRule(cls(n), R).clearance), gapT = z.gap > 0 ? z.gap : 0.5, spoke = z.spoke > 0 ? z.spoke : 0.8;
+      const need = n => Math.max(zc, classRule(cls(n), R).clearance, CR.need(net, n).c), gapT = z.gap > 0 ? z.gap : 0.5, spoke = z.spoke > 0 ? z.spoke : 0.8;
       const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]), bx1 = Math.min(...xs), bx2 = Math.max(...xs), by1 = Math.min(...ys), by2 = Math.max(...ys);
       const near = (s, r) => Math.max(s[0], s[2]) + r >= bx1 && Math.min(s[0], s[2]) - r <= bx2 && Math.max(s[1], s[3]) + r >= by1 && Math.min(s[1], s[3]) - r <= by2;
       const ops = [{ pol: "D", t: "region", pts: poly }], own = [], others = [];
@@ -712,7 +736,8 @@
         const c = need(n); others.push({ it, c });
         if (near(it.s, it.r + c)) ops.push(itemOp("C", it, c));
       });
-      (board.holes || []).forEach(h => { if (near([h.x, h.y, h.x, h.y], h.d / 2 + zc)) ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: +(h.d + 2 * zc).toFixed(4), h: +(h.d + 2 * zc).toFixed(4) }); });
+      const hc = Math.max(zc, CR.toChassis(net).c);
+      (board.holes || []).forEach(h => { if (near([h.x, h.y, h.x, h.y], h.d / 2 + hc)) ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: +(h.d + 2 * hc).toFixed(4), h: +(h.d + 2 * hc).toFixed(4) }); });
       (board.texts || []).filter(t => t.layer === L).forEach(t => { const st = strokeText(t.text, t.x, t.y, t.size, t.rot, L === "B.Cu"); st.lines.forEach(l => ops.push({ pol: "C", t: "line", w: +(st.w + 2 * zc).toFixed(4), pts: l })); });
       // thermal reliefs: the gap around the pad, then spokes that stay in the pour and clear of other nets
       const spokes = [];
@@ -722,7 +747,7 @@
           const len = (dx ? p.w : p.h) / 2 + gapT + spoke, s = [p.x, p.y, +(p.x + dx * len).toFixed(4), +(p.y + dy * len).toFixed(4)];
           if (!pip(s[2], s[3], poly)) return;
           if (others.some(({ it: q, c }) => segSeg(s, q.s) - spoke / 2 - q.r < c - 1e-6)) return;
-          if ((board.holes || []).some(h => segDist(s[0], s[1], s[2], s[3], h.x, h.y) - spoke / 2 - h.d / 2 < zc - 1e-6)) return;
+          if ((board.holes || []).some(h => segDist(s[0], s[1], s[2], s[3], h.x, h.y) - spoke / 2 - h.d / 2 < hc - 1e-6)) return;
           spokes.push({ pol: "D", t: "line", w: spoke, pts: [[s[0], s[1]], [s[2], s[3]]] });
         });
       });
@@ -811,12 +836,13 @@
   function drc(board, model, conn, hvNets, fills, netlist) {
     const out = [], R = board.rules, on = k => !R.checks || R.checks[k] !== false, items = conn.items, hv = hvNets || new Set(), o = board.outline;
     const cls = net => (net === null || net === "short" ? "Signal" : netClassOf(net, model.names, hv, R));
+    const CR = clearanceRules(board, model, hv, netlist), vNote = (r, hvx) => (r.ipc ? ` (${Math.round(r.v)} V between them${r.why === "inductive" ? " at full drive" : ""}: IPC-2221B ${CR.table})` : hvx ? " (high voltage)" : "");
     if (on("clearance")) for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
       const a = items[i], b = items[j];
       if (a.cluster === b.cluster || !shareLayer(a, b)) continue;
       if (a.kind === "pad" && b.kind === "pad" && a.pad.part === b.pad.part) continue;   // within a footprint: the maker's spacing
-      const ca = cls(a.net), cb = cls(b.net), g = gap(a, b);
-      let need = Math.max(classRule(ca, R).clearance, classRule(cb, R).clearance);
+      const ca = cls(a.net), cb = cls(b.net), g = gap(a, b), rq = CR.need(a.net, b.net);
+      let need = rq.c;
       if (g < need - 1e-6 && a.kind !== b.kind && (a.kind === "pad" || b.kind === "pad") && (a.kind === "track" || b.kind === "track")) {
         const [t, p] = a.kind === "track" ? [a, b] : [b, a], eg = entryGap(t.s, p, items);
         if (eg !== null) need = Math.min(need, eg - 0.02);
@@ -824,13 +850,13 @@
       if (g < need - 1e-6 && a.kind === "track" && b.kind === "track" && anchoredOk(a, b, g, need, items)) continue;
       if (g < need - 1e-6) {
         const [x, y] = nearest(a.s, b.s), hvx = ca === "HV" || cb === "HV";
-        out.push({ kind: "clearance", x, y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${need} mm${hvx ? " (high voltage)" : ""}`, between: [label(a), label(b)] });
+        out.push({ kind: "clearance", x, y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm${vNote(rq, hvx)}`, between: [label(a), label(b)] });
       }
     }
     // mounting holes against copper
     if (on("clearance")) (board.holes || []).forEach(hl => items.forEach(it => {
-      const g = segDist(it.s[0], it.s[1], it.s[2], it.s[3], hl.x, hl.y) - it.r - hl.d / 2, need = classRule(cls(it.net), R).clearance;
-      if (g < need - 1e-6) out.push({ kind: "clearance", x: hl.x, y: hl.y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${need} mm to a mounting hole`, between: [label(it), "hole"] });
+      const rq = CR.toChassis(it.net), g = segDist(it.s[0], it.s[1], it.s[2], it.s[3], hl.x, hl.y) - it.r - hl.d / 2, need = Math.max(classRule(cls(it.net), R).clearance, rq.c);
+      if (g < need - 1e-6) out.push({ kind: "clearance", x: hl.x, y: hl.y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm to a mounting hole (its screw is at chassis potential)${rq.ipc ? `; ${Math.round(rq.v)} V: IPC-2221B ${CR.table}` : ""}`, between: [label(it), "hole"] });
     }));
     if (on("short")) conn.clusters.forEach(c => { if (c.nets.size > 1) { const p = c.pads[0]; out.push({ kind: "short", x: p.x, y: p.y, msg: `Short between ${[...c.nets].map(n => model.names[n] || n).join(" and ")}` }); } });
     // the outline: a part entirely off the board is waiting to be placed; partly over the edge,
@@ -936,8 +962,88 @@
         if (on.length < 2) out.push({ kind: "dangling", x: v.s[0], y: v.s[1], msg: on.length ? `A via joins copper on ${on[0]} only` : "A via is not connected" });
       });
     }
+    valveChecks(board, model, conn, netlist, on, placedOff, onBoard, out);
     if (on("pinout")) model.parts.forEach(g => { const m = g.members[0].params.model; if (PINOUT[m] && PINOUT[m][1] === "verify" && g.place) out.push({ kind: "check", x: g.place.x, y: g.place.y, msg: `${g.ref} (${m}): pinouts differ between makers — check the ${g.fp.name} pin order against your part's datasheet` }); });
     return out;
+  }
+  // ---------------------------------------------------------------------------
+  // Valve layout checks: what makes a valve board hum, oscillate, cook its capacitors or crack
+  //  stopper: a grid stopper far from its grid pin (the track before it picks up and oscillates)
+  //  coupling: a grid track running alongside an anode or heater track (feedback, hum)
+  //  heat: an electrolytic close to a power valve, a rectifier or a resistor dissipating hotWatts or more
+  //  support: a board-mounted valve socket with no mounting hole near it (pulling a valve flexes the board)
+  // ---------------------------------------------------------------------------
+  const GRID_PINS = new Set(["G", "G1"]), ANODE_PINS = new Set(["A", "A1", "A2"]);
+  function valveChecks(board, model, conn, netlist, on, placedOff, onBoard, out) {
+    const L = root.CadLib, R = board.rules, byId = {}, names = model.names, nm = n => names[n] || String(n);
+    if (!netlist || !L) return;
+    (netlist.parts || []).forEach(p => { byId[p.id] = p; });
+    const role = (pad, set) => pad.pins.some(c => byId[c.comp] && byId[c.comp].type === "tube" && set.has(c.pin));
+    const tubeOf = g => g.type === "tube" && L.tubeByName ? L.tubeByName(g.members[0].params.tube) : null;
+    const live = model.pads.filter(p => !placedOff.has(p.part)), partOf = {}; model.parts.forEach(g => { partOf[g.key] = g; });
+    const gridPads = live.filter(p => p.net !== null && role(p, GRID_PINS)), anodePads = live.filter(p => p.net !== null && role(p, ANODE_PINS));
+    const anodeNets = new Map(); anodePads.forEach(p => { if (!anodeNets.has(p.net)) anodeNets.set(p.net, `the anode of ${p.ref} (pin ${p.num})`); });
+    // grid stoppers: the grid net holds the grid pin(s) and one resistor, nothing else
+    if (on("stopper")) gridPads.forEach(gp => {
+      const others = model.pads.filter(p => p.net === gp.net && p.part !== gp.part && !role(p, GRID_PINS));
+      const res = [...new Set(others.map(p => p.part))];
+      if (res.length !== 1 || !partOf[res[0]] || partOf[res[0]].type !== "resistor" || isOffboard(partOf[res[0]]) || placedOff.has(res[0]) || isOffboard(partOf[gp.part])) return;
+      const rp = others[0], d = Math.hypot(rp.x - gp.x, rp.y - gp.y);
+      if (d > (R.stopperMax || 10) + 1e-6) out.push({ kind: "stopper", x: rp.x, y: rp.y, msg: `${rp.ref} is the grid stopper of ${gp.ref} (pin ${gp.num}) but sits ${d.toFixed(0)} mm from it: put it right at the socket (≤ ${R.stopperMax || 10} mm), or the track before it can pick up and oscillate` });
+    });
+    // grid tracks alongside anode or heater tracks
+    if (on("coupling")) {
+      const victims = new Map(); gridPads.forEach(p => { if (!anodeNets.has(p.net) && names[p.net] !== "GND" && !victims.has(p.net)) victims.set(p.net, `grid of ${p.ref} (pin ${p.num})`); });
+      const aggr = new Map(anodeNets); Object.entries(names).forEach(([n, t]) => { if (isHeaterNet(t)) aggr.set(netKey(n), "the heater wiring"); });
+      const tr = conn.items.filter(it => it.kind === "track" && it.net !== null && it.net !== "short");
+      const vs = tr.filter(it => victims.has(it.net)), as = tr.filter(it => aggr.has(it.net)), lim = R.couplingGap > 0 ? R.couplingGap : 2, acc = new Map();
+      vs.forEach(v => {
+        const [x1, y1, x2, y2] = v.s, lv = Math.hypot(x2 - x1, y2 - y1); if (lv < 1e-6) return;
+        const ux = (x2 - x1) / lv, uy = (y2 - y1) / lv;
+        as.forEach(a => {
+          if (a.net === v.net) return;
+          const [ax1, ay1, ax2, ay2] = a.s, la = Math.hypot(ax2 - ax1, ay2 - ay1); if (la < 1e-6) return;
+          if (Math.abs(ux * (ay2 - ay1) - uy * (ax2 - ax1)) / la > 0.26) return;          // more than 15° apart: crossing, not running alongside
+          const t1 = (ax1 - x1) * ux + (ay1 - y1) * uy, t2 = (ax2 - x1) * ux + (ay2 - y1) * uy;
+          const ov = Math.min(lv, Math.max(t1, t2)) - Math.max(0, Math.min(t1, t2)); if (ov <= 0) return;
+          const d1 = Math.abs((ax1 - x1) * uy - (ay1 - y1) * ux), d2 = Math.abs((ax2 - x1) * uy - (ay2 - y1) * ux), gap = (d1 + d2) / 2 - v.r - a.r;
+          if (gap > lim) return;
+          const k = v.net + "|" + a.net, r = acc.get(k) || { v: v.net, a: a.net, len: 0, gap: Infinity, x: 0, y: 0, cross: v.layers[0] !== a.layers[0] };
+          r.len += ov; if (gap < r.gap) { r.gap = gap; const t = Math.max(0, Math.min(t1, t2)) + ov / 2; r.x = x1 + ux * t; r.y = y1 + uy * t; }
+          acc.set(k, r);
+        });
+      });
+      acc.forEach(r => {
+        if (r.len < (R.couplingLen > 0 ? R.couplingLen : 10)) return;
+        const what = aggr.get(r.a), heater = what === "the heater wiring";
+        out.push({ kind: "coupling", x: r.x, y: r.y, msg: `${nm(r.v)} (${victims.get(r.v)}) runs ${r.len.toFixed(0)} mm alongside ${nm(r.a)} (${what})${r.cross ? " on the other side of the board" : ""}, ${Math.max(0, r.gap).toFixed(1)} mm apart: ${heater ? "it will pick up hum" : "the coupling can make the amplifier oscillate"}; move them apart or cross at right angles` });
+      });
+    }
+    // heat: electrolytics near hot parts
+    if (on("heat")) {
+      const volts = netlist.volts || {}, hot = [];
+      onBoard.forEach(({ g, b }) => {
+        const t = tubeOf(g);
+        if (t && (/power|rectifier/i.test(t.category || "") || (+t.paMax || 0) >= 5)) hot.push({ g, b, why: `${g.ref} (${g.members[0].params.tube}) runs hot` });
+        if (g.type === "resistor") {
+          const p = g.members[0], [a, c] = p.pins, va = a && volts[a.net], vc = c && volts[c.net], i = Math.abs((a && a.i) || (c && c.i) || 0);
+          const w = va !== undefined && vc !== undefined ? Math.abs(va - vc) * i : 0;
+          if (w >= (R.hotWatts > 0 ? R.hotWatts : 1)) hot.push({ g, b, why: `${g.ref} dissipates ${w.toFixed(1)} W` });
+        }
+      });
+      const lim = R.heatGap > 0 ? R.heatGap : 10;
+      onBoard.filter(({ g }) => g.type === "electrolytic").forEach(({ g, b }) => {
+        let worst = null;
+        hot.forEach(h => { const dx = Math.max(0, h.b.x1 - b.x2, b.x1 - h.b.x2), dy = Math.max(0, h.b.y1 - b.y2, b.y1 - h.b.y2), d = Math.hypot(dx, dy); if (d < lim && (!worst || d < worst.d)) worst = { d, h }; });
+        if (worst) out.push({ kind: "heat", x: g.place.x, y: g.place.y, msg: `${g.ref} (electrolytic) is ${worst.d.toFixed(0)} mm from ${worst.h.g.ref}: ${worst.h.why}, and every 10 °C halves a capacitor's life; keep ≥ ${lim} mm` });
+      });
+    }
+    // socket support
+    if (on("support")) onBoard.forEach(({ g }) => {
+      if (g.type !== "tube" || !/^SOCKET-/.test(g.fp.name)) return;
+      const lim = R.socketHole > 0 ? R.socketHole : 40, d = Math.min(Infinity, ...(board.holes || []).map(h => Math.hypot(h.x - g.place.x, h.y - g.place.y)));
+      if (d > lim) out.push({ kind: "support", x: g.place.x, y: g.place.y, msg: `${g.ref}: no mounting hole within ${lim} mm of its socket${isFinite(d) ? ` (the nearest is ${d.toFixed(0)} mm away)` : ""}; pulling a valve flexes the board and cracks joints: add a hole and standoff near it` });
+    });
   }
   const fmtA = I => (Math.abs(I) >= 1 ? `${Math.abs(I).toFixed(2)} A` : `${(Math.abs(I) * 1000).toPrecision(3)} mA`);
   /** Each net with its class (manual or automatic), voltage, width and clearance — for the rules window */
@@ -975,6 +1081,134 @@
   function hvNets(netVolts, limit) {
     const s = new Set(); Object.entries(netVolts || {}).forEach(([n, v]) => { if (Math.abs(v) > (limit || 60)) s.add(isNaN(+n) ? n : +n); }); return s;
   }
+  const netKey = n => (isNaN(+n) ? n : +n);
 
-  root.BoardCore = { FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  // ---------------------------------------------------------------------------
+  // Heaters and internal shields. The schematic draws a valve's anode, grids and cathode only;
+  // on the board its heater pins need copper too. withHeaters gives every indirectly heated valve
+  // heater pins on heater nets, one pair per heater voltage (HTR6.3_A / HTR6.3_B), fed from a
+  // heater-supply connector (XH1…) that carries the sum of the currents; a heater joined to its
+  // cathode (GZ34, 6Ts13P) gets its own winding from its own connector. Internal shields (pin "S")
+  // go to GND. Directly heated valves are left alone: their filament is the cathode.
+  // ---------------------------------------------------------------------------
+  function withHeaters(netlist, R) {
+    const L = root.CadLib;
+    if (!netlist || !L || !L.tubeByName) return netlist;
+    const heaters = !R || R.heaters !== false, shields = !R || R.shields !== false, series = !!(R && R.heater126);
+    if (!heaters && !shields) return netlist;
+    const parts = (netlist.parts || []).map(p => ({ ...p, pins: p.pins.slice() })), volts = { ...(netlist.volts || {}) }, names = { ...(netlist.names || {}) };
+    const groups = new Map(), done = new Set(), hasGnd = names[0] === "GND";
+    const fmtV = v => String(+(+v).toFixed(2));
+    const group = (key, name, v, a, b) => { if (!groups.has(key)) groups.set(key, { key, name, v, a, b, i: 0, tubes: [], hv: 0 }); return groups.get(key); };
+    parts.forEach(p => {
+      if (p.type !== "tube") return;
+      const lab = String(p.label || "").trim(), dot = lab.lastIndexOf("."), base = dot > 0 ? lab.slice(0, dot) : lab, id = base || p.id;
+      if (done.has(id)) return; done.add(id);
+      const t = L.tubeByName(p.params && p.params.tube); if (!t || !t.pinout) return;
+      const po = t.pinout, pins = f => po.filter(f).map(q => String(q.pin));
+      if (shields && hasGnd) { const s = pins(q => q.sym === "S"); if (s.length) p.pins.push({ id: "S", name: "internal shield", net: 0, pads: s.join(",") }); }
+      if (!heaters || t.directlyHeated) return;
+      const hp = po.filter(q => q.isHeater && !q.isCathode), tie = po.filter(q => q.isHeater && q.isCathode);
+      const vh = +t.vh || 6.3, ih = +t.ih || 0, raise = Math.abs(+(p.params || {}).heaterV || 0) ? +(p.params || {}).heaterV : 0;
+      let g, ia = [], ib = [], I = ih, links = null;
+      if (tie.length) {
+        // the heater returns through the cathode: a winding of its own at the cathode's potential
+        const k = (p.pins.find(q => q.id === "K") || {}).net;
+        if (k === undefined || !hp.length) return;
+        g = group("t:" + id, `HTR-${id}`, vh, "h:" + id + ":a", k);
+        ia = hp.map(q => String(q.pin));
+      } else if (hp.some(q => q.sym === "CT")) {
+        // 12AX7 family: pins 4 and 5 joined against 9 for 6.3 V, or 4 to 5 for 12.6 V
+        const h1 = pins(q => q.sym === "H1"), h2 = pins(q => q.sym === "H2"), ct = pins(q => q.sym === "CT");
+        if (series) { ia = h1; ib = h2; I = ih; } else { ia = h1.concat(h2); ib = ct; I = 2 * ih; }
+      } else if (hp.length === 4) {
+        // a heater in two halves (6S33S: 1-2 and 6-7): in parallel at half the voltage, or in series with a link
+        const h = hp.map(q => String(q.pin));
+        if (series) { ia = [h[0]]; ib = [h[3]]; links = [h[1], h[2]]; I = ih; } else { ia = [h[0], h[2]]; ib = [h[1], h[3]]; I = 2 * ih; }
+      } else if (hp.length >= 2) { ia = [String(hp[0].pin)]; ib = hp.slice(1).map(q => String(q.pin)); }
+      else return;
+      if (!g) {
+        const v = (hp.some(q => q.sym === "CT") || hp.length === 4) ? (series ? vh : vh / 2) : vh, k = fmtV(v) + (raise ? "@" + raise : "");
+        g = group("v:" + k, `HTR${fmtV(v)}${raise ? "_" + Math.round(raise) + "V" : ""}`, v, `h:${k}:a`, `h:${k}:b`);
+      }
+      g.i += I; g.tubes.push(id); if (raise) g.hv = raise;
+      p.pins.push({ id: "HA", name: "heater", net: g.a, i: I, pads: ia.join(",") });
+      if (ib.length) p.pins.push({ id: "HB", name: "heater", net: g.b, i: I, pads: ib.join(",") });
+      if (links) { const n = "h:link:" + id; names[n] = `HTR-${id}-LINK`; p.pins.push({ id: "HL", name: "heater link", net: n, i: I, pads: links.join(",") }); }
+    });
+    let k = 0;
+    groups.forEach(g => {
+      const own = typeof g.b !== "string";      // the cathode net is the schematic's
+      names[g.a] = own ? g.name : g.name + "_A"; if (!own) names[g.b] = g.name + "_B";
+      const v = own ? (volts[g.b] !== undefined ? volts[g.b] : 0) : g.hv;
+      volts[g.a] = v; if (!own) volts[g.b] = v;
+      const I = +g.i.toPrecision(4);
+      parts.push({ id: "heater:" + g.key, type: "heater", label: `XH${++k}`, params: { v: g.v, i: I, tubes: g.tubes },
+        pins: [{ id: "1", name: "~", net: g.a, i: I }, { id: "2", name: "~", net: g.b, i: I }] });
+    });
+    const ranges = netlist.ranges ? { ...netlist.ranges } : undefined;
+    return { ...netlist, parts, names, volts, ranges };
+  }
+  const isHeaterNet = name => /^HTR/.test(name || "");
+
+  // ---------------------------------------------------------------------------
+  // Clearance by voltage: IPC-2221B table 6-1 (mm) between two conductors, by the largest
+  // voltage between them. Columns: up to 15, 30, 50, 100, 150, 170, 250, 300, 500 V, then mm per
+  // volt above 500. B2: outer layer, uncoated, up to 3050 m; B4: outer layer under a permanent
+  // polymer coating; A6: outer layer of an assembly with conformal coating.
+  // ---------------------------------------------------------------------------
+  const IPC_V = [15, 30, 50, 100, 150, 170, 250, 300, 500];
+  const IPC = {
+    B2: [0.1, 0.1, 0.6, 0.6, 0.6, 1.25, 1.25, 1.25, 2.5, 0.005],
+    B4: [0.05, 0.05, 0.13, 0.13, 0.4, 0.4, 0.4, 0.4, 0.8, 0.00305],
+    A6: [0.13, 0.25, 0.4, 0.5, 0.8, 0.8, 0.8, 0.8, 1.5, 0.00305]
+  };
+  function ipcClearance(V, table) {
+    const t = IPC[table]; if (!t) return 0;
+    const a = Math.abs(V || 0);
+    for (let k = 0; k < IPC_V.length; k++) if (a <= IPC_V[k]) return t[k];
+    return +(t[8] + (a - 500) * t[9]).toFixed(3);
+  }
+  // The voltage range of every net: the DC level, the swing in the simulation (netlist.ranges, from
+  // the CAD's transient), and for an output transformer's anode ends the swing at full drive: an
+  // inductive load takes the anode up to about twice its DC level
+  const OPT_ENDS = { opt_se: ["P2"], opt_cat: ["P2"], opt_pp: ["P1", "P2", "U1", "U2"] };
+  function netRanges(netlist) {
+    const out = {}, put = (n, lo, hi, why) => { const r = out[n] || (out[n] = { lo: Infinity, hi: -Infinity, why: "" }); if (lo < r.lo) r.lo = lo; if (hi > r.hi) { r.hi = hi; if (why) r.why = why; } };
+    if (!netlist) return out;
+    Object.entries(netlist.volts || {}).forEach(([n, v]) => put(netKey(n), v, v));
+    Object.entries(netlist.ranges || {}).forEach(([n, r]) => { if (Array.isArray(r)) put(netKey(n), r[0], r[1], "signal"); });
+    (netlist.parts || []).forEach(p => (OPT_ENDS[p.type] || []).forEach(id => {
+      const q = p.pins.find(x => x.id === id), v = q && (netlist.volts || {})[q.net];
+      if (v > 0) put(q.net, 0, 2 * v, "inductive");
+    }));
+    out[0] = out[0] || { lo: 0, hi: 0, why: "" };
+    return out;
+  }
+  /** The clearance two nets need: the larger of their classes' clearances and, with a voltage
+      table chosen, IPC-2221B for the largest voltage between them. Returns { c, v, ipc } */
+  function clearanceRules(board, model, hv, netlist) {
+    const R = board.rules, names = (model && model.names) || {}, ranges = netRanges(netlist), table = R.ipc === undefined ? "B2" : R.ipc;
+    const cls = n => (n === null || n === undefined || n === "short" ? "Signal" : netClassOf(n, names, hv, R));
+    const span = n => (n === null || n === undefined || n === "short" ? null : ranges[n] || null);
+    const between = (a, b) => {
+      const ra = span(a), rb = span(b);
+      if (!ra && !rb) return 0;
+      const A = ra || { lo: 0, hi: 0 }, Bq = rb || { lo: 0, hi: 0 };
+      if (a === b) return 0;
+      return Math.max(Math.abs(A.hi - Bq.lo), Math.abs(Bq.hi - A.lo));
+    };
+    const memo = new Map();
+    function need(a, b) {
+      const k = a + "|" + b; if (memo.has(k)) return memo.get(k);
+      const base = Math.max(classRule(cls(a), R).clearance, classRule(cls(b), R).clearance), v = between(a, b), ic = table && table !== "off" ? ipcClearance(v, table) : 0;
+      const r = { c: Math.max(base, ic), v, ipc: ic > base + 1e-9, why: (span(a) || {}).why || (span(b) || {}).why || "" };
+      memo.set(k, r); memo.set(b + "|" + a, r); return r;
+    }
+    // a mounting hole: its screw, standoff and the chassis are at 0 V
+    const toChassis = n => need(n, 0);
+    return { need, toChassis, ranges, table };
+  }
+
+  root.BoardCore = { FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

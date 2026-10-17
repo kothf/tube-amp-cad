@@ -882,8 +882,15 @@
     // DC level per net from the last result, for the high-voltage clearance rule
     const volts = {};
     if (S.sim.result && S.sim.topo === T) Object.keys(names).concat([...new Set([...T.pinNet.values()])]).forEach(n => { const v = netDC(+n); if (v !== null) volts[n] = v; });
+    // the swing of each net in the simulation (min, max), for the clearance by voltage
+    const ranges = {};
+    if (S.sim.result && S.sim.topo === T && S.sim.result.tran) Object.keys(volts).forEach(n => {
+      const w = netWave(+n); if (!w || !w.length) return;
+      let lo = Infinity, hi = -Infinity; for (const v of w) { if (v < lo) lo = v; if (v > hi) hi = v; }
+      if (hi - lo > 1e-3) ranges[n] = [+lo.toPrecision(4), +hi.toPrecision(4)];
+    });
     const f = frames()[0];
-    return { parts, names, volts, title: f ? f.params.title || "" : "", docno: f ? f.params.docno || "" : "", frame: f ? { ...f.params } : null, tubes: usedCustomTubes() };
+    return { parts, names, volts, ranges, title: f ? f.params.title || "" : "", docno: f ? f.params.docno || "" : "", frame: f ? { ...f.params } : null, tubes: usedCustomTubes() };
   }
   let boardTimer = 0;
   function sendBoardNetlist(withBoard) {

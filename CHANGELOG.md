@@ -6,6 +6,44 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.60.0] - 2026-10-17
+
+### Added
+- **Heaters on the board.** Every indirectly heated valve's heater pins get copper:
+  - one pair of heater nets per heater voltage (`HTR6.3_A`, `HTR6.3_B`), fed from a heater-supply connector **XH1** that carries the sum of the heater currents, so the current check sizes the heater tracks;
+  - 12AX7-type valves at 6.3 V (pins 4 + 5 against 9) or, if chosen, 12.6 V (4 to 5);
+  - a raised heater gets its own supply at its DC potential, and a heater joined to its cathode (GZ34) gets a winding of its own;
+  - directly heated valves are left alone, since their filament is the cathode;
+  - internal shield pins (6N23P pin 9) go to GND.
+
+  Before, heater pins had no net at all, so a board could pass every check with no heater wiring. *Design rules…* can turn this off.
+- **Clearance by voltage (IPC-2221B).** Two nets keep the gap table 6-1 asks for the largest voltage between them: B2 bare board by default, or B4, A6, or off.
+  - The voltage comes from the simulated DC levels and the signal swing.
+  - An output transformer's anode end counts at twice its DC level, its full-drive swing.
+  - Routing, pours and the check all use it, and mounting holes count as chassis.
+  - The net table shows each net's clearance to GND. A 375 V B+ next to ground now needs 2.5 mm instead of 2 mm.
+- **Valve layout checks** (warnings, distances in the rules):
+  - a grid stopper more than 10 mm from its grid pin;
+  - a grid track running alongside an anode track (oscillation) or a heater track (hum);
+  - an electrolytic near a power valve, a rectifier or a resistor dissipating 1 W or more;
+  - a valve socket with no mounting hole within 40 mm.
+- **Pours are shapes you edit.**
+  - Drag the **+** in the middle of an edge to add a corner, and double-click a corner (or drop it onto its neighbour) to remove it.
+  - Drag inside a selected pour to move it, and the copper refills as you drag.
+  - *Round the parts* outlines every part on the board, and *+ GND pour round these parts* does the same for a selection.
+  - The *GND plane* button now makes a rectangle with four corners to drag.
+  - Pours are cut to the board outline, round corners included, instead of being squashed into a rectangle.
+
+### Changed
+- **Board toolbar on one row** down to 1280 px:
+  - the tools are a joined group;
+  - grid style, axes, the drawing sheet, Lock sheet and 3D moved into **View ▾**;
+  - Board setup and Design rules moved into **Board ▾**.
+- The status bar turns green only when the board is finished. Warnings show in amber, and an unrouted board is grey.
+
+### Fixed
+- The "High voltage" clearance hint quoted 0.6 mm at 300 V from IPC-2221; table B2 asks 1.25 mm.
+
 ## [3.59.0] - 2026-10-17
 
 ### Added

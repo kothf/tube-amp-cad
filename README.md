@@ -428,10 +428,15 @@ the circuit file, so one file holds both.
   corner stays 45°; a track's end gets a jog). <kbd>U</kbd> selects the whole
   connected track, so <kbd>Del</kbd> removes it or the inspector sets its
   width. <kbd>Shift</kbd>+click adds tracks to the selection.
-- **Copper pours** (*Pour*, or *+ GND plane* in the board inspector for the
-  whole bottom layer):
-  - the pour keeps each other net's clearance (by its class), the edge
-    clearance and the mounting holes clear;
+- **Copper pours** (*Pour*, or *+ GND plane* / *+ GND pour round the parts* in
+  the board inspector, or *+ GND pour round these parts* for a selection):
+  - a pour is a shape you edit: drag a corner, drag the **+** in the middle of
+    an edge to add a corner, double-click a corner to remove it, drag its
+    outline or inside it to move it; the copper refills as you drag. Its
+    inspector reshapes it round the parts or over the whole board, and the
+    board outline (round corners too) cuts it;
+  - the pour keeps each other net's clearance (by its class and by voltage),
+    the edge clearance and the mounting holes clear, so it shorts nothing;
   - its net's pads join through thermal reliefs (or solidly), its tracks and
     vias solidly; a via dropped in a pour takes its net (stitching);
   - pieces that reach nothing (islands) are removed, and the ratsnest counts
@@ -465,16 +470,26 @@ the circuit file, so one file holds both.
     (<kbd>A</kbd>).
   - The board lies on a drawing sheet: the ISO 5457 frame, reference grid and
     ISO 7200 title block of the Circuit CAD's frames, with fields taken from
-    the schematic. The toolbar's sheet list (or *Setup…*) sets the format:
+    the schematic. *View ▾ → Sheet* (or *Board ▾ → Board setup…*) sets the format:
     Auto, A4–A0 landscape or portrait, or None. *Lock sheet* keeps the sheet
     where it is while the board changes; unlocked, it follows the board.
     Drag the board's edge to move the board on the sheet; that locks the
     sheet. The board inspector sets the position as numbers and can centre
     the board again.
     <kbd>Shift</kbd>+<kbd>F</kbd> shows the whole sheet.
-- **Design rules** (*Rules…*):
+- **Design rules** (*Board ▾ → Design rules…*):
   - clearances, with a separate high-voltage clearance for nets above a
     threshold voltage;
+  - **clearance by voltage**: IPC-2221B table 6-1 (B2 bare board, B4, A6, or
+    off) for the largest voltage between two nets, from their simulated DC
+    levels and signal swing; an output transformer's anode end counts at twice
+    its DC level (its full-drive swing). Mounting holes count as chassis;
+  - **heaters**: every indirectly heated valve's heater pins on heater nets
+    (`HTR6.3_A` / `HTR6.3_B` per heater voltage) fed from a heater-supply
+    connector XH1 carrying the sum of the heater currents; 12AX7-type heaters
+    at 6.3 or 12.6 V; a heater joined to its cathode (GZ34) on a winding of its
+    own; internal shields (6N23P pin 9) to GND;
+  - the distances of the valve layout checks;
   - the board-edge clearance;
   - signal and power track widths and the minimum track;
   - via drill and pad, minimum drill, minimum annular ring;
@@ -498,10 +513,15 @@ the circuit file, so one file holds both.
   - silkscreen over pads, unconnected track ends and vias that join nothing
     or copper on one layer only (warnings);
   - parts not placed yet;
-  - pinouts to check.
+  - pinouts to check;
+  - **valve layout** (warnings): a grid stopper away from its grid pin, a grid
+    track alongside an anode track (oscillation) or a heater track (hum), an
+    electrolytic near a power valve, rectifier or hot resistor, a valve socket
+    with no mounting hole near it.
 
-  Click an entry to go to it.
-- **Board setup** (*Setup…*): outline size, corner radius, mounting holes (one
+  Click an entry to go to it. The status bar is green only when the board is
+  finished: no violations, no warnings, nothing left to route.
+- **Board setup** (*Board ▾ → Board setup…*): outline size, corner radius, mounting holes (one
   in each corner, M2.5–M4, chosen inset), board thickness and copper weight.
 - **Layers:** top and bottom copper, copper pours, both silkscreens, outline, mounting holes,
   ratsnest and rule markers. Each can be shown or hidden, or shown alone

@@ -505,3 +505,76 @@ test("power transistors: hFE inside the datasheet's range at its test point (VCE
   assert.equal(fpOf("npn", "2N3055"), "WIRE-3"); assert.equal(fpOf("npn", "2SC5200"), "TO-264-BCE"); assert.equal(fpOf("pnp", "MJL1302A"), "TO-264-BCE");
   assert.equal(fpOf("nmos", "2SK1058"), "TO-3P-GSD"); assert.equal(fpOf("nmos", "IRFP240"), "TO-247-GDS");
 });
+
+test("heaters: valves get heater nets fed from a heater supply; shields go to GND; 12.6 V on request", () => {
+  const nl = { names: { 0: "GND" }, volts: { 1: 300 }, parts: [
+    part("v1a", "tube", "VL1.1", { tube: "12AX7" }, { A: 2, G: 4, K: 3 }), part("v1b", "tube", "VL1.2", { tube: "12AX7" }, { A: 5, G: 6, K: 7 }),
+    part("v2", "tube", "VL2", { tube: "6P14P", connection: "pentode" }, { A: 8, G1: 9, G2: 1, K: 10 }),
+    part("v3", "tube", "VL3", { tube: "6N23P-EV" }, { A: 11, G: 12, K: 13 }),
+    part("v4", "tube", "VL4", { tube: "GZ34" }, { A1: 14, A2: 15, K: 1 }),
+    part("v5", "tube", "VL5", { tube: "300B" }, { A: 16, G: 17, K: 18 })] };
+  const w = B.withHeaters(nl, B.defaultRules()), board = B.newBoard(); B.sync(board, w);
+  const m = B.model(board, w), pin = (ref, n) => (m.pads.find(p => p.ref === ref && p.num === n) || {}).netName;
+  assert.deepEqual(["4", "5", "9"].map(n => pin("VL1", n)), ["HTR6.3_A", "HTR6.3_A", "HTR6.3_B"], "12AX7 at 6.3 V: 4 + 5 against 9");
+  assert.deepEqual(["4", "5"].map(n => pin("VL2", n)), ["HTR6.3_A", "HTR6.3_B"]);
+  assert.equal(pin("VL3", "9"), "GND", "the 6N23P's internal shield goes to GND");
+  const xh = w.parts.filter(p => p.type === "heater");
+  assert.equal(xh.length, 2, "one supply for the 6.3 V valves, one winding for the GZ34 (its heater is joined to its cathode)");
+  assert.ok(Math.abs(xh[0].params.i - (0.3 + 0.76 + 0.31)) < 0.02, `the 6.3 V supply carries the sum of the heater currents (${xh[0].params.i} A)`);
+  assert.equal(xh[1].pins[1].net, 1, "the GZ34's heater winding returns through its cathode (B+)");
+  assert.equal(w.volts[xh[1].pins[0].net], 300, "so its heater net sits at B+ and gets the HV clearance");
+  assert.ok(!w.parts.find(p => p.id === "v5").pins.some(q => /^H/.test(q.id)), "a directly heated valve (300B) is left alone: its filament is the cathode");
+  // the heater current sizes the supply's tracks
+  assert.ok(B.currentWidth(B.netCurrents(w)[xh[0].pins[0].net], B.defaultRules(), { copper: 35 }) > 0.3);
+  // 12.6 V: pin 4 to pin 5, pin 9 free, half the current
+  const w2 = B.withHeaters(nl, { ...B.defaultRules(), heater126: true }), b2 = B.newBoard(); B.sync(b2, w2);
+  const m2 = B.model(b2, w2), p2 = n => (m2.pads.find(p => p.ref === "VL1" && p.num === n) || {}).netName;
+  assert.deepEqual([p2("4"), p2("5"), p2("9")], ["HTR12.6_A", "HTR12.6_B", ""]);
+  // off: the netlist as it came
+  assert.equal(B.withHeaters(nl, { ...B.defaultRules(), heaters: false, shields: false }), nl);
+});
+
+test("clearance by voltage: IPC-2221B, with the signal swing and the full-drive swing of an output transformer", () => {
+  assert.equal(B.ipcClearance(12, "B2"), 0.1); assert.equal(B.ipcClearance(120, "B2"), 0.6); assert.equal(B.ipcClearance(300, "B2"), 1.25);
+  assert.equal(B.ipcClearance(375, "B2"), 2.5); assert.equal(B.ipcClearance(700, "B2"), 3.5); assert.equal(B.ipcClearance(400, "B4"), 0.8); assert.equal(B.ipcClearance(400, "off"), 0);
+  const nl = { names: { 0: "GND" }, volts: { 1: 375, 2: 370, 3: 10 }, ranges: { 3: [-20, 40] }, parts: [part("t1", "opt_se", "T1", {}, { P1: 1, P2: 2, S1: 4, S2: 0 })] };
+  const board = B.newBoard(), m = { names: { 0: "GND", 1: "B+", 2: "A", 3: "G" }, pads: [] }, cr = B.clearanceRules(board, m, B.hvNets(nl.volts, 60), nl);
+  assert.equal(cr.need(1, 0).c, 2.5, "B+ (375 V) to GND: 2.5 mm, more than the 2 mm HV class");
+  assert.equal(cr.need(1, 2).c, 2.5, "B+ next to the anode: 5 V apart at idle, but at full drive the anode swings 0…740 V, 375 V from B+");
+  assert.ok(Math.abs(cr.need(2, 0).c - (2.5 + 240 * 0.005)) < 1e-9 && cr.need(2, 0).why === "inductive", "the anode end of the primary counts at twice its DC level");
+  assert.equal(cr.need(3, 0).c, 0.6, "a signal net swinging −20…40 V");
+  board.rules.ipc = "off"; assert.equal(B.clearanceRules(board, m, new Set(), nl).need(1, 0).c, 0.6, "off: the classes only (B+ not HV without the HV set)");
+});
+
+test("valve layout checks: grid stopper, grid beside anode, hot parts near electrolytics, socket support", () => {
+  const nl = { names: { 0: "GND", 1: "B+" }, volts: { 1: 300, 2: 150, 3: 1.5, 5: 0, 6: 280, 7: 0, 8: 250 }, parts: [
+    part("v1a", "tube", "VL1.1", { tube: "12AX7" }, { A: 2, G: 4, K: 3 }), part("v1b", "tube", "VL1.2", { tube: "12AX7" }, { A: 5, G: 6, K: 7 }),
+    part("rs", "resistor", "R1", { r: 1e3 }, { 1: 4, 2: 9 }),
+    part("rp", "resistor", "R2", { r: 1e3, w: "5" }, { 1: 1, 2: 8 }),
+    part("c1", "electrolytic", "C1", { c: 47e-6 }, { "+": 1, "-": 0 })] };
+  nl.parts.find(p => p.id === "rp").pins.forEach(q => { q.i = 0.05; });     // 50 V × 50 mA = 2.5 W
+  const board = B.newBoard(); B.sync(board, nl);
+  Object.assign(board.parts["v1a+v1b"], { x: 80, y: 50, rot: 0 }); Object.assign(board.parts.rs, { x: 20, y: 20, rot: 0 });
+  Object.assign(board.parts.rp, { x: 120, y: 30, rot: 0 }); Object.assign(board.parts.c1, { x: 120, y: 38, rot: 0 });
+  let m = B.model(board, nl), c = B.connectivity(board, m.pads), d = B.drc(board, m, c, new Set(), [], nl);
+  const kinds = k => d.filter(x => x.kind === k).map(x => x.msg);
+  assert.ok(/R1 is the grid stopper of VL1 \(pin 7\)/.test(kinds("stopper")[0]), kinds("stopper").join("; "));
+  assert.ok(/C1 \(electrolytic\).*R2 dissipates 2\.5 W/.test(kinds("heat")[0]), kinds("heat").join("; "));
+  assert.ok(/VL1: no mounting hole within 40 mm/.test(kinds("support")[0]));
+  // the stopper at the socket, a hole by the socket, the capacitor away: those go
+  const g = m.pads.find(p => p.ref === "VL1" && p.num === "7");
+  Object.assign(board.parts.rs, { x: g.x - 14, y: g.y, rot: 1 });
+  const pr = B.model(board, nl).pads.find(p => p.ref === "R1" && p.num === "1"); board.parts.rs.y += g.y - pr.y; board.parts.rs.x += g.x - 9 - pr.x; board.holes.push({ x: 80, y: 80, d: 3.2 }); Object.assign(board.parts.c1, { x: 150, y: 80 });
+  m = B.model(board, nl); c = B.connectivity(board, m.pads); d = B.drc(board, m, c, new Set(), [], nl);
+  assert.deepEqual(["stopper", "heat", "support"].map(k => d.filter(x => x.kind === k).length), [0, 0, 0], d.map(x => x.msg).join("; "));
+  // a grid track running 20 mm beside an anode track 1 mm apart is reported; 4 mm apart it is not (the valve on wire pads: A1 G1 K1 A2 G2 K2)
+  Object.assign(board.parts["v1a+v1b"], { fp: "WIRE-6", x: 60, y: 20, rot: 0 });
+  m = B.model(board, nl);
+  const pa = m.pads.find(p => p.ref === "VL1" && p.num === "1"), pg = m.pads.find(p => p.ref === "VL1" && p.num === "2");
+  board.tracks.push({ layer: "B.Cu", w: 1, pts: [[pg.x, pg.y], [pg.x, pg.y + 25]] }, { layer: "B.Cu", w: 1, pts: [[pa.x, pa.y], [pa.x, pa.y + 3], [pg.x - 2, pa.y + 3], [pg.x - 2, pa.y + 25]] });
+  m = B.model(board, nl); c = B.connectivity(board, m.pads); d = B.drc(board, m, c, new Set(), [], nl);
+  assert.ok(d.some(x => x.kind === "coupling" && /grid of VL1 \(pin 2\)\) runs 22 mm alongside .*anode of VL1/.test(x.msg)) && !d.some(x => x.kind === "short"), d.map(x => x.msg).join("; "));
+  board.tracks[1].pts = [[pa.x, pa.y], [pa.x, pa.y + 25]];
+  m = B.model(board, nl); c = B.connectivity(board, m.pads); d = B.drc(board, m, c, new Set(), [], nl);
+  assert.ok(!d.some(x => x.kind === "coupling"), "4 mm apart (5.08 between centres): fine");
+});
