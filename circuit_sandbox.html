@@ -24,9 +24,13 @@
 
     /* toolbar */
     header { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    header > * { flex-shrink: 0; }
+    header > .cur-file { flex-shrink: 1; min-width: 60px; }
+    @media (max-width: 1180px) { .brand span, .brand b { display: none; } .brand { margin-right: 0; } header .btn { padding: 5px 7px; } header { gap: 4px; } .sep { margin: 0 2px; } }
+    @media (max-width: 1060px) { header > .cur-file { display: none; } }
     .brand { font-weight: 700; letter-spacing: .5px; margin-right: 8px; white-space: nowrap; }
     .brand b { color: var(--accent); }
-    .cur-file { font: 12px ui-monospace, Menlo, monospace; color: var(--text); background: #0d1520; border: 1px solid #263445; border-radius: 6px; padding: 3px 8px; margin-right: 8px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cur-file { font: 12px ui-monospace, Menlo, monospace; color: var(--text); background: #0d1520; border: 1px solid #263445; border-radius: 6px; padding: 3px 8px; margin-right: 8px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cur-file.untitled { color: #8b949e; font-style: italic; }
     .cur-file .dirty { color: #e3b341; font-style: normal; }
     .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
@@ -37,7 +41,20 @@
     .btn.danger { color: var(--bad); }
     .btn.wide { width: 100%; margin-top: 6px; }
     .btn.link { color: var(--accent); }
-    #zoom-label { min-width: 46px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .btn.primary { background: #0b4a5a; border-color: var(--accent); color: #fff; font-weight: 600; }
+    .btn.primary:hover { background: #0e5a6d; }
+    /* on/off switches: a lamp, so they never look like the selected tool */
+    .btn.toggle::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: #3a4757; }
+    .btn.toggle.active { background: var(--panel2); border-color: var(--line); color: var(--text); }
+    .btn.toggle.active::before { background: var(--ok); box-shadow: 0 0 5px var(--ok); }
+    /* joined buttons: one tool choice, zoom, run */
+    .seg-group { display: inline-flex; align-items: stretch; }
+    .seg-group > * { border-radius: 0; margin-left: -1px; }
+    .seg-group > :first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+    .seg-group > :last-child { border-radius: 0 6px 6px 0; }
+    .seg-group > .active { position: relative; z-index: 1; }
+    .seg-group #zoom-label { display: grid; place-items: center; border: 1px solid var(--line); background: var(--bg); }
+    #zoom-label { min-width: 48px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
     .spacer { flex: 1; }
 
     main { display: grid; grid-template-columns: 210px 1fr 280px; min-height: 0; }
@@ -85,6 +102,11 @@
     .kv span { color: var(--muted); }
     .kv b { font-family: ui-monospace, Menlo, monospace; font-weight: 600; text-align: right; }
     .kv.warn b { color: var(--warn); } .kv.bad b { color: var(--bad); }
+    .kv b small { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+    .kv.warn b small { color: var(--warn); opacity: .8; } .kv.bad b small { color: var(--bad); opacity: .8; }
+    .insp-open .insp-actions { margin-top: 0; }
+    .insp-open .insp-actions .btn { flex: 1 1 0; padding: 5px 4px; }
+    .insp-actions .btn .ico { width: 13px; height: 13px; vertical-align: -2px; margin-right: 3px; }
     .insp-help { color: var(--muted); font-size: 12px; margin: 6px 0; }
     .insp-help.warn { color: var(--warn); } .insp-help.ok { color: var(--ok); }
     .insp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
@@ -148,11 +170,14 @@
     @media (max-width: 900px) { .spimp-grid { grid-template-columns: 1fr; } }
     .modal-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
     .menu { position: relative; }
+    .menu-list.right { left: auto; right: 0; }
     .menu-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20; min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
     .menu-list[hidden] { display: none; }
     .menu-item { white-space: nowrap; display: flex; justify-content: space-between; gap: 16px; width: 100%; background: none; border: 0; color: var(--text); font: inherit; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
     .menu-item:hover, .menu-item:focus { background: var(--panel2, #18212e); outline: none; }
     .menu-item kbd { color: var(--muted); font: 11px ui-monospace, monospace; border: 0; background: none; }
+    .menu-item.check { padding-left: 28px; position: relative; }
+    .menu-item.check.active::before { content: "✓"; position: absolute; left: 10px; color: var(--accent); }
     #sheet-nav[hidden] { display: none; }
     #sheet-nav { max-width: 180px; }
     #btn-sim { min-width: 112px; font-variant-numeric: tabular-nums; }
@@ -180,7 +205,7 @@
 </head>
 <body>
   <header>
-    <div class="brand">⚡ <b>Tube Amp</b> CAD</div>
+    <div class="brand" title="Tube Amp CAD">⚡ <b>Tube Amp</b> <span>CAD</span></div>
     <span class="cur-file untitled" id="cur-file" title="The circuit file open now">Untitled</span>
     <div class="menu" id="file-menu">
       <button class="btn" id="btn-file" aria-haspopup="true" aria-expanded="false">File ▾</button>
@@ -198,7 +223,17 @@
         <button class="menu-item" role="menuitem" id="btn-export">Export sheet…<kbd>PDF / PNG</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-png">Export PNG…<kbd>image</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-spice">Export SPICE netlist…<kbd>LTspice</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-bom-menu">Bill of materials<kbd>B</kbd></button>
+      </div>
+    </div>
+    <div class="menu" id="view-menu">
+      <button class="btn" id="btn-view" aria-haspopup="true" aria-expanded="false" title="What the schematic shows">View ▾</button>
+      <div class="menu-list" role="menu" hidden>
+        <div class="menu-head">On the schematic</div>
+        <button class="menu-item check active" role="menuitemcheckbox" aria-checked="true" id="btn-volts" title="Show DC node voltages">Voltages<kbd>DC, at each node</kbd></button>
+        <button class="menu-item check active" role="menuitemcheckbox" aria-checked="true" id="btn-amps" title="Show the DC current in the wires, with its direction">Currents<kbd>in the wires</kbd></button>
+        <button class="menu-item check active" role="menuitemcheckbox" aria-checked="true" id="btn-bias" title="Mark the resistors and pots that set each tube's bias, with the value that gives the tube's target anode current">Bias markers<kbd>parts that set it</kbd></button>
+        <div class="menu-sep"></div>
+        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-bom" title="Bill of materials under the schematic; export TXT, CSV, XLSX or PDF (B)">Bill of materials<kbd>B</kbd></button>
       </div>
     </div>
     <input type="file" id="file-input" accept=".json,application/json" hidden>
@@ -206,31 +241,42 @@
     <button class="btn ib" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7"/></svg></button>
     <button class="btn ib" id="btn-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5l3 3-3 3"/><path d="M13.5 6.5h-7a4 4 0 0 0 0 8H9"/></svg></button>
     <span class="sep"></span>
-    <button class="btn" id="btn-tool-select" title="Select / move (V)">Select</button>
-    <button class="btn" id="btn-tool-wire" title="Draw wires from anywhere (W)">Wire</button>
+    <div class="seg-group" role="group" aria-label="Tool">
+      <button class="btn" id="btn-tool-select" title="Select / move (V)">Select</button>
+      <button class="btn" id="btn-tool-wire" title="Draw wires from anywhere (W)">Wire</button>
+    </div>
     <button class="btn ib" id="btn-rotate" title="Rotate selection (R)" aria-label="Rotate"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M11.7 1.6v3h-3"/></svg></button>
     <button class="btn ib" id="btn-mirror" title="Mirror selection left–right (M)" aria-label="Mirror"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v13" stroke-dasharray="2 1.6"/><path d="M6 4 2 12h4z"/><path d="M10 4l4 8h-4z"/></svg></button>
     <button class="btn ib" id="btn-delete" title="Delete selection (Del)" aria-label="Delete"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11"/><path d="M6 4.5V2.5h4v2"/><path d="M4 4.5l.8 9.5h6.4l.8-9.5"/><path d="M6.8 7v4.5M9.2 7v4.5"/></svg></button>
     <span class="sep"></span>
-    <button class="btn" id="btn-zoom-out" title="Zoom out (−)">−</button>
-    <span id="zoom-label">100%</span>
-    <button class="btn" id="btn-zoom-in" title="Zoom in (+)">+</button>
+    <div class="seg-group" role="group" aria-label="Zoom">
+      <button class="btn" id="btn-zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+      <span id="zoom-label">100%</span>
+      <button class="btn" id="btn-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    </div>
     <button class="btn" id="btn-zoom-fit" title="Fit the sheet you are on: the selected, last clicked or most visible one. Again: all sheets (F)">Fit</button>
     <select id="sheet-nav" class="btn" title="Show one sheet" hidden></select>
-    <button class="btn active" id="btn-volts" title="Show DC node voltages">Voltages</button>
-    <button class="btn active" id="btn-amps" title="Show the DC current in the wires, with its direction">Currents</button>
-    <button class="btn active" id="btn-bias" title="Mark the resistors and pots that set each tube's bias, with the value that gives the tube's target anode current">Bias</button>
     <span class="sep"></span>
-    <button class="btn active" id="btn-live" title="Live: re-simulate after every edit (a run that does not settle in time continues in the background)">Live</button>
-    <button class="btn" id="btn-sim" title="Simulate until fully settled (Ctrl+Enter); click again to stop">▶ Simulate</button>
+    <div class="seg-group" role="group" aria-label="Simulation">
+      <button class="btn toggle active" id="btn-live" title="Live: re-simulate after every edit (a run that does not settle in time continues in the background)" aria-pressed="true">Live</button>
+      <button class="btn primary" id="btn-sim" title="Simulate until fully settled (Ctrl+Enter); click again to stop">▶ Simulate</button>
+    </div>
     <span class="spacer"></span>
-    <button class="btn" id="btn-help" title="Help and keyboard shortcuts (F1 or ?)" aria-label="Help">?</button>
-    <button class="btn" id="btn-bom" title="Bill of materials under the schematic; export TXT, CSV, XLSX or PDF (B)">BOM</button>
-    <button class="btn link" id="btn-open-board" title="Board Design: lay out the PCB of this circuit">Board ↗</button>
-    <button class="btn link" id="btn-open-tracer" title="Plate curves with this circuit's operating point">Curve tracer ↗</button>
-    <button class="btn link" id="btn-open-scope" title="Full oscilloscope for the first scope part">Oscilloscope ↗</button>
-    <button class="btn link" id="btn-open-spectrum" title="FFT of a scope part's channels">Spectrum ↗</button>
-    <button class="btn link" id="btn-open-bode" title="Frequency response (gain and phase) at a scope part's channels">Bode ↗</button>
+    <div class="menu" id="win-menu">
+      <button class="btn link" id="btn-windows" aria-haspopup="true" aria-expanded="false" title="Instruments and the board layout, each in its own window">Windows ▾</button>
+      <div class="menu-list right" role="menu" hidden>
+        <div class="menu-head">Instruments</div>
+        <button class="menu-item" role="menuitem" id="btn-open-scope" title="Full oscilloscope for the first scope part">Oscilloscope<kbd>↗</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-open-spectrum" title="FFT of a scope part's channels">Spectrum analyzer<kbd>↗</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-open-bode" title="Frequency response (gain and phase) at a scope part's channels">Bode plotter<kbd>↗</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-open-tracer" title="Plate curves with this circuit's operating point">Curve tracer<kbd>↗</kbd></button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" role="menuitem" id="btn-open-board" title="Board Design: lay out the PCB of this circuit">Board layout<kbd>↗</kbd></button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" role="menuitem" id="btn-open-manual" title="Every feature, part, value and coefficient explained">Manual<kbd>↗</kbd></button>
+      </div>
+    </div>
+    <button class="btn ib" id="btn-help" title="Help and keyboard shortcuts (F1 or ?)" aria-label="Help"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.1 6.2a2 2 0 1 1 2.6 1.9c-.5.2-.7.6-.7 1.1v.5"/><path d="M8 11.6v.2"/></svg></button>
   </header>
 
   <main>
@@ -284,13 +330,14 @@
   <div class="modal" id="help-modal" hidden>
     <div class="modal-box">
       <div class="insp-title">Tube Amp CAD: help</div>
+      <p class="insp-help">Hover any underlined label in the app for what it means. The full manual explains every part, value and instrument, with a design cookbook.</p>
       <h3>How to</h3>
       <ul class="help-list">
         <li><b>Place:</b> pick a part on the left (or type in the search box: a name, a part number like 2N3904 or EL84, or a value like 47k or 100n, then Enter) and click the sheet. <kbd>Shift</kbd>-click places several.</li>
         <li><b>Wire:</b> click a pin, click corners, finish on a pin or wire. <kbd>W</kbd> starts wires anywhere.</li>
         <li><b>Move:</b> drag parts (wires follow) or drag a wire segment sideways. Sheet frames are locked; unlock one in its inspector to move it.</li>
         <li><b>View:</b> wheel zooms, <kbd>Space</kbd>/middle-drag pans, <kbd>F</kbd> fits the sheet you are on, again for all sheets.</li>
-        <li><b>Measure:</b> every wire shows its DC voltage and current (Voltages / Currents); hover a wire for both. Wire an Oscilloscope to see waveforms; double-click it for the full scope. <i>Spectrum ↗</i> shows the harmonics of its channels, <i>Bode ↗</i> their frequency response (gain and phase from 1 Hz to 1 MHz).</li>
+        <li><b>Measure:</b> every wire shows its DC voltage and current (<i>View ▾</i> turns them on and off); hover a wire for both. Wire an Oscilloscope to see waveforms; double-click it for the full scope. <i>Windows ▾ → Spectrum analyzer</i> shows the harmonics of its channels, <i>Bode plotter</i> their frequency response (gain and phase from 1 Hz to 1 MHz).</li>
         <li><b>Ratings:</b> with nothing selected, the inspector's Checks list every part beyond its rating; for tubes Pa, Pg2, screen voltage, cathode current, heater-to-cathode voltage (set <i>Heater DC potential</i> for a raised heater) and the grid circuit resistance. A tube's inspector shows each as a share of its rating.</li>
         <li><b>Bias:</b> the resistor or pot that sets each tube's bias is drawn in violet. Give a tube a <i>Bias target</i> (an anode current or a share of Pa max) in its inspector and the value that meets it appears by the part ("→ 680Ω"); <i>Use</i> in the part's inspector puts it in. <i>Measured on the amp</i> (anode or cathode current, or the voltage across the 1 Ω sense resistor) fits the model to your tube first.</li>
         <li><b>Simulate:</b> <i>Live</i> re-simulates after every edit. Turn it off to simulate only on <i>▶ Simulate</i> (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>), which always runs until the circuit has settled.</li>
@@ -316,7 +363,7 @@
         <kbd>F1</kbd><span>this help (also <kbd>?</kbd>)</span>
       </div>
       <p class="insp-help">Shortcuts go by the key's position, so they work with any keyboard layout (Russian included).</p>
-      <div class="modal-actions"><button class="btn" id="btn-help-close">Close</button></div>
+      <div class="modal-actions"><button class="btn active" id="btn-help-manual" title="Every feature, part, value and coefficient explained, with a design cookbook">Open the full manual ↗</button><button class="btn" id="btn-help-close">Close</button></div>
     </div>
   </div>
 
@@ -369,6 +416,7 @@
     </div>
   </div>
 
+  <script src="hints.js?v=dev"></script>
   <script src="windows.js?v=dev"></script>
   <script src="panels.js?v=dev"></script>
   <script src="tube-db.js?v=dev"></script>

@@ -1899,11 +1899,13 @@
     const b = document.createElement("button");
     b.className = "pal-item" + (extraClass ? " " + extraClass : "");
     b.innerHTML = `<span>${escH(label)}</span>${sub ? `<em>${escH(sub)}</em>` : ""}`;
-    b.title = title || "Click, then click on the sheet to place (Shift-click places several)";
+    const what = title || (window.Hints && Hints.parts[type]) || "";
+    b.dataset.hint = (what ? what + "\n" : "") + "Click, then click on the sheet to place (Shift-click places several).";
+    b.dataset.hintTitle = label;
     b.addEventListener("click", () => startPlacing(type, params, b));
     return b;
   }
-  const tubeItem = t => palItem(t.commonName, t.type.replace(/ (Triode|Pentode|Tetrode|Rectifier)$/, ""), "tube", { tube: t.commonName }, "tube", `${t.nameWestern} · ${t.nameGost} · Pa max ${t.paMax} W`);
+  const tubeItem = t => palItem(t.commonName, t.type.replace(/ (Triode|Pentode|Tetrode|Rectifier)$/, ""), "tube", { tube: t.commonName }, "tube", `${t.type}. ${t.nameWestern} · ${t.nameGost}\nVa max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A`);
   // everything the search can find: [group, label, sub, type, params, text to match]
   function searchables() {
     const L = CadLib, out = [];
@@ -2050,6 +2052,7 @@
   function buildCompInspector(host, c) {
     const def = LIB[c.type];
     host.innerHTML = `<div class="insp-title">${def.name}</div>`;
+    if (window.Hints) Hints.attach(host.firstChild, Hints.parts[c.type], def.name);
     if (!def.noLabel) host.appendChild(row("Designator", input("text", c.label, v => { c.label = v.trim() || c.label; commit(); })));
     (canMirror(c.type) ? def.fields.concat([CadLib.FLIP_FIELD]) : def.fields).forEach(f => {
       if (f.when && !f.when(c)) return;
@@ -2109,7 +2112,9 @@
         imp.onclick = () => SpiceImport.open(done);
         el = document.createElement("div"); el.className = "tube-pick"; el.appendChild(sel); el.appendChild(imp);
       }
-      host.appendChild(row(f.label + (f.unit && f.kind !== "range" ? ` (${f.unit})` : ""), el, f.wide || f.kind === "tube"));
+      const r = row(f.label + (f.unit && f.kind !== "range" ? ` (${f.unit})` : ""), el, f.wide || f.kind === "tube");
+      if (window.Hints) Hints.attach(r.firstChild, Hints.field(c.type, f.key) || Hints.label(f.label), f.label);
+      host.appendChild(r);
     });
     if (c.type === "speaker" && c.params.model === "ts") host.appendChild(speakerPlot(c));
     if (c.type === "tube") {
@@ -2133,28 +2138,29 @@
       host.appendChild(p);
     }
     if (c.type === "scope") {
-      const b = document.createElement("button"); b.className = "btn wide"; b.textContent = "Open full oscilloscope ↗";
-      b.addEventListener("click", () => ToolWindows.open("oscilloscope.html", { scope: c.id }));
-      host.appendChild(b);
-      const b2 = document.createElement("button"); b2.className = "btn wide"; b2.textContent = "Open spectrum analyzer ↗";
-      b2.addEventListener("click", () => ToolWindows.open("spectrum_analyzer.html", { scope: c.id }));
-      host.appendChild(b2);
-      const b3 = document.createElement("button"); b3.className = "btn wide"; b3.textContent = "Open Bode plotter ↗";
-      b3.addEventListener("click", () => ToolWindows.open("bode.html", { scope: c.id }));
-      host.appendChild(b3);
+      // this scope's channels in the instrument windows
+      const open = document.createElement("div"); open.className = "insp-open";
+      open.innerHTML = `<div class="insp-sub">Open in</div><div class="insp-actions">${[["oscilloscope.html", "Oscilloscope", "Full oscilloscope: cursors, X-Y, power-on run"], ["spectrum_analyzer.html", "Spectrum", "Spectrum analyzer: harmonics and THD"], ["bode.html", "Bode", "Bode plotter: gain and phase against frequency"]].map(([f, t, tip]) => `<button class="btn link" data-win="${f}" title="${tip}">${t} ↗</button>`).join("")}</div>`;
+      open.querySelectorAll("[data-win]").forEach(b => b.addEventListener("click", () => ToolWindows.open(b.dataset.win, { scope: c.id })));
+      host.appendChild(open);
     }
     if (!def.noLabel) host.appendChild(row("Part number (BOM)", input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); })));
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
     host.appendChild(live);
     const act = document.createElement("div"); act.className = "insp-actions";
-    act.innerHTML = `<button class="btn" data-a="rot" title="Rotate (R)" ${def.noRotate ? "disabled" : ""}>⟳ Rotate</button><button class="btn" data-a="mir" title="Mirror left–right (M)" ${canMirror(c.type) ? "" : "disabled"}>⇋ Mirror</button><button class="btn danger" data-a="del" title="Delete (Del)">✕ Delete</button>`;
+    const ico = id => document.querySelector(`#${id} svg`).outerHTML;   // the toolbar's icons
+    act.innerHTML = `<button class="btn" data-a="rot" title="Rotate (R)" ${def.noRotate ? "disabled" : ""}>${ico("btn-rotate")} Rotate</button><button class="btn" data-a="mir" title="Mirror left–right (M)" ${canMirror(c.type) ? "" : "disabled"}>${ico("btn-mirror")} Mirror</button><button class="btn danger" data-a="del" title="Delete (Del)">${ico("btn-delete")} Delete</button>`;
     act.querySelector('[data-a="rot"]').onclick = rotateSelection;
     act.querySelector('[data-a="mir"]').onclick = mirrorSelection;
     act.querySelector('[data-a="del"]').onclick = deleteSelection;
     host.appendChild(act);
   }
 
-  function kv(k, v, cls) { return `<div class="kv${cls ? " " + cls : ""}"><span>${k}</span><b>${v}</b></div>`; }
+  // "1.4W · 64% of 2.2W": the share of the rating goes on a second, quieter line
+  function kv(k, v, cls) {
+    const m = /^(.*?) · (\d+% of .*)$/.exec(v);
+    return `<div class="kv${cls ? " " + cls : ""}"><span>${k}</span><b>${m ? `${m[1]}<small>${m[2]}</small>` : v}</b></div>`;
+  }
 
   function liveReadout(c) {
     const r = S.sim.result;
@@ -2941,12 +2947,24 @@
 
     buildPalette();
     // File menu
-    const menu = document.getElementById("file-menu"), menuList = menu.querySelector(".menu-list"), menuBtn = document.getElementById("btn-file");
-    const closeMenu = () => { menuList.hidden = true; menuBtn.setAttribute("aria-expanded", "false"); };
-    menuBtn.addEventListener("click", e => { e.stopPropagation(); menuList.hidden = !menuList.hidden; menuBtn.setAttribute("aria-expanded", String(!menuList.hidden)); });
-    menuList.addEventListener("click", closeMenu);
-    document.addEventListener("click", e => { if (!menu.contains(e.target)) closeMenu(); });
-    document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
+    // toolbar menus (File, View, Windows): one open at a time; a tick item leaves its menu open
+    document.querySelectorAll("header .menu").forEach(menu => {
+      const list = menu.querySelector(".menu-list"), btn = menu.querySelector(":scope > .btn");
+      const close = () => { list.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+      btn.addEventListener("click", e => {
+        e.stopPropagation(); const open = list.hidden;
+        document.querySelectorAll("header .menu-list").forEach(l => { if (l !== list) l.hidden = true; });
+        list.hidden = !open; btn.setAttribute("aria-expanded", String(open));
+      });
+      list.addEventListener("click", e => { if (!e.target.closest(".menu-item.check")) close(); });
+      document.addEventListener("click", e => { if (!menu.contains(e.target)) close(); });
+      document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+    });
+    // tick items and the Live switch tell screen readers their state too
+    new MutationObserver(ms => ms.forEach(m => { const el = m.target;
+      if (el.getAttribute("role") === "menuitemcheckbox") el.setAttribute("aria-checked", String(el.classList.contains("active")));
+      else if (el.classList.contains("toggle")) el.setAttribute("aria-pressed", String(el.classList.contains("active")));
+    })).observe(document.querySelector("header"), { subtree: true, attributes: true, attributeFilter: ["class"] });
     bind("btn-new", () => openSheetDialog("new"));
     bind("btn-add-sheet", () => openSheetDialog("add"));
     document.getElementById("sheet-nav").addEventListener("change", e => { const f = S.comps.find(c => c.id === e.target.value); if (f) fitSheet(f); else fitView(); });
@@ -2985,6 +3003,8 @@
     bind("btn-mirror", mirrorSelection);
     bind("btn-help", () => { document.getElementById("help-modal").hidden = false; });
     bind("btn-help-close", () => { document.getElementById("help-modal").hidden = true; });
+    bind("btn-help-manual", () => { document.getElementById("help-modal").hidden = true; ToolWindows.open("help.html"); });
+    bind("btn-open-manual", () => ToolWindows.open("help.html"));
     document.getElementById("help-modal").addEventListener("click", e => { if (e.target.id === "help-modal") e.target.hidden = true; });
     bind("btn-zoom-in", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1.25));
     bind("btn-zoom-out", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 0.8));

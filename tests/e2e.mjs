@@ -722,11 +722,11 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     const C = TubeCAD, S = C.state; S.comps = []; S.wires = [];
     const a = C.makeComp("scope", {}, 300, 300, 0), b = C.makeComp("scope", {}, 300, 500, 0); S.comps.push(a, b); C.commit(); return [a.id, b.id];
   });
-  await cad.getByRole("button", { name: /Oscilloscope ↗/ }).click();
+  await cad.click("#btn-windows"); await cad.click("#btn-open-scope");
   await cad.waitForTimeout(800);
-  await cad.getByRole("button", { name: /Oscilloscope ↗/ }).click();
+  await cad.click("#btn-windows"); await cad.click("#btn-open-scope");
   await cad.waitForTimeout(800);
-  check(opened.length === 1, `the toolbar's Oscilloscope button twice opens one window (${opened.length})`);
+  check(opened.length === 1, `Windows ▸ Oscilloscope twice opens one window (${opened.length})`);
   const win = opened[0];
   await win.waitForFunction(() => window.Instrument, null, { timeout: 8000 }).catch(() => {});
   // double-clicking the second scope part on the sheet switches the open window to it
@@ -741,7 +741,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
 // --- 12. File menu: New with a drawing frame, Save as PDF --------------------------
 {
   await cad.locator("#btn-file").click();
-  check(await cad.locator(".menu-list").isVisible(), "File menu opens");
+  check(await cad.locator("#file-menu .menu-list").isVisible(), "File menu opens");
   await cad.getByRole("menuitem", { name: /New/ }).click();
   await cad.locator('#new-size .btn[data-v="A4"]').click();
   await cad.locator('#new-orient .btn[data-v="portrait"]').click();
@@ -1177,7 +1177,8 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(mins.row && mins.btn, "the inspector of any part (here a zener) has the Mirror field and button");
   // stickers: drawn when Currents is on (the canvas changes when it is turned off)
   const shot = () => cad.locator("#cad").screenshot();
-  const on = await shot(); await cad.click("#btn-amps"); const off = await shot(); await cad.click("#btn-amps");
+  const amps = async () => { await cad.click("#btn-view"); await cad.click("#btn-amps"); await cad.keyboard.press("Escape"); };
+  const on = await shot(); await amps(); const off = await shot(); await amps();
   check(!on.equals(off) && await cad.evaluate(() => TubeCAD.state.showAmps), "Currents toggles the current stickers on the wires");
   // hovering a wire reports its current too
   const cb = await cad.locator("#cad").boundingBox();
@@ -1189,7 +1190,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
 
 // --- Board Design ------------------------------------------------------------------
 {
-  const [bd] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-open-board")]);
+  const [bd] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-windows").then(() => cad.click("#btn-open-board"))]);
   bd.on("pageerror", e => errors.push(`board: ${e.message}`));
   await bd.waitForFunction(() => window.BoardApp && BoardApp.state.model, null, { timeout: 10000 });
   const m0 = await bd.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.map(g => `${g.ref}:${g.fp.name}`), unplaced: S.drc.filter(d => d.kind === "unplaced").length, status: document.getElementById("status").textContent,
@@ -1633,9 +1634,9 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(/above the tube's Pa max/.test(hot.insp) && /more than its Pa max/.test(hot.insp) && /⚠ .* over its 1 W/.test(hot.status), `a target above Pa max is flagged in the inspector and the status line ("${hot.status}")`);
   const opts = await row("Measured on the amp").locator("option").allTextContents();
   check(opts.some(o => /^Voltage across R\d+ \(680Ω\)$/.test(o)) && opts.includes("Cathode current"), `the measurement can be the anode or cathode current, or the voltage across a cathode resistor (${opts.join(" | ")})`);
-  await cad.click("#btn-bias");
+  await cad.click("#btn-view"); await cad.click("#btn-bias");
   const hidden = await cad.evaluate(() => !TubeCAD.state.bias.show && !document.getElementById("btn-bias").classList.contains("active"));
-  await cad.click("#btn-bias");
+  await cad.click("#btn-bias"); await cad.keyboard.press("Escape");
   check(hidden, "the Bias button hides and shows the marking");
 }
 // --- Tube ratings beyond Va and Pa ----------------------------------------------------------------
@@ -1663,8 +1664,8 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   check(/VL1 has 1MΩ in its grid circuit, more than the 300kΩ allowed with fixed bias/.test(sum), `the checks flag the EL84's 1 MΩ grid leak with fixed bias (0.3 MΩ allowed)`);
   check(/VL2(\.1)? has its cathode 1\d\dV above the heater, more than the 90V allowed/.test(sum), `the checks flag the 12AT7 follower's cathode above the grounded heater`);
   const el84 = await cad.evaluate(() => { const S = TubeCAD.state, c = S.comps.find(k => k.params.tube === "EL84"); S.sel.comps.clear(); S.sel.comps.add(c.id); TubeCAD.updateInspector(); return document.getElementById("inspector").textContent; });
-  const pg2 = (/Pg2 \(screen dissipation\)([\d.]+)(m?)W · (\d+)% of 2W/.exec(el84) || []);
-  check(pg2.length && /Ik \(cathode current\)/.test(el84) && /Grid circuit R \(fixed bias\)1MΩ · 333% of 300kΩ/.test(el84), `the EL84's inspector shows Pg2 (${pg2[1]}${pg2[2]} W, ${pg2[3]} % of 2 W), Ik and the grid circuit resistance against their ratings`);
+  const pg2 = (/Pg2 \(screen dissipation\)([\d.]+)(m?)W(?: · )?(\d+)% of 2W/.exec(el84) || []);
+  check(pg2.length && /Ik \(cathode current\)/.test(el84) && /Grid circuit R \(fixed bias\)1MΩ(?: · )?333% of 300kΩ/.test(el84), `the EL84's inspector shows Pg2 (${pg2[1]}${pg2[2]} W, ${pg2[3]} % of 2 W), Ik and the grid circuit resistance against their ratings`);
   // a raised heater clears the follower
   const seq = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.evaluate(() => { const S = TubeCAD.state, c = S.comps.find(k => k.params.tube === "12AT7"); S.sel.comps.clear(); S.sel.comps.add(c.id); TubeCAD.updateInspector(); });
@@ -1754,6 +1755,45 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   }
   check(res.length === 6 && res.every(r => r.ok && r.parts > 15), `all six examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
   check(await cad.evaluate(() => TubeCAD.state.sim.result && TubeCAD.state.sim.result.solver === "wasm"), "the simulation worker solves with WebAssembly");
+}
+// --- toolbar, hover hints and the manual ---------------------------------------
+{
+  await cad.bringToFront();
+  const hh = await cad.evaluate(() => document.querySelector("header").offsetHeight);
+  check(hh < 50, `the toolbar fits on one row at 1500 px (${hh} px high)`);
+  await cad.click("#btn-view");
+  const viewOpen = await cad.locator("#view-menu .menu-list").isVisible();
+  await cad.click("#btn-volts");
+  const stillOpen = await cad.locator("#view-menu .menu-list").isVisible();
+  const off = await cad.evaluate(() => !TubeCAD.state.showVolts && document.getElementById("btn-volts").getAttribute("aria-checked") === "false");
+  await cad.click("#btn-volts"); await cad.keyboard.press("Escape");
+  check(viewOpen && stillOpen && off && await cad.evaluate(() => TubeCAD.state.showVolts), "View ▾ ticks Voltages off and on, staying open and reporting aria-checked");
+  await cad.click("#btn-windows"); await cad.click("#btn-file");
+  check(await cad.evaluate(() => document.querySelector("#win-menu .menu-list").hidden && !document.querySelector("#file-menu .menu-list").hidden), "opening one toolbar menu closes the other");
+  await cad.keyboard.press("Escape");
+  // hover hints: an inspector field and a readout
+  cad.once("dialog", d => d.accept());
+  await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /gubin/.test(x.file))));
+  await cad.waitForFunction(() => TubeCAD.state.sim.result && !TubeCAD.state.sim.busy && TubeCAD.state.comps.some(c => c.type === "tube"), null, { timeout: 60000 });
+  await cad.evaluate(() => { const S = TubeCAD.state, t = S.comps.filter(c => c.type === "tube").pop(); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(t.id); TubeCAD.updateInspector(); });
+  await cad.waitForTimeout(300);
+  const lbl = cad.locator("#inspector .row > span.has-hint").first();
+  await lbl.hover(); await cad.waitForTimeout(450);
+  const tip = await cad.evaluate(() => { const t = document.getElementById("hint-tip"); return t && t.classList.contains("on") ? t.textContent : ""; });
+  check(tip.length > 30, `hovering an inspector label shows its hint ("${tip.slice(0, 60)}…")`);
+  const unhinted = await cad.evaluate(() => [...document.querySelectorAll("#inspector .kv > span:first-child, #inspector .row > span:first-child")].filter(e => !e.classList.contains("has-hint")).map(e => e.textContent));
+  check(unhinted.length === 0, `every label in a tube's inspector has a hint${unhinted.length ? ` (missing: ${unhinted.join(", ")})` : ""}`);
+  const palHint = await cad.evaluate(() => document.querySelector(".pal-item").dataset.hint || "");
+  check(/Click, then click on the sheet/.test(palHint) && palHint.length > 60, "palette parts carry a hint of what they are");
+  // the manual
+  const [man] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-windows").then(() => cad.click("#btn-open-manual"))]);
+  await man.waitForLoadState(); await man.waitForTimeout(500);
+  const m = await man.evaluate(() => ({ parts: document.querySelectorAll(".part").length, tubes: document.querySelectorAll("#tube-table tr").length - 1, gloss: document.querySelectorAll("#glossary tr").length, toc: document.querySelectorAll("#toc-list li").length, name: window.name }));
+  check(m.parts >= 28 && m.tubes >= 99 && m.gloss > 100 && m.toc > 40 && m.name === "tube_help", `Windows ▸ Manual opens the manual: ${m.parts} parts, ${m.tubes} tubes, ${m.gloss} glossary rows, ${m.toc} contents entries`);
+  await man.fill("#q", "Miller"); await man.waitForTimeout(400);
+  const found = await man.evaluate(() => document.querySelectorAll("main mark").length);
+  check(found > 2, `searching the manual marks the matches (${found})`);
+  await man.close();
 }
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 

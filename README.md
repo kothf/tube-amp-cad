@@ -91,11 +91,20 @@ Firefox is not tested.
   come from Katsnelson & Larionov for the Soviet tubes and from the makers'
   datasheets for the others (RCA, Philips, Mullard, Western Electric); a
   rating a datasheet does not give is not checked.
+- **Toolbar.** One row: *File ▾*, *View ▾* (the Voltages, Currents and Bias markers on the schematic, and the bill of materials, ticked on or off), undo / redo, the *Select | Wire* tool, rotate / mirror / delete, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual).
+- **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html`, opens from *Windows ▾ → Manual*, the help dialog, or **?** in each instrument. It covers:
+  - a quick start, then every part and field;
+  - all 99 tubes in a sortable table;
+  - every readout, the checks and the bias finder;
+  - the instruments and the board layout;
+  - a design cookbook, and the simulator's equations and limits.
+
+  It is searchable.
 - **Layout.**
   - Drag the edge of the palette, the inspector or the BOM to resize it, and
     double-click the edge to reset it. The same goes for the side panels of
     the instrument windows.
-  - <kbd>F1</kbd> or the **?** button opens the help with every shortcut.
+  - <kbd>F1</kbd> or the **?** button opens the help with every shortcut and a link to the manual.
   - Shortcuts go by the key's position, so they work with a Russian or any
     other keyboard layout.
 - **Files.**
@@ -175,7 +184,7 @@ the circuit that was on the sheet.
   - The stickers are placed where they cover no text, no symbol and no other
     sticker. If there is no room at all, a sticker is left out.
   - Hovering a wire shows its voltage, AC swing and current in the status
-    bar. The *Voltages* and *Currents* buttons turn the stickers on and off.
+    bar. *View ▾ → Voltages / Currents* turns the stickers on and off.
 - **Scope screens on the schematic.** An oscilloscope part shows its two
   channels live; double-click it for the full instrument.
 - **Power-on transient.** The oscilloscope can show the first seconds after
@@ -237,7 +246,7 @@ and it works out the value that meets it, and writes it next to the part ("→ 6
     *Use … wiper to mid-track* puts both in.
 - **Applying it.** The resistor's or pot's inspector shows the exact value,
   the E24 value, what it gives, and a *Use 680 Ω* (or *Set the wiper to …*)
-  button. The *Bias* button in the toolbar hides the marking. Exports and
+  button. *View ▾ → Bias markers* hides the marking. Exports and
   prints never show it.
 
 ## Drawings, documents and exports
@@ -269,7 +278,7 @@ and it works out the value that meets it, and writes it next to the part ("→ 6
     all sheets in one PDF.
   - PNG at 150, 300 or 600 dpi, black on white like the PDF or in the
     editor's colours.
-- **Bill of materials.** The *BOM* button (<kbd>B</kbd>) opens the parts list
+- **Bill of materials.** *View ▾ → Bill of materials* (<kbd>B</kbd>) opens the parts list
   under the schematic:
   - equal parts on one line with designator ranges (R1-R4); both sections of
     a dual tube count once; a tube-socket line per base;
@@ -354,7 +363,7 @@ and the instruments only listen, so you can arrange them on several monitors.
 
 ![Board Design: two 12AX7 stages placed on a 140 × 84 mm board with rounded corners and four M3 holes, the ratsnest still to route, layers and rules on the right](docs/board.png)
 
-The **Board ↗** button opens the PCB layout of the circuit. The board takes its
+*Windows ▾ → Board layout* opens the PCB layout of the circuit. The board takes its
 parts and connections from the schematic, and the CAD saves the layout inside
 the circuit file, so one file holds both.
 

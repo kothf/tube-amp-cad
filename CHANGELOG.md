@@ -6,6 +6,38 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.59.0] - 2026-10-17
+
+### Added
+- **Hints on hover.** Every inspector field, every readout, and every instrument setting has a short explanation, with its formula where one helps. This covers the Koren coefficients and the board rules, in all windows. Labels with a hint are underlined with dots; the hint shows after a quarter second. Palette parts say what they model.
+- **The manual** (`help.html`; *Windows ▾ → Manual*, the help dialog, or **?** in each instrument). It has 18 chapters, a contents list that follows your scrolling, and search. It covers:
+  - a ten-minute first amplifier;
+  - every toolbar control;
+  - drawing and the drawing standards;
+  - a reference for every part and field;
+  - a sortable table of all 99 tubes, with their ratings and capacitances;
+  - simulation, the readouts glossary, checks and ratings, and the bias finder;
+  - every instrument, and the board layout;
+  - files, and the keyboard shortcuts;
+  - a design cookbook: preamp, single-ended, push-pull, power supply, feedback;
+  - the engine's equations, accuracy and limits, and troubleshooting.
+
+  The parts reference and the glossary are built from the same texts as the hints, so the two always agree.
+
+### Changed
+- **Toolbar on one row.** Down to 1000 px wide, the editor's toolbar fits on one row; before, it wrapped onto two rows below about 1500 px.
+  - *Voltages*, *Currents*, *Bias markers* and the *Bill of materials* moved into a **View ▾** menu with ticks. The menu stays open while you tick.
+  - The five window buttons moved into a **Windows ▾** menu.
+  - *Select | Wire*, the zoom controls and *Live | ▶ Simulate* are joined button groups.
+  - *Live* has an on/off lamp, so it no longer looks like the selected tool.
+  - *Simulate* is the primary button.
+- In a scope's inspector, the three "Open … ↗" buttons became one row: *Oscilloscope ↗ · Spectrum ↗ · Bode ↗*.
+- The inspector's Rotate / Mirror / Delete buttons use the toolbar's icons.
+- A value's share of its rating ("64% of 2.2W") now goes on a second, quieter line, so long rows no longer wrap mid-number.
+
+### Fixed
+- The toolbar's HTML had a doubled File-menu container.
+
 ## [3.58.0] - 2026-10-17
 
 ### Added

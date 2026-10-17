@@ -5,7 +5,7 @@
    button or a reload opened it. */
 (function (root) {
   "use strict";
-  const NAMES = { "circuit_sandbox.html": "tube_cad", "index.html": "tube_curve_tracer", "oscilloscope.html": "tube_scope", "spectrum_analyzer.html": "tube_spectrum", "bode.html": "tube_bode", "board.html": "tube_board" };
+  const NAMES = { "circuit_sandbox.html": "tube_cad", "index.html": "tube_curve_tracer", "oscilloscope.html": "tube_scope", "spectrum_analyzer.html": "tube_spectrum", "bode.html": "tube_bode", "board.html": "tube_board", "help.html": "tube_help" };
   const page = location.pathname.split("/").pop() || "index.html";
   if (NAMES[page]) window.name = NAMES[page];
   const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tube_cad_v2") : null;

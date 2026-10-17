@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tube Amp CAD Manual</title>
+  <style>
+    :root {
+      --bg: #0a0e14; --panel: #0f151e; --panel2: #131b26; --line: #223044; --text: #e6edf3; --muted: #8b949e;
+      --accent: #00e5ff; --amber: #ffd54f; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300; --violet: #d2a8ff;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-padding-top: 16px; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    a { color: var(--accent); }
+    .layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); min-height: 100vh; }
+    nav { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 14px 12px 40px; font-size: 13px; }
+    nav .brand { font-weight: 700; font-size: 15px; margin: 0 4px 10px; }
+    nav .brand b { color: var(--accent); }
+    #q { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; margin-bottom: 10px; }
+    nav ol { list-style: none; margin: 0; padding: 0; }
+    nav li a { display: block; padding: 3px 6px; border-radius: 5px; color: var(--text); text-decoration: none; }
+    nav li a:hover { background: var(--panel2); }
+    nav li a.on { background: #0d3442; color: var(--accent); }
+    nav li.h3 a { padding-left: 20px; color: var(--muted); font-size: 12.5px; }
+    nav li.hide { display: none; }
+    nav .count { color: var(--muted); font-size: 12px; margin: 0 4px 8px; min-height: 1em; }
+    main { max-width: 980px; padding: 28px 40px 120px; }
+    h1 { font-size: 30px; margin: 0 0 4px; }
+    h1 b { color: var(--accent); }
+    .lead { color: var(--muted); font-size: 16px; margin: 0 0 22px; }
+    h2 { font-size: 22px; margin: 46px 0 10px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--accent); }
+    h3 { font-size: 17px; margin: 28px 0 8px; }
+    h4 { font-size: 14px; margin: 18px 0 6px; color: var(--amber); text-transform: uppercase; letter-spacing: .06em; }
+    p, li { max-width: 78ch; }
+    ul, ol { padding-left: 22px; }
+    li { margin-bottom: 5px; }
+    kbd { background: var(--panel2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font: 12.5px ui-monospace, Menlo, monospace; white-space: nowrap; }
+    code, .mono { font: 13.5px ui-monospace, Menlo, monospace; color: var(--amber); }
+    pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; font: 13px/1.5 ui-monospace, Menlo, monospace; color: var(--amber); }
+    .ui { font-weight: 600; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; white-space: nowrap; font-size: 13.5px; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 13.5px; }
+    th, td { text-align: left; vertical-align: top; padding: 6px 9px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 600; background: var(--panel); position: sticky; top: 0; }
+    td:first-child { white-space: nowrap; }
+    td.wrap { white-space: normal; }
+    .tip, .warn, .note { border-left: 3px solid var(--ok); background: #0e1a14; padding: 9px 13px; border-radius: 0 8px 8px 0; margin: 12px 0; max-width: 78ch; }
+    .warn { border-color: var(--warn); background: #1d1708; }
+    .note { border-color: var(--accent); background: #0b1820; }
+    .tip b:first-child, .warn b:first-child, .note b:first-child { margin-right: 4px; }
+    .part { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px 6px; margin: 14px 0; }
+    .part h3 { margin: 0 0 4px; }
+    .part .tag { color: var(--muted); font: 12px ui-monospace, Menlo, monospace; margin-left: 8px; }
+    .part table { margin-bottom: 8px; }
+    .part td:first-child { width: 220px; white-space: normal; font-weight: 600; }
+    .opts { color: var(--muted); font-size: 12.5px; display: block; margin-top: 2px; }
+    .hint-text p { margin: 0 0 4px; }
+    .hint-text code { display: block; margin: 3px 0; }
+    .tubes-wrap { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+    .tubes-wrap table { margin: 0; font-size: 12.5px; }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+    .card h4 { margin-top: 4px; }
+    .steps { counter-reset: s; list-style: none; padding-left: 0; }
+    .steps > li { counter-increment: s; position: relative; padding-left: 38px; margin-bottom: 12px; }
+    .steps > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; background: #0d3442; color: var(--accent); border: 1px solid var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+    mark { background: #5a4a00; color: inherit; border-radius: 2px; }
+    .hidden-by-search { display: none !important; }
+    .top { position: fixed; right: 18px; bottom: 18px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 50%; width: 38px; height: 38px; display: grid; place-items: center; text-decoration: none; }
+    .menu-toggle { display: none; }
+    .bad { color: var(--bad); } .ok { color: var(--ok); } .warnc { color: var(--warn); } .vio { color: var(--violet); }
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      nav { position: static; height: auto; max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+      nav ol { display: none; } nav.open ol { display: block; }
+      .menu-toggle { display: inline-block; margin-bottom: 8px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; font: inherit; }
+      main { padding: 18px 16px 80px; }
+      td:first-child { white-space: normal; }
+    }
+    @media print {
+      :root { --bg: #fff; --panel: #f5f5f5; --panel2: #eee; --line: #ccc; --text: #000; --muted: #444; --accent: #005f73; --amber: #6b4e00; }
+      nav, .top { display: none; } .layout { display: block; } main { max-width: none; padding: 0; }
+      h2 { page-break-before: always; } .tubes-wrap { max-height: none; overflow: visible; }
+    }
+  </style>
+</head>
+<body data-hint-scan="off">
+<div class="layout">
+<nav id="toc" aria-label="Contents">
+  <div class="brand">⚡ <b>Tube Amp</b> CAD · Manual</div>
+  <input id="q" type="search" placeholder="Search the manual…  (/)" aria-label="Search the manual">
+  <button class="menu-toggle" id="toc-toggle">Contents ▾</button>
+  <div class="count" id="q-count"></div>
+  <ol id="toc-list"></ol>
+</nav>
+<main id="doc">
+
+<h1>⚡ <b>Tube Amp</b> CAD — Manual</h1>
+<p class="lead">Everything the application does, how to use it, what every value means, and how the simulator gets its numbers. Hover any label in the application to see the same explanations as a hint.</p>
+
+<!-- ======================================================================= -->
+<h2 id="overview">1. What it is</h2>
+<p>Tube Amp CAD designs and simulates vacuum-tube amplifiers (and hybrid and solid-state ones) in the browser. You draw a schematic; a circuit simulator works out the operating point of every part and the waveforms with a signal applied; bench instruments show the result as a real oscilloscope, spectrum analyzer, Bode plotter and curve tracer would. Then the same file is laid out as a printed circuit board.</p>
+<ul>
+  <li><b>Nothing to install, no account, no server.</b> Everything runs on your computer. The circuit is autosaved in the browser and can be saved as a JSON file.</li>
+  <li><b>Windows.</b> The <b>Circuit CAD</b> (schematic editor) is the centre. From its <span class="ui">Windows ▾</span> menu you open the <b>Oscilloscope</b>, <b>Spectrum analyzer</b>, <b>Bode plotter</b>, <b>Curve tracer</b> and <b>Board layout</b>, each in its own browser window, so they can be arranged across several monitors. The CAD broadcasts every simulation result; the other windows listen and update by themselves.</li>
+  <li><b>Browsers.</b> Chrome, Edge, Brave, Vivaldi, Opera and Safari are tested. Firefox is not tested.</li>
+</ul>
+<div class="note"><b>Hints everywhere.</b> A label with a dotted underline has an explanation: rest the pointer on it for a moment. Buttons show what they do in the same way.</div>
+
+<!-- ======================================================================= -->
+<h2 id="quickstart">2. Your first amplifier in ten minutes</h2>
+<p>A common-cathode 12AX7 stage, simulated and measured. Each step names exactly what to click.</p>
+<ol class="steps">
+  <li><b>Start a sheet.</b> <span class="ui">File ▾</span> → <span class="ui">New…</span>, choose A4 landscape, give it a title, <span class="ui">Create</span>. You get an ISO drawing frame with a title block.</li>
+  <li><b>Place the tube.</b> Type <code>12AX7</code> in the palette's search box and press <kbd>Enter</kbd>, then click on the sheet. The tube appears as VL1.1, with its pin numbers.</li>
+  <li><b>Place the resistors.</b> Type <code>100k</code>, <kbd>Enter</kbd>, click above the anode: that is the plate resistor. Type <code>1.5k</code> and place it below the cathode, and <code>1M</code> from the grid to ground (the grid leak). <kbd>R</kbd> rotates a part while you place it.</li>
+  <li><b>Bypass the cathode.</b> Type <code>47u</code> to get an electrolytic and place it across the cathode resistor.</li>
+  <li><b>Power and ground.</b> From <b>Sources</b> place a <span class="ui">B+ supply</span> (set it to 250 V in the inspector) and <span class="ui">Ground</span> symbols.</li>
+  <li><b>Signal.</b> Place a <span class="ui">Signal generator</span> (1 kHz, 0.1 Vpk) and a <span class="ui">Capacitor</span> (100n) from it to the grid.</li>
+  <li><b>Wire it.</b> Click a pin, click the corners, and finish on another pin or on a wire. A wire that ends on a wire joins it with a dot. <kbd>W</kbd> starts a wire anywhere; <kbd>Esc</kbd> stops.</li>
+  <li><b>Read it.</b> With <span class="ui">Live</span> on, the circuit simulates after every edit. Every net shows its DC voltage and every wire its current. Click the tube: the inspector shows Va, Vg1k, Ia, Pa, and with the signal on the plate swing, the gain and the THD.</li>
+  <li><b>Look at the waveform.</b> From <b>Instruments</b> place an <span class="ui">Oscilloscope</span>; wire CH1 to the grid and CH2 to the plate. Its screen is live on the schematic. Double-click it for the full oscilloscope.</li>
+  <li><b>Frequency response.</b> <span class="ui">Windows ▾</span> → <span class="ui">Bode plotter</span> shows gain and phase from 1 Hz to 1 MHz with the −3 dB points.</li>
+  <li><b>Check it.</b> Click an empty spot: the inspector shows the circuit's <b>Checks</b>: anything beyond its ratings appears there in red.</li>
+  <li><b>Save it.</b> <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+</ol>
+<div class="tip"><b>Shortcut:</b> <span class="ui">File ▾</span> → <b>Examples</b> opens finished circuits drawn from published sources: a good way to see what a complete design looks like.</div>
+
+<!-- ======================================================================= -->
+<h2 id="window">3. The Circuit CAD window</h2>
+<p>Top to bottom: the toolbar; the palette (left), the sheet (centre) and the inspector (right); the bill of materials (when open) under the sheet; the status bar.</p>
+
+<h3 id="toolbar">3.1 Toolbar</h3>
+<table>
+  <tr><th>Control</th><th>What it does</th></tr>
+  <tr><td>File name</td><td class="wrap">The circuit file open now. A yellow • marks unsaved changes. "Untitled" for a new circuit or an example.</td></tr>
+  <tr><td><span class="ui">File ▾</span></td><td class="wrap">New circuit, Add sheet, Open, Save, Save as, the Examples, Save as PDF (all sheets), Export sheet (PDF/PNG), Export PNG, Export SPICE netlist.</td></tr>
+  <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (DC voltage sticker on each net), <b>Currents</b> (DC current and its direction on each wire), <b>Bias markers</b> (the violet marking of the parts that set each tube's bias), and the <b>Bill of materials</b> panel. A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
+  <tr><td>↶ ↷</td><td class="wrap">Undo / redo (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>). Every edit can be undone, including opening an example.</td></tr>
+  <tr><td><span class="ui">Select</span> | <span class="ui">Wire</span></td><td class="wrap">The tool: select and move (<kbd>V</kbd>), or draw wires from anywhere (<kbd>W</kbd>). The highlighted one is active.</td></tr>
+  <tr><td>Rotate, Mirror, Delete</td><td class="wrap">Act on the selection: <kbd>R</kbd>, <kbd>M</kbd>, <kbd>Del</kbd>.</td></tr>
+  <tr><td>− 49% +</td><td class="wrap">Zoom out / in around the centre (<kbd>−</kbd>, <kbd>+</kbd>; the mouse wheel zooms at the pointer).</td></tr>
+  <tr><td><span class="ui">Fit</span></td><td class="wrap">Fits the sheet you are on (the selected, last clicked or most visible one); press again for all sheets (<kbd>F</kbd>).</td></tr>
+  <tr><td>Sheet list</td><td class="wrap">Appears with two or more sheets: jumps to one.</td></tr>
+  <tr><td><span class="ui">● Live</span></td><td class="wrap">An on/off switch, its lamp green when on. On: the circuit re-simulates after every edit. Off: it simulates only when you press Simulate. Turn it off for very large circuits while you draw.</td></tr>
+  <tr><td><span class="ui">▶ Simulate</span></td><td class="wrap">Simulates until the circuit has fully settled (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>). While a run is going it shows its progress ("■ Stop · 48 %"); press it again to stop.</td></tr>
+  <tr><td><span class="ui">Windows ▾</span></td><td class="wrap">Opens the instruments (Oscilloscope, Spectrum analyzer, Bode plotter, Curve tracer) and the Board layout, each in its own window. Opening one that is already open brings it to the front.</td></tr>
+  <tr><td>?</td><td class="wrap">Quick help and all keyboard shortcuts (<kbd>F1</kbd>), with a link to this manual.</td></tr>
+</table>
+<p>On narrow screens the toolbar drops the product name and then the file name, so it stays one row from 1000 px up.</p>
+
+<h3 id="palette">3.2 Palette</h3>
+<ul>
+  <li>Groups: <b>Passive</b>, <b>Transformers</b>, <b>Sources</b>, <b>Semiconductors</b>, <b>Instruments</b>, <b>Document</b>, <b>Tubes</b>. Click a group's title to fold it; the browser remembers which are open.</li>
+  <li><b>Search box.</b> Finds parts by name; part numbers (2N3904, IRF540, 1N4742A, 125ESE, 373BX); tubes (EL84, 6N2P, 300B); and <b>values</b>: <code>47k</code> offers a 47 kΩ resistor or pot, <code>100n</code> a 100 nF capacitor, <code>47u</code> an electrolytic, <code>5H</code> a choke, <code>300V</code> a supply. <kbd>Enter</kbd> picks the first match.</li>
+  <li>Click a part, then click the sheet. <kbd>Shift</kbd>-click places several. <kbd>Esc</kbd> stops placing.</li>
+  <li>The Tubes group shows the popular tubes first; the button under the list shows all 99.</li>
+</ul>
+
+<h3 id="inspector">3.3 Inspector</h3>
+<p>The right-hand panel shows whatever is selected.</p>
+<ul>
+  <li><b>One part:</b> its designator, every value (typed with SI prefixes: <code>4.7k</code>, <code>220n</code>, <code>1M</code>), then its <b>operating point</b> and, with a signal, a <b>With signal</b> section; buttons to rotate, mirror and delete. Values beyond a rating are shown in <span class="warnc">amber</span> (above 85 %) or <span class="bad">red</span> (above 100 %), with the share of the rating on a second line.</li>
+  <li><b>Several parts:</b> how many are selected.</li>
+  <li><b>Nothing selected:</b> the <b>Circuit</b> summary: parts, wires and nets; the power balance (power from the supplies, into the speakers, in the tubes, transistors and resistors); the <b>Checks</b>; and <span class="ui">Renumber designations</span>.</li>
+</ul>
+<p>Hover any label for its explanation. Every field and readout is described in <a href="#parts">Parts reference</a> and <a href="#readouts">Readouts</a>.</p>
+
+<h3 id="status">3.4 Status bar</h3>
+<p>Left: the simulation state: "Simulated in 300 ms · 2 ms window, 16 cycles to settle", a progress bar while running, warnings in amber and errors in red. Right: the pointer's coordinates, or what you are hovering (a wire's voltage, AC swing and current; a sheet connector's partners).</p>
+
+<h3 id="panels">3.5 Resizing panels</h3>
+<p>Drag the edge of the palette, the inspector or the bill of materials to resize it; double-click the edge to reset it. The instrument windows' side panels work the same way.</p>
+
+<!-- ======================================================================= -->
+<h2 id="drawing">4. Drawing schematics</h2>
+<h3 id="placing">4.1 Placing and editing parts</h3>
+<ul>
+  <li><b>Move:</b> drag a part; its wires follow. Drag a wire segment sideways to move it.</li>
+  <li><b>Select several:</b> drag a box over empty space, or <kbd>Shift</kbd>+click. <kbd>Ctrl</kbd>+<kbd>A</kbd> selects everything.</li>
+  <li><b>Rotate</b> <kbd>R</kbd>, <b>mirror</b> <kbd>M</kbd> (left to right), <b>duplicate</b> <kbd>D</kbd>, <b>delete</b> <kbd>Del</kbd>. Rotate and mirror also work while placing.</li>
+  <li><b>Mirror</b> works for every part that can rotate, so a complementary pair or a tube driven from the right is drawn without crossing wires. The oscilloscope mirrors too; its screen stays upright.</li>
+  <li><b>Copy and paste:</b> <kbd>Ctrl</kbd>+<kbd>C</kbd>, <kbd>Ctrl</kbd>+<kbd>V</kbd>.</li>
+  <li><b>Undo</b> <kbd>Ctrl</kbd>+<kbd>Z</kbd>, <b>redo</b> <kbd>Ctrl</kbd>+<kbd>Y</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>.</li>
+  <li><b>Pan:</b> <kbd>Space</kbd>+drag or middle-drag. <b>Zoom:</b> the wheel, at the pointer.</li>
+</ul>
+<h3 id="wiring">4.2 Wiring</h3>
+<ul>
+  <li>Click a pin, click each corner, and finish on a pin or a wire. A wire ending on another wire joins it with a junction dot; wires that merely cross are not connected.</li>
+  <li><kbd>W</kbd> (or <span class="ui">Wire</span>) starts a wire anywhere, not only at a pin.</li>
+  <li><kbd>Esc</kbd> ends the wire you are drawing.</li>
+</ul>
+<h3 id="sheets">4.3 Sheets, frames and connectors</h3>
+<ul>
+  <li><span class="ui">File ▾</span> → <span class="ui">New…</span> starts a circuit on a sheet with an <b>ISO 5457 frame</b>, a reference grid (columns 1, 2, 3…, rows A, B, C…) and an <b>ISO 7200 title block</b>, from A4 to A1, landscape or portrait. <span class="ui">Add sheet…</span> adds further sheets.</li>
+  <li>Frames are <b>locked</b> so they are not moved by accident; unlock one in its inspector. The title block's fields (title, number, revision, author, approver, dates, status, language) are edited in the frame's inspector.</li>
+  <li><b>Sheet connectors</b> with the same signal name are one net, on this sheet and on others. Each shows where its partners are by zone: "A3,5 B2,5,8", on several sheets "1/A3,5 2/C1,4". A name used five or more times (B+, a bias line) reads as a supply rail and shows no list. Hover a connector to see all its partners in the status bar.</li>
+  <li>A circuit with several sheets opens on sheet 1. The sheet list, or <kbd>F</kbd> twice, shows them all.</li>
+</ul>
+<h3 id="standards">4.4 Drawing standards</h3>
+<ul>
+  <li>Symbols follow <b>IEC 60617</b>; drawings follow <b>IEC 61082-1</b>: labels to the left of vertical symbols and above horizontal ones.</li>
+  <li>Designations use the classic letter codes (as in ГОСТ 2.710): R resistor, C capacitor, L choke, T transformer, VL tube, VD diode, VT transistor, HL lamp/LED, SA switch, BA loudspeaker, G generator/source, P instrument. A dual tube's sections are VL1.1 and VL1.2.</li>
+  <li><b>Renumber designations</b> (inspector, nothing selected) numbers every part in reading order, sheet by sheet.</li>
+  <li>Resistors carry their power rating inside the symbol per ГОСТ 2.728.</li>
+  <li>Tube pin numbers are drawn beside each terminal.</li>
+</ul>
+
+<!-- ======================================================================= -->
+<h2 id="parts">5. Parts reference</h2>
+<p>Every part in the palette, what it models, and every field in its inspector. (This section is built from the application's own part library and hint texts, so it always matches the version you run.)</p>
+<div id="parts-ref"></div>
+
+<h3 id="transistors">5.1 Transistors, MOSFETs and diodes</h3>
+<ul>
+  <li><b>NPN:</b> 2N2222A, 2N3904, BC107, BC547B, BD139, MPSA42, MJE340. <b>PNP:</b> 2N2907A, 2N3906, BC177, BC557B, BD140, MPSA92, MJE350.</li>
+  <li><b>Drivers and power output pairs:</b> 2SD669A/2SB649A, 2SC4793/2SA1837, MJE15032/MJE15033, TIP41C/TIP42C, 2SC5200/2SA1943, MJL3281A/MJL1302A, MJL21194/MJL21193; in TO-3 MJ15003/MJ15004, MJ15024/MJ15025, 2N3055/MJ2955.</li>
+  <li><b>N-MOSFETs:</b> 2N7000, BS170, IRF510, IRF540, IRF820, IRF840, IRFP240, IRFP250, IRFP460, laterals 2SK1058 and ECX10N20, depletion DN2540 and LND150. <b>P-MOSFETs:</b> BS250, IRF9540, IRF9610, IRF9640, IRFP9240, laterals 2SJ162 and ECX10P20.</li>
+  <li><b>Diodes:</b> 1N4007, UF4007, 1N4148. <b>Zeners:</b> 1N4733A … 1N5388B (5.1–200 V, 1 W and 5 W). <b>LEDs:</b> red, yellow, green, blue.</li>
+</ul>
+<p>Their inspectors show Vce, Ic, hFE and dissipation (bipolar), Vds, Id and dissipation (MOSFET), with checks against Vceo, Ptot and the zener's power.</p>
+
+<h3 id="tubes">5.2 The tube library</h3>
+<p>99 tubes: the Soviet receiving tubes from Katsnelson &amp; Larionov, «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981), and Western tubes from their makers' datasheets. Each has its Koren model fitted to datasheet operating points, its ratings, its socket and pinout, its heater, and its interelectrode capacitances. Search or sort the table:</p>
+<input id="tube-q" type="search" placeholder="Filter tubes: EL84, triode, Octal, 6Н…" style="width:100%;max-width:420px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font:inherit;margin:4px 0 8px">
+<div class="tubes-wrap"><table id="tube-table"></table></div>
+<p class="opts">Ratings shown blank are not given by the source and are not checked. Capacitances in pF: triode Cgk / Cga / Cak; pentode Cin / Cg1a / Cout. "≈" marks typical values for the kind of tube where no datasheet value exists.</p>
+
+<h3 id="spice-import">5.3 Your own tube models (SPICE import)</h3>
+<p><span class="ui">Import SPICE model…</span> in a tube's inspector adds any tube from a SPICE model: Norman Koren's, Ayumi's, Duncan's, Derk Reefman's or a maker's library. Paste the <code>.SUBCKT … .ENDS</code> text or open the file.</p>
+<ul>
+  <li><b>It runs as written.</b> Behavioural sources (<code>B</code>, <code>E</code>/<code>G VALUE={…}</code>, linear <code>E</code>/<code>G</code>) are evaluated directly, with <code>.PARAM</code>, <code>.FUNC</code>, <code>PARAMS:</code>, continuation lines, unit suffixes and the usual functions (<code>exp</code>, <code>ln</code>, <code>pwr</code>, <code>pwrs</code>, <code>uramp</code>, <code>limit</code>, <code>if</code>, <code>atan</code>, <code>tanh</code>…). Internal nodes such as Koren's grid-current resistor and diode are solved too. Capacitors in the model are left out; the tube's capacitances come from the tube it is "like".</li>
+  <li><b>Pins</b> are read from the model's comment (<code>; P G K</code>, <code>A G2 G1 K</code>…). Without one, the assignment that behaves like a tube is chosen. You can change it; the preview curves show at once whether it is right.</li>
+  <li><b>"Like"</b>: the imported tube takes its socket, pinout and heater from a tube you choose, so the board footprint and the checks work. Set Pa max and Va max in the dialog.</li>
+  <li><b>Where it is kept:</b> in the browser and inside every circuit file that uses it, so the file opens on another computer. The curve tracer shows it, and the SPICE export writes the subcircuit as imported.</li>
+</ul>
+
+<!-- ======================================================================= -->
+<h2 id="simulation">6. Simulation</h2>
+<h3 id="sim-what">6.1 What is simulated</h3>
+<p>Every run computes:</p>
+<ol>
+  <li>The <b>DC operating point</b>: every node voltage and every part's current at rest.</li>
+  <li>The <b>steady state with the signal</b>: the waveforms once every capacitor and choke has settled, over a window that is a whole number of signal periods (and of mains periods in a mains-fed circuit).</li>
+</ol>
+<p>The oscilloscope can also run the <b>power-on transient</b>: the first seconds after switch-on, with every capacitor empty.</p>
+<p>The <b>Bode plotter</b> runs a separate <b>small-signal (AC) analysis</b>, and the <b>bias finder</b> runs its own simulations in the background.</p>
+
+<h3 id="sim-live">6.2 Live and on demand</h3>
+<ul>
+  <li><b>Live on:</b> every edit triggers a run. A run that does not finish in a moment continues in the background; the inspector shows a spinning percentage until it is settled.</li>
+  <li><b>Live off:</b> nothing runs until <span class="ui">▶ Simulate</span> or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>.</li>
+  <li>Either way, slow power supplies (large reservoir capacitors behind a choke) are run until fully settled. Press the button again to stop a long run.</li>
+</ul>
+<h3 id="sim-mains">6.3 Mains-powered circuits</h3>
+<p>Draw <span class="ui">AC mains</span> → power transformer → rectifier → reservoir capacitor → choke or resistor → filter capacitor, exactly as built. The simulator runs the rectifier cycle by cycle, so ripple, sag under load and the rectifier's peak currents are real. Voltages and currents on the schematic are averaged over the settled window, as a meter reads them.</p>
+<div class="tip"><b>Faster drawing:</b> while working on the audio stages, feed them from a <span class="ui">B+ supply</span> (ideal DC) with an internal resistance; add the real supply when the stages are done.</div>
+<h3 id="sim-trouble">6.4 When a run fails</h3>
+<ul>
+  <li><b>A missing ground</b>: the checks report it; place a Ground symbol.</li>
+  <li><b>Unconnected pins</b>: the checks name them. Every node also needs a DC path to ground: a grid fed only through a capacitor needs its grid leak.</li>
+  <li><b>A shorted winding</b> is reported instead of stopping the solver.</li>
+  <li><b>It does not settle</b>: a circuit that oscillates (a feedback loop with too little phase margin) never reaches a steady state. Look at the Bode plot for a peak, and at the power-on transient.</li>
+</ul>
+
+<!-- ======================================================================= -->
+<h2 id="measuring">7. Measuring on the schematic</h2>
+<ul>
+  <li><b>Voltages</b>: each net carries a sticker with its DC voltage.</li>
+  <li><b>Currents</b>: each run of wire carries its DC current and direction ("↓1.38mA"). Currents come from every part's terminal currents and are passed along the wiring, so a junction shows how the current splits.</li>
+  <li>Stickers go where they cover no text, symbol or other sticker; if there is no room, a sticker is left out. Toggle them in <span class="ui">View ▾</span>.</li>
+  <li><b>Hover a wire</b>: its voltage, AC swing and current appear in the status bar.</li>
+  <li><b>Oscilloscope parts</b> show their two channels live on the schematic.</li>
+</ul>
+
+<!-- ======================================================================= -->
+<h2 id="readouts">8. Readouts and what they mean</h2>
+<p>Every value the inspector, curve tracer and instruments show, with its meaning. The same text appears as a hint when you hover the label.</p>
+<div id="glossary"></div>
+
+<!-- ======================================================================= -->
+<h2 id="checks">9. Checks and ratings</h2>
+<p>With nothing selected, the inspector's <b>Checks</b> list every problem in the circuit. Each tube's inspector shows its values as a share of their ratings: <span class="warnc">amber above 85 %</span>, <span class="bad">red above 100 %</span>.</p>
+<h3 id="checks-circuit">9.1 Circuit checks</h3>
+<ul>
+  <li>Unconnected pins, shorted parts, a missing ground, sheet connectors without a partner.</li>
+  <li>Resistor dissipation against its power rating (rate a resistor at about twice what it dissipates).</li>
+  <li>Output-transformer primary DC current against its rating (single-ended cores saturate above it).</li>
+  <li>Transistor Vce and dissipation; zener power.</li>
+</ul>
+<h3 id="checks-tube">9.2 Tube ratings</h3>
+<table>
+  <tr><th>Check</th><th>What is compared</th><th>Why it matters</th></tr>
+  <tr><td>Pa</td><td class="wrap">Anode dissipation averaged over the signal cycle, vs Pa max</td><td class="wrap">Overheated plates release gas, the grid emits, the tube runs away. Design for ≤ 70 % for long life.</td></tr>
+  <tr><td>Va</td><td class="wrap">Idle plate voltage vs Va max</td><td class="wrap">Insulation and flash-over.</td></tr>
+  <tr><td>Pg2</td><td class="wrap">Screen dissipation averaged over the cycle, vs Pg2 max</td><td class="wrap">Screens are thin wires and glow red quickly; screen dissipation peaks at full drive, not at idle.</td></tr>
+  <tr><td>Vg2k</td><td class="wrap">Screen voltage vs Vg2 max</td><td class="wrap">Many output tubes allow less on the screen than on the plate (6P3S, 6F3P: 250 V).</td></tr>
+  <tr><td>Ik</td><td class="wrap">Cathode current vs Ik max</td><td class="wrap">Cathode emission is finite; overdrawing strips the coating.</td></tr>
+  <tr><td>Vhk</td><td class="wrap">Heater-to-cathode voltage at its worst instant, each direction against its own rating</td><td class="wrap">The heater-cathode insulation breaks down; hum and failure. The heater is taken as grounded; set <b>Heater DC potential</b> on the tube for an elevated heater supply.</td></tr>
+  <tr><td>Grid circuit R</td><td class="wrap">Total grid-to-ground (or grid-to-bias) DC resistance: stopper + leak + pot, vs Rg max for cathode or fixed bias</td><td class="wrap">Gas and grid-emission current through too large a resistance biases the grid positive: the tube runs away as it warms. Fixed bias allows less.</td></tr>
+  <tr><td>Rectifier</td><td class="wrap">Rectified current and peak inverse voltage</td><td class="wrap">Cathode stripping and arcing in the rectifier.</td></tr>
+</table>
+<p>Ratings come from Katsnelson &amp; Larionov for the Soviet tubes and from the makers' datasheets (RCA, Philips, Mullard, Western Electric) for the others. A rating a source does not give is not checked.</p>
+
+<!-- ======================================================================= -->
+<h2 id="bias">10. Bias finder</h2>
+<p>The simulator finds the part that sets each tube's bias and marks it in <span class="vio">violet</span>. Give the tube a target and it computes the value that meets it, written next to the part ("→ 680Ω", or a pot's "→ 65%").</p>
+<h3 id="bias-which">10.1 Which part</h3>
+<ul>
+  <li>The grid's DC return is followed through the resistors that carry only grid current (stopper, leak).</li>
+  <li><b>Cathode bias</b> (grid returns to ground or a positive node): the first part on the cathode's DC path back to that point. That covers a plain Rk, the upper half of a split cathode resistor with feedback between the halves, a cathodyne's bias resistor, and one resistor shared by a push-pull pair.</li>
+  <li><b>Fixed bias</b> (grid returns to a negative line): the pot feeding the line, else the divider's resistor to ground, else the resistor from the negative supply.</li>
+  <li><b>No resistor</b> (an LED or diode in the cathode, zero bias): named in the tube's inspector instead.</li>
+</ul>
+<h3 id="bias-target">10.2 Setting a target</h3>
+<ol class="steps">
+  <li>Select the tube. In <b>Bias target</b> choose <i>Anode current</i> (prefilled with what it draws now) or <i>Share of Pa max (idle)</i>.</li>
+  <li>Type the target: <code>48mA</code>, or <code>70</code> %.</li>
+  <li>The value appears by the part. Select the part: its inspector shows the exact value, the nearest E24 value and what it really gives (Ia, Ik, Pa against Pa max, power in the resistor). Press <span class="ui">Use 680 Ω</span> or <span class="ui">Set the wiper to …</span>.</li>
+</ol>
+<h3 id="bias-measured">10.3 Matching your real tube</h3>
+<p>In <b>Measured on the amp</b> enter what you measured: anode current, cathode current, or the voltage across a cathode resistor (the 1 Ω sense resistor of a fixed-bias amp, or Rk itself). The model's curves are shifted along the grid axis until it reads the same, and the bias is then found for that tube. The inspector shows the shift: a few volts is normal tube-to-tube spread.</p>
+<h3 id="bias-pots">10.4 Bias pots</h3>
+<ul>
+  <li>The anode current over the pot's whole travel.</li>
+  <li>Whether the travel still covers a tube that draws 30 % less or more (a fresh, unmatched tube).</li>
+  <li>The series resistor that puts the target at mid-travel; <span class="ui">Use … wiper to mid-track</span> puts both in.</li>
+</ul>
+<h3 id="bias-how">10.5 How it works</h3>
+<p>A separate worker simulates again with the generators off (idle bias), changing the part until the tube meets its target. Parts that pull on each other (two bias pots on one winding, two output tubes on one B+) are solved together by Newton's method with Broyden updates. A resistor is rounded to E24 and simulated once more to report what it really gives.</p>
+<div class="warn"><b>Unreachable targets</b> are flagged: a target above Pa max, a bias that leaves the anode above Pa max, or a target the load cannot allow (from 250 V through 100 kΩ a 12AX7 cannot dissipate more than 0.16 W, whatever the bias).</div>
+
+<!-- ======================================================================= -->
+<h2 id="instruments">11. Instruments</h2>
+<p>All instruments read an <b>Oscilloscope part</b> in the circuit: place one and wire its CH1 and CH2 where you want to measure and its COM to the reference (usually ground). With several scope parts, choose which one in the window's <b>Scope part</b> list. The scope part's inspector has <span class="ui">Oscilloscope ↗</span>, <span class="ui">Spectrum ↗</span>, <span class="ui">Bode ↗</span> buttons that open the window on that part.</p>
+<h3 id="scope">11.1 Oscilloscope</h3>
+<ul>
+  <li>Two channels, DC or AC coupled; 10× (10 MΩ) or 1× (1 MΩ) probes that load the circuit like real ones.</li>
+  <li>Auto volts/div with offset; the timebase locks to the measured frequency; edge trigger on either channel, rising or falling; X-Y mode.</li>
+  <li>Scale labels on every axis: time below, CH1's volts left, CH2's right, on round values that follow zoom and position.</li>
+  <li>Readouts: Vpp, Vrms, dBV and DC per channel, and the CH2/CH1 gain and phase.</li>
+  <li>Channels with no probe wired are greyed out.</li>
+  <li><b>Analysis:</b> <i>Steady state</i> (the settled circuit, one window repeated as a triggered scope shows it) or <i>Power-on</i> (the first 0.1–2 s after switch-on, with an overview strip of the whole record).</li>
+  <li><span class="ui">Autoset</span> resets the view.</li>
+</ul>
+<h3 id="spectrum">11.2 Spectrum analyzer</h3>
+<ul>
+  <li>The FFT covers an exact whole number of signal cycles, so there is no windowing error and no leakage.</li>
+  <li>Harmonic table H2…H10 with frequency, level and percentage, and the THD.</li>
+  <li><b>Other components</b>: anything that is not a harmonic: mains hum and its harmonics, intermodulation products.</li>
+  <li>Levels in dBc (relative to the fundamental: harmonics read directly as distortion) or dBV (absolute).</li>
+  <li>Linear or logarithmic frequency axis: on the log axis 50/100 Hz ripple and the audio harmonics read in one view.</li>
+</ul>
+<div class="tip"><b>Reading distortion:</b> a single-ended stage makes mostly H2 (asymmetric); a balanced push-pull cancels the even harmonics and leaves H3. A rising H3, H5, H7 series means symmetrical clipping.</div>
+<h3 id="bode">11.3 Bode plotter</h3>
+<ul>
+  <li>Gain in dB and phase from 1 Hz to 1 MHz at the scope part's channels.</li>
+  <li><b>Traces:</b> CH1, CH2, or CH2 ÷ CH1, the gain between the two probes (one stage of a chain).</li>
+  <li><b>Gain:</b> re the generator (absolute), or re 1 kHz (normalised, to read the shape).</li>
+  <li><b>Response table:</b> gain and phase at 1 kHz; the −3 dB points either side; the level at 20 Hz and 20 kHz; any peak above the 1 kHz gain (an output transformer's leakage resonance, a feedback loop short of stability).</li>
+  <li><b>Generator:</b> which signal generator drives the sweep; the others are switched off.</li>
+  <li>It is the <b>small-signal</b> response: every part linearised at its idle operating point (a mains-fed supply at its averaged steady state). Large-signal effects (clipping, transformer saturation) show on the scope and spectrum instead. It reruns after every simulation while the window is open.</li>
+  <li>Tubes include their interelectrode capacitances, so the Miller effect sets each stage's top corner:</li>
+</ul>
+<pre>f(−3 dB, top) ≈ 1 / (2π · Rsource · (Cgk + (1 + A) · Cga))</pre>
+<h3 id="tracer">11.4 Curve tracer</h3>
+<ul>
+  <li>Select a tube in the schematic (or pick one in the library) to see its plate curves with: the operating point; the curve at the circuit's bias; the <b>simulated load line</b> (the last whole signal cycle, an ellipse for a reactive load, with arrows for direction); the Pa max hyperbola and the over-Pa area; 70 % of Pa max.</li>
+  <li>For pentodes the curves are drawn at the circuit's screen voltage (or one you choose).</li>
+  <li>Right panel: ratings, the Koren model coefficients, the operating point, and with a signal the plate swing, gain, THD and average Pa.</li>
+  <li>Left panel: the tubes in the circuit, the whole library (search; filter triodes / pentodes / popular), and the socket pinout drawing with heater notes.</li>
+  <li><b>Tube model &amp; fitter:</b> the LTspice <code>.SUBCKT</code> of the tube (copy or download). To model your own tube, upload measured points as CSV rows <code>Va, Vg, Ia_mA[, Vg2]</code>: a Nelder–Mead fit of the Koren parameters is drawn dashed with its R² and RMS error.</li>
+  <li><span class="ui">PNG</span> saves the chart.</li>
+</ul>
+<h3 id="markers">11.5 Markers and zoom (every graph)</h3>
+<ul>
+  <li><b>Click</b> to place marker A, click again for B; drag to move, double-click to remove. Scope: time and voltage with ΔT and ΔV. Analyzer and Bode: frequency and level. Curve tracer: Vg, dissipation, gm, rp and µ at a point, and the load line through A and B.</li>
+  <li><b>Wheel</b> zooms at the pointer (time/div on the scope, the frequency axis on the analyzer and Bode plot, both axes on the curves); <kbd>Ctrl</kbd>+wheel zooms vertically; right-drag or <kbd>Shift</kbd>+drag moves the view. The <span class="ui">Zoom</span> button resets it.</li>
+</ul>
+
+<!-- ======================================================================= -->
+<h2 id="board">12. Board layout</h2>
+<p><span class="ui">Windows ▾</span> → <span class="ui">Board layout</span> opens the PCB of the circuit. Parts and connections come from the schematic; the layout is saved inside the circuit file.</p>
+<h3 id="board-footprints">12.1 Footprints</h3>
+<p>Every part gets a through-hole footprint chosen from its values: resistors by power (10.16 mm at ¼ W to 50.8 mm at 20 W); film, ceramic and mica capacitors by value; radial, snap-in and axial electrolytics by size; DO-35 to DO-201 diodes; 3 and 5 mm LEDs; TO-92 to TO-264 transistors with each part's own pin order (TO-3 gets wire pads for a chassis heatsink); 9/16/24 mm pots and a 3296W trimmer; real tube sockets (B9A, B7G, Magnoval, octal, UX4) drawn from the component side, dual tubes sharing one socket; EI30–EI96 board transformers; toggle switches, screw terminals, RCA and jack sockets. Chassis parts can get wire pads or a terminal instead. Change any footprint in the inspector.</p>
+<h3 id="board-place">12.2 Placing and routing</h3>
+<ul>
+  <li>New parts wait in a row below the board: drag them on, or <span class="ui">Place all on the board</span>. <kbd>R</kbd> rotates, <kbd>M</kbd> moves to the bottom side. A banner offers updates when the schematic changes; placed parts keep their spot.</li>
+  <li><b>Route</b> <kbd>X</kbd>: click a pad, click corners (45° bends), end on a pad, track or via of the same net. <kbd>V</kbd> changes layer with a via; <kbd>/</kbd> puts the diagonal first; <kbd>Backspace</kbd> takes back the last corner. Width comes from the net's class. A halo shows the clearance; it turns red and refuses the click when too close (<kbd>Shift</kbd>+click forces it).</li>
+  <li><b>Edit tracks:</b> drag a segment sideways (45° corners stay 45°). <kbd>U</kbd> selects the whole connected track.</li>
+  <li><b>Several at once:</b> box-select left-to-right (inside) or right-to-left (touching); <kbd>Shift</kbd>+click adds. Arrows nudge (Shift: ×10). Align and distribute in the inspector. <kbd>L</kbd> locks.</li>
+  <li><b>Copper pours</b> (<kbd>P</kbd>, or <span class="ui">+ GND plane</span>): keep each net's clearance, join their net's pads by thermal reliefs, remove islands.</li>
+  <li><b>Keep-out areas</b> (<kbd>K</kbd>): forbid tracks, vias, pours and optionally parts on either layer (under a mains transformer, along heater wiring).</li>
+  <li><b>Measure</b> (<kbd>D</kbd>) snaps to pad centres, track corners, board corners and edges.</li>
+  <li><b>Nets</b> tab: every net's class, DC current, routing left and length; click one to highlight it.</li>
+  <li><b>Cross-probing:</b> selecting on the board selects in the schematic and back.</li>
+</ul>
+<h3 id="board-rules">12.3 Design rules and checks</h3>
+<p><span class="ui">Rules…</span> sets clearances (with a separate high-voltage clearance above a threshold voltage), the edge clearance, track widths, via and drill sizes, annular ring, solder-mask opening, and the allowed warming of a track at its DC current. <b>Net classes</b> (Signal, Power, HV) are set automatically from the simulated DC voltage, or by hand.</p>
+<p>The <b>design-rule check</b> runs live: clearances, shorts, edge, annular rings and drills, widths, <b>track width for its simulated DC current</b> per IPC-2221, overlapping parts, keep-outs, silkscreen over pads, dangling tracks and vias, unplaced parts, pinouts to verify. Click an entry to go to it.</p>
+<h3 id="board-export">12.4 3D and exports</h3>
+<ul>
+  <li><b>3D</b> (<kbd>3</kbd>): the board with every part, valves in their glass, transformers; drag to turn; Iso/Top/Bottom/Front/Side views; Save PNG.</li>
+  <li><b>STEP</b> (AP214) 3D model for chassis design in FreeCAD, KiCad or any MCAD.</li>
+  <li><b>Gerber + drill (ZIP)</b> for JLCPCB, PCBWay, Aisler… with a README of the board's specification.</li>
+  <li><b>Print set (PDF)</b>: assembly drawing, copper at 1:1, drill map; a 50 mm bar checks the printer's scale.</li>
+  <li><b>Toner transfer (PDF)</b>: mirrored copper for home etching.</li>
+  <li>SVG at 1:1 and the board as JSON.</li>
+</ul>
+
+<!-- ======================================================================= -->
+<h2 id="files">13. Files and exports</h2>
+<ul>
+  <li><b>Open / Save / Save as</b> (JSON). In Chrome and Edge, Save writes back to the opened file after asking once; in Safari and others it downloads a file. The circuit is also autosaved in the browser.</li>
+  <li>A circuit file holds the schematic, every sheet, the board layout and any imported SPICE tube models: one file is the whole project.</li>
+  <li><b>Save as PDF:</b> every sheet as a vector page. <b>Export sheet…:</b> the current sheet, each sheet as its own file, or all in one PDF; PNG at 150/300/600 dpi, black on white or in the editor's colours. Exports never show the bias markers.</li>
+  <li><b>Export SPICE netlist:</b> an LTspice netlist; tubes as behavioural sources with the same equations the simulator uses, transistors as Q and M elements with their <code>.model</code> lines.</li>
+  <li><b>Bill of materials</b> (<kbd>B</kbd>, or <span class="ui">View ▾</span>): equal parts on one line with designator ranges; tube sockets; ratings; the simulated worst case (dissipation, capacitor peak voltage, LED current); a part number you type. Click a line to select its parts. Export TXT, CSV, XLSX or PDF.</li>
+</ul>
+
+<!-- ======================================================================= -->
+<h2 id="keys">14. Keyboard shortcuts</h2>
+<p>Shortcuts go by the key's position, so they work with a Russian or any other layout.</p>
+<div class="grid2">
+<div class="card"><h4>Circuit CAD</h4>
+<table>
+<tr><td><kbd>R</kbd> / <kbd>M</kbd></td><td>rotate / mirror (also while placing)</td></tr>
+<tr><td><kbd>D</kbd>, <kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>duplicate</td></tr>
+<tr><td><kbd>Del</kbd></td><td>delete</td></tr>
+<tr><td><kbd>W</kbd> / <kbd>V</kbd></td><td>wire tool / select tool</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>cancel, clear the selection, close a menu</td></tr>
+<tr><td><kbd>F</kbd></td><td>fit the sheet; again: all sheets</td></tr>
+<tr><td><kbd>B</kbd></td><td>bill of materials</td></tr>
+<tr><td><kbd>+</kbd> / <kbd>−</kbd>, wheel</td><td>zoom</td></tr>
+<tr><td><kbd>Space</kbd>+drag, middle-drag</td><td>pan</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd></td><td>undo / redo</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> / <kbd>A</kbd></td><td>copy / paste / select all</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>save (<kbd>Shift</kbd>: save as)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>open</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>simulate until settled</td></tr>
+<tr><td><kbd>F1</kbd>, <kbd>?</kbd></td><td>help</td></tr>
+</table></div>
+<div class="card"><h4>Board</h4>
+<table>
+<tr><td><kbd>S</kbd></td><td>select</td></tr>
+<tr><td><kbd>X</kbd></td><td>route</td></tr>
+<tr><td><kbd>V</kbd></td><td>via / switch the active layer while routing</td></tr>
+<tr><td><kbd>Shift</kbd>+<kbd>V</kbd></td><td>via tool</td></tr>
+<tr><td><kbd>/</kbd></td><td>diagonal first</td></tr>
+<tr><td><kbd>Backspace</kbd></td><td>take back the last corner</td></tr>
+<tr><td><kbd>T</kbd> / <kbd>H</kbd> / <kbd>D</kbd></td><td>text / mounting hole / measure</td></tr>
+<tr><td><kbd>P</kbd> / <kbd>K</kbd></td><td>copper pour / keep-out</td></tr>
+<tr><td><kbd>U</kbd></td><td>select the connected track</td></tr>
+<tr><td><kbd>L</kbd></td><td>lock / unlock</td></tr>
+<tr><td><kbd>R</kbd> / <kbd>M</kbd></td><td>rotate / other side</td></tr>
+<tr><td>arrows</td><td>nudge (<kbd>Shift</kbd>: ×10)</td></tr>
+<tr><td><kbd>`</kbd></td><td>highlight the net</td></tr>
+<tr><td><kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd></td><td>fit board / sheet</td></tr>
+<tr><td><kbd>G</kbd> / <kbd>A</kbd> / <kbd>3</kbd></td><td>grid style / axes / 3D</td></tr>
+</table></div>
+</div>
+
+<!-- ======================================================================= -->
+<h2 id="cookbook">15. Design cookbook</h2>
+<p>Worked procedures, with the formulas the simulator lets you check.</p>
+
+<h3 id="cb-preamp">15.1 A triode voltage amplifier</h3>
+<ol>
+  <li>Pick Va and Ia from the curve tracer: a 12AX7 at 150–200 V and 0.8–1.2 mA; a 6N2P similar; a 12AU7 / 6N8S at 8–10 mA.</li>
+  <li>Plate resistor: <code>Ra = (B+ − Va) / Ia</code>. 100–220 kΩ for a 12AX7.</li>
+  <li>Cathode resistor: <code>Rk = −Vg / Ia</code> (read Vg at the operating point on the curves), or let the <a href="#bias">bias finder</a> do it: Bias target → Anode current.</li>
+  <li>Gain, bypassed: <code>A = µ · Ra / (Ra + rp)</code>. Unbypassed: <code>A = µ · Ra / (Ra + rp + (µ + 1) · Rk)</code>. Compare with the inspector's <i>Plate/grid gain</i>.</li>
+  <li>Cathode bypass corner: <code>f ≈ 1 / (2π · Ck · (Rk ‖ (Ra + rp)/(µ + 1)))</code>.</li>
+  <li>Coupling capacitor corner: <code>f = 1 / (2π · Cc · (Rout + Rnext))</code>. Check both on the Bode plot.</li>
+  <li>Top corner (Miller): see <a href="#bode">Bode plotter</a>.</li>
+</ol>
+
+<h3 id="cb-se">15.2 A single-ended output stage</h3>
+<ol>
+  <li>Choose the load: roughly <code>Zp ≈ 2 · Va / Ia</code> for a pentode, <code>2–3 × rp</code> for a triode.</li>
+  <li>Bias for 60–70 % of Pa max: Bias target → Share of Pa max → 70.</li>
+  <li>Check the output transformer's DC current rating (the check does it) and its primary inductance for the bass: <code>f−3dB ≈ (rp ‖ Zp) / (2π · Lp)</code>.</li>
+  <li>Drive it to just below clipping: watch the scope for flat tops and the spectrum's THD. Read <i>Output (speakers)</i> in the circuit summary.</li>
+  <li>Check Pg2 at full drive (pentodes): it is highest there.</li>
+</ol>
+
+<h3 id="cb-pp">15.3 A push-pull stage</h3>
+<ul>
+  <li>Use the push-pull OPT; drive the grids 180° apart (a phase splitter, or two generators at 0° and 180°).</li>
+  <li>Ultralinear: screens to the UL taps (about 40 % for KT88/EL34, 20–25 % elsewhere).</li>
+  <li>Fixed bias: one bias pot per tube on a negative line; set each with the bias finder, and check the pot covers ±30 % tubes.</li>
+  <li>The spectrum should show H2 cancelled and H3 dominant; a large H2 means unbalance.</li>
+</ul>
+
+<h3 id="cb-psu">15.4 A power supply</h3>
+<ul>
+  <li>Mains → power transformer → rectifier (GZ34, 5U4G, or 1N4007s) → reservoir C → choke or resistor → filter C.</li>
+  <li>Capacitor-input DC ≈ 1.2–1.4 × Vrms at load. Ripple ≈ <code>Idc / (2 · f · C)</code> peak-to-peak for full-wave.</li>
+  <li>Check the rectifier's current and PIV, the capacitors' peak voltages (BOM) and the resistor dissipation.</li>
+  <li>Watch the power-on transient on the scope for the turn-on surge and voltage overshoot.</li>
+</ul>
+
+<h3 id="cb-feedback">15.5 Global feedback</h3>
+<ul>
+  <li>Take a resistor from the speaker to the cathode of the first stage (unbypassed part of Rk).</li>
+  <li>Check stability on the Bode plot: no peak above the 1 kHz gain, and phase not reaching −180° where the loop gain is still above 1. A square wave on the scope should show little ringing.</li>
+  <li>Feedback reduces gain, THD and output impedance by about the same factor (1 + loop gain).</li>
+</ul>
+
+<!-- ======================================================================= -->
+<h2 id="engine">16. How the simulator works</h2>
+<ul>
+  <li><b>Solver.</b> Modified nodal analysis. Newton–Raphson with gmin and source stepping for the DC operating point; transient with Gear's second-order method (BDF2), which keeps resonances at their true Q without trapezoidal ringing.</li>
+  <li><b>Steady state by shooting.</b> The steady state is the state that one period maps onto itself; Newton–GMRES finds it, so slow coupling, cathode and filter capacitors settle in a few dozen periods instead of hundreds. If it does not converge in time, plain settling continues, extrapolating the slowly decaying response (minimal polynomial extrapolation).</li>
+  <li><b>Sparse solves.</b> A sparse LU (Gilbert–Peierls, as KLU) whose numeric part runs as WebAssembly; work grows about linearly with the circuit.</li>
+  <li><b>Triodes:</b> Koren's published equation unmodified:</li>
+</ul>
+<pre>E1 = (Va / kp) · ln(1 + exp(kp · (1/µ + Vg / √(kvb + Va²))))
+Ia = 2 · E1^x / kg1</pre>
+<ul>
+  <li><b>Pentodes:</b> Koren's space-charge term, divided between plate and screen with a separate knee and slope; what the plate loses in the knee goes to the screen:</li>
+</ul>
+<pre>Is  = 2 · E1^x / kg1      with E1 = (Vg2 / kp) · ln(1 + exp(kp · (1/µ + Vg / Vg2)))
+Ia  = Is · tanh(Va / vk) · (1 + Va / λ)
+Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
+<ul>
+  <li>Grid conduction is included; below 2 V on the screen the currents fade smoothly to zero.</li>
+  <li><b>Interelectrode capacitances</b>: Cgk, Cga, Cak (triode); Cin, Cg1a, Cout (pentode), from the datasheets, a Soviet tube taking its Western analog's, else typical values.</li>
+  <li><b>AC analysis:</b> every device linearised at the operating point (its Jacobian by central differences of the same equations); the complex system G + jωC solved at 40 frequencies per decade.</li>
+  <li><b>Rectifier tubes:</b> vacuum diodes (Child–Langmuir), perveance from datasheet drops.</li>
+  <li><b>Transistors:</b> SPICE Gummel–Poon (IS, BF, BR, VAF, IKF) with junction capacitances. <b>MOSFETs:</b> square law (level 1) with a smoothed threshold, body diode and gate capacitances. <b>Diodes/zeners/LEDs:</b> exponential junctions.</li>
+  <li><b>Transformers:</b> coupled inductors with leakage. <b>Loudspeakers:</b> Re + Le in series with a parallel R‖L‖C motional impedance at fs.</li>
+  <li>It runs in a Web Worker, so the editor stays responsive.</li>
+</ul>
+
+<!-- ======================================================================= -->
+<h2 id="accuracy">17. Accuracy and limits</h2>
+<ul>
+  <li>The engine is tested against closed-form results (dividers, RC/RL, resonance), an independent RK4 integration of a choke-input supply (0.02 %), Kirchhoff's law at every node, and the frequency response against RC corners and the Miller estimate.</li>
+  <li>Every amplifier tube is fitted to and tested against its datasheet operating points; fitted currents are within a few percent.</li>
+  <li>76 reference circuits (RCA, Philips, GE datasheet circuits; textbook stages) are measured through the instruments as a user would.</li>
+</ul>
+<div class="warn"><b>Know the limits.</b>
+<ul>
+  <li>A model is exact only near its fit points, and production tubes vary ±20 % or more.</li>
+  <li>The 12AX7's µ rises to about 106 at 150–170 V (fitted at 250 V), so small-signal gains there come out 5–20 % high.</li>
+  <li>The knee of pentodes without published full-power data (EL34, KT88, 6P1P, GU-50, 6P45S) is a median of other fits.</li>
+  <li>Heaters are not simulated (the cathode is always hot); there is no warm-up.</li>
+  <li>Transistor models leave out base resistance and thermal effects: solid-state distortion comes out optimistic.</li>
+</ul></div>
+
+<!-- ======================================================================= -->
+<h2 id="faq">18. Troubleshooting and FAQ</h2>
+<h4>The instruments say "Waiting for the Circuit CAD…"</h4>
+<p>They need the Circuit CAD window open in the same browser. Open them from its <span class="ui">Windows ▾</span> menu.</p>
+<h4>An instrument says "no scope in circuit"</h4>
+<p>Place an Oscilloscope part (palette → Instruments) and wire its channels.</p>
+<h4>The Bode plotter shows nothing</h4>
+<p>It needs a signal generator in the circuit as well as a scope part.</p>
+<h4>A voltage sticker is missing</h4>
+<p>There was no free room for it. Zoom in, or hover the wire to read it in the status bar.</p>
+<h4>The gain is higher than my hand calculation</h4>
+<p>Check rp and µ at your operating point in the curve tracer (markers give gm, rp, µ at a point): they change with current. See the 12AX7 note in <a href="#accuracy">Accuracy</a>.</p>
+<h4>My real amp draws a different current</h4>
+<p>Normal tube spread. Enter what you measured in <b>Measured on the amp</b> (bias finder): the model is shifted to your tube.</p>
+<h4>Where are my circuits kept?</h4>
+<p>The open circuit is autosaved in this browser. Save files (<kbd>Ctrl</kbd>+<kbd>S</kbd>) to keep them safely or move them between computers.</p>
+<h4>Can I run it offline?</h4>
+<p>Yes: any static web server, e.g. <code>python3 -m http.server</code> in the folder. The simulator needs <code>http://</code>, not <code>file://</code>.</p>
+
+<p class="opts" style="margin-top:40px">Tube Amp CAD · <span id="ver"></span> · MIT licence.</p>
+</main>
+</div>
+<a class="top" href="#" title="Back to the top" aria-label="Back to the top">↑</a>
+
+<script src="tube-db.js?v=dev"></script>
+<script src="spice-model.js?v=dev"></script>
+<script src="sim-engine.js?v=dev"></script>
+<script src="cad-components.js?v=dev"></script>
+<script src="hints.js?v=dev"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const hintHTML = t => t ? t.split("\n").map(l => /^= /.test(l) ? `<code>${esc(l.slice(2))}</code>` : /^- /.test(l) ? `<p>• ${esc(l.slice(2))}</p>` : `<p>${esc(l)}</p>`).join("") : "";
+
+  // ---- parts reference, from the part library and the hints ----------------
+  try {
+    const L = window.CadLib, H = window.Hints, host = $("parts-ref");
+    const order = [["Passive", ["resistor", "pot", "capacitor", "electrolytic", "inductor", "switch", "speaker"]],
+      ["Transformers", ["opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat"]],
+      ["Sources", ["vdc", "mains", "siggen", "ground", "offsheet"]],
+      ["Tubes", ["tube"]], ["Semiconductors", ["diode", "zener", "led", "npn", "pnp", "nmos", "pmos"]],
+      ["Instruments", ["scope"]], ["Document", ["frame", "note"]]];
+    let h = "";
+    order.forEach(([g, types]) => {
+      h += `<h4>${g}</h4>`;
+      types.forEach(t => {
+        const d = L.LIB[t]; if (!d) return;
+        const seen = new Set();
+        const rows = (d.fields || []).filter(f => { if (seen.has(f.key)) return f.key !== "amp"; seen.add(f.key); return true; }).map(f => {
+          const opts = Array.isArray(f.options) ? f.options.map(o => Array.isArray(o) ? o[1] : (o && (o.label || o.v)) || o).filter(x => typeof x === "string") : [];
+          const unit = f.key === "amp" && t === "siggen" ? "Vpk · Vrms · dBV" : f.unit;
+          const text = H.field(t, f.key) || H.label(f.label) || "";
+          return `<tr><td>${esc(f.label)}${unit ? ` <span class="opts">${esc(unit)}</span>` : ""}</td><td class="wrap hint-text">${hintHTML(text)}${opts.length ? `<span class="opts">Choices: ${opts.map(esc).join(" · ")}</span>` : ""}</td></tr>`;
+        }).join("");
+        h += `<div class="part" id="part-${t}"><h3>${esc(d.name)}<span class="tag">${t}</span></h3><p>${esc(H.parts[t] || "")}</p>${rows ? `<table><tr><th>Field</th><th>Meaning</th></tr>${rows}</table>` : ""}</div>`;
+      });
+    });
+    host.innerHTML = h;
+  } catch (e) { $("parts-ref").innerHTML = `<p class="warn">The parts list could not be built here (${esc(e.message)}).</p>`; }
+
+  // ---- glossary of readouts -------------------------------------------------
+  try {
+    const groups = [
+      ["Tube operating point", ["Va (anode–cathode)", "Vg1k (bias)", "Vg2k (screen)", "Ia (anode current)", "Ig2 (screen current)", "Pa (dissipation)", "Pg2 (screen dissipation)", "Ik (cathode current)", "Vhk (cathode above heater)", "Vhk (heater above cathode)", "Grid circuit R (cathode bias)", "Grid circuit R (fixed bias)", "Rectified current", "Peak inverse voltage"]],
+      ["With signal", ["Plate swing", "Grid swing", "Plate/grid gain", "THD at plate", "Average Pa"]],
+      ["Bias finder", ["Set by", "Exact value", "Nearest E24", "Ia then", "Ik then (cathode)", "Pa then", "Power in it", "Ia over the travel", "For mid-travel", "Grid shift vs model (fitted)"]],
+      ["Circuit summary", ["Parts · wires · nets", "From DC supplies", "Output (speakers)", "Tubes (anode + screen)", "Transistors", "Resistors"]],
+      ["Other parts", ["Voltage", "Current (DC)", "Current supplied", "DC drop", "DC voltage across", "Dissipation", "Power (avg)", "Wiper DC", "Primary DC current", "Voltage (A–K)", "Current (A→K)", "hFE (Ic/Ib)", "Ib"]],
+      ["Ratings (curve tracer)", ["Va max", "Pa max", "Pg2 max", "Vg2 max", "Ik max", "Vhk max", "Rg max", "Heater", "Pins"]],
+      ["Koren model coefficients", ["µ", "µ (g1–g2)", "kg1", "kp", "kvb", "x", "kg2", "knee vk", "slope λ", "screen share ks", "gm", "rp"]],
+      ["Oscilloscope", ["Analysis", "Duration", "Volts/div", "Coupling", "Time/div", "Trigger source", "Slope", "Scope part"]],
+      ["Spectrum analyzer", ["Span", "Units", "Frequency axis", "Scale", "Input", "Harmonic", "Other components"]],
+      ["Bode plotter", ["Traces", "Gain", "Range", "Phase", "Generator", "Response"]],
+      ["Board rules", ["Signal and power", "High voltage", "HV above", "To the board edge", "Signal width", "Power / HV width", "Minimum width", "Via drill", "Via pad", "Minimum drill", "Minimum annular ring", "Opening around pads", "Copper", "Board thickness", "Class"]],
+    ];
+    const H = window.Hints;
+    $("glossary").innerHTML = groups.map(([g, keys]) => `<h3>${esc(g)}</h3><table><tr><th>Label</th><th>Meaning</th></tr>${keys.filter(k => H.labels[k]).map(k => `<tr><td>${esc(k)}</td><td class="wrap hint-text">${hintHTML(H.labels[k])}</td></tr>`).join("")}</table>`).join("");
+  } catch (e) {}
+
+  // ---- tube table -------------------------------------------------------------
+  try {
+    const DB = window.TUBE_DATABASE || [], kindOf = t => /rectifier/i.test(t.type) ? "rectifier" : t.koren && (t.koren.Pentode || t.koren.pentode) ? "pentode" : "triode";
+    const pf = v => v == null ? "" : (v * 1e12 < 10 ? (v * 1e12).toFixed(1) : Math.round(v * 1e12));
+    const caps = t => { const c = t.caps; if (!c) return ""; const s = c.pentode ? [c.pentode.cin, c.pentode.cga, c.pentode.cout] : c.triode ? [c.triode.cgk, c.triode.cga, c.triode.cak] : null; return s ? (c.estimated ? "≈ " : "") + s.map(pf).join(" / ") : ""; };
+    const lim = (t, k) => t.limits && t.limits[k] != null ? t.limits[k] : "";
+    const rows = DB.map(t => ({ t, cells: [t.commonName, t.nameGost || "", t.type || "", kindOf(t), t.socket || "", t.vaMax || "", t.paMax || "", t.vg2Max || lim(t, "vg2") || "", lim(t, "pg2"), t.ikMax || "", [lim(t, "vhk"), lim(t, "vhkNeg")].filter(x => x !== "").join(" / "), t.vh && t.ih ? `${t.vh} V ${t.ih} A` : "", caps(t), (t.book && t.book.source) || (t.limits && t.limits.source) || "datasheet"] }));
+    const head = ["Tube", "ГОСТ", "Type", "Kind", "Socket", "Va max V", "Pa max W", "Vg2 max V", "Pg2 max W", "Ik max mA", "Vhk max V", "Heater", "Capacitances pF", "Source"];
+    let sortCol = 0, asc = true;
+    const draw = () => {
+      const q = ($("tube-q").value || "").trim().toLowerCase();
+      const list = rows.filter(r => !q || r.cells.join(" ").toLowerCase().includes(q)).sort((a, b) => { const x = a.cells[sortCol], y = b.cells[sortCol]; const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true }); return asc ? c : -c; });
+      $("tube-table").innerHTML = `<tr>${head.map((h, i) => `<th data-c="${i}" style="cursor:pointer" title="Sort">${h}${i === sortCol ? (asc ? " ▲" : " ▼") : ""}</th>`).join("")}</tr>` + list.map(r => `<tr>${r.cells.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`).join("");
+    };
+    $("tube-table").addEventListener("click", e => { const th = e.target.closest("th"); if (!th) return; const c = +th.dataset.c; asc = c === sortCol ? !asc : true; sortCol = c; draw(); });
+    $("tube-q").addEventListener("input", draw);
+    draw();
+  } catch (e) {}
+
+  // ---- version --------------------------------------------------------------
+  const m = /[?&]v=([^&]+)/.exec([...document.scripts].map(s => s.src).find(s => /hints\.js/.test(s)) || "");
+  $("ver").textContent = m && m[1] !== "dev" ? "version " + m[1] : "development build";
+
+  // ---- table of contents, scroll spy -----------------------------------------
+  const heads = [...document.querySelectorAll("main h2, main h3")].filter(h => h.closest(".part") === null);
+  heads.forEach((h, i) => { if (!h.id) h.id = "s-" + i; });
+  $("toc-list").innerHTML = heads.map(h => `<li class="${h.tagName.toLowerCase()}"><a href="#${h.id}">${esc(h.textContent)}</a></li>`).join("");
+  const links = [...$("toc-list").querySelectorAll("a")];
+  const spy = () => { let cur = heads[0]; for (const h of heads) { if (h.getBoundingClientRect().top < 120) cur = h; else break; } links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + cur.id)); };
+  addEventListener("scroll", spy, { passive: true }); spy();
+  $("toc-toggle").addEventListener("click", () => $("toc").classList.toggle("open"));
+
+  // ---- search: hides the blocks that do not match, marks the words ----------
+  const blocks = [...document.querySelectorAll("main > p, main > ul, main > ol, main > table, main > pre, main > div, main h4, .part, #glossary tr, #parts-ref h4")];
+  const unmark = () => document.querySelectorAll("main mark").forEach(m => m.replaceWith(document.createTextNode(m.textContent)));
+  const markIn = (el, re) => {
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentNode.closest("script, style, mark, #tube-table") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+    const nodes = []; while (walk.nextNode()) nodes.push(walk.currentNode);
+    nodes.forEach(n => { if (!re.test(n.textContent)) return; re.lastIndex = 0; const span = document.createElement("span"); span.innerHTML = esc(n.textContent).replace(re, m => `<mark>${m}</mark>`); n.replaceWith(...span.childNodes); });
+  };
+  let tmr = 0;
+  $("q").addEventListener("input", () => { clearTimeout(tmr); tmr = setTimeout(search, 150); });
+  function search() {
+    const q = $("q").value.trim(); unmark(); document.body.normalize();
+    document.querySelectorAll(".hidden-by-search").forEach(e => e.classList.remove("hidden-by-search"));
+    if (q.length < 2) { $("q-count").textContent = ""; document.querySelectorAll("#toc-list li").forEach(li => li.classList.remove("hide")); return; }
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const re = new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "gi");
+    let n = 0;
+    blocks.forEach(b => { const t = b.textContent.toLowerCase(); const hit = words.every(w => t.includes(w)); if (!hit && !b.contains(document.getElementById("tube-q"))) b.classList.add("hidden-by-search"); else if (hit) { n++; markIn(b, re); } });
+    // headings stay visible only where something under them matched
+    heads.forEach(h => { let el = h.nextElementSibling, any = false; while (el && !/^H[23]$/.test(el.tagName)) { if (!el.classList.contains("hidden-by-search") && el.querySelector && (el.tagName === "MARK" || el.querySelector("mark"))) any = true; el = el.nextElementSibling; } h.classList.toggle("hidden-by-search", !any && !words.every(w => h.textContent.toLowerCase().includes(w))); });
+    // a glossary table keeps its header row only when a row under it matched
+    document.querySelectorAll("#glossary table").forEach(t => { const hit = t.querySelector("mark"); t.classList.toggle("hidden-by-search", !hit); });
+    document.querySelectorAll("#toc-list li").forEach((li, i) => li.classList.toggle("hide", heads[i].classList.contains("hidden-by-search")));
+    $("q-count").textContent = n ? `${n} match${n === 1 ? "" : "es"}` : "Nothing found";
+    const first = document.querySelector("main mark"); if (first) first.scrollIntoView({ block: "center" });
+  }
+  addEventListener("keydown", e => { if (e.key === "/" && document.activeElement !== $("q") && document.activeElement !== $("tube-q")) { e.preventDefault(); $("q").focus(); } if (e.key === "Escape" && document.activeElement === $("q")) { $("q").value = ""; search(); } });
+  // open at ?q=… or #section
+  const qp = new URLSearchParams(location.search).get("q"); if (qp) { $("q").value = qp; search(); }
+})();
+</script>
+</body>
+</html>
