@@ -83,8 +83,8 @@ test("transistor pads follow the part's pin order (MPSA42: E-B-C from pad 1)", (
   assert.deepEqual(q.map(p => [p.num, p.name, p.net]), [["1", "E", 8], ["2", "B", 2], ["3", "C", 1]]);
   assert.equal(m.parts.find(g => g.ref === "R1").fp.name, "AXIAL-12.7", "a 0.5 W resistor gets 12.7 mm lead spacing");
   const t1 = m.parts.find(g => g.ref === "T1");
-  assert.equal(t1.fp.name, "XFMR-EI66-SE", "the output transformer gets a board-mount EI footprint");
-  assert.ok(t1.options.includes("WIRE-4") && t1.options.includes("TERM-5.08-4"), "or wire pads / a screw terminal to a chassis-mounted one");
+  assert.equal(t1.fp.name, "WIRE-4", "the output transformer sits on the chassis: wire pads by default");
+  assert.ok(t1.options.includes("XFMR-EI66-SE") && t1.options.includes("TERM-5.08-4"), "or a board-mount EI footprint / a screw terminal");
   assert.deepEqual(m.pads.filter(p => p.ref === "T1").map(p => p.name), ["P1", "P2", "S1", "S2"]);
   assert.equal(m.names[1], "B+"); assert.equal(m.names[0], "GND");
 });
@@ -212,7 +212,9 @@ test("every part has a through-hole footprint, and every footprint it offers tak
     for (const sections of type === "switch" ? [1, 2] : [1]) {
       const nl = { parts: Array.from({ length: sections }, (_, k) => ({ id: "c" + k, type, label: sections > 1 ? `X1.${k + 1}` : "X1", params, pins: pins.map((p, i) => ({ id: p.id, net: k * 10 + i + 1 })) })) };
       const [g] = B.physicalParts(nl);
-      if (type !== "tube") assert.ok(!/^WIRE-/.test(g.options[0]), `${type}: a real footprint by default, not wire pads (${g.options[0]})`);
+      // transformers and filter chokes go on the chassis: wire pads by default
+      const chassis = /^(opt_|ptx)/.test(type) || (type === "inductor" && (+params.l || 0) >= 0.05);
+      if (type !== "tube") assert.equal(/^WIRE-/.test(g.options[0]), chassis, `${type}: ${chassis ? "wire pads" : "a real footprint"} by default (${g.options[0]})`);
       for (const o of g.options) {
         const f = B.footprint(o, g.members.flatMap(m => m.pins.map(p => (sections > 1 ? m.label.split(".").pop() + "." : "") + p.id)));
         assert.ok(f, `${type}: ${o}`);
@@ -577,4 +579,89 @@ test("valve layout checks: grid stopper, grid beside anode, hot parts near elect
   board.tracks[1].pts = [[pa.x, pa.y], [pa.x, pa.y + 25]];
   m = B.model(board, nl); c = B.connectivity(board, m.pads); d = B.drc(board, m, c, new Set(), [], nl);
   assert.ok(!d.some(x => x.kind === "coupling"), "4 mm apart (5.08 between centres): fine");
+});
+
+test("net names say what a net is: rails, valve electrodes, outputs; old names in a board move over", () => {
+  const nl = { names: { 0: "GND" }, volts: { 1: 300, 2: 180, 3: 1.5, 4: 0, 5: 12, 6: 0, 7: 2 }, parts: [
+    part("g1", "vdc", "G1", { v: 300 }, { "+": 1, "-": 0 }),
+    part("c1", "electrolytic", "C1", { c: 47e-6 }, { "+": 1, "-": 0 }),
+    part("r1", "resistor", "R1", { r: 100e3 }, { 1: 1, 2: 2 }),
+    part("v1a", "tube", "VL1.1", { tube: "12AX7" }, { A: 2, G: 4, K: 3 }),
+    part("g2", "vdc", "G2", { v: 12 }, { "+": 5, "-": 0 }),
+    part("t1", "opt_se", "T1", {}, { P1: 1, P2: 2, S1: 6, S2: 0 }),
+    part("r7", "resistor", "R7", {}, { 1: 7, 2: 0 }), part("c7", "capacitor", "C7", {}, { 1: 7, 2: 3 })] };
+  const board = B.newBoard(); B.sync(board, nl);
+  const m = B.model(board, nl), nm = n => m.names[n];
+  assert.deepEqual([nm(1), nm(2), nm(3), nm(4), nm(5), nm(6), nm(7)], ["B+", "VL1.1-A", "VL1.1-K", "VL1.1-G", "+12V", "OUT", "C7_R7"]);
+  // a board saved with the old names: its net class and pour follow
+  board.rules.netClass = { "Net-(R1-2)": "HV" }; board.zones.push({ net: "Net-(C7-1)", layer: "B.Cu", pts: null });
+  assert.equal(B.migrateNetNames(board, m), 2);
+  assert.deepEqual([board.rules.netClass["VL1.1-A"], board.zones[0].net], ["HV", "C7_R7"]);
+  assert.equal(B.migrateNetNames(board, m), 0, "once only");
+});
+
+test("star grounding: returns by role, each runs to the star point; copper joining two elsewhere is reported", () => {
+  const nl = { names: { 0: "GND" }, volts: { 1: 300, 2: 150, 3: 1.5 }, parts: [
+    part("g1", "vdc", "G1", { v: 300 }, { "+": 1, "-": 0 }),
+    part("c1", "electrolytic", "C1", { c: 47e-6 }, { "+": 1, "-": 0 }),
+    part("r1", "resistor", "R1", { r: 100e3 }, { 1: 1, 2: 2 }),
+    part("v1a", "tube", "VL1.1", { tube: "12AX7" }, { A: 2, G: 4, K: 3 }),
+    part("rk", "resistor", "R2", { r: 1500 }, { 1: 3, 2: 0 }),
+    part("rg", "resistor", "R3", { r: 1e6 }, { 1: 4, 2: 0 }),
+    part("in", "siggen", "G2", {}, { "+": 4, "-": 0 })] };
+  const R = { ...B.defaultRules(), ground: "star", heaters: false };
+  const w = B.withHeaters(nl, R), board = B.newBoard(); board.rules = R; B.sync(board, w);
+  let m = B.model(board, w), gg = B.groundGroups(board, m, w);
+  const grp = ref => gg.byPart.get(m.parts.find(g => g.ref === ref).key).group;
+  assert.equal(gg.star.ref, "XG1");
+  assert.deepEqual(["G1", "C1", "R2", "R3", "G2"].map(grp), ["Supply", "Supply", "VL1", "VL1", "Input"]);
+  // the ratsnest: each return to the star on its own (Supply 2 pads + star: 2 links; VL1: 2; Input: 1)
+  const star = { pad: gg.star, groupOf: gg.groupOf };
+  let c = B.connectivity(board, m.pads, null, star);
+  assert.deepEqual(c.rats.filter(r => r.net === 0).map(r => r.group).sort(), ["Input", "Supply", "Supply", "VL1", "VL1"]);
+  // the supply's reservoir joined straight to the cathode resistor: reported
+  Object.assign(board.parts.c1, { x: 20, y: 20 }); Object.assign(board.parts.rk, { x: 60, y: 60 }); Object.assign(board.parts["star:gnd"], { x: 100, y: 20 });
+  m = B.model(board, w); gg = B.groundGroups(board, m, w);
+  const cm = m.pads.find(p => p.ref === "C1" && p.net === 0), rk = m.pads.find(p => p.ref === "R2" && p.net === 0), sp = gg.star;
+  board.tracks.push({ layer: "B.Cu", w: 1, pts: [[cm.x, cm.y], [cm.x, 40], [rk.x, 40], [rk.x, rk.y]] });
+  m = B.model(board, w); c = B.connectivity(board, m.pads, null, { pad: B.groundGroups(board, m, w).star, groupOf: B.groundGroups(board, m, w).groupOf });
+  let d = B.drc(board, m, c, new Set(), [], w).filter(x => x.kind === "star");
+  assert.ok(d.length === 1 && /Supply and VL1 share copper away from the star point XG1/.test(d[0].msg), d.map(x => x.msg).join("; "));
+  // each to the star instead: fine
+  board.tracks = [{ layer: "B.Cu", w: 1, pts: [[cm.x, cm.y], [sp.x, sp.y]] }, { layer: "F.Cu", w: 1, pts: [[rk.x, rk.y], [sp.x, sp.y]] }];
+  m = B.model(board, w); c = B.connectivity(board, m.pads); d = B.drc(board, m, c, new Set(), [], w).filter(x => x.kind === "star" || x.kind === "short");
+  assert.deepEqual(d, []);
+  // a part's ground field moves it to another return
+  board.parts.rk.ground = "Supply"; assert.equal(B.groundGroups(board, B.model(board, w), w).byPart.get("rk").group, "Supply");
+});
+
+test("teardrops where tracks meet round pads, none where one would break the clearance", () => {
+  const board = B.newBoard(); B.sync(board, NETLIST);
+  Object.assign(board.parts.r1, { x: 30, y: 30, rot: 0 }); Object.assign(board.parts.c1, { x: 30, y: 60, rot: 0 });
+  let m = B.model(board, NETLIST);
+  const a = m.pads.find(p => p.ref === "R1" && p.num === "2");
+  board.tracks.push({ layer: "B.Cu", w: 0.8, pts: [[a.x, a.y], [a.x + 20, a.y]] });
+  let c = B.connectivity(board, m.pads), t = B.teardrops(board, c, null);
+  assert.equal(t.length, 1, "one at the pad (the open end has none)");
+  assert.ok(t[0].pts.every(p => p[0] >= a.x - 1e-6 && p[0] <= a.x + 2 * a.w + 1e-6) && Math.max(...t[0].pts.map(p => Math.abs(p[1] - a.y))) <= a.w / 2 + 1e-6, "it stays within the pad's width and about a pad's length");
+  // another net's pad right beside the joint: no teardrop there
+  board.tracks[0].pts = [[a.x, a.y], [a.x, a.y + 20]];
+  // the via keeps 0.6 mm from the track itself and from the pad, but a teardrop would come closer
+  board.vias.push({ x: a.x + 0.4 + 0.6 + 0.9 + 0.05, y: a.y + 1.6, drill: 0.8, pad: 1.8, net: "GND" });
+  m = B.model(board, NETLIST); c = B.connectivity(board, m.pads); t = B.teardrops(board, c, null);
+  assert.equal(B.drc(board, m, c, new Set()).filter(x => x.kind === "clearance").length, 0, "the layout itself keeps its clearances");
+  assert.equal(t.length, 0, "it would come within the clearance of the via");
+});
+
+test("Place all: parts go where they sit in the schematic, big ones first, clear of each other", () => {
+  const P = (id, type, label, params, pins, x, y) => Object.assign(part(id, type, label, params, pins), { x, y });
+  const nl = { names: { 0: "GND" }, volts: {}, parts: [
+    P("in", "siggen", "G1", {}, { "+": 1, "-": 0 }, 0, 100), P("v", "tube", "VL1", { tube: "6P14P" }, { A: 2, G1: 1, G2: 3, K: 0 }, 200, 100),
+    P("r", "resistor", "R1", {}, { 1: 1, 2: 0 }, 100, 100), P("o", "speaker", "BA1", {}, { 1: 2, 2: 0 }, 400, 100)] };
+  const board = B.newBoard(); B.sync(board, nl);
+  const m = B.model(board, nl), left = B.arrange(board, m, m.parts.map(g => g.key), nl), x = r => board.parts[m.parts.find(g => g.ref === r).key].x;
+  assert.equal(left, 0);
+  assert.ok(x("G1") < x("R1") && x("R1") < x("VL1") && x("VL1") < x("BA1"), `left to right as in the schematic (${["G1", "R1", "VL1", "BA1"].map(x).join(", ")})`);
+  const m2 = B.model(board, nl), boxes = m2.parts.map(B.partBox);
+  boxes.forEach((a, i) => boxes.slice(i + 1).forEach(b => assert.ok(a.x2 <= b.x1 || b.x2 <= a.x1 || a.y2 <= b.y1 || b.y2 <= a.y1, "no two courtyards overlap")));
 });

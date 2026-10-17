@@ -1216,6 +1216,9 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.mouse.click(cv.x + a[0], cv.y + a[1]); await bd.mouse.move(cv.x + b[0], cv.y + b[1], { steps: 4 }); await bd.mouse.click(cv.x + b[0], cv.y + b[1]);
   await bd.waitForTimeout(150);
   const after = await bd.evaluate(() => { const S = BoardApp.state, it = S.conn.items.find(x => x.kind === "track"); return { un: S.conn.unrouted, tracks: S.board.tracks.length, net: it && S.model.names[it.net], shorts: S.conn.shorts.length }; });
+  // a 2 mm HV track into a 2 mm pad needs no teardrop; at 0.8 mm it gets one at each end
+  const tears = await bd.evaluate(() => { const S = BoardApp.state, t = S.board.tracks[0], w0 = t.w, n0 = S.fills.filter(f => f.tear).length; t.w = 0.8; BoardApp.analyse(); const n1 = S.fills.filter(f => f.tear).length; t.w = w0; BoardApp.analyse(); return [n0, n1]; });
+  check(tears[1] >= 1 && tears[1] > tears[0], `teardrops join a narrow track to its pads (${tears[1]} at 0.8 mm, ${tears[0]} for the 2 mm track)`);
   check(before.placed === 0 && after.tracks >= 1 && after.un === before.un - 1 && after.net === m0.anode && !after.shorts, `routing a track with the mouse joins R1 to the anode on ${after.net}: ${before.un} → ${after.un} connections to route${after.tracks ? "" : " — " + await bd.textContent("#st-msg")}`);
   await cad.waitForFunction(() => TubeCAD.state.board && TubeCAD.state.board.tracks.length >= 1, null, { timeout: 5000 }).catch(() => {});
   check(await cad.evaluate(() => TubeCAD.state.board.tracks.length >= 1 && JSON.parse(localStorage.getItem("tubecad_board_v1")).tracks.length >= 1), "the track is saved with the circuit (CAD and browser storage)");
@@ -1465,6 +1468,22 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await bd.evaluate(() => { const S = BoardApp.state; S.sel = { kind: "multi", parts: S.model.parts.filter(g => /^R[23]$/.test(g.ref)).map(g => g.key), tracks: [], vias: [], texts: [], holes: [] }; });
   await bd.keyboard.press("l");
   check(await bd.evaluate(() => Object.values(BoardApp.state.board.parts).filter(x => /^R[23]$/.test(x.ref)).every(p => !p.locked)), "L again unlocks");
+
+  // star grounding from Design rules: the star point XG1 joins the board, the ground's ratsnest runs each return to it
+  {
+    await bd.keyboard.press("Escape");
+    await bd.click("#btn-board"); await bd.click("#btn-rules"); await bd.selectOption("#rules-ground", "star"); await bd.click("#rules-apply");
+    await bd.waitForTimeout(200);
+    const st = await bd.evaluate(() => { const S = BoardApp.state; return { xg: S.model.parts.some(g => g.ref === "XG1" && g.fp.name === "STAR-M3"), star: S.gg && S.gg.star && S.gg.star.ref, groups: [...new Set(S.conn.rats.filter(r => r.net === 0).map(r => r.group))].sort().join(",") }; });
+    check(st.xg && st.star === "XG1" && st.groups.length > 0, `Star point in Design rules adds the star terminal XG1; the ground's ratsnest runs each return to it (${st.groups})`);
+    await bd.click("#btn-board"); await bd.click("#btn-rules"); await bd.selectOption("#rules-ground", "free"); await bd.click("#rules-apply");
+    check(await bd.evaluate(() => !BoardApp.state.model.parts.some(g => g.ref === "XG1")), "Free ground takes XG1 off again");
+  }
+  // net names say what the net is
+  {
+    const nn = await bd.evaluate(() => Object.values(BoardApp.state.model.names));
+    check(nn.some(n => /^VL1(\.\d)?-A$/.test(n)) && nn.some(n => /^VL1(\.\d)?-K$/.test(n)) && !nn.some(n => /^Net-\(/.test(n)), `nets are named for what they are (${nn.slice(0, 8).join(", ")} …)`);
+  }
 
   // a keep-out drawn with the mouse (K, four corners, double-click); the check reports a track through it
   await bd.keyboard.press("Escape"); await bd.keyboard.press("k");

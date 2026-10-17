@@ -393,7 +393,11 @@ the circuit file, so one file holds both.
   wire pads or a screw terminal.
   Every part's footprint can be changed in the inspector.
 - **Placement.** New parts wait in a row below the board. Drag them on, or
-  *Place all on the board* for a first arrangement. <kbd>R</kbd> rotates,
+  *Place all on the board*: each part goes where it sits in the schematic
+  (the schematic's extent mapped onto the board), big parts first, each in the
+  free spot nearest its place, electrolytics 10 mm from hot parts, so the
+  signal runs across the board as across the sheet. Output and power
+  transformers and filter chokes get wire pads by default (chassis-mounted). <kbd>R</kbd> rotates,
   <kbd>M</kbd> moves a part to the bottom side. When the schematic changes, a
   banner offers the update; placed parts keep their spot.
 - **Routing.** <kbd>X</kbd>: click a pad, click the corners (45° bends), end on
@@ -490,6 +494,12 @@ the circuit file, so one file holds both.
     at 6.3 or 12.6 V; a heater joined to its cathode (GZ34) on a winding of its
     own; internal shields (6N23P pin 9) to GND;
   - the distances of the valve layout checks;
+  - **ground scheme**: free, or a **star point** XG1 that every ground return
+    (Supply, Output, Input, each small-signal stage, chosen from the circuit
+    or set per part) reaches on its own; copper joining two returns elsewhere
+    is reported;
+  - **teardrops** where tracks meet pads and vias (skipped where one would
+    break a clearance);
   - the board-edge clearance;
   - signal and power track widths and the minimum track;
   - via drill and pad, minimum drill, minimum annular ring;
@@ -518,6 +528,10 @@ the circuit file, so one file holds both.
     track alongside an anode track (oscillation) or a heater track (hum), an
     electrolytic near a power valve, rectifier or hot resistor, a valve socket
     with no mounting hole near it.
+
+  Nets are named for what they are: `B+`, `+12V`, `VL1.1-A`, `VL2-G1`,
+  `OUT`, `IN`, else the parts they join (`R8_C3`); boards saved with the
+  older `Net-(R8-2)` names move over by themselves.
 
   Click an entry to go to it. The status bar is green only when the board is
   finished: no violations, no warnings, nothing left to route.

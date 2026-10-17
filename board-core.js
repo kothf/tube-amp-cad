@@ -45,7 +45,9 @@
       ipc: "B2",                                                  // clearance by voltage: IPC-2221B table B2 | B4 | A6 | off
       heaters: true, heater126: false, shields: true,             // heater wiring on the board; 12AX7-type heaters at 12.6 V; internal shields to GND
       stopperMax: 10, couplingLen: 10, couplingGap: 2, heatGap: 10, hotWatts: 1, socketHole: 40,   // valve layout checks (mm, W)
-      checks: { clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, keepout: true, silk: true, dangling: true, stopper: true, coupling: true, heat: true, support: true }
+      ground: "free",                                             // free | star (every ground return to the star point XG1)
+      teardrops: true,                                            // copper fillets where tracks meet pads and vias
+      checks: { star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, keepout: true, silk: true, dangling: true, stopper: true, coupling: true, heat: true, support: true }
     };
   }
   const CLASSES = ["Signal", "Power", "HV"];
@@ -265,6 +267,11 @@
       [{ t: "rect", x: x0 - 2.3, y: -2.3, w: (n - 1) * 5.08 + 4.6, h: 4.6 }]);
   }
 
+  // the star ground point: one plated hole for a solder lug or a ring terminal bolted to the chassis
+  function starPoint(size) {
+    const D = size === "M4" ? 8 : 7, drill = size === "M4" ? 4.3 : 3.4;
+    return fp(`STAR-${size}`, `Star ground point: a plated ${size} hole for a solder lug or ring terminal`, [pad(1, 0, 0, D, drill, "circle", "GND")], [{ t: "circle", x: 0, y: 0, r: D / 2 + 0.5 }]);
+  }
   /** A footprint by name ("AXIAL-10.16", "TO-92-EBC", "SOCKET-B9A", "WIRE-3" …) */
   function footprint(name, pinNames) {
     let m;
@@ -292,6 +299,7 @@
     if ((m = /^XFMR-EI(\d+)-(SE|PP|PTP|PT)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], m[2]);
     if ((m = /^CHOKE-EI(\d+)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], "CHOKE");
     if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1]) : socket(m[1]);
+    if ((m = /^STAR-(M3|M4)$/.exec(name))) return starPoint(m[1]);
     if ((m = /^WIRE-(\d+)$/.exec(name))) return wirePads(pinNames && pinNames.length === +m[1] ? pinNames : Array.from({ length: +m[1] }, (_, i) => String(i + 1)));
     return null;
   }
@@ -359,7 +367,7 @@
   function physicalParts(netlist) {
     const L = root.CadLib, groups = new Map();
     (netlist.parts || []).forEach(p => {
-      if (SKIP.has(p.type) || (!L.LIB[p.type] && p.type !== "heater")) return;
+      if (SKIP.has(p.type) || (!L.LIB[p.type] && p.type !== "heater" && p.type !== "star")) return;
       const lab = String(p.label || "").trim(), i = lab.lastIndexOf("."), base = i > 0 ? lab.slice(0, i) : lab;
       const k = base ? p.type + "|" + base : p.id;
       if (!groups.has(k)) groups.set(k, { ref: base || "?", type: p.type, members: [] });
@@ -369,7 +377,7 @@
       g.members.sort((a, b) => String(a.label).localeCompare(String(b.label), undefined, { numeric: true }));
       g.key = g.members.map(m => m.id).sort().join("+");
       const first = g.members[0], def = L.LIB[g.type];
-      g.value = g.type === "heater" ? `${first.params.v} V ~ ${fmtA(first.params.i)}` : def.value ? def.value({ params: first.params, label: first.label }) : "";
+      g.value = g.type === "heater" ? `${first.params.v} V ~ ${fmtA(first.params.i)}` : g.type === "star" ? "star ground" : def.value ? def.value({ params: first.params, label: first.label }) : "";
       g.options = fpOptions(g);
       g.defaultFp = g.options[0];
       return g;
@@ -395,17 +403,20 @@
       case "diode": return first(p.model === "1N4148" ? "DIODE-7.62" : "DIODE-10.16", diodes);
       case "zener": { const z = L.ZENERS[p.model] || {}; return first(z.p >= 5 ? "DIODE-15.24" : "DIODE-10.16", diodes); }
       case "led": return ["LED-5MM", "LED-3MM", "WIRE-2"];
-      case "inductor": { const l = +p.l || 0; return l < 0.05 ? [...first("AXIAL-15.24", axials), ...eiFor("CHOKE", 42), t2, "WIRE-2"] : [...eiFor("CHOKE", l <= 1 ? 42 : l <= 5 ? 54 : 66), ...axials, t2, "WIRE-2"]; }
-      case "opt_se": case "opt_cat": return [...eiFor("SE", 66), "TERM-5.08-4", "WIRE-4"];
-      case "opt_pp": return [...eiFor("PP", 76), "TERM-5.08-7", "WIRE-7"];
-      case "ptx": return [...eiFor("PT", 76), "TERM-5.08-3", "WIRE-3"];
-      case "ptx_cat": return [...eiFor("PTP", 76), "TERM-5.08-5", "WIRE-5"];
+      // transformers and filter chokes sit on the chassis (their weight, their field, their heat): wire pads
+      // first, a board-mount EI footprint as an option
+      case "inductor": { const l = +p.l || 0; return l < 0.05 ? [...first("AXIAL-15.24", axials), ...eiFor("CHOKE", 42), t2, "WIRE-2"] : ["WIRE-2", ...eiFor("CHOKE", l <= 1 ? 42 : l <= 5 ? 54 : 66), ...axials, t2]; }
+      case "opt_se": case "opt_cat": return ["WIRE-4", ...eiFor("SE", 66), "TERM-5.08-4"];
+      case "opt_pp": return ["WIRE-7", ...eiFor("PP", 76), "TERM-5.08-7"];
+      case "ptx": return ["WIRE-3", ...eiFor("PT", 76), "TERM-5.08-3"];
+      case "ptx_cat": return ["WIRE-5", ...eiFor("PTP", 76), "TERM-5.08-5"];
       case "switch": return g.members.length === 1 ? ["TOGGLE-SPDT", "TERM-5.08-3", "WIRE-3"] : g.members.length === 2 ? ["TOGGLE-DPDT", `TERM-5.08-${wires}`, `WIRE-${wires}`] : [`TERM-5.08-${wires}`, `WIRE-${wires}`];
       case "speaker": return [t2, "JACK-6.35", "WIRE-2"];
       case "siggen": return ["JACK-RCA", "JACK-6.35", "JACK-3.5", t2, "WIRE-2"];
       case "vdc": return [t2, "TERM-7.5-2", "WIRE-2"];
       case "mains": return ["TERM-7.5-2", t2, "WIRE-2"];
       case "heater": return [t2, "WIRE-2", "TERM-7.5-2"];
+      case "star": return ["STAR-M3", "STAR-M4", "WIRE-1"];
       case "npn": case "pnp": case "nmos": case "pmos": {
         const m = (t === "npn" || t === "pnp" ? L.BJTS : L.MOSFETS)[p.model] || {}, order = (PINOUT[p.model] || [t[1] === "m" ? "GDS" : "EBC"])[0];
         const all = ["TO-92", "TO-18", "TO-126", "TO-220", "TO-247", "TO-3P", "TO-264"].map(k => `${k}-${order}`);
@@ -436,7 +447,7 @@
     const byName = {};
     f.pads.forEach(p => { byName[p.name] = p.num; });
     const SEM = { resistor: { 1: "1", 2: "2" }, capacitor: { 1: "1", 2: "2" }, electrolytic: { "+": "1", "-": "2" }, inductor: { 1: "1", 2: "2" },
-      diode: { K: "1", A: "2" }, zener: { K: "1", A: "2" }, led: { K: "1", A: "2" }, pot: { 1: "1", W: "2", 2: "3" } };
+      diode: { K: "1", A: "2" }, zener: { K: "1", A: "2" }, led: { K: "1", A: "2" }, pot: { 1: "1", W: "2", 2: "3" }, star: { 1: "1" } };
     // sections of one part (a DPDT switch) find their pads as "1.A", "2.A" …
     (SEM[g.type] ? [one] : g.members).forEach((m, k) => m.pins.forEach(p => {
       const num = SEM[g.type] ? SEM[g.type][p.id] : byName[g.members.length > 1 ? `${k + 1}.${p.id}` : p.id];
@@ -445,8 +456,16 @@
     return map;
   }
 
-  // net names: a sheet connector's name, GND, else Net-(REF-pad) from the lowest pad on it
-  function netNames(netlist, parts, padsByPart) {
+  // Net names. A sheet connector's name, GND and the heater nets come with the netlist; the rest
+  // are named for what they are:
+  //  supply rails (a source's + terminal, or a reservoir capacitor's + with no valve on it): B+ … B+3
+  //    from the highest voltage down above 60 V, else +12V, -24V;
+  //  valve electrodes: VL1.1-A, VL2-G1, VL1.2-K (anode before screen, cathode, grid);
+  //  the output transformer's secondary OUT, a generator's output IN;
+  //  else the parts the net joins: R8_C3 (or R8-2 for a pin alone)
+  // The names of earlier versions (Net-(R8-2)) are kept in legacy, so a board's stored names move over.
+  const PIN_RANK = { A: 0, A1: 0, A2: 0, G2: 1, K: 2, G: 3, G1: 3 };
+  function legacyNames(netlist, parts, padsByPart) {
     const names = {};
     Object.entries(netlist.names || {}).forEach(([n, nm]) => { names[n] = nm; });
     parts.forEach(g => (padsByPart.get(g.key) || []).forEach(p => {
@@ -455,18 +474,58 @@
     }));
     return names;
   }
+  function netNames(netlist, parts, padsByPart) {
+    const L = root.CadLib, names = {}, used = new Set(), volts = netlist.volts || {}, nets = new Set();
+    Object.entries(netlist.names || {}).forEach(([n, nm]) => { names[n] = nm; used.add(nm); });
+    parts.forEach(g => (padsByPart.get(g.key) || []).forEach(p => { if (p.net !== null) nets.add(p.net); }));
+    const on = new Map(), refOf = {};
+    parts.forEach(g => g.members.forEach(m => { refOf[m.id] = g.ref; }));
+    (netlist.parts || []).forEach(p => p.pins.forEach(q => { if (q.net === undefined || q.net === null) return; if (!on.has(q.net)) on.set(q.net, []); on.get(q.net).push({ p, pin: q.id }); }));
+    const cat = p => { const t = p.type === "tube" && L && L.tubeByName ? L.tubeByName(p.params && p.params.tube) : null; return t ? t.category || "" : ""; };
+    const valvePins = list => list.filter(e => e.p.type === "tube" && cat(e.p) !== "rectifier" && PIN_RANK[e.pin] !== undefined);
+    const take = (n, nm) => { let k = nm, i = 2; while (used.has(k)) k = `${nm}_${i++}`; used.add(k); names[n] = k; };
+    const todo = [...nets].filter(n => !names[n]);
+    // supply rails
+    const rails = todo.filter(n => { const l = on.get(n) || []; return !valvePins(l).length && l.some(e => (e.p.type === "vdc" && e.pin === "+") || (e.p.type === "electrolytic" && e.pin === "+" && Math.abs(volts[n] || 0) >= 60)); });
+    const hv = rails.filter(n => Math.abs(volts[n] || 0) >= 60).sort((a, b) => (volts[b] || 0) - (volts[a] || 0));
+    hv.forEach((n, i) => take(n, hv.length > 1 ? `B+${i + 1}` : "B+"));
+    rails.filter(n => !hv.includes(n) && volts[n] !== undefined && Math.abs(volts[n]) >= 0.5).forEach(n => take(n, `${volts[n] < 0 ? "-" : "+"}${+Math.abs(volts[n]).toPrecision(2)}V`));
+    // valve electrodes, outputs and inputs, then the parts the net joins
+    todo.filter(n => !names[n]).forEach(n => {
+      const l = on.get(n) || [], v = valvePins(l).sort((a, b) => PIN_RANK[a.pin] - PIN_RANK[b.pin] || String(a.p.label).localeCompare(String(b.p.label), undefined, { numeric: true }));
+      if (v.length) return take(n, `${v[0].p.label || refOf[v[0].p.id]}-${v[0].pin === "A1" || v[0].pin === "A2" ? "A" : v[0].pin}`);
+      if (l.some(e => /^opt_/.test(e.p.type) && /^S\d$/.test(e.pin)) && n !== 0) return take(n, "OUT");
+      if (l.some(e => e.p.type === "siggen")) return take(n, "IN");
+      const refs = [...new Set(l.map(e => refOf[e.p.id]).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      if (refs.length >= 2) return take(n, `${refs[0]}_${refs[1]}`);
+      const e = l[0]; take(n, e ? `${refOf[e.p.id] || "N"}-${e.pin}` : `N${n}`);
+    });
+    return names;
+  }
+  /** Move a board's stored net names (net classes, pours, stitching vias and loose tracks) from the
+      names of earlier versions to today's. Returns how many were renamed. */
+  function migrateNetNames(board, model) {
+    const legacy = model.legacy || {}, now = new Set(Object.values(model.names)), to = n => (n && !now.has(n) && legacy[n] !== undefined ? model.names[legacy[n]] : null);
+    let k = 0;
+    const R = board.rules || {};
+    if (R.netClass) Object.keys(R.netClass).forEach(n => { const t = to(n); if (t) { R.netClass[t] = R.netClass[n]; delete R.netClass[n]; k++; } });
+    (board.zones || []).concat(board.tracks || [], board.vias || []).forEach(o => { const t = to(o.net); if (t) { o.net = t; k++; } });
+    return k;
+  }
 
   // ---------------------------------------------------------------------------
   // Synchronise the board with the schematic: new parts go to a staging row below the
   // outline, parts gone from the schematic leave the board; positions are kept by part key
   // ---------------------------------------------------------------------------
-  function sync(board, netlist) {
-    const parts = physicalParts(netlist), keys = new Set(parts.map(g => g.key)), added = [], removed = [];
-    Object.keys(board.parts).forEach(k => { if (!keys.has(k)) { removed.push(board.parts[k].ref); delete board.parts[k]; } });
+  // only: a test on a part's reference that limits the update to those parts (the board's own XH / XG)
+  function sync(board, netlist, only) {
+    const ok = r => !only || only(r), parts = physicalParts(netlist), keys = new Set(parts.map(g => g.key)), added = [], removed = [];
+    Object.keys(board.parts).forEach(k => { if (!keys.has(k) && ok(board.parts[k].ref)) { removed.push(board.parts[k].ref); delete board.parts[k]; } });
     let x = 8, y = board.outline.h + 18, rowH = 0;
     parts.forEach(g => {
       const old = board.parts[g.key];
       if (old) { old.ref = g.ref; if (!g.options.includes(old.fp)) old.fp = g.defaultFp; return; }
+      if (!ok(g.ref)) return;
       const f = footprint(g.defaultFp, g.members.flatMap(m => m.pins.map(p => (g.members.length > 1 ? m.label.split(".").pop() + "." : "") + p.id)));
       const w = f.box[2] - f.box[0], h = f.box[3] - f.box[1];
       if (x + w > Math.max(board.outline.w, 160)) { x = 8; y += rowH + 6; rowH = 0; }
@@ -508,9 +567,10 @@
       });
       padsByPart.set(g.key, list);
     });
-    const names = netNames(netlist, parts, padsByPart);
+    const names = netNames(netlist, parts, padsByPart), old = legacyNames(netlist, parts, padsByPart), legacy = {};
+    Object.entries(old).forEach(([n, nm]) => { if (names[n] !== nm) legacy[nm] = netKey(n); });
     pads.forEach(p => { p.netName = p.net === null ? "" : names[p.net] || ("N" + p.net); });
-    return { parts, pads, names };
+    return { parts, pads, names, legacy };
   }
 
   // ---------------------------------------------------------------------------
@@ -593,7 +653,7 @@
 
   /** Copper connectivity: which items touch (union-find), what each cluster's nets are, the
       ratsnest (shortest links still missing per net), unrouted count and shorts */
-  function connectivity(board, pads, fills) {
+  function connectivity(board, pads, fills, star) {
     const items = copperItems(board, pads), n = items.length, par = items.map((_, i) => i);
     const find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
@@ -610,16 +670,28 @@
     const byNet = new Map();
     pads.forEach((p, i) => { if (p.net === null) return; if (!byNet.has(p.net)) byNet.set(p.net, new Map()); const r = items[i].cluster, m = byNet.get(p.net); if (!m.has(r)) m.set(r, []); m.get(r).push(p); });
     const rats = []; let unrouted = 0;
-    byNet.forEach((groups, net) => {
-      const gs = [...groups.values()]; if (gs.length < 2) return;
+    const prim = (gs, net, group) => {
+      if (gs.length < 2) return;
       unrouted += gs.length - 1;
       const inTree = [gs[0]], rest = gs.slice(1);
       while (rest.length) {
         let best = null;
         inTree.forEach(a => rest.forEach((b, bi) => a.forEach(p => b.forEach(q => { const d = Math.hypot(p.x - q.x, p.y - q.y); if (!best || d < best.d) best = { d, p, q, bi }; }))));
-        rats.push({ net, x1: best.p.x, y1: best.p.y, x2: best.q.x, y2: best.q.y });
+        rats.push({ net, group, x1: best.p.x, y1: best.p.y, x2: best.q.x, y2: best.q.y });
         inTree.push(rest[best.bi]); rest.splice(best.bi, 1);
       }
+    };
+    const si = star && star.pad ? pads.indexOf(star.pad) : -1;
+    byNet.forEach((groups, net) => {
+      if (si < 0 || net !== star.pad.net) return prim([...groups.values()], net);
+      // star grounding: each ground return joins its own pads, then runs to the star point on its own
+      const sc = items[si].cluster, by = new Map();
+      pads.forEach((p, i) => {
+        if (p.net !== net || i === si) return;
+        const g = star.groupOf.get(p) || "Signal"; if (!by.has(g)) by.set(g, new Map([[sc, [star.pad]]]));
+        const m = by.get(g), r = items[i].cluster; if (!m.has(r)) m.set(r, []); m.get(r).push(p);
+      });
+      by.forEach((m, g) => prim([...m.values()], net, g));
     });
     const shorts = [...cl.values()].filter(c => c.nets.size > 1).map(c => [...c.nets]);
     return { items, clusters: cl, rats, unrouted, shorts };
@@ -710,7 +782,7 @@
   }
   /** Fill every pour. conn: the connectivity without pours (gives the items and their nets).
       Returns per zone { zone, layer, net, ops, links: [[item index...] per piece], pieces, islands, unknownNet } */
-  function fillZones(board, model, conn, hv, netlist) {
+  function fillZones(board, model, conn, hv, netlist, tears) {
     const R = board.rules, zones = board.zones || [], o = board.outline;
     if (!zones.length || !model) return [];
     const byName = {}; Object.entries(model.names).forEach(([n, nm]) => { byName[nm] = isNaN(+n) ? n : +n; });
@@ -737,6 +809,8 @@
         if (near(it.s, it.r + c)) ops.push(itemOp("C", it, c));
       });
       const hc = Math.max(zc, CR.toChassis(net).c);
+      // other nets' teardrops: the shape and the clearance round its edges
+      (tears || []).forEach(td => { if (td.layer !== L || (net !== undefined && td.net === net)) return; const c = need(td.net); ops.push({ pol: "C", t: "region", pts: td.pts }); td.pts.forEach((a, i) => { const b = td.pts[(i + 1) % td.pts.length]; ops.push({ pol: "C", t: "line", w: +(2 * c).toFixed(4), pts: [a, b] }); }); });
       (board.holes || []).forEach(h => { if (near([h.x, h.y, h.x, h.y], h.d / 2 + hc)) ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: +(h.d + 2 * hc).toFixed(4), h: +(h.d + 2 * hc).toFixed(4) }); });
       (board.texts || []).filter(t => t.layer === L).forEach(t => { const st = strokeText(t.text, t.x, t.y, t.size, t.rot, L === "B.Cu"); st.lines.forEach(l => ops.push({ pol: "C", t: "line", w: +(st.w + 2 * zc).toFixed(4), pts: l })); });
       // thermal reliefs: the gap around the pad, then spokes that stay in the pour and clear of other nets
@@ -963,9 +1037,123 @@
       });
     }
     valveChecks(board, model, conn, netlist, on, placedOff, onBoard, out);
+    if (on("star") && board.rules.ground === "star") starCheck(board, model, conn, fills, netlist, out);
     if (on("pinout")) model.parts.forEach(g => { const m = g.members[0].params.model; if (PINOUT[m] && PINOUT[m][1] === "verify" && g.place) out.push({ kind: "check", x: g.place.x, y: g.place.y, msg: `${g.ref} (${m}): pinouts differ between makers — check the ${g.fp.name} pin order against your part's datasheet` }); });
     return out;
   }
+  // ---------------------------------------------------------------------------
+  // Teardrops: where a track meets a round pad or a via, copper widens from the track to most of
+  // the pad's width over about a pad's length, so the joint survives drilling slop, heat and a
+  // heavy part's leverage. One is left out where it would come closer to another net's copper
+  // (or a mounting hole) than the clearance. Returns [{ layer, net, ti, pts }] (polygons).
+  // ---------------------------------------------------------------------------
+  function teardrops(board, conn, CR) {
+    const out = [], items = conn.items, holes = board.holes || [];
+    const ends = items.filter(it => (it.kind === "pad" && Math.abs(it.pad.w - it.pad.h) < 1e-6) || it.kind === "via");
+    board.tracks.forEach((t, ti) => {
+      const tr = items.find(it => it.kind === "track" && it.ti === ti); if (!tr || t.pts.length < 2) return;
+      const net = tr.net;
+      [0, t.pts.length - 1].forEach(k => {
+        const P = t.pts[k], Q = t.pts[k ? k - 1 : 1];
+        const at = ends.find(e => e.layers.includes(t.layer) && Math.hypot(e.s[0] - P[0], e.s[1] - P[1]) < 1e-3); if (!at) return;
+        const rp = at.r, w = t.w, Ls = Math.hypot(Q[0] - P[0], Q[1] - P[1]);
+        const wp = Math.min(2 * rp * 0.8, Math.max(w, 2 * rp - 0.2)), L = Math.min(rp + 2 * rp * 0.9, Ls * 0.7);
+        if (wp <= w * 1.15 || L <= rp + 0.3) return;
+        const ux = (Q[0] - P[0]) / Ls, uy = (Q[1] - P[1]) / Ls, nx = -uy, ny = ux, d0 = Math.sqrt(Math.max(0, rp * rp - wp * wp / 4));
+        const pt = (a, b) => [+(P[0] + ux * a + nx * b).toFixed(4), +(P[1] + uy * a + ny * b).toFixed(4)];
+        // the sides: from the pad's edge curving in to the track's edges (a quadratic Bézier each)
+        const side = sg => { const res = []; for (let q = 0; q <= 6; q++) { const u = q / 6, a = (1 - u) * (1 - u) * d0 + 2 * u * (1 - u) * (d0 + (L - d0) * 0.35) + u * u * L, b = (1 - u) * (1 - u) * wp / 2 + 2 * u * (1 - u) * w / 2 + u * u * w / 2; res.push(pt(a, sg * b)); } return res; };
+        const left = side(1), right = side(-1).reverse(), poly = [pt(0, 0)].concat(left, right);
+        // keep the clearance to every other net's copper and to the mounting holes
+        const edges = poly.map((a, i) => [a[0], a[1], poly[(i + 1) % poly.length][0], poly[(i + 1) % poly.length][1]]);
+        const bad = items.some(it => {
+          if (it.net === net && net !== null && net !== "short") return false;
+          if (it === at || it === tr || !it.layers.includes(t.layer)) return false;
+          const need = CR ? CR.need(net, it.net).c : board.rules.clearance;
+          return edges.some(e => segSeg(e, it.s) - it.r < need - 1e-6);
+        }) || holes.some(h => edges.some(e => segDist(e[0], e[1], e[2], e[3], h.x, h.y) - h.d / 2 < (CR ? CR.toChassis(net).c : board.rules.clearance) - 1e-6));
+        if (!bad) out.push({ layer: t.layer, net, ti, pts: poly });
+      });
+    });
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Star grounding. Every part with a pad on GND belongs to a ground return: Supply (sources,
+  // rectifiers, reservoir and filter capacitors, bleeders), Output (power valves, the output
+  // transformer's secondary, the speaker), Input (the input jack), or the stage of the small-signal
+  // valve it serves (VL1: its cathode resistor and bypass, its grid leak), else Signal. The board
+  // part's ground field overrides it. Each return joins its own pads and runs to the star point
+  // XG1 alone; copper joining two returns anywhere but there is reported.
+  // ---------------------------------------------------------------------------
+  const SUPPLY_TYPES = new Set(["vdc", "ptx", "ptx_cat", "mains", "diode", "inductor"]), OUTPUT_TYPES = new Set(["opt_se", "opt_cat", "opt_pp", "speaker"]);
+  const RETURNS = ["Supply", "Output", "Input", "Signal"];
+  function groundGroups(board, model, netlist) {
+    const L = root.CadLib, out = { star: null, groupOf: new Map(), byPart: new Map() };
+    if (!netlist || !model) return out;
+    const gnd = 0, volts = netlist.volts || {}, on = new Map(), refOf = {};
+    model.parts.forEach(g => g.members.forEach(m => { refOf[m.id] = g; }));
+    (netlist.parts || []).forEach(p => p.pins.forEach(q => { if (q.net === undefined || q.net === null) return; if (!on.has(q.net)) on.set(q.net, []); on.get(q.net).push({ p, pin: q.id }); }));
+    const cat = p => { const t = p.type === "tube" && L && L.tubeByName ? L.tubeByName(p.params && p.params.tube) : null; return t ? t.category || "" : ""; };
+    const supplyNet = n => { const l = on.get(n) || []; return l.some(e => SUPPLY_TYPES.has(e.p.type) || (e.p.type === "tube" && cat(e.p) === "rectifier")) ||
+      (!l.some(e => e.p.type === "tube") && l.some(e => e.p.type === "electrolytic" && e.pin === "+") && Math.abs(volts[n] || 0) >= 60); };
+    const stageOf = e => { const c = cat(e.p); return c === "rectifier" ? "Supply" : c === "power" ? "Output" : (refOf[e.p.id] || {}).ref || "Signal"; };
+    function classify(g) {
+      if (g.type === "star" || g.type === "heater") return null;
+      if (SUPPLY_TYPES.has(g.type)) return "Supply";
+      if (OUTPUT_TYPES.has(g.type)) return "Output";
+      if (g.type === "siggen") return "Input";
+      if (g.type === "tube") return stageOf({ p: g.members[0] });
+      const start = [...new Set(g.members.flatMap(m => m.pins.map(q => q.net)).filter(n => n !== gnd && n !== undefined && n !== null))];
+      if (start.some(supplyNet)) return "Supply";
+      // the nearest valve electrode, input or output through resistors and capacitors (not through GND or a rail)
+      const seen = new Set(start); let front = start;
+      for (let depth = 0; depth < 3 && front.length; depth++) {
+        let hit = null; const next = [];
+        front.forEach(n => (on.get(n) || []).forEach(e => {
+          if (hit) return;
+          if (e.p.type === "tube" && PIN_RANK[e.pin] !== undefined) hit = stageOf(e);
+          else if (e.p.type === "siggen") hit = "Input";
+          else if (OUTPUT_TYPES.has(e.p.type)) hit = "Output";
+          else if (["resistor", "capacitor", "electrolytic", "pot"].includes(e.p.type) && !g.members.includes(e.p)) e.p.pins.forEach(q => { if (q.net !== gnd && !seen.has(q.net) && !supplyNet(q.net)) { seen.add(q.net); next.push(q.net); } });
+        }));
+        if (hit) return hit;
+        front = next;
+      }
+      return "Signal";
+    }
+    model.parts.forEach(g => {
+      const pads = model.pads.filter(p => p.part === g.key && p.net === gnd);
+      if (g.type === "star") { out.star = pads[0] || null; return; }
+      if (!pads.length) return;
+      const auto = classify(g), set = board.parts[g.key] && board.parts[g.key].ground, grp = set || auto || "Signal";
+      out.byPart.set(g.key, { group: grp, auto: auto || "Signal", manual: !!set });
+      pads.forEach(p => out.groupOf.set(p, grp));
+    });
+    return out;
+  }
+  // ground copper that joins two returns away from the star point
+  function starCheck(board, model, conn, fills, netlist, out) {
+    const gg = groundGroups(board, model, netlist); if (!gg.star) return;
+    const items = conn.items, n = items.length, si = model.pads.indexOf(gg.star), par = items.map((_, i) => i);
+    const find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+    const g0 = items.map((it, i) => i !== si && it.net === 0);
+    for (let i = 0; i < n; i++) if (g0[i]) for (let j = i + 1; j < n; j++) {
+      if (!g0[j]) continue; const a = items[i], b = items[j];
+      if (a.kind === "pad" && b.kind === "pad") continue;
+      if (shareLayer(a, b) && gap(a, b) <= 1e-6) par[find(i)] = find(j);
+    }
+    (fills || []).forEach(f => f.links.forEach(list => { const l = list.filter(i => i < n && g0[i]); l.forEach(i => { par[find(i)] = find(l[0]); }); }));
+    const comp = new Map();
+    model.pads.forEach((p, i) => { if (!g0[i]) return; const g = gg.groupOf.get(p); if (!g) return; const r = find(i); if (!comp.has(r)) comp.set(r, new Map()); const m = comp.get(r); if (!m.has(g)) m.set(g, p); });
+    comp.forEach((m, r) => {
+      if (m.size < 2) return;
+      const gs = [...m.keys()], at = items.findIndex((it, i) => g0[i] && find(i) === r && it.kind !== "pad"), it = at >= 0 ? items[at] : null, p = m.get(gs[0]);
+      out.push({ kind: "star", x: it ? (it.s[0] + it.s[2]) / 2 : p.x, y: it ? (it.s[1] + it.s[3]) / 2 : p.y,
+        msg: `Ground returns ${gs.slice(0, -1).join(", ")} and ${gs[gs.length - 1]} share copper away from the star point ${gg.star.ref}: ${gs.includes("Supply") ? "the reservoir's charging pulses" : "one return's current"} then flows through the other's ground and hums; run each return to ${gg.star.ref} on its own` });
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Valve layout checks: what makes a valve board hum, oscillate, cook its capacitors or crack
   //  stopper: a grid stopper far from its grid pin (the track before it picks up and oscillates)
@@ -973,6 +1161,19 @@
   //  heat: an electrolytic close to a power valve, a rectifier or a resistor dissipating hotWatts or more
   //  support: a board-mounted valve socket with no mounting hole near it (pulling a valve flexes the board)
   // ---------------------------------------------------------------------------
+  // a part that runs hot: a power valve, a rectifier, a resistor dissipating hotWatts or more (from the simulation)
+  function hotWhy(g, netlist, R) {
+    const L = root.CadLib, volts = (netlist && netlist.volts) || {};
+    const t = g.type === "tube" && L && L.tubeByName ? L.tubeByName(g.members[0].params.tube) : null;
+    if (t && (/power|rectifier/i.test(t.category || "") || (+t.paMax || 0) >= 5)) return `${g.ref} (${g.members[0].params.tube}) runs hot`;
+    if (g.type === "resistor") {
+      const V = n => (volts[n] !== undefined ? volts[n] : n === 0 ? 0 : undefined);   // GND is 0 V
+      const p = g.members[0], [a, c] = p.pins, va = a && V(a.net), vc = c && V(c.net), i = Math.abs((a && a.i) || (c && c.i) || 0);
+      const w = va !== undefined && vc !== undefined ? Math.abs(va - vc) * i : 0;
+      if (w >= (R.hotWatts > 0 ? R.hotWatts : 1)) return `${g.ref} dissipates ${w.toFixed(1)} W`;
+    }
+    return null;
+  }
   const GRID_PINS = new Set(["G", "G1"]), ANODE_PINS = new Set(["A", "A1", "A2"]);
   function valveChecks(board, model, conn, netlist, on, placedOff, onBoard, out) {
     const L = root.CadLib, R = board.rules, byId = {}, names = model.names, nm = n => names[n] || String(n);
@@ -1021,16 +1222,8 @@
     }
     // heat: electrolytics near hot parts
     if (on("heat")) {
-      const volts = netlist.volts || {}, hot = [];
-      onBoard.forEach(({ g, b }) => {
-        const t = tubeOf(g);
-        if (t && (/power|rectifier/i.test(t.category || "") || (+t.paMax || 0) >= 5)) hot.push({ g, b, why: `${g.ref} (${g.members[0].params.tube}) runs hot` });
-        if (g.type === "resistor") {
-          const p = g.members[0], [a, c] = p.pins, va = a && volts[a.net], vc = c && volts[c.net], i = Math.abs((a && a.i) || (c && c.i) || 0);
-          const w = va !== undefined && vc !== undefined ? Math.abs(va - vc) * i : 0;
-          if (w >= (R.hotWatts > 0 ? R.hotWatts : 1)) hot.push({ g, b, why: `${g.ref} dissipates ${w.toFixed(1)} W` });
-        }
-      });
+      const hot = [];
+      onBoard.forEach(({ g, b }) => { const why = hotWhy(g, netlist, R); if (why) hot.push({ g, b, why }); });
       const lim = R.heatGap > 0 ? R.heatGap : 10;
       onBoard.filter(({ g }) => g.type === "electrolytic").forEach(({ g, b }) => {
         let worst = null;
@@ -1061,9 +1254,53 @@
     return [best.x, best.y];
   }
 
-  /** Pack the given parts in rows inside the outline (a starting point for placement, not an
-      optimiser): left to right by reference, a 3 mm gap, the next row when one is full */
-  function arrange(board, mdl, keys) {
+  /** Place the given parts on the board where they sit in the schematic: the schematic's extent is
+      mapped onto the board (3 mm in from the edges), so the signal runs across the board as it runs
+      across the sheet. Big parts go first; each takes the free spot nearest its target (1 mm
+      between courtyards, clear of the parts already on the board). Without schematic positions,
+      rows by reference. Returns how many did not fit. */
+  function arrange(board, mdl, keys, netlist) {
+    const want = new Set(keys), o = board.outline, m = 3, gapM = 1, heat = board.rules.heatGap > 0 ? board.rules.heatGap : 10;
+    // electrolytics keep the heat check's distance from hot parts from the start
+    const kind = g => (g.type === "electrolytic" ? "cap" : hotWhy(g, netlist, board.rules) ? "hot" : "");
+    const posOf = g => { const ms = g.members.filter(x => Number.isFinite(x.x) && Number.isFinite(x.y)); return ms.length ? [ms.reduce((s, x) => s + x.x, 0) / ms.length, ms.reduce((s, x) => s + x.y, 0) / ms.length] : null; };
+    const sel = mdl.parts.filter(p => want.has(p.key) && p.fp);
+    if (!sel.some(posOf)) return arrangeRows(board, mdl, keys);
+    const rel = g => { const bp = board.parts[g.key], pts = [[g.fp.box[0], g.fp.box[1]], [g.fp.box[2], g.fp.box[3]], [g.fp.box[0], g.fp.box[3]], [g.fp.box[2], g.fp.box[1]]].map(q => place(q, { ...bp, x: 0, y: 0 }));
+      return { x1: Math.min(...pts.map(q => q[0])), y1: Math.min(...pts.map(q => q[1])), x2: Math.max(...pts.map(q => q[0])), y2: Math.max(...pts.map(q => q[1])) }; };
+    // the schematic's extent, from every part that has a place there
+    const all = mdl.parts.map(posOf).filter(Boolean), X = all.map(p => p[0]), Y = all.map(p => p[1]);
+    const sx1 = Math.min(...X), sx2 = Math.max(...X), sy1 = Math.min(...Y), sy2 = Math.max(...Y);
+    const map = ([x, y]) => [m + (sx2 > sx1 ? (x - sx1) / (sx2 - sx1) : 0.5) * (o.w - 2 * m), m + (sy2 > sy1 ? (y - sy1) / (sy2 - sy1) : 0.5) * (o.h - 2 * m)];
+    const taken = mdl.parts.filter(g => !want.has(g.key) && g.place && g.fp && g.place.x >= 0 && g.place.x <= o.w && g.place.y >= 0 && g.place.y <= o.h).map(g => ({ ...partBox(g), k: kind(g) }));
+    const free = (b, k) => b.x1 >= 0.5 && b.y1 >= 0.5 && b.x2 <= o.w - 0.5 && b.y2 <= o.h - 0.5 && !taken.some(t => {
+      const gp = (k === "cap" && t.k === "hot") || (k === "hot" && t.k === "cap") ? heat + 0.5 : gapM;
+      return b.x1 < t.x2 + gp && b.x2 > t.x1 - gp && b.y1 < t.y2 + gp && b.y2 > t.y1 - gp;
+    });
+    const area = g => { const r = rel(g); return (r.x2 - r.x1) * (r.y2 - r.y1); };
+    let left = 0;
+    sel.sort((a, b) => area(b) - area(a) || a.ref.localeCompare(b.ref, undefined, { numeric: true })).forEach(g => {
+      // the board's own parts (heater supply, star point) have no place in the schematic: top left
+      const k = kind(g), r = rel(g), P = posOf(g), [tx, ty] = P ? map(P) : [m + (r.x2 - r.x1) / 2, m + (r.y2 - r.y1) / 2], cx = (r.x1 + r.x2) / 2, cy = (r.y1 + r.y2) / 2, step = 1.27, rings = Math.ceil(Math.max(o.w, o.h) / step);
+      let spot = null;
+      for (let ring = 0; ring <= rings && !spot; ring++) {
+        // the ring steps out from the target, nearest first
+        const cand = [];
+        for (let i = -ring; i <= ring; i++) for (let j = -ring; j <= ring; j++) if (Math.max(Math.abs(i), Math.abs(j)) === ring) cand.push([i, j]);
+        cand.sort((a, b) => Math.hypot(a[0], a[1]) - Math.hypot(b[0], b[1]));
+        for (const [i, j] of cand) {
+          const x = snap(tx - cx + i * step, 1.27), y = snap(ty - cy + j * step, 1.27), b = { x1: x + r.x1, y1: y + r.y1, x2: x + r.x2, y2: y + r.y2 };
+          if (free(b, k)) { spot = { x, y, b }; break; }
+        }
+      }
+      if (!spot) { left++; return; }
+      board.parts[g.key].x = spot.x; board.parts[g.key].y = spot.y; taken.push({ ...spot.b, k });
+    });
+    return left;
+  }
+  /** Rows inside the outline (a starting point for placement, not an optimiser): left to right by
+      reference, a 3 mm gap, the next row when one is full */
+  function arrangeRows(board, mdl, keys) {
     const want = new Set(keys), g = 3, o = board.outline;
     let x = g, y = g, rowH = 0, left = 0;
     mdl.parts.filter(p => want.has(p.key) && p.fp).forEach(p => {
@@ -1094,8 +1331,8 @@
   function withHeaters(netlist, R) {
     const L = root.CadLib;
     if (!netlist || !L || !L.tubeByName) return netlist;
-    const heaters = !R || R.heaters !== false, shields = !R || R.shields !== false, series = !!(R && R.heater126);
-    if (!heaters && !shields) return netlist;
+    const heaters = !R || R.heaters !== false, shields = !R || R.shields !== false, series = !!(R && R.heater126), star = !!(R && R.ground === "star");
+    if (!heaters && !shields && !star) return netlist;
     const parts = (netlist.parts || []).map(p => ({ ...p, pins: p.pins.slice() })), volts = { ...(netlist.volts || {}) }, names = { ...(netlist.names || {}) };
     const groups = new Map(), done = new Set(), hasGnd = names[0] === "GND";
     const fmtV = v => String(+(+v).toFixed(2));
@@ -1146,6 +1383,8 @@
       parts.push({ id: "heater:" + g.key, type: "heater", label: `XH${++k}`, params: { v: g.v, i: I, tubes: g.tubes },
         pins: [{ id: "1", name: "~", net: g.a, i: I }, { id: "2", name: "~", net: g.b, i: I }] });
     });
+    // star grounding: every ground return meets at one terminal, XG1
+    if (star && hasGnd) parts.push({ id: "star:gnd", type: "star", label: "XG1", params: {}, pins: [{ id: "1", name: "GND", net: 0 }] });
     const ranges = netlist.ranges ? { ...netlist.ranges } : undefined;
     return { ...netlist, parts, names, volts, ranges };
   }
@@ -1210,5 +1449,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

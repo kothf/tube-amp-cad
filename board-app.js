@@ -113,11 +113,20 @@
     if (!S.netlist) { S.model = null; S.conn = null; S.drc = []; S.fills = []; return; }
     S.hv = B.hvNets(S.netlist.volts, S.board.rules.hvVolts);
     S.model = B.model(S.board, S.netlist);
-    const c0 = B.connectivity(S.board, S.model.pads);
-    if (!(S.board.zones || []).length) S.fills = [];
-    else if (!light) S.fills = B.fillZones(S.board, S.model, c0, S.hv, S.netlist);
+    // names of earlier versions stored in the board (net classes, pours, vias) move to today's
+    if (B.migrateNetNames(S.board, S.model)) save();
+    // star grounding: the ground returns and the star point steer the ground's ratsnest
+    S.gg = S.board.rules.ground === "star" ? B.groundGroups(S.board, S.model, S.netlist) : null;
+    const star = S.gg && S.gg.star ? { pad: S.gg.star, groupOf: S.gg.groupOf } : null;
+    const c0 = B.connectivity(S.board, S.model.pads, null, star);
     S.clr = B.clearanceRules(S.board, S.model, S.hv, S.netlist);
-    S.conn = S.fills.length ? B.connectivity(S.board, S.model.pads, S.fills) : c0;
+    if (!light) {
+      // teardrops first: the pours keep clear of other nets' teardrops
+      const tears = S.board.rules.teardrops !== false ? B.teardrops(S.board, c0, S.clr) : [];
+      S.fills = ((S.board.zones || []).length ? B.fillZones(S.board, S.model, c0, S.hv, S.netlist, tears) : [])
+        .concat(tears.map(t => ({ tear: true, zone: -1, layer: t.layer, net: t.net, ti: t.ti, pts: t.pts, ops: [{ pol: "D", t: "region", pts: t.pts }], links: [] })));
+    }
+    S.conn = S.fills.some(f => !f.tear) ? B.connectivity(S.board, S.model.pads, S.fills, star) : c0;
     S.amps = B.netCurrents(S.netlist);
     S.drc = B.drc(S.board, S.model, S.conn, S.hv, S.fills, S.netlist);
   }
@@ -125,11 +134,13 @@
     if (!S.netlist) return;
     const parts = B.physicalParts(S.netlist), keys = new Set(parts.map(g => g.key));
     let add = parts.filter(g => !S.board.parts[g.key]).map(g => g.ref), del = Object.keys(S.board.parts).filter(k => !keys.has(k)).map(k => S.board.parts[k].ref);
-    // the heater supplies come from the valves, not from the schematic: they follow at once
-    if (add.length + del.length && add.concat(del).every(r => /^XH\d+$/.test(r))) {
-      const r = B.sync(S.board, S.netlist); analyse(); save();
-      msg(r.added.length ? `Heater supply ${r.added.join(", ")} added below the board: it feeds the valves' heaters (Design rules… sets how)` : `Heater supply ${r.removed.join(", ")} removed`);
-      add = []; del = [];
+    // the heater supplies and the star point come from the board's rules, not from the schematic: they follow at once
+    const own = r => /^X[HG]\d+$/.test(r);
+    if (add.concat(del).some(own)) {
+      const r = B.sync(S.board, S.netlist, own); analyse(); save();
+      const what = r => (/^XG/.test(r) ? "star ground point" : "heater supply");
+      msg(r.added.length ? r.added.map(x => `${what(x)} ${x}`).join(", ") + " added below the board (Board ▾ → Design rules… sets it)" : r.removed.map(x => `${what(x)} ${x}`).join(", ") + " removed");
+      add = add.filter(x => !own(x)); del = del.filter(x => !own(x));
     }
     S.pendingSync = add.length || del.length ? { add, del } : null;
     $("banner").hidden = !S.pendingSync;
@@ -976,7 +987,7 @@
   // a copper layer's pours, painted apart (their clearances cut only the pour) and laid on the board
   let pourCanvas = null;
   function drawPours(layer, alpha) {
-    const fs = S.fills.filter(f => f.layer === layer); if (!fs.length) return;
+    const fs = S.fills.filter(f => f.layer === layer && !f.tear); if (!fs.length) return;
     if (!pourCanvas) pourCanvas = document.createElement("canvas");
     if (pourCanvas.width !== canvas.width || pourCanvas.height !== canvas.height) { pourCanvas.width = canvas.width; pourCanvas.height = canvas.height; }
     const pc = pourCanvas.getContext("2d"), { scale, ox, oy } = S.view;
@@ -1009,6 +1020,13 @@
       const base = layer === S.layer ? 0.92 : S.dim;
       if (S.show.zones) drawPours(layer, (layer === S.layer ? 0.5 : S.dim * 0.55) * (NH !== null ? 0.4 : 1));
       ctx.lineCap = "round"; ctx.lineJoin = "round";
+      // teardrops, in the track's colour
+      S.fills.forEach(f => {
+        if (!f.tear || f.layer !== layer || !S.board.tracks[f.ti]) return;
+        const sel = trackSelected(f.ti), lit = hl !== null && f.net === hl;
+        ctx.globalAlpha = NH !== null && !lit && !sel ? base * 0.25 : base; ctx.fillStyle = sel ? "#00e5ff" : COLORS[layer];
+        ctx.beginPath(); f.pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.fill();
+      });
       S.board.tracks.forEach((t, i) => {
         if (t.layer !== layer) return;
         const sel = trackSelected(i), n = netOfTrack(i), lit = hl !== null && n === hl;
@@ -1249,11 +1267,11 @@
       const unplaced = new Set(S.drc.filter(d => d.kind === "unplaced").map(d => d.msg.split(" ")[0]));
       const row = g => `<button class="item${isSel("part", g.key) ? " active" : ""}" data-key="${esc(g.key)}"><span>${esc(g.ref)}</span><em>${esc(g.fp ? g.fp.name : "")}</em></button>`;
       const on = M.parts.filter(g => !unplaced.has(g.ref)), off = M.parts.filter(g => unplaced.has(g.ref));
-      host.innerHTML = (off.length ? `<button class="btn" id="btn-arrange" style="width:100%;margin:2px 0 6px" title="Pack the parts waiting below the board into rows inside the outline: a starting point for your placement">Place all on the board</button><h2>To place <small>${off.length}</small></h2>${off.map(row).join("")}` : "") + `<h2>On the board <small>${on.length}</small></h2>${on.map(row).join("")}`;
+      host.innerHTML = (off.length ? `<button class="btn" id="btn-arrange" style="width:100%;margin:2px 0 6px" title="Put the parts waiting below the board where they sit in the schematic (the schematic's extent mapped onto the board), each in the free spot nearest its place: a starting point that follows the signal">Place all on the board</button><h2>To place <small>${off.length}</small></h2>${off.map(row).join("")}` : "") + `<h2>On the board <small>${on.length}</small></h2>${on.map(row).join("")}`;
       $("parts-count").textContent = `${M.parts.length}`;
       host.querySelectorAll(".item").forEach(b => b.addEventListener("click", () => { const g = M.parts.find(x => x.key === b.dataset.key); selectPart(g); centerOn(g.place.x, g.place.y); renderPanels(); }));
       const ab = $("btn-arrange");
-      if (ab) ab.onclick = () => { const left = B.arrange(S.board, M, off.map(g => g.key)); commit(left ? `${left} part${left > 1 ? "s" : ""} did not fit: make the board larger` : `Placed ${off.length} parts in rows on the board`); fit(); };
+      if (ab) ab.onclick = () => { const left = B.arrange(S.board, M, off.map(g => g.key), S.netlist); commit(left ? `${left} part${left > 1 ? "s" : ""} did not fit: make the board larger` : `Placed ${off.length} parts where they sit in the schematic, so the signal runs across the board as on the sheet`); fit(); };
     }
     renderInspector();
     const dh = $("drc"), list = S.drc.slice().sort((a, b) => NOTE.includes(a.kind) - NOTE.includes(b.kind));
@@ -1269,7 +1287,7 @@
     const nets = [...new Set(M.pads.filter(p => p.net !== null).map(p => p.net))], todo = {}, len = {};
     S.conn.rats.forEach(r => { todo[r.net] = (todo[r.net] || 0) + 1; });
     S.board.tracks.forEach((t, i) => { const n = netOfTrack(i); if (n === null) return; for (let k = 0; k + 1 < t.pts.length; k++) len[n] = (len[n] || 0) + Math.hypot(t.pts[k + 1][0] - t.pts[k][0], t.pts[k + 1][1] - t.pts[k][1]); });
-    const pour = new Set(S.fills.map(f => f.net));
+    const pour = new Set(S.fills.filter(f => !f.tear).map(f => f.net));
     const rows = nets.map(n => ({ n, name: netName(n), cls: classOf(n), pads: M.pads.filter(p => p.net === n).length, todo: todo[n] || 0, len: len[n] || 0, I: (S.amps || {})[n] || 0 }))
       .filter(r => r.pads > 1 || r.len).sort((a, b) => (b.todo > 0) - (a.todo > 0) || a.name.localeCompare(b.name, undefined, { numeric: true }));
     $("nets-count").textContent = String(rows.length);
@@ -1317,6 +1335,13 @@
       h.appendChild(field("Rotation", bp.rot || 0, v => { bp.rot = +v; commit(); }, [["0", "0°"], ["1", "90°"], ["2", "180°"], ["3", "270°"]]));
       h.appendChild(field("Side", bp.side || "F", v => { bp.side = v; commit(); }, [["F", "Top"], ["B", "Bottom (mirrored)"]]));
       h.appendChild(lockField(bp));
+      // star grounding: which ground return this part's ground pads belong to
+      const gr = S.gg && S.gg.byPart.get(g.key);
+      if (gr) {
+        const stages = [...new Set([...S.gg.byPart.values()].map(v => v.auto).concat(S.model.parts.filter(x => x.type === "tube").map(x => x.ref)))].filter(v => !B.RETURNS.includes(v)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        h.appendChild(field("Ground return", bp.ground || "", v => { if (v) bp.ground = v; else delete bp.ground; commit(`${g.ref}'s ground goes with ${v || gr.auto + " (auto)"} to the star point`); },
+          [["", `Auto: ${gr.auto}`]].concat(B.RETURNS.concat(stages).map(v => [v, /^VL/.test(v) ? `Stage ${v}` : v]))));
+      }
       const pinCheck = B.PINOUT[g.members[0].params.model];
       h.insertAdjacentHTML("beforeend", `<p class="help">${esc(g.fp.title)}${B.isOffboard(g) ? " — a chassis-mounted part: wire it to these pads" : ""}.</p>` +
         (pinCheck && pinCheck[1] === "verify" ? `<p class="help warn">Check pinout: makers differ for the ${esc(g.members[0].params.model)}.</p>` : "") +
@@ -1453,12 +1478,13 @@
   let draft = null;
   const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class",
     current: "Track width for the current", courtyard: "Parts overlapping", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", pinout: "Pinouts to check",
-    stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket" };
+    star: "Ground returns meet only at the star point", stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket" };
   function openRules() {
     draft = JSON.parse(JSON.stringify(S.board.rules));
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; el.classList.remove("invalid"); });
     $("rules-tent").checked = draft.tentVias !== false;
     $("rules-ipc").value = draft.ipc || "B2"; $("rules-heaters").checked = draft.heaters !== false; $("rules-shields").checked = draft.shields !== false; $("rules-h126").value = draft.heater126 ? "1" : "0";
+    $("rules-ground").value = draft.ground === "star" ? "star" : "free"; $("rules-tear").checked = draft.teardrops !== false;
     $("rules-checks").innerHTML = Object.keys(CHECK_NAMES).map(k => `<label><input type="checkbox" data-c="${k}" ${draft.checks[k] !== false ? "checked" : ""}> ${CHECK_NAMES[k]}</label>`).join("");
     rulesNets();
     $("rules-modal").hidden = false;
@@ -1468,6 +1494,7 @@
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { const v = parseFloat(String(el.value).replace(",", ".")), good = el.dataset.min !== undefined ? v >= +el.dataset.min : v > 0; if (!good) { el.classList.add("invalid"); ok = false; } else { el.classList.remove("invalid"); draft[el.dataset.r] = v; } });
     draft.tentVias = $("rules-tent").checked;
     draft.ipc = $("rules-ipc").value; draft.heaters = $("rules-heaters").checked; draft.shields = $("rules-shields").checked; draft.heater126 = $("rules-h126").value === "1";
+    draft.ground = $("rules-ground").value; draft.teardrops = $("rules-tear").checked;
     document.querySelectorAll("#rules-checks [data-c]").forEach(el => { draft.checks[el.dataset.c] = el.checked; });
     return ok;
   }
@@ -1522,6 +1549,7 @@
     parts.push(`<rect x="0" y="0" width="${o.w}" height="${o.h}" rx="${r}" fill="${color ? "#0c1712" : "white"}" stroke="${color ? COLORS["Edge.Cuts"] : "black"}" stroke-width="0.15"/>`);
     const ink = l => (color ? COLORS[l] : "black");
     ["B.Cu", "F.Cu"].filter(l => layers.includes(l)).forEach(l => {
+      S.fills.filter(f => f.tear && f.layer === l).forEach(f => parts.push(`<polygon points="${f.pts.map(p => p.join(",")).join(" ")}" fill="${ink(l)}"/>`));
       S.board.tracks.filter(t => t.layer === l).forEach(t => parts.push(`<polyline points="${t.pts.map(p => p.join(",")).join(" ")}" fill="none" stroke="${ink(l)}" stroke-width="${t.w}" stroke-linecap="round" stroke-linejoin="round"/>`));
       S.board.texts.filter(t => t.layer === l).forEach(t => parts.push(svgText(t, ink(l))));
     });

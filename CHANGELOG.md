@@ -6,6 +6,27 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.61.0] - 2026-10-17
+
+### Added
+- **Star grounding** (*Design rules… → Ground scheme: Star point*).
+  - A star terminal **XG1** (a plated M3 or M4 hole for a solder lug) joins every ground return.
+  - Each part with a ground pad belongs to a return, worked out from the circuit:
+    - *Supply*: sources, rectifiers, reservoir and filter capacitors;
+    - *Output*: power valves, the output transformer's secondary, the speaker;
+    - *Input*: the input jack;
+    - otherwise the small-signal stage it serves (*VL1*: its cathode resistor, bypass and grid leak).
+
+    A part's inspector shows its return and can move it to another.
+  - The ratsnest runs each return to XG1 on its own.
+  - The check reports ground copper that joins two returns anywhere else.
+- **Teardrops** where tracks meet round pads and vias: on by default, and in the Gerbers, PDFs and SVG. One is left out where it would break a clearance, and pours keep clear of them.
+
+### Changed
+- **Place all on the board** puts each part where it sits in the schematic. Big parts go first, and each takes the free spot nearest its place. Electrolytics keep 10 mm from hot parts. The input ends up on the left and the output on the right, as on the sheet; before, parts were packed in rows in alphabetical order.
+- **Output and power transformers and filter chokes** get wire pads by default, since they sit on the chassis. The board-mount EI footprint stays an option.
+- **Net names say what a net is**: `B+` (`B+1`, `B+2` … by voltage), `+12V`, `VL1.1-A`, `VL2-G1`, `VL1.2-K`, `OUT`, `IN`, otherwise the parts it joins (`R8_C3`) instead of `Net-(R8-2)`. A board saved with the old names (its net classes, pours, stitching vias) moves over by itself.
+
 ## [3.60.0] - 2026-10-17
 
 ### Added
