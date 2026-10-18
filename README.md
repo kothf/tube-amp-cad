@@ -90,7 +90,7 @@ Firefox is not tested.
   come from Katsnelson & Larionov for the Soviet tubes and from the makers'
   datasheets for the others (RCA, Philips, Mullard, Western Electric); a
   rating a datasheet does not give is not checked.
-- **Toolbar.** One row: *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials, ticked on or off), undo / redo, the *Select | Wire* tool, rotate / mirror / delete, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual).
+- **Toolbar.** One row: *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials and Checks tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, renumber), undo / redo, the *Select | Wire* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
 - **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html`, opens from *Windows ▾ → Manual*, the help dialog, or **?** in each instrument. It covers:
   - a quick start, then every part and field;
   - all 99 tubes in a sortable table;
@@ -228,7 +228,7 @@ the circuit that was on the sheet.
   - PNG at 150, 300 or 600 dpi, black on white like the PDF or in the
     editor's colours.
 - **Bill of materials.** *View ▾ → Bill of materials* (<kbd>B</kbd>) opens the parts list
-  under the schematic:
+  under the schematic (its other tab, *Checks*, lists every wiring problem and part beyond its rating):
   - equal parts on one line with designator ranges (R1-R4); both sections of
     a dual tube count once; a tube-socket line per base;
   - ratings (resistor wattage, transistor Vceo / Ic / Ptot / package,
