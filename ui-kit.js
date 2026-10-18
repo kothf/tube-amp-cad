@@ -15,7 +15,9 @@
      command on click. A command with check() is an on/off setting: after any command runs (or on
      cmds.sync()) the elements bound to it get the "active" class while check() is true, which
      is the tick of a menu item and the lamp of a switch. cmds.helpRows(host) writes the "Keyboard" list of the help from the
-     commands' help texts, so it cannot drift from the shortcuts. */
+     commands' help texts, so it cannot drift from the shortcuts; cmds.menuItems(host, ids) fills
+     a menu with commands (icon, label, key).
+   UiKit.contextMenu(items, x, y, title): a right-click menu (UiKit.closeContextMenu() closes it). */
 (function (root) {
   "use strict";
 
@@ -76,6 +78,20 @@
         if (el && c) { (c.els = c.els || []).push(el); el.addEventListener("click", e => api.run(id, e)); }
         return api;
       },
+      // menu items for commands (null: a separator): the command's icon, label and first key;
+      // each item is bound to its command and gets the id "btn-" + the command's id (or its menuId)
+      menuItems(host, ids) {
+        if (!host) return api;
+        ids.forEach(id => {
+          if (!id) { const sep = document.createElement("div"); sep.className = "menu-sep"; host.appendChild(sep); return; }
+          const c = api.get(id), b = document.createElement("button");
+          b.className = "menu-item" + (c.check ? " check" : ""); b.id = c.menuId || "btn-" + id; b.setAttribute("role", c.check ? "menuitemcheckbox" : "menuitem");
+          b.innerHTML = `<span>${c.icon || ""}${c.label}</span>` + (c.keys && c.keys.length ? `<kbd>${showKey(c.keys[0])}</kbd>` : "");
+          if (c.title) b.title = c.title;
+          host.appendChild(b); api.bind(b, id);
+        });
+        return api;
+      },
       helpRows(host) {
         if (!host) return;
         host.innerHTML = "";
@@ -93,5 +109,37 @@
     return api;
   }
 
-  root.UiKit = { menus, commands, parseKey };
+  // A right-click menu at (x, y) in the window: items { label, key, run, disabled } or null for a
+  // separator, with an optional title line. A click on an item runs it; Esc, a click elsewhere,
+  // scrolling or resizing closes it. One at a time: opening another replaces it.
+  let ctxEl = null;
+  function closeContextMenu() { if (ctxEl) { ctxEl.remove(); ctxEl = null; } }
+  function contextMenu(items, x, y, title) {
+    closeContextMenu();
+    const el = ctxEl = document.createElement("div");
+    el.className = "menu-list ctx"; el.setAttribute("role", "menu");
+    if (title) { const t = document.createElement("div"); t.className = "ctx-title"; t.textContent = title; el.appendChild(t); }
+    items.forEach(m => {
+      if (!m) { const sep = document.createElement("div"); sep.className = "menu-sep"; el.appendChild(sep); return; }
+      const b = document.createElement("button"); b.className = "menu-item"; b.setAttribute("role", "menuitem"); b.disabled = !!m.disabled;
+      b.innerHTML = `<span>${m.icon || ""}</span>`; b.firstChild.appendChild(document.createTextNode(m.label));
+      if (m.key) { const k = document.createElement("kbd"); k.textContent = showKey(m.key); b.appendChild(k); }
+      b.addEventListener("click", e => { closeContextMenu(); m.run(e); });
+      el.appendChild(b);
+    });
+    document.body.appendChild(el);
+    el.style.left = Math.max(0, Math.min(x, innerWidth - el.offsetWidth - 6)) + "px";
+    el.style.top = Math.max(0, Math.min(y, innerHeight - el.offsetHeight - 6)) + "px";
+    const first = el.querySelector(".menu-item:not(:disabled)"); if (first) first.focus({ preventScroll: true });
+    return el;
+  }
+  if (typeof document !== "undefined") {
+    document.addEventListener("mousedown", e => { if (ctxEl && !ctxEl.contains(e.target)) closeContextMenu(); }, true);
+    // Esc closes the menu and goes no further (it would also clear the selection)
+    document.addEventListener("keydown", e => { if (ctxEl && e.key === "Escape") { closeContextMenu(); e.stopPropagation(); e.preventDefault(); } });
+    window.addEventListener("resize", closeContextMenu);
+    document.addEventListener("wheel", e => { if (ctxEl && !ctxEl.contains(e.target)) closeContextMenu(); }, { passive: true, capture: true });
+  }
+
+  root.UiKit = { menus, commands, parseKey, contextMenu, closeContextMenu };
 })(typeof window !== "undefined" ? window : globalThis);

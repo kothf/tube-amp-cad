@@ -138,10 +138,10 @@
   <tr><th>Control</th><th>What it does</th></tr>
   <tr><td>File name</td><td class="wrap">The circuit file open now. A yellow • marks unsaved changes. "Untitled" for a new circuit or an example.</td></tr>
   <tr><td><span class="ui">File ▾</span></td><td class="wrap">New circuit, Add sheet, Open, Save, Save as, the Examples, Save as PDF (all sheets), Export sheet (PDF/PNG), Export PNG, Export SPICE netlist.</td></tr>
+  <tr><td><span class="ui">Edit ▾</span></td><td class="wrap">Undo, Redo, then what acts on the selection: Rotate <kbd>R</kbd>, Mirror <kbd>M</kbd>, Duplicate <kbd>D</kbd>, Delete <kbd>Del</kbd>, Copy, Paste, Select all; and Renumber designations. The right mouse button on a part or wire opens the same commands there (on empty sheet: Paste, Select all, Fit, Undo, Redo).</td></tr>
   <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (each net's DC voltage, and its AC as ~Vrms in cyan; wires that carry the signal glow cyan), <b>Currents</b> (DC current and its direction on each wire), <b>Legend</b> (the key to those marks in the corner of the sheet), and the <b>Bill of materials</b> panel. A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
   <tr><td>↶ ↷</td><td class="wrap">Undo / redo (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>). Every edit can be undone, including opening an example.</td></tr>
   <tr><td><span class="ui">Select</span> | <span class="ui">Wire</span></td><td class="wrap">The tool: select and move (<kbd>V</kbd>), or draw wires from anywhere (<kbd>W</kbd>). The highlighted one is active.</td></tr>
-  <tr><td>Rotate, Mirror, Delete</td><td class="wrap">Act on the selection: <kbd>R</kbd>, <kbd>M</kbd>, <kbd>Del</kbd>.</td></tr>
   <tr><td>− 49% +</td><td class="wrap">Zoom out / in around the centre (<kbd>−</kbd>, <kbd>+</kbd>; the mouse wheel zooms at the pointer).</td></tr>
   <tr><td><span class="ui">Fit</span></td><td class="wrap">Fits the sheet you are on (the selected, last clicked or most visible one); press again for all sheets (<kbd>F</kbd>).</td></tr>
   <tr><td>Sheet list</td><td class="wrap">Appears with two or more sheets: jumps to one.</td></tr>
@@ -181,7 +181,7 @@
 <ul>
   <li><b>Move:</b> drag a part; its wires follow. Drag a wire segment sideways to move it.</li>
   <li><b>Select several:</b> drag a box over empty space, or <kbd>Shift</kbd>+click. <kbd>Ctrl</kbd>+<kbd>A</kbd> selects everything.</li>
-  <li><b>Rotate</b> <kbd>R</kbd>, <b>mirror</b> <kbd>M</kbd> (left to right), <b>duplicate</b> <kbd>D</kbd>, <b>delete</b> <kbd>Del</kbd>. Rotate and mirror also work while placing.</li>
+  <li><b>Rotate</b> <kbd>R</kbd>, <b>mirror</b> <kbd>M</kbd> (left to right), <b>duplicate</b> <kbd>D</kbd>, <b>delete</b> <kbd>Del</kbd>. Rotate and mirror also work while placing. The same commands are in <span class="ui">Edit ▾</span> and on the right mouse button over a part or wire (a right-click while placing or wiring still cancels it).</li>
   <li><b>Mirror</b> works for every part that can rotate, so a complementary pair or a tube driven from the right is drawn without crossing wires. The oscilloscope mirrors too; its screen stays upright.</li>
   <li><b>Copy and paste:</b> <kbd>Ctrl</kbd>+<kbd>C</kbd>, <kbd>Ctrl</kbd>+<kbd>V</kbd>.</li>
   <li><b>Undo</b> <kbd>Ctrl</kbd>+<kbd>Z</kbd>, <b>redo</b> <kbd>Ctrl</kbd>+<kbd>Y</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>.</li>
