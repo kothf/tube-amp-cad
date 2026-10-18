@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.73.0] - 2026-10-18
+
+### Added
+- **The version under the name** in the CAD's toolbar (*v3.73.0*; *dev* when run from the source), so a screenshot or a bug report shows which release it came from.
+
 ## [3.72.0] - 2026-10-18
 
 ### Added
