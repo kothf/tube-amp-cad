@@ -165,6 +165,7 @@
     .menu-item { white-space: nowrap; display: flex; justify-content: space-between; gap: 16px; width: 100%; background: none; border: 0; color: var(--text); font: inherit; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
     .menu-item:hover, .menu-item:focus { background: var(--panel2, #18212e); outline: none; }
     .menu-item kbd { color: var(--muted); font: 11px ui-monospace, monospace; border: 0; background: none; }
+    .menu-item .ico { width: 14px; height: 14px; margin-right: 8px; vertical-align: -3px; }
     .menu-item.check { padding-left: 28px; position: relative; }
     .menu-item.check.active::before { content: "✓"; position: absolute; left: 10px; color: var(--accent); }
     #sheet-nav[hidden] { display: none; }
@@ -226,6 +227,10 @@
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-bom" title="Bill of materials under the schematic; export TXT, CSV, XLSX or PDF (B)">Bill of materials<kbd>B</kbd></button>
       </div>
     </div>
+    <div class="menu" id="edit-menu">
+      <button class="btn" id="btn-edit" aria-haspopup="true" aria-expanded="false" title="Edit the selection (also on the right mouse button)">Edit ▾</button>
+      <div class="menu-list" role="menu" hidden></div>
+    </div>
     <input type="file" id="file-input" accept=".json,application/json" hidden>
     <span class="sep"></span>
     <button class="btn ib" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7"/></svg></button>
@@ -235,9 +240,6 @@
       <button class="btn" id="btn-tool-select" title="Select / move (V)">Select</button>
       <button class="btn" id="btn-tool-wire" title="Draw wires from anywhere (W)">Wire</button>
     </div>
-    <button class="btn ib" id="btn-rotate" title="Rotate selection (R)" aria-label="Rotate"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M11.7 1.6v3h-3"/></svg></button>
-    <button class="btn ib" id="btn-mirror" title="Mirror selection left–right (M)" aria-label="Mirror"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v13" stroke-dasharray="2 1.6"/><path d="M6 4 2 12h4z"/><path d="M10 4l4 8h-4z"/></svg></button>
-    <button class="btn ib" id="btn-delete" title="Delete selection (Del)" aria-label="Delete"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11"/><path d="M6 4.5V2.5h4v2"/><path d="M4 4.5l.8 9.5h6.4l.8-9.5"/><path d="M6.8 7v4.5M9.2 7v4.5"/></svg></button>
     <span class="sep"></span>
     <div class="seg-group" role="group" aria-label="Zoom">
       <button class="btn" id="btn-zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
@@ -326,6 +328,7 @@
       <ul class="help-list">
         <li><b>Place:</b> pick a part on the left (or type in the search box: a name, a part number like 2N3904 or EL84, or a value like 47k or 100n, then Enter) and click the sheet. <kbd>Shift</kbd>-click places several.</li>
         <li><b>Wire:</b> click a pin, click corners, finish on a pin or wire. <kbd>W</kbd> starts wires anywhere.</li>
+        <li><b>Edit:</b> right-click a part or wire for Rotate, Mirror, Duplicate, Delete, Copy and Paste; the same are in <i>Edit ▾</i>.</li>
         <li><b>Move:</b> drag parts (wires follow) or drag a wire segment sideways. Sheet frames are locked; unlock one in its inspector to move it.</li>
         <li><b>View:</b> wheel zooms, <kbd>Space</kbd>/middle-drag pans, <kbd>F</kbd> fits the sheet you are on, again for all sheets.</li>
         <li><b>Measure:</b> every wire shows its DC voltage and current (<i>View ▾</i> turns them on and off); hover a wire for both. Wire an Oscilloscope to see waveforms; double-click it for the full scope. <i>Windows ▾ → Spectrum analyzer</i> shows the harmonics of its channels, <i>Bode plotter</i> their frequency response (gain and phase from 1 Hz to 1 MHz).</li>

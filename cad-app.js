@@ -1176,7 +1176,7 @@
     if (e.button === 0 && !S.spaceDown) S.lastClick = { x: m.wx, y: m.wy };   // Fit picks the sheet clicked last
     if (e.button === 0) bomSelShown = "";   // a click on the sheet shows its selection in the BOM again
     if (e.button === 1 || (e.button === 0 && S.spaceDown)) { S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
-    if (e.button === 2) { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } return; }
+    if (e.button === 2) { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else openSheetMenu(e, m); return; }
     if (e.button !== 0) return;
     const gx = snap(m.wx), gy = snap(m.wy);
 
@@ -1229,6 +1229,21 @@
     updateInspector(); render();
   }
 
+  // Right mouse button on the sheet: what can be done with the part or wire under the pointer
+  // (selected first, unless it already is), or with the sheet
+  function openSheetMenu(e, m) {
+    const c = hitComp(m.wx, m.wy), w = c ? null : hitWire(m.wx, m.wy);
+    if ((c && !S.sel.comps.has(c.id)) || (w && !S.sel.wires.has(w.id))) {
+      S.sel.comps.clear(); S.sel.wires.clear();
+      if (c) S.sel.comps.add(c.id); else S.sel.wires.add(w.id);
+      updateInspector(); render();
+    }
+    const item = id => { const k = cmds.get(id); return { label: k.label, key: k.keys[0], icon: k.icon, run: () => cmds.run(id) }; };
+    const n = S.sel.comps.size + S.sel.wires.size;
+    const items = c || w ? ["rotate", "mirror", "duplicate", "delete", null, "copy", "paste"] : ["paste", "select-all", null, "fit", "undo", "redo"];
+    const title = c ? (n > 1 ? `${n} selected` : desig(c) || LIB[c.type].name) : w ? (n > 1 ? `${n} selected` : "Wire") : "";
+    UiKit.contextMenu(items.map(id => (id ? item(id) : null)), e.clientX, e.clientY, title);
+  }
   function onMouseMove(e) {
     const m = evPos(e);
     const d = S.drag;
@@ -1310,6 +1325,11 @@
   // toolbar and menu buttons bound to them and the help's Keyboard list all come from it.
   // A new command with a key and a help text shows up in the help by itself.
   const cmds = UiKit.commands();
+  const ICONS = {
+    rotate: `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M11.7 1.6v3h-3"/></svg>`,
+    mirror: `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v13" stroke-dasharray="2 1.6"/><path d="M6 4 2 12h4z"/><path d="M10 4l4 8h-4z"/></svg>`,
+    delete: `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11"/><path d="M6 4.5V2.5h4v2"/><path d="M4 4.5l.8 9.5h6.4l.8-9.5"/><path d="M6.8 7v4.5M9.2 7v4.5"/></svg>`
+  };
   const helpModal = () => document.getElementById("help-modal");
   const toggleHelp = () => { const m = helpModal(); m.hidden = !m.hidden; };
   const zoomBy = k => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, k);
@@ -1322,28 +1342,29 @@
   function toggleView(key) { S[key] = !S[key]; render(); }
   cmds
     .add({ id: "help-close", keys: ["Escape"], anyCtrl: true, when: () => !helpModal().hidden, run: () => { helpModal().hidden = true; } })
-    .add({ id: "rotate", keys: ["R"], run: rotateSelection, help: "rotate the selection (or the part being placed)" })
-    .add({ id: "mirror", keys: ["M"], run: mirrorSelection, help: "mirror left–right" })
-    .add({ id: "duplicate", keys: ["D", "Ctrl+D"], prevent: true, run: () => { if (copySelection()) paste(40, 40); }, help: "duplicate (also Ctrl+D)", helpKeys: ["D"] })
-    .add({ id: "delete", keys: ["Delete", "Backspace"], anyCtrl: true, prevent: true, run: deleteSelection, help: "delete" })
+    .add({ id: "rotate", label: "Rotate", icon: ICONS.rotate, keys: ["R"], run: rotateSelection, help: "rotate the selection (or the part being placed)" })
+    .add({ id: "mirror", label: "Mirror left–right", icon: ICONS.mirror, keys: ["M"], run: mirrorSelection, help: "mirror left–right" })
+    .add({ id: "duplicate", label: "Duplicate", keys: ["D", "Ctrl+D"], prevent: true, run: () => { if (copySelection()) paste(40, 40); }, help: "duplicate (also Ctrl+D)", helpKeys: ["D"] })
+    .add({ id: "delete", label: "Delete", icon: ICONS.delete, keys: ["Delete", "Backspace"], anyCtrl: true, prevent: true, run: deleteSelection, help: "delete" })
     .add({ id: "wire", keys: ["W"], run: () => setTool(S.tool === "wire" ? "select" : "wire"), help: "wire tool" })
     .add({ id: "select", keys: ["V"], run: () => setTool("select"), help: "select tool" })
     .add({ id: "escape", keys: ["Escape"], anyCtrl: true, run: clearOrCancel, help: "cancel / clear the selection" })
-    .add({ id: "fit", keys: ["F"], run: () => fitCurrent(), help: "fit the sheet in use; again: all sheets" })
+    .add({ id: "fit", label: "Fit the sheet", keys: ["F"], run: () => fitCurrent(), help: "fit the sheet in use; again: all sheets" })
     .add({ id: "bom", keys: ["B"], run: () => toggleBom(), check: () => bomOpts.open, help: "bill of materials" })
     .add({ id: "zoom-in", keys: ["+", "=", "NumpadAdd", "Equal"], anyCtrl: true, run: () => zoomBy(1.2), help: "zoom in · wheel zooms at the pointer", helpKeys: ["+"] })
     .add({ id: "zoom-out", keys: ["-", "NumpadSubtract", "Minus"], anyCtrl: true, run: () => zoomBy(1 / 1.2), help: "zoom out", helpKeys: ["-"] })
-    .add({ id: "undo", keys: ["Ctrl+Z"], prevent: true, run: undo, help: "undo" })
-    .add({ id: "redo", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], prevent: true, run: redo, help: "redo (also Ctrl+Shift+Z)", helpKeys: ["Ctrl+Y"] })
-    .add({ id: "copy", keys: ["Ctrl+C"], run: () => copySelection(), help: "copy" })
-    .add({ id: "paste", keys: ["Ctrl+V"], prevent: true, run: () => paste(40, 40), help: "paste" })
-    .add({ id: "select-all", keys: ["Ctrl+A"], prevent: true, run: selectAll, help: "select all" })
+    .add({ id: "undo", label: "Undo", keys: ["Ctrl+Z"], prevent: true, run: undo, help: "undo" })
+    .add({ id: "redo", label: "Redo", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], prevent: true, run: redo, help: "redo (also Ctrl+Shift+Z)", helpKeys: ["Ctrl+Y"] })
+    .add({ id: "copy", label: "Copy", keys: ["Ctrl+C"], run: () => copySelection(), help: "copy" })
+    .add({ id: "paste", label: "Paste", keys: ["Ctrl+V"], prevent: true, run: () => paste(40, 40), help: "paste" })
+    .add({ id: "select-all", label: "Select all", keys: ["Ctrl+A"], prevent: true, run: selectAll, help: "select all" })
     .add({ id: "save", keys: ["Ctrl+S"], prevent: true, run: () => saveFile(), help: "save" })
     .add({ id: "save-as", keys: ["Ctrl+Shift+S"], prevent: true, run: () => saveFileAs(), help: "save as" })
     .add({ id: "open", keys: ["Ctrl+O"], prevent: true, run: () => openDialog(), help: "open" })
     .add({ id: "simulate", keys: ["Ctrl+Enter"], prevent: true, run: () => runSim("full"), help: "simulate until settled" })
     .add({ id: "help", keys: ["F1"], inInputs: true, prevent: true, run: toggleHelp, help: "this help (also ?)" })
     .add({ id: "help-alt", keys: ["?"], prevent: true, run: toggleHelp })
+    .add({ id: "renumber", menuId: "menu-renumber", label: "Renumber designations", title: "Letter code (R, C, L, T, VL …) and number for every part, in reading order", run: () => renumber() })
     // settings without a key: View menu ticks and the toolbar's switches
     .add({ id: "volts", run: () => toggleView("showVolts"), check: () => S.showVolts })
     .add({ id: "amps", run: () => toggleView("showAmps"), check: () => S.showAmps })
@@ -2129,8 +2150,7 @@
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
     host.appendChild(live);
     const act = document.createElement("div"); act.className = "insp-actions";
-    const ico = id => document.querySelector(`#${id} svg`).outerHTML;   // the toolbar's icons
-    act.innerHTML = `<button class="btn" data-a="rot" title="Rotate (R)" ${def.noRotate ? "disabled" : ""}>${ico("btn-rotate")} Rotate</button><button class="btn" data-a="mir" title="Mirror left–right (M)" ${canMirror(c.type) ? "" : "disabled"}>${ico("btn-mirror")} Mirror</button><button class="btn danger" data-a="del" title="Delete (Del)">${ico("btn-delete")} Delete</button>`;
+    act.innerHTML = `<button class="btn" data-a="rot" title="Rotate (R)" ${def.noRotate ? "disabled" : ""}>${ICONS.rotate} Rotate</button><button class="btn" data-a="mir" title="Mirror left–right (M)" ${canMirror(c.type) ? "" : "disabled"}>${ICONS.mirror} Mirror</button><button class="btn danger" data-a="del" title="Delete (Del)">${ICONS.delete} Delete</button>`;
     act.querySelector('[data-a="rot"]').onclick = rotateSelection;
     act.querySelector('[data-a="mir"]').onclick = mirrorSelection;
     act.querySelector('[data-a="del"]').onclick = deleteSelection;
@@ -2880,7 +2900,8 @@
       template: w => `${w[0]}px 1fr ${w[1]}px` });
 
     buildPalette();
-    // toolbar menus (File, View, Windows) and the state of their ticks and switches
+    cmds.menuItems(document.querySelector("#edit-menu .menu-list"), ["undo", "redo", null, "rotate", "mirror", "duplicate", "delete", null, "copy", "paste", "select-all", null, "renumber"]);
+    // toolbar menus (File, Edit, View, Windows) and the state of their ticks and switches
     UiKit.menus(document.querySelector("header"));
     bind("btn-new", () => openSheetDialog("new"));
     bind("btn-add-sheet", () => openSheetDialog("add"));
@@ -2916,7 +2937,6 @@
     cmds.bind("btn-undo", "undo").bind("btn-redo", "redo");
     bind("btn-tool-select", () => { S.placing = null; setTool("select"); });
     bind("btn-tool-wire", () => { S.placing = null; setTool(S.tool === "wire" ? "select" : "wire"); });
-    cmds.bind("btn-rotate", "rotate").bind("btn-delete", "delete").bind("btn-mirror", "mirror");
     cmds.bind("btn-help", "help").helpRows(document.getElementById("help-keys"));
     bind("btn-help-close", () => { document.getElementById("help-modal").hidden = true; });
     bind("btn-help-manual", () => { document.getElementById("help-modal").hidden = true; ToolWindows.open("help.html"); });
