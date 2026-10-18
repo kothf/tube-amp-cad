@@ -2120,34 +2120,11 @@
       if (window.Hints) Hints.attach(r.firstChild, Hints.field(c.type, f.key) || Hints.label(f.label), f.label);
       host.appendChild(r);
     });
-    if (c.type === "speaker" && c.params.model === "ts") host.appendChild(speakerPlot(c));
-    if (c.type === "tube") {
-      const t = tubeByName(c.params.tube);
-      if (t) {
-        const p = document.createElement("p"); p.className = "insp-help";
-        p.textContent = t.custom
-          ? `Imported SPICE model ${t.custom.sub}${t.custom.like ? ` · socket, pinout and heater of the ${t.custom.like}` : ""} · Va max ${t.vaMax} V · Pa max ${t.paMax} W`
-          : `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A (not simulated)`;
-        host.appendChild(p);
-      }
-    }
-    if (def.info) {
-      const p = document.createElement("p"); p.className = "insp-help";
-      p.textContent = def.info(c);
-      host.appendChild(p);
-    }
-    if (c.type === "switch") {
-      const p = document.createElement("p"); p.className = "insp-help";
-      p.textContent = "Double-click the switch on the sheet to flip it. Sections named like SF1.1 and SF1.2 are one switch and flip together.";
-      host.appendChild(p);
-    }
-    if (c.type === "scope") {
-      // this scope's channels in the instrument windows
-      const open = document.createElement("div"); open.className = "insp-open";
-      open.innerHTML = `<div class="insp-sub">Open in</div><div class="insp-actions">${[["oscilloscope.html", "Oscilloscope", "Full oscilloscope: cursors, X-Y, power-on run"], ["spectrum_analyzer.html", "Spectrum", "Spectrum analyzer: harmonics and THD"], ["bode.html", "Bode", "Bode plotter: gain and phase against frequency"]].map(([f, t, tip]) => `<button class="btn link" data-win="${f}" title="${tip}">${t} ↗</button>`).join("")}</div>`;
-      open.querySelectorAll("[data-win]").forEach(b => b.addEventListener("click", () => ToolWindows.open(b.dataset.win, { scope: c.id })));
-      host.appendChild(open);
-    }
+    // what the part library adds for this kind of part: a line of text, then a panel (cad-components.js)
+    const info = def.info && def.info(c);
+    if (info) { const p = document.createElement("p"); p.className = "insp-help"; p.textContent = info; host.appendChild(p); }
+    const panel = def.panel && def.panel(c, readoutApi(c));
+    if (panel) host.appendChild(panel);
     if (!def.noLabel) host.appendChild(row("Part number (BOM)", input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); })));
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
     host.appendChild(live);
@@ -2166,111 +2143,25 @@
     return `<div class="kv${cls ? " " + cls : ""}"><span>${k}</span><b>${m ? `${m[1]}<small>${m[2]}</small>` : v}</b></div>`;
   }
 
-  function liveReadout(c) {
-    const r = S.sim.result;
-    if (!r) return `<div class="insp-sub">Operating point${simPct()}</div><p class="insp-help">${S.sim.error || (S.sim.busy ? "Simulating…" : "Not simulated yet.")}</p>`;
-    let h = `<div class="insp-sub">Operating point${simPct()}</div>`;
-    const vAcross = (a, b) => { const na = pinNetOf(c, a), nb = pinNetOf(c, b); const va = netDC(na), vb = netDC(nb); return va === null || vb === null ? null : va - vb; };
+  // The simulation as a part sees it, for the readouts and panels of the part library
+  // (cad-components.js: readout(c, R), panel(c, R)).
+  function readoutApi(c) {
+    const netOf = pid => pinNetOf(c, pid);
+    const vAcross = (a, b) => { const va = netDC(netOf(a)), vb = netDC(netOf(b)); return va === null || vb === null ? null : va - vb; };
     const pAvg = (a, b, R) => { const wa = waveOf(c, a), wb = waveOf(c, b); if (!wa || !wb) { const v = vAcross(a, b); return v === null ? null : v * v / R; } let s = 0; for (let i = 0; i < wa.length; i++) { const v = wa[i] - wb[i]; s += v * v; } return s / wa.length / R; };
-    switch (c.type) {
-      case "tube": {
-        const d = tubeData(c);
-        if (!d) return h + `<p class="insp-help">No data.</p>`;
-        if (d.kind === "rectifier") {
-          h += kv("Anode 1 current", fmtEng(d.a1 ? d.a1.i : 0, "A")) + kv("Anode 2 current", fmtEng(d.a2 ? d.a2.i : 0, "A"));
-          h += limitRows(c);
-          return h + `<p class="insp-help">Anode currents are averages over the settled cycle; the peak is drawn while the reservoir capacitor charges.</p>`;
-        }
-        const dc = d.dc;
-        const pa = dc.vak * dc.ia, over = pa > d.paMax;
-        h += kv("Va (anode–cathode)", fmtEng(dc.vak, "V", 1), dc.vak > d.vaMax ? "bad" : "");
-        h += kv(d.kind === "pentode" ? "Vg1k (bias)" : "Vgk (bias)", fmtEng(dc.vgk, "V", 2), dc.vgk > 0 ? "warn" : "");
-        if (d.kind === "pentode") { const l = tubeLimits(c).find(o => o.key === "Vg2k"); h += kv("Vg2k (screen)", fmtEng(dc.vg2k, "V", 1) + (l ? ` · ${Math.round(l.share * 100)}% of ${l.lim}` : ""), l && l.share > 1 ? "bad" : ""); }
-        h += kv("Ia (anode current)", fmtEng(dc.ia, "A", 2));
-        if (d.kind === "pentode") h += kv("Ig2 (screen current)", fmtEng(dc.ig2, "A", 2));
-        h += kv("Pa (dissipation)", `${fmtEng(pa, "W", 2)} · ${Math.round(pa / d.paMax * 100)}% of ${d.paMax} W`, over ? "bad" : (pa > 0.85 * d.paMax ? "warn" : ""));
-        h += limitRows(c);
-        if (d.metrics) {
-          h += `<div class="insp-sub">With signal</div>`;
-          h += kv("Plate swing", fmtEng(d.metrics.vakPP, "Vpp", 1)) + kv("Grid swing", fmtEng(d.metrics.vgkPP, "Vpp", 2));
-          if (d.metrics.gain) h += kv("Plate/grid gain", d.metrics.gain.toFixed(1) + "×");
-          if (d.metrics.thd !== null) h += kv("THD at plate", d.metrics.thd.toFixed(2) + " %", d.metrics.thd > 5 ? "warn" : "");
-          h += kv("Average Pa", fmtEng(d.metrics.pAvg, "W", 2), d.metrics.pAvg > d.paMax ? "bad" : "");
-        }
-        if (dc.vgk > 0) h += `<p class="insp-help warn">Grid is positive: grid current flows.</p>`;
-        return h;
-      }
-      case "resistor": case "pot": {
-        if (c.type === "pot") { h += kv("Wiper DC", fmtEng(netDC(pinNetOf(c, "W")), "V", 2)); return h; }
-        const v = vAcross("1", "2"), p = resistorPower(c), w = +c.params.w;
-        h += kv("Voltage (DC)", fmtEng(v, "V", 2)) + kv("Current (DC)", fmtEng(v / c.params.r, "A", 2));
-        // rated: share of the rating (over 60 % runs hot: derate about 2×); unrated: flag above 1 W
-        h += w ? kv("Power (avg)", `${fmtEng(p, "W", 2)} · ${Math.round(p / w * 100)}% of ${w} W`, p > w ? "bad" : p > 0.6 * w ? "warn" : "")
-               : kv("Power (avg)", fmtEng(p, "W", 2), p > 1 ? "warn" : "");
-        return h;
-      }
-      case "capacitor": case "electrolytic": {
-        const v = c.type === "electrolytic" ? vAcross("+", "-") : vAcross("1", "2");
-        h += kv("DC voltage across", fmtEng(v, "V", 1), c.type === "electrolytic" && v < -0.5 ? "bad" : "");
-        if (c.type === "electrolytic" && v < -0.5) h += `<p class="insp-help warn">Reverse-biased electrolytic.</p>`;
-        return h;
-      }
-      case "npn": case "pnp": case "nmos": case "pmos": {
-        const dev = r.dc.devices[c.id], d = dev && dev.main, m = (c.type === "npn" || c.type === "pnp" ? CadLib.BJTS : CadLib.MOSFETS)[c.params.model];
-        if (!d || !m) return h + `<p class="insp-help">No data.</p>`;
-        const bip = c.type === "npn" || c.type === "pnp", vMain = bip ? d.vce : d.vds, iMain = bip ? d.ic : d.id;
-        h += kv(bip ? "Vce" : "Vds", fmtEng(vMain, "V", 2), Math.abs(vMain) > m.v ? "bad" : Math.abs(vMain) > 0.8 * m.v ? "warn" : "");
-        h += kv(bip ? "Vbe" : "Vgs", fmtEng(bip ? d.vbe : d.vgs, "V", 3));
-        h += kv(bip ? "Ic" : "Id", fmtEng(iMain, "A", 2), Math.abs(iMain) > m.i ? "bad" : "");
-        if (bip) h += kv("Ib", fmtEng(d.ib, "A", 2)) + kv("hFE (Ic/Ib)", Math.abs(d.ib) > 1e-12 ? (d.ic / d.ib).toFixed(0) : "—");
-        // germanium: the leakage at the part's temperature, and how much of Ic it makes up ((hFE + 1)·ICBO)
-        if (bip && m.ge) { const a = CadLib.bjtAt(m, c.params.temp), iceo = (a.bf + 1) * a.icbo; h += kv(`Leakage at ${+a.t.toFixed(1)} °C`, `ICBO ${fmtEng(a.icbo, "A", 2)} · ×hFE ≈ ${fmtEng(iceo, "A", 2)}`, Math.abs(d.ic) > 0 && iceo > 0.5 * Math.abs(d.ic) ? "warn" : ""); }
-        h += kv("Dissipation", `${fmtEng(d.pd, "W", 2)} · ${Math.round(d.pd / m.p * 100)}% of ${m.p} W`, d.pd > m.p ? "bad" : d.pd > 0.6 * m.p ? "warn" : "");
-        if (bip && d.vce < 0.3 && d.ic > 1e-6) h += `<p class="insp-help warn">Saturated (Vce below 0.3 V).</p>`;
-        if (!bip && Math.abs(iMain) < 1e-6) h += `<p class="insp-help">Off: Vgs below the threshold.</p>`;
-        if (m.p > 2) h += `<p class="insp-help">Rated ${m.p} W with the case at 25 °C: needs a heatsink well before that.</p>`;
-        return h;
-      }
-      case "zener": case "led": case "diode": {
-        const v = vAcross("A", "K"), i = pinCurrent(c, "A");
-        h += kv("Voltage (A–K)", fmtEng(v, "V", 3)) + kv("Current (A→K)", fmtEng(i, "A", 2));
-        if (c.type === "zener") { const z = CadLib.ZENERS[c.params.model], p = Math.abs(v * i); if (z) h += kv("Dissipation", `${fmtEng(p, "W", 2)} · ${Math.round(p / z.p * 100)}% of ${z.p} W`, p > z.p ? "bad" : p > 0.6 * z.p ? "warn" : ""); }
-        if (c.type === "led") { const l = CadLib.LEDS[c.params.color]; if (l && i > l.i) h += `<p class="insp-help warn">Above the ${l.i * 1000} mA maximum.</p>`; }
-        return h;
-      }
-      case "inductor": {
-        const v = vAcross("1", "2"); h += kv("DC current", fmtEng(v / Math.max(c.params.dcr, 1e-3), "A", 2)) + kv("DC drop", fmtEng(v, "V", 2)); return h;
-      }
-      case "speaker": {
-        const sp = speakerPower(c), f = signalFreq();
-        if (sp) h += kv("Output power", fmtEng(sp.p, "W", 2)) + kv("Voltage", fmtEng(sp.vrms, "Vrms", 2));
-        else { const p = pAvg("+", "-", c.params.r); h += kv("Output power", fmtEng(p, "W", 2)); }
-        if (c.params.model === "ts" && f) { const [z, ph] = CadLib.speakerZ(c.params, f); h += kv(`Impedance at ${fmtEng(f, "Hz")}`, `${fmtEng(z, "Ω", 3)} · ${ph >= 0 ? "+" : ""}${ph.toFixed(0)}°`); }
-        return h;
-      }
-      case "vdc": {
-        const dev = r.dc.devices[c.id];
-        const i = dev && dev.main ? -dev.main.i : null;
-        h += kv("Current supplied", fmtEng(i, "A", 2)) + kv("Power", fmtEng(i !== null ? i * c.params.v : null, "W", 2)); return h;
-      }
-      case "opt_se": case "opt_cat": case "opt_pp": {
-        if (c.type === "opt_cat") {
-          const i = otDcCurrent(c), m = CadLib.OUTPUT_TX[c.params.model];
-          if (i !== null && m) h += kv("Primary DC current", `${fmtEng(i, "A", 2)} · ${Math.round(i * 1000 / m.ma * 100)}% of ${m.ma} mA`, i * 1000 > m.ma ? "bad" : i * 1000 > 0.9 * m.ma ? "warn" : "");
-        }
-        h += kv("Secondary", fmtEng(Math.sqrt(pAvg("S1", "S2", 1)), "Vrms", 2)); return h;
-      }
-      case "scope": {
-        const ch = scopeChannels(c);
-        if (!ch) return h + `<p class="insp-help">No transient data (add a signal generator).</p>`;
-        [["CH1", ch.ch1], ["CH2", ch.ch2]].forEach(([n, a]) => {
-          if (!a) { h += kv(n, "not connected"); return; }
-          const s = stats(a); h += kv(n, `${fmtEng(s.pp, "Vpp", 2)} · avg ${fmtEng(s.mean, "V", 2)}`);
-        });
-        return h;
-      }
-      default: return "";
-    }
+    return {
+      r: S.sim.result, kv, note: (text, cls) => `<p class="insp-help${cls ? " " + cls : ""}">${text}</p>`,
+      vAcross, pAvg, netDC, pinNet: netOf, pinCurrent: pid => pinCurrent(c, pid),
+      tubeData: () => tubeData(c), tubeLimits: () => tubeLimits(c), limitRows: () => limitRows(c),
+      resistorPower: () => resistorPower(c), speakerPower: () => speakerPower(c), otDcCurrent: () => otDcCurrent(c),
+      scopeChannels: () => scopeChannels(c), signalFreq, stats
+    };
+  }
+  function liveReadout(c) {
+    const head = `<div class="insp-sub">Operating point${simPct()}</div>`;
+    if (!S.sim.result) return head + `<p class="insp-help">${S.sim.error || (S.sim.busy ? "Simulating…" : "Not simulated yet.")}</p>`;
+    const f = LIB[c.type].readout;
+    return f ? head + f(c, readoutApi(c)) : "";
   }
 
   function buildCircuitPanel(host) {
@@ -2347,30 +2238,6 @@
   }
 
   // a loudspeaker's impedance (solid) and phase (dotted) from 10 Hz to 20 kHz, the nominal value dashed
-  function speakerPlot(c) {
-    const wrap = document.createElement("div"); wrap.className = "spk-plot";
-    const cv = document.createElement("canvas"); cv.width = 300; cv.height = 150; cv.id = "spk-plot"; wrap.appendChild(cv);
-    const x = cv.getContext("2d"), W = cv.width, H = cv.height, L = 30, Rm = 28, T = 8, B = 18, f1 = 10, f2 = 20000;
-    const pts = Array.from({ length: 161 }, (_, i) => { const f = f1 * Math.pow(f2 / f1, i / 160); return [f, ...CadLib.speakerZ(c.params, f)]; });
-    const zmax = Math.max(...pts.map(p => p[1])) * 1.1, X = f => L + (W - L - Rm) * Math.log(f / f1) / Math.log(f2 / f1), Y = z => H - B - (H - B - T) * z / zmax, P = ph => T + (H - B - T) * (90 - ph) / 180;
-    x.fillStyle = "#0b0f14"; x.fillRect(0, 0, W, H); x.font = "9px ui-monospace, monospace";
-    [10, 100, 1000, 10000].forEach(f => { x.strokeStyle = "#1b2430"; x.beginPath(); x.moveTo(X(f), T); x.lineTo(X(f), H - B); x.stroke(); x.fillStyle = "#6e7781"; x.fillText(f >= 1000 ? f / 1000 + "k" : String(f), X(f) - 6, H - 5); });
-    [0, 0.5, 1].forEach(k => { const z = zmax / 1.1 * k; x.fillStyle = "#6e7781"; x.fillText(z.toFixed(0), 3, Y(z) + 3); });
-    x.font = "9px sans-serif"; x.fillText("|Z| Ω", L + 3, T + 8); x.font = "9px ui-monospace, monospace";
-    ["+90°", "0°", "−90°"].forEach((t, k) => { x.fillStyle = "#6e7781"; x.fillText(t, W - Rm + 3, T + (H - B - T) * k / 2 + 3); });
-    x.strokeStyle = "#8b949e"; x.setLineDash([4, 3]); x.beginPath(); x.moveTo(L, Y(c.params.r)); x.lineTo(W - Rm, Y(c.params.r)); x.stroke(); x.setLineDash([]);
-    x.strokeStyle = "#ffd54f"; x.lineWidth = 1.5; x.beginPath(); pts.forEach(([f, z], i) => (i ? x.lineTo(X(f), Y(z)) : x.moveTo(X(f), Y(z)))); x.stroke();
-    x.strokeStyle = "#58a6ff"; x.lineWidth = 1; x.setLineDash([2, 2]); x.beginPath(); pts.forEach(([f, , ph], i) => (i ? x.lineTo(X(f), P(ph)) : x.moveTo(X(f), P(ph)))); x.stroke(); x.setLineDash([]);
-    // the resonance peak near fs, and the lowest point between it and the voice coil's rise
-    const fs = c.params.fs, near = pts.filter(p => p[0] > fs / 3 && p[0] < fs * 3), peak = (near.length ? near : pts).reduce((a, p) => (p[1] > a[1] ? p : a));
-    const above = pts.filter(p => p[0] > peak[0] && p[0] < 10000), dip = above.reduce((a, p) => (p[1] < a[1] ? p : a), above[0] || peak);
-    const ph = pts.reduce((a, p) => (Math.abs(p[2]) > Math.abs(a) ? p[2] : a), 0);
-    const note = document.createElement("p"); note.className = "insp-help";
-    note.textContent = `Impedance (yellow) and phase (blue): ${peak[1].toFixed(0)} Ω at ${peak[0].toFixed(0)} Hz, ${dip[1].toFixed(1)} Ω at ${dip[0] >= 1000 ? (dip[0] / 1000).toFixed(1) + " kHz" : dip[0].toFixed(0) + " Hz"} at the lowest above it, phase up to ${ph >= 0 ? "+" : ""}${ph.toFixed(0)}°. The tube sees this through the output transformer.`;
-    wrap.appendChild(note);
-    return wrap;
-  }
-
   function row(label, el, wide) {
     const d = document.createElement("label"); d.className = "row" + (wide ? " wide" : "");
     const s = document.createElement("span"); s.textContent = label;
