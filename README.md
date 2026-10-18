@@ -621,9 +621,12 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   their published SPICE parameters; the others are set to their datasheet's
   typical gain. The power drivers and output transistors are fitted to their
   datasheets, hFE and its fall at high current (a test checks each part's hFE
-  at the datasheet's own test point), VBE(on) and output capacitance; there
-  is no emitter or base resistance, so VBE at several amperes reads somewhat
-  low.
+  at the datasheet's own test point), VBE(on) and output capacitance. The
+  2N3055 / MJ2955, TIP41C / TIP42C and MJL21194 / MJL21193 also have base and
+  emitter resistance (RB, RE), so VBE rises with the current: at the
+  datasheet's VBE(on) test point it reads 0.7 of the guaranteed maximum
+  (1.05 V at 4 A for the 2N3055). The other power parts have none yet, so
+  their VBE at several amperes reads somewhat low.
 - **MOSFETs** are square-law (SPICE level 1), with the overdrive smoothed
   over 50 mV around threshold, plus a body diode and gate capacitances. The
   threshold is the middle of the datasheet range, and Kp comes from the

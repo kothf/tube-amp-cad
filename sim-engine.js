@@ -123,6 +123,8 @@
   // Semiconductors. Currents into each terminal for terminal voltages V.
   // BJT (nodes C, B, E): SPICE Gummel-Poon without the low-current
   // recombination terms: IS, BF, BR, NF, VAF (Early), IKF (high-injection knee).
+  // The base and emitter resistances (RB, RE) are R elements to inner nodes (the CAD's
+  // build); the element's ext lists the outer C, B, E nodes for its readings.
   // vt: thermal voltage kT/q at the junction temperature (the CAD scales IS, BF
   // and BR for temperature too). icbo: the collector-base leakage of germanium,
   // a current from collector to base that saturates once the junction is a few
@@ -642,8 +644,10 @@
       return { vak, vgk, vg2k, ia, ig2, ig };
     }
     if (e.kind === "BJT") {
-      const [ic, ib] = Semi.bjt(v, e.model), p = e.model.pol;
-      return { vce: p * (v[0] - v[2]), vbe: p * (v[1] - v[2]), ic: p * ic, ib: p * ib, pd: (v[0] - v[2]) * ic + (v[1] - v[2]) * ib };
+      // ext: the part's own C, B, E nodes when its base or emitter resistance puts the junctions on
+      // inner nodes: the voltages read at the pins, and the dissipation of the whole part
+      const [ic, ib] = Semi.bjt(v, e.model), p = e.model.pol, w = e.ext ? e.ext.map(k => vn(x, k)) : v;
+      return { vce: p * (w[0] - w[2]), vbe: p * (w[1] - w[2]), ic: p * ic, ib: p * ib, pd: (w[0] - w[2]) * ic + (w[1] - w[2]) * ib };
     }
     if (e.kind === "MOS") { const [id] = Semi.mos(v, e.model), p = e.model.pol; return { vds: p * (v[0] - v[2]), vgs: p * (v[1] - v[2]), id: p * id, pd: (v[0] - v[2]) * id }; }
     if (e.kind === "VDIODE") { const vd = v[0] - v[1]; return { vd, i: vd > 0 ? e.perveance * Math.pow(vd, 1.5) : 0 }; }

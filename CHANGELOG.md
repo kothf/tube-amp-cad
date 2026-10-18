@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.76.0] - 2026-10-18
+
+### Added
+- **Base and emitter resistance (RB, RE) in the transistor model**, set for the 2N3055 / MJ2955, TIP41C / TIP42C and MJL21194 / MJL21193 from their datasheets' VBE(on) maxima: VBE now rises with the current as a real power transistor's does (2N3055: 1.05 V at 4 A, was 0.71 V), so emitter-follower output stages and their bias show the drop they have on the bench. The junctions sit on inner nodes behind the resistances; VBE, VCE and the dissipation in the inspector, the checks and the BOM are read at the pins.
+
 ## [3.75.0] - 2026-10-18
 
 ### Added
