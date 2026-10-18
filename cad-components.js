@@ -566,7 +566,8 @@
   const LEDS = { red: { vf: 1.8, i: 0.02 }, yellow: { vf: 2.0, i: 0.02 }, green: { vf: 2.1, i: 0.02 }, blue: { vf: 3.0, i: 0.02 } };
   const ledIs = vf => 0.01 / Math.exp(vf / (2 * 0.025852));
   const semiRating = m => `${m.v} V, ${m.i} A, ${m.p} W, ${m.pkg}`;
-  const semiOptions = (tab, pol) => () => Object.entries(tab).filter(([, m]) => m.pol === pol).map(([k, m]) => [k, `${k} · ${m.v} V ${m.i} A ${m.p} W · ${m.use}`]);
+  // the Type list of a transistor; a third element sorts the entry under a heading (Silicon / Germanium)
+  const semiOptions = (tab, pol) => () => Object.entries(tab).filter(([, m]) => m.pol === pol).map(([k, m]) => [k, `${k} · ${m.v} V ${m.i} A ${m.p} W · ${m.use}`, tab === BJTS ? (m.ge ? "Germanium" : "Silicon") : undefined]);
   // Mirror (M), for every part that can be rotated: the inspector field is added by the CAD
   // (cad-app.js), so new parts get it without listing it here
   const FLIP_FIELD = { key: "flip", label: "Mirror (M)", kind: "select", options: [["no", "No"], ["yes", "Mirrored left–right"]] };
@@ -1126,6 +1127,7 @@
     { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["mains"], ["siggen"], ["ground"], ["offsheet"]] },
     { group: "Semiconductors", items: [["diode"], ["zener"], ["led"],
       { sub: "Transistors" }, ["npn"], ["pnp"], ["npn", { model: "MJE340" }, "NPN, high voltage"], ["pnp", { model: "MJE350" }, "PNP, high voltage"],
+      ["pnp", { model: "AC128" }, "PNP, germanium"], ["npn", { model: "AC127" }, "NPN, germanium"], ["pnp", { model: "MP39B" }, "PNP, germanium (USSR)"],
       ["nmos", null, "N-MOSFET"], ["nmos", { model: "DN2540" }, "N-MOSFET, depletion"], ["pmos", null, "P-MOSFET"]] },
     { group: "Instruments", items: [["scope"]] },
     { group: "Document", items: [["frame"], ["note"]] }

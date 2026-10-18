@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.74.0] - 2026-10-18
+
+### Added
+- **Germanium transistors in the parts list.** Semiconductors → Transistors has *PNP, germanium* (AC128), *NPN, germanium* (AC127) and *PNP, germanium (USSR)* (MP39B). Until now the 20 germanium parts were only reachable through the search or a transistor's Type list.
+- **Silicon and Germanium headings in a transistor's Type list**, so the germanium parts no longer hide among the silicon ones. The search finds the silicon ones by "silicon" too.
+- A catalog transistor in the parts list (MJE340, AC128 …) shows once in the search, not twice.
+
 ## [3.73.0] - 2026-10-18
 
 ### Added

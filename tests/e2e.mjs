@@ -1125,8 +1125,18 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await cad.keyboard.press("Escape"); await search.fill(""); await cad.keyboard.press("Escape");
   check(hit.length === 1 && /NPN · 2N2222A/.test(hit[0]) && tubes.some(t => /^EL84/.test(t)) && /Resistor\s*47kΩ/.test(val) && placing && placing.type === "resistor" && placing.params.r === 47000,
     `palette search finds part numbers (${hit[0]}), tubes (EL84) and values ("47k" → ${val && val.replace(/\s+/g, " ")}; Enter picks it)`);
-  for (const name of ["NPN transistor", "PNP transistor", "NPN, high voltage", "N-MOSFET, depletion", "P-MOSFET", "Zener diode", "LED"])
+  for (const name of ["NPN transistor", "PNP transistor", "NPN, high voltage", "N-MOSFET, depletion", "P-MOSFET", "PNP, germanium", "NPN, germanium", "PNP, germanium (USSR)", "Zener diode", "LED"])
     check(await cad.getByRole("button", { name: new RegExp("^" + name.replace(/[()]/g, "\\$&")) }).count() > 0, `palette offers "${name}" under Semiconductors`);
+  {
+    // the transistor's Type list sorts the parts under Silicon and Germanium
+    const groups = await cad.evaluate(() => {
+      const f = CadLib.LIB.pnp.fields.find(x => x.key === "model"), opts = f.options({ params: {} }), by = {};
+      opts.forEach(([k, , g]) => (by[g] = by[g] || []).push(k));
+      return { ge: by.Germanium || [], si: by.Silicon || [], none: opts.filter(o => !o[2]).length };
+    });
+    check(groups.none === 0 && groups.ge.includes("AC128") && groups.ge.includes("MP39B") && !groups.ge.includes("BC557B") && groups.si.includes("BC557B"),
+      `the PNP Type list puts ${groups.ge.length} germanium parts under Germanium and ${groups.si.length} under Silicon`);
+  }
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
   await cad.evaluate(() => {
     const S = TubeCAD.state, C = TubeCAD; S.comps = []; S.wires = [];
