@@ -65,11 +65,14 @@
     const saveOpts = () => { try { localStorage.setItem(TOL_KEY, JSON.stringify(opts)); } catch (e) {} };
     // job: { seq, done, total, failed, runs }; rows: the last finished summary
     S.tol = { seq: 0, job: null, rows: null, runs: 0, failed: 0, stale: false, error: null, opts };
-    let worker = null;
+    // the runs are independent, so they go to several workers at once: one per core, less one for
+    // the page, at most 8 (each holds its own copy of the engine)
+    let workers = [];
     const RUN = { budgetMs: 120000, maxPeriods: 20000 };   // as ▶ Simulate: each run settles fully
+    const poolSize = n => Math.max(1, Math.min(8, n, ((typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 2) - 1));
 
     function stop() {
-      if (worker) { worker.terminate(); worker = null; }
+      workers.forEach(w => w.terminate()); workers = [];
       if (S.tol.job) { S.tol.job = null; S.tol.seq++; setStatus("idle", "Tolerance runs stopped"); render(); cmds.sync(); }
     }
     function run() {
@@ -80,36 +83,53 @@
       const base = buildNetlist(), types = new Map(S.comps.map(c => [c.id, c.type])), typeOf = id => types.get(id);
       const tol = { r: opts.r / 100, c: opts.c / 100, tube: opts.tube / 100 }, rand = rng(opts.seed);
       const total = Math.max(1, Math.min(500, Math.round(opts.runs) || 1));
-      // run 0: the circuit as drawn, then the varied ones
+      // run 0: the circuit as drawn, then the varied ones; all drawn up front, so a seed gives the
+      // same runs however many workers share them and in whatever order they finish
       const nets = [base];
       for (let k = 0; k < total; k++) nets.push(vary(base, typeOf, tol, rand).netlist);
       const seq = ++S.tol.seq, job = S.tol.job = { seq, done: 0, total, failed: 0, runs: [] };
       S.tol.error = null;
-      const progress = f => setStatus("busy", `Tolerance runs: ${job.done} of ${total + 1} · ${Math.floor(f * 100)} %`, (job.done + f) / (total + 1));
+      let queued = 0;
+      const partial = new Map();   // each run under way → its progress (0…1)
+      const progress = () => {
+        let f = job.done; partial.forEach(v => { f += v; });
+        setStatus("busy", `Tolerance runs: ${job.done} of ${total + 1} · ${Math.floor(f / (total + 1) * 100)} %`, f / (total + 1));
+      };
       const finish = () => {
-        worker = null; S.tol.job = null;
+        workers.forEach(w => w.terminate()); workers = []; S.tol.job = null;
         S.tol.rows = summarize(job.runs); S.tol.runs = total; S.tol.failed = job.failed; S.tol.stale = false;
         S.tol.error = job.runs[0] ? null : "The circuit as drawn did not simulate";
         setStatus(S.tol.error || job.failed ? "warn" : "ok", S.tol.error || `Tolerance: ${total - job.failed} runs` + (job.failed ? ` · ${job.failed} did not settle` : ""));
         render(); cmds.sync();
       };
-      const take = (k, result) => {
+      // the next waiting run to worker w (null: the page itself, when no worker could start)
+      const next = w => {
+        if (queued >= nets.length) return;
+        const k = queued++;
+        partial.set(k, 0);
+        if (w) w.postMessage({ seq: k, netlist: nets[k], options: RUN });
+        else setTimeout(() => take(null, k, TubeSimEngine.simulate(nets[k], RUN)), 0);
+      };
+      const take = (w, k, result) => {
         if (S.tol.seq !== seq) return;
         if (result && result.ok) job.runs[k] = withResult(result, nets[k], T, measurements);
         else if (k > 0) job.failed++;
-        job.done = k + 1;
-        if (k + 1 < nets.length) next(k + 1); else finish();
-        if (S.tol.job) render();
+        partial.delete(k); job.done++;
+        if (job.done === nets.length) { finish(); return; }
+        next(w); progress(); render();
       };
-      const next = k => {
-        progress(0);
-        if (worker) worker.postMessage({ seq: k, netlist: nets[k], options: RUN });
-        else setTimeout(() => take(k, TubeSimEngine.simulate(nets[k], RUN)), 0);
-      };
-      try { worker = new Worker("sim-worker.js" + VERSION); } catch (e) { worker = null; }
-      if (worker) worker.onmessage = e => { if (e.data.result) take(e.data.seq, e.data.result); else if (S.tol.job) progress(e.data.progress); };
-      render(); cmds.sync();
-      next(0);
+      try {
+        for (let i = poolSize(nets.length); i > 0; i--) {
+          const w = new Worker("sim-worker.js" + VERSION);
+          w.onmessage = e => {
+            if (e.data.result) take(w, e.data.seq, e.data.result);
+            else if (S.tol.job && partial.has(e.data.seq)) { partial.set(e.data.seq, e.data.progress); progress(); }
+          };
+          workers.push(w);
+        }
+      } catch (e) { workers.forEach(w => w.terminate()); workers = []; }
+      render(); cmds.sync(); progress();
+      if (workers.length) workers.forEach(next); else next(null);
     }
     // an edit makes the shown spread the old circuit's
     function changed() { if (S.tol.rows && !S.tol.stale) { S.tol.stale = true; render(); } }
