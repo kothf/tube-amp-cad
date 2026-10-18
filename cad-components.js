@@ -1131,5 +1131,167 @@
     { group: "Document", items: [["frame"], ["note"]] }
   ];
 
+  // ---------------------------------------------------------------------------
+  // What the CAD's inspector shows for a part, besides its fields:
+  //   info(c)       a line of text under the fields (in the LIB entries above)
+  //   panel(c, R)   an element under that (the loudspeaker's impedance plot, the scope's windows)
+  //   readout(c, R) HTML of the live values under "Operating point", after each simulation
+  // R is the CAD's view of the last simulation result for part c:
+  //   R.r (the result), R.kv(label, value, cls) and R.note(text, cls) (rows and lines of the
+  //   inspector), R.vAcross(pinA, pinB) (DC volts), R.pAvg(pinA, pinB, ohms), R.netDC(net),
+  //   R.pinNet(pin), R.pinCurrent(pin), R.tubeData(), R.tubeLimits(), R.limitRows(),
+  //   R.resistorPower(), R.speakerPower(), R.signalFreq(), R.otDcCurrent(), R.scopeChannels(),
+  //   R.stats(array). A new part gets its readout here and needs no change in cad-app.js.
+  // ---------------------------------------------------------------------------
+  const UI = {
+    tube: {
+      info: c => {
+        const t = tubeByName(c.params.tube);
+        if (!t) return "";
+        return t.custom
+          ? `Imported SPICE model ${t.custom.sub}${t.custom.like ? ` · socket, pinout and heater of the ${t.custom.like}` : ""} · Va max ${t.vaMax} V · Pa max ${t.paMax} W`
+          : `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A (not simulated)`;
+      },
+      readout: (c, R) => {
+        const d = R.tubeData(), kv = R.kv;
+        if (!d) return R.note("No data.");
+        if (d.kind === "rectifier")
+          return kv("Anode 1 current", fmtEng(d.a1 ? d.a1.i : 0, "A")) + kv("Anode 2 current", fmtEng(d.a2 ? d.a2.i : 0, "A")) + R.limitRows()
+            + R.note("Anode currents are averages over the settled cycle; the peak is drawn while the reservoir capacitor charges.");
+        const dc = d.dc, pa = dc.vak * dc.ia, over = pa > d.paMax;
+        let h = kv("Va (anode–cathode)", fmtEng(dc.vak, "V", 1), dc.vak > d.vaMax ? "bad" : "");
+        h += kv(d.kind === "pentode" ? "Vg1k (bias)" : "Vgk (bias)", fmtEng(dc.vgk, "V", 2), dc.vgk > 0 ? "warn" : "");
+        if (d.kind === "pentode") { const l = R.tubeLimits().find(o => o.key === "Vg2k"); h += kv("Vg2k (screen)", fmtEng(dc.vg2k, "V", 1) + (l ? ` · ${Math.round(l.share * 100)}% of ${l.lim}` : ""), l && l.share > 1 ? "bad" : ""); }
+        h += kv("Ia (anode current)", fmtEng(dc.ia, "A", 2));
+        if (d.kind === "pentode") h += kv("Ig2 (screen current)", fmtEng(dc.ig2, "A", 2));
+        h += kv("Pa (dissipation)", `${fmtEng(pa, "W", 2)} · ${Math.round(pa / d.paMax * 100)}% of ${d.paMax} W`, over ? "bad" : (pa > 0.85 * d.paMax ? "warn" : ""));
+        h += R.limitRows();
+        if (d.metrics) {
+          h += `<div class="insp-sub">With signal</div>`;
+          h += kv("Plate swing", fmtEng(d.metrics.vakPP, "Vpp", 1)) + kv("Grid swing", fmtEng(d.metrics.vgkPP, "Vpp", 2));
+          if (d.metrics.gain) h += kv("Plate/grid gain", d.metrics.gain.toFixed(1) + "×");
+          if (d.metrics.thd !== null) h += kv("THD at plate", d.metrics.thd.toFixed(2) + " %", d.metrics.thd > 5 ? "warn" : "");
+          h += kv("Average Pa", fmtEng(d.metrics.pAvg, "W", 2), d.metrics.pAvg > d.paMax ? "bad" : "");
+        }
+        if (dc.vgk > 0) h += R.note("Grid is positive: grid current flows.", "warn");
+        return h;
+      }
+    },
+    resistor: {
+      readout: (c, R) => {
+        const v = R.vAcross("1", "2"), p = R.resistorPower(), w = +c.params.w;
+        // rated: share of the rating (over 60 % runs hot: derate about 2×); unrated: flag above 1 W
+        return R.kv("Voltage (DC)", fmtEng(v, "V", 2)) + R.kv("Current (DC)", fmtEng(v / c.params.r, "A", 2))
+          + (w ? R.kv("Power (avg)", `${fmtEng(p, "W", 2)} · ${Math.round(p / w * 100)}% of ${w} W`, p > w ? "bad" : p > 0.6 * w ? "warn" : "")
+               : R.kv("Power (avg)", fmtEng(p, "W", 2), p > 1 ? "warn" : ""));
+      }
+    },
+    pot: { readout: (c, R) => R.kv("Wiper DC", fmtEng(R.netDC(R.pinNet("W")), "V", 2)) },
+    capacitor: { readout: (c, R) => R.kv("DC voltage across", fmtEng(R.vAcross("1", "2"), "V", 1)) },
+    electrolytic: {
+      readout: (c, R) => {
+        const v = R.vAcross("+", "-");
+        return R.kv("DC voltage across", fmtEng(v, "V", 1), v < -0.5 ? "bad" : "") + (v < -0.5 ? R.note("Reverse-biased electrolytic.", "warn") : "");
+      }
+    },
+    switch: { info: () => "Double-click the switch on the sheet to flip it. Sections named like SF1.1 and SF1.2 are one switch and flip together." },
+    inductor: { readout: (c, R) => { const v = R.vAcross("1", "2"); return R.kv("DC current", fmtEng(v / Math.max(c.params.dcr, 1e-3), "A", 2)) + R.kv("DC drop", fmtEng(v, "V", 2)); } },
+    speaker: {
+      panel: (c, R) => (c.params.model === "ts" ? speakerPlot(c) : null),
+      readout: (c, R) => {
+        const sp = R.speakerPower(), f = R.signalFreq();
+        let h = sp ? R.kv("Output power", fmtEng(sp.p, "W", 2)) + R.kv("Voltage", fmtEng(sp.vrms, "Vrms", 2))
+                   : R.kv("Output power", fmtEng(R.pAvg("+", "-", c.params.r), "W", 2));
+        if (c.params.model === "ts" && f) { const [z, ph] = speakerZ(c.params, f); h += R.kv(`Impedance at ${fmtEng(f, "Hz")}`, `${fmtEng(z, "Ω", 3)} · ${ph >= 0 ? "+" : ""}${ph.toFixed(0)}°`); }
+        return h;
+      }
+    },
+    vdc: {
+      readout: (c, R) => {
+        const dev = R.r.dc.devices[c.id], i = dev && dev.main ? -dev.main.i : null;
+        return R.kv("Current supplied", fmtEng(i, "A", 2)) + R.kv("Power", fmtEng(i !== null ? i * c.params.v : null, "W", 2));
+      }
+    },
+    scope: {
+      // this scope's channels in the instrument windows
+      panel: c => {
+        const open = document.createElement("div"); open.className = "insp-open";
+        open.innerHTML = `<div class="insp-sub">Open in</div><div class="insp-actions">${[["oscilloscope.html", "Oscilloscope", "Full oscilloscope: cursors, X-Y, power-on run"], ["spectrum_analyzer.html", "Spectrum", "Spectrum analyzer: harmonics and THD"], ["bode.html", "Bode", "Bode plotter: gain and phase against frequency"]].map(([f, t, tip]) => `<button class="btn link" data-win="${f}" title="${tip}">${t} ↗</button>`).join("")}</div>`;
+        open.querySelectorAll("[data-win]").forEach(b => b.addEventListener("click", () => ToolWindows.open(b.dataset.win, { scope: c.id })));
+        return open;
+      },
+      readout: (c, R) => {
+        const ch = R.scopeChannels();
+        if (!ch) return R.note("No transient data (add a signal generator).");
+        return [["CH1", ch.ch1], ["CH2", ch.ch2]].map(([n, a]) => {
+          if (!a) return R.kv(n, "not connected");
+          const s = R.stats(a); return R.kv(n, `${fmtEng(s.pp, "Vpp", 2)} · avg ${fmtEng(s.mean, "V", 2)}`);
+        }).join("");
+      }
+    }
+  };
+  // transistors: the four kinds share one readout
+  const semiReadout = (c, R) => {
+    const dev = R.r.dc.devices[c.id], d = dev && dev.main, m = (c.type === "npn" || c.type === "pnp" ? BJTS : MOSFETS)[c.params.model], kv = R.kv;
+    if (!d || !m) return R.note("No data.");
+    const bip = c.type === "npn" || c.type === "pnp", vMain = bip ? d.vce : d.vds, iMain = bip ? d.ic : d.id;
+    let h = kv(bip ? "Vce" : "Vds", fmtEng(vMain, "V", 2), Math.abs(vMain) > m.v ? "bad" : Math.abs(vMain) > 0.8 * m.v ? "warn" : "");
+    h += kv(bip ? "Vbe" : "Vgs", fmtEng(bip ? d.vbe : d.vgs, "V", 3));
+    h += kv(bip ? "Ic" : "Id", fmtEng(iMain, "A", 2), Math.abs(iMain) > m.i ? "bad" : "");
+    if (bip) h += kv("Ib", fmtEng(d.ib, "A", 2)) + kv("hFE (Ic/Ib)", Math.abs(d.ib) > 1e-12 ? (d.ic / d.ib).toFixed(0) : "—");
+    // germanium: the leakage at the part's temperature, and how much of Ic it makes up ((hFE + 1)·ICBO)
+    if (bip && m.ge) { const a = bjtAt(m, c.params.temp), iceo = (a.bf + 1) * a.icbo; h += kv(`Leakage at ${+a.t.toFixed(1)} °C`, `ICBO ${fmtEng(a.icbo, "A", 2)} · ×hFE ≈ ${fmtEng(iceo, "A", 2)}`, Math.abs(d.ic) > 0 && iceo > 0.5 * Math.abs(d.ic) ? "warn" : ""); }
+    h += kv("Dissipation", `${fmtEng(d.pd, "W", 2)} · ${Math.round(d.pd / m.p * 100)}% of ${m.p} W`, d.pd > m.p ? "bad" : d.pd > 0.6 * m.p ? "warn" : "");
+    if (bip && d.vce < 0.3 && d.ic > 1e-6) h += R.note("Saturated (Vce below 0.3 V).", "warn");
+    if (!bip && Math.abs(iMain) < 1e-6) h += R.note("Off: Vgs below the threshold.");
+    if (m.p > 2) h += R.note(`Rated ${m.p} W with the case at 25 °C: needs a heatsink well before that.`);
+    return h;
+  };
+  ["npn", "pnp", "nmos", "pmos"].forEach(t => { UI[t] = { readout: semiReadout }; });
+  // diodes: voltage and current; a zener's dissipation, an LED's maximum current
+  const diodeReadout = (c, R) => {
+    const v = R.vAcross("A", "K"), i = R.pinCurrent("A");
+    let h = R.kv("Voltage (A–K)", fmtEng(v, "V", 3)) + R.kv("Current (A→K)", fmtEng(i, "A", 2));
+    if (c.type === "zener") { const z = ZENERS[c.params.model], p = Math.abs(v * i); if (z) h += R.kv("Dissipation", `${fmtEng(p, "W", 2)} · ${Math.round(p / z.p * 100)}% of ${z.p} W`, p > z.p ? "bad" : p > 0.6 * z.p ? "warn" : ""); }
+    if (c.type === "led") { const l = LEDS[c.params.color]; if (l && i > l.i) h += R.note(`Above the ${l.i * 1000} mA maximum.`, "warn"); }
+    return h;
+  };
+  ["diode", "zener", "led"].forEach(t => { UI[t] = { readout: diodeReadout }; });
+  // output transformers: the secondary's voltage; a catalog part's primary current against its rating
+  const otReadout = (c, R) => {
+    let h = "";
+    if (c.type === "opt_cat") {
+      const i = R.otDcCurrent(), m = OUTPUT_TX[c.params.model];
+      if (i !== null && m) h += R.kv("Primary DC current", `${fmtEng(i, "A", 2)} · ${Math.round(i * 1000 / m.ma * 100)}% of ${m.ma} mA`, i * 1000 > m.ma ? "bad" : i * 1000 > 0.9 * m.ma ? "warn" : "");
+    }
+    return h + R.kv("Secondary", fmtEng(Math.sqrt(R.pAvg("S1", "S2", 1)), "Vrms", 2));
+  };
+  ["opt_se", "opt_cat", "opt_pp"].forEach(t => { UI[t] = { readout: otReadout }; });
+  Object.keys(UI).forEach(t => Object.keys(UI[t]).forEach(k => { if (!LIB[t][k]) LIB[t][k] = UI[t][k]; }));
+  // the loudspeaker's impedance and phase against frequency, under its fields
+  function speakerPlot(c) {
+    const wrap = document.createElement("div"); wrap.className = "spk-plot";
+    const cv = document.createElement("canvas"); cv.width = 300; cv.height = 150; cv.id = "spk-plot"; wrap.appendChild(cv);
+    const x = cv.getContext("2d"), W = cv.width, H = cv.height, L = 30, Rm = 28, T = 8, B = 18, f1 = 10, f2 = 20000;
+    const pts = Array.from({ length: 161 }, (_, i) => { const f = f1 * Math.pow(f2 / f1, i / 160); return [f, ...speakerZ(c.params, f)]; });
+    const zmax = Math.max(...pts.map(p => p[1])) * 1.1, X = f => L + (W - L - Rm) * Math.log(f / f1) / Math.log(f2 / f1), Y = z => H - B - (H - B - T) * z / zmax, P = ph => T + (H - B - T) * (90 - ph) / 180;
+    x.fillStyle = "#0b0f14"; x.fillRect(0, 0, W, H); x.font = "9px ui-monospace, monospace";
+    [10, 100, 1000, 10000].forEach(f => { x.strokeStyle = "#1b2430"; x.beginPath(); x.moveTo(X(f), T); x.lineTo(X(f), H - B); x.stroke(); x.fillStyle = "#6e7781"; x.fillText(f >= 1000 ? f / 1000 + "k" : String(f), X(f) - 6, H - 5); });
+    [0, 0.5, 1].forEach(k => { const z = zmax / 1.1 * k; x.fillStyle = "#6e7781"; x.fillText(z.toFixed(0), 3, Y(z) + 3); });
+    x.font = "9px sans-serif"; x.fillText("|Z| Ω", L + 3, T + 8); x.font = "9px ui-monospace, monospace";
+    ["+90°", "0°", "−90°"].forEach((t, k) => { x.fillStyle = "#6e7781"; x.fillText(t, W - Rm + 3, T + (H - B - T) * k / 2 + 3); });
+    x.strokeStyle = "#8b949e"; x.setLineDash([4, 3]); x.beginPath(); x.moveTo(L, Y(c.params.r)); x.lineTo(W - Rm, Y(c.params.r)); x.stroke(); x.setLineDash([]);
+    x.strokeStyle = "#ffd54f"; x.lineWidth = 1.5; x.beginPath(); pts.forEach(([f, z], i) => (i ? x.lineTo(X(f), Y(z)) : x.moveTo(X(f), Y(z)))); x.stroke();
+    x.strokeStyle = "#58a6ff"; x.lineWidth = 1; x.setLineDash([2, 2]); x.beginPath(); pts.forEach(([f, , ph], i) => (i ? x.lineTo(X(f), P(ph)) : x.moveTo(X(f), P(ph)))); x.stroke(); x.setLineDash([]);
+    // the resonance peak near fs, and the lowest point between it and the voice coil's rise
+    const fs = c.params.fs, near = pts.filter(p => p[0] > fs / 3 && p[0] < fs * 3), peak = (near.length ? near : pts).reduce((a, p) => (p[1] > a[1] ? p : a));
+    const above = pts.filter(p => p[0] > peak[0] && p[0] < 10000), dip = above.reduce((a, p) => (p[1] < a[1] ? p : a), above[0] || peak);
+    const ph = pts.reduce((a, p) => (Math.abs(p[2]) > Math.abs(a) ? p[2] : a), 0);
+    const note = document.createElement("p"); note.className = "insp-help";
+    note.textContent = `Impedance (yellow) and phase (blue): ${peak[1].toFixed(0)} Ω at ${peak[0].toFixed(0)} Hz, ${dip[1].toFixed(1)} Ω at ${dip[0] >= 1000 ? (dip[0] / 1000).toFixed(1) + " kHz" : dip[0].toFixed(0) + " Hz"} at the lowest above it, phase up to ${ph >= 0 ? "+" : ""}${ph.toFixed(0)}°. The tube sees this through the output transformer.`;
+    wrap.appendChild(note);
+    return wrap;
+  }
+
   root.CadLib = { bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);
