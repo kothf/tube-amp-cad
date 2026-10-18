@@ -23,6 +23,7 @@
     @media (max-width: 1060px) { header > .cur-file { display: none; } }
     .brand { font-weight: 700; letter-spacing: .5px; margin-right: 8px; white-space: nowrap; }
     .brand b { color: var(--accent); }
+    .brand-ver { display: block; font: 400 10px/1.2 ui-monospace, Menlo, monospace; letter-spacing: 0; color: var(--muted); }
     .cur-file { font: 12px ui-monospace, Menlo, monospace; color: var(--text); background: #0d1520; border: 1px solid #263445; border-radius: 6px; padding: 3px 8px; margin-right: 8px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cur-file.untitled { color: #8b949e; font-style: italic; }
     .cur-file .dirty { color: #e3b341; font-style: normal; }
@@ -209,7 +210,7 @@
 </head>
 <body>
   <header>
-    <div class="brand" title="Tube Amp CAD">⚡ <b>Tube Amp</b> <span>CAD</span></div>
+    <div class="brand" title="Tube Amp CAD">⚡ <b>Tube Amp</b> <span>CAD</span><small class="brand-ver" id="app-version"></small></div>
     <span class="cur-file untitled" id="cur-file" title="The circuit file open now">Untitled</span>
     <div class="menu" id="file-menu">
       <button class="btn" id="btn-file" aria-haspopup="true" aria-expanded="false">File ▾</button>

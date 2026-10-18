@@ -46,6 +46,8 @@ const open = async (name, page) => {
 // --- 1. Editing with the real mouse and keyboard -----------------------------
 const cad = await open("cad", "circuit_sandbox.html");
 await cad.waitForFunction(() => window.TubeCAD);
+{ const ver = await cad.textContent("#app-version"), pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
+  check(ver === "dev" || ver === "v" + pkg, `the version under the name (${ver}) is "dev" in the source, v${pkg} in the package`); }
 await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.view = { scale: 1, ox: 0, oy: 0 }; TubeCAD.commit(); });
 const box = await cad.locator("#cad").boundingBox();
 const toScreen = (x, y) => cad.evaluate(([x, y]) => { const v = TubeCAD.state.view; return [x * v.scale + v.ox, y * v.scale + v.oy]; }, [x, y]).then(([sx, sy]) => [box.x + sx, box.y + sy]);

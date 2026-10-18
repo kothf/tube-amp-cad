@@ -2650,6 +2650,9 @@
 
     buildPalette();
     cmds.menuItems(document.querySelector("#edit-menu .menu-list"), ["undo", "redo", null, "rotate", "mirror", "duplicate", "delete", null, "copy", "paste", "select-all", null, "renumber"]);
+    // the version under the name: "?v=3.72.0" is stamped by npm run package, the source says "dev"
+    const ver = (VERSION.match(/[?&]v=([^&]+)/) || [])[1];
+    if (ver) { document.getElementById("app-version").textContent = ver === "dev" ? "dev" : "v" + ver; document.querySelector(".brand").title = "Tube Amp CAD " + ver; }
     // toolbar menus (File, Edit, View, Windows) and the state of their ticks and switches
     UiKit.menus(document.querySelector("header"));
     bind("btn-new", () => openSheetDialog("new"));
