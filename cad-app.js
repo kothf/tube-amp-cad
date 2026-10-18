@@ -240,6 +240,7 @@
     scheduleBoardNetlist();
     updateSheetNav();
     if (S.trans && !S.trans.stale && !S.trans.running) { S.trans.stale = true; if (channel) channel.postMessage(transientMessage()); }
+    tolerance.changed();
     try { localStorage.setItem(STORAGE_KEY, snapshot()); } catch (e) {}
     showFile();
     scheduleSim();
@@ -768,6 +769,40 @@
     };
     return { ch1: ch("CH1"), ch2: ch("CH2"), dt: r.tran.dt };
   }
+  // What a tolerance run measures (cad-tolerance.js), from the result in S.sim.result: each tube's
+  // Ia, Va and Pa, each transistor's current and dissipation, each speaker's power and each
+  // scope channel's AC. max: the rating the runs are counted against.
+  function measurements() {
+    const out = [], r = S.sim.result;
+    if (!r) return out;
+    S.comps.forEach(c => {
+      const name = desig(c) || c.id;
+      if (c.type === "tube") {
+        const d = tubeData(c);
+        if (!d || d.kind === "rectifier" || !d.dc) return;
+        out.push({ key: c.id + ":ia", label: `${name} Ia`, unit: "A", v: d.dc.ia }, { key: c.id + ":va", label: `${name} Va`, unit: "V", v: d.dc.vak, max: d.vaMax },
+          { key: c.id + ":pa", label: `${name} Pa`, unit: "W", v: d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia, max: d.paMax });
+      } else if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) {
+        const d = (r.dc.devices[c.id] || {}).main, bip = c.type === "npn" || c.type === "pnp", m = (bip ? CadLib.BJTS : CadLib.MOSFETS)[c.params.model];
+        if (!d) return;
+        out.push({ key: c.id + ":i", label: `${name} ${bip ? "Ic" : "Id"}`, unit: "A", v: Math.abs(bip ? d.ic : d.id), max: m && m.i },
+          { key: c.id + ":pd", label: `${name} dissipation`, unit: "W", v: d.pd, max: m && m.p });
+      } else if (c.type === "speaker") {
+        const sp = speakerPower(c);
+        if (sp) out.push({ key: c.id + ":p", label: `${name} output`, unit: "W", v: sp.p });
+      } else if (c.type === "scope") {
+        const ch = scopeChannels(c);
+        if (ch) ["ch1", "ch2"].forEach(k => { const st = stats(ch[k]); if (st) out.push({ key: c.id + ":" + k, label: `${name} ${k.toUpperCase()} AC`, unit: "Vrms", v: st.rmsAC }); });
+      }
+    });
+    return out;
+  }
+  // fn() with another run's result in place of the last simulation (synchronous, so nothing sees the swap)
+  function withResult(result, netlist, T, fn) {
+    const keep = [S.sim.result, S.sim.netlist, S.sim.topo];
+    S.sim.result = result; S.sim.netlist = netlist; S.sim.topo = T;
+    try { return fn(); } finally { [S.sim.result, S.sim.netlist, S.sim.topo] = keep; }
+  }
   function buildSummary() {
     const r = S.sim.result;
     // seq: which run this is, so an instrument window can tell it shows the latest
@@ -1241,6 +1276,7 @@
     .add({ id: "fit", label: "Fit the sheet", keys: ["F"], run: () => fitCurrent(), help: "fit the sheet in use; again: all sheets" })
     .add({ id: "bom", keys: ["B"], run: () => toggleBom(), check: () => bomOpts.open && bomOpts.tab === "bom", help: "bill of materials" })
     .add({ id: "checks", label: "Checks", run: () => toggleBom(undefined, "checks"), check: () => bomOpts.open && bomOpts.tab === "checks" })
+    .add({ id: "tolerance", label: "Tolerance runs", run: () => toggleBom(undefined, "tolerance"), check: () => bomOpts.open && bomOpts.tab === "tolerance" })
     .add({ id: "zoom-in", keys: ["+", "=", "NumpadAdd", "Equal"], anyCtrl: true, run: () => zoomBy(1.2), help: "zoom in · wheel zooms at the pointer", helpKeys: ["+"] })
     .add({ id: "zoom-out", keys: ["-", "NumpadSubtract", "Minus"], anyCtrl: true, run: () => zoomBy(1 / 1.2), help: "zoom out", helpKeys: ["-"] })
     .add({ id: "undo", label: "Undo", keys: ["Ctrl+Z"], prevent: true, run: undo, help: "undo" })
@@ -2329,7 +2365,9 @@
   // ---------------------------------------------------------------------------
   // Bill of materials: a panel under the schematic (B), exported as TXT, CSV, XLSX or PDF (cad-bom.js)
   // ---------------------------------------------------------------------------
-  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, LIB, baseName, bind, cmds, renderChecks, commit, flash, fmtEng, frames, input, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf });
+  // Tolerance runs: the Tolerance tab of the same panel (cad-tolerance.js)
+  const tolerance = CadTolerance({ S, VERSION, buildNetlist, cmds, esc: escH, fmtEng, measurements, setStatus, topo, withResult });
+  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, LIB, baseName, bind, cmds, renderChecks, renderTolerance: () => tolerance.render(), commit, flash, fmtEng, frames, input, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf });
   // PNG of one sheet (or of the whole drawing without frames) at dpi. "print" colours are
   // those of the PDF (black on white, same luminance rule); "screen" keeps the editor's.
   // Very large sheets come out at a lower resolution: a canvas holds at most ~16k px a side.
@@ -2708,12 +2746,14 @@
     cmds.bind("btn-live", "live");
     cmds.bind("btn-insp", "inspector");
     cmds.bind("btn-checks", "checks");
+    cmds.bind("btn-tolerance", "tolerance");
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
     cmds.bind("btn-volts", "volts").bind("btn-amps", "amps").bind("btn-legend", "legend").bind("btn-anim", "anim");
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
     bind("btn-spice-download", () => { const blob = new Blob([document.getElementById("spice-text").value], { type: "text/plain" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "tube-circuit.cir"; a.click(); });
+    tolerance.init();
     initBom();
     bind("btn-open-board", () => ToolWindows.open("board.html"));
     bind("btn-open-tracer", () => ToolWindows.open("index.html"));
@@ -2742,6 +2782,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData() }), setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { tolerance, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData() }), setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

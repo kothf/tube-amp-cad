@@ -126,19 +126,21 @@
     .bom-head .btn { padding: 2px 9px; font-size: 12px; }
     .muted { color: var(--muted); }
     .bom-scroll { overflow: auto; flex: 1; min-height: 0; }
-    #bom-table { border-collapse: collapse; width: 100%; font-size: 12px; }
-    #bom-table th { position: sticky; top: 0; background: var(--panel2); color: var(--muted); font-weight: 600; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; z-index: 1; }
-    #bom-table td { padding: 3px 8px; border-bottom: 1px dashed #1a2433; vertical-align: top; }
-    #bom-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
-    #bom-table td.mono { font-family: ui-monospace, Menlo, monospace; }
+    #bom-table, #tol-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    #bom-table th, #tol-table th { position: sticky; top: 0; background: var(--panel2); color: var(--muted); font-weight: 600; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; z-index: 1; }
+    #bom-table td, #tol-table td { padding: 3px 8px; border-bottom: 1px dashed #1a2433; vertical-align: top; }
+    #bom-table td.n, #tol-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
+    #bom-table td.mono, #tol-table td.mono { font-family: ui-monospace, Menlo, monospace; }
     #bom-table tbody tr { cursor: pointer; }
     #bom-table tbody tr:hover { background: #111a25; }
     #bom-table tbody tr.sel { background: #0d3442; }
     #bom-table tbody tr.flash { animation: bom-flash .9s ease-out; }
     @keyframes bom-flash { from { background: #1d6a80; } to { background: #0d3442; } }
-    #bom-table td.warn { color: var(--warn); }
+    #bom-table td.warn, #tol-table td.warn { color: var(--warn); }
     #bom-table input { width: 100%; min-width: 110px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; font: inherit; }
     .bom-empty { color: var(--muted); padding: 14px; font-size: 12px; }
+    .tol-note { padding: 6px 14px 0; color: var(--warn); }
+    .tol-num { width: 56px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; color: var(--text); }
 
     /* status bar */
     footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
@@ -240,6 +242,7 @@
         <div class="menu-sep"></div>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-bom" title="Bill of materials under the schematic; export TXT, CSV, XLSX or PDF (B)">Bill of materials<kbd>B</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-checks" title="Every part beyond its rating and every wiring problem, in the panel under the schematic">Checks<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-tolerance" title="The circuit simulated many times with its parts spread within their tolerances: each value's spread">Tolerance runs<kbd>under the schematic</kbd></button>
       </div>
     </div>
     <div class="menu" id="edit-menu">
@@ -298,11 +301,20 @@
           <div class="dock-tabs" role="tablist">
             <button class="dock-tab" role="tab" data-tab="bom" aria-controls="bom-pane" title="Bill of materials (B)">Bill of materials</button>
             <button class="dock-tab" role="tab" data-tab="checks" aria-controls="checks-pane" title="Every part beyond its rating and every wiring problem">Checks<span id="checks-count"></span></button>
+            <button class="dock-tab" role="tab" data-tab="tolerance" aria-controls="tol-pane" title="The circuit simulated many times with its parts spread within their tolerances">Tolerance</button>
           </div>
           <span class="bom-tools" data-for="bom">
             <span id="bom-count" class="muted"></span>
             <label title="One socket line per tube base"><input type="checkbox" id="bom-sockets"> Tube sockets</label>
             <label title="DC supplies, signal generators, mains and oscilloscopes"><input type="checkbox" id="bom-bench"> Sources &amp; instruments</label>
+          </span>
+          <span class="bom-tools" data-for="tolerance">
+            <label title="Simulations with varied parts, after the one as drawn">Runs <input type="number" id="tol-runs" class="tol-num" min="1" max="500"></label>
+            <label title="Every resistor and pot: normally distributed, the tolerance as 2σ">R ± <input type="number" id="tol-r" class="tol-num" min="0" max="50" step="1">%</label>
+            <label title="Every capacitor and electrolytic">C ± <input type="number" id="tol-c" class="tol-num" min="0" max="80" step="1">%</label>
+            <label title="Every tube's currents at the same voltages: a stronger or weaker tube than the model">Tubes ± <input type="number" id="tol-tube" class="tol-num" min="0" max="60" step="1">%</label>
+            <label title="The same seed repeats the same runs">Seed <input type="number" id="tol-seed" class="tol-num" min="1" step="1"></label>
+            <button class="btn" id="btn-tol-run" title="Run the tolerance analysis; press again to stop">▶ Run</button>
           </span>
           <span class="spacer"></span>
           <span class="bom-tools" data-for="bom">
@@ -316,6 +328,7 @@
         </div>
         <div class="bom-scroll" id="bom-pane" role="tabpanel"><table id="bom-table"></table></div>
         <div class="bom-scroll checks-list" id="checks-pane" role="tabpanel" hidden></div>
+        <div class="bom-scroll" id="tol-pane" role="tabpanel" hidden></div>
       </section>
     </div>
     <aside id="inspector" aria-label="Inspector"></aside>
@@ -435,6 +448,7 @@
   <script src="bom.js?v=dev"></script>
   <script src="cad-analysis.js?v=dev"></script>
   <script src="cad-bom.js?v=dev"></script>
+  <script src="cad-tolerance.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>

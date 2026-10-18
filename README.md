@@ -90,7 +90,7 @@ Firefox is not tested.
   come from Katsnelson & Larionov for the Soviet tubes and from the makers'
   datasheets for the others (RCA, Philips, Mullard, Western Electric); a
   rating a datasheet does not give is not checked.
-- **Toolbar.** One row: *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials and Checks tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, renumber), undo / redo, the *Select | Wire* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
+- **Toolbar.** One row: *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, renumber), undo / redo, the *Select | Wire* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
 - **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html`, opens from *Windows ▾ → Manual*, the help dialog, or **?** in each instrument. It covers:
   - a quick start, then every part and field;
   - all 99 tubes in a sortable table;
@@ -239,6 +239,17 @@ the circuit that was on the sheet.
 
   Click a line to select its parts; selecting a part scrolls to its line.
   Export as TXT, CSV, XLSX or PDF.
+- **Tolerance runs.** *View ▾ → Tolerance runs* opens the *Tolerance* tab
+  under the schematic. It simulates the circuit as drawn and then once per run
+  with every resistor, pot and capacitor at a random value within its
+  tolerance (±5 % and ±20 % by default) and every tube drawing more or less
+  current than its model (±20 %). The table shows each value's nominal, min,
+  mean, max and spread over the runs, and how many runs took a part over its
+  rating:
+  - each tube's Ia, Va and Pa, each transistor's current and dissipation,
+    each speaker's output and each scope channel's AC;
+  - values are normally distributed with the tolerance as 2σ, cut off at the
+    tolerance; a seed repeats the same runs.
 - **SPICE.** *Export SPICE netlist* writes an LTspice netlist: tubes as
   behavioural sources with the same equations the simulator uses, transistors
   as Q and M elements with their `.model` lines.
@@ -695,7 +706,8 @@ sources were drawn and simulated, two of them against bench measurements:
 **Limits worth knowing.**
 
 - A model is exact only near the points it was fitted to, and production
-  tubes vary ±20 % or more.
+  tubes vary ±20 % or more: the Tolerance tab shows what that does to a
+  circuit.
 - The 12AX7's µ rises to about 106 at 150–170 V plate (it is fitted at
   250 V), so small-signal gains there come out 5–20 % above the
   textbook / GE figures.
