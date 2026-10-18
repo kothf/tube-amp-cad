@@ -535,7 +535,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
   <li><b>Interelectrode capacitances</b>: Cgk, Cga, Cak (triode); Cin, Cg1a, Cout (pentode), from the datasheets, a Soviet tube taking its Western analog's, else typical values.</li>
   <li><b>AC analysis:</b> every device linearised at the operating point (its Jacobian by central differences of the same equations); the complex system G + jωC solved at 40 frequencies per decade.</li>
   <li><b>Rectifier tubes:</b> vacuum diodes (Child–Langmuir), perveance from datasheet drops.</li>
-  <li><b>Transistors:</b> SPICE Gummel–Poon (IS, BF, BR, VAF, IKF) with junction capacitances. <b>MOSFETs:</b> square law (level 1) with a smoothed threshold, body diode and gate capacitances. <b>Diodes/zeners/LEDs:</b> exponential junctions.</li>
+  <li><b>Transistors:</b> SPICE Gummel–Poon (IS, BF, BR, VAF, IKF) with junction capacitances, and base and emitter resistance (RB, RE) for the 2N3055 / MJ2955, TIP41C / TIP42C and MJL21194 / MJL21193, so their VBE rises with the current as a real part's does; the inspector's VBE and VCE are read at the pins. <b>MOSFETs:</b> square law (level 1) with a smoothed threshold, body diode and gate capacitances. <b>Diodes/zeners/LEDs:</b> exponential junctions.</li>
   <li><b>Transformers:</b> coupled inductors with leakage. <b>Loudspeakers:</b> Re + Le in series with a parallel R‖L‖C motional impedance at fs.</li>
   <li>It runs in a Web Worker, so the editor stays responsive.</li>
 </ul>
