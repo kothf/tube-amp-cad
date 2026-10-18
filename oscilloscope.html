@@ -5,18 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Oscilloscope — Tube Amp CAD</title>
   <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="ui.css?v=dev">
   <style>
     :root { --bg: #070b10; --panel: #111823; --panel2: #18212e; --line: #26344a; --text: #e6edf3; --muted: #8b949e; --ch1: #ffe23d; --ch2: #00e5ff; --accent: #00b4d8; --ok: #3fb950; --bad: #ff7b72; }
-    * { box-sizing: border-box; }
-    /* dropdowns drawn by the page, not the OS: Safari otherwise shows white native boxes
-       with the page's light text (unreadable); the same look in every browser */
-    :root { color-scheme: dark; }
-    select { -webkit-appearance: none; appearance: none; color: var(--text);
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b949e' stroke-width='1.5'/%3E%3C/svg%3E") !important;
-      background-repeat: no-repeat !important; background-position: right 7px center !important; background-size: 10px 6px !important; padding-right: 22px !important; }
     select:not([class]), select.btn { background-color: var(--panel2, #131b26); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
-    select option, select optgroup { background-color: #0f151e; color: #e6edf3; }
-    html, body { height: 100%; margin: 0; }
     body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
     button, select { font: inherit; color: inherit; }
     header { display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: linear-gradient(#141c27, #0e141d); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -26,8 +18,6 @@
     .status::before { content: "●"; margin-right: 6px; }
     .status.progress { background: linear-gradient(var(--accent), var(--accent)) no-repeat left bottom / var(--progress) 2px; }
     .status.ok::before { color: var(--ok); } .status.idle::before { color: var(--muted); } .status.bad { color: var(--bad); }
-    .spacer { flex: 1; }
-    .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
     .btn:hover { border-color: #3a5170; }
     .btn.active { background: #0b3a48; border-color: var(--accent); color: #7fe8ff; }
     select { background: #0b1118; border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }

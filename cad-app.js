@@ -1306,35 +1306,55 @@
     zoomAt(m.sx, m.sy, Math.exp(-e.deltaY * 0.0015));
   }
 
+  // What the editor can do from the keyboard, in one table (UiKit.commands): the shortcuts, the
+  // toolbar and menu buttons bound to them and the help's Keyboard list all come from it.
+  // A new command with a key and a help text shows up in the help by itself.
+  const cmds = UiKit.commands();
+  const helpModal = () => document.getElementById("help-modal");
+  const toggleHelp = () => { const m = helpModal(); m.hidden = !m.hidden; };
+  const zoomBy = k => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, k);
+  function clearOrCancel() {
+    if (S.wiring) finishWiring();
+    else if (S.placing) { S.placing = null; setTool("select"); }
+    else { S.sel.comps.clear(); S.sel.wires.clear(); updateInspector(); render(); }
+  }
+  function selectAll() { S.comps.forEach(c => S.sel.comps.add(c.id)); S.wires.forEach(w => S.sel.wires.add(w.id)); updateInspector(); render(); }
+  function toggleView(key) { S[key] = !S[key]; render(); }
+  cmds
+    .add({ id: "help-close", keys: ["Escape"], anyCtrl: true, when: () => !helpModal().hidden, run: () => { helpModal().hidden = true; } })
+    .add({ id: "rotate", keys: ["R"], run: rotateSelection, help: "rotate the selection (or the part being placed)" })
+    .add({ id: "mirror", keys: ["M"], run: mirrorSelection, help: "mirror left–right" })
+    .add({ id: "duplicate", keys: ["D", "Ctrl+D"], prevent: true, run: () => { if (copySelection()) paste(40, 40); }, help: "duplicate (also Ctrl+D)", helpKeys: ["D"] })
+    .add({ id: "delete", keys: ["Delete", "Backspace"], anyCtrl: true, prevent: true, run: deleteSelection, help: "delete" })
+    .add({ id: "wire", keys: ["W"], run: () => setTool(S.tool === "wire" ? "select" : "wire"), help: "wire tool" })
+    .add({ id: "select", keys: ["V"], run: () => setTool("select"), help: "select tool" })
+    .add({ id: "escape", keys: ["Escape"], anyCtrl: true, run: clearOrCancel, help: "cancel / clear the selection" })
+    .add({ id: "fit", keys: ["F"], run: () => fitCurrent(), help: "fit the sheet in use; again: all sheets" })
+    .add({ id: "bom", keys: ["B"], run: () => toggleBom(), check: () => bomOpts.open, help: "bill of materials" })
+    .add({ id: "zoom-in", keys: ["+", "=", "NumpadAdd", "Equal"], anyCtrl: true, run: () => zoomBy(1.2), help: "zoom in · wheel zooms at the pointer", helpKeys: ["+"] })
+    .add({ id: "zoom-out", keys: ["-", "NumpadSubtract", "Minus"], anyCtrl: true, run: () => zoomBy(1 / 1.2), help: "zoom out", helpKeys: ["-"] })
+    .add({ id: "undo", keys: ["Ctrl+Z"], prevent: true, run: undo, help: "undo" })
+    .add({ id: "redo", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], prevent: true, run: redo, help: "redo (also Ctrl+Shift+Z)", helpKeys: ["Ctrl+Y"] })
+    .add({ id: "copy", keys: ["Ctrl+C"], run: () => copySelection(), help: "copy" })
+    .add({ id: "paste", keys: ["Ctrl+V"], prevent: true, run: () => paste(40, 40), help: "paste" })
+    .add({ id: "select-all", keys: ["Ctrl+A"], prevent: true, run: selectAll, help: "select all" })
+    .add({ id: "save", keys: ["Ctrl+S"], prevent: true, run: () => saveFile(), help: "save" })
+    .add({ id: "save-as", keys: ["Ctrl+Shift+S"], prevent: true, run: () => saveFileAs(), help: "save as" })
+    .add({ id: "open", keys: ["Ctrl+O"], prevent: true, run: () => openDialog(), help: "open" })
+    .add({ id: "simulate", keys: ["Ctrl+Enter"], prevent: true, run: () => runSim("full"), help: "simulate until settled" })
+    .add({ id: "help", keys: ["F1"], inInputs: true, prevent: true, run: toggleHelp, help: "this help (also ?)" })
+    .add({ id: "help-alt", keys: ["?"], prevent: true, run: toggleHelp })
+    // settings without a key: View menu ticks and the toolbar's switches
+    .add({ id: "volts", run: () => toggleView("showVolts"), check: () => S.showVolts })
+    .add({ id: "amps", run: () => toggleView("showAmps"), check: () => S.showAmps })
+    .add({ id: "legend", run: () => { toggleView("showLegend"); try { localStorage.setItem(LEGEND_KEY, S.showLegend ? "1" : "0"); } catch (e) {} }, check: () => S.showLegend })
+    .add({ id: "live", run: () => setLive(!S.sim.live), check: () => S.sim.live })
+    .add({ id: "anim", run: () => setAnim(!S.anim.on), check: () => S.anim.on });
+
   function onKeyDown(e) {
-    const tag = (e.target.tagName || "").toUpperCase();
-    if (e.key === "F1") { const m = document.getElementById("help-modal"); m.hidden = !m.hidden; e.preventDefault(); return; }   // also while typing
-    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-    const k = e.key, ctrl = e.ctrlKey || e.metaKey, L = /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(k).toLowerCase();
-    if (k === " ") { S.spaceDown = true; canvas.style.cursor = "grab"; e.preventDefault(); return; }
-    if (k === "?") { const m = document.getElementById("help-modal"); m.hidden = !m.hidden; e.preventDefault(); return; }
-    if (k === "Escape" && !document.getElementById("help-modal").hidden) { document.getElementById("help-modal").hidden = true; return; }
-    if (k === "Escape") { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else { S.sel.comps.clear(); S.sel.wires.clear(); updateInspector(); render(); } }
-    else if ((k === "Delete" || k === "Backspace")) { deleteSelection(); e.preventDefault(); }
-    // letters by physical key (e.code), so the shortcuts work in any keyboard layout
-    // (with a Cyrillic layout e.key is "к" for R); other keys by e.key
-    else if (L === "r") { if (!ctrl) rotateSelection(); }
-    else if (L === "m" && !ctrl) mirrorSelection();
-    else if (L === "w" && !ctrl) setTool(S.tool === "wire" ? "select" : "wire");
-    else if (L === "v" && !ctrl) setTool("select");
-    else if (L === "f" && !ctrl) fitCurrent();
-    else if (L === "b" && !ctrl) toggleBom();
-    else if (L === "d") { if (copySelection()) paste(40, 40); e.preventDefault(); }   // D or Ctrl+D duplicates
-    else if (ctrl && k === "Enter") { runSim("full"); e.preventDefault(); }
-    else if (ctrl && L === "s") { e.shiftKey ? saveFileAs() : saveFile(); e.preventDefault(); }
-    else if (ctrl && L === "o") { openDialog(); e.preventDefault(); }
-    else if (ctrl && L === "z") { e.shiftKey ? redo() : undo(); e.preventDefault(); }
-    else if (ctrl && L === "y") { redo(); e.preventDefault(); }
-    else if (ctrl && L === "c") { copySelection(); }
-    else if (ctrl && L === "v") { paste(40, 40); e.preventDefault(); }
-    else if (ctrl && L === "a") { S.comps.forEach(c => S.sel.comps.add(c.id)); S.wires.forEach(w => S.sel.wires.add(w.id)); updateInspector(); render(); e.preventDefault(); }
-    else if (k === "+" || k === "=" || e.code === "NumpadAdd" || e.code === "Equal") zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1.2);
-    else if (k === "-" || e.code === "NumpadSubtract" || e.code === "Minus") zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1 / 1.2);
+    const tag = (e.target.tagName || "").toUpperCase(), typing = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
+    if (e.key === " " && !typing) { S.spaceDown = true; canvas.style.cursor = "grab"; e.preventDefault(); return; }
+    cmds.key(e);
   }
   function onKeyUp(e) { if (e.key === " ") { S.spaceDown = false; canvas.style.cursor = ""; } }
 
@@ -2656,7 +2676,7 @@
     if (bomOpts.height) setH(bomOpts.height);
     ["sockets", "bench"].forEach(k => { const el = document.getElementById("bom-" + k); el.checked = bomOpts[k]; el.addEventListener("change", () => { bomOpts[k] = el.checked; saveBomOpts(); renderBom(); }); });
     host.querySelectorAll("[data-bom]").forEach(b => b.addEventListener("click", () => exportBom(b.dataset.bom)));
-    bind("btn-bom", () => toggleBom()); bind("btn-bom-menu", () => toggleBom(true)); bind("btn-bom-close", () => toggleBom(false));
+    cmds.bind("btn-bom", "bom"); bind("btn-bom-menu", () => toggleBom(true)); bind("btn-bom-close", () => toggleBom(false));
     host.querySelector(".bom-grip").addEventListener("mousedown", e => {
       e.preventDefault();
       const y0 = e.clientY, h0 = host.offsetHeight, max = center.clientHeight - 120;
@@ -2993,25 +3013,8 @@
       template: w => `${w[0]}px 1fr ${w[1]}px` });
 
     buildPalette();
-    // File menu
-    // toolbar menus (File, View, Windows): one open at a time; a tick item leaves its menu open
-    document.querySelectorAll("header .menu").forEach(menu => {
-      const list = menu.querySelector(".menu-list"), btn = menu.querySelector(":scope > .btn");
-      const close = () => { list.hidden = true; btn.setAttribute("aria-expanded", "false"); };
-      btn.addEventListener("click", e => {
-        e.stopPropagation(); const open = list.hidden;
-        document.querySelectorAll("header .menu-list").forEach(l => { if (l !== list) l.hidden = true; });
-        list.hidden = !open; btn.setAttribute("aria-expanded", String(open));
-      });
-      list.addEventListener("click", e => { if (!e.target.closest(".menu-item.check")) close(); });
-      document.addEventListener("click", e => { if (!menu.contains(e.target)) close(); });
-      document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
-    });
-    // tick items and the Live switch tell screen readers their state too
-    new MutationObserver(ms => ms.forEach(m => { const el = m.target;
-      if (el.getAttribute("role") === "menuitemcheckbox") el.setAttribute("aria-checked", String(el.classList.contains("active")));
-      else if (el.classList.contains("toggle")) el.setAttribute("aria-pressed", String(el.classList.contains("active")));
-    })).observe(document.querySelector("header"), { subtree: true, attributes: true, attributeFilter: ["class"] });
+    // toolbar menus (File, View, Windows) and the state of their ticks and switches
+    UiKit.menus(document.querySelector("header"));
     bind("btn-new", () => openSheetDialog("new"));
     bind("btn-add-sheet", () => openSheetDialog("add"));
     document.getElementById("sheet-nav").addEventListener("change", e => { const f = S.comps.find(c => c.id === e.target.value); if (f) fitSheet(f); else fitView(); });
@@ -3043,27 +3046,21 @@
     bind("btn-save-ok", saveDialogOk);
     document.getElementById("save-name").addEventListener("keydown", e => { if (e.key === "Enter") saveDialogOk(); });
     document.getElementById("save-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("save-modal").hidden = true; });
-    bind("btn-undo", undo); bind("btn-redo", redo);
+    cmds.bind("btn-undo", "undo").bind("btn-redo", "redo");
     bind("btn-tool-select", () => { S.placing = null; setTool("select"); });
     bind("btn-tool-wire", () => { S.placing = null; setTool(S.tool === "wire" ? "select" : "wire"); });
-    bind("btn-rotate", rotateSelection); bind("btn-delete", deleteSelection);
-    bind("btn-mirror", mirrorSelection);
-    bind("btn-help", () => { document.getElementById("help-modal").hidden = false; });
+    cmds.bind("btn-rotate", "rotate").bind("btn-delete", "delete").bind("btn-mirror", "mirror");
+    cmds.bind("btn-help", "help").helpRows(document.getElementById("help-keys"));
     bind("btn-help-close", () => { document.getElementById("help-modal").hidden = true; });
     bind("btn-help-manual", () => { document.getElementById("help-modal").hidden = true; ToolWindows.open("help.html"); });
     bind("btn-open-manual", () => ToolWindows.open("help.html"));
     document.getElementById("help-modal").addEventListener("click", e => { if (e.target.id === "help-modal") e.target.hidden = true; });
     bind("btn-zoom-in", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1.25));
     bind("btn-zoom-out", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 0.8));
-    bind("btn-zoom-fit", fitCurrent);
-    bind("btn-live", () => setLive(!S.sim.live));
+    cmds.bind("btn-zoom-fit", "fit");
+    cmds.bind("btn-live", "live");
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
-    document.getElementById("btn-live").classList.toggle("active", S.sim.live);
-    bind("btn-volts", () => { S.showVolts = !S.showVolts; document.getElementById("btn-volts").classList.toggle("active", S.showVolts); render(); });
-    { const b = document.getElementById("btn-legend"); b.classList.toggle("active", S.showLegend); b.setAttribute("aria-checked", String(S.showLegend)); }
-    bind("btn-legend", () => { S.showLegend = !S.showLegend; document.getElementById("btn-legend").classList.toggle("active", S.showLegend); try { localStorage.setItem(LEGEND_KEY, S.showLegend ? "1" : "0"); } catch (e) {} render(); });
-    bind("btn-anim", () => setAnim(!S.anim.on));
-    bind("btn-amps", () => { S.showAmps = !S.showAmps; document.getElementById("btn-amps").classList.toggle("active", S.showAmps); render(); });
+    cmds.bind("btn-volts", "volts").bind("btn-amps", "amps").bind("btn-legend", "legend").bind("btn-anim", "anim");
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
@@ -3089,6 +3086,7 @@
     curFile = { handle: null, name: (saved && last && last.name) || "" };
     if (!saved || !last || !last.dirty) markClean(); else showFile();
     setTool("select");
+    cmds.sync();
     updateInspector();
     updateSheetNav();
     requestAnimationFrame(() => { fitStart(); scheduleSim(0); });

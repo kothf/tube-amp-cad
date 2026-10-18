@@ -5,21 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tube Amp CAD — Circuit Editor &amp; Simulator</title>
   <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="ui.css?v=dev">
   <style>
     :root {
       --bg: #0a0e14; --panel: #0f151e; --panel2: #131b26; --line: #223044; --text: #e6edf3; --muted: #8b949e;
       --accent: #00e5ff; --amber: #ffd54f; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300;
     }
-    * { box-sizing: border-box; }
-    /* dropdowns drawn by the page, not the OS: Safari otherwise shows white native boxes
-       with the page's light text (unreadable); the same look in every browser */
-    :root { color-scheme: dark; }
-    select { -webkit-appearance: none; appearance: none; color: var(--text);
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b949e' stroke-width='1.5'/%3E%3C/svg%3E") !important;
-      background-repeat: no-repeat !important; background-position: right 7px center !important; background-size: 10px 6px !important; padding-right: 22px !important; }
     select:not([class]), select.btn { background-color: var(--panel2, #131b26); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
-    select option, select optgroup { background-color: #0f151e; color: #e6edf3; }
-    html, body { height: 100%; margin: 0; }
     body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
     button, input, select { font: inherit; color: inherit; }
 
@@ -35,7 +27,6 @@
     .cur-file.untitled { color: #8b949e; font-style: italic; }
     .cur-file .dirty { color: #e3b341; font-style: normal; }
     .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
-    .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
     .btn:hover { border-color: #3a5170; }
     .btn.active { background: #0d3442; border-color: var(--accent); color: var(--accent); }
     .btn:disabled { opacity: .45; cursor: default; }
@@ -56,7 +47,6 @@
     .seg-group > .active { position: relative; z-index: 1; }
     .seg-group #zoom-label { display: grid; place-items: center; border: 1px solid var(--line); background: var(--bg); }
     #zoom-label { min-width: 48px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
-    .spacer { flex: 1; }
 
     main { display: grid; grid-template-columns: 210px 1fr 280px; min-height: 0; }
 
@@ -347,21 +337,7 @@
         <li><b>Panels:</b> drag the edge of the palette, the inspector or the BOM to resize it; double-click the edge to reset it. Click a palette group's title to fold it.</li>
       </ul>
       <h3>Keyboard</h3>
-      <div class="help-keys">
-        <kbd>R</kbd><span>rotate the selection (or the part being placed)</span>
-        <kbd>M</kbd><span>mirror left–right</span>
-        <kbd>D</kbd><span>duplicate (also Ctrl+D)</span>
-        <kbd>Del</kbd><span>delete</span>
-        <kbd>W</kbd><span>wire tool · <kbd>V</kbd> select tool · <kbd>Esc</kbd> cancel / clear the selection</span>
-        <kbd>F</kbd><span>fit the sheet in use; again: all sheets</span>
-        <kbd>B</kbd><span>bill of materials</span>
-        <kbd>+</kbd><span>zoom in · <kbd>−</kbd> zoom out · wheel zooms at the pointer</span>
-        <kbd>Ctrl+Z</kbd><span>undo · <kbd>Ctrl+Y</kbd> or <kbd>Ctrl+Shift+Z</kbd> redo</span>
-        <kbd>Ctrl+C</kbd><span>copy · <kbd>Ctrl+V</kbd> paste · <kbd>Ctrl+A</kbd> select all</span>
-        <kbd>Ctrl+S</kbd><span>save · <kbd>Ctrl+Shift+S</kbd> save as · <kbd>Ctrl+O</kbd> open</span>
-        <kbd>Ctrl+Enter</kbd><span>simulate until settled</span>
-        <kbd>F1</kbd><span>this help (also <kbd>?</kbd>)</span>
-      </div>
+      <div class="help-keys" id="help-keys"></div>
       <p class="insp-help">Shortcuts go by the key's position, so they work with any keyboard layout (Russian included).</p>
       <div class="modal-actions"><button class="btn active" id="btn-help-manual" title="Every feature, part, value and coefficient explained, with a design cookbook">Open the full manual ↗</button><button class="btn" id="btn-help-close">Close</button></div>
     </div>
@@ -419,6 +395,7 @@
   <script src="hints.js?v=dev"></script>
   <script src="windows.js?v=dev"></script>
   <script src="panels.js?v=dev"></script>
+  <script src="ui-kit.js?v=dev"></script>
   <script src="tube-db.js?v=dev"></script>
   <script src="spice-model.js?v=dev"></script>
   <script src="sim-engine.js?v=dev"></script>
