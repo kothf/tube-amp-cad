@@ -1268,7 +1268,7 @@
   };
   ["opt_se", "opt_cat", "opt_pp"].forEach(t => { UI[t] = { readout: otReadout }; });
   Object.keys(UI).forEach(t => Object.keys(UI[t]).forEach(k => { if (!LIB[t][k]) LIB[t][k] = UI[t][k]; }));
-  // the loudspeaker's impedance and phase against frequency, under its fields
+  // a loudspeaker's impedance (solid) and phase (dotted) from 10 Hz to 20 kHz, the nominal value dashed
   function speakerPlot(c) {
     const wrap = document.createElement("div"); wrap.className = "spk-plot";
     const cv = document.createElement("canvas"); cv.width = 300; cv.height = 150; cv.id = "spk-plot"; wrap.appendChild(cv);

@@ -858,121 +858,10 @@
   };
 
   // ---------------------------------------------------------------------------
-  // Power-on transient for the oscilloscopes (own worker, so live runs go on)
+  // Power-on transient for the oscilloscopes and frequency response for the Bode plotter,
+  // each in its own worker so live runs go on (cad-analysis.js)
   // ---------------------------------------------------------------------------
-  let tWorker = null;
-  S.trans = null;           // { seq, running, progress, tStop, ok, error, dt, scopes: [{ id, label, ch1: {min,max}, ch2 }] }
-  function transientMessage() {
-    const t = S.trans;
-    return { type: "TRANSIENT_RESULT", version: VERSION, seq: t.seq, running: !!t.running, progress: t.progress || 0, tStop: t.tStop, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
-      dt: t.dt, elapsedMs: t.elapsedMs, scopes: t.scopes || [] };
-  }
-  function stopTransient() {
-    if (tWorker) { tWorker.terminate(); tWorker = null; }
-    if (S.trans && S.trans.running) { S.trans.running = false; S.trans.error = "Stopped"; if (channel) channel.postMessage(transientMessage()); setStatus("idle", "Power-on transient stopped"); }
-  }
-  function runTransient(tStop) {
-    tStop = Math.min(5, Math.max(0.01, +tStop || 1));
-    const T = topo();
-    if (!T.hasGround) { S.trans = { running: false, ok: false, error: "Add a ground symbol to simulate", tStop }; if (channel) channel.postMessage(transientMessage()); return; }
-    stopTransient();
-    const netlist = buildNetlist(), probes = [], map = [];
-    S.comps.filter(c => c.type === "scope").forEach(c => {
-      const com = T.pinNet.get(c.id + ":COM");
-      ["CH1", "CH2"].forEach(pid => {
-        if (!T.pinConnected.get(c.id + ":" + pid)) return;
-        map.push({ id: c.id, label: c.label, ch: pid.toLowerCase(), k: probes.length });
-        probes.push([T.pinNet.get(c.id + ":" + pid), com]);
-      });
-    });
-    const seq = (S.trans && S.trans.seq || 0) + 1;
-    S.trans = { seq, running: true, progress: 0, tStop };
-    if (channel) channel.postMessage(transientMessage());
-    showBusy();
-    try { tWorker = new Worker("sim-worker.js" + VERSION); } catch (e) { tWorker = null; }
-    const done = result => {
-      if (!S.trans || S.trans.seq !== seq) return;
-      tWorker = null;
-      const scopes = [];
-      if (result.ok) map.forEach(p => {
-        let sc = scopes.find(x => x.id === p.id); if (!sc) scopes.push(sc = { id: p.id, label: p.label });
-        sc[p.ch] = { min: result.min[p.k], max: result.max[p.k] };
-      });
-      Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, elapsedMs: result.elapsedMs, scopes, progress: 1 });
-      if (channel) channel.postMessage(transientMessage());
-      if (S.sim.busy && result.ok) showBusy();   // the steady state still runs: its progress stays on the line
-      else if (result.ok) setStatus("ok", `Power-on transient: ${fmtEng(tStop, "s")} of circuit time in ${(result.elapsedMs / 1000).toFixed(1)} s · ${result.steps} steps`);
-      else setStatus("error", "Power-on transient: " + result.error);
-    };
-    const options = { tStop, probes, maxPoints: 250000, budgetMs: 600000 };   // every step, for zooming in the scope
-    if (!tWorker) { setTimeout(() => done(TubeSimEngine.startup(netlist, options)), 0); return; }
-    tWorker.onmessage = e => {
-      const d = e.data;
-      if (d.progress !== undefined && !d.result) {
-        if (!S.trans || S.trans.seq !== seq) return;
-        S.trans.progress = d.progress;
-        if (channel) channel.postMessage(transientMessage());
-        showBusy();
-      } else done(d.result);
-    };
-    tWorker.postMessage({ seq, netlist, options, kind: "startup" });
-  }
-
-  // ---------------------------------------------------------------------------
-  // Frequency response for the Bode plotter window (own worker): the circuit with its signal
-  // generators quiet, linearized at that operating point; the chosen generator drives it (1 V),
-  // the others are shorts. Each scope channel's response against the scope's common.
-  // ---------------------------------------------------------------------------
-  let aWorker = null;
-  S.ac = { seq: 0, key: null, job: null, msg: null };
-  const AC_RANGE = { fStart: 1, fStop: 1e6, perDecade: 40 };
-  function acMessage(extra) { return Object.assign({ type: "AC_RESULT", version: VERSION }, S.ac.msg || { ok: false, error: "Not run yet" }, extra || {}); }
-  function runAC(gen) {
-    const T = topo(), netlist = S.sim.netlist;
-    const gens = S.comps.filter(c => c.type === "siggen").map(c => ({ id: c.id, label: desig(c) }));
-    const post = m => { S.ac.msg = m; if (channel) try { channel.postMessage(acMessage()); } catch (e) {} };
-    if (!netlist || !S.sim.result) { S.ac.key = null; post({ ok: false, error: S.sim.error || "Circuit not simulated", gens }); return; }
-    if (!gens.length) { S.ac.key = null; post({ ok: false, error: "Add a signal generator: the response is measured from it", gens }); return; }
-    const g = gens.find(x => x.id === gen) || gens[0];
-    const probes = [], map = [];
-    S.comps.filter(c => c.type === "scope").forEach(c => {
-      const com = T.pinNet.get(c.id + ":COM") || 0;
-      ["CH1", "CH2"].forEach(pid => {
-        if (!T.pinConnected.get(c.id + ":" + pid)) return;
-        map.push({ id: c.id, label: c.label, ch: pid.toLowerCase(), k: probes.length });
-        probes.push([T.pinNet.get(c.id + ":" + pid), com]);
-      });
-    });
-    const quiet = new Set(gens.map(x => x.id));
-    const nl = { nodeCount: netlist.nodeCount, elements: netlist.elements.map(e => (quiet.has(e.id) ? Object.assign({}, e, { amp: 0 }) : e)) };
-    const key = JSON.stringify([nl.elements, g.id, probes]);
-    if (key === S.ac.key && (S.ac.job || (S.ac.msg && S.ac.msg.ok !== undefined))) { if (!S.ac.job && channel) channel.postMessage(acMessage()); return; }
-    if (aWorker) { aWorker.terminate(); aWorker = null; }
-    S.ac.key = key;
-    const seq = ++S.ac.seq;
-    S.ac.job = { seq };
-    if (channel) channel.postMessage(acMessage({ running: true, progress: 0, gen: g.id, gens }));
-    const options = Object.assign({ inputs: [{ id: g.id, mag: 1 }], probes, budgetMs: 60000 }, AC_RANGE);
-    const done = res => {
-      if (S.ac.seq !== seq) return;
-      aWorker = null; S.ac.job = null;
-      const scopes = [];
-      if (res.ok) map.forEach(p => {
-        let sc = scopes.find(x => x.id === p.id); if (!sc) scopes.push(sc = { id: p.id, label: p.label, ch1: null, ch2: null });
-        sc[p.ch] = { re: Array.from(res.probes[p.k].re), im: Array.from(res.probes[p.k].im) };
-      });
-      post({ ok: !!res.ok, error: res.ok ? null : res.error, gen: g.id, gens, freqs: res.ok ? Array.from(res.freqs) : [], scopes, averaged: !!res.averaged, elapsedMs: res.elapsedMs, running: false });
-    };
-    try { aWorker = new Worker("sim-worker.js" + VERSION); } catch (e) { aWorker = null; }
-    if (!aWorker) { setTimeout(() => done(TubeSimEngine.acSweep(nl, options)), 0); return; }
-    aWorker.onmessage = e => {
-      const d = e.data;
-      if (d.seq !== seq) return;
-      if (d.result) done(d.result);
-      else if (channel) channel.postMessage(acMessage({ running: true, progress: d.progress, gen: g.id, gens }));
-    };
-    aWorker.postMessage({ seq, netlist: nl, options, kind: "ac" });
-  }
+  const { acMessage, runAC, runTransient, stopTransient, transientMessage } = CadAnalysis({ S, LIB, VERSION, buildNetlist, channel, desig, fmtEng, key, setStatus, showBusy, topo });
 
   // ---------------------------------------------------------------------------
   // View transforms
@@ -1174,7 +1063,7 @@
     canvas.focus();
     const m = evPos(e);
     if (e.button === 0 && !S.spaceDown) S.lastClick = { x: m.wx, y: m.wy };   // Fit picks the sheet clicked last
-    if (e.button === 0) bomSelShown = "";   // a click on the sheet shows its selection in the BOM again
+    if (e.button === 0) clearBomShown();   // a click on the sheet shows its selection in the BOM again
     if (e.button === 1 || (e.button === 0 && S.spaceDown)) { S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
     if (e.button === 2) { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else openSheetMenu(e, m); return; }
     if (e.button !== 0) return;
@@ -1350,7 +1239,8 @@
     .add({ id: "select", keys: ["V"], run: () => setTool("select"), help: "select tool" })
     .add({ id: "escape", keys: ["Escape"], anyCtrl: true, run: clearOrCancel, help: "cancel / clear the selection" })
     .add({ id: "fit", label: "Fit the sheet", keys: ["F"], run: () => fitCurrent(), help: "fit the sheet in use; again: all sheets" })
-    .add({ id: "bom", keys: ["B"], run: () => toggleBom(), check: () => bomOpts.open, help: "bill of materials" })
+    .add({ id: "bom", keys: ["B"], run: () => toggleBom(), check: () => bomOpts.open && bomOpts.tab === "bom", help: "bill of materials" })
+    .add({ id: "checks", label: "Checks", run: () => toggleBom(undefined, "checks"), check: () => bomOpts.open && bomOpts.tab === "checks" })
     .add({ id: "zoom-in", keys: ["+", "=", "NumpadAdd", "Equal"], anyCtrl: true, run: () => zoomBy(1.2), help: "zoom in · wheel zooms at the pointer", helpKeys: ["+"] })
     .add({ id: "zoom-out", keys: ["-", "NumpadSubtract", "Minus"], anyCtrl: true, run: () => zoomBy(1 / 1.2), help: "zoom out", helpKeys: ["-"] })
     .add({ id: "undo", label: "Undo", keys: ["Ctrl+Z"], prevent: true, run: undo, help: "undo" })
@@ -1364,6 +1254,7 @@
     .add({ id: "simulate", keys: ["Ctrl+Enter"], prevent: true, run: () => runSim("full"), help: "simulate until settled" })
     .add({ id: "help", keys: ["F1"], inInputs: true, prevent: true, run: toggleHelp, help: "this help (also ?)" })
     .add({ id: "help-alt", keys: ["?"], prevent: true, run: toggleHelp })
+    .add({ id: "inspector", label: "Inspector", run: () => setDrawer(!document.body.classList.contains("insp-open")), check: () => document.body.classList.contains("insp-open") })
     .add({ id: "renumber", menuId: "menu-renumber", label: "Renumber designations", title: "Letter code (R, C, L, T, VL …) and number for every part, in reading order", run: () => renumber() })
     // settings without a key: View menu ticks and the toolbar's switches
     .add({ id: "volts", run: () => toggleView("showVolts"), check: () => S.showVolts })
@@ -2071,8 +1962,22 @@
     }
     const live = document.getElementById("insp-live");
     if (live) live.innerHTML = c ? liveReadout(c) : circuitReadout();
-    renderBom();
+    syncDrawer();
+    renderBom(); renderChecks();
   }
+
+  // Narrow windows (below 900 px, where the page's CSS makes the inspector a drawer): it slides in
+  // when something is selected and out when the selection is cleared; the toolbar's Inspector
+  // button (the "inspector" command) opens and closes it at any time.
+  const isNarrow = () => window.innerWidth <= 900;
+  let drawerFor = "";
+  function syncDrawer() {
+    const sig = selSig() + "|" + [...S.sel.wires].join(",");
+    if (sig === drawerFor) return;
+    drawerFor = sig;
+    if (isNarrow()) setDrawer(S.sel.comps.size + S.sel.wires.size > 0);
+  }
+  function setDrawer(on) { document.body.classList.toggle("insp-open", on); cmds.sync(); }
 
   function buildCompInspector(host, c) {
     const def = LIB[c.type];
@@ -2214,7 +2119,21 @@
     const T = topo();
     const counts = {};
     S.comps.forEach(c => { counts[c.type] = (counts[c.type] || 0) + 1; });
-    let h = kv("Parts · wires · nets", `${S.comps.length} · ${S.wires.length} · ${T.nodeCount}`) + powerSummary();
+    const h = kv("Parts · wires · nets", `${S.comps.length} · ${S.wires.length} · ${T.nodeCount}`) + powerSummary();
+    return h + `<div class="insp-sub">Checks${simPct()}</div>` + checksHTML(circuitIssues());
+  }
+  const checksHTML = issues => (issues.length ? issues.map(i => `<p class="insp-help warn">⚠ ${i}</p>`).join("") : `<p class="insp-help ok">✓ No problems found.</p>`);
+  // The Checks tab of the panel under the sheet: the same list, with the count on its tab
+  function renderChecks() {
+    const host = document.getElementById("checks-pane"), count = document.getElementById("checks-count");
+    if (!host) return;
+    const issues = circuitIssues();
+    count.textContent = issues.length ? String(issues.length) : "";
+    if (!host.hidden) host.innerHTML = checksHTML(issues);
+  }
+  // wiring problems and every part beyond its rating, one sentence each
+  function circuitIssues() {
+    const T = topo();
     const issues = [];
     if (hasCircuit() && !T.hasGround) issues.push("No ground symbol.");
     const open = [];
@@ -2253,11 +2172,9 @@
       else if (avg === null && dc > d.paMax) issues.push(`${c.label} over dissipation (${dc.toFixed(1)} W > ${d.paMax} W).`);
     });
     S.comps.forEach(c => { if (c.type === "tube") tubeLimits(c).forEach(o => { if (o.share > 1) issues.push(o.text); }); });
-    h += `<div class="insp-sub">Checks${simPct()}</div>` + (issues.length ? issues.map(i => `<p class="insp-help warn">⚠ ${i}</p>`).join("") : `<p class="insp-help ok">✓ No problems found.</p>`);
-    return h;
+    return issues;
   }
 
-  // a loudspeaker's impedance (solid) and phase (dotted) from 10 Hz to 20 kHz, the nominal value dashed
   function row(label, el, wide) {
     const d = document.createElement("label"); d.className = "row" + (wide ? " wide" : "");
     const s = document.createElement("span"); s.textContent = label;
@@ -2402,177 +2319,9 @@
     } finally { ctx = keep; S.printing = false; }
   }
   // ---------------------------------------------------------------------------
-  // Bill of materials: a panel under the schematic (B), exported as TXT, CSV, XLSX or PDF
+  // Bill of materials: a panel under the schematic (B), exported as TXT, CSV, XLSX or PDF (cad-bom.js)
   // ---------------------------------------------------------------------------
-  const BOM_KEY = "tubecad_bom";
-  const bomOpts = { open: false, sockets: true, bench: false, height: 0 };
-  try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
-  const saveBomOpts = () => { try { localStorage.setItem(BOM_KEY, JSON.stringify(bomOpts)); } catch (e) {} };
-  let bomStale = false, bomSelShown = "";
-  // simulated worst case of a part, for the BOM's Sim. max column: dissipation of resistors,
-  // pots, transistors and zeners (against their ratings), capacitor peak voltage, LED current, a
-  // diode's peak inverse voltage and current, a tube's most-used rating, a choke's and a
-  // transformer's DC current, a speaker's power. v orders the parts of one BOM line.
-  const DIODE_RATE = { "1N4007": { v: 1000, i: 1 }, "UF4007": { v: 1000, i: 1 }, "1N4148": { v: 100, i: 0.2 } };
-  const share = (x, m) => (m > 0 ? ` · ${Math.round(x / m * 100)}%` : "");
-  function partStress(c) {
-    const r = S.sim.result;
-    if (!r) return null;
-    if (c.type === "pot") {
-      const half = sfx => (S.sim.netlist.elements.find(e => e.id === c.id + sfx) || {}).r, [ra, rb] = [half("#a"), half("#b")];
-      if (!(ra > 0 && rb > 0)) return null;
-      const w1 = waveOf(c, "1"), ww = waveOf(c, "W"), w2 = waveOf(c, "2");
-      let p;
-      if (w1 && ww && w2) { p = 0; for (let i = 0; i < w1.length; i++) p += (w1[i] - ww[i]) ** 2 / ra + (ww[i] - w2[i]) ** 2 / rb; p /= w1.length; }
-      else { const [a, w, b] = ["1", "W", "2"].map(q => netDC(pinNetOf(c, q))); if ([a, w, b].includes(null)) return null; p = (a - w) ** 2 / ra + (w - b) ** 2 / rb; }
-      return { v: p, text: fmtEng(p, "W") };
-    }
-    if (c.type === "diode") {
-      const wa = waveOf(c, "A"), wk = waveOf(c, "K"), tr = r.tran && r.tran.devices[c.id], iav = pinCurrent(c, "A"), m = DIODE_RATE[c.params.model];
-      let piv = null, ipk = null;
-      if (wa && wk) { piv = 0; for (let i = 0; i < wa.length; i++) piv = Math.max(piv, wk[i] - wa[i]); }
-      if (tr) { ipk = 0; for (const x of tr.i) ipk = Math.max(ipk, x); }
-      if (piv === null && iav === null) return null;
-      const parts = [piv !== null ? `PIV ${fmtEng(piv, "V")}` : "", iav !== null ? `${fmtEng(Math.abs(iav), "A")} avg` : "", ipk !== null ? `${fmtEng(ipk, "A")} pk` : ""].filter(Boolean);
-      return { v: piv || 0, text: parts.join(" · "), warn: !!m && ((piv || 0) > m.v || Math.abs(iav || 0) > m.i), note: m && (piv || 0) > m.v ? "over its PIV" : "over its current" };
-    }
-    if (c.type === "tube") {
-      // its most-used rating: the largest share of any limit (Pa, Pg2, Ik, Vhk, PIV …)
-      const rows = tubeLimits(c), d = tubeData(c), t = tubeByName(c.params.tube);
-      if (d && d.kind !== "rectifier" && t && t.paMax > 0 && d.dc) { const pa = d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia; rows.push({ label: "Pa", value: fmtEng(pa, "W"), share: pa / t.paMax, text: "" }); }
-      if (!rows.length) return null;
-      const top = rows.reduce((a, b) => (b.share > a.share ? b : a));
-      return { v: top.share, text: `${top.label.replace(/ \(.*\)$/, "")} ${top.value} · ${Math.round(top.share * 100)}%`, warn: top.share > 1 };
-    }
-    if (c.type === "inductor") {
-      const v = netDC(pinNetOf(c, "1")), w = netDC(pinNetOf(c, "2")); if (v === null || w === null) return null;
-      const i = Math.abs(v - w) / Math.max(c.params.dcr, 1e-3);
-      return { v: i, text: `${fmtEng(i, "A")} DC` };
-    }
-    if (c.type === "speaker") {
-      const sp = speakerPower(c); return sp ? { v: sp.p, text: fmtEng(sp.p, "W") } : null;
-    }
-    if (c.type === "opt_se" || c.type === "opt_cat" || c.type === "opt_pp") {
-      const m = c.type === "opt_cat" ? CadLib.OUTPUT_TX[c.params.model] : null, dc = (a, b, rr) => { const va = netDC(pinNetOf(c, a)), vb = netDC(pinNetOf(c, b)); return va === null || vb === null ? null : Math.abs(va - vb) / rr; };
-      const i = c.type === "opt_cat" ? (otDcCurrent(c) === null ? null : Math.abs(otDcCurrent(c))) : c.type === "opt_se" ? dc("P1", "P2", Math.max(c.params.dcrp, 1e-3)) : Math.max(dc("P1", "CT", Math.max(c.params.dcrp / 2, 1e-3)) || 0, dc("CT", "P2", Math.max(c.params.dcrp / 2, 1e-3)) || 0);
-      if (i === null) return null;
-      return { v: i, text: `${fmtEng(i, "A")} DC${c.type === "opt_pp" ? " per half" : ""}${m ? share(i * 1000, m.ma) : ""}`, warn: !!m && i * 1000 > m.ma };
-    }
-    if (c.type === "ptx" || c.type === "ptx_cat") {
-      const i = pinCurrent(c, "CT"); if (i === null) return null;
-      const m = c.type === "ptx_cat" ? CadLib.POWER_TX[c.params.model] : null, a = Math.abs(i);
-      return { v: a, text: `HT ${fmtEng(a, "A")} DC${m ? share(a * 1000, m.ma) : ""}`, warn: !!m && a * 1000 > m.ma };
-    }
-    if (c.type === "resistor") {
-      const p = resistorPower(c);
-      return p === null ? null : { v: p, text: fmtEng(p, "W"), warn: +c.params.w > 0 && p > +c.params.w };
-    }
-    if (c.type === "capacitor" || c.type === "electrolytic") {
-      const [a, b] = c.type === "capacitor" ? ["1", "2"] : ["+", "-"], wa = waveOf(c, a), wb = waveOf(c, b);
-      const va = netDC(pinNetOf(c, a)), vb = netDC(pinNetOf(c, b));
-      let v = null;
-      if (wa && wb) { v = 0; for (let i = 0; i < wa.length; i++) v = Math.max(v, Math.abs(wa[i] - wb[i])); }
-      else if (va !== null && vb !== null) v = Math.abs(va - vb);
-      if (v === null) return null;
-      const reversed = c.type === "electrolytic" && va !== null && vb !== null && va - vb < -1;
-      return { v, text: fmtEng(v, "V"), warn: reversed, note: "reversed" };
-    }
-    if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) {
-      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = (c.type === "npn" || c.type === "pnp" ? CadLib.BJTS : CadLib.MOSFETS)[c.params.model];
-      return d && m ? { v: d.pd, text: fmtEng(d.pd, "W"), warn: d.pd > m.p } : null;
-    }
-    if (c.type === "zener" || c.type === "led") {
-      const i = pinCurrent(c, "A"), va = netDC(pinNetOf(c, "A")), vk = netDC(pinNetOf(c, "K"));
-      if (i === null || va === null || vk === null) return null;
-      if (c.type === "led") { const l = CadLib.LEDS[c.params.color]; return { v: Math.abs(i), text: fmtEng(Math.abs(i), "A"), warn: !!l && i > l.i }; }
-      const z = CadLib.ZENERS[c.params.model], p = Math.abs((va - vk) * i);
-      return { v: p, text: fmtEng(p, "W"), warn: !!z && p > z.p };
-    }
-    return null;
-  }
-  function bomData() {
-    const f = frames()[0], p = f ? f.params : {};
-    // the values of the last simulation, taken when it finished: an edit since does not mix the
-    // new part values with the old voltages
-    return { rows: BomLib.build(S.comps, { sockets: bomOpts.sockets, bench: bomOpts.bench, stress: c => (S.sim.stress && S.sim.stress.get(c.id)) || null }),
-      title: p.title || "", docno: p.docno || "", rev: p.rev || "", date: p.date || new Date().toISOString().slice(0, 10) };
-  }
-  const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-  function renderBom() {
-    const host = document.getElementById("bom");
-    if (!host || host.hidden) return;
-    // don't rebuild under a part number being typed; catch up when it loses focus
-    const a = document.activeElement;
-    if (a && a.tagName === "INPUT" && host.contains(a) && a.closest("#bom-table")) { bomStale = true; return; }
-    bomStale = false;
-    const bom = bomData(), table = document.getElementById("bom-table");
-    const parts = bom.rows.reduce((n, r) => n + r.qty, 0);
-    document.getElementById("bom-count").textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (!S.sim.result ? " · simulate for the Sim. max column" : S.sim.busy || S.sim.pending ? " · Sim. max: the last simulation, a new one is running" : "") : "";
-    if (!bom.rows.length) { table.innerHTML = `<tbody><tr><td class="bom-empty">No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.</td></tr></tbody>`; return; }
-    const tip = { sim: "Simulated worst case: dissipation (resistors, transistors, zeners), capacitor peak voltage, LED current", partno: "Your order or manufacturer number; saved with the circuit" };
-    table.innerHTML = `<thead><tr>${BomLib.COLUMNS.map(c => `<th${tip[c.key] ? ` title="${tip[c.key]}"` : ""}>${c.title}</th>`).join("")}</tr></thead><tbody>` +
-      bom.rows.map((r, i) => `<tr data-i="${i}"${r.ids.some(id => S.sel.comps.has(id)) ? ' class="sel"' : ""}>
-        <td class="n">${r.item}</td><td class="n">${r.qty}</td><td class="mono">${esc(r.refs)}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.value)}</td>
-        <td>${esc(r.rating)}</td><td class="mono${r.warn ? " warn" : ""}">${esc(r.sim)}</td>
-        <td>${r.socket ? "" : `<input type="text" value="${esc(r.partno)}" spellcheck="false" aria-label="Part number for ${esc(r.refs)}">`}</td></tr>`).join("") + "</tbody>";
-    // a new selection on the sheet scrolls its line into view and flashes it
-    const sel = [...S.sel.comps].sort().join(), first = table.querySelector("tbody tr.sel");
-    if (sel !== bomSelShown) {
-      bomSelShown = sel;
-      if (first) {
-        const box = table.parentElement, head = table.querySelector("thead").offsetHeight, top = first.offsetTop - head;
-        if (top < box.scrollTop || first.offsetTop + first.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = Math.max(0, top - (box.clientHeight - head - first.offsetHeight) / 2);
-        table.querySelectorAll("tbody tr.sel").forEach(tr => tr.classList.add("flash"));
-      }
-    }
-    table.querySelectorAll("tbody tr").forEach(tr => {
-      const r = bom.rows[+tr.dataset.i];
-      tr.addEventListener("click", e => {
-        if (e.target.tagName === "INPUT") return;
-        // select the line's parts on the sheet (a socket line selects its tubes)
-        const ids = r.socket ? S.comps.filter(c => c.type === "tube" && r.refList.includes(String(c.label || "").replace(/\.\d+$/, ""))).map(c => c.id) : r.ids;
-        S.sel.comps = new Set(ids); S.sel.wires.clear(); updateInspector(); render();
-      });
-      const inp = tr.querySelector("input");
-      if (inp) {
-        inp.addEventListener("change", () => { const v = inp.value.trim(); S.comps.forEach(c => { if (r.ids.includes(c.id)) c.params.partno = v; }); bomStale = false; inp.blur(); commit(); });
-        inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); else if (e.key === "Escape") { inp.value = r.partno; inp.blur(); } });
-        inp.addEventListener("blur", () => { if (bomStale) setTimeout(renderBom, 0); });
-      }
-    });
-  }
-  function toggleBom(on) {
-    const host = document.getElementById("bom");
-    bomOpts.open = on === undefined ? host.hidden : !!on; saveBomOpts();
-    host.hidden = !bomOpts.open; bomSelShown = "";
-    document.getElementById("btn-bom").classList.toggle("active", bomOpts.open);
-    renderBom(); render();
-  }
-  function exportBom(fmt) {
-    const bom = bomData(), name = baseName() + "-BOM." + fmt;
-    const [data, type] = fmt === "txt" ? [BomLib.toTxt(bom), "text/plain;charset=utf-8"] : fmt === "csv" ? [BomLib.toCsv(bom), "text/csv;charset=utf-8"]
-      : fmt === "xlsx" ? [BomLib.toXlsx(bom), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] : [BomLib.toPdf(bom), "application/pdf"];
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], { type }));
-    a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    setStatus("ok", `Saved ${name} (${bom.rows.length} lines, ${bom.rows.reduce((n, r) => n + r.qty, 0)} parts)`);
-    return data;
-  }
-  function initBom() {
-    const host = document.getElementById("bom"), center = document.getElementById("center");
-    const setH = h => { bomOpts.height = h; host.style.setProperty("--bom-h", h + "px"); };
-    if (bomOpts.height) setH(bomOpts.height);
-    ["sockets", "bench"].forEach(k => { const el = document.getElementById("bom-" + k); el.checked = bomOpts[k]; el.addEventListener("change", () => { bomOpts[k] = el.checked; saveBomOpts(); renderBom(); }); });
-    host.querySelectorAll("[data-bom]").forEach(b => b.addEventListener("click", () => exportBom(b.dataset.bom)));
-    cmds.bind("btn-bom", "bom"); bind("btn-bom-menu", () => toggleBom(true)); bind("btn-bom-close", () => toggleBom(false));
-    host.querySelector(".bom-grip").addEventListener("mousedown", e => {
-      e.preventDefault();
-      const y0 = e.clientY, h0 = host.offsetHeight, max = center.clientHeight - 120;
-      const move = ev => { setH(Math.round(Math.max(120, Math.min(max, h0 + y0 - ev.clientY)))); render(); };
-      const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); saveBomOpts(); };
-      window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
-    });
-    if (bomOpts.open) toggleBom(true);
-  }
+  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, LIB, baseName, bind, cmds, renderChecks, commit, flash, fmtEng, frames, input, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf });
   // PNG of one sheet (or of the whole drawing without frames) at dpi. "print" colours are
   // those of the PDF (black on white, same luminance rule); "screen" keeps the editor's.
   // Very large sheets come out at a lower resolution: a canvas holds at most ~16k px a side.
@@ -2946,6 +2695,8 @@
     bind("btn-zoom-out", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 0.8));
     cmds.bind("btn-zoom-fit", "fit");
     cmds.bind("btn-live", "live");
+    cmds.bind("btn-insp", "inspector");
+    cmds.bind("btn-checks", "checks");
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
     cmds.bind("btn-volts", "volts").bind("btn-amps", "amps").bind("btn-legend", "legend").bind("btn-anim", "anim");
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });

@@ -6,9 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.71.2] - 2026-10-18
+## [3.72.0] - 2026-10-18
+
+### Added
+- **Edit ▾ menu and a right-click menu on the sheet.** The right mouse button on a part or wire selects it (unless it already is) and offers Rotate, Mirror, Duplicate, Delete, Copy and Paste; on empty sheet Paste, Select all, Fit, Undo and Redo. Edit ▾ has all of them plus Renumber designations. A right-click while placing or wiring still cancels it. Rotate, Mirror and Delete left the toolbar to make room; they are also in the part's inspector, as before.
+- **Checks tab** next to the bill of materials in the panel under the sheet (View ▾ → Checks): the inspector's Checks list, wider, with the number of problems on its tab.
+- **The inspector on narrow windows** (900 px and below), where it used to be hidden: a drawer over the right of the sheet that slides in when something is selected and out when the selection is cleared; the toolbar's *Inspector* button shows or hides it.
 
 ### Changed
+- **Each part's inspector comes from the part library.** Its live readout, its line of text and its panel (the loudspeaker's impedance plot, the scope's Open in buttons) are defined with the part in `cad-components.js`; the inspector shows exactly what it did before.
+- **The CAD's bill of materials and its runs for the instrument windows** (power-on transient, Bode) are in their own files, `cad-bom.js` and `cad-analysis.js`.
 - **One table of commands in the CAD.** Its keyboard shortcuts, the toolbar and View-menu buttons that do the same and the help's *Keyboard* list now come from one table (`ui-kit.js`), so a new feature is one entry and the help lists every shortcut by itself. The keys are unchanged; the help now has one row per shortcut (Ctrl+Shift+S, Ctrl+O and Esc were in shared rows before).
 - **Shared menus and styles.** The CAD and the Board window use one implementation of the toolbar menus (the Board's menu buttons now also tell screen readers whether they are open); the rules every window repeated (buttons, drop-downs, page reset) are in one stylesheet, `ui.css`. Nothing looks different.
 

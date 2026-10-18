@@ -131,7 +131,7 @@
 
 <!-- ======================================================================= -->
 <h2 id="window">3. The Circuit CAD window</h2>
-<p>Top to bottom: the toolbar; the palette (left), the sheet (centre) and the inspector (right); the bill of materials (when open) under the sheet; the status bar.</p>
+<p>Top to bottom: the toolbar; the palette (left), the sheet (centre) and the inspector (right); the panel under the sheet (when open), with two tabs: the bill of materials and the Checks; the status bar.</p>
 
 <h3 id="toolbar">3.1 Toolbar</h3>
 <table>
@@ -139,7 +139,7 @@
   <tr><td>File name</td><td class="wrap">The circuit file open now. A yellow • marks unsaved changes. "Untitled" for a new circuit or an example.</td></tr>
   <tr><td><span class="ui">File ▾</span></td><td class="wrap">New circuit, Add sheet, Open, Save, Save as, the Examples, Save as PDF (all sheets), Export sheet (PDF/PNG), Export PNG, Export SPICE netlist.</td></tr>
   <tr><td><span class="ui">Edit ▾</span></td><td class="wrap">Undo, Redo, then what acts on the selection: Rotate <kbd>R</kbd>, Mirror <kbd>M</kbd>, Duplicate <kbd>D</kbd>, Delete <kbd>Del</kbd>, Copy, Paste, Select all; and Renumber designations. The right mouse button on a part or wire opens the same commands there (on empty sheet: Paste, Select all, Fit, Undo, Redo).</td></tr>
-  <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (each net's DC voltage, and its AC as ~Vrms in cyan; wires that carry the signal glow cyan), <b>Currents</b> (DC current and its direction on each wire), <b>Legend</b> (the key to those marks in the corner of the sheet), and the <b>Bill of materials</b> panel. A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
+  <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (each net's DC voltage, and its AC as ~Vrms in cyan; wires that carry the signal glow cyan), <b>Currents</b> (DC current and its direction on each wire), <b>Legend</b> (the key to those marks in the corner of the sheet), and the panel under the sheet on its <b>Bill of materials</b> or <b>Checks</b> tab. A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
   <tr><td>↶ ↷</td><td class="wrap">Undo / redo (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>). Every edit can be undone, including opening an example.</td></tr>
   <tr><td><span class="ui">Select</span> | <span class="ui">Wire</span></td><td class="wrap">The tool: select and move (<kbd>V</kbd>), or draw wires from anywhere (<kbd>W</kbd>). The highlighted one is active.</td></tr>
   <tr><td>− 49% +</td><td class="wrap">Zoom out / in around the centre (<kbd>−</kbd>, <kbd>+</kbd>; the mouse wheel zooms at the pointer).</td></tr>
@@ -150,7 +150,7 @@
   <tr><td><span class="ui">Windows ▾</span></td><td class="wrap">Opens the instruments (Oscilloscope, Spectrum analyzer, Bode plotter, Curve tracer) and the Board layout, each in its own window. Opening one that is already open brings it to the front.</td></tr>
   <tr><td>?</td><td class="wrap">Quick help and all keyboard shortcuts (<kbd>F1</kbd>), with a link to this manual.</td></tr>
 </table>
-<p>On narrow screens the toolbar drops the product name and then the file name, so it stays one row from 1000 px up.</p>
+<p>On narrow screens the toolbar drops the product name and then the file name, so it stays one row from 1000 px up. At 900 px and below the inspector becomes a drawer over the right of the sheet: it slides in when you select something and out when the selection is cleared, and the <span class="ui">Inspector</span> button in the toolbar shows or hides it at any time.</p>
 
 <h3 id="palette">3.2 Palette</h3>
 <ul>
@@ -411,6 +411,7 @@
   <li><b>Save as PDF:</b> every sheet as a vector page. <b>Export sheet…:</b> the current sheet, each sheet as its own file, or all in one PDF; PNG at 150/300/600 dpi, black on white or in the editor's colours.</li>
   <li><b>Export SPICE netlist:</b> an LTspice netlist; tubes as behavioural sources with the same equations the simulator uses, transistors as Q and M elements with their <code>.model</code> lines.</li>
   <li><b>Bill of materials</b> (<kbd>B</kbd>, or <span class="ui">View ▾</span>): equal parts on one line with designator ranges; tube sockets; ratings; the simulated worst case (dissipation, capacitor peak voltage, LED current); a part number you type. Click a line to select its parts. Export TXT, CSV, XLSX or PDF.</li>
+  <li><b>Checks</b> (<span class="ui">View ▾</span>, or the tab next to the bill of materials): the inspector's Checks list in the panel under the sheet, wider: wiring problems (no ground, unconnected pins, shorted parts) and every part beyond its rating. The tab shows how many there are.</li>
 </ul>
 
 <!-- ======================================================================= -->
