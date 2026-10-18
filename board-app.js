@@ -1856,19 +1856,9 @@
     $("holes-clear").onclick = () => { setupHoles = []; holesNow(); };
     $("btn-cad").onclick = () => ToolWindows.open("circuit_sandbox.html");
     $("btn-help").onclick = () => { $("help-modal").hidden = false; }; $("btn-help-close").onclick = () => { $("help-modal").hidden = true; };
-    // the toolbar's menus: one open at a time; ticks keep it open, other items close it; Esc or a click elsewhere closes it
-    const menus = [...document.querySelectorAll("header .menu")], list = $("export-menu").querySelector(".menu-list");
-    const closeMenus = except => menus.forEach(m => { if (m !== except) m.querySelector(".menu-list").hidden = true; });
-    menus.forEach(m => {
-      const ml = m.querySelector(".menu-list");
-      m.querySelector(":scope > .btn").onclick = e => { e.stopPropagation(); closeMenus(m); ml.hidden = !ml.hidden; };
-      ml.addEventListener("click", e => { const it = e.target.closest(".menu-item"); if (it && !it.classList.contains("check")) ml.hidden = true; });
-    });
-    document.addEventListener("click", e => { if (!menus.some(m => m.contains(e.target))) closeMenus(); });
-    document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenus(); });
-    // ticks tell assistive technology their state
-    new MutationObserver(() => document.querySelectorAll("header .menu-item.check").forEach(b => b.setAttribute("aria-checked", b.classList.contains("active") ? "true" : "false")))
-      .observe(document.querySelector("header"), { subtree: true, attributes: true, attributeFilter: ["class"] });
+    // the toolbar's menus (one open at a time; ticks keep it open) and the state of their ticks
+    UiKit.menus(document.querySelector("header"));
+    const list = $("export-menu").querySelector(".menu-list");
     $("ex-svg").onclick = () => { list.hidden = true; download(svgDoc(["F.Cu", "B.Cu", "F.SilkS", "Edge.Cuts"], false), baseName() + "-board.svg", "image/svg+xml"); };
     $("ex-gerber").onclick = () => { list.hidden = true; exportGerber(); };
     $("ex-step").onclick = () => { list.hidden = true; exportStep(); };

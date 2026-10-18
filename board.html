@@ -6,19 +6,13 @@
   <title>Board Design — Tube Amp CAD</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <meta name="description" content="PCB layout for circuits from the Tube Amp CAD: footprints, tracks on two layers, ratsnest and design-rule checks.">
+  <link rel="stylesheet" href="ui.css?v=dev">
   <style>
     :root {
       --bg: #0a0e14; --panel: #0f151e; --panel2: #131b26; --line: #223044; --text: #e6edf3; --muted: #8b949e;
       --accent: #00e5ff; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300;
       --fcu: #e5534b; --bcu: #4d8fdc; --pad: #d4a72c; --silk: #e6edf3; --bsilk: #b392f0; --edge: #ffd54f;
     }
-    * { box-sizing: border-box; }
-    :root { color-scheme: dark; }
-    select { -webkit-appearance: none; appearance: none; color: var(--text);
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b949e' stroke-width='1.5'/%3E%3C/svg%3E") !important;
-      background-repeat: no-repeat !important; background-position: right 7px center !important; background-size: 10px 6px !important; padding-right: 22px !important; }
-    select option, select optgroup { background-color: #0f151e; color: #e6edf3; }
-    html, body { height: 100%; margin: 0; }
     body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto auto 1fr auto; overflow: hidden; }
     button, input, select { font: inherit; color: inherit; }
     header { grid-row: 1; } #banner { grid-row: 2; } main { grid-row: 3; } footer { grid-row: 4; }   /* fixed rows: the banner may be hidden */
@@ -26,8 +20,6 @@
     .brand { font-weight: 700; letter-spacing: .5px; margin-right: 6px; white-space: nowrap; }
     .brand b { color: var(--accent); }
     .sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; }
-    .spacer { flex: 1; }
-    .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
     .btn:hover { border-color: #3a5170; }
     .btn.active { background: #0d3442; border-color: var(--accent); color: var(--accent); }
     .btn:disabled { opacity: .45; cursor: default; }
@@ -411,6 +403,7 @@
   <script src="hints.js?v=dev"></script>
   <script src="windows.js?v=dev"></script>
   <script src="panels.js?v=dev"></script>
+  <script src="ui-kit.js?v=dev"></script>
   <script src="tube-db.js?v=dev"></script>
   <script src="spice-model.js?v=dev"></script>
   <script src="sim-engine.js?v=dev"></script>

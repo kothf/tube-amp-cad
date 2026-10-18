@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.71.2] - 2026-10-18
+
+### Changed
+- **One table of commands in the CAD.** Its keyboard shortcuts, the toolbar and View-menu buttons that do the same and the help's *Keyboard* list now come from one table (`ui-kit.js`), so a new feature is one entry and the help lists every shortcut by itself. The keys are unchanged; the help now has one row per shortcut (Ctrl+Shift+S, Ctrl+O and Esc were in shared rows before).
+- **Shared menus and styles.** The CAD and the Board window use one implementation of the toolbar menus (the Board's menu buttons now also tell screen readers whether they are open); the rules every window repeated (buttons, drop-downs, page reset) are in one stylesheet, `ui.css`. Nothing looks different.
+
 ## [3.71.1] - 2026-10-18
 
 ### Changed
