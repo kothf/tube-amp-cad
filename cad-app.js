@@ -1827,10 +1827,11 @@
     const L = CadLib, out = [];
     PALETTE.forEach(g => g.items.forEach(it => {
       if (it.sub) return;
+      if (it[1] && (L.BJTS[it[1].model] || L.MOSFETS[it[1].model])) return;   // a catalog transistor: its own entry below
       const [type, params, label] = it, def = LIB[type], p = Object.assign({}, def.defaults, params || {}), sub = def.value({ params: p });
       out.push([g.group, label || def.name, sub, type, params, `${label || ""} ${def.name} ${sub} ${type}`]);
     }));
-    Object.entries(L.BJTS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "NPN" : "PNP"} · ${k}`, `${m.v} V ${m.p} W`, m.pol > 0 ? "npn" : "pnp", { model: k }, `${k} transistor bjt ${m.pol > 0 ? "npn" : "pnp"} ${m.use}`]));
+    Object.entries(L.BJTS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "NPN" : "PNP"} · ${k}`, `${m.v} V ${m.p} W`, m.pol > 0 ? "npn" : "pnp", { model: k }, `${k} transistor bjt ${m.pol > 0 ? "npn" : "pnp"} ${m.ge ? "germanium" : "silicon"} ${m.use}`]));
     Object.entries(L.MOSFETS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "N" : "P"}-MOSFET · ${k}`, `${m.v} V ${m.p} W`, m.pol > 0 ? "nmos" : "pmos", { model: k }, `${k} mosfet fet ${m.use}`]));
     Object.entries(L.ZENERS).forEach(([k, z]) => out.push(["Semiconductors", `Zener · ${k}`, `${z.bv} V ${z.p} W`, "zener", { model: k }, `${k} zener ${z.bv}v`]));
     Object.keys(L.LEDS).forEach(k => out.push(["Semiconductors", `LED · ${k}`, `${L.LEDS[k].vf} V`, "led", { color: k }, `led ${k}`]));
@@ -2012,7 +2013,14 @@
         el = input("number", c.params[f.key] !== undefined ? c.params[f.key] : f.dflt, v => { const n = parseFloat(v); if (!isFinite(n)) { flash(el); return; } c.params[f.key] = Math.min(f.max !== undefined ? f.max : Infinity, Math.max(f.min !== undefined ? f.min : -Infinity, n)); commit(); });
       } else if (f.kind === "select") {
         el = document.createElement("select");
-        (typeof f.options === "function" ? f.options(c) : f.options).forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; el.appendChild(o); });
+        // an option's third element puts it under that heading (<optgroup>), in the order the headings come
+        const groups = {};
+        (typeof f.options === "function" ? f.options(c) : f.options).forEach(([v, t, g]) => {
+          const o = document.createElement("option"); o.value = v; o.textContent = t;
+          if (!g) { el.appendChild(o); return; }
+          if (!groups[g]) { groups[g] = document.createElement("optgroup"); groups[g].label = g; el.appendChild(groups[g]); }
+          groups[g].appendChild(o);
+        });
         el.value = String(f.get ? f.get(c) : c.params[f.key]);
         if (el.selectedIndex < 0) el.selectedIndex = 0;   // a setting the part was saved without (e.g. Mirror) shows its default
         el.addEventListener("change", () => { if (c.type === "switch" && f.key === "pos") setSwitch(c, el.value); else if (f.apply) { f.apply(c, el.value); commit(); } else { c.params[f.key] = el.value; commit(); } });
