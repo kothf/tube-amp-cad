@@ -139,7 +139,7 @@
   <tr><td>File name</td><td class="wrap">The circuit file open now. A yellow • marks unsaved changes. "Untitled" for a new circuit or an example.</td></tr>
   <tr><td><span class="ui">File ▾</span></td><td class="wrap">New circuit, Add sheet, Open, Save, Save as, the Examples, Save as PDF (all sheets), Export sheet (PDF/PNG), Export PNG, Export SPICE netlist.</td></tr>
   <tr><td><span class="ui">Edit ▾</span></td><td class="wrap">Undo, Redo, then what acts on the selection: Rotate <kbd>R</kbd>, Mirror <kbd>M</kbd>, Duplicate <kbd>D</kbd>, Delete <kbd>Del</kbd>, Copy, Paste, Select all; and Renumber designations. The right mouse button on a part or wire opens the same commands there (on empty sheet: Paste, Select all, Fit, Undo, Redo).</td></tr>
-  <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (each net's DC voltage, and its AC as ~Vrms in cyan; wires that carry the signal glow cyan), <b>Currents</b> (DC current and its direction on each wire), <b>Legend</b> (the key to those marks in the corner of the sheet), and the panel under the sheet on its <b>Bill of materials</b> or <b>Checks</b> tab. A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
+  <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (each net's DC voltage, and its AC as ~Vrms in cyan; wires that carry the signal glow cyan), <b>Currents</b> (DC current and its direction on each wire), <b>Legend</b> (the key to those marks in the corner of the sheet), and the panel under the sheet on its <b>Bill of materials</b>, <b>Checks</b> or <b>Tolerance</b> tab (<a href="#sim-tolerance">6.5</a>). A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
   <tr><td>↶ ↷</td><td class="wrap">Undo / redo (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>). Every edit can be undone, including opening an example.</td></tr>
   <tr><td><span class="ui">Select</span> | <span class="ui">Wire</span></td><td class="wrap">The tool: select and move (<kbd>V</kbd>), or draw wires from anywhere (<kbd>W</kbd>). The highlighted one is active.</td></tr>
   <tr><td>− 49% +</td><td class="wrap">Zoom out / in around the centre (<kbd>−</kbd>, <kbd>+</kbd>; the mouse wheel zooms at the pointer).</td></tr>
@@ -267,6 +267,17 @@
   <li><b>A shorted winding</b> is reported instead of stopping the solver.</li>
   <li><b>It does not settle</b>: a circuit that oscillates (a feedback loop with too little phase margin) never reaches a steady state. Look at the Bode plot for a peak, and at the power-on transient.</li>
 </ul>
+
+<h3 id="sim-tolerance">6.5 Tolerance runs</h3>
+<p>Real parts are not their nominal values: resistors are ±5 %, electrolytics ±20 %, and two tubes of one type can differ by 20 % or more in plate current. <span class="ui">View ▾ → Tolerance runs</span> opens the <b>Tolerance</b> tab under the sheet, which simulates the circuit once as drawn and then once per run with every part varied, and shows how far each value moves.</p>
+<ul>
+  <li><b>Runs</b>: how many varied circuits (each settles fully, as <span class="ui">▶ Simulate</span> does). 20 shows the spread; 100 or more shows the rare corner.</li>
+  <li><b>R ±, C ±</b>: the tolerance of every resistor and pot (both halves of a pot move together, so the wiper stays put) and of every capacitor and electrolytic.</li>
+  <li><b>Tubes ±</b>: every tube draws that much more or less current than its model at the same voltages, as a stronger or weaker tube does. Rectifiers stay as they are.</li>
+  <li>Each value is normally distributed about its nominal with the tolerance as two standard deviations (about 95 % of parts are within it), and never beyond it. <b>Seed</b>: the same seed repeats the same runs.</li>
+</ul>
+<p>The table lists each tube's Ia, Va and Pa, each transistor's current and dissipation, each speaker's output and each scope channel's AC (Vrms): the circuit as drawn (<b>Nominal</b>), the <b>Min</b>, <b>Mean</b> and <b>Max</b> over the runs, the <b>Spread</b> (two standard deviations against the nominal) and in how many runs the part was <b>over its rating</b> (Pa and Va for a tube, Ic and Ptot for a transistor). Runs that do not settle are left out and counted. Press <span class="ui">▶ Run</span> again to stop; an edit marks the table as the old circuit's.</p>
+<div class="tip"><b>Reading it:</b> a cathode-biased stage barely moves when its tube is changed; a fixed-bias output stage moves a lot. If any run takes a tube over its Pa, a real one of that type may too.</div>
 
 <!-- ======================================================================= -->
 <h2 id="measuring">7. Measuring on the schematic</h2>

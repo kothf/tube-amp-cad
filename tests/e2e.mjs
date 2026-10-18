@@ -1885,6 +1885,34 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await cad.evaluate(() => { TubeCAD.state.sel.comps.clear(); TubeCAD.updateInspector(); });
   }
 }
+// --- Tolerance runs (Monte Carlo) ---------------------------------------------------------
+{
+  cad.once("dialog", d => d.accept());
+  const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+  await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^03-/.test(x.file))));
+  await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 });
+  await cad.evaluate(() => TubeCAD.toggleBom(true, "tolerance"));
+  for (const [id, v] of [["#tol-runs", "6"], ["#tol-seed", "42"]]) { await cad.fill(id, v); await cad.press(id, "Tab"); }
+  const runTol = async () => {
+    const seq = await cad.evaluate(() => TubeCAD.state.tol.seq);
+    await cad.click("#btn-tol-run");
+    await cad.waitForFunction(seq => TubeCAD.state.tol.seq !== seq && !TubeCAD.state.tol.job && TubeCAD.state.tol.rows, seq, { timeout: 120000 });
+    return cad.evaluate(() => TubeCAD.state.tol.rows);
+  };
+  const rows = await runTol(), row = l => rows.find(r => r.label === l) || {};
+  const ia = await cad.evaluate(() => { const c = TubeCAD.state.comps.find(x => x.label === "VL1"); return TubeCAD.tubeData(c).dc.ia; });
+  check(["VL1 Ia", "VL1 Pa", "VT1 Ic", "P1 CH1 AC"].every(l => row(l).n === 6), `the Tolerance tab measures tubes, transistors and scope channels over 6 runs (${rows.length} quantities)`);
+  check(Math.abs(row("VL1 Ia").nominal / ia - 1) < 1e-3, `the nominal is the circuit as drawn (VL1 Ia ${(row("VL1 Ia").nominal * 1e3).toFixed(3)} mA, simulated ${(ia * 1e3).toFixed(3)} mA)`);
+  check(rows.every(r => r.min <= r.mean && r.mean <= r.maxV) && row("VL1 Ia").sd > 0 && row("VL2 Va").maxV > row("VL2 Va").min, `each quantity spreads around its mean (VL2 Va ${row("VL2 Va").min.toFixed(1)}…${row("VL2 Va").maxV.toFixed(1)} V)`);
+  const again = await runTol();
+  check(JSON.stringify(again) === JSON.stringify(rows), "the same seed repeats the same runs");
+  const table = await cad.locator("#tol-table tbody tr").count();
+  check(table === rows.length, `the table shows one line per quantity (${table})`);
+  await cad.evaluate(() => { const r = TubeCAD.state.comps.find(c => c.label === "R2"); r.params.r = 120e3; TubeCAD.commit(); });
+  check(await cad.locator("#tol-pane .tol-note").count() === 1, "an edit marks the shown spread as the old circuit's");
+  await cad.evaluate(() => TubeCAD.toggleBom(false));
+}
+
 // --- toolbar, hover hints and the manual ---------------------------------------
 {
   await cad.bringToFront();

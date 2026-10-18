@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.75.0] - 2026-10-18
+
+### Added
+- **Tolerance runs (Monte Carlo).** *View ▾ → Tolerance runs* opens a *Tolerance* tab under the sheet that simulates the circuit as drawn and then once per run with every resistor, pot and capacitor at a random value within its tolerance and every tube drawing more or less current than its model (R ±5 %, C ±20 %, tubes ±20 % by default; normally distributed with the tolerance as 2σ, seeded). For each tube's Ia, Va and Pa, each transistor's current and dissipation, each speaker's output and each scope channel's AC it shows the nominal value, min, mean, max and spread, and how many runs took the part over its rating (`cad-tolerance.js`).
+
 ## [3.74.0] - 2026-10-18
 
 ### Added

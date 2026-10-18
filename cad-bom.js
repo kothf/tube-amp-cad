@@ -5,7 +5,7 @@
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadBom = function (cad) {
-    const { S, LIB, baseName, bind, cmds, renderChecks, commit, flash, fmtEng, frames, input, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf } = cad;
+    const { S, LIB, baseName, bind, cmds, renderChecks, renderTolerance, commit, flash, fmtEng, frames, input, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf } = cad;
     const BOM_KEY = "tubecad_bom";
     const bomOpts = { open: false, tab: "bom", sockets: true, bench: false, height: 0 };   // open, tab: the panel under the sheet and its tab
     try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
@@ -145,8 +145,8 @@
         }
       });
     }
-    // The panel under the sheet has tabs: the bill of materials and the Checks (renderChecks in
-    // cad-app.js). showDock(tab) opens it on a tab, showDock(null) closes it. toggleBom(on, tab):
+    // The panel under the sheet has tabs: the bill of materials, the Checks (renderChecks in
+    // cad-app.js) and the tolerance runs (cad-tolerance.js). showDock(tab) opens it on a tab, showDock(null) closes it. toggleBom(on, tab):
     // B and the View menu's ticks; a tab that is already showing closes the panel, another tab
     // is brought forward.
     function showDock(tab) {
@@ -159,7 +159,7 @@
         document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
       });
       host.querySelectorAll(".bom-tools").forEach(el => { el.hidden = el.dataset.for !== bomOpts.tab; });
-      cmds.sync(); renderBom(); renderChecks(); render();
+      cmds.sync(); renderBom(); renderChecks(); renderTolerance(); render();
     }
     function toggleBom(on, tab = "bom") {
       const showing = bomOpts.open && bomOpts.tab === tab;
