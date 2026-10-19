@@ -6,10 +6,26 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.77.0] - 2026-10-18
+## [3.79.0] - 2026-10-19
 
 ### Changed
 - **Tolerance runs use several cores.** The runs go to one simulation worker per core (less one for the page, up to 8) instead of one after another, so a slow circuit's runs finish several times sooner: the stereo Gubin example's 10 runs took 50 s, now 22 s on a 4-core computer (3 workers). All runs are drawn before any starts, so a seed gives the same table as before.
+
+## [3.78.0] - 2026-10-19
+
+### Changed
+- **One DC supply for B+ and bias.** The palette's *B+ supply*, *Bias supply* and *Low-voltage supply* are now a single *DC supply* (300 V by default). Its inspector has a *Polarity* switch, positive (the + pin is the rail) or negative (the - pin is the bias rail, the + pin to ground), and the *Voltage* field shows the size of the voltage; typing a minus sign still makes it negative. Circuits saved before open unchanged: a supply saved at −20 V shows as Negative, 20 V.
+
+## [3.77.0] - 2026-10-19
+
+### Added
+- **Current source** (*Sources → DC supplies*): a constant DC current with a parallel output resistance (10 mA and 10 MΩ by default), drawn as a circle with the arrow of the current. A quick stand-in for a transistor or MOSFET current source as a plate load, a long-tail or cathode sink. The inspector reads the voltage across it and its dissipation, and warns when it is driving current uphill (delivering power, which a real transistor source cannot). It simulates in DC, transient and AC analysis (open circuit), exports to SPICE as an `I` element, goes to the BOM with the bench parts and to the board as a two-pin terminal.
+- *Low-voltage supply* (12 V) in the palette, for transistor and LED rails.
+
+### Changed
+- **The Sources group is organized**: *DC supplies* (B+, bias, low-voltage, current source) and *AC sources* (signal generator, AC mains) under their own headings. Ground and the sheet connector, which are not sources, moved to a new *Ground & connectors* group.
+- The signal generator's inspector is in three sections, *Signal* (waveform, frequency, phase), *Level* (Vpk, Vrms, dBV, DC offset) and *Output* (output impedance). Inspector fields can now carry a heading (`kind: "heading"` in `cad-components.js`).
+- The DC supply and the signal generator explain their pins in the inspector; the DC supply says whether it is an ideal regulated rail or sags by its internal resistance.
 
 ## [3.76.0] - 2026-10-18
 

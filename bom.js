@@ -13,7 +13,7 @@
   ];
   // parts without a designator (frame, note, ground, sheet connector) never appear;
   // sources and instruments only when asked for
-  const BENCH = new Set(["vdc", "siggen", "mains", "scope"]);
+  const BENCH = new Set(["vdc", "isrc", "siggen", "mains", "scope"]);
 
   // what a part is on the bill: [description, value, rating]
   function describe(c, n) {
@@ -39,6 +39,7 @@
       case "nmos": case "pmos": { const m = L.MOSFETS[p.model], dep = m && (c.type === "nmos" ? m.vto < 0 : m.vto > 0); return ["MOSFET, " + (c.type === "nmos" ? "N" : "P") + "-channel" + (dep ? ", depletion" : ""), p.model, m ? L.semiRating(m) : ""]; }
       case "vdc": return ["DC supply (bench)", f(p.v, "V"), ""];
       case "siggen": return ["Signal generator (bench)", "", ""];
+      case "isrc": return ["Current source (ideal)", f(p.i, "A"), ""];
       case "mains": return ["AC mains", p.vrms + " V " + p.freq + " Hz", ""];
       case "scope": return ["Oscilloscope (bench)", "", ""];
       default: { const d = L.LIB[c.type]; return [d ? d.name : c.type, d && d.value ? d.value(c) : "", ""]; }

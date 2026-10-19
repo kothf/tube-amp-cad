@@ -118,7 +118,7 @@
   <li><b>Place the tube.</b> Type <code>12AX7</code> in the palette's search box and press <kbd>Enter</kbd>, then click on the sheet. The tube appears as VL1.1, with its pin numbers.</li>
   <li><b>Place the resistors.</b> Type <code>100k</code>, <kbd>Enter</kbd>, click above the anode: that is the plate resistor. Type <code>1.5k</code> and place it below the cathode, and <code>1M</code> from the grid to ground (the grid leak). <kbd>R</kbd> rotates a part while you place it.</li>
   <li><b>Bypass the cathode.</b> Type <code>47u</code> to get an electrolytic and place it across the cathode resistor.</li>
-  <li><b>Power and ground.</b> From <b>Sources</b> place a <span class="ui">B+ supply</span> (set it to 250 V in the inspector) and <span class="ui">Ground</span> symbols.</li>
+  <li><b>Power and ground.</b> From <b>Sources</b> place a <span class="ui">DC supply</span> (set it to 250 V in the inspector), and from <b>Ground &amp; connectors</b> the <span class="ui">Ground</span> symbols.</li>
   <li><b>Signal.</b> Place a <span class="ui">Signal generator</span> (1 kHz, 0.1 Vpk) and a <span class="ui">Capacitor</span> (100n) from it to the grid.</li>
   <li><b>Wire it.</b> Click a pin, click the corners, and finish on another pin or on a wire. A wire that ends on a wire joins it with a dot. <kbd>W</kbd> starts a wire anywhere; <kbd>Esc</kbd> stops.</li>
   <li><b>Read it.</b> With <span class="ui">Live</span> on, the circuit simulates after every edit. Every net shows its DC voltage and every wire its current. Click the tube: the inspector shows Va, Vg1k, Ia, Pa, and with the signal on the plate swing, the gain and the THD.</li>
@@ -154,7 +154,7 @@
 
 <h3 id="palette">3.2 Palette</h3>
 <ul>
-  <li>Groups: <b>Passive</b>, <b>Transformers</b>, <b>Sources</b>, <b>Semiconductors</b>, <b>Instruments</b>, <b>Document</b>, <b>Tubes</b>. Click a group's title to fold it; the browser remembers which are open.</li>
+  <li>Groups: <b>Passive</b>, <b>Transformers</b>, <b>Sources</b> (DC supplies and AC sources), <b>Ground &amp; connectors</b>, <b>Semiconductors</b>, <b>Instruments</b>, <b>Document</b>, <b>Tubes</b>. Click a group's title to fold it; the browser remembers which are open.</li>
   <li><b>Search box.</b> Finds parts by name; part numbers (2N3904, IRF540, 1N4742A, 125ESE, 373BX); tubes (EL84, 6N2P, 300B); and <b>values</b>: <code>47k</code> offers a 47 kΩ resistor or pot, <code>100n</code> a 100 nF capacitor, <code>47u</code> an electrolytic, <code>5H</code> a choke, <code>300V</code> a supply. <kbd>Enter</kbd> picks the first match.</li>
   <li>Click a part, then click the sheet. <kbd>Shift</kbd>-click places several. <kbd>Esc</kbd> stops placing.</li>
   <li>The Tubes group shows the popular tubes first; the button under the list shows all 99.</li>
@@ -259,7 +259,7 @@
 </ul>
 <h3 id="sim-mains">6.3 Mains-powered circuits</h3>
 <p>Draw <span class="ui">AC mains</span> → power transformer → rectifier → reservoir capacitor → choke or resistor → filter capacitor, exactly as built. The simulator runs the rectifier cycle by cycle, so ripple, sag under load and the rectifier's peak currents are real. Voltages and currents on the schematic are averaged over the settled window, as a meter reads them.</p>
-<div class="tip"><b>Faster drawing:</b> while working on the audio stages, feed them from a <span class="ui">B+ supply</span> (ideal DC) with an internal resistance; add the real supply when the stages are done.</div>
+<div class="tip"><b>Faster drawing:</b> while working on the audio stages, feed them from a <span class="ui">DC supply</span> (ideal DC) with an internal resistance; add the real supply when the stages are done.</div>
 <h3 id="sim-trouble">6.4 When a run fails</h3>
 <ul>
   <li><b>A missing ground</b>: the checks report it; place a Ground symbol.</li>
@@ -597,7 +597,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
     const L = window.CadLib, H = window.Hints, host = $("parts-ref");
     const order = [["Passive", ["resistor", "pot", "capacitor", "electrolytic", "inductor", "switch", "speaker"]],
       ["Transformers", ["opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat"]],
-      ["Sources", ["vdc", "mains", "siggen", "ground", "offsheet"]],
+      ["Sources", ["vdc", "isrc", "siggen", "mains"]], ["Ground & connectors", ["ground", "offsheet"]],
       ["Tubes", ["tube"]], ["Semiconductors", ["diode", "zener", "led", "npn", "pnp", "nmos", "pmos"]],
       ["Instruments", ["scope"]], ["Document", ["frame", "note"]]];
     let h = "";
@@ -606,7 +606,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
       types.forEach(t => {
         const d = L.LIB[t]; if (!d) return;
         const seen = new Set();
-        const rows = (d.fields || []).filter(f => { if (seen.has(f.key)) return f.key !== "amp"; seen.add(f.key); return true; }).map(f => {
+        const rows = (d.fields || []).filter(f => { if (f.kind === "heading") return false; if (seen.has(f.key)) return f.key !== "amp"; seen.add(f.key); return true; }).map(f => {
           const opts = Array.isArray(f.options) ? f.options.map(o => Array.isArray(o) ? o[1] : (o && (o.label || o.v)) || o).filter(x => typeof x === "string") : [];
           const unit = f.key === "amp" && t === "siggen" ? "Vpk · Vrms · dBV" : f.unit;
           const text = H.field(t, f.key) || H.label(f.label) || "";

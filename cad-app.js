@@ -1512,7 +1512,7 @@
         prevFill.call(this, t, 0, 0, mw); this.restore();
       };
     }
-    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
+    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "isrc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
     DRAW[c.type](ctx, c);
@@ -2023,11 +2023,16 @@
     if (!def.noLabel) host.appendChild(row("Designator", input("text", c.label, v => { c.label = v.trim() || c.label; commit(); })));
     (canMirror(c.type) ? def.fields.concat([CadLib.FLIP_FIELD]) : def.fields).forEach(f => {
       if (f.when && !f.when(c)) return;
+      // a heading over the fields that follow it (the signal generator's Signal / Level / Output)
+      if (f.kind === "heading") { const h = document.createElement("div"); h.className = "insp-sub"; h.textContent = f.label; host.appendChild(h); return; }
       let el;
       if (f.kind === "eng") {
-        el = input("text", f.optional && !(c.params[f.key] > 0) ? "" : fmtEng(c.params[f.key], ""), v => {
+        // magnitude: the field shows the size of a signed value whose sign another field sets (the
+        // DC supply's Polarity); a typed minus still flips it
+        el = input("text", f.optional && !(c.params[f.key] > 0) ? "" : fmtEng(f.magnitude ? Math.abs(c.params[f.key]) : c.params[f.key], ""), v => {
           if (f.optional && !String(v).trim()) { delete c.params[f.key]; commit(); return; }
-          const n = parseEng(v);
+          let n = parseEng(v);
+          if (f.magnitude && n >= 0 && c.params[f.key] < 0) n = -n;
           const allowNeg = f.key === "v" || f.key === "offset";
           if (!isFinite(n) || (!allowNeg && n < 0) || (n === 0 && !["offset", "rs", "v"].includes(f.key))) { flash(el); return; }
           c.params[f.key] = n; commit();
@@ -2186,7 +2191,7 @@
     if (lonely.length) issues.push("Sheet connectors without a partner: " + lonely.join(", "));
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
-    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], vdc: [["+", "-"]], siggen: [["+", "-"]],
+    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], vdc: [["+", "-"]], isrc: [["+", "-"]], siggen: [["+", "-"]],
       opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
@@ -2243,7 +2248,7 @@
     const m = document.getElementById("new-modal"); m.dataset.mode = mode;
     m.querySelector(".insp-title").textContent = mode === "add" ? "Add sheet" : "New circuit";
     m.querySelector(".insp-help").textContent = mode === "add"
-      ? "A further sheet of this circuit, to the right of the last one, with the same title block. Join wires between sheets with Sheet connectors (Sources) of the same name."
+      ? "A further sheet of this circuit, to the right of the last one, with the same title block. Join wires between sheets with Sheet connectors (Ground & connectors) of the same name."
       : "The sheet starts with an IEC 61082 drawing frame: ISO 5457 border, reference grid and an ISO 7200 title block.";
     document.getElementById("new-title").placeholder = mode === "add" ? "Sheet title (empty: same as sheet 1)" : "e.g. 2 × EL84 single-ended amplifier";
     document.getElementById("btn-new-create").textContent = mode === "add" ? "Add" : "Create";
@@ -2617,6 +2622,7 @@
         case "C": lines.push(`C${id} ${nd[0]} ${nd[1]} ${e.c}`); break;
         case "L": lines.push(`L${id} ${nd[0]} ${nd[1]} ${e.l}`); break;
         case "V": lines.push(`V${id} ${nd[0]} ${nd[1]} DC ${e.v}`); break;
+        case "I": lines.push(`I${id} ${nd[0]} ${nd[1]} DC ${e.i}`); break;
         case "VSRC": lines.push(e.wave === "sine" ? `V${id} ${nd[0]} ${nd[1]} SIN(${e.offset || 0} ${e.amp} ${e.freq})` : `V${id} ${nd[0]} ${nd[1]} PULSE(${(e.offset || 0) - e.amp} ${(e.offset || 0) + e.amp} 0 ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0 : 0.5 / e.freq} ${1 / e.freq})`); break;
         case "D": lines.push(`D${id} ${nd[0]} ${nd[1]} DMOD_${id}`); lines.push(`.model DMOD_${id} D(Is=${e.is} N=${e.n})`); break;
         case "BJT": {

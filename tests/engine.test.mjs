@@ -80,6 +80,25 @@ test("resistor divider: exact DC solution", () => {
   near(r.dc.nodes[2], 7.5, 1e-5, "divider output");
 });
 
+test("current source: Ohm's law on its load, and a 12AX7 plate held at its current", () => {
+  // 2 mA from ground into 1 node through 10 kΩ: 20 V; the source reports its current and voltage
+  const r = E.simulate({ nodeCount: 2, elements: [
+    { id: "I1", kind: "I", nodes: [0, 1], i: 2e-3 },
+    { id: "R1", kind: "R", nodes: [1, 0], r: 10e3 }] });
+  assert.ok(r.ok, r.error);
+  near(r.dc.nodes[1], 20, 1e-4, "I·R across the load (gmin aside)");
+  near(r.dc.devices.I1.main.i, 2e-3, 1e-12, "source current");
+  // as a plate load: B+ 300 V → source → anode, cathode grounded, grid at -1.5 V: Ia is the set 1 mA
+  const t = E.simulate({ nodeCount: 4, elements: [
+    { id: "B", kind: "V", nodes: [1, 0], v: 300 },
+    { id: "I1", kind: "I", nodes: [1, 2], i: 1e-3 },
+    { id: "Vg", kind: "V", nodes: [3, 0], v: -1.5 },
+    { id: "V1", kind: "TRIODE", nodes: [2, 3, 0], model: tube("12AX7").koren.Triode }] });
+  assert.ok(t.ok, t.error);
+  near(t.dc.devices.V1.main.ia, 1e-3, 1e-3, "anode current = the source's current");
+  assert.ok(t.dc.nodes[2] > 50 && t.dc.nodes[2] < 300, `anode between 50 V and B+: ${t.dc.nodes[2]}`);
+});
+
 test("RC low-pass at 1 kHz matches |H| = 1/sqrt(1+(f/fc)^2)", () => {
   const r = E.simulate({ nodeCount: 3, elements: [
     { id: "G", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 1000, amp: 1 },
