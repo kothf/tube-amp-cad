@@ -350,6 +350,12 @@
       ctx.save(); ctx.lineWidth = 4; line(ctx, [-7, 4 * s, 7, 4 * s]); ctx.restore();
       ctx.lineWidth = 1.2; line(ctx, [8, -12 * s, 14, -12 * s]); line(ctx, [11, -12 * s - 3, 11, -12 * s + 3]);
     },
+    isrc(ctx) {
+      // a circle with the arrow of the current's direction, from the - pin to the + pin
+      line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
+      ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
+      line(ctx, [0, 8, 0, -6]); line(ctx, [-4, -2, 0, -8, 4, -2]);
+    },
     siggen(ctx) {
       // IEC 60617 static generator (square with G), qualified with a sine for alternating output
       line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
@@ -1017,6 +1023,10 @@
       pins: () => [{ id: "+", x: 0, y: -30 }, { id: "-", x: 0, y: 30 }],
       value: c => fmtEng(c.params.v, "V"),
       fields: [{ key: "v", label: "Voltage", unit: "V", kind: "eng" }, { key: "rs", label: "Internal resistance", unit: "Ω", kind: "eng" }],
+      info: c => (+c.params.v < 0
+        ? "A negative supply: the + pin goes to ground and the - pin is the bias rail. "
+        : "The + pin is the rail, the - pin goes to ground. ")
+        + (c.params.rs > 0 ? "It sags under load by its internal resistance." : "Internal resistance 0: an ideal regulated supply that never sags."),
       build: (c, net, alloc, out) => {
         if (c.params.rs > 0) {
           const mid = alloc();
@@ -1031,20 +1041,38 @@
       pins: () => [{ id: "+", x: 0, y: -30, name: "output" }, { id: "-", x: 0, y: 30, name: "common" }],
       value: c => fmtEng(c.params.amp, "Vpk") + " " + fmtEng(c.params.freq, "Hz"),
       fields: [
+        { kind: "heading", label: "Signal" },
         { key: "wave", label: "Waveform", kind: "select", options: [["sine", "Sine"], ["square", "Square"], ["triangle", "Triangle"]] },
         { key: "freq", label: "Frequency", unit: "Hz", kind: "eng" },
+        { key: "phase", label: "Phase", kind: "select", options: [["0", "0°"], ["90", "90°"], ["180", "180° (inverted)"], ["270", "270°"]] },
+        { kind: "heading", label: "Level" },
         { key: "amp", label: "Amplitude", unit: "Vpk", kind: "eng" },
         // the same amplitude as RMS and as dBV (0 dBV = 1 Vrms), using the waveform's crest factor
         { key: "amp", label: "Amplitude", unit: "Vrms", kind: "level", as: "rms" },
         { key: "amp", label: "Level", unit: "dBV", kind: "level", as: "dbv" },
         { key: "offset", label: "DC offset", unit: "V", kind: "eng" },
-        { key: "phase", label: "Phase", kind: "select", options: [["0", "0°"], ["90", "90°"], ["180", "180° (inverted)"], ["270", "270°"]] },
+        { kind: "heading", label: "Output" },
         { key: "rs", label: "Output impedance", unit: "Ω", kind: "eng" }
       ],
+      info: () => "The + pin carries the signal, the - pin is its common (ground). The simulation window and the instruments follow its frequency.",
       build: (c, net, alloc, out) => {
         const p = c.params, mid = alloc();
         out.push({ id: c.id, kind: "VSRC", nodes: [mid, net("-")], wave: p.wave, freq: Math.max(p.freq, 0.1), amp: p.amp, offset: p.offset || 0, phase: parseFloat(p.phase) || 0 });
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("+"), mid], r: Math.max(p.rs, 1e-3) });
+      }
+    },
+    isrc: {
+      // a Norton source: an ideal current in parallel with an output resistance, which also
+      // keeps a node fed only by the source (behind a capacitor, say) solvable
+      name: "Current source", prefix: "G", group: "Sources", bbox: [-16, -30, 16, 30],
+      defaults: { i: 0.01, rout: 10e6 },
+      pins: () => [{ id: "+", x: 0, y: -30, name: "out" }, { id: "-", x: 0, y: 30, name: "in" }],
+      value: c => fmtEng(c.params.i, "A"),
+      fields: [{ key: "i", label: "Current", unit: "A", kind: "eng" }, { key: "rout", label: "Output resistance", unit: "Ω", kind: "eng" }],
+      info: () => "A constant DC current, flowing in at the - pin and out at the + pin (the arrow). A quick stand-in for a transistor current source: a plate load, a long-tail or cathode current sink. It holds its current at any voltage, so check the voltage across it is one a real current source could stand.",
+      build: (c, net, alloc, out) => {
+        out.push({ id: c.id, kind: "I", nodes: [net("-"), net("+")], i: c.params.i });
+        out.push({ id: c.id + "#ro", kind: "R", nodes: [net("+"), net("-")], r: Math.max(c.params.rout, 1e3) });
       }
     },
     note: {
@@ -1084,7 +1112,7 @@
       build: () => {}
     },
     ground: {
-      name: "Ground", prefix: "GND", group: "Sources", bbox: [-12, -2, 12, 20], noLabel: true,
+      name: "Ground", prefix: "GND", group: "Ground & connectors", bbox: [-12, -2, 12, 20], noLabel: true,
       defaults: {},
       pins: () => [{ id: "G", x: 0, y: 0 }],
       value: () => "",
@@ -1092,7 +1120,7 @@
       build: () => {}
     },
     offsheet: {
-      name: "Sheet connector", prefix: "", group: "Sources", noLabel: true,
+      name: "Sheet connector", prefix: "", group: "Ground & connectors", noLabel: true,
       // the arrow plus room for the name beyond its tip (for picking)
       bbox: c => [0, -10, 26 + 7 * String(c.params.name || "").length, 10],
       defaults: { name: "+B" },
@@ -1133,7 +1161,12 @@
       ["opt_se", null, "Output, single-ended"], ["opt_pp", null, "Output, push-pull / UL"], ["ptx", null, "Power, with mains"],
       { sub: "Manufactured: Hammond catalog" },
       ["opt_cat", null, "Output 125SE"], ["ptx_cat", null, "Power 300"]] },
-    { group: "Sources", items: [["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["mains"], ["siggen"], ["ground"], ["offsheet"]] },
+    { group: "Sources", items: [
+      { sub: "DC supplies" },
+      ["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["vdc", { v: 12, rs: 0 }, "Low-voltage supply"], ["isrc"],
+      { sub: "AC sources" },
+      ["siggen"], ["mains"]] },
+    { group: "Ground & connectors", items: [["ground"], ["offsheet"]] },
     { group: "Semiconductors", items: [["diode"], ["zener"], ["led"],
       { sub: "Transistors" }, ["npn"], ["pnp"], ["npn", { model: "MJE340" }, "NPN, high voltage"], ["pnp", { model: "MJE350" }, "PNP, high voltage"],
       ["pnp", { model: "AC128" }, "PNP, germanium"], ["npn", { model: "AC127" }, "NPN, germanium"], ["pnp", { model: "MP39B" }, "PNP, germanium (USSR)"],
@@ -1215,6 +1248,13 @@
                    : R.kv("Output power", fmtEng(R.pAvg("+", "-", c.params.r), "W", 2));
         if (c.params.model === "ts" && f) { const [z, ph] = speakerZ(c.params, f); h += R.kv(`Impedance at ${fmtEng(f, "Hz")}`, `${fmtEng(z, "Ω", 3)} · ${ph >= 0 ? "+" : ""}${ph.toFixed(0)}°`); }
         return h;
+      }
+    },
+    isrc: {
+      readout: (c, R) => {
+        const v = R.vAcross("+", "-");
+        return R.kv("Voltage across (+ to -)", fmtEng(v, "V", 2), v !== null && v > 0 ? "warn" : "") + R.kv("Dissipation", fmtEng(v !== null ? -v * c.params.i : null, "W", 2))
+          + (v !== null && v > 0 ? R.note("The + pin is above the - pin: the source drives current uphill and delivers power, which a transistor current source cannot.", "warn") : "");
       }
     },
     vdc: {

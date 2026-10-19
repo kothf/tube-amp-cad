@@ -521,6 +521,12 @@
             b[br] += val;
             break;
           }
+          case "I": {
+            // current e.i flows from node a through the source to node b: out of a, into b
+            const i = e.i * srcScale;
+            addB(nd[0], -i); addB(nd[1], i);
+            break;
+          }
           case "D": {
             const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852;
             const vcrit = nVt * Math.log(nVt / (Math.SQRT2 * Is));
@@ -655,6 +661,7 @@
     if (e.kind === "R") { const vd = v[0] - v[1]; return { vd, i: vd / e.r }; }
     if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") return { i: x[e.branch], vd: v[0] - v[1] };
     if (e.kind === "C") return { vd: v[0] - v[1] };
+    if (e.kind === "I") return { i: e.i, vd: v[0] - v[1] };
     return {};
   }
 
@@ -665,6 +672,7 @@
     switch (e.kind) {
       case "R": return two((v[0] - v[1]) / Math.max(e.r, 1e-6));
       case "C": return two(0);
+      case "I": return two(e.i);
       case "L": case "V": case "VSRC": return two(x[e.branch]);
       case "D": return two(deviceState(e, x).i);
       case "VDIODE": return two(deviceState(e, x).i);
