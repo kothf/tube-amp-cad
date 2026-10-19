@@ -1128,6 +1128,40 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   for (const name of ["NPN transistor", "PNP transistor", "NPN, high voltage", "N-MOSFET, depletion", "P-MOSFET", "PNP, germanium", "NPN, germanium", "PNP, germanium (USSR)", "Zener diode", "LED"])
     check(await cad.getByRole("button", { name: new RegExp("^" + name.replace(/[()]/g, "\\$&")) }).count() > 0, `palette offers "${name}" under Semiconductors`);
   {
+    // Sources: DC supplies, then AC sources; ground and sheet connectors under their own group
+    const pal = await cad.evaluate(() => {
+      const out = {}; let g = null, sub = null;
+      document.querySelectorAll("#palette .pal-group, #palette .pal-sub, #palette .pal-item").forEach(el => {
+        if (el.classList.contains("pal-group")) { g = el.textContent.replace("▾", "").trim(); sub = null; out[g] = []; }
+        else if (el.classList.contains("pal-sub")) sub = el.textContent;
+        else if (g && el.offsetParent !== null) out[g].push((sub ? sub + ": " : "") + el.querySelector("span").textContent);
+      });
+      return out;
+    });
+    const src = (pal.Sources || []).join(" | "), gc = (pal["Ground & connectors"] || []).join(" | ");
+    check(src === "DC supplies: B+ supply | DC supplies: Bias supply | DC supplies: Low-voltage supply | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains"
+      && gc === "Ground | Sheet connector", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
+    // the current source: 2 mA from ground up into 10 kΩ gives 20 V; the inspector reads it
+    await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, id) => C.compPins(c).find(p => p.id === id);
+      const wire = (a, b, hFirst) => C.lRoute(a.x, a.y, b.x, b.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const I = add("isrc", { i: 2e-3 }, 200, 300), R = add("resistor", { r: 10e3 }, 320, 300, 1), g = add("ground", {}, 260, 400);
+      wire(pin(I, "+"), pin(R, "1")); wire(pin(I, "-"), pin(g, "G")); wire(pin(R, "2"), pin(g, "G"));
+      S.sel.comps.add(I.id); C.commit();
+    });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /Voltage across \(\+ to -\)\s*-?[\d.]+V/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+    const live = (await cad.textContent("#insp-live")).replace(/\s+/g, " ");
+    const vI = +((/Voltage across \(\+ to -\)\s*([\d.]+)V/.exec(live) || [])[1]);
+    check(Math.abs(vI - 20 * 10e6 / (10e6 + 10e3)) < 0.02 && /drives current uphill/.test(live), `current source: 2 mA into 10 kΩ reads 20 V across it (10 kΩ ∥ its 10 MΩ output resistance: ${vI} V) and warns it delivers power`);
+    // the signal generator's fields stand under Signal, Level and Output
+    await cad.evaluate(() => { const C = TubeCAD, S = C.state, g = C.makeComp("siggen", {}, 600, 300, 0); S.comps.push(g); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(g.id); C.commit(); });
+    const heads = await cad.evaluate(() => [...document.querySelectorAll("#inspector .insp-sub")].map(h => h.textContent).slice(0, 3).join(" / "));
+    check(heads === "Signal / Level / Output", `signal generator inspector in sections (${heads})`);
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+  }
+  {
     // the transistor's Type list sorts the parts under Silicon and Germanium
     const groups = await cad.evaluate(() => {
       const f = CadLib.LIB.pnp.fields.find(x => x.key === "model"), opts = f.options({ params: {} }), by = {};

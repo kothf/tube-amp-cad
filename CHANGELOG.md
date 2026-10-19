@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.77.0] - 2026-10-19
+
+### Added
+- **Current source** (*Sources → DC supplies*): a constant DC current with a parallel output resistance (10 mA and 10 MΩ by default), drawn as a circle with the arrow of the current. A quick stand-in for a transistor or MOSFET current source as a plate load, a long-tail or cathode sink. The inspector reads the voltage across it and its dissipation, and warns when it is driving current uphill (delivering power, which a real transistor source cannot). It simulates in DC, transient and AC analysis (open circuit), exports to SPICE as an `I` element, goes to the BOM with the bench parts and to the board as a two-pin terminal.
+- *Low-voltage supply* (12 V) in the palette, for transistor and LED rails.
+
+### Changed
+- **The Sources group is organized**: *DC supplies* (B+, bias, low-voltage, current source) and *AC sources* (signal generator, AC mains) under their own headings. Ground and the sheet connector, which are not sources, moved to a new *Ground & connectors* group.
+- The signal generator's inspector is in three sections, *Signal* (waveform, frequency, phase), *Level* (Vpk, Vrms, dBV, DC offset) and *Output* (output impedance). Inspector fields can now carry a heading (`kind: "heading"` in `cad-components.js`).
+- The DC supply and the signal generator explain their pins in the inspector; the DC supply says whether it is an ideal regulated rail or sags by its internal resistance.
+
 ## [3.76.0] - 2026-10-18
 
 ### Added
