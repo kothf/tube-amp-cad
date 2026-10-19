@@ -2027,9 +2027,12 @@
       if (f.kind === "heading") { const h = document.createElement("div"); h.className = "insp-sub"; h.textContent = f.label; host.appendChild(h); return; }
       let el;
       if (f.kind === "eng") {
-        el = input("text", f.optional && !(c.params[f.key] > 0) ? "" : fmtEng(c.params[f.key], ""), v => {
+        // magnitude: the field shows the size of a signed value whose sign another field sets (the
+        // DC supply's Polarity); a typed minus still flips it
+        el = input("text", f.optional && !(c.params[f.key] > 0) ? "" : fmtEng(f.magnitude ? Math.abs(c.params[f.key]) : c.params[f.key], ""), v => {
           if (f.optional && !String(v).trim()) { delete c.params[f.key]; commit(); return; }
-          const n = parseEng(v);
+          let n = parseEng(v);
+          if (f.magnitude && n >= 0 && c.params[f.key] < 0) n = -n;
           const allowNeg = f.key === "v" || f.key === "offset";
           if (!isFinite(n) || (!allowNeg && n < 0) || (n === 0 && !["offset", "rs", "v"].includes(f.key))) { flash(el); return; }
           c.params[f.key] = n; commit();

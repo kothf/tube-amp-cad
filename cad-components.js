@@ -1022,7 +1022,13 @@
       defaults: { v: 300, rs: 0 },
       pins: () => [{ id: "+", x: 0, y: -30 }, { id: "-", x: 0, y: 30 }],
       value: c => fmtEng(c.params.v, "V"),
-      fields: [{ key: "v", label: "Voltage", unit: "V", kind: "eng" }, { key: "rs", label: "Internal resistance", unit: "Ω", kind: "eng" }],
+      // one part for B+ and bias rails: the voltage is kept signed in params.v; the inspector
+      // shows its size and a polarity switch that flips the sign
+      fields: [
+        { key: "pol", label: "Polarity", kind: "select", options: [["+", "Positive (B+, a positive rail)"], ["-", "Negative (grid bias, a negative rail)"]],
+          get: c => (+c.params.v < 0 ? "-" : "+"), apply: (c, s) => { c.params.v = (s === "-" ? -1 : 1) * Math.abs(+c.params.v || 0); } },
+        { key: "v", label: "Voltage", unit: "V", kind: "eng", magnitude: true },
+        { key: "rs", label: "Internal resistance", unit: "Ω", kind: "eng" }],
       info: c => (+c.params.v < 0
         ? "A negative supply: the + pin goes to ground and the - pin is the bias rail. "
         : "The + pin is the rail, the - pin goes to ground. ")
@@ -1163,7 +1169,7 @@
       ["opt_cat", null, "Output 125SE"], ["ptx_cat", null, "Power 300"]] },
     { group: "Sources", items: [
       { sub: "DC supplies" },
-      ["vdc", { v: 300 }, "B+ supply"], ["vdc", { v: -20 }, "Bias supply"], ["vdc", { v: 12, rs: 0 }, "Low-voltage supply"], ["isrc"],
+      ["vdc"], ["isrc"],
       { sub: "AC sources" },
       ["siggen"], ["mains"]] },
     { group: "Ground & connectors", items: [["ground"], ["offsheet"]] },

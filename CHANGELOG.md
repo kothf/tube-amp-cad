@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.78.0] - 2026-10-19
+
+### Changed
+- **One DC supply for B+ and bias.** The palette's *B+ supply*, *Bias supply* and *Low-voltage supply* are now a single *DC supply* (300 V by default). Its inspector has a *Polarity* switch, positive (the + pin is the rail) or negative (the - pin is the bias rail, the + pin to ground), and the *Voltage* field shows the size of the voltage; typing a minus sign still makes it negative. Circuits saved before open unchanged: a supply saved at −20 V shows as Negative, 20 V.
+
 ## [3.77.0] - 2026-10-19
 
 ### Added
