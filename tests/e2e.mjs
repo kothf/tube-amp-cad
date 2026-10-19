@@ -1905,6 +1905,13 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     check(rect[2] > 75 && rect[2] < 100 && pk[1], `Gubin example: the 5Ц4С delivers ${rect[1]} (${rect[2]} % of 125 mA, not of the per-anode 62 mA); peak anode current ${pk[1]} (${pk[2]} % of 375 mA)`);
     // the BOM's Sim. max: worked out when the simulation finishes, with the BOM closed; every kind of part has one
     const bomRows = await cad.evaluate(() => { const S = TubeCAD.state; return { open: !document.getElementById("bom").hidden, rows: TubeCAD.bomData().rows.map(r => [r.refs, r.sim]) }; });
+    // a capacitor's voltage rating: the first standard one at or above 1.25 × its simulated peak
+    const capRows = await cad.evaluate(() => TubeCAD.bomData().rows.filter(r => /^Capacitor/.test(r.desc)).map(r => ({ refs: r.refs, rating: r.rating, sim: r.sim })));
+    const vOf = t => { const m = /^([\d.]+)(m|k)?V/.exec(t) || []; return m[1] * (m[2] === "k" ? 1000 : m[2] === "m" ? 1e-3 : 1); };
+    check(capRows.length && capRows.every(r => /^\d+(\.\d+)? V$/.test(r.rating) && parseFloat(r.rating) >= 1.25 * vOf(r.sim) - 1e-6),
+      `BOM rating column: every capacitor has a standard voltage rating at or above 1.25 × its peak: ${capRows.map(r => r.refs + " " + r.sim + " → " + r.rating).join("; ")}`);
+    const std = await cad.evaluate(() => [["electrolytic", 300], ["electrolytic", 10], ["capacitor", 30], ["capacitor", 400], ["electrolytic", 500], ["capacitor", 2600]].map(([t, v]) => BomLib.capRating(t, v)).join("|"));
+    check(std === "400 V|16 V|50 V|630 V|2 × 450 V in series|2 × 3000 V in series", `standard capacitor voltages: ${std}`);
     const simOf = ref => (bomRows.rows.find(([refs]) => refs.split(/[,-]/).map(x => x.trim()).includes(ref)) || [])[1] || "";
     check(!bomRows.open && /W$/.test(simOf("BA1")) && /A DC$/.test(simOf("L1")) && /^HT .*A DC · \d+%$/.test(simOf("T1")) && /A DC$/.test(simOf("T2")) && /%$/.test(simOf("VL1")) && /%$/.test(simOf("VL3")) && /W$/.test(simOf("R1")) && /V$/.test(simOf("C1")),
       `BOM Sim. max for every kind of part, with the BOM closed: BA1 ${simOf("BA1")}, L1 ${simOf("L1")}, T1 ${simOf("T1")}, T2 ${simOf("T2")}, VL1 ${simOf("VL1")}, VL3 ${simOf("VL3")}`);

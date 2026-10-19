@@ -421,7 +421,7 @@
   <li>A circuit file holds the schematic, every sheet, the board layout and any imported SPICE tube models: one file is the whole project.</li>
   <li><b>Save as PDF:</b> every sheet as a vector page. <b>Export sheet…:</b> the current sheet, each sheet as its own file, or all in one PDF; PNG at 150/300/600 dpi, black on white or in the editor's colours.</li>
   <li><b>Export SPICE netlist:</b> an LTspice netlist; tubes as behavioural sources with the same equations the simulator uses, transistors as Q and M elements with their <code>.model</code> lines.</li>
-  <li><b>Bill of materials</b> (<kbd>B</kbd>, or <span class="ui">View ▾</span>): equal parts on one line with designator ranges; tube sockets; ratings; the simulated worst case (dissipation, capacitor peak voltage, LED current); a part number you type. Click a line to select its parts. Export TXT, CSV, XLSX or PDF.</li>
+  <li><b>Bill of materials</b> (<kbd>B</kbd>, or <span class="ui">View ▾</span>): equal parts on one line with designator ranges; tube sockets; ratings (a capacitor's voltage rating: the first standard one, 63, 100, 160, 250, 400, 450 V…, at or above 1.25 × the peak voltage the simulation puts across it); the simulated worst case (dissipation, capacitor peak voltage, LED current); a part number you type. Click a line to select its parts. Export TXT, CSV, XLSX or PDF.</li>
   <li><b>Checks</b> (<span class="ui">View ▾</span>, or the tab next to the bill of materials): the inspector's Checks list in the panel under the sheet, wider: wiring problems (no ground, unconnected pins, shorted parts) and every part beyond its rating. The tab shows how many there are.</li>
 </ul>
 

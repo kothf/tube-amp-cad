@@ -15,6 +15,24 @@
   // sources and instruments only when asked for
   const BENCH = new Set(["vdc", "isrc", "siggen", "mains", "scope"]);
 
+  // A capacitor's voltage rating for the bill: the first of its makers' standard ratings at or
+  // above the simulated peak voltage across it plus a 25 % margin (the part runs at 80 % or less
+  // of its rating). Electrolytics stop at 550 V; above that the line asks for a series string of
+  // 450 V parts (each with its balancing resistor). Film and ceramic parts go up to 3 kV.
+  const CAP_V = {
+    electrolytic: [6.3, 10, 16, 25, 35, 50, 63, 100, 160, 200, 250, 350, 400, 450, 500, 550],
+    capacitor: [50, 63, 100, 160, 200, 250, 400, 630, 1000, 1250, 1600, 2000, 3000]
+  };
+  const CAP_MARGIN = 1.25;
+  function capRating(type, vpk) {
+    const list = CAP_V[type];
+    if (!list || !(vpk >= 0)) return "";
+    const need = vpk * CAP_MARGIN, v = list.find(x => x >= need - 1e-9);
+    if (v !== undefined) return v + " V";
+    const top = type === "electrolytic" ? 450 : list[list.length - 1];
+    return Math.ceil(need / top) + " × " + top + " V in series";
+  }
+
   // what a part is on the bill: [description, value, rating]
   function describe(c, n) {
     const L = root.CadLib, f = L.fmtEng, p = c.params;
@@ -92,7 +110,14 @@
     };
     const sockets = new Map();
     phys.forEach(({ ref, members }) => {
-      const c = members[0], [desc, value, rating] = describe(c, members.length);
+      const c = members[0];
+      let [desc, value, rating] = describe(c, members.length);
+      // a capacitor's rating comes from the simulation: parts of one value that see different
+      // voltages get lines of their own
+      if (opts.stress && CAP_V[c.type]) {
+        const st = members.map(opts.stress).filter(Boolean);
+        if (st.length) rating = capRating(c.type, Math.max(...st.map(x => x.v)));
+      }
       const partno = String(c.params.partno || "").trim();
       add([c.type, desc, value, rating, partno].join("\u0001"), ref, members, desc, value, rating, partno);
       if (opts.sockets && c.type === "tube" && rating && !/wire leads/i.test(rating)) {
@@ -266,5 +291,5 @@ ${bom.rows.length ? `<autoFilter ref="A${first}:${colName(COLUMNS.length - 1)}${
     }, { title: "Bill of materials" + (bom.title ? " - " + bom.title : "") });
   }
 
-  root.BomLib = { COLUMNS, build, describe, compressRefs, refCmp, toTxt, toCsv, toXlsx, toPdf, zip, crc32 };
+  root.BomLib = { COLUMNS, build, describe, capRating, compressRefs, refCmp, toTxt, toCsv, toXlsx, toPdf, zip, crc32 };
 })(typeof window !== "undefined" ? window : globalThis);
