@@ -1101,11 +1101,17 @@
   //   opts: { op: node voltages [v0 = 0, v1, …] to linearize at (the averaged steady state of
   //           a mains-fed circuit, say; without it, the DC operating point),
   //           inputs: [{ id, mag, phase (deg) }]: the sources driven (a source not listed is a
-  //           short: DC supplies, mains); fStart, fStop (Hz), perDecade, probes: [[node, ref]] }
+  //           short: DC supplies, mains); fStart, fStop (Hz), perDecade, probes: [[node, ref]],
+  //           kFrom, kTo: only those points of the sweep (acPoints gives their number) }
   //   returns { ok, freqs, re: [node][k], im: [node][k], probes: [{ re, im }] } (node 0, ground, is zeros)
   // A rectifier linearized at its average voltage is off, so a supply reads as its reservoir
   // capacitor, as it does for audio between charging pulses.
   // ---------------------------------------------------------------------------
+  // the number of points in a sweep: perDecade per decade from fStart to fStop, both ends included
+  function acPoints(opts) {
+    const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, per = opts.perDecade || 40;
+    return Math.max(2, Math.round(Math.log10(fStop / fStart) * per) + 1);
+  }
   function acSweep(netlist, opts) {
     opts = opts || {};
     const t0 = Date.now(), circ = buildCircuit(netlist), n = circ.nUnk, nN = circ.nNodes;
@@ -1162,13 +1168,15 @@
         case "PENTODE": jac(nd, V => { const [ia, ig, ig2] = tubeCurrents(e, V[0] - V[3], V[1] - V[3], V[2] - V[3]); return [ia, ig, ig2, -(ia + ig + ig2)]; }, 1e-3); break;
       }
     }
-    const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, per = opts.perDecade || 40;
-    const K = Math.max(2, Math.round(Math.log10(fStop / fStart) * per) + 1);
+    const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, KA = acPoints(opts);
+    // a piece of the sweep, points kFrom … kTo − 1 of the whole (workers share a sweep this way;
+    // each frequency is solved on its own, so the pieces are the whole sweep's values exactly)
+    const k0 = Math.max(0, Math.min(KA, opts.kFrom || 0)), K = Math.max(0, Math.min(KA, opts.kTo === undefined ? KA : opts.kTo) - k0);
     const freqs = new Float64Array(K), re = [], im = [];
     for (let i = 0; i < nN; i++) { re.push(new Float64Array(K)); im.push(new Float64Array(K)); }
     const Ar = new Float64Array(n * n), Ai = new Float64Array(n * n), br = new Float64Array(n), bi = new Float64Array(n);
     for (let k = 0; k < K; k++) {
-      const f = fStart * Math.pow(fStop / fStart, k / (K - 1)), w = 2 * Math.PI * f;
+      const f = fStart * Math.pow(fStop / fStart, (k0 + k) / (KA - 1)), w = 2 * Math.PI * f;
       freqs[k] = f;
       for (let i = 0; i < n * n; i++) { Ar[i] = Gm[i]; Ai[i] = w * Bm[i]; }
       for (let i = 0; i < n; i++) { br[i] = rhs[i]; bi[i] = rhs[n + i]; }
@@ -1208,7 +1216,7 @@
     return { ok: true, freqs, re, im, probes, elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, acSweep, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, acSweep, acPoints, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

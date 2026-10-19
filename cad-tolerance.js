@@ -58,21 +58,20 @@
 
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   function CadTolerance(cad) {
-    const { S, VERSION, buildNetlist, cmds, esc, fmtEng, measurements, setStatus, topo, withResult } = cad;
+    const { S, buildNetlist, cmds, pool, esc, fmtEng, measurements, setStatus, topo, withResult } = cad;
     const TOL_KEY = "tubecad_tolerance";
     const opts = { runs: 20, r: 5, c: 20, tube: 20, seed: 1 };
     try { Object.assign(opts, JSON.parse(localStorage.getItem(TOL_KEY)) || {}); } catch (e) {}
     const saveOpts = () => { try { localStorage.setItem(TOL_KEY, JSON.stringify(opts)); } catch (e) {} };
     // job: { seq, done, total, failed, runs }; rows: the last finished summary
     S.tol = { seq: 0, job: null, rows: null, runs: 0, failed: 0, stale: false, error: null, opts };
-    // the runs are independent, so they go to several workers at once: one per core, less one for
-    // the page, at most 8 (each holds its own copy of the engine)
-    let workers = [];
+    // the runs are independent, so they go to the engine's pool (sim-pool.js) all at once and fill
+    // every core; a live simulation still starts at once beside them
+    let jobs = [];
     const RUN = { budgetMs: 120000, maxPeriods: 20000 };   // as ▶ Simulate: each run settles fully
-    const poolSize = n => Math.max(1, Math.min(8, n, ((typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 2) - 1));
 
     function stop() {
-      workers.forEach(w => w.terminate()); workers = [];
+      jobs.forEach(j => j.cancel()); jobs = [];
       if (S.tol.job) { S.tol.job = null; S.tol.seq++; setStatus("idle", "Tolerance runs stopped"); render(); cmds.sync(); }
     }
     function run() {
@@ -84,52 +83,40 @@
       const tol = { r: opts.r / 100, c: opts.c / 100, tube: opts.tube / 100 }, rand = rng(opts.seed);
       const total = Math.max(1, Math.min(500, Math.round(opts.runs) || 1));
       // run 0: the circuit as drawn, then the varied ones; all drawn up front, so a seed gives the
-      // same runs however many workers share them and in whatever order they finish
+      // same runs however many cores share them and in whatever order they finish
       const nets = [base];
       for (let k = 0; k < total; k++) nets.push(vary(base, typeOf, tol, rand).netlist);
       const seq = ++S.tol.seq, job = S.tol.job = { seq, done: 0, total, failed: 0, runs: [] };
       S.tol.error = null;
-      let queued = 0;
       const partial = new Map();   // each run under way → its progress (0…1)
       const progress = () => {
         let f = job.done; partial.forEach(v => { f += v; });
         setStatus("busy", `Tolerance runs: ${job.done} of ${total + 1} · ${Math.floor(f / (total + 1) * 100)} %`, f / (total + 1));
       };
       const finish = () => {
-        workers.forEach(w => w.terminate()); workers = []; S.tol.job = null;
+        jobs = []; S.tol.job = null;
         S.tol.rows = summarize(job.runs); S.tol.runs = total; S.tol.failed = job.failed; S.tol.stale = false;
         S.tol.error = job.runs[0] ? null : "The circuit as drawn did not simulate";
         setStatus(S.tol.error || job.failed ? "warn" : "ok", S.tol.error || `Tolerance: ${total - job.failed} runs` + (job.failed ? ` · ${job.failed} did not settle` : ""));
         render(); cmds.sync();
       };
-      // the next waiting run to worker w (null: the page itself, when no worker could start)
-      const next = w => {
-        if (queued >= nets.length) return;
-        const k = queued++;
-        partial.set(k, 0);
-        if (w) w.postMessage({ seq: k, netlist: nets[k], options: RUN });
-        else setTimeout(() => take(null, k, TubeSimEngine.simulate(nets[k], RUN)), 0);
-      };
-      const take = (w, k, result) => {
+      const take = (k, result) => {
         if (S.tol.seq !== seq) return;
         if (result && result.ok) job.runs[k] = withResult(result, nets[k], T, measurements);
         else if (k > 0) job.failed++;
         partial.delete(k); job.done++;
         if (job.done === nets.length) { finish(); return; }
-        next(w); progress(); render();
+        progress(); render();
       };
-      try {
-        for (let i = poolSize(nets.length); i > 0; i--) {
-          const w = new Worker("sim-worker.js" + VERSION);
-          w.onmessage = e => {
-            if (e.data.result) take(w, e.data.seq, e.data.result);
-            else if (S.tol.job && partial.has(e.data.seq)) { partial.set(e.data.seq, e.data.progress); progress(); }
-          };
-          workers.push(w);
-        }
-      } catch (e) { workers.forEach(w => w.terminate()); workers = []; }
       render(); cmds.sync(); progress();
-      if (workers.length) workers.forEach(next); else next(null);
+      if (!pool.ok) {   // no workers: one run after another on the page
+        const next = k => setTimeout(() => { if (S.tol.seq !== seq) return; take(k, TubeSimEngine.simulate(nets[k], RUN)); if (k + 1 < nets.length) next(k + 1); }, 0);
+        next(0); return;
+      }
+      jobs = nets.map((netlist, k) => pool.run({ netlist, options: RUN }, {
+        onResult: r => take(k, r),
+        onProgress: f => { if (S.tol.job && S.tol.seq === seq) { partial.set(k, f); progress(); } }
+      }));
     }
     // an edit makes the shown spread the old circuit's
     function changed() { if (S.tol.rows && !S.tol.stale) { S.tol.stale = true; render(); } }

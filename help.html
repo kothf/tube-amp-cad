@@ -271,7 +271,7 @@
 <h3 id="sim-tolerance">6.5 Tolerance runs</h3>
 <p>Real parts are not their nominal values: resistors are ±5 %, electrolytics ±20 %, and two tubes of one type can differ by 20 % or more in plate current. <span class="ui">View ▾ → Tolerance runs</span> opens the <b>Tolerance</b> tab under the sheet, which simulates the circuit once as drawn and then once per run with every part varied, and shows how far each value moves.</p>
 <ul>
-  <li><b>Runs</b>: how many varied circuits (each settles fully, as <span class="ui">▶ Simulate</span> does). 20 shows the spread; 100 or more shows the rare corner. The runs share the computer's cores (one per core, less one, up to 8), so several run at once.</li>
+  <li><b>Runs</b>: how many varied circuits (each settles fully, as <span class="ui">▶ Simulate</span> does). 20 shows the spread; 100 or more shows the rare corner. The runs share all the computer's cores, so as many run at once as it has cores.</li>
   <li><b>R ±, C ±</b>: the tolerance of every resistor and pot (both halves of a pot move together, so the wiper stays put) and of every capacitor and electrolytic.</li>
   <li><b>Tubes ±</b>: every tube draws that much more or less current than its model at the same voltages, as a stronger or weaker tube does. Rectifiers stay as they are.</li>
   <li>Each value is normally distributed about its nominal with the tolerance as two standard deviations (about 95 % of parts are within it), and never beyond it. <b>Seed</b>: the same seed repeats the same runs.</li>
@@ -537,7 +537,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
   <li><b>Rectifier tubes:</b> vacuum diodes (Child–Langmuir), perveance from datasheet drops.</li>
   <li><b>Transistors:</b> SPICE Gummel–Poon (IS, BF, BR, VAF, IKF) with junction capacitances, and base and emitter resistance (RB, RE) for the 2N3055 / MJ2955, TIP41C / TIP42C and MJL21194 / MJL21193, so their VBE rises with the current as a real part's does; the inspector's VBE and VCE are read at the pins. <b>MOSFETs:</b> square law (level 1) with a smoothed threshold, body diode and gate capacitances. <b>Diodes/zeners/LEDs:</b> exponential junctions.</li>
   <li><b>Transformers:</b> coupled inductors with leakage. <b>Loudspeakers:</b> Re + Le in series with a parallel R‖L‖C motional impedance at fs.</li>
-  <li>It runs in a Web Worker, so the editor stays responsive.</li>
+  <li>It runs in Web Workers, one per processor core, so the editor stays responsive and the calculations run side by side: the live simulation, the power-on transient and the Bode sweep each on a core of their own, tolerance runs on all of them, and the Bode sweep's frequencies split across the free cores. One steady-state run is a time-stepped solution, each step built on the one before, so it uses one core.</li>
 </ul>
 
 <!-- ======================================================================= -->
