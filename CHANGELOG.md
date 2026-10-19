@@ -6,6 +6,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Release from GitHub's website.** *Actions → Release → Run workflow* on main releases `package.json`'s version (or the version typed in): the same tests and package as a pushed tag, then it tags main itself and publishes the release. Pushing a tag works as before.
+
 ## [3.80.0] - 2026-10-19
 
 ### Changed

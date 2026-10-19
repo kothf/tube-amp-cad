@@ -764,7 +764,11 @@ into every asset URL, so browsers and CDNs never mix two versions.
 
 1. Add the changes under a new version in `CHANGELOG.md`.
 2. Bump `version` in `package.json`.
-3. `git tag vX.Y.Z && git push origin main vX.Y.Z`
+3. `git tag vX.Y.Z && git push origin main vX.Y.Z`, or, once that is on main,
+   GitHub's **Actions → Release → Run workflow** (on main): it releases
+   `package.json`'s version (or the one typed in) and tags main itself after
+   the tests pass. Don't create the release by hand in GitHub's Releases page:
+   the workflow makes it.
 
 The Release workflow tests the source and the packaged build, publishes a
 GitHub release with `tube-amp-cad-X.Y.Z.tar.gz` and its SHA-256 (the archive
