@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.79.0] - 2026-10-19
+
+### Changed
+- **Tolerance runs use several cores.** The runs go to one simulation worker per core (less one for the page, up to 8) instead of one after another, so a slow circuit's runs finish several times sooner: the stereo Gubin example's 10 runs took 50 s, now 22 s on a 4-core computer (3 workers). All runs are drawn before any starts, so a seed gives the same table as before.
+
 ## [3.78.0] - 2026-10-19
 
 ### Changed
