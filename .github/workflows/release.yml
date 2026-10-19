@@ -1,12 +1,20 @@
 name: Release
 
-# Push a tag like v3.1.0 (matching package.json) to publish:
+# Push a tag like v3.1.0 (matching package.json) to publish, or press "Run workflow" on the
+# Actions tab: it releases main's package.json version (or the version typed in), tagging main
+# itself once the tests pass. Either way it publishes:
 #   - a GitHub release with tube-amp-cad-<version>.tar.gz + .sha256
 #     (consumed by aerocat.tech, pinned by version and checksum)
 #   - the same build to GitHub Pages
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 3.80.0 (empty: package.json's version). Must match package.json."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -29,13 +37,24 @@ jobs:
           node-version: 22
           cache: npm
 
+      # TAG: the pushed tag, or for Run workflow v<version> (the typed one, else package.json's)
       - name: Tag must match package.json version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           pkg="$(node -p "require('./package.json').version")"
-          if [ "${GITHUB_REF_NAME#v}" != "$pkg" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $pkg"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="v${INPUT_VERSION#v}"; [ "$tag" = "v" ] && tag="v$pkg"
+            if [ "$GITHUB_REF_TYPE" != "branch" ]; then echo "::error::Run workflow from a branch (main), not from a tag"; exit 1; fi
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then echo "::error::Tag $tag already exists"; exit 1; fi
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+          if [ "${tag#v}" != "$pkg" ]; then
+            echo "::error::Tag $tag does not match package.json version $pkg"
             exit 1
           fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
 
       - run: npm ci
 
@@ -55,20 +74,28 @@ jobs:
         run: npm run test:engine
 
       - name: Package
-        run: npm run package -- "${GITHUB_REF_NAME#v}"
+        run: npm run package -- "${TAG#v}"
 
       - name: Browser tests (packaged build)
         run: npm run test:dist
 
       - name: Release notes from CHANGELOG.md
-        run: npm run --silent release-notes -- "$GITHUB_REF_NAME" > release-notes.md
+        run: npm run --silent release-notes -- "$TAG" > release-notes.md
+
+      # Run workflow: the tag goes on the commit just tested (a tag pushed with the workflow's own
+      # token starts no second run)
+      - name: Tag the release (Run workflow)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.tar.gz.sha256 \
-            --title "Tube Amp CAD $GITHUB_REF_NAME" \
+          gh release create "$TAG" dist/*.tar.gz dist/*.tar.gz.sha256 \
+            --title "Tube Amp CAD $TAG" \
             --notes-file release-notes.md \
             --verify-tag
 
