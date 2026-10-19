@@ -644,7 +644,12 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   the window with a rectified supply). The wire currents on the schematic
   are summed from these.
 
-It runs in a Web Worker, so the editor stays responsive while it solves.
+It runs in Web Workers, one per processor core, so the editor stays responsive
+while it solves and independent calculations run at once: the live
+simulation, the power-on transient and the Bode sweep side by side, tolerance
+runs on every core, and the Bode sweep's frequency range cut into pieces
+across the free cores. A single steady-state run steps through time, each
+step from the one before, so it stays on one core.
 
 ## Accuracy
 
@@ -725,7 +730,7 @@ sources were drawn and simulated, two of them against bench measurements:
 ## Run it locally
 
 Any static web server works. The simulator needs `http://` (not `file://`)
-for its Web Worker:
+for its Web Workers:
 
 ```sh
 python3 -m http.server 8080   # then open http://localhost:8080/

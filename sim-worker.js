@@ -1,8 +1,10 @@
-/* Runs the circuit engine off the UI thread.
+/* Runs the circuit engine off the UI thread; the CAD keeps one per processor core (sim-pool.js).
    Message in:  { seq, netlist, options }                      steady state (simulate)
                 { seq, netlist, options, kind: "startup" }      power-on transient
-                { seq, netlist, options, kind: "ac" }           frequency response: the quiet circuit's operating
-                                                                 point (a mains-fed one's averaged steady state), then acSweep
+                { seq, netlist, options, kind: "op" }           the operating point a frequency response is linearized at:
+                                                                 a mains-fed circuit's averaged steady state ({ ok, op })
+                { seq, netlist, options, kind: "ac" }           frequency response (acSweep; options.op, and options.kFrom /
+                                                                 kTo for a piece of the sweep, so several workers share it)
    Message out: { seq, result }, and { seq, progress } (0…1) along the way. */
 importScripts("spice-model.js" + self.location.search, "sim-engine.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
 
@@ -13,22 +15,17 @@ const solverReady = fetch("sim-solver.wasm" + self.location.search).then(r => (r
 self.onmessage = async (e) => {
   await solverReady;
   const { seq, netlist, options, kind } = e.data;
+  const onProgress = f => self.postMessage({ seq, progress: f });
   let result;
   try {
-    if (kind === "ac") {
-      const onProgress = f => self.postMessage({ seq, progress: 0.9 * f });
-      let op = null;
-      if (netlist.elements.some(x => x.dcValue !== undefined || x.acMains)) {
-        const r = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress }));
-        if (!r.ok) { self.postMessage({ seq, result: { ok: false, error: r.error } }); return; }
-        op = r.dc.nodes;
-      }
-      const ac = TubeSimEngine.acSweep(netlist, Object.assign({}, options, { op }));
-      self.postMessage({ seq, result: ac.ok ? { ok: true, averaged: !!op, freqs: ac.freqs, probes: ac.probes, elapsedMs: ac.elapsedMs } : ac });
-      return;
-    }
-    if (kind === "startup") result = TubeSimEngine.startup(netlist, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) }));
-    else result = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress: f => self.postMessage({ seq, progress: f }) }));
+    if (kind === "op") {
+      const r = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress }));
+      result = r.ok ? { ok: true, op: r.dc.nodes } : { ok: false, error: r.error };
+    } else if (kind === "ac") {
+      const ac = TubeSimEngine.acSweep(netlist, options);
+      result = ac.ok ? { ok: true, freqs: ac.freqs, probes: ac.probes, elapsedMs: ac.elapsedMs } : ac;
+    } else if (kind === "startup") result = TubeSimEngine.startup(netlist, Object.assign({}, options, { onProgress }));
+    else result = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress }));
   } catch (err) {
     result = { ok: false, error: "Engine error: " + (err && err.message ? err.message : err) };
   }
@@ -38,5 +35,6 @@ self.onmessage = async (e) => {
     Object.values(result.tran.devices).forEach(d => { transfer.push(d.i.buffer); if (d.ig2) transfer.push(d.ig2.buffer); });
   }
   if (result.min) { result.min.forEach(a => transfer.push(a.buffer)); result.max.forEach(a => transfer.push(a.buffer)); }
+  if (result.probes && result.freqs) { transfer.push(result.freqs.buffer); result.probes.forEach(p => { transfer.push(p.re.buffer, p.im.buffer); }); }
   self.postMessage({ seq, result }, transfer);
 };

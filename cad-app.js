@@ -270,9 +270,9 @@
   // ---------------------------------------------------------------------------
   // Netlist + simulation
   // ---------------------------------------------------------------------------
-  let worker = null, simTimer = null;
-  function startWorker() { try { worker = new Worker("sim-worker.js" + VERSION); worker.onmessage = e => { if (e.data.result) onSimResult(e.data); else onSimProgress(e.data); }; } catch (e) { worker = null; } }
-  startWorker();
+  // the engine's workers, one per processor core, shared by every calculation (sim-pool.js)
+  const pool = SimPool("sim-worker.js" + VERSION);
+  let simJob = null, simTimer = null;
   // "live" runs after every edit within a short time budget; "full" runs until
   // the periodic steady state is reached (slow supplies need seconds of solver time)
   const RUN_OPTIONS = { live: { budgetMs: 2500 }, full: { budgetMs: 120000, maxPeriods: 20000 } };
@@ -305,7 +305,7 @@
     simTimer = setTimeout(() => runSim("live"), delay === undefined ? 150 : delay);
   }
   function cancelRun() {
-    if (worker) { worker.terminate(); startWorker(); }
+    if (simJob) { simJob.cancel(); simJob = null; }
     S.sim.busy = false; S.sim.pending = false; S.sim.seq++;
     simButton();
   }
@@ -343,7 +343,7 @@
     simButton();
     // the animation's frames over one period of the signal generator
     const g = S.comps.find(c => c.type === "siggen"), options = Object.assign({}, RUN_OPTIONS[mode], g && g.params.freq > 0 ? { frameSpan: 1 / g.params.freq } : {});
-    if (worker) worker.postMessage({ seq, netlist, options });
+    if (pool.ok) simJob = pool.run({ netlist, options }, { urgent: true, onResult: result => { simJob = null; onSimResult({ seq, result }); }, onProgress: progress => onSimProgress({ seq, progress }) });
     else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, options) }), 0);
   }
   // the busy text of the running steady-state simulation, with its readiness in percent
@@ -894,9 +894,9 @@
 
   // ---------------------------------------------------------------------------
   // Power-on transient for the oscilloscopes and frequency response for the Bode plotter,
-  // each in its own worker so live runs go on (cad-analysis.js)
+  // on workers of their own from the pool, so live runs go on (cad-analysis.js)
   // ---------------------------------------------------------------------------
-  const { acMessage, runAC, runTransient, stopTransient, transientMessage } = CadAnalysis({ S, LIB, VERSION, buildNetlist, channel, desig, fmtEng, key, setStatus, showBusy, topo });
+  const { acMessage, runAC, runTransient, stopTransient, transientMessage } = CadAnalysis({ S, LIB, VERSION, buildNetlist, pool, channel, desig, fmtEng, key, setStatus, showBusy, topo });
 
   // ---------------------------------------------------------------------------
   // View transforms
@@ -2371,7 +2371,7 @@
   // Bill of materials: a panel under the schematic (B), exported as TXT, CSV, XLSX or PDF (cad-bom.js)
   // ---------------------------------------------------------------------------
   // Tolerance runs: the Tolerance tab of the same panel (cad-tolerance.js)
-  const tolerance = CadTolerance({ S, VERSION, buildNetlist, cmds, esc: escH, fmtEng, measurements, setStatus, topo, withResult });
+  const tolerance = CadTolerance({ S, VERSION, buildNetlist, pool, cmds, esc: escH, fmtEng, measurements, setStatus, topo, withResult });
   const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, LIB, baseName, bind, cmds, renderChecks, renderTolerance: () => tolerance.render(), commit, flash, fmtEng, frames, input, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf });
   // PNG of one sheet (or of the whole drawing without frames) at dpi. "print" colours are
   // those of the PDF (black on white, same luminance rule); "screen" keeps the editor's.

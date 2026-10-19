@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.80.0] - 2026-10-19
+
+### Changed
+- **The engine uses every processor core.** The CAD keeps one simulation worker per core (all of them, as the browser reports), loaded once and shared by every calculation, instead of a new worker per run. The live simulation, the power-on transient and the Bode sweep run side by side on cores of their own; tolerance runs fill all the cores (before: one per core less one, at most 8), and a simulation started meanwhile still begins at once beside them. The Bode plotter's sweep is cut into pieces of its frequency range that run on all the cores at once and are joined point for point, so its curves are exactly what one worker computed. One steady-state run steps through time, each step built on the one before, so it stays on one core.
+
 ## [3.79.0] - 2026-10-19
 
 ### Changed
