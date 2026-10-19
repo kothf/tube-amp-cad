@@ -6,7 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.81.0] - 2026-10-19
+
 ### Added
+- **Capacitor voltage ratings in the bill of materials.** After a simulation the Rating / data column gives each capacitor the first standard voltage its makers build at or above 1.25 × the peak voltage across it (it runs at 80 % of its rating or less): electrolytics 6.3, 10, 16, 25, 35, 50, 63, 100, 160, 200, 250, 350, 400, 450, 500, 550 V; film and ceramic 50, 63, 100, 160, 200, 250, 400, 630 V, 1, 1.25, 1.6, 2, 3 kV. Above 550 V an electrolytic line asks for a series string of 450 V parts. Capacitors of one value that need different ratings get lines of their own, in the panel and in every export.
 - **Release from GitHub's website.** *Actions → Release → Run workflow* on main releases `package.json`'s version (or the version typed in): the same tests and package as a pushed tag, then it tags main itself and publishes the release. Pushing a tag works as before.
 
 ## [3.80.0] - 2026-10-19
