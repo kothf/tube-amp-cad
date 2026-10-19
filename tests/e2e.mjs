@@ -1139,7 +1139,7 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
       return out;
     });
     const src = (pal.Sources || []).join(" | "), gc = (pal["Ground & connectors"] || []).join(" | ");
-    check(src === "DC supplies: B+ supply | DC supplies: Bias supply | DC supplies: Low-voltage supply | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains"
+    check(src === "DC supplies: DC supply | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains"
       && gc === "Ground | Sheet connector", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
     // the current source: 2 mA from ground up into 10 kΩ gives 20 V; the inspector reads it
     await cad.evaluate(() => {
@@ -1155,6 +1155,21 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     const live = (await cad.textContent("#insp-live")).replace(/\s+/g, " ");
     const vI = +((/Voltage across \(\+ to -\)\s*([\d.]+)V/.exec(live) || [])[1]);
     check(Math.abs(vI - 20 * 10e6 / (10e6 + 10e3)) < 0.02 && /drives current uphill/.test(live), `current source: 2 mA into 10 kΩ reads 20 V across it (10 kΩ ∥ its 10 MΩ output resistance: ${vI} V) and warns it delivers power`);
+    // one DC supply for B+ and bias: Polarity flips the sign, the Voltage field shows its size and keeps the sign
+    {
+      const id = await cad.evaluate(() => { const C = TubeCAD, S = C.state, b = C.makeComp("vdc", {}, 600, 300, 0); S.comps.push(b); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(b.id); C.commit(); return b.id; });
+      const vOf = () => cad.evaluate(i => TubeCAD.state.comps.find(c => c.id === i).params.v, id);
+      const v0 = await vOf();
+      await cad.locator("#inspector .row", { hasText: "Polarity" }).locator("select").selectOption("-");
+      const v1 = await vOf(), shown = await cad.locator("#inspector .row", { hasText: "Voltage" }).locator("input").inputValue();
+      const volt = cad.locator("#inspector .row", { hasText: "Voltage" }).locator("input");
+      await volt.fill("20"); await volt.press("Enter");
+      const v2 = await vOf();
+      await cad.locator("#inspector .row", { hasText: "Polarity" }).locator("select").selectOption("+");
+      const v3 = await vOf();
+      check(v0 === 300 && v1 === -300 && shown === "300" && v2 === -20 && v3 === 20, `DC supply polarity: ${v0} V → Negative ${v1} V (shown as ${shown}) → typed 20: ${v2} V → Positive ${v3} V`);
+      await cad.evaluate(i => { const S = TubeCAD.state; S.comps = S.comps.filter(c => c.id !== i); S.sel.comps.clear(); TubeCAD.commit(); }, id);
+    }
     // the signal generator's fields stand under Signal, Level and Output
     await cad.evaluate(() => { const C = TubeCAD, S = C.state, g = C.makeComp("siggen", {}, 600, 300, 0); S.comps.push(g); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(g.id); C.commit(); });
     const heads = await cad.evaluate(() => [...document.querySelectorAll("#inspector .insp-sub")].map(h => h.textContent).slice(0, 3).join(" / "));

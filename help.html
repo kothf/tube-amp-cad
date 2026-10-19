@@ -118,7 +118,7 @@
   <li><b>Place the tube.</b> Type <code>12AX7</code> in the palette's search box and press <kbd>Enter</kbd>, then click on the sheet. The tube appears as VL1.1, with its pin numbers.</li>
   <li><b>Place the resistors.</b> Type <code>100k</code>, <kbd>Enter</kbd>, click above the anode: that is the plate resistor. Type <code>1.5k</code> and place it below the cathode, and <code>1M</code> from the grid to ground (the grid leak). <kbd>R</kbd> rotates a part while you place it.</li>
   <li><b>Bypass the cathode.</b> Type <code>47u</code> to get an electrolytic and place it across the cathode resistor.</li>
-  <li><b>Power and ground.</b> From <b>Sources</b> place a <span class="ui">B+ supply</span> (set it to 250 V in the inspector), and from <b>Ground &amp; connectors</b> the <span class="ui">Ground</span> symbols.</li>
+  <li><b>Power and ground.</b> From <b>Sources</b> place a <span class="ui">DC supply</span> (set it to 250 V in the inspector), and from <b>Ground &amp; connectors</b> the <span class="ui">Ground</span> symbols.</li>
   <li><b>Signal.</b> Place a <span class="ui">Signal generator</span> (1 kHz, 0.1 Vpk) and a <span class="ui">Capacitor</span> (100n) from it to the grid.</li>
   <li><b>Wire it.</b> Click a pin, click the corners, and finish on another pin or on a wire. A wire that ends on a wire joins it with a dot. <kbd>W</kbd> starts a wire anywhere; <kbd>Esc</kbd> stops.</li>
   <li><b>Read it.</b> With <span class="ui">Live</span> on, the circuit simulates after every edit. Every net shows its DC voltage and every wire its current. Click the tube: the inspector shows Va, Vg1k, Ia, Pa, and with the signal on the plate swing, the gain and the THD.</li>
@@ -259,7 +259,7 @@
 </ul>
 <h3 id="sim-mains">6.3 Mains-powered circuits</h3>
 <p>Draw <span class="ui">AC mains</span> → power transformer → rectifier → reservoir capacitor → choke or resistor → filter capacitor, exactly as built. The simulator runs the rectifier cycle by cycle, so ripple, sag under load and the rectifier's peak currents are real. Voltages and currents on the schematic are averaged over the settled window, as a meter reads them.</p>
-<div class="tip"><b>Faster drawing:</b> while working on the audio stages, feed them from a <span class="ui">B+ supply</span> (ideal DC) with an internal resistance; add the real supply when the stages are done.</div>
+<div class="tip"><b>Faster drawing:</b> while working on the audio stages, feed them from a <span class="ui">DC supply</span> (ideal DC) with an internal resistance; add the real supply when the stages are done.</div>
 <h3 id="sim-trouble">6.4 When a run fails</h3>
 <ul>
   <li><b>A missing ground</b>: the checks report it; place a Ground symbol.</li>
