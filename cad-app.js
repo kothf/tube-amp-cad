@@ -488,13 +488,15 @@
   }
 
   // ---------------------------------------------------------------------------
-  // AC animation: one period of the signal, slowed to ANIM_S seconds. Each wire's AC current
-  // (the simulation's terminal currents at 120 instants, carried through the wiring as for the
-  // current stickers, less their average) runs as dots along it; each node's AC voltage tints
-  // its wires, orange swinging up, blue swinging down. Each is scaled to its own peak, so the
-  // microamps at a grid move as visibly as the plate's milliamps; brighter dots, more current.
+  // AC animation: one period of the signal, slowed to ANIM_S seconds. Each wire's current (the
+  // simulation's terminal currents at 120 instants, carried through the wiring as for the
+  // current stickers) runs as dots along it, showing only the part that carries most of it:
+  // where its average (DC) is at least its AC rms, violet dots flow steadily with the DC;
+  // elsewhere pale dots swing with the AC (less the average). Each node's AC voltage tints its
+  // wires, orange swinging up, blue swinging down. The AC is scaled to each wire's own peak, so
+  // the microamps at a grid move as visibly as the plate's milliamps; brighter dots, more current.
   // ---------------------------------------------------------------------------
-  const ANIM_S = 3;
+  const ANIM_S = 3, ANIM_DC_SPEED = 25;   // DC dots: units a second, about the AC dots' average
   S.anim = { on: false, phase: 0, last: 0, data: null, off: new Map(), raf: 0 };
   function animData() {
     const r = S.sim.result, F = r && r.tran && r.tran.frames;
@@ -502,11 +504,15 @@
     if (S.anim.data && S.anim.data.r === r) return S.anim.data;
     const T = S.sim.topo || topo(), flat = F.layout.slice(), n = F.cur.length;
     const perFrame = F.cur.map(vals => { for (let k = 0; k < vals.length; k++) flat[3 * k + 2] = vals[k]; const wc = wireCurrents(pinMap(flat)); return wc ? wc.currents : new Map(); });
-    const acOf = xs => { const m = xs.reduce((a, v) => a + v, 0) / xs.length, ac = xs.map(v => v - m); return { ac, pk: Math.max(...ac.map(Math.abs)) }; };
+    const acOf = xs => { const m = xs.reduce((a, v) => a + v, 0) / xs.length, ac = xs.map(v => v - m); return { ac, pk: Math.max(...ac.map(Math.abs)), dc: m, rms: Math.sqrt(ac.reduce((a, v) => a + v * v, 0) / ac.length) }; };
     const wires = new Map(), nets = new Map();
     S.wires.forEach(w => {
       const xs = perFrame.map(m => m.get(w.id));
-      if (xs.every(v => v !== undefined && isFinite(v))) { const a = acOf(xs); if (a.pk >= 1e-6) wires.set(w.id, a); }
+      if (xs.every(v => v !== undefined && isFinite(v))) {
+        const a = acOf(xs);
+        a.mode = Math.abs(a.dc) >= a.rms ? "dc" : "ac";   // the part that carries most of the current
+        if ((a.mode === "dc" ? Math.abs(a.dc) : a.pk) >= 1e-6) wires.set(w.id, a);
+      }
       const net = T.wireNet.get(w.id), wave = net > 0 && r.tran.nodes[net];
       if (wave && !nets.has(net)) { const a = acOf(F.at.map(k => wave[k])); if (a.pk >= 1e-3) nets.set(net, a); }
     });
@@ -521,8 +527,8 @@
     const dt = S.anim.last ? Math.min(0.1, (now - S.anim.last) / 1000) : 0; S.anim.last = now;
     if (d) {
       S.anim.phase = (S.anim.phase + dt / ANIM_S) % 1;
-      // dots move at up to 40 units a second at the wire's peak AC current, with its sign
-      d.wires.forEach((a, id) => S.anim.off.set(id, (S.anim.off.get(id) || 0) + dt * 40 * animAt(a.ac, S.anim.phase) / a.pk));
+      // AC dots move at up to 40 units a second at the wire's peak AC current, with its sign; DC dots steadily with the DC
+      d.wires.forEach((a, id) => S.anim.off.set(id, (S.anim.off.get(id) || 0) + dt * (a.mode === "dc" ? ANIM_DC_SPEED * Math.sign(a.dc) : 40 * animAt(a.ac, S.anim.phase) / a.pk)));
     }
     render();
     S.anim.raf = requestAnimationFrame(animTick);
@@ -548,15 +554,15 @@
       ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
     });
   }
-  // over the wires: the AC current as moving dots (spaced 12 units, from x1,y1 towards x2,y2 when positive)
+  // over the wires: the current as moving dots (spaced 12 units, from x1,y1 towards x2,y2 when positive), violet DC or pale AC
   function drawAnimDots() {
     const d = S.anim.on && animData(); if (!d) return;
     d.wires.forEach((a, id) => {
       const w = S.wires.find(q => q.id === id); if (!w) return;
       const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 1) return;
       const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, off = (((S.anim.off.get(id) || 0) % 12) + 12) % 12;
-      const bright = Math.max(0.35, Math.min(1, (Math.log10(a.pk) + 6.5) / 5));
-      ctx.fillStyle = `rgba(255,247,194,${bright.toFixed(2)})`;
+      const dc = a.mode === "dc", bright = Math.max(0.35, Math.min(1, (Math.log10(dc ? Math.abs(a.dc) : a.pk) + 6.5) / 5));
+      ctx.fillStyle = dc ? `rgba(210,168,255,${bright.toFixed(2)})` : `rgba(255,247,194,${bright.toFixed(2)})`;
       for (let s = off; s <= L; s += 12) { ctx.beginPath(); ctx.arc(w.x1 + ux * s, w.y1 + uy * s, 2.2, 0, Math.PI * 2); ctx.fill(); }
     });
   }
@@ -1438,7 +1444,7 @@
   function legendRows() {
     const r = S.sim.result; if (!r || !(S.showVolts || S.showAmps || S.anim.on)) return [];
     const rows = [], ac = S.showVolts && r.tran;
-    if (S.anim.on && animData()) rows.push({ anim: "dots", text: "AC current: dots run with it, brighter = more" }, { anim: "up", text: "node swinging up (above its DC)" }, { anim: "down", text: "node swinging down" });
+    if (S.anim.on && animData()) rows.push({ anim: "dots", text: "AC current: dots swing with it, brighter = more" }, { anim: "dcdots", text: "mostly DC: dots flow steadily with the DC" }, { anim: "up", text: "node swinging up (above its DC)" }, { anim: "down", text: "node swinging down" });
     else if (ac) rows.push({ glow: true, text: "signal: AC on the wire (≥ 1 % of its DC)" });
     if (S.showVolts) rows.push({ tag: "250V", fg: "#ffd54f", line: "rgba(255,213,79,0.35)", text: "DC voltage of the node" });
     if (ac) rows.push({ tag: "~1.2Vrms", fg: "#00e5ff", line: "rgba(0,229,255,0.45)", text: "AC on the node, rms" });
@@ -1457,9 +1463,10 @@
       const y = y0 + 5 + i * lh + lh / 2, x = x0 + 6;
       if (q.anim) {
         ctx.lineCap = "round";
-        if (q.anim !== "dots") { ctx.strokeStyle = q.anim === "up" ? "rgba(255,150,60,0.6)" : "rgba(70,160,255,0.6)"; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke(); }
+        const dots = q.anim === "dots" || q.anim === "dcdots";
+        if (!dots) { ctx.strokeStyle = q.anim === "up" ? "rgba(255,150,60,0.6)" : "rgba(70,160,255,0.6)"; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke(); }
         ctx.strokeStyle = "#3fb950"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke();
-        if (q.anim === "dots") { ctx.fillStyle = "rgba(255,247,194,0.95)"; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(x + 8 + k * 11, y, 2.2, 0, Math.PI * 2); ctx.fill(); } }
+        if (dots) { ctx.fillStyle = q.anim === "dots" ? "rgba(255,247,194,0.95)" : "rgba(210,168,255,0.95)"; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(x + 8 + k * 11, y, 2.2, 0, Math.PI * 2); ctx.fill(); } }
       } else if (q.glow) {
         ctx.lineCap = "round"; ctx.strokeStyle = "rgba(0,229,255,0.30)"; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke();
         ctx.strokeStyle = "#3fb950"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 4, y); ctx.lineTo(x + sw - 8, y); ctx.stroke();

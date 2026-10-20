@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.82.0] - 2026-10-20
+
+### Changed
+- **Animate shows each wire's main current.** Each wire's dots now show only the part of its current that carries most of it. Where the DC is at least the AC (rms), violet dots flow steadily in the DC's direction, so a plate's supply lead or a cathode resistor shows its standing current instead of a small ripple; elsewhere the pale dots swing with the AC as before, as at a grid or through a coupling capacitor. The legend explains both.
+
 ## [3.81.0] - 2026-10-19
 
 ### Added
