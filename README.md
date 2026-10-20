@@ -179,10 +179,11 @@ the circuit that was on the sheet.
     with its DC current and direction ("↓1.38mA"). In a mains-fed circuit
     both are averaged over the settled window, as a meter reads them.
   - **∿ Animate** plays one signal cycle slowed to 3 s: dots run along each
-    wire with the part of its current that carries most of it (from the
-    simulation's terminal currents at 120 instants, capacitors' C·dV/dt
-    included). Where the DC is at least the AC rms, violet dots flow steadily
-    with the DC; elsewhere pale dots swing with the AC. Each node's wires turn
+    wire with its DC or its AC current (from the simulation's terminal
+    currents at 120 instants, capacitors' C·dV/dt included), chosen by the
+    node's voltage. Where the node's DC voltage is at least its AC rms, violet
+    dots flow steadily with the DC current; elsewhere pale dots swing with
+    the AC current. Each node's wires turn
     orange as it swings up and blue as it swings down.
   - AC is marked apart from DC: a net with AC on it adds it in cyan as
     "~20.1Vrms" after the yellow DC ("162V ~20.1Vrms"); a net with no DC

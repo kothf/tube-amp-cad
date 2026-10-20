@@ -490,11 +490,13 @@
   // ---------------------------------------------------------------------------
   // AC animation: one period of the signal, slowed to ANIM_S seconds. Each wire's current (the
   // simulation's terminal currents at 120 instants, carried through the wiring as for the
-  // current stickers) runs as dots along it, showing only the part that carries most of it:
-  // where its average (DC) is at least its AC rms, violet dots flow steadily with the DC;
-  // elsewhere pale dots swing with the AC (less the average). Each node's AC voltage tints its
-  // wires, orange swinging up, blue swinging down. The AC is scaled to each wire's own peak, so
-  // the microamps at a grid move as visibly as the plate's milliamps; brighter dots, more current.
+  // current stickers) runs as dots along it, showing only its DC or its AC, by its node's
+  // voltage: where the node's DC is at least its AC rms, violet dots flow steadily with the
+  // DC current; elsewhere pale dots swing with the current less its DC. Ground goes by its
+  // current, and a wire that carries next to none of the chosen part shows the other. Each
+  // node's AC voltage tints its wires, orange swinging up, blue swinging down. The AC is scaled
+  // to each wire's own peak, so the microamps at a grid move as visibly as the plate's
+  // milliamps; brighter dots, more current.
   // ---------------------------------------------------------------------------
   const ANIM_S = 3, ANIM_DC_SPEED = 25;   // DC dots: units a second, about the AC dots' average
   S.anim = { on: false, phase: 0, last: 0, data: null, off: new Map(), raf: 0 };
@@ -504,17 +506,24 @@
     if (S.anim.data && S.anim.data.r === r) return S.anim.data;
     const T = S.sim.topo || topo(), flat = F.layout.slice(), n = F.cur.length;
     const perFrame = F.cur.map(vals => { for (let k = 0; k < vals.length; k++) flat[3 * k + 2] = vals[k]; const wc = wireCurrents(pinMap(flat)); return wc ? wc.currents : new Map(); });
-    const acOf = xs => { const m = xs.reduce((a, v) => a + v, 0) / xs.length, ac = xs.map(v => v - m); return { ac, pk: Math.max(...ac.map(Math.abs)), dc: m, rms: Math.sqrt(ac.reduce((a, v) => a + v * v, 0) / ac.length) }; };
+    const acOf = (xs, m0) => { const m = m0 !== undefined ? m0 : xs.reduce((a, v) => a + v, 0) / xs.length, ac = xs.map(v => v - m); return { ac, pk: Math.max(...ac.map(Math.abs)), dc: m, rms: Math.sqrt(ac.reduce((a, v) => a + v * v, 0) / ac.length) }; };
+    // DC or AC is judged over the whole settled capture, not the one signal cycle the frames
+    // span: against a 1 kHz signal the 50 Hz mains barely moves in a cycle and would pass for DC
+    const wc = wireCurrents(), dcW = wc ? wc.currents : new Map();
     const wires = new Map(), nets = new Map();
     S.wires.forEach(w => {
-      const xs = perFrame.map(m => m.get(w.id));
-      if (xs.every(v => v !== undefined && isFinite(v))) {
-        const a = acOf(xs);
-        a.mode = Math.abs(a.dc) >= a.rms ? "dc" : "ac";   // the part that carries most of the current
-        if ((a.mode === "dc" ? Math.abs(a.dc) : a.pk) >= 1e-6) wires.set(w.id, a);
-      }
       const net = T.wireNet.get(w.id), wave = net > 0 && r.tran.nodes[net];
       if (wave && !nets.has(net)) { const a = acOf(F.at.map(k => wave[k])); if (a.pk >= 1e-3) nets.set(net, a); }
+      const xs = perFrame.map(m => m.get(w.id));
+      if (xs.every(v => v !== undefined && isFinite(v))) {
+        const a = acOf(xs, dcW.get(w.id)), vs = wave && stats(wave), vdc = netDC(net);
+        // DC or AC by the node's voltage (its DC against its AC rms); ground, with neither, by the current
+        a.mode = vs && vdc !== null && (Math.abs(vdc) >= 1e-3 || vs.rmsAC >= 1e-3) ? (Math.abs(vdc) >= vs.rmsAC ? "dc" : "ac") : (Math.abs(a.dc) >= a.rms ? "dc" : "ac");
+        // ...unless the wire carries next to none of that part: a filter capacitor on a DC rail passes only the ripple
+        const dcI = Math.abs(a.dc);
+        if (a.mode === "dc" && dcI < 0.05 * a.rms) a.mode = "ac"; else if (a.mode === "ac" && a.rms < 0.05 * dcI) a.mode = "dc";
+        if ((a.mode === "dc" ? dcI : a.pk) >= 1e-6) wires.set(w.id, a);
+      }
     });
     S.anim.data = { r, n, wires, nets, f: signalFreq() };
     return S.anim.data;
@@ -1444,7 +1453,7 @@
   function legendRows() {
     const r = S.sim.result; if (!r || !(S.showVolts || S.showAmps || S.anim.on)) return [];
     const rows = [], ac = S.showVolts && r.tran;
-    if (S.anim.on && animData()) rows.push({ anim: "dots", text: "AC current: dots swing with it, brighter = more" }, { anim: "dcdots", text: "mostly DC: dots flow steadily with the DC" }, { anim: "up", text: "node swinging up (above its DC)" }, { anim: "down", text: "node swinging down" });
+    if (S.anim.on && animData()) rows.push({ anim: "dots", text: "AC current: dots swing with it (node mostly AC)" }, { anim: "dcdots", text: "DC current: dots flow steadily (node mostly DC)" }, { anim: "up", text: "node swinging up (above its DC)" }, { anim: "down", text: "node swinging down" });
     else if (ac) rows.push({ glow: true, text: "signal: AC on the wire (≥ 1 % of its DC)" });
     if (S.showVolts) rows.push({ tag: "250V", fg: "#ffd54f", line: "rgba(255,213,79,0.35)", text: "DC voltage of the node" });
     if (ac) rows.push({ tag: "~1.2Vrms", fg: "#00e5ff", line: "rgba(0,229,255,0.45)", text: "AC on the node, rms" });

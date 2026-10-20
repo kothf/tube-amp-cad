@@ -1902,6 +1902,13 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const circuitChecks = await cad.evaluate(() => { TubeCAD.state.sel.comps.clear(); TubeCAD.updateInspector(); const t = document.getElementById("inspector").innerText; return t.slice(t.indexOf("CHECKS"), t.indexOf("Renumber")); });
     check(/No problems found/i.test(circuitChecks) && pk[2] <= 100, `Gubin example: no warnings in the circuit's checks (the 5Ц4С's peak anode current ${pk[1]} is within 375 mA)${/No problems/i.test(circuitChecks) ? "" : ": " + circuitChecks.replace(/\s+/g, " ")}`);
     await cad.evaluate(() => { const S = TubeCAD.state, v = S.comps.find(c => c.label === "VL1"); S.sel.comps.clear(); S.sel.comps.add(v.id); TubeCAD.updateInspector(); });
+    // Animate picks DC or AC by the node's voltage over the whole capture: the 50 Hz mains is AC, even though it barely moves in one 1 kHz signal cycle
+    const mainsModes = await cad.evaluate(() => {
+      const S = TubeCAD.state, d = TubeCAD.anim().data, m = S.comps.find(c => c.type === "mains"); if (!d || !m) return null;
+      const pins = new Set(TubeCAD.compPins(m).map(p => p.x + "," + p.y));
+      return S.wires.filter(w => pins.has(w.x1 + "," + w.y1) || pins.has(w.x2 + "," + w.y2)).map(w => d.wires.get(w.id) && d.wires.get(w.id).mode);
+    });
+    check(mainsModes && mainsModes.length && mainsModes.every(x => x === "ac"), `Animate: the mains wires carry AC dots (${mainsModes && mainsModes.join(", ")})`);
     check(rect[2] > 75 && rect[2] < 100 && pk[1], `Gubin example: the 5Ц4С delivers ${rect[1]} (${rect[2]} % of 125 mA, not of the per-anode 62 mA); peak anode current ${pk[1]} (${pk[2]} % of 375 mA)`);
     // the BOM's Sim. max: worked out when the simulation finishes, with the BOM closed; every kind of part has one
     const bomRows = await cad.evaluate(() => { const S = TubeCAD.state; return { open: !document.getElementById("bom").hidden, rows: TubeCAD.bomData().rows.map(r => [r.refs, r.sim]) }; });
