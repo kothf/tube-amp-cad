@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.83.0] - 2026-10-20
+
+### Fixed
+- **Animate picks DC or AC by the node's voltage.** Each wire's dots now follow its node: where the DC voltage is at least the AC rms the violet DC dots flow, elsewhere the pale AC dots swing. The choice is made over the whole settled capture, so the mains, a power transformer's windings and a rectifier's anodes show AC (before, against a 1 kHz signal the 50 Hz mains barely moved in the one animated cycle and passed for DC). Ground wires still go by their current, and a filter capacitor on a DC rail, which passes only the ripple, shows AC.
+
 ## [3.82.0] - 2026-10-20
 
 ### Changed
