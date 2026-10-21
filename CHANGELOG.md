@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.84.0] - 2026-10-21
+
+### Changed
+- **Gubin 5Ц4С example gives more power.** The 6P14P's grid swing was the limit: the direct coupling left it 72 V on the cathode, 247 V across the tube and only −6.6 V of bias, and the 1.5 kΩ feedback kept a phone well short of even that. R7 and R9 are now 47 kΩ (the 6P14P's grid, and so its cathode, sit lower), R13 and R14 1.6 kΩ, R3 100 Ω (B+ 327 → 351 V) and R11 and R12 2.2 kΩ: the 6P14P runs at 276 V, 39 mA, −8.5 V bias (10.5 W of 12 W), the 5Ц4С still delivers 106 mA. Triode position: 1.1 W from a phone at full volume (−5.6 dBV, 0.32 % THD, was 0.72 W), 1.7 W at 1 % THD and 2.0 W at 3 % (were 1.07 W and 1.27 W). Pentode position: 2.05 W from a phone (was 1.2 W), 3.7 W at 3 % THD; up to clipping the distortion is mostly second harmonic. The board keeps its layout: with the anode swinging to about 700 V the output transformers' ground pads lost their pour, so each gets a short ground stub, and one VL3 anode track moves clear of the socket's pin 6.
+
 ## [3.83.0] - 2026-10-20
 
 ### Fixed
