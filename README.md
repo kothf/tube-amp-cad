@@ -225,6 +225,9 @@ the circuit that was on the sheet.
   - Frames are locked against accidental moves; unlock one in its inspector.
   - A circuit with several sheets opens on sheet 1. The Sheet list, or <kbd>F</kbd>
     pressed twice, shows them all.
+  - A scroll bar under the drawing marks every sheet: drag it to scroll, click a
+    sheet's mark to show it, or step between sheets with its arrows (Page Up /
+    Page Down).
 - **PDF and PNG.**
   - *Save as PDF* writes every sheet as a vector page.
   - *Export sheet…* saves the sheet in use, each sheet as its own file, or

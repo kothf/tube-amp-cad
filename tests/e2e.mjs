@@ -850,6 +850,27 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   await forget();
   check(onSheet1 && same(looked, v2) && same(again, vAll) && same(clicked, v2) && same(selected, v1) && !same(v1, v2) && !same(v2, vAll),
     "Fit (button or F) fits the sheet in view, the clicked one, or the one with the selection; again on a fitted sheet shows all sheets");
+  // the horizontal scroll bar: both sheets marked on its track, the arrows step between them,
+  // a click on a sheet's mark shows that sheet, dragging the thumb scrolls the drawing
+  {
+    await cad.locator("#sheet-nav").selectOption(ids[0]);
+    const bar = await cad.evaluate(() => ({ hidden: document.getElementById("hscroll").hidden, marks: [...document.querySelectorAll(".hs-mark")].map(m => m.textContent),
+      prev: document.getElementById("hs-prev").disabled, next: document.getElementById("hs-next").disabled }));
+    await cad.locator("#hs-next").click(); const n1 = await view();
+    await cad.keyboard.press("PageUp"); const p1v = await view();
+    await cad.keyboard.press("PageDown"); const n2 = await view();
+    await cad.locator(".hs-mark").first().click(); const m1 = await view();
+    const tb = await cad.locator("#hs-thumb").boundingBox();
+    await cad.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2); await cad.mouse.down();
+    await cad.mouse.move(tb.x + tb.width / 2 + 40, tb.y + tb.height / 2, { steps: 4 }); await cad.mouse.up();
+    const dragged = await view();
+    check(!bar.hidden && bar.marks.join() === "1,2" && bar.prev && !bar.next, `with two sheets a scroll bar under the drawing marks them (${bar.marks.join(", ")}); on sheet 1 only → is live`);
+    check(same(n1, v2) && same(p1v, v1) && same(n2, v2) && same(m1, v1), "the scroll bar's arrows (and Page Up / Page Down) step between the sheets, a click on a sheet's mark shows it");
+    check(dragged.ox < m1.ox - 20 && dragged.scale === m1.scale && dragged.oy === m1.oy, `dragging the thumb right scrolls the drawing left (ox ${m1.ox.toFixed(0)} → ${dragged.ox.toFixed(0)})`);
+    const one = await cad.evaluate(() => { const S = TubeCAD.state, keep = S.comps.slice(); S.comps = [keep.find(c => c.type === "frame")]; TubeCAD.fitView();
+      const h = document.getElementById("hscroll").hidden; S.comps = keep; TubeCAD.fitView(); return h; });
+    check(one, "with one sheet that fits in the view the scroll bar is hidden");
+  }
   // a 300 V supply on sheet 1 feeds a 1 kΩ load on sheet 2 through two "+B" connectors
   const r = await cad.evaluate(() => {
     const S = TubeCAD.state, C = TubeCAD, [f1, f2] = C.frames();

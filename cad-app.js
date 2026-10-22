@@ -1256,7 +1256,9 @@
   function onWheel(e) {
     e.preventDefault();
     const m = evPos(e);
-    if (e.shiftKey) { S.view.ox -= e.deltaY; render(); return; }
+    if (e.shiftKey) { S.view.ox -= e.deltaY || e.deltaX; render(); return; }
+    // a sideways swipe on a touchpad (or a tilted wheel) scrolls left and right
+    if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(e.deltaY)) { S.view.ox -= e.deltaX; render(); return; }
     zoomAt(m.sx, m.sy, Math.exp(-e.deltaY * 0.0015));
   }
 
@@ -1288,6 +1290,8 @@
     .add({ id: "wire", keys: ["W"], run: () => setTool(S.tool === "wire" ? "select" : "wire"), help: "wire tool" })
     .add({ id: "select", keys: ["V"], run: () => setTool("select"), help: "select tool" })
     .add({ id: "escape", keys: ["Escape"], anyCtrl: true, run: clearOrCancel, help: "cancel / clear the selection" })
+    .add({ id: "sheet-prev", label: "Previous sheet", keys: ["PageUp"], prevent: true, when: () => frames().length > 1, run: () => stepSheet(-1), help: "previous sheet" })
+    .add({ id: "sheet-next", label: "Next sheet", keys: ["PageDown"], prevent: true, when: () => frames().length > 1, run: () => stepSheet(1), help: "next sheet" })
     .add({ id: "fit", label: "Fit the sheet", keys: ["F"], run: () => fitCurrent(), help: "fit the sheet in use; again: all sheets" })
     .add({ id: "bom", keys: ["B"], run: () => toggleBom(), check: () => bomOpts.open && bomOpts.tab === "bom", help: "bill of materials" })
     .add({ id: "checks", label: "Checks", run: () => toggleBom(undefined, "checks"), check: () => bomOpts.open && bomOpts.tab === "checks" })
@@ -1345,6 +1349,7 @@
   // Rendering
   // ---------------------------------------------------------------------------
   function render() {
+    updateHScroll();   // at once, not on the next frame: a page in the background gets none
     if (renderQueued) return;
     renderQueued = true;
     requestAnimationFrame(draw);
@@ -1446,7 +1451,7 @@
       ctx.fillText("Click a pin to start a wire · wheel zooms · Space or middle-drag pans", W / 2, H / 2 + 12);
       ctx.textAlign = "left";
     }
-    if (S.showLegend) drawLegend(H); else legendBox = null;
+    if (S.showLegend) drawLegend(H - (document.getElementById("hscroll").hidden ? 0 : 18)); else legendBox = null;
     drawAnimHud();
   }
   // what the colours on the sheet mean: only the marks that are showing
@@ -2336,6 +2341,98 @@
     nav.innerHTML = `<option value="">All sheets</option>` + list.map((f, i) => `<option value="${f.id}">Sheet ${sheetNo(f, list)}${f.params.title ? " · " + f.params.title.replace(/[<&]/g, "") : ""}</option>`).join("");
     nav.value = list.some(f => f.id === cur) ? cur : "";
   }
+  // The horizontal scroll bar under the drawing: its track spans the whole drawing (and the
+  // view), the thumb is the part on screen, and every sheet is marked on it by its number.
+  // Drag the thumb to scroll; click a sheet's mark to show that sheet, the bare track to move
+  // a screen's width; the arrows (Page Up / Page Down) step from sheet to sheet. It shows
+  // while there are several sheets or the drawing runs past the sides of the view.
+  const hs = { range: null, key: "" };
+  function drawingSpan() {
+    let x1 = Infinity, x2 = -Infinity;
+    S.comps.forEach(c => { const b = compBBox(c); x1 = Math.min(x1, b.x1); x2 = Math.max(x2, b.x2); });
+    S.wires.forEach(w => { x1 = Math.min(x1, w.x1, w.x2); x2 = Math.max(x2, w.x1, w.x2); });
+    return x1 <= x2 ? { x1, x2 } : null;
+  }
+  function hsRange() {
+    const W = canvas.clientWidth, v1 = toWorld(0, 0).x, v2 = toWorld(W, 0).x, d = drawingSpan();
+    if (!d) return null;
+    const pad = 40 / S.view.scale;   // a little room past the drawing's ends
+    return { x1: Math.min(d.x1 - pad, v1), x2: Math.max(d.x2 + pad, v2), v1, v2, over: d.x1 < v1 - 1e-6 || d.x2 > v2 + 1e-6 };
+  }
+  function updateHScroll() {
+    const bar = document.getElementById("hscroll"); if (!bar) return;
+    const list = frames();
+    const r = hs.drag ? { ...hs.drag.range, v1: toWorld(0, 0).x, v2: toWorld(canvas.clientWidth, 0).x } : hsRange();
+    const on = !!r && (list.length > 1 || r.over || !!hs.drag);
+    bar.hidden = !on;
+    if (!on) { hs.range = null; return; }
+    hs.range = r;
+    const track = document.getElementById("hs-track"), thumb = document.getElementById("hs-thumb"), tw = track.clientWidth, span = r.x2 - r.x1;
+    const px = x => (x - r.x1) / span * tw;
+    thumb.style.left = px(r.v1) + "px"; thumb.style.width = Math.max(16, px(r.v2) - px(r.v1)) + "px";
+    thumb.setAttribute("aria-valuemin", 0); thumb.setAttribute("aria-valuemax", 100);
+    thumb.setAttribute("aria-valuenow", Math.round(span > r.v2 - r.v1 ? (r.v1 - r.x1) / (span - (r.v2 - r.v1)) * 100 : 0));
+    // the sheet marks, redrawn only when a sheet or the track's scale changed
+    const marks = list.map(f => { const b = compBBox(f); return { id: f.id, no: sheetNo(f, list), title: f.params.title || "", l: px(b.x1), w: px(b.x2) - px(b.x1) }; });
+    const key = JSON.stringify(marks.map(m => [m.id, m.no, m.title, Math.round(m.l), Math.round(m.w)]));
+    if (key !== hs.key) {
+      hs.key = key;
+      track.querySelectorAll(".hs-mark").forEach(el => el.remove());
+      if (list.length > 1) marks.forEach(m => {
+        const el = document.createElement("div"); el.className = "hs-mark"; el.dataset.id = m.id;
+        el.style.left = m.l + "px"; el.style.width = Math.max(2, m.w) + "px";
+        el.textContent = m.w > 14 ? m.no : ""; el.title = `Sheet ${m.no}${m.title ? " · " + m.title : ""}: click to show it`;
+        track.insertBefore(el, thumb);
+      });
+    }
+    const cur = list.length > 1 ? viewedSheet() : -1;
+    document.getElementById("hs-prev").hidden = document.getElementById("hs-next").hidden = list.length < 2;
+    document.getElementById("hs-prev").disabled = cur <= 0;
+    document.getElementById("hs-next").disabled = cur >= list.length - 1;
+  }
+  // the sheet that fills most of the view (its index in frames()), -1 for none
+  function viewedSheet() {
+    const list = frames(), v1 = toWorld(0, 0), v2 = toWorld(canvas.clientWidth, canvas.clientHeight);
+    let best = -1, area = 0;
+    list.forEach((f, i) => { const b = compBBox(f), a = Math.max(0, Math.min(b.x2, v2.x) - Math.max(b.x1, v1.x)) * Math.max(0, Math.min(b.y2, v2.y) - Math.max(b.y1, v1.y)); if (a > area) { area = a; best = i; } });
+    return best;
+  }
+  // the previous (-1) or next (+1) sheet; from a view of all sheets, the first or last
+  function stepSheet(dir) {
+    const list = frames(); if (list.length < 2) return;
+    const cur = viewedSheet(), f = list[Math.max(0, Math.min(list.length - 1, cur < 0 ? (dir > 0 ? 0 : list.length - 1) : cur + dir))];
+    fitSheet(f);
+  }
+  // scroll so the left edge of the view is at world x
+  function hsScrollTo(worldLeft) { S.view.ox = -worldLeft * S.view.scale; render(); }
+  function bindHScroll() {
+    const track = document.getElementById("hs-track"), thumb = document.getElementById("hs-thumb");
+    thumb.addEventListener("pointerdown", e => {
+      if (e.button !== 0 || !hs.range) return;
+      e.preventDefault(); e.stopPropagation(); thumb.setPointerCapture(e.pointerId); thumb.classList.add("drag");
+      hs.drag = { x0: e.clientX, v1: hs.range.v1, range: { x1: hs.range.x1, x2: hs.range.x2 } };
+      const nav = document.getElementById("sheet-nav"); if (nav) nav.value = "";
+    });
+    thumb.addEventListener("pointermove", e => {
+      if (!hs.drag) return;
+      const d = hs.drag, k = (d.range.x2 - d.range.x1) / track.clientWidth;
+      hsScrollTo(d.v1 + (e.clientX - d.x0) * k);
+    });
+    const end = () => { if (!hs.drag) return; hs.drag = null; thumb.classList.remove("drag"); render(); };
+    thumb.addEventListener("pointerup", end); thumb.addEventListener("pointercancel", end);
+    track.addEventListener("pointerdown", e => {
+      if (e.button !== 0 || e.target === thumb || !hs.range) return;
+      e.preventDefault();
+      const f = e.target.classList.contains("hs-mark") && S.comps.find(c => c.id === e.target.dataset.id);
+      if (f) { fitSheet(f); return; }
+      // the bare track: a screen's width towards the click
+      const r = hs.range, x = r.x1 + (e.clientX - track.getBoundingClientRect().left) / track.clientWidth * (r.x2 - r.x1), w = r.v2 - r.v1;
+      hsScrollTo(r.v1 + (x < r.v1 ? -1 : 1) * w * 0.9);
+      const nav = document.getElementById("sheet-nav"); if (nav) nav.value = "";
+    });
+    bind("hs-prev", () => stepSheet(-1));
+    bind("hs-next", () => stepSheet(1));
+  }
   // file name from the title block (or a default)
   function baseName() {
     const f = S.comps.find(c => c.type === "frame"), t = f && (f.params.docno || f.params.title);
@@ -2725,6 +2822,7 @@
     UiKit.menus(document.querySelector("header"));
     bind("btn-new", () => openSheetDialog("new"));
     bind("btn-add-sheet", () => openSheetDialog("add"));
+    bindHScroll();
     document.getElementById("sheet-nav").addEventListener("change", e => { const f = S.comps.find(c => c.id === e.target.value); if (f) fitSheet(f); else fitView(); });
     bind("btn-pdf", () => exportPDF());
     bind("btn-export", () => openExportDialog());
@@ -2804,6 +2902,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { tolerance, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData() }), setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { tolerance, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData() }), setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
