@@ -73,6 +73,18 @@
     /* canvas */
     #stage { position: relative; min-width: 0; min-height: 0; }
     #cad { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+    /* the horizontal scroll bar under the drawing: the sheets marked on its track */
+    #hscroll { position: absolute; left: 0; right: 0; bottom: 0; height: 18px; display: flex; background: rgba(15,21,30,0.92); border-top: 1px solid var(--line); user-select: none; }
+    #hscroll[hidden] { display: none; }
+    #hscroll .hs-btn { width: 22px; flex: none; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0; font-size: 13px; line-height: 1; }
+    #hscroll .hs-btn:hover:not(:disabled) { color: var(--accent); }
+    #hscroll .hs-btn:disabled { opacity: 0.35; cursor: default; }
+    #hscroll .hs-btn[hidden] { display: none; }
+    #hs-track { position: relative; flex: 1; min-width: 0; overflow: hidden; cursor: pointer; }
+    .hs-mark { position: absolute; top: 3px; bottom: 3px; border: 1px solid #2c3d55; border-radius: 3px; color: var(--muted); font-size: 9px; line-height: 10px; text-align: center; overflow: hidden; white-space: nowrap; }
+    .hs-mark:hover { border-color: var(--accent); color: var(--accent); }
+    #hs-thumb { position: absolute; top: 2px; bottom: 2px; min-width: 16px; background: rgba(0,229,255,0.16); border: 1px solid rgba(0,229,255,0.55); border-radius: 4px; cursor: grab; }
+    #hs-thumb.drag { cursor: grabbing; background: rgba(0,229,255,0.26); }
 
     /* inspector */
     #inspector { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 10px 12px; }
@@ -294,7 +306,13 @@
   <main>
     <nav id="palette" aria-label="Parts"></nav>
     <div id="center">
-      <div id="stage"><canvas id="cad" aria-label="Schematic"></canvas></div>
+      <div id="stage"><canvas id="cad" aria-label="Schematic"></canvas>
+        <div id="hscroll" hidden>
+          <button class="hs-btn" id="hs-prev" title="Previous sheet (Page Up)" aria-label="Previous sheet">&#x2039;</button>
+          <div id="hs-track" title="Drag to scroll · click a sheet to show it"><div id="hs-thumb" role="scrollbar" aria-orientation="horizontal" aria-controls="cad" aria-label="Scroll the drawing left and right"></div></div>
+          <button class="hs-btn" id="hs-next" title="Next sheet (Page Down)" aria-label="Next sheet">&#x203a;</button>
+        </div>
+      </div>
       <section id="bom" aria-label="Bill of materials and checks" hidden>
         <div class="bom-grip" title="Drag to resize"></div>
         <div class="bom-head">

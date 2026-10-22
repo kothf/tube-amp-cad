@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.85.0] - 2026-10-22
+
+### Added
+- **Horizontal scroll bar in the schematic editor.** A bar under the drawing shows which part of it is on screen, with every sheet marked on its track by number. Drag the bar to scroll left and right, click a sheet's mark to show that sheet, click the bare track to move a screen's width; the ‹ › buttons at its ends, and Page Up / Page Down, step to the previous and next sheet. It appears with two or more sheets, or when the drawing runs past the sides of the view. A sideways swipe on a touchpad now scrolls the drawing too, instead of being ignored.
+
 ## [3.84.0] - 2026-10-21
 
 ### Changed
