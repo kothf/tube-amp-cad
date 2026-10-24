@@ -131,6 +131,10 @@
     } else if ((m = /^TOGGLE-/.exec(name))) {
       const r = fp.silk.find(s => s.t === "rect");
       out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, 0.5, 10, C.black, to), cylZ(0, 0, 3, 10, 19, C.metal, to), cylZ(0, 0, 1.1, 19, 30, C.metal, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
+    } else if (/^DIP-\d+$/.test(name)) {
+      // the moulded body (7.62 mm row pitch: 6.35 mm wide, 3.3 mm thick) standing on its leads
+      const r = fp.silk.find(q => q.t === "rect");
+      out.push(box(-3.2, r.y, 3.2, r.y + r.h, 0.5, 3.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 1));
     } else if (/^WIRE-/.test(name)) {
       pads.forEach((p, i) => out.push(cylZ(p.x, p.y, 0.8, 0, 8, i % 2 ? C.wireBlack : C.wireRed, to)));
     } else {

@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.87.0] - 2026-10-25
+
+### Added
+- **Op-amps: TL071, TL072, TL074, LM741, LM301A and LM324.** A new *Integrated circuits* group in the palette. Each op-amp has its datasheet's open-loop gain, gain-bandwidth (TL07x 3 MHz, LM741 and LM301A 1 MHz, LM324 1.2 MHz), slew rate (13 V/µs for the JFET TL07x, 0.5 V/µs for the others), output swing (within 1–1.5 V of the rails; the LM324 down to V−), output resistance, short-circuit current, input bias current and supply current, all drawn from the V+ and V− pins. The LM301A has no compensation of its own: its pins 1 and 8 are on the symbol for your capacitor (30 pF for unity gain). Checked in the textbook circuits against the datasheets: inverting ×10 to 0.1 %, a follower's bandwidth at the gain-bandwidth, ×101 at a hundredth of it, the slew rate on a square wave, clipping into 10 kΩ, the short-circuit current into 10 Ω, plus single-supply followers, comparators and Schmitt triggers. The inspector shows the output, its current and swing (amber when it clips), the voltage between the inputs and the dissipation; the checks flag a supply over the type's maximum. The SPICE export writes each type as a subcircuit of behavioural sources.
+- **Op-amps on the board.** DIP-8 and DIP-14 footprints (and their 3D bodies). The amplifiers of a dual or quad named DA1.1 … DA1.4 share one package, each on its own pins from the maker's pinout, the supply pins shared. The schematic shows the package's pin numbers beside each lead.
+
 ## [3.86.0] - 2026-10-24
 
 ### Changed

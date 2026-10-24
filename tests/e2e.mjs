@@ -1207,6 +1207,41 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     check(groups.none === 0 && groups.ge.includes("AC128") && groups.ge.includes("MP39B") && !groups.ge.includes("BC557B") && groups.si.includes("BC557B"),
       `the PNP Type list puts ${groups.ge.length} germanium parts under Germanium and ${groups.si.length} under Silicon`);
   }
+  {
+    // op-amps: the palette's Integrated circuits group; a TL072 inverting ×−10 on ±15 V through the editor,
+    // its inspector reading the gain and the clipping, the SPICE export, and the package's pin numbers
+    const ics = await cad.evaluate(() => [...document.querySelectorAll("#palette .pal-group")].find(g => /Integrated circuits/.test(g.textContent)) ? [...document.querySelectorAll("#palette .pal-item")].filter(el => /TL07|LM741|LM301|LM324/.test(el.textContent)).length : 0);
+    check(ics === 6, `palette: Integrated circuits offers the six op-amps (${ics})`);
+    const build = amp => cad.evaluate(a => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot, label) => { const c = C.makeComp(type, params, x, y, rot || 0); if (label) c.label = label; S.comps.push(c); return c; };
+      const pin = (c, id) => C.compPins(c).find(p => p.id === id);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const U = add("opamp", { model: "TL072" }, 400, 300, 0, "DA1.2"), G = add("siggen", { amp: a, freq: 1000, rs: 0 }, 200, 340);
+      const Ri = add("resistor", { r: 10e3 }, 300, 260, 0), Rf = add("resistor", { r: 100e3 }, 400, 200, 0), RL = add("resistor", { r: 10e3 }, 500, 360, 1);
+      const P = add("vdc", { v: 15 }, 600, 140), N = add("vdc", { v: 15 }, 600, 460), g1 = add("ground", {}, 200, 420), g2 = add("ground", {}, 340, 420), g3 = add("ground", {}, 600, 200), g4 = add("ground", {}, 660, 440), g5 = add("ground", {}, 500, 420);
+      wire(pin(G, "+"), pin(Ri, "1"), false); wire(pin(Ri, "2"), pin(U, "-")); wire(pin(G, "-"), pin(g1, "G"));
+      wire(pin(U, "+"), pin(g2, "G")); wire(pin(Rf, "1"), pin(Ri, "2"), false); wire(pin(Rf, "2"), pin(U, "OUT"), false);
+      wire(pin(U, "OUT"), pin(RL, "1")); wire(pin(RL, "2"), pin(g5, "G"));
+      wire(pin(U, "V+"), pin(P, "+"), false); wire(pin(P, "-"), pin(g3, "G")); wire(pin(U, "V-"), pin(N, "-"), false); wire(pin(N, "+"), pin(g4, "G"));
+      S.sel.comps.add(U.id); C.commit();
+    }, amp);
+    const readOut = async () => {
+      await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /Output swing/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+      return (await cad.textContent("#insp-live")).replace(/\s+/g, " ");
+    };
+    await build(0.5);
+    let live = await readOut();
+    const pp = +((/Output swing\s*([\d.]+)Vpp/.exec(live) || [])[1]);
+    const info = (await cad.textContent("#inspector")).replace(/\s+/g, " ");
+    check(Math.abs(pp - 10) < 0.02 && !/clips/.test(live) && /Amplifier 2 of 2 in a DIP-8: pins 5 \(\+\), 6 \(−\), 7 \(out\)/.test(info), `op-amp: TL072 (DA1.2) inverting ×−10 gives ${pp} Vpp from 1 Vpp, on pins 5, 6, 7 of its DIP-8`);
+    await build(2);
+    live = await readOut();
+    check(/clips/.test(live) && /Output swing\s*2[67][\d.]*Vpp/.test(live), `op-amp: 4 Vpp in clips at the TL072's swing (${(/Output swing\s*([\d.]+Vpp)/.exec(live) || [])[1]})`);
+    const sp = await cad.evaluate(() => TubeCAD.spiceNetlist ? TubeCAD.spiceNetlist() : "");
+    check((/\.subckt OPAMP_TL072 INP INN OUT VP VN N1 N2/.test(sp) && /^X\S+ (\S+ ){7}OPAMP_TL072$/m.test(sp)), "SPICE export: the TL072 as a subcircuit");
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+  }
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
   await cad.evaluate(() => {
     const S = TubeCAD.state, C = TubeCAD; S.comps = []; S.wires = [];
