@@ -741,6 +741,9 @@
 
   // ---------------------------------------------------------------------------
   // Full analysis: DC operating point + periodic steady-state transient
+  //   opts.warm: where the settling starts instead of the DC point, the result.warm of a run of the
+  //   same circuit with other part values (tolerance runs); it changes how long the run takes, not
+  //   where it settles. result.warm: the settled state at a period's start, before the capture.
   // ---------------------------------------------------------------------------
   function simulate(netlist, opts) {
     opts = opts || {};
@@ -787,7 +790,7 @@
     h = period / stepsPerPeriod;
     const captureSteps = Math.round(capture / h);
 
-    let x = dc.x.slice(), t = 0;
+    let x = (opts.warm && opts.warm.length === dc.x.length ? Array.from(opts.warm) : dc.x.slice()), t = 0;
     // BDF2 history: the solution one step before x and that step's length (reset whenever
     // the step changes, the state is extrapolated, or a step had to be subdivided)
     let xBack = null, hBack = 0;
@@ -952,6 +955,7 @@
       if (settled) progress(0.88);
       if (!settled) result.warnings.push("Not fully settled after " + periods + " cycles (large time constants); waveforms may still drift.");
       result.extrapolations = extrapolations;
+      result.warm = Float64Array.from(x);
     }
 
     // Capture
