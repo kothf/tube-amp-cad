@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.86.0] - 2026-10-24
+## [3.88.0] - 2026-10-24
 
 ### Added
 - **NE555 timer.** A new *Integrated circuits* group in the parts list holds the NE555, pins numbered as on the chip. The simulator models what is inside: the 5k–5k–5k divider (CV at ⅔ VCC), the trigger and threshold comparators, the latch, reset below 0.7 V with a weak pull-up (an open RESET reads high), the output stage from TI's data (high VCC − 1.4 V less 3 Ω, sourcing only, about 13.3 V at 100 mA from 15 V; low 8 Ω, 0.4 V at 50 mA), the discharge transistor (12 Ω) and the chip's own supply current. The latch switches at the instant a comparator crosses its level, found inside the time step, so the timing does not depend on the step; the latch is part of the circuit's state, so a 555 triggered by a signal generator settles to its steady state like any other circuit. The inspector reads the output's frequency and duty cycle, or its level and load at rest. A free-running 555 is captured after one window, past its first, longer cycle; the oscilloscope's power-on transient (now 20000 steps when a 555 is in the circuit) shows slow timers. The SPICE export writes it as an `NE555` subcircuit on pins 1–8.
@@ -14,6 +14,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - **Five 555 examples** from 555-timer-circuits.com, each checked against its formula: astable multivibrator (1k / 10k / 100 nF: 678 Hz at 51.8 %, formula 686 Hz at 52.4 %; the discharge transistor's 0.1 V with R1's 9 mA makes the difference), flashing LED (1.51 Hz, formula 1.53 Hz), metronome (0.641 Hz, formula 0.648 Hz), car tachometer one-shot (5.16 ms pulses, 1.1 RC = 5.17 ms; meter current proportional to the spark rate within 3 %), simplest oscillator (572 Hz at 60 % high: the output reaching only VCC − 1.4 V makes it slower than the 721 Hz of the ideal formula).
 - 1N4739A (9.1 V) zener.
 
+## [3.86.0] - 2026-10-24
+
+### Changed
+- **Faster tolerance runs on circuits slow to settle.** When the circuit as drawn takes long to settle (its shooting method does not converge, as with the stereo Gubin example's valve-rectified supply), each varied run starts from that settled state instead of from cold, and has only a short way to go: the stereo Gubin example's 10 runs take 5.4 s instead of 11 s on 4 cores, with the same table (means within 0.01 %). The runs still settle to the same test, so where they end does not change. The state comes from the last simulation when it was of the same circuit, so all the runs start at once; otherwise the varied runs wait for the run of the circuit as drawn. Circuits that settle in a few cycles start cold as before. The engine's `simulate` takes it as `opts.warm` and returns its settled state as `result.warm`.
 
 ## [3.85.0] - 2026-10-22
 

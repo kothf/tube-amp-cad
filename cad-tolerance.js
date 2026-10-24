@@ -69,6 +69,12 @@
     // every core; a live simulation still starts at once beside them
     let jobs = [];
     const RUN = { budgetMs: 120000, maxPeriods: 20000 };   // as ▶ Simulate: each run settles fully
+    // Warm start: a circuit slow to settle (its shooting does not converge, as a choke-input supply's
+    // often does not) has its varied runs start from the circuit as drawn settled, not from cold.
+    // A varied run settles close to the nominal, so it has a short way to go: the stereo Gubin
+    // example's runs take 2 s instead of 4.5. Where it settles does not change (the runs settle to
+    // the same 1e-4 test either way); a circuit that settles in a few cycles anyway starts cold.
+    const warmOf = r => (r && r.ok && r.warm && r.shooting && !r.shooting.converged ? r.warm : null);
 
     function stop() {
       jobs.forEach(j => j.cancel()); jobs = [];
@@ -109,14 +115,27 @@
         progress(); render();
       };
       render(); cmds.sync(); progress();
+      // the warm start: the last simulation's when it was of this very circuit (then every run starts
+      // at once), else run 0's, so the varied runs wait for it
+      const last = !S.sim.busy && S.sim.result && S.sim.netlist && JSON.stringify(S.sim.netlist) === JSON.stringify(base) ? S.sim.result : null;
+      const options = warm => (warm ? Object.assign({ warm }, RUN) : RUN);
       if (!pool.ok) {   // no workers: one run after another on the page
-        const next = k => setTimeout(() => { if (S.tol.seq !== seq) return; take(k, TubeSimEngine.simulate(nets[k], RUN)); if (k + 1 < nets.length) next(k + 1); }, 0);
+        let warm = warmOf(last);
+        const next = k => setTimeout(() => {
+          if (S.tol.seq !== seq) return;
+          const r = TubeSimEngine.simulate(nets[k], k ? options(warm) : RUN);
+          if (k === 0 && !last) warm = warmOf(r);
+          take(k, r);
+          if (k + 1 < nets.length) next(k + 1);
+        }, 0);
         next(0); return;
       }
-      jobs = nets.map((netlist, k) => pool.run({ netlist, options: RUN }, {
-        onResult: r => take(k, r),
+      const send = (k, warm) => pool.run({ netlist: nets[k], options: k ? options(warm) : RUN }, {
+        onResult: r => { if (k === 0 && !last && S.tol.seq === seq) for (let i = 1; i < nets.length; i++) jobs.push(send(i, warmOf(r))); take(k, r); },
         onProgress: f => { if (S.tol.job && S.tol.seq === seq) { partial.set(k, f); progress(); } }
-      }));
+      });
+      jobs = [send(0)];
+      if (last) for (let k = 1; k < nets.length; k++) jobs.push(send(k, warmOf(last)));
     }
     // an edit makes the shown spread the old circuit's
     function changed() { if (S.tol.rows && !S.tol.stale) { S.tol.stale = true; render(); } }
