@@ -272,7 +272,7 @@
 <h3 id="sim-tolerance">6.5 Tolerance runs</h3>
 <p>Real parts are not their nominal values: resistors are ±5 %, electrolytics ±20 %, and two tubes of one type can differ by 20 % or more in plate current. <span class="ui">View ▾ → Tolerance runs</span> opens the <b>Tolerance</b> tab under the sheet, which simulates the circuit once as drawn and then once per run with every part varied, and shows how far each value moves.</p>
 <ul>
-  <li><b>Runs</b>: how many varied circuits (each settles fully, as <span class="ui">▶ Simulate</span> does). 20 shows the spread; 100 or more shows the rare corner. The runs share all the computer's cores, so as many run at once as it has cores.</li>
+  <li><b>Runs</b>: how many varied circuits (each settles fully, as <span class="ui">▶ Simulate</span> does). 20 shows the spread; 100 or more shows the rare corner. The runs share all the computer's cores, so as many run at once as it has cores. A circuit slow to settle (a choke-input or valve-rectified supply, say) has its varied runs start from the circuit as drawn already settled, so each has only a short way to go; they settle just as fully.</li>
   <li><b>R ±, C ±</b>: the tolerance of every resistor and pot (both halves of a pot move together, so the wiper stays put) and of every capacitor and electrolytic.</li>
   <li><b>Tubes ±</b>: every tube draws that much more or less current than its model at the same voltages, as a stronger or weaker tube does. Rectifiers stay as they are.</li>
   <li>Each value is normally distributed about its nominal with the tolerance as two standard deviations (about 95 % of parts are within it), and never beyond it. <b>Seed</b>: the same seed repeats the same runs.</li>

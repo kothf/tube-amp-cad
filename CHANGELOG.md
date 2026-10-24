@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.86.0] - 2026-10-24
+
+### Changed
+- **Faster tolerance runs on circuits slow to settle.** When the circuit as drawn takes long to settle (its shooting method does not converge, as with the stereo Gubin example's valve-rectified supply), each varied run starts from that settled state instead of from cold, and has only a short way to go: the stereo Gubin example's 10 runs take 5.4 s instead of 11 s on 4 cores, with the same table (means within 0.01 %). The runs still settle to the same test, so where they end does not change. The state comes from the last simulation when it was of the same circuit, so all the runs start at once; otherwise the varied runs wait for the run of the circuit as drawn. Circuits that settle in a few cycles start cold as before. The engine's `simulate` takes it as `opts.warm` and returns its settled state as `result.warm`.
+
 ## [3.85.0] - 2026-10-22
 
 ### Added

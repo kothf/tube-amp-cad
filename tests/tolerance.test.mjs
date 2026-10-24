@@ -66,3 +66,24 @@ test("a tube's iScale scales its plate current at the same voltages", () => {
   const ia = s => E.simulate(net(s)).dc.devices.VL1.main.ia;
   assert.ok(Math.abs(ia(1.2) / ia() - 1.2) < 1e-6);
 });
+
+test("a warm start (opts.warm) settles where a cold start does; a state of another size is ignored", () => {
+  // a valve rectifier into a reservoir capacitor and load: settles over many mains cycles
+  const net = (rl, c) => ({ nodeCount: 3, elements: [
+    { id: "S1", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 50, amp: 500 * Math.SQRT2, offset: 0 },
+    { id: "D1", kind: "VDIODE", nodes: [1, 2], perveance: E.RECTIFIER_PERVEANCE["5Ts4S"] },
+    { id: "C", kind: "C", nodes: [2, 0], c }, { id: "R", kind: "R", nodes: [2, 0], r: rl }] });
+  const run = { budgetMs: 20000, maxPeriods: 20000 };
+  const nominal = E.simulate(net(4700, 40e-6), run);
+  assert.ok(nominal.ok && nominal.warm && nominal.warm.length > 0, "a settled run gives its state");
+  const varied = net(4700 * 1.3, 40e-6 * 0.8);
+  const cold = E.simulate(varied, run), warm = E.simulate(varied, Object.assign({ warm: nominal.warm }, run));
+  assert.ok(cold.ok && warm.ok);
+  // the average over the captured window, what a meter reads
+  const avg = r => { const v = r.tran.nodes[2]; let s = 0; for (let i = 0; i < v.length - 1; i++) s += v[i]; return s / (v.length - 1); };
+  const vc = avg(cold), vw = avg(warm);
+  assert.ok(Math.abs(vw / vc - 1) < 2e-3, `warm ${vw.toFixed(2)} V, cold ${vc.toFixed(2)} V`);
+  assert.ok(Math.abs(vc / avg(nominal) - 1) > 5e-3, "the varied circuit settles elsewhere than the nominal");
+  const odd = E.simulate(varied, Object.assign({ warm: new Float64Array(1) }, run));
+  assert.ok(odd.ok && Math.abs(avg(odd) / vc - 1) < 1e-9, "a state of another size: a cold start");
+});
