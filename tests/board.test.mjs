@@ -230,6 +230,30 @@ test("every part has a through-hole footprint, and every footprint it offers tak
   assert.deepEqual(B.footprint("XFMR-EI76-PP").pads.map(p => p.name), ["P1", "U1", "CT", "U2", "P2", "S1", "S2"]);
 });
 
+test("op-amps: a dual's and a quad's amplifiers share one DIP; pins from the maker's pinout", () => {
+  const amp = (id, model, label, nets) => part(id, "opamp", label, { model }, nets);
+  const pins = (g, f) => { const out = {}; B.padMap(g, f).forEach((list, num) => list.forEach(x => { out[x.comp + ":" + x.pin] = (out[x.comp + ":" + x.pin] ? out[x.comp + ":" + x.pin] + "," : "") + num; })); return out; };
+  const nl = { parts: [amp("a", "TL074", "DA1.1", { "+": 3, "-": 4, OUT: 4, "V+": 1, "V-": 2 }), amp("b", "TL074", "DA1.3", { "+": 5, "-": 6, OUT: 6, "V+": 1, "V-": 2 }),
+    amp("c", "TL072", "DA2.2", { "+": 7, "-": 8, OUT: 8, "V+": 1, "V-": 2 }), amp("d", "LM301A", "DA3", { "+": 0, "-": 9, OUT: 10, "V+": 1, "V-": 2, 1: 11, 8: 12 })] };
+  const parts = B.physicalParts(nl), by = Object.fromEntries(parts.map(g => [g.ref, g]));
+  assert.deepEqual(parts.map(g => [g.ref, g.members.length, g.defaultFp]), [["DA1", 2, "DIP-14"], ["DA2", 1, "DIP-8"], ["DA3", 1, "DIP-8"]]);
+  // TL074: amplifier 1 on pins 3, 2, 1; amplifier 3 on 10, 9, 8; V+ on 4 and V− on 11 for both
+  const q = pins(by.DA1, B.footprint("DIP-14"));
+  assert.deepEqual([q["a:+"], q["a:-"], q["a:OUT"], q["b:+"], q["b:-"], q["b:OUT"], q["a:V+"], q["b:V+"], q["a:V-"]], ["3", "2", "1", "10", "9", "8", "4", "4", "11"]);
+  // TL072, amplifier 2: 5, 6, 7, V+ 8, V− 4; the LM301A: 3, 2, 6, V+ 7, V− 4 and its compensation on 1 and 8
+  const d = pins(by.DA2, B.footprint("DIP-8")), l = pins(by.DA3, B.footprint("DIP-8"));
+  assert.deepEqual([d["c:+"], d["c:-"], d["c:OUT"], d["c:V+"], d["c:V-"]], ["5", "6", "7", "8", "4"]);
+  assert.deepEqual([l["d:+"], l["d:-"], l["d:OUT"], l["d:V+"], l["d:V-"], l["d:1"], l["d:8"]], ["3", "2", "6", "7", "4", "1", "8"]);
+  // DIP-14 from the component side: pin 1 top left, 7 bottom left, 8 bottom right, 14 top right
+  const f = B.footprint("DIP-14"), at = n => f.pads.find(p => p.num === String(n));
+  assert.ok(at(1).x < 0 && at(7).x < 0 && at(8).x > 0 && at(14).x > 0 && at(1).y < at(7).y && at(14).y < at(8).y && Math.abs(at(1).y - at(14).y) < 1e-9 && at(1).shape === "rect");
+  assert.ok(Math.abs(at(8).x - at(7).x - 7.62) < 1e-9 && Math.abs(at(2).y - at(1).y - 2.54) < 1e-9, "7.62 mm rows, 2.54 mm pitch");
+  // on the board, the shared supply pads take their nets from every amplifier
+  const board = B.newBoard(); B.sync(board, nl);
+  const M = B.model(board, nl), pad = (ref, num) => M.pads.find(p => p.ref === ref && p.num === num);
+  assert.ok(pad("DA1", "4").net === 1 && !pad("DA1", "4").conflict && pad("DA1", "11").net === 2 && pad("DA1", "5").net === null);
+});
+
 // a placed board for the pour and fabrication tests: GND pour on the bottom, holes, a text
 function fabBoard() {
   const board = B.newBoard(); B.sync(board, NETLIST); board.outline = { w: 120, h: 90, r: 4 };
