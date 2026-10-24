@@ -16,7 +16,7 @@
      (wasm/solver.ts) when loaded.
 
    Netlist: { nodeCount, elements: [{ id, kind, nodes: [...], ...params }] }
-   kinds: R, C, L, XFMR, V, VSRC, D, VDIODE, TRIODE, PENTODE
+   kinds: R, C, L, XFMR, V, VSRC, I, D, VDIODE, BJT, MOS, TRIODE, PENTODE, TIMER555
    acSweep: the small-signal frequency response, linearized at an operating point.
    A tube element may carry gridShift (V): its plate and screen currents as if the grid were that
    much more positive (a real tube that draws more or less than the model), grid conduction
@@ -205,6 +205,67 @@
       else vnew = nVt * Math.log(vnew / nVt);
     }
     return vnew;
+  }
+
+  // ---------------------------------------------------------------------------
+  // NE555 timer (nodes GND, TRIG, OUT, RESET, CTRL, THR, DIS, VCC, and the divider's lower tap).
+  // The CAD builds the 5k–5k–5k divider, the supply current and the reset pin's pull-up as R
+  // elements; this element is the latch and the output and discharge transistors. The latch is an
+  // extra unknown (1 set, 0 reset), held through each Newton solve, so the shooting and the capture
+  // carry it as state; between steps it follows the comparators (timerNext), and a step in which it
+  // flips is cut where the comparator crossed (timerStep), so the timing does not hang on the step.
+  // From the TI NE555 data (VCC 5-15 V): output high, a Darlington from VCC that only sources,
+  // VCC - 1.4 V less 3 Ω, running out near 250 mA (13.3 V at 100 mA, 12.8 V at 200 mA from 15 V); output low, a saturating transistor, 8 Ω at
+  // small currents and running out near 120 mA (0.1 V at 10 mA, 0.4 V at 50 mA, 2 V at 100 mA);
+  // discharge while the latch is reset, 12 Ω (180 mV at 15 mA), up to 100 mA; reset below 0.7 V.
+  // ---------------------------------------------------------------------------
+  const NE555 = { drop: 1.4, rh: 3, ih: 0.25, rl: 8, il: 0.12, rd: 12, id: 0.1, vreset: 0.7 };
+  /** currents into the GND, OUT, DIS and VCC pins (voltages V in that order) with the latch at q */
+  function timerCurrents(V, q) {
+    const [g, o, d, vcc] = V, m = NE555, sat = (v, r, imax) => imax * Math.tanh(v / (r * imax));
+    let io = 0, idis = 0, ivcc = 0;
+    if (q) { const s = 0.005; io = -m.ih * Math.tanh(s * softplus((vcc - m.drop - o) / s) / (m.rh * m.ih)); ivcc = -io; }   // out of OUT, in at VCC
+    else { io = sat(o - g, m.rl, m.il); idis = sat(d - g, m.rd, m.id); }
+    return [-(io + idis + ivcc), io, idis, ivcc];
+  }
+  // the comparators, each margin > 0 while it is on: reset (RESET below 0.7 V), trigger (TRIG
+  // below the divider's lower tap, ⅓ VCC), threshold (THR above CTRL, ⅔ VCC)
+  function timerMargins(e, x) { const v = k => vn(x, e.nodes[k]), g = v(0); return [NE555.vreset - (v(3) - g), v(8) - v(1), v(5) - v(4)]; }
+  // the latch they leave: reset wins, then the trigger (it holds the output high whatever the
+  // threshold), then the threshold; with none on it keeps its state
+  const timerNext = (m, q) => (m[0] > 0 ? 0 : m[1] > 0 ? 1 : m[2] > 0 ? 0 : q);
+  const latchOf = (e, x) => (x[e.latch] > 0.5 ? 1 : 0);
+  // the first latch to flip in a step from xp to xn: { e, want, th }, th the fraction of the step
+  // at which its comparator crossed (or the reset let go, when the comparator was on already)
+  function timerEvent(circ, xp, xn) {
+    let ev = null;
+    for (const e of circ.timers) {
+      const q = latchOf(e, xp), mn = timerMargins(e, xn), want = timerNext(mn, q);
+      if (want === q) continue;
+      const mp = timerMargins(e, xp), k = want ? 1 : mn[0] > 0 ? 0 : 2;
+      let th = 0;
+      if (mp[k] <= 0 && mn[k] > 0) th = mp[k] / (mp[k] - mn[k]);
+      else if (mp[0] > 0 && mn[0] <= 0) th = mp[0] / (mp[0] - mn[0]);
+      if (!ev || th < ev.th) ev = { e, want, th };
+    }
+    return ev;
+  }
+  // One transient step (step(xprev, tNext, h) of simulate or startup) with the latches: solved with
+  // them held; when one flips, the step is cut where it flipped (the margins interpolated linearly),
+  // the latch set there and the rest of the step run. A flip at the very start comes before the
+  // step; after 8 in one step (a circuit that chatters) the latch flips at the step's end.
+  function timerStep(circ, step, xp, tNext, h, n) {
+    const x = step(xp, tNext, h);
+    if (!x || !circ.timers.length) return x;
+    const ev = timerEvent(circ, xp, x);
+    if (!ev) return x;
+    n = n || 0;
+    if (n >= 8 || ev.th >= 1 - 1e-6) { x[ev.e.latch] = ev.want; return x; }
+    if (ev.th <= 1e-6) { const xs = xp.slice(); xs[ev.e.latch] = ev.want; return timerStep(circ, step, xs, tNext, h, n + 1); }
+    const hm = h * ev.th, xm = step(xp, tNext - h + hm, hm);
+    if (!xm) return null;
+    xm[ev.e.latch] = ev.want;
+    return timerStep(circ, step, xm, tNext, h - hm, n + 1);
   }
 
   // ---------------------------------------------------------------------------
@@ -438,6 +499,7 @@
     const els = netlist.elements.map(e => Object.assign({}, e));
     els.forEach(e => {
       if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") e.branch = nUnk++;
+      else if (e.kind === "TIMER555") e.latch = nUnk++;
       else if (e.kind === "XFMR") {
         e.branches = e.windings.map(() => nUnk++);
         // Inductance matrix: L_jk = AL * Nj * Nk * (j===k ? 1 : k)
@@ -450,7 +512,13 @@
         }
       }
     });
-    return { nNodes, nUnk, els };
+    // a 555's output and discharge pins: their transistors' currents level off a volt or so into
+    // conduction, so far from the solution Newton sees no slope there and would throw the pin
+    // anywhere; these nodes move at most 2 V an iteration, outside the common damping, and half as far
+  // each time they turn back (newtonSolve)
+    const timers = els.filter(e => e.kind === "TIMER555"), capped = timers.length ? new Uint8Array(nNodes) : null;
+    timers.forEach(e => [e.nodes[2], e.nodes[6]].forEach(k => { if (k > 0) capped[k - 1] = 1; }));
+    return { nNodes, nUnk, els, timers, capped };
   }
 
   // Tiny series resistance on inductive branches (ohms): a winding shorted by a
@@ -506,6 +574,7 @@
     // rectifier's switching)
     const P2 = !mode.dc && mode.prev2 ? mode.prev2 : null, ID0 = P2 ? 1.5 : 1, ID1 = P2 ? -2 : -1, ID2 = 0.5;
     let lastDv = null, stall = 0;
+    const capStep = circ.capped ? new Float64Array(circ.nNodes).fill(2) : null, capDir = capStep ? new Float64Array(circ.nNodes) : null;
     for (let iter = 0; iter < maxIter; iter++) {
       A.clear(); b.fill(0);
       let limited = false;   // a junction voltage was limited: this iterate is not a solution yet
@@ -624,6 +693,13 @@
             }, V0);
             break;
           }
+          case "TIMER555": {
+            // the latch held at its value at the start of the solve
+            const q = latchOf(e, x0), tn = [nd[0], nd[2], nd[6], nd[7]];
+            addAu(e.latch, e.latch, 1); b[e.latch] += q;
+            stampNonlinear(tn, V => timerCurrents(V, q), tn.map(k => vn(x, k)), 1e-6);
+            break;
+          }
         }
       }
 
@@ -632,14 +708,21 @@
 
       // Damped update on node voltages
       let maxDv = 0;
-      for (let i = 0; i < circ.nNodes - 1; i++) maxDv = Math.max(maxDv, Math.abs(sol[i] - x[i]));
+      const cap = circ.capped;
+      for (let i = 0; i < circ.nNodes - 1; i++) if (!(cap && cap[i])) maxDv = Math.max(maxDv, Math.abs(sol[i] - x[i]));
       let scale = maxDv > maxStep ? maxStep / maxDv : 1;
       let conv = scale === 1;
       // an iteration that is not getting closer (bouncing across a device's
       // turn-on, say) takes half a step
       if (iter >= 8 && lastDv !== null && maxDv > 0.9 * lastDv && maxDv > 1e-4) { scale *= 0.5; conv = false; }
       for (let i = 0; i < n; i++) {
-        const nx = x[i] + (sol[i] - x[i]) * scale;
+        let nx;
+        if (cap && i < circ.nNodes - 1 && cap[i]) {
+          const d = sol[i] - x[i];
+          if (d * capDir[i] < 0) capStep[i] = Math.max(capStep[i] / 2, 1e-6);
+          capDir[i] = d; nx = x[i] + Math.max(-capStep[i], Math.min(capStep[i], d));
+        } else nx = x[i] + (sol[i] - x[i]) * scale;
+        if (!isFinite(nx)) return { ok: false, x, error: "numerical overflow" };
         if (i < circ.nNodes - 1 && Math.abs(nx - x[i]) > 1e-6 + 1e-6 * Math.abs(nx)) conv = false;
         x[i] = nx;
       }
@@ -657,7 +740,23 @@
   }
 
   function dcOperatingPoint(circ) {
-    const zero = new Array(circ.nUnk).fill(0);
+    let r = dcSolve(circ, new Array(circ.nUnk).fill(0));
+    // a 555's latch set as its comparators find the solution, and solved again (an astable has no
+    // DC state: after a few flips it keeps the last, and the transient starts it off)
+    for (let k = 0; k < 4 && r.ok && circ.timers.length; k++) {
+      const x = r.x.slice();
+      let flipped = false;
+      circ.timers.forEach(e => { const q = latchOf(e, x), n = timerNext(timerMargins(e, x), q); if (n !== q) { x[e.latch] = n; flipped = true; } });
+      if (!flipped) break;
+      const r2 = dcSolve(circ, x);
+      if (!r2.ok) break;
+      r = r2;
+    }
+    return r;
+  }
+  // from zero (with the 555 latches as x0 holds them)
+  function dcSolve(circ, x0) {
+    const zero = x0.map((v, i) => (circ.timers.some(e => e.latch === i) ? v : 0));
     circ.els.forEach(e => { delete e._vlast; delete e._vbe; delete e._vbc; });
     let r = newtonSolve(circ, zero, { dc: true }, { gmin: 1e-9 });
     if (r.ok) return r;
@@ -728,6 +827,10 @@
     if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") return { i: x[e.branch], vd: v[0] - v[1] };
     if (e.kind === "C") return { vd: v[0] - v[1] };
     if (e.kind === "I") return { i: e.i, vd: v[0] - v[1] };
+    if (e.kind === "TIMER555") {
+      const q = latchOf(e, x), V = [v[0], v[2], v[6], v[7]], I = timerCurrents(V, q);
+      return { q, vout: V[1] - V[0], iout: -I[1], idis: I[2], vcc: V[3] - V[0], pd: I.reduce((s, i, k) => s + i * V[k], 0) };
+    }
     return {};
   }
 
@@ -747,6 +850,7 @@
       case "PENTODE": { const s = deviceState(e, x); return [[nd[0], s.ia], [nd[1], s.ig], [nd[2], s.ig2], [nd[3], -(s.ia + s.ig + s.ig2)]]; }
       case "BJT": return Semi.bjt(v, e.model).map((i, k) => [nd[k], i]);
       case "MOS": return Semi.mos(v, e.model).map((i, k) => [nd[k], i]);
+      case "TIMER555": { const I = timerCurrents([v[0], v[2], v[6], v[7]], latchOf(e, x)); return [[nd[0], I[0]], [nd[2], I[1]], [nd[6], I[2]], [nd[7], I[3]]]; }
       case "OPAMP": return Semi.opamp(v, e.model).map((i, k) => [nd[k], i]);
       default: return [];
     }
@@ -863,19 +967,20 @@
     let xBack = null, hBack = 0;
     // a step that does not converge is retried as 8 sub-steps, and each of those
     // again as 8 (h/64), before the run gives up
-    const step = (xprev, tNext, hh, depth) => {
+    const solveStep = (xprev, tNext, hh, depth) => {
       const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
       const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
       if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
       if ((depth || 0) >= 2) return null;
       let xs = xprev;
       for (let k = 1; k <= 8; k++) {
-        xs = step(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1);
+        xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1);
         if (!xs) return null;
       }
       if (!depth) xBack = null;
       return xs;
     };
+    const step = (xprev, tNext, hh) => timerStep(circ, solveStep, xprev, tNext, hh);
     let peak = null;   // when set, each unknown's largest magnitude over the steps run
     const runPeriod = (hh, nSteps) => {
       for (let s = 0; s < nSteps; s++) {
@@ -917,7 +1022,7 @@
         // voltage source's current is no state (each step makes it anew), so it is neither moved nor compared
         const st = [];
         for (let i = 0; i < nodeCount - 1; i++) st.push(i);
-        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); });
+        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); else if (e.kind === "TIMER555") st.push(e.latch); });
         // each part of the state weighed by its size over a period (a winding's current may pass zero
         // just as the period starts): one period run while the peaks are noted
         peak = new Float64Array(x.length);
@@ -1024,6 +1129,9 @@
       result.extrapolations = extrapolations;
       result.warm = Float64Array.from(x);
     }
+
+    // a 555 with no source to follow runs freely: a window before the capture takes it past its start
+    if (!freqs.length && circ.timers.length && !runPeriod(h, captureSteps)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
 
     // Capture
     const nCap = captureSteps + 1;
@@ -1153,24 +1261,26 @@
     circ.els.forEach(e => { delete e._vlast; });
     const freqs = circ.els.filter(e => e.kind === "VSRC" && e.freq > 0 && e.amp !== 0).map(e => e.freq);
     const fMax = freqs.length ? Math.max.apply(null, freqs) : 0;
-    // 40 steps per period of the fastest source, at least 2000 steps over the run
-    let h = Math.min(fMax ? 1 / (40 * fMax) : Infinity, tStop / 2000);
+    // 40 steps per period of the fastest source, at least 2000 steps over the run (20000 with a
+    // 555, whose own period the sources do not tell)
+    let h = Math.min(fMax ? 1 / (40 * fMax) : Infinity, tStop / (circ.timers.length ? 20000 : 2000));
     const steps = Math.ceil(tStop / h); h = tStop / steps;
     const probes = (opts.probes || []).map(p => Array.isArray(p) ? p : [p, 0]).filter(([a, b]) => a >= 0 && a < circ.nNodes && b >= 0 && b < circ.nNodes);
     const nOut = Math.min(opts.maxPoints || 4000, steps), per = steps / nOut;
     const mins = probes.map(() => new Float32Array(nOut)), maxs = probes.map(() => new Float32Array(nOut));
     mins.forEach(a => a.fill(Infinity)); maxs.forEach(a => a.fill(-Infinity));
     let xBack = null, hBack = 0;          // BDF2 history, as in simulate()
-    const step = (xprev, tNext, hh, depth) => {
+    const solveStep = (xprev, tNext, hh, depth) => {
       const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
       const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
       if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
       if ((depth || 0) >= 3) return null;
       let xs = xprev;
-      for (let k = 1; k <= 8; k++) { xs = step(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
+      for (let k = 1; k <= 8; k++) { xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
       if (!depth) xBack = null;
       return xs;
     };
+    const step = (xprev, tNext, hh) => timerStep(circ, solveStep, xprev, tNext, hh);
     let x = new Array(n).fill(0), lastProg = 0;
     const record = (s, x) => {
       const b = Math.min(nOut - 1, Math.floor(s / per));
@@ -1263,6 +1373,8 @@
         case "OPAMP": jac(nd, W => Semi.opamp(W, e.model), 1e-6); break;
         case "TRIODE": jac(nd, V => { const [ia, ig] = tubeCurrents(e, V[0] - V[2], V[1] - V[2]); return [ia, ig, -(ia + ig)]; }, 1e-3); break;
         case "PENTODE": jac(nd, V => { const [ia, ig, ig2] = tubeCurrents(e, V[0] - V[3], V[1] - V[3], V[2] - V[3]); return [ia, ig, ig2, -(ia + ig + ig2)]; }, 1e-3); break;
+        // a 555: its output stage as it stands at the operating point, the latch fixed
+        case "TIMER555": { Gm[at(e.latch, e.latch)] = 1; const q = latchOf(e, x); jac([nd[0], nd[2], nd[6], nd[7]], V => timerCurrents(V, q), 1e-4); break; }
       }
     }
     const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, KA = acPoints(opts);
@@ -1313,7 +1425,7 @@
     return { ok: true, freqs, re, im, probes, elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, acSweep, acPoints, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, NE555, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, acSweep, acPoints, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

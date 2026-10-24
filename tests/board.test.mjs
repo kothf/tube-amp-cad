@@ -811,3 +811,19 @@ test("Gerber X2 details: pad, via and track apertures told apart; silkscreen ins
   const m2 = B.model(b2, NETLIST), g = m2.parts.find(q => q.ref === "R1"), refs = B.partSilk(g, false, b2.outline).filter(o => o.ref), box = B.partBox(g);
   assert.ok(refs.length && refs.every(o => o.pts.every(([, y]) => y > box.y2)), "R1's reference below it at the top edge");
 });
+
+test("an NE555 goes on a DIP-8: pin n on pad n, pin 1 square at the top left, the rows 7.62 mm apart", () => {
+  const nets = { 1: 0, 2: 3, 3: 4, 4: 1, 5: 5, 6: 3, 7: 2, 8: 1 };
+  const NL = { names: { 0: "GND" }, parts: [part("u1", "timer555", "DA1", {}, nets)] };
+  const g = B.physicalParts(NL)[0];
+  assert.equal(g.defaultFp, "DIP-8");
+  const f = B.footprint("DIP-8");
+  assert.equal(f.pads[0].shape, "rect");
+  assert.deepEqual(f.pads.map(p => [p.x, +p.y.toFixed(2)]), [[-3.81, -3.81], [-3.81, -1.27], [-3.81, 1.27], [-3.81, 3.81], [3.81, 3.81], [3.81, 1.27], [3.81, -1.27], [3.81, -3.81]]);
+  const board = B.newBoard(); B.sync(board, NL);
+  const m = B.model(board, NL);
+  for (const [pin, net] of Object.entries(nets)) assert.equal(m.pads.find(p => p.ref === "DA1" && p.num === pin).net, net, `pin ${pin}`);
+  // in 3D: the moulded body and a lead for every pin
+  const g3 = m.parts.find(q => q.ref === "DA1"), bodies = globalThis.Board3D.partBodies(g3, 1.6, {});
+  assert.equal(bodies.length, 1 + 8);
+});

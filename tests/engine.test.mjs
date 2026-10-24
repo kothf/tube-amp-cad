@@ -605,3 +605,83 @@ test("animation frames: every element's terminal currents over one signal period
   near(peak, 1 / Math.hypot(1000, 1 / (2 * Math.PI * 1000 * 1e-6)), 0.02, "peak current");
   F.cur.forEach((v, j) => assert.ok(Math.abs(v[ic] + v[ir]) < 0.04 * peak, `frame ${j}: into C ${v[ic]}, out of R ${-v[ir]}`));
 });
+
+// NE555: the CAD's build (cad-components.js timer555): the element on GND, TRIG, OUT, RESET, CV, THR, DIS,
+// VCC and the divider's lower tap, with the divider, supply current and reset pull-up as resistors
+function ne555(nodes, lo, id) {
+  const [g, , , rst, cv, , , vcc] = nodes;
+  return [{ id, kind: "TIMER555", nodes: [...nodes, lo] },
+    { id: id + "#d1", kind: "R", nodes: [vcc, cv], r: 5e3 }, { id: id + "#d2", kind: "R", nodes: [cv, lo], r: 5e3 }, { id: id + "#d3", kind: "R", nodes: [lo, g], r: 5e3 },
+    { id: id + "#iq", kind: "R", nodes: [vcc, g], r: 1.7e3 }, { id: id + "#rst", kind: "R", nodes: [vcc, rst], r: 33e3 }];
+}
+// nodes: 1 VCC, 2 DIS, 3 THR/TRIG, 4 OUT, 5 CV, 6 lower tap, 7 RESET
+const astable555 = (r1, r2, c, vcc, extra) => ({ nodeCount: 8, elements: [
+  { id: "V1", kind: "V", nodes: [1, 0], v: vcc }, { id: "R1", kind: "R", nodes: [1, 2], r: r1 }, { id: "R2", kind: "R", nodes: [2, 3], r: r2 },
+  { id: "C1", kind: "C", nodes: [3, 0], c }, { id: "RL", kind: "R", nodes: [4, 0], r: 10e3 }, ...ne555([0, 3, 4, 7, 5, 3, 2, 1], 6, "U1"), ...(extra || [])] });
+// rising and falling crossings of level in a sampled wave, interpolated
+function crossings(w, dt, level) {
+  const up = [], dn = [];
+  for (let i = 0; i + 1 < w.length; i++) {
+    const at = (i + (level - w[i]) / (w[i + 1] - w[i])) * dt;
+    if (w[i] < level && w[i + 1] >= level) up.push(at); else if (w[i] >= level && w[i + 1] < level) dn.push(at);
+  }
+  return { up, dn };
+}
+
+test("NE555 astable: high and low times are the exact RC charge between ⅓ and ⅔ VCC, whatever the step", () => {
+  const R1 = 10e3, R2 = 100e3, C = 1e-6, VCC = 9;
+  const run = tStop => {
+    const r = E.startup(astable555(R1, R2, C, VCC), { tStop, probes: [[4, 0], [3, 0]], maxPoints: 1e6 });
+    assert.ok(r.ok, r.error);
+    const { up, dn } = crossings(Array.from(r.max[0]), r.dt, VCC / 2), n = up.length;
+    const d = dn.find(x => x > up[n - 2]);
+    return { high: d - up[n - 2], low: up[n - 1] - d, cmin: Math.min(...Array.from(r.min[1]).slice(r.points / 2)), cmax: Math.max(...Array.from(r.max[1]).slice(r.points / 2)) };
+  };
+  const a = run(1), b = run(3);   // steps of 50 µs and 150 µs
+  // charging through R1 + R2 towards VCC; discharging through R2 into DIS, which sinks R1's 0.9 mA too (12 Ω: 11 mV)
+  const vs = VCC / R1 * 12;
+  near(a.high, (R1 + R2) * C * Math.log((VCC - VCC / 3) / (VCC - 2 * VCC / 3)), 0.002, "high time");
+  near(a.low, R2 * C * Math.log((2 * VCC / 3 - vs) / (VCC / 3 - vs)), 0.003, "low time");
+  near(a.cmin, 3, 0.002, "capacitor valley (⅓ VCC)"); near(a.cmax, 6, 0.002, "capacitor peak (⅔ VCC)");
+  near(b.high + b.low, a.high + a.low, 0.0005, "period with a three times longer step");
+});
+
+test("NE555 one-shot triggered by a pulse train: 1.1·R·C pulses, the latch carried through the steady state", () => {
+  // nodes: 1 VCC, 2 THR/DIS (timing), 3 TRIG, 4 OUT, 5 CV, 6 tap, 7 RESET, 8 generator, 9 behind its 50 Ω
+  const R = 47e3, C = 100e-9;
+  const nl = { nodeCount: 10, elements: [
+    { id: "V1", kind: "V", nodes: [1, 0], v: 9 }, { id: "R1", kind: "R", nodes: [1, 2], r: R }, { id: "C1", kind: "C", nodes: [2, 0], c: C },
+    { id: "R5", kind: "R", nodes: [1, 3], r: 10e3 }, { id: "C4", kind: "C", nodes: [9, 3], c: 100e-9 }, { id: "RL", kind: "R", nodes: [4, 0], r: 8.1e3 },
+    { id: "G2", kind: "VSRC", nodes: [8, 0], wave: "square", freq: 50, amp: 4.5, offset: 4.5, phase: 0 }, { id: "G2#rs", kind: "R", nodes: [9, 8], r: 50 },
+    ...ne555([0, 3, 4, 7, 5, 2, 2, 1], 6, "U1")] };
+  const r = E.simulate(nl, { budgetMs: 20000 });
+  assert.ok(r.ok, r.error);
+  assert.ok(r.tran.settled, "settled");
+  const w = Array.from(r.tran.nodes[4]), { up, dn } = crossings(w, r.tran.dt, 3.8);
+  assert.equal(up.length, Math.round(r.tran.samples * r.tran.dt * 50), "one pulse a period");
+  // the captured samples (33 µs apart) place each edge within a step
+  up.forEach(u => near(dn.find(x => x > u) - u, R * C * Math.log(3), 0.015, "pulse width in the steady state"));
+  // the power-on run, 5 µs steps, finds it exactly
+  const p = E.startup(nl, { tStop: 0.1, probes: [[4, 0]], maxPoints: 1e6 }), e = crossings(Array.from(p.max[0]), p.dt, 3.8);
+  assert.ok(p.ok, p.error);
+  e.up.slice(1, -1).forEach(u => near(e.dn.find(x => x > u) - u, R * C * Math.log(3), 0.002, "pulse width (R·C·ln 3)"));
+  // at rest the output is low and the discharge holds C1 empty
+  const dc = E.simulate(Object.assign({}, nl, { elements: nl.elements.filter(e => e.kind !== "VSRC").concat([{ id: "G2", kind: "V", nodes: [8, 0], v: 9 }]) }), {});
+  assert.ok(dc.ok && dc.dc.devices.U1.main.q === 0 && dc.dc.nodes[2] < 0.05, "a one-shot at rest is reset, its capacitor empty");
+});
+
+test("NE555 output stages against the TI data: 13.3 V sourcing 100 mA from 15 V, 0.4 V sinking 50 mA; reset stops it", () => {
+  // TRIG at 0 V sets it (output high, 133 Ω load); TRIG and THR at VCC reset it (300 Ω to VCC)
+  const stage = (trig, load) => ({ nodeCount: 8, elements: [{ id: "V1", kind: "V", nodes: [1, 0], v: 15 }, { id: "T", kind: "R", nodes: [trig, 3], r: 1 },
+    load, ...ne555([0, 3, 4, 7, 5, 3, 2, 1], 6, "U1")] });
+  const hi = E.simulate(stage(0, { id: "RL", kind: "R", nodes: [4, 0], r: 133 }), {}), lo = E.simulate(stage(1, { id: "RL", kind: "R", nodes: [4, 1], r: 300 }), {});
+  assert.ok(hi.ok && lo.ok);
+  near(hi.dc.nodes[4], 13.3, 0.01, "VOH at 100 mA");
+  near(lo.dc.nodes[4], 0.4, 0.15, "VOL at 50 mA");
+  // RESET tied low: an astable stays reset (output low)
+  const held = E.startup(astable555(1e3, 10e3, 100e-9, 9, [{ id: "RS", kind: "R", nodes: [7, 0], r: 10 }]), { tStop: 0.01, probes: [[4, 0]], maxPoints: 1e5 });
+  assert.ok(held.ok && Math.max(...Array.from(held.max[0])) < 0.05, "held in reset");
+  // the frequency response linearizes the stage at its state
+  const ac = E.acSweep(astable555(1e3, 10e3, 100e-9, 9), { fStart: 10, fStop: 1e4, probes: [[4, 0]] });
+  assert.ok(ac.ok, ac.error);
+});

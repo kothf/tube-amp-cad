@@ -1,0 +1,423 @@
+{
+ "app": "TubeAmpCAD",
+ "version": 2,
+ "comps": [
+  {
+   "id": "c1_7919",
+   "type": "frame",
+   "x": 0,
+   "y": 0,
+   "rot": 0,
+   "params": {
+    "locked": "yes",
+    "size": "A4",
+    "orient": "landscape",
+    "rev": "A",
+    "sheet": "1/1",
+    "date": "2026-10-24",
+    "creator": "A. Dumchin",
+    "approver": "",
+    "owner": "A. Dumchin",
+    "dept": "",
+    "doctype": "Circuit diagram",
+    "status": "Validation",
+    "lang": "en",
+    "title": "NE555 flashing LED, 9 V battery",
+    "docno": "VAL-09",
+    "reference": "555-timer-circuits.com: Flashing LED"
+   },
+   "label": ""
+  },
+  {
+   "id": "c2_5838",
+   "type": "timer555",
+   "x": 560,
+   "y": 340,
+   "rot": 0,
+   "params": {
+    "model": "NE555"
+   },
+   "label": "DA1"
+  },
+  {
+   "id": "c3_3757",
+   "type": "vdc",
+   "x": 200,
+   "y": 350,
+   "rot": 0,
+   "params": {
+    "v": 9,
+    "rs": 0
+   },
+   "label": "G1"
+  },
+  {
+   "id": "c4_1676",
+   "type": "ground",
+   "x": 200,
+   "y": 380,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c5_9595",
+   "type": "capacitor",
+   "x": 540,
+   "y": 420,
+   "rot": 1,
+   "params": {
+    "c": 1e-8
+   },
+   "label": "C2"
+  },
+  {
+   "id": "c6_7514",
+   "type": "ground",
+   "x": 540,
+   "y": 440,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c7_5433",
+   "type": "ground",
+   "x": 580,
+   "y": 390,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c8_3352",
+   "type": "scope",
+   "x": 960,
+   "y": 420,
+   "rot": 0,
+   "params": {
+    "ch1": "auto",
+    "ch2": "auto",
+    "time": "auto",
+    "coupling1": "dc",
+    "coupling2": "dc",
+    "probe": "10x"
+   },
+   "label": "P1"
+  },
+  {
+   "id": "c9_1271",
+   "type": "ground",
+   "x": 880,
+   "y": 450,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c10_9190",
+   "type": "resistor",
+   "x": 440,
+   "y": 250,
+   "rot": 1,
+   "params": {
+    "r": 1000,
+    "w": ""
+   },
+   "label": "R1"
+  },
+  {
+   "id": "c11_7109",
+   "type": "resistor",
+   "x": 440,
+   "y": 350,
+   "rot": 1,
+   "params": {
+    "r": 470000,
+    "w": ""
+   },
+   "label": "R2"
+  },
+  {
+   "id": "c12_5028",
+   "type": "electrolytic",
+   "x": 440,
+   "y": 430,
+   "rot": 1,
+   "params": {
+    "c": 0.000001
+   },
+   "label": "C1"
+  },
+  {
+   "id": "c13_2947",
+   "type": "ground",
+   "x": 440,
+   "y": 450,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c14_866",
+   "type": "resistor",
+   "x": 680,
+   "y": 340,
+   "rot": 0,
+   "params": {
+    "r": 1000,
+    "w": ""
+   },
+   "label": "R3"
+  },
+  {
+   "id": "c15_8785",
+   "type": "led",
+   "x": 740,
+   "y": 390,
+   "rot": 1,
+   "params": {
+    "color": "red"
+   },
+   "label": "HL1"
+  },
+  {
+   "id": "c16_6704",
+   "type": "ground",
+   "x": 740,
+   "y": 410,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c17_4623",
+   "type": "offsheet",
+   "x": 630,
+   "y": 380,
+   "rot": 1,
+   "params": {
+    "name": "OUT"
+   },
+   "label": ""
+  },
+  {
+   "id": "c18_2542",
+   "type": "offsheet",
+   "x": 760,
+   "y": 340,
+   "rot": 0,
+   "params": {
+    "name": "LED"
+   },
+   "label": ""
+  },
+  {
+   "id": "c19_461",
+   "type": "offsheet",
+   "x": 840,
+   "y": 390,
+   "rot": 2,
+   "params": {
+    "name": "OUT"
+   },
+   "label": ""
+  },
+  {
+   "id": "c20_8380",
+   "type": "offsheet",
+   "x": 840,
+   "y": 410,
+   "rot": 2,
+   "params": {
+    "name": "LED"
+   },
+   "label": ""
+  },
+  {
+   "id": "c21_6299",
+   "type": "note",
+   "x": 100,
+   "y": 590,
+   "rot": 0,
+   "params": {
+    "text": "Parts as listed: NE555, red LED, 470K, 2 x 1K, 1 uF 16 V electrolytic, 9 V battery. The 555 runs astable: R1 1K, R2 470K, C1 1 uF.",
+    "size": "10"
+   },
+   "label": ""
+  },
+  {
+   "id": "c22_4218",
+   "type": "note",
+   "x": 100,
+   "y": 605,
+   "rot": 0,
+   "params": {
+    "text": "f = 1.44 / ((R1 + 2 R2) C1) = 1.53 Hz, duty cycle 50.05 %: the LED is on and off for about 0.33 s each (about 6 mA through R3).",
+    "size": "10"
+   },
+   "label": ""
+  },
+  {
+   "id": "c23_2137",
+   "type": "note",
+   "x": 100,
+   "y": 620,
+   "rot": 0,
+   "params": {
+    "text": "Run the oscilloscope's power-on transient (3 s) to see it flash.",
+    "size": "10"
+   },
+   "label": ""
+  }
+ ],
+ "wires": [
+  {
+   "id": "w0",
+   "x1": 200,
+   "y1": 320,
+   "x2": 200,
+   "y2": 200
+  },
+  {
+   "id": "w1",
+   "x1": 200,
+   "y1": 200,
+   "x2": 580,
+   "y2": 200
+  },
+  {
+   "id": "w2",
+   "x1": 580,
+   "y1": 290,
+   "x2": 580,
+   "y2": 200
+  },
+  {
+   "id": "w3",
+   "x1": 540,
+   "y1": 290,
+   "x2": 540,
+   "y2": 200
+  },
+  {
+   "id": "w4",
+   "x1": 540,
+   "y1": 390,
+   "x2": 540,
+   "y2": 400
+  },
+  {
+   "id": "w5",
+   "x1": 440,
+   "y1": 220,
+   "x2": 440,
+   "y2": 200
+  },
+  {
+   "id": "w6",
+   "x1": 440,
+   "y1": 280,
+   "x2": 440,
+   "y2": 320
+  },
+  {
+   "id": "w7",
+   "x1": 510,
+   "y1": 320,
+   "x2": 440,
+   "y2": 320
+  },
+  {
+   "id": "w8",
+   "x1": 440,
+   "y1": 380,
+   "x2": 440,
+   "y2": 410
+  },
+  {
+   "id": "w9",
+   "x1": 510,
+   "y1": 340,
+   "x2": 480,
+   "y2": 340
+  },
+  {
+   "id": "w10",
+   "x1": 480,
+   "y1": 340,
+   "x2": 480,
+   "y2": 400
+  },
+  {
+   "id": "w11",
+   "x1": 480,
+   "y1": 400,
+   "x2": 440,
+   "y2": 400
+  },
+  {
+   "id": "w12",
+   "x1": 510,
+   "y1": 360,
+   "x2": 480,
+   "y2": 360
+  },
+  {
+   "id": "w13",
+   "x1": 610,
+   "y1": 340,
+   "x2": 650,
+   "y2": 340
+  },
+  {
+   "id": "w14",
+   "x1": 710,
+   "y1": 340,
+   "x2": 740,
+   "y2": 340
+  },
+  {
+   "id": "w15",
+   "x1": 740,
+   "y1": 340,
+   "x2": 740,
+   "y2": 370
+  },
+  {
+   "id": "w16",
+   "x1": 630,
+   "y1": 340,
+   "x2": 630,
+   "y2": 380
+  },
+  {
+   "id": "w17",
+   "x1": 740,
+   "y1": 340,
+   "x2": 760,
+   "y2": 340
+  },
+  {
+   "id": "w18",
+   "x1": 840,
+   "y1": 390,
+   "x2": 880,
+   "y2": 390
+  },
+  {
+   "id": "w19",
+   "x1": 840,
+   "y1": 410,
+   "x2": 860,
+   "y2": 410
+  },
+  {
+   "id": "w20",
+   "x1": 860,
+   "y1": 410,
+   "x2": 880,
+   "y2": 410
+  }
+ ]
+}

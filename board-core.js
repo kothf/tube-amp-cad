@@ -441,6 +441,7 @@
       case "vdc": return [t2, "TERM-7.5-2", "WIRE-2"];
       // the ideal current source stands for a small current-source board: wired in by two terminals
       case "isrc": return [t2, "WIRE-2"];
+      case "timer555": return ["DIP-8", "WIRE-8"];
       case "mains": return ["TERM-7.5-2", t2, "WIRE-2"];
       case "heater": return [t2, "WIRE-2", "TERM-7.5-2"];
       case "star": return ["STAR-M3", "STAR-M4", "WIRE-1"];

@@ -2606,7 +2606,12 @@
     { file: "04-12ax7-irf820-follower.json", title: "12AX7 stage + IRF820 follower", tag: "tube + MOSFET", about: "The GE 12AX7 data sheet's resistance-coupled stage (gain 50, 40 Vrms at 5 % THD) driving an IRF820 source follower" },
     { file: "05-10w-mosfet-amplifier.json", title: "10 W complementary MOSFET amplifier", tag: "MOSFETs", about: "homemade-circuits.com, fig. 1: BC177 input, BC107 driver, IRF540 / IRF9540 followers into 8 Ω (A3 sheet)" },
     { file: "01-2n3904-ce-unbypassed.json", title: "2N3904 common emitter, RE unbypassed", tag: "transistor", about: "University of Washington lab notes (2017), with the bench-measured part values: gain −4.7" },
-    { file: "02-2n3904-ce-bypassed.json", title: "2N3904 common emitter, RE bypassed", tag: "transistor", about: "The same stage with 10 µF across RE: gain about −115, distorting at 50 mVpp in" }
+    { file: "02-2n3904-ce-bypassed.json", title: "2N3904 common emitter, RE bypassed", tag: "transistor", about: "The same stage with 10 µF across RE: gain about −115, distorting at 50 mVpp in" },
+    { file: "08-555-astable.json", title: "NE555 astable multivibrator", tag: "555", about: "555-timer-circuits.com, the astable multivibrator: 1k, 10k, 100 nF at 9 V; simulated 678 Hz at 51.8 % (formula 686 Hz, 52.4 %; the discharge transistor's 0.1 V makes the difference)" },
+    { file: "09-555-flashing-led.json", title: "NE555 flashing LED", tag: "555", about: "555-timer-circuits.com, flashing LED: 1K, 470K, 1 µF, red LED through 1K, 9 V; simulated 1.51 Hz, about 0.33 s on and off (formula 1.53 Hz); run the oscilloscope's power-on transient for 3 s" },
+    { file: "10-555-metronome.json", title: "NE555 metronome", tag: "555", about: "555-timer-circuits.com, metronome: 1K, 250K speed pot (here 50k), 22 µF, an 8 Ω speaker through 22 µF; simulated 0.641 Hz (formula 0.648 Hz); power-on transient 5 s" },
+    { file: "11-555-car-tachometer.json", title: "NE555 car tachometer", tag: "555", about: "555-timer-circuits.com, car tachometer: a one-shot of 47k and 100 nF from a 9 V zener supply; simulated 5.16 ms pulses (1.1 RC = 5.17 ms), the meter's current proportional to the spark rate" },
+    { file: "12-555-simplest-oscillator.json", title: "NE555 simplest oscillator", tag: "555", about: "555-timer-circuits.com, the simplest 555 oscillator: the output charges 100 nF through 10k; simulated 572 Hz at 60 % high, slower than the 721 Hz of an ideal output because pin 3 rises only to VCC − 1.4 V" }
   ];
   async function openExample(ex) {
     if (S.comps.length && !confirm(`Open the example "${ex.title}"?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.`)) return;
@@ -2738,6 +2743,7 @@
     const models = new Set();
     let k = 0;
     nl.elements.forEach(e => {
+      if (e.internal) return;   // inside a part that goes out as a subcircuit (a 555's divider)
       const id = (e.id || "X").replace(/[^A-Za-z0-9_]/g, "_");
       const nd = (e.nodes || []).map(nn);
       switch (e.kind) {
@@ -2768,6 +2774,11 @@
           if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NMOS" : "PMOS"}(LEVEL=1 VTO=${m.vto} KP=${m.kp} LAMBDA=${m.lambda || 0})`); }
           break;
         }
+        // a 555 by its pins 1-8 (GND TRIG OUT RESET CV THR DIS VCC): the maker's NE555 macro model goes with it
+        case "TIMER555":
+          if (!models.has("NE555")) { models.add("NE555"); lines.push("* NE555: include a NE555 subcircuit with pins 1-8 in order (GND TRIG OUT RESET CV THR DIS VCC), e.g. TI's NE555 macro model"); }
+          lines.push(`X${id} ${nd.slice(0, 8).join(" ")} NE555`);
+          break;
         case "OPAMP": {
           const pm = (S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id, name = `OPAMP_${pm}`.replace(/[^A-Za-z0-9_]/g, "_");
           if (!models.has(name)) { models.add(name); lines.push(...TubeSimEngine.Spice.opamp(e.model, name)); }
