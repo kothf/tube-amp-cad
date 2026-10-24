@@ -154,7 +154,49 @@
       const s = 0.05, vov = s * softplus((vgs - m.vto * p) / s);
       const id = (vds < vov ? m.kp * (vov - vds / 2) * vds : m.kp / 2 * vov * vov) * (1 + (m.lambda || 0) * vds);
       return [p * sw * id, 0, -p * sw * id];
-    }
+    },
+    // Op-amp (nodes IN+, IN−, OUT, V+, V−, N1, N2): a two-stage macromodel. Stage one, a
+    // transconductance gm1 whose current is limited to i1 (tanh), drives N1 (r1 to the supply
+    // midpoint); stage two, gm2 limited to i2, inverts N1 onto N2 (r2). The Miller capacitor
+    // between N1 and N2 is a C element (the CAD's build, or an LM301's own pins 1 and 8), so the
+    // open-loop gain is gm1·r1·gm2·r2, the gain-bandwidth gm1 / (2π·Cc) and the slew rate i1 / Cc.
+    // The output follows N2 through ro, no closer than dhi to V+ and dlo to V− (soft limits), its
+    // current limited to isc sourcing and isk sinking. N1 and N2 are clamped just outside their
+    // working range, so a saturated amplifier comes back at once. Every current comes from V+ or
+    // goes to V−, with the quiescent current iq between them; the inputs take the bias current ib
+    // (> 0 into the pins, NPN inputs; < 0 out of them, PNP) and have rin between them. Below about
+    // 2 V of supply the amplifier is off. lin (the DC operating point): both stages without their
+    // current limits and the output limits with a slight slope, so Newton's method sees the
+    // feedback loop wherever an iterate lands. gain: stage two's share of the gain
+    // (the DC operating point's gain stepping).
+    opamp(V, m, lin, gain) {
+      const I = [0, 0, 0, 0, 0, 0, 0], vp = V[3], vq = V[4], vm = (vp + vq) / 2, vd = V[0] - V[1], v1 = V[5], v2 = V[6];
+      const on = 1 / (1 + Math.exp(-(vp - vq - 2) / 0.3)), w = 0.05, sp = x => w * softplus(x / w);
+      // a current X out of the amplifier into node k: drawn from V+ while positive, returned to V− while negative
+      // (smoothly, over a nanoampere, and exactly nothing at no current: an unwired amplifier must not charge its pins)
+      const src = (k, X) => { const a = X / (1 + Math.exp(Math.max(-60, Math.min(60, -X * 1e9)))); I[k] -= X; I[3] += a; I[4] -= a - X; };
+      // a resistor from node k to the midpoint, half its current to each rail
+      const rmid = (k, vk, r) => { const X = (vk - vm) / r; I[k] += X; I[3] -= X / 2; I[4] -= X / 2; };
+      // clamps of node k: above top it conducts to V+, below bot from V−
+      const clamp = (k, vk, top, bot, gc) => { const a = gc * sp(vk - top), b = gc * sp(bot - vk); I[k] += a - b; I[3] -= a; I[4] += b; };
+      const ir = vd / m.rin, ib = (m.ib || 0) * on;
+      I[0] += ir + ib; I[1] += ib - ir; I[ib > 0 ? 4 : 3] -= 2 * ib;
+      src(5, -(lin ? m.gm1 * vd : m.i1 * Math.tanh(m.gm1 * vd / m.i1)) * on);
+      rmid(5, v1, m.r1);
+      const gm2 = m.gm2 * (gain === undefined ? 1 : gain);
+      src(6, -(lin ? gm2 * (v1 - vm) : m.i2 * Math.tanh(gm2 * (v1 - vm) / m.i2)) * on);
+      rmid(6, v2, m.r2);
+      const [hi, lo] = Semi.opampLimits(V, m);
+      clamp(5, v1, vm + 0.5, vm - 0.5, 1e-3);
+      clamp(6, v2, hi + 0.3, lo - 0.3, 1e-2);
+      const ex = lin ? 0.999 : 1, vt = v2 - ex * Semi.opampClip(V, m), io = (vt - V[2]) / m.ro;
+      src(2, (io > 0 ? m.isc * Math.tanh(io / m.isc) : m.isk * Math.tanh(io / m.isk)) * on);
+      I[3] += m.iq * on; I[4] -= m.iq * on;
+      return I;
+    },
+    // the output stage's limits [high, low], and how far N2 is beyond them (> 0 above, < 0 below)
+    opampLimits: (V, m) => { const vm = (V[3] + V[4]) / 2; return [Math.max(V[3] - m.dhi, vm), Math.min(V[4] + m.dlo, vm)]; },
+    opampClip(V, m) { const [hi, lo] = Semi.opampLimits(V, m), w = 0.05; return w * (softplus((V[6] - hi) / w) - softplus((lo - V[6]) / w)); }
   };
   // SPICE pnjlim: limits a junction voltage step so exp() cannot run away between iterations
   function pnjlim(vnew, vold, nVt, vcrit) {
@@ -632,6 +674,9 @@
           case "MOS":
             stampNonlinear(nd, W => Semi.mos(W, e.model), nd.map(k => vn(x, k)), 1e-6);
             break;
+          case "OPAMP":
+            stampNonlinear(nd, W => Semi.opamp(W, e.model, mode.dc, e._gain), nd.map(k => vn(x, k)), 1e-6);
+            break;
           case "TRIODE": {
             const V0 = nd.map(k => vn(x, k));   // A, G, K
             stampNonlinear(nd, V => {
@@ -715,6 +760,21 @@
     circ.els.forEach(e => { delete e._vlast; delete e._vbe; delete e._vbc; });
     let r = newtonSolve(circ, zero, { dc: true }, { gmin: 1e-9 });
     if (r.ok) return r;
+    // op-amps: a high-gain loop whose iterates bounce between the output's limits. Solved first
+    // with stage two's gain cut a thousandfold (the open-loop gain a few hundred), then raised
+    // step by step from each solution
+    const amps = circ.els.filter(e => e.kind === "OPAMP");
+    if (amps.length) {
+      let xs = zero;
+      for (const k of [1e-3, 1e-2, 1e-1, 1]) {
+        amps.forEach(e => { e._gain = k; });
+        r = newtonSolve(circ, xs, { dc: true }, { gmin: 1e-9 });
+        if (!r.ok) break;
+        xs = r.x;
+      }
+      amps.forEach(e => { delete e._gain; });
+      if (r.ok) return r;
+    }
     // gmin stepping
     let x = zero;
     for (const g of [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9]) {
@@ -755,6 +815,12 @@
       return { vce: p * (w[0] - w[2]), vbe: p * (w[1] - w[2]), ic: p * ic, ib: p * ib, pd: (w[0] - w[2]) * ic + (w[1] - w[2]) * ib };
     }
     if (e.kind === "MOS") { const [id] = Semi.mos(v, e.model), p = e.model.pol; return { vds: p * (v[0] - v[2]), vgs: p * (v[1] - v[2]), id: p * id, pd: (v[0] - v[2]) * id }; }
+    if (e.kind === "OPAMP") {
+      // vd: IN+ − IN−; iout: out of the output pin; pd: the power the package dissipates
+      // clip: how far the output stage is driven past its limit (V; > 0.05 is clipping)
+      const I = Semi.opamp(v, e.model);
+      return { vd: v[0] - v[1], vout: v[2], vs: v[3] - v[4], iout: -I[2], iq: I[3], pd: I.reduce((s, i, k) => s + i * v[k], 0), clip: Semi.opampClip(v, e.model) };
+    }
     if (e.kind === "VDIODE") { const vd = v[0] - v[1]; return { vd, i: vd > 0 ? e.perveance * Math.pow(vd, 1.5) : 0 }; }
     if (e.kind === "D") { const vd = v[0] - v[1]; return { vd, i: (e.is || 2.5e-9) * (Math.exp(Math.min(vd / ((e.n || 1.75) * 0.025852), 80)) - 1) }; }
     if (e.kind === "R") { const vd = v[0] - v[1]; return { vd, i: vd / e.r }; }
@@ -785,6 +851,7 @@
       case "BJT": return Semi.bjt(v, e.model).map((i, k) => [nd[k], i]);
       case "MOS": return Semi.mos(v, e.model).map((i, k) => [nd[k], i]);
       case "TIMER555": { const I = timerCurrents([v[0], v[2], v[6], v[7]], latchOf(e, x)); return [[nd[0], I[0]], [nd[2], I[1]], [nd[6], I[2]], [nd[7], I[3]]]; }
+      case "OPAMP": return Semi.opamp(v, e.model).map((i, k) => [nd[k], i]);
       default: return [];
     }
   }
@@ -1070,7 +1137,8 @@
     const nCap = captureSteps + 1;
     const nodes = [];
     for (let i = 0; i < nodeCount; i++) nodes.push(new Float32Array(nCap));
-    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D");
+    // (an op-amp's trace is its clip: how far past its output limit it is driven)
+    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP");
     const devTrace = {};
     devIdx.forEach(e => { devTrace[e.id + (e.part ? "#" + e.part : "")] = { i: new Float32Array(nCap), ig2: e.kind === "PENTODE" ? new Float32Array(nCap) : null }; });
     // A circuit run from AC (a rectified supply) has no true DC solution: the
@@ -1094,7 +1162,7 @@
       if (acc) for (let i = 1; i < nodeCount; i++) nodeSum[i] += x[i - 1];
       devIdx.forEach(e => {
         const s = deviceState(e, x), tr = devTrace[e.id + (e.part ? "#" + e.part : "")];
-        tr.i[k] = s.ia !== undefined ? s.ia : s.i;
+        tr.i[k] = s.ia !== undefined ? s.ia : s.i !== undefined ? s.i : s.clip;
         if (tr.ig2) tr.ig2[k] = s.ig2;
       });
       if (acc) currentsOf(circ, x, curSum);
@@ -1134,6 +1202,30 @@
   // Behavioural-source expressions for SPICE export: the exact equations above
   const g = v => Number(v.toPrecision(6));
   const Spice = {
+    // an op-amp as a subcircuit (pins IN+ IN− OUT V+ V− N1 N2) of current sources, Semi.opamp term
+    // by term; the shared terms are behavioural voltages on inner nodes (a current X as X volts)
+    opamp: (m, name) => {
+      const sp = x => `0.05*(max((${x})/0.05,0)+ln(1+exp(-abs((${x})/0.05))))`, pos = X => `${X}/(1+exp(limit(-${X}*1e9,-60,60)))`;
+      const L = [`.subckt ${name} INP INN OUT VP VN N1 N2`, `RIN INP INN ${g(m.rin)}`,
+        "BON ON 0 V=1/(1+exp(-(V(VP,VN)-2)/0.3))", "BVM VM 0 V=(V(VP)+V(VN))/2",
+        `BHI HI 0 V=max(V(VP)-${g(m.dhi)},V(VM))`, `BLO LO 0 V=min(V(VN)+${g(m.dlo)},V(VM))`,
+        `BX1 X1 0 V=-${g(m.i1)}*tanh(${g(m.gm1 / m.i1)}*V(INP,INN))*V(ON)`, `BX2 X2 0 V=-${g(m.i2)}*tanh(${g(m.gm2 / m.i2)}*V(N1,VM))*V(ON)`,
+        `BVT VT 0 V=V(N2)-${sp("V(N2)-V(HI)")}+${sp("V(LO)-V(N2)")}`,
+        `BXO XO 0 V=if(V(VT,OUT)>0,${g(m.isc)}*tanh(V(VT,OUT)/${g(m.ro * m.isc)}),${g(m.isk)}*tanh(V(VT,OUT)/${g(m.ro * m.isk)}))*V(ON)`];
+      let k = 0;
+      const B = (a, b, i) => L.push(`B${++k} ${a} ${b} I=${i}`);
+      // X out of the amplifier into node n, from V+ or back to V−; a resistor to the midpoint; clamps
+      const src = (n, X) => { B("VP", n, pos(X)); B(n, "VN", `${pos(X)}-${X}`); };
+      const rmid = (n, r) => { B(n, "VP", `V(${n},VM)/${g(2 * r)}`); B(n, "VN", `V(${n},VM)/${g(2 * r)}`); };
+      const clamp = (n, top, bot, gc) => { B(n, "VP", `${g(gc)}*${sp(`V(${n})-${top}`)}`); B("VN", n, `${g(gc)}*${sp(`${bot}-V(${n})`)}`); };
+      if (m.ib > 0) { B("INP", "VN", `${g(m.ib)}*V(ON)`); B("INN", "VN", `${g(m.ib)}*V(ON)`); }
+      else if (m.ib < 0) { B("VP", "INP", `${g(-m.ib)}*V(ON)`); B("VP", "INN", `${g(-m.ib)}*V(ON)`); }
+      src("N1", "V(X1)"); rmid("N1", m.r1); src("N2", "V(X2)"); rmid("N2", m.r2); src("OUT", "V(XO)");
+      clamp("N1", "(V(VM)+0.5)", "(V(VM)-0.5)", 1e-3); clamp("N2", "(V(HI)+0.3)", "(V(LO)-0.3)", 1e-2);
+      B("VP", "VN", `${g(m.iq)}*V(ON)`);
+      L.push(".ends");
+      return L;
+    },
     triode: m => ({
       plate: `pwr(max(V(A,K)/${g(m.kp)}*ln(1+exp(${g(m.kp)}*(1/${g(m.mu)}+V(G,K)/sqrt(${g(m.kvb)}+V(A,K)*V(A,K))))),0),${g(m.x)})*${g(2 / m.kg)}`,
       grid: `if(V(G,K)>0,${g(0.2 / m.kg)}*pwr(V(G,K),1.5),0)`
@@ -1278,6 +1370,7 @@
         case "VDIODE": { const P = e.perveance; jac(nd, V => { const v = V[0] - V[1]; const i = v > 0 ? P * Math.pow(v, 1.5) : 0; return [i, -i]; }, 1e-3); break; }
         case "BJT": jac(nd, W => Semi.bjt(W, e.model), 1e-6); break;
         case "MOS": jac(nd, W => Semi.mos(W, e.model), 1e-5); break;
+        case "OPAMP": jac(nd, W => Semi.opamp(W, e.model), 1e-6); break;
         case "TRIODE": jac(nd, V => { const [ia, ig] = tubeCurrents(e, V[0] - V[2], V[1] - V[2]); return [ia, ig, -(ia + ig)]; }, 1e-3); break;
         case "PENTODE": jac(nd, V => { const [ia, ig, ig2] = tubeCurrents(e, V[0] - V[3], V[1] - V[3], V[2] - V[3]); return [ia, ig, ig2, -(ia + ig + ig2)]; }, 1e-3); break;
         // a 555: its output stage as it stands at the operating point, the latch fixed

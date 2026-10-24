@@ -277,6 +277,18 @@
         ctx.beginPath(); ctx.moveTo(x + 7, y - 9); ctx.lineTo(x + 2.6, y - 7.2); ctx.lineTo(x + 6, y - 4.6); ctx.closePath(); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
       });
     },
+    opamp(ctx, c) {
+      // IEC 60617 S01240 amplifier: the qualifying triangle and ∞ (an operational amplifier),
+      // the inputs marked + and −
+      ctx.fillStyle = COL.fill; ctx.fillRect(-30, -30, 60, 60); ctx.strokeRect(-30, -30, 60, 60);
+      line(ctx, [-40, -10, -30, -10]); line(ctx, [-40, 10, -30, 10]); line(ctx, [30, 0, 40, 0]); line(ctx, [0, -40, 0, -30]); line(ctx, [0, 30, 0, 40]);
+      if ((OPAMPS[c.params.model] || {}).cc === 0) { line(ctx, [-20, -40, -20, -30]); line(ctx, [20, -40, 20, -30]); }
+      ctx.save(); ctx.lineWidth = 1.5; line(ctx, [-6, -22, 6, -16, -6, -10, -6, -22]); ctx.restore();
+      ctx.font = "12px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText("∞", 8, -16); ctx.fillText("−", -26, -10); ctx.fillText("+", -26, 10);
+      ctx.font = "8px ui-monospace, monospace"; ctx.textAlign = "center";
+      ctx.fillText("V+", 9, -24); ctx.fillText("V−", 9, 24);
+    },
     npn(ctx, c) { drawBjt(ctx, c, 1); },
     pnp(ctx, c) { drawBjt(ctx, c, -1); },
     nmos(ctx, c) { drawMos(ctx, c, 1); },
@@ -591,6 +603,37 @@
   // LEDs, as used for cathode bias: forward voltage vf at 10 mA (emission coefficient 2), max current i (A)
   const LEDS = { red: { vf: 1.8, i: 0.02 }, yellow: { vf: 2.0, i: 0.02 }, green: { vf: 2.1, i: 0.02 }, blue: { vf: 3.0, i: 0.02 } };
   const ledIs = vf => 0.01 / Math.exp(vf / (2 * 0.025852));
+  // Op-amps, typical values from the makers' datasheets (TI, onsemi): open-loop gain a0 (V/V),
+  // gain-bandwidth gbw (Hz), slew rate sr (V/s), input resistance rin (Ω), input bias current ib
+  // (A, > 0 into the pins: NPN inputs, < 0 out of them: PNP), open-loop output resistance ro (Ω),
+  // short-circuit current sourcing isc / sinking isk (A), output swing: within dhi of V+ and dlo
+  // of V− with no load (V), supply current iq per amplifier (A), vmax: the largest V+ − V−.
+  // units: amplifiers in the package (DIP-8 or DIP-14). cc: the internal Miller capacitor;
+  // the LM301 has none and takes its own between pins 1 and 8 (30 pF: unity-gain stable).
+  const OPAMPS = {
+    "LM741": { units: 1, a0: 200e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 80e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.7e-3, vmax: 36, cc: 30e-12, input: "bipolar (NPN)", use: "the classic general-purpose op-amp" },
+    "LM301A": { units: 1, a0: 160e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 70e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.8e-3, vmax: 36, cc: 0, input: "bipolar (NPN)", use: "externally compensated, 30 pF between pins 1 and 8" },
+    "TL071": { units: 1, a0: 200e3, gbw: 3e6, sr: 13e6, rin: 1e12, ib: 30e-12, ro: 200, isc: 25e-3, isk: 25e-3, dhi: 1.3, dlo: 1.3, iq: 1.4e-3, vmax: 36, cc: 10e-12, input: "JFET", use: "low-noise JFET input, audio" },
+    "TL072": { units: 2, a0: 200e3, gbw: 3e6, sr: 13e6, rin: 1e12, ib: 30e-12, ro: 200, isc: 25e-3, isk: 25e-3, dhi: 1.3, dlo: 1.3, iq: 1.4e-3, vmax: 36, cc: 10e-12, input: "JFET", use: "dual low-noise JFET input, audio" },
+    "TL074": { units: 4, a0: 200e3, gbw: 3e6, sr: 13e6, rin: 1e12, ib: 30e-12, ro: 200, isc: 25e-3, isk: 25e-3, dhi: 1.3, dlo: 1.3, iq: 1.4e-3, vmax: 36, cc: 10e-12, input: "JFET", use: "quad low-noise JFET input, audio" },
+    "LM324": { units: 4, a0: 100e3, gbw: 1.2e6, sr: 0.5e6, rin: 2e6, ib: -20e-9, ro: 100, isc: 40e-3, isk: 20e-3, dhi: 1.5, dlo: 0.02, iq: 0.25e-3, vmax: 32, cc: 10e-12, input: "bipolar (PNP), down to V−", use: "quad, single supply: inputs and output reach V−" }
+  };
+  // the pins of each amplifier in its package: IN+, IN−, OUT and the supply (pins 1 and 8 of an
+  // LM301A carry its compensation)
+  const OPAMP_PINS = {
+    1: [{ "+": 3, "-": 2, OUT: 6 }],
+    2: [{ "+": 3, "-": 2, OUT: 1 }, { "+": 5, "-": 6, OUT: 7 }],
+    4: [{ "+": 3, "-": 2, OUT: 1 }, { "+": 5, "-": 6, OUT: 7 }, { "+": 10, "-": 9, OUT: 8 }, { "+": 12, "-": 13, OUT: 14 }]
+  };
+  const OPAMP_SUPPLY = { 1: { "V+": 7, "V-": 4 }, 2: { "V+": 8, "V-": 4 }, 4: { "V+": 4, "V-": 11 } };
+  // the amplifier of a dual or quad from the designation suffix: DA1.2 is the second one
+  const opampUnit = c => { const m = OPAMPS[c.params.model] || OPAMPS.TL071, k = +((/\.(\d+)$/.exec(c.label || "") || [])[1] || 1); return k >= 1 && k <= m.units ? k : 1; };
+  // the engine's macromodel (sim-engine.js Semi.opamp) from the datasheet values: stage two has a
+  // gain of 1000, stage one the rest; with the Miller capacitor Cc, gm1 = 2π·GBW·Cc and i1 = SR·Cc
+  function opampModel(m) {
+    const cc = m.cc || 30e-12, gm1 = 2 * Math.PI * m.gbw * cc, gm2 = 2e-3, r2 = 5e5;
+    return { gm1, i1: m.sr * cc, r1: m.a0 / (gm1 * gm2 * r2), gm2, i2: 2e-3, r2, rin: m.rin, ib: m.ib, ro: m.ro, isc: m.isc, isk: m.isk, dhi: m.dhi, dlo: m.dlo, iq: m.iq };
+  }
   const semiRating = m => `${m.v} V, ${m.i} A, ${m.p} W, ${m.pkg}`;
   // the Type list of a transistor; a third element sorts the entry under a heading (Silicon / Germanium)
   const semiOptions = (tab, pol) => () => Object.entries(tab).filter(([, m]) => m.pol === pol).map(([k, m]) => [k, `${k} · ${m.v} V ${m.i} A ${m.p} W · ${m.use}`, tab === BJTS ? (m.ge ? "Germanium" : "Silicon") : undefined]);
@@ -1033,6 +1076,49 @@
     pnp: bjtPart(-1),
     nmos: mosPart(1),
     pmos: mosPart(-1),
+    opamp: {
+      // DA: analogue integrated circuit (ГОСТ 2.710). The sections of a dual or quad (DA1.1 …
+      // DA1.4) are one package, as a dual triode's are
+      name: "Op-amp", prefix: "DA", group: "Integrated circuits", bbox: [-40, -40, 40, 40],
+      defaults: { model: "TL071" },
+      pins: c => {
+        const p = [{ id: "-", x: -40, y: -10, name: "inverting input" }, { id: "+", x: -40, y: 10, name: "non-inverting input" }, { id: "OUT", x: 40, y: 0, name: "output" },
+          { id: "V+", x: 0, y: -40, name: "positive supply" }, { id: "V-", x: 0, y: 40, name: "negative supply" }];
+        if ((OPAMPS[c.params.model] || {}).cc === 0) p.push({ id: "1", x: -20, y: -40, name: "compensation (pin 1)" }, { id: "8", x: 20, y: -40, name: "compensation (pin 8)" });
+        return p;
+      },
+      // the package's pin numbers beside the leads, as drawPinNumbers in cad-app.js writes a tube's
+      pinSpots: [["-", -36, -10, 0, -1], ["+", -36, 10, 0, 1], ["OUT", 36, 0, 0, -1], ["V+", 0, -36, 1, 0], ["V-", 0, 36, 1, 0], ["1", -20, -36, -1, 0], ["8", 20, -36, 1, 0]],
+      pinNumbers: c => {
+        const m = OPAMPS[c.params.model] || OPAMPS.TL071, out = Object.assign({}, OPAMP_PINS[m.units][opampUnit(c) - 1], OPAMP_SUPPLY[m.units]);
+        if (m.cc === 0) { out["1"] = 1; out["8"] = 8; }
+        for (const k in out) out[k] = String(out[k]);
+        return out;
+      },
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true,
+        options: () => Object.entries(OPAMPS).map(([k, m]) => [k, `${k} · ${fmtEng(m.gbw, "Hz")} · ${m.sr / 1e6} V/µs · ${m.use}`, m.units === 1 ? "Single" : m.units === 2 ? "Dual" : "Quad"]) }],
+      info: c => {
+        const m = OPAMPS[c.params.model] || OPAMPS.TL071, u = opampUnit(c), pins = Object.assign({}, OPAMP_PINS[m.units][u - 1], OPAMP_SUPPLY[m.units]);
+        return `${c.params.model} (${m.use}): gain ${Math.round(20 * Math.log10(m.a0))} dB, gain-bandwidth ${fmtEng(m.gbw, "Hz")}, slew rate ${m.sr / 1e6} V/µs${m.cc === 0 ? " with 30 pF" : ""}, ${m.input} inputs (bias ${Math.abs(m.ib) < 1e-9 ? Math.abs(m.ib) * 1e12 + " pA" : fmtEng(Math.abs(m.ib), "A")}), output to within ${m.dhi} V of V+ and ${m.dlo} V of V−, short-circuit current ${fmtEng(m.isc, "A")}, supply up to ${m.vmax} V (±${m.vmax / 2} V), ${fmtEng(m.iq, "A")} per amplifier. `
+          + (m.units > 1 ? `Amplifier ${u} of ${m.units} in a DIP-${m.units === 2 ? 8 : 14}: pins ${pins["+"]} (+), ${pins["-"]} (−), ${pins.OUT} (out); name the amplifiers of one package ${c.label && c.label.includes(".") ? c.label.slice(0, c.label.lastIndexOf(".")) : c.label || "DA1"}.1 … .${m.units} to put them in one package. ` : "")
+          + `Supply pins ${pins["V+"]} (V+) and ${pins["V-"]} (V−) must be wired${m.units > 1 ? " on every amplifier, to the same rails" : ""}.`
+          + (m.cc === 0 ? " Without a capacitor between pins 1 and 8 it is uncompensated and oscillates at low gain: 30 pF makes it unity-gain stable (1 MHz, 0.5 V/µs), 3 pF is enough from a gain of 10 up and is ten times faster." : "");
+      },
+      build: (c, net, alloc, out) => {
+        const m = OPAMPS[c.params.model] || OPAMPS.TL071, ext = m.cc === 0, vneg = net("V-");
+        // N1, N2: the ends of the Miller capacitor; an LM301A brings them out on pins 1 and 8
+        const n1 = ext ? net("1") : alloc(), n2 = ext ? net("8") : alloc();
+        out.push({ id: c.id, kind: "OPAMP", nodes: [net("+"), net("-"), net("OUT"), net("V+"), vneg, n1, n2], model: opampModel(m) });
+        // the LM301A's own stray Miller capacitance, about 1 pF: uncompensated it slews some 15 V/µs
+        out.push({ id: c.id + "#cc", kind: "C", nodes: [n1, n2], c: ext ? 1e-12 : m.cc });
+        // 1 GΩ from each supply pin to ground (the board's leakage, nanoamperes): an amplifier left
+        // unwired would otherwise float as a whole, its level set by round-off alone
+        out.push({ id: c.id + "#lp", kind: "R", nodes: [net("V+"), 0], r: 1e9 }, { id: c.id + "#ln", kind: "R", nodes: [vneg, 0], r: 1e9 });
+        // the stray capacitance of both nodes: the second pole, well above the gain-bandwidth
+        out.push({ id: c.id + "#c1", kind: "C", nodes: [n1, vneg], c: 1e-12 }, { id: c.id + "#c2", kind: "C", nodes: [n2, vneg], c: 3e-12 });
+      }
+    },
     vdc: {
       name: "DC supply", prefix: "G", group: "Sources", bbox: [-16, -30, 16, 30],
       defaults: { v: 300, rs: 0 },
@@ -1214,7 +1300,11 @@
       { sub: "Transistors" }, ["npn"], ["pnp"], ["npn", { model: "MJE340" }, "NPN, high voltage"], ["pnp", { model: "MJE350" }, "PNP, high voltage"],
       ["pnp", { model: "AC128" }, "PNP, germanium"], ["npn", { model: "AC127" }, "NPN, germanium"], ["pnp", { model: "MP39B" }, "PNP, germanium (USSR)"],
       ["nmos", null, "N-MOSFET"], ["nmos", { model: "DN2540" }, "N-MOSFET, depletion"], ["pmos", null, "P-MOSFET"]] },
-    { group: "Integrated circuits", items: [["timer555"]] },
+    { group: "Integrated circuits", items: [
+      { sub: "Op-amps" },
+      ["opamp", { model: "TL071" }, "TL071 (JFET)"], ["opamp", { model: "TL072" }, "TL072 (dual JFET)"], ["opamp", { model: "TL074" }, "TL074 (quad JFET)"],
+      ["opamp", { model: "LM741" }, "LM741"], ["opamp", { model: "LM301A" }, "LM301A (external comp.)"], ["opamp", { model: "LM324" }, "LM324 (quad, single supply)"],
+      { sub: "Timers" }, ["timer555", null, "NE555 timer"]] },
     { group: "Instruments", items: [["scope"]] },
     { group: "Document", items: [["frame"], ["note"]] }
   ];
@@ -1229,7 +1319,7 @@
   //   inspector), R.vAcross(pinA, pinB) (DC volts), R.pAvg(pinA, pinB, ohms), R.netDC(net),
   //   R.pinNet(pin), R.pinCurrent(pin), R.tubeData(), R.tubeLimits(), R.limitRows(),
   //   R.resistorPower(), R.speakerPower(), R.signalFreq(), R.otDcCurrent(), R.scopeChannels(),
-  //   R.stats(array). A new part gets its readout here and needs no change in cad-app.js.
+  //   R.wave(pin) (the pin's voltage over the capture), R.stats(array). A new part gets its readout here and needs no change in cad-app.js.
   // ---------------------------------------------------------------------------
   const UI = {
     tube: {
@@ -1372,6 +1462,24 @@
     return h;
   };
   ["npn", "pnp", "nmos", "pmos"].forEach(t => { UI[t] = { readout: semiReadout }; });
+  // op-amps: the output and how close it runs to its limits, the input difference, the package's heat
+  UI.opamp = {
+    readout: (c, R) => {
+      const dev = R.r.dc.devices[c.id], d = dev && dev.main, m = OPAMPS[c.params.model], kv = R.kv;
+      if (!d || !m) return R.note("No data.");
+      // the clip trace: how far past its output limit the amplifier is driven at each sample
+      const w = R.wave("OUT"), tr = R.r.tran && R.r.tran.devices[c.id], clipped = tr ? tr.i.some(v => Math.abs(v) > 0.05) : Math.abs(d.clip) > 0.05, stuck = Math.abs(d.clip) > 0.05;
+      let h = kv("Supply (V+ − V−)", fmtEng(d.vs, "V", 2), d.vs > m.vmax ? "bad" : d.vs < 2 ? "warn" : "");
+      h += kv("Output (DC)", fmtEng(d.vout, "V", 2), stuck ? "warn" : "") + kv("Output current", fmtEng(d.iout, "A", 2), Math.abs(d.iout) > 0.8 * (d.iout > 0 ? m.isc : m.isk) ? "warn" : "");
+      h += kv("IN+ − IN−", fmtEng(d.vd, "V", 2));
+      if (w) { const s = R.stats(w); h += kv("Output swing", `${fmtEng(s.pp, "Vpp", 2)} · ${fmtEng(s.min, "V", 2)} to ${fmtEng(s.max, "V", 2)}`, clipped ? "warn" : ""); }
+      if (clipped && !stuck) h += R.note(`The output reaches its limit (${m.dhi} V below V+, ${m.dlo} V above V−, less the drop across its ${m.ro} Ω output resistance): it clips.`, "warn");
+      h += kv("Dissipation", fmtEng(d.pd, "W", 2));
+      if (stuck) h += R.note("The output sits at its limit: no negative feedback, or the inputs are outside what the circuit can follow.", "warn");
+      if (d.vs < 2) h += R.note("No supply: wire V+ and V− to the rails.", "warn");
+      return h;
+    }
+  };
   // diodes: voltage and current; a zener's dissipation, an LED's maximum current
   const diodeReadout = (c, R) => {
     const v = R.vAcross("A", "K"), i = R.pinCurrent("A");
@@ -1417,5 +1525,5 @@
     return wrap;
   }
 
-  root.CadLib = { bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

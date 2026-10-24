@@ -125,7 +125,7 @@ Firefox is not tested.
 | Semiconductors | silicon diodes (1N4007, UF4007, 1N4148); zener diodes 1N4733A … 1N5388B (5.1–200 V, 1 W and 5 W); LEDs (red, yellow, green, blue) for cathode bias; **NPN** 2N2222A, 2N3904, BC107, BC547B, BD139, MPSA42, MJE340 and **PNP** 2N2907A, 2N3906, BC177, BC557B, BD140, MPSA92, MJE350; **drivers and power output** in complementary pairs: 2SD669A/2SB649A, 2SC4793/2SA1837, MJE15032/MJE15033, TIP41C/TIP42C, 2SC5200/2SA1943, MJL3281A/MJL1302A, MJL21194/MJL21193, and in TO-3 (on wires, for a chassis heatsink) MJ15003/MJ15004, MJ15024/MJ15025, 2N3055/MJ2955; **germanium** (VBE about 0.2 V, low fT): USSR MP39B, MP40A, MP41A, MP42B, MP25B, MP26B, MP38A (NPN), GT402G/GT404G, P213B (МП39Б … П213Б) and Western AC127/AC128, AC187/AC188, OC71, NKT275, 2N404, AD149, AD161/AD162, with their collector leakage (ICBO, doubling every 10 °C); every bipolar transistor has a **Temperature** (VBE −2 mV/°C, hFE and leakage rising); **N-MOSFETs** 2N7000, BS170, IRF510, IRF540, IRF820, IRF840, IRFP240, IRFP250, IRFP460, the laterals 2SK1058 and ECX10N20, and the depletion DN2540 and LND150 for current sources; **P-MOSFETs** BS250, IRF9540, IRF9610, IRF9640, IRFP9240 and the laterals 2SJ162 and ECX10P20. The power models are fitted to the datasheets (hFE and its fall at high current, VBE, capacitances; for MOSFETs threshold and transconductance); the bipolar model has no emitter or base resistance, so VBE at several amperes reads somewhat low |
 | Sources | DC supplies: DC supply (positive for B+, negative for grid bias, with an internal resistance), current source (constant current with an output resistance). AC sources: signal generator (sine, square, triangle; Vpk, Vrms or dBV), AC mains (feeds a power transformer) |
 | Ground & connectors | Ground, sheet connector |
-| Integrated circuits | **NE555 timer** (DIP-8 on the board): the 5k–5k–5k divider, both comparators, the latch, reset, the output (VCC − 1.4 V high, 8 Ω low, about 120–250 mA at most) and discharge stages and the chip's supply current, from TI's data. Its latch switches at the instant a comparator crosses, not on the time grid, so the timing does not depend on the step; the inspector reads the output's frequency and duty cycle |
+| Integrated circuits | **op-amps**: TL071, TL072 (dual), TL074 (quad) with JFET inputs, LM741, LM301A (compensated by your own capacitor between pins 1 and 8), LM324 (quad, single supply, inputs and output down to V−); each with its datasheet's open-loop gain, gain-bandwidth, slew rate, output swing, short-circuit current, input bias and supply current. The amplifiers of a dual or quad (DA1.1 … DA1.4) share one DIP-8 or DIP-14 on the board; **NE555 timer** (DIP-8 on the board): the 5k–5k–5k divider, both comparators, the latch, reset, the output (VCC − 1.4 V high, 8 Ω low, about 120–250 mA at most) and discharge stages and the chip's supply current, from TI's data. Its latch switches at the instant a comparator crosses, not on the time grid, so the timing does not depend on the step; the inspector reads the output's frequency and duty cycle |
 | Instruments | two-channel oscilloscope (its screen live on the schematic, full window on double-click), with the spectrum analyzer and the Bode plotter reading its channels |
 | Document | IEC 61082 drawing frame with title block, text note |
 
@@ -640,6 +640,15 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   datasheet's VBE(on) test point it reads 0.7 of the guaranteed maximum
   (1.05 V at 4 A for the 2N3055). The other power parts have none yet, so
   their VBE at several amperes reads somewhat low.
+- **Op-amps** are a two-stage macromodel: an input transconductance whose
+  current is limited (the slew rate), a second inverting stage with the Miller
+  capacitor across it (the gain-bandwidth), and an output that follows within
+  the datasheet's distance of each rail through its output resistance, with
+  its short-circuit current. Bias currents flow at the inputs and every current
+  (supply current included) comes from V+ and goes to V−. Not modelled: offset
+  voltage, noise, the input common-mode limits (a TL07x's phase reversal near
+  V−) and the LM324's crossover distortion. The DC operating point raises the
+  loop gain in steps when the full-gain loop does not converge at once.
 - **MOSFETs** are square-law (SPICE level 1), with the overdrive smoothed
   over 50 mV around threshold, plus a body diode and gate capacitances. The
   threshold is the middle of the datasheet range, and Kp comes from the
@@ -675,6 +684,9 @@ The test suite checks the engine against independent results:
   (agreement within 0.02 %);
 - a 2N3904 stage against a nested bisection of the Gummel-Poon equations, a
   MOSFET follower against the square law;
+- op-amps (`tests/opamp.test.mjs`): each type's gain of −10 to 0.1 %, its
+  follower bandwidth at the gain-bandwidth and ×101 at GBW/101, slew rate,
+  output swing, short-circuit and supply current, against its datasheet;
 - Kirchhoff's current law at every node, also for currents averaged over a
   rectifier's window;
 - the frequency response against an RC corner (−3.01 dB, −45°) and a series

@@ -1504,12 +1504,13 @@
   // designations): [terminal, point on its lead, side to write on] in symbol coordinates
   const TUBE_PIN_SPOTS = [["A", 0, -40, 1, 0], ["A1", -20, -40, -1, 0], ["A2", 20, -40, 1, 0],
     ["G", -40, 0, 0, 1], ["G1", -40, 0, 0, 1], ["G2", 40, -10, 0, -1], ["K", 0, 44, -1, 0], ["H", 10, 47, 0, 1]];
+  // (a part with pinSpots of its own, an op-amp, brings them in the same form)
   function drawPinNumbers(c, sel) {
-    const nums = LIB.tube.pinNumbers(c), ids = new Set(compPins(c).map(p => p.id).concat("H"));
+    const def = LIB[c.type], nums = def.pinNumbers(c), ids = new Set(compPins(c).map(p => p.id).concat("H"));
     ctx.save();
     ctx.font = "9px ui-monospace, Menlo, monospace";
     ctx.fillStyle = sel ? COL.bodySel : COL.value;
-    for (const [id, x, y, nx, ny] of TUBE_PIN_SPOTS) {
+    for (const [id, x, y, nx, ny] of def.pinSpots || TUBE_PIN_SPOTS) {
       if (!nums[id] || !ids.has(id)) continue;
       const f = flipX(c), [px, py] = rotPt(f * x, y, c.rot), [dx, dy] = rotPt(f * nx, ny, c.rot);
       ctx.textAlign = dx > 0 ? "left" : dx < 0 ? "right" : "center";
@@ -1591,6 +1592,7 @@
     // IEC 61082-1 7.1.6.1 / 7.1.2.5: the reference designation goes to the left of a
     // symbol with mainly vertical terminal lines and above one with mainly horizontal
     // ones; technical data on the same side, below (or right of) the designation
+    if (LIB[c.type].pinSpots) drawPinNumbers(c, sel);
     if (c.type === "tube") {
       drawPinNumbers(c, sel);
       if ((c.rot & 1) === 0) {   // anode up, cathode down: text above the control-grid lead (left, or right when mirrored)
@@ -2149,7 +2151,7 @@
       vAcross, pAvg, netDC, pinNet: netOf, pinCurrent: pid => pinCurrent(c, pid),
       tubeData: () => tubeData(c), tubeLimits: () => tubeLimits(c), limitRows: () => limitRows(c),
       resistorPower: () => resistorPower(c), speakerPower: () => speakerPower(c), otDcCurrent: () => otDcCurrent(c),
-      scopeChannels: () => scopeChannels(c), signalFreq, stats
+      scopeChannels: () => scopeChannels(c), wave: pid => waveOf(c, pid), signalFreq, stats
     };
   }
   function liveReadout(c) {
@@ -2168,11 +2170,12 @@
   // where the power goes: output into speakers, dissipation per kind of part, what the DC supplies deliver
   function powerSummary() {
     const r = S.sim.result; if (!r) return "";
-    let out = 0, tubes = 0, res = 0, semi = 0, sup = 0, haveSup = false;
+    let out = 0, tubes = 0, res = 0, semi = 0, ics = 0, sup = 0, haveSup = false;
     S.comps.forEach(c => {
       if (c.type === "speaker") { const sp = speakerPower(c); if (sp) out += sp.p; }
       else if (c.type === "resistor") { const p = resistorPower(c); if (p) res += p; }
       else if (c.type === "tube") { const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier") tubes += (d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia) + (d.dc.vg2k && d.dc.ig2 ? d.dc.vg2k * d.dc.ig2 : 0); }
+      else if (c.type === "opamp") { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) ics += d.pd; }
       else if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) semi += d.pd; }
       else if (c.type === "vdc") { const d = (r.dc.devices[c.id] || {}).main; if (d) { sup += -d.i * c.params.v; haveSup = true; } }
     });
@@ -2180,6 +2183,7 @@
     if (out > 0) h += kv("Output (speakers)", fmtEng(out, "W", 2));
     if (tubes > 0) h += kv("Tubes (anode + screen)", fmtEng(tubes, "W", 2));
     if (semi > 0) h += kv("Transistors", fmtEng(semi, "W", 2));
+    if (ics > 0) h += kv("Op-amps", fmtEng(ics, "W", 2));
     if (res > 0) h += kv("Resistors", fmtEng(res, "W", 2));
     if (haveSup) h += kv("From DC supplies", fmtEng(sup, "W", 2));
     return h;
@@ -2207,12 +2211,12 @@
     const issues = [];
     if (hasCircuit() && !T.hasGround) issues.push("No ground symbol.");
     const open = [];
-    S.comps.forEach(c => { if (c.type === "scope") return; compPins(c).forEach(p => { if (!T.pinConnected.get(c.id + ":" + p.id)) { if (c.type === "opt_pp" && (p.id === "U1" || p.id === "U2")) return; open.push(`${c.label || LIB[c.type].name}.${p.id}`); } }); });
+    S.comps.forEach(c => { if (c.type === "scope") return; compPins(c).forEach(p => { if (!T.pinConnected.get(c.id + ":" + p.id)) { if (c.type === "opt_pp" && (p.id === "U1" || p.id === "U2")) return; if (c.type === "opamp" && (p.id === "1" || p.id === "8")) return; open.push(`${c.label || LIB[c.type].name}.${p.id}`); } }); });
     const lonely = S.comps.filter(c => c.type === "offsheet" && !connRefs(c).length && !S.comps.some(k => k !== c && k.type === "offsheet" && connName(k) === connName(c))).map(c => c.params.name || "(no name)");
     if (lonely.length) issues.push("Sheet connectors without a partner: " + lonely.join(", "));
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
-    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], vdc: [["+", "-"]], isrc: [["+", "-"]], siggen: [["+", "-"]],
+    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
       opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
@@ -2231,6 +2235,12 @@
       const v = Math.abs(d.vce !== undefined ? d.vce : d.vds);
       if (d.pd > m.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}, more than its ${m.p} W rating.`);
       if (v > m.v) issues.push(`${c.label} (${c.params.model}) has ${v.toFixed(0)} V across it, more than its ${m.v} V rating.`);
+    });
+    S.comps.forEach(c => {
+      if (c.type !== "opamp" || !S.sim.result) return;
+      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.OPAMPS[c.params.model];
+      if (d && m && d.vs > m.vmax) issues.push(`${c.label} (${c.params.model}) has ${d.vs.toFixed(1)} V between V+ and V−, more than its ${m.vmax} V rating.`);
+      if (d && m && d.vs < 2) issues.push(`${c.label} (${c.params.model}) has no supply between V+ and V−.`);
     });
     S.comps.forEach(c => { if (c.type !== "zener" || !S.sim.result) return; const z = CadLib.ZENERS[c.params.model], v = netDC(pinNetOf(c, "A")), w = netDC(pinNetOf(c, "K")), i = pinCurrent(c, "A"); if (z && v !== null && w !== null && i !== null && Math.abs((v - w) * i) > z.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(Math.abs((v - w) * i), "W", 2)}, more than its ${z.p} W rating.`); });
     // tubes: the plate's average dissipation over the signal cycle (with a reactive load the
@@ -2769,6 +2779,12 @@
           if (!models.has("NE555")) { models.add("NE555"); lines.push("* NE555: include a NE555 subcircuit with pins 1-8 in order (GND TRIG OUT RESET CV THR DIS VCC), e.g. TI's NE555 macro model"); }
           lines.push(`X${id} ${nd.slice(0, 8).join(" ")} NE555`);
           break;
+        case "OPAMP": {
+          const pm = (S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id, name = `OPAMP_${pm}`.replace(/[^A-Za-z0-9_]/g, "_");
+          if (!models.has(name)) { models.add(name); lines.push(...TubeSimEngine.Spice.opamp(e.model, name)); }
+          lines.push(`X${id} ${nd.join(" ")} ${name}`);
+          break;
+        }
         case "VDIODE": lines.push(`B${id}${e.part || ""} ${nd[0]} ${nd[1]} I=${e.perveance}*pwr(max(V(${nd[0]},${nd[1]}),0),1.5)`); break;
         case "XFMR": {
           const AL = e.lp / Math.pow(e.primaryTurns, 2), names = [];

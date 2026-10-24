@@ -277,14 +277,13 @@
   }
 
   // the star ground point: one plated hole for a solder lug or a ring terminal bolted to the chassis
-  // dual in-line ICs (DIP-8, DIP-14 …): rows 7.62 mm apart on the 2.54 mm pitch, pads named by pin
-  // number, pin 1 top left (square pad) and the count going down that row and up the other, seen
-  // from the parts' side; the body's notch at the pin 1 end
+  // dual in-line package, 2.54 mm pitch, rows 7.62 mm apart: pin 1 top left (square), counted
+  // down the left row and up the right one (from the component side), the notch at the top
   function dip(n) {
-    const rows = n / 2, y0 = -(rows - 1) * 1.27, H = rows * 1.27 + 0.4;
-    const pads = Array.from({ length: n }, (_, i) => { const left = i < rows, k = left ? i : n - 1 - i; return pad(i + 1, left ? -3.81 : 3.81, y0 + k * 2.54, 1.6, 0.8, i ? "circle" : "rect"); });
-    return fp(`DIP-${n}`, `DIP-${n} IC (2.54 mm pitch, 7.62 mm rows; a socket fits the same pads)`, pads,
-      [{ t: "rect", x: -2.3, y: -H, w: 4.6, h: 2 * H }, { t: "circle", x: 0, y: -H, r: 1, from: 0, to: 180 }]);
+    const h = n / 2, y0 = -(h - 1) / 2 * 2.54, L = h * 2.54 + 0.6;
+    const pads = Array.from({ length: n }, (_, i) => i < h ? pad(i + 1, -3.81, y0 + i * 2.54, 1.6, 0.8, i ? "circle" : "rect") : pad(i + 1, 3.81, y0 + (n - 1 - i) * 2.54, 1.6, 0.8, "circle"));
+    return fp(`DIP-${n}`, `DIP-${n}, 2.54 mm pitch, rows 7.62 mm apart (pin 1 square, the notch at the top)`, pads,
+      [{ t: "rect", x: -2.6, y: -L / 2, w: 5.2, h: L }, { t: "circle", x: 0, y: -L / 2, r: 0.9, from: 0, to: 180 }]);
   }
   function starPoint(size) {
     const D = size === "M4" ? 8 : 7, drill = size === "M4" ? 4.3 : 3.4;
@@ -305,7 +304,6 @@
     if ((m = /^TO-247-([A-Z]{3})$/.exec(name))) return to247(m[1]);
     if ((m = /^TO-3P-([A-Z]{3})$/.exec(name))) return to3p(m[1]);
     if ((m = /^TO-264-([A-Z]{3})$/.exec(name))) return to264(m[1]);
-    if ((m = /^DIP-(\d+)$/.exec(name)) && +m[1] >= 4 && +m[1] % 2 === 0) return dip(+m[1]);
     if (name === "LED-5MM") return led5();
     if (name === "LED-3MM") return led3();
     if ((m = /^POT-(\w+)$/.exec(name)) && POTS[m[1]]) return pot(m[1]);
@@ -319,6 +317,7 @@
     if ((m = /^XFMR-EI(\d+)-(SE|PP|PTP|PT)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], m[2]);
     if ((m = /^CHOKE-EI(\d+)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], "CHOKE");
     if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1]) : socket(m[1]);
+    if ((m = /^DIP-(\d+)$/.exec(name)) && [8, 14, 16].includes(+m[1])) return dip(+m[1]);
     if ((m = /^STAR-(M3|M4)$/.exec(name))) return starPoint(m[1]);
     if ((m = /^WIRE-(\d+)$/.exec(name))) return wirePads(pinNames && pinNames.length === +m[1] ? pinNames : Array.from({ length: +m[1] }, (_, i) => String(i + 1)));
     return null;
@@ -456,6 +455,8 @@
         const pkg = /TO-220/.test(m.pkg) ? "TO-220" : /TO-126/.test(m.pkg) ? "TO-126" : /TO-18/.test(m.pkg) ? "TO-18" : /TO-264/.test(m.pkg) ? "TO-264" : /TO-3P/.test(m.pkg) ? "TO-3P" : /TO-247/.test(m.pkg) ? "TO-247" : "TO-92";
         return [`${pkg}-${order}`, ...all.filter(a => a !== `${pkg}-${order}`), "WIRE-3"];
       }
+      // an op-amp's package; its amplifiers (DA1.1 … DA1.4) share it
+      case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "DIP-14" : "DIP-8", `WIRE-${wires}`]; }
       case "tube": { const d = socketFor(L.tubeByName(p.tube)); return [d, ...["SOCKET-B9A", "SOCKET-B7G", "SOCKET-B9D", "SOCKET-OCTAL", "SOCKET-UX4"].filter(a => a !== d), `WIRE-${wires}`]; }
       default: return [`WIRE-${wires}`];
     }
@@ -467,10 +468,11 @@
     const L = root.CadLib, map = new Map(), add = (num, comp, pin) => { num = String(num); if (!map.has(num)) map.set(num, []); map.get(num).push({ comp, pin }); };
     const one = g.members[0];
     if (/^(WIRE|TERM)-/.test(f.name)) { let k = 1; g.members.forEach(m => m.pins.forEach(p => add(k++, m.id, p.id))); return map; }
-    if (g.type === "tube") {
-      // pin numbers from the tube's pinout; a dual tube's sections each bring their own
+    if (L.LIB[g.type] && L.LIB[g.type].pinNumbers) {
+      // pin numbers from the part's pinout (a tube's, an op-amp's); the sections of a dual tube or
+      // the amplifiers of a dual op-amp each bring their own
       g.members.forEach(m => {
-        const nums = L.LIB.tube.pinNumbers({ params: m.params, label: m.label });
+        const nums = L.LIB[g.type].pinNumbers({ params: m.params, label: m.label });
         m.pins.forEach(p => String(nums[p.id] || p.pads || "").split(",").filter(Boolean).forEach(n => add(n.trim(), m.id, p.id)));
       });
       return map;
