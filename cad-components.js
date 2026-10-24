@@ -350,6 +350,22 @@
       ctx.save(); ctx.lineWidth = 4; line(ctx, [-7, 4 * s, 7, 4 * s]); ctx.restore();
       ctx.lineWidth = 1.2; line(ctx, [8, -12 * s, 14, -12 * s]); line(ctx, [11, -12 * s - 3, 11, -12 * s + 3]);
     },
+    timer555(ctx) {
+      // an IC box (IEC 60617 binary logic element outline) with the pin functions inside and the
+      // pin numbers on the leads
+      ctx.fillStyle = COL.fill; ctx.fillRect(-30, -40, 60, 80); ctx.strokeRect(-30, -40, 60, 80);
+      line(ctx, [-20, -50, -20, -40]); line(ctx, [20, -50, 20, -40]); line(ctx, [-20, 40, -20, 50]); line(ctx, [20, 40, 20, 50]);
+      line(ctx, [-50, -20, -30, -20]); line(ctx, [-50, 0, -30, 0]); line(ctx, [-50, 20, -30, 20]); line(ctx, [30, 0, 50, 0]);
+      ctx.fillStyle = COL.value; ctx.font = "7px ui-monospace, monospace"; ctx.textBaseline = "middle";
+      ctx.textAlign = "center"; ctx.fillText("RST", -20, -34); ctx.fillText("VCC", 20, -34); ctx.fillText("CV", -20, 34); ctx.fillText("GND", 20, 34);
+      ctx.textAlign = "left"; ctx.fillText("DIS", -27, -20); ctx.fillText("THR", -27, 0); ctx.fillText("TRG", -27, 20);
+      ctx.textAlign = "right"; ctx.fillText("OUT", 27, 0);
+      ctx.fillStyle = COL.text;
+      ctx.textAlign = "left"; ctx.fillText("4", -17, -46); ctx.fillText("8", 23, -46); ctx.fillText("5", -17, 46); ctx.fillText("1", 23, 46);
+      ctx.textAlign = "center"; ctx.fillText("7", -40, -25); ctx.fillText("6", -40, -5); ctx.fillText("2", -40, 15); ctx.fillText("3", 40, -5);
+      ctx.font = "bold 9px ui-monospace, monospace"; ctx.fillText("555", 8, -14);
+      ctx.textBaseline = "alphabetic";
+    },
     isrc(ctx) {
       // a circle with the arrow of the current's direction, from the - pin to the + pin
       line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
@@ -568,7 +584,7 @@
   };
   // zener: breakdown bv (V) at the test current izt (A), dynamic resistance zzt (Ω), power p (W)
   const ZENERS = {
-    "1N4733A": { bv: 5.1, izt: 0.049, zzt: 7, p: 1 }, "1N4742A": { bv: 12, izt: 0.021, zzt: 9, p: 1 }, "1N4744A": { bv: 15, izt: 0.017, zzt: 14, p: 1 },
+    "1N4733A": { bv: 5.1, izt: 0.049, zzt: 7, p: 1 }, "1N4739A": { bv: 9.1, izt: 0.028, zzt: 5, p: 1 }, "1N4742A": { bv: 12, izt: 0.021, zzt: 9, p: 1 }, "1N4744A": { bv: 15, izt: 0.017, zzt: 14, p: 1 },
     "1N4750A": { bv: 27, izt: 0.0095, zzt: 35, p: 1 }, "1N4764A": { bv: 100, izt: 0.0025, zzt: 350, p: 1 },
     "1N5378B": { bv: 100, izt: 0.012, zzt: 90, p: 5 }, "1N5388B": { bv: 200, izt: 0.005, zzt: 480, p: 5 }
   };
@@ -1081,6 +1097,27 @@
         out.push({ id: c.id + "#ro", kind: "R", nodes: [net("+"), net("-")], r: Math.max(c.params.rout, 1e3) });
       }
     },
+    timer555: {
+      // pins in pin-number order (the board's DIP-8 pads and wire pads follow it)
+      name: "NE555 timer", prefix: "DA", group: "Integrated circuits", bbox: [-50, -50, 50, 50],
+      defaults: { model: "NE555" },
+      pins: () => [{ id: "1", x: 20, y: 50, name: "GND" }, { id: "2", x: -50, y: 20, name: "TRIG (trigger)" }, { id: "3", x: 50, y: 0, name: "OUT (output)" },
+        { id: "4", x: -20, y: -50, name: "RESET" }, { id: "5", x: -20, y: 50, name: "CV (control voltage)" }, { id: "6", x: -50, y: 0, name: "THR (threshold)" },
+        { id: "7", x: -50, y: -20, name: "DIS (discharge)" }, { id: "8", x: 20, y: -50, name: "VCC" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", options: [["NE555", "NE555 · bipolar timer, 4.5–16 V, DIP-8"]], wide: true }],
+      info: () => "Bipolar 555 timer, pins as on the DIP-8 package. Modelled: the 5k–5k–5k divider (CV at ⅔ VCC), the trigger (⅓ VCC) and threshold (⅔ VCC) comparators, the latch, reset below 0.7 V, the output (high: VCC − 1.4 V less 3 Ω, sourcing only; low: 8 Ω, about 120 mA at most), the discharge transistor (12 Ω), and the chip's own supply current (about 3 mA at 5 V, 10 mA at 15 V). RESET has a weak pull-up, so left open it reads high. The steady-state run shows 5 ms; for slower timing run the oscilloscope's power-on transient.",
+      build: (c, net, alloc, out) => {
+        const p = id => net(id), lo = alloc();
+        // the latch and the transistors; nodes GND, TRIG, OUT, RESET, CV, THR, DIS, VCC and the divider's lower tap
+        out.push({ id: c.id, kind: "TIMER555", nodes: [p("1"), p("2"), p("3"), p("4"), p("5"), p("6"), p("7"), p("8"), lo] });
+        // inside the chip (internal: not exported as parts of the circuit)
+        out.push({ id: c.id + "#div1", kind: "R", nodes: [p("8"), p("5")], r: 5e3, internal: true }, { id: c.id + "#div2", kind: "R", nodes: [p("5"), lo], r: 5e3, internal: true },
+          { id: c.id + "#div3", kind: "R", nodes: [lo, p("1")], r: 5e3, internal: true },
+          { id: c.id + "#iq", kind: "R", nodes: [p("8"), p("1")], r: 1.7e3, internal: true },     // supply current
+          { id: c.id + "#rst", kind: "R", nodes: [p("8"), p("4")], r: 33e3, internal: true });   // reset pin: 0.4 mA out of it pulled to 0 V from 15 V
+      }
+    },
     note: {
       name: "Text note", prefix: "", group: "Document", noLabel: true, noRotate: true,
       bbox: c => { const h = +c.params.size || 12, w = Math.max(20, String(c.params.text || "").length * h * 0.62); return [0, -h, w, 3]; },
@@ -1177,6 +1214,7 @@
       { sub: "Transistors" }, ["npn"], ["pnp"], ["npn", { model: "MJE340" }, "NPN, high voltage"], ["pnp", { model: "MJE350" }, "PNP, high voltage"],
       ["pnp", { model: "AC128" }, "PNP, germanium"], ["npn", { model: "AC127" }, "NPN, germanium"], ["pnp", { model: "MP39B" }, "PNP, germanium (USSR)"],
       ["nmos", null, "N-MOSFET"], ["nmos", { model: "DN2540" }, "N-MOSFET, depletion"], ["pmos", null, "P-MOSFET"]] },
+    { group: "Integrated circuits", items: [["timer555"]] },
     { group: "Instruments", items: [["scope"]] },
     { group: "Document", items: [["frame"], ["note"]] }
   ];
@@ -1261,6 +1299,35 @@
         const v = R.vAcross("+", "-");
         return R.kv("Voltage across (+ to -)", fmtEng(v, "V", 2), v !== null && v > 0 ? "warn" : "") + R.kv("Dissipation", fmtEng(v !== null ? -v * c.params.i : null, "W", 2))
           + (v !== null && v > 0 ? R.note("The + pin is above the - pin: the source drives current uphill and delivers power, which a transistor current source cannot.", "warn") : "");
+      }
+    },
+    timer555: {
+      readout: (c, R) => {
+        const dev = R.r.dc.devices[c.id], d = dev && dev.main;
+        if (!d) return R.note("No data.");
+        let h = R.kv("Supply (VCC–GND)", fmtEng(d.vcc, "V", 2), d.vcc > 16 ? "bad" : d.vcc < 4.5 ? "warn" : "");
+        // frequency and duty cycle from the output's edges over the captured window (a mid-level crossing)
+        const tr = R.r.tran, w = tr && tr.nodes[R.pinNet("3")];
+        let f = null, duty = null;
+        if (w && w.length > 2) {
+          let lo = Infinity, hi = -Infinity; for (const v of w) { if (v < lo) lo = v; if (v > hi) hi = v; }
+          const mid = (lo + hi) / 2, at = i => i + (mid - w[i]) / (w[i + 1] - w[i]), up = [], dn = [];
+          if (hi - lo > 0.5) for (let i = 0; i + 1 < w.length; i++) { if (w[i] < mid && w[i + 1] >= mid) up.push(at(i)); else if (w[i] >= mid && w[i + 1] < mid) dn.push(at(i)); }
+          // the last cycles (the first may still be the start)
+          if (up.length >= 2) {
+            const k = up.length >= 3 ? 1 : 0, T = (up[up.length - 1] - up[k]) / (up.length - 1 - k), u0 = up[up.length - 2], d0 = dn.find(x => x > u0);
+            f = 1 / (T * tr.dt); if (d0 !== undefined && d0 < up[up.length - 1]) duty = (d0 - u0) / (up[up.length - 1] - u0);
+          }
+        }
+        if (f) h += R.kv("Output frequency", fmtEng(f, "Hz", 3)) + (duty !== null ? R.kv("Duty cycle (high)", (duty * 100).toFixed(1) + " %") : "");
+        else {
+          // at rest (a one-shot waiting, a latch): the output's state and load
+          h += R.kv("Output", `${d.q ? "high" : "low"} · ${fmtEng(d.vout, "V", 2)}`);
+          h += R.kv("Output current", fmtEng(d.iout, "A", 2), Math.abs(d.iout) > 0.2 ? "bad" : Math.abs(d.iout) > 0.1 ? "warn" : "");
+          h += R.kv("Dissipation", `${fmtEng(d.pd, "W", 2)} · ${Math.round(d.pd / 0.6 * 100)}% of 0.6 W`, d.pd > 0.6 ? "bad" : d.pd > 0.4 ? "warn" : "");
+        }
+        if (!f) h += R.note("No full cycle in the simulation window (or a one-shot at rest): the oscilloscope's power-on run shows slower timing.");
+        return h;
       }
     },
     vdc: {

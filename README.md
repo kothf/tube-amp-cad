@@ -125,6 +125,7 @@ Firefox is not tested.
 | Semiconductors | silicon diodes (1N4007, UF4007, 1N4148); zener diodes 1N4733A … 1N5388B (5.1–200 V, 1 W and 5 W); LEDs (red, yellow, green, blue) for cathode bias; **NPN** 2N2222A, 2N3904, BC107, BC547B, BD139, MPSA42, MJE340 and **PNP** 2N2907A, 2N3906, BC177, BC557B, BD140, MPSA92, MJE350; **drivers and power output** in complementary pairs: 2SD669A/2SB649A, 2SC4793/2SA1837, MJE15032/MJE15033, TIP41C/TIP42C, 2SC5200/2SA1943, MJL3281A/MJL1302A, MJL21194/MJL21193, and in TO-3 (on wires, for a chassis heatsink) MJ15003/MJ15004, MJ15024/MJ15025, 2N3055/MJ2955; **germanium** (VBE about 0.2 V, low fT): USSR MP39B, MP40A, MP41A, MP42B, MP25B, MP26B, MP38A (NPN), GT402G/GT404G, P213B (МП39Б … П213Б) and Western AC127/AC128, AC187/AC188, OC71, NKT275, 2N404, AD149, AD161/AD162, with their collector leakage (ICBO, doubling every 10 °C); every bipolar transistor has a **Temperature** (VBE −2 mV/°C, hFE and leakage rising); **N-MOSFETs** 2N7000, BS170, IRF510, IRF540, IRF820, IRF840, IRFP240, IRFP250, IRFP460, the laterals 2SK1058 and ECX10N20, and the depletion DN2540 and LND150 for current sources; **P-MOSFETs** BS250, IRF9540, IRF9610, IRF9640, IRFP9240 and the laterals 2SJ162 and ECX10P20. The power models are fitted to the datasheets (hFE and its fall at high current, VBE, capacitances; for MOSFETs threshold and transconductance); the bipolar model has no emitter or base resistance, so VBE at several amperes reads somewhat low |
 | Sources | DC supplies: DC supply (positive for B+, negative for grid bias, with an internal resistance), current source (constant current with an output resistance). AC sources: signal generator (sine, square, triangle; Vpk, Vrms or dBV), AC mains (feeds a power transformer) |
 | Ground & connectors | Ground, sheet connector |
+| Integrated circuits | **NE555 timer** (DIP-8 on the board): the 5k–5k–5k divider, both comparators, the latch, reset, the output (VCC − 1.4 V high, 8 Ω low, about 120–250 mA at most) and discharge stages and the chip's supply current, from TI's data. Its latch switches at the instant a comparator crosses, not on the time grid, so the timing does not depend on the step; the inspector reads the output's frequency and duty cycle |
 | Instruments | two-channel oscilloscope (its screen live on the schematic, full window on double-click), with the spectrum analyzer and the Bode plotter reading its channels |
 | Document | IEC 61082 drawing frame with title block, text note |
 
@@ -168,6 +169,11 @@ with them (see [Accuracy](#accuracy)):
 | 10 W complementary MOSFET amplifier | MOSFETs | homemade-circuits.com, fig. 1 |
 | 2N3904 common emitter, RE unbypassed | transistor | University of Washington lab notes (2017), bench measurements |
 | 2N3904 common emitter, RE bypassed | transistor | the same, with 10 µF across RE |
+| NE555 astable multivibrator | 555 | 555-timer-circuits.com: 1k / 10k / 100 nF, 678 Hz at 51.8 % (formula 686 Hz, 52.4 %) |
+| NE555 flashing LED | 555 | 555-timer-circuits.com: 1K / 470K / 1 µF, 1.51 Hz (formula 1.53 Hz) |
+| NE555 metronome | 555 | 555-timer-circuits.com: 250K speed pot at 50k, 22 µF, speaker; 0.641 Hz (formula 0.648 Hz) |
+| NE555 car tachometer | 555 | 555-timer-circuits.com: one-shot 47k / 100 nF, 5.16 ms pulses (1.1 RC = 5.17 ms); meter current proportional to the spark rate |
+| NE555 simplest oscillator | 555 | 555-timer-circuits.com: output to capacitor through 10k, 100 nF: 572 Hz at 60 % (a full-swing output would give 721 Hz at 50 %) |
 
 An example opens untitled, so *Save* asks for a new name. Ctrl+Z brings back
 the circuit that was on the sheet.
@@ -674,7 +680,9 @@ The test suite checks the engine against independent results:
 - the frequency response against an RC corner (−3.01 dB, −45°) and a series
   resonance (gain Q), a 12AX7 stage's small-signal gain against its transient
   (within 1 %), and its top corner from a 100 kΩ source against the Miller
-  estimate 1/(2π·Rs·(Cgk + (1 + A)·Cga)).
+  estimate 1/(2π·Rs·(Cgk + (1 + A)·Cga));
+- an NE555 astable against the exact charge and discharge times between ⅓ and
+  ⅔ VCC, and a one-shot against 1.1·R·C (ln 3).
 
 Every amplifier tube is fitted to, and tested against, its published
 datasheet operating points: plate current and, where the datasheet gives

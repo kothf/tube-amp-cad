@@ -1,0 +1,581 @@
+{
+ "app": "TubeAmpCAD",
+ "version": 2,
+ "comps": [
+  {
+   "id": "c1_7919",
+   "type": "frame",
+   "x": 0,
+   "y": 0,
+   "rot": 0,
+   "params": {
+    "locked": "yes",
+    "size": "A4",
+    "orient": "landscape",
+    "rev": "A",
+    "sheet": "1/1",
+    "date": "2026-10-24",
+    "creator": "A. Dumchin",
+    "approver": "",
+    "owner": "A. Dumchin",
+    "dept": "",
+    "doctype": "Circuit diagram",
+    "status": "Validation",
+    "lang": "en",
+    "title": "NE555 car tachometer: one-shot pulses into a meter",
+    "docno": "VAL-11",
+    "reference": "555-timer-circuits.com: Car tachometer"
+   },
+   "label": ""
+  },
+  {
+   "id": "c2_5838",
+   "type": "timer555",
+   "x": 620,
+   "y": 340,
+   "rot": 0,
+   "params": {
+    "model": "NE555"
+   },
+   "label": "DA1"
+  },
+  {
+   "id": "c3_3757",
+   "type": "vdc",
+   "x": 160,
+   "y": 350,
+   "rot": 0,
+   "params": {
+    "v": 12,
+    "rs": 0
+   },
+   "label": "G1"
+  },
+  {
+   "id": "c4_1676",
+   "type": "ground",
+   "x": 160,
+   "y": 380,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c5_9595",
+   "type": "resistor",
+   "x": 230,
+   "y": 200,
+   "rot": 0,
+   "params": {
+    "r": 15,
+    "w": ""
+   },
+   "label": "R4"
+  },
+  {
+   "id": "c6_7514",
+   "type": "zener",
+   "x": 300,
+   "y": 250,
+   "rot": 3,
+   "params": {
+    "model": "1N4739A"
+   },
+   "label": "VD1"
+  },
+  {
+   "id": "c7_5433",
+   "type": "ground",
+   "x": 300,
+   "y": 270,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c8_3352",
+   "type": "electrolytic",
+   "x": 350,
+   "y": 250,
+   "rot": 1,
+   "params": {
+    "c": 0.00001
+   },
+   "label": "C5"
+  },
+  {
+   "id": "c9_1271",
+   "type": "ground",
+   "x": 350,
+   "y": 270,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c10_9190",
+   "type": "capacitor",
+   "x": 600,
+   "y": 420,
+   "rot": 1,
+   "params": {
+    "c": 1e-8
+   },
+   "label": "C2"
+  },
+  {
+   "id": "c11_7109",
+   "type": "ground",
+   "x": 600,
+   "y": 440,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c12_5028",
+   "type": "ground",
+   "x": 640,
+   "y": 390,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c13_2947",
+   "type": "resistor",
+   "x": 480,
+   "y": 250,
+   "rot": 1,
+   "params": {
+    "r": 47000,
+    "w": ""
+   },
+   "label": "R1"
+  },
+  {
+   "id": "c14_866",
+   "type": "capacitor",
+   "x": 480,
+   "y": 430,
+   "rot": 1,
+   "params": {
+    "c": 1e-7
+   },
+   "label": "C1"
+  },
+  {
+   "id": "c15_8785",
+   "type": "ground",
+   "x": 480,
+   "y": 450,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c16_6704",
+   "type": "resistor",
+   "x": 420,
+   "y": 250,
+   "rot": 1,
+   "params": {
+    "r": 10000,
+    "w": ""
+   },
+   "label": "R5"
+  },
+  {
+   "id": "c17_4623",
+   "type": "capacitor",
+   "x": 360,
+   "y": 480,
+   "rot": 0,
+   "params": {
+    "c": 1e-7
+   },
+   "label": "C4"
+  },
+  {
+   "id": "c18_2542",
+   "type": "siggen",
+   "x": 260,
+   "y": 520,
+   "rot": 0,
+   "params": {
+    "wave": "square",
+    "freq": 50,
+    "amp": 4.5,
+    "offset": 4.5,
+    "phase": 0,
+    "rs": 50
+   },
+   "label": "G2"
+  },
+  {
+   "id": "c19_461",
+   "type": "ground",
+   "x": 260,
+   "y": 550,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c20_8380",
+   "type": "offsheet",
+   "x": 300,
+   "y": 480,
+   "rot": 3,
+   "params": {
+    "name": "IN"
+   },
+   "label": ""
+  },
+  {
+   "id": "c21_6299",
+   "type": "pot",
+   "x": 740,
+   "y": 340,
+   "rot": 0,
+   "params": {
+    "r": 200000,
+    "pos": 0.96,
+    "taper": "lin"
+   },
+   "label": "RP1"
+  },
+  {
+   "id": "c22_4218",
+   "type": "resistor",
+   "x": 800,
+   "y": 390,
+   "rot": 1,
+   "params": {
+    "r": 100,
+    "w": ""
+   },
+   "label": "R6"
+  },
+  {
+   "id": "c23_2137",
+   "type": "ground",
+   "x": 800,
+   "y": 420,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c24_56",
+   "type": "scope",
+   "x": 1000,
+   "y": 420,
+   "rot": 0,
+   "params": {
+    "ch1": "auto",
+    "ch2": "auto",
+    "time": "auto",
+    "coupling1": "dc",
+    "coupling2": "dc",
+    "probe": "10x"
+   },
+   "label": "P1"
+  },
+  {
+   "id": "c25_7975",
+   "type": "ground",
+   "x": 920,
+   "y": 450,
+   "rot": 0,
+   "params": {},
+   "label": ""
+  },
+  {
+   "id": "c26_5894",
+   "type": "offsheet",
+   "x": 690,
+   "y": 380,
+   "rot": 1,
+   "params": {
+    "name": "OUT"
+   },
+   "label": ""
+  },
+  {
+   "id": "c27_3813",
+   "type": "offsheet",
+   "x": 880,
+   "y": 390,
+   "rot": 2,
+   "params": {
+    "name": "OUT"
+   },
+   "label": ""
+  },
+  {
+   "id": "c28_1732",
+   "type": "offsheet",
+   "x": 880,
+   "y": 410,
+   "rot": 2,
+   "params": {
+    "name": "IN"
+   },
+   "label": ""
+  },
+  {
+   "id": "c29_9651",
+   "type": "note",
+   "x": 100,
+   "y": 590,
+   "rot": 0,
+   "params": {
+    "text": "The 555 is a one-shot: 1.1 x 47k x 100n = 5.2 ms high after each trigger, so the meter's average current follows the spark rate.",
+    "size": "10"
+   },
+   "label": ""
+  },
+  {
+   "id": "c30_7570",
+   "type": "note",
+   "x": 100,
+   "y": 605,
+   "rot": 0,
+   "params": {
+    "text": "G2 at 50 Hz is 1500 rpm on a four-cylinder four-stroke; RP1 set to 8k: about 0.26 mA, full scale (1 mA) near 190 Hz.",
+    "size": "10"
+   },
+   "label": ""
+  },
+  {
+   "id": "c31_5489",
+   "type": "note",
+   "x": 100,
+   "y": 620,
+   "rot": 0,
+   "params": {
+    "text": "Supply as on the site: 12 V through 15 ohm, a 9 V zener (9.1 V here) and 10 uF. The points and their clamp are drawn as G2, a clean 0-9 V",
+    "size": "10"
+   },
+   "label": ""
+  },
+  {
+   "id": "c32_3408",
+   "type": "note",
+   "x": 100,
+   "y": 635,
+   "rot": 0,
+   "params": {
+    "text": "square wave; R6 stands for the 0-1 mA meter.",
+    "size": "10"
+   },
+   "label": ""
+  }
+ ],
+ "wires": [
+  {
+   "id": "w0",
+   "x1": 160,
+   "y1": 320,
+   "x2": 160,
+   "y2": 200
+  },
+  {
+   "id": "w1",
+   "x1": 160,
+   "y1": 200,
+   "x2": 200,
+   "y2": 200
+  },
+  {
+   "id": "w2",
+   "x1": 260,
+   "y1": 200,
+   "x2": 640,
+   "y2": 200
+  },
+  {
+   "id": "w3",
+   "x1": 640,
+   "y1": 290,
+   "x2": 640,
+   "y2": 200
+  },
+  {
+   "id": "w4",
+   "x1": 600,
+   "y1": 290,
+   "x2": 600,
+   "y2": 200
+  },
+  {
+   "id": "w5",
+   "x1": 300,
+   "y1": 230,
+   "x2": 300,
+   "y2": 200
+  },
+  {
+   "id": "w6",
+   "x1": 350,
+   "y1": 230,
+   "x2": 350,
+   "y2": 200
+  },
+  {
+   "id": "w7",
+   "x1": 600,
+   "y1": 390,
+   "x2": 600,
+   "y2": 400
+  },
+  {
+   "id": "w8",
+   "x1": 480,
+   "y1": 220,
+   "x2": 480,
+   "y2": 200
+  },
+  {
+   "id": "w9",
+   "x1": 480,
+   "y1": 280,
+   "x2": 480,
+   "y2": 410
+  },
+  {
+   "id": "w10",
+   "x1": 570,
+   "y1": 320,
+   "x2": 480,
+   "y2": 320
+  },
+  {
+   "id": "w11",
+   "x1": 570,
+   "y1": 340,
+   "x2": 480,
+   "y2": 340
+  },
+  {
+   "id": "w12",
+   "x1": 420,
+   "y1": 220,
+   "x2": 420,
+   "y2": 200
+  },
+  {
+   "id": "w13",
+   "x1": 420,
+   "y1": 280,
+   "x2": 420,
+   "y2": 480
+  },
+  {
+   "id": "w14",
+   "x1": 420,
+   "y1": 480,
+   "x2": 540,
+   "y2": 480
+  },
+  {
+   "id": "w15",
+   "x1": 540,
+   "y1": 480,
+   "x2": 540,
+   "y2": 360
+  },
+  {
+   "id": "w16",
+   "x1": 540,
+   "y1": 360,
+   "x2": 570,
+   "y2": 360
+  },
+  {
+   "id": "w17",
+   "x1": 380,
+   "y1": 480,
+   "x2": 420,
+   "y2": 480
+  },
+  {
+   "id": "w18",
+   "x1": 260,
+   "y1": 490,
+   "x2": 260,
+   "y2": 480
+  },
+  {
+   "id": "w19",
+   "x1": 260,
+   "y1": 480,
+   "x2": 340,
+   "y2": 480
+  },
+  {
+   "id": "w20",
+   "x1": 670,
+   "y1": 340,
+   "x2": 710,
+   "y2": 340
+  },
+  {
+   "id": "w21",
+   "x1": 740,
+   "y1": 320,
+   "x2": 710,
+   "y2": 320
+  },
+  {
+   "id": "w22",
+   "x1": 710,
+   "y1": 320,
+   "x2": 710,
+   "y2": 340
+  },
+  {
+   "id": "w23",
+   "x1": 770,
+   "y1": 340,
+   "x2": 800,
+   "y2": 340
+  },
+  {
+   "id": "w24",
+   "x1": 800,
+   "y1": 340,
+   "x2": 800,
+   "y2": 360
+  },
+  {
+   "id": "w25",
+   "x1": 690,
+   "y1": 340,
+   "x2": 690,
+   "y2": 380
+  },
+  {
+   "id": "w26",
+   "x1": 880,
+   "y1": 390,
+   "x2": 920,
+   "y2": 390
+  },
+  {
+   "id": "w27",
+   "x1": 880,
+   "y1": 410,
+   "x2": 900,
+   "y2": 410
+  },
+  {
+   "id": "w28",
+   "x1": 900,
+   "y1": 410,
+   "x2": 920,
+   "y2": 410
+  }
+ ]
+}

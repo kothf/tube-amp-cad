@@ -277,6 +277,15 @@
   }
 
   // the star ground point: one plated hole for a solder lug or a ring terminal bolted to the chassis
+  // dual in-line ICs (DIP-8, DIP-14 …): rows 7.62 mm apart on the 2.54 mm pitch, pads named by pin
+  // number, pin 1 top left (square pad) and the count going down that row and up the other, seen
+  // from the parts' side; the body's notch at the pin 1 end
+  function dip(n) {
+    const rows = n / 2, y0 = -(rows - 1) * 1.27, H = rows * 1.27 + 0.4;
+    const pads = Array.from({ length: n }, (_, i) => { const left = i < rows, k = left ? i : n - 1 - i; return pad(i + 1, left ? -3.81 : 3.81, y0 + k * 2.54, 1.6, 0.8, i ? "circle" : "rect"); });
+    return fp(`DIP-${n}`, `DIP-${n} IC (2.54 mm pitch, 7.62 mm rows; a socket fits the same pads)`, pads,
+      [{ t: "rect", x: -2.3, y: -H, w: 4.6, h: 2 * H }, { t: "circle", x: 0, y: -H, r: 1, from: 0, to: 180 }]);
+  }
   function starPoint(size) {
     const D = size === "M4" ? 8 : 7, drill = size === "M4" ? 4.3 : 3.4;
     return fp(`STAR-${size}`, `Star ground point: a plated ${size} hole for a solder lug or ring terminal`, [pad(1, 0, 0, D, drill, "circle", "GND")], [{ t: "circle", x: 0, y: 0, r: D / 2 + 0.5 }]);
@@ -296,6 +305,7 @@
     if ((m = /^TO-247-([A-Z]{3})$/.exec(name))) return to247(m[1]);
     if ((m = /^TO-3P-([A-Z]{3})$/.exec(name))) return to3p(m[1]);
     if ((m = /^TO-264-([A-Z]{3})$/.exec(name))) return to264(m[1]);
+    if ((m = /^DIP-(\d+)$/.exec(name)) && +m[1] >= 4 && +m[1] % 2 === 0) return dip(+m[1]);
     if (name === "LED-5MM") return led5();
     if (name === "LED-3MM") return led3();
     if ((m = /^POT-(\w+)$/.exec(name)) && POTS[m[1]]) return pot(m[1]);
@@ -432,6 +442,7 @@
       case "vdc": return [t2, "TERM-7.5-2", "WIRE-2"];
       // the ideal current source stands for a small current-source board: wired in by two terminals
       case "isrc": return [t2, "WIRE-2"];
+      case "timer555": return ["DIP-8", "WIRE-8"];
       case "mains": return ["TERM-7.5-2", t2, "WIRE-2"];
       case "heater": return [t2, "WIRE-2", "TERM-7.5-2"];
       case "star": return ["STAR-M3", "STAR-M4", "WIRE-1"];
