@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.97.6] - 2026-10-25
+
+### Changed
+- Code structure only, no change in behaviour: what the CAD reads from a simulation result (node voltages, pin and wire currents, power, tube data and ratings) moved out of `cad-app.js` into `cad-results.js`. `cad-app.js` is now about 2,470 lines, down from 3,176.
+
 ## [3.97.5] - 2026-10-25
 
 ### Fixed
