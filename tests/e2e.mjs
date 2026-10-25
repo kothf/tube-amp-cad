@@ -195,6 +195,26 @@ if (circuit.error || !circuit.ia) { console.log(`\nsimulation failed: ${circuit.
 check(circuit.ia > 0.4e-3 && circuit.ia < 1.5e-3 && circuit.vak > 100 && circuit.vak < 200, `operating point Ia ${(circuit.ia * 1e3).toFixed(2)} mA, Vak ${circuit.vak.toFixed(1)} V`);
 check(circuit.gain > 40 && circuit.gain < 70, `stage gain ${circuit.gain.toFixed(1)}× (12AX7, 100k plate load)`);
 {
+  // the voltmeter probe: P, point at the load resistor's top pin, read DC + AC + trace; click leaves it there
+  const at = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state, RL = S.comps.find(c => c.type === "resistor" && c.params.r === 470e3), V1 = S.comps.find(c => c.type === "tube");
+    const sc = (p) => { const r = document.getElementById("cad").getBoundingClientRect(); return { x: r.left + p.x * S.view.scale + S.view.ox, y: r.top + p.y * S.view.scale + S.view.oy }; };
+    return { out: sc(C.compPins(RL).find(p => p.id === "1")), plate: sc(C.compPins(V1).find(p => p.id === "A")) };
+  });
+  await cad.locator("#cad").focus(); await cad.keyboard.press("p");
+  await cad.mouse.move(at.out.x, at.out.y); await cad.waitForTimeout(150);
+  const hv = await cad.evaluate(() => { const el = document.getElementById("probe-hover"), S = TubeCAD.state, t = S.probe.hover, rd = t && TubeCAD.probeRead(TubeCAD.topo().pinNet.get(t.comp + ":" + t.pid));
+    return { tool: S.tool, shown: !!el && !el.hidden, text: el ? el.textContent : "", scope: !!el && !el.querySelector(".probe-scope").hidden, rd: rd && { dc: rd.dc, rms: rd.rms, freq: rd.freq } }; });
+  check(hv.tool === "probe" && hv.shown && /DC/.test(hv.text) && /Vrms/.test(hv.text) && hv.scope && hv.rd && Math.abs(hv.rd.dc) < 0.05 && hv.rd.rms > 5 && Math.abs(hv.rd.freq - 1000) < 20,
+    `the probe on the coupled output reads DC ${hv.rd && hv.rd.dc.toFixed(3)} V, AC ${hv.rd && hv.rd.rms.toFixed(2)} Vrms at ${hv.rd && hv.rd.freq && hv.rd.freq.toFixed(0)} Hz, with a scope trace`);
+  await cad.mouse.click(at.plate.x, at.plate.y); await cad.waitForTimeout(100);
+  await cad.keyboard.press("v"); await cad.mouse.move(at.plate.x + 300, at.plate.y + 200); await cad.waitForTimeout(150);
+  const pn = await cad.evaluate(() => { const el = document.getElementById("probe-pin"), h = document.getElementById("probe-hover"); return { shown: !!el && !el.hidden, hover: !!h && !h.hidden, text: el ? el.textContent : "", dc: TubeCAD.state.sim.result.dc.nodes[TubeCAD.topo().pinNet.get(TubeCAD.state.probe.pin.comp + ":A")] }; });
+  check(pn.shown && !pn.hover && pn.dc > 100 && pn.text.includes(String(parseFloat(pn.dc.toFixed(1)))), `a click leaves the probe on the plate (DC ${pn.dc.toFixed(1)} V) after going back to Select; the pointer's card goes away`);
+  await cad.keyboard.press("Escape"); await cad.waitForTimeout(100);
+  check(await cad.evaluate(() => !TubeCAD.state.probe.pin && document.getElementById("probe-pin").hidden), "Esc removes the probe left on the sheet");
+}
+{
   // the curve tracer gets one closed cycle of the load line, not the whole capture
   const tj = await cad.evaluate(() => { const t = TubeCAD.buildSummary().tubes.find(x => x.traj); if (!t) return null; const a = t.traj.vak, n = a.length, pp = Math.max(...a) - Math.min(...a); return { n, gap: Math.abs(a[0] - a[n - 1]) / pp, pp, win: TubeCAD.state.sim.result.tran.samples * TubeCAD.state.sim.result.tran.dt }; });
   check(tj && tj.gap < 0.02 && tj.pp > 1, `the load line sent to the curve tracer is one closed signal cycle (${tj && tj.n} points, ends ${tj && (tj.gap * 100).toFixed(2)} % of the swing apart; capture ${tj && (tj.win * 1e3).toFixed(1)} ms)`);

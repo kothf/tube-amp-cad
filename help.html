@@ -141,7 +141,7 @@
   <tr><td><span class="ui">Edit ▾</span></td><td class="wrap">Undo, Redo, then what acts on the selection: Rotate <kbd>R</kbd>, Mirror <kbd>M</kbd>, Duplicate <kbd>D</kbd>, Delete <kbd>Del</kbd>, Copy, Paste, Select all; and Renumber designations. The right mouse button on a part or wire opens the same commands there (on empty sheet: Paste, Select all, Fit, Undo, Redo).</td></tr>
   <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (each net's DC voltage, and its AC as ~Vrms in cyan; wires that carry the signal glow cyan), <b>Currents</b> (DC current and its direction on each wire), <b>Legend</b> (the key to those marks in the corner of the sheet), and the panel under the sheet on its <b>Bill of materials</b>, <b>Checks</b> or <b>Tolerance</b> tab (<a href="#sim-tolerance">6.5</a>). A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
   <tr><td>↶ ↷</td><td class="wrap">Undo / redo (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>). Every edit can be undone, including opening an example.</td></tr>
-  <tr><td><span class="ui">Select</span> | <span class="ui">Wire</span></td><td class="wrap">The tool: select and move (<kbd>V</kbd>), or draw wires from anywhere (<kbd>W</kbd>). The highlighted one is active.</td></tr>
+  <tr><td><span class="ui">Select</span> | <span class="ui">Wire</span> | <span class="ui">Probe</span></td><td class="wrap">The tool: select and move (<kbd>V</kbd>), draw wires from anywhere (<kbd>W</kbd>), or the voltmeter probe (<kbd>P</kbd>). The highlighted one is active.</td></tr>
   <tr><td>− 49% +</td><td class="wrap">Zoom out / in around the centre (<kbd>−</kbd>, <kbd>+</kbd>; the mouse wheel zooms at the pointer).</td></tr>
   <tr><td><span class="ui">Fit</span></td><td class="wrap">Fits the sheet you are on (the selected, last clicked or most visible one); press again for all sheets (<kbd>F</kbd>).</td></tr>
   <tr><td>Sheet list</td><td class="wrap">Appears with two or more sheets: jumps to one.</td></tr>
@@ -192,6 +192,7 @@
 <ul>
   <li>Click a pin, click each corner, and finish on a pin or a wire. A wire ending on another wire joins it with a junction dot; wires that merely cross are not connected.</li>
   <li><kbd>W</kbd> (or <span class="ui">Wire</span>) starts a wire anywhere, not only at a pin.</li>
+  <li><b>Voltmeter probe:</b> <kbd>P</kbd> (or <span class="ui">Probe</span>) turns the pointer into a probe. Point at a wire or a pin after a simulation: a card shows the node's DC voltage, its AC (rms, peak-to-peak and frequency) and a small scope trace of its waveform, and the node's wires glow yellow. Click to leave the probe on that node; it keeps reading through edits and new simulations, also after you go back to Select. <kbd>Esc</kbd>, the card's × or a click on empty sheet removes it.</li>
   <li><kbd>Esc</kbd> ends the wire you are drawing.</li>
 </ul>
 <h3 id="sheets">4.3 Sheets, frames and connectors</h3>
@@ -437,6 +438,7 @@
 <tr><td><kbd>D</kbd>, <kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>duplicate</td></tr>
 <tr><td><kbd>Del</kbd></td><td>delete</td></tr>
 <tr><td><kbd>W</kbd> / <kbd>V</kbd></td><td>wire tool / select tool</td></tr>
+<tr><td><kbd>P</kbd></td><td>voltmeter probe</td></tr>
 <tr><td><kbd>Esc</kbd></td><td>cancel, clear the selection, close a menu</td></tr>
 <tr><td><kbd>F</kbd></td><td>fit the sheet; again: all sheets</td></tr>
 <tr><td><kbd>B</kbd></td><td>bill of materials</td></tr>
