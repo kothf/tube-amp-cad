@@ -118,7 +118,7 @@
     #status { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     header { flex-wrap: wrap; min-width: 0; }   /* a narrow window gets a second row, nothing falls off the right */
     header > * { flex-shrink: 0; }
-    header #status { flex: 1 1 120px; min-width: 40px; }   /* grows into spare room up to its max-width; a small basis so it never forces a second row by itself */
+    header #status { flex: 1 1 40px; min-width: 40px; }   /* grows into spare room up to its max-width; a small basis so it never forces a second row by itself */
     .seg-group { display: inline-flex; align-items: stretch; }
     .seg-group > * { border-radius: 0; margin-left: -1px; }
     .seg-group > :first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
@@ -133,7 +133,7 @@
     .menu-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; padding: 4px 10px 4px 28px; color: var(--muted); }
     .menu-row select { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; min-width: 0; }
     @media (max-width: 1560px) { .brand b { display: none; } header { gap: 4px; } .tools .btn { padding-left: 6px; padding-right: 6px; } }
-    @media (max-width: 1400px) { header #status { flex-basis: 40px; } select.btn { max-width: 120px; } }
+    @media (max-width: 1400px) { select.btn { max-width: 120px; } }
     @media (max-width: 1320px) { header { padding: 6px; } select.btn { max-width: 104px; } .tools .btn { padding-left: 5px; padding-right: 5px; } }
     .menu { position: relative; }
     kbd.tk { font-size: 10px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; margin-left: 5px; }
