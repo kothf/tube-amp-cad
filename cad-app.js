@@ -2793,12 +2793,18 @@
   const boardText = () => JSON.stringify(S.board || null);
   function markClean() { clean = { snap: snapshot(), board: boardText() }; showFile(); }
   const isDirty = () => !clean || snapshot() !== clean.snap || boardText() !== clean.board;
+  // a circuit not saved to a file yet (new, or an example) goes by its title block: title, else identification number
+  function sheetName() {
+    const f = S.comps.find(c => c.type === "frame"), p = f ? f.params : {};
+    return { name: String(p.title || p.docno || "").trim(), full: [p.docno, p.title].map(t => String(t || "").trim()).filter(Boolean).join(" · ") };
+  }
   function showFile() {
-    const el = document.getElementById("cur-file"), name = curFile.name || "Untitled", dirty = isDirty();
+    const sheet = curFile.name ? null : sheetName();
+    const el = document.getElementById("cur-file"), name = curFile.name || sheet.name || "Untitled", dirty = isDirty();
     if (el) {
       el.textContent = name; el.classList.toggle("untitled", !curFile.name);
       if (dirty) { const d = document.createElement("span"); d.className = "dirty"; d.textContent = " •"; el.appendChild(d); }
-      el.title = (curFile.name ? `Open file: ${name}` : "Not saved to a file yet") + (dirty ? " · changes not saved (Ctrl+S)" : " · saved");
+      el.title = (curFile.name ? `Open file: ${name}` : (sheet.full ? sheet.full + " · " : "") + "Not saved to a file yet") + (dirty ? " · changes not saved (Ctrl+S)" : " · saved");
     }
     document.title = (dirty ? "• " : "") + name + " — Tube Amp CAD";
     try { localStorage.setItem(FILE_KEY, JSON.stringify({ name: curFile.name, dirty })); } catch (e) {}

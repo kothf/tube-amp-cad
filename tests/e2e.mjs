@@ -1953,8 +1953,9 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.locator("#examples-list .menu-item", { hasText: "12AX7: plate resistor" }).click();
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, seq0, { timeout: 30000 }).catch(() => {});
-  const ex = await cad.evaluate(() => { const S = TubeCAD.state, f = S.comps.find(c => c.type === "frame"); return { docno: f && f.params.docno, n: S.comps.length, err: S.sim.error, title: document.title, status: document.getElementById("status") ? document.getElementById("status").textContent : "" }; });
+  const ex = await cad.evaluate(() => { const S = TubeCAD.state, f = S.comps.find(c => c.type === "frame"); return { docno: f && f.params.docno, n: S.comps.length, err: S.sim.error, title: document.title, tag: document.getElementById("cur-file").textContent, tagTip: document.getElementById("cur-file").title, status: document.getElementById("status") ? document.getElementById("status").textContent : "" }; });
   check(ex.docno === "VAL-03" && ex.n === 38 && !ex.err && !/03-12ax7/.test(ex.title), `the example opens (VAL-03, ${ex.n} parts), simulates, and stays untitled so Save asks for a new name`);
+  check(/^12AX7/.test(ex.tag) && !/•/.test(ex.tag) && /^12AX7/.test(ex.title) && /^VAL-03 · 12AX7/.test(ex.tagTip), `the toolbar names the example by its title block (${ex.tag}), not "Untitled", and does not mark it as changed`);
   await cad.keyboard.press("Control+z");
   check(await cad.evaluate(n => TubeCAD.state.comps.length === n, before), "Ctrl+Z brings back the circuit that was on the sheet");
   // every example opens and simulates without an error
@@ -2054,6 +2055,12 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     const dr2 = await bw.evaluate(() => BoardApp.state.board.tracks.length);
     check(dr1.t < dr0.t - 1 && dr1.loose === 0 && dr2 === dr0.t, `deleting a track leaves no loose stubs of its route (${dr0.t - dr1.t} tracks and ${dr0.v - dr1.v} vias gone: "${dr1.msg}"); Ctrl+Z brings them back`);
+    // a part moved after routing: Auto-route first clears the copper left where it was (loose ends, shorts, clearances)
+    const ms0 = await bw.evaluate(() => { const S = BoardApp.state, k = S.model.parts.find(g => g.ref === "R1").key; S.board.parts[k].x += 8; S.board.parts[k].y += 4; BoardApp.commit(); return { t: S.board.tracks.length, bad: S.drc.filter(d => ["dangling", "short", "clearance"].includes(d.kind)).length }; });
+    const ms1 = await bw.evaluate(() => { const S = BoardApp.state, n = BoardApp.clearStale(); BoardApp.commit(); return { n, bad: S.drc.filter(d => ["dangling", "short", "clearance"].includes(d.kind)).map(d => d.msg), un: S.conn.unrouted }; });
+    await bw.keyboard.press("Control+z"); await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
+    check(ms0.bad > 0 && ms1.n > 0 && !ms1.bad.length && ms1.un > 0 && await bw.evaluate(t => BoardApp.state.board.tracks.length === t, ms0.t),
+      `after R1 moves, ${ms0.bad} loose ends/clearance messages; before routing, ${ms1.n} pieces of old copper go and none is left (${ms1.un} connections to route)`);
     // Unroute: every track and via goes (a locked one stays), one step back with Ctrl+Z
     const ur0 = await bw.evaluate(() => { const b = BoardApp.state.board; b.tracks[0].locked = true; BoardApp.commit(); return { t: b.tracks.length, v: b.vias.length, un: BoardApp.state.conn.unrouted }; });
     await bw.click("#btn-unroute"); await bw.waitForTimeout(200);

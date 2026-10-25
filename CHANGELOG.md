@@ -6,13 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.91.0] - 2026-10-25
+## [3.92.0] - 2026-10-25
 
 ### Added
 - **Unroute.** A toolbar button beside Auto-route removes every track and via from the board, to route again from scratch. Locked tracks and vias stay. One step: **Ctrl+Z** brings them all back.
 
 ### Changed
 - **Deleting a track takes the loose ends of its route with it.** Removing one track of a route used to leave the rest of it hanging: stubs and vias touching nothing, which still counted against the clearances (on the Gubin board one such stub broke the 2 mm high-voltage rule). Now the copper of that route left unconnected where it met the deleted piece goes too, up to the pads, a pour or copper still in use. Locked copper stays, and **Ctrl+Z** brings everything back.
+- **Auto-route clears the copper left from where the parts were.** After parts moved, the old tracks stayed where they had been: ends in the air, across other nets' pads, too close to them. Auto-route kept them and routed around them, and they piled up with each run. Now it first removes the copper that hangs loose, reaches no pad, joins two nets or breaks a clearance, then routes those connections afresh; the status line says how many old pieces went. Locked copper stays, and one **Ctrl+Z** takes the whole run back.
+
+## [3.91.0] - 2026-10-25
+
+### Changed
+- **An example (or a new circuit) shows its name in the toolbar.** A circuit not saved to a file yet went by "Untitled" in the toolbar and the tab title, even when its title block had a title. It now shows the title block's title (or, without one, its identification number), in grey italics until it is saved to a file; the tooltip gives both. Opening an example shows, for instance, "NE555 metronome: astable into a speaker". "Untitled" stays for a circuit whose title block is empty.
 
 ## [3.90.1] - 2026-10-25
 
