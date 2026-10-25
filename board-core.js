@@ -870,7 +870,7 @@
   // The result is a list of drawing operations, the same for the screen, the Gerbers and PDFs:
   // { pol: "D" (copper) | "C" (clear), t: "region", pts } | { t: "flash", shape: "C"|"R"|"O", x, y, w, h } | { t: "line", w, pts }
   // ---------------------------------------------------------------------------
-  const RES = 0.2;
+  const RES = 0.2, POUR_TRIM = 0.075;   // raster cell; how much further a pour keeps off at the end (mm)
   function pip(x, y, poly) {
     let ins = false;
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) ins = !ins; }
@@ -1021,6 +1021,17 @@
           i = e + 1;
         }
       }
+      // last, every cut grows by POUR_TRIM (and the pour's outline comes in by as much): crumbs of copper thinner
+      // than twice that, which the raster cannot see (where two clearances nearly touch, or beside an island's
+      // cut), go too. A board maker's check flags such slivers; they can flake off and short
+      const trim = +(2 * POUR_TRIM).toFixed(4), edges = pts => pts.map((a, i) => ({ pol: "C", t: "line", w: trim, pts: [a, pts[(i + 1) % pts.length]] })), more = edges(poly);
+      ops.forEach((op, k) => {
+        if (!k || op.pol !== "C") return;
+        if (op.t === "line") op.w = +(op.w + trim).toFixed(4);
+        else if (op.t === "flash") { op.w = +(op.w + trim).toFixed(4); op.h = +(op.h + trim).toFixed(4); }
+        else if (op.t === "region") more.push(...edges(op.pts));
+      });
+      ops.push(...more, ...spokes);
       return { zone: zi, layer: L, net: net === undefined ? null : net, ops, links: hit.filter(h => h.length > 1), pieces: pieces - islands, islands, unknownNet: net === undefined };
     });
   }

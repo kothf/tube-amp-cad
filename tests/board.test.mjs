@@ -283,6 +283,9 @@ test("copper pour: joins its net's pads by thermal spokes, keeps every other net
   const board = fabBoard(), { m, c0, fills, conn } = analyse(board), f = fills[0];
   assert.equal(fills.length, 1);
   assert.ok(c0.rats.some(r => m.names[r.net] === "GND"), "before the pour GND is unrouted");
+  // at the end every cut grows by 0.075 mm (no crumbs narrower than that survive) and the outline comes in by as much; the spokes go on top
+  const last = f.ops.slice(-20), trimEdge = f.ops.filter(o => o.pol === "C" && o.t === "line" && o.w === 0.15).length;
+  assert.ok(trimEdge >= 4 && last.some(o => o.pol === "D" && o.t === "line" && o.w === 0.8), `outline trimmed (${trimEdge} edges) and spokes drawn last`);
   assert.ok(!conn.rats.some(r => m.names[r.net] === "GND"), "the pour connects every GND pad");
   assert.ok(conn.unrouted < c0.unrouted);
   // rasterise the pour and measure its distance to other nets' pads: never under their clearance
