@@ -12,8 +12,9 @@ import { readFile } from "node:fs/promises";
   check(sw[0] === "page" && !sw[1] && sw[2] && await cad.getAttribute("#btn-doc-sch", "aria-current") === "page", "both windows carry the Schematic | Board switch at the left, the window you are in lit");
   // back and forth: each button finds the window already open, no third window
   const nPages = ctx.pages().length;
-  await bd.click("#btn-cad"); await cad.click("#btn-doc-board"); await bd.waitForTimeout(200);
-  check(ctx.pages().length === nPages, `Schematic and Board bring the open windows up instead of opening new ones (${ctx.pages().length} pages)`);
+  for (let i = 0; i < 3; i++) { await bd.click("#btn-cad"); await cad.click("#btn-doc-board"); }
+  await bd.waitForTimeout(200);
+  check(ctx.pages().length === nPages && await bd.evaluate(() => !document.getElementById("win-note")), `Schematic and Board, back and forth three times, bring the open windows up instead of opening new ones (${ctx.pages().length} pages)`);
   // cross-probing a net: wires of one net selected in the schematic light it up on the board, and a net highlighted on the board selects its wires
   const xpWire = await cad.evaluate(() => { const S = TubeCAD.state, T = TubeCAD.topo(), w = S.wires.find(w => T.wireNet.get(w.id) > 0); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.wires.add(w.id); TubeCAD.updateInspector(); return T.wireNet.get(w.id); });
   await bd.waitForFunction(n => BoardApp.state.netHL === n, xpWire, { timeout: 3000 }).catch(() => {});

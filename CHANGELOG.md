@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.98.4] - 2026-10-25
+
+### Fixed
+- The Schematic | Board switch worked only once in Safari: Safari lets a page bring forward only a window it opened itself, so the Board window's Schematic button could not raise the CAD's tab. In Safari the board now opens inside the CAD window by default (Windows ▾ → Board in this window, still untickable), so the switch flips both ways every time. With separate windows, a button in Safari that cannot bring its window up (Schematic in the Board window or an instrument) now says so instead of doing nothing.
+
 ## [3.98.3] - 2026-10-25
 
 ### Changed

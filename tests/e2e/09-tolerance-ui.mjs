@@ -1,5 +1,5 @@
 // Tolerance runs, toolbar, hints and the manual, the board as a tab
-import { cad, check, ctx } from "./harness.mjs";
+import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
 
 // --- Tolerance runs (Monte Carlo) ---------------------------------------------------------
 {
@@ -82,8 +82,43 @@ import { cad, check, ctx } from "./harness.mjs";
   const t3 = await cad.evaluate(() => !document.getElementById("board-tab").hidden);
   await cad.frameLocator("#board-tab").locator("#pcb").focus(); await cad.keyboard.press("Alt+S"); await cad.waitForTimeout(150);
   const t4 = await cad.evaluate(() => document.getElementById("board-tab").hidden);
+  // the switch keeps working: the buttons flip back and forth, not only once
+  const flips = [];
+  for (let i = 0; i < 4; i++) {
+    await cad.click("#btn-doc-board"); await cad.waitForTimeout(100);
+    flips.push(await cad.evaluate(() => !document.getElementById("board-tab").hidden));
+    await cad.frameLocator("#board-tab").locator("#btn-cad").click(); await cad.waitForTimeout(100);
+    flips.push(await cad.evaluate(() => document.getElementById("board-tab").hidden));
+  }
+  check(flips.every(Boolean), `the Schematic | Board switch flips the board in this window again and again (${flips.map(f => f ? "ok" : "stuck").join(" ")})`);
   check(t1.shown && t1.parts > 0 && !t1.name && t2 && t3 && t4 && ctx.pages().length === n0,
     `Windows ▾ → Board in this window: Board shows the layout over the whole window (${t1.parts} parts), Schematic or Alt+S hides it, Alt+B shows it again, no new window`);
   await cad.click("#btn-windows"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
   check(await cad.evaluate(() => !document.getElementById("board-tab")), "unticked, the board frame goes and the board has its own window again");
+}
+// --- Safari: a page may raise only a window it opened ---------------------------------------
+{
+  const SAFARI = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+  const sc = await browser.newContext({ viewport: { width: 1500, height: 900 }, userAgent: SAFARI });
+  const sp = await sc.newPage(); sp.on("pageerror", e => errors.push(`safari cad: ${e.message}`));
+  await sp.goto(U("circuit_sandbox.html")); await sp.waitForFunction(() => window.TubeCAD);
+  const flips = [];
+  for (let i = 0; i < 3; i++) {
+    await sp.click("#btn-doc-board");
+    await sp.waitForFunction(() => { const f = document.getElementById("board-tab"); return f && !f.hidden && f.contentWindow.BoardApp; }, null, { timeout: 10000 }).catch(() => {});
+    flips.push(await sp.evaluate(() => { const f = document.getElementById("board-tab"); return !!f && !f.hidden; }));
+    await sp.frameLocator("#board-tab").locator("#btn-cad").click(); await sp.waitForTimeout(100);
+    flips.push(await sp.evaluate(() => document.getElementById("board-tab").hidden));
+  }
+  check(flips.every(Boolean) && sc.pages().length === 1, `in Safari the board opens in the CAD window by default and the switch flips every time (${flips.map(f => f ? "ok" : "stuck").join(" ")})`);
+  // ticked off: the Board window cannot bring the CAD's tab up, and says so instead of doing nothing
+  await sp.click("#btn-windows"); await sp.click("#btn-board-tab"); await sp.keyboard.press("Escape");
+  const [sb] = await Promise.all([sc.waitForEvent("page"), sp.click("#btn-doc-board")]);
+  sb.on("pageerror", e => errors.push(`safari board: ${e.message}`));
+  await sb.waitForFunction(() => window.BoardApp && BoardApp.state.model, null, { timeout: 10000 }).catch(() => {});
+  await sb.click("#btn-cad");
+  await sb.waitForSelector("#win-note:not([hidden])", { timeout: 2000 }).catch(() => {});
+  const note = await sb.evaluate(() => { const n = document.getElementById("win-note"); return n && !n.hidden ? n.textContent : ""; });
+  check(/Safari/.test(note) && /Board in this window/.test(note) && sc.pages().length === 2, `in Safari with the board in its own window, Schematic there explains why the CAD did not come up ("${note.slice(0, 60)}…")`);
+  await sc.close();
 }
