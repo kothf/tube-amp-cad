@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.91.0] - 2026-10-25
+
+### Changed
+- **An example (or a new circuit) shows its name in the toolbar.** A circuit not saved to a file yet went by "Untitled" in the toolbar and the tab title, even when its title block had a title. It now shows the title block's title (or, without one, its identification number), in grey italics until it is saved to a file; the tooltip gives both. Opening an example shows, for instance, "NE555 metronome: astable into a speaker". "Untitled" stays for a circuit whose title block is empty.
+
 ## [3.90.1] - 2026-10-25
 
 ### Fixed

@@ -1953,8 +1953,9 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.locator("#examples-list .menu-item", { hasText: "12AX7: plate resistor" }).click();
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, seq0, { timeout: 30000 }).catch(() => {});
-  const ex = await cad.evaluate(() => { const S = TubeCAD.state, f = S.comps.find(c => c.type === "frame"); return { docno: f && f.params.docno, n: S.comps.length, err: S.sim.error, title: document.title, status: document.getElementById("status") ? document.getElementById("status").textContent : "" }; });
+  const ex = await cad.evaluate(() => { const S = TubeCAD.state, f = S.comps.find(c => c.type === "frame"); return { docno: f && f.params.docno, n: S.comps.length, err: S.sim.error, title: document.title, tag: document.getElementById("cur-file").textContent, tagTip: document.getElementById("cur-file").title, status: document.getElementById("status") ? document.getElementById("status").textContent : "" }; });
   check(ex.docno === "VAL-03" && ex.n === 38 && !ex.err && !/03-12ax7/.test(ex.title), `the example opens (VAL-03, ${ex.n} parts), simulates, and stays untitled so Save asks for a new name`);
+  check(/^12AX7/.test(ex.tag) && !/•/.test(ex.tag) && /^12AX7/.test(ex.title) && /^VAL-03 · 12AX7/.test(ex.tagTip), `the toolbar names the example by its title block (${ex.tag}), not "Untitled", and does not mark it as changed`);
   await cad.keyboard.press("Control+z");
   check(await cad.evaluate(n => TubeCAD.state.comps.length === n, before), "Ctrl+Z brings back the circuit that was on the sheet");
   // every example opens and simulates without an error
