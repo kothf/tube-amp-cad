@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.97.3] - 2026-10-25
+
+### Changed
+- Code structure only, no change in behaviour: Save as PDF, the Export dialog and Print moved out of `cad-app.js` into `cad-export.js`. Every example's PDF, PNG and on-screen drawing was compared byte for byte with 3.97.2.
+
 ## [3.97.2] - 2026-10-25
 
 ### Changed
