@@ -82,8 +82,14 @@
         holes.forEach(h => { const d = r4((h.plated ? ring(h) : h.d) + 2 * e); ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d }); });
       }
     } else if (layer === "F.Paste" || layer === "B.Paste") {
-      // the solder paste stencil: the SMD pads of that side, at their own size
-      pads.forEach(p => { if (p.smd && C.onSide(p, layer[0])) ops.push({ pol: "D", ...C.flashOf(p, 0) }); });
+      // the solder paste stencil: the SMD pads of that side, at their own size; a pad with a paste
+      // fraction (a power tab) gets a grid of windowpanes about 3 mm apart that cover that much of it
+      pads.forEach(p => {
+        if (!p.smd || !C.onSide(p, layer[0])) return;
+        if (!(p.paste < 1)) { ops.push({ pol: "D", ...C.flashOf(p, 0) }); return; }
+        const nx = Math.ceil(p.w / 3), ny = Math.ceil(p.h / 3), cw = p.w / nx, ch = p.h / ny, k = Math.sqrt(p.paste), w = r4(cw * k), h = r4(ch * k);
+        for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) ops.push({ pol: "D", t: "flash", shape: "R", x: r4(p.x - p.w / 2 + (i + 0.5) * cw), y: r4(p.y - p.h / 2 + (j + 0.5) * ch), w, h });
+      });
     } else if (layer === "Edge.Cuts") {
       const P = C.outlinePoly(board.outline, 0);
       ops.push({ pol: "D", t: "line", w: EDGE_W, pts: P.concat([P[0]]), fn: "Profile" });
@@ -203,7 +209,10 @@
     const H = board.outline.h, q = s => `"${String(s).replace(/"/g, "'")}"`, f4 = v => (+v).toFixed(4);
     const rows = model.parts.filter(g => (!keep || keep.has(g.key)) && g.fp && g.fp.smd && g.place).sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }));
     return ["Ref,Val,Package,PosX,PosY,Rot,Side"].concat(rows.map(g => {
-      const P = g.place, b = g.fp.pads, cx = b.reduce((s, p) => s + p.x, 0) / b.length, cy = b.reduce((s, p) => s + p.y, 0) / b.length, [x, y] = B().place([cx, cy], P);
+      // the centre of the land pattern (the pads' extents), as IPC-7351 puts a part's centroid: the
+      // pads' mean is off it on an SOT-23 or a D²PAK, whose pads are not symmetric
+      const P = g.place, b = g.fp.pads, ext = (k, d) => [Math.min(...b.map(p => p[k] - p[d] / 2)), Math.max(...b.map(p => p[k] + p[d] / 2))];
+      const [x0, x1] = ext("x", "w"), [y0, y1] = ext("y", "h"), [x, y] = B().place([(x0 + x1) / 2, (y0 + y1) / 2], P);
       const rot = ((P.rot || 0) & 3) * 90, r = P.side === "B" ? (360 - rot) % 360 : rot;
       return [q(g.ref), q(ascii(g.value)), q(g.fp.name), f4(x), f4(H - y), f4(r), P.side === "B" ? "bottom" : "top"].join(",");
     })).join("\n") + "\n";

@@ -145,6 +145,23 @@ test("Gerbers: SMD pads on their side's copper, mask and paste; no drill; a plac
   assert.ok(!tf["t-F_Paste.gbr"] && !tf["t-pos.csv"]);
 });
 
+test("placement: a part's centre is its land pattern's, not its pads' mean; a DPAK tab gets windowpane paste", () => {
+  const board = placed(true), vt = Object.values(board.parts).find(p => p.ref === "VT1");
+  ["SOT-223-BCE", "DPAK-BCE"].forEach(fp => [0, 1].forEach(rot => {
+    Object.assign(vt, { fp, rot }); const { m } = analyse(board), pads = m.pads.filter(p => p.ref === "VT1");
+    const ext = (k, d) => (Math.min(...pads.map(p => p[k] - p[d] / 2)) + Math.max(...pads.map(p => p[k] + p[d] / 2))) / 2;
+    const row = F.placement(board, m).split("\n").find(l => l.startsWith('"VT1"')).split(",");
+    assert.ok(Math.abs(+row[3] - ext("x", "w")) < 1e-3 && Math.abs(+row[4] - (40 - ext("y", "h"))) < 1e-3, `${fp} rot ${rot}: ${row}`);
+    // paste: the pins whole; a DPAK's tab in 2 × 2 panes inside it covering 70 %, an SOT-223's whole
+    const tab = pads.reduce((a, b) => (a.w * a.h > b.w * b.h ? a : b)), on = o => Math.abs(o.x - tab.x) < tab.w / 2 && Math.abs(o.y - tab.y) < tab.h / 2;
+    const panes = F.layerOps(board, m, [], "F.Paste").filter(o => o.t === "flash" && on(o)), area = panes.reduce((s, o) => s + o.w * o.h, 0);
+    if (fp.startsWith("DPAK")) {
+      assert.equal(panes.length, 4); assert.ok(Math.abs(area / (tab.w * tab.h) - 0.7) < 0.01, `${area}`);
+      panes.forEach(o => assert.ok(Math.abs(o.x - tab.x) + o.w / 2 <= tab.w / 2 + 1e-9 && Math.abs(o.y - tab.y) + o.h / 2 <= tab.h / 2 + 1e-9));
+    } else { assert.equal(panes.length, 1); assert.equal(panes[0].w * panes[0].h, tab.w * tab.h); }
+  }));
+});
+
 test("3D: the board has no holes for SMD pads", () => {
   const board = placed(true), { m } = analyse(board), sc = D3.scene(board, m, {});
   assert.equal(sc.board.faces.filter(f => f.loops.length > 1).length, 0, "no holes at all");
