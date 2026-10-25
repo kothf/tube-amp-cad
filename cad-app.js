@@ -97,9 +97,9 @@
     S.comps.forEach(c => compPins(c).forEach(p => { const k = key(p.x, p.y); find(k); bump(k); if (!pinAt.has(k)) pinAt.set(k, []); pinAt.get(k).push({ c, p }); }));
     let groundRoot = null;
     S.comps.forEach(c => { if (c.type === "ground") { const p = compPins(c)[0]; const r = find(key(p.x, p.y)); if (groundRoot === null) groundRoot = r; else union(r, groundRoot); } });
-    // sheet connectors with the same signal name are one net (as if wired)
+    // sheet connectors and power rails with the same name are one net (as if wired)
     const byName = new Map();
-    S.comps.forEach(c => { if (c.type !== "offsheet") return; const n = connName(c); if (!n) return; const r = find(key(c.x, c.y)); if (byName.has(n)) union(r, byName.get(n)); else byName.set(n, r); });
+    S.comps.forEach(c => { if (c.type !== "offsheet" && c.type !== "rail") return; const n = connName(c); if (!n) return; const r = find(key(c.x, c.y)); if (byName.has(n)) union(r, byName.get(n)); else byName.set(n, r); });
     if (groundRoot !== null) groundRoot = find(groundRoot);
     const netOfRoot = new Map();
     let next = 1;
@@ -154,10 +154,10 @@
     return [...groups.entries()].sort(([a], [b]) => { const [sa, ra] = a.split("|"), [sb, rb] = b.split("|"); return (+sa || 0) - (+sb || 0) || ra.localeCompare(rb); })
       .map(([k, cols]) => { const [sh, row] = k.split("|"); return (sh ? sh + "/" : "") + row + cols.sort((a, b) => a - b).join(","); }).join(" ");
   }
-  // where the partners of a sheet connector are
+  // where the partners of a sheet connector are (connectors and power rails of its name)
   function connRefs(c) {
     const n = connName(c);
-    return S.comps.filter(k => k !== c && k.type === "offsheet" && connName(k) === n).map(k => (zoneOf(k.x, k.y) || {}).text).filter(Boolean)
+    return S.comps.filter(k => k !== c && (k.type === "offsheet" || k.type === "rail") && connName(k) === n).map(k => (zoneOf(k.x, k.y) || {}).text).filter(Boolean)
       .filter((t, i, a) => a.indexOf(t) === i);
   }
 
@@ -294,9 +294,11 @@
     const T = topo();
     let nodeCount = T.nodeCount;
     const alloc = () => nodeCount++;
-    const elements = [];
+    const elements = [], railNets = new Set();
     S.comps.forEach(c => {
       const net = pid => T.pinNet.get(c.id + ":" + pid);
+      // power rails of one net are one supply: the first of them is its source
+      if (c.type === "rail") { if (railNets.has(net("1"))) return; railNets.add(net("1")); }
       LIB[c.type].build(c, net, alloc, elements);
     });
     return { nodeCount, elements };
@@ -994,7 +996,7 @@
     const pin = hitPin(m.wx, m.wy);
     let net, label = "", wireI = "";
     const T = S.sim.topo || topo();
-    if (pin) { net = T.pinNet.get(pin.c.id + ":" + pin.p.id); label = pin.c.type === "offsheet" ? `${pin.c.params.name || "connector"} (also at ${refText(connRefs(pin.c)) || "no other place"})` : `${pin.c.label || LIB[pin.c.type].name} ${pin.p.name || pin.p.id}`; }
+    if (pin) { net = T.pinNet.get(pin.c.id + ":" + pin.p.id); label = pin.c.type === "offsheet" ? `${pin.c.params.name || "connector"} (also at ${refText(connRefs(pin.c)) || "no other place"})` : pin.c.type === "rail" ? `${pin.c.params.name || "rail"} ${LIB.rail.value(pin.c)}` : `${pin.c.label || LIB[pin.c.type].name} ${pin.p.name || pin.p.id}`; }
     else {
       const w = hitWire(m.wx, m.wy);
       if (w) { net = (S.sim.topo || topo()).wireNet.get(w.id); label = "wire"; const wc = S.sim.result && wireCurrents(), i = wc ? wc.currents.get(w.id) : undefined; if (typeof i === "number") wireI = (isH(w) ? (i > 0 === w.x2 > w.x1 ? "→" : "←") : (i > 0 === w.y2 > w.y1 ? "↓" : "↑")) + fmtEng(Math.abs(i), "A", 2); }
@@ -1205,7 +1207,7 @@
         prevFill.call(this, t, 0, 0, mw); this.restore();
       };
     }
-    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "isrc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
+    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "rail" || c.type === "isrc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
     if (c.type === "led" && !ghost && !S.printing) c._lit = ledLevel(c);
@@ -1241,6 +1243,18 @@
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = refs.length ? COL.value : "#ff7b72";
       if (!refs.length || !isRail(c)) ctx.fillText(refs.length ? refText(refs) : "no partner", tx, vy + 12);
       ctx.textAlign = "left";
+      return;
+    }
+    if (c.type === "rail") {
+      // name and voltage beyond the arrow's tip, upright whichever way the arrow points
+      const d = [[0, -1], [1, 0], [0, 1], [-1, 0]][c.rot & 3], tx = c.x + d[0] * 22, ty = c.y + d[1] * 22;
+      const name = String(c.params.name || "").trim(), val = def.value(c);
+      ctx.font = "bold 11px ui-monospace, Menlo, monospace"; const wn = name ? ctx.measureText(name + " ").width : 0;
+      ctx.font = "10px ui-monospace, monospace"; const wv = ctx.measureText(val).width;
+      const x0 = d[0] > 0 ? tx : d[0] < 0 ? tx - wn - wv : tx - (wn + wv) / 2, y0 = d[1] < 0 ? ty : d[1] > 0 ? ty + 8 : ty + 4;
+      ctx.textAlign = "left";
+      ctx.font = "bold 11px ui-monospace, Menlo, monospace"; ctx.fillStyle = sel ? COL.bodySel : "#ff9e64"; ctx.fillText(name, x0, y0);
+      ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = sel ? COL.bodySel : COL.value; ctx.fillText(val, x0 + wn, y0);
       return;
     }
     // labels
@@ -1805,6 +1819,8 @@
     return {
       r: S.sim.result, kv, note: (text, cls) => `<p class="insp-help${cls ? " " + cls : ""}">${text}</p>`,
       vAcross, pAvg, netDC, pinNet: netOf, pinCurrent: pid => pinCurrent(c, pid),
+      // the source of a power rail's net: this rail or the first other rail on it (buildNetlist)
+      railDevice: () => { const n = netOf("1"), k = S.comps.find(q => q.type === "rail" && pinNetOf(q, "1") === n && S.sim.result.dc.devices[q.id]); return k ? S.sim.result.dc.devices[k.id] : null; },
       tubeData: () => tubeData(c), tubeLimits: () => tubeLimits(c), limitRows: () => limitRows(c),
       resistorPower: () => resistorPower(c), speakerPower: () => speakerPower(c), otDcCurrent: () => otDcCurrent(c),
       scopeChannels: () => scopeChannels(c), wave: pid => waveOf(c, pid), signalFreq, stats
@@ -1833,7 +1849,7 @@
       else if (c.type === "tube") { const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier") tubes += (d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia) + (d.dc.vg2k && d.dc.ig2 ? d.dc.vg2k * d.dc.ig2 : 0); }
       else if (c.type === "opamp") { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) ics += d.pd; }
       else if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) semi += d.pd; }
-      else if (c.type === "vdc") { const d = (r.dc.devices[c.id] || {}).main; if (d) { sup += -d.i * c.params.v; haveSup = true; } }
+      else if (c.type === "vdc" || c.type === "rail") { const d = (r.dc.devices[c.id] || {}).main; if (d) { sup += -d.i * c.params.v; haveSup = true; } }
     });
     let h = `<div class="insp-sub">Power</div>`;
     if (out > 0) h += kv("Output (speakers)", fmtEng(out, "W", 2));
@@ -1868,8 +1884,16 @@
     if (hasCircuit() && !T.hasGround) issues.push("No ground symbol.");
     const open = [];
     S.comps.forEach(c => { if (c.type === "scope") return; compPins(c).forEach(p => { if (!T.pinConnected.get(c.id + ":" + p.id)) { if (c.type === "opt_pp" && (p.id === "U1" || p.id === "U2")) return; if (c.type === "opamp" && (p.id === "1" || p.id === "8")) return; open.push(`${c.label || LIB[c.type].name}.${p.id}`); } }); });
-    const lonely = S.comps.filter(c => c.type === "offsheet" && !connRefs(c).length && !S.comps.some(k => k !== c && k.type === "offsheet" && connName(k) === connName(c))).map(c => c.params.name || "(no name)");
+    const lonely = S.comps.filter(c => c.type === "offsheet" && !connRefs(c).length && !S.comps.some(k => k !== c && (k.type === "offsheet" || k.type === "rail") && connName(k) === connName(c))).map(c => c.params.name || "(no name)");
     if (lonely.length) issues.push("Sheet connectors without a partner: " + lonely.join(", "));
+    // power rails: one voltage per net, never on ground
+    const railsOn = new Map();
+    S.comps.forEach(c => { if (c.type !== "rail") return; const n = T.pinNet.get(c.id + ":1"); if (!railsOn.has(n)) railsOn.set(n, []); railsOn.get(n).push(c); });
+    railsOn.forEach((list, n) => {
+      const named = list.map(c => `${c.params.name || "(no name)"} ${fmtEng(+c.params.v || 0, "V")}`).filter((t, i, a) => a.indexOf(t) === i);
+      if (n === 0) issues.push("Power rail on ground: " + named.join(", "));
+      else if (list.some(c => +c.params.v !== +list[0].params.v)) issues.push(`Power rails on one net with different voltages: ${named.join(", ")} (the simulation uses ${named[0]})`);
+    });
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
     const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
@@ -2472,6 +2496,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { tolerance, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { circuitIssues, tolerance, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

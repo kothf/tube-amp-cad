@@ -22,7 +22,7 @@
       if (t.comp) {
         const c = S.comps.find(k => k.id === t.comp), p = c && compPins(c).find(q => q.id === t.pid);
         if (!p) return null;
-        const name = c.type === "offsheet" ? (c.params.name || "connector") : `${desig(c) || LIB[c.type].name} ${p.name || p.id}`;
+        const name = c.type === "offsheet" || c.type === "rail" ? (c.params.name || (c.type === "rail" ? "rail" : "connector")) : `${desig(c) || LIB[c.type].name} ${p.name || p.id}`;
         return { net: T.pinNet.get(c.id + ":" + p.id), name, x: p.x, y: p.y };
       }
       const w = S.wires.find(k => k.id === t.wire);

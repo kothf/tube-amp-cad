@@ -11,7 +11,7 @@
     const L = window.CadLib, H = window.Hints, host = $("parts-ref");
     const order = [["Passive", ["resistor", "pot", "capacitor", "electrolytic", "inductor", "switch", "speaker"]],
       ["Transformers", ["opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat"]],
-      ["Sources", ["vdc", "isrc", "siggen", "mains"]], ["Ground & connectors", ["ground", "offsheet"]],
+      ["Sources", ["vdc", "rail", "isrc", "siggen", "mains"]], ["Ground & connectors", ["ground", "offsheet"]],
       ["Tubes", ["tube"]], ["Semiconductors", ["diode", "zener", "led", "npn", "pnp", "nmos", "pmos"]],
       ["Integrated circuits", ["opamp", "timer555"]], ["Instruments", ["scope"]], ["Document", ["frame", "note"]]];
     let h = "";

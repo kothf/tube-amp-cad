@@ -124,7 +124,7 @@ import { readFile } from "node:fs/promises";
       return out;
     });
     const src = (pal.Sources || []).join(" | "), gc = (pal["Ground & connectors"] || []).join(" | ");
-    check(src === "DC supplies: DC supply | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains"
+    check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains"
       && gc === "Ground | Sheet connector", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
     // the current source: 2 mA from ground up into 10 kΩ gives 20 V; the inspector reads it
     await cad.evaluate(() => {
@@ -204,6 +204,36 @@ import { readFile } from "node:fs/promises";
     check(/clips/.test(live) && /Output swing\s*2[67][\d.]*Vpp/.test(live), `op-amp: 4 Vpp in clips at the TL072's swing (${(/Output swing\s*([\d.]+Vpp)/.exec(live) || [])[1]})`);
     const sp = await cad.evaluate(() => TubeCAD.spiceNetlist ? TubeCAD.spiceNetlist() : "");
     check((/\.subckt OPAMP_TL072 INP INN OUT VP VN N1 N2/.test(sp) && /^X\S+ (\S+ ){7}OPAMP_TL072$/m.test(sp)), "SPICE export: the TL072 as a subcircuit");
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+  }
+  {
+    // power rails: two VCC arrows and a VCC sheet connector are one 9 V net fed by one ideal source;
+    // a rail of another voltage on that net shows in Checks
+    const pal = await cad.evaluate(() => [...document.querySelectorAll("#palette .pal-item")].some(el => /Power rail/.test(el.textContent)));
+    const r = await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, id) => C.compPins(c).find(p => p.id === id);
+      const wire = (p, q) => C.lRoute(p.x, p.y, q.x, q.y, true).forEach(s => C.addSegment(...s));
+      const V1 = add("rail", { name: "VCC", v: 9 }, 200, 200), V2 = add("rail", { name: "vcc", v: 9 }, 400, 200, 1), X = add("offsheet", { name: "VCC" }, 600, 200);
+      const R1 = add("resistor", { r: 10e3 }, 200, 300, 1), R2 = add("resistor", { r: 10e3 }, 200, 420, 1), R3 = add("resistor", { r: 10e3 }, 400, 300, 1), R4 = add("resistor", { r: 10e3 }, 600, 300, 1);
+      const g1 = add("ground", {}, 200, 500), g2 = add("ground", {}, 400, 400), g3 = add("ground", {}, 600, 400);
+      wire(pin(V1, "1"), pin(R1, "1")); wire(pin(R1, "2"), pin(R2, "1")); wire(pin(R2, "2"), pin(g1, "G"));
+      wire(pin(V2, "1"), pin(R3, "1")); wire(pin(R3, "2"), pin(g2, "G")); wire(pin(X, "1"), pin(R4, "1")); wire(pin(R4, "2"), pin(g3, "G"));
+      S.sel.comps.add(V2.id); C.commit();
+      return { mid: C.compPins(R1).find(p => p.id === "2"), v2: V2.id };
+    });
+    await cad.waitForFunction(() => { const S = TubeCAD.state; return !S.sim.busy && S.sim.result && S.sim.topo === TubeCAD.topo() && /Current supplied\s*[\d.]+\s*mA/.test(document.getElementById("insp-live").textContent); }, null, { timeout: 30000 });
+    const live = (await cad.textContent("#insp-live")).replace(/\s+/g, " ");
+    const got = await cad.evaluate(() => { const C = TubeCAD, S = C.state, T = C.topo(), R1 = S.comps.find(c => c.type === "resistor"), R4 = S.comps.filter(c => c.type === "resistor")[3];
+      return { vMid: S.sim.result.dc.nodes[T.pinNet.get(R1.id + ":2")], vX: S.sim.result.dc.nodes[T.pinNet.get(R4.id + ":1")], sources: C.buildNetlist().elements.filter(e => e.kind === "V").length }; });
+    const cur = (/Current supplied\s*([\d.]+)\s*mA/.exec(live) || [])[1];
+    check(pal && got.sources === 1 && Math.abs(got.vMid - 4.5) < 1e-3 && Math.abs(got.vX - 9) < 1e-3 && Math.abs(+cur - 2.25) < 0.06,
+      `power rail: two VCC rails and a VCC connector are one 9 V net from one source (${got.sources}), divider ${got.vMid && got.vMid.toFixed(3)} V, rail supplies ${cur} mA`);
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps.find(c => c.type === "rail" && c.params.name === "vcc").params.v = 5; TubeCAD.commit(); });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy, null, { timeout: 30000 });
+    const issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    check(/Power rails on one net with different voltages: VCC 9V, vcc 5V/.test(issues), `power rail: Checks reports VCC 9 V against vcc 5 V on one net (${issues})`);
     await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
   }
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
