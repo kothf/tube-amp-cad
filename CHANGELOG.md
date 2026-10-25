@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.91.0] - 2026-10-25
+
+### Added
+- **Unroute.** A toolbar button beside Auto-route removes every track and via from the board, to route again from scratch. Locked tracks and vias stay. One step: **Ctrl+Z** brings them all back.
+
+### Changed
+- **Deleting a track takes the loose ends of its route with it.** Removing one track of a route used to leave the rest of it hanging: stubs and vias touching nothing, which still counted against the clearances (on the Gubin board one such stub broke the 2 mm high-voltage rule). Now the copper of that route left unconnected where it met the deleted piece goes too, up to the pads, a pour or copper still in use. Locked copper stays, and **Ctrl+Z** brings everything back.
+
 ## [3.90.1] - 2026-10-25
 
 ### Fixed

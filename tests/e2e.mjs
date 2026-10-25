@@ -2046,6 +2046,22 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     check(await bw.evaluate(u => BoardApp.state.conn.unrouted === u, off.un), "Ctrl+Z takes the whole auto-route back");
     await bw.keyboard.press("Control+y"); await bw.waitForTimeout(200);
+    // deleting one track of a route takes the rest of it that would hang loose too (no stubs left), one step for Ctrl+Z
+    const dr0 = await bw.evaluate(() => { const b = BoardApp.state.board, on = (p, v) => Math.hypot(p[0] - v.x, p[1] - v.y) < 1e-3;
+      BoardApp.state.sel = { kind: "track", i: b.tracks.findIndex(t => b.vias.some(v => on(t.pts[0], v) || on(t.pts[t.pts.length - 1], v))) }; return { t: b.tracks.length, v: b.vias.length }; });
+    await bw.locator("#pcb").focus().catch(() => {}); await bw.keyboard.press("Delete"); await bw.waitForTimeout(200);
+    const dr1 = await bw.evaluate(() => ({ t: BoardApp.state.board.tracks.length, v: BoardApp.state.board.vias.length, loose: BoardApp.state.drc.filter(d => d.kind === "dangling").length, msg: document.getElementById("st-msg").textContent }));
+    await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
+    const dr2 = await bw.evaluate(() => BoardApp.state.board.tracks.length);
+    check(dr1.t < dr0.t - 1 && dr1.loose === 0 && dr2 === dr0.t, `deleting a track leaves no loose stubs of its route (${dr0.t - dr1.t} tracks and ${dr0.v - dr1.v} vias gone: "${dr1.msg}"); Ctrl+Z brings them back`);
+    // Unroute: every track and via goes (a locked one stays), one step back with Ctrl+Z
+    const ur0 = await bw.evaluate(() => { const b = BoardApp.state.board; b.tracks[0].locked = true; BoardApp.commit(); return { t: b.tracks.length, v: b.vias.length, un: BoardApp.state.conn.unrouted }; });
+    await bw.click("#btn-unroute"); await bw.waitForTimeout(200);
+    const ur1 = await bw.evaluate(() => { const b = BoardApp.state.board; return { t: b.tracks.length, v: b.vias.length, un: BoardApp.state.conn.unrouted, msg: document.getElementById("st-msg").textContent }; });
+    await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
+    const ur2 = await bw.evaluate(() => { const b = BoardApp.state.board; b.tracks[0].locked = false; BoardApp.commit(); return { t: b.tracks.length, v: b.vias.length }; });
+    check(ur0.t > 1 && ur1.t === 1 && ur1.v === 0 && ur1.un > ur0.un && /locked kept/.test(ur1.msg) && ur2.t === ur0.t && ur2.v === ur0.v,
+      `Unroute removes ${ur0.t - 1} tracks and ${ur0.v} vias, keeps the locked one ("${ur1.msg}"); Ctrl+Z brings them back`);
     // Board ▾ → Freerouting…: an address typed as an IP gets the default port; both start commands name this page's address
     await bw.click("#btn-board"); await bw.click("#btn-router");
     const cmds = await bw.evaluate(() => [document.getElementById("router-cmd-java").textContent, document.getElementById("router-cmd-docker").textContent]);
