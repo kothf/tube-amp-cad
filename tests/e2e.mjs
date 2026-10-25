@@ -37,8 +37,8 @@ const errors = [], missing = [];
 const open = async (name, page) => {
   const p = await ctx.newPage();
   p.on("pageerror", e => errors.push(`${name}: ${e.message}`));
-  // the Board window asks for Freerouting on this computer every few seconds: no answer there is not an error of the page
-  p.on("console", m => { if (m.type() === "error" && !/^http:\/\/127\.0\.0\.1:37864\//.test((m.location() || {}).url || "") && !/127\.0\.0\.1:37864/.test(m.text())) errors.push(`${name}: ${m.text()}`); });
+  // the Board window asks for Freerouting on this computer every few seconds: no answer there (or one a CORS check refuses) is not an error of the page
+  p.on("console", m => { if (m.type() === "error" && !/^http:\/\/127\.0\.0\.1:\d+\/v1\//.test((m.location() || {}).url || "") && !/127\.0\.0\.1:\d+\/v1\/|Failed to load resource: net::ERR_FAILED/.test(m.text())) errors.push(`${name}: ${m.text()}`); });
   p.on("response", r => { if (r.status() >= 400) missing.push(`${r.status()} ${r.url()}`); });
   await p.goto(U(page));
   return p;
@@ -2014,6 +2014,18 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     // Auto-route: grey while no Freerouting answers; with one (here a stand-in on its address that sends back the
     // tracks of a net taken off the board) the routes come back in one step, which Ctrl+Z takes back
     const grey = await bw.evaluate(() => document.getElementById("btn-autoroute").classList.contains("off"));
+    // pressed with no Freerouting: the dialog says why, and the window keeps its width (a long status message once widened it)
+    await bw.click("#btn-autoroute"); await bw.waitForSelector("#router-modal:not([hidden])", { timeout: 8000 }).catch(() => {});
+    const nf = await bw.evaluate(() => ({ w: document.body.scrollWidth, iw: innerWidth, open: !document.getElementById("router-modal").hidden, why: document.getElementById("router-state").textContent }));
+    await bw.click("#router-cancel");
+    check(nf.open && nf.w <= nf.iw && /No answer/.test(nf.why), `Auto-route with no Freerouting opens its dialog with the reason ("${nf.why.slice(0, 40)}…"); the window stays ${nf.w} px wide`);
+    // one that answers without allowing this page (no cors_origins) is told apart from none
+    // (a real server: a routed request does not go through the browser's CORS check)
+    const bare = createServer((req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ status: "OK" })); }).listen(0, "127.0.0.1");
+    await new Promise(r => bare.once("listening", r));
+    const pr = await bw.evaluate(u => BoardRoute.probe(u, 3000), `http://127.0.0.1:${bare.address().port}`);
+    bare.close();
+    check(!pr.ok && pr.why === "cors", `Freerouting started without this page in cors_origins is reported as such (${pr.why})`);
     const off = await bw.evaluate(() => { const S = BoardApp.state, n = S.board.tracks.find(t => t.net && t.net !== "GND").net, gone = S.board.tracks.filter(t => t.net === n);
       S.board.tracks = S.board.tracks.filter(t => t.net !== n); BoardApp.commit(); return { n, gone, un: S.conn.unrouted }; });
     const um = v => Math.round(v * 1e4), sesNet = off.n.replace(/[^A-Za-z0-9.+]/g, "");

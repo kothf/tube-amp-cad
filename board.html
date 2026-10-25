@@ -13,7 +13,7 @@
       --accent: #00e5ff; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300;
       --fcu: #e5534b; --bcu: #4d8fdc; --pad: #d4a72c; --silk: #e6edf3; --bsilk: #b392f0; --edge: #ffd54f;
     }
-    body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto auto 1fr auto; overflow: hidden; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto auto 1fr auto; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
     button, input, select { font: inherit; color: inherit; }
     header { grid-row: 1; } #banner { grid-row: 2; } main { grid-row: 3; } footer { grid-row: 4; }   /* fixed rows: the banner may be hidden */
     header { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -84,6 +84,7 @@
     .pads div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dashed #1a2433; }
     footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
     footer span { white-space: nowrap; }
+    #st-msg { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }   /* a long message ends in "…", it never widens the window */
     #st-pos { margin-left: auto; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 30; }
     .modal[hidden] { display: none; }

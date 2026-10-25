@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.90.1] - 2026-10-25
+
+### Fixed
+- **Auto-route no longer pushes the Board view off to the side.** Pressed while Freerouting did not answer, it wrote the whole start command into the status bar, and that one long line made the window wider than the screen: the board slid away and the toolbar was cut off. Long status messages now end in "…" (the full text is in the tooltip), and the window keeps its width.
+- **Auto-route tells you why it cannot reach Freerouting.** Pressed while Freerouting does not answer, it opens **Board ▾ → Freerouting…**, which now tells the cases apart: Freerouting runs but does not let this page in (it was started without this page's address after `--api_server.cors_origins`), something else answers at that address, or nothing answers (the API server is off, Freerouting listens only inside Docker or on its own computer, or the browser refused the address). An API key demand is named too. The first answer of a freshly started Freerouting can be slow, so the check waits 3 s.
+
 ## [3.90.0] - 2026-10-25
 
 ### Added

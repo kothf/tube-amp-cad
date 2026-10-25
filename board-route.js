@@ -337,12 +337,28 @@
   const base = url => address(url) || DEFAULT_URL;
   // another computer on the local network: Chrome asks the user once before a page may reach it
   const local = url => { try { return !/^(127\.|localhost$|\[::1\]$)/.test(new URL(base(url)).hostname) ? { targetAddressSpace: "local" } : {}; } catch (e) { return {}; } };
-  /** true when Freerouting answers at url (its status, within ms) */
-  async function available(url, ms) {
+  async function within(ms, f) {
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null, t = ctl && setTimeout(() => ctl.abort(), ms || 1500);
-    try { const r = await fetch(base(url) + "/v1/system/status", { signal: ctl && ctl.signal, ...local(url) }); if (!r.ok) return false; const j = await r.json(); return !!j && j.status === "OK"; }
-    catch (e) { return false; } finally { if (t) clearTimeout(t); }
+    try { return await f(ctl && ctl.signal); } finally { if (t) clearTimeout(t); }
   }
+  /** Why Freerouting does or does not answer at url, within ms: { ok, why } with why one of
+      "ok", "cors" (it answers but does not allow this page: cors_origins), "status" (an answer that is not
+      Freerouting's status, with code), "down" (no answer: not running, the API server off, another address,
+      or the browser refused the address) */
+  async function probe(url, ms) {
+    const u = base(url) + "/v1/system/status";
+    try {
+      return await within(ms, async signal => {
+        const r = await fetch(u, { signal, ...local(url) });
+        let j = null; try { j = await r.json(); } catch (e) { /* not JSON */ }
+        return j && j.status === "OK" ? { ok: true, why: "ok" } : { ok: false, why: "status", code: r.status };
+      });
+    } catch (e) { /* refused, timed out or blocked by CORS: an opaque request tells them apart */ }
+    try { await within(ms, signal => fetch(u, { mode: "no-cors", signal, ...local(url) })); return { ok: false, why: "cors" }; }
+    catch (e) { return { ok: false, why: "down" }; }
+  }
+  /** true when Freerouting answers at url (its status, within ms) */
+  async function available(url, ms) { return (await probe(url, ms)).ok; }
   /** Routes a DSN design: the SES text and Freerouting's report */
   async function route(url, dsn, opts) {
     const o = opts || {};
@@ -352,6 +368,7 @@
       body: JSON.stringify({ file_content: dsn, output_formats: ["SES", "DRC_SUMMARY"], timeout_seconds: o.timeout || 120, router_settings: { automatic_neckdown: false } })
     });
     let j = null; try { j = await r.json(); } catch (e) { /* not JSON */ }
+    if (r.status === 401) throw new Error("Freerouting wants an API key: start it with --api_server.authentication.enabled=false");
     if (!r.ok && r.status !== 202) throw new Error((j && (j.error || j.message)) || `Freerouting answered ${r.status}`);
     const ses = j && j.outputs && (j.outputs.SES || j.outputs.ses);
     if (!ses) throw new Error((j && (j.message || j.error)) || "Freerouting sent no routes");
@@ -366,5 +383,5 @@
     return `docker run -d --name freerouting --restart unless-stopped -p 37864:37864 ghcr.io/freerouting/freerouting:latest java -jar /app/freerouting-executable.jar --gui.enabled=false --api_server.enabled=true --api_server.endpoints=http://0.0.0.0:37864 --api_server.authentication.enabled=false --api_server.cors_origins=${origin || "https://aerocat.tech"}`;
   }
 
-  root.BoardRoute = { toDsn, fromSes, prune, parse, available, route, command, dockerCommand, address, DEFAULT_URL };
+  root.BoardRoute = { toDsn, fromSes, prune, parse, probe, available, route, command, dockerCommand, address, DEFAULT_URL };
 })(typeof window !== "undefined" ? window : globalThis);
