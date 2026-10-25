@@ -3,7 +3,7 @@
    also keeps the board document with the circuit), places footprints, routes tracks
    on two copper layers, places vias, texts and mounting holes, measures, shows the
    ratsnest and the design-rule check; Board setup and Design rules dialogs; layers.
-   Depends on: windows.js, panels.js, cad-components.js, board-core.js
+   Depends on: windows.js, panels.js, cad-components.js, board-core.js, board-route.js (Auto-route)
    ============================================================================= */
 (function () {
   "use strict";
@@ -120,6 +120,7 @@
     const star = S.gg && S.gg.star ? { pad: S.gg.star, groupOf: S.gg.groupOf } : null;
     const c0 = B.connectivity(S.board, S.model.pads, null, star);
     S.clr = B.clearanceRules(S.board, S.model, S.hv, S.netlist);
+    S.sp = B.socketPads(S.board, S.model);
     if (!light) {
       // teardrops first: the pours keep clear of other nets' teardrops
       const tears = S.board.rules.teardrops !== false ? B.teardrops(S.board, c0, S.clr) : [];
@@ -355,6 +356,7 @@
         if (it.kind === "via" && (r.vias || []).includes(it.vi)) continue;   // the route's own via: not joined to its net until the route ends
         let need = Math.max(mine, B.classRule(classOf(it.net), R).clearance, S.clr ? S.clr.need(r.net, it.net).c : 0); const g = B.segSeg(s, it.s) - w2 - it.r;
         if (g < need - 1e-6 && it.kind === "pad") { const eg = B.entryGap(s, it, S.conn.items); if (eg !== null) need = Math.min(need, eg - 0.02); }
+        if (g < need - 1e-6 && it.kind === "pad" && S.sp) { const us = B.underSocket(S.sp, it, { s }); if (us !== null) need = Math.min(need, us); }
         if (g < need - 1e-6 && it.kind === "track" && B.anchoredOk({ s, r: w2 }, it, g, need, S.conn.items)) continue;
         if (g < need - 1e-6) { const [x, y] = it.kind === "pad" ? [it.pad.x, it.pad.y] : [(it.s[0] + it.s[2]) / 2, (it.s[1] + it.s[3]) / 2]; return { x, y, g, need, what: it.kind === "pad" ? `${it.pad.ref}-${it.pad.num}` : it.kind === "via" ? "a via" : "a track", net: netName(it.net) }; }
       }
@@ -1657,7 +1659,7 @@
     draft = JSON.parse(JSON.stringify(S.board.rules));
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; el.classList.remove("invalid"); });
     $("rules-tent").checked = draft.tentVias !== false;
-    $("rules-ipc").value = draft.ipc || "B2"; $("rules-heaters").checked = draft.heaters !== false; $("rules-shields").checked = draft.shields !== false; $("rules-h126").value = draft.heater126 ? "1" : "0";
+    $("rules-ipc").value = draft.ipc || "B2"; $("rules-heaters").checked = draft.heaters !== false; $("rules-shields").checked = draft.shields !== false; $("rules-h126").value = draft.heater126 ? "1" : "0"; $("rules-socket").checked = draft.socketBody !== false;
     $("rules-ground").value = draft.ground === "star" ? "star" : "free"; $("rules-tear").checked = draft.teardrops !== false;
     $("rules-checks").innerHTML = Object.keys(CHECK_NAMES).map(k => `<label><input type="checkbox" data-c="${k}" ${draft.checks[k] !== false ? "checked" : ""}> ${CHECK_NAMES[k]}</label>`).join("");
     rulesNets();
@@ -1667,7 +1669,7 @@
     let ok = true;
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { const v = parseFloat(String(el.value).replace(",", ".")), good = el.dataset.min !== undefined ? v >= +el.dataset.min : v > 0; if (!good) { el.classList.add("invalid"); ok = false; } else { el.classList.remove("invalid"); draft[el.dataset.r] = v; } });
     draft.tentVias = $("rules-tent").checked;
-    draft.ipc = $("rules-ipc").value; draft.heaters = $("rules-heaters").checked; draft.shields = $("rules-shields").checked; draft.heater126 = $("rules-h126").value === "1";
+    draft.ipc = $("rules-ipc").value; draft.heaters = $("rules-heaters").checked; draft.shields = $("rules-shields").checked; draft.heater126 = $("rules-h126").value === "1"; draft.socketBody = $("rules-socket").checked;
     draft.ground = $("rules-ground").value; draft.teardrops = $("rules-tear").checked;
     document.querySelectorAll("#rules-checks [data-c]").forEach(el => { draft.checks[el.dataset.c] = el.checked; });
     return ok;
@@ -1805,6 +1807,75 @@
   // Status and boot
   // ---------------------------------------------------------------------------
   function status(kind, text) { const el = $("status"); el.className = "status " + kind; el.textContent = text; }
+  // ---------------------------------------------------------------------------
+  // Auto-route: Freerouting's API server on this computer (BoardRoute). The button stays grey
+  // until it answers; the routes come back as tracks and vias, one step to undo
+  // ---------------------------------------------------------------------------
+  const ROUTER_KEY = "tubecad_router_url";
+  const router = { url: BoardRoute.DEFAULT_URL, up: false, busy: false, timer: 0 };
+  try { router.url = localStorage.getItem(ROUTER_KEY) || router.url; } catch (e) { /* no storage */ }
+  const startCmd = () => BoardRoute.command(/^https?:/.test(location.origin) ? location.origin : "*");
+  function routerUi() {
+    const b = $("btn-autoroute"); if (!b) return;
+    b.classList.toggle("off", !router.up || router.busy);
+    b.textContent = router.busy ? "Routing…" : "Auto-route";
+    b.title = router.busy ? "Freerouting is routing the board" : router.up ? `Route the open connections with Freerouting (${router.url}), within the design rules; Ctrl+Z takes it back`
+      : `Freerouting is not running at ${router.url}. Start its API server (Board ▾ → Freerouting… for the address and the commands):\n${startCmd()}`;
+  }
+  async function pollRouter() {
+    clearTimeout(router.timer);
+    const up = await BoardRoute.available(router.url);
+    if (up !== router.up) { router.up = up; routerUi(); }
+    router.timer = setTimeout(pollRouter, up ? 15000 : 5000);
+  }
+  function dsnOf() { analyse(); return BoardRoute.toDsn(S.board, S.model, S.conn, S.clr, { hv: S.hv, amps: S.amps, title: baseName(), version: appVersion() }); }
+  // the routes of a session on the board, one step in the history; a summary of what is left
+  function addRoutes(ses, d) {
+    const todo = S.conn.unrouted, got = BoardRoute.prune(BoardRoute.fromSes(ses, S.board, d, S.model.names), S.board, S.model.pads);
+    S.board.tracks.push(...got.tracks); S.board.vias.push(...got.vias);
+    commit();
+    const left = S.conn.unrouted, done = todo - left;
+    return `${done} of ${todo} connection${todo === 1 ? "" : "s"} routed (${got.tracks.length} track${got.tracks.length === 1 ? "" : "s"}, ${got.vias.length} via${got.vias.length === 1 ? "" : "s"})` + (left ? `; ${left} left to route by hand` : "") + (S.drc.length ? `; ${S.drc.length} rule message${S.drc.length === 1 ? "" : "s"} to look at` : "");
+  }
+  async function autoRoute() {
+    if (router.busy) return;
+    if (!S.model) { msg("Open the Circuit CAD first: the board needs its parts"); return; }
+    if (!router.up) { await pollRouter(); if (!router.up) { msg(`Freerouting is not running at ${router.url}: start it with ${startCmd()} (Board ▾ → Freerouting…)`); return; } }
+    analyse();
+    if (!S.conn.unrouted) { msg("Nothing to route: every connection is routed"); return; }
+    const d = dsnOf();
+    router.busy = true; routerUi(); msg(`Freerouting is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
+    try {
+      const r = await BoardRoute.route(router.url, d.text, { version: appVersion() });
+      msg(addRoutes(r.ses, d) + (d.skipped.length ? ` · left to the pour: ${d.skipped.join(", ")}` : ""));
+    } catch (e) { msg(`Auto-route failed: ${e.message}`); router.up = false; pollRouter(); }
+    finally { router.busy = false; routerUi(); }
+  }
+  // Board ▾ → Freerouting…: the address (this computer or another on the network) and how to start it
+  function routerSetup() {
+    const origin = /^https?:/.test(location.origin) ? location.origin : "*";
+    $("router-addr").value = router.url.replace(/^http:\/\//, "");
+    $("router-cmd-java").textContent = BoardRoute.command(origin); $("router-cmd-docker").textContent = BoardRoute.dockerCommand(origin);
+    $("router-state").textContent = router.up ? `Freerouting answers at ${router.url}.` : `No answer from ${router.url} yet.`;
+    $("router-modal").hidden = false; $("router-addr").focus();
+  }
+  async function routerTest() {
+    const url = BoardRoute.address($("router-addr").value), st = $("router-state");
+    if (!url) { st.textContent = "That is not an address: an IP or a name, and :port if not 37864"; return; }
+    st.textContent = `Asking ${url}…`;
+    st.textContent = await BoardRoute.available(url, 3000) ? `Freerouting answers at ${url}.` : `No answer from ${url}: is it running, started with this page's address after cors_origins, and reachable from here?`;
+  }
+  function routerSave() {
+    const url = BoardRoute.address($("router-addr").value);
+    if (!url) { $("router-state").textContent = "That is not an address: an IP or a name, and :port if not 37864"; return; }
+    router.url = url; router.up = false; $("router-modal").hidden = true;
+    try { localStorage.setItem(ROUTER_KEY, router.url); } catch (e) { /* no storage */ }
+    routerUi(); pollRouter().then(() => msg(router.up ? `Freerouting answers at ${router.url}` : `No Freerouting at ${router.url} yet: Auto-route stays grey until it answers`));
+  }
+  function importSes(file) {
+    if (!file || !S.model) return;
+    file.text().then(t => { try { msg(addRoutes(t, dsnOf())); } catch (e) { msg(`Not imported: ${e.message}`); } });
+  }
   function msg(t) { if (t) $("st-msg").textContent = t; }
   function init() {
     canvas = $("pcb"); ctx = canvas.getContext("2d"); dpr = window.devicePixelRatio || 1; canvas.tabIndex = 0;
@@ -1872,8 +1943,14 @@
     $("ex-toner").onclick = () => { list.hidden = true; exportPdf("toner"); };
     document.querySelectorAll("[data-tab]").forEach(t => { t.onclick = () => { document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x === t)); $("parts").hidden = t.dataset.tab !== "parts"; $("nets").hidden = t.dataset.tab !== "nets"; }; });
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
+    $("ex-dsn").onclick = () => { list.hidden = true; if (S.model) download(dsnOf().text, baseName() + ".dsn", "text/plain"); };
+    $("btn-autoroute").onclick = autoRoute; $("btn-router").onclick = routerSetup;
+    $("router-test").onclick = routerTest; $("router-save").onclick = routerSave; $("router-cancel").onclick = () => { $("router-modal").hidden = true; };
+    $("router-addr").onkeydown = e => { if (e.key === "Enter") routerSave(); };
+    $("btn-ses").onclick = () => $("ses-file").click(); $("ses-file").onchange = e => { importSes(e.target.files[0]); e.target.value = ""; };
+    routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { autoRoute, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

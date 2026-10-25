@@ -47,6 +47,7 @@
       stopperMax: 10, couplingLen: 10, couplingGap: 2, heatGap: 10, hotWatts: 1, socketHole: 40,   // valve layout checks (mm, W)
       ground: "free",                                             // free | star (every ground return to the star point XG1)
       teardrops: true,                                            // copper fillets where tracks meet pads and vias
+      socketBody: true,                                           // under a valve socket's body a track may pass its pins as close as they are to each other
       checks: { star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, keepout: true, silk: true, dangling: true, stopper: true, coupling: true, heat: true, support: true }
     };
   }
@@ -947,10 +948,35 @@
       outline), unplaced, annular (ring around a hole too thin), drill (hole below the minimum),
       width (track below the minimum), class (track narrower than its net class), pinout
       (footprints whose pin order differs between makers). rules.checks turns kinds off. */
+  /** Valve sockets' pads: under the socket's body (a disc round its pins) a track may pass a pin
+      as close as that pin is to its nearest neighbour; the socket fixes that spacing, and copper
+      there adds no new path between the pins. Returns Map pad -> { x, y, r: the body's centre and
+      radius, gap: the pin's edge-to-edge distance to its nearest neighbour } (empty when the rule
+      is off) */
+  function socketPads(board, model) {
+    const out = new Map();
+    if (board.rules.socketBody === false) return out;
+    model.parts.forEach(g => {
+      const m = g.fp && g.place && /^SOCKET-(.+)$/.exec(g.fp.name); if (!m) return;
+      const S = SOCKETS[m[1]], pads = model.pads.filter(p => p.part === g.key), cap = p => padCapsule(p);
+      const body = S ? S.body / 2 : Math.max(...g.fp.pads.map(p => Math.hypot(p.x, p.y))) + 4;
+      pads.forEach(p => {
+        const gp = Math.min(...pads.filter(q => q !== p).map(q => { const a = cap(p), b = cap(q); return segSeg(a.s, b.s) - a.r - b.r; }));
+        out.set(p, { x: g.place.x, y: g.place.y, r: body, gap: gp });
+      });
+    });
+    return out;
+  }
+  // the clearance a track or via needs from a socket's pin where it comes closest to it
+  function underSocket(sp, padIt, other) {
+    const b = sp.get(padIt.pad); if (!b) return null;
+    const [x, y] = nearest(padIt.s, other.s);
+    return Math.hypot(x - b.x, y - b.y) <= b.r ? b.gap - 0.02 : null;
+  }
   function drc(board, model, conn, hvNets, fills, netlist) {
     const out = [], R = board.rules, on = k => !R.checks || R.checks[k] !== false, items = conn.items, hv = hvNets || new Set(), o = board.outline;
     const cls = net => (net === null || net === "short" ? "Signal" : netClassOf(net, model.names, hv, R));
-    const CR = clearanceRules(board, model, hv, netlist), vNote = (r, hvx) => (r.ipc ? ` (${Math.round(r.v)} V between them${r.why === "inductive" ? " at full drive" : ""}: IPC-2221B ${CR.table})` : hvx ? " (high voltage)" : "");
+    const SP = socketPads(board, model), CR = clearanceRules(board, model, hv, netlist), vNote = (r, hvx) => (r.ipc ? ` (${Math.round(r.v)} V between them${r.why === "inductive" ? " at full drive" : ""}: IPC-2221B ${CR.table})` : hvx ? " (high voltage)" : "");
     if (on("clearance")) for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
       const a = items[i], b = items[j];
       if (a.cluster === b.cluster || !shareLayer(a, b)) continue;
@@ -960,6 +986,10 @@
       if (g < need - 1e-6 && a.kind !== b.kind && (a.kind === "pad" || b.kind === "pad") && (a.kind === "track" || b.kind === "track")) {
         const [t, p] = a.kind === "track" ? [a, b] : [b, a], eg = entryGap(t.s, p, items);
         if (eg !== null) need = Math.min(need, eg - 0.02);
+      }
+      if (g < need - 1e-6 && a.kind !== b.kind && (a.kind === "pad" || b.kind === "pad")) {
+        const [p, t] = a.kind === "pad" ? [a, b] : [b, a], us = (t.kind === "track" || t.kind === "via") ? underSocket(SP, p, t) : null;
+        if (us !== null) need = Math.min(need, us);
       }
       if (g < need - 1e-6 && a.kind === "track" && b.kind === "track" && anchoredOk(a, b, g, need, items)) continue;
       if (g < need - 1e-6) {
@@ -1502,5 +1532,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { holeRing, FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { socketPads, underSocket, holeRing, FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

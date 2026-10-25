@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.90.0] - 2026-10-25
+
+### Added
+- **Auto-route with Freerouting.** A new **Auto-route** button in the Board window sends the open connections to [Freerouting](https://www.freerouting.app) (free, GPL-3) and adds the tracks and vias it finds. Freerouting runs on your own computer, or another one on your network: start its API server with Java 25 and `freerouting.jar`, or its Docker image. The button stays grey until Freerouting answers. **Board ▾ → Freerouting…** sets the address (an IP, and `:port` if not 37864), tests it, and shows both start commands ready to copy. The board goes out with its design rules: each net's track width (its class, or its DC current), and the clearance between every two nets, by voltage (IPC-2221B) too. Pour nets, and GND with star grounding, are left to the pour. A pad crowded by its footprint's neighbours first gets a short straight lead to where the full clearance holds. Wires Freerouting leaves unfinished are dropped. What it cannot route within the rules stays in the ratsnest, and **Ctrl+Z** takes the whole route back. The Gubin board (07), routed from scratch, gets 46 of its 59 connections in about 7 s, with no rule violations.
+- **Freerouting by hand.** **Export ▾ → Freerouting design (DSN)** and **Board ▾ → Import routes (SES)…** for routing in Freerouting's own window or its command line.
+- **Design rule: under a socket's body, tracks may pass its pins at their own spacing** (on by default). A noval socket's pins are 1.27 mm apart, closer than any HV clearance. Under the socket's body, a track or via may now pass a pin as close as that pin's nearest neighbour is; the socket fixes that spacing anyway. Everywhere else the full clearance still holds. The check, manual routing and Auto-route all follow it; turn it off in Design rules.
+
 ## [3.89.0] - 2026-10-25
 
 ### Added
