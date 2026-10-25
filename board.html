@@ -208,6 +208,7 @@
     <span class="spacer"></span>
     <button class="btn" id="btn-sync" title="Update from the schematic: bring parts added to or removed from it onto the board">Update</button>
     <button class="btn off" id="btn-autoroute" title="Auto-route with Freerouting on this computer">Auto-route</button>
+    <button class="btn" id="btn-unroute" title="Remove all tracks and vias (locked ones stay); Ctrl+Z brings them back">Unroute</button>
     <div class="menu" id="board-menu">
       <button class="btn" id="btn-board" aria-haspopup="true" title="Board setup and design rules">Board ▾</button>
       <div class="menu-list right" hidden>
@@ -281,7 +282,7 @@
     <div class="modal-box">
       <div class="insp-title">Board Design: help</div>
       <p class="help">The board takes its parts and connections from the schematic in the Circuit CAD, which keeps the layout in the circuit file (File → Save there). New parts wait in a row below the board: drag them onto it. Thin lines (the ratsnest) show connections still to route; route them as tracks on the top or bottom copper. The design-rule check lists clearances that are too small (by the voltage between the nets, IPC-2221B), shorts, copper off the board and parts not placed yet, and warns about valve layout: grid stoppers away from the socket, grid tracks alongside anode or heater tracks, electrolytics near hot parts, sockets without a mounting hole nearby. The heaters are wired too: their pins sit on heater nets fed from the heater supply XH1 (Board ▾ → Design rules… sets how).</p>
-      <p class="help"><b>Auto-route</b> sends the open connections to <a href="https://www.freerouting.app" target="_blank" rel="noopener">Freerouting</a> running on this computer and adds the tracks it finds; the button is grey until Freerouting answers (Board ▾ → Freerouting… shows the command that starts it). It keeps the design rules, by voltage too: what it cannot route that way stays in the ratsnest for you. Ctrl+Z takes it all back.</p>
+      <p class="help"><b>Auto-route</b> sends the open connections to <a href="https://www.freerouting.app" target="_blank" rel="noopener">Freerouting</a> running on this computer and adds the tracks it finds; the button is grey until Freerouting answers (Board ▾ → Freerouting… shows the command that starts it). It keeps the design rules, by voltage too: what it cannot route that way stays in the ratsnest for you. Ctrl+Z takes it all back. <b>Unroute</b> removes every track and via (locked ones stay), again one step for Ctrl+Z.</p>
       <div class="keys">
         <kbd>X</kbd><span>route a track: click a pad (or a track or via of the net), click corners, finish on a pad, track or via of the same net (or double-click). Corners line up with the net's pads, so tracks run straight into pads off the grid. <kbd>/</kbd> diagonal first (it turns that way by itself when straight-first would come too close); <kbd>Backspace</kbd> or <kbd>Ctrl+Z</kbd> takes back a corner</span>
         <kbd>V</kbd><span>while routing: change layer and drop a via; otherwise switch the active copper layer</span>

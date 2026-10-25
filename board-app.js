@@ -989,9 +989,31 @@
     const parts = it.filter(([k]) => k === "part").length, locked = it.filter(([k, id]) => k !== "part" && isLocked(k, id)).length, del = it.filter(([k, id]) => k !== "part" && !isLocked(k, id));
     if (!del.length) { msg(parts ? "Parts come from the schematic: delete them there (then Update from schematic)" : "Locked: press L to unlock it first"); return; }
     const by = {}; del.forEach(([k, i]) => { const l = MLIST[k] || AREAS[k]; (by[l] = by[l] || []).push(i); });
+    const gone = [...(by.tracks || []).map(i => S.board.tracks[i]), ...(by.vias || []).map(i => S.board.vias[i])];
     Object.entries(by).forEach(([l, idx]) => idx.sort((a, b) => b - a).forEach(i => S.board[l].splice(i, 1)));
     S.sel = null;
-    commit(`Deleted ${del.length}${locked ? `; ${locked} locked kept` : ""}${parts ? "; parts stay (they come from the schematic)" : ""}`);
+    const left = gone.length ? dropResidue(gone) : 0;
+    commit(`Deleted ${del.length}${left ? ` and ${left} piece${left === 1 ? "" : "s"} of its route left hanging` : ""}${locked ? `; ${locked} locked kept` : ""}${parts ? "; parts stay (they come from the schematic)" : ""}`);
+  }
+  // after tracks or vias are deleted: the copper of the same route that now hangs loose where it met them
+  // (a track end or a via the checks call unconnected, on a deleted piece) goes too, until the route ends
+  // at pads, a pour or copper still in use. Locked copper stays. gone: the deleted tracks and vias; returns how many more went
+  // gone null: every loose end on the board counts (before an auto-route)
+  function dropResidue(gone) {
+    const b = S.board, R = b.rules, n0 = b.tracks.length + b.vias.length;
+    const segs = o => o.pts ? o.pts.slice(1).map((p, k) => [o.pts[k][0], o.pts[k][1], p[0], p[1], o.w / 2]) : [[o.x, o.y, o.x, o.y, (o.pad || R.viaPad) / 2]];
+    let cut = gone ? gone.flatMap(segs) : null;
+    const near = (x, y, r) => !cut || cut.some(c => B.segDist(c[0], c[1], c[2], c[3], x, y) <= c[4] + r + 1e-6);
+    for (let pass = 0; pass < 50 && (!cut || cut.length); pass++) {
+      analyse();
+      const loose = S.drc.filter(d => d.kind === "dangling").map(d => [d.x, d.y]), at = (x, y) => loose.some(([lx, ly]) => Math.abs(lx - x) < 1e-6 && Math.abs(ly - y) < 1e-6);
+      const tr = b.tracks.filter(t => !t.locked && [t.pts[0], t.pts[t.pts.length - 1]].some(([x, y]) => at(x, y) && near(x, y, t.w / 2)));
+      const vi = b.vias.filter(v => !v.locked && at(v.x, v.y) && near(v.x, v.y, (v.pad || R.viaPad) / 2));
+      if (!tr.length && !vi.length) break;
+      b.tracks = b.tracks.filter(t => !tr.includes(t)); b.vias = b.vias.filter(v => !vi.includes(v));
+      if (cut) cut = [...tr, ...vi].flatMap(segs);
+    }
+    return n0 - b.tracks.length - b.vias.length;
   }
   // align and distribute the selected parts by their outlines (locked parts count, but stay)
   function alignParts(how) {
@@ -1846,19 +1868,45 @@
     const left = S.conn.unrouted, done = todo - left;
     return `${done} of ${todo} connection${todo === 1 ? "" : "s"} routed (${got.tracks.length} track${got.tracks.length === 1 ? "" : "s"}, ${got.vias.length} via${got.vias.length === 1 ? "" : "s"})` + (left ? `; ${left} left to route by hand` : "") + (S.drc.length ? `; ${S.drc.length} rule message${S.drc.length === 1 ? "" : "s"} to look at` : "");
   }
+  // before an auto-route: copper left over from an earlier layout (parts moved since) goes, so Freerouting
+  // routes those connections afresh: loose ends and lone vias, copper reaching no pad, copper joining two nets,
+  // and tracks breaking a clearance. Locked copper stays. Returns how many tracks and vias went
+  function clearStale() {
+    const b = S.board, n0 = b.tracks.length + b.vias.length;
+    for (let pass = 0; pass < 20; pass++) {
+      analyse();
+      const bad = new Set();
+      S.conn.items.forEach(it => { if ((it.kind === "track" || it.kind === "via") && (it.net === null || it.net === "short")) bad.add(it.kind === "track" ? b.tracks[it.ti] : b.vias[it.vi]); });
+      S.drc.filter(d => d.kind === "clearance" && d.between).forEach(d => b.tracks.forEach(t => { if (t.pts.some((p, k) => k && B.segDist(t.pts[k - 1][0], t.pts[k - 1][1], p[0], p[1], d.x, d.y) <= t.w / 2 + 0.01)) bad.add(t); }));
+      const go = [...bad].filter(o => o && !o.locked);
+      if (!go.length) break;
+      b.tracks = b.tracks.filter(t => !go.includes(t)); b.vias = b.vias.filter(v => !go.includes(v));
+    }
+    dropResidue(null);
+    return n0 - b.tracks.length - b.vias.length;
+  }
   async function autoRoute() {
     if (router.busy) return;
     if (!S.model) { msg("Open the Circuit CAD first: the board needs its parts"); return; }
     if (!router.up) { await pollRouter(); if (!router.up) { msg(`No Freerouting at ${router.url}: see Board ▾ → Freerouting…`); routerSetup(); return; } }
-    analyse();
-    if (!S.conn.unrouted) { msg("Nothing to route: every connection is routed"); return; }
+    const stale = clearStale(), staleNote = stale ? ` · ${stale} old piece${stale === 1 ? "" : "s"} of copper cleared first (left from where the parts were)` : "";
+    if (!S.conn.unrouted) { if (stale) commit(); msg("Nothing to route: every connection is routed" + staleNote); return; }
     const d = dsnOf();
     router.busy = true; routerUi(); msg(`Freerouting is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
     try {
       const r = await BoardRoute.route(router.url, d.text, { version: appVersion() });
-      msg(addRoutes(r.ses, d) + (d.skipped.length ? ` · left to the pour: ${d.skipped.join(", ")}` : ""));
-    } catch (e) { msg(`Auto-route failed: ${e.message}`); router.up = false; pollRouter(); }
+      msg(addRoutes(r.ses, d) + (d.skipped.length ? ` · left to the pour: ${d.skipped.join(", ")}` : "") + staleNote);
+    } catch (e) { if (stale) commit(); msg(`Auto-route failed: ${e.message}` + staleNote); router.up = false; pollRouter(); }
     finally { router.busy = false; routerUi(); }
+  }
+  // Unroute: every track and via off the board (locked ones stay), one step to undo
+  function unroute() {
+    const b = S.board, n = b.tracks.length + b.vias.length;
+    const tracks = b.tracks.filter(t => t.locked), vias = b.vias.filter(v => v.locked), kept = tracks.length + vias.length;
+    if (n === kept) { msg(n ? "Every track and via is locked: nothing to remove" : "No tracks or vias to remove"); return; }
+    const gone = b.tracks.length - tracks.length, vgone = b.vias.length - vias.length;
+    b.tracks = tracks; b.vias = vias; S.sel = null; S.route = null;
+    commit(`Removed ${gone} track${gone === 1 ? "" : "s"} and ${vgone} via${vgone === 1 ? "" : "s"}` + (kept ? `; ${kept} locked kept` : "") + "; Ctrl+Z brings them back");
   }
   // Board ▾ → Freerouting…: the address (this computer or another on the network) and how to start it
   function routerSetup() {
@@ -1953,13 +2001,13 @@
     document.querySelectorAll("[data-tab]").forEach(t => { t.onclick = () => { document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x === t)); $("parts").hidden = t.dataset.tab !== "parts"; $("nets").hidden = t.dataset.tab !== "nets"; }; });
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     $("ex-dsn").onclick = () => { list.hidden = true; if (S.model) download(dsnOf().text, baseName() + ".dsn", "text/plain"); };
-    $("btn-autoroute").onclick = autoRoute; $("btn-router").onclick = routerSetup;
+    $("btn-autoroute").onclick = autoRoute; $("btn-unroute").onclick = unroute; $("btn-router").onclick = routerSetup;
     $("router-test").onclick = routerTest; $("router-save").onclick = routerSave; $("router-cancel").onclick = () => { $("router-modal").hidden = true; };
     $("router-addr").onkeydown = e => { if (e.key === "Enter") routerSave(); };
     $("btn-ses").onclick = () => $("ses-file").click(); $("ses-file").onchange = e => { importSes(e.target.files[0]); e.target.value = ""; };
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { autoRoute, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { autoRoute, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
