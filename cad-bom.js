@@ -98,7 +98,7 @@
       const f = frames()[0], p = f ? f.params : {};
       // the values of the last simulation, taken when it finished: an edit since does not mix the
       // new part values with the old voltages
-      return { rows: BomLib.build(S.comps, { sockets: bomOpts.sockets, bench: bomOpts.bench, stress: c => (S.sim.stress && S.sim.stress.get(c.id)) || null }),
+      return { rows: BomLib.build(S.comps, { sockets: bomOpts.sockets, bench: bomOpts.bench, board: S.board, stress: c => (S.sim.stress && S.sim.stress.get(c.id)) || null }),
         title: p.title || "", docno: p.docno || "", rev: p.rev || "", date: p.date || new Date().toISOString().slice(0, 10) };
     }
     const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");

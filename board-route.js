@@ -37,13 +37,15 @@
     return keep;
   }
   // a pad's copper as a padstack: round, an oval (a path with the pad's width) or a rectangle a
-  // little larger than the board's own capsule for it (the checks treat a rectangle that way)
+  // little larger than the board's own capsule for it (the checks treat a rectangle that way).
+  // layers: the copper layers it is on (an SMD pad: its side only; the name tells them apart)
   function padstack(p) {
-    const r = Math.min(p.w, p.h) / 2;
-    if (p.shape === "rect") { const gx = p.w / 2 + 0.15 * r, gy = p.h / 2 + 0.15 * r; return { name: `R${um(2 * gx)}x${um(2 * gy)}`, shape: L => `(rect ${L} ${um(-gx)} ${um(-gy)} ${um(gx)} ${um(gy)})` }; }
-    if (Math.abs(p.w - p.h) < 1e-6) return { name: `C${um(p.w)}`, shape: L => `(circle ${L} ${um(p.w)})` };
-    const l = Math.max(p.w, p.h) / 2 - r, hz = p.w >= p.h;
-    return { name: `O${um(p.w)}x${um(p.h)}`, shape: L => `(path ${L} ${um(2 * r)} ${hz ? `${um(-l)} 0 ${um(l)} 0` : `0 ${um(-l)} 0 ${um(l)}`})` };
+    const r = Math.min(p.w, p.h) / 2, layers = p.layers || B().COPPER, sfx = layers.length === 1 ? (layers[0] === "B.Cu" ? "_B" : "_F") : "";
+    let ps;
+    if (p.shape === "rect") { const gx = p.w / 2 + 0.15 * r, gy = p.h / 2 + 0.15 * r; ps = { name: `R${um(2 * gx)}x${um(2 * gy)}`, shape: L => `(rect ${L} ${um(-gx)} ${um(-gy)} ${um(gx)} ${um(gy)})` }; }
+    else if (Math.abs(p.w - p.h) < 1e-6) ps = { name: `C${um(p.w)}`, shape: L => `(circle ${L} ${um(p.w)})` };
+    else { const l = Math.max(p.w, p.h) / 2 - r, hz = p.w >= p.h; ps = { name: `O${um(p.w)}x${um(p.h)}`, shape: L => `(path ${L} ${um(2 * r)} ${hz ? `${um(-l)} 0 ${um(l)} 0` : `0 ${um(-l)} 0 ${um(l)}`})` }; }
+    return { name: ps.name + sfx, shape: ps.shape, layers };
   }
   // names Freerouting reads back unchanged: letters, digits and a few signs
   function namer() {
@@ -75,9 +77,9 @@
         if (Math.hypot(ux, uy) < 1e-6) crowd.forEach(q => { ux += p.x - q.x; uy += p.y - q.y; });
         if (Math.hypot(ux, uy) < 1e-6) { ux = 0; uy = 1; }
         const a0 = Math.atan2(uy, ux), turns = [0, 15, -15, 30, -30, 45, -45, 60, -60, 90, -90];
-        // on the bottom when it fits there, else on the top
+        // on the bottom when it fits there, else on the top; an SMD pad's on its own layer
         let best = null;
-        for (const L of ["B.Cu", "F.Cu"]) {
+        for (const L of p.layers && p.layers.length === 1 ? p.layers : ["B.Cu", "F.Cu"]) {
           for (const dt of turns) {
             const a = a0 + dt * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a);
             for (let t = pc.r; t <= pc.r + 20 && !best; t += 0.1) {
@@ -86,7 +88,7 @@
               let ok = true;
               for (const it of items) {
                 const n = it.kind === "pad" ? it.pad.net : it.net;
-                if (n === p.net || (it.kind === "track" && it.layers[0] !== L)) continue;
+                if (n === p.net || !it.layers.includes(L)) continue;
                 const rq = need(p.net, n);
                 if (it.kind === "pad" && it.pad.part === p.part) {
                   // the stub ends in its own pad: it may pass its neighbours as close as that pad is; its far end keeps the full clearance
@@ -207,7 +209,7 @@
       w(`    )`);
     });
     plated.forEach(({ h, i }) => { const ps = { name: `C${um(C.holeRing(h))}`, shape: L => `(circle ${L} ${um(C.holeRing(h))})` }; stacks.set(ps.name, ps); w(`    (image "IMG_H${i + 1}" (pin ${ps.name} 1 0 0))`); });
-    stacks.forEach(ps => w(`    (padstack ${ps.name} ${cc.map(L => `(shape ${ps.shape(L)})`).join(" ")} (attach off))`));
+    stacks.forEach(ps => w(`    (padstack ${ps.name} ${(ps.layers || cc).map(L => `(shape ${ps.shape(L)})`).join(" ")} (attach off))`));
     w(`    (padstack "V${um(R.viaPad)}" ${cc.map(L => `(shape (circle ${L} ${um(R.viaPad)}))`).join(" ")} (attach off))`);
     w(`  )`);
     // nets and their classes: the width each net's tracks need (its class, or its DC current)
@@ -303,7 +305,7 @@
       fromSes's result, changed in place; pads: the model's pads */
   function prune(got, board, pads) {
     const C = B(), R = board.rules;
-    const padIts = pads.map(p => { const r = Math.min(p.w, p.h) / 2, l = Math.max(p.w, p.h) / 2 - r, hz = p.w >= p.h; return { s: hz ? [p.x - l, p.y, p.x + l, p.y] : [p.x, p.y - l, p.x, p.y + l], r: p.shape === "rect" ? r * 1.15 : r, layers: C.COPPER }; });
+    const padIts = pads.map(p => { const r = Math.min(p.w, p.h) / 2, l = Math.max(p.w, p.h) / 2 - r, hz = p.w >= p.h; return { s: hz ? [p.x - l, p.y, p.x + l, p.y] : [p.x, p.y - l, p.x, p.y + l], r: p.shape === "rect" ? r * 1.15 : r, layers: p.layers || C.COPPER }; });
     const holeIts = (board.holes || []).filter(h => h.plated).map(h => ({ s: [h.x, h.y, h.x, h.y], r: C.holeRing(h) / 2, layers: C.COPPER }));
     const segs = (t, src) => t.pts.slice(1).map((p, i) => ({ s: [t.pts[i][0], t.pts[i][1], p[0], p[1]], r: t.w / 2, layers: [t.layer], src }));
     const viaIt = (v, src) => ({ s: [v.x, v.y, v.x, v.y], r: (v.pad || R.viaPad) / 2, layers: C.COPPER, src });

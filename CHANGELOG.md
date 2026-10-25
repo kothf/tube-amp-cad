@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.93.0] - 2026-10-25
+
+### Added
+- **SMD versions of the board's small parts.** An **SMD** checkbox in the Board window's inspector switches a part to its surface-mount footprint, or a whole selection at once (each part that has one). Resistors become 0603–2512 chips by power, capacitors 0603–2220 chips by value, electrolytics V-chip cans up to Ø18 mm; signal diodes SOD-123, SOD-323 or MiniMELF, rectifiers and zeners SMA, SMB or SMC, LEDs 0805 or 1206; small transistors SOT-23 (or SOT-89), TO-126 parts SOT-223 or DPAK, TO-220 parts D²PAK or DPAK; the NE555 and the op-amps SOIC-8 or SOIC-14; a trimmer TC33. The footprint list then shows the SMD choices. Valves, transformers, panel pots, jacks and big power transistors stay through-hole (the checkbox is greyed for them).
+- **SMD pads are on one side only.** They sit on the copper of the part's side (the bottom copper for a part on the bottom), with no hole. Connectivity, the ratsnest, the design-rule check (no drill or ring rule for them; silkscreen checked against the pads of its own side), pours, Auto-route (each SMD pad a padstack on its own layer, its escape lead on that layer) and manual routing follow it: a track started on an SMD pad starts on its layer, and one ending on an SMD pad of the other side asks for a via first.
+- **Gerbers for SMD assembly.** Copper and solder mask carry each SMD pad on its own side only; new solder paste layers (`F_Paste`, `B_Paste`) and a placement file (`-pos.csv`: reference, value, package, centre, rotation, side) come with the files when the board has SMD parts. No drill holes for them, in the drill file, the drill map, the 3D board or the PDFs.
+- **3D models of the SMD packages**: chips with their end caps (resistors black, capacitors tan), diodes with the cathode band, V-chip cans on their base, SOT-23, SOT-89, SOT-223, DPAK and D²PAK with their leads and tab, SOIC, the trimmer. In the 3D view, the part preview and STEP.
+- **The BOM names SMD parts.** A part made SMD on the board shows its package in the Circuit CAD's bill of materials ("Resistor, SMD 1206"), on a line apart from the through-hole parts of the same value.
+
 ## [3.92.0] - 2026-10-25
 
 ### Added

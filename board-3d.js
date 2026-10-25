@@ -15,7 +15,7 @@
     band: [0.75, 0.75, 0.75], film: [0.82, 0.22, 0.14], disc: [0.9, 0.6, 0.25], ecap: [0.12, 0.2, 0.45], ecapTop: [0.7, 0.72, 0.75], snapin: [0.13, 0.13, 0.15],
     glass: [0.78, 0.88, 0.95], plate: [0.3, 0.3, 0.32], getter: [0.62, 0.62, 0.66], ceramic: [0.9, 0.87, 0.78], bakelite: [0.16, 0.13, 0.11], core: [0.36, 0.36, 0.39],
     coil: [0.86, 0.55, 0.2], terminal: [0.1, 0.55, 0.28], jack: [0.15, 0.15, 0.16], pot: [0.25, 0.27, 0.32], trim: [0.2, 0.35, 0.75], led: [0.9, 0.15, 0.1],
-    wireRed: [0.8, 0.12, 0.1], wireBlack: [0.08, 0.08, 0.08], generic: [0.55, 0.55, 0.58]
+    wireRed: [0.8, 0.12, 0.1], wireBlack: [0.08, 0.08, 0.08], generic: [0.55, 0.55, 0.58], chipCap: [0.66, 0.52, 0.34], glassRed: [0.7, 0.2, 0.15]
   };
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const avg = pts => { const s = [0, 0, 0]; pts.forEach(p => { s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; }); return s.map(v => v / pts.length); };
@@ -135,6 +135,8 @@
       // the moulded body (7.62 mm row pitch: 6.35 mm wide, 3.3 mm thick) standing on its leads
       const r = fp.silk.find(q => q.t === "rect");
       out.push(box(-3.2, r.y, 3.2, r.y + r.h, 0.5, 3.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 1));
+    } else if (fp.smd) {
+      smdBody(g, fp, out, to);
     } else if (/^WIRE-/.test(name)) {
       pads.forEach((p, i) => out.push(cylZ(p.x, p.y, 0.8, 0, 8, i % 2 ? C.wireBlack : C.wireRed, to)));
     } else {
@@ -143,6 +145,48 @@
     const res = out.filter(Boolean);
     res.forEach((s, i) => { s.ref = g.ref; s.name = `${g.ref}${res.length > 1 ? "-" + (i + 1) : ""}`; });
     return res;
+  }
+
+  // Surface-mount bodies, standing on the board's surface (z = 0) between their pads
+  function smdBody(g, fp, out, to) {
+    const D = B().FPDATA, name = fp.name, pads = fp.pads;
+    let m;
+    if ((m = /^(CHIP|LED)-(\d{4})$/.exec(name))) {
+      // a chip: the body between two tinned end caps; a resistor black on top, a capacitor tan, an LED a clear lens
+      const [L, W, H] = D.CHIPS[m[2]], e = Math.min(0.5, L * 0.2), led = m[1] === "LED";
+      const col = led ? C.ceramic : g.type === "resistor" ? C.black : g.type === "inductor" ? C.core : C.chipCap;
+      out.push(box(-L / 2 + e, -W / 2, L / 2 - e, W / 2, 0, H, col, to), box(-L / 2, -W / 2, -L / 2 + e, W / 2, 0, H, C.metal, to), box(L / 2 - e, -W / 2, L / 2, W / 2, 0, H, C.metal, to));
+      if (led) out.push(box(-L / 2 + e, -W / 2 + 0.1, L / 2 - e, W / 2 - 0.1, H, H + 0.25, C.led, to, { alpha: 0.75 }));
+    } else if (D.SMD_DIODES[name]) {
+      const [L, W, H] = D.SMD_DIODES[name];
+      if (name === "MINIMELF") out.push(cylX(0, W / 2, W / 2, -L / 2, L / 2, C.glassRed, to), cylX(0, W / 2 + 0.02, W / 2 + 0.02, -L / 2, -L / 2 + 0.6, C.diode, to));
+      else {
+        out.push(box(-L / 2, -W / 2, L / 2, W / 2, 0.1, H, C.black, to), box(-L / 2 + 0.3, -W / 2, -L / 2 + 0.3 + L * 0.12, W / 2, H, H + 0.02, C.band, to));
+        // the terminals: from under the body's end out over the pad
+        pads.forEach(p => { const sg = Math.sign(p.x), a = sg * (L / 2 - 0.6), b = p.x + sg * Math.max(0.3, p.w / 2 - 0.3), hw = Math.min(W, p.h) / 2 * 0.7; out.push(box(Math.min(a, b), -hw, Math.max(a, b), hw, 0, 0.15, C.lead, to)); });
+      }
+    } else if ((m = /^CP-SMD-D([\d.]+)$/.exec(name))) {
+      const d = +m[1], H = D.SMD_ECAP[m[1]][3], b = d / 2 + 0.15, r = d / 2;
+      out.push(box(-b, -b, b, b, 0, 1, C.black, to), cylZ(0, 0, r, 1, H - 0.3, C.metal, to), cylZ(0, 0, r * 0.94, H - 0.3, H, C.ecapTop, to));
+      pads.forEach(p => out.push(box(p.x - Math.sign(p.x) * 0.3 - 0.6, -0.35, p.x - Math.sign(p.x) * 0.3 + 0.6, 0.35, 0, 0.1, C.lead, to)));
+    } else if ((m = /^SOT-23-/.exec(name))) {
+      out.push(box(-1.45, -0.65, 1.45, 0.65, 0.1, 1.0, C.black, to));
+      pads.forEach(p => out.push(box(p.x - 0.2, Math.min(p.y, Math.sign(p.y) * 0.65), p.x + 0.2, Math.max(p.y, Math.sign(p.y) * 0.65), 0, 0.12, C.lead, to)));
+    } else if ((m = /^(SOT-89|SOT-223|DPAK|D2PAK)-/.exec(name))) {
+      const T = D.TABBED[m[1]], [L, W, H] = T.body, yb = T.py - T.ph / 2 - 0.3, y0 = yb - W;
+      out.push(box(-L / 2, y0, L / 2, yb, 0.1, H, C.black, to));
+      // the tab, soldered flat under and behind the body; the leads out of the body's front
+      out.push(box(-T.tw / 2 + 0.3, T.ty - T.th / 2 + 0.2, T.tw / 2 - 0.3, Math.min(yb, Math.max(T.ty + T.th / 2 - 0.2, y0 + 0.5)), 0, 0.15, C.metal, to));
+      pads.slice(0, T.pins).forEach(p => out.push(box(p.x - 0.3, yb, p.x + 0.3, p.y + T.ph / 2 - 0.3, 0, 0.15, C.lead, to)));
+    } else if ((m = /^SOIC-(\d+)$/.exec(name))) {
+      const n = +m[1], L = (n / 2 - 1) * 1.27 + 1.1 + 0.6;
+      out.push(box(-1.95, -L / 2, 1.95, L / 2, 0.15, 1.6, C.black, to));
+      pads.forEach(p => out.push(box(Math.min(p.x, Math.sign(p.x) * 1.95), p.y - 0.2, Math.max(p.x, Math.sign(p.x) * 1.95) - Math.sign(p.x) * 0.2, p.y + 0.2, 0, 0.15, C.lead, to)));
+    } else if (name === "TRIM-TC33") {
+      out.push(box(-1.9, -1.8, 1.9, 1.8, 0, 1.2, C.trim, to), cylZ(0, 0, 1.2, 1.2, 1.9, C.ceramic, to));
+    } else {
+      const b = fp.box; out.push(box(b[0] + 0.25, b[1] + 0.25, b[2] - 0.25, b[3] - 0.25, 0, 1, C.generic, to));
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -155,7 +199,7 @@
     if (area < 0) ring = ring.reverse();                       // counter-clockwise seen from above
     ring = ring.filter((p, i) => { const q = ring[(i + 1) % ring.length]; return Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-6; });
     const holes = [];
-    model.pads.forEach(p => { if (keep.has(p.part) && B().edgeDist(p.x, p.y, o) > p.drill / 2) holes.push([p.x, p.y, p.drill / 2]); });
+    model.pads.forEach(p => { if (keep.has(p.part) && !p.smd && B().edgeDist(p.x, p.y, o) > p.drill / 2) holes.push([p.x, p.y, p.drill / 2]); });
     board.vias.forEach(v => holes.push([v.x, v.y, (v.drill || R.viaDrill) / 2]));
     (board.holes || []).forEach(h => holes.push([h.x, h.y, h.d / 2]));
     const V = [], F = [], n = ring.length;
@@ -243,7 +287,7 @@
     const solids = [box(b[0] - m, b[1] - m, b[2] + m, b[3] + m, 0, t, C.board, to)];
     fp.pads.forEach(p => {
       const ring = p.shape === "rect" ? box(p.x - p.w / 2, p.y - p.h / 2, p.x + p.w / 2, p.y + p.h / 2, t, t + 0.05, [0.83, 0.65, 0.17], to) : cylZ(p.x, p.y, Math.min(p.w, p.h) / 2, t, t + 0.05, [0.83, 0.65, 0.17], to);
-      solids.push(ring, cylZ(p.x, p.y, p.drill / 2, t + 0.05, t + 0.06, [0.02, 0.02, 0.02], to));
+      solids.push(ring, p.smd ? null : cylZ(p.x, p.y, p.drill / 2, t + 0.05, t + 0.06, [0.02, 0.02, 0.02], to));
     });
     return solids.filter(Boolean).concat(partBodies(G, t, opts || {}));
   }
