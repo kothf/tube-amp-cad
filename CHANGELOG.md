@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.98.3] - 2026-10-25
+
+### Changed
+- Code structure only, no change in behaviour: the oscilloscope, spectrum analyzer, Bode plotter and help pages keep only their markup and styles; their scripts, until now written into the pages, are files of their own (`scope-app.js`, `spectrum-app.js`, `bode-app.js`, `help-app.js`), so the lint checks them too.
+
 ## [3.98.2] - 2026-10-25
 
 ### Changed
