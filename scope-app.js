@@ -1,0 +1,551 @@
+/* The oscilloscope window (oscilloscope.html): an Oscilloscope part's channels from the CAD's
+   broadcast results, steady state or power-on record, auto-ranging, markers, zoom. */
+(function () {
+  "use strict";
+  const I = Instrument, $ = id => document.getElementById(id);
+  const SM = ScopeMath, VDIV = SM.VDIV, TDIV = SM.TDIV;
+  const S = { mode: "dual", analysis: "steady", tStop: 1, view: { tdiv: "auto", pos: 0, seq: null }, ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", hpos: 0, trig: { src: "ch1", slope: "rising" } };
+
+  const fill = (sel, list, unit) => { sel.innerHTML = `<option value="auto">Auto</option>` + list.map(v => `<option value="${v}">${I.fmt(v, unit)}/div</option>`).join(""); };
+  fill($("ch1-vdiv"), VDIV, "V"); fill($("ch2-vdiv"), VDIV, "V"); fill($("tdiv"), TDIV, "s");
+
+  function channels(sc) {
+    const out = {};
+    ["ch1", "ch2"].forEach(k => {
+      const raw = sc && sc[k];
+      if (!raw) return;
+      out[k] = { raw, cpl: S[k].cpl, ...SM.channel(raw, S[k].vdiv, S[k].cpl) };
+    });
+    return out;
+  }
+
+  // Power-on record: one value per simulation step (or, for very long runs, the
+  // min and max of a few steps). raw is the midpoint, used by markers.
+  let chCache = null;
+  function startupChannels(ts) {
+    const key = ts && [S.ch1.vdiv, S.ch1.cpl, S.ch2.vdiv, S.ch2.cpl].join();
+    if (chCache && chCache.ts === ts && chCache.key === key) return chCache.out;
+    const out = {};
+    ["ch1", "ch2"].forEach(k => {
+      const d = ts && ts[k]; if (!d || !d.min.length) return;
+      const n = d.min.length, mid = new Float32Array(n + 2), inter = new Float32Array(2 * n + 1);
+      for (let i = 0; i < n; i++) { mid[i] = (d.min[i] + d.max[i]) / 2; inter[2 * i] = d.min[i]; inter[2 * i + 1] = d.max[i]; }
+      mid[n] = mid[n + 1] = mid[n - 1]; inter[2 * n] = inter[2 * n - 1];
+      const cpl = S[k].cpl === "ac" ? "dc" : S[k].cpl;   // AC coupling means nothing for a one-shot record
+      out[k] = { raw: mid, min: d.min, max: d.max, cpl, ...SM.channel(inter, S[k].vdiv, cpl) };
+    });
+    chCache = { ts, key, out };
+    return out;
+  }
+  // Final level and swing (last 5 % of the record), peak, and the settling time:
+  // when the signal's envelope (sliding max/min over 1 % of the record, so an
+  // audio signal counts by its amplitude, not by its phase) last left ±2 % of
+  // its final level and swing.
+  const settleCache = new WeakMap();
+  function settleInfo(c, dt) {
+    if (settleCache.has(c.min)) return settleCache.get(c.min);
+    // sliding max/min over 1 % of the record, in blocks of w (fast for long records)
+    const n = c.min.length, w = Math.max(1, Math.round(n / 100)), nb = Math.ceil(n / w), bh = new Float32Array(nb), bl = new Float32Array(nb), hi = new Float32Array(n), lo = new Float32Array(n);
+    for (let b = 0; b < nb; b++) { let a = -Infinity, z = Infinity; for (let j = b * w; j < Math.min(n, (b + 1) * w); j++) { if (c.max[j] > a) a = c.max[j]; if (c.min[j] < z) z = c.min[j]; } bh[b] = a; bl[b] = z; }
+    for (let i = 0; i < n; i++) {
+      const b = Math.floor(i / w); let a = bh[b], z = bl[b];
+      if (b > 0) { a = Math.max(a, bh[b - 1]); z = Math.min(z, bl[b - 1]); }
+      if (b < nb - 1) { a = Math.max(a, bh[b + 1]); z = Math.min(z, bl[b + 1]); }
+      hi[i] = a; lo[i] = z;
+    }
+    const tail = Math.max(1, Math.round(n * 0.05));
+    let f = 0, sw = 0;
+    for (let i = n - tail; i < n; i++) { f += (hi[i] + lo[i]) / 2; sw += hi[i] - lo[i]; }
+    f /= tail; sw /= tail;
+    let pk = -Infinity, pkAt = 0, mn = Infinity;
+    for (let i = 0; i < n; i++) { if (c.max[i] > pk) { pk = c.max[i]; pkAt = i; } if (c.min[i] < mn) mn = c.min[i]; }
+    const tol = 0.02 * Math.max(Math.abs(f), sw, 1e-3 / 0.02);
+    let last = -1;
+    for (let i = 0; i < n; i++) if (Math.abs((hi[i] + lo[i]) / 2 - f) > tol || Math.abs(hi[i] - lo[i] - sw) > tol) last = i;
+    const q = { final: f, swing: sw, peak: pk, peakAt: (pkAt + 0.5) * dt, min: mn, settle: last < 0 ? 0 : (last + 1) * dt, settled: last < n - tail };
+    settleCache.set(c.min, q);
+    return q;
+  }
+
+  // the selected trigger source, unless it is a flat line and the other channel isn't
+  const triggerChannel = ch => ch[S.trig.src] && !SM.isFlat(ch[S.trig.src].st) ? ch[S.trig.src]
+    : (ch.ch1 && !SM.isFlat(ch.ch1.st) ? ch.ch1 : ch.ch2 || ch.ch1);
+
+  // Axes: labels at round values (whole multiples of the time/div or volts/div),
+  // placed where those values fall, so they follow zoom, position, volts/div and
+  // offset; unpanned they sit on the graticule lines. All labels on an axis share
+  // one SI prefix (from the largest) and the decimals the step needs.
+  function axisText(values, step, unit) {
+    const big = Math.max(...values.map(Math.abs), Math.abs(step));
+    const P = [[1e3, "k"], [1, ""], [1e-3, "m"], [1e-6, "µ"], [1e-9, "n"]], [f, p] = P.find(([f]) => big >= f * 0.9995) || P[P.length - 1];
+    const d = Math.max(0, Math.min(4, Math.ceil(-Math.log10(Math.abs(step) / f) - 1e-9)));
+    return values.map(v => { const x = v / f; return (Math.abs(x) < 0.5 * Math.pow(10, -d) ? "0" : x.toFixed(d)) + p + unit; });
+  }
+  // the multiples of step in [lo, hi]
+  const ticks = (lo, hi, step) => { const out = []; for (let k = Math.ceil(lo / step - 1e-6); k <= Math.floor(hi / step + 1e-6); k++) out.push(k * step); return out; };
+  // h: { start, step, unit, color }: the time (or XY volts) at the left edge, per division;
+  // left / right: { center, step, unit, color, ac }: the value at mid-screen, per division
+  function drawAxes(ctx, h, left, right) {
+    const g = G, out = {};
+    ctx.save(); ctx.font = "10px ui-monospace, Menlo, monospace"; ctx.textBaseline = "middle"; ctx.lineWidth = 1;
+    if (h) {
+      const vals = ticks(h.start, h.start + 10 * h.step, h.step), txt = axisText(vals, h.step, h.unit);
+      const wmax = Math.max(0, ...txt.map(t => ctx.measureText(t).width)), stride = Math.max(1, Math.ceil((wmax + 10) / (g.gw / 10)));
+      ctx.fillStyle = ctx.strokeStyle = h.color;
+      vals.forEach((v, i) => {
+        const x = g.x0 + (v - h.start) / h.step * g.gw / 10;
+        ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.moveTo(x, g.y0 + g.gh); ctx.lineTo(x, g.y0 + g.gh + 4); ctx.stroke(); ctx.globalAlpha = 1;
+        if (i % stride) return;
+        ctx.textAlign = x < g.x0 + 12 ? "left" : x > g.x0 + g.gw - 12 ? "right" : "center";
+        ctx.fillText(txt[i], x, g.y0 + g.gh + 13);
+      });
+      out.h = txt; out.hv = vals;
+    }
+    [[left, "right", g.x0 - 22], [right, "left", g.x0 + g.gw + 5]].forEach(([a, align, x], side) => {
+      if (!a) return;
+      const c = a.ac ? 0 : a.center, vals = ticks(c - 4 * a.step, c + 4 * a.step, a.step).reverse(), txt = axisText(vals, a.step, a.unit);
+      ctx.fillStyle = a.color; ctx.textAlign = align;
+      vals.forEach((v, j) => ctx.fillText((a.ac && v > 0 ? "+" : "") + txt[j], x, g.y0 + g.gh / 2 - (v - c) / a.step * g.gh / 8));
+      out[side ? "right" : "left"] = txt;
+    });
+    ctx.restore();
+    g.axes = out;
+  }
+  const vAxis = (c, color) => c && { center: c.cpl === "gnd" ? 0 : c.off, step: c.vdiv, unit: "V", color, ac: c.cpl === "ac" };
+
+  // a channel with no probe wired in the CAD: its settings greyed, "not connected" in the title
+  function markChannels(ch) { ["ch1", "ch2"].forEach(k => { const c = $("card-" + k); if (c) c.classList.toggle("off", !(ch && ch[k])); }); }
+  function draw() {
+    const cv = $("screen"), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    I.showStatus($("status"));
+    if (S.analysis === "startup" && I.transient && !I.problem) { const t = I.transient; $("status").className = "status " + (t.running ? "idle" : t.ok ? "ok" : "bad"); $("status").textContent = t.running ? `Power-on transient… ${Math.round((t.progress || 0) * 100)} %` : t.ok ? `Power-on transient · ${I.fmt(t.tStop, "s")}${t.stale ? " · circuit changed" : ""}` : (t.error || "Power-on transient failed"); }
+    ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
+    // margins: volt scales left (CH1) and right (CH2), the time scale below
+    const x0 = 64, y0 = 32, gw = W - 2 * x0, gh = H - y0 - 26;
+    // graticule
+    ctx.strokeStyle = "rgba(0,180,216,0.16)"; ctx.lineWidth = 1;
+    for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(x0 + i * gw / 10, y0); ctx.lineTo(x0 + i * gw / 10, y0 + gh); ctx.stroke(); }
+    for (let j = 0; j <= 8; j++) { ctx.beginPath(); ctx.moveTo(x0, y0 + j * gh / 8); ctx.lineTo(x0 + gw, y0 + j * gh / 8); ctx.stroke(); }
+    ctx.strokeStyle = "rgba(0,229,255,0.35)";
+    for (let i = 0; i <= 50; i++) { const x = x0 + i * gw / 50; ctx.beginPath(); ctx.moveTo(x, y0 + gh / 2 - 3); ctx.lineTo(x, y0 + gh / 2 + 3); ctx.stroke(); }
+    for (let j = 0; j <= 40; j++) { const y = y0 + j * gh / 40; ctx.beginPath(); ctx.moveTo(x0 + gw / 2 - 3, y); ctx.lineTo(x0 + gw / 2 + 3, y); ctx.stroke(); }
+
+    ctx.font = "12px ui-monospace, Menlo, monospace";
+    if (S.analysis === "startup") { drawStartup(ctx, x0, y0, gw, gh); return; }
+    $("overview").hidden = true;
+    const sc = I.scope();
+    const ch = channels(sc);
+    const any = ch.ch1 || ch.ch2;
+    markChannels(ch);
+    if (!any) {
+      ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center";
+      ctx.fillText(sc ? "No input connected — wire CH1 / CH2 of " + sc.label + " in the CAD" : "NO SIGNAL", x0 + gw / 2, y0 + gh / 2 - 12);
+      ctx.textAlign = "left"; $("meas").innerHTML = ""; G = null; renderMarks(); return;
+    }
+    const dt = sc.dt, N = (any.raw).length, P = N - 1;   // capture is whole periods: sample P == sample 0
+    const at = SM.at;
+    // timebase from the measured fundamental of the trigger channel; the CAD's
+    // generator frequency is only the fallback (e.g. for a DC-only probe)
+    const trigCh = triggerChannel(ch);
+    const tb = SM.timebase(trigCh.raw, dt, I.result && I.result.fSig);
+    const fSig = (I.result && I.result.fSig) || tb.f;
+    const tdiv = S.tdiv === "auto" ? tb.tdiv : parseFloat(S.tdiv);
+    const span = 10 * tdiv, M = Math.max(2, Math.round(span / dt));
+    // horizontal position: the trigger point moves left by hpos (whole samples; the capture is periodic)
+    const org = Math.round(S.hpos / dt), start = SM.triggerIndex(trigCh.raw, S.trig.slope) + org;
+    G = { x0, y0, gw, gh, dt, M, P, start, org, tdiv, span, ch, xy: S.mode === "xy" && !!(ch.ch1 && ch.ch2) };
+    const glow = (color) => { ctx.strokeStyle = color; ctx.globalAlpha = 0.18; ctx.lineWidth = 5; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1.7; ctx.stroke(); };
+    if (G.xy) {   // CH1 along the bottom, CH2 up the left
+      const a = vAxis(ch.ch1, "#ffe23d");
+      drawAxes(ctx, { start: (a.ac ? 0 : a.center) - 5 * a.step, step: a.step, unit: "V", color: "#ffe23d" }, vAxis(ch.ch2, "#00e5ff"), null);
+    } else {
+      const on = k => ch[k] && (S.mode === "dual" || S.mode === k);
+      drawAxes(ctx, { start: org * dt, step: tdiv, unit: "s", color: "#c9d6e3" },
+        on("ch1") ? vAxis(ch.ch1, "#ffe23d") : on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null, on("ch1") && on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null);
+    }
+    const levels = [];
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, gw, gh); ctx.clip();
+    if (S.mode === "xy" && ch.ch1 && ch.ch2) {
+      ctx.beginPath();
+      for (let i = 0; i <= P; i++) {
+        const vx = (ch.ch1.cpl === "gnd" ? 0 : at(ch.ch1.raw, i) - ch.ch1.off) / ch.ch1.vdiv, vy = (ch.ch2.cpl === "gnd" ? 0 : at(ch.ch2.raw, i) - ch.ch2.off) / ch.ch2.vdiv;
+        const px = x0 + gw / 2 + vx * gw / 10, py = y0 + gh / 2 - vy * gh / 8;
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      glow("#7fffd4");
+    } else {
+      [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k, color]) => {
+        const c = ch[k]; if (!c || (S.mode !== "dual" && S.mode !== k)) return;
+        const stepPx = Math.max(1, Math.floor(M / (gw * 1.5)));
+        ctx.beginPath();
+        for (let i = 0; i <= M; i += stepPx) {
+          const v = c.cpl === "gnd" ? 0 : (at(c.raw, start + i) - c.off) / c.vdiv;
+          const px = x0 + i / M * gw, py = y0 + gh / 2 - Math.max(-4.4, Math.min(4.4, v)) * gh / 8;
+          i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        glow(color);
+        // channel marker at its 0 V (DC) or mean (AC) level, pinned to the edge when off screen
+        const lv = c.cpl === "gnd" ? 0 : (c.cpl === "ac" ? 0 : -c.off / c.vdiv), my = y0 + gh / 2 - Math.max(-4, Math.min(4, lv)) * gh / 8;
+        const arrow = lv > 4 ? "▴" : lv < -4 ? "▾" : "▸";
+        levels.push([color, (k === "ch1" ? "1" : "2") + arrow, my + 4 + (k === "ch1" ? -5 : 5)]);
+      });
+    }
+    ctx.restore();
+    // the level markers sit in the margin, outside the clipped screen
+    levels.forEach(([color, t, y]) => { ctx.fillStyle = color; ctx.fillText(t, x0 - 16, y); });
+    // markers
+    pick.list.forEach((m, i) => { const p = markerPos(m); if (p) MarkerPicker.draw(ctx, p.x, p.y, MarkerPicker.LETTERS[i], m.ch === "ch2" ? "#00e5ff" : m.ch === "ch1" ? "#ffe23d" : "#7fffd4"); });
+    if (hover && !G.xy) {
+      const x = x0 + hover.i / M * gw; ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + gh); ctx.stroke(); ctx.setLineDash([]);
+      cursorLabel(ctx, x, [[fmtT((hover.i + G.org) * dt), "#c9d6e3"], ...KEYS.filter(shown).map(k => [`${k.toUpperCase()} ${I.fmt(valueAt(ch[k], hover.i), "V")}`, k === "ch1" ? "#ffe23d" : "#00e5ff"])]);
+    }
+    // readout
+    ctx.fillStyle = "#ffe23d"; let tx = x0;
+    const label = (n, c) => `CH${n} ${I.fmt(c.vdiv, "V")}${c.cpl === "ac" ? "~" : ""}${c.offset ? ` offset ${I.fmt(c.offset, "V")}` : ""}`;
+    if (ch.ch1) { const s = label(1, ch.ch1); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+    ctx.fillStyle = "#00e5ff";
+    if (ch.ch2) { const s = label(2, ch.ch2); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+    ctx.fillStyle = "#c9d6e3"; ctx.fillText(`M ${I.fmt(tdiv, "s")}${org ? `   Pos ${fmtT(org * dt)}` : ""}   Trig ${S.trig.src.toUpperCase()} ${S.trig.slope === "rising" ? "↑" : "↓"}`, tx, 16);
+
+    // measurements
+    let h = "";
+    [["ch1", "c1"], ["ch2", "c2"]].forEach(([k, cls]) => {
+      const c = ch[k]; if (!c) return;
+      const f = SM.fundamental(c.raw, dt);
+      h += `<span class="${cls}">${k.toUpperCase()}: <b>${I.fmt(c.st.pp, "Vpp")}</b> · ${I.fmt(c.st.rms, "Vrms")} AC (${I.dbv(c.st.rms)}) · ${I.fmt(c.st.mean, "V")} DC · ${f ? I.fmt(f, "Hz") : "—"}</span>`;
+    });
+    if (ch.ch1 && ch.ch2 && fSig) {
+      const a = I.dft(ch.ch1.raw, fSig, dt), b = I.dft(ch.ch2.raw, fSig, dt);
+      if (a.amp > 1e-9 && b.amp > 1e-9) {
+        let ph = (b.phase - a.phase) * 180 / Math.PI; ph = ((ph + 540) % 360) - 180;
+        h += `<span>CH1/CH2 at ${I.fmt(fSig, "Hz")}: <b>${(a.amp / b.amp).toPrecision(3)}×</b> (${(20 * Math.log10(a.amp / b.amp)).toFixed(1)} dB), phase <b>${(-ph).toFixed(0)}°</b></span>`;
+      }
+    }
+    $("meas").innerHTML = h;
+    renderMarks();
+  }
+
+  // time/div choices for the power-on record: a zoom ladder up to the whole record
+  const zoomSteps = tStop => SM.TDIV.filter(v => v < tStop / 10 * 0.999).concat([tStop / 10]);
+  // default zoom: a few periods of the circuit's signal; a DC-only circuit shows the whole record
+  function defaultTdiv(t) {
+    const f = I.result && I.result.fSig;
+    return f ? Math.min(t.tStop / 10, SM.pick(SM.TDIV, 5 / f / 10)) : t.tStop / 10;
+  }
+  function viewOf(t) {
+    const v = S.view;
+    if (v.seq !== t.seq) { v.seq = t.seq; v.pos = 0; }       // a new record starts at power-on
+    const tdiv = v.tdiv === "auto" ? defaultTdiv(t) : v.tdiv === "full" ? t.tStop / 10 : Math.min(+v.tdiv, t.tStop / 10);
+    const span = 10 * tdiv;
+    v.pos = Math.max(0, Math.min(t.tStop - span, v.pos));
+    return { tdiv, span, pos: v.pos };
+  }
+  // draw a channel over [i0, i0 + count] samples into width gw: an envelope per pixel
+  // when there are more samples than pixels, the waveform itself when zoomed further
+  function trace(ctx, c, i0, count, x0, gw, ys) {
+    const n = c.min.length, spp = count / gw;
+    ctx.beginPath();
+    if (spp > 1) {
+      const top = [], bot = [];
+      for (let px = 0; px < gw; px++) {
+        const a = Math.max(0, Math.floor(i0 + px * spp)), b = Math.min(n, Math.ceil(i0 + (px + 1) * spp));
+        let hi = -Infinity, lo = Infinity;
+        for (let i = a; i < b; i++) { if (c.max[i] > hi) hi = c.max[i]; if (c.min[i] < lo) lo = c.min[i]; }
+        if (hi === -Infinity) break;
+        top.push(ys(c, hi)); bot.push(ys(c, lo));
+      }
+      top.forEach((y, px) => px ? ctx.lineTo(x0 + px, y) : ctx.moveTo(x0, y));
+      for (let px = bot.length - 1; px >= 0; px--) ctx.lineTo(x0 + px + 1, bot[px]);
+      ctx.closePath();
+      return "fill";
+    }
+    for (let i = Math.max(0, Math.floor(i0)), k = 0; i <= Math.min(n - 1, Math.ceil(i0 + count)); i++, k++) {
+      const x = x0 + (i - i0) / count * gw, y = ys(c, c.raw[i]);
+      k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    return "line";
+  }
+  function drawStartup(ctx, x0, y0, gw, gh) {
+    const t = I.transient, ts = I.transientScope(), ov = $("overview");
+    const msg = (lines) => { ov.hidden = true; ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center"; lines.forEach((l, i) => ctx.fillText(l, x0 + gw / 2, y0 + gh / 2 - 12 + i * 18)); ctx.textAlign = "left"; $("meas").innerHTML = ""; G = null; renderMarks(); };
+    if (t && t.running) {
+      const p = Math.max(0, Math.min(1, t.progress || 0));
+      ctx.strokeStyle = "#26344a"; ctx.strokeRect(x0 + gw * 0.2, y0 + gh / 2 + 14, gw * 0.6, 10);
+      ctx.fillStyle = "#00b4d8"; ctx.fillRect(x0 + gw * 0.2, y0 + gh / 2 + 14, gw * 0.6 * p, 10);
+      return msg([`Simulating the first ${I.fmt(t.tStop, "s")} after power-on… ${Math.round(p * 100)} %`]);
+    }
+    if (!t) return msg([`Power-on transient: press ▶ Simulate to run the first ${I.fmt(S.tStop, "s")} after switch-on.`, "Every capacitor starts empty and every source switches on at t = 0."]);
+    if (!t.ok) return msg([`Power-on transient: ${t.error || "failed"}`]);
+    const ch = startupChannels(ts), any = ch.ch1 || ch.ch2;
+    markChannels(ch);
+    if (!any) return msg([ts ? "No input connected — wire CH1 / CH2 of " + ts.label + " in the CAD" : "This scope part was not in the simulated circuit"]);
+    const n = any.min.length, dt = t.dt, vw = viewOf(t);
+    const i0 = Math.round(vw.pos / dt), count = vw.span / dt;
+    G = { x0, y0, gw, gh, dt, M: count, P: n, start: i0, org: i0, ch, xy: false, startup: true, t, vw };
+    const ys = (c, v) => y0 + gh / 2 - Math.max(-4.4, Math.min(4.4, c.cpl === "gnd" ? 0 : (v - c.off) / c.vdiv)) * gh / 8;
+    {   // time after power-on along the bottom; volts as in steady state
+      const on = k => ch[k] && (S.mode === "dual" || S.mode === k || S.mode === "xy");
+      drawAxes(ctx, { start: vw.pos, step: vw.tdiv, unit: "s", color: "#c9d6e3" },
+        on("ch1") ? vAxis(ch.ch1, "#ffe23d") : on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null, on("ch1") && on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null);
+    }
+    const levels = [];
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, gw, gh); ctx.clip();
+    const glow = color => { ctx.strokeStyle = color; ctx.globalAlpha = 0.18; ctx.lineWidth = 5; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1.7; ctx.stroke(); };
+    [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k, color]) => {
+      const c = ch[k]; if (!c || (S.mode !== "dual" && S.mode !== k && S.mode !== "xy")) return;
+      if (trace(ctx, c, i0, count, x0, gw, ys) === "fill") { ctx.fillStyle = color; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke(); }
+      else glow(color);
+      const lv = c.cpl === "gnd" ? 0 : -c.off / c.vdiv, my = y0 + gh / 2 - Math.max(-4, Math.min(4, lv)) * gh / 8;
+      levels.push([color, (k === "ch1" ? "1" : "2") + (lv > 4 ? "▴" : lv < -4 ? "▾" : "▸"), my + 4 + (k === "ch1" ? -5 : 5)]);
+    });
+    ctx.restore();
+    levels.forEach(([color, t, y]) => { ctx.fillStyle = color; ctx.fillText(t, x0 - 16, y); });
+    pick.list.forEach((m, i) => { const p = markerPos(m); if (p) MarkerPicker.draw(ctx, p.x, p.y, MarkerPicker.LETTERS[i], m.ch === "ch2" ? "#00e5ff" : "#ffe23d"); });
+    if (hover) {
+      const x = x0 + hover.i / count * gw; ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + gh); ctx.stroke(); ctx.setLineDash([]);
+      cursorLabel(ctx, x, [[fmtT((hover.i + i0) * dt), "#c9d6e3"], ...KEYS.filter(shown).map(k => [`${k.toUpperCase()} ${I.fmt(valueAt(ch[k], hover.i), "V")}`, k === "ch1" ? "#ffe23d" : "#00e5ff"])]);
+    }
+    ctx.fillStyle = "#ffe23d"; let tx = x0;
+    const label = (nn, c) => `CH${nn} ${I.fmt(c.vdiv, "V")}${c.offset ? ` offset ${I.fmt(c.offset, "V")}` : ""}`;
+    if (ch.ch1) { const s = label(1, ch.ch1); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+    ctx.fillStyle = "#00e5ff";
+    if (ch.ch2) { const s = label(2, ch.ch2); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
+    ctx.fillStyle = t.stale ? "#ff9e64" : "#c9d6e3";
+    ctx.fillText(`M ${I.fmt(vw.tdiv, "s")}   ${I.fmt(vw.pos, "s")} … ${I.fmt(vw.pos + vw.span, "s")} of ${I.fmt(t.tStop, "s")} after power-on${t.stale ? "   circuit changed since — ▶ Simulate again" : ""}`, tx, 16);
+    drawOverview(ch, t, vw);
+    let h = "";
+    [["ch1", "c1"], ["ch2", "c2"]].forEach(([k, cls]) => {
+      const c = ch[k]; if (!c) return;
+      const q = settleInfo(c, dt);
+      h += `<span class="${cls}">${k.toUpperCase()}: final <b>${I.fmt(q.final, "V")}</b>${q.swing > 1e-3 * Math.max(1, Math.abs(q.final)) ? ` (${I.fmt(q.swing, "Vpp")})` : ""} · peak ${I.fmt(q.peak, "V")} at ${I.fmt(q.peakAt, "s")} · ${q.settled ? `within ±2 % from <b>${I.fmt(q.settle, "s")}</b>` : "<b>not settled yet</b>"}</span>`;
+    });
+    $("meas").innerHTML = h;
+    renderMarks();
+  }
+  // the whole record under the screen, with the visible window marked; click or drag to scroll
+  function drawOverview(ch, t, vw) {
+    const cv = $("overview"); cv.hidden = false;
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
+    const pad = 64, gw = W - 2 * pad;               // lines up with the screen's grid
+    [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k, color]) => {
+      const c = ch[k]; if (!c || (S.mode !== "dual" && S.mode !== k)) return;
+      const ys = (c, v) => H / 2 - Math.max(-4.4, Math.min(4.4, c.cpl === "gnd" ? 0 : (v - c.off) / c.vdiv)) * (H - 6) / 9;
+      trace(ctx, c, 0, c.min.length, pad, gw, ys);
+      ctx.fillStyle = color; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
+    });
+    const a = pad + vw.pos / t.tStop * gw, w = Math.max(3, vw.span / t.tStop * gw);
+    ctx.fillStyle = "rgba(0,180,216,0.18)"; ctx.fillRect(a, 1, w, H - 2);
+    ctx.strokeStyle = "#00b4d8"; ctx.lineWidth = 1.5; ctx.strokeRect(a, 1, w, H - 2);
+    ctx.fillStyle = "#8b949e"; ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "left"; ctx.fillText("0", 4, H - 6);
+    ctx.textAlign = "right"; ctx.fillText(I.fmt(t.tStop, "s"), W - 3, H - 6); ctx.textAlign = "left";
+  }
+
+  // --- markers: A and B on a trace (time + voltage), or on the X-Y figure --
+  let G = null, hover = null;
+  const KEYS = ["ch1", "ch2"];
+  const shown = k => G && G.ch[k] && (S.mode === "dual" || S.mode === k);
+  // channel value at a fractional display index (linear between samples)
+  const valueAt = (c, i) => { const j = Math.floor(i), f = i - j, a = SM.at(c.raw, G.start + j), b = SM.at(c.raw, G.start + j + 1); return a + (b - a) * f; };
+  const screenY = (c, v) => G.y0 + G.gh / 2 - Math.max(-4.4, Math.min(4.4, c.cpl === "gnd" ? 0 : (v - c.off) / c.vdiv)) * G.gh / 8;
+  const xyPoint = i => { const a = G.ch.ch1, b = G.ch.ch2, vx = a.cpl === "gnd" ? 0 : (SM.at(a.raw, i) - a.off) / a.vdiv, vy = b.cpl === "gnd" ? 0 : (SM.at(b.raw, i) - b.off) / b.vdiv;
+    return { x: G.x0 + G.gw / 2 + vx * G.gw / 10, y: G.y0 + G.gh / 2 - vy * G.gh / 8 }; };
+  function snap(x, y) {
+    if (!G || x < G.x0 - 4 || x > G.x0 + G.gw + 4 || y < G.y0 - 4 || y > G.y0 + G.gh + 4) return null;
+    if (G.xy) {
+      // nearest point of the X-Y figure
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < G.P; i++) { const p = xyPoint(i), d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < bd) { bd = d; best = i; } }
+      return { xy: true, i: best };
+    }
+    const i = Math.max(0, Math.min(G.M, (x - G.x0) / G.gw * G.M));
+    // the visible trace nearest the pointer at that time
+    const ks = KEYS.filter(shown); if (!ks.length) return null;
+    const k = ks.reduce((b, k) => Math.abs(screenY(G.ch[k], valueAt(G.ch[k], i)) - y) < Math.abs(screenY(G.ch[b], valueAt(G.ch[b], i)) - y) ? k : b);
+    return { ch: k, t: (i + G.org) * G.dt };   // time from the trigger (power-on: from switch-on)
+  }
+  function markerPos(m) {
+    if (!G) return null;
+    if (m.xy) return G.xy ? xyPoint(m.i) : null;
+    if (G.xy || !shown(m.ch)) return null;
+    const i = rel(m.t); if (i > G.M + 1e-6 || i < -1e-6) return null;
+    return { x: G.x0 + i / G.M * G.gw, y: screenY(G.ch[m.ch], valueAt(G.ch[m.ch], i)) };
+  }
+  // what a marker reads now: time from the trigger and the channel voltage(s)
+  function reading(m) {
+    if (!markerPos(m)) return null;
+    if (m.xy) return { v1: SM.at(G.ch.ch1.raw, m.i), v2: SM.at(G.ch.ch2.raw, m.i) };
+    const r = { t: m.t, ch: m.ch, v: valueAt(G.ch[m.ch], rel(m.t)) };
+    if (G.startup) { const c = G.ch[m.ch], j = Math.min(c.min.length - 1, Math.round(m.t / G.dt)); r.lo = c.min[j]; r.hi = c.max[j]; }
+    return r;
+  }
+  // display index of a marker time (power-on markers are absolute, the window scrolls)
+  const rel = t => t / G.dt - G.org;
+  const cursorLabel = (ctx, x, parts) => MarkerPicker.label(ctx, x, G.y0 + 4, G.x0, G.x0 + G.gw, parts);
+  const fmtT = t => (t >= 0 ? "+" : "") + I.fmt(t, "s", Math.abs(t) < 1e-9 ? 0 : undefined);
+  function renderMarks() {
+    const el = $("marks"), rs = pick.list.map(reading);
+    let h = "";
+    rs.forEach((r, i) => {
+      if (!r) return;
+      const L = MarkerPicker.LETTERS[i];
+      h += r.v1 !== undefined
+        ? `<span>${L}: <b class="c1">X ${I.fmt(r.v1, "V")}</b> <b class="c2">Y ${I.fmt(r.v2, "V")}</b></span>`
+        : `<span class="${r.ch === "ch1" ? "c1" : "c2"}">${L} ${r.ch.toUpperCase()}: <b>${I.fmt(r.v, "V")}</b>${r.hi - r.lo > 1e-3 * Math.max(1, Math.abs(r.v)) ? ` (${I.fmt(r.lo, "V")} … ${I.fmt(r.hi, "V")})` : ""} at ${fmtT(r.t)}</span>`;
+    });
+    if (rs.length === 2 && rs[0] && rs[1]) {
+      if (rs[0].t !== undefined) {
+        const dT = rs[1].t - rs[0].t, dV = rs[1].v - rs[0].v;
+        h += `<span>ΔT <b>${I.fmt(dT, "s")}</b>${Math.abs(dT) > 1e-12 ? ` (1/ΔT ${I.fmt(1 / Math.abs(dT), "Hz")})` : ""} · ΔV <b>${I.fmt(dV, "V")}</b></span>`;
+      } else h += `<span>ΔX <b>${I.fmt(rs[1].v1 - rs[0].v1, "V")}</b> · ΔY <b>${I.fmt(rs[1].v2 - rs[0].v2, "V")}</b></span>`;
+    }
+    if (!h && G) h = `<span class="hint">Click a trace to place marker A, then B, to measure time and voltage. Drag to move, double-click to remove.</span>`;
+    if (pick.list.length) h += `<button class="btn" id="marks-clear" title="Remove the markers (Esc)">Clear markers</button>`;
+    el.innerHTML = h;
+    const b = $("marks-clear"); if (b) b.onclick = () => pick.clear();
+  }
+  const pick = MarkerPicker($("screen"), {
+    snap, pos: markerPos,
+    hover: m => { hover = m && !m.xy ? { i: rel(m.t) } : null; draw(); },
+    change: () => draw()
+  });
+
+  // controls
+  document.querySelectorAll("#mode .btn").forEach(b => b.addEventListener("click", () => { if (S.analysis === "startup" && b.dataset.v === "xy") return; S.mode = b.dataset.v; if ((S.mode === "xy") !== !!(G && G.xy)) pick.clear(); document.querySelectorAll("#mode .btn").forEach(x => x.classList.toggle("active", x === b)); draw(); }));
+  const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
+  bindSel("ch1-vdiv", v => S.ch1.vdiv = v); bindSel("ch2-vdiv", v => S.ch2.vdiv = v);
+  bindSel("ch1-cpl", v => S.ch1.cpl = v); bindSel("ch2-cpl", v => S.ch2.cpl = v);
+  bindSel("tdiv", v => { if (S.analysis === "startup") S.view.tdiv = v; else S.tdiv = v; }); bindSel("trig-src", v => S.trig.src = v); bindSel("trig-slope", v => S.trig.slope = v);
+  $("btn-autoset").addEventListener("click", () => {
+    S.ch1.vdiv = S.ch2.vdiv = S.tdiv = "auto"; S.hpos = 0;
+    const ch = channels(I.scope());
+    ["ch1", "ch2"].forEach(k => { if (S[k].cpl === "gnd") S[k].cpl = "dc"; $(k + "-cpl").value = S[k].cpl; $(k + "-vdiv").value = "auto"; });
+    // trigger on the channel with the largest visible swing
+    const live = ["ch1", "ch2"].filter(k => ch[k] && !SM.isFlat(ch[k].st)).sort((p, q) => ch[q].st.pp / ch[q].vdiv - ch[p].st.pp / ch[p].vdiv);
+    if (live.length) { S.trig.src = live[0]; $("trig-src").value = live[0]; }
+    $("tdiv").value = "auto"; draw();
+  });
+  $("btn-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
+  // Time/div lists: the scope's own in steady state; in power-on mode a zoom ladder up to the whole record
+  let tdivFor = null;
+  function fillTdiv() {
+    const st = S.analysis === "startup", tStop = st ? ((I.transient && I.transient.ok && I.transient.tStop) || S.tStop) : 0, key = st ? "p" + tStop : "s";
+    if (tdivFor === key) return; tdivFor = key;
+    const sel = $("tdiv");
+    if (!st) { fill(sel, TDIV, "s"); sel.value = S.tdiv; return; }
+    sel.innerHTML = `<option value="auto">Auto (a few periods)</option>` + zoomSteps(tStop).slice(0, -1).map(v => `<option value="${v}">${I.fmt(v, "s")}/div</option>`).join("") + `<option value="full">Whole record (${I.fmt(tStop / 10, "s")}/div)</option>`;
+    if (![...sel.options].some(o => o.value === String(S.view.tdiv))) S.view.tdiv = "auto";
+    sel.value = String(S.view.tdiv);
+  }
+  // zoom (wheel) around the pointer and scroll (Shift+wheel, ← →, overview strip)
+  function zoomTo(tdiv, anchorFrac) {
+    if (!G || !G.startup) return;
+    const vw = G.vw, at = vw.pos + anchorFrac * vw.span;
+    S.view.tdiv = tdiv >= G.t.tStop / 10 * 0.999 ? "full" : tdiv;
+    S.view.pos = at - anchorFrac * 10 * Math.min(tdiv, G.t.tStop / 10);
+    fillTdiv(); $("tdiv").value = String(S.view.tdiv); draw();
+  }
+  const scrollBy = dtime => { if (!G || !G.startup) return; S.view.pos += dtime; draw(); };
+  // mouse zoom and pan (PlotZoom): wheel = time/div around the pointer, Ctrl+wheel = volts/div,
+  // Shift+wheel or right-drag = move along the time axis. Steady state moves the trigger
+  // point (horizontal position); power-on scrolls through the record.
+  let wheelAcc = 0;
+  const notch = k => { wheelAcc += Math.log(k); if (Math.abs(wheelAcc) < Math.log(1.2)) return 0; const d = Math.sign(wheelAcc); wheelAcc = 0; return d; };
+  function zoomTime(frac, dir) {
+    if (G.startup) {
+      const steps = zoomSteps(G.t.tStop), cur = G.vw.tdiv;
+      let k = steps.findIndex(v => v >= cur * 0.999); if (k < 0) k = steps.length - 1;
+      zoomTo(steps[Math.max(0, Math.min(steps.length - 1, k + dir))], frac);
+      return;
+    }
+    let k = TDIV.findIndex(v => v >= G.tdiv * 0.999); if (k < 0) k = TDIV.length - 1;
+    const next = TDIV[Math.max(0, Math.min(TDIV.length - 1, k + dir))];
+    if (next === G.tdiv) return;
+    const at = S.hpos + frac * G.span;                 // time under the pointer stays put
+    S.tdiv = String(next); S.hpos = at - frac * 10 * next;
+    $("tdiv").value = S.tdiv; draw();
+  }
+  function zoomVolts(dir) {
+    KEYS.filter(shown).forEach(k => {
+      let j = VDIV.findIndex(v => v >= G.ch[k].vdiv * 0.999); if (j < 0) j = VDIV.length - 1;
+      S[k].vdiv = String(VDIV[Math.max(0, Math.min(VDIV.length - 1, j + dir))]);
+      $(k + "-vdiv").value = S[k].vdiv;
+    });
+    draw();
+  }
+  const moveTime = dtime => { if (G.startup) scrollBy(dtime); else { S.hpos += dtime; draw(); } };
+  PlotZoom($("screen"), {
+    inside: (x, y) => !!G && !G.xy && x >= G.x0 && x <= G.x0 + G.gw && y >= G.y0 && y <= G.y0 + G.gh,
+    zoom: (x, y, k, vertical) => {
+      const dir = notch(k); if (!dir) return;
+      if (vertical) zoomVolts(dir); else zoomTime(Math.max(0, Math.min(1, (x - G.x0) / G.gw)), dir);
+    },
+    pan: dx => moveTime(-dx / G.gw * (G.startup ? G.vw.span : G.span)),
+    scroll: dir => moveTime(dir * (G.startup ? G.vw.span : G.span) / 10)
+  });
+  PlotZoom.hint($("screen"), [
+    ["Wheel", "time/div, zooming at the pointer"],
+    ["Ctrl + wheel", "volts/div"],
+    ["Shift + wheel", "move along the time axis"],
+    ["Right-drag", "move the trace (or Shift + drag)"],
+    ["Autoset", "back to the automatic view"],
+    ["Click", "place marker A, then B"]]);
+  window.addEventListener("keydown", e => {
+    if (S.analysis !== "startup" || !G || !G.startup || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+    if (e.key === "ArrowRight") { scrollBy(G.vw.tdiv); e.preventDefault(); }
+    else if (e.key === "ArrowLeft") { scrollBy(-G.vw.tdiv); e.preventDefault(); }
+    else if (e.key === "Home") { S.view.pos = 0; draw(); }
+    else if (e.key === "End") { S.view.pos = G.t.tStop; draw(); }
+  });
+  { // overview strip: click or drag to center the window there
+    const ov = $("overview");
+    const go = e => { if (!G || !G.startup) return; const r = ov.getBoundingClientRect(), frac = (e.clientX - r.left - 64) / (r.width - 128); S.view.pos = frac * G.t.tStop - G.vw.span / 2; draw(); };
+    ov.addEventListener("pointerdown", e => { ov.setPointerCapture(e.pointerId); go(e); });
+    ov.addEventListener("pointermove", e => { if (e.buttons & 1) go(e); });
+    ov.addEventListener("wheel", e => { if (!G || !G.startup) return; e.preventDefault(); scrollBy(Math.sign(e.deltaY || e.deltaX) * G.vw.span / 2); }, { passive: false });
+  }
+  // analysis: steady state (the CAD's settled result) or the power-on transient
+  const syncAnalysis = () => {
+    const st = S.analysis === "startup", t = I.transient, running = st && t && t.running;
+    document.querySelectorAll("#analysis .btn").forEach(x => x.classList.toggle("active", x.dataset.v === S.analysis));
+    ["trig-src", "trig-slope"].forEach(id => { $(id).disabled = st; });
+    fillTdiv();
+    $("analysis-note").textContent = st ? "Power-on: the circuit starts cold (capacitors empty) and every source switches on at t = 0. Zoom with the mouse wheel or Time/div (Ctrl+wheel: volts/div); scroll with the strip under the screen, Shift+wheel, right-drag or ← →."
+      : "Steady state: the settled circuit, one window repeated like a triggered scope. Zoom with the mouse wheel (Ctrl+wheel: volts/div); move along the time axis with Shift+wheel or right-drag. Autoset resets the view.";
+    $("btn-sim").textContent = running ? "■ Stop" : "▶ Simulate"; $("btn-sim").classList.toggle("active", !!running);
+  };
+  document.querySelectorAll("#analysis .btn").forEach(b => b.addEventListener("click", () => {
+    if (S.analysis === b.dataset.v) return;
+    S.analysis = b.dataset.v; pick.clear(); if (S.analysis === "startup" && S.mode === "xy") { S.mode = "dual"; document.querySelectorAll("#mode .btn").forEach(x => x.classList.toggle("active", x.dataset.v === "dual")); }
+    syncAnalysis(); draw();
+  }));
+  $("t-stop").addEventListener("change", e => { S.tStop = +e.target.value; draw(); });
+  $("btn-sim").addEventListener("click", () => {
+    if (S.analysis !== "startup") { I.send({ type: "RUN_SIM" }); return; }
+    const t = I.transient;
+    if (t && t.running) I.send({ type: "STOP_TRANSIENT" }); else I.send({ type: "RUN_TRANSIENT", tStop: S.tStop });
+  });
+  I.onUpdate(syncAnalysis);
+  syncAnalysis();
+  I.bindScopeSelect($("scope-select"));
+  I.onUpdate(draw);
+  window.addEventListener("resize", draw);
+  // control panel width: drag its left edge (double-click resets)
+  Panels.columns(document.querySelector("main"), { key: "oscilloscope", minViewport: 900, minCenter: 360,
+    cols: [{ index: 1, side: "right", def: 300, min: 240, max: 640 }], template: w => `1fr ${w[0]}px` });
+  setInterval(() => { if (!I.result) draw(); }, 1500);
+  draw();
+  // current scaling, for tests and debugging
+  window.Scope = { state: S, draw, axes: () => G && G.axes, settleInfo, startupChannels, zoomTo, startupView: () => G && G.startup ? { tdiv: G.vw.tdiv, pos: G.vw.pos, span: G.vw.span } : null,
+    // canvas position of a channel's trace at a fraction of the screen width
+    screenPoint: (k, frac) => { const c = G && G.ch[k]; if (!c) return null; const i = frac * G.M; return { x: G.x0 + frac * G.gw, y: screenY(c, valueAt(c, i)) }; },
+    markers: () => pick.list.map(m => ({ ...m, pos: markerPos(m), reading: reading(m) })), view: () => { const sc = I.scope(), ch = channels(sc), any = ch.ch1 || ch.ch2; if (!any) return null;
+    const t = triggerChannel(ch);
+    const tb = SM.timebase(t.raw, sc.dt, I.result && I.result.fSig);
+    const strip = c => c && { vdiv: c.vdiv, off: c.off, offset: c.offset, min: c.st.min, max: c.st.max };
+    return { ch1: strip(ch.ch1), ch2: strip(ch.ch2), tdiv: S.tdiv === "auto" ? tb.tdiv : +S.tdiv, f: tb.f }; } };
+})();
