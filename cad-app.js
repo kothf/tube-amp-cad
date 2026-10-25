@@ -242,6 +242,7 @@
     updateSheetNav();
     if (S.trans && !S.trans.stale && !S.trans.running) { S.trans.stale = true; if (channel) channel.postMessage(transientMessage()); }
     tolerance.changed();
+    animChanged();
     try { localStorage.setItem(STORAGE_KEY, snapshot()); } catch (e) {}
     showFile();
     scheduleSim();
@@ -415,7 +416,7 @@
   }
 
   // AC animation (View ▾ → Animate): dots for each wire's current, a tint for each node's AC (cad-anim.js)
-  const { animData, drawAnimDots, drawAnimHud, drawAnimTint, setAnim } = CadAnim({ S, fmtEng, getCtx: () => ctx, netDC, pinMap, render, setStatus, signalFreq, stats, topo, wireCurrents });
+  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, ledLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
 
   function limitRows(c) {
     return tubeLimits(c).filter(o => o.key !== "Vg2k").map(o => kv(o.label, `${o.value} · ${Math.round(o.share * 100)}% of ${o.lim}`, o.share > 1 ? "bad" : o.share > 0.85 ? "warn" : "")).join("");
@@ -1190,8 +1191,9 @@
     ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "isrc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
+    if (c.type === "led" && !ghost && !S.printing) c._lit = ledLevel(c);
     DRAW[c.type](ctx, c);
-    delete c._sel;
+    delete c._sel; delete c._lit;
     if (mirrored) { if (ownFill) ctx.fillText = prevFill; else delete ctx.fillText; }
     ctx.restore();
 
@@ -2453,6 +2455,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { tolerance, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData() }), setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { tolerance, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

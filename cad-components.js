@@ -174,6 +174,8 @@
   // ---------------------------------------------------------------------------
   // Drawing helpers (local coordinates, already rotated by the caller)
   // ---------------------------------------------------------------------------
+  // the lit LEDs' colours (r,g,b)
+  const LED_GLOW = { red: "255,69,58", yellow: "255,214,10", green: "48,209,88", blue: "64,156,255" };
   const COL = { body: "#58a6ff", bodySel: "#00e5ff", tube: "#e6edf3", hot: "#ff7b72", text: "#e6edf3", value: "#79c0ff", fill: "#0d1420" };
   function line(ctx, pts) { ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke(); }
 
@@ -268,8 +270,20 @@
       // IEC 60617 S00661 breakdown diode: the cathode bar bent at its ends
       line(ctx, [3, -11, 7, -8]); line(ctx, [7, 8, 11, 11]);
     },
-    led(ctx) {
+    led(ctx, c) {
+      // lit by its simulated current (c._lit, 0 to 1, set while the sheet is drawn): a glow in its
+      // colour round the body, the triangle filled with it
+      const lit = c && c._lit, col = LED_GLOW[c && c.params.color] || LED_GLOW.red;
+      if (lit > 0) {
+        const g = ctx.createRadialGradient(0, 0, 3, 0, 0, 36);
+        g.addColorStop(0, `rgba(${col},${(0.9 * lit).toFixed(3)})`); g.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 36, 0, Math.PI * 2); ctx.fill();
+      }
       DRAW.diode(ctx);
+      if (lit > 0) {
+        ctx.beginPath(); ctx.moveTo(-7, -8); ctx.lineTo(7, 0); ctx.lineTo(-7, 8); ctx.closePath();
+        ctx.fillStyle = `rgba(${col},${(0.25 + 0.75 * lit).toFixed(3)})`; ctx.fill(); ctx.stroke();
+      }
       // IEC 60617 S00641 light-emitting diode: two arrows pointing away
       ctx.lineWidth = 1.3;
       [[0, -9], [7, -7]].forEach(([x, y]) => {

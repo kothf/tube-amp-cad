@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.99.0] - 2026-10-25
+
+### Added
+- LEDs light up on the schematic: a glow in the LED's colour, brighter with more current (full at 10 mA), from the simulated operating point, and with ∿ Animate on, from the current at the animation's moment.
+- ∿ Animate on a circuit with LEDs but no signal generator or mains (a flasher) plays its first 4 seconds after power-on in real time, looping, so the LEDs blink as they would on the bench; the time line at the top left shows the moment. Before, Animate showed a few milliseconds of the settled state and the flashing-LED example's LED never visibly flashed.
+
+### Changed
+- The flashing-LED example's note now points to ∿ Animate.
+
 ## [3.98.6] - 2026-10-25
 
 ### Fixed
