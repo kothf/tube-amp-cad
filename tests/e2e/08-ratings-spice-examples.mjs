@@ -124,6 +124,23 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   check(res.length === 12 && res.every(r => r.ok && r.parts > 15), `all twelve examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
   check(await cad.evaluate(() => TubeCAD.state.sim.result && TubeCAD.state.sim.result.solver === "wasm"), "the simulation worker solves with WebAssembly");
   {
+    // the flashing-LED example has no signal generator: Animate plays its power-on transient in real time and the LED blinks
+    const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+    cad.once("dialog", d => d.accept());
+    await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /flashing-led/.test(x.file))));
+    await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
+    await cad.click("#btn-anim");
+    await cad.waitForFunction(() => { const p = TubeCAD.anim().power; return p && p.ok; }, null, { timeout: 60000 }).catch(() => {});
+    const blink = await cad.evaluate(async () => {
+      const led = TubeCAD.state.comps.find(c => c.type === "led"), seen = [];
+      for (let k = 0; k < 30; k++) { seen.push(TubeCAD.ledLevel(led)); await new Promise(r => setTimeout(r, 100)); }
+      const p = TubeCAD.anim().power;
+      return { on: Math.max(...seen), off: Math.min(...seen), t: p && p.t };
+    });
+    await cad.click("#btn-anim");
+    check(blink.on > 0.5 && blink.off === 0 && blink.t > 0, `flashing-LED example: Animate plays the power-on transient and the LED blinks (brightness ${blink.off} to ${blink.on && blink.on.toFixed(2)} over 3 s)`);
+  }
+  {
     // the Gubin supply: a 5Ц4С at 115 mA is within its 125 mA (2 × 62 mA per anode), and its peak anode current is checked against 375 mA
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
     cad.once("dialog", d => d.accept());
