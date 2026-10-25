@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.99.0] - 2026-10-25
+## [3.100.0] - 2026-10-25
 
 ### Added
 - LEDs light up on the schematic: a glow in the LED's colour, brighter with more current (full at 10 mA), from the simulated operating point, and with ∿ Animate on, from the current at the animation's moment.
@@ -14,6 +14,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - The flashing-LED example's note now points to ∿ Animate.
+
+## [3.99.0] - 2026-10-25
+
+### Changed
+- Space rotates parts, in the schematic and on the Board: the part being placed, the parts being dragged (letting go commits the move and the turn as one undo step) and the selection. Space held down while dragging still pans, so a quick tap rotates and a hold pans. R still rotates too. Space never scrolls the page or presses a toolbar button that kept the focus, types a space in a text field, and leaves the buttons of a dialog or menu alone. Edit ▾, the Board's right-click menu, tooltips, the help and the README show Space.
 
 ## [3.98.6] - 2026-10-25
 

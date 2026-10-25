@@ -635,9 +635,11 @@
   }
   function rotateSelection() {
     if (S.placing) { if (!LIB[S.placing.type].noRotate) S.placing.rot = (S.placing.rot + 1) & 3; render(); return; }
+    // parts being dragged turn where they are; letting go commits the move and the turn as one step
+    const dragging = S.drag && S.drag.kind === "comps", moving = dragging && new Set(S.drag.comps0.map(o => o.id));
     let any = false;
-    S.comps.forEach(c => { if (S.sel.comps.has(c.id) && !LIB[c.type].noRotate) { c.rot = (c.rot + 1) & 3; any = true; } });
-    if (any) commit();
+    S.comps.forEach(c => { if (S.sel.comps.has(c.id) && (!dragging || moving.has(c.id)) && !LIB[c.type].noRotate) { c.rot = (c.rot + 1) & 3; any = true; } });
+    if (any && dragging) { S.drag.moved = true; render(); } else if (any) commit();
   }
   function copySelection() {
     const comps = S.comps.filter(c => S.sel.comps.has(c.id));
@@ -750,7 +752,7 @@
     const m = evPos(e);
     if (e.button === 0 && !S.spaceDown) S.lastClick = { x: m.wx, y: m.wy };   // Fit picks the sheet clicked last
     if (e.button === 0) clearBomShown();   // a click on the sheet shows its selection in the BOM again
-    if (e.button === 1 || (e.button === 0 && S.spaceDown)) { S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
+    if (e.button === 1 || (e.button === 0 && S.spaceDown)) { if (S.spaceDown) S.spacePanned = true; S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
     if (e.button === 2) { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else openSheetMenu(e, m); return; }
     if (e.button !== 0) return;
     const gx = snap(m.wx), gy = snap(m.wy);
@@ -927,7 +929,7 @@
   function toggleView(key) { S[key] = !S[key]; render(); }
   cmds
     .add({ id: "help-close", keys: ["Escape"], anyCtrl: true, when: () => !helpModal().hidden, run: () => { helpModal().hidden = true; } })
-    .add({ id: "rotate", label: "Rotate", icon: ICONS.rotate, keys: ["R"], run: rotateSelection, help: "rotate the selection (or the part being placed)" })
+    .add({ id: "rotate", label: "Rotate", icon: ICONS.rotate, keys: ["Space", "R"], helpKeys: ["Space"], run: rotateSelection, help: "rotate the selection, the part being placed or the parts being dragged (a tap: Space held down while dragging pans; R also rotates)" })
     .add({ id: "mirror", label: "Mirror left–right", icon: ICONS.mirror, keys: ["M"], run: mirrorSelection, help: "mirror left–right" })
     .add({ id: "duplicate", label: "Duplicate", keys: ["D", "Ctrl+D"], prevent: true, run: () => { if (copySelection()) paste(40, 40); }, help: "duplicate (also Ctrl+D)", helpKeys: ["D"] })
     .add({ id: "delete", label: "Delete", icon: ICONS.delete, keys: ["Delete", "Backspace"], anyCtrl: true, prevent: true, run: deleteSelection, help: "delete" })
@@ -968,10 +970,25 @@
 
   function onKeyDown(e) {
     const tag = (e.target.tagName || "").toUpperCase(), typing = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
-    if (e.key === " " && !typing) { S.spaceDown = true; canvas.style.cursor = "grab"; e.preventDefault(); return; }
+    // Space rotates: at once while placing or dragging parts; otherwise on letting go of a tap, since
+    // Space held down while dragging the sheet pans it. Never a page scroll or a click on a focused button.
+    if (e.key === " ") {
+      if (typing || inDialog(e)) return;
+      e.preventDefault(); if (e.repeat) return;
+      if (S.placing || (S.drag && S.drag.kind === "comps")) { cmds.run("rotate", e); return; }
+      S.spaceDown = true; S.spacePanned = false; canvas.style.cursor = "grab"; return;
+    }
     cmds.key(e);
   }
-  function onKeyUp(e) { if (e.key === " ") { S.spaceDown = false; canvas.style.cursor = ""; } }
+  // a dialog's or a menu's buttons keep Space for themselves
+  const inDialog = e => !!(e.target.closest && e.target.closest(".modal, .menu-list"));
+  function onKeyUp(e) {
+    if (e.key !== " " || !S.spaceDown) return;
+    e.preventDefault();
+    const tap = !S.spacePanned;
+    S.spaceDown = false; canvas.style.cursor = "";
+    if (tap && !S.drag) cmds.run("rotate", e);
+  }
 
   function updateHover(m) {
     const pin = hitPin(m.wx, m.wy);
@@ -1656,7 +1673,7 @@
       if (c) buildCompInspector(host, c);
       else if (S.sel.comps.size || S.sel.wires.size) {
         host.innerHTML = `<div class="insp-title">${S.sel.comps.size} part(s), ${S.sel.wires.size} wire segment(s)</div>
-          <p class="insp-help">Drag to move · R rotates parts · Del deletes · D duplicates · M mirrors.<br>Drag a wire segment sideways to move it; connected wires follow.</p>`;
+          <p class="insp-help">Drag to move · Space rotates parts · Del deletes · D duplicates · M mirrors.<br>Drag a wire segment sideways to move it; connected wires follow.</p>`;
       } else buildCircuitPanel(host);
     }
     const live = document.getElementById("insp-live");
@@ -1766,7 +1783,7 @@
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
     host.appendChild(live);
     const act = document.createElement("div"); act.className = "insp-actions";
-    act.innerHTML = `<button class="btn" data-a="rot" title="Rotate (R)" ${def.noRotate ? "disabled" : ""}>${ICONS.rotate} Rotate</button><button class="btn" data-a="mir" title="Mirror left–right (M)" ${canMirror(c.type) ? "" : "disabled"}>${ICONS.mirror} Mirror</button><button class="btn danger" data-a="del" title="Delete (Del)">${ICONS.delete} Delete</button>`;
+    act.innerHTML = `<button class="btn" data-a="rot" title="Rotate (Space)" ${def.noRotate ? "disabled" : ""}>${ICONS.rotate} Rotate</button><button class="btn" data-a="mir" title="Mirror left–right (M)" ${canMirror(c.type) ? "" : "disabled"}>${ICONS.mirror} Mirror</button><button class="btn danger" data-a="del" title="Delete (Del)">${ICONS.delete} Delete</button>`;
     act.querySelector('[data-a="rot"]').onclick = rotateSelection;
     act.querySelector('[data-a="mir"]').onclick = mirrorSelection;
     act.querySelector('[data-a="del"]').onclick = deleteSelection;
