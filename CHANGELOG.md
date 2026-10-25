@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.97.0] - 2026-10-25
+
+### Changed
+- **Auto-route finishes what the pour leaves.** A net with a copper pour (a ground plane) is left to the pour, which fills again around the new tracks. Pads of that net the pour does not reach (cut off by tracks, or in a gap of the pour) now get a second Freerouting pass that joins just those pads with tracks; the status line says how many. Ctrl+Z still takes the whole run back in one step.
+
+### Fixed
+- **No loose crumbs of copper in a pour.** Where two clearances nearly touch, or beside a removed island, a pour could leave specks of copper narrower than 0.1 mm, cut off from everything (up to 18 on the Gubin board's ground plane). A board maker's check flags such slivers, and they can flake off and short. A pour now keeps another 0.075 mm off everything and its own outline at the end, which takes them all; every pad it joined stays joined. Checked with an independent Gerber reader on seven example boards: no slivers, spacing, annular ring, edge, mask and silkscreen all within common 2-layer fab rules.
+
 ## [3.96.0] - 2026-10-25
 
 ### Added

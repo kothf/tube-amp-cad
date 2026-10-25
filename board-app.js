@@ -1925,12 +1925,27 @@
   }
   function dsnOf() { analyse(); return BoardRoute.toDsn(S.board, S.model, S.conn, S.clr, { hv: S.hv, amps: S.amps, title: baseName(), version: appVersion() }); }
   // the routes of a session on the board, one step in the history; a summary of what is left
-  function addRoutes(ses, d) {
-    const todo = S.conn.unrouted, got = BoardRoute.prune(BoardRoute.fromSes(ses, S.board, d, S.model.names), S.board, S.model.pads);
+  function takeRoutes(ses, d) {
+    const got = BoardRoute.prune(BoardRoute.fromSes(ses, S.board, d, S.model.names), S.board, S.model.pads);
     S.board.tracks.push(...got.tracks); S.board.vias.push(...got.vias);
-    commit();
+    return got;
+  }
+  function routedNote(todo, nt, nv) {
     const left = S.conn.unrouted, done = todo - left;
-    return `${done} of ${todo} connection${todo === 1 ? "" : "s"} routed (${got.tracks.length} track${got.tracks.length === 1 ? "" : "s"}, ${got.vias.length} via${got.vias.length === 1 ? "" : "s"})` + (left ? `; ${left} left to route by hand` : "") + (S.drc.length ? `; ${S.drc.length} rule message${S.drc.length === 1 ? "" : "s"} to look at` : "");
+    return `${done} of ${todo} connection${todo === 1 ? "" : "s"} routed (${nt} track${nt === 1 ? "" : "s"}, ${nv} via${nv === 1 ? "" : "s"})` + (left ? `; ${left} left to route by hand` : "") + (S.drc.length ? `; ${S.drc.length} rule message${S.drc.length === 1 ? "" : "s"} to look at` : "");
+  }
+  function addRoutes(ses, d) {
+    const todo = S.conn.unrouted, got = takeRoutes(ses, d);
+    commit();
+    return routedNote(todo, got.tracks.length, got.vias.length);
+  }
+  // the pads of a poured net its pour does not reach (cut off by tracks, or in a gap): net name -> "x,y" of
+  // the pads at each end of its ratsnest lines, for a second Freerouting pass
+  function pourGaps() {
+    analyse();
+    const poured = new Set((S.board.zones || []).map(z => z.net)), only = new Map(), key = (x, y) => `${+x.toFixed(4)},${+y.toFixed(4)}`;
+    S.conn.rats.forEach(r => { const n = S.model.names[r.net] || r.net; if (!poured.has(n)) return; if (!only.has(n)) only.set(n, new Set()); only.get(n).add(key(r.x1, r.y1)).add(key(r.x2, r.y2)); });
+    return only;
   }
   // before an auto-route: copper left over from an earlier layout (parts moved since) goes, so Freerouting
   // routes those connections afresh: loose ends and lone vias, copper reaching no pad, copper joining two nets,
@@ -1958,8 +1973,20 @@
     const d = dsnOf();
     router.busy = true; routerUi(); msg(`Freerouting is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
     try {
-      const r = await BoardRoute.route(router.url, d.text, { version: appVersion() });
-      msg(addRoutes(r.ses, d) + (d.skipped.length ? ` · left to the pour: ${d.skipped.join(", ")}` : "") + staleNote);
+      const todo = S.conn.unrouted, r = await BoardRoute.route(router.url, d.text, { version: appVersion() }), got = takeRoutes(r.ses, d);
+      let nt = got.tracks.length, nv = got.vias.length, pourNote = d.skipped.length ? ` · left to the pour: ${d.skipped.join(", ")}` : "";
+      // the pours fill around the new tracks; pads of a pour's net it does not reach get tracks of their own
+      const gaps = pourGaps();
+      if (gaps.size) {
+        const before = S.conn.unrouted, d2 = BoardRoute.toDsn(S.board, S.model, S.conn, S.clr, { hv: S.hv, amps: S.amps, title: baseName(), version: appVersion(), only: gaps });
+        msg(`Freerouting joins the pads the ${[...gaps.keys()].join(", ")} pour does not reach…`);
+        const g2 = takeRoutes((await BoardRoute.route(router.url, d2.text, { version: appVersion() })).ses, d2);
+        nt += g2.tracks.length; nv += g2.vias.length; analyse();
+        const joined = before - S.conn.unrouted;
+        if (joined) pourNote += ` (${joined} pad${joined === 1 ? "" : "s"} it did not reach joined by tracks)`;
+      }
+      commit();
+      msg(routedNote(todo, nt, nv) + pourNote + staleNote);
     } catch (e) { if (stale) commit(); msg(`Auto-route failed: ${e.message}` + staleNote); router.up = false; pollRouter(); }
     finally { router.busy = false; routerUi(); }
   }

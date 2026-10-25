@@ -283,6 +283,9 @@ test("copper pour: joins its net's pads by thermal spokes, keeps every other net
   const board = fabBoard(), { m, c0, fills, conn } = analyse(board), f = fills[0];
   assert.equal(fills.length, 1);
   assert.ok(c0.rats.some(r => m.names[r.net] === "GND"), "before the pour GND is unrouted");
+  // at the end every cut grows by 0.075 mm (no crumbs narrower than that survive) and the outline comes in by as much; the spokes go on top
+  const last = f.ops.slice(-20), trimEdge = f.ops.filter(o => o.pol === "C" && o.t === "line" && o.w === 0.15).length;
+  assert.ok(trimEdge >= 4 && last.some(o => o.pol === "D" && o.t === "line" && o.w === 0.8), `outline trimmed (${trimEdge} edges) and spokes drawn last`);
   assert.ok(!conn.rats.some(r => m.names[r.net] === "GND"), "the pour connects every GND pad");
   assert.ok(conn.unrouted < c0.unrouted);
   // rasterise the pour and measure its distance to other nets' pads: never under their clearance
@@ -387,6 +390,10 @@ test("Freerouting: the board as a Specctra DSN design (nets, widths, clearances 
   const nets = net.filter(x => x[0] === "net").map(x => x[1]);
   assert.ok(nets.includes("B+") && !net.find(x => x[0] === "net" && x[1] === "GND" && x.some(y => Array.isArray(y) && y[0] === "pins")), "B+ is routed; GND has a pour and is left to it: " + nets.join(" "));
   assert.deepEqual(d.skipped, ["GND"]);
+  // a second pass for the pour's pads it does not reach: only GND, only those pads
+  const gp = m.pads.filter(p => p.netName === "GND" && p.part in board.parts).slice(0, 2), only = new Map([["GND", new Set(gp.map(p => `${+p.x.toFixed(4)},${+p.y.toFixed(4)}`))]]);
+  const n2 = BR.parse(BR.toDsn(board, m, conn, clr, { hv, only }).text).find(x => x[0] === "network").filter(x => x[0] === "net" && x.some(y => Array.isArray(y) && y[0] === "pins"));
+  assert.equal(n2.length, 1); assert.equal(n2[0][1], "GND"); assert.equal(n2[0].find(y => Array.isArray(y) && y[0] === "pins").length - 1, 2, "just the two pads the pour missed");
   // B+ (300 V, HV) to the grid (0 V): what the check asks (the HV class's 2 mm; IPC-2221B B2 1.25 mm at 300 V), plus a 0.05 mm margin
   const rule = s.find(x => x[0] === "structure").find(x => Array.isArray(x) && x[0] === "rule"), cl = (a, b) => { const r = rule.find(x => Array.isArray(x) && x[0] === "clearance" && x[2] && (x[2][1] === `${a}_${b}` || x[2][1] === `${b}_${a}`)); return r && +r[1]; };
   const tB = net.filter(x => x[0] === "class").find(x => x[2] === "B+").find(x => Array.isArray(x) && x[0] === "clearance_class")[1];
