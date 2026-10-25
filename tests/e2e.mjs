@@ -1012,6 +1012,24 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     const bytes = TubeCAD.exportPDF(false, [f]); let p = ""; for (const b of bytes) p += String.fromCharCode(b);
     return { pdfCols: /\(1\) Tj/.test(p) && /\(A\) Tj/.test(p), w: cv.width }; });
   check(texts.pdfCols, "the sheet's PDF has its reference-grid labels");
+  // Print (Ctrl+P): the dialog prints the sheet in view, all sheets or the BOM through PdfExport.print
+  await cad.evaluate(() => { window.__printed = []; window.__print0 = PdfExport.print; PdfExport.print = (b, o) => { let t = ""; for (const x of b) t += String.fromCharCode(x); window.__printed.push({ pages: (t.match(/\/Type \/Page\b/g) || []).length, name: o.name }); return "dialog"; }; });
+  await cad.evaluate(() => document.activeElement && document.activeElement.blur());
+  await cad.keyboard.press("Control+p");
+  const pd = await cad.evaluate(() => ({ open: !document.getElementById("print-modal").hidden, sum: document.getElementById("prn-summary").textContent }));
+  check(pd.open && /Sheet 2/.test(pd.sum) && /mm/.test(pd.sum), `Ctrl+P opens the Print dialog on the sheet in view ("${pd.sum}")`);
+  await cad.click('#print-modal [data-p="current"]'); await cad.click("#btn-prn-ok");
+  await cad.evaluate(() => TubeCAD.openPrintDialog("all")); await cad.click("#btn-prn-ok");
+  await cad.evaluate(() => TubeCAD.openPrintDialog("bom")); await cad.click("#btn-prn-ok");
+  const printed = await cad.evaluate(() => window.__printed);
+  check(printed.length === 3 && printed[0].pages === 1 && printed[1].pages === 2 && printed[2].pages >= 1 && /-BOM\.pdf$/.test(printed[2].name) && /Printing/.test(await cad.textContent("#status-sim")),
+    `Print: this sheet ${printed[0] && printed[0].pages} page, all sheets ${printed[1] && printed[1].pages} pages, the BOM ${printed[2] && printed[2].pages} page(s), and the dialog closes`);
+  // the real PdfExport.print: Chromium prints the PDF from a hidden frame, others open it in a tab
+  const how = await cad.evaluate(() => { PdfExport.print = window.__print0; const opened = []; const open0 = window.open; window.open = u => { opened.push(u); return {}; };
+    const had = "chrome" in window, ch = window.chrome; window.chrome = ch || {}; const a = PdfExport.print(TubeCAD.exportPDF(false), { name: "x.pdf" }); const fr = document.getElementById("pdf-print-frame");
+    const frame = !!fr && /^blob:/.test(fr.src); if (fr) fr.remove(); delete window.chrome; const b = PdfExport.print(TubeCAD.exportPDF(false), { name: "x.pdf" }); if (had) window.chrome = ch; window.open = open0;
+    return { a, frame, b, tab: opened.length === 1 && /^blob:/.test(opened[0]) }; });
+  check(how.a === "dialog" && how.frame && how.b === "tab" && how.tab, `PdfExport.print: a hidden frame in Chromium (${how.a}), a new tab elsewhere (${how.b})`);
 }
 
 // --- Resizable side panels in every window --------------------------------------
@@ -2042,6 +2060,17 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await bw.waitForTimeout(500);
     const bs = await bw.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.length, placed: Object.keys(S.board.parts).length, tracks: S.board.tracks.length, vias: S.board.vias.length, un: S.conn.unrouted, drc: S.drc.map(d => d.kind + ": " + d.msg) }; });
     check(bs.parts === 41 && bs.un === 0 && !bs.drc.length, `Gubin example's board: ${bs.parts} parts, ${bs.tracks} tracks, ${bs.vias} vias, ${bs.un} to route, ${bs.drc.length ? bs.drc.join("; ") : "no rule violations"}`);
+    // Print (Ctrl+P): the ticked pages, presets for the print set and toner transfer, 1:1 on A4/A3
+    await bw.evaluate(() => { window.__printed = []; PdfExport.print = (b, o) => { let t = ""; for (const x of b) t += String.fromCharCode(x); window.__printed.push({ pages: (t.match(/\/Type \/Page\b/g) || []).length, name: o.name }); return "dialog"; }; });
+    await bw.evaluate(() => document.activeElement && document.activeElement.blur());
+    await bw.keyboard.press("Control+p");
+    await bw.click('[data-pset="toner"]');
+    const bpd = await bw.evaluate(() => ({ open: !document.getElementById("print-modal").hidden, sum: document.getElementById("print-summary").textContent, ticked: [...document.querySelectorAll("#print-pages [data-pg]:checked")].map(x => x.dataset.pg).join() }));
+    await bw.click("#print-ok");
+    await bw.keyboard.press("Control+p"); await bw.click('[data-pset="print"]'); await bw.uncheck('#print-pages [data-pg="drill"]'); await bw.check('#print-pages [data-pg="toner-F"]'); await bw.click("#print-ok");
+    const bpr = await bw.evaluate(() => ({ printed: window.__printed, sel: BoardApp.printSel().join(), msg: document.getElementById("st-msg").textContent }));
+    check(bpd.open && bpd.ticked === "toner-F,toner-B" && /2 pages, A[34] .*scale 1:1/.test(bpd.sum) && bpr.printed.length === 2 && bpr.printed[0].pages === 2 && bpr.printed[1].pages === 4 && bpr.sel === "assembly,F.Cu,B.Cu,toner-F" && /Actual size/.test(bpr.msg),
+      `board Print: toner transfer ${bpr.printed[0] && bpr.printed[0].pages} pages ("${bpd.sum}"), a picked set of ${bpr.printed[1] && bpr.printed[1].pages} (${bpr.sel})`);
     // Auto-route: grey while no Freerouting answers; with one (here a stand-in on its address that sends back the
     // tracks of a net taken off the board) the routes come back in one step, which Ctrl+Z takes back
     const grey = await bw.evaluate(() => document.getElementById("btn-autoroute").classList.contains("off"));

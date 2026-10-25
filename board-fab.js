@@ -265,14 +265,24 @@
     const s = Math.min((420 - 30) / o.w, (297 - 70) / o.h);
     return { w: 420, h: 297, name: "A3", scale: s };
   }
+  // The pages a print can have, and the two sets Export makes: [what, header, mirrored]
+  const PRINTS = {
+    assembly: ["assembly", "Assembly drawing — top side"],
+    "F.Cu": ["F.Cu", "Top copper — seen from the top"],
+    "B.Cu": ["B.Cu", "Bottom copper — seen through from the top"],
+    drill: ["drill", "Drill map"],
+    "toner-F": ["F.Cu", "Top copper — mirrored for toner transfer (toner side onto the top copper)", true],
+    "toner-B": ["B.Cu", "Bottom copper — as seen through from the top, for toner transfer (toner side onto the bottom copper)", false]
+  };
+  const PRINT_SETS = { print: ["assembly", "F.Cu", "B.Cu", "drill"], toner: ["toner-F", "toner-B"] };
+  /** PDF prints. kind: "print" (assembly, copper, drill map), "toner" (both copper layers for
+      toner transfer) or a list of PRINTS ids, in that order */
   function pdfPages(board, model, fills, kind, meta) {
     const PdfExport = root.PdfExport, o = board.outline, pg = pageFor(board), title = (meta && meta.title) || "Board";
     const k = PT * pg.scale, mmW = pg.w / pg.scale, mmH = pg.h / pg.scale;
     const page = { widthPt: pg.w * PT, heightPt: pg.h * PT, k, ox: -(mmW - o.w) / 2, oy: -(mmH - o.h) / 2 - 8 / pg.scale };
     const d = drills(board, model);
-    const sheets = kind === "toner"
-      ? [["F.Cu", "Top copper — mirrored for toner transfer (toner side onto the top copper)", true], ["B.Cu", "Bottom copper — as seen through from the top, for toner transfer (toner side onto the bottom copper)", false]]
-      : [["assembly", "Assembly drawing — top side"], ["F.Cu", "Top copper — seen from the top"], ["B.Cu", "Bottom copper — seen through from the top"], ["drill", "Drill map"]];
+    const sheets = (Array.isArray(kind) ? kind : PRINT_SETS[kind] || PRINT_SETS.print).map(id => PRINTS[id]).filter(Boolean);
     const SYM = ["+", "×", "□", "◇", "△", "○"];
     function header(c, text) {
       c.save(); c.setTransform(1, 0, 0, 1, 0, 0);
@@ -329,5 +339,5 @@
     return PdfExport.buildPdf(sheets.map(() => page), draw, { title: `${title} — ${kind === "toner" ? "toner transfer" : "board prints"}` });
   }
 
-  root.BoardFab = { ascii, clipToConvex, layerOps, gerber, drills, excellon, fabFiles, placement, zip, crc32, paint, pdfPages, placedParts, partSilk };
+  root.BoardFab = { ascii, clipToConvex, layerOps, gerber, drills, excellon, fabFiles, placement, zip, crc32, paint, pdfPages, PRINTS, PRINT_SETS, pageFor, placedParts, partSilk };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.96.0] - 2026-10-25
+
+### Added
+- **Print (Ctrl+P) in the Circuit CAD.** *File ▾ → Print…* prints the sheet in view, all sheets or the bill of materials through the browser's print dialog. The pages are the same vector, black-on-white pages as *Save as PDF*, each sheet at its own paper size (A4…A1, 1:1); the dialog can also save them as a PDF.
+- **Print (Ctrl+P) in the Board window.** *Export ▾ → Print…* picks the pages: assembly drawing, top and bottom copper, drill map, and the two toner-transfer pages (top copper mirrored, bottom copper). *Print set* and *Toner transfer* tick the usual sets. The copper prints at 1:1 on A4 or A3 with the 50 mm check bar; choose *Actual size* in the print dialog.
+- Chromium-based browsers open their print dialog straight away; Firefox and Safari open the PDF in a new tab to print from there.
+
 ## [3.95.0] - 2026-10-25
 
 ### Added
