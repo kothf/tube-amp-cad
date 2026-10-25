@@ -87,8 +87,23 @@
     return out.join(", ");
   }
 
+  // The SMD package of a board footprint (board-core.js names them; the CAD page does not load
+  // it, so the names are read here), "" for a through-hole one
+  function smdPackage(fp) {
+    const n = String(fp || ""); let m;
+    if ((m = /^(?:CHIP|LED)-(\d{4})$/.exec(n))) return m[1];
+    if ((m = /^CP-SMD-D([\d.]+)$/.exec(n))) return "Ø" + m[1] + " mm";
+    if ((m = /^(SOT-23|SOT-89|SOT-223|DPAK|D2PAK)-[A-Z]{3}$/.exec(n))) return m[1] === "D2PAK" ? "D²PAK" : m[1];
+    if (/^SOIC-\d+$/.test(n) || /^(SOD-123|SOD-323|SMA|SMB|SMC)$/.test(n)) return n;
+    if (n === "MINIMELF") return "MiniMELF";
+    if (n === "TRIM-TC33") return "TC33";
+    return "";
+  }
+
   /** Group parts into BOM lines.
       opts.bench: include sources and instruments; opts.sockets: add a socket line per tube base;
+      opts.board: the circuit's board document: a part with an SMD footprint there says so (and its
+      package) in its description, so SMD and through-hole parts of one value get lines of their own;
       opts.stress(c) -> { v, text, warn, note } | null: the simulated worst case of one part. */
   function build(comps, opts) {
     opts = opts || {};
@@ -112,6 +127,8 @@
     phys.forEach(({ ref, members }) => {
       const c = members[0];
       let [desc, value, rating] = describe(c, members.length);
+      const bp = opts.board && opts.board.parts && opts.board.parts[members.map(m => m.id).sort().join("+")], pkg = bp ? smdPackage(bp.fp) : "";
+      if (pkg) desc += ", SMD " + pkg;
       // a capacitor's rating comes from the simulation: parts of one value that see different
       // voltages get lines of their own
       if (opts.stress && CAP_V[c.type]) {
@@ -291,5 +308,5 @@ ${bom.rows.length ? `<autoFilter ref="A${first}:${colName(COLUMNS.length - 1)}${
     }, { title: "Bill of materials" + (bom.title ? " - " + bom.title : "") });
   }
 
-  root.BomLib = { COLUMNS, build, describe, capRating, compressRefs, refCmp, toTxt, toCsv, toXlsx, toPdf, zip, crc32 };
+  root.BomLib = { smdPackage, COLUMNS, build, describe, capRating, compressRefs, refCmp, toTxt, toCsv, toXlsx, toPdf, zip, crc32 };
 })(typeof window !== "undefined" ? window : globalThis);

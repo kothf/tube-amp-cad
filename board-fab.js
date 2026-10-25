@@ -51,20 +51,20 @@
   const ring = h => B().holeRing(h);
 
   /** Drawing operations of a layer: F.Cu, B.Cu (pours, then tracks, pads, vias, text),
-      F.Mask, B.Mask (openings), F.SilkS, B.SilkS, Edge.Cuts. fn: the Gerber X2 aperture function */
+      F.Mask, B.Mask (openings), F.Paste, B.Paste (SMD pads), F.SilkS, B.SilkS, Edge.Cuts. fn: the Gerber X2 aperture function */
   function layerOps(board, model, fills, layer) {
     const C = B(), R = board.rules, keep = placedParts(board, model), ops = [];
     const pads = model.pads.filter(p => keep.has(p.part)), holes = board.holes || [];
     if (layer === "F.Cu" || layer === "B.Cu") {
       (fills || []).filter(f => f.layer === layer).forEach(f => ops.push(...f.ops.map(op => (op.pol === "D" ? { ...op, fn: "Conductor" } : op))));
       board.tracks.filter(t => t.layer === layer).forEach(t => ops.push({ pol: "D", t: "line", w: t.w, pts: t.pts, fn: "Conductor" }));
-      pads.forEach(p => ops.push({ pol: "D", ...C.flashOf(p, 0), fn: "ComponentPad" }));
+      pads.forEach(p => { if (!p.layers || p.layers.includes(layer)) ops.push({ pol: "D", ...C.flashOf(p, 0), fn: p.smd ? "SMDPad,CuDef" : "ComponentPad" }); });
       board.vias.forEach(v => { const d = v.pad || R.viaPad; ops.push({ pol: "D", t: "flash", shape: "C", x: v.x, y: v.y, w: d, h: d, fn: "ViaPad" }); });
       holes.filter(h => h.plated).forEach(h => { const d = ring(h); ops.push({ pol: "D", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d, fn: "WasherPad" }); });
       board.texts.filter(t => t.layer === layer).forEach(t => ops.push(...textOps(t, layer === "B.Cu").map(o => ({ ...o, fn: "NonConductor" }))));
     } else if (layer === "F.Mask" || layer === "B.Mask") {
-      const e = R.maskExpansion || 0;
-      pads.forEach(p => ops.push({ pol: "D", ...C.flashOf(p, e) }));
+      const e = R.maskExpansion || 0, side = layer[0];
+      pads.forEach(p => { if (C.onSide(p, side)) ops.push({ pol: "D", ...C.flashOf(p, e) }); });
       if (!R.tentVias) board.vias.forEach(v => { const d = (v.pad || R.viaPad) + 2 * e; ops.push({ pol: "D", t: "flash", shape: "C", x: v.x, y: v.y, w: r4(d), h: r4(d) }); });
       // mounting holes: the ring of a plated one is bare; a plain one gets the mask off its wall
       holes.forEach(h => { const d = r4((h.plated ? ring(h) : h.d) + 2 * e); ops.push({ pol: "D", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d }); });
@@ -77,10 +77,13 @@
       draw.forEach(op => { if (op.t === "line") clipToConvex(op.pts, inside).forEach(pts => ops.push({ ...op, pts })); else ops.push(op); });
       if (ops.length) {
         const e = (R.maskExpansion || 0) + 0.1;
-        pads.forEach(p => ops.push({ pol: "C", ...C.flashOf(p, e) }));
+        pads.forEach(p => { if (C.onSide(p, side)) ops.push({ pol: "C", ...C.flashOf(p, e) }); });
         if (!R.tentVias) board.vias.forEach(v => { const d = r4((v.pad || R.viaPad) + 2 * e); ops.push({ pol: "C", t: "flash", shape: "C", x: v.x, y: v.y, w: d, h: d }); });
         holes.forEach(h => { const d = r4((h.plated ? ring(h) : h.d) + 2 * e); ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d }); });
       }
+    } else if (layer === "F.Paste" || layer === "B.Paste") {
+      // the solder paste stencil: the SMD pads of that side, at their own size
+      pads.forEach(p => { if (p.smd && C.onSide(p, layer[0])) ops.push({ pol: "D", ...C.flashOf(p, 0) }); });
     } else if (layer === "Edge.Cuts") {
       const P = C.outlinePoly(board.outline, 0);
       ops.push({ pol: "D", t: "line", w: EDGE_W, pts: P.concat([P[0]]), fn: "Profile" });
@@ -93,7 +96,7 @@
   // ---------------------------------------------------------------------------
   const FUNC = {
     "F.Cu": ["Copper,L1,Top", "Positive"], "B.Cu": ["Copper,L2,Bot", "Positive"], "F.Mask": ["Soldermask,Top", "Negative"], "B.Mask": ["Soldermask,Bot", "Negative"],
-    "F.SilkS": ["Legend,Top", "Positive"], "B.SilkS": ["Legend,Bot", "Positive"], "Edge.Cuts": ["Profile,NP", "Positive"]
+    "F.Paste": ["Paste,Top", "Positive"], "B.Paste": ["Paste,Bot", "Positive"], "F.SilkS": ["Legend,Top", "Positive"], "B.SilkS": ["Legend,Bot", "Positive"], "Edge.Cuts": ["Profile,NP", "Positive"]
   };
   // plain ASCII for comments and attribute values (older CAM software reads nothing else): Cyrillic
   // transliterated, × as x, the rest dropped; commas, * and % are syntax in Gerber, so they go too
@@ -152,7 +155,7 @@
   function drills(board, model) {
     const keep = placedParts(board, model), R = board.rules, pth = new Map(), npth = new Map();
     const add = (m, d, x, y, fn) => { const k = (+d).toFixed(3) + "|" + fn; if (!m.has(k)) m.set(k, []); m.get(k).push([x, y]); };
-    model.pads.forEach(p => { if (keep.has(p.part)) add(pth, p.drill, p.x, p.y, "ComponentDrill"); });
+    model.pads.forEach(p => { if (keep.has(p.part) && !p.smd) add(pth, p.drill, p.x, p.y, "ComponentDrill"); });
     board.vias.forEach(v => add(pth, v.drill || R.viaDrill, v.x, v.y, "ViaDrill"));
     (board.holes || []).forEach(h => add(h.plated ? pth : npth, h.d, h.x, h.y, "MechanicalDrill"));
     const sort = m => [...m.entries()].map(([k, pts]) => { const [d, fn] = k.split("|"); return [d, pts, fn]; }).sort((a, b) => +a[0] - +b[0] || a[2].localeCompare(b[2]));
@@ -173,7 +176,11 @@
   function fabFiles(board, model, fills, meta) {
     const base = (meta && meta.base) || "board", files = {};
     const L = { "F.Cu": "F_Cu", "B.Cu": "B_Cu", "F.Mask": "F_Mask", "B.Mask": "B_Mask", "F.SilkS": "F_Silkscreen", "B.SilkS": "B_Silkscreen", "Edge.Cuts": "Edge_Cuts" };
+    // with SMD parts: their solder paste stencils, and the placement file for the assembly machine
+    const keep = placedParts(board, model), smd = model.parts.filter(g => keep.has(g.key) && g.fp && g.fp.smd);
+    [["F", "F.Paste", "F_Paste"], ["B", "B.Paste", "B_Paste"]].forEach(([s, layer, suffix]) => { if (smd.some(g => (g.place.side || "F") === s)) L[layer] = suffix; });
     Object.entries(L).forEach(([layer, suffix]) => { files[`${base}-${suffix}.gbr`] = gerber(layerOps(board, model, fills, layer), layer, board, meta); });
+    if (smd.length) files[`${base}-pos.csv`] = placement(board, model, keep);
     const d = drills(board, model);
     files[`${base}-PTH.drl`] = excellon(d.pth, true, board, meta);
     if (d.npth.length) files[`${base}-NPTH.drl`] = excellon(d.npth, false, board, meta);
@@ -183,9 +190,23 @@
       `Board: ${board.outline.w} × ${board.outline.h} mm${board.outline.r ? `, corner radius ${board.outline.r} mm` : ""}, 2 layers, ${st.thickness} mm FR-4, ${st.copper} µm copper (${st.copper >= 70 ? 2 : 1} oz)`,
       `Tracks ${nw.length ? `${Math.min(...nw)}–${Math.max(...nw)} mm wide` : "none"} (design minimum ${R.minTrack} mm); clearance ${R.clearance} mm, high voltage ${R.hvClearance} mm and more by IPC-2221B ${R.ipc || "B2"} where the voltage asks`,
       `Holes: ${n(d.pth)} plated (${dias(d.pth)} mm${ph ? `; ${ph} of them plated mounting holes` : ""})${d.npth.length ? `, ${n(d.npth)} not plated (${dias(d.npth)} mm)` : ""}`,
+      ...(smd.length ? [`Surface-mount parts: ${smd.length} (${["F", "B"].filter(s => smd.some(g => (g.place.side || "F") === s)).map(s => (s === "F" ? "top" : "bottom")).join(" and ")}); solder paste layers and ${base}-pos.csv (placement: centre, rotation, side) for assembly`] : []),
       `Solder mask on both sides${R.tentVias ? ", vias covered" : ""}; silkscreen on the top${board.texts.some(t => t.layer === "B.SilkS") || model.parts.some(g => g.place && g.place.side === "B") ? " and bottom" : ""}, kept off the pads and inside the outline.`, "",
       "Files: " + Object.keys(files).concat([`${base}-README.txt`]).join(", "), ""].join("\n");
     return files;
+  }
+
+  /** The placement (pick-and-place) file, KiCad's CSV: every SMD part's reference, value,
+      package, centre (mm, y up from the board's bottom left), rotation (counter-clockwise, degrees)
+      and side */
+  function placement(board, model, keep) {
+    const H = board.outline.h, q = s => `"${String(s).replace(/"/g, "'")}"`, f4 = v => (+v).toFixed(4);
+    const rows = model.parts.filter(g => (!keep || keep.has(g.key)) && g.fp && g.fp.smd && g.place).sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }));
+    return ["Ref,Val,Package,PosX,PosY,Rot,Side"].concat(rows.map(g => {
+      const P = g.place, b = g.fp.pads, cx = b.reduce((s, p) => s + p.x, 0) / b.length, cy = b.reduce((s, p) => s + p.y, 0) / b.length, [x, y] = B().place([cx, cy], P);
+      const rot = ((P.rot || 0) & 3) * 90, r = P.side === "B" ? (360 - rot) % 360 : rot;
+      return [q(g.ref), q(ascii(g.value)), q(g.fp.name), f4(x), f4(H - y), f4(r), P.side === "B" ? "bottom" : "top"].join(",");
+    })).join("\n") + "\n";
   }
 
   // ---------------------------------------------------------------------------
@@ -308,5 +329,5 @@
     return PdfExport.buildPdf(sheets.map(() => page), draw, { title: `${title} — ${kind === "toner" ? "toner transfer" : "board prints"}` });
   }
 
-  root.BoardFab = { ascii, clipToConvex, layerOps, gerber, drills, excellon, fabFiles, zip, crc32, paint, pdfPages, placedParts, partSilk };
+  root.BoardFab = { ascii, clipToConvex, layerOps, gerber, drills, excellon, fabFiles, placement, zip, crc32, paint, pdfPages, placedParts, partSilk };
 })(typeof window !== "undefined" ? window : globalThis);

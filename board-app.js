@@ -198,7 +198,8 @@
     const pts = [[g.fp.box[0], g.fp.box[1]], [g.fp.box[2], g.fp.box[1]], [g.fp.box[0], g.fp.box[3]], [g.fp.box[2], g.fp.box[3]]].map(p => B.place(p, g.place));
     return { x1: Math.min(...pts.map(p => p[0])), y1: Math.min(...pts.map(p => p[1])), x2: Math.max(...pts.map(p => p[0])), y2: Math.max(...pts.map(p => p[1])) };
   }
-  const hitPad = (x, y) => S.model && S.model.pads.find(p => Math.abs(x - p.x) <= p.w / 2 + 0.2 && Math.abs(y - p.y) <= p.h / 2 + 0.2);
+  // an SMD pad only while its layer is shown
+  const hitPad = (x, y) => S.model && S.model.pads.find(p => (!p.smd || S.show[p.layers[0]]) && Math.abs(x - p.x) <= p.w / 2 + 0.2 && Math.abs(y - p.y) <= p.h / 2 + 0.2);
   function hitPart(x, y) {
     if (!S.model) return null;
     for (let i = S.model.parts.length - 1; i >= 0; i--) { const g = S.model.parts[i]; if (!g.place) continue; const b = partBox(g); if (x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2) return g; }
@@ -404,6 +405,8 @@
     const at = netAt(x, y);
     if (!at) { msg("Start a track on a pad (or on a routed track)"); return; }
     const start = at.pad ? [at.pad.x, at.pad.y] : at.at;
+    // from an SMD pad the track starts on the pad's own layer
+    if (at.pad && at.pad.smd && at.pad.layers[0] !== S.layer) setLayer(at.pad.layers[0]);
     // the class width, or wider when the net's DC current asks for it (IPC-2221)
     const I = (S.amps || {})[at.net], wI = Math.ceil(B.currentWidth(I, S.board.rules, S.board.stackup) * 20) / 20;
     S.route = { net: at.net, layer: S.layer, w: Math.max(trackWidth(at.net), wI), pts: [start], segs: [], from: at.track, flip: false };
@@ -415,8 +418,10 @@
     if (bad && bad.ko && !(e && e.shiftKey)) { msg(`Not through ${bad.what}: route around it, or Shift+click to place it anyway`); return; }
     if (bad && !(e && e.shiftKey)) { msg(`Too close to ${bad.what}${bad.net ? " on " + bad.net : ""}: ${Math.max(0, bad.g).toFixed(2)} mm < ${bad.need} mm. Choose another way, or Shift+click to place it anyway`); return; }
     if (Math.hypot(tgt[0] - last[0], tgt[1] - last[1]) < 1e-6) { finishRoute(); return; }
-    tail.pts.slice(1).forEach(p => r.pts.push(p));
     const p = hitPad(tgt[0], tgt[1]);
+    // an SMD pad on the other side: the track needs a via (V) to get there
+    if (p && p.smd && !p.layers.includes(r.layer)) { msg(`${p.ref}-${p.num} is an SMD pad on ${p.layers[0] === "F.Cu" ? "the top" : "the bottom"}, this track is on ${r.layer}: place a via (V) first`); return; }
+    tail.pts.slice(1).forEach(q => r.pts.push(q));
     if (p && r.pts.length > 1) {
       if (p.net !== r.net) msg(`${p.ref}-${p.num} is on ${netName(p.net)}, not ${netName(r.net)}: the check will report a short`);
       finishRoute(); return;
@@ -1234,15 +1239,17 @@
         if (sel) { ctx.strokeStyle = "rgba(0,229,255,0.6)"; ctx.setLineDash([4 * px, 3 * px]); ctx.lineWidth = px; ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1); ctx.setLineDash([]); }
       });
     });
-    // pads (through-hole: on both layers) and vias, when any copper layer is shown
+    // pads (through-hole: on both layers; SMD: on their side's layer, when it is shown; the
+    // bottom's SMD pads paler, under the rest) and vias, when any copper layer is shown
     if (S.model && (S.show["F.Cu"] || S.show["B.Cu"])) {
-      S.model.pads.forEach(p => {
-        const lit = hl !== null && p.net === hl;
-        ctx.fillStyle = p.conflict ? "#ff7b72" : lit ? "#ffe680" : NH !== null ? "#5c4a14" : COLORS.pad;
+      const pads = S.model.pads.filter(p => !p.smd || S.show[p.layers[0]]).sort((a, b) => (b.smd && b.layers[0] === "B.Cu") - (a.smd && a.layers[0] === "B.Cu"));
+      pads.forEach(p => {
+        const lit = hl !== null && p.net === hl, under = p.smd && p.layers[0] === "B.Cu";
+        ctx.fillStyle = p.conflict ? "#ff7b72" : lit ? "#ffe680" : NH !== null ? "#5c4a14" : under ? "#8f8a6a" : COLORS.pad;
         ctx.beginPath();
         if (p.shape === "rect") ctx.rect(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h); else ctx.ellipse(p.x, p.y, p.w / 2, p.h / 2, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "#070b10"; ctx.beginPath(); ctx.arc(p.x, p.y, p.drill / 2, 0, Math.PI * 2); ctx.fill();
+        if (!p.smd) { ctx.fillStyle = "#070b10"; ctx.beginPath(); ctx.arc(p.x, p.y, p.drill / 2, 0, Math.PI * 2); ctx.fill(); }
         if (scale > 9) { ctx.fillStyle = "#0b0f14"; ctx.font = `${Math.min(p.w, p.h) * 0.42}px ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(p.name.length <= 3 ? p.name : p.num, p.x, p.y + p.drill * 0.9); }
       });
     }
@@ -1512,6 +1519,23 @@
     row.appendChild(el); return row;
   }
   const lockField = o => field("Position", o.locked ? "locked" : "free", v => { if (v === "locked") o.locked = true; else delete o.locked; commit(); }, [["free", "Free"], ["locked", "Locked (L)"]]);
+  // SMD: the parts' surface-mount versions (their default SMD footprint) or back to through-hole.
+  // Parts that stay through-hole (valves, transformers, power cases) leave it off and greyed.
+  function smdField(gs) {
+    const can = gs.filter(g => g.smdFp), on = can.filter(g => B.isSmd(S.board.parts[g.key].fp));
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span>SMD${gs.length > 1 && can.length ? ` <small class="help">${can.length} of ${gs.length} can be</small>` : ""}</span>`;
+    const lab = document.createElement("label"), el = document.createElement("input");
+    lab.style.cssText = "display:flex;align-items:center;gap:6px"; el.type = "checkbox"; el.style.width = "auto";
+    el.checked = can.length > 0 && on.length === can.length; el.indeterminate = on.length > 0 && on.length < can.length; el.disabled = !can.length;
+    lab.title = can.length ? "Surface-mount: pads on the part's side only (no holes), the SMD package's 3D model, paste layers and a placement file in the Gerbers" : "This part has no SMD version here: it stays through-hole";
+    lab.appendChild(el); lab.appendChild(document.createTextNode(can.length ? "surface-mount" : "through-hole only"));
+    el.addEventListener("change", () => {
+      can.forEach(g => { const bp = S.board.parts[g.key]; if (el.checked !== B.isSmd(bp.fp)) bp.fp = el.checked ? g.smdFp : g.defaultFp; });
+      commit(`${can.length > 1 ? can.length + " parts" : can[0].ref}: ${el.checked ? "SMD" : "through-hole"}${el.checked ? " — check the tracks to them: SMD pads are on the part's side only" : ""}`);
+    });
+    row.appendChild(lab); return row;
+  }
   const delBtn = () => { const b = document.createElement("button"); b.className = "btn"; b.textContent = "Delete (Del)"; b.onclick = deleteSel; return b; };
   function renderInspector() {
     const h = $("inspector"); h.innerHTML = "";
@@ -1520,7 +1544,10 @@
       const g = S.model.parts.find(x => x.key === s.key); if (!g) { S.sel = null; return renderInspector(); }
       const bp = S.board.parts[g.key];
       h.innerHTML = `<div class="insp-title">${esc(g.ref)} <small class="help">${esc(g.value)}</small></div>`;
-      const ff = field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.map(n => { const f = B.footprint(n); return [n, f ? `${n} — ${f.title.replace(/^(.{0,48}).*$/, "$1")}` : n]; })); ff.classList.add("wide"); h.appendChild(ff);
+      // the footprints of the kind it is now: through-hole, or SMD (the checkbox switches)
+      const smd = B.isSmd(bp.fp);
+      h.appendChild(smdField([g]));
+      const ff = field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.filter(n => B.isSmd(n) === smd).map(n => { const f = B.footprint(n); return [n, f ? `${n} — ${f.title.replace(/^(.{0,48}).*$/, "$1")}` : n]; })); ff.classList.add("wide"); h.appendChild(ff);
       partPreview(h, g);
       h.appendChild(field("X (mm)", +bp.x.toFixed(3), v => { bp.x = v; commit(); }));
       h.appendChild(field("Y (mm)", +showY(bp.y).toFixed(3), v => { bp.y = showY(v); commit(); }));
@@ -1555,6 +1582,7 @@
       const ts = s.tracks.map(i => S.board.tracks[i]).filter(Boolean), n = selItems().length, nl = selItems().filter(([k, id]) => isLocked(k, id)).length;
       const what = [[s.parts.length, "part"], [ts.length, "track"], [s.vias.length, "via"], [s.texts.length, "text"], [s.holes.length, "hole"]].filter(([c]) => c).map(([c, w]) => `${c} ${w}${c > 1 ? "s" : ""}`).join(", ");
       h.innerHTML = `<div class="insp-title">${n} selected</div><p class="help">${what}${nl ? ` · ${nl} locked` : ""}. Drag one to move them all; R turns them, arrows nudge (Shift: ×10), L locks.</p>`;
+      if (s.parts.length && S.model) { const gs = s.parts.map(k => S.model.parts.find(g => g.key === k)).filter(g => g && S.board.parts[g.key]); if (gs.length) h.appendChild(smdField(gs)); }
       if (s.parts.length >= 2) {
         h.insertAdjacentHTML("beforeend", `<h2>Align parts</h2><div class="align">${[["left", "⇤ Left"], ["hcenter", "↔ Centre"], ["right", "Right ⇥"], ["top", "⤒ Top"], ["vcenter", "↕ Middle"], ["bottom", "Bottom ⤓"]].map(([k, t]) => `<button class="btn" data-al="${k}">${t}</button>`).join("")}</div>` +
           (s.parts.length >= 3 ? `<div class="align">${[["hdist", "Spread across"], ["vdist", "Spread down"]].map(([k, t]) => `<button class="btn" data-al="${k}">${t}</button>`).join("")}</div>` : ""));
@@ -1752,7 +1780,7 @@
       S.board.texts.filter(t => t.layer === l).forEach(t => parts.push(svgText(t, ink(l))));
     });
     if (layers.some(l => l.endsWith("Cu")) && M) {
-      M.pads.forEach(p => parts.push(p.shape === "rect" ? `<rect x="${p.x - p.w / 2}" y="${p.y - p.h / 2}" width="${p.w}" height="${p.h}" fill="${color ? COLORS.pad : "black"}"/>` : `<ellipse cx="${p.x}" cy="${p.y}" rx="${p.w / 2}" ry="${p.h / 2}" fill="${color ? COLORS.pad : "black"}"/>`, `<circle cx="${p.x}" cy="${p.y}" r="${p.drill / 2}" fill="${color ? "#070b10" : "white"}"/>`));
+      M.pads.filter(p => !p.smd || layers.includes(p.layers[0])).forEach(p => parts.push(p.shape === "rect" ? `<rect x="${p.x - p.w / 2}" y="${p.y - p.h / 2}" width="${p.w}" height="${p.h}" fill="${color ? COLORS.pad : "black"}"/>` : `<ellipse cx="${p.x}" cy="${p.y}" rx="${p.w / 2}" ry="${p.h / 2}" fill="${color ? COLORS.pad : "black"}"/>`, p.smd ? "" : `<circle cx="${p.x}" cy="${p.y}" r="${p.drill / 2}" fill="${color ? "#070b10" : "white"}"/>`));
       S.board.vias.forEach(v => parts.push(`<circle cx="${v.x}" cy="${v.y}" r="${(v.pad || S.board.rules.viaPad) / 2}" fill="${color ? "#a9b4c2" : "black"}"/><circle cx="${v.x}" cy="${v.y}" r="${(v.drill || S.board.rules.viaDrill) / 2}" fill="${color ? "#070b10" : "white"}"/>`));
     }
     S.board.holes.forEach(h => parts.push(`<circle cx="${h.x}" cy="${h.y}" r="${h.d / 2}" fill="${color ? "#070b10" : "white"}" stroke="${color ? COLORS.Holes : "black"}" stroke-width="0.1"/>`));

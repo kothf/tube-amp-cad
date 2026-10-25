@@ -1847,6 +1847,18 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
     }
     await bd.evaluate(b => { BoardApp.state.board = JSON.parse(b); BoardApp.commit(); BoardApp.fit(); }, saved);
   }
+  // SMD: the inspector's checkbox puts a resistor on its chip footprint, pads on the top copper only
+  {
+    await bd.evaluate(() => { const S = BoardApp.state, g = S.model.parts.find(x => x.type === "resistor"); S.sel = { kind: "part", key: g.key }; BoardApp.commit(); });
+    const box = bd.locator("#inspector .row", { hasText: "SMD" }).locator("input[type=checkbox]");
+    await box.check();
+    const on = await bd.evaluate(() => { const S = BoardApp.state, g = S.model.parts.find(x => x.key === S.sel.key), pads = S.model.pads.filter(p => p.part === g.key);
+      return { fp: g.fp.name, layers: [...new Set(pads.map(p => p.layers.join("+")))].join(), files: Object.keys(BoardApp.fabFiles()).filter(n => /Paste|pos\.csv/.test(n)).length, list: [...document.querySelectorAll("#inspector select")][0].options.length && [...[...document.querySelectorAll("#inspector select")][0].options].every(o => /^CHIP-/.test(o.value)) }; });
+    check(/^CHIP-\d{4}$/.test(on.fp) && on.layers === "F.Cu" && on.files >= 2 && on.list, `SMD in the inspector: ${on.fp}, pads on ${on.layers}, the footprint list holds chips only, paste layer and placement file in the Gerbers`);
+    await bd.locator("#inspector .row", { hasText: "SMD" }).locator("input[type=checkbox]").uncheck();
+    const off = await bd.evaluate(() => { const S = BoardApp.state; return S.model.parts.find(x => x.key === S.sel.key).fp.name; });
+    check(/^AXIAL-/.test(off), `unticked, it is back on its through-hole footprint (${off})`);
+  }
   await bd.close();
 }
 

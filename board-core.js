@@ -103,7 +103,8 @@
   // ---------------------------------------------------------------------------
   // Footprints. A footprint: { name, title, pads: [{ num, name, x, y, shape, w, h, drill }],
   // silk: [{ t: "line"|"rect"|"circle", ... }], box: [x1, y1, x2, y2] (courtyard) }
-  // Through-hole only: valve amplifiers are built that way, and every pad is on both layers.
+  // Through-hole footprints (valve amplifiers are mostly built that way: every pad on both layers)
+  // and, for the small parts, surface-mount ones (fp.smd; pads on the part's side only).
   // ---------------------------------------------------------------------------
   const pad = (num, x, y, d, drill, shape, name) => ({ num: String(num), name: name || String(num), x, y, shape: shape || "circle", w: d, h: d, drill });
   const bbox = (pads, silk, m) => {
@@ -290,6 +291,88 @@
     const D = size === "M4" ? 8 : 7, drill = size === "M4" ? 4.3 : 3.4;
     return fp(`STAR-${size}`, `Star ground point: a plated ${size} hole for a solder lug or ring terminal`, [pad(1, 0, 0, D, drill, "circle", "GND")], [{ t: "circle", x: 0, y: 0, r: D / 2 + 0.5 }]);
   }
+
+  // ---------------------------------------------------------------------------
+  // Surface-mount footprints: pads on one copper layer only (the part's side), no drill. The pad
+  // sizes follow IPC-7351 nominal lands as KiCad's libraries have them; fp.smd marks the footprint.
+  // ---------------------------------------------------------------------------
+  const smdPad = (num, x, y, w, h, name) => ({ num: String(num), name: name || String(num), x, y, shape: "rect", w, h, drill: 0, smd: true });
+  // how far a rectangular pad reaches from its centre along x as the checks see it (a capsule 15 % wider than the pad)
+  const reachX = p => { const r = Math.min(p.w, p.h) / 2; return p.w >= p.h ? p.w / 2 + 0.15 * r : 1.15 * r; };
+  const reachY = p => { const r = Math.min(p.w, p.h) / 2; return p.h > p.w ? p.h / 2 + 0.15 * r : 1.15 * r; };
+  const smdFp = (name, title, pads, silk) => ({ name, title, pads, silk, box: bbox(pads, silk, 0.25), smd: true });
+  // chip resistors, capacitors and inductors (EIA inch codes): body L × W × H; pads w × h at ±x
+  const CHIPS = {
+    "0603": [1.6, 0.8, 0.45, 0.8, 0.95, 0.825], "0805": [2.0, 1.25, 0.5, 1.0, 1.45, 0.95], "1206": [3.2, 1.6, 0.55, 1.15, 1.8, 1.475],
+    "1210": [3.2, 2.5, 0.6, 1.15, 2.7, 1.475], "1812": [4.5, 3.2, 1.1, 1.35, 3.4, 2.1], "2010": [5.0, 2.5, 0.6, 1.25, 2.65, 2.4],
+    "2220": [5.7, 5.0, 1.6, 1.5, 5.3, 2.65], "2512": [6.3, 3.2, 0.6, 1.55, 3.4, 3.0]
+  };
+  // two-pad lands: the silkscreen above and below the body, a bar beside pad 1 (the cathode, the +) when polar
+  function twoPad(name, title, xc, w, h, L, W, names, polar) {
+    const yl = Math.max(h, W) / 2 + 0.2, xl = Math.max(L / 2, xc + w / 2), silk = [{ t: "line", x1: -xl, y1: -yl, x2: xl, y2: -yl }, { t: "line", x1: -xl, y1: yl, x2: xl, y2: yl }];
+    if (polar) silk.push({ t: "line", x1: -xc - w / 2 - 0.5, y1: -yl, x2: -xc - w / 2 - 0.5, y2: yl });
+    return smdFp(name, title, [smdPad(1, -xc, 0, w, h, names[0]), smdPad(2, xc, 0, w, h, names[1])], silk);
+  }
+  function chip(code, led) {
+    const [L, W, , w, h, xc] = CHIPS[code];
+    return twoPad(`${led ? "LED" : "CHIP"}-${code}`, led ? `SMD LED ${code} (the bar and pad 1: cathode)` : `SMD chip ${code} (${L} × ${W} mm), resistor, capacitor or inductor`, xc, w, h, L, W, led ? ["K", "A"] : ["1", "2"], led);
+  }
+  // diode packages, pad 1 the cathode (the band): body L × W × H, pads w × h at ±x
+  const SMD_DIODES = {
+    "SOD-323": [1.7, 1.25, 0.95, 0.65, 0.55, 1.15, "SOD-323"], "SOD-123": [2.7, 1.6, 1.1, 0.9, 1.2, 1.65, "SOD-123"], "MINIMELF": [3.5, 1.5, 1.5, 1.2, 1.6, 1.75, "MiniMELF (SOD-80)"],
+    "SMA": [4.3, 2.6, 2.1, 2.5, 1.7, 2.0, "SMA (DO-214AC)"], "SMB": [4.3, 3.6, 2.2, 2.5, 2.3, 2.15, "SMB (DO-214AA)"], "SMC": [6.9, 5.9, 2.3, 3.3, 3.3, 3.4, "SMC (DO-214AB)"]
+  };
+  function smdDiode(pkg) {
+    const [L, W, , w, h, xc, t] = SMD_DIODES[pkg];
+    return twoPad(pkg, `${t} diode (the bar and pad 1: cathode)`, xc, w, h, L, W, ["K", "A"], true);
+  }
+  // SMD aluminium electrolytics (V-chip): the square plastic base, pad 1 the +; [x, w, h, can height]
+  const SMD_ECAP = { 4: [1.8, 2.6, 1.6, 5.4], 5: [2.2, 3.0, 1.6, 5.4], 6.3: [2.7, 3.3, 1.6, 5.4], 8: [3.5, 4.2, 2.2, 10], 10: [4.3, 4.6, 2.5, 10], 12.5: [4.9, 5.4, 2.5, 13.5], 16: [6.4, 6.5, 3.5, 17.5], 18: [7.2, 7.0, 3.5, 17.5] };
+  function smdEcap(D) {
+    // the base's outline, its sides broken where the pads reach out under them
+    const [xc, w, h] = SMD_ECAP[D], b = D / 2 + 0.15, c = Math.min(1.5, D * 0.25), pads = [smdPad(1, -xc, 0, w, h, "+"), smdPad(2, xc, 0, w, h, "-")], yc = reachY(pads[0]) + 0.2;
+    return smdFp(`CP-SMD-D${D}`, `SMD electrolytic Ø${D} mm (V-chip; + at pad 1, the cut corners)`, pads,
+      [{ t: "line", x1: -b + c, y1: -b, x2: b, y2: -b }, { t: "line", x1: b, y1: -b, x2: b, y2: -yc }, { t: "line", x1: b, y1: yc, x2: b, y2: b }, { t: "line", x1: b, y1: b, x2: -b + c, y2: b }, { t: "line", x1: -b + c, y1: b, x2: -b, y2: b - c },
+        { t: "line", x1: -b, y1: b - c, x2: -b, y2: Math.min(b - c, yc) }, { t: "line", x1: -b, y1: -Math.min(b - c, yc), x2: -b, y2: -b + c }, { t: "line", x1: -b, y1: -b + c, x2: -b + c, y2: -b },
+        { t: "line", x1: -b - 1.6, y1: -b - 0.4, x2: -b - 0.4, y2: -b - 0.4 }, { t: "line", x1: -b - 1, y1: -b - 1, x2: -b - 1, y2: -b + 0.2 }]);
+  }
+  // transistors. SOT-23: pins 1 and 2 along the bottom, 3 alone at the top; the order is the pins
+  // from pad 1 (BJTs B-E-C as the MMBT3904, BC847; MOSFETs G-S-D as the 2N7002, BSS84)
+  function sot23(order) {
+    return smdFp(`SOT-23-${order}`, `SOT-23, pins ${order.split("").join("-")}`, [smdPad(1, -0.95, 1.14, 0.6, 1.33, order[0]), smdPad(2, 0.95, 1.14, 0.6, 1.33, order[1]), smdPad(3, 0, -1.14, 0.6, 1.33, order[2])],
+      [{ t: "line", x1: -1.6, y1: -0.7, x2: -1.6, y2: 0.7 }, { t: "line", x1: 1.6, y1: -0.7, x2: 1.6, y2: 0.7 }, { t: "line", x1: -1.6, y1: -0.7, x2: -0.6, y2: -0.7 }, { t: "line", x1: 0.6, y1: -0.7, x2: 1.6, y2: -0.7 }]);
+  }
+  // packages with a tab: pins 1 · 2 · 3 in a row at the bottom, the tab (pin 2's electrode: the
+  // collector or drain) a large pad above them. SOT-89 (LND150N8, DN2540N8), SOT-223 (BCP56),
+  // DPAK / TO-252 and D²PAK / TO-263 (the middle lead cut off: the tab is pin 2)
+  const TABBED = {
+    "SOT-89": { pins: 3, pitch: 1.5, py: 1.9, pw: 0.9, ph: 1.3, ty: -0.6, tw: 2.0, th: 2.2, body: [4.5, 2.5, 1.5], title: "SOT-89" },
+    "SOT-223": { pins: 3, pitch: 2.3, py: 3.15, pw: 1.0, ph: 2.0, ty: -3.15, tw: 3.3, th: 2.0, body: [6.5, 3.5, 1.6], title: "SOT-223" },
+    "DPAK": { pins: 2, pitch: 2.28, py: 3.5, pw: 1.2, ph: 2.2, ty: -1.6, tw: 6.0, th: 5.6, body: [6.6, 6.1, 2.3], title: "DPAK (TO-252)" },
+    "D2PAK": { pins: 2, pitch: 2.54, py: 5.0, pw: 1.4, ph: 3.0, ty: -1.5, tw: 10.6, th: 8.4, body: [10.2, 9.0, 4.4], title: "D²PAK (TO-263)" }
+  };
+  function tabbed(pkg, order) {
+    const T = TABBED[pkg], pads = [smdPad(1, -T.pitch, T.py, T.pw, T.ph, order[0])];
+    if (T.pins === 3) pads.push(smdPad(2, 0, T.py, T.pw, T.ph, order[1]));
+    pads.push(smdPad(3, T.pitch, T.py, T.pw, T.ph, order[2]), smdPad(T.pins === 3 ? 4 : 2, 0, T.ty, T.tw, T.th, order[1]));
+    // the body's sides between the tab and the pins, clear of the pads as the checks see them
+    const x = Math.max(T.body[0] / 2, ...pads.map(q => Math.abs(q.x) + reachX(q) + 0.15)), y1 = T.ty - T.th / 2, y2 = T.py - T.ph / 2 - 0.2, xm = T.pitch + reachX(pads[0]) + 0.2;
+    return smdFp(`${pkg}-${order}`, `${T.title}, pins ${order.split("").join("-")} (the tab: ${order[1]})`, pads,
+      [{ t: "line", x1: -x, y1, x2: -x, y2 }, { t: "line", x1: x, y1, x2: x, y2 }, { t: "line", x1: -xm, y1: T.py, x2: -xm, y2: T.py + T.ph / 2 + 0.3 }]);
+  }
+  // SOIC, 1.27 mm pitch, the pins numbered as a DIP's (pin 1 top left, the bevelled side)
+  function soic(n) {
+    const h = n / 2, y0 = -(h - 1) / 2 * 1.27, L = (h - 1) * 1.27 + 1.1;
+    const pads = Array.from({ length: n }, (_, i) => (i < h ? smdPad(i + 1, -2.475, y0 + i * 1.27, 1.95, 0.6) : smdPad(i + 1, 2.475, y0 + (n - 1 - i) * 1.27, 1.95, 0.6)));
+    return smdFp(`SOIC-${n}`, `SOIC-${n}, 1.27 mm pitch, 3.9 mm body (pin 1 at the top left)`, pads,
+      [{ t: "line", x1: -1.95, y1: -L / 2 - 0.3, x2: 1.95, y2: -L / 2 - 0.3 }, { t: "line", x1: -1.95, y1: L / 2 + 0.3, x2: 1.95, y2: L / 2 + 0.3 }, { t: "line", x1: -3.6, y1: y0 - 0.6, x2: -3.6, y2: y0 + 0.6 }]);
+  }
+  // SMD trimmer, Bourns TC33X style (3 × 3 mm): 1 and 2 at the bottom, the wiper at the top
+  function trimTc33() {
+    return smdFp("TRIM-TC33", "Trimmer TC33X, SMD 3.8 × 3.6 mm (1 · wiper · 2); check the land against your part's datasheet",
+      [smdPad(1, -1.0, 1.45, 1.2, 1.2, "1"), smdPad(2, 0, -1.5, 2.0, 1.3, "W"), smdPad(3, 1.0, 1.45, 1.2, 1.2, "2")],
+      [{ t: "line", x1: -1.9, y1: -0.7, x2: -1.9, y2: 0.7 }, { t: "line", x1: 1.9, y1: -0.7, x2: 1.9, y2: 0.7 }]);
+  }
   /** A footprint by name ("AXIAL-10.16", "TO-92-EBC", "SOCKET-B9A", "WIRE-3" …) */
   function footprint(name, pinNames) {
     let m;
@@ -320,6 +403,13 @@
     if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1]) : socket(m[1]);
     if ((m = /^DIP-(\d+)$/.exec(name)) && [8, 14, 16].includes(+m[1])) return dip(+m[1]);
     if ((m = /^STAR-(M3|M4)$/.exec(name))) return starPoint(m[1]);
+    if ((m = /^(CHIP|LED)-(\d{4})$/.exec(name)) && CHIPS[m[2]] && (m[1] === "CHIP" || ["0805", "1206"].includes(m[2]))) return chip(m[2], m[1] === "LED");
+    if (SMD_DIODES[name]) return smdDiode(name);
+    if ((m = /^CP-SMD-D([\d.]+)$/.exec(name)) && SMD_ECAP[m[1]]) return smdEcap(+m[1]);
+    if ((m = /^SOT-23-([A-Z]{3})$/.exec(name))) return sot23(m[1]);
+    if ((m = /^(SOT-89|SOT-223|DPAK|D2PAK)-([A-Z]{3})$/.exec(name))) return tabbed(m[1], m[2]);
+    if ((m = /^SOIC-(\d+)$/.exec(name)) && [8, 14, 16].includes(+m[1])) return soic(+m[1]);
+    if (name === "TRIM-TC33") return trimTc33();
     if ((m = /^WIRE-(\d+)$/.exec(name))) return wirePads(pinNames && pinNames.length === +m[1] ? pinNames : Array.from({ length: +m[1] }, (_, i) => String(i + 1)));
     return null;
   }
@@ -406,11 +496,43 @@
       g.value = g.type === "heater" ? `${first.params.v} V ~ ${fmtA(first.params.i)}` : g.type === "star" ? "star ground" : def.value ? def.value({ params: first.params, label: first.label }) : "";
       g.options = fpOptions(g);
       g.defaultFp = g.options[0];
+      g.smdFp = smdOptions(g)[0] || null;   // the SMD version's footprint (null: the part stays through-hole)
       return g;
     }).sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }));
   }
-  // footprints that fit a part, the default first
-  function fpOptions(g) {
+  // the surface-mount footprints that fit a part, the default first (none for the parts that stay
+  // through-hole: valves, transformers, panel pots, jacks, power transistors in big cases)
+  const SMD_R = { "": "1206", "0.125": "0805", "0.25": "1206", "0.5": "2010", "1": "2512" };
+  function smdOptions(g) {
+    const L = root.CadLib, p = g.members[0].params, t = g.type, first = (d, all) => [d, ...all.filter(a => a !== d)];
+    switch (t) {
+      case "resistor": { const d = SMD_R[String(p.w || "")]; return d ? first("CHIP-" + d, ["0603", "0805", "1206", "2010", "2512"].map(k => "CHIP-" + k)) : []; }
+      case "capacitor": { const d = p.c <= 1e-9 ? "0805" : p.c <= 100e-9 ? "1206" : p.c <= 1e-6 ? "1812" : "2220"; return first("CHIP-" + d, ["0603", "0805", "1206", "1210", "1812", "2220"].map(k => "CHIP-" + k)); }
+      case "electrolytic": { const D = radialFor(p.c)[0]; return SMD_ECAP[D] ? first(`CP-SMD-D${D}`, Object.keys(SMD_ECAP).sort((a, b) => a - b).map(k => `CP-SMD-D${k}`)) : []; }
+      case "diode": return p.model === "1N4148" ? ["SOD-123", "SOD-323", "MINIMELF"] : ["SMA", "SMB", "SMC"];
+      case "zener": { const z = L.ZENERS[p.model] || {}; return z.p >= 5 ? ["SMC", "SMB"] : z.p >= 1 ? ["SMA", "SMB"] : ["SOD-123", "SOD-323", "MINIMELF"]; }
+      case "led": return ["LED-1206", "LED-0805"];
+      case "inductor": return +p.l < 0.05 ? ["CHIP-1210", "CHIP-1812"] : [];
+      case "pot": return ["TRIM-TC33"];
+      case "timer555": return ["SOIC-8"];
+      case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "SOIC-14" : "SOIC-8"]; }
+      case "npn": case "pnp": case "nmos": case "pmos": {
+        const bjt = t === "npn" || t === "pnp", m = (bjt ? L.BJTS : L.MOSFETS)[p.model] || {}, pkg = m.pkg || "TO-92";
+        // the makers' SMD pinouts: SOT-23 B-E-C / G-S-D; the tabbed cases B-C-E / G-D-S (the tab the collector or drain)
+        const s23 = `SOT-23-${bjt ? "BEC" : "GSD"}`, tab = bjt ? "BCE" : "GDS";
+        if (/TO-92|TO-18/.test(pkg) || !m.pkg) return /^(LND150|DN2540)$/.test(p.model) ? [`SOT-89-${tab}`, s23] : [s23, `SOT-89-${tab}`];
+        if (/TO-126/.test(pkg)) return [`SOT-223-${tab}`, `DPAK-${tab}`];
+        if (/TO-220/.test(pkg)) return [`D2PAK-${tab}`, `DPAK-${tab}`];
+        return [];
+      }
+      default: return [];
+    }
+  }
+  // footprints that fit a part, the default first (the through-hole ones, then the SMD ones)
+  function fpOptions(g) { return thtOptions(g).concat(smdOptions(g)); }
+  /** true for a surface-mount footprint's name */
+  const isSmd = name => { const f = typeof name === "string" ? footprint(name) : name; return !!(f && f.smd); };
+  function thtOptions(g) {
     const L = root.CadLib, p = g.members[0].params, t = g.type, wires = g.members.reduce((s, m) => s + m.pins.length, 0);
     const axials = Object.keys(AXIAL).map(k => "AXIAL-" + k), first = (d, all) => [d, ...all.filter(a => a !== d)];
     const diodes = ["DIODE-7.62", "DIODE-10.16", "DIODE-12.7", "DIODE-15.24", "DIODE-20.32"], t2 = "TERM-5.08-2";
@@ -478,14 +600,15 @@
       });
       return map;
     }
+    // a name may be on more than one pad (an SOT-223's collector: pin 2 and the tab)
     const byName = {};
-    f.pads.forEach(p => { byName[p.name] = p.num; });
+    f.pads.forEach(p => { (byName[p.name] = byName[p.name] || []).push(p.num); });
     const SEM = { resistor: { 1: "1", 2: "2" }, capacitor: { 1: "1", 2: "2" }, electrolytic: { "+": "1", "-": "2" }, inductor: { 1: "1", 2: "2" },
       diode: { K: "1", A: "2" }, zener: { K: "1", A: "2" }, led: { K: "1", A: "2" }, pot: { 1: "1", W: "2", 2: "3" }, star: { 1: "1" } };
     // sections of one part (a DPDT switch) find their pads as "1.A", "2.A" …
     (SEM[g.type] ? [one] : g.members).forEach((m, k) => m.pins.forEach(p => {
-      const num = SEM[g.type] ? SEM[g.type][p.id] : byName[g.members.length > 1 ? `${k + 1}.${p.id}` : p.id];
-      if (num) add(num, m.id, p.id);
+      const nums = SEM[g.type] ? [SEM[g.type][p.id]] : byName[g.members.length > 1 ? `${k + 1}.${p.id}` : p.id] || [];
+      nums.forEach(num => { if (num) add(num, m.id, p.id); });
     }));
     return map;
   }
@@ -558,7 +681,8 @@
     let x = 8, y = board.outline.h + 18, rowH = 0;
     parts.forEach(g => {
       const old = board.parts[g.key];
-      if (old) { old.ref = g.ref; if (!g.options.includes(old.fp)) old.fp = g.defaultFp; return; }
+      // a footprint that no longer fits (a resistor's rating changed): the default, SMD when it was SMD
+      if (old) { old.ref = g.ref; if (!g.options.includes(old.fp)) old.fp = (isSmd(old.fp) && g.smdFp) || g.defaultFp; return; }
       if (!ok(g.ref)) return;
       const f = footprint(g.defaultFp, g.members.flatMap(m => m.pins.map(p => (g.members.length > 1 ? m.label.split(".").pop() + "." : "") + p.id)));
       const w = f.box[2] - f.box[0], h = f.box[3] - f.box[1];
@@ -596,7 +720,9 @@
       f.pads.forEach(p => {
         const conns = map.get(p.num) || [], nets = [...new Set(conns.map(c => netOf[c.comp + ":" + c.pin]).filter(n => n !== undefined))];
         const [x, y] = place([p.x, p.y], bp), [w, h] = placeSize(p, bp);
-        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, pitchRing: p.pitchRing, net: nets.length ? nets[0] : null, pins: conns, conflict: nets.length > 1 };
+        // an SMD pad is on the part's side only
+        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, pitchRing: p.pitchRing, smd: !!p.smd, layers: p.smd ? [bp.side === "B" ? "B.Cu" : "F.Cu"] : COPPER,
+          net: nets.length ? nets[0] : null, pins: conns, conflict: nets.length > 1 };
         list.push(P); pads.push(P);
       });
       padsByPart.set(g.key, list);
@@ -635,7 +761,7 @@
   const npHoles = board => (board.holes || []).filter(h => !h.plated);
   function copperItems(board, pads) {
     const items = [];
-    pads.forEach((p, i) => { const c = padCapsule(p); items.push({ kind: "pad", i, layers: COPPER, s: c.s, r: c.r, pad: p }); });
+    pads.forEach((p, i) => { const c = padCapsule(p); items.push({ kind: "pad", i, layers: p.layers || COPPER, s: c.s, r: c.r, pad: p }); });
     board.tracks.forEach((t, ti) => { for (let k = 0; k + 1 < t.pts.length; k++) items.push({ kind: "track", ti, k, layers: [t.layer], s: [t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1]], r: t.w / 2 }); });
     board.vias.forEach((v, vi) => items.push({ kind: "via", vi, layers: COPPER, s: [v.x, v.y, v.x, v.y], r: (v.pad || board.rules.viaPad) / 2 }));
     (board.holes || []).forEach((h, hi) => { if (h.plated) items.push({ kind: "hole", hi, layers: COPPER, s: [h.x, h.y, h.x, h.y], r: holeRing(h) / 2 }); });
@@ -973,6 +1099,8 @@
     const [x, y] = nearest(padIt.s, other.s);
     return Math.hypot(x - b.x, y - b.y) <= b.r ? b.gap - 0.02 : null;
   }
+  // a pad has copper on that side ("F" or "B"): a through-hole pad on both
+  const onSide = (p, side) => !p.layers || p.layers.includes(side + ".Cu");
   function drc(board, model, conn, hvNets, fills, netlist) {
     const out = [], R = board.rules, on = k => !R.checks || R.checks[k] !== false, items = conn.items, hv = hvNets || new Set(), o = board.outline;
     const cls = net => (net === null || net === "short" ? "Signal" : netClassOf(net, model.names, hv, R));
@@ -1025,7 +1153,7 @@
     if (on("drill") || on("annular")) {
       const seen = new Set();
       model.pads.forEach(p => {
-        if (placedOff.has(p.part)) return;
+        if (placedOff.has(p.part) || p.smd) return;
         const k = p.part + p.num, ring = (Math.min(p.w, p.h) - p.drill) / 2;
         if (on("drill") && p.drill < R.minDrill - 1e-6 && !seen.has("d" + p.part)) { seen.add("d" + p.part); out.push({ kind: "drill", x: p.x, y: p.y, msg: `${p.ref}: drill ${p.drill} mm < ${R.minDrill} mm` }); }
         if (on("annular") && ring < R.minAnnular - 1e-6 && !p.pitchRing && !seen.has("a" + k)) { seen.add("a" + k); out.push({ kind: "annular", x: p.x, y: p.y, msg: `${p.ref}-${p.num}: annular ring ${ring.toFixed(2)} mm < ${R.minAnnular} mm` }); }
@@ -1091,13 +1219,13 @@
     });
     // silkscreen over pads (the maker clips it: a warning) — the reference and outlines of each part
     if (on("silk")) onBoard.forEach(({ g }) => {
-      const side = g.place.side || "F", hit = partSilk(g, false, board.outline).find(op => op.pts.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && (op.ref || pd.part !== g.key) &&
+      const side = g.place.side || "F", hit = partSilk(g, false, board.outline).find(op => op.pts.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && (op.ref || pd.part !== g.key) && onSide(pd, side) &&
         segSeg([op.pts[k - 1][0], op.pts[k - 1][1], p[0], p[1]], padCapsule(pd).s) < padCapsule(pd).r + op.w / 2)));
       if (hit) out.push({ kind: "silk", x: hit.pts[0][0], y: hit.pts[0][1], msg: `${g.ref}: ${hit.ref ? "its reference" : "silkscreen"} lies over a pad (${side === "B" ? "bottom" : "top"}); the maker clips it` });
     });
     if (on("silk")) (board.texts || []).filter(t => /SilkS$/.test(t.layer)).forEach(t => {
       const st = strokeText(t.text, t.x, t.y, t.size, t.rot, t.layer[0] === "B");
-      const over = st.lines.some(l => l.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && segSeg([l[k - 1][0], l[k - 1][1], p[0], p[1]], padCapsule(pd).s) < padCapsule(pd).r + st.w / 2)));
+      const over = st.lines.some(l => l.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && onSide(pd, t.layer[0]) && segSeg([l[k - 1][0], l[k - 1][1], p[0], p[1]], padCapsule(pd).s) < padCapsule(pd).r + st.w / 2)));
       if (over) out.push({ kind: "silk", x: t.x, y: t.y, msg: `The text "${t.text}" lies over a pad; the maker clips it` });
     });
     // track ends that touch nothing (other copper, or a pour of their net)
@@ -1532,5 +1660,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { socketPads, underSocket, holeRing, FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { socketPads, underSocket, holeRing, FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

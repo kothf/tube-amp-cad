@@ -900,7 +900,7 @@
     // tell a CAD that does not understand them (an older version still open)
     else if (/^(RUN_SIM|RUN_TRANSIENT|STOP_TRANSIENT|BOARD_SAVE|RUN_AC)$/.test(m.type)) channel.postMessage({ type: "ACK", req: m.type, id: m.id, version: VERSION });
     if (m.type === "BOARD_HELLO") sendBoardNetlist(true);                    // a board window opened: netlist and the stored board
-    else if (m.type === "BOARD_SAVE") storeBoard(m.doc);
+    else if (m.type === "BOARD_SAVE") { storeBoard(m.doc); renderBom(); }   // the BOM names the parts made SMD there
     else if (m.type === "BOARD_SELECT") selectFromBoard(m.ids);
     if (m.type === "RUN_SIM") runSim("full");                            // ▶ Simulate in an instrument window
     else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop);
