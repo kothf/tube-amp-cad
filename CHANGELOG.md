@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.98.1] - 2026-10-25
+
+### Changed
+- Code structure only, no change in behaviour: the Board window's script is split like the CAD's. Auto-route (`board-autoroute.js`), the side panels (`board-panels.js`) and the drawing (`board-draw.js`) are files of their own; `board-app.js` is down from 2,082 to 1,420 lines. Every example board's Gerbers, SVG, rule check, panels and on-screen drawing were compared with 3.98.0 and are identical.
+
 ## [3.98.0] - 2026-10-25
 
 ### Added
