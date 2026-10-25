@@ -271,14 +271,9 @@
       line(ctx, [3, -11, 7, -8]); line(ctx, [7, 8, 11, 11]);
     },
     led(ctx, c) {
-      // lit by its simulated current (c._lit, 0 to 1, set while the sheet is drawn): a glow in its
-      // colour round the body, the triangle filled with it
+      // lit by its simulated current (c._lit, 0 to 1, set while the sheet is drawn): the triangle
+      // filled with its colour
       const lit = c && c._lit, col = LED_GLOW[c && c.params.color] || LED_GLOW.red;
-      if (lit > 0) {
-        const g = ctx.createRadialGradient(0, 0, 3, 0, 0, 36);
-        g.addColorStop(0, `rgba(${col},${(0.9 * lit).toFixed(3)})`); g.addColorStop(1, `rgba(${col},0)`);
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 36, 0, Math.PI * 2); ctx.fill();
-      }
       DRAW.diode(ctx);
       if (lit > 0) {
         ctx.beginPath(); ctx.moveTo(-7, -8); ctx.lineTo(7, 0); ctx.lineTo(-7, 8); ctx.closePath();
@@ -1206,7 +1201,7 @@
         { id: "7", x: -50, y: -20, name: "DIS (discharge)" }, { id: "8", x: 20, y: -50, name: "VCC" }],
       value: c => c.params.model,
       fields: [{ key: "model", label: "Type", kind: "select", options: [["NE555", "NE555 · bipolar timer, 4.5–16 V, DIP-8"]], wide: true }],
-      info: () => "Bipolar 555 timer, pins as on the DIP-8 package. Modelled: the 5k–5k–5k divider (CV at ⅔ VCC), the trigger (⅓ VCC) and threshold (⅔ VCC) comparators, the latch, reset below 0.7 V, the output (high: VCC − 1.4 V less 3 Ω, sourcing only; low: 8 Ω, about 120 mA at most), the discharge transistor (12 Ω), and the chip's own supply current (about 3 mA at 5 V, 10 mA at 15 V). RESET has a weak pull-up, so left open it reads high. The steady-state run shows 5 ms; for slower timing run the oscilloscope's power-on transient.",
+      info: () => "Bipolar 555 timer, pins as on the DIP-8 package. Modelled: the 5k–5k–5k divider (CV at ⅔ VCC), the trigger (⅓ VCC) and threshold (⅔ VCC) comparators, the latch, reset below 0.7 V, the output (high: VCC − 1.4 V less 3 Ω, sourcing only; low: 8 Ω, about 120 mA at most), the discharge transistor (12 Ω), and the chip's own supply current (about 3 mA at 5 V, 10 mA at 15 V). RESET has a weak pull-up, so left open it reads high. Free-running with no source to follow, it sets the simulation's cycle: the run finds its period, however slow.",
       build: (c, net, alloc, out) => {
         const p = id => net(id), lo = alloc();
         // the latch and the transistors; nodes GND, TRIG, OUT, RESET, CV, THR, DIS, VCC and the divider's lower tap

@@ -952,14 +952,14 @@
     const fMin = freqs.length ? Math.min.apply(null, freqs) : 0;
     const fMax = freqs.length ? Math.max.apply(null, freqs) : 0;
     const window = opts.window || (fMin ? Math.max(1 / fMin, 2 / fMax, 0.002) : 0.005);
-    const period = fMin ? 1 / fMin : window;
+    let period = fMin ? 1 / fMin : window;
     // whole number of base periods so harmonic analysis of the capture is exact
-    const capture = fMin ? period * Math.max(1, Math.ceil(window / period - 1e-9)) : window;
+    let capture = fMin ? period * Math.max(1, Math.ceil(window / period - 1e-9)) : window;
     let h = fMax ? Math.min(1 / (fMax * 160), capture / 600) : capture / 400;
     h = Math.max(h, capture / 8000);
-    const stepsPerPeriod = Math.max(1, Math.round(period / h));
+    let stepsPerPeriod = Math.max(1, Math.round(period / h));
     h = period / stepsPerPeriod;
-    const captureSteps = Math.round(capture / h);
+    let captureSteps = Math.round(capture / h);
 
     let x = (opts.warm && opts.warm.length === dc.x.length ? Array.from(opts.warm) : dc.x.slice()), t = 0;
     // BDF2 history: the solution one step before x and that step's length (reset whenever
@@ -1130,8 +1130,47 @@
       result.warm = Float64Array.from(x);
     }
 
-    // a 555 with no source to follow runs freely: a window before the capture takes it past its start
-    if (!freqs.length && circ.timers.length && !runPeriod(h, captureSteps)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
+    // a 555 with no source to follow runs freely, at a period of its own: the time between two falls
+    // of its output (resets of the latch) after power-on, found in windows of doubling length (and
+    // step) until it first falls, then on at that step until it falls again. The capture starts
+    // there and holds three or more of those cycles (at least the usual 5 ms); the DC values are its
+    // averages, as a meter reads them. A cycle timed in fewer than 200 steps is timed again, two falls
+    // at 400 steps a cycle. A timer that never falls (a one-shot at rest) keeps the window
+    // before the capture that takes it past its start.
+    let fOsc = 0;
+    if (!freqs.length && circ.timers.length) {
+      const e0 = circ.timers[0], tLimit = opts.oscLimit || 30, falls = [];
+      let w = window, hh = w / 400;
+      const fail = () => { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; };
+      // on at step hh until the output has fallen n times in all, or past tEnd; false: did not converge
+      const until = (n, tEnd) => {
+        while (falls.length < n && t < tEnd && Date.now() - t0 < budgetMs * 0.5) {
+          const q = latchOf(e0, x), tn = t + hh, nx = step(x, tn, hh);
+          if (!nx) return false;
+          x = nx; t = tn;
+          if (q && !latchOf(e0, x)) falls.push(t);
+        }
+        return true;
+      };
+      while (!falls.length && t < tLimit && Date.now() - t0 < budgetMs * 0.5) {
+        if (!until(1, t + w)) return fail();
+        if (!falls.length) { w *= 2; hh = w / 400; }
+      }
+      if (falls.length && !until(2, tLimit)) return fail();
+      // a cycle of fewer than 200 steps (a fast timer found in the first window) is timed again, finer
+      for (let k = 0; k < 3 && falls.length >= 2 && falls[falls.length - 1] - falls[falls.length - 2] < 200 * hh; k++) {
+        hh = (falls[falls.length - 1] - falls[falls.length - 2]) / 400;
+        if (!until(falls.length + 2, tLimit)) return fail();
+      }
+      if (falls.length >= 2) {
+        const T = falls[falls.length - 1] - falls[falls.length - 2];
+        period = T; fOsc = 1 / T;
+        capture = T * Math.max(3, Math.ceil(window / T - 1e-9));
+        stepsPerPeriod = 400; h = T / stepsPerPeriod; captureSteps = Math.round(capture / h);
+      }
+      else if (!runPeriod(h, captureSteps)) return fail();
+      xBack = null;
+    }
 
     // Capture
     const nCap = captureSteps + 1;
@@ -1146,11 +1185,11 @@
     // of their peak) or, behind AC mains, starts it from zero. Then the reported
     // DC values are the averages over the settled capture window, what a meter
     // reads; the estimate is kept as dcEstimate.
-    const averaged = circ.els.some(e => e.dcValue !== undefined || e.acMains);
+    const averaged = fOsc > 0 || circ.els.some(e => e.dcValue !== undefined || e.acMains);
     const nodeSum = new Float64Array(nodeCount), devSum = {}, curSum = [];
     // animation frames: every element's terminal currents at up to 120 instants over the window
     // (options.frameSpan: one signal period, so a slow signal in a long mains window still gets them all)
-    const span = Math.max(2, Math.min(nCap - 2, opts.frameSpan > 0 ? Math.round(opts.frameSpan / h) : nCap - 2));
+    const span = Math.max(2, Math.min(nCap - 2, opts.frameSpan > 0 ? Math.round(opts.frameSpan / h) : fOsc ? stepsPerPeriod : nCap - 2));
     const nFr = Math.min(120, span), frAt = new Set(Array.from({ length: nFr }, (_, j) => 1 + Math.round(j * span / nFr)));
     const frames = { layout: currentsOf(circ, x, []).map((v, k) => (k % 3 === 2 ? 0 : v)), at: [], cur: [] };
     let xPrev = x;
@@ -1181,7 +1220,7 @@
       record(s);
       if ((s & 63) === 0 && settled) progress(0.88 + 0.12 * s / nCap);
     }
-    result.tran = { dt: h, samples: nCap, nodes, devices: devTrace, periods, settled, fBase: fMin, frames };
+    result.tran = { dt: h, samples: nCap, nodes, devices: devTrace, periods, settled, fBase: fMin || fOsc, frames };
     if (averaged && nCap > 1) {
       const n = nCap - 1, avg = { nodes: Array.from(nodeSum, v => v / n), devices: {}, currents: curSum.map((v, k) => (k % 3 === 2 ? v / n : v)) };
       avg.nodes[0] = 0;

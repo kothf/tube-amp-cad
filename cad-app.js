@@ -399,7 +399,7 @@
       if (result.ok) S.comps.forEach(c => { let st = null; try { st = partStress(c); } catch (e) { st = null; } if (st) S.sim.stress.set(c.id, st); });
       if (result.ok) {
         const tr = result.tran;
-        const what = tr && tr.fBase ? `${fmtEng(tr.samples * tr.dt, "s")} window, ${tr.periods} cycles to settle` : "DC operating point";
+        const what = tr && tr.fBase ? `${fmtEng(tr.samples * tr.dt, "s")} window, ${tr.periods ? `${tr.periods} cycles to settle` : `free-running at ${fmtEng(tr.fBase, "Hz")}`}` : "DC operating point";
         const took = result.elapsedMs >= 1000 ? (result.elapsedMs / 1000).toFixed(1) + " s" : result.elapsedMs + " ms";
         // a quick live run that ran out of time continues as a full run in the background
         const more = tr && !tr.settled && S.sim.mode === "live" && S.sim.live && !S.sim.pending;

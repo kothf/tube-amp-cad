@@ -1,4 +1,5 @@
-/* AC animation: one period of the signal, slowed to ANIM_S seconds. Each wire's current (the
+/* AC animation: one period of the signal, slowed to ANIM_S seconds (a cycle of REAL_S or more, such
+   as a slow 555 flasher's, plays in real time). Each wire's current (the
    simulation's terminal currents at 120 instants, carried through the wiring as for the
    current stickers) runs as dots along it, showing only its DC or its AC, by its node's
    voltage: where the node's DC is at least its AC rms, violet dots flow steadily with the
@@ -8,14 +9,18 @@
    to each wire's own peak, so the microamps at a grid move as visibly as the plate's
    milliamps; brighter dots, more current.
    LEDs light up by their current: with the animation on, at its moment; otherwise by the
-   settled average. A circuit with LEDs but no signal generator or mains (a flasher) plays its power-on
-   transient instead, in real time and looping, so the LEDs blink as they would on the bench. */
+   settled average. A free-running 555 sets its own cycle (the simulation finds its period), so a 555
+   flasher animates as any other circuit. A circuit with LEDs but no cycle at all (no signal
+   generator, mains or free-running 555) plays its power-on transient instead, in real time and
+   looping, so the LEDs light as they would on the bench. */
 (function (root) {
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadAnim = function (cad) {
     const { S, buildNetlist, fmtEng, getCtx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents } = cad;
-    const ANIM_S = 3, ANIM_DC_SPEED = 25;   // DC dots: units a second, about the AC dots' average
+    const ANIM_S = 3, REAL_S = 0.25, ANIM_DC_SPEED = 25;   // DC dots: units a second, about the AC dots' average
+    // how long one cycle of the animation takes (s)
+    const cycleS = d => (d.f > 0 && 1 / d.f >= REAL_S ? 1 / d.f : ANIM_S);
     const POWER_S = 4, LED_FULL = 0.01;     // the power-on playback's length (s); an LED's full brightness at 10 mA
     S.anim = { on: false, phase: 0, last: 0, data: null, off: new Map(), raf: 0, power: null };
     function animData() {
@@ -59,7 +64,7 @@
       const P = powerOn();
       if (P && P.ok) P.t = (P.t + dt) % P.tStop;
       if (d && !P) {
-        S.anim.phase = (S.anim.phase + dt / ANIM_S) % 1;
+        S.anim.phase = (S.anim.phase + dt / cycleS(d)) % 1;
         // AC dots move at up to 40 units a second at the wire's peak AC current, with its sign; DC dots steadily with the DC
         d.wires.forEach((a, id) => S.anim.off.set(id, (S.anim.off.get(id) || 0) + dt * (a.mode === "dc" ? ANIM_DC_SPEED * Math.sign(a.dc) : 40 * animAt(a.ac, S.anim.phase) / a.pk)));
       }
@@ -76,12 +81,13 @@
       }
       render();
     }
-    // the power-on playback, when the animation is on and has no signal cycle but LEDs to light:
+    // the power-on playback, when the animation is on and has no cycle (no source, no free-running 555) but LEDs to light:
     // the first POWER_S seconds after switch-on, each LED's current probed across its series
     // resistance (the bins' largest, so a short blink still shows); run again when the circuit's
     // netlist changes
     function powerOn() {
-      if (!S.anim.on || !S.comps.some(c => c.type === "led") || S.comps.some(c => c.type === "siggen" || c.type === "mains")) return null;
+      const r = S.sim.result;
+      if (!S.anim.on || !S.comps.some(c => c.type === "led") || S.comps.some(c => c.type === "siggen" || c.type === "mains") || (r && r.tran && r.tran.fBase)) return null;
       if (S.anim.power && !S.anim.power.dirty) return S.anim.power;
       const netlist = buildNetlist(), key = JSON.stringify(netlist.elements), old = S.anim.power;
       if (old && old.key === key) { old.dirty = false; return old; }
@@ -158,7 +164,7 @@
         ctx.fillStyle = P.ok ? "#ffd54f" : "#58a6ff"; ctx.fillRect(x + 7, y + 21, (w - 14) * f, 5);
         return;
       }
-      ctx.fillText(`AC · ${fmtEng(d.f, "Hz")}, one cycle in ${ANIM_S} s · ${Math.round(ph * 360)}°`, x + 7, y + 13);
+      ctx.fillText(`AC · ${fmtEng(d.f, "Hz")}, ${cycleS(d) === ANIM_S ? `one cycle in ${ANIM_S} s` : "real time"} · ${Math.round(ph * 360)}°`, x + 7, y + 13);
       // one cycle of a sine, with the moment marked
       const sx = x + 7, sw = w - 14, sy = y + 24;
       ctx.strokeStyle = "rgba(201,209,217,0.5)"; ctx.beginPath();
