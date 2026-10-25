@@ -90,7 +90,7 @@ Firefox is not tested.
   come from Katsnelson & Larionov for the Soviet tubes and from the makers'
   datasheets for the others (RCA, Philips, Mullard, Western Electric); a
   rating a datasheet does not give is not checked.
-- **Toolbar.** One row: *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, renumber), undo / redo, the *Select | Wire* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
+- **Toolbar.** One row: *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, renumber), undo / redo, the *Select | Wire | Probe* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
 - **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html`, opens from *Windows ▾ → Manual*, the help dialog, or **?** in each instrument. It covers:
   - a quick start, then every part and field;
   - all 99 tubes in a sortable table;
@@ -112,8 +112,10 @@ Firefox is not tested.
     downloads the file.
   - The circuit is also autosaved in the browser.
   - The open file's name shows in the toolbar and the browser tab's title; a
-    yellow • marks unsaved changes (the board's too). A new circuit or an
-    example reads "Untitled".
+    yellow • marks unsaved changes (the board's too). A circuit not saved to
+    a file yet (a new one, or an example) shows its title block's title (or
+    its identification number) in grey italics, such as "NE555 metronome:
+    astable into a speaker"; "Untitled" only when the title block is empty.
 
 ## Parts
 
@@ -122,7 +124,7 @@ Firefox is not tested.
 | Passive | resistor (with power rating, marked in the symbol per ГОСТ 2.728), potentiometer (lin/log), capacitor, electrolytic, choke with DCR, changeover switch (ganged sections), speaker: an ideal resistor, or a **loudspeaker** from its Thiele–Small parameters (Re, Le, fs, Qms, Qes; typical guitar and hi-fi drivers to start from) with its impedance and phase curve in the inspector |
 | Transformers | generic single-ended and push-pull/UL output transformers and a generic power transformer; the seven **Hammond 125SE** output transformers and 25 **Hammond 300-series** power transformers, modelled from the maker's drawings (winding resistances, inductance, excitation, no-load voltages, ratings) |
 | Tubes | **99 tubes**: the Soviet receiving tubes from Katsnelson & Larionov, «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981), including triodes and double triodes (6С2С, 6С33С, 6Н1П…6Н33Б), voltage and output pentodes (6Ж1П, 6Ж32П, 6П1П, 6П3С, 6П14П, 6П27С…), triode-pentodes as two sections (6Ф1П, 6Ф3П, 6Ф4П, 6Ф5П) and kenotrons (5Ц3С, 5Ц4С, 6Ц4П…), with the handbook's ratings and pinouts; plus Western tubes from their makers' datasheets (12AX7, EL84, EL34, KT88, 300B, 845, GZ34…). Pentodes can be used triode-connected. **Import SPICE model…** adds any tube model of your own (see below). |
-| Semiconductors | silicon diodes (1N4007, UF4007, 1N4148); zener diodes 1N4733A … 1N5388B (5.1–200 V, 1 W and 5 W); LEDs (red, yellow, green, blue) for cathode bias; **NPN** 2N2222A, 2N3904, BC107, BC547B, BD139, MPSA42, MJE340 and **PNP** 2N2907A, 2N3906, BC177, BC557B, BD140, MPSA92, MJE350; **drivers and power output** in complementary pairs: 2SD669A/2SB649A, 2SC4793/2SA1837, MJE15032/MJE15033, TIP41C/TIP42C, 2SC5200/2SA1943, MJL3281A/MJL1302A, MJL21194/MJL21193, and in TO-3 (on wires, for a chassis heatsink) MJ15003/MJ15004, MJ15024/MJ15025, 2N3055/MJ2955; **germanium** (VBE about 0.2 V, low fT): USSR MP39B, MP40A, MP41A, MP42B, MP25B, MP26B, MP38A (NPN), GT402G/GT404G, P213B (МП39Б … П213Б) and Western AC127/AC128, AC187/AC188, OC71, NKT275, 2N404, AD149, AD161/AD162, with their collector leakage (ICBO, doubling every 10 °C); every bipolar transistor has a **Temperature** (VBE −2 mV/°C, hFE and leakage rising); **N-MOSFETs** 2N7000, BS170, IRF510, IRF540, IRF820, IRF840, IRFP240, IRFP250, IRFP460, the laterals 2SK1058 and ECX10N20, and the depletion DN2540 and LND150 for current sources; **P-MOSFETs** BS250, IRF9540, IRF9610, IRF9640, IRFP9240 and the laterals 2SJ162 and ECX10P20. The power models are fitted to the datasheets (hFE and its fall at high current, VBE, capacitances; for MOSFETs threshold and transconductance); the bipolar model has no emitter or base resistance, so VBE at several amperes reads somewhat low |
+| Semiconductors | silicon diodes (1N4007, UF4007, 1N4148); zener diodes 1N4733A … 1N5388B (5.1–200 V, 1 W and 5 W); LEDs (red, yellow, green, blue) for cathode bias; **NPN** 2N2222A, 2N3904, BC107, BC547B, BD139, MPSA42, MJE340 and **PNP** 2N2907A, 2N3906, BC177, BC557B, BD140, MPSA92, MJE350; **drivers and power output** in complementary pairs: 2SD669A/2SB649A, 2SC4793/2SA1837, MJE15032/MJE15033, TIP41C/TIP42C, 2SC5200/2SA1943, MJL3281A/MJL1302A, MJL21194/MJL21193, and in TO-3 (on wires, for a chassis heatsink) MJ15003/MJ15004, MJ15024/MJ15025, 2N3055/MJ2955; **germanium** (VBE about 0.2 V, low fT): USSR MP39B, MP40A, MP41A, MP42B, MP25B, MP26B, MP38A (NPN), GT402G/GT404G, P213B (МП39Б … П213Б) and Western AC127/AC128, AC187/AC188, OC71, NKT275, 2N404, AD149, AD161/AD162, with their collector leakage (ICBO, doubling every 10 °C); every bipolar transistor has a **Temperature** (VBE −2 mV/°C, hFE and leakage rising); **N-MOSFETs** 2N7000, BS170, IRF510, IRF540, IRF820, IRF840, IRFP240, IRFP250, IRFP460, the laterals 2SK1058 and ECX10N20, and the depletion DN2540 and LND150 for current sources; **P-MOSFETs** BS250, IRF9540, IRF9610, IRF9640, IRFP9240 and the laterals 2SJ162 and ECX10P20. The power models are fitted to the datasheets (hFE and its fall at high current, VBE, capacitances; for MOSFETs threshold and transconductance); the 2N3055 / MJ2955, TIP41C / TIP42C and MJL21194 / MJL21193 also have base and emitter resistance, so their VBE rises with the current as on the bench (the other power parts have none yet, so their VBE at several amperes reads somewhat low) |
 | Sources | DC supplies: DC supply (positive for B+, negative for grid bias, with an internal resistance), current source (constant current with an output resistance). AC sources: signal generator (sine, square, triangle; Vpk, Vrms or dBV), AC mains (feeds a power transformer) |
 | Ground & connectors | Ground, sheet connector |
 | Integrated circuits | **op-amps**: TL071, TL072 (dual), TL074 (quad) with JFET inputs, LM741, LM301A (compensated by your own capacitor between pins 1 and 8), LM324 (quad, single supply, inputs and output down to V−); each with its datasheet's open-loop gain, gain-bandwidth, slew rate, output swing, short-circuit current, input bias and supply current. The amplifiers of a dual or quad (DA1.1 … DA1.4) share one DIP-8 or DIP-14 on the board; **NE555 timer** (DIP-8 on the board): the 5k–5k–5k divider, both comparators, the latch, reset, the output (VCC − 1.4 V high, 8 Ω low, about 120–250 mA at most) and discharge stages and the chip's supply current, from TI's data. Its latch switches at the instant a comparator crosses, not on the time grid, so the timing does not depend on the step; the inspector reads the output's frequency and duty cycle |
@@ -175,7 +177,8 @@ with them (see [Accuracy](#accuracy)):
 | NE555 car tachometer | 555 | 555-timer-circuits.com: one-shot 47k / 100 nF, 5.16 ms pulses (1.1 RC = 5.17 ms); meter current proportional to the spark rate |
 | NE555 simplest oscillator | 555 | 555-timer-circuits.com: output to capacitor through 10k, 100 nF: 572 Hz at 60 % (a full-swing output would give 721 Hz at 50 %) |
 
-An example opens untitled, so *Save* asks for a new name. Ctrl+Z brings back
+An example opens unsaved (the toolbar shows its title), so *Save* asks for a
+file name. Ctrl+Z brings back
 the circuit that was on the sheet.
 
 ## Measuring on the schematic
@@ -203,6 +206,15 @@ the circuit that was on the sheet.
     sticker. If there is no room at all, a sticker is left out.
   - Hovering a wire shows its voltage, AC swing and current in the status
     bar. *View ▾ → Voltages / Currents* turns the stickers on and off.
+- **Voltmeter probe.** The *Probe* tool (<kbd>P</kbd>, beside Select and
+  Wire) reads a node like a bench meter. Point at any wire or pin after a
+  simulation: a card beside the pointer shows the DC voltage, AC rms,
+  peak-to-peak and frequency, with a small scope trace of the waveform
+  (DC coupled, triggered, auto-ranging), and the node's wires glow yellow.
+  - A click leaves the probe on that node. Its card stays on the sheet and
+    keeps reading through edits and new simulations, also after you go back
+    to Select: handy with *Live* on while you turn a value in the inspector.
+  - <kbd>Esc</kbd>, the card's × or a click on empty sheet removes it.
 - **Scope screens on the schematic.** An oscilloscope part shows its two
   channels live; double-click it for the full instrument.
 - **Power-on transient.** The oscilloscope can show the first seconds after
@@ -245,7 +257,11 @@ the circuit that was on the sheet.
   - equal parts on one line with designator ranges (R1-R4); both sections of
     a dual tube count once; a tube-socket line per base;
   - ratings (resistor wattage, transistor Vceo / Ic / Ptot / package,
-    transformer ratings);
+    transformer ratings), and for each capacitor the first standard voltage
+    rating at or above 1.25 × the peak voltage the simulation puts across it
+    (a series string of 450 V parts above 550 V for an electrolytic);
+  - a part made SMD on the board names its package ("Resistor, SMD 1206"),
+    on a line apart from the through-hole parts of the same value;
   - the simulated worst case: dissipation, capacitor peak voltage, LED
     current;
   - a part number you can type in, saved with the circuit.
@@ -262,7 +278,12 @@ the circuit that was on the sheet.
   - each tube's Ia, Va and Pa, each transistor's current and dissipation,
     each speaker's output and each scope channel's AC;
   - values are normally distributed with the tolerance as 2σ, cut off at the
-    tolerance; a seed repeats the same runs.
+    tolerance; a seed repeats the same runs;
+  - the runs share every processor core. On a circuit slow to settle (a
+    valve-rectified supply, say) each varied run starts from the circuit as
+    drawn already settled, so it has only a short way to go: the stereo
+    Gubin example's 10 runs take 5.4 s instead of 11 s on 4 cores, with the
+    same table.
 - **SPICE.** *Export SPICE netlist* writes an LTspice netlist: tubes as
   behavioural sources with the same equations the simulator uses, transistors
   as Q and M elements with their `.model` lines.
@@ -359,12 +380,31 @@ the circuit file, so one file holds both.
   - board-mount EI transformers and chokes (EI30 to EI96, primary on one
     side, secondary on the other), with pins named as in the schematic;
   - toggle switches (SPDT, DPDT for a two-section switch), screw terminals
-    (5.08 mm, 7.5 mm for mains), RCA, 3.5 mm and 6.35 mm jacks.
+    (5.08 mm, 7.5 mm for mains), RCA, 3.5 mm and 6.35 mm jacks;
+  - op-amps and the NE555 in DIP-8 and DIP-14; the amplifiers of a dual or
+    quad (DA1.1 … DA1.4) share one package, each on its maker's pins.
 
   Dimensions are typical: check them against the part you buy. Parts that
   live on the chassis (transformers, chokes, speaker, pots) can instead get
   wire pads or a screw terminal.
   Every part's footprint can be changed in the inspector.
+- **SMD versions.** Tick *SMD* in the inspector to switch a part to its
+  surface-mount footprint, or a whole selection at once (each part that has
+  one):
+  - resistors 0603–2512 chips by power, capacitors 0603–2220 chips by value,
+    electrolytics V-chip cans up to Ø18 mm;
+  - signal diodes SOD-123, SOD-323 or MiniMELF, rectifiers and zeners SMA,
+    SMB or SMC, LEDs 0805 or 1206;
+  - small transistors SOT-23 (or SOT-89), TO-126 parts SOT-223 or DPAK,
+    TO-220 parts D²PAK or DPAK; the NE555 and op-amps SOIC-8 or SOIC-14; a
+    trimmer TC33.
+
+  Valves, transformers, panel pots, jacks and big power transistors stay
+  through-hole (the checkbox is greyed for them). SMD pads sit on the copper
+  of the part's side only, with no hole: the ratsnest, the rule check, pours,
+  Auto-route and manual routing all follow that (a track ending on an SMD pad
+  on the other side asks for a via first). The 3D view, the part preview and
+  STEP show the SMD bodies.
 - **Placement.** New parts wait in a row below the board. Drag them on, or
   *Place all on the board*: each part goes where it sits in the schematic
   (the schematic's extent mapped onto the board), big parts first, each in the
@@ -385,6 +425,63 @@ the circuit file, so one file holds both.
   - A track entering a tube pin may pass the socket's other pins as closely as
     the pin itself does: the socket's own pin spacing is a limit no layout can
     beat.
+- **Auto-route** sends the open connections to
+  [Freerouting](https://www.freerouting.app) (free, GPL-3) and adds the tracks
+  and vias it finds. Freerouting runs on your own computer, or another one on
+  your network; the board never goes anywhere else.
+  - Start its API server with Java 25 and `freerouting.jar`:
+
+    ```sh
+    java -jar freerouting.jar --gui.enabled=false --api_server.enabled=true \
+      --api_server.authentication.enabled=false \
+      --api_server.cors_origins=https://aerocat.tech
+    ```
+
+    or with its Docker image (it then has to listen on all addresses):
+
+    ```sh
+    docker run -d --name freerouting --restart unless-stopped -p 37864:37864 \
+      ghcr.io/freerouting/freerouting:latest java -jar /app/freerouting-executable.jar \
+      --gui.enabled=false --api_server.enabled=true \
+      --api_server.endpoints=http://0.0.0.0:37864 \
+      --api_server.authentication.enabled=false \
+      --api_server.cors_origins=https://aerocat.tech
+    ```
+
+    `cors_origins` must name the address the CAD is opened from (use your
+    own when you run it locally); without it Freerouting answers but the
+    browser keeps the page out. `authentication.enabled=false` turns off its
+    API key.
+  - The button stays grey until Freerouting answers at
+    `http://127.0.0.1:37864`. *Board ▾ → Freerouting…* sets another address
+    (a PC or server on your network: its IP, and `:port` if not 37864), tests
+    it, and shows both start commands ready to copy. When it does not answer,
+    the dialog says why: Freerouting runs but was started without this page's
+    address in `cors_origins`, something else answers there, it wants an API
+    key, or nothing answers.
+  - An https page calling a plain http address on another computer: Chrome,
+    Vivaldi and other Chromium browsers ask once to allow access to the local
+    network; allow it. If the browser refuses, an SSH tunnel makes it local:
+    `ssh -N -L 37864:127.0.0.1:37864 user@that-pc`, then use the default
+    address.
+  - The board goes out with its design rules: each net's track width (its
+    class, or its DC current) and the clearance between every two nets, by
+    voltage too. Pour nets, and GND with star grounding, are left to the
+    pour. A pad crowded by its footprint's neighbours first gets a short
+    straight lead to where the full clearance holds.
+  - Before routing it clears copper left from where the parts used to be:
+    loose ends, copper reaching no pad or joining two nets, tracks breaking a
+    clearance. Those connections are routed afresh; locked copper stays.
+  - What it cannot route within the rules stays in the ratsnest, and one
+    <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the whole run back. The Gubin board
+    (07), routed from scratch, gets 46 of its 59 connections in about 7 s,
+    with no rule violations.
+  - By hand: *Export ▾ → Freerouting design (DSN)*, route it in
+    Freerouting's window or `java -jar freerouting.jar -de board.dsn -do
+    board.ses`, then *Board ▾ → Import routes (SES)…*.
+- **Unroute** (beside Auto-route) removes every track and via, to route again
+  from scratch. Locked tracks and vias stay; <kbd>Ctrl</kbd>+<kbd>Z</kbd>
+  brings them all back.
 - **Several at once:** drag a box over empty space to select what lies inside
   it (left to right) or what it touches (right to left); <kbd>Shift</kbd>+click
   adds or removes single things. Drag any selected item and everything
@@ -404,7 +501,10 @@ the circuit file, so one file holds both.
 - **Editing tracks:** drag a segment sideways and its neighbours follow (a 45°
   corner stays 45°; a track's end gets a jog). <kbd>U</kbd> selects the whole
   connected track, so <kbd>Del</kbd> removes it or the inspector sets its
-  width. <kbd>Shift</kbd>+click adds tracks to the selection.
+  width. <kbd>Shift</kbd>+click adds tracks to the selection. Deleting one
+  track of a route takes the copper of that route it leaves hanging (stubs
+  and vias touching nothing) with it, up to the pads, a pour or copper still
+  in use; locked copper stays.
 - **Copper pours** (*Pour*, or *+ GND plane* / *+ GND pour round the parts* in
   the board inspector, or *+ GND pour round these parts* for a selection):
   - a pour is a shape you edit: drag a corner, drag the **+** in the middle of
@@ -476,6 +576,10 @@ the circuit file, so one file holds both.
     connector XH1 carrying the sum of the heater currents; 12AX7-type heaters
     at 6.3 or 12.6 V; a heater joined to its cathode (GZ34) on a winding of its
     own; internal shields (6N23P pin 9) to GND;
+  - **under a socket's body, tracks may pass its pins at their own spacing**
+    (on by default): a noval socket's pins are 1.27 mm apart, closer than any
+    HV clearance, so there a track or via may pass a pin as close as that
+    pin's nearest neighbour is. Everywhere else the full clearance holds;
   - the distances of the valve layout checks;
   - **ground scheme**: free, or a **star point** XG1 that every ground return
     (Supply, Output, Input, each small-signal stage, chosen from the circuit
@@ -542,7 +646,11 @@ the circuit file, so one file holds both.
     outline (Gerber RS-274X with X2 attributes: every aperture says what it
     is, pad, via pad, conductor, washer pad or profile), plated and
     non-plated drill files (Excellon, each tool marked component, via or
-    mechanical drill), and a README with the board's specification. The
+    mechanical drill), and a README with the board's specification. With
+    SMD parts, the copper and solder mask carry each SMD pad on its own side
+    only, and solder paste layers (`F_Paste`, `B_Paste`) and a placement file
+    (`-pos.csv`: reference, value, package, centre, rotation, side) come
+    along for assembly. The
     silkscreen is cut to the board and kept off every pad and hole; comments
     are plain ASCII. Checked by reading the files back with an independent
     Gerber library (gerbonara): every pad, via and hole in place. Parts not
@@ -563,6 +671,7 @@ the circuit file, so one file holds both.
 | <kbd>D</kbd> or <kbd>Ctrl</kbd>+<kbd>D</kbd> | duplicate |
 | <kbd>Del</kbd> | delete |
 | <kbd>W</kbd> / <kbd>V</kbd> / <kbd>Esc</kbd> | wire tool / select tool / cancel, clear the selection |
+| <kbd>P</kbd> | voltmeter probe |
 | <kbd>F</kbd> | fit the sheet in use; again: all sheets |
 | <kbd>B</kbd> | bill of materials |
 | <kbd>+</kbd> / <kbd>−</kbd>, wheel | zoom; <kbd>Space</kbd>-drag or middle-drag pans |
