@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.98.6] - 2026-10-25
+
+### Fixed
+- Picking Bottom copper (the layer list, the Layers panel or "only") while a track was already being placed left the track on the top, so it was drawn in the top's red while the bottom showed as active. The layer picked now carries the track with it: before its first corner the track simply starts on the new side; after a corner a via goes in, as V does. A track starting on an SMD pad stays on that pad's side and says so.
+
 ## [3.98.5] - 2026-10-25
 
 ### Fixed

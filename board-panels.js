@@ -61,8 +61,7 @@
         row.querySelector(".solo").addEventListener("click", () => {
           const only = LAYER_INFO.every(([j]) => S.show[j] === (j === k));
           LAYER_INFO.forEach(([j]) => { S.show[j] = only ? true : j === k; });
-          if (!only && k.endsWith("Cu")) S.layer = k;
-          $("layer").value = S.layer; renderLayers(); render();
+          if (!only && k.endsWith("Cu")) setLayer(k); else { renderLayers(); render(); }
         });
       });
     }
