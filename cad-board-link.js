@@ -8,10 +8,11 @@
     const { S, VERSION, channel, compBBox, compPins, frames, getCanvas, netDC, netWave, pinCurrents, render, selSig, showFile, topo, updateInspector, usedCustomTubes } = cad;
     // The board as a tab of this window (Windows ▾ → Board in this window): board.html in a frame
     // over the whole page, shown by Board and hidden by the Schematic button in its own toolbar.
-    // Off (the default), the board has a window of its own, for a second monitor.
+    // Off (the default), the board has a window of its own, for a second monitor; in Safari, which
+    // will not let the Board window bring this one back, on unless it was unticked.
     const BOARD_TAB_KEY = "tubecad_board_tab";
-    let boardTab = false;
-    try { boardTab = localStorage.getItem(BOARD_TAB_KEY) === "1"; } catch (e) {}
+    let boardTab = !!ToolWindows.cantRaise;
+    try { const v = localStorage.getItem(BOARD_TAB_KEY); if (v !== null) boardTab = v === "1"; } catch (e) {}
     const boardFrame = () => document.getElementById("board-tab");
     function showBoard() {
       if (!boardTab) { ToolWindows.open("board.html"); return; }
