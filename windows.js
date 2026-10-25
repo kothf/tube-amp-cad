@@ -30,19 +30,26 @@
       (file === "circuit_sandbox.html" && page === "board.html" ? " Or tick Windows ▾ → Board in this window in the Circuit CAD: the Schematic | Board switch then flips in one window." : "");
     n.hidden = false; clearTimeout(notRaised.t); notRaised.t = setTimeout(() => { n.hidden = true; }, 9000);
   }
+  // the release this page belongs to (its ?v= stamp). A tool window left open from an older
+  // release (an old Board toolbar, say) is reloaded when a button brings it up, and the URL a
+  // window opens carries the stamp too, so a browser cannot answer it from an old cached page.
+  const version = (() => { const sc = document.currentScript; return (sc && new URL(sc.src, location.href).searchParams.get("v")) || ""; })();
   const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tube_cad_v2") : null;
 
   /** Open a tool page, or focus it if it is already open. params: e.g. { scope: id } */
   function open(file, params) {
     // framed: the page that holds this one may be the one asked for (the Board's Schematic button)
     if (framed) { try { if (window.parent.location.pathname.split("/").pop() === file) { window.parent.postMessage({ type: "SHOW_PAGE", page: file }, location.origin); return window.parent; } } catch (e) {} }
-    const name = NAMES[file], url = new URL(file + (params ? "?" + new URLSearchParams(params) : ""), location.href).href;
+    const q = new URLSearchParams(params || {}); if (version) q.set("v", version);
+    const name = NAMES[file], url = new URL(file + (String(q) ? "?" + q : ""), location.href).href;
     let w = null;
     try { w = window.open("", name); } catch (e) { w = null; }
     if (!w) { w = window.open(url, name); if (w) mine.add(w); return w; }   // the browser refused a named lookup
     let fresh = true;
     try { fresh = !w.location.href || w.location.href === "about:blank"; } catch (e) { fresh = false; }
-    if (fresh) { w.location.href = url; mine.add(w); }
+    let stale = false;
+    try { stale = !fresh && !!w.ToolWindows && w.ToolWindows.version !== version; } catch (e) {}
+    if (fresh || stale) { w.location.href = url; mine.add(w); }
     else if (params && params.scope && bc) bc.postMessage({ type: "SELECT_SCOPE", id: params.scope, target: name });
     try { w.focus(); } catch (e) {}
     // a window this page did not open (the one that opened it, say) stays behind in Safari
@@ -56,5 +63,5 @@
     if (!to || to === page || (page === "circuit_sandbox.html" && to === "board.html")) return;
     e.preventDefault(); open(to);
   });
-  root.ToolWindows = { open, NAMES, cantRaise };
+  root.ToolWindows = { open, NAMES, cantRaise, version };
 })(window);

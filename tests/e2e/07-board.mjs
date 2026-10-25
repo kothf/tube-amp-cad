@@ -15,6 +15,13 @@ import { readFile } from "node:fs/promises";
   for (let i = 0; i < 3; i++) { await bd.click("#btn-cad"); await cad.click("#btn-doc-board"); }
   await bd.waitForTimeout(200);
   check(ctx.pages().length === nPages && await bd.evaluate(() => !document.getElementById("win-note")), `Schematic and Board, back and forth three times, bring the open windows up instead of opening new ones (${ctx.pages().length} pages)`);
+  // a Board window left open from an older release is reloaded when Board brings it up
+  check(/[?&]v=/.test(bd.url()), `the Board window's address carries the release stamp, so a browser cannot serve an old cached page (${bd.url().split("/").pop()})`);
+  await bd.evaluate(() => { ToolWindows.version = "0.0.1"; window.__oldPage = true; });
+  await cad.click("#btn-doc-board");
+  await bd.waitForFunction(() => !window.__oldPage && window.BoardApp && BoardApp.state.model, null, { timeout: 10000 }).catch(() => {});
+  const relV = await cad.evaluate(() => ToolWindows.version);
+  check(await bd.evaluate(v => !window.__oldPage && ToolWindows.version === v && !!BoardApp.state.model, relV) && ctx.pages().length === nPages, "a Board window from an older release is reloaded (new toolbar) when Board brings it up, still one window");
   // cross-probing a net: wires of one net selected in the schematic light it up on the board, and a net highlighted on the board selects its wires
   const xpWire = await cad.evaluate(() => { const S = TubeCAD.state, T = TubeCAD.topo(), w = S.wires.find(w => T.wireNet.get(w.id) > 0); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.wires.add(w.id); TubeCAD.updateInspector(); return T.wireNet.get(w.id); });
   await bd.waitForFunction(n => BoardApp.state.netHL === n, xpWire, { timeout: 3000 }).catch(() => {});

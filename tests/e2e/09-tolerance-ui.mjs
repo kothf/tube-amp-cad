@@ -75,7 +75,7 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   await cad.click("#btn-windows"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
   await cad.click("#btn-doc-board");
   await cad.waitForFunction(() => { const f = document.getElementById("board-tab"); return f && f.contentWindow.BoardApp && f.contentWindow.BoardApp.state.model; }, null, { timeout: 10000 }).catch(() => {});
-  const t1 = await cad.evaluate(() => { const f = document.getElementById("board-tab"), r = f.getBoundingClientRect(); return { shown: !f.hidden && r.width === innerWidth && r.height === innerHeight, parts: f.contentWindow.BoardApp.state.model.parts.length, name: f.contentWindow.name }; });
+  const t1 = await cad.evaluate(() => { const f = document.getElementById("board-tab"), r = f.getBoundingClientRect(); return { shown: !f.hidden && r.width === innerWidth && r.height === innerHeight && /[?&]v=/.test(f.src), parts: f.contentWindow.BoardApp.state.model.parts.length, name: f.contentWindow.name }; });
   await cad.frameLocator("#board-tab").locator("#btn-cad").click(); await cad.waitForTimeout(150);
   const t2 = await cad.evaluate(() => document.getElementById("board-tab").hidden);
   await cad.keyboard.press("Alt+B"); await cad.waitForTimeout(150);

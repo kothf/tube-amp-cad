@@ -17,7 +17,7 @@
     function showBoard() {
       if (!boardTab) { ToolWindows.open("board.html"); return; }
       let f = boardFrame();
-      if (!f) { f = document.createElement("iframe"); f.id = "board-tab"; f.title = "Board Design"; f.src = "board.html"; document.body.appendChild(f); f.addEventListener("load", () => { if (!f.hidden) f.contentWindow.focus(); }); }
+      if (!f) { f = document.createElement("iframe"); f.id = "board-tab"; f.title = "Board Design"; f.src = "board.html" + VERSION; document.body.appendChild(f); f.addEventListener("load", () => { if (!f.hidden) f.contentWindow.focus(); }); }
       f.hidden = false; document.body.classList.add("board-tab-on");
       try { f.contentWindow.focus(); } catch (e) {}
     }
