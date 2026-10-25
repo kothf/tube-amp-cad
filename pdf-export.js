@@ -171,5 +171,28 @@
     return bytes;
   }
 
-  root.PdfExport = { PdfCanvas, buildPdf, ink };
+  // Print: the PDF goes to the browser's print dialog, so the paper gets the same vector pages
+  // as Save as PDF (page size and scale included). Chromium prints it from a hidden frame;
+  // other browsers can't print a PDF in a frame, so it opens in a tab of its own to print there.
+  // Called from a click or key press (the tab is a pop-up). Returns "dialog", "tab" or
+  // "blocked" (pop-ups refused: the PDF is downloaded instead).
+  function print(bytes, opts) {
+    opts = opts || {};
+    const doc = root.document, url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
+    const inTab = () => {
+      if (root.open(url, "_blank")) return "tab";
+      const a = doc.createElement("a"); a.href = url; a.download = opts.name || "print.pdf"; a.click();
+      return "blocked";
+    };
+    if (opts.tab || !root.chrome) return inTab();
+    const old = doc.getElementById("pdf-print-frame"); if (old) old.remove();
+    const f = doc.createElement("iframe");
+    f.id = "pdf-print-frame"; f.title = "Print";
+    f.style.cssText = "position: fixed; right: 0; bottom: 0; width: 0; height: 0; border: 0; visibility: hidden";
+    f.onload = () => setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { inTab(); } }, 50);
+    f.src = url; doc.body.appendChild(f);
+    return "dialog";
+  }
+  root.PdfExport = { PdfCanvas, buildPdf, ink, print };
 })(typeof window !== "undefined" ? window : globalThis);

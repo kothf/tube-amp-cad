@@ -1346,6 +1346,7 @@
     .add({ id: "save", keys: ["Ctrl+S"], prevent: true, run: () => saveFile(), help: "save" })
     .add({ id: "save-as", keys: ["Ctrl+Shift+S"], prevent: true, run: () => saveFileAs(), help: "save as" })
     .add({ id: "open", keys: ["Ctrl+O"], prevent: true, run: () => openDialog(), help: "open" })
+    .add({ id: "print", keys: ["Ctrl+P"], prevent: true, inInputs: true, run: () => openPrintDialog(), help: "print the sheet, all sheets or the bill of materials" })
     .add({ id: "simulate", keys: ["Ctrl+Enter"], prevent: true, run: () => runSim("full"), help: "simulate until settled" })
     .add({ id: "board", keys: ["Alt+B"], prevent: true, inInputs: true, run: showBoard, help: "the board layout (Alt+S in the Board window comes back)" })
     .add({ id: "board-tab", label: "Board in this window", run: () => setBoardTab(!boardTab), check: () => boardTab })
@@ -2768,6 +2769,41 @@
     setStatus("ok", sheets.length > 1 ? `Saved ${sheets.length} PNG files, one per sheet (${last.dpi} dpi)` : `Saved ${fileOf(sheets[0])}.png (${last.w} × ${last.h} px, ${last.dpi} dpi${last.dpi < +expOpts.dpi ? ", reduced to fit" : ""}, ${last.kb} kB)`);
     return sheets.length;
   }
+  // Print (Ctrl+P): this sheet, all sheets or the bill of materials, as the pages Save as PDF
+  // makes (vector, black on white, each sheet at its own paper size), through the browser's
+  // print dialog (PdfExport.print)
+  const prnOpts = { which: "current" };
+  const printModal = () => document.getElementById("print-modal");
+  const printSheet = () => S.comps.find(c => c.id === printModal().dataset.sheet) || null;
+  function openPrintDialog(which) {
+    if (which) prnOpts.which = which;
+    const cur = currentSheet();
+    printModal().dataset.sheet = cur ? cur.id : "";
+    syncPrintDialog(); printModal().hidden = false;
+  }
+  function syncPrintDialog() {
+    const list = frames(), cur = printSheet();
+    if (list.length < 2 && prnOpts.which === "all") prnOpts.which = "current";
+    document.querySelectorAll("#print-modal [data-p]").forEach(b => { b.classList.toggle("active", prnOpts.which === b.dataset.p); b.disabled = b.dataset.p === "all" && list.length < 2; });
+    const size = f => { const g = CadLib.sheetGeom(f); return `${f.params.size || "A2"}, ${Math.round(g.W / CadLib.MM)} × ${Math.round(g.H / CadLib.MM)} mm`; };
+    document.getElementById("prn-summary").textContent = prnOpts.which === "bom" ? `The bill of materials (${bomData().rows.length} lines), A4 landscape.`
+      : prnOpts.which === "all" ? `${list.length} pages, one per sheet.`
+      : cur ? `${sheetLabel(cur, list)} (${size(cur)}).` : "The whole drawing on one page (no sheet frame).";
+  }
+  // the pages to print and a file name for them
+  function printPages() {
+    if (prnOpts.which === "bom") return { bytes: BomLib.toPdf(bomData()), name: baseName() + "-BOM", what: "the bill of materials" };
+    const list = frames(), sheets = prnOpts.which === "all" ? list : list.length ? [printSheet() || list[0]] : null;
+    return { bytes: exportPDF(false, sheets), name: baseName(), what: sheets && sheets.length > 1 ? sheets.length + " sheets" : "the sheet" };
+  }
+  function runPrint() {
+    printModal().hidden = true;
+    const p = printPages(), how = PdfExport.print(p.bytes, { name: p.name + ".pdf" });
+    setStatus(how === "blocked" ? "warn" : "ok", how === "dialog" ? `Printing ${p.what}…`
+      : how === "tab" ? `Opened ${p.what} as a PDF in a new tab: print it from there (Ctrl+P)`
+      : `The browser blocked the print tab; saved ${p.name}.pdf to print instead`);
+    return p;
+  }
   // The page shows no confirm() dialogs in some hosts; ask through the status bar instead
   let pendingConfirm = 0;
   function confirmInline(msg) {
@@ -3049,6 +3085,12 @@
     bindHScroll();
     document.getElementById("sheet-nav").addEventListener("change", e => { const f = S.comps.find(c => c.id === e.target.value); if (f) fitSheet(f); else fitView(); });
     bind("btn-pdf", () => exportPDF());
+    bind("btn-print", () => openPrintDialog());
+    document.querySelectorAll("#print-modal [data-p]").forEach(b => b.addEventListener("click", () => { prnOpts.which = b.dataset.p; syncPrintDialog(); }));
+    bind("btn-prn-cancel", () => { printModal().hidden = true; });
+    bind("btn-prn-ok", runPrint);
+    bind("btn-prn-pdf", () => { printModal().hidden = true; const p = printPages(); download(new Blob([p.bytes], { type: "application/pdf" }), p.name + ".pdf"); setStatus("ok", `Saved ${p.name}.pdf (${Math.round(p.bytes.length / 1024)} kB)`); });
+    printModal().addEventListener("keydown", e => { if (e.key === "Escape") printModal().hidden = true; else if (e.key === "Enter" && e.target.tagName !== "BUTTON") runPrint(); });
     bind("btn-export", () => openExportDialog());
     bind("btn-png", () => openExportDialog("png"));
     document.querySelectorAll("#export-modal [data-k]").forEach(b => b.addEventListener("click", () => { expOpts[b.dataset.k] = b.dataset.v; syncExportDialog(); }));
@@ -3129,6 +3171,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { tolerance, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData() }), setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { tolerance, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData() }), setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

@@ -835,7 +835,7 @@
     S.view.ox = sx - (sx - S.view.ox) * f; S.view.oy = sy - (sy - S.view.oy) * f; S.view.scale = s;
     render();
   }
-  const MODALS = ["help-modal", "rules-modal", "setup-modal"];
+  const MODALS = ["help-modal", "rules-modal", "setup-modal", "print-modal"];
   function highlightNet(n) { S.netHL = n === null || n === undefined || n === S.netHL ? null : n; S.netFromCad = false;
     if (bc && typeof S.netHL === "number") bc.postMessage({ type: "BOARD_NET", net: S.netHL });   // cross-probing: its wires are selected in the schematic
     msg(S.netHL === null ? "Net highlight off" : `Highlighting ${netName(S.netHL)} (again: off)`); renderNets(); render(); }
@@ -844,6 +844,7 @@
     if (e.key === "F1") { e.preventDefault(); toggle("help-modal"); return; }
     if (e.key === "Escape") { const open = MODALS.find(id => !$(id).hidden); if (open) { $(open).hidden = true; return; } if (!$("ctx").hidden) { closeCtx(); return; } }
     if ((e.ctrlKey || e.metaKey) && (e.code === "KeyF" || String(e.key).toLowerCase() === "f")) { e.preventDefault(); $("find").focus(); $("find").select(); return; }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.code === "KeyP" || String(e.key).toLowerCase() === "p")) { e.preventDefault(); if ($("print-modal").hidden) openPrint(); return; }
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
     if (!$("view3d").hidden) { if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); } return; }
     if (e.code === "Digit3" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); open3D(); return; }
@@ -1855,6 +1856,35 @@
   }
   const fabMeta = () => ({ base: baseName(), title: (S.netlist && (S.netlist.title || S.netlist.docno)) || baseName(), version: appVersion() });
   function exportGerber() { if (!fabReady("Gerber files")) return; download(BoardFab.zip(BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta())), baseName() + "-gerbers.zip", "application/zip"); }
+  // Print (Ctrl+P): the pages ticked in the Print dialog, through the browser's print dialog
+  // (PdfExport.print), or saved as one PDF
+  const PRINT_KEY = "tubecad_board_print";
+  let printSel = BoardFab.PRINT_SETS.print.slice();
+  try { const v = JSON.parse(localStorage.getItem(PRINT_KEY)); if (Array.isArray(v) && v.length) printSel = v.filter(id => BoardFab.PRINTS[id]); } catch (e) { /* no storage */ }
+  function openPrint() {
+    if (!S.model) return;
+    printUi(); $("print-modal").hidden = false;
+  }
+  function printUi() {
+    document.querySelectorAll("#print-pages [data-pg]").forEach(el => { el.checked = printSel.includes(el.dataset.pg); });
+    const pg = BoardFab.pageFor(S.board), n = printSel.length;
+    $("print-summary").textContent = n ? `${n} page${n > 1 ? "s" : ""}, ${pg.name} ${pg.w > pg.h ? "landscape" : "portrait"}, ${pg.scale === 1 ? "scale 1:1" : `scaled to ${(pg.scale * 100).toFixed(0)} % (the board does not fit A3)`}.` : "Tick at least one page.";
+    $("print-ok").disabled = $("print-pdf").disabled = !n;
+  }
+  function setPrintPages(ids) {
+    const order = Object.keys(BoardFab.PRINTS);
+    printSel = order.filter(id => ids.includes(id));
+    try { localStorage.setItem(PRINT_KEY, JSON.stringify(printSel)); } catch (e) { /* no storage */ }
+    printUi();
+  }
+  function printPages(ids) { return BoardFab.pdfPages(S.board, S.model, S.fills, ids || printSel, fabMeta()); }
+  function runPrint(ids) {
+    if (!S.model || !(ids || printSel).length) return null;
+    $("print-modal").hidden = true;
+    const bytes = printPages(ids), n = (ids || printSel).length, how = PdfExport.print(bytes, { name: baseName() + "-board.pdf" });
+    msg(how === "dialog" ? `Printing ${n} page${n > 1 ? "s" : ""}… choose Actual size (100 %) for 1:1` : how === "tab" ? "Opened the prints as a PDF in a new tab: print it from there at Actual size (100 %)" : `The browser blocked the print tab; saved ${baseName()}-board.pdf to print instead`);
+    return bytes;
+  }
   function exportPdf(kind) { if (!S.model) return; download(BoardFab.pdfPages(S.board, S.model, S.fills, kind, fabMeta()), baseName() + (kind === "toner" ? "-toner-transfer.pdf" : "-prints.pdf"), "application/pdf"); }
   function download(text, name, type) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); msg("Saved " + name); }
   const baseName = () => ((S.netlist && (S.netlist.docno || S.netlist.title)) || "board").replace(/[^\w.\- ]+/g, "").trim().replace(/\s+/g, "-") || "board";
@@ -2059,6 +2089,11 @@
     window.addEventListener("resize", () => { if (viewer && !$("view3d").hidden) viewer.draw(); });
     $("ex-pdf").onclick = () => { list.hidden = true; exportPdf("print"); };
     $("ex-toner").onclick = () => { list.hidden = true; exportPdf("toner"); };
+    $("ex-print").onclick = () => { list.hidden = true; openPrint(); };
+    document.querySelectorAll("#print-pages [data-pg]").forEach(el => { el.onchange = () => setPrintPages([...document.querySelectorAll("#print-pages [data-pg]:checked")].map(x => x.dataset.pg)); });
+    document.querySelectorAll("[data-pset]").forEach(b => { b.onclick = () => setPrintPages(BoardFab.PRINT_SETS[b.dataset.pset]); });
+    $("print-ok").onclick = () => runPrint(); $("print-cancel").onclick = () => { $("print-modal").hidden = true; };
+    $("print-pdf").onclick = () => { $("print-modal").hidden = true; download(printPages(), baseName() + "-prints.pdf", "application/pdf"); };
     document.querySelectorAll("[data-tab]").forEach(t => { t.onclick = () => { document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x === t)); $("parts").hidden = t.dataset.tab !== "parts"; $("nets").hidden = t.dataset.tab !== "nets"; }; });
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     $("ex-dsn").onclick = () => { list.hidden = true; if (S.model) download(dsnOf().text, baseName() + ".dsn", "text/plain"); };
@@ -2069,6 +2104,6 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { autoRoute, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { autoRoute, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

@@ -247,6 +247,10 @@ the circuit that was on the sheet.
     sheet's mark to show it, or step between sheets with its arrows (Page Up /
     Page Down).
 - **PDF and PNG.**
+  - *Print…* (Ctrl+P) prints the sheet in view, all sheets or the bill of
+    materials through the browser's print dialog; in the Board window it prints
+    the copper layers at 1:1, the toner-transfer pages, the assembly drawing or
+    the drill map.
   - *Save as PDF* writes every sheet as a vector page.
   - *Export sheet…* saves the sheet in use, each sheet as its own file, or
     all sheets in one PDF.
