@@ -11,7 +11,7 @@ const { UiKit } = globalThis;
 
 /** A keydown as the browser sends it; prevented tells whether preventDefault() was called. */
 function key(k, code, mods = {}, tag = "CANVAS") {
-  return { key: k, code, ctrlKey: !!mods.ctrl, metaKey: !!mods.meta, shiftKey: !!mods.shift, target: { tagName: tag }, prevented: false, preventDefault() { this.prevented = true; } };
+  return { key: k, code, ctrlKey: !!mods.ctrl, metaKey: !!mods.meta, shiftKey: !!mods.shift, altKey: !!mods.alt, target: { tagName: tag }, prevented: false, preventDefault() { this.prevented = true; } };
 }
 function table() {
   const ran = [], cmds = UiKit.commands(), run = id => () => ran.push(id);
@@ -101,4 +101,14 @@ test("the help's key list comes from the commands that have a help text", () => 
   const rows = [];
   for (let i = 0; i < cells.length; i += 2) rows.push([cells[i].kids.map(k => k.textContent).join(""), cells[i + 1].textContent]);
   assert.deepEqual(rows, [["R", "rotate"], ["D", "duplicate"], ["Del", "delete"], ["+", "zoom in"], ["−", "zoom out"]]);
+});
+
+test("an Alt key needs Alt and wins over the plain key; plain keys still fire with Alt held", () => {
+  const ran = [], cmds = UiKit.commands();
+  cmds.add({ id: "bom", keys: ["B"], run: () => ran.push("bom") }).add({ id: "board", keys: ["Alt+B"], prevent: true, run: () => ran.push("board") });
+  cmds.key(key("b", "KeyB")); assert.equal(ran.at(-1), "bom");
+  const e = key("∫", "KeyB", { alt: true }); cmds.key(e); assert.equal(ran.at(-1), "board"); assert.ok(e.prevented);
+  assert.equal(ran.length, 2);
+  cmds.add({ id: "rot", keys: ["R"], run: () => ran.push("rot") });
+  cmds.key(key("r", "KeyR", { alt: true })); assert.equal(ran.at(-1), "rot");
 });

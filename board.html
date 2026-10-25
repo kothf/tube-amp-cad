@@ -139,6 +139,11 @@
     kbd.tk { font-size: 10px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; margin-left: 5px; }
     .btn.active kbd.tk { color: var(--accent); border-color: #1d6b7a; }
     @media (max-width: 1800px) { kbd.tk { display: none; } }
+    header .tools .btn, #btn-sync, #btn-autoroute, #btn-unroute { display: inline-flex; align-items: center; gap: 5px; }
+    /* wide: the tools and actions by name; narrower: by icon (the title names each with its key) */
+    .tools .btn .ico, #btn-sync .ico, #btn-autoroute .ico, #btn-unroute .ico { display: none; }
+    @media (max-width: 1450px) { .tools .lbl { display: none; } .tools .btn .ico { display: inline; } }
+    @media (max-width: 1250px) { #btn-sync .lbl, #btn-autoroute .lbl, #btn-unroute .lbl { display: none; } #btn-sync .ico, #btn-autoroute .ico, #btn-unroute .ico { display: inline; } }
     @media (max-width: 1700px) { .doc-switch .ds-lbl { display: none; } .doc-switch .btn { padding-left: 8px; padding-right: 8px; } }
     .find { margin-bottom: 6px; }
     .find input { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
@@ -172,7 +177,7 @@
   <header>
     <div class="brand" title="Tube Amp CAD: Board Design">⚡</div>
     <div class="seg-group doc-switch" role="group" aria-label="Design">
-      <button class="btn" id="btn-cad" title="Schematic: the circuit in the Circuit CAD window (opens it if it is closed)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8h3l1-3 1.5 6 1.5-6 1.5 6 1-3h4.5"/></svg><span class="ds-lbl">Schematic</span></button>
+      <button class="btn" id="btn-cad" title="Schematic: the circuit in the Circuit CAD window, opened if it is closed (Alt+S)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8h3l1-3 1.5 6 1.5-6 1.5 6 1-3h4.5"/></svg><span class="ds-lbl">Schematic</span></button>
       <button class="btn" id="btn-doc-board" aria-current="page" title="Board: the layout you are editing"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/><path d="M6.2 6H9l2 2v.8"/></svg><span class="ds-lbl">Board</span></button>
     </div>
     <span id="status" class="status idle">Looking for the Circuit CAD…</span>
@@ -181,14 +186,14 @@
       <button class="btn ib" id="btn-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5l3 3-3 3"/><path d="M13.5 6.5h-7a4 4 0 0 0 0 8H9"/></svg></button>
     </div>
     <div class="tools seg-group" role="toolbar" aria-label="Tools">
-      <button class="btn active" data-tool="select" title="Select and move footprints, tracks, vias, texts and holes; drag the board's top-right corner handle to resize it; the origin, bottom left, stays put (Esc)">Select<kbd class="tk">S</kbd></button>
-      <button class="btn" data-tool="route" title="Route a track from a pad (X); V changes layer with a via">Route<kbd class="tk">X</kbd></button>
-      <button class="btn" data-tool="via" title="Place a via (Shift+V)">Via<kbd class="tk">⇧V</kbd></button>
-      <button class="btn" data-tool="text" title="Place a text on the silkscreen or copper (T)">Text<kbd class="tk">T</kbd></button>
-      <button class="btn" data-tool="hole" title="Place a mounting hole (H)">Hole<kbd class="tk">H</kbd></button>
-      <button class="btn" data-tool="pour" title="Copper pour (ground plane): click the corners, double-click to close (P). Board inspector: one click for a ground plane over the whole board">Pour<kbd class="tk">P</kbd></button>
-      <button class="btn" data-tool="keepout" title="Keep-out area: no tracks, vias, pour (or parts) inside; click the corners, double-click to close (K)">Keep-out<kbd class="tk">K</kbd></button>
-      <button class="btn" data-tool="measure" title="Measure a distance: click, click (D). The ends stick to pads, vias, holes, track corners and the board's corners and edges; Shift: the grid only">Measure<kbd class="tk">D</kbd></button>
+      <button class="btn active" data-tool="select" title="Select and move footprints, tracks, vias, texts and holes; drag the board's top-right corner handle to resize it; the origin, bottom left, stays put (Esc)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2l9 5.2-4.2 1.1-2 4z"/></svg><span class="lbl">Select</span><kbd class="tk">S</kbd></button>
+      <button class="btn" data-tool="route" title="Route a track from a pad (X); V changes layer with a via"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="12.5" r="1.5"/><circle cx="13" cy="3.5" r="1.5"/><path d="M4.5 12.5H8l4-4V5"/></svg><span class="lbl">Route</span><kbd class="tk">X</kbd></button>
+      <button class="btn" data-tool="via" title="Place a via (Shift+V)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2"/></svg><span class="lbl">Via</span><kbd class="tk">⇧V</kbd></button>
+      <button class="btn" data-tool="text" title="Place a text on the silkscreen or copper (T)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10M8 3.5V13M6 13h4"/></svg><span class="lbl">Text</span><kbd class="tk">T</kbd></button>
+      <button class="btn" data-tool="hole" title="Place a mounting hole (H)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3.5M8 11.5V15M1 8h3.5M11.5 8H15"/></svg><span class="lbl">Hole</span><kbd class="tk">H</kbd></button>
+      <button class="btn" data-tool="pour" title="Copper pour (ground plane): click the corners, double-click to close (P). Board inspector: one click for a ground plane over the whole board"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v9h-11z"/><path d="M2.5 8 7 3.5M2.5 12.5l9-9M7 12.5 13.5 6M11.5 12.5l2-2"/></svg><span class="lbl">Pour</span><kbd class="tk">P</kbd></button>
+      <button class="btn" data-tool="keepout" title="Keep-out area: no tracks, vias, pour (or parts) inside; click the corners, double-click to close (K)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2 1.6"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/></svg><span class="lbl">Keep-out</span><kbd class="tk">K</kbd></button>
+      <button class="btn" data-tool="measure" title="Measure a distance: click, click (D). The ends stick to pads, vias, holes, track corners and the board's corners and edges; Shift: the grid only"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11 11 1.5l3.5 3.5L5 14.5z"/><path d="M4.5 8 6 9.5M6.8 5.7 8.3 7.2M9.1 3.4l1.5 1.5"/></svg><span class="lbl">Measure</span><kbd class="tk">D</kbd></button>
     </div>
     <select class="btn" id="layer" title="Copper layer for new tracks and pours (V; while routing V changes layer with a via)"><option value="F.Cu">Top copper</option><option value="B.Cu">Bottom copper</option></select>
     <select class="btn" id="grid" title="Grid"><option value="0.635">0.635 mm</option><option value="1.27" selected>1.27 mm</option><option value="2.54">2.54 mm</option><option value="0.5">0.5 mm</option><option value="1">1 mm</option></select>
@@ -211,9 +216,9 @@
     </div>
     <button class="btn" id="btn-fit" title="Fit the board (F); Shift+F or Shift+click: the whole drawing sheet">Fit</button>
     <span class="spacer"></span>
-    <button class="btn" id="btn-sync" title="Update from the schematic: bring parts added to or removed from it onto the board">Update</button>
-    <button class="btn off" id="btn-autoroute" title="Auto-route with Freerouting on this computer">Auto-route</button>
-    <button class="btn" id="btn-unroute" title="Remove all tracks and vias (locked ones stay); Ctrl+Z brings them back">Unroute</button>
+    <button class="btn" id="btn-sync" title="Update from the schematic: bring parts added to or removed from it onto the board"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 6.5A5 5 0 0 0 4 4.2M3 9.5a5 5 0 0 0 9 2.3"/><path d="M3.8 1.5v2.9h2.9M12.2 14.5v-2.9H9.3"/></svg><span class="lbl">Update</span></button>
+    <button class="btn off" id="btn-autoroute" title="Auto-route with Freerouting on this computer"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14 10 6"/><path d="M11.5 1.5v3M10 3h3M14 6.5v2M13 7.5h2"/></svg><span class="lbl">Auto-route</span></button>
+    <button class="btn" id="btn-unroute" title="Remove all tracks and vias (locked ones stay); Ctrl+Z brings them back"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11.5h4l5-5h4"/><path d="M9.5 10.5l4 4M13.5 10.5l-4 4"/></svg><span class="lbl">Unroute</span></button>
     <div class="menu" id="board-menu">
       <button class="btn" id="btn-board" aria-haspopup="true" title="Board setup and design rules">Board ▾</button>
       <div class="menu-list right" hidden>
@@ -309,7 +314,8 @@
         <kbd>L</kbd><span>lock the selection in place (again: unlock); locked things cannot be dragged, nudged, turned or deleted</span>
         <kbd>K</kbd><span>keep-out area: click the corners, double-click to close</span>
         <kbd>U</kbd><span>select the whole connected track under the pointer (or of the selected track)</span>
-        <kbd>`</kbd><span>highlight the net under the pointer (again: off); the Nets tab lists every net</span>
+        <kbd>`</kbd><span>highlight the net under the pointer (again: off); the Nets tab lists every net. The schematic selects that net's wires; wires of one net selected there light their net up here, as a part selected in either window is selected in the other</span>
+        <kbd>Alt+S</kbd><span>back to the schematic (the Circuit CAD window); <kbd>Alt+B</kbd> there comes here</span>
         <kbd>drag</kbd><span>a track segment moves sideways and its neighbours follow (45° kept)</span>
         <kbd>drag part</kbd><span>the ends of the tracks on its pads come along</span>
         <kbd>Shift+click</kbd><span>while routing: place a segment that breaks the clearance anyway (normally refused)</span>

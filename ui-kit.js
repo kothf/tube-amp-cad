@@ -5,6 +5,7 @@
      technology their state (aria-checked / aria-pressed) from their "active" class.
    UiKit.commands(): a window's table of commands. One entry per thing the user can do:
        cmds.add({ id, keys: ["Ctrl+Z"], run(e), when(), prevent, anyCtrl, inInputs, help, helpKeys })
+     ("Alt+B": an Alt key fires only with Alt held, and before the plain "B")
      keys: "R", "Ctrl+Shift+S", "Delete", "+" … Letters go by the physical key (e.code), so the
      shortcuts work in any keyboard layout (with a Cyrillic layout e.key is "к" for R); other
      keys by e.key, or by e.code when written like one ("NumpadAdd"). A key without Shift also
@@ -47,7 +48,7 @@
   function parseKey(spec) {
     const parts = spec.split("+"), key = parts.pop() || "+";   // "+" alone, or "Ctrl++"
     const mods = parts.filter(Boolean).map(p => p.toLowerCase());
-    return { ctrl: mods.includes("ctrl"), shift: mods.includes("shift"), key, lower: key.toLowerCase() };
+    return { ctrl: mods.includes("ctrl"), shift: mods.includes("shift"), alt: mods.includes("alt"), key, lower: key.toLowerCase() };
   }
   const showKey = spec => spec.replace(/^-$|(\+)-$/, "$1−").replace("Delete", "Del").replace("Escape", "Esc");
 
@@ -64,8 +65,9 @@
         const ctrl = e.ctrlKey || e.metaKey, code = e.code || "";
         const L = /^Key[A-Z]$/.test(code) ? code.slice(3).toLowerCase() : String(e.key).toLowerCase();
         const hit = (k, shiftExact) => (k.lower === L || k.key === code) && (shiftExact ? k.shift === e.shiftKey : !k.shift);
-        const pick = shiftExact => list.find(c => (!typing || c.inInputs) && c.parsed.some(k => (c.anyCtrl || k.ctrl === ctrl) && hit(k, shiftExact)) && (!c.when || c.when()));
-        const c = pick(true) || (e.shiftKey ? pick(false) : null);
+        // an Alt key needs Alt held; with Alt held, an Alt key wins over the same key without it
+        const pick = (shiftExact, alt) => list.find(c => (!typing || c.inInputs) && c.parsed.some(k => !!k.alt === alt && (c.anyCtrl || k.ctrl === ctrl) && hit(k, shiftExact)) && (!c.when || c.when()));
+        const c = (e.altKey && (pick(true, true) || (e.shiftKey ? pick(false, true) : null))) || pick(true, false) || (e.shiftKey ? pick(false, false) : null);
         if (!c) return false;
         c.run(e);
         if (c.prevent) e.preventDefault();
