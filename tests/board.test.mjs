@@ -387,6 +387,10 @@ test("Freerouting: the board as a Specctra DSN design (nets, widths, clearances 
   const nets = net.filter(x => x[0] === "net").map(x => x[1]);
   assert.ok(nets.includes("B+") && !net.find(x => x[0] === "net" && x[1] === "GND" && x.some(y => Array.isArray(y) && y[0] === "pins")), "B+ is routed; GND has a pour and is left to it: " + nets.join(" "));
   assert.deepEqual(d.skipped, ["GND"]);
+  // a second pass for the pour's pads it does not reach: only GND, only those pads
+  const gp = m.pads.filter(p => p.netName === "GND" && p.part in board.parts).slice(0, 2), only = new Map([["GND", new Set(gp.map(p => `${+p.x.toFixed(4)},${+p.y.toFixed(4)}`))]]);
+  const n2 = BR.parse(BR.toDsn(board, m, conn, clr, { hv, only }).text).find(x => x[0] === "network").filter(x => x[0] === "net" && x.some(y => Array.isArray(y) && y[0] === "pins"));
+  assert.equal(n2.length, 1); assert.equal(n2[0][1], "GND"); assert.equal(n2[0].find(y => Array.isArray(y) && y[0] === "pins").length - 1, 2, "just the two pads the pour missed");
   // B+ (300 V, HV) to the grid (0 V): what the check asks (the HV class's 2 mm; IPC-2221B B2 1.25 mm at 300 V), plus a 0.05 mm margin
   const rule = s.find(x => x[0] === "structure").find(x => Array.isArray(x) && x[0] === "rule"), cl = (a, b) => { const r = rule.find(x => Array.isArray(x) && x[0] === "clearance" && x[2] && (x[2][1] === `${a}_${b}` || x[2][1] === `${b}_${a}`)); return r && +r[1]; };
   const tB = net.filter(x => x[0] === "class").find(x => x[2] === "B+").find(x => Array.isArray(x) && x[0] === "clearance_class")[1];

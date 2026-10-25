@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.96.0] - 2026-10-25
+
+### Changed
+- **Auto-route finishes what the pour leaves.** A net with a copper pour (a ground plane) is left to the pour, which fills again around the new tracks. Pads of that net the pour does not reach (cut off by tracks, or in a gap of the pour) now get a second Freerouting pass that joins just those pads with tracks; the status line says how many. Ctrl+Z still takes the whole run back in one step.
+
 ## [3.95.0] - 2026-10-25
 
 ### Added

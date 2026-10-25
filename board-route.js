@@ -111,7 +111,8 @@
   /** The board as a Specctra DSN design. conn: BoardCore.connectivity of the board (the nets of
       its tracks and vias), clr: BoardCore.clearanceRules. Nets with a copper pour, and the ground
       with star grounding, are left to the user (their pads stay as obstacles). Returns { text,
-      nets: { dsn name -> net key }, skipped: [net names left out] } */
+      nets: { dsn name -> net key }, skipped: [net names left out] }. opts.only: Map of net name -> Set of
+      "x,y" pad positions: route only those nets, between those pads */
   function toDsn(board, model, conn, clr, opts) {
     const C = B(), R = board.rules, o = opts || {}, keep = onBoard(board, model), cc = C.COPPER;
     const pads = model.pads.filter(p => keep.has(p.part));
@@ -123,6 +124,7 @@
     count.forEach((n, net) => {
       const nm = netName(net);
       if (n < 2) return;
+      if (o.only) { if (o.only.has(nm)) route.add(net); return; }
       if (poured.has(nm) || (R.ground === "star" && nm === "GND") || (o.skip && o.skip.has(nm))) { skipped.push(nm); return; }
       route.add(net);
     });
@@ -215,7 +217,9 @@
     // nets and their classes: the width each net's tracks need (its class, or its DC current)
     w(`  (network`);
     const pinsOf = new Map();
-    comps.forEach(c => c.pins.forEach(x => { if (route.has(x.p.net)) { if (!pinsOf.has(x.p.net)) pinsOf.set(x.p.net, []); pinsOf.get(x.p.net).push(`${c.ref}-${x.name}`); } }));
+    // opts.only (net name -> "x,y" of the pads to join): a second pass for a pour's pads the pour did not reach
+    const wanted = p => !o.only || !o.only.get(netName(p.net)) || o.only.get(netName(p.net)).has(`${+p.x.toFixed(4)},${+p.y.toFixed(4)}`);
+    comps.forEach(c => c.pins.forEach(x => { if (route.has(x.p.net) && wanted(x.p)) { if (!pinsOf.has(x.p.net)) pinsOf.set(x.p.net, []); pinsOf.get(x.p.net).push(`${c.ref}-${x.name}`); } }));
     plated.forEach(({ h, i }) => { const n = holeNet(h); if (route.has(n)) pinsOf.get(n) && pinsOf.get(n).push(`H${i + 1}-1`); });
     nets.forEach(n => w(`    (net ${q(nameOf.get(n))}${pinsOf.has(n) ? ` (pins ${pinsOf.get(n).join(" ")})` : ""})`));
     // each net's vias keep its tracks' clearances: a via of its own (V<i>) in a via rule of its own
