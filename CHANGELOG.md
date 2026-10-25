@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.93.1] - 2026-10-25
+
+### Changed
+- **The manual and the README catch up with 3.86–3.93.** The manual gains the NE555 (its model, the five examples, its DIP-8 or SOIC-8), Auto-route set out step by step (starting Freerouting, `cors_origins` and the API key flag, Docker's `endpoints` flag, another computer on the network and the browser's local-network prompt, the SSH tunnel), deleting a track taking its loose ends, and the paste layers and placement file in the Gerbers. The README gains the voltmeter probe, the faster tolerance runs, capacitor voltage ratings and SMD packages in the BOM, the toolbar naming an example by its title, the SMD footprints, Auto-route and Unroute, the socket-body clearance rule and the SMD assembly files; it no longer says the bipolar model has no base or emitter resistance.
+
 ## [3.93.0] - 2026-10-25
 
 ### Added
