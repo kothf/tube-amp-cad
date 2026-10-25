@@ -355,6 +355,9 @@
     const T = TABBED[pkg], pads = [smdPad(1, -T.pitch, T.py, T.pw, T.ph, order[0])];
     if (T.pins === 3) pads.push(smdPad(2, 0, T.py, T.pw, T.ph, order[1]));
     pads.push(smdPad(3, T.pitch, T.py, T.pw, T.ph, order[2]), smdPad(T.pins === 3 ? 4 : 2, 0, T.ty, T.tw, T.th, order[1]));
+    // a DPAK's or D²PAK's big tab gets paste on about 70 % of it, in windowpanes: a full sheet floats
+    // the part on the molten solder and traps voids (IPC-7525)
+    if (T.pins === 2) pads[pads.length - 1].paste = 0.7;
     // the body's sides between the tab and the pins, clear of the pads as the checks see them
     const x = Math.max(T.body[0] / 2, ...pads.map(q => Math.abs(q.x) + reachX(q) + 0.15)), y1 = T.ty - T.th / 2, y2 = T.py - T.ph / 2 - 0.2, xm = T.pitch + reachX(pads[0]) + 0.2;
     return smdFp(`${pkg}-${order}`, `${T.title}, pins ${order.split("").join("-")} (the tab: ${order[1]})`, pads,
@@ -721,7 +724,7 @@
         const conns = map.get(p.num) || [], nets = [...new Set(conns.map(c => netOf[c.comp + ":" + c.pin]).filter(n => n !== undefined))];
         const [x, y] = place([p.x, p.y], bp), [w, h] = placeSize(p, bp);
         // an SMD pad is on the part's side only
-        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, pitchRing: p.pitchRing, smd: !!p.smd, layers: p.smd ? [bp.side === "B" ? "B.Cu" : "F.Cu"] : COPPER,
+        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, pitchRing: p.pitchRing, smd: !!p.smd, paste: p.paste, layers: p.smd ? [bp.side === "B" ? "B.Cu" : "F.Cu"] : COPPER,
           net: nets.length ? nets[0] : null, pins: conns, conflict: nets.length > 1 };
         list.push(P); pads.push(P);
       });
