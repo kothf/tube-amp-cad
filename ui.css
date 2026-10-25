@@ -25,3 +25,7 @@ html, body { height: 100%; margin: 0; }
 .doc-switch .btn { display: inline-flex; align-items: center; gap: 6px; }
 .doc-switch .btn .ico { width: 15px; height: 15px; }
 .doc-switch .btn[aria-current="page"] { background: #0d3442; border-color: var(--accent); color: var(--accent); cursor: default; position: relative; z-index: 1; }
+/* an instrument's way back to the schematic, at the left of its toolbar like the Board's switch */
+.btn.doc-back { display: inline-flex; align-items: center; gap: 6px; }
+.btn.doc-back .ico { width: 15px; height: 15px; }
+a.btn.ib { display: inline-flex; align-items: center; }

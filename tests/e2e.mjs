@@ -1400,6 +1400,17 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const nPages = ctx.pages().length;
   await bd.click("#btn-cad"); await cad.click("#btn-doc-board"); await bd.waitForTimeout(200);
   check(ctx.pages().length === nPages, `Schematic and Board bring the open windows up instead of opening new ones (${ctx.pages().length} pages)`);
+  // cross-probing a net: wires of one net selected in the schematic light it up on the board, and a net highlighted on the board selects its wires
+  const xpWire = await cad.evaluate(() => { const S = TubeCAD.state, T = TubeCAD.topo(), w = S.wires.find(w => T.wireNet.get(w.id) > 0); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.wires.add(w.id); TubeCAD.updateInspector(); return T.wireNet.get(w.id); });
+  await bd.waitForFunction(n => BoardApp.state.netHL === n, xpWire, { timeout: 3000 }).catch(() => {});
+  const xpA = await bd.evaluate(() => BoardApp.state.netHL);
+  await cad.evaluate(() => { TubeCAD.state.sel.wires.clear(); TubeCAD.updateInspector(); }); await bd.waitForTimeout(200);
+  const xpB = await bd.evaluate(() => BoardApp.state.netHL);
+  const xpNet = await bd.evaluate(n => { const k = Object.keys(BoardApp.state.model.names).map(Number).find(x => x > 0 && x !== n); BoardApp.highlightNet(k); return k; }, xpWire);
+  await cad.waitForFunction(() => TubeCAD.state.sel.wires.size > 0, null, { timeout: 3000 }).catch(() => {});
+  const xpCw = await cad.evaluate(() => { const T = TubeCAD.topo(); return [...new Set([...TubeCAD.state.sel.wires].map(id => T.wireNet.get(id)))]; });
+  await bd.evaluate(() => BoardApp.highlightNet(null)); await cad.evaluate(() => { TubeCAD.state.sel.wires.clear(); TubeCAD.updateInspector(); });
+  check(xpA === xpWire && xpB === null && xpCw.length === 1 && xpCw[0] === xpNet, `nets cross-probe: a wire selected in the schematic highlights net ${xpWire} on the board (cleared with it); net ${xpNet} highlighted on the board selects its wires (${xpCw})`);
   const bh = await bd.evaluate(() => [document.querySelector("header").getBoundingClientRect().height, document.querySelector("header").scrollWidth <= innerWidth]);
   check(bh[0] < 50 && bh[1], `the Board toolbar fits one row (${Math.round(bh[0])} px high, nothing cut off)`);
   const m0 = await bd.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.map(g => `${g.ref}:${g.fp.name}`), unplaced: S.drc.filter(d => d.kind === "unplaced").length, status: document.getElementById("status").textContent,
@@ -2177,6 +2188,25 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const found = await man.evaluate(() => document.querySelectorAll("main mark").length);
   check(found > 2, `searching the manual marks the matches (${found})`);
   await man.close();
+}
+// --- the board as a tab of the CAD window ---------------------------------------------------
+{
+  await cad.bringToFront();
+  const n0 = ctx.pages().length;
+  await cad.click("#btn-windows"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
+  await cad.click("#btn-doc-board");
+  await cad.waitForFunction(() => { const f = document.getElementById("board-tab"); return f && f.contentWindow.BoardApp && f.contentWindow.BoardApp.state.model; }, null, { timeout: 10000 }).catch(() => {});
+  const t1 = await cad.evaluate(() => { const f = document.getElementById("board-tab"), r = f.getBoundingClientRect(); return { shown: !f.hidden && r.width === innerWidth && r.height === innerHeight, parts: f.contentWindow.BoardApp.state.model.parts.length, name: f.contentWindow.name }; });
+  await cad.frameLocator("#board-tab").locator("#btn-cad").click(); await cad.waitForTimeout(150);
+  const t2 = await cad.evaluate(() => document.getElementById("board-tab").hidden);
+  await cad.keyboard.press("Alt+B"); await cad.waitForTimeout(150);
+  const t3 = await cad.evaluate(() => !document.getElementById("board-tab").hidden);
+  await cad.frameLocator("#board-tab").locator("#pcb").focus(); await cad.keyboard.press("Alt+S"); await cad.waitForTimeout(150);
+  const t4 = await cad.evaluate(() => document.getElementById("board-tab").hidden);
+  check(t1.shown && t1.parts > 0 && !t1.name && t2 && t3 && t4 && ctx.pages().length === n0,
+    `Windows ▾ → Board in this window: Board shows the layout over the whole window (${t1.parts} parts), Schematic or Alt+S hides it, Alt+B shows it again, no new window`);
+  await cad.click("#btn-windows"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
+  check(await cad.evaluate(() => !document.getElementById("board-tab")), "unticked, the board frame goes and the board has its own window again");
 }
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.slice(0, 3).join(" | ")}` : ""}`);
 

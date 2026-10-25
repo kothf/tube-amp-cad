@@ -90,7 +90,7 @@ Firefox is not tested.
   come from Katsnelson & Larionov for the Soviet tubes and from the makers'
   datasheets for the others (RCA, Philips, Mullard, Western Electric); a
   rating a datasheet does not give is not checked.
-- **Toolbar.** One row: the *Schematic | Board* switch (the same switch in the Board window leads back), *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, renumber), undo / redo, the *Select | Wire | Probe* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
+- **Toolbar.** One row: the *Schematic | Board* switch (the same switch in the Board window leads back; Alt+B and Alt+S from any window; *Windows ▾ → Board in this window* makes the board a tab of the CAD window instead of a window of its own), *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, renumber), undo / redo, the *Select | Wire | Probe* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
 - **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html`, opens from *Windows ▾ → Manual*, the help dialog, or **?** in each instrument. It covers:
   - a quick start, then every part and field;
   - all 99 tubes in a sortable table;
@@ -523,6 +523,8 @@ the circuit file, so one file holds both.
   everything else.
 - **Cross-probing:** a part picked on the board is selected in the schematic,
   and a part selected in the schematic is selected (and shown) on the board.
+  A net highlighted on the board selects its wires in the schematic, and wires
+  of one net selected in the schematic light that net up on the board.
 - **Comfort:** a card at the pointer for pads, parts, tracks and vias (net,
   class, voltage, current) and, while routing, for the route (net, width,
   layer, length); <kbd>W</kbd> steps the width while routing; a right-click

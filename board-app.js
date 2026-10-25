@@ -22,6 +22,7 @@
     sel: null,              // { kind: "part", key } | { kind: "track" | "via" | "text" | "hole" | "zone" | "keepout", i } | { kind: "multi", parts, tracks, vias, texts, holes }
     fills: [],              // filled copper pours (BoardCore.fillZones), refilled on every change
     netHL: null,            // the highlighted net (Nets tab, ` key)
+    netFromCad: false,      // netHL came from wires selected in the schematic (cleared with that selection)
     poly: null,             // a pour outline being drawn: [[x, y]...]
     routeBad: null,         // while routing: where the next segment breaks the clearance
     route: null,            // { net, layer, pts: [[x, y]...], w, segs: [] }
@@ -81,6 +82,9 @@
       const ids = new Set(m.ids || []), g = S.model.parts.find(p => p.members.some(x => ids.has(x.id)));
       if (g) { S.sel = { kind: "part", key: g.key }; if (g.place) ensureVisible(g.place.x, g.place.y); renderPanels(); render(); }
       else if (S.sel && S.sel.kind === "part") { S.sel = null; renderPanels(); render(); }
+      // wires of one net selected there: highlight that net here; cleared there: off again
+      if (!g && typeof m.net === "number" && S.model.names[m.net] !== undefined) { S.netHL = m.net; S.netFromCad = true; msg(`Highlighting ${netName(m.net)} (selected in the schematic)`); renderNets(); render(); }
+      else if (S.netFromCad && S.netHL !== null) { S.netHL = null; S.netFromCad = false; renderNets(); render(); }
     } else if (m.type === "ACK" && pendingAck[m.id]) { clearTimeout(pendingAck[m.id]); delete pendingAck[m.id]; S.saved = true; status("ok", linkText()); }
   };
   // cross-probing: a part selected here is selected in the schematic too
@@ -832,7 +836,9 @@
     render();
   }
   const MODALS = ["help-modal", "rules-modal", "setup-modal"];
-  function highlightNet(n) { S.netHL = n === null || n === undefined || n === S.netHL ? null : n; msg(S.netHL === null ? "Net highlight off" : `Highlighting ${netName(S.netHL)} (again: off)`); renderNets(); render(); }
+  function highlightNet(n) { S.netHL = n === null || n === undefined || n === S.netHL ? null : n; S.netFromCad = false;
+    if (bc && typeof S.netHL === "number") bc.postMessage({ type: "BOARD_NET", net: S.netHL });   // cross-probing: its wires are selected in the schematic
+    msg(S.netHL === null ? "Net highlight off" : `Highlighting ${netName(S.netHL)} (again: off)`); renderNets(); render(); }
   function onKey(e) {
     const tag = (e.target.tagName || "").toUpperCase();
     if (e.key === "F1") { e.preventDefault(); toggle("help-modal"); return; }
@@ -1876,7 +1882,7 @@
   function routerUi() {
     const b = $("btn-autoroute"); if (!b) return;
     b.classList.toggle("off", !router.up || router.busy);
-    b.textContent = router.busy ? "Routing…" : "Auto-route";
+    b.querySelector(".lbl").textContent = router.busy ? "Routing…" : "Auto-route";
     b.title = router.busy ? "Freerouting is routing the board" : router.up ? `Route the open connections with Freerouting (${router.url}), within the design rules; Ctrl+Z takes it back`
       : routerWhy(router.url, router) + " Click for the address and the commands.";
   }

@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.95.0] - 2026-10-25
+
+### Added
+- **The board as a tab of the CAD window.** *Windows ▾ → Board in this window* (off by default): the Schematic | Board switch then flips one window between the schematic and the board layout, which suits a single screen. Untick it to give the board a window of its own again, for a second monitor.
+- **Alt+B and Alt+S** go to the board and back to the schematic from any window (the CAD, the Board, the instruments).
+- **Nets cross-probe.** Highlighting a net on the board (the Nets tab or the backtick key) selects its wires in the schematic; selecting wires of one net in the schematic highlights that net on the board until the selection is cleared. Parts already cross-probed.
+- **A Schematic button in the instruments.** The oscilloscope, spectrum analyzer and Bode plotter have it at the left of the toolbar, as in the Board window, in place of *Circuit CAD ↗* at the right; their help button uses the same icon as the CAD's.
+
+### Changed
+- **The Board toolbar stays one row down to 1100 px.** Below 1450 px the tools (Select, Route, Via, Text, Hole, Pour, Keep-out, Measure) show as icons, and below 1250 px so do Update, Auto-route and Unroute; their tooltips name them and their keys.
+- **The CAD toolbar stays one row down to 1000 px**: below 1080 px *Windows ▾* becomes an icon.
+
 ## [3.94.0] - 2026-10-25
 
 ### Added

@@ -20,7 +20,10 @@
     header > * { flex-shrink: 0; }
     header > .cur-file { flex: 1 1 60px; min-width: 60px; max-width: max-content; }   /* takes spare room up to its full name; never forces a second row by itself */
     @media (max-width: 1300px) { .brand span, .brand b { display: none; } .brand { margin-right: 0; } header .btn { padding: 5px 7px; } header { gap: 4px; } .sep { margin: 0 2px; } }
-    @media (max-width: 1080px) { header > .cur-file { display: none; } }
+    @media (max-width: 1080px) { header > .cur-file { display: none; } #btn-windows .win-lbl { display: none; } #btn-windows .win-ico { display: inline; } }
+    #btn-windows .win-ico { display: none; vertical-align: -3px; }
+    #board-tab { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 50; background: var(--bg); }
+    #board-tab[hidden] { display: none; }
     .brand { font-weight: 700; letter-spacing: .5px; margin-right: 8px; white-space: nowrap; }
     .brand b { color: var(--accent); }
     .brand-ver { display: block; font: 400 10px/1.2 ui-monospace, Menlo, monospace; letter-spacing: 0; color: var(--muted); }
@@ -238,7 +241,7 @@
     <div class="brand" title="Tube Amp CAD">⚡ <b>Tube Amp</b> <span>CAD</span><small class="brand-ver" id="app-version"></small></div>
     <div class="seg-group doc-switch" role="group" aria-label="Design">
       <button class="btn" id="btn-doc-sch" aria-current="page" title="Schematic: the circuit you are editing"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8h3l1-3 1.5 6 1.5-6 1.5 6 1-3h4.5"/></svg><span class="ds-lbl">Schematic</span></button>
-      <button class="btn" id="btn-doc-board" title="Board: the PCB layout of this circuit, in its own window"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/><path d="M6.2 6H9l2 2v.8"/></svg><span class="ds-lbl">Board</span></button>
+      <button class="btn" id="btn-doc-board" title="Board: the PCB layout of this circuit, in its own window (Alt+B)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/><path d="M6.2 6H9l2 2v.8"/></svg><span class="ds-lbl">Board</span></button>
     </div>
     <span class="cur-file untitled" id="cur-file" title="The circuit file open now">Untitled</span>
     <div class="menu" id="file-menu">
@@ -302,7 +305,7 @@
     </div>
     <span class="spacer"></span>
     <div class="menu" id="win-menu">
-      <button class="btn link" id="btn-windows" aria-haspopup="true" aria-expanded="false" title="Instruments and the board layout, each in its own window">Windows ▾</button>
+      <button class="btn link" id="btn-windows" aria-haspopup="true" aria-expanded="false" title="Instruments and the board layout, each in its own window" aria-label="Windows"><svg class="ico win-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4.5" width="10" height="9" rx="1"/><path d="M4.5 4.5v-2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-2"/><path d="M1.5 7h10"/></svg><span class="win-lbl">Windows ▾</span></button>
       <div class="menu-list right" role="menu" hidden>
         <div class="menu-head">Instruments</div>
         <button class="menu-item" role="menuitem" id="btn-open-scope" title="Full oscilloscope for the first scope part">Oscilloscope<kbd>↗</kbd></button>
@@ -310,7 +313,8 @@
         <button class="menu-item" role="menuitem" id="btn-open-bode" title="Frequency response (gain and phase) at a scope part's channels">Bode plotter<kbd>↗</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-open-tracer" title="Plate curves with this circuit's operating point">Curve tracer<kbd>↗</kbd></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" role="menuitem" id="btn-open-board" title="Board Design: lay out the PCB of this circuit">Board layout<kbd>↗</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-open-board" title="Board Design: lay out the PCB of this circuit (Alt+B)">Board layout<kbd>Alt+B</kbd></button>
+        <button class="menu-item check" role="menuitemcheckbox" id="btn-board-tab" title="Ticked: the board opens in this window, in place of the schematic, and the Schematic | Board switch flips between them. Not ticked: the board gets a window of its own (for a second monitor)">Board in this window<kbd>a tab, not a window</kbd></button>
         <div class="menu-sep"></div>
         <button class="menu-item" role="menuitem" id="btn-open-manual" title="Every feature, part, value and coefficient explained">Manual<kbd>↗</kbd></button>
       </div>

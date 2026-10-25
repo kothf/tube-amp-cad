@@ -278,6 +278,35 @@
   // the periodic steady state is reached (slow supplies need seconds of solver time)
   const RUN_OPTIONS = { live: { budgetMs: 2500 }, full: { budgetMs: 120000, maxPeriods: 20000 } };
   const LIVE_KEY = "tubecad_live", LEGEND_KEY = "tubecad_legend";
+
+  // ---------------------------------------------------------------------------
+  // The board as a tab of this window (Windows ▾ → Board in this window): board.html in a frame
+  // over the whole page, shown by Board and hidden by the Schematic button in its own toolbar.
+  // Off (the default), the board has a window of its own, for a second monitor.
+  const BOARD_TAB_KEY = "tubecad_board_tab";
+  let boardTab = false;
+  try { boardTab = localStorage.getItem(BOARD_TAB_KEY) === "1"; } catch (e) {}
+  const boardFrame = () => document.getElementById("board-tab");
+  function showBoard() {
+    if (!boardTab) { ToolWindows.open("board.html"); return; }
+    let f = boardFrame();
+    if (!f) { f = document.createElement("iframe"); f.id = "board-tab"; f.title = "Board Design"; f.src = "board.html"; document.body.appendChild(f); f.addEventListener("load", () => { if (!f.hidden) f.contentWindow.focus(); }); }
+    f.hidden = false; document.body.classList.add("board-tab-on");
+    try { f.contentWindow.focus(); } catch (e) {}
+  }
+  function showSchematic() {
+    const f = boardFrame(); if (f) f.hidden = true;
+    document.body.classList.remove("board-tab-on");
+    window.focus(); canvas.focus();
+  }
+  function setBoardTab(on) {
+    boardTab = !!on;
+    try { localStorage.setItem(BOARD_TAB_KEY, boardTab ? "1" : "0"); } catch (e) {}
+    const f = boardFrame();
+    if (!boardTab && f) { const was = !f.hidden; f.remove(); document.body.classList.remove("board-tab-on"); if (was) ToolWindows.open("board.html"); }
+  }
+  // the framed board's Schematic button (windows.js) asks for the schematic
+  window.addEventListener("message", e => { if (e.origin === location.origin && e.data && e.data.type === "SHOW_PAGE" && e.data.page === "circuit_sandbox.html") showSchematic(); });
   S.showLegend = (() => { try { return localStorage.getItem(LEGEND_KEY) !== "0"; } catch (e) { return true; } })();
   S.sim.live = (() => { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch (e) { return true; } })();
 
@@ -902,6 +931,7 @@
     if (m.type === "BOARD_HELLO") sendBoardNetlist(true);                    // a board window opened: netlist and the stored board
     else if (m.type === "BOARD_SAVE") { storeBoard(m.doc); renderBom(); }   // the BOM names the parts made SMD there
     else if (m.type === "BOARD_SELECT") selectFromBoard(m.ids);
+    else if (m.type === "BOARD_NET") selectNetFromBoard(m.net);
     if (m.type === "RUN_SIM") runSim("full");                            // ▶ Simulate in an instrument window
     else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop);
     else if (m.type === "STOP_TRANSIENT") stopTransient();
@@ -1317,6 +1347,8 @@
     .add({ id: "save-as", keys: ["Ctrl+Shift+S"], prevent: true, run: () => saveFileAs(), help: "save as" })
     .add({ id: "open", keys: ["Ctrl+O"], prevent: true, run: () => openDialog(), help: "open" })
     .add({ id: "simulate", keys: ["Ctrl+Enter"], prevent: true, run: () => runSim("full"), help: "simulate until settled" })
+    .add({ id: "board", keys: ["Alt+B"], prevent: true, inInputs: true, run: showBoard, help: "the board layout (Alt+S in the Board window comes back)" })
+    .add({ id: "board-tab", label: "Board in this window", run: () => setBoardTab(!boardTab), check: () => boardTab })
     .add({ id: "help", keys: ["F1"], inInputs: true, prevent: true, run: toggleHelp, help: "this help (also ?)" })
     .add({ id: "help-alt", keys: ["?"], prevent: true, run: toggleHelp })
     .add({ id: "inspector", label: "Inspector", run: () => setDrawer(!document.body.classList.contains("insp-open")), check: () => document.body.classList.contains("insp-open") })
@@ -2137,7 +2169,7 @@
   // Cross-probing with the Board window: a part selected there is selected (and shown) here;
   // a selection made here goes to the board. probeSig keeps a selection from echoing back.
   let probeSig = "";
-  const selSig = () => [...S.sel.comps].sort().join(",");
+  const selSig = () => [...S.sel.comps].sort().join(",") + "|" + [...S.sel.wires].sort().join(",");
   function selectFromBoard(ids) {
     const want = new Set(ids || []), cs = S.comps.filter(c => want.has(c.id));
     if (!cs.length) return;
@@ -2150,7 +2182,19 @@
   function probeBoard() {
     const sig = selSig(); if (sig === probeSig) return;
     probeSig = sig;
-    if (channel) { try { channel.postMessage({ type: "CAD_SELECT", ids: [...S.sel.comps] }); } catch (e) {} }
+    // wires only: their net, so the board highlights its pads and tracks
+    let net;
+    if (!S.sel.comps.size && S.sel.wires.size) { const T = topo(), nets = new Set([...S.sel.wires].map(id => T.wireNet.get(id))); if (nets.size === 1) net = [...nets][0]; }
+    if (channel) { try { channel.postMessage({ type: "CAD_SELECT", ids: [...S.sel.comps], net }); } catch (e) {} }
+  }
+  // the board highlights a net: select its wires here (without echoing it back)
+  function selectNetFromBoard(net) {
+    if (net === null || net === undefined) return;
+    const T = topo(), ws = S.wires.filter(w => T.wireNet.get(w.id) === net);
+    if (!ws.length) return;
+    S.sel.comps.clear(); S.sel.wires.clear(); ws.forEach(w => S.sel.wires.add(w.id));
+    probeSig = selSig();
+    updateInspector(); render();
   }
   function updateInspector(liveOnly) {
     probeBoard();
@@ -3056,8 +3100,9 @@
     bind("btn-spice-download", () => { const blob = new Blob([document.getElementById("spice-text").value], { type: "text/plain" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "tube-circuit.cir"; a.click(); });
     tolerance.init();
     initBom();
-    bind("btn-open-board", () => ToolWindows.open("board.html"));
-    bind("btn-doc-board", () => ToolWindows.open("board.html"));
+    bind("btn-open-board", showBoard);
+    cmds.bind("btn-board-tab", "board-tab");
+    cmds.bind("btn-doc-board", "board");
     bind("btn-open-tracer", () => ToolWindows.open("index.html"));
     bind("btn-open-scope", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("oscilloscope.html", sc ? { scope: sc.id } : null); });
     bind("btn-open-spectrum", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("spectrum_analyzer.html", sc ? { scope: sc.id } : null); });
