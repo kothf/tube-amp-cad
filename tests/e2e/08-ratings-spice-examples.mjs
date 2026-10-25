@@ -124,21 +124,24 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   check(res.length === 12 && res.every(r => r.ok && r.parts > 15), `all twelve examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
   check(await cad.evaluate(() => TubeCAD.state.sim.result && TubeCAD.state.sim.result.solver === "wasm"), "the simulation worker solves with WebAssembly");
   {
-    // the flashing-LED example has no signal generator: Animate plays its power-on transient in real time and the LED blinks
+    // the flashing-LED example has no source to follow: the simulation finds the 555's own period, the scope
+    // shows its square wave, and Animate runs the wire animation over that cycle in real time, the LED blinking
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
     cad.once("dialog", d => d.accept());
     await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /flashing-led/.test(x.file))));
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
+    const osc = await cad.evaluate(() => { const S = TubeCAD.state, tr = S.sim.result.tran, out = TubeCAD.topo().pinNet.get(S.comps.find(c => c.type === "timer555").id + ":3"), w = tr.nodes[out];
+      let lo = Infinity, hi = -Infinity; for (const v of w) { lo = Math.min(lo, v); hi = Math.max(hi, v); } return { f: tr.fBase, lo, hi }; });
+    check(Math.abs(osc.f - 1.53) < 0.06 && osc.hi - osc.lo > 6, `flashing-LED example: the 555 runs freely at ${osc.f.toFixed(3)} Hz (1.53 Hz by the formula), OUT ${osc.lo.toFixed(2)} to ${osc.hi.toFixed(2)} V`);
     await cad.click("#btn-anim");
-    await cad.waitForFunction(() => { const p = TubeCAD.anim().power; return p && p.ok; }, null, { timeout: 60000 }).catch(() => {});
     const blink = await cad.evaluate(async () => {
       const led = TubeCAD.state.comps.find(c => c.type === "led"), seen = [];
-      for (let k = 0; k < 30; k++) { seen.push(TubeCAD.ledLevel(led)); await new Promise(r => setTimeout(r, 100)); }
-      const p = TubeCAD.anim().power;
-      return { on: Math.max(...seen), off: Math.min(...seen), t: p && p.t };
+      for (let k = 0; k < 15; k++) { seen.push(TubeCAD.ledLevel(led)); await new Promise(r => setTimeout(r, 100)); }
+      const a = TubeCAD.anim();
+      return { on: Math.max(...seen), off: Math.min(...seen), wires: a.data ? a.data.wires.size : 0, power: !!a.power };
     });
     await cad.click("#btn-anim");
-    check(blink.on > 0.5 && blink.off === 0 && blink.t > 0, `flashing-LED example: Animate plays the power-on transient and the LED blinks (brightness ${blink.off} to ${blink.on && blink.on.toFixed(2)} over 3 s)`);
+    check(blink.on > 0.5 && blink.off === 0 && blink.wires > 5 && !blink.power, `flashing-LED example: Animate runs ${blink.wires} wires over the 555's cycle and the LED blinks (brightness ${blink.off} to ${blink.on && blink.on.toFixed(2)})`);
   }
   {
     // the Gubin supply: a 5Ц4С at 115 mA is within its 125 mA (2 × 62 mA per anode), and its peak anode current is checked against 375 mA

@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.101.0] - 2026-10-25
+
+### Fixed
+- The flashing-LED example showed only a frozen moment: a 555 running freely with no source to follow was simulated for 5 ms, so its slow cycle never appeared and the scope, the probe and the stickers read a flat 0 V. The simulation now finds such a 555's own period after power-on, however slow (1.51 Hz here, 1.53 Hz by the formula), and captures three or more whole cycles; the DC values are averages over the cycle. The oscilloscope shows the square wave, ∿ Animate runs the wire animation (AC and DC dots, node tints) over the 555's cycle, and the LED blinks with it.
+
+### Changed
+- An LED lights inside its triangle only, no glow around it.
+- ∿ Animate plays a cycle of a quarter second or longer in real time (a flasher blinks at its own rate); faster cycles are still slowed to 3 s. The power-on playback is left for circuits with LEDs but no cycle at all.
+
 ## [3.100.0] - 2026-10-25
 
 ### Added

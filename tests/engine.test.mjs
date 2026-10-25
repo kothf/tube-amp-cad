@@ -646,6 +646,22 @@ test("NE555 astable: high and low times are the exact RC charge between ⅓ and 
   near(b.high + b.low, a.high + a.low, 0.0005, "period with a three times longer step");
 });
 
+test("NE555 free-running with no source: the steady-state run finds its period, however slow, and captures whole cycles", () => {
+  const R1 = 10e3, R2 = 100e3, VCC = 9, vs = VCC / R1 * 12;
+  for (const C of [1e-9, 1e-6, 10e-6]) {   // about 69 kHz, 6.9 Hz, 0.69 Hz
+    const T = (R1 + R2) * C * Math.log(2) + R2 * C * Math.log((2 * VCC / 3 - vs) / (VCC / 3 - vs));
+    const r = E.simulate(astable555(R1, R2, C, VCC), { budgetMs: 2500 });
+    assert.ok(r.ok, r.error);
+    near(1 / r.tran.fBase, T, 0.01, `period with C = ${C}`);
+    const span = r.tran.samples * r.tran.dt, { up } = crossings(Array.from(r.tran.nodes[4]), r.tran.dt, VCC / 2);
+    assert.ok(span >= 3 * T * 0.99 && up.length >= 3, `${span} s captured, ${up.length} rising edges`);
+    near((up[up.length - 1] - up[0]) / (up.length - 1), T, 0.01, `cycle in the capture with C = ${C}`);
+    // the DC values are the averages over the cycle: OUT high a little over half the time
+    assert.ok(r.dcAveraged && r.dc.nodes[4] > 0.4 * VCC && r.dc.nodes[4] < 0.75 * VCC, `OUT averages ${r.dc.nodes[4]} V`);
+    assert.equal(r.tran.frames.cur.length, 120, "animation frames over one cycle");
+  }
+});
+
 test("NE555 one-shot triggered by a pulse train: 1.1·R·C pulses, the latch carried through the steady state", () => {
   // nodes: 1 VCC, 2 THR/DIS (timing), 3 TRIG, 4 OUT, 5 CV, 6 tap, 7 RESET, 8 generator, 9 behind its 50 Ω
   const R = 47e3, C = 100e-9;

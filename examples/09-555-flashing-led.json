@@ -265,7 +265,7 @@
    "y": 620,
    "rot": 0,
    "params": {
-    "text": "Press ∿ Animate to watch it flash: the first 4 s after power-on, in real time. The oscilloscope's power-on transient (3 s) shows the waveforms.",
+    "text": "Press ∿ Animate to watch it flash in real time; the oscilloscope shows OUT and the LED.",
     "size": "10"
    },
    "label": ""
