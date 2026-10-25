@@ -655,7 +655,7 @@
     if (vi >= 0 || hi >= 0 || ti >= 0) {
       const kind = vi >= 0 ? "via" : hi >= 0 ? "hole" : "text", i = vi >= 0 ? vi : hi >= 0 ? hi : ti, o = objOf(kind, i);
       S.sel = { kind, i }; title = { via: "Via", hole: "Mounting hole", text: `Text "${o.text}"` }[kind];
-      if (kind === "text") it("Turn 90°", "R", rotateSel);
+      if (kind === "text") it("Turn 90°", "Space", rotateSel);
       it(o.locked ? "Unlock" : "Lock", "L", lockSel); sep(); it("Delete", "Del", deleteSel);
     } else if (seg) {
       const t = S.board.tracks[seg.i], n = netOfTrack(seg.i), R = S.board.rules; S.sel = { kind: "track", i: seg.i };
@@ -673,7 +673,7 @@
         if (p.net !== null) it(`Highlight ${netName(p.net)}`, "`", () => highlightNet(p.net));
         sep();
       }
-      it("Turn 90°", "R", rotateSel); it(`Move to the ${(bp.side || "F") === "F" ? "bottom" : "top"} side`, "M", flipSel); it(bp.locked ? "Unlock" : "Lock", "L", lockSel);
+      it("Turn 90°", "Space", rotateSel); it(`Move to the ${(bp.side || "F") === "F" ? "bottom" : "top"} side`, "M", flipSel); it(bp.locked ? "Unlock" : "Lock", "L", lockSel);
       it("Zoom to it", "Z", zoomToSel);
     } else if (ar) {
       S.sel = { kind: ar.kind, i: ar.i }; const a = S.board[AREAS[ar.kind]][ar.i];
@@ -707,7 +707,7 @@
     canvas.focus();
     const [sx, sy] = evPos(e), [x, y] = toWorld(sx, sy);
     closeCtx();
-    if (e.button === 1 || e.button === 2 || S.space) { S.drag = { kind: "pan", sx, sy, ox: S.view.ox, oy: S.view.oy, menu: e.button === 2 && !S.space && !S.route && !S.poly }; e.preventDefault(); return; }
+    if (e.button === 1 || e.button === 2 || S.space) { if (S.space) S.spacePanned = true; S.drag = { kind: "pan", sx, sy, ox: S.view.ox, oy: S.view.oy, menu: e.button === 2 && !S.space && !S.route && !S.poly }; e.preventDefault(); return; }
     if (S.tool === "route") { if (S.route) routeClick(e); else startRoute(x, y); return; }
     if (S.tool === "pour" || S.tool === "keepout") {
       const pt = [snap(x), snapY(y)];
@@ -815,7 +815,7 @@
     const d = S.drag; S.drag = null;
     if (d && d.kind === "pan" && d.menu && e && Math.hypot(S.view.ox - d.ox, S.view.oy - d.oy) < 3) { const [x, y] = toWorld(...evPos(e)); openCtx(e.clientX, e.clientY, x, y); return; }
     if (d && d.kind === "box") {
-      if (d.moved) { boxSelect(d.x0, d.y0, d.x1, d.y1, d.x1 < d.x0, d.add); const n = selItems().length; msg(n ? `${n} selected: drag one to move them all, R turns them, arrows nudge, L locks, the inspector aligns` : "Nothing in the box"); }
+      if (d.moved) { boxSelect(d.x0, d.y0, d.x1, d.y1, d.x1 < d.x0, d.add); const n = selItems().length; msg(n ? `${n} selected: drag one to move them all, Space turns them, arrows nudge, L locks, the inspector aligns` : "Nothing in the box"); }
       else if (!d.add) S.sel = null;
       renderPanels(); render(); return;
     }
@@ -839,6 +839,12 @@
   function highlightNet(n) { S.netHL = n === null || n === undefined || n === S.netHL ? null : n; S.netFromCad = false;
     if (bc && typeof S.netHL === "number") bc.postMessage({ type: "BOARD_NET", net: S.netHL });   // cross-probing: its wires are selected in the schematic
     msg(S.netHL === null ? "Net highlight off" : `Highlighting ${netName(S.netHL)} (again: off)`); renderNets(); render(); }
+  function onKeyUp(e) {
+    if (e.key !== " " || !S.space) return;
+    e.preventDefault();
+    const tap = !S.spacePanned; S.space = false;
+    if (tap && !S.drag) rotateSel();
+  }
   function onKey(e) {
     const tag = (e.target.tagName || "").toUpperCase();
     if (e.key === "F1") { e.preventDefault(); toggle("help-modal"); return; }
@@ -850,7 +856,15 @@
     if (e.code === "Digit3" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); open3D(); return; }
     if (!MODALS.every(id => $(id).hidden)) return;
     const ctrl = e.ctrlKey || e.metaKey, L = /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(e.key).toLowerCase();
-    if (e.key === " ") { S.space = true; e.preventDefault(); return; }
+    // Space turns: at once the part or text being dragged; otherwise the selection on letting go of a
+    // tap, since Space held down while dragging pans. Never a page scroll or a click on a focused button.
+    if (e.key === " ") {
+      if (e.target.closest && e.target.closest(".menu-list, #ctx")) return;
+      e.preventDefault(); if (e.repeat) return;
+      const d = S.drag;
+      if (d && (d.kind === "part" || d.kind === "text")) { const o = objOf(d.kind, d.kind === "part" ? d.key : d.i); o.rot = ((o.rot || 0) + 1) & 3; d.moved = true; analyse(true); render(); return; }
+      S.space = true; S.spacePanned = false; return;
+    }
     if (e.code === "Backquote") { const p = hitPad(S.mouse[0], S.mouse[1]), ti = hitTrack(S.mouse[0], S.mouse[1]); highlightNet(p ? p.net : ti >= 0 ? netOfTrack(ti) : null); return; }
     if (S.poly && e.key === "Escape") { S.poly = null; render(); return; }
     if (S.poly && e.key === "Backspace") { e.preventDefault(); S.poly.pop(); if (!S.poly.length) S.poly = null; render(); return; }
@@ -1357,7 +1371,7 @@
     });
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("contextmenu", e => e.preventDefault());
-    window.addEventListener("keydown", onKey); window.addEventListener("keyup", e => { if (e.key === " ") S.space = false; });
+    window.addEventListener("keydown", onKey); window.addEventListener("keyup", onKeyUp);
     window.addEventListener("resize", render);
     Panels.columns(document.querySelector("main"), { key: "board", minViewport: 1000, minCenter: 360,
       cols: [{ index: 0, side: "left", def: 220, min: 160, max: 480 }, { index: 2, side: "right", def: 300, min: 220, max: 640 }], template: w => (S.bare ? "1fr" : `${w[0]}px 1fr ${w[1]}px`) });

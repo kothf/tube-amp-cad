@@ -116,7 +116,7 @@
 <ol class="steps">
   <li><b>Start a sheet.</b> <span class="ui">File ▾</span> → <span class="ui">New…</span>, choose A4 landscape, give it a title, <span class="ui">Create</span>. You get an ISO drawing frame with a title block.</li>
   <li><b>Place the tube.</b> Type <code>12AX7</code> in the palette's search box and press <kbd>Enter</kbd>, then click on the sheet. The tube appears as VL1.1, with its pin numbers.</li>
-  <li><b>Place the resistors.</b> Type <code>100k</code>, <kbd>Enter</kbd>, click above the anode: that is the plate resistor. Type <code>1.5k</code> and place it below the cathode, and <code>1M</code> from the grid to ground (the grid leak). <kbd>R</kbd> rotates a part while you place it.</li>
+  <li><b>Place the resistors.</b> Type <code>100k</code>, <kbd>Enter</kbd>, click above the anode: that is the plate resistor. Type <code>1.5k</code> and place it below the cathode, and <code>1M</code> from the grid to ground (the grid leak). <kbd>Space</kbd> rotates a part while you place it.</li>
   <li><b>Bypass the cathode.</b> Type <code>47u</code> to get an electrolytic and place it across the cathode resistor.</li>
   <li><b>Power and ground.</b> From <b>Sources</b> place a <span class="ui">DC supply</span> (set it to 250 V in the inspector), and from <b>Ground &amp; connectors</b> the <span class="ui">Ground</span> symbols.</li>
   <li><b>Signal.</b> Place a <span class="ui">Signal generator</span> (1 kHz, 0.1 Vpk) and a <span class="ui">Capacitor</span> (100n) from it to the grid.</li>
@@ -139,7 +139,7 @@
   <tr><td>File name</td><td class="wrap">The circuit file open now. A yellow • marks unsaved changes. A circuit not saved to a file yet (a new one, or an example) shows its title block title (or identification number) in grey italics, or "Untitled" when the title block is empty.</td></tr>
   <tr><td><span class="ui">Schematic</span> | <span class="ui">Board</span></td><td class="wrap">Switches between the schematic and its board layout. The lit one is the window you are in; the other brings the Board Design window up (opening it the first time). The Board window has the same switch to come back. <kbd>Alt</kbd>+<kbd>B</kbd> goes to the board and <kbd>Alt</kbd>+<kbd>S</kbd> back to the schematic, from any window (the instruments too, where a <span class="ui">Schematic</span> button sits at the left of the toolbar). On narrow screens the switch shows only its two icons. With <span class="ui">Windows ▾</span> → <span class="ui">Board in this window</span> ticked, the board opens in this window in place of the schematic, like a tab, instead of in a window of its own.</td></tr>
   <tr><td><span class="ui">File ▾</span></td><td class="wrap">New circuit, Add sheet, Open, Save, Save as, the Examples, Print (Ctrl+P), Save as PDF (all sheets), Export sheet (PDF/PNG), Export PNG, Export SPICE netlist.</td></tr>
-  <tr><td><span class="ui">Edit ▾</span></td><td class="wrap">Undo, Redo, then what acts on the selection: Rotate <kbd>R</kbd>, Mirror <kbd>M</kbd>, Duplicate <kbd>D</kbd>, Delete <kbd>Del</kbd>, Copy, Paste, Select all; and Renumber designations. The right mouse button on a part or wire opens the same commands there (on empty sheet: Paste, Select all, Fit, Undo, Redo).</td></tr>
+  <tr><td><span class="ui">Edit ▾</span></td><td class="wrap">Undo, Redo, then what acts on the selection: Rotate <kbd>Space</kbd>, Mirror <kbd>M</kbd>, Duplicate <kbd>D</kbd>, Delete <kbd>Del</kbd>, Copy, Paste, Select all; and Renumber designations. The right mouse button on a part or wire opens the same commands there (on empty sheet: Paste, Select all, Fit, Undo, Redo).</td></tr>
   <tr><td><span class="ui">View ▾</span></td><td class="wrap">What the schematic shows: <b>Voltages</b> (each net's DC voltage, and its AC as ~Vrms in cyan; wires that carry the signal glow cyan), <b>Currents</b> (DC current and its direction on each wire), <b>Legend</b> (the key to those marks in the corner of the sheet), and the panel under the sheet on its <b>Bill of materials</b>, <b>Checks</b> or <b>Tolerance</b> tab (<a href="#sim-tolerance">6.5</a>). A tick means on. The menu stays open while you tick, so several can be changed at once.</td></tr>
   <tr><td>↶ ↷</td><td class="wrap">Undo / redo (<kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd>). Every edit can be undone, including opening an example.</td></tr>
   <tr><td><span class="ui">Select</span> | <span class="ui">Wire</span> | <span class="ui">Probe</span></td><td class="wrap">The tool: select and move (<kbd>V</kbd>), draw wires from anywhere (<kbd>W</kbd>), or the voltmeter probe (<kbd>P</kbd>). The highlighted one is active.</td></tr>
@@ -183,11 +183,11 @@
 <ul>
   <li><b>Move:</b> drag a part; its wires follow. Drag a wire segment sideways to move it.</li>
   <li><b>Select several:</b> drag a box over empty space, or <kbd>Shift</kbd>+click. <kbd>Ctrl</kbd>+<kbd>A</kbd> selects everything.</li>
-  <li><b>Rotate</b> <kbd>R</kbd>, <b>mirror</b> <kbd>M</kbd> (left to right), <b>duplicate</b> <kbd>D</kbd>, <b>delete</b> <kbd>Del</kbd>. Rotate and mirror also work while placing. The same commands are in <span class="ui">Edit ▾</span> and on the right mouse button over a part or wire (a right-click while placing or wiring still cancels it).</li>
+  <li><b>Rotate</b> <kbd>Space</kbd> (<kbd>R</kbd> works too), <b>mirror</b> <kbd>M</kbd> (left to right), <b>duplicate</b> <kbd>D</kbd>, <b>delete</b> <kbd>Del</kbd>. Rotate and mirror also work while placing, and Space rotates the parts you are dragging. The same commands are in <span class="ui">Edit ▾</span> and on the right mouse button over a part or wire (a right-click while placing or wiring still cancels it).</li>
   <li><b>Mirror</b> works for every part that can rotate, so a complementary pair or a tube driven from the right is drawn without crossing wires. The oscilloscope mirrors too; its screen stays upright.</li>
   <li><b>Copy and paste:</b> <kbd>Ctrl</kbd>+<kbd>C</kbd>, <kbd>Ctrl</kbd>+<kbd>V</kbd>.</li>
   <li><b>Undo</b> <kbd>Ctrl</kbd>+<kbd>Z</kbd>, <b>redo</b> <kbd>Ctrl</kbd>+<kbd>Y</kbd> or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>.</li>
-  <li><b>Pan:</b> <kbd>Space</kbd>+drag or middle-drag. <b>Zoom:</b> the wheel, at the pointer.</li>
+  <li><b>Pan:</b> hold <kbd>Space</kbd> and drag, or middle-drag (a quick tap of <kbd>Space</kbd> rotates instead). <b>Zoom:</b> the wheel, at the pointer.</li>
 </ul>
 <h3 id="wiring">4.2 Wiring</h3>
 <ul>
@@ -383,7 +383,7 @@
 <p><b>SMD.</b> The small parts have surface-mount versions too: tick <span class="ui">SMD</span> in the inspector for one part, or for a whole selection (a drag box round the board, or Shift+click: every part in it that has one switches). Resistors become 0603–2512 chips by power (¼ W: 1206; above 1 W they stay through-hole), capacitors 0603–2220 chips by value, electrolytics V-chip cans up to Ø18 mm, signal diodes SOD-123 / SOD-323 / MiniMELF, rectifiers and zeners SMA / SMB / SMC, LEDs 0805 / 1206, small transistors SOT-23 (SOT-89 for the LND150 and DN2540), TO-126 parts SOT-223 or DPAK, TO-220 parts D²PAK or DPAK, the NE555 and op-amps SOIC-8 / SOIC-14, a trimmer TC33. SMD packages use the makers' SMD pin order (SOT-23: B-E-C, G-S-D; the tabbed cases B-C-E, G-D-S with the tab on the collector or drain), so check your part's datasheet. Valves, transformers, panel pots, jacks and transistors in TO-247, TO-3P, TO-264, TO-3 or germanium cans stay through-hole. An SMD part's pads are on its side's copper only and have no hole: a track reaches them on that layer (routing from one starts there; from the other side, place a via first). The bottom side (<span class="ui">Side</span>, or <kbd>M</kbd>) puts them on the bottom copper. The Gerbers then carry solder paste layers and a placement file (<code>-pos.csv</code>: centre, rotation and side of each SMD part) for assembly; the 3D view and STEP show the SMD bodies; the BOM in the Circuit CAD names the package ("Resistor, SMD 1206").</p>
 <h3 id="board-place">11.2 Placing and routing</h3>
 <ul>
-  <li>New parts wait in a row below the board: drag them on, or <span class="ui">Place all on the board</span>, which puts each part where it sits in the schematic (the schematic's extent mapped onto the board), big parts first, each in the free spot nearest its place, electrolytics 10 mm from hot parts: the input ends up on the left and the output on the right, as on the sheet. Output and power transformers and filter chokes get wire pads by default (they sit on the chassis); a board-mount EI footprint is an option in the inspector. <kbd>R</kbd> rotates, <kbd>M</kbd> moves to the bottom side. A banner offers updates when the schematic changes; placed parts keep their spot.</li>
+  <li>New parts wait in a row below the board: drag them on, or <span class="ui">Place all on the board</span>, which puts each part where it sits in the schematic (the schematic's extent mapped onto the board), big parts first, each in the free spot nearest its place, electrolytics 10 mm from hot parts: the input ends up on the left and the output on the right, as on the sheet. Output and power transformers and filter chokes get wire pads by default (they sit on the chassis); a board-mount EI footprint is an option in the inspector. <kbd>Space</kbd> rotates, <kbd>M</kbd> moves to the bottom side. A banner offers updates when the schematic changes; placed parts keep their spot.</li>
   <li><b>Route</b> <kbd>X</kbd>: click a pad, click corners (45° bends), end on a pad, track or via of the same net. <kbd>V</kbd> changes layer with a via; <kbd>/</kbd> puts the diagonal first; <kbd>Backspace</kbd> takes back the last corner. Width comes from the net's class. A halo shows the clearance; it turns red and refuses the click when too close (<kbd>Shift</kbd>+click forces it).</li>
   <li><b>Auto-route</b> (toolbar): routes the open connections with <a href="https://www.freerouting.app" target="_blank" rel="noopener">Freerouting</a>, a free autorouter (GPL-3) that runs on your own computer or another one on your network; the board goes nowhere else.
     <ul>
@@ -449,7 +449,7 @@
 <div class="grid2">
 <div class="card"><h4>Circuit CAD</h4>
 <table>
-<tr><td><kbd>R</kbd> / <kbd>M</kbd></td><td>rotate / mirror (also while placing)</td></tr>
+<tr><td><kbd>Space</kbd> / <kbd>M</kbd></td><td>rotate / mirror (also while placing; Space also while dragging; <kbd>R</kbd> rotates too)</td></tr>
 <tr><td><kbd>D</kbd>, <kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>duplicate</td></tr>
 <tr><td><kbd>Del</kbd></td><td>delete</td></tr>
 <tr><td><kbd>W</kbd> / <kbd>V</kbd></td><td>wire tool / select tool</td></tr>
@@ -458,7 +458,7 @@
 <tr><td><kbd>F</kbd></td><td>fit the sheet; again: all sheets</td></tr>
 <tr><td><kbd>B</kbd></td><td>bill of materials</td></tr>
 <tr><td><kbd>+</kbd> / <kbd>−</kbd>, wheel</td><td>zoom</td></tr>
-<tr><td><kbd>Space</kbd>+drag, middle-drag</td><td>pan</td></tr>
+<tr><td><kbd>Space</kbd>+drag, middle-drag</td><td>pan (a tap of <kbd>Space</kbd> rotates)</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd></td><td>undo / redo</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> / <kbd>A</kbd></td><td>copy / paste / select all</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>save (<kbd>Shift</kbd>: save as)</td></tr>
@@ -478,7 +478,7 @@
 <tr><td><kbd>P</kbd> / <kbd>K</kbd></td><td>copper pour / keep-out</td></tr>
 <tr><td><kbd>U</kbd></td><td>select the connected track</td></tr>
 <tr><td><kbd>L</kbd></td><td>lock / unlock</td></tr>
-<tr><td><kbd>R</kbd> / <kbd>M</kbd></td><td>rotate / other side</td></tr>
+<tr><td><kbd>Space</kbd> / <kbd>M</kbd></td><td>rotate (a tap; also while dragging; <kbd>R</kbd> too) / other side</td></tr>
 <tr><td>arrows</td><td>nudge (<kbd>Shift</kbd>: ×10)</td></tr>
 <tr><td><kbd>`</kbd></td><td>highlight the net</td></tr>
 <tr><td><kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd></td><td>fit board / sheet</td></tr>

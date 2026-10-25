@@ -307,9 +307,9 @@ import { readFile } from "node:fs/promises";
   await bd.mouse.move(r2c[0], r2c[1] - 1); await bd.mouse.down(); await bd.mouse.move(r2d[0], r2d[1] - 1, { steps: 5 }); await bd.mouse.up();
   const pos1 = await bd.evaluate(() => ["R2", "R3"].map(r => { const p = Object.values(BoardApp.state.board.parts).find(x => x.ref === r); return [p.x, p.y]; }));
   check(pos1.every((p, i) => Math.abs(p[0] - pos0[i][0] - 5.08) < 1e-3 && Math.abs(p[1] - pos0[i][1]) < 1e-3), `dragging one selected part moves the whole selection 5.08 mm (${JSON.stringify(pos1)})`);
-  await bd.keyboard.press("r");
+  await bd.keyboard.press("Space");
   const rot = await bd.evaluate(() => ["R2", "R3"].map(r => Object.values(BoardApp.state.board.parts).find(x => x.ref === r).rot));
-  check(rot[0] === 1 && rot[1] === 1, "R turns the selection 90° (each part and their places about the middle)");
+  check(rot[0] === 1 && rot[1] === 1, "Space turns the selection 90° (each part and their places about the middle)");
   await bd.keyboard.press("l");
   const before2 = await bd.evaluate(() => JSON.stringify(Object.values(BoardApp.state.board.parts).filter(x => /^R[23]$/.test(x.ref)).map(p => [p.x, p.y])));
   await bd.keyboard.press("ArrowRight");
@@ -321,6 +321,15 @@ import { readFile } from "node:fs/promises";
   await bd.evaluate(() => { const S = BoardApp.state; S.sel = { kind: "multi", parts: S.model.parts.filter(g => /^R[23]$/.test(g.ref)).map(g => g.key), tracks: [], vias: [], texts: [], holes: [] }; });
   await bd.keyboard.press("l");
   check(await bd.evaluate(() => Object.values(BoardApp.state.board.parts).filter(x => /^R[23]$/.test(x.ref)).every(p => !p.locked)), "L again unlocks");
+  {
+    // Space while dragging a part turns it there; letting go commits the move and the turn as one undo step
+    const part = () => bd.evaluate(() => { const p = Object.values(BoardApp.state.board.parts).find(x => x.ref === "R2"); return { x: p.x, y: p.y, rot: p.rot || 0 }; });
+    await bd.keyboard.press("Escape");
+    const p0 = await part(), a0 = await W(p0.x, p0.y), a1 = await W(p0.x + 5.08, p0.y);
+    await bd.mouse.move(a0[0], a0[1] - 1); await bd.mouse.down(); await bd.mouse.move(a1[0], a1[1] - 1, { steps: 4 }); await bd.keyboard.press("Space"); await bd.mouse.up();
+    const p1 = await part(); await bd.keyboard.press("Control+z"); const p2 = await part();
+    check(p1.rot === ((p0.rot + 1) & 3) && Math.abs(p1.x - p0.x - 5.08) < 1e-3 && p2.rot === p0.rot && Math.abs(p2.x - p0.x) < 1e-3, `Space while dragging a part turns it; one Ctrl+Z takes back both (rot ${p0.rot} → ${p1.rot} → ${p2.rot})`);
+  }
 
   // star grounding from Design rules: the star point XG1 joins the board, the ground's ratsnest runs each return to it
   {

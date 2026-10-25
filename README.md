@@ -49,7 +49,8 @@ Firefox is not tested.
 - **Editing.**
   - Drag parts and their wires follow; drag a wire segment sideways to move
     it.
-  - <kbd>R</kbd> rotates, <kbd>M</kbd> mirrors left to right, <kbd>D</kbd>
+  - <kbd>Space</kbd> rotates (also while placing or dragging a part; <kbd>R</kbd>
+    works too), <kbd>M</kbd> mirrors left to right, <kbd>D</kbd>
     duplicates, <kbd>Del</kbd> deletes, with undo and redo.
   - Mirror works for every part that can rotate, including any part added to
     the library later. So a complementary pair, or a tube taking its grid from
@@ -414,7 +415,7 @@ the circuit file, so one file holds both.
   (the schematic's extent mapped onto the board), big parts first, each in the
   free spot nearest its place, electrolytics 10 mm from hot parts, so the
   signal runs across the board as across the sheet. Output and power
-  transformers and filter chokes get wire pads by default (chassis-mounted). <kbd>R</kbd> rotates,
+  transformers and filter chokes get wire pads by default (chassis-mounted). <kbd>Space</kbd> rotates,
   <kbd>M</kbd> moves a part to the bottom side. When the schematic changes, a
   banner offers the update; placed parts keep their spot.
 - **Routing.** <kbd>X</kbd>: click a pad, click the corners (45° bends), end on
@@ -489,7 +490,7 @@ the circuit file, so one file holds both.
 - **Several at once:** drag a box over empty space to select what lies inside
   it (left to right) or what it touches (right to left); <kbd>Shift</kbd>+click
   adds or removes single things. Drag any selected item and everything
-  selected moves. <kbd>R</kbd> turns the group 90° about its middle, the
+  selected moves. <kbd>Space</kbd> turns the group 90° about its middle, the
   arrows nudge it one grid step (<kbd>Shift</kbd>: ten). The inspector aligns
   the selected parts (left, centre, right, top, middle, bottom) or spreads
   them evenly.
@@ -673,21 +674,21 @@ the circuit file, so one file holds both.
 
 | Key | Action |
 |---|---|
-| <kbd>R</kbd> / <kbd>M</kbd> | rotate / mirror the selection (also while placing) |
+| <kbd>Space</kbd> / <kbd>M</kbd> | rotate / mirror the selection (also while placing; Space also while dragging a part; <kbd>R</kbd> rotates too) |
 | <kbd>D</kbd> or <kbd>Ctrl</kbd>+<kbd>D</kbd> | duplicate |
 | <kbd>Del</kbd> | delete |
 | <kbd>W</kbd> / <kbd>V</kbd> / <kbd>Esc</kbd> | wire tool / select tool / cancel, clear the selection |
 | <kbd>P</kbd> | voltmeter probe |
 | <kbd>F</kbd> | fit the sheet in use; again: all sheets |
 | <kbd>B</kbd> | bill of materials |
-| <kbd>+</kbd> / <kbd>−</kbd>, wheel | zoom; <kbd>Space</kbd>-drag or middle-drag pans |
+| <kbd>+</kbd> / <kbd>−</kbd>, wheel | zoom; <kbd>Space</kbd> held while dragging, or middle-drag, pans |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> | undo / redo |
 | <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> / <kbd>A</kbd> | copy / paste / select all |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd> | save / save as / open |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | simulate until settled |
 | <kbd>F1</kbd> or <kbd>?</kbd> | help |
 
-In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>3</kbd> 3D view, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>R</kbd> rotate, <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Shift</kbd>+<kbd>F</kbd> fit the sheet, <kbd>G</kbd> grid style, <kbd>A</kbd> axes, <kbd>Backspace</kbd> takes back the last corner while routing.
+In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>3</kbd> 3D view, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>Space</kbd> rotate (a tap; also while dragging; <kbd>R</kbd> too), <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Shift</kbd>+<kbd>F</kbd> fit the sheet, <kbd>G</kbd> grid style, <kbd>A</kbd> axes, <kbd>Backspace</kbd> takes back the last corner while routing.
 
 ## How the simulator works
 
