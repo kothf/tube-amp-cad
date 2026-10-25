@@ -3,12 +3,12 @@ import { cad, check, clickAt, pin, sameNet, state, toScreen } from "./harness.mj
 
 await cad.getByRole("button", { name: /^Resistor/ }).click();
 const [mx, my] = await toScreen(300, 200);
-await cad.mouse.move(mx, my); await cad.keyboard.press("r"); await cad.mouse.click(mx, my);
+await cad.mouse.move(mx, my); await cad.keyboard.press("Space"); await cad.mouse.click(mx, my);
 await cad.getByRole("button", { name: /^Capacitor/ }).click();
 await clickAt(500, 300);
 let s = await state();
 const R1 = s.comps.find(c => c.label === "R1"), C1 = s.comps.find(c => c.label === "C1");
-check(R1 && R1.rot === 1 && C1 && C1.x === 500, "parts placed from the palette with letter codes (R1, C1), rotated with R, snapped to the grid");
+check(R1 && R1.rot === 1 && C1 && C1.x === 500, "parts placed from the palette with letter codes (R1, C1), rotated with Space while placing, snapped to the grid");
 
 const a = await pin(R1.id, "2"), b = await pin(C1.id, "1");
 await clickAt(a.x, a.y); await clickAt(a.x, b.y); await clickAt(b.x, b.y);
@@ -35,6 +35,34 @@ check((await state()).comps.length === 2, "Ctrl+Z restores it");
   const back = (await state()).comps.find(c => c.id === C1.id);
   check(r1 === ((r0 + 1) & 3) && f1 === "yes" && n1 === n0 + 1 && back.rot === r0 && back.params.flip !== "yes" && (await state()).comps.length === n0,
     "with a Russian keyboard layout R rotates, M mirrors, D duplicates and Ctrl+Z undoes (keys go by physical position)");
+}
+{
+  // Space rotates: a tap turns the selection; held down while dragging it pans and turns nothing; pressed
+  // while dragging a part it turns that part, one undo step with the move; it types in a field and does
+  // not press a focused button
+  const rotOf = async id => (await state()).comps.find(c => c.id === id).rot, view = () => cad.evaluate(() => [TubeCAD.state.view.ox, TubeCAD.state.view.oy]);
+  await cad.evaluate(id => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(id); }, C1.id);
+  const r0 = await rotOf(C1.id);
+  await cad.keyboard.press("Space"); const r1 = await rotOf(C1.id);
+  const v0 = await view(), [ex, ey] = await toScreen(800, 560);
+  await cad.mouse.move(ex, ey); await cad.keyboard.down("Space"); await cad.mouse.down(); await cad.mouse.move(ex + 40, ey + 30, { steps: 4 }); await cad.mouse.up(); await cad.keyboard.up("Space");
+  const v1 = await view(), r2 = await rotOf(C1.id);
+  check(r1 === ((r0 + 1) & 3) && r2 === r1 && v1[0] !== v0[0] && v1[1] !== v0[1], `a tap of Space rotates the selection; Space held down while dragging pans and rotates nothing (rot ${r0} → ${r1} → ${r2})`);
+  const c0 = (await state()).comps.find(c => c.id === C1.id), [px, py] = await toScreen(c0.x, c0.y), [qx, qy] = await toScreen(c0.x + 40, c0.y + 40);
+  await cad.mouse.move(px, py); await cad.mouse.down(); await cad.mouse.move(qx, qy, { steps: 4 }); await cad.keyboard.press("Space"); await cad.mouse.move(qx + 1, qy + 1); await cad.mouse.up();
+  const c1 = (await state()).comps.find(c => c.id === C1.id);
+  await cad.keyboard.press("Control+z"); const c2 = (await state()).comps.find(c => c.id === C1.id);
+  check(c1.rot === ((r1 + 1) & 3) && c1.x === c0.x + 40 && c2.rot === r1 && c2.x === c0.x && c2.y === c0.y, `Space while dragging a part rotates it; one Ctrl+Z takes back the move and the turn (rot ${c1.rot}, x ${c1.x} → ${c2.x})`);
+  await cad.evaluate(id => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(id); }, C1.id);
+  const live0 = await cad.evaluate(() => TubeCAD.state.sim.live);
+  await cad.focus("#btn-live"); await cad.keyboard.press("Space");
+  const live1 = await cad.evaluate(() => TubeCAD.state.sim.live), r3 = await rotOf(C1.id);
+  await cad.evaluate(() => document.activeElement.blur());
+  const field = cad.locator("#palette input").first(); await field.fill(""); await field.press("a"); await field.press("Space"); await field.press("b");
+  const typed = await field.inputValue(), r4 = await rotOf(C1.id); await field.fill(""); await field.press("Escape"); await cad.evaluate(() => document.activeElement.blur());
+  check(live1 === live0 && r3 === ((r1 + 1) & 3) && typed === "a b" && r4 === r3, `Space with a toolbar button focused rotates instead of pressing it; in a text field it types a space (${JSON.stringify(typed)})`);
+  await cad.keyboard.press("Control+z"); await cad.keyboard.press("Control+z");
+  check(await rotOf(C1.id) === r0, "Ctrl+Z after that is back where it started");
 }
 await cad.evaluate(id => { const S = TubeCAD.state; S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(id); TubeCAD.commit(); }, R1.id);
 const field = cad.locator("#inspector .row", { hasText: "Resistance" }).locator("input");
