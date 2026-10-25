@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.89.0] - 2026-10-25
+
+### Added
+- **Voltmeter probe.** A *Probe* tool beside Select and Wire (key <kbd>P</kbd>). Point at any wire or pin after a simulation and a card beside the pointer reads the node like a bench meter: DC voltage, AC rms, peak-to-peak and frequency, with a small oscilloscope trace of the waveform (DC coupled with automatic position, triggered, 2–5 periods; the same auto-ranging as the scope parts). The node's wires glow yellow. A click leaves the probe on that node: its card stays on the sheet and keeps reading through edits and new simulations (handy with Live while turning a value in the inspector), also after you go back to Select. <kbd>Esc</kbd>, the card's × or a click on empty sheet with the probe removes it.
+
 ## [3.88.0] - 2026-10-24
 
 ### Added

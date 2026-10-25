@@ -72,6 +72,18 @@
 
     /* canvas */
     #stage { position: relative; min-width: 0; min-height: 0; }
+    .probe-card { position: absolute; z-index: 5; width: 188px; padding: 5px 6px 4px; background: rgba(15,21,30,0.94); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.45); font: 11px/1.35 ui-monospace, Menlo, monospace; color: var(--text); pointer-events: none; }
+    .probe-card.pin { border-color: #ff5c5c; pointer-events: auto; }
+    .probe-head { display: flex; align-items: center; gap: 4px; color: #ffd54f; font-weight: 600; margin-bottom: 2px; }
+    .probe-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .probe-x { background: none; border: 0; color: var(--muted); font-size: 14px; line-height: 1; padding: 0 2px; cursor: pointer; }
+    .probe-x:hover { color: var(--text); }
+    .probe-vals { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; }
+    .probe-vals .k { color: var(--muted); }
+    .probe-vals .v { text-align: right; }
+    .probe-scope { display: block; width: 176px; height: 88px; margin-top: 4px; border-radius: 3px; }
+    .probe-scale { color: var(--muted); font-size: 9.5px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .probe-card [hidden] { display: none; }
     #cad { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
     /* the horizontal scroll bar under the drawing: the sheets marked on its track */
     #hscroll { position: absolute; left: 0; right: 0; bottom: 0; height: 18px; display: flex; background: rgba(15,21,30,0.92); border-top: 1px solid var(--line); user-select: none; }
@@ -269,6 +281,7 @@
     <div class="seg-group" role="group" aria-label="Tool">
       <button class="btn" id="btn-tool-select" title="Select / move (V)">Select</button>
       <button class="btn" id="btn-tool-wire" title="Draw wires from anywhere (W)">Wire</button>
+      <button class="btn" id="btn-tool-probe" title="Voltmeter probe (P): point at a wire or pin to read its DC and AC voltage and see its waveform; click to leave the probe on that node (Esc removes it)">Probe</button>
     </div>
     <span class="sep"></span>
     <div class="seg-group" role="group" aria-label="Zoom">
