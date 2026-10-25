@@ -6,12 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.97.4] - 2026-10-25
+## [3.97.5] - 2026-10-25
 
 ### Fixed
 - **The placement file puts every SMD part at its real centre.** `pos.csv` gave the mean of a part's pads, which is not its centre on parts whose pads are not symmetric: 0.38 mm off on an SOT-23, 0.5 mm on the TC33 trimmer, 1.6 mm on an SOT-223 and 2.4 mm on a D²PAK, enough for the assembly machine to set it beside its pads. It now gives the centre of the land pattern (the pads' extents), as IPC-7351 does.
 - **Solder paste on a DPAK's or D²PAK's tab in windowpanes.** The stencil opened the whole tab, which floats the part on the molten solder and traps voids. The tab now gets a grid of openings, about 3 mm apart, on 70 % of it; the pins keep their full openings.
 - Checked with an independent Gerber reader on four example boards made SMD (also with parts on the bottom): paste only on SMD pads and inside them, none on plated holes, every SMD pad opened in the mask, every placement within 0.001 mm of its land pattern's centre, on the right side.
+
+## [3.97.4] - 2026-10-25
+
+### Changed
+- Code structure only, no change in behaviour: the CAD's side of Board Design (the board window or tab, the netlist and board it shares, cross-probing) moved out of `cad-app.js` into `cad-board-link.js`.
 
 ## [3.97.3] - 2026-10-25
 
