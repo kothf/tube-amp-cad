@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.98.5] - 2026-10-25
+
+### Fixed
+- A Board window left open from an older release kept its old toolbar (a "CAD ↗" button on the right instead of the Schematic | Board switch at the left): the Board button only brought that window forward. A tool window from another release is now reloaded when a button brings it up, and the pages the CAD opens (the Board window and the Board in this window, the instruments) carry the release stamp in their address, so a browser cannot answer with an old cached page.
+
 ## [3.98.4] - 2026-10-25
 
 ### Fixed
