@@ -113,7 +113,11 @@ To add or correct a tube: add its datasheet entry (with the source), run
 - `npm run test:engine` — Node's test runner loads `tube-db.js` and
   `sim-engine.js` with `vm.runInThisContext` (they are browser scripts that
   attach to `globalThis`) and compares against independent results.
-- `npm run test:e2e` — headless Chromium via Playwright. Circuits are built
+- `npm run test:e2e` — headless Chromium via Playwright. `tests/e2e.mjs` runs
+  the parts in `tests/e2e/` in order (`01-editing.mjs` … `09-tolerance-ui.mjs`),
+  one browser and one CAD page throughout, so each part starts from the state
+  the one before left; `tests/e2e/harness.mjs` holds the server, the pages and
+  the helpers (`check`, `toScreen`, `clickAt`, `pin`, …). Circuits are built
   through `window.TubeCAD` (`makeComp`, `compPins`, `lRoute`, `addSegment`,
   `commit`); wait for `state.sim.seq` to advance and `state.sim.busy` to clear
   (commits debounce the solver), and fail on any `pageerror`. On distributions

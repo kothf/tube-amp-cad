@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.98.2] - 2026-10-25
+
+### Changed
+- Tests only: the 2,245-line end-to-end test is split into nine parts in `tests/e2e/` (editing, instruments, circuits, windows, sheets and files, BOM and semiconductors, board, ratings/SPICE/examples, tolerance UI) with the shared setup in `tests/e2e/harness.mjs`. `npm run test:e2e` runs them in the same order with the same 360 checks.
+
 ## [3.98.1] - 2026-10-25
 
 ### Changed
