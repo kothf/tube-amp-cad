@@ -1390,9 +1390,16 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
 
 // --- Board Design ------------------------------------------------------------------
 {
-  const [bd] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-windows").then(() => cad.click("#btn-open-board"))]);
+  // the Schematic | Board switch at the left of the toolbar opens the board
+  const [bd] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-doc-board")]);
   bd.on("pageerror", e => errors.push(`board: ${e.message}`));
   await bd.waitForFunction(() => window.BoardApp && BoardApp.state.model, null, { timeout: 10000 });
+  const sw = await bd.evaluate(() => [document.getElementById("btn-doc-board").getAttribute("aria-current"), document.getElementById("btn-cad").getAttribute("aria-current"), document.querySelector(".doc-switch").getBoundingClientRect().left < 80]);
+  check(sw[0] === "page" && !sw[1] && sw[2] && await cad.getAttribute("#btn-doc-sch", "aria-current") === "page", "both windows carry the Schematic | Board switch at the left, the window you are in lit");
+  // back and forth: each button finds the window already open, no third window
+  const nPages = ctx.pages().length;
+  await bd.click("#btn-cad"); await cad.click("#btn-doc-board"); await bd.waitForTimeout(200);
+  check(ctx.pages().length === nPages, `Schematic and Board bring the open windows up instead of opening new ones (${ctx.pages().length} pages)`);
   const bh = await bd.evaluate(() => [document.querySelector("header").getBoundingClientRect().height, document.querySelector("header").scrollWidth <= innerWidth]);
   check(bh[0] < 50 && bh[1], `the Board toolbar fits one row (${Math.round(bh[0])} px high, nothing cut off)`);
   const m0 = await bd.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.map(g => `${g.ref}:${g.fp.name}`), unplaced: S.drc.filter(d => d.kind === "unplaced").length, status: document.getElementById("status").textContent,

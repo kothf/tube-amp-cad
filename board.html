@@ -116,9 +116,9 @@
     .hint3d { position: absolute; bottom: 8px; left: 10px; color: var(--muted); font-size: 11px; pointer-events: none; }
     .preview3d { width: 100%; height: 190px; display: block; border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; background: #070b10; cursor: grab; }
     #status { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    header { flex-wrap: nowrap; min-width: 0; }
+    header { flex-wrap: wrap; min-width: 0; }   /* a narrow window gets a second row, nothing falls off the right */
     header > * { flex-shrink: 0; }
-    header #status { flex: 0 1 220px; min-width: 60px; }
+    header #status { flex: 1 1 40px; min-width: 40px; }   /* grows into spare room up to its max-width; a small basis so it never forces a second row by itself */
     .seg-group { display: inline-flex; align-items: stretch; }
     .seg-group > * { border-radius: 0; margin-left: -1px; }
     .seg-group > :first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
@@ -133,12 +133,13 @@
     .menu-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; padding: 4px 10px 4px 28px; color: var(--muted); }
     .menu-row select { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; min-width: 0; }
     @media (max-width: 1560px) { .brand b { display: none; } header { gap: 4px; } .tools .btn { padding-left: 6px; padding-right: 6px; } }
-    @media (max-width: 1400px) { header #status { flex-basis: 120px; } select.btn { max-width: 120px; } }
-    @media (max-width: 1320px) { header { padding: 6px; } select.btn { max-width: 104px; } .tools .btn { padding-left: 5px; padding-right: 5px; } header #status { min-width: 40px; } }
+    @media (max-width: 1400px) { select.btn { max-width: 120px; } }
+    @media (max-width: 1320px) { header { padding: 6px; } select.btn { max-width: 104px; } .tools .btn { padding-left: 5px; padding-right: 5px; } }
     .menu { position: relative; }
     kbd.tk { font-size: 10px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; margin-left: 5px; }
     .btn.active kbd.tk { color: var(--accent); border-color: #1d6b7a; }
     @media (max-width: 1800px) { kbd.tk { display: none; } }
+    @media (max-width: 1700px) { .doc-switch .ds-lbl { display: none; } .doc-switch .btn { padding-left: 8px; padding-right: 8px; } }
     .find { margin-bottom: 6px; }
     .find input { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
     .find input:focus { outline: none; border-color: var(--accent); }
@@ -169,11 +170,15 @@
 </head>
 <body>
   <header>
-    <div class="brand" title="Board Design">⚡ <b>Board</b></div>
+    <div class="brand" title="Tube Amp CAD: Board Design">⚡</div>
+    <div class="seg-group doc-switch" role="group" aria-label="Design">
+      <button class="btn" id="btn-cad" title="Schematic: the circuit in the Circuit CAD window (opens it if it is closed)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8h3l1-3 1.5 6 1.5-6 1.5 6 1-3h4.5"/></svg><span class="ds-lbl">Schematic</span></button>
+      <button class="btn" id="btn-doc-board" aria-current="page" title="Board: the layout you are editing"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/><path d="M6.2 6H9l2 2v.8"/></svg><span class="ds-lbl">Board</span></button>
+    </div>
     <span id="status" class="status idle">Looking for the Circuit CAD…</span>
     <div class="seg-group" role="group" aria-label="History">
-      <button class="btn" id="btn-undo" title="Undo (Ctrl+Z)">↶</button>
-      <button class="btn" id="btn-redo" title="Redo (Ctrl+Y)">↷</button>
+      <button class="btn ib" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7"/></svg></button>
+      <button class="btn ib" id="btn-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5l3 3-3 3"/><path d="M13.5 6.5h-7a4 4 0 0 0 0 8H9"/></svg></button>
     </div>
     <div class="tools seg-group" role="toolbar" aria-label="Tools">
       <button class="btn active" data-tool="select" title="Select and move footprints, tracks, vias, texts and holes; drag the board's top-right corner handle to resize it; the origin, bottom left, stays put (Esc)">Select<kbd class="tk">S</kbd></button>
@@ -232,8 +237,7 @@
         <button class="menu-item" id="ex-dsn">Freerouting design (DSN)<small>route it in Freerouting by hand</small></button>
       </div>
     </div>
-    <button class="btn" id="btn-help" title="Help and shortcuts (F1)">?</button>
-    <button class="btn link" id="btn-cad" title="Back to the schematic (the Circuit CAD window)">CAD ↗</button>
+    <button class="btn ib" id="btn-help" title="Help and shortcuts (F1)" aria-label="Help"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.1 6.2a2 2 0 1 1 2.6 1.9c-.5.2-.7.6-.7 1.1v.5"/><path d="M8 11.6v.2"/></svg></button>
   </header>
   <div id="banner" hidden><span id="banner-text"></span><button class="btn warn" id="banner-sync">Update from schematic</button></div>
 
