@@ -5,7 +5,7 @@
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadBom = function (cad) {
-    const { S, LIB, baseName, bind, cmds, renderChecks, renderTolerance, commit, flash, fmtEng, frames, input, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf } = cad;
+    const { S, baseName, bind, cmds, renderChecks, renderTolerance, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf } = cad;
     const BOM_KEY = "tubecad_bom";
     const bomOpts = { open: false, tab: "bom", sockets: true, bench: false, height: 0 };   // open, tab: the panel under the sheet and its tab
     try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}

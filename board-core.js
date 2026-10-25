@@ -1405,7 +1405,6 @@
     if (!netlist || !L) return;
     (netlist.parts || []).forEach(p => { byId[p.id] = p; });
     const role = (pad, set) => pad.pins.some(c => byId[c.comp] && byId[c.comp].type === "tube" && set.has(c.pin));
-    const tubeOf = g => g.type === "tube" && L.tubeByName ? L.tubeByName(g.members[0].params.tube) : null;
     const live = model.pads.filter(p => !placedOff.has(p.part)), partOf = {}; model.parts.forEach(g => { partOf[g.key] = g; });
     const gridPads = live.filter(p => p.net !== null && role(p, GRID_PINS)), anodePads = live.filter(p => p.net !== null && role(p, ANODE_PINS));
     const anodeNets = new Map(); anodePads.forEach(p => { if (!anodeNets.has(p.net)) anodeNets.set(p.net, `the anode of ${p.ref} (pin ${p.num})`); });

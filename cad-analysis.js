@@ -6,7 +6,7 @@
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadAnalysis = function (cad) {
-    const { S, LIB, VERSION, buildNetlist, pool, channel, desig, fmtEng, key, setStatus, showBusy, topo } = cad;
+    const { S, VERSION, buildNetlist, pool, channel, desig, fmtEng, setStatus, showBusy, topo } = cad;
     let tJob = null;
     S.trans = null;           // { seq, running, progress, tStop, ok, error, dt, scopes: [{ id, label, ch1: {min,max}, ch2 }] }
     function transientMessage() {

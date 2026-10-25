@@ -178,7 +178,6 @@
     "Dissipation": "Average power turned into heat in the part, against its rating.",
     "Supply (V+ − V−)": "The op-amp's total supply: ±15 V is 30 V. It must stay under the type's maximum (32 or 36 V) and above a few volts.",
     "Output (DC)": "The op-amp's output with no signal. Marked when it sits at one of its limits.",
-    "Output current": "Current out of the op-amp's output pin (negative: sunk into it), against the short-circuit limit.",
     "IN+ − IN−": "The voltage between the inputs. With negative feedback working it is microvolts (the offset from bias currents aside); volts mean the loop is open or the output is at a limit.",
     "Output swing": "The output's lowest and highest voltage over the capture. Marked when it reaches the limit the supply allows: the amplifier clips.",
     "Power": "Average power in the part.",
@@ -193,7 +192,7 @@
     "Output frequency": "The output's frequency over the simulated window (from its mid-level crossings, the first cycle left out).",
     "Duty cycle (high)": "The share of each cycle the output spends high.",
     "Output": "The 555's output (pin 3) at rest: high or low, and its voltage.",
-    "Output current": "Current out of the output pin into the load (negative: sunk into the pin). Above 100 mA the output sags well below its rail.",
+    "Output current": "Current out of the output pin into the load (negative: sunk into the pin). An op-amp's is checked against its short-circuit limit; a 555's output sags well below its rail above 100 mA.",
     // curve tracer: ratings
     "Va max": "Maximum plate voltage at idle (design-centre or absolute, as the datasheet gives it).",
     "Pa max": "Maximum anode dissipation. The red hyperbola on the curves: Ia = Pa max / Va.",

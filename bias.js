@@ -114,9 +114,6 @@
   // ---------------------------------------------------------------------------
   // Solving for the bias
   // ---------------------------------------------------------------------------
-  const copyNetlist = nl => ({ nodeCount: nl.nodeCount, elements: nl.elements.map(e => Object.assign({}, e)) });
-  const logit = f => Math.log(f / (1 - f)), sigmoid = u => 1 / (1 + Math.exp(-u));
-  const POT_MIN = 0.002;   // pot travel used: end stops a hair inside the track
 
   // a knob turns one part: u = 0 is the part as drawn. A resistor scales as e^u, a pot moves
   // its wiper (the share of the track between pin 1 and the wiper) along logit(f)
