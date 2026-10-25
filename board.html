@@ -22,7 +22,7 @@
     .sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; }
     .btn:hover { border-color: #3a5170; }
     .btn.active { background: #0d3442; border-color: var(--accent); color: var(--accent); }
-    .btn:disabled { opacity: .45; cursor: default; }
+    .btn:disabled, .btn.off { opacity: .45; cursor: default; }
     .btn.link { color: var(--accent); }
     .btn.warn { color: var(--warn); border-color: #6b5313; }
     select.btn { padding: 5px 8px; }
@@ -87,6 +87,7 @@
     #st-pos { margin-left: auto; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 30; }
     .modal[hidden] { display: none; }
+    pre.cmd { white-space: pre-wrap; word-break: break-all; font: 11px/1.4 ui-monospace, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin: 4px 0 8px; user-select: all; }
     .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(680px, 94vw); max-height: 86vh; overflow-y: auto; padding: 14px 16px; }
     .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12px; }
     kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: 11px; justify-self: start; }
@@ -205,11 +206,16 @@
     <button class="btn" id="btn-fit" title="Fit the board (F); Shift+F or Shift+click: the whole drawing sheet">Fit</button>
     <span class="spacer"></span>
     <button class="btn" id="btn-sync" title="Update from the schematic: bring parts added to or removed from it onto the board">Update</button>
+    <button class="btn off" id="btn-autoroute" title="Auto-route with Freerouting on this computer">Auto-route</button>
     <div class="menu" id="board-menu">
       <button class="btn" id="btn-board" aria-haspopup="true" title="Board setup and design rules">Board ▾</button>
       <div class="menu-list right" hidden>
         <button class="menu-item" id="btn-setup" title="Board setup: outline, corners, mounting holes, drawing sheet, layer stack">Board setup…<small>outline, holes, stack</small></button>
         <button class="menu-item" id="btn-rules" title="Design rules: clearances (by voltage), widths, vias, heaters, valve checks, net classes">Design rules…<small>clearances, heaters, checks</small></button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-ses" title="Add the tracks and vias of a Freerouting session file (.ses) routed from this board's DSN export">Import routes (SES)…<small>from Freerouting</small></button>
+        <button class="menu-item" id="btn-router" title="Where Freerouting's API server answers (default http://127.0.0.1:37864) and how to start it">Freerouting…<small>address, how to start it</small></button>
+        <input type="file" id="ses-file" accept=".ses,text/plain" hidden>
       </div>
     </div>
     <div class="menu" id="export-menu">
@@ -221,6 +227,7 @@
         <button class="menu-item" id="ex-step">3D model (STEP)<small>board and parts, for a chassis CAD</small></button>
         <button class="menu-item" id="ex-svg">Board drawing (SVG)<small>all layers, 1:1 mm</small></button>
         <button class="menu-item" id="ex-json">Board file (JSON)<small>this layout</small></button>
+        <button class="menu-item" id="ex-dsn">Freerouting design (DSN)<small>route it in Freerouting by hand</small></button>
       </div>
     </div>
     <button class="btn" id="btn-help" title="Help and shortcuts (F1)">?</button>
@@ -273,6 +280,7 @@
     <div class="modal-box">
       <div class="insp-title">Board Design: help</div>
       <p class="help">The board takes its parts and connections from the schematic in the Circuit CAD, which keeps the layout in the circuit file (File → Save there). New parts wait in a row below the board: drag them onto it. Thin lines (the ratsnest) show connections still to route; route them as tracks on the top or bottom copper. The design-rule check lists clearances that are too small (by the voltage between the nets, IPC-2221B), shorts, copper off the board and parts not placed yet, and warns about valve layout: grid stoppers away from the socket, grid tracks alongside anode or heater tracks, electrolytics near hot parts, sockets without a mounting hole nearby. The heaters are wired too: their pins sit on heater nets fed from the heater supply XH1 (Board ▾ → Design rules… sets how).</p>
+      <p class="help"><b>Auto-route</b> sends the open connections to <a href="https://www.freerouting.app" target="_blank" rel="noopener">Freerouting</a> running on this computer and adds the tracks it finds; the button is grey until Freerouting answers (Board ▾ → Freerouting… shows the command that starts it). It keeps the design rules, by voltage too: what it cannot route that way stays in the ratsnest for you. Ctrl+Z takes it all back.</p>
       <div class="keys">
         <kbd>X</kbd><span>route a track: click a pad (or a track or via of the net), click corners, finish on a pad, track or via of the same net (or double-click). Corners line up with the net's pads, so tracks run straight into pads off the grid. <kbd>/</kbd> diagonal first (it turns that way by itself when straight-first would come too close); <kbd>Backspace</kbd> or <kbd>Ctrl+Z</kbd> takes back a corner</span>
         <kbd>V</kbd><span>while routing: change layer and drop a via; otherwise switch the active copper layer</span>
@@ -316,6 +324,20 @@
     </div>
   </div>
 
+  <div class="modal" id="router-modal" hidden>
+    <div class="modal-box dlg">
+      <div class="insp-title">Freerouting</div>
+      <p class="help">Auto-route sends the board to Freerouting's API server, on this computer or another one on your network, and adds the tracks it sends back. The board goes nowhere else.</p>
+      <div class="row" style="grid-template-columns: 1fr 260px"><span>Address (IP or name, :port)</span><input id="router-addr" placeholder="127.0.0.1:37864" spellcheck="false"></div>
+      <p class="help" id="router-state"></p>
+      <h3>Start it with Java 25 and freerouting.jar</h3>
+      <pre class="cmd" id="router-cmd-java"></pre>
+      <h3>or with Docker</h3>
+      <pre class="cmd" id="router-cmd-docker"></pre>
+      <p class="help">On another computer, Freerouting must listen on the network (the Docker command does; with Java add <code>--api_server.endpoints=http://0.0.0.0:37864</code>). From an https page a browser may refuse a plain http address on another computer (Chrome asks once to allow the local network); then forward it so it looks local: <code>ssh -N -L 37864:127.0.0.1:37864 user@that-pc</code> and keep 127.0.0.1:37864 here.</p>
+      <div class="actions"><button class="btn" id="router-test">Test</button><span class="spacer"></span><button class="btn" id="router-cancel">Cancel</button><button class="btn active" id="router-save">Save</button></div>
+    </div>
+  </div>
   <div class="modal" id="rules-modal" hidden>
     <div class="modal-box dlg" style="width: min(760px, 96vw)">
       <div class="insp-title">Design rules</div>
@@ -328,6 +350,7 @@
           <div class="row"><span>HV above (V DC)</span><input data-r="hvVolts"></div>
           <div class="row"><span>To the board edge (mm)</span><input data-r="edgeClearance"></div>
           <div class="row"><span>By voltage (IPC-2221B)</span><select id="rules-ipc"><option value="B2">B2: bare board</option><option value="B4">B4: permanent coating</option><option value="A6">A6: conformal coating</option><option value="off">Off: classes only</option></select></div>
+          <div class="checks" style="grid-template-columns:1fr" title="A valve socket's pins are closer together than the high-voltage clearance. With this on, a track under the socket's body may pass its pins as close as they are to each other (the socket fixes that spacing anyway); everywhere else the full clearance holds. Off: only the segment that ends in a pin may come that close"><label><input type="checkbox" id="rules-socket"> Under a socket's body, tracks may pass its pins at their own spacing</label></div>
           <h3>Tracks</h3>
           <div class="row"><span>Signal width (mm)</span><input data-r="track"></div>
           <div class="row"><span>Power / HV width (mm)</span><input data-r="power"></div>
@@ -407,6 +430,7 @@
   <script src="pdf-export.js?v=dev"></script>
   <script src="board-core.js?v=dev"></script>
   <script src="board-fab.js?v=dev"></script>
+  <script src="board-route.js?v=dev"></script>
   <script src="board-3d.js?v=dev"></script>
   <script src="board-3d-view.js?v=dev"></script>
   <script src="board-app.js?v=dev"></script>

@@ -7,8 +7,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js", "board-3d.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
-const B = globalThis.BoardCore, L = globalThis.CadLib, F = globalThis.BoardFab;
+for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js", "board-route.js", "board-3d.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+const B = globalThis.BoardCore, L = globalThis.CadLib, F = globalThis.BoardFab, BR = globalThis.BoardRoute;
 
 // a small amplifier as the CAD sends it: a 12AX7 (two sections) with plate and cathode
 // resistors, an MPSA42 follower, an output transformer off the board, a supply
@@ -360,6 +360,55 @@ test("a track entering a tube pin may pass the socket's other pins as closely as
   board.tracks[board.tracks.length - 1].pts = board.tracks[board.tracks.length - 1].pts.map(([x, y]) => [x - uy * 0.8, y + ux * 0.8]);
   a = analyse(board); bad = B.drc(board, a.m, a.conn, hv).filter(d => d.kind === "clearance" && d.between.some(x => /^track/.test(x)));
   assert.ok(bad.length > 0);
+});
+
+test("under a valve socket's body a track may pass its pins at their own spacing (a design rule); off, the HV clearance holds", () => {
+  const board = fabBoard(), hv = B.hvNets(NETLIST.volts, 60), cx = 30, cy = 30;
+  let { m } = analyse(board);
+  const p6 = m.pads.find(p => p.ref === "VL1" && p.num === "6"), d = Math.hypot(p6.x - cx, p6.y - cy), ux = (p6.x - cx) / d, uy = (p6.y - cy) / d;
+  // a short track (no net: floating copper) across the radius 1.5 mm out from the anode pin (150 V: HV, 2 mm), still under the 22 mm body
+  const r = d + p6.w / 2 + 1.5 + 0.25, px = cx + ux * r, py = cy + uy * r;
+  board.tracks.push({ layer: "F.Cu", w: 0.5, pts: [[+(px - uy).toFixed(3), +(py + ux).toFixed(3)], [+(px + uy).toFixed(3), +(py - ux).toFixed(3)]] });
+  const near = () => { const a = analyse(board); return B.drc(board, a.m, a.conn, hv).filter(x => x.kind === "clearance" && x.between.includes("VL1-6")); };
+  assert.equal(near().length, 0, "1.5 mm under the body: the pins are 1.27 mm apart");
+  board.rules.socketBody = false;
+  assert.ok(near().some(x => /1\.50 mm < 2 mm/.test(x.msg)), "the rule off: 2 mm");
+  board.rules.socketBody = true;
+  // pins' spacing, not less: 1 mm is too close even under the body
+  board.tracks[board.tracks.length - 1].pts = board.tracks[board.tracks.length - 1].pts.map(([x, y]) => [x - ux * 0.5, y - uy * 0.5]);
+  assert.ok(near().some(x => /1\.00 mm < 1\.25 mm/.test(x.msg)), near().map(x => x.msg).join("; "));
+});
+
+test("Freerouting: the board as a Specctra DSN design (nets, widths, clearances by voltage, socket pins) and its routes back from a session", () => {
+  const board = fabBoard(), { m, hv, conn } = analyse(board), clr = B.clearanceRules(board, m, hv, NETLIST);
+  const d = BR.toDsn(board, m, conn, clr, { hv, title: "test" }), s = BR.parse(d.text);
+  assert.equal(s[0], "pcb");
+  const kids = k => s.filter(x => Array.isArray(x) && x[0] === k), net = kids("network")[0];
+  const nets = net.filter(x => x[0] === "net").map(x => x[1]);
+  assert.ok(nets.includes("B+") && !net.find(x => x[0] === "net" && x[1] === "GND" && x.some(y => Array.isArray(y) && y[0] === "pins")), "B+ is routed; GND has a pour and is left to it: " + nets.join(" "));
+  assert.deepEqual(d.skipped, ["GND"]);
+  // B+ (300 V, HV) to the grid (0 V): what the check asks (the HV class's 2 mm; IPC-2221B B2 1.25 mm at 300 V), plus a 0.05 mm margin
+  const rule = s.find(x => x[0] === "structure").find(x => Array.isArray(x) && x[0] === "rule"), cl = (a, b) => { const r = rule.find(x => Array.isArray(x) && x[0] === "clearance" && x[2] && (x[2][1] === `${a}_${b}` || x[2][1] === `${b}_${a}`)); return r && +r[1]; };
+  const tB = net.filter(x => x[0] === "class").find(x => x[2] === "B+").find(x => Array.isArray(x) && x[0] === "clearance_class")[1];
+  const gKey = m.pads.find(p => p.ref === "VL1" && p.num === "7").net, gNet = Object.keys(d.nets).find(k => d.nets[k] === gKey), tG = net.filter(x => x[0] === "class").find(x => x[2] === gNet).find(x => Array.isArray(x) && x[0] === "clearance_class")[1];
+  assert.equal(cl(tB, tG), Math.round((clr.need(1, gKey).c + 0.05) * 1000), `B+ to ${gNet}: ${cl(tB, tG)} µm`); assert.equal(cl(tB, tG), 2050);
+  assert.ok(net.filter(x => x[0] === "class").find(x => x[2] === "B+").find(x => Array.isArray(x) && x[0] === "rule")[1][1] === "2000", "B+ is HV: 2 mm tracks");
+  // the socket's pins have classes of their own, capped at their spacing
+  const place = s.find(x => x[0] === "placement").find(x => x[2] && x[2][1] === "VL1")[2], pins = place.filter(x => Array.isArray(x) && x[0] === "pin");
+  assert.equal(pins.length, 9); assert.ok(pins.every(p => /^p\d+\.\d+$/.test(p[2][1])), pins.map(p => p[2][1]).join(" "));
+  const p6 = pins.find(p => p[1] === "6")[2][1];
+  assert.ok(Math.abs(cl(tB, p6) - 1253.7) < 0.1, `B+ tracks may pass the anode pin at the pins' 1.27 mm spacing, less 0.02: ${cl(tB, p6)} µm`);
+  // a session back: a wire and a via on B+, in µm × 10 with y up; a copy of a board track is left out
+  const bp = m.pads.find(p => p.ref === "R1" && p.num === "1");
+  board.tracks.push({ layer: "F.Cu", w: 1, pts: [[10, 10], [20, 10]] });
+  const ses = `(session test (routes (resolution um 10) (network_out (net "B+" (wire (path B.Cu 20000 ${bp.x * 1e4} ${-bp.y * 1e4} ${bp.x * 1e4} ${-(bp.y + 10) * 1e4})) (via "V1800" ${bp.x * 1e4} ${-(bp.y + 10) * 1e4}))
+    (net "B+" (wire (path F.Cu 10000 100000 -100000 200000 -100000))))))`;
+  const got = BR.fromSes(ses, board, d, m.names);
+  assert.equal(got.tracks.length, 1); assert.deepEqual(got.tracks[0], { layer: "B.Cu", w: 2, pts: [[bp.x, bp.y], [bp.x, bp.y + 10]], net: "B+" });
+  assert.equal(got.vias.length, 1); assert.ok(Math.abs(got.vias[0].x - bp.x) < 1e-6 && Math.abs(got.vias[0].y - bp.y - 10) < 1e-6 && got.vias[0].net === "B+");
+  assert.throws(() => BR.fromSes("(pcb x)", board, d, m.names), /Not a Specctra session/);
+  // addresses as typed
+  assert.equal(BR.address("192.168.1.20"), "http://192.168.1.20:37864"); assert.equal(BR.address("nuc:4000"), "http://nuc:4000"); assert.equal(BR.address(""), BR.DEFAULT_URL);
 });
 
 test("track width for a DC current (IPC-2221, outer layer) and the current of each net from the simulation", () => {

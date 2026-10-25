@@ -37,7 +37,8 @@ const errors = [], missing = [];
 const open = async (name, page) => {
   const p = await ctx.newPage();
   p.on("pageerror", e => errors.push(`${name}: ${e.message}`));
-  p.on("console", m => { if (m.type() === "error") errors.push(`${name}: ${m.text()}`); });
+  // the Board window asks for Freerouting on this computer every few seconds: no answer there is not an error of the page
+  p.on("console", m => { if (m.type() === "error" && !/^http:\/\/127\.0\.0\.1:37864\//.test((m.location() || {}).url || "") && !/127\.0\.0\.1:37864/.test(m.text())) errors.push(`${name}: ${m.text()}`); });
   p.on("response", r => { if (r.status() >= 400) missing.push(`${r.status()} ${r.url()}`); });
   await p.goto(U(page));
   return p;
@@ -2010,6 +2011,38 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await bw.waitForTimeout(500);
     const bs = await bw.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.length, placed: Object.keys(S.board.parts).length, tracks: S.board.tracks.length, vias: S.board.vias.length, un: S.conn.unrouted, drc: S.drc.map(d => d.kind + ": " + d.msg) }; });
     check(bs.parts === 41 && bs.un === 0 && !bs.drc.length, `Gubin example's board: ${bs.parts} parts, ${bs.tracks} tracks, ${bs.vias} vias, ${bs.un} to route, ${bs.drc.length ? bs.drc.join("; ") : "no rule violations"}`);
+    // Auto-route: grey while no Freerouting answers; with one (here a stand-in on its address that sends back the
+    // tracks of a net taken off the board) the routes come back in one step, which Ctrl+Z takes back
+    const grey = await bw.evaluate(() => document.getElementById("btn-autoroute").classList.contains("off"));
+    const off = await bw.evaluate(() => { const S = BoardApp.state, n = S.board.tracks.find(t => t.net && t.net !== "GND").net, gone = S.board.tracks.filter(t => t.net === n);
+      S.board.tracks = S.board.tracks.filter(t => t.net !== n); BoardApp.commit(); return { n, gone, un: S.conn.unrouted }; });
+    const um = v => Math.round(v * 1e4), sesNet = off.n.replace(/[^A-Za-z0-9.+]/g, "");
+    const ses = `(session b (routes (resolution um 10) (network_out (net "${sesNet}" ${off.gone.map(t => `(wire (path ${t.layer} ${um(t.w)} ${t.pts.map(([x, y]) => `${um(x)} ${um(-y)}`).join(" ")}))`).join(" ")}))))`;
+    let posted = null;
+    const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
+    await ctx.route("http://127.0.0.1:37864/**", async (route, req) => {
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      if (/system\/status/.test(req.url())) return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ status: "OK" }) });
+      posted = { body: JSON.parse(req.postData()), host: req.headers()["freerouting-environment-host"] };
+      return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ status: "COMPLETED", unrouted_connections: 0, clearance_violations: 0, duration_seconds: 0.1, outputs: { SES: ses } }) });
+    });
+    await bw.click("#btn-autoroute");
+    await bw.waitForFunction(() => /routed|failed|not running/.test(document.getElementById("st-msg").textContent), null, { timeout: 15000 }).catch(() => {});
+    const ar = await bw.evaluate(() => ({ msg: document.getElementById("st-msg").textContent, un: BoardApp.state.conn.unrouted, drc: BoardApp.state.drc.map(d => d.msg), tracks: BoardApp.state.board.tracks.length }));
+    check(grey && off.un > 0 && posted && /^\(pcb /.test(posted.body.file_content) && posted.body.file_content.includes(`(net "${sesNet}" (pins`) && /^TubeAmpCAD\//.test(posted.host) && ar.un === 0 && !ar.drc.length && /routed/.test(ar.msg),
+      `Auto-route: grey with no Freerouting; with one it sends the board as DSN and adds the ${off.gone.length} tracks of ${off.n} it sends back ("${ar.msg}", ${ar.un} to route, ${ar.drc.length ? ar.drc.join("; ") : "no rule violations"})`);
+    await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
+    check(await bw.evaluate(u => BoardApp.state.conn.unrouted === u, off.un), "Ctrl+Z takes the whole auto-route back");
+    await bw.keyboard.press("Control+y"); await bw.waitForTimeout(200);
+    // Board ▾ → Freerouting…: an address typed as an IP gets the default port; both start commands name this page's address
+    await bw.click("#btn-board"); await bw.click("#btn-router");
+    const cmds = await bw.evaluate(() => [document.getElementById("router-cmd-java").textContent, document.getElementById("router-cmd-docker").textContent]);
+    await bw.fill("#router-addr", "192.168.1.20"); await bw.click("#router-save");
+    const addr = await bw.evaluate(() => [BoardApp.router.url, document.getElementById("router-modal").hidden]);
+    check(addr[0] === "http://192.168.1.20:37864" && addr[1] && cmds.every(c => c.includes(`cors_origins=${new URL(U("")).origin}`)) && /docker run .*0\.0\.0\.0:37864/.test(cmds[1]),
+      `the Freerouting dialog keeps another computer's address (${addr[0]}) and shows the Java and Docker commands for this page`);
+    await bw.evaluate(() => { localStorage.removeItem("tubecad_router_url"); BoardApp.router.url = BoardRoute.DEFAULT_URL; });
+    await ctx.unroute("http://127.0.0.1:37864/**");
     // a mounting hole made plated in the inspector, on GND: a ring the bottom pour joins, still no violations
     const [hx, hy] = await bw.evaluate(() => { const h = BoardApp.state.board.holes[3]; BoardApp.fit(); return BoardApp.toScreen(h.x, h.y); });
     const pcb = await bw.locator("#pcb").boundingBox();
