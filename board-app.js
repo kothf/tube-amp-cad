@@ -1812,19 +1812,28 @@
   // until it answers; the routes come back as tracks and vias, one step to undo
   // ---------------------------------------------------------------------------
   const ROUTER_KEY = "tubecad_router_url";
-  const router = { url: BoardRoute.DEFAULT_URL, up: false, busy: false, timer: 0 };
+  const router = { url: BoardRoute.DEFAULT_URL, up: false, why: "down", busy: false, timer: 0 };
   try { router.url = localStorage.getItem(ROUTER_KEY) || router.url; } catch (e) { /* no storage */ }
-  const startCmd = () => BoardRoute.command(/^https?:/.test(location.origin) ? location.origin : "*");
+  const pageOrigin = () => /^https?:/.test(location.origin) ? location.origin : "*";
+  const startCmd = () => BoardRoute.command(pageOrigin());
+  // what a probe found, in words: what to change on Freerouting's side
+  function routerWhy(url, p) {
+    if (p.ok) return `Freerouting answers at ${url}.`;
+    if (p.why === "cors") return `Freerouting runs at ${url} but does not let this page in: restart it with --api_server.cors_origins=${pageOrigin()} (the commands below have it).`;
+    if (p.why === "status") return `Something answers at ${url} (${p.code}), but not Freerouting's API: check the address and port.`;
+    return `No answer from ${url}. Is Freerouting's API server on? Started without --api_server.enabled=true (or with its window), it does not listen. In Docker, use the command below: the image's own command listens only inside the container. If the browser asked to reach devices on your network, allow it.`;
+  }
   function routerUi() {
     const b = $("btn-autoroute"); if (!b) return;
     b.classList.toggle("off", !router.up || router.busy);
     b.textContent = router.busy ? "Routing…" : "Auto-route";
     b.title = router.busy ? "Freerouting is routing the board" : router.up ? `Route the open connections with Freerouting (${router.url}), within the design rules; Ctrl+Z takes it back`
-      : `Freerouting is not running at ${router.url}. Start its API server (Board ▾ → Freerouting… for the address and the commands):\n${startCmd()}`;
+      : routerWhy(router.url, router) + " Click for the address and the commands.";
   }
   async function pollRouter() {
     clearTimeout(router.timer);
-    const up = await BoardRoute.available(router.url);
+    const p = await BoardRoute.probe(router.url, 3000), up = p.ok;
+    router.why = p.why; router.code = p.code;
     if (up !== router.up) { router.up = up; routerUi(); }
     router.timer = setTimeout(pollRouter, up ? 15000 : 5000);
   }
@@ -1840,7 +1849,7 @@
   async function autoRoute() {
     if (router.busy) return;
     if (!S.model) { msg("Open the Circuit CAD first: the board needs its parts"); return; }
-    if (!router.up) { await pollRouter(); if (!router.up) { msg(`Freerouting is not running at ${router.url}: start it with ${startCmd()} (Board ▾ → Freerouting…)`); return; } }
+    if (!router.up) { await pollRouter(); if (!router.up) { msg(`No Freerouting at ${router.url}: see Board ▾ → Freerouting…`); routerSetup(); return; } }
     analyse();
     if (!S.conn.unrouted) { msg("Nothing to route: every connection is routed"); return; }
     const d = dsnOf();
@@ -1853,17 +1862,17 @@
   }
   // Board ▾ → Freerouting…: the address (this computer or another on the network) and how to start it
   function routerSetup() {
-    const origin = /^https?:/.test(location.origin) ? location.origin : "*";
+    const origin = pageOrigin();
     $("router-addr").value = router.url.replace(/^http:\/\//, "");
     $("router-cmd-java").textContent = BoardRoute.command(origin); $("router-cmd-docker").textContent = BoardRoute.dockerCommand(origin);
-    $("router-state").textContent = router.up ? `Freerouting answers at ${router.url}.` : `No answer from ${router.url} yet.`;
+    $("router-state").textContent = routerWhy(router.url, router);
     $("router-modal").hidden = false; $("router-addr").focus();
   }
   async function routerTest() {
     const url = BoardRoute.address($("router-addr").value), st = $("router-state");
     if (!url) { st.textContent = "That is not an address: an IP or a name, and :port if not 37864"; return; }
     st.textContent = `Asking ${url}…`;
-    st.textContent = await BoardRoute.available(url, 3000) ? `Freerouting answers at ${url}.` : `No answer from ${url}: is it running, started with this page's address after cors_origins, and reachable from here?`;
+    st.textContent = routerWhy(url, await BoardRoute.probe(url, 3000));
   }
   function routerSave() {
     const url = BoardRoute.address($("router-addr").value);
@@ -1876,7 +1885,7 @@
     if (!file || !S.model) return;
     file.text().then(t => { try { msg(addRoutes(t, dsnOf())); } catch (e) { msg(`Not imported: ${e.message}`); } });
   }
-  function msg(t) { if (t) $("st-msg").textContent = t; }
+  function msg(t) { if (t) { const el = $("st-msg"); el.textContent = t; el.title = t; } }
   function init() {
     canvas = $("pcb"); ctx = canvas.getContext("2d"); dpr = window.devicePixelRatio || 1; canvas.tabIndex = 0;
     canvas.addEventListener("mousedown", onDown);
