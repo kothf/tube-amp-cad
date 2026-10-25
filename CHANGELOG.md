@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.97.2] - 2026-10-25
+
+### Changed
+- Code structure only, no change in behaviour: the voltmeter probe (P) moved out of `cad-app.js` into `cad-probe.js`.
+
 ## [3.97.1] - 2026-10-25
 
 ### Changed
