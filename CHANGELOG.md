@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.97.1] - 2026-10-25
+
+### Changed
+- Code structure only, no change in behaviour: the current animation (View ▾ → Animate) moved out of `cad-app.js` into its own file, `cad-anim.js`, the first step of splitting the CAD's 3,000-line script into parts.
+
 ## [3.97.0] - 2026-10-25
 
 ### Changed
