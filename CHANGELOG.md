@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.102.0] - 2026-10-25
+
+### Added
+- Power rail (Sources › DC supplies): the one-pin VCC arrow with the rail's name and voltage beside its tip, drawn upright in any rotation. It simulates as an ideal DC supply from its pin to ground. Rails and sheet connectors with the same name (in any case) are one net, fed by one source, so a rail can be placed at every part that needs it; the inspector shows the rail's voltage, current and power. *Shown as* puts your own text next to the arrow ("5V to 9V") while the simulation uses the voltage. Checks reports rails of one net with different voltages and a rail wired to ground. The rail has no footprint; on the Board its net takes the rail's name.
+
 ## [3.101.0] - 2026-10-25
 
 ### Fixed

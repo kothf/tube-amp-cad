@@ -482,7 +482,7 @@
   // pins: [{ id, net }] }], names: { net: "GND" | connector name } }. Sections of one part
   // (VL1.1 / VL1.2, SA1.1 / SA1.2) are one physical part with one footprint.
   // ---------------------------------------------------------------------------
-  const SKIP = new Set(["frame", "note", "ground", "offsheet", "scope"]);
+  const SKIP = new Set(["frame", "note", "ground", "offsheet", "rail", "scope"]);
   function physicalParts(netlist) {
     const L = root.CadLib, groups = new Map();
     (netlist.parts || []).forEach(p => {

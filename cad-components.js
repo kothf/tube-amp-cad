@@ -359,6 +359,11 @@
     offsheet(ctx) {
       line(ctx, [0, 0, 8, 0]); line(ctx, [8, -6, 20, 0, 8, 6, 8, -6]);
     },
+    // power rail (a one-pin supply, the usual VCC arrow): a stem with an arrowhead;
+    // the rail's name and voltage are drawn upright by the app beyond the tip
+    rail(ctx) {
+      line(ctx, [0, 0, 0, -16]); line(ctx, [-5, -10, 0, -16, 5, -10]);
+    },
     ground(ctx) {
       line(ctx, [0, 0, 0, 8]); line(ctx, [-12, 8, 12, 8]); line(ctx, [-7, 13, 7, 13]); line(ctx, [-2, 18, 2, 18]);
     },
@@ -1257,6 +1262,17 @@
       fields: [],
       build: () => {}
     },
+    rail: {
+      name: "Power rail", prefix: "", group: "Sources", noLabel: true, bbox: [-8, -30, 8, 2],
+      defaults: { name: "VCC", v: 9, shown: "" },
+      pins: () => [{ id: "1", x: 0, y: 0 }],
+      value: c => String(c.params.shown || "").trim() || fmtEng(c.params.v, "V"),
+      fields: [{ key: "name", label: "Rail name", kind: "text" }, { key: "v", label: "Voltage", unit: "V", kind: "eng" },
+        { key: "shown", label: "Shown as", kind: "text" }],
+      info: () => "An ideal DC supply from its pin to ground, with no ground symbol of its own to wire. Every rail and sheet connector with the same name is one net, so the supply can be drawn wherever it is needed.",
+      // one ideal source per net: the CAD's netlist keeps the first rail of each net (buildNetlist)
+      build: (c, net, alloc, out) => { if (net("1") !== 0) out.push({ id: c.id, kind: "V", nodes: [net("1"), 0], v: +c.params.v || 0 }); }
+    },
     offsheet: {
       name: "Sheet connector", prefix: "", group: "Ground & connectors", noLabel: true,
       // the arrow plus room for the name beyond its tip (for picking)
@@ -1301,7 +1317,7 @@
       ["opt_cat", null, "Output 125SE"], ["ptx_cat", null, "Power 300"]] },
     { group: "Sources", items: [
       { sub: "DC supplies" },
-      ["vdc"], ["isrc"],
+      ["vdc"], ["rail"], ["isrc"],
       { sub: "AC sources" },
       ["siggen"], ["mains"]] },
     { group: "Ground & connectors", items: [["ground"], ["offsheet"]] },
@@ -1427,6 +1443,13 @@
         }
         if (!f) h += R.note("No full cycle in the simulation window (or a one-shot at rest): the oscilloscope's power-on run shows slower timing.");
         return h;
+      }
+    },
+    rail: {
+      readout: (c, R) => {
+        // the net's one source may be another rail of the same name
+        const dev = R.railDevice(), i = dev && dev.main ? -dev.main.i : null, v = R.netDC(R.pinNet("1"));
+        return R.kv("Rail voltage", fmtEng(v, "V", 3)) + R.kv("Current supplied", fmtEng(i, "A", 2)) + R.kv("Power", fmtEng(i !== null && v !== null ? i * v : null, "W", 2));
       }
     },
     vdc: {
