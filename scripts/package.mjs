@@ -32,13 +32,11 @@ for (const f of RUNTIME) cpSync(join(root, f), join(out, f), { recursive: true }
 
 // Cache busting: CDNs (e.g. Cloudflare) cache .js/.css for hours, so every
 // release gets its own asset URLs. Source uses ?v=dev.
-let stampedPages = 0;
 for (const page of RUNTIME.filter(f => f.endsWith(".html"))) {
   const html = readFileSync(join(out, page), "utf8");
   const stamped = html.replace(/\?v=dev\b/g, `?v=${version}`);
   if (stamped === html) throw new Error(`${page} has no ?v=dev asset URLs to stamp`);
   writeFileSync(join(out, page), stamped);
-  stampedPages++;
 }
 writeFileSync(join(out, "VERSION"), `${version}\n`);
 

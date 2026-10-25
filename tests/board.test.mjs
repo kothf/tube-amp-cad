@@ -854,7 +854,7 @@ test("Gerber X2 details: pad, via and track apertures told apart; silkscreen ins
   assert.ok(/%TF\.Part,Single\*%/.test(cu) && /%TF\.SameCoordinates,Original\*%/.test(cu));
   for (const fn of ["ComponentPad", "ViaPad", "Conductor"]) assert.ok((cu + files["t-B_Cu.gbr"]).includes(`%TA.AperFunction,${fn}*%`), fn);
   assert.ok(/%TA\.AperFunction,Profile\*%/.test(files["t-Edge_Cuts.gbr"]));
-  for (const [n, t] of Object.entries(files)) if (!n.endsWith(".txt")) assert.ok(/^[\x0a\x20-\x7e]*$/.test(t), `${n} is plain ASCII`);
+  for (const [n, t] of Object.entries(files)) if (!n.endsWith(".txt")) assert.ok(/^[\x0a\x20-\x7e]*$/.test(t), `${n} is plain ASCII`);   // eslint-disable-line no-control-regex
   assert.match(cu, /^G04 Tube Amp CAD board: Usilitel 2 x 4\.5 W, 5Ts4S - F\.Cu\*/);
   // the silkscreen: every line inside the outline (0.1 mm in), and clear flashes over the pads after it
   const ops = F.layerOps(board, m, fills, "F.SilkS"), P = B.outlinePoly(board.outline, 0.1);

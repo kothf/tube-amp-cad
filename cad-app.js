@@ -546,7 +546,7 @@
   // Power-on transient for the oscilloscopes and frequency response for the Bode plotter,
   // on workers of their own from the pool, so live runs go on (cad-analysis.js)
   // ---------------------------------------------------------------------------
-  const { acMessage, runAC, runTransient, stopTransient, transientMessage } = CadAnalysis({ S, LIB, VERSION, buildNetlist, pool, channel, desig, fmtEng, key, setStatus, showBusy, topo });
+  const { acMessage, runAC, runTransient, stopTransient, transientMessage } = CadAnalysis({ S, VERSION, buildNetlist, pool, channel, desig, fmtEng, setStatus, showBusy, topo });
 
   // ---------------------------------------------------------------------------
   // View transforms
@@ -1344,7 +1344,7 @@
   const TAG_H = 12;
   // record the world-space box of a text drawn with the current transform
   function recordText(c2, t, x, y) {
-    const m = c2.getTransform(), fs = parseFloat((/([\d.]+)px/.exec(c2.font) || [, 10])[1]), w = c2.measureText(t).width;
+    const m = c2.getTransform(), fs = parseFloat((/([\d.]+)px/.exec(c2.font) || ["", 10])[1]), w = c2.measureText(t).width;
     const al = c2.textAlign, bl = c2.textBaseline;
     const x0 = al === "center" ? x - w / 2 : al === "right" || al === "end" ? x - w : x;
     const y0 = bl === "middle" ? y - fs / 2 : bl === "top" || bl === "hanging" ? y : bl === "bottom" ? y - fs : y - 0.8 * fs;
@@ -2107,18 +2107,9 @@
   // ---------------------------------------------------------------------------
   // Tolerance runs: the Tolerance tab of the same panel (cad-tolerance.js)
   const tolerance = CadTolerance({ S, VERSION, buildNetlist, pool, cmds, esc: escH, fmtEng, measurements, setStatus, topo, withResult });
-  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, LIB, baseName, bind, cmds, renderChecks, renderTolerance: () => tolerance.render(), commit, flash, fmtEng, frames, input, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf });
+  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => tolerance.render(), commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf });
   // PDF / PNG export and printing (cad-export.js)
   const { expOpts, exportPDF, initExport, openExportDialog, openPrintDialog, printPages, prnOpts, renderPNG, runExport, runPrint } = CadExport({ S, baseName, bind, bomData, compBBox, currentSheet, drawSheet, frames, setStatus, sheetNo });
-  // The page shows no confirm() dialogs in some hosts; ask through the status bar instead
-  let pendingConfirm = 0;
-  function confirmInline(msg) {
-    const now = Date.now();
-    if (now - pendingConfirm < 4000) { pendingConfirm = 0; return true; }
-    pendingConfirm = now;
-    setStatus("warn", msg + " — click again to confirm.");
-    return false;
-  }
   // The file this circuit came from or was last saved to. With the File System Access API
   // (Chromium) we keep its handle, so Save can write it again (after asking); other browsers
   // only download, so there Save works like Save as
@@ -2275,12 +2266,10 @@
   }
 
   function spiceNetlist() {
-    const T = topo();
     const nl = buildNetlist();
     const nn = n => (n === 0 ? "0" : "N" + n);
     const lines = ["* Tube Amp CAD export — " + new Date().toISOString().slice(0, 10), "* Koren tube models as behavioural sources (LTspice syntax)"];
     const models = new Set();
-    let k = 0;
     nl.elements.forEach(e => {
       if (e.internal) return;   // inside a part that goes out as a subcircuit (a 555's divider)
       const id = (e.id || "X").replace(/[^A-Za-z0-9_]/g, "_");
@@ -2349,7 +2338,6 @@
           break;
         }
       }
-      k++;
     });
     const f = signalFreq() || 1000;
     lines.push(`.tran 0 ${(20 / f).toPrecision(3)} ${(10 / f).toPrecision(3)} ${(1 / f / 200).toPrecision(3)}`, ".end");

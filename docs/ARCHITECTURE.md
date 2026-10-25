@@ -95,6 +95,11 @@ To add or correct a tube: add its datasheet entry (with the source), run
 
 ## Testing
 
+- `npm run lint` — ESLint (`eslint.config.mjs`) over every script, test and build
+  script; `npm test` runs it first. The classic scripts share one global scope, so
+  `no-undef` is what catches a name a moved section forgot to take along: a new
+  global (a new `root.X = …` module) goes into the `APP` list there.
+
 - `npm run test:reference` — reference circuits built through the editor and
   measured through the instrument windows (oscilloscope `#meas`, analyzer
   harmonic table) against datasheet and textbook values. Circuits are wired by

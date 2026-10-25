@@ -208,7 +208,7 @@
     let p = 0; all.forEach(a => { out.set(a, p); p += a.length; });
     return out;
   }
-  const xml = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+  const xml = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")   // eslint-disable-line no-control-regex -- characters XML 1.0 forbids;
   const colName = i => String.fromCharCode(65 + i);
   function toXlsx(bom) {
     const head = header(bom), first = head.length + 2;          // header lines, a blank row, then the table

@@ -1901,7 +1901,6 @@
   const router = { url: BoardRoute.DEFAULT_URL, up: false, why: "down", busy: false, timer: 0 };
   try { router.url = localStorage.getItem(ROUTER_KEY) || router.url; } catch (e) { /* no storage */ }
   const pageOrigin = () => /^https?:/.test(location.origin) ? location.origin : "*";
-  const startCmd = () => BoardRoute.command(pageOrigin());
   // what a probe found, in words: what to change on Freerouting's side
   function routerWhy(url, p) {
     if (p.ok) return `Freerouting answers at ${url}.`;

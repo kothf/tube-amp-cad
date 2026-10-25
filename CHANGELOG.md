@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.98.0] - 2026-10-25
+
+### Added
+- **Lint.** `npm run lint` runs ESLint over every script, test and build script, and `npm test` runs it first, so a name a code change forgets (the scripts share one global scope) fails the tests instead of the app.
+
+### Fixed
+- The hint for an op-amp's *Output current* readout showed the NE555's text (the hints held the label twice, and the second won). One text now covers both parts.
+
+### Changed
+- Dead code the lint found is gone: unused helpers in the bias solver, the CAD (an inline confirm, a counter and a topology call in the SPICE export), the Board window and the packaging script.
+
 ## [3.97.6] - 2026-10-25
 
 ### Changed
