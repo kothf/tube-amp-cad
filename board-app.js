@@ -461,7 +461,18 @@
     msg(TOOL_HELP[t]);
     render();
   }
-  function setLayer(l) { S.layer = l; $("layer").value = l; renderLayers(); render(); }
+  // the active layer; while a track is being placed it changes the track's layer too: before the
+  // first corner the track simply starts on the other side, after it a via goes in (as V does)
+  function setLayer(l) {
+    const r = S.route;
+    if (r && l !== r.layer && /\.Cu$/.test(l)) {
+      if (r.pts.length > 1) { routeVia(); return; }
+      const p = hitPad(r.pts[0][0], r.pts[0][1]);
+      if (p && p.smd && !p.layers.includes(l)) { msg(`${p.ref}-${p.num} is an SMD pad on ${r.layer === "F.Cu" ? "the top" : "the bottom"}: the track starts there`); $("layer").value = S.layer; renderLayers(); return; }
+      r.layer = l; S.routeBad = routeCheck();
+    }
+    S.layer = l; $("layer").value = l; renderLayers(); render();
+  }
   // Measure sticks to what is on the board: the centres of pads, vias and holes, track corners
   // and ends, the board's corners, edge middles and centre, area corners, texts and part
   // origins; failing those, onto a track's centre line, a hole's rim or the board edge; else

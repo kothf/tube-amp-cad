@@ -63,6 +63,11 @@ import { readFile } from "node:fs/promises";
     const w0 = await bd.evaluate(() => BoardApp.state.route && BoardApp.state.route.w); await bd.keyboard.press("w");
     const w1 = await bd.evaluate(() => BoardApp.state.route && BoardApp.state.route.w), hud = await bd.evaluate(() => { const h = document.getElementById("hud"); return h.hidden ? "" : h.textContent; });
     check(w0 && w1 && w1 !== w0 && w1 >= await bd.evaluate(() => BoardApp.state.board.rules.minTrack) && hud.includes(`${w1} mm`) && /mm ·|mm$/.test(hud), `W changes the track width while routing (${w0} → ${w1} mm); the card at the pointer shows it ("${hud.split("W width")[0].trim()}")`);
+    // a layer picked while the track is under way is the track's layer: before the first corner it just moves over, no via
+    await bd.selectOption("#layer", "B.Cu");
+    const ly = await bd.evaluate(() => [BoardApp.state.route && BoardApp.state.route.layer, BoardApp.state.board.vias.length]);
+    await bd.selectOption("#layer", "F.Cu");
+    check(ly[0] === "B.Cu" && ly[1] === 0 && await bd.evaluate(() => BoardApp.state.route.layer) === "F.Cu", `picking Bottom copper while routing puts the track being placed on the bottom (${ly[0]}, ${ly[1]} vias), so it is drawn blue, not in the top's red`);
     await bd.keyboard.press("Escape"); await bd.keyboard.press("Escape"); await bd.keyboard.press("s");
   }
   const tears = await bd.evaluate(() => { const S = BoardApp.state, t = S.board.tracks[0], w0 = t.w, n0 = S.fills.filter(f => f.tear).length; t.w = 0.8; BoardApp.analyse(); const n1 = S.fills.filter(f => f.tear).length; t.w = w0; BoardApp.analyse(); return [n0, n1]; });
