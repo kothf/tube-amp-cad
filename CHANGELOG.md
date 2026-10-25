@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.97.4] - 2026-10-25
+
+### Changed
+- Code structure only, no change in behaviour: the CAD's side of Board Design (the board window or tab, the netlist and board it shares, cross-probing) moved out of `cad-app.js` into `cad-board-link.js`.
+
 ## [3.97.3] - 2026-10-25
 
 ### Changed
