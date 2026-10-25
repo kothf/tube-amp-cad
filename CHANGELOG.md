@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.94.0] - 2026-10-25
+
+### Added
+- **Schematic | Board switch.** The same two-button switch sits at the left of the Circuit CAD's toolbar and of the Board window's toolbar: the lit one is the window you are in, the other brings its window up (the CAD's *Board* opens the layout the first time; the Board's *Schematic* replaces the old *CAD ↗* button at the far right). On narrow screens it shows only its two icons. *Windows ▾ → Board layout* still works.
+
+### Fixed
+- **The Board toolbar no longer runs off the window.** Below about 1340 px its right end (Board ▾, Export ▾, help and the way back to the schematic) was cut off and out of reach; now a narrow window gets a second toolbar row. The status pill shows its full text on hover when it is cut short.
+- **The CAD's toolbar stays one row from 1100 px up** (it took two rows between about 1180 and 1300 px): the file name gives way before the toolbar wraps, and the compact layout starts at 1300 px.
+
+### Changed
+- The Board window's undo, redo and help buttons use the same icons as the CAD's.
+
 ## [3.93.1] - 2026-10-25
 
 ### Changed

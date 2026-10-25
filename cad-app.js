@@ -3057,6 +3057,7 @@
     tolerance.init();
     initBom();
     bind("btn-open-board", () => ToolWindows.open("board.html"));
+    bind("btn-doc-board", () => ToolWindows.open("board.html"));
     bind("btn-open-tracer", () => ToolWindows.open("index.html"));
     bind("btn-open-scope", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("oscilloscope.html", sc ? { scope: sc.id } : null); });
     bind("btn-open-spectrum", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("spectrum_analyzer.html", sc ? { scope: sc.id } : null); });

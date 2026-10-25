@@ -89,7 +89,7 @@
   function hello() {
     if (!bc) { status("bad", "This browser cannot talk to the Circuit CAD window"); return; }
     bc.postMessage({ type: "BOARD_HELLO" });
-    helloTimer = setTimeout(() => { if (!S.linked) status("idle", "No Circuit CAD open: open it (Circuit CAD ↗) to load the circuit's parts"); }, 2000);
+    helloTimer = setTimeout(() => { if (!S.linked) status("idle", "No Circuit CAD open: open it (Schematic, top left) to load the circuit's parts"); }, 2000);
   }
   const linkText = () => { const nl = S.netlist || {}, t = nl.docno || nl.title; return `Linked to CAD${t ? " · " + t : ""} · ${S.model ? S.model.parts.length : 0} parts${S.saved ? "" : " · saving…"}`; };
   // the board goes to the CAD, which saves it with the circuit (debounced; the CAD acknowledges)
@@ -1856,7 +1856,7 @@
   // ---------------------------------------------------------------------------
   // Status and boot
   // ---------------------------------------------------------------------------
-  function status(kind, text) { const el = $("status"); el.className = "status " + kind; el.textContent = text; }
+  function status(kind, text) { const el = $("status"); el.className = "status " + kind; el.textContent = text; el.title = text; }   // the title: the whole text when the pill is cut short
   // ---------------------------------------------------------------------------
   // Auto-route: Freerouting's API server on this computer (BoardRoute). The button stays grey
   // until it answers; the routes come back as tracks and vias, one step to undo
