@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.112.0] - 2026-10-27
+
+### Added
+- Board: **Route & nudge** (Board ▾). When Auto-route leaves connections it can't fit, the parts near them are moved a little and the board is routed again, up to 5 rounds. Each round keeps the layout only if it helps. Moves are chosen by simulated annealing on wire length, ratsnest crossings, crowding (RUDY wire density) and how far parts go, and every move keeps the design rules. Locked parts, valves, transformers, controls and connectors stay put. The status line lists what moved, Ctrl+Z takes the whole run back, and the Auto-route button stops it. On example 07 with its tracks removed, Freerouting alone leaves 13 of 59 connections open; Route & nudge leaves 8.
+- Auto-route's status line points to Route & nudge when connections are left.
+
 ## [3.111.0] - 2026-10-27
 
 ### Changed

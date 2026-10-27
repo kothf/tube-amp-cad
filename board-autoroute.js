@@ -19,9 +19,9 @@
     }
     function routerUi() {
       const b = $("btn-autoroute"); if (!b) return;
-      b.classList.toggle("off", !router.up || router.busy);
-      b.querySelector(".lbl").textContent = router.busy ? "Routing…" : "Auto-route";
-      b.title = router.busy ? "Freerouting is routing the board" : router.up ? `Route the open connections with Freerouting (${router.url}), within the design rules; Ctrl+Z takes it back`
+      b.classList.toggle("off", !router.up || (router.busy && !router.nudge));
+      b.querySelector(".lbl").textContent = router.busy ? (router.nudge ? "Stop" : "Routing…") : "Auto-route";
+      b.title = router.busy ? (router.nudge ? "Stop Route & nudge after this pass; the best layout so far stays" : "Freerouting is routing the board") : router.up ? `Route the open connections with Freerouting (${router.url}), within the design rules; Ctrl+Z takes it back`
         : routerWhy(router.url, router) + " Click for the address and the commands.";
     }
     async function pollRouter() {
@@ -72,31 +72,110 @@
       dropResidue(null);
       return n0 - b.tracks.length - b.vias.length;
     }
+    // one Freerouting pass over what is open, then the pads of poured nets their pour does not reach;
+    // the routes go on the board (not committed). first: names of nets to route on their own first
+    // (the ones a pass before could not finish get the board before the rest). Returns { todo, nt, nv, pourNote }
+    async function routePass(first) {
+      if (first && first.size) { analyse(); const d1 = BoardRoute.toDsn(S.board, S.model, S.conn, S.clr, { hv: S.hv, amps: S.amps, title: baseName(), version: appVersion(), only: new Map([...first].map(n => [n, null])) }); takeRoutes((await BoardRoute.route(router.url, d1.text, { version: appVersion() })).ses, d1); analyse(); }
+      const d = dsnOf(), todo = S.conn.unrouted, r = await BoardRoute.route(router.url, d.text, { version: appVersion() }), got = takeRoutes(r.ses, d);
+      let nt = got.tracks.length, nv = got.vias.length, pourNote = d.skipped.length ? ` · left to the pour: ${d.skipped.join(", ")}` : "";
+      // the pours fill around the new tracks; pads of a pour's net it does not reach get tracks of their own
+      const gaps = pourGaps();
+      if (gaps.size) {
+        const before = S.conn.unrouted, d2 = BoardRoute.toDsn(S.board, S.model, S.conn, S.clr, { hv: S.hv, amps: S.amps, title: baseName(), version: appVersion(), only: gaps });
+        msg(`Freerouting joins the pads the ${[...gaps.keys()].join(", ")} pour does not reach…`);
+        const g2 = takeRoutes((await BoardRoute.route(router.url, d2.text, { version: appVersion() })).ses, d2);
+        nt += g2.tracks.length; nv += g2.vias.length; analyse();
+        const joined = before - S.conn.unrouted;
+        if (joined) pourNote += ` (${joined} pad${joined === 1 ? "" : "s"} it did not reach joined by tracks)`;
+      }
+      analyse();
+      return { todo, nt, nv, pourNote };
+    }
+    async function ready() {
+      if (router.busy) return false;
+      if (!S.model) { msg("Open the Circuit CAD first: the board needs its parts"); return false; }
+      if (!router.up) { await pollRouter(); if (!router.up) { msg(`No Freerouting at ${router.url}: see Board ▾ → Freerouting…`); routerSetup(); return false; } }
+      return true;
+    }
     async function autoRoute() {
-      if (router.busy) return;
-      if (!S.model) { msg("Open the Circuit CAD first: the board needs its parts"); return; }
-      if (!router.up) { await pollRouter(); if (!router.up) { msg(`No Freerouting at ${router.url}: see Board ▾ → Freerouting…`); routerSetup(); return; } }
+      if (router.busy && router.nudge) { router.stop = true; msg("Stopping after this pass: the best layout so far stays"); return; }
+      if (!await ready()) return;
       const stale = clearStale(), staleNote = stale ? ` · ${stale} old piece${stale === 1 ? "" : "s"} of copper cleared first (left from where the parts were)` : "";
       if (!S.conn.unrouted) { if (stale) commit(); msg("Nothing to route: every connection is routed" + staleNote); return; }
-      const d = dsnOf();
       router.busy = true; routerUi(); msg(`Freerouting is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
       try {
-        const todo = S.conn.unrouted, r = await BoardRoute.route(router.url, d.text, { version: appVersion() }), got = takeRoutes(r.ses, d);
-        let nt = got.tracks.length, nv = got.vias.length, pourNote = d.skipped.length ? ` · left to the pour: ${d.skipped.join(", ")}` : "";
-        // the pours fill around the new tracks; pads of a pour's net it does not reach get tracks of their own
-        const gaps = pourGaps();
-        if (gaps.size) {
-          const before = S.conn.unrouted, d2 = BoardRoute.toDsn(S.board, S.model, S.conn, S.clr, { hv: S.hv, amps: S.amps, title: baseName(), version: appVersion(), only: gaps });
-          msg(`Freerouting joins the pads the ${[...gaps.keys()].join(", ")} pour does not reach…`);
-          const g2 = takeRoutes((await BoardRoute.route(router.url, d2.text, { version: appVersion() })).ses, d2);
-          nt += g2.tracks.length; nv += g2.vias.length; analyse();
-          const joined = before - S.conn.unrouted;
-          if (joined) pourNote += ` (${joined} pad${joined === 1 ? "" : "s"} it did not reach joined by tracks)`;
-        }
+        const p = await routePass();
         commit();
-        msg(routedNote(todo, nt, nv) + pourNote + staleNote);
+        msg(routedNote(p.todo, p.nt, p.nv) + (S.conn.unrouted ? "; Board ▾ → Route & nudge moves parts to make room" : "") + p.pourNote + staleNote);
       } catch (e) { if (stale) commit(); msg(`Auto-route failed: ${e.message}` + staleNote); router.up = false; pollRouter(); }
       finally { router.busy = false; routerUi(); }
+    }
+    // Route & nudge: route; while connections are left, move the parts near them a little
+    // (BoardPlace.nudge), take up the copper round them, route again, keep the round if it helped.
+    // Up to 5 rounds, stopping after 2 that gain nothing; the whole run is one step to undo
+    const ROUNDS = 5;
+    const trackLen = () => S.board.tracks.reduce((s, t) => s + t.pts.reduce((a, p, k) => a + (k ? Math.hypot(p[0] - t.pts[k - 1][0], p[1] - t.pts[k - 1][1]) : 0), 0), 0);
+    const score = () => ({ un: S.conn.unrouted, bad: S.drc.filter(d => d.kind !== "unplaced").length, len: trackLen() });
+    const better = (a, b) => a.bad <= b.bad && (a.un < b.un || (a.un === b.un && (a.bad < b.bad || a.len < b.len * 0.99)));
+    // the unlocked copper of the nets on the moved parts and of the open connections, and any that
+    // passes within reach of an open connection: Freerouting keeps what is routed as it is
+    function ripUp(rats, moved, reach) {
+      const b = S.board, keys = new Set(moved.map(m => m.key)), nets = new Set(rats.map(r => r.net));
+      S.model.pads.forEach(p => { if (keys.has(p.part) && p.net !== null) nets.add(p.net); });
+      const near = s => rats.some(r => B.segSeg(s, [r.x1, r.y1, r.x2, r.y2]) <= reach);
+      const goT = new Set(), goV = new Set();
+      S.conn.items.forEach(it => {
+        if (it.kind === "track" && !b.tracks[it.ti].locked && (nets.has(it.net) || near(it.s))) goT.add(it.ti);
+        if (it.kind === "via" && !b.vias[it.vi].locked && (nets.has(it.net) || near(it.s))) goV.add(it.vi);
+      });
+      b.tracks = b.tracks.filter((_, i) => !goT.has(i)); b.vias = b.vias.filter((_, i) => !goV.has(i));
+      analyse(); clearStale();
+      return goT.size + goV.size;
+    }
+    // the nets of open connections that are routed as tracks (not a pour's, not the star ground)
+    function failed(rats) {
+      const poured = new Set((S.board.zones || []).map(z => z.net)), star = S.board.rules.ground === "star";
+      return new Set(rats.map(x => S.model.names[x.net] || String(x.net)).filter(n => !poured.has(n) && !(star && n === "GND")));
+    }
+    async function routeNudge() {
+      if (router.busy && router.nudge) { router.stop = true; return; }
+      if (!await ready()) return;
+      const off = S.drc.filter(d => d.kind === "unplaced").length;
+      if (off) { msg(`${off} part${off === 1 ? " is" : "s are"} not on the board yet: place ${off === 1 ? "it" : "them"} first, then Route & nudge`); return; }
+      const start = JSON.stringify(S.board), parts0 = JSON.parse(start).parts, stale = clearStale();
+      router.busy = true; router.nudge = true; router.stop = false; routerUi();
+      try {
+        if (S.conn.unrouted) { msg(`Freerouting is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`); await routePass(); }
+        const first = score();
+        let best = JSON.stringify(S.board), bestScore = first, reach = 8, fails = 0, round = 0, broke = "";
+        while (S.conn.unrouted && round < ROUNDS && fails < 2 && !router.stop) {
+          round++;
+          const rats = S.conn.rats.slice(), keys = BoardPlace.movable(S.board, S.model, rats, { radius: reach });
+          msg(`Round ${round} of ${ROUNDS}: ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"} left; moving ${keys.length} part${keys.length === 1 ? "" : "s"} near them…`);
+          await new Promise(r => setTimeout(r, 0));
+          const r = keys.length ? BoardPlace.nudge(S.board, S.model, keys, { clr: S.clr, hv: S.hv, netlist: S.netlist, conn: S.conn, seed: round, reach }) : { moved: [] };
+          if (!r.moved.length) { reach *= 1.5; fails++; continue; }
+          analyse(); ripUp(rats, r.moved, reach);
+          msg(`Round ${round} of ${ROUNDS}: ${r.moved.length} part${r.moved.length === 1 ? "" : "s"} moved; Freerouting routes ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
+          // a pass that fails ends the run with the best layout so far
+          try { await routePass(failed(rats)); } catch (e) { S.board = JSON.parse(best); analyse(); broke = e.message; break; }
+          const sc = score();
+          if (better(sc, bestScore)) { best = JSON.stringify(S.board); bestScore = sc; fails = 0; }
+          else { S.board = JSON.parse(best); analyse(); reach *= 1.5; fails++; }
+        }
+        S.board = JSON.parse(best); S.sel = null;
+        const moved = Object.keys(parts0).filter(k => S.board.parts[k]).map(k => ({ key: k, ref: S.board.parts[k].ref, from: parts0[k], to: S.board.parts[k] }))
+          .filter(m => Math.abs(m.from.x - m.to.x) > 1e-6 || Math.abs(m.from.y - m.to.y) > 1e-6 || ((m.from.rot || 0) & 3) !== ((m.to.rot || 0) & 3))
+          .map(m => ({ ...m, from: { x: m.from.x, y: m.from.y, rot: m.from.rot || 0 }, to: { x: m.to.x, y: m.to.y, rot: m.to.rot || 0 } }));
+        const left = bestScore.un, changed = JSON.stringify(S.board) !== start || stale;
+        if (changed) commit(); else analyse();
+        const what = moved.length ? `moved ${BoardPlace.describe(moved)}` : "no part moved";
+        msg((left ? `${left} connection${left === 1 ? "" : "s"} still open after ${round} round${round === 1 ? "" : "s"}` : `Everything routed${round ? ` after ${round} round${round === 1 ? "" : "s"}` : ""}`) +
+          (round || moved.length ? `: ${what}` : "") + (router.stop ? " (stopped)" : "") + (broke ? ` (Freerouting failed in round ${round}: ${broke})` : "") + (changed ? "; Ctrl+Z takes it all back" : ""));
+        return { left, rounds: round, moved };
+      } catch (e) { S.board = JSON.parse(start); analyse(); msg(`Route & nudge failed: ${e.message}; the board is as it was`); router.up = false; pollRouter(); }
+      finally { router.busy = false; router.nudge = false; routerUi(); }
     }
     // Unroute: every track and via off the board (locked ones stay), one step to undo
     function unroute() {
@@ -132,6 +211,6 @@
       if (!file || !S.model) return;
       file.text().then(t => { try { msg(addRoutes(t, dsnOf())); } catch (e) { msg(`Not imported: ${e.message}`); } });
     }
-    return { autoRoute, clearStale, dsnOf, importSes, pollRouter, router, routerSave, routerSetup, routerTest, routerUi, unroute };
+    return { autoRoute, clearStale, dsnOf, importSes, pollRouter, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, unroute };
   };
 })(window);

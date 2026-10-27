@@ -254,6 +254,26 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const ur2 = await bw.evaluate(() => { const b = BoardApp.state.board; b.tracks[0].locked = false; BoardApp.commit(); return { t: b.tracks.length, v: b.vias.length }; });
     check(ur0.t > 1 && ur1.t === 1 && ur1.v === 0 && ur1.un > ur0.un && /locked kept/.test(ur1.msg) && ur2.t === ur0.t && ur2.v === ur0.v,
       `Unroute removes ${ur0.t - 1} tracks and ${ur0.v} vias, keeps the locked one ("${ur1.msg}"); Ctrl+Z brings them back`);
+    // Route & nudge (Board ▾): with a Freerouting that routes nothing, every round makes things worse, so each is
+    // undone: the board ends as it was, no part moved; the Auto-route button reads Stop while it runs
+    await ctx.unroute("http://127.0.0.1:37864/**");
+    let nPosts = 0;
+    await ctx.route("http://127.0.0.1:37864/**", async (route, req) => {
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      if (/system\/status/.test(req.url())) return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ status: "OK" }) });
+      nPosts++; await new Promise(r => setTimeout(r, 150));
+      return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ status: "COMPLETED", unrouted_connections: 0, clearance_violations: 0, duration_seconds: 0.1, outputs: { SES: "(session b (routes (resolution um 10) (network_out)))" } }) });
+    });
+    const rn0 = await bw.evaluate(() => { const S = BoardApp.state, nets = [...new Set(S.board.tracks.map(t => t.net).filter(n => n && n !== "GND" && !/^HTR/.test(n)))].slice(0, 2);
+      S.board.tracks = S.board.tracks.filter(t => !nets.includes(t.net)); BoardApp.commit(); return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex }; });
+    await bw.click("#btn-board"); await bw.click("#btn-nudge");
+    await bw.waitForFunction(() => BoardApp.router.busy, null, { timeout: 5000 }).catch(() => {});
+    const stopLbl = await bw.evaluate(() => document.querySelector("#btn-autoroute .lbl").textContent);
+    await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 120000 }).catch(() => {});
+    const rn1 = await bw.evaluate(() => { const S = BoardApp.state; return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, msg: document.getElementById("st-msg").textContent, lbl: document.querySelector("#btn-autoroute .lbl").textContent }; });
+    check(rn0.un > 0 && stopLbl === "Stop" && rn1.lbl === "Auto-route" && nPosts >= 3 && rn1.un === rn0.un && rn1.parts === rn0.parts && rn1.tracks === rn0.tracks && rn1.h === rn0.h && /still open after 2 rounds: no part moved/.test(rn1.msg),
+      `Route & nudge with a router that finds nothing: ${nPosts} passes, every round undone, the board as it was ("${rn1.msg}"); the button read ${stopLbl} meanwhile`);
+    await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     // Board ▾ → Freerouting…: an address typed as an IP gets the default port; both start commands name this page's address
     await bw.click("#btn-board"); await bw.click("#btn-router");
     const cmds = await bw.evaluate(() => [document.getElementById("router-cmd-java").textContent, document.getElementById("router-cmd-docker").textContent]);

@@ -495,6 +495,17 @@ the circuit file, so one file holds both.
   - By hand: *Export ▾ → Freerouting design (DSN)*, route it in
     Freerouting's window or `java -jar freerouting.jar -de board.dsn -do
     board.ses`, then *Board ▾ → Import routes (SES)…*.
+- **Route & nudge** (*Board ▾*), for when Auto-route can't fit everything.
+  It routes, then, while connections are left, moves the unlocked parts near
+  them a little and routes again, for up to 5 rounds. A round that doesn't help
+  is undone. The moves come from simulated annealing on wire length, ratsnest
+  crossings, crowding (RUDY wire density) and how far parts go. Every move keeps
+  the design rules: the outline, courtyards, mounting holes, keep-outs, the
+  heat gap and clearance by voltage. Locked parts, valves, transformers,
+  controls and connectors never move. The nets that failed are routed first
+  in each round. The status line lists what moved, and
+  <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the whole run back. On example 07 routed
+  from scratch, it leaves 8 connections open where Auto-route alone leaves 13.
 - **Unroute** (beside Auto-route) removes every track and via, to route again
   from scratch. Locked tracks and vias stay; <kbd>Ctrl</kbd>+<kbd>Z</kbd>
   brings them all back.
