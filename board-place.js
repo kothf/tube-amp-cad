@@ -853,7 +853,7 @@
           for (const kb of allowed[d]) for (const ka of e.ks) { if (pairs[ka].net === pairs[kb].net) continue; if (dist < viaR + widths[kb] / 2 + need(pairs[ka].net, pairs[kb].net) - 1e-6) S.add([-e.v, -V(e.c, ka), -V(d, kb)]); }
         }
       });
-      const sat = S.solve({ budget: o.budget || 20000 });
+      const sat = S.solve({ budget: o.budget || 20000, ms: o.ms || 3000 });
       return { sat, S, tEdges, inc, termCells };
     }
     // a connection whose ends no run of its cells joins has no way, whatever the others do (said at once; the
