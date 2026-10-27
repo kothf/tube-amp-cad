@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.114.0] - 2026-10-27
+
+### Added
+- Board: **pin-escape check**. When connections stay open after Auto-route or Route & nudge, the status line names the pins that are shut in and what walls them in, for example *VT1 pin 2 (shut in by a track on B.Cu, R3)*. All of a part's open pins are counted at once, as a maximum flow from the pins to free space through cells one track apart on both layers (escape routing as network flow).
+- Board: what Freerouting leaves is tried once more on a grid (Lee's maze search). A track of the net's width that still fits from end to end past the existing copper is added, and kept only if it closes the connection and adds no rule message.
+
+### Changed
+- Route & nudge also moves the parts that wall in a shut-in pin or block the way between an open connection's ends, wherever they are. It takes up the tracks and vias that wall them in, even when no part can move.
+- Examples 02, 04 and 06 re-routed. Stripped and routed again with Route & nudge (open connections, was → now): 02 1 → 0, 04 2 → 0, 06 6 → 4, 07 8 → 6.
+
 ## [3.113.0] - 2026-10-27
 
 ### Changed

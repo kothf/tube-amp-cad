@@ -502,10 +502,12 @@ the circuit file, so one file holds both.
   crossings, crowding (RUDY wire density) and how far parts go. Every move keeps
   the design rules: the outline, courtyards, mounting holes, keep-outs, the
   heat gap and clearance by voltage. Locked parts, valves, transformers,
-  controls and connectors never move. The nets that failed are routed first
-  in each round. The status line lists what moved, and
+  controls and connectors never move. Parts and tracks that wall in a pin
+  (found by a max-flow escape check) move or come up too. The nets that
+  failed are routed first in each round, and what Freerouting leaves is tried
+  once more on a grid (Lee's maze search), kept only if it keeps every rule. The status line lists what moved, and
   <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the whole run back. On example 07 routed
-  from scratch, it leaves 8 connections open where Auto-route alone leaves 13.
+  from scratch, it leaves 6 connections open.
 - **Unroute** (beside Auto-route) removes every track and via, to route again
   from scratch. Locked tracks and vias stay; <kbd>Ctrl</kbd>+<kbd>Z</kbd>
   brings them all back.

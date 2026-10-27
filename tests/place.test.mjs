@@ -108,3 +108,63 @@ test("nudge keeps a high-voltage pad its clearance from other nets' pads", () =>
 test("describe says what moved, in words", () => {
   assert.equal(P.describe([{ ref: "R7", from: { x: 0, y: 0, rot: 0 }, to: { x: 2.54, y: 0, rot: 0 } }, { ref: "C3", from: { x: 1, y: 1, rot: 0 }, to: { x: 1, y: 1, rot: 3 } }]), "R7 2.5 mm, C3 turned 90°");
 });
+
+// a small transistor whose base runs to a resistor across the board
+const NL2 = {
+  names: { 0: "GND", 1: "C", 2: "BASE" },
+  volts: { 1: 9, 2: 0.7 },
+  parts: [
+    part("q1", "npn", "VT1", { model: "2N3904" }, { C: 1, B: 2, E: 0 }),
+    part("r1", "resistor", "R1", { r: 1e3 }, { 1: 2, 2: 0 }),
+    part("r2", "resistor", "R2", { r: 1e3 }, { 1: 1, 2: 0 }),
+    part("gnd", "ground", "", {}, { G: 0 })
+  ]
+};
+function setup2() {
+  const board = B.newBoard(); board.outline = { w: 60, h: 40, r: 0 }; board.rules.heaters = false; board.rules.shields = false;
+  B.sync(board, NL2);
+  const at = { VT1: [20, 20], R1: [40, 20], R2: [15, 32] };
+  Object.values(board.parts).forEach(p => { if (at[p.ref]) { p.x = at[p.ref][0]; p.y = at[p.ref][1]; } });
+  return board;
+}
+const analyse2 = board => { const m = B.model(board, NL2), conn = B.connectivity(board, m.pads), clr = B.clearanceRules(board, m, new Set(), NL2); return { m, conn, clr }; };
+const baseRats = (m, conn) => conn.rats.filter(r => m.names[r.net] === "BASE");
+// a ring of tracks of no net round VT1, on both layers
+const ring = (board, x1, y1, x2, y2) => ["F.Cu", "B.Cu"].forEach(layer => board.tracks.push({ layer, w: 0.6, pts: [[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]] }));
+
+test("escape: a pin with room gets out; a ring of copper round its part shuts it in, and the walls name the tracks", () => {
+  const board = setup2();
+  let { m, conn, clr } = analyse2(board);
+  const free = P.escape(board, m, conn, baseRats(m, conn), { clr });
+  assert.ok(free.length >= 1 && free.every(e => e.ok), JSON.stringify(free.map(e => [e.ref, e.flow])));
+  assert.ok(P.passage(board, m, conn, baseRats(m, conn), { clr }).every(p => p.ok), "a way through to R1");
+  ring(board, 15, 15, 25, 25); ({ m, conn, clr } = analyse2(board));
+  const shut = P.escape(board, m, conn, baseRats(m, conn), { clr, margin: 8 }), vt = shut.find(e => e.ref === "VT1");
+  assert.ok(vt && !vt.ok && vt.flow === 0 && vt.pins.some(p => !p.out), JSON.stringify(vt));
+  assert.ok(vt.walls.length && vt.walls[0].kind === "track", `walls: ${vt.walls.map(w => w.what)}`);
+  const pass = P.passage(board, m, conn, baseRats(m, conn), { clr });
+  assert.ok(pass.length && !pass[0].ok && pass[0].walls.some(w => w.kind === "track"), JSON.stringify(pass));
+  assert.match(P.describeEscape(shut), /^VT1 pin \d+ \(shut in by a track on [FB]\.Cu/);
+});
+
+test("escape: counts every pin of a part at once (a gap one track wide lets one pin out, not two)", () => {
+  const board = setup2();
+  // both VT1's base and collector have open connections; the ring on F.Cu has one opening, on B.Cu none
+  ring(board, 15, 15, 25, 25);
+  board.tracks = board.tracks.map(t => (t.layer === "F.Cu" ? { ...t, pts: [[21.45, 15], [25, 15], [25, 25], [15, 25], [15, 15], [18.55, 15]] } : t));
+  const { m, conn, clr } = analyse2(board);
+  const rats = conn.rats.filter(r => ["BASE", "C"].includes(m.names[r.net]));
+  const vt = P.escape(board, m, conn, rats, { clr, margin: 8 }).find(e => e.ref === "VT1");
+  assert.ok(vt && vt.pins.length === 2 && vt.flow === 1 && !vt.ok, JSON.stringify(vt && { flow: vt.flow, pins: vt.pins }));
+});
+
+test("bridge: a grid path joins an open connection with a track that keeps every rule", () => {
+  const board = setup2(), { m, conn, clr } = analyse2(board), rats = baseRats(m, conn);
+  const b = P.bridge(board, m, conn, rats, { clr });
+  assert.ok(b && b.track.pts.length >= 2 && b.track.net === "BASE" && b.track.w === board.rules.track, JSON.stringify(b));
+  board.tracks.push(b.track);
+  const m2 = B.model(board, NL2), c2 = B.connectivity(board, m2.pads);
+  assert.equal(c2.rats.filter(r => m2.names[r.net] === "BASE").length, 0, "the base is joined to R1");
+  const bad = B.drc(board, m2, c2, new Set(), [], NL2).filter(d => ["clearance", "edge", "short", "width"].includes(d.kind));
+  assert.deepEqual(bad.map(d => d.msg), []);
+});
