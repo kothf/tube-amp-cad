@@ -1657,6 +1657,172 @@ var TUBE_DATABASE = [
       { pin: 7, sym: "G2", role: "Pentode screen grid", isScreen: true }, { pin: 8, sym: "KP", role: "Pentode cathode", isCathode: true },
       { pin: 9, sym: "G1", role: "Pentode control grid", isGrid: true }
     ]
+  },
+  // ---------------- Western classics (batch added 3.104.0) ----------------
+  {
+    nameGost: "12BH7A", nameWestern: "12BH7A / 12BH7 (Medium-Mu Twin Triode)", commonName: "12BH7A",
+    type: "Dual Medium-Mu Triode — driver and phase splitter", category: "small_signal", origin: "Western", socket: "Noval B9A", pinCount: 9,
+    vh: 12.6, ih: 0.3,
+    heaterWarning: "Dual Heater: 12.6V @ 0.3A (4-5) or 6.3V @ 0.6A (4+5 and 9).",
+    hasPin9CenterTap: true,
+    vaMax: 300, paMax: 3.5, ikMax: 20, vg2Max: 0,
+    koren: { Triode: { mu: 17.43, kg: 1201, kp: 112.7, kvb: 406, x: 1.34 } },
+    pinout: [
+      { pin: 1, sym: "A2", role: "Plate 2", isPlate: true }, { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
+      { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "H1", role: "Heater 1", isHeater: true },
+      { pin: 5, sym: "H2", role: "Heater 2", isHeater: true }, { pin: 6, sym: "A1", role: "Plate 1", isPlate: true },
+      { pin: 7, sym: "G1", role: "Grid 1", isGrid: true }, { pin: 8, sym: "K1", role: "Cathode 1", isCathode: true },
+      { pin: 9, sym: "CT", role: "Heater Center Tap", isHeater: true }
+    ]
+  },
+  {
+    nameGost: "6CG7", nameWestern: "6CG7 / 6FQ7 (noval 6SN7)", commonName: "6CG7",
+    type: "Dual Medium-Mu Triode", category: "small_signal", origin: "Western", socket: "Noval B9A", pinCount: 9,
+    vh: 6.3, ih: 0.6,
+    heaterWarning: "Heater pins 4 & 5: 6.3V @ 0.6A. Pin 9 is the internal shield.",
+    hasPin9Shield: true,
+    vaMax: 330, paMax: 4, ikMax: 20, vg2Max: 0,
+    koren: { Triode: { mu: 22.01, kg: 1294, kp: 119.8, kvb: 1041, x: 1.32 } },
+    pinout: [
+      { pin: 1, sym: "A2", role: "Plate 2", isPlate: true }, { pin: 2, sym: "G2", role: "Grid 2", isGrid: true },
+      { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "A1", role: "Plate 1", isPlate: true },
+      { pin: 7, sym: "G1", role: "Grid 1", isGrid: true }, { pin: 8, sym: "K1", role: "Cathode 1", isCathode: true },
+      { pin: 9, sym: "S", role: "Internal shield", isShield: true }
+    ]
+  },
+  {
+    nameGost: "6AS7G / 6080", nameWestern: "6AS7G / 6080 (Low-Mu Twin Power Triode)", commonName: "6AS7G",
+    type: "Double Triode — series regulator, OTL output", category: "power", origin: "Western", socket: "Octal", pinCount: 8,
+    vh: 6.3, ih: 2.5,
+    heaterWarning: "Heater pins 7 & 8: 6.3V @ 2.5A.",
+    vaMax: 250, paMax: 13, ikMax: 125, vg2Max: 0,
+    koren: { Triode: { mu: 2.002, kg: 1399, kp: 165, kvb: 2076, x: 1.42 } },
+    pinout: [
+      { pin: 1, sym: "G2", role: "Grid 2", isGrid: true }, { pin: 2, sym: "A2", role: "Anode 2", isPlate: true },
+      { pin: 3, sym: "K2", role: "Cathode 2", isCathode: true }, { pin: 4, sym: "G1", role: "Grid 1", isGrid: true },
+      { pin: 5, sym: "A1", role: "Anode 1", isPlate: true }, { pin: 6, sym: "K1", role: "Cathode 1", isCathode: true },
+      { pin: 7, sym: "H", role: "Heater", isHeater: true }, { pin: 8, sym: "H", role: "Heater", isHeater: true }
+    ]
+  },
+  {
+    nameGost: "KT66", nameWestern: "KT66 (Beam Power Tetrode)", commonName: "KT66",
+    type: "Beam Power Tetrode", category: "power", origin: "Western", socket: "Octal K8A", pinCount: 8,
+    vh: 6.3, ih: 1.27, heaterWarning: "Octal pins 2 & 7: 6.3V @ 1.27A.",
+    vaMax: 500, paMax: 25, ikMax: 150, vg2Max: 400,
+    koren: {
+      Pentode: { vk: 35.15, ks: 0.5634, mu: 8.073, kg: 1297, kp: 48.16, lam: 1665, x: 1.39, kg2: 4886 },
+      Ultralinear: { vk: 35.15, ks: 0.5634, mu: 8.073, kg: 1297, kp: 48.16, lam: 1665, x: 1.39, kg2: 4886 },
+      Triode: { mu: 7.665, kg: 1515, kp: 55.41, kvb: 17.34, x: 1.49 }
+    },
+    pinout: [
+      { pin: 1, sym: "NC", role: "No Connection" }, { pin: 2, sym: "H", role: "Heater", isHeater: true },
+      { pin: 3, sym: "A", role: "Plate (HV!)", isPlate: true }, { pin: 4, sym: "G2", role: "Screen Grid", isScreen: true },
+      { pin: 5, sym: "G1", role: "Control Grid", isGrid: true }, { pin: 6, sym: "NC", role: "No Connection" },
+      { pin: 7, sym: "H", role: "Heater", isHeater: true }, { pin: 8, sym: "K", role: "Cathode & beam plates", isCathode: true }
+    ]
+  },
+  {
+    nameGost: "6AQ5A / EL90", nameWestern: "6AQ5A / EL90 (miniature 6V6)", commonName: "6AQ5A",
+    type: "Beam Power Tetrode", category: "power", origin: "Western", socket: "Miniature B7G", pinCount: 7,
+    vh: 6.3, ih: 0.45, heaterWarning: "Heater pins 3 & 4: 6.3V @ 0.45A. Pins 1 and 7 are both the control grid.",
+    vaMax: 275, paMax: 12, ikMax: 55, vg2Max: 275,
+    koren: {
+      Pentode: { vk: 37.51, ks: 0.5649, mu: 10.64, kg: 2783, kp: 28.12, lam: 2192, x: 1.57, kg2: 10780 },
+      Ultralinear: { vk: 37.51, ks: 0.5649, mu: 10.64, kg: 2783, kp: 28.12, lam: 2192, x: 1.57, kg2: 10780 },
+      Triode: { mu: 10.42, kg: 3086, kp: 28.16, kvb: 28.28, x: 1.66 }
+    },
+    pinout: [
+      { pin: 1, sym: "G1", role: "Control Grid", isGrid: true }, { pin: 2, sym: "K", role: "Cathode & beam plates", isCathode: true },
+      { pin: 3, sym: "H", role: "Heater", isHeater: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "A", role: "Plate", isPlate: true }, { pin: 6, sym: "G2", role: "Screen Grid", isScreen: true },
+      { pin: 7, sym: "G1", role: "Control Grid (also pin 1)", isGrid: true }
+    ]
+  },
+  {
+    nameGost: "ECL82 (triode)", nameWestern: "ECL82 / 6BM8 triode section", commonName: "ECL82-T",
+    type: "Triode-Pentode, Triode Section", category: "small_signal", origin: "Western", socket: "Noval B9A", pinCount: 9,
+    vh: 6.3, ih: 0.78,
+    heaterWarning: "Heater pins 4 & 5: 6.3V @ 0.78A (shared with the pentode section).",
+    vaMax: 300, paMax: 0.5, ikMax: 15, vg2Max: 0,
+    koren: { Triode: { mu: 65.72, kg: 900.7, kp: 796.3, kvb: 526, x: 1.1 } },
+    pinout: [
+      { pin: 1, sym: "GT", role: "Triode grid", isGrid: true }, { pin: 2, sym: "KP", role: "Pentode cathode", isCathode: true },
+      { pin: 3, sym: "G1", role: "Pentode control grid", isGrid: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "AP", role: "Pentode anode", isPlate: true },
+      { pin: 7, sym: "G2", role: "Pentode screen grid", isScreen: true }, { pin: 8, sym: "KT", role: "Triode cathode", isCathode: true },
+      { pin: 9, sym: "AT", role: "Triode anode", isPlate: true }
+    ]
+  },
+  {
+    nameGost: "ECL82 (pentode)", nameWestern: "ECL82 / 6BM8 pentode section", commonName: "ECL82-P",
+    type: "Triode-Pentode, Pentode Section", category: "power", origin: "Western", socket: "Noval B9A", pinCount: 9,
+    vh: 6.3, ih: 0.78,
+    heaterWarning: "Heater pins 4 & 5: 6.3V @ 0.78A (shared with the triode section).",
+    vaMax: 300, paMax: 7, ikMax: 50, vg2Max: 300,
+    koren: {
+      Pentode: { vk: 34.89, ks: 0.7458, mu: 8.801, kg: 1119, kp: 85.81, lam: 448.2, x: 1.36, kg2: 3160 },
+      Ultralinear: { vk: 34.89, ks: 0.7458, mu: 8.801, kg: 1119, kp: 85.81, lam: 448.2, x: 1.36, kg2: 3160 },
+      Triode: { mu: 8.046, kg: 1713, kp: 1783, kvb: 0.00001735, x: 1.62 }
+    },
+    pinout: [
+      { pin: 1, sym: "GT", role: "Triode grid", isGrid: true }, { pin: 2, sym: "KP", role: "Pentode cathode", isCathode: true },
+      { pin: 3, sym: "G1", role: "Pentode control grid", isGrid: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "AP", role: "Pentode anode", isPlate: true },
+      { pin: 7, sym: "G2", role: "Pentode screen grid", isScreen: true }, { pin: 8, sym: "KT", role: "Triode cathode", isCathode: true },
+      { pin: 9, sym: "AT", role: "Triode anode", isPlate: true }
+    ]
+  },
+  {
+    nameGost: "211 / VT-4-C", nameWestern: "211 / VT-4-C (High-Voltage Power Triode)", commonName: "211",
+    type: "Directly Heated Transmitter Triode", category: "power", origin: "Western", socket: "Special 4-pin", pinCount: 4,
+    vh: 10.0, ih: 3.25, heaterWarning: "DANGER: Plate voltage up to 1000V-1250V! Filament is 10.0V @ 3.25A.",
+    isDHT: true,
+    vaMax: 1250, paMax: 75, ikMax: 150, vg2Max: 0,
+    koren: { Triode: { mu: 12.42, kg: 2234, kp: 112.4, kvb: 300, x: 1.35 } },
+    pinout: [
+      { pin: 1, sym: "F+", role: "Filament (+)", isHeater: true, isCathode: true },
+      { pin: 2, sym: "A", role: "Plate (1000V+)", isPlate: true },
+      { pin: 3, sym: "G", role: "Control Grid", isGrid: true },
+      { pin: 4, sym: "F-", role: "Filament (-)", isHeater: true, isCathode: true }
+    ]
+  },
+  {
+    nameGost: "5Y3GT", nameWestern: "5Y3GT (Full-Wave Rectifier)", commonName: "5Y3GT",
+    type: "Full-Wave Directly Heated Rectifier", category: "rectifier", origin: "Western", socket: "Octal K8A", pinCount: 8,
+    vh: 5.0, ih: 2.0, heaterWarning: "Directly heated: 5.0V @ 2.0A. B+ appears on filament pins 2 & 8.",
+    vaMax: 500, paMax: 0, ikMax: 125, vg2Max: 0,
+    koren: { Triode: { mu: 1.0, kg: 80, kp: 30, kvb: 8, x: 1.5 } },
+    pinout: [
+      { pin: 1, sym: "NC", role: "No Connection" }, { pin: 2, sym: "F+", role: "Filament / B+ OUT", isHeater: true, isCathode: true },
+      { pin: 3, sym: "NC", role: "No Connection" }, { pin: 4, sym: "A1", role: "Anode 1", isPlate: true },
+      { pin: 5, sym: "NC", role: "No Connection" }, { pin: 6, sym: "A2", role: "Anode 2", isPlate: true },
+      { pin: 7, sym: "NC", role: "No Connection" }, { pin: 8, sym: "F-", role: "Filament / B+ OUT", isHeater: true, isCathode: true }
+    ]
+  },
+  {
+    nameGost: "EZ81 / 6CA4", nameWestern: "EZ81 / 6CA4 (Full-Wave Rectifier)", commonName: "EZ81",
+    type: "Full-Wave Indirectly Heated Rectifier", category: "rectifier", origin: "Western", socket: "Noval B9A", pinCount: 9,
+    vh: 6.3, ih: 1.0, heaterWarning: "Heater pins 4 & 5: 6.3V @ 1.0A. The cathode (pin 3) carries B+.",
+    vaMax: 500, paMax: 0, ikMax: 150, vg2Max: 0,
+    koren: { Triode: { mu: 1.0, kg: 120, kp: 45, kvb: 12, x: 1.5 } },
+    pinout: [
+      { pin: 1, sym: "A2", role: "Anode 2", isPlate: true }, { pin: 3, sym: "K", role: "Cathode / B+ OUT", isCathode: true },
+      { pin: 4, sym: "H", role: "Heater", isHeater: true }, { pin: 5, sym: "H", role: "Heater", isHeater: true },
+      { pin: 7, sym: "A1", role: "Anode 1", isPlate: true }
+    ]
+  },
+  {
+    nameGost: "6X4 / EZ90", nameWestern: "6X4 / EZ90 (Miniature Full-Wave Rectifier)", commonName: "6X4",
+    type: "Full-Wave Miniature Rectifier", category: "rectifier", origin: "Western", socket: "Miniature B7G", pinCount: 7,
+    vh: 6.3, ih: 0.6, heaterWarning: "Heater pins 3 & 4: 6.3V @ 0.6A. The cathode (pin 7) carries B+.",
+    vaMax: 500, paMax: 0, ikMax: 70, vg2Max: 0,
+    koren: { Triode: { mu: 1.0, kg: 120, kp: 45, kvb: 12, x: 1.5 } },
+    pinout: [
+      { pin: 1, sym: "A2", role: "Anode 2", isPlate: true }, { pin: 3, sym: "H", role: "Heater", isHeater: true },
+      { pin: 4, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "A1", role: "Anode 1", isPlate: true },
+      { pin: 7, sym: "K", role: "Cathode / B+ OUT", isCathode: true }
+    ]
   }
 ];
 
@@ -1681,7 +1847,12 @@ var TUBE_RATINGS = {
   "2A3": { rg: 0.5e6, rgFixed: 0.05e6, source: "RCA 2A3" },
   "300B": { rg: 0.25e6, rgFixed: 0.05e6, source: "Western Electric 300B" },
   "GZ34": { piv: 1500, source: "Mullard GZ34" },
-  "5U4G": { piv: 1550, source: "RCA 5U4GB" }
+  "5U4G": { piv: 1550, source: "RCA 5U4GB" },
+  "6AS7G": { vhk: 300, source: "RCA 6AS7G" },
+  "KT66": { pg2: 3.5, vhk: 150, source: "GEC / JJ KT66 (Vg2 400 V for audio, Tube Amp Doctor)" },
+  "5Y3GT": { piv: 1400, source: "RCA 5Y3GT" },
+  "EZ81": { vhk: 500, source: "Mullard / JJ EZ81" },
+  "6X4": { piv: 1250, vhk: 450, source: "RCA 6X4" }
 };
 TUBE_DATABASE.forEach(t => {
   const L = (t.book && t.book.limits) || {}, own = TUBE_RATINGS[t.commonName] || {}, out = {};
@@ -1724,7 +1895,7 @@ var TUBE_CAPS = {
   "EF86": { cin: 3.8, cga: 0.05, cout: 5.3, source: "Philips EF86" }
 };
 // the same tube under another name
-var TUBE_CAPS_LIKE = { "6N8S": "6SN7GT", "6N9S": "6SL7GT", "6S4S": "2A3", "6P3S-E": "6L6GC", "6P6S": "6V6GT", "6P14P": "EL84", "6P14P-EV": "EL84", "6P27S": "EL34" };
+var TUBE_CAPS_LIKE = { "6N8S": "6SN7GT", "6N9S": "6SL7GT", "6S4S": "2A3", "6P3S-E": "6L6GC", "6P6S": "6V6GT", "6P14P": "EL84", "6P14P-EV": "EL84", "6P27S": "EL34", "6CG7": "6SN7GT", "6AQ5A": "6V6GT", "KT66": "6L6GC" };
 TUBE_DATABASE.forEach(t => {
   if (t.category === "rectifier" || !t.koren) return;
   const analogs = [TUBE_CAPS_LIKE[t.commonName]].concat((t.book && t.book.analogs) || []);

@@ -159,7 +159,7 @@
   <li>Groups: <b>Passive</b>, <b>Transformers</b>, <b>Sources</b> (DC supplies and AC sources), <b>Ground &amp; connectors</b>, <b>Semiconductors</b>, <b>Integrated circuits</b>, <b>Instruments</b>, <b>Document</b>, <b>Tubes</b>. Click a group's title to fold it; the browser remembers which are open.</li>
   <li><b>Search box.</b> Finds parts by name; part numbers (2N3904, IRF540, 1N4742A, 125ESE, 373BX); tubes (EL84, 6N2P, 300B); and <b>values</b>: <code>47k</code> offers a 47 kΩ resistor or pot, <code>100n</code> a 100 nF capacitor, <code>47u</code> an electrolytic, <code>5H</code> a choke, <code>300V</code> a supply. <kbd>Enter</kbd> picks the first match.</li>
   <li>Click a part, then click the sheet. <kbd>Shift</kbd>-click places several. <kbd>Esc</kbd> stops placing.</li>
-  <li>The Tubes group shows the popular tubes first; the button under the list shows all 99.</li>
+  <li>The Tubes group shows the popular tubes first; the button under the list shows all 110.</li>
 </ul>
 
 <h3 id="inspector">3.3 Inspector</h3>
@@ -235,7 +235,7 @@
 <p>Their inspectors show Vce, Ic, hFE and dissipation (bipolar), Vds, Id and dissipation (MOSFET), with checks against Vceo, Ptot and the zener's power.</p>
 
 <h3 id="tubes">5.2 The tube library</h3>
-<p>99 tubes: the Soviet receiving tubes from Katsnelson &amp; Larionov, «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981), and Western tubes from their makers' datasheets. Each has its Koren model fitted to datasheet operating points, its ratings, its socket and pinout, its heater, and its interelectrode capacitances. Search or sort the table:</p>
+<p>110 tubes: the Soviet receiving tubes from Katsnelson &amp; Larionov, «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981), and Western tubes from their makers' datasheets. Each has its Koren model fitted to datasheet operating points, its ratings, its socket and pinout, its heater, and its interelectrode capacitances. Search or sort the table:</p>
 <input id="tube-q" type="search" placeholder="Filter tubes: EL84, triode, Octal, 6Н…" style="width:100%;max-width:420px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font:inherit;margin:4px 0 8px">
 <div class="tubes-wrap"><table id="tube-table"></table></div>
 <p class="opts">Ratings shown blank are not given by the source and are not checked. Capacitances in pF: triode Cgk / Cga / Cak; pentode Cin / Cg1a / Cout. "≈" marks typical values for the kind of tube where no datasheet value exists.</p>
@@ -525,7 +525,7 @@
 
 <h3 id="cb-psu">14.4 A power supply</h3>
 <ul>
-  <li>Mains → power transformer → rectifier (GZ34, 5U4G, or 1N4007s) → reservoir C → choke or resistor → filter C.</li>
+  <li>Mains → power transformer → rectifier (GZ34, 5U4G, 5Y3GT, EZ81, 6X4, or 1N4007s) → reservoir C → choke or resistor → filter C.</li>
   <li>Capacitor-input DC ≈ 1.2–1.4 × Vrms at load. Ripple ≈ <code>Idc / (2 · f · C)</code> peak-to-peak for full-wave.</li>
   <li>Check the rectifier's current and PIV, the capacitors' peak voltages (BOM) and the resistor dissipation.</li>
   <li>Watch the power-on transient on the scope for the turn-on surge and voltage overshoot.</li>

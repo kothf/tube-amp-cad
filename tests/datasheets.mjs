@@ -183,6 +183,10 @@ export const DATASHEETS = [
   { tube: "6SN7GT", kind: "triode", mu: 20, source: "RCA 6SN7GTB", points: [
     { va: 90, vg: 0, ia: 10, gm: 3.0, rp: 6.7 },
     { va: 250, vg: -8, ia: 9, gm: 2.6, rp: 7.7 }] },
+  { tube: "6CG7", alias: "6SN7GT", source: "6CG7 = the 6SN7GTB on a noval base (RCA)" },
+  { tube: "12BH7A", kind: "triode", mu: 16.5, source: "RCA 12BH7A (250 V, −10.5 V: 11.5 mA, 3.1 mA/V, 5.3 kΩ)", points: [
+    { va: 250, vg: -10.5, ia: 11.5, gm: 3.1, rp: 5.3 }] },
+  { tube: "ECL82-T", alias: "6F3P-T", source: "6Ф3П = ECL82" },
   
   
   
@@ -204,6 +208,10 @@ export const DATASHEETS = [
     { va: 750, vg: -98, ia: 95 },
     { va: 1000, vg: -145, ia: 90, gm: 3.1, rp: 1.7 },
     { va: 1250, vg: -195, ia: 80 }] },
+  { tube: "211", kind: "triode", mu: 12, source: "211 class A1 (1000 V, −61 V: 53 mA, 3.15 mA/V, 3.8 kΩ; KR Audio, Psvane)", points: [
+    { va: 1000, vg: -61, ia: 53, gm: 3.15, rp: 3.8 }] },
+  { tube: "6AS7G", kind: "triode", mu: 2, source: "RCA 6AS7G (135 V supply, 250 Ω cathode resistor: 125 mA, 7 mA/V, 280 Ω; Va−k = 135 − 31 V)", points: [
+    { va: 103.75, vg: -31.25, ia: 125, gm: 7, rp: 0.28 }] },
   { tube: "GM-70", kind: "triode", mu: 6, source: "ГМ-70 handbook (850 V, 120 mA, S 6.7 mA/V, Ri 900 Ω)", points: [
     { va: 850, vg: null, ia: 120, gm: 6.7, rp: 0.9 }] },
   
@@ -231,6 +239,10 @@ export const DATASHEETS = [
     { va: 350, vg2: 250, vg: -18, ia: 54, ig2: 2.5, gm: 5.2, rp: 33 }],
     largeSignal: [{ b: 250, vg2: 250, bias: -14, rl: 2500, vrms: 14 / Math.SQRT2, pout: 6.5, thd: 10 }] },
   
+  { tube: "KT66", kind: "pentode", mu: 8, source: "GEC KT66 (250 V, 250 V, −15 V: 85 mA, 7 mA/V, 22.5 kΩ)", points: [
+    { va: 250, vg2: 250, vg: -15, ia: 85, gm: 7, rp: 22.5 }] },
+  { tube: "6AQ5A", alias: "6V6GT", source: "6AQ5A = the 6V6GT in a B7G bulb (RCA: same 250 V characteristics)" },
+  { tube: "ECL82-P", alias: "6F3P-P", source: "6Ф3П = ECL82" },
   { tube: "KT88", kind: "pentode", mu: 8, source: "GE 6550A (KT88 class)", points: [
     { va: 250, vg2: 250, vg: -14, ia: 140, ig2: 12, gm: 11, rp: 15 }] },
   { tube: "GU-50", kind: "pentode", mu: 8, source: "ГУ-50 handbook (800 V, Vg2 250 V, Vg1 −40 ± 10 V, 50 mA, S 4 mA/V)", points: [

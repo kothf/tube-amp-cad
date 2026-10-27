@@ -107,7 +107,10 @@
     "6Ts5S": 1.154e-4,  // 6Ц5С  p. 76: no emission test; set so the test circuit gives the printed 70 mA
     "6Ts13P": 7.826e-4, // 6Ц13П p. 77: ≥ 70 mA at 20 V (single anode)
     "5U4G": 6.4e-4,     // RCA: ~50 V @ 225 mA
-    "GZ34": 3.5e-3      // Mullard 5AR4: ~17 V @ 250 mA
+    "GZ34": 3.5e-3,     // Mullard 5AR4: ~17 V @ 250 mA
+    "5Y3GT": 3.31e-4,   // ~45 V @ 100 mA (the highest drop of the octal family)
+    "EZ81": 1.01e-3,    // ~28 V @ 150 mA
+    "6X4": 6.78e-4      // ~22 V @ 70 mA
   };
 
   // ---------------------------------------------------------------------------
@@ -1331,17 +1334,18 @@
     },
     triode: m => ({
       plate: `pwr(max(V(A,K)/${g(m.kp)}*ln(1+exp(${g(m.kp)}*(1/${g(m.mu)}+V(G,K)/sqrt(${g(m.kvb)}+V(A,K)*V(A,K))))),0),${g(m.x)})*${g(2 / m.kg)}`,
-      grid: `if(V(G,K)>0,${g(0.2 / m.kg)}*pwr(V(G,K),1.5),0)`
+      grid: `${g(0.2 / m.kg)}*pwr(max(V(G,K),0),1.5)`
     }),
     pentode: m => {
       // with the fade-in below SCREEN_FADE volts on the screen: s²(3 − 2s), s = Vg2k / SCREEN_FADE
-      const F = SCREEN_FADE, fade = `if(V(G2,K)<${F},pwr(max(V(G2,K),0)/${F},2)*(3-2*max(V(G2,K),0)/${F}),1)`;
+      // (min/max rather than if(), so LTspice and ngspice both read it)
+      const F = SCREEN_FADE, sf = `min(max(V(G2,K),0)/${F},1)`, fade = `pwr(${sf},2)*(3-2*${sf})`;
       const is = `pwr(max(V(G2,K)/${g(m.kp)}*ln(1+exp(${g(m.kp)}*(1/${g(m.mu)}+V(G1,K)/max(V(G2,K),1e-3)))),0),${g(m.x)})*${g(2 / m.kg)}*${fade}`;
       const va = "max(V(A,K),0)";
       return {
         plate: `${is}*tanh(${va}/${g(m.vk)})*(1+${va}/${g(m.lam)})`,
         screen: `pwr(max(V(G1,K)+V(G2,K)/${g(m.mu)},0),${g(m.x)})/${g(m.kg2 || 1500)}*${fade}+${g(m.ks || 0)}*${is}*(1-tanh(${va}/${g(m.vk)}))`,
-        grid: `if(V(G1,K)>0,${g(0.2 / m.kg)}*pwr(V(G1,K),1.5),0)`
+        grid: `${g(0.2 / m.kg)}*pwr(max(V(G1,K),0),1.5)`
       };
     }
   };
