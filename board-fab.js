@@ -54,7 +54,7 @@
       F.Mask, B.Mask (openings), F.Paste, B.Paste (SMD pads), F.SilkS, B.SilkS, Edge.Cuts. fn: the Gerber X2 aperture function */
   function layerOps(board, model, fills, layer) {
     const C = B(), R = board.rules, keep = placedParts(board, model), ops = [];
-    const pads = model.pads.filter(p => keep.has(p.part)), holes = board.holes || [];
+    const pads = model.pads.filter(p => keep.has(p.part)), holes = board.holes || [], partHoles = (model.holes || []).filter(h => keep.has(h.part));
     if (layer === "F.Cu" || layer === "B.Cu") {
       (fills || []).filter(f => f.layer === layer).forEach(f => ops.push(...f.ops.map(op => (op.pol === "D" ? { ...op, fn: "Conductor" } : op))));
       board.tracks.filter(t => t.layer === layer).forEach(t => ops.push({ pol: "D", t: "line", w: t.w, pts: t.pts, fn: "Conductor" }));
@@ -68,6 +68,7 @@
       if (!R.tentVias) board.vias.forEach(v => { const d = (v.pad || R.viaPad) + 2 * e; ops.push({ pol: "D", t: "flash", shape: "C", x: v.x, y: v.y, w: r4(d), h: r4(d) }); });
       // mounting holes: the ring of a plated one is bare; a plain one gets the mask off its wall
       holes.forEach(h => { const d = r4((h.plated ? ring(h) : h.d) + 2 * e); ops.push({ pol: "D", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d }); });
+      partHoles.forEach(h => { const d = r4(h.d + 2 * e); ops.push({ pol: "D", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d }); });
     } else if (layer === "F.SilkS" || layer === "B.SilkS") {
       const side = layer[0], inside = C.outlinePoly(board.outline, 0.1), draw = [];
       model.parts.forEach(g => { if (keep.has(g.key) && (g.place.side || "F") === side) draw.push(...partSilk(g, board.outline)); });
@@ -164,6 +165,8 @@
     model.pads.forEach(p => { if (keep.has(p.part) && !p.smd) add(pth, p.drill, p.x, p.y, "ComponentDrill"); });
     board.vias.forEach(v => add(pth, v.drill || R.viaDrill, v.x, v.y, "ViaDrill"));
     (board.holes || []).forEach(h => add(h.plated ? pth : npth, h.d, h.x, h.y, "MechanicalDrill"));
+    // the parts' own unplated holes (locating pegs)
+    (model.holes || []).forEach(h => { if (keep.has(h.part)) add(npth, h.d, h.x, h.y, "ComponentDrill"); });
     const sort = m => [...m.entries()].map(([k, pts]) => { const [d, fn] = k.split("|"); return [d, pts, fn]; }).sort((a, b) => +a[0] - +b[0] || a[2].localeCompare(b[2]));
     return { pth: sort(pth), npth: sort(npth) };
   }

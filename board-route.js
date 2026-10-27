@@ -161,6 +161,8 @@
       const d = h.plated ? C.holeRing(h) : h.d;
       cc.forEach(L => w(`    (keepout "" (circle ${L} ${um(d)} ${pt(h.x, h.y)}) (clearance_class chassis))`));
     });
+    // the parts' own unplated holes: keep-outs at the default clearance
+    (model.holes || []).forEach(h => { if (keep.has(h.part)) cc.forEach(L => w(`    (keepout "" (circle ${L} ${um(h.d)} ${pt(h.x, h.y)}))`)); });
     (board.keepouts || []).forEach(k => {
       const P = k.pts.concat([k.pts[0]]).map(([x, y]) => pt(x, y)).join(" ");
       C.koLayers(k).forEach(L => {

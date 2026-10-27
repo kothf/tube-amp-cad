@@ -550,6 +550,10 @@ the circuit file, so one file holds both.
 - **Mounting holes** are not plated (NPTH) or plated (PTH): a plated one has a
   copper ring on both sides (Ø 6 mm round an M3 hole by default) and may
   take a net, GND for a grounded chassis screw, which a pour of that net joins.
+- **A part's own unplated holes** (the locating pegs of the Neutrik NJ2FD-V,
+  NJ3FD-V and NJ5FD-V vertical jacks) move with the part, go into the NPTH
+  drill file as component holes, open the mask, are drilled through the 3D
+  board, and keep the net class's clearance from tracks and pours.
 - **Tools:** Select, Route, Via, Text (silkscreen or copper), Mounting hole,
   Pour, Measure. The board's top-right corner handle resizes it; the origin
   stays put. Silkscreen text uses a
