@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.103.0] - 2026-10-27
+
+### Added
+- JFETs (Semiconductors › JFETs): N-channel J201, J113, J310, 2N5457, MPF102, 2SK170, LSK170B, 2SK30A and P-channel J175, 2N5460, 2SJ74. Square-law model with channel-length modulation and gate diodes; the inspector shows Id against IDSS and warns when the gate conducts. SPICE export writes native NJF/PJF models. Footprints TO-92, TO-18 and SOT-23; pinouts that vary between makers are marked for checking in DRC.
+- Voltage regulators (Integrated circuits › Regulators): LM317, LM317L, LM338, LM337, 7805, 7809, 7812, 7815, 7824, 78L05, 78L12, 7905, 7912, 7915. The model has the reference, adjust-pin current, quiescent current, line regulation, dropout, current limit and ripple rejection; the inspector shows Vin, Vout, the headroom and the dissipation. Checks reports input over the rating, dropout, a missing minimum load on an LM317/337 and dissipation that needs a heatsink. Footprints TO-220, TO-92, SOT-89, SOT-223, DPAK and D2PAK.
+- TL431 shunt reference (Integrated circuits › Regulators): Vref 2.495 V, 2.5–36 V, 1–100 mA, with Checks for the cathode current and voltage. TO-92, SOT-23 and SOT-89.
+- Simulation checked against ngspice: DC operating points agree within 0.05 %, JFET AC gain matches.
+
 ## [3.102.0] - 2026-10-25
 
 ### Added

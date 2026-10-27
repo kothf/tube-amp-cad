@@ -81,8 +81,8 @@
         const reversed = c.type === "electrolytic" && va !== null && vb !== null && va - vb < -1;
         return { v, text: fmtEng(v, "V"), warn: reversed, note: "reversed" };
       }
-      if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) {
-        const d = (S.sim.result.dc.devices[c.id] || {}).main, m = (c.type === "npn" || c.type === "pnp" ? CadLib.BJTS : CadLib.MOSFETS)[c.params.model];
+      if (CadLib.isTransistor(c.type) || c.type === "reg" || c.type === "tl431") {
+        const d = (S.sim.result.dc.devices[c.id] || {}).main, m = (c.type === "reg" ? CadLib.REGS : c.type === "tl431" ? CadLib.SHUNTS : CadLib.semiTable(c.type))[c.params.model];
         return d && m ? { v: d.pd, text: fmtEng(d.pd, "W"), warn: d.pd > m.p } : null;
       }
       if (c.type === "zener" || c.type === "led") {

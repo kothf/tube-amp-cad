@@ -196,7 +196,34 @@
     },
     // the output stage's limits [high, low], and how far N2 is beyond them (> 0 above, < 0 below)
     opampLimits: (V, m) => { const vm = (V[3] + V[4]) / 2; return [Math.max(V[3] - m.dhi, vm), Math.min(V[4] + m.dlo, vm)]; },
-    opampClip(V, m) { const [hi, lo] = Semi.opampLimits(V, m), w = 0.05; return w * (softplus((V[6] - hi) / w) - softplus((lo - V[6]) / w)); }
+    opampClip(V, m) { const [hi, lo] = Semi.opampLimits(V, m), w = 0.05; return w * (softplus((V[6] - hi) / w) - softplus((lo - V[6]) / w)); },
+    // Three-terminal series regulator (nodes IN, OUT, REF: the ADJ pin of an LM317, the GND pin
+    // of a 7805). An error amplifier of transconductance g holds OUT at vref above REF; it can
+    // only source (the pass transistor), its current limited to ilim (tanh), and the pass device
+    // runs out of headroom below the dropout: the current fades as IN − OUT falls under vdo
+    // (over vsat volts). pol −1 mirrors it (LM337, 79xx). adj: the bias current iq flows to OUT
+    // (an LM317's minimum load) and iadj out of the ADJ pin; fixed: iq flows to GND, with the
+    // internal divider rdiv from OUT to GND. Below about half a volt of input the chip is off.
+    // line: the line regulation (V of vref per V of IN − OUT, from 3 V up): the ripple rejection.
+    // gain: the share of g (the DC operating point's gain stepping); lin: without the current
+    // limit, whose flat top gives Newton's method no slope far from the solution
+    reg(V, m, gain, lin) {
+      const p = m.pol, vio = p * (V[0] - V[1]), vo = p * (V[1] - V[2]), sp = (x, w) => w * softplus(x / w);
+      const on = 1 / (1 + Math.exp(-((m.adj ? vio : p * (V[0] - V[2])) - 0.5) / 0.1));
+      const ie = sp(m.g * (gain === undefined ? 1 : gain) * (m.vref + (m.line || 0) * (vio - 3) - vo), 1e-4), ictl = (lin ? ie : m.ilim * Math.tanh(ie / m.ilim)) * on;
+      const ipass = ictl * Math.tanh(sp(vio - m.vdo, 0.05) / m.vsat), iq = m.iq * on;
+      if (m.adj) { const ia = m.iadj * on; return [p * (ipass + iq + ia), -p * (ipass + iq), -p * ia]; }
+      const idiv = vo / m.rdiv;
+      return [p * (ipass + iq), -p * (ipass - idiv), -p * (iq + idiv)];
+    },
+    // Shunt reference, TL431 (nodes K, A, REF): the cathode sinks a current gm·(REF − A − vref),
+    // smoothly from about zero, up to imax, while K − A has a volt or more of headroom; REF draws
+    // its bias current through rref, and K–A leaks through roff when the reference is off.
+    shunt(V, m, gain, lin) {
+      const vka = V[0] - V[1], vr = V[2] - V[1], sp = (x, w) => w * softplus(x / w), ie = sp(m.gm * (gain === undefined ? 1 : gain) * (vr - m.vref), 2e-4);
+      const ik = (lin ? ie : m.imax * Math.tanh(ie / m.imax)) * Math.tanh(sp(vka - 1, 0.05) / 0.5) + vka / m.roff, ir = vr / m.rref;
+      return [ik, -(ik + ir), ir];
+    }
   };
   // SPICE pnjlim: limits a junction voltage step so exp() cannot run away between iterations
   function pnjlim(vnew, vold, nVt, vcrit) {
@@ -677,6 +704,12 @@
           case "OPAMP":
             stampNonlinear(nd, W => Semi.opamp(W, e.model, mode.dc, e._gain), nd.map(k => vn(x, k)), 1e-6);
             break;
+          case "REG":
+            stampNonlinear(nd, W => Semi.reg(W, e.model, e._gain, e._lin), nd.map(k => vn(x, k)), 1e-6);
+            break;
+          case "SHUNT":
+            stampNonlinear(nd, W => Semi.shunt(W, e.model, e._gain, e._lin), nd.map(k => vn(x, k)), 1e-6);
+            break;
           case "TRIODE": {
             const V0 = nd.map(k => vn(x, k));   // A, G, K
             stampNonlinear(nd, V => {
@@ -762,17 +795,21 @@
     if (r.ok) return r;
     // op-amps: a high-gain loop whose iterates bounce between the output's limits. Solved first
     // with stage two's gain cut a thousandfold (the open-loop gain a few hundred), then raised
-    // step by step from each solution
-    const amps = circ.els.filter(e => e.kind === "OPAMP");
+    // step by step from each solution; regulators and shunt references the same way, by their
+    // error amplifier's transconductance
+    // (without their current limit, which comes back for a last solve)
+    const amps = circ.els.filter(e => e.kind === "OPAMP" || e.kind === "REG" || e.kind === "SHUNT"), regs = amps.filter(e => e.kind !== "OPAMP");
     if (amps.length) {
       let xs = zero;
+      regs.forEach(e => { e._lin = true; });
       for (const k of [1e-3, 1e-2, 1e-1, 1]) {
         amps.forEach(e => { e._gain = k; });
         r = newtonSolve(circ, xs, { dc: true }, { gmin: 1e-9 });
         if (!r.ok) break;
         xs = r.x;
       }
-      amps.forEach(e => { delete e._gain; });
+      amps.forEach(e => { delete e._gain; delete e._lin; });
+      if (r.ok && regs.length) r = newtonSolve(circ, xs, { dc: true }, { gmin: 1e-9 });
       if (r.ok) return r;
     }
     // gmin stepping
@@ -821,6 +858,13 @@
       const I = Semi.opamp(v, e.model);
       return { vd: v[0] - v[1], vout: v[2], vs: v[3] - v[4], iout: -I[2], iq: I[3], pd: I.reduce((s, i, k) => s + i * v[k], 0), clip: Semi.opampClip(v, e.model) };
     }
+    // a regulator: input − output (its headroom), output above REF, the output current and the
+    // chip's dissipation; a shunt reference: K − A, REF − A, the cathode current
+    if (e.kind === "REG") {
+      const I = Semi.reg(v, e.model), p = e.model.pol;
+      return { vin: p * (v[0] - v[2]), vout: p * (v[1] - v[2]), vio: p * (v[0] - v[1]), iout: -p * I[1], iin: p * I[0], pd: I.reduce((s, i, k) => s + i * v[k], 0) };
+    }
+    if (e.kind === "SHUNT") { const I = Semi.shunt(v, e.model); return { vka: v[0] - v[1], vref: v[2] - v[1], ik: I[0], pd: I.reduce((s, i, k) => s + i * v[k], 0) }; }
     if (e.kind === "VDIODE") { const vd = v[0] - v[1]; return { vd, i: vd > 0 ? e.perveance * Math.pow(vd, 1.5) : 0 }; }
     if (e.kind === "D") { const vd = v[0] - v[1]; return { vd, i: (e.is || 2.5e-9) * (Math.exp(Math.min(vd / ((e.n || 1.75) * 0.025852), 80)) - 1) }; }
     if (e.kind === "R") { const vd = v[0] - v[1]; return { vd, i: vd / e.r }; }
@@ -852,6 +896,8 @@
       case "MOS": return Semi.mos(v, e.model).map((i, k) => [nd[k], i]);
       case "TIMER555": { const I = timerCurrents([v[0], v[2], v[6], v[7]], latchOf(e, x)); return [[nd[0], I[0]], [nd[2], I[1]], [nd[6], I[2]], [nd[7], I[3]]]; }
       case "OPAMP": return Semi.opamp(v, e.model).map((i, k) => [nd[k], i]);
+      case "REG": return Semi.reg(v, e.model).map((i, k) => [nd[k], i]);
+      case "SHUNT": return Semi.shunt(v, e.model).map((i, k) => [nd[k], i]);
       default: return [];
     }
   }
@@ -1265,6 +1311,24 @@
       L.push(".ends");
       return L;
     },
+    // a series regulator (pins IN OUT REF) and a shunt reference (K A REF), Semi.reg and Semi.shunt
+    // term by term
+    reg: (m, name) => {
+      // the voltages as the positive type sees them: V(IN,OUT) for an LM317, V(OUT,IN) for an LM337
+      const sp = (x, w) => `${w}*(max((${x})/${w},0)+ln(1+exp(-abs((${x})/${w}))))`, p = m.pol, vv = (a, b) => (p > 0 ? `V(${a},${b})` : `V(${b},${a})`);
+      const L = [`.subckt ${name} IN OUT REF`, `BON ON 0 V=1/(1+exp(-(${m.adj ? vv("IN", "OUT") : vv("IN", "REF")}-0.5)/0.1))`,
+        `BIP IP 0 V=${g(m.ilim)}*tanh(${sp(`${g(m.g)}*(${g(m.vref)}+${g(m.line || 0)}*(${vv("IN", "OUT")}-3)-${vv("OUT", "REF")})`, 1e-4)}/${g(m.ilim)})*V(ON)*tanh(${sp(`${vv("IN", "OUT")}-${g(m.vdo)}`, 0.05)}/${g(m.vsat)})`];
+      const B = (k, a, b, i) => L.push(`B${k} ${a} ${b} I=${p > 0 ? "" : "-("}${i}${p > 0 ? "" : ")"}`);
+      if (m.adj) { B("P", "IN", "OUT", `V(IP)+${g(m.iq)}*V(ON)`); B("A", "IN", "REF", `${g(m.iadj)}*V(ON)`); }
+      else { B("P", "IN", "OUT", "V(IP)"); B("Q", "IN", "REF", `${g(m.iq)}*V(ON)`); L.push(`RDIV OUT REF ${g(m.rdiv)}`); }
+      L.push(".ends");
+      return L;
+    },
+    shunt: (m, name) => {
+      const sp = (x, w) => `${w}*(max((${x})/${w},0)+ln(1+exp(-abs((${x})/${w}))))`;
+      return [`.subckt ${name} K A REF`, `BK K A I=${g(m.imax)}*tanh(${sp(`${g(m.gm)}*(V(REF,A)-${g(m.vref)})`, 2e-4)}/${g(m.imax)})*tanh(${sp("V(K,A)-1", 0.05)}/0.5)`,
+        `ROFF K A ${g(m.roff)}`, `RREF REF A ${g(m.rref)}`, ".ends"];
+    },
     triode: m => ({
       plate: `pwr(max(V(A,K)/${g(m.kp)}*ln(1+exp(${g(m.kp)}*(1/${g(m.mu)}+V(G,K)/sqrt(${g(m.kvb)}+V(A,K)*V(A,K))))),0),${g(m.x)})*${g(2 / m.kg)}`,
       grid: `if(V(G,K)>0,${g(0.2 / m.kg)}*pwr(V(G,K),1.5),0)`
@@ -1410,6 +1474,8 @@
         case "BJT": jac(nd, W => Semi.bjt(W, e.model), 1e-6); break;
         case "MOS": jac(nd, W => Semi.mos(W, e.model), 1e-5); break;
         case "OPAMP": jac(nd, W => Semi.opamp(W, e.model), 1e-6); break;
+        case "REG": jac(nd, W => Semi.reg(W, e.model), 1e-6); break;
+        case "SHUNT": jac(nd, W => Semi.shunt(W, e.model), 1e-6); break;
         case "TRIODE": jac(nd, V => { const [ia, ig] = tubeCurrents(e, V[0] - V[2], V[1] - V[2]); return [ia, ig, -(ia + ig)]; }, 1e-3); break;
         case "PENTODE": jac(nd, V => { const [ia, ig, ig2] = tubeCurrents(e, V[0] - V[3], V[1] - V[3], V[2] - V[3]); return [ia, ig, ig2, -(ia + ig + ig2)]; }, 1e-3); break;
         // a 555: its output stage as it stands at the operating point, the latch fixed

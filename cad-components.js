@@ -212,6 +212,33 @@
     if (pol > 0) arrowHead(ctx, -4, 0, -1, 0, 7, 3.5); else arrowHead(ctx, 9, 0, 1, 0, 7, 3.5);
   }
 
+  // IEC 60617 S00700 / S00701 junction FET with envelope: the channel a solid bar, drain and source
+  // leads off its ends, the gate at its middle with the arrow pointing in (N) or out (P)
+  function drawJfet(ctx, c, pol) {
+    ctx.beginPath(); ctx.arc(3, 0, 19, 0, Math.PI * 2); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
+    line(ctx, [-30, 0, -5, 0]);
+    ctx.lineWidth = 2.5; line(ctx, [-5, -12, -5, 12]); ctx.lineWidth = 2;
+    line(ctx, [-5, -9, 10, -9, 10, -30]);
+    line(ctx, [-5, 9, 10, 9, 10, 30]);
+    if (pol > 0) arrowHead(ctx, -6, 0, 1, 0, 7, 3.5); else arrowHead(ctx, -20, 0, -1, 0, 7, 3.5);
+  }
+  // a three-terminal regulator: the box with IN, OUT and ADJ / GND marked at their pins, the
+  // marks upright however the part is turned
+  function drawReg(ctx, c) {
+    const m = REGS[c.params.model] || REGS.LM317, turn = -((c.rot || 0) & 3) * Math.PI / 2;
+    ctx.fillStyle = COL.fill; ctx.fillRect(-30, -20, 60, 40); ctx.strokeRect(-30, -20, 60, 40);
+    line(ctx, [-40, 0, -30, 0]); line(ctx, [30, 0, 40, 0]); line(ctx, [0, 20, 0, 30]);
+    ctx.font = "8px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    [["IN", -21, 0], ["OUT", 19, 0], [m.adj ? "ADJ" : "GND", 0, 12]].forEach(([t, x, y]) => { ctx.save(); ctx.translate(x, y); ctx.rotate(turn); ctx.fillText(t, 0, 0); ctx.restore(); });
+  }
+  // IEC 60617 S00661 breakdown diode, cathode up, with the reference input (a TL431)
+  function drawShunt(ctx) {
+    line(ctx, [0, -30, 0, -7]); line(ctx, [0, 7, 0, 30]);
+    ctx.beginPath(); ctx.moveTo(-8, 7); ctx.lineTo(0, -7); ctx.lineTo(8, 7); ctx.closePath(); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
+    line(ctx, [-8, -7, 8, -7]); line(ctx, [-11, -3, -8, -7]); line(ctx, [8, -7, 11, -11]);
+    line(ctx, [-30, 0, -4, 0]);
+  }
+
   const DRAW = {
     resistor(ctx, c) {
       line(ctx, [-30, 0, -15, 0]); line(ctx, [15, 0, 30, 0]);
@@ -301,6 +328,10 @@
     npn(ctx, c) { drawBjt(ctx, c, 1); },
     pnp(ctx, c) { drawBjt(ctx, c, -1); },
     nmos(ctx, c) { drawMos(ctx, c, 1); },
+    njf(ctx, c) { drawJfet(ctx, c, 1); },
+    pjf(ctx, c) { drawJfet(ctx, c, -1); },
+    reg: drawReg,
+    tl431: drawShunt,
     pmos(ctx, c) { drawMos(ctx, c, -1); },
     switch(ctx, c) {
       // IEC 60617 change-over contact: common on the left, fixed contacts A (top)
@@ -614,6 +645,55 @@
     "1N4750A": { bv: 27, izt: 0.0095, zzt: 35, p: 1 }, "1N4764A": { bv: 100, izt: 0.0025, zzt: 350, p: 1 },
     "1N5378B": { bv: 100, izt: 0.012, zzt: 90, p: 5 }, "1N5388B": { bv: 200, izt: 0.005, zzt: 480, p: 5 }
   };
+  // JFETs, SPICE NJF / PJF level 1: pinch-off vto (V, the gate-source voltage at which the channel
+  // closes: negative N-channel, positive P-channel), beta (A/V², so IDSS = beta·vto²), lambda,
+  // gate junction saturation current is (A), cgs / cgd (F) the datasheet's Ciss − Crss and Crss.
+  // vto and beta from the datasheets' typical IDSS and transconductance at IDSS (gfs = 2·IDSS / |vto|):
+  // the grades (2SK170 BL, 2SK30A Y) as named. v: V(BR)GSS, i: the current rating (A, the gate's forward current IGF), p: Ptot.
+  const JFETS = {
+    "J201": { pol: 1, vto: -0.8, beta: 1.0e-3, lambda: 2.25e-3, is: 1.1e-13, cgs: 4 * pf, cgd: 1.5 * pf, v: 40, i: 0.05, p: 0.35, pkg: "TO-92", use: "low-IDSS preamp, booster (IDSS 0.2–1 mA)" },
+    "J113": { pol: 1, vto: -1.6, beta: 3.0e-3, lambda: 4e-3, is: 2e-13, cgs: 23 * pf, cgd: 5 * pf, v: 35, i: 0.05, p: 0.625, pkg: "TO-92", use: "switch, mute, current source (IDSS ≥ 2 mA)" },
+    "J310": { pol: 1, vto: -4.0, beta: 2.5e-3, lambda: 3e-3, is: 2e-13, cgs: 2.5 * pf, cgd: 2.5 * pf, v: 25, i: 0.01, p: 0.35, pkg: "TO-92", use: "VHF, buffer, cascode (IDSS 24–60 mA)" },
+    "2N5457": { pol: 1, vto: -1.37, beta: 1.125e-3, lambda: 2.3e-3, is: 1.8e-13, cgs: 3 * pf, cgd: 1.5 * pf, v: 25, i: 0.01, p: 0.31, pkg: "TO-92", use: "general audio, buffer (IDSS 1–5 mA)" },
+    "MPF102": { pol: 1, vto: -2.5, beta: 1.0e-3, lambda: 2e-3, is: 3e-13, cgs: 4 * pf, cgd: 3 * pf, v: 25, i: 0.01, p: 0.31, pkg: "TO-92", use: "general audio, RF (IDSS 2–20 mA)" },
+    "2SK170": { pol: 1, vto: -0.82, beta: 13.4e-3, lambda: 1.5e-3, is: 1e-12, cgs: 24 * pf, cgd: 6 * pf, v: 40, i: 0.01, p: 0.4, pkg: "TO-92", use: "low-noise MC / mic / phono input, BL (IDSS 6–12 mA)" },
+    "LSK170B": { pol: 1, vto: -0.82, beta: 13.4e-3, lambda: 1.5e-3, is: 1e-12, cgs: 20 * pf, cgd: 5 * pf, v: 40, i: 0.01, p: 0.4, pkg: "TO-92", use: "low-noise input, 2SK170 replacement (IDSS 6–12 mA)" },
+    "2SK30A": { pol: 1, vto: -2.0, beta: 0.5e-3, lambda: 5e-3, is: 1e-13, cgs: 5.6 * pf, cgd: 2.6 * pf, v: 50, i: 0.01, p: 0.1, pkg: "TO-92", use: "general audio, Y (IDSS 1.2–3 mA)" },
+    "J175": { pol: -1, vto: 4.0, beta: 1.5e-3, lambda: 4e-3, is: 2e-13, cgs: 6 * pf, cgd: 5.5 * pf, v: 30, i: 0.05, p: 0.35, pkg: "TO-92", use: "P-channel switch, current source (IDSS 7–60 mA)" },
+    "2N5460": { pol: -1, vto: 1.8, beta: 0.75e-3, lambda: 3e-3, is: 1.5e-13, cgs: 4 * pf, cgd: 1.5 * pf, v: 40, i: 0.01, p: 0.31, pkg: "TO-92", use: "P-channel general purpose (IDSS 1–5 mA)" },
+    "2SJ74": { pol: -1, vto: 0.82, beta: 13.4e-3, lambda: 2e-3, is: 1e-12, cgs: 150 * pf, cgd: 32 * pf, v: 25, i: 0.01, p: 0.4, pkg: "TO-92", use: "low-noise, 2SK170 complement, BL (IDSS 6–12 mA)" }
+  };
+  // Three-terminal regulators (Semi.reg): adj (LM317 family: vref between OUT and ADJ, iadj out of
+  // ADJ, iq the minimum load, which flows to OUT) or fixed (78xx: vref = the output, iq to GND);
+  // pol −1 the negative ones. g: the error amplifier's transconductance (A/V, the output resistance
+  // is 1/g); ilim: short-circuit current; vdo + vsat·atanh(I/ilim): the dropout at a current I.
+  // line: the line regulation, V of output per V of input (1.25e-4: an LM317's 0.01 %/V; the ripple
+  // rejection, about 66 dB, 78 dB with ADJ bypassed). vmax: the input-output (adj) or input (fixed)
+  // maximum; p: Ptot on a heatsink (TO-220, 25 °C case).
+  const REGS = {
+    "LM317": { adj: 1, pol: 1, vref: 1.25, iadj: 50e-6, iq: 3.5e-3, line: 1.25e-4, g: 200, ilim: 2.2, vdo: 1.45, vsat: 0.5, vmax: 40, p: 15, pkg: "TO-220", use: "adjustable positive, 1.2–37 V, 1.5 A" },
+    "LM317L": { adj: 1, pol: 1, vref: 1.25, iadj: 50e-6, iq: 1.5e-3, line: 1.25e-4, g: 200, ilim: 0.2, vdo: 1.2, vsat: 0.4, vmax: 40, p: 0.625, pkg: "TO-92", use: "adjustable positive, 100 mA" },
+    "LM338": { adj: 1, pol: 1, vref: 1.25, iadj: 45e-6, iq: 3.5e-3, line: 1.25e-4, g: 500, ilim: 8, vdo: 1.4, vsat: 0.6, vmax: 35, p: 25, pkg: "TO-220", use: "adjustable positive, 5 A (DC heaters)" },
+    "LM337": { adj: 1, pol: -1, vref: 1.25, iadj: 65e-6, iq: 2.5e-3, line: 1.25e-4, g: 200, ilim: 2.2, vdo: 1.45, vsat: 0.5, vmax: 40, p: 15, pkg: "TO-220", use: "adjustable negative, −1.2 to −37 V, 1.5 A" },
+    "7805": { adj: 0, pol: 1, vref: 5, iq: 5e-3, line: 3e-4, g: 100, ilim: 2.2, vdo: 1.7, vsat: 0.4, vmax: 35, p: 15, pkg: "TO-220", use: "fixed +5 V, 1.5 A" },
+    "7809": { adj: 0, pol: 1, vref: 9, iq: 5e-3, line: 3e-4, g: 100, ilim: 2.2, vdo: 1.7, vsat: 0.4, vmax: 35, p: 15, pkg: "TO-220", use: "fixed +9 V, 1.5 A" },
+    "7812": { adj: 0, pol: 1, vref: 12, iq: 5e-3, line: 3e-4, g: 100, ilim: 2.2, vdo: 1.7, vsat: 0.4, vmax: 35, p: 15, pkg: "TO-220", use: "fixed +12 V, 1.5 A" },
+    "7815": { adj: 0, pol: 1, vref: 15, iq: 5e-3, line: 3e-4, g: 100, ilim: 2.2, vdo: 1.7, vsat: 0.4, vmax: 35, p: 15, pkg: "TO-220", use: "fixed +15 V, 1.5 A" },
+    "7824": { adj: 0, pol: 1, vref: 24, iq: 5e-3, line: 3e-4, g: 100, ilim: 2.2, vdo: 1.7, vsat: 0.4, vmax: 40, p: 15, pkg: "TO-220", use: "fixed +24 V, 1.5 A" },
+    "78L05": { adj: 0, pol: 1, vref: 5, iq: 3e-3, line: 1e-3, g: 50, ilim: 0.14, vdo: 1.4, vsat: 0.3, vmax: 30, p: 0.625, pkg: "TO-92", use: "fixed +5 V, 100 mA" },
+    "78L12": { adj: 0, pol: 1, vref: 12, iq: 3e-3, line: 1e-3, g: 50, ilim: 0.14, vdo: 1.4, vsat: 0.3, vmax: 35, p: 0.625, pkg: "TO-92", use: "fixed +12 V, 100 mA" },
+    "7905": { adj: 0, pol: -1, vref: 5, iq: 3e-3, line: 3e-4, g: 100, ilim: 2.1, vdo: 1.1, vsat: 0.4, vmax: 35, p: 15, pkg: "TO-220", use: "fixed −5 V, 1.5 A" },
+    "7912": { adj: 0, pol: -1, vref: 12, iq: 3e-3, line: 3e-4, g: 100, ilim: 2.1, vdo: 1.1, vsat: 0.4, vmax: 35, p: 15, pkg: "TO-220", use: "fixed −12 V, 1.5 A" },
+    "7915": { adj: 0, pol: -1, vref: 15, iq: 3e-3, line: 3e-4, g: 100, ilim: 2.1, vdo: 1.1, vsat: 0.4, vmax: 35, p: 15, pkg: "TO-220", use: "fixed −15 V, 1.5 A" }
+  };
+  // the engine's model of a regulator; a fixed one's internal divider draws about 1 mA
+  const regModel = m => ({ adj: m.adj, pol: m.pol, vref: m.vref, line: m.line, iadj: m.iadj || 0, iq: m.iq, g: m.g, ilim: m.ilim, vdo: m.vdo, vsat: m.vsat, rdiv: m.vref / 1e-3 });
+  // Shunt references (Semi.shunt): vref (REF − A in regulation), gm (A/V, 1/gm the datasheet's
+  // dynamic impedance |zKA|), imax: the cathode's current limit, rref: REF's bias (Iref at vref),
+  // roff: K–A leakage off, v: the cathode's maximum, p: Ptot.
+  const SHUNTS = {
+    "TL431": { vref: 2.495, gm: 5, imax: 0.15, rref: 1.25e6, roff: 3.6e8, v: 36, p: 0.77, pkg: "TO-92", use: "adjustable shunt reference, 2.5–36 V, 1–100 mA" }
+  };
   // LEDs, as used for cathode bias: forward voltage vf at 10 mA (emission coefficient 2), max current i (A)
   const LEDS = { red: { vf: 1.8, i: 0.02 }, yellow: { vf: 2.0, i: 0.02 }, green: { vf: 2.1, i: 0.02 }, blue: { vf: 3.0, i: 0.02 } };
   const ledIs = vf => 0.01 / Math.exp(vf / (2 * 0.025852));
@@ -648,6 +728,9 @@
     const cc = m.cc || 30e-12, gm1 = 2 * Math.PI * m.gbw * cc, gm2 = 2e-3, r2 = 5e5;
     return { gm1, i1: m.sr * cc, r1: m.a0 / (gm1 * gm2 * r2), gm2, i2: 2e-3, r2, rin: m.rin, ib: m.ib, ro: m.ro, isc: m.isc, isk: m.isk, dhi: m.dhi, dlo: m.dlo, iq: m.iq };
   }
+  // the catalog of a transistor part type, and which types are transistors (FETs: Vds, Id, Vgs)
+  const isTransistor = t => /^(npn|pnp|nmos|pmos|njf|pjf)$/.test(t), isFet = t => /^(nmos|pmos|njf|pjf)$/.test(t);
+  const semiTable = t => (t === "npn" || t === "pnp" ? BJTS : t === "njf" || t === "pjf" ? JFETS : MOSFETS);
   const semiRating = m => `${m.v} V, ${m.i} A, ${m.p} W, ${m.pkg}`;
   // the Type list of a transistor; a third element sorts the entry under a heading (Silicon / Germanium)
   const semiOptions = (tab, pol) => () => Object.entries(tab).filter(([, m]) => m.pol === pol).map(([k, m]) => [k, `${k} · ${m.v} V ${m.i} A ${m.p} W · ${m.use}`, tab === BJTS ? (m.ge ? "Germanium" : "Silicon") : undefined]);
@@ -702,6 +785,27 @@
         const m = MOSFETS[c.params.model] || MOSFETS[def], d = net("D"), g = net("G"), s = net("S");
         out.push({ id: c.id, kind: "MOS", nodes: [d, g, s], model: { pol, vto: m.vto, kp: m.kp, lambda: m.lambda } });
         out.push({ id: c.id + "#body", kind: "D", nodes: pol > 0 ? [s, d] : [d, s], is: 1e-12, n: 1.5 });
+        out.push({ id: c.id + "#cgs", kind: "C", nodes: [g, s], c: m.cgs }, { id: c.id + "#cgd", kind: "C", nodes: [g, d], c: m.cgd });
+      }
+    };
+  }
+
+  // JFET parts: drain up, gate left, source down. The channel is the engine's square-law FET
+  // (SPICE's JFET is the same law: KP = 2·BETA), the gate a junction diode to each end
+  function jfetPart(pol) {
+    const def = pol > 0 ? "2N5457" : "2N5460";
+    return {
+      name: pol > 0 ? "N-channel JFET" : "P-channel JFET", prefix: "VT", group: "Semiconductors", bbox: [-30, -30, 22, 30],
+      defaults: { model: def },
+      pins: () => [{ id: "D", x: 10, y: -30, name: "drain" }, { id: "G", x: -30, y: 0, name: "gate" }, { id: "S", x: 10, y: 30, name: "source" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(JFETS, pol), wide: true }],
+      info: c => { const m = JFETS[c.params.model] || JFETS[def], idss = m.beta * m.vto * m.vto; return `${c.params.model} (${m.use}): V(BR)GSS ${m.v} V, Ptot ${m.p} W, ${m.pkg}. Model: SPICE JFET, IDSS ${fmtEng(idss, "A", 2)}, Vgs(off) ${m.vto} V, gfs ${fmtEng(2 * idss / Math.abs(m.vto), "S", 2)} at IDSS, gate junctions included (the gate conducts above about ${pol > 0 ? "+" : "−"}0.5 V). Real parts spread widely: IDSS and Vgs(off) vary several times between samples of one type.`; },
+      build: (c, net, alloc, out) => {
+        const m = JFETS[c.params.model] || JFETS[def], d = net("D"), g = net("G"), s = net("S");
+        out.push({ id: c.id, kind: "MOS", nodes: [d, g, s], model: { pol, vto: m.vto, kp: 2 * m.beta, lambda: m.lambda, jf: { beta: m.beta, is: m.is } } });
+        // the gate junctions (exported inside the SPICE JFET, so internal there)
+        out.push({ id: c.id + "#gs", kind: "D", nodes: pol > 0 ? [g, s] : [s, g], is: m.is, n: 1, internal: true }, { id: c.id + "#gd", kind: "D", nodes: pol > 0 ? [g, d] : [d, g], is: m.is, n: 1, internal: true });
         out.push({ id: c.id + "#cgs", kind: "C", nodes: [g, s], c: m.cgs }, { id: c.id + "#cgd", kind: "C", nodes: [g, d], c: m.cgd });
       }
     };
@@ -1090,6 +1194,41 @@
     pnp: bjtPart(-1),
     nmos: mosPart(1),
     pmos: mosPart(-1),
+    njf: jfetPart(1),
+    pjf: jfetPart(-1),
+    reg: {
+      // DA: an analogue IC (ГОСТ 2.710). Pins I, O and A (ADJ) or G (GND), as on the package
+      name: "Voltage regulator", prefix: "DA", group: "Integrated circuits", bbox: [-40, -20, 40, 30],
+      defaults: { model: "LM317" },
+      pins: c => [{ id: "I", x: -40, y: 0, name: "input" }, { id: "O", x: 40, y: 0, name: "output" },
+        (REGS[c.params.model] || REGS.LM317).adj ? { id: "A", x: 0, y: 30, name: "adjust" } : { id: "G", x: 0, y: 30, name: "ground" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true,
+        options: () => Object.entries(REGS).map(([k, m]) => [k, `${k} · ${m.use} · ${m.pkg}`, m.adj ? (m.pol > 0 ? "Adjustable, positive" : "Adjustable, negative") : m.pol > 0 ? "Fixed, positive" : "Fixed, negative"]) }],
+      info: c => {
+        const m = REGS[c.params.model] || REGS.LM317, sg = m.pol > 0 ? "" : "−";
+        return `${c.params.model} (${m.use}), ${m.pkg}. ` + (m.adj
+          ? `OUT sits ${sg}${m.vref} V from ADJ: with R1 from OUT to ADJ and R2 from ADJ to ground, Vout = ${sg}${m.vref} V × (1 + R2/R1) + ${fmtEng(m.iadj, "A")} × R2. It needs ${fmtEng(m.iq, "A")} of load or more (R1 = 240 Ω takes 5 mA), or the output creeps up. `
+          : `Holds OUT at ${sg}${m.vref} V from GND, drawing ${fmtEng(m.iq, "A")} into GND. `)
+          + `Modelled: the error amplifier (output resistance ${fmtEng(1 / m.g, "Ω")}), the line regulation (ripple rejection about ${Math.round(-20 * Math.log10(m.line / m.vref * (m.adj ? 4 : 1)))} dB${m.adj ? " at 5 V out, more with ADJ bypassed by 10 µF" : ""}), the current limit (${fmtEng(m.ilim, "A")}), the dropout (${m.vdo} V and more with current: keep IN at least ${(m.vdo + 0.7).toFixed(1)} V beyond OUT), and the input-output maximum of ${m.vmax} V. Not modelled: the ripple rejection falling at high frequencies, the thermal shutdown.`;
+      },
+      build: (c, net, alloc, out) => {
+        const m = REGS[c.params.model] || REGS.LM317;
+        out.push({ id: c.id, kind: "REG", nodes: [net("I"), net("O"), net(m.adj ? "A" : "G")], model: regModel(m) });
+      }
+    },
+    tl431: {
+      name: "Shunt reference (TL431)", prefix: "DA", group: "Integrated circuits", bbox: [-30, -30, 14, 30],
+      defaults: { model: "TL431" },
+      pins: () => [{ id: "K", x: 0, y: -30, name: "cathode" }, { id: "A", x: 0, y: 30, name: "anode" }, { id: "R", x: -30, y: 0, name: "reference" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(SHUNTS).map(([k, m]) => [k, `${k} · ${m.use}`]) }],
+      info: c => { const m = SHUNTS[c.params.model] || SHUNTS.TL431; return `${c.params.model} (${m.use}), ${m.pkg}. The cathode sinks whatever current holds REF at ${m.vref} V above the anode: REF tied to K, it is a ${m.vref} V zener; with R1 from K to REF and R2 from REF to A, Vka = ${m.vref} V × (1 + R1/R2). Modelled: the reference, the gain (dynamic impedance ${fmtEng(1 / m.gm, "Ω")}), REF's bias current (${fmtEng(m.vref / m.rref, "A")}), the current limit, the cathode's ${m.v} V maximum. Keep at least 1 mA in the cathode for it to regulate. Not modelled: its frequency response (a TL431 can oscillate with some capacitive loads).`; },
+      build: (c, net, alloc, out) => {
+        const m = SHUNTS[c.params.model] || SHUNTS.TL431;
+        out.push({ id: c.id, kind: "SHUNT", nodes: [net("K"), net("A"), net("R")], model: { vref: m.vref, gm: m.gm, imax: m.imax, rref: m.rref, roff: m.roff } });
+      }
+    },
     opamp: {
       // DA: analogue integrated circuit (ГОСТ 2.710). The sections of a dual or quad (DA1.1 …
       // DA1.4) are one package, as a dual triode's are
@@ -1324,12 +1463,15 @@
     { group: "Semiconductors", items: [["diode"], ["zener"], ["led"],
       { sub: "Transistors" }, ["npn"], ["pnp"], ["npn", { model: "MJE340" }, "NPN, high voltage"], ["pnp", { model: "MJE350" }, "PNP, high voltage"],
       ["pnp", { model: "AC128" }, "PNP, germanium"], ["npn", { model: "AC127" }, "NPN, germanium"], ["pnp", { model: "MP39B" }, "PNP, germanium (USSR)"],
-      ["nmos", null, "N-MOSFET"], ["nmos", { model: "DN2540" }, "N-MOSFET, depletion"], ["pmos", null, "P-MOSFET"]] },
+      ["nmos", null, "N-MOSFET"], ["nmos", { model: "DN2540" }, "N-MOSFET, depletion"], ["pmos", null, "P-MOSFET"],
+      ["njf", null, "N-JFET"], ["njf", { model: "2SK170" }, "N-JFET, low noise"], ["pjf", null, "P-JFET"]] },
     { group: "Integrated circuits", items: [
       { sub: "Op-amps" },
       ["opamp", { model: "TL071" }, "TL071 (JFET)"], ["opamp", { model: "TL072" }, "TL072 (dual JFET)"], ["opamp", { model: "TL074" }, "TL074 (quad JFET)"],
       ["opamp", { model: "LM741" }, "LM741"], ["opamp", { model: "LM301A" }, "LM301A (external comp.)"], ["opamp", { model: "LM324" }, "LM324 (quad, single supply)"],
-      { sub: "Timers" }, ["timer555", null, "NE555 timer"]] },
+      { sub: "Timers" }, ["timer555", null, "NE555 timer"],
+      { sub: "Regulators" }, ["reg", { model: "LM317" }, "LM317 adjustable"], ["reg", { model: "LM337" }, "LM337 adjustable, negative"],
+      ["reg", { model: "7812" }, "78xx fixed"], ["reg", { model: "7912" }, "79xx fixed, negative"], ["tl431", null, "TL431 shunt reference"]] },
     { group: "Instruments", items: [["scope"]] },
     { group: "Document", items: [["frame"], ["note"]] }
   ];
@@ -1478,9 +1620,9 @@
   };
   // transistors: the four kinds share one readout
   const semiReadout = (c, R) => {
-    const dev = R.r.dc.devices[c.id], d = dev && dev.main, m = (c.type === "npn" || c.type === "pnp" ? BJTS : MOSFETS)[c.params.model], kv = R.kv;
+    const dev = R.r.dc.devices[c.id], d = dev && dev.main, m = semiTable(c.type)[c.params.model], kv = R.kv;
     if (!d || !m) return R.note("No data.");
-    const bip = c.type === "npn" || c.type === "pnp", vMain = bip ? d.vce : d.vds, iMain = bip ? d.ic : d.id;
+    const bip = !isFet(c.type), jf = c.type === "njf" || c.type === "pjf", vMain = bip ? d.vce : d.vds, iMain = bip ? d.ic : d.id;
     let h = kv(bip ? "Vce" : "Vds", fmtEng(vMain, "V", 2), Math.abs(vMain) > m.v ? "bad" : Math.abs(vMain) > 0.8 * m.v ? "warn" : "");
     h += kv(bip ? "Vbe" : "Vgs", fmtEng(bip ? d.vbe : d.vgs, "V", 3));
     h += kv(bip ? "Ic" : "Id", fmtEng(iMain, "A", 2), Math.abs(iMain) > m.i ? "bad" : "");
@@ -1489,11 +1631,12 @@
     if (bip && m.ge) { const a = bjtAt(m, c.params.temp), iceo = (a.bf + 1) * a.icbo; h += kv(`Leakage at ${+a.t.toFixed(1)} °C`, `ICBO ${fmtEng(a.icbo, "A", 2)} · ×hFE ≈ ${fmtEng(iceo, "A", 2)}`, Math.abs(d.ic) > 0 && iceo > 0.5 * Math.abs(d.ic) ? "warn" : ""); }
     h += kv("Dissipation", `${fmtEng(d.pd, "W", 2)} · ${Math.round(d.pd / m.p * 100)}% of ${m.p} W`, d.pd > m.p ? "bad" : d.pd > 0.6 * m.p ? "warn" : "");
     if (bip && d.vce < 0.3 && d.ic > 1e-6) h += R.note("Saturated (Vce below 0.3 V).", "warn");
-    if (!bip && Math.abs(iMain) < 1e-6) h += R.note("Off: Vgs below the threshold.");
+    if (jf) { const idss = m.beta * m.vto * m.vto; h += kv("Id / IDSS", `${Math.round(Math.abs(iMain) / idss * 100)}% of ${fmtEng(idss, "A", 2)}`); if (d.vgs > 0.4) h += R.note("The gate is forward-biased: it conducts and draws current.", "warn"); }
+    if (!bip && Math.abs(iMain) < 1e-6) h += R.note(jf ? "Off: Vgs beyond the pinch-off." : "Off: Vgs below the threshold.");
     if (m.p > 2) h += R.note(`Rated ${m.p} W with the case at 25 °C: needs a heatsink well before that.`);
     return h;
   };
-  ["npn", "pnp", "nmos", "pmos"].forEach(t => { UI[t] = { readout: semiReadout }; });
+  ["npn", "pnp", "nmos", "pmos", "njf", "pjf"].forEach(t => { UI[t] = { readout: semiReadout }; });
   // op-amps: the output and how close it runs to its limits, the input difference, the package's heat
   UI.opamp = {
     readout: (c, R) => {
@@ -1509,6 +1652,33 @@
       h += kv("Dissipation", fmtEng(d.pd, "W", 2));
       if (stuck) h += R.note("The output sits at its limit: no negative feedback, or the inputs are outside what the circuit can follow.", "warn");
       if (d.vs < 2) h += R.note("No supply: wire V+ and V− to the rails.", "warn");
+      return h;
+    }
+  };
+  // regulators: input, output and the headroom between them; the chip's heat
+  UI.reg = {
+    readout: (c, R) => {
+      const dev = R.r.dc.devices[c.id], d = dev && dev.main, m = REGS[c.params.model], kv = R.kv;
+      if (!d || !m) return R.note("No data.");
+      const drop = d.vio < m.vdo + 0.5, hot = d.pd > (m.pkg === "TO-92" ? 0.6 : 2);
+      let h = kv(m.adj ? "Output (OUT − ADJ)" : "Output (OUT − GND)", fmtEng(d.vout * m.pol, "V", 3));
+      h += kv("Headroom (IN − OUT)", fmtEng(d.vio, "V", 2), d.vio > m.vmax ? "bad" : drop ? "warn" : "");
+      h += kv("Output current", fmtEng(d.iout, "A", 2), d.iout > 0.9 * m.ilim ? "warn" : "");
+      h += kv("Dissipation", fmtEng(d.pd, "W", 2), d.pd > m.p ? "bad" : hot ? "warn" : "");
+      if (drop) h += R.note(`In dropout: the input is too close to the output to regulate (it needs about ${(m.vdo + 0.5).toFixed(1)} V or more; ripple troughs count).`, "warn");
+      if (m.adj && d.iout < m.iq) h += R.note(`Below the minimum load (${fmtEng(m.iq, "A")}): the output rises. Lower R1 or add a load.`, "warn");
+      if (hot) h += R.note(m.pkg === "TO-92" ? "A TO-92 manages about 0.6 W in still air." : "Above about 2 W a TO-220 needs a heatsink.", hot && d.pd > m.p ? "bad" : "");
+      return h;
+    }
+  };
+  UI.tl431 = {
+    readout: (c, R) => {
+      const dev = R.r.dc.devices[c.id], d = dev && dev.main, m = SHUNTS[c.params.model], kv = R.kv;
+      if (!d || !m) return R.note("No data.");
+      let h = kv("Cathode (K − A)", fmtEng(d.vka, "V", 3), d.vka > m.v ? "bad" : "") + kv("REF − A", fmtEng(d.vref, "V", 4));
+      h += kv("Cathode current", fmtEng(d.ik, "A", 2), d.ik > m.imax * 0.66 ? "warn" : "");
+      h += kv("Dissipation", fmtEng(d.pd, "W", 2), d.pd > m.p ? "bad" : d.pd > 0.6 * m.p ? "warn" : "");
+      if (d.ik < 1e-3 && d.vref > m.vref - 0.05) h += R.note("Less than 1 mA in the cathode: below the current it needs to regulate.", "warn");
       return h;
     }
   };
@@ -1557,5 +1727,5 @@
     return wrap;
   }
 
-  root.CadLib = { bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);
