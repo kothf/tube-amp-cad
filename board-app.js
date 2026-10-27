@@ -127,7 +127,7 @@
     S.sp = B.socketPads(S.board, S.model);
     if (!light) {
       // teardrops first: the pours keep clear of other nets' teardrops
-      const tears = S.board.rules.teardrops !== false ? B.teardrops(S.board, c0, S.clr) : [];
+      const tears = S.board.rules.teardrops !== false ? B.teardrops(S.board, c0, S.clr, S.model) : [];
       S.fills = ((S.board.zones || []).length ? B.fillZones(S.board, S.model, c0, S.hv, S.netlist, tears) : [])
         .concat(tears.map(t => ({ tear: true, zone: -1, layer: t.layer, net: t.net, ti: t.ti, pts: t.pts, ops: [{ pol: "D", t: "region", pts: t.pts }], links: [] })));
     }
@@ -356,7 +356,7 @@
       }
       for (const ko of S.board.keepouts) if (ko.tracks !== false && B.koLayers(ko).includes(r.layer) && B.segInPoly(s, ko.pts, w2)) return { x: s[2], y: s[3], g: 0, need: 0, what: ko.name ? `keep-out "${ko.name}"` : "a keep-out area", net: "", ko: true };
       const hn = Math.max(mine, S.clr ? S.clr.toChassis(r.net).c : 0);
-      for (const h of S.board.holes) { if (h.plated) continue; const g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < hn - 1e-6) return { x: h.x, y: h.y, g, need: hn, what: "a mounting hole", net: "" }; }
+      for (const h of B.npHoles(S.board, S.model)) { const need = h.part ? mine : hn, g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < need - 1e-6) return { x: h.x, y: h.y, g, need, what: h.part ? `${h.ref}'s unplated hole` : "a mounting hole", net: "" }; }
     }
     return null;
   }

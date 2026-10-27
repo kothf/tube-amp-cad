@@ -149,6 +149,11 @@
       const [b, f] = fp.silk.filter(q => q.t === "rect");
       out.push(box(b.x, b.y, b.x + b.w, b.y + b.h, 0.3, 14.5, C.jack, to), cylX(f.y + f.h / 2, 7.4, 4.6, f.x, b.x, C.metal, to), cylX(f.y + f.h / 2, 7.4, 3.2, f.x - 0.01, f.x, C.black, to));
       pads.forEach(p => lead(p.x, p.y, 0.5));
+    } else if ((m = /^JACK-NJ(2|3|5)FD-V$/.exec(name))) {
+      // the body on the board, the threaded bushing up top with the plug's hole (approximate)
+      const b = fp.silk.find(q => q.t === "rect"), cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      out.push(box(b.x, b.y, b.x + b.w, b.y + b.h, 0, 17, C.jack, to), cylZ(cx, cy, 4.75, 17, 23, C.metal, to), cylZ(cx, cy, 3.25, 23, 23.05, C.black, to));
+      pads.forEach(p => lead(p.x, p.y, 0.5));
     } else if ((m = /^HEADER-1x(\d+)$/.exec(name))) {
       const r = fp.silk.find(q => q.t === "rect");
       out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, 0, 2.5, C.black, to));
@@ -239,6 +244,7 @@
     model.pads.forEach(p => { if (keep.has(p.part) && !p.smd && B().edgeDist(p.x, p.y, o) > p.drill / 2) holes.push([p.x, p.y, p.drill / 2]); });
     board.vias.forEach(v => holes.push([v.x, v.y, (v.drill || R.viaDrill) / 2]));
     (board.holes || []).forEach(h => holes.push([h.x, h.y, h.d / 2]));
+    (model.holes || []).forEach(h => { if (keep.has(h.part)) holes.push([h.x, h.y, h.d / 2]); });
     const V = [], F = [], n = ring.length;
     ring.forEach(([x, y]) => V.push([x, y, 0])); ring.forEach(([x, y]) => V.push([x, y, t]));
     const topLoops = [ring.map((_, i) => n + i)], botLoops = [ring.map((_, i) => i)];

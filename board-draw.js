@@ -121,6 +121,12 @@
           if (scale > 9) { ctx.fillStyle = "#0b0f14"; ctx.font = `${Math.min(p.w, p.h) * 0.42}px ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(p.name.length <= 3 ? p.name : p.num, p.x, p.y + p.drill * 0.9); }
         });
       }
+      // the parts' own unplated holes (locating pegs): a bare hole with its copper clearance dashed
+      if (S.model && S.show.Holes) (S.model.holes || []).forEach(h => {
+        ctx.fillStyle = "#070b10"; ctx.beginPath(); ctx.arc(h.x, h.y, h.d / 2, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = COLORS.Holes; ctx.lineWidth = Math.max(0.12, px); ctx.stroke();
+        ctx.beginPath(); ctx.arc(h.x, h.y, h.d / 2 + S.board.rules.clearance, 0, Math.PI * 2); ctx.setLineDash([2 * px, 2 * px]); ctx.stroke(); ctx.setLineDash([]);
+      });
       if (S.show["F.Cu"] || S.show["B.Cu"]) S.board.vias.forEach((v, i) => {
         ctx.fillStyle = selColor("via", i, "#a9b4c2"); ctx.beginPath(); ctx.arc(v.x, v.y, (v.pad || S.board.rules.viaPad) / 2, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = "#070b10"; ctx.beginPath(); ctx.arc(v.x, v.y, (v.drill || S.board.rules.viaDrill) / 2, 0, Math.PI * 2); ctx.fill();

@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.108.0] - 2026-10-27
+
+### Added
+- Board footprints can have unplated holes of their own, such as the pegs that locate a part. A part's holes move and turn with it and show with the mounting holes. They go into the NPTH drill file as component holes, with the solder mask open over them, and are drilled through the 3D board and the STEP. Pours, tracks being routed, teardrops, the Freerouting export and the design-rule check keep the net class's clearance from them. That clearance is not the chassis clearance, because a peg is not a screw.
+- Neutrik NJ2FD-V, NJ3FD-V and NJ5FD-V vertical 6.35 mm jacks, each with its two locating pegs in unplated holes. The switched jack's normalling contact goes on the NJ5FD-V's TN pin.
+
 ## [3.107.0] - 2026-10-27
 
 ### Added

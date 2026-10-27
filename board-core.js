@@ -118,7 +118,8 @@
     });
     return [x1 - m, y1 - m, x2 + m, y2 + m];
   };
-  const fp = (name, title, pads, silk) => ({ name, title, pads, silk, box: bbox(pads, silk, 0.5) });
+  // holes: the part's own non-plated holes (locating pegs, fixing screws): [{ x, y, d }]
+  const fp = (name, title, pads, silk, holes) => ({ name, title, pads, silk, holes: holes || [], box: bbox(pads, silk, 0.5) });
 
   // axial: resistors, diodes, small chokes. pitch: lead spacing; body length and diameter
   const AXIAL = { 7.62: [3.6, 1.8], 10.16: [6.3, 2.5], 12.7: [9, 3.2], 15.24: [11, 4.5], 20.32: [15, 5.5], 25.4: [18, 6.5], 30.48: [22, 8], 40.64: [34, 10], 50.8: [45, 12] };
@@ -260,6 +261,16 @@
       [{ t: "rect", x: -4.5, y: -6, w: 9, h: 14 }, { t: "rect", x: -2.5, y: 8, w: 5, h: 2.5 }]);
     return fp("JACK-6.35", "6.35 mm (1/4\") jack, board mount (tip +, sleeve −, switch unused), front at the bottom", [pad(1, 5, -6, 2.6, 1.5, "rect", "+"), pad(2, -5, -6, 2.6, 1.5, "circle", "-"), pad(3, 5, 0, 2.6, 1.5, "circle", "SW")],
       [{ t: "rect", x: -8, y: -11, w: 16, h: 21 }, { t: "rect", x: -5, y: 10, w: 10, h: 3 }]);
+  }
+  // Neutrik NJ…FD-V 6.35 mm jacks, vertical (KiCad Jack_6.35mm_Neutrik_NJ2FD-V / NJ3FD-V /
+  // NJ5FD-V): the plug goes in from above; two plastic pegs locate the body in unplated holes
+  // (Ø 1.6 and Ø 2.1 mm). NJ2: tip, sleeve; NJ3: tip, ring, sleeve; NJ5: and the tip's and the
+  // ring's normalling contacts, TN (the switched jack's SW) and RN
+  const NJFD = { 2: [["+", 0, 0], ["-", -5.08, 5.72]], 3: [["+", 0, 0], ["R", 5.08, 5.72], ["-", -5.08, 5.72]], 5: [["+", 0, 0], ["SW", -5.08, 0.64], ["R", 5.08, 5.72], ["RN", 4.45, 10.17], ["-", -5.08, 5.72]] };
+  function njfd(n) {
+    const pads = NJFD[n].map(([nm, x, y], i) => pad(i + 1, x, y, nm === "+" || nm === "SW" || nm === "RN" ? 3 : 3.4, nm === "+" || nm === "SW" || nm === "RN" ? 1.2 : 1.6, i ? "circle" : "rect", nm));
+    return fp(`JACK-NJ${n}FD-V`, `Neutrik NJ${n}FD-V, 6.35 mm ${n === 2 ? "mono" : n === 3 ? "stereo" : "stereo, tip and ring switched"} jack, vertical (plug from above), two locating pegs`, pads,
+      [{ t: "rect", x: -7.75, y: -2.28, w: 15.5, h: 16 }], [{ x: -3.18, y: 12.07, d: 1.6 }, { x: 3.81, y: 1.91, d: 2.1 }]);
   }
   // Neutrik M-series 6.35 mm jacks, horizontal (KiCad Jack_6.35mm_Neutrik_NMJ4HCD2 / NMJ6HCD2): tip,
   // sleeve and their switch contacts in two rows 16.23 mm apart, the ferrule (the front) to the left
@@ -461,6 +472,7 @@
     if (name === "DO-201AD") return do201();
     if ((m = /^BRIDGE-(DIP4|SIL4|GBU|KBU|WOB)$/.exec(name))) return bridgeFp(m[1]);
     if ((m = /^JACK-NMJ(4|6)HCD2$/.exec(name))) return neutrik(m[1] === "6");
+    if ((m = /^JACK-NJ(2|3|5)FD-V$/.exec(name))) return njfd(+m[1]);
     if ((m = /^HEADER-1x(\d+)$/.exec(name)) && +m[1] >= 1 && +m[1] <= 20) return header(+m[1]);
     if ((m = /^FASTON-(6\.3|4\.8)$/.exec(name))) return faston(m[1]);
     if ((m = /^FUSE-(5X20|6\.3X32|TR5)$/.exec(name))) return fuseFp(m[1]);
@@ -661,7 +673,7 @@
       // connectors: the maker's pattern, or wire pads where the part sits on the chassis
       case "jack": {
         const k = p.kind || "TS-SW";
-        return k === "TS-SW" ? ["JACK-NMJ4HCD2", "JACK-6.35", "WIRE-3"] : k === "TS" ? ["JACK-NMJ4HCD2", "JACK-6.35", "WIRE-2"] : k === "TRS" ? ["JACK-NMJ6HCD2", "WIRE-3"] : k === "TRS-3.5" ? ["JACK-3.5", "WIRE-3"] : ["JACK-RCA", "WIRE-2"];
+        return k === "TS-SW" ? ["JACK-NMJ4HCD2", "JACK-NJ5FD-V", "JACK-6.35", "WIRE-3"] : k === "TS" ? ["JACK-NMJ4HCD2", "JACK-NJ2FD-V", "JACK-6.35", "WIRE-2"] : k === "TRS" ? ["JACK-NMJ6HCD2", "JACK-NJ3FD-V", "WIRE-3"] : k === "TRS-3.5" ? ["JACK-3.5", "WIRE-3"] : ["JACK-RCA", "WIRE-2"];
       }
       case "iec": return ["WIRE-3", "TERM-7.5-3"];
       case "terminal": return [`TERM-${p.pitch === "7.5" ? "7.5" : "5.08"}-${wires}`, `TERM-${p.pitch === "7.5" ? "5.08" : "7.5"}-${wires}`, `WIRE-${wires}`];
@@ -841,7 +853,7 @@
   /** Everything the editor needs about a board against a netlist: physical parts with
       their footprints, pads in board coordinates with nets, net names */
   function model(board, netlist) {
-    const parts = physicalParts(netlist), pads = [], padsByPart = new Map(), netOf = {};
+    const parts = physicalParts(netlist), pads = [], holes = [], padsByPart = new Map(), netOf = {};
     (netlist.parts || []).forEach(p => p.pins.forEach(q => { netOf[p.id + ":" + q.id] = q.net; }));
     parts.forEach(g => {
       const bp = board.parts[g.key]; if (!bp) return;
@@ -857,12 +869,13 @@
           net: nets.length ? nets[0] : null, pins: conns, conflict: nets.length > 1 };
         list.push(P); pads.push(P);
       });
+      (f.holes || []).forEach(h => { const [x, y] = place([h.x, h.y], bp); holes.push({ part: g.key, ref: g.ref, x, y, d: h.d }); });
       padsByPart.set(g.key, list);
     });
     const names = netNames(netlist, parts, padsByPart), old = legacyNames(netlist, parts, padsByPart), legacy = {};
     Object.entries(old).forEach(([n, nm]) => { if (names[n] !== nm) legacy[nm] = netKey(n); });
     pads.forEach(p => { p.netName = p.net === null ? "" : names[p.net] || ("N" + p.net); });
-    return { parts, pads, names, legacy };
+    return { parts, pads, holes, names, legacy };
   }
 
   // ---------------------------------------------------------------------------
@@ -890,7 +903,9 @@
   // all copper items: { kind, layers, s: segment, r, net (pads only), ref }
   // a plated mounting hole: a copper ring on both layers (Ø 6 mm round an M3 hole unless set)
   const holeRing = h => (h.pad > h.d ? h.pad : +(h.d + 2.8).toFixed(3));
-  const npHoles = board => (board.holes || []).filter(h => !h.plated);
+  // the non-plated holes: the board's mounting holes and, with the model, the parts' own (a part's
+  // hole carries its part and ref: a locating peg, not a screw at chassis potential)
+  const npHoles = (board, model) => (board.holes || []).filter(h => !h.plated).concat((model && model.holes) || []);
   function copperItems(board, pads) {
     const items = [];
     pads.forEach((p, i) => { const c = padCapsule(p); items.push({ kind: "pad", i, layers: p.layers || COPPER, s: c.s, r: c.r, pad: p }); });
@@ -1104,10 +1119,10 @@
         const c = need(n); others.push({ it, c });
         if (near(it.s, it.r + c)) ops.push(itemOp("C", it, c));
       });
-      const hc = Math.max(zc, CR.toChassis(net).c);
+      const hcm = Math.max(zc, CR.toChassis(net).c);
       // other nets' teardrops: the shape and the clearance round its edges
       (tears || []).forEach(td => { if (td.layer !== L || (net !== undefined && td.net === net)) return; const c = need(td.net); ops.push({ pol: "C", t: "region", pts: td.pts }); td.pts.forEach((a, i) => { const b = td.pts[(i + 1) % td.pts.length]; ops.push({ pol: "C", t: "line", w: +(2 * c).toFixed(4), pts: [a, b] }); }); });
-      npHoles(board).forEach(h => { if (near([h.x, h.y, h.x, h.y], h.d / 2 + hc)) ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: +(h.d + 2 * hc).toFixed(4), h: +(h.d + 2 * hc).toFixed(4) }); });
+      npHoles(board, model).forEach(h => { const hc = h.part ? zc : hcm; if (near([h.x, h.y, h.x, h.y], h.d / 2 + hc)) ops.push({ pol: "C", t: "flash", shape: "C", x: h.x, y: h.y, w: +(h.d + 2 * hc).toFixed(4), h: +(h.d + 2 * hc).toFixed(4) }); });
       (board.texts || []).filter(t => t.layer === L).forEach(t => { const st = strokeText(t.text, t.x, t.y, t.size, t.rot, L === "B.Cu"); st.lines.forEach(l => ops.push({ pol: "C", t: "line", w: +(st.w + 2 * zc).toFixed(4), pts: l })); });
       // thermal reliefs: the gap around the pad, then spokes that stay in the pour and clear of other nets
       const spokes = [];
@@ -1117,7 +1132,7 @@
           const len = (dx ? p.w : p.h) / 2 + gapT + spoke, s = [p.x, p.y, +(p.x + dx * len).toFixed(4), +(p.y + dy * len).toFixed(4)];
           if (!pip(s[2], s[3], poly)) return;
           if (others.some(({ it: q, c }) => segSeg(s, q.s) - spoke / 2 - q.r < c - 1e-6)) return;
-          if (npHoles(board).some(h => segDist(s[0], s[1], s[2], s[3], h.x, h.y) - spoke / 2 - h.d / 2 < hc - 1e-6)) return;
+          if (npHoles(board, model).some(h => segDist(s[0], s[1], s[2], s[3], h.x, h.y) - spoke / 2 - h.d / 2 < (h.part ? zc : hcm) - 1e-6)) return;
           spokes.push({ pol: "D", t: "line", w: spoke, pts: [[s[0], s[1]], [s[2], s[3]]] });
         });
       });
@@ -1268,10 +1283,10 @@
         out.push({ kind: "clearance", x, y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm${vNote(rq, hvx)}`, between: [label(a), label(b)] });
       }
     }
-    // mounting holes against copper
-    if (on("clearance")) npHoles(board).forEach(hl => items.forEach(it => {
-      const rq = CR.toChassis(it.net), g = segDist(it.s[0], it.s[1], it.s[2], it.s[3], hl.x, hl.y) - it.r - hl.d / 2, need = Math.max(classRule(cls(it.net), R).clearance, rq.c);
-      if (g < need - 1e-6) out.push({ kind: "clearance", x: hl.x, y: hl.y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm to a mounting hole (its screw is at chassis potential)${rq.ipc ? `; ${Math.round(rq.v)} V: IPC-2221B ${CR.table}` : ""}`, between: [label(it), "hole"] });
+    // mounting holes against copper (a part's own unplated hole: the net class's clearance, its own pads too)
+    if (on("clearance")) npHoles(board, model).forEach(hl => items.forEach(it => {
+      const rq = hl.part ? { c: 0 } : CR.toChassis(it.net), g = segDist(it.s[0], it.s[1], it.s[2], it.s[3], hl.x, hl.y) - it.r - hl.d / 2, need = Math.max(classRule(cls(it.net), R).clearance, rq.c);
+      if (g < need - 1e-6) out.push({ kind: "clearance", x: hl.x, y: hl.y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm to ${hl.part ? `${hl.ref}'s unplated hole` : "a mounting hole (its screw is at chassis potential)"}${rq.ipc ? `; ${Math.round(rq.v)} V: IPC-2221B ${CR.table}` : ""}`, between: [label(it), hl.part ? `${hl.ref} hole` : "hole"] });
     }));
     if (on("short")) conn.clusters.forEach(c => { if (c.nets.size > 1) { const p = c.pads[0]; out.push({ kind: "short", x: p.x, y: p.y, msg: `Short between ${[...c.nets].map(n => model.names[n] || n).join(" and ")}` }); } });
     // the outline: a part entirely off the board is waiting to be placed; partly over the edge,
@@ -1401,8 +1416,8 @@
   // heavy part's leverage. One is left out where it would come closer to another net's copper
   // (or a mounting hole) than the clearance. Returns [{ layer, net, ti, pts }] (polygons).
   // ---------------------------------------------------------------------------
-  function teardrops(board, conn, CR) {
-    const out = [], items = conn.items, holes = npHoles(board);
+  function teardrops(board, conn, CR, model) {
+    const out = [], items = conn.items, holes = npHoles(board, model);
     const ends = items.filter(it => (it.kind === "pad" && Math.abs(it.pad.w - it.pad.h) < 1e-6) || it.kind === "via");
     board.tracks.forEach((t, ti) => {
       const tr = items.find(it => it.kind === "track" && it.ti === ti); if (!tr || t.pts.length < 2) return;
@@ -1802,5 +1817,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { socketPads, underSocket, holeRing, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { socketPads, underSocket, holeRing, npHoles, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

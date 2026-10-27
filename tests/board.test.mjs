@@ -884,3 +884,44 @@ test("an NE555 goes on a DIP-8: pin n on pad n, pin 1 square at the top left, th
   const g3 = m.parts.find(q => q.ref === "DA1"), bodies = globalThis.Board3D.partBodies(g3, 1.6, {});
   assert.equal(bodies.length, 1 + 8);
 });
+
+test("a part's own unplated holes (a jack's locating pegs): placed with the part, drilled NPTH, kept clear by pours and tracks, through the 3D board", () => {
+  const nl = { ...NETLIST, parts: NETLIST.parts.concat([part("j1", "jack", "XS1", { kind: "TS-SW" }, { "+": 4, "-": 0, SW: 0 })]) };
+  const board = B.newBoard(); B.sync(board, nl); board.outline = { w: 120, h: 90, r: 4 };
+  const at = { VL1: [30, 30], R1: [60, 15], R2: [30, 55], C1: [55, 55], VT1: [75, 30], G1: [15, 78], T1: [95, 60], XS1: [100, 20] };
+  Object.values(board.parts).forEach(p => { Object.assign(p, { x: at[p.ref][0], y: at[p.ref][1] }); if (p.ref === "T1") p.fp = "TERM-5.08-4"; });
+  Object.assign(board.parts[Object.keys(board.parts).find(k => board.parts[k].ref === "XS1")], { fp: "JACK-NJ5FD-V", rot: 1 });
+  board.zones.push({ net: "GND", layer: "B.Cu", pts: null, thermal: true, gap: 0.5, spoke: 0.8 });
+  const m = B.model(board, nl), hv = B.hvNets(nl.volts, 60), c0 = B.connectivity(board, m.pads), fills = B.fillZones(board, m, c0, hv), conn = B.connectivity(board, m.pads, fills);
+  // the pegs turn with the part: (x, y) → (y, −x) for a quarter turn
+  assert.deepEqual(m.holes.map(h => [h.ref, +h.x.toFixed(3), +h.y.toFixed(3), h.d]), [["XS1", 100 + 12.07, 20 + 3.18, 1.6], ["XS1", 100 + 1.91, 20 - 3.81, 2.1]]);
+  // the jack's pins map by name: tip, its normalling contact (SW) and sleeve; the ring's pads stay free
+  const jp = m.pads.filter(p => p.ref === "XS1"), net = nm => jp.find(p => p.name === nm).netName;
+  assert.ok(net("+") !== "" && net("-") === "GND" && net("SW") === "GND" && net("R") === "" && net("RN") === "");
+  // the pour keeps the clearance round each peg
+  const f = fills[0], nx = Math.ceil(board.outline.w / B.RES), ny = Math.ceil(board.outline.h / B.RES), g = B.rasterise(f.ops, nx, ny), need = board.rules.clearance;
+  m.holes.forEach(h => {
+    for (let j = Math.floor((h.y - 3) / B.RES); j <= (h.y + 3) / B.RES; j++) for (let i = Math.floor((h.x - 3) / B.RES); i <= (h.x + 3) / B.RES; i++) {
+      if (g[j * nx + i]) assert.ok(Math.hypot((i + 0.5) * B.RES - h.x, (j + 0.5) * B.RES - h.y) - h.d / 2 > need - B.RES, `pour within the clearance of the Ø ${h.d} peg`);
+    }
+  });
+  assert.ok(!B.drc(board, m, conn, hv, fills, nl).some(d => /unplated hole/.test(d.msg)), "nothing too near the pegs");
+  // a track past a peg, too close: reported against the part's hole
+  const h = m.holes[0];
+  board.tracks.push({ layer: "F.Cu", w: 0.5, pts: [[h.x - 5, h.y + h.d / 2 + 0.3], [h.x + 5, h.y + h.d / 2 + 0.3]] });
+  const c2 = B.connectivity(board, m.pads, fills);
+  assert.ok(B.drc(board, m, c2, hv, fills, nl).some(d => /to XS1's unplated hole/.test(d.msg)), "the track is too close to the peg");
+  board.tracks.pop();
+  // the drill files: the pegs in the NPTH file as component holes, not in the plated one
+  const files = F.fabFiles(board, m, fills, { base: "t", title: "Test", version: "9.9.9" });
+  assert.match(files["t-NPTH.drl"], /; #@! TA\.AperFunction,NonPlated,NPTH,ComponentDrill\nT\d+C1\.600/);
+  assert.match(files["t-NPTH.drl"], /; #@! TA\.AperFunction,NonPlated,NPTH,ComponentDrill\nT\d+C2\.100/);
+  assert.ok(m.holes.every(q => files["t-NPTH.drl"].includes(`X${q.x.toFixed(3)}Y${(board.outline.h - q.y).toFixed(3)}`) && !files["t-PTH.drl"].includes(`X${q.x.toFixed(3)}Y${(board.outline.h - q.y).toFixed(3)}`)));
+  // both masks open over them; the 3D board is drilled through at each
+  const at2 = q => `X${Math.round(q.x * 1e6)}Y${Math.round((board.outline.h - q.y) * 1e6)}D03*`;
+  for (const l of ["F_Mask", "B_Mask"]) assert.ok(m.holes.every(q => files[`t-${l}.gbr`].includes(at2(q))), l);
+  assert.ok(!m.holes.some(q => files["t-F_Cu.gbr"].includes(at2(q))), "no copper at the pegs");
+  const keep = new Set(Object.keys(board.parts)), plain = B.model(board, nl);
+  const withHoles = globalThis.Board3D.boardSolid(board, m, keep), without = globalThis.Board3D.boardSolid(board, { ...plain, holes: [] }, keep);
+  assert.ok(withHoles.faces.length > without.faces.length, "the pegs' holes go through the 3D board");
+});
