@@ -55,6 +55,11 @@
         const i = pinCurrent(c, "A"), m = CadLib.GASREGS[c.params.model];
         return i === null ? null : { v: i, text: `${fmtEng(i, "A")}${m ? share(i, m.imax) : ""}`, warn: !!m && (i > m.imax || i < m.imin), note: m && i < m.imin ? "under its regulating current" : "over its current" };
       }
+      // a vactrol: its LED's current against the 40 mA it is rated for
+      if (c.type === "vactrol") {
+        const i = pinCurrent(c, "A");
+        return i === null ? null : { v: i, text: `LED ${fmtEng(i, "A")}${share(i, 0.04)}`, warn: i > 0.04, note: "over its LED's current" };
+      }
       if (c.type === "itx") {
         const i = pinCurrent(c, "P1"), lim = +c.params.idc || 0;
         return i === null ? null : { v: Math.abs(i), text: `${fmtEng(Math.abs(i), "A")} DC${lim ? share(Math.abs(i), lim) : ""}`, warn: lim ? Math.abs(i) > lim : Math.abs(i) > 0.5e-3, note: "DC over the core's rating" };

@@ -13,7 +13,7 @@
   ];
   // parts without a designator (frame, note, ground, sheet connector) never appear;
   // sources and instruments only when asked for
-  const BENCH = new Set(["vdc", "isrc", "vcvs", "vccs", "siggen", "mains", "scope"]);
+  const BENCH = new Set(["vdc", "isrc", "vcvs", "vccs", "siggen", "pickup", "phono", "mains", "scope"]);
 
   // A capacitor's voltage rating for the bill (when the part has none set): the first of its makers' standard ratings at or
   // above the simulated peak voltage across it plus a 25 % margin (the part runs at 80 % or less
@@ -43,6 +43,12 @@
       case "electrolytic": return ["Capacitor, electrolytic", f(p.c, "F"), +p.v ? p.v + " V" : ""];
       case "inductor": return ["Choke", f(p.l, "H"), "DCR " + f(p.dcr, "Ω")];
       case "switch": return ["Changeover switch" + (n > 1 ? ", " + n + " poles" : ""), "", ""];
+      case "spst": return [p.kind === "toggle" ? "Toggle switch, on–off" + (n > 1 ? ", " + n + " poles" : "") : `Push button, normally ${p.kind === "nc" ? "closed" : "open"}`, "", p.kind === "toggle" ? "" : "6 × 6 mm tactile"];
+      case "rotary": return ["Rotary switch", `${n} pole${n > 1 ? "s" : ""}, ${p.ways} ways`, ""];
+      case "relay": { const m = L.RELAYS[p.model] || {}; return ["Relay, " + (m.poles > 1 ? "DPDT" : "SPDT"), `Omron ${p.model}-${p.v}VDC`, m.use || ""]; }
+      case "vactrol": { const m = L.VACTROLS[p.model] || {}; return ["Optocoupler, LED and photoresistor (vactrol)", p.model, m.r10 ? `${f(m.r10, "Ω")} at 10 mA, ${f(m.rdark, "Ω")} dark` : ""]; }
+      case "pickup": return ["Guitar pickup (source)", f(p.l, "H") + " " + f(p.r, "Ω"), ""];
+      case "phono": return ["Phono cartridge (source)", f(p.mv, "V"), ""];
       case "speaker": return ["Loudspeaker", f(p.r, "Ω"), ""];
       case "opt_se": return ["Output transformer, single-ended", f(p.zp, "") + ":" + f(p.zs, "Ω"), "Lp " + f(p.lp, "H") + ", DCR " + f(p.dcrp, "Ω")];
       case "opt_cat": { const m = L.OUTPUT_TX[p.model] || {}; return ["Output transformer, single-ended", m.name || p.model, m.w + " W, " + m.ma + " mA DC"]; }

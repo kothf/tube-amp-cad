@@ -154,6 +154,18 @@
       const b = fp.silk.find(q => q.t === "rect"), cx = b.x + b.w / 2, cy = b.y + b.h / 2;
       out.push(box(b.x, b.y, b.x + b.w, b.y + b.h, 0, 17, C.jack, to), cylZ(cx, cy, 4.75, 17, 23, C.metal, to), cylZ(cx, cy, 3.25, 23, 23.05, C.black, to));
       pads.forEach(p => lead(p.x, p.y, 0.5));
+    } else if ((m = /^RELAY-(G5LE-1|G5V-2)$/.exec(name))) {
+      // the sealed case (Omron: G5LE 22.5 × 16.5 × 18.8 mm, G5V-2 20.5 × 10.1 × 11.5 mm) over its outline
+      const b = fp.silk.find(q => q.t === "rect");
+      out.push(box(b.x, b.y, b.x + b.w, b.y + b.h, 0, m[1] === "G5LE-1" ? 18.8 : 11.5, m[1] === "G5LE-1" ? C.black : C.generic, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
+    } else if (name === "VTL5C") {
+      // the black sealed case lying on the board, its leads bent down at each end
+      const b = fp.silk.find(q => q.t === "rect"), zc = b.h / 2 + 0.4;
+      out.push(box(b.x, b.y, b.x + b.w, b.y + b.h, 0.4, 0.4 + b.h * 0.8, C.black, to));
+      pads.forEach(p => { const left = p.x < b.x; lead(p.x, p.y, zc * 0.6); out.push(cylX(p.y, zc * 0.6, 0.25, left ? p.x : b.x + b.w, left ? b.x : p.x, C.lead, to)); });
+    } else if (name === "SW-PUSH-6MM") {
+      const c = fp.silk.find(q => q.t === "circle");
+      out.push(box(0.25, -0.75, 6.25, 5.25, 0, 3.5, C.black, to), cylZ(c.x, c.y, c.r, 3.5, 5, C.black, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
     } else if ((m = /^HEADER-1x(\d+)$/.exec(name))) {
       const r = fp.silk.find(q => q.t === "rect");
       out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, 0, 2.5, C.black, to));

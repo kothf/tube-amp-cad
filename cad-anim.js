@@ -21,6 +21,8 @@
     const ANIM_S = 3, REAL_S = 0.25, ANIM_DC_SPEED = 25;   // DC dots: units a second, about the AC dots' average
     // how long one cycle of the animation takes (s)
     const cycleS = d => (d.f > 0 && 1 / d.f >= REAL_S ? 1 / d.f : ANIM_S);
+    // the parts that light by their LED's current (pin A): an LED, a vactrol's LED
+    const GLOWS = new Set(["led", "vactrol"]);
     const POWER_S = 4, LED_FULL = 0.01;     // the power-on playback's length (s); an LED's full brightness at 10 mA
     S.anim = { on: false, phase: 0, last: 0, data: null, off: new Map(), raf: 0, power: null };
     function animData() {
@@ -32,7 +34,7 @@
       const perFrame = pinFrames.map(pm => { const wc = wireCurrents(pm); return wc ? wc.currents : new Map(); });
       // each LED's forward current at the frames
       const leds = new Map();
-      S.comps.forEach(c => { if (c.type === "led" && pinFrames.every(pm => pm.has(c.id + ":A"))) leds.set(c.id, pinFrames.map(pm => pm.get(c.id + ":A"))); });
+      S.comps.forEach(c => { if (GLOWS.has(c.type) && pinFrames.every(pm => pm.has(c.id + ":A"))) leds.set(c.id, pinFrames.map(pm => pm.get(c.id + ":A"))); });
       const acOf = (xs, m0) => { const m = m0 !== undefined ? m0 : xs.reduce((a, v) => a + v, 0) / xs.length, ac = xs.map(v => v - m); return { ac, pk: Math.max(...ac.map(Math.abs)), dc: m, rms: Math.sqrt(ac.reduce((a, v) => a + v * v, 0) / ac.length) }; };
       // DC or AC is judged over the whole settled capture, not the one signal cycle the frames
       // span: against a 1 kHz signal the 50 Hz mains barely moves in a cycle and would pass for DC
@@ -87,14 +89,14 @@
     // netlist changes
     function powerOn() {
       const r = S.sim.result;
-      if (!S.anim.on || !S.comps.some(c => c.type === "led") || S.comps.some(c => c.type === "siggen" || c.type === "mains") || (r && r.tran && r.tran.fBase)) return null;
+      if (!S.anim.on || !S.comps.some(c => GLOWS.has(c.type)) || S.comps.some(c => c.type === "siggen" || c.type === "mains") || (r && r.tran && r.tran.fBase)) return null;
       if (S.anim.power && !S.anim.power.dirty) return S.anim.power;
       const netlist = buildNetlist(), key = JSON.stringify(netlist.elements), old = S.anim.power;
       if (old && old.key === key) { old.dirty = false; return old; }
       if (old && old.job) old.job.cancel();
       const leds = [], probes = [];
       S.comps.forEach(c => {
-        const e = c.type === "led" && netlist.elements.find(x => x.id === c.id + "#rs");
+        const e = GLOWS.has(c.type) && netlist.elements.find(x => x.id === c.id + "#rs");
         if (e) { leds.push({ id: c.id, r: e.r, k: probes.length }); probes.push([e.nodes[0], e.nodes[1]]); }
       });
       const P = S.anim.power = { key, running: true, progress: 0, tStop: POWER_S, t: 0, leds: new Map() };

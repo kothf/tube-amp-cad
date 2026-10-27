@@ -310,6 +310,23 @@
     return fp(`${kind}-D${d}-P${p}`, `${kind === "MOV" ? "Varistor" : "Inrush NTC thermistor"} disc Ø ${d} mm, ${p} mm lead pitch`, [pad(1, -p / 2, 0, pd, dr, "rect", "1"), pad(2, p / 2, 0, pd, dr, "circle", "2")],
       [{ t: "rect", x: -d / 2, y: -w / 2, w: d, h: w }]);
   }
+  // relays, KiCad's Relay_THT patterns (the datasheet's pin numbers), each pad named for the part's
+  // pin: coil A1 A2, poles COM 11/21, NC 12/22, NO 14/24
+  const RELAY_FP = {
+    "G5LE-1": { pads: [[1, 0, 0, "11"], [2, -6, 2, "A1"], [3, -6, 14.2, "14"], [4, 6, 14.2, "12"], [5, 6, 2, "A2"]], d: 2.5, dr: 1.3, box: [-8.5, -2.91, 17, 23.11], title: "Omron G5LE-1 relay, SPDT (KiCad Relay_SPDT_Omron-G5LE-1)" },
+    "G5V-2": { pads: [[1, 0, 0, "A1"], [4, 0, 7.62, "11"], [6, 0, 12.7, "12"], [8, 0, 17.78, "14"], [9, 7.62, 17.78, "24"], [11, 7.62, 12.7, "22"], [13, 7.62, 7.62, "21"], [16, 7.62, 0, "A2"]], d: 1.4, dr: 0.7, box: [-1.54, -1.55, 10.64, 20.85], title: "Omron G5V-2 relay, DPDT (KiCad Relay_DPDT_Omron_G5V-2)" }
+  };
+  function relayFp(k) {
+    const r = RELAY_FP[k];
+    return fp(`RELAY-${k}`, r.title, r.pads.map(([n, x, y, nm], i) => pad(n, x, y, r.d, r.dr, i ? "circle" : "rect", nm)), [{ t: "rect", x: r.box[0], y: r.box[1], w: r.box[2], h: r.box[3] }]);
+  }
+  // a vactrol (KiCad OptoDevice PerkinElmer_VTL5C): the LED's leads (K pin 1, A pin 2) at one end of
+  // the body, the cell's at the other
+  const vtl5c = () => fp("VTL5C", "Vactrol VTL5C, axial (KiCad PerkinElmer_VTL5C)", [pad(1, 0, 0, 1.4, 0.7, "rect", "K"), pad(2, 0, 3.8, 1.4, 0.7, "circle", "A"), pad(3, 15, -0.64, 1.4, 0.7, "circle", "1"), pad(4, 15, 4.44, 1.4, 0.7, "circle", "2")],
+    [{ t: "rect", x: 2.5, y: -1.6, w: 10, h: 7.2 }]);
+  // a 6 mm tactile push button (KiCad SW_PUSH_6mm): each side's two pads joined inside
+  const push6 = () => fp("SW-PUSH-6MM", "Tactile push button 6 × 6 mm (KiCad SW_PUSH_6mm)", [pad(1, 0, 0, 2, 1.1, "rect", "1"), pad(2, 6.5, 0, 2, 1.1, "circle", "1"), pad(3, 0, 4.5, 2, 1.1, "circle", "2"), pad(4, 6.5, 4.5, 2, 1.1, "circle", "2")],
+    [{ t: "rect", x: 0.25, y: -0.75, w: 6, h: 6 }, { t: "circle", x: 3.25, y: 2.25, r: 1.75 }]);
   // toggle switches, board mount: SPDT (A · C · B) or DPDT (two rows, one per section)
   function toggle(poles) {
     const pads = [];
@@ -493,6 +510,9 @@
     if ((m = /^TERM-([\d.]+)-(\d+)$/.exec(name)) && ["5.08", "7.5"].includes(m[1])) return terminal(+m[1], pinNames && pinNames.length === +m[2] ? pinNames : Array.from({ length: +m[2] }, (_, i) => String(i + 1)));
     if ((m = /^JACK-(RCA|3\.5|6\.35)$/.exec(name))) return jack(m[1]);
     if ((m = /^TOGGLE-(SPDT|DPDT)$/.exec(name))) return toggle(m[1] === "DPDT" ? 2 : 1);
+    if ((m = /^RELAY-(G5LE-1|G5V-2)$/.exec(name))) return relayFp(m[1]);
+    if (name === "VTL5C") return vtl5c();
+    if (name === "SW-PUSH-6MM") return push6();
     if ((m = /^XFMR-EI(\d+)-(SE|PP|PTP|PT|IS)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], m[2]);
     if ((m = /^CHOKE-EI(\d+)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], "CHOKE");
     if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1]) : socket(m[1]);
@@ -582,7 +602,8 @@
   // pins: [{ id, net }] }], names: { net: "GND" | connector name } }. Sections of one part
   // (VL1.1 / VL1.2, SA1.1 / SA1.2) are one physical part with one footprint.
   // ---------------------------------------------------------------------------
-  const SKIP = new Set(["frame", "note", "ground", "offsheet", "rail", "scope", "vcvs", "vccs"]);
+  // not on the board: these, and the sources that stand for an instrument off it (a guitar's pickup, a turntable's cartridge)
+  const SKIP = new Set(["frame", "note", "ground", "offsheet", "rail", "scope", "vcvs", "vccs", "pickup", "phono"]);
   function physicalParts(netlist) {
     const L = root.CadLib, groups = new Map();
     (netlist.parts || []).forEach(p => {
@@ -697,6 +718,11 @@
       case "ptx": return ["WIRE-3", ...eiFor("PT", 76), "TERM-5.08-3"];
       case "ptx_cat": return ["WIRE-5", ...eiFor("PTP", 76), "TERM-5.08-5"];
       case "switch": return g.members.length === 1 ? ["TOGGLE-SPDT", "TERM-5.08-3", "WIRE-3"] : g.members.length === 2 ? ["TOGGLE-DPDT", `TERM-5.08-${wires}`, `WIRE-${wires}`] : [`TERM-5.08-${wires}`, `WIRE-${wires}`];
+      // a push button on the board; a toggle or a rotary selector on the panel, wired
+      case "spst": return p.kind !== "toggle" && g.members.length === 1 ? ["SW-PUSH-6MM", "WIRE-2", t2] : [`WIRE-${wires}`, `TERM-5.08-${wires}`];
+      case "rotary": return [`WIRE-${wires}`, `TERM-5.08-${wires}`];
+      case "relay": return [`RELAY-${L.RELAYS[p.model] ? p.model : "G5LE-1"}`, `WIRE-${wires}`];
+      case "vactrol": return ["VTL5C", "WIRE-4"];
       case "speaker": return [t2, "JACK-6.35", "WIRE-2"];
       case "siggen": return ["JACK-RCA", "JACK-6.35", "JACK-3.5", t2, "WIRE-2"];
       case "vdc": return [t2, "TERM-7.5-2", "WIRE-2"];

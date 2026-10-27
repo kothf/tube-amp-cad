@@ -864,7 +864,8 @@
     const m = evPos(e);
     const c = hitComp(m.wx, m.wy);
     if (c && c.type === "scope" && !S.wiring) ToolWindows.open("oscilloscope.html", { scope: c.id });
-    if (c && c.type === "switch" && !S.wiring) { setSwitch(c, c.params.pos === "B" ? "A" : "B"); updateInspector(); }
+    // a switch, a push button or a selector moves on to its next position
+    if (c && LIB[c.type].flip && !S.wiring) { setSwitch(c, LIB[c.type].flip(c)); updateInspector(); }
     if (c && c.type === "jack" && c.params.kind === "TS-SW" && !S.wiring) { c.params.plug = c.params.plug === "in" ? "out" : "in"; commit(); updateInspector(); }
   }
   // Renumber reference designations (classic letter code + number: R, C, L, T,
@@ -896,7 +897,7 @@
   function switchGang(c) { const i = c.label.lastIndexOf("."); return i > 0 ? c.label.slice(0, i) : null; }
   function setSwitch(c, pos) {
     const g = switchGang(c);
-    S.comps.forEach(k => { if (k === c || (g && k.type === "switch" && switchGang(k) === g)) k.params.pos = pos; });
+    S.comps.forEach(k => { if (k === c || (g && k.type === c.type && switchGang(k) === g)) k.params.pos = pos; });
     commit();
   }
 
@@ -1208,12 +1209,14 @@
         prevFill.call(this, t, 0, 0, mw); this.restore();
       };
     }
-    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "rail" || c.type === "isrc" || c.type === "vcvs" || c.type === "vccs" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
+    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "rail" || c.type === "isrc" || c.type === "vcvs" || c.type === "vccs" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" || c.type === "pickup" || c.type === "phono" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
-    if (c.type === "led" && !ghost && !S.printing) c._lit = ledLevel(c);
+    if ((c.type === "led" || c.type === "vactrol") && !ghost && !S.printing) c._lit = ledLevel(c);
+    // a relay drawn pulled in when the simulation (its settled average) has it so
+    if (c.type === "relay" && !ghost && !S.printing && S.sim.result && S.sim.result.dc) { const d = (S.sim.result.dc.devices[c.id] || {}).main; c._on = !!(d && d.q > 0.5); }
     DRAW[c.type](ctx, c);
-    delete c._sel; delete c._lit;
+    delete c._sel; delete c._lit; delete c._on;
     if (mirrored) { if (ownFill) ctx.fillText = prevFill; else delete ctx.fillText; }
     ctx.restore();
 
@@ -1591,6 +1594,10 @@
     Object.entries(L.NTCS).forEach(([k, m]) => out.push(["Passive", `Inrush limiter · ${k}`, m.use, "ntc", { model: k }, `${k} ntc thermistor inrush current limiter soft start ${m.use}`]));
     Object.entries(L.MOVS).forEach(([k, m]) => out.push(["Passive", `Varistor · ${k}`, m.use, "mov", { model: k }, `${k} mov varistor surge protection ${m.use}`]));
     Object.entries(L.GASREGS).forEach(([k, m]) => out.push(["Gas-discharge tubes", `Voltage regulator · ${k}`, m.use, "gasreg", { model: k }, `${k} ${k.replace("0", "o")} vr gas regulator glow discharge stabilizer ${m.use}`]));
+    Object.entries(L.RELAYS).forEach(([k, m]) => out.push(["Switches & relays", `Relay · ${k}`, m.use, "relay", { model: k }, `${k} relay omron ${m.poles > 1 ? "dpdt" : "spdt"} coil ${m.use} mute standby channel`]));
+    Object.entries(L.VACTROLS).forEach(([k, m]) => out.push(["Switches & relays", `Vactrol · ${k}`, m.use, "vactrol", { model: k }, `${k} vactrol optocoupler opto ldr photoresistor led cds ${m.use}`]));
+    L.PICKUPS.forEach(p => out.push(["Sources", `Guitar pickup · ${p.name}`, `${fmtEng(p.l, "H")} ${fmtEng(p.r, "Ω")}`, "pickup", { preset: p.id, r: p.r, l: p.l, c: p.c, amp: p.amp }, `${p.name} guitar pickup bass single coil humbucker source`]));
+    L.CARTRIDGES.forEach(p => out.push(["Sources", `Phono cartridge · ${p.name}`, fmtEng(p.mv, "V"), "phono", { preset: p.id, mv: p.mv, r: p.r, l: p.l }, `${p.name} phono cartridge turntable record riaa mm mc vinyl source`]));
     L.ITX_PRESETS.forEach(p => out.push(["Transformers", p.name, "", "itx", Object.assign({}, ...["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"].map(k => ({ [k]: p[k] }))), `${p.name} transformer interstage input step-up`]));
     Object.entries(L.JACKS).forEach(([k, j]) => out.push(["Ground & connectors", `Jack · ${j.use}`, k, "jack", { kind: k }, `jack socket input output ${k} ${j.use} phone headphone`]));
     Object.entries(L.OUTPUT_TX).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `${m.w} W ${m.ma} mA`, "opt_cat", { model: k }, `${k} ${m.name} output transformer single-ended`]));
@@ -1767,7 +1774,7 @@
         });
         el.value = String(f.get ? f.get(c) : c.params[f.key]);
         if (el.selectedIndex < 0) el.selectedIndex = 0;   // a setting the part was saved without (e.g. Mirror) shows its default
-        el.addEventListener("change", () => { if (c.type === "switch" && f.key === "pos") setSwitch(c, el.value); else if (f.apply) { f.apply(c, el.value); commit(); } else { c.params[f.key] = el.value; commit(); } });
+        el.addEventListener("change", () => { if (LIB[c.type].flip && f.key === "pos") setSwitch(c, el.value); else if (f.apply) { f.apply(c, el.value); commit(); } else { c.params[f.key] = el.value; commit(); } });
       } else if (f.kind === "range") {
         const wrap = document.createElement("div"); wrap.className = "range-wrap";
         const r = document.createElement("input"); r.type = "range"; r.min = f.min; r.max = f.max; r.step = f.step; r.value = c.params[f.key];
@@ -1920,7 +1927,7 @@
     });
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
-    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], fuse: [["1", "2"]], ntc: [["1", "2"]], mov: [["1", "2"]], gasreg: [["A", "K"]], itx: [["P1", "P2"], ["S1", "S2"]], diode: [["A", "K"]], bridge: [["+", "-"], ["AC1", "AC2"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
+    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], fuse: [["1", "2"]], ntc: [["1", "2"]], mov: [["1", "2"]], gasreg: [["A", "K"]], itx: [["P1", "P2"], ["S1", "S2"]], diode: [["A", "K"]], bridge: [["+", "-"], ["AC1", "AC2"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], pickup: [["+", "-"]], phono: [["+", "-"]], relay: [["A1", "A2"]], vactrol: [["A", "K"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
       opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
@@ -1988,6 +1995,20 @@
       } else {
         const m = CadLib.NTCS[c.params.model];
         if (m && sp.i > m.imax) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(sp.i, "A", 2)} rms, more than its ${m.imax} A rating.`);
+      }
+    });
+    // relays: the coil's voltage near its rating (it may not pull in below 75 %, and it overheats well
+    // above); vactrols: the LED's current within its 40 mA
+    S.comps.forEach(c => {
+      if (!S.sim.result) return;
+      if (c.type === "relay") {
+        const v = +c.params.v || 12, vc = Math.abs(netDC(T.pinNet.get(c.id + ":A1")) - netDC(T.pinNet.get(c.id + ":A2"))), m = CadLib.RELAYS[c.params.model];
+        if (!m || !isFinite(vc)) return;
+        if (vc > 1.3 * v) issues.push(`${c.label} (${c.params.model}, ${v} V coil) has ${fmtEng(vc, "V", 2)} across its coil: more than 130 % of its rating, it overheats. Use a ${vc > 18 ? 24 : 12} V coil or a dropping resistor.`);
+        else if (vc > 0.2 * v && vc < m.op * v) issues.push(`${c.label} (${c.params.model}, ${v} V coil) has only ${fmtEng(vc, "V", 2)} across its coil: below its must-operate ${fmtEng(m.op * v, "V")}, it may not pull in.`);
+      } else if (c.type === "vactrol") {
+        const i = pinCurrent(c, "A");
+        if (i !== null && i > 0.04) issues.push(`${c.label} (${c.params.model}) has ${fmtEng(i, "A", 2)} in its LED, more than the 40 mA it is rated for: raise its series resistor.`);
       }
     });
     // gas regulators: lit, and within their current range; interstage transformers: the primary's DC within the gap's rating
@@ -2436,6 +2457,20 @@
           const m = e.model;
           lines.push(`* ${id}: glow regulator, lit (maintains ${m.vm} V, strikes at ${m.vs} V, out below ${m.iext * 1000} mA: not in this model)`);
           lines.push(`D${id} ${nd[1]} ${nd[0]} DGLOW_${id}`, `.model DGLOW_${id} D(Is=1e-14 N=1 BV=${m.vm} IBV=1e-6 RS=${m.r})`);
+          break;
+        }
+        case "RELAY": {
+          // the contacts as voltage-controlled switches on the coil's resistance (S+ − S−), with its hysteresis
+          const m = e.model, vt = (m.von + m.voff) / 2, vh = (m.von - m.voff) / 2;
+          lines.push(`* ${id}: relay contacts, pulled in above ${m.von} V on the coil, released below ${m.voff} V (one polarity in this model)`);
+          if (!models.has("SRELAY_" + id)) { models.add("SRELAY_" + id); lines.push(`.model SNO_${id} SW(VT=${vt} VH=${vh} RON=${m.ron} ROFF=${m.roff})`, `.model SNC_${id} SW(VT=${-vt} VH=${vh} RON=${m.ron} ROFF=${m.roff})`); }
+          for (let p = 2, k = 1; p + 2 < nd.length; p += 3, k++) lines.push(`S${id}_${k}NO ${nd[p]} ${nd[p + 2]} ${nd[0]} ${nd[1]} SNO_${id}`, `S${id}_${k}NC ${nd[p]} ${nd[p + 1]} ${nd[1]} ${nd[0]} SNC_${id}`);
+          break;
+        }
+        case "LDR": {
+          // no light in SPICE: the cell at the resistance it settled at (dark before a simulation)
+          const d = S.sim.result && S.sim.result.dc && (S.sim.result.dc.devices[e.id] || {}).main, r = d && d.r ? +d.r.toPrecision(4) : e.model.rdark;
+          lines.push(`* ${id}: vactrol cell, ${d ? "at its simulated resistance" : "dark"} (it follows the LED's light, not modelled here)`, `R${id} ${nd[0]} ${nd[1]} ${r}`);
           break;
         }
         case "VSRC": lines.push(e.wave === "sine" ? `V${id} ${nd[0]} ${nd[1]} SIN(${e.offset || 0} ${e.amp} ${e.freq})` : `V${id} ${nd[0]} ${nd[1]} PULSE(${(e.offset || 0) - e.amp} ${(e.offset || 0) + e.amp} 0 ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0 : 0.5 / e.freq} ${1 / e.freq})`); break;
