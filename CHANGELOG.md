@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.112.1] - 2026-10-27
+
+### Changed
+- Every example now comes with a board, made with Place all on the board and Route & nudge. Each board was set to the size that left the fewest connections open, and the open ones are left to finish by hand:
+
+  | Example | Board (mm) | Open connections | Rule messages |
+  | --- | --- | --- | --- |
+  | 01 | 80 × 50 | 1 | none |
+  | 02 | 64 × 40 | 2 | none |
+  | 03 | 160 × 100 | 4 | no mounting hole near VL1 and VL2 |
+  | 04 | 96 × 60 | 2 | no mounting hole near VL1 |
+  | 05 | 96 × 60 | 4 | R8's reference over a pad |
+  | 06 | 160 × 100 | 28 | no mounting holes near the valves |
+  | 09 | 80 × 50 | 2 | none |
+  | 11 | 120 × 75 | 1 | none |
+
 ## [3.112.0] - 2026-10-27
 
 ### Added
