@@ -418,7 +418,7 @@
   }
 
   // AC animation (View ▾ → Animate): dots for each wire's current, a tint for each node's AC (cad-anim.js)
-  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, ledLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
+  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, ledLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
 
   function limitRows(c) {
     return tubeLimits(c).filter(o => o.key !== "Vg2k").map(o => kv(o.label, `${o.value} · ${Math.round(o.share * 100)}% of ${o.lim}`, o.share > 1 ? "bad" : o.share > 0.85 ? "warn" : "")).join("");
@@ -1194,6 +1194,14 @@
     }
     ctx.restore();
   }
+  // a tube's anode temperature (CadLib.anodeTemp) from its average dissipation, kept with the
+  // simulation's result so the sheet's redraws do not work it out again
+  function anodeHeat(c) {
+    const r = S.sim.result; if (!r) return null;
+    const cache = r._heat || (r._heat = new Map());
+    if (!cache.has(c.id)) { const d = tubeData(c); cache.set(c.id, d && d.dc && d.kind !== "rectifier" && d.paMax > 0 ? CadLib.anodeTemp(d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia, d.paMax) : null); }
+    return cache.get(c.id);
+  }
   function drawComp(c, sel, ghost) {
     const def = LIB[c.type];
     ctx.save();
@@ -1212,11 +1220,13 @@
     ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "rail" || c.type === "isrc" || c.type === "vcvs" || c.type === "vccs" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" || c.type === "pickup" || c.type === "phono" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
-    if ((c.type === "led" || c.type === "vactrol") && !ghost && !S.printing) c._lit = ledLevel(c);
+    if (["led", "vactrol", "neon", "gasreg"].includes(c.type) && !ghost && !S.printing) c._lit = ledLevel(c);
+    if (c.type === "eye" && !ghost && !S.printing) c._eye = eyeLevel(c);
+    if (c.type === "tube" && !ghost && !S.printing) { const h = anodeHeat(c); if (h) c._hot = h.glow; }
     // a relay drawn pulled in when the simulation (its settled average) has it so
     if (c.type === "relay" && !ghost && !S.printing && S.sim.result && S.sim.result.dc) { const d = (S.sim.result.dc.devices[c.id] || {}).main; c._on = !!(d && d.q > 0.5); }
     DRAW[c.type](ctx, c);
-    delete c._sel; delete c._lit; delete c._on;
+    delete c._sel; delete c._lit; delete c._on; delete c._eye; delete c._hot;
     if (mirrored) { if (ownFill) ctx.fillText = prevFill; else delete ctx.fillText; }
     ctx.restore();
 
@@ -1594,6 +1604,10 @@
     Object.entries(L.NTCS).forEach(([k, m]) => out.push(["Passive", `Inrush limiter · ${k}`, m.use, "ntc", { model: k }, `${k} ntc thermistor inrush current limiter soft start ${m.use}`]));
     Object.entries(L.MOVS).forEach(([k, m]) => out.push(["Passive", `Varistor · ${k}`, m.use, "mov", { model: k }, `${k} mov varistor surge protection ${m.use}`]));
     Object.entries(L.GASREGS).forEach(([k, m]) => out.push(["Gas-discharge tubes", `Voltage regulator · ${k}`, m.use, "gasreg", { model: k }, `${k} ${k.replace("0", "o")} vr gas regulator glow discharge stabilizer ${m.use}`]));
+    L.SPEAKER_PRESETS.forEach(p => out.push(["Passive", p.name, `${p.r} Ω, fs ${p.fs} Hz`, "speaker", { model: "ts", r: p.r, re: p.re, le: p.le, fs: p.fs, qms: p.qms, qes: p.qes }, `${p.name} ${p.id.startsWith("hp") ? "headphones headphone phones earphones" : "speaker loudspeaker driver"}`]));
+    Object.entries(L.CHIPAMPS).forEach(([k, m]) => out.push(["Integrated circuits", `Power amplifier · ${k}`, m.use, "chipamp", { model: k }, `${k} power amplifier chip amp gainclone ic ${m.pkg} ${m.use}`]));
+    Object.entries(L.NEONS).forEach(([k, m]) => out.push(["Gas-discharge tubes", `Neon lamp · ${k}`, m.use, "neon", { model: k }, `${k} neon lamp glow indicator pilot light ne2 ${m.use}`]));
+    Object.entries(L.EYES).forEach(([k, m]) => out.push(["Gas-discharge tubes", `Magic eye · ${k}`, m.use, "eye", { model: k }, `${k} magic eye tuning indicator electron ray cat's eye level meter ${m.use}`]));
     Object.entries(L.RELAYS).forEach(([k, m]) => out.push(["Switches & relays", `Relay · ${k}`, m.use, "relay", { model: k }, `${k} relay omron ${m.poles > 1 ? "dpdt" : "spdt"} coil ${m.use} mute standby channel`]));
     Object.entries(L.VACTROLS).forEach(([k, m]) => out.push(["Switches & relays", `Vactrol · ${k}`, m.use, "vactrol", { model: k }, `${k} vactrol optocoupler opto ldr photoresistor led cds ${m.use}`]));
     L.PICKUPS.forEach(p => out.push(["Sources", `Guitar pickup · ${p.name}`, `${fmtEng(p.l, "H")} ${fmtEng(p.r, "Ω")}`, "pickup", { preset: p.id, r: p.r, l: p.l, c: p.c, amp: p.amp }, `${p.name} guitar pickup bass single coil humbucker source`]));
@@ -1877,7 +1891,7 @@
       if (c.type === "speaker") { const sp = speakerPower(c); if (sp) out += sp.p; }
       else if (c.type === "resistor") { const p = resistorPower(c); if (p) res += p; }
       else if (c.type === "tube") { const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier") tubes += (d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia) + (d.dc.vg2k && d.dc.ig2 ? d.dc.vg2k * d.dc.ig2 : 0); }
-      else if (c.type === "opamp") { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) ics += d.pd; }
+      else if (c.type === "opamp" || c.type === "chipamp") { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) ics += d.pd; }
       else if (CadLib.isTransistor(c.type)) { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) semi += d.pd; }
       else if (c.type === "reg" || c.type === "tl431") { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) ics += d.pd; }
       else if (c.type === "vdc" || c.type === "rail") { const d = (r.dc.devices[c.id] || {}).main; if (d) { sup += -d.i * c.params.v; haveSup = true; } }
@@ -1927,7 +1941,7 @@
     });
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
-    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], fuse: [["1", "2"]], ntc: [["1", "2"]], mov: [["1", "2"]], gasreg: [["A", "K"]], itx: [["P1", "P2"], ["S1", "S2"]], diode: [["A", "K"]], bridge: [["+", "-"], ["AC1", "AC2"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], pickup: [["+", "-"]], phono: [["+", "-"]], relay: [["A1", "A2"]], vactrol: [["A", "K"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
+    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], fuse: [["1", "2"]], ntc: [["1", "2"]], mov: [["1", "2"]], gasreg: [["A", "K"]], neon: [["A", "K"]], eye: [["T", "K"]], itx: [["P1", "P2"], ["S1", "S2"]], diode: [["A", "K"]], bridge: [["+", "-"], ["AC1", "AC2"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], pickup: [["+", "-"]], phono: [["+", "-"]], relay: [["A1", "A2"]], vactrol: [["A", "K"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], chipamp: [["V+", "V-"]], siggen: [["+", "-"]],
       opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
@@ -1952,6 +1966,17 @@
       const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.OPAMPS[c.params.model];
       if (d && m && d.vs > m.vmax) issues.push(`${c.label} (${c.params.model}) has ${d.vs.toFixed(1)} V between V+ and V−, more than its ${m.vmax} V rating.`);
       if (d && m && d.vs < 2) issues.push(`${c.label} (${c.params.model}) has no supply between V+ and V−.`);
+    });
+    // power amplifier ICs: the supply within its range, the dissipation within the package's, the LM3886 not muted
+    S.comps.forEach(c => {
+      if (c.type !== "chipamp" || !S.sim.result) return;
+      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.CHIPAMPS[c.params.model];
+      if (!d || !m) return;
+      if (d.vs > m.vmax) issues.push(`${c.label} (${c.params.model}) has ${d.vs.toFixed(1)} V between its supply pins, more than its ${m.vmax} V rating.`);
+      else if (d.vs < m.vmin) issues.push(`${c.label} (${c.params.model}) has ${d.vs.toFixed(1)} V between its supply pins, less than the ${m.vmin} V it needs.`);
+      if (d.pd > m.pmax) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}, more than the ${m.pmax} W its package can${c.params.model === "LM386" ? "" : " on a large heatsink"}.`);
+      const mu = (S.sim.result.dc.devices[c.id + "#mute"] || {}).main;
+      if (c.params.model === "LM3886" && mu && !(mu.i > 0.5e-3 || -mu.i > 0.5e-3)) issues.push(`${c.label} (LM3886) is muted: draw 0.5 mA or more from its mute pin (8), a resistor to V− (10 kΩ from −28 V).`);
     });
     S.comps.forEach(c => {
       if (c.type !== "reg" || !S.sim.result) return;
@@ -2020,6 +2045,18 @@
       else if (d.i > m.imax) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(d.i, "A", 2)}, more than its ${m.imax * 1000} mA maximum: raise its series resistor.`);
       else if (d.i < m.imin) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(d.i, "A", 2)}, less than the ${m.imin * 1000} mA it needs to regulate: lower its series resistor or lighten the load.`);
     });
+    // neon lamps: no more than twice the design current; magic eyes: the target within its rating
+    S.comps.forEach(c => {
+      if (!S.sim.result) return;
+      if (c.type === "neon") {
+        const m = CadLib.NEONS[c.params.model], i = pinCurrent(c, "A");
+        if (m && i !== null && Math.abs(i) > 2 * m.i) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(Math.abs(i), "A", 2)}, more than twice its ${fmtEng(m.i, "A")} design current: it darkens and fails early. Raise its series resistor.`);
+      }
+      if (c.type === "eye") {
+        const m = CadLib.EYES[c.params.model], vt = netDC(pinNetOf(c, "T")), vk = netDC(pinNetOf(c, "K"));
+        if (m && vt !== null && vk !== null && vt - vk > 1.1 * m.vt) issues.push(`${c.label} (${c.params.model}) has ${fmtEng(vt - vk, "V", 3)} on its target, above its ${m.vt} V rating.`);
+      }
+    });
     S.comps.forEach(c => {
       if (c.type !== "itx" || !S.sim.result) return;
       const i = pinCurrent(c, "P1"), lim = +c.params.idc || 0;
@@ -2051,6 +2088,8 @@
       const avg = d.metrics ? d.metrics.pAvg : null, dc = d.dc.vak * d.dc.ia;
       if (avg !== null && avg > d.paMax) issues.push(`${c.label} over dissipation: ${avg.toFixed(1)} W on average over the signal cycle > ${d.paMax} W.`);
       else if (avg === null && dc > d.paMax) issues.push(`${c.label} over dissipation (${dc.toFixed(1)} W > ${d.paMax} W).`);
+      const th = CadLib.anodeTemp(avg !== null ? avg : dc, d.paMax);
+      if (th.glow > 0) issues.push(`${c.label}: its anode runs at about ${Math.round(th.t / 10) * 10} °C and glows red (red-plating): it will fail within hours.`);
     });
     S.comps.forEach(c => { if (c.type === "tube") tubeLimits(c).forEach(o => { if (o.share > 1) issues.push(o.text); }); });
     return issues;
@@ -2455,7 +2494,7 @@
         case "GLOW": {
           // no glow discharge in SPICE: lit, a breakdown diode at the maintaining voltage with the regulation as its RS
           const m = e.model;
-          lines.push(`* ${id}: glow regulator, lit (maintains ${m.vm} V, strikes at ${m.vs} V, out below ${m.iext * 1000} mA: not in this model)`);
+          lines.push(`* ${id}: glow discharge, lit (maintains ${m.vm} V, strikes at ${m.vs} V, out below ${m.iext * 1000} mA: not in this model)`);
           lines.push(`D${id} ${nd[1]} ${nd[0]} DGLOW_${id}`, `.model DGLOW_${id} D(Is=1e-14 N=1 BV=${m.vm} IBV=1e-6 RS=${m.r})`);
           break;
         }
@@ -2534,7 +2573,7 @@
             if (!models.has("spice:" + sp.sub)) { models.add("spice:" + sp.sub); lines.push(`* imported model ${sp.sub}`, ...sp.text.trim().split("\n")); }
             lines.push(`X${id} ${sp.roles.map(r => at[r] !== undefined ? at[r] : at.K).join(" ")} ${sp.sub}`);
           } else if (e.kind === "TRIODE") {
-            const m = e.model, name = `TRIODE_${(S.comps.find(c => c.id === e.id) || {}).params.tube.replace(/[^A-Za-z0-9]/g, "_")}`;
+            const m = e.model, p = (S.comps.find(c => c.id === e.id) || {}).params, name = `TRIODE_${(p.tube || p.model).replace(/[^A-Za-z0-9]/g, "_")}`;
             if (!models.has(name)) { const x = TubeSimEngine.Spice.triode(m); models.add(name); lines.push(`.subckt ${name} A G K`, `Bp A K I=${x.plate}`, `Bg G K I=${x.grid}`, `.ends`); }
             lines.push(`X${id} ${nd.join(" ")} ${name}`);
           } else {
@@ -2660,6 +2699,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { circuitIssues, tolerance, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { circuitIssues, tolerance, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

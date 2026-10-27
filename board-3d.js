@@ -13,7 +13,7 @@
   const C = {
     board: [0.09, 0.38, 0.2], lead: [0.8, 0.8, 0.82], metal: [0.78, 0.78, 0.8], black: [0.12, 0.12, 0.13], resistor: [0.42, 0.6, 0.86], diode: [0.1, 0.1, 0.1],
     band: [0.75, 0.75, 0.75], film: [0.82, 0.22, 0.14], disc: [0.9, 0.6, 0.25], ecap: [0.12, 0.2, 0.45], ecapTop: [0.7, 0.72, 0.75], snapin: [0.13, 0.13, 0.15],
-    glass: [0.78, 0.88, 0.95], plate: [0.3, 0.3, 0.32], getter: [0.62, 0.62, 0.66], ceramic: [0.9, 0.87, 0.78], bakelite: [0.16, 0.13, 0.11], core: [0.36, 0.36, 0.39],
+    glass: [0.78, 0.88, 0.95], neon: [1, 0.62, 0.42], plate: [0.3, 0.3, 0.32], getter: [0.62, 0.62, 0.66], ceramic: [0.9, 0.87, 0.78], bakelite: [0.16, 0.13, 0.11], core: [0.36, 0.36, 0.39],
     coil: [0.86, 0.55, 0.2], terminal: [0.1, 0.55, 0.28], jack: [0.15, 0.15, 0.16], pot: [0.25, 0.27, 0.32], trim: [0.2, 0.35, 0.75], led: [0.9, 0.15, 0.1],
     wireRed: [0.8, 0.12, 0.1], wireBlack: [0.08, 0.08, 0.08], generic: [0.55, 0.55, 0.58], chipCap: [0.66, 0.52, 0.34], glassRed: [0.7, 0.2, 0.15]
   };
@@ -56,7 +56,7 @@
   const RADIAL_H = { 5: 11, 6.3: 11, 8: 12, 10: 16, 12.5: 20, 16: 25, 18: 31, 22: 35, 25: 40, 30: 45, 35: 50 };
   const SNAPIN_H = { 22: 30, 25: 35, 30: 40, 35: 50 };
   // the valve on its socket: diameter and seated height
-  const TUBE = { B9A: [22.2, 49], B7G: [19, 44], B9D: [30, 78], OCTAL: [33, 95], UX4: [52, 130] };
+  const TUBE = { B9A: [22.2, 49], B7G: [19, 44], B9D: [30, 78], OCTAL: [33, 95], UX4: [52, 130], UX6: [30, 92] };
   function partBodies(g, t, opts) {
     const fp = g.fp, name = fp.name, P = g.place, out = [], side = P.side === "B" ? "B" : "F";
     const to = ([x, y, z]) => { const [X, Y] = B().place([x, y], P); return [X, -Y, side === "B" ? -z : t + z]; };
@@ -107,7 +107,7 @@
     } else if (name === "TRIM-3296W") {
       out.push(box(-4.75, -2.4, 4.75, 2.4, 0.5, 10, C.trim, to), cylZ(-3.9, -1.5, 0.9, 10, 11, C.metal, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
     } else if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) {
-      const k = m[1], S = D.SOCKETS[k] || { body: 26 }, [td, th] = TUBE[k] || [22, 50], dark = k === "OCTAL" || k === "UX4", zs = 6;
+      const k = m[1], S = D.SOCKETS[k] || { body: 26 }, [td, th] = TUBE[k] || [22, 50], dark = k === "OCTAL" || k === "UX4" || k === "UX6", zs = 6;
       out.push(cylZ(0, 0, S.body / 2, 0, zs, dark ? C.bakelite : C.ceramic, to));
       pads.forEach(p => lead(p.x, p.y, 1));
       if (opts.tubes !== false) {
@@ -163,6 +163,11 @@
       const b = fp.silk.find(q => q.t === "rect"), zc = b.h / 2 + 0.4;
       out.push(box(b.x, b.y, b.x + b.w, b.y + b.h, 0.4, 0.4 + b.h * 0.8, C.black, to));
       pads.forEach(p => { const left = p.x < b.x; lead(p.x, p.y, zc * 0.6); out.push(cylX(p.y, zc * 0.6, 0.25, left ? p.x : b.x + b.w, left ? b.x : p.x, C.lead, to)); });
+    } else if (name === "NEON-T2") {
+      // the glass bulb standing on its leads, faintly orange with the neon in it
+      const c = fp.silk.find(q => q.t === "circle");
+      out.push(cylZ(c.x, c.y, 3.2, 3, 16, C.neon, to, { alpha: 0.45, glass: true }), cylZ(c.x, c.y, 1.6, 16, 18, C.neon, to, { alpha: 0.45, glass: true }));
+      pads.forEach(p => lead(p.x, p.y, 3));
     } else if (name === "SW-PUSH-6MM") {
       const c = fp.silk.find(q => q.t === "circle");
       out.push(box(0.25, -0.75, 6.25, 5.25, 0, 3.5, C.black, to), cylZ(c.x, c.y, c.r, 3.5, 5, C.black, to)); pads.forEach(p => lead(p.x, p.y, 0.5));

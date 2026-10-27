@@ -175,6 +175,16 @@
   const to126 = order => inline("TO-126", 2.29, order, 8, 3.2, false);
   // a two-lead TO-220 (TO-220-2, a SiC diode) has its leads where a three-lead one has pins 1 and 3
   const to220 = order => inline("TO-220", order.length === 2 ? 5.08 : 2.54, order, 10.4, 4.6, true);
+  // multiwatt TO-220s with staggered leads, standing (KiCad TO-220-5_P3.4x3.7mm_StaggerOdd, the
+  // Pentawatt of a TDA2050; TO-220-11_P3.4x5.08mm_StaggerOdd, an LM3886T): 1.7 mm between
+  // neighbours, the odd pins in the row by the body, the even ones the stagger behind
+  function to220Stagger(n) {
+    const row = n > 5 ? 5.08 : 3.7, L = n > 5 ? 20 : 10.4, x0 = -(n - 1) / 2 * 1.7, pads = [];
+    for (let k = 1; k <= n; k++) pads.push(pad(k, +(x0 + (k - 1) * 1.7).toFixed(3), k % 2 ? 0 : row, 1.8, 1.1, k === 1 ? "rect" : "circle"));
+    const y0 = -4.6 - 1.3;
+    return fp(`TO-220-${n}S`, `TO-220-${n}, staggered leads (${n > 5 ? "TO-220-11, LM3886T" : "Pentawatt, TDA2050"}), tab at the top`, pads,
+      [{ t: "rect", x: -L / 2, y: y0, w: L, h: 4.6 }, { t: "line", x1: -L / 2, y1: y0 + 1.2, x2: L / 2, y2: y0 + 1.2 }]);
+  }
   // DO-201AD: a 3–5 A axial rectifier (Ø 5.3 × 9.5 mm, leads Ø 1.3 mm), 15.24 mm lead spacing
   function do201() {
     const h = 7.62, L = 9.5, D = 5.3;
@@ -324,6 +334,9 @@
   // the body, the cell's at the other
   const vtl5c = () => fp("VTL5C", "Vactrol VTL5C, axial (KiCad PerkinElmer_VTL5C)", [pad(1, 0, 0, 1.4, 0.7, "rect", "K"), pad(2, 0, 3.8, 1.4, 0.7, "circle", "A"), pad(3, 15, -0.64, 1.4, 0.7, "circle", "1"), pad(4, 15, 4.44, 1.4, 0.7, "circle", "2")],
     [{ t: "rect", x: 2.5, y: -1.6, w: 10, h: 7.2 }]);
+  // a neon lamp (NE-2: a 6 mm bulb) standing on its two leads, 2.54 mm apart
+  const neonFp = () => fp("NEON-T2", "Neon lamp NE-2, standing (6.4 mm bulb), leads 2.54 mm", [pad(1, 0, 0, 1.6, 0.8, "rect", "A"), pad(2, 2.54, 0, 1.6, 0.8, "circle", "K")],
+    [{ t: "circle", x: 1.27, y: 0, r: 3.3 }]);
   // a 6 mm tactile push button (KiCad SW_PUSH_6mm): each side's two pads joined inside
   const push6 = () => fp("SW-PUSH-6MM", "Tactile push button 6 × 6 mm (KiCad SW_PUSH_6mm)", [pad(1, 0, 0, 2, 1.1, "rect", "1"), pad(2, 6.5, 0, 2, 1.1, "circle", "1"), pad(3, 0, 4.5, 2, 1.1, "circle", "2"), pad(4, 6.5, 4.5, 2, 1.1, "circle", "2")],
     [{ t: "rect", x: 0.25, y: -0.75, w: 6, h: 6 }, { t: "circle", x: 3.25, y: 2.25, r: 1.75 }]);
@@ -356,7 +369,8 @@
     "B7G": { title: "Miniature 7-pin (B7G)", n: 7, dia: 9.53, step: 45, offset: 0, body: 18, drill: 1.2, padD: 2.2 },
     "B9D": { title: "Magnoval (B9D)", n: 9, dia: 17.45, step: 36, offset: 0, body: 30, drill: 1.6, padD: 2.8 },
     "OCTAL": { title: "Octal (K8A)", n: 8, dia: 17.45, step: 45, offset: -0.5, body: 34, drill: 2.0, padD: 3.4 },
-    "UX4": { title: "UX4 4-pin", n: 4, dia: 22.2, step: 90, offset: -0.5, body: 38, drill: 3.4, padD: 5 }
+    "UX4": { title: "UX4 4-pin", n: 4, dia: 22.2, step: 90, offset: -0.5, body: 38, drill: 3.4, padD: 5 },
+    "UX6": { title: "UX6 6-pin", n: 6, dia: 19.05, step: 60, offset: -0.5, body: 38, drill: 3.4, padD: 5 }
   };
   function socket(kind, nPins) {
     const s = SOCKETS[kind] || { title: `${nPins}-pin socket`, n: nPins, dia: 15, step: 360 / (nPins + 1), offset: 0, body: 26, drill: 1.3, padD: 2.4 };
@@ -512,6 +526,8 @@
     if ((m = /^TOGGLE-(SPDT|DPDT)$/.exec(name))) return toggle(m[1] === "DPDT" ? 2 : 1);
     if ((m = /^RELAY-(G5LE-1|G5V-2)$/.exec(name))) return relayFp(m[1]);
     if (name === "VTL5C") return vtl5c();
+    if (name === "NEON-T2") return neonFp();
+    if (name === "TO-220-5S" || name === "TO-220-11S") return to220Stagger(name === "TO-220-5S" ? 5 : 11);
     if (name === "SW-PUSH-6MM") return push6();
     if ((m = /^XFMR-EI(\d+)-(SE|PP|PTP|PT|IS)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], m[2]);
     if ((m = /^CHOKE-EI(\d+)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], "CHOKE");
@@ -641,6 +657,7 @@
       case "inductor": return +p.l < 0.05 ? ["CHIP-1210", "CHIP-1812"] : [];
       case "pot": return ["TRIM-TC33"];
       case "timer555": return ["SOIC-8"];
+      case "chipamp": return p.model === "LM386" ? ["SOIC-8"] : [];
       case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "SOIC-14" : "SOIC-8"]; }
       // JFETs: SOT-23 D-S-G as the MMBFJ201, MMBF5457 (MMBFJ175 for the P-channel ones)
       case "njf": case "pjf": return ["SOT-23-DSG"];
@@ -723,12 +740,17 @@
       case "rotary": return [`WIRE-${wires}`, `TERM-5.08-${wires}`];
       case "relay": return [`RELAY-${L.RELAYS[p.model] ? p.model : "G5LE-1"}`, `WIRE-${wires}`];
       case "vactrol": return ["VTL5C", "WIRE-4"];
+      // a neon on the board or on the panel; a magic eye in its socket (often on the front panel: wired)
+      case "neon": return ["NEON-T2", "WIRE-2"];
+      case "eye": { const d = `SOCKET-${(L.EYES[p.model] || {}).base || "UX6"}`; return [d, "WIRE-4"]; }
       case "speaker": return [t2, "JACK-6.35", "WIRE-2"];
       case "siggen": return ["JACK-RCA", "JACK-6.35", "JACK-3.5", t2, "WIRE-2"];
       case "vdc": return [t2, "TERM-7.5-2", "WIRE-2"];
       // the ideal current source stands for a small current-source board: wired in by two terminals
       case "isrc": return [t2, "WIRE-2"];
       case "timer555": return ["DIP-8", "WIRE-8"];
+      // power amplifier ICs: an LM386 in its DIP-8, the others standing at the board's edge on a heatsink
+      case "chipamp": return p.model === "LM386" ? ["DIP-8", `WIRE-${wires}`] : [p.model === "LM3886" ? "TO-220-11S" : "TO-220-5S", `WIRE-${wires}`];
       case "mains": return ["TERM-7.5-2", t2, "WIRE-2"];
       case "heater": return [t2, "WIRE-2", "TERM-7.5-2"];
       case "star": return ["STAR-M3", "STAR-M4", "WIRE-1"];
