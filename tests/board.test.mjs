@@ -31,7 +31,7 @@ const NETLIST = {
 
 test("every footprint option of every part and every tube resolves to pads", () => {
   for (const type of Object.keys(L.LIB)) {
-    if (["frame", "note", "ground", "offsheet", "rail", "scope"].includes(type)) continue;
+    if (["frame", "note", "ground", "offsheet", "rail", "scope", "vcvs", "vccs"].includes(type)) continue;
     const variants = type === "tube" ? globalThis.TUBE_DATABASE.map(t => ({ tube: t.commonName })) : type === "npn" || type === "pnp" ? Object.keys(L.BJTS).filter(k => (L.BJTS[k].pol > 0) === (type === "npn")).map(model => ({ model }))
       : type === "nmos" || type === "pmos" ? Object.keys(L.MOSFETS).filter(k => (L.MOSFETS[k].pol > 0) === (type === "nmos")).map(model => ({ model })) : type === "zener" ? Object.keys(L.ZENERS).map(model => ({ model }))
         : type === "njf" || type === "pjf" ? Object.keys(L.JFETS).filter(k => (L.JFETS[k].pol > 0) === (type === "njf")).map(model => ({ model })) : type === "reg" ? Object.keys(L.REGS).map(model => ({ model })) : [{}];
@@ -208,7 +208,7 @@ test("board setup: corner mounting holes sit inset from each corner; an older bo
 test("every part has a through-hole footprint, and every footprint it offers takes all its pins", () => {
   const L = globalThis.CadLib.LIB;
   for (const [type, def] of Object.entries(L)) {
-    if (["note", "frame", "ground", "offsheet", "rail", "scope"].includes(type)) continue;
+    if (["note", "frame", "ground", "offsheet", "rail", "scope", "vcvs", "vccs"].includes(type)) continue;
     const params = { ...(def.defaults || {}) }, pins = (typeof def.pins === "function" ? def.pins({ params }) : def.pins);
     for (const sections of type === "switch" ? [1, 2] : [1]) {
       const nl = { parts: Array.from({ length: sections }, (_, k) => ({ id: "c" + k, type, label: sections > 1 ? `X1.${k + 1}` : "X1", params, pins: pins.map((p, i) => ({ id: p.id, net: k * 10 + i + 1 })) })) };
@@ -471,7 +471,7 @@ test("rule checks: overlapping parts, keep-out areas (and pours keep out of them
 test("no footprint has silkscreen over its own pads", () => {
   const seen = new Set(), bad = [];
   for (const [type, def] of Object.entries(L.LIB)) {
-    if (["note", "frame", "ground", "offsheet", "rail", "scope"].includes(type)) continue;
+    if (["note", "frame", "ground", "offsheet", "rail", "scope", "vcvs", "vccs"].includes(type)) continue;
     const params = { ...(def.defaults || {}) }, pins = typeof def.pins === "function" ? def.pins({ params }) : def.pins;
     const variants = type === "tube" ? globalThis.TUBE_DATABASE.map(t => ({ tube: t.commonName })) : [{}];
     for (const v of variants) for (const sec of type === "switch" ? [1, 2] : [1]) {
@@ -510,7 +510,7 @@ function solidCheck(sol) {
 test("3D: every footprint's body and the drilled board are closed, outward solids; the board's volume is right", () => {
   const D3 = globalThis.Board3D, seen = new Set();
   for (const [type, def] of Object.entries(L.LIB)) {
-    if (["note", "frame", "ground", "offsheet", "rail", "scope"].includes(type)) continue;
+    if (["note", "frame", "ground", "offsheet", "rail", "scope", "vcvs", "vccs"].includes(type)) continue;
     const params = { ...(def.defaults || {}) }, pins = typeof def.pins === "function" ? def.pins({ params }) : def.pins;
     for (const sec of type === "switch" ? [1, 2] : [1]) {
       const nl = { parts: Array.from({ length: sec }, (_, k) => ({ id: "c" + k, type, label: sec > 1 ? `X1.${k + 1}` : "X1", params, pins: pins.map(p => ({ id: p.id, net: 1 })) })) };

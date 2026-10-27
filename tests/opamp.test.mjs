@@ -67,9 +67,9 @@ test("op-amps: the follower's −3 dB at the gain-bandwidth, ×101 at GBW / 101"
   }
 });
 
-test("op-amps: slew rate of a follower on a 10 Vpp square", () => {
+test("op-amps: slew rate of a follower on a 10 Vpp square (20 Vpp above 15 V/µs, so an edge spans a few samples)", () => {
   for (const model of MODELS) {
-    const m = L.OPAMPS[model], r = E.simulate(follower(model, { amp: 5, freq: m.sr > 5e6 ? 50e3 : 10e3, wave: "square" }), { budgetMs: 20000 });
+    const m = L.OPAMPS[model], r = E.simulate(follower(model, { amp: m.sr > 15e6 ? 10 : 5, freq: m.sr > 5e6 ? 50e3 : 10e3, wave: "square" }), { budgetMs: 20000 });
     assert.ok(r.ok, `${model}: ${r.error}`);
     const v = r.tran.nodes[5];
     let sr = 0;
@@ -124,6 +124,7 @@ test("op-amps: the supply current, from V+ to V−, and nothing without a supply
     assert.ok(r.ok, r.error);
     near(r.dc.devices.U.main.iq, m.iq, 0.02, `${model} quiescent current`);
     const off = E.simulate(circuit([gen({ amp: 1, freq: 1000 }, 3), R(10e3, 5, 0), ...amp(model, { "+": 3, "-": 5, OUT: 5 })]), { budgetMs: 20000 });
-    assert.ok(off.ok && Math.abs(max(off.tran.nodes[5])) < 0.01, `${model} unpowered: ${off.error || max(off.tran.nodes[5])}`);
+    // only what reaches the output through the input resistance (a bipolar part's few hundred kΩ)
+    assert.ok(off.ok && Math.abs(max(off.tran.nodes[5])) < 0.01 + 10e3 / (10e3 + m.rin), `${model} unpowered: ${off.error || max(off.tran.nodes[5])}`);
   }
 });

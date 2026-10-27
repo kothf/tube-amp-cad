@@ -308,10 +308,10 @@
   }
   // EI-core transformers and chokes, board mount: the pin rows on the two long sides.
   // Kinds: SE (P1 P2 | S1 S2), PP (P1 U1 CT U2 P2 | S1 S2), PT (mains AC1 AC2 | HT1 CT HT2),
-  // PTP (P1 P2 | HT1 CT HT2); CHOKE: 1 2.
+  // PTP (P1 P2 | HT1 CT HT2), IS (P1 P2 | S1 SC S2); CHOKE: 1 2.
   const EI = [30, 38, 42, 48, 54, 66, 76, 96];
   const XF = { SE: [["P1", "P2"], ["S1", "S2"], "single-ended output transformer"], PP: [["P1", "U1", "CT", "U2", "P2"], ["S1", "S2"], "push-pull output transformer"],
-    PT: [["AC1", "AC2"], ["HT1", "CT", "HT2"], "power transformer (mains primary AC1–AC2)"], PTP: [["P1", "P2"], ["HT1", "CT", "HT2"], "power transformer"], CHOKE: [["1", "2"], [], "choke"] };
+    PT: [["AC1", "AC2"], ["HT1", "CT", "HT2"], "power transformer (mains primary AC1–AC2)"], PTP: [["P1", "P2"], ["HT1", "CT", "HT2"], "power transformer"], IS: [["P1", "P2"], ["S1", "SC", "S2"], "interstage transformer, centre-tapped secondary"], CHOKE: [["1", "2"], [], "choke"] };
   function ei(size, kind) {
     const [top, bot, what] = XF[kind], W = size, D = Math.round(size * 0.85), big = size >= 54, pitch = size <= 42 ? 5.08 : 7.62;
     const d = big ? 3.0 : 2.4, dr = big ? 1.6 : 1.2, pads = [];
@@ -481,7 +481,7 @@
     if ((m = /^TERM-([\d.]+)-(\d+)$/.exec(name)) && ["5.08", "7.5"].includes(m[1])) return terminal(+m[1], pinNames && pinNames.length === +m[2] ? pinNames : Array.from({ length: +m[2] }, (_, i) => String(i + 1)));
     if ((m = /^JACK-(RCA|3\.5|6\.35)$/.exec(name))) return jack(m[1]);
     if ((m = /^TOGGLE-(SPDT|DPDT)$/.exec(name))) return toggle(m[1] === "DPDT" ? 2 : 1);
-    if ((m = /^XFMR-EI(\d+)-(SE|PP|PTP|PT)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], m[2]);
+    if ((m = /^XFMR-EI(\d+)-(SE|PP|PTP|PT|IS)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], m[2]);
     if ((m = /^CHOKE-EI(\d+)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], "CHOKE");
     if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1]) : socket(m[1]);
     if ((m = /^DIP-(\d+)$/.exec(name)) && [8, 14, 16].includes(+m[1])) return dip(+m[1]);
@@ -570,7 +570,7 @@
   // pins: [{ id, net }] }], names: { net: "GND" | connector name } }. Sections of one part
   // (VL1.1 / VL1.2, SA1.1 / SA1.2) are one physical part with one footprint.
   // ---------------------------------------------------------------------------
-  const SKIP = new Set(["frame", "note", "ground", "offsheet", "rail", "scope"]);
+  const SKIP = new Set(["frame", "note", "ground", "offsheet", "rail", "scope", "vcvs", "vccs"]);
   function physicalParts(netlist) {
     const L = root.CadLib, groups = new Map();
     (netlist.parts || []).forEach(p => {
@@ -677,6 +677,10 @@
       // first, a board-mount EI footprint as an option
       case "inductor": { const l = +p.l || 0; return l < 0.05 ? [...first("AXIAL-15.24", axials), ...eiFor("CHOKE", 42), t2, "WIRE-2"] : ["WIRE-2", ...eiFor("CHOKE", l <= 1 ? 42 : l <= 5 ? 54 : 66), ...axials, t2]; }
       case "opt_se": case "opt_cat": return ["WIRE-4", ...eiFor("SE", 66), "TERM-5.08-4"];
+      // interstage and input transformers: small cores, board mount first
+      case "itx": return p.ct === "yes" ? [...eiFor("IS", 38), "WIRE-5", "TERM-5.08-5"] : [...eiFor("SE", 38), "WIRE-4", "TERM-5.08-4"];
+      // a glow tube in its socket: the miniature types B7G, the octal ones octal
+      case "gasreg": { const d = `SOCKET-${(L.GASREGS[p.model] || {}).socket || "B7G"}`; return [d, ...["SOCKET-B7G", "SOCKET-OCTAL"].filter(a => a !== d), "WIRE-2"]; }
       case "opt_pp": return ["WIRE-7", ...eiFor("PP", 76), "TERM-5.08-7"];
       case "ptx": return ["WIRE-3", ...eiFor("PT", 76), "TERM-5.08-3"];
       case "ptx_cat": return ["WIRE-5", ...eiFor("PTP", 76), "TERM-5.08-5"];

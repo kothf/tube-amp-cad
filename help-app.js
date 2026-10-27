@@ -10,10 +10,10 @@
   try {
     const L = window.CadLib, H = window.Hints, host = $("parts-ref");
     const order = [["Passive", ["resistor", "pot", "capacitor", "electrolytic", "inductor", "switch", "speaker", "fuse", "ntc", "mov"]],
-      ["Transformers", ["opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat"]],
-      ["Sources", ["vdc", "rail", "isrc", "siggen", "mains"]], ["Ground & connectors", ["ground", "offsheet", "jack", "iec", "terminal", "header", "faston"]],
+      ["Transformers", ["opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat", "itx"]],
+      ["Sources", ["vdc", "rail", "isrc", "siggen", "mains", "vcvs", "vccs"]], ["Ground & connectors", ["ground", "offsheet", "jack", "iec", "terminal", "header", "faston"]],
       ["Tubes", ["tube"]], ["Semiconductors", ["diode", "bridge", "zener", "led", "npn", "pnp", "nmos", "pmos", "njf", "pjf"]],
-      ["Integrated circuits", ["opamp", "timer555", "reg", "tl431"]], ["Instruments", ["scope"]], ["Document", ["frame", "note"]]];
+      ["Integrated circuits", ["opamp", "timer555", "reg", "tl431"]], ["Gas-discharge tubes", ["gasreg"]], ["Instruments", ["scope"]], ["Document", ["frame", "note"]]];
     let h = "";
     order.forEach(([g, types]) => {
       h += `<h4>${g}</h4>`;
