@@ -55,6 +55,9 @@
       case "led": { const l = L.LEDS[p.color] || {}; return ["LED, " + p.color, "", l.vf + " V at 10 mA, " + l.i * 1000 + " mA max"]; }
       case "npn": case "pnp": { const m = L.BJTS[p.model]; return ["Transistor, " + c.type.toUpperCase(), p.model, m ? L.semiRating(m) : ""]; }
       case "nmos": case "pmos": { const m = L.MOSFETS[p.model], dep = m && (c.type === "nmos" ? m.vto < 0 : m.vto > 0); return ["MOSFET, " + (c.type === "nmos" ? "N" : "P") + "-channel" + (dep ? ", depletion" : ""), p.model, m ? L.semiRating(m) : ""]; }
+      case "njf": case "pjf": { const m = L.JFETS[p.model]; return ["JFET, " + (c.type === "njf" ? "N" : "P") + "-channel", p.model, m ? `${m.v} V, ${m.p} W, ${m.pkg}` : ""]; }
+      case "reg": { const m = L.REGS[p.model]; return ["Voltage regulator" + (m ? (m.adj ? ", adjustable" : ", fixed") + (m.pol < 0 ? ", negative" : "") : ""), p.model, m ? `${m.use}, ${m.pkg}` : ""]; }
+      case "tl431": { const m = L.SHUNTS[p.model]; return ["Shunt voltage reference", p.model, m ? `${m.vref} V ref., ${m.v} V, ${m.pkg}` : ""]; }
       case "vdc": return ["DC supply (bench)", f(p.v, "V"), ""];
       case "siggen": return ["Signal generator (bench)", "", ""];
       case "isrc": return ["Current source (ideal)", f(p.i, "A"), ""];

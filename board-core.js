@@ -462,7 +462,15 @@
     "AD149": ["BEC"], "AD161": ["ECB", "verify"], "AD162": ["ECB", "verify"], "P213B": ["BEC", "verify"],
     "MP39B": ["EBC", "verify"], "MP40A": ["EBC", "verify"], "MP41A": ["EBC", "verify"], "MP42B": ["EBC", "verify"], "MP25B": ["EBC", "verify"], "MP26B": ["EBC", "verify"], "MP38A": ["EBC", "verify"],
     "GT402G": ["EBC", "verify"], "GT404G": ["EBC", "verify"],
-    "IRFP240": ["GDS"], "IRFP250": ["GDS"], "IRFP460": ["GDS"], "IRFP9240": ["GDS"], "2SK1058": ["GSD"], "2SJ162": ["GSD"], "ECX10N20": ["GSD", "verify"], "ECX10P20": ["GSD", "verify"]
+    "IRFP240": ["GDS"], "IRFP250": ["GDS"], "IRFP460": ["GDS"], "IRFP9240": ["GDS"], "2SK1058": ["GSD"], "2SJ162": ["GSD"], "ECX10N20": ["GSD", "verify"], "ECX10P20": ["GSD", "verify"],
+    // JFETs: the American TO-92 parts D-S-G; the Toshiba types (and their replacements) put the gate
+    // in the middle, so drain and source may swap without harm
+    "J201": ["DSG"], "J113": ["DSG"], "J310": ["DSG", "verify"], "2N5457": ["DSG"], "MPF102": ["DSG"], "2N5460": ["DSG"], "J175": ["DSG", "verify"],
+    "2SK170": ["DGS", "verify"], "LSK170B": ["DGS", "verify"], "2SJ74": ["DGS", "verify"], "2SK30A": ["DSG", "verify"],
+    // regulators by their pins: I input, O output, A adjust, G ground (the TO-220 and TO-92 drawings);
+    // the TL431: R reference, A anode, K cathode
+    "LM317": ["AOI"], "LM317L": ["AOI"], "LM338": ["AOI"], "LM337": ["AIO"], "7805": ["IGO"], "7809": ["IGO"], "7812": ["IGO"], "7815": ["IGO"], "7824": ["IGO"],
+    "78L05": ["OGI"], "78L12": ["OGI"], "7905": ["GIO"], "7912": ["GIO"], "7915": ["GIO"], "TL431": ["RAK"]
   };
   const AXIAL_FOR_WATTS = { "": 10.16, "0.125": 7.62, "0.25": 10.16, "0.5": 12.7, "1": 15.24, "2": 20.32, "3": 25.4, "5": 30.48, "10": 40.64, "20": 50.8 };
   const radialFor = c => { const u = c * 1e6; return u <= 4.7 ? [5, 2] : u <= 10 ? [6.3, 2.5] : u <= 47 ? [8, 3.5] : u <= 100 ? [10, 5] : u <= 220 ? [12.5, 5] : u <= 470 ? [16, 7.5] : u <= 1000 ? [18, 7.5] : [22, 10]; };
@@ -519,6 +527,15 @@
       case "pot": return ["TRIM-TC33"];
       case "timer555": return ["SOIC-8"];
       case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "SOIC-14" : "SOIC-8"]; }
+      // JFETs: SOT-23 D-S-G as the MMBFJ201, MMBF5457 (MMBFJ175 for the P-channel ones)
+      case "njf": case "pjf": return ["SOT-23-DSG"];
+      // regulators: SOT-223 / DPAK with the output (LM317) or ground (78xx) or input (79xx) on the tab,
+      // the 100 mA ones SOT-89; the TL431 SOT-23 (K-REF-A, TI's DBZ) or SOT-89 (REF-A-K, the tab the anode)
+      case "reg": {
+        const m = L.REGS[p.model] || {}, order = (PINOUT[p.model] || ["AOI"])[0];
+        return m.pkg === "TO-92" ? [`SOT-89-${order}`] : m.adj && m.pol > 0 ? [`SOT-223-${order}`, `DPAK-${order}`, `D2PAK-${order}`] : [`DPAK-${order}`, `D2PAK-${order}`];
+      }
+      case "tl431": return ["SOT-23-KRA", "SOT-89-RAK"];
       case "npn": case "pnp": case "nmos": case "pmos": {
         const bjt = t === "npn" || t === "pnp", m = (bjt ? L.BJTS : L.MOSFETS)[p.model] || {}, pkg = m.pkg || "TO-92";
         // the makers' SMD pinouts: SOT-23 B-E-C / G-S-D; the tabbed cases B-C-E / G-D-S (the tab the collector or drain)
@@ -571,6 +588,12 @@
       case "mains": return ["TERM-7.5-2", t2, "WIRE-2"];
       case "heater": return [t2, "WIRE-2", "TERM-7.5-2"];
       case "star": return ["STAR-M3", "STAR-M4", "WIRE-1"];
+      // JFETs come in TO-92 (the other small cases as options)
+      case "njf": case "pjf": { const order = (PINOUT[p.model] || ["DSG"])[0]; return [`TO-92-${order}`, `TO-18-${order}`, "WIRE-3"]; }
+      // a regulator in its case (a TO-220 one on the board's edge, its heatsink bolted on), or wired
+      // (the other case is another part, with its own pinout: an LM317L, a 78L05)
+      case "reg": { const m = L.REGS[p.model] || {}; return [`${m.pkg === "TO-92" ? "TO-92" : "TO-220"}-${(PINOUT[p.model] || ["AOI"])[0]}`, "WIRE-3"]; }
+      case "tl431": return ["TO-92-RAK", "WIRE-3"];
       case "npn": case "pnp": case "nmos": case "pmos": {
         const m = (t === "npn" || t === "pnp" ? L.BJTS : L.MOSFETS)[p.model] || {}, order = (PINOUT[p.model] || [t[1] === "m" ? "GDS" : "EBC"])[0];
         const all = ["TO-92", "TO-18", "TO-126", "TO-220", "TO-247", "TO-3P", "TO-264"].map(k => `${k}-${order}`);

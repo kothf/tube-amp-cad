@@ -474,8 +474,8 @@
         if (!d || d.kind === "rectifier" || !d.dc) return;
         out.push({ key: c.id + ":ia", label: `${name} Ia`, unit: "A", v: d.dc.ia }, { key: c.id + ":va", label: `${name} Va`, unit: "V", v: d.dc.vak, max: d.vaMax },
           { key: c.id + ":pa", label: `${name} Pa`, unit: "W", v: d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia, max: d.paMax });
-      } else if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) {
-        const d = (r.dc.devices[c.id] || {}).main, bip = c.type === "npn" || c.type === "pnp", m = (bip ? CadLib.BJTS : CadLib.MOSFETS)[c.params.model];
+      } else if (CadLib.isTransistor(c.type)) {
+        const d = (r.dc.devices[c.id] || {}).main, bip = !CadLib.isFet(c.type), m = CadLib.semiTable(c.type)[c.params.model];
         if (!d) return;
         out.push({ key: c.id + ":i", label: `${name} ${bip ? "Ic" : "Id"}`, unit: "A", v: Math.abs(bip ? d.ic : d.id), max: m && m.i },
           { key: c.id + ":pd", label: `${name} dissipation`, unit: "W", v: d.pd, max: m && m.p });
@@ -1296,7 +1296,7 @@
       ctx.textAlign = "left";
       return;
     }
-    if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) {
+    if (CadLib.isTransistor(c.type)) {
       // beside the envelope, on the side away from the base / gate lead (the collector and
       // emitter leads run on through the space above and below)
       const bp = compPins(c).find(p => p.id === "B" || p.id === "G"), right = bp.x < c.x - 5;
@@ -1574,12 +1574,15 @@
     const L = CadLib, out = [];
     PALETTE.forEach(g => g.items.forEach(it => {
       if (it.sub) return;
-      if (it[1] && (L.BJTS[it[1].model] || L.MOSFETS[it[1].model])) return;   // a catalog transistor: its own entry below
+      if (it[1] && (L.BJTS[it[1].model] || L.MOSFETS[it[1].model] || L.JFETS[it[1].model] || L.REGS[it[1].model])) return;   // a catalog part: its own entry below
       const [type, params, label] = it, def = LIB[type], p = Object.assign({}, def.defaults, params || {}), sub = def.value({ params: p });
       out.push([g.group, label || def.name, sub, type, params, `${label || ""} ${def.name} ${sub} ${type}`]);
     }));
     Object.entries(L.BJTS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "NPN" : "PNP"} · ${k}`, `${m.v} V ${m.p} W`, m.pol > 0 ? "npn" : "pnp", { model: k }, `${k} transistor bjt ${m.pol > 0 ? "npn" : "pnp"} ${m.ge ? "germanium" : "silicon"} ${m.use}`]));
     Object.entries(L.MOSFETS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "N" : "P"}-MOSFET · ${k}`, `${m.v} V ${m.p} W`, m.pol > 0 ? "nmos" : "pmos", { model: k }, `${k} mosfet fet ${m.use}`]));
+    Object.entries(L.JFETS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "N" : "P"}-JFET · ${k}`, `${fmtEng(m.beta * m.vto * m.vto, "A", 2)} IDSS`, m.pol > 0 ? "njf" : "pjf", { model: k }, `${k} jfet fet junction ${m.use}`]));
+    Object.entries(L.REGS).forEach(([k, m]) => out.push(["Integrated circuits", `Regulator · ${k}`, m.use, "reg", { model: k }, `${k} regulator voltage ${m.adj ? "adjustable" : "fixed"} ${m.pol > 0 ? "positive" : "negative"} ${m.use} lm${k} ${m.pkg}`]));
+    Object.entries(L.SHUNTS).forEach(([k, m]) => out.push(["Integrated circuits", `Shunt reference · ${k}`, m.use, "tl431", { model: k }, `${k} shunt reference regulator programmable zener ${m.use}`]));
     Object.entries(L.ZENERS).forEach(([k, z]) => out.push(["Semiconductors", `Zener · ${k}`, `${z.bv} V ${z.p} W`, "zener", { model: k }, `${k} zener ${z.bv}v`]));
     Object.keys(L.LEDS).forEach(k => out.push(["Semiconductors", `LED · ${k}`, `${L.LEDS[k].vf} V`, "led", { color: k }, `led ${k}`]));
     ["1N4007", "UF4007", "1N4148"].forEach(k => out.push(["Semiconductors", `Diode · ${k}`, "", "diode", { model: k }, `${k} diode rectifier`]));
@@ -1848,14 +1851,15 @@
       else if (c.type === "resistor") { const p = resistorPower(c); if (p) res += p; }
       else if (c.type === "tube") { const d = tubeData(c); if (d && d.dc && d.kind !== "rectifier") tubes += (d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia) + (d.dc.vg2k && d.dc.ig2 ? d.dc.vg2k * d.dc.ig2 : 0); }
       else if (c.type === "opamp") { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) ics += d.pd; }
-      else if (/^(npn|pnp|nmos|pmos)$/.test(c.type)) { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) semi += d.pd; }
+      else if (CadLib.isTransistor(c.type)) { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) semi += d.pd; }
+      else if (c.type === "reg" || c.type === "tl431") { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) ics += d.pd; }
       else if (c.type === "vdc" || c.type === "rail") { const d = (r.dc.devices[c.id] || {}).main; if (d) { sup += -d.i * c.params.v; haveSup = true; } }
     });
     let h = `<div class="insp-sub">Power</div>`;
     if (out > 0) h += kv("Output (speakers)", fmtEng(out, "W", 2));
     if (tubes > 0) h += kv("Tubes (anode + screen)", fmtEng(tubes, "W", 2));
     if (semi > 0) h += kv("Transistors", fmtEng(semi, "W", 2));
-    if (ics > 0) h += kv("Op-amps", fmtEng(ics, "W", 2));
+    if (ics > 0) h += kv("Integrated circuits", fmtEng(ics, "W", 2));
     if (res > 0) h += kv("Resistors", fmtEng(res, "W", 2));
     if (haveSup) h += kv("From DC supplies", fmtEng(sup, "W", 2));
     return h;
@@ -1896,7 +1900,7 @@
     });
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
-    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
+    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
       opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
@@ -1909,8 +1913,8 @@
     S.comps.forEach(c => { if (c.type !== "opt_cat") return; const i = otDcCurrent(c), m = CadLib.OUTPUT_TX[c.params.model]; if (i !== null && m && i * 1000 > m.ma) issues.push(`${c.label} (${m.name}) carries ${(i * 1000).toFixed(0)} mA DC, more than its ${m.ma} mA rating.`); });
     S.comps.forEach(c => { if (c.type !== "resistor" || !+c.params.w) return; const p = resistorPower(c); if (p !== null && p > +c.params.w) issues.push(`${c.label} dissipates ${fmtEng(p, "W", 2)}, more than its ${+c.params.w} W rating.`); });
     S.comps.forEach(c => {
-      if (!/^(npn|pnp|nmos|pmos)$/.test(c.type) || !S.sim.result) return;
-      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = (c.type === "npn" || c.type === "pnp" ? CadLib.BJTS : CadLib.MOSFETS)[c.params.model];
+      if (!CadLib.isTransistor(c.type) || !S.sim.result) return;
+      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.semiTable(c.type)[c.params.model];
       if (!d || !m) return;
       const v = Math.abs(d.vce !== undefined ? d.vce : d.vds);
       if (d.pd > m.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}, more than its ${m.p} W rating.`);
@@ -1921,6 +1925,23 @@
       const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.OPAMPS[c.params.model];
       if (d && m && d.vs > m.vmax) issues.push(`${c.label} (${c.params.model}) has ${d.vs.toFixed(1)} V between V+ and V−, more than its ${m.vmax} V rating.`);
       if (d && m && d.vs < 2) issues.push(`${c.label} (${c.params.model}) has no supply between V+ and V−.`);
+    });
+    S.comps.forEach(c => {
+      if (c.type !== "reg" || !S.sim.result) return;
+      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.REGS[c.params.model];
+      if (!d || !m) return;
+      const across = m.adj ? d.vio : d.vin;
+      if (across > m.vmax) issues.push(`${c.label} (${c.params.model}) has ${across.toFixed(1)} V ${m.adj ? "between input and output" : "at its input"}, more than its ${m.vmax} V rating.`);
+      if (d.pd > m.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}, more than its ${m.p} W rating.`);
+      else if (d.pd > (m.pkg === "TO-92" ? 0.6 : 2)) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}: ${m.pkg === "TO-92" ? "too much for a TO-92" : "it needs a heatsink"}.`);
+      if (d.vin > 1 && d.vio < m.vdo + 0.5) issues.push(`${c.label} (${c.params.model}) is in dropout: ${d.vio.toFixed(2)} V between input and output, it needs ${(m.vdo + 0.5).toFixed(1)} V or more.`);
+      if (m.adj && d.vio > 1 && d.iout < m.iq) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(d.iout, "A", 2)}, less than its ${fmtEng(m.iq, "A")} minimum load: the output rises.`);
+    });
+    S.comps.forEach(c => {
+      if (c.type !== "tl431" || !S.sim.result) return;
+      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.SHUNTS[c.params.model];
+      if (d && m && d.vka > m.v) issues.push(`${c.label} (${c.params.model}) has ${d.vka.toFixed(1)} V on its cathode, more than its ${m.v} V rating.`);
+      if (d && m && d.pd > m.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}, more than its ${m.p} W rating.`);
     });
     S.comps.forEach(c => { if (c.type !== "zener" || !S.sim.result) return; const z = CadLib.ZENERS[c.params.model], v = netDC(pinNetOf(c, "A")), w = netDC(pinNetOf(c, "K")), i = pinCurrent(c, "A"); if (z && v !== null && w !== null && i !== null && Math.abs((v - w) * i) > z.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(Math.abs((v - w) * i), "W", 2)}, more than its ${z.p} W rating.`); });
     // tubes: the plate's average dissipation over the signal cycle (with a reactive load the
@@ -2340,7 +2361,15 @@
           break;
         }
         case "MOS": {
-          const m = e.model, mn = `M${m.pol > 0 ? "N" : "P"}_${(S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id}`.replace(/[^A-Za-z0-9_]/g, "_");
+          const m = e.model, pm = (S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id;
+          if (m.jf) {
+            // a JFET: SPICE's own (its gate junctions inside it); PJF takes VTO with the N-channel sign
+            const mn = `J${m.pol > 0 ? "N" : "P"}_${pm}`.replace(/[^A-Za-z0-9_]/g, "_");
+            lines.push(`J${id} ${nd[0]} ${nd[1]} ${nd[2]} ${mn}`);
+            if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NJF" : "PJF"}(VTO=${-Math.abs(m.vto)} BETA=${m.jf.beta} LAMBDA=${m.lambda || 0} IS=${m.jf.is})`); }
+            break;
+          }
+          const mn = `M${m.pol > 0 ? "N" : "P"}_${pm}`.replace(/[^A-Za-z0-9_]/g, "_");
           lines.push(`M${id} ${nd[0]} ${nd[1]} ${nd[2]} ${nd[2]} ${mn}`);
           if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NMOS" : "PMOS"}(LEVEL=1 VTO=${m.vto} KP=${m.kp} LAMBDA=${m.lambda || 0})`); }
           break;
@@ -2350,6 +2379,12 @@
           if (!models.has("NE555")) { models.add("NE555"); lines.push("* NE555: include a NE555 subcircuit with pins 1-8 in order (GND TRIG OUT RESET CV THR DIS VCC), e.g. TI's NE555 macro model"); }
           lines.push(`X${id} ${nd.slice(0, 8).join(" ")} NE555`);
           break;
+        case "REG": case "SHUNT": {
+          const pm = (S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id, name = `${e.kind}_${pm}`.replace(/[^A-Za-z0-9_]/g, "_");
+          if (!models.has(name)) { models.add(name); lines.push(...TubeSimEngine.Spice[e.kind === "REG" ? "reg" : "shunt"](e.model, name)); }
+          lines.push(`X${id} ${nd.join(" ")} ${name}`);
+          break;
+        }
         case "OPAMP": {
           const pm = (S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id, name = `OPAMP_${pm}`.replace(/[^A-Za-z0-9_]/g, "_");
           if (!models.has(name)) { models.add(name); lines.push(...TubeSimEngine.Spice.opamp(e.model, name)); }

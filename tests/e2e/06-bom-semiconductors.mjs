@@ -236,6 +236,48 @@ import { readFile } from "node:fs/promises";
     check(/Power rails on one net with different voltages: VCC 9V, vcc 5V/.test(issues), `power rail: Checks reports VCC 9 V against vcc 5 V on one net (${issues})`);
     await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
   }
+  {
+    // regulators and JFETs: an LM317 set to 5 V by 240 Ω / 720 Ω from 12 V feeding a 2SK170 stage and
+    // a TL431 at 10 V; the palette, the inspector, Checks, the BOM and the SPICE export
+    const pal = await cad.evaluate(() => [...document.querySelectorAll("#palette .pal-item")].map(el => el.textContent.trim()));
+    check(["LM317 adjustable", "79xx fixed, negative", "TL431 shunt reference", "N-JFET", "N-JFET, low noise", "P-JFET"].every(n => pal.some(t => t.includes(n))), "palette: regulators, the TL431 and JFETs");
+    const ids = await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, id) => C.compPins(c).find(p => p.id === id);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const P = add("vdc", { v: 12 }, 160, 300), U = add("reg", { model: "LM317" }, 300, 200), R1 = add("resistor", { r: 240 }, 380, 260, 1), R2 = add("resistor", { r: 720 }, 380, 380, 1);
+      const RD = add("resistor", { r: 2.2e3 }, 520, 260, 1), J = add("njf", { model: "2SK170" }, 510, 360), RG = add("resistor", { r: 1e6 }, 440, 470, 1), RS = add("resistor", { r: 220 }, 520, 470, 1);
+      const RK = add("resistor", { r: 1e3 }, 660, 260, 1), K = add("tl431", {}, 660, 400), RA = add("resistor", { r: 30e3 }, 760, 330, 1), RB = add("resistor", { r: 10e3 }, 760, 460, 1);
+      const g = [160, 380, 440, 520, 660, 760].map(x => add("ground", {}, x, 560));
+      wire(pin(P, "+"), pin(U, "I"), false); wire(pin(P, "-"), pin(g[0], "G"));
+      wire(pin(U, "O"), pin(R1, "1")); wire(pin(R1, "2"), pin(U, "A")); wire(pin(R1, "2"), pin(R2, "1")); wire(pin(R2, "2"), pin(g[1], "G"));
+      wire(pin(U, "O"), pin(RD, "1")); wire(pin(RD, "2"), pin(J, "D")); wire(pin(J, "G"), pin(RG, "1")); wire(pin(RG, "2"), pin(g[2], "G")); wire(pin(J, "S"), pin(RS, "1")); wire(pin(RS, "2"), pin(g[3], "G"));
+      wire(pin(P, "+"), pin(RK, "1")); wire(pin(RK, "2"), pin(K, "K")); wire(pin(K, "A"), pin(g[4], "G"));
+      wire(pin(RK, "2"), pin(RA, "1")); wire(pin(RA, "2"), pin(K, "R")); wire(pin(RA, "2"), pin(RB, "1")); wire(pin(RB, "2"), pin(g[5], "G"));
+      S.sel.comps.add(U.id); C.commit();
+      return { U: U.id, J: J.id, K: K.id };
+    });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /Headroom/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+    const live = (await cad.textContent("#insp-live")).replace(/\s+/g, " ");
+    const got = await cad.evaluate(i => { const C = TubeCAD, S = C.state, T = C.topo(), v = (id, p) => S.sim.result.dc.nodes[T.pinNet.get(id + ":" + p)];
+      return { out: v(i.U, "O"), vs: v(i.J, "S"), ka: v(i.K, "K"), issues: C.circuitIssues().join(" | ") }; }, ids);
+    check(Math.abs(got.out - (1.25 * 4 + 50e-6 * 720)) < 0.02 && /Output \(OUT − ADJ\)\s*1\.2[45]/.test(live) && /Headroom \(IN − OUT\)\s*6\.9/.test(live),
+      `LM317: 12 V in, ${got.out && got.out.toFixed(3)} V out (1.25 V × 4 + 50 µA × 720 Ω), the inspector reads ${(/Output \(OUT − ADJ\)\s*\S+/.exec(live) || [])[0]}`);
+    check(got.vs > 0.3 && got.vs < 0.6 && Math.abs(got.ka - (2.495 * 4 + 2e-6 * 30e3)) < 0.03, `2SK170 self-bias ${got.vs && got.vs.toFixed(3)} V on 220 Ω, TL431 ${got.ka && got.ka.toFixed(3)} V (2.495 V × 4 + Iref·R1)`);
+    check(!/LM317|TL431|2SK170/.test(got.issues), `Checks: nothing to report on the regulator, JFET and TL431 (${got.issues})`);
+    // the regulator in dropout: 6 V in
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps.find(c => c.type === "vdc").params.v = 6; TubeCAD.commit(); });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && /dropout/.test(TubeCAD.circuitIssues().join(" ")), null, { timeout: 30000 }).catch(() => {});
+    const drop = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    check(/is in dropout/.test(drop), `Checks: an LM317 fed 6 V for 5 V out is in dropout (${drop})`);
+    const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => `${r.refs} ${r.desc} ${r.value}`).join(" | "));
+    check(/Voltage regulator, adjustable LM317/.test(bom) && /JFET, N-channel 2SK170/.test(bom) && /Shunt voltage reference TL431/.test(bom), `BOM: the regulator, the JFET and the TL431 (${bom})`);
+    const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
+    check(/\.subckt REG_LM317 IN OUT REF/.test(sp) && /\.subckt SHUNT_TL431 K A REF/.test(sp) && /\.model JN_2SK170 NJF\(VTO=-0\.82 BETA=0\.0134/.test(sp) && /^J\S+ \S+ \S+ \S+ JN_2SK170$/m.test(sp),
+      "SPICE export: the LM317 and TL431 as subcircuits, the 2SK170 as SPICE's own JFET");
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+  }
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
   await cad.evaluate(() => {
     const S = TubeCAD.state, C = TubeCAD; S.comps = []; S.wires = [];

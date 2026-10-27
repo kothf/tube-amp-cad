@@ -33,7 +33,8 @@ test("every footprint option of every part and every tube resolves to pads", () 
   for (const type of Object.keys(L.LIB)) {
     if (["frame", "note", "ground", "offsheet", "rail", "scope"].includes(type)) continue;
     const variants = type === "tube" ? globalThis.TUBE_DATABASE.map(t => ({ tube: t.commonName })) : type === "npn" || type === "pnp" ? Object.keys(L.BJTS).filter(k => (L.BJTS[k].pol > 0) === (type === "npn")).map(model => ({ model }))
-      : type === "nmos" || type === "pmos" ? Object.keys(L.MOSFETS).filter(k => (L.MOSFETS[k].pol > 0) === (type === "nmos")).map(model => ({ model })) : type === "zener" ? Object.keys(L.ZENERS).map(model => ({ model })) : [{}];
+      : type === "nmos" || type === "pmos" ? Object.keys(L.MOSFETS).filter(k => (L.MOSFETS[k].pol > 0) === (type === "nmos")).map(model => ({ model })) : type === "zener" ? Object.keys(L.ZENERS).map(model => ({ model }))
+        : type === "njf" || type === "pjf" ? Object.keys(L.JFETS).filter(k => (L.JFETS[k].pol > 0) === (type === "njf")).map(model => ({ model })) : type === "reg" ? Object.keys(L.REGS).map(model => ({ model })) : [{}];
     for (const params of variants) {
       const g = B.physicalParts({ parts: [part("x", type, "X1", params, Object.fromEntries(L.LIB[type].pins({ params: Object.assign({}, L.LIB[type].defaults, params) }).map(p => [p.id, 1])))] })[0];
       for (const name of g.options) {
