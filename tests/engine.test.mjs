@@ -22,9 +22,9 @@ const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
 const near = (actual, expected, relTol, msg) =>
   assert.ok(Math.abs(actual - expected) <= relTol * Math.abs(expected), `${msg}: got ${actual}, expected ${expected} ±${relTol * 100}%`);
 
-test("tube database: 99 tubes, every amplifier tube has Koren parameters", () => {
+test("tube database: 110 tubes, every amplifier tube has Koren parameters", () => {
   const db = globalThis.TUBE_DATABASE;
-  assert.equal(db.length, 99);
+  assert.equal(db.length, 110);
   for (const t of db) {
     if (t.category === "rectifier") assert.ok(E.RECTIFIER_PERVEANCE[t.commonName], `${t.commonName}: rectifier perveance`);
     else for (const k of ["mu", "kg", "kp", "kvb", "x"]) assert.ok(t.koren.Triode[k] > 0, `${t.commonName}: Triode.${k}`);
@@ -51,6 +51,16 @@ test("schematic tube symbols: pin numbers of the section, from the handbook pino
   assert.deepEqual(pins("5Ts4S", "VL1"), { A1: "6", A2: "4", K: "8", H: "2,8" });                                    // filament is the cathode
   assert.equal(pins("6P36S").A, "cap");
   assert.equal(pins("6R5P", "VL1.2", "pentode").G1, "6");
+  // the Western classics
+  assert.deepEqual(pins("6AQ5A", "VL1", "pentode"), { A: "5", G: "1,7", G1: "1,7", G2: "6", K: "2", H: "3,4" });   // 7BZ: g1 on pins 1 and 7
+  assert.deepEqual(pins("ECL82-P", "VL1.2", "pentode"), pins("6F3P-P", "VL1.2", "pentode"));
+  assert.equal(pins("ECL82-T", "VL1.1").A, "9");
+  assert.deepEqual([pins("12BH7A", "VL1.1"), pins("12BH7A", "VL1.2")].map(p => [p.A, p.G, p.K]), [["6", "7", "8"], ["1", "2", "3"]]);
+  assert.deepEqual([pins("6AS7G", "VL1.1"), pins("6AS7G", "VL1.2")].map(p => [p.A, p.G, p.K, p.H]), [["5", "4", "6", "7,8"], ["2", "1", "3", "7,8"]]);
+  assert.deepEqual(pins("KT66", "VL1", "pentode"), pins("6L6GC", "VL1", "pentode"));
+  assert.deepEqual(pins("211", "VL1"), pins("845", "VL1"));
+  assert.deepEqual(pins("5Y3GT", "VL1"), pins("5U4G", "VL1"));
+  for (const [t, k] of [["EZ81", "3"], ["6X4", "7"]]) assert.equal(pins(t, "VL1").K, k, t);
 });
 
 // Katsnelson & Larionov 1981 rectifier test circuits: Ua rms per anode, load, reservoir C,
@@ -219,6 +229,33 @@ test("choke-input supply from cold: steady state matches an independent RK4 inte
     if (t > T - 0.02) { sum += y[2]; n++; }
   }
   near(avg(r.tran.nodes[6]), sum / n, 0.002, "B+ vs RK4 reference");
+});
+
+test("5Y3GT, EZ81, 6X4: capacitor-input supply at the rated current matches RK4, drop in the datasheet order", () => {
+  const drop = {};
+  for (const [name, ma] of [["5Y3GT", 125], ["EZ81", 150], ["6X4", 70], ["GZ34", 150]]) {
+    const vpk = 300 * Math.SQRT2, P = E.RECTIFIER_PERVEANCE[name], C1 = 47e-6, RL = 360 / (ma / 1000);
+    const r = E.simulate({ nodeCount: 5, elements: [
+      { id: "HT1", kind: "VSRC", nodes: [1, 3], wave: "sine", freq: 50, amp: vpk, dcValue: 0 },
+      { id: "HT2", kind: "VSRC", nodes: [3, 2], wave: "sine", freq: 50, amp: vpk, dcValue: 0 },
+      { id: "Rct", kind: "R", nodes: [3, 0], r: 0.01 },
+      { id: "U", part: "a1", kind: "VDIODE", nodes: [1, 4], perveance: P }, { id: "U", part: "a2", kind: "VDIODE", nodes: [2, 4], perveance: P },
+      { id: "C1", kind: "C", nodes: [4, 0], c: C1 }, { id: "RL", kind: "R", nodes: [4, 0], r: RL }] }, { budgetMs: 4000 });
+    assert.ok(r.ok && r.tran.settled, `${name}: ${r.error || "not settled"}`);
+    const f = (t, v) => { const vd = Math.abs(vpk * Math.sin(2 * Math.PI * 50 * t)) - v; return ((vd > 0 ? P * vd ** 1.5 : 0) - v / RL) / C1; };
+    const h = 1e-5;
+    let v = 0, sum = 0, n = 0;
+    for (let t = 0; t < 1.5; t += h) {
+      const k1 = f(t, v), k2 = f(t + h / 2, v + h / 2 * k1), k3 = f(t + h / 2, v + h / 2 * k2), k4 = f(t + h, v + h * k3);
+      v += h / 6 * (k1 + 2 * k2 + 2 * k3 + k4);
+      if (t > 1.5 - 0.02) { sum += v; n++; }
+    }
+    const bplus = avg(r.tran.nodes[4]);
+    near(bplus, sum / n, 0.003, `${name} B+ vs RK4 reference`);
+    drop[name] = vpk - bplus;
+  }
+  // the 5Y3 drops the most, the GZ34 the least; the EZ81 sits between (at more current than the 6X4)
+  assert.ok(drop["5Y3GT"] > drop.EZ81 && drop.EZ81 > drop.GZ34, JSON.stringify(drop));
 });
 
 test("EL84 single-ended output stage: bias, currents and output power", () => {

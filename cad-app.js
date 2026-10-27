@@ -2332,7 +2332,7 @@
   function spiceNetlist() {
     const nl = buildNetlist();
     const nn = n => (n === 0 ? "0" : "N" + n);
-    const lines = ["* Tube Amp CAD export — " + new Date().toISOString().slice(0, 10), "* Koren tube models as behavioural sources (LTspice syntax)"];
+    const lines = ["* Tube Amp CAD export — " + new Date().toISOString().slice(0, 10), "* Koren tube models as behavioural sources (LTspice and ngspice syntax)"];
     const models = new Set();
     nl.elements.forEach(e => {
       if (e.internal) return;   // inside a part that goes out as a subcircuit (a 555's divider)

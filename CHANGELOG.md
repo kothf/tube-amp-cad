@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.104.0] - 2026-10-27
+
+### Added
+- Eleven classic tubes, now 110 in the library: 12BH7A and 6CG7 (drivers and phase splitters), 6AS7G / 6080 (regulators, OTL), KT66, 6AQ5A (the B7G 6V6), ECL82 as triode and pentode sections, the 211 power triode, and the rectifiers 5Y3GT, EZ81 and 6X4. Each has its Koren model fitted to the datasheet's operating point (within 1–3 % of Ia, gm and rp; the 6CG7, 6AQ5A and ECL82 share the models of their electrical twins 6SN7GT, 6V6GT and 6Ф3П), its ratings, socket, pinout and heater, so the board gives it the right socket footprint and 3D valve. The rectifiers' drops follow their datasheets (5Y3GT about 45 V at 100 mA, EZ81 28 V at 150 mA, 6X4 22 V at 70 mA).
+
+### Changed
+- The SPICE export writes the tubes' grid current and screen fade-in with min/max instead of if(), so the netlist now runs in ngspice as well as LTspice. The new tubes' DC operating points agree with ngspice within 0.01 %.
+
 ## [3.103.0] - 2026-10-27
 
 ### Added

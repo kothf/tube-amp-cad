@@ -62,7 +62,7 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   const [man] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-windows").then(() => cad.click("#btn-open-manual"))]);
   await man.waitForLoadState(); await man.waitForTimeout(500);
   const m = await man.evaluate(() => ({ parts: document.querySelectorAll(".part").length, tubes: document.querySelectorAll("#tube-table tr").length - 1, gloss: document.querySelectorAll("#glossary tr").length, toc: document.querySelectorAll("#toc-list li").length, name: window.name }));
-  check(m.parts >= 28 && m.tubes >= 99 && m.gloss > 100 && m.toc > 40 && m.name === "tube_help", `Windows ▸ Manual opens the manual: ${m.parts} parts, ${m.tubes} tubes, ${m.gloss} glossary rows, ${m.toc} contents entries`);
+  check(m.parts >= 28 && m.tubes >= 110 && m.gloss > 100 && m.toc > 40 && m.name === "tube_help", `Windows ▸ Manual opens the manual: ${m.parts} parts, ${m.tubes} tubes, ${m.gloss} glossary rows, ${m.toc} contents entries`);
   await man.fill("#q", "Miller"); await man.waitForTimeout(400);
   const found = await man.evaluate(() => document.querySelectorAll("main mark").length);
   check(found > 2, `searching the manual marks the matches (${found})`);

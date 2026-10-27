@@ -29,7 +29,7 @@
     ptx: "A generic power transformer with its mains inlet: centre-tapped secondary for a full-wave rectifier.",
     ptx_cat: "A Hammond 300-series power transformer, modelled from the maker's drawings: no-load voltages, winding resistances, magnetising current and ratings.",
     mains: "The AC mains outlet: feeds a power transformer's primary.",
-    tube: "A vacuum tube (one section). 99 types: Soviet receiving tubes from the Katsnelson & Larionov handbook and Western tubes from makers' datasheets, with ratings, pinouts and interelectrode capacitances. Your own SPICE models can be imported.",
+    tube: "A vacuum tube (one section). 110 types: Soviet receiving tubes from the Katsnelson & Larionov handbook and Western tubes from makers' datasheets, with ratings, pinouts and interelectrode capacitances. Your own SPICE models can be imported.",
     diode: "A silicon diode: rectifier, catch diode, signal diode.",
     zener: "A zener diode, 5.1 to 200 V, 1 W and 5 W: screen regulators, shunt references, cathode bias.",
     led: "An LED: as a cathode-bias element (≈1.6–3 V, nearly independent of current) or an indicator.",
