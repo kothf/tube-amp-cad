@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.118.0] - 2026-10-27
+
+### Added
+- Board: **Route ▾** menu for everything about routing: Auto-route, Route & nudge, Rearrange board, Unroute, Import routes (SES), Freerouting…. These items left the Board ▾ menu, and Unroute left the toolbar. The Auto-route button stays on the toolbar.
+- Board: **Rearrange board** places the board again from scratch. Every unlocked part moves, valves and transformers too; pots, switches, jacks, connectors and fuses stay. The parts go where they sit in the schematic, then spread over the board three ways (held near those places, for the shortest wiring, and with more room round each part). Each layout is routed afresh, and the best one stays, the board as it was included.
+
 ## [3.117.0] - 2026-10-27
 
 ### Changed

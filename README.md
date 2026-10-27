@@ -470,7 +470,7 @@ the circuit file, so one file holds both.
     browser keeps the page out. `authentication.enabled=false` turns off its
     API key.
   - The button stays grey until Freerouting answers at
-    `http://127.0.0.1:37864`. *Board ▾ → Freerouting…* sets another address
+    `http://127.0.0.1:37864`. *Route ▾ → Freerouting…* sets another address
     (a PC or server on your network: its IP, and `:port` if not 37864), tests
     it, and shows both start commands ready to copy. When it does not answer,
     the dialog says why: Freerouting runs but was started without this page's
@@ -495,8 +495,8 @@ the circuit file, so one file holds both.
     with no rule violations.
   - By hand: *Export ▾ → Freerouting design (DSN)*, route it in
     Freerouting's window or `java -jar freerouting.jar -de board.dsn -do
-    board.ses`, then *Board ▾ → Import routes (SES)…*.
-- **Route & nudge** (*Board ▾*), for when Auto-route can't fit everything.
+    board.ses`, then *Route ▾ → Import routes (SES)…*.
+- **Route & nudge** (*Route ▾*), for when Auto-route can't fit everything.
   It routes, then, while connections are left, moves the unlocked parts near
   them a little and routes again, for up to 5 rounds. A round that doesn't help
   is undone. The moves come from simulated annealing on wire length, ratsnest
@@ -516,7 +516,11 @@ the circuit file, so one file holds both.
   keeping that only if it is better. The status line lists what moved, and
   <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the whole run back. On example 07 routed
   from scratch, it leaves 6 connections open.
-- **Unroute** (beside Auto-route) removes every track and via, to route again
+- **Rearrange board** (*Route ▾*) places every unlocked part again from
+  scratch, valves and transformers too (panel parts stay): from the
+  schematic, spread over the board three ways, each routed afresh; the best
+  layout stays, the old one included.
+- **Unroute** (*Route ▾*) removes every track and via, to route again
   from scratch. Locked tracks and vias stay; <kbd>Ctrl</kbd>+<kbd>Z</kbd>
   brings them all back.
 - **Several at once:** drag a box over empty space to select what lies inside

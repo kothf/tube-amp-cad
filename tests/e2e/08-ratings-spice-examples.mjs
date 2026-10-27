@@ -248,7 +248,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
       `after R1 moves, ${ms0.bad} loose ends/clearance messages; before routing, ${ms1.n} pieces of old copper go and none is left (${ms1.un} connections to route)`);
     // Unroute: every track and via goes (a locked one stays), one step back with Ctrl+Z
     const ur0 = await bw.evaluate(() => { const b = BoardApp.state.board; b.tracks[0].locked = true; BoardApp.commit(); return { t: b.tracks.length, v: b.vias.length, un: BoardApp.state.conn.unrouted }; });
-    await bw.click("#btn-unroute"); await bw.waitForTimeout(200);
+    await bw.click("#btn-route"); await bw.click("#btn-unroute"); await bw.waitForTimeout(200);
     const ur1 = await bw.evaluate(() => { const b = BoardApp.state.board; return { t: b.tracks.length, v: b.vias.length, un: BoardApp.state.conn.unrouted, msg: document.getElementById("st-msg").textContent }; });
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     const ur2 = await bw.evaluate(() => { const b = BoardApp.state.board; b.tracks[0].locked = false; BoardApp.commit(); return { t: b.tracks.length, v: b.vias.length }; });
@@ -267,7 +267,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     });
     const rn0 = await bw.evaluate(() => { const S = BoardApp.state, nets = [...new Set(S.board.tracks.map(t => t.net).filter(n => n && n !== "GND" && !/^HTR/.test(n)))].slice(0, 2);
       S.board.tracks = S.board.tracks.filter(t => !nets.includes(t.net)); BoardApp.commit(); return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, bad: S.drc.length }; });
-    await bw.click("#btn-board"); await bw.click("#btn-nudge");
+    await bw.click("#btn-route"); await bw.click("#btn-nudge");
     await bw.waitForFunction(() => BoardApp.router.busy, null, { timeout: 5000 }).catch(() => {});
     const stopLbl = await bw.evaluate(() => document.querySelector("#btn-autoroute .lbl").textContent);
     await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 120000 }).catch(() => {});
@@ -275,8 +275,20 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     check(rn0.un > 0 && stopLbl === "Stop" && rn1.lbl === "Auto-route" && nPosts >= 3 && rn1.un < rn0.un && rn1.tracks > rn0.tracks && rn1.bad <= rn0.bad && rn1.parts === rn0.parts && rn1.h === rn0.h + 1 && /still open after 4 rounds: no part moved/.test(rn1.msg),
       `Route & nudge with a router that finds nothing: ${nPosts} passes; the grid joins ${rn0.un - rn1.un} of ${rn0.un} open connections with ${rn1.tracks - rn0.tracks} tracks and no new rule message; every round (two over the whole board) undone, no part moved, one step to undo ("${rn1.msg}"); the button read ${stopLbl} meanwhile`);
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
-    // Board ▾ → Freerouting…: an address typed as an IP gets the default port; both start commands name this page's address
-    await bw.click("#btn-board"); await bw.click("#btn-router");
+    // Route ▾ → Rearrange board: every unlocked part but the panel ones placed again, three layouts each routed (here by a
+    // router that finds nothing, so the grid finishers route); the best stays, the board as it was included; one step to undo
+    const ra0 = await bw.evaluate(() => { const S = BoardApp.state; return { parts: JSON.stringify(S.board.parts), h: S.hIndex, un: S.conn.unrouted, panel: JSON.stringify(S.model.parts.filter(g => ["pot", "jack", "terminal", "header", "switch", "iec", "fuse"].includes(g.type)).map(g => S.board.parts[g.key])) }; });
+    nPosts = 0;
+    await bw.click("#btn-route"); await bw.click("#btn-rearrange");
+    await bw.waitForFunction(() => BoardApp.router.busy, null, { timeout: 5000 }).catch(() => {});
+    await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 180000 }).catch(() => {});
+    const ra1 = await bw.evaluate(() => { const S = BoardApp.state; return { parts: JSON.stringify(S.board.parts), h: S.hIndex, un: S.conn.unrouted, bad: S.drc.filter(d => ["clearance", "short", "courtyard", "edge"].includes(d.kind)).map(d => d.msg), msg: document.getElementById("st-msg").textContent, panel: JSON.stringify(S.model.parts.filter(g => ["pot", "jack", "terminal", "header", "switch", "iec", "fuse"].includes(g.type)).map(g => S.board.parts[g.key])) }; });
+    const raOk = /^Rearranged \d+ parts/.test(ra1.msg) ? ra1.parts !== ra0.parts && ra1.h === ra0.h + 1 && ra1.un <= ra0.un : /^Tried 3 layouts: none routed better/.test(ra1.msg) && ra1.parts === ra0.parts;
+    check(raOk && nPosts >= 3 && ra1.panel === ra0.panel && !ra1.bad.length, `Rearrange board: ${nPosts} routing passes over three layouts; "${ra1.msg.slice(0, 120)}"; panel parts stay, no clearance, courtyard or edge message`);
+    if (ra1.h === ra0.h + 1) { await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200); }
+    check(await bw.evaluate(p => JSON.stringify(BoardApp.state.board.parts) === p, ra0.parts), "Ctrl+Z puts every part back where it was before Rearrange");
+    // Route ▾ → Freerouting…: an address typed as an IP gets the default port; both start commands name this page's address
+    await bw.click("#btn-route"); await bw.click("#btn-router");
     const cmds = await bw.evaluate(() => [document.getElementById("router-cmd-java").textContent, document.getElementById("router-cmd-docker").textContent]);
     await bw.fill("#router-addr", "192.168.1.20"); await bw.click("#router-save");
     const addr = await bw.evaluate(() => [BoardApp.router.url, document.getElementById("router-modal").hidden]);
