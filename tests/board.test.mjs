@@ -9,6 +9,8 @@ import { runInThisContext } from "node:vm";
 
 for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js", "board-route.js", "board-3d.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
 const B = globalThis.BoardCore, L = globalThis.CadLib, F = globalThis.BoardFab, BR = globalThis.BoardRoute;
+// the rules before 3.113.0 (1 mm signal, 2 mm power tracks, 0.6 mm clearance): the geometry of some checks below is drawn for them
+const classic = board => (Object.assign(board.rules, { track: 1, power: 2, clearance: 0.6 }), board);
 
 // a small amplifier as the CAD sends it: a 12AX7 (two sections) with plate and cathode
 // resistors, an MPSA42 follower, an output transformer off the board, a supply
@@ -105,7 +107,7 @@ test("update from the schematic: new parts wait below the board, placed parts ke
 
 test("ratsnest, routing, shorts and clearance", () => {
   // two resistors on the board: R1 pad 2 and the tube's anode share net 2
-  const board = B.newBoard(); B.sync(board, NETLIST);
+  const board = classic(B.newBoard()); B.sync(board, NETLIST);
   Object.assign(board.parts.r1, { x: 30, y: 30, rot: 0 });
   Object.assign(board.parts["v1a+v1b"], { x: 80, y: 40, rot: 0 });
   let m = B.model(board, NETLIST), c = B.connectivity(board, m.pads);
@@ -140,7 +142,7 @@ test("ratsnest, routing, shorts and clearance", () => {
 
 test("tracks into neighbouring TO-92 pins: only their parts outside the pads keep the clearance", () => {
   // the MPSA42's pads 1 (E) and 2 (B) are 1.27 mm apart; 1 mm tracks ending in them are 0.27 mm apart there
-  const board = B.newBoard(); B.sync(board, NETLIST);
+  const board = classic(B.newBoard()); B.sync(board, NETLIST);
   Object.assign(board.parts.q1, { x: 40, y: 40, rot: 0 });
   const clear = () => { const m = B.model(board, NETLIST), c = B.connectivity(board, m.pads); return B.drc(board, m, c, new Set()).filter(d => d.kind === "clearance"); };
   const m = B.model(board, NETLIST), e = m.pads.find(p => p.ref === "VT1" && p.num === "1"), b = m.pads.find(p => p.ref === "VT1" && p.num === "2");
@@ -180,7 +182,7 @@ test("design rules: edge clearance (rounded corners too), holes, rings, drills, 
 });
 
 test("net classes: automatic by voltage and name, or set by hand; the HV class asks wider tracks and clearance", () => {
-  const board = B.newBoard(); B.sync(board, NETLIST);
+  const board = classic(B.newBoard()); B.sync(board, NETLIST);
   const m = B.model(board, NETLIST), hv = B.hvNets(NETLIST.volts, board.rules.hvVolts);
   assert.equal(B.netClassOf(1, m.names, hv, board.rules), "HV", "B+ at 300 V");
   assert.equal(B.netClassOf(0, m.names, hv, board.rules), "Power", "GND");
@@ -385,7 +387,7 @@ test("under a valve socket's body a track may pass its pins at their own spacing
 });
 
 test("Freerouting: the board as a Specctra DSN design (nets, widths, clearances by voltage, socket pins) and its routes back from a session", () => {
-  const board = fabBoard(), { m, hv, conn } = analyse(board), clr = B.clearanceRules(board, m, hv, NETLIST);
+  const board = classic(fabBoard()), { m, hv, conn } = analyse(board), clr = B.clearanceRules(board, m, hv, NETLIST);
   const d = BR.toDsn(board, m, conn, clr, { hv, title: "test" }), s = BR.parse(d.text);
   assert.equal(s[0], "pcb");
   const kids = k => s.filter(x => Array.isArray(x) && x[0] === k), net = kids("network")[0];
@@ -622,7 +624,7 @@ test("clearance by voltage: IPC-2221B, with the signal swing and the full-drive 
   assert.equal(B.ipcClearance(12, "B2"), 0.1); assert.equal(B.ipcClearance(120, "B2"), 0.6); assert.equal(B.ipcClearance(300, "B2"), 1.25);
   assert.equal(B.ipcClearance(375, "B2"), 2.5); assert.equal(B.ipcClearance(700, "B2"), 3.5); assert.equal(B.ipcClearance(400, "B4"), 0.8); assert.equal(B.ipcClearance(400, "off"), 0);
   const nl = { names: { 0: "GND" }, volts: { 1: 375, 2: 370, 3: 10 }, ranges: { 3: [-20, 40] }, parts: [part("t1", "opt_se", "T1", {}, { P1: 1, P2: 2, S1: 4, S2: 0 })] };
-  const board = B.newBoard(), m = { names: { 0: "GND", 1: "B+", 2: "A", 3: "G" }, pads: [] }, cr = B.clearanceRules(board, m, B.hvNets(nl.volts, 60), nl);
+  const board = classic(B.newBoard()), m = { names: { 0: "GND", 1: "B+", 2: "A", 3: "G" }, pads: [] }, cr = B.clearanceRules(board, m, B.hvNets(nl.volts, 60), nl);
   assert.equal(cr.need(1, 0).c, 2.5, "B+ (375 V) to GND: 2.5 mm, more than the 2 mm HV class");
   assert.equal(cr.need(1, 2).c, 2.5, "B+ next to the anode: 5 V apart at idle, but at full drive the anode swings 0…740 V, 375 V from B+");
   assert.ok(Math.abs(cr.need(2, 0).c - (2.5 + 240 * 0.005)) < 1e-9 && cr.need(2, 0).why === "inductive", "the anode end of the primary counts at twice its DC level");
@@ -718,7 +720,7 @@ test("star grounding: returns by role, each runs to the star point; copper joini
 });
 
 test("teardrops where tracks meet round pads, none where one would break the clearance", () => {
-  const board = B.newBoard(); B.sync(board, NETLIST);
+  const board = classic(B.newBoard()); B.sync(board, NETLIST);
   Object.assign(board.parts.r1, { x: 30, y: 30, rot: 0 }); Object.assign(board.parts.c1, { x: 30, y: 60, rot: 0 });
   let m = B.model(board, NETLIST);
   const a = m.pads.find(p => p.ref === "R1" && p.num === "2");
