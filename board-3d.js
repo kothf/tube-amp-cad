@@ -131,6 +131,14 @@
     } else if ((m = /^TOGGLE-/.exec(name))) {
       const r = fp.silk.find(s => s.t === "rect");
       out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, 0.5, 10, C.black, to), cylZ(0, 0, 3, 10, 19, C.metal, to), cylZ(0, 0, 1.1, 19, 30, C.metal, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
+    } else if (name === "DO-201AD") {
+      const L = 9.5, Dm = 5.3, h = 7.62, zc = Dm / 2 + 0.4;
+      out.push(cylX(0, zc, Dm / 2, -L / 2, L / 2, C.diode, to), cylX(0, zc, Dm / 2 + 0.05, -L / 2 + 0.1 * L, -L / 2 + 0.22 * L, C.band, to));
+      [-1, 1].forEach(sg => { out.push(cylX(0, zc, 0.65, sg < 0 ? -h : L / 2, sg < 0 ? -L / 2 : h, C.lead, to)); lead(sg * h, 0, zc); });
+    } else if (name === "BRIDGE-DIP4") {
+      out.push(box(-3.2, -4.2, 3.2, 4.2, 0.5, 3.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 1));
+    } else if (name === "BRIDGE-SIL4") {
+      out.push(box(-9.5, -1.75, 9.5, 1.75, 1.5, 11.5, C.black, to)); pads.forEach(p => lead(p.x, p.y, 1.5));
     } else if (/^DIP-\d+$/.test(name)) {
       // the moulded body (7.62 mm row pitch: 6.35 mm wide, 3.3 mm thick) standing on its leads
       const r = fp.silk.find(q => q.t === "rect");
