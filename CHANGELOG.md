@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.117.0] - 2026-10-27
+
+### Changed
+- Board: Auto-route and Route & nudge no longer freeze the window. The exact finisher runs in a background worker (board-worker.js), each solve is capped at 3 s, and the page gets a breath between the other steps. On example 07 the longest freeze went from 15 s to under 1 s.
+- Route & nudge says when it tried a layout with the parts spread over the board and went back to the earlier one, because the spread one left more connections open or had longer tracks.
+
 ## [3.116.0] - 2026-10-27
 
 ### Added

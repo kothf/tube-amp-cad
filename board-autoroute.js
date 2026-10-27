@@ -9,6 +9,27 @@
     const ROUTER_KEY = "tubecad_router_url";
     const router = { url: BoardRoute.DEFAULT_URL, up: false, why: "down", busy: false, timer: 0 };
     try { router.url = localStorage.getItem(ROUTER_KEY) || router.url; } catch (e) { /* no storage */ }
+    // the heavy steps of board-place.js run in a worker (board-worker.js), so the window keeps drawing and
+    // answering; where none starts (a page opened from a file), on the page, after a breath for the screen
+    const VQ = (() => { const sc = [...document.scripts].find(s => /board-autoroute\.js/.test(s.src)); const q = sc && sc.src.split("?")[1]; return q ? "?" + q : ""; })();
+    const off = { worker: null, ok: typeof Worker !== "undefined", seq: 0, wait: new Map() };
+    function offPage(fn, rats, opts) {
+      if (off.ok && !off.worker) {
+        try {
+          off.worker = new Worker("board-worker.js" + VQ);
+          off.worker.onmessage = e => { const w = off.wait.get(e.data.seq); if (w) { off.wait.delete(e.data.seq); w(e.data); } };
+          off.worker.onerror = e => { if (e && e.preventDefault) e.preventDefault(); off.ok = false; off.worker.terminate(); off.worker = null; const ws = [...off.wait.values()]; off.wait.clear(); ws.forEach(w => w({ lost: true })); };
+        } catch (e) { off.ok = false; off.worker = null; }
+      }
+      const here = () => new Promise(r => setTimeout(r, 0)).then(() => BoardPlace[fn](S.board, S.model, S.conn, rats, { ...checkOpts(), ...opts }));
+      if (!off.worker) return here();
+      const seq = ++off.seq;
+      return new Promise(res => {
+        off.wait.set(seq, d => res(d.lost ? here() : d.error ? Promise.reject(new Error(d.error)) : d.result));
+        off.worker.postMessage({ seq, fn, board: S.board, model: S.model, conn: S.conn, rats, netlist: S.netlist, hv: S.hv, amps: S.amps, opts });
+      });
+    }
+    const breath = () => new Promise(r => setTimeout(r, 0));
     const pageOrigin = () => /^https?:/.test(location.origin) ? location.origin : "*";
     // what a probe found, in words: what to change on Freerouting's side
     function routerWhy(url, p) {
@@ -78,6 +99,7 @@
     async function routePass(first) {
       if (first && first.size) { analyse(); const d1 = BoardRoute.toDsn(S.board, S.model, S.conn, S.clr, { hv: S.hv, amps: S.amps, title: baseName(), version: appVersion(), only: new Map([...first].map(n => [n, null])) }); takeRoutes((await BoardRoute.route(router.url, d1.text, { version: appVersion() })).ses, d1); analyse(); }
       const d = dsnOf(), todo = S.conn.unrouted, r = await BoardRoute.route(router.url, d.text, { version: appVersion() }), got = takeRoutes(r.ses, d);
+      await breath();
       let nt = got.tracks.length, nv = got.vias.length, pourNote = d.skipped.length ? ` · left to the pour: ${d.skipped.join(", ")}` : "";
       // the pours fill around the new tracks; pads of a pour's net it does not reach get tracks of their own
       const gaps = pourGaps();
@@ -89,7 +111,8 @@
         const joined = before - S.conn.unrouted;
         if (joined) pourNote += ` (${joined} pad${joined === 1 ? "" : "s"} it did not reach joined by tracks)`;
       }
-      const own = finish(); nt += own;
+      await breath();
+      const own = await finish(); nt += own;
       if (own) pourNote += ` · ${own} joined on a grid where Freerouting left a way`;
       return { todo, nt, nv, pourNote };
     }
@@ -98,12 +121,13 @@
     const routable = () => { const f = failed(S.conn.rats); return S.conn.rats.filter(r => f.has(S.model.names[r.net] || String(r.net))); };
     // what Freerouting left that a grid path still reaches (BoardPlace.bridge, Lee's maze routing):
     // each track stays only if it closes a connection and adds no rule message. Returns how many
-    function finish() {
+    async function finish() {
       analyse();
       const tried = new Set(), key = r => [r.x1, r.y1, r.x2, r.y2].map(v => v.toFixed(3)).join(","), bad = () => S.drc.filter(d => d.kind !== "unplaced").length;
       let n = 0;
       for (let k = 0; k < 60; k++) {
         const rats = routable().filter(r => !tried.has(key(r)));
+        await breath();
         const b = rats.length && BoardPlace.bridge(S.board, S.model, S.conn, rats, checkOpts()); if (!b) break;
         const un = S.conn.unrouted, d = bad();
         S.board.tracks.push(b.track); analyse();
@@ -116,14 +140,15 @@
         const rats = routable().filter(r => !done.has(key(r))); if (!rats.length) break;
         done.add(key(rats[0]));
         for (const margin of [4, 8]) {
-          const r = BoardPlace.exact(S.board, S.model, S.conn, rats, { ...checkOpts(), margin });
-          if (!r || !r.sat) continue;
+          if (router.stop) return n;
+          const was = [S.board, S.board.tracks.length, S.board.vias.length], r = await offPage("exact", rats, { margin }).catch(() => null);
+          if (!r || !r.sat || was[0] !== S.board || was[1] !== S.board.tracks.length || was[2] !== S.board.vias.length) continue;   // (the board changed meanwhile)
           const keep = JSON.stringify(S.board), un = S.conn.unrouted, d = bad();
           S.board.tracks = S.board.tracks.filter((_, i) => !r.cut.tracks.has(i)).concat(r.add.tracks);
           S.board.vias = S.board.vias.filter((_, i) => !r.cut.vias.has(i)).concat(r.add.vias);
           analyse();
           if (S.conn.unrouted < un && bad() <= d) { n += un - S.conn.unrouted; break; }
-          S.board = JSON.parse(keep); analyse();
+          S.board = JSON.parse(keep); analyse(); await breath();
         }
       }
       return n;
@@ -200,7 +225,7 @@
       try {
         if (S.conn.unrouted) { msg(`Freerouting is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`); await routePass(); }
         const first = score();
-        let best = JSON.stringify(S.board), bestScore = first, reach = 8, fails = 0, round = 0, broke = "";
+        let best = JSON.stringify(S.board), bestScore = first, reach = 8, fails = 0, round = 0, broke = "", spreadNo = false;
         while (S.conn.unrouted && round < ROUNDS && fails < 2 && !router.stop) {
           round++;
           // what walls in the open connections (BoardPlace.escape, passage): those parts may move, that copper comes up
@@ -210,29 +235,34 @@
             .forEach(ws => ws.slice(0, 6).forEach(w => { if (w.kind === "part") walls.parts.add(w.key); if (w.kind === "track") walls.tracks.add(S.board.tracks[w.ti]); if (w.kind === "via") walls.vias.add(S.board.vias[w.vi]); }));
           const keys = BoardPlace.movable(S.board, S.model, rats, { radius: reach, also: walls.parts });
           msg(`Round ${round} of ${ROUNDS}: ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"} left; moving ${keys.length} part${keys.length === 1 ? "" : "s"} near them…`);
-          await new Promise(r => setTimeout(r, 0));
+          await breath();
           const r = keys.length ? BoardPlace.nudge(S.board, S.model, keys, { clr: S.clr, hv: S.hv, netlist: S.netlist, conn: S.conn, seed: round, reach }) : { moved: [] };
           // nothing moved: still take up the copper that walls them in, once per reach, and route again
           if (!r.moved.length && !walls.tracks.size && !walls.vias.size) { reach *= 1.5; fails++; continue; }
-          analyse(); ripUp(rats, r.moved, reach, walls);
+          await breath(); analyse(); ripUp(rats, r.moved, reach, walls); await breath();
           msg(`Round ${round} of ${ROUNDS}: ${r.moved.length} part${r.moved.length === 1 ? "" : "s"} moved; Freerouting routes ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
           // a pass that fails ends the run with the best layout so far
           try { await routePass(failed(rats)); } catch (e) { S.board = JSON.parse(best); analyse(); broke = e.message; break; }
-          const sc = score();
+          await breath(); const sc = score();
           if (better(sc, bestScore)) { best = JSON.stringify(S.board); bestScore = sc; fails = 0; }
           else { S.board = JSON.parse(best); analyse(); reach *= 1.5; fails++; }
+          await breath();
         }
         // a last round over the whole board: the parts spread where there is room (BoardPlace.spread),
         // the shut-in ones counting bigger; every unlocked track comes up and the board is routed afresh
         // two ways: by wire length (the parts may go anywhere), and held near where they are
         for (const how of SPREADS) {
           if (!bestScore.un || router.stop || broke) break;
-          S.board = JSON.parse(best); analyse(); round++;
-          const r = spreadAll(how);
+          S.board = JSON.parse(best); analyse(); round++; await breath();
+          const r = spreadAll(how); await breath();
           if (!r.moved.length) continue;
           msg(`Round ${round}: ${r.moved.length} part${r.moved.length === 1 ? "" : "s"} spread over the board; Freerouting routes it afresh…`);
-          S.board.tracks = S.board.tracks.filter(t => t.locked); S.board.vias = S.board.vias.filter(v => v.locked); analyse(); clearStale();
-          try { await routePass(); const sc = score(); if (better(sc, bestScore)) { best = JSON.stringify(S.board); bestScore = sc; } }
+          S.board.tracks = S.board.tracks.filter(t => t.locked); S.board.vias = S.board.vias.filter(v => v.locked); analyse(); clearStale(); await breath();
+          try {
+            await routePass(); const sc = score();
+            if (better(sc, bestScore)) { best = JSON.stringify(S.board); bestScore = sc; }
+            else { spreadNo = true; msg(`Round ${round}: the spread layout left ${sc.un} open${sc.un === bestScore.un ? " with longer tracks" : ""}; the earlier layout stays`); }
+          }
           catch (e) { broke = e.message; }
         }
         S.board = JSON.parse(best); S.sel = null;
@@ -243,7 +273,7 @@
         if (changed) commit(); else analyse();
         const what = moved.length ? `moved ${BoardPlace.describe(moved)}` : "no part moved", stuck = left ? shutIn() : "";
         msg((left ? `${left} connection${left === 1 ? "" : "s"} still open after ${round} round${round === 1 ? "" : "s"}` : `Everything routed${round ? ` after ${round} round${round === 1 ? "" : "s"}` : ""}`) +
-          (round || moved.length ? `: ${what}` : "") + stuck + (router.stop ? " (stopped)" : "") + (broke ? ` (Freerouting failed in round ${round}: ${broke})` : "") + (changed ? "; Ctrl+Z takes it all back" : ""));
+          (round || moved.length ? `: ${what}` : "") + (spreadNo ? " (spreading the parts over the board did not help)" : "") + stuck + (router.stop ? " (stopped)" : "") + (broke ? ` (Freerouting failed in round ${round}: ${broke})` : "") + (changed ? "; Ctrl+Z takes it all back" : ""));
         return { left, rounds: round, moved };
       } catch (e) { S.board = JSON.parse(start); analyse(); msg(`Route & nudge failed: ${e.message}; the board is as it was`); router.up = false; pollRouter(); }
       finally { router.busy = false; router.nudge = false; routerUi(); }

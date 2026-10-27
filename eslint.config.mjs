@@ -18,7 +18,7 @@ export default [
     languageOptions: { ecmaVersion: "latest", sourceType: "script", globals: { ...globals.browser, ...appGlobals } }
   },
   {
-    files: ["sim-worker.js"],
+    files: ["sim-worker.js", "board-worker.js"],
     languageOptions: { globals: { ...globals.worker } }
   },
   {

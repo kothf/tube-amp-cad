@@ -1,8 +1,8 @@
 /* =============================================================================
    BOARD DESIGN — a small SAT solver (no DOM, Node-testable), for the exact window router.
      const s = BoardSat.solver();  s.newVar() -> v (1, 2, …);  s.add([v, -w, …]) (a clause:
-     literals are +v for v true, -v for v false);  s.solve({ budget }) -> true | false | null
-     (null: gave up after budget conflicts);  s.value(v) -> true | false
+     literals are +v for v true, -v for v false);  s.solve({ budget, ms }) -> true | false | null
+     (null: gave up after budget conflicts or ms milliseconds);  s.value(v) -> true | false
    Conflict-driven clause learning (Marques-Silva and Sakallah, GRASP 1996; Moskewicz et al.,
    Chaff 2001; Eén and Sörensson, MiniSat 2003): two watched literals per clause, the first
    unique implication point's learnt clause, activity-ordered decisions that start false (so
@@ -85,7 +85,7 @@
     // the Luby sequence 1 1 2 1 1 2 4 1 1 2 …, restart lengths
     const luby = x => { let size = 1, seq = 0; while (size < x + 1) { seq++; size = 2 * size + 1; } while (size - 1 !== x) { size = (size - 1) >> 1; seq--; x %= size; } return 1 << seq; };
     function solve(opts) {
-      const o = opts || {}, budget = o.budget || 200000;
+      const o = opts || {}, budget = o.budget || 200000, until = o.ms ? Date.now() + o.ms : Infinity;
       if (!ok) return false;
       val = new Int8Array(nv + 1); level = new Int32Array(nv + 1); reason = new Array(nv + 1).fill(null);
       act = new Float64Array(nv + 1); phase = new Int8Array(nv + 1).fill(-1); hpos = new Int32Array(nv + 1).fill(-1);
@@ -103,7 +103,7 @@
         if (confl) {
           conflicts++; run++;
           if (!lim.length) return false;
-          if (conflicts > budget) return null;
+          if (conflicts > budget || ((conflicts & 255) === 0 && Date.now() > until)) return null;
           const { learnt, bt } = analyse(confl);
           backtrack(bt);
           if (learnt.length === 1) assign(learnt[0], null);
