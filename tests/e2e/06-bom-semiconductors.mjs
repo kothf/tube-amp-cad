@@ -125,7 +125,7 @@ import { readFile } from "node:fs/promises";
     });
     const src = (pal.Sources || []).join(" | "), gc = (pal["Ground & connectors"] || []).join(" | ");
     check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains"
-      && gc === "Ground | Sheet connector", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
+      && gc === "Ground | Sheet connector | Connectors: Jack, 6.35 mm switched | Connectors: RCA socket | Connectors: IEC mains inlet | Connectors: Terminal block | Connectors: Pin header | Connectors: Faston tab", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
     // the current source: 2 mA from ground up into 10 kΩ gives 20 V; the inspector reads it
     await cad.evaluate(() => {
       const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
@@ -309,6 +309,46 @@ import { readFile } from "node:fs/promises";
     check(/Bridge rectifier DF10M/.test(bom), `BOM: the bridge (${bom})`);
     const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
     check((sp.match(/^\.model DMOD_\S+ D\(Is=7e-9 N=1\.8 TT=0\.0000043\)$/gm) || []).length === 4, "SPICE export: the bridge's four diodes with TT");
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+  }
+  {
+    // a mains input: IEC inlet, T1A fuse, varistor, inrush limiter, KBU8K bridge into a 350 V reservoir and
+    // a 1 kΩ load. The fuse runs above 75 % of its rating and the capacitor above 80 % (Checks); the NTC
+    // settles hot; a 2 A fuse clears the warning. The BOM and the SPICE export carry the new parts.
+    const pal = await cad.evaluate(() => [...document.querySelectorAll("#palette .pal-item")].map(el => el.textContent.trim()));
+    check(["Fuse", "Inrush limiter (NTC)", "Varistor (MOV)", "IEC mains inlet", "Terminal block", "Pin header", "Faston tab", "Jack, 6.35 mm switched", "RCA socket"].every(n => pal.some(t => t.includes(n))),
+      "palette: fuse, NTC, MOV and the connectors");
+    const ids = await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const G = add("siggen", { amp: 325, freq: 50, rs: 0.5 }, 150, 300), X = add("iec", {}, 300, 300), F = add("fuse", { a: 1 }, 420, 200), N = add("ntc", { model: "SL22 10005" }, 540, 200);
+      const M = add("mov", { model: "S10K275" }, 480, 300, 1), BR = add("bridge", { model: "KBU8K" }, 660, 300), CR = add("electrolytic", { c: 100e-6, v: "350" }, 760, 330, 1), RL = add("resistor", { r: 1000, w: "20" }, 840, 330, 1);
+      const g = [[240, 340], [600, 310], [760, 370], [840, 380]].map(([x, y]) => add("ground", {}, x, y));
+      wire(pin(G, "+"), pin(X, "L")); wire(pin(G, "-"), pin(X, "N"), false); wire(pin(X, "PE"), pin(g[0], "G"));
+      wire(pin(X, "L"), pin(F, "1"), false); wire(pin(F, "2"), pin(N, "1")); wire(pin(F, "2"), pin(M, "1")); wire(pin(M, "2"), pin(X, "N"), false);
+      wire(pin(N, "2"), pin(BR, "AC1")); wire(pin(BR, "AC2"), pin(M, "2")); wire(pin(BR, "-"), pin(g[1], "G"));
+      wire(pin(BR, "+"), pin(CR, "+")); wire(pin(CR, "-"), pin(g[2], "G")); wire(pin(BR, "+"), pin(RL, "1")); wire(pin(RL, "2"), pin(g[3], "G"));
+      S.sel.comps.add(N.id); C.commit();
+      return { F: F.id, N: N.id };
+    });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /Resistance, hot/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+    const live = (await cad.textContent("#insp-live")).replace(/\s+/g, " ");
+    let issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    const hot = await cad.evaluate(i => TubeCAD.state.sim.result.ntc[i], ids.N);
+    check(hot && hot.r > 1 && hot.r < 3 && hot.i > 0.6 && hot.i < 1 && /Resistance, hot\s*[12][.,]\d/.test(live), `NTC: ${hot && hot.r.toFixed(2)} Ω hot at ${hot && hot.i.toFixed(2)} A rms (${(/Resistance, hot\s*\S+\s*\S*/.exec(live) || [])[0]})`);
+    check(/FU1 \(T1A\) runs at [89]\d % of its rating/.test(issues) && /C1 runs at 9\d % of its 350 V rating/.test(issues) && !/RU1|RK1|Unconnected|Shorted/.test(issues), `Checks: the fuse and the capacitor near their ratings, the MOV and NTC fine (${issues})`);
+    await cad.evaluate(i => { const S = TubeCAD.state; S.comps.find(c => c.id === i).params.a = "2"; TubeCAD.commit(); }, ids.F);
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && !/FU1/.test(TubeCAD.circuitIssues().join(" ")), null, { timeout: 30000 }).catch(() => {});
+    issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    check(!/FU1/.test(issues), `Checks: a T2A fuse is fine there (${issues})`);
+    const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => `${r.refs} ${r.desc} ${r.value} ${r.rating}`).join(" | "));
+    check(/FU1 Fuse, time-lag, 5 × 20 mm T2\s?A 250 V/.test(bom) && /RK1 Inrush current limiter \(NTC\) SL22 10005/.test(bom) && /RU1 Varistor \(MOV\) S10K275/.test(bom) && /XP1 IEC mains inlet/.test(bom) && /C1 Capacitor, electrolytic 100\s?µF 350 V/.test(bom),
+      `BOM: fuse, NTC, MOV, inlet and the rated capacitor (${bom})`);
+    const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
+    check(/^\* \S+: NTC inrush limiter, self-heated as simulated \(10 ohm at 25 C\)\nR\S+ \S+ \S+ [12]\.\d+$/m.test(sp) && (sp.match(/^\.model DMOD_\S+ D\(Is=\S+ N=475\.2\d+\)$/gm) || []).length === 2,
+      "SPICE export: the NTC at its hot resistance, the varistor's two junctions");
     await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
   }
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+

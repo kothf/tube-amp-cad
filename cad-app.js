@@ -865,6 +865,7 @@
     const c = hitComp(m.wx, m.wy);
     if (c && c.type === "scope" && !S.wiring) ToolWindows.open("oscilloscope.html", { scope: c.id });
     if (c && c.type === "switch" && !S.wiring) { setSwitch(c, c.params.pos === "B" ? "A" : "B"); updateInspector(); }
+    if (c && c.type === "jack" && c.params.kind === "TS-SW" && !S.wiring) { c.params.plug = c.params.plug === "in" ? "out" : "in"; commit(); updateInspector(); }
   }
   // Renumber reference designations (classic letter code + number: R, C, L, T,
   // VL ... as in ГОСТ 2.710) in reading order of the diagram: left to right,
@@ -1587,6 +1588,9 @@
     Object.keys(L.LEDS).forEach(k => out.push(["Semiconductors", `LED · ${k}`, `${L.LEDS[k].vf} V`, "led", { color: k }, `led ${k}`]));
     Object.entries(L.DIODES).forEach(([k, d]) => out.push(["Semiconductors", `Diode · ${k}`, d.use, "diode", { model: k }, `${k} diode ${d.kind} ${d.use}`]));
     Object.entries(L.BRIDGES).forEach(([k, b]) => out.push(["Semiconductors", `Bridge rectifier · ${k}`, b.use, "bridge", { model: k }, `${k} bridge rectifier ${b.use}`]));
+    Object.entries(L.NTCS).forEach(([k, m]) => out.push(["Passive", `Inrush limiter · ${k}`, m.use, "ntc", { model: k }, `${k} ntc thermistor inrush current limiter soft start ${m.use}`]));
+    Object.entries(L.MOVS).forEach(([k, m]) => out.push(["Passive", `Varistor · ${k}`, m.use, "mov", { model: k }, `${k} mov varistor surge protection ${m.use}`]));
+    Object.entries(L.JACKS).forEach(([k, j]) => out.push(["Ground & connectors", `Jack · ${j.use}`, k, "jack", { kind: k }, `jack socket input output ${k} ${j.use} phone headphone`]));
     Object.entries(L.OUTPUT_TX).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `${m.w} W ${m.ma} mA`, "opt_cat", { model: k }, `${k} ${m.name} output transformer single-ended`]));
     Object.entries(L.POWER_TX).forEach(([k, m]) => out.push(["Transformers", `Power · ${m.name}`, m.rated, "ptx_cat", { model: k }, `${k} ${m.name} power transformer ${m.rated}`]));
     TUBE_DATABASE.forEach(t => out.push(["Tubes", t, "", "tube", { tube: t.commonName }, `${t.commonName} ${t.nameGost} ${t.nameWestern} ${t.type}`]));
@@ -1814,19 +1818,32 @@
     return `<div class="kv${cls ? " " + cls : ""}"><span>${k}</span><b>${m ? `${m[1]}<small>${m[2]}</small>` : v}</b></div>`;
   }
 
+  // the rms voltage between two of a part's pins over the capture (the DC value without one)
+  function vRmsAcross(c, a, b) {
+    const wa = waveOf(c, a), wb = waveOf(c, b);
+    if (wa && wb) { let s = 0; for (let i = 0; i < wa.length; i++) { const v = wa[i] - wb[i]; s += v * v; } return Math.sqrt(s / wa.length); }
+    const va = netDC(pinNetOf(c, a)), vb = netDC(pinNetOf(c, b));
+    return va === null || vb === null ? null : Math.abs(va - vb);
+  }
+  // a fuse's or an inrush limiter's rms current, and the resistance it ran at (an NTC's self-heated one)
+  function seriesPart(c) {
+    const r = c.type === "fuse" ? CadLib.fuseCold(c.params.a) : S.sim.result && S.sim.result.ntc && S.sim.result.ntc[c.id] ? S.sim.result.ntc[c.id].r : null, v = vRmsAcross(c, "1", "2");
+    return r === null || v === null ? null : { r, i: v / r, p: v * v / r };
+  }
   // The simulation as a part sees it, for the readouts and panels of the part library
   // (cad-components.js: readout(c, R), panel(c, R)).
   function readoutApi(c) {
     const netOf = pid => pinNetOf(c, pid);
     const vAcross = (a, b) => { const va = netDC(netOf(a)), vb = netDC(netOf(b)); return va === null || vb === null ? null : va - vb; };
+    const vRms = (a, b) => vRmsAcross(c, a, b);
     const pAvg = (a, b, R) => { const wa = waveOf(c, a), wb = waveOf(c, b); if (!wa || !wb) { const v = vAcross(a, b); return v === null ? null : v * v / R; } let s = 0; for (let i = 0; i < wa.length; i++) { const v = wa[i] - wb[i]; s += v * v; } return s / wa.length / R; };
     return {
       r: S.sim.result, kv, note: (text, cls) => `<p class="insp-help${cls ? " " + cls : ""}">${text}</p>`,
-      vAcross, pAvg, netDC, pinNet: netOf, pinCurrent: pid => pinCurrent(c, pid),
+      vAcross, vRms, pAvg, netDC, pinNet: netOf, pinCurrent: pid => pinCurrent(c, pid),
       // the source of a power rail's net: this rail or the first other rail on it (buildNetlist)
       railDevice: () => { const n = netOf("1"), k = S.comps.find(q => q.type === "rail" && pinNetOf(q, "1") === n && S.sim.result.dc.devices[q.id]); return k ? S.sim.result.dc.devices[k.id] : null; },
       tubeData: () => tubeData(c), tubeLimits: () => tubeLimits(c), limitRows: () => limitRows(c),
-      resistorPower: () => resistorPower(c), speakerPower: () => speakerPower(c), otDcCurrent: () => otDcCurrent(c),
+      seriesPart: () => seriesPart(c), resistorPower: () => resistorPower(c), speakerPower: () => speakerPower(c), otDcCurrent: () => otDcCurrent(c),
       scopeChannels: () => scopeChannels(c), wave: pid => waveOf(c, pid), signalFreq, stats
     };
   }
@@ -1901,7 +1918,7 @@
     });
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
-    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], bridge: [["+", "-"], ["AC1", "AC2"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
+    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], fuse: [["1", "2"]], ntc: [["1", "2"]], mov: [["1", "2"]], diode: [["A", "K"]], bridge: [["+", "-"], ["AC1", "AC2"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
       opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
@@ -1958,6 +1975,36 @@
       if (iav !== null && iav > m.i) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(iav, "A", 2)} on average, more than its ${m.i} A rating.`);
     });
     S.comps.forEach(c => { if (c.type !== "zener" || !S.sim.result) return; const z = CadLib.ZENERS[c.params.model], v = netDC(pinNetOf(c, "A")), w = netDC(pinNetOf(c, "K")), i = pinCurrent(c, "A"); if (z && v !== null && w !== null && i !== null && Math.abs((v - w) * i) > z.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(Math.abs((v - w) * i), "W", 2)}, more than its ${z.p} W rating.`); });
+    // fuses at 75 % of their rating or less (the makers' derating), inrush limiters within their current
+    S.comps.forEach(c => {
+      if ((c.type !== "fuse" && c.type !== "ntc") || !S.sim.result) return;
+      const sp = seriesPart(c); if (!sp) return;
+      if (c.type === "fuse") {
+        const a = +c.params.a;
+        if (sp.i > a) issues.push(`${c.label} (${c.params.speed}${fmtEng(a, "A")}) carries ${fmtEng(sp.i, "A", 2)} rms, more than its rating: it blows.`);
+        else if (sp.i > 0.75 * a) issues.push(`${c.label} (${c.params.speed}${fmtEng(a, "A")}) runs at ${Math.round(sp.i / a * 100)} % of its rating: keep a fuse at 75 % or less, or it ages and blows.`);
+      } else {
+        const m = CadLib.NTCS[c.params.model];
+        if (m && sp.i > m.imax) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(sp.i, "A", 2)} rms, more than its ${m.imax} A rating.`);
+      }
+    });
+    // varistors: the voltage across them within their continuous rating
+    S.comps.forEach(c => {
+      if (c.type !== "mov" || !S.sim.result) return;
+      const m = CadLib.MOVS[c.params.model], v = vRmsAcross(c, "1", "2"), dc = Math.abs((netDC(pinNetOf(c, "1")) || 0) - (netDC(pinNetOf(c, "2")) || 0));
+      if (m && v !== null && (v > m.vrms || dc > m.vdc)) issues.push(`${c.label} (${c.params.model}) has ${fmtEng(v, "V", 1)} rms across it, more than its ${m.vrms} V continuous rating: it conducts and burns.`);
+    });
+    // capacitors against the rating set on them (from 80 %); an electrolytic the wrong way round
+    S.comps.forEach(c => {
+      if ((c.type !== "capacitor" && c.type !== "electrolytic") || !S.sim.result) return;
+      const [a, b] = c.type === "capacitor" ? ["1", "2"] : ["+", "-"], wa = waveOf(c, a), wb = waveOf(c, b), va = netDC(pinNetOf(c, a)), vb = netDC(pinNetOf(c, b));
+      let pk = null;
+      if (wa && wb) { pk = 0; for (let k = 0; k < wa.length; k++) pk = Math.max(pk, Math.abs(wa[k] - wb[k])); } else if (va !== null && vb !== null) pk = Math.abs(va - vb);
+      const vr = +c.params.v;
+      if (vr && pk !== null && pk > vr) issues.push(`${c.label} has ${fmtEng(pk, "V", 1)} peak across it, more than its ${vr} V rating.`);
+      else if (vr && pk !== null && pk > 0.8 * vr) issues.push(`${c.label} runs at ${Math.round(pk / vr * 100)} % of its ${vr} V rating: keep a capacitor at 80 % or less.`);
+      if (c.type === "electrolytic" && va !== null && vb !== null && va - vb < -1) issues.push(`${c.label} is reversed: its − is ${fmtEng(vb - va, "V", 1)} above its +.`);
+    });
     // tubes: the plate's average dissipation over the signal cycle (with a reactive load the
     // path may cross the Pa max curve for part of a cycle, which is normal); the DC value without signal
     S.comps.forEach(c => {
@@ -2185,7 +2232,7 @@
   // ---------------------------------------------------------------------------
   // Tolerance runs: the Tolerance tab of the same panel (cad-tolerance.js)
   const tolerance = CadTolerance({ S, VERSION, buildNetlist, pool, cmds, esc: escH, fmtEng, measurements, setStatus, topo, withResult });
-  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => tolerance.render(), commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf });
+  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => tolerance.render(), commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
   // PDF / PNG export and printing (cad-export.js)
   const { expOpts, exportPDF, initExport, openExportDialog, openPrintDialog, printPages, prnOpts, renderPNG, runExport, runPrint } = CadExport({ S, baseName, bind, bomData, compBBox, currentSheet, drawSheet, frames, setStatus, sheetNo });
   // The file this circuit came from or was last saved to. With the File System Access API
@@ -2353,7 +2400,13 @@
       const id = (e.id || "X").replace(/[^A-Za-z0-9_]/g, "_");
       const nd = (e.nodes || []).map(nn);
       switch (e.kind) {
-        case "R": lines.push(`R${id} ${nd[0]} ${nd[1]} ${e.r}`); break;
+        case "R": {
+          // an inrush limiter at the resistance it settled at (cold before a simulation)
+          const hot = e.ntc && S.sim.result && S.sim.result.ntc && S.sim.result.ntc[e.id];
+          if (e.ntc) lines.push(`* ${id}: NTC inrush limiter, ${hot ? "self-heated as simulated" : "cold"} (${e.ntc.r25} ohm at 25 C)`);
+          lines.push(`R${id} ${nd[0]} ${nd[1]} ${hot ? +hot.r.toPrecision(4) : e.r}`);
+          break;
+        }
         case "C": lines.push(`C${id} ${nd[0]} ${nd[1]} ${e.c}`); break;
         case "L": lines.push(`L${id} ${nd[0]} ${nd[1]} ${e.l}`); break;
         case "V": lines.push(`V${id} ${nd[0]} ${nd[1]} DC ${e.v}`); break;

@@ -139,6 +139,35 @@
       out.push(box(-3.2, -4.2, 3.2, 4.2, 0.5, 3.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 1));
     } else if (name === "BRIDGE-SIL4") {
       out.push(box(-9.5, -1.75, 9.5, 1.75, 1.5, 11.5, C.black, to)); pads.forEach(p => lead(p.x, p.y, 1.5));
+    } else if ((m = /^BRIDGE-(GBU|KBU)$/.exec(name))) {
+      const r = fp.silk.find(q => q.t === "rect"), H = m[1] === "GBU" ? 18 : 19;
+      out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, 2, 2 + H, C.black, to)); pads.forEach(p => lead(p.x, p.y, 2));
+    } else if (name === "BRIDGE-WOB") {
+      out.push(cylZ(0, 0, 4.9, 1, 6.2, C.black, to)); pads.forEach(p => lead(p.x, p.y, 1));
+    } else if ((m = /^JACK-NMJ(4|6)HCD2$/.exec(name))) {
+      // the body standing on its pins, the threaded ferrule out of the front (left)
+      const [b, f] = fp.silk.filter(q => q.t === "rect");
+      out.push(box(b.x, b.y, b.x + b.w, b.y + b.h, 0.3, 14.5, C.jack, to), cylX(f.y + f.h / 2, 7.4, 4.6, f.x, b.x, C.metal, to), cylX(f.y + f.h / 2, 7.4, 3.2, f.x - 0.01, f.x, C.black, to));
+      pads.forEach(p => lead(p.x, p.y, 0.5));
+    } else if ((m = /^HEADER-1x(\d+)$/.exec(name))) {
+      const r = fp.silk.find(q => q.t === "rect");
+      out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, 0, 2.5, C.black, to));
+      pads.forEach(p => out.push(box(p.x - 0.32, p.y - 0.32, p.x + 0.32, p.y + 0.32, -3 - t, 8.5, C.metal, to)));
+    } else if ((m = /^FASTON-(6\.3|4\.8)$/.exec(name))) {
+      const w = m[1] === "6.3" ? 6.35 : 4.75;
+      out.push(box(-w / 2 - 0.8, -1.2, w / 2 + 0.8, 1.2, 0, 1.2, C.metal, to), box(-w / 2, -0.4, w / 2, 0.4, 1.2, 9, C.metal, to)); lead(0, 0, 0.5);
+    } else if ((m = /^FUSE-(5X20|6\.3X32)$/.exec(name))) {
+      // the clips on their pins, the glass cartridge with its end caps held between them
+      const [L, P, , , F, Df] = D.FUSES[m[1]], h = L / 2, r = Df / 2 - 0.1, zc = r + 2;
+      [-1, 1].forEach(sg => { out.push(box(sg * h - sg * P - 0.6 * sg, -r - 0.4, sg * h + 0.6 * sg, r + 0.4, 0, zc, C.metal, to)); });
+      out.push(cylX(0, zc, r, -F / 2 + 4.5, F / 2 - 4.5, C.glass, to, { alpha: 0.5, glass: true }), cylX(0, zc, r, -F / 2, -F / 2 + 4.5, C.metal, to), cylX(0, zc, r, F / 2 - 4.5, F / 2, C.metal, to), cylX(0, zc, 0.15, -F / 2 + 4.5, F / 2 - 4.5, C.lead, to, { inner: true }));
+      pads.forEach(p => lead(p.x, p.y, 0.5));
+    } else if (name === "FUSE-TR5") {
+      out.push(cylZ(0, 0, 4.25, 1, 8.5, C.black, to)); pads.forEach(p => lead(p.x, p.y, 1));
+    } else if ((m = /^(MOV|NTC)-D([\d.]+)-P([\d.]+)$/.exec(name))) {
+      // the disc on edge over its leads (a varistor blue, an inrush thermistor black)
+      const r = +m[2] / 2, w = fp.silk.find(q => q.t === "rect").h, zc = r + 3;
+      out.push(cylY(0, zc, r, -w / 2, w / 2, m[1] === "MOV" ? C.trim : C.black, to)); pads.forEach(p => lead(p.x, p.y, zc - r * 0.6));
     } else if (/^DIP-\d+$/.test(name)) {
       // the moulded body (7.62 mm row pitch: 6.35 mm wide, 3.3 mm thick) standing on its leads
       const r = fp.silk.find(q => q.t === "rect");

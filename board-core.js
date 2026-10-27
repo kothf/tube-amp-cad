@@ -182,9 +182,21 @@
   }
   // bridge rectifiers: DIP-4 (DF-M: 7.62 × 5.08 mm, + and − on one side) and the inline SIL-4 (B…C2300-1500A:
   // 5 mm pitch, − ~ ~ +, a 19 × 3.5 mm body standing over its pins); the pads named for the pins
-  const BRIDGE_PINS = { DIP4: ["+", "-", "AC2", "AC1"], SIL4: ["-", "AC1", "AC2", "+"] };
+  // The others after KiCad's patterns (Diode_Bridge_Vishay_GBU / _KBU, Diode_Bridge_Round_D9.8mm):
+  // GBU and KBU flat inline at 5.08 mm, + ~ ~ −; the round WOB on a 5.08 mm square, + ~ − ~.
+  const BRIDGE_PINS = { DIP4: ["+", "-", "AC2", "AC1"], SIL4: ["-", "AC1", "AC2", "+"], GBU: ["+", "AC1", "AC2", "-"], KBU: ["+", "AC1", "AC2", "-"], WOB: ["+", "AC1", "-", "AC2"] };
   function bridgeFp(kind) {
     const names = BRIDGE_PINS[kind];
+    if (kind === "GBU" || kind === "KBU") {
+      const [d, dr, body] = kind === "GBU" ? [3.2, 1.6, { t: "rect", x: -11.3, y: -1.85, w: 22.6, h: 4.4 }] : [2.8, 1.4, { t: "rect", x: -11.9, y: -2.3, w: 23.8, h: 7.75 }];
+      return fp(`BRIDGE-${kind}`, `Bridge rectifier, ${kind} (5.08 mm pitch, ${kind === "GBU" ? "22 × 4" : "23 × 7"} mm body standing over its pins), pins + ~ ~ −`,
+        names.map((n, i) => pad(i + 1, -7.62 + i * 5.08, 0, d, dr, i ? "circle" : "rect", n)), [body, { t: "line", x1: body.x + 1, y1: body.y, x2: body.x + 1, y2: body.y + body.h }]);
+    }
+    if (kind === "WOB") {
+      const at = [[-2.54, -2.54], [-2.54, 2.54], [2.54, 2.54], [2.54, -2.54]];
+      return fp("BRIDGE-WOB", "Bridge rectifier, round WOB (Ø 9.8 mm, pins on a 5.08 mm square), pins + ~ − ~", names.map((n, i) => pad(i + 1, at[i][0], at[i][1], 2, 1, i ? "circle" : "rect", n)),
+        [{ t: "circle", x: 0, y: 0, r: 4.9 }, { t: "line", x1: -4.9, y1: -4.9, x2: -3.5, y2: -4.9 }, { t: "line", x1: -4.2, y1: -5.6, x2: -4.2, y2: -4.2 }]);
+    }
     if (kind === "DIP4") {
       const at = [[-3.81, -2.54], [-3.81, 2.54], [3.81, 2.54], [3.81, -2.54]];
       return fp("BRIDGE-DIP4", "Bridge rectifier, DIP-4 (7.62 × 5.08 mm), pins + − ~ ~", names.map((n, i) => pad(i + 1, at[i][0], at[i][1], 1.8, 0.9, i ? "circle" : "rect", n)),
@@ -248,6 +260,44 @@
       [{ t: "rect", x: -4.5, y: -6, w: 9, h: 14 }, { t: "rect", x: -2.5, y: 8, w: 5, h: 2.5 }]);
     return fp("JACK-6.35", "6.35 mm (1/4\") jack, board mount (tip +, sleeve −, switch unused), front at the bottom", [pad(1, 5, -6, 2.6, 1.5, "rect", "+"), pad(2, -5, -6, 2.6, 1.5, "circle", "-"), pad(3, 5, 0, 2.6, 1.5, "circle", "SW")],
       [{ t: "rect", x: -8, y: -11, w: 16, h: 21 }, { t: "rect", x: -5, y: 10, w: 10, h: 3 }]);
+  }
+  // Neutrik M-series 6.35 mm jacks, horizontal (KiCad Jack_6.35mm_Neutrik_NMJ4HCD2 / NMJ6HCD2): tip,
+  // sleeve and their switch contacts in two rows 16.23 mm apart, the ferrule (the front) to the left
+  function neutrik(stereo) {
+    const cx = 6.395, cy = 8.115, P = (n, x, y, name) => pad(n, +(x - cx).toFixed(3), +(y - cy).toFixed(3), 3, 1.4, n === 1 ? "rect" : "circle", name);
+    const pads = [P(1, 0, 0, "+"), P(2, 12.7, 0, "-"), P(3, 0, 16.23, "SW"), P(4, 12.7, 16.23, "SN")];
+    if (stereo) pads.push(P(5, 6.35, 0, "R"), P(6, 6.35, 16.23, "RN"));
+    return fp(stereo ? "JACK-NMJ6HCD2" : "JACK-NMJ4HCD2", `Neutrik ${stereo ? "NMJ6HCD2, 6.35 mm stereo" : "NMJ4HCD2, 6.35 mm mono"} jack, switched, horizontal (front to the left)`, pads,
+      [{ t: "rect", x: -3.91 - cx, y: -1.985 - cy, w: 20.61, h: 20.2 }, { t: "rect", x: -6.83 - cx, y: 3.765 - cy, w: 2.92, h: 8.7 }]);
+  }
+  // straight pin headers, 2.54 mm (KiCad PinHeader_1xNN_P2.54mm_Vertical: Ø 1.7 mm pads, 1 mm drills), in a row
+  function header(n) {
+    const x0 = -(n - 1) / 2 * 2.54;
+    return fp(`HEADER-1x${n}`, `Pin header 1 × ${n}, 2.54 mm, straight`, Array.from({ length: n }, (_, i) => pad(i + 1, x0 + i * 2.54, 0, 1.7, 1, i ? "circle" : "rect", String(i + 1))),
+      [{ t: "rect", x: x0 - 1.27, y: -1.27, w: n * 2.54, h: 2.54 }]);
+  }
+  // board-mount quick-connect tabs, one pin each (Keystone 1287: 6.3 mm tab, 1.32 mm hole; 1285: 4.8 mm, 1.17 mm)
+  function faston(size) {
+    const big = size === "6.3", w = big ? 6.35 : 4.75;
+    return fp(`FASTON-${size}`, `Quick-connect tab ${size} mm (Keystone ${big ? "1287" : "1285"}), board mount`, [pad(1, 0, 0, big ? 2.8 : 2.4, big ? 1.35 : 1.2, "rect", "1")],
+      [{ t: "rect", x: -w / 2 - 0.8, y: -2, w: w + 1.6, h: 4 }, { t: "line", x1: -w / 2, y1: 0, x2: -2.2, y2: 0 }, { t: "line", x1: 2.2, y1: 0, x2: w / 2, y2: 0 }]);
+  }
+  // fuse holders: clips for 5 × 20 mm (Littelfuse 519, pins 5 mm apart, clips 20.6 mm) and 6.3 × 32 mm
+  // (Littelfuse 102071, 7.6 and 34.7 mm) cartridges, each clip on two pins; a TR5 subminiature fuse
+  // (Littelfuse 372/395, Ø 8.5 mm, 5.08 mm)
+  const FUSES = { "5X20": [20.6, 5, 2, 1, 20, 5.2, "5 × 20 mm, Littelfuse 519 clips"], "6.3X32": [34.7, 7.6, 3, 2, 32, 6.6, "6.3 × 32 mm, Littelfuse 102071 clips"] };
+  function fuseFp(kind) {
+    if (kind === "TR5") return fp("FUSE-TR5", "TR5 subminiature fuse (Ø 8.5 mm), 5.08 mm, or its socket", [pad(1, -2.54, 0, 2, 1, "rect", "1"), pad(2, 2.54, 0, 2, 1, "circle", "2")], [{ t: "circle", x: 0, y: 0, r: 4.25 }]);
+    const [L, P, d, dr, , D, t] = FUSES[kind], h = L / 2;
+    return fp(`FUSE-${kind}`, `Fuse holder for ${t}`, [pad(1, -h, 0, d, dr, "rect", "1"), pad(2, +(-h + P).toFixed(3), 0, d, dr, "rect", "1"), pad(3, +(h - P).toFixed(3), 0, d, dr, "circle", "2"), pad(4, h, 0, d, dr, "circle", "2")],
+      [{ t: "rect", x: -h - d / 2 - 0.5, y: -D / 2 - 0.3, w: L + d + 1, h: D + 0.6 }, { t: "line", x1: -h + P + d / 2 + 0.6, y1: 0, x2: h - P - d / 2 - 0.6, y2: 0 }]);
+  }
+  // disc parts standing on two leads, seen from above (the disc edge-on): varistors (MOV, KiCad
+  // RV_Disc) and inrush thermistors (NTC); Ø d, lead pitch p, the disc's thickness w
+  function discPart(kind, d, p, w, lead) {
+    const dr = +(lead + 0.4).toFixed(2), pd = Math.max(1.8, dr + 0.9);
+    return fp(`${kind}-D${d}-P${p}`, `${kind === "MOV" ? "Varistor" : "Inrush NTC thermistor"} disc Ø ${d} mm, ${p} mm lead pitch`, [pad(1, -p / 2, 0, pd, dr, "rect", "1"), pad(2, p / 2, 0, pd, dr, "circle", "2")],
+      [{ t: "rect", x: -d / 2, y: -w / 2, w: d, h: w }]);
   }
   // toggle switches, board mount: SPDT (A · C · B) or DPDT (two rows, one per section)
   function toggle(poles) {
@@ -409,7 +459,15 @@
     if ((m = /^TO-126-([A-Z]{3})$/.exec(name))) return to126(m[1]);
     if ((m = /^TO-220-([A-Z]{2,3})$/.exec(name))) return to220(m[1]);
     if (name === "DO-201AD") return do201();
-    if ((m = /^BRIDGE-(DIP4|SIL4)$/.exec(name))) return bridgeFp(m[1]);
+    if ((m = /^BRIDGE-(DIP4|SIL4|GBU|KBU|WOB)$/.exec(name))) return bridgeFp(m[1]);
+    if ((m = /^JACK-NMJ(4|6)HCD2$/.exec(name))) return neutrik(m[1] === "6");
+    if ((m = /^HEADER-1x(\d+)$/.exec(name)) && +m[1] >= 1 && +m[1] <= 20) return header(+m[1]);
+    if ((m = /^FASTON-(6\.3|4\.8)$/.exec(name))) return faston(m[1]);
+    if ((m = /^FUSE-(5X20|6\.3X32|TR5)$/.exec(name))) return fuseFp(m[1]);
+    if ((m = /^(MOV|NTC)-D([\d.]+)-P([\d.]+)$/.exec(name))) {
+      const L = root.CadLib, t = m[1] === "MOV" ? L.MOVS : L.NTCS, part = Object.values(t).find(x => String(x.d) === m[2] && String(x.p) === m[3]);
+      return part ? discPart(m[1], part.d, part.p, part.w || 6, part.lead) : null;
+    }
     if ((m = /^TO-247-([A-Z]{3})$/.exec(name))) return to247(m[1]);
     if ((m = /^TO-3P-([A-Z]{3})$/.exec(name))) return to3p(m[1]);
     if ((m = /^TO-264-([A-Z]{3})$/.exec(name))) return to264(m[1]);
@@ -599,7 +657,20 @@
         return [...first(d.pkg === "DO-35" ? "DIODE-7.62" : "DIODE-10.16", diodes), "WIRE-2"];
       }
       // a bridge in its own package, or a chassis-mounted one (KBPC) wired by its Faston tabs
-      case "bridge": { const b = L.BRIDGES[p.model] || {}; return b.pkg === "DIP-4" ? ["BRIDGE-DIP4", "WIRE-4"] : b.pkg === "SIL-4" ? ["BRIDGE-SIL4", "WIRE-4"] : ["WIRE-4"]; }
+      case "bridge": { const b = L.BRIDGES[p.model] || {}, k = { "DIP-4": "DIP4", "SIL-4": "SIL4", GBU: "GBU", KBU: "KBU", WOB: "WOB" }[b.pkg]; return k ? [`BRIDGE-${k}`, "WIRE-4"] : ["WIRE-4"]; }
+      // connectors: the maker's pattern, or wire pads where the part sits on the chassis
+      case "jack": {
+        const k = p.kind || "TS-SW";
+        return k === "TS-SW" ? ["JACK-NMJ4HCD2", "JACK-6.35", "WIRE-3"] : k === "TS" ? ["JACK-NMJ4HCD2", "JACK-6.35", "WIRE-2"] : k === "TRS" ? ["JACK-NMJ6HCD2", "WIRE-3"] : k === "TRS-3.5" ? ["JACK-3.5", "WIRE-3"] : ["JACK-RCA", "WIRE-2"];
+      }
+      case "iec": return ["WIRE-3", "TERM-7.5-3"];
+      case "terminal": return [`TERM-${p.pitch === "7.5" ? "7.5" : "5.08"}-${wires}`, `TERM-${p.pitch === "7.5" ? "5.08" : "7.5"}-${wires}`, `WIRE-${wires}`];
+      case "header": return [`HEADER-1x${wires}`, `WIRE-${wires}`];
+      case "faston": return [`FASTON-${p.size === "4.8" ? "4.8" : "6.3"}`, `FASTON-${p.size === "4.8" ? "6.3" : "4.8"}`, "WIRE-1"];
+      // a fuse in board clips (or a panel holder on the chassis, wired)
+      case "fuse": { const k = { "6.3x32": "FUSE-6.3X32", TR5: "FUSE-TR5" }[p.size] || "FUSE-5X20"; return first(k, ["FUSE-5X20", "FUSE-6.3X32", "FUSE-TR5"]).concat("WIRE-2"); }
+      case "ntc": { const m = L.NTCS[p.model] || L.NTCS["SL22 10005"]; return [`NTC-D${m.d}-P${m.p}`, "WIRE-2"]; }
+      case "mov": { const m = L.MOVS[p.model] || L.MOVS.S10K275; return [`MOV-D${m.d}-P${m.p}`, "WIRE-2"]; }
       case "zener": { const z = L.ZENERS[p.model] || {}; return first(z.p >= 5 ? "DIODE-15.24" : "DIODE-10.16", diodes); }
       case "led": return ["LED-5MM", "LED-3MM", "WIRE-2"];
       // transformers and filter chokes sit on the chassis (their weight, their field, their heat): wire pads
@@ -1727,5 +1798,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { socketPads, underSocket, holeRing, FPDATA: { BRIDGE_PINS, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { socketPads, underSocket, holeRing, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -770,12 +770,16 @@
         x[i] = nx;
       }
       if (!isFinite(maxDv)) return { ok: false, x, error: "numerical overflow" };
+      let vmax = 0; for (let i = 0; i < circ.nNodes - 1; i++) vmax = Math.max(vmax, Math.abs(x[i]));
+      const floor = 1e-4 + 5e-6 * vmax;
       if (conv && iter > 0 && !limited) return { ok: true, x, iter };
       // Round-off floor: with hundreds of volts on some nodes the solution can
       // settle into a microvolt-level wobble that never meets the 1 µV test
-      // (whether it does depends on node order). An update below 100 µV that
-      // has stopped shrinking for a few iterations is converged.
-      if (maxDv < 1e-4 && lastDv !== null && maxDv > 0.5 * lastDv && !limited) { if (++stall >= 3) return { ok: true, x, iter }; }
+      // (whether it does depends on node order). An update below 100 µV (and
+      // 5 ppm of the largest node voltage: a bridge's AC side, floating on
+      // junctions of a few milliohms, wobbles more) that has stopped shrinking
+      // for a few iterations is converged.
+      if (maxDv < floor && lastDv !== null && maxDv > 0.5 * lastDv && !limited) { if (++stall >= 3) return { ok: true, x, iter }; }
       else stall = 0;
       lastDv = maxDv;
     }
@@ -972,7 +976,51 @@
   //   same circuit with other part values (tolerance runs); it changes how long the run takes, not
   //   where it settles. result.warm: the settled state at a period's start, before the capture.
   // ---------------------------------------------------------------------------
+  // Inrush limiters (NTC thermistors): an R element with ntc { r25, k, n } runs at its self-heated
+  // resistance R = min(r25, k·I^−n) for its rms current I (the makers' law). The body's thermal time
+  // constant (tens of seconds) is far longer than any capture, so in the steady state it holds one
+  // value through the cycle: the run is repeated from its last settled state, R moved partway toward
+  // that law each time, until R changes by under 1 %. result.ntc: { id: { r, i } }, the resistance
+  // each ran at and its rms current. The power-on transient (startup) keeps r25: the part starts cold.
   function simulate(netlist, opts) {
+    if (!netlist.elements.some(e => e.ntc)) return simulateOnce(netlist, opts);
+    opts = opts || {};
+    const t0 = Date.now(), budget = opts.budgetMs || 2500;
+    const elements = netlist.elements.map(e => (e.ntc ? Object.assign({}, e) : e)), hot = elements.filter(e => e.ntc);
+    let r = null, warm = opts.warm;
+    for (let it = 0; it < 12; it++) {
+      const run = w => simulateOnce(Object.assign({}, netlist, { elements }), Object.assign({}, opts, { warm: w, budgetMs: Math.max(budget - (Date.now() - t0), budget / 4), onProgress: it ? undefined : opts.onProgress }));
+      r = run(warm);
+      // a warm start that does not converge (a stiff rectifier caught mid-recovery) runs again from the DC point
+      if (!r.ok && warm && warm !== opts.warm) r = run(opts.warm);
+      if (!r.ok) return r;
+      r.ntc = {};
+      let moved = 0;
+      hot.forEach(e => {
+        const i = rmsCurrent(r, e), want = Math.min(e.ntc.r25, e.ntc.k * Math.pow(Math.max(i, 1e-12), -e.ntc.n));
+        r.ntc[e.id] = { r: e.r, i };
+        // a damped step in log R: the current falls as R rises, which a full step would overshoot
+        const next = Math.exp(Math.log(e.r) + 0.6 * (Math.log(want) - Math.log(e.r)));
+        moved = Math.max(moved, Math.abs(Math.log(want / e.r)));
+        e.r = next;
+      });
+      if (moved < 0.01) break;
+      warm = r.warm;
+    }
+    return r;
+  }
+  // an R element's rms current over the capture (its DC current without one)
+  function rmsCurrent(r, e) {
+    const [a, b] = e.nodes, T = r.tran;
+    if (T && T.samples > 1) {
+      const va = T.nodes[a], vb = T.nodes[b], n = T.samples - 1;
+      let s = 0; for (let k = 0; k < n; k++) { const v = (a ? va[k] : 0) - (b ? vb[k] : 0); s += v * v; }
+      return Math.sqrt(s / n) / e.r;
+    }
+    return Math.abs(r.dc.nodes[a] - r.dc.nodes[b]) / e.r;
+  }
+
+  function simulateOnce(netlist, opts) {
     opts = opts || {};
     const t0 = Date.now();
     const budgetMs = opts.budgetMs || 2500;

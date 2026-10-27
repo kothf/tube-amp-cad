@@ -6,6 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.106.0] - 2026-10-27
+
+### Added
+- Fuse part (Passive › Protection): 100 mA to 10 A, time-lag or fast, 5 × 20 mm, 6.3 × 32 mm (both in PCB clips) or TR5; it simulates at its cold resistance from the makers' tables. Checks: over its rating it blows, above 75 % it warns.
+- Inrush limiter NTC (Ametherm SL10/SL22/SL32): the simulation finds its self-heated resistance from the rms current through it, so a loaded supply runs it hot (a fraction of an ohm) and a light one leaves it near cold. The inspector shows the hot resistance, current and dissipation; Checks warn above its Imax.
+- Varistor (TDK SIOV S07K275 … S20K275, S10K150, S14K385): 1 mA at the varistor voltage and the clamp voltage at the surge current, both ways; microamps of leakage at the mains peak. Checks: over its rms or DC rating.
+- Connectors (Ground & connectors): jack (6.35 mm switched mono, stereo, 3.5 mm, RCA; double-click plugs a plug in or out and the switched jack's tip-to-SW contact follows), IEC mains inlet, terminal blocks (2–8 ways, 5.08 or 7.5 mm), pin headers (2–10), Faston tabs (6.3 and 4.8 mm).
+- Capacitor voltage rating: capacitors and electrolytics take a rating (shown in the value and the BOM). Checks warn above 80 % of it, over it, and on a reversed electrolytic.
+- Bridges GBU4J, GBU8K (inline), KBU8K and W04G/W10G (round WOB).
+- Board: Neutrik NMJ4HCD2/NMJ6HCD2 jack, pin header, Faston, fuse clip, TR5, MOV and NTC disc footprints, and GBU/KBU/WOB bridges, all with 3D bodies.
+
+### Changed
+- The SPICE export writes an NTC at its simulated hot resistance (with a comment) and a varistor as two opposed diodes.
+- The Newton convergence floor now scales with the largest node voltage, so circuits with high-voltage floating nodes (a bridge on a mains source) settle.
+
 ## [3.105.0] - 2026-10-27
 
 ### Added
