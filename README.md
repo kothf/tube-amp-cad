@@ -425,7 +425,8 @@ the circuit file, so one file holds both.
   *Place all on the board*: each part goes where it sits in the schematic
   (the schematic's extent mapped onto the board), big parts first, each in the
   free spot nearest its place, electrolytics 10 mm from hot parts, so the
-  signal runs across the board as across the sheet. Output and power
+  signal runs across the board as across the sheet; then the parts spread
+  into the room the board has, held near those places. Output and power
   transformers and filter chokes get wire pads by default (chassis-mounted). <kbd>Space</kbd> rotates,
   <kbd>M</kbd> moves a part to the bottom side. When the schematic changes, a
   banner offers the update; placed parts keep their spot.
@@ -505,7 +506,10 @@ the circuit file, so one file holds both.
   controls and connectors never move. Parts and tracks that wall in a pin
   (found by a max-flow escape check) move or come up too. The nets that
   failed are routed first in each round, and what Freerouting leaves is tried
-  once more on a grid (Lee's maze search), kept only if it keeps every rule.
+  once more on a grid (Lee's maze search), kept only if it keeps every rule,
+  then exactly: a small window round each leftover becomes a SAT problem
+  (one connection per cell, clearances between nets) solved in the page,
+  which may take up and relay the tracks walling it in.
   Last, it spreads the movable parts over the whole board (wire length
   against an electrostatic density of their area, shut-in parts counted
   bigger), puts each on the nearest legal grid place and routes afresh,

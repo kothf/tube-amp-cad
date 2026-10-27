@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "board-place.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "board-sat.js", "board-place.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
 const B = globalThis.BoardCore, P = globalThis.BoardPlace, L = globalThis.CadLib;
 
 const part = (id, type, label, params, pins) => ({ id, type, label, params: Object.assign({}, L.LIB[type].defaults, params), pins: Object.entries(pins).map(([pid, net]) => ({ id: pid, net })) });
@@ -201,4 +201,47 @@ test("spread: shortens the wiring of a spread-out board, and an inflated part ge
   const plain = run(false), fat = run(true);
   assert.ok(plain.r.wire1 < plain.r.wire0, `wire ${plain.r.wire0.toFixed(0)} -> ${plain.r.wire1.toFixed(0)}`);
   assert.ok(fat.gap > plain.gap, `R1's room ${plain.gap.toFixed(2)} -> ${fat.gap.toFixed(2)} mm`);
+});
+
+// exact: lay the window's result on the board as the finisher does
+const lay = (board, r) => {
+  board.tracks = board.tracks.filter((_, i) => !r.cut.tracks.has(i)).concat(r.add.tracks);
+  board.vias = board.vias.filter((_, i) => !r.cut.vias.has(i)).concat(r.add.vias);
+  const m = B.model(board, NL2), conn = B.connectivity(board, m.pads);
+  return { m, conn, bad: B.drc(board, m, conn, new Set(), [], NL2).filter(d => ["clearance", "edge", "short", "width"].includes(d.kind)).map(d => d.msg) };
+};
+// another net's track across the way on both layers, from the board's top edge to its bottom
+const wall = board => ["F.Cu", "B.Cu"].forEach(layer => board.tracks.push({ layer, w: 0.6, net: "C", pts: [[30, 2], [30, 38]] }));
+
+test("exact: joins an open connection through a wall of another net, and that net stays joined", () => {
+  const board = setup2(); wall(board);
+  const { m, conn, clr } = analyse2(board), rats = baseRats(m, conn);
+  assert.ok(!P.passage(board, m, conn, rats, { clr })[0].ok, "the wall shuts the way on both layers");
+  const r = P.exact(board, m, conn, rats, { clr, i: 0, margin: 8 });
+  assert.ok(r && r.sat, JSON.stringify(r));
+  assert.ok(r.cut.tracks.size >= 1 && r.add.tracks.some(t => t.net === "BASE"), "the wall came up and the base went through");
+  const after = lay(board, r);
+  assert.equal(after.conn.rats.filter(q => after.m.names[q.net] === "BASE").length, 0, "the base is joined to R1");
+  // the wall's top and bottom halves are still one piece, on each layer
+  const cl = (x, y, layer) => after.conn.items.find(it => it.kind === "track" && board.tracks[it.ti].layer === layer && board.tracks[it.ti].pts.some(p => p[0] === x && p[1] === y)).cluster;
+  ["F.Cu", "B.Cu"].forEach(layer => assert.equal(cl(30, 2, layer), cl(30, 38, layer), `the wall on ${layer} in one piece`));
+  assert.deepEqual(after.bad, []);
+});
+
+test("exact: proves there is no way when the copper in the way is locked", () => {
+  const board = setup2(); ring(board, 15, 15, 25, 25); board.tracks.forEach(t => { t.locked = true; });
+  const { m, conn, clr } = analyse2(board), r = P.exact(board, m, conn, baseRats(m, conn), { clr, i: 0, margin: 8 });
+  assert.ok(r && r.sat === false && !r.unknown, JSON.stringify(r && { sat: r.sat, why: r.why, unknown: r.unknown }));
+  assert.equal(r.why, "no path");
+});
+
+test("the SAT solver: finds a model that meets every clause, and proves three pigeons can't share two holes", () => {
+  const S = globalThis.BoardSat.solver(), v = [0, 1, 2, 3].map(() => S.newVar());
+  [[v[0], v[1]], [-v[0], v[2]], [-v[1], -v[2]], [-v[2], v[3]], [-v[3], -v[1]]].forEach(c => S.add(c));
+  assert.equal(S.solve(), true);
+  assert.ok([[v[0], v[1]], [-v[0], v[2]], [-v[1], -v[2]], [-v[2], v[3]], [-v[3], -v[1]]].every(c => c.some(l => S.value(Math.abs(l)) === l > 0)));
+  const H = globalThis.BoardSat.solver(), p = [0, 1, 2].map(() => [H.newVar(), H.newVar()]);
+  p.forEach(([a, b]) => H.add([a, b]));
+  for (let h = 0; h < 2; h++) for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) H.add([-p[i][h], -p[j][h]]);
+  assert.equal(H.solve(), false);
 });

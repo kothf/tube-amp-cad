@@ -110,6 +110,22 @@
         if (S.conn.unrouted < un && bad() <= d) n++;
         else { S.board.tracks.pop(); analyse(); tried.add(key(rats[b.i])); }
       }
+      // then each one left, routed exactly in a window round it with whatever copper is there (BoardPlace.exact)
+      const done = new Set();
+      for (let k = 0; k < 20; k++) {
+        const rats = routable().filter(r => !done.has(key(r))); if (!rats.length) break;
+        done.add(key(rats[0]));
+        for (const margin of [4, 8]) {
+          const r = BoardPlace.exact(S.board, S.model, S.conn, rats, { ...checkOpts(), margin });
+          if (!r || !r.sat) continue;
+          const keep = JSON.stringify(S.board), un = S.conn.unrouted, d = bad();
+          S.board.tracks = S.board.tracks.filter((_, i) => !r.cut.tracks.has(i)).concat(r.add.tracks);
+          S.board.vias = S.board.vias.filter((_, i) => !r.cut.vias.has(i)).concat(r.add.vias);
+          analyse();
+          if (S.conn.unrouted < un && bad() <= d) { n += un - S.conn.unrouted; break; }
+          S.board = JSON.parse(keep); analyse();
+        }
+      }
       return n;
     }
     // the pins still shut in, in words ("" when none)

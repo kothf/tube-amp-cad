@@ -6,6 +6,11 @@
   // app: what this part needs from board-app.js; returns what board-app.js uses of it
   root.BoardPanels = function (app) {
     const { $, B, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth } = app;
+    // after Place all: the placed parts spread into the room the board has, held near where they landed (BoardPlace.spread)
+    function spreadPlaced(keys) {
+      if (!root.BoardPlace) return;
+      try { root.BoardPlace.spread(S.board, B.model(S.board, S.netlist), keys, { clr: S.clr, hv: S.hv, netlist: S.netlist, conn: S.conn, wire: 0.3, anchor: 0.5 }); } catch (e) { console.warn("spread", e); }
+    }
     function renderPanels() {
       const host = $("parts"), M = S.model;
       if (!M) { host.innerHTML = `<p class="help">The parts arrive from the Circuit CAD.</p>`; $("parts-count").textContent = ""; }
@@ -20,7 +25,7 @@
         $("parts-count").textContent = `${M.parts.length}`;
         host.querySelectorAll(".item").forEach(b => b.addEventListener("click", () => { const g = M.parts.find(x => x.key === b.dataset.key); selectPart(g); centerOn(g.place.x, g.place.y); renderPanels(); }));
         const ab = $("btn-arrange");
-        if (ab) ab.onclick = () => { const left = B.arrange(S.board, M, off.map(g => g.key), S.netlist); commit(left ? `${left} part${left > 1 ? "s" : ""} did not fit: make the board larger` : `Placed ${off.length} parts where they sit in the schematic, so the signal runs across the board as on the sheet`); fit(); };
+        if (ab) ab.onclick = () => { const left = B.arrange(S.board, M, off.map(g => g.key), S.netlist); spreadPlaced(off.map(g => g.key)); commit(left ? `${left} part${left > 1 ? "s" : ""} did not fit: make the board larger` : `Placed ${off.length} parts where they sit in the schematic, so the signal runs across the board as on the sheet`); fit(); };
       }
       renderInspector();
       const dh = $("drc"), list = S.drc.slice().sort((a, b) => NOTE.includes(a.kind) - NOTE.includes(b.kind) || String(a.kind).localeCompare(String(b.kind)));
