@@ -68,6 +68,17 @@ import { readFile } from "node:fs/promises";
     const ly = await bd.evaluate(() => [BoardApp.state.route && BoardApp.state.route.layer, BoardApp.state.board.vias.length]);
     await bd.selectOption("#layer", "F.Cu");
     check(ly[0] === "B.Cu" && ly[1] === 0 && await bd.evaluate(() => BoardApp.state.route.layer) === "F.Cu", `picking Bottom copper while routing puts the track being placed on the bottom (${ly[0]}, ${ly[1]} vias), so it is drawn blue, not in the top's red`);
+    // the bend follows the pointer: off the corner along the axis, then out to a diagonal spot: straight
+    // first; back to the corner and off at 45° to the same spot: the diagonal first; / sets it by hand
+    const posture = async (dx, dy) => {
+      await bd.mouse.move(cv.x + r0[0], cv.y + r0[1], { steps: 2 }); await bd.mouse.move(cv.x + r0[0] + dx, cv.y + r0[1] + dy, { steps: 4 });
+      await bd.mouse.move(cv.x + r0[0] + 120, cv.y + r0[1] + 60, { steps: 6 });
+      return bd.evaluate(() => BoardApp.state.route.flip);
+    };
+    const pAxis = await posture(25, 0), pDiag = await posture(18, 18);
+    await bd.keyboard.press("/"); await bd.mouse.move(cv.x + r0[0] + 125, cv.y + r0[1] + 62, { steps: 2 });
+    const pHand = await bd.evaluate(() => BoardApp.state.route.flip);
+    check(pAxis === false && pDiag === true && pHand === false, `the bend follows the way the pointer leaves the corner, as in KiCad (along the axis: straight first ${pAxis === false}; at 45°: diagonal first ${pDiag === true}); / turns it by hand and keeps it (${pHand === false})`);
     await bd.keyboard.press("Escape"); await bd.keyboard.press("Escape"); await bd.keyboard.press("s");
   }
   const tears = await bd.evaluate(() => { const S = BoardApp.state, t = S.board.tracks[0], w0 = t.w, n0 = S.fills.filter(f => f.tear).length; t.w = 0.8; BoardApp.analyse(); const n1 = S.fills.filter(f => f.tear).length; t.w = w0; BoardApp.analyse(); return [n0, n1]; });

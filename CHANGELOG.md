@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.111.0] - 2026-10-27
+
+### Changed
+- Board routing: the bend follows the mouse, as in KiCad. Leave the last corner along the grid and the straight run comes first; leave it at about 45° and the diagonal comes first. Once the pointer is well away (40 px) the bend stays put until you bring the pointer back near the corner. <kbd>/</kbd> turns it the other way by hand until the next corner.
+
 ## [3.110.0] - 2026-10-27
 
 ### Added
