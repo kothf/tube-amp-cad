@@ -265,17 +265,35 @@
   // threshold), then the threshold; with none on it keeps its state
   const timerNext = (m, q) => (m[0] > 0 ? 0 : m[1] > 0 ? 1 : m[2] > 0 ? 0 : q);
   const latchOf = (e, x) => (x[e.latch] > 0.5 ? 1 : 0);
+  // ---------------------------------------------------------------------------
+  // Glow-discharge tube (nodes A, K): a gas regulator or a neon lamp. Its latch (1 lit, 0 dark) is
+  // an extra unknown like a 555's: dark it leaks 10 GΩ until A−K reaches the striking voltage;
+  // lit it holds the maintaining voltage vm plus r per ampere (its regulation), until its current
+  // falls below the extinction current iext. The lit drop is smoothed over 50 mV so Newton's
+  // method sees a slope where the current starts. Reverse, it stays dark.
+  // ---------------------------------------------------------------------------
+  function glowCurrents(V, m, q) {
+    const v = V[0] - V[1], w = 0.05, i = v / 1e10 + (q ? w * softplus((v - m.vm) / w) / m.r : 0);
+    return [i, -i];
+  }
+  // margins: strike (A−K above the striking voltage), extinguish (current below iext)
+  function glowMargins(e, x) { const v = vn(x, e.nodes[0]) - vn(x, e.nodes[1]), m = e.model; return [v - m.vs, m.vm + m.r * m.iext - v]; }
+  const glowNext = (mg, q) => (q ? (mg[1] > 0 ? 0 : 1) : (mg[0] > 0 ? 1 : 0));
+  // the latched elements (555s and glow tubes) through one interface: their margins, the state they
+  // leave, and the margin whose crossing makes the flip to want
+  const latchMargins = (e, x) => (e.kind === "GLOW" ? glowMargins(e, x) : timerMargins(e, x));
+  const latchNext = (e, mg, q) => (e.kind === "GLOW" ? glowNext(mg, q) : timerNext(mg, q));
   // the first latch to flip in a step from xp to xn: { e, want, th }, th the fraction of the step
   // at which its comparator crossed (or the reset let go, when the comparator was on already)
   function timerEvent(circ, xp, xn) {
     let ev = null;
     for (const e of circ.timers) {
-      const q = latchOf(e, xp), mn = timerMargins(e, xn), want = timerNext(mn, q);
+      const q = latchOf(e, xp), mn = latchMargins(e, xn), want = latchNext(e, mn, q);
       if (want === q) continue;
-      const mp = timerMargins(e, xp), k = want ? 1 : mn[0] > 0 ? 0 : 2;
+      const glow = e.kind === "GLOW", mp = latchMargins(e, xp), k = glow ? (want ? 0 : 1) : want ? 1 : mn[0] > 0 ? 0 : 2;
       let th = 0;
       if (mp[k] <= 0 && mn[k] > 0) th = mp[k] / (mp[k] - mn[k]);
-      else if (mp[0] > 0 && mn[0] <= 0) th = mp[0] / (mp[0] - mn[0]);
+      else if (!glow && mp[0] > 0 && mn[0] <= 0) th = mp[0] / (mp[0] - mn[0]);
       if (!ev || th < ev.th) ev = { e, want, th };
     }
     return ev;
@@ -290,11 +308,13 @@
     const ev = timerEvent(circ, xp, x);
     if (!ev) return x;
     n = n || 0;
-    if (n >= 8 || ev.th >= 1 - 1e-6) { x[ev.e.latch] = ev.want; return x; }
-    if (ev.th <= 1e-6) { const xs = xp.slice(); xs[ev.e.latch] = ev.want; return timerStep(circ, step, xs, tNext, h, n + 1); }
+    // circ.onFlip(e, want, t): told of each flip and when it happened (a glow tube may strike and go out within one step)
+    const told = tf => { if (circ.onFlip) circ.onFlip(ev.e, ev.want, tf); };
+    if (n >= 8 || ev.th >= 1 - 1e-6) { x[ev.e.latch] = ev.want; told(tNext); return x; }
+    if (ev.th <= 1e-6) { const xs = xp.slice(); xs[ev.e.latch] = ev.want; told(tNext - h); return timerStep(circ, step, xs, tNext, h, n + 1); }
     const hm = h * ev.th, xm = step(xp, tNext - h + hm, hm);
     if (!xm) return null;
-    xm[ev.e.latch] = ev.want;
+    xm[ev.e.latch] = ev.want; told(tNext - h + hm);
     return timerStep(circ, step, xm, tNext, h - hm, n + 1);
   }
 
@@ -528,8 +548,8 @@
     let nUnk = nNodes - 1;
     const els = netlist.elements.map(e => Object.assign({}, e));
     els.forEach(e => {
-      if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") e.branch = nUnk++;
-      else if (e.kind === "TIMER555") e.latch = nUnk++;
+      if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L" || e.kind === "E") e.branch = nUnk++;
+      else if (e.kind === "TIMER555" || e.kind === "GLOW") e.latch = nUnk++;
       else if (e.kind === "XFMR") {
         e.branches = e.windings.map(() => nUnk++);
         // Inductance matrix: L_jk = AL * Nj * Nk * (j===k ? 1 : k)
@@ -546,8 +566,8 @@
     // conduction, so far from the solution Newton sees no slope there and would throw the pin
     // anywhere; these nodes move at most 2 V an iteration, outside the common damping, and half as far
   // each time they turn back (newtonSolve)
-    const timers = els.filter(e => e.kind === "TIMER555"), capped = timers.length ? new Uint8Array(nNodes) : null;
-    timers.forEach(e => [e.nodes[2], e.nodes[6]].forEach(k => { if (k > 0) capped[k - 1] = 1; }));
+    const timers = els.filter(e => e.kind === "TIMER555" || e.kind === "GLOW"), t555 = timers.filter(e => e.kind === "TIMER555"), capped = t555.length ? new Uint8Array(nNodes) : null;
+    t555.forEach(e => [e.nodes[2], e.nodes[6]].forEach(k => { if (k > 0) capped[k - 1] = 1; }));
     return { nNodes, nUnk, els, timers, capped };
   }
 
@@ -668,6 +688,19 @@
             addB(nd[0], -i); addB(nd[1], i);
             break;
           }
+          case "E": {
+            // nodes out+, out−, ctl+, ctl−: v(out+) − v(out−) = gain · (v(ctl+) − v(ctl−)), its current a branch
+            const br = e.branch;
+            if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
+            if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
+            if (nd[2] > 0) addAu(br, nd[2] - 1, -e.gain);
+            if (nd[3] > 0) addAu(br, nd[3] - 1, e.gain);
+            break;
+          }
+          case "G":
+            // nodes out+, out−, ctl+, ctl−: gm · (v(ctl+) − v(ctl−)) flows out of out+, through the source, into out−
+            addA(nd[0], nd[2], e.gm); addA(nd[0], nd[3], -e.gm); addA(nd[1], nd[2], -e.gm); addA(nd[1], nd[3], e.gm);
+            break;
           case "D": {
             const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852;
             const vcrit = nVt * Math.log(nVt / (Math.SQRT2 * Is));
@@ -743,6 +776,12 @@
             stampNonlinear(tn, V => timerCurrents(V, q), tn.map(k => vn(x, k)), 1e-6);
             break;
           }
+          case "GLOW": {
+            const q = latchOf(e, x0);
+            addAu(e.latch, e.latch, 1); b[e.latch] += q;
+            stampNonlinear(nd, V => glowCurrents(V, e.model, q), nd.map(k => vn(x, k)), 1e-6);
+            break;
+          }
         }
       }
 
@@ -793,7 +832,7 @@
     for (let k = 0; k < 4 && r.ok && circ.timers.length; k++) {
       const x = r.x.slice();
       let flipped = false;
-      circ.timers.forEach(e => { const q = latchOf(e, x), n = timerNext(timerMargins(e, x), q); if (n !== q) { x[e.latch] = n; flipped = true; } });
+      circ.timers.forEach(e => { const q = latchOf(e, x), n = latchNext(e, latchMargins(e, x), q); if (n !== q) { x[e.latch] = n; flipped = true; } });
       if (!flipped) break;
       const r2 = dcSolve(circ, x);
       if (!r2.ok) break;
@@ -885,6 +924,9 @@
     if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") return { i: x[e.branch], vd: v[0] - v[1] };
     if (e.kind === "C") return { vd: v[0] - v[1] };
     if (e.kind === "I") return { i: e.i, vd: v[0] - v[1] };
+    if (e.kind === "E") return { i: x[e.branch], vd: v[0] - v[1], vc: v[2] - v[3] };
+    if (e.kind === "G") return { i: e.gm * (v[2] - v[3]), vd: v[0] - v[1], vc: v[2] - v[3] };
+    if (e.kind === "GLOW") { const I = glowCurrents(v, e.model, latchOf(e, x)); return { q: latchOf(e, x), vd: v[0] - v[1], i: I[0] }; }
     if (e.kind === "TIMER555") {
       const q = latchOf(e, x), V = [v[0], v[2], v[6], v[7]], I = timerCurrents(V, q);
       return { q, vout: V[1] - V[0], iout: -I[1], idis: I[2], vcc: V[3] - V[0], pd: I.reduce((s, i, k) => s + i * V[k], 0) };
@@ -900,7 +942,8 @@
       case "R": return two((v[0] - v[1]) / Math.max(e.r, 1e-6));
       case "C": return two(0);
       case "I": return two(e.i);
-      case "L": case "V": case "VSRC": return two(x[e.branch]);
+      case "L": case "V": case "VSRC": case "E": return two(x[e.branch]);
+      case "G": return two(e.gm * (v[2] - v[3]));
       case "D": return two(deviceState(e, x).i);
       case "VDIODE": return two(deviceState(e, x).i);
       case "XFMR": { const out = []; e.windings.forEach((w, j) => { const i = x[e.branches[j]]; out.push([w.a, i], [w.b, -i]); }); return out; }
@@ -910,6 +953,7 @@
       case "MOS": return Semi.mos(v, e.model).map((i, k) => [nd[k], i]);
       case "TIMER555": { const I = timerCurrents([v[0], v[2], v[6], v[7]], latchOf(e, x)); return [[nd[0], I[0]], [nd[2], I[1]], [nd[6], I[2]], [nd[7], I[3]]]; }
       case "OPAMP": return Semi.opamp(v, e.model).map((i, k) => [nd[k], i]);
+      case "GLOW": return two(glowCurrents(v, e.model, latchOf(e, x))[0]);
       case "REG": return Semi.reg(v, e.model).map((i, k) => [nd[k], i]);
       case "SHUNT": return Semi.shunt(v, e.model).map((i, k) => [nd[k], i]);
       default: return [];
@@ -1126,7 +1170,7 @@
         // voltage source's current is no state (each step makes it anew), so it is neither moved nor compared
         const st = [];
         for (let i = 0; i < nodeCount - 1; i++) st.push(i);
-        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); else if (e.kind === "TIMER555") st.push(e.latch); });
+        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); else if (e.kind === "TIMER555" || e.kind === "GLOW") st.push(e.latch); });
         // each part of the state weighed by its size over a period (a winding's current may pass zero
         // just as the period starts): one period run while the peaks are noted
         peak = new Float64Array(x.length);
@@ -1243,16 +1287,19 @@
     // before the capture that takes it past its start.
     let fOsc = 0;
     if (!freqs.length && circ.timers.length) {
-      const e0 = circ.timers[0], tLimit = opts.oscLimit || 30, falls = [];
+      const e0 = circ.timers.find(e => e.kind === "TIMER555") || circ.timers[0], tLimit = opts.oscLimit || 30, falls = [];
+      let rose = false;
       let w = window, hh = w / 400;
-      const fail = () => { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; };
-      // on at step hh until the output has fallen n times in all, or past tEnd; false: did not converge
+      const fail = () => { circ.onFlip = null; result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; };
+      // on at step hh until the output has fallen n times in all, or past tEnd; false: did not converge.
+      // A fall counts once the latch has risen (one before that only leaves the DC state, no whole
+      // cycle before it), at the time it flipped
+      circ.onFlip = (e, want, tf) => { if (e !== e0) return; if (want) rose = true; else if (rose) falls.push(tf); };
       const until = (n, tEnd) => {
         while (falls.length < n && t < tEnd && Date.now() - t0 < budgetMs * 0.5) {
-          const q = latchOf(e0, x), tn = t + hh, nx = step(x, tn, hh);
+          const tn = t + hh, nx = step(x, tn, hh);
           if (!nx) return false;
           x = nx; t = tn;
-          if (q && !latchOf(e0, x)) falls.push(t);
         }
         return true;
       };
@@ -1260,19 +1307,22 @@
         if (!until(1, t + w)) return fail();
         if (!falls.length) { w *= 2; hh = w / 400; }
       }
-      if (falls.length && !until(2, tLimit)) return fail();
+      // timed from the second fall to the third: the first cycle may start from wherever the DC state left it
+      if (falls.length && !until(3, tLimit)) return fail();
       // a cycle of fewer than 200 steps (a fast timer found in the first window) is timed again, finer
       for (let k = 0; k < 3 && falls.length >= 2 && falls[falls.length - 1] - falls[falls.length - 2] < 200 * hh; k++) {
         hh = (falls[falls.length - 1] - falls[falls.length - 2]) / 400;
         if (!until(falls.length + 2, tLimit)) return fail();
       }
-      if (falls.length >= 2) {
+      // a latch that flips every step or two (a glow tube that cannot keep its discharge) chatters: no cycle to time
+      if (falls.length >= 2 && falls[falls.length - 1] - falls[falls.length - 2] >= 100 * hh) {
         const T = falls[falls.length - 1] - falls[falls.length - 2];
         period = T; fOsc = 1 / T;
         capture = T * Math.max(3, Math.ceil(window / T - 1e-9));
         stepsPerPeriod = 400; h = T / stepsPerPeriod; captureSteps = Math.round(capture / h);
       }
       else if (!runPeriod(h, captureSteps)) return fail();
+      circ.onFlip = null;
       xBack = null;
     }
 
@@ -1518,6 +1568,12 @@
           });
           break;
         }
+        case "E":
+          branch(nd[0], nd[1], e.branch);
+          if (nd[2] > 0) Gm[at(e.branch, nd[2] - 1)] -= e.gain;
+          if (nd[3] > 0) Gm[at(e.branch, nd[3] - 1)] += e.gain;
+          break;
+        case "G": addG(nd[0], nd[2], e.gm); addG(nd[0], nd[3], -e.gm); addG(nd[1], nd[2], -e.gm); addG(nd[1], nd[3], e.gm); break;
         case "V": case "VSRC": {
           branch(nd[0], nd[1], e.branch);
           const inp = inputs.get(e.id);
@@ -1540,6 +1596,7 @@
         case "PENTODE": jac(nd, V => { const [ia, ig, ig2] = tubeCurrents(e, V[0] - V[3], V[1] - V[3], V[2] - V[3]); return [ia, ig, ig2, -(ia + ig + ig2)]; }, 1e-3); break;
         // a 555: its output stage as it stands at the operating point, the latch fixed
         case "TIMER555": { Gm[at(e.latch, e.latch)] = 1; const q = latchOf(e, x); jac([nd[0], nd[2], nd[6], nd[7]], V => timerCurrents(V, q), 1e-4); break; }
+        case "GLOW": { Gm[at(e.latch, e.latch)] = 1; const q = latchOf(e, x); jac(nd, V => glowCurrents(V, e.model, q), 1e-4); break; }
       }
     }
     const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, KA = acPoints(opts);

@@ -55,7 +55,7 @@ test("SMD versions: chips, diodes, V-chip electrolytics, SOT-23 / SOT-223 / D²P
   // every SMD footprint: pads on one layer, no drill, inside the courtyard
   const names = new Set();
   for (const [type, def] of Object.entries(L.LIB)) {
-    if (["frame", "note", "ground", "offsheet", "rail", "scope"].includes(type)) continue;
+    if (["frame", "note", "ground", "offsheet", "rail", "scope", "vcvs", "vccs"].includes(type)) continue;
     const variants = type === "npn" || type === "pnp" ? Object.keys(L.BJTS).filter(k => (L.BJTS[k].pol > 0) === (type === "npn")).map(model => ({ model }))
       : type === "nmos" || type === "pmos" ? Object.keys(L.MOSFETS).filter(k => (L.MOSFETS[k].pol > 0) === (type === "nmos")).map(model => ({ model }))
       : type === "opamp" ? Object.keys(L.OPAMPS).map(model => ({ model })) : type === "zener" ? Object.keys(L.ZENERS).map(model => ({ model })) : type === "diode" ? ["1N4007", "1N4148"].map(model => ({ model }))

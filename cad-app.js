@@ -1208,7 +1208,7 @@
         prevFill.call(this, t, 0, 0, mw); this.restore();
       };
     }
-    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "rail" || c.type === "isrc" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
+    ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "rail" || c.type === "isrc" || c.type === "vcvs" || c.type === "vccs" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
     if (c.type === "led" && !ghost && !S.printing) c._lit = ledLevel(c);
@@ -1590,6 +1590,8 @@
     Object.entries(L.BRIDGES).forEach(([k, b]) => out.push(["Semiconductors", `Bridge rectifier · ${k}`, b.use, "bridge", { model: k }, `${k} bridge rectifier ${b.use}`]));
     Object.entries(L.NTCS).forEach(([k, m]) => out.push(["Passive", `Inrush limiter · ${k}`, m.use, "ntc", { model: k }, `${k} ntc thermistor inrush current limiter soft start ${m.use}`]));
     Object.entries(L.MOVS).forEach(([k, m]) => out.push(["Passive", `Varistor · ${k}`, m.use, "mov", { model: k }, `${k} mov varistor surge protection ${m.use}`]));
+    Object.entries(L.GASREGS).forEach(([k, m]) => out.push(["Gas-discharge tubes", `Voltage regulator · ${k}`, m.use, "gasreg", { model: k }, `${k} ${k.replace("0", "o")} vr gas regulator glow discharge stabilizer ${m.use}`]));
+    L.ITX_PRESETS.forEach(p => out.push(["Transformers", p.name, "", "itx", Object.assign({}, ...["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"].map(k => ({ [k]: p[k] }))), `${p.name} transformer interstage input step-up`]));
     Object.entries(L.JACKS).forEach(([k, j]) => out.push(["Ground & connectors", `Jack · ${j.use}`, k, "jack", { kind: k }, `jack socket input output ${k} ${j.use} phone headphone`]));
     Object.entries(L.OUTPUT_TX).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `${m.w} W ${m.ma} mA`, "opt_cat", { model: k }, `${k} ${m.name} output transformer single-ended`]));
     Object.entries(L.POWER_TX).forEach(([k, m]) => out.push(["Transformers", `Power · ${m.name}`, m.rated, "ptx_cat", { model: k }, `${k} ${m.name} power transformer ${m.rated}`]));
@@ -1918,7 +1920,7 @@
     });
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
-    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], fuse: [["1", "2"]], ntc: [["1", "2"]], mov: [["1", "2"]], diode: [["A", "K"]], bridge: [["+", "-"], ["AC1", "AC2"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
+    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], fuse: [["1", "2"]], ntc: [["1", "2"]], mov: [["1", "2"]], gasreg: [["A", "K"]], itx: [["P1", "P2"], ["S1", "S2"]], diode: [["A", "K"]], bridge: [["+", "-"], ["AC1", "AC2"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
       opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
@@ -1987,6 +1989,22 @@
         const m = CadLib.NTCS[c.params.model];
         if (m && sp.i > m.imax) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(sp.i, "A", 2)} rms, more than its ${m.imax} A rating.`);
       }
+    });
+    // gas regulators: lit, and within their current range; interstage transformers: the primary's DC within the gap's rating
+    S.comps.forEach(c => {
+      if (c.type !== "gasreg" || !S.sim.result) return;
+      const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.GASREGS[c.params.model];
+      if (!d || !m) return;
+      if (!d.q) issues.push(`${c.label} (${c.params.model}) does not strike: it needs ${m.vs} V across it to light, and then ${m.imin * 1000}–${m.imax * 1000} mA through it.`);
+      else if (d.i > m.imax) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(d.i, "A", 2)}, more than its ${m.imax * 1000} mA maximum: raise its series resistor.`);
+      else if (d.i < m.imin) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(d.i, "A", 2)}, less than the ${m.imin * 1000} mA it needs to regulate: lower its series resistor or lighten the load.`);
+    });
+    S.comps.forEach(c => {
+      if (c.type !== "itx" || !S.sim.result) return;
+      const i = pinCurrent(c, "P1"), lim = +c.params.idc || 0;
+      if (i === null) return;
+      if (lim > 0 && Math.abs(i) > lim) issues.push(`${c.label} has ${fmtEng(Math.abs(i), "A", 2)} DC in its primary, more than the ${fmtEng(lim, "A")} it is gapped for: the core saturates.`);
+      else if (lim === 0 && Math.abs(i) > 0.5e-3) issues.push(`${c.label} is ungapped but has ${fmtEng(Math.abs(i), "A", 2)} DC in its primary: feed it through a capacitor (parafeed) or use a gapped one.`);
     });
     // varistors: the voltage across them within their continuous rating
     S.comps.forEach(c => {
@@ -2411,6 +2429,15 @@
         case "L": lines.push(`L${id} ${nd[0]} ${nd[1]} ${e.l}`); break;
         case "V": lines.push(`V${id} ${nd[0]} ${nd[1]} DC ${e.v}`); break;
         case "I": lines.push(`I${id} ${nd[0]} ${nd[1]} DC ${e.i}`); break;
+        case "E": lines.push(`E${id} ${nd.join(" ")} ${e.gain}`); break;
+        case "G": lines.push(`G${id} ${nd.join(" ")} ${e.gm}`); break;
+        case "GLOW": {
+          // no glow discharge in SPICE: lit, a breakdown diode at the maintaining voltage with the regulation as its RS
+          const m = e.model;
+          lines.push(`* ${id}: glow regulator, lit (maintains ${m.vm} V, strikes at ${m.vs} V, out below ${m.iext * 1000} mA: not in this model)`);
+          lines.push(`D${id} ${nd[1]} ${nd[0]} DGLOW_${id}`, `.model DGLOW_${id} D(Is=1e-14 N=1 BV=${m.vm} IBV=1e-6 RS=${m.r})`);
+          break;
+        }
         case "VSRC": lines.push(e.wave === "sine" ? `V${id} ${nd[0]} ${nd[1]} SIN(${e.offset || 0} ${e.amp} ${e.freq})` : `V${id} ${nd[0]} ${nd[1]} PULSE(${(e.offset || 0) - e.amp} ${(e.offset || 0) + e.amp} 0 ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0 : 0.5 / e.freq} ${1 / e.freq})`); break;
         case "D": lines.push(`D${id} ${nd[0]} ${nd[1]} DMOD_${id}`); lines.push(`.model DMOD_${id} D(Is=${e.is} N=${e.n}${e.tt ? ` TT=${e.tt}` : ""}${e.cj ? ` CJO=${e.cj} M=0` : ""})`); break;
         case "BJT": {

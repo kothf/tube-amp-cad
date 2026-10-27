@@ -6,6 +6,26 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.107.0] - 2026-10-27
+
+### Added
+- Gas voltage regulators 0A2, 0B2, 0A3, 0C3, 0D3 (palette: Gas-discharge tubes). Each is dark until its striking voltage. Once lit it holds its maintaining voltage plus its regulation, and it goes out below about 2 mA, so a capacitor across one makes a relaxation oscillator. The inspector shows whether it is lit. Checks warn when it does not strike or runs outside its current range. On the board it sits in a B7G or octal socket (anode pin 5, cathode pin 2). The SPICE export writes it as a breakdown diode.
+- Interstage and input transformers (Transformers) with:
+  - a turns ratio and an optional centre-tapped secondary;
+  - primary and leakage inductance, winding capacitance and DCRs;
+  - the primary DC the core is gapped for (Checks warn above it, or at any DC when ungapped);
+  - presets for 1:1 and 1:2 CT interstages, a microphone 1:10, a moving-coil step-up and a line input;
+  - EI board footprints.
+- Controlled sources (Sources): a voltage-controlled voltage source (SPICE E) and current source (SPICE G), exported as E and G.
+- Op-amps NE5532, OPA134, OPA2134 and LM4562.
+
+### Changed
+- An op-amp's second stage scales with its gain-bandwidth above 3 MHz, so fast types keep the datasheet's bandwidth.
+- A free-running latch (a 555, or a glow tube relaxing) is timed from its second fall to its third, at the instants it flips. Before, the first cycle could start from the DC state, and a strike and an extinction within one step went unseen. A latch that chatters every step is not taken for an oscillator.
+
+### QA
+- E, G and the transformer agree with ngspice's E, G and coupled inductors to 1 ppm over 1 Hz–1 MHz. The relaxation oscillator's period matches RC·ln((E − Vm)/(E − Vs)) within 1 %. The op-amps' gain, bandwidth, slew rate, swing and currents match their datasheets.
+
 ## [3.106.0] - 2026-10-27
 
 ### Added

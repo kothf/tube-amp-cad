@@ -13,7 +13,7 @@
   ];
   // parts without a designator (frame, note, ground, sheet connector) never appear;
   // sources and instruments only when asked for
-  const BENCH = new Set(["vdc", "isrc", "siggen", "mains", "scope"]);
+  const BENCH = new Set(["vdc", "isrc", "vcvs", "vccs", "siggen", "mains", "scope"]);
 
   // A capacitor's voltage rating for the bill (when the part has none set): the first of its makers' standard ratings at or
   // above the simulated peak voltage across it plus a 25 % margin (the part runs at 80 % or less
@@ -70,6 +70,10 @@
       case "vdc": return ["DC supply (bench)", f(p.v, "V"), ""];
       case "siggen": return ["Signal generator (bench)", "", ""];
       case "isrc": return ["Current source (ideal)", f(p.i, "A"), ""];
+      case "gasreg": { const m = L.GASREGS[p.model] || {}; return ["Gas voltage regulator tube", p.model, `${m.vm} V, ${m.imin * 1000}–${m.imax * 1000} mA, ${m.socket === "OCTAL" ? "octal" : "B7G"} socket`]; }
+      case "itx": return [`Transformer, ${+p.idc > 0 ? "interstage (gapped)" : "signal"}`, "1:" + p.ratio + (p.ct === "yes" ? " CT" : ""), "Lp " + f(p.lp, "H") + ", DCR " + f(p.dcrp, "Ω") + " / " + f(p.dcrs, "Ω") + (+p.idc > 0 ? ", " + f(p.idc, "A") + " DC" : "")];
+      case "vcvs": return ["Voltage-controlled voltage source (ideal)", "×" + p.gain, ""];
+      case "vccs": return ["Voltage-controlled current source (ideal)", f(p.gm, "S"), ""];
       case "mains": return ["AC mains", p.vrms + " V " + p.freq + " Hz", ""];
       case "scope": return ["Oscilloscope (bench)", "", ""];
       default: { const d = L.LIB[c.type]; return [d ? d.name : c.type, d && d.value ? d.value(c) : "", ""]; }

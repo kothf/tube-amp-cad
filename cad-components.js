@@ -239,6 +239,18 @@
     line(ctx, [-30, 0, -4, 0]);
   }
 
+  // a controlled source: the diamond of a dependent source on the output pins (+ / − for a
+  // voltage, the arrow of the current for a current), the control pins on the left, marked + and −
+  function drawControlled(ctx, current) {
+    line(ctx, [10, -30, 10, -14]); line(ctx, [10, 14, 10, 30]);
+    line(ctx, [-30, -20, -16, -20]); line(ctx, [-30, 20, -16, 20]);
+    ctx.beginPath(); ctx.moveTo(10, -14); ctx.lineTo(24, 0); ctx.lineTo(10, 14); ctx.lineTo(-4, 0); ctx.closePath(); ctx.stroke();
+    if (current) { line(ctx, [10, 8, 10, -6]); line(ctx, [6, -2, 10, -8, 14, -2]); }
+    else { line(ctx, [7, -6, 13, -6]); line(ctx, [10, -9, 10, -3]); line(ctx, [7, 6, 13, 6]); }
+    ctx.fillStyle = COL.text; ctx.font = "9px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("+", -22, -13); ctx.fillText("−", -22, 13);
+    ctx.textBaseline = "alphabetic";
+  }
   const DRAW = {
     resistor(ctx, c) {
       line(ctx, [-30, 0, -15, 0]); line(ctx, [15, 0, 30, 0]);
@@ -504,6 +516,8 @@
       ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
       line(ctx, [0, 8, 0, -6]); line(ctx, [-4, -2, 0, -8, 4, -2]);
     },
+    vcvs(ctx) { drawControlled(ctx, false); },
+    vccs(ctx) { drawControlled(ctx, true); },
     siggen(ctx) {
       // IEC 60617 static generator (square with G), qualified with a sine for alternating output
       line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
@@ -543,6 +557,18 @@
       line(ctx, [0, -32, 0, 32]);
       line(ctx, [-40, -30, -12, -30]); line(ctx, [-40, 30, -12, 30]); line(ctx, [12, -30, 40, -30]); line(ctx, [12, 30, 40, 30]);
       ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(-20, -24, 2, 0, Math.PI * 2); ctx.arc(20, -24, 2, 0, Math.PI * 2); ctx.fill();
+    },
+    itx(ctx, c) {
+      DRAW.opt_se(ctx);
+      if (c && c.params.ct === "yes") line(ctx, [12, 0, 40, 0]);
+    },
+    gasreg(ctx) {
+      // a cold-cathode tube: the envelope with the dot of its gas fill, the anode plate above,
+      // the cold cathode (an open cylinder) below
+      ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.stroke();
+      line(ctx, [0, -30, 0, -8]); line(ctx, [-8, -8, 8, -8]);
+      line(ctx, [0, 30, 0, 12]); ctx.beginPath(); ctx.arc(0, 6, 6, 0, Math.PI); ctx.stroke();
+      ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(11, 0, 2.2, 0, Math.PI * 2); ctx.fill();
     },
     opt_pp(ctx) {
       ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(-12, -40 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
@@ -879,12 +905,39 @@
   // of V− with no load (V), supply current iq per amplifier (A), vmax: the largest V+ − V−.
   // units: amplifiers in the package (DIP-8 or DIP-14). cc: the internal Miller capacitor;
   // the LM301 has none and takes its own between pins 1 and 8 (30 pF: unity-gain stable).
+  // Glow-discharge voltage regulators (sim-engine.js GLOW): maintaining voltage vm, striking
+  // voltage vs (the datasheet's minimum supply for a sure start), regulation r (the rise over the
+  // current range, per ampere), current range imin–imax, extinction iext; pins A 5, K 2 in both
+  // bases (B7G 0A2/0B2: K also on 4 and 7, a load-disconnect jumper on 3–6; octal: jumper 3–7)
+  const GASREGS = {
+    "0A2": { vm: 150, vs: 185, r: 80, imin: 5e-3, imax: 30e-3, iext: 2e-3, socket: "B7G", use: "150 V, miniature" },
+    "0B2": { vm: 108, vs: 133, r: 40, imin: 5e-3, imax: 30e-3, iext: 2e-3, socket: "B7G", use: "108 V, miniature" },
+    "0A3": { vm: 75, vs: 105, r: 140, imin: 5e-3, imax: 40e-3, iext: 2e-3, socket: "OCTAL", use: "75 V, octal (VR75)" },
+    "0C3": { vm: 108, vs: 133, r: 57, imin: 5e-3, imax: 40e-3, iext: 2e-3, socket: "OCTAL", use: "108 V, octal (VR105)" },
+    "0D3": { vm: 153, vs: 185, r: 115, imin: 5e-3, imax: 40e-3, iext: 2e-3, socket: "OCTAL", use: "153 V, octal (VR150)" }
+  };
+  // interstage and input transformers: typical values for each use (fill in your transformer's
+  // datasheet values over them). ratio: secondary to primary turns
+  const ITX_PRESETS = [
+    { id: "is11", name: "Interstage 1:1, gapped for 10 mA", ratio: 1, lp: 40, dcrp: 400, dcrs: 450, llk: 15e-3, cs: 150e-12, idc: 10e-3, ct: "no" },
+    { id: "is12ct", name: "Interstage 1:2 centre-tapped, gapped for 15 mA (SE driver to push-pull grids)", ratio: 2, lp: 30, dcrp: 300, dcrs: 1200, llk: 20e-3, cs: 120e-12, idc: 15e-3, ct: "yes" },
+    { id: "is11pp", name: "Interstage 1:1 centre-tapped, ungapped (push-pull driver)", ratio: 1, lp: 150, dcrp: 600, dcrs: 650, llk: 25e-3, cs: 150e-12, idc: 0, ct: "yes" },
+    { id: "mic10", name: "Microphone input 1:10 (150 Ω : 15 kΩ)", ratio: 10, lp: 8, dcrp: 20, dcrs: 2500, llk: 0.5e-3, cs: 50e-12, idc: 0, ct: "no" },
+    { id: "mc10", name: "Moving-coil step-up 1:10 (40 Ω : 4 kΩ)", ratio: 10, lp: 2, dcrp: 3, dcrs: 300, llk: 0.1e-3, cs: 80e-12, idc: 0, ct: "no" },
+    { id: "line11", name: "Line input 1:1 (10 kΩ : 10 kΩ)", ratio: 1, lp: 20, dcrp: 50, dcrs: 60, llk: 2e-3, cs: 100e-12, idc: 0, ct: "no" }
+  ];
+  const ITX_KEYS = ["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"];
+  const itxPreset = id => { const p = ITX_PRESETS.find(q => q.id === id); return Object.assign({}, ...ITX_KEYS.map(k => ({ [k]: p[k] }))); };
   const OPAMPS = {
     "LM741": { units: 1, a0: 200e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 80e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.7e-3, vmax: 36, cc: 30e-12, input: "bipolar (NPN)", use: "the classic general-purpose op-amp" },
     "LM301A": { units: 1, a0: 160e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 70e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.8e-3, vmax: 36, cc: 0, input: "bipolar (NPN)", use: "externally compensated, 30 pF between pins 1 and 8" },
     "TL071": { units: 1, a0: 200e3, gbw: 3e6, sr: 13e6, rin: 1e12, ib: 30e-12, ro: 200, isc: 25e-3, isk: 25e-3, dhi: 1.3, dlo: 1.3, iq: 1.4e-3, vmax: 36, cc: 10e-12, input: "JFET", use: "low-noise JFET input, audio" },
     "TL072": { units: 2, a0: 200e3, gbw: 3e6, sr: 13e6, rin: 1e12, ib: 30e-12, ro: 200, isc: 25e-3, isk: 25e-3, dhi: 1.3, dlo: 1.3, iq: 1.4e-3, vmax: 36, cc: 10e-12, input: "JFET", use: "dual low-noise JFET input, audio" },
     "TL074": { units: 4, a0: 200e3, gbw: 3e6, sr: 13e6, rin: 1e12, ib: 30e-12, ro: 200, isc: 25e-3, isk: 25e-3, dhi: 1.3, dlo: 1.3, iq: 1.4e-3, vmax: 36, cc: 10e-12, input: "JFET", use: "quad low-noise JFET input, audio" },
+    "NE5532": { units: 2, a0: 100e3, gbw: 10e6, sr: 9e6, rin: 300e3, ib: 200e-9, ro: 50, isc: 38e-3, isk: 38e-3, dhi: 1.5, dlo: 1.5, iq: 4e-3, vmax: 44, cc: 10e-12, input: "bipolar (NPN)", use: "dual low-noise bipolar, drives 600 Ω" },
+    "OPA134": { units: 1, a0: 1e6, gbw: 8e6, sr: 20e6, rin: 1e13, ib: 5e-12, ro: 50, isc: 40e-3, isk: 40e-3, dhi: 1, dlo: 1, iq: 4e-3, vmax: 36, cc: 10e-12, input: "FET", use: "low-distortion FET input, audio" },
+    "OPA2134": { units: 2, a0: 1e6, gbw: 8e6, sr: 20e6, rin: 1e13, ib: 5e-12, ro: 50, isc: 40e-3, isk: 40e-3, dhi: 1, dlo: 1, iq: 4e-3, vmax: 36, cc: 10e-12, input: "FET", use: "dual low-distortion FET input, audio" },
+    "LM4562": { units: 2, a0: 1e7, gbw: 55e6, sr: 20e6, rin: 30e3, ib: 10e-9, ro: 50, isc: 53e-3, isk: 42e-3, dhi: 1.4, dlo: 1.4, iq: 5e-3, vmax: 34, cc: 10e-12, input: "bipolar (NPN)", use: "dual ultra-low distortion bipolar, audio" },
     "LM324": { units: 4, a0: 100e3, gbw: 1.2e6, sr: 0.5e6, rin: 2e6, ib: -20e-9, ro: 100, isc: 40e-3, isk: 20e-3, dhi: 1.5, dlo: 0.02, iq: 0.25e-3, vmax: 32, cc: 10e-12, input: "bipolar (PNP), down to V−", use: "quad, single supply: inputs and output reach V−" }
   };
   // the pins of each amplifier in its package: IN+, IN−, OUT and the supply (pins 1 and 8 of an
@@ -894,14 +947,16 @@
     2: [{ "+": 3, "-": 2, OUT: 1 }, { "+": 5, "-": 6, OUT: 7 }],
     4: [{ "+": 3, "-": 2, OUT: 1 }, { "+": 5, "-": 6, OUT: 7 }, { "+": 10, "-": 9, OUT: 8 }, { "+": 12, "-": 13, OUT: 14 }]
   };
+  const CONTROLLED_PINS = () => [{ id: "+", x: 10, y: -30, name: "out +" }, { id: "-", x: 10, y: 30, name: "out −" }, { id: "C+", x: -30, y: -20, name: "control +" }, { id: "C-", x: -30, y: 20, name: "control −" }];
   const OPAMP_SUPPLY = { 1: { "V+": 7, "V-": 4 }, 2: { "V+": 8, "V-": 4 }, 4: { "V+": 4, "V-": 11 } };
   // the amplifier of a dual or quad from the designation suffix: DA1.2 is the second one
   const opampUnit = c => { const m = OPAMPS[c.params.model] || OPAMPS.TL071, k = +((/\.(\d+)$/.exec(c.label || "") || [])[1] || 1); return k >= 1 && k <= m.units ? k : 1; };
   // the engine's macromodel (sim-engine.js Semi.opamp) from the datasheet values: stage two has a
-  // gain of 1000, stage one the rest; with the Miller capacitor Cc, gm1 = 2π·GBW·Cc and i1 = SR·Cc
+  // gain of 1000, stage one the rest; with the Miller capacitor Cc, gm1 = 2π·GBW·Cc and i1 = SR·Cc.
+  // Above 3 MHz stage two's gm grows with the GBW, so its pole stays as far above it
   function opampModel(m) {
-    const cc = m.cc || 30e-12, gm1 = 2 * Math.PI * m.gbw * cc, gm2 = 2e-3, r2 = 5e5;
-    return { gm1, i1: m.sr * cc, r1: m.a0 / (gm1 * gm2 * r2), gm2, i2: 2e-3, r2, rin: m.rin, ib: m.ib, ro: m.ro, isc: m.isc, isk: m.isk, dhi: m.dhi, dlo: m.dlo, iq: m.iq };
+    const cc = m.cc || 30e-12, gm1 = 2 * Math.PI * m.gbw * cc, k = Math.max(1, m.gbw / 3e6), gm2 = 2e-3 * k, r2 = 5e5 / k;
+    return { gm1, i1: m.sr * cc, r1: m.a0 / (gm1 * gm2 * r2), gm2, i2: 2e-3 * k, r2, rin: m.rin, ib: m.ib, ro: m.ro, isc: m.isc, isk: m.isk, dhi: m.dhi, dlo: m.dlo, iq: m.iq };
   }
   // the catalog of a transistor part type, and which types are transistors (FETs: Vds, Id, Vgs)
   const isTransistor = t => /^(npn|pnp|nmos|pmos|njf|pjf)$/.test(t), isFet = t => /^(nmos|pmos|njf|pjf)$/.test(t);
@@ -1115,6 +1170,63 @@
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(p.dcrs, 1e-3) });
         out.push({ id: c.id, kind: "XFMR", nodes: [], lp: Math.max(p.lp, 1e-3), k: 0.999, primaryTurns: 1,
           windings: [{ a: a, b: net("P2"), turns: 1 }, { a: s, b: net("S2"), turns: 1 / n }] });
+      }
+    },
+    itx: {
+      name: "Interstage / input transformer", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
+      defaults: itxPreset("is11"),
+      pins: c => [{ id: "P1", x: -40, y: -30, name: "primary (start, dot)" }, { id: "P2", x: -40, y: 30, name: "primary (end)" }, { id: "S1", x: 40, y: -30, name: "secondary (start, dot)" },
+        ...(c.params.ct === "yes" ? [{ id: "SC", x: 40, y: 0, name: "secondary centre tap" }] : []), { id: "S2", x: 40, y: 30, name: "secondary (end)" }],
+      value: c => "1:" + fmtEng(c.params.ratio, "") + (c.params.ct === "yes" ? " CT" : ""),
+      fields: [
+        { key: "preset", label: "Kind", kind: "select", wide: true, options: () => [["custom", "Your datasheet values"]].concat(ITX_PRESETS.map(p => [p.id, p.name])),
+          get: c => (ITX_PRESETS.find(p => ITX_KEYS.every(k => (typeof p[k] === "string" ? p[k] === c.params[k] : Math.abs(p[k] - c.params[k]) <= 1e-9 * Math.max(1, Math.abs(p[k]))))) || { id: "custom" }).id,
+          apply: (c, v) => { const p = ITX_PRESETS.find(q => q.id === v); if (p) ITX_KEYS.forEach(k => { c.params[k] = p[k]; }); } },
+        { key: "ratio", label: "Turns ratio, secondary : primary (1 : n)", unit: "", kind: "eng" },
+        { key: "ct", label: "Secondary centre tap", kind: "select", options: [["no", "No"], ["yes", "Yes (SC pin)"]] },
+        { key: "lp", label: "Primary inductance", unit: "H", kind: "eng" },
+        { key: "llk", label: "Leakage inductance (primary)", unit: "H", kind: "eng" },
+        { key: "cs", label: "Secondary winding capacitance", unit: "F", kind: "eng" },
+        { key: "dcrp", label: "Primary DCR", unit: "Ω", kind: "eng" },
+        { key: "dcrs", label: "Secondary DCR", unit: "Ω", kind: "eng" },
+        { key: "idc", label: "Primary DC rating (0: ungapped)", unit: "A", kind: "eng" }
+      ],
+      info: c => {
+        const p = c.params, n = +p.ratio || 1;
+        return `A small-signal transformer, 1:${fmtEng(n, "")}${p.ct === "yes" ? " with a centre-tapped secondary (SC) for a push-pull pair's grids" : ""}. ` +
+          `It steps the voltage up ${fmtEng(n, "")} times and the impedance ${fmtEng(n * n, "")} times. The bass falls where the primary inductance (${fmtEng(p.lp, "H")}) meets the source resistance; ` +
+          `the treble where the leakage inductance (${fmtEng(p.llk, "H")}) resonates with the secondary's capacitance (${fmtEng(p.cs, "F")}, ${fmtEng(p.cs * n * n, "F")} seen at the primary): ` +
+          `load the secondary to damp that peak. ${+p.idc > 0 ? `Gapped for ${fmtEng(p.idc, "A")} of DC in the primary (the driver's idle current, parafeed not needed).` : "Ungapped: keep DC out of the primary (parafeed through a capacitor, or a push-pull driver)."} ` +
+          "Not modelled: core saturation and losses (Checks warn when the DC exceeds the rating).";
+      },
+      build: (c, net, alloc, out) => {
+        const p = c.params, n = Math.max(+p.ratio || 1, 1e-3), lp = Math.max(+p.lp || 1, 1e-3), k = Math.min(0.99999, Math.sqrt(Math.max(0, 1 - Math.max(+p.llk || 0, 0) / lp)));
+        const a = alloc(), s = alloc(), ct = p.ct === "yes";
+        out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), a], r: Math.max(+p.dcrp || 0, 1e-3) });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(+p.dcrs || 0, 1e-3) });
+        out.push({ id: c.id, kind: "XFMR", nodes: [], lp, k, primaryTurns: 1,
+          windings: ct ? [{ a, b: net("P2"), turns: 1 }, { a: s, b: net("SC"), turns: n / 2 }, { a: net("SC"), b: net("S2"), turns: n / 2 }]
+            : [{ a, b: net("P2"), turns: 1 }, { a: s, b: net("S2"), turns: n }] });
+        if (+p.cs > 0) out.push({ id: c.id + "#cs", kind: "C", nodes: [net("S1"), net("S2")], c: +p.cs });
+      }
+    },
+    gasreg: {
+      // ГОСТ 2.747: a gas-discharge voltage regulator (стабилитрон тлеющего разряда), VL like any tube
+      name: "Gas voltage regulator", prefix: "VL", group: "Tubes", bbox: [-20, -30, 20, 30],
+      defaults: { model: "0A2" },
+      pins: () => [{ id: "A", x: 0, y: -30, name: "anode" }, { id: "K", x: 0, y: 30, name: "cathode" }],
+      pinNumbers: () => ({ A: "5", K: "2" }),
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(GASREGS).map(([k, m]) => [k, `${k} · ${m.vm} V, ${m.imin * 1000}–${m.imax * 1000} mA · ${m.use}`]) }],
+      info: c => {
+        const m = GASREGS[c.params.model] || GASREGS["0A2"];
+        return `${c.params.model}: a glow-discharge regulator holding about ${m.vm} V across it at ${m.imin * 1000}–${m.imax * 1000} mA (it rises ${(m.r * (m.imax - m.imin)).toFixed(1)} V over that range). ` +
+          `Feed it through a resistor from a supply that reaches its striking voltage (${m.vs} V) at power-on: until then it is dark and passes nothing. Below about ${m.iext * 1000} mA it goes out. ` +
+          `Keep the capacitance across it at 0.1 µF or less: more makes it oscillate (relax). Pins: anode 5, cathode 2 (${m.socket === "B7G" ? "miniature B7G" : "octal"} socket).`;
+      },
+      build: (c, net, alloc, out) => {
+        const m = GASREGS[c.params.model] || GASREGS["0A2"];
+        out.push({ id: c.id, kind: "GLOW", nodes: [net("A"), net("K")], model: { vm: m.vm, vs: m.vs, r: m.r, iext: m.iext } });
       }
     },
     opt_cat: {
@@ -1536,6 +1648,29 @@
         out.push({ id: c.id + "#ro", kind: "R", nodes: [net("+"), net("-")], r: Math.max(c.params.rout, 1e3) });
       }
     },
+    // controlled sources (SPICE E and G): ideal building blocks for a behavioural model, the
+    // control pins draw nothing
+    vcvs: {
+      name: "Voltage-controlled voltage source", prefix: "E", group: "Sources", bbox: [-30, -30, 26, 30],
+      defaults: { gain: 10 },
+      pins: CONTROLLED_PINS,
+      value: c => "×" + fmtEng(c.params.gain, ""),
+      fields: [{ key: "gain", label: "Gain", unit: "V/V", kind: "eng" }],
+      info: () => "An ideal amplifier: the voltage between its output pins is the gain times the voltage between its control pins (+ and − on the left), at any load. The control pins draw no current. SPICE's E source: for a block diagram, a behavioural model or a stand-in for a stage you have not designed yet.",
+      build: (c, net, alloc, out) => { out.push({ id: c.id, kind: "E", nodes: [net("+"), net("-"), net("C+"), net("C-")], gain: +c.params.gain || 0 }); }
+    },
+    vccs: {
+      name: "Voltage-controlled current source", prefix: "G", group: "Sources", bbox: [-30, -30, 26, 30],
+      defaults: { gm: 1e-3, rout: 10e6 },
+      pins: CONTROLLED_PINS,
+      value: c => fmtEng(c.params.gm, "S"),
+      fields: [{ key: "gm", label: "Transconductance", unit: "S", kind: "eng" }, { key: "rout", label: "Output resistance", unit: "Ω", kind: "eng" }],
+      info: () => "An ideal transconductor: the current out of its + pin (the arrow) is gm times the voltage between its control pins, at any voltage across it, with the output resistance in parallel. The control pins draw no current. SPICE's G source: an ideal tube or transistor (gm and ra), an OTA, a behavioural model.",
+      build: (c, net, alloc, out) => {
+        out.push({ id: c.id, kind: "G", nodes: [net("-"), net("+"), net("C+"), net("C-")], gm: +c.params.gm || 0 });
+        out.push({ id: c.id + "#ro", kind: "R", nodes: [net("+"), net("-")], r: Math.max(c.params.rout, 1) });
+      }
+    },
     timer555: {
       // pins in pin-number order (the board's DIP-8 pads and wire pads follow it)
       name: "NE555 timer", prefix: "DA", group: "Integrated circuits", bbox: [-50, -50, 50, 50],
@@ -1750,13 +1885,15 @@
     { group: "Transformers", items: [
       { sub: "Generic: set the values yourself" },
       ["opt_se", null, "Output, single-ended"], ["opt_pp", null, "Output, push-pull / UL"], ["ptx", null, "Power, with mains"],
+      ["itx", null, "Interstage 1:1"], ["itx", itxPreset("is12ct"), "Interstage 1:2 CT (to push-pull)"], ["itx", itxPreset("mic10"), "Input, microphone 1:10"], ["itx", itxPreset("mc10"), "Input, moving-coil step-up"],
       { sub: "Manufactured: Hammond catalog" },
       ["opt_cat", null, "Output 125SE"], ["ptx_cat", null, "Power 300"]] },
     { group: "Sources", items: [
       { sub: "DC supplies" },
       ["vdc"], ["rail"], ["isrc"],
       { sub: "AC sources" },
-      ["siggen"], ["mains"]] },
+      ["siggen"], ["mains"],
+      { sub: "Controlled sources" }, ["vcvs", null, "Voltage-controlled voltage (E)"], ["vccs", null, "Voltage-controlled current (G)"]] },
     { group: "Ground & connectors", items: [["ground"], ["offsheet"],
       { sub: "Connectors" }, ["jack", null, "Jack, 6.35 mm switched"], ["jack", { kind: "RCA" }, "RCA socket"], ["iec"], ["terminal"], ["header"], ["faston"]] },
     { group: "Semiconductors", items: [["diode"], ["diode", { model: "UF4007" }, "Diode, ultrafast"], ["diode", { model: "1N5819" }, "Diode, Schottky"], ["diode", { model: "C3D02060A" }, "Diode, SiC Schottky"], ["bridge"], ["zener"], ["led"],
@@ -1767,10 +1904,11 @@
     { group: "Integrated circuits", items: [
       { sub: "Op-amps" },
       ["opamp", { model: "TL071" }, "TL071 (JFET)"], ["opamp", { model: "TL072" }, "TL072 (dual JFET)"], ["opamp", { model: "TL074" }, "TL074 (quad JFET)"],
-      ["opamp", { model: "LM741" }, "LM741"], ["opamp", { model: "LM301A" }, "LM301A (external comp.)"], ["opamp", { model: "LM324" }, "LM324 (quad, single supply)"],
+      ["opamp", { model: "LM741" }, "LM741"], ["opamp", { model: "LM301A" }, "LM301A (external comp.)"], ["opamp", { model: "LM324" }, "LM324 (quad, single supply)"], ["opamp", { model: "NE5532" }, "NE5532 (dual, low noise)"], ["opamp", { model: "OPA2134" }, "OPA2134 (dual FET, audio)"], ["opamp", { model: "LM4562" }, "LM4562 (dual, audio)"],
       { sub: "Timers" }, ["timer555", null, "NE555 timer"],
       { sub: "Regulators" }, ["reg", { model: "LM317" }, "LM317 adjustable"], ["reg", { model: "LM337" }, "LM337 adjustable, negative"],
       ["reg", { model: "7812" }, "78xx fixed"], ["reg", { model: "7912" }, "79xx fixed, negative"], ["tl431", null, "TL431 shunt reference"]] },
+    { group: "Gas-discharge tubes", items: [["gasreg", null, "Voltage regulator 0A2 (150 V)"], ["gasreg", { model: "0B2" }, "Voltage regulator 0B2 (108 V)"], ["gasreg", { model: "0D3" }, "Voltage regulator 0D3 (153 V, octal)"]] },
     { group: "Instruments", items: [["scope"]] },
     { group: "Document", items: [["frame"], ["note"]] }
   ];
@@ -1877,6 +2015,20 @@
         const v = R.vAcross("+", "-");
         return R.kv("Voltage across (+ to -)", fmtEng(v, "V", 2), v !== null && v > 0 ? "warn" : "") + R.kv("Dissipation", fmtEng(v !== null ? -v * c.params.i : null, "W", 2))
           + (v !== null && v > 0 ? R.note("The + pin is above the - pin: the source drives current uphill and delivers power, which a transistor current source cannot.", "warn") : "");
+      }
+    },
+    vcvs: {
+      readout: (c, R) => {
+        const d = (R.r.dc.devices[c.id] || {}).main;
+        return R.kv("Control (C+ to C−)", fmtEng(R.vAcross("C+", "C-"), "V", 3)) + R.kv("Output (+ to −)", fmtEng(R.vAcross("+", "-"), "V", 3))
+          + R.kv("Output current", fmtEng(d ? -d.i : null, "A", 3));
+      }
+    },
+    vccs: {
+      readout: (c, R) => {
+        const d = (R.r.dc.devices[c.id] || {}).main;
+        return R.kv("Control (C+ to C−)", fmtEng(R.vAcross("C+", "C-"), "V", 3)) + R.kv("Output current (out of +)", fmtEng(d ? d.i : null, "A", 3))
+          + R.kv("Voltage across (+ to −)", fmtEng(R.vAcross("+", "-"), "V", 3));
       }
     },
     timer555: {
@@ -1992,6 +2144,16 @@
       return h;
     }
   };
+  UI.gasreg = {
+    readout: (c, R) => {
+      const d = (R.r.dc.devices[c.id] || {}).main, m = GASREGS[c.params.model];
+      if (!d || !m) return R.note("No data.");
+      let h = R.kv("State", d.q ? "lit (regulating)" : "dark", d.q ? "" : "warn") + R.kv("Voltage (A − K)", fmtEng(d.vd, "V", 3));
+      h += R.kv("Current", fmtEng(d.i, "A", 2) + ` · range ${m.imin * 1000}–${m.imax * 1000} mA`, d.q && (d.i > m.imax ? "bad" : d.i < m.imin ? "warn" : ""));
+      if (!d.q) h += R.note(`Dark: it strikes at ${m.vs} V and goes out below ${m.iext * 1000} mA.`, "warn");
+      return h;
+    }
+  };
   UI.tl431 = {
     readout: (c, R) => {
       const dev = R.r.dc.devices[c.id], d = dev && dev.main, m = SHUNTS[c.params.model], kv = R.kv;
@@ -2058,5 +2220,5 @@
     return wrap;
   }
 
-  root.CadLib = { DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

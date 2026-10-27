@@ -124,7 +124,7 @@ import { readFile } from "node:fs/promises";
       return out;
     });
     const src = (pal.Sources || []).join(" | "), gc = (pal["Ground & connectors"] || []).join(" | ");
-    check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains"
+    check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains | Controlled sources: Voltage-controlled voltage (E) | Controlled sources: Voltage-controlled current (G)"
       && gc === "Ground | Sheet connector | Connectors: Jack, 6.35 mm switched | Connectors: RCA socket | Connectors: IEC mains inlet | Connectors: Terminal block | Connectors: Pin header | Connectors: Faston tab", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
     // the current source: 2 mA from ground up into 10 kΩ gives 20 V; the inspector reads it
     await cad.evaluate(() => {
@@ -349,6 +349,34 @@ import { readFile } from "node:fs/promises";
     const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
     check(/^\* \S+: NTC inrush limiter, self-heated as simulated \(10 ohm at 25 C\)\nR\S+ \S+ \S+ [12]\.\d+$/m.test(sp) && (sp.match(/^\.model DMOD_\S+ D\(Is=\S+ N=475\.2\d+\)$/gm) || []).length === 2,
       "SPICE export: the NTC at its hot resistance, the varistor's two junctions");
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+  }
+  {
+    // an 0A2 fed from 300 V through 10 kΩ: lit at about 151 V, 15 mA (no warnings); through 47 kΩ
+    // it has 3 mA, under the 5 mA it needs (Checks). The BOM names its socket; SPICE gets a breakdown diode
+    const ids = await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const G = add("vdc", { v: 300 }, 200, 300), R = add("resistor", { r: 10e3, w: "5" }, 330, 200), V = add("gasreg", { model: "0A2" }, 450, 300);
+      const g = [[200, 340], [450, 360]].map(([x, y]) => add("ground", {}, x, y));
+      wire(pin(G, "+"), pin(R, "1"), false); wire(pin(R, "2"), pin(V, "A")); wire(pin(G, "-"), pin(g[0], "G")); wire(pin(V, "K"), pin(g[1], "G"));
+      S.sel.comps.add(V.id); C.commit();
+      return { R: R.id, V: V.id };
+    });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /lit \(regulating\)/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+    const d = await cad.evaluate(i => TubeCAD.state.sim.result.dc.devices[i].main, ids.V);
+    let issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    check(d.q === 1 && d.vd > 150.5 && d.vd < 152.5 && d.i > 0.014 && d.i < 0.0152 && !/VL1/.test(issues), `0A2: lit at ${d.vd.toFixed(1)} V, ${(d.i * 1000).toFixed(1)} mA, no warnings (${issues})`);
+    await cad.evaluate(i => { const S = TubeCAD.state; S.comps.find(c => c.id === i).params.r = 47e3; TubeCAD.commit(); }, ids.R);
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && /VL1/.test(TubeCAD.circuitIssues().join(" ")), null, { timeout: 30000 }).catch(() => {});
+    issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    check(/VL1 \(0A2\) carries 3[.,]\d+\s?mA, less than the 5 mA it needs to regulate/.test(issues), `Checks: an 0A2 starved of current (${issues})`);
+    const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => `${r.refs} ${r.desc} ${r.value} ${r.rating}`).join(" | "));
+    check(/VL1 Gas voltage regulator tube 0A2 150 V, 5–30 mA, B7G socket/.test(bom), `BOM: the regulator (${bom})`);
+    const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
+    check(/^\.model DGLOW_\S+ D\(Is=1e-14 N=1 BV=150 IBV=1e-6 RS=80\)$/m.test(sp), "SPICE export: the regulator as a breakdown diode");
     await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
   }
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
