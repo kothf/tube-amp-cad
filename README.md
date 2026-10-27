@@ -505,7 +505,11 @@ the circuit file, so one file holds both.
   controls and connectors never move. Parts and tracks that wall in a pin
   (found by a max-flow escape check) move or come up too. The nets that
   failed are routed first in each round, and what Freerouting leaves is tried
-  once more on a grid (Lee's maze search), kept only if it keeps every rule. The status line lists what moved, and
+  once more on a grid (Lee's maze search), kept only if it keeps every rule.
+  Last, it spreads the movable parts over the whole board (wire length
+  against an electrostatic density of their area, shut-in parts counted
+  bigger), puts each on the nearest legal grid place and routes afresh,
+  keeping that only if it is better. The status line lists what moved, and
   <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the whole run back. On example 07 routed
   from scratch, it leaves 6 connections open.
 - **Unroute** (beside Auto-route) removes every track and via, to route again

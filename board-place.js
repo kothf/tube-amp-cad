@@ -3,6 +3,7 @@
    leaves connections unrouted, the parts near them are nudged so the next pass has room:
      movable(board, model, rats, opts)        -> [part keys]  the parts that may move
      nudge(board, model, keys, opts)          -> { moved, cost0, cost1, tried, taken }
+     spread(board, model, keys, opts)         -> { moved, wire0, wire1, over, iters, failed }  the parts over the whole board
      escape(board, model, conn, rats, opts)   -> per part: can its open pins get out (max-flow), what walls them in
      passage(board, model, conn, rats, opts)  -> per open connection: is there still a way from end to end
      bridge(board, model, conn, rats, opts)   -> a track for the first open connection a grid path reaches (Lee)
@@ -46,16 +47,70 @@
   const inside = (b, o) => [[b.x1, b.y1], [b.x2, b.y1], [b.x1, b.y2], [b.x2, b.y2]].every(([x, y]) => B().edgeDist(x, y, o) >= 0.25);
 
   /** The parts that may move to make room for the unrouted connections (rats: the ratsnest
-      lines left): on the board, not locked, not a valve, transformer, control or connector,
+      lines left): on the board (or over its edge), not locked, not a valve, transformer, control or connector,
       not huge, and within opts.radius (mm, default 8) of an unrouted line or in opts.also (a Set of keys) */
   function movable(board, model, rats, opts) {
     const o = opts || {}, R = o.radius || 8, C = B();
     return model.parts.filter(g => {
       if (!g.place || !g.fp || g.place.locked || FIXED.has(g.type)) return false;
       const b = C.partBox(g);
-      if (area(b) > BIG || !inside(b, board.outline)) return false;
+      if (area(b) > BIG || b.x2 <= 0 || b.y2 <= 0 || b.x1 >= board.outline.w || b.y1 >= board.outline.h) return false;   // entirely off the board: waiting to be placed
       return (o.also && o.also.has(g.key)) || rats.some(r => segBox([r.x1, r.y1, r.x2, r.y2], b) <= R);
     }).map(g => g.key);
+  }
+
+  // A placement in progress and the rules a part's place must keep: the parts (on footprints), trial
+  // places pl (key -> place), the parts that count (onB: on the board), each pad's copper where its
+  // part now is, and legal(k): part k may stand where pl puts it. opts: as nudge's
+  function placeState(board, model, o) {
+    const C = B(), R = board.rules, outl = board.outline;
+    const parts = model.parts.filter(g => g.place && g.fp), byKey = new Map(parts.map(g => [g.key, g]));
+    const pl = new Map(parts.map(g => [g.key, { ...g.place }]));      // the trial placements
+    // on the board: not entirely off it (a panel switch may hang over the edge, its pads still count)
+    const onB = new Set(parts.filter(g => { const b = C.partBox(g); return b.x2 > 0 && b.y2 > 0 && b.x1 < outl.w && b.y1 < outl.h; }).map(g => g.key));
+    // pads: each part's in footprint order, with their nets
+    const padsOf = new Map(); model.pads.forEach(p => { if (!padsOf.has(p.part)) padsOf.set(p.part, []); padsOf.get(p.part).push(p); });
+    const local = new Map(parts.map(g => [g.key, g.fp.pads]));
+    const where = (k, i) => { const q = local.get(k)[i], P = pl.get(k), [x, y] = C.place([q.x, q.y], P), odd = (P.rot || 0) & 1; return { x, y, w: odd ? q.h : q.w, h: odd ? q.w : q.h, shape: q.shape }; };
+    const boxOf = k => C.partBox({ fp: byKey.get(k).fp, place: pl.get(k) });
+    const hot = new Map(parts.map(g => [g.key, g.type === "electrolytic" ? "cap" : C.hotWhy(g, o.netlist, R) ? "hot" : ""]));
+    const heat = R.heatGap > 0 ? R.heatGap : 10, gapC = 0.25;
+    const locked = [];
+    if (o.conn) o.conn.items.forEach(it => { if ((it.kind === "track" && board.tracks[it.ti] && board.tracks[it.ti].locked) || (it.kind === "via" && board.vias[it.vi] && board.vias[it.vi].locked)) locked.push(it); });
+    const needC = (a, b) => (o.clr ? o.clr.need(a, b).c : Math.max(R.clearance || 0.3, 0.3));
+    function legal(k) {
+      const b = boxOf(k), g = byKey.get(k), side = pl.get(k).side || "F";
+      if (!inside(b, outl)) return false;
+      for (const q of parts) {
+        if (q.key === k || !onB.has(q.key)) continue;
+        const c = boxOf(q.key), hk = hot.get(k), hq = hot.get(q.key), gp = (hk === "cap" && hq === "hot") || (hk === "hot" && hq === "cap") ? heat + 0.5 : (pl.get(q.key).side || "F") === side ? gapC : -1;
+        if (gp >= 0 && b.x1 < c.x2 + gp && b.x2 > c.x1 - gp && b.y1 < c.y2 + gp && b.y2 > c.y1 - gp) return false;
+      }
+      for (const h of board.holes || []) { const r = h.d / 2 + 1.9, dx = Math.max(b.x1 - h.x, 0, h.x - b.x2), dy = Math.max(b.y1 - h.y, 0, h.y - b.y2); if (Math.hypot(dx, dy) < r) return false; }
+      for (const ko of board.keepouts || []) if (ko.parts && C.polyHitsPoly(C.boxPoly(b), ko.pts)) return false;
+      // pads: the edge, other parts' pads of other nets, locked copper
+      const mine = (padsOf.get(k) || []).map((p, i) => { const w = where(k, i); return { net: p.net, layers: p.smd ? [side + ".Cu"] : C.COPPER, ...C.padCapsule(w), x: w.x, y: w.y, rr: Math.max(w.w, w.h) / 2 }; });
+      if (mine.some(m => C.edgeDist(m.x, m.y, outl) < (R.edgeClearance || 0.5) + m.rr)) return false;
+      for (const q of parts) {
+        if (q.key === k || !onB.has(q.key)) continue;
+        const c = boxOf(q.key); if (c.x1 > b.x2 + 6 || c.x2 < b.x1 - 6 || c.y1 > b.y2 + 6 || c.y2 < b.y1 - 6) continue;
+        const qs = pl.get(q.key).side || "F";
+        for (let i = 0; i < local.get(q.key).length; i++) {
+          const pq = padsOf.get(q.key)[i], w = where(q.key, i), cq = C.padCapsule(w), ql = pq.smd ? [qs + ".Cu"] : C.COPPER;
+          for (const m of mine) {
+            if (m.net !== null && m.net === pq.net) continue;
+            if (!m.layers.some(L => ql.includes(L))) continue;
+            if (C.segSeg(m.s, cq.s) - m.r - cq.r < needC(m.net, pq.net) - 1e-6) return false;
+          }
+        }
+      }
+      for (const it of locked) for (const m of mine) {
+        if (it.net === m.net || !m.layers.some(L => it.layers.includes(L))) continue;
+        if (C.segSeg(m.s, it.s) - m.r - it.r < needC(m.net, it.net) - 1e-6) return false;
+      }
+      return !!g;
+    }
+    return { parts, byKey, pl, onB, padsOf, local, where, boxOf, legal };
   }
 
   /** Nudge the parts keys (in board.parts) by simulated annealing; model: BoardCore.model of the
@@ -66,17 +121,10 @@
   function nudge(board, model, keys, opts) {
     const C = B(), o = opts || {}, R = board.rules, outl = board.outline, rand = rng(o.seed === undefined ? 1 : o.seed);
     const W = Object.assign({ wire: 1, crowd: 0.25, cross: 4, move: 0.4 }, o.weights || {});
-    const parts = model.parts.filter(g => g.place && g.fp), byKey = new Map(parts.map(g => [g.key, g]));
+    const { parts, byKey, pl, onB, padsOf, local, where, boxOf, legal } = placeState(board, model, o);
     const mov = keys.map(k => byKey.get(k)).filter(Boolean);
     if (!mov.length) return { moved: [], cost0: 0, cost1: 0, tried: 0, taken: 0 };
-    const pl = new Map(parts.map(g => [g.key, { ...g.place }]));      // the trial placements
     const start = new Map(mov.map(g => [g.key, { ...g.place }]));
-    const onB = new Set(parts.filter(g => inside(C.partBox(g), outl)).map(g => g.key));
-    // pads: each part's in footprint order, with their nets
-    const padsOf = new Map(); model.pads.forEach(p => { if (!padsOf.has(p.part)) padsOf.set(p.part, []); padsOf.get(p.part).push(p); });
-    const local = new Map(parts.map(g => [g.key, g.fp.pads]));
-    const where = (k, i) => { const q = local.get(k)[i], P = pl.get(k), [x, y] = C.place([q.x, q.y], P), odd = (P.rot || 0) & 1; return { x, y, w: odd ? q.h : q.w, h: odd ? q.w : q.h, shape: q.shape }; };
-    const boxOf = k => C.partBox({ fp: byKey.get(k).fp, place: pl.get(k) });
     // nets: their pads (part key, index) and how much they count
     const poured = new Set((board.zones || []).map(z => z.net)), names = model.names;
     const nets = new Map();
@@ -148,44 +196,6 @@
     const disp = k => { const a = start.get(k), b = pl.get(k); return a ? Math.hypot(b.x - a.x, b.y - a.y) + (((b.rot || 0) - (a.rot || 0)) & 3 ? 1 : 0) : 0; };
     let dsum = 0;
     const cost = () => W.wire * wire + W.crowd * over + W.cross * crossings + W.move * dsum;
-    // the rules a part's new place must keep
-    const hot = new Map(parts.map(g => [g.key, g.type === "electrolytic" ? "cap" : C.hotWhy(g, o.netlist, R) ? "hot" : ""]));
-    const heat = R.heatGap > 0 ? R.heatGap : 10, gapC = 0.25;
-    const locked = [];
-    if (o.conn) o.conn.items.forEach(it => { if ((it.kind === "track" && board.tracks[it.ti] && board.tracks[it.ti].locked) || (it.kind === "via" && board.vias[it.vi] && board.vias[it.vi].locked)) locked.push(it); });
-    const needC = (a, b) => (o.clr ? o.clr.need(a, b).c : Math.max(R.clearance || 0.3, 0.3));
-    function legal(k) {
-      const b = boxOf(k), g = byKey.get(k), side = pl.get(k).side || "F";
-      if (!inside(b, outl)) return false;
-      for (const q of parts) {
-        if (q.key === k || !onB.has(q.key)) continue;
-        const c = boxOf(q.key), hk = hot.get(k), hq = hot.get(q.key), gp = (hk === "cap" && hq === "hot") || (hk === "hot" && hq === "cap") ? heat + 0.5 : (pl.get(q.key).side || "F") === side ? gapC : -1;
-        if (gp >= 0 && b.x1 < c.x2 + gp && b.x2 > c.x1 - gp && b.y1 < c.y2 + gp && b.y2 > c.y1 - gp) return false;
-      }
-      for (const h of board.holes || []) { const r = h.d / 2 + 1.9, dx = Math.max(b.x1 - h.x, 0, h.x - b.x2), dy = Math.max(b.y1 - h.y, 0, h.y - b.y2); if (Math.hypot(dx, dy) < r) return false; }
-      for (const ko of board.keepouts || []) if (ko.parts && C.polyHitsPoly(C.boxPoly(b), ko.pts)) return false;
-      // pads: the edge, other parts' pads of other nets, locked copper
-      const mine = (padsOf.get(k) || []).map((p, i) => { const w = where(k, i); return { net: p.net, layers: p.smd ? [side + ".Cu"] : C.COPPER, ...C.padCapsule(w), x: w.x, y: w.y, rr: Math.max(w.w, w.h) / 2 }; });
-      if (mine.some(m => C.edgeDist(m.x, m.y, outl) < (R.edgeClearance || 0.5) + m.rr)) return false;
-      for (const q of parts) {
-        if (q.key === k || !onB.has(q.key)) continue;
-        const c = boxOf(q.key); if (c.x1 > b.x2 + 6 || c.x2 < b.x1 - 6 || c.y1 > b.y2 + 6 || c.y2 < b.y1 - 6) continue;
-        const qs = pl.get(q.key).side || "F";
-        for (let i = 0; i < local.get(q.key).length; i++) {
-          const pq = padsOf.get(q.key)[i], w = where(q.key, i), cq = C.padCapsule(w), ql = pq.smd ? [qs + ".Cu"] : C.COPPER;
-          for (const m of mine) {
-            if (m.net !== null && m.net === pq.net) continue;
-            if (!m.layers.some(L => ql.includes(L))) continue;
-            if (C.segSeg(m.s, cq.s) - m.r - cq.r < needC(m.net, pq.net) - 1e-6) return false;
-          }
-        }
-      }
-      for (const it of locked) for (const m of mine) {
-        if (it.net === m.net || !m.layers.some(L => it.layers.includes(L))) continue;
-        if (C.segSeg(m.s, it.s) - m.r - it.r < needC(m.net, it.net) - 1e-6) return false;
-      }
-      return !!g;
-    }
     // apply a change to some parts' places, keeping every sum up to date; returns the undo
     function apply(changes) {
       const ks = changes.map(c => c.k), touched = new Set(ks.flatMap(k => netsOfPart.get(k) || []));
@@ -259,6 +269,193 @@
     }).join(", ");
   }
 
+
+  // ---------------------------------------------------------------------------
+  // Whole-board spread (whitespace allocation). The parts given move over the whole board, as in
+  // analytic placement (ePlace, Lu et al. 2015; RePlAce, Cheng et al. 2018; Cypress, Zhang et al.
+  // 2025): each part's middle is a variable; the cost is wire length (the weighted-average model,
+  // Hsu et al. 2011, on the pads) plus lambda times the electrostatic energy of the parts' area
+  // (each part a charge, its field found by a cosine transform of the density on 2.54 mm bins), with
+  // lambda raised step by step until little area is over the bins' fill. Parts in opts.inflate count
+  // bigger (up to 2.5 times their area: RePlAce's cell inflation), so a part whose pins are shut in
+  // claims room round them. Fixed parts, holes and keep-outs are charges that do not move. Then each
+  // part is legalized, biggest first (Tetris, NTUplace3): the nearest place on the 1.27 mm grid
+  // that keeps every rule of nudge, with its turn as it was.
+  // ---------------------------------------------------------------------------
+  // the cosine and sine tables of an n-point transform at bin middles: c[u*n+x] = cos(pi*u*(x+0.5)/n)
+  function trig(n) {
+    const c = new Float64Array(n * n), s = new Float64Array(n * n);
+    for (let u = 0; u < n; u++) for (let x = 0; x < n; x++) { const a = Math.PI * u * (x + 0.5) / n; c[u * n + x] = Math.cos(a); s[u * n + x] = Math.sin(a); }
+    return { c, s };
+  }
+  // the field (ex, ey) of a charge map rho (nx by ny bins of size h) by Poisson's equation, Neumann edges
+  function field(rho, nx, ny, h, T) {
+    const a = new Float64Array(nx * ny), tmp = new Float64Array(nx * ny);
+    for (let y = 0; y < ny; y++) for (let u = 0; u < nx; u++) { let s = 0; for (let x = 0; x < nx; x++) s += rho[y * nx + x] * T.x.c[u * nx + x]; tmp[y * nx + u] = s; }
+    for (let v = 0; v < ny; v++) for (let u = 0; u < nx; u++) { let s = 0; for (let y = 0; y < ny; y++) s += tmp[y * nx + u] * T.y.c[v * ny + y]; a[v * nx + u] = s * (u ? 2 : 1) * (v ? 2 : 1) / (nx * ny); }
+    const ax = new Float64Array(nx * ny), ay = new Float64Array(nx * ny);
+    for (let v = 0; v < ny; v++) for (let u = 0; u < nx; u++) {
+      if (!u && !v) continue;
+      const wu = Math.PI * u / (nx * h), wv = Math.PI * v / (ny * h), k = a[v * nx + u] / (wu * wu + wv * wv);
+      ax[v * nx + u] = k * wu; ay[v * nx + u] = k * wv;
+    }
+    // ex = sum ax sin(wu x) cos(wv y), ey = sum ay cos(wu x) sin(wv y)
+    const ex = new Float64Array(nx * ny), ey = new Float64Array(nx * ny), tx = new Float64Array(nx * ny), ty = new Float64Array(nx * ny);
+    for (let v = 0; v < ny; v++) for (let x = 0; x < nx; x++) { let sx = 0, sy = 0; for (let u = 0; u < nx; u++) { sx += ax[v * nx + u] * T.x.s[u * nx + x]; sy += ay[v * nx + u] * T.x.c[u * nx + x]; } tx[v * nx + x] = sx; ty[v * nx + x] = sy; }
+    for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) { let sx = 0, sy = 0; for (let v = 0; v < ny; v++) { sx += tx[v * nx + x] * T.y.c[v * ny + y]; sy += ty[v * nx + x] * T.y.s[v * ny + y]; } ex[y * nx + x] = sx; ey[y * nx + x] = sy; }
+    return { ex, ey };
+  }
+
+  /** Spread the parts keys over the whole board, then legalize them (see above). opts: as nudge's,
+      plus inflate (Map key -> area factor, at most 2.5), target (how full a bin may be, 0..1),
+      iters (at most, default 300), halo (mm round each part, default 0.6). The new places go in
+      board.parts. Returns { moved, wire0, wire1, over, iters, failed } (failed: the ref of a part
+      no legal place was found for; then nothing moved) */
+  function spread(board, model, keys, opts) {
+    const C = B(), o = opts || {}, outl = board.outline, R = board.rules;
+    const { parts, byKey, pl, onB, padsOf, where, boxOf, legal } = placeState(board, model, o);
+    const mov = keys.map(k => byKey.get(k)).filter(g => g && onB.has(g.key));
+    const none = { moved: [], wire0: 0, wire1: 0, over: 0, iters: 0, failed: null };
+    if (!mov.length) return none;
+    const idx = new Map(mov.map((g, i) => [g.key, i])), n = mov.length, halo = o.halo === undefined ? 0.6 : o.halo;
+    const start = new Map(mov.map(g => [g.key, { ...g.place }]));
+    // each moving part: its middle (X, Y), half sizes with the halo and inflation, the place's offset from the middle
+    const X = new Float64Array(n), Y = new Float64Array(n), hw = new Float64Array(n), hh = new Float64Array(n), bw = new Float64Array(n), bh = new Float64Array(n), npin = new Float64Array(n);
+    const offX = [], offY = [];
+    mov.forEach((g, i) => {
+      const b = boxOf(g.key), P = pl.get(g.key), f = Math.sqrt(Math.min(2.5, Math.max(1, (o.inflate && o.inflate.get(g.key)) || 1)));
+      X[i] = (b.x1 + b.x2) / 2; Y[i] = (b.y1 + b.y2) / 2; offX.push(P.x - X[i]); offY.push(P.y - Y[i]);
+      bw[i] = (b.x2 - b.x1) / 2; bh[i] = (b.y2 - b.y1) / 2; hw[i] = (bw[i] + halo / 2) * f; hh[i] = (bh[i] + halo / 2) * f;
+    });
+    const inX = (i, v) => Math.min(Math.max(v, bw[i]), outl.w - bw[i]), inY = (i, v) => Math.min(Math.max(v, bh[i]), outl.h - bh[i]);
+    // nets: each pin a moving part's (index, offset from its middle) or a fixed point
+    const poured = new Set((board.zones || []).map(z => z.net)), names = model.names, byNet = new Map();
+    parts.forEach(g => {
+      if (!onB.has(g.key)) return;
+      const i = idx.has(g.key) ? idx.get(g.key) : -1;
+      (padsOf.get(g.key) || []).forEach((p, j) => {
+        if (p.net === null) return;
+        const w = where(g.key, j);
+        if (!byNet.has(p.net)) byNet.set(p.net, []);
+        byNet.get(p.net).push(i >= 0 ? { i, dx: w.x - X[i], dy: w.y - Y[i] } : { i: -1, x: w.x, y: w.y });
+        if (i >= 0) npin[i]++;
+      });
+    });
+    const nets = [...byNet].filter(([, ps]) => ps.length > 1 && ps.some(p => p.i >= 0)).map(([net, ps]) => {
+      const nm = names[net] || String(net), quiet = poured.has(nm) || (R.ground === "star" && nm === "GND");
+      return { ps, w: quiet ? 0.2 : (o.hv && o.hv.has(net)) || C.isHeaterNet(nm) ? 2 : 1 };
+    });
+    // weighted-average wire length of one axis and its gradient into g
+    function wa(vals, gam, gOut, wt) {
+      let mx = -Infinity, mn = Infinity; for (const v of vals) { if (v > mx) mx = v; if (v < mn) mn = v; }
+      let sp = 0, tp = 0, sn = 0, tn = 0; const ep = vals.map(v => Math.exp((v - mx) / gam)), en = vals.map(v => Math.exp((mn - v) / gam));
+      vals.forEach((v, k) => { sp += ep[k]; tp += v * ep[k]; sn += en[k]; tn += v * en[k]; });
+      const fp = tp / sp, fn = tn / sn;
+      if (gOut) vals.forEach((v, k) => { gOut[k] = wt * (ep[k] / sp * (1 + (v - fp) / gam) - en[k] / sn * (1 - (v - fn) / gam)); });
+      return wt * (fp - fn);
+    }
+    const hpwl = () => nets.reduce((s, nt) => {
+      const xs = nt.ps.map(p => (p.i >= 0 ? X[p.i] + p.dx : p.x)), ys = nt.ps.map(p => (p.i >= 0 ? Y[p.i] + p.dy : p.y));
+      return s + nt.w * (Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys));
+    }, 0);
+    // bins, the fixed charge (parts that stay, holes, part keep-outs) and the room left in each
+    const h = CELL, nx = Math.max(2, Math.ceil(outl.w / h)), ny = Math.max(2, Math.ceil(outl.h / h)), T = { x: trig(nx), y: trig(ny) };
+    const fixedQ = new Float64Array(nx * ny);
+    const addBox = (map, x1, y1, x2, y2, k) => {
+      for (let j = Math.max(0, Math.floor(y1 / h)); j <= Math.min(ny - 1, Math.floor(y2 / h)); j++) for (let i = Math.max(0, Math.floor(x1 / h)); i <= Math.min(nx - 1, Math.floor(x2 / h)); i++) {
+        const ov = Math.max(0, Math.min(x2, (i + 1) * h) - Math.max(x1, i * h)) * Math.max(0, Math.min(y2, (j + 1) * h) - Math.max(y1, j * h));
+        if (ov > 0) map[j * nx + i] += k * ov;
+      }
+    };
+    parts.forEach(g => { if (onB.has(g.key) && !idx.has(g.key)) { const b = boxOf(g.key); addBox(fixedQ, b.x1, b.y1, b.x2, b.y2, 1); } });
+    (board.holes || []).forEach(hl => { const r = hl.d / 2 + 1.9; addBox(fixedQ, hl.x - r, hl.y - r, hl.x + r, hl.y + r, 1); });
+    (board.keepouts || []).forEach(ko => { if (!ko.parts) return; const xs = ko.pts.map(p => p[0]), ys = ko.pts.map(p => p[1]); addBox(fixedQ, Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), 1); });
+    for (let c = 0; c < fixedQ.length; c++) fixedQ[c] = Math.min(fixedQ[c], h * h);
+    let movArea = 0; for (let i = 0; i < n; i++) movArea += 4 * hw[i] * hh[i];
+    const target = o.target || 1;
+    // a part's charge in the bins, smoothed: a part narrower than a bin is spread over one bin's width at lower density
+    const ext = i => { const ew = Math.max(hw[i], h / 2), eh = Math.max(hh[i], h / 2); return { ew, eh, d: (hw[i] * hh[i]) / (ew * eh) }; };
+    function density() {
+      const m = new Float64Array(nx * ny);
+      for (let i = 0; i < n; i++) { const e = ext(i); addBox(m, X[i] - e.ew, Y[i] - e.eh, X[i] + e.ew, Y[i] + e.eh, e.d); }
+      return m;
+    }
+    // the share of the moving parts' area over what the bins have left beside the fixed charge
+    const overflow = m => { let s = 0; for (let c = 0; c < m.length; c++) s += Math.max(0, m[c] - Math.max(0, target * h * h - fixedQ[c])); return s / Math.max(movArea, 1e-9); };
+    // the force on part i: its overlap with each bin times that bin's field
+    function force(i, E, out) {
+      const e = ext(i), x1 = X[i] - e.ew, x2 = X[i] + e.ew, y1 = Y[i] - e.eh, y2 = Y[i] + e.eh;
+      let fx = 0, fy = 0;
+      for (let j = Math.max(0, Math.floor(y1 / h)); j <= Math.min(ny - 1, Math.floor(y2 / h)); j++) for (let k = Math.max(0, Math.floor(x1 / h)); k <= Math.min(nx - 1, Math.floor(x2 / h)); k++) {
+        const ov = Math.max(0, Math.min(x2, (k + 1) * h) - Math.max(x1, k * h)) * Math.max(0, Math.min(y2, (j + 1) * h) - Math.max(y1, j * h));
+        fx += ov * E.ex[j * nx + k]; fy += ov * E.ey[j * nx + k];
+      }
+      out[0] = fx * e.d; out[1] = fy * e.d;
+    }
+    const wireW = o.wire === undefined ? 1 : o.wire, anchor = o.anchor || 0, X0 = X.slice(), Y0 = Y.slice();
+    const wire0 = hpwl(), gx = new Float64Array(n), gy = new Float64Array(n), wx = new Float64Array(n), wy = new Float64Array(n), vx = new Float64Array(n), vy = new Float64Array(n), f = [0, 0];
+    let lambda = 0, over = overflow(density()), it = 0;
+    const iters = o.iters || 300;
+    for (; it < iters; it++) {
+      const gam = h * Math.min(4, Math.max(0.5, 4 * over));
+      for (let i = 0; i < n; i++) { wx[i] = anchor * (X[i] - X0[i]); wy[i] = anchor * (Y[i] - Y0[i]); }
+      nets.forEach(nt => {
+        const xs = nt.ps.map(p => (p.i >= 0 ? X[p.i] + p.dx : p.x)), ys = nt.ps.map(p => (p.i >= 0 ? Y[p.i] + p.dy : p.y)), g1 = new Array(xs.length), g2 = new Array(xs.length);
+        wa(xs, gam, g1, nt.w * wireW); wa(ys, gam, g2, nt.w * wireW);
+        nt.ps.forEach((p, k) => { if (p.i >= 0) { wx[p.i] += g1[k]; wy[p.i] += g2[k]; } });
+      });
+      const m = density(), rho = new Float64Array(nx * ny); for (let c = 0; c < m.length; c++) rho[c] = m[c] + fixedQ[c];
+      const E = field(rho, nx, ny, h, T);
+      // the density gradient is minus the force; lambda starts where the two pulls are alike
+      let sw = 0, sd = 0;
+      for (let i = 0; i < n; i++) { force(i, E, f); gx[i] = -f[0]; gy[i] = -f[1]; sw += Math.abs(wx[i]) + Math.abs(wy[i]); sd += Math.abs(gx[i]) + Math.abs(gy[i]); }
+      if (!it) lambda = sd > 1e-12 ? 0.1 * sw / sd : 1;
+      over = overflow(m);
+      if (it >= 40 && over < 0.1) break;
+      // preconditioned (Cypress: 1 / (pins + lambda * area)), normalised steps with momentum
+      let rms = 0; const px = new Float64Array(n), py = new Float64Array(n);
+      for (let i = 0; i < n; i++) { const pc = 1 / Math.max(1, npin[i] + lambda * 4 * hw[i] * hh[i] * (sd > 1e-12 ? 1 : 0)); px[i] = (wx[i] + lambda * gx[i]) * pc; py[i] = (wy[i] + lambda * gy[i]) * pc; rms += px[i] * px[i] + py[i] * py[i]; }
+      rms = Math.sqrt(rms / n) || 1;
+      const step = 0.5 * h * Math.pow(0.99, it) + 0.15;
+      for (let i = 0; i < n; i++) {
+        vx[i] = 0.8 * vx[i] - step * px[i] / rms; vy[i] = 0.8 * vy[i] - step * py[i] / rms;
+        X[i] = inX(i, X[i] + vx[i]); Y[i] = inY(i, Y[i] + vy[i]);
+      }
+      lambda *= 1.06;
+    }
+    // legalize, biggest first: the nearest grid place that keeps the rules, among the parts placed so far
+    const snap = v => Math.round(v / GRID) * GRID;
+    mov.forEach(g => onB.delete(g.key));
+    const order = mov.map((g, i) => i).sort((a, b) => hw[b] * hh[b] - hw[a] * hh[a]);
+    const maxR = Math.ceil(Math.max(outl.w, outl.h) / GRID);
+    let failed = null;
+    for (const i of order) {
+      const g = mov[i], P0 = pl.get(g.key), cx = snap(X[i] + offX[i]), cy = snap(Y[i] + offY[i]);
+      let done = false;
+      for (let r = 0; r <= maxR && !done; r++) {
+        const ring = [];
+        for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) if (Math.max(Math.abs(a), Math.abs(b)) === r) ring.push([a, b]);
+        ring.sort((p, s) => (p[0] * p[0] + p[1] * p[1]) - (s[0] * s[0] + s[1] * s[1]));
+        for (const [a, b] of ring) {
+          pl.set(g.key, { ...P0, x: +(cx + a * GRID).toFixed(4), y: +(cy + b * GRID).toFixed(4) });
+          if (legal(g.key)) { done = true; break; }
+        }
+      }
+      if (!done) { failed = g.ref; break; }
+      onB.add(g.key);
+    }
+    if (failed) { mov.forEach(g => onB.add(g.key)); return { ...none, wire0, wire1: wire0, over, iters: it, failed }; }
+    const moved = [];
+    mov.forEach(g => {
+      const a = start.get(g.key), b = pl.get(g.key);
+      if (Math.abs(a.x - b.x) > 1e-6 || Math.abs(a.y - b.y) > 1e-6) {
+        Object.assign(board.parts[g.key], { x: b.x, y: b.y });
+        moved.push({ key: g.key, ref: g.ref, from: { x: a.x, y: a.y, rot: a.rot || 0 }, to: { x: b.x, y: b.y, rot: b.rot || 0 } });
+      }
+      const k = idx.get(g.key), bb = boxOf(g.key); X[k] = (bb.x1 + bb.x2) / 2; Y[k] = (bb.y1 + bb.y2) / 2;
+    });
+    return { moved, wire0, wire1: hpwl(), over, iters: it, failed: null };
+  }
 
   // ---------------------------------------------------------------------------
   // Pin escape. Whether each pin at the end of an open connection can get a track out of its
@@ -471,5 +668,5 @@
     }).join("; ");
   }
 
-  root.BoardPlace = { movable, nudge, describe, escape, passage, bridge, describeEscape, FIXED, rng };
+  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, describeEscape, FIXED, rng };
 })(typeof window !== "undefined" ? window : globalThis);
