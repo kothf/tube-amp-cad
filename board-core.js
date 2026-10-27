@@ -36,8 +36,8 @@
   // simulation, GND is Power) unless netClass names a class for it.
   function defaultRules() {
     return {
-      track: 1.0, power: 2.0, minTrack: 0.4,                       // widths, mm
-      clearance: 0.6, hvClearance: 2.0, hvVolts: 60, edgeClearance: 0.5,
+      track: 0.6, power: 1.0, minTrack: 0.4,                       // widths, mm (power nets widen further for their DC current)
+      clearance: 0.4, hvClearance: 2.0, hvVolts: 60, edgeClearance: 0.5,
       viaDrill: 0.8, viaPad: 1.8, minDrill: 0.6, minAnnular: 0.3,
       maskExpansion: 0.05, tentVias: true,                        // solder mask: opening around pads; vias covered
       tempRise: 10,                                               // °C a track may warm up at its DC current (IPC-2221, outer layer)

@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.113.0] - 2026-10-27
+
+### Changed
+- Board: new boards start with narrower design rules: 0.6 mm signal tracks (was 1 mm), 1 mm power and high-voltage tracks (was 2 mm; a net still widens for its DC current) and 0.4 mm clearance (was 0.6 mm). High-voltage clearance stays 2 mm, and IPC-2221B still adds more by voltage, so a 31–150 V net keeps 0.6 mm. With the old rules a track could not get out of crowded pins such as a TO-92's or a DIP's, so Auto-route left the same connections open however large the board was. Boards saved with other rules keep them.
+- The example boards were routed again with the new rules (07 keeps its own):
+
+  | Example | Board (mm) | Open connections (was) |
+  | --- | --- | --- |
+  | 01 | 80 × 50 | 0 (1) |
+  | 02 | 64 × 40 | 1 (2) |
+  | 03 | 160 × 100 | 1 (4) |
+  | 04 | 120 × 75 | 2 (2) |
+  | 05 | 96 × 60 | 0 (4) |
+  | 06 | 160 × 100 | 6 (28) |
+  | 09 | 80 × 50 | 0 (2) |
+  | 11 | 120 × 75 | 0 (1) |
+
 ## [3.112.1] - 2026-10-27
 
 ### Changed
