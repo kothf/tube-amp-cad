@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.116.0] - 2026-10-27
+
+### Added
+- Board: after Freerouting and the grid pass, each connection still open gets an **exact finisher**. A small window round it is written as a yes/no puzzle (SAT, after Luo and Wong's exact router): each grid cell carries at most one connection, a used cell joins exactly two neighbours, a pad or cut track end one, and cells of different nets keep their clearance (vias too). A small solver in the page (conflict-driven clause learning, as in MiniSat) answers it in well under a second. It may take up the unlocked tracks of the connection's own net and of the nets walling it in, and lay them again. It tries without vias first, then shortens each new track. A result is kept only if it closes connections and adds no rule message. When it proves there is no way, only moving parts can help.
+- On example 07 routed from scratch, the finisher joined 6 of the 13 connections Freerouting left, with no rule messages.
+- Board: **Place all on the board** now spreads the placed parts into the room the board has, held near their places from the schematic, then puts each on the nearest legal grid place.
+
 ## [3.115.0] - 2026-10-27
 
 ### Added

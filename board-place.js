@@ -7,6 +7,7 @@
      escape(board, model, conn, rats, opts)   -> per part: can its open pins get out (max-flow), what walls them in
      passage(board, model, conn, rats, opts)  -> per open connection: is there still a way from end to end
      bridge(board, model, conn, rats, opts)   -> a track for the first open connection a grid path reaches (Lee)
+     exact(board, model, conn, rats, opts)    -> a window round an open connection routed afresh by SAT (needs board-sat.js)
    nudge moves the given parts in board.parts (shift on the 1.27 mm grid, turn by 90°, swap
    two parts of one footprint) by simulated annealing (TimberWolf, Sechen and
    Sangiovanni-Vincentelli 1985) on a cost of
@@ -660,6 +661,299 @@
     return null;
   }
 
+  // ---------------------------------------------------------------------------
+  // The exact window router. A window round an open connection: its unlocked copper comes up
+  // (tracks crossing its edge are cut there, their cut ends becoming terminals), and every
+  // connection the window then needs, the open one and the ones the cut tracks made, is routed
+  // at once on a grid by Boolean satisfiability (Luo and Wong, "Ordered escape routing based on
+  // Boolean satisfiability", ASP-DAC 2008; Nam, Sakallah and Rutenbar 2002): each grid cell on
+  // each layer holds at most one connection; a used cell has exactly two used edges, a terminal
+  // exactly one; an edge joins cells of the same connection; a via is the edge between a cell's
+  // two layers; cells of different nets stay their clearance apart (by voltage), vias their own.
+  // The solver either finds tracks for all of them or proves this window has none.
+  // ---------------------------------------------------------------------------
+  // the parts of segment [a, b] outside box W and the points where it crosses W's edge
+  function clipSeg(a, b, W) {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    let t0 = 0, t1 = 1;
+    for (const [p, q] of [[-dx, a[0] - W.x1], [dx, W.x2 - a[0]], [-dy, a[1] - W.y1], [dy, W.y2 - a[1]]]) {
+      if (Math.abs(p) < 1e-12) { if (q < 0) return { inside: null }; continue; }
+      const r = q / p; if (p < 0) { if (r > t1) return { inside: null }; if (r > t0) t0 = r; } else { if (r < t0) return { inside: null }; if (r < t1) t1 = r; }
+    }
+    const at = t => [a[0] + dx * t, a[1] + dy * t];
+    return { inside: [t0, t1], p0: at(t0), p1: at(t1) };
+  }
+
+  /** Route rats[i] exactly in a window round it (opts.margin mm round its ends, default 4).
+      Returns null when there is nothing to do, { sat: false, pairs } when the window has no
+      routing, or { sat: true, cut: { tracks: Set of track indexes, vias: Set }, add: { tracks,
+      vias }, pairs }: take the cut copper off the board and put the added on. The caller checks
+      the board afterwards. opts: as escape's, plus i (default 0), budget (solver conflicts) */
+  function exact(board, model, conn, rats, opts) {
+    const C = B(), o = opts || {}, R = board.rules, L = C.COPPER, ctx = checkCtx(board, model, conn, rats, o), names = model.names;
+    const [a, b] = ctx.ends[o.i || 0] || []; if (!a || !b) return null;
+    const A = ctx.padItem.get(a), Bp = ctx.padItem.get(b); if (!A || !Bp) return null;
+    const m = o.margin || 4, pitch = o.pitch || Math.max(0.5, R.track + R.clearance);
+    let W = boxOfPads([A, Bp], m);
+    W = { x1: Math.max(W.x1, 0), y1: Math.max(W.y1, 0), x2: Math.min(W.x2, board.outline.w), y2: Math.min(W.y2, board.outline.h) };
+    const nx = Math.floor((W.x2 - W.x1) / pitch) + 1, ny = Math.floor((W.y2 - W.y1) / pitch) + 1;
+    if (nx * ny > 6000) return null;
+    // the grid through the middle of the end with the closer pins (a track can then go straight in between them)
+    const gapOf = it => (ctx.pinGap.has(it.pad.part) ? ctx.pinGap.get(it.pad.part) : Infinity), T = gapOf(Bp) < gapOf(A) ? Bp.pad : A.pad;
+    const x0 = T.x - pitch * Math.floor((T.x - W.x1) / pitch + 1e-9), y0 = T.y - pitch * Math.floor((T.y - W.y1) / pitch + 1e-9);
+    const G = { x1: x0, y1: y0, x2: x0 + (nx - 1) * pitch, y2: y0 + (ny - 1) * pitch };   // the grid's outer cells' middles
+    const inG = (x, y) => x > G.x1 + 1e-6 && x < G.x2 - 1e-6 && y > G.y1 + 1e-6 && y < G.y2 - 1e-6;
+    const poured = new Set((board.zones || []).map(z => z.net)), quiet = n => { const nm = names[n] || String(n); return poured.has(nm) || (R.ground === "star" && nm === "GND"); };
+    // cut: the unlocked tracks reaching inside the grid, the unlocked vias in it
+    const cutT = new Set(), cutV = new Set(), keep = [], ends = [];
+    // what may come up: opts.rip { tracks, vias } (Sets of indexes) or "all"; by default this net's copper and
+    // the nets of the tracks that wall in its way (passage), all of each
+    let rip = o.rip === "all" ? null : o.rip;
+    if (o.rip === undefined) {
+      const r0 = rats[o.i || 0], pass = passage(board, model, conn, [r0], o)[0], nets = new Set([names[r0.net]]);
+      rip = { tracks: new Set(), vias: new Set() };
+      (pass ? pass.walls : []).slice(0, 6).forEach(w => { if (w.kind === "track") nets.add(board.tracks[w.ti].net); if (w.kind === "via") rip.vias.add(w.vi); });
+      board.tracks.forEach((t, ti) => { if (nets.has(t.net)) rip.tracks.add(ti); });
+      board.vias.forEach((v, vi) => { if (nets.has(v.net)) rip.vias.add(vi); });
+    }
+    const mayT = ti => !board.tracks[ti].locked && (!rip || rip.tracks.has(ti)), mayV = vi => !board.vias[vi].locked && (!rip || rip.vias.has(vi));
+    board.tracks.forEach((t, ti) => {
+      if (!mayT(ti)) return;
+      const pieces = []; let cur = null, touched = false;
+      for (let k = 0; k + 1 < t.pts.length; k++) {
+        const p = t.pts[k], q = t.pts[k + 1], c = clipSeg(p, q, G);
+        const into = c.inside && (c.inside[1] - c.inside[0] > 1e-9 || inG(c.p0[0], c.p0[1]));
+        if (!into) { if (!cur) cur = [p]; cur.push(q); continue; }
+        touched = true;
+        if (c.inside[0] > 1e-9) { if (!cur) cur = [p]; cur.push(c.p0); pieces.push(cur); ends.push({ x: c.p0[0], y: c.p0[1], layer: t.layer, net: t.net, w: t.w, ti }); }
+        else if (cur) { pieces.push(cur); }
+        cur = null;
+        if (c.inside[1] < 1 - 1e-9) { cur = [c.p1, q]; ends.push({ x: c.p1[0], y: c.p1[1], layer: t.layer, net: t.net, w: t.w, ti }); }
+      }
+      if (cur) pieces.push(cur);
+      if (!touched) return;
+      cutT.add(ti);
+      pieces.forEach(pts => { if (pts.length > 1) keep.push({ ...t, pts: pts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]) }); });
+    });
+    board.vias.forEach((v, vi) => { if (mayV(vi) && inG(v.x, v.y)) cutV.add(vi); });
+    // the board without the window's copper: which pieces of each net still hang together
+    const tmp = { ...board, tracks: board.tracks.filter((_, ti) => !cutT.has(ti)).concat(keep), vias: board.vias.filter((_, vi) => !cutV.has(vi)) };
+    const c2 = C.connectivity(tmp, model.pads), base = board.tracks.length - cutT.size;
+    // terminals: pads with their middle in the grid, and the cut ends (each on its kept piece); was: the
+    // piece of copper each one belonged to before the cut (the open connection's two count as one)
+    const terms = [], trackCl = new Map(), was = c => (c === Bp.cluster ? A.cluster : c);
+    conn.items.forEach(it => { if (it.kind === "track") trackCl.set(it.ti, it.cluster); });
+    c2.items.forEach(it => { if (it.kind === "pad" && it.pad.net !== null && inG(it.pad.x, it.pad.y) && !quiet(it.pad.net) && ctx.padItem.get(it.pad)) terms.push({ x: it.pad.x, y: it.pad.y, layers: it.layers, net: it.pad.net, cl: it.cluster, was: was(ctx.padItem.get(it.pad).cluster), pad: it }); });
+    const nameId = new Map(Object.entries(names).map(([k, v]) => [v, +k]));
+    ends.forEach(e => {
+      const k = keep.findIndex(t => t.pts.some(p => Math.hypot(p[0] - e.x, p[1] - e.y) < 1e-3) && t.layer === e.layer), it = c2.items.find(q => q.kind === "track" && q.ti === base + k);
+      const net = nameId.has(e.net) ? nameId.get(e.net) : it && typeof it.net === "number" ? it.net : null;
+      if (it && net !== null && !quiet(net)) terms.push({ x: e.x, y: e.y, layers: [e.layer], net, cl: it.cluster, was: was(trackCl.get(e.ti)), w: e.w });
+    });
+    // the connections the window must make: what was joined before, joined again, and the open connection; per
+    // such group its pieces joined by the shortest links (each cut end once)
+    const pairs = [], used = new Set(), byNet = new Map();   // a cut end joins once; a pad may take several
+    let split = false;
+    terms.forEach(t => { const g = t.net + ":" + t.was; if (!byNet.has(g)) byNet.set(g, []); byNet.get(g).push(t); });
+    byNet.forEach(list => {
+      const cls = [...new Set(list.map(t => t.cl))]; if (cls.length < 2) return;
+      const join = new Map(cls.map(c => [c, c])), f = c => { while (join.get(c) !== c) c = join.get(c); return c; };
+      const links = []; list.forEach((p, i) => list.slice(i + 1).forEach(q => { if (p.cl !== q.cl) links.push([Math.hypot(p.x - q.x, p.y - q.y), p, q]); }));
+      links.sort((u, v) => u[0] - v[0]).forEach(([, p, q]) => { if (f(p.cl) === f(q.cl) || used.has(p) || used.has(q)) return; join.set(f(p.cl), f(q.cl)); [p, q].forEach(t => { if (!t.pad) used.add(t); }); pairs.push({ net: p.net, ends: [p, q] }); });
+      if (new Set(cls.map(f)).size > 1) split = true;
+    });
+    if (!pairs.length || split) return null;
+    // the grid: per cell (layer l, column i, row j) the connections that may use it
+    const nc = nx * ny * L.length, cx = c => x0 + (c % nx) * pitch, cy = c => y0 + (Math.floor(c / nx) % ny) * pitch, layerOf = c => Math.floor(c / (nx * ny));
+    const cell = (l, i, j) => (l * ny + j) * nx + i, K = pairs.length;
+    const widths = pairs.map(p => Math.max(ctx.widthOf(p.net), ...p.ends.map(e => e.w || 0))), need = ctx.need;
+    const near = c2.items.filter(it => Math.max(it.s[0], it.s[2]) + it.r > G.x1 - 4 && Math.min(it.s[0], it.s[2]) - it.r < G.x2 + 4 && Math.max(it.s[1], it.s[3]) + it.r > G.y1 - 4 && Math.min(it.s[1], it.s[3]) - it.r < G.y2 + 4);
+    const viaR = R.viaPad / 2;
+    const allowed = Array.from({ length: nc }, () => []), viaOk = Array.from({ length: nx * ny }, () => []);
+    const blocked = (x, y, Ly, k, rr, strict) => {
+      const n = pairs[k].net;
+      if (C.edgeDist(x, y, board.outline) < (R.edgeClearance || 0.5) + rr) return true;
+      for (const it of near) {
+        if (Ly && !it.layers.includes(Ly)) continue;
+        if (it.net === n || (it.kind === "pad" && it.pad.net === n) || (it.kind === "track" && tmp.tracks[it.ti].net === names[n]) || (it.kind === "via" && tmp.vias[it.vi].net === names[n])) continue;
+        let gp = need(n, it.net === "short" ? null : it.net);
+        // entering a pad, a track may pass its footprint's other pins as close as they are to each other (not a via)
+        if (Ly && it.kind === "pad" && ctx.pinGap.has(it.pad.part) && pairs[k].ends.some(e => e.pad && e.pad.pad.part === it.pad.part && C.segDist(e.pad.s[0], e.pad.s[1], e.pad.s[2], e.pad.s[3], x, y) <= e.pad.r)) gp = Math.min(gp, ctx.pinGap.get(it.pad.part));
+        const D = it.r + rr + gp, d = C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y);
+        if (d < (strict ? Math.sqrt(D * D + pitch * pitch / 4) : D) - 1e-6) return true;
+      }
+      for (const h of board.holes || []) if (!h.plated && Math.hypot(x - h.x, y - h.y) < h.d / 2 + rr + R.clearance) return true;
+      for (const ko of board.keepouts || []) if (ko.tracks !== false && (!Ly || C.koLayers(ko).includes(Ly)) && C.pip(x, y, ko.pts)) return true;
+      return false;
+    };
+    for (let l = 0; l < L.length; l++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const c = cell(l, i, j), x = cx(c), y = cy(c);
+      for (let k = 0; k < K; k++) if (!blocked(x, y, L[l], k, widths[k] / 2, true)) allowed[c].push(k);
+    }
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const c = cell(0, i, j); for (const k of allowed[c]) if (allowed[cell(1, i, j)].includes(k) && !blocked(cx(c), cy(c), null, k, viaR, false)) viaOk[j * nx + i].push(k); }
+    // the terminals' cells: a pad's nearest cell on each of its layers, a cut end's nearest on its layer
+    const nearestCell = (e, l) => cell(l, Math.min(nx - 1, Math.max(0, Math.round((e.x - x0) / pitch))), Math.min(ny - 1, Math.max(0, Math.round((e.y - y0) / pitch))));
+    // a terminal's own cell is its connection's, whatever is near (the router's track came that close; the check afterwards judges)
+    const padCells = (e, l) => { const P = e.pad, out = [nearestCell(e, l)]; for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const c = cell(l, i, j); if (c !== out[0] && C.segDist(P.s[0], P.s[1], P.s[2], P.s[3], cx(c), cy(c)) <= P.r - widths[0] / 4) out.push(c); } return out; };
+    const endCells = (e, l) => (!e.layers.includes(L[l]) ? [] : e.pad ? padCells(e, l) : [nearestCell(e, l)]);
+    // (only a pad's cells clear of other copper, the next pin of a small part say, unless none is)
+    pairs.forEach((p, k) => p.ends.forEach(e => L.forEach((Ly, l) => {
+      const all = endCells(e, l), clear = all.filter(c => !blocked(cx(c), cy(c), Ly, k, widths[k] / 2, false));
+      (clear.length ? clear : all.slice(0, 1)).forEach(c => { if (!allowed[c].includes(k)) allowed[c].push(k); });
+    })));
+    // the formula; first without vias (a via only where nothing else will do)
+    function attempt(useVias) {
+      const S = root.BoardSat.solver(), X = new Map(), V = (c, k) => X.get(c * K + k);
+      for (let c = 0; c < nc; c++) for (const k of allowed[c]) X.set(c * K + k, S.newVar());
+      const termCells = pairs.map((p, k) => p.ends.map(e => L.flatMap((Ly, l) => endCells(e, l)).filter(c => V(c, k))));
+      if (termCells.some(tc => tc.some(list => !list.length))) return { sat: false, why: "terminal" };
+      // edges: neighbours on a layer, and a via between a cell's two layers
+      const edges = [], inc = Array.from({ length: nc }, () => []);
+      const share = (c, d) => allowed[c].filter(k => V(d, k));
+      for (let l = 0; l < L.length; l++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        const c = cell(l, i, j);
+        [[1, 0], [0, 1]].forEach(([di, dj]) => { if (i + di >= nx || j + dj >= ny) return; const d = cell(l, i + di, j + dj), ks = share(c, d); if (!ks.length) return; const e = { v: S.newVar(), c, d, ks }; edges.push(e); inc[c].push(e); inc[d].push(e); });
+      }
+      const vias = [];
+      if (useVias) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const ks = viaOk[j * nx + i]; if (!ks.length) continue; const c = cell(0, i, j), d = cell(1, i, j), e = { v: S.newVar(), c, d, ks, via: true }; edges.push(e); vias.push(e); inc[c].push(e); inc[d].push(e); }
+      // a terminal: one edge out of its cells (a cut end's or pad's own edge into the grid)
+      const tEdges = [];
+      termCells.forEach((tc, k) => tc.forEach(list => { const es = list.map(c => { const e = { v: S.newVar(), c, k, term: true }; inc[c].push(e); return e; }); tEdges.push(es); S.add(es.map(e => e.v)); for (let p = 0; p < es.length; p++) for (let q = p + 1; q < es.length; q++) S.add([-es[p].v, -es[q].v]); es.forEach(e => S.add([-e.v, V(e.c, e.k)])); }));
+      // cells: at most one connection; used exactly when two of its edges are
+      for (let c = 0; c < nc; c++) {
+        const ks = allowed[c]; if (!ks.length) continue;
+        for (let p = 0; p < ks.length; p++) for (let q = p + 1; q < ks.length; q++) S.add([-V(c, ks[p]), -V(c, ks[q])]);
+        const u = S.newVar(); ks.forEach(k => S.add([-V(c, k), u])); S.add([-u, ...ks.map(k => V(c, k))]);
+        const es = inc[c];
+        es.forEach(e => S.add([-e.v, u]));
+        if (!es.length) { S.add([-u]); continue; }
+        for (let p = 0; p < es.length; p++) S.add([-u, ...es.filter((_, q) => q !== p).map(e => e.v)]);
+        for (let p = 0; p < es.length; p++) for (let q = p + 1; q < es.length; q++) for (let r = q + 1; r < es.length; r++) S.add([-es[p].v, -es[q].v, -es[r].v]);
+      }
+      // an edge joins cells of one connection
+      edges.forEach(e => {
+        [[e.c, e.d], [e.d, e.c]].forEach(([c, d]) => allowed[c].forEach(k => S.add(e.ks.includes(k) && V(d, k) ? [-e.v, -V(c, k), V(d, k)] : [-e.v, -V(c, k)])));
+      });
+      // clearance between connections of different nets wider than the grid, and round vias
+      const maxNeed = Math.max(...pairs.map(p => Math.max(...pairs.map(q => need(p.net, q.net))))), reach = Math.ceil((Math.max(viaR, ...widths.map(x => x / 2)) + Math.max(...widths) / 2 + maxNeed) / pitch);
+      for (let c = 0; c < nc; c++) for (const ka of allowed[c]) {
+        const l = layerOf(c), i = c % nx, j = Math.floor(c / nx) % ny;
+        for (let dj = -reach; dj <= reach; dj++) for (let di = -reach; di <= reach; di++) {
+          if ((!di && !dj) || i + di < 0 || j + dj < 0 || i + di >= nx || j + dj >= ny) continue;
+          const d = cell(l, i + di, j + dj); if (d < c) continue;
+          const dist = pitch * Math.hypot(di, dj);
+          for (const kb of allowed[d]) { if (pairs[kb].net === pairs[ka].net) continue; if (dist < widths[ka] / 2 + widths[kb] / 2 + need(pairs[ka].net, pairs[kb].net) - 1e-6) S.add([-V(c, ka), -V(d, kb)]); }
+        }
+      }
+      vias.forEach(e => {
+        const i = e.c % nx, j = Math.floor(e.c / nx) % ny;
+        for (let l = 0; l < L.length; l++) for (let dj = -reach; dj <= reach; dj++) for (let di = -reach; di <= reach; di++) {
+          if ((!di && !dj) || i + di < 0 || j + dj < 0 || i + di >= nx || j + dj >= ny) continue;
+          const d = cell(l, i + di, j + dj), dist = pitch * Math.hypot(di, dj);
+          for (const kb of allowed[d]) for (const ka of e.ks) { if (pairs[ka].net === pairs[kb].net) continue; if (dist < viaR + widths[kb] / 2 + need(pairs[ka].net, pairs[kb].net) - 1e-6) S.add([-e.v, -V(e.c, ka), -V(d, kb)]); }
+        }
+      });
+      const sat = S.solve({ budget: o.budget || 20000 });
+      return { sat, S, tEdges, inc, termCells };
+    }
+    // a connection whose ends no run of its cells joins has no way, whatever the others do (said at once; the
+    // solver would take long to find it out)
+    const reaches = k => {
+      const has = c => allowed[c].includes(k), ends = pairs[k].ends.map(e => L.flatMap((Ly, l) => endCells(e, l)).filter(has));
+      if (ends.some(list => !list.length)) return false;
+      const goal = new Set(ends[1]), seen = new Set(ends[0]), q = [...ends[0]];
+      while (q.length) {
+        const c = q.pop(); if (goal.has(c)) return true;
+        const l = layerOf(c), i = c % nx, j = Math.floor(c / nx) % ny, next = [];
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([di, dj]) => { if (i + di >= 0 && j + dj >= 0 && i + di < nx && j + dj < ny) next.push(cell(l, i + di, j + dj)); });
+        if (viaOk[j * nx + i].includes(k)) next.push(cell(1 - l, i, j));
+        next.forEach(d => { if (!seen.has(d) && has(d)) { seen.add(d); q.push(d); } });
+      }
+      return false;
+    };
+    for (let k = 0; k < K; k++) if (!reaches(k)) return { sat: false, pairs: K, unknown: false, why: "no path" };
+    let F = attempt(false);
+    if (F.sat !== true && F.why !== "terminal") F = attempt(true);
+    if (F.sat !== true) return { sat: false, pairs: K, unknown: F.sat === null, why: F.why };
+    const { S, tEdges, inc, termCells } = F;
+    // each connection's cells, walked from its first terminal's cell to the other's
+    const seqs = pairs.map((p, k) => {
+      const startE = tEdges.find(es => es.some(e => e.k === k && S.value(e.v) && termCells[k][0].includes(e.c)));
+      if (!startE) return null;
+      const s0 = startE.find(e => S.value(e.v)), ends = new Set(termCells[k][1]), seq = [s0.c];
+      let prev = s0, c = s0.c, guard = 0;
+      while (guard++ < nc) {
+        if (ends.has(c) && inc[c].some(e => e.term && e.k === k && S.value(e.v))) return seq;
+        const nxt = inc[c].find(e => e !== prev && S.value(e.v) && !e.term);
+        if (!nxt) return null;
+        c = nxt.c === c ? nxt.d : nxt.c; seq.push(c); prev = nxt;
+      }
+      return null;
+    });
+    if (seqs.some(q => !q)) return { sat: false, pairs: K, why: "walk" };
+    // then each pulled tight in turn: the shortest way (a via counts as 6 steps, a bend as half) past the others as they now are
+    const ij = c => [c % nx, Math.floor(c / nx) % ny], dOf = (ka, kb) => widths[ka] / 2 + widths[kb] / 2 + need(pairs[ka].net, pairs[kb].net);
+    const viasOf = q => q.filter((c, n) => n && layerOf(c) !== layerOf(q[n - 1]));
+    function tighten(k) {
+      const bad = new Uint8Array(nc), badVia = new Uint8Array(nx * ny);
+      seqs.forEach((q, kb) => {
+        if (kb === k) return;
+        const same = pairs[kb].net === pairs[k].net, vs = new Set(viasOf(q).map(c => c % (nx * ny)));
+        q.forEach(c => {
+          const [i, j] = ij(c), l = layerOf(c), r = same ? 0 : Math.ceil(Math.max(dOf(k, kb), viaR + widths[kb] / 2 + need(pairs[k].net, pairs[kb].net)) / pitch);
+          bad[c] = 1;
+          for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+            const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= nx || b >= ny || same) continue;
+            const dist = pitch * Math.hypot(di, dj);
+            if (dist < dOf(k, kb) - 1e-6) bad[cell(l, a, b)] = 1;
+            if (dist < viaR + widths[kb] / 2 + need(pairs[k].net, pairs[kb].net) - 1e-6) badVia[b * nx + a] = 1;
+            if (vs.has(cell(0, i, j)) && dist < viaR + widths[k] / 2 + need(pairs[k].net, pairs[kb].net) - 1e-6) { bad[cell(0, a, b)] = 1; bad[cell(1, a, b)] = 1; }
+          }
+        });
+      });
+      // Dijkstra over (cell, heading)
+      const N = nc * 5, dist = new Float64Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), heap = [];
+      const pushQ = (st, d) => { heap.push([d, st]); let x = heap.length - 1; while (x > 0) { const y = (x - 1) >> 1; if (heap[y][0] <= heap[x][0]) break; [heap[x], heap[y]] = [heap[y], heap[x]]; x = y; } };
+      const popQ = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let x = 0; for (;;) { let y = 2 * x + 1; if (y >= heap.length) break; if (y + 1 < heap.length && heap[y + 1][0] < heap[y][0]) y++; if (heap[x][0] <= heap[y][0]) break; [heap[x], heap[y]] = [heap[y], heap[x]]; x = y; } } return top; };
+      const ok = c => allowed[c].includes(k) && !bad[c];
+      termCells[k][0].forEach(c => { if (ok(c)) { dist[c * 5 + 4] = 0; pushQ(c * 5 + 4, 0); } });
+      const goal = new Set(termCells[k][1]); let end = -1;
+      const D4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      while (heap.length) {
+        const [d, st] = popQ(); if (d > dist[st]) continue;
+        const c = Math.floor(st / 5), h = st % 5;
+        if (goal.has(c)) { end = st; break; }
+        const [i, j] = ij(c), l = layerOf(c);
+        D4.forEach(([di, dj], nh) => {
+          const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= nx || b >= ny) return;
+          const e = cell(l, a, b); if (!ok(e)) return;
+          const nd = d + 1 + (h < 4 && h !== nh ? 0.5 : 0), ns = e * 5 + nh;
+          if (nd < dist[ns] - 1e-9) { dist[ns] = nd; from[ns] = st; pushQ(ns, nd); }
+        });
+        const e = cell(1 - l, i, j);
+        if (viaOk[j * nx + i].includes(k) && !badVia[j * nx + i] && ok(e)) { const nd = d + 6, ns = e * 5 + 4; if (nd < dist[ns] - 1e-9) { dist[ns] = nd; from[ns] = st; pushQ(ns, nd); } }
+      }
+      if (end < 0) return;
+      const q = []; for (let st = end; st >= 0; st = from[st]) q.push(Math.floor(st / 5));
+      seqs[k] = q.reverse();
+    }
+    for (let pass = 0; pass < 2; pass++) for (let k = 0; k < K; k++) tighten(k);
+    // the tracks: one per layer run, vias between
+    const add = { tracks: keep.slice(), vias: [] };
+    pairs.forEach((p, k) => {
+      const seq = seqs[k], net = names[p.net], w = widths[k], [ea, eb] = p.ends;
+      let pts = [[ea.x, ea.y]], Ly = L[layerOf(seq[0])];
+      const flush = () => { const simple = pts.filter((q, n) => n === 0 || n === pts.length - 1 || Math.abs((q[0] - pts[n - 1][0]) * (pts[n + 1][1] - q[1]) - (q[1] - pts[n - 1][1]) * (pts[n + 1][0] - q[0])) > 1e-9).filter((q, n, arr) => n === 0 || Math.hypot(q[0] - arr[n - 1][0], q[1] - arr[n - 1][1]) > 1e-6); if (simple.length > 1) add.tracks.push({ layer: Ly, w, pts: simple.map(q => [+q[0].toFixed(4), +q[1].toFixed(4)]), net }); };
+      seq.forEach((c, n) => {
+        const q = [cx(c), cy(c)], l2 = L[layerOf(c)];
+        if (n && l2 !== Ly) { flush(); add.vias.push({ x: +q[0].toFixed(4), y: +q[1].toFixed(4), drill: R.viaDrill, pad: R.viaPad, net }); pts = [q]; Ly = l2; return; }
+        pts.push(q);
+      });
+      pts.push([eb.x, eb.y]); flush();
+    });
+    return { sat: true, cut: { tracks: cutT, vias: cutV }, add, pairs: K };
+  }
+
   /** "VT1 pin 2 (shut in by R3, a track on B.Cu)": the shut-in pins in words */
   function describeEscape(esc) {
     return esc.filter(e => !e.ok).map(e => {
@@ -668,5 +962,5 @@
     }).join("; ");
   }
 
-  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, describeEscape, FIXED, rng };
+  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, exact, describeEscape, FIXED, rng };
 })(typeof window !== "undefined" ? window : globalThis);
