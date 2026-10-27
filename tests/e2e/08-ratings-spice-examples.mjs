@@ -254,8 +254,9 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const ur2 = await bw.evaluate(() => { const b = BoardApp.state.board; b.tracks[0].locked = false; BoardApp.commit(); return { t: b.tracks.length, v: b.vias.length }; });
     check(ur0.t > 1 && ur1.t === 1 && ur1.v === 0 && ur1.un > ur0.un && /locked kept/.test(ur1.msg) && ur2.t === ur0.t && ur2.v === ur0.v,
       `Unroute removes ${ur0.t - 1} tracks and ${ur0.v} vias, keeps the locked one ("${ur1.msg}"); Ctrl+Z brings them back`);
-    // Route & nudge (Board ▾): with a Freerouting that routes nothing, every round makes things worse, so each is
-    // undone: the board ends as it was, no part moved; the Auto-route button reads Stop while it runs
+    // Route & nudge (Board ▾): with a Freerouting that routes nothing, the grid finisher still joins what a track
+    // can reach within the rules, and every round after makes nothing better, so each is undone: no part moved,
+    // one step to undo; the Auto-route button reads Stop while it runs
     await ctx.unroute("http://127.0.0.1:37864/**");
     let nPosts = 0;
     await ctx.route("http://127.0.0.1:37864/**", async (route, req) => {
@@ -265,14 +266,14 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
       return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ status: "COMPLETED", unrouted_connections: 0, clearance_violations: 0, duration_seconds: 0.1, outputs: { SES: "(session b (routes (resolution um 10) (network_out)))" } }) });
     });
     const rn0 = await bw.evaluate(() => { const S = BoardApp.state, nets = [...new Set(S.board.tracks.map(t => t.net).filter(n => n && n !== "GND" && !/^HTR/.test(n)))].slice(0, 2);
-      S.board.tracks = S.board.tracks.filter(t => !nets.includes(t.net)); BoardApp.commit(); return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex }; });
+      S.board.tracks = S.board.tracks.filter(t => !nets.includes(t.net)); BoardApp.commit(); return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, bad: S.drc.length }; });
     await bw.click("#btn-board"); await bw.click("#btn-nudge");
     await bw.waitForFunction(() => BoardApp.router.busy, null, { timeout: 5000 }).catch(() => {});
     const stopLbl = await bw.evaluate(() => document.querySelector("#btn-autoroute .lbl").textContent);
     await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 120000 }).catch(() => {});
-    const rn1 = await bw.evaluate(() => { const S = BoardApp.state; return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, msg: document.getElementById("st-msg").textContent, lbl: document.querySelector("#btn-autoroute .lbl").textContent }; });
-    check(rn0.un > 0 && stopLbl === "Stop" && rn1.lbl === "Auto-route" && nPosts >= 3 && rn1.un === rn0.un && rn1.parts === rn0.parts && rn1.tracks === rn0.tracks && rn1.h === rn0.h && /still open after 2 rounds: no part moved/.test(rn1.msg),
-      `Route & nudge with a router that finds nothing: ${nPosts} passes, every round undone, the board as it was ("${rn1.msg}"); the button read ${stopLbl} meanwhile`);
+    const rn1 = await bw.evaluate(() => { const S = BoardApp.state; return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, bad: S.drc.length, msg: document.getElementById("st-msg").textContent, lbl: document.querySelector("#btn-autoroute .lbl").textContent }; });
+    check(rn0.un > 0 && stopLbl === "Stop" && rn1.lbl === "Auto-route" && nPosts >= 3 && rn1.un < rn0.un && rn1.tracks > rn0.tracks && rn1.bad <= rn0.bad && rn1.parts === rn0.parts && rn1.h === rn0.h + 1 && /still open after 2 rounds: no part moved/.test(rn1.msg),
+      `Route & nudge with a router that finds nothing: ${nPosts} passes; the grid joins ${rn0.un - rn1.un} of ${rn0.un} open connections with ${rn1.tracks - rn0.tracks} tracks and no new rule message; every round undone, no part moved, one step to undo ("${rn1.msg}"); the button read ${stopLbl} meanwhile`);
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     // Board ▾ → Freerouting…: an address typed as an IP gets the default port; both start commands name this page's address
     await bw.click("#btn-board"); await bw.click("#btn-router");

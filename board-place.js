@@ -3,6 +3,9 @@
    leaves connections unrouted, the parts near them are nudged so the next pass has room:
      movable(board, model, rats, opts)        -> [part keys]  the parts that may move
      nudge(board, model, keys, opts)          -> { moved, cost0, cost1, tried, taken }
+     escape(board, model, conn, rats, opts)   -> per part: can its open pins get out (max-flow), what walls them in
+     passage(board, model, conn, rats, opts)  -> per open connection: is there still a way from end to end
+     bridge(board, model, conn, rats, opts)   -> a track for the first open connection a grid path reaches (Lee)
    nudge moves the given parts in board.parts (shift on the 1.27 mm grid, turn by 90°, swap
    two parts of one footprint) by simulated annealing (TimberWolf, Sechen and
    Sangiovanni-Vincentelli 1985) on a cost of
@@ -44,14 +47,14 @@
 
   /** The parts that may move to make room for the unrouted connections (rats: the ratsnest
       lines left): on the board, not locked, not a valve, transformer, control or connector,
-      not huge, and within opts.radius (mm, default 8) of an unrouted line */
+      not huge, and within opts.radius (mm, default 8) of an unrouted line or in opts.also (a Set of keys) */
   function movable(board, model, rats, opts) {
     const o = opts || {}, R = o.radius || 8, C = B();
     return model.parts.filter(g => {
       if (!g.place || !g.fp || g.place.locked || FIXED.has(g.type)) return false;
       const b = C.partBox(g);
       if (area(b) > BIG || !inside(b, board.outline)) return false;
-      return rats.some(r => segBox([r.x1, r.y1, r.x2, r.y2], b) <= R);
+      return (o.also && o.also.has(g.key)) || rats.some(r => segBox([r.x1, r.y1, r.x2, r.y2], b) <= R);
     }).map(g => g.key);
   }
 
@@ -256,5 +259,217 @@
     }).join(", ");
   }
 
-  root.BoardPlace = { movable, nudge, describe, FIXED, rng };
+
+  // ---------------------------------------------------------------------------
+  // Pin escape. Whether each pin at the end of an open connection can get a track out of its
+  // part's neighbourhood, as a maximum flow (escape routing as network flow; Yan and Wong,
+  // "A correct network flow model for escape routing", DAC 2009). A grid of cells one track
+  // plus one clearance apart covers a window round the part on each copper layer; a cell is free
+  // when a track through its middle keeps the clearance (by voltage) from other nets' copper,
+  // the board edge, holes and keep-outs. Each free cell carries one track (split into an in and
+  // an out node of capacity 1), steps go to the four neighbours (no diagonals: two diagonal
+  // steps could cross without sharing a cell), a through-hole pin starts on both layers. The
+  // flow runs from the pins to the window's edge or to the pad at the other end of the open
+  // connection. Less flow than pins: some pin is shut in, and the copper next to the cells the
+  // pins still reach (the minimum cut) names what shuts it in.
+  // ---------------------------------------------------------------------------
+  // Dinic's maximum flow on a graph of n nodes; add(u, v, cap) then run(s, t)
+  function flowGraph(n) {
+    const head = new Int32Array(n).fill(-1), to = [], cap = [], next = [];
+    const add = (u, v, c) => { to.push(v); cap.push(c); next.push(head[u]); head[u] = to.length - 1; to.push(u); cap.push(0); next.push(head[v]); head[v] = to.length - 1; return to.length - 2; };
+    const level = new Int32Array(n), it = new Int32Array(n);
+    function bfs(s, t) {
+      level.fill(-1); level[s] = 0; const q = [s];
+      for (let h = 0; h < q.length; h++) { const u = q[h]; for (let e = head[u]; e >= 0; e = next[e]) if (cap[e] > 0 && level[to[e]] < 0) { level[to[e]] = level[u] + 1; q.push(to[e]); } }
+      return level[t] >= 0;
+    }
+    function dfs(u, t, f) {
+      if (u === t) return f;
+      for (; it[u] >= 0; it[u] = next[it[u]]) {
+        const e = it[u], v = to[e];
+        if (cap[e] > 0 && level[v] === level[u] + 1) { const d = dfs(v, t, Math.min(f, cap[e])); if (d > 0) { cap[e] -= d; cap[e ^ 1] += d; return d; } }
+      }
+      return 0;
+    }
+    function run(s, t) {
+      let flow = 0;
+      while (bfs(s, t)) { it.set(head); let f; while ((f = dfs(s, t, Infinity)) > 0) flow += f; }
+      return flow;
+    }
+    // the nodes the source still reaches in the residual graph (its side of the minimum cut)
+    function reach(s) {
+      const seen = new Uint8Array(n), q = [s]; seen[s] = 1;
+      for (let h = 0; h < q.length; h++) { const u = q[h]; for (let e = head[u]; e >= 0; e = next[e]) if (cap[e] > 0 && !seen[to[e]]) { seen[to[e]] = 1; q.push(to[e]); } }
+      return seen;
+    }
+    // the first used edge out of u (a forward edge with its unit spent), -1 when none
+    const used = u => { for (let e = head[u]; e >= 0; e = next[e]) if (!(e & 1) && cap[e] === 0) return e; return -1; };
+    return { add, run, reach, used, cap, to };
+  }
+
+  // The grid for one check: cells `pitch` apart over box on each copper layer, for tracks of
+  // width w on the nets in `nets`; pins: the pads the flow starts from (index = their pin),
+  // far: pads it may end in; edgeSink: the window's border counts as out. Returns the max flow,
+  // which pins got out, and the walls round the cells the pins still reach
+  function gridFlow(board, ctx, box, pins, far, nets, w, edgeSink) {
+    const C = B(), R = board.rules, outl = board.outline, L = C.COPPER, { conn, need, pinGap, part } = ctx;
+    const pitch = Math.max(0.5, w + R.clearance), first = pins[0].s;
+    const x0 = first[0] - Math.ceil((first[0] - box.x1) / pitch) * pitch, y0 = first[1] - Math.ceil((first[1] - box.y1) / pitch) * pitch;
+    const nx = Math.ceil((box.x2 - x0) / pitch) + 1, ny = Math.ceil((box.y2 - y0) / pitch) + 1, nc = nx * ny * L.length;
+    const W = { x1: x0 - 3, y1: y0 - 3, x2: x0 + nx * pitch + 3, y2: y0 + ny * pitch + 3 };
+    const near = conn.items.filter(it => (ctx.copper !== false || it.kind === "pad" || it.kind === "hole") && Math.max(it.s[0], it.s[2]) + it.r > W.x1 && Math.min(it.s[0], it.s[2]) - it.r < W.x2 && Math.max(it.s[1], it.s[3]) + it.r > W.y1 && Math.min(it.s[1], it.s[3]) - it.r < W.y2);
+    const src = new Int32Array(nc).fill(-1), free = new Uint8Array(nc), wall = new Int32Array(nc).fill(-1), sink = new Uint8Array(nc);
+    const walls = [], wallOf = new Map(), wallIdx = (k, mk) => { if (!wallOf.has(k)) { wallOf.set(k, walls.length); walls.push(mk()); } return wallOf.get(k); };
+    const pinIdx = new Map(pins.map((it, k) => [it, k])), farSet = new Set(far);
+    for (let l = 0; l < L.length; l++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const c = (l * ny + j) * nx + i, cx = x0 + i * pitch, cy = y0 + j * pitch;
+      let block = -1;
+      if (C.edgeDist(cx, cy, outl) < (R.edgeClearance || 0.5) + w / 2 + (ctx.strict ? pitch / 2 : 0)) block = wallIdx("edge", () => ({ what: "the board edge", kind: "edge" }));
+      for (const it of near) {
+        if (!it.layers.includes(L[l])) continue;
+        const d = C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], cx, cy);
+        if (pinIdx.has(it) && d <= it.r) { src[c] = pinIdx.get(it); continue; }
+        if (farSet.has(it) && d <= it.r) { sink[c] = 1; continue; }
+        if (block >= 0 || (it.net !== null && nets.has(it.net))) continue;
+        let gapNeed = Math.max(...[...nets].map(n => need(n, it.net === "short" ? null : it.net)));
+        if (it.kind === "pad" && ctx.own.has(it.pad.part) && pinGap.has(it.pad.part)) gapNeed = Math.min(gapNeed, pinGap.get(it.pad.part));
+        const D = it.r + w / 2 + gapNeed;
+        if (d < (ctx.strict ? Math.sqrt(D * D + pitch * pitch / 4) : D) - 1e-6) {
+          block = it.kind === "pad" ? wallIdx("p" + it.pad.part, () => ({ what: it.pad.part === part ? `${it.pad.ref}'s own pin ${it.pad.num}` : it.pad.ref, kind: "part", key: it.pad.part }))
+            : it.kind === "track" ? wallIdx("t" + it.ti, () => ({ what: `a track on ${board.tracks[it.ti].layer}`, kind: "track", ti: it.ti }))
+              : it.kind === "via" ? wallIdx("v" + it.vi, () => ({ what: "a via", kind: "via", vi: it.vi })) : wallIdx("h" + it.hi, () => ({ what: "a mounting hole", kind: "hole" }));
+        }
+      }
+      if (block < 0) for (const h of board.holes || []) if (!h.plated && Math.hypot(cx - h.x, cy - h.y) < h.d / 2 + w / 2 + R.clearance) { block = wallIdx("hole", () => ({ what: "a mounting hole", kind: "hole" })); break; }
+      if (block < 0) for (const k of board.keepouts || []) if (k.tracks !== false && C.koLayers(k).includes(L[l]) && C.pip(cx, cy, k.pts)) { block = wallIdx("ko" + (k.name || ""), () => ({ what: `keep-out ${k.name || ""}`.trim(), kind: "keepout" })); break; }
+      if (src[c] >= 0) { free[c] = 1; sink[c] = 0; continue; }
+      if (sink[c]) { free[c] = 1; continue; }
+      if (block >= 0) { wall[c] = block; continue; }
+      free[c] = 1;
+      if (edgeSink && (i === 0 || j === 0 || i === nx - 1 || j === ny - 1)) sink[c] = 1;
+    }
+    // a pad smaller than the grid starts (or ends) at the cell nearest its middle, on each of its layers
+    const nearest = (it, mark) => L.forEach((Ly, l) => {
+      if (!it.layers.includes(Ly)) return;
+      const i = Math.round((it.s[0] - x0) / pitch), j = Math.round((it.s[1] - y0) / pitch); if (i < 0 || j < 0 || i >= nx || j >= ny) return;
+      mark((l * ny + j) * nx + i, l);
+    });
+    pins.forEach((it, k) => nearest(it, (c, l) => {
+      for (let d = l * nx * ny; d < (l + 1) * nx * ny; d++) if (src[d] === k) return;
+      src[c] = k; free[c] = 1; wall[c] = -1; sink[c] = 0;
+    }));
+    far.forEach(it => nearest(it, c => { if (src[c] < 0 && !sink[c]) { sink[c] = 1; free[c] = 1; wall[c] = -1; } }));
+    // nodes: cell in (2c), cell out (2c + 1), the pins, the source and the sink
+    const P0 = 2 * nc, S = P0 + pins.length, T = S + 1, G = flowGraph(T + 1);
+    const pinEdge = pins.map((_, k) => G.add(S, P0 + k, 1));
+    const steps = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (let c = 0; c < nc; c++) {
+      if (!free[c]) continue;
+      G.add(2 * c, 2 * c + 1, 1);
+      if (src[c] >= 0) G.add(P0 + src[c], 2 * c, 1);
+      if (sink[c]) G.add(2 * c + 1, T, 1);
+      const i = c % nx, j = Math.floor(c / nx) % ny;
+      steps.forEach(([di, dj]) => { const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= nx || b >= ny) return; const d = c + dj * nx + di; if (free[d] && src[d] < 0) G.add(2 * c + 1, 2 * d, 1); });
+    }
+    const flow = G.run(S, T), seen = G.reach(S), count = new Map();
+    // the walls: blocked cells next to a cell the pins still reach (not the parts' own pins: nothing moves those)
+    if (flow < pins.length) for (let c = 0; c < nc; c++) {
+      if (!free[c] || !seen[2 * c]) continue;
+      const i = c % nx, j = Math.floor(c / nx) % ny;
+      steps.forEach(([di, dj]) => { const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= nx || b >= ny) return; const k = wall[c + dj * nx + di]; if (k >= 0 && !(walls[k].kind === "part" && ctx.own.has(walls[k].key))) count.set(k, (count.get(k) || 0) + 1); });
+    }
+    // the first pin's way out, cell by cell, when asked for (the flow's used edges from its node)
+    let path = null;
+    if (ctx.path && flow > 0 && G.cap[pinEdge[0]] === 0) {
+      path = []; let u = P0, guard = 0;
+      while (u !== T && guard++ < 4 * nc) {
+        const e = G.used(u); if (e < 0) break;
+        u = G.to[e]; if (u < P0 && !(u & 1)) { const c = u >> 1, l = Math.floor(c / (nx * ny)), j = Math.floor(c / nx) % ny, i = c % nx; path.push({ x: +(x0 + i * pitch).toFixed(4), y: +(y0 + j * pitch).toFixed(4), layer: L[l] }); }
+      }
+      if (u !== T) path = null;
+    }
+    return { flow, path, out: pinEdge.map(e => G.cap[e] === 0), walls: [...count].sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ ...walls[k], n })) };
+  }
+  // what the checks share: the pads at the ends of open connections, track widths, clearances
+  function checkCtx(board, model, conn, rats, o) {
+    const C = B(), R = board.rules, names = model.names, amps = o.amps || {};
+    const widthOf = n => (n === null || n === undefined ? R.track : Math.max(C.classRule(C.netClassOf(n, names, o.hv, R), R).track, Math.ceil(C.currentWidth(amps[n], R, board.stackup) * 20) / 20));
+    const need = (a, b) => (o.clr ? o.clr.need(a, b).c : R.clearance);
+    const padItem = new Map(conn.items.filter(it => it.kind === "pad").map(it => [it.pad, it]));
+    const at = (x, y) => `${x.toFixed(3)},${y.toFixed(3)}`, padAt = new Map(model.pads.map(p => [at(p.x, p.y), p]));
+    const ends = rats.map(r => [padAt.get(at(r.x1, r.y1)), padAt.get(at(r.x2, r.y2))]);
+    // a part's own pins sit closer than any clearance: a track leaving one may pass the others as close as they are to each other
+    const byPart = new Map(); padItem.forEach(it => { if (!byPart.has(it.pad.part)) byPart.set(it.pad.part, []); byPart.get(it.pad.part).push(it); });
+    const pinGap = new Map();
+    byPart.forEach((list, k) => { let g = Infinity; list.forEach(a => list.forEach(b => { if (a !== b && a.pad.net !== b.pad.net) g = Math.min(g, C.segSeg(a.s, b.s) - a.r - b.r); })); if (g < Infinity) pinGap.set(k, g); });
+    return { conn, need, widthOf, padItem, ends, pinGap, copper: o.copper };
+  }
+  const boxOfPads = (items, m) => ({ x1: Math.min(...items.map(it => Math.min(it.s[0], it.s[2]) - it.r)) - m, y1: Math.min(...items.map(it => Math.min(it.s[1], it.s[3]) - it.r)) - m, x2: Math.max(...items.map(it => Math.max(it.s[0], it.s[2]) + it.r)) + m, y2: Math.max(...items.map(it => Math.max(it.s[1], it.s[3]) + it.r)) + m });
+
+  /** For each part with a pin at the end of an open connection (rats), whether those pins can get
+      out of the part's neighbourhood (opts.margin mm round it, default 6) all at once:
+      [{ key, ref, pins: [{ num, net, out }], flow, ok, walls: [{ what, kind, key|ti|vi, n }] }], the
+      shut-in parts first. walls: what borders the cells the pins can still reach, most first
+      ("R3", "a track on B.Cu", "the board edge"…). opts: { clr, hv, amps, margin, copper (false: pads only) } */
+  function escape(board, model, conn, rats, opts) {
+    const o = opts || {}, C = B(), ctx = checkCtx(board, model, conn, rats, o), want = new Map();
+    ctx.ends.forEach(([a, b]) => [[a, b], [b, a]].forEach(([p, q]) => { if (!p) return; if (!want.has(p.part)) want.set(p.part, new Map()); const m = want.get(p.part); if (!m.has(p)) m.set(p, []); if (q && q.part !== p.part) m.get(p).push(q); }));
+    const out = [];
+    want.forEach((pins, pk) => {
+      const g = model.parts.find(q => q.key === pk); if (!g || !g.fp || !g.place) return;
+      const list = [...pins.keys()], bx = C.partBox(g), m = o.margin || 6;
+      const far = [...new Set([...pins.values()].flat())].map(q => ctx.padItem.get(q)).filter(Boolean);
+      const r = gridFlow(board, { ...ctx, part: pk, own: new Set([pk]) }, { x1: bx.x1 - m, y1: bx.y1 - m, x2: bx.x2 + m, y2: bx.y2 + m }, list.map(p => ctx.padItem.get(p)), far, new Set(list.map(p => p.net)), Math.max(...list.map(p => ctx.widthOf(p.net))), true);
+      out.push({ key: pk, ref: g.ref, pins: list.map((p, k) => ({ num: p.num, net: p.net, out: r.out[k] })), flow: r.flow, ok: r.flow === list.length, walls: r.walls });
+    });
+    return out.sort((a, b) => a.ok - b.ok);
+  }
+
+  /** For each open connection, whether one track could still run from end to end past the copper
+      already there (a grid over both ends' box plus opts.margin, default 4 mm): [{ i, net, from,
+      to, ok, walls }], the blocked ones first; i indexes rats. Same opts as escape */
+  function passage(board, model, conn, rats, opts) {
+    const o = opts || {}, ctx = checkCtx(board, model, conn, rats, o), out = [];
+    ctx.ends.forEach(([a, b], i) => {
+      if (!a || !b) return;
+      const A = ctx.padItem.get(a), Bp = ctx.padItem.get(b); if (!A || !Bp) return;
+      // the copper already on this net joins in: start from every piece of it on a's side, end on b's
+      const r = gridFlow(board, { ...ctx, part: a.part, own: new Set([a.part, b.part]) }, boxOfPads([A, Bp], o.margin || 4), [A], [Bp], new Set([a.net]), ctx.widthOf(a.net), false);
+      out.push({ i, net: a.net, from: `${a.ref} ${a.num}`, to: `${b.ref} ${b.num}`, ok: r.flow > 0, walls: r.walls });
+    });
+    return out.sort((x, y) => x.ok - y.ok);
+  }
+
+  /** A track for the first open connection a grid path can take (rats in order; skip: indexes
+      to pass over): Lee's maze routing on the passage grid, kept a little further from obstacles
+      than the clearance so the straight steps between cells keep it too. Returns { i, track:
+      { layer, w, pts, net } } or null. The caller adds it and checks the board. Same opts as escape */
+  function bridge(board, model, conn, rats, opts) {
+    const o = opts || {}, ctx = checkCtx(board, model, conn, rats, o), skip = o.skip || new Set();
+    for (let i = 0; i < ctx.ends.length; i++) {
+      const [a, b] = ctx.ends[i]; if (skip.has(i) || !a || !b) continue;
+      const A = ctx.padItem.get(a), Bp = ctx.padItem.get(b); if (!A || !Bp) continue;
+      const w = ctx.widthOf(a.net);
+      for (const m of [o.margin || 4, 12]) {
+        const r = gridFlow(board, { ...ctx, part: a.part, own: new Set([a.part, b.part]), strict: true, path: true }, boxOfPads([A, Bp], m), [A], [Bp], new Set([a.net]), w, false);
+        if (!r.path || !r.path.length) continue;
+        // one layer from end to end (a through-hole pin starts on both): straight runs joined, the pads' middles at the ends
+        const Ly = r.path[0].layer, pts = [[a.x, a.y]].concat(r.path.map(p => [p.x, p.y]), [[b.x, b.y]]);
+        const simple = pts.filter((p, k) => { if (k === 0 || k === pts.length - 1) return true; const q = pts[k - 1], s = pts[k + 1]; return Math.abs((p[0] - q[0]) * (s[1] - p[1]) - (p[1] - q[1]) * (s[0] - p[0])) > 1e-6; })
+          .filter((p, k, arr) => k === 0 || Math.hypot(p[0] - arr[k - 1][0], p[1] - arr[k - 1][1]) > 1e-6);
+        return { i, track: { layer: Ly, w, pts: simple, net: model.names[a.net] } };
+      }
+    }
+    return null;
+  }
+
+  /** "VT1 pin 2 (shut in by R3, a track on B.Cu)": the shut-in pins in words */
+  function describeEscape(esc) {
+    return esc.filter(e => !e.ok).map(e => {
+      const pins = e.pins.filter(p => !p.out).map(p => p.num), by = [...new Set(e.walls.slice(0, 3).map(w => w.what))];
+      return `${e.ref} pin${pins.length === 1 ? "" : "s"} ${pins.join(", ")}${by.length ? ` (shut in by ${by.join(", ")})` : ""}`;
+    }).join("; ");
+  }
+
+  root.BoardPlace = { movable, nudge, describe, escape, passage, bridge, describeEscape, FIXED, rng };
 })(typeof window !== "undefined" ? window : globalThis);
