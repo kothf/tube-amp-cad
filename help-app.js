@@ -14,7 +14,7 @@
       ["Transformers", ["opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat", "itx"]],
       ["Sources", ["vdc", "rail", "isrc", "siggen", "mains", "pickup", "phono", "vcvs", "vccs"]], ["Ground & connectors", ["ground", "offsheet", "jack", "iec", "terminal", "header", "faston"]],
       ["Tubes", ["tube"]], ["Semiconductors", ["diode", "bridge", "zener", "led", "npn", "pnp", "nmos", "pmos", "njf", "pjf"]],
-      ["Integrated circuits", ["opamp", "timer555", "reg", "tl431"]], ["Gas-discharge tubes", ["gasreg"]], ["Instruments", ["scope"]], ["Document", ["frame", "note"]]];
+      ["Integrated circuits", ["opamp", "chipamp", "timer555", "reg", "tl431"]], ["Gas-discharge tubes", ["gasreg", "neon", "eye"]], ["Instruments", ["scope"]], ["Document", ["frame", "note"]]];
     let h = "";
     order.forEach(([g, types]) => {
       h += `<h4>${g}</h4>`;

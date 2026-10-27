@@ -51,6 +51,10 @@
         const sp = seriesPart(c), lim = c.type === "fuse" ? +c.params.a : (CadLib.NTCS[c.params.model] || {}).imax;
         return sp ? { v: sp.i, text: `${fmtEng(sp.i, "A")} rms${share(sp.i, lim)}`, warn: sp.i > (c.type === "fuse" ? 0.75 : 1) * lim, note: c.type === "fuse" ? "over 75 % of its rating" : "over its current" } : null;
       }
+      if (c.type === "neon") {
+        const i = pinCurrent(c, "A"), m = CadLib.NEONS[c.params.model];
+        return i === null ? null : { v: Math.abs(i), text: `${fmtEng(Math.abs(i), "A")}${m ? share(Math.abs(i), m.i) : ""}`, warn: !!m && Math.abs(i) > 2 * m.i, note: "over twice its design current" };
+      }
       if (c.type === "gasreg") {
         const i = pinCurrent(c, "A"), m = CadLib.GASREGS[c.params.model];
         return i === null ? null : { v: i, text: `${fmtEng(i, "A")}${m ? share(i, m.imax) : ""}`, warn: !!m && (i > m.imax || i < m.imin), note: m && i < m.imin ? "under its regulating current" : "over its current" };

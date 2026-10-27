@@ -49,7 +49,7 @@
       case "vactrol": { const m = L.VACTROLS[p.model] || {}; return ["Optocoupler, LED and photoresistor (vactrol)", p.model, m.r10 ? `${f(m.r10, "Ω")} at 10 mA, ${f(m.rdark, "Ω")} dark` : ""]; }
       case "pickup": return ["Guitar pickup (source)", f(p.l, "H") + " " + f(p.r, "Ω"), ""];
       case "phono": return ["Phono cartridge (source)", f(p.mv, "V"), ""];
-      case "speaker": return ["Loudspeaker", f(p.r, "Ω"), ""];
+      case "speaker": { const hp = p.model === "ts" && (L.SPEAKER_PRESETS || []).find(q => q.id.startsWith("hp") && q.r === +p.r && q.re === +p.re); return [hp ? "Headphones (load)" : "Loudspeaker", f(p.r, "Ω"), hp ? hp.name.replace(/^Headphones, /, "") : ""]; }
       case "opt_se": return ["Output transformer, single-ended", f(p.zp, "") + ":" + f(p.zs, "Ω"), "Lp " + f(p.lp, "H") + ", DCR " + f(p.dcrp, "Ω")];
       case "opt_cat": { const m = L.OUTPUT_TX[p.model] || {}; return ["Output transformer, single-ended", m.name || p.model, m.w + " W, " + m.ma + " mA DC"]; }
       case "opt_pp": return ["Output transformer, push-pull", f(p.zaa, "") + ":" + f(p.zs, "Ω"), "UL tap " + p.tap + " %, Lp " + f(p.lp, "H")];
@@ -76,6 +76,9 @@
       case "vdc": return ["DC supply (bench)", f(p.v, "V"), ""];
       case "siggen": return ["Signal generator (bench)", "", ""];
       case "isrc": return ["Current source (ideal)", f(p.i, "A"), ""];
+      case "chipamp": { const m = L.CHIPAMPS[p.model] || {}; return ["Power amplifier IC", p.model, m.pkg ? `${m.pkg}, ${m.pout}${m.pkg === "DIP-8" ? "" : ", on a heatsink"}` : ""]; }
+      case "neon": { const m = L.NEONS[p.model] || {}; return ["Neon indicator lamp", p.model, m.vs ? `strikes at ${m.vs} V, ${f(m.i, "A")}; series resistor ${f(m.rser, "Ω")} on 230 V` : ""]; }
+      case "eye": { const m = L.EYES[p.model] || {}; return ["Tuning indicator tube (magic eye)", p.model, m.vt ? `target ${m.vt} V ${f(m.it, "A")}, ${m.base === "OCTAL" ? "octal" : "6-pin"} socket, 6.3 V 0.3 A heater` : ""]; }
       case "gasreg": { const m = L.GASREGS[p.model] || {}; return ["Gas voltage regulator tube", p.model, `${m.vm} V, ${m.imin * 1000}–${m.imax * 1000} mA, ${m.socket === "OCTAL" ? "octal" : "B7G"} socket`]; }
       case "itx": return [`Transformer, ${+p.idc > 0 ? "interstage (gapped)" : "signal"}`, "1:" + p.ratio + (p.ct === "yes" ? " CT" : ""), "Lp " + f(p.lp, "H") + ", DCR " + f(p.dcrp, "Ω") + " / " + f(p.dcrs, "Ω") + (+p.idc > 0 ? ", " + f(p.idc, "A") + " DC" : "")];
       case "vcvs": return ["Voltage-controlled voltage source (ideal)", "×" + p.gain, ""];

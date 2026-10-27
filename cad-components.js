@@ -49,7 +49,13 @@
     { id: "g12-4", name: "12″ guitar speaker, 4 Ω (typical)", r: 4, re: 3.4, le: 0.25e-3, fs: 80, qms: 5.5, qes: 0.65 },
     { id: "g10-8", name: "10″ guitar speaker, 8 Ω (typical)", r: 8, re: 6.0, le: 0.4e-3, fs: 95, qms: 5, qes: 0.65 },
     { id: "hf8-8", name: "8″ full-range hi-fi, 8 Ω (typical)", r: 8, re: 6.2, le: 0.25e-3, fs: 50, qms: 3.5, qes: 0.45 },
-    { id: "w10-8", name: "10″ hi-fi woofer, 8 Ω (typical)", r: 8, re: 5.8, le: 1.2e-3, fs: 30, qms: 4, qes: 0.4 }
+    { id: "w10-8", name: "10″ hi-fi woofer, 8 Ω (typical)", r: 8, re: 5.8, le: 1.2e-3, fs: 30, qms: 4, qes: 0.4 },
+    // headphones: dynamic drivers, a small impedance peak at their resonance (the impedance
+    // plots of typical models: 32 Ω portable, 250 Ω and 300 Ω studio / hi-fi, 600 Ω vintage)
+    { id: "hp32", name: "Headphones, 32 Ω (portable, closed)", r: 32, re: 30, le: 20e-6, fs: 100, qms: 2, qes: 6 },
+    { id: "hp250", name: "Headphones, 250 Ω (studio, closed)", r: 250, re: 240, le: 0.3e-3, fs: 80, qms: 1.5, qes: 3.2 },
+    { id: "hp300", name: "Headphones, 300 Ω (hi-fi, open)", r: 300, re: 300, le: 0.5e-3, fs: 95, qms: 2, qes: 2.7 },
+    { id: "hp600", name: "Headphones, 600 Ω (vintage studio)", r: 600, re: 580, le: 1e-3, fs: 80, qms: 1.5, qes: 4.5 }
   ];
   /** The electrical equivalent of a Thiele–Small driver: Re, Le in series, then Res ‖ Lces ‖ Ces */
   function speakerTS(p) {
@@ -176,6 +182,8 @@
   // ---------------------------------------------------------------------------
   // the lit LEDs' colours (r,g,b)
   const LED_GLOW = { red: "255,69,58", yellow: "255,214,10", green: "48,209,88", blue: "64,156,255" };
+  // the glow of a neon (orange), a gas regulator (violet) and a magic eye's target (green)
+  const GAS_GLOW = { neon: "255,112,40", gasreg: "190,120,255", eye: "90,255,160" };
   const COL = { body: "#58a6ff", bodySel: "#00e5ff", tube: "#e6edf3", hot: "#ff7b72", text: "#e6edf3", value: "#79c0ff", fill: "#0d1420" };
   function line(ctx, pts) { ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke(); }
 
@@ -354,6 +362,23 @@
       ctx.fillText("∞", 8, -16); ctx.fillText("−", -26, -10); ctx.fillText("+", -26, 10);
       ctx.font = "8px ui-monospace, monospace"; ctx.textAlign = "center";
       ctx.fillText("V+", 9, -24); ctx.fillText("V−", 9, 24);
+    },
+    // a power amplifier IC: the op-amp's box (S01240, a triangle without ∞: a fixed-purpose
+    // amplifier), with the extra pins of the LM386 (gain 1, 8; bypass) and the LM3886 (GND, mute)
+    chipamp(ctx, c) {
+      ctx.fillStyle = COL.fill; ctx.fillRect(-30, -30, 60, 60); ctx.strokeRect(-30, -30, 60, 60);
+      line(ctx, [-40, -10, -30, -10]); line(ctx, [-40, 10, -30, 10]); line(ctx, [30, 0, 40, 0]); line(ctx, [0, -40, 0, -30]); line(ctx, [0, 30, 0, 40]);
+      const k = c && c.params.model;
+      if (k === "LM386") { line(ctx, [-20, -40, -20, -30]); line(ctx, [20, -40, 20, -30]); line(ctx, [20, 30, 20, 40]); }
+      if (k === "LM3886") { line(ctx, [-20, 30, -20, 40]); line(ctx, [20, 30, 20, 40]); }
+      ctx.save(); ctx.lineWidth = 1.5; line(ctx, [-6, -22, 6, -16, -6, -10, -6, -22]); ctx.restore();
+      ctx.font = "12px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText("−", -26, -10); ctx.fillText("+", -26, 10);
+      ctx.font = "8px ui-monospace, monospace"; ctx.textAlign = "center";
+      ctx.fillText("V+", 9, -24);
+      if (k === "LM3886") { ctx.fillText("V−", 0, 23); ctx.fillText("GND", -18, 23); ctx.fillText("MUTE", 19, 23); } else ctx.fillText(k === "LM386" ? "GND" : "V−", 9, 24);
+      if (k === "LM386") { ctx.fillText("G", -20, -24); ctx.fillText("G", 20, -24); ctx.fillText("BYP", 20, 16); }
+      ctx.fillText("PWR", 14, 2);
     },
     npn(ctx, c) { drawBjt(ctx, c, 1); },
     pnp(ctx, c) { drawBjt(ctx, c, -1); },
@@ -633,13 +658,43 @@
       DRAW.opt_se(ctx);
       if (c && c.params.ct === "yes") line(ctx, [12, 0, 40, 0]);
     },
-    gasreg(ctx) {
+    gasreg(ctx, c) {
       // a cold-cathode tube: the envelope with the dot of its gas fill, the anode plate above,
-      // the cold cathode (an open cylinder) below
-      ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.stroke();
+      // the cold cathode (an open cylinder) below; lit by its current (c._lit), the envelope glows violet
+      const lit = c && c._lit;
+      ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2);
+      if (lit > 0) { ctx.fillStyle = `rgba(${GAS_GLOW.gasreg},${(0.2 + 0.6 * lit).toFixed(3)})`; ctx.fill(); }
+      ctx.stroke();
       line(ctx, [0, -30, 0, -8]); line(ctx, [-8, -8, 8, -8]);
       line(ctx, [0, 30, 0, 12]); ctx.beginPath(); ctx.arc(0, 6, 6, 0, Math.PI); ctx.stroke();
       ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(11, 0, 2.2, 0, Math.PI * 2); ctx.fill();
+    },
+    // a neon lamp (IEC 60617 S01102 glow lamp): the envelope, two electrodes facing each other and
+    // the dot of the gas fill; lit by its current (c._lit) it glows orange round the electrodes
+    neon(ctx, c) {
+      const lit = c && c._lit;
+      line(ctx, [-20, 0, -5, 0]); line(ctx, [20, 0, 5, 0]);
+      ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      if (lit > 0) { ctx.fillStyle = `rgba(${GAS_GLOW.neon},${(0.25 + 0.75 * lit).toFixed(3)})`; ctx.fill(); }
+      ctx.stroke();
+      ctx.save(); ctx.lineWidth = 2.2; line(ctx, [-5, -6, -5, 6]); line(ctx, [5, -6, 5, 6]); ctx.restore();
+      ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(0, 7, 1.6, 0, Math.PI * 2); ctx.fill();
+    },
+    // a magic eye: in its envelope the target, a disc whose green fan lights round the cathode's
+    // cap but for the shadow (opening upwards, 90° wide at most), and below it the triode: plate,
+    // grid (dashed) and cathode. c._eye { shadow 0–1, glow 0–1 } is set while the sheet is drawn
+    // from the simulation; without one the fan is drawn as an outline, its shadow at 90°
+    eye(ctx, c) {
+      const e = c && c._eye, cx = 0, cy = -9, r = 15;
+      ctx.beginPath(); ctx.arc(0, 2, 28, 0, Math.PI * 2); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
+      line(ctx, [0, -40, 0, -26]); line(ctx, [0, 40, 0, 28]); line(ctx, [-8, 28, 8, 28]);
+      line(ctx, [-30, 20, -10, 20]); ctx.save(); ctx.setLineDash([3, 2.5]); line(ctx, [-10, 20, 10, 20]); ctx.restore();
+      line(ctx, [-8, 10, 8, 10]); line(ctx, [8, 10, 30, 10]);
+      const sh = (e ? e.shadow : 1) * Math.PI / 2, a0 = -Math.PI / 2 + sh / 2, a1 = 3 * Math.PI / 2 - sh / 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, a0, a1); ctx.closePath();
+      if (e && e.glow > 0) { ctx.fillStyle = `rgba(${GAS_GLOW.eye},${(0.25 + 0.75 * e.glow).toFixed(3)})`; ctx.fill(); }
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
     },
     opt_pp(ctx) {
       ctx.beginPath(); for (let i = 0; i < 8; i++) ctx.arc(-12, -40 + 5 + i * 10, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
@@ -671,6 +726,7 @@
         cathode();
         return;
       }
+      if (c._hot > 0) { ctx.save(); ctx.fillStyle = `rgba(255,${Math.round(60 + 60 * c._hot)},40,${(0.55 + 0.45 * c._hot).toFixed(3)})`; ctx.shadowColor = "rgba(255,80,40,0.9)"; ctx.shadowBlur = 8 + 10 * c._hot; ctx.fillRect(-13, -25, 26, 6); ctx.restore(); }
       line(ctx, [-12, -22, 12, -22]); line(ctx, [0, -22, 0, -50]);       // anode
       cathode();
       ctx.setLineDash([3, 3]);
@@ -1045,6 +1101,40 @@
     const gamma = Math.log10(m.r1 / m.r10);
     return { rs: 1, r10: m.r10, gamma, rdark: m.rdark, ton: m.ton / -Math.log(1 - Math.pow(0.63, 1 / gamma)), toff: m.toff / (Math.log(1e5 / m.r10) / gamma) };
   }
+  // Neon indicator lamps (sim-engine.js GLOW, one each way: a neon glows on either polarity):
+  // typical striking voltage vs (DC), maintaining voltage vm at the design current i, the
+  // rise r per ampere above vm, extinction current iext; rser: the series resistor for 230 V
+  // mains at about the design current (the makers' tables)
+  const NEONS = {
+    "NE-2": { vs: 75, vm: 59, r: 8e3, i: 0.5e-3, iext: 30e-6, rser: 330e3, use: "standard brightness, the classic indicator" },
+    "NE-2H": { vs: 110, vm: 65, r: 3e3, i: 1.9e-3, iext: 0.1e-3, rser: 100e3, use: "high brightness" },
+    "ИН-3": { vs: 85, vm: 60, r: 6e3, i: 0.5e-3, iext: 30e-6, rser: 330e3, use: "IN-3, Soviet indicator" }
+  };
+  // Electron-ray tuning indicators ("magic eyes"): the triode (Koren's mu, kg, kp, kvb, x, fitted
+  // to the plate current through the ray-control resistor rl at no grid bias and the grid bias
+  // that closes the shadow, ec0), the target (a diode of perveance perv: it from the target
+  // voltage vt), and the shadow: 90° with the triode's plate (the ray-control electrode) span·vt
+  // below the target, closed (0°) with it at the target. pins: the base's pin numbers
+  const EYES = {
+    "6E5": { mu: 35, kg: 1443, kp: 800, kvb: 100, x: 1.4, perv: 4.5e-3 / Math.pow(250, 1.5), vt: 250, it: 4.5e-3, rl: 1e6, ip0: 0.24e-3, ec0: -8, span: 0.96, base: "UX6", pins: { P: "2", G: "3", T: "4", K: "5" }, heater: "pins 1 and 6", use: "sharp cutoff, closes at −8 V" },
+    "6E5C": { mu: 35, kg: 1443, kp: 800, kvb: 100, x: 1.4, perv: 4.5e-3 / Math.pow(250, 1.5), vt: 250, it: 4.5e-3, rl: 1e6, ip0: 0.24e-3, ec0: -8, span: 0.96, base: "OCTAL", pins: { P: "3", G: "5", T: "4", K: "8" }, heater: "pins 2 and 7", use: "6Е5С, octal, closes at −8 V" },
+    "6U5": { mu: 12, kg: 100.2e3, kp: 500, kvb: 100, x: 1.4, perv: 4e-3 / Math.pow(250, 1.5), vt: 250, it: 4e-3, rl: 1e6, ip0: 0.19e-3, ec0: -22, span: 0.76, base: "UX6", pins: { P: "2", G: "3", T: "4", K: "5" }, heater: "pins 1 and 6", use: "remote cutoff, closes at −22 V" }
+  };
+  // A tube's anode, cooled by radiation: P = k·(T⁴ − T0⁴), at about 400 °C at its rated dissipation
+  // inside a chassis at 40 °C. It glows dull red from the Draper point (525 °C, about twice the
+  // rating), cherry red by 750 °C. It warms with a time constant tau (s), longer for a bigger
+  // tube: about 15 s at 1 W, half a minute at 20 W. Returns { t °C, glow 0–1, tau }
+  const ANODE = { t0: 313.15, tr: 673.15, red: 798.15, full: 1023.15 };
+  function anodeTemp(pa, paMax) {
+    const k = paMax / (Math.pow(ANODE.tr, 4) - Math.pow(ANODE.t0, 4)), T = Math.pow(Math.max(pa, 0) / k + Math.pow(ANODE.t0, 4), 0.25);
+    return { t: T - 273.15, glow: Math.min(1, Math.max(0, (T - ANODE.red) / (ANODE.full - ANODE.red))), tau: 15 * Math.pow(Math.max(paMax, 0.1), 0.25) };
+  }
+  // the shadow of an eye, 0 (closed) to 1 (90°), and its target's glow, 0 to 1, from the target's
+  // and the ray-control electrode's voltages over the cathode
+  function eyeShadow(m, vt, vp) {
+    if (!(vt > 1)) return { shadow: 0, glow: 0 };
+    return { shadow: Math.min(1, Math.max(0, (vt - vp) / (m.span * vt))), glow: Math.min(1, Math.sqrt(m.perv * Math.pow(vt, 1.5) / m.it)) };
+  }
   const OPAMPS = {
     "LM741": { units: 1, a0: 200e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 80e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.7e-3, vmax: 36, cc: 30e-12, input: "bipolar (NPN)", use: "the classic general-purpose op-amp" },
     "LM301A": { units: 1, a0: 160e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 70e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.8e-3, vmax: 36, cc: 0, input: "bipolar (NPN)", use: "externally compensated, 30 pF between pins 1 and 8" },
@@ -1067,6 +1157,21 @@
   const rotaryWays = c => Math.min(Math.max(Math.round(+c.params.ways) || 4, 2), 12);
   const CONTROLLED_PINS = () => [{ id: "+", x: 10, y: -30, name: "out +" }, { id: "-", x: 10, y: 30, name: "out −" }, { id: "C+", x: -30, y: -20, name: "control +" }, { id: "C-", x: -30, y: 20, name: "control −" }];
   const OPAMP_SUPPLY = { 1: { "V+": 7, "V-": 4 }, 2: { "V+": 8, "V-": 4 }, 4: { "V+": 4, "V-": 11 } };
+  // Power amplifier ICs, the op-amp macromodel with the datasheets' values (TI, ST): as OPAMPS,
+  // plus pmax the package's dissipation (W, on a heatsink), vmin the least supply, gmin the
+  // least closed-loop gain it is stable at, pins: package pin numbers by symbol pin, and pout a
+  // typical output. The LM386 has its gain network inside: 50 kΩ from each input to ground, the
+  // output biased at half the supply from pin 7, the gain 20 (2 × 15 kΩ / 1.5 kΩ) or 200 with
+  // pins 1 and 8 bypassed. The LM3886's mute (pin 8) lets it play once 0.5 mA is drawn from it
+  // (it sits 2.6 V below GND, pin 7): a resistor to V−.
+  const CHIPAMPS = {
+    "LM386": { a0: 1e5, gbw: 6e6, sr: 2e6, rin: 1e12, ib: 0, ro: 1, isc: 0.5, isk: 0.5, dhi: 1, dlo: 0.6, iq: 4e-3, vmax: 12, vmin: 4, cc: 10e-12, pmax: 1.25, gmin: 20, pkg: "DIP-8",
+      pins: { "+": "3", "-": "2", OUT: "5", "V+": "6", "V-": "4", G1: "1", G8: "8", BYP: "7" }, pout: "0.3 W into 8 Ω from 6 V, 0.7 W from 9 V", use: "low-voltage, gain 20–200, battery amps and headphones" },
+    "TDA2050": { a0: 1e4, gbw: 3e6, sr: 8e6, rin: 500e3, ib: 0.1e-6, ro: 0.2, isc: 4, isk: 4, dhi: 2.5, dlo: 2.5, iq: 55e-3, vmax: 50, vmin: 9, cc: 10e-12, pmax: 25, gmin: 16, pkg: "TO-220-5",
+      pins: { "+": "1", "-": "2", "V-": "3", OUT: "4", "V+": "5" }, pout: "about 25 W into 4 Ω from ±18 V", use: "32 W hi-fi, Pentawatt" },
+    "LM3886": { a0: 5.6e5, gbw: 8e6, sr: 19e6, rin: 1e6, ib: 0.2e-6, ro: 0.1, isc: 11.5, isk: 11.5, dhi: 3.2, dlo: 3.2, iq: 50e-3, vmax: 84, vmin: 20, cc: 10e-12, pmax: 125, gmin: 10, pkg: "TO-220-11",
+      pins: { "V+": "1,5", OUT: "3", "V-": "4", GND: "7", MUTE: "8", "-": "9", "+": "10" }, pout: "68 W into 4 Ω, 38 W into 8 Ω from ±28 V", use: "68 W, mute, overture series" }
+  };
   // the amplifier of a dual or quad from the designation suffix: DA1.2 is the second one
   const opampUnit = c => { const m = OPAMPS[c.params.model] || OPAMPS.TL071, k = +((/\.(\d+)$/.exec(c.label || "") || [])[1] || 1); return k >= 1 && k <= m.units ? k : 1; };
   // the engine's macromodel (sim-engine.js Semi.opamp) from the datasheet values: stage two has a
@@ -1422,6 +1527,48 @@
       build: (c, net, alloc, out) => {
         const m = GASREGS[c.params.model] || GASREGS["0A2"];
         out.push({ id: c.id, kind: "GLOW", nodes: [net("A"), net("K")], model: { vm: m.vm, vs: m.vs, r: m.r, iext: m.iext } });
+      }
+    },
+    neon: {
+      // HL: an indicator lamp (ГОСТ 2.732). Two glow discharges back to back, as a neon lights
+      // on either polarity (on AC both electrodes glow); a 100 Ω sense resistor carries its current
+      name: "Neon lamp", prefix: "HL", group: "Gas-discharge tubes", bbox: [-20, -12, 20, 12],
+      defaults: { model: "NE-2" },
+      pins: () => [{ id: "A", x: -20, y: 0, name: "electrode" }, { id: "K", x: 20, y: 0, name: "electrode" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(NEONS).map(([k, m]) => [k, `${k} · strikes at ${m.vs} V, ${fmtEng(m.i, "A")} · ${m.use}`]) }],
+      info: c => {
+        const m = NEONS[c.params.model] || NEONS["NE-2"];
+        return `${c.params.model} (${m.use}): dark until about ${m.vs} V across it, then it holds about ${m.vm} V and glows orange, brighter with its current (${fmtEng(m.i, "A")} design). ` +
+          `It needs a series resistor: ${fmtEng(m.rser, "Ω")} on 230 V mains, about (supply − ${m.vm} V) / ${fmtEng(m.i, "A")} on DC. Below about ${fmtEng(m.iext, "A")} it goes out. ` +
+          "Either way round: on AC it lights on both half-cycles. With a capacitor across it, fed through a large resistor, it flashes (a relaxation oscillator).";
+      },
+      build: (c, net, alloc, out) => {
+        const m = NEONS[c.params.model] || NEONS["NE-2"], mid = alloc(), g = { vm: m.vm, vs: m.vs, r: m.r, iext: m.iext };
+        out.push({ id: c.id, kind: "GLOW", nodes: [net("A"), mid], model: g }, { id: c.id + "#rev", kind: "GLOW", nodes: [mid, net("A")], model: g });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [mid, net("K")], r: 100 });
+      }
+    },
+    eye: {
+      // a tuning indicator (электронно-световой индикатор), VL like any tube: the target (T) with
+      // its fan of green light, the triode's plate (P, inside also the ray-control electrode),
+      // its grid (G) and the cathode (K). The heater is not drawn, as on the other tubes
+      name: "Magic eye (tuning indicator)", prefix: "VL", group: "Gas-discharge tubes", bbox: [-30, -40, 30, 40],
+      defaults: { model: "6E5" },
+      pins: () => [{ id: "T", x: 0, y: -40, name: "target" }, { id: "P", x: 30, y: 10, name: "triode plate" }, { id: "G", x: -30, y: 20, name: "grid" }, { id: "K", x: 0, y: 40, name: "cathode" }],
+      pinNumbers: c => Object.assign({}, (EYES[c.params.model] || EYES["6E5"]).pins),
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(EYES).map(([k, m]) => [k, `${k} · ${m.use}`]) }],
+      info: c => {
+        const m = EYES[c.params.model] || EYES["6E5"];
+        return `${c.params.model} (${m.use}): the target at ${m.vt} V draws about ${fmtEng(m.it, "A")} and glows green; the triode's plate goes to the same supply through ${fmtEng(m.rl, "Ω")}. ` +
+          `With the grid at the cathode the plate sits low and the shadow opens to 90°; as the grid goes negative (the AGC of a tuned radio, a rectified signal for a level meter) the plate rises towards the target and the shadow closes, shut at about ${m.ec0} V. ` +
+          `Under Animate the eye opens and closes with its grid. Pins: target ${m.pins.T}, plate ${m.pins.P}, grid ${m.pins.G}, cathode ${m.pins.K}, heater ${m.heater} (6.3 V, 0.3 A), ${m.base === "OCTAL" ? "octal" : "6-pin"} base.`;
+      },
+      build: (c, net, alloc, out) => {
+        const m = EYES[c.params.model] || EYES["6E5"];
+        out.push({ id: c.id, kind: "TRIODE", nodes: [net("P"), net("G"), net("K")], model: { mu: m.mu, kg: m.kg, kp: m.kp, kvb: m.kvb, x: m.x } });
+        out.push({ id: c.id + "#t", kind: "VDIODE", nodes: [net("T"), net("K")], perveance: m.perv, part: "target" });
       }
     },
     opt_cat: {
@@ -1942,6 +2089,57 @@
         out.push({ id: c.id + "#ro", kind: "R", nodes: [net("+"), net("-")], r: Math.max(c.params.rout, 1) });
       }
     },
+    chipamp: {
+      // DA: an analogue IC (ГОСТ 2.710), drawn as the op-amp it is inside; the LM386 brings its
+      // gain pins (1, 8) and bypass (7) out, the LM3886 its GND (7) and mute (8)
+      name: "Power amplifier IC", prefix: "DA", group: "Integrated circuits", bbox: [-40, -40, 40, 40],
+      defaults: { model: "LM386" },
+      pins: c => {
+        const p = [{ id: "-", x: -40, y: -10, name: "inverting input" }, { id: "+", x: -40, y: 10, name: "non-inverting input" }, { id: "OUT", x: 40, y: 0, name: "output" },
+          { id: "V+", x: 0, y: -40, name: "positive supply" }, { id: "V-", x: 0, y: 40, name: c.params.model === "LM386" ? "ground" : "negative supply" }];
+        if (c.params.model === "LM386") p.push({ id: "G1", x: -20, y: -40, name: "gain (pin 1)" }, { id: "G8", x: 20, y: -40, name: "gain (pin 8)" }, { id: "BYP", x: 20, y: 40, name: "bypass (pin 7)" });
+        if (c.params.model === "LM3886") p.push({ id: "GND", x: -20, y: 40, name: "ground (pin 7)" }, { id: "MUTE", x: 20, y: 40, name: "mute (pin 8)" });
+        return p;
+      },
+      pinSpots: [["-", -36, -10, 0, -1], ["+", -36, 10, 0, 1], ["OUT", 36, 0, 0, -1], ["V+", 0, -36, 1, 0], ["V-", 0, 36, 1, 0], ["G1", -20, -36, -1, 0], ["G8", 20, -36, 1, 0], ["BYP", 20, 36, 1, 0], ["GND", -20, 36, -1, 0], ["MUTE", 20, 36, 1, 0]],
+      pinNumbers: c => Object.assign({}, (CHIPAMPS[c.params.model] || CHIPAMPS.LM386).pins),
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(CHIPAMPS).map(([k, m]) => [k, `${k} · ${m.use}`]) }],
+      info: c => {
+        const m = CHIPAMPS[c.params.model] || CHIPAMPS.LM386, k = c.params.model;
+        const base = `${k} (${m.use}), ${m.pkg}: ${m.pout}. Supply ${m.vmin}–${m.vmax} V${k === "LM386" ? "" : ` (±${m.vmin / 2}–±${m.vmax / 2} V)`}, ${fmtEng(m.iq, "A")} quiescent, output current limit ${fmtEng(m.isc, "A")}, up to ${m.pmax} W dissipated ${k === "LM386" ? "(DIP-8, in still air)" : "on a heatsink"}. `;
+        if (k === "LM386") return base + "Inside: 50 kΩ from each input to ground and the output biased at half the supply (pin 7: 10 µF to ground there quietens the supply's ripple). The gain is 20 with pins 1 and 8 open, 200 with 10 µF between them; a resistor in series with that capacitor sets it in between. Take the output through a capacitor (220 µF or more) to the speaker, and put 0.05 µF + 10 Ω from the output to ground (the Zobel) against oscillation.";
+        return base + `Wire it as a non-inverting amplifier with a gain of ${m.gmin} or more (it is not stable lower): feedback from OUT to IN−, a resistor and capacitor from IN− to ground. ` +
+          (k === "LM3886" ? "Draw 0.5 mA or more from the mute pin (8), or it stays silent: 10 kΩ to V− from ±28 V. Pin 7 goes to ground. Not modelled: the mute itself (the simulation plays regardless; Checks warns), the SPiKe protection, the thermal shutdown." : "Not modelled: the thermal shutdown.");
+      },
+      build: (c, net, alloc, out) => {
+        const m = CHIPAMPS[c.params.model] || CHIPAMPS.LM386, n1 = alloc(), n2 = alloc(), vneg = net("V-");
+        const amp = (inp, inn) => {
+          out.push({ id: c.id, kind: "OPAMP", nodes: [inp, inn, net("OUT"), net("V+"), vneg, n1, n2], model: opampModel(m) });
+          out.push({ id: c.id + "#cc", kind: "C", nodes: [n1, n2], c: m.cc }, { id: c.id + "#c1", kind: "C", nodes: [n1, vneg], c: 1e-12 }, { id: c.id + "#c2", kind: "C", nodes: [n2, vneg], c: 3e-12 });
+          out.push({ id: c.id + "#lp", kind: "R", nodes: [net("V+"), 0], r: 1e9 }, { id: c.id + "#ln", kind: "R", nodes: [vneg, 0], r: 1e9 });
+        };
+        if (c.params.model === "LM386") {
+          // the input pins over 50 kΩ to ground; the difference, raised on the bias (pin 7, half of
+          // V+ through 2 × 50 kΩ), drives the amplifier, whose feedback (28.5 kΩ to pin 1, 1.35 kΩ
+          // on to pin 8, 150 Ω to the bias) makes the gain 20, or 191 with pins 1 and 8 bypassed
+          const p = alloc(), byp = net("BYP");
+          out.push({ id: c.id + "#rip", kind: "R", nodes: [net("+"), vneg], r: 50e3 }, { id: c.id + "#rin", kind: "R", nodes: [net("-"), vneg], r: 50e3 });
+          out.push({ id: c.id + "#rb1", kind: "R", nodes: [net("V+"), byp], r: 50e3 }, { id: c.id + "#rb2", kind: "R", nodes: [byp, vneg], r: 50e3 });
+          out.push({ id: c.id + "#e", kind: "E", nodes: [p, byp, net("+"), net("-")], gain: 1 });
+          out.push({ id: c.id + "#rf", kind: "R", nodes: [net("OUT"), net("G1")], r: 28.5e3 }, { id: c.id + "#rg1", kind: "R", nodes: [net("G1"), net("G8")], r: 1350 }, { id: c.id + "#rg2", kind: "R", nodes: [net("G8"), byp], r: 150 });
+          amp(p, net("G1"));
+          return;
+        }
+        amp(net("+"), net("-"));
+        if (c.params.model === "LM3886") {
+          // the mute pin 2.6 V below GND through 1 kΩ: the current drawn from it reads as #mute's
+          const g = net("GND"), mid = alloc();
+          out.push({ id: c.id + "#mute", kind: "V", nodes: [g, mid], v: 2.6 }, { id: c.id + "#rm", kind: "R", nodes: [mid, net("MUTE")], r: 1e3 });
+          out.push({ id: c.id + "#lg", kind: "R", nodes: [g, 0], r: 1e9 });
+        }
+      }
+    },
     timer555: {
       // pins in pin-number order (the board's DIP-8 pads and wire pads follow it)
       name: "NE555 timer", prefix: "DA", group: "Integrated circuits", bbox: [-50, -50, 50, 50],
@@ -2152,6 +2350,7 @@
   // Palette layout
   const PALETTE = [
     { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"],
+      ["speaker", (({ r, re, le, fs, qms, qes }) => ({ model: "ts", r, re, le, fs, qms, qes }))(SPEAKER_PRESETS.find(p => p.id === "hp300")), "Headphones (300 Ω)"],
       { sub: "Protection" }, ["fuse"], ["ntc"], ["mov"]] },
     { group: "Switches & relays", items: [["switch"], ["spst", null, "Toggle switch (on–off)"], ["spst", { kind: "no" }, "Push button (normally open)"], ["spst", { kind: "nc" }, "Push button (normally closed)"], ["rotary", null, "Rotary selector, 1 pole"],
       { sub: "Relays" }, ["relay", null, "Relay G5LE-1 (SPDT, power)"], ["relay", { model: "G5V-2" }, "Relay G5V-2 (DPDT, signal)"],
@@ -2180,10 +2379,12 @@
       { sub: "Op-amps" },
       ["opamp", { model: "TL071" }, "TL071 (JFET)"], ["opamp", { model: "TL072" }, "TL072 (dual JFET)"], ["opamp", { model: "TL074" }, "TL074 (quad JFET)"],
       ["opamp", { model: "LM741" }, "LM741"], ["opamp", { model: "LM301A" }, "LM301A (external comp.)"], ["opamp", { model: "LM324" }, "LM324 (quad, single supply)"], ["opamp", { model: "NE5532" }, "NE5532 (dual, low noise)"], ["opamp", { model: "OPA2134" }, "OPA2134 (dual FET, audio)"], ["opamp", { model: "LM4562" }, "LM4562 (dual, audio)"],
+      { sub: "Power amplifiers" }, ["chipamp", null, "LM386 (low voltage, 0.5 W)"], ["chipamp", { model: "TDA2050" }, "TDA2050 (32 W)"], ["chipamp", { model: "LM3886" }, "LM3886 (68 W)"],
       { sub: "Timers" }, ["timer555", null, "NE555 timer"],
       { sub: "Regulators" }, ["reg", { model: "LM317" }, "LM317 adjustable"], ["reg", { model: "LM337" }, "LM337 adjustable, negative"],
       ["reg", { model: "7812" }, "78xx fixed"], ["reg", { model: "7912" }, "79xx fixed, negative"], ["tl431", null, "TL431 shunt reference"]] },
-    { group: "Gas-discharge tubes", items: [["gasreg", null, "Voltage regulator 0A2 (150 V)"], ["gasreg", { model: "0B2" }, "Voltage regulator 0B2 (108 V)"], ["gasreg", { model: "0D3" }, "Voltage regulator 0D3 (153 V, octal)"]] },
+    { group: "Gas-discharge tubes", items: [["gasreg", null, "Voltage regulator 0A2 (150 V)"], ["gasreg", { model: "0B2" }, "Voltage regulator 0B2 (108 V)"], ["gasreg", { model: "0D3" }, "Voltage regulator 0D3 (153 V, octal)"],
+      { sub: "Indicators" }, ["neon", null, "Neon lamp NE-2"], ["neon", { model: "NE-2H" }, "Neon lamp NE-2H (bright)"], ["eye", null, "Magic eye 6E5"], ["eye", { model: "6U5" }, "Magic eye 6U5 (remote cutoff)"]] },
     { group: "Instruments", items: [["scope"]] },
     { group: "Document", items: [["frame"], ["note"]] }
   ];
@@ -2230,6 +2431,10 @@
           if (d.metrics.thd !== null) h += kv("THD at plate", d.metrics.thd.toFixed(2) + " %", d.metrics.thd > 5 ? "warn" : "");
           h += kv("Average Pa", fmtEng(d.metrics.pAvg, "W", 2), d.metrics.pAvg > d.paMax ? "bad" : "");
         }
+        // the anode's temperature from its (average) dissipation, reached after a few time constants
+        const th = anodeTemp(d.metrics ? d.metrics.pAvg : pa, d.paMax);
+        h += kv("Anode temperature", `about ${Math.round(th.t / 10) * 10} °C${th.glow > 0 ? " · glowing red" : ""}`, th.glow > 0 ? "bad" : th.t > 450 ? "warn" : "");
+        h += R.note(`The anode warms to it over a couple of minutes (time constant about ${Math.round(th.tau)} s). From about 525 °C, twice its rated dissipation, it glows red (red-plating), drawn so on the sheet.`);
         if (dc.vgk > 0) h += R.note("Grid is positive: grid current flows.", "warn");
         return h;
       }
@@ -2405,7 +2610,7 @@
   // op-amps: the output and how close it runs to its limits, the input difference, the package's heat
   UI.opamp = {
     readout: (c, R) => {
-      const dev = R.r.dc.devices[c.id], d = dev && dev.main, m = OPAMPS[c.params.model], kv = R.kv;
+      const dev = R.r.dc.devices[c.id], d = dev && dev.main, m = (c.type === "chipamp" ? CHIPAMPS : OPAMPS)[c.params.model], kv = R.kv;
       if (!d || !m) return R.note("No data.");
       // the clip trace: how far past its output limit the amplifier is driven at each sample
       const w = R.wave("OUT"), tr = R.r.tran && R.r.tran.devices[c.id], clipped = tr ? tr.i.some(v => Math.abs(v) > 0.05) : Math.abs(d.clip) > 0.05, stuck = Math.abs(d.clip) > 0.05;
@@ -2414,12 +2619,13 @@
       h += kv("IN+ − IN−", fmtEng(d.vd, "V", 2));
       if (w) { const s = R.stats(w); h += kv("Output swing", `${fmtEng(s.pp, "Vpp", 2)} · ${fmtEng(s.min, "V", 2)} to ${fmtEng(s.max, "V", 2)}`, clipped ? "warn" : ""); }
       if (clipped && !stuck) h += R.note(`The output reaches its limit (${m.dhi} V below V+, ${m.dlo} V above V−, less the drop across its ${m.ro} Ω output resistance): it clips.`, "warn");
-      h += kv("Dissipation", fmtEng(d.pd, "W", 2));
+      h += kv("Dissipation", fmtEng(d.pd, "W", 2) + (m.pmax ? ` · ${m.pmax} W max` : ""), m.pmax && d.pd > m.pmax ? "bad" : "");
       if (stuck) h += R.note("The output sits at its limit: no negative feedback, or the inputs are outside what the circuit can follow.", "warn");
       if (d.vs < 2) h += R.note("No supply: wire V+ and V− to the rails.", "warn");
       return h;
     }
   };
+  UI.chipamp = UI.opamp;
   // regulators: input, output and the headroom between them; the chip's heat
   UI.reg = {
     readout: (c, R) => {
@@ -2444,6 +2650,27 @@
       h += R.kv("Current", fmtEng(d.i, "A", 2) + ` · range ${m.imin * 1000}–${m.imax * 1000} mA`, d.q && (d.i > m.imax ? "bad" : d.i < m.imin ? "warn" : ""));
       if (!d.q) h += R.note(`Dark: it strikes at ${m.vs} V and goes out below ${m.iext * 1000} mA.`, "warn");
       return h;
+    }
+  };
+  UI.neon = {
+    readout: (c, R) => {
+      const a = (R.r.dc.devices[c.id] || {}).main, b = (R.r.dc.devices[c.id + "#rev"] || {}).main, m = NEONS[c.params.model] || NEONS["NE-2"];
+      if (!a || !b) return R.note("No data.");
+      const lit = a.q > 0 || b.q > 0, i = R.pinCurrent("A");
+      if (R.r.dcAveraged) return R.kv("Voltage (rms)", fmtEng(R.vRms("A", "K"), "V", 3)) + R.note(lit ? "Lit over the settled cycle (on AC on both half-cycles): Animate shows it." : `Dark: it strikes at about ${m.vs} V.`, lit ? "" : "warn");
+      let h = R.kv("State", lit ? "lit" : "dark", lit ? "" : "warn") + R.kv("Voltage", fmtEng(R.vAcross("A", "K"), "V", 3));
+      h += R.kv("Current", fmtEng(Math.abs(i), "A", 2) + ` · design ${fmtEng(m.i, "A")}`, Math.abs(i) > 2 * m.i ? "bad" : "");
+      if (!lit) h += R.note(`Dark: it strikes at about ${m.vs} V.`, "warn");
+      return h;
+    }
+  };
+  UI.eye = {
+    readout: (c, R) => {
+      const m = EYES[c.params.model] || EYES["6E5"], vt = R.vAcross("T", "K"), vp = R.vAcross("P", "K"), vg = R.vAcross("G", "K");
+      if (vt === null || vp === null) return R.note("No data.");
+      const e = eyeShadow(m, vt, vp);
+      return R.kv("Target", fmtEng(vt, "V", 3), vt > 1.1 * m.vt ? "bad" : "") + R.kv("Triode plate", fmtEng(vp, "V", 3)) + R.kv("Grid", fmtEng(vg, "V", 3)) +
+        R.kv("Shadow", `${Math.round(90 * e.shadow)}°${e.shadow > 0.98 ? " (fully open)" : e.shadow < 0.02 ? " (closed)" : ""}`) + (R.r.dcAveraged ? R.note("Averages over the settled cycle: Animate shows it moving.") : "");
     }
   };
   UI.tl431 = {
@@ -2512,5 +2739,5 @@
     return wrap;
   }
 
-  root.CadLib = { PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.110.0] - 2026-10-27
+
+### Added
+- Neon lamps NE-2, NE-2H and ИН-3 (Gas-discharge tubes › Indicators). A neon strikes at its striking voltage, holds about 60 V, lights either way round, and goes out below its extinction current. Through 330 kΩ on the mains it glows on both half-cycles. With a capacitor across it, it flashes at RC·ln((E − Vm)/(E − Vs)). Checks warn over twice its design current. On the board it is the bulb standing on its leads.
+- Magic eyes 6E5, 6Е5С and 6U5: the triode fitted to RCA's data (checked against ngspice), the target, and the shadow worked out from the ray-control voltage. The inspector shows the shadow angle. On the board they get a 6-pin (UX6) or octal socket.
+- Glow like the LED: under Animate a neon glows orange with its current, flickering dark at each zero crossing on AC and blinking in a flasher. A magic eye's green fan opens and closes with its grid. A lit gas regulator glows violet. Settled (no Animate) they show their average.
+- Power amplifier ICs (Integrated circuits › Power amplifiers):
+  - LM386 with its internal gain network: gain 20, or 191 with pins 1 and 8 bypassed; output at half the supply; 0.65 W into 8 Ω from 9 V.
+  - TDA2050 (Pentawatt) and LM3886 (TO-220-11): 38 W into 8 Ω and 68 W into 4 Ω from ±28 V, as the datasheet.
+  - Checks for the supply range, the package's dissipation, and an LM3886 left muted (no current drawn from its mute pin).
+  - On the board: DIP-8 / SOIC-8, and new staggered TO-220-5 and TO-220-11 footprints.
+- Headphone loads (speaker Driver presets, also in the parts search): 32, 250, 300 and 600 Ω, each with its impedance peak at resonance.
+- Anode temperature: from a tube's average dissipation, radiation-cooled (about 400 °C at the rated Pa). From about twice the rating the anode glows red on the schematic (red-plating), and Checks warn. The inspector shows the temperature and its time constant.
+
 ## [3.109.0] - 2026-10-27
 
 ### Added

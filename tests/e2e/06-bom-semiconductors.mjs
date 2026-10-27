@@ -423,6 +423,58 @@ import { readFile } from "node:fs/promises";
     issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
     check(/U1 \(VTL5C3\) has 6\d[.,]\d+\s?mA in its LED, more than the 40 mA/.test(issues), `Checks: a vactrol's LED over its current (${issues})`);
     await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+    // a neon on the mains through 330 kΩ: lit on both half-cycles, so it glows settled and under
+    // Animate; a magic eye with −4 V on its grid: the shadow about half open, read in the inspector
+    // and drawn; an LM3886 without its mute resistor: Checks says it is muted; the BOM and SPICE
+    const n = await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const M = add("mains", {}, 200, 300), R = add("resistor", { r: 330e3 }, 330, 270), N = add("neon", {}, 450, 330, 1), g = add("ground", {}, 300, 440);
+      wire(pin(M, "L"), pin(R, "1")); wire(pin(R, "2"), pin(N, "A")); wire(pin(N, "K"), pin(g, "G"), false); wire(pin(M, "N"), pin(g, "G"), false);
+      S.sel.comps.add(N.id); C.commit();
+      return N.id;
+    });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /Lit over the settled cycle/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 }).catch(() => {});
+    check(/Lit over the settled cycle/.test(await cad.textContent("#insp-live")) && await cad.evaluate(i => TubeCAD.ledLevel(TubeCAD.state.comps.find(c => c.id === i)) > 0.5, n), "neon on the mains: lit, glowing settled");
+    await cad.evaluate(() => TubeCAD.setAnim(true));
+    // its level at 100 moments of the animated cycle (set directly: the page may not be drawing frames)
+    const lv = await cad.evaluate(i => { const S = TubeCAD.state, c = S.comps.find(k => k.id === i), out = []; for (let k = 0; k < 100; k++) { S.anim.phase = k / 100; out.push(TubeCAD.ledLevel(c)); } return out; }, n);
+    await cad.evaluate(() => TubeCAD.setAnim(false));
+    check(Math.max(...lv) > 0.8 && lv.filter(v => v < 0.3).length >= 4, `neon under Animate: dark at the zero crossings, bright between (${lv.map(v => v.toFixed(2)).join(" ")})`);
+    const e = await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const B = add("vdc", { v: 250 }, 200, 300), R = add("resistor", { r: 1e6 }, 640, 270), E = add("eye", {}, 500, 330), G = add("vdc", { v: 4 }, 380, 450, 2), g = add("ground", {}, 380, 560);
+      wire(pin(B, "+"), pin(E, "T")); wire(pin(B, "+"), pin(R, "1")); wire(pin(R, "2"), pin(E, "P"), false); wire(pin(G, "-"), pin(E, "G"), false); wire(pin(G, "+"), pin(g, "G"), false); wire(pin(E, "K"), pin(g, "G"), false); wire(pin(B, "-"), pin(g, "G"), false);
+      S.sel.comps.add(E.id); C.commit();
+      return E.id;
+    });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /Shadow\s*\d+°/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 }).catch(() => {});
+    const sh = +((/Shadow\s*(\d+)°/.exec(await cad.textContent("#insp-live")) || [])[1]);
+    const el = await cad.evaluate(i => TubeCAD.eyeLevel(TubeCAD.state.comps.find(c => c.id === i)), e);
+    check(sh >= 30 && sh <= 50 && el && Math.abs(90 * el.shadow - sh) < 1 && el.glow > 0.9, `magic eye: 6E5 at −4 V on its grid, the shadow ${sh}° (inspector) and drawn so, the target lit`);
+    const sp7 = await cad.evaluate(() => TubeCAD.spiceNetlist());
+    check(/^\.subckt TRIODE_6E5 A G K$/m.test(sp7) && /^B\S*target /m.test(sp7), "SPICE export: the eye's triode and its target");
+    await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      // ±28 V (the negative one turned over: + at the bottom, to ground); the mute pin left open
+      const P = add("vdc", { v: 28 }, 150, 250), Q = add("vdc", { v: 28 }, 200, 500, 2), U = add("chipamp", { model: "LM3886" }, 500, 350), g = add("ground", {}, 300, 600), g2 = add("ground", {}, 420, 380), g3 = add("ground", {}, 440, 440);
+      wire(pin(P, "+"), pin(U, "V+")); wire(pin(Q, "-"), pin(U, "V-")); wire(pin(P, "-"), pin(g, "G"), false); wire(pin(Q, "+"), pin(g, "G"), false);
+      wire(pin(U, "+"), pin(g2, "G")); wire(pin(U, "-"), pin(U, "OUT")); wire(pin(U, "GND"), pin(g3, "G"), false);
+      C.commit();
+    });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /muted/.test(TubeCAD.circuitIssues().join(" ")), null, { timeout: 30000 }).catch(() => {});
+    issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    const bom7 = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => `${r.refs} ${r.desc} ${r.value} ${r.rating}`).join(" | "));
+    check(/DA1 \(LM3886\) is muted/.test(issues) && /DA1 Power amplifier IC LM3886 TO-220-11/.test(bom7), `LM3886: Checks warns it is muted without its mute resistor; the BOM row (${issues} · ${bom7})`);
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
   }
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
   await cad.evaluate(() => {
