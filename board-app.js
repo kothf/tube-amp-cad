@@ -330,8 +330,23 @@
     if (alt) return [[a[0] + Math.sign(dx) * d, a[1] + Math.sign(dy) * d], b];
     return [ax > ay ? [b[0] - Math.sign(dx) * d, a[1]] : [a[0], b[1] - Math.sign(dy) * d], b];
   }
-  // the segments from the last corner to the pointer: straight first (or the diagonal first after
-  // /), and the other way round by itself when only that one keeps the clearance
+  // Which bend comes first follows the pointer, as in KiCad: within TRAIL_PX of the last corner the
+  // way the pointer heads decides (along an axis: straight first; at about 45°: the diagonal
+  // first); once it has left that circle the choice stays, until it comes back. / sets it by hand
+  // until the next corner.
+  const TRAIL_PX = 40;
+  function followPointer(x, y) {
+    const r = S.route; if (!r || r.manual) return;
+    const last = r.pts[r.pts.length - 1], dx = x - last[0], dy = y - last[1], d = Math.hypot(dx, dy) * S.view.scale;
+    if (d < 4 || (d > TRAIL_PX && r.decided)) return;
+    const a = Math.atan2(Math.abs(dy), Math.abs(dx)) * 180 / Math.PI;
+    r.flip = a > 22.5 && a < 67.5; r.decided = true;
+  }
+  // a new corner: the next bend follows the pointer again
+  function newCorner(r) { r.decided = false; r.manual = false; }
+  // the segments from the last corner to the pointer: straight first or the diagonal first (as the
+  // pointer left the corner, or as / set it), and the other way round by itself when only that one
+  // keeps the clearance
   function routeTail() {
     const r = S.route, last = r.pts[r.pts.length - 1], t = routeTarget();
     const a = [last].concat(bend(last, t.p, r.flip)), badA = tailCheck(a);
@@ -403,7 +418,7 @@
     // the class width, or wider when the net's DC current asks for it (IPC-2221)
     const I = (S.amps || {})[at.net], wI = Math.ceil(B.currentWidth(I, S.board.rules, S.board.stackup) * 20) / 20;
     S.route = { net: at.net, layer: S.layer, w: Math.max(trackWidth(at.net), wI), pts: [start], segs: [], from: at.track, flip: false };
-    msg(`Routing ${netName(at.net)} (${classOf(at.net)}${I ? `, ${B.fmtA(I)}` : ""}, ${S.route.w} mm) on ${S.layer}: click corners, end on a pad, track or via of the same net; /: diagonal first, V: via, Backspace: undo a corner, Esc: stop`);
+    msg(`Routing ${netName(at.net)} (${classOf(at.net)}${I ? `, ${B.fmtA(I)}` : ""}, ${S.route.w} mm) on ${S.layer}: click corners (the bend follows the way you move off the last one), end on a pad, track or via of the same net; /: the other bend, V: via, Backspace: undo a corner, Esc: stop`);
     render();
   }
   function routeClick(e) {
@@ -415,6 +430,7 @@
     // an SMD pad on the other side: the track needs a via (V) to get there
     if (p && p.smd && !p.layers.includes(r.layer)) { msg(`${p.ref}-${p.num} is an SMD pad on ${p.layers[0] === "F.Cu" ? "the top" : "the bottom"}, this track is on ${r.layer}: place a via (V) first`); return; }
     tail.pts.slice(1).forEach(q => r.pts.push(q));
+    newCorner(r);
     if (p && r.pts.length > 1) {
       if (p.net !== r.net) msg(`${p.ref}-${p.num} is on ${netName(p.net)}, not ${netName(r.net)}: the check will report a short`);
       finishRoute(); return;
@@ -426,7 +442,7 @@
     const r = S.route, last = r.pts[r.pts.length - 1];
     if (r.pts.length > 1) r.segs.push({ layer: r.layer, w: r.w, pts: r.pts.slice() });
     S.board.vias.push({ x: last[0], y: last[1], drill: S.board.rules.viaDrill, pad: S.board.rules.viaPad, net: storedNet(r.net) });
-    r.layer = r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last]; r.via = S.board.vias.length - 1; (r.vias = r.vias || []).push(r.via);
+    r.layer = r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last]; r.via = S.board.vias.length - 1; (r.vias = r.vias || []).push(r.via); newCorner(r);
     setLayer(r.layer); analyse(); render();
   }
   function finishRoute() {
@@ -768,6 +784,7 @@
     if (!canvas) return;
     const [sx, sy] = evPos(e), [x, y] = toWorld(sx, sy);
     S.mouse = [x, y];
+    if (S.route) followPointer(x, y);
     const d = S.drag;
     if (d && d.kind === "pan") { S.view.ox = d.ox + sx - d.sx; S.view.oy = d.oy + sy - d.sy; render(); return; }
     if (d && d.kind === "part") {
@@ -872,8 +889,8 @@
     const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     if (ARROWS[e.key] && S.sel && !S.route) { e.preventDefault(); const k = S.grid * (e.shiftKey ? 10 : 1); nudge(ARROWS[e.key][0] * k, ARROWS[e.key][1] * k); return; }
     if (e.key === "Escape") { if (S.route) finishRoute(); else if (S.measure) { S.measure = null; render(); } else { S.sel = null; setTool("select"); renderPanels(); } return; }
-    if (S.route && (e.code === "Slash" || e.key === "/")) { e.preventDefault(); S.route.flip = !S.route.flip; msg(S.route.flip ? "Diagonal first (/: straight first)" : "Straight first (/: diagonal first)"); S.routeBad = routeCheck(); render(); return; }
-    if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); render(); return; }
+    if (S.route && (e.code === "Slash" || e.key === "/")) { e.preventDefault(); S.route.flip = !S.route.flip; S.route.manual = true; msg(S.route.flip ? "Diagonal first, until the next corner (/: straight first)" : "Straight first, until the next corner (/: diagonal first)"); S.routeBad = routeCheck(); render(); return; }
+    if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); newCorner(S.route); render(); return; }
     if ((e.key === "Delete" || e.key === "Backspace") && S.sel) { e.preventDefault(); deleteSel(); return; }
     // while routing, Ctrl+Z takes back the last corner (or drops the route), not a finished track
     if (ctrl && L === "z" && S.route && !e.shiftKey) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); else if (S.route.segs.length) finishRoute(); else { S.route = null; msg("Route dropped"); } S.routeBad = routeCheck(); render(); return; }

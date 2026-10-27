@@ -405,7 +405,7 @@
 <h3 id="board-place">11.2 Placing and routing</h3>
 <ul>
   <li>New parts wait in a row below the board: drag them on, or <span class="ui">Place all on the board</span>, which puts each part where it sits in the schematic (the schematic's extent mapped onto the board), big parts first, each in the free spot nearest its place, electrolytics 10 mm from hot parts: the input ends up on the left and the output on the right, as on the sheet. Output and power transformers and filter chokes get wire pads by default (they sit on the chassis); a board-mount EI footprint is an option in the inspector. <kbd>Space</kbd> rotates, <kbd>M</kbd> moves to the bottom side. A banner offers updates when the schematic changes; placed parts keep their spot.</li>
-  <li><b>Route</b> <kbd>X</kbd>: click a pad, click corners (45° bends), end on a pad, track or via of the same net. <kbd>V</kbd> changes layer with a via; <kbd>/</kbd> puts the diagonal first; <kbd>Backspace</kbd> takes back the last corner. Width comes from the net's class. A halo shows the clearance; it turns red and refuses the click when too close (<kbd>Shift</kbd>+click forces it).</li>
+  <li><b>Route</b> <kbd>X</kbd>: click a pad, click corners (45° bends), end on a pad, track or via of the same net. The bend follows the mouse, as in KiCad: move off the last corner along the grid and the straight run comes first, move off at 45° and the diagonal does; once the pointer is well away the bend stays, until you bring it back near the corner. <kbd>V</kbd> changes layer with a via; <kbd>/</kbd> turns the bend the other way by hand until the next corner; <kbd>Backspace</kbd> takes back the last corner. Width comes from the net's class. A halo shows the clearance; it turns red and refuses the click when too close (<kbd>Shift</kbd>+click forces it).</li>
   <li><b>Auto-route</b> (toolbar): routes the open connections with <a href="https://www.freerouting.app" target="_blank" rel="noopener">Freerouting</a>, a free autorouter (GPL-3) that runs on your own computer or another one on your network; the board goes nowhere else.
     <ul>
       <li><b>Starting it.</b> Install Java 25 and Freerouting's <code>freerouting.jar</code> (or use its Docker image), then leave its API server running:<br><code>java -jar freerouting.jar --gui.enabled=false --api_server.enabled=true --api_server.authentication.enabled=false --api_server.cors_origins=https://aerocat.tech</code><br><code>cors_origins</code> names the address this page is opened from (put your own when it is served from elsewhere); without it Freerouting answers but the browser keeps the page out. <code>authentication.enabled=false</code> turns off its API key. In Docker it must also listen on all addresses: add <code>--api_server.endpoints=http://0.0.0.0:37864</code> and publish the port (<code>-p 37864:37864</code>).</li>
@@ -494,7 +494,7 @@
 <tr><td><kbd>X</kbd></td><td>route</td></tr>
 <tr><td><kbd>V</kbd></td><td>via / switch the active layer while routing</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>V</kbd></td><td>via tool</td></tr>
-<tr><td><kbd>/</kbd></td><td>diagonal first</td></tr>
+<tr><td><kbd>/</kbd></td><td>the other bend (until the next corner)</td></tr>
 <tr><td><kbd>Backspace</kbd></td><td>take back the last corner</td></tr>
 <tr><td><kbd>T</kbd> / <kbd>H</kbd> / <kbd>D</kbd></td><td>text / mounting hole / measure</td></tr>
 <tr><td><kbd>P</kbd> / <kbd>K</kbd></td><td>copper pour / keep-out</td></tr>

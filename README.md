@@ -561,9 +561,11 @@ the circuit file, so one file holds both.
   stroke font, so the screen shows what the board maker gets.
 - **Routing** starts on a pad, a track or a via and ends on any of them on the
   same net, exactly on the copper. Corners line up with the net's pads, so
-  tracks run straight into pads that are off the grid. <kbd>/</kbd> puts the
-  diagonal first; the route does so by itself when straight-first would come
-  too close. Dragging a part takes the ends of its tracks along.
+  tracks run straight into pads that are off the grid. The bend follows the
+  mouse as in KiCad: leave the last corner along the grid and the straight run
+  comes first, leave it at 45° and the diagonal does. <kbd>/</kbd> turns it the
+  other way by hand until the next corner; the route does so by itself when
+  the chosen way would come too close. Dragging a part takes the ends of its tracks along.
 - **Measure** sticks to the board. Its ends snap to:
   - the centres of pads, vias and holes;
   - track corners and ends;
