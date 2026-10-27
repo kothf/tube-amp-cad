@@ -164,6 +164,16 @@
       const poured = new Set((S.board.zones || []).map(z => z.net)), star = S.board.rules.ground === "star";
       return new Set(rats.map(x => S.model.names[x.net] || String(x.net)).filter(n => !poured.has(n) && !(star && n === "GND")));
     }
+    // spread every part that may move over the whole board (how: BoardPlace.spread's wire and anchor);
+    // the ones with shut-in pins count twice their size, the others at the ends of open connections half as much again
+    const SPREADS = [{}, { wire: 0.3, anchor: 0.5 }];
+    function spreadAll(how) {
+      const open = routable(), infl = new Map(), all = new Set(S.model.parts.map(g => g.key));
+      S.model.pads.forEach(p => { if (open.some(r => (Math.hypot(r.x1 - p.x, r.y1 - p.y) < 1e-3 || Math.hypot(r.x2 - p.x, r.y2 - p.y) < 1e-3))) infl.set(p.part, 1.5); });
+      BoardPlace.escape(S.board, S.model, S.conn, open, checkOpts()).forEach(e => { if (!e.ok) infl.set(e.key, 2); });
+      const keys = BoardPlace.movable(S.board, S.model, [], { also: all });
+      return keys.length ? BoardPlace.spread(S.board, S.model, keys, { clr: S.clr, hv: S.hv, netlist: S.netlist, conn: S.conn, inflate: infl, ...how }) : { moved: [] };
+    }
     async function routeNudge() {
       if (router.busy && router.nudge) { router.stop = true; return; }
       if (!await ready()) return;
@@ -195,6 +205,19 @@
           const sc = score();
           if (better(sc, bestScore)) { best = JSON.stringify(S.board); bestScore = sc; fails = 0; }
           else { S.board = JSON.parse(best); analyse(); reach *= 1.5; fails++; }
+        }
+        // a last round over the whole board: the parts spread where there is room (BoardPlace.spread),
+        // the shut-in ones counting bigger; every unlocked track comes up and the board is routed afresh
+        // two ways: by wire length (the parts may go anywhere), and held near where they are
+        for (const how of SPREADS) {
+          if (!bestScore.un || router.stop || broke) break;
+          S.board = JSON.parse(best); analyse(); round++;
+          const r = spreadAll(how);
+          if (!r.moved.length) continue;
+          msg(`Round ${round}: ${r.moved.length} part${r.moved.length === 1 ? "" : "s"} spread over the board; Freerouting routes it afresh…`);
+          S.board.tracks = S.board.tracks.filter(t => t.locked); S.board.vias = S.board.vias.filter(v => v.locked); analyse(); clearStale();
+          try { await routePass(); const sc = score(); if (better(sc, bestScore)) { best = JSON.stringify(S.board); bestScore = sc; } }
+          catch (e) { broke = e.message; }
         }
         S.board = JSON.parse(best); S.sel = null;
         const moved = Object.keys(parts0).filter(k => S.board.parts[k]).map(k => ({ key: k, ref: S.board.parts[k].ref, from: parts0[k], to: S.board.parts[k] }))

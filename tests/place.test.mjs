@@ -168,3 +168,37 @@ test("bridge: a grid path joins an open connection with a track that keeps every
   const bad = B.drc(board, m2, c2, new Set(), [], NL2).filter(d => ["clearance", "edge", "short", "width"].includes(d.kind));
   assert.deepEqual(bad.map(d => d.msg), []);
 });
+
+const RULES = ["courtyard", "edge", "clearance", "keepout"];
+test("spread: a pile of parts goes over the board legally, on the grid; valves stay", () => {
+  const { board, nl } = setup();
+  board.keepouts = [{ name: "jack", pts: [[60, 0], [70, 0], [70, 25], [60, 25]], layers: ["F.Cu", "B.Cu"], parts: true }];
+  board.holes = [{ x: 5, y: 55, d: 3.2 }];
+  Object.values(board.parts).forEach(p => { if (/^R/.test(p.ref)) { p.x = 30 + Number(p.ref[1]); p.y = 30; } });
+  const vl = { ...Object.values(board.parts).find(p => p.ref === "VL1") };
+  const m = B.model(board, nl), conn = B.connectivity(board, m.pads);
+  assert.ok(B.drc(board, m, conn, new Set(), [], nl).some(d => d.kind === "courtyard"), "the pile starts overlapping");
+  const keys = P.movable(board, m, [], { also: new Set(m.parts.map(g => g.key)) });
+  const r = P.spread(board, m, keys, { clr: B.clearanceRules(board, m, new Set(), nl), netlist: nl, conn });
+  assert.equal(r.failed, null);
+  assert.ok(r.moved.length >= 3 && r.over < 0.1, `${r.moved.length} moved, overflow ${r.over.toFixed(2)} after ${r.iters} steps`);
+  const m2 = B.model(board, nl), c2 = B.connectivity(board, m2.pads);
+  assert.deepEqual(B.drc(board, m2, c2, new Set(), [], nl).filter(d => RULES.includes(d.kind)).map(d => d.msg), []);
+  const v2 = Object.values(board.parts).find(p => p.ref === "VL1");
+  assert.equal(v2.x, vl.x); assert.equal(v2.y, vl.y);
+  r.moved.forEach(mv => { assert.ok(Math.abs(mv.to.x / 1.27 - Math.round(mv.to.x / 1.27)) < 1e-6 && Math.abs(mv.to.y / 1.27 - Math.round(mv.to.y / 1.27)) < 1e-6, `${mv.ref} on the grid`); });
+});
+
+test("spread: shortens the wiring of a spread-out board, and an inflated part gets more room round it", () => {
+  const run = infl => {
+    const { board, nl } = setup(), m = B.model(board, nl), conn = B.connectivity(board, m.pads);
+    const keys = P.movable(board, m, [], { also: new Set(m.parts.map(g => g.key)) }), r1 = m.parts.find(g => g.ref === "R1").key;
+    const r = P.spread(board, m, keys, { clr: B.clearanceRules(board, m, new Set(), nl), netlist: nl, conn, inflate: infl ? new Map([[r1, 2.5]]) : null });
+    const m2 = B.model(board, nl), box = k => B.partBox(m2.parts.find(g => g.key === k));
+    const a = box(r1), gap = Math.min(...m2.parts.filter(g => g.key !== r1 && g.fp && g.place).map(g => { const b = box(g.key); return Math.max(b.x1 - a.x2, a.x1 - b.x2, b.y1 - a.y2, a.y1 - b.y2); }));
+    return { r, gap };
+  };
+  const plain = run(false), fat = run(true);
+  assert.ok(plain.r.wire1 < plain.r.wire0, `wire ${plain.r.wire0.toFixed(0)} -> ${plain.r.wire1.toFixed(0)}`);
+  assert.ok(fat.gap > plain.gap, `R1's room ${plain.gap.toFixed(2)} -> ${fat.gap.toFixed(2)} mm`);
+});

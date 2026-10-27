@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.115.0] - 2026-10-27
+
+### Added
+- Board: Route & nudge ends with two rounds over the **whole board** when connections are still open. The parts that may move are spread wherever there is room: once for the shortest wiring, once held near where they are. Each part is then put on the nearest grid place that keeps every rule, keeping its turn, and the board is routed afresh. A round is kept only if it is better. Parts with a shut-in pin count as twice their size, and parts at the end of an open connection as one and a half times, so they get room round their pins. The method is analytic placement as chip and board placers do it (ePlace, RePlAce, Cypress): wire length (weighted-average model) against the electrostatic energy of the parts' area, solved on 2.54 mm bins by a cosine transform. Legalization is biggest part first.
+- On boards laid out by Place all, spreading and then routing left fewer connections open than routing alone (open connections, Place all → spread): 03 2 → 1, 05 1 → 0, 07 13 → 7. On the examples' own layouts the whole-board rounds didn't beat the rounds near the open connections, so Route & nudge keeps those results.
+
+### Changed
+- Route & nudge also moves parts that hang over the board edge, back onto it.
+
 ## [3.114.0] - 2026-10-27
 
 ### Added

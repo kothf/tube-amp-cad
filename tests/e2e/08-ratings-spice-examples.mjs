@@ -272,8 +272,8 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const stopLbl = await bw.evaluate(() => document.querySelector("#btn-autoroute .lbl").textContent);
     await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 120000 }).catch(() => {});
     const rn1 = await bw.evaluate(() => { const S = BoardApp.state; return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, bad: S.drc.length, msg: document.getElementById("st-msg").textContent, lbl: document.querySelector("#btn-autoroute .lbl").textContent }; });
-    check(rn0.un > 0 && stopLbl === "Stop" && rn1.lbl === "Auto-route" && nPosts >= 3 && rn1.un < rn0.un && rn1.tracks > rn0.tracks && rn1.bad <= rn0.bad && rn1.parts === rn0.parts && rn1.h === rn0.h + 1 && /still open after 2 rounds: no part moved/.test(rn1.msg),
-      `Route & nudge with a router that finds nothing: ${nPosts} passes; the grid joins ${rn0.un - rn1.un} of ${rn0.un} open connections with ${rn1.tracks - rn0.tracks} tracks and no new rule message; every round undone, no part moved, one step to undo ("${rn1.msg}"); the button read ${stopLbl} meanwhile`);
+    check(rn0.un > 0 && stopLbl === "Stop" && rn1.lbl === "Auto-route" && nPosts >= 3 && rn1.un < rn0.un && rn1.tracks > rn0.tracks && rn1.bad <= rn0.bad && rn1.parts === rn0.parts && rn1.h === rn0.h + 1 && /still open after 4 rounds: no part moved/.test(rn1.msg),
+      `Route & nudge with a router that finds nothing: ${nPosts} passes; the grid joins ${rn0.un - rn1.un} of ${rn0.un} open connections with ${rn1.tracks - rn0.tracks} tracks and no new rule message; every round (two over the whole board) undone, no part moved, one step to undo ("${rn1.msg}"); the button read ${stopLbl} meanwhile`);
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     // Board ▾ → Freerouting…: an address typed as an IP gets the default port; both start commands name this page's address
     await bw.click("#btn-board"); await bw.click("#btn-router");
