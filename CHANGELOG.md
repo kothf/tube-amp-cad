@@ -6,6 +6,30 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.109.0] - 2026-10-27
+
+### Added
+- A new palette group, Switches & relays, holds the changeover switch and these new parts:
+  - an on–off switch: a toggle, or a push button that is normally open or normally closed (6 × 6 mm tactile on the board);
+  - a rotary selector of 2 to 12 ways, whose sections SA1.1, SA1.2 … turn together.
+  Double-click any of them on the sheet to move it on.
+- Relays: Omron G5LE-1 (SPDT, 10 A) and G5V-2 (DPDT signal), each with a 5, 12 or 24 V coil.
+  - The coil is its resistance and inductance. The relay pulls in at 75 % of the rated voltage and drops out at 10 % (G5LE-1) or 5 % (G5V-2).
+  - The inductance gives the operate delay, and a freewheel diode slows the release, both matching ngspice.
+  - The schematic shows the contacts pulled in when the simulation has them so.
+  - Checks warn about a coil over 130 % of its rating, or under its must-operate voltage.
+  - The SPICE export writes the contacts as switches with the relay's hysteresis.
+  - On the board the relays use KiCad's patterns, with the datasheet pin numbers.
+- Vactrols VTL5C3 and VTL5C1: an LED lighting a CdS cell. The cell's resistance follows the LED's current, using the datasheet's figures at 1 mA and 10 mA and its dark resistance. It brightens within the turn-on time and dims slowly (35 ms to 100 kΩ), so a vactrol tremolo throbs as a real one does. The LED lights up under Animate like an LED part. Checks warn over 40 mA in the LED. On the board it uses KiCad's VTL5C pattern.
+- Guitar pickup source with these settings:
+  - single-coil, P-90 and humbucker presets;
+  - the EMF behind the coil's resistance and inductance;
+  - its self-capacitance and an optional cable.
+  Into an amp's input it peaks where a real pickup does.
+- Phono cartridge source for moving-magnet and moving-coil presets (Ortofon 2M Red, Denon DL-103). It plays a tone at its rated output, cut with the RIAA curve as on a record, or flat. A correct RIAA preamp swept with the Bode plotter comes out level. The cut is exact to the IEC curve, with the 3.18 µs pole.
+- The pickup and the cartridge stand for the instrument, so they get no part on the board and are left off the BOM, as the other bench sources are.
+- The engine has two new elements: RELAY, a latch on a sensed coil current with its contacts, and LDR, a resistor whose light is an extra unknown that relaxes toward the LED's current.
+
 ## [3.108.0] - 2026-10-27
 
 ### Added

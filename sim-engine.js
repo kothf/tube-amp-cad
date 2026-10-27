@@ -16,7 +16,8 @@
      (wasm/solver.ts) when loaded.
 
    Netlist: { nodeCount, elements: [{ id, kind, nodes: [...], ...params }] }
-   kinds: R, C, L, XFMR, V, VSRC, I, D, VDIODE, BJT, MOS, TRIODE, PENTODE, TIMER555
+   kinds: R, C, L, XFMR, V, VSRC, I, D, VDIODE, BJT, MOS, TRIODE, PENTODE, TIMER555, E, G, GLOW,
+   RELAY (a latched coil with its contacts), LDR (a light-dependent resistor lit by a current)
    acSweep: the small-signal frequency response, linearized at an operating point.
    A tube element may carry gridShift (V): its plate and screen currents as if the grid were that
    much more positive (a real tube that draws more or less than the model), grid conduction
@@ -279,10 +280,38 @@
   // margins: strike (A−K above the striking voltage), extinguish (current below iext)
   function glowMargins(e, x) { const v = vn(x, e.nodes[0]) - vn(x, e.nodes[1]), m = e.model; return [v - m.vs, m.vm + m.r * m.iext - v]; }
   const glowNext = (mg, q) => (q ? (mg[1] > 0 ? 0 : 1) : (mg[0] > 0 ? 1 : 0));
-  // the latched elements (555s and glow tubes) through one interface: their margins, the state they
-  // leave, and the margin whose crossing makes the flip to want
-  const latchMargins = (e, x) => (e.kind === "GLOW" ? glowMargins(e, x) : timerMargins(e, x));
-  const latchNext = (e, mg, q) => (e.kind === "GLOW" ? glowNext(mg, q) : timerNext(mg, q));
+  // ---------------------------------------------------------------------------
+  // Relay (nodes S+, S−, then COM, NC, NO for each pole): its latch (1 pulled in) follows the coil's
+  // current, sensed as the voltage S+ − S− across the coil's own resistance, so the thresholds are
+  // the must-operate and must-release voltages: it pulls in once that reaches von and drops out
+  // when it falls below voff (either polarity, as a relay's armature does not care). The coil's
+  // inductance (another element) is what delays it. A closed contact is ron, an open one roff.
+  // ---------------------------------------------------------------------------
+  function relayCurrents(V, m, q) {
+    const I = new Array(V.length).fill(0), gon = 1 / m.ron, goff = 1 / m.roff;
+    for (let p = 2; p + 2 < V.length; p += 3) {
+      const inc = (V[p] - V[p + 1]) * (q ? goff : gon), ino = (V[p] - V[p + 2]) * (q ? gon : goff);
+      I[p] += inc + ino; I[p + 1] -= inc; I[p + 2] -= ino;
+    }
+    return I;
+  }
+  function relayMargins(e, x) { const v = Math.abs(vn(x, e.nodes[0]) - vn(x, e.nodes[1])), m = e.model; return [v - m.von, m.voff - v]; }
+  // the latched elements (555s, glow tubes, relays) through one interface: their margins, the state
+  // they leave, and the margin whose crossing makes the flip to want. A glow tube and a relay have
+  // one margin each way: [0] makes it flip on, [1] off
+  const LATCHED = new Set(["TIMER555", "GLOW", "RELAY"]);
+  const latchMargins = (e, x) => (e.kind === "GLOW" ? glowMargins(e, x) : e.kind === "RELAY" ? relayMargins(e, x) : timerMargins(e, x));
+  const latchNext = (e, mg, q) => (e.kind === "TIMER555" ? timerNext(mg, q) : glowNext(mg, q));
+  // ---------------------------------------------------------------------------
+  // Light-dependent resistor in a vactrol (nodes A, B, and S+, S− across the LED's sense resistor
+  // rs). Its light is an extra unknown, in amperes of LED current: at DC it is the LED's current;
+  // in a step it relaxes toward it, quickly as the LED brightens (ton) and slowly as it dims (toff),
+  // as a CdS cell does. The cell's conductance: 1/rdark + (light / 10 mA)^gamma / r10.
+  // ---------------------------------------------------------------------------
+  function ldrG(m, light) {
+    const u = Math.max(light, 0) / 0.01, g = 1 / m.rdark + Math.pow(u, m.gamma) / m.r10;
+    return [g, u > 1e-7 ? m.gamma * Math.pow(u, m.gamma - 1) / (0.01 * m.r10) : 0];
+  }
   // the first latch to flip in a step from xp to xn: { e, want, th }, th the fraction of the step
   // at which its comparator crossed (or the reset let go, when the comparator was on already)
   function timerEvent(circ, xp, xn) {
@@ -290,7 +319,7 @@
     for (const e of circ.timers) {
       const q = latchOf(e, xp), mn = latchMargins(e, xn), want = latchNext(e, mn, q);
       if (want === q) continue;
-      const glow = e.kind === "GLOW", mp = latchMargins(e, xp), k = glow ? (want ? 0 : 1) : want ? 1 : mn[0] > 0 ? 0 : 2;
+      const glow = e.kind !== "TIMER555", mp = latchMargins(e, xp), k = glow ? (want ? 0 : 1) : want ? 1 : mn[0] > 0 ? 0 : 2;
       let th = 0;
       if (mp[k] <= 0 && mn[k] > 0) th = mp[k] / (mp[k] - mn[k]);
       else if (!glow && mp[0] > 0 && mn[0] <= 0) th = mp[0] / (mp[0] - mn[0]);
@@ -549,7 +578,8 @@
     const els = netlist.elements.map(e => Object.assign({}, e));
     els.forEach(e => {
       if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L" || e.kind === "E") e.branch = nUnk++;
-      else if (e.kind === "TIMER555" || e.kind === "GLOW") e.latch = nUnk++;
+      else if (LATCHED.has(e.kind)) e.latch = nUnk++;
+      else if (e.kind === "LDR") e.light = nUnk++;
       else if (e.kind === "XFMR") {
         e.branches = e.windings.map(() => nUnk++);
         // Inductance matrix: L_jk = AL * Nj * Nk * (j===k ? 1 : k)
@@ -566,7 +596,7 @@
     // conduction, so far from the solution Newton sees no slope there and would throw the pin
     // anywhere; these nodes move at most 2 V an iteration, outside the common damping, and half as far
   // each time they turn back (newtonSolve)
-    const timers = els.filter(e => e.kind === "TIMER555" || e.kind === "GLOW"), t555 = timers.filter(e => e.kind === "TIMER555"), capped = t555.length ? new Uint8Array(nNodes) : null;
+    const timers = els.filter(e => LATCHED.has(e.kind)), t555 = timers.filter(e => e.kind === "TIMER555"), capped = t555.length ? new Uint8Array(nNodes) : null;
     t555.forEach(e => [e.nodes[2], e.nodes[6]].forEach(k => { if (k > 0) capped[k - 1] = 1; }));
     return { nNodes, nUnk, els, timers, capped };
   }
@@ -782,6 +812,27 @@
             stampNonlinear(nd, V => glowCurrents(V, e.model, q), nd.map(k => vn(x, k)), 1e-6);
             break;
           }
+          case "RELAY": {
+            // the latch held; the contacts, closed or open, are plain conductances
+            const q = latchOf(e, x0), gon = 1 / e.model.ron, goff = 1 / e.model.roff;
+            addAu(e.latch, e.latch, 1); b[e.latch] += q;
+            for (let p = 2; p + 2 < nd.length; p += 3) { stampG(nd[p], nd[p + 1], q ? goff : gon); stampG(nd[p], nd[p + 2], q ? gon : goff); }
+            break;
+          }
+          case "LDR": {
+            // the light: x − a·max(i, 0) = (1 − a)·x₋₁, with a = 1 − e^(−h/τ) in a step and 1 at DC
+            const m = e.model, l = e.light, il = (vn(x, nd[2]) - vn(x, nd[3])) / m.rs;
+            let a = 1, xp = 0;
+            if (!mode.dc) { xp = mode.prev[l]; a = 1 - Math.exp(-mode.h / (il > xp ? m.ton : m.toff)); }
+            addAu(l, l, 1); b[l] += (1 - a) * xp;
+            if (il > 0) { if (nd[2] > 0) addAu(l, nd[2] - 1, -a / m.rs); if (nd[3] > 0) addAu(l, nd[3] - 1, a / m.rs); }
+            // the cell: g(light)·(vA − vB), linearized in the light too
+            const xl = x[l], [g, dg] = ldrG(m, xl), vab = vn(x, nd[0]) - vn(x, nd[1]), k = dg * vab;
+            stampG(nd[0], nd[1], g);
+            if (nd[0] > 0) { addAu(nd[0] - 1, l, k); b[nd[0] - 1] += k * xl; }
+            if (nd[1] > 0) { addAu(nd[1] - 1, l, -k); b[nd[1] - 1] -= k * xl; }
+            break;
+          }
         }
       }
 
@@ -927,6 +978,10 @@
     if (e.kind === "E") return { i: x[e.branch], vd: v[0] - v[1], vc: v[2] - v[3] };
     if (e.kind === "G") return { i: e.gm * (v[2] - v[3]), vd: v[0] - v[1], vc: v[2] - v[3] };
     if (e.kind === "GLOW") { const I = glowCurrents(v, e.model, latchOf(e, x)); return { q: latchOf(e, x), vd: v[0] - v[1], i: I[0] }; }
+    // a relay: pulled in or not, and the voltage across the coil's resistance (its current × R)
+    if (e.kind === "RELAY") return { q: latchOf(e, x), vs: v[0] - v[1] };
+    // a vactrol's cell: its resistance, its light (A of LED current) and the current through it
+    if (e.kind === "LDR") { const g = ldrG(e.model, x[e.light])[0]; return { r: 1 / g, light: x[e.light], vd: v[0] - v[1], i: g * (v[0] - v[1]) }; }
     if (e.kind === "TIMER555") {
       const q = latchOf(e, x), V = [v[0], v[2], v[6], v[7]], I = timerCurrents(V, q);
       return { q, vout: V[1] - V[0], iout: -I[1], idis: I[2], vcc: V[3] - V[0], pd: I.reduce((s, i, k) => s + i * V[k], 0) };
@@ -954,6 +1009,8 @@
       case "TIMER555": { const I = timerCurrents([v[0], v[2], v[6], v[7]], latchOf(e, x)); return [[nd[0], I[0]], [nd[2], I[1]], [nd[6], I[2]], [nd[7], I[3]]]; }
       case "OPAMP": return Semi.opamp(v, e.model).map((i, k) => [nd[k], i]);
       case "GLOW": return two(glowCurrents(v, e.model, latchOf(e, x))[0]);
+      case "RELAY": return relayCurrents(v, e.model, latchOf(e, x)).map((i, k) => [nd[k], i]).slice(2);
+      case "LDR": return two(ldrG(e.model, x[e.light])[0] * (v[0] - v[1]));
       case "REG": return Semi.reg(v, e.model).map((i, k) => [nd[k], i]);
       case "SHUNT": return Semi.shunt(v, e.model).map((i, k) => [nd[k], i]);
       default: return [];
@@ -1170,7 +1227,7 @@
         // voltage source's current is no state (each step makes it anew), so it is neither moved nor compared
         const st = [];
         for (let i = 0; i < nodeCount - 1; i++) st.push(i);
-        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); else if (e.kind === "TIMER555" || e.kind === "GLOW") st.push(e.latch); });
+        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); else if (LATCHED.has(e.kind)) st.push(e.latch); else if (e.kind === "LDR") st.push(e.light); });
         // each part of the state weighed by its size over a period (a winding's current may pass zero
         // just as the period starts): one period run while the peaks are noted
         peak = new Float64Array(x.length);
@@ -1286,8 +1343,10 @@
     // at 400 steps a cycle. A timer that never falls (a one-shot at rest) keeps the window
     // before the capture that takes it past its start.
     let fOsc = 0;
-    if (!freqs.length && circ.timers.length) {
-      const e0 = circ.timers.find(e => e.kind === "TIMER555") || circ.timers[0], tLimit = opts.oscLimit || 30, falls = [];
+    // (relays are latched too, but no oscillator: a circuit with only those keeps its window)
+    const oscs = circ.timers.filter(e => e.kind !== "RELAY");
+    if (!freqs.length && oscs.length) {
+      const e0 = oscs.find(e => e.kind === "TIMER555") || oscs[0], tLimit = opts.oscLimit || 30, falls = [];
       let rose = false;
       let w = window, hh = w / 400;
       const fail = () => { circ.onFlip = null; result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; };
@@ -1475,7 +1534,7 @@
     const fMax = freqs.length ? Math.max.apply(null, freqs) : 0;
     // 40 steps per period of the fastest source, at least 2000 steps over the run (20000 with a
     // 555, whose own period the sources do not tell)
-    let h = Math.min(fMax ? 1 / (40 * fMax) : Infinity, tStop / (circ.timers.length ? 20000 : 2000));
+    let h = Math.min(fMax ? 1 / (40 * fMax) : Infinity, tStop / (circ.timers.some(e => e.kind !== "RELAY") ? 20000 : 2000));
     const steps = Math.ceil(tStop / h); h = tStop / steps;
     const probes = (opts.probes || []).map(p => Array.isArray(p) ? p : [p, 0]).filter(([a, b]) => a >= 0 && a < circ.nNodes && b >= 0 && b < circ.nNodes);
     const nOut = Math.min(opts.maxPoints || 4000, steps), per = steps / nOut;
@@ -1597,6 +1656,14 @@
         // a 555: its output stage as it stands at the operating point, the latch fixed
         case "TIMER555": { Gm[at(e.latch, e.latch)] = 1; const q = latchOf(e, x); jac([nd[0], nd[2], nd[6], nd[7]], V => timerCurrents(V, q), 1e-4); break; }
         case "GLOW": { Gm[at(e.latch, e.latch)] = 1; const q = latchOf(e, x); jac(nd, V => glowCurrents(V, e.model, q), 1e-4); break; }
+        case "RELAY": {
+          Gm[at(e.latch, e.latch)] = 1;
+          const q = latchOf(e, x), gon = 1 / e.model.ron, goff = 1 / e.model.roff;
+          for (let p = 2; p + 2 < nd.length; p += 3) { stamp2(addG, nd[p], nd[p + 1], q ? goff : gon); stamp2(addG, nd[p], nd[p + 2], q ? gon : goff); }
+          break;
+        }
+        // the cell at its operating point: its light does not follow an audio-rate signal
+        case "LDR": Gm[at(e.light, e.light)] = 1; stamp2(addG, nd[0], nd[1], ldrG(e.model, x[e.light])[0]); break;
       }
     }
     const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, KA = acPoints(opts);

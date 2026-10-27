@@ -372,6 +372,77 @@
       ctx.font = "8px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textAlign = "center";
       ctx.fillText("A", 22, -13); ctx.fillText("B", 22, 19);
     },
+    // an on–off contact (IEC 60617 S00227 make contact): a toggle's lever, or a push button's
+    // actuator (S00253) over a contact that makes (NO) or breaks (NC) as it is pushed
+    spst(ctx, c) {
+      const shut = (c.params.pos === "on") !== (c.params.kind === "nc");
+      line(ctx, [-30, 0, -12, 0]); line(ctx, [12, 0, 30, 0]);
+      if (c.params.kind === "toggle") { line(ctx, [-12, 0, 12, shut ? -2 : -11]); line(ctx, [12, 0, 12, -4]); }
+      else {
+        const nc = c.params.kind === "nc", y = shut ? (nc ? 0 : -1.5) : (nc ? -10 : -7), yb = nc ? (c.params.pos === "on" ? -10 : -3) : (c.params.pos === "on" ? -3 : -10);
+        line(ctx, [-12, y, 12, y]); line(ctx, [-12, 0, -12, y]); line(ctx, [12, 0, 12, nc ? 4 : y]);
+        if (nc) line(ctx, [12, 4, 12, 0]);
+        ctx.save(); ctx.setLineDash([2, 2]); line(ctx, [0, y, 0, yb - 4]); ctx.restore(); line(ctx, [-5, yb - 4, 5, yb - 4]); line(ctx, [-5, yb - 4, -5, yb - 6]); line(ctx, [5, yb - 4, 5, yb - 6]);
+      }
+    },
+    // a rotary selector: the wiper from the common to the way it is set to, each way a contact on an arc
+    rotary(ctx, c) {
+      const n = rotaryWays(c), on = Math.min(Math.max(Math.round(+c.params.pos) || 1, 1), n);
+      line(ctx, [-30, 0, -14, 0]);
+      ctx.beginPath(); ctx.arc(-14, 0, 2.5, 0, Math.PI * 2); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+      for (let k = 1; k <= n; k++) {
+        const y = 10 * (2 * k - n - 1);
+        line(ctx, [8, y, 30, y]); ctx.beginPath(); ctx.arc(8, y, 1.8, 0, Math.PI * 2); ctx.stroke();
+        if (k === on) { ctx.save(); ctx.lineWidth = 2.4; line(ctx, [-14, 0, 6, y]); ctx.restore(); }
+      }
+      ctx.font = "7px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      for (let k = 1; k <= n; k++) ctx.fillText(String(k), 18, 10 * (2 * k - n - 1) - 5);
+      ctx.textBaseline = "alphabetic";
+    },
+    // a relay (IEC 60617 S00305 coil, S00229 change-over contacts) with the contacts linked to the
+    // coil by a dashed line; drawn at rest, or pulled in when the simulation has it so (c._on)
+    relay(ctx, c) {
+      const m = RELAYS[c.params.model] || RELAYS["G5LE-1"], on = !!(c && c._on);
+      line(ctx, [-20, -30, -20, -10]); line(ctx, [-20, 10, -20, 30]);
+      ctx.fillStyle = COL.fill; ctx.fillRect(-28, -10, 16, 20); ctx.strokeRect(-28, -10, 16, 20);
+      for (let k = 1; k <= m.poles; k++) {
+        const x = 30 * k - 10;
+        line(ctx, [x, 30, x, 10]); line(ctx, [x - 10, -30, x - 10, -10]); line(ctx, [x + 10, -30, x + 10, -10]);
+        line(ctx, [x - 10, -10, x - 6, -10]);
+        line(ctx, [x, 10, on ? x + 10 : x - 7, on ? -9 : -9]);
+      }
+      ctx.save(); ctx.setLineDash([3, 3]); ctx.lineWidth = 1; line(ctx, [-12, 0, 30 * m.poles - 10 + (on ? 5 : -3), 0]); ctx.restore();
+    },
+    // a vactrol (IEC 60617 S00658 optocoupler): the LED on the left, the photoresistor on the right,
+    // light arrows between them, in one case; the LED fills with its colour by its current (c._lit)
+    vactrol(ctx, c) {
+      ctx.save(); ctx.lineWidth = 1; ctx.strokeRect(-24, -22, 48, 44); ctx.restore();
+      line(ctx, [-30, -10, -14, -10, -14, -6]); line(ctx, [-30, 10, -14, 10, -14, 6]);
+      const lit = c && c._lit;
+      ctx.beginPath(); ctx.moveTo(-20, -6); ctx.lineTo(-8, -6); ctx.lineTo(-14, 5); ctx.closePath();
+      if (lit > 0) { ctx.fillStyle = `rgba(${LED_GLOW.red},${(0.25 + 0.75 * lit).toFixed(3)})`; ctx.fill(); }
+      ctx.stroke(); line(ctx, [-20, 5, -8, 5]);
+      line(ctx, [30, -10, 14, -10, 14, -9]); line(ctx, [30, 10, 14, 10, 14, 9]);
+      ctx.fillStyle = COL.fill; ctx.fillRect(10, -9, 8, 18); ctx.strokeRect(10, -9, 8, 18);
+      ctx.lineWidth = 1.2;
+      [-4, 3].forEach(y => { line(ctx, [-5, y, 6, y]); arrowHead(ctx, 8, y, 1, 0, 4, 2); });
+    },
+    // a guitar pickup: the bobbin with its six pole pieces, a coil winding round it
+    pickup(ctx) {
+      line(ctx, [0, -30, 0, -16]); line(ctx, [0, 16, 0, 30]);
+      ctx.fillStyle = COL.fill; ctx.fillRect(-9, -16, 18, 32); ctx.strokeRect(-9, -16, 18, 32);
+      ctx.fillStyle = ctx.strokeStyle;
+      for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.arc(0, -12.5 + k * 5, 1.4, 0, Math.PI * 2); ctx.fill(); }
+      ctx.lineWidth = 1; line(ctx, [-12, -10, 12, -8]); line(ctx, [-12, 8, 12, 10]);
+    },
+    // a phono cartridge: the record (a disc with its label) and the stylus on it
+    phono(ctx) {
+      line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
+      ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 2; line(ctx, [16, -16, 6, 6]); line(ctx, [6, 6, 4, 9]);
+    },
     note(ctx, c) {
       ctx.fillStyle = c._sel ? COL.bodySel : COL.text; ctx.font = `${+c.params.size || 12}px ui-monospace, monospace`;
       ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText(c.params.text || "", 0, 0);
@@ -928,6 +999,52 @@
   ];
   const ITX_KEYS = ["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"];
   const itxPreset = id => { const p = ITX_PRESETS.find(q => q.id === id); return Object.assign({}, ...ITX_KEYS.map(k => ({ [k]: p[k] }))); };
+  // Guitar pickups (pickup part): the coil's EMF behind its DC resistance r and inductance l, its own
+  // capacitance c across the output. Typical values of each kind (measure yours and type them over):
+  // amp, a typical peak EMF for a firm strum
+  const PICKUPS = [
+    { id: "strat", name: "Single coil, Strat-style", r: 6e3, l: 2.4, c: 110e-12, amp: 0.15 },
+    { id: "tele", name: "Single coil, Telecaster bridge", r: 7e3, l: 3, c: 120e-12, amp: 0.2 },
+    { id: "p90", name: "P-90 (fat single coil)", r: 8e3, l: 7, c: 130e-12, amp: 0.3 },
+    { id: "paf", name: "Humbucker, PAF-style", r: 8e3, l: 4.4, c: 150e-12, amp: 0.3 },
+    { id: "hot", name: "Humbucker, high output", r: 16e3, l: 8, c: 200e-12, amp: 0.6 }
+  ];
+  const PICKUP_KEYS = ["r", "l", "c", "amp"];
+  // Phono cartridges (phono part): mv, the output at 1 kHz and 5 cm/s (rms); r and l, the coil's
+  // resistance and inductance. A moving coil's inductance is tens of µH, of no account at audio
+  const CARTRIDGES = [
+    { id: "mm", name: "Moving magnet, typical", mv: 5e-3, r: 1e3, l: 0.5 },
+    { id: "2m-red", name: "Ortofon 2M Red (MM)", mv: 5.5e-3, r: 1.3e3, l: 0.63 },
+    { id: "homc", name: "Moving coil, high output", mv: 2e-3, r: 150, l: 100e-6 },
+    { id: "dl103", name: "Denon DL-103 (MC, low output)", mv: 0.3e-3, r: 40, l: 30e-6 }
+  ];
+  const CARTRIDGE_KEYS = ["mv", "r", "l"];
+  // the RIAA recording curve (IEC 60098), as cut on a record: zeros at 3180 µs and 75 µs, a pole at
+  // 318 µs, and the 3.18 µs pole that keeps the treble finite; unity at 1 kHz
+  const RIAA_T = [3180e-6, 318e-6, 75e-6, 3.18e-6];
+  const riaaGain = f => { const w = 2 * Math.PI * f, m = t => Math.hypot(1, w * t); return m(RIAA_T[0]) * m(RIAA_T[2]) / (m(RIAA_T[1]) * m(RIAA_T[3])); };
+  const riaaRec = f => riaaGain(f) / riaaGain(1000);
+  // Relays (relay part): poles; coil power pw (W, so its resistance is V²/pw); must-operate and
+  // must-release voltages as shares of the rated coil voltage; operate time (max); contact
+  // resistance (max). The coil's inductance is set so that its current reaches must-operate in 60 %
+  // of the operate time (the armature's travel takes the rest)
+  const RELAYS = {
+    "G5LE-1": { poles: 1, pw: 0.4, op: 0.75, rel: 0.1, top: 10e-3, ron: 0.1, use: "SPDT power relay, 10 A at 250 V AC" },
+    "G5V-2": { poles: 2, pw: 0.5, op: 0.75, rel: 0.05, top: 7e-3, ron: 0.05, use: "DPDT signal relay, 2 A at 30 V DC" }
+  };
+  const relayCoil = (m, v) => { const r = v * v / m.pw; return { r, l: r * 0.6 * m.top / Math.log(1 / (1 - m.op)) }; };
+  // Vactrols (LED and CdS cell in one light-tight case; sim-engine.js LDR): the cell's typical
+  // resistance at 1 mA and 10 mA of LED current, its dark resistance (10 s after), the turn-on
+  // time (to 63 % of the final conductance) and turn-off time (to 100 kΩ from 10 mA)
+  const VACTROLS = {
+    VTL5C3: { r1: 10e3, r10: 1e3, rdark: 10e6, ton: 2.5e-3, toff: 35e-3, use: "tremolo, compressors" },
+    VTL5C1: { r1: 20e3, r10: 600, rdark: 50e6, ton: 2.5e-3, toff: 35e-3, use: "channel switching, wide range" }
+  };
+  // the engine's model: gamma from the two points; the time constants from the datasheet times
+  function vactrolModel(m) {
+    const gamma = Math.log10(m.r1 / m.r10);
+    return { rs: 1, r10: m.r10, gamma, rdark: m.rdark, ton: m.ton / -Math.log(1 - Math.pow(0.63, 1 / gamma)), toff: m.toff / (Math.log(1e5 / m.r10) / gamma) };
+  }
   const OPAMPS = {
     "LM741": { units: 1, a0: 200e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 80e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.7e-3, vmax: 36, cc: 30e-12, input: "bipolar (NPN)", use: "the classic general-purpose op-amp" },
     "LM301A": { units: 1, a0: 160e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 70e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.8e-3, vmax: 36, cc: 0, input: "bipolar (NPN)", use: "externally compensated, 30 pF between pins 1 and 8" },
@@ -947,6 +1064,7 @@
     2: [{ "+": 3, "-": 2, OUT: 1 }, { "+": 5, "-": 6, OUT: 7 }],
     4: [{ "+": 3, "-": 2, OUT: 1 }, { "+": 5, "-": 6, OUT: 7 }, { "+": 10, "-": 9, OUT: 8 }, { "+": 12, "-": 13, OUT: 14 }]
   };
+  const rotaryWays = c => Math.min(Math.max(Math.round(+c.params.ways) || 4, 2), 12);
   const CONTROLLED_PINS = () => [{ id: "+", x: 10, y: -30, name: "out +" }, { id: "-", x: 10, y: 30, name: "out −" }, { id: "C+", x: -30, y: -20, name: "control +" }, { id: "C-", x: -30, y: 20, name: "control −" }];
   const OPAMP_SUPPLY = { 1: { "V+": 7, "V-": 4 }, 2: { "V+": 8, "V-": 4 }, 4: { "V+": 4, "V-": 11 } };
   // the amplifier of a dual or quad from the designation suffix: DA1.2 is the second one
@@ -1108,8 +1226,9 @@
       }
     },
     switch: {
-      name: "Switch (changeover)", prefix: "SA", group: "Passive", bbox: [-30, -14, 30, 14],
+      name: "Switch (changeover)", prefix: "SA", group: "Switches & relays", bbox: [-30, -14, 30, 14],
       defaults: { pos: "A" },
+      flip: c => (c.params.pos === "B" ? "A" : "B"),
       pins: () => [{ id: "C", x: -30, y: 0, name: "common" }, { id: "A", x: 30, y: -10, name: "throw A" }, { id: "B", x: 30, y: 10, name: "throw B" }],
       value: c => "→ " + c.params.pos,
       fields: [{ key: "pos", label: "Position", kind: "select", options: [["A", "A (upper throw)"], ["B", "B (lower throw)"]] }],
@@ -1118,6 +1237,82 @@
         const on = c.params.pos === "B" ? "B" : "A", off = on === "A" ? "B" : "A";
         out.push({ id: c.id + "#on", kind: "R", nodes: [net("C"), net(on)], r: 0.01 });
         out.push({ id: c.id + "#off", kind: "R", nodes: [net("C"), net(off)], r: 1e10 });
+      }
+    },
+    // an on–off switch: a toggle, or a push button that makes (NO) or breaks (NC) while pressed.
+    // pos "on" / "off" is the toggle's position or whether the button is held down
+    spst: {
+      name: "Switch (on–off)", prefix: "SA", group: "Switches & relays", bbox: [-30, -16, 30, 8],
+      defaults: { kind: "toggle", pos: "off" },
+      flip: c => (c.params.pos === "on" ? "off" : "on"),
+      pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }],
+      value: c => (c.params.kind === "toggle" ? (c.params.pos === "on" ? "on" : "off") : c.params.pos === "on" ? "pressed" : "released"),
+      fields: [{ key: "kind", label: "Kind", kind: "select", options: [["toggle", "Toggle (stays where it is put)"], ["no", "Push button, normally open (makes while pressed)"], ["nc", "Push button, normally closed (breaks while pressed)"]], wide: true },
+        { key: "pos", label: "Position", kind: "select", options: c => (c.params.kind === "toggle" ? [["off", "Off (open)"], ["on", "On (closed)"]] : [["off", "Released"], ["on", "Pressed"]]) }],
+      // closed 10 mΩ, open 10 GΩ (as the changeover switch)
+      build: (c, net, alloc, out) => { const shut = (c.params.pos === "on") !== (c.params.kind === "nc"); out.push({ id: c.id, kind: "R", nodes: [net("1"), net("2")], r: shut ? 0.01 : 1e10 }); }
+    },
+    // a rotary selector, one pole of n ways: the common C to way pos. Sections of one switch (SA1.1,
+    // SA1.2: a 2-pole selector) turn together
+    rotary: {
+      name: "Rotary switch", prefix: "SA", group: "Switches & relays",
+      bbox: c => { const n = rotaryWays(c); return [-30, -10 * (n - 1) - 12, 30, 10 * (n - 1) + 8]; },
+      defaults: { ways: 4, pos: "1" },
+      flip: c => String(+c.params.pos % rotaryWays(c) + 1),
+      pins: c => { const n = rotaryWays(c); return [{ id: "C", x: -30, y: 0, name: "common (wiper)" }].concat(Array.from({ length: n }, (_, k) => ({ id: String(k + 1), x: 30, y: 10 * (2 * k - n + 1), name: "way " + (k + 1) }))); },
+      value: c => `${rotaryWays(c)} ways → ${c.params.pos}`,
+      fields: [{ key: "ways", label: "Ways", kind: "select", options: [2, 3, 4, 5, 6, 8, 10, 12].map(n => [String(n), n + " ways"]) },
+        { key: "pos", label: "Position", kind: "select", options: c => Array.from({ length: rotaryWays(c) }, (_, k) => [String(k + 1), "Way " + (k + 1)]) }],
+      build: (c, net, alloc, out) => {
+        const n = rotaryWays(c), on = Math.min(Math.max(Math.round(+c.params.pos) || 1, 1), n);
+        for (let k = 1; k <= n; k++) out.push({ id: k === on ? c.id : c.id + "#" + k, kind: "R", nodes: [net("C"), net(String(k))], r: k === on ? 0.01 : 1e10 });
+      }
+    },
+    // a relay: the coil (A1–A2: its resistance, then its inductance) and the contacts of each pole,
+    // COM 11 to NC 12 at rest and to NO 14 pulled in (21, 22, 24 the second pole), as EN 50005 numbers them
+    relay: {
+      name: "Relay", prefix: "K", group: "Switches & relays",
+      bbox: c => [-30, -30, (RELAYS[c.params.model] || RELAYS["G5LE-1"]).poles > 1 ? 60 : 30, 30],
+      defaults: { model: "G5LE-1", v: "12" },
+      pins: c => {
+        const m = RELAYS[c.params.model] || RELAYS["G5LE-1"], pins = [{ id: "A1", x: -20, y: -30, name: "coil +" }, { id: "A2", x: -20, y: 30, name: "coil −" }];
+        for (let k = 1; k <= m.poles; k++) { const x = 30 * k - 10; pins.push({ id: k + "1", x, y: 30, name: `common (pole ${k})` }, { id: k + "2", x: x - 10, y: -30, name: `normally closed (pole ${k})` }, { id: k + "4", x: x + 10, y: -30, name: `normally open (pole ${k})` }); }
+        return pins;
+      },
+      value: c => `${c.params.model} ${c.params.v} V`,
+      fields: [{ key: "model", label: "Type", kind: "select", options: () => Object.entries(RELAYS).map(([k, m]) => [k, `${k} · ${m.use}`]), wide: true },
+        { key: "v", label: "Coil voltage", kind: "select", options: [["5", "5 V DC"], ["12", "12 V DC"], ["24", "24 V DC"]] }],
+      info: c => {
+        const m = RELAYS[c.params.model] || RELAYS["G5LE-1"], v = +c.params.v || 12, k = relayCoil(m, v);
+        return `Omron ${c.params.model}, ${m.use}. Coil ${v} V: ${fmtEng(k.r, "Ω")}, ${fmtEng(v / k.r, "A")} (${fmtEng(m.pw, "W")}); it pulls in at ${fmtEng(m.op * v, "V")} (${m.op * 100} %) and drops out below ${fmtEng(m.rel * v, "V")} (${m.rel * 100} %), operate time ${fmtEng(m.top, "s")} max. ` +
+          `Contacts ${fmtEng(m.ron, "Ω")} closed. Simulated: the coil's resistance and inductance (${fmtEng(k.l, "H")}, so its current builds up as a real coil's does), the contacts switching on its current. Put a diode across the coil when a transistor drives it: the inductance kicks back when it lets go.`;
+      },
+      build: (c, net, alloc, out) => {
+        const m = RELAYS[c.params.model] || RELAYS["G5LE-1"], k = relayCoil(m, +c.params.v || 12), mid = alloc(), nodes = [net("A1"), mid];
+        out.push({ id: c.id + "#r", kind: "R", nodes: [net("A1"), mid], r: k.r });
+        out.push({ id: c.id + "#l", kind: "L", nodes: [mid, net("A2")], l: k.l });
+        for (let p = 1; p <= m.poles; p++) nodes.push(net(p + "1"), net(p + "2"), net(p + "4"));
+        const v = +c.params.v || 12;
+        out.push({ id: c.id, kind: "RELAY", nodes, model: { von: m.op * v, voff: m.rel * v, ron: m.ron, roff: 1e10 } });
+      }
+    },
+    // a vactrol: an LED (A, K) lighting a CdS cell (1, 2) in one sealed case (sim-engine.js LDR)
+    vactrol: {
+      name: "Vactrol (LED + LDR)", prefix: "U", group: "Semiconductors", bbox: [-30, -24, 30, 24],
+      defaults: { model: "VTL5C3" },
+      pins: () => [{ id: "A", x: -30, y: -10, name: "LED anode" }, { id: "K", x: -30, y: 10, name: "LED cathode" }, { id: "1", x: 30, y: -10, name: "cell" }, { id: "2", x: 30, y: 10, name: "cell" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", options: () => Object.entries(VACTROLS).map(([k, m]) => [k, `${k} · ${m.use}`]), wide: true }],
+      info: c => {
+        const m = VACTROLS[c.params.model] || VACTROLS.VTL5C3;
+        return `${c.params.model} (Excelitas / Xvive): the cell is ${fmtEng(m.r1, "Ω")} with 1 mA in the LED and ${fmtEng(m.r10, "Ω")} with 10 mA (typical; parts spread widely), ${fmtEng(m.rdark, "Ω")} dark. It follows the light in ${fmtEng(m.ton, "s")} brightening and ${fmtEng(m.toff, "s")} dimming (to 100 kΩ): ` +
+          "that lag is what makes a vactrol tremolo throb smoothly. The LED is a red one, about 1.7 V; keep it under 40 mA. The cell is a resistor to the signal: no distortion, at any level up to its rating.";
+      },
+      build: (c, net, alloc, out) => {
+        const m = VACTROLS[c.params.model] || VACTROLS.VTL5C3, d = vactrolModel(m), a = alloc(), k = alloc();
+        out.push({ id: c.id + "#led", kind: "D", nodes: [net("A"), a], is: ledIs(LEDS.red.vf), n: 2 });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [a, k], r: 5 }, { id: c.id + "#sense", kind: "R", nodes: [k, net("K")], r: d.rs });
+        out.push({ id: c.id, kind: "LDR", nodes: [net("1"), net("2"), k, net("K")], model: d });
       }
     },
     // A loudspeaker: an ideal resistor, or its Thiele–Small electrical model: the voice
@@ -1634,6 +1829,82 @@
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("+"), mid], r: Math.max(p.rs, 1e-3) });
       }
     },
+    // a guitar pickup: the strings' EMF (a generator, the simulation follows its frequency) behind the
+    // coil's resistance and inductance, its own capacitance across it, and the cable's
+    pickup: {
+      name: "Guitar pickup", prefix: "BM", group: "Sources", bbox: [-16, -30, 16, 30],
+      defaults: Object.assign({ preset: "strat", wave: "sine", freq: 110, cable: 0 }, ...PICKUP_KEYS.map(k => ({ [k]: PICKUPS[0][k] }))),
+      pins: () => [{ id: "+", x: 0, y: -30, name: "hot" }, { id: "-", x: 0, y: 30, name: "ground" }],
+      value: c => `${fmtEng(c.params.l, "H")} ${fmtEng(c.params.r, "Ω")}`,
+      fields: [
+        { key: "preset", label: "Pickup", kind: "select", wide: true, options: () => [["custom", "Your measured values"]].concat(PICKUPS.map(p => [p.id, p.name])),
+          get: c => (PICKUPS.find(p => PICKUP_KEYS.every(k => Math.abs(p[k] - c.params[k]) <= 1e-9 * Math.max(1, Math.abs(p[k])))) || { id: "custom" }).id,
+          apply: (c, v) => { const p = PICKUPS.find(q => q.id === v); if (p) PICKUP_KEYS.forEach(k => { c.params[k] = p[k]; }); } },
+        { key: "r", label: "DC resistance", unit: "Ω", kind: "eng" },
+        { key: "l", label: "Inductance", unit: "H", kind: "eng" },
+        { key: "c", label: "Self-capacitance", unit: "F", kind: "eng" },
+        { key: "cable", label: "Cable", kind: "select", options: [["0", "None (draw your own)"], ["300e-12", "3 m, about 300 pF"], ["600e-12", "6 m, about 600 pF"]] },
+        { kind: "heading", label: "Signal" },
+        { key: "wave", label: "Waveform", kind: "select", options: [["sine", "Sine"], ["square", "Square"], ["triangle", "Triangle"]] },
+        { key: "freq", label: "Frequency", unit: "Hz", kind: "eng" },
+        { key: "amp", label: "EMF (peak)", unit: "Vpk", kind: "eng" }
+      ],
+      info: c => { const p = c.params, ct = +p.c + (+p.cable || 0); return `The pickup's coil: its EMF behind ${fmtEng(p.r, "Ω")} and ${fmtEng(p.l, "H")}, ${fmtEng(p.c, "F")} across it${+p.cable ? ` and ${fmtEng(+p.cable, "F")} of cable` : ""}. Into a high-impedance input it peaks at about ${fmtEng(1 / (2 * Math.PI * Math.sqrt(p.l * ct)), "Hz")}, which is what an amp's input, the guitar's pots and the cable shape. The values are typical of the kind: measure yours (DC resistance with a meter, inductance with an LCR meter at 120 Hz or 1 kHz).`; },
+      build: (c, net, alloc, out) => {
+        const p = c.params, e = alloc(), m = alloc();
+        out.push({ id: c.id, kind: "VSRC", nodes: [e, net("-")], wave: p.wave, freq: Math.max(+p.freq || 110, 0.1), amp: +p.amp || 0, offset: 0, phase: 0 });
+        out.push({ id: c.id + "#r", kind: "R", nodes: [e, m], r: Math.max(+p.r || 0, 1e-3) });
+        out.push({ id: c.id + "#l", kind: "L", nodes: [m, net("+")], l: Math.max(+p.l || 0, 1e-9) });
+        const ct = (+p.c || 0) + (+p.cable || 0);
+        if (ct > 0) out.push({ id: c.id + "#c", kind: "C", nodes: [net("+"), net("-")], c: ct });
+      }
+    },
+    // a phono cartridge playing a record: a tone at the set level (at 1 kHz), cut with the RIAA
+    // curve (a passive network of two lead–lag stages, each buffered by an ideal amplifier, unity at
+    // 1 kHz) so that a correct RIAA preamp plays it flat; or a flat test signal. Then the coil
+    phono: {
+      name: "Phono cartridge", prefix: "BS", group: "Sources", bbox: [-16, -30, 16, 30],
+      defaults: Object.assign({ preset: "mm", freq: 1000, record: "riaa", cable: "150e-12" }, ...CARTRIDGE_KEYS.map(k => ({ [k]: CARTRIDGES[0][k] }))),
+      pins: () => [{ id: "+", x: 0, y: -30, name: "hot" }, { id: "-", x: 0, y: 30, name: "ground" }],
+      value: c => `${fmtEng(c.params.mv, "V")} ${fmtEng(c.params.freq, "Hz")}`,
+      fields: [
+        { key: "preset", label: "Cartridge", kind: "select", wide: true, options: () => [["custom", "Your datasheet values"]].concat(CARTRIDGES.map(p => [p.id, p.name])),
+          get: c => (CARTRIDGES.find(p => CARTRIDGE_KEYS.every(k => Math.abs(p[k] - c.params[k]) <= 1e-9 * Math.max(1, Math.abs(p[k])))) || { id: "custom" }).id,
+          apply: (c, v) => { const p = CARTRIDGES.find(q => q.id === v); if (p) CARTRIDGE_KEYS.forEach(k => { c.params[k] = p[k]; }); } },
+        { key: "mv", label: "Output at 1 kHz, 5 cm/s (rms)", unit: "V", kind: "eng" },
+        { key: "r", label: "Coil resistance", unit: "Ω", kind: "eng" },
+        { key: "l", label: "Coil inductance", unit: "H", kind: "eng" },
+        { key: "cable", label: "Tonearm cable", kind: "select", options: [["0", "None (draw your own)"], ["150e-12", "About 150 pF"], ["300e-12", "About 300 pF"]] },
+        { kind: "heading", label: "Signal" },
+        { key: "record", label: "Signal", kind: "select", options: [["riaa", "A record: cut with the RIAA curve"], ["flat", "Flat (constant velocity, a test signal)"]], wide: true },
+        { key: "freq", label: "Frequency", unit: "Hz", kind: "eng" }
+      ],
+      info: c => {
+        const p = c.params, g = p.record === "riaa" ? riaaRec(+p.freq || 1000) : 1;
+        return `A tone at ${fmtEng(p.freq, "Hz")}: ${fmtEng(p.mv * g, "V")} rms from the cartridge${p.record === "riaa" ? ` (the RIAA cut ${(20 * Math.log10(g)).toFixed(1)} dB from 1 kHz)` : ""}, behind its ${fmtEng(p.r, "Ω")} and ${fmtEng(p.l, "H")}. ` +
+          (p.record === "riaa" ? "Cut as on a record, so a correct RIAA stage plays it flat: sweep it with the Bode plotter, and the preamp's output should be level within a fraction of a dB from 20 Hz to 20 kHz. " : "") +
+          "Load a moving magnet with 47 kΩ and 100–300 pF in all (its treble depends on it); a moving coil with 100 Ω or more, or a step-up transformer.";
+      },
+      build: (c, net, alloc, out) => {
+        const p = c.params, g = net("-"), src = alloc();
+        out.push({ id: c.id, kind: "VSRC", nodes: [src, g], wave: "sine", freq: Math.max(+p.freq || 1000, 0.1), amp: (+p.mv || 0) * Math.SQRT2, offset: 0, phase: 0 });
+        let o = src;
+        if (p.record === "riaa") {
+          // stage 1: 9k ‖ C into 1k (zero 3180 µs, pole 318 µs); stage 2: 10k ‖ C into R (zero 75 µs, pole 3.18 µs)
+          const T = RIAA_T, r2 = 1e4 * T[3] / (T[2] - T[3]), a = alloc(), b = alloc(), d = alloc(), e = alloc();
+          const k = 0.1 * r2 / (1e4 + r2), h = riaaGain(1000);
+          out.push({ id: c.id + "#r1", kind: "R", nodes: [src, a], r: 9e3 }, { id: c.id + "#c1", kind: "C", nodes: [src, a], c: T[0] / 9e3 }, { id: c.id + "#r2", kind: "R", nodes: [a, g], r: 1e3 },
+            { id: c.id + "#e1", kind: "E", nodes: [b, g, a, g], gain: 1 },
+            { id: c.id + "#r3", kind: "R", nodes: [b, d], r: 1e4 }, { id: c.id + "#c3", kind: "C", nodes: [b, d], c: T[2] / 1e4 }, { id: c.id + "#r4", kind: "R", nodes: [d, g], r: r2 },
+            { id: c.id + "#e2", kind: "E", nodes: [e, g, d, g], gain: 1 / (k * h) });
+          o = e;
+        }
+        const m = alloc();
+        out.push({ id: c.id + "#r", kind: "R", nodes: [o, m], r: Math.max(+p.r || 0, 1e-3) });
+        out.push({ id: c.id + "#l", kind: "L", nodes: [m, net("+")], l: Math.max(+p.l || 0, 1e-9) });
+        if (+p.cable > 0) out.push({ id: c.id + "#c", kind: "C", nodes: [net("+"), g], c: +p.cable });
+      }
+    },
     isrc: {
       // a Norton source: an ideal current in parallel with an output resistance, which also
       // keeps a node fed only by the source (behind a capacitor, say) solvable
@@ -1880,8 +2151,11 @@
 
   // Palette layout
   const PALETTE = [
-    { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"], ["switch"],
+    { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"],
       { sub: "Protection" }, ["fuse"], ["ntc"], ["mov"]] },
+    { group: "Switches & relays", items: [["switch"], ["spst", null, "Toggle switch (on–off)"], ["spst", { kind: "no" }, "Push button (normally open)"], ["spst", { kind: "nc" }, "Push button (normally closed)"], ["rotary", null, "Rotary selector, 1 pole"],
+      { sub: "Relays" }, ["relay", null, "Relay G5LE-1 (SPDT, power)"], ["relay", { model: "G5V-2" }, "Relay G5V-2 (DPDT, signal)"],
+      { sub: "Optocouplers" }, ["vactrol", null, "Vactrol VTL5C3 (LED + LDR)"], ["vactrol", { model: "VTL5C1" }, "Vactrol VTL5C1"]] },
     { group: "Transformers", items: [
       { sub: "Generic: set the values yourself" },
       ["opt_se", null, "Output, single-ended"], ["opt_pp", null, "Output, push-pull / UL"], ["ptx", null, "Power, with mains"],
@@ -1893,6 +2167,7 @@
       ["vdc"], ["rail"], ["isrc"],
       { sub: "AC sources" },
       ["siggen"], ["mains"],
+      { sub: "Instruments and records" }, ["pickup", null, "Guitar pickup, single coil"], ["pickup", { preset: "paf", r: 8e3, l: 4.4, c: 150e-12, amp: 0.3 }, "Guitar pickup, humbucker"], ["phono", null, "Phono cartridge, moving magnet"], ["phono", { preset: "dl103", mv: 0.3e-3, r: 40, l: 30e-6 }, "Phono cartridge, moving coil"],
       { sub: "Controlled sources" }, ["vcvs", null, "Voltage-controlled voltage (E)"], ["vccs", null, "Voltage-controlled current (G)"]] },
     { group: "Ground & connectors", items: [["ground"], ["offsheet"],
       { sub: "Connectors" }, ["jack", null, "Jack, 6.35 mm switched"], ["jack", { kind: "RCA" }, "RCA socket"], ["iec"], ["terminal"], ["header"], ["faston"]] },
@@ -1977,6 +2252,23 @@
       }
     },
     switch: { info: () => "Double-click the switch on the sheet to flip it. Sections named like SF1.1 and SF1.2 are one switch and flip together." },
+    spst: { info: c => (c.params.kind === "toggle" ? "Double-click the switch on the sheet to flip it." : "Double-click the button on the sheet to press it (it stays pressed until you double-click again). ") + " Sections named like SA1.1 and SA1.2 are one switch and move together (a DPST)." },
+    rotary: { info: () => "Double-click the switch on the sheet to turn it to the next way. Sections named like SA1.1 and SA1.2 are the poles of one selector and turn together." },
+    relay: {
+      readout: (c, R) => {
+        const d = R.r.dc.devices[c.id], q = d && d.main ? d.main.q : null, m = RELAYS[c.params.model] || RELAYS["G5LE-1"], v = +c.params.v || 12, k = relayCoil(m, v), vc = R.vAcross("A1", "A2");
+        return R.kv("Contacts", q === null ? "—" : q > 0.99 ? "pulled in (COM to NO)" : q < 0.01 ? "at rest (COM to NC)" : `pulled in ${Math.round(q * 100)} % of the time`, q !== null && q > 0.01 && q < 0.99 ? "warn" : "")
+          + R.kv("Coil voltage (DC)", fmtEng(vc, "V", 2), Math.abs(vc) > 1.3 * v ? "bad" : "") + R.kv("Coil current", fmtEng(vc / k.r, "A", 2));
+      }
+    },
+    vactrol: {
+      readout: (c, R) => {
+        const d = R.r.dc.devices[c.id], i = R.pinCurrent("A"), m = d && d.main;
+        return R.kv("LED current", fmtEng(i, "A", 2), i > 0.04 ? "bad" : "") + R.kv("Cell resistance", m ? fmtEng(m.r, "Ω", 3) : "—") + (m && R.r.dcAveraged ? R.note("Averages over the settled cycle.") : "");
+      }
+    },
+    pickup: { readout: (c, R) => R.kv("Signal at the pins", fmtEng((R.stats(R.wave("+")) || {}).rmsAC, "Vrms", 3)) },
+    phono: { readout: (c, R) => R.kv("Signal at the pins", fmtEng((R.stats(R.wave("+")) || {}).rmsAC, "Vrms", 3)) },
     inductor: { readout: (c, R) => { const v = R.vAcross("1", "2"); return R.kv("DC current", fmtEng(v / Math.max(c.params.dcr, 1e-3), "A", 2)) + R.kv("DC drop", fmtEng(v, "V", 2)); } },
     speaker: {
       panel: (c, R) => (c.params.model === "ts" ? speakerPlot(c) : null),
@@ -2220,5 +2512,5 @@
     return wrap;
   }
 
-  root.CadLib = { GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

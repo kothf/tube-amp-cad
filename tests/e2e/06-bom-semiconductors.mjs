@@ -124,7 +124,7 @@ import { readFile } from "node:fs/promises";
       return out;
     });
     const src = (pal.Sources || []).join(" | "), gc = (pal["Ground & connectors"] || []).join(" | ");
-    check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains | Controlled sources: Voltage-controlled voltage (E) | Controlled sources: Voltage-controlled current (G)"
+    check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains | Instruments and records: Guitar pickup, single coil | Instruments and records: Guitar pickup, humbucker | Instruments and records: Phono cartridge, moving magnet | Instruments and records: Phono cartridge, moving coil | Controlled sources: Voltage-controlled voltage (E) | Controlled sources: Voltage-controlled current (G)"
       && gc === "Ground | Sheet connector | Connectors: Jack, 6.35 mm switched | Connectors: RCA socket | Connectors: IEC mains inlet | Connectors: Terminal block | Connectors: Pin header | Connectors: Faston tab", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
     // the current source: 2 mA from ground up into 10 kΩ gives 20 V; the inspector reads it
     await cad.evaluate(() => {
@@ -377,6 +377,51 @@ import { readFile } from "node:fs/promises";
     check(/VL1 Gas voltage regulator tube 0A2 150 V, 5–30 mA, B7G socket/.test(bom), `BOM: the regulator (${bom})`);
     const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
     check(/^\.model DGLOW_\S+ D\(Is=1e-14 N=1 BV=150 IBV=1e-6 RS=80\)$/m.test(sp), "SPICE export: the regulator as a breakdown diode");
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+  }
+  {
+    // a G5LE-1 relay with its 12 V coil on a 12 V supply: pulled in, its NO contact feeding a 1 kΩ load
+    // from a second supply; the BOM row, and SPICE switches. Then a vactrol's LED through 1 kΩ from 12 V
+    // (about 10 mA: the cell near 1 kΩ), and through 150 Ω (over its 40 mA: Checks)
+    const ids = await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const G = add("vdc", { v: 12 }, 200, 300), K = add("relay", { model: "G5LE-1", v: "12" }, 450, 300), G2 = add("vdc", { v: 5 }, 600, 400), R = add("resistor", { r: 1e3 }, 600, 200);
+      const g = [[200, 360], [430, 380], [600, 460], [680, 260]].map(([x, y]) => add("ground", {}, x, y));
+      wire(pin(G, "+"), pin(K, "A1")); wire(pin(G, "-"), pin(g[0], "G")); wire(pin(K, "A2"), pin(g[1], "G"));
+      wire(pin(K, "11"), pin(G2, "+")); wire(pin(G2, "-"), pin(g[2], "G")); wire(pin(K, "14"), pin(R, "1"), false); wire(pin(R, "2"), pin(g[3], "G"));
+      S.sel.comps.add(K.id); C.commit();
+      return { K: K.id, R: R.id };
+    });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /pulled in \(COM to NO\)/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+    const vr = await cad.evaluate(i => { const C = TubeCAD, c = C.state.comps.find(k => k.id === i); return C.state.sim.result.dc.nodes[C.topo().pinNet.get(c.id + ":1")]; }, ids.R);
+    check(Math.abs(vr - 5) < 0.01, `relay: pulled in, its NO contact feeds the load ${vr.toFixed(3)} V`);
+    const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => `${r.refs} ${r.desc} ${r.value} ${r.rating}`).join(" | "));
+    check(/K1 Relay, SPDT Omron G5LE-1-12VDC SPDT power relay/.test(bom), `BOM: the relay (${bom})`);
+    const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
+    check(/^\.model SNO_\S+ SW\(VT=5\.1 VH=3\.9 RON=0\.1 ROFF=10000000000\)$/m.test(sp) && /^S\S+_1NC /m.test(sp), "SPICE export: the relay's contacts as switches with its hysteresis");
+    const v = await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const G = add("vdc", { v: 12 }, 200, 300), R = add("resistor", { r: 1e3 }, 300, 200), U = add("vactrol", {}, 450, 300);
+      const g = [[200, 360], [400, 380]].map(([x, y]) => add("ground", {}, x, y));
+      wire(pin(G, "+"), pin(R, "1"), false); wire(pin(R, "2"), pin(U, "A")); wire(pin(G, "-"), pin(g[0], "G")); wire(pin(U, "K"), pin(g[1], "G"));
+      S.sel.comps.add(U.id); C.commit();
+      return { R: R.id, U: U.id };
+    });
+    await cad.waitForFunction(i => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && TubeCAD.state.sim.result.dc.devices[i] && /Cell resistance\s*\d/.test(document.getElementById("insp-live").textContent), v.U, { timeout: 30000 });
+    const d = await cad.evaluate(i => TubeCAD.state.sim.result.dc.devices[i].main, v.U);
+    let issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    check(d.r > 900 && d.r < 1200 && d.light > 0.009 && d.light < 0.011 && !/U1 \(/.test(issues), `vactrol: ${(d.light * 1000).toFixed(1)} mA in its LED, the cell ${d.r.toFixed(0)} Ω (${issues})`);
+    check(await cad.evaluate(i => TubeCAD.ledLevel(TubeCAD.state.comps.find(c => c.id === i)) > 0.9, v.U), "vactrol: its LED lit by its current");
+    await cad.evaluate(i => { const S = TubeCAD.state; S.comps.find(c => c.id === i).params.r = 150; TubeCAD.commit(); }, v.R);
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && /U1 \(VTL5C3\)/.test(TubeCAD.circuitIssues().join(" ")), null, { timeout: 30000 }).catch(() => {});
+    issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    check(/U1 \(VTL5C3\) has 6\d[.,]\d+\s?mA in its LED, more than the 40 mA/.test(issues), `Checks: a vactrol's LED over its current (${issues})`);
     await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
   }
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
