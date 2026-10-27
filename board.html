@@ -225,6 +225,7 @@
         <button class="menu-item" id="btn-setup" title="Board setup: outline, corners, mounting holes, drawing sheet, layer stack">Board setup…<small>outline, holes, stack</small></button>
         <button class="menu-item" id="btn-rules" title="Design rules: clearances (by voltage), widths, vias, heaters, valve checks, net classes">Design rules…<small>clearances, heaters, checks</small></button>
         <div class="menu-sep"></div>
+        <button class="menu-item" id="btn-nudge" title="Auto-route; while connections are left, move the unlocked parts near them a little and route again (up to 5 rounds). Locked parts, valves, transformers, controls and connectors stay; Ctrl+Z takes it all back">Route &amp; nudge<small>moves parts when routes don't fit</small></button>
         <button class="menu-item" id="btn-ses" title="Add the tracks and vias of a Freerouting session file (.ses) routed from this board's DSN export">Import routes (SES)…<small>from Freerouting</small></button>
         <button class="menu-item" id="btn-router" title="Where Freerouting's API server answers (default http://127.0.0.1:37864) and how to start it">Freerouting…<small>address, how to start it</small></button>
         <input type="file" id="ses-file" accept=".ses,text/plain" hidden>
@@ -466,6 +467,7 @@
   <script src="board-core.js?v=dev"></script>
   <script src="board-fab.js?v=dev"></script>
   <script src="board-route.js?v=dev"></script>
+  <script src="board-place.js?v=dev"></script>
   <script src="board-3d.js?v=dev"></script>
   <script src="board-3d-view.js?v=dev"></script>
   <script src="board-autoroute.js?v=dev"></script>

@@ -349,5 +349,414 @@
    "x2": 880,
    "y2": 410
   }
- ]
+ ],
+ "board": {
+  "app": "TubeAmpCAD-Board",
+  "version": 1,
+  "units": "mm",
+  "outline": {
+   "w": 64,
+   "h": 40,
+   "r": 0
+  },
+  "sheet": {
+   "size": "auto",
+   "orient": "landscape"
+  },
+  "stackup": {
+   "layers": 2,
+   "thickness": 1.6,
+   "copper": 35
+  },
+  "rules": {
+   "track": 1,
+   "power": 2,
+   "minTrack": 0.4,
+   "clearance": 0.6,
+   "hvClearance": 2,
+   "hvVolts": 60,
+   "edgeClearance": 0.5,
+   "viaDrill": 0.8,
+   "viaPad": 1.8,
+   "minDrill": 0.6,
+   "minAnnular": 0.3,
+   "maskExpansion": 0.05,
+   "tentVias": true,
+   "tempRise": 10,
+   "netClass": {},
+   "ipc": "B2",
+   "heaters": true,
+   "heater126": false,
+   "shields": true,
+   "stopperMax": 10,
+   "couplingLen": 10,
+   "couplingGap": 2,
+   "heatGap": 10,
+   "hotWatts": 1,
+   "socketHole": 40,
+   "ground": "free",
+   "teardrops": true,
+   "socketBody": true,
+   "checks": {
+    "star": true,
+    "clearance": true,
+    "short": true,
+    "edge": true,
+    "unplaced": true,
+    "annular": true,
+    "drill": true,
+    "width": true,
+    "class": true,
+    "pinout": true,
+    "current": true,
+    "courtyard": true,
+    "keepout": true,
+    "silk": true,
+    "dangling": true,
+    "stopper": true,
+    "coupling": true,
+    "heat": true,
+    "support": true
+   }
+  },
+  "parts": {
+   "c10_9190": {
+    "ref": "C1",
+    "fp": "BOX-10",
+    "x": 41.910000000000004,
+    "y": 25.4,
+    "rot": 0,
+    "side": "F"
+   },
+   "c5_9595": {
+    "ref": "C2",
+    "fp": "BOX-7.5",
+    "x": 57.15,
+    "y": 22.86,
+    "rot": 0,
+    "side": "F"
+   },
+   "c2_5838": {
+    "ref": "DA1",
+    "fp": "DIP-8",
+    "x": 57.15,
+    "y": 7.62,
+    "rot": 0,
+    "side": "F"
+   },
+   "c3_3757": {
+    "ref": "G1",
+    "fp": "TERM-5.08-2",
+    "x": 6.35,
+    "y": 5.08,
+    "rot": 0,
+    "side": "F"
+   },
+   "c12_5028": {
+    "ref": "R1",
+    "fp": "AXIAL-10.16",
+    "x": 55.88,
+    "y": 36.83,
+    "rot": 0,
+    "side": "F"
+   }
+  },
+  "tracks": [
+   {
+    "layer": "B.Cu",
+    "w": 1,
+    "pts": [
+     [
+      55.498,
+      6.35
+     ],
+     [
+      53.34,
+      6.35
+     ]
+    ],
+    "net": "CAP"
+   },
+   {
+    "layer": "B.Cu",
+    "w": 1,
+    "pts": [
+     [
+      60.96,
+      8.89
+     ],
+     [
+      58.038,
+      8.89
+     ],
+     [
+      55.498,
+      6.35
+     ]
+    ],
+    "net": "CAP"
+   },
+   {
+    "layer": "B.Cu",
+    "w": 1,
+    "pts": [
+     [
+      40.7777,
+      26.8077
+     ],
+     [
+      40.7777,
+      10.7658
+     ],
+     [
+      49.8887,
+      1.6548
+     ],
+     [
+      54.6584,
+      1.6548
+     ],
+     [
+      55.498,
+      2.4944
+     ],
+     [
+      55.498,
+      6.35
+     ]
+    ],
+    "net": "CAP"
+   },
+   {
+    "layer": "B.Cu",
+    "w": 1,
+    "pts": [
+     [
+      40.7777,
+      26.8077
+     ],
+     [
+      39.37,
+      25.4
+     ],
+     [
+      36.91,
+      25.4
+     ]
+    ],
+    "net": "CAP"
+   },
+   {
+    "layer": "B.Cu",
+    "w": 1,
+    "pts": [
+     [
+      50.8,
+      36.83
+     ],
+     [
+      40.7777,
+      26.8077
+     ]
+    ],
+    "net": "CAP"
+   },
+   {
+    "layer": "F.Cu",
+    "w": 2,
+    "pts": [
+     [
+      60.9,
+      22.86
+     ],
+     [
+      58.2992,
+      25.4608
+     ],
+     [
+      46.9708,
+      25.4608
+     ],
+     [
+      46.91,
+      25.4
+     ]
+    ],
+    "net": "GND"
+   },
+   {
+    "layer": "B.Cu",
+    "w": 2,
+    "pts": [
+     [
+      53.34,
+      3.81
+     ],
+     [
+      50.8183,
+      3.81
+     ]
+    ],
+    "net": "GND"
+   },
+   {
+    "layer": "B.Cu",
+    "w": 2,
+    "pts": [
+     [
+      50.8183,
+      3.81
+     ],
+     [
+      50.8183,
+      21.4917
+     ],
+     [
+      46.91,
+      25.4
+     ]
+    ],
+    "net": "GND"
+   },
+   {
+    "layer": "F.Cu",
+    "w": 2,
+    "pts": [
+     [
+      8.89,
+      5.08
+     ],
+     [
+      10.16,
+      3.81
+     ],
+     [
+      53.34,
+      3.81
+     ]
+    ],
+    "net": "GND"
+   },
+   {
+    "layer": "F.Cu",
+    "w": 1,
+    "pts": [
+     [
+      60.96,
+      11.43
+     ],
+     [
+      53.4,
+      18.99
+     ],
+     [
+      53.4,
+      22.86
+     ]
+    ],
+    "net": "C2_DA1"
+   },
+   {
+    "layer": "B.Cu",
+    "w": 1,
+    "pts": [
+     [
+      60.96,
+      36.83
+     ],
+     [
+      56.9275,
+      32.7975
+     ],
+     [
+      56.9275,
+      12.1965
+     ],
+     [
+      53.621,
+      8.89
+     ],
+     [
+      53.34,
+      8.89
+     ]
+    ],
+    "net": "OUT"
+   },
+   {
+    "layer": "F.Cu",
+    "w": 1,
+    "pts": [
+     [
+      60.96,
+      3.81
+     ],
+     [
+      60.7026,
+      3.81
+     ],
+     [
+      56.9275,
+      7.5851
+     ],
+     [
+      56.9275,
+      8.1235
+     ],
+     [
+      53.621,
+      11.43
+     ],
+     [
+      53.34,
+      11.43
+     ]
+    ],
+    "net": "+9V"
+   },
+   {
+    "layer": "F.Cu",
+    "w": 1,
+    "pts": [
+     [
+      3.81,
+      5.08
+     ],
+     [
+      6.4067,
+      5.08
+     ]
+    ],
+    "net": "+9V"
+   },
+   {
+    "layer": "F.Cu",
+    "w": 1,
+    "pts": [
+     [
+      6.4067,
+      5.08
+     ],
+     [
+      6.4067,
+      6.1349
+     ],
+     [
+      11.7018,
+      11.43
+     ],
+     [
+      53.34,
+      11.43
+     ]
+    ],
+    "net": "+9V"
+   }
+  ],
+  "vias": [],
+  "holes": [],
+  "texts": [],
+  "zones": [],
+  "keepouts": []
+ }
 }
