@@ -408,6 +408,63 @@
     offsheet(ctx) {
       line(ctx, [0, 0, 8, 0]); line(ctx, [8, -6, 20, 0, 8, 6, 8, -6]);
     },
+    // jack socket: the sleeve's long contact, the tip's spring (and the ring's), the switch contact
+    // under the tip that rests on it until a plug goes in; the body on the plug's side
+    jack(ctx, c) {
+      const j = JACKS[c.params.kind] || JACKS["TS-SW"];
+      ctx.fillStyle = COL.fill; ctx.fillRect(4, -28, 10, 56); ctx.strokeRect(4, -28, 10, 56);
+      line(ctx, [-30, 20, 4, 20]);
+      line(ctx, [-30, -20, -4, -20, 0, -24, 4, -20]);
+      if (j.pins.includes("R")) line(ctx, [-30, 0, -4, 0, 0, -4, 4, 0]);
+      if (j.pins.includes("SW")) {
+        const shut = c.params.plug !== "in";
+        line(ctx, [-30, -10, -10, -10, -10, shut ? -19 : -14]);
+        if (!shut) { ctx.fillStyle = COL.value; ctx.font = "7px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("plug", 9, 34); }
+      }
+    },
+    // IEC inlet: a box with the three contacts, protective earth marked
+    iec(ctx) {
+      ctx.fillStyle = COL.fill; ctx.fillRect(-12, -28, 30, 56); ctx.strokeRect(-12, -28, 30, 56);
+      line(ctx, [-30, -20, -12, -20]); line(ctx, [-30, 0, -12, 0]); line(ctx, [-30, 20, -12, 20]);
+      ctx.fillStyle = COL.value; ctx.font = "8px ui-monospace, monospace"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText("L", -8, -20); ctx.fillText("N", -8, 0);
+      line(ctx, [-8, 20, -2, 20]); line(ctx, [-2, 15, -2, 25]); line(ctx, [0, 17, 0, 23]); line(ctx, [2, 19, 2, 21]);
+      ctx.textBaseline = "alphabetic";
+    },
+    // terminal block: a terminal circle per way (IEC 60617 S00017), the outside wire's stub beyond it
+    terminal(ctx, c) {
+      const n = LIB.terminal.pins(c).length;
+      ctx.strokeRect(-8, -8, 12, 20 * (n - 1) + 16);
+      for (let i = 0; i < n; i++) { line(ctx, [-30, i * 20, -5, i * 20]); ctx.beginPath(); ctx.arc(-2, i * 20, 3, 0, Math.PI * 2); ctx.stroke(); line(ctx, [1, i * 20, 12, i * 20]); }
+    },
+    header(ctx, c) {
+      const n = LIB.header.pins(c).length;
+      ctx.strokeRect(-8, -8, 12, 20 * (n - 1) + 16);
+      for (let i = 0; i < n; i++) { line(ctx, [-30, i * 20, -5, i * 20]); ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(-5, i * 20 - 2.5, 6, 5); line(ctx, [1, i * 20, 12, i * 20]); }
+    },
+    faston(ctx) {
+      line(ctx, [-20, 0, -6, 0]);
+      ctx.fillStyle = COL.fill; ctx.fillRect(-6, -4, 16, 8); ctx.strokeRect(-6, -4, 16, 8);
+      ctx.beginPath(); ctx.arc(4, 0, 1.5, 0, Math.PI * 2); ctx.stroke();
+    },
+    // IEC 60617 S00362 fuse: the body with the fuse wire through it
+    fuse(ctx) {
+      line(ctx, [-30, 0, -15, 0]); line(ctx, [15, 0, 30, 0]);
+      ctx.fillStyle = COL.fill; ctx.fillRect(-15, -6, 30, 12); ctx.strokeRect(-15, -6, 30, 12);
+      line(ctx, [-15, 0, 15, 0]);
+    },
+    // IEC 60617 S00566 resistor with inherent variability: the slanted line with its foot, "−t°"
+    // (an NTC thermistor) or "U" (a voltage-dependent resistor)
+    ntc(ctx) {
+      DRAW.resistor(ctx, { params: {} });
+      line(ctx, [-18, 10, -12, 10, 12, -10]);
+      ctx.fillStyle = COL.value; ctx.font = "8px ui-monospace, monospace"; ctx.textAlign = "left"; ctx.fillText("−t°", -6, 18);
+    },
+    mov(ctx) {
+      DRAW.resistor(ctx, { params: {} });
+      line(ctx, [-18, 10, -12, 10, 12, -10]);
+      ctx.fillStyle = COL.value; ctx.font = "8px ui-monospace, monospace"; ctx.textAlign = "left"; ctx.fillText("U", -2, 18);
+    },
     // power rail (a one-pin supply, the usual VCC arrow): a stem with an arrowhead;
     // the rail's name and voltage are drawn upright by the app beyond the tip
     rail(ctx) {
@@ -709,7 +766,59 @@
     "DF10M": { is: 7e-9, n: 1.8, rs: 0.05, tt: 4.3e-6, v: 1000, i: 1, pkg: "DIP-4", order: ["+", "-", "AC2", "AC1"], use: "1 A, 1000 V, DIP-4" },
     "B250C2300-1500A": { is: 1.5e-8, n: 1.8, rs: 0.03, tt: 4.3e-6, v: 600, i: 1.5, pkg: "SIL-4", order: ["-", "AC1", "AC2", "+"], use: "1.5 A (2.3 A on a heatsink), 600 V, inline" },
     "KBPC2510": { is: 2e-7, n: 1.8, rs: 0.008, tt: 1e-5, v: 1000, i: 25, pkg: "KBPC", order: ["+", "AC1", "-", "AC2"], use: "25 A, 1000 V, chassis mount, Faston" },
-    "KBPC3510": { is: 2.5e-7, n: 1.8, rs: 0.006, tt: 1e-5, v: 1000, i: 35, pkg: "KBPC", order: ["+", "AC1", "-", "AC2"], use: "35 A, 1000 V, chassis mount, Faston" }
+    "KBPC3510": { is: 2.5e-7, n: 1.8, rs: 0.006, tt: 1e-5, v: 1000, i: 35, pkg: "KBPC", order: ["+", "AC1", "-", "AC2"], use: "35 A, 1000 V, chassis mount, Faston" },
+    "W04G": { is: 1e-8, n: 1.8, rs: 0.05, tt: 4.3e-6, v: 400, i: 1.5, pkg: "WOB", order: ["+", "AC1", "-", "AC2"], use: "1.5 A, 400 V, round (WOB)" },
+    "W10G": { is: 1e-8, n: 1.8, rs: 0.05, tt: 4.3e-6, v: 1000, i: 1.5, pkg: "WOB", order: ["+", "AC1", "-", "AC2"], use: "1.5 A, 1000 V, round (WOB)" },
+    "GBU4J": { is: 3e-8, n: 1.8, rs: 0.02, tt: 4.3e-6, v: 600, i: 4, pkg: "GBU", order: ["+", "AC1", "AC2", "-"], use: "4 A, 600 V, flat inline (GBU)" },
+    "GBU8K": { is: 6e-8, n: 1.8, rs: 0.012, tt: 4.3e-6, v: 800, i: 8, pkg: "GBU", order: ["+", "AC1", "AC2", "-"], use: "8 A, 800 V, flat inline (GBU), on a heatsink" },
+    "KBU8K": { is: 1e-7, n: 1.8, rs: 0.008, tt: 4.3e-6, v: 800, i: 8, pkg: "KBU", order: ["+", "AC1", "AC2", "-"], use: "8 A, 800 V, inline (KBU), on a heatsink" }
+  };
+  // Inrush current limiters (NTC thermistors, Ametherm SL series): the cold resistance r25 (Ω) and
+  // the largest steady current imax (A); r100 and r50 the makers' resistance when self-heated at
+  // 100 % and 50 % of imax, from which ntcLaw() gives R = k·I^−n; the disc's diameter d and
+  // thickness w, its lead pitch p and lead diameter (mm)
+  const NTCS = {
+    "SL10 5R003": { r25: 5, imax: 3, r100: 0.5, r50: 0.7, d: 10, w: 5, p: 5.1, lead: 0.8, use: "5 Ω, 3 A" },
+    "SL22 10005": { r25: 10, imax: 5, r100: 0.18, r50: 0.44, d: 22, w: 6, p: 7.8, lead: 1, use: "10 Ω, 5 A" },
+    "SL22 2R510": { r25: 2.5, imax: 10, r100: 0.04, r50: 0.1, d: 22, w: 6, p: 7.8, lead: 1, use: "2.5 Ω, 10 A" },
+    "SL22 5R012": { r25: 5, imax: 12, r100: 0.05, r50: 0.12, d: 22, w: 6, p: 7.8, lead: 1, use: "5 Ω, 12 A" },
+    "SL32 10015": { r25: 10, imax: 15, r100: 0.05, r50: 0.11, d: 29, w: 6.5, p: 9.5, lead: 1, use: "10 Ω, 15 A" }
+  };
+  const ntcLaw = m => { const n = Math.log(m.r50 / m.r100) / Math.LN2; return { r25: m.r25, n, k: m.r100 * Math.pow(m.imax, n) }; };
+  // Metal oxide varistors (TDK SIOV StandarD): the largest continuous voltages vrms and vdc, the
+  // varistor voltage v1ma at 1 mA, the clamping voltage vc at the surge current ic (8/20 µs), the
+  // capacitance at 1 kHz, the disc's diameter d and thickness w, its lead pitch p and lead diameter (mm)
+  const MOVS = {
+    "S10K150": { vrms: 150, vdc: 200, v1ma: 240, vc: 395, ic: 25, c: 350e-12, d: 12, w: 4.6, p: 7.5, lead: 0.8, use: "for 120 V mains, Ø 10 mm" },
+    "S07K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 10, c: 95e-12, d: 9, w: 5.3, p: 5, lead: 0.6, use: "for 230 V mains, Ø 7 mm" },
+    "S10K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 25, c: 195e-12, d: 12, w: 5.6, p: 7.5, lead: 0.8, use: "for 230 V mains, Ø 10 mm" },
+    "S14K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 50, c: 320e-12, d: 15.5, w: 6.1, p: 7.5, lead: 0.8, use: "for 230 V mains, Ø 14 mm" },
+    "S20K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 100, c: 630e-12, d: 21.5, w: 6.6, p: 10, lead: 1, use: "for 230 V mains, Ø 20 mm" },
+    "S14K385": { vrms: 385, vdc: 505, v1ma: 620, vc: 1025, ic: 50, c: 240e-12, d: 15.5, w: 6.9, p: 7.5, lead: 0.8, use: "for 230 V mains with margin, Ø 14 mm" }
+  };
+  // a varistor's curve as two opposed junctions: I = 1 mA at v1ma, rising α ≈ 35-fold per decade of
+  // voltage around it (the slope nVt = v1ma/35), and a series resistance that brings the clamp
+  // voltage at ic to vc
+  const movModel = m => { const nvt = m.v1ma / 35, n = nvt / 0.025852, is = 1e-3 * Math.exp(-m.v1ma / nvt); return { n, is, rs: Math.max((m.vc - m.v1ma - nvt * Math.log(m.ic / 1e-3)) / m.ic, 0.01) }; };
+  // Fuses, 5 × 20 mm (and 6.3 × 32 mm) glass cartridges: the ratings offered, and a typical cold
+  // resistance by rating (Littelfuse 218 time-lag: 0.315 A 0.85 Ω, 1 A 0.061 Ω, 6.3 A 7.6 mΩ, 10 A
+  // 4.5 mΩ; log-log between them, the 0.1 A end extrapolated)
+  const FUSE_RATINGS = [0.1, 0.125, 0.16, 0.2, 0.25, 0.315, 0.4, 0.5, 0.63, 0.8, 1, 1.25, 1.6, 2, 2.5, 3.15, 4, 5, 6.3, 8, 10];
+  function fuseCold(a) {
+    const P = [[0.1, 11], [0.315, 0.85], [1, 0.061], [6.3, 0.0076], [10, 0.0045]];
+    a = Math.min(Math.max(+a || 1, P[0][0]), P[P.length - 1][0]);
+    let k = 0; while (k < P.length - 2 && a > P[k + 1][0]) k++;
+    const [[a0, r0], [a1, r1]] = [P[k], P[k + 1]];
+    return Math.exp(Math.log(r0) + (Math.log(r1) - Math.log(r0)) * Math.log(a / a0) / Math.log(a1 / a0));
+  }
+  // jacks: their pins (tip +, ring R, sleeve −, the tip's switch contact SW that touches the tip
+  // while no plug is in) and size
+  const JACKS = {
+    "TS-SW": { pins: ["+", "-", "SW"], size: "6.35", use: "6.35 mm mono, switched (guitar input)" },
+    "TS": { pins: ["+", "-"], size: "6.35", use: "6.35 mm mono (speaker, line)" },
+    "TRS": { pins: ["+", "R", "-"], size: "6.35", use: "6.35 mm stereo (headphones)" },
+    "TRS-3.5": { pins: ["+", "R", "-"], size: "3.5", use: "3.5 mm stereo" },
+    "RCA": { pins: ["+", "-"], size: "RCA", use: "RCA (phono) socket" }
   };
   // JFETs, SPICE NJF / PJF level 1: pinch-off vto (V, the gate-source voltage at which the channel
   // closes: negative N-channel, positive P-channel), beta (A/V², so IDSS = beta·vto²), lambda,
@@ -884,6 +993,8 @@
   //   fields: inspector rows { key, label, unit, kind: "eng"|"number"|"select"|"range", options }
   //   build(c, net, alloc, out): push solver elements; net(pinId) -> node index
   // ---------------------------------------------------------------------------
+  // a capacitor's voltage rating: Checks warns from 80 % of it; left unset, the BOM picks one from the simulation
+  const capRatingField = list => ({ key: "v", label: "Voltage rating", kind: "select", options: [["", "Not set (the BOM picks one)"]].concat(list.map(v => [String(v), v + " V"])) });
   const LIB = {
     resistor: {
       name: "Resistor", prefix: "R", group: "Passive", bbox: [-30, -10, 30, 10],
@@ -915,18 +1026,18 @@
     },
     capacitor: {
       name: "Capacitor", prefix: "C", group: "Passive", bbox: [-20, -12, 20, 12],
-      defaults: { c: 0.1e-6 },
+      defaults: { c: 0.1e-6, v: "" },
       pins: () => [{ id: "1", x: -20, y: 0 }, { id: "2", x: 20, y: 0 }],
-      value: c => fmtEng(c.params.c, "F"),
-      fields: [{ key: "c", label: "Capacitance", unit: "F", kind: "eng" }],
+      value: c => fmtEng(c.params.c, "F") + (+c.params.v ? " " + c.params.v + "V" : ""),
+      fields: [{ key: "c", label: "Capacitance", unit: "F", kind: "eng" }, capRatingField([50, 63, 100, 160, 250, 400, 630, 1000, 1600, 2000, 3000])],
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "C", nodes: [net("1"), net("2")], c: Math.max(c.params.c, 1e-15) })
     },
     electrolytic: {
       name: "Electrolytic cap", prefix: "C", group: "Passive", bbox: [-20, -12, 20, 12],
-      defaults: { c: 47e-6 },
+      defaults: { c: 47e-6, v: "" },
       pins: () => [{ id: "+", x: -20, y: 0 }, { id: "-", x: 20, y: 0 }],
-      value: c => fmtEng(c.params.c, "F"),
-      fields: [{ key: "c", label: "Capacitance", unit: "F", kind: "eng" }],
+      value: c => fmtEng(c.params.c, "F") + (+c.params.v ? " " + c.params.v + "V" : ""),
+      fields: [{ key: "c", label: "Capacitance", unit: "F", kind: "eng" }, capRatingField([6.3, 10, 16, 25, 35, 50, 63, 100, 160, 200, 250, 350, 400, 450, 500, 550])],
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "C", nodes: [net("+"), net("-")], c: Math.max(c.params.c, 1e-15) })
     },
     inductor: {
@@ -1512,6 +1623,103 @@
       info: () => "Joins every sheet connector with the same signal name, on any sheet, as if wired. Use it to carry a supply rail or a signal to another sheet; the cross-reference next to it gives the sheet and grid zone of its partners (IEC 61082-1).",
       build: () => {}
     },
+    // Physical connectors: where wires from off the board land. They join their pins to nothing
+    // else (a jack's switch excepted), so they cost the simulation nothing; on the board they are
+    // pads in the maker's pattern.
+    jack: {
+      name: "Jack socket", prefix: "XS", group: "Ground & connectors", bbox: [-30, -30, 14, 30],
+      defaults: { kind: "TS-SW", plug: "out" },
+      pins: c => {
+        const j = JACKS[c.params.kind] || JACKS["TS-SW"], at = { "+": [-30, -20, "tip"], R: [-30, 0, "ring"], "-": [-30, 20, "sleeve"], SW: [-30, -10, "tip switch (closed with no plug)"] };
+        return j.pins.map(id => ({ id, x: at[id][0], y: at[id][1], name: at[id][2] }));
+      },
+      value: c => (JACKS[c.params.kind] || JACKS["TS-SW"]).size === "RCA" ? "RCA" : (JACKS[c.params.kind] || {}).size + " mm",
+      fields: [{ key: "kind", label: "Kind", kind: "select", options: () => Object.entries(JACKS).map(([k, j]) => [k, j.use]), wide: true },
+        { key: "plug", label: "Plug", kind: "select", options: [["out", "Nothing plugged in"], ["in", "A plug in"]], when: c => c.params.kind === "TS-SW" }],
+      info: c => (c.params.kind === "TS-SW"
+        ? "Tip +, sleeve −, and the tip's switch contact SW, which rests on the tip while nothing is plugged in (wire SW to ground and an open input is shorted, so it stays quiet). The Plug field opens it. Double-click the jack to plug in or pull out."
+        : "Tip +, ring R (stereo), sleeve −. It joins the wires from its plug to the circuit; nothing of it is simulated."),
+      build: (c, net, alloc, out) => {
+        if (c.params.kind !== "TS-SW") return;
+        // the switch contact: 10 mΩ to the tip with no plug, open (10 GΩ, so it never floats) with one
+        out.push({ id: c.id + "#sw", kind: "R", nodes: [net("+"), net("SW")], r: c.params.plug === "in" ? 1e10 : 0.01 });
+      }
+    },
+    iec: {
+      name: "IEC mains inlet", prefix: "XP", group: "Ground & connectors", bbox: [-30, -30, 24, 30],
+      defaults: {},
+      pins: () => [{ id: "L", x: -30, y: -20, name: "line" }, { id: "N", x: -30, y: 0, name: "neutral" }, { id: "PE", x: -30, y: 20, name: "protective earth" }],
+      value: () => "C14",
+      fields: [],
+      info: () => "IEC 60320 C14 inlet, chassis mounted: line, neutral and protective earth, wired to the board by their Faston tabs. Feed it from the AC mains part; PE goes to the chassis (and ground) for safety.",
+      build: () => {}
+    },
+    terminal: {
+      name: "Terminal block", prefix: "XT", group: "Ground & connectors",
+      bbox: c => [-30, -10, 14, 20 * Math.max(2, +c.params.ways || 2) - 10],
+      defaults: { ways: 2, pitch: "5.08" },
+      pins: c => Array.from({ length: Math.min(Math.max(+c.params.ways || 2, 2), 8) }, (_, i) => ({ id: String(i + 1), x: -30, y: i * 20 })),
+      value: c => `${c.params.ways}-way ${c.params.pitch} mm`,
+      fields: [{ key: "ways", label: "Ways", kind: "select", options: [2, 3, 4, 5, 6, 8].map(n => [n, n + " ways"]) },
+        { key: "pitch", label: "Pitch", kind: "select", options: [["5.08", "5.08 mm (to 250 V, 10 A)"], ["7.5", "7.5 mm (mains, HT)"]] }],
+      info: () => "A screw terminal block on the board (Phoenix MKDS style): each way joins its wire from off the board to the circuit.",
+      build: () => {}
+    },
+    header: {
+      name: "Pin header", prefix: "XP", group: "Ground & connectors",
+      bbox: c => [-30, -10, 14, 20 * Math.max(2, +c.params.ways || 2) - 10],
+      defaults: { ways: 3 },
+      pins: c => Array.from({ length: Math.min(Math.max(+c.params.ways || 2, 2), 10) }, (_, i) => ({ id: String(i + 1), x: -30, y: i * 20 })),
+      value: c => `1×${c.params.ways}`,
+      fields: [{ key: "ways", label: "Pins", kind: "select", options: [2, 3, 4, 5, 6, 8, 10].map(n => [n, `1 × ${n}, 2.54 mm`]) }],
+      info: () => "A straight 2.54 mm pin header for a plug-on lead (heater, LED, pot or switch wiring); signal currents, 3 A at most per pin.",
+      build: () => {}
+    },
+    faston: {
+      name: "Faston tab", prefix: "XT", group: "Ground & connectors", bbox: [-20, -8, 14, 8],
+      defaults: { size: "6.3" },
+      pins: () => [{ id: "1", x: -20, y: 0 }],
+      value: c => c.params.size + " mm",
+      fields: [{ key: "size", label: "Tab", kind: "select", options: [["6.3", "6.3 mm (0.250\"), Keystone 1287"], ["4.8", "4.8 mm (0.187\"), Keystone 1285"]] }],
+      info: () => "A board-mounted quick-connect tab for one wire: mains, a heater, the speaker or a chassis ground lead.",
+      build: () => {}
+    },
+    fuse: {
+      name: "Fuse", prefix: "FU", group: "Passive", bbox: [-30, -8, 30, 8],
+      defaults: { a: 1, speed: "T", size: "5x20" },
+      pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }],
+      value: c => `${c.params.speed}${fmtEng(+c.params.a, "A")}`,
+      fields: [{ key: "a", label: "Rating", kind: "select", options: FUSE_RATINGS.map(a => [a, fmtEng(a, "A")]) },
+        { key: "speed", label: "Kind", kind: "select", options: [["T", "T, time-lag (mains, inrush)"], ["F", "F, fast-acting (HT, outputs)"]] },
+        { key: "size", label: "Size", kind: "select", options: [["5x20", "5 × 20 mm"], ["6.3x32", "6.3 × 32 mm"], ["TR5", "TR5 subminiature"]] }],
+      info: c => `A ${c.params.speed === "F" ? "fast-acting" : "time-lag"} ${fmtEng(+c.params.a, "A")} fuse, simulated as its typical cold resistance, ${fmtEng(fuseCold(c.params.a), "Ω")}. Checks compares its rms current with the rating: run a fuse at 75 % of it or less.`,
+      build: (c, net, alloc, out) => out.push({ id: c.id, kind: "R", nodes: [net("1"), net("2")], r: fuseCold(c.params.a) })
+    },
+    ntc: {
+      name: "Inrush limiter (NTC)", prefix: "RK", group: "Passive", bbox: [-30, -12, 30, 12],
+      defaults: { model: "SL22 10005" },
+      pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Model", kind: "select", options: () => Object.entries(NTCS).map(([k, m]) => [k, `${k} · ${m.use}`]), wide: true }],
+      info: c => { const m = NTCS[c.params.model] || NTCS["SL22 10005"]; return `${c.params.model}: ${fmtEng(m.r25, "Ω")} cold, ${m.imax} A at most, ${m.r100} Ω hot at ${m.imax} A. Simulated at its self-heated resistance for the current through it (R = k·I^−n from the maker's figures), so the settled supply sees it hot; the power-on transient starts it cold.`; },
+      build: (c, net, alloc, out) => { const m = NTCS[c.params.model] || NTCS["SL22 10005"]; out.push({ id: c.id, kind: "R", nodes: [net("1"), net("2")], r: m.r25, ntc: ntcLaw(m) }); }
+    },
+    mov: {
+      name: "Varistor (MOV)", prefix: "RU", group: "Passive", bbox: [-30, -12, 30, 12],
+      defaults: { model: "S10K275" },
+      pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Model", kind: "select", options: () => Object.entries(MOVS).map(([k, m]) => [k, `${k} · ${m.use}`]), wide: true }],
+      info: c => { const m = MOVS[c.params.model] || MOVS.S10K275; return `${c.params.model}: ${m.vrms} V AC (${m.vdc} V DC) continuous, ${m.v1ma} V at 1 mA, clamps at ${m.vc} V with ${m.ic} A, ${fmtEng(m.c, "F")}. Across the mains after the fuse it takes the surges; Checks compares the voltage across it with its continuous rating.`; },
+      // two opposed junctions in series with the bulk resistance, and the disc's capacitance
+      build: (c, net, alloc, out) => {
+        const m = MOVS[c.params.model] || MOVS.S10K275, d = movModel(m), mid = alloc();
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("1"), mid], r: d.rs });
+        out.push({ id: c.id, kind: "D", nodes: [mid, net("2")], is: d.is, n: d.n });
+        out.push({ id: c.id + "#r", kind: "D", nodes: [net("2"), mid], is: d.is, n: d.n });
+        out.push({ id: c.id + "#c", kind: "C", nodes: [net("1"), net("2")], c: m.c });
+      }
+    },
     scope: {
       // its screen stays upright (no rotation), but it mirrors: the inputs then come in on the right
       name: "Oscilloscope", prefix: "P", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true, mirror: true,
@@ -1537,7 +1745,8 @@
 
   // Palette layout
   const PALETTE = [
-    { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"], ["switch"]] },
+    { group: "Passive", items: [["resistor"], ["pot"], ["capacitor"], ["electrolytic"], ["inductor"], ["speaker"], ["switch"],
+      { sub: "Protection" }, ["fuse"], ["ntc"], ["mov"]] },
     { group: "Transformers", items: [
       { sub: "Generic: set the values yourself" },
       ["opt_se", null, "Output, single-ended"], ["opt_pp", null, "Output, push-pull / UL"], ["ptx", null, "Power, with mains"],
@@ -1548,7 +1757,8 @@
       ["vdc"], ["rail"], ["isrc"],
       { sub: "AC sources" },
       ["siggen"], ["mains"]] },
-    { group: "Ground & connectors", items: [["ground"], ["offsheet"]] },
+    { group: "Ground & connectors", items: [["ground"], ["offsheet"],
+      { sub: "Connectors" }, ["jack", null, "Jack, 6.35 mm switched"], ["jack", { kind: "RCA" }, "RCA socket"], ["iec"], ["terminal"], ["header"], ["faston"]] },
     { group: "Semiconductors", items: [["diode"], ["diode", { model: "UF4007" }, "Diode, ultrafast"], ["diode", { model: "1N5819" }, "Diode, Schottky"], ["diode", { model: "C3D02060A" }, "Diode, SiC Schottky"], ["bridge"], ["zener"], ["led"],
       { sub: "Transistors" }, ["npn"], ["pnp"], ["npn", { model: "MJE340" }, "NPN, high voltage"], ["pnp", { model: "MJE350" }, "PNP, high voltage"],
       ["pnp", { model: "AC128" }, "PNP, germanium"], ["npn", { model: "AC127" }, "NPN, germanium"], ["pnp", { model: "MP39B" }, "PNP, germanium (USSR)"],
@@ -1638,6 +1848,28 @@
                    : R.kv("Output power", fmtEng(R.pAvg("+", "-", c.params.r), "W", 2));
         if (c.params.model === "ts" && f) { const [z, ph] = speakerZ(c.params, f); h += R.kv(`Impedance at ${fmtEng(f, "Hz")}`, `${fmtEng(z, "Ω", 3)} · ${ph >= 0 ? "+" : ""}${ph.toFixed(0)}°`); }
         return h;
+      }
+    },
+    fuse: {
+      readout: (c, R) => {
+        const s = R.seriesPart(); if (!s) return R.note("No data.");
+        const share = s.i / (+c.params.a || 1);
+        return R.kv("Current (rms)", fmtEng(s.i, "A", 2) + ` · ${Math.round(share * 100)}%`, share > 1 ? "bad" : share > 0.75 ? "warn" : "") + R.kv("Drop (rms)", fmtEng(s.i * s.r, "V", 2));
+      }
+    },
+    ntc: {
+      readout: (c, R) => {
+        const s = R.seriesPart(), m = NTCS[c.params.model]; if (!s || !m) return R.note("No data.");
+        return R.kv("Current (rms)", fmtEng(s.i, "A", 2) + ` · ${Math.round(s.i / m.imax * 100)}%`, s.i > m.imax ? "bad" : "") + R.kv("Resistance, hot", fmtEng(s.r, "Ω", 2)) + R.kv("Dissipation", fmtEng(s.p, "W", 2))
+          + (s.i < 0.1 * m.imax ? R.note(`Under a tenth of its ${m.imax} A it barely warms: it stays near ${fmtEng(m.r25, "Ω")} and wastes power. A smaller part suits this current.`, "warn") : "");
+      }
+    },
+    mov: {
+      readout: (c, R) => {
+        const m = MOVS[c.params.model], v = R.vRms("1", "2"), w = R.wave("1"), x = R.wave("2");
+        if (!m || v === null) return R.note("No data.");
+        let pk = 0; if (w && x) for (let k = 0; k < w.length; k++) pk = Math.max(pk, Math.abs(w[k] - x[k]));
+        return R.kv("Voltage across (rms)", fmtEng(v, "V", 1) + ` · ${Math.round(v / m.vrms * 100)}% of ${m.vrms} V`, v > m.vrms ? "bad" : "") + (pk ? R.kv("Peak", fmtEng(pk, "V", 1), pk > m.v1ma ? "bad" : "") : "");
       }
     },
     isrc: {
@@ -1826,5 +2058,5 @@
     return wrap;
   }
 
-  root.CadLib = { DIODES, BRIDGES, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

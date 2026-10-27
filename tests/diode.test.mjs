@@ -128,7 +128,7 @@ test("board: diodes and bridges in their packages, every pin on a pad, pad 1 the
       if (!/^WIRE/.test(name)) assert.equal(map.get("1")[0].pin, "K", `${model} ${name}: pad 1 is the cathode`);
     }
   }
-  const bw = { "DIP-4": "BRIDGE-DIP4", "SIL-4": "BRIDGE-SIL4", KBPC: "WIRE-4" };
+  const bw = { "DIP-4": "BRIDGE-DIP4", "SIL-4": "BRIDGE-SIL4", GBU: "BRIDGE-GBU", KBU: "BRIDGE-KBU", WOB: "BRIDGE-WOB", KBPC: "WIRE-4" };
   for (const [model, b] of Object.entries(L.BRIDGES)) {
     const g = B.physicalParts({ parts: [part("bridge", { model }, { AC1: 1, AC2: 2, "+": 3, "-": 4 })] })[0];
     assert.equal(g.defaultFp, bw[b.pkg], model);

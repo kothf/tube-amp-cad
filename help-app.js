@@ -9,9 +9,9 @@
   // ---- parts reference, from the part library and the hints ----------------
   try {
     const L = window.CadLib, H = window.Hints, host = $("parts-ref");
-    const order = [["Passive", ["resistor", "pot", "capacitor", "electrolytic", "inductor", "switch", "speaker"]],
+    const order = [["Passive", ["resistor", "pot", "capacitor", "electrolytic", "inductor", "switch", "speaker", "fuse", "ntc", "mov"]],
       ["Transformers", ["opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat"]],
-      ["Sources", ["vdc", "rail", "isrc", "siggen", "mains"]], ["Ground & connectors", ["ground", "offsheet"]],
+      ["Sources", ["vdc", "rail", "isrc", "siggen", "mains"]], ["Ground & connectors", ["ground", "offsheet", "jack", "iec", "terminal", "header", "faston"]],
       ["Tubes", ["tube"]], ["Semiconductors", ["diode", "bridge", "zener", "led", "npn", "pnp", "nmos", "pmos", "njf", "pjf"]],
       ["Integrated circuits", ["opamp", "timer555", "reg", "tl431"]], ["Instruments", ["scope"]], ["Document", ["frame", "note"]]];
     let h = "";

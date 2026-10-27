@@ -5,7 +5,7 @@
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadBom = function (cad) {
-    const { S, baseName, bind, cmds, renderChecks, renderTolerance, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, waveOf } = cad;
+    const { S, baseName, bind, cmds, renderChecks, renderTolerance, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf } = cad;
     const BOM_KEY = "tubecad_bom";
     const bomOpts = { open: false, tab: "bom", sockets: true, bench: false, height: 0 };   // open, tab: the panel under the sheet and its tab
     try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
@@ -46,6 +46,14 @@
         if (piv === null && i === null) return null;
         const parts = [piv !== null ? `PIV ${fmtEng(piv, "V")}` : "", i !== null ? `${fmtEng(Math.abs(i), "A")} avg` : ""].filter(Boolean);
         return { v: piv || 0, text: parts.join(" · "), warn: !!m && ((piv || 0) > m.v || Math.abs(i || 0) > m.i), note: m && (piv || 0) > m.v ? "over its PIV" : "over its current" };
+      }
+      if (c.type === "fuse" || c.type === "ntc") {
+        const sp = seriesPart(c), lim = c.type === "fuse" ? +c.params.a : (CadLib.NTCS[c.params.model] || {}).imax;
+        return sp ? { v: sp.i, text: `${fmtEng(sp.i, "A")} rms${share(sp.i, lim)}`, warn: sp.i > (c.type === "fuse" ? 0.75 : 1) * lim, note: c.type === "fuse" ? "over 75 % of its rating" : "over its current" } : null;
+      }
+      if (c.type === "mov") {
+        const v = vRmsAcross(c, "1", "2"), m = CadLib.MOVS[c.params.model];
+        return v === null ? null : { v, text: `${fmtEng(v, "V")} rms${m ? share(v, m.vrms) : ""}`, warn: !!m && v > m.vrms };
       }
       if (c.type === "tube") {
         // its most-used rating: the largest share of any limit (Pa, Pg2, Ik, Vhk, PIV …)

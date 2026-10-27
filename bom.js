@@ -15,7 +15,7 @@
   // sources and instruments only when asked for
   const BENCH = new Set(["vdc", "isrc", "siggen", "mains", "scope"]);
 
-  // A capacitor's voltage rating for the bill: the first of its makers' standard ratings at or
+  // A capacitor's voltage rating for the bill (when the part has none set): the first of its makers' standard ratings at or
   // above the simulated peak voltage across it plus a 25 % margin (the part runs at 80 % or less
   // of its rating). Electrolytics stop at 550 V; above that the line asks for a series string of
   // 450 V parts (each with its balancing resistor). Film and ceramic parts go up to 3 kV.
@@ -39,8 +39,8 @@
     switch (c.type) {
       case "resistor": return ["Resistor", f(p.r, "Ω"), +p.w ? p.w + " W" : ""];
       case "pot": return ["Potentiometer, " + (p.taper === "log" ? "audio (log)" : "linear"), f(p.r, "Ω"), ""];
-      case "capacitor": return ["Capacitor", f(p.c, "F"), ""];
-      case "electrolytic": return ["Capacitor, electrolytic", f(p.c, "F"), ""];
+      case "capacitor": return ["Capacitor", f(p.c, "F"), +p.v ? p.v + " V" : ""];
+      case "electrolytic": return ["Capacitor, electrolytic", f(p.c, "F"), +p.v ? p.v + " V" : ""];
       case "inductor": return ["Choke", f(p.l, "H"), "DCR " + f(p.dcr, "Ω")];
       case "switch": return ["Changeover switch" + (n > 1 ? ", " + n + " poles" : ""), "", ""];
       case "speaker": return ["Loudspeaker", f(p.r, "Ω"), ""];
@@ -52,6 +52,14 @@
       case "tube": { const t = L.tubeByName(p.tube); return ["Vacuum tube" + (t && t.type ? ", " + t.type.toLowerCase() : ""), p.tube, t && t.socket ? t.socket : ""]; }
       case "diode": { const d = L && L.DIODES && L.DIODES[p.model]; return ["Diode", p.model, d ? `${d.v} V ${d.i} A ${d.pkg}` : ""]; }
       case "bridge": { const b = L && L.BRIDGES && L.BRIDGES[p.model]; return ["Bridge rectifier", p.model, b ? `${b.v} V ${b.i} A ${b.pkg}` : ""]; }
+      case "fuse": return [`Fuse, ${p.speed === "F" ? "fast-acting" : "time-lag"}, ${{ "6.3x32": "6.3 × 32 mm", TR5: "TR5" }[p.size] || "5 × 20 mm"}`, `${p.speed}${f(+p.a, "A")}`, "250 V"];
+      case "ntc": { const m = L.NTCS[p.model] || {}; return ["Inrush current limiter (NTC)", p.model, m.r25 ? `${m.r25} Ω cold, ${m.imax} A max` : ""]; }
+      case "mov": { const m = L.MOVS[p.model] || {}; return ["Varistor (MOV)", p.model, m.vrms ? `${m.vrms} V AC, ${m.v1ma} V at 1 mA` : ""]; }
+      case "jack": { const j = L.JACKS[p.kind] || {}; return ["Jack socket", j.use || "", ""]; }
+      case "iec": return ["IEC mains inlet, C14", "", "250 V 10 A"];
+      case "terminal": return ["Terminal block", `${p.ways} ways`, `${p.pitch} mm pitch`];
+      case "header": return ["Pin header, 2.54 mm", `1 × ${p.ways}`, ""];
+      case "faston": return ["Quick-connect tab, board mount", `${p.size} mm`, ""];
       case "zener": { const z = L.ZENERS[p.model] || {}; return ["Zener diode", p.model, z.bv + " V, " + z.p + " W"]; }
       case "led": { const l = L.LEDS[p.color] || {}; return ["LED, " + p.color, "", l.vf + " V at 10 mA, " + l.i * 1000 + " mA max"]; }
       case "npn": case "pnp": { const m = L.BJTS[p.model]; return ["Transistor, " + c.type.toUpperCase(), p.model, m ? L.semiRating(m) : ""]; }
@@ -135,7 +143,7 @@
       if (pkg) desc += ", SMD " + pkg;
       // a capacitor's rating comes from the simulation: parts of one value that see different
       // voltages get lines of their own
-      if (opts.stress && CAP_V[c.type]) {
+      if (opts.stress && CAP_V[c.type] && !+c.params.v) {
         const st = members.map(opts.stress).filter(Boolean);
         if (st.length) rating = capRating(c.type, Math.max(...st.map(x => x.v)));
       }
