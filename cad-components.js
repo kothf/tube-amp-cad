@@ -287,10 +287,28 @@
       ctx.fillStyle = COL.fill; ctx.fillRect(-4, -8, 8, 16); ctx.strokeRect(-4, -8, 8, 16);
       ctx.beginPath(); ctx.moveTo(4, -8); ctx.lineTo(14, -16); ctx.lineTo(14, 16); ctx.lineTo(4, 8); ctx.stroke();
     },
-    diode(ctx) {
+    diode(ctx, c) {
       line(ctx, [-20, 0, -7, 0]); line(ctx, [7, 0, 20, 0]);
       ctx.beginPath(); ctx.moveTo(-7, -8); ctx.lineTo(7, 0); ctx.lineTo(-7, 8); ctx.closePath(); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
       line(ctx, [7, -8, 7, 8]);
+      // IEC 60617 S00657 Schottky diode: the cathode bar hooked at both ends
+      const d = c && c.type === "diode" && DIODES[c.params.model];
+      if (d && (d.kind === "schottky" || d.kind === "sic")) { line(ctx, [7, -8, 11, -8, 11, -5]); line(ctx, [7, 8, 3, 8, 3, 5]); }
+    },
+    bridge(ctx, c) {
+      // four diodes on a diamond, all pointing to + (right); the pin marks upright however it is turned
+      const turn = -((c && c.rot || 0) & 3) * Math.PI / 2;
+      line(ctx, [0, -30, 0, -20]); line(ctx, [0, 20, 0, 30]); line(ctx, [-30, 0, -20, 0]); line(ctx, [20, 0, 30, 0]);
+      ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(20, 0); ctx.lineTo(0, 20); ctx.lineTo(-20, 0); ctx.closePath(); ctx.stroke();
+      // a small diode on each side, along the side, anode to cathode toward +
+      const dio = (x1, y1, x2, y2) => {
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, ux = (x2 - x1) / Math.hypot(x2 - x1, y2 - y1), uy = (y2 - y1) / Math.hypot(x2 - x1, y2 - y1), px = -uy, py = ux, s = 4;
+        ctx.beginPath(); ctx.moveTo(mx - ux * s + px * s, my - uy * s + py * s); ctx.lineTo(mx + ux * s, my + uy * s); ctx.lineTo(mx - ux * s - px * s, my - uy * s - py * s); ctx.closePath(); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
+        line(ctx, [mx + ux * s + px * s, my + uy * s + py * s, mx + ux * s - px * s, my + uy * s - py * s]);
+      };
+      dio(0, -20, 20, 0); dio(0, 20, 20, 0); dio(-20, 0, 0, -20); dio(-20, 0, 0, 20);
+      ctx.font = "9px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      [["+", 25, -6], ["−", -25, -6], ["~", 6, -25], ["~", 6, 25]].forEach(([t, x, y]) => { ctx.save(); ctx.translate(x, y); ctx.rotate(turn); ctx.fillText(t, 0, 0); ctx.restore(); });
     },
     zener(ctx) {
       DRAW.diode(ctx);
@@ -639,11 +657,59 @@
     "2SJ162": { pol: -1, vto: -0.6, kp: 0.35, lambda: 0.01, cgs: 900 * pf, cgd: 40 * pf, v: 160, i: 7, p: 100, pkg: "TO-3P", use: "lateral power output (Hitachi)" },
     "ECX10P20": { pol: -1, vto: -0.6, kp: 0.35, lambda: 0.01, cgs: 700 * pf, cgd: 30 * pf, v: 200, i: 8, p: 125, pkg: "TO-247", use: "lateral power output (Exicon)" }
   };
-  // zener: breakdown bv (V) at the test current izt (A), dynamic resistance zzt (Ω), power p (W)
+  // zener: breakdown bv (V) at the test current izt (A), dynamic resistance zzt (Ω), power p (W):
+  // the 1 W 1N47xxA series and some 5 W 1N53xxB
   const ZENERS = {
-    "1N4733A": { bv: 5.1, izt: 0.049, zzt: 7, p: 1 }, "1N4739A": { bv: 9.1, izt: 0.028, zzt: 5, p: 1 }, "1N4742A": { bv: 12, izt: 0.021, zzt: 9, p: 1 }, "1N4744A": { bv: 15, izt: 0.017, zzt: 14, p: 1 },
-    "1N4750A": { bv: 27, izt: 0.0095, zzt: 35, p: 1 }, "1N4764A": { bv: 100, izt: 0.0025, zzt: 350, p: 1 },
+    "1N4728A": { bv: 3.3, izt: 0.076, zzt: 10, p: 1 }, "1N4729A": { bv: 3.6, izt: 0.069, zzt: 10, p: 1 }, "1N4730A": { bv: 3.9, izt: 0.064, zzt: 9, p: 1 }, "1N4731A": { bv: 4.3, izt: 0.058, zzt: 9, p: 1 },
+    "1N4732A": { bv: 4.7, izt: 0.053, zzt: 8, p: 1 }, "1N4733A": { bv: 5.1, izt: 0.049, zzt: 7, p: 1 }, "1N4734A": { bv: 5.6, izt: 0.045, zzt: 5, p: 1 }, "1N4735A": { bv: 6.2, izt: 0.041, zzt: 2, p: 1 },
+    "1N4736A": { bv: 6.8, izt: 0.037, zzt: 3.5, p: 1 }, "1N4737A": { bv: 7.5, izt: 0.034, zzt: 4, p: 1 }, "1N4738A": { bv: 8.2, izt: 0.031, zzt: 4.5, p: 1 }, "1N4739A": { bv: 9.1, izt: 0.028, zzt: 5, p: 1 },
+    "1N4740A": { bv: 10, izt: 0.025, zzt: 7, p: 1 }, "1N4741A": { bv: 11, izt: 0.023, zzt: 8, p: 1 }, "1N4742A": { bv: 12, izt: 0.021, zzt: 9, p: 1 }, "1N4743A": { bv: 13, izt: 0.019, zzt: 10, p: 1 },
+    "1N4744A": { bv: 15, izt: 0.017, zzt: 14, p: 1 }, "1N4745A": { bv: 16, izt: 0.0155, zzt: 16, p: 1 }, "1N4746A": { bv: 18, izt: 0.014, zzt: 20, p: 1 }, "1N4747A": { bv: 20, izt: 0.0125, zzt: 22, p: 1 },
+    "1N4748A": { bv: 22, izt: 0.0115, zzt: 23, p: 1 }, "1N4749A": { bv: 24, izt: 0.0105, zzt: 25, p: 1 }, "1N4750A": { bv: 27, izt: 0.0095, zzt: 35, p: 1 }, "1N4751A": { bv: 30, izt: 0.0085, zzt: 40, p: 1 },
+    "1N4752A": { bv: 33, izt: 0.0075, zzt: 45, p: 1 }, "1N4753A": { bv: 36, izt: 0.007, zzt: 50, p: 1 }, "1N4754A": { bv: 39, izt: 0.0065, zzt: 60, p: 1 }, "1N4755A": { bv: 43, izt: 0.006, zzt: 70, p: 1 },
+    "1N4756A": { bv: 47, izt: 0.0055, zzt: 80, p: 1 }, "1N4757A": { bv: 51, izt: 0.005, zzt: 95, p: 1 }, "1N4758A": { bv: 56, izt: 0.0045, zzt: 110, p: 1 }, "1N4759A": { bv: 62, izt: 0.004, zzt: 125, p: 1 },
+    "1N4760A": { bv: 68, izt: 0.0037, zzt: 150, p: 1 }, "1N4761A": { bv: 75, izt: 0.0033, zzt: 175, p: 1 }, "1N4762A": { bv: 82, izt: 0.003, zzt: 200, p: 1 }, "1N4763A": { bv: 91, izt: 0.0028, zzt: 250, p: 1 },
+    "1N4764A": { bv: 100, izt: 0.0025, zzt: 350, p: 1 },
+    "1N5349B": { bv: 12, izt: 0.1, zzt: 2.5, p: 5 }, "1N5352B": { bv: 15, izt: 0.075, zzt: 2.5, p: 5 }, "1N5359B": { bv: 24, izt: 0.05, zzt: 3.5, p: 5 }, "1N5363B": { bv: 30, izt: 0.04, zzt: 8, p: 5 },
     "1N5378B": { bv: 100, izt: 0.012, zzt: 90, p: 5 }, "1N5388B": { bv: 200, izt: 0.005, zzt: 480, p: 5 }
+  };
+  // rectifier and signal diodes: saturation current is (A) and emission coefficient n fitted to the
+  // datasheet's forward voltage, series resistance rs (Ω), transit time tt (s: the stored charge
+  // tt·I that gives the reverse recovery; tt = trr / 0.45, so the datasheet's trr test, 0.5 A
+  // forward, 1 A reverse, to 0.25 A, measures its trr; a 1N4148 from 10 mA to 10 mA, tt = trr / ln 2;
+  // Schottky and SiC diodes store none), junction capacitance cj (F, at a few volts reverse),
+  // the ratings v (VRRM) and i (average forward current, A), the package and the kind
+  const DIODES = {
+    "1N4001": { kind: "rectifier", is: 7e-9, n: 1.8, rs: 0.05, tt: 4.3e-6, cj: 15e-12, v: 50, i: 1, pkg: "DO-41", use: "1 A rectifier, 50 V" },
+    "1N4004": { kind: "rectifier", is: 7e-9, n: 1.8, rs: 0.05, tt: 4.3e-6, cj: 15e-12, v: 400, i: 1, pkg: "DO-41", use: "1 A rectifier, 400 V" },
+    "1N4007": { kind: "rectifier", is: 7e-9, n: 1.8, rs: 0.05, tt: 4.3e-6, cj: 15e-12, v: 1000, i: 1, pkg: "DO-41", use: "1 A rectifier, 1000 V" },
+    "1N5404": { kind: "rectifier", is: 2.5e-8, n: 1.8, rs: 0.02, tt: 4.3e-6, cj: 40e-12, v: 400, i: 3, pkg: "DO-201AD", use: "3 A rectifier, 400 V" },
+    "1N5408": { kind: "rectifier", is: 2.5e-8, n: 1.8, rs: 0.02, tt: 4.3e-6, cj: 40e-12, v: 1000, i: 3, pkg: "DO-201AD", use: "3 A rectifier, 1000 V" },
+    "UF4007": { kind: "fast", is: 1e-8, n: 1.9, rs: 0.05, tt: 1.67e-7, cj: 10e-12, v: 1000, i: 1, pkg: "DO-41", use: "ultrafast 1 A, 1000 V, 75 ns", trr: 75e-9 },
+    "UF5408": { kind: "fast", is: 3e-8, n: 1.9, rs: 0.08, tt: 1.67e-7, cj: 30e-12, v: 1000, i: 3, pkg: "DO-201AD", use: "ultrafast 3 A, 1000 V, 75 ns", trr: 75e-9 },
+    "MUR160": { kind: "fast", is: 1e-9, n: 1.7, rs: 0.1, tt: 1.11e-7, cj: 10e-12, v: 600, i: 1, pkg: "DO-41", use: "ultrafast 1 A, 600 V, 50 ns", trr: 50e-9 },
+    "MUR460": { kind: "fast", is: 4e-9, n: 1.7, rs: 0.04, tt: 1.67e-7, cj: 30e-12, v: 600, i: 4, pkg: "DO-201AD", use: "ultrafast 4 A, 600 V, 75 ns", trr: 75e-9 },
+    "HER108": { kind: "fast", is: 1e-8, n: 2, rs: 0.2, tt: 1.67e-7, cj: 10e-12, v: 1000, i: 1, pkg: "DO-41", use: "high-efficiency 1 A, 1000 V, 75 ns", trr: 75e-9 },
+    "FR107": { kind: "fast", is: 1e-8, n: 1.85, rs: 0.1, tt: 1.11e-6, cj: 12e-12, v: 1000, i: 1, pkg: "DO-41", use: "fast recovery 1 A, 1000 V, 500 ns", trr: 500e-9 },
+    "1N4148": { kind: "signal", is: 2.5e-9, n: 1.75, rs: 0.05, tt: 5.8e-9, cj: 2e-12, v: 100, i: 0.15, pkg: "DO-35", use: "small signal, 4 ns", trr: 4e-9 },
+    "BAT85": { kind: "schottky", is: 7.5e-9, n: 1.05, rs: 2, tt: 0, cj: 10e-12, v: 30, i: 0.2, pkg: "DO-35", use: "small-signal Schottky, 30 V" },
+    "1N5817": { kind: "schottky", is: 3e-6, n: 1.1, rs: 0.07, tt: 0, cj: 110e-12, v: 20, i: 1, pkg: "DO-41", use: "Schottky 1 A, 20 V" },
+    "1N5819": { kind: "schottky", is: 1.3e-6, n: 1.1, rs: 0.07, tt: 0, cj: 110e-12, v: 40, i: 1, pkg: "DO-41", use: "Schottky 1 A, 40 V" },
+    "1N5822": { kind: "schottky", is: 5e-6, n: 1.1, rs: 0.025, tt: 0, cj: 250e-12, v: 40, i: 3, pkg: "DO-201AD", use: "Schottky 3 A, 40 V" },
+    "SB1100": { kind: "schottky", is: 3e-8, n: 1.2, rs: 0.1, tt: 0, cj: 80e-12, v: 100, i: 1, pkg: "DO-41", use: "Schottky 1 A, 100 V" },
+    "C3D02060A": { kind: "sic", is: 5e-14, n: 1.3, rs: 0.22, tt: 0, cj: 20e-12, v: 600, i: 2, pkg: "TO-220-2", use: "SiC Schottky 2 A, 600 V, no recovery" },
+    "C3D04060A": { kind: "sic", is: 1e-13, n: 1.3, rs: 0.12, tt: 0, cj: 35e-12, v: 600, i: 4, pkg: "TO-220-2", use: "SiC Schottky 4 A, 600 V, no recovery" },
+    "C4D02120A": { kind: "sic", is: 2e-14, n: 1.3, rs: 0.22, tt: 0, cj: 20e-12, v: 1200, i: 2, pkg: "TO-220-2", use: "SiC Schottky 2 A, 1200 V, no recovery" }
+  };
+  // bridge rectifiers: four diodes of one model (the parameters as DIODES), the ratings of the bridge
+  // (v: VRRM per diode, i: average output current), the package (DIP-4, an inline SIL-4, or a
+  // chassis-mounted KBPC with Faston tabs) and its pin order, pad 1 first
+  const BRIDGES = {
+    "DF04M": { is: 7e-9, n: 1.8, rs: 0.05, tt: 4.3e-6, v: 400, i: 1, pkg: "DIP-4", order: ["+", "-", "AC2", "AC1"], use: "1 A, 400 V, DIP-4" },
+    "DF10M": { is: 7e-9, n: 1.8, rs: 0.05, tt: 4.3e-6, v: 1000, i: 1, pkg: "DIP-4", order: ["+", "-", "AC2", "AC1"], use: "1 A, 1000 V, DIP-4" },
+    "B250C2300-1500A": { is: 1.5e-8, n: 1.8, rs: 0.03, tt: 4.3e-6, v: 600, i: 1.5, pkg: "SIL-4", order: ["-", "AC1", "AC2", "+"], use: "1.5 A (2.3 A on a heatsink), 600 V, inline" },
+    "KBPC2510": { is: 2e-7, n: 1.8, rs: 0.008, tt: 1e-5, v: 1000, i: 25, pkg: "KBPC", order: ["+", "AC1", "-", "AC2"], use: "25 A, 1000 V, chassis mount, Faston" },
+    "KBPC3510": { is: 2.5e-7, n: 1.8, rs: 0.006, tt: 1e-5, v: 1000, i: 35, pkg: "KBPC", order: ["+", "AC1", "-", "AC2"], use: "35 A, 1000 V, chassis mount, Faston" }
   };
   // JFETs, SPICE NJF / PJF level 1: pinch-off vto (V, the gate-source voltage at which the channel
   // closes: negative N-channel, positive P-channel), beta (A/V², so IDSS = beta·vto²), lambda,
@@ -1151,12 +1217,35 @@
       defaults: { model: "1N4007" },
       pins: () => [{ id: "A", x: -20, y: 0, name: "anode" }, { id: "K", x: 20, y: 0, name: "cathode" }],
       value: c => c.params.model,
-      fields: [{ key: "model", label: "Model", kind: "select", options: [["1N4007", "1N4007 (rectifier)"], ["UF4007", "UF4007 (fast)"], ["1N4148", "1N4148 (signal)"]] }],
+      fields: [{ key: "model", label: "Model", kind: "select", options: () => Object.entries(DIODES).map(([k, d]) => [k, `${k} · ${d.use}`]), wide: true }],
+      info: c => {
+        const d = DIODES[c.params.model] || DIODES["1N4007"];
+        const rec = d.tt ? `stored charge ${fmtEng(d.tt, "s")} × I (reverse recovery${d.trr ? ` ${fmtEng(d.trr, "s")}` : ""})` : "no stored charge (no reverse recovery)";
+        return `${c.params.model}: ${d.use}, ${d.pkg}. VRRM ${d.v} V, ${d.i} A average. Modelled: the forward curve (Is ${d.is}, n ${d.n}, Rs ${d.rs} Ω), ${rec}, ${fmtEng(d.cj, "F")} junction capacitance. Reverse breakdown is not simulated: Checks compares the peak reverse voltage with VRRM.`;
+      },
       build: (c, net, alloc, out) => {
-        const m = { "1N4007": { is: 7e-9, n: 1.8 }, "UF4007": { is: 1e-8, n: 1.9 }, "1N4148": { is: 2.5e-9, n: 1.75 } }[c.params.model] || { is: 7e-9, n: 1.8 };
-        const mid = alloc();
-        out.push({ id: c.id, kind: "D", nodes: [net("A"), mid], is: m.is, n: m.n });
-        out.push({ id: c.id + "#rs", kind: "R", nodes: [mid, net("K")], r: 0.05 });
+        const m = DIODES[c.params.model] || DIODES["1N4007"], mid = alloc();
+        out.push({ id: c.id, kind: "D", nodes: [net("A"), mid], is: m.is, n: m.n, tt: m.tt || 0, cj: m.cj || 0 });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [mid, net("K")], r: m.rs });
+        // the junction capacitance (exported inside the SPICE diode model as CJO, so internal there)
+        if (m.cj) out.push({ id: c.id + "#cj", kind: "C", nodes: [net("A"), net("K")], c: m.cj, internal: true });
+      }
+    },
+    bridge: {
+      name: "Bridge rectifier", prefix: "VD", group: "Semiconductors", bbox: [-30, -30, 30, 30],
+      defaults: { model: "DF10M" },
+      pins: () => [{ id: "AC1", x: 0, y: -30, name: "AC input 1" }, { id: "+", x: 30, y: 0, name: "+ output" }, { id: "AC2", x: 0, y: 30, name: "AC input 2" }, { id: "-", x: -30, y: 0, name: "− output" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Model", kind: "select", options: () => Object.entries(BRIDGES).map(([k, b]) => [k, `${k} · ${b.use}`]), wide: true }],
+      info: c => { const b = BRIDGES[c.params.model] || BRIDGES.DF10M; return `${c.params.model}: ${b.use}. Four diodes, each VRRM ${b.v} V; ${b.i} A average out of the bridge. Each diode modelled like a silicon rectifier (stored charge ${fmtEng(b.tt, "s")} × I). Checks compares the peak voltage across the bridge with VRRM.`; },
+      // the four diodes: AC1 → +, AC2 → +, − → AC1, − → AC2
+      build: (c, net, alloc, out) => {
+        const b = BRIDGES[c.params.model] || BRIDGES.DF10M;
+        [["AC1", "+"], ["AC2", "+"], ["-", "AC1"], ["-", "AC2"]].forEach(([a, k], i) => {
+          const mid = alloc();
+          out.push({ id: `${c.id}#d${i + 1}`, kind: "D", nodes: [net(a), mid], is: b.is, n: b.n, tt: b.tt });
+          out.push({ id: `${c.id}#r${i + 1}`, kind: "R", nodes: [mid, net(k)], r: b.rs });
+        });
       }
     },
     zener: {
@@ -1460,7 +1549,7 @@
       { sub: "AC sources" },
       ["siggen"], ["mains"]] },
     { group: "Ground & connectors", items: [["ground"], ["offsheet"]] },
-    { group: "Semiconductors", items: [["diode"], ["zener"], ["led"],
+    { group: "Semiconductors", items: [["diode"], ["diode", { model: "UF4007" }, "Diode, ultrafast"], ["diode", { model: "1N5819" }, "Diode, Schottky"], ["diode", { model: "C3D02060A" }, "Diode, SiC Schottky"], ["bridge"], ["zener"], ["led"],
       { sub: "Transistors" }, ["npn"], ["pnp"], ["npn", { model: "MJE340" }, "NPN, high voltage"], ["pnp", { model: "MJE350" }, "PNP, high voltage"],
       ["pnp", { model: "AC128" }, "PNP, germanium"], ["npn", { model: "AC127" }, "NPN, germanium"], ["pnp", { model: "MP39B" }, "PNP, germanium (USSR)"],
       ["nmos", null, "N-MOSFET"], ["nmos", { model: "DN2540" }, "N-MOSFET, depletion"], ["pmos", null, "P-MOSFET"],
@@ -1691,6 +1780,16 @@
     return h;
   };
   ["diode", "zener", "led"].forEach(t => { UI[t] = { readout: diodeReadout }; });
+  // a bridge: its DC output, the current it delivers, the peak reverse voltage on its diodes
+  UI.bridge = {
+    readout: (c, R) => {
+      const b = BRIDGES[c.params.model], v = R.vAcross("+", "-"), i = R.pinCurrent("+"), wp = R.wave("+"), wm = R.wave("-");
+      let piv = v; if (wp && wm) { piv = 0; for (let k = 0; k < wp.length; k++) piv = Math.max(piv, wp[k] - wm[k]); }
+      let h = R.kv("Output (+ to −)", fmtEng(v, "V", 3)) + R.kv("Output current", fmtEng(i === null ? null : -i, "A", 2), b && i !== null && -i > b.i ? "bad" : "");
+      if (piv !== null && b) h += R.kv("Peak reverse voltage", `${fmtEng(piv, "V", 3)} · ${Math.round(piv / b.v * 100)}% of ${b.v} V`, piv > b.v ? "bad" : piv > 0.8 * b.v ? "warn" : "");
+      return h;
+    }
+  };
   // output transformers: the secondary's voltage; a catalog part's primary current against its rating
   const otReadout = (c, R) => {
     let h = "";
@@ -1727,5 +1826,5 @@
     return wrap;
   }
 
-  root.CadLib = { JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { DIODES, BRIDGES, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);

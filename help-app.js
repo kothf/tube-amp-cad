@@ -12,7 +12,7 @@
     const order = [["Passive", ["resistor", "pot", "capacitor", "electrolytic", "inductor", "switch", "speaker"]],
       ["Transformers", ["opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat"]],
       ["Sources", ["vdc", "rail", "isrc", "siggen", "mains"]], ["Ground & connectors", ["ground", "offsheet"]],
-      ["Tubes", ["tube"]], ["Semiconductors", ["diode", "zener", "led", "npn", "pnp", "nmos", "pmos", "njf", "pjf"]],
+      ["Tubes", ["tube"]], ["Semiconductors", ["diode", "bridge", "zener", "led", "npn", "pnp", "nmos", "pmos", "njf", "pjf"]],
       ["Integrated circuits", ["opamp", "timer555", "reg", "tl431"]], ["Instruments", ["scope"]], ["Document", ["frame", "note"]]];
     let h = "";
     order.forEach(([g, types]) => {

@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.105.0] - 2026-10-27
+
+### Added
+- Twenty diodes in the Model list: standard rectifiers 1N4001, 1N4004, 1N4007, 1N5404, 1N5408; fast and ultrafast UF4007, UF5408, MUR160, MUR460, HER108, FR107; Schottky BAT85, 1N5817, 1N5819, 1N5822, SB1100; SiC Schottky C3D02060A, C3D04060A, C4D02120A; and the 1N4148. Each has its forward curve fitted under the datasheet maximum, its junction capacitance and its ratings; Schottky and SiC diodes draw with the hooked cathode bar.
+- Reverse recovery: a diode now stores charge while it conducts (SPICE TT) and keeps conducting backwards until it is gone, a few microseconds for a 1N4007, the datasheet trr for a fast one, none for a Schottky or SiC diode. The trr test reproduces the datasheets (FR107 500 ns, MUR160 50 ns) and agrees with ngspice within a few per cent.
+- Bridge rectifier part (Semiconductors): DF04M and DF10M (DIP-4), B250C2300-1500A (inline), KBPC2510 and KBPC3510 (chassis, Faston, wired on the board). The inspector shows the output, its current and the peak reverse voltage.
+- Checks: a diode or bridge whose peak reverse voltage over the capture exceeds its VRRM, or whose average current exceeds its rating.
+- The whole 1 W zener series 1N4728A … 1N4764A (3.3–100 V) and the 5 W 1N5349B, 1N5352B, 1N5359B, 1N5363B.
+- Board: DO-201AD (3 A diodes, 1.5 mm holes), TO-220-2 for SiC diodes, DIP-4 and SIL-4 bridge footprints with 3D bodies; 3 A diodes go to SMC in SMD.
+
+### Changed
+- The SPICE export writes each diode's TT and CJO.
+
 ## [3.104.0] - 2026-10-27
 
 ### Added

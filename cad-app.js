@@ -1585,7 +1585,8 @@
     Object.entries(L.SHUNTS).forEach(([k, m]) => out.push(["Integrated circuits", `Shunt reference · ${k}`, m.use, "tl431", { model: k }, `${k} shunt reference regulator programmable zener ${m.use}`]));
     Object.entries(L.ZENERS).forEach(([k, z]) => out.push(["Semiconductors", `Zener · ${k}`, `${z.bv} V ${z.p} W`, "zener", { model: k }, `${k} zener ${z.bv}v`]));
     Object.keys(L.LEDS).forEach(k => out.push(["Semiconductors", `LED · ${k}`, `${L.LEDS[k].vf} V`, "led", { color: k }, `led ${k}`]));
-    ["1N4007", "UF4007", "1N4148"].forEach(k => out.push(["Semiconductors", `Diode · ${k}`, "", "diode", { model: k }, `${k} diode rectifier`]));
+    Object.entries(L.DIODES).forEach(([k, d]) => out.push(["Semiconductors", `Diode · ${k}`, d.use, "diode", { model: k }, `${k} diode ${d.kind} ${d.use}`]));
+    Object.entries(L.BRIDGES).forEach(([k, b]) => out.push(["Semiconductors", `Bridge rectifier · ${k}`, b.use, "bridge", { model: k }, `${k} bridge rectifier ${b.use}`]));
     Object.entries(L.OUTPUT_TX).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `${m.w} W ${m.ma} mA`, "opt_cat", { model: k }, `${k} ${m.name} output transformer single-ended`]));
     Object.entries(L.POWER_TX).forEach(([k, m]) => out.push(["Transformers", `Power · ${m.name}`, m.rated, "ptx_cat", { model: k }, `${k} ${m.name} power transformer ${m.rated}`]));
     TUBE_DATABASE.forEach(t => out.push(["Tubes", t, "", "tube", { tube: t.commonName }, `${t.commonName} ${t.nameGost} ${t.nameWestern} ${t.type}`]));
@@ -1900,7 +1901,7 @@
     });
     if (open.length) issues.push("Unconnected pins: " + open.slice(0, 8).join(", ") + (open.length > 8 ? ` (+${open.length - 8})` : ""));
     // parts whose terminals are wired together
-    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
+    const shortPairs = { resistor: [["1", "2"]], capacitor: [["1", "2"]], electrolytic: [["+", "-"]], inductor: [["1", "2"]], speaker: [["+", "-"]], diode: [["A", "K"]], bridge: [["+", "-"], ["AC1", "AC2"]], zener: [["A", "K"]], led: [["A", "K"]], npn: [["C", "E"]], pnp: [["C", "E"]], nmos: [["D", "S"]], pmos: [["D", "S"]], njf: [["D", "S"]], pjf: [["D", "S"]], reg: [["I", "O"]], tl431: [["K", "A"]], vdc: [["+", "-"]], isrc: [["+", "-"]], opamp: [["V+", "V-"]], siggen: [["+", "-"]],
       opt_se: [["P1", "P2"], ["S1", "S2"]], opt_cat: [["P1", "P2"], ["S1", "S2"]], opt_pp: [["P1", "CT"], ["CT", "P2"], ["S1", "S2"]], ptx: [["HT1", "CT"], ["CT", "HT2"]] };
     const shorted = [];
     S.comps.forEach(c => (shortPairs[c.type] || []).forEach(([a, b]) => {
@@ -1942,6 +1943,19 @@
       const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.SHUNTS[c.params.model];
       if (d && m && d.vka > m.v) issues.push(`${c.label} (${c.params.model}) has ${d.vka.toFixed(1)} V on its cathode, more than its ${m.v} V rating.`);
       if (d && m && d.pd > m.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}, more than its ${m.p} W rating.`);
+    });
+    // diodes and bridges: the peak reverse voltage over the capture (or DC) against VRRM, the average current against the rating
+    S.comps.forEach(c => {
+      if ((c.type !== "diode" && c.type !== "bridge") || !S.sim.result) return;
+      const m = c.type === "diode" ? CadLib.DIODES[c.params.model] : CadLib.BRIDGES[c.params.model];
+      if (!m) return;
+      const [hi, lo] = c.type === "diode" ? ["K", "A"] : ["+", "-"], wh = waveOf(c, hi), wl = waveOf(c, lo);
+      let piv = null;
+      if (wh && wl) { piv = -Infinity; for (let k = 0; k < wh.length; k++) piv = Math.max(piv, wh[k] - wl[k]); }
+      else { const a = netDC(pinNetOf(c, hi)), b = netDC(pinNetOf(c, lo)); if (a !== null && b !== null) piv = a - b; }
+      const i = pinCurrent(c, c.type === "diode" ? "A" : "+"), iav = i === null ? null : Math.abs(i);
+      if (piv !== null && piv > m.v) issues.push(`${c.label} (${c.params.model}) sees ${piv.toFixed(0)} V in reverse, more than its ${m.v} V rating.`);
+      if (iav !== null && iav > m.i) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(iav, "A", 2)} on average, more than its ${m.i} A rating.`);
     });
     S.comps.forEach(c => { if (c.type !== "zener" || !S.sim.result) return; const z = CadLib.ZENERS[c.params.model], v = netDC(pinNetOf(c, "A")), w = netDC(pinNetOf(c, "K")), i = pinCurrent(c, "A"); if (z && v !== null && w !== null && i !== null && Math.abs((v - w) * i) > z.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(Math.abs((v - w) * i), "W", 2)}, more than its ${z.p} W rating.`); });
     // tubes: the plate's average dissipation over the signal cycle (with a reactive load the
@@ -2345,7 +2359,7 @@
         case "V": lines.push(`V${id} ${nd[0]} ${nd[1]} DC ${e.v}`); break;
         case "I": lines.push(`I${id} ${nd[0]} ${nd[1]} DC ${e.i}`); break;
         case "VSRC": lines.push(e.wave === "sine" ? `V${id} ${nd[0]} ${nd[1]} SIN(${e.offset || 0} ${e.amp} ${e.freq})` : `V${id} ${nd[0]} ${nd[1]} PULSE(${(e.offset || 0) - e.amp} ${(e.offset || 0) + e.amp} 0 ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0 : 0.5 / e.freq} ${1 / e.freq})`); break;
-        case "D": lines.push(`D${id} ${nd[0]} ${nd[1]} DMOD_${id}`); lines.push(`.model DMOD_${id} D(Is=${e.is} N=${e.n})`); break;
+        case "D": lines.push(`D${id} ${nd[0]} ${nd[1]} DMOD_${id}`); lines.push(`.model DMOD_${id} D(Is=${e.is} N=${e.n}${e.tt ? ` TT=${e.tt}` : ""}${e.cj ? ` CJO=${e.cj} M=0` : ""})`); break;
         case "BJT": {
           const m = e.model, mn = `Q${m.pol > 0 ? "N" : "P"}_${(S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id}`.replace(/[^A-Za-z0-9_]/g, "_");
           lines.push(`Q${id} ${nd.join(" ")} ${mn}`);

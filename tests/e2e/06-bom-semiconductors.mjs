@@ -278,6 +278,39 @@ import { readFile } from "node:fs/promises";
       "SPICE export: the LM317 and TL431 as subcircuits, the 2SK170 as SPICE's own JFET");
     await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
   }
+  {
+    // a bridge rectifier on a 420 V peak: a 400 V DF04M is over its VRRM, a DF10M is not; the inspector,
+    // Checks, the BOM and the SPICE export (four diodes with their stored charge)
+    const pal = await cad.evaluate(() => [...document.querySelectorAll("#palette .pal-item")].map(el => el.textContent.trim()));
+    check(["Bridge rectifier", "Diode, ultrafast", "Diode, Schottky", "Diode, SiC Schottky"].every(n => pal.some(t => t.includes(n))), "palette: bridge rectifier, fast, Schottky and SiC diodes");
+    const id = await cad.evaluate(() => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+      const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+      const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+      const G = add("siggen", { amp: 420, freq: 50, rs: 1 }, 200, 300), BR = add("bridge", { model: "DF04M" }, 400, 300);
+      const CR = add("electrolytic", { c: 47e-6 }, 560, 360, 1), RL = add("resistor", { r: 20e3, w: "10" }, 660, 360, 1), g = [400, 560, 660].map(x => add("ground", {}, x, 460));
+      wire(pin(G, "+"), pin(BR, "AC1")); wire(pin(G, "-"), pin(BR, "AC2")); wire(pin(BR, "-"), pin(g[0], "G"));
+      wire(pin(BR, "+"), pin(CR, "+")); wire(pin(CR, "-"), pin(g[1], "G")); wire(pin(BR, "+"), pin(RL, "1")); wire(pin(RL, "2"), pin(g[2], "G"));
+      S.sel.comps.add(BR.id); C.commit();
+      return BR.id;
+    });
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /Peak reverse/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+    const live = (await cad.textContent("#insp-live")).replace(/\s+/g, " ");
+    const out = await cad.evaluate(i => { const C = TubeCAD, T = C.topo(), w = C.state.sim.result.tran.nodes[T.pinNet.get(i + ":+")]; return w.reduce((a, b) => a + b, 0) / w.length; }, id);
+    let issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    check(out > 395 && out < 418 && /Peak reverse voltage\s*4[01]\d/.test(live) && /DF04M\) sees 4[01]\d V in reverse, more than its 400 V rating/.test(issues),
+      `bridge: ${out && out.toFixed(1)} V average from a 420 V peak, ${(/Peak reverse voltage\s*[\d.]+\s*V/.exec(live) || [])[0]}; Checks: ${issues}`);
+    await cad.evaluate(i => { const S = TubeCAD.state; S.comps.find(c => c.id === i).params.model = "DF10M"; TubeCAD.commit(); }, id);
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && !/DF04M/.test(TubeCAD.circuitIssues().join(" ")), null, { timeout: 30000 }).catch(() => {});
+    issues = await cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+    check(!/in reverse|average/.test(issues), `Checks: a 1000 V DF10M is fine there (${issues})`);
+    const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => `${r.refs} ${r.desc} ${r.value}`).join(" | "));
+    check(/Bridge rectifier DF10M/.test(bom), `BOM: the bridge (${bom})`);
+    const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
+    check((sp.match(/^\.model DMOD_\S+ D\(Is=7e-9 N=1\.8 TT=0\.0000043\)$/gm) || []).length === 4, "SPICE export: the bridge's four diodes with TT");
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+  }
   // 12AX7 with red-LED cathode bias, MJE340 follower on its anode, 1N4742A shunt regulator from B+
   await cad.evaluate(() => {
     const S = TubeCAD.state, C = TubeCAD; S.comps = []; S.wires = [];

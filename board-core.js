@@ -172,7 +172,27 @@
     return fp(`${pkg}-${order}`, `${pkg}, pins ${order.split("").join("-")} (tab at the top)`, [...order].map((c, i) => pad(i + 1, x0 + i * pitch, 0, d || 2, dr || 1.05, i ? "circle" : "rect", c)), silk);
   }
   const to126 = order => inline("TO-126", 2.29, order, 8, 3.2, false);
-  const to220 = order => inline("TO-220", 2.54, order, 10.4, 4.6, true);
+  // a two-lead TO-220 (TO-220-2, a SiC diode) has its leads where a three-lead one has pins 1 and 3
+  const to220 = order => inline("TO-220", order.length === 2 ? 5.08 : 2.54, order, 10.4, 4.6, true);
+  // DO-201AD: a 3–5 A axial rectifier (Ø 5.3 × 9.5 mm, leads Ø 1.3 mm), 15.24 mm lead spacing
+  function do201() {
+    const h = 7.62, L = 9.5, D = 5.3;
+    return fp("DO-201AD", "DO-201AD axial rectifier, 15.24 mm lead spacing (band at pad 1, the cathode)", [pad(1, -h, 0, 2.8, 1.5, "rect", "K"), pad(2, h, 0, 2.8, 1.5, "circle", "A")],
+      [{ t: "rect", x: -L / 2, y: -D / 2, w: L, h: D }, { t: "line", x1: -h + 1.7, y1: 0, x2: -L / 2, y2: 0 }, { t: "line", x1: L / 2, y1: 0, x2: h - 1.7, y2: 0 }, { t: "line", x1: -L / 2 + 1.2, y1: -D / 2, x2: -L / 2 + 1.2, y2: D / 2 }]);
+  }
+  // bridge rectifiers: DIP-4 (DF-M: 7.62 × 5.08 mm, + and − on one side) and the inline SIL-4 (B…C2300-1500A:
+  // 5 mm pitch, − ~ ~ +, a 19 × 3.5 mm body standing over its pins); the pads named for the pins
+  const BRIDGE_PINS = { DIP4: ["+", "-", "AC2", "AC1"], SIL4: ["-", "AC1", "AC2", "+"] };
+  function bridgeFp(kind) {
+    const names = BRIDGE_PINS[kind];
+    if (kind === "DIP4") {
+      const at = [[-3.81, -2.54], [-3.81, 2.54], [3.81, 2.54], [3.81, -2.54]];
+      return fp("BRIDGE-DIP4", "Bridge rectifier, DIP-4 (7.62 × 5.08 mm), pins + − ~ ~", names.map((n, i) => pad(i + 1, at[i][0], at[i][1], 1.8, 0.9, i ? "circle" : "rect", n)),
+        [{ t: "rect", x: -2.5, y: -4.2, w: 5, h: 8.4 }, { t: "line", x1: -2.5, y1: -3.2, x2: -1.5, y2: -4.2 }]);
+    }
+    return fp("BRIDGE-SIL4", "Bridge rectifier, inline SIL-4 (5 mm pitch), pins − ~ ~ +", names.map((n, i) => pad(i + 1, -7.5 + i * 5, 0, 2.4, 1.2, i ? "circle" : "rect", n)),
+      [{ t: "rect", x: -9.5, y: -1.75, w: 19, h: 3.5 }]);
+  }
   const to247 = order => inline("TO-247", 5.45, order, 15.9, 5, true, 2.6, 1.4);
   const to3p = order => inline("TO-3P", 5.45, order, 15.6, 4.8, true, 2.8, 1.5);     // Toshiba TO-3P(N), Hitachi 2SK1058
   const to264 = order => inline("TO-264", 5.45, order, 19.8, 5, true, 3, 1.6);       // TO-264 / TO-3P(L): 2SC5200, MJL3281A
@@ -387,7 +407,9 @@
     if ((m = /^TO-18-([A-Z]{3})$/.exec(name))) return to18(m[1]);
     if ((m = /^(TO-1|TO-5|MP)-([A-Z]{3})$/.exec(name))) return bigCan(m[1], m[2]);
     if ((m = /^TO-126-([A-Z]{3})$/.exec(name))) return to126(m[1]);
-    if ((m = /^TO-220-([A-Z]{3})$/.exec(name))) return to220(m[1]);
+    if ((m = /^TO-220-([A-Z]{2,3})$/.exec(name))) return to220(m[1]);
+    if (name === "DO-201AD") return do201();
+    if ((m = /^BRIDGE-(DIP4|SIL4)$/.exec(name))) return bridgeFp(m[1]);
     if ((m = /^TO-247-([A-Z]{3})$/.exec(name))) return to247(m[1]);
     if ((m = /^TO-3P-([A-Z]{3})$/.exec(name))) return to3p(m[1]);
     if ((m = /^TO-264-([A-Z]{3})$/.exec(name))) return to264(m[1]);
@@ -520,7 +542,9 @@
       case "resistor": { const d = SMD_R[String(p.w || "")]; return d ? first("CHIP-" + d, ["0603", "0805", "1206", "2010", "2512"].map(k => "CHIP-" + k)) : []; }
       case "capacitor": { const d = p.c <= 1e-9 ? "0805" : p.c <= 100e-9 ? "1206" : p.c <= 1e-6 ? "1812" : "2220"; return first("CHIP-" + d, ["0603", "0805", "1206", "1210", "1812", "2220"].map(k => "CHIP-" + k)); }
       case "electrolytic": { const D = radialFor(p.c)[0]; return SMD_ECAP[D] ? first(`CP-SMD-D${D}`, Object.keys(SMD_ECAP).sort((a, b) => a - b).map(k => `CP-SMD-D${k}`)) : []; }
-      case "diode": return p.model === "1N4148" ? ["SOD-123", "SOD-323", "MINIMELF"] : ["SMA", "SMB", "SMC"];
+      // the SMD twins: SS14 / US1M / ES1J (SMA), S3M / SS34 (SMC), the 1N4148W and BAT85 in SOD-123; SiC: none here
+      case "diode": { const d = L.DIODES[p.model] || {}; return d.pkg === "DO-35" ? ["SOD-123", "SOD-323", "MINIMELF"] : d.pkg === "DO-201AD" ? ["SMC", "SMB"] : d.pkg === "TO-220-2" ? [] : ["SMA", "SMB", "SMC"]; }
+      case "bridge": return [];
       case "zener": { const z = L.ZENERS[p.model] || {}; return z.p >= 5 ? ["SMC", "SMB"] : z.p >= 1 ? ["SMA", "SMB"] : ["SOD-123", "SOD-323", "MINIMELF"]; }
       case "led": return ["LED-1206", "LED-0805"];
       case "inductor": return +p.l < 0.05 ? ["CHIP-1210", "CHIP-1812"] : [];
@@ -568,7 +592,14 @@
         const [D, P] = radialFor(p.c), d = `RADIAL-D${D}-P${P}`;
         return [...first(d, RADIAL.map(([a, b]) => `RADIAL-D${a}-P${b}`)), ...SNAPIN.map(x => `SNAPIN-D${x}`), ...Object.keys(ECAP_AXIAL).map(k => `ECAP-AXIAL-${k}`), "WIRE-2"];
       }
-      case "diode": return first(p.model === "1N4148" ? "DIODE-7.62" : "DIODE-10.16", diodes);
+      case "diode": {
+        const d = L.DIODES[p.model] || {};
+        if (d.pkg === "TO-220-2") return ["TO-220-KA", "WIRE-2"];
+        if (d.pkg === "DO-201AD") return ["DO-201AD", "WIRE-2"];
+        return [...first(d.pkg === "DO-35" ? "DIODE-7.62" : "DIODE-10.16", diodes), "WIRE-2"];
+      }
+      // a bridge in its own package, or a chassis-mounted one (KBPC) wired by its Faston tabs
+      case "bridge": { const b = L.BRIDGES[p.model] || {}; return b.pkg === "DIP-4" ? ["BRIDGE-DIP4", "WIRE-4"] : b.pkg === "SIL-4" ? ["BRIDGE-SIL4", "WIRE-4"] : ["WIRE-4"]; }
       case "zener": { const z = L.ZENERS[p.model] || {}; return first(z.p >= 5 ? "DIODE-15.24" : "DIODE-10.16", diodes); }
       case "led": return ["LED-5MM", "LED-3MM", "WIRE-2"];
       // transformers and filter chokes sit on the chassis (their weight, their field, their heat): wire pads
@@ -1334,7 +1365,7 @@
   // part's ground field overrides it. Each return joins its own pads and runs to the star point
   // XG1 alone; copper joining two returns anywhere but there is reported.
   // ---------------------------------------------------------------------------
-  const SUPPLY_TYPES = new Set(["vdc", "ptx", "ptx_cat", "mains", "diode", "inductor"]), OUTPUT_TYPES = new Set(["opt_se", "opt_cat", "opt_pp", "speaker"]);
+  const SUPPLY_TYPES = new Set(["vdc", "ptx", "ptx_cat", "mains", "diode", "bridge", "inductor"]), OUTPUT_TYPES = new Set(["opt_se", "opt_cat", "opt_pp", "speaker"]);
   const RETURNS = ["Supply", "Output", "Input", "Signal"];
   function groundGroups(board, model, netlist) {
     const L = root.CadLib, out = { star: null, groupOf: new Map(), byPart: new Map() };
@@ -1696,5 +1727,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { socketPads, underSocket, holeRing, FPDATA: { AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { socketPads, underSocket, holeRing, FPDATA: { BRIDGE_PINS, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

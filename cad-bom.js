@@ -17,7 +17,7 @@
     // pots, transistors and zeners (against their ratings), capacitor peak voltage, LED current, a
     // diode's peak inverse voltage and current, a tube's most-used rating, a choke's and a
     // transformer's DC current, a speaker's power. v orders the parts of one BOM line.
-    const DIODE_RATE = { "1N4007": { v: 1000, i: 1 }, "UF4007": { v: 1000, i: 1 }, "1N4148": { v: 100, i: 0.2 } };
+    const DIODE_RATE = CadLib.DIODES;
     const share = (x, m) => (m > 0 ? ` · ${Math.round(x / m * 100)}%` : "");
     function partStress(c) {
       const r = S.sim.result;
@@ -39,6 +39,13 @@
         if (piv === null && iav === null) return null;
         const parts = [piv !== null ? `PIV ${fmtEng(piv, "V")}` : "", iav !== null ? `${fmtEng(Math.abs(iav), "A")} avg` : "", ipk !== null ? `${fmtEng(ipk, "A")} pk` : ""].filter(Boolean);
         return { v: piv || 0, text: parts.join(" · "), warn: !!m && ((piv || 0) > m.v || Math.abs(iav || 0) > m.i), note: m && (piv || 0) > m.v ? "over its PIV" : "over its current" };
+      }
+      if (c.type === "bridge") {
+        const wp = waveOf(c, "+"), wm = waveOf(c, "-"), i = pinCurrent(c, "+"), m = CadLib.BRIDGES[c.params.model];
+        let piv = null; if (wp && wm) { piv = 0; for (let k = 0; k < wp.length; k++) piv = Math.max(piv, wp[k] - wm[k]); }
+        if (piv === null && i === null) return null;
+        const parts = [piv !== null ? `PIV ${fmtEng(piv, "V")}` : "", i !== null ? `${fmtEng(Math.abs(i), "A")} avg` : ""].filter(Boolean);
+        return { v: piv || 0, text: parts.join(" · "), warn: !!m && ((piv || 0) > m.v || Math.abs(i || 0) > m.i), note: m && (piv || 0) > m.v ? "over its PIV" : "over its current" };
       }
       if (c.type === "tube") {
         // its most-used rating: the largest share of any limit (Pa, Pg2, Ik, Vhk, PIV …)

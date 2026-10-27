@@ -677,7 +677,14 @@
             if (Math.abs(vd - raw) > 1e-9) limited = true;
             e._vlast = vd;
             const ex = Math.exp(Math.min(vd / nVt, 80));
-            const id = Is * (ex - 1), gd = Is * ex / nVt + 1e-12;
+            let id = Is * (ex - 1), gd = Is * ex / nVt + 1e-12;
+            if (e.tt && !mode.dc) {
+              // stored charge (SPICE TT): q = tt·id, its current dq/dt by the same rule as a capacitor's;
+              // this is what makes a diode keep conducting backwards for a while (reverse recovery)
+              const idAt = X => Is * (Math.exp(Math.min((vn(X, nd[0]) - vn(X, nd[1])) / nVt, 80)) - 1), k = e.tt / mode.h;
+              id += k * (ID0 * id + ID1 * idAt(mode.prev) + (P2 ? ID2 * idAt(P2) : 0));
+              gd += k * ID0 * (gd - 1e-12);
+            }
             stampG(nd[0], nd[1], gd);
             const ieq = id - gd * vd;
             addB(nd[0], -ieq); addB(nd[1], ieq);
@@ -1470,8 +1477,9 @@
           break;
         }
         case "D": {
-          const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852, vd = vn(x, nd[0]) - vn(x, nd[1]);
-          stamp2(addG, nd[0], nd[1], Is * Math.exp(Math.min(vd / nVt, 80)) / nVt + 1e-12);
+          const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852, vd = vn(x, nd[0]) - vn(x, nd[1]), gd = Is * Math.exp(Math.min(vd / nVt, 80)) / nVt;
+          stamp2(addG, nd[0], nd[1], gd + 1e-12);
+          if (e.tt) stamp2(addB, nd[0], nd[1], e.tt * gd);   // diffusion capacitance
           break;
         }
         case "VDIODE": { const P = e.perveance; jac(nd, V => { const v = V[0] - V[1]; const i = v > 0 ? P * Math.pow(v, 1.5) : 0; return [i, -i]; }, 1e-3); break; }
