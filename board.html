@@ -88,6 +88,9 @@
     #st-pos { margin-left: auto; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 30; }
     .modal[hidden] { display: none; }
+    .router-where { display: grid; gap: 4px; margin: 6px 0 8px; }
+    .router-where .muted { opacity: 0.7; }
+    .router-where[hidden], #router-own[hidden], #router-signin[hidden] { display: none; }
     pre.cmd { white-space: pre-wrap; word-break: break-all; font: 11px/1.4 ui-monospace, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin: 4px 0 8px; user-select: all; }
     .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: min(680px, 94vw); max-height: 86vh; overflow-y: auto; padding: 14px 16px; }
     .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12px; }
@@ -350,15 +353,21 @@
   <div class="modal" id="router-modal" hidden>
     <div class="modal-box dlg">
       <div class="insp-title">Freerouting</div>
-      <p class="help">Auto-route sends the board to Freerouting's API server, on this computer or another one on your network, and adds the tracks it sends back. The board goes nowhere else.</p>
-      <div class="row" style="grid-template-columns: 1fr 260px"><span>Address (IP or name, :port)</span><input id="router-addr" placeholder="127.0.0.1:37864" spellcheck="false"></div>
+      <p class="help">Auto-route sends the board to Freerouting's API server and adds the tracks it sends back. The board goes nowhere else.</p>
+      <div id="router-where" class="router-where" hidden>
+        <label><input type="radio" name="router-where" id="router-use-server"> This site's Freerouting server <span class="muted">(sign in once per browser)</span></label>
+        <label><input type="radio" name="router-where" id="router-use-own"> My own Freerouting, on this computer or another one</label>
+      </div>
+      <div class="row" id="router-own" style="grid-template-columns: 1fr 260px"><span>Address (IP or name, :port)</span><input id="router-addr" placeholder="127.0.0.1:37864" spellcheck="false"></div>
       <p class="help" id="router-state"></p>
+      <div id="router-own-help">
       <h3>Start it with Java 25 and freerouting.jar</h3>
       <pre class="cmd" id="router-cmd-java"></pre>
       <h3>or with Docker</h3>
       <pre class="cmd" id="router-cmd-docker"></pre>
       <p class="help">On another computer, Freerouting must listen on the network (the Docker command does; with Java add <code>--api_server.endpoints=http://0.0.0.0:37864</code>). From an https page a browser may refuse a plain http address on another computer (Chrome asks once to allow the local network); then forward it so it looks local: <code>ssh -N -L 37864:127.0.0.1:37864 user@that-pc</code> and keep 127.0.0.1:37864 here.</p>
-      <div class="actions"><button class="btn" id="router-test">Test</button><span class="spacer"></span><button class="btn" id="router-cancel">Cancel</button><button class="btn active" id="router-save">Save</button></div>
+      </div>
+      <div class="actions"><button class="btn" id="router-test">Test</button><a class="btn" id="router-signin" target="_blank" rel="noopener" hidden title="Opens the server's login in a new tab: your e-mail, then the code it sends you">Sign in ↗</a><span class="spacer"></span><button class="btn" id="router-cancel">Cancel</button><button class="btn active" id="router-save">Save</button></div>
     </div>
   </div>
   <div class="modal" id="rules-modal" hidden>

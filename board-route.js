@@ -3,8 +3,9 @@
    out as a Specctra DSN design and the routes come back from a Specctra SES session:
      toDsn(board, model, conn, clr, opts) -> { text, nets, skipped, stubs }
      fromSes(text, board, dsn, names)      -> { tracks, vias, nets }
-   Freerouting runs on the user's computer, or one on the local network (its API
-   server); the Board window posts the DSN to it (route) and adds what comes back.
+   Freerouting runs on the user's computer, one on the local network (its API server), or
+   the site's own behind SERVER_PATH (aerocat.tech, a login in front); the Board window
+   posts the DSN to it (route) and adds what comes back.
    Clearances: every net gets clearance classes of its own, one for its tracks and vias
    (t<i>) and one for its pads (p<i>), and the clearance matrix holds what
    clearanceRules asks between each pair of nets: the net classes and IPC-2221B by the
@@ -22,6 +23,10 @@
   const q = s => `"${String(s).replace(/"/g, "'")}"`;
   const pt = (x, y) => `${um(x)} ${um(-y)}`;
   const DEFAULT_URL = "http://127.0.0.1:37864";
+  // pages served from these hosts have a Freerouting of their own at SERVER_PATH, behind a login (Cloudflare Access)
+  const SERVER_PATH = "/freerouting", SERVER_HOSTS = ["aerocat.tech", "www.aerocat.tech"];
+  // Cloudflare drops a request that has no answer within 100 s: a route through it asks for less
+  const PROXY_TIMEOUT = 90;
   const MARGIN = 0.05;
   // Freerouting draws round copper as octagons round the circle: a stub's far end keeps a little more
   const END_MARGIN = 0.3;
@@ -336,30 +341,45 @@
     if (!id) { id = root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : "00000000-0000-4000-8000-" + Math.random().toString(16).slice(2, 14).padEnd(12, "0"); try { localStorage.setItem(PROFILE_KEY, id); } catch (e) { /* no storage */ } }
     return id;
   }
-  /** An address as typed (192.168.1.20, nuc:37864, http://…) as Freerouting's base URL; port 37864 unless given */
+  /** An address as typed (192.168.1.20, nuc:37864, http://…, https://host/path) as Freerouting's base URL;
+      port 37864 for a plain http address unless given; a path is kept */
   function address(text) {
     let t = String(text || "").trim(); if (!t) return DEFAULT_URL;
     if (!/^https?:\/\//i.test(t)) t = "http://" + t;
-    try { const u = new URL(t); if (!u.port && !/^https?:\/\/[^/]+:\d+/i.test(t)) u.port = "37864"; return u.origin; } catch (e) { return null; }
+    try {
+      const u = new URL(t); if (!u.port && u.protocol === "http:" && !/^https?:\/\/[^/]+:\d+/i.test(t)) u.port = "37864";
+      return u.origin + u.pathname.replace(/\/+$/, "");
+    } catch (e) { return null; }
   }
   const base = url => address(url) || DEFAULT_URL;
+  /** The site's own Freerouting for a page at loc (default: this page), or null where the site has none */
+  function serverUrl(loc) {
+    const l = loc || root.location;
+    return l && l.protocol === "https:" && SERVER_HOSTS.includes(l.hostname) ? l.origin + SERVER_PATH : null;
+  }
+  // the site's own (same origin as the page): its login answers a redirect, which must not be followed
+  const sameSite = url => { try { return !!root.location && /^https?:/.test(root.location.origin) && new URL(base(url)).origin === root.location.origin; } catch (e) { return false; } };
   // another computer on the local network: Chrome asks the user once before a page may reach it
-  const local = url => { try { return !/^(127\.|localhost$|\[::1\]$)/.test(new URL(base(url)).hostname) ? { targetAddressSpace: "local" } : {}; } catch (e) { return {}; } };
+  const local = url => { try { const u = new URL(base(url)); return u.protocol === "http:" && !/^(127\.|localhost$|\[::1\]$)/.test(u.hostname) ? { targetAddressSpace: "local" } : {}; } catch (e) { return {}; } };
+  const reach = url => sameSite(url) ? { redirect: "manual" } : local(url);
+  // the login in front of the site's own wants the user first: a redirect to its page, or a refusal that is not JSON
+  const wantsLogin = (url, r, j) => r.type === "opaqueredirect" || (sameSite(url) && (r.status === 401 || r.status === 403) && !j);
   async function within(ms, f) {
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null, t = ctl && setTimeout(() => ctl.abort(), ms || 1500);
     try { return await f(ctl && ctl.signal); } finally { if (t) clearTimeout(t); }
   }
   /** Why Freerouting does or does not answer at url, within ms: { ok, why } with why one of
-      "ok", "cors" (it answers but does not allow this page: cors_origins), "status" (an answer that is not
+      "ok", "cors" (it answers but does not allow this page: cors_origins), "signin" (the site's own wants its
+      login first), "status" (an answer that is not
       Freerouting's status, with code), "down" (no answer: not running, the API server off, another address,
       or the browser refused the address) */
   async function probe(url, ms) {
     const u = base(url) + "/v1/system/status";
     try {
       return await within(ms, async signal => {
-        const r = await fetch(u, { signal, ...local(url) });
+        const r = await fetch(u, { signal, ...reach(url) });
         let j = null; try { j = await r.json(); } catch (e) { /* not JSON */ }
-        return j && j.status === "OK" ? { ok: true, why: "ok" } : { ok: false, why: "status", code: r.status };
+        return j && j.status === "OK" ? { ok: true, why: "ok" } : wantsLogin(url, r, j) ? { ok: false, why: "signin" } : { ok: false, why: "status", code: r.status };
       });
     } catch (e) { /* refused, timed out or blocked by CORS: an opaque request tells them apart */ }
     try { await within(ms, signal => fetch(u, { mode: "no-cors", signal, ...local(url) })); return { ok: false, why: "cors" }; }
@@ -369,14 +389,17 @@
   async function available(url, ms) { return (await probe(url, ms)).ok; }
   /** Routes a DSN design: the SES text and Freerouting's report */
   async function route(url, dsn, opts) {
-    const o = opts || {};
+    const o = opts || {}, proxied = /^https:/.test(base(url));
     const r = await fetch(base(url) + "/v1/autoroute", {
-      method: "POST", signal: o.signal, ...local(url),
+      method: "POST", signal: o.signal, ...reach(url),
       headers: { "Content-Type": "application/json", "Freerouting-Profile-ID": profileId(), "Freerouting-Environment-Host": `TubeAmpCAD/${o.version || "dev"}` },
-      body: JSON.stringify({ file_content: dsn, output_formats: ["SES", "DRC_SUMMARY"], timeout_seconds: o.timeout || 120, router_settings: { automatic_neckdown: false } })
+      body: JSON.stringify({ file_content: dsn, output_formats: ["SES", "DRC_SUMMARY"], timeout_seconds: o.timeout || (proxied ? PROXY_TIMEOUT : 120), router_settings: { automatic_neckdown: false } })
     });
     let j = null; try { j = await r.json(); } catch (e) { /* not JSON */ }
+    if (wantsLogin(url, r, j)) throw new Error("the Freerouting server wants you to sign in: Route ▾ → Freerouting… → Sign in");
     if (r.status === 401) throw new Error("Freerouting wants an API key: start it with --api_server.authentication.enabled=false");
+    if (r.status === 429 || (r.status === 503 && !j)) throw new Error("the Freerouting server is busy with other boards: try again in a minute");
+    if ((r.status === 504 || r.status === 524) && !j) throw new Error(`the board took Freerouting longer than ${proxied ? PROXY_TIMEOUT : 120} s`);
     if (!r.ok && r.status !== 202) throw new Error((j && (j.error || j.message)) || `Freerouting answered ${r.status}`);
     const ses = j && j.outputs && (j.outputs.SES || j.outputs.ses);
     if (!ses) throw new Error((j && (j.message || j.error)) || "Freerouting sent no routes");
@@ -391,5 +414,5 @@
     return `docker run -d --name freerouting --restart unless-stopped -p 37864:37864 ghcr.io/freerouting/freerouting:latest java -jar /app/freerouting-executable.jar --gui.enabled=false --api_server.enabled=true --api_server.endpoints=http://0.0.0.0:37864 --api_server.authentication.enabled=false --api_server.cors_origins=${origin || "https://aerocat.tech"}`;
   }
 
-  root.BoardRoute = { toDsn, fromSes, prune, parse, probe, available, route, command, dockerCommand, address, DEFAULT_URL };
+  root.BoardRoute = { toDsn, fromSes, prune, parse, probe, available, route, command, dockerCommand, address, serverUrl, DEFAULT_URL, SERVER_PATH };
 })(typeof window !== "undefined" ? window : globalThis);
