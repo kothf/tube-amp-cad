@@ -283,9 +283,9 @@ var TUBE_DATABASE = [
   },
   {
     nameGost: "ГУ-50", nameWestern: "GU-50 (Transmitter Pentode)", commonName: "GU-50",
-    type: "Power Beam Pentode", category: "power", origin: "Soviet", socket: "Septar 8-pin Spec", pinCount: 8,
+    type: "Power Beam Pentode", category: "power", origin: "Soviet", socket: "Glass, no base: 8 pins (GU-50 socket)", pinCount: 8,
     vh: 12.6, ih: 0.70,
-    heaterWarning: "HEATER IS 12.6V @ 0.7A (Pins 1 & 7)! Do NOT use 6.3V.",
+    heaterWarning: "HEATER IS 12.6V @ 0.7A (pins 4 & 8)! Do NOT use 6.3V. Pin 7 is the internal screen: ground it.",
     vaMax: 1000, paMax: 40.0, ikMax: 230, vg2Max: 300,
     isFavorite: true,
     koren: {
@@ -294,10 +294,10 @@ var TUBE_DATABASE = [
       Triode: { mu: 5.741, kg: 506, kp: 31.42, kvb: 6.897e-112, x: 1.27 }
     },
     pinout: [
-      { pin: 1, sym: "H", role: "Heater 12.6V", isHeater: true }, { pin: 2, sym: "G1", role: "Control Grid", isGrid: true },
-      { pin: 3, sym: "G2", role: "Screen Grid", isScreen: true }, { pin: 4, sym: "G3", role: "Suppressor Grid" },
-      { pin: 5, sym: "A", role: "Plate", isPlate: true }, { pin: 6, sym: "K", role: "Cathode", isCathode: true },
-      { pin: 7, sym: "H", role: "Heater 12.6V", isHeater: true }, { pin: 8, sym: "K", role: "Cathode", isCathode: true }
+      { pin: 1, sym: "K", role: "Cathode", isCathode: true }, { pin: 2, sym: "G1", role: "Control Grid", isGrid: true },
+      { pin: 3, sym: "G2", role: "Screen Grid", isScreen: true }, { pin: 4, sym: "H", role: "Heater 12.6V", isHeater: true },
+      { pin: 5, sym: "G3", role: "Suppressor Grid" }, { pin: 6, sym: "A", role: "Plate", isPlate: true },
+      { pin: 7, sym: "S", role: "Internal screen", isShield: true }, { pin: 8, sym: "H", role: "Heater 12.6V", isHeater: true }
     ]
   },
   {
@@ -397,14 +397,14 @@ var TUBE_DATABASE = [
     type: "Full-Wave Vacuum Rectifier", category: "rectifier", origin: "Soviet", socket: "Octal", pinCount: 8,
     vh: 5, ih: 2,
     book: {"source": "Katsnelson & Larionov 1981", "page": 73, "name": "5Ц4С", "purpose": "", "limits": {"v_inverse": 1350, "i_rect_ma": 62, "i_peak_ma": 375}, "test": {"ia_min": 300, "va": 50}, "rectified": {"ma_min": 122, "conditions": "Ua 500 V, Rn 4.7 kΩ, C 4 µF"}},
-    heaterWarning: "Filament pins 2 & 8: 5 V @ 2 A; the filament is the cathode, so pin 8 carries the B+ output (Katsnelson & Larionov p. 73).",
+    heaterWarning: "Heater pins 2 & 8: 5 V @ 2 A; indirectly heated, the cathode joined to heater pin 8 inside, so pin 8 carries the B+ output (Katsnelson & Larionov p. 73).",
     // the book's 62 mA is per anode: the tube delivers 125 mA (its own test: 122 mA at 500 V into 4.7 kΩ),
     // as the other rectifiers here are rated, on the total
     vaMax: 500, paMax: 0, ikMax: 125, vg2Max: 0,
     koren: { Triode: { mu: 1.0, kg: 100, kp: 40, kvb: 10, x: 1.5 } },
     pinout: [
       { pin: 2, sym: "H", role: "Heater", isHeater: true }, { pin: 4, sym: "A2", role: "Anode 2", isPlate: true },
-      { pin: 6, sym: "A1", role: "Anode 1", isPlate: true }, { pin: 8, sym: "F", role: "Filament", isHeater: true }
+      { pin: 6, sym: "A1", role: "Anode 1", isPlate: true }, { pin: 8, sym: "K_H", role: "Cathode / heater, B+ OUT", isHeater: true, isCathode: true }
     ]
   },
   {
@@ -540,15 +540,15 @@ var TUBE_DATABASE = [
   {
     nameGost: "WE417A / 5842", nameWestern: "WE417A / 5842 (Planar Triode)", commonName: "WE417A",
     type: "Single High-Gm Triode", category: "small_signal", origin: "Western", socket: "Noval B9A", pinCount: 9,
-    vh: 6.3, ih: 0.30, heaterWarning: "Pins 4 & 5: 6.3V. Western Electric gold grid planar triode.",
+    vh: 6.3, ih: 0.30, heaterWarning: "Heater pins 3 & 9: 6.3 V @ 0.3 A (RCA 5842, basing 9V). Western Electric gold grid planar triode.",
     vaMax: 200, paMax: 4.5, ikMax: 35, vg2Max: 0,
     koren: { Triode: { mu: 44.04, kg: 111.7, kp: 349.2, kvb: 100, x: 1.35 } },
     pinout: [
-      { pin: 1, sym: "A", role: "Plate", isPlate: true }, { pin: 2, sym: "G", role: "Grid", isGrid: true },
-      { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
-      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "A", role: "Plate", isPlate: true },
+      { pin: 1, sym: "A", role: "Plate", isPlate: true }, { pin: 2, sym: "NC", role: "No connection" },
+      { pin: 3, sym: "H", role: "Heater", isHeater: true }, { pin: 4, sym: "G", role: "Grid", isGrid: true },
+      { pin: 5, sym: "G", role: "Grid", isGrid: true }, { pin: 6, sym: "K", role: "Cathode", isCathode: true },
       { pin: 7, sym: "G", role: "Grid", isGrid: true }, { pin: 8, sym: "G", role: "Grid", isGrid: true },
-      { pin: 9, sym: "K", role: "Cathode", isCathode: true }
+      { pin: 9, sym: "H", role: "Heater", isHeater: true }
     ]
   },
   // ---------------- Additional Power Soviet (GOST) ----------------
@@ -591,7 +591,7 @@ var TUBE_DATABASE = [
   },
   {
     nameGost: "6П45С", nameWestern: "6P45S (EL509 Heavy Beam Tetrode)", commonName: "6P45S",
-    type: "Heavy Beam Tetrode", category: "power", origin: "Soviet", socket: "Magnoval B9D", pinCount: 9,
+    type: "Heavy Beam Tetrode", category: "power", origin: "Soviet", socket: "Magnoval B9D + anode top cap", pinCount: 9,
     vh: 6.3, ih: 2.50, heaterWarning: "HEAVY HEATER: 2.5A @ 6.3V. Anode top cap with up to 600V!",
     vaMax: 400, paMax: 35.0, ikMax: 500, vg2Max: 300,
     isFavorite: true,
@@ -601,11 +601,11 @@ var TUBE_DATABASE = [
       Triode: { mu: 5.187, kg: 188.9, kp: 33.45, kvb: 19.2, x: 1.46 }
     },
     pinout: [
-      { pin: 1, sym: "G1", role: "Control Grid", isGrid: true }, { pin: 2, sym: "G2", role: "Screen Grid", isScreen: true },
-      { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
-      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "K", role: "Cathode", isCathode: true },
-      { pin: 7, sym: "G2", role: "Screen Grid", isScreen: true }, { pin: 8, sym: "G1", role: "Control Grid", isGrid: true },
-      { pin: 9, sym: "NC", role: "Top Cap is Plate", isPlate: true }
+      { pin: 1, sym: "G1", role: "Control Grid", isGrid: true }, { pin: 2, sym: "G3", role: "Beam plates" },
+      { pin: 3, sym: "G2", role: "Screen Grid", isScreen: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "G2", role: "Screen Grid", isScreen: true },
+      { pin: 7, sym: "G3", role: "Beam plates" }, { pin: 8, sym: "G1", role: "Control Grid", isGrid: true },
+      { pin: 9, sym: "K", role: "Cathode", isCathode: true }
     ]
   },
   {
@@ -625,16 +625,16 @@ var TUBE_DATABASE = [
   },
   {
     nameGost: "ГМ-70", nameWestern: "GM-70 (Directly Heated Carbon Triode)", commonName: "GM-70",
-    type: "Directly Heated Transmitter Triode", category: "power", origin: "Soviet", socket: "Special 4-pin", pinCount: 4,
+    type: "Directly Heated Transmitter Triode", category: "power", origin: "Soviet", socket: "Special 4-pin (GM-70: 4 of 8 places on a 25 mm circle)", pinCount: 8,
     vh: 20.0, ih: 3.0, heaterWarning: "DANGER: High Voltage Plate up to 1000V! Filament is 20V @ 3.0A. Carbon graphite anode.",
     isDHT: true,
     vaMax: 1200, paMax: 125.0, ikMax: 200, vg2Max: 0,
     koren: { Triode: { mu: 6.171, kg: 1064, kp: 88.86, kvb: 220, x: 1.35 } },
     pinout: [
-      { pin: 1, sym: "F+", role: "Filament (+)", isHeater: true, isCathode: true },
-      { pin: 2, sym: "A", role: "Plate (1000V+)", isPlate: true },
-      { pin: 3, sym: "G", role: "Control Grid", isGrid: true },
-      { pin: 4, sym: "F-", role: "Filament (-)", isHeater: true, isCathode: true }
+      { pin: 2, sym: "F+", role: "Filament (+)", isHeater: true, isCathode: true },
+      { pin: 3, sym: "F-", role: "Filament (-)", isHeater: true, isCathode: true },
+      { pin: 5, sym: "A", role: "Plate (1000V+)", isPlate: true },
+      { pin: 7, sym: "G", role: "Control Grid", isGrid: true }
     ]
   },
   // ---------------- Additional Power Western ----------------
@@ -688,15 +688,15 @@ var TUBE_DATABASE = [
   },
   {
     nameGost: "845", nameWestern: "845 (High-Voltage Power Triode)", commonName: "845",
-    type: "Directly Heated Transmitter Triode", category: "power", origin: "Western", socket: "Special 4-pin", pinCount: 4,
+    type: "Directly Heated Transmitter Triode", category: "power", origin: "Western", socket: "Jumbo 4-pin bayonet (RCA 4AZ)", pinCount: 4,
     vh: 10.0, ih: 3.25, heaterWarning: "DANGER: Plate voltage up to 1000V-1200V! Filament is 10.0V @ 3.25A.",
     isDHT: true,
     vaMax: 1250, paMax: 100.0, ikMax: 150, vg2Max: 0,
     koren: { Triode: { mu: 5.633, kg: 2715, kp: 62.12, kvb: 239.6, x: 1.36 } },
     pinout: [
-      { pin: 1, sym: "F+", role: "Filament (+)", isHeater: true, isCathode: true },
-      { pin: 2, sym: "A", role: "Plate (1000V+)", isPlate: true },
-      { pin: 3, sym: "G", role: "Control Grid", isGrid: true },
+      { pin: 1, sym: "G", role: "Control Grid", isGrid: true },
+      { pin: 2, sym: "F+", role: "Filament (+)", isHeater: true, isCathode: true },
+      { pin: 3, sym: "A", role: "Plate (1000V+)", isPlate: true },
       { pin: 4, sym: "F-", role: "Filament (-)", isHeater: true, isCathode: true }
     ]
   },
@@ -1349,7 +1349,7 @@ var TUBE_DATABASE = [
     type: "Pentode / Beam Tetrode — low-noise first stages of sound recording and reproduction", category: "small_signal", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
     vh: 6.3, ih: 0.2,
     book: {"source": "Katsnelson & Larionov 1981", "page": 236, "name": "6Ж32П", "purpose": "low-noise first stages of sound recording and reproduction", "analogs": ["EF86"], "limits": {"va": 300, "vg2": 200, "vkh": 50, "ik": 6, "pa": 1.0, "pg2": 0.2, "rg": 3.0}, "nominal": {"va": 250, "vg2": 140, "vg": -2, "ia": 3, "gm": 1.8, "ig2": 0.6}},
-    heaterWarning: "Heater pins 4 & 5: 6.3 V @ 0.2 A (Katsnelson & Larionov p. 236). The book drawing gives control grid pin 7, which is also a shield pin; control and suppressor grid pins are not entered.",
+    heaterWarning: "Heater pins 4 & 5: 6.3 V @ 0.2 A (Katsnelson & Larionov p. 236). Pins as EF86 (Mazda EF86 sheet): control grid 9, suppressor 8, internal shield 2 and 7.",
     vaMax: 300, paMax: 1, ikMax: 6, vg2Max: 200,
     koren: {
       Pentode: { vk: 34.89, ks: 0.7458, mu: 33.26, kg: 2400, kp: 196, lam: 1500, x: 1.4, kg2: 5050 },
@@ -1359,7 +1359,9 @@ var TUBE_DATABASE = [
     pinout: [
       { pin: 1, sym: "G2", role: "Screen grid", isScreen: true }, { pin: 2, sym: "S", role: "Internal shield", isShield: true },
       { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
-      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "A", role: "Anode", isPlate: true }
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "A", role: "Anode", isPlate: true },
+      { pin: 7, sym: "S", role: "Internal shield", isShield: true }, { pin: 8, sym: "G3", role: "Suppressor grid" },
+      { pin: 9, sym: "G1", role: "Control grid", isGrid: true }
     ]
   },
   {
@@ -1775,15 +1777,15 @@ var TUBE_DATABASE = [
   },
   {
     nameGost: "211 / VT-4-C", nameWestern: "211 / VT-4-C (High-Voltage Power Triode)", commonName: "211",
-    type: "Directly Heated Transmitter Triode", category: "power", origin: "Western", socket: "Special 4-pin", pinCount: 4,
+    type: "Directly Heated Transmitter Triode", category: "power", origin: "Western", socket: "Jumbo 4-pin bayonet (RCA 4AZ)", pinCount: 4,
     vh: 10.0, ih: 3.25, heaterWarning: "DANGER: Plate voltage up to 1000V-1250V! Filament is 10.0V @ 3.25A.",
     isDHT: true,
     vaMax: 1250, paMax: 75, ikMax: 150, vg2Max: 0,
     koren: { Triode: { mu: 12.42, kg: 2234, kp: 112.4, kvb: 300, x: 1.35 } },
     pinout: [
-      { pin: 1, sym: "F+", role: "Filament (+)", isHeater: true, isCathode: true },
-      { pin: 2, sym: "A", role: "Plate (1000V+)", isPlate: true },
-      { pin: 3, sym: "G", role: "Control Grid", isGrid: true },
+      { pin: 1, sym: "G", role: "Control Grid", isGrid: true },
+      { pin: 2, sym: "F+", role: "Filament (+)", isHeater: true, isCathode: true },
+      { pin: 3, sym: "A", role: "Plate (1000V+)", isPlate: true },
       { pin: 4, sym: "F-", role: "Filament (-)", isHeater: true, isCathode: true }
     ]
   },
@@ -1911,3 +1913,22 @@ TUBE_DATABASE.forEach(t => {
   } else caps.triode = { cgk: c.cgk * pF, cga: c.cga * pF, cak: c.cak * pF };
   t.caps = caps;
 });
+
+/* Envelopes for the 3D board view: the bulb's largest diameter d and its seated height h (from the
+   base's seat to the top of the glass, top cap not counted), mm, from each datasheet's outline.
+   A tube without an entry takes its analog's, else the usual size for its socket (board-3d.js). */
+var TUBE_BULBS = {
+  "EL84": { d: 22.2, h: 71.4, source: "Mazda EL84" },
+  "6P1P": { d: 22.5, h: 65.5, source: "6П1П handbook sheet" },
+  "EL34": { d: 32, h: 98, source: "Svetlana EL34" },
+  "6L6GC": { d: 39.7, h: 93.7, source: "Mazda 6L6GC" },
+  "KT88": { d: 52.4, h: 106.4, source: "RCA 6550" },
+  "6V6GT": { d: 30.2, h: 69.8, source: "Mazda 6V6GT" },
+  "6AS7G": { d: 52.4, h: 120.7, source: "RCA 6AS7-G" },
+  "GZ34": { d: 33.3, h: 72, source: "Philips GZ34" },
+  "300B": { d: 61.9, h: 134.9, source: "Western Electric 300B" },
+  "6S4S": { d: 52, h: 124, source: "6С4С handbook sheet (140 mm overall)" },
+  "6P45S": { d: 45.6, h: 96.6, source: "Svetlana EL509" }
+};
+var TUBE_BULBS_LIKE = { "6P14P": "EL84", "6P14P-EV": "EL84", "6P27S": "EL34", "6P6S": "6V6GT", "6N13S": "6AS7G", "2A3": "6S4S" };
+TUBE_DATABASE.forEach(t => { const b = TUBE_BULBS[t.commonName] || TUBE_BULBS[TUBE_BULBS_LIKE[t.commonName]]; if (b) t.bulb = b; });

@@ -57,6 +57,7 @@
   const SNAPIN_H = { 22: 30, 25: 35, 30: 40, 35: 50 };
   // the valve on its socket: diameter and seated height
   const TUBE = { B9A: [22.2, 49], B7G: [19, 44], B9D: [30, 78], OCTAL: [33, 95], UX4: [52, 130], UX6: [30, 92] };
+  const tubeOf = g => { const L = root.CadLib, p = g.members && g.members[0] && g.members[0].params; return L && p && p.tube ? L.tubeByName(p.tube) : null; };
   function partBodies(g, t, opts) {
     const fp = g.fp, name = fp.name, P = g.place, out = [], side = P.side === "B" ? "B" : "F";
     const to = ([x, y, z]) => { const [X, Y] = B().place([x, y], P); return [X, -Y, side === "B" ? -z : t + z]; };
@@ -106,12 +107,15 @@
       pads.forEach(p => { lead(p.x, p.y, 3); out.push(cylY(p.x, 3, 0.4, Math.min(p.y, r.y + r.h), Math.max(p.y, r.y + r.h), C.lead, to)); });
     } else if (name === "TRIM-3296W") {
       out.push(box(-4.75, -2.4, 4.75, 2.4, 0.5, 10, C.trim, to), cylZ(-3.9, -1.5, 0.9, 10, 11, C.metal, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
-    } else if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) {
-      const k = m[1], S = D.SOCKETS[k] || { body: 26 }, [td, th] = TUBE[k] || [22, 50], dark = k === "OCTAL" || k === "UX4" || k === "UX6", zs = 6;
+    } else if ((m = /^SOCKET-([A-Z0-9]+)(-CAP)?$/.exec(name))) {
+      // the valve's own envelope where its datasheet gives it (tube-db.js TUBE_BULBS), else the socket's usual one
+      const k = m[1], S = D.SOCKETS[k] || { body: 26 }, tb = tubeOf(g), [td, th] = (tb && tb.bulb && tb.bulb.d ? [tb.bulb.d, tb.bulb.h] : null) || TUBE[k] || [22, 50];
+      const dark = k === "OCTAL" || k === "UX4" || k === "UX6", zs = 6;
       out.push(cylZ(0, 0, S.body / 2, 0, zs, dark ? C.bakelite : C.ceramic, to));
       pads.forEach(p => lead(p.x, p.y, 1));
       if (opts.tubes !== false) {
         const rr = td / 2;
+        if (m[2]) out.push(cylZ(0, 0, Math.min(4.5, rr * 0.3), zs + th, zs + th + 6, C.metal, to));   // the top cap
         out.push(cylZ(0, 0, rr, zs + 0.15, zs + th * 0.86, C.glass, to, { alpha: 0.3, glass: true }), cylZ(0, 0, rr * 0.82, zs + th * 0.86, zs + th * 0.95, C.glass, to, { alpha: 0.3, glass: true }),
           cylZ(0, 0, rr * 0.45, zs + th * 0.95, zs + th, C.glass, to, { alpha: 0.3, glass: true }),
           box(-rr * 0.55, -rr * 0.25, rr * 0.55, rr * 0.25, zs + th * 0.2, zs + th * 0.7, C.plate, to, { inner: true }),
