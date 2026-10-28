@@ -1376,7 +1376,7 @@
   // ---------------------------------------------------------------------------
   function status(kind, text) { const el = $("status"); el.className = "status " + kind; el.textContent = text; el.title = text; }   // the title: the whole text when the pill is cut short
   // Auto-route through Freerouting, the Freerouting… dialog, .ses import (board-autoroute.js)
-  const { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerWhere, unroute } = BoardAutoroute({ $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render: () => render() });
+  const { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute } = BoardAutoroute({ $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render: () => render() });
   function msg(t) { if (t) { const el = $("st-msg"); el.textContent = t; el.title = t; } }
   function init() {
     canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0;
@@ -1454,6 +1454,7 @@
     $("router-test").onclick = routerTest; $("router-save").onclick = routerSave; $("router-cancel").onclick = () => { $("router-modal").hidden = true; };
     $("router-addr").onkeydown = e => { if (e.key === "Enter") routerSave(); };
     $("router-use-server").onchange = $("router-use-own").onchange = routerWhere;
+    $("router-addr").oninput = routerStatusLink;
     $("btn-ses").onclick = () => $("ses-file").click(); $("ses-file").onchange = e => { importSes(e.target.files[0]); e.target.value = ""; };
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();

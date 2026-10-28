@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.121.0] - 2026-10-28
+
+### Added
+- Board: **Status ↗** in Route ▾ → Freerouting… opens a page on the chosen Freerouting (the site's server or your own) instead of its bare JSON. It says in words whether it is up, idle or busy, its version, how long it has run, Java and system, processor load (with a trace while the page is open), Java memory and free disk, and the routes this browser sent: when, which board, done or failed, how long. On the site's server it also lists the limits (sign-in, two boards at once, 90 s per pass, 5 MB). It refreshes every 5 s.
+
 ## [3.120.0] - 2026-10-28
 
 ### Added

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Freerouting Server — Tube Amp CAD</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="ui.css?v=dev">
+  <style>
+    :root { --bg: #070b10; --panel: #111823; --panel2: #18212e; --line: #26344a; --text: #e6edf3; --muted: #8b949e; --accent: #00e5ff; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    header { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: linear-gradient(#141c27, #0e141d); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .brand { font-weight: 800; letter-spacing: .5px; }
+    .brand span { color: var(--accent); font-weight: 600; margin-left: 6px; }
+    .status { font-size: 12px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 99px; white-space: nowrap; }
+    .status::before { content: "●"; margin-right: 6px; color: var(--muted); }
+    .status.ok::before { color: var(--ok); } .status.busy::before { color: var(--warn); } .status.bad { color: var(--bad); } .status.bad::before { color: var(--bad); }
+    .spacer { flex: 1; }
+    #addr { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); overflow-wrap: anywhere; }
+    main { max-width: 980px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+    @media (max-width: 700px) { main { grid-template-columns: 1fr; padding: 12px; } }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+    .card.wide { grid-column: 1 / -1; }
+    .card h3 { margin: 0 0 10px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+    #say { font-size: 15px; margin: 0 0 8px; }
+    #say.bad { color: var(--bad); }
+    .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+    .kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+    .meter { margin-bottom: 12px; }
+    .meter .top { display: flex; justify-content: space-between; gap: 8px; }
+    .meter .top b { font: 600 14px ui-monospace, Menlo, monospace; }
+    .meter .note { color: var(--muted); font-size: 12px; }
+    .bar { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin: 5px 0 3px; }
+    .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+    svg.spark[hidden] { display: none; }
+    svg.spark { width: 100%; height: 34px; display: block; margin-top: 4px; }
+    svg.spark path { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+    table { width: 100%; border-collapse: collapse; font: 12px ui-monospace, Menlo, monospace; }
+    th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; padding: 3px 6px; }
+    td { padding: 3px 6px; border-top: 1px dashed #1a2433; overflow-wrap: anywhere; }
+    td[class^="st-"] { white-space: nowrap; overflow-wrap: normal; }
+    td.st-COMPLETED { color: var(--ok); } td.st-FAILED, td.st-CANCELLED, td.st-TERMINATED { color: var(--bad); } td.st-RUNNING, td.st-QUEUED { color: var(--warn); }
+    .muted { color: var(--muted); }
+    ul.limits { margin: 0; padding-left: 18px; } ul.limits li { margin-bottom: 4px; }
+    #signin[hidden], #limits-card[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">FREEROUTING<span>server status</span></div>
+    <span class="status" id="pill">Asking…</span>
+    <span id="addr"></span>
+    <span class="spacer"></span>
+    <a class="btn" id="signin" target="_blank" rel="noopener" hidden title="Opens the server's login in a new tab: your e-mail, then the code it sends you">Sign in ↗</a>
+    <button class="btn" id="refresh" title="Ask again now (it also asks every 5 s)">Refresh</button>
+  </header>
+  <main>
+    <section class="card wide">
+      <p id="say">Asking the server…</p>
+      <dl class="kv" id="env"></dl>
+    </section>
+    <section class="card">
+      <h3>Load</h3>
+      <div class="meter"><div class="top"><span>Processor</span><b id="cpu">–</b></div><div class="bar"><i id="cpu-bar"></i></div><svg class="spark" id="cpu-spark" hidden viewBox="0 0 100 34" preserveAspectRatio="none"><path d=""/></svg><div class="note">Of the whole computer, over the last minutes while this page is open. A board being routed takes one core flat out.</div></div>
+      <div class="meter"><div class="top"><span>Java memory</span><b id="ram">–</b></div><div class="bar"><i id="ram-bar"></i></div><div class="note" id="ram-note">In use, of what Java has taken so far; it takes more, up to its cap, while a board is routed.</div></div>
+      <div class="meter"><div class="top"><span>Free disk</span><b id="disk">–</b></div><div class="note">Where Freerouting keeps its saved jobs.</div></div>
+    </section>
+    <section class="card">
+      <h3>Routing</h3>
+      <dl class="kv" id="routing"></dl>
+      <div id="limits-card" hidden>
+      <h3 style="margin-top: 14px">This site's server</h3>
+      <ul class="limits">
+        <li>Only signed-in addresses get in: you sign in once per browser with your e-mail and the code it sends.</li>
+        <li>Two boards are routed at once; another waits for a free turn ("busy, try again in a minute").</li>
+        <li>Each Freerouting pass stops after <span id="lim-time">90</span> s, and a board may be up to 5 MB.</li>
+        <li>Your own Freerouting stays an option: Board window, Route ▾ → Freerouting….</li>
+      </ul>
+      </div>
+    </section>
+    <section class="card wide">
+      <h3>Routes from this browser</h3>
+      <div id="jobs" class="muted">Asking…</div>
+    </section>
+  </main>
+  <script src="board-route.js?v=dev"></script>
+  <script src="freerouting-app.js?v=dev"></script>
+</body>
+</html>

@@ -367,7 +367,7 @@
       <pre class="cmd" id="router-cmd-docker"></pre>
       <p class="help">On another computer, Freerouting must listen on the network (the Docker command does; with Java add <code>--api_server.endpoints=http://0.0.0.0:37864</code>). From an https page a browser may refuse a plain http address on another computer (Chrome asks once to allow the local network); then forward it so it looks local: <code>ssh -N -L 37864:127.0.0.1:37864 user@that-pc</code> and keep 127.0.0.1:37864 here.</p>
       </div>
-      <div class="actions"><button class="btn" id="router-test">Test</button><a class="btn" id="router-signin" target="_blank" rel="noopener" hidden title="Opens the server's login in a new tab: your e-mail, then the code it sends you">Sign in ↗</a><span class="spacer"></span><button class="btn" id="router-cancel">Cancel</button><button class="btn active" id="router-save">Save</button></div>
+      <div class="actions"><button class="btn" id="router-test">Test</button><a class="btn" id="router-status" target="_blank" rel="noopener" title="What this Freerouting says about itself: up or not, version, load, memory, the routes this browser sent">Status ↗</a><a class="btn" id="router-signin" target="_blank" rel="noopener" hidden title="Opens the server's login in a new tab: your e-mail, then the code it sends you">Sign in ↗</a><span class="spacer"></span><button class="btn" id="router-cancel">Cancel</button><button class="btn active" id="router-save">Save</button></div>
     </div>
   </div>
   <div class="modal" id="rules-modal" hidden>

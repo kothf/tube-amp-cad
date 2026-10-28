@@ -354,7 +354,10 @@
       const srv = useServer();
       $("router-own").hidden = srv; $("router-own-help").hidden = srv;
       $("router-signin").hidden = !srv; $("router-signin").href = (router.server || "") + "/v1/system/status";
+      routerStatusLink();
     }
+    // Status ↗: the server page for the address chosen in the dialog
+    function routerStatusLink() { $("router-status").href = "freerouting.html" + VQ + (VQ ? "&" : "?") + "url=" + encodeURIComponent(chosen() || router.url); }
     function routerSetup() {
       const origin = pageOrigin(), srv = !!router.server && router.url === router.server;
       $("router-where").hidden = !router.server;
@@ -383,6 +386,6 @@
       if (!file || !S.model) return;
       file.text().then(t => { try { msg(addRoutes(t, dsnOf())); } catch (e) { msg(`Not imported: ${e.message}`); } });
     }
-    return { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerWhere, unroute };
+    return { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute };
   };
 })(window);
