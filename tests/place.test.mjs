@@ -245,3 +245,23 @@ test("the SAT solver: finds a model that meets every clause, and proves three pi
   for (let h = 0; h < 2; h++) for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) H.add([-p[i][h], -p[j][h]]);
   assert.equal(H.solve(), false);
 });
+
+test("access: a part parked in the only way out of a ring moves aside, after which the pin's track gets through", () => {
+  const board = setup2();
+  // a locked ring round VT1 on both layers with one opening on the left, and R2's pad in that opening
+  ["F.Cu", "B.Cu"].forEach(layer => board.tracks.push({ layer, w: 0.6, locked: true, pts: [[13, 18], [13, 13], [27, 13], [27, 27], [13, 27], [13, 22]] }));
+  const r2 = Object.values(board.parts).find(p => p.ref === "R2"); r2.x = 9.92; r2.y = 20; r2.rot = 0;
+  let { m, conn, clr } = analyse2(board);
+  const shut = P.escape(board, m, conn, baseRats(m, conn), { clr }).find(e => e.ref === "VT1");
+  assert.ok(shut && !shut.ok && shut.walls.some(w => w.kind === "part" && w.what === "R2"), JSON.stringify(shut && shut.walls.map(w => w.what)));
+  const moves = P.access(board, m, conn, baseRats(m, conn), { clr, netlist: NL2, conn });
+  assert.equal(moves.length, 1); assert.equal(moves[0].ref, "R2"); assert.equal(moves[0].frees, "VT1 pin 2");
+  assert.ok(Math.hypot(moves[0].to.x - moves[0].from.x, moves[0].to.y - moves[0].from.y) <= 5.08 + 1e-6, "a small move");
+  Object.assign(r2, moves[0].to); ({ m, conn, clr } = analyse2(board));
+  const b = P.bridge(board, m, conn, baseRats(m, conn), { clr, margin: 10 });
+  assert.ok(b, "now a track reaches R1");
+  board.tracks.push(b.track);
+  const m2 = B.model(board, NL2), c2 = B.connectivity(board, m2.pads);
+  assert.equal(c2.rats.filter(r => m2.names[r.net] === "BASE").length, 0);
+  assert.deepEqual(B.drc(board, m2, c2, new Set(), [], NL2).filter(d => ["clearance", "short", "courtyard", "edge"].includes(d.kind)).map(d => d.msg), []);
+});

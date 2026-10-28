@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.119.0] - 2026-10-28
+
+### Added
+- Board: Route & nudge first tries **pin-access moves** in each round. For a pin that is shut in, it tries the smallest shift (up to 5 mm on the 1.27 mm grid) or quarter turn of that part, or of a part walling it in. A move is taken when the pin's way out then holds (max-flow check) and a track can run on to the other end, counting the copper in the way as taken up. Only otherwise does the annealing nudge run.
+
+### Fixed
+- Board: the exact finisher now knows the valve-socket rule (under a socket's body a track may pass its pins at their own spacing). It checks every grid step at its middle instead of keeping a blanket margin round each cell, which was too strict beside pins. A track it took up and cannot lay again is left whole and the window tried again, so one walled-in cut end no longer makes the whole window fail.
+
 ## [3.118.0] - 2026-10-27
 
 ### Added

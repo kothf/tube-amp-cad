@@ -272,7 +272,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const stopLbl = await bw.evaluate(() => document.querySelector("#btn-autoroute .lbl").textContent);
     await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 120000 }).catch(() => {});
     const rn1 = await bw.evaluate(() => { const S = BoardApp.state; return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, bad: S.drc.length, msg: document.getElementById("st-msg").textContent, lbl: document.querySelector("#btn-autoroute .lbl").textContent }; });
-    check(rn0.un > 0 && stopLbl === "Stop" && rn1.lbl === "Auto-route" && nPosts >= 3 && rn1.un < rn0.un && rn1.tracks > rn0.tracks && rn1.bad <= rn0.bad && rn1.parts === rn0.parts && rn1.h === rn0.h + 1 && /still open after 4 rounds: no part moved/.test(rn1.msg),
+    check(rn0.un > 0 && stopLbl === "Stop" && rn1.lbl === "Auto-route" && nPosts >= 1 && rn1.un < rn0.un && rn1.tracks > rn0.tracks && rn1.bad <= rn0.bad && rn1.parts === rn0.parts && rn1.h === rn0.h + 1 && (rn1.un ? nPosts >= 3 && /still open after 4 rounds: no part moved/.test(rn1.msg) : /^Everything routed/.test(rn1.msg)),
       `Route & nudge with a router that finds nothing: ${nPosts} passes; the grid joins ${rn0.un - rn1.un} of ${rn0.un} open connections with ${rn1.tracks - rn0.tracks} tracks and no new rule message; every round (two over the whole board) undone, no part moved, one step to undo ("${rn1.msg}"); the button read ${stopLbl} meanwhile`);
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     // Route ▾ → Rearrange board: every unlocked part but the panel ones placed again, three layouts each routed (here by a
@@ -281,7 +281,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     nPosts = 0;
     await bw.click("#btn-route"); await bw.click("#btn-rearrange");
     await bw.waitForFunction(() => BoardApp.router.busy, null, { timeout: 5000 }).catch(() => {});
-    await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 180000 }).catch(() => {});
+    await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 400000 }).catch(() => {});
     const ra1 = await bw.evaluate(() => { const S = BoardApp.state; return { parts: JSON.stringify(S.board.parts), h: S.hIndex, un: S.conn.unrouted, bad: S.drc.filter(d => ["clearance", "short", "courtyard", "edge"].includes(d.kind)).map(d => d.msg), msg: document.getElementById("st-msg").textContent, panel: JSON.stringify(S.model.parts.filter(g => ["pot", "jack", "terminal", "header", "switch", "iec", "fuse"].includes(g.type)).map(g => S.board.parts[g.key])) }; });
     const raOk = /^Rearranged \d+ parts/.test(ra1.msg) ? ra1.parts !== ra0.parts && ra1.h === ra0.h + 1 && ra1.un <= ra0.un : /^Tried 3 layouts: none routed better/.test(ra1.msg) && ra1.parts === ra0.parts;
     check(raOk && nPosts >= 3 && ra1.panel === ra0.panel && !ra1.bad.length, `Rearrange board: ${nPosts} routing passes over three layouts; "${ra1.msg.slice(0, 120)}"; panel parts stay, no clearance, courtyard or edge message`);

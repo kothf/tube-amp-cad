@@ -21,7 +21,7 @@
           off.worker.onerror = e => { if (e && e.preventDefault) e.preventDefault(); off.ok = false; off.worker.terminate(); off.worker = null; const ws = [...off.wait.values()]; off.wait.clear(); ws.forEach(w => w({ lost: true })); };
         } catch (e) { off.ok = false; off.worker = null; }
       }
-      const here = () => new Promise(r => setTimeout(r, 0)).then(() => BoardPlace[fn](S.board, S.model, S.conn, rats, { ...checkOpts(), ...opts }));
+      const here = () => new Promise(r => setTimeout(r, 0)).then(() => BoardPlace[fn](S.board, S.model, S.conn, rats, { ...checkOpts(), netlist: S.netlist, conn: S.conn, ...opts }));
       if (!off.worker) return here();
       const seq = ++off.seq;
       return new Promise(res => {
@@ -135,8 +135,9 @@
         else { S.board.tracks.pop(); analyse(); tried.add(key(rats[b.i])); }
       }
       // then each one left, routed exactly in a window round it with whatever copper is there (BoardPlace.exact)
-      const done = new Set();
-      for (let k = 0; k < 20; k++) {
+      // (at most 20 of them, and 30 s in all: a board Freerouting left wide open is its job, not this)
+      const done = new Set(), until = Date.now() + 30000;
+      for (let k = 0; k < 20 && Date.now() < until; k++) {
         const rats = routable().filter(r => !done.has(key(r))); if (!rats.length) break;
         done.add(key(rats[0]));
         for (const margin of [4, 8]) {
@@ -236,7 +237,10 @@
           const keys = BoardPlace.movable(S.board, S.model, rats, { radius: reach, also: walls.parts });
           msg(`Round ${round} of ${ROUNDS}: ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"} left; moving ${keys.length} part${keys.length === 1 ? "" : "s"} near them…`);
           await breath();
-          const r = keys.length ? BoardPlace.nudge(S.board, S.model, keys, { clr: S.clr, hv: S.hv, netlist: S.netlist, conn: S.conn, seed: round, reach }) : { moved: [] };
+          // first the smallest shift or turn that lets a shut-in pin out (BoardPlace.access); else the annealing nudge
+          const acc = ((await offPage("access", open, {}).catch(() => [])) || []).filter(m => S.board.parts[m.key]);
+          if (acc.length) { acc.forEach(m => Object.assign(S.board.parts[m.key], m.to)); analyse(); msg(`Round ${round} of ${ROUNDS}: ${BoardPlace.describe(acc)} to free ${acc.map(m => m.frees).join(", ")}…`); await breath(); }
+          const r = acc.length ? { moved: acc } : keys.length ? BoardPlace.nudge(S.board, S.model, keys, { clr: S.clr, hv: S.hv, netlist: S.netlist, conn: S.conn, seed: round, reach }) : { moved: [] };
           // nothing moved: still take up the copper that walls them in, once per reach, and route again
           if (!r.moved.length && !walls.tracks.size && !walls.vias.size) { reach *= 1.5; fails++; continue; }
           await breath(); analyse(); ripUp(rats, r.moved, reach, walls); await breath();
