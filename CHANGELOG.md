@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.121.2] - 2026-10-28
+
+### Fixed
+- Board: dragging the board outline's corner taller no longer leaves stray bits of copper behind (teardrops and pours stayed where the tracks had been until the mouse stopped). They now move with the tracks while you drag.
+
 ## [3.121.1] - 2026-10-28
 
 ### Fixed

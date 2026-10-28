@@ -192,6 +192,10 @@
     Object.values(b.parts).forEach(mv); b.vias.forEach(mv); b.holes.forEach(mv); b.texts.forEach(mv);
     b.tracks.forEach(t => t.pts.forEach(mp)); b.zones.forEach(z => z.pts && z.pts.forEach(mp)); b.keepouts.forEach(k => k.pts.forEach(mp));
     if (b.sheet && b.sheet.locked && Number.isFinite(b.sheet.y)) b.sheet.y = +(b.sheet.y + dh).toFixed(4);
+    // the filled pours and teardrops move too: a light analyse (outline drag) keeps them, and left
+    // behind they drew as stray copper until the full analyse at the end (new arrays: some are shared)
+    const sp = pts => pts.map(q => [q[0], +(q[1] + dh).toFixed(4)]);
+    S.fills.forEach(f => { if (f.pts) f.pts = sp(f.pts); f.ops = f.ops.map(op => ({ ...op, ...(op.pts ? { pts: sp(op.pts) } : {}), ...(Number.isFinite(op.y) ? { y: +(op.y + dh).toFixed(4) } : {}) })); });
     b.outline.h = h; S.view.oy -= dh * S.view.scale; S.measure = null;
   }
 
