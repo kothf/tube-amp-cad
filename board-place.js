@@ -716,7 +716,8 @@
       board.tracks.forEach((t, ti) => { if (nets.has(t.net)) rip.tracks.add(ti); });
       board.vias.forEach((v, vi) => { if (nets.has(v.net)) rip.vias.add(vi); });
     }
-    const mayT = ti => !board.tracks[ti].locked && (!rip || rip.tracks.has(ti)), mayV = vi => !board.vias[vi].locked && (!rip || rip.vias.has(vi));
+    const stay = o.stay || new Set();   // tracks a try before found no way to lay again: left whole
+    const mayT = ti => !board.tracks[ti].locked && !stay.has(ti) && (!rip || rip.tracks.has(ti)), mayV = vi => !board.vias[vi].locked && (!rip || rip.vias.has(vi));
     board.tracks.forEach((t, ti) => {
       if (!mayT(ti)) return;
       const pieces = []; let cur = null, touched = false;
@@ -748,7 +749,7 @@
     ends.forEach(e => {
       const k = keep.findIndex(t => t.pts.some(p => Math.hypot(p[0] - e.x, p[1] - e.y) < 1e-3) && t.layer === e.layer), it = c2.items.find(q => q.kind === "track" && q.ti === base + k);
       const net = nameId.has(e.net) ? nameId.get(e.net) : it && typeof it.net === "number" ? it.net : null;
-      if (it && net !== null && !quiet(net)) terms.push({ x: e.x, y: e.y, layers: [e.layer], net, cl: it.cluster, was: was(trackCl.get(e.ti)), w: e.w });
+      if (it && net !== null && !quiet(net)) terms.push({ x: e.x, y: e.y, layers: [e.layer], net, cl: it.cluster, was: was(trackCl.get(e.ti)), w: e.w, ti: e.ti });
     });
     // the connections the window must make: what was joined before, joined again, and the open connection; per
     // such group its pieces joined by the shortest links (each cut end once)
@@ -770,6 +771,7 @@
     const near = c2.items.filter(it => Math.max(it.s[0], it.s[2]) + it.r > G.x1 - 4 && Math.min(it.s[0], it.s[2]) - it.r < G.x2 + 4 && Math.max(it.s[1], it.s[3]) + it.r > G.y1 - 4 && Math.min(it.s[1], it.s[3]) - it.r < G.y2 + 4);
     const viaR = R.viaPad / 2;
     const allowed = Array.from({ length: nc }, () => []), viaOk = Array.from({ length: nx * ny }, () => []);
+    const SP = C.socketPads(board, model);
     const blocked = (x, y, Ly, k, rr, strict) => {
       const n = pairs[k].net;
       if (C.edgeDist(x, y, board.outline) < (R.edgeClearance || 0.5) + rr) return true;
@@ -779,6 +781,8 @@
         let gp = need(n, it.net === "short" ? null : it.net);
         // entering a pad, a track may pass its footprint's other pins as close as they are to each other (not a via)
         if (Ly && it.kind === "pad" && ctx.pinGap.has(it.pad.part) && pairs[k].ends.some(e => e.pad && e.pad.pad.part === it.pad.part && C.segDist(e.pad.s[0], e.pad.s[1], e.pad.s[2], e.pad.s[3], x, y) <= e.pad.r)) gp = Math.min(gp, ctx.pinGap.get(it.pad.part));
+        // under a valve socket's body, a track or via may pass its pins as close as they are to each other (the board's socket rule)
+        if (it.kind === "pad" && SP.has(it.pad)) { const sb = SP.get(it.pad); if (Math.hypot(x - sb.x, y - sb.y) <= sb.r) gp = Math.min(gp, sb.gap - 0.02); }
         const D = it.r + rr + gp, d = C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y);
         if (d < (strict ? Math.sqrt(D * D + pitch * pitch / 4) : D) - 1e-6) return true;
       }
@@ -788,7 +792,7 @@
     };
     for (let l = 0; l < L.length; l++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
       const c = cell(l, i, j), x = cx(c), y = cy(c);
-      for (let k = 0; k < K; k++) if (!blocked(x, y, L[l], k, widths[k] / 2, true)) allowed[c].push(k);
+      for (let k = 0; k < K; k++) if (!blocked(x, y, L[l], k, widths[k] / 2, false)) allowed[c].push(k);
     }
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const c = cell(0, i, j); for (const k of allowed[c]) if (allowed[cell(1, i, j)].includes(k) && !blocked(cx(c), cy(c), null, k, viaR, false)) viaOk[j * nx + i].push(k); }
     // the terminals' cells: a pad's nearest cell on each of its layers, a cut end's nearest on its layer
@@ -797,10 +801,24 @@
     const padCells = (e, l) => { const P = e.pad, out = [nearestCell(e, l)]; for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const c = cell(l, i, j); if (c !== out[0] && C.segDist(P.s[0], P.s[1], P.s[2], P.s[3], cx(c), cy(c)) <= P.r - widths[0] / 4) out.push(c); } return out; };
     const endCells = (e, l) => (!e.layers.includes(L[l]) ? [] : e.pad ? padCells(e, l) : [nearestCell(e, l)]);
     // (only a pad's cells clear of other copper, the next pin of a small part say, unless none is)
+    const term = pairs.map(() => new Set());
     pairs.forEach((p, k) => p.ends.forEach(e => L.forEach((Ly, l) => {
       const all = endCells(e, l), clear = all.filter(c => !blocked(cx(c), cy(c), Ly, k, widths[k] / 2, false));
-      (clear.length ? clear : all.slice(0, 1)).forEach(c => { if (!allowed[c].includes(k)) allowed[c].push(k); });
+      (clear.length ? clear : all.slice(0, 1)).forEach(c => { if (!allowed[c].includes(k)) allowed[c].push(k); term[k].add(c); });
     })));
+    // the steps between neighbouring cells, and the connections that may take each: clear at its middle too
+    // (the cells are checked at their middles; a step out of a terminal's own cell is the check's afterwards)
+    const steps = new Map(), stepKey = (c, d) => (c < d ? c * nc + d : d * nc + c);
+    for (let l = 0; l < L.length; l++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const c = cell(l, i, j);
+      [[1, 0], [0, 1]].forEach(([di, dj]) => {
+        if (i + di >= nx || j + dj >= ny) return;
+        const d = cell(l, i + di, j + dj), mx = (cx(c) + cx(d)) / 2, my = (cy(c) + cy(d)) / 2;
+        const ks = allowed[c].filter(k => allowed[d].includes(k) && (term[k].has(c) || term[k].has(d) || !blocked(mx, my, L[l], k, widths[k] / 2, false)));
+        if (ks.length) steps.set(stepKey(c, d), ks);
+      });
+    }
+    const stepOk = (c, d, k) => { const ks = steps.get(stepKey(c, d)); return !!ks && ks.includes(k); };
     // the formula; first without vias (a via only where nothing else will do)
     function attempt(useVias) {
       const S = root.BoardSat.solver(), X = new Map(), V = (c, k) => X.get(c * K + k);
@@ -809,7 +827,7 @@
       if (termCells.some(tc => tc.some(list => !list.length))) return { sat: false, why: "terminal" };
       // edges: neighbours on a layer, and a via between a cell's two layers
       const edges = [], inc = Array.from({ length: nc }, () => []);
-      const share = (c, d) => allowed[c].filter(k => V(d, k));
+      const share = (c, d) => (steps.get(stepKey(c, d)) || []).filter(k => V(c, k) && V(d, k));
       for (let l = 0; l < L.length; l++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
         const c = cell(l, i, j);
         [[1, 0], [0, 1]].forEach(([di, dj]) => { if (i + di >= nx || j + dj >= ny) return; const d = cell(l, i + di, j + dj), ks = share(c, d); if (!ks.length) return; const e = { v: S.newVar(), c, d, ks }; edges.push(e); inc[c].push(e); inc[d].push(e); });
@@ -867,11 +885,17 @@
         const l = layerOf(c), i = c % nx, j = Math.floor(c / nx) % ny, next = [];
         [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([di, dj]) => { if (i + di >= 0 && j + dj >= 0 && i + di < nx && j + dj < ny) next.push(cell(l, i + di, j + dj)); });
         if (viaOk[j * nx + i].includes(k)) next.push(cell(1 - l, i, j));
-        next.forEach(d => { if (!seen.has(d) && has(d)) { seen.add(d); q.push(d); } });
+        next.forEach(d => { if (!seen.has(d) && has(d) && (layerOf(d) !== l || stepOk(c, d, k))) { seen.add(d); q.push(d); } });
       }
       return false;
     };
-    for (let k = 0; k < K; k++) if (!reaches(k)) return { sat: false, pairs: K, unknown: false, why: "no path" };
+    // a piece of copper taken up that has no way back (its cut end walled in at the window's edge) stays where it
+    // is, and the window is tried again; the open connection itself with no way: none
+    for (let k = 0; k < K; k++) if (!reaches(k)) {
+      const tis = pairs[k].ends.filter(e => e.ti !== undefined).map(e => e.ti);
+      if (tis.length && !pairs[k].ends.some(e => e.pad === A || e.pad === Bp) && (o.tries || 0) < 4) return exact(board, model, conn, rats, { ...o, rip: o.rip === undefined ? rip : o.rip, stay: new Set([...stay, ...tis]), tries: (o.tries || 0) + 1 });
+      return { sat: false, pairs: K, unknown: false, why: "no path" };
+    }
     let F = attempt(false);
     if (F.sat !== true && F.why !== "terminal") F = attempt(true);
     if (F.sat !== true) return { sat: false, pairs: K, unknown: F.sat === null, why: F.why };
@@ -926,7 +950,7 @@
         const [i, j] = ij(c), l = layerOf(c);
         D4.forEach(([di, dj], nh) => {
           const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= nx || b >= ny) return;
-          const e = cell(l, a, b); if (!ok(e)) return;
+          const e = cell(l, a, b); if (!ok(e) || !stepOk(c, e, k)) return;
           const nd = d + 1 + (h < 4 && h !== nh ? 0.5 : 0), ns = e * 5 + nh;
           if (nd < dist[ns] - 1e-9) { dist[ns] = nd; from[ns] = st; pushQ(ns, nd); }
         });
@@ -954,6 +978,66 @@
     return { sat: true, cut: { tracks: cutT, vias: cutV }, add, pairs: K };
   }
 
+  /** Pin access: for each part with a shut-in pin (escape), the smallest shift or turn of it or of a part walling
+      it in after which the pin gets out, counted with the copper in its way taken up (as Route & nudge does).
+      opts: as escape's, plus netlist, reach (mm a part may go, 5.08), tries (poses checked, 80). Returns
+      [{ key, ref, from, to, frees }] (one per shut-in part at most, none moving a part twice); board unchanged */
+  function access(board, model, conn, rats, opts) {
+    const o = opts || {}, C = B(), reach = o.reach || 5.08, step = 1.27, names = model.names;
+    const shut = escape(board, model, conn, rats, o).filter(e => !e.ok);
+    const out = [], used = new Set();
+    let tries = o.tries || 80;
+    const poured = new Set((board.zones || []).map(z => z.net));
+    for (const e of shut) {
+      // the copper that comes up anyway: the shut pins' nets and the walls
+      const nets = new Set(e.pins.filter(p => !p.out).map(p => names[p.net]));
+      const wallT = new Set(e.walls.filter(w => w.kind === "track").map(w => w.ti)), wallV = new Set(e.walls.filter(w => w.kind === "via").map(w => w.vi));
+      const cands = [e.key, ...e.walls.filter(w => w.kind === "part").map(w => w.key)].filter((k, i, a) => a.indexOf(k) === i && !used.has(k)).filter(k => {
+        const g = model.parts.find(q => q.key === k);
+        return g && g.fp && g.place && !g.place.locked && !FIXED.has(g.type) && area(C.partBox(g)) <= BIG;
+      });
+      if (!cands.length) continue;
+      const ps = placeState(board, model, o);
+      // every pose within reach, nearest first (a turn counts as two grid steps)
+      const poses = [];
+      for (const k of cands) {
+        const P = ps.pl.get(k), n = Math.round(reach / step);
+        for (let t = 0; t < 4; t++) for (let i = -n; i <= n; i++) for (let j = -n; j <= n; j++) {
+          if (!t && !i && !j) continue;
+          poses.push({ k, x: +(P.x + i * step).toFixed(4), y: +(P.y + j * step).toFixed(4), rot: ((P.rot || 0) + t) & 3, cost: Math.hypot(i, j) + (t ? 2 : 0) });
+        }
+      }
+      poses.sort((a, b) => a.cost - b.cost);
+      for (const q of poses) {
+        if (tries <= 0) break;
+        const P = ps.pl.get(q.k), was = { ...P };
+        Object.assign(P, { x: q.x, y: q.y, rot: q.rot });
+        const ok = ps.legal(q.k);
+        Object.assign(P, was);
+        if (!ok) continue;
+        tries--;
+        // the board with the part there and the copper of its nets, of the shut pins' nets and of the walls taken up
+        const g = model.parts.find(x => x.key === q.k), mine = new Set(model.pads.filter(p => p.part === q.k && p.net !== null).map(p => names[p.net]).filter(nm => !poured.has(nm)));
+        const b1 = { ...board, parts: { ...board.parts, [q.k]: { ...board.parts[q.k], x: q.x, y: q.y, rot: q.rot } },
+          tracks: board.tracks.filter((t, ti) => t.locked || !(nets.has(t.net) || mine.has(t.net) || wallT.has(ti))),
+          vias: board.vias.filter((v, vi) => v.locked || !(nets.has(v.net) || mine.has(v.net) || wallV.has(vi))) };
+        const m1 = C.model(b1, o.netlist), c1 = C.connectivity(b1, m1.pads);
+        const keys = new Set([e.key, q.k]), pads1 = new Set(m1.pads.filter(p => keys.has(p.part)).map(p => `${p.x.toFixed(3)},${p.y.toFixed(3)}`));
+        const r1 = c1.rats.filter(r => pads1.has(`${r.x1.toFixed(3)},${r.y1.toFixed(3)}`) || pads1.has(`${r.x2.toFixed(3)},${r.y2.toFixed(3)}`));
+        if (!r1.length) continue;
+        const o1 = { ...o, clr: C.clearanceRules(b1, m1, o.hv, o.netlist) }, esc1 = escape(b1, m1, c1, r1, o1);
+        // and a track's way on from there to the other end (as bridge lays it), for the shut pins' own connections
+        const own = r1.filter(r => nets.has(names[r.net]));
+        if (esc1.every(x => x.ok) && own.every(r => bridge(b1, m1, c1, [r], { ...o1, margin: 10 }))) {
+          used.add(q.k);
+          out.push({ key: q.k, ref: g.ref, from: { x: was.x, y: was.y, rot: was.rot || 0 }, to: { x: q.x, y: q.y, rot: q.rot }, frees: `${e.ref} pin${e.pins.filter(p => !p.out).length === 1 ? "" : "s"} ${e.pins.filter(p => !p.out).map(p => p.num).join(", ")}` });
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
   /** "VT1 pin 2 (shut in by R3, a track on B.Cu)": the shut-in pins in words */
   function describeEscape(esc) {
     return esc.filter(e => !e.ok).map(e => {
@@ -962,5 +1046,5 @@
     }).join("; ");
   }
 
-  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, exact, describeEscape, FIXED, rng };
+  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, exact, access, describeEscape, FIXED, rng };
 })(typeof window !== "undefined" ? window : globalThis);
