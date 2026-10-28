@@ -420,6 +420,10 @@ test("Freerouting: the board as a Specctra DSN design (nets, widths, clearances 
   assert.throws(() => BR.fromSes("(pcb x)", board, d, m.names), /Not a Specctra session/);
   // addresses as typed
   assert.equal(BR.address("192.168.1.20"), "http://192.168.1.20:37864"); assert.equal(BR.address("nuc:4000"), "http://nuc:4000"); assert.equal(BR.address(""), BR.DEFAULT_URL);
+  // the site's own behind a path: https keeps its port and the path stays (a trailing slash goes)
+  assert.equal(BR.address("https://aerocat.tech/freerouting/"), "https://aerocat.tech/freerouting"); assert.equal(BR.address("http://nuc/fr"), "http://nuc:37864/fr");
+  assert.equal(BR.serverUrl({ protocol: "https:", hostname: "aerocat.tech", origin: "https://aerocat.tech" }), "https://aerocat.tech/freerouting");
+  assert.equal(BR.serverUrl({ protocol: "http:", hostname: "localhost", origin: "http://localhost:8080" }), null); assert.equal(BR.serverUrl({ protocol: "https:", hostname: "kothf.github.io", origin: "https://kothf.github.io" }), null);
 });
 
 test("track width for a DC current (IPC-2221, outer layer) and the current of each net from the simulation", () => {

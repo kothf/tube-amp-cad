@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.120.0] - 2026-10-28
+
+### Added
+- Board: on aerocat.tech, **Route ▾ → Freerouting…** offers the site's own Freerouting server (at `/freerouting`, behind a login) beside an address of your own. A login the server wants first reads as "sign in", with a **Sign in ↗** button; the choice is kept per browser. A route through an https address asks Freerouting for at most 90 s, under the 100 s a proxy such as Cloudflare allows, and a busy server or one that took too long says so.
+
+### Changed
+- Board: a Freerouting address keeps its path (`https://host/freerouting`), and an https address keeps its own port instead of getting 37864.
+
 ## [3.119.0] - 2026-10-28
 
 ### Added

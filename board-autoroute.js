@@ -1,13 +1,16 @@
-/* The Board window's Auto-route: Freerouting's API server on this computer (BoardRoute). The button
-   stays grey until it answers; the routes come back as tracks and vias, one step to undo. Also the
-   Freerouting… dialog (its address, the commands to start it) and importing a .ses file by hand. */
+/* The Board window's Auto-route: Freerouting's API server on this computer, another one, or the site's own
+   (BoardRoute). The button stays grey until it answers; the routes come back as tracks and vias, one step
+   to undo. Also the Freerouting… dialog (the site's server or an address of your own, the commands to
+   start one) and importing a .ses file by hand. */
 (function (root) {
   "use strict";
   // app: what this part needs from board-app.js; returns what board-app.js uses of it
   root.BoardAutoroute = function (app) {
     const { $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render } = app;
     const ROUTER_KEY = "tubecad_router_url";
-    const router = { url: BoardRoute.DEFAULT_URL, up: false, why: "down", busy: false, timer: 0 };
+    // server: the site's own Freerouting (null where the page has none); a user's own address wins once saved
+    const router = { url: BoardRoute.DEFAULT_URL, up: false, why: "down", busy: false, timer: 0, server: BoardRoute.serverUrl() };
+    router.url = router.server || router.url;
     try { router.url = localStorage.getItem(ROUTER_KEY) || router.url; } catch (e) { /* no storage */ }
     // the heavy steps of board-place.js run in a worker (board-worker.js), so the window keeps drawing and
     // answering; where none starts (a page opened from a file), on the page, after a breath for the screen
@@ -33,7 +36,12 @@
     const pageOrigin = () => /^https?:/.test(location.origin) ? location.origin : "*";
     // what a probe found, in words: what to change on Freerouting's side
     function routerWhy(url, p) {
-      if (p.ok) return `Freerouting answers at ${url}.`;
+      if (p.ok) return url === router.server ? "The site's Freerouting server answers." : `Freerouting answers at ${url}.`;
+      if (url === router.server) {
+        if (p.why === "signin") return "The site's Freerouting server wants you to sign in first (once per browser, with your e-mail): press Sign in, then Test.";
+        return `The site's Freerouting server does not answer${p.why === "status" ? ` (${p.code})` : ""}: it may be down for now, or use your own below.`;
+      }
+      if (p.why === "signin") return `${url} wants you to sign in first: open it in this browser and log in, then Test.`;
       if (p.why === "cors") return `Freerouting runs at ${url} but does not let this page in: restart it with --api_server.cors_origins=${pageOrigin()} (the commands below have it).`;
       if (p.why === "status") return `Something answers at ${url} (${p.code}), but not Freerouting's API: check the address and port.`;
       return `No answer from ${url}. Is Freerouting's API server on? Started without --api_server.enabled=true (or with its window), it does not listen. In Docker, use the command below: the image's own command listens only inside the container. If the browser asked to reach devices on your network, allow it.`;
@@ -338,31 +346,43 @@
       b.tracks = tracks; b.vias = vias; S.sel = null; S.route = null;
       commit(`Removed ${gone} track${gone === 1 ? "" : "s"} and ${vgone} via${vgone === 1 ? "" : "s"}` + (kept ? `; ${kept} locked kept` : "") + "; Ctrl+Z brings them back");
     }
-    // Route ▾ → Freerouting…: the address (this computer or another on the network) and how to start it
+    // Route ▾ → Freerouting…: the site's server, or an address of your own (this computer or another on the
+    // network) and how to start it
+    const useServer = () => !!router.server && $("router-use-server").checked;
+    const chosen = () => useServer() ? router.server : BoardRoute.address($("router-addr").value);
+    function routerWhere() {
+      const srv = useServer();
+      $("router-own").hidden = srv; $("router-own-help").hidden = srv;
+      $("router-signin").hidden = !srv; $("router-signin").href = (router.server || "") + "/v1/system/status";
+    }
     function routerSetup() {
-      const origin = pageOrigin();
-      $("router-addr").value = router.url.replace(/^http:\/\//, "");
+      const origin = pageOrigin(), srv = !!router.server && router.url === router.server;
+      $("router-where").hidden = !router.server;
+      $("router-use-server").checked = srv; $("router-use-own").checked = !srv;
+      $("router-addr").value = srv ? "" : router.url.replace(/^http:\/\//, "");
       $("router-cmd-java").textContent = BoardRoute.command(origin); $("router-cmd-docker").textContent = BoardRoute.dockerCommand(origin);
       $("router-state").textContent = routerWhy(router.url, router);
-      $("router-modal").hidden = false; $("router-addr").focus();
+      routerWhere();
+      $("router-modal").hidden = false; (srv ? $("router-use-server") : $("router-addr")).focus();
     }
     async function routerTest() {
-      const url = BoardRoute.address($("router-addr").value), st = $("router-state");
+      const url = chosen(), st = $("router-state");
       if (!url) { st.textContent = "That is not an address: an IP or a name, and :port if not 37864"; return; }
-      st.textContent = `Asking ${url}…`;
+      st.textContent = `Asking ${url === router.server ? "the site's Freerouting server" : url}…`;
       st.textContent = routerWhy(url, await BoardRoute.probe(url, 3000));
     }
     function routerSave() {
-      const url = BoardRoute.address($("router-addr").value);
+      const url = chosen();
       if (!url) { $("router-state").textContent = "That is not an address: an IP or a name, and :port if not 37864"; return; }
       router.url = url; router.up = false; $("router-modal").hidden = true;
       try { localStorage.setItem(ROUTER_KEY, router.url); } catch (e) { /* no storage */ }
-      routerUi(); pollRouter().then(() => msg(router.up ? `Freerouting answers at ${router.url}` : `No Freerouting at ${router.url} yet: Auto-route stays grey until it answers`));
+      const name = url === router.server ? "the site's Freerouting server" : url;
+      routerUi(); pollRouter().then(() => msg(router.up ? `Freerouting answers at ${name}` : `No Freerouting at ${name} yet: Auto-route stays grey until it answers (Route ▾ → Freerouting… says why)`));
     }
     function importSes(file) {
       if (!file || !S.model) return;
       file.text().then(t => { try { msg(addRoutes(t, dsnOf())); } catch (e) { msg(`Not imported: ${e.message}`); } });
     }
-    return { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, unroute };
+    return { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerWhere, unroute };
   };
 })(window);

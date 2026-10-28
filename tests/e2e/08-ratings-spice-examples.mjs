@@ -296,6 +296,23 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
       `the Freerouting dialog keeps another computer's address (${addr[0]}) and shows the Java and Docker commands for this page`);
     await bw.evaluate(() => { localStorage.removeItem("tubecad_router_url"); BoardApp.router.url = BoardRoute.DEFAULT_URL; });
     await ctx.unroute("http://127.0.0.1:37864/**");
+    // the site's own Freerouting (on aerocat.tech; here this page's origin + /freerouting): its login answers a
+    // redirect, told as "sign in"; the dialog offers it beside an address of your own, which stays
+    const srv = new URL(U("")).origin + "/freerouting";
+    await ctx.route(srv + "/**", route => route.fulfill({ status: 302, headers: { location: "https://login.invalid/" }, body: "" }));
+    const so = await bw.evaluate(async s => { BoardApp.router.server = s; return (await BoardRoute.probe(s, 3000)).why; }, srv);
+    await bw.click("#btn-route"); await bw.click("#btn-router");
+    const own = await bw.evaluate(() => ({ where: !document.getElementById("router-where").hidden, own: document.getElementById("router-use-own").checked, addr: !document.getElementById("router-own").hidden }));
+    await bw.check("#router-use-server");
+    const sv = await bw.evaluate(() => ({ addr: document.getElementById("router-own").hidden, help: document.getElementById("router-own-help").hidden, signin: document.getElementById("router-signin").getAttribute("href") }));
+    await bw.click("#router-test"); await bw.waitForFunction(() => /sign in/.test(document.getElementById("router-state").textContent), null, { timeout: 8000 }).catch(() => {});
+    const st = await bw.evaluate(() => document.getElementById("router-state").textContent);
+    await bw.click("#router-save");
+    const saved = await bw.evaluate(() => [BoardApp.router.url, localStorage.getItem("tubecad_router_url")]);
+    check(so === "signin" && own.where && own.own && own.addr && sv.addr && sv.help && sv.signin === srv + "/v1/system/status" && /sign in/.test(st) && saved[0] === srv && saved[1] === srv,
+      `the site's Freerouting server: a login redirect reads as sign in ("${st.slice(0, 60)}…"); the dialog offers it beside your own address and keeps the choice (${saved[0]})`);
+    await bw.evaluate(() => { localStorage.removeItem("tubecad_router_url"); BoardApp.router.url = BoardRoute.DEFAULT_URL; BoardApp.router.server = null; });
+    await ctx.unroute(srv + "/**");
     // a mounting hole made plated in the inspector, on GND: a ring the bottom pour joins, still no violations
     const [hx, hy] = await bw.evaluate(() => { const h = BoardApp.state.board.holes[3]; BoardApp.fit(); return BoardApp.toScreen(h.x, h.y); });
     const pcb = await bw.locator("#pcb").boundingBox();
