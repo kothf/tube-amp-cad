@@ -148,13 +148,14 @@
     ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#0c1017"; ctx.beginPath(); ctx.arc(cx, cy, radius * 0.28, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#354457"; ctx.stroke();
     ctx.fillStyle = "#8ba0bc"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(tube.socket.split(/[ ,(]/)[0], cx, cy);
+    ctx.fillText(tube.socket.split(/[ ,(:]/)[0], cx, cy);
+    if (/top cap/i.test(tube.socket)) { ctx.fillStyle = "#ff8a80"; ctx.fillText("A: top cap", cx, cy + 12); }
     const n = tube.pinCount, pins = tube.pinout || [], pr = radius * 0.68;
     for (let i = 1; i <= n; i++) {
       const pd = pins.find(p => p.pin === i) || { pin: i, sym: String(i) };
       let ang;
       if (n === 9) ang = [0, 108, 144, 180, 216, 252, 288, 324, 0, 36][i];
-      else if (n === 8) ang = 112.5 + (i - 1) * 45;
+      else if (n === 8 || n === 7) ang = 112.5 + (i - 1) * 45;   // octal; B7G: 8 places, one left out at the gap
       else if (n === 4) ang = [0, 135, 225, 315, 45][i];
       else ang = 115 + (i - 1) * (310 / Math.max(n - 1, 1));
       ang = ang * Math.PI / 180;
@@ -171,7 +172,7 @@
       const nd = pr + 18;
       ctx.fillStyle = "#8fa6c2"; ctx.font = "7.5px sans-serif"; ctx.fillText(i, cx + nd * Math.cos(ang), cy + nd * Math.sin(ang));
     }
-    $("socket-name").textContent = tube.socket;
+    $("socket-name").textContent = `${tube.socket} · bottom view`;
     $("socket-note").textContent = tube.heaterWarning || "";
     // where the data comes from: the handbook page with its rated point and limits
     const b = tube.book, src = $("socket-source");

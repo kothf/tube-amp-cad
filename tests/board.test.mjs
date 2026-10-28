@@ -522,7 +522,7 @@ test("3D: every footprint's body and the drilled board are closed, outward solid
     for (const sec of type === "switch" ? [1, 2] : [1]) {
       const nl = { parts: Array.from({ length: sec }, (_, k) => ({ id: "c" + k, type, label: sec > 1 ? `X1.${k + 1}` : "X1", params, pins: pins.map(p => ({ id: p.id, net: 1 })) })) };
       const [g] = B.physicalParts(nl);
-      for (const o of g.options.concat(type === "tube" ? ["SOCKET-B9A", "SOCKET-B7G", "SOCKET-B9D", "SOCKET-OCTAL", "SOCKET-UX4"] : [])) {
+      for (const o of g.options.concat(type === "tube" ? ["SOCKET-B9A", "SOCKET-B7G", "SOCKET-B9D", "SOCKET-OCTAL", "SOCKET-UX4", "SOCKET-B9D-CAP", "SOCKET-B9A-CAP"] : [])) {
         if (seen.has(o)) continue; seen.add(o);
         const fp = B.footprint(o, g.members.flatMap(m => m.pins.map(p => (sec > 1 ? m.label.split(".").pop() + "." : "") + p.id)));
         for (const side of ["F", "B"]) for (const rot of [0, 1]) {
@@ -576,6 +576,51 @@ test("a via that joins nothing, or copper on one layer only, is reported", () =>
   assert.deepEqual(dang(), ["A via joins copper on F.Cu only"]);
   board.tracks.push({ layer: "B.Cu", w: 1, pts: [[60, 60], [70, 60], [70, 40]] });
   assert.deepEqual(dang(), ["A track end on B.Cu is not connected"], "joined on both layers: only the new track's loose end is left");
+});
+
+test("valve pinouts and sockets: the datasheets' pins on the right pads, a top cap's anode on its own pad, odd bases on wires", () => {
+  // the base's pin numbers of each symbol terminal, the footprint the board picks first, and the
+  // pads each terminal lands on there (a socket's are the pin numbers; wires are numbered in turn)
+  const pads = (tube, connection, label) => {
+    const params = { tube, connection: connection || "triode" }, pins = L.LIB.tube.pins({ params });
+    const [g] = B.physicalParts({ parts: [part("v", "tube", label || "VL1", params, Object.fromEntries(pins.map((p, i) => [p.id, i + 1])))] });
+    const fp = B.footprint(g.options[0], g.members.flatMap(m => m.pins.map(q => q.id))), on = {};
+    for (const [num, at] of B.padMap(g, fp)) at.forEach(o => { (on[o.pin] = on[o.pin] || []).push(num); });
+    return Object.assign({ fp: fp.name, fpPads: fp.pads.map(q => q.num), on }, L.LIB.tube.pinNumbers({ params, label: label || "VL1" }));
+  };
+  // ГУ-50: 1 cathode, 2 g1, 3 g2, 4 and 8 heater, 5 g3, 6 anode, 7 screen (the handbook sheet)
+  let p = pads("GU-50", "pentode");
+  assert.equal(p.A, "6"); assert.equal(p.G1, "2"); assert.equal(p.G2, "3"); assert.equal(p.K, "1,5");
+  assert.match(p.fp, /^WIRE-/, "its glass base has no board socket here");
+  assert.deepEqual(TUBE_DATABASE.find(t => t.commonName === "GU-50").pinout.filter(q => q.isHeater).map(q => q.pin), [4, 8]);
+  // 211 and 845 (RCA 4AZ): 1 grid, 2 and 4 filament, 3 plate; on a jumbo chassis socket
+  for (const t of ["211", "845"]) { p = pads(t); assert.equal(p.A, "3", t); assert.equal(p.G, "1", t); assert.equal(p.K, "2,4", t); assert.match(p.fp, /^WIRE-/, t); }
+  // ГМ-70: filament 2 and 3, anode 5, grid 7
+  p = pads("GM-70"); assert.equal(p.A, "5"); assert.equal(p.G, "7"); assert.equal(p.K, "2,3");
+  // 5842 / 417A (RCA 9V): plate 1, grid 4, 5, 7, 8, cathode 6, heater 3 and 9
+  p = pads("WE417A"); assert.equal(p.A, "1"); assert.equal(p.G, "4,5,7,8"); assert.equal(p.K, "6");
+  assert.deepEqual(TUBE_DATABASE.find(t => t.commonName === "WE417A").pinout.filter(q => q.isHeater).map(q => q.pin), [3, 9]);
+  // 6П45С = EL509: a magnoval socket (not a noval) with the anode's lead on the "cap" pad; the
+  // beam plates (2, 7) go to the cathode (9) as the symbol draws them
+  p = pads("6P45S", "pentode");
+  assert.equal(p.fp, "SOCKET-B9D-CAP"); assert.equal(p.A, "cap"); assert.equal(p.G1, "1,8"); assert.equal(p.G2, "3,6"); assert.equal(p.K, "9,2,7");
+  const f = B.footprint("SOCKET-B9D-CAP"), cap = f.pads.find(q => q.num === "cap");
+  assert.ok(cap && Math.hypot(cap.x, cap.y) > B.SOCKETS.B9D.body / 2, "the cap's pad stands clear of the socket");
+  // 6Ж32П = EF86: grid 9, suppressor 8 to the cathode
+  p = pads("6Zh32P", "pentode"); assert.equal(p.G1, "9"); assert.equal(p.K, "3,8"); assert.equal(p.A, "6");
+  // a triode-connected pentode's screen joins its anode; EL34's g3 (pin 1) its cathode
+  p = pads("EL34", "triode"); assert.equal(p.A, "3,4"); assert.equal(p.G, "5"); assert.equal(p.K, "8,1");
+  // sockets by base: subminiatures with wire leads are not B7G valves, nuvistors not 12-pin sockets
+  assert.match(pads("6S3B").fp, /^WIRE-/); assert.match(pads("6S51N").fp, /^WIRE-/);
+  assert.equal(pads("6S1P").fp, "SOCKET-B7G"); assert.equal(pads("12AX7").fp, "SOCKET-B9A"); assert.equal(pads("6SN7GT").fp, "SOCKET-OCTAL"); assert.equal(pads("300B").fp, "SOCKET-UX4");
+  // every valve: each symbol terminal on at least one pad of its first footprint
+  for (const t of TUBE_DATABASE) for (const conn of L.tubeKind(t) === "pentode" ? ["triode", "pentode"] : ["triode"]) {
+    const q = pads(t.commonName, conn), want = L.LIB.tube.pins({ params: { tube: t.commonName, connection: conn } }).map(x => x.id);
+    want.filter(id => !(t.commonName === "6Ts13P" && id === "A2")).forEach(id => {
+      assert.ok(q[id], `${t.commonName} (${conn}): ${id} has no pin`);
+      assert.ok((q.on[id] || []).length && q.on[id].every(n => q.fpPads.includes(n)), `${t.commonName} (${conn}): ${id} on no pad of ${q.fp}`);
+    });
+  }
 });
 
 test("power transistors: hFE inside the datasheet's range at its test point (VCE = 5 V); laterals' VGS at 3 A", () => {

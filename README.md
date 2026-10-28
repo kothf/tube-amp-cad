@@ -388,7 +388,11 @@ the circuit file, so one file holds both.
   - pots (9, 16 and 24 mm) and a 3296W trimmer;
   - real tube sockets (B9A noval, B7G, Magnoval, octal, UX4), drawn from the
     component side; both sections of a dual tube share one socket, each on
-    its own pins;
+    its own pins; a valve with its anode on a top cap gets a "cap" pad for
+    the lead to it, and the suppressor grid joins the cathode (a
+    triode-connected pentode's screen its anode); valves on bases with no
+    board socket here (wire-lead subminiatures, nuvistors, 211, 845, ГМ-70,
+    ГУ-50, 6С33С) go on wire pads to a chassis socket;
   - board-mount EI transformers and chokes (EI30 to EI96, primary on one
     side, secondary on the other), with pins named as in the schematic;
   - toggle switches (SPDT, DPDT for a two-section switch), screw terminals

@@ -715,6 +715,11 @@
       ctx.beginPath(); ctx.arc(0, -8, 26, Math.PI, 2 * Math.PI); ctx.lineTo(26, 14); ctx.arc(0, 14, 26, 0, Math.PI); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.lineWidth = 1.6;
       const cathode = () => {
+        if (t && t.pinout && t.pinout.some(p => /^F/.test(p.sym)) && !t.pinout.some(p => /^K/.test(p.sym))) {
+          // directly heated (IEC 60617): the filament is the cathode, its two legs joined at the K terminal
+          line(ctx, [0, 50, 0, 44, -8, 44, -8, 36, 0, 26, 8, 36, 8, 44, 0, 44]);
+          return;
+        }
         ctx.beginPath(); ctx.moveTo(0, 50); ctx.lineTo(0, 24); ctx.arc(8, 24, 8, Math.PI, 2 * Math.PI); ctx.lineTo(16, 27); ctx.stroke();
         ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(6.5, 46); ctx.lineTo(6.5, 32); ctx.arc(10, 32, 3.5, Math.PI, 2 * Math.PI); ctx.lineTo(13.5, 46); ctx.stroke();
@@ -1742,6 +1747,10 @@
           out.G = pick(tp === "T" ? ["GT"] : twin ? ["G" + sec, "G1" + q] : ["G", "G1"]);
           out.G1 = pick(["G1" + q, "G1"]);
           out.G2 = pick(["G2" + q, "G2"]);
+          // the symbol ties the suppressor grid (beam plates) to the cathode, and a triode-connected
+          // pentode's screen to its anode: their pins join those nets on the board
+          if (tp !== "T") k = k.concat(pick(["G3"]));
+          if (kind === "pentode" && (c.params.connection || kind) === "triode") out.A = out.A.concat(out.G2);
         }
         out.K = k;
         if (heater.some(p => !k.includes(p))) out.H = heater;

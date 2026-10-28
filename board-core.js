@@ -372,7 +372,9 @@
     "UX4": { title: "UX4 4-pin", n: 4, dia: 22.2, step: 90, offset: -0.5, body: 38, drill: 3.4, padD: 5 },
     "UX6": { title: "UX6 6-pin", n: 6, dia: 19.05, step: 60, offset: -0.5, body: 38, drill: 3.4, padD: 5 }
   };
-  function socket(kind, nPins) {
+  // A valve with its anode (or a rectifier's) on a top cap: one more pad, "cap", behind the socket
+  // (away from its key) for the lead from the cap.
+  function socket(kind, nPins, cap) {
     const s = SOCKETS[kind] || { title: `${nPins}-pin socket`, n: nPins, dia: 15, step: 360 / (nPins + 1), offset: 0, body: 26, drill: 1.3, padD: 2.4 };
     const pads = [];
     for (let k = 1; k <= s.n; k++) {
@@ -381,7 +383,12 @@
     }
     const silk = [{ t: "circle", x: 0, y: 0, r: s.body / 2 }, { t: "circle", x: 0, y: 0, r: s.dia / 2 - s.padD }];
     silk.push({ t: "line", x1: 0, y1: s.body / 2 - 2.5, x2: 0, y2: s.body / 2 + 0.5 });   // the gap / key, down
-    return fp(SOCKETS[kind] ? `SOCKET-${kind}` : `SOCKET-${nPins}`, `Tube socket, ${s.title}, top view`, pads, silk);
+    if (cap) {
+      const y = -s.body / 2 - 3.5;
+      pads.push(pad("cap", 0, y, 3, 1.3, "circle", "cap"));
+      silk.push({ t: "circle", x: 0, y, r: 2.6 });
+    }
+    return fp(`${SOCKETS[kind] ? `SOCKET-${kind}` : `SOCKET-${nPins}`}${cap ? "-CAP" : ""}`, `Tube socket, ${s.title}, top view${cap ? ", with a pad for the top-cap lead" : ""}`, pads, silk);
   }
   // wires to a chassis-mounted part (transformer, choke, speaker, pot, jack, mains, supply)
   function wirePads(names) {
@@ -531,7 +538,7 @@
     if (name === "SW-PUSH-6MM") return push6();
     if ((m = /^XFMR-EI(\d+)-(SE|PP|PTP|PT|IS)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], m[2]);
     if ((m = /^CHOKE-EI(\d+)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], "CHOKE");
-    if ((m = /^SOCKET-([A-Z0-9]+)$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1]) : socket(m[1]);
+    if ((m = /^SOCKET-([A-Z0-9]+)(-CAP)?$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1], !!m[2]) : socket(m[1], 0, !!m[2]);
     if ((m = /^DIP-(\d+)$/.exec(name)) && [8, 14, 16].includes(+m[1])) return dip(+m[1]);
     if ((m = /^STAR-(M3|M4)$/.exec(name))) return starPoint(m[1]);
     if ((m = /^(CHIP|LED)-(\d{4})$/.exec(name)) && CHIPS[m[2]] && (m[1] === "CHIP" || ["0805", "1206"].includes(m[2]))) return chip(m[2], m[1] === "LED");
@@ -603,14 +610,13 @@
   const AXIAL_FOR_WATTS = { "": 10.16, "0.125": 7.62, "0.25": 10.16, "0.5": 12.7, "1": 15.24, "2": 20.32, "3": 25.4, "5": 30.48, "10": 40.64, "20": 50.8 };
   const radialFor = c => { const u = c * 1e6; return u <= 4.7 ? [5, 2] : u <= 10 ? [6.3, 2.5] : u <= 47 ? [8, 3.5] : u <= 100 ? [10, 5] : u <= 220 ? [12.5, 5] : u <= 470 ? [16, 7.5] : u <= 1000 ? [18, 7.5] : [22, 10]; };
   const boxFor = c => (c <= 10e-9 ? 7.5 : c <= 100e-9 ? 10 : c <= 470e-9 ? 15 : 22.5);
+  // The socket a valve's base fits, "-CAP" when its anode is on a top cap; null for the bases with
+  // no board socket here (wire-lead subminiatures, nuvistors, the glass bases of 6С33С, ГУ-50, 6П36С,
+  // the jumbo 4-pin of the 211 and 845, ГМ-70's): those go on wires to a chassis socket
+  const SOCKET_OF = [[/Magnoval|B9D/i, "B9D"], [/Noval|B9A/i, "B9A"], [/B7G|^Miniature/i, "B7G"], [/Octal|K8A/i, "OCTAL"], [/UX4/i, "UX4"]];
   function socketFor(tube) {
-    const s = (tube && tube.socket) || "";
-    if (/Noval/i.test(s)) return "SOCKET-B9A";
-    if (/B7G|Miniature/i.test(s)) return "SOCKET-B7G";
-    if (/Magnoval|B9D/i.test(s)) return "SOCKET-B9D";
-    if (/Octal|K8A/i.test(s)) return "SOCKET-OCTAL";
-    if (/UX4/i.test(s)) return "SOCKET-UX4";
-    return `SOCKET-${(tube && tube.pinCount) || 9}`;
+    const s = (tube && tube.socket) || "", k = SOCKET_OF.find(([re]) => re.test(s));
+    return k ? `SOCKET-${k[1]}${/top cap/i.test(s) ? "-CAP" : ""}` : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -772,7 +778,11 @@
       }
       // an op-amp's package; its amplifiers (DA1.1 … DA1.4) share it
       case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "DIP-14" : "DIP-8", `WIRE-${wires}`]; }
-      case "tube": { const d = socketFor(L.tubeByName(p.tube)); return [d, ...["SOCKET-B9A", "SOCKET-B7G", "SOCKET-B9D", "SOCKET-OCTAL", "SOCKET-UX4"].filter(a => a !== d), `WIRE-${wires}`]; }
+      case "tube": {
+        const t = L.tubeByName(p.tube), d = socketFor(t), cap = t && /top cap/i.test(t.socket) ? "-CAP" : "";
+        const all = ["B9A", "B7G", "B9D", "OCTAL", "UX4"].map(k => `SOCKET-${k}${cap}`);
+        return d ? [d, ...all.filter(a => a !== d), `WIRE-${wires}`] : [`WIRE-${wires}`, ...all];
+      }
       default: return [`WIRE-${wires}`];
     }
   }
@@ -1289,9 +1299,10 @@
     const out = new Map();
     if (board.rules.socketBody === false) return out;
     model.parts.forEach(g => {
-      const m = g.fp && g.place && /^SOCKET-(.+)$/.exec(g.fp.name); if (!m) return;
-      const S = SOCKETS[m[1]], pads = model.pads.filter(p => p.part === g.key), cap = p => padCapsule(p);
-      const body = S ? S.body / 2 : Math.max(...g.fp.pads.map(p => Math.hypot(p.x, p.y))) + 4;
+      const m = g.fp && g.place && /^SOCKET-(.+?)(-CAP)?$/.exec(g.fp.name); if (!m) return;
+      // the top cap's pad stands outside the body
+      const S = SOCKETS[m[1]], pads = model.pads.filter(p => p.part === g.key && p.num !== "cap"), cap = p => padCapsule(p);
+      const body = S ? S.body / 2 : Math.max(...g.fp.pads.filter(p => p.num !== "cap").map(p => Math.hypot(p.x, p.y))) + 4;
       pads.forEach(p => {
         const gp = Math.min(...pads.filter(q => q !== p).map(q => { const a = cap(p), b = cap(q); return segSeg(a.s, b.s) - a.r - b.r; }));
         out.set(p, { x: g.place.x, y: g.place.y, r: body, gap: gp });

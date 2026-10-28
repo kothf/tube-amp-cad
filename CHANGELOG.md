@@ -6,6 +6,26 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.122.0] - 2026-10-28
+
+### Fixed
+- Valve pinouts checked against the datasheets; these were wrong:
+  - **ГУ-50**: cathode 1, g1 2, g2 3, heater 4 and 8, g3 5, anode 6, internal screen 7 (was heater 1 and 7, anode 5). The heater note said pins 1 & 7.
+  - **211** and **845** (RCA basing 4AZ): grid 1, filament 2 and 4, plate 3 (plate and grid were on 2 and 3).
+  - **ГМ-70**: filament 2 and 3, anode 5, grid 7, on its own 25 mm base (was a 4-pin layout).
+  - **WE417A / 5842** (RCA 9V): plate 1, heater 3 and 9, grids 4, 5, 7, 8, cathode 6 (heater was on 4 and 5, which are grids).
+  - **6П45С** (= EL509): grids 1 and 8, beam plates 2 and 7, screen 3 and 6, cathode 9, the anode on the top cap. Its anode had no pin at all, and it got a noval footprint for its magnoval base.
+  - **6Ж32П** (= EF86): the control grid (9) and suppressor (8) were missing, so its grid went on no pad.
+  - **5Ц4С**: indirectly heated, its cathode joined to heater pin 8 (the note said the filament is the cathode).
+- Board: a valve whose anode is on a top cap (6П45С, 6Ц13П) gets a socket with a **cap** pad for the lead to it (`SOCKET-B9D-CAP` …); before, the anode was on no pad.
+- Board: the suppressor grid or beam plates (EL34 pin 1, EF86 pin 8, EL509 pins 2 and 7 …) join the cathode, as the symbol draws them, and a triode-connected pentode's screen joins its anode. Before, those pins were left unconnected on the board.
+- Board: subminiature valves with wire leads got a B7G socket ("Subminiature" matched "miniature"). They, the nuvistors and the valves on bases with no board socket here (211, 845, ГМ-70, ГУ-50, 6С33С, the glass-base types) now go on wire pads to a chassis socket instead of a made-up round footprint.
+- Schematic: directly heated valves (300B, 2A3, 211, 845, ГМ-70, 6С4С, 5U4G …) are drawn with a filament, not an indirectly heated cathode.
+- Curve tracer: the socket view says it is the bottom view, places a B7G base's 7 pins on its 8 places with the gap (they were spread evenly), and marks a top-cap anode.
+
+### Added
+- 3D board: valves are drawn at their datasheet size where it is known (EL84, 6П1П, EL34, 6L6GC, KT88, 6V6GT, 6AS7G, GZ34, 300B, 2A3/6С4С, 6П45С and their analogs), with the top cap where there is one.
+
 ## [3.121.2] - 2026-10-28
 
 ### Fixed
