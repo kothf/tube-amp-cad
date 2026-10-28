@@ -313,6 +313,31 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
       `the site's Freerouting server: a login redirect reads as sign in ("${st.slice(0, 60)}…"); the dialog offers it beside your own address and keeps the choice (${saved[0]})`);
     await bw.evaluate(() => { localStorage.removeItem("tubecad_router_url"); BoardApp.router.url = BoardRoute.DEFAULT_URL; BoardApp.router.server = null; });
     await ctx.unroute(srv + "/**");
+    // the server page (Status ↗ in the dialog): what a Freerouting says about itself, in words, and the routes this browser sent
+    const fr = "http://127.0.0.1:37864";
+    let prof = null;
+    await ctx.route(fr + "/**", async (route, req) => {
+      if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      const u = new URL(req.url()).pathname, j = body => route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
+      if (u === "/v1/system/status") return j({ status: "OK", cpu_load: 0.3, ram_used: 24, ram_available: 6, storage_available: 148845, session_count: 2 });
+      if (u === "/v1/system/environment") return j({ freerouting_version: "2.5.0", app_started_at: new Date(Date.now() - 3 * 3600e3).toISOString(), java: "25.0.2", host: "Linux", architecture: "amd64" });
+      if (u === "/v1/sessions/list") { prof = req.headers()["freerouting-profile-id"]; return j([{ id: "s1" }, { id: "s2" }]); }
+      if (u === "/v1/jobs/list/s1") return j([{ id: "j1", name: "amp-07", state: "COMPLETED", created_at: "2026-10-28T08:00:00Z", started_at: "2026-10-28T08:00:01Z", finished_at: "2026-10-28T08:00:08Z" }]);
+      if (u === "/v1/jobs/list/s2") return j([{ id: "j2", name: "amp-02", state: "RUNNING", created_at: "2026-10-28T09:00:00Z" }]);
+      return route.fulfill({ status: 404, body: "" });
+    });
+    await bw.click("#btn-route"); await bw.click("#btn-router");
+    const stHref = await bw.evaluate(() => document.getElementById("router-status").getAttribute("href"));
+    await bw.click("#router-cancel");
+    const sp = await open("frstatus", stHref);
+    await sp.waitForFunction(() => document.querySelectorAll("#jobs tr").length === 3 && /2\.5\.0/.test(document.getElementById("env").textContent), null, { timeout: 15000 }).catch(() => {});
+    const sv2 = await sp.evaluate(() => ({ say: document.getElementById("say").textContent, pill: document.getElementById("pill").textContent, cpu: document.getElementById("cpu").textContent, ram: document.getElementById("ram").textContent, disk: document.getElementById("disk").textContent,
+      env: document.getElementById("env").textContent, jobs: [...document.querySelectorAll("#jobs tr")].map(r => r.textContent), limits: document.getElementById("limits-card").hidden, w: document.body.scrollWidth, iw: innerWidth }));
+    await sp.close();
+    await ctx.unroute(fr + "/**");
+    check(/url=http%3A%2F%2F127\.0\.0\.1%3A37864/.test(stHref) && /is up and idle/.test(sv2.say) && sv2.pill === "Up · idle" && sv2.cpu === "0.3 %" && sv2.ram === "24 MB of 30 MB" && sv2.disk === "145 GB" && /Freerouting2\.5\.0/.test(sv2.env) && /Running since.*\(3 h\)/.test(sv2.env)
+      && sv2.jobs.length === 3 && /amp-02running/.test(sv2.jobs[1]) && /amp-07completed7\.0 s/.test(sv2.jobs[2]) && sv2.limits && prof && sv2.w <= sv2.iw,
+      `Freerouting server page: "${sv2.say}"; CPU ${sv2.cpu}, memory ${sv2.ram}, disk ${sv2.disk}; ${sv2.jobs.length - 1} routes of this browser listed, newest first`);
     // a mounting hole made plated in the inspector, on GND: a ring the bottom pour joins, still no violations
     const [hx, hy] = await bw.evaluate(() => { const h = BoardApp.state.board.holes[3]; BoardApp.fit(); return BoardApp.toScreen(h.x, h.y); });
     const pcb = await bw.locator("#pcb").boundingBox();

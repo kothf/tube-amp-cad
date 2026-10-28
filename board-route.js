@@ -385,6 +385,16 @@
     try { await within(ms, signal => fetch(u, { mode: "no-cors", signal, ...local(url) })); return { ok: false, why: "cors" }; }
     catch (e) { return { ok: false, why: "down" }; }
   }
+  /** One of Freerouting's answers as JSON (path: "/v1/system/environment", …), asked as this browser's profile,
+      within ms; null when there is none */
+  async function get(url, path, ms) {
+    try {
+      return await within(ms || 5000, async signal => {
+        const r = await fetch(base(url) + path, { signal, ...reach(url), headers: { "Freerouting-Profile-ID": profileId() } });
+        return r.ok ? await r.json() : null;
+      });
+    } catch (e) { return null; }
+  }
   /** true when Freerouting answers at url (its status, within ms) */
   async function available(url, ms) { return (await probe(url, ms)).ok; }
   /** Routes a DSN design: the SES text and Freerouting's report */
@@ -414,5 +424,5 @@
     return `docker run -d --name freerouting --restart unless-stopped -p 37864:37864 ghcr.io/freerouting/freerouting:latest java -jar /app/freerouting-executable.jar --gui.enabled=false --api_server.enabled=true --api_server.endpoints=http://0.0.0.0:37864 --api_server.authentication.enabled=false --api_server.cors_origins=${origin || "https://aerocat.tech"}`;
   }
 
-  root.BoardRoute = { toDsn, fromSes, prune, parse, probe, available, route, command, dockerCommand, address, serverUrl, DEFAULT_URL, SERVER_PATH };
+  root.BoardRoute = { toDsn, fromSes, prune, parse, probe, available, get, route, command, dockerCommand, address, serverUrl, DEFAULT_URL, SERVER_PATH, PROXY_TIMEOUT };
 })(typeof window !== "undefined" ? window : globalThis);
