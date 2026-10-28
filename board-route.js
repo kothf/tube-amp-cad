@@ -385,12 +385,13 @@
     try { await within(ms, signal => fetch(u, { mode: "no-cors", signal, ...local(url) })); return { ok: false, why: "cors" }; }
     catch (e) { return { ok: false, why: "down" }; }
   }
-  /** One of Freerouting's answers as JSON (path: "/v1/system/environment", …), asked as this browser's profile,
-      within ms; null when there is none */
-  async function get(url, path, ms) {
+  /** One of Freerouting's answers as JSON (path: "/v1/system/environment", …), asked as this browser's profile
+      by this app's version (Freerouting refuses a listing that does not name its tool), within ms; null when there
+      is none */
+  async function get(url, path, ms, version) {
     try {
       return await within(ms || 5000, async signal => {
-        const r = await fetch(base(url) + path, { signal, ...reach(url), headers: { "Freerouting-Profile-ID": profileId() } });
+        const r = await fetch(base(url) + path, { signal, ...reach(url), headers: { "Freerouting-Profile-ID": profileId(), "Freerouting-Environment-Host": `TubeAmpCAD/${version || "dev"}` } });
         return r.ok ? await r.json() : null;
       });
     } catch (e) { return null; }

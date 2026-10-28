@@ -321,7 +321,9 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
       const u = new URL(req.url()).pathname, j = body => route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify(body) });
       if (u === "/v1/system/status") return j({ status: "OK", cpu_load: 0.3, ram_used: 24, ram_available: 6, storage_available: 148845, session_count: 2 });
       if (u === "/v1/system/environment") return j({ freerouting_version: "2.5.0", app_started_at: new Date(Date.now() - 3 * 3600e3).toISOString(), java: "25.0.2", host: "Linux", architecture: "amd64" });
-      if (u === "/v1/sessions/list") { prof = req.headers()["freerouting-profile-id"]; return j([{ id: "s1" }, { id: "s2" }]); }
+      // Freerouting 2.5 refuses a listing that does not name the calling tool (Freerouting-Environment-Host)
+      if (u === "/v1/sessions/list") { if (!/^TubeAmpCAD\//.test(req.headers()["freerouting-environment-host"] || "")) return route.fulfill({ status: 400, headers: cors, body: "The 'Freerouting-Environment-Host' request header is required." });
+        prof = req.headers()["freerouting-profile-id"]; return j([{ id: "s1" }, { id: "s2" }]); }
       if (u === "/v1/jobs/list/s1") return j([{ id: "j1", name: "amp-07", state: "COMPLETED", created_at: "2026-10-28T08:00:00Z", started_at: "2026-10-28T08:00:01Z", finished_at: "2026-10-28T08:00:08Z" }]);
       if (u === "/v1/jobs/list/s2") return j([{ id: "j2", name: "amp-02", state: "RUNNING", created_at: "2026-10-28T09:00:00Z" }]);
       return route.fulfill({ status: 404, body: "" });
