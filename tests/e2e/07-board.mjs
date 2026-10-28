@@ -83,6 +83,15 @@ import { readFile } from "node:fs/promises";
   }
   const tears = await bd.evaluate(() => { const S = BoardApp.state, t = S.board.tracks[0], w0 = t.w; t.w = 2; BoardApp.analyse(); const n0 = S.fills.filter(f => f.tear).length; t.w = 0.8; BoardApp.analyse(); const n1 = S.fills.filter(f => f.tear).length; t.w = w0; BoardApp.analyse(); return [n0, n1]; });
   check(tears[1] >= 1 && tears[1] > tears[0], `teardrops join a narrow track to its pads (${tears[1]} at 0.8 mm, ${tears[0]} for the 2 mm track)`);
+  // dragging the board's corner handle taller moves everything down: the teardrops go with their track while the mouse is held
+  const tearAt = () => bd.evaluate(() => { const S = BoardApp.state, f = S.fills.find(x => x.tear); return f ? [S.board.outline.h, S.board.tracks[f.ti].pts[0][1], Math.min(...f.pts.map(p => p[1])), Math.min(...f.ops[0].pts.map(p => p[1]))] : null; });
+  const hd = await bd.evaluate(() => { const S = BoardApp.state; S.board.tracks[0].w = 0.8; BoardApp.analyse(); return BoardApp.toScreen(S.board.outline.w, 0); });
+  const t0 = await tearAt();
+  await bd.mouse.move(cv.x + hd[0], cv.y + hd[1]); await bd.mouse.down(); await bd.mouse.move(cv.x + hd[0], cv.y + hd[1] - 40, { steps: 4 });
+  const t1 = await tearAt(); await bd.mouse.up(); await bd.keyboard.press("Control+z");
+  await bd.evaluate(() => { const S = BoardApp.state; S.board.tracks[0].w = 2; BoardApp.analyse(); });
+  const dT = t0 && t1 && t1[1] - t0[1];
+  check(t0 && t1 && t1[0] > t0[0] + 1 && Math.abs(t1[2] - t0[2] - dT) < 1e-3 && Math.abs(t1[3] - t0[3] - dT) < 1e-3, `while the board outline is dragged taller (${t0 && t0[0]} → ${t1 && t1[0]} mm) a teardrop moves with its track (${t0 && (t1[2] - t0[2]).toFixed(2)} vs ${dT && dT.toFixed(2)} mm), no copper left behind`);
   check(before.placed === 0 && after.tracks >= 1 && after.un === before.un - 1 && after.net === m0.anode && !after.shorts, `routing a track with the mouse joins R1 to the anode on ${after.net}: ${before.un} → ${after.un} connections to route${after.tracks ? "" : " — " + await bd.textContent("#st-msg")}`);
   await cad.waitForFunction(() => TubeCAD.state.board && TubeCAD.state.board.tracks.length >= 1, null, { timeout: 5000 }).catch(() => {});
   check(await cad.evaluate(() => TubeCAD.state.board.tracks.length >= 1 && JSON.parse(localStorage.getItem("tubecad_board_v1")).tracks.length >= 1), "the track is saved with the circuit (CAD and browser storage)");
