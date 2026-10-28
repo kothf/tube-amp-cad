@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.121.1] - 2026-10-28
+
+### Fixed
+- Freerouting server page: "Routes from this browser" now names this app to Freerouting (the Freerouting-Environment-Host header). Freerouting 2.5 refused the listing without it ("does not list routes") and logged a warning every 30 s.
+
 ## [3.121.0] - 2026-10-28
 
 ### Added

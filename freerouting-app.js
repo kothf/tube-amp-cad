@@ -7,6 +7,7 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const BR = window.BoardRoute;
+  const VERSION = (() => { const sc = [...document.scripts].find(x => /freerouting-app\.js/.test(x.src)); return (sc && new URL(sc.src).searchParams.get("v")) || "dev"; })();
   let saved = null; try { saved = localStorage.getItem("tubecad_router_url"); } catch (e) { /* no storage */ }
   const asked = new URLSearchParams(location.search).get("url");
   const url = BR.address(asked || saved || BR.serverUrl() || "") || BR.DEFAULT_URL;
@@ -49,7 +50,7 @@
       $("say").textContent = why; $("say").className = p.why === "signin" ? "" : "bad";
       return false;
     }
-    const s = await BR.get(url, "/v1/system/status", 4000);
+    const s = await BR.get(url, "/v1/system/status", 4000, VERSION);
     if (!s) return false;
     const load = typeof s.cpu_load === "number" ? s.cpu_load : NaN;
     if (isFinite(load)) { cpu.push(load); if (cpu.length > 120) cpu.shift(); }
@@ -66,7 +67,7 @@
   }
 
   async function environment() {
-    const e = await BR.get(url, "/v1/system/environment", 5000); if (!e) return;
+    const e = await BR.get(url, "/v1/system/environment", 5000, VERSION); if (!e) return;
     const started = when(e.app_started_at || e.started_at);
     const pick = (...ks) => { for (const k of ks) if (e[k] != null && typeof e[k] !== "object") return String(e[k]); return null; };
     $("env").innerHTML = kv([
@@ -89,11 +90,11 @@
   }
   // the routes this browser sent (Freerouting keeps them by the profile the Board window sends)
   async function jobs() {
-    const ls = await BR.get(url, "/v1/sessions/list", 8000);
+    const ls = await BR.get(url, "/v1/sessions/list", 8000, VERSION);
     const sessions = Array.isArray(ls) ? ls : ls && Array.isArray(ls.sessions) ? ls.sessions : null;
-    if (!sessions) { $("jobs").textContent = "The server does not list routes for this browser."; return; }
+    if (!sessions) { $("jobs").textContent = "The server does not list the routes this browser sent (it may be older than Freerouting 2.5)."; return; }
     const ids = sessions.map(x => typeof x === "string" ? x : x && (x.id || x.session_id)).filter(Boolean).slice(-15);
-    const all = (await Promise.all(ids.map(id => BR.get(url, `/v1/jobs/list/${encodeURIComponent(id)}`, 8000)))).flatMap(j => Array.isArray(j) ? j : j && Array.isArray(j.jobs) ? j.jobs : []);
+    const all = (await Promise.all(ids.map(id => BR.get(url, `/v1/jobs/list/${encodeURIComponent(id)}`, 8000, VERSION)))).flatMap(j => Array.isArray(j) ? j : j && Array.isArray(j.jobs) ? j.jobs : []);
     seen.n = all.length; seen.last = Math.max(...all.map(j => when(j.created_at) || when(j.started_at)).filter(isFinite)); routing();
     if (!all.length) { $("jobs").textContent = "No routes from this browser yet. Auto-route in the Board window sends one."; return; }
     const rows = all.map(j => {
