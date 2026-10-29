@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.133.1] - 2026-10-29
+
+### Fixed
+- Example 05 (10 W MOSFET amplifier) kept its 28 mA idle current only without a signal: under signal the transient settled with about 4 A through both output MOSFETs. The simulator was right (ngspice gives the same 4.2 A); the circuit was not. The article feeds the bootstrap capacitor C5 from +30 V through a 1N4148 (to isolate the bootstrapped node from the rail); the diode let C5 charge to the output's negative peaks and never discharge, so the bootstrap node climbed from 29.4 V to 33.2 V, the driver's current rose by a third and the gate-to-gate bias grew from 6.2 V to 8.3 V. A 680 Ω resistor (R9) now takes the diode's place: the idle point is the same, it stays at about 30 mA under signal, and the supply draws 0.46 A at 7.8 W instead of 31 A. A note on the sheet says why. The power sweep now finds about 10 W at 1 % THD from the ideal 30 V supply (the article's 6–7 W is from a loaded supply).
+
 ## [3.133.0] - 2026-10-29
 
 ### Added

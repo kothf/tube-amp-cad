@@ -279,14 +279,15 @@
   },
   {
    "id": "c26_5232",
-   "type": "diode",
+   "type": "resistor",
    "x": 770,
    "y": 200,
    "rot": 1,
    "params": {
-    "model": "1N4148"
+    "r": 680,
+    "w": ""
    },
-   "label": "VD1"
+   "label": "R9"
   },
   {
    "id": "c27_9486",
@@ -499,6 +500,18 @@
    "rot": 0,
    "params": {
     "text": "distortion below 0.1 % at all levels. R8 is the bias preset (wiper tied to one end); its slider sets the quiescent current.",
+    "size": "10"
+   },
+   "label": ""
+  },
+  {
+   "id": "c46_7310",
+   "type": "note",
+   "x": 100,
+   "y": 990,
+   "rot": 0,
+   "params": {
+    "text": "R9 (680 ohm) feeds the bootstrap C5. A diode in its place would charge C5 to the output's negative peaks and raise the bias under signal until both MOSFETs pass about 4 A.",
     "size": "10"
    },
    "label": ""
@@ -734,12 +747,12 @@
    "x1": 770,
    "y1": 160,
    "x2": 770,
-   "y2": 180
+   "y2": 170
   },
   {
    "id": "w25",
    "x1": 770,
-   "y1": 220,
+   "y1": 230,
    "x2": 770,
    "y2": 240
   },
@@ -1133,11 +1146,11 @@
     "side": "F"
    },
    "c26_5232": {
-    "ref": "VD1",
-    "fp": "DIODE-7.62",
+    "ref": "R9",
+    "fp": "AXIAL-7.62",
     "x": 49.53,
     "y": 2.54,
-    "rot": 0,
+    "rot": 2,
     "side": "F"
    },
    "c17_4348": {
