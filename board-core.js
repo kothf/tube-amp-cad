@@ -152,19 +152,21 @@
     return fp(`TO-92-${order}`, `TO-92, pins ${order.split("").join("-")}`, [...order].map((n, i) => ({ ...pad(i + 1, (i - 1) * 1.27, 0, 1.05, 0.75, i ? "circle" : "rect", n), h: 1.5, pitchRing: true })),
       [{ t: "line", x1: -2.4, y1: 1.6, x2: 2.4, y2: 1.6 }, { t: "circle", x: 0, y: 0, r: 2.5, from: 200, to: 340 }]);
   }
+  // seen from the top, as the board is: the makers draw the cans from below, pin 1 at the left
+  // with the tab beside it, so here pin 1 is at the right and the tab at the lower right
   function to18(order) {   // pins on a 2.54 mm circle, tab next to pin 1
-    const pos = [[-1.27, 0], [0, -1.27], [1.27, 0]];
+    const pos = [[1.27, 0], [0, -1.27], [-1.27, 0]];
     return fp(`TO-18-${order}`, `TO-18 metal can, pins ${order.split("").join("-")}`, [...order].map((n, i) => pad(i + 1, pos[i][0], pos[i][1], 1.3, 0.7, i ? "circle" : "rect", n)),
-      [{ t: "circle", x: 0, y: 0, r: 2.8 }, { t: "line", x1: -2.4, y1: 1.5, x2: -3.2, y2: 2.3 }]);
+      [{ t: "circle", x: 0, y: 0, r: 2.8 }, { t: "line", x1: 2.4, y1: 1.5, x2: 3.2, y2: 2.3 }]);
   }
   // larger metal cans of the germanium era: pins on a 5.08 mm circle as in TO-18's pattern.
   // TO-1 (AC128, OC71 size, Ø 6.1 mm), TO-5 (2N404, Ø 9.1 mm), MP (USSR МП39–МП42, МП25/26:
   // a flanged can, Ø 11.5 mm at the flange)
   const CANS = { "TO-1": [3.05, "TO-1 metal can"], "TO-5": [4.6, "TO-5 metal can"], "MP": [5.75, "MP flanged can (МП)"] };
   function bigCan(pkg, order) {
-    const [r, what] = CANS[pkg], pos = [[-2.54, 0], [0, -2.54], [2.54, 0]];
+    const [r, what] = CANS[pkg], pos = [[2.54, 0], [0, -2.54], [-2.54, 0]];
     return fp(`${pkg}-${order}`, `${what}, pins ${order.split("").join("-")}`, [...order].map((n, i) => pad(i + 1, pos[i][0], pos[i][1], 1.5, 0.8, i ? "circle" : "rect", n)),
-      [{ t: "circle", x: 0, y: 0, r }, { t: "line", x1: -r * 0.86, y1: r * 0.5, x2: -r * 0.86 - 0.8, y2: r * 0.5 + 0.8 }]);
+      [{ t: "circle", x: 0, y: 0, r }, { t: "line", x1: r * 0.86, y1: r * 0.5, x2: r * 0.86 + 0.8, y2: r * 0.5 + 0.8 }]);
   }
   function inline(pkg, pitch, order, L, W, tab, d, dr) {
     // a package with a tab stands behind its pins (the body above the pad row); one without sits over them
@@ -597,11 +599,11 @@
     "AD149": ["BEC"], "AD161": ["ECB", "verify"], "AD162": ["ECB", "verify"], "P213B": ["BEC", "verify"],
     "MP39B": ["EBC", "verify"], "MP40A": ["EBC", "verify"], "MP41A": ["EBC", "verify"], "MP42B": ["EBC", "verify"], "MP25B": ["EBC", "verify"], "MP26B": ["EBC", "verify"], "MP38A": ["EBC", "verify"],
     "GT402G": ["EBC", "verify"], "GT404G": ["EBC", "verify"],
-    "IRFP240": ["GDS"], "IRFP250": ["GDS"], "IRFP460": ["GDS"], "IRFP9240": ["GDS"], "2SK1058": ["GSD"], "2SJ162": ["GSD"], "ECX10N20": ["GSD", "verify"], "ECX10P20": ["GSD", "verify"],
-    // JFETs: the American TO-92 parts D-S-G; the Toshiba types (and their replacements) put the gate
-    // in the middle, so drain and source may swap without harm
-    "J201": ["DSG"], "J113": ["DSG"], "J310": ["DSG", "verify"], "2N5457": ["DSG"], "MPF102": ["DSG"], "2N5460": ["DSG"], "J175": ["DSG", "verify"],
-    "2SK170": ["DGS", "verify"], "LSK170B": ["DGS", "verify"], "2SJ74": ["DGS", "verify"], "2SK30A": ["DSG", "verify"],
+    "IRFP240": ["GDS"], "IRFP250": ["GDS"], "IRFP460": ["GDS"], "IRFP9240": ["GDS"], "2SK1058": ["GSD"], "2SJ162": ["GSD"], "ECX10N20": ["GSD"], "ECX10P20": ["GSD"],
+    // JFETs: most American TO-92 parts D-S-G, but J175 D-G-S and 2N5460 S-D-G; the Toshiba types
+    // (and their replacements) put the gate in the middle, so drain and source may swap without harm
+    "J201": ["DSG"], "J113": ["DSG"], "J310": ["DSG", "verify"], "2N5457": ["DSG"], "MPF102": ["DSG"], "2N5460": ["SDG"], "J175": ["DGS"],
+    "2SK170": ["DGS", "verify"], "LSK170B": ["DGS", "verify"], "2SJ74": ["DGS", "verify"], "2SK30A": ["SGD"],
     // regulators by their pins: I input, O output, A adjust, G ground (the TO-220 and TO-92 drawings);
     // the TL431: R reference, A anode, K cathode
     "LM317": ["AOI"], "LM317L": ["AOI"], "LM338": ["AOI"], "LM337": ["AIO"], "7805": ["IGO"], "7809": ["IGO"], "7812": ["IGO"], "7815": ["IGO"], "7824": ["IGO"],

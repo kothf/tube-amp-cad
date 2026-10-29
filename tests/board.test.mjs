@@ -834,8 +834,9 @@ test("germanium transistors: 10 USSR and 10 Western, hFE inside the datasheet's 
     const m = L.BJTS[k]; assert.ok(m, `${k} is in the library`);
     const { vbe, hfe } = at(m, ic);
     assert.ok(hfe >= lo && hfe <= hi, `${k}: hFE ${hfe.toFixed(0)} at ${ic} A, datasheet ${lo}–${hi}`);
-    // germanium: about 0.2 V at 1 mA (silicon 0.6–0.7 V); the power parts under 0.45 V at their test current
-    const v1 = at(m, 1e-3).vbe; assert.ok(v1 > 0.1 && v1 < 0.3, `${k}: VBE ${v1.toFixed(3)} V at 1 mA`);
+    // germanium: about 0.2 V at 1 mA (silicon 0.6–0.7 V; the AD161/AD162 lower, 0.10–0.14 V at 5 mA);
+    // the power parts under 0.45 V at their test current
+    const v1 = at(m, 1e-3).vbe; assert.ok(v1 > 0.07 && v1 < 0.3, `${k}: VBE ${v1.toFixed(3)} V at 1 mA`);
     assert.ok(vbe < 0.45, `${k}: VBE ${vbe.toFixed(3)} V at ${ic} A`);
     // a common-emitter stage from the CAD's own part: 9 V (−9 V for PNP), base fed through Rb for IC ≈ icq, Rc for half the supply.
     // Germanium's leakage flows on top, (hFE + 1)·ICBO: the base current is what is left, and IC well above the leakage
