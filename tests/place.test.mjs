@@ -265,3 +265,63 @@ test("access: a part parked in the only way out of a ring moves aside, after whi
   assert.equal(c2.rats.filter(r => m2.names[r.net] === "BASE").length, 0);
   assert.deepEqual(B.drc(board, m2, c2, new Set(), [], NL2).filter(d => ["clearance", "short", "courtyard", "edge"].includes(d.kind)).map(d => d.msg), []);
 });
+
+test("smooth: a staircase track is pulled into straight and 45° runs, stays joined and keeps clear of another net", () => {
+  const { board, nl } = setup();
+  let m = B.model(board, nl);
+  const pa = m.pads.filter(p => m.names[p.net] === "A").sort((a, b) => a.x - b.x), [s, e] = pa;
+  // a staircase from R1's pin to R3's: 1 mm steps across, then down
+  const pts = [[s.x, s.y]]; let x = s.x, y = s.y;
+  while (x < e.x - 1e-6 || y < e.y - 1e-6) { if (x < e.x - 1e-6) { x = Math.min(e.x, x + 1); pts.push([x, y]); } if (y < e.y - 1e-6) { y = Math.min(e.y, y + 1); pts.push([x, y]); } }
+  board.tracks.push({ layer: "B.Cu", w: 0.6, net: "A", pts });
+  // a locked track of net B across the straight way
+  board.tracks.push({ layer: "B.Cu", w: 0.6, net: "B", locked: true, pts: [[30, 18], [30, 32]] });
+  m = B.model(board, nl);
+  let conn = B.connectivity(board, m.pads);
+  const open0 = conn.rats.filter(x => m.names[x.net] === "A").length;
+  const clr = B.clearanceRules(board, m, new Set(), nl), bad0 = B.drc(board, m, conn, new Set(), [], nl).filter(d => ["clearance", "short", "edge"].includes(d.kind)).length;
+  const len = P => P.reduce((t, p, k) => t + (k ? Math.hypot(p[0] - P[k - 1][0], p[1] - P[k - 1][1]) : 0), 0);
+  const r = P.smooth(board, m, conn, null, { clr });
+  assert.equal(r.length, 1); assert.equal(r[0].ti, 0);
+  const q = r[0].pts;
+  assert.ok(q.length < 10 && len(q) < len(pts) - 5, `${pts.length} points, ${len(pts).toFixed(1)} mm -> ${q.length}, ${len(q).toFixed(1)} mm`);
+  q.slice(1).forEach((p, k) => { const dx = Math.abs(p[0] - q[k][0]), dy = Math.abs(p[1] - q[k][1]); assert.ok(dx < 1e-6 || dy < 1e-6 || Math.abs(dx - dy) < 1e-6, `segment ${k} is straight or 45°`); });
+  assert.deepEqual(q[0], [s.x, s.y]); assert.deepEqual(q[q.length - 1], [e.x, e.y]);
+  board.tracks[0].pts = q;
+  m = B.model(board, nl); conn = B.connectivity(board, m.pads);
+  assert.equal(conn.rats.filter(x => m.names[x.net] === "A").length, open0, "still joined");
+  assert.equal(B.drc(board, m, conn, new Set(), [], nl).filter(d => ["clearance", "short", "edge"].includes(d.kind)).length, bad0, "no new rule message");
+  // a second pass finds nothing more to do
+  assert.equal(P.smooth(board, m, conn, null, { clr }).length, 0);
+});
+
+test("design: lays the board out from scratch within its rules, turning parts; locked parts, holes and keep-outs hold", () => {
+  const { board, nl } = setup();
+  board.holes = [{ x: 30, y: 30, d: 3.2 }];
+  board.keepouts = [{ name: "jack", pts: [[70, 0], [100, 0], [100, 15], [70, 15]], layers: ["F.Cu", "B.Cu"], parts: true }];
+  const r4 = Object.values(board.parts).find(p => p.ref === "R4"); r4.locked = true;
+  const lockedAt = { x: r4.x, y: r4.y };
+  const m = B.model(board, nl), conn = B.connectivity(board, m.pads);
+  const keys = Object.keys(board.parts).filter(k => !board.parts[k].locked && m.parts.find(g => g.key === k && g.fp));
+  const before = JSON.stringify(board);
+  const r = P.design(board, m, conn, [], { keys, netlist: nl, hv: new Set(), seed: 2 });
+  assert.equal(JSON.stringify(board), before, "the board given is not changed");
+  assert.ok(r.places && Object.keys(r.places).length === keys.length, JSON.stringify(r));
+  assert.ok(Number.isFinite(r.score) && r.shut === 0, `score ${r.score}, shut ${r.shut}, cross ${r.cross}`);
+  Object.entries(r.places).forEach(([k, p]) => Object.assign(board.parts[k], p));
+  assert.deepEqual({ x: r4.x, y: r4.y }, lockedAt);
+  const m2 = B.model(board, nl), c2 = B.connectivity(board, m2.pads);
+  assert.deepEqual(B.drc(board, m2, c2, new Set(), [], nl).filter(d => ["courtyard", "edge", "keepout", "clearance", "unplaced"].includes(d.kind)).map(d => d.msg), []);
+  // the same seed gives the same layout
+  assert.deepEqual(P.design(JSON.parse(before), m, conn, [], { keys, netlist: nl, hv: new Set(), seed: 2 }).places, r.places);
+});
+
+test("advise: names rules stricter than needed and a part against the edge, and is quiet when nothing is open", () => {
+  const { board, nl } = setup();
+  Object.assign(board.rules, { track: 1, power: 1.25, clearance: 0.6 });
+  board.outline = { w: 40, h: 30, r: 0 };
+  const m = B.model(board, nl), conn = B.connectivity(board, m.pads);
+  const tips = P.advise(board, m, conn, conn.rats, { clr: B.clearanceRules(board, m, new Set(), nl), hv: new Set(), netlist: nl });
+  assert.ok(tips.some(t => /^signal tracks 1 mm: 0.6 mm/.test(t)) && tips.some(t => /^power tracks 1.25 mm/.test(t)) && tips.some(t => /^clearance 0.6 mm/.test(t)) && tips.some(t => /VL1.* against the board edge/.test(t)), tips.join(" | "));
+  assert.deepEqual(P.advise(board, m, conn, [], {}), []);
+});

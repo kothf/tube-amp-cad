@@ -85,6 +85,14 @@
     footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
     footer span { white-space: nowrap; }
     #st-msg { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }   /* a long message ends in "…", it never widens the window */
+    .tips { border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; font-size: 12px; }
+    .tips ul { margin: 4px 0 0; padding-left: 16px; } .tips li { margin: 2px 0; color: var(--text); }
+    #st-prog { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); font-variant-numeric: tabular-nums; }
+    #st-prog[hidden] { display: none; }
+    #st-prog .bar { position: relative; width: 160px; height: 8px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--line); overflow: hidden; }
+    #st-prog .bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); border-radius: 4px; transition: width .4s ease; }
+    #st-prog .bar::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(110deg, transparent 0 8px, rgba(255,255,255,.18) 8px 14px); animation: st-prog 1s linear infinite; }   /* moves while work goes on */
+    @keyframes st-prog { to { background-position: 30px 0; } }
     #st-pos { margin-left: auto; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 30; }
     .modal[hidden] { display: none; }
@@ -170,9 +178,9 @@
     main.bare .col { display: none; }
     .menu-list { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 230px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
     .menu-list[hidden] { display: none; }
-    .menu-item { display: flex; justify-content: space-between; width: 100%; background: none; border: 0; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
+    .menu-item { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; width: 100%; background: none; border: 0; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
     .menu-item:hover { background: var(--panel2); }
-    .menu-item small { color: var(--muted); }
+    .menu-item small { color: var(--muted); margin-left: auto; text-align: right; }
     @media (max-width: 1000px) { main { grid-template-columns: 1fr; } .col.left, .col.right { display: none; } }
   </style>
 </head>
@@ -222,11 +230,12 @@
     <button class="btn" id="btn-sync" title="Update from the schematic: bring parts added to or removed from it onto the board"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 6.5A5 5 0 0 0 4 4.2M3 9.5a5 5 0 0 0 9 2.3"/><path d="M3.8 1.5v2.9h2.9M12.2 14.5v-2.9H9.3"/></svg><span class="lbl">Update</span></button>
     <button class="btn off" id="btn-autoroute" title="Auto-route with Freerouting on this computer"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14 10 6"/><path d="M11.5 1.5v3M10 3h3M14 6.5v2M13 7.5h2"/></svg><span class="lbl">Auto-route</span></button>
     <div class="menu" id="route-menu">
-      <button class="btn" id="btn-route" aria-haspopup="true" title="Routing: Auto-route, Route &amp; nudge, Rearrange board, Unroute, Freerouting">Route ▾</button>
+      <button class="btn" id="btn-route" aria-haspopup="true" title="Routing: Auto-route, Finish routing, Design from scratch, Tidy tracks, Unroute, Freerouting">Route ▾</button>
       <div class="menu-list right" hidden>
         <button class="menu-item" id="mi-autoroute" title="Route the open connections with Freerouting, within the design rules; Ctrl+Z takes it back">Auto-route<small>Freerouting, then the grid finishers</small></button>
-        <button class="menu-item" id="btn-nudge" title="Auto-route; while connections are left, move the unlocked parts near them a little and route again (up to 5 rounds), then try spreading them over the whole board. Locked parts, valves, transformers, controls and connectors stay; Ctrl+Z takes it all back">Route &amp; nudge<small>moves parts when routes don't fit</small></button>
-        <button class="menu-item" id="btn-rearrange" title="Place every unlocked part again from scratch, valves and transformers too (pots, switches, jacks, connectors and fuses stay): from the schematic, spread over the board three ways, each routed; the best layout stays. Ctrl+Z takes it all back">Rearrange board<small>all parts from scratch, best of 3</small></button>
+        <button class="menu-item" id="btn-nudge" title="Auto-route; while connections are left, move the unlocked parts near them a little and route again (up to 5 rounds), then try spreading them over the whole board. Locked parts, valves, transformers, controls and connectors stay; Ctrl+Z takes it all back">Finish routing<small>keeps your layout, moves a few parts</small></button>
+        <button class="menu-item" id="btn-rearrange" title="Lay the whole board out automatically: every unlocked part comes off and goes back from scratch, valves and transformers too, turned as suits its wiring (pots, switches, jacks, connectors and fuses stay). Ten layouts are made and scored, the best three routed, the best routed one kept and its open connections nudged. The outline, holes, keep-outs and locked parts hold. Ctrl+Z takes it all back">Design from scratch<small>automatic layout, parts turned too</small></button>
+        <button class="menu-item" id="btn-tidy" title="Pull the unlocked tracks straight: staircases and detours become straight and 45° runs where the rules let them; Ctrl+Z takes it back">Tidy tracks<small>straighten staircases</small></button>
         <button class="menu-item" id="btn-unroute" title="Remove all tracks and vias (locked ones stay); Ctrl+Z brings them back">Unroute<small>every track and via (not locked)</small></button>
         <div class="menu-sep"></div>
         <button class="menu-item" id="btn-ses" title="Add the tracks and vias of a Freerouting session file (.ses) routed from this board's DSN export">Import routes (SES)…<small>from Freerouting</small></button>
@@ -294,6 +303,7 @@
   </main>
 
   <footer>
+    <span id="st-prog" hidden title="Routing in progress: Route ▾ or the Stop button ends it after this pass"><span class="bar"><i></i></span><b id="st-step"></b></span>
     <span id="st-msg">Ready</span>
     <span id="st-rats"></span>
     <span id="st-drc"></span>

@@ -37,6 +37,8 @@
         const head = grouped && d.kind !== lastK ? `<div class="drc-group"><span>${esc(KN[d.kind] || d.kind)}</span><span>${list.filter(x => x.kind === d.kind).length}</span></div>` : ""; lastK = d.kind;
         return head + `<button class="drc ${NOTE.includes(d.kind) && d.kind !== "unplaced" ? "check" : d.kind}" data-i="${i}" title="Click: show it on the board">${esc(d.msg)}${d.between ? ` <span class="help">(${esc(d.between.join(" – "))})</span>` : ""}</button>`;
       }).join("") : `<p class="help">${M ? "No problems." : ""}</p>`;
+      // what the last routing run found would help it finish (while connections are open)
+      if (S.tips && S.tips.length && S.conn && S.conn.unrouted) dh.insertAdjacentHTML("afterbegin", `<div class="tips" id="route-tips"><b>To finish routing</b><ul>${S.tips.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>`);
       dh.querySelectorAll(".drc").forEach(b => b.addEventListener("click", () => { const d = list[+b.dataset.i]; if (S.view.scale < 8) S.view.scale = 8; centerOn(d.x, d.y); }));
       renderLayers(); renderNets();
     }

@@ -254,7 +254,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const ur2 = await bw.evaluate(() => { const b = BoardApp.state.board; b.tracks[0].locked = false; BoardApp.commit(); return { t: b.tracks.length, v: b.vias.length }; });
     check(ur0.t > 1 && ur1.t === 1 && ur1.v === 0 && ur1.un > ur0.un && /locked kept/.test(ur1.msg) && ur2.t === ur0.t && ur2.v === ur0.v,
       `Unroute removes ${ur0.t - 1} tracks and ${ur0.v} vias, keeps the locked one ("${ur1.msg}"); Ctrl+Z brings them back`);
-    // Route & nudge (Board ▾): with a Freerouting that routes nothing, the grid finisher still joins what a track
+    // Finish routing (Route ▾): with a Freerouting that routes nothing, the grid finisher still joins what a track
     // can reach within the rules, and every round after makes nothing better, so each is undone: no part moved,
     // one step to undo; the Auto-route button reads Stop while it runs
     await ctx.unroute("http://127.0.0.1:37864/**");
@@ -269,24 +269,26 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
       S.board.tracks = S.board.tracks.filter(t => !nets.includes(t.net)); BoardApp.commit(); return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, bad: S.drc.length }; });
     await bw.click("#btn-route"); await bw.click("#btn-nudge");
     await bw.waitForFunction(() => BoardApp.router.busy, null, { timeout: 5000 }).catch(() => {});
-    const stopLbl = await bw.evaluate(() => document.querySelector("#btn-autoroute .lbl").textContent);
+    const stopLbl = await bw.evaluate(() => document.querySelector("#btn-autoroute .lbl").textContent), progOn = await bw.evaluate(() => !document.getElementById("st-prog").hidden && /^Finish routing/.test(document.getElementById("st-step").textContent));
     await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 120000 }).catch(() => {});
-    const rn1 = await bw.evaluate(() => { const S = BoardApp.state; return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, bad: S.drc.length, msg: document.getElementById("st-msg").textContent, lbl: document.querySelector("#btn-autoroute .lbl").textContent }; });
+    const rn1 = await bw.evaluate(() => { const S = BoardApp.state; return { un: S.conn.unrouted, parts: JSON.stringify(S.board.parts), tracks: S.board.tracks.length, h: S.hIndex, bad: S.drc.length, msg: document.getElementById("st-msg").textContent, lbl: document.querySelector("#btn-autoroute .lbl").textContent, progOff: document.getElementById("st-prog").hidden }; });
+    check(progOn && rn1.progOff, "the status line shows a progress bar (step, stage, clock) while Finish routing runs, and hides it after");
     check(rn0.un > 0 && stopLbl === "Stop" && rn1.lbl === "Auto-route" && nPosts >= 1 && rn1.un < rn0.un && rn1.tracks > rn0.tracks && rn1.bad <= rn0.bad && rn1.parts === rn0.parts && rn1.h === rn0.h + 1 && (rn1.un ? nPosts >= 3 && /still open after 4 rounds: no part moved/.test(rn1.msg) : /^Everything routed/.test(rn1.msg)),
-      `Route & nudge with a router that finds nothing: ${nPosts} passes; the grid joins ${rn0.un - rn1.un} of ${rn0.un} open connections with ${rn1.tracks - rn0.tracks} tracks and no new rule message; every round (two over the whole board) undone, no part moved, one step to undo ("${rn1.msg}"); the button read ${stopLbl} meanwhile`);
+      `Finish routing with a router that finds nothing: ${nPosts} passes; the grid joins ${rn0.un - rn1.un} of ${rn0.un} open connections with ${rn1.tracks - rn0.tracks} tracks and no new rule message; every round (two over the whole board) undone, no part moved, one step to undo ("${rn1.msg}"); the button read ${stopLbl} meanwhile`);
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
-    // Route ▾ → Rearrange board: every unlocked part but the panel ones placed again, three layouts each routed (here by a
-    // router that finds nothing, so the grid finishers route); the best stays, the board as it was included; one step to undo
+    // Route ▾ → Design from scratch: every unlocked part but the panel ones laid out again (nine layouts, turns chosen), the best
+    // three routed (here by a router that finds nothing, so the grid finishers route); the best stays, the board as it was
+    // included; one step to undo
     const ra0 = await bw.evaluate(() => { const S = BoardApp.state; return { parts: JSON.stringify(S.board.parts), h: S.hIndex, un: S.conn.unrouted, panel: JSON.stringify(S.model.parts.filter(g => ["pot", "jack", "terminal", "header", "switch", "iec", "fuse"].includes(g.type)).map(g => S.board.parts[g.key])) }; });
     nPosts = 0;
     await bw.click("#btn-route"); await bw.click("#btn-rearrange");
     await bw.waitForFunction(() => BoardApp.router.busy, null, { timeout: 5000 }).catch(() => {});
     await bw.waitForFunction(() => !BoardApp.router.busy, null, { timeout: 400000 }).catch(() => {});
     const ra1 = await bw.evaluate(() => { const S = BoardApp.state; return { parts: JSON.stringify(S.board.parts), h: S.hIndex, un: S.conn.unrouted, bad: S.drc.filter(d => ["clearance", "short", "courtyard", "edge"].includes(d.kind)).map(d => d.msg), msg: document.getElementById("st-msg").textContent, panel: JSON.stringify(S.model.parts.filter(g => ["pot", "jack", "terminal", "header", "switch", "iec", "fuse"].includes(g.type)).map(g => S.board.parts[g.key])) }; });
-    const raOk = /^Rearranged \d+ parts/.test(ra1.msg) ? ra1.parts !== ra0.parts && ra1.h === ra0.h + 1 && ra1.un <= ra0.un : /^Tried 3 layouts: none routed better/.test(ra1.msg) && ra1.parts === ra0.parts;
-    check(raOk && nPosts >= 3 && ra1.panel === ra0.panel && !ra1.bad.length, `Rearrange board: ${nPosts} routing passes over three layouts; "${ra1.msg.slice(0, 120)}"; panel parts stay, no clearance, courtyard or edge message`);
+    const raOk = /^Designed the board: \d+ parts? placed \(best of 9 layouts, [3-6] routed/.test(ra1.msg) ? ra1.parts !== ra0.parts && ra1.h === ra0.h + 1 && ra1.un <= ra0.un : /^Made 9 layouts, routed [3-6]: none routed better/.test(ra1.msg) && ra1.parts === ra0.parts;
+    check(raOk && nPosts >= 3 && ra1.panel === ra0.panel && !ra1.bad.length, `Design from scratch: ${nPosts} routing passes over three of nine layouts; "${ra1.msg.slice(0, 120)}"; panel parts stay, no clearance, courtyard or edge message`);
     if (ra1.h === ra0.h + 1) { await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200); }
-    check(await bw.evaluate(p => JSON.stringify(BoardApp.state.board.parts) === p, ra0.parts), "Ctrl+Z puts every part back where it was before Rearrange");
+    check(await bw.evaluate(p => JSON.stringify(BoardApp.state.board.parts) === p, ra0.parts), "Ctrl+Z puts every part back where it was before Design from scratch");
     // Route ▾ → Freerouting…: an address typed as an IP gets the default port; both start commands name this page's address
     await bw.click("#btn-route"); await bw.click("#btn-router");
     const cmds = await bw.evaluate(() => [document.getElementById("router-cmd-java").textContent, document.getElementById("router-cmd-docker").textContent]);

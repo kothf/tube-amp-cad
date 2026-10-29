@@ -322,12 +322,21 @@
     const start = new Map(mov.map(g => [g.key, { ...g.place }]));
     // each moving part: its middle (X, Y), half sizes with the halo and inflation, the place's offset from the middle
     const X = new Float64Array(n), Y = new Float64Array(n), hw = new Float64Array(n), hh = new Float64Array(n), bw = new Float64Array(n), bh = new Float64Array(n), npin = new Float64Array(n);
-    const offX = [], offY = [];
+    const offX = [], offY = [], fac = [];
     mov.forEach((g, i) => {
       const b = boxOf(g.key), P = pl.get(g.key), f = Math.sqrt(Math.min(2.5, Math.max(1, (o.inflate && o.inflate.get(g.key)) || 1)));
-      X[i] = (b.x1 + b.x2) / 2; Y[i] = (b.y1 + b.y2) / 2; offX.push(P.x - X[i]); offY.push(P.y - Y[i]);
+      X[i] = (b.x1 + b.x2) / 2; Y[i] = (b.y1 + b.y2) / 2; offX.push(P.x - X[i]); offY.push(P.y - Y[i]); fac.push(f);
       bw[i] = (b.x2 - b.x1) / 2; bh[i] = (b.y2 - b.y1) / 2; hw[i] = (bw[i] + halo / 2) * f; hh[i] = (bh[i] + halo / 2) * f;
     });
+    // with opts.turn, each part's four quarter turns about its middle: half sizes, the place's offset, each pad's offset
+    const turn = !!o.turn, rot = mov.map(g => (pl.get(g.key).rot || 0) & 3), poses = turn ? mov.map((g, i) => {
+      const P = pl.get(g.key), was = P.rot;
+      const out = [0, 1, 2, 3].map(r => {
+        P.rot = r; const b = boxOf(g.key), cx = (b.x1 + b.x2) / 2, cy = (b.y1 + b.y2) / 2;
+        return { bw: (b.x2 - b.x1) / 2, bh: (b.y2 - b.y1) / 2, offX: P.x - cx, offY: P.y - cy, pins: (padsOf.get(g.key) || []).map((_, j) => { const w = where(g.key, j); return [w.x - cx, w.y - cy]; }) };
+      });
+      P.rot = was; return out;
+    }) : null;
     const inX = (i, v) => Math.min(Math.max(v, bw[i]), outl.w - bw[i]), inY = (i, v) => Math.min(Math.max(v, bh[i]), outl.h - bh[i]);
     // nets: each pin a moving part's (index, offset from its middle) or a fixed point
     const poured = new Set((board.zones || []).map(z => z.net)), names = model.names, byNet = new Map();
@@ -338,7 +347,7 @@
         if (p.net === null) return;
         const w = where(g.key, j);
         if (!byNet.has(p.net)) byNet.set(p.net, []);
-        byNet.get(p.net).push(i >= 0 ? { i, dx: w.x - X[i], dy: w.y - Y[i] } : { i: -1, x: w.x, y: w.y });
+        byNet.get(p.net).push(i >= 0 ? { i, j, dx: w.x - X[i], dy: w.y - Y[i] } : { i: -1, x: w.x, y: w.y });
         if (i >= 0) npin[i]++;
       });
     });
@@ -354,6 +363,60 @@
       const fp = tp / sp, fn = tn / sn;
       if (gOut) vals.forEach((v, k) => { gOut[k] = wt * (ep[k] / sp * (1 + (v - fp) / gam) - en[k] / sn * (1 - (v - fn) / gam)); });
       return wt * (fp - fn);
+    }
+    // Turning (Cypress, Zhang et al. 2025: orientation-aware wire length and net crossings, the turn a
+    // categorical choice relaxed and updated in turn with the positions, bilevel). Every few steps each
+    // part scores its four turns, the others held: the wire length of its nets (half-perimeter) plus
+    // `cross` mm for each crossing of its nets' spanning-tree lines with other nets' lines. The scores
+    // update a preference per turn (exponentiated gradient on the relaxed choice's expected cost); the
+    // part takes the turn its preference plus Gumbel noise picks, the noise fading to nothing, so the
+    // last choice is the plain argmax, as in Cypress.
+    const netsOfMov = mov.map(() => []), pinRefs = mov.map(() => []);
+    nets.forEach((nt, ni) => nt.ps.forEach(p => { if (p.i >= 0) { if (!netsOfMov[p.i].includes(ni)) netsOfMov[p.i].push(ni); pinRefs[p.i].push(p); } }));
+    const quietNet = nets.map(nt => nt.w < 0.5), crossW = o.cross === undefined ? 4 : o.cross;
+    const pinXY = p => (p.i >= 0 ? [X[p.i] + p.dx, Y[p.i] + p.dy] : [p.x, p.y]);
+    // a net's spanning tree (Prim) as line segments
+    function tree(ni) {
+      if (quietNet[ni] || nets[ni].ps.length > 40) return [];
+      const pts = nets[ni].ps.map(pinXY), n0 = pts.length, d = pts.map((q, k) => (k ? Math.hypot(q[0] - pts[0][0], q[1] - pts[0][1]) : Infinity)), from = pts.map(() => 0), done = pts.map((_, k) => k === 0), segs = [];
+      for (let t = 1; t < n0; t++) {
+        let j = -1; for (let q = 0; q < n0; q++) if (!done[q] && (j < 0 || d[q] < d[j])) j = q;
+        done[j] = true; segs.push([pts[from[j]][0], pts[from[j]][1], pts[j][0], pts[j][1]]);
+        for (let q = 0; q < n0; q++) if (!done[q]) { const e = Math.hypot(pts[q][0] - pts[j][0], pts[q][1] - pts[j][1]); if (e < d[q]) { d[q] = e; from[q] = j; } }
+      }
+      return segs;
+    }
+    const cuts = (a, b) => {
+      const o1 = (b[0] - a[0]) * (a[3] - a[1]) - (b[1] - a[1]) * (a[2] - a[0]), o2 = (b[2] - a[0]) * (a[3] - a[1]) - (b[3] - a[1]) * (a[2] - a[0]);
+      const o3 = (a[0] - b[0]) * (b[3] - b[1]) - (a[1] - b[1]) * (b[2] - b[0]), o4 = (a[2] - b[0]) * (b[3] - b[1]) - (a[3] - b[1]) * (b[2] - b[0]);
+      return o1 * o2 < -1e-9 && o3 * o4 < -1e-9;
+    };
+    function netHp(ni) { let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity; nets[ni].ps.forEach(p => { const [x, y] = pinXY(p); if (x < x1) x1 = x; if (x > x2) x2 = x; if (y < y1) y1 = y; if (y > y2) y2 = y; }); return nets[ni].w * (x2 - x1 + y2 - y1); }
+    function setTurn(i, r) {
+      const q = poses[i][r]; rot[i] = r; offX[i] = q.offX; offY[i] = q.offY; bw[i] = q.bw; bh[i] = q.bh;
+      hw[i] = (q.bw + halo / 2) * fac[i]; hh[i] = (q.bh + halo / 2) * fac[i];
+      pinRefs[i].forEach(p => { p.dx = q.pins[p.j][0]; p.dy = q.pins[p.j][1]; });
+      X[i] = Math.min(Math.max(X[i], bw[i]), outl.w - bw[i]); Y[i] = Math.min(Math.max(Y[i], bh[i]), outl.h - bh[i]);
+    }
+    const pref = mov.map(() => new Float64Array(4)), trand = rng(o.seed === undefined ? 1 : o.seed), trees = turn ? nets.map((_, ni) => tree(ni)) : null;
+    let turned = 0;
+    function turnStep(heat) {
+      for (let i = 0; i < n; i++) {
+        const mine = netsOfMov[i]; if (!mine.length) continue;
+        const others = []; trees.forEach((t, ni) => { if (!mine.includes(ni)) others.push(...t); });
+        const was = rot[i], c = [0, 0, 0, 0];
+        for (let r = 0; r < 4; r++) {
+          setTurn(i, r);
+          let w = 0, x = 0; mine.forEach(ni => { w += netHp(ni); tree(ni).forEach(sg => others.forEach(t => { if (cuts(sg, t)) x++; })); });
+          c[r] = w + crossW * x;
+        }
+        const cmin = Math.min(...c), scale = Math.max(1, heat * 4);
+        for (let r = 0; r < 4; r++) pref[i][r] = 0.5 * pref[i][r] - (c[r] - cmin) / scale;
+        let best = was, bv = -Infinity;
+        for (let r = 0; r < 4; r++) { const g = -Math.log(-Math.log(Math.max(1e-12, trand()))), v = pref[i][r] + heat * 0.5 * g; if (v > bv) { bv = v; best = r; } }
+        setTurn(i, best); if (best !== was) turned++;
+        mine.forEach(ni => { trees[ni] = tree(ni); });
+      }
     }
     const hpwl = () => nets.reduce((s, nt) => {
       const xs = nt.ps.map(p => (p.i >= 0 ? X[p.i] + p.dx : p.x)), ys = nt.ps.map(p => (p.i >= 0 ? Y[p.i] + p.dy : p.y));
@@ -423,24 +486,33 @@
         X[i] = inX(i, X[i] + vx[i]); Y[i] = inY(i, Y[i] + vy[i]);
       }
       lambda *= 1.06;
+      // the turns, every 5 steps from the 10th, the noise fading as the parts settle
+      if (turn && it >= 10 && it % 5 === 0) turnStep(Math.max(0, 1 - it / (0.8 * iters)) * Math.min(1, over * 2));
     }
+    if (turn) turnStep(0);
     // legalize, biggest first: the nearest grid place that keeps the rules, among the parts placed so far
     const snap = v => Math.round(v / GRID) * GRID;
     mov.forEach(g => onB.delete(g.key));
     const order = mov.map((g, i) => i).sort((a, b) => hw[b] * hh[b] - hw[a] * hh[a]);
     const maxR = Math.ceil(Math.max(outl.w, outl.h) / GRID);
     let failed = null;
+    // (a turned part tries its turn within 8 grid steps, then its other turns, best liked first, then its turn anywhere)
     for (const i of order) {
-      const g = mov[i], P0 = pl.get(g.key), cx = snap(X[i] + offX[i]), cy = snap(Y[i] + offY[i]);
+      const g = mov[i], P0 = pl.get(g.key);
+      const tries = turn ? [rot[i], ...[0, 1, 2, 3].filter(t => t !== rot[i]).sort((a, b) => pref[i][b] - pref[i][a])].map(t => [t, 8]).concat([[rot[i], maxR]]) : [[P0.rot || 0, maxR]];
       let done = false;
-      for (let r = 0; r <= maxR && !done; r++) {
-        const ring = [];
-        for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) if (Math.max(Math.abs(a), Math.abs(b)) === r) ring.push([a, b]);
-        ring.sort((p, s) => (p[0] * p[0] + p[1] * p[1]) - (s[0] * s[0] + s[1] * s[1]));
-        for (const [a, b] of ring) {
-          pl.set(g.key, { ...P0, x: +(cx + a * GRID).toFixed(4), y: +(cy + b * GRID).toFixed(4) });
-          if (legal(g.key)) { done = true; break; }
+      for (const [t, lim] of tries) {
+        const ox = turn ? poses[i][t].offX : offX[i], oy = turn ? poses[i][t].offY : offY[i], cx = snap(X[i] + ox), cy = snap(Y[i] + oy);
+        for (let r = 0; r <= lim && !done; r++) {
+          const ring = [];
+          for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) if (Math.max(Math.abs(a), Math.abs(b)) === r) ring.push([a, b]);
+          ring.sort((p, s) => (p[0] * p[0] + p[1] * p[1]) - (s[0] * s[0] + s[1] * s[1]));
+          for (const [a, b] of ring) {
+            pl.set(g.key, { ...P0, rot: turn ? t : P0.rot, x: +(cx + a * GRID).toFixed(4), y: +(cy + b * GRID).toFixed(4) });
+            if (legal(g.key)) { done = true; break; }
+          }
         }
+        if (done) break;
       }
       if (!done) { failed = g.ref; break; }
       onB.add(g.key);
@@ -449,13 +521,13 @@
     const moved = [];
     mov.forEach(g => {
       const a = start.get(g.key), b = pl.get(g.key);
-      if (Math.abs(a.x - b.x) > 1e-6 || Math.abs(a.y - b.y) > 1e-6) {
-        Object.assign(board.parts[g.key], { x: b.x, y: b.y });
+      if (Math.abs(a.x - b.x) > 1e-6 || Math.abs(a.y - b.y) > 1e-6 || ((a.rot || 0) & 3) !== ((b.rot || 0) & 3)) {
+        Object.assign(board.parts[g.key], { x: b.x, y: b.y, rot: b.rot || 0 });
         moved.push({ key: g.key, ref: g.ref, from: { x: a.x, y: a.y, rot: a.rot || 0 }, to: { x: b.x, y: b.y, rot: b.rot || 0 } });
       }
-      const k = idx.get(g.key), bb = boxOf(g.key); X[k] = (bb.x1 + bb.x2) / 2; Y[k] = (bb.y1 + bb.y2) / 2;
+      const k = idx.get(g.key), bb = boxOf(g.key); if (turn) setTurn(k, (b.rot || 0) & 3); X[k] = (bb.x1 + bb.x2) / 2; Y[k] = (bb.y1 + bb.y2) / 2;
     });
-    return { moved, wire0, wire1: hpwl(), over, iters: it, failed: null };
+    return { moved, wire0, wire1: hpwl(), over, iters: it, failed: null, turned };
   }
 
   // ---------------------------------------------------------------------------
@@ -1038,6 +1110,174 @@
     return out;
   }
 
+  // ---------------------------------------------------------------------------
+  // Track smoothing. A grid path (bridge, exact) steps only along the grid, so a diagonal run comes
+  // out as a staircase. Each track is pulled tight (string pulling, as in funnel path smoothing):
+  // from each corner, the farthest corner further on that one straight run or one 45° bend reaches
+  // (diagonal first or straight first) without coming closer to another net's copper, the board
+  // edge, a hole or a keep-out than the rules allow (or than the old track did, where that was
+  // closer: the socket-body and pin-entry exceptions). Points where other copper of the net joins
+  // the track stay. The track is replaced only when it gets shorter.
+  // ---------------------------------------------------------------------------
+  /** Pull the tracks tis (indexes into board.tracks; default every unlocked one) tight. Returns
+      [{ ti, pts }]: the new points of each track that changed. opts: { clr, hv } */
+  function smooth(board, model, conn, tis, opts) {
+    const C = B(), o = opts || {}, R = board.rules, outl = board.outline, names = model.names;
+    const need = (a, b) => (o.clr ? o.clr.need(a, b).c : R.clearance);
+    const list = (tis || board.tracks.map((_, i) => i)).filter(ti => board.tracks[ti] && !board.tracks[ti].locked && board.tracks[ti].pts.length > 2);
+    const nowPts = new Map(), out = [], np = C.npHoles ? C.npHoles(board, model) : (board.holes || []).filter(h => !h.plated);
+    const netIdx = new Map(Object.entries(names).map(([i, n]) => [n, isNaN(+i) ? i : +i]));
+    const len = P => P.reduce((s, p, k) => s + (k ? Math.hypot(p[0] - P[k - 1][0], p[1] - P[k - 1][1]) : 0), 0);
+    const octo = (dx, dy) => Math.abs(dx) < 1e-6 || Math.abs(dy) < 1e-6 || Math.abs(Math.abs(dx) - Math.abs(dy)) < 1e-6;
+    for (const ti of list) {
+      const t = board.tracks[ti], P = t.pts.map(p => [p[0], p[1]]), hw = t.w / 2, net = netIdx.has(t.net) ? netIdx.get(t.net) : null;
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+      P.forEach(p => { x1 = Math.min(x1, p[0]); y1 = Math.min(y1, p[1]); x2 = Math.max(x2, p[0]); y2 = Math.max(y2, p[1]); });
+      const pad = 8, inW = s => Math.max(s[0], s[2]) > x1 - pad && Math.min(s[0], s[2]) < x2 + pad && Math.max(s[1], s[3]) > y1 - pad && Math.min(s[1], s[3]) < y2 + pad;
+      // the copper round it: other nets' as obstacles, the net's own as joints that must stay
+      const obst = [], joints = [];
+      conn.items.forEach(it => {
+        if (it.kind === "track" && it.ti === ti) return;
+        if (!it.layers.includes(t.layer) || !inW(it.s)) return;
+        let s = it.s;
+        if (it.kind === "track" && nowPts.has(it.ti)) return;   // a smoothed track: added below as it is now
+        const mine = it.net !== null && it.net !== "short" && (it.net === net || names[it.net] === t.net);
+        if (mine) { joints.push({ s, r: it.r }); return; }
+        obst.push({ s, r: it.r, net: it.net === "short" ? null : it.net });
+      });
+      nowPts.forEach((pts, tj) => { const u = board.tracks[tj]; if (u.layer !== t.layer) return; for (let k = 0; k + 1 < pts.length; k++) { const s = [pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]]; if (!inW(s)) continue; if (u.net === t.net) joints.push({ s, r: u.w / 2 }); else obst.push({ s, r: u.w / 2, net: netIdx.has(u.net) ? netIdx.get(u.net) : null }); } });
+      // how close each obstacle may come: the rule, or the old track's own distance where that was closer
+      const segs = P.slice(1).map((p, k) => [P[k][0], P[k][1], p[0], p[1]]);
+      obst.forEach(q => { const d0 = Math.min(...segs.map(s => C.segSeg(s, q.s))) - q.r - hw; q.gap = Math.min(need(net, q.net), d0); });
+      const edgeNeed = Math.min((R.edgeClearance || 0.5) + hw, Math.min(...P.map(p => C.edgeDist(p[0], p[1], outl))));
+      const kos = (board.keepouts || []).filter(k => k.tracks !== false && C.koLayers(k).includes(t.layer));
+      const clear = s => {
+        for (const q of obst) if (C.segSeg(s, q.s) - q.r - hw < q.gap - 1e-6) return false;
+        for (const h of np) if (C.segDist(s[0], s[1], s[2], s[3], h.x, h.y) < h.d / 2 + hw + R.clearance - 1e-6) return false;
+        const L = Math.hypot(s[2] - s[0], s[3] - s[1]), n = Math.max(1, Math.ceil(L / 0.5));
+        for (let k = 0; k <= n; k++) {
+          const x = s[0] + (s[2] - s[0]) * k / n, y = s[1] + (s[3] - s[1]) * k / n;
+          if (C.edgeDist(x, y, outl) < edgeNeed - 1e-6) return false;
+          for (const ko of kos) if (C.pip(x, y, ko.pts)) return false;
+        }
+        return true;
+      };
+      // corners another piece of the net meets stay put
+      const fixed = P.map((p, k) => k === 0 || k === P.length - 1 || joints.some(j => C.segDist(j.s[0], j.s[1], j.s[2], j.s[3], p[0], p[1]) <= j.r + 1e-3));
+      // a joint along a straight run (not at a corner) pins the run: its corners stay too
+      joints.forEach(j => segs.forEach((s, k) => { [[j.s[0], j.s[1]], [j.s[2], j.s[3]]].forEach(([x, y]) => { if (C.segDist(s[0], s[1], s[2], s[3], x, y) <= hw + 1e-3) { fixed[k] = true; fixed[k + 1] = true; } }); }));
+      const res = [P[0]];
+      let i = 0;
+      while (i < P.length - 1) {
+        let lim = i + 1; while (lim < P.length - 1 && !fixed[lim]) lim++;
+        let took = false;
+        for (let j = lim; j > i + 1 && !took; j--) {
+          const a = P[i], b = P[j], dx = b[0] - a[0], dy = b[1] - a[1];
+          const ways = [];
+          if (octo(dx, dy)) ways.push([]);
+          else {
+            const m = Math.min(Math.abs(dx), Math.abs(dy)), sx = Math.sign(dx), sy = Math.sign(dy);
+            ways.push([[a[0] + sx * m, a[1] + sy * m]], [[b[0] - sx * m, b[1] - sy * m]]);
+          }
+          for (const mid of ways) {
+            const path = [a, ...mid, b];
+            if (path.slice(1).every((p, k) => clear([path[k][0], path[k][1], p[0], p[1]]))) { res.push(...mid, b); i = j; took = true; break; }
+          }
+        }
+        if (!took) { res.push(P[i + 1]); i++; }
+      }
+      const tidy = res.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]).filter((p, k, a) => k === 0 || Math.hypot(p[0] - a[k - 1][0], p[1] - a[k - 1][1]) > 1e-6)
+        .filter((p, k, a) => k === 0 || k === a.length - 1 || Math.abs((p[0] - a[k - 1][0]) * (a[k + 1][1] - p[1]) - (p[1] - a[k - 1][1]) * (a[k + 1][0] - p[0])) > 1e-9);
+      if (len(tidy) < len(P) - 0.01 || (tidy.length < P.length && len(tidy) <= len(P) + 1e-6)) { nowPts.set(ti, tidy); out.push({ ti, pts: tidy }); }
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // One layout from scratch, for Rearrange board (a design-space exploration in the manner of Cypress,
+  // which tries many starting points and settings and lets the router judge the best few): the parts
+  // keys come off the board and go back where they sit in the schematic (BoardCore.arrange), are spread
+  // over the board with their turns chosen as they go (spread with turn), then refined by annealing
+  // (nudge: shifts, quarter turns, swaps of alike parts; TimberWolf's detailed placement). Locked
+  // parts, panel parts and locked copper stay; the outline, edge clearance, holes and keep-outs hold
+  // throughout. The layout is scored without routing it, so many can be tried and only the best routed:
+  //   40 for each pin that cannot get a track out (escape), 4 for each crossing of two nets' ratsnest
+  //   lines (12 when one of them is a high-voltage net), 1 for each mm of ratsnest.
+  // ---------------------------------------------------------------------------
+  /** opts: { keys, how: { wire, anchor, roomy, turn }, seed, netlist, hv, amps }. Returns { places:
+      { key: { x, y, rot } }, shut, cross, wire, score, turned } or { left } (parts did not fit the
+      board) or { failed } (no legal place for that part). The board given is not changed. */
+  function design(board0, model0, conn0, rats0, opts) {
+    const C = B(), o = opts || {}, nl = o.netlist, how = o.how || {}, seed = o.seed === undefined ? 1 : o.seed;
+    const board = JSON.parse(JSON.stringify(board0)), keys = (o.keys || []).filter(k => board.parts[k]);
+    keys.forEach(k => { board.parts[k].x = -500; board.parts[k].y = -500; });
+    board.tracks = board.tracks.filter(t => t.locked); board.vias = board.vias.filter(v => v.locked);
+    let m = C.model(board, nl);
+    const left = C.arrange(board, m, keys, nl);
+    if (left) return { left };
+    const again = () => { m = C.model(board, nl); return { conn: C.connectivity(board, m.pads), clr: C.clearanceRules(board, m, o.hv, nl) }; };
+    let A = again();
+    // room where the routing will be hard (RePlAce's cell inflation, set from what is known before routing):
+    // a valve's ring of pins with high-voltage clearances round it counts 1.6 times its size, a part with a
+    // high-voltage pin a fifth more; how.roomy on top of that for every part
+    const hvPart = new Set(m.pads.filter(p => p.net !== null && o.hv && o.hv.has(p.net)).map(p => p.part));
+    const infl = new Map(keys.map(k => { const g = m.parts.find(q => q.key === k), base = g && (g.type === "tube" || g.type === "gasreg") ? 1.6 : hvPart.has(k) ? 1.2 : 1; return [k, base * (how.roomy || 1)]; }));
+    const sp = spread(board, m, keys, { clr: A.clr, hv: o.hv, netlist: nl, conn: A.conn, inflate: infl, wire: how.wire, anchor: how.anchor, turn: how.turn !== false, seed });
+    if (sp.failed) return { failed: sp.failed };
+    A = again();
+    nudge(board, m, keys, { clr: A.clr, hv: o.hv, netlist: nl, conn: A.conn, seed, weights: { move: 0.02 }, reach: 12, moves: Math.min(4000, 150 * keys.length) });
+    A = again();
+    // the score: shut-in pins, crossings, ratsnest length (the nets left to tracks: not a pour's, not the star ground)
+    const poured = new Set((board.zones || []).map(z => z.net)), star = board.rules.ground === "star";
+    const rats = A.conn.rats.filter(r => { const nm = m.names[r.net] || String(r.net); return !poured.has(nm) && !(star && nm === "GND"); });
+    const esc = rats.length ? escape(board, m, A.conn, rats, { clr: A.clr, hv: o.hv, amps: o.amps }) : [];
+    const shut = esc.reduce((t, e) => t + e.pins.filter(p => !p.out).length, 0);
+    let cross = 0;
+    const cuts = (a, b) => {
+      const o1 = (b.x1 - a.x1) * (a.y2 - a.y1) - (b.y1 - a.y1) * (a.x2 - a.x1), o2 = (b.x2 - a.x1) * (a.y2 - a.y1) - (b.y2 - a.y1) * (a.x2 - a.x1);
+      const o3 = (a.x1 - b.x1) * (b.y2 - b.y1) - (a.y1 - b.y1) * (b.x2 - b.x1), o4 = (a.x2 - b.x1) * (b.y2 - b.y1) - (a.y2 - b.y1) * (b.x2 - b.x1);
+      return o1 * o2 < -1e-9 && o3 * o4 < -1e-9;
+    };
+    // (a crossing with a high-voltage net counts three: it needs its wide clearance on both layers)
+    const hvN = n => !!(o.hv && o.hv.has(n));
+    rats.forEach((a, i) => { for (let j = i + 1; j < rats.length; j++) if (rats[j].net !== a.net && cuts(a, rats[j])) cross += hvN(a.net) || hvN(rats[j].net) ? 3 : 1; });
+    const wire = rats.reduce((t, r) => t + Math.hypot(r.x2 - r.x1, r.y2 - r.y1), 0);
+    const places = {}; keys.forEach(k => { const p = board.parts[k]; places[k] = { x: p.x, y: p.y, rot: p.rot || 0 }; });
+    return { places, shut, cross, wire: +wire.toFixed(1), score: +(40 * shut + 4 * cross + wire).toFixed(1), turned: sp.turned || 0 };
+  }
+
+  /** What to change when routing leaves connections open (rats): rules stricter than the board needs,
+      pads a pour cannot reach, a crowded board, parts shut in against the edge. Returns short hints in
+      words, the likeliest help first. opts: { clr, hv, amps, netlist } */
+  function advise(board, model, conn, rats, opts) {
+    const C = B(), o = opts || {}, R = board.rules, D = C.defaultRules(), names = model.names, out = [];
+    if (!rats.length) return out;
+    const table = R.ipc === undefined ? "B2" : R.ipc, ipcOn = table && table !== "off";
+    if (R.track > D.track + 1e-9) out.push(`signal tracks ${R.track} mm: ${D.track} mm gets between pins more easily (Design rules…)`);
+    if (R.power > D.power + 1e-9) out.push(`power tracks ${R.power} mm: ${D.power} mm will do, nets carrying more current widen by themselves (Design rules…)`);
+    if (R.clearance > D.clearance + 1e-9 && ipcOn) out.push(`clearance ${R.clearance} mm: ${D.clearance} mm is enough at low voltage, higher voltages get theirs from IPC-2221B anyway (Design rules…)`);
+    // the high-voltage floor against what IPC asks for each high-voltage net's own voltage
+    if (ipcOn && o.hv && o.hv.size) {
+      const ranges = C.netRanges(o.netlist), less = [...o.hv].filter(n => { const r = ranges[n]; return r && C.ipcClearance(Math.max(Math.abs(r.hi), Math.abs(r.lo)), table) < R.hvClearance - 1e-9; });
+      if (less.length) {
+        const need = Math.max(...less.map(n => { const r = ranges[n]; return C.ipcClearance(Math.max(Math.abs(r.hi), Math.abs(r.lo)), table); }));
+        out.push(`high-voltage clearance ${R.hvClearance} mm: for ${less.length} of ${o.hv.size} high-voltage nets IPC-2221B (${table}) asks ${need} mm or less at their voltage; a floor of ${need} mm keeps every one of those within it and the rest still get theirs by voltage (Design rules…)`);
+      }
+    }
+    // pads of a poured net its pour cannot reach
+    const poured = new Set((board.zones || []).map(z => z.net)), islands = new Map();
+    rats.forEach(r => { const nm = names[r.net] || String(r.net); if (poured.has(nm)) islands.set(nm, (islands.get(nm) || 0) + 1); });
+    islands.forEach((n, nm) => out.push(`the ${nm} pour does not reach ${n === 1 ? "one pad" : `${n} pads`} (the ratsnest shows ${n === 1 ? "it" : "them"}): a via beside ${n === 1 ? "it" : "each"} down to the pour, or the parts round ${n === 1 ? "it" : "them"} moved apart`));
+    // crowding
+    const W = board.outline.w, H = board.outline.h, boxes = model.parts.filter(g => g.place && g.fp).map(g => C.partBox(g)).filter(b => b.x2 > 0 && b.y2 > 0 && b.x1 < W && b.y1 < H);
+    const area = boxes.reduce((t, b) => t + (Math.min(b.x2, W) - Math.max(b.x1, 0)) * (Math.min(b.y2, H) - Math.max(b.y1, 0)), 0), full = area / Math.max(1, board.outline.w * board.outline.h);
+    if (full > 0.3) out.push(`the parts cover ${Math.round(full * 100)} % of the board: a bigger board gives the tracks room (Board setup…), then Design from scratch`);
+    // parts shut in against the edge
+    const edge = escape(board, model, conn, rats, o).filter(e => !e.ok && e.walls.some(w => w.kind === "edge")).map(e => e.ref);
+    if (edge.length) out.push(`${edge.join(", ")} ${edge.length === 1 ? "sits" : "sit"} against the board edge: move ${edge.length === 1 ? "it" : "them"} in, or make the board bigger`);
+    return out;
+  }
+
   /** "VT1 pin 2 (shut in by R3, a track on B.Cu)": the shut-in pins in words */
   function describeEscape(esc) {
     return esc.filter(e => !e.ok).map(e => {
@@ -1046,5 +1286,5 @@
     }).join("; ");
   }
 
-  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, exact, access, describeEscape, FIXED, rng };
+  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, exact, access, smooth, design, advise, describeEscape, FIXED, rng };
 })(typeof window !== "undefined" ? window : globalThis);

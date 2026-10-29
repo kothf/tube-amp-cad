@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.131.0] - 2026-10-29
+
+### Added
+- Board: **Design from scratch** (was Rearrange board) is now an automatic layout of the whole board. It makes nine layouts in the background. Each starts from the schematic's places and spreads the parts over the board, choosing every part's quarter turn as it goes: each part leans to the turn that gives its nets the shortest wiring and the fewest crossings with other nets (orientation-aware placement as in Cypress, ISPD 2025). Annealing (shifts, turns, swaps) then polishes the layout. Valves count as 1.6 times their size and parts with a high-voltage pin as 1.2 times, so their clearances get room. Each layout is scored without routing (shut-in pins, ratsnest crossings with high-voltage ones counting triple, ratsnest length). The best of each kind, three in all, are routed, the best routed one stays, and Finish routing's rounds then work on what is left. While connections stay open, up to three more layouts are routed. The outline, holes, keep-outs, locked parts and locked copper hold throughout.
+- Board: **Route ▾ → Tidy tracks** pulls tracks tight. The grid finishers lay tracks along a grid, so a diagonal run came out as a staircase. Now each track is pulled into straight and 45° runs wherever every clearance still holds, and points where other copper of its net joins stay. Auto-route does this after every pass.
+- Board: a **progress bar** in the status line while Auto-route, Finish routing, Design from scratch or Tidy tracks runs. It shows the step, what is going on (Freerouting, grid finishers, spreading…) and the time so far.
+
+- Board: **To finish routing** hints in the checks panel (and the status line) when connections stay open: rules stricter than the board needs (track widths, clearance, a high-voltage floor above what IPC-2221B asks at the nets' voltages), pads the ground pour cannot reach, a crowded board, parts shut in against the board edge.
+- Board: the grid finishers now also join a poured net's pads the pour cannot reach (behind other copper or the board edge) with a track.
+
+### Changed
+- Example 07 (Gubin): board rules 0.6 mm signal and 1 mm power tracks, 0.4 mm clearance and a 1.25 mm high-voltage floor (was 1, 1.25, 0.6 and 2 mm; clearance by voltage from IPC-2221B still applies above that). With the old rules Auto-route left 7 connections open on the stripped board; Design from scratch now leaves one ground pad.
+- Board: Route & nudge is now called **Finish routing** (it keeps your layout and moves only a few parts), and Rearrange board is now **Design from scratch**.
+
+### Fixed
+- Board: the Route ▾ menu's descriptions no longer wrap under the item names.
+
 ## [3.130.0] - 2026-10-29
 
 ### Added

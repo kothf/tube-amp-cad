@@ -1800,11 +1800,11 @@
    "copper": 35
   },
   "rules": {
-   "track": 1,
-   "power": 1.25,
+   "track": 0.6,
+   "power": 1,
    "minTrack": 0.4,
-   "clearance": 0.6,
-   "hvClearance": 2,
+   "clearance": 0.4,
+   "hvClearance": 1.25,
    "hvVolts": 60,
    "edgeClearance": 0.5,
    "viaDrill": 0.8,
