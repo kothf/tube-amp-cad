@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.134.0] - 2026-10-29
+
+### Removed
+- Board: **Route ▾ → Tidy tracks** is gone from the menu. Tidying is part of routing: Auto-route, Finish routing and Design from scratch pull the tracks straight after every pass by themselves.
+
 ## [3.133.1] - 2026-10-29
 
 ### Fixed

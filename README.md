@@ -578,9 +578,10 @@ the circuit file, so one file holds both.
   copper or a high-voltage pin's clearance) gets a short track on the other
   layer and a via down into the pour, tried nearest first and kept only if it
   joins without a new rule violation. Routing does this by itself.
-- **Tidy tracks** (*Route ▾*) pulls the unlocked tracks tight: grid-finisher
+- **Tidy tracks** is automatic: after each Auto-route, Finish routing and
+  Design from scratch pass the unlocked tracks are pulled tight (grid-finisher
   staircases and detours become straight and 45° runs wherever every clearance
-  still holds. Auto-route does this after each pass by itself.
+  still holds).
 - **Unroute** (*Route ▾*) removes every track and via, to route again
   from scratch. Locked tracks and vias stay; <kbd>Ctrl</kbd>+<kbd>Z</kbd>
   brings them all back.

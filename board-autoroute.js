@@ -212,13 +212,6 @@
       S.board.tracks.forEach((t, i) => { t.pts = keep[i]; }); analyse();
       return 0;
     }
-    // Route ▾ → Tidy tracks: the same on the board as it is, one step to undo
-    async function tidyTracks() {
-      if (router.busy || !S.model) return;
-      router.busy = true; routerUi(); progress(0, 0, "Tidy tracks");
-      try { const n = await tidy(); if (n) commit(`${n} track${n === 1 ? "" : "s"} pulled straight (staircases and detours into straight and 45° runs); Ctrl+Z takes it back`); else msg("Every track is as straight as the rules let it be"); }
-      finally { router.busy = false; routerUi(); }
-    }
     // the pins still shut in, in words ("" when none)
     // and what to change for routing to finish (BoardPlace.advise: rules stricter than needed, pour islands,
     // crowding, parts against the edge), kept in S.tips for the status line's tooltip
@@ -486,6 +479,6 @@
       if (!file || !S.model) return;
       file.text().then(t => { try { msg(addRoutes(t, dsnOf())); } catch (e) { msg(`Not imported: ${e.message}`); } });
     }
-    return { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, tidyTracks, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute };
+    return { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute };
   };
 })(window);
