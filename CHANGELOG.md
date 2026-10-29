@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.124.0] - 2026-10-29
+
+### Fixed
+- Every non-valve, non-transistor part checked against its datasheet, and its model against ngspice (resistors, capacitors, inductors, pots, all transformers, sources, diodes, zeners, bridges, LEDs, regulators, TL431, op-amps, chip amps, 555, fuses, NTCs, varistors, gas regulators, neons, relays, vactrols, speaker, pickup, RIAA). These were wrong:
+  - **Simulation**: a mains source into a Hammond 300 power transformer with silicon rectifiers stopped with "Transient did not converge at t=0.100 ms" (the mains start at their peak and charge the reservoir through the winding in more Newton steps than a step allowed). The last subdivided step now gets more iterations; the supply settles to ngspice's 463.0 V.
+  - **SPICE export**: sine sources carry their phase (the mains start at the peak) and their DC start (without it ngspice's operating point put 40 A of DC through a mains transformer's primary); square and triangle waves go out as the simulator makes them; a transformer's coupling as pairwise K lines (ngspice takes two inductors per K); gas regulators and neons as their lit curve (the breakdown diode conducted forward); the op-amp subcircuit without `if()`; `.tran` with a nonzero time step (ngspice refused 0).
+  - **Fuses**: the cold resistance of every rating from the Littelfuse 218 table (the interpolation was up to 58 % off, e.g. 160 mA 3.85 Ω for 2.44 Ω).
+  - **Varistors**: capacitance from TDK's SIOV sheet (13–28 % low: S10K275 220 pF, not 195) and the discs' thickness.
+  - **NTC inrush limiters**: SL32 10015 is Ø 31 mm on 7.8 mm leads, SL10 5R003 4 mm thick on 0.5 mm leads, SL22 10005 5 mm thick. Boards saved with the old sizes keep them.
+  - **UF4007** and **UF5408**: forward voltage refitted to Vishay's curves (UF4007 1.27 V at 1 A, was 0.96 V); junction capacitance 17 and 36 pF. 1N5404/5408 30 pF, 1N5817 125 pF.
+  - **LEDs**: the colour's forward voltage at 10 mA is now across the part's pins (the 5 Ω series resistance added 50 mV).
+  - **LM386**: gain 200 with pins 1 and 8 bypassed (was 191), 20 open.
+  - **Interstage transformer, centre-tapped**: the secondary's resistance is split between its halves (it was all on S1, unbalancing the grids).
+  - **TDA2050 / LM3886 footprints**: the odd leads are the ones bent forward, away from the tab (ST's Pentawatt V and TI's NDA0011B drawings); the rows were swapped.
+  - **Footprint holes** as KiCad's: DO-41 diodes 1.1 mm, 1 W and larger resistors and 5 W zeners 1.2 mm, DO-201AD 1.6 mm, film capacitors 1.0 mm at 7.5–10 mm and 1.2 mm from 15 mm, radial electrolytics Ø10 1.0 mm and Ø12.5–18 1.2 mm, 7.62 mm discs 1.0 mm. Example 07's board has one track moved 0.25 mm for the larger pads.
+  - The negative DC supply's note named its pins the wrong way round for the symbol: the pin by the + mark goes to ground.
+
 ## [3.123.1] - 2026-10-29
 
 ### Fixed
