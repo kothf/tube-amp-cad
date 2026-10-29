@@ -185,7 +185,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await bw.waitForFunction(() => window.BoardApp && BoardApp.state.model && BoardApp.state.board.tracks.length > 50, null, { timeout: 15000 }).catch(() => {});
     await bw.waitForTimeout(500);
     const bs = await bw.evaluate(() => { const S = BoardApp.state; return { parts: S.model.parts.length, placed: Object.keys(S.board.parts).length, tracks: S.board.tracks.length, vias: S.board.vias.length, un: S.conn.unrouted, drc: S.drc.map(d => d.kind + ": " + d.msg) }; });
-    check(bs.parts === 41 && bs.un === 0 && !bs.drc.length, `Gubin example's board: ${bs.parts} parts, ${bs.tracks} tracks, ${bs.vias} vias, ${bs.un} to route, ${bs.drc.length ? bs.drc.join("; ") : "no rule violations"}`);
+    check(bs.parts === 42 && bs.un === 0 && !bs.drc.length, `Gubin example's board: ${bs.parts} parts, ${bs.tracks} tracks, ${bs.vias} vias, ${bs.un} to route, ${bs.drc.length ? bs.drc.join("; ") : "no rule violations"}`);
     // Print (Ctrl+P): the ticked pages, presets for the print set and toner transfer, 1:1 on A4/A3
     await bw.evaluate(() => { window.__printed = []; PdfExport.print = (b, o) => { let t = ""; for (const x of b) t += String.fromCharCode(x); window.__printed.push({ pages: (t.match(/\/Type \/Page\b/g) || []).length, name: o.name }); return "dialog"; }; });
     await bw.evaluate(() => document.activeElement && document.activeElement.blur());

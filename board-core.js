@@ -1802,8 +1802,9 @@
       if (ib.length) p.pins.push({ id: "HB", name: "heater", net: g.b, i: I, pads: ib.join(",") });
       if (links) { const n = "h:link:" + id; names[n] = `HTR-${id}-LINK`; p.pins.push({ id: "HL", name: "heater link", net: n, i: I, pads: links.join(",") }); }
     });
+    // the shared supplies are numbered first (XH1 stays the 6.3 V one), the windings of their own after
     let k = 0;
-    groups.forEach(g => {
+    [...groups.values()].sort((a, b) => (typeof a.b !== "string") - (typeof b.b !== "string")).forEach(g => {
       const own = typeof g.b !== "string";      // the cathode net is the schematic's
       names[g.a] = own ? g.name : g.name + "_A"; if (!own) names[g.b] = g.name + "_B";
       const v = own ? (volts[g.b] !== undefined ? volts[g.b] : 0) : g.hv;

@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.123.1] - 2026-10-29
+
+### Fixed
+- Every valve's pinout checked against its datasheet (all 111 of them, not a sample); these were still wrong:
+  - **6С41С**: anode on pins 2, 4 and 6 (only 4 was there).
+  - **6С15П**: cathode on pins 1, 3, 6 and 9 (pin 1 was missing).
+  - **6П15П**: pins 1 and 6 are the suppressor grid and internal screen (they were marked cathode; they still join the cathode on the board).
+  - **6П33П**: screen grid on pins 6 and 9, pin 8 unused (it had 6 and 8). It is not pin-compatible with EL86, which it is often listed against.
+  - **6С4П** shared the 6С3П entry, but its base is different: grid 1, 2, 7, 8, cathode 3, 6, anode 9. It is now its own tube (same handbook data as the 6С3П).
+  - **5Ц8С**, **5Ц9С** and **6Ц13П** are indirectly heated, their cathode joined to a heater pin (1 and 2 on the 5Ц8С/5Ц9С, 5 on the 6Ц13П); the library had them as directly heated filaments.
+- Board: 5Ц4С, 5Ц8С and 5Ц9С now get their heater winding like GZ34 and 6Ц13П: a terminal (XH…) from the free heater pin to the cathode's B+ net. Before, the free heater pin had no copper. The shared 6.3 V supply keeps the number XH1.
+- Gubin example (07): the 5Ц4С's 5 V heater terminal XH2 is placed and routed.
+
 ## [3.123.0] - 2026-10-29
 
 ### Fixed
