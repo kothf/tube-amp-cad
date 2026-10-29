@@ -291,6 +291,17 @@ the circuit that was on the sheet.
     drawn already settled, so it has only a short way to go: the stereo
     Gubin example's 10 runs take 5.4 s instead of 11 s on 4 cores, with the
     same table.
+- **Power sweep.** *View ▾ → Power sweep* opens the *Power* tab under the
+  schematic. It simulates the circuit at a row of input levels (from −24 to
+  +12 dB of the generator's level by default; every generator is scaled
+  together, the mains is not) and reads the output power at 1 %, 5 % and
+  10 % THD:
+  - the output is a speaker's power or a scope channel's AC;
+  - a chart of THD and the 2nd and 3rd harmonics against the output, and a
+    table of every level, with *Use* to set the generator to it;
+  - around the THD marks the sweep adds levels where the distortion jumps
+    between two of them, so a clipping output stage is read closely. The
+    stereo Gubin example reads 1.71 W at 1 % THD in 12 s on 4 cores.
 - **SPICE.** *Export SPICE netlist* writes an LTspice netlist: tubes as
   behavioural sources with the same equations the simulator uses, transistors
   as Q and M elements with their `.model` lines.

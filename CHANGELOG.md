@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.126.0] - 2026-10-29
+
+### Added
+- **Power sweep** (*View ▾ → Power sweep*, the *Power* tab under the schematic): the circuit simulated at a row of input levels, from −24 to +12 dB of the generator's level by default, on all cores. Every signal generator, guitar pickup and phono cartridge is scaled together; the mains is not.
+  - Cards read the output at 1 %, 5 % and 10 % THD and the small-signal gain. A log–log chart plots THD and the 2nd and 3rd harmonics against the output, with the generator's present level marked. The table lists every level (input, output, THD, H2 and H3 in dBc), and *Use* sets the generator to that level (one undo step).
+  - The output is a speaker's power or a scope channel's AC. Where THD jumps past a mark between two levels (a clipping output stage), the sweep adds three levels between them, up to twice.
+  - Example 07 reads 1.71 W at 1 % THD, as the study script measured by hand. `tests/power.test.mjs` and e2e part `10-analysis` cover it.
+
 ## [3.125.0] - 2026-10-29
 
 ### Fixed
