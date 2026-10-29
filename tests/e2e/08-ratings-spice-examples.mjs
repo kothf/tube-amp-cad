@@ -354,3 +354,31 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await cad.evaluate(() => { TubeCAD.state.sel.comps.clear(); TubeCAD.updateInspector(); });
   }
 }
+// --- SPICE export of a mains supply, a neon and a square wave: lines ngspice reads, as the engine runs ---
+{
+  const sp = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = [];
+    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+    const pin = (c, id) => C.compPins(c).find(p => p.id === id), wire = (a, b, h) => C.lRoute(a.x, a.y, b.x, b.y, h !== false).forEach(q => C.addSegment(...q));
+    const gnd = p => { const g = add("ground", {}, p.x, p.y + 40); wire(p, pin(g, "G"), false); };
+    const G = add("mains", { vrms: 230 }, 200, 300), T = add("ptx_cat", { model: "373BX", tap: "240" }, 400, 300);
+    const D1 = add("diode", { model: "UF4007" }, 560, 200), D2 = add("diode", { model: "1N4007" }, 560, 400), CB = add("electrolytic", { c: 47e-6 }, 700, 340, 1), RL = add("resistor", { r: 5000 }, 800, 340, 1);
+    const NE = add("neon", {}, 200, 520, 1), RN = add("resistor", { r: 330e3 }, 300, 460), SQ = add("siggen", { wave: "square", amp: 1, freq: 1000 }, 1000, 300), RS = add("resistor", { r: 1000 }, 1100, 240);
+    wire(pin(G, "L"), pin(T, "P1")); wire(pin(G, "N"), pin(T, "P2")); gnd(pin(G, "N")); gnd(pin(T, "CT"));
+    wire(pin(T, "HT1"), pin(D1, "A")); wire(pin(T, "HT2"), pin(D2, "A")); wire(pin(D1, "K"), pin(CB, "+")); wire(pin(D2, "K"), pin(CB, "+")); wire(pin(CB, "+"), pin(RL, "1")); gnd(pin(CB, "-")); gnd(pin(RL, "2"));
+    wire(pin(G, "L"), pin(RN, "1")); wire(pin(RN, "2"), pin(NE, "A")); gnd(pin(NE, "K"));
+    wire(pin(SQ, "+"), pin(RS, "1")); gnd(pin(RS, "2")); gnd(pin(SQ, "-"));
+    S.sel.comps.clear(); S.sel.wires.clear(); C.commit();
+    return C.spiceNetlist();
+  });
+  const ks = sp.match(/^K\S*( \S+)+$/gm) || [];
+  check(/^V\S+ \S+ \S+ DC 0 SIN\(0 325\.\d+ 50 0 0 90\)$/m.test(sp) && ks.length >= 3 && ks.every(k => k.trim().split(" ").length === 4) && /^B\S+ .*I=.*ln\(1\+exp/m.test(sp) && /^B\S+ .*V=.*max\(-1,min\(1,50\*\(2\/pi\)\*asin\(sin/m.test(sp) && !/\bif\(/.test(sp),
+    `SPICE export: the mains as a sine from its peak with its DC start (${(sp.match(/^V\S+ .*SIN.*$/m) || [""])[0]}), the transformer's coupling pairwise (${ks.length} K lines), the neon a B source, the square wave as the simulator makes it`);
+  // ngspice, where it is installed, reads it and runs it
+  const { execFileSync } = await import("node:child_process");
+  let ng = null; try { execFileSync("ngspice", ["-v"], { stdio: "ignore" }); ng = true; } catch { ng = false; }
+  if (ng) {
+    const out = execFileSync("ngspice", ["-b"], { input: sp.replace(/^\.end\s*$/m, ".control\nrun\nprint mean(v(" + /^RRL?\S* (\S+) 0 5000$/m.exec(sp)?.[1] + "))\n.endc\n.end"), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    check(!/error/i.test(out), "ngspice runs the exported supply without an error");
+  }
+}

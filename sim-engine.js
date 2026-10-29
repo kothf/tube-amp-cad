@@ -619,7 +619,7 @@
     const b = new Float64Array(n);
     const gmin = opts.gmin;
     const maxStep = mode.dc ? 25 : 15;
-    const maxIter = mode.dc ? 300 : 60;
+    const maxIter = opts.maxIter || (mode.dc ? 300 : 60);
     const srcScale = opts.srcScale === undefined ? 1 : opts.srcScale;
 
     const addA = (i, j, v) => { if (i > 0 && j > 0) A.add(i - 1, j - 1, v); };
@@ -1176,7 +1176,10 @@
       const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
       const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
       if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
-      if ((depth || 0) >= 2) return null;
+      // the last resort: more iterations (a source that steps at t = 0, such as the mains starting at
+      // its peak, charges a rectifier's reservoir through a winding: the damped Newton walks the
+      // node up 15 V an iteration, and halves that once the steps stop shrinking)
+      if ((depth || 0) >= 2) { const r2 = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: null }, { gmin: 1e-12, maxIter: 400 }); return r2.ok ? r2.x : null; }
       let xs = xprev;
       for (let k = 1; k <= 8; k++) {
         xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1);
@@ -1463,7 +1466,7 @@
         `BHI HI 0 V=max(V(VP)-${g(m.dhi)},V(VM))`, `BLO LO 0 V=min(V(VN)+${g(m.dlo)},V(VM))`,
         `BX1 X1 0 V=-${g(m.i1)}*tanh(${g(m.gm1 / m.i1)}*V(INP,INN))*V(ON)`, `BX2 X2 0 V=-${g(m.i2)}*tanh(${g(m.gm2 / m.i2)}*V(N1,VM))*V(ON)`,
         `BVT VT 0 V=V(N2)-${sp("V(N2)-V(HI)")}+${sp("V(LO)-V(N2)")}`,
-        `BXO XO 0 V=if(V(VT,OUT)>0,${g(m.isc)}*tanh(V(VT,OUT)/${g(m.ro * m.isc)}),${g(m.isk)}*tanh(V(VT,OUT)/${g(m.ro * m.isk)}))*V(ON)`];
+        `BXO XO 0 V=(${g(m.isc)}*tanh(max(V(VT,OUT),0)/${g(m.ro * m.isc)})+${g(m.isk)}*tanh(min(V(VT,OUT),0)/${g(m.ro * m.isk)}))*V(ON)`];
       let k = 0;
       const B = (a, b, i) => L.push(`B${++k} ${a} ${b} I=${i}`);
       // X out of the amplifier into node n, from V+ or back to V−; a resistor to the midpoint; clamps
@@ -1545,7 +1548,7 @@
       const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
       const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
       if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
-      if ((depth || 0) >= 3) return null;
+      if ((depth || 0) >= 3) { const r2 = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: null }, { gmin: 1e-12, maxIter: 400 }); return r2.ok ? r2.x : null; }   // as in simulate()
       let xs = xprev;
       for (let k = 1; k <= 8; k++) { xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
       if (!depth) xBack = null;

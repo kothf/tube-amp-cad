@@ -142,7 +142,7 @@
     "nmos.model": "The MOSFET type: threshold voltage, transconductance, capacitances and ratings. DN2540 and LND150 are depletion types, conducting at 0 V gate–source: one resistor makes a current source.",
     "pmos.model": "The MOSFET type: threshold voltage, transconductance, capacitances and ratings.",
     "opamp.model": "The op-amp type. TL07x: JFET inputs, 3 MHz, 13 V/µs, for audio. LM741: the classic, 1 MHz, 0.5 V/µs. LM301A: a 741 that takes its compensation capacitor between pins 1 and 8. LM324: four amplifiers on a single supply, inputs and output down to V−. Single, dual or quad sets the package.",
-    "vdc.pol": "Positive: the + pin is the rail and the - pin goes to ground (B+, a screen or low-voltage rail). Negative: the + pin goes to ground and the - pin is the rail (fixed grid bias, a negative supply). The symbol turns round to match.",
+    "vdc.pol": "Positive: the + pin is the rail and the - pin goes to ground (B+, a screen or low-voltage rail). Negative: the symbol turns round, and the pin by its + mark goes to ground while the other is the rail (fixed grid bias, a negative supply).",
     "vdc.v": "Supply voltage, its size; Polarity sets its sign. Typing a minus sign also makes it negative.",
     "vdc.rs": "Internal resistance: the supply's sag under load. 0 is an ideal regulated supply.",
     "njf.model": "The JFET type: IDSS (the current at 0 V gate–source), the pinch-off Vgs(off), capacitances and ratings. Real parts spread several times either way, so leave room in the bias.",

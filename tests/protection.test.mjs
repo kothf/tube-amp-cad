@@ -75,10 +75,11 @@ test("varistors: 1 mA at the varistor voltage, the clamp voltage at the surge cu
 });
 
 test("fuses: a cold resistance falling with the rating, through the datasheet points", () => {
-  near(L.fuseCold(1), 0.061, 0.01, "1 A"); near(L.fuseCold(0.315), 0.85, 0.01, "315 mA"); near(L.fuseCold(6.3), 0.0076, 0.01, "6.3 A");
+  // Littelfuse 218 nominal cold resistances
+  for (const [a, r] of [[0.1, 8.95], [0.5, 0.37], [0.8, 0.073], [1, 0.055], [6.3, 0.0075], [10, 0.0045]]) near(L.fuseCold(a), r, 1e-9, a + " A");
   L.FUSE_RATINGS.slice(1).forEach((a, k) => assert.ok(L.fuseCold(a) < L.fuseCold(L.FUSE_RATINGS[k]), `${a} A`));
   const r = E.simulate(circuit([{ type: "vdc", params: { v: 10 }, pins: { "+": 1, "-": 0 } }, { type: "fuse", params: { a: 1 }, pins: { 1: 1, 2: 2 } }, { type: "resistor", params: { r: 10 }, pins: { 1: 2, 2: 0 } }]), { budgetMs: 5000 });
-  near(r.dc.nodes[2], 10 * 10 / (10 + 0.061), 1e-4, "the drop across a 1 A fuse");
+  near(r.dc.nodes[2], 10 * 10 / (10 + 0.055), 1e-4, "the drop across a 1 A fuse");
 });
 
 test("jacks: the switched jack shorts its tip to SW until a plug goes in; connectors add nothing to the circuit", () => {

@@ -2492,10 +2492,11 @@
         case "E": lines.push(`E${id} ${nd.join(" ")} ${e.gain}`); break;
         case "G": lines.push(`G${id} ${nd.join(" ")} ${e.gm}`); break;
         case "GLOW": {
-          // no glow discharge in SPICE: lit, a breakdown diode at the maintaining voltage with the regulation as its RS
-          const m = e.model;
+          // no glow discharge in SPICE: lit, the simulator's own curve (vm plus r per ampere, eased
+          // over 50 mV) one way only, dark the other way (it neither strikes nor goes out here)
+          const m = e.model, x = `(V(${nd[0]},${nd[1]})-${m.vm})/0.05`;
           lines.push(`* ${id}: glow discharge, lit (maintains ${m.vm} V, strikes at ${m.vs} V, out below ${m.iext * 1000} mA: not in this model)`);
-          lines.push(`D${id} ${nd[1]} ${nd[0]} DGLOW_${id}`, `.model DGLOW_${id} D(Is=1e-14 N=1 BV=${m.vm} IBV=1e-6 RS=${m.r})`);
+          lines.push(`B${id} ${nd[0]} ${nd[1]} I=V(${nd[0]},${nd[1]})/1e10+${+(0.05 / m.r).toPrecision(6)}*(max(${x},0)+ln(1+exp(-abs(${x}))))`);
           break;
         }
         case "RELAY": {
@@ -2512,7 +2513,16 @@
           lines.push(`* ${id}: vactrol cell, ${d ? "at its simulated resistance" : "dark"} (it follows the LED's light, not modelled here)`, `R${id} ${nd[0]} ${nd[1]} ${r}`);
           break;
         }
-        case "VSRC": lines.push(e.wave === "sine" ? `V${id} ${nd[0]} ${nd[1]} SIN(${e.offset || 0} ${e.amp} ${e.freq})` : `V${id} ${nd[0]} ${nd[1]} PULSE(${(e.offset || 0) - e.amp} ${(e.offset || 0) + e.amp} 0 ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0.5 / e.freq : 1e-7} ${e.wave === "triangle" ? 0 : 0.5 / e.freq} ${1 / e.freq})`); break;
+        // a sine as SPICE's SIN with its phase (the mains start at the peak); a square or a triangle
+        // as the simulator makes it (a triangle, the square clipped from it with 1 % edges), phase too
+        case "VSRC": {
+          const ph = +e.phase || 0, w = `(2*pi*${e.freq}*time+${+(ph * Math.PI / 180).toPrecision(9)})`, tri = `(2/pi)*asin(sin(${w}))`;
+          if (e.wave === "square" || e.wave === "triangle") lines.push(`B${id} ${nd[0]} ${nd[1]} V=${e.offset || 0}+${e.amp}*${e.wave === "square" ? `max(-1,min(1,50*${tri}))` : tri}`);
+          // DC: the operating point the engine starts from (SPICE would take the sine's t = 0 value, and a
+        // mains source starting at its peak would then drive tens of amps of DC through a primary)
+        else lines.push(`V${id} ${nd[0]} ${nd[1]} DC ${e.dcValue !== undefined ? +e.dcValue.toPrecision(6) : e.offset || 0} SIN(${e.offset || 0} ${e.amp} ${e.freq}${ph ? ` 0 0 ${ph}` : ""})`);
+          break;
+        }
         case "D": lines.push(`D${id} ${nd[0]} ${nd[1]} DMOD_${id}`); lines.push(`.model DMOD_${id} D(Is=${e.is} N=${e.n}${e.tt ? ` TT=${e.tt}` : ""}${e.cj ? ` CJO=${e.cj} M=0` : ""})`); break;
         case "BJT": {
           const m = e.model, mn = `Q${m.pol > 0 ? "N" : "P"}_${(S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id}`.replace(/[^A-Za-z0-9_]/g, "_");
@@ -2563,7 +2573,8 @@
         case "XFMR": {
           const AL = e.lp / Math.pow(e.primaryTurns, 2), names = [];
           e.windings.forEach((w, j) => { const n = `L${id}_${j}`; names.push(n); lines.push(`${n} ${nn(w.a)} ${nn(w.b)} ${AL * w.turns * w.turns}`); });
-          lines.push(`K${id} ${names.join(" ")} ${e.k}`);
+          // the coupling pair by pair: ngspice's K takes two inductors only
+          names.forEach((a, j) => names.slice(j + 1).forEach((b, k) => lines.push(`K${id}_${j}_${j + k + 1} ${a} ${b} ${e.k}`)));
           break;
         }
         case "TRIODE": case "PENTODE": {
@@ -2586,7 +2597,9 @@
       }
     });
     const f = signalFreq() || 1000;
-    lines.push(`.tran 0 ${(20 / f).toPrecision(3)} ${(10 / f).toPrecision(3)} ${(1 / f / 200).toPrecision(3)}`, ".end");
+    // the print step also as the time step: ngspice refuses a time step of 0 (LTspice takes it)
+    const step = (1 / f / 200).toPrecision(3);
+    lines.push(`.tran ${step} ${(20 / f).toPrecision(3)} ${(10 / f).toPrecision(3)} ${step}`, ".end");
     return lines.join("\n");
   }
 

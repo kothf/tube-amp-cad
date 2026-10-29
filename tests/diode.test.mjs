@@ -96,6 +96,32 @@ test("bridges: full-wave output from a floating 50 Hz source, the peak less two 
   }
 });
 
+test("a mains-fed Hammond 300 transformer into silicon diodes settles: the mains steps to its peak at t = 0", () => {
+  // the first step charges the reservoir from 0 V through the winding, more than the damped Newton's
+  // 60 iterations walk; ngspice (12 s of transient) gives 463.0 V, 4.5 V rms ripple and −67.5 V bias
+  const r = E.simulate(circuit([
+    { type: "mains", params: { vrms: 230 }, pins: { L: 1, N: 2 } },
+    { type: "fuse", params: { a: 1 }, pins: { 1: 1, 2: 3 } },
+    { type: "ptx_cat", params: { model: "373BX", tap: "240", bias: "yes" }, pins: { P1: 3, P2: 2, HT1: 4, CT: 0, HT2: 5, B: 6 } },
+    { type: "diode", params: { model: "UF4007" }, pins: { A: 4, K: 7 } }, { type: "diode", params: { model: "1N4007" }, pins: { A: 5, K: 7 } },
+    { type: "electrolytic", params: { c: 47e-6 }, pins: { "+": 7, "-": 0 } }, { type: "resistor", params: { r: 5000 }, pins: { 1: 7, 2: 0 } },
+    { type: "diode", params: { model: "1N4148" }, pins: { A: 8, K: 6 } }, { type: "electrolytic", params: { c: 10e-6 }, pins: { "+": 0, "-": 8 } },
+    { type: "resistor", params: { r: 100e3 }, pins: { 1: 8, 2: 0 } }]), { budgetMs: 60000, maxPeriods: 20000 });
+  assert.ok(r.ok, r.error);
+  near(r.dc.nodes[7], 463.0, 0.01, "B+");
+  near(r.dc.nodes[8], -67.5, 0.01, "bias");
+  const w = Array.from(r.tran.nodes[7]), m = w.reduce((a, v) => a + v, 0) / w.length;
+  near(Math.sqrt(w.reduce((a, v) => a + (v - m) ** 2, 0) / w.length), 4.5, 0.05, "ripple, V rms");
+});
+
+test("LEDs: the datasheet forward voltage at 10 mA across the part's pins, its series resistance included", () => {
+  for (const [color, l] of Object.entries(L.LEDS)) {
+    const r = E.simulate(circuit([{ type: "isrc", params: { i: 0.01 }, pins: { "+": 1, "-": 0 } }, { type: "led", params: { color }, pins: { A: 1, K: 0 } }]), { budgetMs: 5000 });
+    assert.ok(r.ok, r.error);
+    near(r.dc.nodes[1], l.vf, 0.002, `${color} at 10 mA`);
+  }
+});
+
 test("zeners: each type's voltage at its test current, its dynamic resistance around it", () => {
   for (const [model, z] of Object.entries(L.ZENERS)) {
     const at = i => {
