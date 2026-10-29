@@ -114,6 +114,14 @@ test("a mains-fed Hammond 300 transformer into silicon diodes settles: the mains
   near(Math.sqrt(w.reduce((a, v) => a + (v - m) ** 2, 0) / w.length), 4.5, 0.05, "ripple, V rms");
 });
 
+test("LEDs: the datasheet forward voltage at 10 mA across the part's pins, its series resistance included", () => {
+  for (const [color, l] of Object.entries(L.LEDS)) {
+    const r = E.simulate(circuit([{ type: "isrc", params: { i: 0.01 }, pins: { "+": 1, "-": 0 } }, { type: "led", params: { color }, pins: { A: 1, K: 0 } }]), { budgetMs: 5000 });
+    assert.ok(r.ok, r.error);
+    near(r.dc.nodes[1], l.vf, 0.002, `${color} at 10 mA`);
+  }
+});
+
 test("zeners: each type's voltage at its test current, its dynamic resistance around it", () => {
   for (const [model, z] of Object.entries(L.ZENERS)) {
     const at = i => {

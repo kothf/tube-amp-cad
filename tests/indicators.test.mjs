@@ -85,7 +85,7 @@ test("LM386: gain 20 with pins 1 and 8 open, about 200 bypassed, the output at h
   near(r.dc.nodes[3], 4.5, 1e-3, "output bias");
   near(r.dc.devices.U.main.pd, 9 * L.CHIPAMPS.LM386.iq, 0.05, "quiescent dissipation");
   r = amp(0.005, true);
-  near(peak(r.tran.nodes[7]) / 0.005, 191, 0.02, "gain, bypassed");
+  near(peak(r.tran.nodes[7]) / 0.005, 200, 0.02, "gain, bypassed (the datasheet's 200)");
   r = amp(0.3, false);
   const p = Math.pow(peak(r.tran.nodes[7]), 2) / 16;
   assert.ok(p > 0.55 && p < 0.8, `clipped output power ${p} W`);
@@ -152,4 +152,10 @@ test("footprints: neon, magic eyes in their sockets by the datasheet pins, chip 
   assert.deepEqual(map.get("1").map(x => x.pin), ["V+"], "LM3886: V+ on 1");
   assert.deepEqual(map.get("5").map(x => x.pin), ["V+"], "LM3886: and on 5");
   assert.deepEqual(map.get("10").map(x => x.pin), ["+"], "LM3886: IN+ on 10");
+  // the odd leads are the long ones, bent out away from the tab (the body above the pads)
+  for (const [name, row] of [["TO-220-5S", 3.7], ["TO-220-11S", 5.08]]) {
+    const f = B.footprint(name), body = f.silk.find(s => s.t === "rect"), y = k => f.pads.find(p => p.num === String(k)).y;
+    assert.ok(body.y + body.h < y(2), `${name}: body above the pads`);
+    assert.ok(Math.abs(y(1) - y(2) - row) < 1e-9 && y(3) === y(1), `${name}: odd row ${row} mm further from the tab than the even one`);
+  }
 });

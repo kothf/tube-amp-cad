@@ -906,17 +906,17 @@
     "1N4001": { kind: "rectifier", is: 7e-9, n: 1.8, rs: 0.05, tt: 4.3e-6, cj: 15e-12, v: 50, i: 1, pkg: "DO-41", use: "1 A rectifier, 50 V" },
     "1N4004": { kind: "rectifier", is: 7e-9, n: 1.8, rs: 0.05, tt: 4.3e-6, cj: 15e-12, v: 400, i: 1, pkg: "DO-41", use: "1 A rectifier, 400 V" },
     "1N4007": { kind: "rectifier", is: 7e-9, n: 1.8, rs: 0.05, tt: 4.3e-6, cj: 15e-12, v: 1000, i: 1, pkg: "DO-41", use: "1 A rectifier, 1000 V" },
-    "1N5404": { kind: "rectifier", is: 2.5e-8, n: 1.8, rs: 0.02, tt: 4.3e-6, cj: 40e-12, v: 400, i: 3, pkg: "DO-201AD", use: "3 A rectifier, 400 V" },
-    "1N5408": { kind: "rectifier", is: 2.5e-8, n: 1.8, rs: 0.02, tt: 4.3e-6, cj: 40e-12, v: 1000, i: 3, pkg: "DO-201AD", use: "3 A rectifier, 1000 V" },
-    "UF4007": { kind: "fast", is: 1e-8, n: 1.9, rs: 0.05, tt: 1.67e-7, cj: 10e-12, v: 1000, i: 1, pkg: "DO-41", use: "ultrafast 1 A, 1000 V, 75 ns", trr: 75e-9 },
-    "UF5408": { kind: "fast", is: 3e-8, n: 1.9, rs: 0.08, tt: 1.67e-7, cj: 30e-12, v: 1000, i: 3, pkg: "DO-201AD", use: "ultrafast 3 A, 1000 V, 75 ns", trr: 75e-9 },
+    "1N5404": { kind: "rectifier", is: 2.5e-8, n: 1.8, rs: 0.02, tt: 4.3e-6, cj: 30e-12, v: 400, i: 3, pkg: "DO-201AD", use: "3 A rectifier, 400 V" },
+    "1N5408": { kind: "rectifier", is: 2.5e-8, n: 1.8, rs: 0.02, tt: 4.3e-6, cj: 30e-12, v: 1000, i: 3, pkg: "DO-201AD", use: "3 A rectifier, 1000 V" },
+    "UF4007": { kind: "fast", is: 1.3e-8, n: 2.2, rs: 0.24, tt: 1.67e-7, cj: 17e-12, v: 1000, i: 1, pkg: "DO-41", use: "ultrafast 1 A, 1000 V, 75 ns", trr: 75e-9 },
+    "UF5408": { kind: "fast", is: 4.9e-8, n: 2.2, rs: 0.108, tt: 1.67e-7, cj: 36e-12, v: 1000, i: 3, pkg: "DO-201AD", use: "ultrafast 3 A, 1000 V, 75 ns", trr: 75e-9 },
     "MUR160": { kind: "fast", is: 1e-9, n: 1.7, rs: 0.1, tt: 1.11e-7, cj: 10e-12, v: 600, i: 1, pkg: "DO-41", use: "ultrafast 1 A, 600 V, 50 ns", trr: 50e-9 },
     "MUR460": { kind: "fast", is: 4e-9, n: 1.7, rs: 0.04, tt: 1.67e-7, cj: 30e-12, v: 600, i: 4, pkg: "DO-201AD", use: "ultrafast 4 A, 600 V, 75 ns", trr: 75e-9 },
     "HER108": { kind: "fast", is: 1e-8, n: 2, rs: 0.2, tt: 1.67e-7, cj: 10e-12, v: 1000, i: 1, pkg: "DO-41", use: "high-efficiency 1 A, 1000 V, 75 ns", trr: 75e-9 },
     "FR107": { kind: "fast", is: 1e-8, n: 1.85, rs: 0.1, tt: 1.11e-6, cj: 12e-12, v: 1000, i: 1, pkg: "DO-41", use: "fast recovery 1 A, 1000 V, 500 ns", trr: 500e-9 },
     "1N4148": { kind: "signal", is: 2.5e-9, n: 1.75, rs: 0.05, tt: 5.8e-9, cj: 2e-12, v: 100, i: 0.15, pkg: "DO-35", use: "small signal, 4 ns", trr: 4e-9 },
     "BAT85": { kind: "schottky", is: 7.5e-9, n: 1.05, rs: 2, tt: 0, cj: 10e-12, v: 30, i: 0.2, pkg: "DO-35", use: "small-signal Schottky, 30 V" },
-    "1N5817": { kind: "schottky", is: 3e-6, n: 1.1, rs: 0.07, tt: 0, cj: 110e-12, v: 20, i: 1, pkg: "DO-41", use: "Schottky 1 A, 20 V" },
+    "1N5817": { kind: "schottky", is: 3e-6, n: 1.1, rs: 0.07, tt: 0, cj: 125e-12, v: 20, i: 1, pkg: "DO-41", use: "Schottky 1 A, 20 V" },
     "1N5819": { kind: "schottky", is: 1.3e-6, n: 1.1, rs: 0.07, tt: 0, cj: 110e-12, v: 40, i: 1, pkg: "DO-41", use: "Schottky 1 A, 40 V" },
     "1N5822": { kind: "schottky", is: 5e-6, n: 1.1, rs: 0.025, tt: 0, cj: 250e-12, v: 40, i: 3, pkg: "DO-201AD", use: "Schottky 3 A, 40 V" },
     "SB1100": { kind: "schottky", is: 3e-8, n: 1.2, rs: 0.1, tt: 0, cj: 80e-12, v: 100, i: 1, pkg: "DO-41", use: "Schottky 1 A, 100 V" },
@@ -942,36 +942,37 @@
   // Inrush current limiters (NTC thermistors, Ametherm SL series): the cold resistance r25 (Ω) and
   // the largest steady current imax (A); r100 and r50 the makers' resistance when self-heated at
   // 100 % and 50 % of imax, from which ntcLaw() gives R = k·I^−n; the disc's diameter d and
-  // thickness w, its lead pitch p and lead diameter (mm)
+  // largest thickness w, its lead pitch p and lead diameter (mm), straight leads (Vishay datasheets)
   const NTCS = {
-    "SL10 5R003": { r25: 5, imax: 3, r100: 0.5, r50: 0.7, d: 10, w: 5, p: 5.1, lead: 0.8, use: "5 Ω, 3 A" },
-    "SL22 10005": { r25: 10, imax: 5, r100: 0.18, r50: 0.44, d: 22, w: 6, p: 7.8, lead: 1, use: "10 Ω, 5 A" },
+    "SL10 5R003": { r25: 5, imax: 3, r100: 0.5, r50: 0.7, d: 10, w: 4, p: 5.1, lead: 0.5, use: "5 Ω, 3 A" },
+    "SL22 10005": { r25: 10, imax: 5, r100: 0.18, r50: 0.44, d: 22, w: 5, p: 7.8, lead: 1, use: "10 Ω, 5 A" },
     "SL22 2R510": { r25: 2.5, imax: 10, r100: 0.04, r50: 0.1, d: 22, w: 6, p: 7.8, lead: 1, use: "2.5 Ω, 10 A" },
     "SL22 5R012": { r25: 5, imax: 12, r100: 0.05, r50: 0.12, d: 22, w: 6, p: 7.8, lead: 1, use: "5 Ω, 12 A" },
-    "SL32 10015": { r25: 10, imax: 15, r100: 0.05, r50: 0.11, d: 29, w: 6.5, p: 9.5, lead: 1, use: "10 Ω, 15 A" }
+    "SL32 10015": { r25: 10, imax: 15, r100: 0.05, r50: 0.11, d: 31, w: 6, p: 7.8, lead: 1, use: "10 Ω, 15 A" }
   };
   const ntcLaw = m => { const n = Math.log(m.r50 / m.r100) / Math.LN2; return { r25: m.r25, n, k: m.r100 * Math.pow(m.imax, n) }; };
   // Metal oxide varistors (TDK SIOV StandarD): the largest continuous voltages vrms and vdc, the
   // varistor voltage v1ma at 1 mA, the clamping voltage vc at the surge current ic (8/20 µs), the
-  // capacitance at 1 kHz, the disc's diameter d and thickness w, its lead pitch p and lead diameter (mm)
+  // typical capacitance at 1 kHz, the disc's diameter d and largest thickness w, its lead pitch p and
+  // lead diameter (mm)
   const MOVS = {
-    "S10K150": { vrms: 150, vdc: 200, v1ma: 240, vc: 395, ic: 25, c: 350e-12, d: 12, w: 4.6, p: 7.5, lead: 0.8, use: "for 120 V mains, Ø 10 mm" },
-    "S07K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 10, c: 95e-12, d: 9, w: 5.3, p: 5, lead: 0.6, use: "for 230 V mains, Ø 7 mm" },
-    "S10K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 25, c: 195e-12, d: 12, w: 5.6, p: 7.5, lead: 0.8, use: "for 230 V mains, Ø 10 mm" },
-    "S14K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 50, c: 320e-12, d: 15.5, w: 6.1, p: 7.5, lead: 0.8, use: "for 230 V mains, Ø 14 mm" },
-    "S20K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 100, c: 630e-12, d: 21.5, w: 6.6, p: 10, lead: 1, use: "for 230 V mains, Ø 20 mm" },
-    "S14K385": { vrms: 385, vdc: 505, v1ma: 620, vc: 1025, ic: 50, c: 240e-12, d: 15.5, w: 6.9, p: 7.5, lead: 0.8, use: "for 230 V mains with margin, Ø 14 mm" }
+    "S10K150": { vrms: 150, vdc: 200, v1ma: 240, vc: 395, ic: 25, c: 430e-12, d: 12, w: 4.4, p: 7.5, lead: 0.8, use: "for 120 V mains, Ø 10 mm" },
+    "S07K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 10, c: 110e-12, d: 9, w: 4.4, p: 5, lead: 0.6, use: "for 230 V mains, Ø 7 mm" },
+    "S10K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 25, c: 220e-12, d: 12, w: 5.0, p: 7.5, lead: 0.8, use: "for 230 V mains, Ø 10 mm" },
+    "S14K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 50, c: 440e-12, d: 15.5, w: 5.0, p: 7.5, lead: 0.8, use: "for 230 V mains, Ø 14 mm" },
+    "S20K275": { vrms: 275, vdc: 350, v1ma: 430, vc: 710, ic: 100, c: 850e-12, d: 21.5, w: 5.4, p: 10, lead: 1, use: "for 230 V mains, Ø 20 mm" },
+    "S14K385": { vrms: 385, vdc: 505, v1ma: 620, vc: 1025, ic: 50, c: 315e-12, d: 15.5, w: 5.9, p: 7.5, lead: 0.8, use: "for 230 V mains with margin, Ø 14 mm" }
   };
   // a varistor's curve as two opposed junctions: I = 1 mA at v1ma, rising α ≈ 35-fold per decade of
   // voltage around it (the slope nVt = v1ma/35), and a series resistance that brings the clamp
   // voltage at ic to vc
   const movModel = m => { const nvt = m.v1ma / 35, n = nvt / 0.025852, is = 1e-3 * Math.exp(-m.v1ma / nvt); return { n, is, rs: Math.max((m.vc - m.v1ma - nvt * Math.log(m.ic / 1e-3)) / m.ic, 0.01) }; };
-  // Fuses, 5 × 20 mm (and 6.3 × 32 mm) glass cartridges: the ratings offered, and a typical cold
-  // resistance by rating (Littelfuse 218 time-lag: 0.315 A 0.85 Ω, 1 A 0.061 Ω, 6.3 A 7.6 mΩ, 10 A
-  // 4.5 mΩ; log-log between them, the 0.1 A end extrapolated)
+  // Fuses, 5 × 20 mm (and 6.3 × 32 mm) glass cartridges: the ratings offered, and the nominal cold
+  // resistance of each (Littelfuse 218 time-lag datasheet; log-log between ratings off the table)
   const FUSE_RATINGS = [0.1, 0.125, 0.16, 0.2, 0.25, 0.315, 0.4, 0.5, 0.63, 0.8, 1, 1.25, 1.6, 2, 2.5, 3.15, 4, 5, 6.3, 8, 10];
   function fuseCold(a) {
-    const P = [[0.1, 11], [0.315, 0.85], [1, 0.061], [6.3, 0.0076], [10, 0.0045]];
+    const P = [[0.1, 8.95], [0.125, 4.41], [0.16, 2.44], [0.2, 1.6], [0.25, 1.05], [0.315, 0.848], [0.4, 0.535], [0.5, 0.37], [0.63, 0.275],
+      [0.8, 0.073], [1, 0.055], [1.25, 0.042], [1.6, 0.032], [2, 0.029], [2.5, 0.022], [3.15, 0.017], [4, 0.013], [5, 0.01], [6.3, 0.0075], [8, 0.0059], [10, 0.0045]];
     a = Math.min(Math.max(+a || 1, P[0][0]), P[P.length - 1][0]);
     let k = 0; while (k < P.length - 2 && a > P[k + 1][0]) k++;
     const [[a0, r0], [a1, r1]] = [P[k], P[k + 1]];
@@ -1037,7 +1038,8 @@
   };
   // LEDs, as used for cathode bias: forward voltage vf at 10 mA (emission coefficient 2), max current i (A)
   const LEDS = { red: { vf: 1.8, i: 0.02 }, yellow: { vf: 2.0, i: 0.02 }, green: { vf: 2.1, i: 0.02 }, blue: { vf: 3.0, i: 0.02 } };
-  const ledIs = vf => 0.01 / Math.exp(vf / (2 * 0.025852));
+  // the junction's share: the part's 5 Ω series resistance drops the other 50 mV at 10 mA
+  const ledIs = vf => 0.01 / Math.exp((vf - 0.05) / (2 * 0.025852));
   // Op-amps, typical values from the makers' datasheets (TI, onsemi): open-loop gain a0 (V/V),
   // gain-bandwidth gbw (Hz), slew rate sr (V/s), input resistance rin (Ω), input bias current ib
   // (A, > 0 into the pins: NPN inputs, < 0 out of them: PNP), open-loop output resistance ro (Ω),
@@ -1048,7 +1050,8 @@
   // Glow-discharge voltage regulators (sim-engine.js GLOW): maintaining voltage vm, striking
   // voltage vs (the datasheet's minimum supply for a sure start), regulation r (the rise over the
   // current range, per ampere), current range imin–imax, extinction iext; pins A 5, K 2 in both
-  // bases (B7G 0A2/0B2: K also on 4 and 7, a load-disconnect jumper on 3–6; octal: jumper 3–7)
+  // bases (RCA data: B7G 0A2/0B2 also A on 1, K on 4 and 7, 3 and 6 internal, not to be used;
+  // octal: a jumper 3–7 that can break the supply when the tube is pulled)
   const GASREGS = {
     "0A2": { vm: 150, vs: 185, r: 80, imin: 5e-3, imax: 30e-3, iext: 2e-3, socket: "B7G", use: "150 V, miniature" },
     "0B2": { vm: 108, vs: 133, r: 40, imin: 5e-3, imax: 30e-3, iext: 2e-3, socket: "B7G", use: "108 V, miniature" },
@@ -1514,11 +1517,13 @@
       },
       build: (c, net, alloc, out) => {
         const p = c.params, n = Math.max(+p.ratio || 1, 1e-3), lp = Math.max(+p.lp || 1, 1e-3), k = Math.min(0.99999, Math.sqrt(Math.max(0, 1 - Math.max(+p.llk || 0, 0) / lp)));
-        const a = alloc(), s = alloc(), ct = p.ct === "yes";
+        const a = alloc(), s = alloc(), ct = p.ct === "yes", s2 = ct ? alloc() : 0, rs = Math.max(+p.dcrs || 0, 1e-3);
         out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), a], r: Math.max(+p.dcrp || 0, 1e-3) });
-        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(+p.dcrs || 0, 1e-3) });
+        // a centre-tapped secondary: half its resistance in each half, so the two grids see the same
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: ct ? rs / 2 : rs });
+        if (ct) out.push({ id: c.id + "#rs2", kind: "R", nodes: [s2, net("S2")], r: rs / 2 });
         out.push({ id: c.id, kind: "XFMR", nodes: [], lp, k, primaryTurns: 1,
-          windings: ct ? [{ a, b: net("P2"), turns: 1 }, { a: s, b: net("SC"), turns: n / 2 }, { a: net("SC"), b: net("S2"), turns: n / 2 }]
+          windings: ct ? [{ a, b: net("P2"), turns: 1 }, { a: s, b: net("SC"), turns: n / 2 }, { a: net("SC"), b: s2, turns: n / 2 }]
             : [{ a, b: net("P2"), turns: 1 }, { a: s, b: net("S2"), turns: n }] });
         if (+p.cs > 0) out.push({ id: c.id + "#cs", kind: "C", nodes: [net("S1"), net("S2")], c: +p.cs });
       }
@@ -1956,7 +1961,7 @@
         { key: "v", label: "Voltage", unit: "V", kind: "eng", magnitude: true },
         { key: "rs", label: "Internal resistance", unit: "Ω", kind: "eng" }],
       info: c => (+c.params.v < 0
-        ? "A negative supply: the + pin goes to ground and the - pin is the bias rail. "
+        ? "A negative supply: the pin by the + mark (the long plate) goes to ground, the other is the bias rail, " + fmtEng(c.params.v, "V") + ". "
         : "The + pin is the rail, the - pin goes to ground. ")
         + (c.params.rs > 0 ? "It sags under load by its internal resistance." : "Internal resistance 0: an ideal regulated supply that never sags."),
       build: (c, net, alloc, out) => {
@@ -2138,13 +2143,13 @@
         };
         if (c.params.model === "LM386") {
           // the input pins over 50 kΩ to ground; the difference, raised on the bias (pin 7, half of
-          // V+ through 2 × 50 kΩ), drives the amplifier, whose feedback (28.5 kΩ to pin 1, 1.35 kΩ
-          // on to pin 8, 150 Ω to the bias) makes the gain 20, or 191 with pins 1 and 8 bypassed
+          // V+ through 2 × 50 kΩ), drives the amplifier, whose feedback (28.36 kΩ to pin 1, 1.35 kΩ
+          // on to pin 8, 142.5 Ω to the bias) makes the datasheet's gains: 20, or 200 with pins 1 and 8 bypassed
           const p = alloc(), byp = net("BYP");
           out.push({ id: c.id + "#rip", kind: "R", nodes: [net("+"), vneg], r: 50e3 }, { id: c.id + "#rin", kind: "R", nodes: [net("-"), vneg], r: 50e3 });
           out.push({ id: c.id + "#rb1", kind: "R", nodes: [net("V+"), byp], r: 50e3 }, { id: c.id + "#rb2", kind: "R", nodes: [byp, vneg], r: 50e3 });
           out.push({ id: c.id + "#e", kind: "E", nodes: [p, byp, net("+"), net("-")], gain: 1 });
-          out.push({ id: c.id + "#rf", kind: "R", nodes: [net("OUT"), net("G1")], r: 28.5e3 }, { id: c.id + "#rg1", kind: "R", nodes: [net("G1"), net("G8")], r: 1350 }, { id: c.id + "#rg2", kind: "R", nodes: [net("G8"), byp], r: 150 });
+          out.push({ id: c.id + "#rf", kind: "R", nodes: [net("OUT"), net("G1")], r: 28357.5 }, { id: c.id + "#rg1", kind: "R", nodes: [net("G1"), net("G8")], r: 1350 }, { id: c.id + "#rg2", kind: "R", nodes: [net("G8"), byp], r: 142.5 });
           amp(p, net("G1"));
           return;
         }

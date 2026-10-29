@@ -2597,7 +2597,9 @@
       }
     });
     const f = signalFreq() || 1000;
-    lines.push(`.tran 0 ${(20 / f).toPrecision(3)} ${(10 / f).toPrecision(3)} ${(1 / f / 200).toPrecision(3)}`, ".end");
+    // the print step also as the time step: ngspice refuses a time step of 0 (LTspice takes it)
+    const step = (1 / f / 200).toPrecision(3);
+    lines.push(`.tran ${step} ${(20 / f).toPrecision(3)} ${(10 / f).toPrecision(3)} ${step}`, ".end");
     return lines.join("\n");
   }
 

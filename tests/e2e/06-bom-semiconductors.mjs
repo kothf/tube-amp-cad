@@ -376,7 +376,7 @@ import { readFile } from "node:fs/promises";
     const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => `${r.refs} ${r.desc} ${r.value} ${r.rating}`).join(" | "));
     check(/VL1 Gas voltage regulator tube 0A2 150 V, 5–30 mA, B7G socket/.test(bom), `BOM: the regulator (${bom})`);
     const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
-    check(/^\.model DGLOW_\S+ D\(Is=1e-14 N=1 BV=150 IBV=1e-6 RS=80\)$/m.test(sp), "SPICE export: the regulator as a breakdown diode");
+    check(/^B\S+ \S+ \S+ I=V\(\S+\)\/1e10\+0\.000625\*\(max\(\(V\(\S+\)-150\)\/0\.05,0\)\+ln\(1\+exp\(-abs\(/m.test(sp), "SPICE export: the lit regulator as a B source, 150 V and 80 Ω");
     await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
   }
   {
@@ -503,8 +503,8 @@ import { readFile } from "node:fs/promises";
       zener: seg(700, 230, 700, 360), pinR4: pins.get(g("R4").id + ":1"), checks: document.getElementById("inspector").textContent };
   });
   check(!r.err && Math.abs(r.vz - 12) < 0.3, `the 1N4742A holds ${r.vz.toFixed(2)} V (12 V zener at ~19 mA)`);
-  // red LED: 1.8 V at 10 mA, 2·Vt per e-fold below (plus 5 Ω), so ~1.70 V at the 12AX7's 1.4 mA
-  const vled = 2 * 0.025852 * Math.log(r.ia / (0.01 / Math.exp(1.8 / (2 * 0.025852)))) + 5 * r.ia;
+  // red LED: 1.8 V at 10 mA (the 5 Ω's 50 mV in it), 2·Vt per e-fold below, so ~1.66 V at the 12AX7's 1.4 mA
+  const vled = 2 * 0.025852 * Math.log(r.ia / (0.01 / Math.exp(1.75 / (2 * 0.025852)))) + 5 * r.ia;
   check(Math.abs(r.vled - vled) < 0.005, `the red LED biases the 12AX7 cathode at ${r.vled.toFixed(3)} V (expected ${vled.toFixed(3)} V at ${(r.ia * 1e3).toFixed(2)} mA)`);
   check(r.q && r.q.vbe > 0.55 && r.q.vbe < 0.75 && r.q.ic > 5e-3 && r.q.ic < 9e-3 && r.q.pd > 0.3 && r.q.pd < 0.7, `MJE340 follower: Vbe ${r.q.vbe.toFixed(3)} V, Ic ${(r.q.ic * 1e3).toFixed(2)} mA, ${r.q.pd.toFixed(2)} W`);
   check(Math.abs(Math.abs(r.rail) - Math.abs(r.supply)) < 1e-6, `the B+ rail wire carries the supply current (${(r.rail * 1e3).toFixed(2)} mA)`);

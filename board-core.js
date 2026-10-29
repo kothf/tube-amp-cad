@@ -123,8 +123,11 @@
 
   // axial: resistors, diodes, small chokes. pitch: lead spacing; body length and diameter
   const AXIAL = { 7.62: [3.6, 1.8], 10.16: [6.3, 2.5], 12.7: [9, 3.2], 15.24: [11, 4.5], 20.32: [15, 5.5], 25.4: [18, 6.5], 30.48: [22, 8], 40.64: [34, 10], 50.8: [45, 12] };
+  // holes as KiCad's: 0.85 mm for the 0.6 mm leads of 1/8–1/2 W resistors and DO-35; 1.1 mm for a
+  // DO-41's 0.8 mm (a diode on 10.16 mm or more); 1.2 mm for the 0.8–1.0 mm leads of 1 W and up
+  // (DIN0411 and longer) and the 5 W zeners
   function axial(pitch, diode) {
-    const [L, D] = AXIAL[pitch], h = pitch / 2, big = pitch >= 20, d = big ? 2.2 : 1.8, dr = big ? 1.1 : 0.85;
+    const [L, D] = AXIAL[pitch], h = pitch / 2, big = pitch >= 15, do41 = diode && pitch >= 10, d = big ? 2.4 : do41 ? 2.2 : 1.8, dr = big ? 1.2 : do41 ? 1.1 : 0.85;
     const silk = [{ t: "rect", x: -L / 2, y: -D / 2, w: L, h: D }, { t: "line", x1: -h + d / 2 + 0.3, y1: 0, x2: -L / 2, y2: 0 }, { t: "line", x1: L / 2, y1: 0, x2: h - d / 2 - 0.3, y2: 0 }];
     if (diode) silk.push({ t: "line", x1: -L / 2 + 0.8, y1: -D / 2, x2: -L / 2 + 0.8, y2: D / 2 });   // band at the cathode (pad 1)
     return fp(`${diode ? "DIODE" : "AXIAL"}-${pitch}`, `Axial, ${pitch} mm lead spacing${diode ? " (band at pad 1, the cathode)" : ""}`,
@@ -132,15 +135,17 @@
   }
   // film capacitors: a box, metric lead spacing
   const BOX = { 5: [7.2, 3.5], 7.5: [10, 4.5], 10: [13, 5], 15: [18, 7], 22.5: [26.5, 9], 27.5: [31.5, 11] };
+  // holes as KiCad's C_Rect: 0.8 mm at 5 mm (0.5 mm leads), 1.0 at 7.5 and 10 mm, 1.2 from 15 mm (0.8–1.0 mm leads)
   function box(pitch) {
-    const [L, W] = BOX[pitch], h = pitch / 2;
-    return fp(`BOX-${pitch}`, `Film capacitor, ${pitch} mm lead spacing`, [pad(1, -h, 0, 1.8, 0.9), pad(2, h, 0, 1.8, 0.9)], [{ t: "rect", x: -L / 2, y: -W / 2, w: L, h: W }]);
+    const [L, W] = BOX[pitch], h = pitch / 2, [d, dr] = pitch >= 15 ? [2.4, 1.2] : pitch >= 7.5 ? [2, 1] : [1.6, 0.8];
+    return fp(`BOX-${pitch}`, `Film capacitor, ${pitch} mm lead spacing`, [pad(1, -h, 0, d, dr), pad(2, h, 0, d, dr)], [{ t: "rect", x: -L / 2, y: -W / 2, w: L, h: W }]);
   }
   // electrolytics: radial, diameter / lead spacing; pad 1 (square) is +
   const RADIAL = [[5, 2], [6.3, 2.5], [8, 3.5], [10, 5], [12.5, 5], [16, 7.5], [18, 7.5], [22, 10], [25, 10], [30, 10], [35, 10]];
   function radial(D, P) {
-    // the 2 and 2.5 mm pitches take 1.6 mm pads (0.8 mm drill) as KiCad's CP_Radial do: 1.8 mm pads left 0.2 mm between them
-    const big = D >= 22, small = P <= 2.5, d = big ? 2.6 : small ? 1.6 : 1.8, dr = big ? 1.4 : small ? 0.8 : 0.9;
+    // the 2 and 2.5 mm pitches take 1.6 mm pads (0.8 mm drill) as KiCad's CP_Radial do: 1.8 mm pads left 0.2 mm between them;
+    // Ø10 a 1.0 mm drill and Ø12.5–18 1.2 mm for their 0.6 and 0.8 mm leads, as KiCad's
+    const big = D >= 22, small = P <= 2.5, [d, dr] = big ? [2.6, 1.4] : small ? [1.6, 0.8] : D >= 12.5 ? [2.4, 1.2] : D >= 10 ? [2, 1] : [1.8, 0.9];
     return fp(`RADIAL-D${D}-P${P}`, `Electrolytic, Ø${D} mm, ${P} mm lead spacing (+ at the square pad)`,
       [pad(1, -P / 2, 0, d, dr, "rect", "+"), pad(2, P / 2, 0, d, dr, "circle", "-")],
       [{ t: "circle", x: 0, y: 0, r: D / 2 }, { t: "line", x1: -D / 2 - 1.2, y1: -D / 2, x2: -D / 2 - 1.2, y2: -D / 2 + 2 }, { t: "line", x1: -D / 2 - 2.2, y1: -D / 2 + 1, x2: -D / 2 - 0.2, y2: -D / 2 + 1 }]);
@@ -179,10 +184,11 @@
   const to220 = order => inline("TO-220", order.length === 2 ? 5.08 : 2.54, order, 10.4, 4.6, true);
   // multiwatt TO-220s with staggered leads, standing (KiCad TO-220-5_P3.4x3.7mm_StaggerOdd, the
   // Pentawatt of a TDA2050; TO-220-11_P3.4x5.08mm_StaggerOdd, an LM3886T): 1.7 mm between
-  // neighbours, the odd pins in the row by the body, the even ones the stagger behind
+  // neighbours, the even pins in the row by the body, the odd ones bent the stagger further out,
+  // away from the tab (ST's Pentawatt V drawing: 1, 3, 5 the long leads; TI's NDA0011B)
   function to220Stagger(n) {
     const row = n > 5 ? 5.08 : 3.7, L = n > 5 ? 20 : 10.4, x0 = -(n - 1) / 2 * 1.7, pads = [];
-    for (let k = 1; k <= n; k++) pads.push(pad(k, +(x0 + (k - 1) * 1.7).toFixed(3), k % 2 ? 0 : row, 1.8, 1.1, k === 1 ? "rect" : "circle"));
+    for (let k = 1; k <= n; k++) pads.push(pad(k, +(x0 + (k - 1) * 1.7).toFixed(3), k % 2 ? row : 0, 1.8, 1.1, k === 1 ? "rect" : "circle"));
     const y0 = -4.6 - 1.3;
     return fp(`TO-220-${n}S`, `TO-220-${n}, staggered leads (${n > 5 ? "TO-220-11, LM3886T" : "Pentawatt, TDA2050"}), tab at the top`, pads,
       [{ t: "rect", x: -L / 2, y: y0, w: L, h: 4.6 }, { t: "line", x1: -L / 2, y1: y0 + 1.2, x2: L / 2, y2: y0 + 1.2 }]);
@@ -190,7 +196,7 @@
   // DO-201AD: a 3–5 A axial rectifier (Ø 5.3 × 9.5 mm, leads Ø 1.3 mm), 15.24 mm lead spacing
   function do201() {
     const h = 7.62, L = 9.5, D = 5.3;
-    return fp("DO-201AD", "DO-201AD axial rectifier, 15.24 mm lead spacing (band at pad 1, the cathode)", [pad(1, -h, 0, 2.8, 1.5, "rect", "K"), pad(2, h, 0, 2.8, 1.5, "circle", "A")],
+    return fp("DO-201AD", "DO-201AD axial rectifier, 15.24 mm lead spacing (band at pad 1, the cathode)", [pad(1, -h, 0, 3.2, 1.6, "rect", "K"), pad(2, h, 0, 3.2, 1.6, "circle", "A")],
       [{ t: "rect", x: -L / 2, y: -D / 2, w: L, h: D }, { t: "line", x1: -h + 1.7, y1: 0, x2: -L / 2, y2: 0 }, { t: "line", x1: L / 2, y1: 0, x2: h - 1.7, y2: 0 }, { t: "line", x1: -L / 2 + 1.2, y1: -D / 2, x2: -L / 2 + 1.2, y2: D / 2 }]);
   }
   // bridge rectifiers: DIP-4 (DF-M: 7.62 × 5.08 mm, + and − on one side) and the inline SIL-4 (B…C2300-1500A:
@@ -241,8 +247,9 @@
       [{ t: "rect", x: -4.75, y: -2.4, w: 9.5, h: 4.8 }, { t: "circle", x: -3.9, y: -1.5, r: 0.6 }]);
   }
   // ceramic disc and silver mica capacitors (the small values in valve circuits)
-  function disc(pitch) {
-    return fp(`DISC-${pitch}`, `Ceramic disc / silver mica, ${pitch} mm lead spacing`, [pad(1, -pitch / 2, 0, 1.6, 0.8), pad(2, pitch / 2, 0, 1.6, 0.8)],
+  function disc(pitch) {   // the 7.62 mm ones (high-voltage discs) with 0.6–0.8 mm leads a 1.0 mm drill, as KiCad's C_Disc P7.50
+    const [d, dr] = pitch > 7 ? [2, 1] : [1.6, 0.8];
+    return fp(`DISC-${pitch}`, `Ceramic disc / silver mica, ${pitch} mm lead spacing`, [pad(1, -pitch / 2, 0, d, dr), pad(2, pitch / 2, 0, d, dr)],
       [{ t: "rect", x: -pitch / 2 - 1.6, y: -1.4, w: pitch + 3.2, h: 2.8 }]);
   }
   // axial electrolytics (the classic can, lying down) and snap-in cans for the HT reservoir
@@ -518,7 +525,8 @@
     if ((m = /^FUSE-(5X20|6\.3X32|TR5)$/.exec(name))) return fuseFp(m[1]);
     if ((m = /^(MOV|NTC)-D([\d.]+)-P([\d.]+)$/.exec(name))) {
       const L = root.CadLib, t = m[1] === "MOV" ? L.MOVS : L.NTCS, part = Object.values(t).find(x => String(x.d) === m[2] && String(x.p) === m[3]);
-      return part ? discPart(m[1], part.d, part.p, part.w || 6, part.lead) : null;
+      // a board saved before a part's size was corrected keeps the disc its name gives
+      return part ? discPart(m[1], part.d, part.p, part.w || 6, part.lead) : discPart(m[1], +m[2], +m[3], 6, 1);
     }
     if ((m = /^TO-247-([A-Z]{3})$/.exec(name))) return to247(m[1]);
     if ((m = /^TO-3P-([A-Z]{3})$/.exec(name))) return to3p(m[1]);
