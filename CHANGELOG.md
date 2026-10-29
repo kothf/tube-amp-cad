@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.123.0] - 2026-10-29
+
+### Fixed
+- Every transistor in the library checked against its datasheet (simulation model, ratings, pinout, footprint, 3D); `tests/transistor.test.mjs` now holds the datasheet points for all of them. These were wrong:
+  - **TO-18 and the germanium cans (TO-1, TO-5, МП)** were drawn as the makers' bottom view, so on the board emitter and collector were swapped. They are now seen from the top: pin 1 at the right with the tab beside it at the lower right, and the 3D can has its tab. Example 05's BC107/BC177 were turned and their base tracks re-routed.
+  - **J175** pin order is D-G-S (was D-S-G), **2N5460** S-D-G (was D-S-G), **2SK30A** S-G-D (was D-S-G). ECX10N20/ECX10P20 G-S-D confirmed, no longer flagged.
+  - **MOSFETs** conducted about 0.5–1 V early: threshold and KP now follow the typical transfer curve (IRF510, IRF540, IRF820, IRF840, IRF9540, IRF9610, IRF9640, IRFP240, IRFP250, IRFP460, IRFP9240, DN2540, and the lateral 2SK1058/2SJ162, ECX10N20/ECX10P20, which start near 0.1 V). Gate capacitances from Ciss and Crss (IRFP460's Crss was 60 pF, the datasheet says 350).
+  - **JFETs**: J113 on-resistance under its 100 Ω maximum and its capacitances (Ciss was 23 pF, 7 pF is right); 2N5457 at the typical IDSS 3 mA; J310, J175, 2N5460, 2SJ74 capacitances; MPF102 350 mW.
+  - **BJTs**: 2N3904's gain at 10 mA was over the 300 maximum (BF 416 → 300); TIP41C/TIP42C, MJL21194/MJL21193, MJL3281A/MJL1302A follow the typical hFE curve (MJL3281A was under its 75 minimum at 5 A), with RB/RE refitted; 2SD669A/2SB649A are 160 V (180 was VCBO) with the datasheet's Cob; Cob of MJL21193, MJ15004, MJ15025 at most the datasheet's; 2N2222A 800 mA, BC107/BC177 200 mA, BC547B/BC557B 625 mW.
+  - **Germanium**: МП40А, МП41А, МП42Б, МП25Б, МП26Б gain inside the reference books' h21э range; МП25Б/МП26Б collector capacitance 20/15 pF (was 70); МП42Б 150 mA, МП38А fT 2 MHz, П213Б 10 W; AC128 gain flat to 1 A and fT 1.5 MHz; AD161/AD162 VBE 0.13 V at 5 mA as Siemens gives it; 2N404 100 mA; OC71 20 V, 10 mA, in its black glass body with inline leads (it was a TO-1 can).
+
 ## [3.122.0] - 2026-10-28
 
 ### Fixed
