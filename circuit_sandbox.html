@@ -198,6 +198,19 @@
     #pw-table tr.on { background: #111a25; } #pw-table tr.now td:first-child { color: var(--ok); }
     #pw-table .pw-use { padding: 0 7px; font-size: 11px; visibility: hidden; }
     #pw-table tr.on .pw-use, #pw-table .pw-use:focus { visibility: visible; }
+    /* Sweep: the chart (and a scope channel's waves) at the left, the steps and the quantities at the right */
+    .sw-num { width: 74px; }
+    .sw-title { font-size: 12px; margin-bottom: 6px; font-weight: 600; }
+    .sw-waves { margin-top: 8px; } .sw-waves polyline { fill: none; stroke-width: 1.2; opacity: .75; } .sw-waves polyline.on { stroke-width: 2.4; opacity: 1; }
+    .pw-chart .ax.warn { fill: var(--warn); }
+    .sw-steps { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+    .sw-step { background: var(--panel2); border: 1px solid; border-left-width: 4px; border-radius: 4px; padding: 1px 7px; font: 11px ui-monospace, Menlo, monospace; color: var(--text); cursor: pointer; }
+    .sw-step.on { background: #0d3442; } .sw-step.pend { opacity: .5; } .sw-step.bad { text-decoration: line-through; color: var(--muted); }
+    #sw-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    #sw-table th { position: sticky; top: 0; background: var(--panel2); color: var(--muted); font-weight: 600; text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    #sw-table td { padding: 2px 8px; border-bottom: 1px dashed #1a2433; white-space: nowrap; } #sw-table td.n { text-align: right; font-variant-numeric: tabular-nums; } #sw-table td.mono { font-family: ui-monospace, Menlo, monospace; }
+    #sw-table td.warn { color: var(--warn); } #sw-table tbody tr { cursor: pointer; } #sw-table tbody tr:hover { background: #111a25; } #sw-table tbody tr.sel { background: #0d3442; }
+    .sw-spark { display: block; } .sw-spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.2; }
     /* Listen: the transport at the left, the input and output strips at the right */
     .ls-file-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ls-note { padding: 6px 12px 0; color: var(--muted); font-size: 12px; } .ls-note.warn { color: var(--warn); }
@@ -320,6 +333,7 @@
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-checks" title="Every part beyond its rating and every wiring problem, in the panel under the schematic">Checks<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-tolerance" title="The circuit simulated many times with its parts spread within their tolerances: each value's spread">Tolerance runs<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-power" title="The circuit simulated at a row of input levels: the output power against its distortion, and the power at 1 %, 5 % and 10 % THD">Power sweep<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-sweep" title="One part's value stepped over a range, the circuit simulated at each step: how every tube, transistor, speaker and scope channel follows">Parameter sweep<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-listen" title="Hear the circuit: a recording (WAV, MP3, a guitar riff or the generator's tone) played through it, A/B against the input">Listen<kbd>under the schematic</kbd></button>
       </div>
     </div>
@@ -389,6 +403,7 @@
             <button class="dock-tab" role="tab" data-tab="checks" aria-controls="checks-pane" title="Every part beyond its rating and every wiring problem">Checks<span id="checks-count"></span></button>
             <button class="dock-tab" role="tab" data-tab="tolerance" aria-controls="tol-pane" title="The circuit simulated many times with its parts spread within their tolerances">Tolerance</button>
             <button class="dock-tab" role="tab" data-tab="power" aria-controls="pw-pane" title="Output power against distortion over a row of input levels">Power</button>
+            <button class="dock-tab" role="tab" data-tab="sweep" aria-controls="sw-pane" title="One part's value stepped over a range">Sweep</button>
             <button class="dock-tab" role="tab" data-tab="listen" aria-controls="ls-pane" title="Hear a recording played through the circuit">Listen</button>
           </div>
           <span class="bom-tools" data-for="bom">
@@ -409,6 +424,15 @@
             <label title="The quietest and loudest level, in dB from what the generator is set to now (every generator is scaled together)">Input <input type="number" id="pw-lo" class="tol-num" step="1"> to <input type="number" id="pw-hi" class="tol-num" step="1"> dB</label>
             <label title="How many levels, evenly spaced in dB">Steps <input type="number" id="pw-steps" class="tol-num" min="2" max="60" step="1"></label>
             <button class="btn" id="btn-pw-run" title="Run the power sweep; press again to stop">▶ Run</button>
+          </span>
+          <span class="bom-tools" data-for="sweep">
+            <label title="The part whose value is stepped">Part <select id="sw-part" class="tol-sel"></select></label>
+            <label title="Which of its values">Value <select id="sw-field" class="tol-sel"></select></label>
+            <span id="sw-now" class="muted"></span>
+            <label title="The first and last value (100k, 2.2u, 330…); empty: half and twice the value now">From <input type="text" id="sw-from" class="tol-num sw-num"> to <input type="text" id="sw-to" class="tol-num sw-num"></label>
+            <label title="How many values">Steps <input type="number" id="sw-steps" class="tol-num" min="2" max="60" step="1"></label>
+            <label title="Evenly spaced, or evenly in ratio (as resistor values are)"><select id="sw-log" class="tol-sel"><option value="log">Log</option><option value="lin">Linear</option></select></label>
+            <button class="btn" id="btn-sw-run" title="Run the sweep; press again to stop">▶ Run</button>
           </span>
           <span class="bom-tools" data-for="listen">
             <label title="What drives the circuit's generator">Play <select id="ls-src" class="tol-sel"><option value="riff">Guitar riff (made here)</option><option value="tone">The generator's tone</option><option value="file">Your file (WAV, MP3)</option></select></label>
@@ -436,6 +460,7 @@
         <div class="bom-scroll" id="tol-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="pw-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="ls-pane" role="tabpanel" hidden></div>
+        <div class="bom-scroll" id="sw-pane" role="tabpanel" hidden></div>
       </section>
     </div>
     <aside id="inspector" aria-label="Inspector"></aside>
@@ -577,6 +602,7 @@
   <script src="cad-tolerance.js?v=dev"></script>
   <script src="cad-power.js?v=dev"></script>
   <script src="cad-listen.js?v=dev"></script>
+  <script src="cad-sweep.js?v=dev"></script>
   <script src="cad-anim.js?v=dev"></script>
   <script src="cad-probe.js?v=dev"></script>
   <script src="cad-export.js?v=dev"></script>
