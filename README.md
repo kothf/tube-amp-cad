@@ -312,6 +312,15 @@ the circuit that was on the sheet.
   - rendered at 48 kHz, every sample a simulation step, a piece of the clip per
     core (each with a 0.4 s lead-in from the settled circuit, joined with a
     crossfade, on whole mains periods); *Save WAV* keeps the output.
+- **Parameter sweep.** *View ▾ → Parameter sweep* opens the *Sweep* tab under
+  the schematic: one value of one part (a resistor, a capacitor, a pot's
+  wiper, a supply's voltage, a generator's frequency…) stepped over a range,
+  log or linear, the circuit simulated at every step on all cores:
+  - a table of every tube's Ia, Va and Pa, transistor current and
+    dissipation, speaker power and THD, scope channel AC and THD, each with a
+    trend line, its range and the steps over its rating;
+  - click a line to plot it against the value; a scope channel also overlays
+    its wave at every step; click a step to set the part to it.
 - **SPICE.** *Export SPICE netlist* writes an LTspice netlist: tubes as
   behavioural sources with the same equations the simulator uses, transistors
   as Q and M elements with their `.model` lines.

@@ -1,4 +1,4 @@
-// Analyses under the schematic: the power sweep, listening
+// Analyses under the schematic: the power sweep, listening, the parameter sweep
 import { cad, check } from "./harness.mjs";
 
 // --- Power sweep ----------------------------------------------------------------------------
@@ -90,3 +90,33 @@ import { cad, check } from "./harness.mjs";
   await cad.evaluate(() => TubeCAD.toggleBom(false));
 }
 
+// --- Parameter sweep ------------------------------------------------------------------------
+{
+  cad.once("dialog", d => d.accept().catch(() => {}));
+  const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+  await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^03-/.test(x.file))));
+  await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 });
+  await cad.click("#btn-view"); await cad.click("#btn-sweep"); await cad.keyboard.press("Escape");
+  check(await cad.evaluate(() => !document.getElementById("sw-pane").hidden && document.getElementById("btn-sweep").getAttribute("aria-checked") === "true"), "View ▾ → Parameter sweep opens the Sweep tab, ticked");
+  const r2 = await cad.evaluate(() => TubeCAD.state.comps.find(c => c.label === "R2"));
+  await cad.selectOption("#sw-part", r2.id);
+  check(await cad.evaluate(() => document.getElementById("sw-field").value === "r" && /now 150kΩ/.test(document.getElementById("sw-now").textContent) && document.getElementById("sw-from").placeholder === "75kΩ"), "picking a part offers its value, with half and twice it as the range");
+  for (const [id, v] of [["#sw-from", "100k"], ["#sw-to", "220k"], ["#sw-steps", "5"]]) { await cad.fill(id, v); await cad.press(id, "Tab"); }
+  const seq = await cad.evaluate(() => TubeCAD.state.sweep.seq);
+  await cad.click("#btn-sw-run");
+  await cad.waitForFunction(seq => TubeCAD.state.sweep.seq !== seq && !TubeCAD.state.sweep.job && TubeCAD.state.sweep.steps, seq, { timeout: 120000 });
+  const W = await cad.evaluate(() => { const W = TubeCAD.state.sweep; return { vs: W.steps.map(s => s.v), ia: W.steps.map(s => (s.rows.find(r => r.label === "VL1 Ia") || {}).v), keys: W.keys.map(k => k.label) }; });
+  check(W.vs.length === 5 && Math.abs(W.vs[0] - 100e3) < 1e-6 && Math.abs(W.vs[4] - 220e3) < 1e-3, `5 steps from 100k to 220k (${W.vs.map(v => Math.round(v / 1e3)).join(", ")} k)`);
+  check(W.ia.every((v, i) => i === 0 || v < W.ia[i - 1]), `a larger anode resistor draws less anode current, step by step (${W.ia.map(v => (v * 1e3).toFixed(3)).join(" > ")} mA)`);
+  check(["VL1 Ia", "VL1 Pa", "P1 CH1 AC", "P1 CH1 THD"].every(l => W.keys.includes(l)), "the table has tubes, scope channels and their THD");
+  // the circuit is as it was; a step at R2 = 150k reads what the simulation reads
+  const ia150 = await cad.evaluate(() => TubeCAD.tubeData(TubeCAD.state.comps.find(c => c.label === "VL1")).dc.ia);
+  check(await cad.evaluate(id => TubeCAD.state.comps.find(c => c.id === id).params.r, r2.id) === 150e3 && ia150 < W.ia[2] && ia150 > W.ia[3], "the sweep leaves the part as it was, and the drawn value falls between its neighbours");
+  await cad.click('#sw-table tbody tr:has-text("P1 CH1 AC")');
+  check(await cad.locator("#sw-pane .sw-waves polyline").count() === 5 && /P1 CH1 AC/.test(await cad.textContent(".sw-title")), "clicking a scope channel's line plots it and overlays its wave at each step");
+  await cad.click('.sw-step[data-i="4"]');
+  check(await cad.evaluate(id => TubeCAD.state.comps.find(c => c.id === id).params.r, r2.id) === 220e3, "clicking a step sets the part to that value");
+  await cad.evaluate(() => TubeCAD.undo());
+  check(await cad.evaluate(id => TubeCAD.state.comps.find(c => c.id === id).params.r, r2.id) === 150e3, "undo puts it back");
+  await cad.evaluate(() => TubeCAD.toggleBom(false));
+}

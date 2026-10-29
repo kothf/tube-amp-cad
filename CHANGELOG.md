@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.128.0] - 2026-10-29
+
+### Added
+- **Parameter sweep** (*View ▾ → Parameter sweep*, the *Sweep* tab under the schematic): one numeric value of one part (resistance, capacitance, a pot's wiper, a supply's voltage, a generator's frequency or amplitude…) stepped from one value to another, log or linear, with the circuit simulated at each step on all cores.
+  - From/To default to half and twice the present value. The circuit itself is left unchanged.
+  - The table lists every tube's Ia, Va and Pa, every transistor's current and dissipation, every speaker's power and THD, and every scope channel's AC and THD. Each row has a trend line, the first and last values, the range, and how many steps went over the rating.
+  - Click a row to plot it against the swept value, with the present value and the rating marked. A scope channel's row also overlays one AC-coupled cycle of its wave at every step, coloured from amber to cyan.
+  - The step buttons light their point and wave on hover. Clicking one sets the part to that value (one undo step).
+  - `tests/sweep.test.mjs` and the Sweep checks in e2e part `10-analysis` cover it. Example 03's R2 from 100k to 220k: anode current falls step by step.
+
 ## [3.127.0] - 2026-10-29
 
 ### Added
