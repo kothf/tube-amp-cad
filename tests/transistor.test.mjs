@@ -128,12 +128,50 @@ for (const [k, d] of Object.entries(BJT_DATA)) {
   });
 }
 
-test("the power parts with base and emitter resistance read 0.7 of the datasheet's VBE(on) maximum", () => {
-  for (const k of ["TIP41C", "TIP42C", "MJL21194", "MJL21193", "2N3055", "MJ2955"]) {
-    const [ic, vce, max] = BJT_DATA[k].vbe, v = bjtPoint(k, ic, vce).vbe;
-    assert.ok(Math.abs(v - 0.7 * max) <= 0.02 * 0.7 * max, `${k} VBE ${v.toFixed(3)} V at ${ic} A, expected ${(0.7 * max).toFixed(2)} V`);
-  }
-});
+// the typical VBE curves at 25 °C the drivers' and power parts' IS, RB and RE are fitted to:
+// [VCE of the VBE(on) curve, or "sat" for VBE(sat) at IC/IB = 10, [[IC A, VBE V] …]]
+const VBE_CURVES = {
+  "2N3055": [4, [[0.1, .62], [0.3, .66], [1, .73], [2, .80], [3, .87], [5, 1.05], [7, 1.25]]],
+  "MJ2955": [4, [[0.1, .63], [0.3, .70], [1, .79], [2, .92], [3, 1.03], [5, 1.32], [7, 1.55]]],
+  "TIP41C": [4, [[0.1, .63], [0.3, .69], [1, .79], [2, .89], [4, 1.1], [6, 1.38]]],
+  "TIP42C": [4, [[0.1, .63], [0.3, .69], [1, .79], [2, .89], [4, 1.1], [6, 1.38]]],
+  "MJL21194": [5, [[0.2, .62], [1, .70], [2, .90], [3, 1.0], [5, 1.15], [8, 1.3], [10, 1.4]]],
+  "MJL21193": [5, [[0.2, .61], [1, .68], [3, .80], [5, .95], [8, 1.35], [10, 1.6]]],
+  "MJL3281A": [5, [[0.1, .64], [1, .72], [3, .82], [5, .90], [8, 1.0], [10, 1.08], [15, 1.45]]],
+  "MJL1302A": [5, [[0.1, .62], [1, .70], [3, .80], [5, .88], [8, 1.0], [10, 1.07], [15, 1.45]]],
+  "MJ15003": ["sat", [[0.1, .67], [1, .77], [3, .86], [5, .93], [10, 1.13], [15, 1.33]]],
+  "MJ15004": ["sat", [[0.1, .65], [1, .78], [3, .90], [5, 1.02], [7, 1.25]]],
+  "MJ15024": [4, [[0.15, .68], [1, .72], [2, .77], [3, .82], [5, .92], [8, 1.03], [10, 1.1], [14, 1.3]]],
+  "MJ15025": [4, [[0.1, .68], [1, .73], [2, .82], [3, .88], [5, 1.08], [8, 1.6]]],
+  "MJE15032": [5, [[0.1, .66], [1, .74], [3, .82], [8, .96]]],
+  "MJE15033": [5, [[0.1, .66], [1, .74], [3, .80], [8, .97]]],
+  "2SC5200": [5, [[2, .76], [5, .86], [10, 1.0], [15, 1.15]]],
+  "2SA1943": [5, [[4, .88], [8, 1.0], [12, 1.25], [15, 1.6]]],
+  "2SC4793": [5, [[0.1, .66], [0.5, .72], [1, .75]]],
+  "2SA1837": [5, [[0.1, .68], [0.5, .74], [1, .78]]],
+  "2SD669A": [5, [[0.001, .53], [0.01, .57], [0.1, .61], [0.5, .68]]],
+  "2SB649A": ["sat", [[0.001, .56], [0.01, .63], [0.1, .735], [0.3, .82], [1, 1.03]]],
+  "BD139": [2, [[0.001, .59], [0.01, .65], [0.1, .71], [0.5, .80], [1, .86], [1.4, .92]]],
+  "BD140": [5, [[0.0025, .60], [0.01, .62], [0.1, .70], [0.5, .79], [1, .84], [1.5, .88]]]
+};
+// VBE with the base driven by a current IC/10 and the collector by a source: the VCE where IC flows
+function vbeSat(k, ic) {
+  const pol = L.BJTS[k].pol, run = vc => { const els = [{ id: "vc", kind: "V", nodes: [1, 0], v: pol * vc }, { id: "ib", kind: "I", nodes: [0, 2], i: pol * ic / 10 }];
+    let n = 3; L.LIB[pol > 0 ? "npn" : "pnp"].build({ id: "q", params: { model: k } }, pid => ({ C: 1, B: 2, E: 0 })[pid], () => n++, els);
+    const r = E.simulate({ nodeCount: n, elements: els }); return { ic: r.dc.devices.q.main.ic, vb: pol * r.dc.nodes[2] }; };
+  let lo = 0, hi = 5;
+  for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (run(m).ic < ic) lo = m; else hi = m; }
+  return run(lo).vb;
+}
+
+for (const [k, [vce, pts]] of Object.entries(VBE_CURVES)) {
+  test(`${k}: VBE follows the datasheet's typical curve from ${pts[0][0]} A to ${pts[pts.length - 1][0]} A`, () => {
+    for (const [ic, typ] of pts) {
+      const v = vce === "sat" ? vbeSat(k, ic) : bjtPoint(k, ic, vce).vbe;
+      assert.ok(Math.abs(v - typ) <= 0.075, `${k} VBE${vce === "sat" ? "(sat)" : ""} at ${ic} A: ${v.toFixed(3)} V, typical ${typ} V`);
+    }
+  });
+}
 
 // MOSFETs: VGS at drain currents read off the typical transfer curve (25 °C, the datasheet's VDS),
 // within 0.3 V; v (VDSS), i (ID at 25 °C), p; cgs = Ciss − Crss and cgd = Crss (pF, typical); pins

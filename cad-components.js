@@ -782,45 +782,45 @@
     "2N3904": { pol: 1, is: 6.734e-15, bf: 300, br: 0.7371, vaf: 74.03, ikf: 0.06678, cbe: 8 * pf, cbc: 4 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
     "BC107": { pol: 1, is: 7e-15, bf: 200, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.2, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
     "BC547B": { pol: 1, is: 7e-15, bf: 290, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.1, p: 0.625, pkg: "TO-92", use: "small signal, low noise" },
-    "BD139": { pol: 1, is: 1e-13, bf: 150, br: 5, vaf: 100, ikf: 1, cbe: 100 * pf, cbc: 30 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
+    "BD139": { pol: 1, is: 1.3e-13, bf: 150, br: 5, vaf: 100, ikf: 1, rb: 2.52, re: 0.046, cbe: 100 * pf, cbc: 30 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
     "MPSA42": { pol: 1, is: 1e-14, bf: 120, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 3 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
     "MJE340": { pol: 1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 15 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" },
     "2N2907A": { pol: -1, is: 650.6e-18, bf: 231.7, br: 3.563, vaf: 115.7, ikf: 1.079, cbe: 30 * pf, cbc: 8 * pf, v: 60, i: 0.6, p: 0.4, pkg: "TO-18", use: "general purpose" },
     "2N3906": { pol: -1, is: 1.41e-15, bf: 180.7, br: 4.977, vaf: 18.7, ikf: 0.08, cbe: 10 * pf, cbc: 4.5 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
     "BC177": { pol: -1, is: 1e-14, bf: 150, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.2, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
     "BC557B": { pol: -1, is: 1e-14, bf: 250, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.1, p: 0.625, pkg: "TO-92", use: "small signal, low noise" },
-    "BD140": { pol: -1, is: 1e-13, bf: 150, br: 5, vaf: 100, ikf: 1, cbe: 100 * pf, cbc: 40 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
+    "BD140": { pol: -1, is: 2.3e-13, bf: 150, br: 5, vaf: 100, ikf: 1, re: 0.067, cbe: 100 * pf, cbc: 40 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
     "MPSA92": { pol: -1, is: 1e-14, bf: 100, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 6 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
     "MJE350": { pol: -1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 20 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" },
     // drivers and power output, as complementary pairs. Fitted to the datasheets: BF the mid-current
     // hFE, IKF where it has fallen to about half, IS from VBE(on), CBC the output capacitance Cob.
     // rb, re (Ω): base and emitter resistance, so VBE rises with the current as a real part's does.
-    // Set where the datasheet's VBE(on) maximum was checked: the model reads 0.7 of that maximum at
-    // its test point (2N3055 / MJ2955 1.5 V at 4 A, TIP41C / TIP42C 2.0 V at 6 A, both at VCE 4 V;
-    // MJL21194 / MJL21193 2.2 V at 8 A, VCE 5 V), RE giving three quarters of the rise and RB the
-    // rest. The others have none yet: at several amperes their VBE reads somewhat low.
+    // IS, RB and RE are fitted (least squares) to the datasheet's typical VBE(on) curve at 25 °C
+    // (VBE(sat) at IC/IB = 10 where that is all it gives: MJ15003/MJ15004, 2SB649A); the model
+    // follows it within 0.03 V for most parts, 0.07 V at worst (MJL21194's curve has a step at
+    // 1.5 A). A large RB stands for the base drive the gain's fall at high current asks for.
     // TIP41C / TIP42C, MJL21194 / MJL21193: BF and IKF follow the typical hFE curve (TIP41C 95 at
     // 0.3 A, 70 at 1 A, 40 at 3 A; MJL21193 85 at 0.1 A falling to 45 at 5 A).
-    "2SD669A": { pol: 1, is: 2e-13, bf: 160, br: 5, vaf: 150, ikf: 0.8, cbe: 150 * pf, cbc: 14 * pf, v: 160, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
-    "2SC4793": { pol: 1, is: 2e-13, bf: 200, br: 5, vaf: 150, ikf: 0.5, cbe: 150 * pf, cbc: 20 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
-    "MJE15032": { pol: 1, is: 5e-13, bf: 100, br: 4, vaf: 150, ikf: 2, cbe: 400 * pf, cbc: 100 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
-    "TIP41C": { pol: 1, is: 1e-12, bf: 115, br: 4, vaf: 100, ikf: 1.6, rb: 0.64, re: 0.072, cbe: 500 * pf, cbc: 100 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
-    "2SC5200": { pol: 1, is: 2e-12, bf: 110, br: 4, vaf: 100, ikf: 5, cbe: 1500 * pf, cbc: 200 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
-    "MJL3281A": { pol: 1, is: 3e-12, bf: 115, br: 4, vaf: 100, ikf: 20, cbe: 1500 * pf, cbc: 400 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
-    "MJL21194": { pol: 1, is: 3e-12, bf: 65, br: 3, vaf: 100, ikf: 20, rb: 1.2, re: 0.073, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
-    "MJ15003": { pol: 1, is: 5e-12, bf: 70, br: 3, vaf: 100, ikf: 8, cbe: 2000 * pf, cbc: 1000 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
-    "MJ15024": { pol: 1, is: 3e-12, bf: 50, br: 3, vaf: 120, ikf: 5, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
-    "2N3055": { pol: 1, is: 1e-11, bf: 50, br: 3, vaf: 50, ikf: 3, rb: 0.5, re: 0.06, cbe: 1500 * pf, cbc: 500 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" },
-    "2SB649A": { pol: -1, is: 2e-13, bf: 160, br: 5, vaf: 100, ikf: 0.8, cbe: 150 * pf, cbc: 27 * pf, v: 160, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
-    "2SA1837": { pol: -1, is: 2e-13, bf: 200, br: 5, vaf: 100, ikf: 0.5, cbe: 150 * pf, cbc: 30 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
-    "MJE15033": { pol: -1, is: 5e-13, bf: 100, br: 4, vaf: 120, ikf: 2, cbe: 400 * pf, cbc: 150 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
-    "TIP42C": { pol: -1, is: 1e-12, bf: 115, br: 4, vaf: 80, ikf: 1.6, rb: 0.64, re: 0.072, cbe: 500 * pf, cbc: 150 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
-    "2SA1943": { pol: -1, is: 3e-12, bf: 110, br: 4, vaf: 80, ikf: 5, cbe: 1500 * pf, cbc: 360 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
-    "MJL1302A": { pol: -1, is: 3e-12, bf: 115, br: 4, vaf: 80, ikf: 12, cbe: 1500 * pf, cbc: 600 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
-    "MJL21193": { pol: -1, is: 3e-12, bf: 85, br: 3, vaf: 80, ikf: 4.5, rb: 0.8, re: 0.071, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
-    "MJ15004": { pol: -1, is: 5e-12, bf: 70, br: 3, vaf: 80, ikf: 8, cbe: 2000 * pf, cbc: 1000 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
-    "MJ15025": { pol: -1, is: 3e-12, bf: 50, br: 3, vaf: 100, ikf: 5, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
-    "MJ2955": { pol: -1, is: 1e-11, bf: 50, br: 3, vaf: 50, ikf: 3, rb: 0.5, re: 0.06, cbe: 1500 * pf, cbc: 700 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" },
+    "2SD669A": { pol: 1, is: 2.8e-12, bf: 160, br: 5, vaf: 150, ikf: 0.8, cbe: 150 * pf, cbc: 14 * pf, v: 160, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
+    "2SC4793": { pol: 1, is: 9.5e-13, bf: 200, br: 5, vaf: 150, ikf: 0.5, re: 0.008, cbe: 150 * pf, cbc: 20 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
+    "MJE15032": { pol: 1, is: 9.4e-13, bf: 100, br: 4, vaf: 150, ikf: 2, rb: 0.04, re: 0.016, cbe: 400 * pf, cbc: 100 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
+    "TIP41C": { pol: 1, is: 2.1e-12, bf: 115, br: 4, vaf: 100, ikf: 1.6, rb: 1.07, re: 0.055, cbe: 500 * pf, cbc: 100 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
+    "2SC5200": { pol: 1, is: 2e-12, bf: 110, br: 4, vaf: 100, ikf: 5, rb: 0.14, re: 0.018, cbe: 1500 * pf, cbc: 200 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
+    "MJL3281A": { pol: 1, is: 2.7e-12, bf: 115, br: 4, vaf: 100, ikf: 20, rb: 3, cbe: 1500 * pf, cbc: 400 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
+    "MJL21194": { pol: 1, is: 1.7e-12, bf: 65, br: 3, vaf: 100, ikf: 20, re: 0.067, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
+    "MJ15003": { pol: 1, is: 9.4e-13, bf: 70, br: 3, vaf: 100, ikf: 8, rb: 0.34, cbe: 2000 * pf, cbc: 1000 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "MJ15024": { pol: 1, is: 1.3e-12, bf: 50, br: 3, vaf: 120, ikf: 5, rb: 0.2, re: 0.019, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "2N3055": { pol: 1, is: 3.9e-12, bf: 50, br: 3, vaf: 50, ikf: 3, rb: 0.81, re: 0.021, cbe: 1500 * pf, cbc: 500 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" },
+    "2SB649A": { pol: -1, is: 3.6e-13, bf: 160, br: 5, vaf: 100, ikf: 0.8, re: 0.24, cbe: 150 * pf, cbc: 27 * pf, v: 160, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
+    "2SA1837": { pol: -1, is: 4.5e-13, bf: 200, br: 5, vaf: 100, ikf: 0.5, rb: 1.17, re: 0.002, cbe: 150 * pf, cbc: 30 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
+    "MJE15033": { pol: -1, is: 7.7e-13, bf: 100, br: 4, vaf: 120, ikf: 2, rb: 0.4, cbe: 400 * pf, cbc: 150 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
+    "TIP42C": { pol: -1, is: 2.1e-12, bf: 115, br: 4, vaf: 80, ikf: 1.6, rb: 1.08, re: 0.055, cbe: 500 * pf, cbc: 150 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
+    "2SA1943": { pol: -1, is: 2.3e-12, bf: 110, br: 4, vaf: 80, ikf: 5, rb: 1.52, cbe: 1500 * pf, cbc: 360 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
+    "MJL1302A": { pol: -1, is: 4.1e-12, bf: 115, br: 4, vaf: 80, ikf: 12, rb: 2.44, cbe: 1500 * pf, cbc: 600 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
+    "MJL21193": { pol: -1, is: 2.4e-11, bf: 85, br: 3, vaf: 80, ikf: 4.5, rb: 2.55, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
+    "MJ15004": { pol: -1, is: 3.1e-12, bf: 70, br: 3, vaf: 80, ikf: 8, re: 0.059, cbe: 2000 * pf, cbc: 1000 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "MJ15025": { pol: -1, is: 3.3e-12, bf: 50, br: 3, vaf: 100, ikf: 5, rb: 2.04, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "MJ2955": { pol: -1, is: 3e-12, bf: 50, br: 3, vaf: 50, ikf: 3, rb: 0.23, re: 0.094, cbe: 1500 * pf, cbc: 700 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" },
     // germanium, alloy junction. IS sets VBE at about a third of silicon's (0.15–0.25 V at 1 mA
     // for the small ones, 0.3–0.4 V at the rated current for the power ones), and the reverse
     // leakage it brings is of the µA order Ge parts have. BF: the middle of the datasheet's hFE
@@ -1228,7 +1228,7 @@
         // junction temperature: the ambient, or warmer for a part that runs hot or sits by a tube
         { key: "temp", label: "Temperature", unit: "°C", kind: "number", min: -40, max: 150, dflt: 25 }],
       info: c => { const m = BJTS[c.params.model] || BJTS[def], t = isFinite(c.params.temp) ? c.params.temp : 25, a = bjtAt(m, t);
-        return `${c.params.model} (${m.use}): Vceo ${m.v} V, Ic ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: Gummel-Poon${m.ge ? " (germanium)" : ""} at ${t} °C, hFE ≈ ${Math.round(a.bf)}, Early voltage ${Math.round(m.vaf)} V${m.rb || m.re ? `, base resistance ${m.rb} Ω, emitter resistance ${fmtEng(m.re, "Ω")}` : ""}${m.ge ? `, leakage ICBO ${fmtEng(a.icbo, "A", 2)} (${fmtEng(m.icbo, "A", 2)} at 25 °C, doubling every 10 °C)` : ""}.`; },
+        return `${c.params.model} (${m.use}): Vceo ${m.v} V, Ic ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: Gummel-Poon${m.ge ? " (germanium)" : ""} at ${t} °C, hFE ≈ ${Math.round(a.bf)}, Early voltage ${Math.round(m.vaf)} V${m.rb || m.re ? `, base resistance ${m.rb || 0} Ω, emitter resistance ${fmtEng(m.re || 0, "Ω")}` : ""}${m.ge ? `, leakage ICBO ${fmtEng(a.icbo, "A", 2)} (${fmtEng(m.icbo, "A", 2)} at 25 °C, doubling every 10 °C)` : ""}.`; },
       build: (c, net, alloc, out) => {
         const m = bjtAt(Object.assign({}, BJTS[c.params.model] || BJTS[def], { pol }), c.params.temp);
         // base and emitter resistance: the junctions sit on inner nodes behind them, the capacitances too

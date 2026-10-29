@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.125.0] - 2026-10-29
+
+### Fixed
+- Power and driver transistors: VBE now follows each datasheet's typical VBE curve at 25 °C. IS, base resistance (RB) and emitter resistance (RE) are fitted to the curve for 2SD669A/2SB649A, 2SC4793/2SA1837, MJE15032/MJE15033, TIP41C/TIP42C, 2SC5200/2SA1943, MJL3281A/MJL1302A, MJL21194/MJL21193, MJ15003/MJ15004, MJ15024/MJ15025, 2N3055/MJ2955 and BD139/BD140. The model follows the curve within 0.03 V for most parts and 0.07 V at worst.
+  - Before, only six of these parts had RB/RE, set so that VBE read 0.7 × the datasheet's maximum at one test point. That rule was up to 0.2 V off the typical curve (MJL21194 read 1.54 V at 8 A; typical is 1.3 V). The other parts had none, so their VBE at several amperes read low.
+  - `tests/transistor.test.mjs` checks every point of every curve.
+
 ## [3.124.0] - 2026-10-29
 
 ### Fixed
