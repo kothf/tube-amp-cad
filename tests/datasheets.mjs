@@ -243,6 +243,7 @@ export const DATASHEETS = [
     { va: 250, vg2: 250, vg: -15, ia: 85, gm: 7, rp: 22.5 }] },
   { tube: "6AQ5A", alias: "6V6GT", source: "6AQ5A = the 6V6GT in a B7G bulb (RCA: same 250 V characteristics)" },
   { tube: "ECL82-P", alias: "6F3P-P", source: "6Ф3П = ECL82" },
+  { tube: "6S4P", alias: "6S3P", source: "6С4П = 6С3П with another pinout (same handbook data)" },
   { tube: "KT88", kind: "pentode", mu: 8, source: "GE 6550A (KT88 class)", points: [
     { va: 250, vg2: 250, vg: -14, ia: 140, ig2: 12, gm: 11, rp: 15 }] },
   { tube: "GU-50", kind: "pentode", mu: 8, source: "ГУ-50 handbook (800 V, Vg2 250 V, Vg1 −40 ± 10 V, 50 mA, S 4 mA/V)", points: [

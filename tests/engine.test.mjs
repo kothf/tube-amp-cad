@@ -22,9 +22,9 @@ const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
 const near = (actual, expected, relTol, msg) =>
   assert.ok(Math.abs(actual - expected) <= relTol * Math.abs(expected), `${msg}: got ${actual}, expected ${expected} ±${relTol * 100}%`);
 
-test("tube database: 110 tubes, every amplifier tube has Koren parameters", () => {
+test("tube database: 111 tubes, every amplifier tube has Koren parameters", () => {
   const db = globalThis.TUBE_DATABASE;
-  assert.equal(db.length, 110);
+  assert.equal(db.length, 111);
   for (const t of db) {
     if (t.category === "rectifier") assert.ok(E.RECTIFIER_PERVEANCE[t.commonName], `${t.commonName}: rectifier perveance`);
     else for (const k of ["mu", "kg", "kp", "kvb", "x"]) assert.ok(t.koren.Triode[k] > 0, `${t.commonName}: Triode.${k}`);

@@ -613,6 +613,27 @@ test("valve pinouts and sockets: the datasheets' pins on the right pads, a top c
   // sockets by base: subminiatures with wire leads are not B7G valves, nuvistors not 12-pin sockets
   assert.match(pads("6S3B").fp, /^WIRE-/); assert.match(pads("6S51N").fp, /^WIRE-/);
   assert.equal(pads("6S1P").fp, "SOCKET-B7G"); assert.equal(pads("12AX7").fp, "SOCKET-B9A"); assert.equal(pads("6SN7GT").fp, "SOCKET-OCTAL"); assert.equal(pads("300B").fp, "SOCKET-UX4");
+  // second pass against the datasheets: 6С41С anode on 2, 4 and 6; 6С15П cathode on 1, 3, 6, 9;
+  // 6П15П's 1 and 6 are g3 + shield (to the cathode); 6П33П screen on 6 and 9 (not EL86's base);
+  // 6С4П is the 6С3П with grids on 1, 2, 7, 8
+  p = pads("6S41S"); assert.equal(p.A, "2,4,6"); assert.equal(p.G, "5"); assert.equal(p.K, "3");
+  p = pads("6S15P"); assert.equal(p.K, "1,3,6,9"); assert.equal(p.G, "2,8"); assert.equal(p.A, "7");
+  p = pads("6P15P", "pentode"); assert.equal(p.K, "3,1,6"); assert.equal(p.G1, "2"); assert.equal(p.G2, "9"); assert.equal(p.A, "7");
+  p = pads("6P33P", "pentode"); assert.equal(p.G1, "1,2"); assert.equal(p.G2, "6,9"); assert.equal(p.A, "7"); assert.equal(p.K, "3");
+  p = pads("6S4P"); assert.equal(p.G, "1,2,7,8"); assert.equal(p.K, "3,6"); assert.equal(p.A, "9");
+  // 5Ц4С, 5Ц8С, 5Ц9С, 6Ц13П are indirectly heated with the cathode joined to a heater pin: the
+  // board gives them a heater winding of their own, from the free heater pin to the cathode's net
+  const rect = (tube, free, k) => {
+    const params = { tube }, pins = L.LIB.tube.pins({ params });
+    assert.equal(L.LIB.tube.pinNumbers({ params, label: "VL1" }).K, k, tube);
+    assert.ok(!TUBE_DATABASE.find(t => t.commonName === tube).directlyHeated, tube);
+    const nl = B.withHeaters({ parts: [part("v", "tube", "VL1", params, Object.fromEntries(pins.map((q, i) => [q.id, i + 1])))], names: { 0: "GND" } }, {});
+    const v = nl.parts.find(q => q.type === "tube"), ha = v.pins.find(q => q.id === "HA"), kn = v.pins.find(q => q.id === "K").net;
+    assert.equal(ha && ha.pads, free, tube);
+    const w = nl.parts.find(q => q.type === "heater");
+    assert.ok(w && w.pins.some(q => q.net === kn), `${tube}: the winding returns through the cathode`);
+  };
+  rect("5Ts4S", "2", "8"); rect("5Ts8S", "8", "1,2"); rect("5Ts9S", "8", "1,2"); rect("6Ts13P", "4", "5");
   // every valve: each symbol terminal on at least one pad of its first footprint
   for (const t of TUBE_DATABASE) for (const conn of L.tubeKind(t) === "pentode" ? ["triode", "pentode"] : ["triode"]) {
     const q = pads(t.commonName, conn), want = L.LIB.tube.pins({ params: { tube: t.commonName, connection: conn } }).map(x => x.id);

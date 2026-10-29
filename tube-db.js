@@ -464,7 +464,7 @@ var TUBE_DATABASE = [
     ]
   },
   {
-    nameGost: "6С3П / 6С4П", nameWestern: "6S3P", commonName: "6S3P",
+    nameGost: "6С3П", nameWestern: "6S3P", commonName: "6S3P",
     type: "Single High-Gm Triode", category: "small_signal", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
     vh: 6.3, ih: 0.3, heaterWarning: "Heater pins 4 & 5: 6.3 V @ 0.3 A (Katsnelson & Larionov p. 87). Gm = 19.5 mA/V. Excellent phono input tube.",
     book: {"source": "Katsnelson & Larionov 1981", "page": 87, "name": "6С3П", "purpose": "HF voltage amplifier (grounded cathode)", "variants": ["6С3П-ЕВ", "6С3П-ДР"], "limits": {"va": 160, "va_cutoff": 330, "vg_neg": 100, "vkh": 100, "ik": 35, "pa": 3, "rg": 1.0}, "nominal": {"va": 150, "vg": -1.6, "vg_from_rk": 100, "ia": 16, "gm": 19.5, "rp": 2.56}},
@@ -475,6 +475,21 @@ var TUBE_DATABASE = [
       { pin: 4, sym: "H", role: "Heater", isHeater: true }, { pin: 5, sym: "H", role: "Heater", isHeater: true },
       { pin: 6, sym: "K", role: "Cathode", isCathode: true }, { pin: 7, sym: "K", role: "Cathode", isCathode: true },
       { pin: 8, sym: "K", role: "Cathode", isCathode: true }, { pin: 9, sym: "A", role: "Anode", isPlate: true }
+    ]
+  },
+  {
+    nameGost: "6С4П", nameWestern: "6S4P", commonName: "6S4P",
+    type: "Single High-Gm Triode", category: "small_signal", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
+    vh: 6.3, ih: 0.3, heaterWarning: "Heater pins 4 & 5: 6.3 V @ 0.3 A (Katsnelson & Larionov p. 87). Gm = 19.5 mA/V. The 6S3P with a grounded-grid pinout: grid on pins 1, 2, 7 & 8, cathode on 3 & 6.",
+    book: {"source": "Katsnelson & Larionov 1981", "page": 87, "name": "6С3П", "purpose": "HF voltage amplifier (grounded cathode)", "variants": ["6С3П-ЕВ", "6С3П-ДР"], "limits": {"va": 160, "va_cutoff": 330, "vg_neg": 100, "vkh": 100, "ik": 35, "pa": 3, "rg": 1.0}, "nominal": {"va": 150, "vg": -1.6, "vg_from_rk": 100, "ia": 16, "gm": 19.5, "rp": 2.56}},
+    vaMax: 160, paMax: 3, ikMax: 35, vg2Max: 0,
+    koren: { Triode: { mu: 53.7, kg: 164.5, kp: 476.6, kvb: 85.32, x: 1.51 } },
+    pinout: [
+      { pin: 1, sym: "G", role: "Grid", isGrid: true }, { pin: 2, sym: "G", role: "Grid", isGrid: true },
+      { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "K", role: "Cathode", isCathode: true },
+      { pin: 7, sym: "G", role: "Grid", isGrid: true }, { pin: 8, sym: "G", role: "Grid", isGrid: true },
+      { pin: 9, sym: "A", role: "Anode", isPlate: true }
     ]
   },
   {
@@ -733,11 +748,11 @@ var TUBE_DATABASE = [
     type: "Rectifier — ", category: "rectifier", origin: "Soviet", socket: "Glass, no base (fig. 9С): 5 pins", pinCount: 8,
     vh: 5, ih: 5,
     book: {"source": "Katsnelson & Larionov 1981", "page": 74, "name": "5Ц8С", "purpose": "", "limits": {"v_inverse": 1700, "i_rect_ma": 420, "i_peak_ma": 1200, "pa_w": 30, "note": "peak current printed as 1.2 мА, evidently 1.2 A"}, "test": {"ia_min": 300, "va": 75}, "rectified": {"ma_min": 400, "conditions": "Ua 500 V, Rn 1 kΩ, C 4 µF"}},
-    heaterWarning: "Filament pins 1, 2 & 8: 5 V @ 5 A; the filament is the cathode, so pins 1 & 2 carry the B+ output (Katsnelson & Larionov p. 74).",
+    heaterWarning: "Heater pins 1, 2 & 8: 5 V @ 5 A. Indirectly heated: the cathode is joined to heater pins 1 & 2, which carry the B+ output (datasheet; Katsnelson & Larionov p. 74).",
     vaMax: 500, paMax: 0, ikMax: 420, vg2Max: 0,
     koren: { Triode: { mu: 1.0, kg: 100, kp: 40, kvb: 10, x: 1.5 } },
     pinout: [
-      { pin: 1, sym: "F", role: "Filament", isHeater: true }, { pin: 2, sym: "F", role: "Filament", isHeater: true },
+      { pin: 1, sym: "K_H", role: "Cathode / heater, B+ OUT", isHeater: true, isCathode: true }, { pin: 2, sym: "K_H", role: "Cathode / heater, B+ OUT", isHeater: true, isCathode: true },
       { pin: 4, sym: "A1", role: "Anode 1", isPlate: true }, { pin: 6, sym: "A2", role: "Anode 2", isPlate: true },
       { pin: 8, sym: "H", role: "Heater", isHeater: true }
     ]
@@ -747,11 +762,11 @@ var TUBE_DATABASE = [
     type: "Rectifier — ", category: "rectifier", origin: "Soviet", socket: "Glass, no base (fig. 8С): 5 pins", pinCount: 8,
     vh: 5, ih: 3,
     book: {"source": "Katsnelson & Larionov 1981", "page": 74, "name": "5Ц9С", "purpose": "", "limits": {"v_inverse": 1700, "i_rect_ma": 205, "i_peak_ma": 600, "pa_w": 12}, "test": {"ia_min": 180, "va": 75}, "rectified": {"ma_min": 190, "conditions": "Ua 500 V, Rn 22 kΩ (as printed), C 4 µF"}},
-    heaterWarning: "Filament pins 1, 2 & 8: 5 V @ 3 A; the filament is the cathode, so pins 1 & 2 carry the B+ output (Katsnelson & Larionov p. 74).",
+    heaterWarning: "Heater pins 1, 2 & 8: 5 V @ 3 A. Indirectly heated: the cathode is joined to heater pins 1 & 2, which carry the B+ output (datasheet; Katsnelson & Larionov p. 74).",
     vaMax: 500, paMax: 0, ikMax: 205, vg2Max: 0,
     koren: { Triode: { mu: 1.0, kg: 100, kp: 40, kvb: 10, x: 1.5 } },
     pinout: [
-      { pin: 1, sym: "F", role: "Filament", isHeater: true }, { pin: 2, sym: "F", role: "Filament", isHeater: true },
+      { pin: 1, sym: "K_H", role: "Cathode / heater, B+ OUT", isHeater: true, isCathode: true }, { pin: 2, sym: "K_H", role: "Cathode / heater, B+ OUT", isHeater: true, isCathode: true },
       { pin: 4, sym: "A1", role: "Anode 1", isPlate: true }, { pin: 6, sym: "A2", role: "Anode 2", isPlate: true },
       { pin: 8, sym: "H", role: "Heater", isHeater: true }
     ]
@@ -779,7 +794,7 @@ var TUBE_DATABASE = [
     vaMax: 500, paMax: 0, ikMax: 120, vg2Max: 0,
     koren: { Triode: { mu: 1.0, kg: 100, kp: 40, kvb: 10, x: 1.5 } },
     pinout: [
-      { pin: 4, sym: "H", role: "Heater", isHeater: true }, { pin: 5, sym: "F", role: "Filament", isHeater: true }
+      { pin: 4, sym: "H", role: "Heater", isHeater: true }, { pin: 5, sym: "K_H", role: "Cathode / heater, B+ OUT", isHeater: true, isCathode: true }
     ]
   },
   {
@@ -862,9 +877,10 @@ var TUBE_DATABASE = [
     vaMax: 150, paMax: 7.8, ikMax: 52, vg2Max: 0,
     koren: { Triode: { mu: 57.01, kg: 90.38, kp: 494.6, kvb: 250.4, x: 1.65 } },
     pinout: [
-      { pin: 2, sym: "G", role: "Grid", isGrid: true }, { pin: 3, sym: "K", role: "Cathode", isCathode: true },
-      { pin: 4, sym: "H", role: "Heater", isHeater: true }, { pin: 5, sym: "H", role: "Heater", isHeater: true },
-      { pin: 6, sym: "K", role: "Cathode", isCathode: true }, { pin: 7, sym: "A", role: "Anode", isPlate: true },
+      { pin: 1, sym: "K", role: "Cathode", isCathode: true }, { pin: 2, sym: "G", role: "Grid", isGrid: true },
+      { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "K", role: "Cathode", isCathode: true },
+      { pin: 7, sym: "A", role: "Anode", isPlate: true },
       { pin: 8, sym: "G", role: "Grid", isGrid: true }, { pin: 9, sym: "K", role: "Cathode", isCathode: true }
     ]
   },
@@ -933,8 +949,9 @@ var TUBE_DATABASE = [
     vaMax: 450, paMax: 25, ikMax: 310, vg2Max: 0,
     koren: { Triode: { mu: 3.032, kg: 1076, kp: 167.1, kvb: 235.4, x: 1.62 } },
     pinout: [
-      { pin: 1, sym: "H", role: "Heater", isHeater: true }, { pin: 3, sym: "K", role: "Cathode", isCathode: true },
-      { pin: 4, sym: "A", role: "Anode", isPlate: true }, { pin: 5, sym: "G", role: "Grid", isGrid: true },
+      { pin: 1, sym: "H", role: "Heater", isHeater: true }, { pin: 2, sym: "A", role: "Anode", isPlate: true },
+      { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "A", role: "Anode", isPlate: true },
+      { pin: 5, sym: "G", role: "Grid", isGrid: true }, { pin: 6, sym: "A", role: "Anode", isPlate: true },
       { pin: 7, sym: "H", role: "Heater", isHeater: true }
     ]
   },
@@ -1396,9 +1413,9 @@ var TUBE_DATABASE = [
       Triode: { mu: 28.28, kg: 287.5, kp: 222, kvb: 74.27, x: 1.46 }
     },
     pinout: [
-      { pin: 1, sym: "K", role: "Cathode", isCathode: true }, { pin: 2, sym: "G1", role: "Control grid", isGrid: true },
+      { pin: 1, sym: "G3", role: "Suppressor grid / internal shield" }, { pin: 2, sym: "G1", role: "Control grid", isGrid: true },
       { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
-      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "K", role: "Cathode", isCathode: true },
+      { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "G3", role: "Suppressor grid / internal shield" },
       { pin: 7, sym: "A", role: "Anode", isPlate: true }, { pin: 9, sym: "G2", role: "Screen grid", isScreen: true }
     ]
   },
@@ -1458,11 +1475,11 @@ var TUBE_DATABASE = [
     ]
   },
   {
-    nameGost: "6П33П", nameWestern: "6P33P / EL86", commonName: "6P33P",
+    nameGost: "6П33П", nameWestern: "6P33P (like EL86, own pinout)", commonName: "6P33P",
     type: "Pentode / Beam Tetrode — LF output stages", category: "power", origin: "Soviet", socket: "Noval B9A", pinCount: 9,
     vh: 6.3, ih: 0.9,
     book: {"source": "Katsnelson & Larionov 1981", "page": 315, "name": "6П33П", "purpose": "LF output stages", "analogs": ["EL86"], "limits": {"va": 250, "va_on": 550, "vg2": 200, "vkh": 100, "ik": 100, "pa": 12, "pa_note": "6 W in dynamic mode (EL86 4.5)", "pg2": 1.75, "rg": 1.0}, "nominal": {"va": 170, "vg2": 170, "vg": -12.5, "ia": 70, "gm": 10, "rp": 25}},
-    heaterWarning: "Heater pins 4 & 5: 6.3 V @ 0.9 A (Katsnelson & Larionov p. 315).",
+    heaterWarning: "Heater pins 4 & 5: 6.3 V @ 0.9 A (Katsnelson & Larionov p. 315). Not pin-compatible with EL86: control grid on 1 & 2, screen on 6 & 9.",
     vaMax: 250, paMax: 12, ikMax: 100, vg2Max: 200,
     koren: {
       Pentode: { vk: 34.89, ks: 0.7458, mu: 7.749, kg: 660.1, kp: 100.7, lam: 1601, x: 1.35, kg2: 2720 },
@@ -1473,7 +1490,7 @@ var TUBE_DATABASE = [
       { pin: 1, sym: "G1", role: "Control grid", isGrid: true }, { pin: 2, sym: "G1", role: "Control grid", isGrid: true },
       { pin: 3, sym: "K", role: "Cathode", isCathode: true }, { pin: 4, sym: "H", role: "Heater", isHeater: true },
       { pin: 5, sym: "H", role: "Heater", isHeater: true }, { pin: 6, sym: "G2", role: "Screen grid", isScreen: true },
-      { pin: 7, sym: "A", role: "Anode", isPlate: true }, { pin: 8, sym: "G2", role: "Screen grid", isScreen: true }
+      { pin: 7, sym: "A", role: "Anode", isPlate: true }, { pin: 9, sym: "G2", role: "Screen grid", isScreen: true }
     ]
   },
   {
@@ -1871,7 +1888,7 @@ TUBE_DATABASE.forEach(t => {
   // a triode-pentode's sections share one heater and cathode-heater insulation
   const twin = /-P$/.test(t.commonName) && TUBE_DATABASE.find(u => u.commonName === t.commonName.replace(/-P$/, "-T"));
   if (!out.vhk && twin && twin.book && twin.book.limits.vkh) out.vhk = twin.book.limits.vkh;
-  t.directlyHeated = /(^|[^n])directly heated/i.test(t.type) || /^(5Ts3S|5Ts4S|5Ts8S|5Ts9S|5U4G|GM-70|845)$/.test(t.commonName);
+  t.directlyHeated = /(^|[^n])directly heated/i.test(t.type) || /^(5Ts3S|5U4G|GM-70|845)$/.test(t.commonName);
 });
 
 /* Interelectrode capacitances (pF) from the datasheets, for the simulation: triodes { cgk, cga, cak },
