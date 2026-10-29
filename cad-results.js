@@ -1,7 +1,8 @@
 /* What the CAD reads from the last simulation result (S.sim.result): node voltages (DC, AC, waves),
    pin and wire currents, power in resistors and speakers, waveform statistics and harmonics, and
    each tube's operating data and its ratings. Used by the stickers, the inspector, the checks, the
-   instruments' broadcast, the board netlist, the probe, the animation and the tolerance runs. */
+   instruments' broadcast, the board netlist, the probe, the animation, the tolerance runs and the
+   power sweep. */
 (function (root) {
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
@@ -243,6 +244,6 @@
       if (b && isFinite(b.rg) && b.rg > 0) add(`Grid circuit R (${fixed ? "fixed" : "cathode"} bias)`, b.rg, rgLim, "Ω", (v, m) => `has ${v} in its grid circuit, more than the ${m} allowed with ${fixed ? "fixed" : "cathode"} bias (the tube can run away as it warms)`);
       return out;
     }
-    return { acDigits, netAC, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, resistorPower, signalFreq, speakerPower, stats, tubeData, tubeLimits, waveOf, wireCurrents };
+    return { acDigits, harmonics, netAC, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, resistorPower, signalFreq, speakerPower, speakerWave, stats, tubeData, tubeLimits, waveOf, wireCurrents };
   };
 })(window);

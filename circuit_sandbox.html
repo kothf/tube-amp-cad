@@ -167,6 +167,37 @@
     #bom-table input { width: 100%; min-width: 110px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; font: inherit; }
     .bom-empty { color: var(--muted); padding: 14px; font-size: 12px; }
     .tol-note { padding: 6px 14px 0; color: var(--warn); }
+    .tol-sel { background-color: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; max-width: 170px; }
+    /* Power sweep: the cards and the chart at the left, the levels' table at the right */
+    .pw-wrap { display: flex; gap: 14px; padding: 8px 12px; align-items: flex-start; flex-wrap: wrap; }
+    .pw-left { flex: 0 1 470px; min-width: 280px; }
+    .pw-right { flex: 1 1 380px; min-width: 300px; }
+    .pw-cards { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+    .pw-card { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; display: flex; flex-direction: column; min-width: 92px; }
+    .pw-card span { color: var(--muted); font-size: 11px; }
+    .pw-card b { font-family: ui-monospace, Menlo, monospace; font-size: 14px; font-weight: 600; }
+    .pw-card.main { border-color: var(--accent); }
+    .pw-card.main b { color: var(--accent); }
+    .pw-chart { width: 100%; height: auto; display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+    .pw-chart .g1 { stroke: #223044; stroke-width: 1; } .pw-chart .g2 { stroke: #161f2c; stroke-width: 1; }
+    .pw-chart .ref { stroke: #ffb30066; stroke-dasharray: 4 3; }
+    .pw-chart .ax { fill: var(--muted); font: 10px ui-monospace, Menlo, monospace; }
+    .pw-chart polyline { fill: none; stroke-width: 1.4; } .pw-chart .thd { stroke: var(--accent); stroke-width: 2; }
+    .pw-chart .h2 { stroke: var(--amber); } .pw-chart .h3 { stroke: #c792ea; }
+    .pw-chart .now { stroke: #3fb95099; stroke-dasharray: 2 3; }
+    .pw-chart .pt { fill: var(--accent); cursor: pointer; } .pw-chart .pt.on { fill: #fff; }
+    .pw-chart .cross { fill: none; stroke: var(--warn); stroke-width: 1.5; }
+    .pw-key { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 11px; margin-top: 4px; flex-wrap: wrap; }
+    .pw-key .k { display: inline-block; width: 14px; height: 2px; margin-left: 6px; background: var(--accent); }
+    .pw-key .k.h2 { background: var(--amber); } .pw-key .k.h3 { background: #c792ea; } .pw-key .k.now { background: #3fb950; }
+    #pw-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    #pw-table th { position: sticky; top: 0; background: var(--panel2); color: var(--muted); font-weight: 600; text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    #pw-table td { padding: 2px 8px; border-bottom: 1px dashed #1a2433; }
+    #pw-table td.n { text-align: right; font-variant-numeric: tabular-nums; } #pw-table td.mono { font-family: ui-monospace, Menlo, monospace; }
+    #pw-table td.warn { color: var(--warn); }
+    #pw-table tr.on { background: #111a25; } #pw-table tr.now td:first-child { color: var(--ok); }
+    #pw-table .pw-use { padding: 0 7px; font-size: 11px; visibility: hidden; }
+    #pw-table tr.on .pw-use, #pw-table .pw-use:focus { visibility: visible; }
     .tol-num { width: 56px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; color: var(--text); }
 
     /* status bar */
@@ -274,6 +305,7 @@
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-bom" title="Bill of materials under the schematic; export TXT, CSV, XLSX or PDF (B)">Bill of materials<kbd>B</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-checks" title="Every part beyond its rating and every wiring problem, in the panel under the schematic">Checks<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-tolerance" title="The circuit simulated many times with its parts spread within their tolerances: each value's spread">Tolerance runs<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-power" title="The circuit simulated at a row of input levels: the output power against its distortion, and the power at 1 %, 5 % and 10 % THD">Power sweep<kbd>under the schematic</kbd></button>
       </div>
     </div>
     <div class="menu" id="edit-menu">
@@ -341,6 +373,7 @@
             <button class="dock-tab" role="tab" data-tab="bom" aria-controls="bom-pane" title="Bill of materials (B)">Bill of materials</button>
             <button class="dock-tab" role="tab" data-tab="checks" aria-controls="checks-pane" title="Every part beyond its rating and every wiring problem">Checks<span id="checks-count"></span></button>
             <button class="dock-tab" role="tab" data-tab="tolerance" aria-controls="tol-pane" title="The circuit simulated many times with its parts spread within their tolerances">Tolerance</button>
+            <button class="dock-tab" role="tab" data-tab="power" aria-controls="pw-pane" title="Output power against distortion over a row of input levels">Power</button>
           </div>
           <span class="bom-tools" data-for="bom">
             <span id="bom-count" class="muted"></span>
@@ -355,6 +388,12 @@
             <label title="The same seed repeats the same runs">Seed <input type="number" id="tol-seed" class="tol-num" min="1" step="1"></label>
             <button class="btn" id="btn-tol-run" title="Run the tolerance analysis; press again to stop">▶ Run</button>
           </span>
+          <span class="bom-tools" data-for="power">
+            <label title="What the sweep measures: a speaker's power, or a scope channel's AC">Output <select id="pw-out" class="tol-sel"></select></label>
+            <label title="The quietest and loudest level, in dB from what the generator is set to now (every generator is scaled together)">Input <input type="number" id="pw-lo" class="tol-num" step="1"> to <input type="number" id="pw-hi" class="tol-num" step="1"> dB</label>
+            <label title="How many levels, evenly spaced in dB">Steps <input type="number" id="pw-steps" class="tol-num" min="2" max="60" step="1"></label>
+            <button class="btn" id="btn-pw-run" title="Run the power sweep; press again to stop">▶ Run</button>
+          </span>
           <span class="spacer"></span>
           <span class="bom-tools" data-for="bom">
             <span class="muted">Export</span>
@@ -368,6 +407,7 @@
         <div class="bom-scroll" id="bom-pane" role="tabpanel"><table id="bom-table"></table></div>
         <div class="bom-scroll checks-list" id="checks-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="tol-pane" role="tabpanel" hidden></div>
+        <div class="bom-scroll" id="pw-pane" role="tabpanel" hidden></div>
       </section>
     </div>
     <aside id="inspector" aria-label="Inspector"></aside>
@@ -507,6 +547,7 @@
   <script src="cad-analysis.js?v=dev"></script>
   <script src="cad-bom.js?v=dev"></script>
   <script src="cad-tolerance.js?v=dev"></script>
+  <script src="cad-power.js?v=dev"></script>
   <script src="cad-anim.js?v=dev"></script>
   <script src="cad-probe.js?v=dev"></script>
   <script src="cad-export.js?v=dev"></script>
