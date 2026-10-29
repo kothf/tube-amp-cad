@@ -302,6 +302,16 @@ the circuit that was on the sheet.
   - around the THD marks the sweep adds levels where the distortion jumps
     between two of them, so a clipping output stage is read closely. The
     stereo Gubin example reads 1.71 W at 1 % THD in 12 s on 4 cores.
+- **Listen.** *View ▾ → Listen* opens the *Listen* tab under the schematic: a
+  recording played through the simulated circuit, heard through the
+  computer's speakers, with A/B between input and output as it plays:
+  - a guitar riff made here, the generator's own tone, or your WAV or MP3 file
+    (a stereo file drives two generators, two speakers play in stereo);
+  - the level in dB from the generator's amplitude, to push the circuit into
+    clipping and hear it;
+  - rendered at 48 kHz, every sample a simulation step, a piece of the clip per
+    core (each with a 0.4 s lead-in from the settled circuit, joined with a
+    crossfade, on whole mains periods); *Save WAV* keeps the output.
 - **SPICE.** *Export SPICE netlist* writes an LTspice netlist: tubes as
   behavioural sources with the same equations the simulator uses, transistors
   as Q and M elements with their `.model` lines.

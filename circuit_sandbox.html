@@ -171,7 +171,7 @@
     /* Power sweep: the cards and the chart at the left, the levels' table at the right */
     .pw-wrap { display: flex; gap: 14px; padding: 8px 12px; align-items: flex-start; flex-wrap: wrap; }
     .pw-left { flex: 0 1 470px; min-width: 280px; }
-    .pw-right { flex: 1 1 380px; min-width: 300px; }
+    .pw-right { flex: 1 1 380px; min-width: 300px; overflow-x: auto; }
     .pw-cards { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
     .pw-card { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; display: flex; flex-direction: column; min-width: 92px; }
     .pw-card span { color: var(--muted); font-size: 11px; }
@@ -198,6 +198,20 @@
     #pw-table tr.on { background: #111a25; } #pw-table tr.now td:first-child { color: var(--ok); }
     #pw-table .pw-use { padding: 0 7px; font-size: 11px; visibility: hidden; }
     #pw-table tr.on .pw-use, #pw-table .pw-use:focus { visibility: visible; }
+    /* Listen: the transport at the left, the input and output strips at the right */
+    .ls-file-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ls-note { padding: 6px 12px 0; color: var(--muted); font-size: 12px; } .ls-note.warn { color: var(--warn); }
+    .ls-wrap { display: flex; gap: 14px; padding: 8px 12px; align-items: stretch; flex-wrap: wrap; }
+    .ls-transport { display: flex; flex-direction: column; gap: 8px; flex: 0 0 210px; font-size: 12px; }
+    .ls-transport label { display: flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+    .ls-transport .btn { font-size: 12px; }
+    .ls-play { font-size: 14px !important; padding: 6px 12px !important; border-color: var(--accent); color: var(--accent); }
+    .ls-play:disabled, #ls-save:disabled { opacity: .45; cursor: default; }
+    .ls-ab { display: flex; } .ls-ab .btn { flex: 1; border-radius: 0; } .ls-ab .btn:first-child { border-radius: 6px 0 0 6px; } .ls-ab .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+    .ls-ab .btn.on { background: #0d3442; border-color: var(--accent); color: var(--accent); position: relative; }
+    .ls-vol input { flex: 1; accent-color: var(--accent); }
+    .ls-strips { flex: 1 1 420px; min-width: 280px; display: flex; flex-direction: column; gap: 6px; }
+    .ls-strips canvas { width: 100%; height: 74px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; display: block; }
     .tol-num { width: 56px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; color: var(--text); }
 
     /* status bar */
@@ -306,6 +320,7 @@
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-checks" title="Every part beyond its rating and every wiring problem, in the panel under the schematic">Checks<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-tolerance" title="The circuit simulated many times with its parts spread within their tolerances: each value's spread">Tolerance runs<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-power" title="The circuit simulated at a row of input levels: the output power against its distortion, and the power at 1 %, 5 % and 10 % THD">Power sweep<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-listen" title="Hear the circuit: a recording (WAV, MP3, a guitar riff or the generator's tone) played through it, A/B against the input">Listen<kbd>under the schematic</kbd></button>
       </div>
     </div>
     <div class="menu" id="edit-menu">
@@ -374,6 +389,7 @@
             <button class="dock-tab" role="tab" data-tab="checks" aria-controls="checks-pane" title="Every part beyond its rating and every wiring problem">Checks<span id="checks-count"></span></button>
             <button class="dock-tab" role="tab" data-tab="tolerance" aria-controls="tol-pane" title="The circuit simulated many times with its parts spread within their tolerances">Tolerance</button>
             <button class="dock-tab" role="tab" data-tab="power" aria-controls="pw-pane" title="Output power against distortion over a row of input levels">Power</button>
+            <button class="dock-tab" role="tab" data-tab="listen" aria-controls="ls-pane" title="Hear a recording played through the circuit">Listen</button>
           </div>
           <span class="bom-tools" data-for="bom">
             <span id="bom-count" class="muted"></span>
@@ -394,6 +410,17 @@
             <label title="How many levels, evenly spaced in dB">Steps <input type="number" id="pw-steps" class="tol-num" min="2" max="60" step="1"></label>
             <button class="btn" id="btn-pw-run" title="Run the power sweep; press again to stop">▶ Run</button>
           </span>
+          <span class="bom-tools" data-for="listen">
+            <label title="What drives the circuit's generator">Play <select id="ls-src" class="tol-sel"><option value="riff">Guitar riff (made here)</option><option value="tone">The generator's tone</option><option value="file">Your file (WAV, MP3)</option></select></label>
+            <button class="btn" id="ls-file-btn" title="Open a WAV or MP3 file (or drop one on the tab)">Open file…</button>
+            <span id="ls-file-name" class="muted ls-file-name"></span>
+            <input type="file" id="ls-file" accept="audio/*,.wav,.mp3,.ogg,.flac,.m4a" hidden>
+            <label id="ls-from-lbl" title="Where in the file the excerpt starts">From <input type="number" id="ls-from" class="tol-num" min="0" step="0.5"> s</label>
+            <label title="How long the excerpt is (up to 30 s)">Length <input type="number" id="ls-len" class="tol-num" min="0.1" max="30" step="0.5"> s</label>
+            <label title="0 dB: the recording's peak at the generator's amplitude; raise it to drive the circuit harder">Level <input type="number" id="ls-level" class="tol-num" min="-60" max="40" step="1"> dB</label>
+            <label title="What you hear: a speaker, two speakers in stereo, or a scope channel">Hear <select id="ls-out" class="tol-sel"></select></label>
+            <button class="btn" id="btn-ls-run" title="Play the recording through the circuit (simulated); press again to stop">▶ Render</button>
+          </span>
           <span class="spacer"></span>
           <span class="bom-tools" data-for="bom">
             <span class="muted">Export</span>
@@ -408,6 +435,7 @@
         <div class="bom-scroll checks-list" id="checks-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="tol-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="pw-pane" role="tabpanel" hidden></div>
+        <div class="bom-scroll" id="ls-pane" role="tabpanel" hidden></div>
       </section>
     </div>
     <aside id="inspector" aria-label="Inspector"></aside>
@@ -548,6 +576,7 @@
   <script src="cad-bom.js?v=dev"></script>
   <script src="cad-tolerance.js?v=dev"></script>
   <script src="cad-power.js?v=dev"></script>
+  <script src="cad-listen.js?v=dev"></script>
   <script src="cad-anim.js?v=dev"></script>
   <script src="cad-probe.js?v=dev"></script>
   <script src="cad-export.js?v=dev"></script>

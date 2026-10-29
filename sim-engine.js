@@ -558,6 +558,11 @@
   // Source waveforms
   // ---------------------------------------------------------------------------
   function waveValue(el, t, scale) {
+    // a recording (audio()): its samples at el.rate, linear between them, silent after the end
+    if (el.samples) {
+      const p = t * el.rate, k = Math.floor(p), a = el.samples[k] || 0, b = el.samples[k + 1] || 0;
+      return scale * ((el.offset || 0) + el.amp * (a + (b - a) * (p - k)));
+    }
     const w = 2 * Math.PI * el.freq * t + (el.phase || 0) * Math.PI / 180;
     let s;
     // square: a clipped triangle, i.e. edges with a 1 % rise time like a real
@@ -1576,6 +1581,52 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Audio: the circuit playing a recording, for the CAD's Listen tab. From the settled state
+  // (opts.warm: a steady-state run's result.warm, the state at the start of a mains period, so the
+  // mains go on in phase; else the DC point), a plain transient at a fixed step, every sample kept.
+  // A VSRC carrying samples (Float32Array) and rate plays them (waveValue), times its amp.
+  //   opts: { warm, rate (output samples a second), sub (steps per sample, 2 by default), seconds,
+  //           probes: [[node, refNode]...], budgetMs, onProgress(f) }
+  //   returns { ok, rate, out: [Float32Array per probe], elapsedMs } or { ok: false, error, at }
+  // ---------------------------------------------------------------------------
+  function audio(netlist, opts) {
+    opts = opts || {};
+    const t0 = Date.now(), rate = opts.rate || 48000, sub = Math.max(1, Math.round(opts.sub || 2)), budgetMs = opts.budgetMs || 600000;
+    const circ = buildCircuit(netlist), n = circ.nUnk;
+    if (circ.nNodes < 2) return { ok: false, error: "Circuit is empty" };
+    circ.els.forEach(e => { delete e._vlast; });
+    let x;
+    if (opts.warm && opts.warm.length === n) x = Array.from(opts.warm);
+    else { const dc = dcOperatingPoint(circ); if (!dc.ok) return { ok: false, error: "DC operating point did not converge (" + dc.error + ")" }; x = dc.x.slice(); }
+    const h = 1 / (rate * sub), samples = Math.max(1, Math.round((opts.seconds || 1) * rate));
+    const probes = (opts.probes || []).map(p => Array.isArray(p) ? p : [p, 0]).filter(([a, b]) => a >= 0 && a < circ.nNodes && b >= 0 && b < circ.nNodes);
+    const out = probes.map(() => new Float32Array(samples));
+    let xBack = null, hBack = 0;          // BDF2 history, as in simulate()
+    const solveStep = (xprev, tNext, hh, depth) => {
+      const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
+      const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
+      if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
+      if ((depth || 0) >= 2) { const r2 = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: null }, { gmin: 1e-12, maxIter: 400 }); return r2.ok ? r2.x : null; }
+      let xs = xprev;
+      for (let k = 1; k <= 8; k++) { xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
+      if (!depth) xBack = null;
+      return xs;
+    };
+    let lastProg = 0;
+    for (let s = 0; s < samples; s++) {
+      for (let k = 1; k <= sub; k++) {
+        const nx = timerStep(circ, solveStep, x, (s * sub + k) * h, h);
+        if (!nx) return { ok: false, error: "Transient did not converge at t=" + (((s * sub + k) * h) * 1000).toFixed(3) + " ms", at: s / rate };
+        x = nx;
+      }
+      probes.forEach(([p, q], j) => { out[j][s] = vn(x, p) - vn(x, q); });
+      if (opts.onProgress && (s + 1) / samples - lastProg >= 0.01) { lastProg = (s + 1) / samples; opts.onProgress(lastProg); }
+      if ((s & 255) === 0 && Date.now() - t0 > budgetMs) return { ok: false, error: `Stopped after ${(s / rate).toFixed(2)} s of audio: it took longer than ${Math.round(budgetMs / 1000)} s`, at: s / rate };
+    }
+    return { ok: true, rate, out, elapsedMs: Date.now() - t0 };
+  }
+
+  // ---------------------------------------------------------------------------
   // Small-signal frequency response (AC analysis): every device linearized at an operating
   // point, then the complex nodal equations Y(ω) = G + jωB solved at each frequency.
   //   opts: { op: node voltages [v0 = 0, v1, …] to linearize at (the averaged steady state of
@@ -1717,7 +1768,7 @@
     return { ok: true, freqs, re, im, probes, elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, NE555, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, acSweep, acPoints, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, NE555, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

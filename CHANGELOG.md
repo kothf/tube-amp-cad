@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.127.0] - 2026-10-29
+
+### Added
+- **Listen** (*View ▾ → Listen*, the *Listen* tab under the schematic): a recording played through the simulated circuit and heard through the computer's speakers.
+  - Sources: a guitar riff made here (Karplus–Strong plucked strings), the generator's own tone, or your WAV or MP3 file (Open file… or drop it on the tab; FLAC, OGG and M4A where the browser decodes them). A stereo file drives the first two generators, and two speakers play in stereo.
+  - Settings: From, Length (up to 30 s) and Level (0 dB puts the recording's peak at the generator's amplitude).
+  - You can hear a speaker, two speakers in stereo, or a scope channel.
+  - ▶ Play runs input and output together. A · Input / B · Circuit switches between them while playing. Match loudness, Loop, Volume, click-to-seek on the waveform strips, and Save WAV (16-bit) of the output.
+  - Engine: `TubeSimEngine.audio()` is a fixed-step transient at 48 kHz from the settled state, with a source that plays samples (`VSRC` with `samples`/`rate`). The worker takes `kind: "audio"`.
+  - The clip is cut into one piece per core, each with a 0.4 s lead-in from the circuit settled with its generators silent, and joined with 20 ms crossfades on whole mains periods. The joined result matches a single run to within 4e-7. Example 07 renders 3 s in under 5 s on 4 cores.
+  - `tests/listen.test.mjs`, an MP3 fixture, and Listen checks in e2e part `10-analysis` (riff, tone against the steady state, MP3 and WAV decoding, A/B, Save WAV) cover it.
+
 ## [3.126.0] - 2026-10-29
 
 ### Added

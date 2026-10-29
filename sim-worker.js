@@ -3,6 +3,8 @@
                 { seq, netlist, options, kind: "startup" }      power-on transient
                 { seq, netlist, options, kind: "op" }           the operating point a frequency response is linearized at:
                                                                  a mains-fed circuit's averaged steady state ({ ok, op })
+                { seq, netlist, options, kind: "audio" }        the circuit playing a recording (audio: a source carries
+                                                                 samples), from options.warm: { ok, rate, out: [Float32Array] }
                 { seq, netlist, options, kind: "ac" }           frequency response (acSweep; options.op, and options.kFrom /
                                                                  kTo for a piece of the sweep, so several workers share it)
    Message out: { seq, result }, and { seq, progress } (0…1) along the way. */
@@ -24,7 +26,8 @@ self.onmessage = async (e) => {
     } else if (kind === "ac") {
       const ac = TubeSimEngine.acSweep(netlist, options);
       result = ac.ok ? { ok: true, freqs: ac.freqs, probes: ac.probes, elapsedMs: ac.elapsedMs } : ac;
-    } else if (kind === "startup") result = TubeSimEngine.startup(netlist, Object.assign({}, options, { onProgress }));
+    } else if (kind === "audio") result = TubeSimEngine.audio(netlist, Object.assign({}, options, { onProgress }));
+    else if (kind === "startup") result = TubeSimEngine.startup(netlist, Object.assign({}, options, { onProgress }));
     else result = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress }));
   } catch (err) {
     result = { ok: false, error: "Engine error: " + (err && err.message ? err.message : err) };
@@ -34,6 +37,7 @@ self.onmessage = async (e) => {
     result.tran.nodes.forEach(a => transfer.push(a.buffer));
     Object.values(result.tran.devices).forEach(d => { transfer.push(d.i.buffer); if (d.ig2) transfer.push(d.ig2.buffer); });
   }
+  if (result.out) result.out.forEach(a => transfer.push(a.buffer));
   if (result.min) { result.min.forEach(a => transfer.push(a.buffer)); result.max.forEach(a => transfer.push(a.buffer)); }
   if (result.probes && result.freqs) { transfer.push(result.freqs.buffer); result.probes.forEach(p => { transfer.push(p.re.buffer, p.im.buffer); }); }
   self.postMessage({ seq, result }, transfer);

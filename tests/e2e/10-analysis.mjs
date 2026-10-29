@@ -1,10 +1,10 @@
-// Analyses under the schematic: the power sweep
+// Analyses under the schematic: the power sweep, listening
 import { cad, check } from "./harness.mjs";
 
 // --- Power sweep ----------------------------------------------------------------------------
 {
   await cad.bringToFront();
-  cad.once("dialog", d => d.accept());
+  cad.once("dialog", d => d.accept().catch(() => {}));
   const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^05-/.test(x.file))));
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 });
@@ -41,3 +41,52 @@ import { cad, check } from "./harness.mjs";
   await cad.evaluate(() => TubeCAD.undo());
   await cad.evaluate(() => TubeCAD.toggleBom(false));
 }
+
+// --- Listen ---------------------------------------------------------------------------------
+{
+  await cad.click("#btn-view"); await cad.click("#btn-listen"); await cad.keyboard.press("Escape");
+  check(await cad.evaluate(() => !document.getElementById("ls-pane").hidden && document.getElementById("btn-listen").getAttribute("aria-checked") === "true"), "View ▾ → Listen opens the Listen tab, ticked");
+  const render = async () => {
+    const seq = await cad.evaluate(() => TubeCAD.state.listen.seq);
+    await cad.click("#btn-ls-run");
+    await cad.waitForFunction(seq => TubeCAD.state.listen.seq !== seq && !TubeCAD.state.listen.job, seq, { timeout: 180000 });
+    return cad.evaluate(() => { const L = TubeCAD.state.listen, t = L.take; return { error: L.error, ch: t && t.out.length, n: t && t.out[0].length, peak: t && t.peak, rms: t && t.rms, cores: t && t.cores }; });
+  };
+  await cad.selectOption("#ls-src", "riff");
+  await cad.fill("#ls-len", "2"); await cad.press("#ls-len", "Tab");
+  const t = await render();
+  check(!t.error && t.ch === 1 && t.n === 96000 && t.peak > 1 && t.rms > 0.1, `2 s of the guitar riff play through example 05 into its speaker (peak ${t.peak && t.peak.toFixed(2)} V, ${t.cores} pieces)`);
+  // the output agrees with the steady-state simulation: the generator's tone at its own level gives the speaker's rms
+  await cad.selectOption("#ls-src", "tone");
+  const tt = await render();
+  const vrms = await cad.evaluate(() => { const sp = TubeCAD.state.comps.find(c => c.type === "speaker"); return TubeCAD.state.sim.result && Math.sqrt(TubeCAD.measurements().find(m => m.key === sp.id + ":p").v * sp.params.r); });
+  check(Math.abs(tt.rms / vrms - 1) < 0.03, `the generator's tone through the circuit reads the speaker's rms as the simulation does (${tt.rms.toFixed(3)} vs ${vrms.toFixed(3)} V)`);
+  // an MP3 (stereo) file: decoded, its excerpt rendered
+  await cad.selectOption("#ls-src", "file").catch(() => {});
+  await cad.setInputFiles("#ls-file", new URL("../fixtures/stereo-440-660.mp3", import.meta.url).pathname);
+  await cad.waitForFunction(() => TubeCAD.state.listen.file, null, { timeout: 10000 });
+  const f = await cad.evaluate(() => { const F = TubeCAD.state.listen.file; return { ch: F.chs.length, s: F.seconds, name: document.getElementById("ls-file-name").textContent }; });
+  check(f.ch === 2 && Math.abs(f.s - 1.5) < 0.1 && /stereo-440-660\.mp3/.test(f.name), `an MP3 file is read: stereo, ${f.s.toFixed(2)} s, its name shown`);
+  await cad.fill("#ls-len", "1"); await cad.press("#ls-len", "Tab");
+  const tf = await render();
+  check(!tf.error && tf.n === 48000 && tf.peak > 0.5, `its excerpt plays through the circuit (1 s, peak ${tf.peak && tf.peak.toFixed(2)} V)`);
+  // a WAV file made here
+  const wav = await cad.evaluate(() => Array.from(new Uint8Array(CadListen.wav([CadListen.tone("sine", 220, 0.5)], 48000, 0.8))));
+  await cad.setInputFiles("#ls-file", { name: "a220.wav", mimeType: "audio/wav", buffer: Buffer.from(wav) });
+  await cad.waitForFunction(() => TubeCAD.state.listen.file && TubeCAD.state.listen.file.name === "a220.wav", null, { timeout: 10000 });
+  check(await cad.evaluate(() => TubeCAD.state.listen.file.chs.length === 1 && Math.abs(TubeCAD.state.listen.file.seconds - 0.5) < 0.01), "a WAV file is read (mono, 0.5 s)");
+  // play, A/B
+  await cad.click("#ls-play"); await cad.waitForTimeout(400);
+  const playing = await cad.evaluate(() => TubeCAD.state.listen.playing);
+  await cad.click('[data-ab="in"]');
+  check(playing && await cad.evaluate(() => TubeCAD.state.listen.ab === "in" && document.querySelector('[data-ab="in"]').getAttribute("aria-pressed") === "true"), "▶ Play plays; A switches to the input");
+  await cad.click("#ls-play");
+  check(await cad.evaluate(() => !TubeCAD.state.listen.playing), "■ Stop stops");
+  const [dl] = await Promise.all([cad.waitForEvent("download"), cad.click("#ls-save")]);
+  check(/-through-circuit\.wav$/.test(dl.suggestedFilename()), `Save WAV downloads the output (${dl.suggestedFilename()})`);
+  await cad.evaluate(() => { const r = TubeCAD.state.comps.find(c => c.type === "resistor"); r.params.r *= 1.1; TubeCAD.commit(); });
+  check(/changed/.test(await cad.textContent("#ls-note")), "an edit marks the render as the old circuit's");
+  await cad.evaluate(() => TubeCAD.undo());
+  await cad.evaluate(() => TubeCAD.toggleBom(false));
+}
+
