@@ -131,7 +131,7 @@
 
 <!-- ======================================================================= -->
 <h2 id="window">3. The Circuit CAD window</h2>
-<p>Top to bottom: the toolbar; the palette (left), the sheet (centre) and the inspector (right); the panel under the sheet (when open), with two tabs: the bill of materials and the Checks; the status bar.</p>
+<p>Top to bottom: the toolbar; the palette (left), the sheet (centre) and the inspector (right); the panel under the sheet (when open), with its tabs: the bill of materials, the Checks, Tolerance, Power, Listen and Sweep; the status bar.</p>
 
 <h3 id="toolbar">3.1 Toolbar</h3>
 <table>
@@ -362,6 +362,13 @@
   <li>Resistor dissipation against its power rating (rate a resistor at about twice what it dissipates).</li>
   <li>Output-transformer primary DC current against its rating (single-ended cores saturate above it).</li>
   <li>Transistor Vce and dissipation; zener power.</li>
+  <li>Capacitors against their voltage rating (a warning above 80 %, an error over it) and a reversed electrolytic.</li>
+  <li>Diodes and bridges: the peak reverse voltage over the capture against VRRM, the average current against the rating.</li>
+  <li>Regulators, TL431, op-amps and power amplifier ICs: supply voltage too high or too low, dropout, minimum load, dissipation for the package, a muted LM3886.</li>
+  <li>Fuses (above 75 % of the rating they age, over it they blow), varistors over their continuous voltage, NTC limiters, relay coils that may not pull in or overheat, LEDs over 40 mA in a vactrol.</li>
+  <li>Neon lamps and gas regulators that do not strike, or carry less than they need or more than their rating; a magic eye's target over its voltage.</li>
+  <li>Interstage and input transformers: DC in an ungapped primary (feed it through a capacitor), or more than the gap allows.</li>
+  <li>Power rails of one name with different voltages.</li>
 </ul>
 <h3 id="checks-tube">9.2 Tube ratings</h3>
 <table>
@@ -373,7 +380,8 @@
   <tr><td>Ik</td><td class="wrap">Cathode current vs Ik max</td><td class="wrap">Cathode emission is finite; overdrawing strips the coating.</td></tr>
   <tr><td>Vhk</td><td class="wrap">Heater-to-cathode voltage at its worst instant, each direction against its own rating</td><td class="wrap">The heater-cathode insulation breaks down; hum and failure. The heater is taken as grounded; set <b>Heater DC potential</b> on the tube for an elevated heater supply.</td></tr>
   <tr><td>Grid circuit R</td><td class="wrap">Total grid-to-ground (or grid-to-bias) DC resistance: stopper + leak + pot, vs Rg max for cathode or fixed bias</td><td class="wrap">Gas and grid-emission current through too large a resistance biases the grid positive: the tube runs away as it warms. Fixed bias allows less.</td></tr>
-  <tr><td>Rectifier</td><td class="wrap">Rectified current and peak inverse voltage</td><td class="wrap">Cathode stripping and arcing in the rectifier.</td></tr>
+  <tr><td>Rectifier</td><td class="wrap">Rectified current, peak inverse voltage, and the peak anode current from the settled cycles against the tube's rating (5Ц4С 375 mA, 5Ц3С 750 mA, 6Ц4П 300 mA …): the current the reservoir capacitor draws in short pulses</td><td class="wrap">Cathode stripping and arcing in the rectifier. A larger reservoir capacitor raises the peaks; anode resistors (as in example 07) bring them down.</td></tr>
+  <tr><td>Anode temperature</td><td class="wrap">The anode's temperature from the average dissipation, radiation-cooled (about 400 °C at the rated Pa)</td><td class="wrap">From about twice the rating the anode glows red on the schematic (red-plating) and the Checks say it will fail within hours.</td></tr>
 </table>
 <p>Ratings come from Katsnelson &amp; Larionov for the Soviet tubes and from the makers' datasheets (RCA, Philips, Mullard, Western Electric) for the others. A rating a source does not give is not checked.</p>
 
@@ -429,7 +437,7 @@
 <!-- ======================================================================= -->
 <h2 id="board">11. Board layout</h2>
 <p><span class="ui">Board</span> at the left of the CAD's toolbar (or <span class="ui">Windows ▾</span> → <span class="ui">Board layout</span>) opens the PCB of the circuit; <span class="ui">Schematic</span> in the same place in the Board window goes back. Parts and connections come from the schematic; the layout is saved inside the circuit file.</p>
-<p>The toolbar is one row (two in a window narrower than about 1100 px; below 1450 px the tools, and below 1250 px Update and Auto-route, show as icons named by their tooltips): the Schematic | Board switch; undo and redo; the tools (Select, Route, Via, Text, Hole, Pour, Keep-out, Measure); the active copper layer and the grid; <span class="ui">View ▾</span> (grid lines, dots or none, axes, the drawing sheet's format, Lock sheet, the 3D view); Fit; then <span class="ui">Update</span> (amber when the schematic has changed), <span class="ui">Board ▾</span> (<span class="ui">Board setup…</span>, <span class="ui">Design rules…</span>, <span class="ui">Route &amp; nudge</span>), <span class="ui">Export ▾</span> and help.</p>
+<p>The toolbar is one row (two in a window narrower than about 1100 px; below 1450 px the tools, and below 1250 px Update and Auto-route, show as icons named by their tooltips): the Schematic | Board switch; undo and redo; the tools (Select, Route, Via, Text, Hole, Pour, Keep-out, Measure); the active copper layer and the grid; <span class="ui">View ▾</span> (grid lines, dots or none, axes, the drawing sheet's format, Lock sheet, the 3D view); Fit; then <span class="ui">Update</span> (amber when the schematic has changed), <span class="ui">Board ▾</span> (<span class="ui">Board setup…</span>, <span class="ui">Design rules…</span>), Auto-route, <span class="ui">Route ▾</span> (Auto-route, Route &amp; nudge, Rearrange board, Unroute, Import routes (SES)…, Freerouting…), <span class="ui">Export ▾</span> and help.</p>
 <h3 id="board-footprints">11.1 Footprints</h3>
 <p>Every part gets a through-hole footprint chosen from its values: resistors by power (10.16 mm at ¼ W to 50.8 mm at 20 W); film, ceramic and mica capacitors by value; radial, snap-in and axial electrolytics by size; DO-35 to DO-201 diodes; 3 and 5 mm LEDs; TO-92 to TO-264 transistors with each part's own pin order (TO-3 gets wire pads for a chassis heatsink); 9/16/24 mm pots and a 3296W trimmer; real tube sockets (B9A, B7G, Magnoval, octal, UX4) drawn from the component side, dual tubes sharing one socket; EI30–EI96 board transformers; toggle switches, screw terminals, RCA and jack sockets; op-amps in DIP-8 and DIP-14, a dual's or quad's amplifiers sharing one package. Chassis parts can get wire pads or a terminal instead. Change any footprint in the inspector.</p>
 <p><b>SMD.</b> The small parts have surface-mount versions too: tick <span class="ui">SMD</span> in the inspector for one part, or for a whole selection (a drag box round the board, or Shift+click: every part in it that has one switches). Resistors become 0603–2512 chips by power (¼ W: 1206; above 1 W they stay through-hole), capacitors 0603–2220 chips by value, electrolytics V-chip cans up to Ø18 mm, signal diodes SOD-123 / SOD-323 / MiniMELF, rectifiers and zeners SMA / SMB / SMC (3 A types SMC), LEDs 0805 / 1206, small transistors SOT-23 (SOT-89 for the LND150 and DN2540), TO-126 parts SOT-223 or DPAK, TO-220 parts D²PAK or DPAK, the NE555 and op-amps SOIC-8 / SOIC-14, a trimmer TC33. SMD packages use the makers' SMD pin order (SOT-23: B-E-C, G-S-D; the tabbed cases B-C-E, G-D-S with the tab on the collector or drain), so check your part's datasheet. Valves, transformers, panel pots, jacks and transistors in TO-247, TO-3P, TO-264, TO-3 or germanium cans stay through-hole. An SMD part's pads are on its side's copper only and have no hole: a track reaches them on that layer (routing from one starts there; from the other side, place a via first). The bottom side (<span class="ui">Side</span>, or <kbd>M</kbd>) puts them on the bottom copper. The Gerbers then carry solder paste layers and a placement file (<code>-pos.csv</code>: centre, rotation and side of each SMD part) for assembly; the 3D view and STEP show the SMD bodies; the BOM in the Circuit CAD names the package ("Resistor, SMD 1206").</p>
@@ -504,6 +512,14 @@
   <li><b>Save as PDF:</b> every sheet as a vector page. <b>Export sheet…:</b> the current sheet, each sheet as its own file, or all in one PDF; PNG at 150/300/600 dpi, black on white or in the editor's colours.</li>
   <li><b>Export SPICE netlist:</b> an LTspice netlist; tubes as behavioural sources with the same equations the simulator uses, transistors as Q and M elements with their <code>.model</code> lines.</li>
   <li><b>Bill of materials</b> (<kbd>B</kbd>, or <span class="ui">View ▾</span>): equal parts on one line with designator ranges; tube sockets; ratings (a capacitor's voltage rating: the first standard one, 63, 100, 160, 250, 400, 450 V…, at or above 1.25 × the peak voltage the simulation puts across it); the simulated worst case (dissipation, capacitor peak voltage, LED current); a part number you type. Click a line to select its parts. Export TXT, CSV, XLSX or PDF.</li>
+  <li><b>Examples</b> (<span class="ui">File ▾ → Examples</span>): finished circuits drawn from published sources, each with its board:
+    <ul>
+      <li>Tubes: Gubin's three-tube amplifier (6N23P-EV direct-coupled to 6P14P, pentode / triode switch) and his stereo amplifier with a 5Ц4С supply (three sheets: the 373BX transformer, the 5Ц4С with a choke, two 6N23P-EV + 6P14P channels; 1.7 W at 1 % THD in triode).</li>
+      <li>Tube + solid state: a 12AX7 stage with a plate resistor beside the same stage on an MPSA92 current source; a 12AX7 stage driving an IRF820 source follower.</li>
+      <li>Solid state: a 10 W complementary MOSFET amplifier (IRF540 / IRF9540); a 2N3904 common-emitter stage with its emitter resistor unbypassed and bypassed.</li>
+      <li>555: astable multivibrator, flashing LED, metronome, car tachometer, simplest oscillator.</li>
+    </ul>
+    Each entry says where it comes from and what the simulation gives. Opening one replaces the circuit on the sheet (<kbd>Ctrl</kbd>+<kbd>Z</kbd> brings it back).</li>
   <li><b>Checks</b> (<span class="ui">View ▾</span>, or the tab next to the bill of materials): the inspector's Checks list in the panel under the sheet, wider: wiring problems (no ground, unconnected pins, shorted parts) and every part beyond its rating. The tab shows how many there are.</li>
 </ul>
 
