@@ -180,6 +180,22 @@
           S.board = JSON.parse(keep); analyse(); await breath();
         }
       }
+      // last, a poured net's pad its pour still does not reach: a short track to a via down into the pour
+      // (BoardPlace.stitch), the nearest that the pour then reaches and that adds no rule message
+      const poured = new Set((S.board.zones || []).map(z => z.net)), sewn = new Set();
+      for (let k = 0; k < 12; k++) {
+        analyse();
+        const rats = finishable().filter(r => poured.has(S.model.names[r.net] || String(r.net)) && !sewn.has(key(r))); if (!rats.length) break;
+        sewn.add(key(rats[0])); stage("stitching vias");
+        const tries = BoardPlace.stitch(S.board, S.model, S.conn, rats, { clr: S.clr }), un = S.conn.unrouted, d = bad();
+        for (const t of tries) {
+          if (router.stop) break;
+          S.board.tracks.push(t.track); S.board.vias.push(t.via); analyse();
+          if (S.conn.unrouted < un && bad() <= d) { n++; break; }
+          S.board.tracks.pop(); S.board.vias.pop(); analyse();
+          await breath();
+        }
+      }
       await tidy();
       return n;
     }

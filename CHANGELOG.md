@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.132.0] - 2026-10-29
+
+### Added
+- Board: **stitching vias**. When a pad of a poured net (GND) is cut off from its pour, by other copper round it or by a high-voltage pin's wide clearance, Auto-route, Finish routing and Design from scratch now give it a short track on the other layer and a via down into the pour. The track finds its own way out (a small maze, so it can turn corners), the via spots nearest the pad are tried first, and a via stays only if it joins the pad with no new rule violation. A track leaving a pad may pass the footprint's other pads as closely as the pads themselves sit, as the rule check allows. On the stripped Gubin board (example 07) this joins the two transformer GND pins next to the 6P14P anodes that the pour could not reach.
+
 ## [3.131.0] - 2026-10-29
 
 ### Added

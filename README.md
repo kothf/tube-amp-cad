@@ -573,6 +573,10 @@ the circuit file, so one file holds both.
   routing's rounds work on what is left. The outline, holes, keep-outs,
   locked parts and locked copper hold throughout. A progress bar in the status
   line shows the step and the time so far.
+- **Stitching vias**: a GND pad the pour cannot reach (shut in by other
+  copper or a high-voltage pin's clearance) gets a short track on the other
+  layer and a via down into the pour, tried nearest first and kept only if it
+  joins without a new rule violation. Routing does this by itself.
 - **Tidy tracks** (*Route ▾*) pulls the unlocked tracks tight: grid-finisher
   staircases and detours become straight and 45° runs wherever every clearance
   still holds. Auto-route does this after each pass by itself.

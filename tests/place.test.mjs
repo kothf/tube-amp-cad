@@ -325,3 +325,34 @@ test("advise: names rules stricter than needed and a part against the edge, and 
   assert.ok(tips.some(t => /^signal tracks 1 mm: 0.6 mm/.test(t)) && tips.some(t => /^power tracks 1.25 mm/.test(t)) && tips.some(t => /^clearance 0.6 mm/.test(t)) && tips.some(t => /VL1.* against the board edge/.test(t)), tips.join(" | "));
   assert.deepEqual(P.advise(board, m, conn, [], {}), []);
 });
+
+test("stitch: a ground pad its pour cannot reach gets a short track and a via down into the pour", () => {
+  const { board, nl } = setup();
+  board.zones = [{ net: "GND", layer: "B.Cu", pts: [[0, 0], [100, 0], [100, 60], [0, 60]] }];
+  let m = B.model(board, nl);
+  const pad = m.pads.find(p => p.ref === "R1" && m.names[p.net] === "GND");
+  // a ring of net B round R1's ground pad on the bottom layer only: the pour cannot get in
+  const x = pad.x, y = pad.y;
+  board.tracks.push({ layer: "B.Cu", w: 0.6, net: "B", locked: true, pts: [[x - 3, y - 3], [x + 3, y - 3], [x + 3, y + 3], [x - 3, y + 3], [x - 3, y - 3]] });
+  const look = () => {
+    m = B.model(board, nl);
+    const c0 = B.connectivity(board, m.pads), fills = B.fillZones(board, m, c0, new Set(), nl, []);
+    return { conn: B.connectivity(board, m.pads, fills), fills };
+  };
+  let { conn, fills } = look();
+  const open = () => conn.rats.filter(r => m.names[r.net] === "GND" && [[r.x1, r.y1], [r.x2, r.y2]].some(([a, b]) => Math.hypot(a - x, b - y) < 1e-3));
+  assert.ok(open().length > 0, "the pad starts cut off");
+  const clr = B.clearanceRules(board, m, new Set(), nl);
+  const tries = P.stitch(board, m, conn, open(), { clr });
+  assert.ok(tries.length > 0, "places to try");
+  let took = null;
+  for (const t of tries) {
+    board.tracks.push(t.track); board.vias.push(t.via); ({ conn, fills } = look());
+    if (!open().length) { took = t; break; }
+    board.tracks.pop(); board.vias.pop(); ({ conn, fills } = look());
+  }
+  assert.ok(took, "one of them joins the pad to the pour");
+  assert.equal(took.track.layer, "F.Cu");
+  assert.ok(Math.hypot(took.via.x - x, took.via.y - y) > 3, "the via sits outside the ring");
+  assert.deepEqual(B.drc(board, m, conn, new Set(), fills, nl).filter(d => ["clearance", "short", "edge"].includes(d.kind)).map(d => d.msg), []);
+});
