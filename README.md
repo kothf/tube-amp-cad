@@ -539,7 +539,8 @@ the circuit file, so one file holds both.
   - By hand: *Export ▾ → Freerouting design (DSN)*, route it in
     Freerouting's window or `java -jar freerouting.jar -de board.dsn -do
     board.ses`, then *Route ▾ → Import routes (SES)…*.
-- **Route & nudge** (*Route ▾*), for when Auto-route can't fit everything.
+- **Finish routing** (*Route ▾*; Route & nudge before 3.131), for when
+  Auto-route can't fit everything and you want to keep your layout.
   It routes, then, while connections are left, moves the unlocked parts near
   them a little and routes again, for up to 5 rounds. A round that doesn't help
   is undone. The moves come from simulated annealing on wire length, ratsnest
@@ -559,10 +560,22 @@ the circuit file, so one file holds both.
   keeping that only if it is better. The status line lists what moved, and
   <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes the whole run back. On example 07 routed
   from scratch, it leaves 6 connections open.
-- **Rearrange board** (*Route ▾*) places every unlocked part again from
-  scratch, valves and transformers too (panel parts stay): from the
-  schematic, spread over the board three ways, each routed afresh; the best
-  layout stays, the old one included.
+- **Design from scratch** (*Route ▾*; Rearrange board before 3.131): an
+  automatic layout. Every unlocked part except the panel ones comes off and
+  goes back, valves and transformers too. Nine layouts are made in a
+  background worker: from the schematic's places, spread over the board
+  (valves and high-voltage parts counted bigger), with each part's quarter turn
+  chosen as it goes for the shortest wiring and fewest net crossings (as the
+  Cypress PCB placer does), then polished by annealing. Each is scored
+  without routing (shut-in pins, ratsnest crossings with high-voltage nets
+  counted triple, ratsnest length); the best of each kind, three in all, are
+  routed, the best routed one stays (the old layout included), and Finish
+  routing's rounds work on what is left. The outline, holes, keep-outs,
+  locked parts and locked copper hold throughout. A progress bar in the status
+  line shows the step and the time so far.
+- **Tidy tracks** (*Route ▾*) pulls the unlocked tracks tight: grid-finisher
+  staircases and detours become straight and 45° runs wherever every clearance
+  still holds. Auto-route does this after each pass by itself.
 - **Unroute** (*Route ▾*) removes every track and via, to route again
   from scratch. Locked tracks and vias stay; <kbd>Ctrl</kbd>+<kbd>Z</kbd>
   brings them all back.
