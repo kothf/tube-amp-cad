@@ -135,11 +135,36 @@
     }
     const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     // the Package cell: what the part number was recognised as (mpn.js), its disagreements in amber
-    function pkgCell(r) {
-      const m = r.mpn;
-      if (!m) return `<td class="bom-pkg"></td>`;
-      if (!m.known) return `<td class="bom-pkg muted">${esc(PartNo.describe(m))}</td>`;
-      return `<td class="bom-pkg${m.warn.length ? " warn" : ""}">${esc(PartNo.describe(m))}${m.warn.map(w => `<br><small>⚠ ${esc(w)}</small>`).join("")}</td>`;
+    // and, for a line with a part number, Look up (DigiKey, mpn-online.js) or the link to what was found
+    function pkgCell(r, i) {
+      const m = r.mpn, online = m && m.source === "DigiKey";
+      const tail = !r.partno || r.socket ? "" : online ? ` <a class="bom-src" href="${esc(m.url || "#")}" target="_blank" rel="noopener" title="What DigiKey says about this part">DigiKey ↗</a>`
+        : ` <button class="btn bom-look" data-look="${i}" title="Look this number up on DigiKey: its package, size and lead spacing go to the board and the 3D model, saved with the circuit">Look up</button>`;
+      if (!m) return `<td class="bom-pkg">${tail}</td>`;
+      if (!m.known) return `<td class="bom-pkg muted">${esc(PartNo.describe(m))}${tail}</td>`;
+      return `<td class="bom-pkg${m.warn.length ? " warn" : ""}">${esc(PartNo.describe(m))}${tail}${m.warn.map(w => `<br><small>⚠ ${esc(w)}</small>`).join("")}</td>`;
+    }
+    // Look up: one line's parts, or every line with a number not looked up yet. Without a key the
+    // key dialog opens first.
+    async function lookUp(rows) {
+      if (!window.PartSearch) return;
+      if (!PartSearch.ready()) { openKeyDialog(() => lookUp(rows)); return; }
+      let ok = 0; const bad = [];
+      for (const r of rows) {
+        const comps = S.comps.filter(c => r.ids.includes(c.id));
+        if (!comps.length) continue;
+        setStatus("busy", `Looking up ${r.partno} on DigiKey…`);
+        try { await PartSearch.lookUp(comps); ok++; } catch (e) { bad.push(`${r.partno}: ${e.message}`); if (/key|limit|sign-in/i.test(e.message)) break; }
+      }
+      commit(); renderBom(); updateInspector();
+      setStatus(bad.length ? "warn" : "ok", bad.length ? bad.join("; ") : `Found ${ok} part${ok === 1 ? "" : "s"} on DigiKey: their package and size go to Board Design`);
+    }
+    function openKeyDialog(then) {
+      const m = document.getElementById("dk-modal"), c = PartSearch.config();
+      document.getElementById("dk-id").value = c.clientId; document.getElementById("dk-secret").value = c.clientSecret;
+      m.hidden = false; document.getElementById("dk-id").focus();
+      document.getElementById("btn-dk-save").onclick = () => { PartSearch.setConfig(document.getElementById("dk-id").value, document.getElementById("dk-secret").value); m.hidden = true; if (then && PartSearch.ready()) then(); };
+      document.getElementById("btn-dk-cancel").onclick = () => { m.hidden = true; };
     }
     function renderBom() {
       const host = document.getElementById("bom");
@@ -158,7 +183,10 @@
         bom.rows.map((r, i) => `<tr data-i="${i}"${r.ids.some(id => S.sel.comps.has(id)) ? ' class="sel"' : ""}>
           <td class="n">${r.item}</td><td class="n">${r.qty}</td><td class="mono">${esc(r.refs)}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.value)}</td>
           <td>${esc(r.rating)}</td><td class="mono${r.warn ? " warn" : ""}">${esc(r.sim)}</td>
-          <td>${r.socket ? "" : `<input type="text" value="${esc(r.partno)}" spellcheck="false" placeholder="maker's part no." aria-label="Part number for ${esc(r.refs)}">`}</td>${pkgCell(r)}</tr>`).join("") + "</tbody>";
+          <td>${r.socket ? "" : `<input type="text" value="${esc(r.partno)}" spellcheck="false" placeholder="maker's part no." aria-label="Part number for ${esc(r.refs)}">`}</td>${pkgCell(r, i)}</tr>`).join("") + "</tbody>";
+      table.querySelectorAll("[data-look]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); lookUp([bom.rows[+b.dataset.look]]); }));
+      const all = document.getElementById("btn-bom-lookall"), todo = bom.rows.filter(r => r.partno && !r.socket && !(r.mpn && r.mpn.source === "DigiKey"));
+      if (all) { all.disabled = !todo.length; all.onclick = () => lookUp(todo); }
       // a new selection on the sheet scrolls its line into view and flashes it
       const sel = [...S.sel.comps].sort().join(), first = table.querySelector("tbody tr.sel");
       if (sel !== bomSelShown) {
@@ -172,7 +200,7 @@
       table.querySelectorAll("tbody tr").forEach(tr => {
         const r = bom.rows[+tr.dataset.i];
         tr.addEventListener("click", e => {
-          if (e.target.tagName === "INPUT") return;
+          if (e.target.tagName === "INPUT" || e.target.closest("a, button")) return;
           // select the line's parts on the sheet (a socket line selects its tubes)
           const ids = r.socket ? S.comps.filter(c => c.type === "tube" && r.refList.includes(String(c.label || "").replace(/\.\d+$/, ""))).map(c => c.id) : r.ids;
           S.sel.comps = new Set(ids); S.sel.wires.clear(); updateInspector(); render();
@@ -220,6 +248,7 @@
       if (bomOpts.height) setH(bomOpts.height);
       ["sockets", "bench"].forEach(k => { const el = document.getElementById("bom-" + k); el.checked = bomOpts[k]; el.addEventListener("change", () => { bomOpts[k] = el.checked; saveBomOpts(); renderBom(); }); });
       host.querySelectorAll("[data-bom]").forEach(b => b.addEventListener("click", () => exportBom(b.dataset.bom)));
+      bind("btn-bom-dkkey", () => window.PartSearch && openKeyDialog());
       cmds.bind("btn-bom", "bom"); bind("btn-bom-menu", () => toggleBom(true)); bind("btn-bom-close", () => showDock(null));
       host.querySelectorAll("[data-tab]").forEach(t => t.addEventListener("click", () => showDock(t.dataset.tab)));
       host.querySelector(".bom-grip").addEventListener("mousedown", e => {
@@ -231,6 +260,6 @@
       });
       if (bomOpts.open) showDock(bomOpts.tab); else showDock(null);
     }
-    return { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom };
+    return { bomData, bomOpts, clearBomShown, exportBom, initBom, lookUp, openKeyDialog, partStress, renderBom, toggleBom };
   };
 })(window);

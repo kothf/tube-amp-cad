@@ -72,7 +72,7 @@
     } else if ((m = /^BOX-([\d.]+)$/.exec(name))) {
       const L = bd.l > 0 ? bd.l : D.BOX[m[1]][0], W = bd.w > 0 ? bd.w : D.BOX[m[1]][1], H = bd.h > 0 ? bd.h : W * 1.5 + 3; out.push(box(-L / 2, -W / 2, L / 2, W / 2, 0.3, H, C.film, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
     } else if ((m = /^DISC-([\d.]+)$/.exec(name))) {
-      const r = (+m[1] + 3.2) / 2, zc = r + 2; out.push(cylY(0, zc, r, -1, 1, C.disc, to)); pads.forEach(p => lead(p.x, p.y, zc - r * 0.5));
+      const r = bd.d > 0 ? bd.d / 2 : (+m[1] + 3.2) / 2, zc = r + 2; out.push(cylY(0, zc, r, -1, 1, C.disc, to)); pads.forEach(p => lead(p.x, p.y, zc - r * 0.5));
     } else if ((m = /^RADIAL-D([\d.]+)-P([\d.]+)$/.exec(name)) || (m = /^SNAPIN-D(\d+)$/.exec(name))) {
       const d = bd.d > 0 ? bd.d : +m[1], H = bd.h > 0 ? bd.h : (/^SNAPIN/.test(name) ? SNAPIN_H : RADIAL_H)[+m[1]] || d * 1.6, r = d / 2;
       out.push(cylZ(0, 0, r, 0.3, H - 0.4, /^SNAPIN/.test(name) ? C.snapin : C.ecap, to), cylZ(0, 0, r * 0.92, H - 0.4, H, C.ecapTop, to));

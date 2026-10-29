@@ -168,6 +168,8 @@
     .bom-empty { color: var(--muted); padding: 14px; font-size: 12px; }
     #bom-table td.bom-pkg { min-width: 180px; max-width: 340px; }
     #bom-table td.bom-pkg small { font-size: 11px; }
+    #bom-table .bom-look { padding: 0 7px; font-size: 11px; margin-left: 4px; }
+    #bom-table .bom-src { font-size: 11px; margin-left: 4px; color: var(--accent); white-space: nowrap; }
     .tol-note { padding: 6px 14px 0; color: var(--warn); }
     .tol-sel { background-color: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; max-width: 170px; }
     /* Power sweep: the cards and the chart at the left, the levels' table at the right */
@@ -412,6 +414,8 @@
             <span id="bom-count" class="muted"></span>
             <label title="One socket line per tube base"><input type="checkbox" id="bom-sockets"> Tube sockets</label>
             <label title="DC supplies, signal generators, mains and oscilloscopes"><input type="checkbox" id="bom-bench"> Sources &amp; instruments</label>
+            <button class="btn" id="btn-bom-lookall" title="Look every part number not looked up yet up on DigiKey">Look up all</button>
+            <button class="btn" id="btn-bom-dkkey" title="Your DigiKey API key, for Look up">DigiKey key…</button>
           </span>
           <span class="bom-tools" data-for="tolerance">
             <label title="Simulations with varied parts, after the one as drawn">Runs <input type="number" id="tol-runs" class="tol-num" min="1" max="500"></label>
@@ -473,6 +477,20 @@
     <span id="status-hover"></span>
   </footer>
 
+  <div class="modal" id="dk-modal" hidden>
+    <div class="modal-box" style="width: min(520px, 94vw)">
+      <div class="insp-title">DigiKey API key</div>
+      <p class="insp-help">Look up asks DigiKey's product database for a part's package, body size, height and lead spacing. It needs your own free key: sign in at <a href="https://developer.digikey.com/" target="_blank" rel="noopener">developer.digikey.com</a>, create an organisation and a production app with <b>Product Information V4</b>, and copy its Client ID and Client Secret here (1,000 look-ups a day). They stay in this browser only; the circuit file keeps what was found, not the key.</p>
+      <div class="new-form">
+        <span>Client ID</span><input type="text" id="dk-id" spellcheck="false" autocomplete="off">
+        <span>Client Secret</span><input type="password" id="dk-secret" spellcheck="false" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="btn-dk-cancel">Cancel</button>
+        <button class="btn active" id="btn-dk-save">Save</button>
+      </div>
+    </div>
+  </div>
   <div class="modal" id="new-modal" hidden>
     <div class="modal-box" style="width: min(520px, 94vw)">
       <div class="insp-title">New circuit</div>
@@ -598,8 +616,8 @@
   <script src="cad-components.js?v=dev"></script>
   <script src="scope-math.js?v=dev"></script>
   <script src="pdf-export.js?v=dev"></script>
-  <script src="mpn-data.js?v=dev"></script>
   <script src="mpn.js?v=dev"></script>
+  <script src="mpn-online.js?v=dev"></script>
   <script src="bom.js?v=dev"></script>
   <script src="cad-analysis.js?v=dev"></script>
   <script src="cad-bom.js?v=dev"></script>
