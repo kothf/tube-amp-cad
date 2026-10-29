@@ -144,6 +144,22 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await tracer.click("#semi-modes button[data-m=output]");
   }
   {
+    // the MOSFET amplifier keeps its bias under signal: the gate-to-gate spread averaged over the transient stays
+    // at its DC value (a diode feeding the bootstrap capacitor pumped it from 6.2 to 8.3 V, 4 A through both MOSFETs)
+    cad.once("dialog", d => d.accept());
+    await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => x.file.startsWith("05-"))));
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy, null, { timeout: 60000 }).catch(() => {});
+    const s0 = await cad.evaluate(() => { const s = TubeCAD.state.sim.seq; TubeCAD.runSim("full"); return s; });
+    await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 120000 }).catch(() => {});
+    const b = await cad.evaluate(() => {
+      const S = TubeCAD.state, r = S.sim.result, T = S.sim.topo || TubeCAD.topo(), by = l => S.comps.find(c => c.label === l);
+      const net = l => T.pinNet.get(by(l).id + ":G"), avg = w => w.reduce((a, v) => a + v, 0) / w.length;
+      if (!r || !r.tran) return null;
+      return { dc: r.dc.nodes[net("VT3")] - r.dc.nodes[net("VT4")], tran: avg(r.tran.nodes[net("VT3")]) - avg(r.tran.nodes[net("VT4")]), id: r.dc.devices[by("VT3").id].main.id };
+    });
+    check(b && Math.abs(b.tran - b.dc) < 0.3 && b.id > 0.015 && b.id < 0.05, `10 W MOSFET amplifier: idle ${b && (b.id * 1000).toFixed(0)} mA, gate spread ${b && b.dc.toFixed(2)} V at DC and ${b && b.tran.toFixed(2)} V under signal`);
+  }
+  {
     // the flashing-LED example has no source to follow: the simulation finds the 555's own period, the scope
     // shows its square wave, and Animate runs the wire animation over that cycle in real time, the LED blinking
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
