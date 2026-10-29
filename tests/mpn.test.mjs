@@ -8,8 +8,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "mpn-data.js", "mpn.js", "board-core.js", "board-3d.js", "pdf-export.js", "bom.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
-const P = globalThis.PartNo, B = globalThis.BoardCore, L = globalThis.CadLib, D3 = globalThis.Board3D, BOM = globalThis.BomLib;
+for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "mpn.js", "mpn-online.js", "board-core.js", "board-3d.js", "pdf-export.js", "bom.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+const P = globalThis.PartNo, PS = globalThis.PartSearch, B = globalThis.BoardCore, L = globalThis.CadLib, D3 = globalThis.Board3D, BOM = globalThis.BomLib;
 const look = (pn, type, params) => P.lookup(pn, type, params || {});
 
 test("leaded resistors: the series' body, leads and the spacing that fits it", () => {
@@ -44,33 +44,92 @@ test("film capacitors: the spacing their series name gives", () => {
   assert.equal(look("MKS2C041001A00JSSD", "capacitor").fp, "BOX-5");
 });
 
-test("electrolytics: the case from the makers' dimension tables", () => {
-  // Nichicon UKW datasheet: 50 V 100 µF is Ø8 × 11.5
-  const u = look("UKW1H101MPD", "electrolytic", { c: 100e-6, v: 50 });
-  assert.equal(u.fp, "RADIAL-D8-P3.5");
-  assert.deepEqual([u.body.d, u.body.h], [8, 11.5]);
-  assert.deepEqual(u.warn, []);
-  // taping and size codes after the listed number; a value that disagrees is flagged
-  const t = look("UKW1H101MPD1TD", "electrolytic", { c: 47e-6, v: 63 });
-  assert.equal(t.fp, "RADIAL-D8-P3.5");
-  assert.equal(t.warn.length, 2);
-  // the longest listed number wins (…MPD9 is another case than …MPD)
-  assert.equal(look("UCY2C820MPD9", "electrolytic").body.h, 25);
-  assert.equal(look("UCY2C820MPD", "electrolytic").body.h, 30.5);
-  // typed short: several cases, no size until it says which
-  const short = look("UCY2C820", "electrolytic");
-  assert.equal(short.known, false); assert.match(short.text, /several cases/);
-  // Panasonic: the S / L suffix is another case
-  assert.deepEqual([look("EEU-FC0J152", "electrolytic").body.d, look("EEU-FC0J152S", "electrolytic").body.d], [10, 12.5]);
-  // snap-ins: the size letters of the Nichicon number
-  const s = look("LGL2G221MELZ30", "electrolytic", { v: 400 });
-  assert.equal(s.fp, "SNAPIN-D22"); assert.equal(s.body.h, 30);
-  assert.equal(look("LGL2G221MELA25", "electrolytic").fp, "SNAPIN-D25");
-  // a size written in the number (Rubycon), any maker
+test("electrolytics: only a size written in the number; the rest is looked up", () => {
   const rb = look("50ZLH100MEFC8X11.5", "electrolytic");
   assert.equal(rb.fp, "RADIAL-D8-P3.5"); assert.equal(rb.body.h, 11.5);
-  // screw-terminal cans stay on the chassis
-  assert.equal(look("LNR2G102MSE", "electrolytic").known, false);
+  const u = look("UKW1H101MPD", "electrolytic");
+  assert.equal(u.known, false); assert.match(u.text, /Look up/);
+});
+
+// what DigiKey's product details say, in its own words
+const dk = {
+  ukw: { pkg: "Radial, Can", size: '0.315" Dia (8.00mm)', height: '0.492" (12.50mm)', lead: '0.138" (3.50mm)', mount: "Through Hole", voltage: "50 V", capacitance: "100 µF", maker: "Nichicon", series: "UKW", source: "DigiKey" },
+  snap: { pkg: "Radial, Can - Snap-In", size: '0.866" Dia (22.00mm)', height: '1.181" (30.00mm)', lead: '0.394" (10.00mm)', mount: "Through Hole", voltage: "400 V", maker: "Nichicon", series: "LGL" },
+  mfr: { pkg: "Axial", size: '0.091" Dia x 0.248" L (2.30mm x 6.30mm)', power: "0.25W, 1/4W", maker: "YAGEO", series: "MFR" },
+  chip: { pkg: "0805 (2012 Metric)", maker: "Murata Electronics", series: "GRM" },
+  box: { pkg: "Radial", size: '0.283" L x 0.157" W (7.20mm x 4.00mm)', height: '0.256" (6.50mm)', lead: '0.197" (5.00mm)', voltage: "63V" },
+  disc: { pkg: "Radial, Disc", size: '0.217" Dia (5.50mm)', lead: '0.197" (5.00mm)' },
+  dip: { pkg: '8-DIP (0.300", 7.62mm)', device: "8-PDIP" }, soic: { pkg: '8-SOIC (0.154", 3.90mm Width)', device: "8-SOIC" }, to220: { pkg: "TO-220-3", device: "TO-220AB" }
+};
+
+test("what a parts database says becomes the footprint and the body", () => {
+  const u = P.fromSpecs(dk.ukw, "electrolytic", { c: 100e-6, v: 50 });
+  assert.equal(u.fp, "RADIAL-D8-P3.5"); assert.deepEqual([u.body.d, u.body.h], [8, 12.5]);
+  assert.equal(u.maker, "Nichicon UKW"); assert.deepEqual(u.warn, []);
+  const w = P.fromSpecs(dk.ukw, "electrolytic", { c: 47e-6, v: 63 }).warn;
+  assert.equal(w.length, 2); assert.match(w.join(), /47 µF/); assert.match(w.join(), /63 V/);
+  const s = P.fromSpecs(dk.snap, "electrolytic", { v: 400 });
+  assert.equal(s.fp, "SNAPIN-D22"); assert.equal(s.body.h, 30);
+  const r = P.fromSpecs(dk.mfr, "resistor", { w: "0.5" });
+  assert.equal(r.fp, "AXIAL-10.16"); assert.deepEqual([r.body.d, r.body.l], [2.3, 6.3]); assert.match(r.warn[0], /1\/4 W/);
+  assert.equal(P.fromSpecs(dk.chip, "capacitor").fp, "CHIP-0805");
+  const b = P.fromSpecs(dk.box, "capacitor");
+  assert.equal(b.fp, "BOX-5"); assert.deepEqual([b.body.l, b.body.w, b.body.h], [7.2, 4, 6.5]);
+  assert.equal(P.fromSpecs(dk.disc, "capacitor").fp, "DISC-5.08");
+  assert.equal(P.fromSpecs(dk.dip, "opamp").pkg, "DIP-8");
+  assert.equal(P.fromSpecs(dk.soic, "opamp").pkg, "SOIC-8");
+  assert.equal(P.fromSpecs(dk.to220, "nmos").pkg, "TO-220");
+  assert.equal(P.fromSpecs({ pkg: "Radial, Can" }, "electrolytic").known, false);
+});
+
+// a stand-in for DigiKey's API: the token, then the product details (404 for an unknown number)
+function fakeDigiKey(products) {
+  const calls = [];
+  const f = async (url, opts) => {
+    calls.push([url, opts]);
+    const ok = (j, status) => ({ ok: !status, status: status || 200, json: async () => j });
+    if (url.endsWith("/v1/oauth2/token")) return /client_id=id/.test(opts.body) && /client_secret=secret/.test(opts.body) ? ok({ access_token: "tok", expires_in: 599 }) : ok({}, 401);
+    assert.equal(opts.headers.Authorization, "Bearer tok"); assert.equal(opts.headers["X-DIGIKEY-Client-Id"], "id");
+    const m = /search\/([^/]+)\/productdetails$/.exec(url);
+    if (m) { const p = products[decodeURIComponent(m[1])]; return p ? ok({ Product: p }) : ok(null, 404); }
+    if (url.endsWith("/search/keyword")) return ok({ ExactMatches: [], Products: Object.values(products).filter(p => p.ManufacturerProductNumber.startsWith(JSON.parse(opts.body).Keywords)) });
+    return ok(null, 404);
+  };
+  f.calls = calls; return f;
+}
+const params = sp => Object.entries({ "Package / Case": sp.pkg, "Size / Dimension": sp.size, "Height - Seated (Max)": sp.height, "Lead Spacing": sp.lead, "Mounting Type": sp.mount, "Voltage - Rated": sp.voltage, Capacitance: sp.capacitance }).filter(([, v]) => v).map(([ParameterText, ValueText]) => ({ ParameterText, ValueText }));
+
+test("Look up asks DigiKey with the user's key and saves what it says with the part", async () => {
+  globalThis.localStorage = (() => { const m = {}; return { getItem: k => m[k] ?? null, setItem: (k, v) => { m[k] = String(v); } }; })();
+  const f = fakeDigiKey({ UKW1H101MPD: { ManufacturerProductNumber: "UKW1H101MPD", Manufacturer: { Name: "Nichicon" }, Series: { Name: "UKW" }, ProductUrl: "https://www.digikey.com/x", Parameters: params(dk.ukw) } });
+  const c = { type: "electrolytic", params: { c: 100e-6, v: 25, partno: "UKW1H101MPD" } };
+  assert.equal(PS.ready(), false);
+  await assert.rejects(PS.lookUp(c, f), /DigiKey key/);
+  PS.setConfig("id", "wrong");
+  await assert.rejects(PS.lookUp(c, f), /refused the key/);
+  PS.setConfig(" id ", "secret");
+  const r = await PS.lookUp(c, f);
+  assert.equal(r.fp, "RADIAL-D8-P3.5");
+  assert.equal(c.params.part.source, "DigiKey"); assert.equal(c.params.part.url, "https://www.digikey.com/x");
+  assert.deepEqual(c.params.part.body, { kind: "radial", d: 8, h: 12.5, lead: c.params.part.body.lead });
+  assert.ok(!JSON.stringify(c.params.part).includes("secret"), "the key never goes in the file");
+  // the token is reused
+  const tokens = () => f.calls.filter(([u]) => u.endsWith("/token")).length, before = tokens();
+  await PS.lookUp(c, f); assert.equal(tokens(), before);
+  // a number DigiKey doesn't know
+  await assert.rejects(PS.lookUp({ type: "electrolytic", params: { partno: "NOPE1" } }, f), /doesn't list NOPE1/);
+  // through the file: keep() leaves it alone, resolve() reads it, the warnings worked out afresh
+  const saved = JSON.parse(JSON.stringify(c));
+  assert.equal(P.keep(saved), false);
+  saved.params.c = 47e-6;
+  const res = P.resolve(saved.params, "electrolytic");
+  assert.equal(res.saved, true); assert.equal(res.source, "DigiKey"); assert.equal(res.body.h, 12.5);
+  assert.match(res.warn.join(), /47 µF/);
+  // the board reads it too
+  const g = B.physicalParts({ names: {}, parts: [{ id: "c1", type: "electrolytic", label: "C1", params: { ...L.LIB.electrolytic.defaults, ...saved.params }, pins: [{ id: "+", net: 1 }, { id: "-", net: 0 }] }] })[0];
+  assert.equal(g.body.h, 12.5); assert.equal(g.mpnFp, "RADIAL-D8-P3.5");
+  // a new number drops the record
+  saved.params.partno = "XYZ123"; assert.equal(P.keep(saved), true); assert.equal(saved.params.part, undefined);
 });
 
 test("semiconductors and ICs: the package their order code names", () => {
@@ -101,7 +160,7 @@ const netlist = pn => ({
 
 test("the board takes the footprint a part number names, once per new number", () => {
   const board = B.newBoard();
-  B.sync(board, netlist({ r1: "PR02000201002JA100", c1: "UKW1H101MPD", c2: "GRM21BR71H104KA01L", a1: "NE5532DR" }));
+  B.sync(board, netlist({ r1: "PR02000201002JA100", c1: "50ZLH100MEFC8X11.5", c2: "GRM21BR71H104KA01L", a1: "NE5532DR" }));
   const fp = ref => Object.values(board.parts).find(p => p.ref === ref).fp;
   assert.equal(fp("R1"), "AXIAL-15.24");
   assert.equal(fp("C1"), "RADIAL-D8-P3.5");
@@ -110,10 +169,10 @@ test("the board takes the footprint a part number names, once per new number", (
   // picked by hand afterwards: stays while the number stays
   const r1 = Object.values(board.parts).find(p => p.ref === "R1");
   r1.fp = "AXIAL-20.32";
-  assert.deepEqual(B.applyPartNumbers(board, netlist({ r1: "PR02000201002JA100", c1: "UKW1H101MPD", c2: "GRM21BR71H104KA01L", a1: "NE5532DR" })), []);
+  assert.deepEqual(B.applyPartNumbers(board, netlist({ r1: "PR02000201002JA100", c1: "50ZLH100MEFC8X11.5", c2: "GRM21BR71H104KA01L", a1: "NE5532DR" })), []);
   assert.equal(r1.fp, "AXIAL-20.32");
   // a new number moves it again
-  const done = B.applyPartNumbers(board, netlist({ r1: "MFR-25FBF52-10K", c1: "UKW1H101MPD", c2: "GRM21BR71H104KA01L", a1: "NE5532DR" }));
+  const done = B.applyPartNumbers(board, netlist({ r1: "MFR-25FBF52-10K", c1: "50ZLH100MEFC8X11.5", c2: "GRM21BR71H104KA01L", a1: "NE5532DR" }));
   assert.deepEqual(done.map(d => d.ref), ["R1"]);
   assert.equal(r1.fp, "AXIAL-10.16");
   // the SMD checkbox's two sides: the chip, and back to the through-hole default
@@ -122,7 +181,7 @@ test("the board takes the footprint a part number names, once per new number", (
 });
 
 test("silkscreen, holes and 3D follow the real body; a size set by hand goes over it", () => {
-  const nl = netlist({ c1: "UKW1H101MPD", r1: "PR02000201002JA100" }), board = B.newBoard();
+  const nl = netlist({ c1: "50ZLH100MEFC8X11.5", r1: "PR02000201002JA100" }), board = B.newBoard();
   B.sync(board, nl); board.outline = { w: 80, h: 50, r: 0 };
   let x = 15; Object.values(board.parts).forEach(p => { p.x = x; p.y = 25; x += 20; });
   const M = B.model(board, nl), c1 = M.parts.find(g => g.ref === "C1"), r1 = M.parts.find(g => g.ref === "R1");
@@ -146,31 +205,21 @@ test("silkscreen, holes and 3D follow the real body; a size set by hand goes ove
 });
 
 test("the BOM's Package column says what the number is, and where it disagrees", () => {
-  const comps = netlist({ c1: "UKW1H101MPD", r1: "MFR-25FBF52-10K" }).parts.map(p => ({ ...p, params: { ...p.params, ...(p.id === "c1" ? { c: 47e-6 } : {}) } }));
+  // C1 looked up in DigiKey earlier (its record saved with the part)
+  const rec = P.record("UKW1H101MPD", P.fromSpecs(dk.ukw, "electrolytic", {}), { source: "DigiKey", specs: dk.ukw });
+  const comps = netlist({ c1: "UKW1H101MPD", r1: "MFR-25FBF52-10K" }).parts.map(p => ({ ...p, params: { ...p.params, ...(p.id === "c1" ? { c: 47e-6, part: rec } : {}) } }));
   const rows = BOM.build(comps, {});
   const c1 = rows.find(r => r.refs === "C1"), r1 = rows.find(r => r.refs === "R1"), c2 = rows.find(r => r.refs === "C2");
-  assert.match(c1.pkg, /Nichicon UKW · radial Ø8 × 11\.5 mm.*100 µF part, the schematic has 47 µF/);
+  assert.match(c1.pkg, /Nichicon UKW · radial Ø8 × 12\.5 mm.*100 µF part, the schematic has 47 µF/);
   assert.match(r1.pkg, /^Yageo MFR-25 · axial Ø2\.4 × 6\.3 mm/);
   assert.equal(c2.pkg, "");
   assert.ok(BOM.toCsv({ rows, title: "", docno: "", rev: "", date: "" }).split("\r\n")[0].endsWith(",Package"));
 });
 
-test("the part a number names is saved with the circuit and read back over the tables", () => {
-  const c = { type: "electrolytic", params: { c: 100e-6, partno: "UKW1H101MPD" } };
+test("an offline match is saved with the part too", () => {
+  const c = { type: "resistor", params: { partno: "MFR-25FBF52-10K" } };
   assert.equal(P.keep(c), true);
-  assert.deepEqual(c.params.part, { no: "UKW1H101MPD", maker: "Nichicon UKW", text: "radial Ø8 × 11.5 mm, 3.5 mm spacing, 50 V 100 µF", fp: "RADIAL-D8-P3.5", body: { kind: "radial", d: 8, h: 11.5, lead: 0.6 } });
+  assert.equal(c.params.part.fp, "AXIAL-10.16"); assert.equal(c.params.part.maker, "Yageo MFR-25");
   assert.equal(P.keep(c), false, "nothing to do while the number stays");
-  // through a file: the saved record wins over the tables (here a record from another table)
-  const saved = JSON.parse(JSON.stringify(c));
-  saved.params.part.body.h = 12; saved.params.c = 47e-6;
-  const r = P.resolve(saved.params, "electrolytic");
-  assert.equal(r.saved, true); assert.equal(r.body.h, 12);
-  assert.match(r.warn[0], /47 µF/, "the disagreements are worked out afresh");
-  // the board reads it too
-  const g = B.physicalParts({ names: {}, parts: [{ id: "c1", type: "electrolytic", label: "C1", params: { ...L.LIB.electrolytic.defaults, ...saved.params }, pins: [{ id: "+", net: 1 }, { id: "-", net: 0 }] }] })[0];
-  assert.equal(g.body.h, 12); assert.equal(g.mpnFp, "RADIAL-D8-P3.5");
-  // a new number replaces the record; an unknown or empty one removes it
-  c.params.partno = "EEU-FC1H101"; assert.equal(P.keep(c), true); assert.equal(c.params.part.maker, "Panasonic FC");
-  c.params.partno = "XYZ123"; assert.equal(P.keep(c), true); assert.equal(c.params.part, undefined);
-  c.params.partno = ""; assert.equal(P.keep(c), false);
+  c.params.partno = ""; assert.equal(P.keep(c), true); assert.equal(c.params.part, undefined);
 });

@@ -272,11 +272,13 @@ the circuit that was on the sheet.
   - the simulated worst case: dissipation, capacitor peak voltage, LED
     current;
   - a part number you can type in, saved with the circuit. A maker's number
-    the app knows (built in, nothing fetched) fills the *Package* column:
-    an electrolytic's case from Nichicon's and Panasonic's dimension tables
-    or a size written in the number, a leaded resistor series' body and leads,
-    a chip size, a film capacitor's spacing, a semiconductor's package from
-    its order code; amber where it disagrees with the schematic. Board Design
+    fills the *Package* column. *Look up* asks DigiKey's parts database
+    (with your own free DigiKey API key, kept in your browser) for the
+    package, case size, height and lead spacing; a few things are read from
+    the number itself with nothing fetched (a size written in it, a leaded
+    resistor series' body and leads, a chip size, a film capacitor's spacing,
+    a semiconductor's package from its order code). Amber where it disagrees
+    with the schematic. Board Design
     takes the footprint it names, and the silkscreen and 3D body follow the
     real size (or a size set by hand in the board inspector).
 

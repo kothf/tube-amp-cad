@@ -37,8 +37,29 @@ import { readFile } from "node:fs/promises";
     const typeNo = async (hasText, v) => { const i = cad.locator("#bom-table tr", { hasText }).locator("input"); await i.fill(v); await i.press("Enter"); };
     await typeNo("100µF", "UKW1H101MPD"); await typeNo("R5, R7", "MFR-25FBF52-1K5");
     const cell = t => cad.locator("#bom-table tr", { hasText: t }).locator("td.bom-pkg");
-    const c2 = await cell("100µF").textContent(), r5 = await cell("R5, R7").textContent(), warn = await cell("R5, R7").evaluate(td => td.classList.contains("warn"));
-    check(/Nichicon UKW · radial Ø8 × 11\.5 mm/.test(c2) && /rated 1\/4 W/.test(r5) && warn, `the Package column reads the part number (C2: "${c2}"; R5: "${r5.slice(0, 50)}…", amber)`);
+    const r5 = await cell("R5, R7").textContent(), warn = await cell("R5, R7").evaluate(td => td.classList.contains("warn"));
+    check(/rated 1\/4 W/.test(r5) && warn, `the Package column reads the part number (R5: "${r5.slice(0, 50)}…", amber)`);
+    check(/Look up/.test(await cell("100µF").textContent()), "a number with no size in it offers Look up");
+    // Look up asks DigiKey (here a stand-in on the same address): the key first, then the part
+    const asked = [];
+    await cad.route("https://api.digikey.com/**", async route => {
+      const u = route.request().url(); asked.push(u);
+      const json = b => route.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(b) });
+      if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "GET, POST" } });
+      if (u.endsWith("/v1/oauth2/token")) return json({ access_token: "tok", expires_in: 599 });
+      if (/UKW1H101MPD\/productdetails$/.test(u)) return json({ Product: { ManufacturerProductNumber: "UKW1H101MPD", Manufacturer: { Name: "Nichicon" }, Series: { Name: "UKW" }, ProductUrl: "https://www.digikey.com/en/products/detail/nichicon/UKW1H101MPD/589426",
+        Parameters: [["Package / Case", "Radial, Can"], ["Size / Dimension", '0.315" Dia (8.00mm)'], ["Height - Seated (Max)", '0.492" (12.50mm)'], ["Lead Spacing", '0.138" (3.50mm)'], ["Voltage - Rated", "50 V"], ["Capacitance", "100 µF"]].map(([ParameterText, ValueText]) => ({ ParameterText, ValueText })) } });
+      return route.fulfill({ status: 404, headers: { "Access-Control-Allow-Origin": "*" }, body: "" });
+    });
+    await cell("100µF").locator("[data-look]").click();
+    check(await cad.isVisible("#dk-modal"), "the first Look up asks for the DigiKey key");
+    await cad.fill("#dk-id", "my-id"); await cad.fill("#dk-secret", "my-secret"); await cad.click("#btn-dk-save");
+    await cad.waitForFunction(() => /DigiKey ↗/.test(document.querySelector("#bom-table") ? document.querySelector("#bom-table").textContent : ""), null, { timeout: 5000 }).catch(() => {});
+    const c2 = await cell("100µF").textContent(), saved = await cad.evaluate(() => TubeCAD.state.comps.find(c => c.params.partno === "UKW1H101MPD").params.part);
+    check(/Nichicon UKW · radial Ø8 × 12\.5 mm/.test(c2) && /DigiKey ↗/.test(c2) && saved && saved.source === "DigiKey" && saved.fp === "RADIAL-D8-P3.5" && !JSON.stringify(saved).includes("my-secret"),
+      `Look up finds the part on DigiKey and saves it with the part, not the key (C2: "${c2}")`);
+    check(await cad.evaluate(() => JSON.parse(localStorage.getItem("tubecad_digikey")).clientId) === "my-id", "the key stays in this browser");
+    await cad.unroute("https://api.digikey.com/**");
     check(/^MRS25|not recognised/.test(await cell("R1-R4").textContent()), "a number it does not know says so in grey");
     check((await cad.evaluate(() => BomLib.toCsv(TubeCAD.bomData()))).includes("Nichicon UKW"), "the CSV carries the Package column");
   }

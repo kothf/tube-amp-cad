@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.130.0] - 2026-10-29
+
+### Added
+- **Look up a part number on DigiKey.** The BOM's Package cell has a *Look up* button (and *Look up all* above the table) that asks DigiKey's parts database for the part's package, case size, height, lead spacing and ratings. The board footprint, silkscreen and 3D body follow what it says, and a *DigiKey ↗* link opens the part's page. Values that disagree with the schematic (capacitance, voltage, power) are flagged in amber.
+- It uses your own free DigiKey API key (Client ID and Secret from developer.digikey.com), asked for once in a short dialog (*DigiKey key…* changes it). The key stays in this browser only; the circuit file keeps what was found, never the key, so nothing is looked up again until the number changes.
+
+### Changed
+- The built-in table of some 3,000 Nichicon and Panasonic electrolytic numbers is gone (`mpn-data.js`, `scripts/mpn-tables.mjs`): an electrolytic's case size now comes from Look up, or from a size written in the number. The small offline rules stay (resistor series, chip codes, film spacing, package suffixes). Parts already saved in a circuit file keep their size.
+
 ## [3.129.0] - 2026-10-29
 
 ### Added
