@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.128.1] - 2026-10-29
+
+### Changed
+- **The manual caught up.** It now lists the examples (*File ▾ → Examples*) with what each one is; every circuit check (capacitor voltage ratings, diode VRRM, regulators and ICs, fuses, varistors, relays, neons and gas regulators, interstage transformers, mismatched rails); the rectifier's peak anode current and the anode temperature among the tube ratings; all six tabs under the sheet; and the Board toolbar's *Route ▾* menu, which still read as if Route & nudge were under *Board ▾*.
+
 ## [3.128.0] - 2026-10-29
 
 ### Added
