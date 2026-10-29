@@ -6,12 +6,12 @@ import globals from "globals";
 
 // what each script puts on window / globalThis for the others
 const APP = ["Board3D", "BoardCore", "BoardFab", "BoardPlace", "BoardRoute", "BomLib", "CadAnalysis", "CadAnim", "CadBoardLink", "CadBom", "CadExport", "CadLib", "CadProbe",
-  "CadResults", "CadTolerance", "CadPower", "CadListen", "CadSweep", "BoardAutoroute", "BoardPanels", "BoardDraw", "Hints", "MarkerPicker", "Panels", "PdfExport", "PlotZoom", "ScopeMath", "SimPool", "SpiceImport", "SpiceModel", "ToolWindows",
+  "CadResults", "CadTolerance", "CadPower", "CadListen", "CadSweep", "BoardAutoroute", "BoardPanels", "BoardDraw", "Hints", "MarkerPicker", "Panels", "PartNo", "MPN_CANS", "PdfExport", "PlotZoom", "ScopeMath", "SimPool", "SpiceImport", "SpiceModel", "ToolWindows",
   "TubeBias", "TubeSimEngine", "UiKit", "Viewer3D", "TUBE_CAPS", "TUBE_CAPS_LIKE", "TUBE_BULBS", "TUBE_BULBS_LIKE", "TUBE_DATABASE", "TUBE_RATINGS", "BoardApp", "FreeroutingStatus", "Instrument", "TubeCAD", "TubeTracer", "Bode", "Scope"];
 const appGlobals = Object.fromEntries(APP.map(n => [n, "readonly"]));
 
 export default [
-  { ignores: ["dist/**", "node_modules/**", "wasm/**"] },
+  { ignores: ["dist/**", "node_modules/**", "wasm/**", ".mpn-cache/**"] },
   js.configs.recommended,
   {
     files: ["*.js"],
