@@ -253,6 +253,16 @@ import { readFile } from "node:fs/promises";
   await bd.mouse.click(cv.x + zIn[0], cv.y + zIn[1]);
   const zSel = await bd.evaluate(() => BoardApp.state.sel && BoardApp.state.sel.kind);
   check(onP1[0] > onP0[0] + 5 && zSel === "zone", `with a GND plane the board's edge still drags the board, again and again (origin x ${onP0[0]} → ${onP1[0]} mm); the plane's outline is picked just inside the edge (${zSel})`);
+  // a click on the poured copper itself (nothing else under the pointer) picks the plane too; Del deletes it, Ctrl+Z brings it back
+  {
+    await bd.keyboard.press("Escape");
+    const zc = await bd.evaluate(() => { const [sx, sy] = BoardApp.toScreen(12, BoardApp.state.board.outline.h - 2.5); return [sx, sy]; });
+    await bd.mouse.click(cv.x + zc[0], cv.y + zc[1]);
+    const zk = await bd.evaluate(() => BoardApp.state.sel && BoardApp.state.sel.kind);
+    await bd.keyboard.press("Delete"); const z0 = await bd.evaluate(() => BoardApp.state.board.zones.length);
+    await bd.keyboard.press("Control+z"); const z1 = await bd.evaluate(() => BoardApp.state.board.zones.length);
+    check(zk === "zone" && z0 === 0 && z1 === 1, `a click inside the GND plane selects it (${zk}), Del deletes it (${z0} left), Ctrl+Z brings it back (${z1})`);
+  }
   await bd.evaluate(() => BoardApp.centreOnSheet()); await bd.keyboard.press("Escape");
 
   // the pour is a shape: the + in the middle of an edge, dragged, adds a corner; a double-click on a corner takes it

@@ -280,6 +280,12 @@
     }
     return null;
   }
+  // a pour picked from inside, where nothing else lies under the pointer: the active layer's first, then the topmost
+  function pourAt(x, y) {
+    const list = S.board.zones || [], at = [];
+    for (let i = list.length - 1; i >= 0; i--) if (areaShown("zone", list[i]) && B.pip(x, y, areaPoly("zone", list[i]))) at.push(i);
+    const i = at.find(k => list[k].layer === S.layer); return at.length ? { kind: "zone", i: i === undefined ? at[0] : i } : null;
+  }
   const hitVia = (x, y) => S.board.vias.findIndex(v => Math.hypot(v.x - x, v.y - y) <= (v.pad || S.board.rules.viaPad) / 2);
   const holeR = h => (h.plated ? B.holeRing(h) : h.d) / 2;
   const hitHole = (x, y) => (S.show.Holes ? S.board.holes.findIndex(h => Math.hypot(h.x - x, h.y - y) <= holeR(h) + 0.6) : -1);
@@ -674,7 +680,7 @@
   function openCtx(cx, cy, x, y) {
     const items = [], it = (label, key, fn, dis) => items.push({ label, key, fn, dis }), sep = () => items.push(null);
     let title = "";
-    const p = hitPad(x, y), vi = hitVia(x, y), hi = hitHole(x, y), ti = hitText(x, y), seg = hitSeg(x, y), g = hitPart(x, y), ar = hitArea(x, y);
+    const p = hitPad(x, y), vi = hitVia(x, y), hi = hitHole(x, y), ti = hitText(x, y), seg = hitSeg(x, y), g = hitPart(x, y), ar = hitArea(x, y) || pourAt(x, y);
     if (vi >= 0 || hi >= 0 || ti >= 0) {
       const kind = vi >= 0 ? "via" : hi >= 0 ? "hole" : "text", i = vi >= 0 ? vi : hi >= 0 ? hi : ti, o = objOf(kind, i);
       S.sel = { kind, i }; title = { via: "Via", hole: "Mounting hole", text: `Text "${o.text}"` }[kind];
@@ -840,7 +846,7 @@
     if (d && d.kind === "pan" && d.menu && e && Math.hypot(S.view.ox - d.ox, S.view.oy - d.oy) < 3) { const [x, y] = toWorld(...evPos(e)); openCtx(e.clientX, e.clientY, x, y); return; }
     if (d && d.kind === "box") {
       if (d.moved) { boxSelect(d.x0, d.y0, d.x1, d.y1, d.x1 < d.x0, d.add); const n = selItems().length; msg(n ? `${n} selected: drag one to move them all, Space turns them, arrows nudge, L locks, the inspector aligns` : "Nothing in the box"); }
-      else if (!d.add) S.sel = null;
+      else if (!d.add) { const z = pourAt(d.x0, d.y0); S.sel = z; if (z) msg(`Copper pour · ${S.board.zones[z.i].net} selected: Del deletes it, drag it to move it, its corners reshape it`); }
       renderPanels(); render(); return;
     }
     if (d && d.kind === "seg" && d.moved) S.board.tracks[d.i].pts = tidy(S.board.tracks[d.i].pts);

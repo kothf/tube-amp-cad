@@ -1246,6 +1246,73 @@
     return { places, shut, cross, wire: +wire.toFixed(1), score: +(40 * shut + 4 * cross + wire).toFixed(1), turned: sp.turned || 0 };
   }
 
+  // ---------------------------------------------------------------------------
+  // Stitching vias. A pad of a poured net the pour cannot reach (other copper or the board edge cut
+  // it off on the pour's layer) still joins it through the other layer: a short track from the pad
+  // on that layer to a via that drops into the pour where it has room. The places for the via are
+  // tried nearest first on the 1.27 mm grid round each end of the open connection; one is offered
+  // when the via and the track keep every other net's clearance (by voltage), the edge, holes and
+  // keep-outs. Whether the pour then reaches the via is for the caller to see, after its pours refill.
+  // ---------------------------------------------------------------------------
+  /** For rats[i] on a poured net: [{ via, track, d }] to try, nearest first (at most opts.max, default
+      24, within opts.reach mm, default 15). opts: { clr, i } */
+  function stitch(board, model, conn, rats, opts) {
+    const C = B(), o = opts || {}, R = board.rules, outl = board.outline, names = model.names;
+    const r = rats[o.i || 0]; if (!r) return [];
+    const nm = names[r.net] || String(r.net), zone = (board.zones || []).find(z => z.net === nm); if (!zone) return [];
+    const top = C.COPPER.find(L => L !== zone.layer) || zone.layer;
+    const need = (a, b) => (o.clr ? o.clr.need(a, b).c : R.clearance);
+    const vr = (R.viaPad || 1.8) / 2, w = R.power || R.track || 0.6, reach = o.reach || 15, out = [];
+    const np = C.npHoles ? C.npHoles(board, model) : (board.holes || []).filter(h => !h.plated);
+    const at = (x, y) => `${x.toFixed(3)},${y.toFixed(3)}`, padAt = new Map(model.pads.map(p => [at(p.x, p.y), p]));
+    const ends = [[r.x1, r.y1], [r.x2, r.y2]].map(([x, y]) => padAt.get(at(x, y))).filter(p => p && (!p.smd || (p.layers || []).includes(top)));
+    const near = (x, y, m) => conn.items.filter(it => Math.max(it.s[0], it.s[2]) + it.r > x - m && Math.min(it.s[0], it.s[2]) - it.r < x + m && Math.max(it.s[1], it.s[3]) + it.r > y - m && Math.min(it.s[1], it.s[3]) - it.r < y + m);
+    const other = it => !(it.net !== null && it.net !== "short" && (it.net === r.net || names[it.net] === nm));
+    const clear = (s, rad, layers, items) => {
+      for (const it of items) {
+        if (!other(it) || !it.layers.some(L => layers.includes(L))) continue;
+        let q = need(r.net, it.net === "short" ? null : it.net); const g = C.segSeg(s, it.s) - it.r - rad;
+        // a track leaving its pad may come as close to the footprint's other pads as the pads themselves are (as the DRC has it)
+        if (g < q - 1e-6 && it.kind === "pad" && rad !== vr) { const eg = C.entryGap(s, it, conn.items); if (eg !== null) q = Math.min(q, eg - 0.02); }
+        if (g < q - 1e-6) return false;
+      }
+      for (const h of np) if (C.segDist(s[0], s[1], s[2], s[3], h.x, h.y) < h.d / 2 + rad + R.clearance - 1e-6) return false;
+      const L = Math.hypot(s[2] - s[0], s[3] - s[1]), n = Math.max(1, Math.ceil(L / 0.5));
+      for (let k = 0; k <= n; k++) {
+        const x = s[0] + (s[2] - s[0]) * k / n, y = s[1] + (s[3] - s[1]) * k / n;
+        if (C.edgeDist(x, y, outl) < (R.edgeClearance || 0.5) + rad) return false;
+        for (const ko of board.keepouts || []) if (C.pip(x, y, ko.pts) && C.koLayers(ko).some(Ly => layers.includes(Ly)) && (rad === vr ? ko.vias !== false : ko.tracks !== false)) return false;
+      }
+      return true;
+    };
+    const n = Math.round(reach / GRID), per = Math.ceil((o.max || 24) / Math.max(1, ends.length)), lists = [];
+    for (const p of ends) {
+      // a small maze on the other layer from the pad out to `reach`: shortest way first, so the via spots come nearest first
+      const items = near(p.x, p.y, reach + 6), got = [], from = new Map([["0,0", null]]), cost = new Map([["0,0", 0]]), open = [[0, 0]]; lists.push(got);
+      const xy = (i, j) => [+(p.x + i * GRID).toFixed(4), +(p.y + j * GRID).toFixed(4)];
+      while (open.length && got.length < per) {
+        let b = 0; for (let k = 1; k < open.length; k++) if (cost.get(open[k].join()) < cost.get(open[b].join())) b = k;
+        const [i, j] = open.splice(b, 1)[0], c = cost.get(i + "," + j), [x, y] = xy(i, j), d = Math.hypot(i, j) * GRID;
+        if (d >= vr + 1 && !got.some(t => Math.hypot(t.via.x - x, t.via.y - y) < CELL) && clear([x, y, x, y], vr, C.COPPER, items)) {
+          const pts = []; for (let q = i + "," + j; q; q = from.get(q)) { const [a, e] = q.split(",").map(Number); pts.unshift(xy(a, e)); }
+          // straight runs joined
+          const run = pts.filter((u, k) => k === 0 || k === pts.length - 1 || Math.abs((u[0] - pts[k - 1][0]) * (pts[k + 1][1] - u[1]) - (u[1] - pts[k - 1][1]) * (pts[k + 1][0] - u[0])) > 1e-6);
+          got.push({ via: { x, y, drill: R.viaDrill, pad: R.viaPad, net: nm }, track: { layer: top, w, pts: run }, d: c });
+        }
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          const u = i + di, v = j + dj, key = u + "," + v, nc = c + Math.hypot(di, dj) * GRID;
+          if (Math.hypot(u, v) > n || (cost.has(key) && cost.get(key) <= nc)) continue;
+          const [x2, y2] = xy(u, v); if (!clear([x, y, x2, y2], w / 2, [top], items)) continue;
+          if (!cost.has(key)) open.push([u, v]); cost.set(key, nc); from.set(key, i + "," + j);
+        }
+      }
+      got.forEach(t => { t.track.net = nm; });
+    }
+    // (which end the pour cannot reach is not known here: the two ends' places take turns, nearest first)
+    for (let k = 0; k < per; k++) lists.forEach(l => { if (l[k]) out.push(l[k]); });
+    return out;
+  }
+
   /** What to change when routing leaves connections open (rats): rules stricter than the board needs,
       pads a pour cannot reach, a crowded board, parts shut in against the edge. Returns short hints in
       words, the likeliest help first. opts: { clr, hv, amps, netlist } */
@@ -1286,5 +1353,5 @@
     }).join("; ");
   }
 
-  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, exact, access, smooth, design, advise, describeEscape, FIXED, rng };
+  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, exact, access, smooth, design, advise, stitch, describeEscape, FIXED, rng };
 })(typeof window !== "undefined" ? window : globalThis);
