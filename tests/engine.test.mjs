@@ -451,11 +451,12 @@ test("PNP current source on a 300 V rail sets (Vref − Vbe)/Re", () => {
   near(q.ic, ie * m.bf / (m.bf + 1), 0.05, "Ic = α·Ie");
 });
 
-test("power BJTs with base and emitter resistance: VBE at the pins at 0.7 of the datasheet's VBE(on) maximum, read at the pins", () => {
+test("power BJTs with base and emitter resistance: VBE at the pins on the datasheet's typical curve, read at the pins", () => {
   runInThisContext(readFileSync(new URL("../cad-components.js", import.meta.url), "utf8"), { filename: "cad-components.js" });
   const L = globalThis.CadLib;
   // the part as the CAD builds it, collector held at VCE, base by a source; bisect VB for the test current
-  for (const [k, ic, vce, max] of [["2N3055", 4, 4, 1.5], ["MJ2955", 4, 4, 1.5], ["TIP41C", 6, 4, 2.0], ["TIP42C", 6, 4, 2.0], ["MJL21194", 8, 5, 2.2], ["MJL21193", 8, 5, 2.2]]) {
+  // [type, IC, VCE, the typical VBE(on) read off the datasheet's curve at 25 °C]
+  for (const [k, ic, vce, typ] of [["2N3055", 4, 4, 0.96], ["MJ2955", 4, 4, 1.17], ["TIP41C", 6, 4, 1.38], ["TIP42C", 6, 4, 1.38], ["MJL21194", 8, 5, 1.3], ["MJL21193", 8, 5, 1.35]]) {
     const pol = L.BJTS[k].pol, run = vb => {
       let n = 3; const els = [{ id: "vc", kind: "V", nodes: [1, 0], v: pol * vce }, { id: "vb", kind: "V", nodes: [2, 0], v: pol * vb }];
       L.LIB[pol > 0 ? "npn" : "pnp"].build({ id: "q", params: { model: k } }, pid => ({ C: 1, B: 2, E: 0 })[pid], () => n++, els);
@@ -465,7 +466,7 @@ test("power BJTs with base and emitter resistance: VBE at the pins at 0.7 of the
     for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2, d = run(m).dc.devices.q.main; if (d.ic < ic) lo = m; else hi = m; }
     const r = run(lo), q = r.dc.devices.q.main;
     near(q.vbe, lo, 1e-9, `${k}: VBE read at the pins`);
-    near(lo, 0.7 * max, 0.02, `${k}: VBE ${lo.toFixed(3)} V at ${ic} A (datasheet maximum ${max} V)`);
+    assert.ok(Math.abs(lo - typ) <= 0.05, `${k}: VBE ${lo.toFixed(3)} V at ${ic} A (datasheet typical ${typ} V)`);
     near(q.vce, vce, 1e-9, `${k}: VCE read at the pins`);
     near(q.pd, vce * q.ic + lo * q.ib, 1e-6, `${k}: the dissipation takes in RB and RE`);
     const ie = r.dc.currents, sum = (id, node) => { let s = 0; for (let j = 0; j < ie.length; j += 3) if (String(ie[j]).startsWith(id) && ie[j + 1] === node) s += ie[j + 2]; return s; };
