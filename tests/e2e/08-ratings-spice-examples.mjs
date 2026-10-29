@@ -123,6 +123,26 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   }
   check(res.length === 12 && res.every(r => r.ok && r.parts > 15), `all twelve examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
   check(await cad.evaluate(() => TubeCAD.state.sim.result && TubeCAD.state.sim.result.solver === "wasm"), "the simulation worker solves with WebAssembly");
+  if (!tracer.isClosed()) {
+    // a transistor in the circuit on the curve tracer: its operating point lies on the tracer's own curve
+    // (the same model), and the simulated load line runs through it
+    const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+    cad.once("dialog", d => d.accept());
+    await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^01-/.test(x.file))));
+    await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
+    await tracer.bringToFront();
+    await tracer.waitForFunction(() => (TubeTracer.state.circuit.transistors || []).length === 1, null, { timeout: 15000 }).catch(() => {});
+    await tracer.locator("#circuit-tubes .list-item", { hasText: "VT1" }).click();
+    const q = await tracer.evaluate(() => { const d = TubeTracer.current(), dc = d.circuit.dc; return { title: document.getElementById("plot-title").textContent, dc, on: TubeTracer.iaOf(dc.vce, dc.ib), traj: d.circuit.traj && d.circuit.traj.v.length, link: document.getElementById("link-status").textContent }; });
+    check(/^2N3904 · NPN · VT1 in circuit/.test(q.title) && /1 transistor/.test(q.link), `the curve tracer lists the circuit's transistor and shows it ("${q.title}")`);
+    check(Math.abs(q.on - q.dc.ic) < 1e-3 * q.dc.ic && q.traj > 100, `the simulated Q point (VCE ${q.dc.vce.toFixed(2)} V, IC ${(q.dc.ic * 1e3).toFixed(3)} mA at IB ${(q.dc.ib * 1e6).toFixed(2)} µA) lies on the tracer's IB curve (${(q.on * 1e3).toFixed(3)} mA), with a ${q.traj}-point load line`);
+    const legend = await tracer.evaluate(() => [...document.querySelectorAll("#legend span")].map(x => x.textContent).join(" | "));
+    check(/Collector curves/.test(legend) && /Curve at circuit bias IB/.test(legend) && /Simulated load line/.test(legend) && /Operating point Q/.test(legend), `the legend names the transistor plot's lines (${legend})`);
+    await tracer.click("#semi-modes button[data-m=transfer]");
+    const tq = await tracer.evaluate(() => { const p = TubeTracer.plot(), q = p.q; let best = Infinity; for (const c of p.curve) best = Math.min(best, Math.abs(c[0] - q.vc) < 2e-3 ? Math.abs(c[1] - q.i) / q.i : Infinity); return { vFix: p.vFix, v: q.v, err: best }; });
+    check(Math.abs(tq.vFix - tq.v) < 1e-9 && tq.err < 0.05, `on the IC–VBE plot the transfer curve is drawn at the operating point's VCE and passes through Q (${(tq.err * 100).toFixed(1)} %)`);
+    await tracer.click("#semi-modes button[data-m=output]");
+  }
   {
     // the flashing-LED example has no source to follow: the simulation finds the 555's own period, the scope
     // shows its square wave, and Animate runs the wire animation over that cycle in real time, the LED blinking

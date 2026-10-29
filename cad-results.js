@@ -156,6 +156,28 @@
       const cut = a => (a && per > 4 && per < n ? a.subarray(n - per - 1) : a);
       return { vak: decimate(cut(t.vak), 600), vgk: decimate(cut(t.vgk), 600), vg2k: decimate(cut(t.vg2k), 600), ia: decimate(cut(t.ia), 600) };
     }
+    // A transistor's operating data for the curve tracer: the DC state (vce, vbe, ic, ib or vds, vgs,
+    // id) and, with a signal, one cycle of its path in its own polarity (a PNP's −VCE, −IC): v the
+    // collector–emitter or drain–source voltage, c the base–emitter or gate–source, i the current
+    function semiData(c) {
+      const r = S.sim.result, dev = r && r.dc.devices[c.id], m = CadLib.semiTable(c.type)[c.params.model];
+      if (!dev || !dev.main || !m) return null;
+      const bip = !CadLib.isFet(c.type), d = { id: c.id, label: c.label, type: c.type, model: c.params.model, temp: bip ? (isFinite(c.params.temp) ? +c.params.temp : 25) : null, dc: dev.main, traj: null, metrics: null };
+      const tr = r.tran && r.tran.devices[c.id];
+      if (tr) {
+        const [po, pc, pk] = bip ? ["C", "B", "E"] : ["D", "G", "S"], O = waveOf(c, po), G = waveOf(c, pc), K = waveOf(c, pk), I = tr.i, p = m.pol;
+        if (O && G && K && I) {
+          const n = O.length, v = new Float32Array(n), cv = new Float32Array(n);
+          let pSum = 0;
+          for (let i = 0; i < n; i++) { v[i] = p * (O[i] - K[i]); cv[i] = p * (G[i] - K[i]); pSum += v[i] * I[i]; }
+          const f = signalFreq(), per = f && r.tran.dt ? Math.round(1 / (f * r.tran.dt)) : 0, cut = a => (per > 4 && per < n ? a.subarray(n - per - 1) : a);
+          const sv = stats(v), si = stats(I), sc = stats(cv);
+          d.traj = { v: Array.from(decimate(cut(v), 600)), c: Array.from(decimate(cut(cv), 600)), i: Array.from(decimate(cut(I), 600)) };
+          d.metrics = { vPP: sv.pp, iPP: si.pp, cPP: sc.pp, pAvg: pSum / n };
+        }
+      }
+      return d;
+    }
     // Tube operating data (DC + trajectory) for inspector and the curve tracer
     function tubeData(c) {
       const r = S.sim.result;
@@ -244,6 +266,6 @@
       if (b && isFinite(b.rg) && b.rg > 0) add(`Grid circuit R (${fixed ? "fixed" : "cathode"} bias)`, b.rg, rgLim, "Ω", (v, m) => `has ${v} in its grid circuit, more than the ${m} allowed with ${fixed ? "fixed" : "cathode"} bias (the tube can run away as it warms)`);
       return out;
     }
-    return { acDigits, harmonics, netAC, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, resistorPower, signalFreq, speakerPower, speakerWave, stats, tubeData, tubeLimits, waveOf, wireCurrents };
+    return { acDigits, harmonics, netAC, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, resistorPower, semiData, signalFreq, speakerPower, speakerWave, stats, tubeData, tubeLimits, waveOf, wireCurrents };
   };
 })(window);

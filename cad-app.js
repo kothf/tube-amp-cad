@@ -286,7 +286,7 @@
   const LIVE_KEY = "tubecad_live", LEGEND_KEY = "tubecad_legend";
 
   // What the CAD reads from the last result: node voltages, currents, power, tube data (cad-results.js)
-  const { acDigits, harmonics, netAC, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, resistorPower, signalFreq, speakerPower, speakerWave, stats, tubeData, tubeLimits, waveOf, wireCurrents } = CadResults({ S, buildNetlist, compPins, decimate, fmtEng, key, topo, tubeByName, tubeKind });
+  const { acDigits, harmonics, netAC, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, resistorPower, semiData, signalFreq, speakerPower, speakerWave, stats, tubeData, tubeLimits, waveOf, wireCurrents } = CadResults({ S, buildNetlist, compPins, decimate, fmtEng, key, topo, tubeByName, tubeKind });
 
   // the selection as text, to tell whether it changed
   const selSig = () => [...S.sel.comps].sort().join(",") + "|" + [...S.sel.wires].sort().join(",");
@@ -503,7 +503,7 @@
   function buildSummary() {
     const r = S.sim.result;
     // seq: which run this is, so an instrument window can tell it shows the latest
-    const summary = { type: "SIM_RESULT", version: VERSION, seq: S.sim.seq, at: Date.now(), selectedTubeId: lastTubeId, ok: !!r, error: S.sim.error, warnings: S.sim.warnings || [], empty: !S.comps.length, fSig: signalFreq(), tubes: [], scopes: [], speakers: [], customTubes: usedCustomTubes() };
+    const summary = { type: "SIM_RESULT", version: VERSION, seq: S.sim.seq, at: Date.now(), selectedTubeId: lastTubeId, ok: !!r, error: S.sim.error, warnings: S.sim.warnings || [], empty: !S.comps.length, fSig: signalFreq(), tubes: [], transistors: [], scopes: [], speakers: [], customTubes: usedCustomTubes() };
     if (!r) return summary;
     summary.elapsedMs = r.elapsedMs;
     S.comps.forEach(c => {
@@ -513,6 +513,9 @@
           summary.tubes.push({ id: c.id, label: c.label, tube: d.tube, kind: d.kind, model: d.model, paMax: d.paMax, vaMax: d.vaMax, dc: d.dc, metrics: d.metrics || null,
             traj: d.traj ? oneCycle(d.traj) : null });
         }
+      } else if (CadLib.isTransistor(c.type)) {
+        const d = semiData(c);
+        if (d) summary.transistors.push(d);
       } else if (c.type === "scope") {
         const ch = scopeChannels(c);
         if (ch) summary.scopes.push({ id: c.id, label: c.label, dt: ch.dt, ch1: ch.ch1 ? Array.from(ch.ch1) : null, ch2: ch.ch2 ? Array.from(ch.ch2) : null });
@@ -1705,12 +1708,18 @@
   // Tell the curve tracer which tube is selected so its graph follows the editor
   let selectedTubeId = null;      // tube selected right now (null when not a tube)
   let lastTubeId = null;          // last tube selected; a newly opened tracer starts on it
+  // (and which transistor: the tracer draws their curves too)
   function announceSelectedTube(c) {
-    const isTube = c && c.type === "tube" && tubeKind(tubeByName(c.params.tube)) !== "rectifier";
-    if (!isTube) { selectedTubeId = null; return; }
-    if (c.id === selectedTubeId) return;
-    selectedTubeId = lastTubeId = c.id;
-    if (channel) { try { channel.postMessage({ type: "SELECT_TUBE", id: c.id, tube: c.params.tube, label: c.label, def: window.SpiceModel && SpiceModel.isCustom(tubeByName(c.params.tube)) ? tubeByName(c.params.tube) : undefined }); } catch (e) {} }
+    const isTube = c && c.type === "tube" && tubeKind(tubeByName(c.params.tube)) !== "rectifier", isSemi = c && CadLib.isTransistor(c.type);
+    if (!isTube && !isSemi) { selectedTubeId = null; return; }
+    const key = c.id + ":" + (isTube ? c.params.tube : c.params.model);
+    if (key === selectedTubeId) return;
+    selectedTubeId = key; lastTubeId = c.id;
+    if (!channel) return;
+    try {
+      channel.postMessage(isTube ? { type: "SELECT_TUBE", id: c.id, tube: c.params.tube, label: c.label, def: window.SpiceModel && SpiceModel.isCustom(tubeByName(c.params.tube)) ? tubeByName(c.params.tube) : undefined }
+        : { type: "SELECT_TUBE", id: c.id, semi: c.type, model: c.params.model, label: c.label });
+    } catch (e) {}
   }
 
   let inspectorFor = null;

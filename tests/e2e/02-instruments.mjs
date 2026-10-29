@@ -356,3 +356,52 @@ check((await tracer.evaluate(() => TubeTracer.picks())).length === 0, "switching
   const back = await tracer.evaluate(() => TubeTracer.view());
   check(back.v0 === 0 && back.v1 === full.vaMax && back.i1 === full.iaMax && !(await tracer.isVisible("#btn-zoom-reset")), "tracer: Reset zoom shows the whole plot");
 }
+
+{
+  // transistors: the library lists them grouped as the CAD's palette does; the curves are the simulator's
+  await tracer.click("#lib-tabs button[data-lib=semis]");
+  const heads = await tracer.locator("#tube-list .list-sub").allTextContents();
+  check(["NPN, silicon", "NPN, germanium", "PNP, silicon", "PNP, germanium", "N-channel MOSFET", "P-channel MOSFET", "N-channel JFET", "P-channel JFET"].every(h => heads.some(t => t.toLowerCase() === h.toLowerCase())),
+    `tracer: the transistor library is grouped by kind (${heads.join(", ")})`);
+  await tracer.fill("#tube-search", "AC128");
+  await tracer.locator("#tube-list .list-item", { hasText: "AC128" }).first().click();
+  const t = await tracer.textContent("#plot-title"), pl = await tracer.evaluate(() => { const p = TubeTracer.plot(); return { n: p.curves.length, step: p.st.step, vals: p.st.values, top: p.y1 }; });
+  check(/^AC128 · PNP germanium/.test(t) && pl.n >= 4 && pl.vals[0] === 0, `tracer: AC128 shows its collector curves (${pl.n} curves, −IB step ${(pl.step * 1e6).toFixed(0)} µA, "${t}")`);
+  // the IB = 0 curve of a germanium part is its leakage, ICEO = (hFE + 1)·ICBO
+  const iceo = await tracer.evaluate(() => TubeTracer.iaOf(5, 0));
+  check(iceo > 50e-6 && iceo < 2e-3, `tracer: AC128's IB = 0 curve carries its leakage, ICEO ${(iceo * 1e6).toFixed(0)} µA at −VCE 5 V`);
+  // a point picked on a curve reads back that curve's base current
+  const ib = pl.vals[2], pt = await tracer.evaluate(ib => TubeTracer.toScreen(5, TubeTracer.iaOf(5, ib)), ib);
+  const r = await tracer.locator("#plot").boundingBox();
+  await tracer.mouse.click(r.x + pt.x, r.y + pt.y);
+  const [k] = await tracer.evaluate(() => TubeTracer.picks());
+  check(k && Math.abs(k.c - ib) < 0.03 * ib && k.ss && k.ss.hfe > 30 && k.ss.hfe < 300, `tracer: a point on the −IB ${(ib * 1e6).toFixed(0)} µA curve reads −IB ${k && (k.c * 1e6).toFixed(1)} µA, hFE ${k && k.ss && k.ss.hfe.toFixed(0)}`);
+  // a warmer germanium part leaks more
+  await tracer.fill("#tr-temp", "45"); await tracer.press("#tr-temp", "Enter");
+  const hot = await tracer.evaluate(() => TubeTracer.iaOf(5, 0));
+  check(hot > 3 * iceo && /45 °C/.test(await tracer.textContent("#plot-title")), `tracer: at 45 °C AC128's leakage is ${(hot / iceo).toFixed(1)}× that at 25 °C`);
+  await tracer.fill("#tr-temp", "25"); await tracer.press("#tr-temp", "Enter");
+  // the transfer and gain plots
+  await tracer.click("#semi-modes button[data-m=transfer]");
+  const tf = await tracer.evaluate(() => { const p = TubeTracer.plot(); return { mode: p.mode, x0: p.x0, x1: p.x1, n: p.curve.length, hot: !!p.hot, legend: document.getElementById("legend").textContent }; });
+  check(tf.mode === "transfer" && tf.x1 < 0.5 && tf.hot && /Transfer curve/.test(tf.legend) && (await tracer.textContent("#semi-modes button.active")) === "IC–VBE",
+    `tracer: AC128's transfer curve runs to −VBE ${tf.x1.toFixed(2)} V (germanium), with a warmer one beside it`);
+  await tracer.click("#semi-modes button[data-m=gain]");
+  const gn = await tracer.evaluate(() => { const p = TubeTracer.plot(); return { mode: p.mode, max: Math.max(...p.curve.map(q => q[1])) }; });
+  check(gn.mode === "gain" && gn.max > 60 && gn.max < 200, `tracer: AC128's hFE against IC peaks at ${gn.max.toFixed(0)}`);
+  // FETs: ID–VDS per VGS; a P-channel JFET's curves run down from VGS = 0 to its pinch-off
+  await tracer.click("#semi-modes button[data-m=output]");
+  await tracer.fill("#tube-search", "J175");
+  await tracer.locator("#tube-list .list-item", { hasText: "J175" }).first().click();
+  const jf = await tracer.evaluate(() => { const p = TubeTracer.plot(); return { vals: p.st.values, idss: TubeTracer.iaOf(10, 0), btn: document.querySelector("#semi-modes button.active").textContent }; });
+  check(jf.vals[0] === 0 && jf.vals.every(v => v <= 0 && v > -4) && jf.idss > 15e-3 && jf.idss < 40e-3 && jf.btn === "ID–VDS", `tracer: J175 drain curves from VGS 0 (IDSS ${(jf.idss * 1e3).toFixed(1)} mA) in ${jf.vals.length} steps to its 4 V pinch-off`);
+  check(/^\.model JP_J175 PJF/m.test(await tracer.evaluate(() => { document.getElementById("btn-model").click(); return document.getElementById("model-text").value; })), "tracer: the transistor model button gives its SPICE .model");
+  await tracer.click("#btn-modal-close");
+  const csv = await tracer.evaluate(() => TubeTracer.csv());
+  check(/^"−VDS \(V\)","−ID \(A\) at −VGS = 0 V"/.test(csv) && csv.split("\n").length > 200, "tracer: CSV saves the curves shown");
+  // back to the tubes
+  await tracer.fill("#tube-search", "");
+  await tracer.click("#lib-tabs button[data-lib=tubes]");
+  await tracer.getByRole("button", { name: /EL34/ }).first().click();
+  check((await tracer.textContent("#plot-title")).includes("EL34") && !(await tracer.isVisible("#semi-modes")), "tracer: back on a tube, the transistor plot switch goes away");
+}

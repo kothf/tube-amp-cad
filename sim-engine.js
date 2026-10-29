@@ -1397,8 +1397,9 @@
     const nCap = captureSteps + 1;
     const nodes = [];
     for (let i = 0; i < nodeCount; i++) nodes.push(new Float32Array(nCap));
-    // (an op-amp's trace is its clip: how far past its output limit it is driven)
-    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP");
+    // (an op-amp's trace is its clip: how far past its output limit it is driven; a transistor's
+    // its collector or drain current, in its own polarity: the curve tracer's load line)
+    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP" || e.kind === "BJT" || e.kind === "MOS");
     const devTrace = {};
     devIdx.forEach(e => { devTrace[e.id + (e.part ? "#" + e.part : "")] = { i: new Float32Array(nCap), ig2: e.kind === "PENTODE" ? new Float32Array(nCap) : null }; });
     // A circuit run from AC (a rectified supply) has no true DC solution: the
@@ -1422,7 +1423,7 @@
       if (acc) for (let i = 1; i < nodeCount; i++) nodeSum[i] += x[i - 1];
       devIdx.forEach(e => {
         const s = deviceState(e, x), tr = devTrace[e.id + (e.part ? "#" + e.part : "")];
-        tr.i[k] = s.ia !== undefined ? s.ia : s.i !== undefined ? s.i : s.clip;
+        tr.i[k] = s.ia !== undefined ? s.ia : s.i !== undefined ? s.i : s.ic !== undefined ? s.ic : s.id !== undefined ? s.id : s.clip;
         if (tr.ig2) tr.ig2[k] = s.ig2;
       });
       if (acc) currentsOf(circ, x, curSum);
