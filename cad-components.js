@@ -762,29 +762,33 @@
   // IRF840, IRF9640), bias and protection (zeners, LEDs), small-signal helpers.
   // BJTs: Gummel-Poon parameters (is A, bf, br, vaf V, ikf A) from the widely
   // distributed SPICE models where one exists (2N2222A, 2N3904, 2N3906,
-  // 2N2907A); the others are set to the datasheet's typical gain at the usual
-  // operating current. MOSFETs: threshold vto (V; negative for depletion
-  // N-channel parts) at the middle of the datasheet's min-max range, kp (A/V²)
-  // from its forward transconductance gfs at the test current (kp = gfs²/2Id;
+  // 2N2907A; the 2N3904's BF taken from 416 to 300, as the distributed model
+  // read 360 at 10 mA, over the datasheet's 300 maximum); the others are set to
+  // the datasheet's typical gain at the usual operating current. MOSFETs: threshold vto (V; negative for depletion
+  // N-channel parts) and kp (A/V²) through two points of the datasheet's typical
+  // transfer curve at 25 °C (drain current against VGS), so the part conducts at
+  // the gate voltage a real one does (the small ones, with no curve: vto at the
+  // middle of the VGS(th) range, kp from gfs at the test current, gfs²/2Id;
   // depletion parts from Idss). Ratings:
   // v (Vceo / Vds max), i (A), p (W at 25 °C case for power parts, free air else).
-  // cbe/cbc, cgs/cgd: junction and gate capacitances (F) for the transient.
+  // cbe/cbc, cgs/cgd: junction and gate capacitances (F) for the transient: cbc the
+  // datasheet's Cob, cgd its Crss and cgs Ciss − Crss.
   // ---------------------------------------------------------------------------
   const pf = 1e-12;
   // base-emitter (diffusion) capacitance of a germanium part: gm / 2π fT at the working current ic
   const geCbe = (ft, ic) => ic / 0.025852 / (2 * Math.PI * ft);
   const BJTS = {
-    "2N2222A": { pol: 1, is: 14.34e-15, bf: 255.9, br: 6.092, vaf: 74.03, ikf: 0.2847, cbe: 25 * pf, cbc: 8 * pf, v: 40, i: 0.6, p: 0.5, pkg: "TO-18", use: "general purpose" },
-    "2N3904": { pol: 1, is: 6.734e-15, bf: 416.4, br: 0.7371, vaf: 74.03, ikf: 0.06678, cbe: 8 * pf, cbc: 4 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
-    "BC107": { pol: 1, is: 7e-15, bf: 200, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.1, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
-    "BC547B": { pol: 1, is: 7e-15, bf: 290, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.1, p: 0.5, pkg: "TO-92", use: "small signal, low noise" },
+    "2N2222A": { pol: 1, is: 14.34e-15, bf: 255.9, br: 6.092, vaf: 74.03, ikf: 0.2847, cbe: 25 * pf, cbc: 8 * pf, v: 40, i: 0.8, p: 0.5, pkg: "TO-18", use: "general purpose" },
+    "2N3904": { pol: 1, is: 6.734e-15, bf: 300, br: 0.7371, vaf: 74.03, ikf: 0.06678, cbe: 8 * pf, cbc: 4 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
+    "BC107": { pol: 1, is: 7e-15, bf: 200, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.2, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
+    "BC547B": { pol: 1, is: 7e-15, bf: 290, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.1, p: 0.625, pkg: "TO-92", use: "small signal, low noise" },
     "BD139": { pol: 1, is: 1e-13, bf: 150, br: 5, vaf: 100, ikf: 1, cbe: 100 * pf, cbc: 30 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
     "MPSA42": { pol: 1, is: 1e-14, bf: 120, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 3 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
     "MJE340": { pol: 1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 15 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" },
     "2N2907A": { pol: -1, is: 650.6e-18, bf: 231.7, br: 3.563, vaf: 115.7, ikf: 1.079, cbe: 30 * pf, cbc: 8 * pf, v: 60, i: 0.6, p: 0.4, pkg: "TO-18", use: "general purpose" },
     "2N3906": { pol: -1, is: 1.41e-15, bf: 180.7, br: 4.977, vaf: 18.7, ikf: 0.08, cbe: 10 * pf, cbc: 4.5 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
-    "BC177": { pol: -1, is: 1e-14, bf: 150, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.1, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
-    "BC557B": { pol: -1, is: 1e-14, bf: 250, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.1, p: 0.5, pkg: "TO-92", use: "small signal, low noise" },
+    "BC177": { pol: -1, is: 1e-14, bf: 150, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.2, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
+    "BC557B": { pol: -1, is: 1e-14, bf: 250, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.1, p: 0.625, pkg: "TO-92", use: "small signal, low noise" },
     "BD140": { pol: -1, is: 1e-13, bf: 150, br: 5, vaf: 100, ikf: 1, cbe: 100 * pf, cbc: 40 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
     "MPSA92": { pol: -1, is: 1e-14, bf: 100, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 6 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
     "MJE350": { pol: -1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 20 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" },
@@ -795,25 +799,27 @@
     // its test point (2N3055 / MJ2955 1.5 V at 4 A, TIP41C / TIP42C 2.0 V at 6 A, both at VCE 4 V;
     // MJL21194 / MJL21193 2.2 V at 8 A, VCE 5 V), RE giving three quarters of the rise and RB the
     // rest. The others have none yet: at several amperes their VBE reads somewhat low.
-    "2SD669A": { pol: 1, is: 2e-13, bf: 160, br: 5, vaf: 150, ikf: 0.8, cbe: 150 * pf, cbc: 25 * pf, v: 180, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
+    // TIP41C / TIP42C, MJL21194 / MJL21193: BF and IKF follow the typical hFE curve (TIP41C 95 at
+    // 0.3 A, 70 at 1 A, 40 at 3 A; MJL21193 85 at 0.1 A falling to 45 at 5 A).
+    "2SD669A": { pol: 1, is: 2e-13, bf: 160, br: 5, vaf: 150, ikf: 0.8, cbe: 150 * pf, cbc: 14 * pf, v: 160, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
     "2SC4793": { pol: 1, is: 2e-13, bf: 200, br: 5, vaf: 150, ikf: 0.5, cbe: 150 * pf, cbc: 20 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
     "MJE15032": { pol: 1, is: 5e-13, bf: 100, br: 4, vaf: 150, ikf: 2, cbe: 400 * pf, cbc: 100 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
-    "TIP41C": { pol: 1, is: 1e-12, bf: 70, br: 4, vaf: 100, ikf: 2.5, rb: 0.55, re: 0.073, cbe: 500 * pf, cbc: 100 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
+    "TIP41C": { pol: 1, is: 1e-12, bf: 115, br: 4, vaf: 100, ikf: 1.6, rb: 0.64, re: 0.072, cbe: 500 * pf, cbc: 100 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
     "2SC5200": { pol: 1, is: 2e-12, bf: 110, br: 4, vaf: 100, ikf: 5, cbe: 1500 * pf, cbc: 200 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
-    "MJL3281A": { pol: 1, is: 3e-12, bf: 110, br: 4, vaf: 100, ikf: 8, cbe: 1500 * pf, cbc: 400 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
-    "MJL21194": { pol: 1, is: 3e-12, bf: 50, br: 3, vaf: 100, ikf: 10, rb: 0.73, re: 0.071, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
+    "MJL3281A": { pol: 1, is: 3e-12, bf: 115, br: 4, vaf: 100, ikf: 20, cbe: 1500 * pf, cbc: 400 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
+    "MJL21194": { pol: 1, is: 3e-12, bf: 65, br: 3, vaf: 100, ikf: 20, rb: 1.2, re: 0.073, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
     "MJ15003": { pol: 1, is: 5e-12, bf: 70, br: 3, vaf: 100, ikf: 8, cbe: 2000 * pf, cbc: 1000 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
     "MJ15024": { pol: 1, is: 3e-12, bf: 50, br: 3, vaf: 120, ikf: 5, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
     "2N3055": { pol: 1, is: 1e-11, bf: 50, br: 3, vaf: 50, ikf: 3, rb: 0.5, re: 0.06, cbe: 1500 * pf, cbc: 500 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" },
-    "2SB649A": { pol: -1, is: 2e-13, bf: 160, br: 5, vaf: 100, ikf: 0.8, cbe: 150 * pf, cbc: 40 * pf, v: 180, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
+    "2SB649A": { pol: -1, is: 2e-13, bf: 160, br: 5, vaf: 100, ikf: 0.8, cbe: 150 * pf, cbc: 27 * pf, v: 160, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
     "2SA1837": { pol: -1, is: 2e-13, bf: 200, br: 5, vaf: 100, ikf: 0.5, cbe: 150 * pf, cbc: 30 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
     "MJE15033": { pol: -1, is: 5e-13, bf: 100, br: 4, vaf: 120, ikf: 2, cbe: 400 * pf, cbc: 150 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
-    "TIP42C": { pol: -1, is: 1e-12, bf: 70, br: 4, vaf: 80, ikf: 2.5, rb: 0.55, re: 0.073, cbe: 500 * pf, cbc: 150 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
+    "TIP42C": { pol: -1, is: 1e-12, bf: 115, br: 4, vaf: 80, ikf: 1.6, rb: 0.64, re: 0.072, cbe: 500 * pf, cbc: 150 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
     "2SA1943": { pol: -1, is: 3e-12, bf: 110, br: 4, vaf: 80, ikf: 5, cbe: 1500 * pf, cbc: 360 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
-    "MJL1302A": { pol: -1, is: 3e-12, bf: 110, br: 4, vaf: 80, ikf: 8, cbe: 1500 * pf, cbc: 600 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
-    "MJL21193": { pol: -1, is: 3e-12, bf: 50, br: 3, vaf: 80, ikf: 10, rb: 0.73, re: 0.071, cbe: 2000 * pf, cbc: 700 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
-    "MJ15004": { pol: -1, is: 5e-12, bf: 70, br: 3, vaf: 80, ikf: 8, cbe: 2000 * pf, cbc: 1500 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
-    "MJ15025": { pol: -1, is: 3e-12, bf: 50, br: 3, vaf: 100, ikf: 5, cbe: 2000 * pf, cbc: 800 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "MJL1302A": { pol: -1, is: 3e-12, bf: 115, br: 4, vaf: 80, ikf: 12, cbe: 1500 * pf, cbc: 600 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
+    "MJL21193": { pol: -1, is: 3e-12, bf: 85, br: 3, vaf: 80, ikf: 4.5, rb: 0.8, re: 0.071, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 200, pkg: "TO-264", use: "power output" },
+    "MJ15004": { pol: -1, is: 5e-12, bf: 70, br: 3, vaf: 80, ikf: 8, cbe: 2000 * pf, cbc: 1000 * pf, v: 140, i: 20, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
+    "MJ15025": { pol: -1, is: 3e-12, bf: 50, br: 3, vaf: 100, ikf: 5, cbe: 2000 * pf, cbc: 500 * pf, v: 250, i: 16, p: 250, pkg: "TO-3", use: "power output (TO-3)" },
     "MJ2955": { pol: -1, is: 1e-11, bf: 50, br: 3, vaf: 50, ikf: 3, rb: 0.5, re: 0.06, cbe: 1500 * pf, cbc: 700 * pf, v: 60, i: 15, p: 115, pkg: "TO-3", use: "power output, regulator (vintage)" },
     // germanium, alloy junction. IS sets VBE at about a third of silicon's (0.15–0.25 V at 1 mA
     // for the small ones, 0.3–0.4 V at the rated current for the power ones), and the reverse
@@ -822,55 +828,57 @@
     // transit frequency at a typical working current (gm / 2π fT: 1 mA small-signal, 20 mA the
     // AC1xx output pairs, 0.2–0.3 A the power ones), so the Miller roll-off of the old parts shows
     // in the response. v: the datasheet's VCE max (USSR: Uкэ max), i: IC max, p: Ptot at 25 °C.
+    // The USSR parts' gain is the reference books' small-signal h21э (dIC/dIB at the test point);
+    // the static IC/IB reads higher by the leakage the base current carries.
     // USSR types are written in Latin letters (MP39B = МП39Б).
     // icbo: typical collector-base leakage at 25 °C (about a third of the datasheet's maximum);
     // it doubles every 10 °C (see bjtAt). The power parts leak the most.
     // USSR
     "MP39B": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 40, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(0.5e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП39Б, germanium small signal (USSR)" },
-    "MP40A": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 45, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 30, i: 0.02, p: 0.15, pkg: "MP", use: "МП40А, germanium small signal, 30 V (USSR)" },
-    "MP41A": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 85, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП41А, germanium low noise, high gain (USSR)" },
-    "MP42B": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 70, br: 5, vaf: 30, ikf: 0.15, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.1, p: 0.2, pkg: "MP", use: "МП42Б, germanium switching, fuzz (USSR)" },
-    "MP25B": { ge: 1, icbo: 1.5e-05, pol: -1, is: 4e-7, bf: 50, br: 5, vaf: 40, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 70 * pf, v: 40, i: 0.15, p: 0.2, pkg: "MP", use: "МП25Б, germanium 40 V (USSR)" },
-    "MP26B": { ge: 1, icbo: 1.5e-05, pol: -1, is: 4e-7, bf: 50, br: 5, vaf: 50, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 70 * pf, v: 70, i: 0.15, p: 0.2, pkg: "MP", use: "МП26Б, germanium 70 V (USSR)" },
-    "MP38A": { ge: 1, icbo: 5e-06, pol: 1, is: 3e-7, bf: 65, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП38А, germanium NPN small signal (USSR)" },
+    "MP40A": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 30, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 30, i: 0.02, p: 0.15, pkg: "MP", use: "МП40А, germanium small signal, 30 V (USSR)" },
+    "MP41A": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 70, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП41А, germanium low noise, high gain (USSR)" },
+    "MP42B": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 80, br: 5, vaf: 30, ikf: 0.15, cbe: geCbe(1e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.15, p: 0.2, pkg: "MP", use: "МП42Б, germanium switching, fuzz (USSR)" },
+    "MP25B": { ge: 1, icbo: 1.5e-05, pol: -1, is: 4e-7, bf: 40, br: 5, vaf: 40, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 20 * pf, v: 40, i: 0.15, p: 0.2, pkg: "MP", use: "МП25Б, germanium 40 V (USSR)" },
+    "MP26B": { ge: 1, icbo: 1.5e-05, pol: -1, is: 4e-7, bf: 35, br: 5, vaf: 50, ikf: 0.2, cbe: geCbe(0.5e6, 1e-3), cbc: 15 * pf, v: 70, i: 0.15, p: 0.2, pkg: "MP", use: "МП26Б, germanium 70 V (USSR)" },
+    "MP38A": { ge: 1, icbo: 5e-06, pol: 1, is: 3e-7, bf: 65, br: 5, vaf: 30, ikf: 0.05, cbe: geCbe(2e6, 1e-3), cbc: 50 * pf, v: 15, i: 0.02, p: 0.15, pkg: "MP", use: "МП38А, germanium NPN small signal (USSR)" },
     "GT402G": { ge: 1, icbo: 1e-05, pol: -1, is: 5e-7, bf: 100, br: 5, vaf: 40, ikf: 0.6, cbe: geCbe(1e6, 20e-3), cbc: 60 * pf, v: 40, i: 0.5, p: 0.6, pkg: "TO-1", use: "ГТ402Г, germanium driver / output, pairs with GT404G (USSR)" },
     "GT404G": { ge: 1, icbo: 1e-05, pol: 1, is: 5e-7, bf: 100, br: 5, vaf: 40, ikf: 0.6, cbe: geCbe(1e6, 20e-3), cbc: 60 * pf, v: 40, i: 0.5, p: 0.6, pkg: "TO-1", use: "ГТ404Г, germanium driver / output, pairs with GT402G (USSR)" },
-    "P213B": { ge: 1, icbo: 0.0003, pol: -1, is: 2e-6, bf: 60, br: 3, vaf: 40, ikf: 3, cbe: geCbe(0.15e6, 0.3), cbc: 800 * pf, v: 45, i: 5, p: 11.5, pkg: "TO-3", use: "П213Б, germanium power output (USSR)" },
+    "P213B": { ge: 1, icbo: 0.0003, pol: -1, is: 2e-6, bf: 60, br: 3, vaf: 40, ikf: 3, cbe: geCbe(0.2e6, 0.3), cbc: 800 * pf, v: 45, i: 5, p: 10, pkg: "TO-3", use: "П213Б, germanium power output (USSR)" },
     // Western
     "AC127": { ge: 1, icbo: 3e-06, pol: 1, is: 4e-7, bf: 120, br: 5, vaf: 30, ikf: 0.6, cbe: geCbe(1.5e6, 20e-3), cbc: 60 * pf, v: 12, i: 0.5, p: 0.34, pkg: "TO-1", use: "germanium audio output, pairs with AC128" },
-    "AC128": { ge: 1, icbo: 4e-06, pol: -1, is: 5e-7, bf: 120, br: 5, vaf: 30, ikf: 0.8, cbe: geCbe(1e6, 20e-3), cbc: 100 * pf, v: 16, i: 1, p: 0.26, pkg: "TO-1", use: "germanium audio output, Fuzz Face" },
+    "AC128": { ge: 1, icbo: 4e-06, pol: -1, is: 5e-7, bf: 95, br: 5, vaf: 30, ikf: 4, cbe: geCbe(1.5e6, 20e-3), cbc: 100 * pf, v: 16, i: 1, p: 0.26, pkg: "TO-1", use: "germanium audio output, Fuzz Face" },
     "AC187": { ge: 1, icbo: 5e-06, pol: 1, is: 5e-7, bf: 200, br: 5, vaf: 30, ikf: 1.2, cbe: geCbe(1e6, 20e-3), cbc: 80 * pf, v: 15, i: 2, p: 0.8, pkg: "TO-1", use: "germanium complementary output, pairs with AC188" },
     "AC188": { ge: 1, icbo: 5e-06, pol: -1, is: 5e-7, bf: 200, br: 5, vaf: 30, ikf: 1.2, cbe: geCbe(1e6, 20e-3), cbc: 100 * pf, v: 15, i: 2, p: 0.8, pkg: "TO-1", use: "germanium complementary output, pairs with AC187" },
-    "OC71": { ge: 1, icbo: 5e-06, pol: -1, is: 2e-7, bf: 50, br: 5, vaf: 20, ikf: 0.03, cbe: geCbe(0.4e6, 1e-3), cbc: 40 * pf, v: 10, i: 0.05, p: 0.125, pkg: "TO-1", use: "germanium small signal (Mullard), Tone Bender" },
+    "OC71": { ge: 1, icbo: 5e-06, pol: -1, is: 2e-7, bf: 50, br: 5, vaf: 20, ikf: 0.03, cbe: geCbe(0.4e6, 1e-3), cbc: 40 * pf, v: 20, i: 0.01, p: 0.125, pkg: "glass", use: "germanium small signal (Mullard: black glass, inline leads, red dot at C), Tone Bender" },
     "NKT275": { ge: 1, icbo: 5e-06, pol: -1, is: 3e-7, bf: 100, br: 5, vaf: 25, ikf: 0.05, cbe: geCbe(1e6, 1e-3), cbc: 30 * pf, v: 18, i: 0.1, p: 0.15, pkg: "TO-1", use: "germanium small signal (Newmarket), Fuzz Face" },
-    "2N404": { ge: 1, icbo: 2e-06, pol: -1, is: 2e-7, bf: 60, br: 5, vaf: 40, ikf: 0.1, cbe: geCbe(4e6, 1e-3), cbc: 20 * pf, v: 24, i: 0.15, p: 0.15, pkg: "TO-5", use: "germanium general purpose (RCA), Tone Bender" },
+    "2N404": { ge: 1, icbo: 2e-06, pol: -1, is: 2e-7, bf: 60, br: 5, vaf: 40, ikf: 0.1, cbe: geCbe(4e6, 1e-3), cbc: 20 * pf, v: 24, i: 0.1, p: 0.15, pkg: "TO-5", use: "germanium general purpose (RCA), Tone Bender" },
     "AD149": { ge: 1, icbo: 0.0001, pol: -1, is: 1e-6, bf: 70, br: 3, vaf: 40, ikf: 3, cbe: geCbe(0.3e6, 0.2), cbc: 600 * pf, v: 30, i: 3.5, p: 32, pkg: "TO-3", use: "germanium power output (Philips)" },
-    "AD161": { ge: 1, icbo: 3e-05, pol: 1, is: 3e-7, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 150 * pf, v: 20, i: 3, p: 4, pkg: "SOT-9", use: "germanium complementary output, pairs with AD162" },
-    "AD162": { ge: 1, icbo: 3e-05, pol: -1, is: 3e-7, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 200 * pf, v: 20, i: 3, p: 6, pkg: "SOT-9", use: "germanium complementary output, pairs with AD161" }
+    "AD161": { ge: 1, icbo: 1e-05, pol: 1, is: 3e-5, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 150 * pf, v: 20, i: 3, p: 4, pkg: "SOT-9", use: "germanium complementary output, pairs with AD162" },
+    "AD162": { ge: 1, icbo: 1e-05, pol: -1, is: 3e-5, bf: 150, br: 4, vaf: 40, ikf: 1.5, cbe: geCbe(1.5e6, 0.2), cbc: 200 * pf, v: 20, i: 3, p: 6, pkg: "SOT-9", use: "germanium complementary output, pairs with AD161" }
   };
   const MOSFETS = {
     "2N7000": { pol: 1, vto: 2.1, kp: 0.26, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.2, p: 0.4, pkg: "TO-92", use: "small signal switch" },
     "BS170": { pol: 1, vto: 2.1, kp: 0.1, lambda: 0.01, cgs: 20 * pf, cgd: 5 * pf, v: 60, i: 0.5, p: 0.83, pkg: "TO-92", use: "small signal switch" },
-    "IRF510": { pol: 1, vto: 3.0, kp: 0.25, lambda: 0.005, cgs: 160 * pf, cgd: 20 * pf, v: 100, i: 5.6, p: 43, pkg: "TO-220", use: "follower, regulator" },
-    "IRF540": { pol: 1, vto: 3.0, kp: 2.2, lambda: 0.005, cgs: 1580 * pf, cgd: 120 * pf, v: 100, i: 28, p: 150, pkg: "TO-220", use: "power output, follower" },
-    "IRF820": { pol: 1, vto: 3.0, kp: 0.75, lambda: 0.002, cgs: 335 * pf, cgd: 25 * pf, v: 500, i: 2.5, p: 50, pkg: "TO-220", use: "HV regulator, gyrator, follower" },
-    "IRF840": { pol: 1, vto: 3.0, kp: 2.5, lambda: 0.002, cgs: 1180 * pf, cgd: 120 * pf, v: 500, i: 8, p: 125, pkg: "TO-220", use: "HV regulator, follower" },
-    "DN2540": { pol: 1, vto: -2.0, kp: 0.15, lambda: 0.002, cgs: 190 * pf, cgd: 10 * pf, v: 400, i: 0.5, p: 15, pkg: "TO-220", use: "depletion, CCS / cascode" },
+    "IRF510": { pol: 1, vto: 3.7, kp: 1.16, lambda: 0.005, cgs: 160 * pf, cgd: 20 * pf, v: 100, i: 5.6, p: 43, pkg: "TO-220", use: "follower, regulator" },
+    "IRF540": { pol: 1, vto: 3.25, kp: 9, lambda: 0.005, cgs: 1580 * pf, cgd: 120 * pf, v: 100, i: 28, p: 150, pkg: "TO-220", use: "power output, follower" },
+    "IRF820": { pol: 1, vto: 3.76, kp: 1.25, lambda: 0.002, cgs: 323 * pf, cgd: 37 * pf, v: 500, i: 2.5, p: 50, pkg: "TO-220", use: "HV regulator, gyrator, follower" },
+    "IRF840": { pol: 1, vto: 3.7, kp: 5, lambda: 0.002, cgs: 1180 * pf, cgd: 120 * pf, v: 500, i: 8, p: 125, pkg: "TO-220", use: "HV regulator, follower" },
+    "DN2540": { pol: 1, vto: -1.5, kp: 0.28, lambda: 0.002, cgs: 190 * pf, cgd: 1 * pf, v: 400, i: 0.5, p: 15, pkg: "TO-220", use: "depletion, CCS / cascode" },
     "LND150": { pol: 1, vto: -2.0, kp: 0.001, lambda: 0.005, cgs: 7 * pf, cgd: 0.5 * pf, v: 500, i: 0.03, p: 0.74, pkg: "TO-92", use: "depletion, low-current CCS" },
-    "BS250": { pol: -1, vto: -2.25, kp: 0.056, lambda: 0.01, cgs: 25 * pf, cgd: 5 * pf, v: 45, i: 0.23, p: 0.83, pkg: "TO-92", use: "small signal switch" },
-    "IRF9540": { pol: -1, vto: -3.0, kp: 1.75, lambda: 0.005, cgs: 1200 * pf, cgd: 200 * pf, v: 100, i: 19, p: 150, pkg: "TO-220", use: "power output, follower" },
-    "IRF9610": { pol: -1, vto: -3.0, kp: 0.45, lambda: 0.003, cgs: 150 * pf, cgd: 20 * pf, v: 200, i: 1.8, p: 20, pkg: "TO-220", use: "HV CCS, follower" },
-    "IRF9640": { pol: -1, vto: -3.0, kp: 1.27, lambda: 0.003, cgs: 1100 * pf, cgd: 100 * pf, v: 200, i: 11, p: 125, pkg: "TO-220", use: "HV regulator, CCS" },
-    // power output. KP from the datasheet's gfs at its test current (gfs² / 2 Id); the lateral pairs
-    // (2SK1058/2SJ162, ECX10N20/ECX10P20) start conducting near 0.2–1.5 V and have a lower gfs
-    "IRFP240": { pol: 1, vto: 3.6, kp: 2.0, lambda: 0.003, cgs: 1150 * pf, cgd: 150 * pf, v: 200, i: 20, p: 150, pkg: "TO-247", use: "power output" },
-    "IRFP250": { pol: 1, vto: 3.5, kp: 9, lambda: 0.003, cgs: 2500 * pf, cgd: 300 * pf, v: 200, i: 30, p: 190, pkg: "TO-247", use: "power output, high current" },
-    "IRFP460": { pol: 1, vto: 3.5, kp: 7, lambda: 0.002, cgs: 4100 * pf, cgd: 60 * pf, v: 500, i: 20, p: 280, pkg: "TO-247", use: "HV follower, regulator, SE output" },
-    "2SK1058": { pol: 1, vto: 0.6, kp: 0.35, lambda: 0.01, cgs: 600 * pf, cgd: 10 * pf, v: 160, i: 7, p: 100, pkg: "TO-3P", use: "lateral power output (Hitachi)" },
-    "ECX10N20": { pol: 1, vto: 0.6, kp: 0.35, lambda: 0.01, cgs: 500 * pf, cgd: 15 * pf, v: 200, i: 8, p: 125, pkg: "TO-247", use: "lateral power output (Exicon)" },
-    "IRFP9240": { pol: -1, vto: -3.5, kp: 1.2, lambda: 0.003, cgs: 1070 * pf, cgd: 130 * pf, v: 200, i: 12, p: 150, pkg: "TO-247", use: "power output" },
-    "2SJ162": { pol: -1, vto: -0.6, kp: 0.35, lambda: 0.01, cgs: 900 * pf, cgd: 40 * pf, v: 160, i: 7, p: 100, pkg: "TO-3P", use: "lateral power output (Hitachi)" },
-    "ECX10P20": { pol: -1, vto: -0.6, kp: 0.35, lambda: 0.01, cgs: 700 * pf, cgd: 30 * pf, v: 200, i: 8, p: 125, pkg: "TO-247", use: "lateral power output (Exicon)" }
+    "BS250": { pol: -1, vto: -2.25, kp: 0.056, lambda: 0.01, cgs: 12 * pf, cgd: 3 * pf, v: 45, i: 0.23, p: 0.83, pkg: "TO-92", use: "small signal switch" },
+    "IRF9540": { pol: -1, vto: -2.8, kp: 4.2, lambda: 0.005, cgs: 1260 * pf, cgd: 140 * pf, v: 100, i: 19, p: 150, pkg: "TO-220", use: "power output, follower" },
+    "IRF9610": { pol: -1, vto: -3.85, kp: 0.5, lambda: 0.003, cgs: 155 * pf, cgd: 15 * pf, v: 200, i: 1.8, p: 20, pkg: "TO-220", use: "HV CCS, follower" },
+    "IRF9640": { pol: -1, vto: -3.47, kp: 3.9, lambda: 0.003, cgs: 1120 * pf, cgd: 81 * pf, v: 200, i: 11, p: 125, pkg: "TO-220", use: "HV regulator, CCS" },
+    // power output; the lateral pairs (2SK1058/2SJ162, ECX10N20/ECX10P20) start conducting near
+    // 0.1 V (0.1 A at 0.55 V) and have a lower gfs, about 1.4 S at 3 A
+    "IRFP240": { pol: 1, vto: 3.9, kp: 5, lambda: 0.003, cgs: 1170 * pf, cgd: 130 * pf, v: 200, i: 20, p: 150, pkg: "TO-247", use: "power output" },
+    "IRFP250": { pol: 1, vto: 3.9, kp: 10, lambda: 0.003, cgs: 2550 * pf, cgd: 250 * pf, v: 200, i: 30, p: 190, pkg: "TO-247", use: "power output, high current" },
+    "IRFP460": { pol: 1, vto: 3.6, kp: 12, lambda: 0.002, cgs: 3850 * pf, cgd: 350 * pf, v: 500, i: 20, p: 280, pkg: "TO-247", use: "HV follower, regulator, SE output" },
+    "2SK1058": { pol: 1, vto: 0.05, kp: 0.32, lambda: 0.01, cgs: 590 * pf, cgd: 10 * pf, v: 160, i: 7, p: 100, pkg: "TO-3P", use: "lateral power output (Hitachi)" },
+    "ECX10N20": { pol: 1, vto: 0.05, kp: 0.32, lambda: 0.01, cgs: 500 * pf, cgd: 10 * pf, v: 200, i: 8, p: 125, pkg: "TO-247", use: "lateral power output (Exicon)" },
+    "IRFP9240": { pol: -1, vto: -3.55, kp: 3.65, lambda: 0.003, cgs: 1120 * pf, cgd: 81 * pf, v: 200, i: 12, p: 150, pkg: "TO-247", use: "power output" },
+    "2SJ162": { pol: -1, vto: -0.05, kp: 0.32, lambda: 0.01, cgs: 860 * pf, cgd: 40 * pf, v: 160, i: 7, p: 100, pkg: "TO-3P", use: "lateral power output (Hitachi)" },
+    "ECX10P20": { pol: -1, vto: -0.05, kp: 0.32, lambda: 0.01, cgs: 700 * pf, cgd: 10 * pf, v: 200, i: 8, p: 125, pkg: "TO-247", use: "lateral power output (Exicon)" }
   };
   // zener: breakdown bv (V) at the test current izt (A), dynamic resistance zzt (Ω), power p (W):
   // the 1 W 1N47xxA series and some 5 W 1N53xxB
@@ -985,16 +993,16 @@
   // the grades (2SK170 BL, 2SK30A Y) as named. v: V(BR)GSS, i: the current rating (A, the gate's forward current IGF), p: Ptot.
   const JFETS = {
     "J201": { pol: 1, vto: -0.8, beta: 1.0e-3, lambda: 2.25e-3, is: 1.1e-13, cgs: 4 * pf, cgd: 1.5 * pf, v: 40, i: 0.05, p: 0.35, pkg: "TO-92", use: "low-IDSS preamp, booster (IDSS 0.2–1 mA)" },
-    "J113": { pol: 1, vto: -1.6, beta: 3.0e-3, lambda: 4e-3, is: 2e-13, cgs: 23 * pf, cgd: 5 * pf, v: 35, i: 0.05, p: 0.625, pkg: "TO-92", use: "switch, mute, current source (IDSS ≥ 2 mA)" },
-    "J310": { pol: 1, vto: -4.0, beta: 2.5e-3, lambda: 3e-3, is: 2e-13, cgs: 2.5 * pf, cgd: 2.5 * pf, v: 25, i: 0.01, p: 0.35, pkg: "TO-92", use: "VHF, buffer, cascode (IDSS 24–60 mA)" },
-    "2N5457": { pol: 1, vto: -1.37, beta: 1.125e-3, lambda: 2.3e-3, is: 1.8e-13, cgs: 3 * pf, cgd: 1.5 * pf, v: 25, i: 0.01, p: 0.31, pkg: "TO-92", use: "general audio, buffer (IDSS 1–5 mA)" },
-    "MPF102": { pol: 1, vto: -2.5, beta: 1.0e-3, lambda: 2e-3, is: 3e-13, cgs: 4 * pf, cgd: 3 * pf, v: 25, i: 0.01, p: 0.31, pkg: "TO-92", use: "general audio, RF (IDSS 2–20 mA)" },
+    "J113": { pol: 1, vto: -1.6, beta: 3.5e-3, lambda: 4e-3, is: 2e-13, cgs: 4 * pf, cgd: 3 * pf, v: 35, i: 0.05, p: 0.625, pkg: "TO-92", use: "switch, mute, current source (IDSS ≥ 2 mA)" },
+    "J310": { pol: 1, vto: -4.0, beta: 2.5e-3, lambda: 3e-3, is: 2e-13, cgs: 4.3 * pf, cgd: 1.8 * pf, v: 25, i: 0.01, p: 0.35, pkg: "TO-92", use: "VHF, buffer, cascode (IDSS 24–60 mA)" },
+    "2N5457": { pol: 1, vto: -2.0, beta: 0.75e-3, lambda: 2.3e-3, is: 1.8e-13, cgs: 3 * pf, cgd: 1.5 * pf, v: 25, i: 0.01, p: 0.31, pkg: "TO-92", use: "general audio, buffer (IDSS 1–5 mA)" },
+    "MPF102": { pol: 1, vto: -2.5, beta: 1.0e-3, lambda: 2e-3, is: 3e-13, cgs: 4 * pf, cgd: 3 * pf, v: 25, i: 0.01, p: 0.35, pkg: "TO-92", use: "general audio, RF (IDSS 2–20 mA)" },
     "2SK170": { pol: 1, vto: -0.82, beta: 13.4e-3, lambda: 1.5e-3, is: 1e-12, cgs: 24 * pf, cgd: 6 * pf, v: 40, i: 0.01, p: 0.4, pkg: "TO-92", use: "low-noise MC / mic / phono input, BL (IDSS 6–12 mA)" },
     "LSK170B": { pol: 1, vto: -0.82, beta: 13.4e-3, lambda: 1.5e-3, is: 1e-12, cgs: 20 * pf, cgd: 5 * pf, v: 40, i: 0.01, p: 0.4, pkg: "TO-92", use: "low-noise input, 2SK170 replacement (IDSS 6–12 mA)" },
     "2SK30A": { pol: 1, vto: -2.0, beta: 0.5e-3, lambda: 5e-3, is: 1e-13, cgs: 5.6 * pf, cgd: 2.6 * pf, v: 50, i: 0.01, p: 0.1, pkg: "TO-92", use: "general audio, Y (IDSS 1.2–3 mA)" },
-    "J175": { pol: -1, vto: 4.0, beta: 1.5e-3, lambda: 4e-3, is: 2e-13, cgs: 6 * pf, cgd: 5.5 * pf, v: 30, i: 0.05, p: 0.35, pkg: "TO-92", use: "P-channel switch, current source (IDSS 7–60 mA)" },
-    "2N5460": { pol: -1, vto: 1.8, beta: 0.75e-3, lambda: 3e-3, is: 1.5e-13, cgs: 4 * pf, cgd: 1.5 * pf, v: 40, i: 0.01, p: 0.31, pkg: "TO-92", use: "P-channel general purpose (IDSS 1–5 mA)" },
-    "2SJ74": { pol: -1, vto: 0.82, beta: 13.4e-3, lambda: 2e-3, is: 1e-12, cgs: 150 * pf, cgd: 32 * pf, v: 25, i: 0.01, p: 0.4, pkg: "TO-92", use: "low-noise, 2SK170 complement, BL (IDSS 6–12 mA)" }
+    "J175": { pol: -1, vto: 4.0, beta: 1.5e-3, lambda: 4e-3, is: 2e-13, cgs: 15 * pf, cgd: 5.5 * pf, v: 30, i: 0.05, p: 0.35, pkg: "TO-92", use: "P-channel switch, current source (IDSS 7–60 mA)" },
+    "2N5460": { pol: -1, vto: 1.8, beta: 0.75e-3, lambda: 3e-3, is: 1.5e-13, cgs: 4 * pf, cgd: 1 * pf, v: 40, i: 0.01, p: 0.31, pkg: "TO-92", use: "P-channel general purpose (IDSS 1–5 mA)" },
+    "2SJ74": { pol: -1, vto: 0.82, beta: 13.4e-3, lambda: 2e-3, is: 1e-12, cgs: 73 * pf, cgd: 32 * pf, v: 25, i: 0.01, p: 0.4, pkg: "TO-92", use: "low-noise, 2SK170 complement, BL (IDSS 6–12 mA)" }
   };
   // Three-terminal regulators (Semi.reg): adj (LM317 family: vref between OUT and ADJ, iadj out of
   // ADJ, iq the minimum load, which flows to OUT) or fixed (78xx: vref = the output, iq to GND);
