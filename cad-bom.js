@@ -134,6 +134,13 @@
         title: p.title || "", docno: p.docno || "", rev: p.rev || "", date: p.date || new Date().toISOString().slice(0, 10) };
     }
     const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    // the Package cell: what the part number was recognised as (mpn.js), its disagreements in amber
+    function pkgCell(r) {
+      const m = r.mpn;
+      if (!m) return `<td class="bom-pkg"></td>`;
+      if (!m.known) return `<td class="bom-pkg muted">${esc(PartNo.describe(m))}</td>`;
+      return `<td class="bom-pkg${m.warn.length ? " warn" : ""}">${esc(PartNo.describe(m))}${m.warn.map(w => `<br><small>⚠ ${esc(w)}</small>`).join("")}</td>`;
+    }
     function renderBom() {
       const host = document.getElementById("bom");
       if (!host || host.hidden || bomOpts.tab !== "bom") return;
@@ -145,12 +152,13 @@
       const parts = bom.rows.reduce((n, r) => n + r.qty, 0);
       document.getElementById("bom-count").textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (!S.sim.result ? " · simulate for the Sim. max column" : S.sim.busy || S.sim.pending ? " · Sim. max: the last simulation, a new one is running" : "") : "";
       if (!bom.rows.length) { table.innerHTML = `<tbody><tr><td class="bom-empty">No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.</td></tr></tbody>`; return; }
-      const tip = { rating: "Ratings and data; a capacitor's voltage rating is the first standard one at or above 1.25 × its simulated peak voltage", sim: "Simulated worst case: dissipation (resistors, transistors, zeners), capacitor peak voltage, LED current", partno: "Your order or manufacturer number; saved with the circuit" };
+      const tip = { rating: "Ratings and data; a capacitor's voltage rating is the first standard one at or above 1.25 × its simulated peak voltage", sim: "Simulated worst case: dissipation (resistors, transistors, zeners), capacitor peak voltage, LED current", partno: "The manufacturer's part number (or your order number); saved with the circuit. A maker's number the app knows sets the part's board footprint, its silkscreen outline and its 3D body to the real part's size",
+        pkg: "What the part number says the real part is: package, body size, lead spacing (Board Design takes this footprint), and where it disagrees with the schematic" };
       table.innerHTML = `<thead><tr>${BomLib.COLUMNS.map(c => `<th${tip[c.key] ? ` title="${tip[c.key]}"` : ""}>${c.title}</th>`).join("")}</tr></thead><tbody>` +
         bom.rows.map((r, i) => `<tr data-i="${i}"${r.ids.some(id => S.sel.comps.has(id)) ? ' class="sel"' : ""}>
           <td class="n">${r.item}</td><td class="n">${r.qty}</td><td class="mono">${esc(r.refs)}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.value)}</td>
           <td>${esc(r.rating)}</td><td class="mono${r.warn ? " warn" : ""}">${esc(r.sim)}</td>
-          <td>${r.socket ? "" : `<input type="text" value="${esc(r.partno)}" spellcheck="false" aria-label="Part number for ${esc(r.refs)}">`}</td></tr>`).join("") + "</tbody>";
+          <td>${r.socket ? "" : `<input type="text" value="${esc(r.partno)}" spellcheck="false" placeholder="maker's part no." aria-label="Part number for ${esc(r.refs)}">`}</td>${pkgCell(r)}</tr>`).join("") + "</tbody>";
       // a new selection on the sheet scrolls its line into view and flashes it
       const sel = [...S.sel.comps].sort().join(), first = table.querySelector("tbody tr.sel");
       if (sel !== bomSelShown) {

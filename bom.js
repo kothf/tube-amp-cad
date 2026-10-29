@@ -9,7 +9,7 @@
   const COLUMNS = [
     { key: "item", title: "Item" }, { key: "qty", title: "Qty" }, { key: "refs", title: "Designators" },
     { key: "desc", title: "Description" }, { key: "value", title: "Value" }, { key: "rating", title: "Rating / data" },
-    { key: "sim", title: "Sim. max" }, { key: "partno", title: "Part number" }
+    { key: "sim", title: "Sim. max" }, { key: "partno", title: "Part number" }, { key: "pkg", title: "Package" }
   ];
   // parts without a designator (frame, note, ground, sheet connector) never appear;
   // sources and instruments only when asked for
@@ -162,6 +162,9 @@
       }
       const partno = String(c.params.partno || "").trim();
       add([c.type, desc, value, rating, partno].join("\u0001"), ref, members, desc, value, rating, partno);
+      // what the part number says the part is (mpn.js): its package and size, and where it disagrees with the schematic
+      const L = lines.get([c.type, desc, value, rating, partno].join("\u0001"));
+      if (partno && !L.mpn && root.PartNo) L.mpn = root.PartNo.resolve(c.params, c.type);
       if (opts.sockets && c.type === "tube" && rating && !/wire leads/i.test(rating)) {
         if (!sockets.has(rating)) sockets.set(rating, []);
         sockets.get(rating).push(ref);
@@ -173,7 +176,8 @@
       // the worst case of the line; a warning on any of its parts shows
       const st = opts.stress ? L.comps.map(opts.stress).filter(Boolean) : [];
       const top = st.reduce((a, b) => (!a || b.v > a.v ? b : a), null), bad = st.find(x => x.warn);
-      return { qty: L.refs.length, refs: L.socket ? "" : compressRefs(L.refs), refList: L.refs, desc: L.desc, value: L.value, rating: L.rating, partno: L.partno,
+      const pn = L.mpn, pkg = pn && pn.known ? root.PartNo.describe(pn) + (pn.warn.length ? " (" + pn.warn.join("; ") + ")" : "") : "";
+      return { qty: L.refs.length, refs: L.socket ? "" : compressRefs(L.refs), refList: L.refs, desc: L.desc, value: L.value, rating: L.rating, partno: L.partno, pkg, mpn: pn || null,
         sim: top ? top.text + (bad ? " (" + (bad.note || "over rating") + ")" : "") : "", warn: !!bad, ids: L.comps.map(c => c.id), socket: !!L.socket };
     });
     // by designator, sockets after the parts
@@ -249,7 +253,7 @@
         return typeof v === "number" ? `<c r="${ref}" s="4"><v>${v}</v></c>` : strCell(ref, cell(r, c.key), c.key === "sim" && r.warn ? 5 : 4);
       }).join("") + `</row>`);
     });
-    const last = first + bom.rows.length, widths = [6, 6, 22, 34, 18, 30, 16, 22];
+    const last = first + bom.rows.length, widths = [6, 6, 22, 34, 18, 30, 16, 22, 34];
     const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheetViews><sheetView workbookViewId="0"><pane ySplit="${first}" topLeftCell="A${first + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
@@ -292,7 +296,7 @@ ${bom.rows.length ? `<autoFilter ref="A${first}:${colName(COLUMNS.length - 1)}${
   // --- PDF: A4 landscape table in Courier, wrapped cells, header repeated per page ---
   function toPdf(bom) {
     const W = 842, H = 595, M = 36, FS = 8, ADV = 0.6 * FS, LH = FS * 1.35;
-    const chars = [4, 4, 20, 34, 18, 34, 16, 20], GAP = 2;          // column widths in characters
+    const chars = [4, 4, 16, 28, 13, 26, 14, 18, 25], GAP = 2;          // column widths in characters
     const xs = []; chars.reduce((x, n, i) => { xs[i] = x; return x + (n + GAP) * ADV; }, M);
     const wrap = (s, n) => {
       const out = []; let cur = "";

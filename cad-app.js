@@ -227,6 +227,8 @@
   }
   function commit() {
     normalizeWires();
+    // a part number the app knows: the real part (package, size) is saved with the circuit (mpn.js)
+    if (window.PartNo) S.comps.forEach(c => PartNo.keep(c));
     numberSheets();
     S.history = S.history.slice(0, S.hIndex + 1);
     S.history.push(snapshot());
@@ -1830,7 +1832,12 @@
     if (info) { const p = document.createElement("p"); p.className = "insp-help"; p.textContent = info; host.appendChild(p); }
     const panel = def.panel && def.panel(c, readoutApi(c));
     if (panel) host.appendChild(panel);
-    if (!def.noLabel) host.appendChild(row("Part number (BOM)", input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); })));
+    if (!def.noLabel) {
+      host.appendChild(row("Part number (BOM)", input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); updateInspector(); })));
+      // what the number says the real part is: Board Design takes its footprint and size (mpn.js)
+      const pn = window.PartNo && PartNo.resolve(c.params, c.type);
+      if (pn) { const p = document.createElement("p"); p.className = "insp-help" + (pn.warn.length ? " warn" : pn.known ? " ok" : ""); p.textContent = PartNo.describe(pn) + pn.warn.map(w => " · " + w).join(""); host.appendChild(p); }
+    }
     const live = document.createElement("div"); live.id = "insp-live"; live.className = "insp-live";
     host.appendChild(live);
     const act = document.createElement("div"); act.className = "insp-actions";

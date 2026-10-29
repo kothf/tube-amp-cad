@@ -54,27 +54,27 @@
   // A part's body, from its footprint (typical sizes: a model of the part, not its datasheet)
   // ---------------------------------------------------------------------------
   const RADIAL_H = { 5: 11, 6.3: 11, 8: 12, 10: 16, 12.5: 20, 16: 25, 18: 31, 22: 35, 25: 40, 30: 45, 35: 50 };
-  const SNAPIN_H = { 22: 30, 25: 35, 30: 40, 35: 50 };
+  const SNAPIN_H = { 20: 25, 22: 30, 25: 35, 30: 40, 35: 50, 40: 50 };
   // the valve on its socket: diameter and seated height
   const TUBE = { B9A: [22.2, 49], B7G: [19, 44], B9D: [30, 78], OCTAL: [33, 95], UX4: [52, 130], UX6: [30, 92] };
   const tubeOf = g => { const L = root.CadLib, p = g.members && g.members[0] && g.members[0].params; return L && p && p.tube ? L.tubeByName(p.tube) : null; };
   function partBodies(g, t, opts) {
     const fp = g.fp, name = fp.name, P = g.place, out = [], side = P.side === "B" ? "B" : "F";
     const to = ([x, y, z]) => { const [X, Y] = B().place([x, y], P); return [X, -Y, side === "B" ? -z : t + z]; };
-    const pads = fp.pads, lead = (x, y, ztop) => out.push(cylZ(x, y, 0.3, -1.2 - t, ztop, C.lead, to));
-    const D = B().FPDATA;
+    const pads = fp.pads, lr = fp.body && fp.body.lead > 0 ? fp.body.lead / 2 : 0.3, lead = (x, y, ztop) => out.push(cylZ(x, y, lr, -1.2 - t, ztop, C.lead, to));
+    const D = B().FPDATA, bd = fp.body || {};   // the real part's size (its part number, or set by hand)
     let m;
     if ((m = /^(AXIAL|DIODE)-([\d.]+)$/.exec(name))) {
-      const [L, Dm] = D.AXIAL[m[2]], h = +m[2] / 2, zc = Dm / 2 + 0.4;
+      const L = bd.l > 0 ? bd.l : D.AXIAL[m[2]][0], Dm = bd.d > 0 ? bd.d : D.AXIAL[m[2]][1], h = +m[2] / 2, zc = Dm / 2 + 0.4;
       out.push(cylX(0, zc, Dm / 2, -L / 2, L / 2, m[1] === "DIODE" ? C.diode : C.resistor, to));
       if (m[1] === "DIODE") out.push(cylX(0, zc, Dm / 2 + 0.05, -L / 2 + 0.1 * L, -L / 2 + 0.22 * L, C.band, to));
-      [-1, 1].forEach(sg => { out.push(cylX(0, zc, 0.3, sg < 0 ? -h : L / 2, sg < 0 ? -L / 2 : h, C.lead, to)); lead(sg * h, 0, zc); });
+      [-1, 1].forEach(sg => { out.push(cylX(0, zc, lr, sg < 0 ? -h : L / 2, sg < 0 ? -L / 2 : h, C.lead, to)); lead(sg * h, 0, zc); });
     } else if ((m = /^BOX-([\d.]+)$/.exec(name))) {
-      const [L, W] = D.BOX[m[1]], H = W * 1.5 + 3; out.push(box(-L / 2, -W / 2, L / 2, W / 2, 0.3, H, C.film, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
+      const L = bd.l > 0 ? bd.l : D.BOX[m[1]][0], W = bd.w > 0 ? bd.w : D.BOX[m[1]][1], H = bd.h > 0 ? bd.h : W * 1.5 + 3; out.push(box(-L / 2, -W / 2, L / 2, W / 2, 0.3, H, C.film, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
     } else if ((m = /^DISC-([\d.]+)$/.exec(name))) {
       const r = (+m[1] + 3.2) / 2, zc = r + 2; out.push(cylY(0, zc, r, -1, 1, C.disc, to)); pads.forEach(p => lead(p.x, p.y, zc - r * 0.5));
     } else if ((m = /^RADIAL-D([\d.]+)-P([\d.]+)$/.exec(name)) || (m = /^SNAPIN-D(\d+)$/.exec(name))) {
-      const d = +m[1], H = (/^SNAPIN/.test(name) ? SNAPIN_H : RADIAL_H)[d] || d * 1.6, r = d / 2;
+      const d = bd.d > 0 ? bd.d : +m[1], H = bd.h > 0 ? bd.h : (/^SNAPIN/.test(name) ? SNAPIN_H : RADIAL_H)[+m[1]] || d * 1.6, r = d / 2;
       out.push(cylZ(0, 0, r, 0.3, H - 0.4, /^SNAPIN/.test(name) ? C.snapin : C.ecap, to), cylZ(0, 0, r * 0.92, H - 0.4, H, C.ecapTop, to));
       pads.forEach(p => lead(p.x, p.y, 0.5));
     } else if ((m = /^ECAP-AXIAL-([\d.]+)$/.exec(name))) {
@@ -356,5 +356,16 @@
     });
     return solids.filter(Boolean).concat(partBodies(G, t, opts || {}));
   }
-  root.Board3D = { scene, step, partBodies, boardSolid, preview, COLORS: C, TUBE };
+  // the size a footprint's body has when nothing says otherwise (the part number, a size set by hand):
+  // { l, d } axial, { l, w, h } a film box, { d, h } a can; null for the other footprints
+  function standardBody(name) {
+    const D = B().FPDATA, n = String(name || "");
+    let m;
+    if ((m = /^(?:AXIAL|DIODE)-([\d.]+)$/.exec(n)) && D.AXIAL[m[1]]) return { kind: "axial", l: D.AXIAL[m[1]][0], d: D.AXIAL[m[1]][1] };
+    if ((m = /^BOX-([\d.]+)$/.exec(n)) && D.BOX[m[1]]) { const [l, w] = D.BOX[m[1]]; return { kind: "box", l, w, h: w * 1.5 + 3 }; }
+    if ((m = /^RADIAL-D([\d.]+)-P/.exec(n))) return { kind: "can", d: +m[1], h: RADIAL_H[+m[1]] || +m[1] * 1.6 };
+    if ((m = /^SNAPIN-D(\d+)$/.exec(n))) return { kind: "can", d: +m[1], h: SNAPIN_H[+m[1]] || +m[1] * 1.6 };
+    return null;
+  }
+  root.Board3D = { scene, step, partBodies, boardSolid, preview, standardBody, COLORS: C, TUBE };
 })(typeof window !== "undefined" ? window : globalThis);

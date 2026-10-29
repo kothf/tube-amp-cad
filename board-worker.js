@@ -4,7 +4,7 @@
                 (one message, so model.pads and conn.items keep sharing their pads)
    Message out: { seq, result } or { seq, error } */
 const V = self.location.search;   // same ?v= as the page, so caches never mix versions
-importScripts("tube-db.js" + V, "spice-model.js" + V, "sim-engine.js" + V, "cad-components.js" + V, "board-core.js" + V, "board-sat.js" + V, "board-place.js" + V);
+importScripts("tube-db.js" + V, "spice-model.js" + V, "sim-engine.js" + V, "cad-components.js" + V, "mpn-data.js" + V, "mpn.js" + V, "board-core.js" + V, "board-sat.js" + V, "board-place.js" + V);
 
 const FNS = new Set(["exact", "bridge", "escape", "passage", "access"]);
 self.onmessage = e => {

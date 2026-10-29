@@ -96,6 +96,35 @@
       });
       row.appendChild(lab); return row;
     }
+    // The part number's result (the BOM's Part number, mpn.js) and the body's size: what the number
+    // says, or the footprint's standard size, overridden here by hand (bp.body; empty: back to it)
+    function partNoField(h, g, bp) {
+      const pn = g.mpn, std = root.Board3D && root.Board3D.standardBody(bp.fp);
+      if (pn) {
+        const other = g.mpnFp && bp.fp !== g.mpnFp;
+        h.insertAdjacentHTML("beforeend", `<p class="help${pn.warn.length || other ? " warn" : ""}" id="pn-note">Part number <b>${esc(g.members[0].params.partno)}</b>: ${esc(root.PartNo.describe(pn))}${pn.warn.map(w => " · " + esc(w)).join("")}${other ? ` · it names ${esc(g.mpnFp)} <button class="btn" id="pn-use" style="padding:0 6px">Use it</button>` : ""}</p>`);
+        const use = $("pn-use"); if (use) use.onclick = () => { bp.fp = g.mpnFp; commit(`${g.ref}: ${g.mpnFp}, as its part number names`); };
+      }
+      if (!std) return;
+      const KEYS = std.kind === "axial" ? [["l", "Body length"], ["d", "Body Ø"]] : std.kind === "box" ? [["l", "Body length"], ["w", "Body width"], ["h", "Body height"]] : [["d", "Can Ø"], ["h", "Can height"]];
+      const now = { ...std, ...(g.body || {}), ...(bp.body || {}) }, from = k => (bp.body && bp.body[k] > 0 ? "set here" : g.body && g.body[k] > 0 ? "part number" : "standard");
+      const row = document.createElement("div"); row.className = "row body-size";
+      row.innerHTML = `<span title="The real part's size: the silkscreen outline and the 3D model follow it. From the part number when it has one, else the footprint's standard size; type a size to set it by hand, clear it to go back">Body (mm)</span><div style="display:flex;gap:4px;flex-wrap:wrap"></div>`;
+      KEYS.forEach(([k, label]) => {
+        const el = document.createElement("input"); el.value = +(+now[k]).toFixed(2); el.title = `${label}: ${from(k)}`; el.setAttribute("aria-label", label + " (mm)"); el.style.cssText = "width:50px" + (from(k) === "set here" ? ";border-color:var(--accent)" : "");
+        el.addEventListener("keydown", e => { if (e.key === "Enter") el.blur(); });
+        el.addEventListener("change", () => {
+          const v = parseFloat(String(el.value).replace(",", "."));
+          if (String(el.value).trim() === "") { if (bp.body) { delete bp.body[k]; if (!Object.keys(bp.body).length) delete bp.body; } commit(`${g.ref}: ${label.toLowerCase()} from the ${g.body && g.body[k] > 0 ? "part number" : "footprint"} again`); return; }
+          if (!(v > 0 && v < 200)) { el.classList.add("invalid"); return; }
+          bp.body = { ...(bp.body || {}), [k]: v }; commit(`${g.ref}: ${label.toLowerCase()} ${v} mm`);
+        });
+        const lab = document.createElement("label"); lab.style.cssText = "display:flex;align-items:center;gap:3px;color:var(--muted);font-size:11px";
+        lab.append({ l: "L", d: "Ø", w: "W", h: "H" }[k], el); row.lastChild.appendChild(lab);
+      });
+      h.appendChild(row);
+      if (bp.body) { const b = document.createElement("button"); b.className = "btn"; b.style.cssText = "margin:0 0 6px"; b.textContent = g.body ? "Size from the part number" : "Standard size"; b.onclick = () => { delete bp.body; commit(`${g.ref}: body size ${g.body ? "from its part number" : "standard"} again`); }; h.appendChild(b); }
+    }
     const delBtn = () => { const b = document.createElement("button"); b.className = "btn"; b.textContent = "Delete (Del)"; b.onclick = deleteSel; return b; };
     function renderInspector() {
       const h = $("inspector"); h.innerHTML = "";
@@ -108,6 +137,7 @@
         const smd = B.isSmd(bp.fp);
         h.appendChild(smdField([g]));
         const ff = field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.filter(n => B.isSmd(n) === smd).map(n => { const f = B.footprint(n); return [n, f ? `${n} — ${f.title.replace(/^(.{0,48}).*$/, "$1")}` : n]; })); ff.classList.add("wide"); h.appendChild(ff);
+        partNoField(h, g, bp);
         partPreview(h, g);
         h.appendChild(field("X (mm)", +bp.x.toFixed(3), v => { bp.x = v; commit(); }));
         h.appendChild(field("Y (mm)", +showY(bp.y).toFixed(3), v => { bp.y = showY(v); commit(); }));

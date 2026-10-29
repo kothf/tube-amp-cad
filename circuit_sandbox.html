@@ -166,6 +166,8 @@
     #bom-table td.warn, #tol-table td.warn { color: var(--warn); }
     #bom-table input { width: 100%; min-width: 110px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; font: inherit; }
     .bom-empty { color: var(--muted); padding: 14px; font-size: 12px; }
+    #bom-table td.bom-pkg { min-width: 180px; max-width: 340px; }
+    #bom-table td.bom-pkg small { font-size: 11px; }
     .tol-note { padding: 6px 14px 0; color: var(--warn); }
     .tol-sel { background-color: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; max-width: 170px; }
     /* Power sweep: the cards and the chart at the left, the levels' table at the right */
@@ -596,6 +598,8 @@
   <script src="cad-components.js?v=dev"></script>
   <script src="scope-math.js?v=dev"></script>
   <script src="pdf-export.js?v=dev"></script>
+  <script src="mpn-data.js?v=dev"></script>
+  <script src="mpn.js?v=dev"></script>
   <script src="bom.js?v=dev"></script>
   <script src="cad-analysis.js?v=dev"></script>
   <script src="cad-bom.js?v=dev"></script>

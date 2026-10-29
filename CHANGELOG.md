@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.129.0] - 2026-10-29
+
+### Added
+- **Manufacturer part numbers set the real part's size.** Type the maker's number in the BOM's *Part number* cell (or the inspector) and the new *Package* column says what it is, built in with nothing fetched: "Nichicon UKW · radial Ø8 × 11.5 mm, 3.5 mm spacing, 50 V 100 µF". It is amber where the number disagrees with the schematic (another capacitance or voltage, a lower power rating, a short number that fits several cases).
+  - Electrolytics: about 3,000 Nichicon and Panasonic numbers with their case sizes, read from the makers' dimension tables (`scripts/mpn-tables.mjs` builds `mpn-data.js`), plus any size written in the number (Rubycon's …8X11.5).
+  - Leaded resistors: Yageo MFR / CFR-25, Vishay MBA / MBB / MBE, Dale CMF, PR01–PR03 and DIN size codes, with body, lead diameter and the axial spacing that fits. Chips: the size from Murata, Samsung, TDK, Panasonic ERJ, KOA, Yageo, Vishay, Kemet and AVX codes. Film: TDK B3252x, Kemet R82, WIMA MKS2 / FKP2 spacing.
+  - Semiconductors and ICs: the package from the order code (SOT-23, SOD-123, MiniMELF, SMA/SMB/SMC, DPAK, D²PAK, SOT-223, TO-92, TO-220, DIP or SOIC from TI / ST / onsemi suffixes).
+- **Board Design follows the part number.** A part takes the footprint its number names when the number is typed or changed; the silkscreen outline, the holes (a thicker lead gets a bigger one) and the 3D model and STEP body follow the real size. The board inspector shows the number's result (*Use it* when the footprint was changed by hand) and a *Body (mm)* row to set the size by hand. Snap-in footprints for Ø20 and Ø40 mm cans.
+- The part a number names (maker, package, footprint, body size) is saved with the part in the circuit file and read back from there; a new number looks it up again.
+- The BOM exports (TXT, CSV, XLSX, PDF) have the Package column.
+
 ## [3.128.1] - 2026-10-29
 
 ### Changed

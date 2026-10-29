@@ -32,6 +32,16 @@ import { readFile } from "node:fs/promises";
   await inp.fill("Vishay MRS25 100K"); await inp.press("Enter");
   const pn = await cad.evaluate(() => TubeCAD.state.comps.filter(c => c.params.partno === "Vishay MRS25 100K").map(c => c.label).sort().join());
   check(pn === "R1,R2,R3,R4", `a part number typed in the BOM is stored on each part of the line (${pn})`);
+  {
+    // a maker's number the app knows: the Package column says what it is, amber where it disagrees
+    const typeNo = async (hasText, v) => { const i = cad.locator("#bom-table tr", { hasText }).locator("input"); await i.fill(v); await i.press("Enter"); };
+    await typeNo("100µF", "UKW1H101MPD"); await typeNo("R5, R7", "MFR-25FBF52-1K5");
+    const cell = t => cad.locator("#bom-table tr", { hasText: t }).locator("td.bom-pkg");
+    const c2 = await cell("100µF").textContent(), r5 = await cell("R5, R7").textContent(), warn = await cell("R5, R7").evaluate(td => td.classList.contains("warn"));
+    check(/Nichicon UKW · radial Ø8 × 11\.5 mm/.test(c2) && /rated 1\/4 W/.test(r5) && warn, `the Package column reads the part number (C2: "${c2}"; R5: "${r5.slice(0, 50)}…", amber)`);
+    check(/^MRS25|not recognised/.test(await cell("R1-R4").textContent()), "a number it does not know says so in grey");
+    check((await cad.evaluate(() => BomLib.toCsv(TubeCAD.bomData()))).includes("Nichicon UKW"), "the CSV carries the Package column");
+  }
   await cad.locator("#bom-table tr", { hasText: "125ESE" }).locator("td").first().click();
   check(await cad.evaluate(() => [...TubeCAD.state.sel.comps].map(id => TubeCAD.state.comps.find(c => c.id === id).label).join()) === "T1", "clicking a BOM line selects its parts on the sheet");
   {
