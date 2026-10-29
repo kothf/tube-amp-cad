@@ -342,13 +342,14 @@ the circuit that was on the sheet.
 
 ![Spectrum analyzer on a logarithmic frequency axis with the harmonic table](docs/spectrum.png)
 
-- **Curve tracer.** Select a tube in the schematic to see its plate curves
-  with:
+- **Curve tracer.** Select a tube or a transistor in the schematic to see its
+  curves (transistors: IC–VCE, IC–VBE and hFE–IC, or ID–VDS, ID–VGS and gm–ID,
+  from the simulator's own BJT, MOSFET and JFET models, germanium too) with:
   - the operating point;
   - the curve at the circuit's bias;
   - the simulated load line: the last whole cycle of the signal, an ellipse
     when the load is reactive, with arrows for the direction;
-  - Pa max and 70 % Pa;
+  - Pa max and 70 % Pa (a transistor's Ptot and its voltage and current ratings);
   - dissipation, swing, gain and THD at the plate.
 
   It also has the tube library with socket pinouts, the Koren parameters, an

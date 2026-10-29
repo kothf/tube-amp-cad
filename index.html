@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vacuum Tube Curve Tracer</title>
+  <title>Tube and Transistor Curve Tracer</title>
   <link rel="icon" type="image/png" href="favicon.png">
-  <meta name="description" content="Plate curves of 99 vacuum tubes with the simulated operating point and load line of your circuit from the Tube Amp CAD.">
+  <meta name="description" content="Plate curves of vacuum tubes and the characteristic curves of transistors (BJT, MOSFET, JFET, germanium too), with the simulated operating point and load line of your circuit from the Tube Amp CAD.">
   <link rel="stylesheet" href="ui.css?v=dev">
   <style>
     :root {
@@ -43,7 +43,20 @@
     .chips { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
     .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 99px; padding: 2px 9px; font-size: 11px; cursor: pointer; }
     .chip.active { border-color: var(--accent); color: var(--accent); }
+    .chips[hidden] { display: none; }
     #tube-list { max-height: 34vh; overflow-y: auto; }
+    #tube-list .list-sub { font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); margin: 8px 2px 3px; }
+    #tube-list .list-sub:first-child { margin-top: 0; }
+    /* segmented switch: the library (tubes / transistors), the transistor plot */
+    .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; flex-shrink: 0; }
+    .seg button { background: var(--panel2); border: 0; border-left: 1px solid var(--line); padding: 3px 10px; font-size: 12px; cursor: pointer; color: var(--muted); white-space: nowrap; }
+    .seg button:first-child { border-left: 0; }
+    .seg button:hover { color: var(--text); }
+    .seg button.active { background: #0d3442; color: var(--accent); }
+    .seg[hidden] { display: none; }
+    #lib-tabs { display: flex; margin: 12px 0 2px; }
+    #lib-tabs button { flex: 1; }
+    .opts label.off { opacity: .4; }
     .socket-wrap { display: flex; flex-direction: column; align-items: center; }
     #socket-note { font-size: 11px; color: var(--warn); margin-top: 4px; }
     #socket-source { font-size: 11px; color: var(--muted); margin-top: 4px; }
@@ -75,6 +88,11 @@
     .bar div { height: 100%; }
     .row { display: grid; grid-template-columns: 1fr 90px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
     .row input { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; width: 100%; }
+    .row { margin: 3px 0; }
+    .row input:disabled { opacity: .6; }
+    .row small { grid-column: 1 / -1; font-size: 11px; margin-top: -2px; }
+    .hud-actions { display: flex; gap: 6px; margin-top: 6px; }
+    .hud-actions .btn { padding: 2px 10px; font-size: 12px; }
 
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 10; }
     .modal[hidden] { display: none; }
@@ -94,12 +112,13 @@
 </head>
 <body>
   <header>
-    <div class="brand">⚡ <b>Vacuum Tube</b> Curve Tracer</div>
+    <div class="brand">⚡ <b>Tube &amp; Transistor</b> Curve Tracer</div>
     <span id="link-status" class="link idle">Looking for the Circuit CAD…</span>
     <span class="spacer"></span>
-    <a class="btn" href="help.html#tracer" target="tube_help" title="Manual: the curve tracer and the Koren coefficients" aria-label="Help">?</a>
+    <a class="btn" href="help.html#tracer" target="tube_help" title="Manual: the curve tracer, the Koren coefficients and the transistor models" aria-label="Help">?</a>
     <button class="btn primary" id="btn-open-cad" title="Build and simulate circuits">Circuit CAD ↗</button>
     <button class="btn" id="btn-model" title="LTspice model of this tube; fit the model to measured points">Tube model &amp; fitter</button>
+    <button class="btn" id="btn-csv" title="Save the curves on the chart as a CSV table">CSV</button>
     <button class="btn" id="btn-png" title="Save the chart as PNG">PNG</button>
   </header>
 
@@ -107,16 +126,27 @@
     <section class="col left">
       <h2>In the circuit</h2>
       <div id="circuit-tubes"></div>
-      <h2>Tube library</h2>
+      <div class="seg" id="lib-tabs" role="tablist" aria-label="Library">
+        <button data-lib="tubes" class="active" title="Vacuum tubes: plate curves">Tubes</button>
+        <button data-lib="semis" title="BJTs, MOSFETs and JFETs, silicon and germanium: the same models as the simulator">Transistors</button>
+      </div>
+      <h2 id="lib-title">Tube library</h2>
       <input id="tube-search" class="search" type="search" placeholder="Search 6N2P, EL34, 300B…">
-      <div class="chips">
+      <div class="chips" id="chips-tubes">
         <button class="chip active" data-f="all">All</button>
         <button class="chip" data-f="triode">Triodes</button>
         <button class="chip" data-f="pentode">Pentodes</button>
         <button class="chip" data-f="fav">★ Popular</button>
       </div>
+      <div class="chips" id="chips-semis" hidden>
+        <button class="chip active" data-s="all">All</button>
+        <button class="chip" data-s="bjt">BJT</button>
+        <button class="chip" data-s="mos">MOSFET</button>
+        <button class="chip" data-s="jfet">JFET</button>
+        <button class="chip" data-s="ge">Germanium</button>
+      </div>
       <div id="tube-list"></div>
-      <h2>Socket <small id="socket-name" class="muted"></small></h2>
+      <h2><span id="socket-head">Socket</span> <small id="socket-name" class="muted"></small></h2>
       <div class="socket-wrap">
         <canvas id="socket" width="200" height="200"></canvas>
         <div id="socket-note"></div>
@@ -127,15 +157,20 @@
     <section class="center">
       <div class="plot-head">
         <span id="plot-title"></span>
+        <div class="seg" id="semi-modes" hidden role="tablist" aria-label="Plot">
+          <button data-m="output" class="active">IC–VCE</button>
+          <button data-m="transfer">IC–VBE</button>
+          <button data-m="gain">hFE–IC</button>
+        </div>
+        <button class="btn" id="btn-zoom-reset" title="Show the whole plot again" style="visibility: hidden">Reset zoom</button>
         <div class="opts">
           <label><input type="checkbox" id="opt-traj"> Load line</label>
           <label><input type="checkbox" id="opt-bias"> Bias curve</label>
-          <label><input type="checkbox" id="opt-pa"> Pa max</label>
-          <label><input type="checkbox" id="opt-pa70"> 70% Pa</label>
+          <label><input type="checkbox" id="opt-pa"> <span id="opt-pa-t">Pa max</span></label>
+          <label><input type="checkbox" id="opt-pa70"> <span id="opt-pa70-t">70% Pa</span></label>
         </div>
-        <button class="btn" id="btn-zoom-reset" title="Show the whole plot again" style="visibility: hidden">Reset zoom</button>
       </div>
-      <canvas id="plot" aria-label="Plate characteristic curves"></canvas>
+      <canvas id="plot" aria-label="Characteristic curves"></canvas>
       <div class="plot-foot"><div id="legend"></div></div>
       <div class="picks" id="picks"></div>
     </section>
@@ -170,7 +205,9 @@
   <script src="spice-model.js?v=dev"></script>
   <script src="sim-engine.js?v=dev"></script>
   <script src="cad-components.js?v=dev"></script>
+  <script src="board-core.js?v=dev"></script>
   <script src="markers.js?v=dev"></script>
+  <script src="semi-curves.js?v=dev"></script>
   <script src="tracer-app.js?v=dev"></script>
 </body>
 </html>

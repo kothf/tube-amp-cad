@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.133.0] - 2026-10-29
+
+### Added
+- **Curve tracer for transistors.** The curve tracer draws every BJT, MOSFET and JFET of the library, silicon and germanium, from the simulator's own models (the part built as the CAD builds it: Gummel-Poon with the fitted IS, RB and RE, its temperature and a germanium part's leakage; the square-law FET channel), so a circuit's operating point lies on the tracer's curve. A *Tubes | Transistors* switch above the library; the transistors grouped as the palette groups them, with search and BJT / MOSFET / JFET / Germanium filters.
+  - Three plots: **IC–VCE** output curves per base current from IB = 0 (ID–VDS per gate voltage for FETs) with Pd max, 70 % and the VCEO and IC max lines; **IC–VBE** (ID–VGS) transfer curve, a BJT's with a dashed one 25 °C warmer; **hFE–IC** static and small-signal gain on a log axis (gm–ID for FETs).
+  - A transistor in the circuit shows its operating point, the curve at its bias and the simulated load line (also along the transfer curve), on axes scaled round them; the CAD now sends the tracer its transistors and selecting one in the schematic shows it.
+  - Settings: number of curves, IB / VGS step, VCE axis, VCE for the transfer and gain plots, and a library BJT's temperature (automatic when blank).
+  - Click points: IB or VGS, Pd, hFE, gm and ro (FET: gm, rds, µ), the load line through two points, gm between two points of the transfer curve.
+  - The package drawn with its pin order from the board footprints; the SPICE `.model` under *Transistor model*.
+- Curve tracer: **CSV** saves the curves shown (tubes too).
+
+### Changed
+- The simulation's transient now records each transistor's collector or drain current (for the tracer's load line).
+
 ## [3.132.0] - 2026-10-29
 
 ### Added
