@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.146.0] - 2026-10-30
+
+### Fixed
+- **Board: Design from scratch on a fresh board.** Panel parts (pots, jacks, switches, the heater connector) stayed in the row below the board, so the layouts could never reach their pins: a 24-part 6F5P amplifier took 4½ minutes and left 9 connections open. They now go on the board first, where they sit in the schematic (as Place all puts them), and the same board is designed and fully routed in 13 s. Parts still below the board are named as not on the board yet, not as shut in by the board edge.
+- **Board: grid stopper check.** The 10 mm now counts from the socket's edge, not from the pin: a grid pin sits about 9 mm inside an octal socket's body, so no stopper outside it could pass. A grid fed directly by the other section's anode (a Williamson's cathodyne) is no longer taken for a stopper's net with its anode resistor as the stopper.
+
+### Changed
+- **Board: Design from scratch pulls grid stoppers to their sockets**, and a layout with a stopper far from its socket scores worse.
+
 ## [3.145.0] - 2026-10-30
 
 ### Added

@@ -702,6 +702,25 @@ test("clearance by voltage: IPC-2221B, with the signal swing and the full-drive 
   board.rules.ipc = "off"; assert.equal(B.clearanceRules(board, m, new Set(), nl).need(1, 0).c, 0.6, "off: the classes only (B+ not HV without the HV set)");
 });
 
+test("grid stopper check: a direct-coupled grid is no stopper's net, and a pin deep in an octal socket gets its inset", () => {
+  // VL1.1's anode feeds VL1.2's grid directly with R1 as its load: R1 is not VL1.2's stopper however far it sits
+  const nl = { names: { 0: "GND", 1: "B+" }, volts: {}, parts: [
+    part("v1a", "tube", "VL1.1", { tube: "6SN7GT" }, { A: 2, G: 4, K: 3 }), part("v1b", "tube", "VL1.2", { tube: "6SN7GT" }, { A: 5, G: 2, K: 7 }),
+    part("rl", "resistor", "R1", { r: 47e3 }, { 1: 1, 2: 2 }), part("rs", "resistor", "R2", { r: 1e3 }, { 1: 8, 2: 4 })] };
+  const board = B.newBoard(); B.sync(board, nl);
+  Object.assign(board.parts["v1a+v1b"], { x: 80, y: 50, rot: 0 }); Object.assign(board.parts.rl, { x: 20, y: 20, rot: 0 });
+  let m = B.model(board, nl);
+  const g = m.pads.find(p => p.ref === "VL1" && p.pins.some(c => c.comp === "v1a" && c.pin === "G")), box = B.partBox(m.parts.find(q => q.ref === "VL1")), inset = Math.min(g.x - box.x1, box.x2 - g.x, g.y - box.y1, box.y2 - g.y);
+  assert.ok(inset > 5, `the grid pin sits ${inset.toFixed(1)} mm inside the octal socket's body`);
+  // R2, VL1.1's stopper, 14 mm from its pin (beyond 10 mm, within 10 mm of the socket's edge): fine
+  Object.assign(board.parts.rs, { x: 20, y: 90, rot: 0 }); m = B.model(board, nl);
+  const pr = m.pads.find(p => p.ref === "R2" && p.num === "2"), dx = g.x < (box.x1 + box.x2) / 2 ? -1 : 1;
+  board.parts.rs.x += g.x + dx * Math.min(inset + 4, 14) - pr.x; board.parts.rs.y += g.y - pr.y;
+  m = B.model(board, nl);
+  const d = B.drc(board, m, B.connectivity(board, m.pads), new Set(), [], nl).filter(x => x.kind === "stopper").map(x => x.msg);
+  assert.deepEqual(d, []);
+});
+
 test("valve layout checks: grid stopper, grid beside anode, hot parts near electrolytics, socket support", () => {
   const nl = { names: { 0: "GND", 1: "B+" }, volts: { 1: 300, 2: 150, 3: 1.5, 5: 0, 6: 280, 7: 0, 8: 250 }, parts: [
     part("v1a", "tube", "VL1.1", { tube: "12AX7" }, { A: 2, G: 4, K: 3 }), part("v1b", "tube", "VL1.2", { tube: "12AX7" }, { A: 5, G: 6, K: 7 }),
