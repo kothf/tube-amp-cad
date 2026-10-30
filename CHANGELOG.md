@@ -11,6 +11,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Added
 - **Russian interface.** The **RU** button at the right of the CAD toolbar (and *View ▾ → Interface → Русский*) puts the CAD in Russian: the toolbar, the menus, the parts palette, the inspector, the panels under the schematic (BOM, Checks, Tolerance, Power, Noise, Sweep, Listen, Tune), the dialogs, the start screen with every example's description, reusable blocks, and the tooltips. **EN** switches back. Every open CAD window follows, and the browser remembers the choice. Part numbers, values and units are not translated, and neither is the drawing. A text not translated yet stays in English. The Board window, the instruments and the manual come next.
 
+## [3.154.1] - 2026-10-30
+
+### Fixed
+- **Noise tab: the mains hum says where it comes from.** The Hum table's ripple lines now sit under "From G1 (230 V 50 Hz mains), through the supply", and the *Noise from* list ends with a "G1 (…mains): hum, see below" line with its A-weighted total. The mains was already counted (as ripple) but was not named, so it looked missing from the list of sources.
+
 ## [3.154.0] - 2026-10-30
 
 ### Added

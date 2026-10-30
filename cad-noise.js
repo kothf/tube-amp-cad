@@ -71,6 +71,12 @@
       jobs.forEach(j => j.cancel()); jobs = [];
       if (S.noise.job) { S.noise.job = null; S.noise.seq++; setStatus("idle", "Noise run stopped"); render(); cmds.sync(); }
     }
+    // the mains source as the sheet names it, e.g. "G1 (230 V 50 Hz mains)"
+    function mainsName(el) {
+      const c = S.comps.find(c => c.id === el.id);
+      const v = c && +c.params.vrms ? fmtEng(+c.params.vrms, "V") + " " : "";
+      return (c ? desig(c) + " " : "") + `(${v}${fmtEng(el.freq, "Hz")} mains)`;
+    }
     function run() {
       stop();
       const N = S.noise, T = topo(), o = pick();
@@ -86,7 +92,7 @@
       // the output now, with the generators as set: the reference for the signal-to-noise ratio
       const sigNow = S.sim.result && S.sim.result.tran ? acRms(outWave(o)) : 0;
       const seq = ++N.seq, job = N.job = { seq, left: 0 };
-      const res = N.res = { label: o.label, speaker: o.speaker ? +o.speaker.params.r || 8 : 0, fm, mains: !!mainsEl, heaters: opts.heaters, flicker: +opts.flicker || 0, sigNow, gen: gen ? desig(gen) : null };
+      const res = N.res = { label: o.label, speaker: o.speaker ? +o.speaker.params.r || 8 : 0, fm, mains: !!mainsEl, heaters: opts.heaters, flicker: +opts.flicker || 0, sigNow, gen: gen ? desig(gen) : null, mainsName: mainsEl ? mainsName(mainsEl) : "" };
       N.stale = false;
       const fail = msg => { if (N.seq !== seq) return; jobs.forEach(j => j.cancel()); jobs = []; N.job = null; N.error = msg; N.res = null; setStatus("warn", "Noise: " + msg); render(); cmds.sync(); };
       const part = () => { if (N.seq !== seq) return; if (--job.left > 0) { render(); return; } jobs = []; N.job = null; finish(res); render(); cmds.sync(); };
@@ -239,12 +245,17 @@
         + (res.ein1k !== null ? card("at 1 kHz", nv(res.ein1k) + "/√Hz", "Input noise density at 1 kHz") : "")
         + card("hum (A)", nv(Math.hypot(res.ripple ? res.ripple.a : 0, res.heater ? res.heater.a : 0)), "Ripple and heater hum at the output, A-weighted");
       const ratio = v => (ref && v > 0 ? `<td class="n mono">${db(v, ref)}</td>` : `<td class="n mono">—</td>`);
-      const hum = (res.ripple ? res.ripple.h.filter(x => x.rms > 1e-9).map(x => `<tr><td>Ripple ${esc(fmtEng(x.f, "Hz"))}</td><td class="n mono">${nv(x.rms)}</td>${ratio(x.rms)}</tr>`).join("")
+      // the mains is hum, not noise: its ripple is listed by harmonic under Hum, named after the mains source
+      const mn = esc(res.mainsName || "the mains");
+      const hum = (res.ripple ? `<tr class="nz-from"><td colspan="3" title="The supply's ripple that reaches the output, read at every harmonic of the mains">From ${mn}, through the supply:</td></tr>`
+        + res.ripple.h.filter(x => x.rms > 1e-9).map(x => `<tr><td>Ripple ${esc(fmtEng(x.f, "Hz"))}</td><td class="n mono">${nv(x.rms)}</td>${ratio(x.rms)}</tr>`).join("")
         + `<tr class="sum"><td>Ripple, all (A)</td><td class="n mono">${nv(res.ripple.a)}</td>${ratio(res.ripple.a)}</tr>`
         : `<tr><td colspan="3" class="muted">No mains in the circuit: its supplies are ideal DC, so no ripple</td></tr>`)
         + (res.heater && (res.heater.tubes || res.heater.dht) ? `<tr><td title="${esc(`${res.heater.tubes} indirectly heated, ${res.heater.dht || 0} directly heated; typical coupling: 5 pF and 100 MΩ heater to cathode`)}">AC heaters ${esc(fmtEng(res.fm, "Hz"))}</td><td class="n mono">${nv(res.heater.rms)}</td>${ratio(res.heater.rms)}</tr><tr class="sum"><td>AC heaters (A)</td><td class="n mono">${nv(res.heater.a)}</td>${ratio(res.heater.a)}</tr>`
           : `<tr><td colspan="3" class="muted">${res.heaters === "dc" ? "DC heaters: no heater hum" : "No tubes: no heater hum"}</td></tr>`);
-      const parts = res.parts.filter(p => p.share >= 0.001).slice(0, 14).map(p => `<tr><td>${esc(p.label)}</td><td class="n mono">${nv(p.v)}</td><td class="n mono">${(100 * p.share).toFixed(p.share < 0.1 ? 1 : 0)} %</td></tr>`).join("");
+      const parts = res.parts.filter(p => p.share >= 0.001).slice(0, 14).map(p => `<tr><td>${esc(p.label)}</td><td class="n mono">${nv(p.v)}</td><td class="n mono">${(100 * p.share).toFixed(p.share < 0.1 ? 1 : 0)} %</td></tr>`).join("")
+        // the mains makes hum, not random noise: a pointer to it, with its total, so it is not missed
+        + (res.ripple ? `<tr class="nz-mains" title="The mains adds hum at 50/100 Hz… rather than random noise: its ripple, harmonic by harmonic, is in the Hum table below"><td>${esc(res.mainsName)}: hum, see below</td><td class="n mono">${nv(res.ripple.a)}</td><td class="n mono">—</td></tr>` : "");
       const note = N.stale ? `<div class="bom-empty tol-note">The circuit changed since this run: press ▶ Run again.</div>` : "";
       host.innerHTML = note + `<div class="pw-wrap"><div class="pw-left"><div class="pw-cards">${cards}</div>${chart(res)}`
         + `<div class="pw-key"><span class="k"></span>at ${esc(res.label)} <span class="k h2"></span>at the input (÷ the gain)${res.flicker ? ` · tubes' 1/f corner ${esc(fmtEng(res.flicker, "Hz"))}` : ""}</div></div>`
