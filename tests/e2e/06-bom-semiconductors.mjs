@@ -69,7 +69,12 @@ import { readFile } from "node:fs/promises";
     // a part clicked on the sheet brings its line into view in a short, scrolled-away list
     // about 85 px of list under the dock's head, however many lines its tabs and tools wrap to
     await cad.evaluate(() => { const bom = document.getElementById("bom"); bom.style.setProperty("--bom-h", (bom.querySelector(".bom-head").offsetHeight + 84) + "px"); TubeCAD.fitView(); });
-    await cad.waitForTimeout(100);
+    // the dock's new height resizes the canvas a frame or two later and the view follows it:
+    // wait until the canvas and the view hold still, or the click lands beside T1
+    await cad.waitForFunction(() => new Promise(res => {
+      const snap = () => { const v = TubeCAD.state.view, r = document.getElementById("cad").getBoundingClientRect(); return [v.scale, v.ox, v.oy, r.x, r.y, r.width, r.height].join(); };
+      const a = snap(); requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => res(snap() === a), 50)));
+    }), null, { timeout: 5000, polling: 100 }).catch(() => {});
     await cad.evaluate(() => { document.querySelector("#bom .bom-scroll").scrollTop = 0; });
     const t1 = await cad.evaluate(() => { const c = TubeCAD.state.comps.find(c => c.label === "T1"); return { x: c.x, y: c.y + 10 }; });
     const [px, py] = await toScreen(t1.x, t1.y);
@@ -80,7 +85,7 @@ import { readFile } from "node:fs/promises";
     const vis = await cad.evaluate(() => {
       const box = document.querySelector("#bom .bom-scroll"), tr = document.querySelector("#bom-table tbody tr.sel"), b = box.getBoundingClientRect(), r = tr && tr.getBoundingClientRect();
       return { text: tr ? tr.textContent : "", scrolled: box.scrollTop > 0, inView: !!r && r.top >= b.top + document.querySelector("#bom-table thead").offsetHeight - 1 && r.bottom <= b.bottom + 1,
-        why: `list ${Math.round(b.height)} px high under a ${document.querySelector("#bom .bom-head").offsetHeight} px header, scrolled ${Math.round(box.scrollTop)}, line ${r ? Math.round(r.top - b.top) + "…" + Math.round(r.bottom - b.top) : "none"}` };
+        why: `list ${Math.round(b.height)} px high under a ${document.querySelector("#bom .bom-head").offsetHeight} px header, scrolled ${Math.round(box.scrollTop)}, line ${r ? Math.round(r.top - b.top) + "…" + Math.round(r.bottom - b.top) : "none"}, selected ${[...TubeCAD.state.sel.comps].map(id => TubeCAD.state.comps.find(c => c.id === id).label).join() || "nothing"}` };
     });
     check(/125ESE/.test(vis.text) && vis.scrolled && vis.inView, `selecting T1 on the sheet scrolls the BOM to its highlighted line (${vis.why})`);
     await cad.evaluate(() => document.getElementById("bom").style.removeProperty("--bom-h"));
