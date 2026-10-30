@@ -4,19 +4,21 @@
      POST /api/share        body: the packed text   → 201 { "id": "Ab3xK9_qZw" }
      GET  /api/share/<id>                          → the packed text
    The id is the start of the text's SHA-256, so the same design always gets the same id and a
-   stored design never changes. Only what unpacks to a Tube Amp CAD design is kept. No packages:
+   stored design never changes. Only what unpacks to a Tube Amp CAD design is kept. When the store
+   would grow past MAX_TOTAL, the designs shared longest ago are deleted to make room (sharing a
+   design again counts as new). No packages:
    Node's own http, zlib and crypto. Settings by environment variable, see below. */
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
-import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, unlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const PORT = +(process.env.PORT || 8080);
 const DATA = process.env.DATA || "/data";
 const MAX_TEXT = +(process.env.MAX_TEXT || 96 * 1024);          // one packed design, characters
 const MAX_JSON = +(process.env.MAX_JSON || 4 * 1024 * 1024);     // what it may unpack to, bytes
-const MAX_TOTAL = +(process.env.MAX_TOTAL || 512 * 1024 * 1024); // the whole store, bytes
+const MAX_TOTAL = +(process.env.MAX_TOTAL || 100 * 1024 * 1024); // the whole store, bytes: past it the oldest go
 // the sites whose pages may store designs (a browser sends Origin with every POST)
 const ORIGINS = (process.env.ORIGINS || "https://aerocat.tech").split(",").map(s => s.trim()).filter(Boolean);
 const ID_LEN = 10;
@@ -35,15 +37,35 @@ export function check(text) {
   return ok ? null : "not a Tube Amp CAD design";
 }
 
-async function du(dir) {
-  let n = 0;
-  for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) n += e.isDirectory() ? await du(join(dir, e.name)) : (await stat(join(dir, e.name))).size;
-  return n;
+// every stored design, oldest first: id → size (a Map keeps the order designs were put in)
+async function scan() {
+  const found = [];
+  for (const d of await readdir(DATA, { withFileTypes: true }).catch(() => [])) {
+    if (!d.isDirectory()) continue;
+    for (const f of await readdir(join(DATA, d.name)).catch(() => [])) {
+      if (!ID.test(f)) continue;                 // a .tmp left by a crash mid-write
+      const st = await stat(join(DATA, d.name, f)).catch(() => null);
+      if (st) found.push([f, st.size, st.mtimeMs]);
+    }
+  }
+  found.sort((a, b) => a[2] - b[2]);
+  return new Map(found.map(([id, size]) => [id, size]));
 }
 
 export async function start({ port = PORT, log = console.log } = {}) {
   await mkdir(DATA, { recursive: true });
-  let total = await du(DATA);
+  const index = await scan();
+  let total = 0;
+  for (const n of index.values()) total += n;
+  // make room for `need` more bytes by deleting the oldest designs
+  async function evict(need) {
+    for (const [id, size] of index) {
+      if (total + need <= MAX_TOTAL) break;
+      await unlink(pathOf(id)).catch(() => {});
+      index.delete(id); total -= size;
+      log(`deleted ${id}, the oldest, to make room`);
+    }
+  }
   const send = (res, code, body, headers = {}) => {
     res.writeHead(code, Object.assign({ "content-type": "application/json", "x-content-type-options": "nosniff" }, headers));
     res.end(typeof body === "string" ? body : JSON.stringify(body));
@@ -63,18 +85,24 @@ export async function start({ port = PORT, log = console.log } = {}) {
         const bad = check(text);
         if (bad) return send(res, 400, { error: bad });
         const id = idOf(text), file = pathOf(id);
-        const had = await stat(file).then(() => true, () => false);
-        if (!had) {
-          if (total + text.length > MAX_TOTAL) return send(res, 507, { error: "the store is full" });
+        const had = index.has(id);
+        if (had) {
+          // shared again: it becomes the newest, so it is kept longest
+          const now = new Date();
+          await utimes(file, now, now).catch(() => {});
+          index.delete(id); index.set(id, text.length);
+        } else {
+          if (text.length > MAX_TOTAL) return send(res, 507, { error: "the store is too small" });
+          await evict(text.length);
           await mkdir(join(DATA, id.slice(0, 2)), { recursive: true });
           const tmp = file + ".tmp" + process.pid + Math.random().toString(36).slice(2);
           await writeFile(tmp, text); await rename(tmp, file);
-          total += text.length;
+          index.set(id, text.length); total += text.length;
           log(`stored ${id} (${text.length} chars)`);
         }
         return send(res, had ? 200 : 201, { id });
       }
-      if (url.pathname === "/api/share/health") return send(res, 200, { ok: true, bytes: total });
+      if (url.pathname === "/api/share/health") return send(res, 200, { ok: true, bytes: total, designs: index.size, max: MAX_TOTAL });
       const m = url.pathname.match(/^\/api\/share\/([^/]+)$/);
       if (m && (req.method === "GET" || req.method === "HEAD")) {
         if (!ID.test(m[1])) return send(res, 404, { error: "no such design" });

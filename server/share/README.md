@@ -6,8 +6,9 @@ aerocat.tech the app also sends that text here and gets a 10-character id back, 
 long self-contained link instead.
 
 - `server.mjs`: the store (Node only, no packages). Keeps each design once, named by its SHA-256,
-  and only text that unpacks to a Tube Amp CAD design. Limits: 96k characters a design, 512 MB in
-  all (`MAX_TEXT`, `MAX_TOTAL`); POSTs only from `ORIGINS`.
+  and only text that unpacks to a Tube Amp CAD design. Limits: 96k characters a design, 100 MB in
+  all (`MAX_TEXT`, `MAX_TOTAL`); past that the designs shared longest ago are deleted to make room
+  (sharing one again makes it the newest); POSTs only from `ORIGINS`.
 - `docker-compose.yml`: runs it on the internal network `share`, no published port.
 - `nginx.conf`: the `/s/<id>` redirect, the `/api/share` proxy and a rate limit, to add to the
   site's nginx.
