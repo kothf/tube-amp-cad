@@ -24,7 +24,8 @@ import { cad, check, open } from "./harness.mjs";
   let asked = "";
   p.once("dialog", d => { asked = d.message(); d.accept().catch(() => {}); });
   await p.evaluate(u => { location.hash = u.slice(u.indexOf("#")); }, sh.url);
-  await p.waitForFunction(() => /Opened the design from the link/.test(document.body.textContent), null, { timeout: 15000 });
+  // the status line is soon overwritten by the simulation, so wait for the circuit itself
+  await p.waitForFunction(n => !location.hash && TubeCAD.state.comps.length === n, want.comps.length, { timeout: 30000 });
   const got = await p.evaluate(() => { const d = JSON.parse(TubeCAD.circuitJSON()); return { comps: d.comps, wires: d.wires, board: JSON.stringify(d.board), hash: location.hash }; });
   check(/design from this link/.test(asked), "opening a link over a circuit asks first");
   check(JSON.stringify(got.comps) === JSON.stringify(want.comps) && JSON.stringify(got.wires) === JSON.stringify(want.wires), `the link opens the same circuit (${got.comps.length} parts, ${got.wires.length} wires)`);
