@@ -312,6 +312,21 @@
       iters (at most, default 300), halo (mm round each part, default 0.6). The new places go in
       board.parts. Returns { moved, wire0, wire1, over, iters, failed } (failed: the ref of a part
       no legal place was found for; then nothing moved) */
+  // the nets between a valve's grid pin and its grid stopper: the grid pin(s) and one resistor, nothing else
+  function stopperNets(model, netlist) {
+    const out = new Set(), byId = {};
+    if (!netlist) return out;
+    (netlist.parts || []).forEach(p => { byId[p.id] = p; });
+    const grid = pad => pad.pins && pad.pins.some(c => byId[c.comp] && byId[c.comp].type === "tube" && (c.pin === "G" || c.pin === "G1"));
+    const partOf = {}; model.parts.forEach(g => { partOf[g.key] = g; });
+    const byNet = new Map(); model.pads.forEach(p => { if (p.net === null) return; if (!byNet.has(p.net)) byNet.set(p.net, []); byNet.get(p.net).push(p); });
+    byNet.forEach((ps, net) => {
+      if (!ps.some(grid)) return;
+      const res = [...new Set(ps.filter(p => !grid(p)).map(p => p.part))];
+      if (res.length === 1 && partOf[res[0]] && partOf[res[0]].type === "resistor") out.add(net);
+    });
+    return out;
+  }
   function spread(board, model, keys, opts) {
     const C = B(), o = opts || {}, outl = board.outline, R = board.rules;
     const { parts, byKey, pl, onB, padsOf, where, boxOf, legal } = placeState(board, model, o);
@@ -351,9 +366,11 @@
         if (i >= 0) npin[i]++;
       });
     });
+    // (a grid stopper's net pulls hard: the stopper belongs right at its socket)
+    const stops = stopperNets(model, o.netlist);
     const nets = [...byNet].filter(([, ps]) => ps.length > 1 && ps.some(p => p.i >= 0)).map(([net, ps]) => {
       const nm = names[net] || String(net), quiet = poured.has(nm) || (R.ground === "star" && nm === "GND");
-      return { ps, w: quiet ? 0.2 : (o.hv && o.hv.has(net)) || C.isHeaterNet(nm) ? 2 : 1 };
+      return { ps, w: stops.has(net) ? 8 : quiet ? 0.2 : (o.hv && o.hv.has(net)) || C.isHeaterNet(nm) ? 2 : 1 };
     });
     // weighted-average wire length of one axis and its gradient into g
     function wa(vals, gam, gOut, wt) {
@@ -1247,8 +1264,11 @@
     const hvN = n => !!(o.hv && o.hv.has(n));
     rats.forEach((a, i) => { for (let j = i + 1; j < rats.length; j++) if (rats[j].net !== a.net && cuts(a, rats[j])) cross += hvN(a.net) || hvN(rats[j].net) ? 3 : 1; });
     const wire = rats.reduce((t, r) => t + Math.hypot(r.x2 - r.x1, r.y2 - r.y1), 0);
+    // grid stoppers further from their socket than the rules allow
+    const stops = stopperNets(m, nl), far = (board.rules.stopperMax || 10);
+    const loose = A.conn.rats.filter(r => stops.has(r.net) && Math.hypot(r.x2 - r.x1, r.y2 - r.y1) > far).length;
     const places = {}; keys.forEach(k => { const p = board.parts[k]; places[k] = { x: p.x, y: p.y, rot: p.rot || 0 }; });
-    return { places, shut, cross, wire: +wire.toFixed(1), score: +(40 * shut + 4 * cross + wire).toFixed(1), turned: sp.turned || 0 };
+    return { places, shut, cross, wire: +wire.toFixed(1), loose, score: +(40 * shut + 4 * cross + 20 * loose + wire).toFixed(1), turned: sp.turned || 0 };
   }
 
   // ---------------------------------------------------------------------------
@@ -1345,7 +1365,9 @@
     const area = boxes.reduce((t, b) => t + (Math.min(b.x2, W) - Math.max(b.x1, 0)) * (Math.min(b.y2, H) - Math.max(b.y1, 0)), 0), full = area / Math.max(1, board.outline.w * board.outline.h);
     if (full > 0.3) out.push(`the parts cover ${Math.round(full * 100)} % of the board: a bigger board gives the tracks room (Board setup…), then Design from scratch`);
     // parts shut in against the edge
-    const edge = escape(board, model, conn, rats, o).filter(e => !e.ok && e.walls.some(w => w.kind === "edge")).map(e => e.ref);
+    // (a part still waiting in the row below the board is to be placed, not moved in)
+    const waiting = new Set(model.parts.filter(g => g.place && g.fp && C.partBox(g).y2 <= 0).map(g => g.ref));
+    const edge = escape(board, model, conn, rats, o).filter(e => !e.ok && !waiting.has(e.ref) && e.walls.some(w => w.kind === "edge")).map(e => e.ref);
     if (edge.length) out.push(`${edge.join(", ")} ${edge.length === 1 ? "sits" : "sit"} against the board edge: move ${edge.length === 1 ? "it" : "them"} in, or make the board bigger`);
     return out;
   }

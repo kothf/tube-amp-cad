@@ -316,10 +316,12 @@
     // crowding, parts against the edge), kept in S.tips for the status line's tooltip
     function shutIn() {
       const all = finishable(); if (!all.length) { S.tips = []; if (renderPanels) renderPanels(); return ""; }
-      const rats = routable(), s = rats.length ? BoardPlace.describeEscape(BoardPlace.escape(S.board, S.model, S.conn, rats, checkOpts())) : "";
+      // a part still below the board is not shut in: it is to be placed
+      const off = [...new Set(S.drc.filter(d => d.kind === "unplaced").map(d => d.msg.split(" ")[0]))];
+      const rats = routable(), esc = rats.length ? BoardPlace.escape(S.board, S.model, S.conn, rats, checkOpts()).filter(e => !off.includes(e.ref)) : [], s = BoardPlace.describeEscape(esc);
       S.tips = BoardPlace.advise(S.board, S.model, S.conn, all, { ...checkOpts(), netlist: S.netlist });
       if (renderPanels) renderPanels();
-      return (s ? `; shut in: ${s}` : "") + (S.tips.length ? `; to help: ${S.tips.join("; ")}` : "");
+      return (off.length ? `; ${off.join(", ")} ${off.length === 1 ? "is" : "are"} not on the board yet` : "") + (s ? `; shut in: ${s}` : "") + (S.tips.length ? `; to help: ${S.tips.join("; ")}` : "");
     }
     async function ready() {
       if (router.busy) return false;
@@ -474,8 +476,19 @@
     async function rearrange() {
       if (router.busy && router.nudge) { router.stop = true; return; }
       if (!await ready()) return;
+      // panel parts still waiting below the board (a fresh board) go on it first, where they sit in
+      // the schematic (as Place all puts them): the layouts keep them where they are, and below the
+      // board their pins could never be reached
+      const unplaced = new Set(S.drc.filter(d => d.kind === "unplaced").map(d => d.msg.split(" ")[0]));
+      const waiting = S.model.parts.filter(g => g.fp && PANEL.has(g.type) && unplaced.has(g.ref) && !(S.board.parts[g.key] || {}).locked).map(g => g.key);
+      const before = waiting.length ? JSON.stringify(S.board) : null;
+      if (waiting.length) {
+        B.arrange(S.board, S.model, waiting, S.netlist);
+        try { BoardPlace.spread(S.board, B.model(S.board, S.netlist), waiting, { clr: S.clr, hv: S.hv, netlist: S.netlist, conn: S.conn, wire: 0.3, anchor: 0.5 }); } catch (e) { console.warn("spread", e); }
+        analyse();
+      }
       const keys = S.model.parts.filter(g => g.fp && !PANEL.has(g.type) && !(S.board.parts[g.key] || {}).locked).map(g => g.key);
-      if (!keys.length) { msg("Every part is locked or a panel part: nothing to rearrange"); return; }
+      if (!keys.length) { if (before) commit(); msg("Every part is locked or a panel part: nothing to rearrange"); return; }
       const start = JSON.stringify(S.board), parts0 = JSON.parse(start).parts;
       const cands = HOWS.flatMap(how => (how.turn === false ? [1] : SEEDS).map(seed => ({ how, seed }))), STEPS = 1 + cands.length + TOP + MORE + 1;
       router.busy = true; router.nudge = true; router.stop = false; routerUi();
@@ -495,7 +508,7 @@
           const r = await offPage("design", [], { keys, how: c.how, seed: c.seed }).catch(e => ({ failed: e.message }));
           if (r && r.places) made.push({ ...c, ...r });
         }
-        if (!made.length) { msg(`Design from scratch: no layout fitted the board (${keys.length} parts); the parts stay where they were`); return { left: bestScore.un, won: "", tried: 0, moved: 0 }; }
+        if (!made.length) { if (before) commit(); msg(`Design from scratch: no layout fitted the board (${keys.length} parts); the parts stay where they were`); return { left: bestScore.un, won: "", tried: 0, moved: 0 }; }
         made.sort((a, b) => a.score - b.score);
         // the best few, routed
         // (the best of each way first, so the routed ones differ; then the next best)
@@ -530,11 +543,11 @@
         S.board = JSON.parse(best); S.sel = null;
         analyse(); await tidy(); best = JSON.stringify(S.board);
         const moved = Object.keys(parts0).filter(k => S.board.parts[k] && (Math.abs(parts0[k].x - S.board.parts[k].x) > 1e-6 || Math.abs(parts0[k].y - S.board.parts[k].y) > 1e-6 || ((parts0[k].rot || 0) & 3) !== ((S.board.parts[k].rot || 0) & 3))).length;
-        const changed = best !== start;
+        const changed = best !== (before || start);
         if (changed) commit(); else analyse();
         const left = bestScore.un, stuck = left ? shutIn() : "";
         msg((won ? `Designed the board: ${moved} part${moved === 1 ? "" : "s"} placed (best of ${made.length} layouts, ${routed} routed: ${won}); ` : `Made ${made.length} layout${made.length === 1 ? "" : "s"}, routed ${routed}: none routed better, the parts stay where they were; `) +
-          (left ? `${left} connection${left === 1 ? "" : "s"} open${stuck}` : "everything routed") + (router.stop ? " (stopped)" : "") + (broke ? ` (Freerouting failed: ${broke})` : "") + (changed ? "; Ctrl+Z takes it all back" : ""));
+          (left ? `${left} connection${left === 1 ? "" : "s"} open${stuck}` : "everything routed") + (router.stop ? " (stopped)" : "") + (broke ? ` (Freerouting failed: ${broke})` : "") + (waiting.length ? `; ${S.model.parts.filter(g => waiting.includes(g.key)).map(g => g.ref).join(", ")} put on the board first, where ${waiting.length === 1 ? "it sits" : "they sit"} in the schematic` : "") + (changed ? "; Ctrl+Z takes it all back" : ""));
         return { left, won, tried: routed, made: made.length, moved };
       } catch (e) { S.board = JSON.parse(start); analyse(); msg(`Design from scratch failed: ${e.message}; the board is as it was`); router.up = false; pollRouter(); }
       finally { router.busy = false; router.nudge = false; routerUi(); }
