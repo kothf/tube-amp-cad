@@ -6,10 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.133.2] - 2026-10-30
+## [3.134.1] - 2026-10-30
 
 ### Fixed
 - The Board window could crash ("Aw, Snap", out of memory) during Auto-route, Finish routing or Design from scratch. The grid finisher that routes the last open connections exactly in a window round each (a SAT formula) had no limit on its formula's size: a wide window with many connections and high-voltage clearances built more than ten million clauses and took gigabytes. The formula now stops at a million clauses and that window is left to the other finishers. On 2 800 routed test layouts no formula over a million clauses was ever solved in its 3 s, so nothing that used to route is lost; the nine boards that crashed now route to the end.
+
+## [3.134.0] - 2026-10-29
+
+### Removed
+- Board: **Route ▾ → Tidy tracks** is gone from the menu. Tidying is part of routing: Auto-route, Finish routing and Design from scratch pull the tracks straight after every pass by themselves.
 
 ## [3.133.1] - 2026-10-29
 
