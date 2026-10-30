@@ -38,6 +38,8 @@ import { U, browser, check, errors } from "./harness.mjs";
     `View ▾ → English switches back, the toolbar exactly as it was ("${back.header.replace(/\s+/g, " ").slice(0, 40)}…")`);
   // the toolbar still fits one row in Russian at 1500 px
   await p.click("#btn-lang"); await p.waitForTimeout(100);
-  check(await p.evaluate(() => document.querySelector("header").offsetHeight) < 50, "in Russian the toolbar fits one row at 1500 px");
+  const rows = [];
+  for (const w of [1920, 1500, 1280]) { await p.setViewportSize({ width: w, height: 900 }); await p.waitForTimeout(100); rows.push(await p.evaluate(() => document.querySelector("header").offsetHeight)); }
+  check(rows.every(h => h < 50), `in Russian the toolbar fits one row at 1920, 1500 and 1280 px (${rows.join(", ")} px high)`);
   await lc.close();
 }
