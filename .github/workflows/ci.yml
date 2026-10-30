@@ -8,14 +8,16 @@ on:
 permissions:
   contents: read
 
+# a newer push to a PR cancels its older run; on main every commit's run finishes, since the
+# release of that commit uses its result instead of testing again
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -26,9 +28,39 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run lint
+
       # the committed WebAssembly solver must be the one wasm/solver.ts builds
       - name: Solver built from its source
         run: npm run build:wasm -- --check
+
+      - name: Engine tests
+        run: npm run test:engine
+
+  # the browser tests, on the source and on the packaged build, each split in two groups of
+  # tests/e2e parts that take about as long: four jobs side by side
+  browser:
+    name: browser (${{ matrix.build }}, ${{ matrix.group.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [source, packaged]
+        group:
+          - { name: "01-07", parts: "01,02,03,04,05,06,07", reference: false }
+          - { name: "08-16", parts: "08,09,10,11,12,13,14,15,16", reference: true }
+    env:
+      APP: ${{ matrix.build == 'packaged' && 'dist/tube-amp-cad' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
 
       # Playwright's headless Chromium, kept between runs (keyed by the locked
       # Playwright version). The runner image already has Chrome's system
@@ -42,11 +74,15 @@ jobs:
       - name: Browser for the tests
         run: npx playwright install --only-shell chromium || npx playwright install --with-deps --only-shell chromium
 
-      - name: Engine + browser tests (source)
-        run: npm test
-
       - name: Package
+        if: matrix.build == 'packaged'
         run: npm run package
 
-      - name: Browser tests (packaged build)
-        run: npm run test:dist
+      - name: Browser tests
+        env:
+          E2E_PARTS: ${{ matrix.group.parts }}
+        run: node tests/e2e.mjs $APP
+
+      - name: Reference circuits
+        if: matrix.group.reference
+        run: node tests/reference.mjs $APP

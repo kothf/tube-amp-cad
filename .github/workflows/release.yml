@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
   pages: write
   id-token: write
 
@@ -28,7 +29,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -58,25 +59,46 @@ jobs:
 
       - run: npm ci
 
+      # CI on main tests every commit, on the source and the packaged build, and is running the
+      # moment a merge starts this release: wait for that run and use its result instead of
+      # testing again. Only when the commit has no CI run (or it was cancelled) are the tests run here.
+      - name: CI result for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs() { gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" --json status,conclusion --jq "$1"; }
+          for i in $(seq 1 120); do
+            if [ "$(runs 'map(select(.conclusion == "success")) | length')" -gt 0 ]; then echo "CI passed on $GITHUB_SHA"; echo "TESTED=1" >> "$GITHUB_ENV"; exit 0; fi
+            if [ "$(runs 'map(select(.conclusion == "failure")) | length')" -gt 0 ]; then echo "::error::CI failed on $GITHUB_SHA: fix main (or re-run the failed CI jobs), then release again"; exit 1; fi
+            pending="$(runs 'map(select(.status != "completed")) | length')"
+            if [ "$pending" -eq 0 ] && [ "$i" -gt 6 ]; then break; fi
+            sleep 10
+          done
+          echo "::notice::No finished CI run on $GITHUB_SHA: testing here"
+
       # Playwright's headless Chromium, kept between runs (keyed by the locked
       # Playwright version). The runner image already has Chrome's system
       # libraries, so no apt step; full Google Chrome would run the tests 2x slower.
       - name: Cache Playwright's browser
+        if: env.TESTED != '1'
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Browser for the tests
+        if: env.TESTED != '1'
         run: npx playwright install --only-shell chromium || npx playwright install --with-deps --only-shell chromium
 
       - name: Engine tests (source)
+        if: env.TESTED != '1'
         run: npm run test:engine
 
       - name: Package
         run: npm run package -- "${TAG#v}"
 
       - name: Browser tests (packaged build)
+        if: env.TESTED != '1'
         run: npm run test:dist
 
       - name: Release notes from CHANGELOG.md
