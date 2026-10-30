@@ -587,13 +587,15 @@
       else if (e.kind === "LDR") e.light = nUnk++;
       else if (e.kind === "XFMR") {
         e.branches = e.windings.map(() => nUnk++);
-        // Inductance matrix: L_jk = AL * Nj * Nk * (j===k ? 1 : k)
+        // Inductance matrix: L_jk = AL * Nj * Nk * (j===k ? 1 : k), plus each winding's own
+        // leakage inductance (w.leak, H) on the diagonal
         const W = e.windings.length;
         const AL = e.lp / Math.pow(e.primaryTurns, 2);
+        e.n = e.windings.map(w => w.turns / e.primaryTurns);   // turns referred to the primary
         e.Lmat = new Array(W * W);
         for (let j = 0; j < W; j++) for (let k = 0; k < W; k++) {
           const nj = e.windings[j].turns, nk = e.windings[k].turns;
-          e.Lmat[j * W + k] = AL * nj * nk * (j === k ? 1 : e.k);
+          e.Lmat[j * W + k] = AL * nj * nk * (j === k ? 1 : e.k) + (j === k ? e.windings[j].leak || 0 : 0);
         }
       }
     });
@@ -604,6 +606,27 @@
     const timers = els.filter(e => LATCHED.has(e.kind)), t555 = timers.filter(e => e.kind === "TIMER555"), capped = t555.length ? new Uint8Array(nNodes) : null;
     t555.forEach(e => [e.nodes[2], e.nodes[6]].forEach(k => { if (k > 0) capped[k - 1] = 1; }));
     return { nNodes, nUnk, els, timers, capped };
+  }
+
+  // A transformer's saturating core (XFMR with sat: { ls, p, air }): the flux linkage λ (V·s, on the
+  // primary's turns) against the magnetising current im (A, referred to the primary). Below the knee
+  // it is lp·im; it bends over towards ls with sharpness p, and past it only the air's (and the gap's)
+  // share of lp, air, is left:
+  //   λ = (1 − air)·ls·x / (1 + |x|^p)^(1/p) + air·lp·im,  x = lp·im / ls
+  // Returns [λ, dλ/dim].
+  function coreFlux(e, im) {
+    const s = e.sat, x = e.lp * im / s.ls, ax = Math.abs(x), q = 1 + Math.pow(ax, s.p), r = Math.pow(q, -1 / s.p);
+    return [(1 - s.air) * s.ls * x * r + s.air * e.lp * im, e.lp * ((1 - s.air) * r / q + s.air)];
+  }
+  // the magnetising current of an XFMR in the unknowns x: Σ n_j·i_j
+  function magCurrent(e, x) { let im = 0; e.branches.forEach((b, j) => { im += e.n[j] * x[b]; }); return im; }
+  // the small-signal inductance matrix at the operating point x: a saturating core's magnetising
+  // inductance is its slope there (DC in a single-ended primary lowers it)
+  // (im: the magnetising current when x holds node voltages only, a mains-fed circuit's averages)
+  function xfmrIncremental(e, x, im) {
+    if (!e.sat) return e.Lmat;
+    const W = e.windings.length, ld = coreFlux(e, im !== undefined ? im : magCurrent(e, x))[1];
+    return e.Lmat.map((v, i) => { const j = Math.floor(i / W), k = i % W; return e.n[j] * e.n[k] * ld + (j === k ? e.windings[j].leak || 0 : 0); });
   }
 
   // Tiny series resistance on inductive branches (ohms): a winding shorted by a
@@ -689,12 +712,22 @@
           }
           case "XFMR": {
             const W = e.windings.length;
+            let sat = null, im0 = 0, lam1 = 0, lam2 = 0;
+            if (e.sat && !mode.dc) {
+              im0 = magCurrent(e, x); sat = coreFlux(e, im0);
+              lam1 = coreFlux(e, magCurrent(e, mode.prev))[0]; if (P2) lam2 = coreFlux(e, magCurrent(e, P2))[0];
+            }
             for (let j = 0; j < W; j++) {
               const w = e.windings[j], br = e.branches[j];
               if (w.a > 0) { addAu(w.a - 1, br, 1); addAu(br, w.a - 1, 1); }
               if (w.b > 0) { addAu(w.b - 1, br, -1); addAu(br, w.b - 1, -1); }
               addAu(br, br, -R_SERIES);
-              if (!mode.dc) {
+              if (!mode.dc && e.sat) {
+                // v_j = n_j·dλ/dt + leak_j·di_j/dt, λ = coreFlux(im) linearised at this iterate
+                const nj = e.n[j], ID = ID0 / mode.h, lk = w.leak || 0;
+                for (let k = 0; k < W; k++) addAu(br, e.branches[k], -ID * (nj * e.n[k] * sat[1] + (k === j ? lk : 0)));
+                b[br] += (nj * (ID0 * (sat[0] - sat[1] * im0) + ID1 * lam1 + (P2 ? ID2 * lam2 : 0)) + lk * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0))) / mode.h;
+              } else if (!mode.dc) {
                 let hist = 0;
                 for (let k = 0; k < W; k++) {
                   const m = e.Lmat[j * W + k] / mode.h, bk = e.branches[k];
@@ -979,6 +1012,8 @@
     if (e.kind === "R") { const vd = v[0] - v[1]; return { vd, i: vd / e.r }; }
     if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") return { i: x[e.branch], vd: v[0] - v[1] };
     if (e.kind === "C") return { vd: v[0] - v[1] };
+    // a transformer: its magnetising current, and with a saturating core the flux as a share of the knee
+    if (e.kind === "XFMR") { const im = magCurrent(e, x); return e.sat ? { im, flux: coreFlux(e, im)[0] / e.sat.ls } : { im }; }
     if (e.kind === "I") return { i: e.i, vd: v[0] - v[1] };
     if (e.kind === "E") return { i: x[e.branch], vd: v[0] - v[1], vc: v[2] - v[3] };
     if (e.kind === "G") return { i: e.gm * (v[2] - v[3]), vd: v[0] - v[1], vc: v[2] - v[3] };
@@ -1399,7 +1434,8 @@
     for (let i = 0; i < nodeCount; i++) nodes.push(new Float32Array(nCap));
     // (an op-amp's trace is its clip: how far past its output limit it is driven; a transistor's
     // its collector or drain current, in its own polarity: the curve tracer's load line)
-    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP" || e.kind === "BJT" || e.kind === "MOS");
+    // a saturating transformer's trace is its core flux, as a share of the knee)
+    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP" || e.kind === "BJT" || e.kind === "MOS" || (e.kind === "XFMR" && e.sat));
     const devTrace = {};
     devIdx.forEach(e => { devTrace[e.id + (e.part ? "#" + e.part : "")] = { i: new Float32Array(nCap), ig2: e.kind === "PENTODE" ? new Float32Array(nCap) : null }; });
     // A circuit run from AC (a rectified supply) has no true DC solution: the
@@ -1423,7 +1459,7 @@
       if (acc) for (let i = 1; i < nodeCount; i++) nodeSum[i] += x[i - 1];
       devIdx.forEach(e => {
         const s = deviceState(e, x), tr = devTrace[e.id + (e.part ? "#" + e.part : "")];
-        tr.i[k] = s.ia !== undefined ? s.ia : s.i !== undefined ? s.i : s.ic !== undefined ? s.ic : s.id !== undefined ? s.id : s.clip;
+        tr.i[k] = s.ia !== undefined ? s.ia : s.i !== undefined ? s.i : s.ic !== undefined ? s.ic : s.id !== undefined ? s.id : s.flux !== undefined ? s.flux : s.clip;
         if (tr.ig2) tr.ig2[k] = s.ig2;
       });
       if (acc) currentsOf(circ, x, curSum);
@@ -1644,6 +1680,10 @@
     const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, per = opts.perDecade || 40;
     return Math.max(2, Math.round(Math.log10(fStop / fStart) * per) + 1);
   }
+  // what acSweep's opts.opIm takes from a simulation: each transformer's (averaged) magnetising current
+  function opMagnetising(result) {
+    const out = {}; Object.entries(result.dc.devices).forEach(([id, d]) => { if (d.main && d.main.im !== undefined) out[id] = d.main.im; }); return out;
+  }
   function acSweep(netlist, opts) {
     opts = opts || {};
     const t0 = Date.now(), circ = buildCircuit(netlist), n = circ.nUnk, nN = circ.nNodes;
@@ -1675,10 +1715,10 @@
         case "C": stamp2(addB, nd[0], nd[1], e.c); break;
         case "L": branch(nd[0], nd[1], e.branch); Gm[at(e.branch, e.branch)] -= R_SERIES; Bm[at(e.branch, e.branch)] -= e.l; break;
         case "XFMR": {
-          const W = e.windings.length;
+          const W = e.windings.length, Lm = xfmrIncremental(e, x, opts.op && opts.opIm ? opts.opIm[e.id] || 0 : undefined);
           e.windings.forEach((w, j) => {
             branch(w.a, w.b, e.branches[j]); Gm[at(e.branches[j], e.branches[j])] -= R_SERIES;
-            for (let k = 0; k < W; k++) Bm[at(e.branches[j], e.branches[k])] -= e.Lmat[j * W + k];
+            for (let k = 0; k < W; k++) Bm[at(e.branches[j], e.branches[k])] -= Lm[j * W + k];
           });
           break;
         }
@@ -1769,7 +1809,7 @@
     return { ok: true, freqs, re, im, probes, elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, NE555, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, NE555, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

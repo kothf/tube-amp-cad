@@ -102,7 +102,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const before = await cad.evaluate(() => TubeCAD.state.comps.length);
   await cad.click("#btn-file");
   const items = await cad.locator("#examples-list .menu-item").allTextContents();
-  check(items.length === 12 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `File → Examples lists the ${items.length} circuits drawn from published sources`);
+  check(items.length === 15 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `File → Examples lists the ${items.length} circuits drawn from published sources`);
   cad.once("dialog", d => d.accept());
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.locator("#examples-list .menu-item", { hasText: "12AX7: plate resistor" }).click();
@@ -121,7 +121,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
     res.push(await cad.evaluate(f => ({ f, ok: !!TubeCAD.state.sim.result && TubeCAD.state.sim.result.ok && !TubeCAD.state.sim.error, parts: TubeCAD.state.comps.length }), e));
   }
-  check(res.length === 12 && res.every(r => r.ok && r.parts > 15), `all twelve examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
+  check(res.length === 15 && res.every(r => r.ok && r.parts > 15), `all fifteen examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
   check(await cad.evaluate(() => TubeCAD.state.sim.result && TubeCAD.state.sim.result.solver === "wasm"), "the simulation worker solves with WebAssembly");
   if (!tracer.isClosed()) {
     // a transistor in the circuit on the curve tracer: its operating point lies on the tracer's own curve
@@ -208,7 +208,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const std = await cad.evaluate(() => [["electrolytic", 300], ["electrolytic", 10], ["capacitor", 30], ["capacitor", 400], ["electrolytic", 500], ["capacitor", 2600]].map(([t, v]) => BomLib.capRating(t, v)).join("|"));
     check(std === "400 V|16 V|50 V|630 V|2 × 450 V in series|2 × 3000 V in series", `standard capacitor voltages: ${std}`);
     const simOf = ref => (bomRows.rows.find(([refs]) => refs.split(/[,-]/).map(x => x.trim()).includes(ref)) || [])[1] || "";
-    check(!bomRows.open && /W$/.test(simOf("BA1")) && /A DC$/.test(simOf("L1")) && /^HT .*A DC · \d+%$/.test(simOf("T1")) && /A DC$/.test(simOf("T2")) && /%$/.test(simOf("VL1")) && /%$/.test(simOf("VL3")) && /W$/.test(simOf("R1")) && /V$/.test(simOf("C1")),
+    check(!bomRows.open && /W$/.test(simOf("BA1")) && /A DC$/.test(simOf("L1")) && /^HT .*A DC · \d+%$/.test(simOf("T1")) && /A DC · \d+%$/.test(simOf("T2")) && /%$/.test(simOf("VL1")) && /%$/.test(simOf("VL3")) && /W$/.test(simOf("R1")) && /V$/.test(simOf("C1")),
       `BOM Sim. max for every kind of part, with the BOM closed: BA1 ${simOf("BA1")}, L1 ${simOf("L1")}, T1 ${simOf("T1")}, T2 ${simOf("T2")}, VL1 ${simOf("VL1")}, VL3 ${simOf("VL3")}`);
     // an edit waits for its simulation: the column keeps the last run's values (not the new part value with the old voltages)
     const kept = await cad.evaluate(async () => { const S = TubeCAD.state, r3 = S.comps.find(c => c.label === "R3"), get = () => TubeCAD.bomData().rows.find(r => r.refs === "R3").sim, before = get(); r3.params.r = 470; TubeCAD.commit(); const right = get(); const s0 = S.sim.seq;

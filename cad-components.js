@@ -139,6 +139,9 @@
   };
   // turns ratio of each tap: the load (Ω) it is rated for on the 10 kΩ primary
   const SE_TAPS = { ORG: 4, GRN: 8, YEL: 16, WHT: 32 };
+  // what the 125SE drawings leave out: the leakage that puts 15 kHz 1 dB down from a 5 kΩ source into
+  // 5 kΩ (optDerive.llk), and a typical winding capacitance
+  const SE125 = { llk: 54e-3, cw: 200e-12 };
   const OUTPUT_TX = {};
   Object.entries(HAMMOND_SE).forEach(([k, [w, ma, rp, lp, ...rs]]) => {
     OUTPUT_TX[k] = { name: "Hammond " + k, w, ma, rp, lp, rs: { ORG: rs[0] / 1000, GRN: rs[1] / 1000, YEL: rs[2] / 1000, WHT: rs[3] / 1000 } };
@@ -1071,6 +1074,116 @@
   ];
   const ITX_KEYS = ["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"];
   const itxPreset = id => { const p = ITX_PRESETS.find(q => q.id === id); return Object.assign({}, ...ITX_KEYS.map(k => ({ [k]: p[k] }))); };
+  // Output transformers from the makers' data, for the generic single-ended and push-pull parts'
+  // Model field (a model fills in the fields; type your own over them). Hammond values are from each
+  // part's drawing (hammfg.com/files/parts/pdf/<model>.pdf); the 1627–1640SEA inductance and DC
+  // rating are Hammond's catalogue figures. Edcor publishes only power, impedance, DC rating,
+  // the ±1 dB band and the insertion loss (edcorusa.com), so the rest is worked out from those
+  // (optDerive). Leakage given as measured at 60 Hz, 10 V; the newer drawings' 1 kHz, 1 V figures
+  // (1650E 337 mH, 1620A 550 mH) would put the treble 1 dB down at 2–4 kHz, against the 30 kHz
+  // they are sold for, and are not used.
+  //   single-ended: [maker, primary Ω, W, max DC mA, Lp H, leakage H (0: from the band),
+  //                  primary DCR Ω, secondary DCR Ω on the 8 Ω tap (0: from the loss), −1 dB band Hz, Hz, insertion loss dB]
+  //   push-pull:    [maker, plate-to-plate Ω, W, Lp H of one half, leakage H of one half (0: from the band),
+  //                  DCR of one half Ω, secondary DCR Ω for 8 Ω, band Hz, Hz, insertion loss dB]
+  // A push-pull half's inductance and leakage are what Hammond measures (B+ to one plate); the whole
+  // primary has four times the inductance (the halves are coupled) and twice the leakage. The 16xx
+  // secondaries are given for 4 and 16 Ω; their 8 Ω value is taken between the two.
+  const OPT_SE_DATA = {
+    "1627SEA": ["Hammond", 2500, 30, 160, 20, 0, 77.5, 0.517, 20, 20000],
+    "1628SEA": ["Hammond", 5000, 30, 120, 48, 0, 171, 0.514, 20, 20000],
+    "1629SEA": ["Hammond", 6500, 30, 100, 55, 0, 197, 0.517, 20, 20000],
+    "1640SEA": ["Hammond", 1250, 30, 200, 14, 0, 28, 0.520, 20, 20000],
+    "XSE15-5K": ["Edcor", 5000, 15, 100, 0, 0, 0, 0, 70, 18000, 0.5],
+    "GXSE15-5K": ["Edcor", 5000, 15, 100, 0, 0, 0, 0, 40, 18000, 0.5],
+    "CXSE25-3K": ["Edcor", 3000, 25, 200, 0, 0, 0, 0, 20, 20000, 0.5],
+    "CXSE25-5K": ["Edcor", 5000, 25, 200, 0, 0, 0, 0, 20, 20000, 0.5]
+  };
+  const OPT_PP_DATA = {
+    "1608": ["Hammond", 8000, 10, 174, 11.8e-3, 101.7, 0.42, 30, 30000],
+    "1609": ["Hammond", 10000, 10, 255, 14.6e-3, 113.7, 0.42, 30, 30000],
+    "1615": ["Hammond", 5000, 15, 139, 6.6e-3, 89.5, 0.23, 30, 30000],
+    "1620": ["Hammond", 6600, 20, 212, 9.2e-3, 70.0, 0.39, 30, 30000],
+    "1645": ["Hammond", 5000, 30, 180, 5.0e-3, 82.7, 0.34, 30, 30000],
+    "1650F": ["Hammond", 7600, 25, 285, 10.4e-3, 105, 0.24, 30, 30000],
+    "1650H": ["Hammond", 6600, 40, 245, 10.6e-3, 72.5, 0.21, 30, 30000],
+    "1650K": ["Hammond", 3400, 50, 225, 5.98e-3, 37.3, 0.37, 30, 30000],
+    "1650N": ["Hammond", 4300, 60, 134, 7.72e-3, 41.3, 0.29, 30, 30000],
+    "1650P": ["Hammond", 6600, 60, 305, 11.8e-3, 80.3, 0.29, 30, 30000],
+    "1650R": ["Hammond", 5000, 100, 320, 10.84e-3, 50.6, 0.35, 30, 30000],
+    "1650T": ["Hammond", 1900, 120, 124, 4.3e-3, 23.6, 0.29, 30, 30000],
+    "1650W": ["Hammond", 1900, 280, 122, 3.56e-3, 17.1, 0.19, 30, 30000],
+    // a guitar amp's replacement (Fender Deluxe style, 2 × 6V6): the drawing gives the whole primary,
+    // 21.4 H and 13.54 mH, so a half is a quarter and a half of them
+    "1750H": ["Hammond", 6600, 20, 5.35, 6.77e-3, 214, 0.41, 70, 15000],
+    "XPP15-8K": ["Edcor", 8000, 15, 0, 0, 0, 0, 70, 18000, 1],
+    "GXPP15-8K": ["Edcor", 8000, 15, 0, 0, 0, 0, 40, 18000, 1],
+    "CXPP25-6.6K": ["Edcor", 6600, 25, 0, 0, 0, 0, 20, 20000, 1],
+    "CXPP30-6.6K": ["Edcor", 6600, 30, 0, 0, 0, 0, 20, 20000, 1],
+    "CXPP50-5K": ["Edcor", 5000, 50, 0, 0, 0, 0, 20, 20000, 1]
+  };
+  // What a missing value would be for a transformer that just meets its band and loss, driven from a
+  // source of its own impedance into its rated load: the primary inductance 1 dB down at the low end
+  // (its reactance 0.98 Z across Z/2), the leakage 1 dB down at the top (1.02 Z in series with 2 Z),
+  // and the insertion loss split evenly between the windings. A real part is usually better.
+  const optDerive = {
+    lp: (z, flo) => 0.983 * z / (2 * Math.PI * flo),
+    llk: (z, fhi) => 1.0176 * z / (2 * Math.PI * fhi),
+    dcr: (z, loss) => z * (Math.pow(10, loss / 20) - 1) / 2
+  };
+  // each model as the generic part's fields (zs 8 Ω; cw a typical winding capacitance, which no maker gives)
+  const OPT_SE = {}, OPT_PP = {};
+  Object.entries(OPT_SE_DATA).forEach(([k, [maker, zp, w, ma, lp, llk, dcrp, dcrs, flo, fhi, loss]]) => {
+    const est = [];
+    if (!lp) { lp = optDerive.lp(zp, flo); est.push("primary inductance"); }
+    if (!llk) { llk = optDerive.llk(zp, fhi); est.push("leakage"); }
+    if (!dcrp) { dcrp = optDerive.dcr(zp, loss); dcrs = dcrp * 8 / zp; est.push("winding resistances"); }
+    OPT_SE[k] = { name: `${maker} ${k}`, maker, w, ma, flo, fhi, est,
+      p: { zp, zs: 8, lp: +lp.toPrecision(3), llk: +llk.toPrecision(3), cw: 200e-12, dcrp: +dcrp.toPrecision(3), dcrs: +dcrs.toPrecision(3), idc: ma / 1000, pw: w, flo } };
+  });
+  Object.entries(OPT_PP_DATA).forEach(([k, [maker, zaa, w, lh, llkh, dcrh, dcrs, flo, fhi, loss]]) => {
+    const est = [];
+    let lp = 4 * lh, llk = 2 * llkh;
+    if (!lh) { lp = optDerive.lp(zaa, flo); est.push("primary inductance"); }
+    if (!llkh) { llk = optDerive.llk(zaa, fhi); est.push("leakage"); }
+    if (!dcrh) { const r = optDerive.dcr(zaa, loss); dcrh = r / 2; dcrs = r * 8 / zaa; est.push("winding resistances"); }
+    OPT_PP[k] = { name: `${maker} ${k}`, maker, w, flo, fhi, est,
+      p: { zaa, zs: 8, lp: +lp.toPrecision(3), llk: +llk.toPrecision(3), cw: 300e-12, tap: 40, dcrp: +dcrh.toPrecision(3), dcrs: +dcrs.toPrecision(3), pw: w, flo } };
+  });
+  // the fields a model sets, and those that must match for the part to show the model's name (the
+  // secondary impedance and its resistance may be changed: another tap of the same transformer)
+  const OPT_KEYS = { opt_se: ["zp", "lp", "llk", "dcrp", "idc", "pw", "flo"], opt_pp: ["zaa", "lp", "llk", "tap", "dcrp", "pw", "flo"] };
+  function optModel(c) {
+    const cat = c.type === "opt_pp" ? OPT_PP : c.type === "opt_se" ? OPT_SE : null;
+    if (!cat) return null;
+    const keys = OPT_KEYS[c.type], same = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a));
+    const k = Object.keys(cat).find(id => keys.every(f => same(+cat[id].p[f], +c.params[f])));
+    return k ? Object.assign({ id: k }, cat[k]) : null;
+  }
+  // The core's knee (sim-engine.js coreFlux): at the rated power and the lowest frequency of the band,
+  // on top of the flux of the rated DC (single-ended), the core stands at 75 % of the knee, where its
+  // magnetising current is 10 % above the straight line (a few % distortion in the primary current).
+  // twice the voltage, or the same voltage at half the frequency, and it saturates.
+  // z: the primary's impedance for that power; pw 0 or flo 0: no saturation (a linear core).
+  function optSat(lp, z, pw, flo, idc) {
+    if (!(+pw > 0 && +flo > 0)) return undefined;
+    const lac = Math.sqrt(2 * pw * z) / (2 * Math.PI * flo), ldc = lp * Math.max(+idc || 0, 0);
+    return { ls: (lac + ldc) / 0.75, p: 4, air: 0.01 };
+  }
+  // the inspector's line for the generic output transformers: where the bass and the treble go, and the core
+  function optInfo(c) {
+    const p = c.params, pp = c.type === "opt_pp", z = Math.max(+(pp ? p.zaa : p.zp) || 1, 1), m = optModel(c);
+    const lp = +p.lp || 0, llk = +p.llk || 0, cw = +p.cw || 0, f = v => (v >= 1000 ? (v / 1000).toPrecision(3) + " kHz" : v.toPrecision(3) + " Hz");
+    let t = m ? `${m.name}: ${m.w} W${m.ma ? `, ${m.ma} mA DC max` : ""}, ±1 dB ${f(m.flo)}–${f(m.fhi)} at full power. ` : "";
+    t += `From a source of ${fmtEng(z, "Ω")} into its rated load the bass is 3 dB down at ${f(z / 2 / (2 * Math.PI * Math.max(lp, 1e-9)))} (primary inductance), ` +
+      `the treble at ${f(2 * z / (2 * Math.PI * Math.max(llk, 1e-12)))} (leakage)`;
+    t += cw > 0 && llk > 0 ? `, and the leakage resonates with the winding capacitance at ${f(1 / (2 * Math.PI * Math.sqrt(llk * cw)))}. ` : ". ";
+    if (+p.pw > 0 && +p.flo > 0) t += `The core takes ${fmtEng(+p.pw, "W")} down to ${f(+p.flo)}${pp ? "" : ` with ${fmtEng(+p.idc || 0, "A")} DC`}; below that the power it passes before saturating falls with the square of the frequency, and past it the bass distorts and the primary current peaks${pp ? ". DC out of balance between the halves shifts the core towards saturation" : ""}. `;
+    else t += "Rated power 0: the core never saturates. ";
+    if (m && m.est.length) t += `Not given by ${m.maker}, worked out from the band and the insertion loss: ${m.est.join(", ")}. `;
+    if (m) t += "Winding capacitance: typical (no maker gives it).";
+    return t.trim();
+  }
   // Guitar pickups (pickup part): the coil's EMF behind its DC resistance r and inductance l, its own
   // capacitance c across the output. Typical values of each kind (measure yours and type them over):
   // amp, a typical peak EMF for a firm strum
@@ -1468,24 +1581,34 @@
       }
     },
     opt_se: {
-      name: "Output transformer, single-ended (generic)", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
-      defaults: { zp: 5000, zs: 8, lp: 20, dcrp: 150, dcrs: 0.5 },
+      name: "Output transformer, single-ended", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
+      defaults: { zp: 5000, zs: 8, lp: 20, llk: 15e-3, cw: 200e-12, dcrp: 150, dcrs: 0.5, idc: 0.1, pw: 10, flo: 40 },
       pins: () => [{ id: "P1", x: -40, y: -30, name: "primary (B+)" }, { id: "P2", x: -40, y: 30, name: "primary (anode)" }, { id: "S1", x: 40, y: -30 }, { id: "S2", x: 40, y: 30 }],
-      value: c => fmtEng(c.params.zp, "") + ":" + fmtEng(c.params.zs, "Ω"),
+      value: c => { const m = optModel(c); return (m ? m.id + " " : "") + fmtEng(c.params.zp, "") + ":" + fmtEng(c.params.zs, "Ω"); },
       fields: [
+        { key: "model", label: "Model", kind: "select", wide: true, options: () => [["custom", "Your datasheet values"]].concat(Object.entries(OPT_SE).map(([k, m]) => [k, `${m.name} · ${fmtEng(m.p.zp, "Ω")}, ${m.w} W, ${m.ma} mA`])),
+          get: c => (optModel(c) || { id: "custom" }).id,
+          apply: (c, v) => { const m = OPT_SE[v]; if (m) Object.assign(c.params, m.p); } },
         { key: "zp", label: "Primary impedance", unit: "Ω", kind: "eng" },
         { key: "zs", label: "Secondary impedance", unit: "Ω", kind: "eng" },
         { key: "lp", label: "Primary inductance", unit: "H", kind: "eng" },
+        { key: "llk", label: "Leakage inductance", unit: "H", kind: "eng" },
+        { key: "cw", label: "Winding capacitance", unit: "F", kind: "eng" },
         { key: "dcrp", label: "Primary DCR", unit: "Ω", kind: "eng" },
-        { key: "dcrs", label: "Secondary DCR", unit: "Ω", kind: "eng" }
+        { key: "dcrs", label: "Secondary DCR", unit: "Ω", kind: "eng" },
+        { key: "idc", label: "Max DC current", unit: "A", kind: "eng" },
+        { key: "pw", label: "Rated power (0: core never saturates)", unit: "W", kind: "eng" },
+        { key: "flo", label: "Full power down to", unit: "Hz", kind: "eng" }
       ],
+      info: c => optInfo(c),
       build: (c, net, alloc, out) => {
-        const p = c.params, n = Math.sqrt(Math.max(p.zp, 1) / Math.max(p.zs, 0.01));
+        const p = c.params, zp = Math.max(+p.zp || 1, 1), n = Math.sqrt(zp / Math.max(+p.zs || 0.01, 0.01)), lp = Math.max(+p.lp || 0, 1e-3);
         const a = alloc(), s = alloc();
-        out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), a], r: Math.max(p.dcrp, 1e-3) });
-        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(p.dcrs, 1e-3) });
-        out.push({ id: c.id, kind: "XFMR", nodes: [], lp: Math.max(p.lp, 1e-3), k: 0.999, primaryTurns: 1,
-          windings: [{ a: a, b: net("P2"), turns: 1 }, { a: s, b: net("S2"), turns: 1 / n }] });
+        out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), a], r: Math.max(+p.dcrp || 0, 1e-3) });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(+p.dcrs || 0, 1e-3) });
+        out.push({ id: c.id, kind: "XFMR", nodes: [], lp, k: 1, primaryTurns: 1, sat: optSat(lp, zp, +p.pw, +p.flo, +p.idc),
+          windings: [{ a: a, b: net("P2"), turns: 1, leak: Math.max(+p.llk || 0, 1e-6 * lp) }, { a: s, b: net("S2"), turns: 1 / n }] });
+        if (+p.cw > 0) out.push({ id: c.id + "#cw", kind: "C", nodes: [net("P1"), net("P2")], c: +p.cw });
       }
     },
     itx: {
@@ -1603,44 +1726,56 @@
         const m = OUTPUT_TX[c.params.model] || OUTPUT_TX["125ESE"], z = SE_TAPS[c.params.tap] || 8;
         return `${m.name}, universal single-ended: ${m.w} W, ${m.ma} mA DC max, 100 Hz–15 kHz. ` +
           `Primary BRN (B+) – BLU (anode) ${m.rp} Ω, ${m.lp} H; secondary BLK – ${c.params.tap} ${(m.rs[c.params.tap] * 1000).toFixed(0)} mΩ. ` +
-          `Turns ratio ${Math.sqrt(10000 / z).toFixed(1)}:1, so the primary sees 10 kΩ with ${z} Ω, 5 kΩ with ${z / 2} Ω, 2.5 kΩ with ${z / 4} Ω on the secondary.`;
+          `Turns ratio ${Math.sqrt(10000 / z).toFixed(1)}:1, so the primary sees 10 kΩ with ${z} Ω, 5 kΩ with ${z / 2} Ω, 2.5 kΩ with ${z / 4} Ω on the secondary. ` +
+          `Leakage ${fmtEng(SE125.llk, "H")} (not on the drawing: 1 dB down at 15 kHz from 5 kΩ) and ${fmtEng(SE125.cw, "F")} across the primary (typical). ` +
+          `The core saturates past ${m.w} W at 100 Hz with ${m.ma} mA DC (5 kΩ): below 100 Hz at full power the bass distorts, as on the real part.`;
       },
       build: (c, net, alloc, out) => {
         const m = OUTPUT_TX[c.params.model] || OUTPUT_TX["125ESE"], z = SE_TAPS[c.params.tap] || 8, n = Math.sqrt(10000 / z);
         const a = alloc(), s = alloc();
         out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), a], r: m.rp });
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(m.rs[c.params.tap] || 0.2, 1e-3) });
-        out.push({ id: c.id, kind: "XFMR", nodes: [], lp: m.lp, k: 0.999, primaryTurns: 1,
-          windings: [{ a: a, b: net("P2"), turns: 1 }, { a: s, b: net("S2"), turns: 1 / n }] });
+        out.push({ id: c.id, kind: "XFMR", nodes: [], lp: m.lp, k: 1, primaryTurns: 1, sat: optSat(m.lp, 5000, m.w, 100, m.ma / 1000),
+          windings: [{ a: a, b: net("P2"), turns: 1, leak: SE125.llk }, { a: s, b: net("S2"), turns: 1 / n }] });
+        out.push({ id: c.id + "#cw", kind: "C", nodes: [net("P1"), net("P2")], c: SE125.cw });
       }
     },
     opt_pp: {
-      name: "Output transformer, push-pull / UL (generic)", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
-      defaults: { zaa: 8000, zs: 8, lp: 30, tap: 43, dcrp: 120, dcrs: 0.4 },
+      name: "Output transformer, push-pull / UL", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
+      defaults: { zaa: 8000, zs: 8, lp: 30, llk: 20e-3, cw: 300e-12, tap: 43, dcrp: 120, dcrs: 0.4, pw: 30, flo: 30 },
       pins: () => [
         { id: "P1", x: -40, y: -40, name: "anode 1" }, { id: "U1", x: -40, y: -20, name: "UL tap 1" }, { id: "CT", x: -40, y: 0, name: "centre tap (B+)" },
         { id: "U2", x: -40, y: 20, name: "UL tap 2" }, { id: "P2", x: -40, y: 40, name: "anode 2" }, { id: "S1", x: 40, y: -30 }, { id: "S2", x: 40, y: 30 }],
-      value: c => fmtEng(c.params.zaa, "") + ":" + fmtEng(c.params.zs, "Ω"),
+      value: c => { const m = optModel(c); return (m ? m.id + " " : "") + fmtEng(c.params.zaa, "") + ":" + fmtEng(c.params.zs, "Ω"); },
       fields: [
+        { key: "model", label: "Model", kind: "select", wide: true, options: () => [["custom", "Your datasheet values"]].concat(Object.entries(OPT_PP).map(([k, m]) => [k, `${m.name} · ${fmtEng(m.p.zaa, "Ω")}, ${m.w} W`])),
+          get: c => (optModel(c) || { id: "custom" }).id,
+          apply: (c, v) => { const m = OPT_PP[v]; if (m) Object.assign(c.params, m.p); } },
         { key: "zaa", label: "Plate-to-plate Z", unit: "Ω", kind: "eng" },
         { key: "zs", label: "Secondary impedance", unit: "Ω", kind: "eng" },
-        { key: "lp", label: "Primary inductance", unit: "H", kind: "eng" },
+        { key: "lp", label: "Primary inductance (plate to plate)", unit: "H", kind: "eng" },
+        { key: "llk", label: "Leakage inductance (plate to plate)", unit: "H", kind: "eng" },
+        { key: "cw", label: "Winding capacitance (plate to plate)", unit: "F", kind: "eng" },
         { key: "tap", label: "UL tap (% of half)", unit: "%", kind: "number", min: 5, max: 95 },
         { key: "dcrp", label: "DCR per half", unit: "Ω", kind: "eng" },
-        { key: "dcrs", label: "Secondary DCR", unit: "Ω", kind: "eng" }
+        { key: "dcrs", label: "Secondary DCR", unit: "Ω", kind: "eng" },
+        { key: "pw", label: "Rated power (0: core never saturates)", unit: "W", kind: "eng" },
+        { key: "flo", label: "Full power down to", unit: "Hz", kind: "eng" }
       ],
+      info: c => optInfo(c),
       build: (c, net, alloc, out) => {
-        const p = c.params, n = Math.sqrt(Math.max(p.zaa, 1) / Math.max(p.zs, 0.01));
-        const t = Math.min(Math.max(p.tap, 5), 95) / 100;
+        const p = c.params, zaa = Math.max(+p.zaa || 1, 1), n = Math.sqrt(zaa / Math.max(+p.zs || 0.01, 0.01)), lp = Math.max(+p.lp || 0, 1e-3);
+        const t = Math.min(Math.max(+p.tap || 0, 5), 95) / 100, lk = Math.max(+p.llk || 0, 1e-6 * lp) / 2;   // each half's leakage, shared by its two sections
         const a1 = alloc(), a2 = alloc(), s = alloc();
-        out.push({ id: c.id + "#r1", kind: "R", nodes: [net("P1"), a1], r: Math.max(p.dcrp, 1e-3) });
-        out.push({ id: c.id + "#r2", kind: "R", nodes: [net("P2"), a2], r: Math.max(p.dcrp, 1e-3) });
-        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(p.dcrs, 1e-3) });
-        out.push({ id: c.id, kind: "XFMR", nodes: [], lp: Math.max(p.lp, 1e-3), k: 0.999, primaryTurns: 1,
+        out.push({ id: c.id + "#r1", kind: "R", nodes: [net("P1"), a1], r: Math.max(+p.dcrp || 0, 1e-3) });
+        out.push({ id: c.id + "#r2", kind: "R", nodes: [net("P2"), a2], r: Math.max(+p.dcrp || 0, 1e-3) });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(+p.dcrs || 0, 1e-3) });
+        out.push({ id: c.id, kind: "XFMR", nodes: [], lp, k: 1, primaryTurns: 1, sat: optSat(lp, zaa, +p.pw, +p.flo, 0),
           windings: [
-            { a: a1, b: net("U1"), turns: 0.5 * (1 - t) }, { a: net("U1"), b: net("CT"), turns: 0.5 * t },
-            { a: net("CT"), b: net("U2"), turns: 0.5 * t }, { a: net("U2"), b: a2, turns: 0.5 * (1 - t) },
+            { a: a1, b: net("U1"), turns: 0.5 * (1 - t), leak: lk * (1 - t) }, { a: net("U1"), b: net("CT"), turns: 0.5 * t, leak: lk * t },
+            { a: net("CT"), b: net("U2"), turns: 0.5 * t, leak: lk * t }, { a: net("U2"), b: a2, turns: 0.5 * (1 - t), leak: lk * (1 - t) },
             { a: s, b: net("S2"), turns: 1 / n }] });
+        if (+p.cw > 0) out.push({ id: c.id + "#cw", kind: "C", nodes: [net("P1"), net("P2")], c: +p.cw });
       }
     },
     ptx: {
@@ -2732,6 +2867,17 @@
       const i = R.otDcCurrent(), m = OUTPUT_TX[c.params.model];
       if (i !== null && m) h += R.kv("Primary DC current", `${fmtEng(i, "A", 2)} · ${Math.round(i * 1000 / m.ma * 100)}% of ${m.ma} mA`, i * 1000 > m.ma ? "bad" : i * 1000 > 0.9 * m.ma ? "warn" : "");
     }
+    if (c.type === "opt_se" && +c.params.idc > 0) {
+      const i = R.otDcCurrent(), ma = +c.params.idc * 1000;
+      if (i !== null) h += R.kv("Primary DC current", `${fmtEng(i, "A", 2)} · ${Math.round(i * 1000 / ma * 100)}% of ${fmtEng(+c.params.idc, "A")}`, i * 1000 > ma ? "bad" : i * 1000 > 0.9 * ma ? "warn" : "");
+    }
+    // the core's flux at its peak over the window, against the knee (sim-engine.js coreFlux)
+    const tr = R.r.tran && R.r.tran.devices[c.id];
+    if (tr) {
+      let pk = 0; for (let k = 0; k < tr.i.length; k++) pk = Math.max(pk, Math.abs(tr.i[k]));
+      h += R.kv("Core flux, peak", `${Math.round(pk * 100)}% of saturation`, pk > 0.95 ? "bad" : pk > 0.8 ? "warn" : "");
+      if (pk > 0.95) h += R.note("The core saturates: the bass distorts and the primary current peaks. Less power at this frequency, less DC (or DC in balance), or a bigger transformer.", "warn");
+    }
     return h + R.kv("Secondary", fmtEng(Math.sqrt(R.pAvg("S1", "S2", 1)), "Vrms", 2));
   };
   ["opt_se", "opt_cat", "opt_pp"].forEach(t => { UI[t] = { readout: otReadout }; });
@@ -2761,5 +2907,5 @@
     return wrap;
   }
 
-  root.CadLib = { anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
 })(globalThis);
