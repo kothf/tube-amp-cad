@@ -50,9 +50,9 @@
       case "pickup": return ["Guitar pickup (source)", f(p.l, "H") + " " + f(p.r, "Ω"), ""];
       case "phono": return ["Phono cartridge (source)", f(p.mv, "V"), ""];
       case "speaker": { const hp = p.model === "ts" && (L.SPEAKER_PRESETS || []).find(q => q.id.startsWith("hp") && q.r === +p.r && q.re === +p.re); return [hp ? "Headphones (load)" : "Loudspeaker", f(p.r, "Ω"), hp ? hp.name.replace(/^Headphones, /, "") : ""]; }
-      case "opt_se": return ["Output transformer, single-ended", f(p.zp, "") + ":" + f(p.zs, "Ω"), "Lp " + f(p.lp, "H") + ", DCR " + f(p.dcrp, "Ω")];
+      case "opt_se": { const m = L.optModel && L.optModel({ type: "opt_se", params: p }); return ["Output transformer, single-ended", (m ? m.name + " " : "") + f(p.zp, "") + ":" + f(p.zs, "Ω"), m ? `${m.w} W, ${m.ma} mA DC` : "Lp " + f(p.lp, "H") + ", DCR " + f(p.dcrp, "Ω")]; }
       case "opt_cat": { const m = L.OUTPUT_TX[p.model] || {}; return ["Output transformer, single-ended", m.name || p.model, m.w + " W, " + m.ma + " mA DC"]; }
-      case "opt_pp": return ["Output transformer, push-pull", f(p.zaa, "") + ":" + f(p.zs, "Ω"), "UL tap " + p.tap + " %, Lp " + f(p.lp, "H")];
+      case "opt_pp": { const m = L.optModel && L.optModel({ type: "opt_pp", params: p }); return ["Output transformer, push-pull", (m ? m.name + " " : "") + f(p.zaa, "") + ":" + f(p.zs, "Ω"), m ? `${m.w} W, UL tap ${p.tap} %` : "UL tap " + p.tap + " %, Lp " + f(p.lp, "H")]; }
       case "ptx": return ["Power transformer", p.vrms + "-0-" + p.vrms + " V", p.freq + " Hz"];
       case "ptx_cat": { const m = L.POWER_TX[p.model] || {}; return ["Power transformer", m.name || p.model, m.rated + "; heaters " + m.heaters]; }
       case "tube": { const t = L.tubeByName(p.tube); return ["Vacuum tube" + (t && t.type ? ", " + t.type.toLowerCase() : ""), p.tube, t && t.socket ? t.socket : ""]; }

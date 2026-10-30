@@ -89,8 +89,8 @@
         const sp = speakerPower(c); return sp ? { v: sp.p, text: fmtEng(sp.p, "W") } : null;
       }
       if (c.type === "opt_se" || c.type === "opt_cat" || c.type === "opt_pp") {
-        const m = c.type === "opt_cat" ? CadLib.OUTPUT_TX[c.params.model] : null, dc = (a, b, rr) => { const va = netDC(pinNetOf(c, a)), vb = netDC(pinNetOf(c, b)); return va === null || vb === null ? null : Math.abs(va - vb) / rr; };
-        const i = c.type === "opt_cat" ? (otDcCurrent(c) === null ? null : Math.abs(otDcCurrent(c))) : c.type === "opt_se" ? dc("P1", "P2", Math.max(c.params.dcrp, 1e-3)) : Math.max(dc("P1", "CT", Math.max(c.params.dcrp / 2, 1e-3)) || 0, dc("CT", "P2", Math.max(c.params.dcrp / 2, 1e-3)) || 0);
+        const m = c.type === "opt_cat" ? CadLib.OUTPUT_TX[c.params.model] : c.type === "opt_se" && +c.params.idc > 0 ? { ma: +c.params.idc * 1000 } : null, dc = (a, b, rr) => { const va = netDC(pinNetOf(c, a)), vb = netDC(pinNetOf(c, b)); return va === null || vb === null ? null : Math.abs(va - vb) / rr; };
+        const i = c.type === "opt_cat" ? (otDcCurrent(c) === null ? null : Math.abs(otDcCurrent(c))) : c.type === "opt_se" ? dc("P1", "P2", Math.max(c.params.dcrp, 1e-3)) : Math.max(dc("P1", "CT", Math.max(c.params.dcrp, 1e-3)) || 0, dc("CT", "P2", Math.max(c.params.dcrp, 1e-3)) || 0);
         if (i === null) return null;
         return { v: i, text: `${fmtEng(i, "A")} DC${c.type === "opt_pp" ? " per half" : ""}${m ? share(i * 1000, m.ma) : ""}`, warn: !!m && i * 1000 > m.ma };
       }

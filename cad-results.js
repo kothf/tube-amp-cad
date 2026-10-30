@@ -90,10 +90,10 @@
       return { currents: out, adj, pinDraw };
     }
 
-    // DC current in a catalog output transformer's primary (from the drop across its DCR)
+    // DC current in a single-ended output transformer's primary (from the drop across its DCR)
     function otDcCurrent(c) {
-      const m = CadLib.OUTPUT_TX[c.params.model], va = netDC(pinNetOf(c, "P1")), vb = netDC(pinNetOf(c, "P2"));
-      return !m || va === null || vb === null ? null : (va - vb) / m.rp;
+      const rp = c.type === "opt_se" ? +c.params.dcrp : (CadLib.OUTPUT_TX[c.params.model] || {}).rp, va = netDC(pinNetOf(c, "P1")), vb = netDC(pinNetOf(c, "P2"));
+      return !(rp > 0) || va === null || vb === null ? null : (va - vb) / rp;
     }
     // average power in a resistor: from the steady-state waveform when there is one, else DC
     function resistorPower(c) {
