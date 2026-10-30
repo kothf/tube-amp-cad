@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.144.0] - 2026-10-30
+
+### Added
+- Revisions: **Compare on the sheet** marks on the drawing what changed since a revision (parts added green, changed amber, moved blue; parts and wires taken out drawn faintly in red where they were), with a bar that counts them and steps from one change to the next; it follows your edits; Esc or Done leaves it.
+- Revisions: a **preview** of the revision picked, with a picture of its first sheet (saved with each revision), its message, changes and the revision it was made from (**from rN**, when saved after opening an older one).
+- Revisions: **milestones** (☆ Milestone…: Sent to fab, Built, Measured…) and a ★ Milestones filter.
+- The toolbar's **r5** chip: the revision the sheet came from, with • once it has changed since; click it for the dialog. **Ctrl+Alt+S** opens the dialog ready for the message.
+- Project manager: revision pictures (point at one to enlarge), milestones, sorting by last change, name or size, and the page's own dialogs instead of the browser's for editing and deleting.
+- Server: each revision may keep a picture (`<n>.thumb`, PNG/JPEG/WebP up to 200 kB), the revision it came from and a milestone name.
+
 ## [3.143.0] - 2026-10-30
 
 ### Added

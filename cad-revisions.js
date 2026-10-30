@@ -41,6 +41,7 @@
       deleteProject: id => call(P(id), { method: "DELETE" }),
       saveRevision: (id, rev) => call(P(id) + "/revs", { method: "POST", body: rev }),
       revision: (id, n) => call(P(id) + "/revs/" + n),
+      thumbUrl: (id, n) => b + P(id) + "/revs/" + n + "/thumb",
       updateRevision: (id, n, fields) => call(P(id) + "/revs/" + n, { method: "PATCH", body: fields }),
       deleteRevision: (id, n) => call(P(id) + "/revs/" + n, { method: "DELETE" }),
       exportUrl: id => b + P(id) + "/export",
@@ -76,8 +77,10 @@
   function diff(a, b) {
     const A = new Map((a && a.comps || []).map(c => [c.id, c])), B = new Map((b && b.comps || []).map(c => [c.id, c]));
     const added = [], removed = [], changed = [], moved = [];
-    B.forEach((c, id) => { if (!A.has(id) && c.type !== "frame") added.push(name(c)); });
-    A.forEach((c, id) => { if (!B.has(id) && c.type !== "frame") removed.push(name(c)); });
+    // for drawing on the sheet (b's parts, and a's for those taken out): { kind, comp, what? }
+    const marks = [];
+    B.forEach((c, id) => { if (!A.has(id) && c.type !== "frame") { added.push(name(c)); marks.push({ kind: "added", comp: c }); } });
+    A.forEach((c, id) => { if (!B.has(id) && c.type !== "frame") { removed.push(name(c)); marks.push({ kind: "removed", comp: c }); } });
     B.forEach((c, id) => {
       const o = A.get(id); if (!o) return;
       const what = [];
@@ -86,16 +89,19 @@
       const p = o.params || {}, q = c.params || {};
       // a field missing on one side and empty on the other (a newer app filling in its defaults) is no change
       new Set([...Object.keys(p), ...Object.keys(q)]).forEach(k => { if (show(p[k]) !== show(q[k]) || (typeof p[k] === "object" && JSON.stringify(p[k]) !== JSON.stringify(q[k]))) what.push(`${k} ${show(p[k])} → ${show(q[k])}`); });
-      if (what.length) changed.push({ part: name(c), frame: c.type === "frame", what });
-      else if (["x", "y", "rot", "mirror"].some(k => SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(c[k]))) moved.push(name(c));
+      if (what.length) { changed.push({ part: name(c), frame: c.type === "frame", what }); if (c.type !== "frame") marks.push({ kind: "changed", comp: c, what }); }
+      else if (["x", "y", "rot", "mirror"].some(k => SKIP.has(k) && JSON.stringify(o[k]) !== JSON.stringify(c[k]))) { moved.push(name(c)); marks.push({ kind: "moved", comp: c, from: o }); }
     });
     const key = w => [w.x1, w.y1, w.x2, w.y2].join(",");
     const wa = new Set((a && a.wires || []).map(key)), wb = new Set((b && b.wires || []).map(key));
-    const wires = { added: [...wb].filter(k => !wa.has(k)).length, removed: [...wa].filter(k => !wb.has(k)).length };
+    const wiresAdded = (b && b.wires || []).filter(w => !wa.has(key(w))), wiresRemoved = (a && a.wires || []).filter(w => !wb.has(key(w)));
+    const wires = { added: wiresAdded.length, removed: wiresRemoved.length };
     const board = JSON.stringify(a && a.board || null) !== JSON.stringify(b && b.board || null);
     const tubes = JSON.stringify(a && a.tubes || []) !== JSON.stringify(b && b.tubes || []);
     const none = !added.length && !removed.length && !changed.length && !moved.length && !wires.added && !wires.removed && !board && !tubes;
-    return { added, removed, changed, moved, wires, board, tubes, none, text: none ? "no changes" : summary({ added, removed, changed, moved, wires, board, tubes }) };
+    // top to bottom, then left to right (the CAD orders them by sheet as well)
+    marks.sort((p, q) => (p.comp.y - q.comp.y) || (p.comp.x - q.comp.x));
+    return { added, removed, changed, moved, wires, board, tubes, none, marks, wiresAdded, wiresRemoved, text: none ? "no changes" : summary({ added, removed, changed, moved, wires, board, tubes }) };
   }
   const few = (list, n = 6) => list.slice(0, n).join(", ") + (list.length > n ? ` and ${list.length - n} more` : "");
   function summary(d) {

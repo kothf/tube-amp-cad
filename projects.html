@@ -55,6 +55,20 @@
     .empty { color: var(--muted); text-align: center; padding: 16px; }
     input[type=search] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font: 12px system-ui, sans-serif; width: 200px; }
     [hidden] { display: none !important; }
+    select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; font: 12px system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
+    td.pic { width: 110px; padding: 4px; }
+    td.pic img { width: 104px; aspect-ratio: 1.414; object-fit: contain; background: #0a0e14; border: 1px solid #1a2433; border-radius: 4px; display: block; }
+    td.pic img:hover { position: relative; z-index: 3; transform: scale(3.2); transform-origin: left center; box-shadow: 0 8px 30px rgba(0,0,0,.6); }
+    .star { color: #e3b341; font-weight: 600; font-size: 12px; }
+    tr.ms td.n { box-shadow: inset 3px 0 0 #e3b341; }
+    .ask { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 20; padding: 16px; }
+    .ask-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; width: min(460px, 100%); }
+    .ask-box h4 { margin: 0 0 8px; color: var(--accent); font-size: 14px; }
+    .ask-box p { margin: 0 0 10px; color: var(--muted); }
+    .ask-box label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .ask-box input, .ask-box textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 13px system-ui, sans-serif; }
+    .ask-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .btn.danger-fill { background: #3a1517; border-color: var(--bad); color: var(--bad); }
     .table-wrap { overflow-x: auto; }
     /* a phone: the columns that can wait go, the buttons wrap under each other */
     @media (max-width: 700px) {
@@ -105,7 +119,7 @@
       </div>
     </section>
     <section class="card" id="projects-card" hidden>
-      <h3>Projects <span class="spacer"></span><input type="search" id="p-filter" placeholder="Find a project or message" aria-label="Find a project"></h3>
+      <h3>Projects <span class="spacer"></span><select id="p-sort" aria-label="Sort the projects"><option value="updated">Last change</option><option value="name">Name</option><option value="size">Size</option></select><input type="search" id="p-filter" placeholder="Find a project or message" aria-label="Find a project"></h3>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Project</th><th class="num">Revisions</th><th class="num wide-only">Size</th><th class="wide-only">Last change</th><th></th></tr></thead>
@@ -125,6 +139,14 @@
       <p style="margin:8px 0 0"><button class="btn" id="links-more" hidden>Show all</button></p>
     </section>
   </main>
+  <div class="ask" id="ask" hidden>
+    <div class="ask-box" role="dialog" aria-modal="true" aria-labelledby="ask-title">
+      <h4 id="ask-title"></h4>
+      <p id="ask-text"></p>
+      <div id="ask-fields"></div>
+      <div class="ask-actions"><button class="btn" id="ask-cancel">Cancel</button><button class="btn active" id="ask-ok">OK</button></div>
+    </div>
+  </div>
   <script src="cad-revisions.js?v=dev"></script>
   <script src="projects-app.js?v=dev"></script>
 </body>

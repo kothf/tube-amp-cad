@@ -1,7 +1,8 @@
 /* Projects and their revisions, private to the site's owner (Cloudflare Access in front, the token
    checked again in access.mjs). Each project is a folder in REVS:
-     <id>/project.json   { id, name, notes, created, updated, revs: [{ n, time, message, summary, size, hash, by }] }
+     <id>/project.json   { id, name, notes, created, updated, revs: [{ n, time, message, summary, size, hash, by, parent?, milestone?, thumb? }] }
      <id>/<n>.json.gz    the design as File › Save writes it, gzipped
+     <id>/<n>.thumb      a small picture of its first sheet (PNG, JPEG or WebP), when the app sent one
    Nothing here is ever deleted except by the owner. Revisions and the short links (server.mjs)
    share one disk budget: when a revision needs room, the oldest short links go first; when
    revisions alone fill their part, saving one is refused (507).
@@ -13,9 +14,10 @@
      PATCH  /api/rev/projects/<id>              { name?, notes? }
      DELETE /api/rev/projects/<id>              the project and all its revisions
      GET    /api/rev/projects/<id>/export       the project with every revision's design, one JSON
-     POST   /api/rev/projects/<id>/revs         { message, summary?, design } → the new revision
+     POST   /api/rev/projects/<id>/revs         { message, summary?, parent?, thumb?, design } → the new revision
      GET    /api/rev/projects/<id>/revs/<n>     that revision's design
-     PATCH  /api/rev/projects/<id>/revs/<n>     { message }
+     GET    /api/rev/projects/<id>/revs/<n>/thumb   its picture
+     PATCH  /api/rev/projects/<id>/revs/<n>     { message?, milestone? }  (milestone: a short name, "" takes it off)
      DELETE /api/rev/projects/<id>/revs/<n>
      GET    /api/rev/shares                     every short link, newest first
      DELETE /api/rev/shares/<id>                one short link
@@ -26,6 +28,14 @@ import { mkdir, readFile, readdir, rename, rm, stat, statfs, unlink, writeFile }
 import { join } from "node:path";
 
 const PID = /^[A-Za-z0-9_-]{10}$/;
+const MAX_THUMB = 200 * 1024;
+// a picture sent as a data: URL → { type, bytes }, or null
+function thumbOf(url) {
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(url || ""));
+  if (!m) return null;
+  const bytes = Buffer.from(m[2], "base64");
+  return bytes.length && bytes.length <= MAX_THUMB ? { type: m[1], bytes } : null;
+}
 // text as given, without control characters (tabs and new lines stay), at most n characters
 const clip = (s, n) => [...String(s == null ? "" : s)].filter(c => c >= " " || c === "\n" || c === "\t").join("").trim().slice(0, n);
 
@@ -179,11 +189,15 @@ export async function revisionStore({ dir, maxJson, origins, access, budget, log
         return serial(async () => {
           const last = p.meta.revs[p.meta.revs.length - 1];
           if (last && last.hash === hash && !b.force) return ok(Object.assign({ same: true }, last));
-          const gz = gzipSync(json, { level: 9 });
-          const why = await room(gz.length + 512); if (why) return fail(507, why);
+          const gz = gzipSync(json, { level: 9 }), thumb = thumbOf(b.thumb);
+          const why = await room(gz.length + (thumb ? thumb.bytes.length : 0) + 512); if (why) return fail(507, why);
           const n = (last ? last.n : 0) + 1;
           await put(join(dir, id, n + ".json.gz"), gz);
+          if (thumb) await put(join(dir, id, n + ".thumb"), thumb.bytes);
           const rev = { n, time: new Date().toISOString(), message: clip(b.message, 2000), summary: clip(b.summary, 2000), size: gz.length, hash, by: user.email };
+          // the revision it was made from, when that is not the latest (an earlier one opened, then changed)
+          if (Number.isInteger(b.parent) && p.meta.revs.some(r => r.n === b.parent)) rev.parent = b.parent;
+          if (thumb) rev.thumb = thumb.type;
           p.meta.revs.push(rev); p.meta.updated = rev.time;
           await saveMeta(id, p.meta); await resize(id);
           log(`project ${id} r${n} (${gz.length} bytes)`);
@@ -191,7 +205,16 @@ export async function revisionStore({ dir, maxJson, origins, access, budget, log
         });
       }
       const n = +path[3], i = /^\d+$/.test(path[3]) ? p.meta.revs.findIndex(r => r.n === n) : -1;
-      if (path.length !== 4 || i < 0) return fail(404, "no such revision");
+      if (i < 0) return fail(404, "no such revision");
+      if (path.length === 5 && path[4] === "thumb" && m === "GET") {
+        const t = p.meta.revs[i].thumb, bytes = t && await readFile(join(dir, id, n + ".thumb")).catch(() => null);
+        if (!bytes) return fail(404, "no picture");
+        // a revision never changes: the browser may keep its picture
+        res.writeHead(200, { "content-type": t, "x-content-type-options": "nosniff", "cache-control": "private, max-age=31536000, immutable" });
+        res.end(bytes);
+        return true;
+      }
+      if (path.length !== 4) return fail(404, "not found");
       if (m === "GET") {
         const gz = await readFile(join(dir, id, n + ".json.gz"));
         res.writeHead(200, { "content-type": "application/json", "x-content-type-options": "nosniff", ...priv });
@@ -202,12 +225,14 @@ export async function revisionStore({ dir, maxJson, origins, access, budget, log
         const b = await readBody(req, 16 * 1024);
         return serial(async () => {
           if (b.message !== undefined) p.meta.revs[i].message = clip(b.message, 2000);
+          if (b.milestone !== undefined) { const t = clip(b.milestone, 60); if (t) p.meta.revs[i].milestone = t; else delete p.meta.revs[i].milestone; }
           await saveMeta(id, p.meta); await resize(id);
           return ok(p.meta.revs[i]);
         });
       }
       if (m === "DELETE") return serial(async () => {
         await unlink(join(dir, id, n + ".json.gz")).catch(() => {});
+        await unlink(join(dir, id, n + ".thumb")).catch(() => {});
         p.meta.revs.splice(i, 1);
         await saveMeta(id, p.meta); await resize(id);
         log(`project ${id} r${n} deleted by ${user.email}`);
