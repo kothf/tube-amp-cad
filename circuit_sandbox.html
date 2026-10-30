@@ -306,17 +306,46 @@
     .rev-row select { flex: 1; min-width: 180px; }
     #rev-modal input[type=text], #rev-modal select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
     #rev-new-name, #rev-message { flex: 1; min-width: 200px; }
-    .rev-list-wrap { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
-    table.rev-list { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .rev-list th { position: sticky; top: 0; background: var(--panel2, #18212e); text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; }
-    .rev-list td { padding: 4px 8px; border-top: 1px solid var(--line); vertical-align: top; }
-    .rev-list td.n { font: 600 12px ui-monospace, Menlo, monospace; color: var(--accent); white-space: nowrap; }
-    .rev-list td.t { white-space: nowrap; color: var(--muted); }
-    .rev-list td.sum { color: var(--muted); max-width: 260px; }
-    .rev-list td.act { white-space: nowrap; text-align: right; }
-    .rev-list td.act .btn { padding: 2px 8px; font-size: 11px; }
-    .rev-list tr.cur td.n::after { content: " ●"; color: var(--ok); }
-    .rev-list .empty { color: var(--muted); text-align: center; padding: 14px; }
+    .rev-save kbd { font: 10px ui-monospace, Menlo, monospace; opacity: .65; margin-left: 4px; }
+    .rev-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); gap: 12px; margin-top: 4px; }
+    @media (max-width: 760px) { .rev-body { grid-template-columns: 1fr; } }
+    .rev-filter { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    .rev-filter .btn { padding: 1px 8px; font-size: 11px; }
+    .rev-filter .btn.active { color: #e3b341; border-color: #e3b341; }
+    .rev-items { max-height: 44vh; min-height: 160px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+    .rev-item { display: grid; grid-template-columns: 36px minmax(0, 1fr) max-content; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: var(--text); padding: 6px 8px; font: 12px system-ui, sans-serif; cursor: pointer; }
+    .rev-item:first-child { border-top: 0; }
+    .rev-item:hover { background: #121b27; }
+    .rev-item.on { background: #13263a; box-shadow: inset 3px 0 0 var(--accent); }
+    .rev-item .rn { font: 600 12px ui-monospace, Menlo, monospace; color: var(--accent); }
+    .rev-item .rt { overflow: hidden; }
+    .rev-item .rt small { display: block; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rev-item .ra { color: var(--muted); font-size: 11px; text-align: right; }
+    .rev-item .ra b { display: block; color: var(--ok); font-weight: 500; }
+    #rev-modal .star { color: #e3b341; font-weight: 600; }
+    #rev-modal .muted { color: var(--muted); }
+    .rev-empty { color: var(--muted); text-align: center; padding: 18px 10px; font-size: 12px; }
+    .rev-preview { border: 1px solid var(--line); border-radius: 6px; padding: 8px; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+    .rev-pic { background: #0a0e14; border: 1px solid #1a2433; border-radius: 4px; aspect-ratio: 1.414; display: grid; place-items: center; overflow: hidden; color: var(--muted); font-size: 11px; }
+    .rev-pic img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .rev-meta { color: var(--muted); } .rev-meta b { color: var(--accent); font-family: ui-monospace, Menlo, monospace; }
+    .rev-msg { font-size: 13px; }
+    .rev-sum { color: var(--muted); max-height: 6em; overflow: auto; }
+    .rev-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+    .rev-btns input { flex: 1; min-width: 140px; }
+    /* the toolbar's revision chip, and Compare's bar over the sheet */
+    .rev-at { font: 600 11px ui-monospace, Menlo, monospace; color: var(--accent); background: #0d1520; border: 1px solid #263445; border-radius: 6px; padding: 3px 7px; margin-right: 8px; cursor: pointer; }
+    .rev-at[hidden] { display: none; }
+    .rev-at .dirty { color: #e3b341; }
+    @media (max-width: 1080px) { header > .rev-at { display: none; } }
+    #rev-diff-bar { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: calc(100% - 24px); background: rgba(15,21,30,.96); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: 0 6px 24px rgba(0,0,0,.45); font-size: 12px; }
+    #rev-diff-bar[hidden] { display: none; }
+    #rev-diff-bar .sp { flex: 1; min-width: 8px; }
+    #rev-diff-bar .k { padding: 1px 7px; border-radius: 99px; border: 1px solid; font-size: 11px; white-space: nowrap; }
+    #rev-diff-bar .k.added { color: #3fb950; } #rev-diff-bar .k.changed { color: #ffb300; } #rev-diff-bar .k.moved { color: #79c0ff; } #rev-diff-bar .k.removed { color: #ff7b72; } #rev-diff-bar .k.wires, #rev-diff-bar .k.board { color: var(--muted); }
+    #rev-diff-bar .pos { font-family: ui-monospace, Menlo, monospace; color: var(--muted); }
+    #rev-diff-bar .cur { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #rev-diff-bar .btn { padding: 2px 9px; }
     .spimp-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
     .spimp-form { display: grid; grid-template-columns: 96px 1fr; gap: 6px 8px; align-items: center; margin-bottom: 8px; }
     .spimp-form input, .spimp-form select { width: 100%; }
@@ -373,6 +402,7 @@
       <button class="btn" id="btn-doc-board" title="Board: the PCB layout of this circuit, in its own window (Alt+B)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/><path d="M6.2 6H9l2 2v.8"/></svg><span class="ds-lbl">Board</span></button>
     </div>
     <span class="cur-file untitled" id="cur-file" title="The circuit file open now">Untitled</span>
+    <button class="rev-at" id="rev-at" hidden></button>
     <div class="menu" id="file-menu">
       <button class="btn" id="btn-file" aria-haspopup="true" aria-expanded="false">File ▾</button>
       <div class="menu-list" role="menu" hidden>
@@ -475,6 +505,7 @@
     <nav id="palette" aria-label="Parts"></nav>
     <div id="center">
       <div id="stage"><canvas id="cad" aria-label="Schematic"></canvas>
+        <div id="rev-diff-bar" role="toolbar" aria-label="Compare with a revision" hidden></div>
         <div id="hscroll" hidden>
           <button class="hs-btn" id="hs-prev" title="Previous sheet (Page Up)" aria-label="Previous sheet">&#x2039;</button>
           <div id="hs-track" title="Drag to scroll · click a sheet to show it"><div id="hs-thumb" role="scrollbar" aria-orientation="horizontal" aria-controls="cad" aria-label="Scroll the drawing left and right"></div></div>
@@ -759,7 +790,7 @@
   </div>
 
   <div class="modal" id="rev-modal" hidden>
-    <div class="modal-box" style="width: min(820px, 96vw)">
+    <div class="modal-box" style="width: min(980px, 96vw)">
       <div class="rev-head"><div class="insp-title">Project revisions</div><span class="rev-who" id="rev-who"></span><a class="btn" id="rev-manager" href="projects.html" target="_blank" rel="noopener" title="Every project, revision and short link kept on the server, and the space they take">Manager ↗</a></div>
       <div id="rev-off" hidden>
         <p class="insp-help">Revisions are kept on aerocat.tech, for the site's owner only. Open the CAD there to use them.</p>
@@ -782,11 +813,16 @@
         </div>
         <div class="rev-save">
           <input type="text" id="rev-message" spellcheck="true" placeholder="What changed (e.g. R11 to 2.2 k, more feedback)" aria-label="Revision message">
-          <button class="btn active" id="rev-save" title="Keep the design as it is now, board included, as the project's next revision (Ctrl+Alt+S)">Save revision</button>
+          <button class="btn active" id="rev-save" title="Keep the design as it is now, board included, as the project's next revision (Ctrl+Alt+S)">Save revision <kbd>Ctrl+Alt+S</kbd></button>
         </div>
         <p class="insp-help" id="rev-changes"></p>
-        <div class="rev-list-wrap"><table class="rev-list"><thead><tr><th>Rev</th><th>When</th><th>Message</th><th>Changes</th><th></th></tr></thead><tbody id="rev-list"></tbody></table></div>
-        <p class="insp-help" id="rev-compare" hidden></p>
+        <div class="rev-body">
+          <div class="rev-col">
+            <div class="rev-filter"><span>Revisions, newest first</span><button class="btn toggle" id="rev-stars" title="Show only the revisions starred as milestones">★ Milestones</button></div>
+            <div class="rev-items" id="rev-list" role="listbox" aria-label="Revisions"></div>
+          </div>
+          <div class="rev-preview" id="rev-preview" aria-live="polite"></div>
+        </div>
       </div>
       <p class="insp-help" id="rev-info"></p>
       <div class="modal-actions"><button class="btn" id="rev-close">Close</button></div>

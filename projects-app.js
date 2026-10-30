@@ -54,7 +54,7 @@
   function showProjects() {
     const q = $("p-filter").value.trim().toLowerCase();
     const hit = p => !q || [p.name, p.notes, p.last && p.last.message].some(s => String(s || "").toLowerCase().includes(q)) || (open.get(p.id) || []).some(r => (r.message + " " + r.summary).toLowerCase().includes(q));
-    const list = projects.filter(hit);
+    const by = $("p-sort").value, list = projects.filter(hit).sort(by === "name" ? (a, b) => a.name.localeCompare(b.name) : by === "size" ? (a, b) => b.bytes - a.bytes : (a, b) => String(b.updated).localeCompare(String(a.updated)));
     $("projects").innerHTML = list.length ? list.map(p => {
       const revs = open.get(p.id);
       return `<tr class="proj${revs ? " open" : ""}" data-p="${esc(p.id)}">
@@ -67,9 +67,12 @@
   }
   function revTable(p, revs) {
     if (!revs.length) return `<div class="empty">No revisions in this project.</div>`;
-    return `<table><thead><tr><th>Rev</th><th class="wide-only">When</th><th>Message</th><th class="wide-only">Changes</th><th class="num wide-only">Size</th><th></th></tr></thead><tbody>` + revs.map(r => `<tr data-n="${r.n}">
-      <td class="n">r${r.n}</td><td class="t wide-only">${esc(when(r.time))}</td><td>${esc(r.message) || '<span class="muted">–</span>'}</td><td class="sum wide-only">${esc(r.summary)}</td><td class="num wide-only">${size(r.size)}</td>
-      <td class="act"><a class="btn" href="circuit_sandbox.html${R.hashOf(p.id, r.n)}" target="_blank" rel="noopener" title="Open this revision in the CAD">Open in CAD ↗</a> <button class="btn" data-act="download">.json</button> <button class="btn" data-act="message">Edit message</button> <button class="btn danger" data-act="del-rev">Delete</button></td></tr>`).join("") + `</tbody></table>`;
+    return `<table><thead><tr><th>Rev</th><th class="wide-only"></th><th class="wide-only">When</th><th>Message</th><th class="wide-only">Changes</th><th class="num wide-only">Size</th><th></th></tr></thead><tbody>` + revs.map(r => `<tr data-n="${r.n}"${r.milestone ? ' class="ms"' : ""}>
+      <td class="n">r${r.n}</td>
+      <td class="pic wide-only">${r.thumb ? `<img loading="lazy" alt="r${r.n}" src="${esc(api.thumbUrl(p.id, r.n))}">` : ""}</td>
+      <td class="t wide-only">${esc(when(r.time))}${r.parent ? `<div class="muted">from r${r.parent}</div>` : ""}</td>
+      <td>${r.milestone ? `<span class="star">★ ${esc(r.milestone)}</span><br>` : ""}${esc(r.message) || '<span class="muted">–</span>'}</td><td class="sum wide-only">${esc(r.summary)}</td><td class="num wide-only">${size(r.size)}</td>
+      <td class="act"><a class="btn" href="circuit_sandbox.html${R.hashOf(p.id, r.n)}" target="_blank" rel="noopener" title="Open this revision in the CAD">Open in CAD ↗</a> <button class="btn" data-act="download">.json</button> <button class="btn" data-act="message" title="Its message and milestone">Edit…</button> <button class="btn danger" data-act="del-rev">Delete</button></td></tr>`).join("") + `</tbody></table>`;
   }
   function showLinks() {
     const list = allLinks ? links : links.slice(0, LINKS_SHOWN);
@@ -82,7 +85,22 @@
   }
 
   async function act(fn, done) {
-    try { await fn(); await (done || load)(); } catch (err) { if (err.signin) load(); else alert(err.message); }
+    try { await fn(); await (done || load)(); } catch (err) { if (err.signin) load(); else say(err.message, true); }
+  }
+  // the page's own dialog: a question, optional fields, and the button that does it → the fields' values, or null
+  function ask({ title, text, fields = [], ok, danger }) {
+    const m = $("ask"), body = $("ask-fields");
+    $("ask-title").textContent = title; $("ask-text").textContent = text || ""; $("ask-text").hidden = !text;
+    body.innerHTML = fields.map((f, i) => `<label>${esc(f.label)}${f.long ? `<textarea data-i="${i}" rows="3">${esc(f.value || "")}</textarea>` : `<input type="text" data-i="${i}" value="${esc(f.value || "")}"${f.list ? ` list="ask-list-${i}"` : ""} placeholder="${esc(f.placeholder || "")}">`}${f.list ? `<datalist id="ask-list-${i}">${f.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>` : ""}</label>`).join("");
+    const okBtn = $("ask-ok"); okBtn.textContent = ok; okBtn.classList.toggle("danger-fill", !!danger);
+    m.hidden = false;
+    (body.querySelector("input, textarea") || okBtn).focus();
+    return new Promise(resolve => {
+      const done = v => { m.hidden = true; okBtn.onclick = $("ask-cancel").onclick = m.onkeydown = null; resolve(v); };
+      okBtn.onclick = () => done([...body.querySelectorAll("[data-i]")].map(el => el.value));
+      $("ask-cancel").onclick = () => done(null);
+      m.onkeydown = e => { if (e.key === "Escape") done(null); if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") okBtn.click(); };
+    });
   }
   $("projects").addEventListener("click", e => {
     const b = e.target.closest("[data-act]"), row = e.target.closest("tr[data-p]");
@@ -96,22 +114,22 @@
     }
     const n = +((b.closest("tr[data-n]") || {}).dataset || {}).n;
     switch (b.dataset.act) {
-      case "rename": {
-        const name = prompt("Project name:", p.name); if (name === null || !name.trim()) return;
-        const notes = prompt("Notes (optional):", p.notes || ""); if (notes === null) return;
-        act(() => api.updateProject(id, { name: name.trim(), notes }));
+      case "rename":
+        ask({ title: "Rename the project", fields: [{ label: "Name", value: p.name }, { label: "Notes", value: p.notes, long: true }], ok: "Save" }).then(v => {
+          if (v && v[0].trim()) act(() => api.updateProject(id, { name: v[0].trim(), notes: v[1] }));
+        });
         break;
-      }
       case "del-project":
-        if (confirm(`Delete the project ${p.name} with all its ${p.count} revisions?\n\nThis cannot be undone. Download keeps a copy first.`)) act(() => api.deleteProject(id));
+        ask({ title: `Delete ${p.name}?`, text: `All its ${p.count} revisions go with it. This cannot be undone: Download keeps a copy first.`, ok: "Delete the project", danger: true }).then(v => { if (v) act(() => api.deleteProject(id)); });
         break;
       case "message": {
-        const r = open.get(id).find(x => x.n === n), m = prompt(`Message of r${n}:`, r.message); if (m === null) return;
-        act(() => api.updateRevision(id, n, { message: m }));
+        const r = open.get(id).find(x => x.n === n);
+        ask({ title: `r${n} of ${p.name}`, fields: [{ label: "Message", value: r.message, long: true }, { label: "Milestone (empty: none)", value: r.milestone, list: ["Sent to fab", "Built", "Measured", "Released"], placeholder: "Sent to fab, Built…" }], ok: "Save" })
+          .then(v => { if (v) act(() => api.updateRevision(id, n, { message: v[0], milestone: v[1] })); });
         break;
       }
       case "del-rev":
-        if (confirm(`Delete r${n} of ${p.name}?\n\nThis cannot be undone; the other revisions keep their numbers.`)) act(() => api.deleteRevision(id, n));
+        ask({ title: `Delete r${n} of ${p.name}?`, text: "This cannot be undone. The other revisions keep their numbers.", ok: "Delete the revision", danger: true }).then(v => { if (v) act(() => api.deleteRevision(id, n)); });
         break;
       case "download":
         act(async () => {
@@ -126,12 +144,13 @@
   $("links").addEventListener("click", e => {
     const b = e.target.closest("[data-act=del-link]"); if (!b) return;
     const id = b.closest("tr").dataset.s;
-    if (confirm(`Delete the short link aerocat.tech/s/${id}?\n\nWhoever has it can no longer open the design.`)) act(() => api.deleteShare(id));
+    ask({ title: `Delete aerocat.tech/s/${id}?`, text: "Whoever has this link can no longer open the design.", ok: "Delete the link", danger: true }).then(v => { if (v) act(() => api.deleteShare(id)); });
   });
   $("links-more").addEventListener("click", () => { allLinks = true; showLinks(); });
   $("p-filter").addEventListener("input", showProjects);
   $("refresh").addEventListener("click", load);
   $("signin").addEventListener("click", async () => { say("Waiting for the login window…"); await api.signIn(); load(); });
+  $("p-sort").addEventListener("change", showProjects);
   window.TubeProjects = { load, state: () => ({ projects, links, open }) };
   load();
 })();

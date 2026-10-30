@@ -155,3 +155,24 @@ test("revisions and links share the store: links give way, revisions are refused
   assert.deepEqual(left.map(x => x.id), [pid]);
   assert.equal((await (await api("/me")).json()).revisions.bytes, left[0].bytes, "its room is given back");
 });
+
+test("a revision keeps its picture, the revision it came from, and a milestone name", async () => {
+  const png = "data:image/png;base64," + Buffer.from("\x89PNG fake picture bytes", "latin1").toString("base64");
+  const d = example("13-2a3-single-ended-1627sea.json");
+  const revs = (await (await api(`/projects/${pid}`)).json()).revs;
+  const parent = revs[0].n;
+  const r = await (await api(`/projects/${pid}/revs`, { method: "POST", body: { message: "from an older one", parent, thumb: png, design: d } })).json();
+  assert.equal(r.parent, parent); assert.equal(r.thumb, "image/png");
+  const t = await api(`/projects/${pid}/revs/${r.n}/thumb`);
+  assert.equal(t.status, 200); assert.equal(t.headers.get("content-type"), "image/png");
+  assert.equal(Buffer.from(await t.arrayBuffer()).toString("latin1"), "\x89PNG fake picture bytes");
+  assert.equal((await api(`/projects/${pid}/revs/${revs[0].n}/thumb`)).status, 404, "no picture sent, none kept");
+  const bad = await (await api(`/projects/${pid}/revs`, { method: "POST", body: { parent: 999, thumb: "data:text/html;base64,PHNjcmlwdD4=", design: example("08-555-astable.json") } })).json();
+  assert.equal(bad.parent, undefined, "an unknown parent is left out"); assert.equal(bad.thumb, undefined, "only pictures");
+  assert.equal((await (await api(`/projects/${pid}/revs/${r.n}`, { method: "PATCH", body: { milestone: "  Sent to fab " } })).json()).milestone, "Sent to fab");
+  assert.equal((await (await api(`/projects/${pid}/revs/${r.n}`, { method: "PATCH", body: { milestone: "" } })).json()).milestone, undefined);
+  const before = (await (await api("/me")).json()).revisions.bytes;
+  await api(`/projects/${pid}/revs/${r.n}`, { method: "DELETE" });
+  assert.equal((await api(`/projects/${pid}/revs/${r.n}/thumb`)).status, 404);
+  assert.ok((await (await api("/me")).json()).revisions.bytes < before, "its picture goes with it");
+});
