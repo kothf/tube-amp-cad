@@ -15,6 +15,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
   - A dashed outline with the block's name marks every copy on screen; the inspector of a part in a copy names the block and the copy and offers *Select this copy*, *Detach* and *Blocks…*; *Make block…* and *Update block from selection* in the inspector of a selection.
   - *Blocks…* lists the circuit's blocks (Place, Rename, Save to library, Delete) and **My library**, kept in the browser, to place a block in any other circuit. Blocks are saved in the circuit file (`blocks`) and travel in share links, revisions and undo.
 
+## [3.151.1] - 2026-10-30
+
+### Fixed
+- **Every example now comes with a finished board.** Examples 13, 14 and 15 opened with their parts below an empty board, example 06 with 4 connections open and 7 rule violations, example 03 with one open, examples 04 and 05 with a track too close to another. The board's own router has laid out and routed them: every example's board is placed and fully routed with no rule violations (the mounting-hole warnings stay). Example 03's high-voltage clearance is 1.25 mm, as IPC-2221B asks at its voltages: at 2 mm the MPSA92's middle pin could not be reached between its neighbours. A browser test now opens every example's board and checks it.
+- Board: when Design from scratch or Finish routing kept the board as it was, the board was not drawn again: it showed the last layout tried, without its tracks, and "67 connections to route" beside "everything routed" until the mouse moved.
+- CAD toolbar: on a circuit with several sheets it took two rows below about 1700 px, as the sheet selector kept its full width. The selector now takes the room left over (like the file name) and gives way below 1240 px, where the scroll bar under the drawing and Page Up / Page Down still step through the sheets. One row from 960 px up.
+- Escape closes every CAD dialog (Revisions, Share link, Save, Export, Print, SPICE netlist, AI settings and the rest) wherever the focus is; before, most closed only with the focus inside them, and the Revisions dialog not even then, so it stayed over the toolbar.
+- The curve tracer has the **Schematic | Board** switch at the left of its toolbar, as the oscilloscope, spectrum analyzer and Bode plotter do, in place of the Circuit CAD ↗ button.
+- Board: the help, the Route ▾ menu and the README said Auto-route sends the board to Freerouting and stays grey until Freerouting answers; since 3.140.0 it uses the board's own grid router, Freerouting only when ticked.
+- On a phone the CAD no longer scrolls sideways (the closed inspector drawer waiting off the right edge made the page 710 px wide on a 390 px screen).
+
 ## [3.151.0] - 2026-10-30
 
 ### Added

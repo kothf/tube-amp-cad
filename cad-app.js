@@ -963,9 +963,11 @@
   }
   function selectAll() { S.comps.forEach(c => S.sel.comps.add(c.id)); S.wires.forEach(w => S.sel.wires.add(w.id)); updateInspector(); render(); }
   function toggleView(key) { S[key] = !S[key]; render(); }
+  const openModal = () => [...document.querySelectorAll(".modal")].reverse().find(m => !m.hidden);
   cmds
     .add({ id: "help-close", keys: ["Escape"], anyCtrl: true, when: () => !helpModal().hidden, run: () => { helpModal().hidden = true; } })
-    .add({ id: "block-close", keys: ["Escape"], anyCtrl: true, inInputs: true, when: () => blocks.isOpen(), run: () => blocks.closeDialog() })
+    // any other dialog: Escape is its Cancel or Close button, wherever the focus is (not only inside the dialog)
+    .add({ id: "modal-close", keys: ["Escape"], anyCtrl: true, inInputs: true, inControls: true, when: () => !!openModal(), run: () => { const m = openModal(), b = m.querySelector(".modal-actions [id$='-cancel'], .modal-actions [id$='-close']"); if (b) b.click(); else m.hidden = true; } })
     .add({ id: "diff-close", keys: ["Escape"], anyCtrl: true, when: () => !!S.revDiff, run: () => revisions.closeDiff() })
     .add({ id: "save-revision", keys: ["Ctrl+Alt+S"], prevent: true, when: () => !!revisions, run: () => revisions.quickSave(), help: "save a revision of the project (File ▾ → Revisions…)" })
     .add({ id: "rotate", label: "Rotate", icon: ICONS.rotate, keys: ["Space", "R"], helpKeys: ["Space"], run: rotateSelection, help: "rotate the selection, the part being placed or the parts being dragged (a tap: Space held down while dragging pans; R also rotates)" })

@@ -538,10 +538,11 @@ the circuit file, so one file holds both.
   - A track entering a tube pin may pass the socket's other pins as closely as
     the pin itself does: the socket's own pin spacing is a limit no layout can
     beat.
-- **Auto-route** sends the open connections to
-  [Freerouting](https://www.freerouting.app) (free, GPL-3) and adds the tracks
-  and vias it finds. Freerouting runs on your own computer, or another one on
-  your network; the board never goes anywhere else.
+- **Auto-route** routes the open connections with the board's own grid
+  router, in the browser; no server is needed. Ticked in *Route ▾ →
+  Freerouting…*, [Freerouting](https://www.freerouting.app) (free, GPL-3)
+  routes first and the grid router finishes what it leaves. Freerouting runs
+  on this site's server, your own computer, or another one on your network.
   - Start its API server with Java 25 and `freerouting.jar`:
 
     ```sh
@@ -565,8 +566,8 @@ the circuit file, so one file holds both.
     own when you run it locally); without it Freerouting answers but the
     browser keeps the page out. `authentication.enabled=false` turns off its
     API key.
-  - The button stays grey until Freerouting answers at
-    `http://127.0.0.1:37864`. *Route ▾ → Freerouting…* sets another address
+  - Your own Freerouting answers at `http://127.0.0.1:37864` by default
+    (until it answers, Auto-route uses the grid router alone). *Route ▾ → Freerouting…* sets another address
     (a PC or server on your network: its IP, and `:port` if not 37864), tests
     it, and shows both start commands ready to copy. When it does not answer,
     the dialog says why: Freerouting runs but was started without this page's
