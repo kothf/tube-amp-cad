@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.155.0] - 2026-10-30
+
+### Added
+- **Russian interface.** The **RU** button at the right of the CAD toolbar (and *View ▾ → Interface → Русский*) puts the CAD in Russian: the toolbar, the menus, the parts palette, the inspector, the panels under the schematic (BOM, Checks, Tolerance, Power, Noise, Sweep, Listen, Tune), the dialogs, the start screen with every example's description, reusable blocks, and the tooltips. **EN** switches back. Every open CAD window follows, and the browser remembers the choice. Part numbers, values and units are not translated, and neither is the drawing. A text not translated yet stays in English. The Board window, the instruments and the manual come next.
+
 ## [3.154.1] - 2026-10-30
 
 ### Fixed

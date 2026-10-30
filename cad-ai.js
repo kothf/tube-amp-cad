@@ -222,7 +222,7 @@
       if (!AI.log.length) {
         h = `<div class="ai-msg note"><b>AI assistant.</b> Ask about the circuit on the sheet or how to do something in the app. It sees the parts, the simulated voltages, the operating points and the Checks.`
           + (AiClient.ready(AI.cfg) ? "" : ` It needs your own API key for Claude, ChatGPT or Gemini: <a href="#" data-settings="1">AI settings…</a>`) + `</div>`
-          + `<div class="ai-chips">${["Explain my circuit", "Fix the checks", "Why does the output stage run so hot?", "How do I measure the output power at 1 % THD?", "How do I add a second sheet?"].map(q => `<button class="btn ai-chip">${esc(q)}</button>`).join("")}</div>`;
+          + `<div class="ai-chips">${["Explain my circuit", "Fix the checks", "Why does the output stage run so hot?", "How do I measure the output power at 1 % THD?", "How do I add a second sheet?"].map(q => `<button class="btn ai-chip" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>`;
       }
       if (AI.busy) h += (AI.busy.partial ? `<div class="ai-msg answer">${A.markdown(AI.busy.partial, refs())}</div>` : "")
         + `<div class="ai-msg busy"><span class="ai-dots"></span> ${esc(AI.busy.what)} · ${esc(AiClient.label(AI.cfg))} is ${AI.busy.partial ? "writing" : "thinking"}… <button class="btn" id="btn-ai-stop">Stop</button></div>`;
@@ -243,7 +243,7 @@
         if (S.history[S.hIndex] === m.at) { undo(); m.text += "\n\n*Undone.*"; } else m.text += "\n\n*The circuit changed since: Edit ▾ → Undo steps back through the changes.*";
         m.undo = false; render(); return;
       }
-      if (t.classList.contains("ai-chip")) { const q = t.textContent; if (q === "Explain my circuit") explain(); else if (q === "Fix the checks") fixChecks(); else ask(q); return; }
+      if (t.classList.contains("ai-chip")) { const q = t.dataset.q; if (q === "Explain my circuit") explain(); else if (q === "Fix the checks") fixChecks(); else ask(t.textContent); return; }
       if (t.dataset.ref) { const c = S.comps.find(k => refOf(k) === t.dataset.ref || k.label === t.dataset.ref); if (c) selectParts([c.id]); return; }
       if (t.dataset.apply) { const [k, j] = t.dataset.apply.split(":"), card = AI.log[+k]; if (card) apply(card, j === "all" ? card.fixes.map((f, i) => i) : [+j]); }
     }
