@@ -258,6 +258,20 @@
     .ai-keyrow { display: flex; gap: 6px; align-items: center; } .ai-keyrow input[type=password], .ai-keyrow input[type=text] { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: 12px ui-monospace, Menlo, monospace; }
     .ai-keyrow label { color: var(--muted); font-size: 12px; white-space: nowrap; }
     #ai-modal .modal-actions { align-items: center; }
+    /* Tune: goals and values at the left, the result at the right */
+    .tune-wrap { display: flex; gap: 16px; padding: 8px 12px; flex-wrap: wrap; align-items: flex-start; }
+    .tune-left { flex: 1 1 420px; min-width: 320px; font-size: 12px; } .tune-right { flex: 1 1 380px; min-width: 300px; font-size: 12px; }
+    .tune-sec { font-weight: 600; margin: 8px 0 4px; } .tune-sec .muted { font-weight: 400; margin-left: 6px; }
+    .tune-row { display: flex; gap: 6px; align-items: center; margin: 3px 0; flex-wrap: wrap; }
+    .tune-name { min-width: 150px; font-family: ui-monospace, Menlo, monospace; }
+    .tune-x { padding: 1px 7px; font-size: 11px; } .tune-empty { margin: 2px 0 4px; }
+    .tune-check { display: flex; gap: 6px; align-items: center; color: var(--muted); margin: 6px 0; cursor: pointer; }
+    .tune-state { font-weight: 600; margin: 2px 0 6px; } .tune-state.ok { color: var(--ok); } .tune-state.warn { color: var(--warn); }
+    .tune-table { border-collapse: collapse; width: 100%; margin-bottom: 8px; }
+    .tune-table th { color: var(--muted); font-weight: 600; text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--line); }
+    .tune-table td { padding: 2px 8px; border-bottom: 1px dashed #1a2433; } .tune-table td.n { text-align: right; font-variant-numeric: tabular-nums; } .tune-table td.mono { font-family: ui-monospace, Menlo, monospace; }
+    .tune-table td.ok { color: var(--ok); } .tune-table td.warn { color: var(--warn); }
+    .tune-chart { max-width: 380px; margin-top: 6px; }
     /* status bar */
     footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
     .sim-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
@@ -381,7 +395,7 @@
         <button class="menu-item" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
         <button class="menu-item" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
         <button class="menu-item" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
-        <div id="ai-menu-more"></div>
+        <button class="menu-item" role="menuitem" id="menu-ai-tune" title="Part values changed until the simulated circuit meets your goals; works without a key">Auto-tune<kbd>reach a goal</kbd></button>
         <div class="menu-sep"></div>
         <button class="menu-item" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
       </div>
@@ -444,12 +458,13 @@
         <div class="bom-grip" title="Drag to resize"></div>
         <div class="bom-head">
           <div class="dock-tabs" role="tablist">
-            <button class="dock-tab" role="tab" data-tab="bom" aria-controls="bom-pane" title="Bill of materials (B)">Bill of materials</button>
+            <button class="dock-tab" role="tab" data-tab="bom" aria-controls="bom-pane" title="Bill of materials (B)">BOM</button>
             <button class="dock-tab" role="tab" data-tab="checks" aria-controls="checks-pane" title="Every part beyond its rating and every wiring problem">Checks<span id="checks-count"></span></button>
             <button class="dock-tab" role="tab" data-tab="tolerance" aria-controls="tol-pane" title="The circuit simulated many times with its parts spread within their tolerances">Tolerance</button>
             <button class="dock-tab" role="tab" data-tab="power" aria-controls="pw-pane" title="Output power against distortion over a row of input levels">Power</button>
             <button class="dock-tab" role="tab" data-tab="sweep" aria-controls="sw-pane" title="One part's value stepped over a range">Sweep</button>
             <button class="dock-tab" role="tab" data-tab="listen" aria-controls="ls-pane" title="Hear a recording played through the circuit">Listen</button>
+            <button class="dock-tab" role="tab" data-tab="tune" aria-controls="tune-pane" title="Auto-tune: part values changed until the simulated circuit meets your goals (no AI key needed)">Tune</button>
             <button class="dock-tab" role="tab" data-tab="ai" aria-controls="ai-pane" title="The AI assistant: ask about this circuit or the app (your own Claude, ChatGPT or Gemini key)">AI</button>
           </div>
           <span class="bom-tools" data-for="bom">
@@ -493,10 +508,14 @@
             <label title="What you hear: a speaker, two speakers in stereo, or a scope channel">Hear <select id="ls-out" class="tol-sel"></select></label>
             <button class="btn" id="btn-ls-run" title="Play the recording through the circuit (simulated); press again to stop">▶ Render</button>
           </span>
+          <span class="bom-tools" data-for="tune">
+            <label title="How many simulations the search may run at most">Tries <input type="number" id="tune-budget" class="tol-num" min="10" max="2000" step="10"></label>
+            <button class="btn" id="btn-tune-ai" title="Ask the AI which values to change, over what ranges and from where (needs an AI key)">AI start</button>
+            <button class="btn" id="btn-tune-run" title="Search for values that meet the goals; press again to stop">▶ Tune</button>
+          </span>
           <span class="bom-tools" data-for="ai">
             <button class="btn" id="btn-ai-explain" title="What the circuit is and what each stage and part does">Explain circuit</button>
             <button class="btn" id="btn-ai-fix" title="The Checks list turned into value changes you can apply">Fix checks</button>
-            <span id="ai-actions"></span>
           </span>
           <span class="spacer"></span>
           <span class="bom-tools" data-for="bom">
@@ -518,6 +537,7 @@
         <div class="bom-scroll" id="pw-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="ls-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="sw-pane" role="tabpanel" hidden></div>
+        <div class="bom-scroll" id="tune-pane" role="tabpanel" hidden></div>
         <div class="ai-pane" id="ai-pane" role="tabpanel" hidden>
           <div class="ai-log" id="ai-log" aria-live="polite"></div>
           <div class="ai-ask"><textarea id="ai-input" rows="2" placeholder="Ask about this circuit or how to do something in the app…  (Enter sends, Shift+Enter: new line)"></textarea><button class="btn primary" id="btn-ai-send">Send</button></div>
@@ -725,6 +745,7 @@
   <script src="ai-client.js?v=dev"></script>
   <script src="ai-circuit.js?v=dev"></script>
   <script src="cad-ai.js?v=dev"></script>
+  <script src="cad-tune.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>

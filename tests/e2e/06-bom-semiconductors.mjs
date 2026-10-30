@@ -78,9 +78,10 @@ import { readFile } from "node:fs/promises";
     await cad.mouse.click(cb.x + sx, cb.y + sy);
     const vis = await cad.evaluate(() => {
       const box = document.querySelector("#bom .bom-scroll"), tr = document.querySelector("#bom-table tbody tr.sel"), b = box.getBoundingClientRect(), r = tr && tr.getBoundingClientRect();
-      return { text: tr ? tr.textContent : "", scrolled: box.scrollTop > 0, inView: !!r && r.top >= b.top + document.querySelector("#bom-table thead").offsetHeight - 1 && r.bottom <= b.bottom + 1 };
+      return { text: tr ? tr.textContent : "", scrolled: box.scrollTop > 0, inView: !!r && r.top >= b.top + document.querySelector("#bom-table thead").offsetHeight - 1 && r.bottom <= b.bottom + 1,
+        why: `list ${Math.round(b.height)} px high under a ${document.querySelector("#bom .bom-head").offsetHeight} px header, scrolled ${Math.round(box.scrollTop)}, line ${r ? Math.round(r.top - b.top) + "…" + Math.round(r.bottom - b.top) : "none"}` };
     });
-    check(/125ESE/.test(vis.text) && vis.scrolled && vis.inView, `selecting T1 on the sheet scrolls the BOM to its highlighted line`);
+    check(/125ESE/.test(vis.text) && vis.scrolled && vis.inView, `selecting T1 on the sheet scrolls the BOM to its highlighted line (${vis.why})`);
     await cad.evaluate(() => document.getElementById("bom").style.removeProperty("--bom-h"));
   }
   await cad.check("#bom-bench");

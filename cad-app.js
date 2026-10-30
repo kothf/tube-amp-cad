@@ -247,6 +247,7 @@
     power.changed();
     listen.changed();
     sweep.changed();
+    tune.changed();
     animChanged();
     try { localStorage.setItem(STORAGE_KEY, snapshot()); } catch (e) {}
     showFile();
@@ -2355,9 +2356,11 @@
   const sweep = CadSweep({ S, buildNetlist, cmds, commit, desig, esc: escH, fmtEng, harmonics, measurements, parseEng: CadLib.parseEng, pool, scopeChannels, setStatus, signalFreq, speakerWave, topo, withResult });
   // Listen: the Listen tab (cad-listen.js)
   const listen = CadListen({ S, buildNetlist, cmds, desig, esc: escH, fmtEng, pool, setStatus, topo });
-  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); sweep.render(); listen.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
+  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); sweep.render(); listen.render(); tune.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
   // The AI assistant: the AI tab and the AI menu (cad-ai.js)
   const ai = CadAi({ S, VERSION, circuitIssues, commit, compPins, desig, fmtEng, harmonics, measurements, netAC, netDC, runSim, selectParts: selectFromBoard, setStatus, signalFreq, speakerWave, toggleBom, topo, tubeData, undo, whenSimulated });
+  // Auto-tune: the Tune tab (cad-tune.js)
+  const tune = CadTune({ S, buildNetlist, cmds, commit, compPins, desig, esc: escH, fmtEng, harmonics, measurements, pool, scopeChannels, setStatus, signalFreq, speakerWave, toggleBom, topo, withResult });
   // PDF / PNG export and printing (cad-export.js)
   const { expOpts, exportPDF, initExport, openExportDialog, openPrintDialog, printPages, prnOpts, renderPNG, runExport, runPrint } = CadExport({ S, baseName, bind, bomData, compBBox, currentSheet, drawSheet, frames, setStatus, sheetNo });
   // The file this circuit came from or was last saved to. With the File System Access API
@@ -2810,6 +2813,7 @@
     sweep.init();
     initBom();
     ai.init();
+    tune.init(ai);
     bind("btn-open-board", showBoard);
     cmds.bind("btn-board-tab", "board-tab");
     cmds.bind("btn-doc-board", "board");
@@ -2840,6 +2844,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { circuitIssues, ai, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { circuitIssues, ai, tune, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
