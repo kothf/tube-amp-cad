@@ -298,6 +298,8 @@
   const selSig = () => [...S.sel.comps].sort().join(",") + "|" + [...S.sel.wires].sort().join(",");
   // The board window or tab, the netlist and board document it shares with the CAD, cross-probing (cad-board-link.js)
   const { BOARD_KEY, boardNetlist, isBoardTab, probeBoard, scheduleBoardNetlist, selectFromBoard, selectNetFromBoard, sendBoardNetlist, setBoardTab, showBoard, storeBoard } = CadBoardLink({ S, VERSION, channel, compBBox, compPins, frames, getCanvas: () => canvas, netDC, netWave, pinCurrents, render, selSig, showFile, topo, updateInspector, usedCustomTubes });
+  // KiCad export: schematic, board and project in one ZIP (cad-kicad.js, kicad-export.js)
+  const { exportKicad, kicadFiles } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo });
   S.showLegend = (() => { try { return localStorage.getItem(LEGEND_KEY) !== "0"; } catch (e) { return true; } })();
   S.sim.live = (() => { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch (e) { return true; } })();
 
@@ -1293,8 +1295,8 @@
     if (!cache.has(c.id)) { const d = tubeData(c); cache.set(c.id, d && d.dc && d.kind !== "rectifier" && d.paMax > 0 ? CadLib.anodeTemp(d.metrics ? d.metrics.pAvg : d.dc.vak * d.dc.ia, d.paMax) : null); }
     return cache.get(c.id);
   }
-  function drawComp(c, sel, ghost) {
-    const def = LIB[c.type];
+  // the symbol itself, turned and mirrored (what drawComp draws before the labels and pins)
+  function drawBody(c, sel, ghost) {
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate((c.rot & 3) * Math.PI / 2);
@@ -1320,6 +1322,16 @@
     delete c._sel; delete c._lit; delete c._on; delete c._eye; delete c._hot;
     if (mirrored) { if (ownFill) ctx.fillText = prevFill; else delete ctx.fillText; }
     ctx.restore();
+  }
+  // a part's symbol and pin numbers into another context (the KiCad export's ShapeCanvas), as printed
+  function drawSymbol(target, c) {
+    const keep = ctx; ctx = target; S.printing = true;
+    try { drawBody(c, false, false); if (LIB[c.type].pinSpots || c.type === "tube") drawPinNumbers(c, false); }
+    finally { ctx = keep; S.printing = false; }
+  }
+  function drawComp(c, sel, ghost) {
+    const def = LIB[c.type];
+    drawBody(c, sel, ghost);
 
     if (c.type === "scope" && !S.printing) drawScopeScreen(c);
     if (isLocked(c) && !S.printing && !ghost) {
@@ -2915,6 +2927,7 @@
     cmds.bind("btn-noise", "noise");
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
     cmds.bind("btn-volts", "volts").bind("btn-amps", "amps").bind("btn-legend", "legend").bind("btn-anim", "anim");
+    bind("btn-kicad", () => exportKicad());
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
@@ -2960,6 +2973,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

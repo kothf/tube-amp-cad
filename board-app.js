@@ -1334,6 +1334,22 @@
     const name = baseName() + ".step", sc = Board3D.scene(S.board, S.model, { tubes: $("v3-tubes").checked });
     download(Board3D.step(sc, { title: fabMeta().title, version: appVersion(), file: name }), name, "application/step");
   }
+  // KiCad: the board with its project file (net classes), custom rules (clearance by voltage) and
+  // footprint library, as a ZIP to open in KiCad 7 or later; an unfinished board goes too, to be
+  // finished there (the CAD's File ▾ → Export KiCad project adds the schematic)
+  function exportKicad() {
+    if (!S.model) { msg("Open the Circuit CAD first: the board needs its parts"); return null; }
+    const K = KicadExport, name = baseName(), files = {};
+    files[name + ".kicad_pcb"] = K.pcb(S.board, S.model, S.conn, { title: fabMeta().title, version: appVersion() });
+    files[name + ".kicad_pro"] = K.project(name, S.board, S.model, S.hv);
+    files[name + ".kicad_dru"] = K.rules(S.board, S.model, S.hv, S.netlist);
+    Object.assign(files, K.footprintLib(S.model, S.board));
+    files["fp-lib-table"] = K.FP_TABLE;
+    const zipped = {};
+    Object.entries(files).forEach(([p, t]) => { zipped[name + "/" + p] = t; });
+    download(BoardFab.zip(zipped), name + "-kicad.zip", "application/zip");
+    return files;
+  }
   // the selected part in 3D, on a small piece of board, turning slowly (drag to turn it yourself)
   function partPreview(h, g) {
     if (typeof Viewer3D === "undefined") return;
@@ -1449,6 +1465,7 @@
     $("ex-svg").onclick = () => { list.hidden = true; download(svgDoc(["F.Cu", "B.Cu", "F.SilkS", "Edge.Cuts"], false), baseName() + "-board.svg", "image/svg+xml"); };
     $("ex-gerber").onclick = () => { list.hidden = true; exportGerber(); };
     $("ex-step").onclick = () => { list.hidden = true; exportStep(); };
+    $("ex-kicad").onclick = () => { list.hidden = true; exportKicad(); };
     $("btn-3d").onclick = () => ($("view3d").hidden ? open3D() : close3D());
     $("v3-close").onclick = close3D; $("v3-step").onclick = exportStep;
     $("v3-png").onclick = () => { if (!viewer) return; const a = document.createElement("a"); a.href = viewer.png(); a.download = baseName() + "-3d.png"; a.click(); msg("Saved " + a.download); };
@@ -1474,6 +1491,6 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

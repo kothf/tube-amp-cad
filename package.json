@@ -1,6 +1,6 @@
 {
   "name": "tube-amp-cad",
-  "version": "3.150.1",
+  "version": "3.151.0",
   "description": "Browser schematic editor and circuit simulator for vacuum-tube amplifiers, with a curve tracer, oscilloscope and spectrum analyzer.",
   "private": true,
   "license": "MIT",
@@ -25,7 +25,7 @@
   "scripts": {
     "test": "npm run lint && npm run test:engine && npm run test:e2e && npm run test:reference",
     "lint": "eslint .",
-    "test:engine": "node --test tests/engine.test.mjs tests/bias.test.mjs tests/scope.test.mjs tests/board.test.mjs tests/spice.test.mjs tests/ui-kit.test.mjs tests/tolerance.test.mjs tests/power.test.mjs tests/listen.test.mjs tests/sweep.test.mjs tests/noise.test.mjs tests/pool.test.mjs tests/opamp.test.mjs tests/regulator.test.mjs tests/diode.test.mjs tests/transistor.test.mjs tests/protection.test.mjs tests/smd.test.mjs tests/sources.test.mjs tests/gas.test.mjs tests/switching.test.mjs tests/indicators.test.mjs tests/place.test.mjs tests/mpn.test.mjs tests/curves.test.mjs tests/pathfinder.test.mjs tests/share.test.mjs tests/share-server.test.mjs tests/rev-server.test.mjs tests/revisions.test.mjs tests/ai.test.mjs tests/tune.test.mjs tests/design.test.mjs tests/datasheet.test.mjs",
+    "test:engine": "node --test tests/engine.test.mjs tests/bias.test.mjs tests/scope.test.mjs tests/board.test.mjs tests/spice.test.mjs tests/ui-kit.test.mjs tests/tolerance.test.mjs tests/power.test.mjs tests/listen.test.mjs tests/sweep.test.mjs tests/noise.test.mjs tests/pool.test.mjs tests/opamp.test.mjs tests/regulator.test.mjs tests/diode.test.mjs tests/transistor.test.mjs tests/protection.test.mjs tests/smd.test.mjs tests/sources.test.mjs tests/gas.test.mjs tests/switching.test.mjs tests/indicators.test.mjs tests/place.test.mjs tests/mpn.test.mjs tests/curves.test.mjs tests/pathfinder.test.mjs tests/share.test.mjs tests/share-server.test.mjs tests/rev-server.test.mjs tests/revisions.test.mjs tests/ai.test.mjs tests/tune.test.mjs tests/design.test.mjs tests/datasheet.test.mjs tests/kicad.test.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "test:reference": "node tests/reference.mjs",
     "test:ngspice": "node tests/ngspice.mjs",

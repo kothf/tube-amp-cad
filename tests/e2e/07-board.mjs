@@ -454,6 +454,12 @@ import { readFile } from "node:fs/promises";
   check(/gerbers\.zip$/.test(zipDl.suggestedFilename()) && zipBuf.slice(0, 2).toString() === "PK" && zipNames.some(n => /-B_Cu\.gbr$/.test(n)) && zipNames.some(n => /-PTH\.drl$/.test(n)) && /G36\*/.test(zipBuf.toString("latin1")),
     `Export → Gerber + drill files gives ${zipDl.suggestedFilename()} with the copper, mask, silkscreen, outline and drill files (the pour as a region)`);
   check(/-prints\.pdf$/.test(pdfDl.suggestedFilename()) && pdfBuf.slice(0, 4).toString() === "%PDF" && /\/Count 4/.test(pdfBuf.toString("latin1")), `Export → Print set gives a four-page PDF (${pdfDl.suggestedFilename()})`);
+  // KiCad: the board with its project, rules and footprints, as a ZIP (no question: it is finished there)
+  await bd.click("#btn-export");
+  const [kiDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-kicad")]);
+  const kiText = (await readFile(await kiDl.path())).toString("utf8");
+  check(/-kicad\.zip$/.test(kiDl.suggestedFilename()) && /\.kicad_pcb/.test(kiText) && /\(kicad_pcb \(version 20221018\)/.test(kiText) && /\.kicad_pro/.test(kiText) && /\.kicad_dru/.test(kiText) && /TubeAmpCAD\.pretty\/SOCKET-[\w-]+\.kicad_mod/.test(kiText) && /\(footprint "TubeAmpCAD:SOCKET-/.test(kiText),
+    `Export → KiCad board gives ${kiDl.suggestedFilename()}: the .kicad_pcb, its project and rules, and the footprint library`);
   // 3D: the selected part turns in the inspector; the board in 3D (3 / Esc); STEP of board and parts
   await bd.locator('#parts .item', { hasText: "VL1" }).first().click();
   await bd.waitForTimeout(300);
