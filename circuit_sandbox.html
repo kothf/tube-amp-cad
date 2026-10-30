@@ -296,6 +296,27 @@
     .spimp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 12px; }
     .spimp textarea { height: 300px !important; }
     #share-text { height: 7.5em; word-break: break-all; resize: vertical; }
+    .rev-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .rev-head .insp-title { margin: 0; }
+    .rev-who { flex: 1; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #rev-modal a.btn { text-decoration: none; }
+    .rev-row[hidden] { display: none; }
+    .rev-row, .rev-save { display: flex; gap: 6px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+    .rev-row label { color: var(--muted); font-size: 12px; }
+    .rev-row select { flex: 1; min-width: 180px; }
+    #rev-modal input[type=text], #rev-modal select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+    #rev-new-name, #rev-message { flex: 1; min-width: 200px; }
+    .rev-list-wrap { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+    table.rev-list { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .rev-list th { position: sticky; top: 0; background: var(--panel2, #18212e); text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; }
+    .rev-list td { padding: 4px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+    .rev-list td.n { font: 600 12px ui-monospace, Menlo, monospace; color: var(--accent); white-space: nowrap; }
+    .rev-list td.t { white-space: nowrap; color: var(--muted); }
+    .rev-list td.sum { color: var(--muted); max-width: 260px; }
+    .rev-list td.act { white-space: nowrap; text-align: right; }
+    .rev-list td.act .btn { padding: 2px 8px; font-size: 11px; }
+    .rev-list tr.cur td.n::after { content: " ●"; color: var(--ok); }
+    .rev-list .empty { color: var(--muted); text-align: center; padding: 14px; }
     .spimp-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
     .spimp-form { display: grid; grid-template-columns: 96px 1fr; gap: 6px 8px; align-items: center; margin-bottom: 8px; }
     .spimp-form input, .spimp-form select { width: 100%; }
@@ -361,6 +382,7 @@
         <button class="menu-item" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
         <div class="menu-sep"></div>
         <div class="menu-head">Examples</div>
         <div id="examples-list"></div>
@@ -736,6 +758,41 @@
     </div>
   </div>
 
+  <div class="modal" id="rev-modal" hidden>
+    <div class="modal-box" style="width: min(820px, 96vw)">
+      <div class="rev-head"><div class="insp-title">Project revisions</div><span class="rev-who" id="rev-who"></span><a class="btn" id="rev-manager" href="projects.html" target="_blank" rel="noopener" title="Every project, revision and short link kept on the server, and the space they take">Manager ↗</a></div>
+      <div id="rev-off" hidden>
+        <p class="insp-help">Revisions are kept on aerocat.tech, for the site's owner only. Open the CAD there to use them.</p>
+      </div>
+      <div id="rev-signin" hidden>
+        <p class="insp-help">Projects and their revisions are private to the owner of aerocat.tech: sign in with the site's login (Cloudflare Access) first. The login opens in its own window and closes itself.</p>
+        <div class="modal-actions" style="justify-content: flex-start"><button class="btn active" id="rev-signin-btn">Sign in ↗</button></div>
+      </div>
+      <div id="rev-main" hidden>
+        <div class="rev-row">
+          <label for="rev-project">Project</label>
+          <select id="rev-project" aria-label="Project"></select>
+          <button class="btn" id="rev-new" title="A new project, named after this sheet's title">New project…</button>
+          <button class="btn" id="rev-export" title="Every revision of this project in one JSON file">Download all</button>
+        </div>
+        <div class="rev-row" id="rev-new-row" hidden>
+          <input type="text" id="rev-new-name" spellcheck="false" placeholder="Project name" aria-label="New project's name">
+          <button class="btn active" id="rev-new-ok">Create</button>
+          <button class="btn" id="rev-new-cancel">Cancel</button>
+        </div>
+        <div class="rev-save">
+          <input type="text" id="rev-message" spellcheck="true" placeholder="What changed (e.g. R11 to 2.2 k, more feedback)" aria-label="Revision message">
+          <button class="btn active" id="rev-save" title="Keep the design as it is now, board included, as the project's next revision (Ctrl+Alt+S)">Save revision</button>
+        </div>
+        <p class="insp-help" id="rev-changes"></p>
+        <div class="rev-list-wrap"><table class="rev-list"><thead><tr><th>Rev</th><th>When</th><th>Message</th><th>Changes</th><th></th></tr></thead><tbody id="rev-list"></tbody></table></div>
+        <p class="insp-help" id="rev-compare" hidden></p>
+      </div>
+      <p class="insp-help" id="rev-info"></p>
+      <div class="modal-actions"><button class="btn" id="rev-close">Close</button></div>
+    </div>
+  </div>
+
   <div class="modal" id="spice-modal" hidden>
     <div class="modal-box">
       <div class="insp-title">SPICE netlist (LTspice)</div>
@@ -777,6 +834,8 @@
   <script src="cad-results.js?v=dev"></script>
   <script src="cad-board-link.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
+  <script src="cad-revisions.js?v=dev"></script>
+  <script src="cad-rev-dialog.js?v=dev"></script>
   <script src="ai-client.js?v=dev"></script>
   <script src="ai-circuit.js?v=dev"></script>
   <script src="cad-ai.js?v=dev"></script>

@@ -1,5 +1,8 @@
 # The store next to the site's nginx: on the same internal network, no published ports.
-# Designs live in ./data on the host (back it up with the site).
+# Shared designs live in ./data, the owner's projects and revisions in ./revisions (back both up).
+# /api/rev/ is private: Cloudflare Access lets only the owner through, and the server checks the
+# Access token itself (ACCESS_TEAM; optionally ACCESS_AUD, the application's tag, and ACCESS_EMAILS,
+# both read from a .env file next to this one).
 services:
   share:
     build: .
@@ -7,9 +10,15 @@ services:
     restart: unless-stopped
     environment:
       ORIGINS: https://aerocat.tech
-      MAX_TOTAL: "104857600"   # 100 MB; past it the oldest designs are deleted
+      MAX_TOTAL: "104857600"      # 100 MB for links and revisions together; past it the oldest links are deleted
+      MAX_SHARES: "104857600"     # the links alone
+      MAX_REVISIONS: "104857600"  # the revisions alone (never deleted to make room: past it new ones are refused)
+      ACCESS_TEAM: cool-tree-f3df
+      ACCESS_AUD: ${ACCESS_AUD:-}
+      ACCESS_EMAILS: ${ACCESS_EMAILS:-}
     volumes:
       - ./data:/data
+      - ./revisions:/revs
     networks: [share]
     mem_limit: 128m
     cpus: 0.5
