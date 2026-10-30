@@ -3,8 +3,10 @@
    (polyhedra with planar faces), in millimetres, world axes x right, y up (board y
    flipped), z up from the board's bottom face. From them: STEP (ISO 10303-21, AP214,
    advanced B-rep with shared edges and colours) and the meshes of the 3D view.
-   A solid: { name, ref, color: [r, g, b], alpha, verts: [[x, y, z]...], faces: [{ loops: [[i...]...], n: [nx, ny, nz] }] }
-   (loops[0] outer, counter-clockwise about the outward normal n; further loops are holes).
+   A solid: { name, ref, color: [r, g, b], alpha, verts: [[x, y, z]...], faces: [{ loops: [[i...]...], n: [nx, ny, nz], vn? }], round? }
+   (loops[0] outer, counter-clockwise about the outward normal n; further loops are holes; vn: smooth
+   normals of a round side's corners). round: the solid's true shape (an extruded circle, or the board's
+   outline with round corners and holes) that STEP writes as circles and cylindrical surfaces.
    Depends on: board-core.js
    ============================================================================= */
 (function (root) {
@@ -46,9 +48,21 @@
   }
   const rect = (x1, y1, x2, y2) => [[x1, y1], [x2, y1], [x2, y2], [x1, y2]];
   const box = (x1, y1, x2, y2, z1, z2, color, to, ex) => prism("z", rect(x1, y1, x2, y2), z1, z2, color, to, ex);
-  const cylZ = (x, y, r, z1, z2, color, to, ex) => prism("z", circle(r, sides(r)).map(([a, b]) => [x + a, y + b]), z1, z2, color, to, ex);
-  const cylX = (y, z, r, x1, x2, color, to, ex) => prism("x", circle(r, sides(r)).map(([a, b]) => [y + a, z + b]), x1, x2, color, to, ex);
-  const cylY = (x, z, r, y1, y2, color, to, ex) => prism("y", circle(r, sides(r)).map(([a, b]) => [x + a, z + b]), y1, y2, color, to, ex);
+  // a round prism; it also carries its true shape (s.round: an extruded circle) for STEP, and
+  // radial vertex normals on its sides so the 3D view shades it smooth
+  function cyl(axis, u, v, r, a1, a2, color, to, ex) {
+    const s = prism(axis, circle(r, sides(r)).map(([a, b]) => [u + a, v + b]), a1, a2, color, to, ex);
+    if (!s) return s;
+    const P = (p, q, w) => (axis === "z" ? [p, q, w] : axis === "x" ? [w, p, q] : [p, w, q]);
+    const c1 = to(P(u, v, a1)), c2 = to(P(u, v, a2)), A = unit(sub(c2, c1));
+    s.round = { o: c1, a: A, x: unit(sub(to(P(u + r, v, a1)), c1)), h: Math.hypot(...sub(c2, c1)), outer: [{ c: [0, 0], r, p: [r, 0] }], holes: [] };
+    const radial = p => { const d = sub(p, c1), k = dot(d, A); return unit(sub(d, A.map(c => c * k))); };
+    s.faces.forEach((f, i) => { if (i > 1) f.vn = f.loops[0].map(k => radial(s.verts[k])); });
+    return s;
+  }
+  const cylZ = (x, y, r, z1, z2, color, to, ex) => cyl("z", x, y, r, z1, z2, color, to, ex);
+  const cylX = (y, z, r, x1, x2, color, to, ex) => cyl("x", y, z, r, x1, x2, color, to, ex);
+  const cylY = (x, z, r, y1, y2, color, to, ex) => cyl("y", x, z, r, y1, y2, color, to, ex);
 
   // ---------------------------------------------------------------------------
   // A part's body, from its footprint (typical sizes: a model of the part, not its datasheet)
@@ -275,10 +289,22 @@
       const k = sides(r), c = circle(r, k), base = V.length;
       c.forEach(([u, v]) => V.push([x + u, -y + v, 0])); c.forEach(([u, v]) => V.push([x + u, -y + v, t]));
       botLoops.push(c.map((_, i) => base + i)); topLoops.push(c.map((_, i) => base + k + i));
-      for (let i = 0; i < k; i++) { const j = (i + 1) % k, q = [base + i, base + j, base + k + j, base + k + i]; F.push(face(V, [q], sub([x, -y, t / 2], avg(q.map(e => V[e]))))); }
+      for (let i = 0; i < k; i++) {
+        const j = (i + 1) % k, q = [base + i, base + j, base + k + j, base + k + i], f = face(V, [q], sub([x, -y, t / 2], avg(q.map(e => V[e]))));
+        f.vn = f.loops[0].map(e => unit([x - V[e][0], -y - V[e][1], 0])); F.push(f);
+      }
     });
     F.push(face(V, topLoops, [0, 0, 1]), face(V, botLoops, [0, 0, -1]));
-    return { name: "Board", ref: "", color: C.board, alpha: 1, verts: V, faces: F, board: true, uv: { w: o.w, h: o.h } };
+    // the true shape for STEP: the outline's straight sides and quarter-circle corners (counter-clockwise
+    // seen from above, world y = -board y), and the holes as circles
+    const Rc = Math.max(0, Math.min(o.r || 0, o.w / 2, o.h / 2)), W = o.w, H = o.h, outer = [];
+    const corner = (p, c) => { if (Rc > 1e-6) outer.push({ p, c, r: Rc }); };
+    const line = p => outer.push({ p });
+    line([Rc, -H]); corner([W - Rc, -H], [W - Rc, -H + Rc]); line([W, -H + Rc]); corner([W, -Rc], [W - Rc, -Rc]);
+    line([W - Rc, 0]); corner([Rc, 0], [Rc, -Rc]); line([0, -Rc]); corner([0, -H + Rc], [Rc, -H + Rc]);
+    const segs = outer.filter((s, i) => { const q = outer[(i + 1) % outer.length].p; return s.c || Math.hypot(s.p[0] - q[0], s.p[1] - q[1]) > 1e-6; });
+    const round = { o: [0, 0, 0], a: [0, 0, 1], x: [1, 0, 0], h: t, outer: segs, holes: holes.map(([x, y, r]) => ({ c: [x, -y], r })) };
+    return { name: "Board", ref: "", color: C.board, alpha: 1, verts: V, faces: F, board: true, uv: { w: o.w, h: o.h }, round };
   }
 
   /** The whole board in 3D: { board, bodies } (opts.tubes: draw the valves on their sockets) */
@@ -291,8 +317,9 @@
   }
 
   // ---------------------------------------------------------------------------
-  // STEP AP214 (ISO 10303-21): each solid a MANIFOLD_SOLID_BREP of planar ADVANCED_FACEs whose
-  // edges are shared (each edge used once in each direction), coloured with STYLED_ITEMs
+  // STEP AP214 (ISO 10303-21): each solid a MANIFOLD_SOLID_BREP of ADVANCED_FACEs whose edges are
+  // shared (each edge used once in each direction), coloured with STYLED_ITEMs; round solids and the
+  // board with true circles and cylinders, the rest planar
   // ---------------------------------------------------------------------------
   function step(sc, meta) {
     const L = [];
@@ -321,7 +348,50 @@
       const psa = E(`PRESENTATION_STYLE_ASSIGNMENT((${E(`SURFACE_STYLE_USAGE(.BOTH.,${E(`SURFACE_SIDE_STYLE('',(${parts.join(",")}))`)})`)}))`);
       styleCache.set(k, psa); return psa;
     };
+    // a solid with its true shape: a profile extruded along a (o: base point, a: axis, x: u direction,
+    // h: length). outer: segments CCW about a, each { p: [u, v] start, c?: [u, v] arc centre, r } (a
+    // line or a counter-clockwise arc to the next start; one arc whose end is its start: a full circle);
+    // holes: circles { c, r }. Lines become PLANEs, arcs CYLINDRICAL_SURFACEs, the ends PLANEs.
+    const roundFaces = g => {
+      const A = g.a, X = g.x, Y = [A[1] * X[2] - A[2] * X[1], A[2] * X[0] - A[0] * X[2], A[0] * X[1] - A[1] * X[0]];
+      const at = ([u, v], w) => [0, 1, 2].map(k => g.o[k] + u * X[k] + v * Y[k] + w * A[k]);
+      const vec = ([u, v]) => [0, 1, 2].map(k => u * X[k] + v * Y[k]);
+      const place = (p, n, r) => E(`AXIS2_PLACEMENT_3D('',${pt(p)},${dir(n)},${dir(r)})`);
+      const lineE = (va, vb, pa, pb) => { const d = sub(pb, pa); return E(`EDGE_CURVE('',${va},${vb},${E(`LINE('',${pt(pa)},${E(`VECTOR('',${dir(unit(d))},${R(Math.hypot(...d))})`)})`)},.T.)`); };
+      const arcE = (va, vb, c, r, w) => E(`EDGE_CURVE('',${va},${vb},${E(`CIRCLE('',${place(at(c, w), A, X)},${R(r)})`)},.T.)`);
+      const oe = (e, fw) => E(`ORIENTED_EDGE('',*,*,${e},${fw ? ".T." : ".F."})`);
+      const bound = (edges, outer) => E(`${outer ? "FACE_OUTER_BOUND" : "FACE_BOUND"}('',${E(`EDGE_LOOP('',(${edges.join(",")}))`)},.T.)`);
+      const faces = [], botHoles = [], topHoles = [];
+      // one closed profile: its edges at both ends and its side faces (hole walls face the axis)
+      const ring = (segs, hole) => {
+        const n = segs.length, vb = segs.map(s => E(`VERTEX_POINT('',${pt(at(s.p, 0))})`)), vt = segs.map(s => E(`VERTEX_POINT('',${pt(at(s.p, g.h))})`));
+        const up = segs.map((s, i) => lineE(vb[i], vt[i], at(s.p, 0), at(s.p, g.h)));
+        const eb = [], et = [];
+        segs.forEach((s, i) => {
+          const j = (i + 1) % n, q = segs[j].p;
+          eb.push(s.c ? arcE(vb[i], vb[j], s.c, s.r, 0) : lineE(vb[i], vb[j], at(s.p, 0), at(q, 0)));
+          et.push(s.c ? arcE(vt[i], vt[j], s.c, s.r, g.h) : lineE(vt[i], vt[j], at(s.p, g.h), at(q, g.h)));
+          const loop = hole ? [oe(eb[i], false), oe(up[i], true), oe(et[i], true), oe(up[j], false)] : [oe(eb[i], true), oe(up[j], true), oe(et[i], false), oe(up[i], false)];
+          let surf;
+          if (s.c) surf = E(`CYLINDRICAL_SURFACE('',${place(at(s.c, 0), A, X)},${R(s.r)})`);
+          else { const d = unit(vec([q[0] - s.p[0], q[1] - s.p[1]])), nrm = [d[1] * A[2] - d[2] * A[1], d[2] * A[0] - d[0] * A[2], d[0] * A[1] - d[1] * A[0]]; surf = E(`PLANE('',${place(at(s.p, 0), nrm, d)})`); }
+          faces.push(E(`ADVANCED_FACE('',(${bound(loop, true)}),${surf},${hole && s.c ? ".F." : ".T."})`));
+        });
+        return { eb, et };
+      };
+      const o = ring(g.outer, false);
+      g.holes.forEach(h => { const e = ring([{ p: [h.c[0] + h.r, h.c[1]], c: h.c, r: h.r }], true); botHoles.push(bound([oe(e.eb[0], true)], false)); topHoles.push(bound([oe(e.et[0], false)], false)); });
+      const bot = bound(o.eb.map(e => oe(e, false)).reverse(), true), top = bound(o.et.map(e => oe(e, true)), true);
+      faces.push(E(`ADVANCED_FACE('',(${[bot].concat(botHoles).join(",")}),${E(`PLANE('',${place(g.o, A.map(c => -c), X)})`)},.T.)`));
+      faces.push(E(`ADVANCED_FACE('',(${[top].concat(topHoles).join(",")}),${E(`PLANE('',${place(at([0, 0], g.h), A, X)})`)},.T.)`));
+      return faces;
+    };
     [sc.board].concat(sc.bodies).forEach(s => {
+      if (s.round) {
+        const solid = E(`MANIFOLD_SOLID_BREP(${str(s.name)},${E(`CLOSED_SHELL('',(${roundFaces(s.round).join(",")}))`)})`);
+        solids.push(solid); styles.push(E(`STYLED_ITEM('color',(${style(s.color, s.alpha)}),${solid})`));
+        return;
+      }
       const V = s.verts, vp = V.map(p => E(`VERTEX_POINT('',${pt(p)})`)), edges = new Map();
       const edge = (a, b) => {
         const k = a < b ? `${a}-${b}` : `${b}-${a}`;

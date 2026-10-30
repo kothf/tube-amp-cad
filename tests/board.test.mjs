@@ -555,6 +555,14 @@ test("STEP: AP214 header, one solid per body, every reference defined, colours",
   const defined = new Set([...txt.matchAll(/^#(\d+)=/gm)].map(x => x[1]));
   for (const x of txt.matchAll(/#(\d+)(?!\d|=)/g)) assert.ok(defined.has(x[1]), `#${x[1]} is defined`);
   assert.ok(!/NaN|Infinity/.test(txt), "no broken numbers");
+  // round parts and holes as true circles and cylinders, not facets: one cylindrical face per round
+  // body, per drilled hole and per board corner; nothing round left as a many-sided polygon
+  const round = sc.bodies.filter(b => b.round).length, holes = sc.board.round.holes.length;
+  assert.ok(round > 20 && holes > 20, `${round} round bodies, ${holes} holes`);
+  assert.equal((txt.match(/CYLINDRICAL_SURFACE\(/g) || []).length, round + holes + 4);
+  assert.equal((txt.match(/ADVANCED_FACE\(/g) || []).length - (txt.match(/CYLINDRICAL_SURFACE\(/g) || []).length,
+    2 * round + 2 + 4 + sc.bodies.filter(b => !b.round).reduce((a, b) => a + b.faces.length, 0), "a round body: its side and two ends");
+  assert.ok(sc.bodies.filter(b => b.round).every(b => b.faces.slice(2).every(f => f.vn && f.vn.length === 4)), "round sides shade smooth in the 3D view");
 });
 
 test("part values: picofarad capacitors keep their value (a 100 pF capacitor read 0F)", () => {

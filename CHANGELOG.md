@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.157.0] - 2026-10-30
+
+### Changed
+- **STEP export: round parts and holes are really round.** Capacitor cans, resistor and diode bodies, pot shafts and knobs, valve envelopes, leads, every drilled hole and the board's rounded corners now go into the STEP file as circles and cylindrical surfaces instead of 12–32 flat facets, so FreeCAD, KiCad or any MCAD shows them smooth and can snap to a hole's centre or measure a can's diameter. Checked with OpenCascade: all solids valid, volumes right. The 3D view shades the round sides smooth as well. The Export STEP buttons say so in their hover hint (RU and EN).
+
 ## [3.156.0] - 2026-10-30
 
 ### Added
