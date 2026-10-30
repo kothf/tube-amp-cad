@@ -813,7 +813,10 @@ the circuit file, so one file holds both.
 - **Export:**
   - **3D model (STEP)**, AP214, of the board (with its holes) and every part,
     in colour, for fitting the board into a chassis in FreeCAD, KiCad or any
-    mechanical CAD. Checked with OpenCascade: every solid valid, colours read.
+    mechanical CAD. Round bodies, leads, the drilled holes and the board's
+    rounded corners are true circles and cylindrical surfaces (not facets),
+    so they stay smooth and a chassis CAD can snap to a hole's centre.
+    Checked with OpenCascade: every solid valid, colours read.
     The part bodies are typical shapes and sizes, not a maker's model.
   - **Gerber + drill files (ZIP)**, ready to upload to a board maker (JLCPCB,
     PCBWay, Aisler…): copper, solder mask and silkscreen of both sides, the

@@ -884,6 +884,7 @@
     ".kicad_pcb with its rules, for KiCad 7 or later": ".kicad_pcb с правилами, для KiCad 7 и новее",
     "3D model (STEP)": "3D модель (STEP)",
     "board and parts, for a chassis CAD": "плата и детали, для САПР шасси",
+    "The board and every part in colour, for a chassis CAD: round bodies, leads and holes as true cylinders and circles": "Плата и все детали в цвете, для САПР шасси: круглые корпуса, выводы и отверстия как настоящие цилиндры и окружности",
     "Board drawing (SVG)": "Чертёж платы (SVG)",
     "all layers, 1:1 mm": "все слои, 1:1 мм",
     "Board file (JSON)": "Файл платы (JSON)",

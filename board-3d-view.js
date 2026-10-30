@@ -1,6 +1,6 @@
 /* =============================================================================
-   BOARD DESIGN — the 3D viewer: a small WebGL renderer for Board3D solids (flat-shaded
-   faces, the board's top and bottom carrying the copper, mask and silkscreen as a
+   BOARD DESIGN — the 3D viewer: a small WebGL renderer for Board3D solids (flat faces,
+   round sides shaded smooth, the board's top and bottom carrying the copper, mask and silkscreen as a
    texture, glass drawn last and see-through), with an orbit camera: drag to turn,
    right- or middle-drag to pan, wheel to zoom. Used for the whole board and for the
    preview of one part in the inspector.
@@ -56,7 +56,7 @@
         s.faces.forEach(f => {
           const top = s.board && f.n[2] > 0.99, bottom = s.board && f.n[2] < -0.99, g = top && textures && textures.top ? "top" : bottom && textures && textures.bottom ? "bottom" : s.alpha < 1 ? "glass" : "solid";
           const L = f.loops[0], col = [...s.color, s.alpha < 1 ? s.alpha : 1];
-          for (let i = 1; i + 1 < L.length; i++) [L[0], L[i], L[i + 1]].forEach(k => { const p = V[k]; groups[g].push(...p, ...f.n, ...col, ...uvOf(p)); });
+          for (let i = 1; i + 1 < L.length; i++) [0, i, i + 1].forEach(j => { const p = V[L[j]]; groups[g].push(...p, ...(f.vn ? f.vn[j] : f.n), ...col, ...uvOf(p)); });
         });
       });
       Object.entries(groups).forEach(([k, a]) => {
