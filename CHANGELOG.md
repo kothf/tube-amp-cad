@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.156.0] - 2026-10-30
+
+### Added
+- **Russian interface, all windows and the hints.** The Board window, the oscilloscope, the spectrum analyzer, the Bode plotter and the curve tracer now follow the RU / EN choice too, and each has its own **RU / EN** button; switching in any window switches every open one. Board covers the toolbar, the Route ▾, Board ▾ and Export ▾ menus, the panels, the design-rule check, Board setup, Design rules, Freerouting and Print dialogs, the footprint descriptions and the status line; the instruments their controls, readouts and tables.
+- **Hover hints in Russian.** Every hint (the palette parts, the inspector fields, the readouts and settings of every window, 433 in all) has its Russian text, and an inspector label shown in Russian still finds its hint. Formulas stay as they are.
+- Russian toolbars keep one row: the Board tools show as icons below 1880 px in Russian, the Bode plotter's subtitle and the Schematic | Board names give way sooner.
+
 ## [3.155.0] - 2026-10-30
 
 ### Added

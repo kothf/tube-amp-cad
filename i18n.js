@@ -26,6 +26,13 @@
     }
     return null;
   }
+  // the English of a Russian text the dictionary gave (exact entries only)
+  let EN = null;
+  function en(text) {
+    const D = root.I18N_RU; if (!D) return null;
+    if (!EN) { EN = new Map(); for (const [k, v] of Object.entries(D.text)) if (!EN.has(v)) EN.set(v, k); }
+    return EN.get(String(text).replace(/\s+/g, " ").trim()) || null;
+  }
   // a text with the spaces round it kept
   const keepSpace = (orig, t) => orig.match(/^\s*/)[0] + t + orig.match(/\s*$/)[0];
 
@@ -96,5 +103,5 @@
     watch(); apply();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
-  root.I18n = { get lang() { return lang; }, set, ru, apply };
+  root.I18n = { get lang() { return lang; }, set, ru, en, apply };
 })(window);
