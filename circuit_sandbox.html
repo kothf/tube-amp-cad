@@ -319,6 +319,7 @@
     #save-name[hidden] { display: none; }
     .new-form[hidden] { display: none; }
     .new-form input[type=text] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: inherit; }
+    @media (max-width: 1600px) { .brand span, .brand b { display: none; } .brand { margin-right: 0; } }   /* the name gives way to the AI menu first; the version stays */
 
     /* narrow windows: the inspector is a drawer over the right of the sheet (Inspector button) */
     #btn-insp { display: none; }
