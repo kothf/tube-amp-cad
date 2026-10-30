@@ -86,3 +86,32 @@ jobs:
       - name: Reference circuits
         if: matrix.group.reference
         run: node tests/reference.mjs $APP
+
+  # every example against ngspice: the CAD's results and its SPICE export must agree
+  ngspice:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Cache Playwright's browser
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Browser for the tests
+        run: npx playwright install --only-shell chromium || npx playwright install --with-deps --only-shell chromium
+
+      - name: ngspice
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ngspice
+
+      - name: Examples against ngspice
+        run: npm run test:ngspice

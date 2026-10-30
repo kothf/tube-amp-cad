@@ -1033,7 +1033,7 @@
     const dev = d.dev, m = dev.m, sp = d.spec, safe = d.name.replace(/[^A-Za-z0-9_]/g, "_"), head = `* ${d.name} — ${SEMI_KIND[d.type]}${dev.ge ? " germanium" : ""}: ${sp.use}\n* Ratings ${sp.v} V, ${sp.i} A, ${sp.p} W, ${sp.pkg}. Generated ${new Date().toISOString().slice(0, 10)} by the Tube Amp CAD curve tracer\n`;
     if (dev.bip) {
       const m0 = CadLib.BJTS[d.name];
-      return head + `.model Q${dev.pol > 0 ? "N" : "P"}_${safe} ${dev.pol > 0 ? "NPN" : "PNP"}(IS=${m0.is} BF=${m0.bf} BR=${m0.br || 1} NF=1 VAF=${m0.vaf} IKF=${m0.ikf}${dev.rb ? ` RB=${dev.rb}` : ""}${dev.re ? ` RE=${dev.re}` : ""} CJE=${m0.cbe} CJC=${m0.cbc} EG=${dev.ge ? 0.67 : 1.11} XTI=3 XTB=1.5 TNOM=25)\n`
+      return head + `.model Q${dev.pol > 0 ? "N" : "P"}_${safe} ${dev.pol > 0 ? "NPN" : "PNP"}(IS=${m0.is} BF=${m0.bf} BR=${m0.br || 1} NF=1 VAF=${m0.vaf} IKF=${m0.ikf}${dev.rb ? ` RB=${dev.rb}` : ""}${dev.re ? ` RE=${dev.re}` : ""} CJE=${m0.cbe} CJC=${m0.cbc} EG=${dev.ge ? 0.67 : 1.11} XTI=3 XTB=1.5 TNOM=27)\n`
         + (m0.icbo ? `* germanium leakage, not in the Gummel-Poon model: ICBO ${m0.icbo} A at 25 °C from collector to base, doubling every 10 °C\n` : "");
     }
     if (dev.jfet) return head + `.model J${dev.pol > 0 ? "N" : "P"}_${safe} ${dev.pol > 0 ? "NJF" : "PJF"}(VTO=${-Math.abs(m.vto)} BETA=${m.jf.beta} LAMBDA=${m.lambda || 0} IS=${m.jf.is} CGS=${sp.cgs} CGD=${sp.cgd})\n`;
