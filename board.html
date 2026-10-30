@@ -97,6 +97,7 @@
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 30; }
     .modal[hidden] { display: none; }
     .router-where { display: grid; gap: 4px; margin: 6px 0 8px; }
+    .router-use { display: block; margin: 4px 0 8px; }
     .router-where .muted { opacity: 0.7; }
     .router-where[hidden], #router-own[hidden], #router-signin[hidden] { display: none; }
     pre.cmd { white-space: pre-wrap; word-break: break-all; font: 11px/1.4 ui-monospace, Menlo, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin: 4px 0 8px; user-select: all; }
@@ -381,7 +382,8 @@
   <div class="modal" id="router-modal" hidden>
     <div class="modal-box dlg">
       <div class="insp-title">Freerouting</div>
-      <p class="help">Auto-route sends the board to Freerouting's API server and adds the tracks it sends back. The board goes nowhere else.</p>
+      <p class="help">Auto-route routes with the board's own grid router. Ticked below, it first sends the board to Freerouting's API server and adds the tracks it sends back (the board goes nowhere else); the grid router then finishes what Freerouting leaves.</p>
+      <label class="router-use"><input type="checkbox" id="router-use-fr"> Use Freerouting for Auto-route, Finish routing and Design from scratch</label>
       <div id="router-where" class="router-where" hidden>
         <label><input type="radio" name="router-where" id="router-use-server"> This site's Freerouting server <span class="muted">(sign in once per browser)</span></label>
         <label><input type="radio" name="router-where" id="router-use-own"> My own Freerouting, on this computer or another one</label>
@@ -514,6 +516,7 @@
   <script src="board-route.js?v=dev"></script>
   <script src="board-sat.js?v=dev"></script>
   <script src="board-place.js?v=dev"></script>
+  <script src="board-pathfinder.js?v=dev"></script>
   <script src="board-3d.js?v=dev"></script>
   <script src="board-3d-view.js?v=dev"></script>
   <script src="board-autoroute.js?v=dev"></script>
