@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.138.0] - 2026-10-30
+
+### Added
+- **Loop gain and phase margin** in the Bode plotter: *Measure → Loop gain* answers "will my feedback amplifier oscillate?". The loop is broken at one end of a part (*Break at*; the feedback resistor from the speaker or output transformer is found and listed first, then anode-to-grid and op-amp feedback, then every other resistor and capacitor) and measured by Middlebrook's double injection, exact whatever the impedances either side of the break. The plot shows |T| and its phase with 0 dB and ±180° marked; the panel gives the loop gain and the feedback (|1 + T|) at 1 kHz, the unity-gain frequency, phase margin and gain margin at the high and the low end, and a verdict (stable, ringing, likely to oscillate, oscillates, positive feedback). Example 06: 4.1 dB of loop gain, 8.3 dB of feedback, 46° of margin at 122 kHz and 116° at 37 Hz.
+- **Noise and hum**, a *Noise* tab under the schematic (*View ▾ → Noise and hum*). With the generators quiet: every resistor's thermal noise, each tube's (an equivalent noise resistance of 2.5/gm, a pentode's partition noise, a 1/f corner you set), transistor shot noise and FET channel noise, carried to the output by the adjoint of the linearized circuit; the output noise flat and A-weighted over 20 Hz – 20 kHz, the input noise and its density at 1 kHz, a density chart, and each part's share. The supply's ripple at the output, at every harmonic of the mains, from the steady state with the generators quiet; and an estimate of AC heater hum (one side grounded, centre-tapped or DC; 5 pF and 100 MΩ heater to cathode, a directly heated filament in series with its cathode). The signal-to-noise ratio in dB(A), noise and hum together, re 1 W into the speaker. Example 07: 2.1 µV (A) of noise and 47 µV of 100 Hz ripple at the speaker, 109.7 dB(A) re 1 W.
+- Engine: `loopGain` and `noiseSweep`; `acSweep` now drives current sources and returns branch currents on request.
+
 ## [3.137.0] - 2026-10-30
 
 ### Added

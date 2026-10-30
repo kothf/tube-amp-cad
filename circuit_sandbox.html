@@ -194,11 +194,12 @@
     .pw-key { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 11px; margin-top: 4px; flex-wrap: wrap; }
     .pw-key .k { display: inline-block; width: 14px; height: 2px; margin-left: 6px; background: var(--accent); }
     .pw-key .k.h2 { background: var(--amber); } .pw-key .k.h3 { background: #c792ea; } .pw-key .k.now { background: #3fb950; }
-    #pw-table { border-collapse: collapse; width: 100%; font-size: 12px; }
-    #pw-table th { position: sticky; top: 0; background: var(--panel2); color: var(--muted); font-weight: 600; text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-    #pw-table td { padding: 2px 8px; border-bottom: 1px dashed #1a2433; }
-    #pw-table td.n { text-align: right; font-variant-numeric: tabular-nums; } #pw-table td.mono { font-family: ui-monospace, Menlo, monospace; }
+    #pw-table, .nz-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    #pw-table th, .nz-table th { position: sticky; top: 0; background: var(--panel2); color: var(--muted); font-weight: 600; text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    #pw-table td, .nz-table td { padding: 2px 8px; border-bottom: 1px dashed #1a2433; }
+    #pw-table td.n, .nz-table td.n { text-align: right; font-variant-numeric: tabular-nums; } #pw-table td.mono, .nz-table td.mono { font-family: ui-monospace, Menlo, monospace; }
     #pw-table td.warn { color: var(--warn); }
+    .nz-table { margin-bottom: 10px; } .nz-table th:first-child, .nz-table td:first-child { text-align: left; } .nz-table tr.sum td { color: var(--text); font-weight: 600; } .nz-table td.muted { color: var(--muted); }
     #pw-table tr.on { background: #111a25; } #pw-table tr.now td:first-child { color: var(--ok); }
     #pw-table .pw-use { padding: 0 7px; font-size: 11px; visibility: hidden; }
     #pw-table tr.on .pw-use, #pw-table .pw-use:focus { visibility: visible; }
@@ -339,6 +340,7 @@
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-checks" title="Every part beyond its rating and every wiring problem, in the panel under the schematic">Checks<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-tolerance" title="The circuit simulated many times with its parts spread within their tolerances: each value's spread">Tolerance runs<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-power" title="The circuit simulated at a row of input levels: the output power against its distortion, and the power at 1 %, 5 % and 10 % THD">Power sweep<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-noise" title="Noise and hum at the output with no signal: the signal-to-noise ratio in dB(A), the input noise and the parts it comes from, the supply's ripple and AC heater hum">Noise and hum<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-sweep" title="One part's value stepped over a range, the circuit simulated at each step: how every tube, transistor, speaker and scope channel follows">Parameter sweep<kbd>under the schematic</kbd></button>
         <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-listen" title="Hear the circuit: a recording (WAV, MP3, a guitar riff or the generator's tone) played through it, A/B against the input">Listen<kbd>under the schematic</kbd></button>
       </div>
@@ -409,6 +411,7 @@
             <button class="dock-tab" role="tab" data-tab="checks" aria-controls="checks-pane" title="Every part beyond its rating and every wiring problem">Checks<span id="checks-count"></span></button>
             <button class="dock-tab" role="tab" data-tab="tolerance" aria-controls="tol-pane" title="The circuit simulated many times with its parts spread within their tolerances">Tolerance</button>
             <button class="dock-tab" role="tab" data-tab="power" aria-controls="pw-pane" title="Output power against distortion over a row of input levels">Power</button>
+            <button class="dock-tab" role="tab" data-tab="noise" aria-controls="nz-pane" title="Noise and hum at the output with no signal: S/N in dB(A), input noise, supply ripple, AC heaters">Noise</button>
             <button class="dock-tab" role="tab" data-tab="sweep" aria-controls="sw-pane" title="One part's value stepped over a range">Sweep</button>
             <button class="dock-tab" role="tab" data-tab="listen" aria-controls="ls-pane" title="Hear a recording played through the circuit">Listen</button>
           </div>
@@ -432,6 +435,13 @@
             <label title="The quietest and loudest level, in dB from what the generator is set to now (every generator is scaled together)">Input <input type="number" id="pw-lo" class="tol-num" step="1"> to <input type="number" id="pw-hi" class="tol-num" step="1"> dB</label>
             <label title="How many levels, evenly spaced in dB">Steps <input type="number" id="pw-steps" class="tol-num" min="2" max="60" step="1"></label>
             <button class="btn" id="btn-pw-run" title="Run the power sweep; press again to stop">▶ Run</button>
+          </span>
+          <span class="bom-tools" data-for="noise">
+            <label title="Where the noise and hum are measured: a speaker, or a scope channel">Output <select id="nz-out" class="tol-sel"></select></label>
+            <label title="How the tubes' heaters are fed, for the heater hum: AC with one side grounded, AC with a centre tap or humdinger, or DC">Heaters <select id="nz-heaters" class="tol-sel"><option value="ground">AC, one side grounded</option><option value="ct">AC, centre-tapped</option><option value="dc">DC</option></select></label>
+            <label title="Below this frequency a tube's noise rises as 1/f (flicker). Real tubes vary widely, from about 100 Hz to a few kHz; 0 leaves it out">Tube 1/f corner <input type="number" id="nz-flicker" class="tol-num" min="0" max="100000" step="100"> Hz</label>
+            <label title="The mains frequency for the heater hum when the circuit has no mains part (with one, its frequency is used)">Mains <select id="nz-mains" class="tol-sel"><option value="50">50 Hz</option><option value="60">60 Hz</option></select></label>
+            <button class="btn" id="btn-nz-run" title="Work out the noise and hum; press again to stop">▶ Run</button>
           </span>
           <span class="bom-tools" data-for="sweep">
             <label title="The part whose value is stepped">Part <select id="sw-part" class="tol-sel"></select></label>
@@ -469,6 +479,7 @@
         <div class="bom-scroll" id="pw-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="ls-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="sw-pane" role="tabpanel" hidden></div>
+        <div class="bom-scroll" id="nz-pane" role="tabpanel" hidden></div>
       </section>
     </div>
     <aside id="inspector" aria-label="Inspector"></aside>
@@ -639,6 +650,7 @@
   <script src="cad-bom.js?v=dev"></script>
   <script src="cad-tolerance.js?v=dev"></script>
   <script src="cad-power.js?v=dev"></script>
+  <script src="cad-noise.js?v=dev"></script>
   <script src="cad-listen.js?v=dev"></script>
   <script src="cad-sweep.js?v=dev"></script>
   <script src="cad-anim.js?v=dev"></script>

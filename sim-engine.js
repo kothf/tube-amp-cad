@@ -19,6 +19,8 @@
    kinds: R, C, L, XFMR, V, VSRC, I, D, VDIODE, BJT, MOS, TRIODE, PENTODE, TIMER555, E, G, GLOW,
    RELAY (a latched coil with its contacts), LDR (a light-dependent resistor lit by a current)
    acSweep: the small-signal frequency response, linearized at an operating point.
+   loopGain: the return ratio of a feedback loop broken at a part's terminal (Middlebrook's double injection).
+   noiseSweep: every noise source carried to an output by the adjoint, and the gain from a generator.
    A tube element may carry gridShift (V): its plate and screen currents as if the grid were that
    much more positive (a real tube that draws more or less than the model), grid conduction
    still from 0 V; and iScale: all its currents times that factor (a weaker or stronger tube).
@@ -1684,9 +1686,10 @@
   function opMagnetising(result) {
     const out = {}; Object.entries(result.dc.devices).forEach(([id, d]) => { if (d.main && d.main.im !== undefined) out[id] = d.main.im; }); return out;
   }
-  function acSweep(netlist, opts) {
-    opts = opts || {};
-    const t0 = Date.now(), circ = buildCircuit(netlist), n = circ.nUnk, nN = circ.nNodes;
+  // The circuit linearized at an operating point: Y(ω) = G + jωB and the right-hand side of the driven
+  // sources (opts.inputs), on the unknowns of buildCircuit (node i at i − 1, then the branches).
+  function acLinearize(netlist, opts) {
+    const circ = buildCircuit(netlist), n = circ.nUnk, nN = circ.nNodes;
     if (nN < 2) return { ok: false, error: "Circuit is empty" };
     let x;
     if (opts.op) { x = new Array(n).fill(0); for (let i = 1; i < nN; i++) x[i - 1] = opts.op[i] || 0; }
@@ -1707,6 +1710,7 @@
       }
     };
     const inputs = new Map((opts.inputs || []).map(i => [i.id, i]));
+    const drive = (e, k, sign) => { const inp = inputs.get(e.id); if (!inp) return; const ph = (inp.phase || 0) * Math.PI / 180, m = inp.mag === undefined ? 1 : inp.mag; rhs[k] += sign * m * Math.cos(ph); rhs[n + k] += sign * m * Math.sin(ph); };
     for (let i = 1; i < nN; i++) addG(i, i, 1e-12);
     for (const e of circ.els) {
       const nd = e.nodes;
@@ -1728,12 +1732,9 @@
           if (nd[3] > 0) Gm[at(e.branch, nd[3] - 1)] += e.gain;
           break;
         case "G": addG(nd[0], nd[2], e.gm); addG(nd[0], nd[3], -e.gm); addG(nd[1], nd[2], -e.gm); addG(nd[1], nd[3], e.gm); break;
-        case "V": case "VSRC": {
-          branch(nd[0], nd[1], e.branch);
-          const inp = inputs.get(e.id);
-          if (inp) { const ph = (inp.phase || 0) * Math.PI / 180, m = inp.mag === undefined ? 1 : inp.mag; rhs[e.branch] = m * Math.cos(ph); rhs[n + e.branch] = m * Math.sin(ph); }
-          break;
-        }
+        case "V": case "VSRC": branch(nd[0], nd[1], e.branch); drive(e, e.branch, 1); break;
+        // a current source is open; driven, its current flows out of node a into node b
+        case "I": if (nd[0] > 0) drive(e, nd[0] - 1, -1); if (nd[1] > 0) drive(e, nd[1] - 1, 1); break;
         case "D": {
           const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852, vd = vn(x, nd[0]) - vn(x, nd[1]), gd = Is * Math.exp(Math.min(vd / nVt, 80)) / nVt;
           stamp2(addG, nd[0], nd[1], gd + 1e-12);
@@ -1761,55 +1762,186 @@
         case "LDR": Gm[at(e.light, e.light)] = 1; stamp2(addG, nd[0], nd[1], ldrG(e.model, x[e.light])[0]); break;
       }
     }
-    const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, KA = acPoints(opts);
-    // a piece of the sweep, points kFrom … kTo − 1 of the whole (workers share a sweep this way;
-    // each frequency is solved on its own, so the pieces are the whole sweep's values exactly)
-    const k0 = Math.max(0, Math.min(KA, opts.kFrom || 0)), K = Math.max(0, Math.min(KA, opts.kTo === undefined ? KA : opts.kTo) - k0);
-    const freqs = new Float64Array(K), re = [], im = [];
-    for (let i = 0; i < nN; i++) { re.push(new Float64Array(K)); im.push(new Float64Array(K)); }
-    const Ar = new Float64Array(n * n), Ai = new Float64Array(n * n), br = new Float64Array(n), bi = new Float64Array(n);
-    for (let k = 0; k < K; k++) {
-      const f = fStart * Math.pow(fStop / fStart, (k0 + k) / (KA - 1)), w = 2 * Math.PI * f;
-      freqs[k] = f;
-      for (let i = 0; i < n * n; i++) { Ar[i] = Gm[i]; Ai[i] = w * Bm[i]; }
-      for (let i = 0; i < n; i++) { br[i] = rhs[i]; bi[i] = rhs[n + i]; }
-      // complex Gaussian elimination with partial pivoting
-      for (let c = 0; c < n; c++) {
-        let p = c, best = 0;
-        for (let r = c; r < n; r++) { const m = Ar[at(r, c)] * Ar[at(r, c)] + Ai[at(r, c)] * Ai[at(r, c)]; if (m > best) { best = m; p = r; } }
-        if (!(best > 0)) return { ok: false, error: "singular matrix at " + f.toPrecision(3) + " Hz" };
-        if (p !== c) {
-          for (let j = 0; j < n; j++) { let t = Ar[at(c, j)]; Ar[at(c, j)] = Ar[at(p, j)]; Ar[at(p, j)] = t; t = Ai[at(c, j)]; Ai[at(c, j)] = Ai[at(p, j)]; Ai[at(p, j)] = t; }
-          let t = br[c]; br[c] = br[p]; br[p] = t; t = bi[c]; bi[c] = bi[p]; bi[p] = t;
-        }
-        const pr = Ar[at(c, c)], pi = Ai[at(c, c)], pm = pr * pr + pi * pi;
-        for (let r = c + 1; r < n; r++) {
-          const xr = Ar[at(r, c)], xi = Ai[at(r, c)];
-          if (xr === 0 && xi === 0) continue;
-          const fr = (xr * pr + xi * pi) / pm, fi = (xi * pr - xr * pi) / pm;   // factor = A[r][c] / A[c][c]
-          for (let j = c + 1; j < n; j++) {
-            const ar = Ar[at(c, j)], ai = Ai[at(c, j)];
-            if (ar === 0 && ai === 0) continue;
-            Ar[at(r, j)] -= fr * ar - fi * ai; Ai[at(r, j)] -= fr * ai + fi * ar;
-          }
-          br[r] -= fr * br[c] - fi * bi[c]; bi[r] -= fr * bi[c] + fi * br[c];
-          Ar[at(r, c)] = 0; Ai[at(r, c)] = 0;
-        }
+    return { ok: true, circ, n, nN, Gm, Bm, rhs, x };
+  }
+  // Y(ω) solved for several right-hand sides at once (each [re, im] of length n, overwritten with
+  // the solution), or with Yᵀ (transpose: the adjoint, for noise); complex Gaussian elimination
+  // with partial pivoting. false: singular.
+  function acSolve(sys, w, rhsList, transpose) {
+    const n = sys.n, Gm = sys.Gm, Bm = sys.Bm, at = (i, j) => i * n + j;
+    const Ar = sys.Ar || (sys.Ar = new Float64Array(n * n)), Ai = sys.Ai || (sys.Ai = new Float64Array(n * n));
+    if (transpose) { for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { Ar[at(i, j)] = Gm[at(j, i)]; Ai[at(i, j)] = w * Bm[at(j, i)]; } }
+    else for (let i = 0; i < n * n; i++) { Ar[i] = Gm[i]; Ai[i] = w * Bm[i]; }
+    const R = rhsList.length;
+    for (let c = 0; c < n; c++) {
+      let p = c, best = 0;
+      for (let r = c; r < n; r++) { const m = Ar[at(r, c)] * Ar[at(r, c)] + Ai[at(r, c)] * Ai[at(r, c)]; if (m > best) { best = m; p = r; } }
+      if (!(best > 0)) return false;
+      if (p !== c) {
+        for (let j = 0; j < n; j++) { let t = Ar[at(c, j)]; Ar[at(c, j)] = Ar[at(p, j)]; Ar[at(p, j)] = t; t = Ai[at(c, j)]; Ai[at(c, j)] = Ai[at(p, j)]; Ai[at(p, j)] = t; }
+        for (let q = 0; q < R; q++) { const [br, bi] = rhsList[q]; let t = br[c]; br[c] = br[p]; br[p] = t; t = bi[c]; bi[c] = bi[p]; bi[p] = t; }
       }
+      const pr = Ar[at(c, c)], pi = Ai[at(c, c)], pm = pr * pr + pi * pi;
+      for (let r = c + 1; r < n; r++) {
+        const xr = Ar[at(r, c)], xi = Ai[at(r, c)];
+        if (xr === 0 && xi === 0) continue;
+        const fr = (xr * pr + xi * pi) / pm, fi = (xi * pr - xr * pi) / pm;   // factor = A[r][c] / A[c][c]
+        for (let j = c + 1; j < n; j++) {
+          const ar = Ar[at(c, j)], ai = Ai[at(c, j)];
+          if (ar === 0 && ai === 0) continue;
+          Ar[at(r, j)] -= fr * ar - fi * ai; Ai[at(r, j)] -= fr * ai + fi * ar;
+        }
+        for (let q = 0; q < R; q++) { const [br, bi] = rhsList[q]; br[r] -= fr * br[c] - fi * bi[c]; bi[r] -= fr * bi[c] + fi * br[c]; }
+        Ar[at(r, c)] = 0; Ai[at(r, c)] = 0;
+      }
+    }
+    for (let q = 0; q < R; q++) {
+      const [br, bi] = rhsList[q];
       for (let c = n - 1; c >= 0; c--) {
         let sr = br[c], si = bi[c];
         for (let j = c + 1; j < n; j++) { const ar = Ar[at(c, j)], ai = Ai[at(c, j)]; if (ar === 0 && ai === 0) continue; sr -= ar * br[j] - ai * bi[j]; si -= ar * bi[j] + ai * br[j]; }
         const pr = Ar[at(c, c)], pi = Ai[at(c, c)], pm = pr * pr + pi * pi;
         br[c] = (sr * pr + si * pi) / pm; bi[c] = (si * pr - sr * pi) / pm;
       }
+    }
+    return true;
+  }
+  // the sweep's frequencies, points kFrom … kTo − 1 of the whole (workers share a sweep this way;
+  // each frequency is solved on its own, so the pieces are the whole sweep's values exactly)
+  function acFreqs(opts) {
+    const fStart = opts.fStart || 10, fStop = opts.fStop || 100e3, KA = acPoints(opts);
+    const k0 = Math.max(0, Math.min(KA, opts.kFrom || 0)), K = Math.max(0, Math.min(KA, opts.kTo === undefined ? KA : opts.kTo) - k0);
+    const freqs = new Float64Array(K);
+    for (let k = 0; k < K; k++) freqs[k] = fStart * Math.pow(fStop / fStart, (k0 + k) / (KA - 1));
+    return freqs;
+  }
+  function acSweep(netlist, opts) {
+    opts = opts || {};
+    const t0 = Date.now(), sys = acLinearize(netlist, opts);
+    if (!sys.ok) return sys;
+    const { n, nN, rhs } = sys, freqs = acFreqs(opts), K = freqs.length, re = [], im = [];
+    for (let i = 0; i < nN; i++) { re.push(new Float64Array(K)); im.push(new Float64Array(K)); }
+    // opts.currents: element ids whose branch current is wanted (a V source's: from its node a through it to b)
+    const cur = (opts.currents || []).map(id => sys.circ.els.find(e => e.id === id)).map(e => ({ e, re: new Float64Array(K), im: new Float64Array(K) }));
+    const br = new Float64Array(n), bi = new Float64Array(n);
+    for (let k = 0; k < K; k++) {
+      for (let i = 0; i < n; i++) { br[i] = rhs[i]; bi[i] = rhs[n + i]; }
+      if (!acSolve(sys, 2 * Math.PI * freqs[k], [[br, bi]])) return { ok: false, error: "singular matrix at " + freqs[k].toPrecision(3) + " Hz" };
       for (let i = 1; i < nN; i++) { re[i][k] = br[i - 1]; im[i][k] = bi[i - 1]; }
+      cur.forEach(c => { if (c.e && c.e.branch !== undefined) { c.re[k] = br[c.e.branch]; c.im[k] = bi[c.e.branch]; } });
     }
     // probes [[node, ref], …]: v(node) − v(ref), as a scope channel against its common
     const probes = (opts.probes || []).map(([a, b]) => { const pr = new Float64Array(K), pi = new Float64Array(K); for (let k = 0; k < K; k++) { pr[k] = re[a][k] - re[b][k]; pi[k] = im[a][k] - im[b][k]; } return { re: pr, im: pi }; });
-    return { ok: true, freqs, re, im, probes, elapsedMs: Date.now() - t0 };
+    return { ok: true, freqs, re, im, probes, currents: cur.map(c => ({ re: c.re, im: c.im })), elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, NE555, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  // ---------------------------------------------------------------------------
+  // Loop gain (return ratio) of a feedback loop, by Middlebrook's double injection. The loop is
+  // broken at one terminal of a part, opts.at = { id, pin }: that terminal moves to a node of its
+  // own (the load side, y), the node it left is the driving side (x), and a 0 V source joins them.
+  // A voltage injected in series gives Tv = −v(x) / v(y); a current injected into the junction
+  // gives Ti = −i(x→y) / i(into the load). T = (Tv·Ti − 1) / (Tv + Ti + 2), exact for one loop
+  // whatever the impedances either side. T is positive for negative feedback (closed loop 1/(1+T)).
+  //   opts: as acSweep's (op, fStart, fStop, perDecade, kFrom, kTo); the other sources are shorts.
+  //   returns { ok, freqs, re, im } of T
+  // ---------------------------------------------------------------------------
+  function loopGain(netlist, opts) {
+    opts = opts || {};
+    const t0 = Date.now(), at = opts.at || {}, el = netlist.elements.find(e => e.id === at.id && (at.part === undefined || e.part === at.part));
+    if (!el || !(at.pin >= 0 && at.pin < el.nodes.length)) return { ok: false, error: "No such break point" };
+    const xN = el.nodes[at.pin], y = netlist.nodeCount;
+    const elements = netlist.elements.map(e => (e === el ? Object.assign({}, e, { nodes: e.nodes.map((k, i) => (i === at.pin ? y : k)) }) : e));
+    elements.push({ id: "#loop-v", kind: "V", nodes: [y, xN], v: 0 }, { id: "#loop-i", kind: "I", nodes: [0, y], i: 0 });
+    const op = opts.op ? Array.from(opts.op).concat([opts.op[xN] || 0]) : null;
+    const nl = { nodeCount: y + 1, elements };
+    const sys = acLinearize(nl, Object.assign({}, opts, { op }));
+    if (!sys.ok) return sys;
+    const n = sys.n, vs = sys.circ.els.find(e => e.id === "#loop-v"), freqs = acFreqs(opts), K = freqs.length;
+    const Tre = new Float64Array(K), Tim = new Float64Array(K);
+    const v = [new Float64Array(n), new Float64Array(n)], c = [new Float64Array(n), new Float64Array(n)];
+    const cdiv = (a, b, p, q) => { const m = p * p + q * q || 1e-300; return [(a * p + b * q) / m, (b * p - a * q) / m]; };
+    for (let k = 0; k < K; k++) {
+      v[0].fill(0); v[1].fill(0); c[0].fill(0); c[1].fill(0);
+      v[0][vs.branch] = 1;           // v(y) − v(x) = 1
+      c[0][y - 1] = 1;               // 1 A into y
+      if (!acSolve(sys, 2 * Math.PI * freqs[k], [v, c])) return { ok: false, error: "singular matrix at " + freqs[k].toPrecision(3) + " Hz" };
+      const vx = xN > 0 ? [v[0][xN - 1], v[1][xN - 1]] : [0, 0], vy = [v[0][y - 1], v[1][y - 1]];
+      const tv = cdiv(-vx[0], -vx[1], vy[0], vy[1]);
+      // the source's current runs from y through it to x: the driving side sends ix = −that into the junction,
+      // the load takes ix + 1, so Ti = −ix / (ix + 1); T multiplied through by (ix + 1), which is 0 where the
+      // driving side is an ideal source (Ti infinite, T = Tv): T = −(Tv·ix + ix + 1) / ((Tv + 2)(ix + 1) − ix)
+      const ixr = -c[0][vs.branch], ixi = -c[1][vs.branch];
+      const nr = -(tv[0] * ixr - tv[1] * ixi + ixr + 1), ni = -(tv[0] * ixi + tv[1] * ixr + ixi);
+      const ar = tv[0] + 2, ai = tv[1], br = ixr + 1, bi = ixi;
+      const t = cdiv(nr, ni, ar * br - ai * bi - ixr, ar * bi + ai * br - ixi);
+      Tre[k] = t[0]; Tim[k] = t[1];
+    }
+    return { ok: true, freqs, re: Tre, im: Tim, elapsedMs: Date.now() - t0 };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Noise: every noise source of the linearized circuit, as a current between two nodes, carried
+  // to the output by the adjoint (one solve with Yᵀ per frequency gives the transfer from a current
+  // at any node to the output voltage). Sources (one-sided, A²/Hz):
+  //   resistor 4kT/R; triode (anode–cathode) 4kT·Req·gm² with Req = 2.5/gm, a pentode's Req with
+  //   partition noise, (Ia/Ik)(2.5/gm + 20·Ig2/gm²), times (1 + fc/f) for flicker (opts.flicker: fc in
+  //   Hz); BJT collector shot 2qIc and base shot 2qIb; MOSFET/JFET channel 4kT·(2/3)gm; diode shot 2qI.
+  // Op-amps, regulators and the rest are noiseless here.
+  //   opts: as acSweep's, plus out: [node, ref], input: a source's id (the gain from it), tempK (300)
+  //   returns { ok, freqs, total (V²/Hz at the output), gain: { re, im }, sources: [{ id, kind, psd }] }
+  // ---------------------------------------------------------------------------
+  function noiseSweep(netlist, opts) {
+    opts = opts || {};
+    const t0 = Date.now(), sys = acLinearize(netlist, Object.assign({}, opts, { inputs: [] }));
+    if (!sys.ok) return sys;
+    const { n, x } = sys, kT = 1.380649e-23 * (opts.tempK || 300), q = 1.602176634e-19, fc = Math.max(0, opts.flicker || 0);
+    const src = [];
+    const add = (e, a, b, S, flick) => { if (S > 0 && isFinite(S) && a !== b) src.push({ id: e.id, kind: e.kind, a, b, S, flick: !!flick }); };
+    for (const e of sys.circ.els) {
+      const nd = e.nodes, V = nd.map(k => vn(x, k));
+      switch (e.kind) {
+        case "R": add(e, nd[0], nd[1], 4 * kT / Math.max(e.r, 1e-6)); break;
+        case "TRIODE": case "PENTODE": {
+          const pent = e.kind === "PENTODE", k = pent ? 3 : 2, d = 1e-3;
+          const I = g => tubeCurrents(e, V[0] - V[k], V[1] - V[k] + g, pent ? V[2] - V[k] : undefined);
+          const i0 = I(0), gm = (I(d)[0] - I(-d)[0]) / (2 * d);
+          if (!(gm > 1e-9) || !(i0[0] > 0)) break;
+          const ig2 = pent ? Math.max(0, i0[2]) : 0, req = (i0[0] / (i0[0] + ig2)) * (2.5 / gm + 20 * ig2 / (gm * gm));
+          add(e, nd[0], nd[k], 4 * kT * req * gm * gm, true);
+          break;
+        }
+        case "BJT": { const I = Semi.bjt(V, e.model); add(e, nd[0], nd[2], 2 * q * Math.abs(I[0])); add(e, nd[1], nd[2], 2 * q * Math.abs(I[1])); break; }
+        case "MOS": {
+          const d = 1e-5, Vp = V.slice(), Vm = V.slice(); Vp[1] += d; Vm[1] -= d;
+          const gm = Math.abs(Semi.mos(Vp, e.model)[0] - Semi.mos(Vm, e.model)[0]) / (2 * d);
+          add(e, nd[0], nd[2], 4 * kT * (2 / 3) * gm);
+          break;
+        }
+        case "D": { const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852, id = Is * (Math.exp(Math.min((V[0] - V[1]) / nVt, 80)) - 1); add(e, nd[0], nd[1], 2 * q * Math.abs(id)); break; }
+        case "VDIODE": { const v = V[0] - V[1]; if (v > 0) add(e, nd[0], nd[1], 2 * q * e.perveance * Math.pow(v, 1.5)); break; }
+      }
+    }
+    const [oa, ob] = opts.out || [1, 0], inEl = opts.input ? sys.circ.els.find(e => e.id === opts.input) : null;
+    const freqs = acFreqs(opts), K = freqs.length, total = new Float64Array(K), gRe = new Float64Array(K), gIm = new Float64Array(K);
+    const psd = src.map(() => new Float64Array(K)), zr = new Float64Array(n), zi = new Float64Array(n);
+    for (let k = 0; k < K; k++) {
+      zr.fill(0); zi.fill(0);
+      if (oa > 0) zr[oa - 1] += 1; if (ob > 0) zr[ob - 1] -= 1;
+      if (!acSolve(sys, 2 * Math.PI * freqs[k], [[zr, zi]], true)) return { ok: false, error: "singular matrix at " + freqs[k].toPrecision(3) + " Hz" };
+      const Z = i => (i > 0 ? [zr[i - 1], zi[i - 1]] : [0, 0]);
+      if (inEl && inEl.branch !== undefined) { gRe[k] = zr[inEl.branch]; gIm[k] = zi[inEl.branch]; }
+      let s = 0;
+      src.forEach((p, j) => {
+        const A = Z(p.a), B = Z(p.b), tr = A[0] - B[0], ti = A[1] - B[1];
+        const v = p.S * (p.flick ? 1 + fc / freqs[k] : 1) * (tr * tr + ti * ti);
+        psd[j][k] = v; s += v;
+      });
+      total[k] = s;
+    }
+    return { ok: true, freqs, total, gain: { re: gRe, im: gIm }, sources: src.map((p, j) => ({ id: p.id, kind: p.kind, psd: psd[j] })), elapsedMs: Date.now() - t0 };
+  }
+
+  const Engine = { Tube, Koren, Semi, NE555, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);
