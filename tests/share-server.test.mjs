@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { runInThisContext } from "node:vm";
 
 const dir = mkdtempSync(join(tmpdir(), "share-"));
-process.env.DATA = dir; process.env.MAX_TOTAL = "20000";
+process.env.DATA = dir; process.env.REVS = join(dir, "revs-unused"); process.env.MAX_TOTAL = "20000";
 const { start, idOf } = await import("../server/share/server.mjs");
 runInThisContext(readFileSync(new URL("../cad-share.js", import.meta.url), "utf8"), { filename: "cad-share.js" });
 const server = await start({ port: 0, log: () => {} });

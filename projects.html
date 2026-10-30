@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projects — Tube Amp CAD</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="ui.css?v=dev">
+  <style>
+    :root { --bg: #070b10; --panel: #111823; --panel2: #18212e; --line: #26344a; --text: #e6edf3; --muted: #8b949e; --accent: #00e5ff; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300; --links: #b388ff; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    header { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: linear-gradient(#141c27, #0e141d); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .brand { font-weight: 800; letter-spacing: .5px; }
+    .brand span { color: var(--accent); font-weight: 600; margin-left: 6px; }
+    #who { color: var(--muted); font-size: 12px; }
+    .spacer { flex: 1; }
+    a.btn { text-decoration: none; }
+    main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
+    @media (max-width: 700px) { main { padding: 10px; } }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+    .card h3 { margin: 0 0 10px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 10px; }
+    .card h3 .spacer { flex: 1; }
+    .card h3 input { text-transform: none; letter-spacing: 0; }
+    #say { font-size: 15px; margin: 0; }
+    #say.bad { color: var(--bad); }
+    .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+    .meter .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .meter .top b { font: 600 14px ui-monospace, Menlo, monospace; }
+    .meter .note { color: var(--muted); font-size: 12px; }
+    .bar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; margin: 5px 0 3px; display: flex; }
+    .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+    .bar i.links { background: var(--links); }
+    .key { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--accent); margin-right: 4px; }
+    .key.links { background: var(--links); }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px; padding: 4px 8px; white-space: nowrap; }
+    td { padding: 5px 8px; border-top: 1px solid #1a2433; vertical-align: top; overflow-wrap: anywhere; }
+    td.num, th.num { text-align: right; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
+    td.t { color: var(--muted); white-space: nowrap; }
+    td.act { text-align: right; white-space: nowrap; }
+    td.act .btn { padding: 2px 8px; font-size: 11px; }
+    .btn.danger:hover { border-color: var(--bad); color: var(--bad); }
+    tr.proj { cursor: pointer; }
+    tr.proj:hover td { background: #141d29; }
+    tr.proj td.name b { font-weight: 600; }
+    tr.proj td.name .caret { display: inline-block; width: 1em; color: var(--muted); transition: transform .15s; }
+    tr.proj.open td.name .caret { transform: rotate(90deg); }
+    tr.proj .notes { color: var(--muted); font-size: 12px; }
+    tr.revs > td { background: #0c121a; padding: 6px 8px 10px 28px; }
+    tr.revs table td { border-top-color: #18212e; }
+    td.n { font: 600 12px ui-monospace, Menlo, monospace; color: var(--accent); white-space: nowrap; }
+    td.sum { color: var(--muted); font-size: 12px; }
+    td.mono, .mono { font-family: ui-monospace, Menlo, monospace; }
+    .muted { color: var(--muted); }
+    .empty { color: var(--muted); text-align: center; padding: 16px; }
+    input[type=search] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font: 12px system-ui, sans-serif; width: 200px; }
+    [hidden] { display: none !important; }
+    .table-wrap { overflow-x: auto; }
+    /* a phone: the columns that can wait go, the buttons wrap under each other */
+    @media (max-width: 700px) {
+      .wide-only { display: none; }
+      td.act { white-space: normal; }
+      td.act .btn { margin: 2px 0; }
+      tr.revs > td { padding-left: 8px; }
+      input[type=search] { width: 140px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">TUBE AMP CAD<span>projects on the server</span></div>
+    <span id="who"></span>
+    <span class="spacer"></span>
+    <button class="btn active" id="signin" hidden title="Opens the site's login in its own window: your e-mail, then the code it sends you">Sign in ↗</button>
+    <button class="btn" id="refresh" title="Read everything again">Refresh</button>
+    <a class="btn" href="circuit_sandbox.html" target="_blank" rel="noopener">Open the CAD ↗</a>
+  </header>
+  <main>
+    <section class="card" id="msg-card">
+      <p id="say">Asking aerocat.tech…</p>
+    </section>
+    <section class="card" id="space-card" hidden>
+      <h3>Space on the server</h3>
+      <div class="meters">
+        <div class="meter">
+          <div class="top"><span>Together</span><b id="m-total"></b></div>
+          <div class="bar"><i id="b-revs"></i><i class="links" id="b-links"></i></div>
+          <div class="note"><span class="key"></span>revisions <span class="key links" style="margin-left:8px"></span>short links · <span id="m-total-note"></span></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span>Revisions</span><b id="m-revs"></b></div>
+          <div class="bar"><i id="b-revs-own"></i></div>
+          <div class="note" id="m-revs-note"></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span>Short links</span><b id="m-links"></b></div>
+          <div class="bar"><i class="links" id="b-links-own"></i></div>
+          <div class="note" id="m-links-note"></div>
+        </div>
+        <div class="meter">
+          <div class="top"><span>Server disk</span><b id="m-disk"></b></div>
+          <div class="bar"><i id="b-disk" style="background: var(--muted)"></i></div>
+          <div class="note" id="m-disk-note"></div>
+        </div>
+      </div>
+    </section>
+    <section class="card" id="projects-card" hidden>
+      <h3>Projects <span class="spacer"></span><input type="search" id="p-filter" placeholder="Find a project or message" aria-label="Find a project"></h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Project</th><th class="num">Revisions</th><th class="num wide-only">Size</th><th class="wide-only">Last change</th><th></th></tr></thead>
+          <tbody id="projects"></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="card" id="links-card" hidden>
+      <h3>Short links <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0" id="links-count"></span></h3>
+      <p class="muted" style="margin:0 0 8px">Designs anyone shared with File ▾ → Share link. When the space runs out the oldest go first; revisions are never deleted to make room.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Link</th><th class="num wide-only">Size</th><th class="wide-only">Shared</th><th></th></tr></thead>
+          <tbody id="links"></tbody>
+        </table>
+      </div>
+      <p style="margin:8px 0 0"><button class="btn" id="links-more" hidden>Show all</button></p>
+    </section>
+  </main>
+  <script src="cad-revisions.js?v=dev"></script>
+  <script src="projects-app.js?v=dev"></script>
+</body>
+</html>

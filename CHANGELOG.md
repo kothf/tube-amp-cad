@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.143.0] - 2026-10-30
+
+### Added
+- **Revisions** (File ▾ → Revisions…, on aerocat.tech for the site's owner only, behind its Cloudflare Access login): each circuit/board project keeps numbered revisions on the site. **Save revision** keeps the whole design (imported tubes and board included) with a message and a summary of what changed since the last one (parts added, removed, changed with old → new values, moved, wires, board); **Open** puts an earlier revision on the sheet; **Compare** says what differs from the sheet; **Download all** saves a project's revisions in one JSON file. `#rev=<project>.<n>` opens a revision in the CAD.
+- **Project manager** (`projects.html`, same login): the space taken by revisions and short links against the 100 MB, and the server's free disk; every project with its revisions (open in the CAD, download, edit the message, delete; rename, download, delete a project) and every short link (open, delete).
+- Server (`server/share`): the link store also keeps the projects (`/api/rev/`, in `./revisions`), checks the Cloudflare Access token itself (RS256 against the team's keys, issuer, expiry; optionally the application's AUD tag and e-mails), and refuses changes from other sites' pages. Revisions and links share one budget (`MAX_TOTAL`, 100 MB): a revision makes room by deleting the oldest links, and revisions are never deleted to make room (`MAX_REVISIONS`, `MAX_SHARES` cap each). `update.sh` updates the NUC install in one command.
+
 ## [3.142.0] - 2026-10-30
 
 ### Added

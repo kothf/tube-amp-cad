@@ -2475,7 +2475,11 @@
     let d;
     try { d = await CadShare.unpack(packed || await CadShare.fetchShort(id, location.origin)); if (!d || d.app !== "TubeAmpCAD") throw new Error("not a Tube Amp CAD design"); }
     catch (err) { setStatus("error", "Could not open the shared link: " + err.message); return; }
-    if (S.comps.some(c => c.type !== "frame") && !confirm("Open the design from this link?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.")) return;
+    openDesign(d, "the design from this link", true);
+  }
+  // a design (as File › Save writes it) onto the sheet, untitled; `ask`: first ask if a circuit is there
+  function openDesign(d, what, ask) {
+    if (ask && S.comps.some(c => c.type !== "frame") && !confirm(`Open ${what}?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.`)) return false;
     try {
       if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { /* a built-in of that name */ } }); buildPalette(); }
       loadCircuit(d);
@@ -2484,8 +2488,9 @@
       setCurFile(null, "");                       // untitled: Save asks for a name
       commit(); fitStart(); markClean();
       sendBoardNetlist(true);
-      setStatus("ok", "Opened the design from the link" + (sheetName().full ? ": " + sheetName().full : ""));
-    } catch (err) { setStatus("error", "Could not open the shared link: " + err.message); }
+      setStatus("ok", "Opened " + what + (sheetName().full ? ": " + sheetName().full : ""));
+      return true;
+    } catch (err) { setStatus("error", `Could not open ${what}: ` + err.message); return false; }
   }
   function buildExamplesMenu() {
     const host = document.getElementById("examples-list"); if (!host) return;
@@ -2800,6 +2805,13 @@
     document.getElementById("share-board").addEventListener("change", updateShare);
     document.getElementById("share-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("share-modal").hidden = true; });
     window.addEventListener("hashchange", openSharedLink);
+    // File ▾ → Revisions… (cad-rev-dialog.js), and #rev=<project>.<n> addresses from the project manager
+    revisions = window.CadRevDialog ? CadRevDialog({ circuitJSON, openDesign, setStatus, sheetName, isDirty }) : null;
+    if (revisions) {
+      revisions.wire();
+      bind("btn-revisions", () => revisions.open());
+      window.addEventListener("hashchange", () => revisions.openFromLink());
+    }
     document.getElementById("save-name").addEventListener("keydown", e => { if (e.key === "Enter") saveDialogOk(); });
     document.getElementById("save-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("save-modal").hidden = true; });
     cmds.bind("btn-undo", "undo").bind("btn-redo", "redo");
@@ -2863,9 +2875,11 @@
     updateSheetNav();
     requestAnimationFrame(() => { fitStart(); scheduleSim(0); });
     openSharedLink();
+    if (revisions) revisions.openFromLink();
   }
+  let revisions = null;
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { circuitIssues, ai, tune, design, datasheet, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { circuitIssues, ai, tune, design, datasheet, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
