@@ -14,6 +14,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   - Values to change are any editable values with a range; **Suggest** adds the resistors at the tubes' and transistors' pins. A pattern-search optimizer proposes tries, the simulator runs them on all workers, and the best values are rounded to E24/E12 and simulated once more. A chart shows the progress; **Stop** keeps the best so far; **Apply these values** is one undo step.
   - **AI start** (with an API key): the model picks the values to change, their ranges and starting values for your goals.
 
+### Changed
+- The Bill of materials tab under the schematic is labelled **BOM**, so the panel's tabs and tools keep to two rows with the new Tune tab (the list under them stayed too short to show a line at narrow widths).
+
 ### Fixed
 - AI assistant: answers are now streamed from all three providers and appear in the AI tab while they are written. A long answer (Explain my circuit takes a minute or more on the strongest models) no longer fails with "Could not reach Claude (Failed to fetch)" behind a proxy or firewall that drops a connection after 30 quiet seconds.
 
