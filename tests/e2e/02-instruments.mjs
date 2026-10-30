@@ -193,10 +193,16 @@ const canvasAt = async (page, p) => { const r = await page.locator("#screen").bo
   const moved = await scope.evaluate(() => window.Scope.markers());
   check(moved.length === 2 && moved[1].t > m[1].t, "dragging marker B moves it along the trace");
   await scope.evaluate(() => { window.__ev = []; const c = document.getElementById("screen"); ["pointerdown", "pointerup", "dblclick", "pointermove"].forEach(t => c.addEventListener(t, e => window.__ev.push(t + " " + e.offsetX.toFixed(0) + "," + e.offsetY.toFixed(0) + " m=" + window.Scope.markers().length), true)); });
+  // markers follow the trace, and a late run from the CAD (a background tab's, or the settled one after a
+  // preliminary result) moves it: aim at where A is drawn once the trace holds still, not where it was
+  await scope.waitForFunction(() => new Promise(res => {
+    const at = () => JSON.stringify(window.Scope.markers().map(k => k.pos));
+    const a = at(); setTimeout(() => res(at() === a), 300);
+  }), null, { timeout: 10000, polling: 50 }).catch(() => {});
   const pre = await scope.evaluate(() => window.Scope.markers().map(k => [k.pos.x, k.pos.y]));
-  await scope.mouse.dblclick(...await canvasAt(scope, moved[0].pos));
+  await scope.mouse.dblclick(...await canvasAt(scope, { x: pre[0][0], y: pre[0][1] }));
   const after = await scope.evaluate(() => window.Scope.markers());
-  check(after.length === 1, "double-click removes a marker" + (after.length === 1 ? "" : ` (DEBUG pre ${JSON.stringify(pre)} target ${JSON.stringify(moved[0].pos)} after ${JSON.stringify(after.map(k => k.pos))} ev ${JSON.stringify(await scope.evaluate(() => window.__ev))})`));
+  check(after.length === 1, "double-click removes a marker" + (after.length === 1 ? "" : ` (DEBUG pre ${JSON.stringify(pre)} after ${JSON.stringify(after.map(k => k.pos))} ev ${JSON.stringify(await scope.evaluate(() => window.__ev))})`));
   await scope.keyboard.press("Escape");
   check((await scope.evaluate(() => window.Scope.markers())).length === 0, "Esc clears the markers");
 }
