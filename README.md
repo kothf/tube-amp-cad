@@ -353,6 +353,15 @@ the circuit that was on the sheet.
     trend line, its range and the steps over its rating;
   - click a line to plot it against the value; a scope channel also overlays
     its wave at every step; click a step to set the part to it.
+- **Noise and hum.** *View ▾ → Noise and hum* opens the *Noise* tab under
+  the schematic: what the amplifier puts out with no signal:
+  - thermal, tube (2.5/gm, pentode partition, 1/f), shot and FET channel
+    noise carried to the output; flat and A-weighted over 20 Hz – 20 kHz,
+    the input noise, a density chart and each part's share;
+  - the supply's ripple at the output (every harmonic of the mains, from the
+    steady state with the generators quiet) and an estimate of AC heater hum
+    (one side grounded, centre-tapped or DC);
+  - the signal-to-noise ratio in dB(A), noise and hum together, re 1 W.
 - **SPICE.** *Export SPICE netlist* writes an LTspice netlist: tubes as
   behavioural sources with the same equations the simulator uses, transistors
   as Q and M elements with their `.model` lines.
@@ -403,7 +412,12 @@ the circuit that was on the sheet.
   - the gain and phase at 1 kHz, the −3 dB points either side of it, the
     level at 20 Hz and 20 kHz, and any peak above the 1 kHz gain (an output
     transformer's leakage resonance, a feedback loop short of stability);
-  - markers A and B, and wheel zoom on the frequency axis.
+  - markers A and B, and wheel zoom on the frequency axis;
+  - *Loop gain* mode: the gain around a feedback loop broken at a part (the
+    feedback resistor is found and offered first), by Middlebrook's double
+    injection, with the unity-gain frequency, phase margin and gain margin
+    at both the high and the low end, and a verdict (stable, ringing, will
+    oscillate, positive feedback).
 
   It is the small-signal response: the generator chosen drives the circuit,
   linearized at its idle operating point (signal off; a mains-fed supply at

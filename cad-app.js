@@ -249,6 +249,7 @@
     if (S.trans && !S.trans.stale && !S.trans.running) { S.trans.stale = true; if (channel) channel.postMessage(transientMessage()); }
     tolerance.changed();
     power.changed();
+    noise.changed();
     listen.changed();
     sweep.changed();
     tune.changed();
@@ -552,10 +553,11 @@
       if (!lastSummary) lastSummary = buildSummary(); lastSummary.selectedTubeId = lastTubeId; channel.postMessage(lastSummary);
       if (S.trans) channel.postMessage(transientMessage());
       if (S.ac.msg) channel.postMessage(acMessage());
+      if (S.loop.msg) channel.postMessage(loopMessage());
     }
     // requests from instrument windows are acknowledged at once, so a window can
     // tell a CAD that does not understand them (an older version still open)
-    else if (/^(RUN_SIM|RUN_TRANSIENT|STOP_TRANSIENT|BOARD_SAVE|RUN_AC)$/.test(m.type)) channel.postMessage({ type: "ACK", req: m.type, id: m.id, version: VERSION });
+    else if (/^(RUN_SIM|RUN_TRANSIENT|STOP_TRANSIENT|BOARD_SAVE|RUN_AC|RUN_LOOP)$/.test(m.type)) channel.postMessage({ type: "ACK", req: m.type, id: m.id, version: VERSION });
     if (m.type === "BOARD_HELLO") sendBoardNetlist(true);                    // a board window opened: netlist and the stored board
     else if (m.type === "BOARD_SAVE") { storeBoard(m.doc); renderBom(); }   // the BOM names the parts made SMD there
     else if (m.type === "BOARD_SELECT") selectFromBoard(m.ids);
@@ -564,13 +566,14 @@
     else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop);
     else if (m.type === "STOP_TRANSIENT") stopTransient();
     else if (m.type === "RUN_AC") runAC(m.gen);
+    else if (m.type === "RUN_LOOP") runLoop(m.at, m.reverse);
   };
 
   // ---------------------------------------------------------------------------
   // Power-on transient for the oscilloscopes and frequency response for the Bode plotter,
   // on workers of their own from the pool, so live runs go on (cad-analysis.js)
   // ---------------------------------------------------------------------------
-  const { acMessage, runAC, runTransient, stopTransient, transientMessage } = CadAnalysis({ S, VERSION, buildNetlist, pool, channel, desig, fmtEng, setStatus, showBusy, topo });
+  const { acMessage, loopMessage, runAC, runLoop, runTransient, stopTransient, transientMessage } = CadAnalysis({ S, VERSION, buildNetlist, pool, channel, desig, fmtEng, netAC, setStatus, showBusy, topo });
 
   // ---------------------------------------------------------------------------
   // View transforms
@@ -973,6 +976,7 @@
     .add({ id: "sweep", label: "Parameter sweep", run: () => toggleBom(undefined, "sweep"), check: () => bomOpts.open && bomOpts.tab === "sweep" })
     .add({ id: "listen", label: "Listen", run: () => toggleBom(undefined, "listen"), check: () => bomOpts.open && bomOpts.tab === "listen" })
     .add({ id: "power", label: "Power sweep", run: () => toggleBom(undefined, "power"), check: () => bomOpts.open && bomOpts.tab === "power" })
+    .add({ id: "noise", label: "Noise and hum", run: () => toggleBom(undefined, "noise"), check: () => bomOpts.open && bomOpts.tab === "noise" })
     .add({ id: "zoom-in", keys: ["+", "=", "NumpadAdd", "Equal"], anyCtrl: true, run: () => zoomBy(1.2), help: "zoom in · wheel zooms at the pointer", helpKeys: ["+"] })
     .add({ id: "zoom-out", keys: ["-", "NumpadSubtract", "Minus"], anyCtrl: true, run: () => zoomBy(1 / 1.2), help: "zoom out", helpKeys: ["-"] })
     .add({ id: "undo", menuId: "menu-undo", label: "Undo", keys: ["Ctrl+Z"], prevent: true, inControls: true, run: undo, help: "undo" })
@@ -2420,11 +2424,13 @@
   const tolerance = CadTolerance({ S, VERSION, buildNetlist, pool, cmds, esc: escH, fmtEng, measurements, setStatus, topo, withResult });
   // Power sweep: the Power tab (cad-power.js)
   const power = CadPower({ S, buildNetlist, cmds, commit, desig, esc: escH, fmtEng, harmonics, pool, scopeChannels, setStatus, signalFreq, speakerWave, topo, withResult });
+  // Noise and hum: the Noise tab (cad-noise.js)
+  const noise = CadNoise({ S, buildNetlist, cmds, desig, esc: escH, fmtEng, harmonics, pool, scopeChannels, setStatus, speakerWave, topo, tubeByName, withResult });
   // Parameter sweep: the Sweep tab (cad-sweep.js)
   const sweep = CadSweep({ S, buildNetlist, cmds, commit, desig, esc: escH, fmtEng, harmonics, measurements, parseEng: CadLib.parseEng, pool, scopeChannels, setStatus, signalFreq, speakerWave, topo, withResult });
   // Listen: the Listen tab (cad-listen.js)
   const listen = CadListen({ S, buildNetlist, cmds, desig, esc: escH, fmtEng, pool, setStatus, topo });
-  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); sweep.render(); listen.render(); tune.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
+  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); noise.render(); sweep.render(); listen.render(); tune.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
   // The AI assistant: the AI tab and the AI menu (cad-ai.js)
   const ai = CadAi({ S, VERSION, circuitIssues, commit, compPins, desig, fmtEng, harmonics, measurements, netAC, netDC, runSim, selectParts: selectFromBoard, setStatus, signalFreq, speakerWave, toggleBom, topo, tubeData, undo, whenSimulated });
   // Auto-tune: the Tune tab (cad-tune.js)
@@ -2906,6 +2912,7 @@
     cmds.bind("btn-power", "power");
     cmds.bind("btn-listen", "listen");
     cmds.bind("btn-sweep", "sweep");
+    cmds.bind("btn-noise", "noise");
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
     cmds.bind("btn-volts", "volts").bind("btn-amps", "amps").bind("btn-legend", "legend").bind("btn-anim", "anim");
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
@@ -2915,6 +2922,7 @@
     tolerance.init();
     power.init();
     listen.init();
+    noise.init();
     sweep.init();
     initBom();
     ai.init();
@@ -2952,6 +2960,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { circuitIssues, ai, tune, design, datasheet, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

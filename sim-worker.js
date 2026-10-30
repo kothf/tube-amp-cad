@@ -7,6 +7,8 @@
                                                                  samples), from options.warm: { ok, rate, out: [Float32Array] }
                 { seq, netlist, options, kind: "ac" }           frequency response (acSweep; options.op, and options.kFrom /
                                                                  kTo for a piece of the sweep, so several workers share it)
+                { seq, netlist, options, kind: "loop" }         loop gain (loopGain; options.at, options.op)
+                { seq, netlist, options, kind: "noise" }        noise at an output (noiseSweep; options.out, options.op)
    Message out: { seq, result }, and { seq, progress } (0…1) along the way. */
 importScripts("spice-model.js" + self.location.search, "sim-engine.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
 
@@ -26,7 +28,9 @@ self.onmessage = async (e) => {
     } else if (kind === "ac") {
       const ac = TubeSimEngine.acSweep(netlist, options);
       result = ac.ok ? { ok: true, freqs: ac.freqs, probes: ac.probes, elapsedMs: ac.elapsedMs } : ac;
-    } else if (kind === "audio") result = TubeSimEngine.audio(netlist, Object.assign({}, options, { onProgress }));
+    } else if (kind === "loop") result = TubeSimEngine.loopGain(netlist, options);
+    else if (kind === "noise") result = TubeSimEngine.noiseSweep(netlist, options);
+    else if (kind === "audio") result = TubeSimEngine.audio(netlist, Object.assign({}, options, { onProgress }));
     else if (kind === "startup") result = TubeSimEngine.startup(netlist, Object.assign({}, options, { onProgress }));
     else result = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress }));
   } catch (err) {

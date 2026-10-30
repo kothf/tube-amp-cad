@@ -10,7 +10,7 @@
     const bomOpts = { open: false, tab: "bom", sockets: true, bench: false, height: 0 };   // open, tab: the panel under the sheet and its tab
     try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
     const saveBomOpts = () => { try { localStorage.setItem(BOM_KEY, JSON.stringify(bomOpts)); } catch (e) {} };
-    let bomStale = false, bomSelShown = "";
+    let bomStale = false, bomSelShown = "", bomSelAt = null;
     // a click on the sheet shows its selection in the BOM again
     const clearBomShown = () => { bomSelShown = ""; };
     // simulated worst case of a part, for the BOM's Sim. max column: dissipation of resistors,
@@ -175,7 +175,10 @@
       bomStale = false;
       const bom = bomData(), table = document.getElementById("bom-table");
       const parts = bom.rows.reduce((n, r) => n + r.qty, 0);
-      document.getElementById("bom-count").textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (!S.sim.result ? " · simulate for the Sim. max column" : S.sim.busy || S.sim.pending ? " · Sim. max: the last simulation, a new one is running" : "") : "";
+      // short notes, so the dock's head keeps its width (and its lines) while a simulation runs
+      const cnt = document.getElementById("bom-count"), simNote = !S.sim.result ? ["not simulated", "Simulate for the Sim. max column"] : S.sim.busy || S.sim.pending ? ["simulating…", "Sim. max shows the last simulation; a new one is running"] : null;
+      cnt.textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (simNote ? " · " + simNote[0] : "") : "";
+      cnt.title = bom.rows.length && simNote ? simNote[1] : "";
       if (!bom.rows.length) { table.innerHTML = `<tbody><tr><td class="bom-empty">No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.</td></tr></tbody>`; return; }
       const tip = { rating: "Ratings and data; a capacitor's voltage rating is the first standard one at or above 1.25 × its simulated peak voltage", sim: "Simulated worst case: dissipation (resistors, transistors, zeners), capacitor peak voltage, LED current", partno: "The manufacturer's part number (or your order number); saved with the circuit. A maker's number the app knows sets the part's board footprint, its silkscreen outline and its 3D body to the real part's size",
         pkg: "What the part number says the real part is: package, body size, lead spacing (Board Design takes this footprint), and where it disagrees with the schematic" };
@@ -195,7 +198,13 @@
           const box = table.parentElement, head = table.querySelector("thead").offsetHeight, top = first.offsetTop - head;
           if (top < box.scrollTop || first.offsetTop + first.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = Math.max(0, top - (box.clientHeight - head - first.offsetHeight) / 2);
           table.querySelectorAll("tbody tr.sel").forEach(tr => tr.classList.add("flash"));
-        }
+          bomSelAt = { y: first.offsetTop - box.scrollTop, top: box.scrollTop };
+        } else bomSelAt = null;
+      } else if (first && bomSelAt && table.parentElement.scrollTop === bomSelAt.top) {
+        // lines above changed height (a new sim result): keep the selected line where it was, unless the list was scrolled since
+        const box = table.parentElement;
+        box.scrollTop = Math.max(0, first.offsetTop - bomSelAt.y);
+        bomSelAt.top = box.scrollTop;
       }
       table.querySelectorAll("tbody tr").forEach(tr => {
         const r = bom.rows[+tr.dataset.i];

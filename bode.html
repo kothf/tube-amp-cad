@@ -40,7 +40,9 @@
     .muted { color: var(--muted); font-size: 12px; }
     @media (max-width: 900px) { body { overflow: auto; } main { grid-template-columns: 1fr; } .bezel { height: 60vh; } }
       .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
-    td.warn { color: var(--warn); }
+    td.warn, span.warn { color: var(--warn); } span.bad { color: var(--bad); } span.good { color: var(--ok); }
+    body.loop .resp-only, body:not(.loop) .loop-only { display: none; }
+    .verdict { font-size: 12px; margin: 8px 0 0; line-height: 1.45; }
 </style>
 </head>
 <body>
@@ -52,8 +54,11 @@
     <div class="brand">Bode Plotter<span>frequency response</span></div>
     <span id="status" class="status idle">Waiting for the Circuit CAD…</span>
     <span class="spacer"></span>
-    <label class="muted">Scope part <select id="scope-select"></select></label>
-    <label class="muted">Generator <select id="gen"></select></label>
+    <label class="muted" title="Frequency response: the scope channels against the generator. Loop gain: around a feedback loop, broken at a part, with the phase and gain margins">Measure <select id="mode"><option value="resp">Frequency response</option><option value="loop">Loop gain</option></select></label>
+    <label class="muted resp-only">Scope part <select id="scope-select"></select></label>
+    <label class="muted resp-only">Generator <select id="gen"></select></label>
+    <label class="muted loop-only" title="Where the loop is broken: the feedback resistor, normally. The likely feedback parts are listed first">Break at <select id="loop-at"></select></label>
+    <label class="muted loop-only" title="The loop is broken at the end of the part that carries more signal (the side that drives the feedback). Tick to break it at the other end"><input type="checkbox" id="loop-rev"> Other end</label>
     <a class="btn ib" href="help.html#bode" target="tube_help" title="Manual: this instrument explained" aria-label="Help"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.1 6.2a2 2 0 1 1 2.6 1.9c-.5.2-.7.6-.7 1.1v.5"/><path d="M8 11.6v.2"/></svg></a>
   </header>
   <main>
@@ -65,19 +70,21 @@
     <aside>
       <div class="card">
         <h3>Display</h3>
-        <div class="row"><span>Traces</span><select id="show"><option value="both">CH1 and CH2</option><option value="ch1">CH1</option><option value="ch2">CH2</option><option value="ratio">CH2 ÷ CH1 (between the probes)</option></select></div>
-        <div class="row"><span>Gain</span><select id="ref"><option value="abs">dB re the generator</option><option value="1k">dB re 1 kHz</option></select></div>
+        <div class="row resp-only"><span>Traces</span><select id="show"><option value="both">CH1 and CH2</option><option value="ch1">CH1</option><option value="ch2">CH2</option><option value="ratio">CH2 ÷ CH1 (between the probes)</option></select></div>
+        <div class="row resp-only"><span>Gain</span><select id="ref"><option value="abs">dB re the generator</option><option value="1k">dB re 1 kHz</option></select></div>
         <div class="row"><span>Range</span><select id="range"><option value="10-100000">10 Hz – 100 kHz</option><option value="20-20000">20 Hz – 20 kHz</option><option value="1-1000000">1 Hz – 1 MHz</option></select></div>
         <div class="row"><span>Phase</span><select id="phase"><option value="on">Shown</option><option value="off">Hidden</option></select></div>
       </div>
       <div class="card">
-        <h3>Response</h3>
+        <h3 id="resp-title">Response</h3>
         <table><thead id="resp-head"></thead><tbody id="resp"></tbody></table>
+        <p class="verdict" id="verdict"></p>
         <p class="muted" id="resp-note"></p>
       </div>
       <div class="card">
         <h3>How it is computed</h3>
-        <p class="muted" id="how">The generator drives the circuit with 1 V at each frequency; every part is linearized at the circuit's idle operating point (all generators off), so this is the small-signal response. Tubes include their interelectrode capacitances (Miller effect); transformers their inductance and leakage. Large-signal effects (clipping, transformer saturation) show on the oscilloscope and the spectrum analyzer instead.</p>
+        <p class="muted loop-only">The loop is broken at one end of the chosen part and measured by Middlebrook's double injection: a voltage injected in series, then a current injected into the junction, combined into the gain once around the loop. That is exact whatever the impedances either side of the break. The signal generators are quiet (shorts behind their output resistance); every part is linearized at the idle operating point, as for the frequency response.</p>
+        <p class="muted resp-only" id="how">The generator drives the circuit with 1 V at each frequency; every part is linearized at the circuit's idle operating point (all generators off), so this is the small-signal response. Tubes include their interelectrode capacitances (Miller effect); transformers their inductance and leakage. Large-signal effects (clipping, transformer saturation) show on the oscilloscope and the spectrum analyzer instead.</p>
       </div>
     </aside>
   </main>
