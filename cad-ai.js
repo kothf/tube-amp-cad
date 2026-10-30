@@ -202,6 +202,7 @@
       if (m.kind === "error") return `<div class="ai-msg error">⚠ ${esc(m.text)}</div>`;
       if (m.kind === "note") return `<div class="ai-msg note">${A.markdown(m.text, refs())}${m.undo ? `<div class="ai-row"><button class="btn" data-undo="${k}" title="Take the change back (Ctrl+Z)">Undo</button></div>` : ""}</div>`;
       if (m.kind === "setup") return `<div class="ai-msg note"><b>Add an API key to use the assistant.</b> It works with your own key for Claude (Anthropic), ChatGPT (OpenAI) or Gemini (Google). The key stays in this browser and goes only to that provider; the provider bills your account for what you ask. <div class="ai-row"><button class="btn primary" data-settings="1">AI settings…</button></div></div>`;
+      if (m.kind === "card") return `<div class="ai-msg answer">${m.html}</div>`;   // built by another AI feature from escaped parts
       if (m.kind === "fixes") {
         const ok = m.fixes.filter(f => !f.error && !f.applied);
         const rows = m.fixes.map((f, j) => `<tr class="${f.error ? "bad" : f.applied ? "done" : ""}"><td><a href="#" class="ai-ref" data-ref="${esc(f.part)}">${esc(f.part)}</a></td>`
@@ -230,8 +231,9 @@
       actions.forEach(a => { const b = $(a.id); if (b) b.disabled = !!AI.busy && !a.free; });
     }
     function onLogClick(e) {
-      const t = e.target.closest("[data-ref], [data-apply], [data-settings], [data-undo], .ai-chip, #btn-ai-stop"); if (!t) return;
+      const t = e.target.closest("[data-ref], [data-apply], [data-settings], [data-undo], [data-act], .ai-chip, #btn-ai-stop"); if (!t) return;
       e.preventDefault();
+      if (t.dataset.act) { const fn = cardActs[t.dataset.act]; if (fn) fn(t.dataset.arg, t); return; }
       if (t.id === "btn-ai-stop") { if (AI.busy && AI.busy.ctl) AI.busy.ctl.abort(); return; }
       if (t.dataset.settings) { openSettings(); return; }
       if (t.dataset.undo) { undo(); const m = AI.log[+t.dataset.undo]; if (m) { m.undo = false; m.text += "\n\n*Undone.*"; } render(); return; }
@@ -314,8 +316,11 @@
     }
     // another AI feature's button above the conversation and its menu item
     function addAction(a) { actions.push(a); }
+    // a button's handler on another feature's card (data-act="name" data-arg="…")
+    const cardActs = {};
+    function cardAction(name, fn) { cardActs[name] = fn; }
 
-    return { init, render, ask, explain, fixChecks, apply, describe, openSettings, show, call, add, fail, addAction, refOf };
+    return { init, render, ask, explain, fixChecks, apply, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf };
   }
   root.CadAi = CadAi;
 })(window);

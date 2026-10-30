@@ -2360,6 +2360,26 @@
   // The AI assistant: the AI tab and the AI menu (cad-ai.js)
   const ai = CadAi({ S, VERSION, circuitIssues, commit, compPins, desig, fmtEng, harmonics, measurements, netAC, netDC, runSim, selectParts: selectFromBoard, setStatus, signalFreq, speakerWave, toggleBom, topo, tubeData, undo, whenSimulated });
   // Auto-tune: the Tune tab (cad-tune.js)
+  // AI ▾ → Design from a description: the drawn design on a new sheet, one undo step
+  function placeDesign(out) {
+    const f = makeComp("frame", { size: out.frame.size, orient: out.frame.orient, title: out.frame.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
+    S.comps = [f]; S.wires = [];
+    out.comps.forEach(o => {
+      const c = makeComp(o.type, o.params, o.x, o.y, o.rot);
+      c.params = Object.assign({}, LIB[o.type].defaults, o.params);
+      if (o.label) c.label = o.label;
+      S.comps.push(c);
+    });
+    out.wires.forEach(w => addSegment(w.x1, w.y1, w.x2, w.y2));
+    normalizeWires(); S.topo = null;
+    S.sel.comps.clear(); S.sel.wires.clear();
+    setCurFile(null, "");
+    storeBoard(null);
+    commit(); fitStart();
+    sendBoardNetlist(true);
+  }
+  const design = CadDesign({ S, circuitIssues, placeDesign, runSim, setStatus, whenSimulated });
+  const datasheet = CadDatasheet({ S, buildPalette, setStatus });
   const tune = CadTune({ S, buildNetlist, cmds, commit, compPins, desig, esc: escH, fmtEng, harmonics, measurements, pool, scopeChannels, setStatus, signalFreq, speakerWave, toggleBom, topo, withResult });
   // PDF / PNG export and printing (cad-export.js)
   const { expOpts, exportPDF, initExport, openExportDialog, openPrintDialog, printPages, prnOpts, renderPNG, runExport, runPrint } = CadExport({ S, baseName, bind, bomData, compBBox, currentSheet, drawSheet, frames, setStatus, sheetNo });
@@ -2814,6 +2834,8 @@
     initBom();
     ai.init();
     tune.init(ai);
+    design.init(ai);
+    datasheet.init(ai);
     bind("btn-open-board", showBoard);
     cmds.bind("btn-board-tab", "board-tab");
     cmds.bind("btn-doc-board", "board");
@@ -2844,6 +2866,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { circuitIssues, ai, tune, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { circuitIssues, ai, tune, design, datasheet, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

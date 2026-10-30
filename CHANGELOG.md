@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.142.0] - 2026-10-30
+
+### Added
+- **Design from a description** (AI ▾, with your AI key): describe an amplifier or a stage and the model designs it from the library's parts as a netlist. The CAD checks it against the library (a design it cannot use goes back once), draws it on a new sheet in signal order (each pin's stub ends in a ground, a supply rail or a sheet connector named after its net), simulates it, and sends the Checks back with the operating points for up to two revisions. Ctrl+Z brings back the circuit you had.
+- **Tube from a datasheet** (AI ▾, with your AI key): a tube's datasheet PDF goes to the model, which reads the type, socket, heater, ratings, pinout and points along the plate curves. A Koren model is fitted to the points (from the most similar library tube), and the AI tab shows what was read, the fit's R² and RMS error, and the model's curves over the datasheet's points. **Add to the library** makes it a custom tube, kept in this browser and in the circuit files that use it.
+
+### Changed
+- The curve tracer's Koren fitter is now `koren-fit.js`, shared with the datasheet import.
+
 ## [3.141.0] - 2026-10-30
 
 ### Added
