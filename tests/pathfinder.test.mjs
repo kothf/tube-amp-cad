@@ -8,8 +8,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "board-pathfinder.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
-const B = globalThis.BoardCore, PF = globalThis.BoardPathfinder, L = globalThis.CadLib;
+for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "board-sat.js", "board-place.js", "board-pathfinder.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+const B = globalThis.BoardCore, PF = globalThis.BoardPathfinder, BP = globalThis.BoardPlace, L = globalThis.CadLib;
 
 const part = (id, type, label, params, pins) => ({ id, type, label, params: Object.assign({}, L.LIB[type].defaults, params), pins: Object.entries(pins).map(([pid, net]) => ({ id: pid, net })) });
 // resistors in a ring whose nets cross: A joins R1 to R3, B joins R2 to R4, C joins R5 to R6 across both
@@ -73,6 +73,21 @@ test("copper in the way: only the unlocked pieces that block come up and are rou
   assert.equal(c1.conn.unrouted, 0, `open: ${c1.conn.rats.map(x => c1.m.names[x.net]).join(", ")}`);
   assert.deepEqual(c1.drc.map(d => d.msg), []);
   assert.ok(board.tracks.some(t => t.locked && t.net === "B"));
+  // nothing laid twice: no piece of the old track is left beside the new route
+  assert.deepEqual(BP.redundant(board, c1.m, c1.conn).tracks, []);
+});
+
+test("doubled copper: a track laid beside one of its net joining the same pads is found; one that joins is not", () => {
+  const { board, nl } = setup(NETLIST, AT), m0 = B.model(board, nl), pad = (ref, num) => m0.pads.find(p => p.ref === ref && p.num === num);
+  const p1 = pad("R1", "1"), p3 = pad("R3", "1");
+  board.tracks.push({ layer: "F.Cu", w: 0.6, net: "A", pts: [[p1.x, p1.y], [p1.x, p3.y - 6], [p3.x, p3.y - 6], [p3.x, p3.y]] });
+  board.tracks.push({ layer: "F.Cu", w: 0.6, net: "A", pts: [[p1.x, p1.y], [p1.x + 0.5, p3.y - 6.4], [p3.x, p3.y - 6.4], [p3.x, p3.y]] });
+  const c = check(board, nl), r = BP.redundant(board, c.m, c.conn);
+  assert.equal(r.tracks.length, 1, "one of the two goes");
+  board.tracks.splice(r.tracks[0], 1);
+  const c2 = check(board, nl);
+  assert.ok(!c2.conn.rats.some(x => c2.m.names[x.net] === "A"), "A stays joined");
+  assert.deepEqual(BP.redundant(board, c2.m, c2.conn).tracks, []);
 });
 
 test("high voltage: tracks keep the clearance the voltage between the nets asks", () => {

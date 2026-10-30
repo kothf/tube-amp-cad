@@ -1358,5 +1358,46 @@
     }).join("; ");
   }
 
-  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, exact, access, smooth, design, advise, stitch, describeEscape, FIXED, rng };
+  /** Doubled copper: unlocked tracks that mostly run on or right beside other copper of their own net (a route
+      laid again next to one already there) and whose pads stay joined without them, and the vias only they met:
+      { tracks, vias } (indices), the most doubled first; each one taken out before the next is weighed. */
+  function redundant(board, model, conn) {
+    const C = B(), items = conn.items, out = [], vias = [], gone = new Set();
+    const byNet = new Map(); items.forEach(it => { if (it.net === null || it.net === "short") return; if (!byNet.has(it.net)) byNet.set(it.net, []); byNet.get(it.net).push(it); });
+    const touch = (a, b) => a.layers.some(l => b.layers.includes(l)) && C.segSeg(a.s, b.s) - a.r - b.r <= 1e-6;
+    byNet.forEach(list => {
+      const tis = [...new Set(list.filter(it => it.kind === "track" && !board.tracks[it.ti].locked).map(it => it.ti))];
+      if (tis.length < 2) return;
+      const parts = (skip) => {
+        const live = list.filter(it => !(it.kind === "track" && (skip.has(it.ti) || gone.has(it.ti))));
+        const par = live.map((_, i) => i), find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+        for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) if (!(live[i].kind === "pad" && live[j].kind === "pad") && touch(live[i], live[j])) par[find(i)] = find(j);
+        return new Set(live.map((it, i) => it.kind === "pad" ? find(i) : -1).filter(r => r >= 0)).size;
+      };
+      const doubled = ti => {
+        const own = list.filter(it => it.kind === "track" && it.ti === ti), others = list.filter(it => !(it.kind === "track" && (it.ti === ti || gone.has(it.ti))));
+        let n = 0, near = 0;
+        own.forEach(it => {
+          const L = Math.hypot(it.s[2] - it.s[0], it.s[3] - it.s[1]), m = Math.max(1, Math.ceil(L / 0.25));
+          for (let k = 0; k <= m; k++) {
+            const x = it.s[0] + (it.s[2] - it.s[0]) * k / m, y = it.s[1] + (it.s[3] - it.s[1]) * k / m; n++;
+            if (others.some(q => q.layers.some(l => it.layers.includes(l)) && C.segDist(q.s[0], q.s[1], q.s[2], q.s[3], x, y) <= q.r + it.r + 0.3)) near++;
+          }
+        });
+        return n ? near / n : 0;
+      };
+      const base = parts(new Set());
+      for (let round = 0; round < tis.length; round++) {
+        const cand = tis.filter(ti => !gone.has(ti)).map(ti => ({ ti, f: doubled(ti) })).filter(c => c.f >= 0.5).sort((a, b) => b.f - a.f);
+        const hit = cand.find(c => parts(new Set([c.ti])) <= base);
+        if (!hit) break;
+        gone.add(hit.ti); out.push(hit.ti);
+      }
+      // a via only those tracks met goes with them
+      if (out.length) list.forEach(v => { if (v.kind === "via" && !board.vias[v.vi].locked && !list.some(q => q !== v && !(q.kind === "track" && gone.has(q.ti)) && touch(q, v))) vias.push(v.vi); });
+    });
+    return { tracks: out, vias };
+  }
+
+  root.BoardPlace = { movable, nudge, spread, describe, escape, passage, bridge, exact, access, smooth, redundant, design, advise, stitch, describeEscape, FIXED, rng };
 })(typeof window !== "undefined" ? window : globalThis);
