@@ -175,7 +175,10 @@
       bomStale = false;
       const bom = bomData(), table = document.getElementById("bom-table");
       const parts = bom.rows.reduce((n, r) => n + r.qty, 0);
-      document.getElementById("bom-count").textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (!S.sim.result ? " · simulate for the Sim. max column" : S.sim.busy || S.sim.pending ? " · Sim. max: the last simulation, a new one is running" : "") : "";
+      // short notes, so the dock's head keeps its width (and its lines) while a simulation runs
+      const cnt = document.getElementById("bom-count"), simNote = !S.sim.result ? ["not simulated", "Simulate for the Sim. max column"] : S.sim.busy || S.sim.pending ? ["simulating…", "Sim. max shows the last simulation; a new one is running"] : null;
+      cnt.textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (simNote ? " · " + simNote[0] : "") : "";
+      cnt.title = bom.rows.length && simNote ? simNote[1] : "";
       if (!bom.rows.length) { table.innerHTML = `<tbody><tr><td class="bom-empty">No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.</td></tr></tbody>`; return; }
       const tip = { rating: "Ratings and data; a capacitor's voltage rating is the first standard one at or above 1.25 × its simulated peak voltage", sim: "Simulated worst case: dissipation (resistors, transistors, zeners), capacitor peak voltage, LED current", partno: "The manufacturer's part number (or your order number); saved with the circuit. A maker's number the app knows sets the part's board footprint, its silkscreen outline and its 3D body to the real part's size",
         pkg: "What the part number says the real part is: package, body size, lead spacing (Board Design takes this footprint), and where it disagrees with the schematic" };

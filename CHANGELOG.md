@@ -13,6 +13,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - **Noise and hum**, a *Noise* tab under the schematic (*View ▾ → Noise and hum*). With the generators quiet: every resistor's thermal noise, each tube's (an equivalent noise resistance of 2.5/gm, a pentode's partition noise, a 1/f corner you set), transistor shot noise and FET channel noise, carried to the output by the adjoint of the linearized circuit; the output noise flat and A-weighted over 20 Hz – 20 kHz, the input noise and its density at 1 kHz, a density chart, and each part's share. The supply's ripple at the output, at every harmonic of the mains, from the steady state with the generators quiet; and an estimate of AC heater hum (one side grounded, centre-tapped or DC; 5 pF and 100 MΩ heater to cathode, a directly heated filament in series with its cathode). The signal-to-noise ratio in dB(A), noise and hum together, re 1 W into the speaker. Example 07: 2.1 µV (A) of noise and 47 µV of 100 Hz ripple at the speaker, 109.7 dB(A) re 1 W.
 - Engine: `loopGain` and `noiseSweep`; `acSweep` now drives current sources and returns branch currents on request.
 
+### Fixed
+- The BOM's line count no longer grows a long note while a simulation runs (now "simulating…", the detail in its tooltip), so the dock's head stops wrapping to another line and back. A line selected on the sheet stays where it was scrolled to when lines above it change height.
+
 ## [3.148.0] - 2026-10-30
 
 ### Changed
