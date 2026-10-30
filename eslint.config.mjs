@@ -5,7 +5,7 @@ import js from "@eslint/js";
 import globals from "globals";
 
 // what each script puts on window / globalThis for the others
-const APP = ["Board3D", "BoardCore", "BoardFab", "BoardPlace", "BoardRoute", "BomLib", "CadAnalysis", "CadAnim", "CadBoardLink", "CadBom", "CadExport", "CadLib", "CadProbe",
+const APP = ["Board3D", "BoardCore", "BoardFab", "BoardPathfinder", "BoardPlace", "BoardRoute", "BomLib", "CadAnalysis", "CadAnim", "CadBoardLink", "CadBom", "CadExport", "CadLib", "CadProbe",
   "AiCircuit", "AiClient", "CadAi", "CadResults", "CadTolerance", "CadPower", "CadListen", "CadSweep", "CadShare", "BoardAutoroute", "BoardPanels", "BoardDraw", "Hints", "MarkerPicker", "Panels", "PartNo", "PartSearch", "PdfExport", "PlotZoom", "ScopeMath", "SimPool", "SpiceImport", "SpiceModel", "ToolWindows",
   "TubeBias", "TubeSimEngine", "UiKit", "Viewer3D", "TUBE_CAPS", "TUBE_CAPS_LIKE", "TUBE_BULBS", "TUBE_BULBS_LIKE", "TUBE_DATABASE", "TUBE_RATINGS", "BoardApp", "FreeroutingStatus", "Instrument", "TubeCAD", "TubeTracer", "Bode", "Scope"];
 const appGlobals = Object.fromEntries(APP.map(n => [n, "readonly"]));

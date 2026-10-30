@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.140.0] - 2026-10-30
+
+### Added
+- **Board: its own grid router.** Boards that Freerouting could not finish now route to the end. The new router (negotiated congestion, rip-up and reroute, as most FPGA routers work: McMurchie and Ebeling's PathFinder) lays every net on a 0.25 mm grid on both layers in straight and 45° runs, with vias where needed, keeping each net's clearance by voltage from pads, locked copper, holes, keep-outs and the edge. Other nets' tracks are a price, not a wall: nets that come too close are taken up and routed again while that price rises, until none conflict. Freerouting's copper stays except the pieces a new route must pass; those come up and their nets are routed again. Tracks enter pads by a straight run to the middle, which may pass the footprint's own pins as close as they are to each other; grid nets keep off anode and heater tracks on both sides of the board (the coupling check).
+  - **Auto-route, Finish routing and Design from scratch use it by default**, with no Freerouting server: the button no longer waits for one. Freerouting runs first only when **Use Freerouting** is ticked in Route ▾ → Freerouting… (the choice is kept in each browser); the grid router then routes whatever it leaves open, round the copper there and, if connections are still open, the whole board afresh, before the older grid finishers. A result stays only if it closes connections and adds no rule message. The tooltip and status line say which router ran.
+  - Example 06 (Gubin 6N23P/6P14P), which kept 4 to 6 connections open, now routes fully as it is and from a bare board. On 109 test boards laid out 9 ways each (the layouts from the placement study), the grid router alone, from bare boards, left 131 connections open where Freerouting with the earlier finishers left 736, and routed 98 boards completely within the rules in their best layout (91 before); about 1 s per board on average, 24 s at most.
+
 ## [3.139.0] - 2026-10-30
 
 ### Changed

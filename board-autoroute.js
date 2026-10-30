@@ -7,11 +7,15 @@
   // app: what this part needs from board-app.js; returns what board-app.js uses of it
   root.BoardAutoroute = function (app) {
     const { $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render, renderPanels } = app;
-    const ROUTER_KEY = "tubecad_router_url";
+    const ROUTER_KEY = "tubecad_router_url", USE_KEY = "tubecad_router_use";
     // server: the site's own Freerouting (null where the page has none); a user's own address wins once saved
     const router = { url: BoardRoute.DEFAULT_URL, up: false, why: "down", busy: false, timer: 0, server: BoardRoute.serverUrl() };
     router.url = router.server || router.url;
     try { router.url = localStorage.getItem(ROUTER_KEY) || router.url; } catch (e) { /* no storage */ }
+    // use: Freerouting routes first (ticked in its dialog); otherwise the board's own grid router does it all
+    router.use = false;
+    try { router.use = localStorage.getItem(USE_KEY) === "1"; } catch (e) { /* no storage */ }
+    const viaFr = () => router.use && router.up, who = () => (viaFr() ? "Freerouting" : "the grid router");
     // the heavy steps of board-place.js run in a worker (board-worker.js), so the window keeps drawing and
     // answering; where none starts (a page opened from a file), on the page, after a breath for the screen
     const VQ = (() => { const sc = [...document.scripts].find(s => /board-autoroute\.js/.test(s.src)); const q = sc && sc.src.split("?")[1]; return q ? "?" + q : ""; })();
@@ -24,7 +28,7 @@
           off.worker.onerror = e => { if (e && e.preventDefault) e.preventDefault(); off.ok = false; off.worker.terminate(); off.worker = null; const ws = [...off.wait.values()]; off.wait.clear(); ws.forEach(w => w({ lost: true })); };
         } catch (e) { off.ok = false; off.worker = null; }
       }
-      const here = () => new Promise(r => setTimeout(r, 0)).then(() => BoardPlace[fn](S.board, S.model, S.conn, rats, { ...checkOpts(), netlist: S.netlist, conn: S.conn, ...opts }));
+      const here = () => new Promise(r => setTimeout(r, 0)).then(() => { const o = { ...checkOpts(), netlist: S.netlist, conn: S.conn, ...opts }; return fn === "pathfinder" ? BoardPathfinder.route(S.board, S.model, S.conn, o) : BoardPlace[fn](S.board, S.model, S.conn, rats, o); });
       if (!off.worker) return here();
       const seq = ++off.seq;
       return new Promise(res => {
@@ -64,13 +68,14 @@
     function routerUi() {
       if (!router.busy) progress();
       const b = $("btn-autoroute"); if (!b) return;
-      b.classList.toggle("off", !router.up || (router.busy && !router.nudge));
+      b.classList.toggle("off", router.busy && !router.nudge);
       b.querySelector(".lbl").textContent = router.busy ? (router.nudge ? "Stop" : "Routing…") : "Auto-route";
-      b.title = router.busy ? (router.nudge ? "Stop after this pass; the best layout so far stays" : "Freerouting is routing the board") : router.up ? `Route the open connections with Freerouting (${router.url}), within the design rules; Ctrl+Z takes it back`
-        : routerWhy(router.url, router) + " Click for the address and the commands.";
+      b.title = router.busy ? (router.nudge ? "Stop after this pass; the best layout so far stays" : "Routing the board") : viaFr() ? `Route the open connections with Freerouting (${router.url}) and the board's own grid router, within the design rules; Ctrl+Z takes it back`
+        : `Route the open connections with the board's own grid router, within the design rules; Ctrl+Z takes it back.` + (router.use ? ` ${routerWhy(router.url, router)} Route ▾ → Freerouting… for the address and the commands.` : " Route ▾ → Freerouting… to let Freerouting route first.");
     }
     async function pollRouter() {
       clearTimeout(router.timer);
+      if (!router.use) { if (router.up) { router.up = false; routerUi(); } return; }
       const p = await BoardRoute.probe(router.url, 3000), up = p.ok;
       router.why = p.why; router.code = p.code;
       if (up !== router.up) { router.up = up; routerUi(); }
@@ -121,6 +126,13 @@
     // the routes go on the board (not committed). first: names of nets to route on their own first
     // (the ones a pass before could not finish get the board before the rest). Returns { todo, nt, nv, pourNote }
     async function routePass(first) {
+      if (!viaFr()) {
+        stage("grid router");
+        const todo = S.conn.unrouted, was = new Set([...S.board.tracks, ...S.board.vias].map(o => JSON.stringify(o)));
+        await finish();
+        const fresh = list => list.filter(o => !was.has(JSON.stringify(o))).length;
+        return { todo, nt: fresh(S.board.tracks), nv: fresh(S.board.vias), pourNote: router.use ? " · by the board's own grid router (Freerouting does not answer: Route ▾ → Freerouting…)" : " · by the board's own grid router" };
+      }
       if (first && first.size) { analyse(); const d1 = BoardRoute.toDsn(S.board, S.model, S.conn, S.clr, { hv: S.hv, amps: S.amps, title: baseName(), version: appVersion(), only: new Map([...first].map(n => [n, null])) }); takeRoutes((await BoardRoute.route(router.url, d1.text, { version: appVersion() })).ses, d1); analyse(); }
       stage("Freerouting");
       const d = dsnOf(), todo = S.conn.unrouted, r = await BoardRoute.route(router.url, d.text, { version: appVersion() }), got = takeRoutes(r.ses, d);
@@ -162,6 +174,13 @@
         if (S.conn.unrouted < un && bad() <= d) n++;
         else { S.board.tracks.pop(); analyse(); tried.add(key(rats[b.i])); }
       }
+      // then the board's own grid router over what is left: round the copper there, again while that helps (a pour
+      // its tracks cut leaves pads to join), then the whole board afresh
+      for (let k = 0; k < 3 && finishable().length && !router.stop; k++) {
+        stage("grid router"); await breath();
+        const got = await grid(false); n += got; if (!got) break;
+      }
+      if (finishable().length && !router.stop) { stage("grid router, whole board"); await breath(); n += await grid(true); }
       // then each one left, routed exactly in a window round it with whatever copper is there (BoardPlace.exact)
       // (at most 20 of them, and 30 s in all: a board Freerouting left wide open is its job, not this)
       const done = new Set(), until = Date.now() + 30000;
@@ -199,6 +218,35 @@
       await tidy();
       return n;
     }
+    // the board's own grid router (BoardPathfinder: negotiated congestion, rip-up and reroute) over the open
+    // connections: Freerouting's copper stays where it is not in the way (fresh: every unlocked track of the
+    // routed nets comes up and the board is routed afresh). New copper a new rule message points at comes off
+    // again; the result stays only if it closes connections and adds no rule message. Returns how many it closed
+    async function grid(fresh) {
+      analyse();
+      const keep = JSON.stringify(S.board), un = S.conn.unrouted, bad = () => S.drc.filter(d => d.kind !== "unplaced"), at = d => `${d.kind}|${d.msg}|${d.x.toFixed(2)},${d.y.toFixed(2)}`;
+      const old = new Set(bad().map(at)), d0 = old.size;
+      // a route that cuts a pour can leave pads it joined apart: the router then goes again over those
+      for (let step = 0; step < 3; step++) {
+        const was = [S.board, S.board.tracks.length, S.board.vias.length], r = await offPage("pathfinder", [], { fresh: fresh && !step, time: 20000 }).catch(() => null);
+        if (!r || was[0] !== S.board || was[1] !== S.board.tracks.length || was[2] !== S.board.vias.length) break;
+        S.board.tracks = S.board.tracks.filter((_, i) => !r.cut.tracks.has(i)).concat(r.add.tracks);
+        S.board.vias = S.board.vias.filter((_, i) => !r.cut.vias.has(i)).concat(r.add.vias);
+        analyse();
+        const added = new Set([...r.add.tracks, ...r.add.vias]);
+        for (let pass = 0; pass < 10; pass++) {
+          const fresh2 = bad().filter(d => !old.has(at(d))); if (!fresh2.length) break;
+          const near = (o, d) => o.pts ? o.pts.some((q, k) => k && B.segDist(o.pts[k - 1][0], o.pts[k - 1][1], q[0], q[1], d.x, d.y) <= o.w / 2 + 0.05) : Math.hypot(o.x - d.x, o.y - d.y) <= (o.pad || S.board.rules.viaPad) / 2 + 0.05;
+          const go = new Set([...added].filter(o => fresh2.some(d => near(o, d)))); if (!go.size) break;
+          S.board.tracks = S.board.tracks.filter(t => !go.has(t)); S.board.vias = S.board.vias.filter(v => !go.has(v)); go.forEach(o => added.delete(o));
+          analyse();
+        }
+        if (S.conn.unrouted < un && bad().length <= d0) return un - S.conn.unrouted;
+        if (r.open || !S.conn.unrouted || bad().length > d0 || router.stop) break;
+      }
+      S.board = JSON.parse(keep); analyse(); await breath();
+      return 0;
+    }
     // grid paths step along the grid: their diagonal runs pulled straight (BoardPlace.smooth), kept
     // only if nothing comes apart and no rule message is added. Returns how many tracks changed
     async function tidy() {
@@ -225,7 +273,8 @@
     async function ready() {
       if (router.busy) return false;
       if (!S.model) { msg("Open the Circuit CAD first: the board needs its parts"); return false; }
-      if (!router.up) { await pollRouter(); if (!router.up) { msg(`No Freerouting at ${router.url}: see Route ▾ → Freerouting…`); routerSetup(); return false; } }
+      // Freerouting not answering: the board's own grid router does it all
+      if (router.use && !router.up) await pollRouter();
       return true;
     }
     async function autoRoute() {
@@ -233,7 +282,7 @@
       if (!await ready()) return;
       const stale = clearStale(), staleNote = stale ? ` · ${stale} old piece${stale === 1 ? "" : "s"} of copper cleared first (left from where the parts were)` : "";
       if (!S.conn.unrouted) { if (stale) commit(); msg("Nothing to route: every connection is routed" + staleNote); return; }
-      router.busy = true; routerUi(); progress(0, 0, "Auto-route"); msg(`Freerouting is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
+      router.busy = true; routerUi(); progress(0, 0, "Auto-route"); msg(`${viaFr() ? "Freerouting" : "The grid router"} is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
       try {
         const p = await routePass();
         commit();
@@ -291,7 +340,7 @@
       const STEPS = 1 + ROUNDS + SPREADS.length;
       if (!inner) { router.busy = true; router.nudge = true; router.stop = false; routerUi(); progress(0, STEPS, "Finish routing"); }
       try {
-        if (S.conn.unrouted) { msg(`Freerouting is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`); await routePass(); }
+        if (S.conn.unrouted) { msg(`${viaFr() ? "Freerouting" : "The grid router"} is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`); await routePass(); }
         const first = score();
         let best = JSON.stringify(S.board), bestScore = first, reach = 8, fails = 0, round = 0, broke = "", spreadNo = false;
         while (S.conn.unrouted && round < ROUNDS && fails < 2 && !router.stop) {
@@ -311,7 +360,7 @@
           // nothing moved: still take up the copper that walls them in, once per reach, and route again
           if (!r.moved.length && !walls.tracks.size && !walls.vias.size) { reach *= 1.5; fails++; continue; }
           await breath(); analyse(); ripUp(rats, r.moved, reach, walls); await breath();
-          msg(`Round ${round} of ${ROUNDS}: ${r.moved.length} part${r.moved.length === 1 ? "" : "s"} moved; Freerouting routes ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
+          msg(`Round ${round} of ${ROUNDS}: ${r.moved.length} part${r.moved.length === 1 ? "" : "s"} moved; ${who()} routes ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
           // a pass that fails ends the run with the best layout so far
           try { await routePass(failed(rats)); } catch (e) { S.board = JSON.parse(best); analyse(); broke = e.message; break; }
           await breath(); const sc = score();
@@ -327,7 +376,7 @@
           S.board = JSON.parse(best); analyse(); round++; progress(1 + ROUNDS + SPREADS.indexOf(how), STEPS, "Finish routing · spread over the board"); stage("spreading"); await breath();
           const r = spreadAll(how); await breath();
           if (!r.moved.length) continue;
-          msg(`Round ${round}: ${r.moved.length} part${r.moved.length === 1 ? "" : "s"} spread over the board; Freerouting routes it afresh…`);
+          msg(`Round ${round}: ${r.moved.length} part${r.moved.length === 1 ? "" : "s"} spread over the board; ${who()} routes it afresh…`);
           S.board.tracks = S.board.tracks.filter(t => t.locked); S.board.vias = S.board.vias.filter(v => v.locked); analyse(); clearStale(); await breath();
           try {
             await routePass(); const sc = score();
@@ -405,7 +454,7 @@
           Object.entries(c.places).forEach(([k, p]) => { if (S.board.parts[k]) Object.assign(S.board.parts[k], p); });
           S.board.tracks = S.board.tracks.filter(t => t.locked); S.board.vias = S.board.vias.filter(v => v.locked);
           analyse(); clearStale(); render(); await breath();
-          msg(`Design from scratch: layout ${routed + 1} of ${pick.length + (routed >= pick.length ? more.length : 0)} (${c.how.what}${c.turned ? `, ${c.turned} turn${c.turned === 1 ? "" : "s"}` : ""}); Freerouting routes ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
+          msg(`Design from scratch: layout ${routed + 1} of ${pick.length + (routed >= pick.length ? more.length : 0)} (${c.how.what}${c.turned ? `, ${c.turned} turn${c.turned === 1 ? "" : "s"}` : ""}); ${who()} routes ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
           try { await routePass(); } catch (e) { broke = e.message; break; }
           routed++; await breath();
           const sc = score();
@@ -453,6 +502,7 @@
     function routerStatusLink() { $("router-status").href = "freerouting.html" + VQ + (VQ ? "&" : "?") + "url=" + encodeURIComponent(chosen() || router.url); }
     function routerSetup() {
       const origin = pageOrigin(), srv = !!router.server && router.url === router.server;
+      $("router-use-fr").checked = router.use;
       $("router-where").hidden = !router.server;
       $("router-use-server").checked = srv; $("router-use-own").checked = !srv;
       $("router-addr").value = srv ? "" : router.url.replace(/^http:\/\//, "");
@@ -470,10 +520,11 @@
     function routerSave() {
       const url = chosen();
       if (!url) { $("router-state").textContent = "That is not an address: an IP or a name, and :port if not 37864"; return; }
-      router.url = url; router.up = false; $("router-modal").hidden = true;
-      try { localStorage.setItem(ROUTER_KEY, router.url); } catch (e) { /* no storage */ }
+      router.url = url; router.up = false; router.use = $("router-use-fr").checked; $("router-modal").hidden = true;
+      try { localStorage.setItem(ROUTER_KEY, router.url); localStorage.setItem(USE_KEY, router.use ? "1" : "0"); } catch (e) { /* no storage */ }
+      if (!router.use) { routerUi(); msg("Auto-route uses the board's own grid router; tick Use Freerouting in Route ▾ → Freerouting… to let Freerouting route first"); return; }
       const name = url === router.server ? "the site's Freerouting server" : url;
-      routerUi(); pollRouter().then(() => msg(router.up ? `Freerouting answers at ${name}` : `No Freerouting at ${name} yet: Auto-route stays grey until it answers (Route ▾ → Freerouting… says why)`));
+      routerUi(); pollRouter().then(() => msg(router.up ? `Freerouting answers at ${name}` : `No Freerouting at ${name} yet: until it answers, Auto-route uses the board's own grid router (Route ▾ → Freerouting… says why)`));
     }
     function importSes(file) {
       if (!file || !S.model) return;

@@ -233,14 +233,24 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const bpr = await bw.evaluate(() => ({ printed: window.__printed, sel: BoardApp.printSel().join(), msg: document.getElementById("st-msg").textContent }));
     check(bpd.open && bpd.ticked === "toner-F,toner-B" && /2 pages, A[34] .*scale 1:1/.test(bpd.sum) && bpr.printed.length === 2 && bpr.printed[0].pages === 2 && bpr.printed[1].pages === 4 && bpr.sel === "assembly,F.Cu,B.Cu,toner-F" && /Actual size/.test(bpr.msg),
       `board Print: toner transfer ${bpr.printed[0] && bpr.printed[0].pages} pages ("${bpd.sum}"), a picked set of ${bpr.printed[1] && bpr.printed[1].pages} (${bpr.sel})`);
-    // Auto-route: grey while no Freerouting answers; with one (here a stand-in on its address that sends back the
-    // tracks of a net taken off the board) the routes come back in one step, which Ctrl+Z takes back
-    const grey = await bw.evaluate(() => document.getElementById("btn-autoroute").classList.contains("off"));
-    // pressed with no Freerouting: the dialog says why, and the window keeps its width (a long status message once widened it)
-    await bw.click("#btn-autoroute"); await bw.waitForSelector("#router-modal:not([hidden])", { timeout: 8000 }).catch(() => {});
+    // Auto-route with no Freerouting answering: the board's own grid router routes (the button says so); the
+    // Freerouting… dialog (Route ▾) says why none answers. With one (here a stand-in on its address that sends
+    // back the tracks of a net taken off the board) the routes come back in one step, which Ctrl+Z takes back
+    const ownBtn = await bw.evaluate(() => { const b = document.getElementById("btn-autoroute"); return { off: b.classList.contains("off"), title: b.title }; });
+    const og0 = await bw.evaluate(() => { const S = BoardApp.state, n = S.board.tracks.find(t => t.net && t.net !== "GND").net;
+      S.board.tracks = S.board.tracks.filter(t => t.net !== n); BoardApp.commit(); return { n, un: S.conn.unrouted, h: S.hIndex }; });
+    await bw.click("#btn-autoroute");
+    await bw.waitForFunction(() => !BoardApp.router.busy && /routed|failed/.test(document.getElementById("st-msg").textContent), null, { timeout: 60000 }).catch(() => {});
+    const og1 = await bw.evaluate(() => ({ msg: document.getElementById("st-msg").textContent, un: BoardApp.state.conn.unrouted, drc: BoardApp.state.drc.map(d => d.msg), h: BoardApp.state.hIndex }));
+    check(!ownBtn.off && /own grid router/.test(ownBtn.title) && og0.un > 0 && og1.un === 0 && !og1.drc.length && /own grid router/.test(og1.msg) && og1.h === og0.h + 1,
+      `Auto-route with no Freerouting: the board's own grid router routes ${og0.n} again ("${og1.msg.slice(0, 90)}…", ${og1.un} to route, ${og1.drc.length ? og1.drc.join("; ") : "no rule violations"})`);
+    await bw.keyboard.press("Control+z"); await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
+    const back = await bw.evaluate(() => BoardApp.state.conn.unrouted === 0 && !document.getElementById("btn-autoroute").classList.contains("off"));
+    // the dialog with no Freerouting: it says why, and the window keeps its width (a long status message once widened it)
+    await bw.click("#btn-route"); await bw.click("#btn-router"); await bw.waitForSelector("#router-modal:not([hidden])", { timeout: 8000 }).catch(() => {});
     const nf = await bw.evaluate(() => ({ w: document.body.scrollWidth, iw: innerWidth, open: !document.getElementById("router-modal").hidden, why: document.getElementById("router-state").textContent }));
     await bw.click("#router-cancel");
-    check(nf.open && nf.w <= nf.iw && /No answer/.test(nf.why), `Auto-route with no Freerouting opens its dialog with the reason ("${nf.why.slice(0, 40)}…"); the window stays ${nf.w} px wide`);
+    check(nf.open && nf.w <= nf.iw && /No answer/.test(nf.why), `Route ▾ → Freerouting… with none running says why ("${nf.why.slice(0, 40)}…"); the window stays ${nf.w} px wide`);
     // one that answers without allowing this page (no cors_origins) is told apart from none
     // (a real server: a routed request does not go through the browser's CORS check)
     const bare = createServer((req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ status: "OK" })); }).listen(0, "127.0.0.1");
@@ -260,11 +270,14 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
       posted = { body: JSON.parse(req.postData()), host: req.headers()["freerouting-environment-host"] };
       return route.fulfill({ status: 200, headers: cors, contentType: "application/json", body: JSON.stringify({ status: "COMPLETED", unrouted_connections: 0, clearance_violations: 0, duration_seconds: 0.1, outputs: { SES: ses } }) });
     });
+    // Freerouting ticked in its dialog (Route ▾ → Freerouting…): it routes first
+    await bw.click("#btn-route"); await bw.click("#btn-router"); await bw.check("#router-use-fr"); await bw.fill("#router-addr", "127.0.0.1:37864"); await bw.click("#router-save");
+    await bw.waitForFunction(() => BoardApp.router.up, null, { timeout: 10000 }).catch(() => {});
     await bw.click("#btn-autoroute");
-    await bw.waitForFunction(() => /routed|failed|not running/.test(document.getElementById("st-msg").textContent), null, { timeout: 15000 }).catch(() => {});
+    await bw.waitForFunction(() => !BoardApp.router.busy && /routed|failed|not running/.test(document.getElementById("st-msg").textContent), null, { timeout: 60000 }).catch(() => {});
     const ar = await bw.evaluate(() => ({ msg: document.getElementById("st-msg").textContent, un: BoardApp.state.conn.unrouted, drc: BoardApp.state.drc.map(d => d.msg), tracks: BoardApp.state.board.tracks.length }));
-    check(grey && off.un > 0 && posted && /^\(pcb /.test(posted.body.file_content) && posted.body.file_content.includes(`(net "${sesNet}" (pins`) && /^TubeAmpCAD\//.test(posted.host) && ar.un === 0 && !ar.drc.length && /routed/.test(ar.msg),
-      `Auto-route: grey with no Freerouting; with one it sends the board as DSN and adds the ${off.gone.length} tracks of ${off.n} it sends back ("${ar.msg}", ${ar.un} to route, ${ar.drc.length ? ar.drc.join("; ") : "no rule violations"})`);
+    check(back && off.un > 0 && posted && /^\(pcb /.test(posted.body.file_content) && posted.body.file_content.includes(`(net "${sesNet}" (pins`) && /^TubeAmpCAD\//.test(posted.host) && ar.un === 0 && !ar.drc.length && /routed/.test(ar.msg),
+      `Auto-route: with Freerouting it sends the board as DSN and adds the ${off.gone.length} tracks of ${off.n} it sends back ("${ar.msg}", ${ar.un} to route, ${ar.drc.length ? ar.drc.join("; ") : "no rule violations"})`);
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     check(await bw.evaluate(u => BoardApp.state.conn.unrouted === u, off.un), "Ctrl+Z takes the whole auto-route back");
     await bw.keyboard.press("Control+y"); await bw.waitForTimeout(200);
