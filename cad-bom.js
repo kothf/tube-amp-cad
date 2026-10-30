@@ -10,7 +10,7 @@
     const bomOpts = { open: false, tab: "bom", sockets: true, bench: false, height: 0 };   // open, tab: the panel under the sheet and its tab
     try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
     const saveBomOpts = () => { try { localStorage.setItem(BOM_KEY, JSON.stringify(bomOpts)); } catch (e) {} };
-    let bomStale = false, bomSelShown = "";
+    let bomStale = false, bomSelShown = "", bomSelAt = null;
     // a click on the sheet shows its selection in the BOM again
     const clearBomShown = () => { bomSelShown = ""; };
     // simulated worst case of a part, for the BOM's Sim. max column: dissipation of resistors,
@@ -195,7 +195,13 @@
           const box = table.parentElement, head = table.querySelector("thead").offsetHeight, top = first.offsetTop - head;
           if (top < box.scrollTop || first.offsetTop + first.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = Math.max(0, top - (box.clientHeight - head - first.offsetHeight) / 2);
           table.querySelectorAll("tbody tr.sel").forEach(tr => tr.classList.add("flash"));
-        }
+          bomSelAt = { y: first.offsetTop - box.scrollTop, top: box.scrollTop };
+        } else bomSelAt = null;
+      } else if (first && bomSelAt && table.parentElement.scrollTop === bomSelAt.top) {
+        // lines above changed height (a new sim result): keep the selected line where it was, unless the list was scrolled since
+        const box = table.parentElement;
+        box.scrollTop = Math.max(0, first.offsetTop - bomSelAt.y);
+        bomSelAt.top = box.scrollTop;
       }
       table.querySelectorAll("tbody tr").forEach(tr => {
         const r = bom.rows[+tr.dataset.i];
