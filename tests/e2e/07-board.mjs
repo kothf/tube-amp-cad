@@ -1,5 +1,5 @@
 // Board Design
-import { cad, check, ctx, errors } from "./harness.mjs";
+import { cad, check, ctx, errors, open } from "./harness.mjs";
 import { readFile } from "node:fs/promises";
 
 // --- Board Design ------------------------------------------------------------------
@@ -568,4 +568,23 @@ import { readFile } from "node:fs/promises";
     check(/^AXIAL-/.test(off), `unticked, it is back on its through-hole footprint (${off})`);
   }
   await bd.close();
+}
+
+// every example comes with its board placed, fully routed and within the rules (warnings aside)
+const NOTES = ["unplaced", "check", "class", "silk", "dangling", "stopper", "coupling", "heat", "support"];   // notes, not rule violations, as the Board window counts them
+{
+  const bw = await open("board-examples", "board.html");
+  await bw.waitForFunction(() => window.BoardApp);
+  const res = [];
+  for (const f of await cad.evaluate(() => TubeCAD.EXAMPLES.map(x => x.file))) {
+    cad.once("dialog", d => d.accept());
+    await cad.evaluate(f => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => x.file === f)), f);
+    const want = await cad.evaluate(() => TubeCAD.state.board && JSON.stringify(Object.keys(TubeCAD.state.board.parts).sort()) + TubeCAD.state.board.tracks.length);
+    if (!want) { res.push({ f, no: true }); continue; }
+    await bw.waitForFunction(w => { const S = BoardApp.state; return S.model && S.conn && JSON.stringify(Object.keys(S.board.parts).sort()) + S.board.tracks.length === w; }, want, { timeout: 20000 }).catch(() => {});
+    res.push({ f, ...await bw.evaluate(NOTES => { const S = BoardApp.state; return { parts: S.model.parts.length, placed: Object.keys(S.board.parts).length, un: S.conn.unrouted, drc: S.drc.filter(d => !NOTES.includes(d.kind)).length }; }, NOTES) });
+  }
+  const bad = res.filter(r => r.no || r.placed < r.parts || r.un || r.drc);
+  check(res.length === 15 && !bad.length, `every example's board is placed and routed within the rules${bad.length ? `; not: ${bad.map(r => `${r.f.slice(0, 2)} ${r.no ? "no board" : `${r.placed}/${r.parts} placed, ${r.un} open, ${r.drc} violations`}`).join(", ")}` : ""}`);
+  await bw.close();
 }

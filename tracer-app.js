@@ -1226,7 +1226,8 @@
     // the plot also changes size when the legend below it wraps to another line: redraw,
     // so clicks map onto the plot as it is shown
     if (window.ResizeObserver) { let size = ""; new ResizeObserver(() => { const c = $("plot"), k = c.clientWidth + "x" + c.clientHeight; if (k !== size) { size = k; drawPlot(); } }).observe($("plot")); }
-    $("btn-open-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
+    $("btn-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
+    $("btn-board").addEventListener("click", () => ToolWindows.openBoard());
     $("btn-model").addEventListener("click", openModelModal);
     $("btn-png").addEventListener("click", () => { const a = document.createElement("a"); a.href = $("plot").toDataURL("image/png"); const d = current(); a.download = (d.semi ? d.name : d.tube.commonName) + "-curves.png"; a.click(); });
     $("btn-modal-close").addEventListener("click", () => { $("model-modal").hidden = true; });
