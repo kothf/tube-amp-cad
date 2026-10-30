@@ -100,6 +100,14 @@ Firefox is not tested.
   - a design cookbook, and the simulator's equations and limits.
 
   It is searchable.
+- **AI assistant** (AI ▾ and the AI tab under the schematic), with your own
+  key for Claude, ChatGPT or Gemini, kept in the browser and sent only to
+  that provider:
+  - ask about the circuit or the app; the model sees the parts, nets,
+    simulated voltages, operating points and Checks, and the manual;
+  - *Explain my circuit*, stage by stage;
+  - *Fix the checks*: value changes checked against the parts, applied with
+    one click, re-simulated and compared.
 - **Layout.**
   - Drag the edge of the palette, the inspector or the BOM to resize it, and
     double-click the edge to reset it. The same goes for the side panels of

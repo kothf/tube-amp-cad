@@ -311,8 +311,15 @@
     return { nodeCount, elements };
   }
 
+  // a promise of the simulation's result once nothing is running or waiting to run (null: none)
+  const simWaiters = [];
+  function whenSimulated() { return new Promise(res => { simWaiters.push(res); setTimeout(flushSimWaiters, 300); }); }
+  function flushSimWaiters() {
+    if (S.sim.busy || S.sim.pending || simTimer) return;
+    simWaiters.splice(0).forEach(res => res(S.sim.result));
+  }
   function scheduleSim(delay) {
-    clearTimeout(simTimer);
+    clearTimeout(simTimer); simTimer = null;
     if (!S.sim.live) {
       // manual mode: the old result no longer matches the circuit
       if (S.sim.busy) cancelRun();
@@ -321,7 +328,7 @@
       broadcast();
       return;
     }
-    simTimer = setTimeout(() => runSim("live"), delay === undefined ? 150 : delay);
+    simTimer = setTimeout(() => { simTimer = null; runSim("live"); }, delay === undefined ? 150 : delay);
   }
   function cancelRun() {
     if (simJob) { simJob.cancel(); simJob = null; }
@@ -348,8 +355,8 @@
   function runSim(mode) {
     mode = mode === "full" ? "full" : "live";
     const T = topo();
-    if (!hasCircuit()) { S.sim.result = null; S.sim.error = null; setStatus("idle", "Empty sheet"); broadcast(); render(); return; }
-    if (!T.hasGround) { S.sim.result = null; S.sim.error = "Add a ground symbol to simulate"; setStatus("warn", S.sim.error); broadcast(); render(); updateInspector(); return; }
+    if (!hasCircuit()) { S.sim.result = null; S.sim.error = null; setStatus("idle", "Empty sheet"); broadcast(); render(); setTimeout(flushSimWaiters, 0); return; }
+    if (!T.hasGround) { S.sim.result = null; S.sim.error = "Add a ground symbol to simulate"; setStatus("warn", S.sim.error); broadcast(); render(); updateInspector(); setTimeout(flushSimWaiters, 0); return; }
     if (S.sim.busy) {
       // a full run is long: a new request replaces it; quick runs queue
       if (S.sim.mode === "full" || mode === "full") cancelRun();
@@ -422,6 +429,7 @@
       render();
     }
     if (S.sim.pending) { S.sim.pending = false; runSim(); }
+    flushSimWaiters();
   }
 
   // AC animation (View ▾ → Animate): dots for each wire's current, a tint for each node's AC (cad-anim.js)
@@ -2360,6 +2368,8 @@
   // Listen: the Listen tab (cad-listen.js)
   const listen = CadListen({ S, buildNetlist, cmds, desig, esc: escH, fmtEng, pool, setStatus, topo });
   const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); sweep.render(); listen.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
+  // The AI assistant: the AI tab and the AI menu (cad-ai.js)
+  const ai = CadAi({ S, VERSION, circuitIssues, commit, compPins, desig, fmtEng, harmonics, measurements, netAC, netDC, runSim, selectParts: selectFromBoard, setStatus, signalFreq, speakerWave, toggleBom, topo, tubeData, undo, whenSimulated });
   // PDF / PNG export and printing (cad-export.js)
   const { expOpts, exportPDF, initExport, openExportDialog, openPrintDialog, printPages, prnOpts, renderPNG, runExport, runPrint } = CadExport({ S, baseName, bind, bomData, compBBox, currentSheet, drawSheet, frames, setStatus, sheetNo });
   // The file this circuit came from or was last saved to. With the File System Access API
@@ -2812,6 +2822,7 @@
     listen.init();
     sweep.init();
     initBom();
+    ai.init();
     bind("btn-open-board", showBoard);
     cmds.bind("btn-board-tab", "board-tab");
     cmds.bind("btn-doc-board", "board");
@@ -2842,6 +2853,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { kicadFiles, exportKicad, circuitIssues, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { kicadFiles, exportKicad, circuitIssues, ai, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

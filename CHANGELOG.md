@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.138.0] - 2026-10-30
+## [3.139.0] - 2026-10-30
 
 ### Added
 - **KiCad export.** *File ▾ → Export KiCad project* in the Circuit CAD writes a ZIP with a KiCad 7 project (KiCad 8 and 9 open it too); *Export ▾ → KiCad board (ZIP)* in the Board window writes the board part of it.
@@ -15,6 +15,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
   - **Rules**: the net classes (Signal, Power, HV, with their widths and clearances) in the `.kicad_pro`; in the `.kicad_dru`, the clearance by voltage (IPC-2221B) for each pair of nets that needs more than its classes give, and each part's own pin spacing (a noval socket, a TO-92) and thin rings inside its courtyard, as the Board window's rule check allows them.
   - **Libraries**: the symbols (`TubeAmpCAD.kicad_sym`) and footprints (`TubeAmpCAD.pretty`) the project uses, with the project's library tables.
   - Checked with KiCad 7.0.11 on all fifteen examples: every file loads; KiCad's netlist of the schematic joins exactly the pads the board joins; after KiCad fills the pours the unrouted connections are the Board window's; KiCad's DRC finds the clearance problems the Board window finds, give or take a few near misses.
+
+## [3.138.0] - 2026-10-30
+
+### Added
+- **AI assistant**: a new **AI ▾** menu and an **AI** tab under the schematic, with your own API key for **Claude** (Anthropic), **ChatGPT** (OpenAI) or **Gemini** (Google).
+  - **AI settings…**: pick the provider, paste its key (a link goes to the provider's key page) and choose a model; **Test** checks them, **Load list** asks the provider which models your key can use. The defaults are Claude Opus 5.5, GPT-6.1 Sol and Gemini 3.1 Pro. Keys stay in this browser and go only to their provider, straight from the page; **Forget keys** removes them.
+  - **Ask**: type a question about the circuit or the app. The model gets the circuit (every part with its values and pin nets, the simulated DC and AC voltages, the operating points against their ratings, stage gains and THD, the Checks) and the manual for how-to questions. Answers are formatted, and part designators in them are links that select the part. Follow-up questions keep the conversation; **Clear** starts a new one, **Stop** abandons a question.
+  - **Explain my circuit**: what the circuit is, then stage by stage what each part does and why it has its value, how each stage is biased, and what looks unusual.
+  - **Fix the checks**: the Checks list turned into value changes, each checked against the part before it is offered (the part exists, the value is one it can take). **Apply** or **Apply all** makes them as one undo step, re-simulates and reports how the Checks changed ("Checks: 6 → 0 problems"), with an **Undo** button.
 
 ## [3.137.0] - 2026-10-30
 
