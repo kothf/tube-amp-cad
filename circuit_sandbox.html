@@ -146,6 +146,7 @@
     .checks-list { padding: 6px 12px; }
     .checks-list .insp-help { margin: 3px 0; }
     .bom-head label { display: flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
+    .bom-head label[hidden] { display: none; }
     .bom-head .btn { padding: 2px 9px; font-size: 12px; }
     .muted { color: var(--muted); }
     .bom-scroll { overflow: auto; flex: 1; min-height: 0; }
@@ -556,7 +557,8 @@
             <button class="btn" id="btn-sw-run" title="Run the sweep; press again to stop">▶ Run</button>
           </span>
           <span class="bom-tools" data-for="listen">
-            <label title="What drives the circuit's generator">Play <select id="ls-src" class="tol-sel"><option value="riff">Guitar riff (made here)</option><option value="tone">The generator's tone</option><option value="file">Your file (WAV, MP3)</option></select></label>
+            <label title="What drives the circuit's generator">Play <select id="ls-src" class="tol-sel"><option value="riff">Guitar riff (made here)</option><option value="tone">The generator's tone</option><option value="file">Your file (WAV, MP3)</option><option value="radio">70s rock radio (live)</option></select></label>
+            <button class="btn" id="ls-radio-btn" title="Catch a fresh piece of the live broadcast (RADIO BOB! 70s Rock) and play it through the circuit" hidden>↻ Tune in again</button>
             <button class="btn" id="ls-file-btn" title="Open a WAV or MP3 file (or drop one on the tab)">Open file…</button>
             <span id="ls-file-name" class="muted ls-file-name"></span>
             <input type="file" id="ls-file" accept="audio/*,.wav,.mp3,.ogg,.flac,.m4a" hidden>

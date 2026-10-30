@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.147.0] - 2026-10-30
+
+### Added
+- **Listen: 70s rock radio (live).** A new choice in Play tunes in to RADIO BOB! 70s Rock, catches the next few seconds of the live broadcast (as long as Length) and plays them through the circuit in stereo, like a file. **↻ Tune in again** catches a fresh piece and renders it; ▶ Render while tuning in stops it. The 192 kbps stream is tried when the 128 kbps one fails, and a station that cannot be reached is said so in the tab.
+
+### Fixed
+- **Listen: From** shows only for a file again (it showed for the riff and the tone too, where it does nothing).
+
 ## [3.146.0] - 2026-10-30
 
 ### Fixed
