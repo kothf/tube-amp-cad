@@ -27,6 +27,10 @@ export default [
     languageOptions: { ecmaVersion: "latest", sourceType: "module", globals: { ...globals.node, ...globals.browser, ...appGlobals } }
   },
   {
+    files: ["server/**/*.mjs"],
+    languageOptions: { ecmaVersion: "latest", sourceType: "module", globals: { ...globals.node } }
+  },
+  {
     rules: {
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-unused-vars": ["error", { args: "none", caughtErrors: "none" }],
