@@ -251,6 +251,7 @@
     .spimp { width: min(1060px, 96vw) !important; max-height: 92vh; overflow-y: auto; }
     .spimp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 12px; }
     .spimp textarea { height: 300px !important; }
+    #share-text { height: 7.5em; word-break: break-all; resize: vertical; }
     .spimp-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
     .spimp-form { display: grid; grid-template-columns: 96px 1fr; gap: 6px 8px; align-items: center; margin-bottom: 8px; }
     .spimp-form input, .spimp-form select { width: 100%; }
@@ -314,6 +315,7 @@
         <button class="menu-item" role="menuitem" id="btn-open">Open…<kbd>Ctrl+O</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
         <div class="menu-sep"></div>
         <div class="menu-head">Examples</div>
         <div id="examples-list"></div>
@@ -592,6 +594,20 @@
     </div>
   </div>
 
+  <div class="modal" id="share-modal" hidden>
+    <div class="modal-box" style="width: min(560px, 94vw)">
+      <div class="insp-title">Share link</div>
+      <p class="insp-help">The whole design is packed into this link: whoever opens it gets the same circuit, with its imported tubes. Nothing is uploaded; the design travels only inside the link.</p>
+      <label class="insp-help"><input type="checkbox" id="share-board" checked> Include the board layout</label>
+      <textarea id="share-text" spellcheck="false" readonly rows="5" aria-label="Link to this design"></textarea>
+      <p class="insp-help" id="share-info"></p>
+      <div class="modal-actions">
+        <button class="btn" id="btn-share-close">Close</button>
+        <button class="btn active" id="btn-share-copy">Copy link</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="spice-modal" hidden>
     <div class="modal-box">
       <div class="insp-title">SPICE netlist (LTspice)</div>
@@ -635,6 +651,7 @@
   <script src="board-fab.js?v=dev"></script>
   <script src="kicad-export.js?v=dev"></script>
   <script src="cad-kicad.js?v=dev"></script>
+  <script src="cad-share.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>

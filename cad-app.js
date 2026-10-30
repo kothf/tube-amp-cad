@@ -1638,6 +1638,8 @@
     L.ITX_PRESETS.forEach(p => out.push(["Transformers", p.name, "", "itx", Object.assign({}, ...["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"].map(k => ({ [k]: p[k] }))), `${p.name} transformer interstage input step-up`]));
     Object.entries(L.JACKS).forEach(([k, j]) => out.push(["Ground & connectors", `Jack · ${j.use}`, k, "jack", { kind: k }, `jack socket input output ${k} ${j.use} phone headphone`]));
     Object.entries(L.OUTPUT_TX).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `${m.w} W ${m.ma} mA`, "opt_cat", { model: k }, `${k} ${m.name} output transformer single-ended`]));
+    Object.entries(L.OPT_SE).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `SE ${fmtEng(m.p.zp, "Ω")} ${m.w} W ${m.ma} mA`, "opt_se", Object.assign({}, m.p), `${k} ${m.name} output transformer single-ended ${m.maker}`]));
+    Object.entries(L.OPT_PP).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `PP ${fmtEng(m.p.zaa, "Ω")} ${m.w} W`, "opt_pp", Object.assign({}, m.p), `${k} ${m.name} output transformer push-pull ultralinear ${m.maker}`]));
     Object.entries(L.POWER_TX).forEach(([k, m]) => out.push(["Transformers", `Power · ${m.name}`, m.rated, "ptx_cat", { model: k }, `${k} ${m.name} power transformer ${m.rated}`]));
     TUBE_DATABASE.forEach(t => out.push(["Tubes", t, "", "tube", { tube: t.commonName }, `${t.commonName} ${t.nameGost} ${t.nameWestern} ${t.type}`]));
     return out;
@@ -1986,6 +1988,13 @@
     if (S.sim.error) issues.push(S.sim.error);
     (S.sim.warnings || []).forEach(w => issues.push(w));
     S.comps.forEach(c => { if (c.type !== "opt_cat") return; const i = otDcCurrent(c), m = CadLib.OUTPUT_TX[c.params.model]; if (i !== null && m && i * 1000 > m.ma) issues.push(`${c.label} (${m.name}) carries ${(i * 1000).toFixed(0)} mA DC, more than its ${m.ma} mA rating.`); });
+    S.comps.forEach(c => { if (c.type !== "opt_se" || !(+c.params.idc > 0)) return; const i = otDcCurrent(c); if (i !== null && i > +c.params.idc) issues.push(`${c.label} carries ${(i * 1000).toFixed(0)} mA DC, more than its ${fmtEng(+c.params.idc, "A")} rating.`); });
+    // an output transformer's core driven past its knee
+    S.comps.forEach(c => {
+      const tr = (c.type === "opt_se" || c.type === "opt_cat" || c.type === "opt_pp") && S.sim.result && S.sim.result.tran && S.sim.result.tran.devices[c.id];
+      if (!tr) return; let pk = 0; for (let k = 0; k < tr.i.length; k++) pk = Math.max(pk, Math.abs(tr.i[k]));
+      if (pk > 0.95) issues.push(`${c.label}: the output transformer's core saturates (flux ${Math.round(pk * 100)} % of its knee): bass distortion. Less drive at this frequency${c.type === "opt_pp" ? ", the halves' DC in balance" : ", less DC"}, or a bigger transformer.`);
+    });
     S.comps.forEach(c => { if (c.type !== "resistor" || !+c.params.w) return; const p = resistorPower(c); if (p !== null && p > +c.params.w) issues.push(`${c.label} dissipates ${fmtEng(p, "W", 2)}, more than its ${+c.params.w} W rating.`); });
     S.comps.forEach(c => {
       if (!CadLib.isTransistor(c.type) || !S.sim.result) return;
@@ -2369,6 +2378,9 @@
   const EXAMPLES = [
     { file: "06-gubin-6n23p-6p14p.json", title: "Gubin three-tube amplifier", tag: "tubes", about: "Igor Gubin's stereo single-ended amplifier (radionic.ru): 6N23P-EV direct-coupled to 6P14P, pentode / triode switch, 3–4 dB feedback; simulated 3.4 W at 1.9 % THD, 5 W at 10 % into 4 Ω" },
     { file: "07-gubin-5ts4s-stereo.json", title: "Gubin stereo amplifier with 5Ц4С supply", tag: "tubes", about: "GUB-245-01, three sheets (Radio 4/1957; musicangel.ru Fig. 3): 373BX transformer, 5Ц4С rectifier with capacitor input and a 2.5 H choke, two 6N23P-EV + 6P14P channels; anode resistors 180 Ω keep the 5Ц4С within its 375 mA peak; 6P14P at 276 V, −8.5 V bias; 2.2 kΩ feedback (R11, R12): a phone at full volume (−5.6 dBV) gives 1.1 W at 0.32 % THD in triode, 2 W in pentode; 1.7 W at 1 % THD in triode" },
+    { file: "13-2a3-single-ended-1627sea.json", title: "Single-ended 2A3, Hammond 1627SEA", tag: "tubes", about: "The classic directly heated triode amplifier: a 6SN7 stage R-C coupled to a cathode-biased 2A3 at RCA's 250 V, −45 V, 60 mA into 2.5 kΩ, on a Hammond 1627SEA; simulated 3.6 W at 1.8 % THD at 1 kHz (RCA: 3.5 W at 5 %). At 20 Hz and 2.5 W the 20 H primary loads the 2A3: 6 % THD" },
+    { file: "14-el84-push-pull-ultralinear-1608.json", title: "Push-pull EL84 ultralinear, Hammond 1608", tag: "tubes", about: "Mullard-style: a 12AX7 stage and split-load phase splitter, 2 × EL84 ultralinear (40 % taps) with a shared 160 Ω cathode resistor into 8 kΩ on a Hammond 1608, 14 dB of feedback; simulated 11 W at 0.9 % THD at 1 kHz, 9.4 W at 30 Hz, and at 15 Hz the core saturates (15 % THD)" },
+    { file: "15-6v6-push-pull-guitar-1750h.json", title: "Push-pull 6V6 guitar amplifier, Hammond 1750H", tag: "tubes", about: "Tweed-style: a 12AX7 gain stage and split-load phase splitter, 2 × 6V6GT cathode-biased (250 Ω) in class AB1 at 315 V, no feedback, on a Hammond 1750H (6.6 kΩ, 70 Hz–15 kHz); simulated 7.7 W at 2 % THD, 14.5 W driven to 15 %; the small core's 21 H puts 40 Hz 4 dB down" },
     { file: "03-12ax7-ccs-vs-resistor.json", title: "12AX7: plate resistor vs current source", tag: "tube + transistor", about: "J. Broskie, TubeCAD (2000): the same 12AX7 stage loaded by 150k (gain 70) and by an MPSA92 current source (gain 100), side by side" },
     { file: "04-12ax7-irf820-follower.json", title: "12AX7 stage + IRF820 follower", tag: "tube + MOSFET", about: "The GE 12AX7 data sheet's resistance-coupled stage (gain 50, 40 Vrms at 5 % THD) driving an IRF820 source follower" },
     { file: "05-10w-mosfet-amplifier.json", title: "10 W complementary MOSFET amplifier", tag: "MOSFETs", about: "homemade-circuits.com, fig. 1: BC177 input, BC107 driver, IRF540 / IRF9540 followers into 8 Ω (A3 sheet)" },
@@ -2395,6 +2407,53 @@
       sendBoardNetlist(true);
       setStatus("ok", `Example: ${ex.title}. ${ex.about}.`);
     } catch (err) { setStatus("error", `Could not open the example: ${err.message}`); }
+  }
+  // ---------------------------------------------------------------------------
+  // Share by link (cad-share.js): the design deflated into the address after #c=
+  // ---------------------------------------------------------------------------
+  async function shareLink() {
+    const d = JSON.parse(circuitJSON());
+    if (!document.getElementById("share-board").checked) delete d.board;
+    return CadShare.link(location.href, await CadShare.pack(d));
+  }
+  async function updateShare() {
+    const t = document.getElementById("share-text"), info = document.getElementById("share-info");
+    try {
+      const url = await shareLink();
+      t.value = url;
+      info.textContent = `${url.length.toLocaleString("en")} characters` + (url.length > 16000 ? ". A link this long can be cut short by some chat apps and e-mail; there, share it without the board or send the saved .json file." : ".");
+    } catch (err) { t.value = ""; info.textContent = "Cannot make a link: " + err.message; }
+  }
+  function openShareDialog() {
+    const cb = document.getElementById("share-board");
+    cb.disabled = !S.board; cb.checked = !!S.board;
+    document.getElementById("share-modal").hidden = false;
+    updateShare().then(() => { const t = document.getElementById("share-text"); t.focus(); t.select(); });
+  }
+  async function copyShare() {
+    const t = document.getElementById("share-text"); if (!t.value) return;
+    try { await navigator.clipboard.writeText(t.value); } catch (e) { t.select(); document.execCommand("copy"); }
+    setStatus("ok", "Link copied: whoever opens it gets this design");
+  }
+  // a link with #c=… opens its design, after asking if there is a circuit on the sheet;
+  // the fragment is then taken off the address, so a reload keeps the design as edited
+  async function openSharedLink() {
+    const packed = window.CadShare && CadShare.fromHash(location.hash); if (!packed) return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* file:// in some browsers */ }
+    let d;
+    try { d = await CadShare.unpack(packed); if (!d || d.app !== "TubeAmpCAD") throw new Error("not a Tube Amp CAD design"); }
+    catch (err) { setStatus("error", "Could not open the shared link: " + err.message); return; }
+    if (S.comps.some(c => c.type !== "frame") && !confirm("Open the design from this link?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.")) return;
+    try {
+      if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { /* a built-in of that name */ } }); buildPalette(); }
+      loadCircuit(d);
+      storeBoard(d.board || null);
+      S.sel.comps.clear(); S.sel.wires.clear();
+      setCurFile(null, "");                       // untitled: Save asks for a name
+      commit(); fitStart(); markClean();
+      sendBoardNetlist(true);
+      setStatus("ok", "Opened the design from the link" + (sheetName().full ? ": " + sheetName().full : ""));
+    } catch (err) { setStatus("error", "Could not open the shared link: " + err.message); }
   }
   function buildExamplesMenu() {
     const host = document.getElementById("examples-list"); if (!host) return;
@@ -2611,10 +2670,16 @@
         }
         case "VDIODE": lines.push(`B${id}${e.part || ""} ${nd[0]} ${nd[1]} I=${e.perveance}*pwr(max(V(${nd[0]},${nd[1]}),0),1.5)`); break;
         case "XFMR": {
-          const AL = e.lp / Math.pow(e.primaryTurns, 2), names = [];
-          e.windings.forEach((w, j) => { const n = `L${id}_${j}`; names.push(n); lines.push(`${n} ${nn(w.a)} ${nn(w.b)} ${AL * w.turns * w.turns}`); });
+          // each winding's leakage on top of its share of the magnetising inductance, so the
+          // coupling is below 1 by the leakage; a saturating core goes out linear (its slope at zero)
+          const AL = e.lp / Math.pow(e.primaryTurns, 2), names = [], Ls = e.windings.map(w => AL * w.turns * w.turns + (w.leak || 0));
+          if (e.sat) lines.push(`* ${id}: core saturation not exported (linear core)`);
+          e.windings.forEach((w, j) => { const n = `L${id}_${j}`; names.push(n); lines.push(`${n} ${nn(w.a)} ${nn(w.b)} ${Ls[j]}`); });
           // the coupling pair by pair: ngspice's K takes two inductors only
-          names.forEach((a, j) => names.slice(j + 1).forEach((b, k) => lines.push(`K${id}_${j}_${j + k + 1} ${a} ${b} ${e.k}`)));
+          names.forEach((a, j) => names.slice(j + 1).forEach((b, k) => {
+            const q = j + k + 1, kk = AL * e.windings[j].turns * e.windings[q].turns * e.k / Math.sqrt(Ls[j] * Ls[q]);
+            lines.push(`K${id}_${j}_${q} ${a} ${b} ${+Math.min(kk, 0.999999).toPrecision(9)}`);
+          }));
           break;
         }
         case "TRIODE": case "PENTODE": {
@@ -2697,6 +2762,12 @@
     bind("btn-save-cancel", () => { document.getElementById("save-modal").hidden = true; });
     bind("btn-save-as-alt", () => { document.getElementById("save-modal").hidden = true; saveFileAs(); });
     bind("btn-save-ok", saveDialogOk);
+    bind("btn-share", openShareDialog);
+    bind("btn-share-copy", copyShare);
+    bind("btn-share-close", () => { document.getElementById("share-modal").hidden = true; });
+    document.getElementById("share-board").addEventListener("change", updateShare);
+    document.getElementById("share-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("share-modal").hidden = true; });
+    window.addEventListener("hashchange", openSharedLink);
     document.getElementById("save-name").addEventListener("keydown", e => { if (e.key === "Enter") saveDialogOk(); });
     document.getElementById("save-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("save-modal").hidden = true; });
     cmds.bind("btn-undo", "undo").bind("btn-redo", "redo");
@@ -2756,9 +2827,10 @@
     updateInspector();
     updateSheetNav();
     requestAnimationFrame(() => { fitStart(); scheduleSim(0); });
+    openSharedLink();
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { kicadFiles, exportKicad, circuitIssues, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { kicadFiles, exportKicad, circuitIssues, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.135.0] - 2026-10-30
+## [3.137.0] - 2026-10-30
 
 ### Added
 - **KiCad export.** *File ▾ → Export KiCad project* in the Circuit CAD writes a ZIP with a KiCad 7 project (KiCad 8 and 9 open it too); *Export ▾ → KiCad board (ZIP)* in the Board window writes the board part of it.
@@ -14,7 +14,31 @@ and the project uses [Semantic Versioning](https://semver.org/).
   - **Board** (`.kicad_pcb`, when its parts are placed): footprints with pads, silkscreen and courtyard (parts on the bottom flipped as KiCad flips them), tracks, vias, mounting holes, texts, the rounded outline, copper pours (KiCad fills them) and keep-out areas. Each footprint names its symbol and each pin carries its pad's number, so *Update PCB from Schematic* pairs the two; net names are the Board window's, and the power and high-voltage nets get a label on the schematic so the names (and their classes) survive an update.
   - **Rules**: the net classes (Signal, Power, HV, with their widths and clearances) in the `.kicad_pro`; in the `.kicad_dru`, the clearance by voltage (IPC-2221B) for each pair of nets that needs more than its classes give, and each part's own pin spacing (a noval socket, a TO-92) and thin rings inside its courtyard, as the Board window's rule check allows them.
   - **Libraries**: the symbols (`TubeAmpCAD.kicad_sym`) and footprints (`TubeAmpCAD.pretty`) the project uses, with the project's library tables.
-  - Checked with KiCad 7.0.11 on all twelve examples: every file loads; KiCad's netlist of the schematic joins exactly the pads the board joins; after KiCad fills the pours the unrouted connections are the Board window's; KiCad's DRC finds the clearance problems the Board window finds, give or take a few near misses.
+  - Checked with KiCad 7.0.11 on all fifteen examples: every file loads; KiCad's netlist of the schematic joins exactly the pads the board joins; after KiCad fills the pours the unrouted connections are the Board window's; KiCad's DRC finds the clearance problems the Board window finds, give or take a few near misses.
+
+## [3.136.0] - 2026-10-30
+
+### Added
+- **Output transformers modelled as real ones.** Bass power and treble roll-off now look the way they do on a real amplifier, not only a DC warning in Checks.
+  - **Leakage inductance** on every winding (the treble roll-off, in series with the source and the load) and a **winding capacitance** across the primary (the leakage resonance above the audio band). In a push-pull transformer each half carries half the leakage, so class B sees half of it.
+  - **A core that saturates.** The flux linkage against the magnetising current is straight up to a knee, bends over and leaves only 1 % of the inductance past it. *Rated power* and *Full power down to* (plus *Max DC current* for single-ended) place the knee: at the rated power and that frequency, the rated DC included, the core stands at 75 % of saturation. Below it the power the transformer passes falls with the square of the frequency; past it the bass distorts and the primary current peaks. An ungapped push-pull core with its halves' DC out of balance saturates sooner.
+  - The inspector says where the bass and treble fall (−3 dB from a source of the primary impedance), where the leakage resonates, and after a run the **core flux** at its peak as a share of saturation; **Checks** warn when it passes 95 %, and when a single-ended part's DC passes its rating. The BOM's Sim. max shows the DC as a share of the rating.
+  - The **Bode plotter** linearises the core at its operating point: DC in a single-ended primary lowers the inductance the bass sees (for a mains-fed circuit, at its averaged magnetising current).
+- **Transformer catalogue.** The single-ended and push-pull output transformers have a **Model** list that fills in real parts: Hammond 1608, 1609, 1615, 1620, 1645, 1650F, 1650H, 1650K, 1650N, 1650P, 1650R, 1650T, 1650W and the 1750H guitar replacement (push-pull); Hammond 1627SEA, 1628SEA, 1629SEA and 1640SEA (single-ended); Edcor XSE15-5K, GXSE15-5K, CXSE25-3K, CXSE25-5K, XPP15-8K, GXPP15-8K, CXPP25-6.6K, CXPP30-6.6K and CXPP50-5K. Hammond values come from each part's drawing (inductance and leakage measured at 60 Hz, 10 V; the 16xxSEA inductance and DC rating from Hammond's catalogue). The newer drawings' 1 kHz, 1 V leakage figures (1650E 337 mH, 1620A 550 mH) would put the treble 1 dB down at 2–4 kHz on parts sold for 30 kHz, so those models are left out. Edcor publishes only the power, impedance, DC rating, ±1 dB band and insertion loss, so their inductance, leakage and resistances are worked out from those (the inspector says so); no maker gives the winding capacitance (typical 200 pF single-ended, 300 pF push-pull). Change the secondary impedance to use another tap and the part keeps its model's name; change anything else and it shows your own values. The models are in the part search too (type "1650" or "Edcor").
+- The Hammond 125SE part gets the same core (saturating past its rated power below 100 Hz, from its rated DC) and a leakage of 54 mH (1 dB down at 15 kHz, its rated band; not on its drawing).
+- **Three classic amplifiers** in File → Examples, each on a real output transformer: a single-ended **2A3** with a 6SN7 driver on a Hammond 1627SEA (RCA's 250 V, −45 V, 60 mA, 2.5 kΩ; 3.6 W at 1.8 % THD at 1 kHz); a Mullard-style push-pull **EL84 ultralinear** amplifier on a Hammond 1608 (12AX7 stage and split-load phase splitter, 14 dB of feedback; 11 W at 0.9 %, 9.4 W at 30 Hz, and at 15 Hz the core saturates: 15 % THD); a tweed-style push-pull **6V6** guitar amplifier, cathode biased, no feedback, on a Hammond 1750H (7.7 W at 2 %, its 21 H primary putting 40 Hz 4 dB down). They come as schematics, without a board.
+
+### Changed
+- Output transformers in files saved before this version get the new fields' defaults: 15 mH (single-ended) or 20 mH (push-pull) of leakage, 200 or 300 pF, and a core rated 10 W down to 40 Hz with 100 mA DC (single-ended) or 30 W down to 30 Hz (push-pull). Until now each winding had 0.1 % of its inductance uncoupled (about 40–60 mH of leakage) and the core never saturated. Set *Rated power* to 0 for the old linear core.
+- SPICE export writes a transformer's leakage as coupling below 1 between its windings; the saturation is not exported (a comment says so).
+
+### Fixed
+- The BOM's Sim. max for a push-pull output transformer showed twice the DC per half: it divided the drop across a half by half of *DCR per half*.
+
+## [3.135.0] - 2026-10-30
+
+### Added
+- **File ▾ → Share link…**: the whole design packed into a link. The circuit, the imported SPICE tubes it uses and (ticked by default) its board layout are compressed into the address after `#c=`; Copy link and send it, and whoever opens it on aerocat.tech gets the same circuit with one click. The part after `#` never reaches the server, so nothing is uploaded and the design lives only in the link. Example 07 with its board makes a link of about 9 000 characters, 4 000 without. Opening a link over a circuit on the sheet asks first (Ctrl+Z brings the old one back), and the design is then taken off the address so a reload keeps your edits.
 
 ## [3.134.1] - 2026-10-30
 

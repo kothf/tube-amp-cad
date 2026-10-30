@@ -113,20 +113,20 @@
       const progress = f => { if (S.ac.seq === seq && channel) channel.postMessage(acMessage({ running: true, progress: f, gen: g.id, gens })); };
       if (!pool.ok) {
         setTimeout(() => {
-          let op = null;
-          if (averaged) { const r = TubeSimEngine.simulate(nl, options); if (!r.ok) { done({ ok: false, error: r.error }); return; } op = r.dc.nodes; }
-          done(TubeSimEngine.acSweep(nl, Object.assign({}, options, { op })));
+          let op = null, opIm = null;
+          if (averaged) { const r = TubeSimEngine.simulate(nl, options); if (!r.ok) { done({ ok: false, error: r.error }); return; } op = r.dc.nodes; opIm = TubeSimEngine.opMagnetising(r); }
+          done(TubeSimEngine.acSweep(nl, Object.assign({}, options, { op, opIm })));
         }, 0);
         return;
       }
       // the sweep in pieces, one per core (at least 20 points each), all at once; then joined in order
-      const sweep = op => {
+      const sweep = (op, opIm) => {
         const K = TubeSimEngine.acPoints(options), parts = Math.max(1, Math.min(pool.size, Math.floor(K / 20)));
         const got = new Array(parts);
         let left = parts;
         for (let i = 0; i < parts; i++) {
           const kFrom = Math.round(i * K / parts), kTo = Math.round((i + 1) * K / parts);
-          aJobs.push(pool.run({ netlist: nl, options: Object.assign({}, options, { op, kFrom, kTo }), kind: "ac" }, {
+          aJobs.push(pool.run({ netlist: nl, options: Object.assign({}, options, { op, opIm, kFrom, kTo }), kind: "ac" }, {
             urgent: i === 0, high: true,
             onResult: r => {
               if (S.ac.seq !== seq) return;
@@ -144,7 +144,7 @@
       if (!averaged) { sweep(null); return; }
       aJobs.push(pool.run({ netlist: nl, options, kind: "op" }, {
         urgent: true, onProgress: f => progress(0.9 * f),
-        onResult: r => { if (S.ac.seq !== seq) return; aJobs = []; if (r.ok) sweep(r.op); else done(r); }
+        onResult: r => { if (S.ac.seq !== seq) return; aJobs = []; if (r.ok) sweep(r.op, r.opIm); else done(r); }
       }));
     }
     return { acMessage, runAC, runTransient, stopTransient, transientMessage };
