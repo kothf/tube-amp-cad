@@ -137,6 +137,8 @@
     // before an auto-route: copper left over from an earlier layout (parts moved since) goes, so Freerouting
     // routes those connections afresh: loose ends and lone vias, copper reaching no pad, copper joining two nets,
     // and tracks breaking a clearance. Locked copper stays. Returns how many tracks and vias went
+    // the board kept as it was: the routing passes drew the layouts they tried, so draw this one again
+    function redraw() { analyse(); render(); if (renderPanels) renderPanels(); }
     function clearStale() {
       const b = S.board, n0 = b.tracks.length + b.vias.length;
       for (let pass = 0; pass < 20; pass++) {
@@ -452,7 +454,7 @@
           .filter(m => Math.abs(m.from.x - m.to.x) > 1e-6 || Math.abs(m.from.y - m.to.y) > 1e-6 || ((m.from.rot || 0) & 3) !== ((m.to.rot || 0) & 3))
           .map(m => ({ ...m, from: { x: m.from.x, y: m.from.y, rot: m.from.rot || 0 }, to: { x: m.to.x, y: m.to.y, rot: m.to.rot || 0 } }));
         const left = bestScore.un, changed = JSON.stringify(S.board) !== start || stale;
-        if (changed) commit(); else analyse();
+        if (changed) commit(); else redraw();
         const what = moved.length ? `moved ${BoardPlace.describe(moved)}` : "no part moved", stuck = left ? shutIn() : "";
         msg((left ? `${left} connection${left === 1 ? "" : "s"} still open after ${round} round${round === 1 ? "" : "s"}` : `Everything routed${round ? ` after ${round} round${round === 1 ? "" : "s"}` : ""}`) +
           (round || moved.length ? `: ${what}` : "") + (spreadNo ? " (spreading the parts over the board did not help)" : "") + stuck + (router.stop ? " (stopped)" : "") + (broke ? ` (Freerouting failed in round ${round}: ${broke})` : "") + (changed ? "; Ctrl+Z takes it all back" : ""));
@@ -544,7 +546,7 @@
         analyse(); await tidy(); best = JSON.stringify(S.board);
         const moved = Object.keys(parts0).filter(k => S.board.parts[k] && (Math.abs(parts0[k].x - S.board.parts[k].x) > 1e-6 || Math.abs(parts0[k].y - S.board.parts[k].y) > 1e-6 || ((parts0[k].rot || 0) & 3) !== ((S.board.parts[k].rot || 0) & 3))).length;
         const changed = best !== (before || start);
-        if (changed) commit(); else analyse();
+        if (changed) commit(); else redraw();
         const left = bestScore.un, stuck = left ? shutIn() : "";
         msg((won ? `Designed the board: ${moved} part${moved === 1 ? "" : "s"} placed (best of ${made.length} layouts, ${routed} routed: ${won}); ` : `Made ${made.length} layout${made.length === 1 ? "" : "s"}, routed ${routed}: none routed better, the parts stay where they were; `) +
           (left ? `${left} connection${left === 1 ? "" : "s"} open${stuck}` : "everything routed") + (router.stop ? " (stopped)" : "") + (broke ? ` (Freerouting failed: ${broke})` : "") + (waiting.length ? `; ${S.model.parts.filter(g => waiting.includes(g.key)).map(g => g.ref).join(", ")} put on the board first, where ${waiting.length === 1 ? "it sits" : "they sit"} in the schematic` : "") + (changed ? "; Ctrl+Z takes it all back" : ""));
