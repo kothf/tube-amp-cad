@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.147.3] - 2026-10-30
+
+### Changed
+- **CI on main starts at once.** Each commit on main gets its own CI run straight away instead of queueing behind the run before it (the first release of the faster CI waited 4 minutes so), and the browser test groups are rebalanced: part 08 alone, every other part in the other group. The browser test of Board in the oscilloscope (Safari) waits up to 15 s for the board, not 3 s: on a busy CI runner it once came later and failed the run.
+
 ## [3.147.2] - 2026-10-30
 
 ### Changed
