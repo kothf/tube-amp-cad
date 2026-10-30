@@ -67,7 +67,8 @@ import { readFile } from "node:fs/promises";
   check(await cad.evaluate(() => [...TubeCAD.state.sel.comps].map(id => TubeCAD.state.comps.find(c => c.id === id).label).join()) === "T1", "clicking a BOM line selects its parts on the sheet");
   {
     // a part clicked on the sheet brings its line into view in a short, scrolled-away list
-    await cad.evaluate(() => { document.getElementById("bom").style.setProperty("--bom-h", "150px"); TubeCAD.fitView(); });
+    // about 85 px of list under the dock's head, however many lines its tabs and tools wrap to
+    await cad.evaluate(() => { const bom = document.getElementById("bom"); bom.style.setProperty("--bom-h", (bom.querySelector(".bom-head").offsetHeight + 84) + "px"); TubeCAD.fitView(); });
     await cad.waitForTimeout(100);
     await cad.evaluate(() => { document.querySelector("#bom .bom-scroll").scrollTop = 0; });
     const t1 = await cad.evaluate(() => { const c = TubeCAD.state.comps.find(c => c.label === "T1"); return { x: c.x, y: c.y + 10 }; });
