@@ -66,11 +66,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          runs() { gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" --json status,conclusion --jq "$1"; }
           for i in $(seq 1 120); do
-            if [ "$(runs 'map(select(.conclusion == "success")) | length')" -gt 0 ]; then echo "CI passed on $GITHUB_SHA"; echo "TESTED=1" >> "$GITHUB_ENV"; exit 0; fi
-            if [ "$(runs 'map(select(.conclusion == "failure")) | length')" -gt 0 ]; then echo "::error::CI failed on $GITHUB_SHA: fix main (or re-run the failed CI jobs), then release again"; exit 1; fi
-            pending="$(runs 'map(select(.status != "completed")) | length')"
+            # one look per round, so a run that finishes between two looks is not taken for "no run"
+            s="$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" --json status,conclusion \
+              --jq '[(map(select(.conclusion == "success")) | length), (map(select(.conclusion == "failure")) | length), (map(select(.status != "completed")) | length)] | map(tostring) | join(" ")')"
+            read -r ok failed pending <<< "$s"
+            if [ "$ok" -gt 0 ]; then echo "CI passed on $GITHUB_SHA"; echo "TESTED=1" >> "$GITHUB_ENV"; exit 0; fi
+            if [ "$failed" -gt 0 ]; then echo "::error::CI failed on $GITHUB_SHA: fix main (or re-run the failed CI jobs), then release again"; exit 1; fi
             if [ "$pending" -eq 0 ] && [ "$i" -gt 6 ]; then break; fi
             sleep 10
           done

@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.147.4] - 2026-10-30
+
+### Fixed
+- **Release used CI's result only by luck.** It looked at CI three times per round (passed? failed? still running?); when the run finished between the first and the last look, it saw none passed and none running and tested everything again by itself (the 3.147.3 release took 6½ minutes so). It now reads all three from one look.
+
 ## [3.147.3] - 2026-10-30
 
 ### Changed
