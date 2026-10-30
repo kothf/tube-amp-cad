@@ -251,14 +251,30 @@
     // only if nothing comes apart and no rule message is added. Returns how many tracks changed
     async function tidy() {
       analyse();
-      const was = [S.board, S.board.tracks.length], r = await offPage("smooth", [], {}).catch(() => null);
+      // doubled copper first: a track laid beside its own net's track that already joins the same pads comes off
+      // (BoardPlace.redundant), kept off only if nothing comes apart and no rule message is added
+      const dup = BoardPlace.redundant(S.board, S.model, S.conn);
+      if (dup.tracks.length) {
+        const keep = JSON.stringify(S.board), un = S.conn.unrouted, d = S.drc.filter(x => x.kind !== "unplaced").length, tt = new Set(dup.tracks), vv = new Set(dup.vias);
+        S.board.tracks = S.board.tracks.filter((_, i) => !tt.has(i)); S.board.vias = S.board.vias.filter((_, i) => !vv.has(i)); analyse();
+        if (S.conn.unrouted > un || S.drc.filter(x => x.kind !== "unplaced").length > d) { S.board = JSON.parse(keep); analyse(); }
+      }
+      const was = [S.board, S.board.tracks.length], r = await offPage("smooth", null, {}).catch(() => null);
       if (!r || !r.length || was[0] !== S.board || was[1] !== S.board.tracks.length) return 0;
-      const keep = S.board.tracks.map(t => t.pts), un = S.conn.unrouted, d = S.drc.filter(x => x.kind !== "unplaced").length;
-      r.forEach(c => { S.board.tracks[c.ti] = { ...S.board.tracks[c.ti], pts: c.pts }; });
-      analyse();
-      if (S.conn.unrouted <= un && S.drc.filter(x => x.kind !== "unplaced").length <= d) return r.length;
+      const un = S.conn.unrouted, d = S.drc.filter(x => x.kind !== "unplaced").length, ok = () => S.conn.unrouted <= un && S.drc.filter(x => x.kind !== "unplaced").length <= d;
+      const set = cs => { cs.forEach(c => { S.board.tracks[c.ti] = { ...S.board.tracks[c.ti], pts: c.pts }; }); analyse(); };
+      const keep = S.board.tracks.map(t => t.pts);
+      set(r);
+      if (ok()) return r.length;
+      // one of them breaks something: each on its own then, kept where it does not
       S.board.tracks.forEach((t, i) => { t.pts = keep[i]; }); analyse();
-      return 0;
+      let n = 0;
+      for (const c of r) {
+        const old = S.board.tracks[c.ti].pts; set([c]);
+        if (ok()) n++; else { S.board.tracks[c.ti].pts = old; analyse(); }
+        if (n % 8 === 0) await breath();
+      }
+      return n;
     }
     // the pins still shut in, in words ("" when none)
     // and what to change for routing to finish (BoardPlace.advise: rules stricter than needed, pour islands,
@@ -281,7 +297,15 @@
       if (router.busy && router.nudge) { router.stop = true; msg("Stopping after this pass: the best layout so far stays"); return; }
       if (!await ready()) return;
       const stale = clearStale(), staleNote = stale ? ` · ${stale} old piece${stale === 1 ? "" : "s"} of copper cleared first (left from where the parts were)` : "";
-      if (!S.conn.unrouted) { if (stale) commit(); msg("Nothing to route: every connection is routed" + staleNote); return; }
+      if (!S.conn.unrouted) {
+        // all routed: the tracks are tidied instead (doubled copper off, stairs pulled straight)
+        const t0 = JSON.stringify(S.board.tracks) + JSON.stringify(S.board.vias), was = S.board.tracks.length;
+        await tidy();
+        const tidied = JSON.stringify(S.board.tracks) + JSON.stringify(S.board.vias) !== t0;
+        if (stale || tidied) commit();
+        msg("Nothing to route: every connection is routed" + (tidied ? `; tracks tidied (${Math.max(0, was - S.board.tracks.length)} doubled taken off, bends pulled straight)` : "") + staleNote);
+        return;
+      }
       router.busy = true; routerUi(); progress(0, 0, "Auto-route"); msg(`${viaFr() ? "Freerouting" : "The grid router"} is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
       try {
         const p = await routePass();
@@ -469,6 +493,7 @@
           catch (e) { broke = e.message; }
         }
         S.board = JSON.parse(best); S.sel = null;
+        analyse(); await tidy(); best = JSON.stringify(S.board);
         const moved = Object.keys(parts0).filter(k => S.board.parts[k] && (Math.abs(parts0[k].x - S.board.parts[k].x) > 1e-6 || Math.abs(parts0[k].y - S.board.parts[k].y) > 1e-6 || ((parts0[k].rot || 0) & 3) !== ((S.board.parts[k].rot || 0) & 3))).length;
         const changed = best !== start;
         if (changed) commit(); else analyse();

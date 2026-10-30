@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.144.1] - 2026-10-30
+
+### Fixed
+- **Board: zigzag tracks.** Tidying tracks (pulling the grid finishers' staircases into straight and 45° runs) never ran since 3.131.0: the step was handed an empty list of tracks. It runs again after every Auto-route, Finish routing and Design from scratch, and when one track's new shape would break a rule, only that track keeps its old shape (before, one such track kept them all as they were).
+- **Board: tracks laid twice.** When the grid router took up part of an old track that was in the way, the pieces of it left at the pads stayed beside the new route, so a connection was laid twice, side by side (it looked like a short; no two nets touched). The router now takes up a leftover piece whose pads stay joined without it, and cuts a loose end back to where it meets copper instead of dropping the whole segment, which could leave a connection open. Tidying also takes off any doubled copper left on a board, and Auto-route on a fully routed board now tidies it.
+
 ## [3.144.0] - 2026-10-30
 
 ### Added

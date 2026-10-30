@@ -439,45 +439,128 @@
       if (o.debug) { const path = worst.r.paths[worst.pi]; soft(worst.r); const bad = path.filter(s => softT[s]).map(s => [X(s % N), Y(s % N), names[netIds[whoT[s]]]]); o.debug.push({ net: names[worst.r.id], n: worst.n, len: path.length, a: path.a && path.a.pad.ref + "-" + path.a.pad.num, b: path.b && path.b.pad.ref + "-" + path.b.pad.num, bad: bad.slice(0, 3), tails: tails(path).map(([P, st]) => tailHit(P, st)) }); }
       worst.r.paths.splice(worst.pi, 1); worst.r.groupsLeft++; vias(worst.r);
     }
-    // the board's copper left hanging where pieces of it came up: the end segment of a run of a track that
-    // meets nothing of its net goes (as the check sees a loose end), and a via that meets nothing
+    // stairs pulled straight: on each layer a path's cells are joined again by one straight or 45° run, or a
+    // straight and a 45° one, wherever every cell of that is free of walls and of other nets' copper
+    const DIR = (a, b) => (a > 0) - (a < 0);
+    function legs(c1, c2, diagFirst) {
+      let i = c1 % nx, j = (c1 - i) / nx; const i2 = c2 % nx, j2 = (c2 - i2) / nx, out = [];
+      const dx = i2 - i, dy = j2 - j, d = Math.min(Math.abs(dx), Math.abs(dy)), sx = DIR(dx, 0), sy = DIR(dy, 0);
+      const diag = () => { for (let k = 0; k < d; k++) { i += sx; j += sy; out.push(j * nx + i); } };
+      const line = () => { while (i !== i2 || j !== j2) { i += i !== i2 ? sx : 0; j += j !== j2 ? sy : 0; out.push(j * nx + i); } };
+      if (diagFirst) { diag(); line(); } else { const ex = Math.abs(dx) - d, ey = Math.abs(dy) - d; for (let k = 0; k < ex; k++) { i += sx; out.push(j * nx + i); } for (let k = 0; k < ey; k++) { j += sy; out.push(j * nx + i); } diag(); }
+      return out;
+    }
+    function straighten(r) {
+      const H = hard(r); soft(r);
+      const free = (l, c) => !H.T[l * N + c] && !softT[l * N + c] && !nearT[c];
+      let changed = false;
+      // cells where another path of the net joins on (its ends) stay where they are
+      const pin = new Set(); r.paths.forEach(path => { pin.add(path[0] % N); pin.add(path[path.length - 1] % N); });
+      r.paths = r.paths.map(path => {
+        const out = [path[0]];
+        let k = 0;
+        while (k < path.length - 1) {
+          const l = Math.floor(path[k] / N);
+          let best = null, miss = 0;
+          for (let j = k + 2; j < path.length && Math.floor(path[j] / N) === l && miss < 40 && !pin.has(path[j - 1] % N); j++) {
+            let got = null;
+            for (const df of [true, false]) { const cs = legs(path[k] % N, path[j] % N, df); if (cs.length <= j - k && cs.every(c => free(l, c))) { got = cs; break; } }
+            if (got) { best = { j, cs: got }; miss = 0; } else miss++;
+          }
+          if (best) { best.cs.forEach(c => out.push(l * N + c)); k = best.j; changed = true; } else { out.push(path[k + 1]); k++; }
+        }
+        out.a = path.a; out.b = path.b;
+        return out;
+      });
+      if (changed) r.ver++;
+    }
+    nets.forEach(r => { if (r.paths.length) straighten(r); });
+    // loops: a kept piece of the board's copper that the new routes made needless (a stub left at a pad beside the
+    // track that now runs there, a piece of an old route the new one runs alongside) comes up too, so no
+    // connection is laid twice. A piece goes only if every pad it joined stays joined without it
+    nets.forEach(r => {
+      if (!r.paths.length || !r.keep.length) return;
+      const padGroups = () => {
+        const all = r.fixed.map(it => ({ s: it.s, r: it.r, ls: it.layers.map(li), it })).concat(shapes(r)), par = all.map((_, i) => i), f = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+        for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+          const a = all[i], b = all[j], pa = a.it && a.it.kind === "pad", pb = b.it && b.it.kind === "pad";
+          if (pa && pb) { if (pourJoined.has(a.it) && pourJoined.has(b.it) && a.it.cluster === b.it.cluster) par[f(i)] = f(j); continue; }
+          if (a.ls.some(l => b.ls.includes(l)) && C.segSeg(a.s, b.s) - a.r - b.r <= 1e-6) par[f(i)] = f(j);
+        }
+        return new Set(all.map((a, i) => a.it && a.it.kind === "pad" ? f(i) : -1).filter(g => g >= 0)).size;
+      };
+      const pieces = [], byT = new Map();
+      r.keep.forEach(it => { if (it.kind === "via") pieces.push([it]); else if (it.kind === "track") { if (!byT.has(it.ti)) byT.set(it.ti, []); byT.get(it.ti).push(it); } });
+      byT.forEach(list => { list.sort((u, v) => u.k - v.k); list.forEach(it => { const last = pieces.length && pieces[pieces.length - 1]; if (last && last[0].kind === "track" && last[0].ti === it.ti && last[last.length - 1].k === it.k - 1) last.push(it); else pieces.push([it]); }); });
+      const lenOf = pc => pc.reduce((a, it) => a + Math.hypot(it.s[2] - it.s[0], it.s[3] - it.s[1]), 0);
+      pieces.sort((a, b) => lenOf(a) - lenOf(b));
+      const base = padGroups();
+      pieces.forEach(pc => {
+        const was = r.keep, gone = new Set(pc);
+        r.keep = was.filter(it => !gone.has(it)); r.ver++;
+        if (padGroups() > base) { r.keep = was; r.ver++; }
+      });
+    });
+    // the board's copper left hanging where pieces of it came up: a run of a track whose end meets nothing of its
+    // net is cut back to where it last meets something (a segment met only in its middle is shortened, not
+    // dropped, so a route joined there stays joined), and a via that meets nothing goes
     nets.forEach(r => {
       for (let pass = 0; pass < 200; pass++) {
         const all = shapes(r).concat(r.fixed.map(it => ({ s: it.s, r: it.r, ls: it.layers.map(li), it })));
         const byT = new Map(); r.keep.forEach(it => { if (it.kind === "track") { if (!byT.has(it.ti)) byT.set(it.ti, []); byT.get(it.ti).push(it); } });
-        const loose = new Set();
+        const swap = new Map();
         byT.forEach(list => {
           list.sort((u, v) => u.k - v.k);
           const runsOf = []; list.forEach(it => { const last = runsOf[runsOf.length - 1]; if (last && last[last.length - 1].k === it.k - 1) last.push(it); else runsOf.push([it]); });
           runsOf.forEach(run => {
             const own = new Set(run), ls = run[0].layers.map(li), w = run[0].r;
-            const meets = (x, y) => all.some(q => !own.has(q.it) && q.ls.some(l => ls.includes(l)) && C.segDist(q.s[0], q.s[1], q.s[2], q.s[3], x, y) <= q.r + w + 1e-6);
+            const meets = (x, y, d) => all.some(q => !own.has(q.it) && q.ls.some(l => ls.includes(l)) && C.segDist(q.s[0], q.s[1], q.s[2], q.s[3], x, y) <= q.r + w + 1e-6 - (d || 0));
+            // the end at (s[e], s[e+1]) of item it: how far along it the first meeting is (1: none)
+            const cut = (it, fromStart) => {
+              const [x1, y1, x2, y2] = fromStart ? it.s : [it.s[2], it.s[3], it.s[0], it.s[1]], L = Math.hypot(x2 - x1, y2 - y1), n = Math.max(1, Math.ceil(L / 0.05));
+              // (cut a little into what it meets, so rounding the end leaves it touching)
+              let first = 1;
+              for (let k = 0; k <= n; k++) { const x = x1 + (x2 - x1) * k / n, y = y1 + (y2 - y1) * k / n; if (first === 1 && meets(x, y)) first = k / n; if (meets(x, y, 0.05)) return k / n; }
+              return first;
+            };
             const a = run[0], b = run[run.length - 1];
-            if (!meets(a.s[0], a.s[1])) loose.add(a);
-            if (!meets(b.s[2], b.s[3])) loose.add(b);
+            [[a, true], [b, false]].forEach(([it, st]) => {
+              const cur = swap.get(it) || it, [ex, ey] = st ? [cur.s[0], cur.s[1]] : [cur.s[2], cur.s[3]];
+              if (meets(ex, ey)) return;
+              const t = cut(cur, st);
+              if (t >= 1 || (it === a && it === b && swap.has(it) && swap.get(it) === null)) { swap.set(it, null); return; }
+              const s2 = cur.s.slice();
+              if (st) { s2[0] = cur.s[0] + (cur.s[2] - cur.s[0]) * t; s2[1] = cur.s[1] + (cur.s[3] - cur.s[1]) * t; }
+              else { s2[2] = cur.s[2] + (cur.s[0] - cur.s[2]) * t; s2[3] = cur.s[3] + (cur.s[1] - cur.s[3]) * t; }
+              swap.set(it, Object.assign(Object.create(Object.getPrototypeOf(it)), it, { s: s2, orig: it.orig || it }));
+            });
           });
         });
-        r.keep.forEach(it => { if (it.kind === "via" && L.some((_, l) => !all.some(q => q.it !== it && q.ls.includes(l) && C.segDist(q.s[0], q.s[1], q.s[2], q.s[3], it.s[0], it.s[1]) <= q.r + it.r + 1e-6))) loose.add(it); });
-        if (!loose.size) break;
-        r.keep = r.keep.filter(it => !loose.has(it)); r.ver++;
+        const vgone = new Set();
+        r.keep.forEach(it => { if (it.kind === "via" && L.some((_, l) => !all.some(q => q.it !== it && q.ls.includes(l) && C.segDist(q.s[0], q.s[1], q.s[2], q.s[3], it.s[0], it.s[1]) <= q.r + it.r + 1e-6))) vgone.add(it); });
+        if (!swap.size && !vgone.size) break;
+        r.keep = r.keep.filter(it => !vgone.has(it)).map(it => swap.has(it) ? swap.get(it) : it).filter(Boolean); r.ver++;
       }
     });
     // the result: the board's copper that came up, and the grid paths as tracks and vias
-    const kept = new Set(); nets.forEach(r => r.keep.forEach(it => kept.add(it)));
+    const kept = new Map(); nets.forEach(r => r.keep.forEach(it => kept.set(it.orig || it, it)));
     const cutT = new Set(), cutV = new Set();
-    isKeep.forEach(it => { if (kept.has(it)) return; if (it.kind === "track") cutT.add(it.ti); if (it.kind === "via") cutV.add(it.vi); });
-    // a track only partly in the way comes up whole; the pieces of it still kept are put back as tracks of their own
+    isKeep.forEach(it => { if (kept.has(it) && kept.get(it) === it) return; if (it.kind === "track") cutT.add(it.ti); if (it.kind === "via" && !kept.has(it)) cutV.add(it.vi); });
+    // a track only partly in the way (or cut back) comes up whole; the pieces of it still kept are put back as
+    // tracks of their own
     const addT = [], addV = [], r4 = v => +v.toFixed(4);
     cutT.forEach(ti => {
       const t = board.tracks[ti], segs = [];
-      conn.items.forEach(q => { if (q.kind === "track" && q.ti === ti && isKeep.has(q) && keptSeg(q)) segs.push(q.k); });
-      segs.sort((a, b) => a - b);
+      conn.items.forEach(q => { if (q.kind === "track" && q.ti === ti && isKeep.has(q) && kept.has(q)) segs.push(kept.get(q)); });
+      segs.sort((a, b) => a.k - b.k);
       let cur = null;
-      segs.forEach(k => { if (cur && cur.last === k - 1) { cur.pts.push(t.pts[k + 1]); cur.last = k; } else { if (cur) addT.push(cur); cur = { pts: [t.pts[k], t.pts[k + 1]], last: k }; } });
+      segs.forEach(q => {
+        const a = [r4(q.s[0]), r4(q.s[1])], b = [r4(q.s[2]), r4(q.s[3])];
+        if (cur && cur.last === q.k - 1 && Math.hypot(cur.pts[cur.pts.length - 1][0] - a[0], cur.pts[cur.pts.length - 1][1] - a[1]) < 1e-6) { cur.pts.push(b); cur.last = q.k; }
+        else { if (cur) addT.push(cur); cur = { pts: [a, b], last: q.k, layer: t.layer, w: t.w, net: t.net }; }
+      });
       if (cur) addT.push(cur);
-      addT.forEach(q => { if (!q.layer) Object.assign(q, { layer: t.layer, w: t.w, net: t.net }); });
     });
-    function keptSeg(q) { return kept.has(q); }
     addT.forEach(q => { delete q.last; });
     nets.forEach(r => {
       const name = names[r.id];
