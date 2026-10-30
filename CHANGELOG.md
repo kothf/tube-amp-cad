@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.149.0] - 2026-10-30
+## [3.150.0] - 2026-10-30
 
 ### Added
 - **KiCad export.** *File ▾ → Export KiCad project* in the Circuit CAD writes a ZIP with a KiCad 7 project (KiCad 8 and 9 open it too); *Export ▾ → KiCad board (ZIP)* in the Board window writes the board part of it.
@@ -15,6 +15,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
   - **Rules**: the net classes (Signal, Power, HV, with their widths and clearances) in the `.kicad_pro`; in the `.kicad_dru`, the clearance by voltage (IPC-2221B) for each pair of nets that needs more than its classes give, and each part's own pin spacing (a noval socket, a TO-92) and thin rings inside its courtyard, as the Board window's rule check allows them.
   - **Libraries**: the symbols (`TubeAmpCAD.kicad_sym`) and footprints (`TubeAmpCAD.pretty`) the project uses, with the project's library tables.
   - Checked with KiCad 7.0.11 on all fifteen examples: every file loads; KiCad's netlist of the schematic joins exactly the pads the board joins; after KiCad fills the pours the unrouted connections are the Board window's; KiCad's DRC finds the clearance problems the Board window finds, give or take a few near misses.
+
+## [3.149.0] - 2026-10-30
+
+### Added
+- Every example is checked against ngspice on each build: `npm run test:ngspice` opens each example, runs "Simulate until settled", runs the circuit's SPICE export through ngspice and compares the DC operating point (within 0.3 %) and the signal at every node (within 3 %). A circuit on a mains supply is compared averaged over the same window after 8 s of ngspice transient. CI runs it as its own job. The five 555 examples are skipped, since the export leaves the NE555 to the maker's macro model.
+
+### Fixed
+- DC operating point: the solve left a 1 nS conductance from every node to ground, which a node fed through a megohm feels: in the new EL84 and 6V6 push-pull examples 50 nA through the cathodyne's 1 MΩ grid resistor put its cathode 0.8 V (1.6 %) low. A last pass at 1 pS, the transient's and ngspice's value, now takes it away; the examples agree with ngspice within 0.01 %.
+- SPICE export: transistors ran 2 °C warmer in ngspice than in the CAD, about 7 mV less VBE, so a 2N3904 stage's collector sat 40 mV lower in ngspice. The CAD's thermal voltage at 25 °C (25.85 mV) is SPICE's at its nominal 27 °C, but the models went out with TNOM=25 and ngspice runs at 27 °C. Models now go out with TNOM=27 and a part's temperature on that scale (45 °C is `temp=47.13`); the curve tracer's model export too. The DC operating points of examples 01–05 now match ngspice within 0.1 %.
 
 ## [3.148.0] - 2026-10-30
 

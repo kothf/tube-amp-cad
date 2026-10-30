@@ -2746,10 +2746,12 @@
         case "BJT": {
           const m = e.model, mn = `Q${m.pol > 0 ? "N" : "P"}_${(S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id}`.replace(/[^A-Za-z0-9_]/g, "_");
           lines.push(`Q${id} ${nd.join(" ")} ${mn}`);
-          // the model at 25 °C with SPICE's temperature terms; the part's temperature on the instance
+          // the model's data with SPICE's temperature terms, the part's temperature on the instance. The
+          // simulator's kT/q at 25 °C (25.85 mV) is SPICE's at its nominal 27 °C, so the data go out at
+          // TNOM=27 and a temperature on that scale (ngspice runs at 27 °C unless told otherwise)
           const m0 = CadLib.BJTS[(S.comps.find(c => c.id === e.id) || { params: {} }).params.model] || m;
-          if (m.t !== undefined && Math.abs(m.t - 25) > 1e-9) lines[lines.length - 1] += ` temp=${+m.t.toFixed(2)}`;
-          if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NPN" : "PNP"}(IS=${m0.is} BF=${m0.bf} BR=${m0.br || 1} NF=${m.nf || 1} VAF=${m.vaf} IKF=${m.ikf} EG=${m.ge ? 0.67 : 1.11} XTI=3 XTB=1.5 TNOM=25)`); }
+          if (m.t !== undefined && Math.abs(m.t - 25) > 1e-9) lines[lines.length - 1] += ` temp=${+((m.t + 273.15) * 300.15 / 298.15 - 273.15).toFixed(2)}`;
+          if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NPN" : "PNP"}(IS=${m0.is} BF=${m0.bf} BR=${m0.br || 1} NF=${m.nf || 1} VAF=${m.vaf} IKF=${m.ikf} EG=${m.ge ? 0.67 : 1.11} XTI=3 XTB=1.5 TNOM=27)`); }
           // germanium leakage, collector to base: ICBO at this temperature, saturating as in the simulator
           if (m.icbo) {
             const [hi, lo] = m.pol > 0 ? [nd[0], nd[1]] : [nd[1], nd[0]], vbc = `V(${lo},${hi})`, vt = +m.vt.toPrecision(5);   // junction voltage, B–C for NPN, C–B for PNP
