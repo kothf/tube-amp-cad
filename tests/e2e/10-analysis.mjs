@@ -159,6 +159,10 @@ import { cad, check, open } from "./harness.mjs";
   check(!g.error && g.outA > 0.3e-6 && g.outA < 30e-6 && g.flat > g.outA, `example 07: a few µV of noise at the speaker, A-weighting below flat (${(g.outA * 1e6).toFixed(2)} µV (A), ${(g.flat * 1e6).toFixed(2)} µV flat)`);
   check(Math.abs(g.einA * g.g / g.outA - 1) < 1e-9 && g.einA < 5e-6, `the input noise is the output's over the gain (${(g.einA * 1e9).toFixed(0)} nV (A))`);
   check(g.ripple && g.ripple[1] > g.ripple[0] && g.ripple[1] > g.ripple[2], `the full-wave supply's ripple at the speaker is mostly at 100 Hz (${g.ripple.map(v => (v * 1e6).toFixed(2)).join(", ")} µV)`);
+  {
+    const txt = await cad.textContent("#nz-pane"), mains = await cad.evaluate(() => TubeCAD.state.noise.res.mainsName);
+    check(/^G\d+ \(230 ?V 50 ?Hz mains\)$/.test(mains) && txt.includes(`From ${mains}, through the supply:`) && txt.includes(`${mains}: hum, see below`), `the hum names its mains source, also under Noise from (${mains})`);
+  }
   check(g.parts.length > 3 && g.parts.some(p => /^VL/.test(p)) && g.parts.some(p => /^R/.test(p)), `the noise is split among tubes and resistors (${g.parts.slice(0, 4).join(", ")})`);
   const sn = 20 * Math.log10(g.v1W / g.allA);
   check(sn > 70 && sn < 140 && new RegExp(sn.toFixed(1) + " dB").test(await cad.textContent("#nz-pane .pw-card.main")), `the S/N card reads ${sn.toFixed(1)} dB(A) re 1 W`);
