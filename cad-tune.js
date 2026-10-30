@@ -185,7 +185,7 @@
       const options = last ? Object.assign({ warm: last }, RUN) : RUN;
       const goals = T.goals.map(g => Object.assign({}, g));
       const job = T.job = { opt, failed: 0 };
-      T.run = { vars, goals, start, startM: null, best: null, bestM: null, snapped: null, snappedM: null, history: opt.history, evals: 0, phase: "search" };
+      T.run = { vars, goals, start, base: S.history[S.hIndex], startM: null, best: null, bestM: null, snapped: null, snappedM: null, history: opt.history, evals: 0, phase: "search" };
       T.stale = false;
       const valsOf = p => vars.map((v, i) => { const x = fromUnit(v, p[i]); return v.kind === "range" ? Math.round(x * 1000) / 1000 : x; });
       const progress = () => setStatus("busy", `Auto-tune: ${opt.evals} of ${opt.budget} tries · ${T.run.bestM ? "cost " + opt.cost.toPrecision(3) : "starting"}`, opt.evals / opt.budget);
@@ -231,11 +231,17 @@
       const R = T.run; if (!R || !R.snapped) return;
       R.vars.forEach((v, i) => { const c = byId(v.id); if (c) c.params[v.key] = R.snapped[i]; });
       commit();
-      R.applied = true;
+      R.done = S.history[S.hIndex]; R.applied = true; T.stale = false;
       setStatus("ok", "Auto-tune: values set · " + R.vars.map((v, i) => `${v.label} ${fmtV(R.snapped[i], v)}`).join(", "));
       render();
     }
-    function changed() { if (T.run && T.run.phase === "done" && !T.stale && !T.run.applied) { T.stale = true; render(); } }
+    // the run follows the sheet through undo and redo: back where it started, Apply sets the values
+    // again; back at the applied values, they show as applied; anything else and the run is old
+    function changed() {
+      const R = T.run; if (!R || R.phase !== "done") return;
+      const now = S.history[S.hIndex], applied = !!R.done && now === R.done, stale = !applied && now !== R.base;
+      if (applied !== !!R.applied || stale !== T.stale) { R.applied = applied; T.stale = stale; render(); }
+    }
     const fmtV = (x, v) => (v.kind === "range" ? (+x).toFixed(3) : fmtEng(+x, v.unit || ""));
 
     // ---- drawing ----

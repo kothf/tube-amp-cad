@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.147.1] - 2026-10-30
+
+### Fixed
+- **Undo button.** The toolbar's Undo and Redo buttons did nothing, and Edit ▾ → Undo / Redo went two steps at a time: the menu items had the same names as the buttons, so both clicks were wired to the menu item. Each now steps once.
+- **Ctrl+Z after picking from a list.** With the focus still on a drop-down list, tick box or slider (the Listen source, a Tune goal), Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z did nothing; they now undo and redo the circuit. In a text or number field they still undo the typing.
+- **Auto-tune after Undo.** Undoing applied values left the button at "✓ Applied", so the values could not be set again; Apply also showed "the circuit changed since this run" right after it. The tab now follows undo and redo: back at the run's start, Apply is offered again; back at the applied values, they show as applied.
+- **AI: the Undo under an applied fix** takes back only that fix. After other edits it says so instead of undoing the last of those.
+
 ## [3.147.0] - 2026-10-30
 
 ### Added
