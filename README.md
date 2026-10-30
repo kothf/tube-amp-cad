@@ -112,6 +112,9 @@ Firefox is not tested.
     to the opened file after asking; in Safari and other browsers it
     downloads the file.
   - The circuit is also autosaved in the browser.
+  - File → Share link… packs the whole design (circuit, imported tubes,
+    board) into a link; whoever opens it gets the same circuit. The design
+    rides after `#` in the address, so nothing is uploaded.
   - The open file's name shows in the toolbar and the browser tab's title; a
     yellow • marks unsaved changes (the board's too). A circuit not saved to
     a file yet (a new one, or an example) shows its title block's title (or

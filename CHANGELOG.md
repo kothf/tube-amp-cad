@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.135.0] - 2026-10-30
+
+### Added
+- **File ▾ → Share link…**: the whole design packed into a link. The circuit, the imported SPICE tubes it uses and (ticked by default) its board layout are compressed into the address after `#c=`; Copy link and send it, and whoever opens it on aerocat.tech gets the same circuit with one click. The part after `#` never reaches the server, so nothing is uploaded and the design lives only in the link. Example 07 with its board makes a link of about 9 000 characters, 4 000 without. Opening a link over a circuit on the sheet asks first (Ctrl+Z brings the old one back), and the design is then taken off the address so a reload keeps your edits.
+
 ## [3.134.1] - 2026-10-30
 
 ### Fixed
