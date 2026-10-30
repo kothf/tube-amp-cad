@@ -91,7 +91,7 @@ Firefox is not tested.
   come from Katsnelson & Larionov for the Soviet tubes and from the makers'
   datasheets for the others (RCA, Philips, Mullard, Western Electric); a
   rating a datasheet does not give is not checked.
-- **Toolbar.** One row: the *Schematic | Board* switch (the same switch in the Board window leads back; Alt+B and Alt+S from any window; *Windows ▾ → Board in this window* makes the board a tab of the CAD window instead of a window of its own), *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic, and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, reusable blocks, renumber), undo / redo, the *Select | Wire | Probe* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
+- **Toolbar.** One row: the *Schematic | Board* switch (the same switch in the Board window leads back; Alt+B and Alt+S from any window; *Windows ▾ → Board in this window* makes the board a tab of the CAD window instead of a window of its own), *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic (the legend fades while the pointer is over it, so the drawing under it shows), and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, reusable blocks, renumber), undo / redo, the *Select | Wire | Probe* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
 - **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html`, opens from *Windows ▾ → Manual*, the help dialog, or **?** in each instrument. It covers:
   - a quick start, then every part and field;
   - all 99 tubes in a sortable table;
@@ -115,7 +115,9 @@ Firefox is not tested.
 - **Auto-tune** (the Tune tab, no key needed): set goals such as "10 W at
   ≤ 1 % THD" and the values that may change; an optimizer tries values, the
   simulator judges each, and the best are rounded to E24/E12. *AI start*
-  lets the model pick the values and ranges.
+  lets the model pick the values and ranges. With no goals yet, one button
+  adds the usual pair: the speaker's power a quarter above what it gives now,
+  at ≤ 1 % THD.
 - **Layout.**
   - Drag the edge of the palette, the inspector or the BOM to resize it, and
     double-click the edge to reset it. The same goes for the side panels of
@@ -190,7 +192,11 @@ Paste the `.SUBCKT … .ENDS` text or open the file.
 ### Examples
 
 **File → Examples** opens circuits drawn from published sources and compared
-with them (see [Accuracy](#accuracy)):
+with them (see [Accuracy](#accuracy)). The **start screen** (shown when the CAD
+opens on an empty sheet, and from *File ▾ → Gallery…*) has *New circuit*,
+*Open file* and every example as a picture of its first sheet, by kind; untick
+*Show this when the CAD opens* to start straight on the sheet. The pictures are
+drawn by `node scripts/example-thumbs.mjs` (run it after changing an example):
 
 | Example | Parts | Source |
 |---|---|---|
@@ -359,7 +365,9 @@ the circuit that was on the sheet.
     dissipation, speaker power and THD, scope channel AC and THD, each with a
     trend line, its range and the steps over its rating;
   - click a line to plot it against the value; a scope channel also overlays
-    its wave at every step; click a step to set the part to it.
+    its wave at every step; click a step to set the part to it;
+  - it starts on a resistor and plots the speaker's power (or the first scope
+    channel), so *Run* gives a useful curve straight away.
 - **KiCad.** *Export KiCad project* (File menu) writes a ZIP for KiCad 7 or
   later: the schematic (each symbol as drawn here, dual valves as units of
   one symbol, a sheet per drawing frame), the board when its parts are

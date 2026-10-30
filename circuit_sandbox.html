@@ -394,6 +394,21 @@
     .help-keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12px; margin: 6px 0 10px; }
     .help-keys kbd { justify-self: start; }
     #help-modal .modal-box { width: min(720px, 94vw); max-height: 86vh; overflow-y: auto; }
+    /* start screen: New, Open and the examples with their pictures */
+    #start-modal .start-box { width: min(1080px, 96vw); max-height: 92vh; display: flex; flex-direction: column; }
+    .start-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+    .start-head .insp-help { max-width: 620px; margin: 4px 0 0; }
+    .start-actions { display: flex; gap: 6px; }
+    #start-gallery { overflow-y: auto; margin-top: 10px; padding-right: 4px; }
+    .start-group { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin: 12px 0 6px; }
+    .start-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .start-card { display: flex; flex-direction: column; text-align: left; padding: 0; overflow: hidden; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font: inherit; cursor: pointer; }
+    .start-card:hover, .start-card:focus-visible { border-color: var(--accent); outline: none; }
+    .start-card img { display: block; width: 100%; height: auto; min-height: 0; aspect-ratio: 480 / 339; object-fit: cover; background: var(--bg); border-bottom: 1px solid var(--line); }
+    .start-card b { font-size: 13px; padding: 8px 10px 0; }
+    .start-card .start-tag { align-self: flex-start; margin: 4px 10px 0; padding: 1px 6px; border: 1px solid var(--line); border-radius: 10px; color: var(--accent); font-size: 11px; }
+    .start-card p { margin: 4px 10px 10px; color: var(--muted); font-size: 12px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .start-show { margin-right: auto; display: flex; align-items: center; gap: 6px; }
     #help-modal h3 { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
     .menu-head { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px 2px; }
     .menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
@@ -436,6 +451,7 @@
         <button class="menu-item" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
         <div class="menu-sep"></div>
         <div class="menu-head">Examples</div>
+        <button class="menu-item" role="menuitem" id="btn-start" title="Every example with its picture, and New and Open: the screen shown at start">Gallery…<kbd>start screen</kbd></button>
         <div id="examples-list"></div>
         <div class="menu-sep"></div>
         <button class="menu-item" role="menuitem" id="btn-print">Print…<kbd>Ctrl+P</kbd></button>
@@ -818,6 +834,25 @@
     </div>
   </div>
 
+  <div class="modal" id="start-modal" hidden>
+    <div class="modal-box start-box" role="dialog" aria-labelledby="start-title">
+      <div class="start-head">
+        <div>
+          <div class="insp-title" id="start-title">Tube Amp CAD</div>
+          <p class="insp-help">Draw an amplifier, simulate it, measure and listen to it, then lay out its board. Open an example to see how it works, or start a circuit of your own.</p>
+        </div>
+        <div class="start-actions">
+          <button class="btn active" id="btn-start-new" title="A new circuit on a drawing sheet of the size you pick">New circuit…</button>
+          <button class="btn" id="btn-start-open" title="A circuit saved from Tube Amp CAD (.json) or a SPICE netlist (Ctrl+O)">Open file…</button>
+        </div>
+      </div>
+      <div id="start-gallery"></div>
+      <div class="modal-actions">
+        <label class="insp-help start-show"><input type="checkbox" id="start-show"> Show this when the CAD opens on an empty sheet</label>
+        <button class="btn" id="btn-start-close">Close</button>
+      </div>
+    </div>
+  </div>
   <div class="modal" id="share-modal" hidden>
     <div class="modal-box" style="width: min(560px, 94vw)">
       <div class="insp-title">Share link</div>

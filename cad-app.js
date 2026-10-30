@@ -858,6 +858,9 @@
   }
   function onMouseMove(e) {
     const m = evPos(e);
+    // the legend fades while the pointer is over it, to show the drawing under it
+    const lh = !!legendBox && m.sx > legendBox.x - 12 && m.sx < legendBox.x + legendBox.w + 12 && m.sy > legendBox.y - 12 && m.sy < legendBox.y + legendBox.h + 12;
+    if (lh !== legendHover) { legendHover = lh; render(); }
     const d = S.drag;
     if (d && d.kind === "pan") { S.view.ox = d.ox + (m.sx - d.sx); S.view.oy = d.oy + (m.sy - d.sy); render(); return; }
     if (d && d.kind === "comps") { updateCompDrag(m.wx, m.wy); return; }
@@ -1252,6 +1255,7 @@
   function drawLegend(H) {
     const rows = legendRows(); if (!rows.length) { legendBox = null; return; }
     ctx.save();
+    if (legendHover) ctx.globalAlpha = 0.12;
     ctx.font = "10px ui-monospace, monospace";
     const sw = 58, lh = 16, tw = Math.max(...rows.map(q => ctx.measureText(q.text).width)), w = sw + tw + 18, h = rows.length * lh + 10, x0 = 8, y0 = H - h - 8;
     ctx.font = "9px ui-monospace, monospace";
@@ -1279,7 +1283,7 @@
     ctx.restore();
     legendBox = { x: x0, y: y0, w, h, rows: rows.map(q => q.text) };
   }
-  let legendBox = null;
+  let legendBox = null, legendHover = false;
 
   // Reference designation as shown on the diagram: the label as typed, e.g. R1, VL1.2
   function desig(c) { return c.label || ""; }
@@ -2520,7 +2524,7 @@
     { file: "12-555-simplest-oscillator.json", title: "NE555 simplest oscillator", tag: "555", about: "555-timer-circuits.com, the simplest 555 oscillator: the output charges 100 nF through 10k; simulated 572 Hz at 60 % high, slower than the 721 Hz of an ideal output because pin 3 rises only to VCC − 1.4 V" }
   ];
   async function openExample(ex) {
-    if (S.comps.length && !confirm(`Open the example "${ex.title}"?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.`)) return;
+    if ((S.wires.length || S.comps.some(c => c.type !== "frame")) && !confirm(`Open the example "${ex.title}"?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.`)) return;
     try {
       const r = await fetch("examples/" + ex.file + VERSION);
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
@@ -2609,6 +2613,34 @@
       host.appendChild(b);
     });
   }
+  // The start screen (File ▾ → Gallery…): New, Open and every example with its picture
+  // (examples/thumbs, drawn by scripts/example-thumbs.mjs). It shows by itself when the CAD
+  // opens on an empty sheet, unless its tick box was cleared.
+  const START_KEY = "tubecad_start";
+  const EX_GROUPS = [["Tube amplifiers", t => t === "tubes"], ["Tubes with transistors", t => /^tube \+/.test(t)], ["Transistor amplifiers", t => t === "MOSFETs" || t === "transistor"], ["555 timer", t => t === "555"]];
+  function buildGallery() {
+    const host = document.getElementById("start-gallery"); if (!host || host.childElementCount) return;
+    const grouped = EX_GROUPS.map(([name, is]) => [name, EXAMPLES.filter(ex => is(ex.tag))]);
+    grouped.push(["Other", EXAMPLES.filter(ex => !grouped.some(([, list]) => list.includes(ex)))]);
+    grouped.filter(([, list]) => list.length).forEach(([name, list]) => {
+      const h = document.createElement("div"); h.className = "start-group"; h.textContent = name; host.appendChild(h);
+      const grid = document.createElement("div"); grid.className = "start-grid"; host.appendChild(grid);
+      list.forEach(ex => {
+        const b = document.createElement("button"); b.className = "start-card"; b.dataset.example = ex.file; b.title = ex.about;
+        b.innerHTML = `<img src="examples/thumbs/${ex.file.replace(/\.json$/, ".webp")}${VERSION}" alt="" loading="lazy" width="480" height="339"><b>${escH(ex.title)}</b><span class="start-tag">${escH(ex.tag)}</span><p>${escH(ex.about)}</p>`;
+        b.addEventListener("click", () => { closeStart(); openExample(ex); });
+        grid.appendChild(b);
+      });
+    });
+  }
+  const startOn = () => { try { return localStorage.getItem(START_KEY) !== "0"; } catch (e) { return true; } };
+  function openStart() {
+    buildGallery();
+    document.getElementById("start-show").checked = startOn();
+    document.getElementById("start-modal").hidden = false;
+    const c = document.querySelector("#start-gallery .start-card"); if (c) c.focus();
+  }
+  function closeStart() { document.getElementById("start-modal").hidden = true; }
   function setCurFile(handle, name) {
     curFile = { handle: handle || null, name: name || "" };
     showFile();
@@ -2906,6 +2938,11 @@
     });
     bind("btn-open", openDialog);
     buildExamplesMenu();
+    bind("btn-start", openStart);
+    bind("btn-start-close", closeStart);
+    bind("btn-start-new", () => { closeStart(); openSheetDialog("new"); });
+    bind("btn-start-open", () => { closeStart(); openDialog(); });
+    document.getElementById("start-show").addEventListener("change", e => { try { localStorage.setItem(START_KEY, e.target.checked ? "1" : "0"); } catch (err) { /* private mode */ } });
     document.getElementById("file-input").addEventListener("change", e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; });
     bind("btn-save", saveFile);
     bind("btn-save-as", saveFileAs);
@@ -2990,11 +3027,13 @@
     updateInspector();
     updateSheetNav();
     requestAnimationFrame(() => { fitStart(); scheduleSim(0); });
+    // nothing on the sheet and no link to open: the start screen
+    if (!location.hash && !/[?&]board=1/.test(location.search) && !S.wires.length && !S.comps.some(c => c.type !== "frame") && startOn()) openStart();
     openSharedLink();
     if (revisions) revisions.openFromLink();
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { blocks, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
