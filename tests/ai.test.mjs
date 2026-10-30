@@ -75,6 +75,31 @@ test("answers read back from each provider; refusals and blocks become errors", 
   await assert.rejects(C.chat(cfg("gemini"), { messages: [{ role: "user", text: "q" }] }, reply(200, { promptFeedback: { blockReason: "SAFETY" } })), /blocked/);
 });
 
+test("streamed answers: each provider's events read as they come, cut and refused answers too", async () => {
+  const cfg = p => C.normalise({ provider: p, keys: { [p]: "k" } });
+  const sse = (events, split) => { const t = events.map(e => (e.event ? `event: ${e.event}\n` : "") + `data: ${JSON.stringify(e.data)}\n\n`).join("");
+    const enc = new TextEncoder().encode(t), cuts = [0, split || 7, enc.length];   // split mid-event, as the network does
+    return async (url, init) => { seen.push({ url, body: JSON.parse(init.body) }); let k = 0;
+      return { ok: true, status: 200, headers: { get: () => "text/event-stream; charset=utf-8" }, body: { getReader: () => ({ read: async () => (k < 2 ? { done: false, value: enc.slice(cuts[k], cuts[++k]) } : { done: true }) }) } }; }; };
+  const seen = [], partial = [];
+  const a = [{ event: "message_start", data: { type: "message_start" } }, { data: { type: "content_block_delta", delta: { type: "text_delta", text: "Hel" } } },
+    { data: { type: "content_block_delta", delta: { type: "text_delta", text: "lo" } } }, { data: { type: "message_delta", delta: { stop_reason: "end_turn" } } }, { data: { type: "message_stop" } }];
+  assert.equal(await C.chat(cfg("anthropic"), { messages: [{ role: "user", text: "q" }], onText: t => partial.push(t) }, sse(a, 120)), "Hello");
+  assert.equal(seen[0].body.stream, true);
+  assert.equal(partial[partial.length - 1], "Hello");
+  const cut = a.slice(0, 3).concat([{ data: { type: "message_delta", delta: { stop_reason: "max_tokens" } } }]);
+  assert.match(await C.chat(cfg("anthropic"), { messages: [{ role: "user", text: "q" }] }, sse(cut)), /^Hello\n\n\(The answer was cut short/);
+  await assert.rejects(C.chat(cfg("anthropic"), { messages: [{ role: "user", text: "q" }] }, sse([{ data: { type: "message_delta", delta: { stop_reason: "refusal" } } }])), /declined/);
+  await assert.rejects(C.chat(cfg("anthropic"), { messages: [{ role: "user", text: "q" }] }, sse([{ data: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } } }])), /Overloaded/);
+  const o = [{ data: { type: "response.created" } }, { data: { type: "response.output_text.delta", delta: "Hi " } }, { data: { type: "response.output_text.delta", delta: "there" } }, { data: { type: "response.completed", response: { status: "completed" } } }];
+  assert.equal(await C.chat(cfg("openai"), { messages: [{ role: "user", text: "q" }] }, sse(o)), "Hi there");
+  assert.equal(seen[seen.length - 1].body.stream, true);
+  const g = [{ data: { candidates: [{ content: { parts: [{ text: "x", thought: true }, { text: "He" }] } }] } }, { data: { candidates: [{ content: { parts: [{ text: "y" }] }, finishReason: "STOP" }] } }];
+  assert.equal(await C.chat(cfg("gemini"), { messages: [{ role: "user", text: "q" }] }, sse(g)), "Hey");
+  assert.match(seen[seen.length - 1].url, /:streamGenerateContent\?alt=sse$/);
+  assert.equal(C.build("gemini", "m", "k", { messages: [{ role: "user", text: "q" }] }).url.endsWith(":generateContent"), true);
+});
+
 test("errors say what to do: no key, a refused key, an unknown model, rate limits, no network", async () => {
   const q = { messages: [{ role: "user", text: "q" }] };
   await assert.rejects(C.chat(C.normalise({}), q, reply(200, {})), /No Claude API key/);

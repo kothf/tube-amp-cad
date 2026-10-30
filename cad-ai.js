@@ -100,8 +100,11 @@
     function add(entry) { AI.log.push(entry); render(); return entry; }
     function show() { toggleBom(true, "ai"); }
     // a request to the provider in use; the Stop button aborts it
-    async function call(req, what) {
+    // (live: the answer is prose, shown while it is written)
+    let paint = 0;
+    async function call(req, what, live) {
       AI.cfg = AiClient.load();
+      if (live) req = Object.assign({}, req, { onText: t => { if (!AI.busy) return; AI.busy.partial = t; if (!paint) paint = setTimeout(() => { paint = 0; render(); }, 120); } });
       if (needKey()) throw Object.assign(new Error("no key"), { quiet: true });
       const ctl = typeof AbortController === "function" ? new AbortController() : null;
       AI.busy = { what, ctl, t0: Date.now() }; render();
@@ -133,7 +136,7 @@
       add({ kind: "user", text: shown || question, prompt: question });
       try {
         const system = SYSTEM + "\n\n# The manual (help.html)\n" + await manual();
-        const text = await call({ system, messages: msgs }, shown || "Assistant");
+        const text = await call({ system, messages: msgs }, shown || "Assistant", true);
         add({ kind: "answer", text });
       } catch (e) { fail(e); }
     }
@@ -219,7 +222,8 @@
           + (AiClient.ready(AI.cfg) ? "" : ` It needs your own API key for Claude, ChatGPT or Gemini: <a href="#" data-settings="1">AI settings…</a>`) + `</div>`
           + `<div class="ai-chips">${["Explain my circuit", "Fix the checks", "Why does the output stage run so hot?", "How do I measure the output power at 1 % THD?", "How do I add a second sheet?"].map(q => `<button class="btn ai-chip">${esc(q)}</button>`).join("")}</div>`;
       }
-      if (AI.busy) h += `<div class="ai-msg busy"><span class="ai-dots"></span> ${esc(AI.busy.what)} · ${esc(AiClient.label(AI.cfg))} is thinking… <button class="btn" id="btn-ai-stop">Stop</button></div>`;
+      if (AI.busy) h += (AI.busy.partial ? `<div class="ai-msg answer">${A.markdown(AI.busy.partial, refs())}</div>` : "")
+        + `<div class="ai-msg busy"><span class="ai-dots"></span> ${esc(AI.busy.what)} · ${esc(AiClient.label(AI.cfg))} is ${AI.busy.partial ? "writing" : "thinking"}… <button class="btn" id="btn-ai-stop">Stop</button></div>`;
       log.innerHTML = h;
       log.scrollTop = log.scrollHeight;
       const send = $("btn-ai-send"); if (send) send.disabled = !!AI.busy;
@@ -298,6 +302,8 @@
       input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
       bind("btn-ai-explain", explain); bind("btn-ai-fix", fixChecks);
       bind("ai-who", openSettings); bind("btn-ai-clear", () => { if (AI.busy && AI.busy.ctl) AI.busy.ctl.abort(); AI.log = []; render(); });
+      const tuneTab = () => toggleBom(true, "tune");
+      bind("menu-ai-tune", tuneTab);
       bind("menu-ai-chat", () => { show(); setTimeout(() => input.focus(), 0); }); bind("menu-ai-explain", explain); bind("menu-ai-fix", fixChecks); bind("menu-ai-settings", openSettings);
       document.querySelectorAll("#ai-providers [data-p]").forEach(b => b.addEventListener("click", () => { readDraft(); settingsTab(b.dataset.p); }));
       bind("btn-ai-test", testKey); bind("btn-ai-list", loadModels); bind("btn-ai-save", saveSettings); bind("btn-ai-forget", forgetKeys);

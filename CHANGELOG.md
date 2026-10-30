@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.141.0] - 2026-10-30
+
+### Added
+- **Auto-tune**: a **Tune** tab under the schematic (also AI ▾ → Auto-tune) that changes part values until the simulated circuit meets your goals, with no API key needed.
+  - Goals are any measurement (operating points, stage gains, a speaker's power and THD, a scope channel's THD) with ≥, ≤ or = a target, plus "keep every tube and transistor within its ratings".
+  - Values to change are any editable values with a range; **Suggest** adds the resistors at the tubes' and transistors' pins. A pattern-search optimizer proposes tries, the simulator runs them on all workers, and the best values are rounded to E24/E12 and simulated once more. A chart shows the progress; **Stop** keeps the best so far; **Apply these values** is one undo step.
+  - **AI start** (with an API key): the model picks the values to change, their ranges and starting values for your goals.
+
+### Fixed
+- AI assistant: answers are now streamed from all three providers and appear in the AI tab while they are written. A long answer (Explain my circuit takes a minute or more on the strongest models) no longer fails with "Could not reach Claude (Failed to fetch)" behind a proxy or firewall that drops a connection after 30 quiet seconds.
+
 ## [3.140.0] - 2026-10-30
 
 ### Added
