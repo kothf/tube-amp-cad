@@ -275,7 +275,15 @@
     .tune-table th { color: var(--muted); font-weight: 600; text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--line); }
     .tune-table td { padding: 2px 8px; border-bottom: 1px dashed #1a2433; } .tune-table td.n { text-align: right; font-variant-numeric: tabular-nums; } .tune-table td.mono { font-family: ui-monospace, Menlo, monospace; }
     .tune-table td.ok { color: var(--ok); } .tune-table td.warn { color: var(--warn); }
-    .tune-chart { max-width: 380px; margin-top: 6px; }
+    .tune-chart { max-width: 520px; margin-top: 4px; }
+    .tune-chart .tune-goal { fill: #3fb95022; stroke: #3fb95066; stroke-dasharray: 3 3; } .pw-chart .ax.ok { fill: var(--ok); } .pw-chart .ax.best { fill: var(--amber); }
+    .tune-chart .tune-try { fill: #8b949e99; } .tune-chart .tune-try.met { fill: var(--ok); } .tune-chart .tune-fail { fill: var(--warn); font: 10px sans-serif; }
+    .tune-chart .tune-best { fill: none; stroke: var(--accent); stroke-width: 2; } .tune-chart .tune-star { fill: var(--amber); stroke: #0a0e14; stroke-width: 1.5; }
+    .tune-line { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 4px; font-variant-numeric: tabular-nums; } .tune-line .ok { color: var(--ok); }
+    .tune-legend { display: flex; flex-wrap: wrap; gap: 3px 14px; align-items: center; max-width: 520px; margin: 4px 0 8px; font-size: 11px; color: var(--muted); }
+    .tune-legend span { display: inline-flex; align-items: center; gap: 5px; } .tune-legend .muted { flex-basis: 100%; }
+    .tune-legend i { display: inline-block; } .lg-try { width: 5px; height: 5px; border-radius: 50%; background: #8b949e; } .lg-best { width: 16px; height: 2px; background: var(--accent); }
+    .lg-goal { width: 14px; height: 9px; background: #3fb95022; border: 1px dashed #3fb95066; } .lg-fail { color: var(--warn); font-weight: 400; }
     /* status bar */
     footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
     .sim-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }

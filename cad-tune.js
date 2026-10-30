@@ -185,7 +185,7 @@
       const options = last ? Object.assign({ warm: last }, RUN) : RUN;
       const goals = T.goals.map(g => Object.assign({}, g));
       const job = T.job = { opt, failed: 0 };
-      T.run = { vars, goals, start, base: S.history[S.hIndex], startM: null, best: null, bestM: null, snapped: null, snappedM: null, history: opt.history, evals: 0, phase: "search" };
+      T.run = { vars, goals, start, base: S.history[S.hIndex], startM: null, best: null, bestM: null, snapped: null, snappedM: null, history: opt.history, tries: [], bestAt: 0, evals: 0, phase: "search" };
       T.stale = false;
       const valsOf = p => vars.map((v, i) => { const x = fromUnit(v, p[i]); return v.kind === "range" ? Math.round(x * 1000) / 1000 : x; });
       const progress = () => setStatus("busy", `Auto-tune: ${opt.evals} of ${opt.budget} tries · ${T.run.bestM ? "cost " + opt.cost.toPrecision(3) : "starting"}`, opt.evals / opt.budget);
@@ -199,11 +199,13 @@
           if (T.job !== job) return;
           ms[k] = m; costs[k] = m ? cost(goals, m.q, m.rated) : Infinity; if (!m) job.failed++;
           if (--left) return;
-          const before = opt.cost;
+          const before = opt.cost, n0 = opt.evals;
           opt.tell(pts, costs);
           const i = costs.indexOf(Math.min(...costs));
+          // every try for the chart: its cost and how many goals it met
+          costs.forEach((c, j) => T.run.tries.push({ c, met: ms[j] ? goals.filter(g => met(g, ms[j].q[g.key])).length : 0 }));
           if (!T.run.startM && ms[0]) T.run.startM = ms[0].q;
-          if (opt.cost < before) { T.run.best = sets[i]; T.run.bestM = ms[i]; }
+          if (opt.cost < before) { T.run.best = sets[i]; T.run.bestM = ms[i]; T.run.bestAt = n0 + i + 1; }
           T.run.evals = opt.evals;
           progress(); render(); step();
         });
@@ -245,13 +247,62 @@
     const fmtV = (x, v) => (v.kind === "range" ? (+x).toFixed(3) : fmtEng(+x, v.unit || ""));
 
     // ---- drawing ----
-    function chart(hist) {
-      const W = 300, H = 120, pts = hist.map((c, i) => [i, c]).filter(p => isFinite(p[1]));
-      if (pts.length < 2) return "";
-      const lg = v => Math.log10(Math.max(v, 1e-6)), ys = pts.map(p => lg(p[1])), y0 = Math.min(...ys), y1 = Math.max(...ys, y0 + 1);
-      const X = i => 30 + i / Math.max(1, hist.length - 1) * (W - 36), Y = v => 8 + (y1 - lg(v)) / (y1 - y0) * (H - 26);
-      return `<svg class="pw-chart tune-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="How far from the goals, try by try"><polyline class="thd" points="${pts.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"/>`
-        + `<text class="ax" x="${W / 2}" y="${H - 3}" text-anchor="middle">tries → (distance from the goals, log)</text></svg>`;
+    // how far off the goals are, as one number a person reads: the rms of the goals' relative
+    // misses (cost = Σ miss², rating penalties included), in %; 0 when every goal is met
+    const offPct = c => (isFinite(c) ? 100 * Math.sqrt(Math.max(0, c)) : Infinity);
+    const offText = v => (!isFinite(v) ? "—" : v <= 0 ? "0 %" : v < 1 ? v.toPrecision(2) + " %" : v < 100 ? v.toFixed(1) + " %" : Math.round(v) + " %");
+    // the run try by try: a dot per try, the best so far as a line, the goals-met band at the foot
+    function chart(R, budget) {
+      const tries = R.tries || [], n = Math.max(budget || 0, tries.length, 2);
+      if (!tries.length) return "";
+      const W = 460, H = 210, L = 50, Rt = 12, Tp = 12, B = 34, band = 14;
+      const lg = Math.log10, offs = tries.map(t => offPct(t.c)), fin = offs.filter(v => isFinite(v) && v > 0);
+      const y1 = Math.max(1, Math.ceil(lg(Math.max(10, ...fin)))), y0 = Math.min(y1 - 2, Math.max(-3, Math.floor(lg(Math.min(1, ...fin)))));
+      const ph = H - Tp - B - band;   // the log part; below it the band where the distance is 0
+      const X = i => L + (i - 0.5) / n * (W - L - Rt);
+      const Y = v => (!isFinite(v) ? Tp - 4 : v <= 0 ? Tp + ph + band / 2 + 2 : Tp + (y1 - Math.max(y0, Math.min(y1, lg(v)))) / (y1 - y0) * ph);
+      const tip = (i, t) => `Try ${i}: ${!isFinite(t.c) ? "did not settle" : t.c <= 0 ? "every goal met" : `off by ${offText(offPct(t.c))} · ${t.met} of ${R.goals.length} goals met`}`;
+      let s = `<svg class="pw-chart tune-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="How far from the goals, try by try">`;
+      for (let d = y0; d <= y1; d++) {
+        const v = Math.pow(10, d), y = Y(v);
+        s += `<line class="g1" x1="${L}" x2="${W - Rt}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text class="ax" x="${L - 5}" y="${(y + 3.5).toFixed(1)}" text-anchor="end">${v >= 1 ? v : v.toFixed(-d)} %</text>`;
+      }
+      s += `<rect class="tune-goal" x="${L}" y="${Tp + ph + 2}" width="${W - L - Rt}" height="${band}"/><text class="ax ok" x="${L - 5}" y="${Tp + ph + band / 2 + 5.5}" text-anchor="end">✓ 0</text>`
+        + `<text class="ax ok" x="${W - Rt - 4}" y="${Tp + ph + band / 2 + 5.5}" text-anchor="end">every goal met</text>`;
+      const step = n <= 12 ? 1 : n <= 30 ? 5 : n <= 60 ? 10 : n <= 150 ? 20 : n <= 300 ? 50 : 100;
+      for (let i = step; i <= n; i += step) s += `<line class="g2" x1="${X(i).toFixed(1)}" x2="${X(i).toFixed(1)}" y1="${Tp}" y2="${Tp + ph}"/><text class="ax" x="${X(i).toFixed(1)}" y="${H - B + 14}" text-anchor="middle">${i}</text>`;
+      if (step > 1) s += `<text class="ax" x="${X(1).toFixed(1)}" y="${H - B + 14}" text-anchor="middle">1</text>`;
+      s += `<text class="ax" x="${(L + W - Rt) / 2}" y="${H - 3}" text-anchor="middle">try number (each try is one simulation)</text>`
+        + `<text class="ax" x="11" y="${Tp + ph / 2}" text-anchor="middle" transform="rotate(-90 11 ${Tp + ph / 2})">off the goals</text>`;
+      if (T.job) { const x = X(tries.length).toFixed(1); s += `<line class="now" x1="${x}" x2="${x}" y1="${Tp}" y2="${Tp + ph + band + 2}"/>`; }
+      tries.forEach((t, k) => { const v = offs[k];
+        s += !isFinite(v) ? `<text class="tune-fail" x="${X(k + 1).toFixed(1)}" y="${Tp + 3}" text-anchor="middle">×<title>${esc(tip(k + 1, t))}</title></text>`
+          : `<circle class="tune-try${v <= 0 ? " met" : ""}" cx="${X(k + 1).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.2"><title>${esc(tip(k + 1, t))}</title></circle>`; });
+      // the best so far: a step line, flat until a try beats it
+      const h = R.history || [];
+      let d = "", prev = null;
+      h.forEach((c, k) => { if (!isFinite(c)) return; const x = X(k + 1).toFixed(1), y = Y(offPct(c)).toFixed(1); d += prev === null ? `M${x},${y}` : (prev !== y ? `H${x}V${y}` : ""); prev = y; });
+      if (d) s += `<path class="tune-best" d="${d}H${X(h.length).toFixed(1)}"/>`;
+      if (R.bestAt && isFinite(h[R.bestAt - 1])) {
+        const x = X(R.bestAt), y = Y(offPct(h[R.bestAt - 1]));
+        s += `<circle class="tune-star" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5"><title>Best: try ${R.bestAt}</title></circle>`
+          + `<text class="ax best" x="${(x + (x > W - 110 ? -8 : 8)).toFixed(1)}" y="${(y < Tp + 14 ? y + 14 : y - 7).toFixed(1)}" text-anchor="${x > W - 110 ? "end" : "start"}">best · try ${R.bestAt}</text>`;
+      }
+      return s + "</svg>"
+        + `<div class="tune-legend"><span><i class="lg-try"></i>a try</span><span><i class="lg-best"></i>best so far</span><span><i class="lg-goal"></i>every goal met</span>${tries.some(t => !isFinite(t.c)) ? `<span><b class="lg-fail">×</b>did not settle</span>` : ""}`
+        + `<span class="muted">“Off the goals” = how far the measured values miss their targets, in % (0 when all are met)</span></div>`;
+    }
+    // a goal's miss in %: "met" or how far short or over the target it is
+    const missText = (g, v, ok) => (v === undefined || !isFinite(v) ? "—" : ok ? "met" : offText(100 * Math.abs(v - g.target) / (Math.abs(g.target) > 1e-12 ? Math.abs(g.target) : 1)));
+    // one line: where the run is
+    function runLine(R, m) {
+      const n = R.goals.length, ok = m ? R.goals.filter(g => met(g, m.q[g.key])).length : 0;
+      const best = R.history && R.history.length ? R.history[R.history.length - 1] : Infinity;
+      return `<div class="tune-line">`
+        + (T.job ? `<span>Try <b>${R.evals}</b> / ${T.job.opt.budget}</span>` : `<span><b>${R.evals}</b> tries</span>`)
+        + `<span class="${ok === n ? "ok" : ""}"><b>${ok}</b> of ${n} goal${n === 1 ? "" : "s"} met</span>`
+        + (R.bestAt ? `<span>best at try <b>${R.bestAt}</b></span>` : "")
+        + `<span title="How far the best try's measured values miss their targets, in % (0 when every goal is met)">off by <b>${offText(offPct(best))}</b></span></div>`;
     }
     const opsHTML = op => [[">=", "≥"], ["<=", "≤"], ["=", "="]].map(([v, t]) => `<option value="${v}"${v === op ? " selected" : ""}>${t}</option>`).join("");
     function render() {
@@ -276,18 +327,18 @@
       else if (!R) right = `<div class="bom-empty">Set the goals (for example <b>BA1 output ≥ 10 W</b> and <b>BA1 THD ≤ 1 %</b>, with the generator's level among the values to change) and the values Auto-tune may change, then press <b>▶ Tune</b>. Each try is a full simulation; the tries run on all cores at once. No AI key is needed${window.AiClient && AiClient.ready(AiClient.load()) ? "; <b>AI start</b> asks the AI which values to vary and where to begin" : ""}.</div>`;
       else {
         const m = R.phase === "done" ? (R.snappedM || R.bestM) : R.bestM, mq = m ? m.q : {};
-        const gRows = R.goals.map(g => { const v = mq[g.key], ok = met(g, v); return `<tr><td>${esc(qLabel(g.key))}</td><td class="n mono">${{ ">=": "≥", "<=": "≤", "=": "=" }[g.op]} ${esc(fmtEng(g.target, qUnit(g.key)))}</td><td class="n mono">${R.startM && R.startM[g.key] !== undefined ? esc(fmtEng(R.startM[g.key], qUnit(g.key), 3)) : "—"}</td><td class="n mono ${v === undefined ? "" : ok ? "ok" : "warn"}">${v !== undefined ? esc(fmtEng(v, qUnit(g.key), 3)) + (ok ? " ✓" : "") : "—"}</td></tr>`; }).join("");
+        const gRows = R.goals.map(g => { const v = mq[g.key], ok = met(g, v); return `<tr><td>${esc(qLabel(g.key))}</td><td class="n mono">${{ ">=": "≥", "<=": "≤", "=": "=" }[g.op]} ${esc(fmtEng(g.target, qUnit(g.key)))}</td><td class="n mono">${R.startM && R.startM[g.key] !== undefined ? esc(fmtEng(R.startM[g.key], qUnit(g.key), 3)) : "—"}</td><td class="n mono ${v === undefined ? "" : ok ? "ok" : "warn"}">${v !== undefined ? esc(fmtEng(v, qUnit(g.key), 3)) + (ok ? " ✓" : "") : "—"}</td><td class="n mono ${ok ? "ok" : "warn"}">${missText(g, v, ok)}</td></tr>`; }).join("");
         const shown = R.phase === "done" ? R.snapped : R.best;
         const vRows = R.vars.map((v, i) => `<tr><td>${esc(v.label)}</td><td class="n mono">${esc(fmtV(R.start[i], v))}</td><td class="n mono"><b>${shown ? esc(fmtV(shown[i], v)) : "…"}</b></td></tr>`).join("");
         const over = m && m.rated.filter(r => r.v > r.max);
-        const head = T.job ? `<div class="tune-state">Searching… ${R.evals} of ${T.job.opt.budget} tries</div>`
+        const head = T.job ? `<div class="tune-state">Searching…</div>`
           : `<div class="tune-state ${R.ok ? "ok" : "warn"}">${R.ok ? "✓ Every goal met" : "Closest it got: not every goal is met"}${R.vars.some(v => v.snap) ? " (values rounded to standard series)" : ""}</div>`;
         right = (T.stale ? `<div class="bom-empty tol-note">The circuit changed since this run: press ▶ Tune again.</div>` : "") + head
-          + `<table class="tune-table"><tr><th>Goal</th><th>Target</th><th>Start</th><th>${T.job ? "Best so far" : "Result"}</th></tr>${gRows}</table>`
+          + runLine(R, R.bestM) + chart(R, T.job ? T.job.opt.budget : R.evals)
+          + `<table class="tune-table"><tr><th>Goal</th><th>Target</th><th>Start</th><th>${T.job ? "Best so far" : "Result"}</th><th title="How far the value misses its target">Off by</th></tr>${gRows}</table>`
           + (over && over.length ? `<div class="tune-state warn">Beyond a rating: ${over.map(r => esc(r.label)).join(", ")}</div>` : "")
           + `<table class="tune-table"><tr><th>Value</th><th>Start</th><th>${T.job ? "Best so far" : "Result"}</th></tr>${vRows}</table>`
-          + (!T.job && R.snapped ? `<div class="ai-row"><button class="btn primary" id="btn-tune-apply"${R.applied ? " disabled" : ""}>${R.applied ? "✓ Applied" : "Apply these values"}</button></div>` : "")
-          + chart(R.history);
+          + (!T.job && R.snapped ? `<div class="ai-row"><button class="btn primary" id="btn-tune-apply"${R.applied ? " disabled" : ""}>${R.applied ? "✓ Applied" : "Apply these values"}</button></div>` : "");
       }
       host.innerHTML = `<div class="tune-wrap"><div class="tune-left">${left}</div><div class="tune-right">${right}</div></div>`;
     }
