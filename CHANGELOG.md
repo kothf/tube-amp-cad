@@ -6,11 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.137.0] - 2026-10-30
+## [3.138.0] - 2026-10-30
 
 ### Changed
 - Board: the toolbar stays one row down to 1000 px (it took two rows at 1100 px and below). Below 1180 px Text, Hole, Keep-out and Measure fold into one **More tools ▾** button, which shows the tool last picked from it and is lit while that tool is on; and Fit is hidden (the zoom percentage at the bottom right and F fit the board too). The keys T, H, K and D work as before.
 - The oscilloscope, spectrum analyzer and Bode plotter have the same **Schematic | Board** switch as the CAD and the Board, at the left of the toolbar, in place of the single Schematic button; neither is lit, since the instrument is neither. Board brings up the Board window, or, when the CAD keeps the board in its own window (Windows ▾ → Board in this window, the default in Safari), shows it there. Alt+B from an instrument does the same. Below 1240 px the switch shows its icons only, so the Bode plotter's toolbar stays one row down to 1000 px.
+
+## [3.137.0] - 2026-10-30
+
+### Added
+- **Short share links.** On aerocat.tech, File ▾ → Share link… now gives a link like `aerocat.tech/s/Ab3xK9_qZw`: the packed design is kept by a small link store on the site and found again by its id. The id is the start of the design's SHA-256, so sharing the same design twice gives the same link, and a stored design never changes. Other copies of the app (a local folder) still give the long link with the design inside, and open short links from the site. If the store can't be reached, the dialog gives the long link and says why.
+- `server/share/`: the link store (Node, no packages), its Dockerfile and compose file, and the nginx lines for `/s/<id>` and `/api/share` with a rate limit. It keeps only text that unpacks to a Tube Amp CAD design, at most 96k characters each and 512 MB in all.
+
+### Changed
+- Share link: the design is packed shorter (parts and wires as rows instead of named fields), so the long link of example 07 is about 3 800 characters without its board and 8 500 with it, instead of 4 200 and 8 900. Links made by 3.135.0 still open.
 
 ## [3.136.0] - 2026-10-30
 

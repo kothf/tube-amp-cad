@@ -31,7 +31,8 @@ export const open = async (name, page) => {
   const p = await ctx.newPage();
   p.on("pageerror", e => errors.push(`${name}: ${e.message}`));
   // the Board window asks for Freerouting on this computer every few seconds: no answer there (or one a CORS check refuses) is not an error of the page
-  p.on("console", m => { if (m.type() === "error" && !/^http:\/\/127\.0\.0\.1:\d+\/v1\//.test((m.location() || {}).url || "") && !/127\.0\.0\.1:\d+\/v1\/|Failed to load resource: net::ERR_FAILED/.test(m.text())) errors.push(`${name}: ${m.text()}`); });
+  // nor is the link store's 404 (the test server has none; 11-share plays one where it needs it)
+  p.on("console", m => { if (m.type() === "error" && !/^http:\/\/127\.0\.0\.1:\d+\/v1\/|\/api\/share(\/|$)/.test((m.location() || {}).url || "") && !/127\.0\.0\.1:\d+\/v1\/|Failed to load resource: net::ERR_FAILED/.test(m.text())) errors.push(`${name}: ${m.text()}`); });
   p.on("response", r => { if (r.status() >= 400) missing.push(`${r.status()} ${r.url()}`); });
   await p.goto(U(page));
   return p;
