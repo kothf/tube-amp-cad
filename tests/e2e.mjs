@@ -11,7 +11,7 @@
 import { browser, check, errors, failures, server } from "./e2e/harness.mjs";
 
 // the parts run in this order, each on the state the one before left (one browser, one CAD page)
-const PARTS = ["01-editing", "02-instruments", "03-circuits", "04-windows", "05-sheets-files", "06-bom-semiconductors", "07-board", "08-ratings-spice-examples", "09-tolerance-ui", "10-analysis", "11-share", "16-revisions", "12-ai", "13-tune", "14-design", "15-datasheet"];
+const PARTS = ["01-editing", "02-instruments", "03-circuits", "04-windows", "05-sheets-files", "06-bom-semiconductors", "07-board", "08-ratings-spice-examples", "09-tolerance-ui", "10-analysis", "11-share", "16-revisions", "12-ai", "13-tune", "14-design", "15-datasheet", "17-language"];
 const only = (process.env.E2E_PARTS || "").split(",").map(x => x.trim()).filter(Boolean);
 for (const p of PARTS.filter(p => !only.length || only.some(o => p.startsWith(o)))) await import(`./e2e/${p}.mjs`);
 
