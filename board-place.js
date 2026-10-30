@@ -892,8 +892,13 @@
     }
     const stepOk = (c, d, k) => { const ks = steps.get(stepKey(c, d)); return !!ks && ks.includes(k); };
     // the formula; first without vias (a via only where nothing else will do)
+    // (a formula of more than a million clauses: none so big was solved in the 3 s, and building one could take
+    // gigabytes and crash the page, as a wide window with many connections and high-voltage clearances did)
     function attempt(useVias) {
-      const S = root.BoardSat.solver(), X = new Map(), V = (c, k) => X.get(c * K + k);
+      try { return formula(useVias); } catch (e) { if (e && e.full) return { sat: null, why: "too big" }; throw e; }
+    }
+    function formula(useVias) {
+      const S = root.BoardSat.solver({ maxClauses: 1e6 }), X = new Map(), V = (c, k) => X.get(c * K + k);
       for (let c = 0; c < nc; c++) for (const k of allowed[c]) X.set(c * K + k, S.newVar());
       const termCells = pairs.map((p, k) => p.ends.map(e => L.flatMap((Ly, l) => endCells(e, l)).filter(c => V(c, k))));
       if (termCells.some(tc => tc.some(list => !list.length))) return { sat: false, why: "terminal" };
@@ -969,7 +974,7 @@
       return { sat: false, pairs: K, unknown: false, why: "no path" };
     }
     let F = attempt(false);
-    if (F.sat !== true && F.why !== "terminal") F = attempt(true);
+    if (F.sat !== true && F.why !== "terminal" && F.why !== "too big") F = attempt(true);
     if (F.sat !== true) return { sat: false, pairs: K, unknown: F.sat === null, why: F.why };
     const { S, tEdges, inc, termCells } = F;
     // each connection's cells, walked from its first terminal's cell to the other's
