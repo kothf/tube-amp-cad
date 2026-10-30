@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.152.0] - 2026-10-30
+
+### Added
+- **Start screen.** When the CAD opens on an empty sheet (a first visit, or after the sheet was cleared) it shows **New circuit…**, **Open file…** and every example with a picture of its first sheet, in four groups: tube amplifiers, tubes with transistors, transistor amplifiers and the 555 timer. A click opens the example. *File ▾ → Gallery…* brings it up at any time; clear its tick box and it shows only from there. It fits a phone screen too. The pictures are in `examples/thumbs`; `node scripts/example-thumbs.mjs` draws them again after an example changes.
+
+### Changed
+- Opening an example asks first only when there is a circuit on the sheet (an empty drawing frame no longer counts as one).
+- The legend in the corner of the schematic fades while the pointer is over it, so the drawing under it shows.
+- Parameter sweep: with nothing picked yet it steps a resistor (before a capacitor, then the rest) instead of the part whose name sorts first (often the speaker's impedance), and plots the speaker's output (else a scope channel) instead of the first tube's current.
+- Auto-tune: with no goal yet, one button adds the usual pair: the speaker's power a quarter above what it gives now, at no more than 1 % THD.
+
 ## [3.151.1] - 2026-10-30
 
 ### Fixed

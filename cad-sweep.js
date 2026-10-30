@@ -46,8 +46,12 @@
       return S.comps.filter(c => c.type !== "frame" && LIB[c.type]).map(c => ({ c, fields: fieldsOf(LIB[c.type], c) })).filter(p => p.fields.length)
         .sort((a, b) => String(desig(a.c)).localeCompare(String(desig(b.c)), undefined, { numeric: true }));
     }
+    // with nothing picked yet: a resistor (a cathode or plate resistor is the usual question), then a
+    // capacitor, before the speakers and sources that sort first by name
+    const FIRST = ["resistor", "potentiometer", "capacitor", "electrolytic"];
+    const rank = p => { const i = FIRST.indexOf(p.c.type); return i < 0 ? FIRST.length : i; };
     function current() {
-      const ps = parts(), p = ps.find(x => x.c.id === opts.part) || ps[0];
+      const ps = parts(), p = ps.find(x => x.c.id === opts.part) || ps.slice().sort((a, b) => rank(a) - rank(b))[0];
       if (!p) return null;
       const f = p.fields.find(x => x.key === opts.field) || p.fields[0];
       return { c: p.c, f, fields: p.fields };
@@ -160,7 +164,8 @@
 
     // ---- drawing ----
     const valueOf = (st, key) => { const r = st.rows && st.rows.find(x => x.key === key); return r ? r.v : NaN; };
-    const plotKey = () => (W.keys && (W.keys.find(k => k.key === opts.plot) || W.keys[0])) || null;
+    // with nothing picked: the output (a speaker's power, else a scope channel), not the first tube's current
+    const plotKey = () => (W.keys && (W.keys.find(k => k.key === opts.plot) || W.keys.find(k => k.unit === "W" && / output$/.test(k.label)) || W.keys.find(k => /:ch[12]$/.test(k.key)) || W.keys[0])) || null;
     const ramp = t => { // amber (first step) to cyan (last)
       const a = [255, 213, 79], b = [0, 229, 255];
       return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(",")})`;
