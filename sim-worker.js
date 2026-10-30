@@ -2,7 +2,7 @@
    Message in:  { seq, netlist, options }                      steady state (simulate)
                 { seq, netlist, options, kind: "startup" }      power-on transient
                 { seq, netlist, options, kind: "op" }           the operating point a frequency response is linearized at:
-                                                                 a mains-fed circuit's averaged steady state ({ ok, op })
+                                                                 a mains-fed circuit's averaged steady state ({ ok, op, opIm: transformers' magnetising currents })
                 { seq, netlist, options, kind: "audio" }        the circuit playing a recording (audio: a source carries
                                                                  samples), from options.warm: { ok, rate, out: [Float32Array] }
                 { seq, netlist, options, kind: "ac" }           frequency response (acSweep; options.op, and options.kFrom /
@@ -22,7 +22,7 @@ self.onmessage = async (e) => {
   try {
     if (kind === "op") {
       const r = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress }));
-      result = r.ok ? { ok: true, op: r.dc.nodes } : { ok: false, error: r.error };
+      result = r.ok ? { ok: true, op: r.dc.nodes, opIm: TubeSimEngine.opMagnetising(r) } : { ok: false, error: r.error };
     } else if (kind === "ac") {
       const ac = TubeSimEngine.acSweep(netlist, options);
       result = ac.ok ? { ok: true, freqs: ac.freqs, probes: ac.probes, elapsedMs: ac.elapsedMs } : ac;

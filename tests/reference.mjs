@@ -232,9 +232,11 @@ for (const bypass of [true, false]) {
 // =================================================================================
 // 5. Single-ended output stages at published class-A operating conditions
 // =================================================================================
+// the transformer as these tests have always had it: lossless, a linear core, 0.1 % of its
+// inductance uncoupled (60 mH of leakage); the published figures are at 1 kHz, where only that matters
 async function powerStage({ name, tube, pentode, zp, bias, rk, drive, quiet, full, published, source, b = 250, vg2 }) {
   const parts = {
-    B: ["vdc", { v: b }], T: ["opt_se", { zp, zs: 8, lp: 30, dcrp: 0.001, dcrs: 0.001 }], V1: ["tube", { tube }],
+    B: ["vdc", { v: b }], T: ["opt_se", { zp, zs: 8, lp: 30, dcrp: 0.001, dcrs: 0.001, llk: 0.06, cw: 0, pw: 0 }], V1: ["tube", { tube }],
     SPK: ["speaker", { r: 8, model: "res" }], G: ["siggen", { freq: 1000, amp: drive, offset: bias || 0 }],
     Rs: ["resistor", { r: rk || 1 }], SC: ["scope", {}], SI: ["scope", {}]
   };

@@ -739,3 +739,54 @@ test("NE555 output stages against the TI data: 13.3 V sourcing 100 mA from 15 V,
   const ac = E.acSweep(astable555(1e3, 10e3, 100e-9, 9), { fStart: 10, fStop: 1e4, probes: [[4, 0]] });
   assert.ok(ac.ok, ac.error);
 });
+
+// --- output transformers: leakage and a saturating core ----------------------------------------
+test("transformer leakage: the treble rolls off as the closed form of the leakage in series with source and load", () => {
+  const Z = 5000, n = Math.sqrt(Z / 8), Lm = 20, Llk = 0.05;
+  const ac = E.acSweep({ nodeCount: 4, elements: [
+    { id: "G", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 1000, amp: 1 }, { id: "RS", kind: "R", nodes: [1, 2], r: Z },
+    { id: "T", kind: "XFMR", nodes: [], lp: Lm, k: 1, primaryTurns: 1, windings: [{ a: 2, b: 0, turns: 1, leak: Llk }, { a: 3, b: 0, turns: 1 / n }] },
+    { id: "RL", kind: "R", nodes: [3, 0], r: 8 }] }, { inputs: [{ id: "G" }], fStart: 10, fStop: 100e3, perDecade: 10 });
+  // referred to the primary: Lm across the load Z, the leakage in series ahead of them
+  const cdiv = (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; };
+  ac.freqs.forEach((f, k) => {
+    const w = 2 * Math.PI * f, zm = cdiv([0, w * Lm * Z], [Z, w * Lm]), h = cdiv(zm, [Z + zm[0], w * Llk + zm[1]]);
+    near(Math.hypot(ac.re[3][k], ac.im[3][k]) * n, Math.hypot(h[0], h[1]), 1e-6, `|H| at ${f.toFixed(0)} Hz`);
+  });
+});
+
+test("transformer core: a sine driven past the knee draws the magnetising current of the flux curve", () => {
+  const sat = { ls: 0.5, p: 4, air: 0.01 }, Lm = 10, f = 50, w = 2 * Math.PI * f;
+  const e = { lp: Lm, sat }, flux = i => E.coreFlux(e, i)[0];
+  for (const lpk of [0.3, 0.6, 0.75]) {
+    const r = E.simulate({ nodeCount: 4, elements: [
+      // starting at the voltage's peak, so the flux swings evenly about zero from the first cycle
+      { id: "G", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: f, amp: lpk * w, phase: 90 }, { id: "RI", kind: "R", nodes: [1, 2], r: 0.01 },
+      { id: "T", kind: "XFMR", nodes: [], lp: Lm, k: 1, primaryTurns: 1, sat, windings: [{ a: 2, b: 0, turns: 1, leak: 1e-6 }, { a: 3, b: 0, turns: 0.1 }] },
+      { id: "RL", kind: "R", nodes: [3, 0], r: 1e6 }] }, { budgetMs: 4000 });
+    assert.ok(r.ok, r.error);
+    // the current's peak from the drop on RI; the flux curve inverted by bisection
+    const ipk = pp(r.tran.nodes[1].map((v, k) => v - r.tran.nodes[2][k])) / 2 / 0.01;
+    let lo = 0, hi = 100; for (let k = 0; k < 100; k++) { const m = (lo + hi) / 2; if (flux(m) < lpk) lo = m; else hi = m; }
+    near(ipk, lo, 0.03, `peak magnetising current at ${lpk} V·s`);
+    near(Math.max(...r.tran.devices.T.i), lpk / sat.ls, 0.03, "the flux trace, as a share of the knee");
+  }
+});
+
+test("transformer core: DC in a single-ended primary lowers the small-signal inductance the bass sees", () => {
+  const Z = 2500, n = Math.sqrt(Z / 8), Lm = 20, Llk = 0.02, sat = { ls: 4, p: 4, air: 0.01 }, idc = 0.12;
+  const net = { nodeCount: 6, elements: [
+    { id: "B", kind: "V", nodes: [1, 0], v: 300 }, { id: "I", kind: "I", nodes: [2, 0], i: idc },
+    { id: "T", kind: "XFMR", nodes: [], lp: Lm, k: 1, primaryTurns: 1, sat, windings: [{ a: 1, b: 2, turns: 1, leak: Llk }, { a: 3, b: 0, turns: 1 / n }] },
+    { id: "RL", kind: "R", nodes: [3, 0], r: 8 },
+    { id: "G", kind: "VSRC", nodes: [4, 0], wave: "sine", freq: 1000, amp: 1 }, { id: "RS", kind: "R", nodes: [4, 5], r: Z }, { id: "CB", kind: "C", nodes: [5, 2], c: 1 }] };
+  const ac = E.acSweep(net, { inputs: [{ id: "G" }], fStart: 10, fStop: 1000, perDecade: 10 });
+  const ld = E.coreFlux({ lp: Lm, sat }, -idc)[1];
+  assert.ok(ld < 0.9 * Lm, `the slope at ${idc * 1000} mA (${ld.toFixed(1)} H) is below the ${Lm} H at zero`);
+  const cdiv = (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; };
+  ac.freqs.forEach((f, k) => {
+    const w = 2 * Math.PI * f, zm = cdiv([0, w * ld * Z], [Z, w * ld]), zp = [zm[0], zm[1] + w * Llk], cb = [0, -1 / w];
+    const zs = [Z + cb[0], cb[1]], v2 = cdiv(zp, [zs[0] + zp[0], zs[1] + zp[1]]), h = cdiv([v2[0] * zm[0] - v2[1] * zm[1], v2[0] * zm[1] + v2[1] * zm[0]], zp);
+    near(Math.hypot(ac.re[3][k], ac.im[3][k]) * n, Math.hypot(h[0], h[1]), 1e-4, `|H| at ${f.toFixed(0)} Hz`);
+  });
+});
