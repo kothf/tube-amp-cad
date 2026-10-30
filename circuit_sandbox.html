@@ -21,6 +21,7 @@
     header > .cur-file { flex: 1 1 60px; min-width: 60px; max-width: max-content; }   /* takes spare room up to its full name; never forces a second row by itself */
     @media (max-width: 1300px) { .brand span, .brand b { display: none; } .brand { margin-right: 0; } header .btn { padding: 5px 7px; } header { gap: 4px; } .sep { margin: 0 2px; } }
     @media (max-width: 1080px) { header > .cur-file { display: none; } #btn-windows .win-lbl { display: none; } #btn-windows .win-ico { display: inline; } }
+    @media (max-width: 1140px) { header > .sep { display: none; } #zoom-label { min-width: 40px; } }   /* the groups' gaps stand for the separators, so the AI menu still fits one row at 1000 px */
     #btn-windows .win-ico { display: none; vertical-align: -3px; }
     #board-tab { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 50; background: var(--bg); }
     #board-tab[hidden] { display: none; }
@@ -44,11 +45,6 @@
     .btn.toggle.active { background: var(--panel2); border-color: var(--line); color: var(--text); }
     .btn.toggle.active::before { background: var(--ok); box-shadow: 0 0 5px var(--ok); }
     /* joined buttons: one tool choice, zoom, run */
-    .seg-group { display: inline-flex; align-items: stretch; }
-    .seg-group > * { border-radius: 0; margin-left: -1px; }
-    .seg-group > :first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
-    .seg-group > :last-child { border-radius: 0 6px 6px 0; }
-    .seg-group > .active { position: relative; z-index: 1; }
     .seg-group #zoom-label { display: grid; place-items: center; border: 1px solid var(--line); background: var(--bg); }
     #zoom-label { min-width: 48px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 

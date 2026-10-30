@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.139.0] - 2026-10-30
+
+### Changed
+- Board: the toolbar stays one row down to 1000 px (it took two rows at 1100 px and below). Below 1180 px Text, Hole, Keep-out and Measure fold into one **More tools ▾** button, which shows the tool last picked from it and is lit while that tool is on; and Fit is hidden (the zoom percentage at the bottom right and F fit the board too). The keys T, H, K and D work as before.
+- The oscilloscope, spectrum analyzer and Bode plotter have the same **Schematic | Board** switch as the CAD and the Board, at the left of the toolbar, in place of the single Schematic button; neither is lit, since the instrument is neither. Board brings up the Board window, or, when the CAD keeps the board in its own window (Windows ▾ → Board in this window, the default in Safari), shows it there. Alt+B from an instrument does the same. Below 1240 px the switch shows its icons only, so the Bode plotter's toolbar stays one row down to 1000 px.
+- CAD: with the new AI ▾ menu the toolbar took two rows between 1000 and 1120 px. Below 1140 px the separators between its groups give way (the gaps still part them), so it is one row again from about 960 px up.
+
 ## [3.138.0] - 2026-10-30
 
 ### Added

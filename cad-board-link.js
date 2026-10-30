@@ -34,6 +34,13 @@
     }
     // the framed board's Schematic button (windows.js) asks for the schematic
     window.addEventListener("message", e => { if (e.origin === location.origin && e.data && e.data.type === "SHOW_PAGE" && e.data.page === "circuit_sandbox.html") showSchematic(); });
+    // an instrument's Board button (ToolWindows.openBoard) when the board lives in this window
+    if (channel) channel.addEventListener("message", e => { if (e.data && e.data.type === "SHOW_BOARD") showBoard(); });
+    const q = new URLSearchParams(location.search);
+    if (q.get("board") === "1") {
+      q.delete("board"); try { history.replaceState(null, "", location.pathname + (String(q) ? "?" + q : "") + location.hash); } catch (e) {}   // a reload stays on the schematic
+      if (document.readyState === "complete") setTimeout(showBoard); else window.addEventListener("load", () => showBoard(), { once: true });
+    }
 
     // Board Design: the board window takes the netlist from here; the CAD keeps the board
     // document with the circuit (file and browser storage). The board window sends its

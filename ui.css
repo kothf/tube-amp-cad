@@ -20,12 +20,18 @@ html, body { height: 100%; margin: 0; }
 /* icon buttons: a 16 px line icon drawn in the text colour */
 .btn.ib { padding: 5px 8px; line-height: 0; }
 .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-/* Schematic | Board: the same switch at the left of the CAD's and the Board's toolbar. The
-   window you are in is lit; the other button brings its window up (opens it if need be). */
+/* buttons joined into one segmented row (the Schematic | Board switch, Undo | Redo, the tools) */
+.seg-group { display: inline-flex; align-items: stretch; }
+.seg-group > * { border-radius: 0; margin-left: -1px; }
+.seg-group > :first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.seg-group > :last-child { border-radius: 0 6px 6px 0; }
+.seg-group > .active { position: relative; z-index: 1; }
+/* Schematic | Board: the same switch at the left of the CAD's, the Board's and the instruments'
+   toolbars. The window you are in is lit (an instrument lights neither); the other button
+   brings its window up (opens it if need be). */
 .doc-switch .btn { display: inline-flex; align-items: center; gap: 6px; }
 .doc-switch .btn .ico { width: 15px; height: 15px; }
 .doc-switch .btn[aria-current="page"] { background: #0d3442; border-color: var(--accent); color: var(--accent); cursor: default; position: relative; z-index: 1; }
-/* an instrument's way back to the schematic, at the left of its toolbar like the Board's switch */
-.btn.doc-back { display: inline-flex; align-items: center; gap: 6px; }
-.btn.doc-back .ico { width: 15px; height: 15px; }
 a.btn.ib { display: inline-flex; align-items: center; }
+/* a narrower window: the switch by its icons (each button's title names it) */
+@media (max-width: 1240px) { .doc-switch .ds-lbl { display: none; } .doc-switch .btn { padding-left: 8px; padding-right: 8px; } }

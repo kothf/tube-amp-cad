@@ -486,6 +486,8 @@
     if (t !== S.tool || (t !== "pour" && t !== "keepout")) S.poly = null;
     S.tool = t;
     document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
+    const more = $("btn-tool-more"), folded = more && more.parentElement.querySelector(`.menu-item[data-tool="${t}"]`);   // the narrow toolbar's More tools
+    if (more) { more.classList.toggle("active", !!folded); if (folded) more.querySelector(".tm-ico").innerHTML = folded.querySelector("svg").outerHTML; }
     if (canvas) canvas.style.cursor = t === "select" ? "" : "crosshair";
     msg(TOOL_HELP[t]);
     render();

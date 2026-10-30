@@ -111,6 +111,14 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
     flips.push(await sp.evaluate(() => document.getElementById("board-tab").hidden));
   }
   check(flips.every(Boolean) && sc.pages().length === 1, `in Safari the board opens in the CAD window by default and the switch flips every time (${flips.map(f => f ? "ok" : "stuck").join(" ")})`);
+  // an instrument's Schematic | Board switch: Board shows the board in the CAD window too, no window of its own
+  const [ss] = await Promise.all([sc.waitForEvent("page"), sp.evaluate(() => { ToolWindows.open("oscilloscope.html"); })]);
+  ss.on("pageerror", e => errors.push(`safari scope: ${e.message}`));
+  await ss.waitForSelector("#btn-board"); await ss.click("#btn-board");
+  await sp.waitForFunction(() => { const f = document.getElementById("board-tab"); return f && !f.hidden; }, null, { timeout: 3000 }).catch(() => {});
+  check(await sp.evaluate(() => !document.getElementById("board-tab").hidden) && sc.pages().length === 2, `in Safari, Board in the oscilloscope shows the board in the CAD window, no new window (${sc.pages().length} pages)`);
+  await sp.frameLocator("#board-tab").locator("#btn-cad").click(); await sp.waitForTimeout(100);
+  await ss.close();
   // ticked off: the Board window cannot bring the CAD's tab up, and says so instead of doing nothing
   await sp.click("#btn-windows"); await sp.click("#btn-board-tab"); await sp.keyboard.press("Escape");
   const [sb] = await Promise.all([sc.waitForEvent("page"), sp.click("#btn-doc-board")]);

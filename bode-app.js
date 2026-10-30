@@ -208,6 +208,7 @@
   bindSel("range", v => { S.range = v.split("-").map(Number); S.zoom = null; });
   $("gen").addEventListener("change", e => { S.gen = e.target.value; ask(true); });
   $("btn-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
+  $("btn-board").addEventListener("click", () => ToolWindows.openBoard());
   I.bindScopeSelect($("scope-select"));
   I.onUpdate(() => { ask(); draw(); });
   window.addEventListener("resize", draw);
