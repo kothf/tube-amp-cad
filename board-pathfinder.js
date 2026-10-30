@@ -419,6 +419,7 @@
       // who is in conflict now: their pieces come up and they go round again
       total = 0;
       nets.forEach(r => { if (!r.paths.length) return; const n = conflictsOf(r, true); if (n) { r.dirty = true; total += n; } });
+      if (o.progress) { let left = 0; nets.forEach(r => { left += r.groupsLeft; }); o.progress({ pass: it + 1, passes: maxIt, conflicts: total, left, ms: Date.now() - t0, time }); }
       if (!total && ![...nets.values()].some(r => r.dirty)) { it++; break; }
       pf *= PFM;
     }

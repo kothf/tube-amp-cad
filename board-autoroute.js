@@ -19,39 +19,68 @@
     // the heavy steps of board-place.js run in a worker (board-worker.js), so the window keeps drawing and
     // answering; where none starts (a page opened from a file), on the page, after a breath for the screen
     const VQ = (() => { const sc = [...document.scripts].find(s => /board-autoroute\.js/.test(s.src)); const q = sc && sc.src.split("?")[1]; return q ? "?" + q : ""; })();
-    const off = { worker: null, ok: typeof Worker !== "undefined", seq: 0, wait: new Map() };
-    function offPage(fn, rats, opts) {
+    const off = { worker: null, ok: typeof Worker !== "undefined", seq: 0, wait: new Map(), on: new Map() };
+    // (onProgress: called with what the step says while it runs, the grid router's passes)
+    function offPage(fn, rats, opts, onProgress) {
       if (off.ok && !off.worker) {
         try {
           off.worker = new Worker("board-worker.js" + VQ);
-          off.worker.onmessage = e => { const w = off.wait.get(e.data.seq); if (w) { off.wait.delete(e.data.seq); w(e.data); } };
-          off.worker.onerror = e => { if (e && e.preventDefault) e.preventDefault(); off.ok = false; off.worker.terminate(); off.worker = null; const ws = [...off.wait.values()]; off.wait.clear(); ws.forEach(w => w({ lost: true })); };
+          off.worker.onmessage = e => {
+            if (e.data.progress) { const f = off.on.get(e.data.seq); if (f) f(e.data.progress); return; }
+            const w = off.wait.get(e.data.seq); if (w) { off.wait.delete(e.data.seq); off.on.delete(e.data.seq); w(e.data); }
+          };
+          off.worker.onerror = e => { if (e && e.preventDefault) e.preventDefault(); off.ok = false; if (off.worker) off.worker.terminate(); off.worker = null; const ws = [...off.wait.values()]; off.wait.clear(); ws.forEach(w => w({ lost: true })); };
         } catch (e) { off.ok = false; off.worker = null; }
       }
-      const here = () => new Promise(r => setTimeout(r, 0)).then(() => { const o = { ...checkOpts(), netlist: S.netlist, conn: S.conn, ...opts }; return fn === "pathfinder" ? BoardPathfinder.route(S.board, S.model, S.conn, o) : BoardPlace[fn](S.board, S.model, S.conn, rats, o); });
+      const here = () => new Promise(r => setTimeout(r, 0)).then(() => { const o = { ...checkOpts(), netlist: S.netlist, conn: S.conn, ...opts, progress: onProgress }; return fn === "pathfinder" ? BoardPathfinder.route(S.board, S.model, S.conn, o) : BoardPlace[fn](S.board, S.model, S.conn, rats, o); });
       if (!off.worker) return here();
       const seq = ++off.seq;
       return new Promise(res => {
         off.wait.set(seq, d => res(d.lost ? here() : d.error ? Promise.reject(new Error(d.error)) : d.result));
+        if (onProgress) off.on.set(seq, onProgress);
         off.worker.postMessage({ seq, fn, board: S.board, model: S.model, conn: S.conn, rats, netlist: S.netlist, hv: S.hv, amps: S.amps, opts });
       });
+    }
+    // Stop: the step running off the page ends now (its worker goes; a new one starts for the next step)
+    function offStop() {
+      if (!off.worker) return;
+      off.worker.terminate(); off.worker = null;
+      const ws = [...off.wait.values()]; off.wait.clear(); off.on.clear(); ws.forEach(w => w({ error: "stopped" }));
     }
     const breath = () => new Promise(r => setTimeout(r, 0));
     // the progress bar in the status line: progress(done, of, what) while a run goes on, progress() when it ends;
     // the bar fills by steps, its stripes move and the clock runs while a step (a Freerouting pass) is under way
-    const prog = { t0: 0, timer: 0, what: "", sub: "" };
+    const prog = { t0: 0, timer: 0, what: "", sub: "", live: null, hist: [] };
     function progress(done, of, what) {
       const box = $("st-prog"); if (!box) return;
-      if (done === undefined) { box.hidden = true; clearInterval(prog.timer); prog.timer = 0; prog.t0 = 0; return; }
+      if (done === undefined) { box.hidden = true; clearInterval(prog.timer); prog.timer = 0; prog.t0 = 0; prog.live = null; prog.hist = []; return; }
       if (!prog.t0) prog.t0 = Date.now();
-      prog.what = `${what ? what + " · " : ""}${of ? `step ${Math.min(done + 1, of)} of ${of}` : ""}`; prog.sub = "";
+      prog.what = [what, of ? `step ${Math.min(done + 1, of)} of ${of}` : ""].filter(Boolean).join(" · "); prog.of = of; prog.sub = ""; prog.live = null; prog.hist = [];
       box.querySelector(".bar i").style.width = of ? `${Math.round(100 * Math.min(1, done / of))}%` : "0%";
       tick(); box.hidden = false;
       if (!prog.timer) prog.timer = setInterval(tick, 1000);
     }
-    function tick() { const sec = Math.round((Date.now() - prog.t0) / 1000); $("st-step").textContent = [prog.what, prog.sub, `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`].filter(Boolean).join(" · "); }
+    const clock = ms => { const sec = Math.round(ms / 1000); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`; };
+    function tick() {
+      const L = prog.live, live = L ? `pass ${L.pass} · ${L.conflicts ? `${L.conflicts} crossing${L.conflicts === 1 ? "" : "s"} to sort out` : "no crossings"}${L.left ? ` · ${L.left} not joined yet` : ""}` : "";
+      $("st-step").textContent = [prog.what, prog.sub, live, clock(Date.now() - prog.t0)].filter(Boolean).join(" · ");
+      // a run with no steps (Auto-route) fills its bar as the crossings go
+      if (!prog.of && L && prog.hist.length) { const i = document.querySelector("#st-prog .bar i"); if (i) i.style.width = `${Math.round(100 * (1 - L.conflicts / Math.max(1, ...prog.hist)))}%`; }
+      const u = document.querySelector("#st-prog .bar u"); if (u) u.style.width = L ? `${Math.round(100 * Math.min(1, Math.max(L.pass / L.passes, L.ms / L.time)))}%` : "0%";
+      spark();
+    }
     // what the step is doing now ("Freerouting", "grid finishers"…)
-    function stage(t) { if (!prog.t0) return; prog.sub = t; tick(); }
+    function stage(t) { if (!prog.t0) return; prog.sub = t; prog.live = null; prog.hist = []; tick(); }
+    // the grid router's passes as they come: crossings left after each, drawn small beside the bar
+    function live(p) { if (!prog.t0) return; prog.live = p; prog.hist.push(p.conflicts); if (prog.hist.length > 60) prog.hist.shift(); tick(); }
+    function spark() {
+      const c = $("st-spark"); if (!c) return;
+      const h = prog.hist; c.hidden = h.length < 2; if (c.hidden) return;
+      const g = c.getContext("2d"), W = c.width, H = c.height, top = Math.max(1, ...h);
+      g.clearRect(0, 0, W, H); g.strokeStyle = getComputedStyle(c).color; g.lineWidth = 1.5; g.beginPath();
+      h.forEach((v, k) => { const x = 1 + (W - 2) * k / (h.length - 1), y = H - 1 - (H - 2) * v / top; if (k) g.lineTo(x, y); else g.moveTo(x, y); });
+      g.stroke();
+    }
     const pageOrigin = () => /^https?:/.test(location.origin) ? location.origin : "*";
     // what a probe found, in words: what to change on Freerouting's side
     function routerWhy(url, p) {
@@ -127,9 +156,8 @@
     // (the ones a pass before could not finish get the board before the rest). Returns { todo, nt, nv, pourNote }
     async function routePass(first) {
       if (!viaFr()) {
-        stage("grid router");
         const todo = S.conn.unrouted, was = new Set([...S.board.tracks, ...S.board.vias].map(o => JSON.stringify(o)));
-        await finish();
+        await finish(true);
         const fresh = list => list.filter(o => !was.has(JSON.stringify(o))).length;
         return { todo, nt: fresh(S.board.tracks), nv: fresh(S.board.vias), pourNote: router.use ? " · by the board's own grid router (Freerouting does not answer: Route ▾ → Freerouting…)" : " · by the board's own grid router" };
       }
@@ -160,20 +188,26 @@
     // pour cannot get to, behind other copper or the board edge) joined by a track; not the star ground
     const finishable = () => { const star = S.board.rules.ground === "star"; return S.conn.rats.filter(r => !(star && (S.model.names[r.net] || String(r.net)) === "GND")); };
     // what Freerouting left that a grid path still reaches (BoardPlace.bridge, Lee's maze routing):
-    // each track stays only if it closes a connection and adds no rule message. Returns how many
-    async function finish() {
+    // each track stays only if it closes a connection and adds no rule message. Returns how many.
+    // gridFirst (no Freerouting): the grid router goes first, the maze after it on what it left
+    async function finish(gridFirst) {
       analyse();
-      const tried = new Set(), key = r => [r.x1, r.y1, r.x2, r.y2].map(v => v.toFixed(3)).join(","), bad = () => S.drc.filter(d => d.kind !== "unplaced").length;
+      const key = r => [r.x1, r.y1, r.x2, r.y2].map(v => v.toFixed(3)).join(","), bad = () => S.drc.filter(d => d.kind !== "unplaced").length;
       let n = 0;
-      for (let k = 0; k < 60; k++) {
-        const rats = finishable().filter(r => !tried.has(key(r)));
-        await breath();
-        const b = rats.length && BoardPlace.bridge(S.board, S.model, S.conn, rats, checkOpts()); if (!b) break;
-        const un = S.conn.unrouted, d = bad();
-        S.board.tracks.push(b.track); analyse();
-        if (S.conn.unrouted < un && bad() <= d) n++;
-        else { S.board.tracks.pop(); analyse(); tried.add(key(rats[b.i])); }
-      }
+      const maze = async () => {
+        const tried = new Set(), all = finishable().length;
+        for (let k = 0; k < 60 && !router.stop; k++) {
+          const rats = finishable().filter(r => !tried.has(key(r)));
+          if (rats.length) stage(`maze routing, ${all - finishable().length} of ${all} joined`);
+          await breath();
+          const b = rats.length && BoardPlace.bridge(S.board, S.model, S.conn, rats, checkOpts()); if (!b) break;
+          const un = S.conn.unrouted, d = bad();
+          S.board.tracks.push(b.track); analyse();
+          if (S.conn.unrouted < un && bad() <= d) n++;
+          else { S.board.tracks.pop(); analyse(); tried.add(key(rats[b.i])); }
+        }
+      };
+      if (!gridFirst) await maze();
       // then the board's own grid router over what is left: round the copper there, again while that helps (a pour
       // its tracks cut leaves pads to join), then the whole board afresh
       for (let k = 0; k < 3 && finishable().length && !router.stop; k++) {
@@ -181,6 +215,7 @@
         const got = await grid(false); n += got; if (!got) break;
       }
       if (finishable().length && !router.stop) { stage("grid router, whole board"); await breath(); n += await grid(true); }
+      if (gridFirst && finishable().length && !router.stop) await maze();
       // then each one left, routed exactly in a window round it with whatever copper is there (BoardPlace.exact)
       // (at most 20 of them, and 30 s in all: a board Freerouting left wide open is its job, not this)
       const done = new Set(), until = Date.now() + 30000;
@@ -228,7 +263,7 @@
       const old = new Set(bad().map(at)), d0 = old.size;
       // a route that cuts a pour can leave pads it joined apart: the router then goes again over those
       for (let step = 0; step < 3; step++) {
-        const was = [S.board, S.board.tracks.length, S.board.vias.length], r = await offPage("pathfinder", [], { fresh: fresh && !step, time: 20000 }).catch(() => null);
+        const was = [S.board, S.board.tracks.length, S.board.vias.length], r = await offPage("pathfinder", [], { fresh: fresh && !step, time: 20000 }, live).catch(() => null);
         if (!r || was[0] !== S.board || was[1] !== S.board.tracks.length || was[2] !== S.board.vias.length) break;
         S.board.tracks = S.board.tracks.filter((_, i) => !r.cut.tracks.has(i)).concat(r.add.tracks);
         S.board.vias = S.board.vias.filter((_, i) => !r.cut.vias.has(i)).concat(r.add.vias);
@@ -306,7 +341,7 @@
         msg("Nothing to route: every connection is routed" + (tidied ? `; tracks tidied (${Math.max(0, was - S.board.tracks.length)} doubled taken off, bends pulled straight)` : "") + staleNote);
         return;
       }
-      router.busy = true; routerUi(); progress(0, 0, "Auto-route"); msg(`${viaFr() ? "Freerouting" : "The grid router"} is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
+      router.busy = true; router.stop = false; routerUi(); progress(0, 0, "Auto-route"); msg(`${viaFr() ? "Freerouting" : "The grid router"} is routing ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
       try {
         const p = await routePass();
         commit();
@@ -555,6 +590,8 @@
       if (!file || !S.model) return;
       file.text().then(t => { try { msg(addRoutes(t, dsnOf())); } catch (e) { msg(`Not imported: ${e.message}`); } });
     }
-    return { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute };
+    // the status line's Stop: the run ends now, keeping what it routed so far
+    function stopRouting() { if (!router.busy) return; router.stop = true; offStop(); msg("Stopping: what is routed so far stays"); }
+    return { stopRouting, autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute };
   };
 })(window);

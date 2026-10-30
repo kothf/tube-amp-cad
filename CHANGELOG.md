@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.145.0] - 2026-10-30
+
+### Added
+- **Board: the status line follows the grid router.** While it routes, the status line shows its pass, the crossings (nets too close to each other) it still has to sort out and the connections not joined yet, with a small graph of the crossings falling pass by pass and a thin line under the bar for how far the passes have gone. On Auto-route the bar fills as the crossings go.
+- **Stop** in the status line ends any routing run at once (the grid router's background step too); what is routed so far stays.
+
+### Changed
+- Without Freerouting, Auto-route, Finish routing and Design from scratch let the grid router go first and the maze search after it, on what it left (before, the maze search laid most tracks one by one, then the grid router took many of them up again). Example 06 from a bare board: routed fully in 8 s instead of 21 s.
+
 ## [3.144.1] - 2026-10-30
 
 ### Fixed

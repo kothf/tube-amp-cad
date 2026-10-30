@@ -239,8 +239,13 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const ownBtn = await bw.evaluate(() => { const b = document.getElementById("btn-autoroute"); return { off: b.classList.contains("off"), title: b.title }; });
     const og0 = await bw.evaluate(() => { const S = BoardApp.state, n = S.board.tracks.find(t => t.net && t.net !== "GND").net;
       S.board.tracks = S.board.tracks.filter(t => t.net !== n); BoardApp.commit(); return { n, un: S.conn.unrouted, h: S.hIndex }; });
+    // (what the status line says while it runs: the grid router's passes)
+    await bw.evaluate(() => { window.__steps = []; new MutationObserver(() => window.__steps.push(document.getElementById("st-step").textContent)).observe(document.getElementById("st-step"), { childList: true, characterData: true, subtree: true }); });
     await bw.click("#btn-autoroute");
     await bw.waitForFunction(() => !BoardApp.router.busy && /routed|failed/.test(document.getElementById("st-msg").textContent), null, { timeout: 60000 }).catch(() => {});
+    const steps = await bw.evaluate(() => window.__steps);
+    check(steps.some(t => /grid router · pass \d+ · (\d+ crossings? to sort out|no crossings)/.test(t)) && await bw.evaluate(() => document.getElementById("st-prog").hidden),
+      `while it routes, the status line follows the grid router's passes ("${(steps.find(t => /pass/.test(t)) || steps[steps.length - 1] || "").slice(0, 80)}"), and the bar goes when it ends`);
     const og1 = await bw.evaluate(() => ({ msg: document.getElementById("st-msg").textContent, un: BoardApp.state.conn.unrouted, drc: BoardApp.state.drc.map(d => d.msg), h: BoardApp.state.hIndex }));
     check(!ownBtn.off && /own grid router/.test(ownBtn.title) && og0.un > 0 && og1.un === 0 && !og1.drc.length && /own grid router/.test(og1.msg) && og1.h === og0.h + 1,
       `Auto-route with no Freerouting: the board's own grid router routes ${og0.n} again ("${og1.msg.slice(0, 90)}…", ${og1.un} to route, ${og1.drc.length ? og1.drc.join("; ") : "no rule violations"})`);
