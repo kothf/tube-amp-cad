@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.147.2] - 2026-10-30
+
+### Changed
+- **Faster checks and releases.** CI runs the browser tests in four jobs side by side (source and packaged build, each in two groups of parts; `E2E_PARTS=01,08 node tests/e2e.mjs` runs only some parts), lint and the engine tests in a fifth: about 3½ minutes instead of 10½. The release no longer runs the tests a second time: it waits for CI on the same commit and uses its result (it still tests by itself when that commit has no finished CI run), and CI on main no longer cancels a commit's run when the next one is merged. The browser test of Design from scratch locks all but six resistors, so it routes a few connections per layout instead of the whole board (about 2 minutes less per run).
+
 ## [3.147.1] - 2026-10-30
 
 ### Fixed

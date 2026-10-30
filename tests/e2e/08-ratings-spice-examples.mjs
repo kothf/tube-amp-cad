@@ -332,7 +332,13 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     // Route ▾ → Design from scratch: every unlocked part but the panel ones laid out again (nine layouts, turns chosen), the best
     // three routed (here by a router that finds nothing, so the grid finishers route); the best stays, the board as it was
-    // included; one step to undo
+    // included; one step to undo. Six resistors off ground and the heaters move, everything else is locked (one
+    // step to undo), so the router has a few connections to lay per layout instead of the whole board
+    await bw.evaluate(() => { const S = BoardApp.state, P = S.board.parts, busy = n => !n || n === "GND" || /^HTR/.test(n);
+      const free = S.model.parts.filter(g => g.fp && g.type === "resistor" && P[g.key] && !P[g.key].locked && !S.model.pads.some(p => p.part === g.key && busy(p.netName))).slice(0, 6).map(g => g.key);
+      const nets = new Set(S.model.pads.filter(p => free.includes(p.part)).map(p => p.netName));
+      S.model.parts.forEach(g => { if (P[g.key] && !free.includes(g.key)) P[g.key].locked = true; });
+      S.board.tracks.concat(S.board.vias).forEach(o => { if (!nets.has(o.net)) o.locked = true; }); BoardApp.commit(); });
     const ra0 = await bw.evaluate(() => { const S = BoardApp.state; return { parts: JSON.stringify(S.board.parts), h: S.hIndex, un: S.conn.unrouted, panel: JSON.stringify(S.model.parts.filter(g => ["pot", "jack", "terminal", "header", "switch", "iec", "fuse"].includes(g.type)).map(g => S.board.parts[g.key])) }; });
     nPosts = 0;
     await bw.click("#btn-route"); await bw.click("#btn-rearrange");
@@ -343,6 +349,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     check(raOk && nPosts >= 3 && ra1.panel === ra0.panel && !ra1.bad.length, `Design from scratch: ${nPosts} routing passes over three of nine layouts; "${ra1.msg.slice(0, 120)}"; panel parts stay, no clearance, courtyard or edge message`);
     if (ra1.h === ra0.h + 1) { await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200); }
     check(await bw.evaluate(p => JSON.stringify(BoardApp.state.board.parts) === p, ra0.parts), "Ctrl+Z puts every part back where it was before Design from scratch");
+    await bw.keyboard.press("Control+z"); await bw.waitForTimeout(200);
     // Route ▾ → Freerouting…: an address typed as an IP gets the default port; both start commands name this page's address
     await bw.click("#btn-route"); await bw.click("#btn-router");
     const cmds = await bw.evaluate(() => [document.getElementById("router-cmd-java").textContent, document.getElementById("router-cmd-docker").textContent]);
