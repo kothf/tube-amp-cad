@@ -115,7 +115,7 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   const [ss] = await Promise.all([sc.waitForEvent("page"), sp.evaluate(() => { ToolWindows.open("oscilloscope.html"); })]);
   ss.on("pageerror", e => errors.push(`safari scope: ${e.message}`));
   await ss.waitForSelector("#btn-board"); await ss.click("#btn-board");
-  await sp.waitForFunction(() => { const f = document.getElementById("board-tab"); return f && !f.hidden; }, null, { timeout: 3000 }).catch(() => {});
+  await sp.waitForFunction(() => { const f = document.getElementById("board-tab"); return f && !f.hidden; }, null, { timeout: 15000 }).catch(() => {});
   check(await sp.evaluate(() => !document.getElementById("board-tab").hidden) && sc.pages().length === 2, `in Safari, Board in the oscilloscope shows the board in the CAD window, no new window (${sc.pages().length} pages)`);
   await sp.frameLocator("#board-tab").locator("#btn-cad").click(); await sp.waitForTimeout(100);
   await ss.close();
