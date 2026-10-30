@@ -255,6 +255,9 @@
     .ai-who { font-size: 12px; } .ai-who.warn { color: var(--warn); }
     .ai-providers { margin: 6px 0 10px; } .ai-providers .btn { min-width: 90px; }
     .new-form.ai-form { grid-template-columns: 70px 1fr; }
+    .ai-design-text { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; resize: vertical; margin-bottom: 8px; }
+    #design-chips { margin-bottom: 8px; }
+    .ds-table td:first-child { color: var(--muted); white-space: nowrap; } .ds-chart { max-width: 460px; margin: 8px 0; }
     .ai-keyrow { display: flex; gap: 6px; align-items: center; } .ai-keyrow input[type=password], .ai-keyrow input[type=text] { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: 12px ui-monospace, Menlo, monospace; }
     .ai-keyrow label { color: var(--muted); font-size: 12px; white-space: nowrap; }
     #ai-modal .modal-actions { align-items: center; }
@@ -393,8 +396,10 @@
       <button class="btn" id="btn-ai" aria-haspopup="true" aria-expanded="false" title="AI: ask about the circuit, explain it, fix the checks, design and tune (your own Claude, ChatGPT or Gemini key)">AI ▾</button>
       <div class="menu-list" role="menu" hidden>
         <button class="menu-item" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
+        <button class="menu-item" role="menuitem" id="menu-ai-design" title="Describe an amplifier; the AI designs it, the CAD draws and simulates it, and the Checks go back for revisions">Design from a description…<kbd>new circuit</kbd></button>
         <button class="menu-item" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
         <button class="menu-item" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
+        <button class="menu-item" role="menuitem" id="menu-ai-datasheet" title="A tube's datasheet (PDF) read by the AI: ratings, pinout and a Koren model fitted to its plate curves, for review">Tube from a datasheet…<kbd>PDF → model</kbd></button>
         <button class="menu-item" role="menuitem" id="menu-ai-tune" title="Part values changed until the simulated circuit meets your goals; works without a key">Auto-tune<kbd>reach a goal</kbd></button>
         <div class="menu-sep"></div>
         <button class="menu-item" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
@@ -588,6 +593,35 @@
       </div>
     </div>
   </div>
+  <div class="modal" id="design-modal" hidden>
+    <div class="modal-box" style="width: min(620px, 94vw)">
+      <div class="insp-title">Design from a description</div>
+      <p class="insp-help">Describe the amplifier or stage: tubes, output power, load, supply, gain, anything you care about. The AI designs it from the library's parts, the CAD draws it on a new sheet and simulates it, and if the Checks find problems they go back to the AI for a revision. It replaces the circuit on the sheet (Ctrl+Z brings it back). Uses your AI key.</p>
+      <textarea id="design-text" class="ai-design-text" rows="5" placeholder="e.g. A single-ended EL84 amplifier, about 4 W into 8 Ω, with a 12AX7 driver and 300 V B+"></textarea>
+      <div class="ai-chips" id="design-chips"></div>
+      <label class="tune-check"><input type="checkbox" id="design-revise" checked> Send the Checks back for up to two revisions</label>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="btn" id="btn-design-cancel">Cancel</button>
+        <button class="btn active" id="btn-design-go" title="Ctrl+Enter">Design</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="sheet-modal" hidden>
+    <div class="modal-box" style="width: min(560px, 94vw)">
+      <div class="insp-title">Tube from a datasheet</div>
+      <p class="insp-help">Pick a tube's datasheet (PDF). The AI reads its ratings, heater, pinout and points along the plate curves; a Koren model is fitted to the points and shown against them. Review it in the AI tab, then add the tube to the library. The PDF goes to your AI provider; uses your AI key.</p>
+      <div class="new-form">
+        <span>Datasheet</span><input type="file" id="sheet-file" accept="application/pdf,.pdf">
+        <span>Tube name</span><input type="text" id="sheet-name" placeholder="optional: as in the datasheet">
+      </div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="btn" id="btn-sheet-cancel">Cancel</button>
+        <button class="btn active" id="btn-sheet-go">Read datasheet</button>
+      </div>
+    </div>
+  </div>
   <div class="modal" id="new-modal" hidden>
     <div class="modal-box" style="width: min(520px, 94vw)">
       <div class="insp-title">New circuit</div>
@@ -721,6 +755,7 @@
   <script src="tube-db.js?v=dev"></script>
   <script src="spice-model.js?v=dev"></script>
   <script src="sim-engine.js?v=dev"></script>
+  <script src="koren-fit.js?v=dev"></script>
   <script src="sim-pool.js?v=dev"></script>
   <script src="bias.js?v=dev"></script>
   <script src="spice-import.js?v=dev"></script>
@@ -746,6 +781,10 @@
   <script src="ai-circuit.js?v=dev"></script>
   <script src="cad-ai.js?v=dev"></script>
   <script src="cad-tune.js?v=dev"></script>
+  <script src="ai-design.js?v=dev"></script>
+  <script src="cad-design.js?v=dev"></script>
+  <script src="ai-datasheet.js?v=dev"></script>
+  <script src="cad-datasheet.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>

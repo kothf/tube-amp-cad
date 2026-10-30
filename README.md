@@ -105,6 +105,10 @@ Firefox is not tested.
   that provider:
   - ask about the circuit or the app; the model sees the parts, nets,
     simulated voltages, operating points and Checks, and the manual;
+  - *Design from a description*: the model designs the circuit, the CAD
+    draws and simulates it and sends the Checks back for revisions;
+  - *Tube from a datasheet*: a PDF read into ratings, pinout and a Koren
+    model fitted to its plate curves, reviewed before it joins the library;
   - *Explain my circuit*, stage by stage;
   - *Fix the checks*: value changes checked against the parts, applied with
     one click, re-simulated and compared.

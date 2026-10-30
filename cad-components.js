@@ -2563,6 +2563,7 @@
       info: c => {
         const t = tubeByName(c.params.tube);
         if (!t) return "";
+        if (t.custom && t.custom.source === "datasheet") return `From a datasheet · Koren model ${t.custom.fit ? `fitted to ${t.custom.fit.points} plate-curve points (R² ${t.custom.fit.r2})` : `of the ${t.custom.like}`} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A`;
         return t.custom
           ? `Imported SPICE model ${t.custom.sub}${t.custom.like ? ` · socket, pinout and heater of the ${t.custom.like}` : ""} · Va max ${t.vaMax} V · Pa max ${t.paMax} W`
           : `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A (not simulated)`;
