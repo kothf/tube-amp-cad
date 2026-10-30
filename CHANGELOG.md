@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.148.0] - 2026-10-30
+
+### Changed
+- **Auto-tune's progress chart says what it shows.** The Tune tab's chart now has axes with values: the try number across, and how far the circuit is off its goals up the side, in % on a log scale (the rms of each goal's miss; 0 when every goal is met). Each try is a dot (× when it did not settle), the best so far is a line, the best try is marked ("best · try 37"), a dotted line follows the try running now, and a green band at the foot is where every goal is met. Hover a dot for that try's miss and goals met. A line above it reads "Try 17 / 120 · 1 of 2 goals met · best at try 9 · off by 4.2 %", a legend explains the marks, and the goals table has an **Off by** column per goal.
+
 ## [3.147.4] - 2026-10-30
 
 ### Fixed

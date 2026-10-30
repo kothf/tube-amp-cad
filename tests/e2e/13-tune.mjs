@@ -23,6 +23,9 @@ import { cad, check } from "./harness.mjs";
   await cad.click("#btn-tune-run");
   await cad.waitForFunction(() => TubeCAD.tune.state.run && TubeCAD.tune.state.run.phase === "done", null, { timeout: 180000 });
   const R = await cad.evaluate(() => { const R = TubeCAD.tune.state.run; return { ok: R.ok, evals: R.evals, snapped: R.snapped, text: document.getElementById("tune-pane").innerText }; });
+  const C = await cad.evaluate(() => ({ dots: document.querySelectorAll("#tune-pane .tune-chart .tune-try, #tune-pane .tune-chart .tune-fail").length, best: !!document.querySelector("#tune-pane .tune-chart .tune-best"),
+    goal: !!document.querySelector("#tune-pane .tune-chart .tune-goal"), line: document.querySelector("#tune-pane .tune-line").innerText.replace(/\s+/g, " ") }));
+  check(C.dots === R.evals && C.best && C.goal && /\d+ tries 1 of 1 goal met best at try \d+ off by 0 %/.test(C.line), `the chart shows every try, the best so far and the goals-met band, with a status line (${C.dots} dots · ${C.line})`);
   check(R.ok && R.evals <= 40 && R.snapped && R.snapped[0] < amp0, `the run gets BA1 down to 2 W within its budget (${R.evals} tries, level ${amp0} → ${R.snapped && R.snapped[0]})`);
   await cad.click("#btn-tune-apply");
   const amp = () => cad.evaluate(() => TubeCAD.state.comps.find(c => c.label === "G2").params.amp);
