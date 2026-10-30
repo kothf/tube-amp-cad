@@ -6,10 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.135.1] - 2026-10-30
+## [3.136.0] - 2026-10-30
+
+### Added
+- **Short share links.** On aerocat.tech, File ▾ → Share link… now gives a link like `aerocat.tech/s/Ab3xK9_qZw`: the packed design is kept by a small link store on the site and found again by its id. The id is the start of the design's SHA-256, so sharing the same design twice gives the same link, and a stored design never changes. Other copies of the app (a local folder) still give the long link with the design inside, and open short links from the site. If the store can't be reached, the dialog gives the long link and says why.
+- `server/share/`: the link store (Node, no packages), its Dockerfile and compose file, and the nginx lines for `/s/<id>` and `/api/share` with a rate limit. It keeps only text that unpacks to a Tube Amp CAD design, at most 96k characters each and 512 MB in all.
 
 ### Changed
-- Share link: shorter links. Parts and wires travel as rows instead of named fields, and the board is left out unless you tick it, so example 07 makes a link of about 3 800 characters instead of 8 900 (8 400 with its board). Links made by 3.135.0 still open.
+- Share link: the design is packed shorter (parts and wires as rows instead of named fields), so the long link of example 07 is about 3 800 characters without its board and 8 500 with it, instead of 4 200 and 8 900. Links made by 3.135.0 still open.
 
 ## [3.135.0] - 2026-10-30
 

@@ -1,0 +1,20 @@
+# The store next to the site's nginx: on the same internal network, no published ports.
+# Designs live in ./data on the host (back it up with the site).
+services:
+  share:
+    build: .
+    container_name: tubecad_share
+    restart: unless-stopped
+    environment:
+      ORIGINS: https://aerocat.tech
+      MAX_TOTAL: "536870912"
+    volumes:
+      - ./data:/data
+    networks: [share]
+    mem_limit: 128m
+    cpus: 0.5
+    read_only: true
+    tmpfs: [/tmp]
+networks:
+  share:
+    name: share
