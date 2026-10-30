@@ -330,6 +330,14 @@ the circuit that was on the sheet.
     trend line, its range and the steps over its rating;
   - click a line to plot it against the value; a scope channel also overlays
     its wave at every step; click a step to set the part to it.
+- **KiCad.** *Export KiCad project* (File menu) writes a ZIP for KiCad 7 or
+  later: the schematic (each symbol as drawn here, dual valves as units of
+  one symbol, a sheet per drawing frame), the board when its parts are
+  placed, the net classes, custom rules for the clearance by voltage, and
+  the symbol and footprint libraries. Pins carry their pads' numbers, so
+  *Update PCB from Schematic* pairs the two. Checked with KiCad 7.0.11: on
+  every example KiCad's netlist of the schematic joins exactly the pads the
+  board joins, and its DRC agrees with the Board window's.
 - **SPICE.** *Export SPICE netlist* writes an LTspice netlist: tubes as
   behavioural sources with the same equations the simulator uses, transistors
   as Q and M elements with their `.model` lines.
@@ -768,6 +776,9 @@ the circuit file, so one file holds both.
     Gerber library (gerbonara): every pad, via and hole in place. Parts not
     on the board are left out; an unfinished board (unrouted, rule violations)
     asks first.
+  - **KiCad board (ZIP)**: the `.kicad_pcb` with its project file (net
+    classes), custom rules (clearance by voltage, the parts' pin spacing) and
+    footprint library, to finish or fabricate the board in KiCad 7 or later.
   - **Print set (PDF)**: assembly drawing, top and bottom copper at 1:1, and a
     drill map with its table. Each page has a 50 mm bar to check the printer's
     scale.

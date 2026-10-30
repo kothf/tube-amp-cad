@@ -322,6 +322,7 @@
         <button class="menu-item" role="menuitem" id="btn-pdf">Save as PDF<kbd>all sheets</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-export">Export sheet…<kbd>PDF / PNG</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-png">Export PNG…<kbd>image</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-kicad" title="The schematic, the board (when its parts are placed) and a project file with the net classes, as a ZIP for KiCad 7 or later">Export KiCad project<kbd>.kicad_sch / _pcb</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-spice">Export SPICE netlist…<kbd>LTspice</kbd></button>
       </div>
     </div>
@@ -630,6 +631,10 @@
   <script src="cad-export.js?v=dev"></script>
   <script src="cad-results.js?v=dev"></script>
   <script src="cad-board-link.js?v=dev"></script>
+  <script src="board-core.js?v=dev"></script>
+  <script src="board-fab.js?v=dev"></script>
+  <script src="kicad-export.js?v=dev"></script>
+  <script src="cad-kicad.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>

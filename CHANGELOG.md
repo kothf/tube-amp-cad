@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.135.0] - 2026-10-30
+
+### Added
+- **KiCad export.** *File ▾ → Export KiCad project* in the Circuit CAD writes a ZIP with a KiCad 7 project (KiCad 8 and 9 open it too); *Export ▾ → KiCad board (ZIP)* in the Board window writes the board part of it.
+  - **Schematic** (`.kicad_sch`): every symbol is the one on the sheet, drawn by the CAD's own code, with its reference and value where the sheet has them; a dual valve's sections are units of one symbol; each drawing frame is a sheet under a root sheet (one frame or none: a single sheet), with its title block. Ground, rails and sheet connectors are power symbols. Valve heaters and internal shields, which the board wires but the schematic does not draw, are an extra unit of their valve; the heater supplies (XH) and the star point (XG) are boxes of their own; both join their nets by global labels.
+  - **Board** (`.kicad_pcb`, when its parts are placed): footprints with pads, silkscreen and courtyard (parts on the bottom flipped as KiCad flips them), tracks, vias, mounting holes, texts, the rounded outline, copper pours (KiCad fills them) and keep-out areas. Each footprint names its symbol and each pin carries its pad's number, so *Update PCB from Schematic* pairs the two; net names are the Board window's, and the power and high-voltage nets get a label on the schematic so the names (and their classes) survive an update.
+  - **Rules**: the net classes (Signal, Power, HV, with their widths and clearances) in the `.kicad_pro`; in the `.kicad_dru`, the clearance by voltage (IPC-2221B) for each pair of nets that needs more than its classes give, and each part's own pin spacing (a noval socket, a TO-92) and thin rings inside its courtyard, as the Board window's rule check allows them.
+  - **Libraries**: the symbols (`TubeAmpCAD.kicad_sym`) and footprints (`TubeAmpCAD.pretty`) the project uses, with the project's library tables.
+  - Checked with KiCad 7.0.11 on all twelve examples: every file loads; KiCad's netlist of the schematic joins exactly the pads the board joins; after KiCad fills the pours the unrouted connections are the Board window's; KiCad's DRC finds the clearance problems the Board window finds, give or take a few near misses.
+
 ## [3.134.1] - 2026-10-30
 
 ### Fixed

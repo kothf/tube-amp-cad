@@ -189,6 +189,24 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const rect = (t.match(/Rectified current\s+([\d.]+mA)\s+(\d+)% of 125mA/) || []), pk = (t.match(/Peak anode current\s+([\d.]+mA)\s+(\d+)% of 375mA/) || []);
     const circuitChecks = await cad.evaluate(() => { TubeCAD.state.sel.comps.clear(); TubeCAD.updateInspector(); const t = document.getElementById("inspector").innerText; return t.slice(t.indexOf("CHECKS"), t.indexOf("Renumber")); });
     check(/No problems found/i.test(circuitChecks) && pk[2] <= 100, `Gubin example: no warnings in the circuit's checks (the 5Ц4С's peak anode current ${pk[1]} is within 375 mA)${/No problems/i.test(circuitChecks) ? "" : ": " + circuitChecks.replace(/\s+/g, " ")}`);
+    // KiCad export (File ▾ → Export KiCad project): a sheet per drawing frame under a root sheet, the
+    // board and its libraries; every symbol pin is a pad of its footprint and every pad with a net has a pin
+    const kc = await cad.evaluate(() => {
+      const files = TubeCAD.kicadFiles(), names = Object.keys(files), balanced = t => { let d = 0; for (const ch of t.replace(/"(?:[^"\\]|\\.)*"/g, "")) { if (ch === "(") d++; else if (ch === ")" && --d < 0) return false; } return d === 0; };
+      const sch = names.filter(n => /\.kicad_sch$/.test(n)), pcb = files[names.find(n => /\.kicad_pcb$/.test(n))] || "";
+      const pins = {}, libPins = {};
+      sch.forEach(n => {
+        const t = files[n], lib = t.slice(t.indexOf("(lib_symbols"), t.indexOf("\n  )\n"));
+        lib.split(/\n {4}\(symbol "TubeAmpCAD:/).slice(1).forEach(b => { libPins[b.slice(0, b.indexOf('"'))] = [...b.matchAll(/\(number "([^"]*)"/g)].map(m => m[1]); });
+        t.split("\n  (symbol (lib_id ").slice(1).forEach(b => { const lib = /^"TubeAmpCAD:([^"]*)"/.exec(b)[1], ref = /\(reference "([^"]*)"\)/.exec(b)[1]; if (!/^#/.test(ref)) pins[ref] = libPins[lib]; });
+      });
+      const pads = {};
+      pcb.split("\n  (footprint ").slice(1).forEach(b => { const ref = /\(fp_text reference "([^"]*)"/.exec(b)[1]; if (/^H\d+$/.test(ref)) return; pads[ref] = [...b.matchAll(/\(pad "([^"]+)" [^\n]*?\(net \d+ /g)].map(m => m[1]); });
+      const bad = Object.keys(pads).filter(r => !pins[r] || pads[r].some(p => !pins[r].includes(p))).concat(Object.keys(pins).filter(r => pads[r] && pins[r].some(p => !pads[r].includes(p) && !/\./.test(p))));
+      return { names, balanced: names.filter(n => !/\.kicad_pro$|\.kicad_dru$/.test(n)).every(n => balanced(files[n])), sheets: sch.length, parts: Object.keys(pads).length, bad, pro: JSON.parse(files[names.find(n => /\.kicad_pro$/.test(n))]) };
+    });
+    check(kc.balanced && kc.sheets === 4 && kc.parts > 30 && !kc.bad.length && kc.names.some(n => /^TubeAmpCAD\.pretty\/SOCKET-B9A\.kicad_mod$/.test(n)) && kc.names.includes("fp-lib-table") && kc.names.includes("sym-lib-table") && kc.pro.net_settings.classes.length === 3,
+      `KiCad export of the Gubin example: ${kc.sheets} schematic files (a root and three sheets), ${kc.parts} footprints whose pads match their symbols' pins${kc.bad.length ? " (not: " + kc.bad.join(", ") + ")" : ""}, footprint and symbol libraries, net classes`);
     await cad.evaluate(() => { const S = TubeCAD.state, v = S.comps.find(c => c.label === "VL1"); S.sel.comps.clear(); S.sel.comps.add(v.id); TubeCAD.updateInspector(); });
     // Animate picks DC or AC by the node's voltage over the whole capture: the 50 Hz mains is AC, even though it barely moves in one 1 kHz signal cycle
     const mainsModes = await cad.evaluate(() => {
