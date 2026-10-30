@@ -2,7 +2,9 @@
    BOARD DESIGN — a small SAT solver (no DOM, Node-testable), for the exact window router.
      const s = BoardSat.solver();  s.newVar() -> v (1, 2, …);  s.add([v, -w, …]) (a clause:
      literals are +v for v true, -v for v false);  s.solve({ budget, ms }) -> true | false | null
-     (null: gave up after budget conflicts or ms milliseconds);  s.value(v) -> true | false
+     (null: gave up after budget conflicts or ms milliseconds);  s.value(v) -> true | false.
+     BoardSat.solver({ maxClauses }): add() throws an error with .full set once the formula would
+     hold more clauses than that (so a caller stops building a formula too big for the page's memory)
    Conflict-driven clause learning (Marques-Silva and Sakallah, GRASP 1996; Moskewicz et al.,
    Chaff 2001; Eén and Sörensson, MiniSat 2003): two watched literals per clause, the first
    unique implication point's learnt clause, activity-ordered decisions that start false (so
@@ -10,8 +12,8 @@
    ============================================================================= */
 (function (root) {
   "use strict";
-  function solver() {
-    const clauses = [], watch = [[], []];   // watch[2v + (neg ? 1 : 0)]: clauses watching that literal
+  function solver(opts) {
+    const clauses = [], watch = [[], []], cap = (opts && opts.maxClauses) || Infinity;   // watch[2v + (neg ? 1 : 0)]: clauses watching that literal
     let nv = 0, ok = true;
     const lit = l => 2 * Math.abs(l) + (l < 0 ? 1 : 0);
     function newVar() { nv++; watch.push([], []); return nv; }
@@ -20,6 +22,7 @@
       const seen = new Set(), out = [];
       for (const l of c) { if (seen.has(-l)) return; if (!seen.has(l)) { seen.add(l); out.push(l); } }
       if (!out.length) { ok = false; return; }
+      if (clauses.length >= cap) { const e = new Error(`formula over ${cap} clauses`); e.full = true; throw e; }
       clauses.push(out);
     }
     // the search state

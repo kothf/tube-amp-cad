@@ -244,6 +244,12 @@ test("the SAT solver: finds a model that meets every clause, and proves three pi
   p.forEach(([a, b]) => H.add([a, b]));
   for (let h = 0; h < 2; h++) for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) H.add([-p[i][h], -p[j][h]]);
   assert.equal(H.solve(), false);
+  // a cap on the formula's size: the clause past it throws (marked full), the ones before stay
+  const F = globalThis.BoardSat.solver({ maxClauses: 2 }), a = F.newVar(), b = F.newVar();
+  F.add([a]); F.add([-a, b]);
+  assert.throws(() => F.add([-b]), e => e.full === true);
+  assert.equal(F.size, 2);
+  assert.equal(F.solve(), true);
 });
 
 test("access: a part parked in the only way out of a ring moves aside, after which the pin's track gets through", () => {
