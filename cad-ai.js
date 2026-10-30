@@ -100,8 +100,11 @@
     function add(entry) { AI.log.push(entry); render(); return entry; }
     function show() { toggleBom(true, "ai"); }
     // a request to the provider in use; the Stop button aborts it
-    async function call(req, what) {
+    // (live: the answer is prose, shown while it is written)
+    let paint = 0;
+    async function call(req, what, live) {
       AI.cfg = AiClient.load();
+      if (live) req = Object.assign({}, req, { onText: t => { if (!AI.busy) return; AI.busy.partial = t; if (!paint) paint = setTimeout(() => { paint = 0; render(); }, 120); } });
       if (needKey()) throw Object.assign(new Error("no key"), { quiet: true });
       const ctl = typeof AbortController === "function" ? new AbortController() : null;
       AI.busy = { what, ctl, t0: Date.now() }; render();
@@ -133,7 +136,7 @@
       add({ kind: "user", text: shown || question, prompt: question });
       try {
         const system = SYSTEM + "\n\n# The manual (help.html)\n" + await manual();
-        const text = await call({ system, messages: msgs }, shown || "Assistant");
+        const text = await call({ system, messages: msgs }, shown || "Assistant", true);
         add({ kind: "answer", text });
       } catch (e) { fail(e); }
     }
@@ -180,13 +183,14 @@
       });
       if (!done.length) return;
       commit(); render();
+      const at = S.history[S.hIndex];
       selectParts(card.fixes.filter(f => f.applied).map(f => f.id));
       if (!S.sim.live) runSim("live");
       const note = add({ kind: "note", text: `Applied: ${done.join("; ")}. Simulating…` });
       await whenSimulated();
       const after = circuitIssues();
       note.text = `Applied: ${done.join("; ")}. Checks: ${card.before.length} → ${after.length} problem${after.length === 1 ? "" : "s"}` + (after.length ? ":\n" + after.map(i => "- " + i).join("\n") : ". All clear.");
-      note.undo = true;
+      note.undo = true; note.at = at;
       render();
     }
 
@@ -199,6 +203,7 @@
       if (m.kind === "error") return `<div class="ai-msg error">⚠ ${esc(m.text)}</div>`;
       if (m.kind === "note") return `<div class="ai-msg note">${A.markdown(m.text, refs())}${m.undo ? `<div class="ai-row"><button class="btn" data-undo="${k}" title="Take the change back (Ctrl+Z)">Undo</button></div>` : ""}</div>`;
       if (m.kind === "setup") return `<div class="ai-msg note"><b>Add an API key to use the assistant.</b> It works with your own key for Claude (Anthropic), ChatGPT (OpenAI) or Gemini (Google). The key stays in this browser and goes only to that provider; the provider bills your account for what you ask. <div class="ai-row"><button class="btn primary" data-settings="1">AI settings…</button></div></div>`;
+      if (m.kind === "card") return `<div class="ai-msg answer">${m.html}</div>`;   // built by another AI feature from escaped parts
       if (m.kind === "fixes") {
         const ok = m.fixes.filter(f => !f.error && !f.applied);
         const rows = m.fixes.map((f, j) => `<tr class="${f.error ? "bad" : f.applied ? "done" : ""}"><td><a href="#" class="ai-ref" data-ref="${esc(f.part)}">${esc(f.part)}</a></td>`
@@ -219,18 +224,25 @@
           + (AiClient.ready(AI.cfg) ? "" : ` It needs your own API key for Claude, ChatGPT or Gemini: <a href="#" data-settings="1">AI settings…</a>`) + `</div>`
           + `<div class="ai-chips">${["Explain my circuit", "Fix the checks", "Why does the output stage run so hot?", "How do I measure the output power at 1 % THD?", "How do I add a second sheet?"].map(q => `<button class="btn ai-chip">${esc(q)}</button>`).join("")}</div>`;
       }
-      if (AI.busy) h += `<div class="ai-msg busy"><span class="ai-dots"></span> ${esc(AI.busy.what)} · ${esc(AiClient.label(AI.cfg))} is thinking… <button class="btn" id="btn-ai-stop">Stop</button></div>`;
+      if (AI.busy) h += (AI.busy.partial ? `<div class="ai-msg answer">${A.markdown(AI.busy.partial, refs())}</div>` : "")
+        + `<div class="ai-msg busy"><span class="ai-dots"></span> ${esc(AI.busy.what)} · ${esc(AiClient.label(AI.cfg))} is ${AI.busy.partial ? "writing" : "thinking"}… <button class="btn" id="btn-ai-stop">Stop</button></div>`;
       log.innerHTML = h;
       log.scrollTop = log.scrollHeight;
       const send = $("btn-ai-send"); if (send) send.disabled = !!AI.busy;
       actions.forEach(a => { const b = $(a.id); if (b) b.disabled = !!AI.busy && !a.free; });
     }
     function onLogClick(e) {
-      const t = e.target.closest("[data-ref], [data-apply], [data-settings], [data-undo], .ai-chip, #btn-ai-stop"); if (!t) return;
+      const t = e.target.closest("[data-ref], [data-apply], [data-settings], [data-undo], [data-act], .ai-chip, #btn-ai-stop"); if (!t) return;
       e.preventDefault();
+      if (t.dataset.act) { const fn = cardActs[t.dataset.act]; if (fn) fn(t.dataset.arg, t); return; }
       if (t.id === "btn-ai-stop") { if (AI.busy && AI.busy.ctl) AI.busy.ctl.abort(); return; }
       if (t.dataset.settings) { openSettings(); return; }
-      if (t.dataset.undo) { undo(); const m = AI.log[+t.dataset.undo]; if (m) { m.undo = false; m.text += "\n\n*Undone.*"; } render(); return; }
+      // the note's Undo takes back this change only: after other edits it would take back the last of those
+      if (t.dataset.undo) {
+        const m = AI.log[+t.dataset.undo]; if (!m) return;
+        if (S.history[S.hIndex] === m.at) { undo(); m.text += "\n\n*Undone.*"; } else m.text += "\n\n*The circuit changed since: Edit ▾ → Undo steps back through the changes.*";
+        m.undo = false; render(); return;
+      }
       if (t.classList.contains("ai-chip")) { const q = t.textContent; if (q === "Explain my circuit") explain(); else if (q === "Fix the checks") fixChecks(); else ask(q); return; }
       if (t.dataset.ref) { const c = S.comps.find(k => refOf(k) === t.dataset.ref || k.label === t.dataset.ref); if (c) selectParts([c.id]); return; }
       if (t.dataset.apply) { const [k, j] = t.dataset.apply.split(":"), card = AI.log[+k]; if (card) apply(card, j === "all" ? card.fixes.map((f, i) => i) : [+j]); }
@@ -298,6 +310,8 @@
       input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
       bind("btn-ai-explain", explain); bind("btn-ai-fix", fixChecks);
       bind("ai-who", openSettings); bind("btn-ai-clear", () => { if (AI.busy && AI.busy.ctl) AI.busy.ctl.abort(); AI.log = []; render(); });
+      const tuneTab = () => toggleBom(true, "tune");
+      bind("menu-ai-tune", tuneTab);
       bind("menu-ai-chat", () => { show(); setTimeout(() => input.focus(), 0); }); bind("menu-ai-explain", explain); bind("menu-ai-fix", fixChecks); bind("menu-ai-settings", openSettings);
       document.querySelectorAll("#ai-providers [data-p]").forEach(b => b.addEventListener("click", () => { readDraft(); settingsTab(b.dataset.p); }));
       bind("btn-ai-test", testKey); bind("btn-ai-list", loadModels); bind("btn-ai-save", saveSettings); bind("btn-ai-forget", forgetKeys);
@@ -308,8 +322,11 @@
     }
     // another AI feature's button above the conversation and its menu item
     function addAction(a) { actions.push(a); }
+    // a button's handler on another feature's card (data-act="name" data-arg="…")
+    const cardActs = {};
+    function cardAction(name, fn) { cardActs[name] = fn; }
 
-    return { init, render, ask, explain, fixChecks, apply, describe, openSettings, show, call, add, fail, addAction, refOf };
+    return { init, render, ask, explain, fixChecks, apply, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf };
   }
   root.CadAi = CadAi;
 })(window);

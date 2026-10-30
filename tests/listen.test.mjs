@@ -72,3 +72,19 @@ test("the riff made here is the same every time, peaking at 1", () => {
   assert.deepEqual(a, b);
   assert.ok(Math.abs(Math.max(...a.map(Math.abs)) - 1) < 1e-6);
 });
+
+test("radio: grab reads just enough of an endless stream, then lets it go", async () => {
+  // an endless "stream" in 4 kB chunks; 2 s at 128 kbps is 32 kB (+10 % and 16 kB to spare)
+  let pulled = 0, cancelled = false;
+  const body = new ReadableStream({ pull(c) { pulled++; c.enqueue(new Uint8Array(4096).fill(pulled & 255)); }, cancel() { cancelled = true; } });
+  const fetchFn = async () => ({ ok: true, status: 200, body });
+  const seen = [];
+  const b = await L.grab("https://example/stream", 128, 2, undefined, n => seen.push(n), fetchFn);
+  const want = Math.round(2 * 128 * 125 * 1.1) + 16384;
+  assert.ok(b.length >= want && b.length < want + 4096, `${b.length} bytes for ${want}`);
+  assert.ok(cancelled, "the stream is cancelled once there is enough");
+  assert.equal(seen[seen.length - 1], b.length);
+  assert.equal(b[0], 1); assert.equal(b[4096], 2);
+  await assert.rejects(L.grab("u", 128, 1, undefined, null, async () => ({ ok: false, status: 503 })), /503/);
+  assert.ok(L.RADIO.streams.every(s => /^https:\/\//.test(s.url) && s.kbps > 0));
+});

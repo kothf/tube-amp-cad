@@ -1,6 +1,6 @@
 /* Listen, the Listen tab under the schematic: the circuit playing a recording, heard through the
-   computer's speakers. The recording is a WAV or MP3 file, the generator's own tone or a guitar
-   riff made here; it drives every signal generator (a stereo file: its left channel the first
+   computer's speakers. The recording is a WAV or MP3 file, the generator's own tone, a guitar
+   riff made here or a few seconds caught live from a 70s rock radio station; it drives every signal generator (a stereo file: its left channel the first
    generator, its right the second), and the output is a speaker's voltage (two speakers: stereo) or
    a scope channel. The circuit first settles with its generators silent; then the clip is cut into
    pieces, one per core, each played from that settled state with a lead-in of the clip before it
@@ -10,6 +10,39 @@
 (function (root) {
   "use strict";
   const RATE = 48000;
+  // the live radio: RADIO BOB! 70s Rock (Germany). Its MP3 streams answer any page (CORS), so a few
+  // seconds of the broadcast are read as bytes and decoded like a file; the second is the fallback
+  const RADIO = {
+    name: "RADIO BOB! 70s Rock", home: "https://www.radiobob.de",
+    streams: [{ url: "https://streams.radiobob.de/70errock/mp3-128/mediaplayer/", kbps: 128 }, { url: "https://streams.radiobob.de/70errock/mp3-192/mediaplayer/", kbps: 192 }]
+  };
+  // seconds of a stream at kbps: its bytes, read until there are enough (with some to spare for the
+  // decoder) or abort.signal fires; onBytes(n) as they come
+  async function grab(url, kbps, seconds, signal, onBytes, fetchFn) {
+    const want = Math.round(seconds * kbps * 125 * 1.1) + 16384;
+    const r = await (fetchFn ? fetchFn(url, { signal, cache: "no-store" }) : root.fetch(url, { signal, cache: "no-store" }));
+    if (!r.ok) throw new Error(`the station answered ${r.status}`);
+    if (!r.body || !r.body.getReader) { const b = new Uint8Array(await r.arrayBuffer()); return b.subarray(0, Math.min(b.length, want)); }
+    const rd = r.body.getReader(), parts = [];
+    let n = 0;
+    try {
+      while (n < want) {
+        const { done, value } = await rd.read();
+        if (done) break;
+        parts.push(value); n += value.length; if (onBytes) onBytes(n, want);
+      }
+    } finally { rd.cancel().catch(() => {}); }
+    const out = new Uint8Array(n); let k = 0; parts.forEach(v => { out.set(v, k); k += v.length; });
+    return out;
+  }
+  // audio file bytes decoded at RATE: [ch] (one or two; two equal channels become one)
+  async function decode(bytes) {
+    const Ctx = root.OfflineAudioContext || root.webkitOfflineAudioContext;
+    const b = await new Promise((res, rej) => { const p = new Ctx(2, 1, RATE).decodeAudioData(bytes, res, rej); if (p && p.catch) p.catch(rej); });
+    const chs = []; for (let j = 0; j < Math.min(2, b.numberOfChannels); j++) chs.push(new Float32Array(b.getChannelData(j)));
+    if (chs.length === 2 && chs[0].every((v, i) => v === chs[1][i])) chs.pop();
+    return chs;
+  }
   // The pieces of a clip of total samples for n cores: [{ from, to, start }], each kept from
   // `from` to `to`, simulated from `start` (pre samples before, the clip's start for the first) to
   // to + fade (the crossfade into the next). Boundaries fall on multiples of align (a mains period).
@@ -108,9 +141,10 @@
     const opts = { src: "riff", from: 0, len: 6, level: 0, out: "", loop: true, match: true, volume: 0.7 };
     try { Object.assign(opts, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify(opts)); } catch (e) {} };
-    // file: the decoded recording { name, chs, seconds }; job: the render under way; take: the last
+    // file: the decoded recording { name, chs, seconds }; radio: the last piece of the broadcast
+    // { name, chs, seconds, at (time caught) }; tuning: the radio being read { abort, n, want }; job: the render under way; take: the last
     // render { inp: [ch], out: [ch], peak (V), label, seconds, ms }; ab: which one is heard
-    const L = S.listen = { seq: 0, file: null, job: null, take: null, error: null, stale: false, ab: "out", playing: false, opts };
+    const L = S.listen = { seq: 0, file: null, radio: null, tuning: null, job: null, take: null, error: null, stale: false, ab: "out", playing: false, opts };
     let jobs = [], ac = null, play = null;
     const SOURCES = { siggen: "amp", pickup: "amp", phono: "mv" };
     const sources = () => S.comps.filter(c => SOURCES[c.type]);
@@ -128,31 +162,66 @@
     const pick = () => { const o = outputs(); return o.find(x => x.id === opts.out) || o[0] || null; };
     // the clip, normalised to a peak of 1: [ch] at RATE
     function clip() {
-      if (opts.src === "file") {
-        if (!L.file) return null;
-        const a = Math.max(0, Math.round(opts.from * RATE)), b = Math.min(L.file.chs[0].length, a + Math.round(opts.len * RATE));
+      if (opts.src === "file" || opts.src === "radio") {
+        const rec = opts.src === "file" ? L.file : L.radio;
+        if (!rec) return null;
+        // the radio's first half second is skipped: the decoder starts on a cut MP3 frame
+        const a = Math.max(0, Math.round((opts.src === "file" ? opts.from : Math.min(0.5, rec.seconds / 4)) * RATE)), b = Math.min(rec.chs[0].length, a + Math.round(opts.len * RATE));
         if (b - a < RATE / 20) return null;
-        const chs = L.file.chs.map(c => c.slice(a, b)), pk = peakOf(chs) || 1;
+        const chs = rec.chs.map(c => c.slice(a, b)), pk = peakOf(chs) || 1;
         chs.forEach(c => { for (let i = 0; i < c.length; i++) c[i] /= pk; });
         return chs;
       }
       if (opts.src === "tone") { const g = sources()[0], p = g ? g.params : {}; return [tone(p.wave || "sine", +p.freq || 1000, Math.min(opts.len, 10))]; }
       return [riff(Math.min(opts.len, 30))];
     }
-    const srcName = () => (opts.src === "file" ? (L.file ? L.file.name : "no file") : opts.src === "tone" ? "the generator's tone" : "guitar riff");
+    const hhmm = d => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const srcName = () => (opts.src === "file" ? (L.file ? L.file.name : "no file") : opts.src === "radio" ? `${RADIO.name}${L.radio ? ` (live at ${hhmm(L.radio.at)})` : ""}` : opts.src === "tone" ? "the generator's tone" : "guitar riff");
 
+    // a fresh piece of the live broadcast, long enough for the excerpt; then(true) once it is in
+    async function tune(then) {
+      if (L.tuning) return;
+      const ctl = new AbortController(), T = L.tuning = { abort: () => ctl.abort(), n: 0, want: 1 };
+      const seconds = Math.min(30, opts.len) + 1.5;
+      L.error = null; syncTools(); render();
+      let err = null;
+      for (const st of RADIO.streams) {
+        try {
+          setStatus("busy", `Tuning in to ${RADIO.name}…`, 0);
+          const bytes = await grab(st.url, st.kbps, seconds, ctl.signal, (n, want) => {
+            T.n = n; T.want = want;
+            setStatus("busy", `Listen: catching ${fmtEng(Math.min(seconds, n / want * seconds), "s")} of ${fmtEng(seconds, "s")} live from ${RADIO.name}…`, Math.min(1, n / want));
+          });
+          if (ctl.signal.aborted) break;
+          const chs = await decode(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
+          if (!chs.length || chs[0].length < RATE / 2) throw new Error("too little audio came");
+          L.radio = { name: RADIO.name, chs, seconds: chs[0].length / RATE, at: new Date() };
+          err = null; break;
+        } catch (e) { err = e; if (ctl.signal.aborted) break; }
+      }
+      const aborted = ctl.signal.aborted;
+      L.tuning = null;
+      if (aborted) setStatus("idle", "Listen: stopped");
+      else if (err) { L.error = `Could not reach ${RADIO.name} (${err.message || err}): check the internet connection, or try again in a minute.`; setStatus("error", "Listen: " + L.error); }
+      else { setStatus("ok", `Listen: ${fmtEng(L.radio.seconds, "s")} of ${RADIO.name} caught at ${hhmm(L.radio.at)}`); if (then) then(true); }
+      syncTools(); render(); cmds.sync();
+    }
     function stop() {
+      if (L.tuning) L.tuning.abort();
       jobs.forEach(j => j.cancel()); jobs = [];
       if (L.job) { L.job = null; L.seq++; setStatus("idle", "Listen: stopped"); render(); cmds.sync(); }
     }
-    function run() {
+    // tuned: the radio was just caught (play what came, however long)
+    function run(tuned) {
       stop(); halt();
-      const T = topo(), o = pick(), chs = clip();
+      const T = topo(), o = pick(), tuneIn = opts.src === "radio" && tuned !== true && (!L.radio || L.radio.seconds < Math.min(30, opts.len) + 0.5), chs = tuneIn ? null : clip();
       L.error = !S.comps.length ? "Empty sheet" : !T.hasGround ? "Add a ground symbol to simulate"
         : !sources().length ? "The recording drives the circuit's signal generator (or guitar pickup, or phono cartridge): place one at the input."
         : !o ? "Nothing to hear: place a speaker as the load, or an oscilloscope on the output."
+        : tuneIn ? null
         : !chs ? (opts.src === "file" ? (L.file ? "The excerpt is empty: check From and Length." : "Open a WAV or MP3 file first.") : "No clip") : null;
       if (L.error) { render(); return; }
+      if (tuneIn) { tune(run); return; }
       const base = buildNetlist(), gains = 10 ** (opts.level / 20);
       const ids = new Set(sources().map(c => c.id)), gens = base.elements.filter(e => e.kind === "VSRC" && ids.has(e.id));
       const silent = { nodeCount: base.nodeCount, elements: base.elements.map(e => (gens.includes(e) ? Object.assign({}, e, { amp: 0 }) : e)) };
@@ -257,10 +326,7 @@
       if (!f) return;
       setStatus("busy", `Reading ${f.name}…`);
       try {
-        const bytes = await f.arrayBuffer(), Ctx = root.OfflineAudioContext || root.webkitOfflineAudioContext;
-        const b = await new Promise((res, rej) => { const p = new Ctx(2, 1, RATE).decodeAudioData(bytes, res, rej); if (p && p.catch) p.catch(rej); });
-        const chs = []; for (let j = 0; j < Math.min(2, b.numberOfChannels); j++) chs.push(new Float32Array(b.getChannelData(j)));
-        if (chs.length === 2 && chs[0].every((v, i) => v === chs[1][i])) chs.pop();
+        const chs = await decode(await f.arrayBuffer());
         L.file = { name: f.name, chs, seconds: chs[0].length / RATE };
         opts.src = "file"; if (opts.from >= L.file.seconds) opts.from = 0; save();
         L.error = null;
@@ -317,8 +383,10 @@
     }
     function syncTools() {
       const src = document.getElementById("ls-src"); if (src && document.activeElement !== src) src.value = opts.src;
-      const fn = document.getElementById("ls-file-name"); if (fn) fn.textContent = L.file ? `${L.file.name} · ${fmtEng(L.file.seconds, "s")}` : "";
+      const fn = document.getElementById("ls-file-name");
+      if (fn) fn.textContent = opts.src === "radio" ? (L.tuning ? "tuning in…" : L.radio ? `caught at ${hhmm(L.radio.at)} · ${fmtEng(L.radio.seconds, "s")}` : "live, caught when you render") : opts.src === "file" && L.file ? `${L.file.name} · ${fmtEng(L.file.seconds, "s")}` : "";
       const fb = document.getElementById("ls-file-btn"); if (fb) fb.hidden = opts.src !== "file";
+      const rb = document.getElementById("ls-radio-btn"); if (rb) { rb.hidden = opts.src !== "radio"; rb.disabled = !!(L.tuning || L.job); }
       const fr = document.getElementById("ls-from-lbl"); if (fr) fr.hidden = opts.src !== "file";
       ["from", "len", "level"].forEach(k => { const e = document.getElementById("ls-" + k); if (e && document.activeElement !== e) e.value = opts[k]; });
       const sel = document.getElementById("ls-out");
@@ -329,7 +397,7 @@
         sel.value = cur ? cur.id : "";
       }
       const btn = document.getElementById("btn-ls-run");
-      if (btn) btn.textContent = L.job ? "■ Stop" : "▶ Render";
+      if (btn) btn.textContent = L.job || L.tuning ? "■ Stop" : "▶ Render";
     }
     function render() {
       syncTools();
@@ -366,14 +434,15 @@
       const t = L.take;
       note.className = "ls-note" + (L.error || L.stale ? " warn" : "");
       note.textContent = L.error ? L.error : L.stale ? "The circuit changed since this render: press ▶ Render again."
+        : L.tuning ? `Tuning in to ${RADIO.name}: a few seconds of the live broadcast are caught, then played through the circuit.`
         : L.job ? "Rendering: the circuit settles with the generators silent, then the clip plays through it, a piece per core."
           : t ? `${fmtEng(t.seconds, "s")} of ${t.source} rendered in ${fmtEng(t.ms / 1000, "s")} on ${t.cores} core${t.cores > 1 ? "s" : ""}. Output ${t.label}: peak ${fmtEng(t.peak, "V")}, ${fmtEng(t.rms, "Vrms")}. Click a strip to play from there; A/B switches as it plays.`
-            : "Pick a recording (a guitar riff made here, the generator's own tone, or your WAV or MP3 file) and press ▶ Render: it drives the signal generator, and you hear the speaker.";
+            : "Pick a recording (a guitar riff made here, the generator's own tone, your WAV or MP3 file, or 70s rock live from the radio) and press ▶ Render: it drives the signal generator, and you hear the speaker.";
       renderTransport(); renderStrips();
     }
     function init() {
       const src = document.getElementById("ls-src");
-      if (src) src.addEventListener("change", () => { opts.src = src.value; save(); if (opts.src === "file" && !L.file) document.getElementById("ls-file").click(); syncTools(); });
+      if (src) src.addEventListener("change", () => { opts.src = src.value; L.error = null; save(); if (opts.src === "file" && !L.file) document.getElementById("ls-file").click(); syncTools(); render(); });
       const fi = document.getElementById("ls-file");
       if (fi) fi.addEventListener("change", () => { openFile(fi.files[0]); fi.value = ""; });
       const fb = document.getElementById("ls-file-btn");
@@ -385,7 +454,10 @@
       const sel = document.getElementById("ls-out");
       if (sel) sel.addEventListener("change", () => { opts.out = sel.value; save(); });
       const btn = document.getElementById("btn-ls-run");
-      if (btn) btn.addEventListener("click", () => (L.job ? stop() : run()));
+      if (btn) btn.addEventListener("click", () => (L.job || L.tuning ? stop() : run()));
+      // a fresh piece of the broadcast, rendered at once
+      const rb = document.getElementById("ls-radio-btn");
+      if (rb) rb.addEventListener("click", () => { stop(); halt(); tune(run); });
       // a file dropped on the tab
       const dock = document.getElementById("ls-pane");
       if (dock) {
@@ -397,6 +469,6 @@
     }
     return { changed, init, render, run, stop, start, halt, setAB, openFile, outputs, position: () => position() };
   }
-  CadListen.RATE = RATE; CadListen.pieces = pieces; CadListen.stitch = stitch; CadListen.highpass = highpass; CadListen.wav = wav; CadListen.tone = tone; CadListen.riff = riff;
+  CadListen.RATE = RATE; CadListen.pieces = pieces; CadListen.stitch = stitch; CadListen.highpass = highpass; CadListen.wav = wav; CadListen.tone = tone; CadListen.riff = riff; CadListen.RADIO = RADIO; CadListen.grab = grab;
   root.CadListen = CadListen;
 })(typeof window !== "undefined" ? window : globalThis);

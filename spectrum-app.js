@@ -232,6 +232,7 @@
   const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
   bindSel("src", v => S.src = v); bindSel("span", v => { S.span = v; S.zoom = null; }); bindSel("units", v => { S.units = v; S.zoom = null; }); bindSel("scale", v => { S.scale = parseFloat(v); S.zoom = null; }); bindSel("fx", v => { S.fx = v; S.zoom = null; });
   $("btn-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
+  $("btn-board").addEventListener("click", () => ToolWindows.openBoard());
   I.bindScopeSelect($("scope-select"));
   I.onUpdate(draw);
   window.addEventListener("resize", draw);

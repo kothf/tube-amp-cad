@@ -15,6 +15,24 @@ import { readFile } from "node:fs/promises";
   for (let i = 0; i < 3; i++) { await bd.click("#btn-cad"); await cad.click("#btn-doc-board"); }
   await bd.waitForTimeout(200);
   check(ctx.pages().length === nPages && await bd.evaluate(() => !document.getElementById("win-note")), `Schematic and Board, back and forth three times, bring the open windows up instead of opening new ones (${ctx.pages().length} pages)`);
+  // the instruments carry the same switch, neither button lit; their Board brings up the Board window
+  {
+    const [bp] = await Promise.all([ctx.waitForEvent("page"), cad.evaluate(() => { ToolWindows.open("bode.html"); })]);
+    await bp.waitForSelector("#btn-board");
+    const isw = await bp.evaluate(() => [...document.querySelectorAll(".doc-switch .btn")].map(b => b.id + (b.getAttribute("aria-current") ? "*" : "")).join(" "));
+    const n = ctx.pages().length;
+    await bp.click("#btn-board"); await bd.waitForTimeout(200);
+    check(isw === "btn-cad btn-board" && ctx.pages().length === n, `the Bode plotter has the Schematic | Board switch (${isw}, neither lit); its Board finds the open Board window (${ctx.pages().length} pages)`);
+    await bp.close();
+  }
+  // narrow: Text, Hole, Keep-out and Measure fold into More tools and the toolbar stays one row
+  await bd.setViewportSize({ width: 1040, height: 900 }); await bd.waitForTimeout(100);
+  const row = await bd.evaluate(() => { const h = document.querySelector("header"); return { h: h.getBoundingClientRect().height, more: !!document.getElementById("btn-tool-more").offsetParent, text: !!document.querySelector('header .tools > [data-tool="text"]').offsetParent}; });
+  await bd.click("#btn-tool-more"); await bd.click('.tool-more .menu-item[data-tool="measure"]');
+  const picked = await bd.evaluate(() => [BoardApp.state.tool, document.getElementById("btn-tool-more").classList.contains("active")]);
+  await bd.keyboard.press("Escape");
+  check(row.h < 50 && row.more && !row.text && picked[0] === "measure" && picked[1], `at 1040 px the Board toolbar is one row (${Math.round(row.h)} px) with More tools, which picks Measure and lights up (${picked})`);
+  await bd.setViewportSize({ width: 1500, height: 900 });
   // a Board window left open from an older release is reloaded when Board brings it up
   check(/[?&]v=/.test(bd.url()), `the Board window's address carries the release stamp, so a browser cannot serve an old cached page (${bd.url().split("/").pop()})`);
   await bd.evaluate(() => { ToolWindows.version = "0.0.1"; window.__oldPage = true; });

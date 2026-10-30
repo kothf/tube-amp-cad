@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.139.0] - 2026-10-30
+## [3.149.0] - 2026-10-30
 
 ### Added
 - **KiCad export.** *File ▾ → Export KiCad project* in the Circuit CAD writes a ZIP with a KiCad 7 project (KiCad 8 and 9 open it too); *Export ▾ → KiCad board (ZIP)* in the Board window writes the board part of it.
@@ -15,6 +15,120 @@ and the project uses [Semantic Versioning](https://semver.org/).
   - **Rules**: the net classes (Signal, Power, HV, with their widths and clearances) in the `.kicad_pro`; in the `.kicad_dru`, the clearance by voltage (IPC-2221B) for each pair of nets that needs more than its classes give, and each part's own pin spacing (a noval socket, a TO-92) and thin rings inside its courtyard, as the Board window's rule check allows them.
   - **Libraries**: the symbols (`TubeAmpCAD.kicad_sym`) and footprints (`TubeAmpCAD.pretty`) the project uses, with the project's library tables.
   - Checked with KiCad 7.0.11 on all fifteen examples: every file loads; KiCad's netlist of the schematic joins exactly the pads the board joins; after KiCad fills the pours the unrouted connections are the Board window's; KiCad's DRC finds the clearance problems the Board window finds, give or take a few near misses.
+
+## [3.148.0] - 2026-10-30
+
+### Changed
+- **Auto-tune's progress chart says what it shows.** The Tune tab's chart now has axes with values: the try number across, and how far the circuit is off its goals up the side, in % on a log scale (the rms of each goal's miss; 0 when every goal is met). Each try is a dot (× when it did not settle), the best so far is a line, the best try is marked ("best · try 37"), a dotted line follows the try running now, and a green band at the foot is where every goal is met. Hover a dot for that try's miss and goals met. A line above it reads "Try 17 / 120 · 1 of 2 goals met · best at try 9 · off by 4.2 %", a legend explains the marks, and the goals table has an **Off by** column per goal.
+
+## [3.147.4] - 2026-10-30
+
+### Fixed
+- **Release used CI's result only by luck.** It looked at CI three times per round (passed? failed? still running?); when the run finished between the first and the last look, it saw none passed and none running and tested everything again by itself (the 3.147.3 release took 6½ minutes so). It now reads all three from one look.
+
+## [3.147.3] - 2026-10-30
+
+### Changed
+- **CI on main starts at once.** Each commit on main gets its own CI run straight away instead of queueing behind the run before it (the first release of the faster CI waited 4 minutes so), and the browser test groups are rebalanced: part 08 alone, every other part in the other group. The browser test of Board in the oscilloscope (Safari) waits up to 15 s for the board, not 3 s: on a busy CI runner it once came later and failed the run.
+
+## [3.147.2] - 2026-10-30
+
+### Changed
+- **Faster checks and releases.** CI runs the browser tests in four jobs side by side (source and packaged build, each in two groups of parts; `E2E_PARTS=01,08 node tests/e2e.mjs` runs only some parts), lint and the engine tests in a fifth: about 3½ minutes instead of 10½. The release no longer runs the tests a second time: it waits for CI on the same commit and uses its result (it still tests by itself when that commit has no finished CI run), and CI on main no longer cancels a commit's run when the next one is merged. The browser test of Design from scratch locks all but six resistors, so it routes a few connections per layout instead of the whole board (about 2 minutes less per run).
+
+## [3.147.1] - 2026-10-30
+
+### Fixed
+- **Undo button.** The toolbar's Undo and Redo buttons did nothing, and Edit ▾ → Undo / Redo went two steps at a time: the menu items had the same names as the buttons, so both clicks were wired to the menu item. Each now steps once.
+- **Ctrl+Z after picking from a list.** With the focus still on a drop-down list, tick box or slider (the Listen source, a Tune goal), Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z did nothing; they now undo and redo the circuit. In a text or number field they still undo the typing.
+- **Auto-tune after Undo.** Undoing applied values left the button at "✓ Applied", so the values could not be set again; Apply also showed "the circuit changed since this run" right after it. The tab now follows undo and redo: back at the run's start, Apply is offered again; back at the applied values, they show as applied.
+- **AI: the Undo under an applied fix** takes back only that fix. After other edits it says so instead of undoing the last of those.
+
+## [3.147.0] - 2026-10-30
+
+### Added
+- **Listen: 70s rock radio (live).** A new choice in Play tunes in to RADIO BOB! 70s Rock, catches the next few seconds of the live broadcast (as long as Length) and plays them through the circuit in stereo, like a file. **↻ Tune in again** catches a fresh piece and renders it; ▶ Render while tuning in stops it. The 192 kbps stream is tried when the 128 kbps one fails, and a station that cannot be reached is said so in the tab.
+
+### Fixed
+- **Listen: From** shows only for a file again (it showed for the riff and the tone too, where it does nothing).
+
+## [3.146.0] - 2026-10-30
+
+### Fixed
+- **Board: Design from scratch on a fresh board.** Panel parts (pots, jacks, switches, the heater connector) stayed in the row below the board, so the layouts could never reach their pins: a 24-part 6F5P amplifier took 4½ minutes and left 9 connections open. They now go on the board first, where they sit in the schematic (as Place all puts them), and the same board is designed and fully routed in 13 s. Parts still below the board are named as not on the board yet, not as shut in by the board edge.
+- **Board: grid stopper check.** The 10 mm now counts from the socket's edge, not from the pin: a grid pin sits about 9 mm inside an octal socket's body, so no stopper outside it could pass. A grid fed directly by the other section's anode (a Williamson's cathodyne) is no longer taken for a stopper's net with its anode resistor as the stopper.
+
+### Changed
+- **Board: Design from scratch pulls grid stoppers to their sockets**, and a layout with a stopper far from its socket scores worse.
+
+## [3.145.0] - 2026-10-30
+
+### Added
+- **Board: the status line follows the grid router.** While it routes, the status line shows its pass, the crossings (nets too close to each other) it still has to sort out and the connections not joined yet, with a small graph of the crossings falling pass by pass and a thin line under the bar for how far the passes have gone. On Auto-route the bar fills as the crossings go.
+- **Stop** in the status line ends any routing run at once (the grid router's background step too); what is routed so far stays.
+
+### Changed
+- Without Freerouting, Auto-route, Finish routing and Design from scratch let the grid router go first and the maze search after it, on what it left (before, the maze search laid most tracks one by one, then the grid router took many of them up again). Example 06 from a bare board: routed fully in 8 s instead of 21 s.
+
+## [3.144.1] - 2026-10-30
+
+### Fixed
+- **Board: zigzag tracks.** Tidying tracks (pulling the grid finishers' staircases into straight and 45° runs) never ran since 3.131.0: the step was handed an empty list of tracks. It runs again after every Auto-route, Finish routing and Design from scratch, and when one track's new shape would break a rule, only that track keeps its old shape (before, one such track kept them all as they were).
+- **Board: tracks laid twice.** When the grid router took up part of an old track that was in the way, the pieces of it left at the pads stayed beside the new route, so a connection was laid twice, side by side (it looked like a short; no two nets touched). The router now takes up a leftover piece whose pads stay joined without it, and cuts a loose end back to where it meets copper instead of dropping the whole segment, which could leave a connection open. Tidying also takes off any doubled copper left on a board, and Auto-route on a fully routed board now tidies it.
+
+## [3.144.0] - 2026-10-30
+
+### Added
+- Revisions: **Compare on the sheet** marks on the drawing what changed since a revision (parts added green, changed amber, moved blue; parts and wires taken out drawn faintly in red where they were), with a bar that counts them and steps from one change to the next; it follows your edits; Esc or Done leaves it.
+- Revisions: a **preview** of the revision picked, with a picture of its first sheet (saved with each revision), its message, changes and the revision it was made from (**from rN**, when saved after opening an older one).
+- Revisions: **milestones** (☆ Milestone…: Sent to fab, Built, Measured…) and a ★ Milestones filter.
+- The toolbar's **r5** chip: the revision the sheet came from, with • once it has changed since; click it for the dialog. **Ctrl+Alt+S** opens the dialog ready for the message.
+- Project manager: revision pictures (point at one to enlarge), milestones, sorting by last change, name or size, and the page's own dialogs instead of the browser's for editing and deleting.
+- Server: each revision may keep a picture (`<n>.thumb`, PNG/JPEG/WebP up to 200 kB), the revision it came from and a milestone name.
+
+## [3.143.0] - 2026-10-30
+
+### Added
+- **Revisions** (File ▾ → Revisions…, on aerocat.tech for the site's owner only, behind its Cloudflare Access login): each circuit/board project keeps numbered revisions on the site. **Save revision** keeps the whole design (imported tubes and board included) with a message and a summary of what changed since the last one (parts added, removed, changed with old → new values, moved, wires, board); **Open** puts an earlier revision on the sheet; **Compare** says what differs from the sheet; **Download all** saves a project's revisions in one JSON file. `#rev=<project>.<n>` opens a revision in the CAD.
+- **Project manager** (`projects.html`, same login): the space taken by revisions and short links against the 100 MB, and the server's free disk; every project with its revisions (open in the CAD, download, edit the message, delete; rename, download, delete a project) and every short link (open, delete).
+- Server (`server/share`): the link store also keeps the projects (`/api/rev/`, in `./revisions`), checks the Cloudflare Access token itself (RS256 against the team's keys, issuer, expiry; optionally the application's AUD tag and e-mails), and refuses changes from other sites' pages. Revisions and links share one budget (`MAX_TOTAL`, 100 MB): a revision makes room by deleting the oldest links, and revisions are never deleted to make room (`MAX_REVISIONS`, `MAX_SHARES` cap each). `update.sh` updates the NUC install in one command.
+
+## [3.142.0] - 2026-10-30
+
+### Added
+- **Design from a description** (AI ▾, with your AI key): describe an amplifier or a stage and the model designs it from the library's parts as a netlist. The CAD checks it against the library (a design it cannot use goes back once), draws it on a new sheet in signal order (each pin's stub ends in a ground, a supply rail or a sheet connector named after its net), simulates it, and sends the Checks back with the operating points for up to two revisions. Ctrl+Z brings back the circuit you had.
+- **Tube from a datasheet** (AI ▾, with your AI key): a tube's datasheet PDF goes to the model, which reads the type, socket, heater, ratings, pinout and points along the plate curves. A Koren model is fitted to the points (from the most similar library tube), and the AI tab shows what was read, the fit's R² and RMS error, and the model's curves over the datasheet's points. **Add to the library** makes it a custom tube, kept in this browser and in the circuit files that use it.
+
+### Changed
+- The curve tracer's Koren fitter is now `koren-fit.js`, shared with the datasheet import.
+
+## [3.141.0] - 2026-10-30
+
+### Added
+- **Auto-tune**: a **Tune** tab under the schematic (also AI ▾ → Auto-tune) that changes part values until the simulated circuit meets your goals, with no API key needed.
+  - Goals are any measurement (operating points, stage gains, a speaker's power and THD, a scope channel's THD) with ≥, ≤ or = a target, plus "keep every tube and transistor within its ratings".
+  - Values to change are any editable values with a range; **Suggest** adds the resistors at the tubes' and transistors' pins. A pattern-search optimizer proposes tries, the simulator runs them on all workers, and the best values are rounded to E24/E12 and simulated once more. A chart shows the progress; **Stop** keeps the best so far; **Apply these values** is one undo step.
+  - **AI start** (with an API key): the model picks the values to change, their ranges and starting values for your goals.
+
+### Changed
+- The Bill of materials tab under the schematic is labelled **BOM**, so the panel's tabs and tools keep to two rows with the new Tune tab (the list under them stayed too short to show a line at narrow widths).
+
+### Fixed
+- AI assistant: answers are now streamed from all three providers and appear in the AI tab while they are written. A long answer (Explain my circuit takes a minute or more on the strongest models) no longer fails with "Could not reach Claude (Failed to fetch)" behind a proxy or firewall that drops a connection after 30 quiet seconds.
+
+## [3.140.0] - 2026-10-30
+
+### Added
+- **Board: its own grid router.** Boards that Freerouting could not finish now route to the end. The new router (negotiated congestion, rip-up and reroute, as most FPGA routers work: McMurchie and Ebeling's PathFinder) lays every net on a 0.25 mm grid on both layers in straight and 45° runs, with vias where needed, keeping each net's clearance by voltage from pads, locked copper, holes, keep-outs and the edge. Other nets' tracks are a price, not a wall: nets that come too close are taken up and routed again while that price rises, until none conflict. Freerouting's copper stays except the pieces a new route must pass; those come up and their nets are routed again. Tracks enter pads by a straight run to the middle, which may pass the footprint's own pins as close as they are to each other; grid nets keep off anode and heater tracks on both sides of the board (the coupling check).
+  - **Auto-route, Finish routing and Design from scratch use it by default**, with no Freerouting server: the button no longer waits for one. Freerouting runs first only when **Use Freerouting** is ticked in Route ▾ → Freerouting… (the choice is kept in each browser); the grid router then routes whatever it leaves open, round the copper there and, if connections are still open, the whole board afresh, before the older grid finishers. A result stays only if it closes connections and adds no rule message. The tooltip and status line say which router ran.
+  - Example 06 (Gubin 6N23P/6P14P), which kept 4 to 6 connections open, now routes fully as it is and from a bare board. On 109 test boards laid out 9 ways each (the layouts from the placement study), the grid router alone, from bare boards, left 131 connections open where Freerouting with the earlier finishers left 736, and routed 98 boards completely within the rules in their best layout (91 before); about 1 s per board on average, 24 s at most.
+
+## [3.139.0] - 2026-10-30
+
+### Changed
+- Board: the toolbar stays one row down to 1000 px (it took two rows at 1100 px and below). Below 1180 px Text, Hole, Keep-out and Measure fold into one **More tools ▾** button, which shows the tool last picked from it and is lit while that tool is on; and Fit is hidden (the zoom percentage at the bottom right and F fit the board too). The keys T, H, K and D work as before.
+- The oscilloscope, spectrum analyzer and Bode plotter have the same **Schematic | Board** switch as the CAD and the Board, at the left of the toolbar, in place of the single Schematic button; neither is lit, since the instrument is neither. Board brings up the Board window, or, when the CAD keeps the board in its own window (Windows ▾ → Board in this window, the default in Safari), shows it there. Alt+B from an instrument does the same. Below 1240 px the switch shows its icons only, so the Bode plotter's toolbar stays one row down to 1000 px.
+- CAD: with the new AI ▾ menu the toolbar took two rows between 1000 and 1120 px. Below 1140 px the separators between its groups give way (the gaps still part them), so it is one row again from about 960 px up.
 
 ## [3.138.0] - 2026-10-30
 

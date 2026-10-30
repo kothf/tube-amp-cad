@@ -486,6 +486,8 @@
     if (t !== S.tool || (t !== "pour" && t !== "keepout")) S.poly = null;
     S.tool = t;
     document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
+    const more = $("btn-tool-more"), folded = more && more.parentElement.querySelector(`.menu-item[data-tool="${t}"]`);   // the narrow toolbar's More tools
+    if (more) { more.classList.toggle("active", !!folded); if (folded) more.querySelector(".tm-ico").innerHTML = folded.querySelector("svg").outerHTML; }
     if (canvas) canvas.style.cursor = t === "select" ? "" : "crosshair";
     msg(TOOL_HELP[t]);
     render();
@@ -1405,7 +1407,7 @@
   // ---------------------------------------------------------------------------
   function status(kind, text) { const el = $("status"); el.className = "status " + kind; el.textContent = text; el.title = text; }   // the title: the whole text when the pill is cut short
   // Auto-route through Freerouting, the Freerouting… dialog, .ses import (board-autoroute.js)
-  const { autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute } = BoardAutoroute({ $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render: () => render(), renderPanels: () => renderPanels() });
+  const { stopRouting, autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute } = BoardAutoroute({ $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render: () => render(), renderPanels: () => renderPanels() });
   function msg(t) { if (t) { const el = $("st-msg"); el.textContent = t; el.title = t; } }
   function init() {
     canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0;
@@ -1480,7 +1482,7 @@
     document.querySelectorAll("[data-tab]").forEach(t => { t.onclick = () => { document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x === t)); $("parts").hidden = t.dataset.tab !== "parts"; $("nets").hidden = t.dataset.tab !== "nets"; }; });
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     $("ex-dsn").onclick = () => { list.hidden = true; if (S.model) download(dsnOf().text, baseName() + ".dsn", "text/plain"); };
-    $("btn-autoroute").onclick = autoRoute; $("btn-nudge").onclick = routeNudge; $("btn-rearrange").onclick = rearrange; $("mi-autoroute").onclick = autoRoute; $("btn-unroute").onclick = unroute; $("btn-router").onclick = routerSetup;
+    $("btn-autoroute").onclick = autoRoute; $("st-stop").onclick = stopRouting; $("btn-nudge").onclick = routeNudge; $("btn-rearrange").onclick = rearrange; $("mi-autoroute").onclick = autoRoute; $("btn-unroute").onclick = unroute; $("btn-router").onclick = routerSetup;
     $("router-test").onclick = routerTest; $("router-save").onclick = routerSave; $("router-cancel").onclick = () => { $("router-modal").hidden = true; };
     $("router-addr").onkeydown = e => { if (e.key === "Enter") routerSave(); };
     $("router-use-server").onchange = $("router-use-own").onchange = routerWhere;

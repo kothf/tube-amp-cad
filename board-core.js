@@ -1670,11 +1670,14 @@
     const anodeNets = new Map(); anodePads.forEach(p => { if (!anodeNets.has(p.net)) anodeNets.set(p.net, `the anode of ${p.ref} (pin ${p.num})`); });
     // grid stoppers: the grid net holds the grid pin(s) and one resistor, nothing else
     if (on("stopper")) gridPads.forEach(gp => {
-      const others = model.pads.filter(p => p.net === gp.net && p.part !== gp.part && !role(p, GRID_PINS));
+      // (the valve's own other pins count too: an anode of the other section direct-coupled to this grid is no stopper)
+      const others = model.pads.filter(p => p.net === gp.net && p !== gp && !role(p, GRID_PINS));
       const res = [...new Set(others.map(p => p.part))];
       if (res.length !== 1 || !partOf[res[0]] || partOf[res[0]].type !== "resistor" || isOffboard(partOf[res[0]]) || placedOff.has(res[0]) || isOffboard(partOf[gp.part])) return;
-      const rp = others[0], d = Math.hypot(rp.x - gp.x, rp.y - gp.y);
-      if (d > (R.stopperMax || 10) + 1e-6) out.push({ kind: "stopper", x: rp.x, y: rp.y, msg: `${rp.ref} is the grid stopper of ${gp.ref} (pin ${gp.num}) but sits ${d.toFixed(0)} mm from it: put it right at the socket (≤ ${R.stopperMax || 10} mm), or the track before it can pick up and oscillate` });
+      // (measured past the socket's own body: a pin deep inside a big octal socket is that far from anything outside it)
+      const rp = others[0], d = Math.hypot(rp.x - gp.x, rp.y - gp.y), sb = partBox(partOf[gp.part]);
+      const inset = Math.max(0, Math.min(gp.x - sb.x1, sb.x2 - gp.x, gp.y - sb.y1, sb.y2 - gp.y)), max = (R.stopperMax || 10) + inset;
+      if (d > max + 1e-6) out.push({ kind: "stopper", x: rp.x, y: rp.y, msg: `${rp.ref} is the grid stopper of ${gp.ref} (pin ${gp.num}) but sits ${d.toFixed(0)} mm from it: put it right at the socket (≤ ${R.stopperMax || 10} mm from its edge, ${max.toFixed(0)} mm from the pin), or the track before it can pick up and oscillate` });
     });
     // grid tracks alongside anode or heater tracks
     if (on("coupling")) {

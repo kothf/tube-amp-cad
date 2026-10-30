@@ -75,7 +75,7 @@ import { cad, check } from "./harness.mjs";
   sent.length = 0;
   await cad.click("#btn-ai-explain");
   await cad.waitForFunction(() => document.querySelectorAll(".ai-msg.answer").length >= 3);
-  check(/gemini-3\.1-pro-preview:generateContent$/.test(sent[0].url) && sent[0].headers["x-goog-api-key"] === "AIza-test" && /stage by stage/.test(JSON.stringify(sent[0].body.contents)), "Explain asks Gemini with its key");
+  check(/gemini-3\.1-pro-preview:streamGenerateContent\?alt=sse$/.test(sent[0].url) && sent[0].headers["x-goog-api-key"] === "AIza-test" && /stage by stage/.test(JSON.stringify(sent[0].body.contents)), "Explain asks Gemini with its key");
   await cad.click("#btn-ai-clear");
   check(await cad.evaluate(() => !TubeCAD.state.ai.log.length && !!document.querySelector(".ai-chips")), "Clear starts a new conversation");
   await cad.evaluate(() => localStorage.removeItem("tubecad_ai"));

@@ -63,6 +63,7 @@
         ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: f.data } }
         : { type: "image", source: { type: "base64", media_type: f.mime, data: f.data } })).concat(m.text ? [{ type: "text", text: m.text }] : []);
       const body = { model, max_tokens: max, messages: msgs.map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: content(m) })) };
+      if (req.stream) body.stream = true;
       // the long, unchanging part of the prompt (the manual, the parts catalogue) is cached between questions
       if (system) body.system = [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
       const headers = { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" };
@@ -76,13 +77,14 @@
           : { type: "input_image", image_url: `data:${f.mime};base64,${f.data}` })).concat(m.text ? [{ type: "input_text", text: m.text }] : []));
       const body = { model, max_output_tokens: max, input: msgs.map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: content(m) })) };
       if (system) body.instructions = system;
+      if (req.stream) body.stream = true;
       return { url: "https://api.openai.com/v1/responses", init: { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + key }, body: JSON.stringify(body) } };
     }
     if (provider === "gemini") {
       const parts = m => (m.files || []).map(f => ({ inlineData: { mimeType: f.mime, data: f.data } })).concat(m.text ? [{ text: m.text }] : []);
       const body = { contents: msgs.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: parts(m) })), generationConfig: { maxOutputTokens: max } };
       if (system) body.systemInstruction = { parts: [{ text: system }] };
-      return { url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, init: { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body) } };
+      return { url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:${req.stream ? "streamGenerateContent?alt=sse" : "generateContent"}`, init: { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body) } };
     }
     throw new Error("Unknown AI provider: " + provider);
   }
@@ -117,19 +119,77 @@
     if (!text && c.finishReason && c.finishReason !== "STOP" && c.finishReason !== "MAX_TOKENS") throw AiError("Gemini stopped: " + c.finishReason);
     return { text, cut: c.finishReason === "MAX_TOKENS" };
   }
+  // A streamed answer (server-sent events), read as it comes: { text, cut }. Streaming keeps
+  // bytes flowing, so a proxy or firewall that drops a quiet connection after 30 s does not cut
+  // a long answer off, and the answer can be shown while it is written (onText).
+  function streamState(provider) {
+    const st = { text: "", cut: false, done: false };
+    st.event = j => {
+      if (!j || typeof j !== "object") return;
+      if (provider === "anthropic") {
+        if (j.type === "error") throw AiError("Claude stopped with an error: " + apiMessage(j));
+        if (j.type === "content_block_delta" && j.delta && j.delta.type === "text_delta") st.text += j.delta.text;
+        if (j.type === "message_delta" && j.delta) { if (j.delta.stop_reason === "refusal") throw AiError("Claude declined to answer this request."); st.cut = j.delta.stop_reason === "max_tokens"; }
+        if (j.type === "message_stop") st.done = true;
+      } else if (provider === "openai") {
+        if (j.type === "error" || j.type === "response.failed") throw AiError("ChatGPT stopped with an error: " + (apiMessage(j.response || j) || j.type));
+        if (j.type === "response.output_text.delta") st.text += j.delta || "";
+        if (j.type === "response.refusal.done") throw AiError("ChatGPT declined: " + (j.refusal || ""));
+        if (j.type === "response.incomplete") { st.cut = true; st.done = true; }
+        if (j.type === "response.completed") st.done = true;
+      } else {
+        if (j.error) throw AiError("Gemini stopped with an error: " + apiMessage(j));
+        const out = parse("gemini", j);
+        st.text += out.text; if (out.cut) st.cut = true;
+      }
+    };
+    return st;
+  }
+  // feeds each event's data of a server-sent-events text to fn; returns what is left over
+  function sseChunks(buf, fn) {
+    const parts = buf.split(/\r?\n\r?\n/), rest = parts.pop();
+    parts.forEach(ev => {
+      const data = ev.split(/\r?\n/).filter(l => l.startsWith("data:")).map(l => l.slice(5).replace(/^ /, "")).join("\n");
+      if (!data || data === "[DONE]") return;
+      let j; try { j = JSON.parse(data); } catch (e) { return; }
+      fn(j);
+    });
+    return rest;
+  }
+  async function readStream(provider, res, onText) {
+    const st = streamState(provider);
+    let buf = "";
+    const feed = chunk => { buf = sseChunks(buf + chunk, st.event); if (onText && st.text) onText(st.text); };
+    if (res.body && typeof res.body.getReader === "function") {
+      const rd = res.body.getReader(), dec = new TextDecoder();
+      for (;;) { const { done, value } = await rd.read(); if (done) break; feed(dec.decode(value, { stream: true })); }
+    } else feed(await res.text());
+    feed("\n\n");
+    return st;
+  }
+
   async function chat(cfg, req, fetchFn, signal) {
     fetchFn = fetchFn || root.fetch.bind(root);
     const p = cfg.provider, key = cfg.keys[p];
     if (!key) throw AiError(`No ${PROVIDERS[p].name} API key yet: open AI ▾ → AI settings… and paste one.`);
-    const { url, init } = build(p, cfg.models[p] || defaultModel(p), key, req);
+    const stream = req.stream !== false;
+    const { url, init } = build(p, cfg.models[p] || defaultModel(p), key, Object.assign({}, req, { stream }));
     if (signal) init.signal = signal;
+    const unreachable = e => AiError(`Could not reach ${PROVIDERS[p].name} (${e.message}). Check the connection; a browser extension or a firewall may block ${new URL(url).host}.`);
     let res;
     try { res = await fetchFn(url, init); }
-    catch (e) { if (e && e.name === "AbortError") throw e; throw AiError(`Could not reach ${PROVIDERS[p].name} (${e.message}). Check the connection; a browser extension or a firewall may block ${new URL(url).host}.`); }
-    let j = null; try { j = await res.json(); } catch (e) { j = null; }
-    if (!res.ok) throw failure(p, res.status, j);
-    if (!j) throw AiError(`${PROVIDERS[p].name} sent an answer that is not JSON`);
-    const out = parse(p, j);
+    catch (e) { if (e && e.name === "AbortError") throw e; throw unreachable(e); }
+    const type = (res.headers && typeof res.headers.get === "function" && res.headers.get("content-type")) || "";
+    let out;
+    if (res.ok && /event-stream/i.test(type)) {
+      try { out = await readStream(p, res, req.onText); }
+      catch (e) { if (e && (e.name === "AbortError" || e.name === "AiError")) throw e; throw unreachable(e); }
+    } else {
+      let j = null; try { j = await res.json(); } catch (e) { j = null; }
+      if (!res.ok) throw failure(p, res.status, j);
+      if (!j) throw AiError(`${PROVIDERS[p].name} sent an answer that is not JSON`);
+      out = parse(p, j);
+    }
     if (!out.text) throw AiError(`${PROVIDERS[p].name} sent an empty answer`);
     return out.cut ? out.text + "\n\n(The answer was cut short at its length limit.)" : out.text;
   }
@@ -158,5 +218,5 @@
     throw AiError("The answer did not contain the JSON asked for. Try again, or pick a stronger model in AI settings.");
   }
 
-  root.AiClient = { STORE, PROVIDERS, IDS, defaultModel, modelName, normalise, load, save, ready, label, build, parse, chat, listModels, extractJson };
+  root.AiClient = { STORE, PROVIDERS, IDS, defaultModel, modelName, normalise, load, save, ready, label, build, parse, chat, listModels, extractJson, streamState, sseChunks };
 })(typeof window !== "undefined" ? window : globalThis);
