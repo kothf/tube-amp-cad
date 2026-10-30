@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.154.1] - 2026-10-30
+
+### Fixed
+- **Noise tab: the mains hum says where it comes from.** The Hum table's ripple lines now sit under "From G1 (230 V 50 Hz mains), through the supply", and the *Noise from* list ends with a "G1 (…mains): hum, see below" line with its A-weighted total. The mains was already counted (as ripple) but was not named, so it looked missing from the list of sources.
+
 ## [3.154.0] - 2026-10-30
 
 ### Added

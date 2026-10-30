@@ -382,7 +382,8 @@ the circuit that was on the sheet.
     noise carried to the output; flat and A-weighted over 20 Hz – 20 kHz,
     the input noise, a density chart and each part's share;
   - the supply's ripple at the output (every harmonic of the mains, from the
-    steady state with the generators quiet) and an estimate of AC heater hum
+    steady state with the generators quiet, named after its mains source,
+    e.g. "From G1 (230 V 50 Hz mains)") and an estimate of AC heater hum
     (one side grounded, centre-tapped or DC);
   - the signal-to-noise ratio in dB(A), noise and hum together, re 1 W.
 - **SPICE.** *Export SPICE netlist* writes an LTspice netlist: tubes as
