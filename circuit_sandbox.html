@@ -363,6 +363,16 @@
     #spimp-plot { width: 100%; border: 1px solid var(--line); border-radius: 6px; }
     .spimp-item { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; margin: 3px 0; }
     @media (max-width: 900px) { .spimp-grid { grid-template-columns: 1fr; } }
+    .block-make { display: grid; grid-template-columns: 1fr auto; gap: 6px 8px; align-items: center; margin: 8px 0 12px; }
+    .block-make span { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+    .block-make input { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+    .block-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .block-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 10px 6px 4px; border-bottom: 1px solid var(--line); }
+    .block-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+    .block-table td.act { text-align: right; white-space: nowrap; }
+    .block-table td.act .btn { padding: 2px 7px; font-size: 11px; }
+    .block-table .muted { color: var(--muted); }
+    .insp-block-btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
     .modal-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
     .menu { position: relative; }
     .menu-list.right { left: auto; right: 0; }
@@ -697,6 +707,16 @@
       </div>
     </div>
   </div>
+  <div class="modal" id="block-modal" hidden>
+    <div class="modal-box" style="width: min(640px, 94vw)">
+      <div class="insp-title">Blocks</div>
+      <p class="insp-help">A block is a stage or a whole channel you place many times, such as the two channels of a stereo amplifier. A value changed on any copy changes on all of them; after adding or moving parts in one copy, select it and use Update block from selection.</p>
+      <div id="block-body"></div>
+      <div class="modal-actions">
+        <button class="btn" id="btn-block-close">Close</button>
+      </div>
+    </div>
+  </div>
   <div class="modal" id="new-modal" hidden>
     <div class="modal-box" style="width: min(520px, 94vw)">
       <div class="insp-title">New circuit</div>
@@ -897,6 +917,7 @@
   <script src="kicad-export.js?v=dev"></script>
   <script src="cad-kicad.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
+  <script src="cad-blocks.js?v=dev"></script>
   <script src="cad-revisions.js?v=dev"></script>
   <script src="cad-rev-dialog.js?v=dev"></script>
   <script src="ai-client.js?v=dev"></script>

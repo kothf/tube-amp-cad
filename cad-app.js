@@ -39,6 +39,8 @@
     hover: null,
     probe: { hover: null, pin: null },   // voltmeter probe: target under the pointer, and the one clicked down
     clipboard: null,
+    blocks: [],           // reusable blocks (cad-blocks.js); their copies' parts carry c.block
+    placingBlock: null,   // the block whose copy follows the pointer
     idCounter: 1
   };
 
@@ -221,10 +223,10 @@
   // ---------------------------------------------------------------------------
   // History / persistence
   // ---------------------------------------------------------------------------
-  function snapshot() { return JSON.stringify({ comps: S.comps, wires: S.wires }); }
+  function snapshot() { return JSON.stringify(Object.assign({ comps: S.comps, wires: S.wires }, S.blocks.length ? { blocks: S.blocks } : {})); }
   function restore(json) {
     const d = JSON.parse(json);
-    S.comps = d.comps || []; S.wires = d.wires || [];
+    S.comps = d.comps || []; S.wires = d.wires || []; S.blocks = d.blocks || [];
     S.sel.comps.clear(); S.sel.wires.clear();
     circuitChanged(false);
   }
@@ -232,6 +234,8 @@
     normalizeWires();
     // a part number the app knows: the real part (package, size) is saved with the circuit (mpn.js)
     if (window.PartNo) S.comps.forEach(c => PartNo.keep(c));
+    // a value edited on one copy of a block goes to every copy
+    blocks.beforeCommit();
     numberSheets();
     S.history = S.history.slice(0, S.hIndex + 1);
     S.history.push(snapshot());
@@ -781,9 +785,10 @@
     if (e.button === 0 && !S.spaceDown) S.lastClick = { x: m.wx, y: m.wy };   // Fit picks the sheet clicked last
     if (e.button === 0) clearBomShown();   // a click on the sheet shows its selection in the BOM again
     if (e.button === 1 || (e.button === 0 && S.spaceDown)) { if (S.spaceDown) S.spacePanned = true; S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
-    if (e.button === 2) { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else openSheetMenu(e, m); return; }
+    if (e.button === 2) { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else if (!blocks.cancelPlace()) openSheetMenu(e, m); return; }
     if (e.button !== 0) return;
     const gx = snap(m.wx), gy = snap(m.wy);
+    if (S.placingBlock) { blocks.drop(m.wx, m.wy); return; }
 
     if (S.placing) {
       const c = makeComp(S.placing.type, S.placing.params, gx, gy, S.placing.rot);
@@ -847,7 +852,7 @@
     }
     const item = id => { const k = cmds.get(id); return { label: k.label, key: k.keys[0], icon: k.icon, run: () => cmds.run(id) }; };
     const n = S.sel.comps.size + S.sel.wires.size;
-    const items = c || w ? ["rotate", "mirror", "duplicate", "delete", null, "copy", "paste"] : ["paste", "select-all", null, "fit", "undo", "redo"];
+    const items = c || w ? ["rotate", "mirror", "duplicate", "delete", null, "copy", "paste", null, "block-make"].concat(c && c.block ? ["block-select", "block-update", "block-detach"] : []) : ["paste", "select-all", null, "fit", "undo", "redo", null, "blocks"];
     const title = c ? (n > 1 ? `${n} selected` : desig(c) || LIB[c.type].name) : w ? (n > 1 ? `${n} selected` : "Wire") : "";
     UiKit.contextMenu(items.map(id => (id ? item(id) : null)), e.clientX, e.clientY, title);
   }
@@ -951,6 +956,7 @@
   function clearOrCancel() {
     if (S.wiring) finishWiring();
     else if (S.placing) { S.placing = null; setTool("select"); }
+    else if (blocks.cancelPlace()) { /* the copy being placed is dropped */ }
     else if (S.probe.pin) { S.probe.pin = null; render(); }
     else if (S.tool === "probe") setTool("select");
     else { S.sel.comps.clear(); S.sel.wires.clear(); updateInspector(); render(); }
@@ -959,6 +965,7 @@
   function toggleView(key) { S[key] = !S[key]; render(); }
   cmds
     .add({ id: "help-close", keys: ["Escape"], anyCtrl: true, when: () => !helpModal().hidden, run: () => { helpModal().hidden = true; } })
+    .add({ id: "block-close", keys: ["Escape"], anyCtrl: true, inInputs: true, when: () => blocks.isOpen(), run: () => blocks.closeDialog() })
     .add({ id: "diff-close", keys: ["Escape"], anyCtrl: true, when: () => !!S.revDiff, run: () => revisions.closeDiff() })
     .add({ id: "save-revision", keys: ["Ctrl+Alt+S"], prevent: true, when: () => !!revisions, run: () => revisions.quickSave(), help: "save a revision of the project (File ▾ → Revisions…)" })
     .add({ id: "rotate", label: "Rotate", icon: ICONS.rotate, keys: ["Space", "R"], helpKeys: ["Space"], run: rotateSelection, help: "rotate the selection, the part being placed or the parts being dragged (a tap: Space held down while dragging pans; R also rotates)" })
@@ -996,6 +1003,11 @@
     .add({ id: "help", keys: ["F1"], inInputs: true, prevent: true, run: toggleHelp, help: "this help (also ?)" })
     .add({ id: "help-alt", keys: ["?"], prevent: true, run: toggleHelp })
     .add({ id: "inspector", label: "Inspector", run: () => setDrawer(!document.body.classList.contains("insp-open")), check: () => document.body.classList.contains("insp-open") })
+    .add({ id: "blocks", label: "Blocks…", title: "Reusable blocks: place a saved stage or channel again, rename, keep in your library", run: () => blocks.openDialog() })
+    .add({ id: "block-make", label: "Make block from selection…", title: "The selected parts and their wires become a block you can place many times; a value changed on any copy changes on all", when: () => S.sel.comps.size > 0, run: () => blocks.openDialog("make") })
+    .add({ id: "block-update", label: "Update block from selection", title: "The selected copy, with parts or wires added or moved, becomes the block; every other copy is drawn again from it", when: () => blocks.canUpdate(), run: () => blocks.update() })
+    .add({ id: "block-select", label: "Select this copy", title: "Select the parts and wires of this copy of the block", when: () => !!blocks.member(), run: () => blocks.selectCopy() })
+    .add({ id: "block-detach", label: "Detach from block", title: "This copy's parts become ordinary parts with values of their own", when: () => !!blocks.member(), run: () => blocks.detach() })
     .add({ id: "renumber", menuId: "menu-renumber", label: "Renumber designations", title: "Letter code (R, C, L, T, VL …) and number for every part, in reading order", run: () => renumber() })
     // settings without a key: View menu ticks and the toolbar's switches
     .add({ id: "volts", run: () => toggleView("showVolts"), check: () => S.showVolts })
@@ -1038,7 +1050,7 @@
     let cursor = "";
     if (S.spaceDown) cursor = "grab";
     else if (S.tool === "probe") cursor = "crosshair";
-    else if (S.placing || S.wiring || S.tool === "wire" || pin) cursor = "crosshair";
+    else if (S.placing || S.placingBlock || S.wiring || S.tool === "wire" || pin) cursor = "crosshair";
     else if (!pin) { const w = hitWire(m.wx, m.wy); if (w) cursor = isH(w) ? "ns-resize" : "ew-resize"; else if (hitComp(m.wx, m.wy)) cursor = "move"; }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
     const el = document.getElementById("status-hover");
@@ -1121,6 +1133,8 @@
     // voltage and current stickers
     if ((S.showVolts || S.showAmps) && S.sim.result) drawStickers(T);
     drawDiff();
+    blocks.drawOutlines();
+    blocks.drawGhost();
 
     // placing ghost
     if (S.placing) {
@@ -1830,6 +1844,7 @@
       else if (S.sel.comps.size || S.sel.wires.size) {
         host.innerHTML = `<div class="insp-title">${S.sel.comps.size} part(s), ${S.sel.wires.size} wire segment(s)</div>
           <p class="insp-help">Drag to move · Space rotates parts · Del deletes · D duplicates · M mirrors.<br>Drag a wire segment sideways to move it; connected wires follow.</p>`;
+        blocks.selectionTools(host);
       } else buildCircuitPanel(host);
     }
     const live = document.getElementById("insp-live");
@@ -1856,6 +1871,7 @@
     host.innerHTML = `<div class="insp-title">${def.name}</div>`;
     if (window.Hints) Hints.attach(host.firstChild, Hints.parts[c.type], def.name);
     if (!def.noLabel) host.appendChild(row("Designator", input("text", c.label, v => { c.label = v.trim() || c.label; commit(); })));
+    blocks.inspector(host, c);
     (canMirror(c.type) ? def.fields.concat([CadLib.FLIP_FIELD]) : def.fields).forEach(f => {
       if (f.when && !f.when(c)) return;
       // a heading over the fields that follow it (the signal generator's Signal / Level / Output)
@@ -2252,7 +2268,7 @@
     opts = Object.assign({ size: "A3", orient: "landscape", title: "" }, opts);
     if (revisions) revisions.detach();
     const f = makeComp("frame", { size: opts.size, orient: opts.orient, title: opts.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
-    S.comps = [f]; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+    S.comps = [f]; S.wires = []; S.blocks = []; S.sel.comps.clear(); S.sel.wires.clear();
     setCurFile(null, "");
     storeBoard(null);
     commit(); fitView(); markClean();
@@ -2449,7 +2465,7 @@
   // AI ▾ → Design from a description: the drawn design on a new sheet, one undo step
   function placeDesign(out) {
     const f = makeComp("frame", { size: out.frame.size, orient: out.frame.orient, title: out.frame.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
-    S.comps = [f]; S.wires = [];
+    S.comps = [f]; S.wires = []; S.blocks = [];
     out.comps.forEach(o => {
       const c = makeComp(o.type, o.params, o.x, o.y, o.rot);
       c.params = Object.assign({}, LIB[o.type].defaults, o.params);
@@ -2477,7 +2493,9 @@
   const JSON_TYPES = [{ description: "Tube Amp CAD circuit", accept: { "application/json": [".json"] } }];
   // imported SPICE tubes the circuit uses travel inside the file, so it opens anywhere
   function usedCustomTubes() { return [...new Set(S.comps.filter(c => c.type === "tube").map(c => c.params.tube))].map(tubeByName).filter(t => window.SpiceModel && SpiceModel.isCustom(t)); }
-  const circuitJSON = () => { const tubes = usedCustomTubes(); return JSON.stringify(Object.assign({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, tubes.length ? { tubes } : {}, S.board ? { board: S.board } : {}), null, 1); };
+  const circuitJSON = () => { const tubes = usedCustomTubes(); return JSON.stringify(Object.assign({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, S.blocks.length ? { blocks: S.blocks } : {}, tubes.length ? { tubes } : {}, S.board ? { board: S.board } : {}), null, 1); };
+  // Reusable blocks (cad-blocks.js): Edit ▾ → Blocks…, the copies' outlines and their inspector
+  const blocks = CadBlocks({ S, LIB, commit, compBBox, drawComp, esc: escH, getCtx: () => ctx, makeComp, newId, render, setStatus, snap, updateInspector });
   // ---------------------------------------------------------------------------
   // Examples (File menu): circuits drawn from published sources and checked against them
   // (docs: the README's Accuracy section and tests/reference.mjs)
@@ -2664,6 +2682,7 @@
     if (!d || !Array.isArray(d.comps) || !Array.isArray(d.wires)) throw new Error("not a Tube Amp CAD file");
     d.comps.forEach(c => { if (!LIB[c.type]) throw new Error("unknown part " + c.type); c.params = Object.assign({}, LIB[c.type].defaults, c.params); });
     S.comps = d.comps; S.wires = d.wires;
+    blocks.load(d);
     normalizeWires();
     S.topo = null;
   }
@@ -2860,7 +2879,8 @@
       template: w => `${w[0]}px 1fr ${w[1]}px` });
 
     buildPalette();
-    cmds.menuItems(document.querySelector("#edit-menu .menu-list"), ["undo", "redo", null, "rotate", "mirror", "duplicate", "delete", null, "copy", "paste", "select-all", null, "renumber"]);
+    cmds.menuItems(document.querySelector("#edit-menu .menu-list"), ["undo", "redo", null, "rotate", "mirror", "duplicate", "delete", null, "copy", "paste", "select-all", null, "block-make", "block-update", "blocks", null, "renumber"]);
+    blocks.init();
     // the version under the name: "?v=3.72.0" is stamped by npm run package, the source says "dev"
     const ver = (VERSION.match(/[?&]v=([^&]+)/) || [])[1];
     if (ver) { document.getElementById("app-version").textContent = ver === "dev" ? "dev" : "v" + ver; document.querySelector(".brand").title = "Tube Amp CAD " + ver; }
@@ -2953,7 +2973,7 @@
     let saved = null;
     try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (saved) {
-      try { const d = JSON.parse(saved); d.comps = (d.comps || []).filter(c => LIB[c.type]); loadCircuit(d); } catch (e) { S.comps = []; S.wires = []; }
+      try { const d = JSON.parse(saved); d.comps = (d.comps || []).filter(c => LIB[c.type]); loadCircuit(d); } catch (e) { S.comps = []; S.wires = []; S.blocks = []; }
       try { S.board = JSON.parse(localStorage.getItem(BOARD_KEY)) || null; } catch (e) { S.board = null; }
     }
     else S.comps = [makeComp("frame", { size: "A3", orient: "landscape", date: new Date().toISOString().slice(0, 10) }, 0, 0, 0)];   // first visit: an A3 sheet
@@ -2973,6 +2993,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { blocks, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

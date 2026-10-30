@@ -454,6 +454,7 @@
     "Net": "The electrical net, named from the schematic.",
     "Length": "Total track length of this net.",
     "Inactive copper": "Dim the copper layer you are not working on.",
+    "Block": "This part belongs to a copy of a reusable block (Edit ▾ → Blocks…). A value changed on it changes on the same part of every copy; a sheet connector's name stays each copy's own. Select this copy, then Update block from selection, carries a changed drawing to the other copies; Detach makes the copy ordinary parts.",
     "Designator": "The part's reference designation: classic letter code and number (R1, C3, VL1.2), as in ГОСТ 2.710. Renumber designations (inspector, nothing selected) numbers every part in reading order.",
     "Mirror": "Mirror the symbol left to right, so a signal can come from the other side without crossing wires (M).",
     "Part number": "The part number to buy, for the bill of materials. Saved with the circuit.",
