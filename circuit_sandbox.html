@@ -231,6 +231,37 @@
     .ls-strips canvas { width: 100%; height: 74px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; display: block; }
     .tol-num { width: 56px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; color: var(--text); }
 
+    /* AI: the conversation in the panel under the sheet, the settings dialog */
+    .ai-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .ai-pane[hidden] { display: none; }
+    .ai-log { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+    .ai-msg { max-width: 920px; border-radius: 8px; padding: 6px 10px; line-height: 1.45; }
+    .ai-msg.user { align-self: flex-end; background: #0d3442; border: 1px solid #13505f; white-space: pre-wrap; max-width: 70%; }
+    .ai-msg.answer { background: var(--panel2); border: 1px solid var(--line); }
+    .ai-msg.note { color: var(--muted); border: 1px dashed var(--line); }
+    .ai-msg.error { color: var(--bad); border: 1px solid #5a2a2a; background: #1d1214; }
+    .ai-msg.busy { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .ai-msg p { margin: 4px 0; } .ai-msg h4 { margin: 8px 0 4px; font-size: 13px; color: var(--accent); }
+    .ai-msg ul, .ai-msg ol { margin: 4px 0; padding-left: 20px; } .ai-msg li { margin: 2px 0; }
+    .ai-msg code, .ai-msg pre { font: 12px ui-monospace, Menlo, monospace; background: var(--bg); border-radius: 4px; padding: 0 4px; }
+    .ai-msg pre { padding: 6px 8px; overflow-x: auto; white-space: pre-wrap; }
+    .ai-msg table { border-collapse: collapse; margin: 6px 0; font-size: 12px; } .ai-msg th, .ai-msg td { border: 1px solid var(--line); padding: 3px 7px; text-align: left; vertical-align: top; }
+    .ai-msg th { color: var(--muted); font-weight: 600; } .ai-msg td.mono { font-family: ui-monospace, Menlo, monospace; white-space: nowrap; } .ai-msg td.warn { color: var(--warn); }
+    .ai-fixes tr.done td { color: var(--ok); } .ai-fixes tr.bad td { color: var(--muted); } .ai-fixes .btn { padding: 2px 8px; font-size: 12px; }
+    .ai-ref { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    .ai-row { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .ai-chips { display: flex; gap: 6px; flex-wrap: wrap; } .ai-chip { font-size: 12px; border-radius: 14px; }
+    .ai-dots::before { content: "●●●"; letter-spacing: 2px; color: var(--accent); animation: ai-pulse 1.2s ease-in-out infinite; }
+    @keyframes ai-pulse { 50% { opacity: .3; } }
+    .ai-ask { display: flex; gap: 6px; padding: 6px 12px 8px; border-top: 1px solid var(--line); }
+    .ai-ask textarea { flex: 1; resize: none; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; }
+    .ai-ask textarea:focus { outline: none; border-color: var(--accent); }
+    .ai-who { font-size: 12px; } .ai-who.warn { color: var(--warn); }
+    .ai-providers { margin: 6px 0 10px; } .ai-providers .btn { min-width: 90px; }
+    .new-form.ai-form { grid-template-columns: 70px 1fr; }
+    .ai-keyrow { display: flex; gap: 6px; align-items: center; } .ai-keyrow input[type=password], .ai-keyrow input[type=text] { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: 12px ui-monospace, Menlo, monospace; }
+    .ai-keyrow label { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    #ai-modal .modal-actions { align-items: center; }
     /* status bar */
     footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
     .sim-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
@@ -347,6 +378,17 @@
       <button class="btn" id="btn-edit" aria-haspopup="true" aria-expanded="false" title="Edit the selection (also on the right mouse button)">Edit ▾</button>
       <div class="menu-list" role="menu" hidden></div>
     </div>
+    <div class="menu" id="ai-menu">
+      <button class="btn" id="btn-ai" aria-haspopup="true" aria-expanded="false" title="AI: ask about the circuit, explain it, fix the checks, design and tune (your own Claude, ChatGPT or Gemini key)">AI ▾</button>
+      <div class="menu-list" role="menu" hidden>
+        <button class="menu-item" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
+        <button class="menu-item" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
+        <button class="menu-item" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
+        <div id="ai-menu-more"></div>
+        <div class="menu-sep"></div>
+        <button class="menu-item" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
+      </div>
+    </div>
     <input type="file" id="file-input" accept=".json,application/json" hidden>
     <span class="sep"></span>
     <button class="btn ib" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7"/></svg></button>
@@ -411,6 +453,7 @@
             <button class="dock-tab" role="tab" data-tab="power" aria-controls="pw-pane" title="Output power against distortion over a row of input levels">Power</button>
             <button class="dock-tab" role="tab" data-tab="sweep" aria-controls="sw-pane" title="One part's value stepped over a range">Sweep</button>
             <button class="dock-tab" role="tab" data-tab="listen" aria-controls="ls-pane" title="Hear a recording played through the circuit">Listen</button>
+            <button class="dock-tab" role="tab" data-tab="ai" aria-controls="ai-pane" title="The AI assistant: ask about this circuit or the app (your own Claude, ChatGPT or Gemini key)">AI</button>
           </div>
           <span class="bom-tools" data-for="bom">
             <span id="bom-count" class="muted"></span>
@@ -453,6 +496,11 @@
             <label title="What you hear: a speaker, two speakers in stereo, or a scope channel">Hear <select id="ls-out" class="tol-sel"></select></label>
             <button class="btn" id="btn-ls-run" title="Play the recording through the circuit (simulated); press again to stop">▶ Render</button>
           </span>
+          <span class="bom-tools" data-for="ai">
+            <button class="btn" id="btn-ai-explain" title="What the circuit is and what each stage and part does">Explain circuit</button>
+            <button class="btn" id="btn-ai-fix" title="The Checks list turned into value changes you can apply">Fix checks</button>
+            <span id="ai-actions"></span>
+          </span>
           <span class="spacer"></span>
           <span class="bom-tools" data-for="bom">
             <span class="muted">Export</span>
@@ -460,6 +508,10 @@
             <button class="btn" data-bom="csv" title="Comma-separated, UTF-8">CSV</button>
             <button class="btn" data-bom="xlsx" title="Excel workbook">XLSX</button>
             <button class="btn" data-bom="pdf" title="A4 landscape">PDF</button>
+          </span>
+          <span class="bom-tools" data-for="ai">
+            <button class="btn link ai-who" id="ai-who" title="The AI provider and model in use: change them in AI settings">No API key</button>
+            <button class="btn" id="btn-ai-clear" title="Start a new conversation">Clear</button>
           </span>
           <button class="btn" id="btn-bom-close" title="Close (B)">✕</button>
         </div>
@@ -469,6 +521,10 @@
         <div class="bom-scroll" id="pw-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="ls-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="sw-pane" role="tabpanel" hidden></div>
+        <div class="ai-pane" id="ai-pane" role="tabpanel" hidden>
+          <div class="ai-log" id="ai-log" aria-live="polite"></div>
+          <div class="ai-ask"><textarea id="ai-input" rows="2" placeholder="Ask about this circuit or how to do something in the app…  (Enter sends, Shift+Enter: new line)"></textarea><button class="btn primary" id="btn-ai-send">Send</button></div>
+        </div>
       </section>
     </div>
     <aside id="inspector" aria-label="Inspector"></aside>
@@ -490,6 +546,28 @@
       <div class="modal-actions">
         <button class="btn" id="btn-dk-cancel">Cancel</button>
         <button class="btn active" id="btn-dk-save">Save</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="ai-modal" hidden>
+    <div class="modal-box" style="width: min(560px, 94vw)">
+      <div class="insp-title">AI settings</div>
+      <p class="insp-help">The AI features use your own API key. Pick a provider, paste its key and choose a model. The key is kept in this browser only and is sent only to that provider; the circuit you ask about goes with each question. The provider bills your account for what you ask. Auto-tune works without a key.</p>
+      <div class="seg-group ai-providers" id="ai-providers" role="group" aria-label="Provider">
+        <button class="btn" data-p="anthropic" title="Anthropic's Claude">Claude</button><button class="btn" data-p="openai" title="OpenAI's GPT models">ChatGPT</button><button class="btn" data-p="gemini" title="Google's Gemini">Gemini</button>
+      </div>
+      <div class="new-form ai-form">
+        <span>API key</span><span class="ai-keyrow"><input type="password" id="ai-key" spellcheck="false" autocomplete="off"><label title="Show the key"><input type="checkbox" id="ai-show-key"> show</label></span>
+        <span></span><a id="ai-key-link" href="#" target="_blank" rel="noopener">Get a key ↗</a>
+        <span>Model</span><span class="ai-keyrow"><input type="text" id="ai-model" list="ai-models" spellcheck="false" autocomplete="off"><datalist id="ai-models"></datalist><button class="btn" id="btn-ai-list" title="Ask the provider which models this key can use">Load list</button></span>
+      </div>
+      <p class="insp-help" id="ai-test-out"></p>
+      <div class="modal-actions">
+        <button class="btn" id="btn-ai-forget" title="Remove every AI key from this browser">Forget keys</button>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-ai-test" title="Send a one-word question to check the key and model">Test</button>
+        <button class="btn" id="btn-ai-cancel">Cancel</button>
+        <button class="btn active" id="btn-ai-save">Save</button>
       </div>
     </div>
   </div>
@@ -647,6 +725,9 @@
   <script src="cad-results.js?v=dev"></script>
   <script src="cad-board-link.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
+  <script src="ai-client.js?v=dev"></script>
+  <script src="ai-circuit.js?v=dev"></script>
+  <script src="cad-ai.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>
