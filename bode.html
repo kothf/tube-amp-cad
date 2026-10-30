@@ -38,6 +38,9 @@
     td { text-align: right; padding: 2px 4px; border-top: 1px dashed #1a2433; }
     th:first-child, td:first-child { text-align: left; }
     .muted { color: var(--muted); font-size: 12px; }
+    /* Russian names are longer: the subtitle and the Schematic | Board names give way sooner */
+    @media (max-width: 1720px) { html[lang=ru] .brand span { display: none; } }
+    @media (max-width: 1560px) { html[lang=ru] .doc-switch .ds-lbl { display: none; } html[lang=ru] header { gap: 6px; } }
     @media (max-width: 900px) { body { overflow: auto; } main { grid-template-columns: 1fr; } .bezel { height: 60vh; } }
       .key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
     td.warn, span.warn { color: var(--warn); } span.bad { color: var(--bad); } span.good { color: var(--ok); }
@@ -59,6 +62,7 @@
     <label class="muted resp-only">Generator <select id="gen"></select></label>
     <label class="muted loop-only" title="Where the loop is broken: the feedback resistor, normally. The likely feedback parts are listed first">Break at <select id="loop-at"></select></label>
     <label class="muted loop-only" title="The loop is broken at the end of the part that carries more signal (the side that drives the feedback). Tick to break it at the other end"><input type="checkbox" id="loop-rev"> Other end</label>
+    <button class="btn" id="btn-lang" data-lang-toggle data-i18n-skip title="Интерфейс на русском">RU</button>
     <a class="btn ib" href="help.html#bode" target="tube_help" title="Manual: this instrument explained" aria-label="Help"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.1 6.2a2 2 0 1 1 2.6 1.9c-.5.2-.7.6-.7 1.1v.5"/><path d="M8 11.6v.2"/></svg></a>
   </header>
   <main>
@@ -90,6 +94,9 @@
   </main>
 
   <script src="hints.js?v=dev"></script>
+  <script src="i18n-ru.js?v=dev"></script>
+  <script src="i18n-hints-ru.js?v=dev"></script>
+  <script src="i18n.js?v=dev"></script>
   <script src="windows.js?v=dev"></script>
   <script src="panels.js?v=dev"></script>
   <script src="instrument-common.js?v=dev"></script>

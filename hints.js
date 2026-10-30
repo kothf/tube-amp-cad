@@ -475,7 +475,25 @@
     if (!t) return null;
     if (LBL.has(t)) return LBL.get(t);
     t = t.replace(/\s*\([^()]*\)$/, "");                  // "Height (mm)" → "height"
-    return LBL.get(t) || null;
+    if (LBL.has(t)) return LBL.get(t);
+    // a label shown in Russian (i18n.js): look it up by its English
+    const en = root.I18n && root.I18n.en(text);
+    return en && en !== text ? label(en) : null;
+  }
+  // the hint in the interface's language: Russian from i18n-hints-ru.js where there is one
+  let RU = null;
+  function inLang(text) {
+    if (!root.I18n || root.I18n.lang !== "ru" || !root.I18N_HINTS_RU) return text;
+    if (!RU) {
+      RU = new Map();
+      const T = root.I18N_HINTS_RU;
+      for (const [cat, o] of [["parts", parts], ["fields", fields], ["labels", labels]])
+        for (const [k, en] of Object.entries(o)) if (T[cat] && T[cat][k]) RU.set(en, T[cat][k]);
+      for (const [en, ru] of Object.entries(T.text || {})) RU.set(en, ru);
+    }
+    if (RU.has(text)) return RU.get(text);
+    // a hint put together from several (a palette button: the part, then how to place it)
+    return String(text).split("\n").map(l => RU.get(l) || root.I18n.ru(l) || l).join("\n");
   }
   const field = (type, key) => fields[type + "." + key] || null;
 
@@ -510,8 +528,9 @@
   }
   function show(el) {
     if (!tip) { tip = document.createElement("div"); tip.id = "hint-tip"; tip.setAttribute("role", "tooltip"); document.body.appendChild(tip); }
-    const title = el.dataset.hintTitle || (el.classList.contains("has-hint") ? el.textContent.trim() : "");
-    tip.innerHTML = render(title.length > 60 ? "" : title, el.dataset.hint);
+    let title = el.dataset.hintTitle || (el.classList.contains("has-hint") ? el.textContent.trim() : "");
+    if (el.dataset.hintTitle && root.I18n && root.I18n.lang === "ru") title = root.I18n.ru(title) || title;
+    tip.innerHTML = render(title.length > 60 ? "" : title, inLang(el.dataset.hint));
     tip.style.left = "0px"; tip.style.top = "0px"; tip.classList.add("on");
     const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect(), W = innerWidth, H = innerHeight;
     let x = Math.min(Math.max(8, r.left), W - t.width - 8), y = r.bottom + 6;
@@ -565,5 +584,5 @@
     el.classList.add("has-hint"); return el;
   }
 
-  root.Hints = { parts, fields, labels, label, field, attach, scan };
+  root.Hints = { parts, fields, labels, label, field, attach, scan, inLang };
 })(typeof window !== "undefined" ? window : globalThis);

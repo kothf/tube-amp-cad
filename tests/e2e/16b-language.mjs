@@ -43,3 +43,42 @@ import { U, browser, check, errors } from "./harness.mjs";
   check(rows.every(h => h < 50), `in Russian the toolbar fits one row at 1920, 1500 and 1280 px (${rows.join(", ")} px high)`);
   await lc.close();
 }
+
+// the Board window, the instruments and the hover hints follow the language too
+{
+  const lc = await browser.newContext({ viewport: { width: 1500, height: 900 } });
+  await lc.addInitScript(() => localStorage.setItem("tubecad_lang", "ru"));
+  const p = await lc.newPage(); p.on("pageerror", e => errors.push(`language: ${e.message}`)); p.on("dialog", d => d.accept());
+  await p.goto(U("circuit_sandbox.html")); await p.waitForFunction(() => window.TubeCAD && window.I18n);
+  await p.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => x.file.startsWith("04-"))));
+  await p.waitForFunction(() => { const s = TubeCAD.state.sim; return !s.busy && !s.pending && s.result; }, null, { timeout: 60000 });
+  const tip = () => p.evaluate(() => { const t = document.getElementById("hint-tip"); return t && t.classList.contains("on") ? t.innerText : ""; });
+  await p.hover(".pal-item"); await p.waitForTimeout(700);
+  const palTip = await tip();
+  check(/[А-Яа-я]{4}/.test(palTip) && /Щёлкните, затем щёлкните на листе/.test(palTip), `a palette part's hover hint in Russian ("${palTip.replace(/\s+/g, " ").slice(0, 50)}…")`);
+  await p.evaluate(() => { const S = TubeCAD.state, c = S.comps.find(c => c.type === "tube"); S.sel.comps.clear(); S.sel.comps.add(c.id); TubeCAD.updateInspector(); });
+  await p.waitForTimeout(300);
+  const lbl = p.locator("#inspector .has-hint", { hasText: "Тип лампы" }).first();
+  await p.mouse.move(0, 0); await p.waitForTimeout(200); await lbl.hover(); await p.waitForTimeout(700);
+  const lblTip = await tip();
+  check(/С ним приходят предельные режимы/.test(lblTip), `an inspector label (Тип лампы) finds its hint and shows it in Russian ("${lblTip.replace(/\s+/g, " ").slice(0, 50)}…")`);
+
+  const open = async (url, ready) => {
+    const [w] = await Promise.all([lc.waitForEvent("page"), p.evaluate(u => { window.open(u, "_blank"); }, url)]);
+    w.on("pageerror", e => errors.push(`language ${url}: ${e.message}`)); w.on("dialog", d => d.accept());
+    await w.waitForLoadState("load"); await w.waitForFunction(ready, null, { timeout: 15000 }).catch(() => {}); await w.waitForTimeout(500);
+    return w;
+  };
+  const b = await open("board.html", () => /Разводка ▾/.test(document.querySelector("header").innerText));
+  const bt = await b.evaluate(() => ({ head: document.querySelector("header").innerText, h: document.querySelector("header").offsetHeight, side: document.querySelector("main").innerText, btn: document.getElementById("btn-lang").textContent }));
+  check(/Разводка ▾/.test(bt.head) && /Плата ▾/.test(bt.head) && /Экспорт ▾/.test(bt.head) && /Детали/.test(bt.side) && bt.btn === "EN", "the Board window opens in Russian (Разводка ▾, Плата ▾, Экспорт ▾, Детали)");
+  check(bt.h < 50, `in Russian the Board toolbar fits one row at 1500 px (${bt.h} px high)`);
+  await b.close();
+  for (const [url, re, what] of [["oscilloscope.html", /Вольт\/дел/, "Вольт/дел"], ["spectrum_analyzer.html", /Гармоники|Основная/, "Основная"], ["bode.html", /Отображение/i, "Отображение"], ["index.html", /Характериограф/, "Характериограф"]]) {
+    const w = await open(url, () => true);
+    const t = await w.evaluate(() => ({ text: document.body.innerText, h: document.querySelector("header").offsetHeight }));
+    check(re.test(t.text) && t.h < 50, `${url} opens in Russian (${what}) with its toolbar on one row (${t.h} px)`);
+    await w.close();
+  }
+  await lc.close();
+}

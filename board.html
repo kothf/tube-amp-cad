@@ -155,6 +155,13 @@
     @media (max-width: 1450px) { .tools .lbl { display: none; } .tools .btn .ico { display: inline; } }
     @media (max-width: 1250px) { #btn-sync .lbl, #btn-autoroute .lbl { display: none; } #btn-sync .ico, #btn-autoroute .ico { display: inline; } }
     @media (max-width: 1700px) { .doc-switch .ds-lbl { display: none; } .doc-switch .btn { padding-left: 8px; padding-right: 8px; } }
+    /* Russian names are longer: icons sooner */
+    html[lang=ru] kbd.tk { display: none; }
+    @media (max-width: 1180px) { #btn-lang { display: none; } }   /* the CAD's View ▾ → Interface still switches */
+    @media (max-width: 1300px) { html[lang=ru] #btn-lang { display: none; } }
+    @media (max-width: 1100px) { html[lang=ru] header .btn { padding-left: 5px; padding-right: 5px; } html[lang=ru] header { gap: 3px; } }
+    @media (max-width: 1880px) { html[lang=ru] .tools .lbl { display: none; } html[lang=ru] .tools .btn .ico { display: inline; } }
+    @media (max-width: 1500px) { html[lang=ru] #btn-sync .lbl, html[lang=ru] #btn-autoroute .lbl { display: none; } html[lang=ru] #btn-sync .ico, html[lang=ru] #btn-autoroute .ico { display: inline; } }
     /* narrower than 1180 px: Text, Hole, Keep-out and Measure fold into one "More tools" button
        (it shows the one last picked, lit while it is the tool), and Fit goes (the zoom % below
        fits, and F), so the toolbar stays one row down to 1000 px, where the side panels go */
@@ -287,6 +294,7 @@
         <button class="menu-item" id="ex-dsn">Freerouting design (DSN)<small>route it in Freerouting by hand</small></button>
       </div>
     </div>
+    <button class="btn" id="btn-lang" data-lang-toggle data-i18n-skip title="Интерфейс на русском">RU</button>
     <button class="btn ib" id="btn-help" title="Help and shortcuts (F1)" aria-label="Help"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.1 6.2a2 2 0 1 1 2.6 1.9c-.5.2-.7.6-.7 1.1v.5"/><path d="M8 11.6v.2"/></svg></button>
   </header>
   <div id="banner" hidden><span id="banner-text"></span><button class="btn warn" id="banner-sync">Update from schematic</button></div>
@@ -506,6 +514,9 @@
   </div>
 
   <script src="hints.js?v=dev"></script>
+  <script src="i18n-ru.js?v=dev"></script>
+  <script src="i18n-hints-ru.js?v=dev"></script>
+  <script src="i18n.js?v=dev"></script>
   <script src="windows.js?v=dev"></script>
   <script src="panels.js?v=dev"></script>
   <script src="ui-kit.js?v=dev"></script>
