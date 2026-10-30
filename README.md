@@ -100,6 +100,22 @@ Firefox is not tested.
   - a design cookbook, and the simulator's equations and limits.
 
   It is searchable.
+- **AI assistant** (AI ▾ and the AI tab under the schematic), with your own
+  key for Claude, ChatGPT or Gemini, kept in the browser and sent only to
+  that provider:
+  - ask about the circuit or the app; the model sees the parts, nets,
+    simulated voltages, operating points and Checks, and the manual;
+  - *Design from a description*: the model designs the circuit, the CAD
+    draws and simulates it and sends the Checks back for revisions;
+  - *Tube from a datasheet*: a PDF read into ratings, pinout and a Koren
+    model fitted to its plate curves, reviewed before it joins the library;
+  - *Explain my circuit*, stage by stage;
+  - *Fix the checks*: value changes checked against the parts, applied with
+    one click, re-simulated and compared.
+- **Auto-tune** (the Tune tab, no key needed): set goals such as "10 W at
+  ≤ 1 % THD" and the values that may change; an optimizer tries values, the
+  simulator judges each, and the best are rounded to E24/E12. *AI start*
+  lets the model pick the values and ranges.
 - **Layout.**
   - Drag the edge of the palette, the inspector or the BOM to resize it, and
     double-click the edge to reset it. The same goes for the side panels of

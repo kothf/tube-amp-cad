@@ -15,6 +15,9 @@
   const snap = v => Math.round(v / GRID) * GRID;
   const key = (x, y) => x + "," + y;
 
+  // File ▾ → Revisions… (cad-rev-dialog.js), made in init()
+  let revisions = null;
+
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
@@ -240,6 +243,7 @@
   function redo() { if (S.hIndex < S.history.length - 1) { S.hIndex++; restore(S.history[S.hIndex]); } }
   function circuitChanged() {
     S.topo = null;
+    if (revisions) revisions.changed();
     scheduleBoardNetlist();
     updateSheetNav();
     if (S.trans && !S.trans.stale && !S.trans.running) { S.trans.stale = true; if (channel) channel.postMessage(transientMessage()); }
@@ -248,6 +252,7 @@
     noise.changed();
     listen.changed();
     sweep.changed();
+    tune.changed();
     animChanged();
     try { localStorage.setItem(STORAGE_KEY, snapshot()); } catch (e) {}
     showFile();
@@ -310,8 +315,15 @@
     return { nodeCount, elements };
   }
 
+  // a promise of the simulation's result once nothing is running or waiting to run (null: none)
+  const simWaiters = [];
+  function whenSimulated() { return new Promise(res => { simWaiters.push(res); setTimeout(flushSimWaiters, 300); }); }
+  function flushSimWaiters() {
+    if (S.sim.busy || S.sim.pending || simTimer) return;
+    simWaiters.splice(0).forEach(res => res(S.sim.result));
+  }
   function scheduleSim(delay) {
-    clearTimeout(simTimer);
+    clearTimeout(simTimer); simTimer = null;
     if (!S.sim.live) {
       // manual mode: the old result no longer matches the circuit
       if (S.sim.busy) cancelRun();
@@ -320,7 +332,7 @@
       broadcast();
       return;
     }
-    simTimer = setTimeout(() => runSim("live"), delay === undefined ? 150 : delay);
+    simTimer = setTimeout(() => { simTimer = null; runSim("live"); }, delay === undefined ? 150 : delay);
   }
   function cancelRun() {
     if (simJob) { simJob.cancel(); simJob = null; }
@@ -347,8 +359,8 @@
   function runSim(mode) {
     mode = mode === "full" ? "full" : "live";
     const T = topo();
-    if (!hasCircuit()) { S.sim.result = null; S.sim.error = null; setStatus("idle", "Empty sheet"); broadcast(); render(); return; }
-    if (!T.hasGround) { S.sim.result = null; S.sim.error = "Add a ground symbol to simulate"; setStatus("warn", S.sim.error); broadcast(); render(); updateInspector(); return; }
+    if (!hasCircuit()) { S.sim.result = null; S.sim.error = null; setStatus("idle", "Empty sheet"); broadcast(); render(); setTimeout(flushSimWaiters, 0); return; }
+    if (!T.hasGround) { S.sim.result = null; S.sim.error = "Add a ground symbol to simulate"; setStatus("warn", S.sim.error); broadcast(); render(); updateInspector(); setTimeout(flushSimWaiters, 0); return; }
     if (S.sim.busy) {
       // a full run is long: a new request replaces it; quick runs queue
       if (S.sim.mode === "full" || mode === "full") cancelRun();
@@ -421,6 +433,7 @@
       render();
     }
     if (S.sim.pending) { S.sim.pending = false; runSim(); }
+    flushSimWaiters();
   }
 
   // AC animation (View ▾ → Animate): dots for each wire's current, a tint for each node's AC (cad-anim.js)
@@ -944,6 +957,8 @@
   function toggleView(key) { S[key] = !S[key]; render(); }
   cmds
     .add({ id: "help-close", keys: ["Escape"], anyCtrl: true, when: () => !helpModal().hidden, run: () => { helpModal().hidden = true; } })
+    .add({ id: "diff-close", keys: ["Escape"], anyCtrl: true, when: () => !!S.revDiff, run: () => revisions.closeDiff() })
+    .add({ id: "save-revision", keys: ["Ctrl+Alt+S"], prevent: true, when: () => !!revisions, run: () => revisions.quickSave(), help: "save a revision of the project (File ▾ → Revisions…)" })
     .add({ id: "rotate", label: "Rotate", icon: ICONS.rotate, keys: ["Space", "R"], helpKeys: ["Space"], run: rotateSelection, help: "rotate the selection, the part being placed or the parts being dragged (a tap: Space held down while dragging pans; R also rotates)" })
     .add({ id: "mirror", label: "Mirror left–right", icon: ICONS.mirror, keys: ["M"], run: mirrorSelection, help: "mirror left–right" })
     .add({ id: "duplicate", label: "Duplicate", keys: ["D", "Ctrl+D"], prevent: true, run: () => { if (copySelection()) paste(40, 40); }, help: "duplicate (also Ctrl+D)", helpKeys: ["D"] })
@@ -964,8 +979,8 @@
     .add({ id: "noise", label: "Noise and hum", run: () => toggleBom(undefined, "noise"), check: () => bomOpts.open && bomOpts.tab === "noise" })
     .add({ id: "zoom-in", keys: ["+", "=", "NumpadAdd", "Equal"], anyCtrl: true, run: () => zoomBy(1.2), help: "zoom in · wheel zooms at the pointer", helpKeys: ["+"] })
     .add({ id: "zoom-out", keys: ["-", "NumpadSubtract", "Minus"], anyCtrl: true, run: () => zoomBy(1 / 1.2), help: "zoom out", helpKeys: ["-"] })
-    .add({ id: "undo", label: "Undo", keys: ["Ctrl+Z"], prevent: true, run: undo, help: "undo" })
-    .add({ id: "redo", label: "Redo", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], prevent: true, run: redo, help: "redo (also Ctrl+Shift+Z)", helpKeys: ["Ctrl+Y"] })
+    .add({ id: "undo", menuId: "menu-undo", label: "Undo", keys: ["Ctrl+Z"], prevent: true, inControls: true, run: undo, help: "undo" })
+    .add({ id: "redo", menuId: "menu-redo", label: "Redo", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], prevent: true, inControls: true, run: redo, help: "redo (also Ctrl+Shift+Z)", helpKeys: ["Ctrl+Y"] })
     .add({ id: "copy", label: "Copy", keys: ["Ctrl+C"], run: () => copySelection(), help: "copy" })
     .add({ id: "paste", label: "Paste", keys: ["Ctrl+V"], prevent: true, run: () => paste(40, 40), help: "paste" })
     .add({ id: "select-all", label: "Select all", keys: ["Ctrl+A"], prevent: true, run: selectAll, help: "select all" })
@@ -1103,6 +1118,7 @@
 
     // voltage and current stickers
     if ((S.showVolts || S.showAmps) && S.sim.result) drawStickers(T);
+    drawDiff();
 
     // placing ghost
     if (S.placing) {
@@ -1144,6 +1160,66 @@
     drawAnimHud();
     drawProbes(T, W, H);
   }
+  // Compare with a revision (cad-rev-dialog.js), on the drawing: parts added in green, changed in
+  // amber, moved in blue, and the parts and wires taken out drawn faintly in red where they were;
+  // the change being looked at is drawn thicker
+  const DIFF_COL = { added: "#3fb950", changed: "#ffb300", moved: "#79c0ff", removed: "#ff7b72" };
+  // the frame a point lies on, by its order (marks are stepped through sheet by sheet)
+  const frameIndex = (x, y) => { const i = frames().findIndex(f => { const b = compBBox(f); return x >= b.x1 && x <= b.x2 && y >= b.y1 && y <= b.y2; }); return i < 0 ? 1e6 : i; };
+  function showDiff(d) {
+    if (d) d.marks.sort((p, q) => (frameIndex(p.comp.x, p.comp.y) - frameIndex(q.comp.x, q.comp.y)) || (p.comp.y - q.comp.y) || (p.comp.x - q.comp.x));
+    S.revDiff = d || null; render();
+  }
+  // a part as drawn: an old revision's part gets the library's defaults, as loading it would
+  const asDrawn = c => (LIB[c.type] ? Object.assign({}, c, { params: Object.assign({}, LIB[c.type].defaults, c.params) }) : null);
+  function diffBox(m) { const c = asDrawn(m.comp); return c ? compBBox(c) : null; }
+  function drawDiff() {
+    const D = S.revDiff; if (!D) return;
+    const sc = S.view.scale, cur = D.marks[D.idx];
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(255,123,114,0.75)"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+    D.wiresRemoved.forEach(w => { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); });
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(63,185,80,0.45)"; ctx.lineWidth = 7;
+    D.wiresAdded.forEach(w => { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); });
+    D.marks.forEach(m => {
+      const c = asDrawn(m.comp); if (!c) return;
+      if (m.kind === "removed") { ctx.globalAlpha = 0.4; drawComp(c, false, true); ctx.globalAlpha = 1; }
+      const b = compBBox(c), pad = 8, on = m === cur;
+      ctx.strokeStyle = DIFF_COL[m.kind]; ctx.lineWidth = (on ? 3 : 1.6) / Math.min(sc, 1);
+      if (m.kind === "removed") ctx.setLineDash([5 / Math.min(sc, 1), 4 / Math.min(sc, 1)]);
+      if (on) { ctx.fillStyle = DIFF_COL[m.kind] + "22"; ctx.fillRect(b.x1 - pad, b.y1 - pad, b.x2 - b.x1 + 2 * pad, b.y2 - b.y1 + 2 * pad); }
+      ctx.strokeRect(b.x1 - pad, b.y1 - pad, b.x2 - b.x1 + 2 * pad, b.y2 - b.y1 + 2 * pad);
+      ctx.setLineDash([]);
+    });
+    ctx.restore();
+  }
+  // the view centred on change i, close enough to read it
+  function focusDiff(i) {
+    const D = S.revDiff; if (!D || !D.marks.length) return;
+    D.idx = (i + D.marks.length) % D.marks.length;
+    const b = diffBox(D.marks[D.idx]);
+    if (b) {
+      const W = canvas.clientWidth, H = canvas.clientHeight;
+      const s = Math.max(S.view.scale, Math.min(1.6, Math.min(W / 3 / Math.max(b.x2 - b.x1, 40), H / 3 / Math.max(b.y2 - b.y1, 40))));
+      S.view.scale = s; S.view.ox = W / 2 - (b.x1 + b.x2) / 2 * s; S.view.oy = H / 2 - (b.y1 + b.y2) / 2 * s;
+      updateZoomLabel();
+    }
+    render();
+  }
+  // a small picture of the first sheet, in the editor's colours, for a revision (data: URL)
+  function thumbnail(maxW = 640) {
+    try {
+      const { canvas: big } = renderPNG(frames()[0] || null, 100, "screen");
+      const k = Math.min(1, maxW / big.width), cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(big.width * k)); cv.height = Math.max(1, Math.round(big.height * k));
+      const g = cv.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(big, 0, 0, cv.width, cv.height);
+      const webp = cv.toDataURL("image/webp", 0.8);
+      return /^data:image\/webp/.test(webp) ? webp : cv.toDataURL("image/png");
+    } catch (e) { return null; }
+  }
+
   // what the colours on the sheet mean: only the marks that are showing
   function legendRows() {
     const r = S.sim.result; if (!r || !(S.showVolts || S.showAmps || S.anim.on)) return [];
@@ -2162,6 +2238,7 @@
   }
   function newCircuit(opts) {
     opts = Object.assign({ size: "A3", orient: "landscape", title: "" }, opts);
+    if (revisions) revisions.detach();
     const f = makeComp("frame", { size: opts.size, orient: opts.orient, title: opts.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
     S.comps = [f]; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
     setCurFile(null, "");
@@ -2353,7 +2430,31 @@
   const sweep = CadSweep({ S, buildNetlist, cmds, commit, desig, esc: escH, fmtEng, harmonics, measurements, parseEng: CadLib.parseEng, pool, scopeChannels, setStatus, signalFreq, speakerWave, topo, withResult });
   // Listen: the Listen tab (cad-listen.js)
   const listen = CadListen({ S, buildNetlist, cmds, desig, esc: escH, fmtEng, pool, setStatus, topo });
-  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); noise.render(); sweep.render(); listen.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
+  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); noise.render(); sweep.render(); listen.render(); tune.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
+  // The AI assistant: the AI tab and the AI menu (cad-ai.js)
+  const ai = CadAi({ S, VERSION, circuitIssues, commit, compPins, desig, fmtEng, harmonics, measurements, netAC, netDC, runSim, selectParts: selectFromBoard, setStatus, signalFreq, speakerWave, toggleBom, topo, tubeData, undo, whenSimulated });
+  // Auto-tune: the Tune tab (cad-tune.js)
+  // AI ▾ → Design from a description: the drawn design on a new sheet, one undo step
+  function placeDesign(out) {
+    const f = makeComp("frame", { size: out.frame.size, orient: out.frame.orient, title: out.frame.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
+    S.comps = [f]; S.wires = [];
+    out.comps.forEach(o => {
+      const c = makeComp(o.type, o.params, o.x, o.y, o.rot);
+      c.params = Object.assign({}, LIB[o.type].defaults, o.params);
+      if (o.label) c.label = o.label;
+      S.comps.push(c);
+    });
+    out.wires.forEach(w => addSegment(w.x1, w.y1, w.x2, w.y2));
+    normalizeWires(); S.topo = null;
+    S.sel.comps.clear(); S.sel.wires.clear();
+    setCurFile(null, "");
+    storeBoard(null);
+    commit(); fitStart();
+    sendBoardNetlist(true);
+  }
+  const design = CadDesign({ S, circuitIssues, placeDesign, runSim, setStatus, whenSimulated });
+  const datasheet = CadDatasheet({ S, buildPalette, setStatus });
+  const tune = CadTune({ S, buildNetlist, cmds, commit, compPins, desig, esc: escH, fmtEng, harmonics, measurements, pool, scopeChannels, setStatus, signalFreq, speakerWave, toggleBom, topo, withResult });
   // PDF / PNG export and printing (cad-export.js)
   const { expOpts, exportPDF, initExport, openExportDialog, openPrintDialog, printPages, prnOpts, renderPNG, runExport, runPrint } = CadExport({ S, baseName, bind, bomData, compBBox, currentSheet, drawSheet, frames, setStatus, sheetNo });
   // The file this circuit came from or was last saved to. With the File System Access API
@@ -2393,6 +2494,7 @@
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
       const d = await r.json();
       if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { /* a built-in of that name */ } }); buildPalette(); }
+      if (revisions) revisions.detach();
       loadCircuit(d);
       storeBoard(d.board || null);
       S.sel.comps.clear(); S.sel.wires.clear();
@@ -2448,17 +2550,23 @@
     let d;
     try { d = await CadShare.unpack(packed || await CadShare.fetchShort(id, location.origin)); if (!d || d.app !== "TubeAmpCAD") throw new Error("not a Tube Amp CAD design"); }
     catch (err) { setStatus("error", "Could not open the shared link: " + err.message); return; }
-    if (S.comps.some(c => c.type !== "frame") && !confirm("Open the design from this link?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.")) return;
+    openDesign(d, "the design from this link", true);
+  }
+  // a design (as File › Save writes it) onto the sheet, untitled; `ask`: first ask if a circuit is there
+  function openDesign(d, what, ask) {
+    if (ask && S.comps.some(c => c.type !== "frame") && !confirm(`Open ${what}?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.`)) return false;
     try {
       if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { /* a built-in of that name */ } }); buildPalette(); }
+      if (revisions) revisions.detach();          // a revision being opened attaches itself again after
       loadCircuit(d);
       storeBoard(d.board || null);
       S.sel.comps.clear(); S.sel.wires.clear();
       setCurFile(null, "");                       // untitled: Save asks for a name
       commit(); fitStart(); markClean();
       sendBoardNetlist(true);
-      setStatus("ok", "Opened the design from the link" + (sheetName().full ? ": " + sheetName().full : ""));
-    } catch (err) { setStatus("error", "Could not open the shared link: " + err.message); }
+      setStatus("ok", "Opened " + what + (sheetName().full ? ": " + sheetName().full : ""));
+      return true;
+    } catch (err) { setStatus("error", `Could not open ${what}: ` + err.message); return false; }
   }
   function buildExamplesMenu() {
     const host = document.getElementById("examples-list"); if (!host) return;
@@ -2553,6 +2661,7 @@
       try {
         const d = JSON.parse(rd.result);
         if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { setStatus("warn", e.message); } }); buildPalette(); }
+        if (revisions) revisions.detach();
         loadCircuit(d);
         storeBoard(d.board || null);
         S.sel.comps.clear(); S.sel.wires.clear();
@@ -2773,6 +2882,13 @@
     document.getElementById("share-board").addEventListener("change", updateShare);
     document.getElementById("share-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("share-modal").hidden = true; });
     window.addEventListener("hashchange", openSharedLink);
+    // File ▾ → Revisions… (cad-rev-dialog.js), and #rev=<project>.<n> addresses from the project manager
+    revisions = window.CadRevDialog ? CadRevDialog({ circuitJSON, openDesign, setStatus, sheetName, isDirty, showDiff, focusDiff, thumbnail, fitStart }) : null;
+    if (revisions) {
+      revisions.wire();
+      bind("btn-revisions", () => revisions.open());
+      window.addEventListener("hashchange", () => revisions.openFromLink());
+    }
     document.getElementById("save-name").addEventListener("keydown", e => { if (e.key === "Enter") saveDialogOk(); });
     document.getElementById("save-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("save-modal").hidden = true; });
     cmds.bind("btn-undo", "undo").bind("btn-redo", "redo");
@@ -2807,6 +2923,10 @@
     noise.init();
     sweep.init();
     initBom();
+    ai.init();
+    tune.init(ai);
+    design.init(ai);
+    datasheet.init(ai);
     bind("btn-open-board", showBoard);
     cmds.bind("btn-board-tab", "board-tab");
     cmds.bind("btn-doc-board", "board");
@@ -2834,9 +2954,10 @@
     updateSheetNav();
     requestAnimationFrame(() => { fitStart(); scheduleSim(0); });
     openSharedLink();
+    if (revisions) revisions.openFromLink();
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { circuitIssues, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

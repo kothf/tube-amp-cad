@@ -1,4 +1,5 @@
 // Analyses under the schematic: the power sweep, listening, the parameter sweep, noise and hum; the Bode plotter's loop gain
+import { readFileSync } from "node:fs";
 import { cad, check, open } from "./harness.mjs";
 
 // --- Power sweep ----------------------------------------------------------------------------
@@ -75,6 +76,24 @@ import { cad, check, open } from "./harness.mjs";
   await cad.setInputFiles("#ls-file", { name: "a220.wav", mimeType: "audio/wav", buffer: Buffer.from(wav) });
   await cad.waitForFunction(() => TubeCAD.state.listen.file && TubeCAD.state.listen.file.name === "a220.wav", null, { timeout: 10000 });
   check(await cad.evaluate(() => TubeCAD.state.listen.file.chs.length === 1 && Math.abs(TubeCAD.state.listen.file.seconds - 0.5) < 0.01), "a WAV file is read (mono, 0.5 s)");
+  // the live radio: its stream answered here with the MP3 fixture (no network in the test)
+  const mp3 = readFileSync(new URL("../fixtures/stereo-440-660.mp3", import.meta.url));
+  let hits = 0;
+  await cad.route(/streams\.radiobob\.de\/70errock\//, r => { hits++; r.fulfill({ status: 200, contentType: "audio/mpeg", headers: { "access-control-allow-origin": "*" }, body: mp3 }); });
+  await cad.selectOption("#ls-src", "radio");
+  check(await cad.evaluate(() => !document.getElementById("ls-radio-btn").hidden && document.getElementById("ls-file-btn").hidden), "70s rock radio (live) shows Tune in again, not Open file");
+  await cad.fill("#ls-len", "0.8"); await cad.press("#ls-len", "Tab");
+  const tr = await render();
+  const rs = await cad.evaluate(() => ({ radio: !!TubeCAD.state.listen.radio, src: TubeCAD.state.listen.take && TubeCAD.state.listen.take.source, name: document.getElementById("ls-file-name").textContent }));
+  check(hits === 1 && rs.radio && !tr.error && tr.ch === 1 && tr.n === Math.round(0.8 * 48000) && tr.peak > 0.5 && /RADIO BOB! 70s Rock \(live at \d\d:\d\d\)/.test(rs.src) && /caught at/.test(rs.name),
+    `▶ Render tunes in to the radio, catches a piece of it and plays it through the circuit (${rs.src}, peak ${tr.peak && tr.peak.toFixed(2)} V)`);
+  await cad.unroute(/streams\.radiobob\.de\/70errock\//);
+  await cad.route(/streams\.radiobob\.de\/70errock\//, r => r.fulfill({ status: 503, body: "" }));
+  await cad.click("#ls-radio-btn");
+  await cad.waitForFunction(() => !TubeCAD.state.listen.tuning && TubeCAD.state.listen.error, null, { timeout: 10000 });
+  check(/Could not reach RADIO BOB/.test(await cad.textContent("#ls-note")), "a station that does not answer is said so in the tab");
+  await cad.unroute(/streams\.radiobob\.de\/70errock\//);
+  await cad.selectOption("#ls-src", "file").catch(() => {});
   // play, A/B
   await cad.click("#ls-play"); await cad.waitForTimeout(400);
   const playing = await cad.evaluate(() => TubeCAD.state.listen.playing);

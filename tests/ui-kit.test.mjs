@@ -10,8 +10,8 @@ runInThisContext(readFileSync(new URL("../ui-kit.js", import.meta.url), "utf8"),
 const { UiKit } = globalThis;
 
 /** A keydown as the browser sends it; prevented tells whether preventDefault() was called. */
-function key(k, code, mods = {}, tag = "CANVAS") {
-  return { key: k, code, ctrlKey: !!mods.ctrl, metaKey: !!mods.meta, shiftKey: !!mods.shift, altKey: !!mods.alt, target: { tagName: tag }, prevented: false, preventDefault() { this.prevented = true; } };
+function key(k, code, mods = {}, tag = "CANVAS", type) {
+  return { key: k, code, ctrlKey: !!mods.ctrl, metaKey: !!mods.meta, shiftKey: !!mods.shift, altKey: !!mods.alt, target: { tagName: tag, type }, prevented: false, preventDefault() { this.prevented = true; } };
 }
 function table() {
   const ran = [], cmds = UiKit.commands(), run = id => () => ran.push(id);
@@ -24,8 +24,8 @@ function table() {
     .add({ id: "escape", keys: ["Escape"], anyCtrl: true, run: run("escape") })
     .add({ id: "zoom-in", keys: ["+", "=", "NumpadAdd", "Equal"], anyCtrl: true, run: run("zoom-in"), helpKeys: ["+"], help: "zoom in" })
     .add({ id: "zoom-out", keys: ["-", "NumpadSubtract", "Minus"], anyCtrl: true, run: run("zoom-out"), helpKeys: ["-"], help: "zoom out" })
-    .add({ id: "undo", keys: ["Ctrl+Z"], prevent: true, run: run("undo") })
-    .add({ id: "redo", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], prevent: true, run: run("redo") })
+    .add({ id: "undo", keys: ["Ctrl+Z"], prevent: true, inControls: true, run: run("undo") })
+    .add({ id: "redo", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], prevent: true, inControls: true, run: run("redo") })
     .add({ id: "copy", keys: ["Ctrl+C"], run: run("copy") })
     .add({ id: "save", keys: ["Ctrl+S"], prevent: true, run: run("save") })
     .add({ id: "save-as", keys: ["Ctrl+Shift+S"], prevent: true, run: run("save-as") })
@@ -81,6 +81,17 @@ test("while typing in a field only inInputs commands run", () => {
   assert.equal(t.cmds.key(key("r", "KeyR", {}, "INPUT")), false);
   assert.equal(t.cmds.key(key("Delete", "Delete", {}, "TEXTAREA")), false);
   assert.ok(t.cmds.key(key("F1", "F1", {}, "SELECT"))); assert.equal(t.last(), "help");
+});
+
+test("on a list, tick box or slider inControls commands run; in a text field they don't", () => {
+  const t = table();
+  assert.ok(t.cmds.key(key("z", "KeyZ", { ctrl: true }, "SELECT"))); assert.equal(t.last(), "undo");
+  assert.ok(t.cmds.key(key("y", "KeyY", { ctrl: true }, "INPUT", "checkbox"))); assert.equal(t.last(), "redo");
+  assert.ok(t.cmds.key(key("z", "KeyZ", { ctrl: true }, "INPUT", "range"))); assert.equal(t.last(), "undo");
+  assert.equal(t.cmds.key(key("z", "KeyZ", { ctrl: true }, "INPUT", "number")), false);
+  assert.equal(t.cmds.key(key("z", "KeyZ", { ctrl: true }, "INPUT", "text")), false);
+  assert.equal(t.cmds.key(key("z", "KeyZ", { ctrl: true }, "TEXTAREA")), false);
+  assert.equal(t.cmds.key(key("r", "KeyR", {}, "SELECT")), false);
 });
 
 test("check(): bound elements show the setting's state after any command", () => {

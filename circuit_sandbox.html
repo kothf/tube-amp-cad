@@ -21,6 +21,7 @@
     header > .cur-file { flex: 1 1 60px; min-width: 60px; max-width: max-content; }   /* takes spare room up to its full name; never forces a second row by itself */
     @media (max-width: 1300px) { .brand span, .brand b { display: none; } .brand { margin-right: 0; } header .btn { padding: 5px 7px; } header { gap: 4px; } .sep { margin: 0 2px; } }
     @media (max-width: 1080px) { header > .cur-file { display: none; } #btn-windows .win-lbl { display: none; } #btn-windows .win-ico { display: inline; } }
+    @media (max-width: 1140px) { header > .sep { display: none; } #zoom-label { min-width: 40px; } }   /* the groups' gaps stand for the separators, so the AI menu still fits one row at 1000 px */
     #btn-windows .win-ico { display: none; vertical-align: -3px; }
     #board-tab { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 50; background: var(--bg); }
     #board-tab[hidden] { display: none; }
@@ -44,11 +45,6 @@
     .btn.toggle.active { background: var(--panel2); border-color: var(--line); color: var(--text); }
     .btn.toggle.active::before { background: var(--ok); box-shadow: 0 0 5px var(--ok); }
     /* joined buttons: one tool choice, zoom, run */
-    .seg-group { display: inline-flex; align-items: stretch; }
-    .seg-group > * { border-radius: 0; margin-left: -1px; }
-    .seg-group > :first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
-    .seg-group > :last-child { border-radius: 0 6px 6px 0; }
-    .seg-group > .active { position: relative; z-index: 1; }
     .seg-group #zoom-label { display: grid; place-items: center; border: 1px solid var(--line); background: var(--bg); }
     #zoom-label { min-width: 48px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -150,6 +146,7 @@
     .checks-list { padding: 6px 12px; }
     .checks-list .insp-help { margin: 3px 0; }
     .bom-head label { display: flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
+    .bom-head label[hidden] { display: none; }
     .bom-head .btn { padding: 2px 9px; font-size: 12px; }
     .muted { color: var(--muted); }
     .bom-scroll { overflow: auto; flex: 1; min-height: 0; }
@@ -232,6 +229,62 @@
     .ls-strips canvas { width: 100%; height: 74px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; display: block; }
     .tol-num { width: 56px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; color: var(--text); }
 
+    /* AI: the conversation in the panel under the sheet, the settings dialog */
+    .ai-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .ai-pane[hidden] { display: none; }
+    .ai-log { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+    .ai-msg { max-width: 920px; border-radius: 8px; padding: 6px 10px; line-height: 1.45; }
+    .ai-msg.user { align-self: flex-end; background: #0d3442; border: 1px solid #13505f; white-space: pre-wrap; max-width: 70%; }
+    .ai-msg.answer { background: var(--panel2); border: 1px solid var(--line); }
+    .ai-msg.note { color: var(--muted); border: 1px dashed var(--line); }
+    .ai-msg.error { color: var(--bad); border: 1px solid #5a2a2a; background: #1d1214; }
+    .ai-msg.busy { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .ai-msg p { margin: 4px 0; } .ai-msg h4 { margin: 8px 0 4px; font-size: 13px; color: var(--accent); }
+    .ai-msg ul, .ai-msg ol { margin: 4px 0; padding-left: 20px; } .ai-msg li { margin: 2px 0; }
+    .ai-msg code, .ai-msg pre { font: 12px ui-monospace, Menlo, monospace; background: var(--bg); border-radius: 4px; padding: 0 4px; }
+    .ai-msg pre { padding: 6px 8px; overflow-x: auto; white-space: pre-wrap; }
+    .ai-msg table { border-collapse: collapse; margin: 6px 0; font-size: 12px; } .ai-msg th, .ai-msg td { border: 1px solid var(--line); padding: 3px 7px; text-align: left; vertical-align: top; }
+    .ai-msg th { color: var(--muted); font-weight: 600; } .ai-msg td.mono { font-family: ui-monospace, Menlo, monospace; white-space: nowrap; } .ai-msg td.warn { color: var(--warn); }
+    .ai-fixes tr.done td { color: var(--ok); } .ai-fixes tr.bad td { color: var(--muted); } .ai-fixes .btn { padding: 2px 8px; font-size: 12px; }
+    .ai-ref { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    .ai-row { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .ai-chips { display: flex; gap: 6px; flex-wrap: wrap; } .ai-chip { font-size: 12px; border-radius: 14px; }
+    .ai-dots::before { content: "●●●"; letter-spacing: 2px; color: var(--accent); animation: ai-pulse 1.2s ease-in-out infinite; }
+    @keyframes ai-pulse { 50% { opacity: .3; } }
+    .ai-ask { display: flex; gap: 6px; padding: 6px 12px 8px; border-top: 1px solid var(--line); }
+    .ai-ask textarea { flex: 1; resize: none; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; }
+    .ai-ask textarea:focus { outline: none; border-color: var(--accent); }
+    .ai-who { font-size: 12px; } .ai-who.warn { color: var(--warn); }
+    .ai-providers { margin: 6px 0 10px; } .ai-providers .btn { min-width: 90px; }
+    .new-form.ai-form { grid-template-columns: 70px 1fr; }
+    .ai-design-text { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; resize: vertical; margin-bottom: 8px; }
+    #design-chips { margin-bottom: 8px; }
+    .ds-table td:first-child { color: var(--muted); white-space: nowrap; } .ds-chart { max-width: 460px; margin: 8px 0; }
+    .ai-keyrow { display: flex; gap: 6px; align-items: center; } .ai-keyrow input[type=password], .ai-keyrow input[type=text] { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: 12px ui-monospace, Menlo, monospace; }
+    .ai-keyrow label { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    #ai-modal .modal-actions { align-items: center; }
+    /* Tune: goals and values at the left, the result at the right */
+    .tune-wrap { display: flex; gap: 16px; padding: 8px 12px; flex-wrap: wrap; align-items: flex-start; }
+    .tune-left { flex: 1 1 420px; min-width: 320px; font-size: 12px; } .tune-right { flex: 1 1 380px; min-width: 300px; font-size: 12px; }
+    .tune-sec { font-weight: 600; margin: 8px 0 4px; } .tune-sec .muted { font-weight: 400; margin-left: 6px; }
+    .tune-row { display: flex; gap: 6px; align-items: center; margin: 3px 0; flex-wrap: wrap; }
+    .tune-name { min-width: 150px; font-family: ui-monospace, Menlo, monospace; }
+    .tune-x { padding: 1px 7px; font-size: 11px; } .tune-empty { margin: 2px 0 4px; }
+    .tune-check { display: flex; gap: 6px; align-items: center; color: var(--muted); margin: 6px 0; cursor: pointer; }
+    .tune-state { font-weight: 600; margin: 2px 0 6px; } .tune-state.ok { color: var(--ok); } .tune-state.warn { color: var(--warn); }
+    .tune-table { border-collapse: collapse; width: 100%; margin-bottom: 8px; }
+    .tune-table th { color: var(--muted); font-weight: 600; text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--line); }
+    .tune-table td { padding: 2px 8px; border-bottom: 1px dashed #1a2433; } .tune-table td.n { text-align: right; font-variant-numeric: tabular-nums; } .tune-table td.mono { font-family: ui-monospace, Menlo, monospace; }
+    .tune-table td.ok { color: var(--ok); } .tune-table td.warn { color: var(--warn); }
+    .tune-chart { max-width: 520px; margin-top: 4px; }
+    .tune-chart .tune-goal { fill: #3fb95022; stroke: #3fb95066; stroke-dasharray: 3 3; } .pw-chart .ax.ok { fill: var(--ok); } .pw-chart .ax.best { fill: var(--amber); }
+    .tune-chart .tune-try { fill: #8b949e99; } .tune-chart .tune-try.met { fill: var(--ok); } .tune-chart .tune-fail { fill: var(--warn); font: 10px sans-serif; }
+    .tune-chart .tune-best { fill: none; stroke: var(--accent); stroke-width: 2; } .tune-chart .tune-star { fill: var(--amber); stroke: #0a0e14; stroke-width: 1.5; }
+    .tune-line { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 4px; font-variant-numeric: tabular-nums; } .tune-line .ok { color: var(--ok); }
+    .tune-legend { display: flex; flex-wrap: wrap; gap: 3px 14px; align-items: center; max-width: 520px; margin: 4px 0 8px; font-size: 11px; color: var(--muted); }
+    .tune-legend span { display: inline-flex; align-items: center; gap: 5px; } .tune-legend .muted { flex-basis: 100%; }
+    .tune-legend i { display: inline-block; } .lg-try { width: 5px; height: 5px; border-radius: 50%; background: #8b949e; } .lg-best { width: 16px; height: 2px; background: var(--accent); }
+    .lg-goal { width: 14px; height: 9px; background: #3fb95022; border: 1px dashed #3fb95066; } .lg-fail { color: var(--warn); font-weight: 400; }
     /* status bar */
     footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
     .sim-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
@@ -253,6 +306,56 @@
     .spimp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 470px; gap: 12px; }
     .spimp textarea { height: 300px !important; }
     #share-text { height: 7.5em; word-break: break-all; resize: vertical; }
+    .rev-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .rev-head .insp-title { margin: 0; }
+    .rev-who { flex: 1; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #rev-modal a.btn { text-decoration: none; }
+    .rev-row[hidden] { display: none; }
+    .rev-row, .rev-save { display: flex; gap: 6px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+    .rev-row label { color: var(--muted); font-size: 12px; }
+    .rev-row select { flex: 1; min-width: 180px; }
+    #rev-modal input[type=text], #rev-modal select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+    #rev-new-name, #rev-message { flex: 1; min-width: 200px; }
+    .rev-save kbd { font: 10px ui-monospace, Menlo, monospace; opacity: .65; margin-left: 4px; }
+    .rev-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); gap: 12px; margin-top: 4px; }
+    @media (max-width: 760px) { .rev-body { grid-template-columns: 1fr; } }
+    .rev-filter { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    .rev-filter .btn { padding: 1px 8px; font-size: 11px; }
+    .rev-filter .btn.active { color: #e3b341; border-color: #e3b341; }
+    .rev-items { max-height: 44vh; min-height: 160px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+    .rev-item { display: grid; grid-template-columns: 36px minmax(0, 1fr) max-content; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: var(--text); padding: 6px 8px; font: 12px system-ui, sans-serif; cursor: pointer; }
+    .rev-item:first-child { border-top: 0; }
+    .rev-item:hover { background: #121b27; }
+    .rev-item.on { background: #13263a; box-shadow: inset 3px 0 0 var(--accent); }
+    .rev-item .rn { font: 600 12px ui-monospace, Menlo, monospace; color: var(--accent); }
+    .rev-item .rt { overflow: hidden; }
+    .rev-item .rt small { display: block; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rev-item .ra { color: var(--muted); font-size: 11px; text-align: right; }
+    .rev-item .ra b { display: block; color: var(--ok); font-weight: 500; }
+    #rev-modal .star { color: #e3b341; font-weight: 600; }
+    #rev-modal .muted { color: var(--muted); }
+    .rev-empty { color: var(--muted); text-align: center; padding: 18px 10px; font-size: 12px; }
+    .rev-preview { border: 1px solid var(--line); border-radius: 6px; padding: 8px; min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+    .rev-pic { background: #0a0e14; border: 1px solid #1a2433; border-radius: 4px; aspect-ratio: 1.414; display: grid; place-items: center; overflow: hidden; color: var(--muted); font-size: 11px; }
+    .rev-pic img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .rev-meta { color: var(--muted); } .rev-meta b { color: var(--accent); font-family: ui-monospace, Menlo, monospace; }
+    .rev-msg { font-size: 13px; }
+    .rev-sum { color: var(--muted); max-height: 6em; overflow: auto; }
+    .rev-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+    .rev-btns input { flex: 1; min-width: 140px; }
+    /* the toolbar's revision chip, and Compare's bar over the sheet */
+    .rev-at { font: 600 11px ui-monospace, Menlo, monospace; color: var(--accent); background: #0d1520; border: 1px solid #263445; border-radius: 6px; padding: 3px 7px; margin-right: 8px; cursor: pointer; }
+    .rev-at[hidden] { display: none; }
+    .rev-at .dirty { color: #e3b341; }
+    @media (max-width: 1080px) { header > .rev-at { display: none; } }
+    #rev-diff-bar { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: calc(100% - 24px); background: rgba(15,21,30,.96); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: 0 6px 24px rgba(0,0,0,.45); font-size: 12px; }
+    #rev-diff-bar[hidden] { display: none; }
+    #rev-diff-bar .sp { flex: 1; min-width: 8px; }
+    #rev-diff-bar .k { padding: 1px 7px; border-radius: 99px; border: 1px solid; font-size: 11px; white-space: nowrap; }
+    #rev-diff-bar .k.added { color: #3fb950; } #rev-diff-bar .k.changed { color: #ffb300; } #rev-diff-bar .k.moved { color: #79c0ff; } #rev-diff-bar .k.removed { color: #ff7b72; } #rev-diff-bar .k.wires, #rev-diff-bar .k.board { color: var(--muted); }
+    #rev-diff-bar .pos { font-family: ui-monospace, Menlo, monospace; color: var(--muted); }
+    #rev-diff-bar .cur { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #rev-diff-bar .btn { padding: 2px 9px; }
     .spimp-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
     .spimp-form { display: grid; grid-template-columns: 96px 1fr; gap: 6px 8px; align-items: center; margin-bottom: 8px; }
     .spimp-form input, .spimp-form select { width: 100%; }
@@ -289,6 +392,7 @@
     #save-name[hidden] { display: none; }
     .new-form[hidden] { display: none; }
     .new-form input[type=text] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: inherit; }
+    @media (max-width: 1600px) { .brand span, .brand b { display: none; } .brand { margin-right: 0; } }   /* the name gives way to the AI menu first; the version stays */
 
     /* narrow windows: the inspector is a drawer over the right of the sheet (Inspector button) */
     #btn-insp { display: none; }
@@ -308,6 +412,7 @@
       <button class="btn" id="btn-doc-board" title="Board: the PCB layout of this circuit, in its own window (Alt+B)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/><path d="M6.2 6H9l2 2v.8"/></svg><span class="ds-lbl">Board</span></button>
     </div>
     <span class="cur-file untitled" id="cur-file" title="The circuit file open now">Untitled</span>
+    <button class="rev-at" id="rev-at" hidden></button>
     <div class="menu" id="file-menu">
       <button class="btn" id="btn-file" aria-haspopup="true" aria-expanded="false">File ▾</button>
       <div class="menu-list" role="menu" hidden>
@@ -317,6 +422,7 @@
         <button class="menu-item" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
         <button class="menu-item" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
+        <button class="menu-item" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
         <div class="menu-sep"></div>
         <div class="menu-head">Examples</div>
         <div id="examples-list"></div>
@@ -348,6 +454,19 @@
     <div class="menu" id="edit-menu">
       <button class="btn" id="btn-edit" aria-haspopup="true" aria-expanded="false" title="Edit the selection (also on the right mouse button)">Edit ▾</button>
       <div class="menu-list" role="menu" hidden></div>
+    </div>
+    <div class="menu" id="ai-menu">
+      <button class="btn" id="btn-ai" aria-haspopup="true" aria-expanded="false" title="AI: ask about the circuit, explain it, fix the checks, design and tune (your own Claude, ChatGPT or Gemini key)">AI ▾</button>
+      <div class="menu-list" role="menu" hidden>
+        <button class="menu-item" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
+        <button class="menu-item" role="menuitem" id="menu-ai-design" title="Describe an amplifier; the AI designs it, the CAD draws and simulates it, and the Checks go back for revisions">Design from a description…<kbd>new circuit</kbd></button>
+        <button class="menu-item" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
+        <button class="menu-item" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
+        <button class="menu-item" role="menuitem" id="menu-ai-datasheet" title="A tube's datasheet (PDF) read by the AI: ratings, pinout and a Koren model fitted to its plate curves, for review">Tube from a datasheet…<kbd>PDF → model</kbd></button>
+        <button class="menu-item" role="menuitem" id="menu-ai-tune" title="Part values changed until the simulated circuit meets your goals; works without a key">Auto-tune<kbd>reach a goal</kbd></button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
+      </div>
     </div>
     <input type="file" id="file-input" accept=".json,application/json" hidden>
     <span class="sep"></span>
@@ -397,6 +516,7 @@
     <nav id="palette" aria-label="Parts"></nav>
     <div id="center">
       <div id="stage"><canvas id="cad" aria-label="Schematic"></canvas>
+        <div id="rev-diff-bar" role="toolbar" aria-label="Compare with a revision" hidden></div>
         <div id="hscroll" hidden>
           <button class="hs-btn" id="hs-prev" title="Previous sheet (Page Up)" aria-label="Previous sheet">&#x2039;</button>
           <div id="hs-track" title="Drag to scroll · click a sheet to show it"><div id="hs-thumb" role="scrollbar" aria-orientation="horizontal" aria-controls="cad" aria-label="Scroll the drawing left and right"></div></div>
@@ -407,13 +527,15 @@
         <div class="bom-grip" title="Drag to resize"></div>
         <div class="bom-head">
           <div class="dock-tabs" role="tablist">
-            <button class="dock-tab" role="tab" data-tab="bom" aria-controls="bom-pane" title="Bill of materials (B)">Bill of materials</button>
+            <button class="dock-tab" role="tab" data-tab="bom" aria-controls="bom-pane" title="Bill of materials (B)">BOM</button>
             <button class="dock-tab" role="tab" data-tab="checks" aria-controls="checks-pane" title="Every part beyond its rating and every wiring problem">Checks<span id="checks-count"></span></button>
             <button class="dock-tab" role="tab" data-tab="tolerance" aria-controls="tol-pane" title="The circuit simulated many times with its parts spread within their tolerances">Tolerance</button>
             <button class="dock-tab" role="tab" data-tab="power" aria-controls="pw-pane" title="Output power against distortion over a row of input levels">Power</button>
             <button class="dock-tab" role="tab" data-tab="noise" aria-controls="nz-pane" title="Noise and hum at the output with no signal: S/N in dB(A), input noise, supply ripple, AC heaters">Noise</button>
             <button class="dock-tab" role="tab" data-tab="sweep" aria-controls="sw-pane" title="One part's value stepped over a range">Sweep</button>
             <button class="dock-tab" role="tab" data-tab="listen" aria-controls="ls-pane" title="Hear a recording played through the circuit">Listen</button>
+            <button class="dock-tab" role="tab" data-tab="tune" aria-controls="tune-pane" title="Auto-tune: part values changed until the simulated circuit meets your goals (no AI key needed)">Tune</button>
+            <button class="dock-tab" role="tab" data-tab="ai" aria-controls="ai-pane" title="The AI assistant: ask about this circuit or the app (your own Claude, ChatGPT or Gemini key)">AI</button>
           </div>
           <span class="bom-tools" data-for="bom">
             <span id="bom-count" class="muted"></span>
@@ -453,7 +575,8 @@
             <button class="btn" id="btn-sw-run" title="Run the sweep; press again to stop">▶ Run</button>
           </span>
           <span class="bom-tools" data-for="listen">
-            <label title="What drives the circuit's generator">Play <select id="ls-src" class="tol-sel"><option value="riff">Guitar riff (made here)</option><option value="tone">The generator's tone</option><option value="file">Your file (WAV, MP3)</option></select></label>
+            <label title="What drives the circuit's generator">Play <select id="ls-src" class="tol-sel"><option value="riff">Guitar riff (made here)</option><option value="tone">The generator's tone</option><option value="file">Your file (WAV, MP3)</option><option value="radio">70s rock radio (live)</option></select></label>
+            <button class="btn" id="ls-radio-btn" title="Catch a fresh piece of the live broadcast (RADIO BOB! 70s Rock) and play it through the circuit" hidden>↻ Tune in again</button>
             <button class="btn" id="ls-file-btn" title="Open a WAV or MP3 file (or drop one on the tab)">Open file…</button>
             <span id="ls-file-name" class="muted ls-file-name"></span>
             <input type="file" id="ls-file" accept="audio/*,.wav,.mp3,.ogg,.flac,.m4a" hidden>
@@ -463,6 +586,15 @@
             <label title="What you hear: a speaker, two speakers in stereo, or a scope channel">Hear <select id="ls-out" class="tol-sel"></select></label>
             <button class="btn" id="btn-ls-run" title="Play the recording through the circuit (simulated); press again to stop">▶ Render</button>
           </span>
+          <span class="bom-tools" data-for="tune">
+            <label title="How many simulations the search may run at most">Tries <input type="number" id="tune-budget" class="tol-num" min="10" max="2000" step="10"></label>
+            <button class="btn" id="btn-tune-ai" title="Ask the AI which values to change, over what ranges and from where (needs an AI key)">AI start</button>
+            <button class="btn" id="btn-tune-run" title="Search for values that meet the goals; press again to stop">▶ Tune</button>
+          </span>
+          <span class="bom-tools" data-for="ai">
+            <button class="btn" id="btn-ai-explain" title="What the circuit is and what each stage and part does">Explain circuit</button>
+            <button class="btn" id="btn-ai-fix" title="The Checks list turned into value changes you can apply">Fix checks</button>
+          </span>
           <span class="spacer"></span>
           <span class="bom-tools" data-for="bom">
             <span class="muted">Export</span>
@@ -470,6 +602,10 @@
             <button class="btn" data-bom="csv" title="Comma-separated, UTF-8">CSV</button>
             <button class="btn" data-bom="xlsx" title="Excel workbook">XLSX</button>
             <button class="btn" data-bom="pdf" title="A4 landscape">PDF</button>
+          </span>
+          <span class="bom-tools" data-for="ai">
+            <button class="btn link ai-who" id="ai-who" title="The AI provider and model in use: change them in AI settings">No API key</button>
+            <button class="btn" id="btn-ai-clear" title="Start a new conversation">Clear</button>
           </span>
           <button class="btn" id="btn-bom-close" title="Close (B)">✕</button>
         </div>
@@ -480,6 +616,11 @@
         <div class="bom-scroll" id="ls-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="sw-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="nz-pane" role="tabpanel" hidden></div>
+        <div class="bom-scroll" id="tune-pane" role="tabpanel" hidden></div>
+        <div class="ai-pane" id="ai-pane" role="tabpanel" hidden>
+          <div class="ai-log" id="ai-log" aria-live="polite"></div>
+          <div class="ai-ask"><textarea id="ai-input" rows="2" placeholder="Ask about this circuit or how to do something in the app…  (Enter sends, Shift+Enter: new line)"></textarea><button class="btn primary" id="btn-ai-send">Send</button></div>
+        </div>
       </section>
     </div>
     <aside id="inspector" aria-label="Inspector"></aside>
@@ -501,6 +642,57 @@
       <div class="modal-actions">
         <button class="btn" id="btn-dk-cancel">Cancel</button>
         <button class="btn active" id="btn-dk-save">Save</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="ai-modal" hidden>
+    <div class="modal-box" style="width: min(560px, 94vw)">
+      <div class="insp-title">AI settings</div>
+      <p class="insp-help">The AI features use your own API key. Pick a provider, paste its key and choose a model. The key is kept in this browser only and is sent only to that provider; the circuit you ask about goes with each question. The provider bills your account for what you ask. Auto-tune works without a key.</p>
+      <div class="seg-group ai-providers" id="ai-providers" role="group" aria-label="Provider">
+        <button class="btn" data-p="anthropic" title="Anthropic's Claude">Claude</button><button class="btn" data-p="openai" title="OpenAI's GPT models">ChatGPT</button><button class="btn" data-p="gemini" title="Google's Gemini">Gemini</button>
+      </div>
+      <div class="new-form ai-form">
+        <span>API key</span><span class="ai-keyrow"><input type="password" id="ai-key" spellcheck="false" autocomplete="off"><label title="Show the key"><input type="checkbox" id="ai-show-key"> show</label></span>
+        <span></span><a id="ai-key-link" href="#" target="_blank" rel="noopener">Get a key ↗</a>
+        <span>Model</span><span class="ai-keyrow"><input type="text" id="ai-model" list="ai-models" spellcheck="false" autocomplete="off"><datalist id="ai-models"></datalist><button class="btn" id="btn-ai-list" title="Ask the provider which models this key can use">Load list</button></span>
+      </div>
+      <p class="insp-help" id="ai-test-out"></p>
+      <div class="modal-actions">
+        <button class="btn" id="btn-ai-forget" title="Remove every AI key from this browser">Forget keys</button>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-ai-test" title="Send a one-word question to check the key and model">Test</button>
+        <button class="btn" id="btn-ai-cancel">Cancel</button>
+        <button class="btn active" id="btn-ai-save">Save</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="design-modal" hidden>
+    <div class="modal-box" style="width: min(620px, 94vw)">
+      <div class="insp-title">Design from a description</div>
+      <p class="insp-help">Describe the amplifier or stage: tubes, output power, load, supply, gain, anything you care about. The AI designs it from the library's parts, the CAD draws it on a new sheet and simulates it, and if the Checks find problems they go back to the AI for a revision. It replaces the circuit on the sheet (Ctrl+Z brings it back). Uses your AI key.</p>
+      <textarea id="design-text" class="ai-design-text" rows="5" placeholder="e.g. A single-ended EL84 amplifier, about 4 W into 8 Ω, with a 12AX7 driver and 300 V B+"></textarea>
+      <div class="ai-chips" id="design-chips"></div>
+      <label class="tune-check"><input type="checkbox" id="design-revise" checked> Send the Checks back for up to two revisions</label>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="btn" id="btn-design-cancel">Cancel</button>
+        <button class="btn active" id="btn-design-go" title="Ctrl+Enter">Design</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="sheet-modal" hidden>
+    <div class="modal-box" style="width: min(560px, 94vw)">
+      <div class="insp-title">Tube from a datasheet</div>
+      <p class="insp-help">Pick a tube's datasheet (PDF). The AI reads its ratings, heater, pinout and points along the plate curves; a Koren model is fitted to the points and shown against them. Review it in the AI tab, then add the tube to the library. The PDF goes to your AI provider; uses your AI key.</p>
+      <div class="new-form">
+        <span>Datasheet</span><input type="file" id="sheet-file" accept="application/pdf,.pdf">
+        <span>Tube name</span><input type="text" id="sheet-name" placeholder="optional: as in the datasheet">
+      </div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="btn" id="btn-sheet-cancel">Cancel</button>
+        <button class="btn active" id="btn-sheet-go">Read datasheet</button>
       </div>
     </div>
   </div>
@@ -618,6 +810,46 @@
     </div>
   </div>
 
+  <div class="modal" id="rev-modal" hidden>
+    <div class="modal-box" style="width: min(980px, 96vw)">
+      <div class="rev-head"><div class="insp-title">Project revisions</div><span class="rev-who" id="rev-who"></span><a class="btn" id="rev-manager" href="projects.html" target="_blank" rel="noopener" title="Every project, revision and short link kept on the server, and the space they take">Manager ↗</a></div>
+      <div id="rev-off" hidden>
+        <p class="insp-help">Revisions are kept on aerocat.tech, for the site's owner only. Open the CAD there to use them.</p>
+      </div>
+      <div id="rev-signin" hidden>
+        <p class="insp-help">Projects and their revisions are private to the owner of aerocat.tech: sign in with the site's login (Cloudflare Access) first. The login opens in its own window and closes itself.</p>
+        <div class="modal-actions" style="justify-content: flex-start"><button class="btn active" id="rev-signin-btn">Sign in ↗</button></div>
+      </div>
+      <div id="rev-main" hidden>
+        <div class="rev-row">
+          <label for="rev-project">Project</label>
+          <select id="rev-project" aria-label="Project"></select>
+          <button class="btn" id="rev-new" title="A new project, named after this sheet's title">New project…</button>
+          <button class="btn" id="rev-export" title="Every revision of this project in one JSON file">Download all</button>
+        </div>
+        <div class="rev-row" id="rev-new-row" hidden>
+          <input type="text" id="rev-new-name" spellcheck="false" placeholder="Project name" aria-label="New project's name">
+          <button class="btn active" id="rev-new-ok">Create</button>
+          <button class="btn" id="rev-new-cancel">Cancel</button>
+        </div>
+        <div class="rev-save">
+          <input type="text" id="rev-message" spellcheck="true" placeholder="What changed (e.g. R11 to 2.2 k, more feedback)" aria-label="Revision message">
+          <button class="btn active" id="rev-save" title="Keep the design as it is now, board included, as the project's next revision (Ctrl+Alt+S)">Save revision <kbd>Ctrl+Alt+S</kbd></button>
+        </div>
+        <p class="insp-help" id="rev-changes"></p>
+        <div class="rev-body">
+          <div class="rev-col">
+            <div class="rev-filter"><span>Revisions, newest first</span><button class="btn toggle" id="rev-stars" title="Show only the revisions starred as milestones">★ Milestones</button></div>
+            <div class="rev-items" id="rev-list" role="listbox" aria-label="Revisions"></div>
+          </div>
+          <div class="rev-preview" id="rev-preview" aria-live="polite"></div>
+        </div>
+      </div>
+      <p class="insp-help" id="rev-info"></p>
+      <div class="modal-actions"><button class="btn" id="rev-close">Close</button></div>
+    </div>
+  </div>
+
   <div class="modal" id="spice-modal" hidden>
     <div class="modal-box">
       <div class="insp-title">SPICE netlist (LTspice)</div>
@@ -637,6 +869,7 @@
   <script src="tube-db.js?v=dev"></script>
   <script src="spice-model.js?v=dev"></script>
   <script src="sim-engine.js?v=dev"></script>
+  <script src="koren-fit.js?v=dev"></script>
   <script src="sim-pool.js?v=dev"></script>
   <script src="bias.js?v=dev"></script>
   <script src="spice-import.js?v=dev"></script>
@@ -659,6 +892,16 @@
   <script src="cad-results.js?v=dev"></script>
   <script src="cad-board-link.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
+  <script src="cad-revisions.js?v=dev"></script>
+  <script src="cad-rev-dialog.js?v=dev"></script>
+  <script src="ai-client.js?v=dev"></script>
+  <script src="ai-circuit.js?v=dev"></script>
+  <script src="cad-ai.js?v=dev"></script>
+  <script src="cad-tune.js?v=dev"></script>
+  <script src="ai-design.js?v=dev"></script>
+  <script src="cad-design.js?v=dev"></script>
+  <script src="ai-datasheet.js?v=dev"></script>
+  <script src="cad-datasheet.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>

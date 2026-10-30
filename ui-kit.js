@@ -4,14 +4,16 @@
      elsewhere or Esc closes it. Tick items and on/off switches (.btn.toggle) tell assistive
      technology their state (aria-checked / aria-pressed) from their "active" class.
    UiKit.commands(): a window's table of commands. One entry per thing the user can do:
-       cmds.add({ id, keys: ["Ctrl+Z"], run(e), when(), prevent, anyCtrl, inInputs, help, helpKeys })
+       cmds.add({ id, keys: ["Ctrl+Z"], run(e), when(), prevent, anyCtrl, inInputs, inControls, help, helpKeys })
      ("Alt+B": an Alt key fires only with Alt held, and before the plain "B")
      keys: "R", "Ctrl+Shift+S", "Delete", "+" … Letters go by the physical key (e.code), so the
      shortcuts work in any keyboard layout (with a Cyrillic layout e.key is "к" for R); other
      keys by e.key, or by e.code when written like one ("NumpadAdd"). A key without Shift also
      fires with Shift held unless another command takes the Shift variant; Ctrl (or ⌘) must match
      unless anyCtrl. The first command, in the order added, whose key matches and whose when()
-     allows it runs. inInputs: also while typing in a field (F1). prevent: preventDefault().
+     allows it runs. inInputs: also while typing in a field (F1). inControls: also while a list,
+     tick box or slider has the focus, where the key has no text to act on (Ctrl+Z after picking a
+     Listen source). prevent: preventDefault().
      cmds.key(e) handles a keydown (true when a command ran); cmds.bind(el or id, cmdId) runs a
      command on click. A command with check() is an on/off setting: after any command runs (or on
      cmds.sync()) the elements bound to it get the "active" class while check() is true, which
@@ -62,11 +64,12 @@
       sync() { list.forEach(c => { if (c.check && c.els) { const on = !!c.check(); c.els.forEach(el => el.classList.toggle("active", on)); } }); },
       key(e) {
         const tag = (e.target && e.target.tagName || "").toUpperCase(), typing = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
+        const control = tag === "SELECT" || (tag === "INPUT" && /^(checkbox|radio|range|color|file|button|submit|reset)$/.test(e.target.type));
         const ctrl = e.ctrlKey || e.metaKey, code = e.code || "";
         const L = /^Key[A-Z]$/.test(code) ? code.slice(3).toLowerCase() : String(e.key).toLowerCase();
         const hit = (k, shiftExact) => (k.lower === L || k.key === code) && (shiftExact ? k.shift === e.shiftKey : !k.shift);
         // an Alt key needs Alt held; with Alt held, an Alt key wins over the same key without it
-        const pick = (shiftExact, alt) => list.find(c => (!typing || c.inInputs) && c.parsed.some(k => !!k.alt === alt && (c.anyCtrl || k.ctrl === ctrl) && hit(k, shiftExact)) && (!c.when || c.when()));
+        const pick = (shiftExact, alt) => list.find(c => (!typing || c.inInputs || (control && c.inControls)) && c.parsed.some(k => !!k.alt === alt && (c.anyCtrl || k.ctrl === ctrl) && hit(k, shiftExact)) && (!c.when || c.when()));
         const c = (e.altKey && (pick(true, true) || (e.shiftKey ? pick(false, true) : null))) || pick(true, false) || (e.shiftKey ? pick(false, false) : null);
         if (!c) return false;
         c.run(e);

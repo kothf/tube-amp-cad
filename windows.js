@@ -56,12 +56,22 @@
     if (cantRaise && !mine.has(w)) setTimeout(() => { if (document.hasFocus()) notRaised(file); }, 300);
     return w;
   }
+  /** The board, from a window other than the CAD: its own window, or, when the CAD keeps the
+      board in a tab of its own window (Windows ▾ → Board in this window), the CAD showing it */
+  function openBoard() {
+    let tab = cantRaise;
+    try { const v = localStorage.getItem("tubecad_board_tab"); if (v !== null) tab = v === "1"; } catch (e) {}
+    if (!tab) return open("board.html");
+    const w = open("circuit_sandbox.html", { board: "1" });   // a CAD opened now shows the board once loaded
+    if (bc) bc.postMessage({ type: "SHOW_BOARD" });          // an open one at once
+    return w;
+  }
   // Alt+S: the schematic, Alt+B: the board, from any window (the CAD binds Alt+B in its own command table)
   document.addEventListener("keydown", e => {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const to = e.code === "KeyS" ? "circuit_sandbox.html" : e.code === "KeyB" ? "board.html" : null;
     if (!to || to === page || (page === "circuit_sandbox.html" && to === "board.html")) return;
-    e.preventDefault(); open(to);
+    e.preventDefault(); if (to === "board.html") openBoard(); else open(to);
   });
-  root.ToolWindows = { open, NAMES, cantRaise, version };
+  root.ToolWindows = { open, openBoard, NAMES, cantRaise, version };
 })(window);
