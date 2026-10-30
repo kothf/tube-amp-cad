@@ -23,10 +23,43 @@
     for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
     return b;
   }
+  // The link's own form of a design, shorter than the file's: each part and wire is an array
+  // instead of an object with named fields (any field beyond these rides along at the end)
+  //   { s: 1, c: [[id, type, x, y, rot, label, params, extra?]…], w: [[id, x1, y1, x2, y2, extra?]…], t: tubes?, b: board? }
+  const C_KEYS = ["id", "type", "x", "y", "rot", "label", "params"], W_KEYS = ["id", "x1", "y1", "x2", "y2"];
+  function toRows(list, keys) {
+    return (list || []).map(o => {
+      const row = keys.map(k => o[k]), extra = {};
+      Object.keys(o).forEach(k => { if (!keys.includes(k)) extra[k] = o[k]; });
+      if (Object.keys(extra).length) row.push(extra);
+      return row;
+    });
+  }
+  function fromRows(rows, keys) {
+    return (rows || []).map(r => {
+      const o = {};
+      keys.forEach((k, i) => { if (r[i] !== undefined && r[i] !== null) o[k] = r[i]; });
+      return Object.assign(o, r[keys.length] || {});
+    });
+  }
+  function compact(d) {
+    const o = { s: 1, c: toRows(d.comps, C_KEYS), w: toRows(d.wires, W_KEYS) };
+    if (d.tubes && d.tubes.length) o.t = d.tubes;
+    if (d.board) o.b = d.board;
+    return o;
+  }
+  // the link's form (or the file's form, as links from 3.135.0 carry) → the file's form
+  function expand(o) {
+    if (!o || o.app === "TubeAmpCAD" || o.s !== 1) return o;
+    const d = { app: "TubeAmpCAD", version: 2, comps: fromRows(o.c, C_KEYS), wires: fromRows(o.w, W_KEYS) };
+    if (o.t) d.tubes = o.t;
+    if (o.b) d.board = o.b;
+    return d;
+  }
   // a design object → the text that goes after "#c="
   async function pack(design) {
     if (!supported()) throw new Error("this browser cannot compress (CompressionStream is missing)");
-    return toB64u(await pipe(new TextEncoder().encode(JSON.stringify(design)), new CompressionStream("deflate-raw")));
+    return toB64u(await pipe(new TextEncoder().encode(JSON.stringify(compact(design))), new CompressionStream("deflate-raw")));
   }
   // that text → the design object
   async function unpack(text) {
@@ -36,7 +69,7 @@
     let json;
     try { json = new TextDecoder().decode(await pipe(bytes, new DecompressionStream("deflate-raw"))); }
     catch (e) { throw new Error("the link is damaged or cut short"); }
-    return JSON.parse(json);
+    return expand(JSON.parse(json));
   }
   // the packed design in an address's #fragment ("#c=…", also among other #a=b&c=… pairs), or null
   function fromHash(hash) {
@@ -46,5 +79,5 @@
   // the link to the design: this page's address without its fragment, then #c=…
   const link = (href, packed) => String(href).replace(/#.*$/, "") + "#" + KEY + "=" + packed;
 
-  root.CadShare = { KEY, supported, pack, unpack, fromHash, link };
+  root.CadShare = { KEY, supported, pack, unpack, fromHash, link, compact, expand };
 })(typeof window !== "undefined" ? window : globalThis);

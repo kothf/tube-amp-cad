@@ -20,6 +20,14 @@ test("every example, board included, comes back unchanged from a link of at most
   }
 });
 
+test("links from 3.135.0, which carry the file's form, still open", async () => {
+  const d = JSON.parse(readFileSync(new URL("08-555-astable.json", dir), "utf8"));
+  const old = Buffer.from(await new Response(new Blob([JSON.stringify(d)]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer()).toString("base64url");
+  assert.deepEqual(await Sh.unpack(old), d);
+  const nb = { app: d.app, version: d.version, comps: d.comps, wires: d.wires }, oldNb = Buffer.from(await new Response(new Blob([JSON.stringify(nb)]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer()).toString("base64url");
+  assert.ok((await Sh.pack(nb)).length < oldNb.length * 0.95, "the link's own form is shorter");
+});
+
 test("fromHash: the packed text after c=, alone or among other pairs; null without it", () => {
   assert.equal(Sh.fromHash("#c=abc-_"), "abc-_");
   assert.equal(Sh.fromHash("#x=1&c=abc"), "abc");

@@ -2402,7 +2402,7 @@
   }
   function openShareDialog() {
     const cb = document.getElementById("share-board");
-    cb.disabled = !S.board; cb.checked = !!S.board;
+    cb.disabled = !S.board; cb.checked = false;                 // the board doubles the link: ticked only when wanted
     document.getElementById("share-modal").hidden = false;
     updateShare().then(() => { const t = document.getElementById("share-text"); t.focus(); t.select(); });
   }

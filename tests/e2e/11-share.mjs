@@ -1,4 +1,5 @@
 // Share by link: File → Share link… packs the design into the address, and the link opens it
+import { isDeepStrictEqual } from "node:util";
 import { cad, check, open } from "./harness.mjs";
 
 {
@@ -8,12 +9,12 @@ import { cad, check, open } from "./harness.mjs";
   await cad.waitForFunction(() => TubeCAD.state.board && /Gubin/.test(document.title));
   await cad.click("#btn-file"); await cad.click("#btn-share");
   await cad.waitForFunction(() => /#c=/.test(document.getElementById("share-text").value));
-  const sh = await cad.evaluate(() => ({ url: document.getElementById("share-text").value, info: document.getElementById("share-info").textContent, board: document.getElementById("share-board").checked }));
-  check(sh.board && /circuit_sandbox\.html#c=[A-Za-z0-9_-]+$/.test(sh.url) && /characters/.test(sh.info), `File → Share link… shows the link with the board (${sh.info})`);
+  const short = await cad.evaluate(() => ({ n: document.getElementById("share-text").value.length, board: document.getElementById("share-board").checked }));
+  check(!short.board, `File → Share link… leaves the board out at first (${short.n} characters)`);
   await cad.click("#share-board");
-  await cad.waitForFunction(n => document.getElementById("share-text").value.length < n, sh.url.length);
-  const short = await cad.evaluate(() => document.getElementById("share-text").value.length);
-  check(short < sh.url.length * 0.7, `without the board the link is shorter (${short} vs ${sh.url.length} characters)`);
+  await cad.waitForFunction(n => document.getElementById("share-text").value.length > n, short.n);
+  const sh = await cad.evaluate(() => ({ url: document.getElementById("share-text").value, info: document.getElementById("share-info").textContent }));
+  check(/circuit_sandbox\.html#c=[A-Za-z0-9_-]+$/.test(sh.url) && short.n < sh.url.length * 0.7, `ticking the board makes the link longer (${short.n} → ${sh.info})`);
   await cad.click("#btn-share-close");
   check(await cad.evaluate(() => document.getElementById("share-modal").hidden), "Close closes the Share dialog");
 
@@ -28,7 +29,7 @@ import { cad, check, open } from "./harness.mjs";
   await p.waitForFunction(n => !location.hash && TubeCAD.state.comps.length === n, want.comps.length, { timeout: 30000 });
   const got = await p.evaluate(() => { const d = JSON.parse(TubeCAD.circuitJSON()); return { comps: d.comps, wires: d.wires, board: JSON.stringify(d.board), hash: location.hash }; });
   check(/design from this link/.test(asked), "opening a link over a circuit asks first");
-  check(JSON.stringify(got.comps) === JSON.stringify(want.comps) && JSON.stringify(got.wires) === JSON.stringify(want.wires), `the link opens the same circuit (${got.comps.length} parts, ${got.wires.length} wires)`);
+  check(isDeepStrictEqual(got.comps, want.comps) && isDeepStrictEqual(got.wires, want.wires), `the link opens the same circuit (${got.comps.length} parts, ${got.wires.length} wires)`);
   check(got.board === want.board, "and the same board layout");
   check(got.hash === "", "the design is taken off the address once opened, so a reload keeps the edits");
   await p.close();

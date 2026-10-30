@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.135.1] - 2026-10-30
+
+### Changed
+- Share link: shorter links. Parts and wires travel as rows instead of named fields, and the board is left out unless you tick it, so example 07 makes a link of about 3 800 characters instead of 8 900 (8 400 with its board). Links made by 3.135.0 still open.
+
 ## [3.135.0] - 2026-10-30
 
 ### Added
