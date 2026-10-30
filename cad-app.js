@@ -2409,39 +2409,50 @@
     } catch (err) { setStatus("error", `Could not open the example: ${err.message}`); }
   }
   // ---------------------------------------------------------------------------
-  // Share by link (cad-share.js): the design deflated into the address after #c=
+  // Share by link (cad-share.js): the design deflated into the address after #c=, and on
+  // aerocat.tech also kept by the site's link store, which gives the short link /s/<id>
   // ---------------------------------------------------------------------------
   async function shareLink() {
     const d = JSON.parse(circuitJSON());
     if (!document.getElementById("share-board").checked) delete d.board;
-    return CadShare.link(location.href, await CadShare.pack(d));
+    const packed = await CadShare.pack(d), long = CadShare.link(location.href, packed);
+    const id = await CadShare.store(packed, location.origin);
+    return { url: id ? CadShare.shortLink(location.origin, id) : long, short: !!id, long };
   }
+  let shareSeq = 0;
   async function updateShare() {
-    const t = document.getElementById("share-text"), info = document.getElementById("share-info");
+    const t = document.getElementById("share-text"), info = document.getElementById("share-info"), seq = ++shareSeq;
+    t.value = ""; info.textContent = "Making the link…";
     try {
-      const url = await shareLink();
-      t.value = url;
-      info.textContent = `${url.length.toLocaleString("en")} characters` + (url.length > 16000 ? ". A link this long can be cut short by some chat apps and e-mail; there, share it without the board or send the saved .json file." : ".");
-    } catch (err) { t.value = ""; info.textContent = "Cannot make a link: " + err.message; }
+      const L = await shareLink();
+      if (seq !== shareSeq) return;            // the board was ticked again meanwhile
+      t.value = L.url; t.dataset.short = L.short ? "1" : "";
+      info.textContent = L.short ? "Short link: the design is kept on aerocat.tech under this id."
+        : `Long link: the design is inside it (${L.url.length.toLocaleString("en")} characters), nothing is stored. ` + (location.origin === CadShare.SITE ? "The short-link store could not be reached." : "Short links are made on aerocat.tech.")
+          + (L.url.length > 16000 ? " A link this long can be cut short by some chat apps and e-mail; there, share it without the board or send the saved .json file." : "");
+    } catch (err) { if (seq === shareSeq) { t.value = ""; info.textContent = "Cannot make a link: " + err.message; } }
   }
   function openShareDialog() {
     const cb = document.getElementById("share-board");
     cb.disabled = !S.board; cb.checked = !!S.board;
     document.getElementById("share-modal").hidden = false;
-    updateShare().then(() => { const t = document.getElementById("share-text"); t.focus(); t.select(); });
+    updateShare().then(() => { const t = document.getElementById("share-text"); if (t.value) { t.focus(); t.select(); } });
   }
   async function copyShare() {
     const t = document.getElementById("share-text"); if (!t.value) return;
     try { await navigator.clipboard.writeText(t.value); } catch (e) { t.select(); document.execCommand("copy"); }
     setStatus("ok", "Link copied: whoever opens it gets this design");
   }
-  // a link with #c=… opens its design, after asking if there is a circuit on the sheet;
-  // the fragment is then taken off the address, so a reload keeps the design as edited
+  // a link with #c=… (or a short link, which arrives as #s=<id>) opens its design, after asking
+  // if there is a circuit on the sheet; the fragment is then taken off the address, so a reload
+  // keeps the design as edited
   async function openSharedLink() {
-    const packed = window.CadShare && CadShare.fromHash(location.hash); if (!packed) return;
+    if (!window.CadShare) return;
+    const packed = CadShare.fromHash(location.hash), id = CadShare.shortFromHash(location.hash);
+    if (!packed && !id) return;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* file:// in some browsers */ }
     let d;
-    try { d = await CadShare.unpack(packed); if (!d || d.app !== "TubeAmpCAD") throw new Error("not a Tube Amp CAD design"); }
+    try { d = await CadShare.unpack(packed || await CadShare.fetchShort(id, location.origin)); if (!d || d.app !== "TubeAmpCAD") throw new Error("not a Tube Amp CAD design"); }
     catch (err) { setStatus("error", "Could not open the shared link: " + err.message); return; }
     if (S.comps.some(c => c.type !== "frame") && !confirm("Open the design from this link?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.")) return;
     try {

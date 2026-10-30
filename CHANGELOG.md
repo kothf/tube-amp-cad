@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.137.0] - 2026-10-30
+## [3.138.0] - 2026-10-30
 
 ### Added
 - **KiCad export.** *File ▾ → Export KiCad project* in the Circuit CAD writes a ZIP with a KiCad 7 project (KiCad 8 and 9 open it too); *Export ▾ → KiCad board (ZIP)* in the Board window writes the board part of it.
@@ -15,6 +15,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
   - **Rules**: the net classes (Signal, Power, HV, with their widths and clearances) in the `.kicad_pro`; in the `.kicad_dru`, the clearance by voltage (IPC-2221B) for each pair of nets that needs more than its classes give, and each part's own pin spacing (a noval socket, a TO-92) and thin rings inside its courtyard, as the Board window's rule check allows them.
   - **Libraries**: the symbols (`TubeAmpCAD.kicad_sym`) and footprints (`TubeAmpCAD.pretty`) the project uses, with the project's library tables.
   - Checked with KiCad 7.0.11 on all fifteen examples: every file loads; KiCad's netlist of the schematic joins exactly the pads the board joins; after KiCad fills the pours the unrouted connections are the Board window's; KiCad's DRC finds the clearance problems the Board window finds, give or take a few near misses.
+
+## [3.137.0] - 2026-10-30
+
+### Added
+- **Short share links.** On aerocat.tech, File ▾ → Share link… now gives a link like `aerocat.tech/s/Ab3xK9_qZw`: the packed design is kept by a small link store on the site and found again by its id. The id is the start of the design's SHA-256, so sharing the same design twice gives the same link, and a stored design never changes. Other copies of the app (a local folder) still give the long link with the design inside, and open short links from the site. If the store can't be reached, the dialog gives the long link and says why.
+- `server/share/`: the link store (Node, no packages), its Dockerfile and compose file, and the nginx lines for `/s/<id>` and `/api/share` with a rate limit. It keeps only text that unpacks to a Tube Amp CAD design, at most 96k characters each and 512 MB in all.
+
+### Changed
+- Share link: the design is packed shorter (parts and wires as rows instead of named fields), so the long link of example 07 is about 3 800 characters without its board and 8 500 with it, instead of 4 200 and 8 900. Links made by 3.135.0 still open.
 
 ## [3.136.0] - 2026-10-30
 
