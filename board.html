@@ -93,6 +93,9 @@
     #st-prog .bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); border-radius: 4px; transition: width .4s ease; }
     #st-prog .bar::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(110deg, transparent 0 8px, rgba(255,255,255,.18) 8px 14px); animation: st-prog 1s linear infinite; }   /* moves while work goes on */
     @keyframes st-prog { to { background-position: 30px 0; } }
+    #st-prog .bar u { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--text); opacity: .8; transition: width .4s ease; }
+    #st-spark { width: 64px; height: 16px; color: var(--accent); }
+    #st-stop { padding: 1px 8px; font-size: 11px; }
     #st-pos { margin-left: auto; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 30; }
     .modal[hidden] { display: none; }
@@ -322,7 +325,7 @@
   </main>
 
   <footer>
-    <span id="st-prog" hidden title="Routing in progress: Route ▾ or the Stop button ends it after this pass"><span class="bar"><i></i></span><b id="st-step"></b></span>
+    <span id="st-prog" hidden title="Routing in progress. The bar fills by steps; the thin line under it is the grid router's passes, the small graph the crossings it still has to sort out after each pass"><span class="bar"><i></i><u></u></span><canvas id="st-spark" width="64" height="16" hidden></canvas><b id="st-step"></b><button id="st-stop" class="btn" title="Stop routing now; what is routed so far stays (Ctrl+Z takes it back)">Stop</button></span>
     <span id="st-msg">Ready</span>
     <span id="st-rats"></span>
     <span id="st-drc"></span>
