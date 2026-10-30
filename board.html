@@ -130,11 +130,6 @@
     header { flex-wrap: wrap; min-width: 0; }   /* a narrow window gets a second row, nothing falls off the right */
     header > * { flex-shrink: 0; }
     header #status { flex: 1 1 40px; min-width: 40px; }   /* grows into spare room up to its max-width; a small basis so it never forces a second row by itself */
-    .seg-group { display: inline-flex; align-items: stretch; }
-    .seg-group > * { border-radius: 0; margin-left: -1px; }
-    .seg-group > :first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
-    .seg-group > :last-child { border-radius: 0 6px 6px 0; }
-    .seg-group > .active { position: relative; z-index: 1; }
     .menu-list.right { right: 0; left: auto; }
     #view-menu .menu-list { left: 0; right: auto; }
     .menu-item.check { padding-left: 28px; position: relative; }
@@ -156,6 +151,21 @@
     @media (max-width: 1450px) { .tools .lbl { display: none; } .tools .btn .ico { display: inline; } }
     @media (max-width: 1250px) { #btn-sync .lbl, #btn-autoroute .lbl { display: none; } #btn-sync .ico, #btn-autoroute .ico { display: inline; } }
     @media (max-width: 1700px) { .doc-switch .ds-lbl { display: none; } .doc-switch .btn { padding-left: 8px; padding-right: 8px; } }
+    /* narrower than 1180 px: Text, Hole, Keep-out and Measure fold into one "More tools" button
+       (it shows the one last picked, lit while it is the tool), and Fit goes (the zoom % below
+       fits, and F), so the toolbar stays one row down to 1000 px, where the side panels go */
+    .tool-more { display: none; }
+    .tools > [data-tool="measure"] { border-radius: 0 6px 6px 0; }
+    .tool-more > .btn { display: inline-flex; align-items: center; gap: 3px; border-radius: 0 6px 6px 0; padding-left: 5px; padding-right: 5px; height: 100%; }
+    .tool-more .tm-ico { display: inline-flex; }
+    .tool-more .menu-list { left: 0; right: auto; min-width: 170px; }
+    .tool-more .menu-item { align-items: center; }
+    .tool-more .mi-l { display: inline-flex; align-items: center; gap: 8px; }
+    .tool-more .menu-item.active { color: var(--accent); }
+    @media (max-width: 1180px) {
+      header .tools > .btn:is([data-tool="text"], [data-tool="hole"], [data-tool="keepout"], [data-tool="measure"]), header #btn-fit { display: none; }
+      .tool-more { display: flex; }
+    }
     .find { margin-bottom: 6px; }
     .find input { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
     .find input:focus { outline: none; border-color: var(--accent); }
@@ -205,6 +215,15 @@
       <button class="btn" data-tool="pour" title="Copper pour (ground plane): click the corners, double-click to close (P). Board inspector: one click for a ground plane over the whole board"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v9h-11z"/><path d="M2.5 8 7 3.5M2.5 12.5l9-9M7 12.5 13.5 6M11.5 12.5l2-2"/></svg><span class="lbl">Pour</span><kbd class="tk">P</kbd></button>
       <button class="btn" data-tool="keepout" title="Keep-out area: no tracks, vias, pour (or parts) inside; click the corners, double-click to close (K)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2 1.6"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/></svg><span class="lbl">Keep-out</span><kbd class="tk">K</kbd></button>
       <button class="btn" data-tool="measure" title="Measure a distance: click, click (D). The ends stick to pads, vias, holes, track corners and the board's corners and edges; Shift: the grid only"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11 11 1.5l3.5 3.5L5 14.5z"/><path d="M4.5 8 6 9.5M6.8 5.7 8.3 7.2M9.1 3.4l1.5 1.5"/></svg><span class="lbl">Measure</span><kbd class="tk">D</kbd></button>
+      <div class="menu tool-more">
+        <button class="btn" id="btn-tool-more" title="More tools: Text (T), Hole (H), Keep-out (K), Measure (D)" aria-label="More tools"><span class="tm-ico"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10M8 3.5V13M6 13h4"/></svg></span>▾</button>
+        <div class="menu-list" hidden>
+          <button class="menu-item" data-tool="text"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10M8 3.5V13M6 13h4"/></svg>Text</span><small>T</small></button>
+          <button class="menu-item" data-tool="hole"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3.5M8 11.5V15M1 8h3.5M11.5 8H15"/></svg>Hole</span><small>H</small></button>
+          <button class="menu-item" data-tool="keepout"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2 1.6"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/></svg>Keep-out</span><small>K</small></button>
+          <button class="menu-item" data-tool="measure"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11 11 1.5l3.5 3.5L5 14.5z"/><path d="M4.5 8 6 9.5M6.8 5.7 8.3 7.2M9.1 3.4l1.5 1.5"/></svg>Measure</span><small>D</small></button>
+        </div>
+      </div>
     </div>
     <select class="btn" id="layer" title="Copper layer for new tracks and pours (V; while routing V changes layer with a via)"><option value="F.Cu">Top copper</option><option value="B.Cu">Bottom copper</option></select>
     <select class="btn" id="grid" title="Grid"><option value="0.635">0.635 mm</option><option value="1.27" selected>1.27 mm</option><option value="2.54">2.54 mm</option><option value="0.5">0.5 mm</option><option value="1">1 mm</option></select>

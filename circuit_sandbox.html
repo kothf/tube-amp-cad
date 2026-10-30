@@ -44,11 +44,6 @@
     .btn.toggle.active { background: var(--panel2); border-color: var(--line); color: var(--text); }
     .btn.toggle.active::before { background: var(--ok); box-shadow: 0 0 5px var(--ok); }
     /* joined buttons: one tool choice, zoom, run */
-    .seg-group { display: inline-flex; align-items: stretch; }
-    .seg-group > * { border-radius: 0; margin-left: -1px; }
-    .seg-group > :first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
-    .seg-group > :last-child { border-radius: 0 6px 6px 0; }
-    .seg-group > .active { position: relative; z-index: 1; }
     .seg-group #zoom-label { display: grid; place-items: center; border: 1px solid var(--line); background: var(--bg); }
     #zoom-label { min-width: 48px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 

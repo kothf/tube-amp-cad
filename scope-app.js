@@ -430,6 +430,7 @@
     $("tdiv").value = "auto"; draw();
   });
   $("btn-cad").addEventListener("click", () => ToolWindows.open("circuit_sandbox.html"));
+  $("btn-board").addEventListener("click", () => ToolWindows.openBoard());
   // Time/div lists: the scope's own in steady state; in power-on mode a zoom ladder up to the whole record
   let tdivFor = null;
   function fillTdiv() {
