@@ -173,6 +173,9 @@ with them (see [Accuracy](#accuracy)):
 |---|---|---|
 | Gubin three-tube amplifier | tubes | Igor Gubin, radionic.ru: stereo single-ended 6N23P-EV + 2 × 6P14P, no coupling capacitors, pentode / triode switch |
 | Gubin stereo amplifier with 5Ц4С supply | tubes | GUB-245-01 (Radio 4/1957; musicangel.ru Fig. 3), three sheets: 373BX transformer, 5Ц4С, capacitor input and 2.5 H choke; two 6N23P-EV + 6P14P channels; with a routed two-layer board (no rule violations) |
+| Single-ended 2A3, Hammond 1627SEA | tubes | RCA 2A3 data (250 V, −45 V, 60 mA, 2.5 kΩ, 3.5 W): 6SN7 driver, cathode bias; 3.6 W at 1.8 % THD |
+| Push-pull EL84 ultralinear, Hammond 1608 | tubes | Mullard-style: 12AX7 stage, split-load phase splitter, 2 × EL84 UL into 8 kΩ, 14 dB feedback; 11 W at 0.9 % THD, the core saturating at 15 Hz |
+| Push-pull 6V6 guitar amplifier, Hammond 1750H | tubes | Tweed-style: 12AX7 stage, split-load splitter, cathode-biased 6V6GT pair, no feedback; 7.7 W at 2 % THD |
 | 12AX7: plate resistor vs current source | tube + transistor | J. Broskie, TubeCAD (2000): gain 70 with a 150k plate resistor, 100 with an MPSA92 current source |
 | 12AX7 stage + IRF820 follower | tube + MOSFET | The GE 12AX7 data sheet's resistance-coupled stage (gain 50) driving a MOSFET follower |
 | 10 W complementary MOSFET amplifier | MOSFETs | homemade-circuits.com, fig. 1 |
