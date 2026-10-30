@@ -12,7 +12,8 @@ long self-contained link instead.
 - `nginx.conf`: the `/s/<id>` redirect, the `/api/share` proxy and a rate limit, to add to the
   site's nginx.
 
-Install on the NUC:
+Install on the NUC (the site's compose lists `share` as an external network, so bring the store up
+before recreating the site, and don't `docker compose down` it while the site is up):
 
 ```sh
 mkdir -p ~/tubecad-share && cp server.mjs Dockerfile docker-compose.yml ~/tubecad-share/
