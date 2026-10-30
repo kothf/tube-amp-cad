@@ -6,10 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.153.0] - 2026-10-30
+## [3.155.0] - 2026-10-30
 
 ### Added
-- **Russian interface.** The **RU** button at the right of the CAD toolbar (and *View ▾ → Interface → Русский*) puts the CAD in Russian: the toolbar, the menus, the parts palette, the inspector, the panels under the schematic (BOM, Checks, Tolerance, Power, Noise, Sweep, Listen, Tune), the dialogs, the start screen with every example's description, and the tooltips. **EN** switches back. Every open CAD window follows, and the browser remembers the choice. Part numbers, values and units are not translated, and neither is the drawing. A text not translated yet stays in English. The Board window, the instruments and the manual come next.
+- **Russian interface.** The **RU** button at the right of the CAD toolbar (and *View ▾ → Interface → Русский*) puts the CAD in Russian: the toolbar, the menus, the parts palette, the inspector, the panels under the schematic (BOM, Checks, Tolerance, Power, Noise, Sweep, Listen, Tune), the dialogs, the start screen with every example's description, reusable blocks, and the tooltips. **EN** switches back. Every open CAD window follows, and the browser remembers the choice. Part numbers, values and units are not translated, and neither is the drawing. A text not translated yet stays in English. The Board window, the instruments and the manual come next.
+
+## [3.154.0] - 2026-10-30
+
+### Added
+- **Reusable blocks.** Select a stage or a whole channel and choose *Edit ▾ → Make block from selection…*; then *Edit ▾ → Blocks… → Place* and a click puts another copy on the sheet (the second channel of a stereo amplifier). Each copy is ordinary parts and wires, so the simulation, the board, the BOM and every export see the flat circuit.
+  - **Edit once:** a value changed on a part of any copy changes on the same part of every copy, in one undo step. After adding, moving or rewiring parts in one copy, *Select this copy* (right mouse button) and *Update block from selection* make it the block and redraw every other copy where it stands, keeping its designators, its parts' identities (the board keeps their places) and its own sheet-connector names.
+  - Each copy gets its own designators (a dual triode's sections stay one tube); sheet connectors keep each copy's own name, so the channels stay apart (the status bar reminds you to rename a new copy's connectors); power rails are shared.
+  - A dashed outline with the block's name marks every copy on screen; the inspector of a part in a copy names the block and the copy and offers *Select this copy*, *Detach* and *Blocks…*; *Make block…* and *Update block from selection* in the inspector of a selection.
+  - *Blocks…* lists the circuit's blocks (Place, Rename, Save to library, Delete) and **My library**, kept in the browser, to place a block in any other circuit. Blocks are saved in the circuit file (`blocks`) and travel in share links, revisions and undo.
 
 ## [3.152.0] - 2026-10-30
 

@@ -91,7 +91,7 @@ Firefox is not tested.
   come from Katsnelson & Larionov for the Soviet tubes and from the makers'
   datasheets for the others (RCA, Philips, Mullard, Western Electric); a
   rating a datasheet does not give is not checked.
-- **Toolbar.** One row: the *Schematic | Board* switch (the same switch in the Board window leads back; Alt+B and Alt+S from any window; *Windows ▾ → Board in this window* makes the board a tab of the CAD window instead of a window of its own), *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic (the legend fades while the pointer is over it, so the drawing under it shows), and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, renumber), undo / redo, the *Select | Wire | Probe* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). *RU / EN* switches the CAD's interface between Russian and English (also *View ▾ → Interface*); Board, the instruments and the manual are English for now. The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
+- **Toolbar.** One row: the *Schematic | Board* switch (the same switch in the Board window leads back; Alt+B and Alt+S from any window; *Windows ▾ → Board in this window* makes the board a tab of the CAD window instead of a window of its own), *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic (the legend fades while the pointer is over it, so the drawing under it shows), and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, reusable blocks, renumber), undo / redo, the *Select | Wire | Probe* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). *RU / EN* switches the CAD's interface between Russian and English (also *View ▾ → Interface*); Board, the instruments and the manual are English for now. The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
 - **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html`, opens from *Windows ▾ → Manual*, the help dialog, or **?** in each instrument. It covers:
   - a quick start, then every part and field;
   - all 99 tubes in a sortable table;
@@ -125,6 +125,13 @@ Firefox is not tested.
   - <kbd>F1</kbd> or the **?** button opens the help with every shortcut and a link to the manual.
   - Shortcuts go by the key's position, so they work with a Russian or any
     other keyboard layout.
+- **Reusable blocks** (Edit ▾ → Blocks…): select a stage or a whole
+  channel and make it a block, then place it as many times as needed (the
+  two channels of a stereo amplifier). A value changed on any copy changes
+  on every copy; after changing the drawing of one copy, *Update block from
+  selection* redraws the others. Sheet-connector names stay each copy's
+  own, designators are numbered per copy, and blocks can be kept in a
+  library in the browser for other circuits.
 - **Files.**
   - File → Open / Save / Save as (JSON). In Chrome and Edge, Save writes back
     to the opened file after asking; in Safari and other browsers it

@@ -25,7 +25,7 @@
   }
   // The link's own form of a design, shorter than the file's: each part and wire is an array
   // instead of an object with named fields (any field beyond these rides along at the end)
-  //   { s: 1, c: [[id, type, x, y, rot, label, params, extra?]…], w: [[id, x1, y1, x2, y2, extra?]…], t: tubes?, b: board? }
+  //   { s: 1, c: [[id, type, x, y, rot, label, params, extra?]…], w: [[id, x1, y1, x2, y2, extra?]…], t: tubes?, b: board?, k: blocks? }
   const C_KEYS = ["id", "type", "x", "y", "rot", "label", "params"], W_KEYS = ["id", "x1", "y1", "x2", "y2"];
   function toRows(list, keys) {
     return (list || []).map(o => {
@@ -46,6 +46,7 @@
     const o = { s: 1, c: toRows(d.comps, C_KEYS), w: toRows(d.wires, W_KEYS) };
     if (d.tubes && d.tubes.length) o.t = d.tubes;
     if (d.board) o.b = d.board;
+    if (d.blocks && d.blocks.length) o.k = d.blocks;
     return o;
   }
   // the link's form (or the file's form, as links from 3.135.0 carry) → the file's form
@@ -54,6 +55,7 @@
     const d = { app: "TubeAmpCAD", version: 2, comps: fromRows(o.c, C_KEYS), wires: fromRows(o.w, W_KEYS) };
     if (o.t) d.tubes = o.t;
     if (o.b) d.board = o.b;
+    if (o.k) d.blocks = o.k;
     return d;
   }
   // a design object → the text that goes after "#c="
