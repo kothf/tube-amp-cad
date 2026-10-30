@@ -145,7 +145,9 @@ const bode = await open("bode", `bode.html?scope=${circuit.scope}`);
 await bode.waitForFunction(() => { const t = window.Bode && Bode.traces(); return t && t.list.length === 2; }, null, { timeout: 30000 }).catch(() => {});
 {
   const b = await bode.evaluate(() => {
-    const T = Bode.traces(), f = T.f, k = f.findIndex(x => x >= 999.99), ch1 = T.list.find(t => t.key === "ch1"), ch2 = T.list.find(t => t.key === "ch2");
+    const T = Bode.traces();
+    if (!T) return { n: 0, resp: "", foot: "no response: " + document.getElementById("status").textContent };   // a failed check, not a crash of the whole run
+    const f = T.f, k = f.findIndex(x => x >= 999.99), ch1 = T.list.find(t => t.key === "ch1"), ch2 = T.list.find(t => t.key === "ch2");
     return { n: f.length, f0: f[0], f1: f[f.length - 1], g1: ch1 && ch1.db[k], p1: ch1 && ch1.ph[k], g2: ch2 && ch2.db[k], resp: document.getElementById("resp").textContent, foot: document.getElementById("foot").textContent, status: document.getElementById("status").textContent };
   });
   check(b.n > 200 && b.f0 <= 1 && b.f1 >= 1e6, `Bode: the CAD sweeps 1 Hz – 1 MHz (${b.n} frequencies) for the scope's channels (${b.foot})`);

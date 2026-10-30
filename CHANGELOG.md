@@ -16,6 +16,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   - **Libraries**: the symbols (`TubeAmpCAD.kicad_sym`) and footprints (`TubeAmpCAD.pretty`) the project uses, with the project's library tables.
   - Checked with KiCad 7.0.11 on all fifteen examples: every file loads; KiCad's netlist of the schematic joins exactly the pads the board joins; after KiCad fills the pours the unrouted connections are the Board window's; KiCad's DRC finds the clearance problems the Board window finds, give or take a few near misses.
 
+## [3.150.1] - 2026-10-30
+
+### Fixed
+- The Bode plotter no longer waits forever on "No response yet" when the CAD answered its opening before the window's own script had loaded (it asked for the response only when the next simulation came in). This hung CI once on 3.149.0.
+- Browser tests: the flashing-LED check waits for a result of the 555's own circuit (a run of the example before it could still land after the switch, read as OUT stuck at 29.39 V), and brings the CAD to the front before Animate (a background tab gets no animation frames, so the LED never blinked). The Bode check reports why when no response arrives instead of stopping the whole run.
+
 ## [3.150.0] - 2026-10-30
 
 ### Added

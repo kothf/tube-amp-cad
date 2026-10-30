@@ -165,10 +165,13 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
     cad.once("dialog", d => d.accept());
     await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /flashing-led/.test(x.file))));
-    await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
+    // a run of the MOSFET amplifier before it may still finish after the example opened: wait for a result of the 555's own circuit
+    await cad.waitForFunction(s0 => { const m = TubeCAD.state.sim; return m.seq !== s0 && !m.busy && !m.pending && m.result && m.topo === TubeCAD.topo(); }, s0, { timeout: 60000 }).catch(() => {});
     const osc = await cad.evaluate(() => { const S = TubeCAD.state, tr = S.sim.result.tran, out = TubeCAD.topo().pinNet.get(S.comps.find(c => c.type === "timer555").id + ":3"), w = tr.nodes[out];
       let lo = Infinity, hi = -Infinity; for (const v of w) { lo = Math.min(lo, v); hi = Math.max(hi, v); } return { f: tr.fBase, lo, hi }; });
     check(Math.abs(osc.f - 1.53) < 0.06 && osc.hi - osc.lo > 6, `flashing-LED example: the 555 runs freely at ${osc.f.toFixed(3)} Hz (1.53 Hz by the formula), OUT ${osc.lo.toFixed(2)} to ${osc.hi.toFixed(2)} V`);
+    // the animation runs on the page's animation frames, which a background tab does not get (02's instrument windows opened after the CAD)
+    await cad.bringToFront();
     await cad.click("#btn-anim");
     const blink = await cad.evaluate(async () => {
       const led = TubeCAD.state.comps.find(c => c.type === "led"), seen = [];
