@@ -25,9 +25,36 @@ import { cad, check } from "./harness.mjs";
   const R = await cad.evaluate(() => { const R = TubeCAD.tune.state.run; return { ok: R.ok, evals: R.evals, snapped: R.snapped, text: document.getElementById("tune-pane").innerText }; });
   check(R.ok && R.evals <= 40 && R.snapped && R.snapped[0] < amp0, `the run gets BA1 down to 2 W within its budget (${R.evals} tries, level ${amp0} → ${R.snapped && R.snapped[0]})`);
   await cad.click("#btn-tune-apply");
-  check(await cad.evaluate(a => TubeCAD.state.comps.find(c => c.label === "G2").params.amp === a, R.snapped[0]), "Apply sets the found value");
+  const amp = () => cad.evaluate(() => TubeCAD.state.comps.find(c => c.label === "G2").params.amp);
+  const pane = () => cad.evaluate(() => ({ text: document.getElementById("tune-pane").innerText, apply: (b => b && !b.disabled)(document.getElementById("btn-tune-apply")) }));
+  let p = await pane();
+  check(await amp() === R.snapped[0] && !p.apply && !/circuit changed/.test(p.text), "Apply sets the found value, shown as applied (not as a changed circuit)");
+  // undo after Apply and a Listen render, the way it is done: the toolbar's button, the Edit menu,
+  // and Ctrl+Z with the focus still on the Listen source list
+  await cad.click("#btn-view"); await cad.click("#btn-listen"); await cad.keyboard.press("Escape");
+  await cad.selectOption("#ls-src", "riff"); await cad.fill("#ls-len", "1"); await cad.press("#ls-len", "Tab");
+  { const seq = await cad.evaluate(() => TubeCAD.state.listen.seq); await cad.click("#btn-ls-run");
+    await cad.waitForFunction(seq => TubeCAD.state.listen.seq !== seq && !TubeCAD.state.listen.job, seq, { timeout: 180000 }); }
+  const h0 = await cad.evaluate(() => TubeCAD.state.hIndex);
+  await cad.click("button.btn#btn-undo");
+  check(await amp() === amp0 && await cad.evaluate(() => TubeCAD.state.hIndex) === h0 - 1, "after Listen, the toolbar's Undo takes the applied values back (one step)");
+  await cad.click("button.btn#btn-redo");
+  check(await amp() === R.snapped[0], "the toolbar's Redo sets them again");
+  await cad.click("#btn-edit"); await cad.click("#menu-undo");
+  check(await amp() === amp0 && await cad.evaluate(() => TubeCAD.state.hIndex) === h0 - 1, "Edit ▾ → Undo goes back one step, not two");
+  await cad.click("#btn-edit"); await cad.click("#menu-redo");
+  await cad.focus("#ls-src"); await cad.keyboard.press("Control+z");
+  check(await amp() === amp0, "Ctrl+Z undoes with the focus on the Listen source list");
+  await cad.focus("#ls-src"); await cad.keyboard.press("Control+y");
+  check(await amp() === R.snapped[0], "Ctrl+Y redoes there too");
+  await cad.click("#btn-ai"); await cad.click("#menu-ai-tune");
   await cad.evaluate(() => TubeCAD.undo());
-  check(await cad.evaluate(() => TubeCAD.state.comps.find(c => c.label === "G2").params.amp) === amp0, "Undo takes it back");
+  p = await pane();
+  check(await amp() === amp0 && p.apply && !/circuit changed/.test(p.text), "after Undo the Tune tab offers Apply again");
+  await cad.evaluate(() => TubeCAD.redo());
+  p = await pane();
+  check(!p.apply && /Applied/.test(p.text), "after Redo it shows the values as applied");
+  await cad.evaluate(() => TubeCAD.undo());
 
   // AI start: the model's variables and starting values, checked against the circuit
   await cad.route("https://api.anthropic.com/**", route => route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" },

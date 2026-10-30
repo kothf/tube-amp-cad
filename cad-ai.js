@@ -183,13 +183,14 @@
       });
       if (!done.length) return;
       commit(); render();
+      const at = S.history[S.hIndex];
       selectParts(card.fixes.filter(f => f.applied).map(f => f.id));
       if (!S.sim.live) runSim("live");
       const note = add({ kind: "note", text: `Applied: ${done.join("; ")}. Simulating…` });
       await whenSimulated();
       const after = circuitIssues();
       note.text = `Applied: ${done.join("; ")}. Checks: ${card.before.length} → ${after.length} problem${after.length === 1 ? "" : "s"}` + (after.length ? ":\n" + after.map(i => "- " + i).join("\n") : ". All clear.");
-      note.undo = true;
+      note.undo = true; note.at = at;
       render();
     }
 
@@ -236,7 +237,12 @@
       if (t.dataset.act) { const fn = cardActs[t.dataset.act]; if (fn) fn(t.dataset.arg, t); return; }
       if (t.id === "btn-ai-stop") { if (AI.busy && AI.busy.ctl) AI.busy.ctl.abort(); return; }
       if (t.dataset.settings) { openSettings(); return; }
-      if (t.dataset.undo) { undo(); const m = AI.log[+t.dataset.undo]; if (m) { m.undo = false; m.text += "\n\n*Undone.*"; } render(); return; }
+      // the note's Undo takes back this change only: after other edits it would take back the last of those
+      if (t.dataset.undo) {
+        const m = AI.log[+t.dataset.undo]; if (!m) return;
+        if (S.history[S.hIndex] === m.at) { undo(); m.text += "\n\n*Undone.*"; } else m.text += "\n\n*The circuit changed since: Edit ▾ → Undo steps back through the changes.*";
+        m.undo = false; render(); return;
+      }
       if (t.classList.contains("ai-chip")) { const q = t.textContent; if (q === "Explain my circuit") explain(); else if (q === "Fix the checks") fixChecks(); else ask(q); return; }
       if (t.dataset.ref) { const c = S.comps.find(k => refOf(k) === t.dataset.ref || k.label === t.dataset.ref); if (c) selectParts([c.id]); return; }
       if (t.dataset.apply) { const [k, j] = t.dataset.apply.split(":"), card = AI.log[+k]; if (card) apply(card, j === "all" ? card.fixes.map((f, i) => i) : [+j]); }
