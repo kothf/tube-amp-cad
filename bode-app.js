@@ -325,6 +325,8 @@
   Panels.columns(document.querySelector("main"), { key: "bode", minViewport: 900, minCenter: 360,
     cols: [{ index: 1, side: "right", def: 320, min: 240, max: 640 }], template: w => `1fr ${w[0]}px` });
   setInterval(() => { if (!I.result) draw(); }, 1500);
+  // the CAD's answer to this window's opening may have come before this script ran: ask for its response now
+  ask();
   draw();
   window.Bode = { state: S, draw, traces, ask, margins, verdict, polar, view: () => G && { fa: G.fa, fb: G.fb } };
 })();
