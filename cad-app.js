@@ -2384,6 +2384,53 @@
       setStatus("ok", `Example: ${ex.title}. ${ex.about}.`);
     } catch (err) { setStatus("error", `Could not open the example: ${err.message}`); }
   }
+  // ---------------------------------------------------------------------------
+  // Share by link (cad-share.js): the design deflated into the address after #c=
+  // ---------------------------------------------------------------------------
+  async function shareLink() {
+    const d = JSON.parse(circuitJSON());
+    if (!document.getElementById("share-board").checked) delete d.board;
+    return CadShare.link(location.href, await CadShare.pack(d));
+  }
+  async function updateShare() {
+    const t = document.getElementById("share-text"), info = document.getElementById("share-info");
+    try {
+      const url = await shareLink();
+      t.value = url;
+      info.textContent = `${url.length.toLocaleString("en")} characters` + (url.length > 16000 ? ". A link this long can be cut short by some chat apps and e-mail; there, share it without the board or send the saved .json file." : ".");
+    } catch (err) { t.value = ""; info.textContent = "Cannot make a link: " + err.message; }
+  }
+  function openShareDialog() {
+    const cb = document.getElementById("share-board");
+    cb.disabled = !S.board; cb.checked = !!S.board;
+    document.getElementById("share-modal").hidden = false;
+    updateShare().then(() => { const t = document.getElementById("share-text"); t.focus(); t.select(); });
+  }
+  async function copyShare() {
+    const t = document.getElementById("share-text"); if (!t.value) return;
+    try { await navigator.clipboard.writeText(t.value); } catch (e) { t.select(); document.execCommand("copy"); }
+    setStatus("ok", "Link copied: whoever opens it gets this design");
+  }
+  // a link with #c=… opens its design, after asking if there is a circuit on the sheet;
+  // the fragment is then taken off the address, so a reload keeps the design as edited
+  async function openSharedLink() {
+    const packed = window.CadShare && CadShare.fromHash(location.hash); if (!packed) return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* file:// in some browsers */ }
+    let d;
+    try { d = await CadShare.unpack(packed); if (!d || d.app !== "TubeAmpCAD") throw new Error("not a Tube Amp CAD design"); }
+    catch (err) { setStatus("error", "Could not open the shared link: " + err.message); return; }
+    if (S.comps.some(c => c.type !== "frame") && !confirm("Open the design from this link?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back; its board layout is kept only if you saved the circuit.")) return;
+    try {
+      if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { /* a built-in of that name */ } }); buildPalette(); }
+      loadCircuit(d);
+      storeBoard(d.board || null);
+      S.sel.comps.clear(); S.sel.wires.clear();
+      setCurFile(null, "");                       // untitled: Save asks for a name
+      commit(); fitStart(); markClean();
+      sendBoardNetlist(true);
+      setStatus("ok", "Opened the design from the link" + (sheetName().full ? ": " + sheetName().full : ""));
+    } catch (err) { setStatus("error", "Could not open the shared link: " + err.message); }
+  }
   function buildExamplesMenu() {
     const host = document.getElementById("examples-list"); if (!host) return;
     EXAMPLES.forEach(ex => {
@@ -2685,6 +2732,12 @@
     bind("btn-save-cancel", () => { document.getElementById("save-modal").hidden = true; });
     bind("btn-save-as-alt", () => { document.getElementById("save-modal").hidden = true; saveFileAs(); });
     bind("btn-save-ok", saveDialogOk);
+    bind("btn-share", openShareDialog);
+    bind("btn-share-copy", copyShare);
+    bind("btn-share-close", () => { document.getElementById("share-modal").hidden = true; });
+    document.getElementById("share-board").addEventListener("change", updateShare);
+    document.getElementById("share-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("share-modal").hidden = true; });
+    window.addEventListener("hashchange", openSharedLink);
     document.getElementById("save-name").addEventListener("keydown", e => { if (e.key === "Enter") saveDialogOk(); });
     document.getElementById("save-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("save-modal").hidden = true; });
     cmds.bind("btn-undo", "undo").bind("btn-redo", "redo");
@@ -2743,9 +2796,10 @@
     updateInspector();
     updateSheetNav();
     requestAnimationFrame(() => { fitStart(); scheduleSim(0); });
+    openSharedLink();
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { circuitIssues, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { circuitIssues, tolerance, power, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
