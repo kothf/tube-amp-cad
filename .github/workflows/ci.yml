@@ -8,10 +8,10 @@ on:
 permissions:
   contents: read
 
-# a newer push to a PR cancels its older run; on main every commit's run finishes, since the
-# release of that commit uses its result instead of testing again
+# a newer push to a PR cancels its older run; on main every commit gets its own run at once (no
+# waiting for the one before), since the release of that commit uses its result instead of testing again
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
         run: npm run test:engine
 
   # the browser tests, on the source and on the packaged build, each split in two groups of
-  # tests/e2e parts that take about as long: four jobs side by side
+  # tests/e2e parts that take about as long (08 alone is as long as all the others): four jobs side by side
   browser:
     name: browser (${{ matrix.build }}, ${{ matrix.group.name }})
     runs-on: ubuntu-24.04
@@ -48,8 +48,8 @@ jobs:
       matrix:
         build: [source, packaged]
         group:
-          - { name: "01-07", parts: "01,02,03,04,05,06,07", reference: false }
-          - { name: "08-16", parts: "08,09,10,11,12,13,14,15,16", reference: true }
+          - { name: "all but 08", parts: "01,02,03,04,05,06,07,09,10,11,12,13,14,15,16", reference: true }
+          - { name: "08", parts: "08", reference: false }
     env:
       APP: ${{ matrix.build == 'packaged' && 'dist/tube-amp-cad' || '' }}
     steps:
