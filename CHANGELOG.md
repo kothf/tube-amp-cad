@@ -6,11 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.138.0] - 2026-10-30
+## [3.139.0] - 2026-10-30
 
 ### Changed
 - Board: the toolbar stays one row down to 1000 px (it took two rows at 1100 px and below). Below 1180 px Text, Hole, Keep-out and Measure fold into one **More tools ▾** button, which shows the tool last picked from it and is lit while that tool is on; and Fit is hidden (the zoom percentage at the bottom right and F fit the board too). The keys T, H, K and D work as before.
 - The oscilloscope, spectrum analyzer and Bode plotter have the same **Schematic | Board** switch as the CAD and the Board, at the left of the toolbar, in place of the single Schematic button; neither is lit, since the instrument is neither. Board brings up the Board window, or, when the CAD keeps the board in its own window (Windows ▾ → Board in this window, the default in Safari), shows it there. Alt+B from an instrument does the same. Below 1240 px the switch shows its icons only, so the Bode plotter's toolbar stays one row down to 1000 px.
+- CAD: with the new AI ▾ menu the toolbar took two rows between 1000 and 1120 px. Below 1140 px the separators between its groups give way (the gaps still part them), so it is one row again from about 960 px up.
+
+## [3.138.0] - 2026-10-30
+
+### Added
+- **AI assistant**: a new **AI ▾** menu and an **AI** tab under the schematic, with your own API key for **Claude** (Anthropic), **ChatGPT** (OpenAI) or **Gemini** (Google).
+  - **AI settings…**: pick the provider, paste its key (a link goes to the provider's key page) and choose a model; **Test** checks them, **Load list** asks the provider which models your key can use. The defaults are Claude Opus 5.5, GPT-6.1 Sol and Gemini 3.1 Pro. Keys stay in this browser and go only to their provider, straight from the page; **Forget keys** removes them.
+  - **Ask**: type a question about the circuit or the app. The model gets the circuit (every part with its values and pin nets, the simulated DC and AC voltages, the operating points against their ratings, stage gains and THD, the Checks) and the manual for how-to questions. Answers are formatted, and part designators in them are links that select the part. Follow-up questions keep the conversation; **Clear** starts a new one, **Stop** abandons a question.
+  - **Explain my circuit**: what the circuit is, then stage by stage what each part does and why it has its value, how each stage is biased, and what looks unusual.
+  - **Fix the checks**: the Checks list turned into value changes, each checked against the part before it is offered (the part exists, the value is one it can take). **Apply** or **Apply all** makes them as one undo step, re-simulates and reports how the Checks changed ("Checks: 6 → 0 problems"), with an **Undo** button.
 
 ## [3.137.0] - 2026-10-30
 
