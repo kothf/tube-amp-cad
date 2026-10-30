@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       ORIGINS: https://aerocat.tech
-      MAX_TOTAL: "536870912"
+      MAX_TOTAL: "104857600"   # 100 MB; past it the oldest designs are deleted
     volumes:
       - ./data:/data
     networks: [share]
