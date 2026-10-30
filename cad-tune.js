@@ -304,6 +304,12 @@
         + (R.bestAt ? `<span>best at try <b>${R.bestAt}</b></span>` : "")
         + `<span title="How far the best try's measured values miss their targets, in % (0 when every goal is met)">off by <b>${offText(offPct(best))}</b></span></div>`;
     }
+    // the speaker's power (a quarter more than now) and its THD, when it has both
+    function startGoals(qs) {
+      const p = qs.find(q => q.unit === "W" && / output$/.test(q.label) && q.v > 0); if (!p) return null;
+      const t = qs.find(q => q.key === p.key.replace(/:p$/, ":thd")); if (!t) return null;
+      return { p, t, w: +(p.v * 1.25).toPrecision(2) };
+    }
     const opsHTML = op => [[">=", "≥"], ["<=", "≤"], ["=", "="]].map(([v, t]) => `<option value="${v}"${v === op ? " selected" : ""}>${t}</option>`).join("");
     function render() {
       const btn = $("btn-tune-run"); if (btn) btn.textContent = T.job ? `■ Stop · ${T.job.opt.evals} / ${T.job.opt.budget}` : "▶ Tune";
@@ -317,7 +323,10 @@
         return `<div class="tune-row" data-v="${i}"><span class="tune-name" title="Now ${c && k ? esc(fmtV(c.params[v.key], k)) : "—"}">${esc(k ? k.label : "(part removed)")}</span><span class="muted">from</span><input class="tol-num sw-num" data-f="lo" value="${esc(fmtEng(v.lo, ""))}"><span class="muted">to</span><input class="tol-num sw-num" data-f="hi" value="${esc(fmtEng(v.hi, ""))}"><span class="muted">${esc(k ? k.unit : "")}</span>`
           + `<select class="tol-sel" data-f="snap" title="Round the result to standard values"><option value="">exact</option><option value="E24"${v.snap === "E24" ? " selected" : ""}>E24</option><option value="E12"${v.snap === "E12" ? " selected" : ""}>E12</option></select><button class="btn tune-x" data-del-v="${i}" title="Remove">✕</button></div>`; }).join("");
       const kOpts = ks.filter(k => !T.vars.some(v => v.id === k.id && v.key === k.key)).map(k => `<option value="${esc(k.id + "|" + k.key)}">${esc(k.label)}</option>`).join("");
-      let left = `<div class="tune-sec">Goals <span class="muted">what the circuit should reach</span></div>${goals || `<div class="muted tune-empty">No goal yet.</div>`}`
+      // no goal yet: offer the usual one, more power from the first speaker at no more than 1 % THD
+      const sg = startGoals(qs);
+      const none = sg ? `<div class="tune-row"><button class="btn" id="btn-tune-goals" title="Adds both goals; change the numbers as you like">+ ${esc(sg.p.label)} ≥ ${esc(fmtEng(sg.w, "W"))} at ${esc(sg.t.label)} ≤ 1 %</button></div>` : `<div class="muted tune-empty">No goal yet.</div>`;
+      let left = `<div class="tune-sec">Goals <span class="muted">what the circuit should reach</span></div>${goals || none}`
         + `<div class="tune-row"><select class="tol-sel" id="tune-add-g"><option value="">+ Goal…</option>${qOpts("")}</select></div>`
         + `<label class="tune-check"><input type="checkbox" id="tune-ratings"${T.ratings ? " checked" : ""}> Keep every tube and transistor within its ratings</label>`
         + `<div class="tune-sec">Values to change <span class="muted">and the range each may take</span></div>${vars || `<div class="muted tune-empty">None yet.</div>`}`
@@ -364,6 +373,7 @@
       if (t.dataset.delG !== undefined) { T.goals.splice(+t.dataset.delG, 1); render(); }
       else if (t.dataset.delV !== undefined) { T.vars.splice(+t.dataset.delV, 1); render(); }
       else if (t.id === "btn-tune-suggest") suggest();
+      else if (t.id === "btn-tune-goals") { const sg = startGoals(quantities()); if (sg) { T.goals.push({ key: sg.p.key, op: ">=", target: sg.w }, { key: sg.t.key, op: "<=", target: 1 }); render(); } }
       else if (t.id === "btn-tune-apply") apply();
     }
 

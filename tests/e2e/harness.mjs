@@ -25,6 +25,14 @@ export const check = (cond, msg) => { console.log(`${cond ? "PASS" : "FAIL"} ${m
 
 // BROWSER=webkit runs the suite in the Safari engine
 export const browser = process.env.BROWSER === "webkit" ? await webkit.launch() : await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--no-sandbox"] });
+// the start screen stays shut in every context, unless asked for with { startScreen: true }
+// (tests/e2e/05-sheets-files.mjs checks it in a context of its own)
+const newContext = browser.newContext.bind(browser);
+browser.newContext = async ({ startScreen, ...opts } = {}) => {
+  const c = await newContext(opts);
+  if (!startScreen) await c.addInitScript(() => { try { localStorage.setItem("tubecad_start", "0"); } catch (e) { /* no storage */ } });
+  return c;
+};
 export const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
 export const errors = [], missing = [];
 export const open = async (name, page) => {

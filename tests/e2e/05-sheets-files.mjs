@@ -1,5 +1,5 @@
 // New, Save as PDF, several sheets, ratings, locked frames, PDF/PNG export, side panels
-import { cad, check } from "./harness.mjs";
+import { U, browser, cad, check } from "./harness.mjs";
 import { readFile } from "node:fs/promises";
 import { scope, spectrum, tracer } from "./02-instruments.mjs";
 
@@ -276,4 +276,32 @@ import { scope, spectrum, tracer } from "./02-instruments.mjs";
   await cad.waitForFunction(() => !TubeCAD.state.sim.busy, null, { timeout: 30000 });
   const texts = await cad.evaluate(() => window.__simTexts);
   check(texts.some(t => /■ Stop · \d+ %/.test(t)) && /^▶ Simulate$/.test(await cad.textContent("#btn-sim")), `▶ Simulate shows the run's progress (${texts[texts.length - 1] || "—"}) and goes back when it is done`);
+}
+
+// The start screen: on a first visit (an empty sheet) New, Open and every example with its picture
+{
+  const sctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, startScreen: true });
+  const sp = await sctx.newPage();
+  const dialogs = []; sp.on("dialog", d => { dialogs.push(d.message()); d.accept(); });
+  await sp.goto(U("circuit_sandbox.html")); await sp.waitForFunction(() => window.TubeCAD);
+  await sp.waitForFunction(() => [...document.querySelectorAll("#start-gallery img")].every(i => i.complete), null, { timeout: 15000 }).catch(() => {});
+  const g = await sp.evaluate(() => ({ open: !document.getElementById("start-modal").hidden, cards: document.querySelectorAll(".start-card").length, n: TubeCAD.EXAMPLES.length, groups: [...document.querySelectorAll(".start-group")].map(h => h.textContent), drawn: [...document.querySelectorAll("#start-gallery img")].filter(i => i.naturalWidth > 0).length, focus: document.activeElement.className }));
+  check(g.open && g.cards === g.n && g.drawn === g.n && g.focus === "start-card", `a first visit opens the start screen: ${g.cards} examples with ${g.drawn} pictures, in ${g.groups.join(", ")}; the first has the focus`);
+  await sp.keyboard.press("Escape");
+  check(await sp.evaluate(() => document.getElementById("start-modal").hidden), "Escape closes it");
+  await sp.click("#btn-file"); await sp.click("#btn-start");
+  check(await sp.evaluate(() => !document.getElementById("start-modal").hidden), "File ▾ → Gallery… opens it again");
+  await sp.click('.start-card[data-example^="13-"]');
+  await sp.waitForFunction(() => TubeCAD.state.comps.some(c => c.type === "tube"), null, { timeout: 15000 }).catch(() => {});
+  check(await sp.evaluate(() => document.getElementById("start-modal").hidden && /2A3/.test(document.getElementById("cur-file").textContent + document.title)) && !dialogs.length, `a card opens its example with no question asked (the sheet held only its frame): ${await sp.evaluate(() => document.title)}`);
+  // a circuit on the sheet (kept over a reload) does not bring it up; neither does a cleared tick box
+  await sp.reload(); await sp.waitForFunction(() => window.TubeCAD);
+  check(await sp.evaluate(() => document.getElementById("start-modal").hidden), "with a circuit on the sheet a reload does not show it");
+  await sp.evaluate(() => { for (const k of Object.keys(localStorage)) if (/^tubecad_(circuit|board|file)_v/.test(k)) localStorage.removeItem(k); });
+  await sp.reload(); await sp.waitForFunction(() => window.TubeCAD);
+  const again = await sp.evaluate(() => !document.getElementById("start-modal").hidden);
+  await sp.uncheck("#start-show"); await sp.click("#btn-start-close");
+  await sp.reload(); await sp.waitForFunction(() => window.TubeCAD);
+  check(again && await sp.evaluate(() => document.getElementById("start-modal").hidden), "an empty sheet shows it after a reload, until its tick box is cleared");
+  await sctx.close();
 }
