@@ -553,8 +553,8 @@ import { readFile } from "node:fs/promises";
   {
     // a germanium part at 45 °C: SPICE's temperature terms on the model, temp= on the instance, the leakage as a B source
     const sp = await cad.evaluate(() => { const S = TubeCAD.state, q = S.comps.find(c => c.label === "VT1"); Object.assign(q.params, { model: "AC127", temp: 45 }); const t = TubeCAD.spiceNetlist(); Object.assign(q.params, { model: "MJE340", temp: 25 }); return t; });
-    check(/^Q\S+ N\d+ N\d+ N\d+ QN_AC127 temp=45$/m.test(sp) && /\.model QN_AC127 NPN\(IS=4e-7 .*EG=0\.67 XTI=3 XTB=1\.5 TNOM=25\)/.test(sp) && /^B\S+_LK N\d+ N\d+ I=1\.200e-5\*\(V\(N\d+,N\d+\)<0 \? 1-exp\(V\(N\d+,N\d+\)\/0\.027586\)/m.test(sp),
-      "SPICE export of a germanium transistor at 45 °C: EG 0.67 with the temperature terms, temp=45, and its leakage (12 µA) as a B source");
+    check(/^Q\S+ N\d+ N\d+ N\d+ QN_AC127 temp=47\.13$/m.test(sp) && /\.model QN_AC127 NPN\(IS=4e-7 .*EG=0\.67 XTI=3 XTB=1\.5 TNOM=27\)/.test(sp) && /^B\S+_LK N\d+ N\d+ I=1\.200e-5\*\(V\(N\d+,N\d+\)<0 \? 1-exp\(V\(N\d+,N\d+\)\/0\.027586\)/m.test(sp),
+      "SPICE export of a germanium transistor at 45 °C: EG 0.67 with the temperature terms, temp=47.13 (on SPICE's 27 °C scale), and its leakage (12 µA) as a B source");
   }
   const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => [r.refs, r.desc, r.value, r.rating, r.sim].join("|")));
   check(bom.some(l => l.startsWith("VT1|Transistor, NPN|MJE340|300 V, 0.5 A, 20 W, TO-126|")) && bom.some(l => /^VD1\|Zener diode\|1N4742A\|12 V, 1 W\|/.test(l)) && bom.some(l => /^HL1\|LED, red\|/.test(l)), `the BOM lists the transistor, zener and LED with their ratings`);

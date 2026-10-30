@@ -931,8 +931,16 @@
     }
     return r;
   }
-  // from zero (with the 555 latches as x0 holds them)
+  // from zero (with the 555 latches as x0 holds them). The solve leans on a 1 nS conductance from
+  // every node to ground; a last Newton pass from its answer at 1 pS (as the transient uses, and
+  // ngspice) takes it away: 1 nS on a grid fed through 1 MΩ at 50 V is 50 nA, 50 mV off its bias
   function dcSolve(circ, x0) {
+    const r = dcSolveGmin(circ, x0);
+    if (!r.ok) return r;
+    const p = newtonSolve(circ, r.x, { dc: true }, { gmin: 1e-12 });
+    return p.ok ? p : r;
+  }
+  function dcSolveGmin(circ, x0) {
     const zero = x0.map((v, i) => (circ.timers.some(e => e.latch === i) ? v : 0));
     circ.els.forEach(e => { delete e._vlast; delete e._vbe; delete e._vbc; });
     let r = newtonSolve(circ, zero, { dc: true }, { gmin: 1e-9 });
