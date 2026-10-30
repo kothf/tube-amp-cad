@@ -22,6 +22,7 @@
       if (d.type === "SIM_RESULT") { Inst.result = d; Inst.at = Date.now(); }
       else if (d.type === "TRANSIENT_RESULT") Inst.transient = d;   // power-on transient from the CAD
       else if (d.type === "AC_RESULT") Inst.ac = d;                 // frequency response (Bode plotter)
+      else if (d.type === "LOOP_RESULT") Inst.loop = d;             // loop gain (Bode plotter's Loop gain mode)
       else if (d.type === "SIM_STATUS") Inst.cad = Object.assign({ at: Date.now() }, d);
       else if (d.type === "SELECT_SCOPE") { if (d.target === window.name && d.id) Inst.selectScope(d.id); return; }
       else if (d.type === "ACK") { if (pending[d.id]) { clearTimeout(pending[d.id]); delete pending[d.id]; } }
@@ -33,6 +34,7 @@
 
   Inst.transient = null;
   Inst.ac = null;
+  Inst.loop = null;
   /** Ask the CAD: { type: "RUN_SIM" } | { type: "RUN_TRANSIENT", tStop } | { type: "STOP_TRANSIENT" } */
   // A request the CAD must acknowledge within 2 s; a CAD tab opened before an
   // update ignores requests it does not know, and the window says so.

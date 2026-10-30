@@ -1,12 +1,13 @@
 /* The CAD's runs for the instrument windows, on workers of the engine's pool (sim-pool.js) beside
    the live simulation: the power-on transient for the oscilloscopes (RUN_TRANSIENT) and the
    frequency response for the Bode plotter (RUN_AC), whose sweep is cut into pieces that run on
-   all the cores at once. Results go out on the broadcast channel as TRANSIENT_RESULT and AC_RESULT. */
+   all the cores at once, and the loop gain of a feedback loop for its Loop gain mode (RUN_LOOP).
+   Results go out on the broadcast channel as TRANSIENT_RESULT, AC_RESULT and LOOP_RESULT. */
 (function (root) {
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadAnalysis = function (cad) {
-    const { S, VERSION, buildNetlist, pool, channel, desig, fmtEng, setStatus, showBusy, topo } = cad;
+    const { S, VERSION, buildNetlist, pool, channel, desig, fmtEng, netAC, setStatus, showBusy, topo } = cad;
     let tJob = null;
     S.trans = null;           // { seq, running, progress, tStop, ok, error, dt, scopes: [{ id, label, ch1: {min,max}, ch2 }] }
     function transientMessage() {
@@ -147,6 +148,91 @@
         onResult: r => { if (S.ac.seq !== seq) return; aJobs = []; if (r.ok) sweep(r.op, r.opIm); else done(r); }
       }));
     }
-    return { acMessage, runAC, runTransient, stopTransient, transientMessage };
+
+    // ---------------------------------------------------------------------------
+    // Loop gain for the Bode plotter's Loop gain mode: the loop broken at one end of a resistor or
+    // capacitor (engine loopGain), linearized as the frequency response is. The places offered are
+    // every two-lead part off ground; the likely feedback parts first: one from the output (a speaker,
+    // an output transformer's secondary) back into the amplifier, one from an anode to a grid, one
+    // from an op-amp's output to its inverting input. The loop is broken at the end that carries
+    // more signal in the last simulation (the driving side); reverse turns that round.
+    // ---------------------------------------------------------------------------
+    function loopPlaces() {
+      const T = topo(), pins = new Map();
+      T.pinNet.forEach((n, k) => { if (n > 0) { if (!pins.has(n)) pins.set(n, []); pins.get(n).push(k); } });
+      const comp = new Map(S.comps.map(c => [c.id, c]));
+      const role = n => {
+        const out = new Set();
+        (pins.get(n) || []).forEach(k => {
+          const i = k.lastIndexOf(":"), c = comp.get(k.slice(0, i)), p = k.slice(i + 1); if (!c) return;
+          if (c.type === "speaker" || (/^opt/.test(c.type) && /^S/.test(p))) out.add("out");
+          else if (c.type === "tube" && /^(A|P)\d*$/.test(p)) out.add("anode");
+          else if (c.type === "tube" && /^G1?$/.test(p)) out.add("grid");
+          else if (c.type === "tube" && p === "K") out.add("cathode");
+          else if (c.type === "opamp" && p === "OUT") out.add("oaout");
+          else if (c.type === "opamp" && p === "-") out.add("oain");
+        });
+        return out;
+      };
+      const list = [];
+      S.comps.filter(c => ["resistor", "capacitor", "electrolytic"].includes(c.type)).forEach(c => {
+        const n1 = T.pinNet.get(c.id + ":1"), n2 = T.pinNet.get(c.id + ":2");
+        if (!(n1 > 0) || !(n2 > 0) || n1 === n2) return;
+        const r1 = role(n1), r2 = role(n2);
+        const score = (a, b) => (a.has("out") && (b.has("cathode") || b.has("grid") || b.size === 0) ? 3 : a.has("anode") && b.has("grid") ? 2 : a.has("oaout") && b.has("oain") ? 2 : 0);
+        const s12 = score(r1, r2), s21 = score(r2, r1);
+        // the driving end: more signal in the last simulation, else the end the score names
+        const a1 = netAC(n1), a2 = netAC(n2), v1 = a1 ? a1.rms : 0, v2 = a2 ? a2.rms : 0;
+        const first = v1 !== v2 && (v1 > 0 || v2 > 0) ? v1 > v2 : s12 >= s21;
+        const what = Math.max(s12, s21) === 3 ? "global feedback" : Math.max(s12, s21) === 2 ? "local feedback" : "";
+        list.push({ id: c.id, label: desig(c) + (what ? ` (${what})` : ""), score: Math.max(s12, s21), nets: first ? [n1, n2] : [n2, n1] });
+      });
+      return list.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, undefined, { numeric: true }));
+    }
+    let lJobs = [];
+    const stopLoop = () => { lJobs.forEach(j => j.cancel()); lJobs = []; };
+    S.loop = { seq: 0, key: null, msg: null };
+    function loopMessage(extra) { return Object.assign({ type: "LOOP_RESULT", version: VERSION }, S.loop.msg || { ok: false, error: "Not run yet" }, extra || {}); }
+    function runLoop(at, reverse) {
+      const netlist = S.sim.netlist, places = loopPlaces().map(p => ({ id: p.id, label: p.label, score: p.score, nets: p.nets }));
+      const post = m => { S.loop.msg = m; if (channel) try { channel.postMessage(loopMessage()); } catch (e) {} };
+      if (!netlist || !S.sim.result) { S.loop.key = null; post({ ok: false, error: S.sim.error || "Circuit not simulated", places }); return; }
+      if (!places.length) { S.loop.key = null; post({ ok: false, error: "No resistor or capacitor off ground to break a feedback loop at", places }); return; }
+      const p = places.find(x => x.id === at) || places[0];
+      const el = netlist.elements.find(e => e.id === p.id);
+      const drive = reverse ? p.nets[1] : p.nets[0], pin = el ? el.nodes.indexOf(drive) : -1;
+      if (pin < 0) { S.loop.key = null; post({ ok: false, error: "That part is not in the simulated circuit", places, at: p.id }); return; }
+      const quiet = new Set(S.comps.filter(c => ["siggen", "pickup", "phono"].includes(c.type)).map(c => c.id));
+      const nl = { nodeCount: netlist.nodeCount, elements: netlist.elements.map(e => (quiet.has(e.id) ? Object.assign({}, e, { amp: 0 }) : e)) };
+      const key = JSON.stringify([nl.elements, p.id, pin]);
+      if (key === S.loop.key && S.loop.msg && (S.loop.msg.running || S.loop.msg.ok !== undefined)) { if (channel) channel.postMessage(loopMessage({ places })); return; }
+      stopLoop();
+      S.loop.key = key;
+      const seq = ++S.loop.seq, t0 = Date.now(), averaged = nl.elements.some(x => x.dcValue !== undefined || x.acMains);
+      const base = { at: p.id, reverse: !!reverse, places, label: p.label };
+      post(Object.assign({ running: true, progress: 0 }, base));
+      const options = Object.assign({ at: { id: p.id, pin } }, AC_RANGE);
+      const done = r => {
+        if (S.loop.seq !== seq) return;
+        stopLoop();
+        post(Object.assign({ ok: !!r.ok, error: r.ok ? null : r.error, freqs: r.ok ? Array.from(r.freqs) : [], re: r.ok ? Array.from(r.re) : [], im: r.ok ? Array.from(r.im) : [],
+          averaged: r.ok && averaged, elapsedMs: Date.now() - t0, running: false }, base));
+      };
+      if (!pool.ok) {
+        setTimeout(() => {
+          let op = null, opIm = null;
+          if (averaged) { const r = TubeSimEngine.simulate(nl, {}); if (!r.ok) { done({ ok: false, error: r.error }); return; } op = r.dc.nodes; opIm = TubeSimEngine.opMagnetising(r); }
+          done(TubeSimEngine.loopGain(nl, Object.assign({}, options, { op, opIm })));
+        }, 0);
+        return;
+      }
+      const sweep = (op, opIm) => lJobs.push(pool.run({ netlist: nl, options: Object.assign({}, options, { op, opIm }), kind: "loop" }, { urgent: true, high: true, onResult: done }));
+      if (!averaged) { sweep(null); return; }
+      lJobs.push(pool.run({ netlist: nl, options: {}, kind: "op" }, {
+        urgent: true, onProgress: f => { if (S.loop.seq === seq && channel) channel.postMessage(loopMessage({ running: true, progress: 0.9 * f })); },
+        onResult: r => { if (S.loop.seq !== seq) return; lJobs = []; if (r.ok) sweep(r.op, r.opIm); else done(r); }
+      }));
+    }
+    return { acMessage, loopMessage, loopPlaces, runAC, runLoop, runTransient, stopTransient, transientMessage };
   };
 })(window);
