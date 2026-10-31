@@ -749,14 +749,29 @@ the circuit file, so one file holds both.
   comes first, leave it at 45° and the diagonal does. <kbd>/</kbd> turns it the
   other way by hand until the next corner; the route does so by itself when
   the chosen way would come too close. Dragging a part takes the ends of its tracks along.
-- **Measure** sticks to the board. Its ends snap to:
+- **Smart measure** (<kbd>D</kbd>) sticks to the board. Its clicks snap to:
   - the centres of pads, vias and holes;
   - track corners and ends;
   - the board's corners, edge middles and centre;
   - failing those, onto a track, a hole's rim or the board edge.
 
   The pointer shows the snap point and its name. <kbd>Shift</kbd>+click
-  measures on the grid only.
+  measures on the grid only. A card at the bottom left gives the details:
+  - one click: the thing's size (a pad's size, drill and annular ring; a via's
+    ring; a hole's diameter and distance to the board edge; a track's width,
+    segment and whole length; the board's size);
+  - a second click: what relates them. Two pads, vias or holes: the pitch,
+    the copper edge to edge checked against the clearance rule for those nets,
+    drill wall to wall and outer span (<kbd>C</kbd> or Centre / Edge / Outer
+    picks the one drawn). A centre against a track or the board edge: square
+    to it, with the copper gap against the clearance or edge rule. Parallel
+    tracks or edges: their gap; otherwise the angle between them. Red: closer
+    than the rules allow.
+  - Pin (<kbd>Enter</kbd>) keeps measurements on the board, <kbd>Del</kbd>
+    takes the last off; Copy; units mm, mil or inch.
+- **3D measure** (Measure in the 3D view, or <kbd>D</kbd> there): click a point for
+  its height above the board, a second for the distance in 3D with ΔX, ΔY,
+  ΔZ; clicks stick to the corners of the surface they hit.
 - **Grid, axes and sheet:**
   - The grid covers the whole screen as lines or dots, or is off (<kbd>G</kbd>).
   - The origin is the board's bottom-left corner, X to the right and Y up, as in
@@ -896,7 +911,7 @@ the circuit file, so one file holds both.
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | simulate until settled |
 | <kbd>F1</kbd> or <kbd>?</kbd> | help |
 
-In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> measure, <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>3</kbd> 3D view, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>Space</kbd> rotate (a tap; also while dragging; <kbd>R</kbd> too), <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Shift</kbd>+<kbd>F</kbd> fit the sheet, <kbd>G</kbd> grid style, <kbd>A</kbd> axes, <kbd>Backspace</kbd> takes back the last corner while routing.
+In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> smart measure (<kbd>C</kbd> centre / edge / span, <kbd>Enter</kbd> pin, <kbd>Del</kbd> unpin; <kbd>D</kbd> in the 3D view measures there), <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>3</kbd> 3D view, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>Space</kbd> rotate (a tap; also while dragging; <kbd>R</kbd> too), <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Shift</kbd>+<kbd>F</kbd> fit the sheet, <kbd>G</kbd> grid style, <kbd>A</kbd> axes, <kbd>Backspace</kbd> takes back the last corner while routing.
 
 ## How the simulator works
 
