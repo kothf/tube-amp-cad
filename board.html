@@ -136,18 +136,14 @@
     #mcard .mc-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 11px; padding: 0 2px; } #mcard .mc-x:hover { color: var(--fg, #e6edf3); }
     #mcard .mc-pins { margin-top: 6px; border-top: 1px solid var(--line, #2a3542); padding-top: 4px; }
     #mcard .mc-pin { display: flex; gap: 6px; align-items: baseline; } #mcard .mc-pin span { color: #ffb300; font-family: ui-monospace, monospace; } #mcard .mc-pin small { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* in the 3D view the layout's editing tools do nothing: only the switch, View (back to the layout), Export, language and help stay */
+    body:has(#view3d:not([hidden])) header :is([aria-label="History"], .tools, #cons-menu, #layer, #grid, #btn-fit, #btn-sync, #btn-autoroute, #route-menu, #board-menu) { display: none !important; }
     #view3d { position: absolute; inset: 0; z-index: 5; background: #070b10; }
     #view3d[hidden] { display: none; }
     #gl3d { width: 100%; height: 100%; display: block; cursor: grab; }
     .bar3d { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; pointer-events: none; }
     .bar3d > * { pointer-events: auto; }
     .bar3d label { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; color: var(--muted); font-size: 12px; }
-    #ov3d { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    #m3d { position: absolute; right: 10px; bottom: 48px; min-width: 230px; background: rgba(13,19,27,0.94); border: 1px solid var(--line, #2a3542); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
-    #m3d[hidden] { display: none; }
-    #m3d .mc-val { font: 600 18px ui-monospace, monospace; color: #00e5ff; margin: 2px 0 4px; }
-    #m3d table { width: 100%; border-collapse: collapse; } #m3d td:first-child { color: var(--muted); padding-right: 8px; } #m3d td:last-child { text-align: right; font-family: ui-monospace, monospace; }
-    #v3-measure.on { background: #0b3a44; border-color: #00e5ff; color: #00e5ff; }
     .hint3d { position: absolute; bottom: 8px; left: 10px; color: var(--muted); font-size: 11px; pointer-events: none; }
     .preview3d { width: 100%; height: 190px; display: block; border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; background: #070b10; cursor: grab; }
     #status { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -216,6 +212,7 @@
     .row.wide { grid-template-columns: 1fr; gap: 3px; }
     #hud { position: absolute; z-index: 6; pointer-events: none; background: rgba(15,21,30,.94); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--text); white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
     #chud { position: absolute; z-index: 7; display: flex; gap: 8px; align-items: center; background: rgba(15,21,30,.95); border: 1px solid #6e4f8f; border-radius: 6px; padding: 3px 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; color: #c792ea; }
+    #chud[hidden] { display: none; }
     #chud input { width: 64px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; color: var(--text); font: inherit; padding: 1px 4px; }
     #chud input:focus { border-color: #c792ea; outline: none; }
     #chud small { color: var(--muted); } #chud .chud-k { font-size: 10px; }
@@ -370,16 +367,13 @@
       <div id="ctx" class="menu-list ctx" role="menu" hidden></div>
       <div id="view3d" hidden>
         <canvas id="gl3d" aria-label="The board in 3D"></canvas>
-        <canvas id="ov3d" aria-hidden="true"></canvas>
-        <div id="m3d" hidden aria-live="polite"></div>
         <div class="bar3d">
           <button class="btn" data-view="iso">Iso</button><button class="btn" data-view="top">Top</button><button class="btn" data-view="bottom">Bottom</button><button class="btn" data-view="front">Front</button><button class="btn" data-view="side">Side</button>
-          <button class="btn" id="v3-measure" data-ico="ruler" title="Measure in 3D: click two points on the board or the parts for the distance between them (ΔX, ΔY, ΔZ) and each one's height above the board; the picks stick to corners (D)">Measure</button>
           <label><input type="checkbox" id="v3-parts" checked> Parts</label><label><input type="checkbox" id="v3-tubes" checked> Valves</label>
           <span class="spacer"></span>
           <button class="btn" data-ico="image" id="v3-png">Save PNG</button><button class="btn" data-ico="cube" id="v3-step" title="The board and every part in colour, for a chassis CAD: round bodies, leads and holes as true cylinders and circles">Export STEP</button><button class="btn" id="v3-close" title="Back to the layout (Esc or 3)">✕ Layout</button>
         </div>
-        <div class="hint3d">Drag: turn · right-drag or Shift+drag: move · wheel: zoom · D: measure</div>
+        <div class="hint3d">Drag: turn · right-drag or Shift+drag: move · wheel: zoom</div>
       </div>
     </div>
     <aside class="col right">
@@ -436,7 +430,7 @@
         <kbd>drag</kbd><span>a track segment moves sideways and its neighbours follow (45° kept)</span>
         <kbd>drag part</kbd><span>the ends of the tracks on its pads come along</span>
         <kbd>Shift+click</kbd><span>while routing: place a segment that breaks the clearance anyway (normally refused)</span>
-        <kbd>D</kbd><span>smart measure: one click gives a pad's, via's, hole's, track's or the board's size, a second what relates them (pitch, copper edge to edge against the rule, square to a track or edge, angle); it stays until the next click or Esc. The clicks stick to pad, via and hole centres, track corners and ends, the board's corners, edge middles and centre (then onto a track, a hole's rim or the board edge); Shift+click: the grid only. C: centre / edge / span, Enter: pin, Del: the last pin off. In the 3D view D measures heights and 3D distances</span>
+        <kbd>D</kbd><span>smart measure: one click gives a pad's, via's, hole's, track's or the board's size, a second what relates them (pitch, copper edge to edge against the rule, square to a track or edge, angle); it stays until the next click or Esc. The clicks stick to pad, via and hole centres, track corners and ends, the board's corners, edge middles and centre (then onto a track, a hole's rim or the board edge); Shift+click: the grid only. C: centre / edge / span, Enter: pin, Del: the last pin off</span>
         <kbd>drag edge</kbd><span>drag the board's edge to move the board on the drawing sheet (this locks the sheet); the board inspector sets the position by numbers or centres it again</span>
         <kbd>G</kbd><span>grid: lines, dots or off</span>
         <kbd>A</kbd><span>X / Y axes through the board's origin, its bottom-left corner (X to the right, Y up, as in the Gerbers), with a millimetre scale</span>

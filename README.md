@@ -799,9 +799,8 @@ the circuit file, so one file holds both.
     than the rules allow.
   - Pin (<kbd>Enter</kbd>) keeps measurements on the board, <kbd>Del</kbd>
     takes the last off; Copy; units mm, mil or inch.
-- **3D measure** (Measure in the 3D view, or <kbd>D</kbd> there): click a point for
-  its height above the board, a second for the distance in 3D with ΔX, ΔY,
-  ΔZ; clicks stick to the corners of the surface they hit.
+- In the **3D view** the toolbar hides the layout's editing tools (undo, tools,
+  layer, grid, construction, Update, routing, Board ▾); they come back with the layout.
 - **Grid, axes and sheet:**
   - The grid covers the whole screen as lines or dots, or is off (<kbd>G</kbd>).
   - The origin is the board's bottom-left corner, X to the right and Y up, as in
@@ -944,7 +943,7 @@ the circuit file, so one file holds both.
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | simulate until settled |
 | <kbd>F1</kbd> or <kbd>?</kbd> | help |
 
-In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> smart measure (<kbd>C</kbd> centre / edge / span, <kbd>Enter</kbd> pin, <kbd>Del</kbd> unpin; <kbd>D</kbd> in the 3D view measures there), <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>3</kbd> 3D view, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>Space</kbd> rotate (a tap; also while dragging; <kbd>R</kbd> too), <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Shift</kbd>+<kbd>F</kbd> fit the sheet, <kbd>G</kbd> grid style, <kbd>A</kbd> axes, <kbd>Backspace</kbd> takes back the last corner while routing.
+In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active layer, <kbd>Shift</kbd>+<kbd>V</kbd> via tool, <kbd>T</kbd> text, <kbd>H</kbd> mounting hole, <kbd>D</kbd> smart measure (<kbd>C</kbd> centre / edge / span, <kbd>Enter</kbd> pin, <kbd>Del</kbd> unpin), <kbd>P</kbd> copper pour, <kbd>U</kbd> select the connected track, <kbd>K</kbd> keep-out area, <kbd>3</kbd> 3D view, <kbd>L</kbd> lock / unlock, arrows nudge, <kbd>`</kbd> highlight the net, <kbd>S</kbd> select, <kbd>Space</kbd> rotate (a tap; also while dragging; <kbd>R</kbd> too), <kbd>M</kbd> other side, <kbd>F</kbd> fit, <kbd>Shift</kbd>+<kbd>F</kbd> fit the sheet, <kbd>G</kbd> grid style, <kbd>A</kbd> axes, <kbd>Backspace</kbd> takes back the last corner while routing.
 
 ## How the simulator works
 

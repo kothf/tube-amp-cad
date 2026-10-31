@@ -493,14 +493,12 @@ import { readFile } from "node:fs/promises";
     await bd.keyboard.press("Control+z");
     await bd.click("#btn-view"); await bd.click("#btn-3d"); await bd.waitForTimeout(400);
     const v3 = await bd.evaluate(() => { const v = BoardApp.viewer(); return { shown: !document.getElementById("view3d").hidden, kinds: v ? [...new Set(v.batches.map(b => b.k))].sort().join(",") : "" }; });
-    // 3D measure: D, a click on the board's top in the middle (height 0), a second one higher up on a part
-    await bd.click('[data-view="top"]'); await bd.keyboard.press("d");
-    const g = await bd.locator("#gl3d").boundingBox(); await bd.mouse.click(g.x + g.width / 2, g.y + g.height / 2);
-    const m3 = await bd.evaluate(() => ({ on: BoardApp.viewer().measure, picks: BoardApp.viewer().picks.length, m: BoardApp.state.measured3d, card: document.getElementById("m3d").textContent }));
-    await bd.keyboard.press("d");
-    check(m3.on && m3.picks === 1 && m3.m && m3.m.picks[0][2] > -0.01 && /Height above the board/.test(m3.card), `3D measure picks a point on the board seen from the top (height ${m3.m && m3.m.picks[0][2].toFixed(2)} mm)`);
+    // in 3D the layout's editing tools are hidden; back in the layout they return
+    const hid = await bd.evaluate(() => ["#btn-undo", '.tools [data-tool="route"]', "#layer", "#btn-autoroute"].map(q => document.querySelector(q).offsetParent === null));
+    check(hid.every(Boolean), `the 3D view hides the editing tools (undo, tools, layer, auto-route): ${hid}`);
     await bd.click('[data-view="bottom"]'); await bd.locator("#gl3d").focus().catch(() => {}); await bd.keyboard.press("Escape");
-    check(v3.shown && v3.kinds === "bottom,glass,solid,top" && await bd.evaluate(() => document.getElementById("view3d").hidden), `3D shows the board (textured top and bottom), the parts and the valves' glass (${v3.kinds}); Esc goes back to the layout`);
+    const back = await bd.evaluate(() => document.querySelector('.tools [data-tool="route"]').offsetParent !== null);
+    check(v3.shown && v3.kinds === "bottom,glass,solid,top" && await bd.evaluate(() => document.getElementById("view3d").hidden) && back, `3D shows the board (textured top and bottom), the parts and the valves' glass (${v3.kinds}); Esc goes back to the layout`);
   } else check(true, "this browser has no WebGL here: the 3D checks are skipped");
   await bd.click("#btn-export");
   const [stepDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-step")]);

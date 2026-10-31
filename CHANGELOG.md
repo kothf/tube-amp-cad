@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.165.1] - 2026-10-31
+
+### Changed
+- **The 3D view is for looking, not editing.** While it is open, the Board toolbar hides what does nothing there: undo and redo, the tools (Select, Route, Via, Text, Hole, Pour, Keep-out, Measure), the layer and grid, Construct ▾, Fit, Update, Auto-route, Route ▾ and Board ▾. The Schematic | Board switch, View ▾ (to go back), Export ▾, the language and help stay; the tools come back with the layout.
+
+### Fixed
+- The construction input box (the small purple frame) showed as an empty pill at the board's top-left corner, also over the 3D view, when it should have been hidden.
+
+### Removed
+- **Measure in the 3D view** (added in 3.162.0): the button, D in the 3D view and its readout. Smart measure in the layout (D) stays.
+
 ## [3.165.0] - 2026-10-31
 
 ### Changed
