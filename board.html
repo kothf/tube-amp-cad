@@ -149,10 +149,10 @@
     kbd.tk { font-size: 10px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; margin-left: 5px; }
     .btn.active kbd.tk { color: var(--accent); border-color: #1d6b7a; }
     @media (max-width: 1800px) { kbd.tk { display: none; } }
-    header .tools .btn, #btn-sync, #btn-autoroute { display: inline-flex; align-items: center; gap: 5px; }
+    header .tools .btn, #btn-sync, #btn-autoroute, #btn-fit { display: inline-flex; align-items: center; gap: 5px; }
     /* wide: the tools and actions by name; narrower: by icon (the title names each with its key) */
-    .tools .btn .ico, #btn-sync .ico, #btn-autoroute .ico { display: none; }
-    @media (max-width: 1450px) { .tools .lbl { display: none; } .tools .btn .ico { display: inline; } }
+    .tools .btn .ico, #btn-sync .ico, #btn-autoroute .ico, #btn-fit .ico { display: none; }
+    @media (max-width: 1450px) { .tools .lbl, #btn-fit .lbl { display: none; } .tools .btn .ico, #btn-fit .ico { display: inline; } }
     @media (max-width: 1250px) { #btn-sync .lbl, #btn-autoroute .lbl { display: none; } #btn-sync .ico, #btn-autoroute .ico { display: inline; } }
     @media (max-width: 1700px) { .doc-switch .ds-lbl { display: none; } .doc-switch .btn { padding-left: 8px; padding-right: 8px; } }
     /* Russian names are longer: icons sooner */
@@ -160,7 +160,7 @@
     @media (max-width: 1180px) { #btn-lang { display: none; } }   /* the CAD's View ▾ → Interface still switches */
     @media (max-width: 1300px) { html[lang=ru] #btn-lang { display: none; } }
     @media (max-width: 1100px) { html[lang=ru] header .btn { padding-left: 5px; padding-right: 5px; } html[lang=ru] header { gap: 3px; } }
-    @media (max-width: 1880px) { html[lang=ru] .tools .lbl { display: none; } html[lang=ru] .tools .btn .ico { display: inline; } }
+    @media (max-width: 1880px) { html[lang=ru] .tools .lbl, html[lang=ru] #btn-fit .lbl { display: none; } html[lang=ru] .tools .btn .ico, html[lang=ru] #btn-fit .ico { display: inline; } }
     @media (max-width: 1500px) { html[lang=ru] #btn-sync .lbl, html[lang=ru] #btn-autoroute .lbl { display: none; } html[lang=ru] #btn-sync .ico, html[lang=ru] #btn-autoroute .ico { display: inline; } }
     /* narrower than 1180 px: Text, Hole, Keep-out and Measure fold into one "More tools" button
        (it shows the one last picked, lit while it is the tool), and Fit goes (the zoom % below
@@ -245,53 +245,53 @@
         <button class="menu-item check" role="menuitemcheckbox" data-gs="dots" title="Grid as dots (G cycles)">Grid dots</button>
         <button class="menu-item check" role="menuitemcheckbox" data-gs="off" title="No grid (G cycles)">No grid</button>
         <div class="menu-sep"></div>
-        <button class="menu-item check" role="menuitemcheckbox" id="btn-axes" title="X / Y axes through the board's origin, with a millimetre scale (A)">Axes<small>A</small></button>
+        <button class="menu-item check" data-ico="axes" role="menuitemcheckbox" id="btn-axes" title="X / Y axes through the board's origin, with a millimetre scale (A)">Axes<small>A</small></button>
         <div class="menu-sep"></div>
         <label class="menu-row" title="The drawing sheet's format: auto (the smallest that fits the board), A4–A0 landscape or portrait, or none"><span>Sheet</span><select id="sheet-pick" title="The drawing sheet's format: auto (the smallest that fits the board), A4–A0 landscape or portrait, or none"><option value="auto landscape">Sheet: auto, landscape</option><option value="auto portrait">Sheet: auto, portrait</option><option value="A4 landscape">A4 landscape (297 × 210 mm)</option><option value="A4 portrait">A4 portrait (210 × 297 mm)</option><option value="A3 landscape">A3 landscape (420 × 297 mm)</option><option value="A3 portrait">A3 portrait (297 × 420 mm)</option><option value="A2 landscape">A2 landscape (594 × 420 mm)</option><option value="A2 portrait">A2 portrait (420 × 594 mm)</option><option value="A1 landscape">A1 landscape (841 × 594 mm)</option><option value="A1 portrait">A1 portrait (594 × 841 mm)</option><option value="A0 landscape">A0 landscape (1189 × 841 mm)</option><option value="A0 portrait">A0 portrait (841 × 1189 mm)</option><option value="none">No sheet</option></select></label>
         <button class="menu-item check" role="menuitemcheckbox" id="btn-sheet-lock" title="Lock the drawing sheet where it is: it keeps its size and place when the board grows or shrinks (unlocked it follows the board)">Lock sheet</button>
         <div class="menu-sep"></div>
-        <button class="menu-item check active" role="menuitemcheckbox" id="btn-panels" title="The parts and nets on the left, the inspector, checks and layers on the right (\ hides both for more board)">Side panels<small>\</small></button>
+        <button class="menu-item check active" data-ico="panels" role="menuitemcheckbox" id="btn-panels" title="The parts and nets on the left, the inspector, checks and layers on the right (\ hides both for more board)">Side panels<small>\</small></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-3d" title="The board in 3D with its parts (3); export it as STEP">3D view<small>3</small></button>
+        <button class="menu-item" data-ico="cube" id="btn-3d" title="The board in 3D with its parts (3); export it as STEP">3D view<small>3</small></button>
       </div>
     </div>
-    <button class="btn" id="btn-fit" title="Fit the board (F); Shift+F or Shift+click: the whole drawing sheet">Fit</button>
+    <button class="btn" data-ico="fit" id="btn-fit" title="Fit the board (F); Shift+F or Shift+click: the whole drawing sheet"><span class="lbl">Fit</span></button>
     <span class="spacer"></span>
     <button class="btn" id="btn-sync" title="Update from the schematic: bring parts added to or removed from it onto the board"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 6.5A5 5 0 0 0 4 4.2M3 9.5a5 5 0 0 0 9 2.3"/><path d="M3.8 1.5v2.9h2.9M12.2 14.5v-2.9H9.3"/></svg><span class="lbl">Update</span></button>
     <button class="btn" id="btn-autoroute" title="Route the open connections with the board's own grid router, within the design rules; Ctrl+Z takes it back"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14 10 6"/><path d="M11.5 1.5v3M10 3h3M14 6.5v2M13 7.5h2"/></svg><span class="lbl">Auto-route</span></button>
     <div class="menu" id="route-menu">
       <button class="btn" id="btn-route" aria-haspopup="true" title="Routing: Auto-route, Finish routing, Design from scratch, Unroute, Freerouting">Route ▾</button>
       <div class="menu-list right" hidden>
-        <button class="menu-item" id="mi-autoroute" title="Route the open connections with the board's own grid router (Freerouting first when ticked in Freerouting…), within the design rules; Ctrl+Z takes it back">Auto-route<small>the board's own grid router</small></button>
-        <button class="menu-item" id="btn-nudge" title="Auto-route; while connections are left, move the unlocked parts near them a little and route again (up to 5 rounds), then try spreading them over the whole board. Locked parts, valves, transformers, controls and connectors stay; Ctrl+Z takes it all back">Finish routing<small>keeps your layout, moves a few parts</small></button>
-        <button class="menu-item" id="btn-rearrange" title="Lay the whole board out automatically: every unlocked part comes off and goes back from scratch, valves and transformers too, turned as suits its wiring (pots, switches, jacks, connectors and fuses stay). Ten layouts are made and scored, the best three routed, the best routed one kept and its open connections nudged. The outline, holes, keep-outs and locked parts hold. Ctrl+Z takes it all back">Design from scratch<small>automatic layout, parts turned too</small></button>
-        <button class="menu-item" id="btn-unroute" title="Remove all tracks and vias (locked ones stay); Ctrl+Z brings them back">Unroute<small>every track and via (not locked)</small></button>
+        <button class="menu-item" data-ico="wand" id="mi-autoroute" title="Route the open connections with the board's own grid router (Freerouting first when ticked in Freerouting…), within the design rules; Ctrl+Z takes it back">Auto-route<small>the board's own grid router</small></button>
+        <button class="menu-item" data-ico="flag" id="btn-nudge" title="Auto-route; while connections are left, move the unlocked parts near them a little and route again (up to 5 rounds), then try spreading them over the whole board. Locked parts, valves, transformers, controls and connectors stay; Ctrl+Z takes it all back">Finish routing<small>keeps your layout, moves a few parts</small></button>
+        <button class="menu-item" data-ico="layout" id="btn-rearrange" title="Lay the whole board out automatically: every unlocked part comes off and goes back from scratch, valves and transformers too, turned as suits its wiring (pots, switches, jacks, connectors and fuses stay). Ten layouts are made and scored, the best three routed, the best routed one kept and its open connections nudged. The outline, holes, keep-outs and locked parts hold. Ctrl+Z takes it all back">Design from scratch<small>automatic layout, parts turned too</small></button>
+        <button class="menu-item" data-ico="eraser" id="btn-unroute" title="Remove all tracks and vias (locked ones stay); Ctrl+Z brings them back">Unroute<small>every track and via (not locked)</small></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="btn-ses" title="Add the tracks and vias of a Freerouting session file (.ses) routed from this board's DSN export">Import routes (SES)…<small>from Freerouting</small></button>
-        <button class="menu-item" id="btn-router" title="Where Freerouting's API server answers (default http://127.0.0.1:37864) and how to start it">Freerouting…<small>address, how to start it</small></button>
+        <button class="menu-item" data-ico="download" id="btn-ses" title="Add the tracks and vias of a Freerouting session file (.ses) routed from this board's DSN export">Import routes (SES)…<small>from Freerouting</small></button>
+        <button class="menu-item" data-ico="server" id="btn-router" title="Where Freerouting's API server answers (default http://127.0.0.1:37864) and how to start it">Freerouting…<small>address, how to start it</small></button>
         <input type="file" id="ses-file" accept=".ses,text/plain" hidden>
       </div>
     </div>
     <div class="menu" id="board-menu">
       <button class="btn" id="btn-board" aria-haspopup="true" title="Board setup and design rules">Board ▾</button>
       <div class="menu-list right" hidden>
-        <button class="menu-item" id="btn-setup" title="Board setup: outline, corners, mounting holes, drawing sheet, layer stack">Board setup…<small>outline, holes, stack</small></button>
-        <button class="menu-item" id="btn-rules" title="Design rules: clearances (by voltage), widths, vias, heaters, valve checks, net classes">Design rules…<small>clearances, heaters, checks</small></button>
+        <button class="menu-item" data-ico="sliders" id="btn-setup" title="Board setup: outline, corners, mounting holes, drawing sheet, layer stack">Board setup…<small>outline, holes, stack</small></button>
+        <button class="menu-item" data-ico="clearance" id="btn-rules" title="Design rules: clearances (by voltage), widths, vias, heaters, valve checks, net classes">Design rules…<small>clearances, heaters, checks</small></button>
       </div>
     </div>
     <div class="menu" id="export-menu">
       <button class="btn" id="btn-export" aria-haspopup="true">Export ▾</button>
       <div class="menu-list right" hidden>
-        <button class="menu-item" id="ex-print">Print…<small>layers 1:1, toner transfer · Ctrl+P</small></button>
+        <button class="menu-item" data-ico="print" id="ex-print">Print…<small>layers 1:1, toner transfer · Ctrl+P</small></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" id="ex-gerber">Gerber + drill files (ZIP)<small>for the board maker</small></button>
-        <button class="menu-item" id="ex-pdf">Print set (PDF)<small>assembly, copper 1:1, drill map</small></button>
-        <button class="menu-item" id="ex-toner">Toner transfer (PDF)<small>copper 1:1, ready to iron on</small></button>
-        <button class="menu-item" id="ex-kicad">KiCad board (ZIP)<small>.kicad_pcb with its rules, for KiCad 7 or later</small></button>
-        <button class="menu-item" id="ex-step" title="The board and every part in colour, for a chassis CAD: round bodies, leads and holes as true cylinders and circles">3D model (STEP)<small>board and parts, for a chassis CAD</small></button>
-        <button class="menu-item" id="ex-svg">Board drawing (SVG)<small>all layers, 1:1 mm</small></button>
-        <button class="menu-item" id="ex-json">Board file (JSON)<small>this layout</small></button>
-        <button class="menu-item" id="ex-dsn">Freerouting design (DSN)<small>route it in Freerouting by hand</small></button>
+        <button class="menu-item" data-ico="layers" id="ex-gerber">Gerber + drill files (ZIP)<small>for the board maker</small></button>
+        <button class="menu-item" data-ico="pdf" id="ex-pdf">Print set (PDF)<small>assembly, copper 1:1, drill map</small></button>
+        <button class="menu-item" data-ico="mirror" id="ex-toner">Toner transfer (PDF)<small>copper 1:1, ready to iron on</small></button>
+        <button class="menu-item" data-ico="chip" id="ex-kicad">KiCad board (ZIP)<small>.kicad_pcb with its rules, for KiCad 7 or later</small></button>
+        <button class="menu-item" data-ico="cube" id="ex-step" title="The board and every part in colour, for a chassis CAD: round bodies, leads and holes as true cylinders and circles">3D model (STEP)<small>board and parts, for a chassis CAD</small></button>
+        <button class="menu-item" data-ico="pen" id="ex-svg">Board drawing (SVG)<small>all layers, 1:1 mm</small></button>
+        <button class="menu-item" data-ico="json" id="ex-json">Board file (JSON)<small>this layout</small></button>
+        <button class="menu-item" data-ico="netlist" id="ex-dsn">Freerouting design (DSN)<small>route it in Freerouting by hand</small></button>
       </div>
     </div>
     <button class="btn" id="btn-lang" data-lang-toggle data-i18n-skip title="Интерфейс на русском">RU</button>
@@ -318,7 +318,7 @@
           <button class="btn" data-view="iso">Iso</button><button class="btn" data-view="top">Top</button><button class="btn" data-view="bottom">Bottom</button><button class="btn" data-view="front">Front</button><button class="btn" data-view="side">Side</button>
           <label><input type="checkbox" id="v3-parts" checked> Parts</label><label><input type="checkbox" id="v3-tubes" checked> Valves</label>
           <span class="spacer"></span>
-          <button class="btn" id="v3-png">Save PNG</button><button class="btn" id="v3-step" title="The board and every part in colour, for a chassis CAD: round bodies, leads and holes as true cylinders and circles">Export STEP</button><button class="btn" id="v3-close" title="Back to the layout (Esc or 3)">✕ Layout</button>
+          <button class="btn" data-ico="image" id="v3-png">Save PNG</button><button class="btn" data-ico="cube" id="v3-step" title="The board and every part in colour, for a chassis CAD: round bodies, leads and holes as true cylinders and circles">Export STEP</button><button class="btn" id="v3-close" title="Back to the layout (Esc or 3)">✕ Layout</button>
         </div>
         <div class="hint3d">Drag: turn · right-drag or Shift+drag: move · wheel: zoom</div>
       </div>
@@ -514,6 +514,7 @@
   </div>
 
   <script src="hints.js?v=dev"></script>
+  <script src="icons.js?v=dev"></script>
   <script src="i18n-ru.js?v=dev"></script>
   <script src="i18n-hints-ru.js?v=dev"></script>
   <script src="i18n.js?v=dev"></script>

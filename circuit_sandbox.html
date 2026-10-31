@@ -394,6 +394,11 @@
     @media (max-width: 1440px) { html[lang=ru] header .btn { padding: 5px 7px; } html[lang=ru] header { gap: 4px; } html[lang=ru] .sep { margin: 0 2px; } }
     @media (max-width: 1320px) { html[lang=ru] #btn-lang { display: none; } }
     @media (max-width: 1650px) { .wide-lbl { display: none; } }
+    /* the tools, Fit and Inspector: icon and name in a wide window, the icon alone in a narrower one (the title names each) */
+    @media (max-width: 1900px) { #btn-zoom-fit .lbl, #btn-insp .lbl { display: none; } #btn-zoom-fit, #btn-insp { padding-left: 7px; padding-right: 7px; } }
+    @media (max-width: 1760px) { header .seg-group .btn[data-ico] .lbl { display: none; } header .seg-group .btn[data-ico] { padding-left: 7px; padding-right: 7px; } }
+    @media (max-width: 1900px) { html[lang=ru] #btn-zoom-fit .lbl, html[lang=ru] #btn-insp .lbl { display: none; } }
+    @media (max-width: 1800px) { html[lang=ru] header .seg-group .btn[data-ico] .lbl { display: none; } }
     @media (max-width: 1450px) { .doc-switch .ds-lbl { display: none; } .brand span, .brand b { display: none; } .brand { margin-right: 0; } }   /* the Schematic | Board switch says where you are */
     #btn-sim { min-width: 112px; font-variant-numeric: tabular-nums; }
     #btn-sim.progress { background-image: linear-gradient(var(--accent), var(--accent)); background-repeat: no-repeat; background-position: left bottom; background-size: var(--progress) 2px; }
@@ -448,41 +453,41 @@
     <div class="menu" id="file-menu">
       <button class="btn" id="btn-file" aria-haspopup="true" aria-expanded="false">File ▾</button>
       <div class="menu-list" role="menu" hidden>
-        <button class="menu-item" role="menuitem" id="btn-new">New…<kbd>with frame</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-add-sheet">Add sheet…<kbd>next sheet</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-open">Open…<kbd>Ctrl+O</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
+        <button class="menu-item" data-ico="new" role="menuitem" id="btn-new">New…<kbd>with frame</kbd></button>
+        <button class="menu-item" data-ico="sheet" role="menuitem" id="btn-add-sheet">Add sheet…<kbd>next sheet</kbd></button>
+        <button class="menu-item" data-ico="open" role="menuitem" id="btn-open">Open…<kbd>Ctrl+O</kbd></button>
+        <button class="menu-item" data-ico="save" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
+        <button class="menu-item" data-ico="save-as" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
+        <button class="menu-item" data-ico="link" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
+        <button class="menu-item" data-ico="history" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
         <div class="menu-sep"></div>
         <div class="menu-head">Examples</div>
-        <button class="menu-item" role="menuitem" id="btn-start" title="Every example with its picture, and New and Open: the screen shown at start">Gallery…<kbd>start screen</kbd></button>
+        <button class="menu-item" data-ico="gallery" role="menuitem" id="btn-start" title="Every example with its picture, and New and Open: the screen shown at start">Gallery…<kbd>start screen</kbd></button>
         <div id="examples-list"></div>
         <div class="menu-sep"></div>
-        <button class="menu-item" role="menuitem" id="btn-print">Print…<kbd>Ctrl+P</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-pdf">Save as PDF<kbd>all sheets</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-export">Export sheet…<kbd>PDF / PNG</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-png">Export PNG…<kbd>image</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-kicad" title="The schematic, the board (when its parts are placed) and a project file with the net classes, as a ZIP for KiCad 7 or later">Export KiCad project<kbd>.kicad_sch / _pcb</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-spice">Export SPICE netlist…<kbd>LTspice</kbd></button>
+        <button class="menu-item" data-ico="print" role="menuitem" id="btn-print">Print…<kbd>Ctrl+P</kbd></button>
+        <button class="menu-item" data-ico="pdf" role="menuitem" id="btn-pdf">Save as PDF<kbd>all sheets</kbd></button>
+        <button class="menu-item" data-ico="export" role="menuitem" id="btn-export">Export sheet…<kbd>PDF / PNG</kbd></button>
+        <button class="menu-item" data-ico="image" role="menuitem" id="btn-png">Export PNG…<kbd>image</kbd></button>
+        <button class="menu-item" data-ico="chip" role="menuitem" id="btn-kicad" title="The schematic, the board (when its parts are placed) and a project file with the net classes, as a ZIP for KiCad 7 or later">Export KiCad project<kbd>.kicad_sch / _pcb</kbd></button>
+        <button class="menu-item" data-ico="netlist" role="menuitem" id="btn-spice">Export SPICE netlist…<kbd>LTspice</kbd></button>
       </div>
     </div>
     <div class="menu" id="view-menu">
       <button class="btn" id="btn-view" aria-haspopup="true" aria-expanded="false" title="What the schematic shows">View ▾</button>
       <div class="menu-list" role="menu" hidden>
         <div class="menu-head">On the schematic</div>
-        <button class="menu-item check active" role="menuitemcheckbox" aria-checked="true" id="btn-volts" title="Show each node's voltage: DC in yellow, AC (~Vrms) in cyan; wires carrying signal glow cyan">Voltages<kbd>DC and ~AC, at each node</kbd></button>
-        <button class="menu-item check active" role="menuitemcheckbox" aria-checked="true" id="btn-amps" title="Show the DC current in the wires, with its direction">Currents<kbd>in the wires</kbd></button>
-        <button class="menu-item check active" role="menuitemcheckbox" aria-checked="true" id="btn-legend" title="A key in the corner of the sheet: what the glow and the sticker colours mean">Legend<kbd>what the colours mean</kbd></button>
+        <button class="menu-item check active" data-ico="volts" role="menuitemcheckbox" aria-checked="true" id="btn-volts" title="Show each node's voltage: DC in yellow, AC (~Vrms) in cyan; wires carrying signal glow cyan">Voltages<kbd>DC and ~AC, at each node</kbd></button>
+        <button class="menu-item check active" data-ico="amps" role="menuitemcheckbox" aria-checked="true" id="btn-amps" title="Show the DC current in the wires, with its direction">Currents<kbd>in the wires</kbd></button>
+        <button class="menu-item check active" data-ico="legend" role="menuitemcheckbox" aria-checked="true" id="btn-legend" title="A key in the corner of the sheet: what the glow and the sticker colours mean">Legend<kbd>what the colours mean</kbd></button>
         <div class="menu-sep"></div>
-        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-bom" title="Bill of materials under the schematic; export TXT, CSV, XLSX or PDF (B)">Bill of materials<kbd>B</kbd></button>
-        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-checks" title="Every part beyond its rating and every wiring problem, in the panel under the schematic">Checks<kbd>under the schematic</kbd></button>
-        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-tolerance" title="The circuit simulated many times with its parts spread within their tolerances: each value's spread">Tolerance runs<kbd>under the schematic</kbd></button>
-        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-power" title="The circuit simulated at a row of input levels: the output power against its distortion, and the power at 1 %, 5 % and 10 % THD">Power sweep<kbd>under the schematic</kbd></button>
-        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-noise" title="Noise and hum at the output with no signal: the signal-to-noise ratio in dB(A), the input noise and the parts it comes from, the supply's ripple and AC heater hum">Noise and hum<kbd>under the schematic</kbd></button>
-        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-sweep" title="One part's value stepped over a range, the circuit simulated at each step: how every tube, transistor, speaker and scope channel follows">Parameter sweep<kbd>under the schematic</kbd></button>
-        <button class="menu-item check" role="menuitemcheckbox" aria-checked="false" id="btn-listen" title="Hear the circuit: a recording (WAV, MP3, a guitar riff or the generator's tone) played through it, A/B against the input">Listen<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" data-ico="bom" role="menuitemcheckbox" aria-checked="false" id="btn-bom" title="Bill of materials under the schematic; export TXT, CSV, XLSX or PDF (B)">Bill of materials<kbd>B</kbd></button>
+        <button class="menu-item check" data-ico="checks" role="menuitemcheckbox" aria-checked="false" id="btn-checks" title="Every part beyond its rating and every wiring problem, in the panel under the schematic">Checks<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" data-ico="tolerance" role="menuitemcheckbox" aria-checked="false" id="btn-tolerance" title="The circuit simulated many times with its parts spread within their tolerances: each value's spread">Tolerance runs<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" data-ico="power" role="menuitemcheckbox" aria-checked="false" id="btn-power" title="The circuit simulated at a row of input levels: the output power against its distortion, and the power at 1 %, 5 % and 10 % THD">Power sweep<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" data-ico="noise" role="menuitemcheckbox" aria-checked="false" id="btn-noise" title="Noise and hum at the output with no signal: the signal-to-noise ratio in dB(A), the input noise and the parts it comes from, the supply's ripple and AC heater hum">Noise and hum<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" data-ico="sweep" role="menuitemcheckbox" aria-checked="false" id="btn-sweep" title="One part's value stepped over a range, the circuit simulated at each step: how every tube, transistor, speaker and scope channel follows">Parameter sweep<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" data-ico="listen" role="menuitemcheckbox" aria-checked="false" id="btn-listen" title="Hear the circuit: a recording (WAV, MP3, a guitar riff or the generator's tone) played through it, A/B against the input">Listen<kbd>under the schematic</kbd></button>
         <div class="menu-sep"></div>
         <div class="menu-head">Interface</div>
         <button class="menu-item check" role="menuitemradio" aria-checked="true" data-lang="en" data-i18n-skip title="Menus, buttons and tooltips in English">English</button>
@@ -496,14 +501,14 @@
     <div class="menu" id="ai-menu">
       <button class="btn" id="btn-ai" aria-haspopup="true" aria-expanded="false" title="AI: ask about the circuit, explain it, fix the checks, design and tune (your own Claude, ChatGPT or Gemini key)">AI ▾</button>
       <div class="menu-list" role="menu" hidden>
-        <button class="menu-item" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
-        <button class="menu-item" role="menuitem" id="menu-ai-design" title="Describe an amplifier; the AI designs it, the CAD draws and simulates it, and the Checks go back for revisions">Design from a description…<kbd>new circuit</kbd></button>
-        <button class="menu-item" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
-        <button class="menu-item" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
-        <button class="menu-item" role="menuitem" id="menu-ai-datasheet" title="A tube's datasheet (PDF) read by the AI: ratings, pinout and a Koren model fitted to its plate curves, for review">Tube from a datasheet…<kbd>PDF → model</kbd></button>
-        <button class="menu-item" role="menuitem" id="menu-ai-tune" title="Part values changed until the simulated circuit meets your goals; works without a key">Auto-tune<kbd>reach a goal</kbd></button>
+        <button class="menu-item" data-ico="chat" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
+        <button class="menu-item" data-ico="sparkle" role="menuitem" id="menu-ai-design" title="Describe an amplifier; the AI designs it, the CAD draws and simulates it, and the Checks go back for revisions">Design from a description…<kbd>new circuit</kbd></button>
+        <button class="menu-item" data-ico="bulb" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
+        <button class="menu-item" data-ico="wrench" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
+        <button class="menu-item" data-ico="datasheet" role="menuitem" id="menu-ai-datasheet" title="A tube's datasheet (PDF) read by the AI: ratings, pinout and a Koren model fitted to its plate curves, for review">Tube from a datasheet…<kbd>PDF → model</kbd></button>
+        <button class="menu-item" data-ico="target" role="menuitem" id="menu-ai-tune" title="Part values changed until the simulated circuit meets your goals; works without a key">Auto-tune<kbd>reach a goal</kbd></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
+        <button class="menu-item" data-ico="key" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
       </div>
     </div>
     <input type="file" id="file-input" accept=".json,application/json" hidden>
@@ -512,9 +517,9 @@
     <button class="btn ib" id="btn-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5l3 3-3 3"/><path d="M13.5 6.5h-7a4 4 0 0 0 0 8H9"/></svg></button>
     <span class="sep"></span>
     <div class="seg-group" role="group" aria-label="Tool">
-      <button class="btn" id="btn-tool-select" title="Select / move (V)">Select</button>
-      <button class="btn" id="btn-tool-wire" title="Draw wires from anywhere (W)">Wire</button>
-      <button class="btn" id="btn-tool-probe" title="Voltmeter probe (P): point at a wire or pin to read its DC and AC voltage and see its waveform; click to leave the probe on that node (Esc removes it)">Probe</button>
+      <button class="btn" data-ico="select" id="btn-tool-select" title="Select / move (V)"><span class="lbl">Select</span></button>
+      <button class="btn" data-ico="wire" id="btn-tool-wire" title="Draw wires from anywhere (W)"><span class="lbl">Wire</span></button>
+      <button class="btn" data-ico="probe" id="btn-tool-probe" title="Voltmeter probe (P): point at a wire or pin to read its DC and AC voltage and see its waveform; click to leave the probe on that node (Esc removes it)"><span class="lbl">Probe</span></button>
     </div>
     <span class="sep"></span>
     <div class="seg-group" role="group" aria-label="Zoom">
@@ -522,7 +527,7 @@
       <span id="zoom-label">100%</span>
       <button class="btn" id="btn-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
     </div>
-    <button class="btn" id="btn-zoom-fit" title="Fit the sheet you are on: the selected, last clicked or most visible one. Again: all sheets (F)">Fit</button>
+    <button class="btn" data-ico="fit" id="btn-zoom-fit" title="Fit the sheet you are on: the selected, last clicked or most visible one. Again: all sheets (F)"><span class="lbl">Fit</span></button>
     <select id="sheet-nav" class="btn" title="Show one sheet" hidden></select>
     <span class="sep"></span>
     <div class="seg-group" role="group" aria-label="Simulation">
@@ -535,18 +540,18 @@
       <button class="btn link" id="btn-windows" aria-haspopup="true" aria-expanded="false" title="Instruments and the board layout, each in its own window" aria-label="Windows"><svg class="ico win-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4.5" width="10" height="9" rx="1"/><path d="M4.5 4.5v-2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-2"/><path d="M1.5 7h10"/></svg><span class="win-lbl">Windows ▾</span></button>
       <div class="menu-list right" role="menu" hidden>
         <div class="menu-head">Instruments</div>
-        <button class="menu-item" role="menuitem" id="btn-open-scope" title="Full oscilloscope for the first scope part">Oscilloscope<kbd>↗</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-open-spectrum" title="FFT of a scope part's channels">Spectrum analyzer<kbd>↗</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-open-bode" title="Frequency response (gain and phase) at a scope part's channels">Bode plotter<kbd>↗</kbd></button>
-        <button class="menu-item" role="menuitem" id="btn-open-tracer" title="Plate curves with this circuit's operating point">Curve tracer<kbd>↗</kbd></button>
+        <button class="menu-item" data-ico="scope" role="menuitem" id="btn-open-scope" title="Full oscilloscope for the first scope part">Oscilloscope<kbd>↗</kbd></button>
+        <button class="menu-item" data-ico="spectrum" role="menuitem" id="btn-open-spectrum" title="FFT of a scope part's channels">Spectrum analyzer<kbd>↗</kbd></button>
+        <button class="menu-item" data-ico="bode" role="menuitem" id="btn-open-bode" title="Frequency response (gain and phase) at a scope part's channels">Bode plotter<kbd>↗</kbd></button>
+        <button class="menu-item" data-ico="tracer" role="menuitem" id="btn-open-tracer" title="Plate curves with this circuit's operating point">Curve tracer<kbd>↗</kbd></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" role="menuitem" id="btn-open-board" title="Board Design: lay out the PCB of this circuit (Alt+B)">Board layout<kbd>Alt+B</kbd></button>
-        <button class="menu-item check" role="menuitemcheckbox" id="btn-board-tab" title="Ticked: the board opens in this window, in place of the schematic, and the Schematic | Board switch flips between them. Not ticked: the board gets a window of its own (for a second monitor)">Board in this window<kbd>a tab, not a window</kbd></button>
+        <button class="menu-item" data-ico="board" role="menuitem" id="btn-open-board" title="Board Design: lay out the PCB of this circuit (Alt+B)">Board layout<kbd>Alt+B</kbd></button>
+        <button class="menu-item check" data-ico="tab" role="menuitemcheckbox" id="btn-board-tab" title="Ticked: the board opens in this window, in place of the schematic, and the Schematic | Board switch flips between them. Not ticked: the board gets a window of its own (for a second monitor)">Board in this window<kbd>a tab, not a window</kbd></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" role="menuitem" id="btn-open-manual" title="Every feature, part, value and coefficient explained">Manual<kbd>↗</kbd></button>
+        <button class="menu-item" data-ico="book" role="menuitem" id="btn-open-manual" title="Every feature, part, value and coefficient explained">Manual<kbd>↗</kbd></button>
       </div>
     </div>
-    <button class="btn" id="btn-insp" title="Show or hide the inspector (narrow windows: it opens when you select a part)" aria-controls="inspector">Inspector</button>
+    <button class="btn" data-ico="inspector" id="btn-insp" title="Show or hide the inspector (narrow windows: it opens when you select a part)" aria-controls="inspector"><span class="lbl">Inspector</span></button>
     <button class="btn" id="btn-lang" data-lang-toggle data-i18n-skip title="Интерфейс на русском">RU</button>
     <button class="btn ib" id="btn-help" title="Help and keyboard shortcuts (F1 or ?)" aria-label="Help"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.1 6.2a2 2 0 1 1 2.6 1.9c-.5.2-.7.6-.7 1.1v.5"/><path d="M8 11.6v.2"/></svg></button>
   </header>
@@ -931,6 +936,7 @@
   </div>
 
   <script src="hints.js?v=dev"></script>
+  <script src="icons.js?v=dev"></script>
   <script src="i18n-ru.js?v=dev"></script>
   <script src="i18n-hints-ru.js?v=dev"></script>
   <script src="i18n.js?v=dev"></script>

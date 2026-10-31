@@ -20,6 +20,12 @@ html, body { height: 100%; margin: 0; }
 /* icon buttons: a 16 px line icon drawn in the text colour */
 .btn.ib { padding: 5px 8px; line-height: 0; }
 .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+/* icons added by icons.js (data-ico): in a button before its name (span.lbl, which a narrow
+   window hides, the title naming the button), in a menu item before its name */
+.btn[data-ico] { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.btn[data-ico] > .ico { flex: none; }
+.menu-item .ico-l { display: inline-flex; align-items: center; gap: 8px; }
+.menu-item .ico-l > .ico { width: 14px; height: 14px; margin: 0; flex: none; opacity: .85; }
 /* buttons joined into one segmented row (the Schematic | Board switch, Undo | Redo, the tools) */
 .seg-group { display: inline-flex; align-items: stretch; }
 .seg-group > * { border-radius: 0; margin-left: -1px; }

@@ -102,6 +102,9 @@
     .modal-actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
     #fit-status { font-size: 12px; color: var(--muted); margin: 6px 0; }
 
+    /* CSV, PNG and the model: icon and name, the icon alone in a narrower window */
+    @media (max-width: 1240px) { header .btn[data-ico] .lbl { display: none; } }
+    @media (max-width: 1400px) { html[lang=ru] header .btn[data-ico] .lbl { display: none; } }
     @media (max-width: 1000px) {
       body { overflow: auto; }
       main { grid-template-columns: 1fr; }
@@ -121,9 +124,9 @@
     <span class="spacer"></span>
     <button class="btn" id="btn-lang" data-lang-toggle data-i18n-skip title="Интерфейс на русском">RU</button>
     <a class="btn" href="help.html#tracer" target="tube_help" title="Manual: the curve tracer, the Koren coefficients and the transistor models" aria-label="Help">?</a>
-    <button class="btn" id="btn-model" title="LTspice model of this tube; fit the model to measured points">Tube model &amp; fitter</button>
-    <button class="btn" id="btn-csv" title="Save the curves on the chart as a CSV table">CSV</button>
-    <button class="btn" id="btn-png" title="Save the chart as PNG">PNG</button>
+    <button class="btn" data-ico="model" id="btn-model" title="LTspice model of this tube; fit the model to measured points"><span class="lbl">Tube model &amp; fitter</span></button>
+    <button class="btn" data-ico="table" id="btn-csv" title="Save the curves on the chart as a CSV table"><span class="lbl">CSV</span></button>
+    <button class="btn" data-ico="image" id="btn-png" title="Save the chart as PNG"><span class="lbl">PNG</span></button>
   </header>
 
   <main>
@@ -203,6 +206,7 @@
   </div>
 
   <script src="hints.js?v=dev"></script>
+  <script src="icons.js?v=dev"></script>
   <script src="i18n-ru.js?v=dev"></script>
   <script src="i18n-hints-ru.js?v=dev"></script>
   <script src="i18n.js?v=dev"></script>

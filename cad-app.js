@@ -948,11 +948,7 @@
   // toolbar and menu buttons bound to them and the help's Keyboard list all come from it.
   // A new command with a key and a help text shows up in the help by itself.
   const cmds = UiKit.commands();
-  const ICONS = {
-    rotate: `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M11.7 1.6v3h-3"/></svg>`,
-    mirror: `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v13" stroke-dasharray="2 1.6"/><path d="M6 4 2 12h4z"/><path d="M10 4l4 8h-4z"/></svg>`,
-    delete: `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11"/><path d="M6 4.5V2.5h4v2"/><path d="M4 4.5l.8 9.5h6.4l.8-9.5"/><path d="M6.8 7v4.5M9.2 7v4.5"/></svg>`
-  };
+  const ICONS = Object.fromEntries(["rotate", "mirror", "delete", "duplicate", "undo", "redo", "copy", "paste", "select-all"].map(n => [n, Icons.svg(n)]));
   const helpModal = () => document.getElementById("help-modal");
   const toggleHelp = () => { const m = helpModal(); m.hidden = !m.hidden; };
   const zoomBy = k => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, k);
@@ -975,7 +971,7 @@
     .add({ id: "save-revision", keys: ["Ctrl+Alt+S"], prevent: true, when: () => !!revisions, run: () => revisions.quickSave(), help: "save a revision of the project (File ▾ → Revisions…)" })
     .add({ id: "rotate", label: "Rotate", icon: ICONS.rotate, keys: ["Space", "R"], helpKeys: ["Space"], run: rotateSelection, help: "rotate the selection, the part being placed or the parts being dragged (a tap: Space held down while dragging pans; R also rotates)" })
     .add({ id: "mirror", label: "Mirror left–right", icon: ICONS.mirror, keys: ["M"], run: mirrorSelection, help: "mirror left–right" })
-    .add({ id: "duplicate", label: "Duplicate", keys: ["D", "Ctrl+D"], prevent: true, run: () => { if (copySelection()) paste(40, 40); }, help: "duplicate (also Ctrl+D)", helpKeys: ["D"] })
+    .add({ id: "duplicate", label: "Duplicate", icon: ICONS.duplicate, keys: ["D", "Ctrl+D"], prevent: true, run: () => { if (copySelection()) paste(40, 40); }, help: "duplicate (also Ctrl+D)", helpKeys: ["D"] })
     .add({ id: "delete", label: "Delete", icon: ICONS.delete, keys: ["Delete", "Backspace"], anyCtrl: true, prevent: true, run: deleteSelection, help: "delete" })
     .add({ id: "wire", keys: ["W"], run: () => setTool(S.tool === "wire" ? "select" : "wire"), help: "wire tool" })
     .add({ id: "select", keys: ["V"], run: () => setTool("select"), help: "select tool" })
@@ -993,11 +989,11 @@
     .add({ id: "noise", label: "Noise and hum", run: () => toggleBom(undefined, "noise"), check: () => bomOpts.open && bomOpts.tab === "noise" })
     .add({ id: "zoom-in", keys: ["+", "=", "NumpadAdd", "Equal"], anyCtrl: true, run: () => zoomBy(1.2), help: "zoom in · wheel zooms at the pointer", helpKeys: ["+"] })
     .add({ id: "zoom-out", keys: ["-", "NumpadSubtract", "Minus"], anyCtrl: true, run: () => zoomBy(1 / 1.2), help: "zoom out", helpKeys: ["-"] })
-    .add({ id: "undo", menuId: "menu-undo", label: "Undo", keys: ["Ctrl+Z"], prevent: true, inControls: true, run: undo, help: "undo" })
-    .add({ id: "redo", menuId: "menu-redo", label: "Redo", keys: ["Ctrl+Y", "Ctrl+Shift+Z"], prevent: true, inControls: true, run: redo, help: "redo (also Ctrl+Shift+Z)", helpKeys: ["Ctrl+Y"] })
-    .add({ id: "copy", label: "Copy", keys: ["Ctrl+C"], run: () => copySelection(), help: "copy" })
-    .add({ id: "paste", label: "Paste", keys: ["Ctrl+V"], prevent: true, run: () => paste(40, 40), help: "paste" })
-    .add({ id: "select-all", label: "Select all", keys: ["Ctrl+A"], prevent: true, run: selectAll, help: "select all" })
+    .add({ id: "undo", menuId: "menu-undo", label: "Undo", icon: ICONS.undo, keys: ["Ctrl+Z"], prevent: true, inControls: true, run: undo, help: "undo" })
+    .add({ id: "redo", menuId: "menu-redo", label: "Redo", icon: ICONS.redo, keys: ["Ctrl+Y", "Ctrl+Shift+Z"], prevent: true, inControls: true, run: redo, help: "redo (also Ctrl+Shift+Z)", helpKeys: ["Ctrl+Y"] })
+    .add({ id: "copy", label: "Copy", icon: ICONS.copy, keys: ["Ctrl+C"], run: () => copySelection(), help: "copy" })
+    .add({ id: "paste", label: "Paste", icon: ICONS.paste, keys: ["Ctrl+V"], prevent: true, run: () => paste(40, 40), help: "paste" })
+    .add({ id: "select-all", label: "Select all", icon: ICONS["select-all"], keys: ["Ctrl+A"], prevent: true, run: selectAll, help: "select all" })
     .add({ id: "save", keys: ["Ctrl+S"], prevent: true, run: () => saveFile(), help: "save" })
     .add({ id: "save-as", keys: ["Ctrl+Shift+S"], prevent: true, run: () => saveFileAs(), help: "save as" })
     .add({ id: "open", keys: ["Ctrl+O"], prevent: true, run: () => openDialog(), help: "open" })

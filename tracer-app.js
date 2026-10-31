@@ -1198,7 +1198,7 @@
     $("opt-pa-t").textContent = d.semi ? "Pd max" : "Pa max"; $("opt-pa70-t").textContent = d.semi ? "70% Pd" : "70% Pa";
     ["opt-bias", "opt-pa", "opt-pa70"].forEach(id => { $(id).disabled = !out; $(id).parentNode.classList.toggle("off", !out); });
     $("opt-traj").disabled = d.semi && S.semiMode === "gain"; $("opt-traj").parentNode.classList.toggle("off", d.semi && S.semiMode === "gain");
-    $("btn-model").textContent = d.semi ? "Transistor model" : "Tube model & fitter";
+    $("btn-model").querySelector(".lbl").textContent = d.semi ? "Transistor model" : "Tube model & fitter";
     $("btn-model").title = d.semi ? "SPICE .model of this transistor, with the simulator's parameters" : "LTspice model of this tube; fit the model to measured points";
     $("socket-head").textContent = d.semi ? "Package" : "Socket";
     renderLink(); renderCircuitList(); renderLibrary(); if (d.semi) drawPackage(d); else drawPinout(d.tube); renderHud(); drawPlot(); renderPicks();
