@@ -106,7 +106,7 @@ test("a project keeps its revisions: saved, listed, read back, renamed, deleted 
 test("revisions and links share the store: links give way, revisions are refused past their part, never deleted", async () => {
   const post = t => fetch(root() + "/api/share", { method: "POST", body: t, headers: { origin: ORIGIN } });
   const ids = [];
-  for (const f of ["01-2n3904-ce-unbypassed.json", "02-2n3904-ce-bypassed.json", "03-12ax7-ccs-vs-resistor.json", "08-555-astable.json"]) {
+  for (const f of ["05-10w-mosfet-amplifier.json", "14-el84-push-pull-ultralinear-1608.json", "06-gubin-6n23p-6p14p.json", "08-555-astable.json"]) {
     const r = await post(await CadShare.pack(example(f)));
     ids.push((await r.json()).id);
   }
