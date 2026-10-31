@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.160.0] - 2026-10-31
+
+### Added
+- **Standing resistors (vertical mounting) on the board.** An axial resistor gets a *Mounting* property in the Board inspector, Horizontal | Vertical (one part or a whole selection), also on the right mouse button and on Shift+V with it selected or while dragging it (with nothing that can stand up selected, Shift+V is still the via tool). Standing, the body sits upright on pad 1 and the top lead bends over in a hairpin down to pad 2. No stored variants: lead spacing = max(D + d + 2R rounded up to 0.05 mm, 2.54 mm and the pads 0.4 mm apart), height = L + R + 2d, from the body length and diameter (part number, standard size or set by hand), the lead diameter and the least bend radius (IPC-A-610 by lead diameter, or set by hand: *Body (mm)* offers lead Ø and bend R while standing). A ¼ W resistor stands on 4.3 mm and is 8.1 mm tall. Silkscreen: the body's circle round pad 1 with a pin 1 notch mark and the hairpin lead; the courtyard grows with the height for a 5° lean when soldered. The track ends on its pads follow when it is stood up or laid down, so nets and routing stay joined. The 3D view and STEP show it standing with the top lead folded over; Gerber, drill, KiCad and Freerouting exports use the worked-out pads (footprint named by its sizes, e.g. `AXIAL-V-D2.5-L6.3-P4.3`).
+- **Enclosure height check.** *Design rules → Enclosure height above the board* (0: no limit, the default) and a *Part height under the lid* check: a top-side axial resistor taller than it (standing L + R + 2d, lying Ø + 0.4 mm) is a Z-axis clearance error. Help, README, hover hints and Russian included.
+
 ## [3.159.0] - 2026-10-31
 
 ### Changed

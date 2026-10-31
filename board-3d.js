@@ -60,6 +60,31 @@
     s.faces.forEach((f, i) => { if (i > 1) f.vn = f.loops[0].map(k => radial(s.verts[k])); });
     return s;
   }
+  // a round wire swept along a polyline (the corners mitred): a solid of planar faces, for a bent lead.
+  // path: local [x, y, z] points; the ring at each corner lies in the plane halfway between its two runs
+  function wire(path, r, color, to) {
+    const n = 10, T = [];
+    for (let k = 0; k + 1 < path.length; k++) T.push(unit(sub(path[k + 1], path[k])));
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const helper = Math.abs(T[0][1]) < 0.9 ? [0, 1, 0] : [1, 0, 0], u = unit(cross(T[0], helper)), w = cross(T[0], u);
+    const add = (a, b, k) => a.map((c, i) => c + b[i] * k);
+    // the first ring round the start, then each next ring where the run's lines meet the corner's plane
+    let ring = Array.from({ length: n }, (_, j) => { const a = 2 * Math.PI * j / n; return add(add(path[0], u, r * Math.cos(a)), w, r * Math.sin(a)); });
+    const rings = [ring];
+    for (let k = 1; k < path.length; k++) {
+      const t = T[k - 1], m = k < T.length ? unit(add(t, T[k], 1)) : t;
+      ring = ring.map(p => add(p, t, dot(sub(path[k], p), m) / dot(t, m)));
+      rings.push(ring);
+    }
+    const V = rings.flat().map(to), F = [], at = (k, j) => k * n + (j % n);
+    F.push(face(V, [Array.from({ length: n }, (_, j) => at(0, j))], sub(to(path[0]), to(path[1]))));
+    F.push(face(V, [Array.from({ length: n }, (_, j) => at(rings.length - 1, j))], sub(to(path[path.length - 1]), to(path[path.length - 2]))));
+    for (let k = 0; k + 1 < rings.length; k++) {
+      const mid = to(avg([path[k], path[k + 1]]));
+      for (let j = 0; j < n; j++) { const q = [at(k, j), at(k, j + 1), at(k + 1, j + 1), at(k + 1, j)]; F.push(face(V, [q], sub(avg(q.map(i => V[i])), mid))); }
+    }
+    return { color, alpha: 1, verts: V, faces: F };
+  }
   const cylZ = (x, y, r, z1, z2, color, to, ex) => cyl("z", x, y, r, z1, z2, color, to, ex);
   const cylX = (y, z, r, x1, x2, color, to, ex) => cyl("x", y, z, r, x1, x2, color, to, ex);
   const cylY = (x, z, r, y1, y2, color, to, ex) => cyl("y", x, z, r, y1, y2, color, to, ex);
@@ -78,7 +103,15 @@
     const pads = fp.pads, lr = fp.body && fp.body.lead > 0 ? fp.body.lead / 2 : 0.3, lead = (x, y, ztop) => out.push(cylZ(x, y, lr, -1.2 - t, ztop, C.lead, to));
     const D = B().FPDATA, bd = fp.body || {};   // the real part's size (its part number, or set by hand)
     let m;
-    if ((m = /^(AXIAL|DIODE)-([\d.]+)$/.exec(name))) {
+    if (fp.vert) {
+      // standing up: the body on a lead-diameter stand-off over pad 1, its top lead bent (radius R) over
+      // and down through pad 2; the bend's top at L + R + 2d, the Z-height the checks use
+      const v = fp.vert, x1 = -v.P / 2, x2 = v.P / 2, r = v.d / 2, z0 = v.d, zt = z0 + v.L, zh = v.L + v.R + 1.5 * v.d, path = [[x1, 0, zt - 0.3]];
+      const arc = (cx, a0, a1) => { for (let k = 0; k <= 6; k++) { const a = (a0 + (a1 - a0) * k / 6) * Math.PI / 180; path.push([cx + v.R * Math.cos(a), 0, zh - v.R + v.R * Math.sin(a)]); } };
+      if (zh - v.R > zt + 0.05) path.push([x1, 0, zh - v.R]);
+      arc(x1 + v.R, 180, 90); arc(x2 - v.R, 90, 0); path.push([x2, 0, -1.2 - t]);
+      out.push(cylZ(x1, 0, v.D / 2, z0, zt, C.resistor, to), cylZ(x1, 0, r, -1.2 - t, z0 + 0.3, C.lead, to), wire(path.filter((p, k) => !k || Math.hypot(...sub(p, path[k - 1])) > 1e-3), r, C.lead, to));
+    } else if ((m = /^(AXIAL|DIODE)-([\d.]+)$/.exec(name))) {
       const L = bd.l > 0 ? bd.l : D.AXIAL[m[2]][0], Dm = bd.d > 0 ? bd.d : D.AXIAL[m[2]][1], h = +m[2] / 2, zc = Dm / 2 + 0.4;
       out.push(cylX(0, zc, Dm / 2, -L / 2, L / 2, m[1] === "DIODE" ? C.diode : C.resistor, to));
       if (m[1] === "DIODE") out.push(cylX(0, zc, Dm / 2 + 0.05, -L / 2 + 0.1 * L, -L / 2 + 0.22 * L, C.band, to));

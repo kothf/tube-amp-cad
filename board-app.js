@@ -705,6 +705,7 @@
         sep();
       }
       it("Turn 90°", "Space", rotateSel); it(`Move to the ${(bp.side || "F") === "F" ? "bottom" : "top"} side`, "M", flipSel); it(bp.locked ? "Unlock" : "Lock", "L", lockSel);
+      if (B.canStand(bp.fp)) it(bp.mount === "V" ? "Lay it down (horizontal)" : "Stand it up (vertical)", "Shift+V", () => toggleMount([g.key]));
       it("Zoom to it", "Z", zoomToSel);
     } else if (ar) {
       S.sel = { kind: ar.kind, i: ar.i }; const a = S.board[AREAS[ar.kind]][ar.i];
@@ -918,7 +919,7 @@
     else if (L === "z") zoomToSel();
     else if (e.code === "Backslash" || e.key === "\\") setBare(!S.bare);
     else if (L === "x") setTool(S.tool === "route" ? "select" : "route");
-    else if (L === "v" && e.shiftKey) setTool("via");
+    else if (L === "v" && e.shiftKey) { if (S.route || !toggleMount()) setTool("via"); }
     else if (L === "v") { if (S.route) routeVia(); else setLayer(S.layer === "F.Cu" ? "B.Cu" : "F.Cu"); }
     else if (L === "t") setTool("text");
     else if (L === "h") setTool("hole");
@@ -1035,6 +1036,39 @@
       if (k === "text") o.rot = ((o.rot || 0) + (o.layer.startsWith("B") ? 3 : 1)) & 3;
     });
     commit(`Turned ${it.length} items 90°`);
+  }
+  // Mounting of axial resistors: lying down (horizontal) or standing up (vertical, Shift+V). The pads
+  // move to the pitch the body and leads need; the ends of the tracks on them follow, so nothing is
+  // unrouted. keys: the parts (default: the selection or the part being dragged); to: "H" | "V" | undefined (swap)
+  const standKeys = keys => (keys || []).filter(k => S.board.parts[k] && B.canStand(S.board.parts[k].fp));
+  function toggleMount(keys, to) {
+    if (!S.model) return false;
+    const d = S.drag, sel = keys || (d && d.kind === "part" ? [d.key] : S.sel && S.sel.kind === "part" ? [S.sel.key] : S.sel && S.sel.kind === "multi" ? S.sel.parts : []);
+    const ks = standKeys(sel);
+    if (!ks.length) return false;   // nothing that can stand up: Shift+V is the via tool
+    const free = ks.filter(k => !S.board.parts[k].locked); if (!free.length) { lockedNote(); return true; }
+    const want = to || (free.every(k => S.board.parts[k].mount === "V") ? "H" : "V");
+    let moved = 0;
+    free.forEach(k => {
+      const bp = S.board.parts[k], g = S.model.parts.find(x => x.key === k); if (!g) return;
+      const before = S.model.pads.filter(p => p.part === k);
+      if (want === "V") bp.mount = "V"; else delete bp.mount;
+      const f = B.partFootprint(g, bp);
+      before.forEach(p => {
+        const q = f.pads.find(x => x.num === p.num); if (!q) return;
+        // a track end anywhere on the pad's copper (an autorouted one need not end at its centre) moves with it
+        const [nx, ny] = B.place([q.x, q.y], bp), on = e => (p.shape === "rect" ? Math.abs(e[0] - p.x) <= p.w / 2 && Math.abs(e[1] - p.y) <= p.h / 2 : Math.hypot(e[0] - p.x, e[1] - p.y) <= Math.min(p.w, p.h) / 2);
+        S.board.tracks.forEach(t => { if (t.locked) return; [...new Set([0, t.pts.length - 1])].forEach(i => { const e = t.pts[i]; if (on(e)) { t.pts[i] = [+(e[0] + nx - p.x).toFixed(4), +(e[1] + ny - p.y).toFixed(4)]; moved++; } }); });
+      });
+    });
+    const one = free.length === 1 ? S.board.parts[free[0]].ref : `${free.length} resistors`, v = free.length === 1 && want === "V" ? B.partFootprint(S.model.parts.find(x => x.key === free[0]), S.board.parts[free[0]]).vert : null;
+    if (d && d.kind === "part") {
+      // the drag moves the track ends from where they started: from the new pads now
+      const bp = S.board.parts[d.key], dx = bp.x - d.x0, dy = bp.y - d.y0;
+      (d.ends || []).forEach(e => { const t = S.board.tracks[e.ti]; if (t) { e.x = t.pts[e.k][0] - dx; e.y = t.pts[e.k][1] - dy; } });
+      d.moved = true; analyse(true); render(); msg(`${one}: ${want === "V" ? "standing" : "lying down"}`); return true; }
+    commit(`${one}: ${want === "V" ? `standing up (vertical)${v ? `, ${v.P} mm lead spacing, ${v.Z} mm tall` : ""}` : "lying down (horizontal)"}${moved ? `; ${moved} track end${moved > 1 ? "s" : ""} followed the pads` : ""}`);
+    return true;
   }
   function flipSel() {
     if (!S.sel) return;
@@ -1205,10 +1239,10 @@
   // ---------------------------------------------------------------------------
   let draft = null;
   const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class",
-    current: "Track width for the current", courtyard: "Parts overlapping", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", pinout: "Pinouts to check",
+    current: "Track width for the current", courtyard: "Parts overlapping", height: "Part height under the lid", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", pinout: "Pinouts to check",
     star: "Ground returns meet only at the star point", stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket" };
   // the side panels: parts list, inspector, rule check, layers (board-panels.js)
-  const { renderLayers, renderNets, renderPanels } = BoardPanels({ $, B, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth });
+  const { renderLayers, renderNets, renderPanels } = BoardPanels({ $, B, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth });
   function openRules() {
     draft = JSON.parse(JSON.stringify(S.board.rules));
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; el.classList.remove("invalid"); });
@@ -1491,6 +1525,6 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

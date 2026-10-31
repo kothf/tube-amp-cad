@@ -356,7 +356,7 @@
         <kbd>Ctrl+F</kbd><span>find a part or net; Enter selects (and shows) the first match, Esc clears</span>
         <kbd>\</kbd><span>hide or show the side panels (View ▾ → Side panels)</span>
         <kbd>Backspace</kbd><span>while routing: take back the last segment</span>
-        <kbd>Shift+V</kbd><span>via tool: click to place a via</span>
+        <kbd>Shift+V</kbd><span>with an axial resistor selected (or while dragging it): stand it up / lay it down; otherwise the via tool: click to place a via</span>
         <kbd>T</kbd><span>text tool: click to place a text on the active side's silkscreen</span>
         <kbd>H</kbd><span>mounting-hole tool</span>
         <kbd>3</kbd><span>the board in 3D (again, or Esc: back); Export → 3D model (STEP) for a chassis CAD</span>
@@ -423,6 +423,7 @@
           <div class="row"><span>High voltage (mm)</span><input data-r="hvClearance"></div>
           <div class="row"><span>HV above (V DC)</span><input data-r="hvVolts"></div>
           <div class="row"><span>To the board edge (mm)</span><input data-r="edgeClearance"></div>
+          <div class="row" title="The room under the enclosure's lid above the board's top surface. The check flags a top-side part taller than this (Z-axis clearance): axial resistors, lying down or standing up. 0: no limit"><span>Enclosure height above the board (mm, 0: none)</span><input data-r="maxHeight" data-min="0"></div>
           <div class="row"><span>By voltage (IPC-2221B)</span><select id="rules-ipc"><option value="B2">B2: bare board</option><option value="B4">B4: permanent coating</option><option value="A6">A6: conformal coating</option><option value="off">Off: classes only</option></select></div>
           <div class="checks" style="grid-template-columns:1fr" title="A valve socket's pins are closer together than the high-voltage clearance. With this on, a track under the socket's body may pass its pins as close as they are to each other (the socket fixes that spacing anyway); everywhere else the full clearance holds. Off: only the segment that ends in a pin may come that close"><label><input type="checkbox" id="rules-socket"> Under a socket's body, tracks may pass its pins at their own spacing</label></div>
           <h3>Tracks</h3>
