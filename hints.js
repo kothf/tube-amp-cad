@@ -418,6 +418,8 @@
     "To GND": "The clearance this net needs to 0 V copper: its class's clearance, or IPC-2221B's for its voltage when that is more.",
     "HV above": "Nets whose simulated DC voltage is above this are in the HV class.",
     "To the board edge": "Minimum gap between copper and the board edge.",
+    "Enclosure height above the board": "The room under the enclosure's lid above the board's top. A top-side part taller than this is a Z-axis clearance error: axial resistors lying down (Ø + 0.4 mm) or standing up (L + R + 2d). 0: no limit.",
+    "Mounting": "Horizontal: the resistor lies between its pads. Vertical: it stands on pad 1 and its top lead bends over and down to pad 2. The lead spacing is max(D + d + 2R, the least the pads allow), the height L + R + 2d, from the body and lead sizes; the tracks on its pads follow. Shift+V swaps.",
     "Signal width": "Default track width for signal nets.",
     "Power / HV width": "Default track width for power and HV nets.",
     "Minimum width": "The narrowest track the board maker can make.",

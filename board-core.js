@@ -48,7 +48,8 @@
       ground: "free",                                             // free | star (every ground return to the star point XG1)
       teardrops: true,                                            // copper fillets where tracks meet pads and vias
       socketBody: true,                                           // under a valve socket's body a track may pass its pins as close as they are to each other
-      checks: { star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, keepout: true, silk: true, dangling: true, stopper: true, coupling: true, heat: true, support: true }
+      maxHeight: 0,                                               // the room under the enclosure's lid above the board's top (mm; 0: no limit)
+      checks: { star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, height: true, keepout: true, silk: true, dangling: true, stopper: true, coupling: true, heat: true, support: true }
     };
   }
   const CLASSES = ["Signal", "Power", "HV"];
@@ -128,14 +129,52 @@
   // (DIN0411 and longer) and the 5 W zeners
   // body: the real part's { l, d, lead } (its part number, or set by hand); a thicker lead than the
   // pitch's own takes a hole 0.3 mm over it
+  function axialHole(pitch, diode, b) {
+    const big = pitch >= 15, do41 = diode && pitch >= 10, base = big ? 1.2 : do41 ? 1.1 : 0.85;
+    const dr = Math.max(base, b.lead > 0 ? Math.ceil((b.lead + 0.3) * 20) / 20 : 0);
+    return { dr, d: Math.max(big ? 2.4 : do41 ? 2.2 : 1.8, dr > base ? dr + 1 : 0) };
+  }
   function axial(pitch, diode, body) {
-    const b = body || {}, L = b.l > 0 ? b.l : AXIAL[pitch][0], D = b.d > 0 ? b.d : AXIAL[pitch][1], h = pitch / 2, big = pitch >= 15, do41 = diode && pitch >= 10;
-    const dr = Math.max(big ? 1.2 : do41 ? 1.1 : 0.85, b.lead > 0 ? Math.ceil((b.lead + 0.3) * 20) / 20 : 0), d = Math.max(big ? 2.4 : do41 ? 2.2 : 1.8, dr > (big ? 1.2 : do41 ? 1.1 : 0.85) ? dr + 1 : 0);
+    const b = body || {}, L = b.l > 0 ? b.l : AXIAL[pitch][0], D = b.d > 0 ? b.d : AXIAL[pitch][1], h = pitch / 2;
+    const { dr, d } = axialHole(pitch, diode, b);
     const silk = [{ t: "rect", x: -L / 2, y: -D / 2, w: L, h: D }];
     if (h - d / 2 - 0.3 > L / 2) silk.push({ t: "line", x1: -h + d / 2 + 0.3, y1: 0, x2: -L / 2, y2: 0 }, { t: "line", x1: L / 2, y1: 0, x2: h - d / 2 - 0.3, y2: 0 });
     if (diode) silk.push({ t: "line", x1: -L / 2 + 0.8, y1: -D / 2, x2: -L / 2 + 0.8, y2: D / 2 });   // band at the cathode (pad 1)
-    return fp(`${diode ? "DIODE" : "AXIAL"}-${pitch}`, `Axial, ${pitch} mm lead spacing${diode ? " (band at pad 1, the cathode)" : ""}`,
+    const f = fp(`${diode ? "DIODE" : "AXIAL"}-${pitch}`, `Axial, ${pitch} mm lead spacing${diode ? " (band at pad 1, the cathode)" : ""}`,
       [pad(1, -h, 0, d, dr, diode ? "rect" : "circle", diode ? "K" : "1"), pad(2, h, 0, d, dr, "circle", diode ? "A" : "2")], silk);
+    f.zHeight = +(D + 0.4).toFixed(2);   // lying down: the body's diameter over a 0.4 mm stand-off (as the 3D model)
+    return f;
+  }
+  // Vertical (standing) mounting of a 2-lead axial resistor: the body upright on pad 1, its top lead
+  // bent over in a hairpin and down to pad 2. Everything comes from the body and lead sizes (the part
+  // number's, set by hand, or the horizontal footprint's standard ones), no stored variants:
+  //   L, D: body length and diameter; d: lead diameter; R: the lead's minimum bend radius (IPC-A-610:
+  //   1 × d for leads under 0.8 mm, 1.5 × d to 1.2 mm, 2 × d over that; or set by hand as body.bend)
+  //   pitch = max(D + d + 2R up to 0.05 mm, the least spacing: 2.54 mm and the pads 0.4 mm apart)
+  //   Z-height = L + R + 2d (the body on a lead-diameter stand-off, the bend over it)
+  // The courtyard grows with the height: a standing part soldered by hand or on a wave may lean
+  // AXIAL_TILT degrees, so its top moves Z · tan(tilt) sideways.
+  const AXIAL_TILT = 5, canStand = name => /^AXIAL-[\d.]+$/.test(String(name || ""));
+  const r2 = v => +(+v).toFixed(2);
+  function axialStand(pitch, body) {
+    const b = body || {}, L = b.l > 0 ? b.l : AXIAL[pitch][0], D = b.d > 0 ? b.d : AXIAL[pitch][1];
+    const d = b.lead > 0 ? b.lead : pitch >= 15 ? 0.8 : 0.6, R = b.bend > 0 ? b.bend : d < 0.8 ? d : d <= 1.2 ? 1.5 * d : 2 * d;
+    const { dr, d: pd } = axialHole(pitch, false, b), least = Math.max(2.54, pd + 0.4);
+    const P = Math.max(Math.ceil((D + d + 2 * R) * 20 - 1e-6) / 20, least), Z = L + R + 2 * d;
+    return { L: r2(L), D: r2(D), d: r2(d), R: r2(R), P: r2(P), Z: r2(Z), least: r2(least), dr, pd, bendSet: b.bend > 0 };
+  }
+  function axialV(pitch, body) {
+    const v = axialStand(pitch, body), x1 = -v.P / 2, x2 = v.P / 2, r = Math.max(v.D / 2, v.pd / 2 + 0.3);
+    const silk = [{ t: "circle", x: x1, y: 0, r }, { t: "line", x1: x1 - r - 0.7, y1: 0, x2: x1 - r, y2: 0 }];   // the body, and pin 1's notch mark beside it
+    // the hairpin lead: over from the body to pad 2, its bend round the pad's near side
+    const rb = v.pd / 2 + 0.35, lx = x2 - rb;
+    if (lx - (x1 + r) > 0.2) silk.push({ t: "line", x1: x1 + r, y1: 0, x2: lx, y2: 0 });
+    silk.push({ t: "circle", x: x2, y: 0, r: rb, from: 110, to: 250 });
+    const pads = [pad(1, x1, 0, v.pd, v.dr, "circle", "1"), pad(2, x2, 0, v.pd, v.dr, "circle", "2")];
+    const f = fp(`AXIAL-V-D${v.D}-L${v.L}-P${v.P}`, `Axial, standing (vertical): ${v.P} mm lead spacing from its Ø ${v.D} × ${v.L} mm body, ${v.d} mm leads bent at R ${v.R} mm; ${v.Z} mm tall (body on pad 1)`, pads, silk);
+    f.box = bbox(pads, silk, Math.max(0.5, 0.25 + v.Z * Math.tan(AXIAL_TILT * Math.PI / 180)));
+    f.mount = "V"; f.vert = v; f.zHeight = v.Z;
+    return f;
   }
   // film capacitors: a box, metric lead spacing
   const BOX = { 5: [7.2, 3.5], 7.5: [10, 4.5], 10: [13, 5], 15: [18, 7], 22.5: [26.5, 9], 27.5: [31.5, 11] };
@@ -520,6 +559,7 @@
   function shape(name, pinNames, body) {
     let m;
     if ((m = /^AXIAL-([\d.]+)$/.exec(name)) && AXIAL[m[1]]) return axial(+m[1], false, body);
+    if ((m = /^AXIAL-([\d.]+)-V$/.exec(name)) && AXIAL[m[1]]) return axialV(+m[1], body);
     if ((m = /^DIODE-([\d.]+)$/.exec(name)) && AXIAL[m[1]]) return axial(+m[1], true, body);
     if ((m = /^BOX-([\d.]+)$/.exec(name)) && BOX[m[1]]) return box(+m[1], body);
     if ((m = /^RADIAL-D([\d.]+)-P([\d.]+)$/.exec(name))) return radial(+m[1], +m[2], body);
@@ -963,6 +1003,14 @@
   }
   function placeSize(p, part) { return ((part.rot || 0) & 1) ? [p.h, p.w] : [p.w, p.h]; }
 
+  // the footprint a board part uses: its name with the mounting (bp.mount "V": an axial stood up),
+  // the body the part number's size with what was set by hand over it
+  const mountedName = bp => (bp.mount === "V" && canStand(bp.fp) ? bp.fp + "-V" : bp.fp);
+  function partFootprint(g, bp, pinNames) {
+    const names = pinNames || g.members.flatMap(m => m.pins.map(p => (g.members.length > 1 ? m.label.split(".").pop() + "." : "") + p.id));
+    const body = g.body || bp.body ? { ...(g.body || {}), ...(bp.body || {}) } : null;
+    return footprint(mountedName(bp), names, body) || footprint(g.defaultFp, names, body);
+  }
   /** Everything the editor needs about a board against a netlist: physical parts with
       their footprints, pads in board coordinates with nets, net names */
   function model(board, netlist) {
@@ -972,8 +1020,7 @@
       const bp = board.parts[g.key]; if (!bp) return;
       const pinNames = g.members.flatMap(m => m.pins.map(p => (g.members.length > 1 ? m.label.split(".").pop() + "." : "") + p.id));
       // the body: the part number's size, what was set by hand over it
-      const body = g.body || bp.body ? { ...(g.body || {}), ...(bp.body || {}) } : null;
-      const f = footprint(bp.fp, pinNames, body) || footprint(g.defaultFp, pinNames, body);
+      const f = partFootprint(g, bp, pinNames);
       g.fp = f; g.place = bp;
       const map = padMap(g, f), list = [];
       f.pads.forEach(p => {
@@ -1478,6 +1525,11 @@
       const x1 = Math.max(a.b.x1, b.b.x1), x2 = Math.min(a.b.x2, b.b.x2), y1 = Math.max(a.b.y1, b.b.y1), y2 = Math.min(a.b.y2, b.b.y2);
       if (x2 - x1 > 0.05 && y2 - y1 > 0.05) out.push({ kind: "courtyard", x: (x1 + x2) / 2, y: (y1 + y2) / 2, msg: `${a.g.ref} and ${b.g.ref} overlap (courtyards)` });
     }));
+    // Z-axis: a top-side part taller than the room under the enclosure's lid (parts whose footprint knows its height)
+    if (on("height") && R.maxHeight > 0) onBoard.forEach(({ g }) => {
+      const z = g.fp.zHeight; if (!(z > R.maxHeight + 1e-6) || (g.place.side || "F") !== "F") return;
+      out.push({ kind: "height", x: g.place.x, y: g.place.y, msg: `${g.ref} is ${z} mm tall${g.fp.mount === "V" ? " standing (L + R + 2d)" : ""}: over the ${R.maxHeight} mm enclosure height (Z-axis clearance)` });
+    });
     // mounting holes under a part: the screw head, its washer and the standoff (Ø 7 mm for M3: the
     // hole's diameter plus 3.8 mm) need the board's surface free on both sides
     if (on("courtyard")) (board.holes || []).forEach(h => onBoard.forEach(({ g, b }) => {
@@ -1937,5 +1989,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

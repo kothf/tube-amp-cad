@@ -1026,3 +1026,59 @@ test("a part's own unplated holes (a jack's locating pegs): placed with the part
   const withHoles = globalThis.Board3D.boardSolid(board, m, keep), without = globalThis.Board3D.boardSolid(board, { ...plain, holes: [] }, keep);
   assert.ok(withHoles.faces.length > without.faces.length, "the pegs' holes go through the 3D board");
 });
+
+test("standing resistors: pitch, height, silkscreen and courtyard from the body and leads; nets kept; Z-height check; folded lead in 3D and STEP; Gerber and drill at the new pitch", () => {
+  const D3 = globalThis.Board3D;
+  // ¼ W: Ø 2.5 × 6.3 mm, 0.6 mm leads, R = d → pitch D + d + 2R = 4.3 mm, Z = L + R + 2d = 8.1 mm
+  let f = B.footprint("AXIAL-10.16-V");
+  assert.equal(f.mount, "V");
+  assert.deepEqual([f.vert.P, f.vert.Z, f.zHeight], [4.3, 8.1, 8.1]);
+  assert.deepEqual(f.pads.map(p => [p.num, p.x, p.drill]), [["1", -2.15, 0.85], ["2", 2.15, 0.85]]);
+  const body = f.silk.find(s => s.t === "circle" && s.to === undefined);
+  assert.deepEqual([body.x, body.r], [-2.15, 1.25], "the body's circle round pad 1");
+  assert.ok(f.silk.some(s => s.t === "line" && s.x2 === body.x - body.r), "pin 1's notch mark");
+  const tilt = 0.25 + 8.1 * Math.tan(5 * Math.PI / 180);
+  assert.ok(Math.abs(f.box[3] - (body.r + tilt)) < 1e-9, "the courtyard grows with the height (a 5° lean)");
+  // a 1 W body with 0.8 mm leads: R = 1.5 d = 1.2 → 4.5 + 0.8 + 2.4 = 7.7 mm; a bend set by hand wins
+  assert.equal(B.footprint("AXIAL-15.24-V").vert.P, 7.7);
+  assert.deepEqual((({ P, Z }) => [P, Z])(B.footprint("AXIAL-10.16-V", null, { l: 9, d: 3.2, lead: 0.8, bend: 2 }).vert), [8, 12.6]);
+  // tiny body: the pads set the least spacing (2.54 mm and 0.4 mm between 1.8 mm pads)
+  assert.equal(B.footprint("AXIAL-10.16-V", null, { l: 2, d: 0.8, lead: 0.3, bend: 0.3 }).vert.P, 2.54);
+  assert.equal(B.canStand("AXIAL-10.16"), true); assert.equal(B.canStand("DIODE-10.16"), false); assert.equal(B.canStand("CHIP-1206"), false);
+  // on the board: bp.mount keeps the horizontal footprint to go back to; the nets stay on their pads
+  const board = fabBoard(), r1 = Object.values(board.parts).find(p => p.ref === "R1");
+  const nets = m => m.pads.filter(p => p.ref === "R1").map(p => [p.num, p.net]);
+  const before = nets(B.model(board, NETLIST));
+  r1.mount = "V";
+  let { m, fills } = analyse(board);
+  assert.deepEqual(nets(m), before);
+  assert.ok(/^AXIAL-V-D/.test(m.parts.find(g => g.ref === "R1").fp.name));
+  const p1 = m.pads.find(p => p.ref === "R1" && p.num === "1"), p2 = m.pads.find(p => p.ref === "R1" && p.num === "2");
+  const P = m.parts.find(g => g.ref === "R1").fp.vert.P;
+  assert.ok(Math.abs(p2.x - p1.x - P) < 1e-9, "pads at the worked-out pitch");
+  // Gerber and drill: the pads flashed and drilled where they are now
+  const files = F.fabFiles(board, m, fills, { base: "t", title: "Test", version: "9.9.9" });
+  [p1, p2].forEach(p => assert.ok(files["t-F_Cu.gbr"].includes(`X${Math.round(p.x * 1e6)}Y${Math.round((board.outline.h - p.y) * 1e6)}D03*`), `pad ${p.num} flashed`));
+  assert.equal(files["t-PTH.drl"].split("\n").filter(l => /^X/.test(l)).length, m.pads.length + board.vias.length);
+  assert.ok(/T\d+C0\.850/.test(files["t-PTH.drl"]));
+  // the Z-axis check against the enclosure's height (top side only; off at 0)
+  const height = () => { const a = analyse(board); return B.drc(board, a.m, a.conn, a.hv).filter(d => d.kind === "height").map(d => d.msg); };
+  assert.deepEqual(height(), []);
+  board.rules.maxHeight = 6;
+  const h1 = height();
+  assert.equal(h1.length, 1); assert.match(h1[0], /^R1 is [\d.]+ mm tall standing \(L \+ R \+ 2d\): over the 6 mm enclosure height/);
+  delete r1.mount; assert.deepEqual(height(), [], "lying down it fits");
+  board.rules.checks.height = false; r1.mount = "V"; assert.deepEqual(height(), []);
+  // 3D: the body upright on pad 1, the lead folded over and down; every solid closed; tallest point = Z
+  ({ m } = analyse(board));
+  const g = m.parts.find(x => x.ref === "R1");
+  for (const side of ["F", "B"]) for (const rot of [0, 1]) {
+    const bodies = D3.partBodies({ ...g, place: { ...g.place, rot, side } }, 1.6, {});
+    assert.equal(bodies.length, 3);
+    bodies.forEach(b => assert.equal(solidCheck(b), null, `${side} ${rot} ${b.name}`));
+    if (side === "F") { const top = Math.max(...bodies.flatMap(b => b.verts.map(v => v[2]))) - 1.6; assert.ok(Math.abs(top - g.fp.vert.Z) < 0.05, `top ${top} vs Z ${g.fp.vert.Z}`); }
+  }
+  const sc = D3.scene(board, m, {}), txt = D3.step(sc, { title: "t", version: "9.9.9", file: "t.step", date: "2026-10-31T12:00:00" });
+  assert.equal((txt.match(/MANIFOLD_SOLID_BREP\(/g) || []).length, sc.bodies.length + 1);
+  assert.ok(!/NaN|Infinity/.test(txt));
+});

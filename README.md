@@ -519,6 +519,14 @@ the circuit file, so one file holds both.
   live on the chassis (transformers, chokes, speaker, pots) can instead get
   wire pads or a screw terminal.
   Every part's footprint can be changed in the inspector.
+- **Standing resistors.** An axial resistor can stand up: *Mounting*
+  (Horizontal | Vertical) in the inspector, or Shift+V. The lead spacing
+  (max(D + d + 2R, the least the pads allow)), the silkscreen (a circle round
+  pad 1, a pin 1 notch, the hairpin lead), a courtyard that grows with the
+  height for a 5° lean and the height L + R + 2d all come from the body and
+  lead sizes; the track ends on its pads follow. Set an enclosure height in
+  Design rules and the check reports a part taller than it; the 3D view and
+  STEP show the folded lead.
 - **SMD versions.** Tick *SMD* in the inspector to switch a part to its
   surface-mount footprint, or a whole selection at once (each part that has
   one):

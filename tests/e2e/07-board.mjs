@@ -567,6 +567,25 @@ import { readFile } from "node:fs/promises";
     const off = await bd.evaluate(() => { const S = BoardApp.state; return S.model.parts.find(x => x.key === S.sel.key).fp.name; });
     check(/^AXIAL-/.test(off), `unticked, it is back on its through-hole footprint (${off})`);
   }
+  // vertical mounting: the inspector's Mounting stands a routed resistor up; its pads close in to the
+  // worked-out pitch and the track ends on them follow (nothing unrouted); Shift+V lays it down again
+  {
+    const state = () => bd.evaluate(() => { const S = BoardApp.state, g = S.model.parts.find(x => x.key === S.sel.key), pads = S.model.pads.filter(p => p.part === g.key);
+      const ends = S.board.tracks.reduce((n, t) => n + [t.pts[0], t.pts[t.pts.length - 1]].filter(e => pads.some(p => Math.hypot(p.x - e[0], p.y - e[1]) < 0.01)).length, 0);
+      return { fp: g.fp.name, pitch: +Math.hypot(pads[1].x - pads[0].x, pads[1].y - pads[0].y).toFixed(3), ends, nets: pads.map(p => p.netName).join(), note: (document.getElementById("stand-note") || {}).textContent || "" }; });
+    await bd.evaluate(() => { const S = BoardApp.state, g = S.model.parts.find(x => x.type === "resistor" && S.board.tracks.some(t => S.model.pads.some(p => p.part === x.key && Math.hypot(p.x - t.pts[0][0], p.y - t.pts[0][1]) < 0.01))); S.sel = { kind: "part", key: g.key }; BoardApp.commit(); });
+    const h = await state();
+    await bd.locator("#inspector .row", { hasText: "Mounting" }).locator("select").selectOption("V");
+    const v = await state();
+    check(/^AXIAL-V-D/.test(v.fp) && v.pitch < h.pitch && v.ends === h.ends && h.ends > 0 && v.nets === h.nets && /Standing: lead spacing [\d.]+ mm, height [\d.]+ mm/.test(v.note),
+      `Mounting: Vertical stands the resistor up (${h.fp} ${h.pitch} mm → ${v.fp} ${v.pitch} mm), its ${v.ends} track ends follow the pads, nets ${v.nets}; "${v.note}"`);
+    await bd.locator("#pcb").focus(); await bd.keyboard.press("Shift+V");
+    const back = await state(), tool = await bd.evaluate(() => BoardApp.state.tool);
+    check(back.fp === h.fp && back.pitch === h.pitch && back.ends === h.ends && tool !== "via", `Shift+V on the selected resistor lays it down again (${back.fp}, ${back.ends} track ends on its pads), not the via tool (${tool})`);
+    await bd.evaluate(() => { BoardApp.state.sel = null; BoardApp.commit(); }); await bd.keyboard.press("Shift+V");
+    check(await bd.evaluate(() => BoardApp.state.tool) === "via", "with nothing selected Shift+V is still the via tool");
+    await bd.keyboard.press("Escape");
+  }
   await bd.close();
 }
 

@@ -5,7 +5,7 @@
   "use strict";
   // app: what this part needs from board-app.js; returns what board-app.js uses of it
   root.BoardPanels = function (app) {
-    const { $, B, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth } = app;
+    const { $, B, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth } = app;
     // after Place all: the placed parts spread into the room the board has, held near where they landed (BoardPlace.spread)
     function spreadPlaced(keys) {
       if (!root.BoardPlace) return;
@@ -98,6 +98,16 @@
       });
       row.appendChild(lab); return row;
     }
+    // Mounting of axial resistors: Horizontal (lying down) | Vertical (standing up; Shift+V). Only for
+    // the parts on an AXIAL footprint; the pads, silkscreen, courtyard and 3D model follow from the body.
+    function mountField(gs) {
+      const can = gs.filter(g => B.canStand(S.board.parts[g.key].fp)); if (!can.length) return null;
+      const on = can.filter(g => S.board.parts[g.key].mount === "V"), mixed = on.length && on.length < can.length;
+      const row = field(`Mounting${gs.length > 1 ? ` <small class="help">${can.length} of ${gs.length}</small>` : ""}`, mixed ? "" : on.length ? "V" : "H", v => { if (v) toggleMount(can.map(g => g.key), v); },
+        (mixed ? [["", "Mixed"]] : []).concat([["H", "Horizontal (lying down)"], ["V", "Vertical (standing up)"]]));
+      row.title = "Horizontal: the body lies between its pads. Vertical: it stands on pad 1 with the top lead bent down to pad 2; the lead spacing, silkscreen, courtyard and height come from the body and lead sizes (Shift+V swaps)";
+      return row;
+    }
     // The part number's result (the BOM's Part number, mpn.js) and the body's size: what the number
     // says, or the footprint's standard size, overridden here by hand (bp.body; empty: back to it)
     function partNoField(h, g, bp) {
@@ -108,7 +118,9 @@
         const use = $("pn-use"); if (use) use.onclick = () => { bp.fp = g.mpnFp; commit(`${g.ref}: ${g.mpnFp}, as its part number names`); };
       }
       if (!std) return;
-      const KEYS = std.kind === "axial" ? [["l", "Body length"], ["d", "Body Ø"]] : std.kind === "box" ? [["l", "Body length"], ["w", "Body width"], ["h", "Body height"]] : [["d", "Can Ø"], ["h", "Can height"]];
+      const stand = std.kind === "axial" && g.fp && g.fp.vert;
+      if (stand) Object.assign(std, { lead: g.fp.vert.d, bend: g.fp.vert.R });
+      const KEYS = stand ? [["l", "Body length"], ["d", "Body Ø"], ["lead", "Lead Ø"], ["bend", "Bend radius"]] : std.kind === "axial" ? [["l", "Body length"], ["d", "Body Ø"]] : std.kind === "box" ? [["l", "Body length"], ["w", "Body width"], ["h", "Body height"]] : [["d", "Can Ø"], ["h", "Can height"]];
       const now = { ...std, ...(g.body || {}), ...(bp.body || {}) }, from = k => (bp.body && bp.body[k] > 0 ? "set here" : g.body && g.body[k] > 0 ? "part number" : "standard");
       const row = document.createElement("div"); row.className = "row body-size";
       row.innerHTML = `<span title="The real part's size: the silkscreen outline and the 3D model follow it. From the part number when it has one, else the footprint's standard size; type a size to set it by hand, clear it to go back">Body (mm)</span><div style="display:flex;gap:4px;flex-wrap:wrap"></div>`;
@@ -122,9 +134,10 @@
           bp.body = { ...(bp.body || {}), [k]: v }; commit(`${g.ref}: ${label.toLowerCase()} ${v} mm`);
         });
         const lab = document.createElement("label"); lab.style.cssText = "display:flex;align-items:center;gap:3px;color:var(--muted);font-size:11px";
-        lab.append({ l: "L", d: "Ø", w: "W", h: "H" }[k], el); row.lastChild.appendChild(lab);
+        lab.append({ l: "L", d: "Ø", w: "W", h: "H", lead: "d", bend: "R" }[k], el); row.lastChild.appendChild(lab);
       });
       h.appendChild(row);
+      if (stand) { const v = g.fp.vert; h.insertAdjacentHTML("beforeend", `<p class="help" id="stand-note" title="Lead spacing = max(D + d + 2R, ${v.least} mm: the least for the pads); height = L + R + 2d. The bend radius is IPC-A-610's least for the lead (1 × d under 0.8 mm, 1.5 × d to 1.2 mm, 2 × d over) unless set here">Standing: lead spacing <b>${v.P} mm</b>, height <b>${v.Z} mm</b>${S.board.rules.maxHeight > 0 ? ` (enclosure ${S.board.rules.maxHeight} mm)` : ""}</p>`); }
       if (bp.body) { const b = document.createElement("button"); b.className = "btn"; b.style.cssText = "margin:0 0 6px"; b.textContent = g.body ? "Size from the part number" : "Standard size"; b.onclick = () => { delete bp.body; commit(`${g.ref}: body size ${g.body ? "from its part number" : "standard"} again`); }; h.appendChild(b); }
     }
     const delBtn = () => { const b = document.createElement("button"); b.className = "btn"; b.textContent = "Delete (Del)"; b.onclick = deleteSel; return b; };
@@ -139,6 +152,7 @@
         const smd = B.isSmd(bp.fp);
         h.appendChild(smdField([g]));
         const ff = field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.filter(n => B.isSmd(n) === smd).map(n => { const f = B.footprint(n); return [n, f ? `${n} — ${f.title.replace(/^(.{0,48}).*$/, "$1")}` : n]; })); ff.classList.add("wide"); h.appendChild(ff);
+        const mf = mountField([g]); if (mf) h.appendChild(mf);
         partNoField(h, g, bp);
         partPreview(h, g);
         h.appendChild(field("X (mm)", +bp.x.toFixed(3), v => { bp.x = v; commit(); }));
@@ -174,7 +188,7 @@
         const ts = s.tracks.map(i => S.board.tracks[i]).filter(Boolean), n = selItems().length, nl = selItems().filter(([k, id]) => isLocked(k, id)).length;
         const what = [[s.parts.length, "part"], [ts.length, "track"], [s.vias.length, "via"], [s.texts.length, "text"], [s.holes.length, "hole"]].filter(([c]) => c).map(([c, w]) => `${c} ${w}${c > 1 ? "s" : ""}`).join(", ");
         h.innerHTML = `<div class="insp-title">${n} selected</div><p class="help">${what}${nl ? ` · ${nl} locked` : ""}. Drag one to move them all; Space turns them, arrows nudge (Shift: ×10), L locks.</p>`;
-        if (s.parts.length && S.model) { const gs = s.parts.map(k => S.model.parts.find(g => g.key === k)).filter(g => g && S.board.parts[g.key]); if (gs.length) h.appendChild(smdField(gs)); }
+        if (s.parts.length && S.model) { const gs = s.parts.map(k => S.model.parts.find(g => g.key === k)).filter(g => g && S.board.parts[g.key]); if (gs.length) { h.appendChild(smdField(gs)); const mf = mountField(gs); if (mf) h.appendChild(mf); } }
         if (s.parts.length >= 2) {
           h.insertAdjacentHTML("beforeend", `<h2>Align parts</h2><div class="align">${[["left", "⇤ Left"], ["hcenter", "↔ Centre"], ["right", "Right ⇥"], ["top", "⤒ Top"], ["vcenter", "↕ Middle"], ["bottom", "Bottom ⤓"]].map(([k, t]) => `<button class="btn" data-al="${k}">${t}</button>`).join("")}</div>` +
             (s.parts.length >= 3 ? `<div class="align">${[["hdist", "Spread across"], ["vdist", "Spread down"]].map(([k, t]) => `<button class="btn" data-al="${k}">${t}</button>`).join("")}</div>` : ""));
