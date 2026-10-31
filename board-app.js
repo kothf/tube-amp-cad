@@ -1238,7 +1238,7 @@
   // Design rules window: rules, checks, net classes; edited on a copy, Apply commits
   // ---------------------------------------------------------------------------
   let draft = null;
-  const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class",
+  const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", viapad: "Vias in SMD pads", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class",
     current: "Track width for the current", courtyard: "Parts overlapping", height: "Part height under the lid", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", pinout: "Pinouts to check",
     star: "Ground returns meet only at the star point", stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket" };
   // the side panels: parts list, inspector, rule check, layers (board-panels.js)

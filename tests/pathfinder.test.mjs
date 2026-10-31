@@ -114,3 +114,26 @@ test("no way through: a net walled in by locked copper is left open, nothing els
   assert.ok(c1.conn.rats.some(x => c1.m.names[x.net] === "A"), "A is still open");
   assert.deepEqual(c1.drc.filter(d => d.kind !== "dangling").map(d => d.msg), []);
 });
+
+test("SMD parts: crossing nets drop to the bottom through vias beside the pads, never in one (no paste down a hole)", () => {
+  const { board, nl } = setup(NETLIST, AT);
+  const parts = B.physicalParts(nl);
+  Object.values(board.parts).forEach(p => { const g = parts.find(q => q.ref === p.ref); if (g && g.smdFp) p.fp = g.smdFp; });
+  const c0 = check(board, nl);
+  assert.ok(c0.m.pads.filter(p => p.smd).length === 12, "all six resistors are chips");
+  const r = PF.route(board, c0.m, c0.conn, { clr: c0.clr, hv: c0.hv, netlist: nl });
+  assert.equal(r.open, 0); apply(board, r);
+  assert.ok(board.vias.length > 0, "the crossings need vias");
+  const c1 = check(board, nl), all = B.drc(board, c1.m, c1.conn, c1.hv, [], nl);
+  assert.equal(c1.conn.unrouted, 0);
+  assert.deepEqual(all.filter(d => d.kind === "viapad").map(d => d.msg), []);
+  board.vias.forEach(v => c1.m.pads.filter(p => p.smd).forEach(p => {
+    const dx = Math.max(Math.abs(v.x - p.x) - p.w / 2, 0), dy = Math.max(Math.abs(v.y - p.y) - p.h / 2, 0);
+    assert.ok(Math.hypot(dx, dy) >= v.pad / 2 + 0.1, `via at (${v.x}, ${v.y}) is off ${p.ref}-${p.num}`);
+  }));
+  // a via put into a pad by hand is reported
+  const p = c1.m.pads.find(q => q.smd && q.net === 0);
+  board.vias.push({ x: p.x, y: p.y, drill: board.rules.viaDrill, pad: board.rules.viaPad, net: "GND" });
+  const c2 = check(board, nl), d2 = B.drc(board, c2.m, c2.conn, c2.hv, [], nl).filter(d => d.kind === "viapad");
+  assert.equal(d2.length, 1); assert.match(d2[0].msg, /a via in its SMD pad/);
+});

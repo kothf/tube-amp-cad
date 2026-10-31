@@ -23,6 +23,8 @@
   "use strict";
   const B = () => root.BoardCore;
   const SQ2 = Math.SQRT2, MARGIN = 0.05;
+  // how far a via keeps off its own net's SMD pads (copper to copper, mm)
+  const VIA_OFF_PAD = 0.15;
   const DI = [1, -1, 0, 0, 1, 1, -1, -1], DJ = [0, 0, 1, -1, 1, -1, 1, -1];
 
   // a binary min-heap of integer keys by float priority
@@ -129,12 +131,17 @@
       const T = new Uint8Array(NL * N), V = new Uint8Array(N), hw = r.w / 2, ec = R.edgeClearance || 0.5;
       for (let c = 0; c < N; c++) { if (edge[c] < ec + hw) { for (let l = 0; l < NL; l++) T[l * N + c] = 1; } if (edge[c] < ec + viaR) V[c] = 1; }
       walls.forEach(({ it, net }) => {
-        if (net === r.id) return;
-        const g = need(r.id, net), sb = it.kind === "pad" ? SP.get(it.pad) : null, gs = sb ? Math.min(g, sb.gap - 0.02) : g;
-        const ls = it.layers.map(li);
         // distance from a cell to the item's copper edge: a square pad's corners reach past its capsule
         const ext = it.box ? Math.max(0, Math.hypot(it.pad.w, it.pad.h) / 2 - it.r) : 0;
         const dEdge = (x, y) => (it.box ? C.segBox([x, y, x, y], it.box) : C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) - it.r);
+        // no via in the net's own SMD pads (solder paste runs down the hole and the joint starves):
+        // the track leaves the pad and drops through just beside it, the mask web between them intact
+        if (net === r.id) {
+          if (it.kind === "pad" && it.pad.smd) stamp(it.s, it.r + ext + viaR + VIA_OFF_PAD + MARGIN, (c, x, y) => { if (dEdge(x, y) < viaR + VIA_OFF_PAD) V[c] = 1; });
+          return;
+        }
+        const g = need(r.id, net), sb = it.kind === "pad" ? SP.get(it.pad) : null, gs = sb ? Math.min(g, sb.gap - 0.02) : g;
+        const ls = it.layers.map(li);
         const mark = (rad, fn) => stamp(it.s, it.r + ext + rad + Math.max(g, gs), (c, x, y) => {
           if (sb && gs < g && Math.hypot(x - sb.x, y - sb.y) <= sb.r) { if (dEdge(x, y) >= rad + gs) return; }
           else if (dEdge(x, y) >= rad + g) return;

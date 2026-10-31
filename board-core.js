@@ -644,14 +644,14 @@
   // Pin order of each transistor package, pad 1 first, from the maker's drawing. Parts marked
   // "verify" have pinouts that differ between makers: check the datasheet of the part you buy.
   const PINOUT = {
-    "2N2222A": ["EBC"], "2N3904": ["EBC"], "BC107": ["EBC"], "BC547B": ["CBE"], "BD139": ["ECB"], "MPSA42": ["EBC"], "MJE340": ["ECB"],
-    "2N2907A": ["EBC"], "2N3906": ["EBC"], "BC177": ["EBC"], "BC557B": ["CBE"], "BD140": ["ECB"], "MPSA92": ["EBC"], "MJE350": ["ECB"],
+    "2N2222A": ["EBC"], "2N3904": ["EBC"], "BC107": ["EBC"], "BC547B": ["CBE"], "BC546B": ["CBE"], "BC549C": ["CBE"], "BD139": ["ECB"], "MPSA42": ["EBC"], "MJE340": ["ECB"],
+    "2N2907A": ["EBC"], "2N3906": ["EBC"], "BC177": ["EBC"], "BC557B": ["CBE"], "BC556B": ["CBE"], "BC559C": ["CBE"], "BD140": ["ECB"], "MPSA92": ["EBC"], "MJE350": ["ECB"],
     "2N7000": ["SGD"], "BS170": ["DGS"], "BS250": ["DGS", "verify"], "LND150": ["SGD", "verify"], "DN2540": ["GDS"],
     "IRF510": ["GDS"], "IRF540": ["GDS"], "IRF820": ["GDS"], "IRF840": ["GDS"], "IRF9540": ["GDS"], "IRF9610": ["GDS"], "IRF9640": ["GDS"],
     // power pairs: pin 1 left, the leads down, the type printed towards you. A TO-3 can is the
     // collector (its case); its two pins are B and E, so it goes on wires (heatsink on the chassis)
     "2SD669A": ["ECB"], "2SB649A": ["ECB"], "2SC4793": ["BCE"], "2SA1837": ["BCE"], "MJE15032": ["BCE"], "MJE15033": ["BCE"],
-    "TIP41C": ["BCE"], "TIP42C": ["BCE"], "2SC5200": ["BCE"], "2SA1943": ["BCE"], "MJL3281A": ["BCE"], "MJL1302A": ["BCE"],
+    "TIP41C": ["BCE"], "TIP42C": ["BCE"], "TIP35C": ["BCE"], "TIP36C": ["BCE"], "MJL4281A": ["BCE"], "MJL4302A": ["BCE"], "2SC5200": ["BCE"], "2SA1943": ["BCE"], "MJL3281A": ["BCE"], "MJL1302A": ["BCE"],
     "MJL21194": ["BCE"], "MJL21193": ["BCE"], "MJ15003": ["BEC"], "MJ15004": ["BEC"], "MJ15024": ["BEC"], "MJ15025": ["BEC"], "2N3055": ["BEC"], "MJ2955": ["BEC"],
     // germanium: the cans' leads read E, B, C round the circle from the tab (the collector is
     // marked by a dot or the wider spacing on some makes); the USSR parts' pinouts vary by year
@@ -1369,7 +1369,7 @@
     const pts = [[g.fp.box[0], g.fp.box[1]], [g.fp.box[2], g.fp.box[1]], [g.fp.box[0], g.fp.box[3]], [g.fp.box[2], g.fp.box[3]]].map(p => place(p, g.place));
     return { x1: Math.min(...pts.map(p => p[0])), y1: Math.min(...pts.map(p => p[1])), x2: Math.max(...pts.map(p => p[0])), y2: Math.max(...pts.map(p => p[1])) };
   }
-  function partSilk(g, noRef, outline) {
+  function partSilk(g, noRef, outline, pads) {
     const r4 = v => +(+v).toFixed(4), P = pt => place(pt, g.place).map(r4), ops = [];
     g.fp.silk.forEach(s => {
       let pts;
@@ -1382,10 +1382,21 @@
       if (pts) ops.push({ pol: "D", t: "line", w: SILK_W, pts: pts.map(P) });
     });
     if (!noRef) {
-      // above the part; below it when that would leave the board (a part along the top edge)
-      const b = partBox(g), above = b.y1 - 0.4 - REF_H / 2, below = b.y2 + 0.4 + REF_H / 2;
-      const y = outline && above - REF_H / 2 < 0.5 && below + REF_H / 2 <= outline.h - 0.5 ? below : above;
-      const st = strokeText(g.ref, (b.x1 + b.x2) / 2, y, REF_H, 0, g.place.side === "B");
+      // above the part; below it when that would leave the board (a part along the top edge).
+      // Given the board's pads, the first of above, below, right and left that clears every pad on
+      // the part's side (and the outline): small SMD parts packed close would otherwise have their
+      // references printed over their neighbours' pads, which the maker clips
+      const b = partBox(g), above = b.y1 - 0.4 - REF_H / 2, below = b.y2 + 0.4 + REF_H / 2, mid = (b.x1 + b.x2) / 2, mir = g.place.side === "B";
+      const y0 = outline && above - REF_H / 2 < 0.5 && below + REF_H / 2 <= outline.h - 0.5 ? below : above;
+      let st = strokeText(g.ref, mid, y0, REF_H, 0, mir);
+      if (pads && pads.length) {
+        const side = g.place.side || "F", near = pads.filter(pd => onSide(pd, side) && pd.x > b.x1 - st.width - 6 && pd.x < b.x2 + st.width + 6 && pd.y > b.y1 - 6 && pd.y < b.y2 + 6).map(padCapsule);
+        const half = st.width / 2, cy = (b.y1 + b.y2) / 2;
+        const spots = [[mid, y0], [mid, y0 === above ? below : above], [b.x2 + 0.5 + half, cy], [b.x1 - 0.5 - half, cy]];
+        const inside = (x, y) => !outline || (x - half > 0.5 && x + half < outline.w - 0.5 && y - REF_H / 2 > 0.5 && y + REF_H / 2 < outline.h - 0.5);
+        const clear = t => t.lines.every(l => l.every((p, k) => !k || near.every(c => segSeg([l[k - 1][0], l[k - 1][1], p[0], p[1]], c.s) >= c.r + t.w / 2 + 0.05)));
+        for (const [x, y] of spots) { const t = strokeText(g.ref, x, y, REF_H, 0, mir); if (inside(x, y) && clear(t)) { st = t; break; } }
+      }
       st.lines.forEach(l => ops.push({ pol: "D", t: "line", w: st.w, pts: l, ref: true }));
     }
     return ops;
@@ -1501,6 +1512,12 @@
         if (on("drill") && d < R.minDrill - 1e-6) out.push({ kind: "drill", x: v.x, y: v.y, msg: `Via drill ${d} mm < ${R.minDrill} mm` });
         if (on("annular") && (pd - d) / 2 < R.minAnnular - 1e-6) out.push({ kind: "annular", x: v.x, y: v.y, msg: `Via annular ring ${((pd - d) / 2).toFixed(2)} mm < ${R.minAnnular} mm` });
       });
+      // a via in (or touching) an SMD pad: the mask opens over it and the paste runs down the hole
+      if (on("viapad")) items.forEach(v => {
+        if (v.kind !== "via") return;
+        const p = items.find(q => q.kind === "pad" && q.pad.smd && shareLayer(q, v) && gap(q, v) < 0.1);
+        if (p) out.push({ kind: "viapad", x: v.s[0], y: v.s[1], msg: `${p.pad.ref}-${p.pad.num}: a via in its SMD pad; solder paste runs down the hole and starves the joint: move the via just off the pad` });
+      });
       (board.holes || []).forEach(h => { if (h.plated && on("annular") && (holeRing(h) - h.d) / 2 < R.minAnnular - 1e-6) out.push({ kind: "annular", x: h.x, y: h.y, msg: `Plated hole: annular ring ${((holeRing(h) - h.d) / 2).toFixed(2)} mm < ${R.minAnnular} mm` }); });
     }
     // a plated hole given a net (a grounded screw) that its copper does not reach
@@ -1562,7 +1579,7 @@
     });
     // silkscreen over pads (the maker clips it: a warning) — the reference and outlines of each part
     if (on("silk")) onBoard.forEach(({ g }) => {
-      const side = g.place.side || "F", hit = partSilk(g, false, board.outline).find(op => op.pts.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && (op.ref || pd.part !== g.key) && onSide(pd, side) &&
+      const side = g.place.side || "F", hit = partSilk(g, false, board.outline, model.pads.filter(pd => !placedOff.has(pd.part))).find(op => op.pts.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && (op.ref || pd.part !== g.key) && onSide(pd, side) &&
         segSeg([op.pts[k - 1][0], op.pts[k - 1][1], p[0], p[1]], padCapsule(pd).s) < padCapsule(pd).r + op.w / 2)));
       if (hit) out.push({ kind: "silk", x: hit.pts[0][0], y: hit.pts[0][1], msg: `${g.ref}: ${hit.ref ? "its reference" : "silkscreen"} lies over a pad (${side === "B" ? "bottom" : "top"}); the maker clips it` });
     });

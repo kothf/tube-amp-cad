@@ -122,7 +122,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
     res.push(await cad.evaluate(f => ({ f, ok: !!TubeCAD.state.sim.result && TubeCAD.state.sim.result.ok && !TubeCAD.state.sim.error, parts: TubeCAD.state.comps.length }), e));
   }
-  check(res.length === 15 && res.every(r => r.ok && r.parts > 15), `all fifteen examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
+  check(res.length === 20 && res.every(r => r.ok && r.parts > 15), `all twenty examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
   check(await cad.evaluate(() => TubeCAD.state.sim.result && TubeCAD.state.sim.result.solver === "wasm"), "the simulation worker solves with WebAssembly");
   if (!tracer.isClosed()) {
     // a transistor in the circuit on the curve tracer: its operating point lies on the tracer's own curve

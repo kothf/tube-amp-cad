@@ -785,6 +785,9 @@
     "2N3904": { pol: 1, is: 6.734e-15, bf: 300, br: 0.7371, vaf: 74.03, ikf: 0.06678, cbe: 8 * pf, cbc: 4 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
     "BC107": { pol: 1, is: 7e-15, bf: 200, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.2, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
     "BC547B": { pol: 1, is: 7e-15, bf: 290, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 45, i: 0.1, p: 0.625, pkg: "TO-92", use: "small signal, low noise" },
+    // the 65 V and the high-gain (C group) members of the family: same die, other selection
+    "BC546B": { pol: 1, is: 7e-15, bf: 290, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 65, i: 0.1, p: 0.625, pkg: "TO-92", use: "small signal, 65 V (input pairs on ±30 V rails)" },
+    "BC549C": { pol: 1, is: 7e-15, bf: 520, br: 7.5, vaf: 63, ikf: 0.1, cbe: 9 * pf, cbc: 4.5 * pf, v: 30, i: 0.1, p: 0.5, pkg: "TO-92", use: "small signal, low noise, high gain" },
     "BD139": { pol: 1, is: 1.3e-13, bf: 150, br: 5, vaf: 100, ikf: 1, rb: 2.52, re: 0.046, cbe: 100 * pf, cbc: 30 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
     "MPSA42": { pol: 1, is: 1e-14, bf: 120, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 3 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
     "MJE340": { pol: 1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 15 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" },
@@ -792,6 +795,8 @@
     "2N3906": { pol: -1, is: 1.41e-15, bf: 180.7, br: 4.977, vaf: 18.7, ikf: 0.08, cbe: 10 * pf, cbc: 4.5 * pf, v: 40, i: 0.2, p: 0.625, pkg: "TO-92", use: "small signal" },
     "BC177": { pol: -1, is: 1e-14, bf: 150, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.2, p: 0.3, pkg: "TO-18", use: "small signal (vintage)" },
     "BC557B": { pol: -1, is: 1e-14, bf: 250, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 45, i: 0.1, p: 0.625, pkg: "TO-92", use: "small signal, low noise" },
+    "BC556B": { pol: -1, is: 1e-14, bf: 250, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 6 * pf, v: 65, i: 0.1, p: 0.625, pkg: "TO-92", use: "small signal, 65 V" },
+    "BC559C": { pol: -1, is: 1e-14, bf: 500, br: 10, vaf: 50, ikf: 0.1, cbe: 10 * pf, cbc: 2.5 * pf, v: 30, i: 0.1, p: 0.625, pkg: "TO-92", use: "small signal, low noise, high gain" },
     "BD140": { pol: -1, is: 2.3e-13, bf: 150, br: 5, vaf: 100, ikf: 1, re: 0.067, cbe: 100 * pf, cbc: 40 * pf, v: 80, i: 1.5, p: 12.5, pkg: "TO-126", use: "driver, regulator pass" },
     "MPSA92": { pol: -1, is: 1e-14, bf: 100, br: 5, vaf: 200, ikf: 0.1, cbe: 50 * pf, cbc: 6 * pf, v: 300, i: 0.5, p: 0.625, pkg: "TO-92", use: "high voltage, CCS / cascode" },
     "MJE350": { pol: -1, is: 1e-13, bf: 100, br: 4, vaf: 200, ikf: 0.3, cbe: 100 * pf, cbc: 20 * pf, v: 300, i: 0.5, p: 20, pkg: "TO-126", use: "high voltage, CCS / follower" },
@@ -807,6 +812,11 @@
     "2SD669A": { pol: 1, is: 2.8e-12, bf: 160, br: 5, vaf: 150, ikf: 0.8, cbe: 150 * pf, cbc: 14 * pf, v: 160, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
     "2SC4793": { pol: 1, is: 9.5e-13, bf: 200, br: 5, vaf: 150, ikf: 0.5, re: 0.008, cbe: 150 * pf, cbc: 20 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
     "MJE15032": { pol: 1, is: 9.4e-13, bf: 100, br: 4, vaf: 150, ikf: 2, rb: 0.04, re: 0.016, cbe: 400 * pf, cbc: 100 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
+    // TIP35C / TIP36C: BF and IKF follow the typical hFE curve (NPN 250 at 0.2 A, 110 at 5 A, 45 at
+    // 15 A; PNP 200 at 1 A, 92 at 5 A, 38 at 15 A); the sheet gives no VBE curve, only 2 V max at 15 A
+    "TIP35C": { pol: 1, is: 3e-12, bf: 264, br: 4, vaf: 100, ikf: 3, rb: 0.5, re: 0.02, cbe: 2000 * pf, cbc: 500 * pf, v: 100, i: 25, p: 125, pkg: "TO-247", use: "power output, class A" },
+    // MJL4281A / MJL4302A: fitted to the typical VBE(on) and hFE curves at 5 V (onsemi MJL4281A/D)
+    "MJL4281A": { pol: 1, is: 1.0125e-11, bf: 165, br: 4, vaf: 100, ikf: 6, rb: 1, re: 0.02, cbe: 1500 * pf, cbc: 600 * pf, v: 350, i: 15, p: 230, pkg: "TO-264", use: "power output, 350 V, high gain" },
     "TIP41C": { pol: 1, is: 2.1e-12, bf: 115, br: 4, vaf: 100, ikf: 1.6, rb: 1.07, re: 0.055, cbe: 500 * pf, cbc: 100 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
     "2SC5200": { pol: 1, is: 2e-12, bf: 110, br: 4, vaf: 100, ikf: 5, rb: 0.14, re: 0.018, cbe: 1500 * pf, cbc: 200 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
     "MJL3281A": { pol: 1, is: 2.7e-12, bf: 115, br: 4, vaf: 100, ikf: 20, rb: 3, cbe: 1500 * pf, cbc: 400 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
@@ -817,6 +827,8 @@
     "2SB649A": { pol: -1, is: 3.6e-13, bf: 160, br: 5, vaf: 100, ikf: 0.8, re: 0.24, cbe: 150 * pf, cbc: 27 * pf, v: 160, i: 1.5, p: 20, pkg: "TO-126", use: "driver, VAS" },
     "2SA1837": { pol: -1, is: 4.5e-13, bf: 200, br: 5, vaf: 100, ikf: 0.5, rb: 1.17, re: 0.002, cbe: 150 * pf, cbc: 30 * pf, v: 230, i: 1, p: 20, pkg: "TO-220F", use: "driver, VAS" },
     "MJE15033": { pol: -1, is: 7.7e-13, bf: 100, br: 4, vaf: 120, ikf: 2, rb: 0.4, cbe: 400 * pf, cbc: 150 * pf, v: 250, i: 8, p: 50, pkg: "TO-220", use: "driver, small power output" },
+    "TIP36C": { pol: -1, is: 3e-12, bf: 220, br: 4, vaf: 80, ikf: 3, rb: 0.5, re: 0.02, cbe: 2000 * pf, cbc: 600 * pf, v: 100, i: 25, p: 125, pkg: "TO-247", use: "power output, class A" },
+    "MJL4302A": { pol: -1, is: 5.85e-12, bf: 117, br: 4, vaf: 80, ikf: 12, rb: 1.6, re: 0.02, cbe: 1500 * pf, cbc: 600 * pf, v: 350, i: 15, p: 230, pkg: "TO-264", use: "power output, 350 V, high gain" },
     "TIP42C": { pol: -1, is: 2.1e-12, bf: 115, br: 4, vaf: 80, ikf: 1.6, rb: 1.08, re: 0.055, cbe: 500 * pf, cbc: 150 * pf, v: 100, i: 6, p: 65, pkg: "TO-220", use: "power output, regulator" },
     "2SA1943": { pol: -1, is: 2.3e-12, bf: 110, br: 4, vaf: 80, ikf: 5, rb: 1.52, cbe: 1500 * pf, cbc: 360 * pf, v: 230, i: 15, p: 150, pkg: "TO-264", use: "power output (Toshiba)" },
     "MJL1302A": { pol: -1, is: 4.1e-12, bf: 115, br: 4, vaf: 80, ikf: 12, rb: 2.44, cbe: 1500 * pf, cbc: 600 * pf, v: 260, i: 15, p: 200, pkg: "TO-264", use: "power output, linear hFE" },
