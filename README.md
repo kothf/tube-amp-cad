@@ -141,6 +141,12 @@ Firefox is not tested.
     board) into a link; whoever opens it gets the same circuit. On
     aerocat.tech the link is short (`/s/<id>`, kept by the link store in
     `server/share/`); elsewhere the design rides after `#` in the address.
+  - Icons: the tools, Fit and Inspector, and every item of the File, View,
+    Edit, AI and Windows menus (in Board Design the Route, Board, Export and
+    View menus too) carry a line icon from the app's own set (`icons.js`,
+    drawn in the text colour, nothing loaded from elsewhere). The names stay
+    next to them; a narrower window shows the toolbar buttons by their icon
+    alone, the tooltip naming each, so the toolbar keeps one row.
   - The open file's name shows in the toolbar and the browser tab's title; a
     yellow • marks unsaved changes (the board's too). A circuit not saved to
     a file yet (a new one, or an example) shows its title block's title (or
