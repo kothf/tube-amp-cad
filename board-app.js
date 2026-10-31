@@ -120,9 +120,10 @@
   // light: while dragging, keep the pours as they were filled (they refill when the drag ends)
   function analyse(light) {
     if (S.raw) S.netlist = B.withHeaters(S.raw, S.board.rules);
-    if (!S.netlist) { S.model = null; S.conn = null; S.drc = []; S.fills = []; return; }
+    if (!S.netlist) { S.model = null; S.conn = null; S.drc = []; S.fills = []; cons.solve(); return; }
     S.hv = B.hvNets(S.netlist.volts, S.board.rules.hvVolts);
     S.model = B.model(S.board, S.netlist);
+    cons.solve();   // construction geometry, and the holes tied to it moved where it now puts them
     // names of earlier versions stored in the board (net classes, pours, vias) move to today's
     if (B.migrateNetNames(S.board, S.model)) save();
     // star grounding: the ground returns and the star point steer the ground's ratsnest
@@ -483,11 +484,13 @@
     via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Smart measure: click a pad, via, hole, track or board edge for its size, then a second one for what relates them (pitch, edge to edge against the rule, angle); C: centre / edge / span, Enter pins it",
     pour: "Copper pour: click the corners on the active layer, double-click (or click the first corner) to close; Backspace: take back a corner",
     keepout: "Keep-out area: click the corners, double-click to close; no tracks, vias or pour may enter it (set in the inspector)" };
+  TOOL_HELP.hole = "Mounting hole: click to place one; it sticks to holes, pads, board corners, construction points and crossings and stays tied to them (Alt: the grid only). Type Δx Δy (and Ø) to place it that far from where the pointer sticks";
   function setTool(t) {
+    if (cons.HELP[t]) TOOL_HELP[t] = cons.HELP[t];
     if (S.route && t !== "route") finishRoute();
     if (t !== "measure") S.measure = null;
     if (t !== S.tool || (t !== "pour" && t !== "keepout")) S.poly = null;
-    S.tool = t;
+    S.tool = t; cons.toolChanged(t);
     document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
     const more = $("btn-tool-more"), folded = more && more.parentElement.querySelector(`.menu-item[data-tool="${t}"]`);   // the narrow toolbar's More tools
     if (more) { more.classList.toggle("active", !!folded); if (folded) more.querySelector(".tm-ico").innerHTML = folded.querySelector("svg").outerHTML; }
@@ -539,6 +542,7 @@
     if (S.show.keepouts) S.board.keepouts.forEach(k => k.pts.forEach(p => at(p[0], p[1], "keep-out corner", "corner")));
     S.board.texts.forEach(t => { if (S.show[t.layer]) at(t.x, t.y, `text "${t.text}"`, "centre"); });
     if (S.model) S.model.parts.forEach(g => { if (g.place) at(g.place.x, g.place.y, `${g.ref} origin`, "centre"); });
+    cons.snapInto(x, y, at, "point");   // construction points, crossings, centres, middles, ends, tangent points
     if (best) return best;
     const pad = S.model && copper && hitPad(x, y);
     if (pad) return { p: [pad.x, pad.y], what: `pad ${pad.ref}-${pad.num}`, shape: "centre", ...padEnt(pad) };
@@ -550,6 +554,7 @@
     S.board.tracks.forEach((t, ti) => { if (S.show[t.layer]) for (let k = 0; k + 1 < t.pts.length; k++) on(t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1], "on a track", { kind: "track", track: t, net: netOfTrack(ti) }); });
     if (S.show.Holes) holes().forEach(h => { const d = Math.hypot(x - h.x, y - h.y); if (d > 1e-9) at(h.x + (x - h.x) / d * h.d / 2, h.y + (y - h.y) / d * h.d / 2, "hole rim", "on", holeEnt(h)); });
     if (S.show["Edge.Cuts"]) edges.forEach(([a, b, c, d]) => on(a, b, c, d, "board edge", { kind: "edge" }));
+    cons.snapInto(x, y, at, "on");   // onto a construction line or circle
     return best || grid;
   }
   // smart measure: the result for the clicks so far (and the pointer, before the second click)
@@ -759,6 +764,7 @@
       const kind = vi >= 0 ? "via" : hi >= 0 ? "hole" : "text", i = vi >= 0 ? vi : hi >= 0 ? hi : ti, o = objOf(kind, i);
       S.sel = { kind, i }; title = { via: "Via", hole: "Mounting hole", text: `Text "${o.text}"` }[kind];
       if (kind === "text") it("Turn 90°", "Space", rotateSel);
+      if (kind === "hole") { it("Construction circle round it", "⇧C", () => cons.circleRound(o)); if (o.at) it("Detach from the construction", "", () => { delete o.at; commit("Hole detached: fixed X and Y"); }); }
       it(o.locked ? "Unlock" : "Lock", "L", lockSel); sep(); it("Delete", "Del", deleteSel);
     } else if (seg) {
       const t = S.board.tracks[seg.i], n = netOfTrack(seg.i), R = S.board.rules; S.sel = { kind: "track", i: seg.i };
@@ -821,6 +827,7 @@
       render(); return;
     }
     if (S.tool === "measure") { const sp = snapPoint(x, y, e.shiftKey || e.altKey); S.measure = !S.measure || S.measure.b ? { a: sp.p, sa: sp, b: null } : { ...S.measure, b: sp.p, sb: sp }; S.mLast = null; render(); return; }
+    if (cons.onDown(x, y, e)) return;   // construction tools and the hole tool
     if (S.tool !== "select") { placeAt(x, y); return; }
     if (onHandle(x, y)) { S.drag = { kind: "outline", w0: S.board.outline.w, h0: S.board.outline.h, mx: x, sy, moved: false }; return; }
     let zc;
@@ -836,6 +843,7 @@
       S.drag = a.locked ? { kind: "locked" } : { kind: "corner", list, i: S.sel.i, k: zc, x0: a.pts[zc][0], y0: a.pts[zc][1], mx: x, my: y, moved: false }; return;
     }
     // what is under the pointer: vias, holes, texts, then a track right under it, a part, a track near it
+    if (cons.select(x, y, true, e.altKey)) return;   // a construction point (or, with Alt, any construction)
     let hit = null, i;
     if ((i = hitVia(x, y)) >= 0) hit = { kind: "via", id: i };
     else if ((i = hitHole(x, y)) >= 0) hit = { kind: "hole", id: i };
@@ -856,6 +864,7 @@
       else S.drag = { kind: hit.kind, i: hit.id, x0: o.x, y0: o.y, mx: x, my: y, moved: false };
       renderPanels(); render(); return;
     }
+    if (cons.select(x, y, false)) return;   // a construction line or circle off everything else
     if (onEdge(x, y)) { const p = sheetPlace(); S.drag = { kind: "board", x0: p.x, y0: p.y, sx, sy, ox: S.view.ox, oy: S.view.oy, moved: false }; return; }
     // inside the selected pour or keep-out, on empty space: drag the whole area
     let ar = hitArea(x, y);
@@ -894,6 +903,8 @@
       d.x1 = x; d.y1 = y; d.moved = Math.hypot(d.x1 - d.x0, d.y1 - d.y0) * S.view.scale > 4; render();
     } else if (d && d.kind === "locked") {
       if (!d.noted) { d.noted = true; lockedNote(); }
+    } else if (d && d.kind === "cons") {
+      cons.drag(d, x, y);
     } else if (d && LISTS[d.kind]) {
       const o = S.board[LISTS[d.kind]][d.i]; o.x = snap(d.x0 + x - d.mx); o.y = snapY(d.y0 + y - d.my); d.moved = true; analyse(true); render();
     } else if (d && d.kind === "board") {
@@ -906,6 +917,7 @@
     const p = hitPad(x, y);
     S.hover = p ? p.net : null;
     S.snapHint = S.tool === "measure" ? snapPoint(x, y, e.shiftKey || e.altKey) : null;
+    cons.onMove(x, y, e);
     // the part under the pointer gets a faint outline and the move cursor
     const hp = S.tool === "select" && !d && e.target === canvas ? hitPart(x, y) : null, hk = hp ? hp.key : null;
     if (hk !== S.hoverPart) { S.hoverPart = hk; render(); }
@@ -963,6 +975,7 @@
       if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); }
       return;
     }
+    if (MODALS.every(id => $(id).hidden) && cons.hudKey(e)) return;   // numbers typed with a construction tool or the hole tool go into its HUD (3 too)
     if (e.code === "Digit3" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); open3D(); return; }
     if (!MODALS.every(id => $(id).hidden)) return;
     const ctrl = e.ctrlKey || e.metaKey, L = /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(e.key).toLowerCase();
@@ -982,6 +995,7 @@
     const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     if (ARROWS[e.key] && S.sel && !S.route) { e.preventDefault(); const k = S.grid * (e.shiftKey ? 10 : 1); nudge(ARROWS[e.key][0] * k, ARROWS[e.key][1] * k); return; }
     if (S.tool === "measure" && !ctrl && measureKey(e, L)) return;
+    if (cons.onKey(e, L)) return;   // the HUD's numbers, Esc in a construction tool, C / O / Shift+C / Shift+P
     if (e.key === "Escape") { if (S.route) finishRoute(); else if (S.measure) { S.measure = null; render(); } else { S.sel = null; setTool("select"); renderPanels(); } return; }
     if (S.route && (e.code === "Slash" || e.key === "/")) { e.preventDefault(); S.route.flip = !S.route.flip; S.route.manual = true; msg(S.route.flip ? "Diagonal first, until the next corner (/: straight first)" : "Straight first, until the next corner (/: diagonal first)"); S.routeBad = routeCheck(); render(); return; }
     if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); newCorner(S.route); render(); return; }
@@ -1045,7 +1059,7 @@
   const objOf = (kind, id) => (kind === "part" ? S.board.parts[id] : (S.board[MLIST[kind] || AREAS[kind]] || [])[id]);
   const isLocked = (kind, id) => !!(objOf(kind, id) || {}).locked;
   function selItems() {
-    const s = S.sel; if (!s) return [];
+    const s = S.sel; if (!s || s.kind === "cons") return [];
     if (s.kind === "multi") return [...s.parts.map(k => ["part", k]), ...Object.entries(MLIST).flatMap(([k, l]) => s[l].map(i => [k, i]))];
     return [[s.kind, s.kind === "part" ? s.key : s.i]];
   }
@@ -1085,6 +1099,7 @@
   function moveEnds(ends, dx, dy) { (ends || []).forEach(e => { const t = S.board.tracks[e.ti]; if (t) t.pts[e.k] = [+(e.x + dx).toFixed(4), +(e.y + dy).toFixed(4)]; }); }
   const lockedNote = () => msg("Locked: it stays put. Select it and press L to unlock");
   function nudge(dx, dy) {
+    if (S.sel && S.sel.kind === "cons") { cons.nudge(dx, dy); return; }
     const it = selItems(); if (!it.length) return;
     if (it.every(([k, id]) => isLocked(k, id))) { lockedNote(); return; }
     moveItems(it, snapshot(it), dx, dy); commit();
@@ -1155,6 +1170,7 @@
     else if (S.sel.kind === "text") { const t = S.board.texts[S.sel.i]; t.layer = { "F.SilkS": "B.SilkS", "B.SilkS": "F.SilkS", "F.Cu": "B.Cu", "B.Cu": "F.Cu" }[t.layer]; commit(); }
   }
   function deleteSel() {
+    if (S.sel && S.sel.kind === "cons") { cons.deleteSel(); return; }
     const it = selItems(); if (!it.length) return;
     const parts = it.filter(([k]) => k === "part").length, locked = it.filter(([k, id]) => k !== "part" && isLocked(k, id)).length, del = it.filter(([k, id]) => k !== "part" && !isLocked(k, id));
     if (!del.length) { msg(parts ? "Parts come from the schematic: delete them there (then Update from schematic)" : "Locked: press L to unlock it first"); return; }
@@ -1310,17 +1326,19 @@
   const NOTE = ["unplaced", "check", "class", "silk", "dangling", "stopper", "coupling", "heat", "support"];
   const errors = () => S.drc.filter(d => !NOTE.includes(d.kind)).length;
   // the drawing of the board: render() asks for a frame (board-draw.js)
-  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected });
+  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected, consDraw: (c, px, mark) => cons.draw(c, px, mark) });
+  // construction geometry: the Construct menu's tools, the HUD, tied holes (board-cons.js)
+  const cons = BoardCons({ $, B, S, commit, msg, snap, esc, kv, analyse, snapPoint, setTool, render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
 
   // ---------------------------------------------------------------------------
   // Design rules window: rules, checks, net classes; edited on a copy, Apply commits
   // ---------------------------------------------------------------------------
   let draft = null;
   const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class",
-    current: "Track width for the current", courtyard: "Parts overlapping", height: "Part height under the lid", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", pinout: "Pinouts to check",
+    current: "Track width for the current", courtyard: "Parts overlapping", height: "Part height under the lid", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", holeedge: "Hole to the board edge", pinout: "Pinouts to check",
     star: "Ground returns meet only at the star point", stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket" };
   // the side panels: parts list, inspector, rule check, layers (board-panels.js)
-  const { renderLayers, renderNets, renderPanels } = BoardPanels({ $, B, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth });
+  const { renderLayers, renderNets, renderPanels } = BoardPanels({ $, B, cons, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth });
   function openRules() {
     draft = JSON.parse(JSON.stringify(S.board.rules));
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; el.classList.remove("invalid"); });
@@ -1548,7 +1566,7 @@
   const { stopRouting, autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute } = BoardAutoroute({ $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render: () => render(), renderPanels: () => renderPanels() });
   function msg(t) { if (t) { const el = $("st-msg"); el.textContent = t; el.title = t; } }
   function init() {
-    canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0; measureCardInit();
+    canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0; measureCardInit(); cons.init();
     canvas.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
     canvas.addEventListener("dblclick", e => {
@@ -1593,7 +1611,7 @@
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => el.addEventListener("change", rulesNets));
     $("rules-ipc").addEventListener("change", rulesNets);
     $("setup-apply").onclick = applySetup; $("setup-cancel").onclick = () => { $("setup-modal").hidden = true; };
-    $("holes-corners").onclick = () => { const o = readOutline() || S.board.outline, d = +$("hole-d").value, inset = parseFloat($("hole-inset").value) || 5; setupHoles = B.cornerHoles(o, d, inset).map(h => ({ ...h, locked: true })); holesNow(); };
+    $("holes-corners").onclick = () => { const o = readOutline() || S.board.outline, d = +$("hole-d").value, inset = parseFloat($("hole-inset").value) || 5; setupHoles = B.cornerHoles(o, d, inset).map((h, k) => ({ ...h, locked: true, at: { ref: { t: "board", at: ["TL", "TR", "BL", "BR"][k] }, dx: k % 2 ? -inset : inset, dy: k < 2 ? -inset : inset } })); holesNow(); };   // tied to the corners: a resized board takes them along
     $("holes-clear").onclick = () => { setupHoles = []; holesNow(); };
     $("btn-cad").onclick = () => ToolWindows.open("circuit_sandbox.html");
     $("btn-help").onclick = () => { $("help-modal").hidden = false; }; $("btn-help-close").onclick = () => { $("help-modal").hidden = true; };
@@ -1629,6 +1647,6 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { cons, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

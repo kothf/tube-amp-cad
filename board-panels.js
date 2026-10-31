@@ -5,7 +5,7 @@
   "use strict";
   // app: what this part needs from board-app.js; returns what board-app.js uses of it
   root.BoardPanels = function (app) {
-    const { $, B, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth } = app;
+    const { $, B, cons, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth } = app;
     // after Place all: the placed parts spread into the room the board has, held near where they landed (BoardPlace.spread)
     function spreadPlaced(keys) {
       if (!root.BoardPlace) return;
@@ -144,6 +144,7 @@
     function renderInspector() {
       const h = $("inspector"); h.innerHTML = "";
       const R = S.board.rules, o = S.board.outline, s = S.sel;
+      if (s && s.kind === "cons" && cons && cons.inspector(h, { field, delBtn })) return;
       if (s && s.kind === "part" && S.model) {
         const g = S.model.parts.find(x => x.key === s.key); if (!g) { S.sel = null; return renderInspector(); }
         const bp = S.board.parts[g.key];
@@ -188,6 +189,7 @@
         const ts = s.tracks.map(i => S.board.tracks[i]).filter(Boolean), n = selItems().length, nl = selItems().filter(([k, id]) => isLocked(k, id)).length;
         const what = [[s.parts.length, "part"], [ts.length, "track"], [s.vias.length, "via"], [s.texts.length, "text"], [s.holes.length, "hole"]].filter(([c]) => c).map(([c, w]) => `${c} ${w}${c > 1 ? "s" : ""}`).join(", ");
         h.innerHTML = `<div class="insp-title">${n} selected</div><p class="help">${what}${nl ? ` · ${nl} locked` : ""}. Drag one to move them all; Space turns them, arrows nudge (Shift: ×10), L locks.</p>`;
+        if (s.holes.length && cons) cons.multiHoles(h, s.holes, { field });
         if (s.parts.length && S.model) { const gs = s.parts.map(k => S.model.parts.find(g => g.key === k)).filter(g => g && S.board.parts[g.key]); if (gs.length) { h.appendChild(smdField(gs)); const mf = mountField(gs); if (mf) h.appendChild(mf); } }
         if (s.parts.length >= 2) {
           h.insertAdjacentHTML("beforeend", `<h2>Align parts</h2><div class="align">${[["left", "⇤ Left"], ["hcenter", "↔ Centre"], ["right", "Right ⇥"], ["top", "⤒ Top"], ["vcenter", "↕ Middle"], ["bottom", "Bottom ⤓"]].map(([k, t]) => `<button class="btn" data-al="${k}">${t}</button>`).join("")}</div>` +
@@ -263,6 +265,7 @@
           h.appendChild(field("Net", hl.net || "", v => { if (v) hl.net = v; else delete hl.net; commit(); }, [["", "None (the screw only)"]].concat(nets.map(n => [n, n]))));
           h.insertAdjacentHTML("beforeend", `<p class="help">Plated: a copper ring on both sides, bare of solder mask, drilled with the plated holes. Give it a net (GND for a grounded chassis screw) and a pour of that net joins it; otherwise it keeps every net's clearance as chassis copper.</p>`);
         } else h.insertAdjacentHTML("beforeend", `<p class="help">Not plated: drilled separately (NPTH). The dashed ring is the copper clearance (the screw is at chassis potential).</p>`);
+        if (cons) cons.holeExtra(h, hl, { field });
         h.appendChild(lockField(hl)); h.appendChild(delBtn()); return;
       }
       if (s && s.kind === "text") {
