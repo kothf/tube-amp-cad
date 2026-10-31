@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.158.0] - 2026-10-31
+
 ### Added
 - **Icons on the buttons and in the menus.** The CAD's Select, Wire, Probe, Fit and Inspector buttons and every item of File ▾, View ▾, Edit ▾, AI ▾ and Windows ▾ have a line icon before their name; so have Board Design's View ▾, Route ▾, Board ▾ and Export ▾ items and its 3D view buttons, the curve tracer's model, CSV and PNG buttons and the oscilloscope's Autoset. They come from one set of 70-odd icons in the app's own style (`icons.js`, 16 px lines in the text colour, no icon font or outside host), and the names stay. A narrower window shows the toolbar buttons by their icon alone (the tooltip names each), so the CAD toolbar now keeps one row from 940 px up in English and Russian, with a sheet list shown too.
 
