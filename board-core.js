@@ -1070,14 +1070,29 @@
   const npHoles = (board, model) => (board.holes || []).filter(h => !h.plated).concat((model && model.holes) || []);
   function copperItems(board, pads) {
     const items = [];
-    pads.forEach((p, i) => { const c = padCapsule(p); items.push({ kind: "pad", i, layers: p.layers || COPPER, s: c.s, r: c.r, pad: p }); });
+    // a square pad also keeps its exact rectangle: the capsule misses its corners by up to 0.14 mm
+    pads.forEach((p, i) => { const c = padCapsule(p); items.push({ kind: "pad", i, layers: p.layers || COPPER, s: c.s, r: c.r, pad: p, box: p.shape === "rect" ? [p.x - p.w / 2, p.y - p.h / 2, p.x + p.w / 2, p.y + p.h / 2] : null }); });
     board.tracks.forEach((t, ti) => { for (let k = 0; k + 1 < t.pts.length; k++) items.push({ kind: "track", ti, k, layers: [t.layer], s: [t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1]], r: t.w / 2 }); });
     board.vias.forEach((v, vi) => items.push({ kind: "via", vi, layers: COPPER, s: [v.x, v.y, v.x, v.y], r: (v.pad || board.rules.viaPad) / 2 }));
     (board.holes || []).forEach((h, hi) => { if (h.plated) items.push({ kind: "hole", hi, layers: COPPER, s: [h.x, h.y, h.x, h.y], r: holeRing(h) / 2 }); });
     return items;
   }
   const shareLayer = (a, b) => a.layers.some(l => b.layers.includes(l));
-  const gap = (a, b) => segSeg(a.s, b.s) - a.r - b.r;
+  // distance from segment s to rectangle b = [x1, y1, x2, y2] (0 when it touches or is inside)
+  function segBox(s, b) {
+    const inb = (x, y) => x >= b[0] - 1e-9 && x <= b[2] + 1e-9 && y >= b[1] - 1e-9 && y <= b[3] + 1e-9;
+    if (inb(s[0], s[1]) || inb(s[2], s[3])) return 0;
+    return Math.min(segSeg(s, [b[0], b[1], b[2], b[1]]), segSeg(s, [b[2], b[1], b[2], b[3]]), segSeg(s, [b[2], b[3], b[0], b[3]]), segSeg(s, [b[0], b[3], b[0], b[1]]));
+  }
+  /** Distance from segment s (no width) to copper item it's edge: a square pad as its rectangle,
+      the rest as capsules */
+  const segItem = (s, it) => (it.box ? segBox(s, it.box) : segSeg(s, it.s) - it.r);
+  const gap = (a, b) => {
+    if (a.box && b.box) return Math.hypot(Math.max(0, a.box[0] - b.box[2], b.box[0] - a.box[2]), Math.max(0, a.box[1] - b.box[3], b.box[1] - a.box[3]));
+    if (a.box) return segBox(b.s, a.box) - b.r;
+    if (b.box) return segBox(a.s, b.box) - a.r;
+    return segSeg(a.s, b.s) - a.r - b.r;
+  };
   /** A track entering a pad may come as close to the same footprint's other pads as that pad
       itself is: the part's own pin spacing (a noval socket's pins are 1.3 mm apart, whatever the
       voltage) is a limit no layout can beat. Returns that spacing to padIt when the segment s
@@ -1293,7 +1308,7 @@
         [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
           const len = (dx ? p.w : p.h) / 2 + gapT + spoke, s = [p.x, p.y, +(p.x + dx * len).toFixed(4), +(p.y + dy * len).toFixed(4)];
           if (!pip(s[2], s[3], poly)) return;
-          if (others.some(({ it: q, c }) => segSeg(s, q.s) - spoke / 2 - q.r < c - 1e-6)) return;
+          if (others.some(({ it: q, c }) => segItem(s, q) - spoke / 2 < c - 1e-6)) return;
           if (npHoles(board, model).some(h => segDist(s[0], s[1], s[2], s[3], h.x, h.y) - spoke / 2 - h.d / 2 < (h.part ? zc : hcm) - 1e-6)) return;
           spokes.push({ pol: "D", t: "line", w: spoke, pts: [[s[0], s[1]], [s[2], s[3]]] });
         });
@@ -1448,7 +1463,7 @@
     }
     // mounting holes against copper (a part's own unplated hole: the net class's clearance, its own pads too)
     if (on("clearance")) npHoles(board, model).forEach(hl => items.forEach(it => {
-      const rq = hl.part ? { c: 0 } : CR.toChassis(it.net), g = segDist(it.s[0], it.s[1], it.s[2], it.s[3], hl.x, hl.y) - it.r - hl.d / 2, need = Math.max(classRule(cls(it.net), R).clearance, rq.c);
+      const rq = hl.part ? { c: 0 } : CR.toChassis(it.net), g = segItem([hl.x, hl.y, hl.x, hl.y], it) - hl.d / 2, need = Math.max(classRule(cls(it.net), R).clearance, rq.c);
       if (g < need - 1e-6) out.push({ kind: "clearance", x: hl.x, y: hl.y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm to ${hl.part ? `${hl.ref}'s unplated hole` : "a mounting hole (its screw is at chassis potential)"}${rq.ipc ? `; ${Math.round(rq.v)} V: IPC-2221B ${CR.table}` : ""}`, between: [label(it), hl.part ? `${hl.ref} hole` : "hole"] });
     }));
     if (on("short")) conn.clusters.forEach(c => { if (c.nets.size > 1) { const p = c.pads[0]; out.push({ kind: "short", x: p.x, y: p.y, msg: `Short between ${[...c.nets].map(n => model.names[n] || n).join(" and ")}` }); } });
@@ -1468,6 +1483,8 @@
       const [x1, y1, x2, y2] = it.s, n = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 0.5));
       let worst = Infinity, wx = x1, wy = y1;
       for (let k = 0; k <= n; k++) { const x = x1 + (x2 - x1) * k / n, y = y1 + (y2 - y1) * k / n, d = edgeDist(x, y, o) - it.r; if (d < worst) { worst = d; wx = x; wy = y; } }
+      // a square pad's corners reach past its capsule
+      if (it.box) [[it.box[0], it.box[1]], [it.box[2], it.box[1]], [it.box[0], it.box[3]], [it.box[2], it.box[3]]].forEach(([x, y]) => { const d = edgeDist(x, y, o); if (d < worst) { worst = d; wx = x; wy = y; } });
       if (worst < R.edgeClearance - 1e-6) out.push({ kind: "edge", x: wx, y: wy, msg: worst < 0 ? `A ${label(it)} runs outside the board outline` : `A ${label(it)} is ${worst.toFixed(2)} mm from the board edge (< ${R.edgeClearance} mm)` });
     });
     // holes and rings
@@ -1569,7 +1586,7 @@
       items.forEach((v, k) => {
         if (v.kind !== "via") return;
         const on = COPPER.filter(L => inPour.has(k) && (fills || []).some(f => f.layer === L && f.links.some(l => l.includes(k))) ||
-          items.some(it => it !== v && it.layers.includes(L) && segSeg(it.s, v.s) <= it.r + v.r + 1e-6));
+          items.some(it => it !== v && it.layers.includes(L) && gap(it, v) <= 1e-6));
         if (on.length < 2) out.push({ kind: "dangling", x: v.s[0], y: v.s[1], msg: on.length ? `A via joins copper on ${on[0]} only` : "A via is not connected" });
       });
     }
@@ -1607,7 +1624,7 @@
           if (it.net === net && net !== null && net !== "short") return false;
           if (it === at || it === tr || !it.layers.includes(t.layer)) return false;
           const need = CR ? CR.need(net, it.net).c : board.rules.clearance;
-          return edges.some(e => segSeg(e, it.s) - it.r < need - 1e-6);
+          return edges.some(e => segItem(e, it) < need - 1e-6);
         }) || holes.some(h => edges.some(e => segDist(e[0], e[1], e[2], e[3], h.x, h.y) - h.d / 2 < (CR ? CR.toChassis(net).c : board.rules.clearance) - 1e-6));
         if (!bad) out.push({ layer: t.layer, net, ti, pts: poly });
       });
@@ -1989,5 +2006,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

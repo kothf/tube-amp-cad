@@ -933,6 +933,7 @@
     "A GND pour on the active layer (F.Cu) round every part on the board, 2 mm out; it keeps every other net's clearance, so it shorts nothing. Drag its corners to shape it": "Заливка GND на активном слое (F.Cu) вокруг каждой детали на плате, с отступом 2 мм; она соблюдает зазоры всех других цепей и ничего не замыкает. Тяните её углы, чтобы изменить форму",
     "+ GND pour round the parts": "+ заливка GND вокруг деталей",
     "Design rules check": "Проверка правил проектирования",
+    "Checked live: clearances by voltage (a square pad as its exact rectangle, corners included), shorts, edge, drills, widths, current, layout. Click an entry to go to it": "Проверяется на лету: зазоры по напряжению (квадратная площадка — точным прямоугольником, с углами), замыкания, край платы, сверловка, ширина, ток, расстановка. Щелчок по строке переходит к ней",
     "show it on the board": "показать на плате",
     "no mounting hole within 40 mm of its socket; pulling a valve flexes the board and cracks joints": "нет крепёжного отверстия в пределах 40 мм от панели; при вынимании лампы плата изгибается и пайка трескается",
     "add a hole and standoff near it": "добавьте рядом отверстие и стойку",

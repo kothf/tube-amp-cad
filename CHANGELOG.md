@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.161.1] - 2026-10-31
+
+### Fixed
+- **Square pads' corners in the board's checks.** The design-rule check, teardrops, pour spokes and the grid router measured a square pad (pin 1 of a socket, an IC, a TO-92, a transformer) as a rounded capsule, which reaches past the square's sides but misses its corners by up to 0.26 mm. Copper could pass a corner closer than the rule and still show 0 rule messages: a Gerber check of every example found a track 0.09 mm from the 2N3904's emitter pin (examples 1 and 2) and two teardrops inside their clearance (examples 3 and 10). Square pads are now measured as their rectangle, corners included, everywhere the clearance is checked or kept; the 27 places this showed on 10 example boards were re-routed by hand or by the grid router, and every example again opens with 0 connections open and 0 rule messages. The Gerber and drill files of all 15 examples were checked against their designs (drills, copper, the netlist read back from the copper, clearances, solder mask, silkscreen, outline): no differences. Help, README and the rule-check hover hint (English and Russian) say it.
+
 ## [3.161.0] - 2026-10-31
 
 ### Changed
