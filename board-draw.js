@@ -6,7 +6,7 @@
   "use strict";
   // app: what this part needs from board-app.js; returns what board-app.js uses of it
   root.BoardDraw = function (app) {
-    const { $, B, COLORS, NOTE, S, classOf, errors, isSel, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected } = app;
+    const { $, B, COLORS, NOTE, S, consDraw, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected } = app;
     let canvas = null, ctx = null, dpr = 1, queued = false;
     // the board's canvas, from init
     function attachCanvas(cv) { canvas = cv; ctx = cv.getContext("2d"); dpr = window.devicePixelRatio || 1; }
@@ -197,30 +197,35 @@
         r.segs.forEach(t => { ctx.strokeStyle = COLORS[t.layer]; ctx.lineWidth = t.w; ctx.beginPath(); t.pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); });
       }
       // placement ghost for the via / hole / text tools
-      if (["via", "hole", "text"].includes(S.tool) && !S.drag) {
+      if (["via", "text"].includes(S.tool) && !S.drag) {
         const x = snap(S.mouse[0]), y = snapY(S.mouse[1]), R = S.board.rules;
         ctx.globalAlpha = 0.5; ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = Math.max(0.1, px);
         ctx.beginPath(); ctx.arc(x, y, S.tool === "via" ? R.viaPad / 2 : S.tool === "hole" ? 1.6 : 0.6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
       }
+      if (consDraw) consDraw(ctx, px, snapMark);   // construction geometry (dashed), the construction tools and the hole tool
       if (S.tool === "measure" && S.snapHint && !(S.measure && S.measure.b)) snapMark(S.snapHint, px);
+      (S.pins || []).forEach(pin => drawMeasure(pin.r, px, true));
       if (S.measure) {
         const m = S.measure, hint = S.snapHint || snapPoint(S.mouse[0], S.mouse[1]), a = m.a, b = m.b || hint.p, sb = m.b ? m.sb : hint;
-        const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy);
-        // the legs (Δx, Δy) faint, the distance dashed, the ends marked where they stuck
-        ctx.strokeStyle = "rgba(0,229,255,0.35)"; ctx.lineWidth = Math.max(0.06, 0.8 * px); ctx.setLineDash([2 * px, 3 * px]);
-        if (dx && dy) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
-        ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = Math.max(0.1, 1.2 * px); ctx.setLineDash([4 * px, 3 * px]);
-        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
+        const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy), r = measureResult(hint), U = S.mUnits;
         if (m.sa) snapMark(m.sa, px, true);
-        if (m.b && sb) snapMark(sb, px, true);
-        const ang = d ? Math.atan2(-dy, dx) * 180 / Math.PI : 0, txt = `${d.toFixed(2)} mm  (Δx ${dx.toFixed(2)}, Δy ${(-dy || 0).toFixed(2)}, ${ang.toFixed(1)}°)`;
-        ctx.font = `${12 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-        const tw = ctx.measureText(txt).width; ctx.fillStyle = "rgba(7,11,16,0.85)"; ctx.fillRect(b[0] + 6 * px, b[1] - 18 * px, tw + 8 * px, 16 * px);
-        ctx.fillStyle = "#00e5ff"; ctx.fillText(txt, b[0] + 10 * px, b[1] - 4 * px);
-        S.measured = { d, dx, dy: -dy || 0, from: m.sa ? m.sa.what : "grid", to: sb ? sb.what : "grid" };
-        const ends = [S.measured.from, S.measured.to].some(w => w !== "grid") ? ` · ${S.measured.from} → ${S.measured.to}` : "";
-        $("st-msg").textContent = "Measure: " + txt + ends;
-      }
+        if (sb && (m.b || sb.shape !== "grid")) snapMark(sb, px, true);
+        if (!r.lines.length) {
+          // one thing picked: its outline lit, and a faint line to the pointer with the distance
+          drawMeasure(r, px, false);
+          if (!m.b && d) {
+            ctx.strokeStyle = "rgba(0,229,255,0.35)"; ctx.lineWidth = Math.max(0.06, 0.8 * px); ctx.setLineDash([2 * px, 3 * px]);
+            if (dx && dy) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+            ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = Math.max(0.1, 1.2 * px); ctx.setLineDash([4 * px, 3 * px]);
+            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
+            tag(`${BoardMeasure.fmt(d, "len", U)}  (Δx ${BoardMeasure.fmt(dx, "len", U)}, Δy ${BoardMeasure.fmt(-dy || 0, "len", U)})`, b, px, "#00e5ff");
+          }
+        } else drawMeasure(r, px, false);
+        S.measured = { d, dx, dy: -dy || 0, from: m.sa ? m.sa.what : "grid", to: sb ? sb.what : "grid", title: r.title, value: r.value, ok: r.ok, mode: r.mode };
+        const ends = [S.measured.from, S.measured.to].some(w => w !== "grid") ? ` · ${S.measured.from}${r.lines.length ? " → " + S.measured.to : ""}` : "";
+        $("st-msg").textContent = `Measure: ${r.title}${r.vtype === "none" ? "" : " " + BoardMeasure.label(r, U)}${r.ok === false ? " (too close)" : ""}${ends}`;
+        measureCard(r);
+      } else measureCard(null);
       if (S.show.drc) S.drc.forEach(d => {
         if (d.kind === "unplaced") return;
         const r = Math.max(0.8, 6 * px);
@@ -253,6 +258,28 @@
       ctx.font = `${11 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "top";
       const tw = ctx.measureText(sp.what).width; ctx.fillStyle = "rgba(7,11,16,0.85)"; ctx.fillRect(x + 7 * px, y + 6 * px, tw + 6 * px, 14 * px);
       ctx.fillStyle = "#ffe680"; ctx.fillText(sp.what, x + 10 * px, y + 8 * px);
+    }
+    // a measurement: its line(s) dashed, the extension faint, its value in a tag; amber when pinned,
+    // red when the copper is closer than the rule allows
+    function drawMeasure(r, px, pinned) {
+      const col = r.ok === false ? "#ff7b72" : pinned ? "#ffb300" : "#00e5ff";
+      ctx.lineWidth = Math.max(0.06, 0.8 * px); ctx.strokeStyle = pinned ? "rgba(255,179,0,0.4)" : "rgba(0,229,255,0.4)"; ctx.setLineDash([2 * px, 3 * px]);
+      r.aux.forEach(l => { ctx.beginPath(); ctx.moveTo(l[0], l[1]); ctx.lineTo(l[2], l[3]); ctx.stroke(); });
+      if (r.legs && !pinned) {
+        const [a, b] = r.legs;
+        if (Math.abs(b[0] - a[0]) > 1e-6 && Math.abs(b[1] - a[1]) > 1e-6) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+      }
+      ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.1, 1.2 * px); ctx.setLineDash([4 * px, 3 * px]);
+      r.lines.forEach(l => { ctx.beginPath(); ctx.moveTo(l[0], l[1]); ctx.lineTo(l[2], l[3]); ctx.stroke(); });
+      ctx.setLineDash([]);
+      // arrow ticks at the ends of a distance
+      if (r.vtype !== "ang") r.lines.slice(0, 1).forEach(l => [[l[0], l[1]], [l[2], l[3]]].forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, 1.6 * px, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill(); }));
+      if (r.lines.length || pinned) tag(BoardMeasure.label(r, S.mUnits) + (r.ok === false ? " ✗" : ""), r.at, px, col);
+    }
+    function tag(txt, at, px, col) {
+      ctx.font = `${12 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+      const tw = ctx.measureText(txt).width; ctx.fillStyle = "rgba(7,11,16,0.85)"; ctx.fillRect(at[0] + 6 * px, at[1] - 18 * px, tw + 8 * px, 16 * px);
+      ctx.fillStyle = col; ctx.fillText(txt, at[0] + 10 * px, at[1] - 4 * px);
     }
     // the screen grid (in screen pixels): lines with every tenth stronger, or dots; coarser when zoomed out
     // It runs from the origin, the board's bottom-left corner (screen y Oy), rows counted upwards.

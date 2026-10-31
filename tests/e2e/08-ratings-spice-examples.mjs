@@ -101,7 +101,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   await cad.bringToFront();
   const before = await cad.evaluate(() => TubeCAD.state.comps.length);
   const items = await cad.evaluate(() => TubeCAD.EXAMPLES.map(e => e.title));
-  check(items.length === 15 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `the gallery has the ${items.length} circuits drawn from published sources`);
+  check(items.length === 20 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `the gallery has the ${items.length} example circuits`);
   await cad.click("#btn-file"); await cad.click("#btn-start");
   cad.once("dialog", d => d.accept());
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
