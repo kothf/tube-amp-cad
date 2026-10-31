@@ -96,20 +96,21 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const sp2 = await cad.evaluate(id => ({ plot: !!document.querySelector("#inspector #spk-plot"), kinds: (() => { const n = TubeCAD.buildNetlist().elements.filter(e => e.id.startsWith(id)); return n.map(e => e.kind).join(""); })() }), spk);
   check(!sp2.plot && sp2.kinds === "R", "set to Resistor it is an ideal 8 Ω load again (as in circuits saved before)");
 }
-// --- Examples in the File menu ------------------------------------------------------------
+// --- Examples (File ▾ → Gallery…) -----------------------------------------------------------
 {
   await cad.bringToFront();
   const before = await cad.evaluate(() => TubeCAD.state.comps.length);
-  await cad.click("#btn-file");
-  const items = await cad.locator("#examples-list .menu-item").allTextContents();
-  check(items.length === 15 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `File → Examples lists the ${items.length} circuits drawn from published sources`);
+  const items = await cad.evaluate(() => TubeCAD.EXAMPLES.map(e => e.title));
+  check(items.length === 15 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `the gallery has the ${items.length} circuits drawn from published sources`);
+  await cad.click("#btn-file"); await cad.click("#btn-start");
   cad.once("dialog", d => d.accept());
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
-  await cad.locator("#examples-list .menu-item", { hasText: "12AX7: plate resistor" }).click();
+  await cad.click('.start-card[data-example^="03-"]');
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, seq0, { timeout: 30000 }).catch(() => {});
   const ex = await cad.evaluate(() => { const S = TubeCAD.state, f = S.comps.find(c => c.type === "frame"); return { docno: f && f.params.docno, n: S.comps.length, err: S.sim.error, title: document.title, tag: document.getElementById("cur-file").textContent, tagTip: document.getElementById("cur-file").title, status: document.getElementById("status") ? document.getElementById("status").textContent : "" }; });
   check(ex.docno === "VAL-03" && ex.n === 38 && !ex.err && !/03-12ax7/.test(ex.title), `the example opens (VAL-03, ${ex.n} parts), simulates, and stays untitled so Save asks for a new name`);
   check(/^12AX7/.test(ex.tag) && !/•/.test(ex.tag) && /^12AX7/.test(ex.title) && /^VAL-03 · 12AX7/.test(ex.tagTip), `the toolbar names the example by its title block (${ex.tag}), not "Untitled", and does not mark it as changed`);
+  check(await cad.evaluate(() => { const e = TubeCAD.recent().list()[0]; return e && e.kind === "example" && /^03-/.test(e.file) && document.querySelector('#recent-list [data-recent^="x03-"] kbd').textContent === "example"; }), "the example goes to the top of File ▾ → Recent files");
   await cad.keyboard.press("Control+z");
   check(await cad.evaluate(n => TubeCAD.state.comps.length === n, before), "Ctrl+Z brings back the circuit that was on the sheet");
   // every example opens and simulates without an error

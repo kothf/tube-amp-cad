@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.159.0] - 2026-10-31
+
+### Changed
+- **File ▾ → Recent files instead of the examples list.** The File menu no longer lists every example (they are all on the start screen, *File ▾ → Gallery…*, with their pictures); in their place it lists the last 8 circuits opened or saved in this browser, and the examples opened, newest first with the time or date. A click opens one again: Chrome and Edge read the file itself again (asking once for permission) so Save keeps writing to it; if the file was moved or deleted, permission is refused, or the browser cannot open files by itself (Safari, Firefox), the copy kept in the browser at the last open or save opens instead and the status line says so. A file with no copy leaves the list. *Clear recent files* empties it. Hover hints and Russian included.
+
 ## [3.158.0] - 2026-10-31
 
 ### Added

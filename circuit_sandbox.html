@@ -382,6 +382,9 @@
     .menu-item { white-space: nowrap; display: flex; justify-content: space-between; gap: 16px; width: 100%; background: none; border: 0; color: var(--text); font: inherit; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
     .menu-item:hover, .menu-item:focus { background: var(--panel2, #18212e); outline: none; }
     .menu-item kbd { color: var(--muted); font: 11px ui-monospace, monospace; border: 0; background: none; }
+    .menu-note { color: var(--muted); font-size: 12px; padding: 4px 10px 6px; }
+    #recent-list .recent-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+    #recent-list .ico-l { min-width: 0; }
     .menu-item .ico { width: 14px; height: 14px; margin-right: 8px; vertical-align: -3px; }
     .menu-item.check { padding-left: 28px; position: relative; }
     .menu-item.check.active::before { content: "✓"; position: absolute; left: 10px; color: var(--accent); }
@@ -460,10 +463,10 @@
         <button class="menu-item" data-ico="save-as" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
         <button class="menu-item" data-ico="link" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
         <button class="menu-item" data-ico="history" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
+        <button class="menu-item" data-ico="gallery" role="menuitem" id="btn-start" title="Every example with its picture, and New and Open: the screen shown at start">Gallery…<kbd>examples</kbd></button>
         <div class="menu-sep"></div>
-        <div class="menu-head">Examples</div>
-        <button class="menu-item" data-ico="gallery" role="menuitem" id="btn-start" title="Every example with its picture, and New and Open: the screen shown at start">Gallery…<kbd>start screen</kbd></button>
-        <div id="examples-list"></div>
+        <div class="menu-head" title="The circuits opened or saved lately in this browser, newest first: click one to open it again">Recent files</div>
+        <div id="recent-list"></div>
         <div class="menu-sep"></div>
         <button class="menu-item" data-ico="print" role="menuitem" id="btn-print">Print…<kbd>Ctrl+P</kbd></button>
         <button class="menu-item" data-ico="pdf" role="menuitem" id="btn-pdf">Save as PDF<kbd>all sheets</kbd></button>
@@ -973,6 +976,7 @@
   <script src="kicad-export.js?v=dev"></script>
   <script src="cad-kicad.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
+  <script src="cad-recent.js?v=dev"></script>
   <script src="cad-blocks.js?v=dev"></script>
   <script src="cad-revisions.js?v=dev"></script>
   <script src="cad-rev-dialog.js?v=dev"></script>

@@ -2491,6 +2491,8 @@
   // (Chromium) we keep its handle, so Save can write it again (after asking); other browsers
   // only download, so there Save works like Save as
   let curFile = { handle: null, name: "" };
+  // File ▾ → Recent files (cad-recent.js), set up with the page
+  let recent = { addFile() {}, addExample() {}, list: () => [] };
   const FS_API = typeof window.showSaveFilePicker === "function";
   const JSON_TYPES = [{ description: "Tube Amp CAD circuit", accept: { "application/json": [".json"] } }];
   // imported SPICE tubes the circuit uses travel inside the file, so it opens anywhere
@@ -2534,6 +2536,7 @@
       commit(); fitStart(); markClean();
       sendBoardNetlist(true);
       setStatus("ok", `Example: ${ex.title}. ${ex.about}.`);
+      recent.addExample(ex.file);
     } catch (err) { setStatus("error", `Could not open the example: ${err.message}`); }
   }
   // ---------------------------------------------------------------------------
@@ -2600,15 +2603,6 @@
       return true;
     } catch (err) { setStatus("error", `Could not open ${what}: ` + err.message); return false; }
   }
-  function buildExamplesMenu() {
-    const host = document.getElementById("examples-list"); if (!host) return;
-    EXAMPLES.forEach(ex => {
-      const b = document.createElement("button"); b.className = "menu-item"; b.setAttribute("role", "menuitem"); b.dataset.example = ex.file;
-      b.title = ex.about; b.innerHTML = `${ex.title}<kbd>${ex.tag}</kbd>`;
-      b.addEventListener("click", () => openExample(ex));
-      host.appendChild(b);
-    });
-  }
   // The start screen (File ▾ → Gallery…): New, Open and every example with its picture
   // (examples/thumbs, drawn by scripts/example-thumbs.mjs). It shows by itself when the CAD
   // opens on an empty sheet, unless its tick box was cleared.
@@ -2665,6 +2659,7 @@
     try {
       const w = await h.createWritable(); await w.write(circuitJSON()); await w.close();
       setCurFile(h, h.name); markClean(); setStatus("ok", "Saved " + h.name);
+      recent.addFile(h.name, h, circuitJSON());
     } catch (err) { setStatus("error", "Could not save " + h.name + ": " + err.message); }
   }
   function downloadJSON(name) {
@@ -2672,6 +2667,7 @@
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     setCurFile(null, name); markClean(); setStatus("ok", "Downloaded " + name);
+    recent.addFile(name, null, circuitJSON());
   }
   const jsonName = n => { n = String(n || "").trim().replace(/[\\/:*?"<>|]+/g, "-"); return n ? (/\.json$/i.test(n) ? n : n + ".json") : ""; };
   // Save: the opened (or last saved) file is overwritten after a confirmation; otherwise Save as
@@ -2716,21 +2712,24 @@
     normalizeWires();
     S.topo = null;
   }
+  // a circuit file's text onto the sheet (File ▾ → Open…, Recent files); false when it is not a circuit
+  function openText(text, name, handle) {
+    try {
+      const d = JSON.parse(text);
+      if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { setStatus("warn", e.message); } }); buildPalette(); }
+      if (revisions) revisions.detach();
+      loadCircuit(d);
+      storeBoard(d.board || null);
+      S.sel.comps.clear(); S.sel.wires.clear();
+      setCurFile(handle, name);
+      commit(); fitStart(); markClean();
+      sendBoardNetlist(true);                 // an open board window switches to this file's board
+      return true;
+    } catch (err) { setStatus("error", `Could not open ${name || "file"}: ` + err.message); return false; }
+  }
   function openFile(file, handle) {
     const rd = new FileReader();
-    rd.onload = () => {
-      try {
-        const d = JSON.parse(rd.result);
-        if (Array.isArray(d.tubes) && window.SpiceModel) { d.tubes.forEach(t => { try { SpiceModel.add(t); } catch (e) { setStatus("warn", e.message); } }); buildPalette(); }
-        if (revisions) revisions.detach();
-        loadCircuit(d);
-        storeBoard(d.board || null);
-        S.sel.comps.clear(); S.sel.wires.clear();
-        setCurFile(handle, file.name);
-        commit(); fitStart(); markClean();
-        sendBoardNetlist(true);                 // an open board window switches to this file's board
-      } catch (err) { setStatus("error", "Could not open file: " + err.message); }
-    };
+    rd.onload = () => { if (openText(rd.result, file.name, handle)) recent.addFile(file.name, handle || null, rd.result); };
     rd.readAsText(file);
   }
   // Open: with the File System Access API the handle is kept, so Save can write the file back
@@ -2933,7 +2932,6 @@
       document.getElementById("new-title").value = "";
     });
     bind("btn-open", openDialog);
-    buildExamplesMenu();
     bind("btn-start", openStart);
     bind("btn-start-close", closeStart);
     bind("btn-start-new", () => { closeStart(); openSheetDialog("new"); });
@@ -2952,6 +2950,7 @@
     document.getElementById("share-modal").addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("share-modal").hidden = true; });
     window.addEventListener("hashchange", openSharedLink);
     // File ▾ → Revisions… (cad-rev-dialog.js), and #rev=<project>.<n> addresses from the project manager
+    if (window.CadRecent) recent = CadRecent({ host: document.getElementById("recent-list"), openText, openExample: f => { const ex = EXAMPLES.find(x => x.file === f); if (ex) openExample(ex); }, examples: EXAMPLES, setStatus, notice: (k, t) => { setStatus(k, t); whenSimulated().then(() => setStatus(k, t)); } });
     revisions = window.CadRevDialog ? CadRevDialog({ circuitJSON, openDesign, setStatus, sheetName, isDirty, showDiff, focusDiff, thumbnail, fitStart }) : null;
     if (revisions) {
       revisions.wire();
@@ -3030,6 +3029,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
