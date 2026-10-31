@@ -24,7 +24,7 @@
     });
     return keep;
   }
-  const partBox = g => B().partBox(g), partSilk = (g, outline) => B().partSilk(g, false, outline);
+  const partBox = g => B().partBox(g), partSilk = (g, outline, pads) => B().partSilk(g, false, outline, pads);
   const textOps = (t, mirror) => { const st = B().strokeText(t.text, t.x, t.y, t.size, t.rot, mirror); return st.lines.map(l => ({ pol: "D", t: "line", w: st.w, pts: l })); };
 
   // a line kept to the inside of a convex polygon (the board outline): the pieces of a polyline inside it
@@ -71,7 +71,8 @@
       partHoles.forEach(h => { const d = r4(h.d + 2 * e); ops.push({ pol: "D", t: "flash", shape: "C", x: h.x, y: h.y, w: d, h: d }); });
     } else if (layer === "F.SilkS" || layer === "B.SilkS") {
       const side = layer[0], inside = C.outlinePoly(board.outline, 0.1), draw = [];
-      model.parts.forEach(g => { if (keep.has(g.key) && (g.place.side || "F") === side) draw.push(...partSilk(g, board.outline)); });
+      const pads = model.pads.filter(pd => keep.has(pd.part));
+      model.parts.forEach(g => { if (keep.has(g.key) && (g.place.side || "F") === side) draw.push(...partSilk(g, board.outline, pads)); });
       board.texts.filter(t => t.layer === layer).forEach(t => draw.push(...textOps(t, side === "B")));
       // kept on the board, and off every opening in the mask (pads, holes) with a 0.1 mm gap: what
       // the board maker would otherwise clip by hand

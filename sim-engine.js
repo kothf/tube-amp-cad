@@ -964,20 +964,26 @@
       if (r.ok && regs.length) r = newtonSolve(circ, xs, { dc: true }, { gmin: 1e-9 });
       if (r.ok) return r;
     }
-    // gmin stepping
-    let x = zero;
-    for (const g of [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9]) {
-      r = newtonSolve(circ, x, { dc: true }, { gmin: g });
-      if (!r.ok) break;
+    // gmin stepping: from 1 S on every node down to 1 nS, the step shrinking where a solve fails
+    // (a fixed tenfold ladder, giving up at the first failure, lost power amplifiers whose bias
+    // spreader sits between two driver pairs: the iterates ran off past the rails)
+    let x = zero, g = 1, k = 10, fails = 0;
+    r = newtonSolve(circ, x, { dc: true }, { gmin: g });
+    if (r.ok) {
       x = r.x;
+      while (g > 1e-9 && fails < 12) {
+        const gn = Math.max(g / k, 1e-9), rn = newtonSolve(circ, x, { dc: true }, { gmin: gn });
+        if (rn.ok) { x = rn.x; g = gn; r = rn; k = Math.min(k * 2, 10); } else { k = Math.sqrt(k); if (++fails && k < 1.05) break; }
+      }
+      if (g <= 1e-9 && r.ok) return r;
     }
-    if (r.ok) return r;
-    // source stepping
-    x = zero;
-    for (let s = 1; s <= 20; s++) {
-      r = newtonSolve(circ, x, { dc: true }, { gmin: 1e-9, srcScale: s / 20 });
-      if (!r.ok) return r;
-      x = r.x;
+    // source stepping: the supplies raised from zero, the step cut to a quarter where a solve fails
+    x = zero; fails = 0;
+    let s = 0, ds = 0.05;
+    while (s < 1) {
+      const sn = Math.min(1, s + ds), rn = newtonSolve(circ, x, { dc: true }, { gmin: 1e-9, srcScale: sn });
+      r = rn;
+      if (rn.ok) { x = rn.x; s = sn; ds = Math.min(ds * 1.5, 0.2); } else { ds /= 4; if (ds < 1e-4 || ++fails > 40) return r; }
     }
     return r;
   }

@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.164.0] - 2026-10-31
+
+### Added
+- **Five transistor power amplifiers with SMD boards (examples 16–20).** The app's own designs, 7 to 12 transistors each, simulated and with a finished two-layer board placed part by part as a board designer would (input jack on the left, outputs and speaker terminal on the right, supply terminal beside the output devices with their decoupling capacitors, M3 holes in the corners, ground pour on the bottom), routed by the grid router to 0 connections open and 0 rule messages: a 12 W amplifier with complementary feedback pairs at ±15 V, all SMD (12 W at 1 % THD); a 50 W amplifier with MJL4281A / MJL4302A outputs on the board edge at ±30 V (51 W); a 14 W single-ended class-A amplifier with a 1.8 A current sink, 4 × TIP36C on heatsinks along two edges (14 W, 64 W of heat at idle); a 30 W quasi-complementary amplifier with a bootstrapped VAS and TIP41C outputs in D²PAK (32 W); a 40 W amplifier with IRF540N / IRF9540N followers in D²PAK (38 W at 1 %, 47 W at 10 %). Each one's Gerber and drill files were checked against its design (drills, copper, the netlist read back from the copper, clearances, mask, paste, placement file): no differences. Gallery pictures, Russian titles and descriptions.
+- **Transistor models:** BC546B, BC549C, BC556B, BC559C; TIP35C / TIP36C (TO-247, 25 A); MJL4281A / MJL4302A (TO-264, 230 W), fitted to their data sheets' hFE and V<sub>BE</sub> curves, with pinouts.
+- **Rule check: vias in SMD pads.** A via in or touching a surface-mount pad is an error: the mask opens over it and the solder paste runs down the hole, starving the joint (*Design rules → Vias in SMD pads*).
+
+### Fixed
+- **The grid router no longer drops vias into SMD pads.** It treated its own net's SMD pads as free copper and put a via in the pad (a ground pad down to the bottom pour, for one); the Gerber check of the new boards found 4 to 7 per board. Vias now keep 0.15 mm or more off every SMD pad, and the track leaves the pad to drop through beside it.
+- **DC operating point of circuits with steep bias networks.** The solver's gmin stepping gave up at the first failed step and its source stepping went in fixed twentieths; a CFP output stage with a Vbe-multiplier servo failed to find its bias at some trimmer settings ("singular matrix"). Both now step adaptively (smaller steps where it struggles, larger where it is easy).
+- **Silkscreen references on dense SMD boards.** A part's reference went above its body even when a neighbour's pad was there (the maker clips it); it now takes the first spot of above, below, right or left that stays on the board and clear of the pads nearby, in the board view, Gerbers and KiCad export alike.
+- **Latch-up found in simulation and designed out (example 17).** Overdriven into clipping, a VAS current sink that shared its LED reference with the input pair saturated, robbed the reference and held the output at the negative rail; a 4.7 kΩ base resistor stops it.
+
 ## [3.163.0] - 2026-10-31
 
 ### Added

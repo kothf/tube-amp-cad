@@ -101,7 +101,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   await cad.bringToFront();
   const before = await cad.evaluate(() => TubeCAD.state.comps.length);
   const items = await cad.evaluate(() => TubeCAD.EXAMPLES.map(e => e.title));
-  check(items.length === 15 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `the gallery has the ${items.length} circuits drawn from published sources`);
+  check(items.length === 20 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `the gallery has the ${items.length} example circuits`);
   await cad.click("#btn-file"); await cad.click("#btn-start");
   cad.once("dialog", d => d.accept());
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
@@ -122,7 +122,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
     res.push(await cad.evaluate(f => ({ f, ok: !!TubeCAD.state.sim.result && TubeCAD.state.sim.result.ok && !TubeCAD.state.sim.error, parts: TubeCAD.state.comps.length }), e));
   }
-  check(res.length === 15 && res.every(r => r.ok && r.parts > 15), `all fifteen examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
+  check(res.length === 20 && res.every(r => r.ok && r.parts > 15), `all twenty examples open and simulate: ${res.map(r => `${r.f.slice(0, 2)} ${r.ok ? "ok" : "FAILED"}`).join(", ")}`);
   check(await cad.evaluate(() => TubeCAD.state.sim.result && TubeCAD.state.sim.result.solver === "wasm"), "the simulation worker solves with WebAssembly");
   if (!tracer.isClosed()) {
     // a transistor in the circuit on the curve tracer: its operating point lies on the tracer's own curve

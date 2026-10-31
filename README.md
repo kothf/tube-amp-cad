@@ -204,7 +204,8 @@ Paste the `.SUBCKT … .ENDS` text or open the file.
 ### Examples
 
 **File ▾ → Gallery…** opens circuits drawn from published sources and compared
-with them (see [Accuracy](#accuracy)). The **start screen** (shown when the CAD
+with them (see [Accuracy](#accuracy)), and five transistor power amplifiers of
+the app's own (7 to 12 transistors each) on SMD boards. The **start screen** (shown when the CAD
 opens on an empty sheet, and from *File ▾ → Gallery…*) has *New circuit*,
 *Open file* and every example as a picture of its first sheet, by kind; untick
 *Show this when the CAD opens* to start straight on the sheet. The pictures are
@@ -235,6 +236,11 @@ the rest; every board opens with 0 connections open and 0 rule messages:
 | 10 W complementary MOSFET amplifier | MOSFETs | homemade-circuits.com, fig. 1 |
 | 2N3904 common emitter, RE unbypassed | transistor | University of Washington lab notes (2017), bench measurements |
 | 2N3904 common emitter, RE bypassed | transistor | the same, with 10 µF across RE |
+| 12 W amplifier, complementary feedback pairs (SMD) | transistor | this app's own design: ±15 V, current-source input and VAS, CFP outputs in D²PAK; 12 W at 1 % THD; all-SMD board |
+| 50 W amplifier, MJL4281A / MJL4302A outputs | transistor | this app's own design: ±30 V, LED-referenced current sinks, CFP outputs in TO-264 on the board edge; 51 W at 1 % THD |
+| 14 W class-A amplifier, current-sink output | transistor | this app's own design: ±18 V single-ended class A, 4 × TIP36C, 1.8 A sink; 14 W at 1 % THD |
+| 30 W quasi-complementary amplifier (SMD) | transistor | this app's own design: ±25 V, current mirror, bootstrapped VAS, TIP41C outputs in D²PAK; 32 W at 1 % THD; all-SMD board |
+| 40 W amplifier, complementary MOSFET output (SMD) | MOSFETs | this app's own design: ±30 V, IRF540N / IRF9540N in D²PAK; 38 W at 1 % THD; all-SMD board |
 | NE555 astable multivibrator | 555 | 555-timer-circuits.com: 1k / 10k / 100 nF, 678 Hz at 51.8 % (formula 686 Hz, 52.4 %) |
 | NE555 flashing LED | 555 | 555-timer-circuits.com: 1K / 470K / 1 µF, 1.51 Hz (formula 1.53 Hz) |
 | NE555 metronome | 555 | 555-timer-circuits.com: 250K speed pot at 50k, 22 µF, speaker; 0.641 Hz (formula 0.648 Hz) |
@@ -842,6 +848,9 @@ the circuit file, so one file holds both.
   - shorts;
   - copper or parts over or near the board edge;
   - annular rings, drills, minimum and class track widths;
+  - **vias in SMD pads**: a via in (or touching) a surface-mount pad is an
+    error, since the mask opens over it and the solder paste runs down the
+    hole (the grid router keeps its vias 0.15 mm or more off SMD pads);
   - **track width for the current**: each net's DC current comes from the
     simulation, and a track narrower than IPC-2221 asks for that current
     (outer layer, the board's copper weight, the allowed warming) is an

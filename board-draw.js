@@ -82,9 +82,10 @@
       // reference and no other value
       const silk = new Map(), taken = [];
       const overlaps = r => taken.some(t => r.x1 < t.x2 && r.x2 > t.x1 && r.y1 < t.y2 && r.y2 > t.y1);
+      const placedKeys = S.model ? new Set(S.model.parts.filter(g => g.place).map(g => g.key)) : null, padsOn = S.model ? S.model.pads.filter(pd => placedKeys.has(pd.part)) : [];
       if (S.model) S.model.parts.forEach(g => {
         if (!g.place) return;
-        const ops = BoardFab.partSilk(g, S.board.outline); silk.set(g.key, ops);
+        const ops = BoardFab.partSilk(g, S.board.outline, padsOn); silk.set(g.key, ops);
         ops.filter(o => o.ref).forEach(o => { const xs = o.pts.map(q => q[0]), ys = o.pts.map(q => q[1]); taken.push({ x1: Math.min(...xs) - 0.3, y1: Math.min(...ys) - 0.3, x2: Math.max(...xs) + 0.3, y2: Math.max(...ys) + 0.3 }); });
       });
       ["B", "F"].forEach(side => {
@@ -94,7 +95,7 @@
           if (!g.place || (g.place.side || "F") !== side) return;
           const sel = isSel("part", g.key);
           // the silkscreen as it will be made (outline and reference in the stroke font)
-          const ops = (silk.get(g.key) || BoardFab.partSilk(g, S.board.outline)).map(o => (o.t === "line" && px > 0.15 ? { ...o, w: Math.max(o.w, px) } : o));
+          const ops = (silk.get(g.key) || BoardFab.partSilk(g, S.board.outline, padsOn)).map(o => (o.t === "line" && px > 0.15 ? { ...o, w: Math.max(o.w, px) } : o));
           BoardFab.paint(ctx, ops, sel ? "#00e5ff" : COLORS[L], "erase");
           const b = partBox(g);
           if (scale > 6 && g.value) {

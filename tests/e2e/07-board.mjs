@@ -662,6 +662,6 @@ const NOTES = ["unplaced", "check", "class", "silk", "dangling", "stopper", "cou
     res.push({ f, ...await bw.evaluate(NOTES => { const S = BoardApp.state; return { parts: S.model.parts.length, placed: Object.keys(S.board.parts).length, un: S.conn.unrouted, drc: S.drc.filter(d => !NOTES.includes(d.kind)).length }; }, NOTES) });
   }
   const bad = res.filter(r => r.no || r.placed < r.parts || r.un || r.drc);
-  check(res.length === 15 && !bad.length, `every example's board is placed and routed within the rules${bad.length ? `; not: ${bad.map(r => `${r.f.slice(0, 2)} ${r.no ? "no board" : `${r.placed}/${r.parts} placed, ${r.un} open, ${r.drc} violations`}`).join(", ")}` : ""}`);
+  check(res.length === 20 && !bad.length, `every example's board is placed and routed within the rules${bad.length ? `; not: ${bad.map(r => `${r.f.slice(0, 2)} ${r.no ? "no board" : `${r.placed}/${r.parts} placed, ${r.un} open, ${r.drc} violations`}`).join(", ")}` : ""}`);
   await bw.close();
 }

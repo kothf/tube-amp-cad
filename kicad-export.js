@@ -151,15 +151,19 @@
     // footprints
     const padsOf = new Map();
     model.pads.forEach(p => { if (!padsOf.has(p.part)) padsOf.set(p.part, []); padsOf.get(p.part).push(p); });
+    const placedPads = model.pads.filter(p => { const g = model.parts.find(q => q.key === p.part); return g && g.place; });
     model.parts.forEach(g => {
       const bp = g.place, f = g.fp; if (!bp || !f) return;
       const T = fpFrame(bp), mp = padsOf.get(g.key) || [], sd = "fp:" + g.key;
       // the reference above the part as the board shows it (upright: a footprint text's angle is the
       // board's, not the footprint's); the value on the fab layer
       const b = C.partBox(g), ry = b.y1 - 0.4 - 0.635 < 0.5 && b.y2 + 1.1 <= o.h - 0.5 ? b.y2 + 1.035 : b.y1 - 1.035;
+      // where the board put it (clear of other pads), else above
+      const rs = C.partSilk(g, false, o, placedPads).filter(op => op.ref).flatMap(op => op.pts), rx = rs.length ? (Math.min(...rs.map(p => p[0])) + Math.max(...rs.map(p => p[0]))) / 2 : (b.x1 + b.x2) / 2;
+      const ry2 = rs.length ? (Math.min(...rs.map(p => p[1])) + Math.max(...rs.map(p => p[1]))) / 2 : ry;
       const it = [`(footprint ${q(LIBNAME + ":" + fpName(f))} (layer ${q(T.F + ".Cu")})`, `  (tstamp ${uuid(sd)})`, `  (at ${n(bp.x)} ${n(bp.y)}${T.a ? " " + T.a : ""})`];
       if (g.members && g.members.length) it.push(`  (path ${q("/" + (m.sheetOf ? m.sheetOf(g.members[0].id) : "") + symbolUuid(g.members[0].id))})`);
-      body.push(it.concat(fpItems(f, T, sd, { ref: g.ref, refAt: T.local((b.x1 + b.x2) / 2, ry), value: g.value || f.name, valAt: T.local((b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2), net: i => netRef((mp[i] || {}).netName) }), ")").join("\n"));
+      body.push(it.concat(fpItems(f, T, sd, { ref: g.ref, refAt: T.local(rx, ry2), value: g.value || f.name, valAt: T.local((b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2), net: i => netRef((mp[i] || {}).netName) }), ")").join("\n"));
     });
     // mounting holes: footprints of their own (H1, H2 …)
     (board.holes || []).forEach((h, i) => {
