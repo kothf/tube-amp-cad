@@ -1082,3 +1082,17 @@ test("standing resistors: pitch, height, silkscreen and courtyard from the body 
   assert.equal((txt.match(/MANIFOLD_SOLID_BREP\(/g) || []).length, sc.bodies.length + 1);
   assert.ok(!/NaN|Infinity/.test(txt));
 });
+
+test("a square pad's corners count in the clearance (the capsule missed them by up to 0.26 mm)", () => {
+  // a 2 mm square pad at the origin and a 0.6 mm track passing its corner diagonally
+  const p = { x: 0, y: 0, w: 2, h: 2, shape: "rect" }, cap = B.padCapsule(p);
+  const pad = { kind: "pad", s: cap.s, r: cap.r, box: [-1, -1, 1, 1] }, tr = { kind: "track", s: [2.5, 0.2, 0.2, 2.5], r: 0.3 };
+  const corner = Math.hypot(1.35 - 1, 1.35 - 1) - 0.3;   // the track's centre line passes (1.35, 1.35)
+  assert.ok(Math.abs(B.itemGap(pad, tr) - corner) < 1e-9, `exact gap ${B.itemGap(pad, tr)} vs ${corner}`);
+  assert.ok(B.segSeg(cap.s, tr.s) - cap.r - tr.r > corner + 0.1, "the capsule alone reads it more than 0.1 mm wider");
+  // a track along a side is as far as the side, not the capsule's bulge
+  assert.ok(Math.abs(B.itemGap(pad, { kind: "track", s: [1.5, -3, 1.5, 3], r: 0.3 }) - 0.2) < 1e-9);
+  // two square pads: the gap between their boxes; a segment touching or inside the box: 0
+  assert.ok(Math.abs(B.itemGap(pad, { kind: "pad", s: [4, 4, 4, 4], r: 1, box: [3, 3, 5, 5] }) - Math.hypot(2, 2)) < 1e-9);
+  assert.equal(B.segItem([0.5, 0.5, 3, 3], pad), 0);
+});
