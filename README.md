@@ -836,7 +836,9 @@ the circuit file, so one file holds both.
   its simulated DC voltage (above 60 V by default is HV) and GND being Power,
   or as you set it per net.
 - **Design-rule check**, live:
-  - clearance between nets and to mounting holes;
+  - clearance between nets and to mounting holes (a square pin 1 pad as its
+    exact rectangle, corners included, as are the grid router, teardrops and
+    pour spokes);
   - shorts;
   - copper or parts over or near the board edge;
   - annular rings, drills, minimum and class track widths;
