@@ -970,8 +970,6 @@
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.code === "KeyP" || String(e.key).toLowerCase() === "p")) { e.preventDefault(); if ($("print-modal").hidden) openPrint(); return; }
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
     if (!$("view3d").hidden) {
-      if (e.code === "KeyD" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); toggle3DMeasure(); return; }
-      if (e.key === "Escape" && viewer && viewer.measure && viewer.picks.length) { e.preventDefault(); viewer.clearPicks(); return; }
       if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); }
       return;
     }
@@ -1455,36 +1453,10 @@
     if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return; }
     if (S.route) finishRoute();
     $("view3d").hidden = false;
-    if (!viewer) {
-      viewer = new Viewer3D($("gl3d")); if (!viewer.ok) { viewer = null; $("view3d").hidden = true; msg("This browser cannot draw 3D (no WebGL)"); return; }
-      viewer.overlay = $("ov3d"); viewer.onMeasure = measure3D;
-    }
+    if (!viewer) { viewer = new Viewer3D($("gl3d")); if (!viewer.ok) { viewer = null; $("view3d").hidden = true; msg("This browser cannot draw 3D (no WebGL)"); return; } }
     build3D(true); msg("3D view: drag to turn, right-drag to move, wheel to zoom; 3 or Esc goes back to the layout");
   }
   function close3D() { $("view3d").hidden = true; render(); }
-  // measuring in 3D: the board's top is at its thickness; X and Y as in the layout (from the
-  // bottom-left corner, y up), Z the height above the board's top (below zero: under the board)
-  function measure3D(picks) {
-    const box = $("m3d"), U = S.mUnits, F = v => BoardMeasure.fmt(v, "len", U), t = S.board.stackup.thickness || 1.6, oh = S.board.outline.h;
-    $("v3-measure").classList.toggle("on", !!(viewer && viewer.measure));
-    viewer.label = "";
-    if (!viewer.measure || !picks.length) { box.hidden = true; if (viewer.measure) msg("3D measure: click a point on the board or a part, then a second one; D or the button ends it"); return; }
-    const pos = q => [q.p[0], oh + q.p[1], q.p[2] - t], rows = [], P = picks.map(pos);
-    let title = "Point", val = "";
-    if (P.length === 1) {
-      rows.push(["X, Y", `${F(P[0][0])}, ${F(P[0][1])}`], ["Height above the board", F(P[0][2])], ["Stuck to", picks[0].what === "corner" ? "a corner" : "the surface"]);
-      val = F(P[0][2]); title = "Height above the board";
-    } else {
-      const [a, b] = P, dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], d = Math.hypot(dx, dy, dz);
-      rows.push(["ΔX", F(dx)], ["ΔY", F(dy)], ["ΔZ", F(dz)], ["Along the board (XY)", F(Math.hypot(dx, dy))], ["Heights above the board", `${F(a[2])} / ${F(b[2])}`]);
-      val = F(d); title = "Distance in 3D"; viewer.label = val;
-      msg(`3D measure: ${val} (ΔX ${F(dx)}, ΔY ${F(dy)}, ΔZ ${F(dz)})`);
-    }
-    S.measured3d = { title, picks: P };
-    box.innerHTML = `<b>${esc(title)}</b><div class="mc-val">${esc(val)}</div><table>${rows.map(([l, v]) => `<tr><td>${esc(l)}</td><td>${esc(v)}</td></tr>`).join("")}</table>`;
-    box.hidden = false;
-  }
-  const toggle3DMeasure = () => { if (viewer) viewer.setMeasure(!viewer.measure); };
   function exportStep() {
     if (!S.model) return;
     const name = baseName() + ".step", sc = Board3D.scene(S.board, S.model, { tubes: $("v3-tubes").checked });
@@ -1623,7 +1595,7 @@
     $("ex-step").onclick = () => { list.hidden = true; exportStep(); };
     $("ex-kicad").onclick = () => { list.hidden = true; exportKicad(); };
     $("btn-3d").onclick = () => ($("view3d").hidden ? open3D() : close3D());
-    $("v3-close").onclick = close3D; $("v3-measure").onclick = toggle3DMeasure; $("v3-step").onclick = exportStep;
+    $("v3-close").onclick = close3D; $("v3-step").onclick = exportStep;
     $("v3-png").onclick = () => { if (!viewer) return; const a = document.createElement("a"); a.href = viewer.png(); a.download = baseName() + "-3d.png"; a.click(); msg("Saved " + a.download); };
     document.querySelectorAll("[data-view]").forEach(b => { b.onclick = () => viewer && viewer.view(b.dataset.view); });
     ["v3-parts", "v3-tubes"].forEach(id => { $(id).onchange = () => build3D(false); });
