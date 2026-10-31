@@ -734,12 +734,28 @@ the circuit file, so one file holds both.
 - **Mounting holes** are not plated (NPTH) or plated (PTH): a plated one has a
   copper ring on both sides (Ø 6 mm round an M3 hole by default) and may
   take a net, GND for a grounded chassis screw, which a pour of that net joins.
+- **Construction geometry** (Construct ▾) for placing mounting holes
+  exactly: dashed construction lines (<kbd>C</kbd>: two points or one and an
+  angle), offsets of a board edge, the whole outline or a construction line
+  (<kbd>O</kbd>), circles and arcs round holes and pads (<kbd>Shift</kbd>+<kbd>C</kbd>),
+  reference points (<kbd>Shift</kbd>+<kbd>P</kbd>), linear and polar arrays.
+  Clicks snap to crossings, centres, quarter points, midpoints, ends and
+  tangent points (each kind can be turned off); digits typed while a tool is
+  on go into a box by the pointer (θ, d, R, Δx Δy Ø). Everything stays tied
+  to what it was drawn from, so resizing the board or moving a hole or part
+  moves the construction and the holes placed on it; Detach makes them plain
+  coordinates. The hole tool ties a hole to the point it snaps to, Δx Δy from
+  a hole, pad or corner; holes go on every point of an array at once. Show,
+  lock and clear are in the menu. It is saved with the board and never
+  exported. Holes take a tolerance and a counterbore or countersink (listed
+  in the Gerber ZIP's README), and a design rule keeps a hole's wall 1 mm
+  from the board edge.
 - **A part's own unplated holes** (the locating pegs of the Neutrik NJ2FD-V,
   NJ3FD-V and NJ5FD-V vertical jacks) move with the part, go into the NPTH
   drill file as component holes, open the mask, are drilled through the 3D
   board, and keep the net class's clearance from tracks and pours.
 - **Tools:** Select, Route, Via, Text (silkscreen or copper), Mounting hole,
-  Pour, Measure. The board's top-right corner handle resizes it; the origin
+  Pour, Keep-out, Measure, and the Construct menu's construction tools. The board's top-right corner handle resizes it; the origin
   stays put. Silkscreen text uses a
   stroke font, so the screen shows what the board maker gets.
 - **Routing** starts on a pad, a track or a via and ends on any of them on the

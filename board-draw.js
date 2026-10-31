@@ -6,7 +6,7 @@
   "use strict";
   // app: what this part needs from board-app.js; returns what board-app.js uses of it
   root.BoardDraw = function (app) {
-    const { $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected } = app;
+    const { $, B, COLORS, NOTE, S, consDraw, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected } = app;
     let canvas = null, ctx = null, dpr = 1, queued = false;
     // the board's canvas, from init
     function attachCanvas(cv) { canvas = cv; ctx = cv.getContext("2d"); dpr = window.devicePixelRatio || 1; }
@@ -196,11 +196,12 @@
         r.segs.forEach(t => { ctx.strokeStyle = COLORS[t.layer]; ctx.lineWidth = t.w; ctx.beginPath(); t.pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); });
       }
       // placement ghost for the via / hole / text tools
-      if (["via", "hole", "text"].includes(S.tool) && !S.drag) {
+      if (["via", "text"].includes(S.tool) && !S.drag) {
         const x = snap(S.mouse[0]), y = snapY(S.mouse[1]), R = S.board.rules;
         ctx.globalAlpha = 0.5; ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = Math.max(0.1, px);
         ctx.beginPath(); ctx.arc(x, y, S.tool === "via" ? R.viaPad / 2 : S.tool === "hole" ? 1.6 : 0.6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
       }
+      if (consDraw) consDraw(ctx, px, snapMark);   // construction geometry (dashed), the construction tools and the hole tool
       if (S.tool === "measure" && S.snapHint && !(S.measure && S.measure.b)) snapMark(S.snapHint, px);
       (S.pins || []).forEach(pin => drawMeasure(pin.r, px, true));
       if (S.measure) {

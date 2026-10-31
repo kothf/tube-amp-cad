@@ -37,7 +37,7 @@
   function defaultRules() {
     return {
       track: 0.6, power: 1.0, minTrack: 0.4,                       // widths, mm (power nets widen further for their DC current)
-      clearance: 0.4, hvClearance: 2.0, hvVolts: 60, edgeClearance: 0.5,
+      clearance: 0.4, hvClearance: 2.0, hvVolts: 60, edgeClearance: 0.5, holeEdge: 1.0,   // holeEdge: a hole's wall to the board edge
       viaDrill: 0.8, viaPad: 1.8, minDrill: 0.6, minAnnular: 0.3,
       maskExpansion: 0.05, tentVias: true,                        // solder mask: opening around pads; vias covered
       tempRise: 10,                                               // °C a track may warm up at its DC current (IPC-2221, outer layer)
@@ -49,7 +49,7 @@
       teardrops: true,                                            // copper fillets where tracks meet pads and vias
       socketBody: true,                                           // under a valve socket's body a track may pass its pins as close as they are to each other
       maxHeight: 0,                                               // the room under the enclosure's lid above the board's top (mm; 0: no limit)
-      checks: { star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, height: true, keepout: true, silk: true, dangling: true, stopper: true, coupling: true, heat: true, support: true }
+      checks: { star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, height: true, keepout: true, silk: true, dangling: true, holeedge: true, stopper: true, coupling: true, heat: true, support: true }
     };
   }
   const CLASSES = ["Signal", "Power", "HV"];
@@ -1486,6 +1486,11 @@
       });
       (board.holes || []).forEach(h => { if (h.plated && on("annular") && (holeRing(h) - h.d) / 2 < R.minAnnular - 1e-6) out.push({ kind: "annular", x: h.x, y: h.y, msg: `Plated hole: annular ring ${((holeRing(h) - h.d) / 2).toFixed(2)} mm < ${R.minAnnular} mm` }); });
     }
+    // a mounting hole's wall too near the board edge: the web of board between them breaks when it is drilled or screwed down
+    if (on("holeedge")) (board.holes || []).forEach(h => {
+      const g = edgeDist(h.x, h.y, o) - h.d / 2, need = Number.isFinite(+R.holeEdge) ? +R.holeEdge : 1;
+      if (g < need - 1e-6) out.push({ kind: "holeedge", x: h.x, y: h.y, msg: g < 0 ? `Mounting hole Ø${h.d} cuts the board edge` : `Mounting hole Ø${h.d}: its wall is ${g.toFixed(2)} mm from the board edge (< ${need} mm)` });
+    });
     // a plated hole given a net (a grounded screw) that its copper does not reach
     if (on("dangling")) (board.holes || []).forEach((h, hi) => {
       if (!h.plated || !h.net) return;

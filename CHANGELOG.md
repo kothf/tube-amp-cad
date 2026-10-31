@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.163.0] - 2026-10-31
+
+### Added
+- **Construction geometry for placing mounting holes (Board, Construct ▾).** Dashed construction lines through two points or one point at an angle θ (C; endless, ray or segment; the angle from the X axis, a board edge or another line), offsets of a board edge, a keep-out edge, a construction line or circle, or the whole outline contour with its corners rounded smaller (O; d > 0 into the board), circles and arcs round holes, pads and points with R from the centre or from the hole's rim (Shift+C; also a hole's right-click menu), reference points (Shift+P), and linear and polar arrays by step or total span. Drawn dashed in their own colour, saved with the board, and never in any export (Gerber, drill, PDF, KiCad, STEP, SVG).
+- **Snapping and typed numbers.** Clicks stick to construction points, crossings (line–line, line–circle, construction–board edge), circle centres and quarter points, the rounded corners' centres, segment midpoints and ends, tangent points while drawing a line, and onto construction; Construct ▾ → Snap to turns each kind on or off, Alt snaps to the grid only. Smart measure snaps to them too. With a construction tool or the hole tool on, digits go into a box by the pointer (θ, d, R, Δx Δy Ø; Tab, Enter, Esc) and the dashed preview follows.
+- **Tied, so it follows.** Every item keeps what it was drawn from: resizing the board or moving a hole, pad or part moves the construction and the mounting holes placed on it. The hole tool ties a hole to the point it snaps to, Δx Δy from a hole, pad, corner or crossing; a hole dragged by hand keeps its tie with the new offset; Detach (inspector, right-click) turns an item or hole into plain coordinates, and deleting an item detaches what was drawn from it. The inspector shows each tie in words (e.g. "Offset = 5.00 mm from board bottom edge") with fields to change it. Board setup's corner holes are now tied to their corners. Holes on all of an item's points, or on every construction point, at once; several selected holes take one diameter and plating. Show, Lock and Clear construction in the menu.
+- **Hole tolerance and finish.** A mounting hole takes a diameter tolerance (+/−) and a counterbore (Ø, depth) or countersink (Ø, 82°/90°/100°/120°), drawn on the board and listed for the board maker in the Gerber ZIP's README.
+- **Hole to the board edge design rule** (Design rules → Hole to the board edge, 1 mm by default): a mounting hole's wall too near the edge, or cutting it, is reported; the hole tool's ghost turns red there. Help, README, hover hints and Russian included.
+
 ## [3.162.0] - 2026-10-31
 
 ### Added

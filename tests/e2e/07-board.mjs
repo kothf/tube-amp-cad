@@ -612,6 +612,38 @@ import { readFile } from "node:fs/promises";
     check(await bd.evaluate(() => BoardApp.state.tool) === "via", "with nothing selected Shift+V is still the via tool");
     await bd.keyboard.press("Escape");
   }
+  // construction geometry: offsets of two board edges typed in the HUD, a hole on their crossing
+  // that follows the board when it is resized, nothing of it in the Gerbers, clear and undo
+  {
+    await bd.evaluate(() => { BoardApp.setTool("select"); BoardApp.state.sel = null; BoardApp.fit(); }); await bd.waitForTimeout(100);
+    Object.assign(cv, await bd.locator("#pcb").boundingBox());
+    const o = await bd.evaluate(() => ({ ...BoardApp.state.board.outline })), n0 = await bd.evaluate(() => BoardApp.state.board.construct.items.length);
+    await bd.locator("#pcb").focus(); await bd.keyboard.press("o");
+    let p = await at(o.w * 0.4, o.h); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
+    await bd.keyboard.type("35"); await bd.keyboard.press("Backspace"); await bd.keyboard.press("Enter");   // a 3 typed goes into the box, not to the 3D view
+    p = await at(o.w, o.h * 0.4); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
+    await bd.keyboard.type("6"); await bd.keyboard.press("Enter");
+    const items = await bd.evaluate(() => BoardApp.state.board.construct.items.slice(-2)), v3 = await bd.evaluate(() => document.getElementById("view3d").hidden);
+    check(items.length === 2 && items[0].k === "offset" && items[0].d === 3 && items[0].of.k === 0 && items[1].d === 6 && items[1].of.k === 1 && v3, `Construct: O, a click on the bottom edge, 3 typed, Enter: an offset 3 mm in; the right edge 6 mm (${JSON.stringify(items.map(i => [i.of.k, i.d]))}), and typing 3 did not open the 3D view`);
+    await bd.keyboard.press("h");
+    p = await at(o.w - 6.3, o.h - 3.2); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
+    const hole = await bd.evaluate(() => { const h = BoardApp.state.board.holes.slice(-1)[0]; return { x: h.x, y: h.y, t: h.at && h.at.ref.t, insp: document.getElementById("inspector").textContent }; });
+    check(Math.abs(hole.x - (o.w - 6)) < 1e-6 && Math.abs(hole.y - (o.h - 3)) < 1e-6 && hole.t === "x" && /Tied to the construction/.test(hole.insp), `the hole tool sticks to the crossing of the two offsets and ties the hole to it (${hole.x}, ${hole.y}: ${hole.t})`);
+    // a wider and taller board (Board setup): the offsets and the hole follow the bottom-right corner
+    await bd.keyboard.press("Escape"); await bd.click("#btn-board"); await bd.click("#btn-setup");
+    await bd.fill('#setup-modal [data-o="w"]', String(o.w + 20)); await bd.fill('#setup-modal [data-o="h"]', String(o.h + 10)); await bd.click("#setup-apply");
+    const moved = await bd.evaluate(() => { const S = BoardApp.state, h = S.board.holes.find(q => q.at && q.at.ref.t === "x"); return { x: h.x, Y: S.board.outline.h - h.y, w: S.board.outline.w }; });
+    check(Math.abs(moved.x - (o.w + 20 - 6)) < 1e-6 && Math.abs(moved.Y - 3) < 1e-6, `resized 20 mm wider and 10 mm taller, the hole is still 6 mm from the right edge and 3 mm above the bottom (${moved.x.toFixed(2)}, Y ${moved.Y.toFixed(2)})`);
+    // the construction never reaches the manufacturing files; Clear keeps the holes where they are; Ctrl+Z brings it back
+    const fab = await bd.evaluate(() => JSON.stringify(BoardApp.fabFiles()));
+    await bd.click("#btn-cons"); await bd.click("#mi-cclear");
+    const cleared = await bd.evaluate(() => ({ n: BoardApp.state.board.construct.items.length, tied: BoardApp.state.board.holes.filter(h => h.at).length }));
+    const fab2 = await bd.evaluate(() => JSON.stringify(BoardApp.fabFiles()));
+    await bd.locator("#pcb").focus(); await bd.keyboard.press("Control+z");
+    const back = await bd.evaluate(() => BoardApp.state.board.construct.items.length);
+    check(cleared.n === 0 && fab === fab2 && back === n0 + 2, `the Gerbers and drill files are the same with and without the construction; Clear removes it (${cleared.n} left, ${cleared.tied} holes tied) and Ctrl+Z brings back ${back}`);
+    await bd.keyboard.press("Escape");
+  }
   await bd.close();
 }
 

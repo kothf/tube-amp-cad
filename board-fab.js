@@ -199,6 +199,10 @@
       `Board: ${board.outline.w} × ${board.outline.h} mm${board.outline.r ? `, corner radius ${board.outline.r} mm` : ""}, 2 layers, ${st.thickness} mm FR-4, ${st.copper} µm copper (${st.copper >= 70 ? 2 : 1} oz)`,
       `Tracks ${nw.length ? `${Math.min(...nw)}–${Math.max(...nw)} mm wide` : "none"} (design minimum ${R.minTrack} mm); clearance ${R.clearance} mm, high voltage ${R.hvClearance} mm and more by IPC-2221B ${R.ipc || "B2"} where the voltage asks`,
       `Holes: ${n(d.pth)} plated (${dias(d.pth)} mm${ph ? `; ${ph} of them plated mounting holes` : ""})${d.npth.length ? `, ${n(d.npth)} not plated (${dias(d.npth)} mm)` : ""}`,
+      // mounting holes with a finish or a tolerance (the drill files carry only the diameter)
+      ...(board.holes || []).filter(h => h.finish || (Array.isArray(h.tol) && h.tol.some(v => +v))).map(h => `Mounting hole Ø${h.d} mm ${h.plated ? "plated" : "not plated"} at X ${(+h.x).toFixed(2)}, Y ${(board.outline.h - h.y).toFixed(2)}: ${[
+        h.finish && h.finish.k === "cb" ? `counterbore Ø${h.finish.d} mm, ${h.finish.depth} mm deep` : h.finish && h.finish.k === "cs" ? `countersink Ø${h.finish.d} mm × ${h.finish.ang}°` : "",
+        Array.isArray(h.tol) && h.tol.some(v => +v) ? `diameter tolerance +${(+h.tol[0] || 0).toFixed(2)} / −${Math.abs(+h.tol[1] || 0).toFixed(2)} mm` : ""].filter(Boolean).join("; ")} (top side)`),
       ...(smd.length ? [`Surface-mount parts: ${smd.length} (${["F", "B"].filter(s => smd.some(g => (g.place.side || "F") === s)).map(s => (s === "F" ? "top" : "bottom")).join(" and ")}); solder paste layers and ${base}-pos.csv (placement: centre, rotation, side) for assembly`] : []),
       `Solder mask on both sides${R.tentVias ? ", vias covered" : ""}; silkscreen on the top${board.texts.some(t => t.layer === "B.SilkS") || model.parts.some(g => g.place && g.place.side === "B") ? " and bottom" : ""}, kept off the pads and inside the outline.`, "",
       "Files: " + Object.keys(files).concat([`${base}-README.txt`]).join(", "), ""].join("\n");
