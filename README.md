@@ -211,6 +211,13 @@ opens on an empty sheet, and from *File ▾ → Gallery…*) has *New circuit*,
 *Show this when the CAD opens* to start straight on the sheet. The pictures are
 drawn by `node scripts/example-thumbs.mjs` (run it after changing an example).
 
+The example schematics are drawn to be read: signal from left to right,
+supplies at the top and the bottom, one ground bar with a single ground symbol
+per area instead of a symbol at every part, each supply rail as one bus with a
+single rail symbol, the transistor amplifiers' supply terminal with its
+decoupling capacitors in one block, square corners, and no wire through a part
+or a label.
+
 Every example also carries a finished two-layer board, laid out the way a
 board designer would place it rather than by the automatic placer: signal
 flowing from the input jack across to the output transformer leads, the input
@@ -304,7 +311,8 @@ the circuit that was on the sheet.
 - **Sheets.**
   - *File → New* starts a sheet with an ISO 5457 frame, a reference grid and
     an ISO 7200 title block (A4 to A1, landscape or portrait). *File → Add
-    sheet* adds further sheets.
+    sheet* adds further sheets. A title block value too long for its cell
+    wraps onto two or three lines instead of running into the next cell.
   - Sheet connectors with the same signal name join their wires across
     sheets and show where their partners are, grouped by row: "A3,5 B2,5,8"
     (on several sheets "1/A3,5 2/C1,4"). A name used five times or more (B+,

@@ -504,8 +504,23 @@
         ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = "#8b949e"; ctx.font = `${2 * MM}px ui-monospace, monospace`; ctx.fillText(label, X(x + 1), Y(y + 0.8));
         let h = (size || 3.5) * MM; ctx.font = `${h}px ui-monospace, monospace`;
         const tw = ctx.measureText(val || "").width, room = (w - 2) * MM;
+        ctx.fillStyle = COL.text;
+        if (tw > room && h * room / tw < 2.2 * MM) {
+          // too long for one line at a readable size: two or three lines, words kept whole
+          const words = String(val).split(/\s+/), at = h / 2.2 / MM;
+          let lines = [String(val)];
+          for (const n of [2, 3]) {
+            const per = tw / n; lines = [""];
+            words.forEach(wd => { const cur = lines[lines.length - 1]; if (cur && ctx.measureText(cur + " " + wd).width > per * 1.15 && lines.length < n) lines.push(wd); else lines[lines.length - 1] = cur ? cur + " " + wd : wd; });
+            if (Math.max(...lines.map(l => ctx.measureText(l).width)) * at <= room * 1.0001 || n === 3) break;
+          }
+          const lh = Math.min(h, 5.2 * MM / lines.length, h * room / Math.max(...lines.map(l => ctx.measureText(l).width)));
+          ctx.font = `${lh}px ui-monospace, monospace`;
+          lines.forEach((l, i) => ctx.fillText(l, X(x + 1), Y(y + 3.3) + i * lh));
+          return;
+        }
         if (tw > room) { h = Math.max(1.6 * MM, h * room / tw); ctx.font = `${h}px ui-monospace, monospace`; }
-        ctx.fillStyle = COL.text; ctx.fillText(val || "", X(x + 1), Y(y + 3.4 + ((size || 3.5) - h / MM) / 2));
+        ctx.fillText(val || "", X(x + 1), Y(y + 3.4 + ((size || 3.5) - h / MM) / 2));
       };
       field(0, 0, 70, "Responsible department", p.dept); field(70, 0, 40, "Technical reference", p.reference);
       field(110, 0, 35, "Document type", p.doctype); field(145, 0, 35, "Document status", p.status);

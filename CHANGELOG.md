@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.165.0] - 2026-10-31
+
+### Changed
+- **All example schematics tidied for reading (examples 01–20).** One ground bar with a single ground symbol per area instead of a symbol at every part; each supply rail of the transistor amplifiers (16–20) a single bus with one rail symbol, and their supply terminal with its decoupling capacitors in one block; parts moved a grid step or two so that no wire runs through a part, a designator or a value, and no label sits on another; square corners, fewer crossings and zig-zags; notes and the signal generator inside the frame. Nothing electrical changed: every example was checked in the app before and after for the same parts and values, the same nets pin for pin, the same named supplies and board net names, and the same DC operating point at every pin. The boards are untouched (still 0 open, 0 rule messages). Example 07 was already clean and stays as it was. Gallery pictures redrawn.
+
+### Fixed
+- **Title block text running into the next cell.** A value too long for its cell (the 555 examples' and the Hammond examples' technical reference) was squeezed into one line and overflowed; it now wraps onto two or three lines.
+
 ## [3.164.0] - 2026-10-31
 
 ### Added
