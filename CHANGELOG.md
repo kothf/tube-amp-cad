@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.162.0] - 2026-10-31
+
+### Added
+- **Smart measure in the Board window** (from the STEP viewer, the parts that fit a board). The Measure tool (D) now knows what it stuck to. One click gives the thing's size in a card at the bottom left: a pad's size, shape, drill, annular ring, side and net; a via's pad, drill and ring; a hole's diameter, copper ring and distance to the nearest board edge; a track segment's length, angle and width with the whole track's length, layer and net; the board's size and area. A second click gives what relates them, and before it the card follows the pointer: two pads, vias or holes give the pitch centre to centre (Δx, Δy, direction), the copper edge to edge checked against the clearance rule for those two nets (high-voltage classes and IPC-2221B included), drill wall to wall and the outer span, with Centre / Edge / Outer (or C) choosing the one drawn; a centre or a point against a track or the board edge gives the distance square to it, where the foot falls and the copper gap against the clearance or edge-clearance rule; parallel tracks or edges give their gap and offset, others the angle and where their lines cross. Copper closer than the rules is red. Pin (Enter) keeps measurements on the board (Del takes the last off, Clear all), Copy puts the details on the clipboard, units mm, mil or inch. A pad now wins over the track end on its centre when snapping.
+- **Measuring in the 3D view.** Measure (or D in the 3D view): click a point on the board or a part for its height above the board, a second for the distance in 3D with ΔX, ΔY, ΔZ and along the board; a click sticks to the nearest corner of the surface it hits. Help, README, tooltips and Russian included.
+
 ## [3.161.0] - 2026-10-31
 
 ### Changed

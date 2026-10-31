@@ -173,12 +173,32 @@ import { readFile } from "node:fs/promises";
   // grid points (1.27 mm): 30 × 40 grid steps = 38.1 × 50.8 mm, 63.5 mm apart
   await bd.click('[data-tool="measure"]'); p = await at(12.7, 12.7); await bd.mouse.click(p[0], p[1]); p = await at(50.8, 63.5); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
   const meas = await bd.evaluate(() => BoardApp.state.measured);
-  check(meas && Math.abs(meas.d - 63.5) < 0.01 && /Measure: 63\.50 mm/.test(await bd.textContent("#st-msg")), `Measure reads the distance between two clicks, snapped to the grid (${meas && meas.d.toFixed(2)} mm for 38.1 × 50.8)`);
+  check(meas && Math.abs(meas.d - 63.5) < 0.01 && /Measure: Distance 63\.5 mm/.test(await bd.textContent("#st-msg")), `Measure reads the distance between two clicks, snapped to the grid (${meas && meas.d.toFixed(2)} mm for 38.1 × 50.8)`);
   // the ruler sticks: near a corner hole's centre, then near the board's corner (not on the grid)
   p = await at(5.6, 5.4); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]); p = await at(119.5, 89.6); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
   const stuck = await bd.evaluate(() => BoardApp.state.measured);
   check(stuck && Math.abs(stuck.d - Math.hypot(115, 85)) < 0.01 && stuck.from === "hole Ø3.2" && stuck.to === "board corner" && /hole Ø3\.2 → board corner/.test(await bd.textContent("#st-msg")),
     `Measure sticks to a hole's centre and the board's corner (${stuck && stuck.d.toFixed(2)} mm, ${stuck && stuck.from} → ${stuck && stuck.to}); Shift measures on the grid only`);
+  // smart measure: the via placed above (60, 20) to the hole (60, 45): pitch 25 mm; C: edge to edge;
+  // the card shows it, Enter pins it, mil units, Del takes the pin off
+  // (at the via and the hole as placed on the grid: (60, 45) itself is the board's centre)
+  const [vx, hx] = await bd.evaluate(() => { const b = BoardApp.state.board; return [b.vias[b.vias.length - 1], b.holes[b.holes.length - 1]].map(o => [o.x, o.y]); });
+  p = await at(vx[0], vx[1]); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]); await bd.waitForTimeout(60);
+  const one = await bd.evaluate(() => ({ m: BoardApp.state.measured, card: document.getElementById("mcard").textContent }));
+  p = await at(hx[0], hx[1]); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]); await bd.waitForTimeout(60);
+  const pitch = await bd.evaluate(() => ({ m: BoardApp.state.measured, card: document.getElementById("mcard").textContent, shown: !document.getElementById("mcard").hidden }));
+  await bd.keyboard.press("c"); await bd.waitForTimeout(50);
+  const edge = await bd.evaluate(() => { const S = BoardApp.state, v = S.board.vias[S.board.vias.length - 1], h = S.board.holes[S.board.holes.length - 1];
+    return { ...S.measured, want: Math.hypot(v.x - h.x, v.y - h.y), wantEdge: Math.hypot(v.x - h.x, v.y - h.y) - v.pad / 2 - h.d / 2 }; });
+  check(/Via/.test(one.card) && /Annular ring/.test(one.card) && pitch.shown && pitch.m.title === "Pitch (centre to centre)" && Math.abs(pitch.m.value - edge.want) < 1e-6 && /Drill wall to wall/.test(pitch.card) && edge.mode === "min" && Math.abs(edge.value - edge.wantEdge) < 1e-6,
+    `smart measure: a via's size and ring on one click; via to hole is a ${pitch.m.value.toFixed(2)} mm pitch, C switches to edge to edge (${edge.value.toFixed(3)} mm)${edge.mode === "min" ? "" : " " + JSON.stringify({ pitch: pitch.m, edge, one: one.m })}`);
+  await bd.keyboard.press("Enter"); await bd.selectOption('#mcard select[data-mc="units"]', "mil"); await bd.waitForTimeout(50);
+  const pinned = await bd.evaluate(() => ({ n: BoardApp.state.pins.length, card: document.getElementById("mcard").textContent }));
+  await bd.locator("#pcb").focus(); await bd.keyboard.press("Delete");
+  const unpinned = await bd.evaluate(() => BoardApp.state.pins.length);
+  await bd.selectOption('#mcard select[data-mc="units"]', "mm").catch(() => {});
+  await bd.evaluate(() => { BoardApp.state.mUnits = "mm"; BoardApp.state.mMode = "centre"; try { localStorage.removeItem("tubecad_munits"); } catch (e) { /* none */ } });
+  check(pinned.n === 1 && /Pinned/.test(pinned.card) && /mil/.test(pinned.card) && unpinned === 0, `Enter pins the measurement, the units switch to mil (${pinned.card.match(/[\d.]+ mil/)}), Del takes the pin off`);
   // the drawing sheet round the board (smallest that fits: A4 for 120 × 90), grid and axes from the keyboard (Russian layout too)
   const sheet = await bd.evaluate(() => { const s = BoardApp.sheetPlace(); return s && { size: s.size, x: s.x, y: s.y, w: s.w, type: s.params.doctype }; });
   const ruKey = (key, code) => bd.evaluate(([key, code]) => window.dispatchEvent(new KeyboardEvent("keydown", { key, code, bubbles: true })), [key, code]);
@@ -473,6 +493,12 @@ import { readFile } from "node:fs/promises";
     await bd.keyboard.press("Control+z");
     await bd.click("#btn-view"); await bd.click("#btn-3d"); await bd.waitForTimeout(400);
     const v3 = await bd.evaluate(() => { const v = BoardApp.viewer(); return { shown: !document.getElementById("view3d").hidden, kinds: v ? [...new Set(v.batches.map(b => b.k))].sort().join(",") : "" }; });
+    // 3D measure: D, a click on the board's top in the middle (height 0), a second one higher up on a part
+    await bd.click('[data-view="top"]'); await bd.keyboard.press("d");
+    const g = await bd.locator("#gl3d").boundingBox(); await bd.mouse.click(g.x + g.width / 2, g.y + g.height / 2);
+    const m3 = await bd.evaluate(() => ({ on: BoardApp.viewer().measure, picks: BoardApp.viewer().picks.length, m: BoardApp.state.measured3d, card: document.getElementById("m3d").textContent }));
+    await bd.keyboard.press("d");
+    check(m3.on && m3.picks === 1 && m3.m && m3.m.picks[0][2] > -0.01 && /Height above the board/.test(m3.card), `3D measure picks a point on the board seen from the top (height ${m3.m && m3.m.picks[0][2].toFixed(2)} mm)`);
     await bd.click('[data-view="bottom"]'); await bd.locator("#gl3d").focus().catch(() => {}); await bd.keyboard.press("Escape");
     check(v3.shown && v3.kinds === "bottom,glass,solid,top" && await bd.evaluate(() => document.getElementById("view3d").hidden), `3D shows the board (textured top and bottom), the parts and the valves' glass (${v3.kinds}); Esc goes back to the layout`);
   } else check(true, "this browser has no WebGL here: the 3D checks are skipped");

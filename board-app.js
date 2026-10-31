@@ -28,6 +28,9 @@
     route: null,            // { net, layer, pts: [[x, y]...], w, segs: [] }
     measure: null,          // { a: [x, y], b: [x, y] | null, sa, sb: what each end stuck to }
     snapHint: null,         // the measure tool: where the pointer sticks (snapPoint)
+    mMode: "centre",        // smart measure between two round things: centre | min (edge to edge) | max (outer span)
+    mUnits: (() => { try { return localStorage.getItem("tubecad_munits") || "mm"; } catch (e) { return "mm"; } })(),
+    pins: [],               // pinned measurements: { r } (BoardMeasure results); kept until taken off
     gridStyle: "lines", axes: true,   // the screen grid (lines | dots | off) and the X / Y axes
     drag: null, hover: null, mouse: [0, 0], space: false,
     history: [], hIndex: -1,
@@ -477,7 +480,7 @@
   // Tools: select, route, via, text, mounting hole, measure
   // ---------------------------------------------------------------------------
   const TOOL_HELP = { select: "Select: drag parts, vias, texts and holes; drag the board's top-right corner handle to resize it (the origin, bottom left, stays put)", route: "Route: click a pad to start a track",
-    via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Measure: click two points",
+    via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Smart measure: click a pad, via, hole, track or board edge for its size, then a second one for what relates them (pitch, edge to edge against the rule, angle); C: centre / edge / span, Enter pins it",
     pour: "Copper pour: click the corners on the active layer, double-click (or click the first corner) to close; Backspace: take back a corner",
     keepout: "Keep-out area: click the corners, double-click to close; no tracks, vias or pour may enter it (set in the inspector)" };
   function setTool(t) {
@@ -507,21 +510,29 @@
   // Measure sticks to what is on the board: the centres of pads, vias and holes, track corners
   // and ends, the board's corners, edge middles and centre, area corners, texts and part
   // origins; failing those, onto a track's centre line, a hole's rim or the board edge; else
-  // the grid. Shift (or Alt): the grid only. Returns { p: [x, y], what, shape: centre | corner | on | grid }
+  // the grid. Shift (or Alt): the grid only. Returns { p: [x, y], what, shape: centre | corner | on | grid,
+  // kind: point | pad | via | hole | track | edge, and the pad, via, hole, track (+ seg) or edge seg it is }:
+  // smart measure (board-measure.js) reads what it stuck to.
   const SNAP_PX = 10;
+  const connNet = (kind, key, i) => { const it = S.conn && S.conn.items.find(q => q.kind === kind && q[key] === i); return it ? it.net : null; };
   function snapPoint(x, y, gridOnly) {
-    const grid = { p: [snap(x), snapY(y)], what: "grid", shape: "grid" };
+    const grid = { p: [snap(x), snapY(y)], what: "grid", shape: "grid", kind: "point" };
     if (gridOnly) return grid;
     const tol = SNAP_PX / S.view.scale, o = S.board.outline, copper = S.show["F.Cu"] || S.show["B.Cu"];
     let best = null, bd = tol;
-    const at = (px, py, what, shape) => { const d = Math.hypot(px - x, py - y); if (d <= bd) { bd = d; best = { p: [+px.toFixed(4), +py.toFixed(4)], what, shape }; } };
-    if (S.model && copper) S.model.pads.forEach(p => at(p.x, p.y, `pad ${p.ref}-${p.num}`, "centre"));
-    if (copper) S.board.vias.forEach(v => at(v.x, v.y, "via", "centre"));
-    if (S.show.Holes) S.board.holes.forEach(h => at(h.x, h.y, `hole Ø${h.d}`, "centre"));
-    S.board.tracks.forEach(t => { if (S.show[t.layer]) t.pts.forEach((p, k) => at(p[0], p[1], k && k < t.pts.length - 1 ? "track corner" : "track end", "corner")); });
+    // the first of equally near ones wins: a pad over the track end on its centre
+    const at = (px, py, what, shape, ent) => { const d = Math.hypot(px - x, py - y); if (d < bd - 1e-9 || (!best && d <= bd)) { bd = d; best = { p: [+px.toFixed(4), +py.toFixed(4)], what, shape, kind: "point", ...(ent || {}) }; } };
+    const edges = [[0, 0, o.w, 0], [o.w, 0, o.w, o.h], [o.w, o.h, 0, o.h], [0, o.h, 0, 0]];
+    const padEnt = p => ({ kind: "pad", pad: p, net: p.net });
+    const holeEnt = h => ({ kind: "hole", hole: h, net: h.plated ? connNet("hole", "hi", S.board.holes.indexOf(h)) : null });
+    const holes = () => S.board.holes.concat((S.model && S.model.holes) || []);
+    if (S.model && copper) S.model.pads.forEach(p => at(p.x, p.y, `pad ${p.ref}-${p.num}`, "centre", padEnt(p)));
+    if (copper) S.board.vias.forEach((v, i) => at(v.x, v.y, "via", "centre", { kind: "via", via: v, net: connNet("via", "vi", i) }));
+    if (S.show.Holes) holes().forEach(h => at(h.x, h.y, `${h.ref ? h.ref + " " : ""}hole Ø${h.d}`, "centre", holeEnt(h)));
+    S.board.tracks.forEach((t, ti) => { if (S.show[t.layer]) t.pts.forEach((p, k) => at(p[0], p[1], k && k < t.pts.length - 1 ? "track corner" : "track end", "corner", { track: t })); });
     if (S.show["Edge.Cuts"]) {
       [[0, 0], [o.w, 0], [0, o.h], [o.w, o.h]].forEach(p => at(p[0], p[1], "board corner", "corner"));
-      [[o.w / 2, 0], [o.w / 2, o.h], [0, o.h / 2], [o.w, o.h / 2]].forEach(p => at(p[0], p[1], "middle of the board edge", "corner"));
+      [[o.w / 2, 0], [o.w / 2, o.h], [0, o.h / 2], [o.w, o.h / 2]].forEach((p, i) => at(p[0], p[1], "middle of the board edge", "corner", { kind: "edge", seg: edges[[0, 2, 3, 1][i]] }));
       at(o.w / 2, o.h / 2, "board centre", "centre");
     }
     if (S.show.zones) S.board.zones.forEach(z => { if (z.pts && S.show[z.layer]) z.pts.forEach(p => at(p[0], p[1], "pour corner", "corner")); });
@@ -530,16 +541,77 @@
     if (S.model) S.model.parts.forEach(g => { if (g.place) at(g.place.x, g.place.y, `${g.ref} origin`, "centre"); });
     if (best) return best;
     const pad = S.model && copper && hitPad(x, y);
-    if (pad) return { p: [pad.x, pad.y], what: `pad ${pad.ref}-${pad.num}`, shape: "centre" };
+    if (pad) return { p: [pad.x, pad.y], what: `pad ${pad.ref}-${pad.num}`, shape: "centre", ...padEnt(pad) };
     // onto a line: the nearest point of a track's centre line, a hole's rim or the board edge
-    const on = (ax, ay, bx, by, what) => {
+    const on = (ax, ay, bx, by, what, ent) => {
       const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy; if (!L) return;
-      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L)); at(ax + t * dx, ay + t * dy, what, "on");
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L)); at(ax + t * dx, ay + t * dy, what, "on", { ...ent, seg: [ax, ay, bx, by] });
     };
-    S.board.tracks.forEach(t => { if (S.show[t.layer]) for (let k = 0; k + 1 < t.pts.length; k++) on(t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1], "on a track"); });
-    if (S.show.Holes) S.board.holes.forEach(h => { const d = Math.hypot(x - h.x, y - h.y); if (d > 1e-9) at(h.x + (x - h.x) / d * h.d / 2, h.y + (y - h.y) / d * h.d / 2, "hole rim", "on"); });
-    if (S.show["Edge.Cuts"]) [[0, 0, o.w, 0], [o.w, 0, o.w, o.h], [o.w, o.h, 0, o.h], [0, o.h, 0, 0]].forEach(([a, b, c, d]) => on(a, b, c, d, "board edge"));
+    S.board.tracks.forEach((t, ti) => { if (S.show[t.layer]) for (let k = 0; k + 1 < t.pts.length; k++) on(t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1], "on a track", { kind: "track", track: t, net: netOfTrack(ti) }); });
+    if (S.show.Holes) holes().forEach(h => { const d = Math.hypot(x - h.x, y - h.y); if (d > 1e-9) at(h.x + (x - h.x) / d * h.d / 2, h.y + (y - h.y) / d * h.d / 2, "hole rim", "on", holeEnt(h)); });
+    if (S.show["Edge.Cuts"]) edges.forEach(([a, b, c, d]) => on(a, b, c, d, "board edge", { kind: "edge" }));
     return best || grid;
+  }
+  // smart measure: the result for the clicks so far (and the pointer, before the second click)
+  const measureEnv = () => ({ outline: S.board.outline, rules: S.board.rules, need: S.clr ? S.clr.need : null, toChassis: S.clr ? S.clr.toChassis : null, netName });
+  function measureResult(hover) {
+    const m = S.measure; if (!m) return null;
+    const B2 = m.b ? m.sb : hover, env = measureEnv();
+    if (!B2 || (!m.b && B2.kind === "point" && B2.what === "grid" && Math.hypot(B2.p[0] - m.a[0], B2.p[1] - m.a[1]) < 1e-9)) return BoardMeasure.single(m.sa, env);
+    return BoardMeasure.pair(m.sa, B2, env, S.mMode);
+  }
+  // the measure card over the board (bottom left): the result's title, value and details, the
+  // centre / edge / span switch, Pin, Copy, the units; the pinned measurements under it
+  function measureCard(r) {
+    const box = $("mcard"); if (!box) return;
+    const show = S.tool === "measure" && (r || S.pins.length);
+    const key = show ? JSON.stringify([r && [r.title, r.value, r.rows, r.mode, r.ok], S.pins.length, S.mUnits]) : "";
+    if (key === S.mLast) return; S.mLast = key; box.hidden = !show; if (!show) return;
+    const U = S.mUnits, oh = S.board.outline.h, F = BoardMeasure.fmt, MODE = { centre: "Centre", min: "Edge", max: "Outer" };
+    const MT = { centre: "Centre to centre, or square to the line (C)", min: "Edge to edge: copper to copper, or a bare hole's wall (C)", max: "Outer span: from the far side of one to the far side of the other (C)" };
+    let h = "";
+    if (r) {
+      h += `<div class="mc-ttl"><b>${esc(r.title)}</b><button class="mc-x" data-mc="close" title="Clear (Esc)">✕</button></div>`;
+      if (r.vtype !== "none") h += `<div class="mc-val${r.ok === false ? " bad" : ""}">${esc(BoardMeasure.label(r, U))}</div>`;
+      if (r.modes) h += `<div class="mc-modes">${r.modes.map(m => `<button class="btn${m === r.mode ? " on" : ""}" data-mc-mode="${m}" title="${MT[m]}">${MODE[m]}</button>`).join("")}</div>`;
+      h += `<table>${r.rows.map(([l, t, v]) => `<tr><td>${esc(l)}</td><td class="${t === "check" ? (v.gap >= v.need - 1e-6 ? "ok" : "bad") : ""}">${esc(F(v, t, U, oh))}</td></tr>`).join("")}</table>`;
+      h += `<div class="mc-act"><button class="btn" data-mc="pin" title="Keep this measurement on the board (Enter)">Pin</button><button class="btn" data-mc="copy" title="Copy the value and its details as text">Copy</button>`;
+    } else h += `<div class="mc-act">`;
+    h += `<select data-mc="units" title="Units of the measurements">${Object.keys(BoardMeasure.UNITS).map(u => `<option value="${u}"${u === U ? " selected" : ""}>${u}</option>`).join("")}</select></div>`;
+    if (S.pins.length) h += `<div class="mc-pins"><div class="mc-ph">Pinned<button class="mc-x" data-mc="clear" title="Take every pinned measurement off">Clear all</button></div>${S.pins.map((p, i) => `<div class="mc-pin"><span>${esc(BoardMeasure.label(p.r, U))}</span> <small>${esc(p.r.title)}</small><button class="mc-x" data-mc-unpin="${i}" title="Take this one off (Del takes the last)">✕</button></div>`).join("")}</div>`;
+    box.innerHTML = h;
+  }
+  function pinMeasure() {
+    const r = S.measure && measureResult(S.snapHint); if (!r || (!r.lines.length && r.vtype === "none")) { msg("Measure something first, then Pin keeps it"); return; }
+    const at = r.lines.length ? r.at : S.measure.a;
+    S.pins.push({ r: { ...r, at } }); S.measure = null; S.mLast = null; msg(`Pinned: ${r.title} ${BoardMeasure.label(r, S.mUnits)} (Del takes the last pin off)`); render();
+  }
+  function measureText(r) { const U = S.mUnits, oh = S.board.outline.h; return [r.title + (r.vtype === "none" ? "" : ": " + BoardMeasure.label(r, U)), ...r.rows.map(([l, t, v]) => `${l}: ${BoardMeasure.fmt(v, t, U, oh)}`)].join("\n"); }
+  function measureCycle() {
+    const r = S.measure && measureResult(S.snapHint); if (!r || !r.modes) return false;
+    S.mMode = r.modes[(r.modes.indexOf(r.mode) + 1) % r.modes.length]; S.mLast = null; render(); return true;
+  }
+  // the measure tool's keys: C switches centre / edge / span, Enter pins, Del takes the last pin off
+  function measureKey(e, L) {
+    if (L === "c") { e.preventDefault(); if (!measureCycle()) msg("C switches centre / edge / span once two pads, vias, holes or a track are measured"); return true; }
+    if (e.key === "Enter") { e.preventDefault(); pinMeasure(); return true; }
+    if ((e.key === "Delete" || e.key === "Backspace") && S.pins.length) { e.preventDefault(); S.pins.pop(); S.mLast = null; render(); return true; }
+    return false;
+  }
+  function measureCardInit() {
+    const box = $("mcard"); if (!box) return;
+    box.addEventListener("mousedown", e => e.stopPropagation());
+    box.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.mcMode) { S.mMode = b.dataset.mcMode; S.mLast = null; render(); return; }
+      if (b.dataset.mcUnpin !== undefined) { S.pins.splice(+b.dataset.mcUnpin, 1); S.mLast = null; render(); return; }
+      const a = b.dataset.mc;
+      if (a === "close") { S.measure = null; render(); }
+      else if (a === "pin") pinMeasure();
+      else if (a === "clear") { S.pins = []; S.mLast = null; render(); }
+      else if (a === "copy") { const r = S.measure && measureResult(S.snapHint); if (r) { const t = measureText(r); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => msg("Copied the measurement"), () => msg(t.split("\n")[0])); } }
+    });
+    box.addEventListener("change", e => { if (e.target.dataset.mc === "units") { S.mUnits = e.target.value; try { localStorage.setItem("tubecad_munits", S.mUnits); } catch (x) { /* private mode */ } S.mLast = null; render(); } });
   }
   function placeAt(x, y) {
     const sx = snap(x), sy = snapY(y), R = S.board.rules;
@@ -748,7 +820,7 @@
       else S.poly.push(pt);
       render(); return;
     }
-    if (S.tool === "measure") { const sp = snapPoint(x, y, e.shiftKey || e.altKey); S.measure = !S.measure || S.measure.b ? { a: sp.p, sa: sp, b: null } : { ...S.measure, b: sp.p, sb: sp }; render(); return; }
+    if (S.tool === "measure") { const sp = snapPoint(x, y, e.shiftKey || e.altKey); S.measure = !S.measure || S.measure.b ? { a: sp.p, sa: sp, b: null } : { ...S.measure, b: sp.p, sb: sp }; S.mLast = null; render(); return; }
     if (S.tool !== "select") { placeAt(x, y); return; }
     if (onHandle(x, y)) { S.drag = { kind: "outline", w0: S.board.outline.w, h0: S.board.outline.h, mx: x, sy, moved: false }; return; }
     let zc;
@@ -885,7 +957,12 @@
     if ((e.ctrlKey || e.metaKey) && (e.code === "KeyF" || String(e.key).toLowerCase() === "f")) { e.preventDefault(); $("find").focus(); $("find").select(); return; }
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.code === "KeyP" || String(e.key).toLowerCase() === "p")) { e.preventDefault(); if ($("print-modal").hidden) openPrint(); return; }
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-    if (!$("view3d").hidden) { if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); } return; }
+    if (!$("view3d").hidden) {
+      if (e.code === "KeyD" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); toggle3DMeasure(); return; }
+      if (e.key === "Escape" && viewer && viewer.measure && viewer.picks.length) { e.preventDefault(); viewer.clearPicks(); return; }
+      if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); }
+      return;
+    }
     if (e.code === "Digit3" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); open3D(); return; }
     if (!MODALS.every(id => $(id).hidden)) return;
     const ctrl = e.ctrlKey || e.metaKey, L = /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(e.key).toLowerCase();
@@ -904,6 +981,7 @@
     if (S.poly && e.key === "Enter") { closePoly(); return; }
     const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     if (ARROWS[e.key] && S.sel && !S.route) { e.preventDefault(); const k = S.grid * (e.shiftKey ? 10 : 1); nudge(ARROWS[e.key][0] * k, ARROWS[e.key][1] * k); return; }
+    if (S.tool === "measure" && !ctrl && measureKey(e, L)) return;
     if (e.key === "Escape") { if (S.route) finishRoute(); else if (S.measure) { S.measure = null; render(); } else { S.sel = null; setTool("select"); renderPanels(); } return; }
     if (S.route && (e.code === "Slash" || e.key === "/")) { e.preventDefault(); S.route.flip = !S.route.flip; S.route.manual = true; msg(S.route.flip ? "Diagonal first, until the next corner (/: straight first)" : "Straight first, until the next corner (/: diagonal first)"); S.routeBad = routeCheck(); render(); return; }
     if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); newCorner(S.route); render(); return; }
@@ -1232,7 +1310,7 @@
   const NOTE = ["unplaced", "check", "class", "silk", "dangling", "stopper", "coupling", "heat", "support"];
   const errors = () => S.drc.filter(d => !NOTE.includes(d.kind)).length;
   // the drawing of the board: render() asks for a frame (board-draw.js)
-  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected });
+  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected });
 
   // ---------------------------------------------------------------------------
   // Design rules window: rules, checks, net classes; edited on a copy, Apply commits
@@ -1359,10 +1437,36 @@
     if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return; }
     if (S.route) finishRoute();
     $("view3d").hidden = false;
-    if (!viewer) { viewer = new Viewer3D($("gl3d")); if (!viewer.ok) { viewer = null; $("view3d").hidden = true; msg("This browser cannot draw 3D (no WebGL)"); return; } }
+    if (!viewer) {
+      viewer = new Viewer3D($("gl3d")); if (!viewer.ok) { viewer = null; $("view3d").hidden = true; msg("This browser cannot draw 3D (no WebGL)"); return; }
+      viewer.overlay = $("ov3d"); viewer.onMeasure = measure3D;
+    }
     build3D(true); msg("3D view: drag to turn, right-drag to move, wheel to zoom; 3 or Esc goes back to the layout");
   }
   function close3D() { $("view3d").hidden = true; render(); }
+  // measuring in 3D: the board's top is at its thickness; X and Y as in the layout (from the
+  // bottom-left corner, y up), Z the height above the board's top (below zero: under the board)
+  function measure3D(picks) {
+    const box = $("m3d"), U = S.mUnits, F = v => BoardMeasure.fmt(v, "len", U), t = S.board.stackup.thickness || 1.6, oh = S.board.outline.h;
+    $("v3-measure").classList.toggle("on", !!(viewer && viewer.measure));
+    viewer.label = "";
+    if (!viewer.measure || !picks.length) { box.hidden = true; if (viewer.measure) msg("3D measure: click a point on the board or a part, then a second one; D or the button ends it"); return; }
+    const pos = q => [q.p[0], oh + q.p[1], q.p[2] - t], rows = [], P = picks.map(pos);
+    let title = "Point", val = "";
+    if (P.length === 1) {
+      rows.push(["X, Y", `${F(P[0][0])}, ${F(P[0][1])}`], ["Height above the board", F(P[0][2])], ["Stuck to", picks[0].what === "corner" ? "a corner" : "the surface"]);
+      val = F(P[0][2]); title = "Height above the board";
+    } else {
+      const [a, b] = P, dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], d = Math.hypot(dx, dy, dz);
+      rows.push(["ΔX", F(dx)], ["ΔY", F(dy)], ["ΔZ", F(dz)], ["Along the board (XY)", F(Math.hypot(dx, dy))], ["Heights above the board", `${F(a[2])} / ${F(b[2])}`]);
+      val = F(d); title = "Distance in 3D"; viewer.label = val;
+      msg(`3D measure: ${val} (ΔX ${F(dx)}, ΔY ${F(dy)}, ΔZ ${F(dz)})`);
+    }
+    S.measured3d = { title, picks: P };
+    box.innerHTML = `<b>${esc(title)}</b><div class="mc-val">${esc(val)}</div><table>${rows.map(([l, v]) => `<tr><td>${esc(l)}</td><td>${esc(v)}</td></tr>`).join("")}</table>`;
+    box.hidden = false;
+  }
+  const toggle3DMeasure = () => { if (viewer) viewer.setMeasure(!viewer.measure); };
   function exportStep() {
     if (!S.model) return;
     const name = baseName() + ".step", sc = Board3D.scene(S.board, S.model, { tubes: $("v3-tubes").checked });
@@ -1444,7 +1548,7 @@
   const { stopRouting, autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute } = BoardAutoroute({ $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render: () => render(), renderPanels: () => renderPanels() });
   function msg(t) { if (t) { const el = $("st-msg"); el.textContent = t; el.title = t; } }
   function init() {
-    canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0;
+    canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0; measureCardInit();
     canvas.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
     canvas.addEventListener("dblclick", e => {
@@ -1501,7 +1605,7 @@
     $("ex-step").onclick = () => { list.hidden = true; exportStep(); };
     $("ex-kicad").onclick = () => { list.hidden = true; exportKicad(); };
     $("btn-3d").onclick = () => ($("view3d").hidden ? open3D() : close3D());
-    $("v3-close").onclick = close3D; $("v3-step").onclick = exportStep;
+    $("v3-close").onclick = close3D; $("v3-measure").onclick = toggle3DMeasure; $("v3-step").onclick = exportStep;
     $("v3-png").onclick = () => { if (!viewer) return; const a = document.createElement("a"); a.href = viewer.png(); a.download = baseName() + "-3d.png"; a.click(); msg("Saved " + a.download); };
     document.querySelectorAll("[data-view]").forEach(b => { b.onclick = () => viewer && viewer.view(b.dataset.view); });
     ["v3-parts", "v3-tubes"].forEach(id => { $(id).onchange = () => build3D(false); });

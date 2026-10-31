@@ -122,12 +122,32 @@
     .align .btn { padding: 4px 2px; font-size: 12px; }
     .tools .btn { padding-left: 8px; padding-right: 8px; }
     #stage { position: relative; }
+    /* the smart measure card, bottom left over the board */
+    #mcard { position: absolute; left: 10px; bottom: 10px; z-index: 4; width: 300px; max-width: calc(100% - 20px); max-height: calc(100% - 20px); overflow: auto; background: rgba(13,19,27,0.94); border: 1px solid var(--line, #2a3542); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+    #mcard[hidden] { display: none; }
+    #mcard .mc-ttl, #mcard .mc-ph { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    #mcard .mc-val { font: 600 18px ui-monospace, monospace; color: #00e5ff; margin: 2px 0 4px; }
+    #mcard .mc-val.bad, #mcard td.bad { color: var(--bad, #ff7b72); }
+    #mcard td.ok { color: var(--ok, #3fb950); }
+    #mcard table { width: 100%; border-collapse: collapse; }
+    #mcard td { padding: 1px 0; vertical-align: top; } #mcard td:first-child { color: var(--muted); padding-right: 8px; } #mcard td:last-child { text-align: right; font-family: ui-monospace, monospace; }
+    #mcard .mc-modes { display: flex; gap: 3px; margin: 2px 0 4px; } #mcard .mc-modes .btn { flex: 1; padding: 2px 4px; } #mcard .mc-modes .btn.on { background: #0b3a44; border-color: #00e5ff; color: #00e5ff; }
+    #mcard .mc-act { display: flex; gap: 4px; margin-top: 6px; } #mcard .mc-act select { margin-left: auto; }
+    #mcard .mc-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 11px; padding: 0 2px; } #mcard .mc-x:hover { color: var(--fg, #e6edf3); }
+    #mcard .mc-pins { margin-top: 6px; border-top: 1px solid var(--line, #2a3542); padding-top: 4px; }
+    #mcard .mc-pin { display: flex; gap: 6px; align-items: baseline; } #mcard .mc-pin span { color: #ffb300; font-family: ui-monospace, monospace; } #mcard .mc-pin small { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #view3d { position: absolute; inset: 0; z-index: 5; background: #070b10; }
     #view3d[hidden] { display: none; }
     #gl3d { width: 100%; height: 100%; display: block; cursor: grab; }
     .bar3d { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; pointer-events: none; }
     .bar3d > * { pointer-events: auto; }
     .bar3d label { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; color: var(--muted); font-size: 12px; }
+    #ov3d { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    #m3d { position: absolute; right: 10px; bottom: 48px; min-width: 230px; background: rgba(13,19,27,0.94); border: 1px solid var(--line, #2a3542); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+    #m3d[hidden] { display: none; }
+    #m3d .mc-val { font: 600 18px ui-monospace, monospace; color: #00e5ff; margin: 2px 0 4px; }
+    #m3d table { width: 100%; border-collapse: collapse; } #m3d td:first-child { color: var(--muted); padding-right: 8px; } #m3d td:last-child { text-align: right; font-family: ui-monospace, monospace; }
+    #v3-measure.on { background: #0b3a44; border-color: #00e5ff; color: #00e5ff; }
     .hint3d { position: absolute; bottom: 8px; left: 10px; color: var(--muted); font-size: 11px; pointer-events: none; }
     .preview3d { width: 100%; height: 190px; display: block; border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; background: #070b10; cursor: grab; }
     #status { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -225,7 +245,7 @@
       <button class="btn" data-tool="hole" title="Place a mounting hole (H)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3.5M8 11.5V15M1 8h3.5M11.5 8H15"/></svg><span class="lbl">Hole</span><kbd class="tk">H</kbd></button>
       <button class="btn" data-tool="pour" title="Copper pour (ground plane): click the corners, double-click to close (P). Board inspector: one click for a ground plane over the whole board"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v9h-11z"/><path d="M2.5 8 7 3.5M2.5 12.5l9-9M7 12.5 13.5 6M11.5 12.5l2-2"/></svg><span class="lbl">Pour</span><kbd class="tk">P</kbd></button>
       <button class="btn" data-tool="keepout" title="Keep-out area: no tracks, vias, pour (or parts) inside; click the corners, double-click to close (K)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2 1.6"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/></svg><span class="lbl">Keep-out</span><kbd class="tk">K</kbd></button>
-      <button class="btn" data-tool="measure" title="Measure a distance: click, click (D). The ends stick to pads, vias, holes, track corners and the board's corners and edges; Shift: the grid only"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11 11 1.5l3.5 3.5L5 14.5z"/><path d="M4.5 8 6 9.5M6.8 5.7 8.3 7.2M9.1 3.4l1.5 1.5"/></svg><span class="lbl">Measure</span><kbd class="tk">D</kbd></button>
+      <button class="btn" data-tool="measure" title="Smart measure (D): click a pad, via, hole, track or the board edge for its size, a second for what relates them: pitch, copper edge to edge against the rule, square to a track or edge, the angle. C: centre / edge / span; Enter pins; Shift: the grid only"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11 11 1.5l3.5 3.5L5 14.5z"/><path d="M4.5 8 6 9.5M6.8 5.7 8.3 7.2M9.1 3.4l1.5 1.5"/></svg><span class="lbl">Measure</span><kbd class="tk">D</kbd></button>
       <div class="menu tool-more">
         <button class="btn" id="btn-tool-more" title="More tools: Text (T), Hole (H), Keep-out (K), Measure (D)" aria-label="More tools"><span class="tm-ico"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10M8 3.5V13M6 13h4"/></svg></span>▾</button>
         <div class="menu-list" hidden>
@@ -307,6 +327,7 @@
       <div id="nets" hidden></div>
     </section>
     <div id="stage"><canvas id="pcb" aria-label="Printed circuit board"></canvas>
+      <div id="mcard" hidden aria-live="polite"></div>
       <div id="hud" hidden></div>
       <div class="zoombar" role="group" aria-label="Zoom">
         <button class="zb" id="z-out" title="Zoom out (−)">−</button><button class="zb pct" id="z-pct" title="Zoom; 100 % is life size on a 96 dpi screen. Click: fit the board (F)">100%</button><button class="zb" id="z-in" title="Zoom in (+)">+</button><button class="zb" id="z-sel" title="Zoom to the selection, else the highlighted net (Z)">⌖</button>
@@ -314,13 +335,16 @@
       <div id="ctx" class="menu-list ctx" role="menu" hidden></div>
       <div id="view3d" hidden>
         <canvas id="gl3d" aria-label="The board in 3D"></canvas>
+        <canvas id="ov3d" aria-hidden="true"></canvas>
+        <div id="m3d" hidden aria-live="polite"></div>
         <div class="bar3d">
           <button class="btn" data-view="iso">Iso</button><button class="btn" data-view="top">Top</button><button class="btn" data-view="bottom">Bottom</button><button class="btn" data-view="front">Front</button><button class="btn" data-view="side">Side</button>
+          <button class="btn" id="v3-measure" data-ico="ruler" title="Measure in 3D: click two points on the board or the parts for the distance between them (ΔX, ΔY, ΔZ) and each one's height above the board; the picks stick to corners (D)">Measure</button>
           <label><input type="checkbox" id="v3-parts" checked> Parts</label><label><input type="checkbox" id="v3-tubes" checked> Valves</label>
           <span class="spacer"></span>
           <button class="btn" data-ico="image" id="v3-png">Save PNG</button><button class="btn" data-ico="cube" id="v3-step" title="The board and every part in colour, for a chassis CAD: round bodies, leads and holes as true cylinders and circles">Export STEP</button><button class="btn" id="v3-close" title="Back to the layout (Esc or 3)">✕ Layout</button>
         </div>
-        <div class="hint3d">Drag: turn · right-drag or Shift+drag: move · wheel: zoom</div>
+        <div class="hint3d">Drag: turn · right-drag or Shift+drag: move · wheel: zoom · D: measure</div>
       </div>
     </div>
     <aside class="col right">
@@ -373,7 +397,7 @@
         <kbd>drag</kbd><span>a track segment moves sideways and its neighbours follow (45° kept)</span>
         <kbd>drag part</kbd><span>the ends of the tracks on its pads come along</span>
         <kbd>Shift+click</kbd><span>while routing: place a segment that breaks the clearance anyway (normally refused)</span>
-        <kbd>D</kbd><span>measure: click, click; the distance stays until the next click or Esc. The ends stick to pad, via and hole centres, track corners and ends, the board's corners, edge middles and centre (then onto a track, a hole's rim or the board edge); Shift+click: the grid only</span>
+        <kbd>D</kbd><span>smart measure: one click gives a pad's, via's, hole's, track's or the board's size, a second what relates them (pitch, copper edge to edge against the rule, square to a track or edge, angle); it stays until the next click or Esc. The clicks stick to pad, via and hole centres, track corners and ends, the board's corners, edge middles and centre (then onto a track, a hole's rim or the board edge); Shift+click: the grid only. C: centre / edge / span, Enter: pin, Del: the last pin off. In the 3D view D measures heights and 3D distances</span>
         <kbd>drag edge</kbd><span>drag the board's edge to move the board on the drawing sheet (this locks the sheet); the board inspector sets the position by numbers or centres it again</span>
         <kbd>G</kbd><span>grid: lines, dots or off</span>
         <kbd>A</kbd><span>X / Y axes through the board's origin, its bottom-left corner (X to the right, Y up, as in the Gerbers), with a millimetre scale</span>
@@ -537,6 +561,7 @@
   <script src="board-pathfinder.js?v=dev"></script>
   <script src="board-3d.js?v=dev"></script>
   <script src="board-3d-view.js?v=dev"></script>
+  <script src="board-measure.js?v=dev"></script>
   <script src="board-autoroute.js?v=dev"></script>
   <script src="board-panels.js?v=dev"></script>
   <script src="board-draw.js?v=dev"></script>

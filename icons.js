@@ -14,6 +14,7 @@
     select: `<path d="M3.5 2l9 5.2-4.2 1.1-2 4z"/>`,
     wire: `<circle cx="2.8" cy="12.5" r="1.3"/><circle cx="13.2" cy="3.5" r="1.3"/><path d="M4.1 12.5H8V3.5h3.9"/>`,
     probe: `<path d="M11 1.5l3.5 3.5-6.5 6.5L4.5 8z"/><path d="M6.2 9.8 1.5 14.5"/><path d="M9 4.5l2.5 2.5"/>`,
+    ruler: `<path d="M1.5 11 11 1.5l3.5 3.5L5 14.5z"/><path d="M4.5 8 6 9.5M6.8 5.7 8.3 7.2M9.1 3.4l1.5 1.5"/>`,
     fit: `<path d="M1.5 5V1.5H5M11 1.5h3.5V5M14.5 11v3.5H11M5 14.5H1.5V11"/><rect x="5" y="5" width="6" height="6" rx=".5"/>`,
     inspector: `<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M10 2.5v11M11.8 5.5h1M11.8 8h1M11.8 10.5h1"/>`,
     // files
