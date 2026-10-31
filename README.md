@@ -137,6 +137,12 @@ Firefox is not tested.
     to the opened file after asking; in Safari and other browsers it
     downloads the file.
   - The circuit is also autosaved in the browser.
+  - File → Recent files lists the last 8 circuits opened or saved (and the
+    examples opened), newest first; a click opens one again. Chrome and Edge
+    read the file itself again; when it is gone, not allowed, or the browser
+    cannot open files by itself, the copy kept in the browser at the last open
+    or save opens instead (the status line says so). *Clear recent files*
+    empties the list.
   - File → Share link… packs the whole design (circuit, imported tubes,
     board) into a link; whoever opens it gets the same circuit. On
     aerocat.tech the link is short (`/s/<id>`, kept by the link store in
@@ -197,7 +203,7 @@ Paste the `.SUBCKT … .ENDS` text or open the file.
 
 ### Examples
 
-**File → Examples** opens circuits drawn from published sources and compared
+**File ▾ → Gallery…** opens circuits drawn from published sources and compared
 with them (see [Accuracy](#accuracy)). The **start screen** (shown when the CAD
 opens on an empty sheet, and from *File ▾ → Gallery…*) has *New circuit*,
 *Open file* and every example as a picture of its first sheet, by kind; untick

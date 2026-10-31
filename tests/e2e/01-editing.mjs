@@ -117,6 +117,24 @@ if (process.env.BROWSER !== "webkit") {
 await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
 check((await state()).comps.some(c => c.params.r === 4700), "circuit survives a reload (autosave)");
 check(/^(copy|amp)\.json$/.test((await fileTag()).text), `the file name comes back after a reload (${(await fileTag()).text})`);
+// File ▾ → Recent files: the files opened and saved, newest first; the fake handles above cannot
+// be kept, so a click opens the copy kept in the browser and says so
+{
+  await cad.waitForFunction(() => TubeCAD.recent().list().length >= 1);
+  await cad.click("#btn-file");
+  const names = await cad.locator("#recent-list .menu-item[data-recent] .recent-name").allTextContents();
+  const want = process.env.BROWSER !== "webkit" ? ["copy.json", "amp.json"] : ["amp.json"];
+  check(names.join("|") === want.join("|") && await cad.isVisible("#btn-recent-clear") && !(await cad.locator("#examples-list").count()), `File ▾ lists the recent files, newest first (${names.join(", ")}), with Clear, and no examples`);
+  await cad.evaluate(() => { const c = TubeCAD.state.comps.find(c => c.type === "resistor"); c.params.r = 1234; TubeCAD.commit(); });
+  await cad.locator("#recent-list .menu-item", { hasText: "amp.json" }).click();
+  await cad.waitForFunction(() => /^amp\.json/.test(document.title));
+  const ro = await cad.evaluate(() => ({ r: TubeCAD.state.comps.some(c => c.params.r === 1234), status: document.getElementById("status-sim").textContent, top: TubeCAD.recent().list()[0].name }));
+  check(!ro.r && /Opened the copy kept from/.test(ro.status) && ro.top === "amp.json", `a recent file opens again from its kept copy and moves to the top (${ro.status.slice(0, 70)}…)`);
+  await cad.click("#btn-file"); await cad.click("#btn-recent-clear");
+  await cad.click("#btn-file");
+  check(await cad.locator("#recent-list .menu-item[data-recent]").count() === 0 && /No recent files/.test(await cad.textContent("#recent-list")), "Clear recent files empties the list");
+  await cad.keyboard.press("Escape");
+}
 
 // a stored circuit whose wire ends on another wire's middle (a T joint) loads with the joint
 // connected, as File → Open does: a cap teed onto the line between two resistors
