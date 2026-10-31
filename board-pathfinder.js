@@ -132,13 +132,16 @@
         if (net === r.id) return;
         const g = need(r.id, net), sb = it.kind === "pad" ? SP.get(it.pad) : null, gs = sb ? Math.min(g, sb.gap - 0.02) : g;
         const ls = it.layers.map(li);
-        const mark = (rad, fn) => stamp(it.s, rad + Math.max(g, gs), (c, x, y) => {
-          if (sb && gs < g && Math.hypot(x - sb.x, y - sb.y) <= sb.r) { if (C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) >= rad + gs) return; }
-          else if (C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) >= rad + g) return;
+        // distance from a cell to the item's copper edge: a square pad's corners reach past its capsule
+        const ext = it.box ? Math.max(0, Math.hypot(it.pad.w, it.pad.h) / 2 - it.r) : 0;
+        const dEdge = (x, y) => (it.box ? C.segBox([x, y, x, y], it.box) : C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) - it.r);
+        const mark = (rad, fn) => stamp(it.s, it.r + ext + rad + Math.max(g, gs), (c, x, y) => {
+          if (sb && gs < g && Math.hypot(x - sb.x, y - sb.y) <= sb.r) { if (dEdge(x, y) >= rad + gs) return; }
+          else if (dEdge(x, y) >= rad + g) return;
           fn(c);
         });
-        mark(it.r + hw + MARGIN, c => ls.forEach(l => { T[l * N + c] = 1; }));
-        mark(it.r + viaR + MARGIN, c => { V[c] = 1; });
+        mark(hw + MARGIN, c => ls.forEach(l => { T[l * N + c] = 1; }));
+        mark(viaR + MARGIN, c => { V[c] = 1; });
         // a socket pin lets passing copper as near as the pins' spacing, but the track into it runs to its
         // middle and keeps the full clearance: shut the ring round the middle that track would need
         const q = it.kind === "pad" && gs < g ? nets.get(net) : null;
@@ -331,7 +334,7 @@
       const hw = r.w / 2, out = [], ls = P.layers.map(li).filter(l => l >= 0), px = P.pad.x, py = P.pad.y;
       const near = walls.filter(({ it, net }) => net !== r.id && C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], px, py) < ENTRY + it.r + 3).map(({ it, net }) => {
         let g = need(r.id, net);
-        if (it.kind === "pad" && it.pad.part === P.pad.part) g = Math.min(g, C.segSeg(P.s, it.s) - P.r - it.r - 0.02);
+        if (it.kind === "pad" && it.pad.part === P.pad.part) g = Math.min(g, C.itemGap(P, it) - 0.02);
         const sb = it.kind === "pad" ? SP.get(it.pad) : null;
         return { it, g, sb };
       });
@@ -339,8 +342,9 @@
         const x = X(c), y = Y(c), seg = [px, py, x, y];
         for (const { it, g, sb } of near) {
           let gg = g;
-          if (sb) { const t = C.segSeg(seg, it.s); if (t - it.r - hw < gg && Math.hypot(x - sb.x, y - sb.y) <= sb.r && Math.hypot(px - sb.x, py - sb.y) <= sb.r) gg = Math.min(gg, sb.gap - 0.02); }
-          if (C.segSeg(seg, it.s) - it.r - hw < gg + MARGIN) return;
+          const t = C.segItem(seg, it) - hw;
+          if (sb && t < gg && Math.hypot(x - sb.x, y - sb.y) <= sb.r && Math.hypot(px - sb.x, py - sb.y) <= sb.r) gg = Math.min(gg, sb.gap - 0.02);
+          if (t < gg + MARGIN) return;
         }
         ls.forEach(l => { if (!H.T[l * N + c]) out.push(l * N + c); });
       });
