@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.161.0] - 2026-10-31
+
+### Changed
+- **Every example's board laid out again, by hand, as a board designer would.** All 15 example boards were placed part by part instead of by the automatic placer: the signal flows from the input jack across to the output transformer leads, with the input kept away from the output and the supply; grid leaks and coupling capacitors sit at their socket pins, cathode resistors and bypass capacitors under their valve, anode loads beside it; the heaters are hand-routed as a pair (one wire on each layer, side by side) along an edge or a corridor between the valves instead of wandering across the board; B+ runs along the edge (2A3); 5 W cathode resistors are kept 10 mm or more from electrolytics and hot valves; the MOSFETs of the 10 W amplifier stand on the heatsink edge with the bias trimmer between their gates; the rectifier's anodes face their resistors (5Ц4С supply); jacks, pots and terminals are on the board edges; each board has M3 screw holes in the corners and within 40 mm of every valve socket, and a ground pour on the bottom. Board sizes were changed where the layout needed it, and the 12AX7 / MPSA92 board's high-voltage floor set to 0.6 mm (IPC-2221B still gives each net its own by voltage). The rest is routed by the grid router: every board opens with 0 connections open and 0 rule messages. Help and README describe it.
+
 ## [3.160.0] - 2026-10-31
 
 ### Added

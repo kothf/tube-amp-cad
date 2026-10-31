@@ -208,7 +208,20 @@ with them (see [Accuracy](#accuracy)). The **start screen** (shown when the CAD
 opens on an empty sheet, and from *File ▾ → Gallery…*) has *New circuit*,
 *Open file* and every example as a picture of its first sheet, by kind; untick
 *Show this when the CAD opens* to start straight on the sheet. The pictures are
-drawn by `node scripts/example-thumbs.mjs` (run it after changing an example):
+drawn by `node scripts/example-thumbs.mjs` (run it after changing an example).
+
+Every example also carries a finished two-layer board, laid out the way a
+board designer would place it rather than by the automatic placer: signal
+flowing from the input jack across to the output transformer leads, the input
+kept away from the output and the supply, grid parts and grid leaks at their
+socket pins, cathode parts under their valve, anode loads beside it, heaters
+hand-routed as a pair (one wire on each layer, side by side) along an edge or a
+corridor between the valves, B+ along the edge, hot resistors kept 10 mm or more
+from electrolytics, power devices on the heatsink edge, panel parts (jacks, pots,
+terminals) on the board edges, M3 screw holes in the corners and within 40 mm
+of every valve socket, and a ground pour on the bottom. The grid router routed
+the rest; every board opens with 0 connections open and 0 rule messages:
+
 
 | Example | Parts | Source |
 |---|---|---|
