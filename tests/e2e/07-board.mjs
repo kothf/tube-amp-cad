@@ -642,6 +642,48 @@ import { readFile } from "node:fs/promises";
     check(cleared.n === 0 && fab === fab2 && back === n0 + 2, `the Gerbers and drill files are the same with and without the construction; Clear removes it (${cleared.n} left, ${cleared.tied} holes tied) and Ctrl+Z brings back ${back}`);
     await bd.keyboard.press("Escape");
   }
+  // driving dimensions: a resistor dimensioned from the board's bottom-left corner moves there (its
+  // tracks following) and keeps that X when dragged; the value changed in the inspector; Align
+  // horizontally; nothing of it in the Gerbers; Clear and undo
+  {
+    await bd.evaluate(() => { BoardApp.setTool("select"); BoardApp.state.sel = null; BoardApp.fit(); }); await bd.waitForTimeout(100);
+    Object.assign(cv, await bd.locator("#pcb").boundingBox());
+    const o = await bd.evaluate(() => ({ ...BoardApp.state.board.outline }));
+    const rs = await bd.evaluate(() => { const S = BoardApp.state; return S.model.parts.filter(g => g.type === "resistor" && g.place && !S.board.parts[g.key].locked).slice(0, 2).map(g => ({ key: g.key, ref: g.ref, x: g.place.x, y: g.place.y })); });
+    const un0 = await bd.evaluate(() => BoardApp.state.conn.unrouted);
+    const part = k => bd.evaluate(k => { const S = BoardApp.state, p = S.board.parts[k]; return { x: p.x, y: p.y, un: S.conn.unrouted, dims: (S.board.dims || { items: [] }).items.length }; }, k);
+    await bd.locator("#pcb").focus(); await bd.keyboard.press("Shift+D");
+    let p = await at(0, o.h); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
+    p = await at(rs[0].x, rs[0].y); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
+    p = await at(rs[0].x / 2, o.h + 6); await bd.mouse.move(p[0], p[1], { steps: 3 });
+    const hud = await bd.evaluate(() => !document.getElementById("dhud").hidden && document.getElementById("dhud").textContent);
+    await bd.keyboard.type("40"); await bd.keyboard.press("Enter");
+    const d = await bd.evaluate(() => BoardApp.state.board.dims.items.slice(-1)[0]), a = await part(rs[0].key);
+    check(/Horizontal/.test(hud || "") && d && d.k === "dx" && d.v === 40 && d.a.t === "board" && d.b.t === "part" && Math.abs(a.x - 40) < 1e-6 && a.un === un0,
+      `Shift+D, the board's corner, ${rs[0].ref}, placed below, 40 typed: a horizontal dimension and ${rs[0].ref} moves to X 40 (${a.x}), its tracks following (${a.un} to route, ${un0} before)`);
+    await bd.keyboard.press("Escape"); await bd.evaluate(() => BoardApp.setTool("select"));
+    p = await at(a.x, a.y); await bd.mouse.move(p[0], p[1]); await bd.mouse.down(); await bd.mouse.move(p[0] + 40, p[1] + 30, { steps: 6 }); await bd.mouse.up();
+    const dr = await part(rs[0].key);
+    check(Math.abs(dr.x - 40) < 1e-6 && Math.abs(dr.y - a.y) > 1, `dragged, ${rs[0].ref} keeps X 40 (${dr.x}) and moves up or down freely (Y ${a.y} → ${dr.y})`);
+    const lbl = await bd.evaluate(() => { const q = BoardApp.state.dboxes.slice(-1)[0]; return BoardApp.toScreen(q.box[0] + q.box[2] / 2, q.box[1] + q.box[3] / 2); });
+    await bd.mouse.click(cv.x + lbl[0], cv.y + lbl[1]);
+    const insp = await bd.evaluate(() => BoardApp.state.sel && BoardApp.state.sel.kind === "dim" && document.getElementById("inspector").textContent);
+    const inp = bd.locator("#inspector [data-dimval] input"); await inp.fill("50"); await inp.press("Enter");
+    const v50 = await part(rs[0].key);
+    check(/Horizontal dimension/.test(insp || "") && Math.abs(v50.x - 50) < 1e-6, `a click on its value selects it; 50 in the inspector moves ${rs[0].ref} to X 50 (${v50.x})`);
+    await bd.evaluate(rs => { const S = BoardApp.state; S.sel = { kind: "multi", parts: rs.map(r => r.key), tracks: [], vias: [], texts: [], holes: [] }; BoardApp.commit(); }, rs);
+    await bd.click("#btn-cons"); await bd.click('[data-dalign="hz"]');
+    const al = await Promise.all(rs.map(r => part(r.key)));
+    check(Math.abs(al[0].y - al[1].y) < 1e-6 && al[1].dims === 2, `Align horizontally: ${rs[1].ref} level with ${rs[0].ref} (Y ${al[1].y} = ${al[0].y}), ${al[1].dims} dimensions`);
+    const fab = await bd.evaluate(() => JSON.stringify(BoardApp.fabFiles()));
+    await bd.evaluate(() => { BoardApp.state.sel = null; BoardApp.commit(); });
+    await bd.click("#btn-cons"); await bd.click("#mi-dclear");
+    const fab2 = await bd.evaluate(() => JSON.stringify(BoardApp.fabFiles())), cl = await part(rs[0].key);
+    await bd.locator("#pcb").focus(); await bd.keyboard.press("Control+z");
+    const back = await part(rs[0].key);
+    check(cl.dims === 0 && fab === fab2 && Math.abs(cl.x - 50) < 1e-6 && back.dims === 2, `the Gerbers are the same with and without the dimensions; Clear removes them (${cl.dims} left, ${rs[0].ref} stays at X ${cl.x}) and Ctrl+Z brings back ${back.dims}`);
+    await bd.keyboard.press("Escape");
+  }
   await bd.close();
 }
 

@@ -457,6 +457,10 @@
     "Array span": "The whole length (mm) or angle (°) the copies share out evenly.",
     "Array direction": "Which way the copies step, degrees from the X axis. Empty for a line: square to it.",
     "Start angle": "Where the first ray (or copy) of the polar array points, degrees from the X axis.",
+    // driving dimensions (Board)
+    "Dimension value": "The distance this dimension holds, mm. Change it and the second thing moves there; a minus sign puts it on the other side. The things it names stay that far apart when either is moved.",
+    "Measured": "What this reference dimension reads now, mm. It holds nothing: make it driving (Role) to hold the distance.",
+    "Role": "Driving: the dimension holds the distance and moves things to keep it. Reference: it only shows the distance (a dimension that would over-constrain the board is made a reference).",
     "Holes Ø": "Diameter of the mounting holes placed on the points (3.2 mm for M3).",
     "Holes plating": "Plated (PTH, a copper ring) or not plated (NPTH) for every selected hole.",
     "Tolerance +": "How much larger than its diameter the hole may be, mm. Goes to the board maker in the README.",

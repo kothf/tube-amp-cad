@@ -5,7 +5,7 @@
   "use strict";
   // app: what this part needs from board-app.js; returns what board-app.js uses of it
   root.BoardPanels = function (app) {
-    const { $, B, cons, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth } = app;
+    const { $, B, cons, dimui, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth } = app;
     // after Place all: the placed parts spread into the room the board has, held near where they landed (BoardPlace.spread)
     function spreadPlaced(keys) {
       if (!root.BoardPlace) return;
@@ -145,6 +145,8 @@
       const h = $("inspector"); h.innerHTML = "";
       const R = S.board.rules, o = S.board.outline, s = S.sel;
       if (s && s.kind === "cons" && cons && cons.inspector(h, { field, delBtn })) return;
+      if (s && s.kind === "dim" && dimui && dimui.inspector(h, { field, delBtn })) return;
+      const dimInfo = () => { if (dimui) dimui.bodyInfo(h); };
       if (s && s.kind === "part" && S.model) {
         const g = S.model.parts.find(x => x.key === s.key); if (!g) { S.sel = null; return renderInspector(); }
         const bp = S.board.parts[g.key];
@@ -160,6 +162,7 @@
         h.appendChild(field("Y (mm)", +showY(bp.y).toFixed(3), v => { bp.y = showY(v); commit(); }));
         h.appendChild(field("Rotation", bp.rot || 0, v => { bp.rot = +v; commit(); }, [["0", "0°"], ["1", "90°"], ["2", "180°"], ["3", "270°"]]));
         h.appendChild(field("Side", bp.side || "F", v => { bp.side = v; commit(); }, [["F", "Top"], ["B", "Bottom (mirrored)"]]));
+        dimInfo();
         h.appendChild(lockField(bp));
         // star grounding: which ground return this part's ground pads belong to
         const gr = S.gg && S.gg.byPart.get(g.key);
@@ -217,6 +220,7 @@
         h.appendChild(field("Layers", L.length === 2 ? "both" : L[0], v => { k.layers = v === "both" ? ["F.Cu", "B.Cu"] : [v]; commit(); }, [["both", "Both copper layers"], ["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
         [["tracks", "Tracks"], ["vias", "Vias"], ["pour", "Copper pour"], ["parts", "Parts"]].forEach(([key, t]) => h.appendChild(field(t, (key === "parts" ? !!k.parts : k[key] !== false) ? "yes" : "no", v => { k[key] = v === "yes"; commit(); }, yes)));
         h.insertAdjacentHTML("beforeend", `<p class="help">Drag a corner to move it; drag the <b>+</b> on an edge to add one; double-click a corner to remove it.</p>`);
+        dimInfo();
         h.appendChild(lockField(k)); h.appendChild(delBtn()); return;
       }
       if (s && s.kind === "zone") {
@@ -250,6 +254,7 @@
         h.appendChild(field("X (mm)", v.x, n => { v.x = n; commit(); })); h.appendChild(field("Y (mm)", showY(v.y), n => { v.y = showY(n); commit(); }));
         h.appendChild(field("Drill (mm)", v.drill || R.viaDrill, n => { if (n > 0) { v.drill = n; commit(); } })); h.appendChild(field("Pad (mm)", v.pad || R.viaPad, n => { if (n > 0) { v.pad = n; commit(); } }));
         h.appendChild(lockField(v));
+        dimInfo();
         if (S.model) { const nets = [""].concat([...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))].sort()); h.appendChild(field("Net (stitching)", v.net || "", n => { v.net = n || undefined; commit(); }, nets.map(n => [n, n || "from its tracks"]))); }
         h.appendChild(delBtn()); return;
       }
@@ -266,6 +271,7 @@
           h.insertAdjacentHTML("beforeend", `<p class="help">Plated: a copper ring on both sides, bare of solder mask, drilled with the plated holes. Give it a net (GND for a grounded chassis screw) and a pour of that net joins it; otherwise it keeps every net's clearance as chassis copper.</p>`);
         } else h.insertAdjacentHTML("beforeend", `<p class="help">Not plated: drilled separately (NPTH). The dashed ring is the copper clearance (the screw is at chassis potential).</p>`);
         if (cons) cons.holeExtra(h, hl, { field });
+        dimInfo();
         h.appendChild(lockField(hl)); h.appendChild(delBtn()); return;
       }
       if (s && s.kind === "text") {
@@ -275,6 +281,7 @@
         h.appendChild(field("Height (mm)", t.size, v => { if (v > 0.3) { t.size = v; commit(); } }));
         h.appendChild(field("Layer", t.layer, v => { t.layer = v; commit(); }, [["F.SilkS", "Top silkscreen"], ["B.SilkS", "Bottom silkscreen (mirrored)"], ["F.Cu", "Top copper"], ["B.Cu", "Bottom copper (mirrored)"]]));
         h.appendChild(field("Rotation", t.rot || 0, v => { t.rot = +v; commit(); }, [["0", "0°"], ["1", "90°"], ["2", "180°"], ["3", "270°"]]));
+        dimInfo();
         h.appendChild(lockField(t)); h.appendChild(delBtn()); return;
       }
       const M = S.model, c = S.conn, errs = errors();

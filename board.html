@@ -211,6 +211,11 @@
     .drc-group { font-size: 11px; color: var(--muted); margin: 6px 0 2px; display: flex; justify-content: space-between; }
     .row.wide { grid-template-columns: 1fr; gap: 3px; }
     #hud { position: absolute; z-index: 6; pointer-events: none; background: rgba(15,21,30,.94); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; color: var(--text); white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+    #dhud { position: absolute; z-index: 7; display: flex; gap: 8px; align-items: center; background: rgba(15,21,30,.95); border: 1px solid #2d6f8a; border-radius: 6px; padding: 3px 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; color: #4fc3f7; }
+    #dhud[hidden] { display: none; }
+    #dhud input { width: 64px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; color: var(--text); font: inherit; padding: 1px 4px; }
+    #dhud input:focus { border-color: #4fc3f7; outline: none; }
+    #dhud small { color: var(--muted); }
     #chud { position: absolute; z-index: 7; display: flex; gap: 8px; align-items: center; background: rgba(15,21,30,.95); border: 1px solid #6e4f8f; border-radius: 6px; padding: 3px 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; color: #c792ea; }
     #chud[hidden] { display: none; }
     #chud input { width: 64px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; color: var(--text); font: inherit; padding: 1px 4px; }
@@ -263,7 +268,7 @@
       </div>
     </div>
     <div class="menu" id="cons-menu">
-      <button class="btn" id="btn-cons" aria-haspopup="true" title="Construction geometry: dashed reference lines, offsets from the board edges, circles round holes, arrays and reference points to place mounting holes on; they follow the outline and the holes they were drawn from, and never reach the Gerbers"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 12.5 14.5 3.5" stroke-dasharray="2 1.5"/><path d="M4 1.5v13" stroke-dasharray="2 1.5"/><path d="M2.6 9.4l2.8 2.8M5.4 9.4l-2.8 2.8"/></svg><span class="lbl">Construct</span>▾</button>
+      <button class="btn" id="btn-cons" aria-haspopup="true" title="Construction geometry and dimensions: dashed reference lines, offsets from the board edges, circles round holes, arrays and reference points to place mounting holes on; driving dimensions and alignments between parts, holes, vias, texts and keep-outs that keep them that far apart. They never reach the Gerbers"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 12.5 14.5 3.5" stroke-dasharray="2 1.5"/><path d="M4 1.5v13" stroke-dasharray="2 1.5"/><path d="M2.6 9.4l2.8 2.8M5.4 9.4l-2.8 2.8"/></svg><span class="lbl">Construct</span>▾</button>
       <div class="menu-list" hidden>
           <button class="menu-item" data-tool="cline" title="A dashed line through two points (holes, pads, corners, crossings) or through one at an angle θ (C)"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 14.5 14.5 1.5" stroke-dasharray="2.2 1.6"/><circle cx="5" cy="11" r="1.4"/><circle cx="11" cy="5" r="1.4"/></svg>Construction line</span><small>C</small></button>
           <button class="menu-item" data-tool="coffset" title="A dashed line d mm from a board edge, a keep-out edge or a construction line; a circle d mm out; Shift+click the outline: the whole contour inset (O)"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 13.5h13"/><path d="M1.5 6.5h13" stroke-dasharray="2.2 1.6"/><path d="M8 12.5v-5M6.5 9 8 7.5 9.5 9"/></svg>Offset</span><small>O</small></button>
@@ -273,6 +278,12 @@
           <button class="menu-item" id="mi-carray" title="Copies of the selected construction line, point or circle in a row, by a step or over a span"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5v13M8 1.5v13M13 1.5v13" stroke-dasharray="2 1.5"/></svg>Linear array</span><small></small></button>
           <button class="menu-item" id="mi-cpolar" title="Copies of the selected point or line turned about a centre (a point on a circle: about its centre)"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 8V1.5M8 8l5.6 3.2M8 8l-5.6 3.2" stroke-dasharray="2 1.5"/><circle cx="8" cy="8" r="1.4"/></svg>Polar array</span><small></small></button>
           <button class="menu-item" id="mi-choles" title="A mounting hole on every construction point that has none, tied to it (the hole tool's diameter)"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="4.5" cy="4.5" r="2.5"/><circle cx="11.5" cy="11.5" r="2.5"/><path d="M4.5 11.5h7M11.5 4.5v7" stroke-dasharray="1.5 1.5"/></svg>Holes on all points</span><small></small></button>
+        <div class="menu-sep"></div>
+          <button class="menu-item" data-tool="dim" title="A driving dimension between two things: a pad or a part's origin, a hole, a via, a text, a keep-out corner or edge, a board corner or edge, a construction point or line. Type the value and the second one moves; they stay that far apart when either moves (Shift+D)"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4v8M14 4v8M2 8h12"/><path d="M4.5 6 2 8l2.5 2M11.5 6 14 8l-2.5 2"/></svg>Dimension</span><small>⇧D</small></button>
+          <button class="menu-item" data-dalign="hz" title="The selected parts, holes, vias or texts level with the first one (same Y), and kept so when one moves"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8h13" stroke-dasharray="2 1.5"/><rect x="2.5" y="5.5" width="3" height="5"/><rect x="10.5" y="4.5" width="3" height="7"/></svg>Align horizontally</span><small></small></button>
+          <button class="menu-item" data-dalign="vt" title="The selected parts, holes, vias or texts in line with the first one (same X), and kept so when one moves"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v13" stroke-dasharray="2 1.5"/><rect x="5.5" y="2.5" width="5" height="3"/><rect x="4.5" y="10.5" width="7" height="3"/></svg>Align vertically</span><small></small></button>
+        <button class="menu-item check active" role="menuitemcheckbox" id="mi-dshow" title="Show the dimensions (hidden they still hold)">Show dimensions</button>
+          <button class="menu-item" id="mi-dclear" title="Delete every dimension and alignment; everything stays where it is, free to move (Ctrl+Z brings them back)"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4v8M14 4v8M2 8h12"/><path d="M5 5.5l6 5M11 5.5l-6 5"/></svg>Clear dimensions</span><small></small></button>
         <div class="menu-sep"></div>
         <div class="menu-row" style="padding-left:10px"><span>Snap to</span><span></span></div>
         <button class="menu-item check" role="menuitemcheckbox" data-csnap="inter" title="Stick to where construction lines and circles cross each other and the board edges">Intersections</button>
@@ -361,6 +372,7 @@
       <div id="mcard" hidden aria-live="polite"></div>
       <div id="hud" hidden></div>
       <div id="chud" hidden></div>
+      <div id="dhud" hidden></div>
       <div class="zoombar" role="group" aria-label="Zoom">
         <button class="zb" id="z-out" title="Zoom out (−)">−</button><button class="zb pct" id="z-pct" title="Zoom; 100 % is life size on a 96 dpi screen. Click: fit the board (F)">100%</button><button class="zb" id="z-in" title="Zoom in (+)">+</button><button class="zb" id="z-sel" title="Zoom to the selection, else the highlighted net (Z)">⌖</button>
       </div>
@@ -424,6 +436,7 @@
         <kbd>O</kbd><span>offset: a board edge, keep-out edge or construction line, then the distance d</span>
         <kbd>⇧C</kbd><span>construction circle round a hole, pad or point (radius R)</span>
         <kbd>⇧P</kbd><span>reference point to place holes on (Δx Δy from what the pointer sticks to)</span>
+        <kbd>⇧D</kbd><span>driving dimension between two things (H / V / A, type the value, Enter): the second one moves</span>
         <kbd>U</kbd><span>select the whole connected track under the pointer (or of the selected track)</span>
         <kbd>`</kbd><span>highlight the net under the pointer (again: off); the Nets tab lists every net. The schematic selects that net's wires; wires of one net selected there light their net up here, as a part selected in either window is selected in the other</span>
         <kbd>Alt+S</kbd><span>back to the schematic (the Circuit CAD window); <kbd>Alt+B</kbd> there comes here</span>
@@ -598,6 +611,8 @@
   <script src="board-measure.js?v=dev"></script>
   <script src="board-construct.js?v=dev"></script>
   <script src="board-cons.js?v=dev"></script>
+  <script src="board-dims.js?v=dev"></script>
+  <script src="board-dimui.js?v=dev"></script>
   <script src="board-autoroute.js?v=dev"></script>
   <script src="board-panels.js?v=dev"></script>
   <script src="board-draw.js?v=dev"></script>

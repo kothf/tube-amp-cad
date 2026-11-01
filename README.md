@@ -764,6 +764,15 @@ the circuit file, so one file holds both.
   exported. Holes take a tolerance and a counterbore or countersink (listed
   in the Gerber ZIP's README), and a design rule keeps a hole's wall 1 mm
   from the board edge.
+- **Driving dimensions** (Construct ▾ → Dimension, <kbd>Shift</kbd>+<kbd>D</kbd>):
+  place any part (by its origin or a pad), hole, via, text or keep-out by its
+  distance from a board edge or corner or from anything else, as in a 2D
+  sketcher. Click two things, place the dimension (horizontal, vertical or
+  aligned; or a point to a line), type the value: the second one moves, its
+  tracks following, and they stay that far apart when either is dragged.
+  Align horizontally / vertically keeps a selection lined up. A dimension that
+  would over-constrain becomes a reference one; the inspector says what is
+  fully defined. Dimensions are designer's notes, never exported.
 - **A part's own unplated holes** (the locating pegs of the Neutrik NJ2FD-V,
   NJ3FD-V and NJ5FD-V vertical jacks) move with the part, go into the NPTH
   drill file as component holes, open the mask, are drilled through the 3D

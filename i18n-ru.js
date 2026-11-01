@@ -1550,6 +1550,53 @@
     "The second point is the first one: click somewhere else": "Вторая точка совпала с первой: щёлкните в другом месте",
     "The radius is zero: click further from the centre": "Радиус нулевой: щёлкните дальше от центра",
     "Not there: the offset would vanish (a circle's radius below zero, or past the board's middle)": "Не здесь: смещение исчезнет (радиус окружности меньше нуля или за серединой платы)",
+    // --- Board: driving dimensions --------------------------------------------------------
+    "Dimension": "Размер",
+    "Align horizontally": "Выровнять по горизонтали",
+    "Align vertically": "Выровнять по вертикали",
+    "Show dimensions": "Показывать размеры",
+    "Clear dimensions": "Удалить размеры",
+    "A driving dimension between two things: a pad or a part's origin, a hole, a via, a text, a keep-out corner or edge, a board corner or edge, a construction point or line. Type the value and the second one moves; they stay that far apart when either moves (Shift+D)": "Управляющий размер между двумя объектами: площадкой или началом детали, отверстием, переходным отверстием, текстом, углом или краем запретной зоны, углом или краем платы, точкой или линией построения. Введите значение — второй объект сдвинется; они останутся на этом расстоянии, когда любой из них двигают (Shift+D)",
+    "The selected parts, holes, vias or texts level with the first one (same Y), and kept so when one moves": "Выбранные детали, отверстия, переходные отверстия или тексты — на одном уровне с первым (тот же Y), и так и остаются, когда один двигают",
+    "The selected parts, holes, vias or texts in line with the first one (same X), and kept so when one moves": "Выбранные детали, отверстия, переходные отверстия или тексты — на одной вертикали с первым (тот же X), и так и остаются, когда один двигают",
+    "Show the dimensions (hidden they still hold)": "Показывать размеры (скрытые, они всё равно действуют)",
+    "Delete every dimension and alignment; everything stays where it is, free to move (Ctrl+Z brings them back)": "Удалить все размеры и выравнивания; всё остаётся на месте и свободно двигается (Ctrl+Z вернёт их)",
+    "Construction geometry and dimensions: dashed reference lines, offsets from the board edges, circles round holes, arrays and reference points to place mounting holes on; driving dimensions and alignments between parts, holes, vias, texts and keep-outs that keep them that far apart. They never reach the Gerbers": "Построение и размеры: штриховые вспомогательные линии, смещения от краёв платы, окружности вокруг отверстий, массивы и опорные точки для крепёжных отверстий; управляющие размеры и выравнивания между деталями, отверстиями, переходными отверстиями, текстами и запретными зонами, держащие их на заданном расстоянии. В Gerber-файлы не попадают",
+    "Dimension: click two things (a pad, a part's origin, a hole, a via, a text, a keep-out corner or edge, a board corner or edge, a construction point or line), then place it: up or down for horizontal, sideways for vertical, between for aligned (or H, V, A). Type the value and press Enter: the second thing moves. Esc cancels": "Размер: щёлкните два объекта (площадку, начало детали, отверстие, переходное отверстие, текст, угол или край запретной зоны, угол или край платы, точку или линию построения), затем расположите его: вверх или вниз — горизонтальный, вбок — вертикальный, между — параллельный (или H, V, A). Введите значение и нажмите Enter: второй объект сдвинется. Esc — отмена",
+    "Place it (up/down: horizontal, sideways: vertical, between: aligned; or H, V, A), type the value, then Enter or click. Esc cancels": "Расположите его (вверх/вниз — горизонтальный, вбок — вертикальный, между — параллельный; или H, V, A), введите значение и нажмите Enter или щёлкните. Esc — отмена",
+    "Nothing to dimension there: click a pad, a part's origin, a hole, a via, a text, a keep-out, the board's corner or edge, or construction": "Здесь нечего образмерить: щёлкните площадку, начало детали, отверстие, переходное отверстие, текст, запретную зону, угол или край платы или построение",
+    "Two lines: click a point (a pad, hole, via, corner…) for one of them": "Две линии: для одной из них щёлкните точку (площадку, отверстие, переходное отверстие, угол…)",
+    "Those cannot be dimensioned": "Эти объекты нельзя образмерить",
+    "It stays a reference: the other dimensions already fix this": "Остаётся справочным: другие размеры уже это задают",
+    "It cannot drive: it fights the other dimensions": "Не может управлять: противоречит другим размерам",
+    "Reference dimension: it only shows the distance": "Справочный размер: он только показывает расстояние",
+    "Select two or more parts, holes, vias or texts first (Shift+click or drag a box), then align them": "Сначала выберите две или больше деталей, отверстий, переходных отверстий или текстов (Shift+щелчок или рамка), затем выровняйте",
+    "There are no dimensions to clear": "Размеров нет",
+    "Dimensions shown": "Размеры показаны",
+    "Dimensions hidden (they still hold: Construct ▾ → Show dimensions)": "Размеры скрыты (они действуют: Построение ▾ → Показывать размеры)",
+    "Dimension cancelled": "Размер отменён",
+    "Held by its dimensions": "Удерживается своими размерами",
+    "Horizontal": "Горизонтальный", "Vertical": "Вертикальный", "Aligned": "Параллельный", "To the line": "До линии",
+    "Measured (mm)": "Измерено (мм)",
+    "Dimension value (mm)": "Значение размера (мм)",
+    "Role": "Роль",
+    "Driving: it holds them": "Управляющий: держит их",
+    "Reference: it only shows": "Справочный: только показывает",
+    "Horizontal dimension": "Горизонтальный размер",
+    "Vertical dimension": "Вертикальный размер",
+    "Aligned dimension": "Параллельный размер",
+    "Distance to a line": "Расстояние до линии",
+    "Aligned horizontally": "Выровнено по горизонтали",
+    "Aligned vertically": "Выровнено по вертикали",
+    "Remove its dimensions": "Удалить его размеры",
+    "Delete the dimensions and alignments that hold it; it stays where it is": "Удалить размеры и выравнивания, которые его держат; он остаётся на месте",
+    "The value, mm: Enter makes it; empty keeps the distance as it is": "Значение, мм: Enter создаёт размер; пусто — расстояние как есть",
+    "The second stays level with (or in line with) the first when either moves.": "Второй остаётся на одном уровне (или на одной вертикали) с первым, когда любой из них двигают.",
+    "Changing the value moves the second thing; dragging either moves the other with it. Drag the value to move the dimension line.": "Изменение значения сдвигает второй объект; если тащить любой, второй следует за ним. Перетащите значение, чтобы сдвинуть размерную линию.",
+    "Something it names is gone: delete it, or bring that back.": "Объекта, на который он ссылается, больше нет: удалите размер или верните объект.",
+    "Not met: it fights another dimension or a locked part. Change its value, make it a reference or delete it.": "Не выполнен: противоречит другому размеру или закреплённой детали. Измените значение, сделайте его справочным или удалите.",
+    "fully defined": "полностью определён", "free to move up and down": "может двигаться вверх-вниз", "free to move sideways": "может двигаться вбок", "free to move": "может двигаться", "locked": "закреплён", "free": "свободен",
+    "keep-out corner": "угол запретной зоны", "board centre": "центр платы", "board corner": "угол платы", "middle of the board edge": "середина края платы", "construction line": "линия построения",
   };
 
   // the board's edges and construction items named in the construction's own texts
@@ -1557,8 +1604,45 @@
     .replace(/^board (bottom|top)-(left|right) corner arc$/, (m, v, h) => `скругление ${v === "bottom" ? "нижнего" : "верхнего"} ${h === "left" ? "левого" : "правого"} угла платы`)
     .replace(/^(line|offset|circle|point|array|polar array) C(\d+)/, (m, k, n) => `${{ line: "линия", offset: "смещение", circle: "окружность", point: "точка", array: "массив", "polar array": "полярный массив" }[k]} C${n}`)
     .replace(/^hole Ø([\d.]+) \((\S+)\)$/, "отверстие Ø$1 ($2)").replace(/^the board's (.+)$/, (m, t) => `плата: ${t}`);
+  // a feature a dimension names (board-dims.js featureName), in Russian
+  const DIM_AT = { "bottom-left corner": "левый нижний угол", "bottom-right corner": "правый нижний угол", "top-left corner": "левый верхний угол", "top-right corner": "правый верхний угол", centre: "центр", "bottom edge middle": "середина нижнего края", "right edge middle": "середина правого края", "top edge middle": "середина верхнего края", "left edge middle": "середина левого края" };
+  const ruFeat = w => w.replace(/^the origin$/, "начало координат").replace(/^board (bottom|right|top|left) edge$/, (m, e) => `${{ bottom: "нижний", right: "правый", top: "верхний", left: "левый" }[e]} край платы`)
+    .replace(/^board (.+)$/, (m, a) => (DIM_AT[a] ? `плата: ${DIM_AT[a]}` : m)).replace(/^(\S+) origin$/, "начало $1").replace(/^pad (\S+)$/, "площадка $1")
+    .replace(/^hole Ø([\d.]+) \((\S+)\)$/, "отверстие Ø$1 ($2)").replace(/^via (\S+)$/, "переходное отверстие $1").replace(/^text "(.*)"$/, "текст «$1»")
+    .replace(/^keep-out (".*" )?corner (\d+)$/, (m, n, k) => `запретная зона ${n ? n.replace(/"(.*)" /, "«$1» ") : ""}угол ${k}`).replace(/^keep-out (".*" )?edge (\d+)$/, (m, n, k) => `запретная зона ${n ? n.replace(/"(.*)" /, "«$1» ") : ""}край ${k}`)
+    .replace(/^a construction point$/, "точка построения").replace(/^a construction line$/, "линия построения").replace(/^an? (part|pad|hole|via|text|keep-out) that is gone$/, "удалённый объект");
+  const F = "(.+?)";
+  const ruDesc = d => d
+    .replace(new RegExp(`^${F} ([\\d.]+) mm (right of|left of|above|below|from) ${F}$`), (m, b, v, w, a) => `${ruFeat(b)} — ${v} мм ${{ "right of": "правее", "left of": "левее", above: "выше", below: "ниже", from: "от" }[w]}: ${ruFeat(a)}`)
+    .replace(new RegExp(`^${F} level with ${F} \\(same Y\\)$`), (m, b, a) => `${ruFeat(b)} на одном уровне с: ${ruFeat(a)} (тот же Y)`)
+    .replace(new RegExp(`^${F} in line with ${F} \\(same X\\)$`), (m, b, a) => `${ruFeat(b)} на одной вертикали с: ${ruFeat(a)} (тот же X)`);
+  const DESC = "(.+? (?:[\\d.]+ mm (?:right of|left of|above|below|from) .+|level with .+ \\(same Y\\)|in line with .+ \\(same X\\)))";
+  const plural = (n, one, few, many) => { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many; };
+  function dimPatterns() {
+    return [
+      [new RegExp(`^Dimension: ${DESC}\\. Double-click its value to change it$`), (m, d) => `Размер: ${ruDesc(d)}. Двойной щелчок по значению — изменить`],
+      [new RegExp(`^Dimension: ${DESC}$`), (m, d) => `Размер: ${ruDesc(d)}`],
+      [new RegExp(`^Dimension deleted: ${DESC} no longer holds$`), (m, d) => `Размер удалён: ${ruDesc(d)} больше не держится`],
+      [new RegExp(`^Reference dimension \\(a driving one would over-constrain: the other dimensions or locks already fix this\\): ${DESC}$`), (m, d) => `Справочный размер (управляющий переопределил бы: другие размеры или закрепление уже это задают): ${ruDesc(d)}`],
+      [new RegExp(`^Reference dimension: ${DESC} cannot be met with the other dimensions \\(or a locked part\\); it shows ([\\d.]+) mm$`), (m, d, v) => `Справочный размер: ${ruDesc(d)} нельзя выполнить вместе с другими размерами (или закреплённой деталью); показывает ${v} мм`],
+      [new RegExp(`^Held by a dimension: ${DESC}\\. Change or delete it \\(or make it a reference\\) to move this$`), (m, d) => `Держит размер: ${ruDesc(d)}. Измените или удалите его (или сделайте справочным), чтобы сдвинуть`],
+      [new RegExp(`^From ${F} to ${F}$`), (m, a, b) => `От: ${ruFeat(a)} — до: ${ruFeat(b)}`],
+      [new RegExp(`^From ${F}: now click the second thing \\(it is the one that moves\\)$`), (m, a) => `От: ${ruFeat(a)}; теперь щёлкните второй объект (двигаться будет он)`],
+      [/^([\d.]+) mm cannot be met with the other dimensions \(or a locked part\)$/, "$1 мм нельзя выполнить вместе с другими размерами (или закреплённой деталью)"],
+      [/^Driving dimension: it holds them ([\d.]+) mm apart$/, "Управляющий размер: держит их в $1 мм друг от друга"],
+      [new RegExp(`^(\\d+) aligned (horizontally \\(same Y\\)|vertically \\(same X\\)) with ${F}(?:; (\\d+) already held another way \\(kept as references\\))?\\. They stay aligned when one moves$`), (m, n, w, a, r) => `Выровнено ${w[0] === "h" ? "по горизонтали (тот же Y)" : "по вертикали (тот же X)"} с: ${ruFeat(a)} — ${n}${r ? `; ${r} уже заданы иначе (оставлены справочными)` : ""}. Они остаются выровненными, когда один двигают`],
+      [/^Removed (\d+) dimensions?: it is free to move$/, (m, n) => `Удалено размеров: ${n}; объект свободно двигается`],
+      [/^Cleared (\d+) dimensions?: everything stays where it is, free to move \(Ctrl\+Z brings them back\)$/, (m, n) => `Удалено размеров: ${n}; всё остаётся на месте и свободно двигается (Ctrl+Z вернёт их)`],
+      [/^(\d+) dimensions?$/, (m, n) => `${n} ${plural(+n, "размер", "размера", "размеров")}`],
+      [/^ · (fully defined|free to move up and down|free to move sideways|free to move|locked|free)$/, (m, w) => ` · ${{ "fully defined": "полностью определён", "free to move up and down": "может двигаться вверх-вниз", "free to move sideways": "может двигаться вбок", "free to move": "может двигаться", locked: "закреплён", free: "свободен" }[w]}`],
+      [new RegExp(`^${DESC}$`), (m, d) => ruDesc(d)],
+      [/^(pad [A-Z]+\d+'*-\S+|[A-Z]+\d+'* origin|text ".*")$/, (m, w) => ruFeat(w)], [/^hole Ø([\d.]+)$/, "отверстие Ø$1"],
+    ];
+  }
   // texts with numbers or names in them
   const patterns = [
+    // driving dimensions: the things they name and the sentences they make
+    ...dimPatterns(),
     [/^Mounting hole Ø([\d.]+): its wall is ([\d.]+) mm from the board edge \(< ([\d.]+) mm\)$/, "Крепёжное отверстие Ø$1: стенка в $2 мм от края платы (< $3 мм)"],
     [/^Mounting hole Ø([\d.]+) cuts the board edge$/, "Крепёжное отверстие Ø$1 заходит за край платы"],
     [/^Holes on its (\d+) points?$/, "Отверстия на его точках: $1"],
