@@ -665,15 +665,16 @@ import { readFile } from "node:fs/promises";
       `D (a toolbar button too), the board's corner, ${rs[0].ref}, placed below, 40 typed: a horizontal dimension and ${rs[0].ref} moves to X 40 (${a.x}), its tracks following (${a.un} to route, ${un0} before); the tool stays on (${still})`);
     // still in the tool: drag the value to move the dimension line, click it to type a new value in the box on it
     const lblAt = () => bd.evaluate(() => { const q = BoardApp.state.dboxes.slice(-1)[0]; return BoardApp.toScreen(q.box[0] + q.box[2] / 2, q.box[1] + q.box[3] / 2); });
-    let L0 = await lblAt(); const o0 = d.o;
-    await bd.mouse.move(cv.x + L0[0], cv.y + L0[1]); await bd.mouse.down(); await bd.mouse.move(cv.x + L0[0], cv.y + L0[1] - 40, { steps: 5 }); await bd.mouse.up();
+    let L0 = await lblAt(); const o0 = d.o, Ls = L0.slice();
+    await bd.mouse.move(cv.x + L0[0], cv.y + L0[1]); await bd.mouse.down(); await bd.mouse.move(cv.x + L0[0] + 70, cv.y + L0[1] - 40, { steps: 6 }); await bd.mouse.up();
+    await bd.waitForTimeout(80); const s1 = await bd.evaluate(() => BoardApp.state.board.dims.items.slice(-1)[0].s), L1 = await lblAt();
     const o1 = await bd.evaluate(() => BoardApp.state.board.dims.items.slice(-1)[0].o), tool1 = await bd.evaluate(() => BoardApp.state.tool);
     L0 = await lblAt(); await bd.mouse.click(cv.x + L0[0], cv.y + L0[1]);
     const box = await bd.evaluate(() => { const h = document.getElementById("dmod"), i = h.querySelector("input"); return !h.hidden && i && document.activeElement === i ? i.value : null; });
     await bd.keyboard.press("Control+a"); await bd.keyboard.type("45"); await bd.keyboard.press("Enter");
     const v45 = await part(rs[0].key);
-    check(Math.abs(o1 - o0) > 2 && tool1 === "dim" && box === "40.00" && Math.abs(v45.x - 45) < 1e-6 && v45.dims === 1,
-      `in the Dimension tool a drag of the value moves the dimension line (offset ${o0} → ${o1}); a click opens the Modify box on it (${box}), 45 Enter moves ${rs[0].ref} to X 45 (${v45.x})`);
+    check(Math.abs(o1 - o0) > 2 && s1 > 1 && Math.abs(L1[0] - Ls[0] - 70) < 3 && Math.abs(L1[1] - Ls[1] + 40) < 3 && tool1 === "dim" && box === "40.00" && Math.abs(v45.x - 45) < 1e-6 && v45.dims === 1,
+      `in the Dimension tool a drag of the value up and to the right puts it there (offset ${o0} → ${o1}, along the line ${s1} mm; moved ${(L1[0] - Ls[0]).toFixed(0)}, ${(L1[1] - Ls[1]).toFixed(0)} px); a click opens the Modify box on it (${box}), 45 Enter moves ${rs[0].ref} to X 45 (${v45.x})`);
     await bd.keyboard.press("Escape"); const t2 = await bd.evaluate(() => BoardApp.state.tool);
     if (t2 !== "select") await bd.evaluate(() => BoardApp.setTool("select"));
     p = await at(a.x, a.y); await bd.mouse.move(p[0], p[1]); await bd.mouse.down(); await bd.mouse.move(p[0] + 40, p[1] + 30, { steps: 6 }); await bd.mouse.up();
