@@ -119,6 +119,18 @@ import { U, browser, cad, check, ctx, open } from "./harness.mjs";
   check(nav.warmup.pos === 0 && nav.warmup.span >= 3 * 4.5 && nav.warmup.span <= w.tStop, `Warm-up shows three time constants of the 12AX7 (${JSON.stringify(nav.warmup)})`);
   check(nav.logMap && nav.log.includes("10ms") && nav.log.includes("1s"), `Log time labels the axis from milliseconds to seconds (${nav.log.join(" ")})`);
   check(nav.focus.pos <= nav.ev && nav.focus.pos + nav.focus.span >= nav.ev && nav.focus.span < w.tStop && nav.mk.length === 1 && Math.abs(nav.mk[0] - nav.ev) < 1e-9 && nav.active === 1, `clicking an event zooms to it and puts marker A on it (${JSON.stringify(nav)})`);
+  // warm-up lane for the 12AX7; Show plots C1 from the run's own record, picked again it goes
+  const ph2 = await sp.evaluate(() => {
+    Scope.preset("whole");
+    const lanes = Scope.lanes(), sel = document.getElementById("pwr-show"), c1 = Instrument.transient.caps.find(c => c.label === "C1");
+    sel.value = c1.id; sel.dispatchEvent(new Event("change"));
+    const on = Scope.channels(), ch = Scope.startupChannels(Instrument.transientScope()), x = ch["x:" + c1.id], p = ch.ch1;
+    const at = s => [x.raw[Math.round(s / Instrument.transient.dt)], p.raw[Math.round(s / Instrument.transient.dt)]];
+    sel.value = c1.id; sel.dispatchEvent(new Event("change"));
+    return { lanes, on, off: Scope.channels(), at: [at(1), at(10)] };
+  });
+  check(ph2.lanes.length === 1 && ph2.lanes[0].tube === "12AX7" && ph2.lanes[0].warmAt > 10 && ph2.lanes[0].warmAt < 40, `a warm-up lane for the 12AX7 (${JSON.stringify(ph2.lanes)})`);
+  check(ph2.on.length === 2 && /^C1( \(B\+\))?$/.test(ph2.on[1].label) && ph2.off.length === 1 && ph2.at.every(([a, b]) => Math.abs(a - b) < 0.02 * Math.abs(b) + 0.5), `Show plots C1 from the run's record, on the probe's trace (${JSON.stringify(ph2.at)}), and takes it off again`);
   // hot cathodes: no overshoot, no note about C1
   await sp.uncheck("#warmup"); await sp.selectOption("#t-stop", "0.5");
   await sp.click("#btn-sim");
