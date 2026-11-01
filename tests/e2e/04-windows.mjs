@@ -94,17 +94,36 @@ import { U, browser, cad, check, ctx, open } from "./harness.mjs";
   await sp.waitForFunction(() => Instrument.transient && !Instrument.transient.running && Instrument.transient.ok && Instrument.transient.warmup, null, { timeout: 120000 });
   const w = await sp.evaluate(() => {
     const t = Instrument.transient, ch = Scope.startupChannels(Instrument.transientScope()).ch1, q = Scope.settleInfo(ch, t.dt), at = s => ch.raw[Math.round(s / t.dt - 0.5)];
-    return { tStop: t.tStop, early: at(1), final: q.final, limits: ch.limits, notes: document.getElementById("pwr-notes").textContent, tdiv: document.getElementById("tdiv").value, opt: document.getElementById("tdiv").options[0].textContent };
+    return { tStop: t.tStop, early: at(1), final: q.final, limits: ch.limits, notes: document.getElementById("pwr-events").textContent, verdict: document.getElementById("pwr-verdict").textContent, shownReport: !document.getElementById("pwr-report").hidden, events: t.events, tdiv: document.getElementById("tdiv").value, opt: document.getElementById("tdiv").options[0].textContent };
   });
   check(w.tStop >= 15 && w.tStop <= 25, `Auto runs three of the 12AX7's warm-up time constants (${w.tStop} s)`);
   check(w.early > 295 && w.final < w.early - 5, `B+ on C1 overshoots while the cathode is cold (${w.early.toFixed(1)} V at 1 s, ${w.final.toFixed(1)} V settled)`);
   check(w.limits.length === 1 && w.limits[0].v === 300 && /C1/.test(w.notes) && /300\s?V rating/.test(w.notes), `C1's 300 V rating drawn on the channel, and the note: ${w.notes.slice(0, 140)}`);
   check(/whole record/.test(w.opt), `a warm-up record opens whole (${w.opt})`);
+  check(w.shownReport && w.events.some(e => e.kind === "settled" && /B\+ \(C1\)/.test(e.who)) && w.events.every((e, i, a) => !i || a[i - 1].t <= e.t), `the report strip lists the events in time order, B+ settling among them (${w.verdict}: ${w.events.map(e => e.level + " " + e.who + " " + e.text).join("; ")})`);
+  // time presets, log time, an event's click zooms there with marker A on it
+  const nav = await sp.evaluate(() => {
+    const out = {};
+    Scope.preset("inrush"); out.inrush = Scope.startupView();
+    Scope.preset("settled"); out.settled = Scope.startupView();
+    Scope.preset("warmup"); out.warmup = Scope.startupView();
+    document.getElementById("logt").click(); Scope.preset("whole"); out.log = Scope.axes().h; out.logMap = Scope.timeMap().log;
+    document.getElementById("logt").click();
+    const k = Instrument.transient.events.findIndex(e => e.kind === "settled");
+    document.querySelectorAll("#pwr-events .ev")[k].click();
+    out.ev = Instrument.transient.events[k].t; out.focus = Scope.startupView(); out.mk = Scope.markers().map(m => m.t);
+    out.active = document.querySelectorAll("#pwr-events .ev.active").length;
+    return out;
+  });
+  check(nav.inrush.pos === 0 && Math.abs(nav.inrush.span - 0.2) < 1e-9 && Math.abs(nav.settled.pos + nav.settled.span - w.tStop) < 1e-6 && nav.settled.span <= 0.2 + 1e-9, `Inrush shows 0–200 ms, Settled the last 200 ms (${JSON.stringify([nav.inrush, nav.settled])})`);
+  check(nav.warmup.pos === 0 && nav.warmup.span >= 3 * 4.5 && nav.warmup.span <= w.tStop, `Warm-up shows three time constants of the 12AX7 (${JSON.stringify(nav.warmup)})`);
+  check(nav.logMap && nav.log.includes("10ms") && nav.log.includes("1s"), `Log time labels the axis from milliseconds to seconds (${nav.log.join(" ")})`);
+  check(nav.focus.pos <= nav.ev && nav.focus.pos + nav.focus.span >= nav.ev && nav.focus.span < w.tStop && nav.mk.length === 1 && Math.abs(nav.mk[0] - nav.ev) < 1e-9 && nav.active === 1, `clicking an event zooms to it and puts marker A on it (${JSON.stringify(nav)})`);
   // hot cathodes: no overshoot, no note about C1
   await sp.uncheck("#warmup"); await sp.selectOption("#t-stop", "0.5");
   await sp.click("#btn-sim");
   await sp.waitForFunction(() => Instrument.transient && !Instrument.transient.running && Instrument.transient.ok && !Instrument.transient.warmup, null, { timeout: 60000 });
-  const h = await sp.evaluate(() => ({ notes: document.getElementById("pwr-notes").textContent, tStop: Instrument.transient.tStop }));
+  const h = await sp.evaluate(() => ({ notes: [...document.querySelectorAll("#pwr-events .ev")].filter(e => !e.classList.contains("info")).map(e => e.textContent).join(" "), tStop: Instrument.transient.tStop }));
   check(h.tStop === 0.5 && !/C1/.test(h.notes), `hot cathodes: ${h.notes}`);
   await sp.close();
 }
