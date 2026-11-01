@@ -88,7 +88,10 @@
   /** env: { board, model, csol } → the features' base points and lines, and their bodies */
   function makeEnv(board, model, csol) {
     const H = board.outline.h, o = board.outline;
-    const find = (l, id) => (board[l] || []).find(q => q && q.id === id);
+    // look-ups made once: objects by id, each feature's body
+    const byId = {}; ["holes", "vias", "texts", "keepouts"].forEach(l => { byId[l] = new Map(); (board[l] || []).forEach(q => { if (q && q.id && !byId[l].has(q.id)) byId[l].set(q.id, q); }); });
+    const find = (l, id) => byId[l].get(id);
+    const bodies = new WeakMap(), body = f => { if (!f) return null; if (!bodies.has(f)) bodies.set(f, bodyOf(board, f)); return bodies.get(f); };
     const fromU = p => (p ? [p[0], H - p[1]] : null);
     // each pad's place on its part, from the model built for the board as it is now (a part only slides)
     const padOff = new Map();
@@ -96,7 +99,7 @@
     // a point feature: [x, y] with the body's slide added; null when it is gone
     function point(f, T) {
       if (!f) return null;
-      const body = bodyOf(board, f), t = (body && T && T.get(body)) || [0, 0];
+      const bk = body(f), t = (bk && T && T.get(bk)) || [0, 0];
       let p = null;
       switch (f.t) {
         case "origin": return [0, H];
@@ -124,13 +127,13 @@
       if (f.t === "edge") return [[0, H, o.w, H], [o.w, H, o.w, 0], [o.w, 0, 0, 0], [0, 0, 0, H]][f.k] || null;
       if (f.t === "koe") {
         const k = find("keepouts", f.id); if (!k || !k.pts.length) return null;
-        const body = bodyOf(board, f), t = (body && T && T.get(body)) || [0, 0], a = k.pts[(f.k || 0) % k.pts.length], b = k.pts[((f.k || 0) + 1) % k.pts.length];
+        const bk = body(f), t = (bk && T && T.get(bk)) || [0, 0], a = k.pts[(f.k || 0) % k.pts.length], b = k.pts[((f.k || 0) + 1) % k.pts.length];
         return [a[0] + t[0], a[1] + t[1], b[0] + t[0], b[1] + t[1]];
       }
       if (f.t === "cl") { const c = csol && csol.curve(f.g); return c && c.t === "L" ? [c.x1, H - c.y1, c.x2, H - c.y2] : null; }
       return null;
     }
-    return { board, model, csol, point, line, H };
+    return { board, model, csol, point, line, H, body };
   }
 
   // the residual of a dimension (board frame inside, values in the user frame); null when a feature is gone
@@ -156,7 +159,7 @@
   }
   // the gradient of a residual by the slides of its bodies: [[body, ∂/∂tx, ∂/∂ty], …] (a body twice adds up)
   function grad(env, d, T) {
-    const board = env.board, ka = bodyOf(board, d.a), kb = bodyOf(board, d.b), out = [];
+    const ka = env.body(d.a), kb = env.body(d.b), out = [];
     const put = (k, gx, gy) => { if (k) out.push([k, gx, gy]); };
     switch (d.k) {
       case "dx": put(kb, 1, 0); put(ka, -1, 0); break;
@@ -188,17 +191,20 @@
   // ---------------------------------------------------------------------------
   // A x = b by elimination with partial pivoting; rows with no pivot (dependent equations) get x = 0
   function solveSym(A, b) {
-    const n = b.length, M = A.map((r, i) => r.concat([b[i]])), piv = [], scale = Math.max(1e-30, ...A.map((r, i) => Math.abs(r[i])));
-    let row = 0; const col = [];
+    const n = b.length, M = A.map((r, i) => { const x = new Float64Array(n + 1); x.set(r); x[n] = b[i]; return x; });
+    let scale = 1e-30; for (let i = 0; i < n; i++) scale = Math.max(scale, Math.abs(A[i][i]));
+    const col = []; let row = 0;
+    // forward elimination with partial pivoting; a column with no pivot (a dependent equation) is skipped
     for (let c = 0; c < n && row < n; c++) {
       let best = row; for (let r = row + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[best][c])) best = r;
       if (Math.abs(M[best][c]) < 1e-11 * scale) continue;
-      [M[row], M[best]] = [M[best], M[row]];
-      for (let r = 0; r < n; r++) if (r !== row) { const f = M[r][c] / M[row][c]; if (f) for (let k = c; k <= n; k++) M[r][k] -= f * M[row][k]; }
-      col[row] = c; piv.push(c); row++;
+      const t = M[row]; M[row] = M[best]; M[best] = t;
+      const P = M[row], pc = P[c];
+      for (let r = row + 1; r < n; r++) { const Rr = M[r], f = Rr[c] / pc; if (f) for (let k = c; k <= n; k++) Rr[k] -= f * P[k]; }
+      col[row] = c; row++;
     }
-    const x = new Array(n).fill(0);
-    for (let r = 0; r < row; r++) x[col[r]] = M[r][n] / M[r][col[r]];
+    const x = new Float64Array(n);
+    for (let r = row - 1; r >= 0; r--) { const P = M[r], c = col[r]; let s = P[n]; for (let k = c + 1; k < n; k++) s -= P[k] * x[k]; x[c] = s / P[c]; }
     return x;
   }
   // an orthonormal basis of the rows (Gram–Schmidt); its length is the rank
@@ -250,30 +256,40 @@
     const prefer = opts.prefer || new Set();
     const heavy = opts.heavy || new Set();
     const w = keys.flatMap(k => { const v = heavy.has(k) ? 1e6 : prefer.size ? (prefer.has(k) ? 1 : 1e4) : 1; return [v, v]; });
-    const q = new Array(n).fill(0);
+    const q = new Float64Array(n);
     const Tof = qq => new Map(keys.map((k, i) => [k, [qq[2 * i], qq[2 * i + 1]]]));
     const F = qq => { const T = Tof(qq); return rows.map(d => residual(env, d, T)); };
+    // the Jacobian, sparse: each row a list of [column, value]
     const jac = qq => {
       const T = Tof(qq);
-      return rows.map(d => { const r = new Array(n).fill(0); grad(env, d, T).forEach(([k, gx, gy]) => { const i = idx.get(k); if (i === undefined) return; r[2 * i] += gx; r[2 * i + 1] += gy; }); return r; });
+      return rows.map(d => {
+        const r = [];
+        grad(env, d, T).forEach(([k, gx, gy]) => {
+          const i = idx.get(k); if (i === undefined) return;
+          [[2 * i, gx], [2 * i + 1, gy]].forEach(([c, v]) => { if (!v) return; const e = r.find(x => x[0] === c); if (e) e[1] += v; else r.push([c, v]); });
+        });
+        return r;
+      });
     };
     const norm = f => f.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
     let f = F(q), err = norm(f), it = 0;
-    const maxIt = opts.iterations || 60;
-    while (err > TOL && it++ < maxIt && rows.length) {
-      const J = jac(q), m = rows.length;
+    const maxIt = opts.iterations || 60, m = rows.length;
+    while (err > TOL && it++ < maxIt && m) {
+      const J = jac(q);
       // the step of least weighted change: (J W⁻¹ Jᵀ) μ = F − J r, Δ = −r − W⁻¹ Jᵀ μ, r = q − q0 (q0 = 0)
-      const nz = J.map(r => { const l = []; r.forEach((v, c) => { if (v) l.push(c); }); return l; });
-      const A = Array.from({ length: m }, () => new Array(m).fill(0));
-      for (let i = 0; i < m; i++) for (let j = i; j < m; j++) { let s = 0; for (const c of nz[i]) if (J[j][c]) s += J[i][c] * J[j][c] / w[c]; A[i][j] = A[j][i] = s; }
-      const rhs = f.map((fi, i) => { let s = fi; for (let c = 0; c < n; c++) s -= J[i][c] * q[c]; return s; });
+      const byCol = Array.from({ length: n }, () => []);
+      J.forEach((r, i) => r.forEach(([c, v]) => byCol[c].push([i, v])));
+      const A = Array.from({ length: m }, () => new Float64Array(m));
+      byCol.forEach((l, c) => { for (const [i, vi] of l) for (const [j, vj] of l) A[i][j] += vi * vj / w[c]; });
+      const rhs = f.map((fi, i) => { let s = fi; for (const [c, v] of J[i]) s -= v * q[c]; return s; });
       const mu = solveSym(A, rhs);
-      const step = q.map((qc, c) => { let s = 0; for (let i = 0; i < m; i++) s += J[i][c] * mu[i]; return -qc - s / w[c]; });
+      const step = new Float64Array(n);
+      for (let c = 0; c < n; c++) { let s = 0; for (const [i, v] of byCol[c]) s += v * mu[i]; step[c] = -q[c] - s / w[c]; }
       // halve the step while it makes things worse (a distance far from where it started)
       let a = 1, q2, f2, e2;
       for (let k = 0; k < 12; k++) { q2 = q.map((v, c) => v + a * step[c]); f2 = F(q2); e2 = norm(f2); if (e2 < err || e2 <= TOL) break; a /= 2; }
       if (!(e2 < err) && e2 > TOL) break;   // no progress: these equations cannot all be met
-      for (let c = 0; c < n; c++) q[c] = q2[c];
+      q.set(q2);
       f = f2; err = e2;
     }
     const T = Tof(q), bad = rows.filter((d, i) => Math.abs(f[i]) > 1e-4).map(d => d.id);
