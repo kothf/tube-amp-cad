@@ -82,3 +82,42 @@ import { U, browser, check, errors } from "./harness.mjs";
   }
   await lc.close();
 }
+
+// Help → About & credits: who made it, what it is built on, licence and disclaimer, in both
+// languages (every text in the dialog is translated); the manual ends with the same section
+{
+  const lc = await browser.newContext({ viewport: { width: 1500, height: 900 } });
+  const p = await lc.newPage(); p.on("pageerror", e => errors.push(`about: ${e.message}`));
+  await p.goto(U("circuit_sandbox.html")); await p.waitForFunction(() => window.TubeCAD && window.I18n && window.TubeAbout);
+  const openAbout = async () => { await p.click("#btn-help"); await p.click("#btn-help-about"); await p.waitForTimeout(150); };
+  await openAbout();
+  const en = await p.evaluate(() => {
+    const m = document.getElementById("about-modal"), img = m.querySelector(".about-head img");
+    return { shown: !m.hidden, help: !document.getElementById("help-modal").hidden, text: m.innerText, logo: img.complete && img.naturalWidth > 0,
+      links: [...m.querySelectorAll("a")].map(a => a.href), focus: document.activeElement.id };
+  });
+  check(en.shown && !en.help && en.logo && en.focus === "btn-about-close" && /Andrey Dumchin/.test(en.text) && /Norman Koren/.test(en.text) && /Katsnelson/.test(en.text)
+    && /AssemblyScript/.test(en.text) && /MIT licence/.test(en.text) && /lethal voltages/.test(en.text)
+    && en.links.includes("https://aerocat.tech/posts/tube-amp-cad/") && en.links.includes("https://github.com/kothf/tube-amp-cad"),
+    "Help → About & credits: logo, author, links, models and data, software, MIT licence and the safety note");
+  await p.keyboard.press("Escape");
+  check(await p.evaluate(() => document.getElementById("about-modal").hidden), "Esc closes About");
+  await p.click("#btn-lang"); await p.waitForTimeout(150);
+  await openAbout();
+  await p.click("#about-modal .about-more summary");
+  const ru = await p.evaluate(() => {
+    const m = document.getElementById("about-modal"), left = [];
+    const w = document.createTreeWalker(m, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) if (/[A-Za-z]{3}/.test(n.data) && !/[А-Яа-яЁё]/.test(n.data) && !n.parentElement.closest("[data-i18n-skip]")) left.push(n.data.trim());
+    return { left, text: m.textContent, blog: [...m.querySelectorAll("a")].some(a => a.href === "https://aerocat.tech/ru/posts/tube-amp-cad/") };
+  });
+  check(ru.left.length === 0 && /Модели и данные/.test(ru.text) && /смертельно опасные/.test(ru.text) && ru.blog,
+    `About in Russian: every text translated, the Russian blog post linked (${JSON.stringify({ blog: ru.blog, m: /Модели и данные/.test(ru.text), w: /смертельно опасные/.test(ru.text) })})${ru.left.length ? ` (left: ${ru.left.slice(0, 4).join(" | ")})` : ""}`);
+  await p.click("#btn-about-close");
+  const h = await lc.newPage(); h.on("pageerror", e => errors.push(`manual about: ${e.message}`));
+  await h.goto(U("help.html")); await h.waitForSelector("#about-body .about-head");
+  const man = await h.evaluate(() => ({ text: document.getElementById("about-body").innerText, toc: [...document.querySelectorAll("#toc-list a")].map(a => a.textContent) }));
+  check(/Norman Koren/.test(man.text) && /Igor Gubin/.test(man.text) && /RADIO BOB/.test(man.text) && man.toc.includes("19. About and credits"),
+    "the manual ends with About and credits, with every credit shown and listed in the contents");
+  await lc.close();
+}

@@ -2971,6 +2971,15 @@
     cmds.bind("btn-help", "help").helpRows(document.getElementById("help-keys"));
     bind("btn-help-close", () => { document.getElementById("help-modal").hidden = true; });
     bind("btn-help-manual", () => { document.getElementById("help-modal").hidden = true; ToolWindows.open("help.html"); });
+    bind("btn-help-about", () => {
+      document.getElementById("help-modal").hidden = true;
+      // filled when opened, so the blog link follows the language in use
+      document.getElementById("about-body").innerHTML = TubeAbout.html({ version: (VERSION.match(/[?&]v=([^&]+)/) || [])[1] || "dev", ru: !!window.I18n && window.I18n.lang === "ru" });
+      document.getElementById("about-modal").hidden = false;
+      document.getElementById("btn-about-close").focus();
+    });
+    bind("btn-about-close", () => { document.getElementById("about-modal").hidden = true; });
+    document.getElementById("about-modal").addEventListener("click", e => { if (e.target.id === "about-modal") e.target.hidden = true; });
     bind("btn-open-manual", () => ToolWindows.open("help.html"));
     document.getElementById("help-modal").addEventListener("click", e => { if (e.target.id === "help-modal") e.target.hidden = true; });
     bind("btn-zoom-in", () => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1.25));
