@@ -57,6 +57,14 @@
     .part td:first-child { width: 220px; white-space: normal; font-weight: 600; }
     .opts { color: var(--muted); font-size: 12.5px; display: block; margin-top: 2px; }
     .hint-text p { margin: 0 0 4px; }
+    .about-head { display: flex; gap: 16px; align-items: center; margin: 8px 0 12px; }
+    .about-head img { flex: none; border-radius: 12px; }
+    .about-name { font-size: 20px; font-weight: 700; }
+    .about-ver { font: 13px ui-monospace, Menlo, monospace; color: var(--muted); }
+    table.credits td:first-child { width: 30%; white-space: normal; }
+    table.credits td.src { color: var(--muted); width: 24%; }
+    .about-more > summary { cursor: pointer; font-weight: 600; margin: 12px 0; }
+    .about-warn { border-left: 3px solid var(--warn); background: #1d1708; padding: 9px 13px; border-radius: 0 8px 8px 0; }
     .hint-text code { display: block; margin: 3px 0; }
     .tubes-wrap { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
     .tubes-wrap table { margin: 0; font-size: 12.5px; }
@@ -837,6 +845,9 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
   <li><b>Add to the library</b> makes it a custom tube, like an imported SPICE model: it is kept in this browser, saved inside the circuit files that use it, and listed with a <b>Remove</b> button under the tube inspector's <b>Import SPICE model…</b>. A name that is already a built-in tube gets "-DS" added.</li>
 </ul>
 
+<h2 id="about">19. About and credits</h2>
+<div id="about-body"></div>
+
 <p class="opts" style="margin-top:40px">Tube Amp CAD · <span id="ver"></span> · MIT licence.</p>
 </main>
 </div>
@@ -847,6 +858,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
 <script src="sim-engine.js?v=dev"></script>
 <script src="cad-components.js?v=dev"></script>
 <script src="hints.js?v=dev"></script>
+<script src="about.js?v=dev"></script>
 <script src="help-app.js?v=dev"></script>
 </body>
 </html>

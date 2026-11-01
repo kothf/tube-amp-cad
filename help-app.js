@@ -73,6 +73,7 @@
   // ---- version --------------------------------------------------------------
   const m = /[?&]v=([^&]+)/.exec([...document.scripts].map(s => s.src).find(s => /hints\.js/.test(s)) || "");
   $("ver").textContent = m && m[1] !== "dev" ? "version " + m[1] : "development build";
+  if (window.TubeAbout) $("about-body").innerHTML = TubeAbout.html({ version: m ? m[1] : "dev", manual: true });
 
   // ---- table of contents, scroll spy -----------------------------------------
   const heads = [...document.querySelectorAll("main h2, main h3")].filter(h => h.closest(".part") === null);

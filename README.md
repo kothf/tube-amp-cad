@@ -1225,3 +1225,6 @@ consistent.
 ## License
 
 [MIT](LICENSE)
+
+Credits for the models, data, software, example circuits and services the app
+uses are in Help → *About & credits* and the manual's last section (`about.js`).

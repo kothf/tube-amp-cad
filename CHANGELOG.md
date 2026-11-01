@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.166.0] - 2026-11-01
+
+### Added
+- **About & credits** (Help → *About & credits*, and section 19 of the manual): the app's version, who made it and links to the blog post, the source and this changelog; the models and data it is built on (Norman Koren's tube equations, Katsnelson & Larionov's handbook for the Soviet tubes, the makers' datasheets, SPICE's device models, Thiele–Small, ngspice as the test reference, the drawing standards); the software (AssemblyScript, which compiles the solver, and the optional Freerouting); and, under *Show all credits*, the sources of the example circuits, the optional online services (the AI providers, DigiKey, RADIO BOB!) and the fonts and icons. It ends with the MIT licence and a safety note: a simulation is an estimate, not a safety check, and tube amplifiers run at lethal voltages. The dialog is in Russian too, with the Russian blog post.
+
 ## [3.165.1] - 2026-10-31
 
 ### Changed
