@@ -6,12 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.173.0] - 2026-11-01
+## [3.174.0] - 2026-11-01
 
 ### Changed
 - **Board dimensions work like Smart Dimension in SolidWorks.** A **Dimension** button on the toolbar and the **D** key (Smart measure moves to Shift+D). Placing a dimension pops up a **Modify** box on its value with the distance selected: type, Enter or ✓ moves the second thing, Esc or ✗ keeps it, ⇄ flips the side, ↑ ↓ step 0.1 mm (Shift 1 mm). The tool stays on for the next dimension until Esc.
 - In the Dimension tool a drag on a dimension's value moves it and a click opens its Modify box; with Select a double-click opens the box (it used to send you to the inspector). A pointer twitch during a click no longer counts as a drag.
 - Smart measure's **Pin** is now **Keep** (Enter): a centre-to-centre measurement between pads, part origins, holes, vias, texts or corners becomes a reference dimension that is saved and can be dragged; typing a value into it makes it drive. Other measurements are pinned as before.
+
+## [3.173.0] - 2026-11-01
+
+### Added
+- **Oscilloscope power-on scenarios.** *Scenario* replaces the Cathodes warm up box: **Cold start** (heaters and B+ at t = 0), **Hot restart** (hot cathodes, the mains onto empty capacitors), **Standby switch** (the heaters for a set delay, 30 s by default, then B+; time counts from the switch) and **Soft start** (the mains through a set resistor, 47 Ω, or the circuit's NTC inrush limiters, until a relay shorts it at a set time, 2 s; the report lists the relay). Auto duration follows the scenario.
+- **The power-on run as it goes.** The record draws left to right every half second while the run goes on, with a line where it has got to and *12.4 s of 30 s · about 15 s left* in the status line. **■ Stop** keeps what has been computed as a shorter run, with its report. The Run button's hint gives the last run's speed and the time to expect.
 
 ## [3.172.0] - 2026-11-01
 

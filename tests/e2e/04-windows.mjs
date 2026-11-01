@@ -88,8 +88,8 @@ import { U, browser, cad, check, ctx, open } from "./harness.mjs";
   const sp = await open("scope-warm", `oscilloscope.html?scope=${ids.scope}`);
   await sp.waitForFunction(() => /Live from CAD/.test(document.getElementById("status").textContent), null, { timeout: 8000 });
   await sp.click('#analysis .btn[data-v="startup"]');
-  const ui = await sp.evaluate(() => ({ dur: document.getElementById("t-stop").value, warm: document.getElementById("warmup").checked, shown: !document.getElementById("warmup-row").hidden }));
-  check(ui.dur === "auto" && ui.warm && ui.shown, `power-on: Duration Auto and Cathodes warm up ticked by default (${JSON.stringify(ui)})`);
+  const ui = await sp.evaluate(() => ({ dur: document.getElementById("t-stop").value, scen: document.getElementById("scenario").value, shown: !document.getElementById("pwr-bar").hidden, sb: document.getElementById("sb-row").hidden }));
+  check(ui.dur === "auto" && ui.scen === "cold" && ui.shown && ui.sb, `power-on: Duration Auto and Scenario Cold start by default (${JSON.stringify(ui)})`);
   await sp.click("#btn-sim");
   await sp.waitForFunction(() => Instrument.transient && !Instrument.transient.running && Instrument.transient.ok && Instrument.transient.warmup, null, { timeout: 120000 });
   const w = await sp.evaluate(() => {
@@ -131,8 +131,15 @@ import { U, browser, cad, check, ctx, open } from "./harness.mjs";
   });
   check(ph2.lanes.length === 1 && ph2.lanes[0].tube === "12AX7" && ph2.lanes[0].warmAt > 10 && ph2.lanes[0].warmAt < 40, `a warm-up lane for the 12AX7 (${JSON.stringify(ph2.lanes)})`);
   check(ph2.on.length === 2 && /^C1( \(B\+\))?$/.test(ph2.on[1].label) && ph2.off.length === 1 && ph2.at.every(([a, b]) => Math.abs(a - b) < 0.02 * Math.abs(b) + 0.5), `Show plots C1 from the run's record, on the probe's trace (${JSON.stringify(ph2.at)}), and takes it off again`);
+  // standby switch: the heaters 30 s before B+, the cathode warm by then: B+ barely overshoots
+  await sp.selectOption("#scenario", "standby");
+  const sbShown = await sp.evaluate(() => !document.getElementById("sb-row").hidden);
+  await sp.click("#btn-run");
+  await sp.waitForFunction(() => Instrument.transient && !Instrument.transient.running && Instrument.transient.ok && Instrument.transient.scenario.kind === "standby", null, { timeout: 120000 });
+  const sb = await sp.evaluate(() => { const t = Instrument.transient, ch = Scope.startupChannels(Instrument.transientScope()).ch1; return { tStop: t.tStop, peak: Scope.settleInfo(ch, t.dt).peak, lanes: Scope.lanes() }; });
+  check(sbShown && sb.tStop <= 5 && sb.peak < w.early - 20 && sb.lanes[0].pct >= 90, `standby switch after 30 s: a short run (${sb.tStop} s), B+ peak ${sb.peak.toFixed(1)} V against ${w.early.toFixed(1)} V cold, the cathode warm (${sb.lanes[0] && sb.lanes[0].pct} %)`);
   // hot cathodes: no overshoot, no note about C1
-  await sp.uncheck("#warmup"); await sp.selectOption("#t-stop", "0.5");
+  await sp.selectOption("#scenario", "hot"); await sp.selectOption("#t-stop", "0.5");
   await sp.click("#btn-sim");
   await sp.waitForFunction(() => Instrument.transient && !Instrument.transient.running && Instrument.transient.ok && !Instrument.transient.warmup, null, { timeout: 60000 });
   const h = await sp.evaluate(() => ({ notes: [...document.querySelectorAll("#pwr-events .ev")].filter(e => !e.classList.contains("info")).map(e => e.textContent).join(" "), tStop: Instrument.transient.tStop }));

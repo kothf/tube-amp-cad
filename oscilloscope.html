@@ -51,6 +51,8 @@
     .pwr-bar .btn kbd { font: 10px ui-monospace, monospace; color: var(--muted); margin-right: 3px; }
     .pwr-bar .btn:disabled { opacity: .45; cursor: default; }
     .pwr-bar label { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+    .pwr-bar label[hidden] { display: none; }
+    .pwr-bar input[type=number] { width: 58px; background: #0b1118; border: 1px solid var(--line); border-radius: 5px; color: var(--text); padding: 2px 4px; font: inherit; }
     .pwr-report { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12px; }
     .pwr-report .head { display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--line); }
     .pwr-report .head .title { margin: 0; font-weight: 600; color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
@@ -88,7 +90,10 @@
     <div class="bezel">
       <div class="pwr-bar" id="pwr-bar" hidden>
         <div class="grp row"><span>Duration</span><select id="t-stop" title="How long after switch-on to simulate. Auto: long enough for the slowest cathode to warm up (three of its time constants, 5 to 60 s), or 1 s with hot cathodes"><option value="auto" selected>Auto</option><option value="0.1">0.1 s</option><option value="0.2">0.2 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="2">2 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="20">20 s</option><option value="30">30 s</option><option value="60">60 s</option></select></div>
-        <label id="warmup-row" title="The tubes' cathodes start cold and warm up, each with its own time constant (a directly heated rectifier in a second or two, an indirectly heated one or an EL34 in 8 to 10 s): until then they draw little, so B+ can overshoot, and the run warns of a tube overdrawn while cold. Untick for hot cathodes (a standby switch closed with the heaters already on)"><input type="checkbox" id="warmup" checked> Cathodes warm up</label>
+        <div class="grp row" id="scen-row" title="What happens at t = 0. Cold start: heaters and B+ together, the cathodes cold. Hot restart: cathodes already hot, mains onto empty capacitors. Standby switch: the heaters on first, B+ switched in after the delay (time counts from the switch). Soft start: the mains through a resistor (or the circuit's NTC inrush limiter) until a relay shorts it"><span>Scenario</span><select id="scenario">
+          <option value="cold" selected>Cold start (heaters + B+ at t = 0)</option><option value="hot">Hot restart (cathodes hot)</option><option value="standby">Standby switch (B+ after the heaters)</option><option value="soft">Soft start (relay shorts a resistor)</option></select></div>
+        <label id="sb-row" hidden title="How long the heaters run before the standby switch puts B+ on">after <input id="sb-delay" type="number" min="1" max="600" step="1" value="30"> s</label>
+        <label id="soft-row" hidden title="The soft-start resistor in series with the mains (the circuit's NTC inrush limiters instead, if it has any) and when the relay shorts it">R <input id="soft-r" type="number" min="0.1" step="1" value="47"> Ω, relay at <input id="relay-t" type="number" min="0.05" max="30" step="0.1" value="2"> s</label>
         <button class="btn" id="btn-run" title="Simulate the power-on transient in the CAD (again while it runs: stop)">▶ Run</button>
         <div class="grp seg-group" id="presets" role="group" aria-label="Time presets">
           <button class="btn" data-p="inrush" title="Inrush: the first 200 ms, the rectifier charging the empty capacitors (key 1)"><kbd>1</kbd>Inrush</button>

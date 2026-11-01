@@ -296,7 +296,7 @@ the circuit that was on the sheet.
   channels live; double-click it for the full instrument.
 - **Power-on transient.** The oscilloscope can show the first seconds after
   switch-on: capacitors start empty and every source switches on at t = 0.
-  With *Cathodes warm up* the tubes' cathodes start cold as well and heat with
+  In every scenario but *Hot restart* the tubes' cathodes start cold as well and heat with
   their own time constant, from the heater's power and the kind of cathode
   (directly heated 1–2 s, standard indirectly heated 5–8 s, heavy power tubes
   8–12 s, slow-start rectifiers such as the GZ34 10–15 s; or the tube's own
@@ -312,6 +312,9 @@ the circuit that was on the sheet.
   Warm-up lanes show each tube's emission rising ("warm at" 90 %, orange
   where it was overdrawn cold); any capacitor can be plotted from the run
   without a probe, and B+ is plotted by itself when no probe is wired.
+  *Scenario*: cold start, hot restart, a standby switch (B+ after the
+  heaters) or a soft start (a resistor or the NTC shorted by a relay). The
+  trace draws as the run goes, with the time left; *Stop* keeps the record.
 
 ## Drawings, documents and exports
 

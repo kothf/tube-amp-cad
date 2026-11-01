@@ -4,7 +4,7 @@
    starts at once instead of spawning a worker of its own. Independent jobs run side by side on
    different cores: tolerance runs fill every core, a Bode sweep is cut into pieces of its frequency
    range that run at the same time.
-     pool.run(msg, { onResult, onProgress, urgent, high }) → { cancel() }
+     pool.run(msg, { onResult, onProgress, onPartial, urgent, high }) → { cancel() }
    msg is sim-worker.js's message ({ netlist, options, kind }); onResult(result) once, onProgress(f) along
    the way. An urgent job (what the user is waiting to see) starts at once even with every core busy,
    on a worker beyond the pool's size that is dropped when it is done; a high job goes ahead of the
@@ -39,6 +39,7 @@
         const d = e.data;
         if (d.seq !== job.seq) return;
         if (d.result !== undefined) { running.delete(job); job.worker = null; release(w); pump(); job.onResult(d.result); }
+        else if (d.partial !== undefined) { if (job.onPartial) job.onPartial(d.partial); }
         else if (job.onProgress) job.onProgress(d.progress);
       };
       w.onerror = e => {
@@ -54,7 +55,7 @@
     }
     function run(msg, o) {
       o = o || {};
-      const job = { seq: ++seq, msg, onResult: o.onResult || (() => {}), onProgress: o.onProgress, worker: null, done: false };
+      const job = { seq: ++seq, msg, onResult: o.onResult || (() => {}), onProgress: o.onProgress, onPartial: o.onPartial, worker: null, done: false };
       const result = job.onResult;
       job.onResult = r => { if (!job.done) { job.done = true; result(r); } };
       if (o.urgent || running.size < N) start(job);
