@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.167.0] - 2026-11-01
+
+### Added
+- **The manual in Russian** (`help-ru.html`). With the interface in Russian, every way into the manual (*Windows ▾ → Manual*, the help dialog's link, **?** in the instruments and the Board) opens the Russian translation, all 19 sections, using the interface's own Russian names for menus and buttons. The parts reference, the glossary of readouts, the tube table and *About & credits* are built in Russian too, from the same Russian texts as the hover hints. An **RU / EN** button at the top of the manual's contents switches the manual and the interface together, and switching the language in any other window brings an open manual along. A test keeps the two manuals in step (the same sections, anchors, links, lists, tables and code).
+- Russian names for the inspector fields and parts that still showed in English (pickup, cartridge, relay, rotary switch, vactrol, interstage transformer, speaker driver fields and others), in the inspector and the manual alike.
+
 ## [3.166.0] - 2026-11-01
 
 ### Added
