@@ -78,6 +78,19 @@
   function tubeByName(name) {
     return (root.TUBE_DATABASE || []).find(t => t.commonName === name) || null;
   }
+  // A tube's cathode warm-up for the power-on transient (sim-engine.js cathodeWarm): the time
+  // constant tau (s) of its cathode's temperature, typical for its heater rather than from its
+  // datasheet: a directly heated filament in a second or two, an indirectly heated cathode in
+  // 5 to 10 s, slower with a bigger heater (a GZ34's or EL34's against a 12AX7's). emit: the
+  // emission of the hot cathode (A), 12 times its rated cathode (or rectified) current; peak: the
+  // rated peak current per anode (A), the handbook's or about 3 times the rated DC current.
+  function tubeWarmup(t) {
+    if (!t) return null;
+    const ih = +t.ih || 0.3, dh = !!t.directlyHeated, ik = (+t.ikMax > 0 ? +t.ikMax : 50) / 1000;
+    const tau = dh ? Math.min(2, Math.max(1, 0.8 + 0.25 * ih)) : Math.min(10, Math.max(5, 5 + 3 * ih));
+    const bookPk = t.book && t.book.limits && +t.book.limits.i_peak_ma;
+    return { tau: Math.round(tau * 10) / 10, emit: 12 * ik, rated: ik, peak: bookPk > 0 ? bookPk / 1000 : 3 * ik, peakFromBook: bookPk > 0, directly: dh };
+  }
   function tubeKind(t) {
     if (!t) return "triode";
     if (t.category === "rectifier") return "rectifier";
@@ -1944,18 +1957,18 @@
       build: (c, net, alloc, out) => {
         const t = tubeByName(c.params.tube);
         if (!t) return;
-        const kind = tubeKind(t);
+        const kind = tubeKind(t), w = tubeWarmup(t), heat = { tau: w.tau, emit: w.emit };   // the power-on transient's cathode warm-up
         if (kind === "rectifier") {
           const P = (root.TubeSimEngine.RECTIFIER_PERVEANCE[t.commonName]) || 1e-3;
-          out.push({ id: c.id, part: "a1", kind: "VDIODE", nodes: [net("A1"), net("K")], perveance: P });
-          out.push({ id: c.id, part: "a2", kind: "VDIODE", nodes: [net("A2"), net("K")], perveance: P });
+          out.push({ id: c.id, part: "a1", kind: "VDIODE", nodes: [net("A1"), net("K")], perveance: P, heat });
+          out.push({ id: c.id, part: "a2", kind: "VDIODE", nodes: [net("A2"), net("K")], perveance: P, heat });
         } else if ((c.params.connection || kind) === "pentode" && t.koren.Pentode) {
-          out.push({ id: c.id, kind: "PENTODE", nodes: [net("A"), net("G1"), net("G2"), net("K")], model: t.koren.Pentode });
+          out.push({ id: c.id, kind: "PENTODE", nodes: [net("A"), net("G1"), net("G2"), net("K")], model: t.koren.Pentode, heat });
           // interelectrode capacitances (tube-db.js TUBE_CAPS): input to the cathode, output from it
           const C = t.caps && t.caps.pentode;
           if (C) out.push({ id: c.id + "#cin", kind: "C", nodes: [net("G1"), net("K")], c: C.cin }, { id: c.id + "#cga", kind: "C", nodes: [net("G1"), net("A")], c: C.cga }, { id: c.id + "#cout", kind: "C", nodes: [net("A"), net("K")], c: C.cout });
         } else {
-          out.push({ id: c.id, kind: "TRIODE", nodes: [net("A"), net("G"), net("K")], model: t.koren.Triode || t.koren.Pentode });
+          out.push({ id: c.id, kind: "TRIODE", nodes: [net("A"), net("G"), net("K")], model: t.koren.Triode || t.koren.Pentode, heat });
           const C = t.caps && t.caps.triode;
           if (C) out.push({ id: c.id + "#cgk", kind: "C", nodes: [net("G"), net("K")], c: C.cgk }, { id: c.id + "#cga", kind: "C", nodes: [net("G"), net("A")], c: C.cga }, { id: c.id + "#cak", kind: "C", nodes: [net("A"), net("K")], c: C.cak });
         }
@@ -2593,7 +2606,7 @@
         if (t.custom && t.custom.source === "datasheet") return `From a datasheet · Koren model ${t.custom.fit ? `fitted to ${t.custom.fit.points} plate-curve points (R² ${t.custom.fit.r2})` : `of the ${t.custom.like}`} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A`;
         return t.custom
           ? `Imported SPICE model ${t.custom.sub}${t.custom.like ? ` · socket, pinout and heater of the ${t.custom.like}` : ""} · Va max ${t.vaMax} V · Pa max ${t.paMax} W`
-          : `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A (not simulated)`;
+          : `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A · cathode warm-up τ ≈ ${tubeWarmup(t).tau} s (in the oscilloscope's Power-on run)`;
       },
       readout: (c, R) => {
         const d = R.tubeData(), kv = R.kv;
@@ -2935,5 +2948,5 @@
     return wrap;
   }
 
-  root.CadLib = { anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind };
+  root.CadLib = { anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);

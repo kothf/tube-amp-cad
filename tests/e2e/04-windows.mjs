@@ -67,6 +67,47 @@ import { U, browser, cad, check, ctx, open } from "./harness.mjs";
   check(await sp.evaluate(() => !!Instrument.transient.stale), "editing the circuit marks the power-on record as changed");
   await sp.close();
 }
+// --- 9b. Power-on with the cathodes warming up: B+ overshoots on the cold tube, against the capacitor's rating ---
+{
+  // 300 V → 10 kΩ → C1 (300 V rating) → 20 kΩ → a 12AX7 to ground: cold, the tube draws nothing and C1 reaches 300 V
+  const ids = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+    const pin = (c, id) => C.compPins(c).find(p => p.id === id);
+    const wire = (a, b, hFirst) => C.lRoute(a.x, a.y, b.x, b.y, hFirst !== false).forEach(s => C.addSegment(...s));
+    const gnd = p => { const g = add("ground", {}, p.x, p.y + 40); wire(p, pin(g, "G"), false); };
+    const B = add("vdc", { v: 300 }, 200, 300), R1 = add("resistor", { r: 10e3 }, 300, 240), C1 = add("electrolytic", { c: 10e-6, v: "300" }, 400, 300, 1);
+    const R2 = add("resistor", { r: 20e3 }, 500, 240), V = add("tube", { tube: "12AX7" }, 600, 340), SC = add("scope", {}, 800, 300);
+    wire(pin(B, "+"), pin(R1, "1")); gnd(pin(B, "-")); wire(pin(R1, "2"), { x: 400, y: 240 }); wire({ x: 400, y: 240 }, pin(C1, "+"), false); gnd(pin(C1, "-"));
+    wire(pin(R1, "2"), pin(R2, "1")); wire(pin(R2, "2"), pin(V, "A")); gnd(pin(V, "G")); gnd(pin(V, "K"));
+    wire(pin(SC, "CH1"), { x: 720, y: 200 }, false); wire({ x: 720, y: 200 }, { x: 400, y: 200 }); wire({ x: 400, y: 200 }, { x: 400, y: 240 }, false); gnd(pin(SC, "COM"));
+    S.view = { scale: 1, ox: 0, oy: 0 }; C.commit();
+    return { scope: SC.id };
+  });
+  await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, null, { timeout: 30000 });
+  const sp = await open("scope-warm", `oscilloscope.html?scope=${ids.scope}`);
+  await sp.waitForFunction(() => /Live from CAD/.test(document.getElementById("status").textContent), null, { timeout: 8000 });
+  await sp.click('#analysis .btn[data-v="startup"]');
+  const ui = await sp.evaluate(() => ({ dur: document.getElementById("t-stop").value, warm: document.getElementById("warmup").checked, shown: !document.getElementById("warmup-row").hidden }));
+  check(ui.dur === "auto" && ui.warm && ui.shown, `power-on: Duration Auto and Cathodes warm up ticked by default (${JSON.stringify(ui)})`);
+  await sp.click("#btn-sim");
+  await sp.waitForFunction(() => Instrument.transient && !Instrument.transient.running && Instrument.transient.ok && Instrument.transient.warmup, null, { timeout: 120000 });
+  const w = await sp.evaluate(() => {
+    const t = Instrument.transient, ch = Scope.startupChannels(Instrument.transientScope()).ch1, q = Scope.settleInfo(ch, t.dt), at = s => ch.raw[Math.round(s / t.dt - 0.5)];
+    return { tStop: t.tStop, early: at(1), final: q.final, limits: ch.limits, notes: document.getElementById("pwr-notes").textContent, tdiv: document.getElementById("tdiv").value, opt: document.getElementById("tdiv").options[0].textContent };
+  });
+  check(w.tStop >= 15 && w.tStop <= 25, `Auto runs three of the 12AX7's warm-up time constants (${w.tStop} s)`);
+  check(w.early > 295 && w.final < w.early - 5, `B+ on C1 overshoots while the cathode is cold (${w.early.toFixed(1)} V at 1 s, ${w.final.toFixed(1)} V settled)`);
+  check(w.limits.length === 1 && w.limits[0].v === 300 && /C1/.test(w.notes) && /300\s?V rating/.test(w.notes), `C1's 300 V rating drawn on the channel, and the note: ${w.notes.slice(0, 140)}`);
+  check(/whole record/.test(w.opt), `a warm-up record opens whole (${w.opt})`);
+  // hot cathodes: no overshoot, no note about C1
+  await sp.uncheck("#warmup"); await sp.selectOption("#t-stop", "0.5");
+  await sp.click("#btn-sim");
+  await sp.waitForFunction(() => Instrument.transient && !Instrument.transient.running && Instrument.transient.ok && !Instrument.transient.warmup, null, { timeout: 60000 });
+  const h = await sp.evaluate(() => ({ notes: document.getElementById("pwr-notes").textContent, tStop: Instrument.transient.tStop }));
+  check(h.tStop === 0.5 && !/C1/.test(h.notes), `hot cathodes: ${h.notes}`);
+  await sp.close();
+}
 
 // --- 10. An instrument window tells when the CAD does not answer -----------------
 {

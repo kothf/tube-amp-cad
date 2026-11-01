@@ -304,6 +304,15 @@
   <li>The <b>steady state with the signal</b>: the waveforms once every capacitor and choke has settled, over a window that is a whole number of signal periods (and of mains periods in a mains-fed circuit).</li>
 </ol>
 <p>The oscilloscope can also run the <b>power-on transient</b>: the first seconds after switch-on, with every capacitor empty.</p>
+<p id="warmup"><b>Cathode warm-up.</b> With <span class="ui">Cathodes warm up</span> ticked (the default), the tubes' cathodes start cold too:</p>
+<ul>
+  <li>Each cathode's temperature rises as 1 − e<sup>−t/τ</sup>, with a time constant τ typical for its heater (not from the datasheet): a directly heated filament (5U4G, 5Ц3С, 2A3, 300B) in 1–2 s, an indirectly heated cathode in 5–10 s, slower with a bigger heater (12AX7 about 6 s, EL84 7 s, EL34 and GZ34 about 10 s). The tube's inspector shows its τ.</li>
+  <li>What the cathode can emit follows Richardson's law for an oxide cathode (T²·e<sup>−b/T</sup>), up to about 12 times the tube's rated current when hot. Until then the tube passes at most that: a cold tube draws nothing, and B+ rises towards its unloaded value. With silicon diodes or a fast directly heated rectifier it <b>overshoots</b> and comes down as the amplifier's tubes warm; a slow indirectly heated rectifier (GZ34, 5Ц4С) brings B+ up gently.</li>
+  <li><span class="ui">Duration</span> <i>Auto</i> runs three time constants of the slowest cathode (5–60 s, the record opening whole), or 1 s with hot cathodes. Other lengths go up to 60 s.</li>
+  <li>Dashed lines on the screen mark the voltage ratings of the capacitors a channel reads across: the rating set in the inspector or, when none is set, the one the BOM picks from the settled peak (1.25 ×). A capacitor over 90 % of its rating during the run is listed under the controls, over it in red.</li>
+  <li><b>A tube overdrawn while cold</b> is listed too: the most current it passed while its cathode was below 90 % of its working temperature and the circuit asked for at least 1.5 times what it could emit, when that is more than it passes once settled and near its rating (for a rectifier 70 % of its peak current per anode: the handbook's, or about 3 × its rated current). A cold cathode pulled to its emission limit loses its coating (cathode stripping); a big first capacitor charged through a fast rectifier is the usual cause. A <b>surge</b> over a rectifier's peak rating (hot cathodes switched onto empty capacitors, as with a standby switch) is listed as well.</li>
+  <li>Untick <span class="ui">Cathodes warm up</span> for hot cathodes from t = 0.</li>
+</ul>
 <p>The <b>Bode plotter</b> runs a separate <b>small-signal (AC) analysis</b> in the background.</p>
 
 <h3 id="sim-live">6.2 Live and on demand</h3>
@@ -440,7 +449,7 @@
   <li>Scale labels on every axis: time below, CH1's volts left, CH2's right, on round values that follow zoom and position.</li>
   <li>Readouts: Vpp, Vrms, dBV and DC per channel, and the CH2/CH1 gain and phase.</li>
   <li>Channels with no probe wired are greyed out.</li>
-  <li><b>Analysis:</b> <i>Steady state</i> (the settled circuit, one window repeated as a triggered scope shows it) or <i>Power-on</i> (the first 0.1–2 s after switch-on, with an overview strip of the whole record).</li>
+  <li><b>Analysis:</b> <i>Steady state</i> (the settled circuit, one window repeated as a triggered scope shows it) or <i>Power-on</i> (the first 0.1–60 s after switch-on, with an overview strip of the whole record; <a href="#warmup">the cathodes warming up</a>, capacitor ratings as dashed lines, warnings under the controls).</li>
   <li><span class="ui">Autoset</span> resets the view.</li>
 </ul>
 <h3 id="spectrum">10.2 Spectrum analyzer</h3>
@@ -787,7 +796,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
   <li>A model is exact only near its fit points, and production tubes vary ±20 % or more.</li>
   <li>The 12AX7's µ rises to about 106 at 150–170 V (fitted at 250 V), so small-signal gains there come out 5–20 % high.</li>
   <li>The knee of pentodes without published full-power data (EL34, KT88, 6P1P, GU-50, 6P45S) is a median of other fits.</li>
-  <li>Heaters are not simulated (the cathode is always hot); there is no warm-up.</li>
+  <li>Heaters are not simulated as circuits: the cathode is hot, except in the power-on run, where it warms with a typical time constant (not the datasheet's) and an emission law for oxide cathodes; the heater voltage does not change the emission.</li>
   <li>Transistor models leave out base resistance and thermal effects: solid-state distortion comes out optimistic.</li>
 </ul></div>
 

@@ -419,6 +419,61 @@ test("power-on transient: RC charge from cold follows 1 - e^(-t/RC), probes are 
   assert.ok(r.max[1][0] > r.max[0][0], "a probe against ground differs from the differential one");
 });
 
+test("cathode warm-up: Richardson emission of an oxide cathode, from nothing cold to all of it hot", () => {
+  const C = E.CATHODE, f = t => E.cathodeWarm(t, 5).frac;
+  assert.ok(f(0) < 1e-10, `cold: ${f(0)}`);
+  assert.ok(Math.abs(f(200) - 1) < 1e-9, "hot after many time constants");
+  for (let t = 0; t < 30; t += 0.5) assert.ok(f(t + 0.5) > f(t), `rises at ${t} s`);
+  // at 90 % of the working temperature: (0.9)² e^(−b/T + b/Tk)
+  const T = 0.9 * C.hot, tAt = -5 * Math.log(1 - (T - C.room) / (C.hot - C.room));
+  near(f(tAt), 0.81 * Math.exp(C.b * (1 / C.hot - 1 / T)), 1e-9, "emission share at 0.9 Tk");
+});
+
+// a triode (12AX7 model) on a 250 V supply through 100 kΩ, cathode at ground
+const warmTriode = (tau, extra) => ({ nodeCount: 4, elements: [
+  { id: "b", kind: "V", nodes: [1, 0], v: 250 }, { id: "rs", kind: "R", nodes: [1, 3], r: 1e3 }, { id: "cs", kind: "C", nodes: [3, 0], c: 10e-6 },
+  { id: "ra", kind: "R", nodes: [3, 2], r: 100e3 },
+  { id: "V1", kind: "TRIODE", nodes: [2, 0, 0], model: tube("12AX7").koren.Triode, heat: { tau, emit: 12 * 0.008 } }, ...(extra || [])] });
+
+test("power-on with warm-up: the tube conducts only as its cathode heats, never more than it emits, then as hot", () => {
+  const tau = 2, nl = warmTriode(tau), hot = E.simulate(nl, { budgetMs: 30000 });
+  assert.ok(hot.ok, hot.error);
+  const iHot = (250 - hot.dc.nodes[2]) / 101e3;
+  const r = E.startup(nl, { tStop: 6 * tau, warmup: true, probes: [[3, 2]], maxPoints: 1200, watch: [[3, 0]] });
+  assert.ok(r.ok, r.error);
+  const iAt = t => { const k = Math.min(r.max[0].length - 1, Math.round(t / r.dt - 0.5)); return (r.min[0][k] + r.max[0][k]) / 2 / 100e3; };
+  assert.ok(iAt(0.3 * tau) < 0.01 * iHot, `cold: ${iAt(0.3 * tau)} A (hot ${iHot} A)`);
+  near(iAt(5.9 * tau), iHot, 0.005, "warm: the hot tube's current");
+  for (let t = 0.2 * tau; t < 3 * tau; t += 0.1 * tau) assert.ok(iAt(t) <= 12 * 0.008 * E.cathodeWarm(t, tau).frac * 1.02 + 1e-6, `emission caps the current at ${t.toFixed(1)} s`);
+  // B+ overshoots to the unloaded 250 V while the tube is cold, then sags to the loaded value
+  const w = r.watch[0], vEnd = hot.dc.nodes[3];
+  assert.ok(w.max > 249 && vEnd < 249 && w.maxAt < 2 * tau, `B+ peak ${w.max} V at ${w.maxAt} s, settled ${vEnd} V`);
+  // hot from the start (no warmup): the tube conducts at once, no overshoot beyond the settled B+
+  const h = E.startup(nl, { tStop: 0.5, probes: [[3, 0]], maxPoints: 100, watch: [[3, 0]] });
+  assert.ok(h.ok && h.watch[0].max < vEnd + 0.5, `hot cathode: B+ peak ${h.watch[0].max} V`);
+  assert.equal(h.tubes[0].worst, null, "no cold-cathode report with hot cathodes");
+  assert.ok(r.tubes[0].tau === tau && r.tubes[0].peak > 0.99 * iHot, "the tube's record: its time constant and peak current");
+});
+
+test("power-on with warm-up: a rectifier charging a big empty capacitor from a cold cathode is reported", () => {
+  // 5U4G, full wave from 2 × 350 Vrms, 470 µF first capacitor through 5 Ω per anode
+  const P = E.RECTIFIER_PERVEANCE["5U4G"], pk = 350 * Math.SQRT2, heat = { tau: 1.5, emit: 12 * 0.225 };
+  const nl = c1 => ({ nodeCount: 6, elements: [
+    { id: "m1", kind: "VSRC", nodes: [1, 0], freq: 50, amp: pk, dc: 0 }, { id: "m2", kind: "VSRC", nodes: [2, 0], freq: 50, amp: -pk, dc: 0 },
+    { id: "r1", kind: "R", nodes: [1, 4], r: 5 }, { id: "r2", kind: "R", nodes: [2, 5], r: 5 },
+    { id: "V1", part: "a1", kind: "VDIODE", nodes: [4, 3], perveance: P, heat }, { id: "V1", part: "a2", kind: "VDIODE", nodes: [5, 3], perveance: P, heat },
+    { id: "C1", kind: "C", nodes: [3, 0], c: c1 }, { id: "RL", kind: "R", nodes: [3, 0], r: 4e3 }] });
+  const big = E.startup(nl(470e-6), { tStop: 6, warmup: true, probes: [[3, 0]], maxPoints: 100 }), small = E.startup(nl(10e-6), { tStop: 6, warmup: true, probes: [[3, 0]], maxPoints: 100 });
+  const hot = E.startup(nl(470e-6), { tStop: 0.2, probes: [[3, 0]], maxPoints: 100 });
+  assert.ok(big.ok && small.ok && hot.ok, big.error || small.error || hot.error);
+  const w = x => Math.max(...x.tubes.map(e => (e.worst ? e.worst.i : 0)));
+  assert.ok(big.tubes.length === 2 && w(big) > 1.5 * w(small), `cold-cathode current: ${w(big)} A with 470 µF, ${w(small)} A with 10 µF`);
+  assert.ok(big.tubes.every(e => !e.worst || (e.worst.T < 0.9 * E.CATHODE.hot && e.worst.ratio >= 1.5)), "reported only while cold and overdrawn");
+  // hot cathodes onto the empty 470 µF: a surge several times what the warming cathode lets through
+  const pkHot = Math.max(...hot.tubes.map(e => e.peak)), pkCold = Math.max(...big.tubes.map(e => e.peak));
+  assert.ok(pkHot > 3 * pkCold, `surge ${pkHot} A hot, ${pkCold} A warming up`);
+});
+
 // --- Semiconductors -----------------------------------------------------------
 const bisect = (f, lo, hi) => { for (let k = 0; k < 200; k++) { const m = (lo + hi) / 2; if (f(lo) * f(m) <= 0) hi = m; else lo = m; } return (lo + hi) / 2; };
 

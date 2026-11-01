@@ -117,12 +117,38 @@
   };
 
   // ---------------------------------------------------------------------------
+  // Cathode warm-up (the power-on transient with opts.warmup). A tube element may carry
+  // heat: { tau (s), emit (A) }: its cathode's temperature rises from the room's to its working
+  // temperature as 1 − e^(−t/tau), and the electrons it can give (its emission) follow
+  // Richardson's law for an oxide cathode, T²·e^(−b/T), up to emit when hot (several times the
+  // tube's rated cathode current). The tube's currents are what the Koren model asks for
+  // (space-charge limited) until that nears the emission; then the emission caps them, smoothly.
+  // ---------------------------------------------------------------------------
+  const CATHODE = { room: 293, hot: 1050, b: 11600, cold: 0.9 };   // K; b = φ/k for about 1 eV (oxide cathode); cold: below 90 % of hot
+  function cathodeWarm(t, tau) {
+    const T = CATHODE.room + (CATHODE.hot - CATHODE.room) * (1 - Math.exp(-Math.max(t, 0) / Math.max(tau, 1e-6)));
+    return { T, frac: Math.pow(T / CATHODE.hot, 2) * Math.exp(CATHODE.b * (1 / CATHODE.hot - 1 / T)) };
+  }
+  // the share of a demand d (A) that a cathode with emission e._emit gives: about 1 well below it,
+  // about e._emit / d well above it
+  function emitShare(e, d) {
+    if (e._emit === undefined || !(d > 0)) return 1;
+    const r = d / Math.max(e._emit, 1e-15);
+    return r > 100 ? 1 / r : Math.pow(1 + Math.pow(r, 6), -1 / 6);
+  }
+  // a vacuum diode's (rectifier anode's) current
+  function vdiodeI(e, v) { if (!(v > 0)) return 0; const i = e.perveance * Math.pow(v, 1.5); return i * emitShare(e, i); }
+
+  // ---------------------------------------------------------------------------
   // A tube element's currents: [ia, ig] or [ia, ig, ig2], with its gridShift and iScale
+  // (and its cathode's emission, while it warms up)
   function tubeCurrents(e, vak, vgk, vg2k) {
     const sh = e.gridShift || 0, sc = e.iScale || 1, pent = e.kind === "PENTODE";
     const r = pent ? Tube.pentode(vak, vgk + sh, vg2k, e.model) : Tube.triode(vak, vgk + sh, e.model);
     const ig = sh ? (pent ? Tube.pentode(vak, vgk, vg2k, e.model) : Tube.triode(vak, vgk, e.model))[1] : r[1];
-    return pent ? [sc * r[0], sc * ig, sc * r[2]] : [sc * r[0], sc * ig];
+    const out = pent ? [sc * r[0], sc * ig, sc * r[2]] : [sc * r[0], sc * ig];
+    if (e._emit !== undefined) { const k = emitShare(e, out.reduce((a, i) => a + Math.max(i, 0), 0)); for (let j = 0; j < out.length; j++) out[j] *= k; }
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -794,9 +820,8 @@
             break;
           }
           case "VDIODE": {
-            const P = e.perveance;
             const V0 = [vn(x, nd[0]), vn(x, nd[1])];
-            stampNonlinear(nd, V => { const v = V[0] - V[1]; const i = v > 0 ? P * Math.pow(v, 1.5) : 0; return [i, -i]; }, V0);
+            stampNonlinear(nd, V => { const i = vdiodeI(e, V[0] - V[1]); return [i, -i]; }, V0);
             break;
           }
           case "BJT": {
@@ -1023,7 +1048,7 @@
       return { vin: p * (v[0] - v[2]), vout: p * (v[1] - v[2]), vio: p * (v[0] - v[1]), iout: -p * I[1], iin: p * I[0], pd: I.reduce((s, i, k) => s + i * v[k], 0) };
     }
     if (e.kind === "SHUNT") { const I = Semi.shunt(v, e.model); return { vka: v[0] - v[1], vref: v[2] - v[1], ik: I[0], pd: I.reduce((s, i, k) => s + i * v[k], 0) }; }
-    if (e.kind === "VDIODE") { const vd = v[0] - v[1]; return { vd, i: vd > 0 ? e.perveance * Math.pow(vd, 1.5) : 0 }; }
+    if (e.kind === "VDIODE") { const vd = v[0] - v[1]; return { vd, i: vdiodeI(e, vd) }; }
     if (e.kind === "D") { const vd = v[0] - v[1]; return { vd, i: (e.is || 2.5e-9) * (Math.exp(Math.min(vd / ((e.n || 1.75) * 0.025852), 80)) - 1) }; }
     if (e.kind === "R") { const vd = v[0] - v[1]; return { vd, i: vd / e.r }; }
     if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") return { i: x[e.branch], vd: v[0] - v[1] };
@@ -1581,13 +1606,26 @@
   // through tStop and returns only the probed nodes, compressed to at most
   // maxPoints buckets, each holding the minimum and maximum of its samples, so
   // an audio signal over a second of supply settling still shows its envelope.
-  //   opts: { tStop, probes: [[node, refNode]...], maxPoints, budgetMs, onProgress(f) }
+  //   opts: { tStop, probes: [[node, refNode]...], maxPoints, budgetMs, onProgress(f),
+  //           warmup: the tubes' cathodes start cold too and warm with their heat.tau (cathodeWarm),
+  //           watch: [[node, refNode]...]: node pairs whose peak voltage (and when) to report }
   //   each probe reads v(node) - v(refNode), like a scope channel against its common
+  //   result.watch: [{ max, maxAt, min, minAt }] per watched pair; result.tubes: [{ id, part, kind,
+  //   tau (0: hot from the start), peak, peakAt (its largest cathode current, A, and when), endPeak
+  //   (the largest in the last 10 % of the run: as it settles), worst }]
+  //   per tube element, worst (with warmup): the most current it passed while its cathode was still
+  //   cold (below CATHODE.cold of its working temperature) and saturated (asked for 1.5 times or
+  //   more what it could emit): a rectifier charging empty capacitors,
+  //   { i, t, ratio (asked for / could emit), frac (emission share), T (K), v (across it) } or null
   // ---------------------------------------------------------------------------
   function startup(netlist, opts) {
     opts = opts || {};
+    const circ0 = buildCircuit(netlist);
+    try { return startupRun(circ0, opts); } finally { circ0.els.forEach(e => { delete e._emit; }); }
+  }
+  function startupRun(circ, opts) {
     const t0 = Date.now(), tStop = Math.max(opts.tStop || 1, 1e-4), budgetMs = opts.budgetMs || 300000;
-    const circ = buildCircuit(netlist), n = circ.nUnk;
+    const n = circ.nUnk;
     const result = { ok: false, warnings: [] };
     if (circ.nNodes < 2) { result.error = "Circuit is empty"; return result; }
     circ.els.forEach(e => { delete e._vlast; });
@@ -1596,6 +1634,9 @@
     // 40 steps per period of the fastest source, at least 2000 steps over the run (20000 with a
     // 555, whose own period the sources do not tell)
     let h = Math.min(fMax ? 1 / (40 * fMax) : Infinity, tStop / (circ.timers.some(e => e.kind !== "RELAY") ? 20000 : 2000));
+    // a long run (the cathodes warming up over half a minute) at 600000 steps at most: an audio
+    // signal then gets fewer steps a period, enough for its envelope
+    if (tStop > 2) h = Math.max(h, tStop / 600000);
     const steps = Math.ceil(tStop / h); h = tStop / steps;
     const probes = (opts.probes || []).map(p => Array.isArray(p) ? p : [p, 0]).filter(([a, b]) => a >= 0 && a < circ.nNodes && b >= 0 && b < circ.nNodes);
     const nOut = Math.min(opts.maxPoints || 4000, steps), per = steps / nOut;
@@ -1614,12 +1655,42 @@
     };
     const step = (xprev, tNext, hh) => timerStep(circ, solveStep, xprev, tNext, hh);
     let x = new Array(n).fill(0), lastProg = 0;
+    const okNode = k => k >= 0 && k < circ.nNodes;
+    const watch = (opts.watch || []).map(p => Array.isArray(p) ? p : [p, 0]).map(([a, b]) => ({ a, b, ok: okNode(a) && okNode(b), max: 0, maxAt: 0, min: 0, minAt: 0 }));
+    const TUBE = { TRIODE: 1, PENTODE: 1, VDIODE: 1 };
+    const tubes = circ.els.filter(e => TUBE[e.kind] && e.id), track = tubes.map(() => ({ peak: 0, peakAt: 0, endPeak: 0, worst: null }));
+    const heated = opts.warmup ? tubes.filter(e => e.heat && e.heat.tau > 0 && e.heat.emit > 0) : [];
+    const warmTo = t => heated.forEach(e => { e._emit = e.heat.emit * cathodeWarm(t, e.heat.tau).frac; });
+    // what a tube asks for (its space-charge current) and what it passes
+    const demand = (e, x) => {
+      if (e.kind === "VDIODE") { const v = vn(x, e.nodes[0]) - vn(x, e.nodes[1]); return { d: v > 0 ? e.perveance * Math.pow(v, 1.5) : 0, v }; }
+      const em = e._emit; delete e._emit;
+      const st = deviceState(e, x); if (em !== undefined) e._emit = em;
+      return { d: Math.max(st.ia, 0) + Math.max(st.ig, 0) + Math.max(st.ig2 || 0, 0), v: st.vak };
+    };
     const record = (s, x) => {
       const b = Math.min(nOut - 1, Math.floor(s / per));
       probes.forEach(([p, q], j) => { const v = vn(x, p) - vn(x, q); if (v < mins[j][b]) mins[j][b] = v; if (v > maxs[j][b]) maxs[j][b] = v; });
+      const t = s * h;
+      watch.forEach(w => { if (!w.ok) return; const v = vn(x, w.a) - vn(x, w.b); if (v > w.max) { w.max = v; w.maxAt = t; } if (v < w.min) { w.min = v; w.minAt = t; } });
+      tubes.forEach((e, j) => {
+        const { d, v } = demand(e, x), i = d * emitShare(e, d), k = track[j];
+        if (i > k.peak) { k.peak = i; k.peakAt = t; }
+        if (t >= 0.9 * tStop && i > k.endPeak) k.endPeak = i;
+        // a cold cathode overdrawn: the most current it passed while still below CATHODE.cold of its
+        // working temperature (in kelvin) with the circuit asking for more than it could emit
+        if (e._emit === undefined || (k.worst && i <= k.worst.i) || !(i > 0)) return;
+        const w = cathodeWarm(t, e.heat.tau);
+        if (w.T >= CATHODE.cold * CATHODE.hot) return;
+        const ratio = d / Math.max(e._emit, 1e-15);
+        if (ratio < 1.5) return;   // the circuit takes what it would from a hot tube: normal conduction
+        k.worst = { i, t, ratio, frac: w.frac, T: w.T, v };
+      });
     };
+    warmTo(0);
     record(0, x);
     for (let s = 1; s <= steps; s++) {
+      warmTo(s * h);
       const nx = step(x, s * h, h);
       if (!nx) { result.error = "Transient did not converge at t=" + (s * h * 1000).toFixed(3) + " ms"; return result; }
       x = nx; record(s, x);
@@ -1629,6 +1700,8 @@
     result.ok = true;
     result.tStop = tStop; result.h = h; result.steps = steps; result.points = nOut; result.dt = tStop / nOut;
     result.probes = probes; result.min = mins; result.max = maxs;
+    result.watch = watch.map(w => ({ max: w.max, maxAt: w.maxAt, min: w.min, minAt: w.minAt }));
+    result.tubes = tubes.map((e, j) => ({ id: e.id, part: e.part || null, kind: e.kind, tau: heated.includes(e) ? e.heat.tau : 0, peak: track[j].peak, peakAt: track[j].peakAt, endPeak: track[j].endPeak, worst: track[j].worst }));
     result.elapsedMs = Date.now() - t0;
     return result;
   }
@@ -1955,7 +2028,7 @@
     return { ok: true, freqs, total, gain: { re: gRe, im: gIm }, sources: src.map((p, j) => ({ id: p.id, kind: p.kind, psd: psd[j] })), elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, NE555, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, NE555, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);
