@@ -79,17 +79,30 @@
     return (root.TUBE_DATABASE || []).find(t => t.commonName === name) || null;
   }
   // A tube's cathode warm-up for the power-on transient (sim-engine.js cathodeWarm): the time
-  // constant tau (s) of its cathode's temperature, typical for its heater rather than from its
-  // datasheet: a directly heated filament in a second or two, an indirectly heated cathode in
-  // 5 to 10 s, slower with a bigger heater (a GZ34's or EL34's against a 12AX7's). emit: the
-  // emission of the hot cathode (A), 12 times its rated cathode (or rectified) current; peak: the
-  // rated peak current per anode (A), the handbook's or about 3 times the rated DC current.
-  function tubeWarmup(t) {
+  // constant tau (s) of its cathode's temperature, from its heater power Ph = Vh · Ih and the
+  // kind of cathode, rather than from a datasheet (which seldom gives one):
+  //   directly heated filament (5U4G, 5Ц3С, 5Y3, 2A3, 300B, 845):  0.8 + 0.25 · Ih, 1–2 s
+  //   standard indirectly heated (12AX7, 6V6, EL84):                4 + 1.2 · √Ph,  5–8 s
+  //   heavy indirectly heated, a power tube or rectifier of 5 W of heater or more (EL34, KT88, 6L6GC):
+  //                                                                 5 + 0.5 · Ph,   8–12 s
+  //   slow-start rectifiers and dampers (GZ34 / 5AR4, 6Д22С):        5 + 0.5 · Ph,   10–15 s
+  // (silicon diodes have no cathode: instant). A part's own warmTau (s, the inspector's Warm-up
+  // time constant) overrides it. emit: the emission of the hot cathode (A), 12 times its rated
+  // cathode (or rectified) current; peak: the rated peak current per anode (A), the handbook's or
+  // about 3 times the rated DC current.
+  function warmupClass(t) {
+    const ph = (+t.vh || 6.3) * (+t.ih || 0.3);
+    if (t.directlyHeated) return { cls: "directly heated filament", ph, tau: Math.min(2, Math.max(1, 0.8 + 0.25 * (+t.ih || 0.3))) };
+    if (t.slowWarm) return { cls: "slow-start cathode", ph, tau: Math.min(15, Math.max(10, 5 + 0.5 * ph)) };
+    if ((t.category === "power" || t.category === "rectifier") && ph >= 5) return { cls: "heavy indirectly heated cathode", ph, tau: Math.min(12, Math.max(8, 5 + 0.5 * ph)) };
+    return { cls: "indirectly heated cathode", ph, tau: Math.min(8, Math.max(5, 4 + 1.2 * Math.sqrt(ph))) };
+  }
+  function tubeWarmup(t, c) {
     if (!t) return null;
-    const ih = +t.ih || 0.3, dh = !!t.directlyHeated, ik = (+t.ikMax > 0 ? +t.ikMax : 50) / 1000;
-    const tau = dh ? Math.min(2, Math.max(1, 0.8 + 0.25 * ih)) : Math.min(10, Math.max(5, 5 + 3 * ih));
+    const dh = !!t.directlyHeated, ik = (+t.ikMax > 0 ? +t.ikMax : 50) / 1000, w = warmupClass(t), own = c && +c.params.warmTau;
     const bookPk = t.book && t.book.limits && +t.book.limits.i_peak_ma;
-    return { tau: Math.round(tau * 10) / 10, emit: 12 * ik, rated: ik, peak: bookPk > 0 ? bookPk / 1000 : 3 * ik, peakFromBook: bookPk > 0, directly: dh };
+    return { tau: own > 0 ? own : Math.round(w.tau * 10) / 10, auto: Math.round(w.tau * 10) / 10, own: own > 0, cls: w.cls, ph: w.ph,
+      emit: 12 * ik, rated: ik, peak: bookPk > 0 ? bookPk / 1000 : 3 * ik, peakFromBook: bookPk > 0, directly: dh };
   }
   function tubeKind(t) {
     if (!t) return "triode";
@@ -1952,12 +1965,14 @@
         // the heater's DC potential, for the heater-to-cathode check: 0 V for a grounded heater or
         // centre tap, more for a heater raised to protect cathode followers and stacked stages
         { key: "heaterV", label: "Heater DC potential", unit: "V", kind: "number", min: -1000, max: 1000, dflt: 0,
-          when: c => { const t = tubeByName(c.params.tube); return !!t && !t.directlyHeated && !!t.limits && !!(t.limits.vhk || t.limits.vhkNeg); } }
+          when: c => { const t = tubeByName(c.params.tube); return !!t && !t.directlyHeated && !!t.limits && !!(t.limits.vhk || t.limits.vhkNeg); } },
+        // the cathode's warm-up time constant in the power-on run: 0 for the one from its heater
+        { key: "warmTau", label: "Warm-up time constant", unit: "s", kind: "number", min: 0, max: 60, dflt: 0 }
       ],
       build: (c, net, alloc, out) => {
         const t = tubeByName(c.params.tube);
         if (!t) return;
-        const kind = tubeKind(t), w = tubeWarmup(t), heat = { tau: w.tau, emit: w.emit };   // the power-on transient's cathode warm-up
+        const kind = tubeKind(t), w = tubeWarmup(t, c), heat = { tau: w.tau, emit: w.emit };   // the power-on transient's cathode warm-up
         if (kind === "rectifier") {
           const P = (root.TubeSimEngine.RECTIFIER_PERVEANCE[t.commonName]) || 1e-3;
           out.push({ id: c.id, part: "a1", kind: "VDIODE", nodes: [net("A1"), net("K")], perveance: P, heat });
@@ -2606,7 +2621,7 @@
         if (t.custom && t.custom.source === "datasheet") return `From a datasheet · Koren model ${t.custom.fit ? `fitted to ${t.custom.fit.points} plate-curve points (R² ${t.custom.fit.r2})` : `of the ${t.custom.like}`} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A`;
         return t.custom
           ? `Imported SPICE model ${t.custom.sub}${t.custom.like ? ` · socket, pinout and heater of the ${t.custom.like}` : ""} · Va max ${t.vaMax} V · Pa max ${t.paMax} W`
-          : `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A · cathode warm-up τ ≈ ${tubeWarmup(t).tau} s (in the oscilloscope's Power-on run)`;
+          : `${t.nameWestern} · ${t.nameGost} · Va max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A · cathode warm-up τ ≈ ${tubeWarmup(t, c).tau} s (${tubeWarmup(t, c).own ? "set in the inspector" : `${tubeWarmup(t).cls}, heater ${Math.round(tubeWarmup(t).ph * 10) / 10} W`}; in the oscilloscope's Power-on run)`;
       },
       readout: (c, R) => {
         const d = R.tubeData(), kv = R.kv;

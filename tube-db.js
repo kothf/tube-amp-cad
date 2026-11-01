@@ -1889,6 +1889,9 @@ TUBE_DATABASE.forEach(t => {
   const twin = /-P$/.test(t.commonName) && TUBE_DATABASE.find(u => u.commonName === t.commonName.replace(/-P$/, "-T"));
   if (!out.vhk && twin && twin.book && twin.book.limits.vkh) out.vhk = twin.book.limits.vkh;
   t.directlyHeated = /(^|[^n])directly heated/i.test(t.type) || /^(5Ts3S|5U4G|GM-70|845)$/.test(t.commonName);
+  // slow-start cathodes, built to warm after the amplifier's tubes (the GZ34 / 5AR4's soft start;
+  // TV damper diodes such as the 6Д22С, should one be added): the power-on run's longest warm-up
+  t.slowWarm = /^(GZ34|6D22S)$/.test(t.commonName);
 });
 
 /* Interelectrode capacitances (pF) from the datasheets, for the simulation: triodes { cgk, cga, cak },

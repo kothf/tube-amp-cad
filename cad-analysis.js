@@ -106,7 +106,7 @@
       (result.tubes || []).forEach(e => { const g = byId.get(e.id) || { peak: 0, peakAt: 0, endPeak: 0, worst: null, tau: e.tau, kind: e.kind }; if (e.peak > g.peak) { g.peak = e.peak; g.peakAt = e.peakAt; } g.endPeak = Math.max(g.endPeak, e.endPeak || 0); if (e.worst && (!g.worst || e.worst.i > g.worst.i)) g.worst = e.worst; byId.set(e.id, g); });
       byId.forEach((g, id) => {
         const c = S.comps.find(x => x.id === id); if (!c || c.type !== "tube") return;
-        const t = CL.tubeByName(c.params.tube), wu = CL.tubeWarmup(t); if (!t || !wu) return;
+        const t = CL.tubeByName(c.params.tube), wu = CL.tubeWarmup(t, c); if (!t || !wu) return;
         const rect = g.kind === "VDIODE", lim = rect ? wu.peak : wu.rated, name = `${desig(c)} (${t.commonName})`;
         const limText = rect ? `its ${fmtEng(lim, "A")} peak rating per anode${wu.peakFromBook ? "" : " (about 3 × its rated current: no peak rating in the app's data)"}` : `its ${fmtEng(lim, "A")} rated cathode current`;
         const cold = g.worst, C = T => Math.round((T - 273) / 10) * 10, hot = C(TubeSimEngine.CATHODE.hot);
