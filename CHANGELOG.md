@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.174.1] - 2026-11-01
+
+### Changed
+- **A dimension's value goes wherever it is dragged**, up, down, left or right, in the Board: the dimension line moves nearer or further and its extension lines follow, still on the things it measures; dragged past an end, the line runs on to the value (it snaps back to the middle near it). A point-to-line dimension can now be moved sideways along its line too. The grab point stays under the pointer.
+
 ## [3.174.0] - 2026-11-01
 
 ### Changed

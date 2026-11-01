@@ -133,7 +133,7 @@
       if (T.a && T.b) { place(); return true; }
       // an existing dimension's value: drag it to move the dimension, click it to type a new value
       const own = !T.a && hit(x, y, true);
-      if (own) { S.sel = { kind: "dim", id: own }; const d = dims().items.find(q => q.id === own); S.drag = { kind: "dim", id: own, o0: d && d.o, mx: x, my: y, moved: false, edit: true }; renderPanels(); render(); return true; }
+      if (own) { S.sel = { kind: "dim", id: own }; S.drag = { ...grab(own, x, y), edit: true }; renderPanels(); render(); return true; }
       const f = featureAt(x, y);
       if (!f) { msg("Nothing to dimension there: click a pad, a part's origin, a hole, a via, a text, a keep-out, the board's corner or edge, or construction"); return true; }
       if (!T.a) { T.a = f; msg(`From ${f.name}: now click the second thing (it is the one that moves)`); }
@@ -265,11 +265,26 @@
     // ---------------------------------------------------------------------------
     // Geometry of a drawn dimension (board coordinates): its line, extension lines and label spot
     // ---------------------------------------------------------------------------
-    function shape(d, env) {
+    // the value slides along its dimension line by d.s mm from the middle (it may go past an end: the
+    // line runs on to it, as in a drawing), wherever the user dragged it
+    function slid(sh, d) {
+      const s = Number.isFinite(d.s) ? d.s : 0; if (!s || !sh) return sh;
+      const [A, Bq] = sh.line, dx = Bq[0] - A[0], dy = Bq[1] - A[1], L = Math.hypot(dx, dy); if (L < 1e-9) return sh;
+      const ux = dx / L, uy = dy / L, m = [(A[0] + Bq[0]) / 2, (A[1] + Bq[1]) / 2];
+      sh.lbl = [m[0] + ux * s, m[1] + uy * s];
+      if (Math.abs(s) > L / 2) sh.tail = [s > 0 ? Bq : A, sh.lbl];
+      return sh;
+    }
+    function shape(d, env) { return slid(shapeBase(d, env), d); }
+    function shapeBase(d, env) {
       if (d.k === "pl") {
         const p = env.point(d.a, null), l = env.line(d.b, null); if (!p || !l) return null;
         const dx = l[2] - l[0], dy = l[3] - l[1], L2 = dx * dx + dy * dy || 1, t = ((p[0] - l[0]) * dx + (p[1] - l[1]) * dy) / L2, f = [l[0] + t * dx, l[1] + t * dy];
-        return { line: [p, f], ext: [], lbl: [(p[0] + f[0]) / 2, (p[1] + f[1]) / 2], arrows: true, lineRef: l };
+        // moved sideways (along the line it is measured to) by d.o: extension lines from the point and the line
+        const o = Number.isFinite(d.o) ? d.o : 0, Ll = Math.sqrt(L2), wx = dx / Ll * o, wy = dy / Ll * o;
+        if (Math.abs(o) < 1e-9) return { line: [p, f], ext: [], lbl: [(p[0] + f[0]) / 2, (p[1] + f[1]) / 2], arrows: true, lineRef: l };
+        const P = [p[0] + wx, p[1] + wy], Fq = [f[0] + wx, f[1] + wy];
+        return { line: [P, Fq], ext: [[p, P], [f, Fq]], lbl: [(P[0] + Fq[0]) / 2, (P[1] + Fq[1]) / 2], arrows: true, lineRef: l };
       }
       const pa = env.point(d.a, null), pb = env.point(d.b, null); if (!pa || !pb) return null;
       if (d.k === "hz" || d.k === "vt") return { line: [pa, pb], ext: [], lbl: [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2], arrows: false, tag: d.k === "hz" ? "═" : "‖" };
@@ -298,7 +313,7 @@
       sh.ext.forEach(([p, q]) => { const dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy); if (L < 1e-9) return; const g = 2 * px, over = 3 * px; ctx.beginPath(); ctx.moveTo(p[0] + dx / L * g, p[1] + dy / L * g); ctx.lineTo(q[0] + dx / L * over, q[1] + dy / L * over); ctx.stroke(); });
       const [A, Bq] = sh.line;
       if (!sh.arrows) ctx.setLineDash([3 * px, 3 * px]);
-      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(Bq[0], Bq[1]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(Bq[0], Bq[1]); if (sh.tail) { ctx.moveTo(sh.tail[0][0], sh.tail[0][1]); ctx.lineTo(sh.tail[1][0], sh.tail[1][1]); } ctx.stroke(); ctx.setLineDash([]);
       if (sh.arrows) { const m = [(A[0] + Bq[0]) / 2, (A[1] + Bq[1]) / 2]; arrow(ctx, m, A, px); arrow(ctx, m, Bq, px); }
       ctx.font = `${11 * px}px ui-monospace, monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       const w = ctx.measureText(text).width + 6 * px, h = 14 * px;
@@ -396,14 +411,32 @@
       const id = hit(x, y); if (!id) return false;
       const d = dims().items.find(q => q.id === id); if (!d) return false;
       S.sel = { kind: "dim", id };
-      S.drag = { kind: "dim", id, o0: d.o, mx: x, my: y, moved: false };
+      S.drag = grab(id, x, y);
       renderPanels(); render(); return true;
     }
+    // a drag of a dimension: where on its value it was taken, so the value does not jump to the pointer
+    function grab(id, x, y) {
+      const d = dims().items.find(q => q.id === id), sh = d && shape(d, D.makeEnv(S.board, S.model, S.csol));
+      return { kind: "dim", id, o0: d && d.o, s0: d && d.s, mx: x, my: y, gx: sh ? x - sh.lbl[0] : 0, gy: sh ? y - sh.lbl[1] : 0, moved: false };
+    }
+    // the value goes where it is dragged, both ways: away from or nearer the things (the dimension line
+    // follows, its extension lines still on them) and along the line (past an end, the line runs on)
     function drag(dr, x, y) {
       if (!dr.moved && Math.hypot(x - dr.mx, y - dr.my) * S.view.scale < 3) return;   // a click, not a drag (the pointer may twitch)
-      const d = dims().items.find(q => q.id === dr.id); if (!d || !["dx", "dy", "dist"].includes(d.k)) return;
-      const env = D.makeEnv(S.board, S.model, S.csol), pa = env.point(d.a, null), pb = env.point(d.b, null); if (!pa || !pb) return;
-      d.o = R4(offsetFor(d.k, pa, pb, [x, y])); dr.moved = true; render();
+      const d = dims().items.find(q => q.id === dr.id); if (!d || !["dx", "dy", "dist", "pl"].includes(d.k)) return;
+      const env = D.makeEnv(S.board, S.model, S.csol), m = [x - (dr.gx || 0), y - (dr.gy || 0)];
+      if (d.k === "pl") {
+        const p = env.point(d.a, null), l = env.line(d.b, null); if (!p || !l) return;
+        const dx = l[2] - l[0], dy = l[3] - l[1], L = Math.hypot(dx, dy) || 1;
+        d.o = R4(((m[0] - p[0]) * dx + (m[1] - p[1]) * dy) / L);
+      } else {
+        const pa = env.point(d.a, null), pb = env.point(d.b, null); if (!pa || !pb) return;
+        d.o = R4(offsetFor(d.k, pa, pb, m));
+      }
+      const base = shapeBase(d, env); if (!base) return;
+      const [A, Bq] = base.line, dx = Bq[0] - A[0], dy = Bq[1] - A[1], L = Math.hypot(dx, dy);
+      if (L > 1e-9) { const s = ((m[0] - (A[0] + Bq[0]) / 2) * dx + (m[1] - (A[1] + Bq[1]) / 2) * dy) / L; d.s = Math.abs(s) < 0.3 ? 0 : R4(s); }   // near the middle: it snaps there
+      dr.moved = true; render();
     }
     function deleteSel() {
       const s = S.sel; if (!s || s.kind !== "dim") return false;
@@ -480,7 +513,7 @@
         f.dataset.dimval = "1"; if (d.ref) { const i = f.querySelector("input"); if (i) i.disabled = true; } h.appendChild(f);
       }
       h.appendChild(field("Role", d.ref ? "ref" : "drive", v => setRef(d, v === "ref"), [["drive", "Driving: it holds them"], ["ref", "Reference: it only shows"]]));
-      help(d.k === "hz" || d.k === "vt" ? "The second stays level with (or in line with) the first when either moves." : "Changing the value moves the second thing; dragging either moves the other with it. Drag the value to move the dimension line.");
+      help(d.k === "hz" || d.k === "vt" ? "The second stays level with (or in line with) the first when either moves." : "Changing the value moves the second thing; dragging either moves the other with it. Drag the value anywhere (up, down, left, right): the dimension line and its extension lines follow it, still tied to what it measures.");
       h.appendChild(delBtn());
       return true;
     }
