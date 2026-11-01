@@ -13,17 +13,30 @@
     function transientMessage() {
       const t = S.trans;
       return { type: "TRANSIENT_RESULT", version: VERSION, seq: t.seq, running: !!t.running, progress: t.progress || 0, tStop: t.tStop, warmup: !!t.warmup, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
-        dt: t.dt, watchDt: t.watchDt || 0, cathode: root.TubeSimEngine ? TubeSimEngine.CATHODE : null, elapsedMs: t.elapsedMs, scopes: t.scopes || [], caps: t.caps || [], tubes: t.tubes || [], events: t.events || [] };
+        dt: t.dt, watchDt: t.watchDt || 0, cathode: root.TubeSimEngine ? TubeSimEngine.CATHODE : null, elapsedMs: t.running && t.t0 ? Date.now() - t.t0 : t.elapsedMs,
+        scenario: t.scenario || { kind: t.warmup ? "cold" : "hot" }, stopped: !!t.stopped, tReached: t.tReached || 0, preview: t.running ? t.preview || null : null, rate: S.transRate || null,
+        scopes: t.scopes || [], caps: t.caps || [], tubes: t.tubes || [], events: t.events || [] };
     }
-    function stopTransient() {
+    // Stop: a run that has sent part of its record ends there, as a shorter run (its report too);
+    // one that has not, ends with nothing
+    function stopTransient(keep) {
+      if (keep !== false && S.trans && S.trans.running && S.trans.finish && S.trans.finish()) return;
       if (tJob) { tJob.cancel(); tJob = null; }
       if (S.trans && S.trans.running) { S.trans.running = false; S.trans.error = "Stopped"; if (channel) channel.postMessage(transientMessage()); setStatus("idle", "Power-on transient stopped"); }
     }
     // the power-on run's length for "auto": with the cathodes warming, three time constants of the
-    // slowest (to the next 5 s, 5 to 60 s); with hot cathodes or no tubes, 1 s
-    function autoDuration(netlist, warmup) {
-      const tau = warmup ? Math.max(0, ...netlist.elements.map(e => (e.heat && e.heat.tau) || 0)) : 0;
-      return tau > 0 ? Math.min(60, Math.max(5, Math.ceil(3 * tau / 5) * 5)) : 1;
+    // slowest (to the next 5 s, 5 to 60 s), less the time they have already warmed (a standby
+    // switch); with hot cathodes or no tubes, 1 s; a soft start at least 1 s past its relay
+    function autoDuration(netlist, warmup, scen) {
+      const tau = warmup ? Math.max(0, ...netlist.elements.map(e => (e.heat && e.heat.tau) || 0)) : 0, left = 3 * tau - (scen && scen.kind === "standby" ? scen.standby : 0);
+      const d = left > 1 ? Math.min(60, Math.max(5, Math.ceil(left / 5) * 5)) : 1;
+      return scen && scen.kind === "soft" ? Math.max(d, Math.min(60, Math.ceil(scen.relay + 1))) : d;
+    }
+    // the scenario as the oscilloscope sends it, its numbers in range
+    function scenarioOf(sc, warmup) {
+      const k = sc && /^(cold|hot|standby|soft)$/.test(sc.kind) ? sc.kind : warmup === false ? "hot" : "cold";
+      const num = (v, d, lo, hi) => { v = +v; return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+      return { kind: k, standby: num(sc && sc.standby, 30, 1, 600), softR: num(sc && sc.softR, 47, 0.1, 10000), relay: num(sc && sc.relay, 2, 0.05, 30) };
     }
     // a capacitor's voltage rating: its own, or the one the BOM picks from the steady state's peak
     function capRating(c) {
@@ -32,13 +45,14 @@
       const m = /^(\d+) × ([\d.]+) V/.exec(txt) || [], v = m[1] ? +m[1] * +m[2] : parseFloat(txt);
       return v > 0 ? { v, set: false, steady: st.v } : null;
     }
-    function runTransient(tStop, warmup) {
-      warmup = warmup !== false;
+    function runTransient(tStop, warmup, scenario) {
+      const scen = scenarioOf(scenario, warmup);
+      warmup = scen.kind !== "hot";
       const T = topo();
       if (!T.hasGround) { S.trans = { running: false, ok: false, error: "Add a ground symbol to simulate", tStop: +tStop || 1, warmup }; if (channel) channel.postMessage(transientMessage()); return; }
-      stopTransient();
+      stopTransient(false);
       const netlist = buildNetlist(), probes = [], map = [];
-      tStop = tStop === "auto" ? autoDuration(netlist, warmup) : Math.min(120, Math.max(0.01, +tStop || 1));
+      tStop = tStop === "auto" ? autoDuration(netlist, warmup, scen) : Math.min(120, Math.max(0.01, +tStop || 1));
       S.comps.filter(c => c.type === "scope").forEach(c => {
         const com = T.pinNet.get(c.id + ":COM");
         ["CH1", "CH2"].forEach(pid => {
@@ -54,7 +68,7 @@
         return na === undefined || nb === undefined || na === nb ? null : { c, nets: [na, nb], ground: na === 0 || nb === 0 };
       }).filter(Boolean);
       const seq = (S.trans && S.trans.seq || 0) + 1;
-      S.trans = { seq, running: true, progress: 0, tStop, warmup };
+      S.trans = { seq, running: true, progress: 0, tStop, warmup, scenario: scen, t0: Date.now() };
       if (channel) channel.postMessage(transientMessage());
       showBusy();
       const done = result => {
@@ -65,18 +79,47 @@
           let sc = scopes.find(x => x.id === p.id); if (!sc) scopes.push(sc = { id: p.id, label: p.label });
           sc[p.ch] = { min: result.min[p.k], max: result.max[p.k], nets: p.nets };
         });
-        const rep = result.ok ? transientReport(result, caps, warmup) : { caps: [], tubes: [], events: [] };
-        Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, watchDt: result.watchDt || 0, elapsedMs: result.elapsedMs, scopes, progress: 1 }, rep);
+        const rep = result.ok ? transientReport(result, caps, warmup, scen) : { caps: [], tubes: [], events: [] };
+        Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, watchDt: result.watchDt || 0, elapsedMs: result.elapsedMs, scopes, progress: 1,
+          tStop: result.ok ? result.tStop : S.trans.tStop, stopped: !!result.stopped, finish: null, preview: null }, rep);
+        // the speed of this run, for the next one's estimate on the oscilloscope's Run button
+        if (result.ok && result.tStop > 0 && !result.stopped) S.transRate = { msPerS: result.elapsedMs / result.tStop, parts: netlist.elements.length, tStop: result.tStop, scenario: scen.kind };
         if (channel) channel.postMessage(transientMessage());
         const bad = rep.events.filter(n => n.level !== "info").length;
         if (S.sim.busy && result.ok) showBusy();   // the steady state still runs: its progress stays on the line
-        else if (result.ok) setStatus(bad ? "warn" : "ok", `Power-on transient: ${fmtEng(tStop, "s")} of circuit time in ${(result.elapsedMs / 1000).toFixed(1)} s · ${result.steps} steps${bad ? ` · ${bad} warning${bad > 1 ? "s" : ""} (see the oscilloscope)` : ""}`);
+        else if (result.ok) setStatus(bad ? "warn" : "ok", `Power-on transient${result.stopped ? " (stopped)" : ""}: ${fmtEng(result.tStop, "s")} of circuit time in ${(result.elapsedMs / 1000).toFixed(1)} s · ${result.steps} steps${bad ? ` · ${bad} warning${bad > 1 ? "s" : ""} (see the oscilloscope)` : ""}`);
         else setStatus("error", "Power-on transient: " + result.error);
       };
-      const options = { tStop, probes, warmup, watch: caps.map(x => x.nets), watchPoints: 20000, maxPoints: 250000, budgetMs: 600000 };   // every step, for zooming in the scope
+      const options = { tStop, probes, warmup, watch: caps.map(x => x.nets), watchPoints: 20000, maxPoints: 250000, budgetMs: 600000, partial: true,   // every step, for zooming in the scope
+        warmOffset: scen.kind === "standby" ? scen.standby : 0, soft: scen.kind === "soft" ? { r: scen.softR, at: scen.relay } : null };
+      // the record as it grows (the engine's snapshots): kept here whole, a light preview of each
+      // scope channel (2000 points) sent on; Stop turns what there is into the result
+      let acc = null;
+      const partial = p => {
+        if (!S.trans || S.trans.seq !== seq || !S.trans.running) return;
+        if (!acc) acc = { min: probes.map(() => new Float32Array(p.points)), max: probes.map(() => new Float32Array(p.points)), lo: p.watch.map(() => new Float32Array(p.watchPoints)), hi: p.watch.map(() => new Float32Array(p.watchPoints)), cold: p.tubes.map(() => new Float32Array(p.watchPoints)), to: 0, wto: 0, last: null };
+        p.min.forEach((a, j) => { acc.min[j].set(a, p.from); acc.max[j].set(p.max[j], p.from); });
+        p.watch.forEach((w, j) => { if (w.lo) { acc.lo[j].set(w.lo, p.wfrom); acc.hi[j].set(w.hi, p.wfrom); } });
+        p.tubes.forEach((u, j) => { if (u.cold) acc.cold[j].set(u.cold, p.wfrom); });
+        acc.to = p.to; acc.wto = p.wto; acc.last = p;
+        const K = Math.max(1, Math.ceil(p.points / 2000)), nb = Math.floor(p.to / K), dec = (mn, mx) => { const a = new Float32Array(nb), b = new Float32Array(nb); for (let i = 0; i < nb; i++) { let l = Infinity, h = -Infinity; for (let j = i * K; j < (i + 1) * K; j++) { if (mn[j] < l) l = mn[j]; if (mx[j] > h) h = mx[j]; } a[i] = l; b[i] = h; } return { min: a, max: b }; };
+        const scopes = [];
+        map.forEach(q => { let sc = scopes.find(x => x.id === q.id); if (!sc) scopes.push(sc = { id: q.id, label: q.label }); sc[q.ch] = Object.assign(dec(acc.min[q.k], acc.max[q.k]), { nets: q.nets }); });
+        S.trans.tReached = p.t; S.trans.preview = { dt: K * p.dt, upto: nb * K * p.dt, scopes };
+        if (channel) channel.postMessage(transientMessage());
+      };
+      S.trans.finish = () => {
+        if (!acc || !acc.to || !acc.last) return false;
+        if (tJob) { tJob.cancel(); tJob = null; }
+        const p = acc.last, tReached = acc.to * p.dt, nw = p.watchDt ? Math.min(acc.wto, Math.floor(tReached / p.watchDt)) : 0;
+        done({ ok: true, stopped: true, tStop: tReached, h: p.h, steps: p.s, points: acc.to, dt: p.dt, probes, min: acc.min.map(a => a.slice(0, acc.to)), max: acc.max.map(a => a.slice(0, acc.to)),
+          watch: p.watch.map((w, j) => ({ max: w.max, maxAt: w.maxAt, min: w.min, minAt: w.minAt, lo: w.lo ? acc.lo[j].slice(0, nw) : null, hi: w.hi ? acc.hi[j].slice(0, nw) : null })), watchDt: p.watchDt,
+          tubes: p.tubes.map((u, j) => Object.assign({}, u, { cold: u.cold ? acc.cold[j].slice(0, nw) : null })), relayAt: p.relayAt, warmOffset: options.warmOffset, elapsedMs: Date.now() - S.trans.t0 });
+        return true;
+      };
       if (!pool.ok) { setTimeout(() => done(TubeSimEngine.startup(netlist, options)), 0); return; }
       tJob = pool.run({ netlist, options, kind: "startup" }, {
-        urgent: true, onResult: done,
+        urgent: true, onResult: done, onPartial: partial,
         onProgress: f => {
           if (!S.trans || S.trans.seq !== seq) return;
           S.trans.progress = f;
@@ -96,8 +139,13 @@
     //   critical; a capacitor between 1 and 1.15 × its rating or a tube overdrawn while cold, a
     //   warning; a capacitor within 10 % of its rating and B+ settling (±1 %), information.
     const SEV = { critical: 0, warning: 1, info: 2 };
-    function transientReport(result, caps, warmup) {
+    function transientReport(result, caps, warmup, scen) {
       const events = [], out = { caps: [], tubes: [], events };
+      if (result.relayAt !== null && result.relayAt !== undefined && result.relayAt <= result.tStop)
+        events.push({ t: result.relayAt, level: "info", kind: "relay", who: result.soft === "ntc" ? "NTC relay" : "Soft-start relay", text: `closes across the ${result.soft === "ntc" ? "inrush limiter" : `${fmtEng(scen.softR, "Ω")} soft-start resistor`}`,
+          detail: `Soft start: the mains through ${result.soft === "ntc" ? "the circuit's NTC inrush limiter (at its cold resistance)" : `a ${fmtEng(scen.softR, "Ω")} resistor`} until a relay shorts it at ${fmtEng(result.relayAt, "s")}.` });
+      else if (scen && scen.kind === "soft" && !result.soft)
+        events.push({ t: 0, level: "info", kind: "relay", who: "Soft start", text: "no mains source or NTC to soften: ran as a cold start", detail: "Soft start puts a resistor in series with the Mains part, or uses the circuit's NTC inrush limiters; this circuit has neither." });
       const CL = root.CadLib, ms = t => fmtEng(t, "s");
       caps.forEach((x, k) => {
         const w = result.watch && result.watch[k]; if (!w) return;

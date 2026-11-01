@@ -5,7 +5,8 @@
   const I = Instrument, $ = id => document.getElementById(id);
   const SM = ScopeMath, VDIV = SM.VDIV, TDIV = SM.TDIV;
   const esc = x => String(x).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
-  const S = { mode: "dual", analysis: "steady", tStop: "auto", warmup: true, view: { tdiv: "auto", pos: 0, seq: null, event: -1 }, ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", hpos: 0, trig: { src: "ch1", slope: "rising" }, logT: false, ratings: true, extra: [], xv: {} };
+  const S = { mode: "dual", analysis: "steady", tStop: "auto", warmup: true, view: { tdiv: "auto", pos: 0, seq: null, event: -1 }, ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", hpos: 0, trig: { src: "ch1", slope: "rising" }, logT: false, ratings: true, extra: [], xv: {}, scenario: { kind: "cold", standby: 30, softR: 47, relay: 2 } };
+  Object.defineProperty(S, "warmup", { get: () => S.scenario.kind !== "hot" });   // the cathodes start cold (every scenario but Hot restart)
 
   const fill = (sel, list, unit) => { sel.innerHTML = `<option value="auto">Auto</option>` + list.map(v => `<option value="${v}">${I.fmt(v, unit)}/div</option>`).join(""); };
   fill($("ch1-vdiv"), VDIV, "V"); fill($("ch2-vdiv"), VDIV, "V"); fill($("tdiv"), TDIV, "s");
@@ -169,7 +170,7 @@
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     I.showStatus($("status"));
-    if (S.analysis === "startup" && I.transient && !I.problem) { const t = I.transient; $("status").className = "status " + (t.running ? "idle" : t.ok ? "ok" : "bad"); $("status").textContent = t.running ? `Power-on transient… ${Math.round((t.progress || 0) * 100)} %` : t.ok ? `Power-on transient · ${I.fmt(t.tStop, "s")}${t.stale ? " · circuit changed" : ""}` : (t.error || "Power-on transient failed"); }
+    if (S.analysis === "startup" && I.transient && !I.problem) { const t = I.transient; $("status").className = "status " + (t.running ? "idle" : t.ok ? "ok" : "bad"); $("status").textContent = t.running ? `Power-on transient… ${progressText(t)}` : t.ok ? `Power-on transient · ${I.fmt(t.tStop, "s")}${t.stale ? " · circuit changed" : ""}` : (t.error || "Power-on transient failed"); }
     ctx.fillStyle = "#03080d"; ctx.fillRect(0, 0, W, H);
     // margins: volt scales left (CH1) and right (CH2), the time scale below
     const x0 = 64, y0 = 32, gw = W - 2 * x0, gh = H - y0 - 26;
@@ -378,16 +379,52 @@
     ctx.restore();
     return lbl;
   }
+  // what the time axis counts from: switch-on, or the standby switch closing after the heaters
+  const afterText = t => (t && t.scenario && t.scenario.kind === "standby" ? `after the standby switch (heaters on ${I.fmt(t.scenario.standby, "s")} before)` : "after power-on");
+  // "12.4 s of 30 s · about 15 s left"
+  function progressText(t) {
+    const p = Math.max(0, Math.min(1, t.progress || 0)), done = t.tReached || p * t.tStop, ms = t.elapsedMs || 0;
+    const left = p > 0.02 && ms > 500 ? ms * (1 - p) / p / 1000 : null;
+    return `${I.fmt(done, "s", 1)} of ${I.fmt(t.tStop, "s")}${left !== null ? ` · about ${left < 10 ? left.toFixed(0) : Math.round(left / 5) * 5} s left` : ""}`;
+  }
+  // while the run goes on: its record so far (2000 points), drawn left to right over the whole
+  // duration, with a line where it has got to
+  function drawPreview(ctx, x0, y0, gw, gh, t, pv, ps) {
+    const vw = { pos: 0, span: t.tStop, tdiv: t.tStop / 10 }, M = { log: false, tx: tt => x0 + tt / t.tStop * gw, xt: x => (x - x0) / gw * t.tStop };
+    G = { x0, y0, gw, gh, ch: {}, preview: true }; $("overview").hidden = true; $("lanes").hidden = true;   // axes only: no markers or zoom on a growing record
+    const ch = {};
+    ["ch1", "ch2"].forEach(k => {
+      const d = ps[k]; if (!d || !d.min.length) return;
+      const n = d.min.length, raw = new Float32Array(n + 2), inter = new Float32Array(2 * n);
+      for (let i = 0; i < n; i++) { raw[i] = (d.min[i] + d.max[i]) / 2; inter[2 * i] = d.min[i]; inter[2 * i + 1] = d.max[i]; }
+      raw[n] = raw[n + 1] = raw[n - 1];
+      ch[k] = { raw, min: d.min, max: d.max, cpl: "dc", ...SM.channel(inter, S[k].vdiv, "dc") };
+    });
+    const ys = (c, v) => y0 + gh / 2 - Math.max(-4.4, Math.min(4.4, (v - c.off) / c.vdiv)) * gh / 8;
+    drawAxes(ctx, { start: 0, step: vw.tdiv, unit: "s", color: "#c9d6e3" }, ch.ch1 ? vAxis(ch.ch1, "#ffe23d") : vAxis(ch.ch2, "#00e5ff"), ch.ch1 && ch.ch2 ? vAxis(ch.ch2, "#00e5ff") : null);
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, M.tx(pv.upto) - x0, gh); ctx.clip();
+    [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k, color]) => {
+      const c = ch[k]; if (!c || (S.mode !== "dual" && S.mode !== k)) return;
+      traceMap(ctx, c, pv.dt, M, x0, gw, ys); ctx.fillStyle = color; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1.4; ctx.stroke();
+    });
+    ctx.restore();
+    const xn = M.tx(t.tReached || pv.upto);
+    ctx.strokeStyle = "rgba(0,180,216,0.8)"; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(xn, y0); ctx.lineTo(xn, y0 + gh); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "#c9d6e3"; ctx.textAlign = "left";
+    ctx.fillText(`Simulating ${afterText(t)}… ${progressText(t)}   (■ Stop keeps the record so far)`, x0, 16);
+    $("meas").innerHTML = ""; renderMarks();
+  }
   // the run's events (the report strip's rows) inside [a, b]
   const eventsOf = t => (t && t.ok && !t.running && t.events) || [];
   function drawStartup(ctx, x0, y0, gw, gh) {
     const t = I.transient, ts = I.transientScope(), ov = $("overview");
     const msg = (lines) => { ov.hidden = true; $("lanes").hidden = true; ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center"; lines.forEach((l, i) => ctx.fillText(l, x0 + gw / 2, y0 + gh / 2 - 12 + i * 18)); ctx.textAlign = "left"; $("meas").innerHTML = ""; G = null; renderMarks(); };
     if (t && t.running) {
-      const p = Math.max(0, Math.min(1, t.progress || 0));
+      const p = Math.max(0, Math.min(1, t.progress || 0)), pv = t.preview, sid = (I.scope() || {}).id || I.scopeId, ps = pv && (pv.scopes.find(x => x.id === sid) || pv.scopes[0]);
+      if (ps && (ps.ch1 || ps.ch2) && pv.upto > 0) return drawPreview(ctx, x0, y0, gw, gh, t, pv, ps);
       ctx.strokeStyle = "#26344a"; ctx.strokeRect(x0 + gw * 0.2, y0 + gh / 2 + 14, gw * 0.6, 10);
       ctx.fillStyle = "#00b4d8"; ctx.fillRect(x0 + gw * 0.2, y0 + gh / 2 + 14, gw * 0.6 * p, 10);
-      return msg([`Simulating the first ${I.fmt(t.tStop, "s")} after power-on${t.warmup ? ", the cathodes warming up" : ""}… ${Math.round(p * 100)} %`]);
+      return msg([`Simulating the first ${I.fmt(t.tStop, "s")} ${afterText(t)}${t.warmup ? ", the cathodes warming up" : ""}… ${progressText(t)}`]);
     }
     if (!t) return msg([`Power-on transient: press ▶ Run to simulate the first ${S.tStop === "auto" ? (S.warmup ? "seconds, until the cathodes are warm," : "second") : I.fmt(+S.tStop, "s")} after switch-on.`,
       `Every capacitor starts empty and every source switches on at t = 0${S.warmup ? "; the tubes' cathodes start cold and warm up" : ""}.`]);
@@ -450,7 +487,7 @@
     if (ch.ch2) { const s = label(2, ch.ch2); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
     keys.filter(k => ch[k].extra).forEach(k => { const c = ch[k], s = `${c.label} ${I.fmt(c.vdiv, "V")}${c.offset ? ` offset ${I.fmt(c.offset, "V")}` : ""}`; ctx.fillStyle = c.color; ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; });
     ctx.fillStyle = t.stale ? "#ff9e64" : "#c9d6e3";
-    ctx.fillText(`${M.log ? "M log" : "M " + I.fmt(vw.tdiv, "s")}   ${I.fmt(vw.pos, "s")} … ${I.fmt(vw.pos + vw.span, "s")} of ${I.fmt(t.tStop, "s")} after power-on${t.stale ? "   circuit changed since — ▶ Run again" : ""}`, tx, 16);
+    ctx.fillText(`${M.log ? "M log" : "M " + I.fmt(vw.tdiv, "s")}   ${I.fmt(vw.pos, "s")} … ${I.fmt(vw.pos + vw.span, "s")} of ${I.fmt(t.tStop, "s")} ${afterText(t)}${t.stopped ? " (stopped)" : ""}${t.stale ? "   circuit changed since — ▶ Run again" : ""}`, tx, 16);
     drawOverview(ch, t, vw);
     let h = "";
     keys.forEach(k => {
@@ -515,12 +552,13 @@
     const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     const x0 = 64, gw = W - 128, at = hover && G && G.startup ? (hover.i + G.org) * G.dt : vw.pos + vw.span;
+    const off = t.scenario && t.scenario.kind === "standby" ? t.scenario.standby : 0;   // heated that long before t = 0
     ctx.font = "10px ui-monospace, Menlo, monospace"; ctx.textBaseline = "middle";
     tubes.forEach((u, j) => {
-      const y = 1 + j * LANE, h = LANE - 4, w90 = warmAt(C, u.tau, 0.9), pct = Math.round(100 * Math.min(1, emission(C, at, u.tau)));
+      const y = 1 + j * LANE, h = LANE - 4, w90 = warmAt(C, u.tau, 0.9) - off, pct = Math.round(100 * Math.min(1, emission(C, at + off, u.tau)));
       ctx.fillStyle = "#0d1520"; ctx.fillRect(x0, y, gw, h);
       for (let px = 0; px < gw; px++) {
-        const f = Math.min(1, emission(C, M.xt(x0 + px + 0.5), u.tau)); if (f < 0.005) continue;
+        const f = Math.min(1, emission(C, M.xt(x0 + px + 0.5) + off, u.tau)); if (f < 0.005) continue;
         ctx.fillStyle = `rgba(0,180,216,${(0.18 + 0.5 * f).toFixed(3)})`; ctx.fillRect(x0 + px, y + h * (1 - f), 1, h * f);
       }
       (u.coldSpans || []).forEach(([a, b]) => {
@@ -529,7 +567,7 @@
       });
       const xw = M.tx(w90);
       if (xw >= x0 && xw <= x0 + gw) { ctx.strokeStyle = "#e6edf3"; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(xw + 0.5, y); ctx.lineTo(xw + 0.5, y + h); ctx.stroke(); ctx.setLineDash([]); }
-      const name = `${u.label} (${u.tube})`, warm = tr(`warm at ${I.fmt(w90, "s", 1)}`);
+      const name = `${u.label} (${u.tube})`, warm = tr(w90 <= 0 ? "warm already" : `warm at ${I.fmt(w90, "s", 1)}`);
       ctx.lineWidth = 3; ctx.strokeStyle = "#0d1520"; ctx.textAlign = "left"; ctx.strokeText(name, x0 + 4, y + h / 2); ctx.fillStyle = "#e6edf3"; ctx.fillText(name, x0 + 4, y + h / 2);
       ctx.textAlign = "right"; ctx.strokeText(warm, x0 + gw - 4, y + h / 2); ctx.fillStyle = "#c9d6e3"; ctx.fillText(warm, x0 + gw - 4, y + h / 2); ctx.lineWidth = 1;
       ctx.textAlign = "left"; ctx.fillStyle = pct >= 90 ? "#3fb950" : "#8fa3b8"; ctx.fillText(pct + " %", x0 + gw + 6, y + h / 2);
@@ -599,7 +637,7 @@
         h += `<span>ΔT <b>${I.fmt(dT, "s")}</b>${Math.abs(dT) > 1e-12 ? ` (1/ΔT ${I.fmt(1 / Math.abs(dT), "Hz")})` : ""} · ΔV <b>${I.fmt(dV, "V")}</b></span>`;
       } else h += `<span>ΔX <b>${I.fmt(rs[1].v1 - rs[0].v1, "V")}</b> · ΔY <b>${I.fmt(rs[1].v2 - rs[0].v2, "V")}</b></span>`;
     }
-    if (!h && G) h = `<span class="hint">Click a trace to place marker A, then B, to measure time and voltage. Drag to move, double-click to remove.</span>`;
+    if (!h && G && !G.preview) h = `<span class="hint">Click a trace to place marker A, then B, to measure time and voltage. Drag to move, double-click to remove.</span>`;
     if (pick.list.length) h += `<button class="btn" id="marks-clear" title="Remove the markers (Esc)">Clear markers</button>`;
     el.innerHTML = h;
     const b = $("marks-clear"); if (b) b.onclick = () => pick.clear();
@@ -677,7 +715,7 @@
   }
   const moveTime = dtime => { if (G.startup) scrollBy(dtime); else { S.hpos += dtime; draw(); } };
   PlotZoom($("screen"), {
-    inside: (x, y) => !!G && !G.xy && x >= G.x0 && x <= G.x0 + G.gw && y >= G.y0 && y <= G.y0 + G.gh,
+    inside: (x, y) => !!G && !G.xy && !G.preview && x >= G.x0 && x <= G.x0 + G.gw && y >= G.y0 && y <= G.y0 + G.gh,
     zoom: (x, y, k, vertical) => {
       const dir = notch(k); if (!dir) return;
       if (vertical) zoomVolts(dir); else zoomTime(Math.max(0, Math.min(1, G.startup ? (G.xt(x) - G.vw.pos) / G.vw.span : (x - G.x0) / G.gw)), dir);
@@ -785,7 +823,8 @@
   function preset(p) {
     const t = I.transient; if (!t || !t.ok || t.running) return;
     const tau = Math.max(0, ...(t.tubes || []).map(x => x.tau || 0));
-    S.view.tdiv = p === "inrush" || p === "settled" ? ladder(t.tStop, 0.02) : p === "warmup" && tau > 0 && t.warmup ? ladder(t.tStop, 3 * tau / 10) : "full";
+    const sb = t.scenario && t.scenario.kind === "standby" ? t.scenario.standby : 0;   // the cathodes' warm-up left after a standby switch
+    S.view.tdiv = p === "inrush" || p === "settled" ? ladder(t.tStop, 0.02) : p === "warmup" && tau > 0 && t.warmup ? ladder(t.tStop, Math.max(0.1, 3 * tau - sb) / 10) : "full";
     const span = S.view.tdiv === "full" ? t.tStop : 10 * S.view.tdiv;
     S.view.pos = p === "settled" ? t.tStop - span : 0;
     S.view.preset = p;
@@ -817,10 +856,10 @@
     $("logt").checked = S.logT; $("ratings").checked = S.ratings;
     document.querySelectorAll("#presets .btn").forEach(b => { b.disabled = !(t && t.ok && !t.running); });
     renderReport(t);
-    $("analysis-note").textContent = st ? "Power-on: the circuit starts cold (capacitors empty, and with Cathodes warm up the tubes' cathodes too) and every source switches on at t = 0. Above the screen: Duration, ▶ Run and the time presets (keys 1 to 4: Inrush, Warm-up, Settled, Whole) with Log time. Under it: the whole record with a tick at each event, and the report: click an event to zoom to it. Dashed lines: the voltage ratings of capacitors the channel reads across. Zoom with the mouse wheel or Time/div (Ctrl+wheel: volts/div); scroll with the strip under the screen, Shift+wheel, right-drag or ← →."
+    $("analysis-note").textContent = st ? "Power-on: the circuit starts cold (capacitors empty, and the tubes' cathodes too unless the Scenario is Hot restart) and every source switches on at t = 0. Above the screen: Duration, Scenario, ▶ Run (the trace draws as it goes; ■ Stop keeps it) and the time presets (keys 1 to 4: Inrush, Warm-up, Settled, Whole) with Log time. Under it: the whole record with a tick at each event, and the report: click an event to zoom to it. Dashed lines: the voltage ratings of capacitors the channel reads across. Zoom with the mouse wheel or Time/div (Ctrl+wheel: volts/div); scroll with the strip under the screen, Shift+wheel, right-drag or ← →."
       : "Steady state: the settled circuit, one window repeated like a triggered scope. Zoom with the mouse wheel (Ctrl+wheel: volts/div); move along the time axis with Shift+wheel or right-drag. Autoset resets the view.";
     $("btn-sim").textContent = running ? "■ Stop" : "▶ Simulate"; $("btn-sim").classList.toggle("active", !!running);
-    $("btn-run").textContent = running ? "■ Stop" : "▶ Run"; $("btn-run").classList.toggle("active", !!running);
+    $("btn-run").textContent = running ? "■ Stop" : "▶ Run"; $("btn-run").classList.toggle("active", !!running); syncRunHint();
   };
   document.querySelectorAll("#analysis .btn").forEach(b => b.addEventListener("click", () => {
     if (S.analysis === b.dataset.v) return;
@@ -828,15 +867,30 @@
     syncAnalysis(); draw();
   }));
   $("t-stop").addEventListener("change", e => { S.tStop = e.target.value === "auto" ? "auto" : +e.target.value; draw(); });
-  $("warmup").addEventListener("change", e => { S.warmup = e.target.checked; draw(); });
+  // scenario: Cold start, Hot restart, Standby switch (B+ after the heaters), Soft start (a relay
+  // shorting a series resistor or the NTC); its numbers beside it
+  const syncScenario = () => { const k = S.scenario.kind; $("sb-row").hidden = k !== "standby"; $("soft-row").hidden = k !== "soft"; syncRunHint(); };
+  $("scenario").addEventListener("change", e => { S.scenario.kind = e.target.value; syncScenario(); draw(); });
+  [["sb-delay", "standby"], ["soft-r", "softR"], ["relay-t", "relay"]].forEach(([id, key]) => $(id).addEventListener("change", e => { const v = parseFloat(e.target.value); if (v > 0) S.scenario[key] = v; else e.target.value = S.scenario[key]; syncRunHint(); }));
+  // the Run button's hint: how long the last run took, scaled to the length and size asked now
+  function syncRunHint() {
+    const t = I.transient, r = t && t.rate, b = $("btn-run");
+    let h = "Simulate the power-on transient in the CAD (again while it runs: stop, keeping the record so far)";
+    if (t && t.running) h = "Stop the run: the record so far stays, with its report";
+    else if (r && r.msPerS > 0) {
+      const dur = S.tStop === "auto" ? r.tStop : +S.tStop, est = r.msPerS * dur / 1000;
+      h += `. Last run: ${I.fmt(r.tStop, "s")} of circuit time in ${(r.msPerS * r.tStop / 1000).toFixed(1)} s; expect about ${est < 10 ? est.toFixed(1) : Math.round(est)} s for ${S.tStop === "auto" ? "Auto (as long as last time)" : I.fmt(dur, "s")}${t && t.stale ? " (the circuit has changed since: a rough guide)" : ""}`;
+    } else h += ". The first run sets the estimate for the next";
+    b.title = h;
+  }
   const runOrStop = () => {
     if (S.analysis !== "startup") { I.send({ type: "RUN_SIM" }); return; }
     const t = I.transient;
-    if (t && t.running) I.send({ type: "STOP_TRANSIENT" }); else I.send({ type: "RUN_TRANSIENT", tStop: S.tStop, warmup: S.warmup });
+    if (t && t.running) I.send({ type: "STOP_TRANSIENT" }); else I.send({ type: "RUN_TRANSIENT", tStop: S.tStop, warmup: S.warmup, scenario: Object.assign({}, S.scenario) });
   };
   $("btn-sim").addEventListener("click", runOrStop); $("btn-run").addEventListener("click", runOrStop);
   I.onUpdate(syncAnalysis);
-  syncAnalysis();
+  syncAnalysis(); syncScenario();
   I.bindScopeSelect($("scope-select"));
   I.onUpdate(draw);
   window.addEventListener("resize", draw);

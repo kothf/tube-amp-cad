@@ -1618,8 +1618,21 @@
   //   more what it could emit): a rectifier charging empty capacitors,
   //   { i, t, ratio (asked for / could emit), frac (emission share), T (K), v (across it) } or null
   // ---------------------------------------------------------------------------
+  //   opts.warmOffset: the cathodes have been heating that long at t = 0 (a standby switch closed
+  //   after the heaters: the run starts at the switch). opts.soft: { r, at }: soft start, the mains
+  //   through r ohms (or the circuit's NTC inrush limiters, at their cold resistance) until a relay
+  //   shorts it at t = at. opts.onPartial(snapshot): about every partialMs (500) of run time, what
+  //   is new since the last one (probe and watched buckets from..to) and the running peaks, so a
+  //   caller can draw the record as it grows and keep it if the run is stopped.
   function startup(netlist, opts) {
     opts = opts || {};
+    if (opts.soft && opts.soft.at > 0) {
+      let nodeCount = netlist.nodeCount;
+      const els = netlist.elements.map(e => Object.assign({}, e)), ntc = els.filter(e => e.ntc);
+      if (ntc.length) ntc.forEach(e => { e.soft = true; });
+      else els.filter(e => e.acMains).forEach(e => { const n = nodeCount++, a = e.nodes[0]; e.nodes = [n, e.nodes[1]]; els.push({ id: e.id + "~soft", kind: "R", nodes: [a, n], r: Math.max(0.01, +opts.soft.r || 0), soft: true }); });
+      netlist = Object.assign({}, netlist, { nodeCount, elements: els });
+    }
     const circ0 = buildCircuit(netlist);
     try { return startupRun(circ0, opts); } finally { circ0.els.forEach(e => { delete e._emit; }); }
   }
@@ -1666,7 +1679,10 @@
     // the most it passed in each record bucket while cold and overdrawn, for the scope's lanes
     const tubes = circ.els.filter(e => TUBE[e.kind] && e.id), track = tubes.map(() => ({ peak: 0, peakAt: 0, endPeak: 0, worst: null, cold: nW ? new Float32Array(nW) : null }));
     const heated = opts.warmup ? tubes.filter(e => e.heat && e.heat.tau > 0 && e.heat.emit > 0) : [];
-    const warmTo = t => heated.forEach(e => { e._emit = e.heat.emit * cathodeWarm(t, e.heat.tau).frac; });
+    const off = Math.max(0, +opts.warmOffset || 0);
+    const warmTo = t => heated.forEach(e => { e._emit = e.heat.emit * cathodeWarm(t + off, e.heat.tau).frac; });
+    const soft = opts.soft && opts.soft.at > 0 ? circ.els.filter(e => e.soft) : [];
+    let softOn = soft.length > 0;
     // what a tube asks for (its space-charge current) and what it passes
     const demand = (e, x) => {
       if (e.kind === "VDIODE") { const v = vn(x, e.nodes[0]) - vn(x, e.nodes[1]); return { d: v > 0 ? e.perveance * Math.pow(v, 1.5) : 0, v }; }
@@ -1691,7 +1707,7 @@
         // a cold cathode overdrawn: the most current it passed while still below CATHODE.cold of its
         // working temperature (in kelvin) with the circuit asking for more than it could emit
         if (e._emit === undefined || !(i > 0) || (!k.cold && k.worst && i <= k.worst.i)) return;
-        const w = cathodeWarm(t, e.heat.tau);
+        const w = cathodeWarm(t + off, e.heat.tau);
         if (w.T >= CATHODE.cold * CATHODE.hot) return;
         const ratio = d / Math.max(e._emit, 1e-15);
         if (ratio < 1.5) return;   // the circuit takes what it would from a hot tube: normal conduction
@@ -1700,14 +1716,29 @@
         k.worst = { i, t, ratio, frac: w.frac, T: w.T, v };
       });
     };
+    // the partial record: what is new since the last snapshot
+    const partialMs = opts.partialMs || 500;
+    let lastPart = Date.now(), pb = 0, pw = 0;
+    const snapshot = s => {
+      const b = Math.min(nOut, Math.floor(s / per)), bw = nW ? Math.min(nW, Math.floor(s / perW)) : 0;   // whole buckets so far
+      const snap = { s, t: s * h, tStop, h, dt: tStop / nOut, points: nOut, watchDt: nW ? tStop / nW : 0, watchPoints: nW, from: pb, to: b, wfrom: pw, wto: bw,
+        min: mins.map(a => a.slice(pb, b)), max: maxs.map(a => a.slice(pb, b)),
+        watch: watch.map(w => ({ max: w.max, maxAt: w.maxAt, min: w.min, minAt: w.minAt, lo: w.lo && w.ok ? w.lo.slice(pw, bw) : null, hi: w.hi && w.ok ? w.hi.slice(pw, bw) : null })),
+        tubes: tubes.map((e, j) => ({ id: e.id, part: e.part || null, kind: e.kind, tau: heated.includes(e) ? e.heat.tau : 0, peak: track[j].peak, peakAt: track[j].peakAt, endPeak: track[j].endPeak, worst: track[j].worst, cold: track[j].cold ? track[j].cold.slice(pw, bw) : null })),
+        relayAt: soft.length && !softOn ? opts.soft.at : null };
+      pb = b; pw = bw;
+      return snap;
+    };
     warmTo(0);
     record(0, x);
     for (let s = 1; s <= steps; s++) {
       warmTo(s * h);
+      if (softOn && s * h >= opts.soft.at) { softOn = false; soft.forEach(e => { e.r = 0.01; delete e.ntc; }); }   // the relay closes across the soft-start resistance
       const nx = step(x, s * h, h);
       if (!nx) { result.error = "Transient did not converge at t=" + (s * h * 1000).toFixed(3) + " ms"; return result; }
       x = nx; record(s, x);
       if (opts.onProgress && s / steps - lastProg >= 0.02) { lastProg = s / steps; opts.onProgress(lastProg); }
+      if (opts.onPartial && Date.now() - lastPart >= partialMs) { lastPart = Date.now(); opts.onPartial(snapshot(s)); }
       if (Date.now() - t0 > budgetMs) { result.error = `Stopped after ${(s * h).toFixed(3)} s of circuit time: the run took longer than ${Math.round(budgetMs / 1000)} s`; return result; }
     }
     result.ok = true;
@@ -1715,6 +1746,7 @@
     result.probes = probes; result.min = mins; result.max = maxs;
     result.watch = watch.map(w => ({ max: w.max, maxAt: w.maxAt, min: w.min, minAt: w.minAt, lo: w.ok ? w.lo : null, hi: w.ok ? w.hi : null }));
     result.watchDt = nW ? tStop / nW : 0;
+    result.warmOffset = off; result.relayAt = soft.length ? opts.soft.at : null; result.soft = soft.length ? (soft.some(e => e.id.endsWith("~soft")) ? "resistor" : "ntc") : null;
     result.tubes = tubes.map((e, j) => ({ id: e.id, part: e.part || null, kind: e.kind, tau: heated.includes(e) ? e.heat.tau : 0, peak: track[j].peak, peakAt: track[j].peakAt, endPeak: track[j].endPeak, worst: track[j].worst, cold: track[j].cold }));
     result.elapsedMs = Date.now() - t0;
     return result;
