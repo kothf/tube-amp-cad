@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.171.0] - 2026-11-01
+
+### Added
+- **Oscilloscope power-on mode: report strip, time presets and log time.** In Power-on mode the controls sit above the screen (Duration, Cathodes warm up, ▶ Run) with time presets **Inrush** (0–200 ms), **Warm-up** (to three time constants of the slowest cathode), **Settled** (the last 200 ms) and **Whole**, keys 1–4, a **Log time** axis (log<sub>10</sub>(t + 1 ms), labelled 1-2-5) so the inrush and the warm-up show on one screen, and **Rating lines** on or off. Under the screen the **Power-on report** replaces the notes in the side panel: every event in time order with its time, part, value against its rating and a tag, **Critical** (a capacitor over 1.15 × its rating, a rectifier surge over its peak rating), **Warning** (a capacitor over its rating, a tube overdrawn while cold) or **Info** (a capacitor within 10 % of its rating, B+ settled to ±1 %), a verdict and **Copy**. Clicking an event zooms the screen to it with marker A on it; the overview strip and the screen's time axis carry a tick per event with its text on hover. On a narrow window the controls, presets, screen and report stack; at medium widths Display fits one row.
+- The power-on run keeps a coarser min/max record of every capacitor's voltage (engine `watchPoints`), for B+ settling now and for plotting a capacitor without a probe next.
+
 ## [3.170.0] - 2026-11-01
 
 ### Changed

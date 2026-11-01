@@ -379,6 +379,9 @@
     "Duration": "How long after switch-on the power-on run simulates. Auto: three time constants of the slowest cathode warming up (5–60 s), or 1 s with hot cathodes.",
     "Analysis": "Steady state: the settled circuit, one window repeated as a triggered scope shows it.\nPower-on: the first moments after switch-on, capacitors empty, every source switched on at t = 0, the tubes' cathodes cold and warming up (Cathodes warm up).",
     "Cathodes warm up": "The tubes' cathodes start cold and warm with their own time constant (1–2 s directly heated, 5–10 s indirectly heated), emitting little until hot: B+ can overshoot, and the run warns of a tube overdrawn while cold. Untick for hot cathodes.",
+    "Log time": "Power-on: the time axis as log10(t + 1 ms) over the window, so the inrush in the first milliseconds and the seconds of warm-up show on one screen.",
+    "Rating lines": "Power-on: each capacitor's voltage rating as a dashed line on the channel that reads across it: grey, orange once the peak goes over it, red past 1.15 ×.",
+    "Power-on report": "What the power-on run found, in time order. Critical (red): a capacitor over 1.15 × its rating, a rectifier surge over its peak rating. Warning (orange): a capacitor over its rating, a tube overdrawn while its cathode was cold. Info (grey): a capacitor within 10 % of its rating, B+ settled to ±1 %.\nClick an event to zoom to it; Copy puts the report on the clipboard.",
     "Display": "Which channels show, and how.",
     "Scope part": "Which oscilloscope part in the circuit this window reads (a circuit can have several).",
     // spectrum

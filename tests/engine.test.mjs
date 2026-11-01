@@ -469,6 +469,23 @@ test("power-on with warm-up: the tube conducts only as its cathode heats, never 
   assert.ok(r.tubes[0].tau === tau && r.tubes[0].peak > 0.99 * iHot, "the tube's record: its time constant and peak current");
 });
 
+test("power-on: watched nets keep a coarser min/max record (watchPoints) that matches the probe", () => {
+  const tau = 2, nl = warmTriode(tau);
+  const r = E.startup(nl, { tStop: 4 * tau, warmup: true, probes: [[3, 0]], maxPoints: 2000, watch: [[3, 0], [1, 0]], watchPoints: 200 });
+  assert.ok(r.ok, r.error);
+  const w = r.watch[0];
+  assert.equal(w.lo.length, 200); assert.equal(w.hi.length, 200); near(r.watchDt, 4 * tau / 200, 1e-9, "watchDt");
+  // bucket k of the watched record spans probe buckets 10k … 10k + 9
+  for (const k of [0, 20, 100, 199]) {
+    let lo = Infinity, hi = -Infinity; for (let j = 10 * k; j < 10 * k + 10; j++) { lo = Math.min(lo, r.min[0][j]); hi = Math.max(hi, r.max[0][j]); }
+    near(w.lo[k], lo, 1e-3, `low of bucket ${k}`); near(w.hi[k], hi, 1e-3, `high of bucket ${k}`);
+  }
+  assert.ok(Math.max(...w.hi) <= w.max + 1e-6 && r.watch[1].hi.slice(1).every(v => Math.abs(v - 250) < 1e-6), "the supply's record is flat at 250 V (after t = 0, where every node starts at 0)");
+  // without watchPoints: peaks only
+  const p = E.startup(nl, { tStop: 1, warmup: true, watch: [[3, 0]] });
+  assert.equal(p.watch[0].lo, null); assert.equal(p.watchDt, 0);
+});
+
 test("power-on with warm-up: a rectifier charging a big empty capacitor from a cold cathode is reported", () => {
   // 5U4G, full wave from 2 × 350 Vrms, 470 µF first capacitor through 5 Ω per anode
   const P = E.RECTIFIER_PERVEANCE["5U4G"], pk = 350 * Math.SQRT2, heat = { tau: 1.5, emit: 12 * 0.225 };

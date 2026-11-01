@@ -1656,7 +1656,11 @@
     const step = (xprev, tNext, hh) => timerStep(circ, solveStep, xprev, tNext, hh);
     let x = new Array(n).fill(0), lastProg = 0;
     const okNode = k => k >= 0 && k < circ.nNodes;
-    const watch = (opts.watch || []).map(p => Array.isArray(p) ? p : [p, 0]).map(([a, b]) => ({ a, b, ok: okNode(a) && okNode(b), max: 0, maxAt: 0, min: 0, minAt: 0 }));
+    // watched nets (every capacitor's): the peak each way, and (opts.watchPoints) a coarser
+    // min/max record, for the power-on report's settling time and for plotting a capacitor unprobed
+    const nW = Math.min(opts.watchPoints || 0, steps), perW = nW ? steps / nW : 1;
+    const watch = (opts.watch || []).map(p => Array.isArray(p) ? p : [p, 0]).map(([a, b]) => ({ a, b, ok: okNode(a) && okNode(b), max: 0, maxAt: 0, min: 0, minAt: 0,
+      lo: nW ? new Float32Array(nW).fill(Infinity) : null, hi: nW ? new Float32Array(nW).fill(-Infinity) : null }));
     const TUBE = { TRIODE: 1, PENTODE: 1, VDIODE: 1 };
     const tubes = circ.els.filter(e => TUBE[e.kind] && e.id), track = tubes.map(() => ({ peak: 0, peakAt: 0, endPeak: 0, worst: null }));
     const heated = opts.warmup ? tubes.filter(e => e.heat && e.heat.tau > 0 && e.heat.emit > 0) : [];
@@ -1672,7 +1676,12 @@
       const b = Math.min(nOut - 1, Math.floor(s / per));
       probes.forEach(([p, q], j) => { const v = vn(x, p) - vn(x, q); if (v < mins[j][b]) mins[j][b] = v; if (v > maxs[j][b]) maxs[j][b] = v; });
       const t = s * h;
-      watch.forEach(w => { if (!w.ok) return; const v = vn(x, w.a) - vn(x, w.b); if (v > w.max) { w.max = v; w.maxAt = t; } if (v < w.min) { w.min = v; w.minAt = t; } });
+      const bw = nW ? Math.min(nW - 1, Math.floor(s / perW)) : 0;
+      watch.forEach(w => {
+        if (!w.ok) return; const v = vn(x, w.a) - vn(x, w.b);
+        if (v > w.max) { w.max = v; w.maxAt = t; } if (v < w.min) { w.min = v; w.minAt = t; }
+        if (w.lo) { if (v < w.lo[bw]) w.lo[bw] = v; if (v > w.hi[bw]) w.hi[bw] = v; }
+      });
       tubes.forEach((e, j) => {
         const { d, v } = demand(e, x), i = d * emitShare(e, d), k = track[j];
         if (i > k.peak) { k.peak = i; k.peakAt = t; }
@@ -1700,7 +1709,8 @@
     result.ok = true;
     result.tStop = tStop; result.h = h; result.steps = steps; result.points = nOut; result.dt = tStop / nOut;
     result.probes = probes; result.min = mins; result.max = maxs;
-    result.watch = watch.map(w => ({ max: w.max, maxAt: w.maxAt, min: w.min, minAt: w.minAt }));
+    result.watch = watch.map(w => ({ max: w.max, maxAt: w.maxAt, min: w.min, minAt: w.minAt, lo: w.ok ? w.lo : null, hi: w.ok ? w.hi : null }));
+    result.watchDt = nW ? tStop / nW : 0;
     result.tubes = tubes.map((e, j) => ({ id: e.id, part: e.part || null, kind: e.kind, tau: heated.includes(e) ? e.heat.tau : 0, peak: track[j].peak, peakAt: track[j].peakAt, endPeak: track[j].endPeak, worst: track[j].worst }));
     result.elapsedMs = Date.now() - t0;
     return result;

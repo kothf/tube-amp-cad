@@ -305,6 +305,10 @@ the circuit that was on the sheet.
   as dashed lines, and warns of a capacitor over its rating, a rectifier
   overdrawn while its cathode is still cold (cathode stripping) and a
   switch-on surge. *Auto* duration covers the slowest warm-up (5–60 s).
+  A report strip under the screen lists these events in time order, tagged
+  Critical, Warning or Info (B+ settling to ±1 % among them); click one to zoom
+  there. Time presets (keys 1–4: Inrush, Warm-up, Settled, Whole) and a log
+  time axis show the millisecond inrush and the seconds of warm-up alike.
 
 ## Drawings, documents and exports
 
@@ -468,7 +472,8 @@ the circuit that was on the sheet.
   - Readouts in Vpp, Vrms, dBV and DC, with the CH1/CH2 gain and phase.
   - Channels with no probe wired are greyed out.
   - *Power-on* shows the switch-on transient with an overview strip of the
-    whole record, the cathodes warming up, capacitor ratings and warnings.
+    whole record (a tick at each event), the cathodes warming up, capacitor
+    ratings, time presets 1–4, *Log time* and a clickable power-on report.
 - **Spectrum analyzer.**
   - The FFT is computed over a whole number of cycles, so there is no
     windowing error.

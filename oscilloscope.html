@@ -22,7 +22,7 @@
     .btn.active { background: #0b3a48; border-color: var(--accent); color: #7fe8ff; }
     select { background: #0b1118; border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
     main { display: grid; grid-template-columns: 1fr 300px; gap: 12px; padding: 12px; min-height: 0; }
-    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: 1fr auto auto auto; min-height: 0; }
+    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: auto 1fr auto auto auto auto; min-height: 0; }
     #overview { width: 100%; height: 48px; display: block; margin-top: 8px; border-radius: 5px; cursor: ew-resize; }
     #screen { width: 100%; height: 100%; display: block; border-radius: 6px; min-height: 0; }
     .meas { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 4px 0; font: 12px ui-monospace, Menlo, monospace; }
@@ -42,10 +42,30 @@
     .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
     .seg .btn { padding: 4px 0; text-align: center; font-size: 12px; }
     .muted { color: var(--muted); font-size: 12px; }
-    .pwr-notes { font-size: 12px; line-height: 1.4; margin-top: 6px; display: grid; gap: 4px; }
-    .pwr-notes:empty { display: none; }
-    .pwr-notes .bad { color: #ff6b6b; } .pwr-notes .warn { color: #ff9e64; } .pwr-notes .ok { color: var(--muted); }
-    @media (max-width: 900px) { body { overflow: auto; } main { grid-template-columns: 1fr; } .bezel { height: 60vh; } }
+    /* power-on: controls and time presets above the screen, the report strip under it */
+    .pwr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 0 2px 8px; font-size: 12px; }
+    .pwr-bar[hidden], .pwr-report[hidden] { display: none; }
+    .pwr-bar .grp { display: flex; align-items: center; gap: 6px; } .pwr-bar .row { margin: 0; justify-content: flex-start; }
+    .pwr-bar .btn { padding: 2px 9px; font-size: 12px; }
+    .pwr-bar .btn kbd { font: 10px ui-monospace, monospace; color: var(--muted); margin-right: 3px; }
+    .pwr-bar .btn:disabled { opacity: .45; cursor: default; }
+    .pwr-bar label { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+    .pwr-report { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12px; }
+    .pwr-report .head { display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--line); }
+    .pwr-report .head .title { margin: 0; font-weight: 600; color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+    .pwr-report .head .btn { margin-left: auto; padding: 1px 9px; font-size: 11px; }
+    .verdict.critical { color: #ff6b6b; } .verdict.warning { color: #ff9e64; } .verdict.ok { color: var(--ok); }
+    #pwr-events { max-height: 128px; overflow-y: auto; }
+    .ev { display: grid; grid-template-columns: 16px 62px minmax(70px, max-content) 1fr auto; gap: 8px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #1b2636; padding: 4px 10px; cursor: pointer; }
+    .ev:last-child { border-bottom: 0; } .ev:hover { background: #16202d; } .ev.active { background: #0b2b36; }
+    .ev .tm { font-family: ui-monospace, Menlo, monospace; color: #c9d6e3; } .ev .who { font-weight: 600; } .ev .tx { color: #c9d6e3; }
+    .ev .tag { white-space: nowrap; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; padding: 0 6px; border-radius: 99px; border: 1px solid currentColor; }
+    .ev.critical .ic, .ev.critical .tag { color: #ff6b6b; } .ev.warning .ic, .ev.warning .tag { color: #ff9e64; } .ev.info .ic, .ev.info .tag { color: #8fa3b8; }
+    .pwr-report .none { padding: 6px 10px; color: var(--muted); }
+    /* medium: Display in one row */
+    @media (min-width: 901px) and (max-width: 1200px) { #card-display { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; } #card-display h3 { margin: 0; } #card-display .row { margin: 0 !important; } #card-display #btn-autoset { width: auto !important; } #card-display .seg .btn { font-size: 11px; padding: 3px 0; } }
+    /* narrow: everything stacked, controls → presets → screen → report, then the panel */
+    @media (max-width: 900px) { body { overflow: auto; height: auto; min-height: 100%; } main { grid-template-columns: 1fr; } .bezel { height: auto; } #screen { height: 52vh; } .ev { grid-template-columns: 16px 56px 1fr auto; } .ev .tag { grid-row: 1; grid-column: 4; } .ev .tx { grid-row: 2; grid-column: 2 / -1; } }
   </style>
 </head>
 <body>
@@ -64,10 +84,27 @@
   </header>
   <main>
     <div class="bezel">
+      <div class="pwr-bar" id="pwr-bar" hidden>
+        <div class="grp row"><span>Duration</span><select id="t-stop" title="How long after switch-on to simulate. Auto: long enough for the slowest cathode to warm up (three of its time constants, 5 to 60 s), or 1 s with hot cathodes"><option value="auto" selected>Auto</option><option value="0.1">0.1 s</option><option value="0.2">0.2 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="2">2 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="20">20 s</option><option value="30">30 s</option><option value="60">60 s</option></select></div>
+        <label id="warmup-row" title="The tubes' cathodes start cold and warm up, each with its own time constant (a directly heated rectifier in a second or two, an indirectly heated one or an EL34 in 8 to 10 s): until then they draw little, so B+ can overshoot, and the run warns of a tube overdrawn while cold. Untick for hot cathodes (a standby switch closed with the heaters already on)"><input type="checkbox" id="warmup" checked> Cathodes warm up</label>
+        <button class="btn" id="btn-run" title="Simulate the power-on transient in the CAD (again while it runs: stop)">▶ Run</button>
+        <div class="grp seg-group" id="presets" role="group" aria-label="Time presets">
+          <button class="btn" data-p="inrush" title="Inrush: the first 200 ms, the rectifier charging the empty capacitors (key 1)"><kbd>1</kbd>Inrush</button>
+          <button class="btn" data-p="warmup" title="Warm-up: from switch-on to three time constants of the slowest cathode, the B+ overshoot (key 2)"><kbd>2</kbd>Warm-up</button>
+          <button class="btn" data-p="settled" title="Settled: the last 200 ms of the run, the settled voltage and its mains ripple (key 3)"><kbd>3</kbd>Settled</button>
+          <button class="btn" data-p="whole" title="Whole: the entire record (key 4)"><kbd>4</kbd>Whole</button>
+        </div>
+        <label title="Log time: the time axis as log10(t + 1 ms), so the first milliseconds' inrush and the seconds of warm-up show on one screen"><input type="checkbox" id="logt"> Log time</label>
+        <label title="Draw each capacitor's voltage rating as a dashed line on the channel that reads across it"><input type="checkbox" id="ratings" checked> Rating lines</label>
+      </div>
       <canvas id="screen" aria-label="Oscilloscope screen"></canvas>
       <canvas id="overview" aria-label="Whole power-on record: click or drag to scroll" hidden></canvas>
       <div class="meas" id="meas"></div>
       <div class="marks" id="marks"></div>
+      <div class="pwr-report" id="pwr-report" hidden>
+        <div class="head"><h3 class="title">Power-on report</h3><span class="verdict" id="pwr-verdict"></span><button class="btn" id="pwr-copy" title="Copy the report as plain text">Copy</button></div>
+        <div id="pwr-events" role="list" aria-label="Power-on events: click one to zoom to it"></div>
+      </div>
     </div>
     <aside>
       <div class="card">
@@ -75,12 +112,9 @@
         <div class="seg" id="analysis" style="grid-template-columns: 1fr 1fr">
           <button class="btn active" data-v="steady">Steady state</button><button class="btn" data-v="startup">Power-on</button>
         </div>
-        <div class="row" style="margin-top:8px"><span>Duration</span><select id="t-stop" title="How long after switch-on to simulate. Auto: long enough for the slowest cathode to warm up (three of its time constants, 5 to 60 s), or 1 s with hot cathodes"><option value="auto" selected>Auto</option><option value="0.1">0.1 s</option><option value="0.2">0.2 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="2">2 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="20">20 s</option><option value="30">30 s</option><option value="60">60 s</option></select></div>
-        <label class="muted" id="warmup-row" title="The tubes' cathodes start cold and warm up, each with its own time constant (a directly heated rectifier in a second or two, an indirectly heated one or an EL34 in 8 to 10 s): until then they draw little, so B+ can overshoot, and the run warns of a tube overdrawn while cold. Untick for hot cathodes (a standby switch closed with the heaters already on)"><input type="checkbox" id="warmup" checked> Cathodes warm up</label>
-        <div class="pwr-notes" id="pwr-notes"></div>
         <p class="muted" id="analysis-note">Steady state: the settled circuit, one window repeated like a triggered scope.</p>
       </div>
-      <div class="card">
+      <div class="card" id="card-display">
         <h3>Display</h3>
         <div class="seg" id="mode">
           <button class="btn active" data-v="dual">Dual</button><button class="btn" data-v="ch1">CH1</button><button class="btn" data-v="ch2">CH2</button><button class="btn" data-v="xy">X-Y</button>

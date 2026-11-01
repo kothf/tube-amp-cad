@@ -4,7 +4,7 @@
   "use strict";
   const I = Instrument, $ = id => document.getElementById(id);
   const SM = ScopeMath, VDIV = SM.VDIV, TDIV = SM.TDIV;
-  const S = { mode: "dual", analysis: "steady", tStop: "auto", warmup: true, view: { tdiv: "auto", pos: 0, seq: null }, ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", hpos: 0, trig: { src: "ch1", slope: "rising" } };
+  const S = { mode: "dual", analysis: "steady", tStop: "auto", warmup: true, view: { tdiv: "auto", pos: 0, seq: null, event: -1 }, ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", hpos: 0, trig: { src: "ch1", slope: "rising" }, logT: false, ratings: true };
 
   const fill = (sel, list, unit) => { sel.innerHTML = `<option value="auto">Auto</option>` + list.map(v => `<option value="${v}">${I.fmt(v, unit)}/div</option>`).join(""); };
   fill($("ch1-vdiv"), VDIV, "V"); fill($("ch2-vdiv"), VDIV, "V"); fill($("tdiv"), TDIV, "s");
@@ -23,7 +23,7 @@
   // min and max of a few steps). raw is the midpoint, used by markers.
   let chCache = null;
   function startupChannels(ts) {
-    const key = ts && [S.ch1.vdiv, S.ch1.cpl, S.ch2.vdiv, S.ch2.cpl].join();
+    const key = ts && [S.ch1.vdiv, S.ch1.cpl, S.ch2.vdiv, S.ch2.cpl, S.ratings].join();
     if (chCache && chCache.ts === ts && chCache.key === key) return chCache.out;
     const out = {};
     ["ch1", "ch2"].forEach(k => {
@@ -35,13 +35,14 @@
       // the voltage ratings of the capacitors this channel reads across, drawn as limit lines; the
       // automatic volts/div takes in those near the trace (within 1.5 × its largest swing)
       let big = 0; for (let i = 0; i < n; i++) big = Math.max(big, Math.abs(d.min[i]), Math.abs(d.max[i]));
-      const limits = capLimits(d.nets), near = limits.filter(l => Math.abs(l.v) <= 1.5 * big);
+      const limits = S.ratings ? capLimits(d.nets) : [], near = limits.filter(l => Math.abs(l.v) <= 1.5 * big);
       const scaled = near.length ? Float32Array.from([...inter, ...near.map(l => l.v)]) : inter;
       out[k] = { raw: mid, min: d.min, max: d.max, cpl, limits, ...SM.channel(scaled, S[k].vdiv, cpl) };
     });
     chCache = { ts, key, out };
     return out;
   }
+  const SEV = { critical: 1, warning: 2, info: 3 }, LEVEL_COLOR = { critical: "#ff6b6b", warning: "#ff9e64", info: "#8fa3b8" };
   // the capacitors across a channel's two nets (its input and the scope's common), each with its
   // voltage rating signed as the channel reads it; one line per rating
   function capLimits(nets) {
@@ -53,7 +54,7 @@
       if (!sgn) return;
       const v = sgn * c.rating, have = out.find(l => l.v === v);
       if (have) have.labels.push(c.label); else out.push({ v, labels: [c.label], level: c.level });
-      if (have && c.level === "bad") have.level = "bad";
+      if (have && (SEV[c.level] || 9) < (SEV[have.level] || 9)) have.level = c.level;
     });
     return out;
   }
@@ -148,11 +149,12 @@
     const x0 = 64, y0 = 32, gw = W - 2 * x0, gh = H - y0 - 26;
     // graticule
     ctx.strokeStyle = "rgba(0,180,216,0.16)"; ctx.lineWidth = 1;
-    for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(x0 + i * gw / 10, y0); ctx.lineTo(x0 + i * gw / 10, y0 + gh); ctx.stroke(); }
+    const logx = S.analysis === "startup" && S.logT && I.transient && I.transient.ok && !I.transient.running;   // its own grid, at 1-2-5 times
+    for (let i = 0; i <= 10; i++) { if (logx && i > 0 && i < 10) continue; ctx.beginPath(); ctx.moveTo(x0 + i * gw / 10, y0); ctx.lineTo(x0 + i * gw / 10, y0 + gh); ctx.stroke(); }
     for (let j = 0; j <= 8; j++) { ctx.beginPath(); ctx.moveTo(x0, y0 + j * gh / 8); ctx.lineTo(x0 + gw, y0 + j * gh / 8); ctx.stroke(); }
     ctx.strokeStyle = "rgba(0,229,255,0.35)";
-    for (let i = 0; i <= 50; i++) { const x = x0 + i * gw / 50; ctx.beginPath(); ctx.moveTo(x, y0 + gh / 2 - 3); ctx.lineTo(x, y0 + gh / 2 + 3); ctx.stroke(); }
-    for (let j = 0; j <= 40; j++) { const y = y0 + j * gh / 40; ctx.beginPath(); ctx.moveTo(x0 + gw / 2 - 3, y); ctx.lineTo(x0 + gw / 2 + 3, y); ctx.stroke(); }
+    for (let i = 0; i <= 50; i++) { if (logx) break; const x = x0 + i * gw / 50; ctx.beginPath(); ctx.moveTo(x, y0 + gh / 2 - 3); ctx.lineTo(x, y0 + gh / 2 + 3); ctx.stroke(); }
+    for (let j = 0; j <= 40; j++) { if (logx) break; const y = y0 + j * gh / 40; ctx.beginPath(); ctx.moveTo(x0 + gw / 2 - 3, y); ctx.lineTo(x0 + gw / 2 + 3, y); ctx.stroke(); }
 
     ctx.font = "12px ui-monospace, Menlo, monospace";
     if (S.analysis === "startup") { drawStartup(ctx, x0, y0, gw, gh); return; }
@@ -250,7 +252,8 @@
   }
 
   // time/div choices for the power-on record: a zoom ladder up to the whole record
-  const zoomSteps = tStop => SM.TDIV.filter(v => v < tStop / 10 * 0.999).concat([tStop / 10]);
+  // (the scope's own steps, then 0.5 to 5 s/div for a long warm-up record)
+  const zoomSteps = tStop => SM.TDIV.concat([0.5, 1, 2, 5]).filter(v => v < tStop / 10 * 0.999).concat([tStop / 10]);
   // default zoom: a few periods of the circuit's signal; a DC-only circuit shows the whole record
   // a long record of the cathodes warming up opens whole; a short one on a few signal periods
   const wholeByDefault = t => !!t.warmup && t.tStop >= 5;
@@ -261,7 +264,7 @@
   }
   function viewOf(t) {
     const v = S.view;
-    if (v.seq !== t.seq) { v.seq = t.seq; v.pos = 0; }       // a new record starts at power-on
+    if (v.seq !== t.seq) { v.seq = t.seq; v.pos = 0; v.event = -1; }       // a new record starts at power-on
     const tdiv = v.tdiv === "auto" ? defaultTdiv(t) : v.tdiv === "full" ? t.tStop / 10 : Math.min(+v.tdiv, t.tStop / 10);
     const span = 10 * tdiv;
     v.pos = Math.max(0, Math.min(t.tStop - span, v.pos));
@@ -292,6 +295,65 @@
     }
     return "line";
   }
+  // Time axis of the power-on screen: linear over the window, or (Log time) log10(t + ε) over it, so
+  // the first milliseconds' inrush and the seconds of warm-up share one screen. ε: 1 ms (less for a
+  // window under a second), at least one sample.
+  function timeMap(vw, dt, x0, gw) {
+    const a = vw.pos, b = vw.pos + vw.span;
+    if (!S.logT) return { log: false, tx: t => x0 + (t - a) / vw.span * gw, xt: x => a + (x - x0) / gw * vw.span };
+    const eps = Math.max(dt, Math.min(1e-3, vw.span / 1000)), L = t => Math.log10(Math.max(0, t) + eps), la = L(a), lb = L(b);
+    return { log: true, eps, tx: t => x0 + (L(t) - la) / (lb - la) * gw, xt: x => Math.pow(10, la + (x - x0) / gw * (lb - la)) - eps };
+  }
+  // a channel through a time map: the waveform itself when zoomed in past one sample a pixel, else
+  // an envelope per pixel (min to max of its samples; a pixel narrower than a sample reads the
+  // waveform there)
+  function traceMap(ctx, c, dt, M, x0, gw, ys) {
+    const n = c.min.length, t0 = M.xt(x0), t1 = M.xt(x0 + gw);
+    ctx.beginPath();
+    if (!M.log && (t1 - t0) / dt <= gw) {
+      for (let i = Math.max(0, Math.floor(t0 / dt)), k = 0; i <= Math.min(n - 1, Math.ceil(t1 / dt)); i++, k++) {
+        const x = M.tx(i * dt), y = ys(c, c.raw[i]);
+        k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      return "line";
+    }
+    const top = [], bot = [], at = f => { const j = Math.max(0, Math.min(n - 1, Math.floor(f))), q = Math.max(0, Math.min(1, f - j)), u = c.raw[j], w = c.raw[Math.min(n - 1, j + 1)]; return u + (w - u) * q; };
+    for (let px = 0; px < gw; px++) {
+      const ta = M.xt(x0 + px), tb = M.xt(x0 + px + 1);
+      if (ta / dt >= n) break;
+      if (tb - ta < dt) { const y = ys(c, at(ta / dt)); top.push(y); bot.push(y); continue; }
+      const a = Math.max(0, Math.floor(ta / dt)), b = Math.min(n, Math.max(a + 1, Math.ceil(tb / dt)));
+      let hi = -Infinity, lo = Infinity;
+      for (let i = a; i < b; i++) { if (c.max[i] > hi) hi = c.max[i]; if (c.min[i] < lo) lo = c.min[i]; }
+      top.push(ys(c, hi)); bot.push(ys(c, lo));
+    }
+    top.forEach((y, px) => px ? ctx.lineTo(x0 + px, y) : ctx.moveTo(x0, y));
+    for (let px = bot.length - 1; px >= 0; px--) ctx.lineTo(x0 + px + 1, bot[px]);
+    ctx.closePath();
+    return "fill";
+  }
+  // 1-2-5 times over a log window, labelled at the decades (and 2, 5 when they fit)
+  function drawLogAxis(ctx, M, vw, x0, y0, gw, gh) {
+    const a = vw.pos, b = vw.pos + vw.span, out = [];
+    for (let d = Math.floor(Math.log10(Math.max(M.eps, 1e-9))); d <= Math.ceil(Math.log10(b)); d++)
+      [1, 2, 5].forEach(m => { const v = m * Math.pow(10, d); if (v > a + M.eps * 0.5 && v <= b * 1.0001) out.push({ v, major: m === 1 }); });
+    ctx.save(); ctx.font = "10px ui-monospace, Menlo, monospace"; ctx.textBaseline = "middle"; ctx.lineWidth = 1;
+    let lastX = -1e9;
+    const lbl = [];
+    [{ v: a, major: true, edge: true }, ...out].forEach(({ v, major, edge }) => {
+      const x = M.tx(v); if (x < x0 - 0.5 || x > x0 + gw + 0.5) return;
+      if (!edge) { ctx.strokeStyle = major ? "rgba(0,180,216,0.22)" : "rgba(0,180,216,0.10)"; ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + gh); ctx.stroke(); }
+      const txt = v === 0 ? "0" : I.fmt(v, "s"), w = ctx.measureText(txt).width;
+      if ((major || edge || x - lastX > w + 14) && x - lastX > w + 8) {
+        ctx.fillStyle = "#c9d6e3"; ctx.textAlign = x < x0 + 12 ? "left" : x > x0 + gw - 12 ? "right" : "center";
+        ctx.fillText(txt, x, y0 + gh + 13); lastX = x; lbl.push(txt);
+      }
+    });
+    ctx.restore();
+    return lbl;
+  }
+  // the run's events (the report strip's rows) inside [a, b]
+  const eventsOf = t => (t && t.ok && !t.running && t.events) || [];
   function drawStartup(ctx, x0, y0, gw, gh) {
     const t = I.transient, ts = I.transientScope(), ov = $("overview");
     const msg = (lines) => { ov.hidden = true; ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center"; lines.forEach((l, i) => ctx.fillText(l, x0 + gw / 2, y0 + gh / 2 - 12 + i * 18)); ctx.textAlign = "left"; $("meas").innerHTML = ""; G = null; renderMarks(); };
@@ -301,47 +363,57 @@
       ctx.fillStyle = "#00b4d8"; ctx.fillRect(x0 + gw * 0.2, y0 + gh / 2 + 14, gw * 0.6 * p, 10);
       return msg([`Simulating the first ${I.fmt(t.tStop, "s")} after power-on${t.warmup ? ", the cathodes warming up" : ""}… ${Math.round(p * 100)} %`]);
     }
-    if (!t) return msg([`Power-on transient: press ▶ Simulate to run the first ${S.tStop === "auto" ? (S.warmup ? "seconds, until the cathodes are warm," : "second") : I.fmt(+S.tStop, "s")} after switch-on.`,
+    if (!t) return msg([`Power-on transient: press ▶ Run to simulate the first ${S.tStop === "auto" ? (S.warmup ? "seconds, until the cathodes are warm," : "second") : I.fmt(+S.tStop, "s")} after switch-on.`,
       `Every capacitor starts empty and every source switches on at t = 0${S.warmup ? "; the tubes' cathodes start cold and warm up" : ""}.`]);
     if (!t.ok) return msg([`Power-on transient: ${t.error || "failed"}`]);
     const ch = startupChannels(ts), any = ch.ch1 || ch.ch2;
     markChannels(ch);
     if (!any) return msg([ts ? "No input connected — wire CH1 / CH2 of " + ts.label + " in the CAD" : "This scope part was not in the simulated circuit"]);
     const n = any.min.length, dt = t.dt, vw = viewOf(t);
-    const i0 = Math.round(vw.pos / dt), count = vw.span / dt;
-    G = { x0, y0, gw, gh, dt, M: count, P: n, start: i0, org: i0, ch, xy: false, startup: true, t, vw };
+    const i0 = Math.round(vw.pos / dt), count = vw.span / dt, M = timeMap(vw, dt, x0, gw);
+    G = { x0, y0, gw, gh, dt, M: count, P: n, start: i0, org: i0, ch, xy: false, startup: true, t, vw, tx: M.tx, xt: M.xt, log: M.log };
     const ys = (c, v) => y0 + gh / 2 - Math.max(-4.4, Math.min(4.4, c.cpl === "gnd" ? 0 : (v - c.off) / c.vdiv)) * gh / 8;
     {   // time after power-on along the bottom; volts as in steady state
       const on = k => ch[k] && (S.mode === "dual" || S.mode === k || S.mode === "xy");
-      drawAxes(ctx, { start: vw.pos, step: vw.tdiv, unit: "s", color: "#c9d6e3" },
+      drawAxes(ctx, M.log ? null : { start: vw.pos, step: vw.tdiv, unit: "s", color: "#c9d6e3" },
         on("ch1") ? vAxis(ch.ch1, "#ffe23d") : on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null, on("ch1") && on("ch2") ? vAxis(ch.ch2, "#00e5ff") : null);
+      if (M.log) G.axes.h = drawLogAxis(ctx, M, vw, x0, y0, gw, gh);
     }
     const levels = [];
     ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, gw, gh); ctx.clip();
     const glow = color => { ctx.strokeStyle = color; ctx.globalAlpha = 0.18; ctx.lineWidth = 5; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1.7; ctx.stroke(); };
     [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k, color]) => {
       const c = ch[k]; if (!c || (S.mode !== "dual" && S.mode !== k && S.mode !== "xy")) return;
-      if (trace(ctx, c, i0, count, x0, gw, ys) === "fill") { ctx.fillStyle = color; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke(); }
+      if (traceMap(ctx, c, dt, M, x0, gw, ys) === "fill") { ctx.fillStyle = color; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke(); }
       else glow(color);
       const lv = c.cpl === "gnd" ? 0 : -c.off / c.vdiv, my = y0 + gh / 2 - Math.max(-4, Math.min(4, lv)) * gh / 8;
       levels.push([color, (k === "ch1" ? "1" : "2") + (lv > 4 ? "▴" : lv < -4 ? "▾" : "▸"), my + 4 + (k === "ch1" ? -5 : 5)]);
     });
-    // capacitor ratings: a dashed line at each, red when the trace goes over it
+    // capacitor ratings: a dashed line at each, red when the trace goes well over it
     [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k]) => {
       const c = ch[k]; if (!c || !c.limits || c.cpl === "gnd" || (S.mode !== "dual" && S.mode !== k)) return;
       c.limits.forEach(l => {
         const d = (l.v - c.off) / c.vdiv; if (Math.abs(d) > 4.4) return;
-        const y = y0 + gh / 2 - d * gh / 8, col = l.level === "bad" ? "#ff6b6b" : l.level === "warn" ? "#ff9e64" : "#8fa3b8";
+        const y = y0 + gh / 2 - d * gh / 8, col = LEVEL_COLOR[l.level] || "#8fa3b8";
         ctx.strokeStyle = col; ctx.setLineDash([6, 4]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + gw, y); ctx.stroke(); ctx.setLineDash([]);
         const txt = `${l.labels.join(", ")} rating ${I.fmt(Math.abs(l.v), "V")}`;
         ctx.fillStyle = col; ctx.textAlign = "right"; ctx.fillText(txt, x0 + gw - 6, y + (d > 0 ? 14 : -5)); ctx.textAlign = "left";
       });
     });
+    // the report's events: a tick each along the bottom of the screen (hover: what happened)
+    G.ticks = [];
+    eventsOf(t).forEach((e, k) => {
+      const x = M.tx(e.t); if (x < x0 - 0.5 || x > x0 + gw + 0.5) return;
+      const col = LEVEL_COLOR[e.level];
+      ctx.strokeStyle = col; ctx.globalAlpha = k === S.view.event ? 0.7 : 0.35; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + gh); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y0 + gh - 9); ctx.lineTo(x - 5, y0 + gh); ctx.lineTo(x + 5, y0 + gh); ctx.closePath(); ctx.fill();
+      G.ticks.push({ x, k });
+    });
     ctx.restore();
     levels.forEach(([color, t, y]) => { ctx.fillStyle = color; ctx.fillText(t, x0 - 16, y); });
     pick.list.forEach((m, i) => { const p = markerPos(m); if (p) MarkerPicker.draw(ctx, p.x, p.y, MarkerPicker.LETTERS[i], m.ch === "ch2" ? "#00e5ff" : "#ffe23d"); });
     if (hover) {
-      const x = x0 + hover.i / count * gw; ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + gh); ctx.stroke(); ctx.setLineDash([]);
+      const x = M.tx((hover.i + i0) * dt); ctx.strokeStyle = "rgba(230,237,243,0.22)"; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + gh); ctx.stroke(); ctx.setLineDash([]);
       cursorLabel(ctx, x, [[fmtT((hover.i + i0) * dt), "#c9d6e3"], ...KEYS.filter(shown).map(k => [`${k.toUpperCase()} ${I.fmt(valueAt(ch[k], hover.i), "V")}`, k === "ch1" ? "#ffe23d" : "#00e5ff"])]);
     }
     ctx.fillStyle = "#ffe23d"; let tx = x0;
@@ -350,7 +422,7 @@
     ctx.fillStyle = "#00e5ff";
     if (ch.ch2) { const s = label(2, ch.ch2); ctx.fillText(s, tx, 16); tx += ctx.measureText(s).width + 18; }
     ctx.fillStyle = t.stale ? "#ff9e64" : "#c9d6e3";
-    ctx.fillText(`M ${I.fmt(vw.tdiv, "s")}   ${I.fmt(vw.pos, "s")} … ${I.fmt(vw.pos + vw.span, "s")} of ${I.fmt(t.tStop, "s")} after power-on${t.stale ? "   circuit changed since — ▶ Simulate again" : ""}`, tx, 16);
+    ctx.fillText(`${M.log ? "M log" : "M " + I.fmt(vw.tdiv, "s")}   ${I.fmt(vw.pos, "s")} … ${I.fmt(vw.pos + vw.span, "s")} of ${I.fmt(t.tStop, "s")} after power-on${t.stale ? "   circuit changed since — ▶ Run again" : ""}`, tx, 16);
     drawOverview(ch, t, vw);
     let h = "";
     [["ch1", "c1"], ["ch2", "c2"]].forEach(([k, cls]) => {
@@ -361,7 +433,9 @@
     $("meas").innerHTML = h;
     renderMarks();
   }
-  // the whole record under the screen, with the visible window marked; click or drag to scroll
+  // the whole record under the screen, with the visible window marked and a tick at each of the
+  // report's events; click or drag to scroll
+  let ovTicks = [];
   function drawOverview(ch, t, vw) {
     const cv = $("overview"); cv.hidden = false;
     const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
@@ -374,6 +448,13 @@
       const ys = (c, v) => H / 2 - Math.max(-4.4, Math.min(4.4, c.cpl === "gnd" ? 0 : (v - c.off) / c.vdiv)) * (H - 6) / 9;
       trace(ctx, c, 0, c.min.length, pad, gw, ys);
       ctx.fillStyle = color; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
+    });
+    ovTicks = [];
+    eventsOf(t).forEach((e, k) => {
+      const x = pad + e.t / t.tStop * gw, col = LEVEL_COLOR[e.level];
+      ctx.strokeStyle = col; ctx.lineWidth = k === S.view.event ? 2 : 1; ctx.beginPath(); ctx.moveTo(x, 6); ctx.lineTo(x, H - 1); ctx.stroke();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x - 4, 0); ctx.lineTo(x + 4, 0); ctx.lineTo(x, 7); ctx.closePath(); ctx.fill();
+      ovTicks.push({ x, k });
     });
     const a = pad + vw.pos / t.tStop * gw, w = Math.max(3, vw.span / t.tStop * gw);
     ctx.fillStyle = "rgba(0,180,216,0.18)"; ctx.fillRect(a, 1, w, H - 2);
@@ -399,7 +480,8 @@
       for (let i = 0; i < G.P; i++) { const p = xyPoint(i), d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < bd) { bd = d; best = i; } }
       return { xy: true, i: best };
     }
-    const i = Math.max(0, Math.min(G.M, (x - G.x0) / G.gw * G.M));
+    // power-on: through the screen's time axis (linear or log)
+    const i = G.startup ? Math.max(0, Math.min(G.M, rel(Math.max(G.vw.pos, Math.min(G.vw.pos + G.vw.span, G.xt(Math.max(G.x0, Math.min(G.x0 + G.gw, x)))))))) : Math.max(0, Math.min(G.M, (x - G.x0) / G.gw * G.M));
     // the visible trace nearest the pointer at that time
     const ks = KEYS.filter(shown); if (!ks.length) return null;
     const k = ks.reduce((b, k) => Math.abs(screenY(G.ch[k], valueAt(G.ch[k], i)) - y) < Math.abs(screenY(G.ch[b], valueAt(G.ch[b], i)) - y) ? k : b);
@@ -410,7 +492,7 @@
     if (m.xy) return G.xy ? xyPoint(m.i) : null;
     if (G.xy || !shown(m.ch)) return null;
     const i = rel(m.t); if (i > G.M + 1e-6 || i < -1e-6) return null;
-    return { x: G.x0 + i / G.M * G.gw, y: screenY(G.ch[m.ch], valueAt(G.ch[m.ch], i)) };
+    return { x: G.startup ? G.tx(m.t) : G.x0 + i / G.M * G.gw, y: screenY(G.ch[m.ch], valueAt(G.ch[m.ch], i)) };
   }
   // what a marker reads now: time from the trigger and the channel voltage(s)
   function reading(m) {
@@ -456,7 +538,7 @@
   const bindSel = (id, set) => $(id).addEventListener("change", e => { set(e.target.value); draw(); });
   bindSel("ch1-vdiv", v => S.ch1.vdiv = v); bindSel("ch2-vdiv", v => S.ch2.vdiv = v);
   bindSel("ch1-cpl", v => S.ch1.cpl = v); bindSel("ch2-cpl", v => S.ch2.cpl = v);
-  bindSel("tdiv", v => { if (S.analysis === "startup") S.view.tdiv = v; else S.tdiv = v; }); bindSel("trig-src", v => S.trig.src = v); bindSel("trig-slope", v => S.trig.slope = v);
+  bindSel("tdiv", v => { if (S.analysis === "startup") { S.view.tdiv = v; S.view.preset = null; syncPresets(); } else S.tdiv = v; }); bindSel("trig-src", v => S.trig.src = v); bindSel("trig-slope", v => S.trig.slope = v);
   $("btn-autoset").addEventListener("click", () => {
     S.ch1.vdiv = S.ch2.vdiv = S.tdiv = "auto"; S.hpos = 0;
     const ch = channels(I.scope());
@@ -483,11 +565,11 @@
   function zoomTo(tdiv, anchorFrac) {
     if (!G || !G.startup) return;
     const vw = G.vw, at = vw.pos + anchorFrac * vw.span;
-    S.view.tdiv = tdiv >= G.t.tStop / 10 * 0.999 ? "full" : tdiv;
+    S.view.tdiv = tdiv >= G.t.tStop / 10 * 0.999 ? "full" : tdiv; S.view.preset = null; syncPresets();
     S.view.pos = at - anchorFrac * 10 * Math.min(tdiv, G.t.tStop / 10);
     fillTdiv(); $("tdiv").value = String(S.view.tdiv); draw();
   }
-  const scrollBy = dtime => { if (!G || !G.startup) return; S.view.pos += dtime; draw(); };
+  const scrollBy = dtime => { if (!G || !G.startup) return; S.view.pos += dtime; S.view.preset = null; syncPresets(); draw(); };
   // mouse zoom and pan (PlotZoom): wheel = time/div around the pointer, Ctrl+wheel = volts/div,
   // Shift+wheel or right-drag = move along the time axis. Steady state moves the trigger
   // point (horizontal position); power-on scrolls through the record.
@@ -520,7 +602,7 @@
     inside: (x, y) => !!G && !G.xy && x >= G.x0 && x <= G.x0 + G.gw && y >= G.y0 && y <= G.y0 + G.gh,
     zoom: (x, y, k, vertical) => {
       const dir = notch(k); if (!dir) return;
-      if (vertical) zoomVolts(dir); else zoomTime(Math.max(0, Math.min(1, (x - G.x0) / G.gw)), dir);
+      if (vertical) zoomVolts(dir); else zoomTime(Math.max(0, Math.min(1, G.startup ? (G.xt(x) - G.vw.pos) / G.vw.span : (x - G.x0) / G.gw)), dir);
     },
     pan: dx => moveTime(-dx / G.gw * (G.startup ? G.vw.span : G.span)),
     scroll: dir => moveTime(dir * (G.startup ? G.vw.span : G.span) / 10)
@@ -538,33 +620,106 @@
     else if (e.key === "ArrowLeft") { scrollBy(-G.vw.tdiv); e.preventDefault(); }
     else if (e.key === "Home") { S.view.pos = 0; draw(); }
     else if (e.key === "End") { S.view.pos = G.t.tStop; draw(); }
+    else if (PRESETS[+e.key - 1] && !e.ctrlKey && !e.metaKey && !e.altKey) { preset(PRESETS[+e.key - 1]); e.preventDefault(); }
   });
   { // overview strip: click or drag to center the window there
     const ov = $("overview");
     const go = e => { if (!G || !G.startup) return; const r = ov.getBoundingClientRect(), frac = (e.clientX - r.left - 64) / (r.width - 128); S.view.pos = frac * G.t.tStop - G.vw.span / 2; draw(); };
     ov.addEventListener("pointerdown", e => { ov.setPointerCapture(e.pointerId); go(e); });
-    ov.addEventListener("pointermove", e => { if (e.buttons & 1) go(e); });
+    const base = ov.getAttribute("aria-label");
+    ov.addEventListener("pointermove", e => { if (e.buttons & 1) go(e); const r = ov.getBoundingClientRect(), x = e.clientX - r.left, hit = ovTicks.find(k => Math.abs(k.x - x) <= 5); ov.title = hit ? eventLine(eventsOf(I.transient)[hit.k]) : base; });
     ov.addEventListener("wheel", e => { if (!G || !G.startup) return; e.preventDefault(); scrollBy(Math.sign(e.deltaY || e.deltaX) * G.vw.span / 2); }, { passive: false });
   }
-  // what the power-on run found: capacitors over their ratings, tubes overdrawn while cold
-  let notesKey = null;
-  function renderNotes(t) {
-    const box = $("pwr-notes"), list = t && t.ok && !t.running ? t.notes || [] : [], key = JSON.stringify(list) + (t && t.stale);
-    if (key === notesKey) return; notesKey = key;
-    const esc = x => String(x).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
-    box.innerHTML = list.map(n => `<div class="${n.level}"><span aria-hidden="true">${n.level === "bad" ? "✖" : n.level === "warn" ? "⚠" : "✓"} </span><span>${esc(n.text)}</span></div>`).join("");
+  // --- the power-on report strip: the run's events in time order; a click zooms the screen to one ---
+  const esc = x => String(x).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+  const TAG = { critical: "Critical", warning: "Warning", info: "Info" }, ICON = { critical: "✖", warning: "⚠", info: "ℹ" };
+  const fmtEv = t => I.fmt(t, "s", t >= 1 ? 2 : undefined);
+  const eventLine = e => e ? `${fmtEv(e.t)}  ${e.who}: ${e.text} [${TAG[e.level]}]` : "";
+  function verdict(list) {
+    const n = l => list.filter(e => e.level === l).length, c = n("critical"), w = n("warning");
+    if (!c && !w) return "No problems found";
+    return [c && `${c} critical`, w && `${w} warning${w > 1 ? "s" : ""}`].filter(Boolean).join(", ");
   }
+  let reportKey = null;
+  function renderReport(t) {
+    const box = $("pwr-report"), st = S.analysis === "startup", ok = st && t && t.ok && !t.running;
+    box.hidden = !ok;
+    const list = ok ? eventsOf(t) : [], key = ok ? t.seq + JSON.stringify(list) + t.stale + S.view.event : "";
+    if (key === reportKey) return; reportKey = key;
+    if (!ok) { $("pwr-events").innerHTML = ""; return; }
+    const v = verdict(list), cls = list.some(e => e.level === "critical") ? "critical" : list.some(e => e.level === "warning") ? "warning" : "ok";
+    $("pwr-verdict").className = "verdict " + cls;
+    $("pwr-verdict").textContent = v + (t.stale ? " · circuit changed since: run again" : "");
+    $("pwr-events").innerHTML = list.length ? list.map((e, k) => `<button class="ev ${e.level}${k === S.view.event ? " active" : ""}" data-k="${k}" role="listitem" title="${esc(e.detail || e.text)}">` +
+      `<span class="ic" aria-hidden="true">${ICON[e.level]}</span><span class="tm">${esc(fmtEv(e.t))}</span><span class="who">${esc(e.who)}</span><span class="tx">${esc(e.text)}</span><span class="tag">${TAG[e.level]}</span></button>`).join("")
+      : `<div class="none">No capacitor near its rating, no tube overdrawn while cold.</div>`;
+    $("pwr-events").querySelectorAll(".ev").forEach(b => b.addEventListener("click", () => focusEvent(+b.dataset.k)));
+  }
+  // zoom to an event: fast ones (a surge, a cold-cathode current) on 200 ms around it, slow ones (a
+  // capacitor's peak, B+ settling) on a quarter of the record; marker A on it
+  function focusEvent(k) {
+    const t = I.transient, e = eventsOf(t)[k]; if (!e || !G || !G.startup) return;
+    const fast = e.kind === "cold" || e.kind === "surge" || e.t < 0.2;
+    S.view.event = k; S.view.preset = null;
+    S.view.tdiv = ladder(t.tStop, fast ? 0.02 : t.tStop / 40);
+    const span = S.view.tdiv === "full" ? t.tStop : 10 * S.view.tdiv;
+    S.view.pos = e.t - span / 2;
+    fillTdiv(); $("tdiv").value = String(S.view.tdiv); syncPresets(); renderReport(t);
+    draw();
+    // marker A on the channel reading this event's nets, else the first shown
+    const ts = I.transientScope(), same = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
+    const kch = ["ch1", "ch2"].find(c => G.ch[c] && shown(c) && e.nets && ts && ts[c] && same(ts[c].nets, e.nets)) || KEYS.find(shown);
+    if (kch) pick.set([{ ch: kch, t: e.t }]); else draw();
+  }
+  function reportText(t) {
+    const list = eventsOf(t);
+    return [`Power-on report: ${I.fmt(t.tStop, "s")} after switch-on, ${t.warmup ? "cathodes warming up" : "hot cathodes"}. ${verdict(list)}.`,
+      ...list.map(e => `${eventLine(e)}\n    ${e.detail || e.text}`)].join("\n");
+  }
+  $("pwr-copy").addEventListener("click", () => {
+    const t = I.transient; if (!t || !t.ok) return;
+    const txt = reportText(t), done = () => { const b = $("pwr-copy"), was = b.textContent; b.textContent = "Copied"; setTimeout(() => { b.textContent = was; }, 1200); };
+    const fallback = () => { const a = document.createElement("textarea"); a.value = txt; document.body.appendChild(a); a.select(); try { document.execCommand("copy"); done(); } catch (e) {} a.remove(); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, fallback); else fallback();
+  });
+  // --- time presets: Inrush (0 to 200 ms), Warm-up (0 to 3 τ of the slowest cathode), Settled (the
+  // last 200 ms), Whole; keys 1 to 4. Each snaps to the zoom ladder's next step up.
+  const PRESETS = ["inrush", "warmup", "settled", "whole"];
+  function ladder(tStop, tdiv) { const st = zoomSteps(tStop), v = st.find(x => x >= tdiv * 0.999); return v === undefined || v >= tStop / 10 * 0.999 ? "full" : v; }
+  function preset(p) {
+    const t = I.transient; if (!t || !t.ok || t.running) return;
+    const tau = Math.max(0, ...(t.tubes || []).map(x => x.tau || 0));
+    S.view.tdiv = p === "inrush" || p === "settled" ? ladder(t.tStop, 0.02) : p === "warmup" && tau > 0 && t.warmup ? ladder(t.tStop, 3 * tau / 10) : "full";
+    const span = S.view.tdiv === "full" ? t.tStop : 10 * S.view.tdiv;
+    S.view.pos = p === "settled" ? t.tStop - span : 0;
+    S.view.preset = p;
+    fillTdiv(); $("tdiv").value = String(S.view.tdiv); syncPresets(); draw();
+  }
+  const syncPresets = () => document.querySelectorAll("#presets .btn").forEach(b => b.classList.toggle("active", b.dataset.p === S.view.preset));
+  document.querySelectorAll("#presets .btn").forEach(b => b.addEventListener("click", () => preset(b.dataset.p)));
+  $("logt").addEventListener("change", e => { S.logT = e.target.checked; draw(); });
+  $("ratings").addEventListener("change", e => { S.ratings = e.target.checked; draw(); });
+  // hover on an event's tick along the bottom of the screen: what happened
+  $("screen").addEventListener("pointermove", e => {
+    const cv = $("screen"); if (!G || !G.startup || !G.ticks) { if (cv.dataset.tip) { cv.removeAttribute("title"); delete cv.dataset.tip; } return; }
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    const hit = y > G.y0 + G.gh - 14 && y < G.y0 + G.gh + 4 ? G.ticks.find(k => Math.abs(k.x - x) <= 6) : null;
+    if (hit) { cv.title = eventLine(eventsOf(I.transient)[hit.k]); cv.dataset.tip = "1"; } else if (cv.dataset.tip) { cv.removeAttribute("title"); delete cv.dataset.tip; }
+  });
   // analysis: steady state (the CAD's settled result) or the power-on transient
   const syncAnalysis = () => {
     const st = S.analysis === "startup", t = I.transient, running = st && t && t.running;
     document.querySelectorAll("#analysis .btn").forEach(x => x.classList.toggle("active", x.dataset.v === S.analysis));
     ["trig-src", "trig-slope"].forEach(id => { $(id).disabled = st; });
     fillTdiv();
-    $("warmup-row").hidden = !st;
-    renderNotes(st ? t : null);
-    $("analysis-note").textContent = st ? "Power-on: the circuit starts cold (capacitors empty, and with Cathodes warm up the tubes' cathodes too) and every source switches on at t = 0. Dashed lines: the voltage ratings of capacitors the channel reads across. Zoom with the mouse wheel or Time/div (Ctrl+wheel: volts/div); scroll with the strip under the screen, Shift+wheel, right-drag or ← →."
+    $("pwr-bar").hidden = !st;
+    $("logt").checked = S.logT; $("ratings").checked = S.ratings;
+    document.querySelectorAll("#presets .btn").forEach(b => { b.disabled = !(t && t.ok && !t.running); });
+    renderReport(t);
+    $("analysis-note").textContent = st ? "Power-on: the circuit starts cold (capacitors empty, and with Cathodes warm up the tubes' cathodes too) and every source switches on at t = 0. Above the screen: Duration, ▶ Run and the time presets (keys 1 to 4: Inrush, Warm-up, Settled, Whole) with Log time. Under it: the whole record with a tick at each event, and the report: click an event to zoom to it. Dashed lines: the voltage ratings of capacitors the channel reads across. Zoom with the mouse wheel or Time/div (Ctrl+wheel: volts/div); scroll with the strip under the screen, Shift+wheel, right-drag or ← →."
       : "Steady state: the settled circuit, one window repeated like a triggered scope. Zoom with the mouse wheel (Ctrl+wheel: volts/div); move along the time axis with Shift+wheel or right-drag. Autoset resets the view.";
     $("btn-sim").textContent = running ? "■ Stop" : "▶ Simulate"; $("btn-sim").classList.toggle("active", !!running);
+    $("btn-run").textContent = running ? "■ Stop" : "▶ Run"; $("btn-run").classList.toggle("active", !!running);
   };
   document.querySelectorAll("#analysis .btn").forEach(b => b.addEventListener("click", () => {
     if (S.analysis === b.dataset.v) return;
@@ -573,11 +728,12 @@
   }));
   $("t-stop").addEventListener("change", e => { S.tStop = e.target.value === "auto" ? "auto" : +e.target.value; draw(); });
   $("warmup").addEventListener("change", e => { S.warmup = e.target.checked; draw(); });
-  $("btn-sim").addEventListener("click", () => {
+  const runOrStop = () => {
     if (S.analysis !== "startup") { I.send({ type: "RUN_SIM" }); return; }
     const t = I.transient;
     if (t && t.running) I.send({ type: "STOP_TRANSIENT" }); else I.send({ type: "RUN_TRANSIENT", tStop: S.tStop, warmup: S.warmup });
-  });
+  };
+  $("btn-sim").addEventListener("click", runOrStop); $("btn-run").addEventListener("click", runOrStop);
   I.onUpdate(syncAnalysis);
   syncAnalysis();
   I.bindScopeSelect($("scope-select"));
@@ -589,7 +745,7 @@
   setInterval(() => { if (!I.result) draw(); }, 1500);
   draw();
   // current scaling, for tests and debugging
-  window.Scope = { state: S, draw, axes: () => G && G.axes, settleInfo, startupChannels, zoomTo, startupView: () => G && G.startup ? { tdiv: G.vw.tdiv, pos: G.vw.pos, span: G.vw.span } : null,
+  window.Scope = { state: S, draw, preset, focusEvent, reportText, timeMap: () => G && G.startup ? { log: G.log, tx: G.tx, xt: G.xt } : null, axes: () => G && G.axes, settleInfo, startupChannels, zoomTo, startupView: () => G && G.startup ? { tdiv: G.vw.tdiv, pos: G.vw.pos, span: G.vw.span } : null,
     // canvas position of a channel's trace at a fraction of the screen width
     screenPoint: (k, frac) => { const c = G && G.ch[k]; if (!c) return null; const i = frac * G.M; return { x: G.x0 + frac * G.gw, y: screenY(c, valueAt(c, i)) }; },
     markers: () => pick.list.map(m => ({ ...m, pos: markerPos(m), reading: reading(m) })), view: () => { const sc = I.scope(), ch = channels(sc), any = ch.ch1 || ch.ch2; if (!any) return null;
