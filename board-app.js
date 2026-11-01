@@ -483,7 +483,7 @@
   // Tools: select, route, via, text, mounting hole, measure
   // ---------------------------------------------------------------------------
   const TOOL_HELP = { select: "Select: drag parts, vias, texts and holes; drag the board's top-right corner handle to resize it (the origin, bottom left, stays put)", route: "Route: click a pad to start a track",
-    via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Smart measure: click a pad, via, hole, track or board edge for its size, then a second one for what relates them (pitch, edge to edge against the rule, angle); C: centre / edge / span, Enter pins it",
+    via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Smart measure (Shift+D): click a pad, via, hole, track or board edge for its size, then a second one for what relates them (pitch, edge to edge against the rule, angle); C: centre / edge / span, Enter keeps it (between two pads, holes, vias or corners as a dimension). For dimensions that stay and move things: Dimension (D)",
     pour: "Copper pour: click the corners on the active layer, double-click (or click the first corner) to close; Backspace: take back a corner",
     keepout: "Keep-out area: click the corners, double-click to close; no tracks, vias or pour may enter it (set in the inspector)" };
   TOOL_HELP.hole = "Mounting hole: click to place one; it sticks to holes, pads, board corners, construction points and crossings and stays tied to them (Alt: the grid only). Type Δx Δy (and Ø) to place it that far from where the pointer sticks";
@@ -583,14 +583,16 @@
       if (r.vtype !== "none") h += `<div class="mc-val${r.ok === false ? " bad" : ""}">${esc(BoardMeasure.label(r, U))}</div>`;
       if (r.modes) h += `<div class="mc-modes">${r.modes.map(m => `<button class="btn${m === r.mode ? " on" : ""}" data-mc-mode="${m}" title="${MT[m]}">${MODE[m]}</button>`).join("")}</div>`;
       h += `<table>${r.rows.map(([l, t, v]) => `<tr><td>${esc(l)}</td><td class="${t === "check" ? (v.gap >= v.need - 1e-6 ? "ok" : "bad") : ""}">${esc(F(v, t, U, oh))}</td></tr>`).join("")}</table>`;
-      h += `<div class="mc-act"><button class="btn" data-mc="pin" title="Keep this measurement on the board (Enter)">Pin</button><button class="btn" data-mc="copy" title="Copy the value and its details as text">Copy</button>`;
+      h += `<div class="mc-act"><button class="btn" data-mc="pin" title="Keep it (Enter): between two pads, holes, vias, part origins or board corners it becomes a dimension you can drag and give a value; anything else stays as a pinned note">Keep</button><button class="btn" data-mc="copy" title="Copy the value and its details as text">Copy</button>`;
     } else h += `<div class="mc-act">`;
     h += `<select data-mc="units" title="Units of the measurements">${Object.keys(BoardMeasure.UNITS).map(u => `<option value="${u}"${u === U ? " selected" : ""}>${u}</option>`).join("")}</select></div>`;
     if (S.pins.length) h += `<div class="mc-pins"><div class="mc-ph">Pinned<button class="mc-x" data-mc="clear" title="Take every pinned measurement off">Clear all</button></div>${S.pins.map((p, i) => `<div class="mc-pin"><span>${esc(BoardMeasure.label(p.r, U))}</span> <small>${esc(p.r.title)}</small><button class="mc-x" data-mc-unpin="${i}" title="Take this one off (Del takes the last)">✕</button></div>`).join("")}</div>`;
     box.innerHTML = h;
   }
   function pinMeasure() {
-    const r = S.measure && measureResult(S.snapHint); if (!r || (!r.lines.length && r.vtype === "none")) { msg("Measure something first, then Pin keeps it"); return; }
+    const r = S.measure && measureResult(S.snapHint); if (!r || (!r.lines.length && r.vtype === "none")) { msg("Measure something first, then Keep keeps it"); return; }
+    // between two things a dimension can hold: it becomes a dimension (it stays, drags, takes a value)
+    if (S.measure.b && (!r.mode || r.mode === "centre") && dimui.fromMeasure(S.measure.a, S.measure.b)) { S.measure = null; S.mLast = null; render(); return; }
     const at = r.lines.length ? r.at : S.measure.a;
     S.pins.push({ r: { ...r, at } }); S.measure = null; S.mLast = null; msg(`Pinned: ${r.title} ${BoardMeasure.label(r, S.mUnits)} (Del takes the last pin off)`); render();
   }
@@ -928,7 +930,7 @@
     // the part under the pointer gets a faint outline and the move cursor
     const hp = S.tool === "select" && !d && e.target === canvas ? hitPart(x, y) : null, hk = hp ? hp.key : null;
     if (hk !== S.hoverPart) { S.hoverPart = hk; render(); }
-    canvas.style.cursor = S.tool === "select" && onHandle(x, y) ? "nesw-resize" : S.tool === "select" && (onEdge(x, y) || (hp && !p)) ? "move" : S.tool === "select" ? "" : "crosshair";
+    canvas.style.cursor = (S.tool === "select" || (S.tool === "dim" && !d)) && dimui.hit(x, y, S.tool === "dim") ? "move" : S.tool === "select" && onHandle(x, y) ? "nesw-resize" : S.tool === "select" && (onEdge(x, y) || (hp && !p)) ? "move" : S.tool === "select" ? "" : "crosshair";
     hudMove(e);
     const zone = sheetZone(x, y);
     $("st-pos").textContent = `x ${x.toFixed(2)}  y ${showY(y).toFixed(2)} mm` + (zone ? ` · ${zone}` : "") + (p ? ` · ${p.ref}-${p.num}${p.name !== p.num ? " (" + p.name + ")" : ""} · ${p.netName || "no net"} (${classOf(p.net)})` : "");
@@ -937,6 +939,7 @@
   }
   function onUp(e) {
     const d = S.drag; S.drag = null;
+    if (d && d.kind === "dim" && d.edit && !d.moved) { dimui.editAt(d.id); return; }   // the Dimension tool: a click on a value opens its box
     if (d && d.kind === "pan" && d.menu && e && Math.hypot(S.view.ox - d.ox, S.view.oy - d.oy) < 3) { const [x, y] = toWorld(...evPos(e)); openCtx(e.clientX, e.clientY, x, y); return; }
     if (d && d.kind === "box") {
       if (d.moved) { boxSelect(d.x0, d.y0, d.x1, d.y1, d.x1 < d.x0, d.add); const n = selItems().length; msg(n ? `${n} selected: drag one to move them all, Space turns them, arrows nudge, L locks, the inspector aligns` : "Nothing in the box"); }
@@ -1021,8 +1024,8 @@
     else if (L === "v") { if (S.route) routeVia(); else setLayer(S.layer === "F.Cu" ? "B.Cu" : "F.Cu"); }
     else if (L === "t") setTool("text");
     else if (L === "h") setTool("hole");
-    else if (L === "d" && e.shiftKey) setTool("dim");
-    else if (L === "d") setTool("measure");
+    else if (L === "d" && e.shiftKey) setTool("measure");
+    else if (L === "d") setTool("dim");
     else if (L === "s") setTool("select");
     else if (L === "p") setTool("pour");
     else if (L === "u") selectConnected();

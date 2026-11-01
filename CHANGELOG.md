@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.173.0] - 2026-11-01
+
+### Changed
+- **Board dimensions work like Smart Dimension in SolidWorks.** A **Dimension** button on the toolbar and the **D** key (Smart measure moves to Shift+D). Placing a dimension pops up a **Modify** box on its value with the distance selected: type, Enter or ✓ moves the second thing, Esc or ✗ keeps it, ⇄ flips the side, ↑ ↓ step 0.1 mm (Shift 1 mm). The tool stays on for the next dimension until Esc.
+- In the Dimension tool a drag on a dimension's value moves it and a click opens its Modify box; with Select a double-click opens the box (it used to send you to the inspector). A pointer twitch during a click no longer counts as a drag.
+- Smart measure's **Pin** is now **Keep** (Enter): a centre-to-centre measurement between pads, part origins, holes, vias, texts or corners becomes a reference dimension that is saved and can be dragged; typing a value into it makes it drive. Other measurements are pinned as before.
+
 ## [3.172.0] - 2026-11-01
 
 ### Added

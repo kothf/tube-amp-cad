@@ -652,21 +652,36 @@ import { readFile } from "node:fs/promises";
     const rs = await bd.evaluate(() => { const S = BoardApp.state; return S.model.parts.filter(g => g.type === "resistor" && g.place && !S.board.parts[g.key].locked).slice(0, 2).map(g => ({ key: g.key, ref: g.ref, x: g.place.x, y: g.place.y })); });
     const un0 = await bd.evaluate(() => BoardApp.state.conn.unrouted);
     const part = k => bd.evaluate(k => { const S = BoardApp.state, p = S.board.parts[k]; return { x: p.x, y: p.y, un: S.conn.unrouted, dims: (S.board.dims || { items: [] }).items.length }; }, k);
-    await bd.locator("#pcb").focus(); await bd.keyboard.press("Shift+D");
+    await bd.locator("#pcb").focus(); await bd.keyboard.press("d");
+    const tb = await bd.evaluate(() => ({ tool: BoardApp.state.tool, btn: !!document.querySelector('header .tools > [data-tool="dim"]') }));
     let p = await at(0, o.h); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
     p = await at(rs[0].x, rs[0].y); await bd.mouse.move(p[0], p[1]); await bd.mouse.click(p[0], p[1]);
     p = await at(rs[0].x / 2, o.h + 6); await bd.mouse.move(p[0], p[1], { steps: 3 });
     const hud = await bd.evaluate(() => !document.getElementById("dhud").hidden && document.getElementById("dhud").textContent);
     await bd.keyboard.type("40"); await bd.keyboard.press("Enter");
     const d = await bd.evaluate(() => BoardApp.state.board.dims.items.slice(-1)[0]), a = await part(rs[0].key);
-    check(/Horizontal/.test(hud || "") && d && d.k === "dx" && d.v === 40 && d.a.t === "board" && d.b.t === "part" && Math.abs(a.x - 40) < 1e-6 && a.un === un0,
-      `Shift+D, the board's corner, ${rs[0].ref}, placed below, 40 typed: a horizontal dimension and ${rs[0].ref} moves to X 40 (${a.x}), its tracks following (${a.un} to route, ${un0} before)`);
-    await bd.keyboard.press("Escape"); await bd.evaluate(() => BoardApp.setTool("select"));
+    const still = await bd.evaluate(() => BoardApp.state.tool);
+    check(tb.tool === "dim" && tb.btn && still === "dim" && /Horizontal/.test(hud || "") && d && d.k === "dx" && d.v === 40 && d.a.t === "board" && d.b.t === "part" && Math.abs(a.x - 40) < 1e-6 && a.un === un0,
+      `D (a toolbar button too), the board's corner, ${rs[0].ref}, placed below, 40 typed: a horizontal dimension and ${rs[0].ref} moves to X 40 (${a.x}), its tracks following (${a.un} to route, ${un0} before); the tool stays on (${still})`);
+    // still in the tool: drag the value to move the dimension line, click it to type a new value in the box on it
+    const lblAt = () => bd.evaluate(() => { const q = BoardApp.state.dboxes.slice(-1)[0]; return BoardApp.toScreen(q.box[0] + q.box[2] / 2, q.box[1] + q.box[3] / 2); });
+    let L0 = await lblAt(); const o0 = d.o;
+    await bd.mouse.move(cv.x + L0[0], cv.y + L0[1]); await bd.mouse.down(); await bd.mouse.move(cv.x + L0[0], cv.y + L0[1] - 40, { steps: 5 }); await bd.mouse.up();
+    const o1 = await bd.evaluate(() => BoardApp.state.board.dims.items.slice(-1)[0].o), tool1 = await bd.evaluate(() => BoardApp.state.tool);
+    L0 = await lblAt(); await bd.mouse.click(cv.x + L0[0], cv.y + L0[1]);
+    const box = await bd.evaluate(() => { const h = document.getElementById("dmod"), i = h.querySelector("input"); return !h.hidden && i && document.activeElement === i ? i.value : null; });
+    await bd.keyboard.press("Control+a"); await bd.keyboard.type("45"); await bd.keyboard.press("Enter");
+    const v45 = await part(rs[0].key);
+    check(Math.abs(o1 - o0) > 2 && tool1 === "dim" && box === "40.00" && Math.abs(v45.x - 45) < 1e-6 && v45.dims === 1,
+      `in the Dimension tool a drag of the value moves the dimension line (offset ${o0} → ${o1}); a click opens the Modify box on it (${box}), 45 Enter moves ${rs[0].ref} to X 45 (${v45.x})`);
+    await bd.keyboard.press("Escape"); const t2 = await bd.evaluate(() => BoardApp.state.tool);
+    if (t2 !== "select") await bd.evaluate(() => BoardApp.setTool("select"));
     p = await at(a.x, a.y); await bd.mouse.move(p[0], p[1]); await bd.mouse.down(); await bd.mouse.move(p[0] + 40, p[1] + 30, { steps: 6 }); await bd.mouse.up();
     const dr = await part(rs[0].key);
-    check(Math.abs(dr.x - 40) < 1e-6 && Math.abs(dr.y - a.y) > 1, `dragged, ${rs[0].ref} keeps X 40 (${dr.x}) and moves up or down freely (Y ${a.y} → ${dr.y})`);
+    check(Math.abs(dr.x - 45) < 1e-6 && Math.abs(dr.y - a.y) > 1, `dragged, ${rs[0].ref} keeps X 45 (${dr.x}) and moves up or down freely (Y ${a.y} → ${dr.y})`);
     const lbl = await bd.evaluate(() => { const q = BoardApp.state.dboxes.slice(-1)[0]; return BoardApp.toScreen(q.box[0] + q.box[2] / 2, q.box[1] + q.box[3] / 2); });
     await bd.mouse.click(cv.x + lbl[0], cv.y + lbl[1]);
+    check(t2 === "select", `Esc with nothing half-made leaves the Dimension tool (${t2})`);
     const insp = await bd.evaluate(() => BoardApp.state.sel && BoardApp.state.sel.kind === "dim" && document.getElementById("inspector").textContent);
     const inp = bd.locator("#inspector [data-dimval] input"); await inp.fill("50"); await inp.press("Enter");
     const v50 = await part(rs[0].key);
@@ -682,6 +697,26 @@ import { readFile } from "node:fs/promises";
     await bd.locator("#pcb").focus(); await bd.keyboard.press("Control+z");
     const back = await part(rs[0].key);
     check(cl.dims === 0 && fab === fab2 && Math.abs(cl.x - 50) < 1e-6 && back.dims === 2, `the Gerbers are the same with and without the dimensions; Clear removes them (${cl.dims} left, ${rs[0].ref} stays at X ${cl.x}) and Ctrl+Z brings back ${back.dims}`);
+    // Measure (Shift+D) between the board's top-left corner and a pad: Enter keeps it as a dimension
+    await bd.keyboard.press("Escape"); await bd.keyboard.press("Shift+D");
+    const pad = await bd.evaluate(k => { const q = BoardApp.state.model.pads.find(p => p.part === k); return [q.x, q.y]; }, rs[1].key);
+    p = await at(0, 0); await bd.mouse.click(p[0], p[1]); p = await at(pad[0], pad[1]); await bd.mouse.click(p[0], p[1]);
+    const mt = await bd.evaluate(() => BoardApp.state.tool);
+    await bd.keyboard.press("Enter");
+    const kept = await bd.evaluate(() => { const S = BoardApp.state, d = S.board.dims.items.slice(-1)[0]; return { n: S.board.dims.items.length, d, pins: S.pins.length }; });
+    check(mt === "measure" && kept.n === back.dims + 1 && kept.d.a.t === "board" && kept.d.b.t === "pad" && kept.d.ref && kept.pins === 0, `Measure (Shift+D) from the board's corner to a pad, Enter: kept as a ${kept.d && kept.d.k} reference dimension (${kept.n} now), not a pin`);
+    await bd.keyboard.press("Escape");
+    // placed without typing: the Modify box pops up with the distance selected; 20 Enter sets it
+    await bd.keyboard.press("d");
+    p = await at(0, o.h); await bd.mouse.click(p[0], p[1]);
+    const r0 = await part(rs[0].key);
+    p = await at(r0.x, r0.y); await bd.mouse.click(p[0], p[1]);
+    p = await at(r0.x + 8, (r0.y + o.h) / 2); await bd.mouse.move(p[0], p[1], { steps: 3 }); await bd.mouse.click(p[0], p[1]);
+    await bd.waitForTimeout(50);
+    const pop = await bd.evaluate(() => { const h = document.getElementById("dmod"), i = h.querySelector("input"); return !h.hidden && i && document.activeElement === i && i.selectionEnd - i.selectionStart === i.value.length ? i.value : null; });
+    await bd.keyboard.type("20"); await bd.keyboard.press("Enter");
+    const r20 = await part(rs[0].key), shut = await bd.evaluate(() => document.getElementById("dmod").hidden);
+    check(pop !== null && Math.abs(o.h - r20.y - 20) < 1e-6 && shut, `placed without a value, the Modify box pops up (${pop} selected); 20 Enter puts ${rs[0].ref} 20 mm above the board's bottom edge (${(o.h - r20.y).toFixed(2)})`);
     await bd.keyboard.press("Escape");
   }
   await bd.close();

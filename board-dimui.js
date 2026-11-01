@@ -12,8 +12,9 @@
     const D = root.BoardDims, K = root.BoardConstruct, R4 = v => Math.round(v * 1e4) / 1e4;
     const render = () => app.render(), renderPanels = () => app.renderPanels();
     const COLOR = "#4fc3f7", REF = "#9aa7b4", BAD = "#ff5252", SEL = "#ffffff";
-    const HELP = "Dimension: click two things (a pad, a part's origin, a hole, a via, a text, a keep-out corner or edge, a board corner or edge, a construction point or line), then place it: up or down for horizontal, sideways for vertical, between for aligned (or H, V, A). Type the value and press Enter: the second thing moves. Esc cancels";
+    const HELP = "Dimension (D): click two things (a pad, a part's origin, a hole, a via, a text, a keep-out corner or edge, a board corner or edge, a construction point or line), then place it: up or down for horizontal, sideways for vertical, between for aligned (or H, V, A). Type the value and press Enter: the second thing moves. The tool stays on for the next one; drag a dimension's value to move it, click it to change it. Esc cancels, Esc again leaves";
     const T = { a: null, b: null, hover: null, force: null, val: "", m: null };   // the tool in progress
+    const E = { id: null };   // the dimension whose value is being typed in the box on its label
     const last = new Map();   // body → where it was after the last solve (board frame): what moved since was moved by hand
     let prefer = null, note = "";
     const H = () => S.board.outline.h;
@@ -100,7 +101,7 @@
     // ---------------------------------------------------------------------------
     const active = () => S.tool === "dim";
     function toolChanged(t) {
-      T.a = T.b = T.hover = T.force = null; T.val = ""; hud();
+      T.a = T.b = T.hover = T.force = null; T.val = ""; closeEdit(); hud();
       if (t === "dim" && !shown()) { dims().hide = false; menuState(); }
     }
     // the kind a placement gives: by where the pointer is against the two points
@@ -130,6 +131,9 @@
       if (!active()) return false;
       if (e && e.button !== 0) return false;
       if (T.a && T.b) { place(); return true; }
+      // an existing dimension's value: drag it to move the dimension, click it to type a new value
+      const own = !T.a && hit(x, y, true);
+      if (own) { S.sel = { kind: "dim", id: own }; const d = dims().items.find(q => q.id === own); S.drag = { kind: "dim", id: own, o0: d && d.o, mx: x, my: y, moved: false, edit: true }; renderPanels(); render(); return true; }
       const f = featureAt(x, y);
       if (!f) { msg("Nothing to dimension there: click a pad, a part's origin, a hole, a via, a text, a keep-out, the board's corner or edge, or construction"); return true; }
       if (!T.a) { T.a = f; msg(`From ${f.name}: now click the second thing (it is the one that moves)`); }
@@ -159,7 +163,9 @@
       const second = p.k === "pl" ? (T.b.line ? dim.b : dim.a) : dim.b, first = second === dim.a ? dim.b : dim.a;
       const mover = D.bodyOf(b, second) || D.bodyOf(b, first);
       cancel();
-      add(dim, typed, mover);
+      const made = add(dim, typed, mover);
+      // nothing typed while placing: the Modify box asks for the value (as in SolidWorks)
+      if (made && typed === null && !made.ref && D.HAS_VALUE[made.k]) setTimeout(() => editAt(made.id), 0);
     }
     /** a new dimension: driving if it can be, else a reference one (with the reason) */
     function add(dim, typed, mover) {
@@ -181,20 +187,21 @@
       const r = D.solve(b, S.model, { csol: S.csol, prefer: pref });
       if (!r.ok) { dim.ref = true; dim.v = cur; commit(`Reference dimension: ${say} cannot be met with the other dimensions (or a locked part); it shows ${fmt(cur)} mm`); return dim; }
       enforce(pref);
-      commit(`Dimension: ${say}${dim.k === "hz" || dim.k === "vt" ? "" : ". Double-click its value to change it"}`);
+      commit(`Dimension: ${say}${dim.k === "hz" || dim.k === "vt" ? "" : ". Click its value to change it, drag the value to move it; the tool stays on for the next one"}`);
       return dim;
     }
     function setValue(dim, v) {
-      if (!D.HAS_VALUE[dim.k] || !Number.isFinite(v)) return;
+      if (!D.HAS_VALUE[dim.k] || !Number.isFinite(v)) return false;
       const old = dim.v;
       // the side it is on stays; a minus sign puts it on the other side
       dim.v = dim.k === "dist" ? R4(Math.abs(v)) : R4((old < 0 ? -1 : 1) * v);
-      if (dim.ref) { commit(); return; }
+      if (dim.ref) { commit(); return true; }
       const mover = D.bodyOf(S.board, dim.b) || D.bodyOf(S.board, dim.a);
       const r = D.solve(S.board, S.model, { csol: S.csol, prefer: new Set(mover ? [mover] : []) });
-      if (!r.ok) { dim.v = old; msg(`${fmt(v)} mm cannot be met with the other dimensions (or a locked part)`); renderPanels(); return; }
+      if (!r.ok) { dim.v = old; msg(`${fmt(v)} mm cannot be met with the other dimensions (or a locked part)`); renderPanels(); render(); return false; }
       enforce(new Set(mover ? [mover] : []));
       commit(D.describe(S.board, S.model, dim));
+      return true;
     }
     function setRef(dim, on) {
       if (!on) {
@@ -235,6 +242,20 @@
     }
     function setShown(on) { dims().hide = !on; if (!on && S.sel && S.sel.kind === "dim") S.sel = null; commit(on ? "Dimensions shown" : "Dimensions hidden (they still hold: Construct ▾ → Show dimensions)"); menuState(); }
     function menuState() { const q = $("mi-dshow"); if (q) q.classList.toggle("active", shown()); }
+    /** a measurement kept (Measure tool, Enter): a dimension when both its ends are things a dimension
+        can hold (pads, holes, vias, corners…); null when they are not (a track's width, a hole's rim) */
+    function fromMeasure(pa, pb) {
+      if (!pa || !pb) return null;
+      const at = p => { const f = featureAt(p[0], p[1]); return f && f.p && Math.hypot(f.p[0] - p[0], f.p[1] - p[1]) < 1e-3 ? f : null; };
+      const fa = at(pa), fb = at(pb); if (!fa || !fb || fa.name === fb.name && Math.hypot(pa[0] - pb[0], pa[1] - pb[1]) < 1e-6) return null;
+      const dx = pb[0] - pa[0], dy = pb[1] - pa[1], k = Math.abs(dy) < 1e-4 ? "dx" : Math.abs(dx) < 1e-4 ? "dy" : "dist";
+      const dim = { k, a: fa.make(), b: fb.make(), o: k === "dist" ? 4 : -6 };
+      // a note, as the measurement was: a reference dimension (its value typed in the Modify box makes it drive)
+      const env = D.makeEnv(S.board, S.model, S.csol), cur = D.measure(env, dim); if (cur === null) return null;
+      dim.id = D.newId(S.board); dim.v = cur; dim.ref = true; dims().items.push(dim);
+      commit(`Kept as a reference dimension: ${D.describe(S.board, S.model, dim)}. Drag its value to move it; click it in the Dimension tool (or double-click it) to type a value that drives`);
+      return dim;
+    }
     function removeOf(key) {
       const list = D.onBody(S.board, key); if (!list.length) return;
       dims().items = dims().items.filter(d => !list.includes(d));
@@ -324,17 +345,20 @@
     }
     const kindName = k => ({ dx: "Horizontal", dy: "Vertical", dist: "Aligned", pl: "To the line" })[k] || k;
 
-    // the HUD: the value typed while placing
+    // the HUD: the value typed while placing (on the dimension's label), or the box on an existing
+    // dimension's label while its value is changed
+    const labelAt = sh => { const [sx, sy] = app.toScreen(sh.lbl[0], sh.lbl[1]); return [Math.round(sx), Math.round(sy)]; };
     function hud() {
       const el = $("dhud"); if (!el) return;
       const p = active() && pending();
       if (!p) { el.hidden = true; return; }
       el.hidden = false;
-      el.innerHTML = `<span>${app.esc(kindName(p.k))}</span><input data-k="v" value="${app.esc(T.val)}" placeholder="${fmt(liveValue(p))}" title="The value, mm: Enter makes it; empty keeps the distance as it is"><small>mm</small><small class="chud-k">${p.k === "pl" ? "" : "H V A · "}Enter · Esc</small>`;
+      el.innerHTML = `<span>${app.esc(tr(kindName(p.k)))}</span><input data-k="v" value="${app.esc(T.val)}" placeholder="${fmt(liveValue(p))}" title="${app.esc(tr("The value, mm: Enter makes it; empty keeps the distance as it is"))}"><small>mm</small><small class="chud-k">${p.k === "pl" ? "" : "H V A · "}Enter · Esc</small>`;
       const inp = el.querySelector("input");
       inp.oninput = () => { T.val = inp.value; render(); };
       inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); place(); app.canvas().focus(); } else if (e.key === "Escape") { e.preventDefault(); cancel(); app.canvas().focus(); } else if (/^[hHvVaA]$/.test(e.key)) { e.preventDefault(); forceKind(e.key); } };
-      if (T.m) { const [sx, sy] = app.toScreen(T.m[0], T.m[1]); el.style.left = Math.round(sx + 18) + "px"; el.style.top = Math.round(sy + 22) + "px"; }
+      // just past the value on the dimension line, where the eye already is
+      const [lx, ly] = labelAt(shapeRaw(p)); el.style.left = (lx + 24) + "px"; el.style.top = (ly - 13) + "px";
     }
     function forceKind(key) { const k = { h: "dx", v: "dy", a: "dist" }[key.toLowerCase()]; T.force = T.force === k ? null : k; hud(); render(); }
     // keys on the board while the tool is on: digits go into the HUD, H V A, Enter, Esc
@@ -353,13 +377,14 @@
     // ---------------------------------------------------------------------------
     // Selecting, dragging the label, deleting
     // ---------------------------------------------------------------------------
-    function hit(x, y) {
+    function hit(x, y, boxOnly) {
       if (!shown() || !S.dboxes) return null;
       const tol = 4 / S.view.scale;
       for (let i = S.dboxes.length - 1; i >= 0; i--) {
         const q = S.dboxes[i], [bx, by, w, h] = q.box;
         if (x >= bx - tol && x <= bx + w + tol && y >= by - tol && y <= by + h + tol) return q.id;
       }
+      if (boxOnly) return null;
       for (let i = S.dboxes.length - 1; i >= 0; i--) {
         const q = S.dboxes[i], [A, Bq] = q.line, dx = Bq[0] - A[0], dy = Bq[1] - A[1], L2 = dx * dx + dy * dy;
         const t = L2 ? Math.max(0, Math.min(1, ((x - A[0]) * dx + (y - A[1]) * dy) / L2)) : 0;
@@ -375,6 +400,7 @@
       renderPanels(); render(); return true;
     }
     function drag(dr, x, y) {
+      if (!dr.moved && Math.hypot(x - dr.mx, y - dr.my) * S.view.scale < 3) return;   // a click, not a drag (the pointer may twitch)
       const d = dims().items.find(q => q.id === dr.id); if (!d || !["dx", "dy", "dist"].includes(d.k)) return;
       const env = D.makeEnv(S.board, S.model, S.csol), pa = env.point(d.a, null), pb = env.point(d.b, null); if (!pa || !pb) return;
       d.o = R4(offsetFor(d.k, pa, pb, [x, y])); dr.moved = true; render();
@@ -388,9 +414,53 @@
     }
     function dbl(x, y) {
       const id = hit(x, y); if (!id) return false;
-      S.sel = { kind: "dim", id }; renderPanels(); render();
-      const inp = document.querySelector("#inspector [data-dimval] input"); if (inp) { inp.focus(); inp.select(); }
+      editAt(id); return true;
+    }
+    // the Modify box (as in SolidWorks): it pops up on the dimension's label when one is placed, clicked
+    // in the Dimension tool or double-clicked; the value is selected, so typing replaces it. Enter or ✓
+    // sets it (the second thing moves), Esc or ✗ keeps it as it was, ⇄ puts it on the other side, the
+    // arrow keys step it by 0.1 mm (Shift: 1 mm)
+    function editAt(id) {
+      const d = dims().items.find(q => q.id === id); if (!d) return false;
+      S.sel = { kind: "dim", id }; renderPanels();
+      if (!D.HAS_VALUE[d.k]) { render(); msg("An alignment has no value: Del deletes it, the inspector makes it a reference"); return true; }
+      E.id = id; render(); modBox();
       return true;
+    }
+    function closeEdit() { if (!E.id) return; E.id = null; const el = $("dmod"); if (el) el.hidden = true; render(); }
+    function modBox() {
+      const el = $("dmod"); if (!el) return;
+      const d = E.id && dims().items.find(q => q.id === E.id), sh = d && shape(d, D.makeEnv(S.board, S.model, S.csol));
+      if (!sh) { E.id = null; el.hidden = true; return; }
+      const signed = d.k !== "dist", T_ = t => app.esc(tr(t));
+      el.innerHTML = `<div class="dm-t">${T_("Modify")} <small>${T_(kindName(d.k))}</small></div>`
+        + `<div class="dm-r"><input data-k="v" inputmode="decimal" value="${fmt(d.v)}" title="${T_("The value, mm: Enter sets it (the second thing moves), Esc leaves it as it was; ↑ ↓ step 0.1 mm, Shift 1 mm")}"><small>mm</small></div>`
+        + `<div class="dm-b"><button class="btn" data-dm="ok" title="${T_("Set the value (Enter)")}">✓</button><button class="btn" data-dm="cancel" title="${T_("Keep it as it was (Esc)")}">✗</button>${signed ? `<button class="btn" data-dm="flip" title="${T_("The second thing on the other side of the first")}">⇄</button>` : ""}</div>`;
+      const [lx, ly] = labelAt(sh); el.hidden = false;
+      const wrap = el.offsetParent || el.parentElement, W = wrap ? wrap.clientWidth : 1e4, Hh = wrap ? wrap.clientHeight : 1e4;
+      el.style.left = Math.max(4, Math.min(W - el.offsetWidth - 4, lx - el.offsetWidth / 2)) + "px";
+      el.style.top = Math.max(4, Math.min(Hh - el.offsetHeight - 4, ly + 12)) + "px";
+      const inp = el.querySelector("input"), id = E.id;
+      let done = false;
+      const finish = (set, flip) => {
+        if (done) return; done = true;
+        const v = parseFloat(inp.value.replace(",", ".")); E.id = null; el.hidden = true;
+        if (d.ref && (set || flip)) { setRef(d, false); if (d.ref) return; }   // a value typed into a reference one: it drives from now on
+        if (flip) { const was = d.v, cur = Number.isFinite(v) ? Math.abs(v) : Math.abs(d.v); d.v = -d.v; if (!setValue(d, cur)) d.v = was; }
+        else if (set && Number.isFinite(v) && (v < 0 || Math.abs(Math.abs(d.v) - v) > 1e-9)) setValue(d, v);
+        else render();
+        app.canvas().focus();
+      };
+      inp.onkeydown = e => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); finish(true); }
+        else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+        else if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); const v = parseFloat(inp.value.replace(",", ".")) || 0, st = (e.shiftKey ? 1 : 0.1) * (e.key === "ArrowUp" ? 1 : -1); inp.value = (Math.round((v + st) * 100) / 100).toFixed(2); inp.select(); }
+      };
+      el.onmousedown = e => { if (e.target !== inp) e.preventDefault(); e.stopPropagation(); };   // its buttons keep the focus in the box
+      el.onclick = e => { const b = e.target.closest("[data-dm]"); if (!b) return; finish(b.dataset.dm !== "cancel", b.dataset.dm === "flip"); };
+      inp.onblur = () => setTimeout(() => { if (E.id === id && document.activeElement !== inp) finish(false); }, 0);
+      inp.focus(); inp.select();
     }
 
     // ---------------------------------------------------------------------------
@@ -444,6 +514,6 @@
       menuState();
     }
 
-    return { HELP, enforce, toolChanged, onDown, onMove, onKey, cancel, select, drag, deleteSel, dbl, hit, draw, inspector, bodyInfo, align, clearAll, setShown, menuState, init, add, setValue, featureAt, isSel: id => !!(S.sel && S.sel.kind === "dim" && S.sel.id === id) };
+    return { HELP, enforce, toolChanged, onDown, onMove, onKey, cancel, select, drag, deleteSel, dbl, editAt, closeEdit, fromMeasure, hit, draw, inspector, bodyInfo, align, clearAll, setShown, menuState, init, add, setValue, featureAt, isSel: id => !!(S.sel && S.sel.kind === "dim" && S.sel.id === id) };
   };
 })(typeof window !== "undefined" ? window : globalThis);

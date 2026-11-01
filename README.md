@@ -781,7 +781,9 @@ the circuit file, so one file holds both.
   exported. Holes take a tolerance and a counterbore or countersink (listed
   in the Gerber ZIP's README), and a design rule keeps a hole's wall 1 mm
   from the board edge.
-- **Driving dimensions** (Construct ▾ → Dimension, <kbd>Shift</kbd>+<kbd>D</kbd>):
+- **Driving dimensions** (the Dimension toolbar button, <kbd>D</kbd>; works like
+  SolidWorks Smart Dimension: the Modify box pops up on the value, the tool stays
+  on, drag a value to move it, click or double-click it to change it):
   place any part (by its origin or a pad), hole, via, text or keep-out by its
   distance from a board edge or corner or from anything else, as in a 2D
   sketcher. Click two things, place the dimension (horizontal, vertical or
@@ -795,7 +797,8 @@ the circuit file, so one file holds both.
   drill file as component holes, open the mask, are drilled through the 3D
   board, and keep the net class's clearance from tracks and pours.
 - **Tools:** Select, Route, Via, Text (silkscreen or copper), Mounting hole,
-  Pour, Keep-out, Measure, and the Construct menu's construction tools. The board's top-right corner handle resizes it; the origin
+  Pour, Keep-out, Measure (Shift+D; Enter keeps it as a reference dimension),
+  Dimension (D), and the Construct menu's construction tools. The board's top-right corner handle resizes it; the origin
   stays put. Silkscreen text uses a
   stroke font, so the screen shows what the board maker gets.
 - **Routing** starts on a pad, a track or a via and ends on any of them on the
