@@ -13,6 +13,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - **Align horizontally / vertically** (Construct ▾) for two or more selected parts, holes, vias or texts: the others line up with the first and stay lined up.
 - **Reference dimensions and how defined a thing is.** A dimension that would over-constrain the board becomes a reference one (grey, in brackets: it only reads the distance); one that can no longer be met is drawn red. The inspector of a dimension edits its value and role; a part's, hole's, via's, text's or keep-out's inspector says how many dimensions hold it and whether it is fully defined or still free to move sideways or up and down, with Remove its dimensions. Show and Clear dimensions are in the menu. Our own least-change solver (Newton steps of the smallest move, the thing just dragged held still; the rank of the equations tells redundant dimensions and what is fully defined) solves 100 dimensions in a few milliseconds to 0.001 mm.
 - Dimensions are notes for the designer: saved with the board, never exported (silkscreen, Gerbers, drill files, PDFs, KiCad, STEP, SVG). Help, README, hover hints and Russian included.
+
 ## [3.166.0] - 2026-11-01
 
 ### Added
