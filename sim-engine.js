@@ -1662,7 +1662,9 @@
     const watch = (opts.watch || []).map(p => Array.isArray(p) ? p : [p, 0]).map(([a, b]) => ({ a, b, ok: okNode(a) && okNode(b), max: 0, maxAt: 0, min: 0, minAt: 0,
       lo: nW ? new Float32Array(nW).fill(Infinity) : null, hi: nW ? new Float32Array(nW).fill(-Infinity) : null }));
     const TUBE = { TRIODE: 1, PENTODE: 1, VDIODE: 1 };
-    const tubes = circ.els.filter(e => TUBE[e.kind] && e.id), track = tubes.map(() => ({ peak: 0, peakAt: 0, endPeak: 0, worst: null }));
+    // per tube: peak, settled peak, the worst current with a cold cathode, and (with watchPoints)
+    // the most it passed in each record bucket while cold and overdrawn, for the scope's lanes
+    const tubes = circ.els.filter(e => TUBE[e.kind] && e.id), track = tubes.map(() => ({ peak: 0, peakAt: 0, endPeak: 0, worst: null, cold: nW ? new Float32Array(nW) : null }));
     const heated = opts.warmup ? tubes.filter(e => e.heat && e.heat.tau > 0 && e.heat.emit > 0) : [];
     const warmTo = t => heated.forEach(e => { e._emit = e.heat.emit * cathodeWarm(t, e.heat.tau).frac; });
     // what a tube asks for (its space-charge current) and what it passes
@@ -1688,11 +1690,13 @@
         if (t >= 0.9 * tStop && i > k.endPeak) k.endPeak = i;
         // a cold cathode overdrawn: the most current it passed while still below CATHODE.cold of its
         // working temperature (in kelvin) with the circuit asking for more than it could emit
-        if (e._emit === undefined || (k.worst && i <= k.worst.i) || !(i > 0)) return;
+        if (e._emit === undefined || !(i > 0) || (!k.cold && k.worst && i <= k.worst.i)) return;
         const w = cathodeWarm(t, e.heat.tau);
         if (w.T >= CATHODE.cold * CATHODE.hot) return;
         const ratio = d / Math.max(e._emit, 1e-15);
         if (ratio < 1.5) return;   // the circuit takes what it would from a hot tube: normal conduction
+        if (k.cold && i > k.cold[bw]) k.cold[bw] = i;
+        if (k.worst && i <= k.worst.i) return;
         k.worst = { i, t, ratio, frac: w.frac, T: w.T, v };
       });
     };
@@ -1711,7 +1715,7 @@
     result.probes = probes; result.min = mins; result.max = maxs;
     result.watch = watch.map(w => ({ max: w.max, maxAt: w.maxAt, min: w.min, minAt: w.minAt, lo: w.ok ? w.lo : null, hi: w.ok ? w.hi : null }));
     result.watchDt = nW ? tStop / nW : 0;
-    result.tubes = tubes.map((e, j) => ({ id: e.id, part: e.part || null, kind: e.kind, tau: heated.includes(e) ? e.heat.tau : 0, peak: track[j].peak, peakAt: track[j].peakAt, endPeak: track[j].endPeak, worst: track[j].worst }));
+    result.tubes = tubes.map((e, j) => ({ id: e.id, part: e.part || null, kind: e.kind, tau: heated.includes(e) ? e.heat.tau : 0, peak: track[j].peak, peakAt: track[j].peakAt, endPeak: track[j].endPeak, worst: track[j].worst, cold: track[j].cold }));
     result.elapsedMs = Date.now() - t0;
     return result;
   }

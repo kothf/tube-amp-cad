@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.172.0] - 2026-11-01
+
+### Added
+- **Oscilloscope power-on: warm-up lanes.** Under the record strip, one lane per heated tube on the screen's time axis (linear or log): a bar filling with the cathode's emission, a mark and *warm at* where it reaches 90 %, orange spans where the run found it overdrawn with a cold cathode, and its emission at the cursor on the right.
+- **Capacitors plotted without a probe.** *Show…* in the power-on report plots any capacitor's voltage from the run's record (no new run), in its own colour with its own volts/div and rating line; clicking a capacitor's event plots it too. With no probe on the scope, B+ (the first reservoir capacitor) is plotted by itself.
+
 ## [3.171.0] - 2026-11-01
 
 ### Added

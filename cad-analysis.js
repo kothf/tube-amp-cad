@@ -13,7 +13,7 @@
     function transientMessage() {
       const t = S.trans;
       return { type: "TRANSIENT_RESULT", version: VERSION, seq: t.seq, running: !!t.running, progress: t.progress || 0, tStop: t.tStop, warmup: !!t.warmup, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
-        dt: t.dt, elapsedMs: t.elapsedMs, scopes: t.scopes || [], caps: t.caps || [], tubes: t.tubes || [], events: t.events || [] };
+        dt: t.dt, watchDt: t.watchDt || 0, cathode: root.TubeSimEngine ? TubeSimEngine.CATHODE : null, elapsedMs: t.elapsedMs, scopes: t.scopes || [], caps: t.caps || [], tubes: t.tubes || [], events: t.events || [] };
     }
     function stopTransient() {
       if (tJob) { tJob.cancel(); tJob = null; }
@@ -66,7 +66,7 @@
           sc[p.ch] = { min: result.min[p.k], max: result.max[p.k], nets: p.nets };
         });
         const rep = result.ok ? transientReport(result, caps, warmup) : { caps: [], tubes: [], events: [] };
-        Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, elapsedMs: result.elapsedMs, scopes, progress: 1 }, rep);
+        Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, watchDt: result.watchDt || 0, elapsedMs: result.elapsedMs, scopes, progress: 1 }, rep);
         if (channel) channel.postMessage(transientMessage());
         const bad = rep.events.filter(n => n.level !== "info").length;
         if (S.sim.busy && result.ok) showBusy();   // the steady state still runs: its progress stays on the line
@@ -103,7 +103,7 @@
         const w = result.watch && result.watch[k]; if (!w) return;
         const peak = Math.max(w.max, -w.min), at = w.max >= -w.min ? w.maxAt : w.minAt, r = capRating(x.c), lbl = desig(x.c);
         const level = !r ? "" : peak > 1.15 * r.v ? "critical" : peak > r.v ? "warning" : peak > 0.9 * r.v ? "info" : "ok";
-        out.caps.push({ id: x.c.id, label: lbl, peak, at, rating: r ? r.v : 0, set: r ? r.set : false, steady: r ? r.steady || null : null, nets: x.nets, level, k, ground: x.ground, electrolytic: x.c.type === "electrolytic" });
+        out.caps.push({ id: x.c.id, label: lbl, peak, at, rating: r ? r.v : 0, set: r ? r.set : false, steady: r ? r.steady || null : null, nets: x.nets, level, k, ground: x.ground, electrolytic: x.c.type === "electrolytic", lo: w.lo || null, hi: w.hi || null });
         const why = r && !r.set ? ` The ${fmtEng(r.v, "V")} rating is the one the BOM picks from its settled ${fmtEng(r.steady, "V")}; set a higher one in the inspector.` : "";
         if (level === "critical" || level === "warning")
           events.push({ t: at, level, kind: "cap", id: x.c.id, who: lbl, nets: x.nets, text: `${fmtEng(peak, "V")} peak, over its ${fmtEng(r.v, "V")} rating (${Math.round(peak / r.v * 100)} %)`,
@@ -135,18 +135,26 @@
       }
       // tubes: one line per part (a rectifier's two anodes together)
       const byId = new Map();
-      (result.tubes || []).forEach(e => { const g = byId.get(e.id) || { peak: 0, peakAt: 0, endPeak: 0, worst: null, tau: e.tau, kind: e.kind }; if (e.peak > g.peak) { g.peak = e.peak; g.peakAt = e.peakAt; } g.endPeak = Math.max(g.endPeak, e.endPeak || 0); if (e.worst && (!g.worst || e.worst.i > g.worst.i)) g.worst = e.worst; byId.set(e.id, g); });
+      (result.tubes || []).forEach(e => {
+        const g = byId.get(e.id) || { peak: 0, peakAt: 0, endPeak: 0, worst: null, tau: e.tau, kind: e.kind, cold: null };
+        if (e.peak > g.peak) { g.peak = e.peak; g.peakAt = e.peakAt; } g.endPeak = Math.max(g.endPeak, e.endPeak || 0); if (e.worst && (!g.worst || e.worst.i > g.worst.i)) g.worst = e.worst;
+        if (e.cold) { if (!g.cold) g.cold = Float32Array.from(e.cold); else e.cold.forEach((v, i) => { if (v > g.cold[i]) g.cold[i] = v; }); }
+        byId.set(e.id, g);
+      });
+      // the spans of the record where a tube passed more than thr with its cathode cold and overdrawn
+      const gap = Math.max(0.05, (result.tStop || 0) / 200);
+      const spans = (cold, thr) => { const out = []; if (!cold || !dtW) return out; let a = -1; for (let i = 0; i <= cold.length; i++) { const on = i < cold.length && cold[i] > thr; if (on && a < 0) a = i; if (!on && a >= 0) { const last = out[out.length - 1], t0 = a * dtW; if (last && t0 - last[1] <= gap) last[1] = i * dtW; else out.push([t0, i * dtW]); a = -1; } } return out; };   // gaps of a few mains cycles joined
       byId.forEach((g, id) => {
         const c = S.comps.find(x => x.id === id); if (!c || c.type !== "tube") return;
         const t = CL.tubeByName(c.params.tube), wu = CL.tubeWarmup(t, c); if (!t || !wu) return;
         const rect = g.kind === "VDIODE", lim = rect ? wu.peak : wu.rated, name = `${desig(c)} (${t.commonName})`;
         const limText = rect ? `its ${fmtEng(lim, "A")} peak rating per anode${wu.peakFromBook ? "" : " (about 3 × its rated current: no peak rating in the app's data)"}` : `its ${fmtEng(lim, "A")} rated cathode current`;
         const cold = g.worst, C = T => Math.round((T - 273) / 10) * 10, hot = C(TubeSimEngine.CATHODE.hot);
-        let level = "ok";
+        let level = "ok", coldSpans = [];
         // overdrawn while cold: more than it passes once settled (the empty capacitors' charge on a
         // half-warm cathode), and near its rating
         if (cold && cold.i > 1.1 * g.endPeak && cold.i > (rect ? 0.7 : 1) * lim) {
-          level = "warning";
+          level = "warning"; coldSpans = spans(g.cold, Math.max(1.1 * g.endPeak, (rect ? 0.7 : 1) * lim));
           events.push({ t: cold.t, level, kind: "cold", id, who: name, text: `${fmtEng(cold.i, "A")} with a cold cathode (about ${C(cold.T)} °C), ${cold.ratio.toFixed(1)}× more than it could emit`,
             detail: `${name}: ${fmtEng(cold.i, "A")} at ${ms(cold.t)} while its cathode was still cold (about ${C(cold.T)} °C of ${hot} °C), the circuit asking ${cold.ratio.toFixed(1)}× more than it could emit; ${fmtEng(g.endPeak, "A")} once settled, against ${limText}. A cold, overdrawn cathode loses its coating (cathode stripping)${rect ? ": a smaller first capacitor or more resistance before it (or a slower-warming rectifier) eases it" : ""}.` });
         }
@@ -155,7 +163,7 @@
           events.push({ t: g.peakAt, level, kind: "surge", id, who: name, text: `${fmtEng(g.peak, "A")} surge, over its ${fmtEng(lim, "A")} peak rating`,
             detail: `${name}: a ${fmtEng(g.peak, "A")} surge at ${ms(g.peakAt)}, over ${limText}${warmup ? "" : ": with hot cathodes (a standby switch closed onto empty capacitors)"}. More resistance per anode or a smaller first capacitor limits it.` });
         }
-        out.tubes.push({ id, label: desig(c), tube: t.commonName, tau: g.tau, peak: g.peak, peakAt: g.peakAt, endPeak: g.endPeak, worst: cold, ratedPeak: rect ? lim : 0, rect, level });
+        out.tubes.push({ id, label: desig(c), tube: t.commonName, tau: g.tau, peak: g.peak, peakAt: g.peakAt, endPeak: g.endPeak, worst: cold, ratedPeak: rect ? lim : 0, rect, level, coldSpans });
       });
       events.sort((a, b) => a.t - b.t || SEV[a.level] - SEV[b.level]);
       out.caps.forEach(c => { delete c.k; delete c.ground; delete c.electrolytic; });

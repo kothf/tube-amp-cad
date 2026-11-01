@@ -309,6 +309,9 @@ the circuit that was on the sheet.
   Critical, Warning or Info (B+ settling to ±1 % among them); click one to zoom
   there. Time presets (keys 1–4: Inrush, Warm-up, Settled, Whole) and a log
   time axis show the millisecond inrush and the seconds of warm-up alike.
+  Warm-up lanes show each tube's emission rising ("warm at" 90 %, orange
+  where it was overdrawn cold); any capacitor can be plotted from the run
+  without a probe, and B+ is plotted by itself when no probe is wired.
 
 ## Drawings, documents and exports
 

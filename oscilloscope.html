@@ -22,7 +22,7 @@
     .btn.active { background: #0b3a48; border-color: var(--accent); color: #7fe8ff; }
     select { background: #0b1118; border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
     main { display: grid; grid-template-columns: 1fr 300px; gap: 12px; padding: 12px; min-height: 0; }
-    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: auto 1fr auto auto auto auto; min-height: 0; }
+    .bezel { background: #0d1219; border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-rows: auto 1fr auto auto auto auto auto; min-height: 0; }
     #overview { width: 100%; height: 48px; display: block; margin-top: 8px; border-radius: 5px; cursor: ew-resize; }
     #screen { width: 100%; height: 100%; display: block; border-radius: 6px; min-height: 0; }
     .meas { display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 4px 0; font: 12px ui-monospace, Menlo, monospace; }
@@ -32,7 +32,8 @@
     .marks .btn { padding: 1px 8px; font-size: 11px; margin-left: auto; }
     aside { overflow-y: auto; min-height: 0; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
-    #overview[hidden] { display: none; }   /* its display: block would otherwise keep the space */
+    #overview[hidden], #lanes[hidden] { display: none; }
+    #lanes { width: 100%; display: block; margin-top: 6px; }   /* its display: block would otherwise keep the space */
     .card .nc { display: none; text-transform: none; letter-spacing: 0; font-weight: 400; }
     .card.off .nc { display: inline; }
     .card.off .row { opacity: .45; }
@@ -53,7 +54,8 @@
     .pwr-report { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12px; }
     .pwr-report .head { display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--line); }
     .pwr-report .head .title { margin: 0; font-weight: 600; color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
-    .pwr-report .head .btn { margin-left: auto; padding: 1px 9px; font-size: 11px; }
+    .pwr-report .head select { margin-left: auto; font-size: 11px; padding: 1px 4px; max-width: 220px; }
+    .pwr-report .head .btn { padding: 1px 9px; font-size: 11px; }
     .verdict.critical { color: #ff6b6b; } .verdict.warning { color: #ff9e64; } .verdict.ok { color: var(--ok); }
     #pwr-events { max-height: 128px; overflow-y: auto; }
     .ev { display: grid; grid-template-columns: 16px 62px minmax(70px, max-content) 1fr auto; gap: 8px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid #1b2636; padding: 4px 10px; cursor: pointer; }
@@ -99,10 +101,11 @@
       </div>
       <canvas id="screen" aria-label="Oscilloscope screen"></canvas>
       <canvas id="overview" aria-label="Whole power-on record: click or drag to scroll" hidden></canvas>
+      <canvas id="lanes" aria-label="Cathode warm-up per tube" hidden></canvas>
       <div class="meas" id="meas"></div>
       <div class="marks" id="marks"></div>
       <div class="pwr-report" id="pwr-report" hidden>
-        <div class="head"><h3 class="title">Power-on report</h3><span class="verdict" id="pwr-verdict"></span><button class="btn" id="pwr-copy" title="Copy the report as plain text">Copy</button></div>
+        <div class="head"><h3 class="title">Power-on report</h3><span class="verdict" id="pwr-verdict"></span><select id="pwr-show" title="Plot a capacitor's voltage from the run without a probe (again: take it off)"><option value="">Show…</option></select><button class="btn" id="pwr-copy" title="Copy the report as plain text">Copy</button></div>
         <div id="pwr-events" role="list" aria-label="Power-on events: click one to zoom to it"></div>
       </div>
     </div>
