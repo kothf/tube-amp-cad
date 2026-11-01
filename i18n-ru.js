@@ -212,6 +212,7 @@
     "Ratings:": "Режимы:",
     "with nothing selected, the inspector's Checks list every part beyond its rating; for tubes Pa, Pg2, screen voltage, cathode current, heater-to-cathode voltage (set": "когда ничего не выбрано, Проверки в инспекторе перечисляют каждую деталь сверх её предельных режимов; для ламп Pa, Pg2, напряжение экрана, ток катода, напряжение накал–катод (задайте",
     "Heater DC potential": "Потенциал накала",
+    "Warm-up time constant": "Постоянная времени прогрева",
     "for a raised heater) and the grid circuit resistance. A tube's inspector shows each as a share of its rating.": "для приподнятого накала) и сопротивление в цепи сетки. Инспектор лампы показывает каждый режим как долю от предельного.",
     "Simulate:": "Расчёт:",
     "re-simulates after every edit. Turn it off to simulate only on": "пересчитывает после каждой правки. Выключите, чтобы считать только по",
@@ -1761,7 +1762,7 @@
     [/^(\d+)% of saturation$/, "$1 % от насыщения"], [/^(\d+)% \(over rating\)$/, "$1 % (сверх нормы)"],
     [/^(\d+) V \(primaries in parallel\)$/, "$1 В (первичные параллельно)"], [/^(\d+) V \(primaries in series\)$/, "$1 В (первичные последовательно)"],
     [/^Pa max (.+)$/, "Pa макс. $1"], [/^Va max (.+)$/, "Va макс. $1"], [/^heater (.+) \(not simulated\)$/, "накал $1 (не моделируется)"],
-    [/^heater (\S+ V \/ \S+ A)$/, "накал $1"], [/^cathode warm-up τ ≈ (\S+) s \(in the oscilloscope's Power-on run\)$/, "прогрев катода τ ≈ $1 с (в режиме «Включение» осциллографа)"],
+    [/^heater (\S+ V \/ \S+ A)$/, "накал $1"], [/^cathode warm-up τ ≈ (\S+) s \((?:set in the inspector|(directly heated filament|slow-start cathode|heavy indirectly heated cathode|indirectly heated cathode), heater (\S+) W); in the oscilloscope's Power-on run\)$/, (m, t, k, w) => `прогрев катода τ ≈ ${t} с (${k ? `${({ "directly heated filament": "нить прямого накала", "slow-start cathode": "катод с мягким пуском", "heavy indirectly heated cathode": "мощный подогревный катод", "indirectly heated cathode": "подогревный катод" })[k]}, накал ${w} Вт` : "задана в инспекторе"}; в режиме «Включение» осциллографа)`],
     // the power-on run's notes (oscilloscope)
     [/^(\S+): (\S+) at (\S+) after power-on, (over|over 90 % of) its (\S+) rating( \(the one the BOM picks from its settled (\S+); set a higher one in the inspector\))?: the tubes draw little until their cathodes are warm$/, (m, c, v, t, o, r, b, st) => `${c}: ${v} через ${t} после включения, ${o === "over" ? "больше" : "больше 90 %"} допустимых ${r}${b ? ` (их выбирает спецификация по ${st} в установившемся режиме; задайте больше в инспекторе)` : ""}: пока катоды не прогрелись, лампы почти не берут ток`],
     [/^(.+?): (\S+) at (\S+) while its cathode was still cold \(about (-?\d+) °C of (\d+) °C\), the circuit asking ([\d.]+)× more than it could emit; (\S+) once settled, against its (\S+) (peak rating per anode|rated cathode current)( \(about 3 × its rated current: no peak rating in the app's data\))?\. A cold, overdrawn cathode loses its coating \(cathode stripping\)(: a smaller first capacitor or more resistance before it \(or a slower-warming rectifier\) eases it)?\.$/,

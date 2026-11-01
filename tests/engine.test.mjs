@@ -429,6 +429,20 @@ test("cathode warm-up: Richardson emission of an oxide cathode, from nothing col
   near(f(tAt), 0.81 * Math.exp(C.b * (1 / C.hot - 1 / T)), 1e-9, "emission share at 0.9 Tk");
 });
 
+test("cathode warm-up time constants: from the heater's power and the kind of cathode, or the part's own", () => {
+  if (!globalThis.CadLib) runInThisContext(readFileSync(new URL("../cad-components.js", import.meta.url), "utf8"), { filename: "cad-components.js" });
+  const L = globalThis.CadLib, w = n => L.tubeWarmup(L.tubeByName(n));
+  // directly heated 0.8 + 0.25·Ih (1–2 s); standard indirectly heated 4 + 1.2·√Ph (5–8 s);
+  // heavy (power or rectifier, Ph ≥ 5 W) 5 + 0.5·Ph (8–12 s); slow-start 5 + 0.5·Ph (10–15 s)
+  const want = { "5U4G": [1.6, "directly"], "2A3": [1.4, "directly"], "300B": [1.1, "directly"], "12AX7": [5.6, "^indirectly"], "6V6GT": [6, "^indirectly"], "EL84": [6.6, "^indirectly"],
+    "6L6GC": [8, "heavy"], "EL34": [9.7, "heavy"], "KT88": [10, "heavy"], "6S33S-V": [12, "heavy"], "GZ34": [10, "slow"], "5Ts4S": [10, "heavy"] };
+  for (const [n, [tau, cls]] of Object.entries(want)) { const x = w(n); assert.ok(Math.abs(x.tau - tau) < 0.05 && new RegExp(cls).test(x.cls), `${n}: τ ${x.tau} s (${x.cls}), expected ${tau} s (${cls})`); }
+  // the inspector's own value wins; 0 keeps the automatic one
+  const t = L.tubeByName("EL34");
+  assert.equal(L.tubeWarmup(t, { params: { warmTau: 14 } }).tau, 14);
+  assert.equal(L.tubeWarmup(t, { params: { warmTau: 0 } }).tau, 9.7);
+});
+
 // a triode (12AX7 model) on a 250 V supply through 100 kΩ, cathode at ground
 const warmTriode = (tau, extra) => ({ nodeCount: 4, elements: [
   { id: "b", kind: "V", nodes: [1, 0], v: 250 }, { id: "rs", kind: "R", nodes: [1, 3], r: 1e3 }, { id: "cs", kind: "C", nodes: [3, 0], c: 10e-6 },

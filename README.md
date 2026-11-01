@@ -297,8 +297,10 @@ the circuit that was on the sheet.
 - **Power-on transient.** The oscilloscope can show the first seconds after
   switch-on: capacitors start empty and every source switches on at t = 0.
   With *Cathodes warm up* the tubes' cathodes start cold as well and heat with
-  their own time constant (a directly heated rectifier in a second or two, an
-  EL34 or GZ34 in about 10 s), emitting by Richardson's law. The run then
+  their own time constant, from the heater's power and the kind of cathode
+  (directly heated 1–2 s, standard indirectly heated 5–8 s, heavy power tubes
+  8–12 s, slow-start rectifiers such as the GZ34 10–15 s; or the tube's own
+  *Warm-up time constant*), emitting by Richardson's law. The run then
   shows B+ overshooting on cold tubes, draws the capacitors' voltage ratings
   as dashed lines, and warns of a capacitor over its rating, a rectifier
   overdrawn while its cathode is still cold (cathode stripping) and a

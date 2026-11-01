@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.170.0] - 2026-11-01
+
+### Changed
+- **Cathode warm-up time constants from the heater's power and the kind of cathode.** τ now comes from P<sub>h</sub> = V<sub>h</sub> · I<sub>h</sub>: a directly heated filament 0.8 + 0.25 · I<sub>h</sub> (1–2 s); a standard indirectly heated cathode 4 + 1.2 · √P<sub>h</sub> (5–8 s: 12AX7 5.6 s, 6V6 6 s, EL84 6.6 s); a heavy one, a power tube or rectifier with 5 W of heater or more, 5 + 0.5 · P<sub>h</sub> (8–12 s: 6L6GC 8 s, EL34 9.7 s, KT88 10 s); a slow-start rectifier or damper (GZ34 / 5AR4) 5 + 0.5 · P<sub>h</sub> (10–15 s). The tube's inspector names the class and heater power.
+
+### Added
+- **Warm-up time constant** in the tube's inspector: a datasheet or measured value for the power-on run (0 keeps the automatic one).
+
 ## [3.169.0] - 2026-11-01
 
 ### Added
