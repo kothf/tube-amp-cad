@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.173.0] - 2026-11-01
+
+### Added
+- **Oscilloscope power-on scenarios.** *Scenario* replaces the Cathodes warm up box: **Cold start** (heaters and B+ at t = 0), **Hot restart** (hot cathodes, the mains onto empty capacitors), **Standby switch** (the heaters for a set delay, 30 s by default, then B+; time counts from the switch) and **Soft start** (the mains through a set resistor, 47 Ω, or the circuit's NTC inrush limiters, until a relay shorts it at a set time, 2 s; the report lists the relay). Auto duration follows the scenario.
+- **The power-on run as it goes.** The record draws left to right every half second while the run goes on, with a line where it has got to and *12.4 s of 30 s · about 15 s left* in the status line. **■ Stop** keeps what has been computed as a shorter run, with its report. The Run button's hint gives the last run's speed and the time to expect.
+
 ## [3.172.0] - 2026-11-01
 
 ### Added

@@ -469,6 +469,28 @@ test("power-on with warm-up: the tube conducts only as its cathode heats, never 
   assert.ok(r.tubes[0].tau === tau && r.tubes[0].peak > 0.99 * iHot, "the tube's record: its time constant and peak current");
 });
 
+test("power-on: snapshots (onPartial) add up to the record; warmOffset starts the cathodes part-warm; soft start", () => {
+  const tau = 2, nl = warmTriode(tau), parts = [];
+  // a busy-wait in onProgress makes the run slow enough for several snapshots
+  const r = E.startup(nl, { tStop: 3 * tau, warmup: true, probes: [[3, 2]], maxPoints: 600, watch: [[3, 0]], watchPoints: 60, partialMs: 5,
+    onProgress: () => { const t = Date.now(); while (Date.now() - t < 3); }, onPartial: p => parts.push(p) });
+  assert.ok(r.ok && parts.length >= 3, `${parts.length} snapshots`);
+  const min = new Float32Array(600), lo = new Float32Array(60);
+  parts.forEach((p, k) => { assert.equal(p.from, k ? parts[k - 1].to : 0); min.set(p.min[0], p.from); lo.set(p.watch[0].lo, p.wfrom); });
+  const last = parts[parts.length - 1];
+  for (let i = 0; i < last.to; i++) assert.equal(min[i], r.min[0][i], `bucket ${i}`);
+  for (let i = 0; i < last.wto; i++) assert.equal(lo[i], r.watch[0].lo[i], `watched bucket ${i}`);
+  // the cathodes already 10 τ warm: the tube conducts from the start, B+ does not overshoot
+  const hot = E.simulate(nl, { budgetMs: 30000 }), w = E.startup(nl, { tStop: 1, warmup: true, warmOffset: 10 * tau, watch: [[3, 0]] });
+  assert.ok(w.ok && w.watch[0].max < hot.dc.nodes[3] + 0.5 && w.warmOffset === 10 * tau, `warmOffset: B+ peak ${w.watch[0].max} V`);
+  // soft start: 1 kΩ in series with a mains source until 0.2 s, then shorted
+  const mains = { nodeCount: 3, elements: [{ id: "m", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 50, amp: 100, phase: 90, acMains: true }, { id: "rl", kind: "R", nodes: [1, 2], r: 1 }, { id: "load", kind: "R", nodes: [2, 0], r: 1000 }] };
+  const sft = E.startup(mains, { tStop: 0.4, probes: [[2, 0]], maxPoints: 400, soft: { r: 1000, at: 0.2 } });
+  assert.ok(sft.ok && sft.relayAt === 0.2 && sft.soft === "resistor", "the relay closes");
+  const pk = (a, b) => { let m = 0; for (let i = a; i < b; i++) m = Math.max(m, sft.max[0][i]); return m; };
+  near(pk(100, 190), 50, 1.5, "half the mains across the load through 1 kΩ"); near(pk(250, 400), 100, 1.5, "all of it once shorted");
+});
+
 test("power-on: watched nets keep a coarser min/max record (watchPoints) that matches the probe", () => {
   const tau = 2, nl = warmTriode(tau);
   const r = E.startup(nl, { tStop: 4 * tau, warmup: true, probes: [[3, 0]], maxPoints: 2000, watch: [[3, 0], [1, 0]], watchPoints: 200 });
