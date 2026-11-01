@@ -9,32 +9,52 @@
   root.CadAnalysis = function (cad) {
     const { S, VERSION, buildNetlist, pool, channel, desig, fmtEng, netAC, setStatus, showBusy, topo } = cad;
     let tJob = null;
-    S.trans = null;           // { seq, running, progress, tStop, ok, error, dt, scopes: [{ id, label, ch1: {min,max}, ch2 }] }
+    S.trans = null;           // { seq, running, progress, tStop, warmup, ok, error, dt, scopes: [{ id, label, ch1: {min,max,nets}, ch2 }], caps, tubes, notes }
     function transientMessage() {
       const t = S.trans;
-      return { type: "TRANSIENT_RESULT", version: VERSION, seq: t.seq, running: !!t.running, progress: t.progress || 0, tStop: t.tStop, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
-        dt: t.dt, elapsedMs: t.elapsedMs, scopes: t.scopes || [] };
+      return { type: "TRANSIENT_RESULT", version: VERSION, seq: t.seq, running: !!t.running, progress: t.progress || 0, tStop: t.tStop, warmup: !!t.warmup, ok: !!t.ok, error: t.error || null, stale: !!t.stale,
+        dt: t.dt, elapsedMs: t.elapsedMs, scopes: t.scopes || [], caps: t.caps || [], tubes: t.tubes || [], notes: t.notes || [] };
     }
     function stopTransient() {
       if (tJob) { tJob.cancel(); tJob = null; }
       if (S.trans && S.trans.running) { S.trans.running = false; S.trans.error = "Stopped"; if (channel) channel.postMessage(transientMessage()); setStatus("idle", "Power-on transient stopped"); }
     }
-    function runTransient(tStop) {
-      tStop = Math.min(5, Math.max(0.01, +tStop || 1));
+    // the power-on run's length for "auto": with the cathodes warming, three time constants of the
+    // slowest (to the next 5 s, 5 to 60 s); with hot cathodes or no tubes, 1 s
+    function autoDuration(netlist, warmup) {
+      const tau = warmup ? Math.max(0, ...netlist.elements.map(e => (e.heat && e.heat.tau) || 0)) : 0;
+      return tau > 0 ? Math.min(60, Math.max(5, Math.ceil(3 * tau / 5) * 5)) : 1;
+    }
+    // a capacitor's voltage rating: its own, or the one the BOM picks from the steady state's peak
+    function capRating(c) {
+      if (+c.params.v > 0) return { v: +c.params.v, set: true };
+      const st = S.sim.stress && S.sim.stress.get(c.id), txt = st && root.BomLib ? root.BomLib.capRating(c.type, st.v) : "";
+      const m = /^(\d+) × ([\d.]+) V/.exec(txt) || [], v = m[1] ? +m[1] * +m[2] : parseFloat(txt);
+      return v > 0 ? { v, set: false, steady: st.v } : null;
+    }
+    function runTransient(tStop, warmup) {
+      warmup = warmup !== false;
       const T = topo();
-      if (!T.hasGround) { S.trans = { running: false, ok: false, error: "Add a ground symbol to simulate", tStop }; if (channel) channel.postMessage(transientMessage()); return; }
+      if (!T.hasGround) { S.trans = { running: false, ok: false, error: "Add a ground symbol to simulate", tStop: +tStop || 1, warmup }; if (channel) channel.postMessage(transientMessage()); return; }
       stopTransient();
       const netlist = buildNetlist(), probes = [], map = [];
+      tStop = tStop === "auto" ? autoDuration(netlist, warmup) : Math.min(120, Math.max(0.01, +tStop || 1));
       S.comps.filter(c => c.type === "scope").forEach(c => {
         const com = T.pinNet.get(c.id + ":COM");
         ["CH1", "CH2"].forEach(pid => {
           if (!T.pinConnected.get(c.id + ":" + pid)) return;
-          map.push({ id: c.id, label: c.label, ch: pid.toLowerCase(), k: probes.length });
-          probes.push([T.pinNet.get(c.id + ":" + pid), com]);
+          const nets = [T.pinNet.get(c.id + ":" + pid), com];
+          map.push({ id: c.id, label: c.label, ch: pid.toLowerCase(), k: probes.length, nets });
+          probes.push(nets);
         });
       });
+      // every capacitor's voltage, for its peak against its rating
+      const caps = S.comps.filter(c => c.type === "capacitor" || c.type === "electrolytic").map(c => {
+        const [a, b] = c.type === "capacitor" ? ["1", "2"] : ["+", "-"], na = T.pinNet.get(c.id + ":" + a), nb = T.pinNet.get(c.id + ":" + b);
+        return na === undefined || nb === undefined || na === nb ? null : { c, nets: [na, nb] };
+      }).filter(Boolean);
       const seq = (S.trans && S.trans.seq || 0) + 1;
-      S.trans = { seq, running: true, progress: 0, tStop };
+      S.trans = { seq, running: true, progress: 0, tStop, warmup };
       if (channel) channel.postMessage(transientMessage());
       showBusy();
       const done = result => {
@@ -43,15 +63,17 @@
         const scopes = [];
         if (result.ok) map.forEach(p => {
           let sc = scopes.find(x => x.id === p.id); if (!sc) scopes.push(sc = { id: p.id, label: p.label });
-          sc[p.ch] = { min: result.min[p.k], max: result.max[p.k] };
+          sc[p.ch] = { min: result.min[p.k], max: result.max[p.k], nets: p.nets };
         });
-        Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, elapsedMs: result.elapsedMs, scopes, progress: 1 });
+        const rep = result.ok ? transientReport(result, caps, warmup) : { caps: [], tubes: [], notes: [] };
+        Object.assign(S.trans, { running: false, ok: !!result.ok, error: result.ok ? null : result.error, dt: result.dt, elapsedMs: result.elapsedMs, scopes, progress: 1 }, rep);
         if (channel) channel.postMessage(transientMessage());
+        const bad = rep.notes.filter(n => n.level !== "ok").length;
         if (S.sim.busy && result.ok) showBusy();   // the steady state still runs: its progress stays on the line
-        else if (result.ok) setStatus("ok", `Power-on transient: ${fmtEng(tStop, "s")} of circuit time in ${(result.elapsedMs / 1000).toFixed(1)} s · ${result.steps} steps`);
+        else if (result.ok) setStatus(bad ? "warn" : "ok", `Power-on transient: ${fmtEng(tStop, "s")} of circuit time in ${(result.elapsedMs / 1000).toFixed(1)} s · ${result.steps} steps${bad ? ` · ${bad} warning${bad > 1 ? "s" : ""} (see the oscilloscope)` : ""}`);
         else setStatus("error", "Power-on transient: " + result.error);
       };
-      const options = { tStop, probes, maxPoints: 250000, budgetMs: 600000 };   // every step, for zooming in the scope
+      const options = { tStop, probes, warmup, watch: caps.map(x => x.nets), maxPoints: 250000, budgetMs: 600000 };   // every step, for zooming in the scope
       if (!pool.ok) { setTimeout(() => done(TubeSimEngine.startup(netlist, options)), 0); return; }
       tJob = pool.run({ netlist, options, kind: "startup" }, {
         urgent: true, onResult: done,
@@ -62,6 +84,47 @@
           showBusy();
         }
       });
+    }
+    // What the power-on run found: each capacitor's peak against its rating (a B+ that overshoots
+    // while the tubes are still cold and draw nothing), and each tube's current while its cathode
+    // was cold (a rectifier charging empty capacitors from a half-warm cathode) or its surge.
+    //   caps: [{ id, label, peak, at, rating, set, steady, nets, level }]; tubes: [{ id, label, tube, tau, peak, peakAt, endPeak, worst, ratedPeak, level }]
+    //   notes: [{ level: "bad" | "warn" | "ok", text }]
+    function transientReport(result, caps, warmup) {
+      const notes = [], out = { caps: [], tubes: [], notes };
+      const CL = root.CadLib, ms = t => fmtEng(t, "s");
+      caps.forEach((x, k) => {
+        const w = result.watch && result.watch[k]; if (!w) return;
+        const peak = Math.max(w.max, -w.min), at = w.max >= -w.min ? w.maxAt : w.minAt, r = capRating(x.c);
+        const level = !r ? "" : peak > r.v ? "bad" : peak > 0.9 * r.v ? "warn" : "ok";
+        out.caps.push({ id: x.c.id, label: desig(x.c), peak, at, rating: r ? r.v : 0, set: r ? r.set : false, steady: r ? r.steady || null : null, nets: x.nets, level });
+        if (level === "bad" || level === "warn")
+          notes.push({ level, text: `${desig(x.c)}: ${fmtEng(peak, "V")} at ${ms(at)} after power-on, ${level === "bad" ? "over" : "over 90 % of"} its ${fmtEng(r.v, "V")} rating${r.set ? "" : ` (the one the BOM picks from its settled ${fmtEng(r.steady, "V")}; set a higher one in the inspector)`}: the tubes draw little until their cathodes are warm` });
+      });
+      // tubes: one line per part (a rectifier's two anodes together)
+      const byId = new Map();
+      (result.tubes || []).forEach(e => { const g = byId.get(e.id) || { peak: 0, peakAt: 0, endPeak: 0, worst: null, tau: e.tau, kind: e.kind }; if (e.peak > g.peak) { g.peak = e.peak; g.peakAt = e.peakAt; } g.endPeak = Math.max(g.endPeak, e.endPeak || 0); if (e.worst && (!g.worst || e.worst.i > g.worst.i)) g.worst = e.worst; byId.set(e.id, g); });
+      byId.forEach((g, id) => {
+        const c = S.comps.find(x => x.id === id); if (!c || c.type !== "tube") return;
+        const t = CL.tubeByName(c.params.tube), wu = CL.tubeWarmup(t); if (!t || !wu) return;
+        const rect = g.kind === "VDIODE", lim = rect ? wu.peak : wu.rated, name = `${desig(c)} (${t.commonName})`;
+        const limText = rect ? `its ${fmtEng(lim, "A")} peak rating per anode${wu.peakFromBook ? "" : " (about 3 × its rated current: no peak rating in the app's data)"}` : `its ${fmtEng(lim, "A")} rated cathode current`;
+        const cold = g.worst, C = T => Math.round((T - 273) / 10) * 10, hot = C(TubeSimEngine.CATHODE.hot);
+        let level = "ok";
+        // overdrawn while cold: more than it passes once settled (the empty capacitors' charge on a
+        // half-warm cathode), and near its rating
+        if (cold && cold.i > 1.1 * g.endPeak && cold.i > (rect ? 0.7 : 1) * lim) {
+          level = cold.i > lim ? "bad" : "warn";
+          notes.push({ level, text: `${name}: ${fmtEng(cold.i, "A")} at ${ms(cold.t)} while its cathode was still cold (about ${C(cold.T)} °C of ${hot} °C), the circuit asking ${cold.ratio.toFixed(1)}× more than it could emit; ${fmtEng(g.endPeak, "A")} once settled, against ${limText}. A cold, overdrawn cathode loses its coating (cathode stripping)${rect ? ": a smaller first capacitor or more resistance before it (or a slower-warming rectifier) eases it" : ""}.` });
+        }
+        if (rect && g.peak > lim && g.peak > 1.2 * g.endPeak && (!cold || g.peak > cold.i * 1.05)) {
+          level = "bad";
+          notes.push({ level, text: `${name}: a ${fmtEng(g.peak, "A")} surge at ${ms(g.peakAt)}, over ${limText}${warmup ? "" : ": with hot cathodes (a standby switch closed onto empty capacitors)"}. More resistance per anode or a smaller first capacitor limits it.` });
+        }
+        out.tubes.push({ id, label: desig(c), tube: t.commonName, tau: g.tau, peak: g.peak, peakAt: g.peakAt, endPeak: g.endPeak, worst: cold, ratedPeak: rect ? lim : 0, rect, level });
+      });
+      if (!notes.length) notes.push({ level: "ok", text: warmup && byId.size ? "No capacitor over its rating, no tube overdrawn while cold." : "No capacitor over its rating." });
+      return out;
     }
 
     // ---------------------------------------------------------------------------

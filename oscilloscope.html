@@ -42,6 +42,9 @@
     .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
     .seg .btn { padding: 4px 0; text-align: center; font-size: 12px; }
     .muted { color: var(--muted); font-size: 12px; }
+    .pwr-notes { font-size: 12px; line-height: 1.4; margin-top: 6px; display: grid; gap: 4px; }
+    .pwr-notes:empty { display: none; }
+    .pwr-notes .bad { color: #ff6b6b; } .pwr-notes .warn { color: #ff9e64; } .pwr-notes .ok { color: var(--muted); }
     @media (max-width: 900px) { body { overflow: auto; } main { grid-template-columns: 1fr; } .bezel { height: 60vh; } }
   </style>
 </head>
@@ -72,7 +75,9 @@
         <div class="seg" id="analysis" style="grid-template-columns: 1fr 1fr">
           <button class="btn active" data-v="steady">Steady state</button><button class="btn" data-v="startup">Power-on</button>
         </div>
-        <div class="row" style="margin-top:8px"><span>Duration</span><select id="t-stop"><option value="0.1">0.1 s</option><option value="0.2">0.2 s</option><option value="0.5">0.5 s</option><option value="1" selected>1 s</option><option value="2">2 s</option></select></div>
+        <div class="row" style="margin-top:8px"><span>Duration</span><select id="t-stop" title="How long after switch-on to simulate. Auto: long enough for the slowest cathode to warm up (three of its time constants, 5 to 60 s), or 1 s with hot cathodes"><option value="auto" selected>Auto</option><option value="0.1">0.1 s</option><option value="0.2">0.2 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="2">2 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="20">20 s</option><option value="30">30 s</option><option value="60">60 s</option></select></div>
+        <label class="muted" id="warmup-row" title="The tubes' cathodes start cold and warm up, each with its own time constant (a directly heated rectifier in a second or two, an indirectly heated one or an EL34 in 8 to 10 s): until then they draw little, so B+ can overshoot, and the run warns of a tube overdrawn while cold. Untick for hot cathodes (a standby switch closed with the heaters already on)"><input type="checkbox" id="warmup" checked> Cathodes warm up</label>
+        <div class="pwr-notes" id="pwr-notes"></div>
         <p class="muted" id="analysis-note">Steady state: the settled circuit, one window repeated like a triggered scope.</p>
       </div>
       <div class="card">

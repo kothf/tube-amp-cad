@@ -296,6 +296,13 @@ the circuit that was on the sheet.
   channels live; double-click it for the full instrument.
 - **Power-on transient.** The oscilloscope can show the first seconds after
   switch-on: capacitors start empty and every source switches on at t = 0.
+  With *Cathodes warm up* the tubes' cathodes start cold as well and heat with
+  their own time constant (a directly heated rectifier in a second or two, an
+  EL34 or GZ34 in about 10 s), emitting by Richardson's law. The run then
+  shows B+ overshooting on cold tubes, draws the capacitors' voltage ratings
+  as dashed lines, and warns of a capacitor over its rating, a rectifier
+  overdrawn while its cathode is still cold (cathode stripping) and a
+  switch-on surge. *Auto* duration covers the slowest warm-up (5–60 s).
 
 ## Drawings, documents and exports
 
@@ -459,7 +466,7 @@ the circuit that was on the sheet.
   - Readouts in Vpp, Vrms, dBV and DC, with the CH1/CH2 gain and phase.
   - Channels with no probe wired are greyed out.
   - *Power-on* shows the switch-on transient with an overview strip of the
-    whole record.
+    whole record, the cathodes warming up, capacitor ratings and warnings.
 - **Spectrum analyzer.**
   - The FFT is computed over a whole number of cycles, so there is no
     windowing error.

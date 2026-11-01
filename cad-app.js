@@ -569,7 +569,7 @@
     else if (m.type === "BOARD_SELECT") selectFromBoard(m.ids);
     else if (m.type === "BOARD_NET") selectNetFromBoard(m.net);
     if (m.type === "RUN_SIM") runSim("full");                            // ▶ Simulate in an instrument window
-    else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop);
+    else if (m.type === "RUN_TRANSIENT") runTransient(m.tStop, m.warmup);
     else if (m.type === "STOP_TRANSIENT") stopTransient();
     else if (m.type === "RUN_AC") runAC(m.gen);
     else if (m.type === "RUN_LOOP") runLoop(m.at, m.reverse);

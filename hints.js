@@ -375,8 +375,9 @@
     "Time/div": "Horizontal scale. Auto shows two cycles. The wheel on the screen zooms it.",
     "Trigger source": "The channel whose edge starts the sweep, so a repeating signal stands still.",
     "Slope": "Trigger on the rising or the falling edge.",
-    "Duration": "How long after switch-on the power-on run simulates.",
-    "Analysis": "Steady state: the settled circuit, one window repeated as a triggered scope shows it.\nPower-on: the first moments after switch-on, capacitors empty, every source switched on at t = 0.",
+    "Duration": "How long after switch-on the power-on run simulates. Auto: three time constants of the slowest cathode warming up (5–60 s), or 1 s with hot cathodes.",
+    "Analysis": "Steady state: the settled circuit, one window repeated as a triggered scope shows it.\nPower-on: the first moments after switch-on, capacitors empty, every source switched on at t = 0, the tubes' cathodes cold and warming up (Cathodes warm up).",
+    "Cathodes warm up": "The tubes' cathodes start cold and warm with their own time constant (1–2 s directly heated, 5–10 s indirectly heated), emitting little until hot: B+ can overshoot, and the run warns of a tube overdrawn while cold. Untick for hot cathodes.",
     "Display": "Which channels show, and how.",
     "Scope part": "Which oscilloscope part in the circuit this window reads (a circuit can have several).",
     // spectrum

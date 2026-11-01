@@ -6,13 +6,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.168.0] - 2026-11-01
+## [3.169.0] - 2026-11-01
 
 ### Added
 - **Driving dimensions in the Board window** (Construct ▾ → Dimension, Shift+D), the way a mechanical 2D sketcher does it. Click two things — a pad or a part's origin, a mounting hole, a via, a text, a keep-out corner or edge, a board corner, edge or centre, a construction point or line — place the dimension (above or below: horizontal; to the side: vertical; between: aligned; or H, V, A; a point and a line: the distance square to it), type the value and press Enter: the second thing moves there, the tracks on its pads following. They stay that far apart: drag either and the other follows, and a thing held in one direction only slides in the other; what cannot move goes back and the status line names the dimension that holds it. Locked things never move.
 - **Align horizontally / vertically** (Construct ▾) for two or more selected parts, holes, vias or texts: the others line up with the first and stay lined up.
 - **Reference dimensions and how defined a thing is.** A dimension that would over-constrain the board becomes a reference one (grey, in brackets: it only reads the distance); one that can no longer be met is drawn red. The inspector of a dimension edits its value and role; a part's, hole's, via's, text's or keep-out's inspector says how many dimensions hold it and whether it is fully defined or still free to move sideways or up and down, with Remove its dimensions. Show and Clear dimensions are in the menu. Our own least-change solver (Newton steps of the smallest move, the thing just dragged held still; the rank of the equations tells redundant dimensions and what is fully defined) solves 100 dimensions in a few milliseconds to 0.001 mm.
 - Dimensions are notes for the designer: saved with the board, never exported (silkscreen, Gerbers, drill files, PDFs, KiCad, STEP, SVG). Help, README, hover hints and Russian included.
+
+## [3.168.0] - 2026-11-01
+
+### Added
+- **Cathode warm-up in the power-on transient** (oscilloscope → *Power-on*, *Cathodes warm up*, on by default). The tubes' cathodes start cold and heat with their own time constant, typical for their heater: a directly heated filament (5U4G, 5Ц3С, 2A3, 300B) in 1–2 s, an indirectly heated cathode in 5–10 s (12AX7 about 6 s, EL84 7 s, EL34 and GZ34 about 10 s; the tube's inspector shows it). What a cathode can emit follows Richardson's law for an oxide cathode, so a cold tube draws nothing and the current comes up as it warms. The run shows what that does: B+ overshooting on silicon diodes or a fast directly heated rectifier until the amplifier's tubes conduct, a slow indirectly heated rectifier bringing it up gently.
+- **Capacitor ratings on the power-on record.** A dashed line marks the voltage rating of every capacitor a channel reads across (its own, or the one the BOM picks from the settled peak), red when the trace goes over it; capacitors over 90 % of their rating during the run are listed under the controls.
+- **Cold-cathode and surge warnings.** The power-on run lists a tube overdrawn while its cathode is still cold (below 90 % of its working temperature, the circuit asking 1.5 times or more what it can emit, more than it passes once settled and near its rating: for a rectifier 70 % of its peak current per anode, the handbook's or about 3 × its rated current), which strips a cathode's coating; and a rectifier's switch-on surge over its peak rating (hot cathodes onto empty capacitors, as with a standby switch).
+- **Longer power-on runs.** *Duration* has *Auto* (three time constants of the slowest cathode, 5–60 s, opening on the whole record; 1 s with hot cathodes) and 5, 10, 20, 30 and 60 s. A run over 2 s takes at most 600,000 steps.
+
+### Fixed
+- The oscilloscope's time axis rounded labels at 2.5 s/div (and other steps with a fraction) to whole numbers (3 s, 8 s, 13 s for 2.5, 7.5, 12.5 s).
 
 ## [3.167.0] - 2026-11-01
 

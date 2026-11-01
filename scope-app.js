@@ -4,7 +4,7 @@
   "use strict";
   const I = Instrument, $ = id => document.getElementById(id);
   const SM = ScopeMath, VDIV = SM.VDIV, TDIV = SM.TDIV;
-  const S = { mode: "dual", analysis: "steady", tStop: 1, view: { tdiv: "auto", pos: 0, seq: null }, ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", hpos: 0, trig: { src: "ch1", slope: "rising" } };
+  const S = { mode: "dual", analysis: "steady", tStop: "auto", warmup: true, view: { tdiv: "auto", pos: 0, seq: null }, ch1: { vdiv: "auto", cpl: "dc" }, ch2: { vdiv: "auto", cpl: "dc" }, tdiv: "auto", hpos: 0, trig: { src: "ch1", slope: "rising" } };
 
   const fill = (sel, list, unit) => { sel.innerHTML = `<option value="auto">Auto</option>` + list.map(v => `<option value="${v}">${I.fmt(v, unit)}/div</option>`).join(""); };
   fill($("ch1-vdiv"), VDIV, "V"); fill($("ch2-vdiv"), VDIV, "V"); fill($("tdiv"), TDIV, "s");
@@ -32,9 +32,29 @@
       for (let i = 0; i < n; i++) { mid[i] = (d.min[i] + d.max[i]) / 2; inter[2 * i] = d.min[i]; inter[2 * i + 1] = d.max[i]; }
       mid[n] = mid[n + 1] = mid[n - 1]; inter[2 * n] = inter[2 * n - 1];
       const cpl = S[k].cpl === "ac" ? "dc" : S[k].cpl;   // AC coupling means nothing for a one-shot record
-      out[k] = { raw: mid, min: d.min, max: d.max, cpl, ...SM.channel(inter, S[k].vdiv, cpl) };
+      // the voltage ratings of the capacitors this channel reads across, drawn as limit lines; the
+      // automatic volts/div takes in those near the trace (within 1.5 × its largest swing)
+      let big = 0; for (let i = 0; i < n; i++) big = Math.max(big, Math.abs(d.min[i]), Math.abs(d.max[i]));
+      const limits = capLimits(d.nets), near = limits.filter(l => Math.abs(l.v) <= 1.5 * big);
+      const scaled = near.length ? Float32Array.from([...inter, ...near.map(l => l.v)]) : inter;
+      out[k] = { raw: mid, min: d.min, max: d.max, cpl, limits, ...SM.channel(scaled, S[k].vdiv, cpl) };
     });
     chCache = { ts, key, out };
+    return out;
+  }
+  // the capacitors across a channel's two nets (its input and the scope's common), each with its
+  // voltage rating signed as the channel reads it; one line per rating
+  function capLimits(nets) {
+    const t = I.transient; if (!nets || !t || !t.caps) return [];
+    const out = [];
+    t.caps.forEach(c => {
+      if (!(c.rating > 0)) return;
+      const sgn = c.nets[0] === nets[0] && c.nets[1] === nets[1] ? 1 : c.nets[0] === nets[1] && c.nets[1] === nets[0] ? -1 : 0;
+      if (!sgn) return;
+      const v = sgn * c.rating, have = out.find(l => l.v === v);
+      if (have) have.labels.push(c.label); else out.push({ v, labels: [c.label], level: c.level });
+      if (have && c.level === "bad") have.level = "bad";
+    });
     return out;
   }
   // Final level and swing (last 5 % of the record), peak, and the settling time:
@@ -78,7 +98,9 @@
   function axisText(values, step, unit) {
     const big = Math.max(...values.map(Math.abs), Math.abs(step));
     const P = [[1e3, "k"], [1, ""], [1e-3, "m"], [1e-6, "µ"], [1e-9, "n"]], [f, p] = P.find(([f]) => big >= f * 0.9995) || P[P.length - 1];
-    const d = Math.max(0, Math.min(4, Math.ceil(-Math.log10(Math.abs(step) / f) - 1e-9)));
+    // enough decimals to write the step itself (2.5 s/div: one), four at most
+    let d = Math.max(0, Math.min(4, Math.ceil(-Math.log10(Math.abs(step) / f) - 1e-9)));
+    while (d < 4 && Math.abs(step / f * Math.pow(10, d) - Math.round(step / f * Math.pow(10, d))) > 1e-6) d++;
     return values.map(v => { const x = v / f; return (Math.abs(x) < 0.5 * Math.pow(10, -d) ? "0" : x.toFixed(d)) + p + unit; });
   }
   // the multiples of step in [lo, hi]
@@ -230,7 +252,10 @@
   // time/div choices for the power-on record: a zoom ladder up to the whole record
   const zoomSteps = tStop => SM.TDIV.filter(v => v < tStop / 10 * 0.999).concat([tStop / 10]);
   // default zoom: a few periods of the circuit's signal; a DC-only circuit shows the whole record
+  // a long record of the cathodes warming up opens whole; a short one on a few signal periods
+  const wholeByDefault = t => !!t.warmup && t.tStop >= 5;
   function defaultTdiv(t) {
+    if (wholeByDefault(t)) return t.tStop / 10;
     const f = I.result && I.result.fSig;
     return f ? Math.min(t.tStop / 10, SM.pick(SM.TDIV, 5 / f / 10)) : t.tStop / 10;
   }
@@ -274,9 +299,10 @@
       const p = Math.max(0, Math.min(1, t.progress || 0));
       ctx.strokeStyle = "#26344a"; ctx.strokeRect(x0 + gw * 0.2, y0 + gh / 2 + 14, gw * 0.6, 10);
       ctx.fillStyle = "#00b4d8"; ctx.fillRect(x0 + gw * 0.2, y0 + gh / 2 + 14, gw * 0.6 * p, 10);
-      return msg([`Simulating the first ${I.fmt(t.tStop, "s")} after power-on… ${Math.round(p * 100)} %`]);
+      return msg([`Simulating the first ${I.fmt(t.tStop, "s")} after power-on${t.warmup ? ", the cathodes warming up" : ""}… ${Math.round(p * 100)} %`]);
     }
-    if (!t) return msg([`Power-on transient: press ▶ Simulate to run the first ${I.fmt(S.tStop, "s")} after switch-on.`, "Every capacitor starts empty and every source switches on at t = 0."]);
+    if (!t) return msg([`Power-on transient: press ▶ Simulate to run the first ${S.tStop === "auto" ? (S.warmup ? "seconds, until the cathodes are warm," : "second") : I.fmt(+S.tStop, "s")} after switch-on.`,
+      `Every capacitor starts empty and every source switches on at t = 0${S.warmup ? "; the tubes' cathodes start cold and warm up" : ""}.`]);
     if (!t.ok) return msg([`Power-on transient: ${t.error || "failed"}`]);
     const ch = startupChannels(ts), any = ch.ch1 || ch.ch2;
     markChannels(ch);
@@ -299,6 +325,17 @@
       else glow(color);
       const lv = c.cpl === "gnd" ? 0 : -c.off / c.vdiv, my = y0 + gh / 2 - Math.max(-4, Math.min(4, lv)) * gh / 8;
       levels.push([color, (k === "ch1" ? "1" : "2") + (lv > 4 ? "▴" : lv < -4 ? "▾" : "▸"), my + 4 + (k === "ch1" ? -5 : 5)]);
+    });
+    // capacitor ratings: a dashed line at each, red when the trace goes over it
+    [["ch1", "#ffe23d"], ["ch2", "#00e5ff"]].forEach(([k]) => {
+      const c = ch[k]; if (!c || !c.limits || c.cpl === "gnd" || (S.mode !== "dual" && S.mode !== k)) return;
+      c.limits.forEach(l => {
+        const d = (l.v - c.off) / c.vdiv; if (Math.abs(d) > 4.4) return;
+        const y = y0 + gh / 2 - d * gh / 8, col = l.level === "bad" ? "#ff6b6b" : l.level === "warn" ? "#ff9e64" : "#8fa3b8";
+        ctx.strokeStyle = col; ctx.setLineDash([6, 4]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + gw, y); ctx.stroke(); ctx.setLineDash([]);
+        const txt = `${l.labels.join(", ")} rating ${I.fmt(Math.abs(l.v), "V")}`;
+        ctx.fillStyle = col; ctx.textAlign = "right"; ctx.fillText(txt, x0 + gw - 6, y + (d > 0 ? 14 : -5)); ctx.textAlign = "left";
+      });
     });
     ctx.restore();
     levels.forEach(([color, t, y]) => { ctx.fillStyle = color; ctx.fillText(t, x0 - 16, y); });
@@ -434,11 +471,11 @@
   // Time/div lists: the scope's own in steady state; in power-on mode a zoom ladder up to the whole record
   let tdivFor = null;
   function fillTdiv() {
-    const st = S.analysis === "startup", tStop = st ? ((I.transient && I.transient.ok && I.transient.tStop) || S.tStop) : 0, key = st ? "p" + tStop : "s";
+    const st = S.analysis === "startup", tStop = st ? ((I.transient && I.transient.ok && I.transient.tStop) || (S.tStop === "auto" ? 1 : +S.tStop)) : 0, whole = st && I.transient && I.transient.ok && wholeByDefault(I.transient), key = st ? "p" + tStop + whole : "s";
     if (tdivFor === key) return; tdivFor = key;
     const sel = $("tdiv");
     if (!st) { fill(sel, TDIV, "s"); sel.value = S.tdiv; return; }
-    sel.innerHTML = `<option value="auto">Auto (a few periods)</option>` + zoomSteps(tStop).slice(0, -1).map(v => `<option value="${v}">${I.fmt(v, "s")}/div</option>`).join("") + `<option value="full">Whole record (${I.fmt(tStop / 10, "s")}/div)</option>`;
+    sel.innerHTML = `<option value="auto">Auto (${whole ? "the whole record" : "a few periods"})</option>` + zoomSteps(tStop).slice(0, -1).map(v => `<option value="${v}">${I.fmt(v, "s")}/div</option>`).join("") + `<option value="full">Whole record (${I.fmt(tStop / 10, "s")}/div)</option>`;
     if (![...sel.options].some(o => o.value === String(S.view.tdiv))) S.view.tdiv = "auto";
     sel.value = String(S.view.tdiv);
   }
@@ -509,13 +546,23 @@
     ov.addEventListener("pointermove", e => { if (e.buttons & 1) go(e); });
     ov.addEventListener("wheel", e => { if (!G || !G.startup) return; e.preventDefault(); scrollBy(Math.sign(e.deltaY || e.deltaX) * G.vw.span / 2); }, { passive: false });
   }
+  // what the power-on run found: capacitors over their ratings, tubes overdrawn while cold
+  let notesKey = null;
+  function renderNotes(t) {
+    const box = $("pwr-notes"), list = t && t.ok && !t.running ? t.notes || [] : [], key = JSON.stringify(list) + (t && t.stale);
+    if (key === notesKey) return; notesKey = key;
+    const esc = x => String(x).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+    box.innerHTML = list.map(n => `<div class="${n.level}"><span aria-hidden="true">${n.level === "bad" ? "✖" : n.level === "warn" ? "⚠" : "✓"} </span><span>${esc(n.text)}</span></div>`).join("");
+  }
   // analysis: steady state (the CAD's settled result) or the power-on transient
   const syncAnalysis = () => {
     const st = S.analysis === "startup", t = I.transient, running = st && t && t.running;
     document.querySelectorAll("#analysis .btn").forEach(x => x.classList.toggle("active", x.dataset.v === S.analysis));
     ["trig-src", "trig-slope"].forEach(id => { $(id).disabled = st; });
     fillTdiv();
-    $("analysis-note").textContent = st ? "Power-on: the circuit starts cold (capacitors empty) and every source switches on at t = 0. Zoom with the mouse wheel or Time/div (Ctrl+wheel: volts/div); scroll with the strip under the screen, Shift+wheel, right-drag or ← →."
+    $("warmup-row").hidden = !st;
+    renderNotes(st ? t : null);
+    $("analysis-note").textContent = st ? "Power-on: the circuit starts cold (capacitors empty, and with Cathodes warm up the tubes' cathodes too) and every source switches on at t = 0. Dashed lines: the voltage ratings of capacitors the channel reads across. Zoom with the mouse wheel or Time/div (Ctrl+wheel: volts/div); scroll with the strip under the screen, Shift+wheel, right-drag or ← →."
       : "Steady state: the settled circuit, one window repeated like a triggered scope. Zoom with the mouse wheel (Ctrl+wheel: volts/div); move along the time axis with Shift+wheel or right-drag. Autoset resets the view.";
     $("btn-sim").textContent = running ? "■ Stop" : "▶ Simulate"; $("btn-sim").classList.toggle("active", !!running);
   };
@@ -524,11 +571,12 @@
     S.analysis = b.dataset.v; pick.clear(); if (S.analysis === "startup" && S.mode === "xy") { S.mode = "dual"; document.querySelectorAll("#mode .btn").forEach(x => x.classList.toggle("active", x.dataset.v === "dual")); }
     syncAnalysis(); draw();
   }));
-  $("t-stop").addEventListener("change", e => { S.tStop = +e.target.value; draw(); });
+  $("t-stop").addEventListener("change", e => { S.tStop = e.target.value === "auto" ? "auto" : +e.target.value; draw(); });
+  $("warmup").addEventListener("change", e => { S.warmup = e.target.checked; draw(); });
   $("btn-sim").addEventListener("click", () => {
     if (S.analysis !== "startup") { I.send({ type: "RUN_SIM" }); return; }
     const t = I.transient;
-    if (t && t.running) I.send({ type: "STOP_TRANSIENT" }); else I.send({ type: "RUN_TRANSIENT", tStop: S.tStop });
+    if (t && t.running) I.send({ type: "STOP_TRANSIENT" }); else I.send({ type: "RUN_TRANSIENT", tStop: S.tStop, warmup: S.warmup });
   });
   I.onUpdate(syncAnalysis);
   syncAnalysis();
