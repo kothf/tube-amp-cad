@@ -13,6 +13,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - **Align horizontally / vertically** (Construct ▾) for two or more selected parts, holes, vias or texts: the others line up with the first and stay lined up.
 - **Reference dimensions and how defined a thing is.** A dimension that would over-constrain the board becomes a reference one (grey, in brackets: it only reads the distance); one that can no longer be met is drawn red. The inspector of a dimension edits its value and role; a part's, hole's, via's, text's or keep-out's inspector says how many dimensions hold it and whether it is fully defined or still free to move sideways or up and down, with Remove its dimensions. Show and Clear dimensions are in the menu. Our own least-change solver (Newton steps of the smallest move, the thing just dragged held still; the rank of the equations tells redundant dimensions and what is fully defined) solves 100 dimensions in a few milliseconds to 0.001 mm.
 - Dimensions are notes for the designer: saved with the board, never exported (silkscreen, Gerbers, drill files, PDFs, KiCad, STEP, SVG). Help, README, hover hints and Russian included.
+## [3.166.0] - 2026-11-01
+
+### Added
+- **About & credits** (Help → *About & credits*, and section 19 of the manual): the app's version, who made it and links to the blog post, the source and this changelog; the models and data it is built on (Norman Koren's tube equations, Katsnelson & Larionov's handbook for the Soviet tubes, the makers' datasheets, SPICE's device models, Thiele–Small, ngspice as the test reference, the drawing standards); the software (AssemblyScript, which compiles the solver, and the optional Freerouting); and, under *Show all credits*, the sources of the example circuits, the optional online services (the AI providers, DigiKey, RADIO BOB!) and the fonts and icons. It ends with the MIT licence and a safety note: a simulation is an estimate, not a safety check, and tube amplifiers run at lethal voltages. The dialog is in Russian too, with the Russian blog post.
 
 ## [3.165.1] - 2026-10-31
 

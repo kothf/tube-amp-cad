@@ -408,6 +408,21 @@
     .help-keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12px; margin: 6px 0 10px; }
     .help-keys kbd { justify-self: start; }
     #help-modal .modal-box { width: min(720px, 94vw); max-height: 86vh; overflow-y: auto; }
+    #about-modal .modal-box { width: min(760px, 94vw); max-height: 86vh; overflow-y: auto; font-size: 12.5px; line-height: 1.5; }
+    #about-modal p { margin: 6px 0; color: var(--muted); }
+    #about-modal h4 { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+    #about-modal a { color: var(--accent); }
+    .about-head { display: flex; gap: 14px; align-items: center; margin: 10px 0 8px; }
+    .about-head img { flex: none; border-radius: 10px; }
+    .about-name { font-size: 18px; font-weight: 700; }
+    .about-ver { font: 400 12px ui-monospace, Menlo, monospace; color: var(--muted); }
+    table.credits { width: 100%; border-collapse: collapse; }
+    table.credits td { padding: 4px 10px 4px 0; vertical-align: top; border-bottom: 1px solid var(--line); }
+    table.credits td:first-child { width: 30%; }
+    table.credits td.src { color: var(--muted); width: 22%; }
+    .about-more { margin: 12px 0 4px; }
+    .about-more > summary { cursor: pointer; font-weight: 600; }
+    .about-warn { border-left: 3px solid var(--warn, #ffb300); padding-left: 10px; color: var(--text) !important; }
     /* start screen: New, Open and the examples with their pictures */
     #start-modal .start-box { width: min(1080px, 96vw); max-height: 92vh; display: flex; flex-direction: column; }
     .start-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
@@ -794,7 +809,15 @@
       <h3>Keyboard</h3>
       <div class="help-keys" id="help-keys"></div>
       <p class="insp-help">Shortcuts go by the key's position, so they work with any keyboard layout (Russian included).</p>
-      <div class="modal-actions"><button class="btn active" id="btn-help-manual" title="Every feature, part, value and coefficient explained, with a design cookbook">Open the full manual ↗</button><button class="btn" id="btn-help-close">Close</button></div>
+      <div class="modal-actions"><button class="btn" id="btn-help-about" title="Who made the app, what it is built on, licence and disclaimer">About &amp; credits</button><button class="btn active" id="btn-help-manual" title="Every feature, part, value and coefficient explained, with a design cookbook">Open the full manual ↗</button><button class="btn" id="btn-help-close">Close</button></div>
+    </div>
+  </div>
+
+  <div class="modal" id="about-modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="about-title">
+      <div class="insp-title" id="about-title">Tube Amp CAD: about</div>
+      <div id="about-body"></div>
+      <div class="modal-actions"><button class="btn active" id="btn-about-close">Close</button></div>
     </div>
   </div>
 
@@ -942,6 +965,7 @@
   <script src="icons.js?v=dev"></script>
   <script src="i18n-ru.js?v=dev"></script>
   <script src="i18n-hints-ru.js?v=dev"></script>
+  <script src="about.js?v=dev"></script>
   <script src="i18n.js?v=dev"></script>
   <script src="windows.js?v=dev"></script>
   <script src="panels.js?v=dev"></script>
