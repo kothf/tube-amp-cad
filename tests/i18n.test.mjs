@@ -48,3 +48,24 @@ test("numbers of the instruments and the board", () => {
   assert.equal(ru("Tube socket, Noval (B9A), top view"), "Ламповая панель, новал (B9A), вид сверху");
   assert.equal(ru("Axial, 10.16 mm lead spacing"), "Аксиальный, шаг выводов 10.16 мм");
 });
+
+// The Russian manual (help-ru.html) is a translation of help.html, kept in step with it: the same
+// sections, anchors, links, key caps, code and tables, in the same order. Add a paragraph, list
+// item or row to one and this fails until the other has it too.
+test("the Russian manual has the English one's structure", () => {
+  const en = src("help.html"), ru = src("help-ru.html");
+  const all = (s, re) => [...s.matchAll(re)].map(m => m[1]);
+  assert.deepEqual(all(ru, /\sid="([^"]+)"/g), all(en, /\sid="([^"]+)"/g), "the same ids, in order");
+  assert.deepEqual(all(ru, /href="([^"]+)"/g), all(en, /href="([^"]+)"/g), "the same links, in order");
+  assert.deepEqual(all(ru, /<(code|pre)>([^<]*)</g).length, all(en, /<(code|pre)>([^<]*)</g).length, "the same code");
+  for (const tag of ["h2", "h3", "h4", "p", "li", "tr", "td", "table", "kbd", "code", "pre", "ul", "ol", "div"])
+    assert.equal((ru.match(new RegExp(`<${tag}[\\s>]`, "g")) || []).length, (en.match(new RegExp(`<${tag}[\\s>]`, "g")) || []).length, `<${tag}> count`);
+  assert.deepEqual(all(ru, /<script src="([^"]+)"/g), all(en, /<script src="([^"]+)"/g), "the same scripts");
+  assert.match(ru, /<html lang="ru">/);
+  // each page sends the reader to the other when the interface is in the other language
+  assert.match(en, /tubecad_lang"\) === "ru"\) location\.replace\("help-ru\.html"/);
+  assert.match(ru, /tubecad_lang"\) === "en"\) location\.replace\("help\.html"/);
+  // headings and the lead are Russian
+  const heads = all(ru, /<h[23][^>]*>([^<]+)</g);
+  assert.ok(heads.every(h => /[а-яё]/i.test(h)), "every heading in Russian: " + heads.filter(h => !/[а-яё]/i.test(h)).join(", "));
+});

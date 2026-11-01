@@ -47,7 +47,7 @@ import { U, browser, check, errors } from "./harness.mjs";
 // the Board window, the instruments and the hover hints follow the language too
 {
   const lc = await browser.newContext({ viewport: { width: 1500, height: 900 } });
-  await lc.addInitScript(() => localStorage.setItem("tubecad_lang", "ru"));
+  await lc.addInitScript(() => { if (!localStorage.getItem("tubecad_lang")) localStorage.setItem("tubecad_lang", "ru"); });
   const p = await lc.newPage(); p.on("pageerror", e => errors.push(`language: ${e.message}`)); p.on("dialog", d => d.accept());
   await p.goto(U("circuit_sandbox.html")); await p.waitForFunction(() => window.TubeCAD && window.I18n);
   await p.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => x.file.startsWith("04-"))));
@@ -80,6 +80,18 @@ import { U, browser, check, errors } from "./harness.mjs";
     check(re.test(t.text) && t.h < 50, `${url} opens in Russian (${what}) with its toolbar on one row (${t.h} px)`);
     await w.close();
   }
+  // the manual: help.html opens its Russian translation, with the parts reference in Russian too;
+  // its EN button switches the manual (and the interface) back to English
+  const [man] = await Promise.all([lc.waitForEvent("page"), p.click("#btn-windows").then(() => p.click("#btn-open-manual"))]);
+  man.on("pageerror", e => errors.push(`language manual: ${e.message}`));
+  await man.waitForURL(/help-ru\.html/, { timeout: 15000 }).catch(() => {}); await man.waitForLoadState("load"); await man.waitForTimeout(500);
+  const mr = await man.evaluate(() => ({ url: location.pathname, h1: document.querySelector("h1").textContent, parts: document.querySelectorAll(".part").length, res: (document.querySelector("#part-resistor") || {}).innerText || "", toc: document.querySelectorAll("#toc-list li").length, name: window.name }));
+  check(/help-ru\.html$/.test(mr.url) && /Руководство/.test(mr.h1) && mr.parts >= 28 && /Сопротивление/.test(mr.res) && /Постоянный резистор/.test(mr.res) && mr.toc > 40 && mr.name === "tube_help",
+    `in Russian the manual opens in Russian (${mr.url}, ${mr.parts} parts, the resistor's fields and hint in Russian, ${mr.toc} contents entries)`);
+  await Promise.all([man.waitForURL(/help\.html/), man.click("#lang-switch")]); await man.waitForTimeout(300);
+  const me = await man.evaluate(() => ({ url: location.pathname, h1: document.querySelector("h1").textContent, lang: localStorage.getItem("tubecad_lang") }));
+  check(/\/help\.html$/.test(me.url) && /Manual/.test(me.h1) && me.lang === "en", `the manual's EN button opens the English manual and switches the interface to English (${JSON.stringify(me)})`);
+  await man.close();
   await lc.close();
 }
 
@@ -115,9 +127,10 @@ import { U, browser, check, errors } from "./harness.mjs";
     `About in Russian: every text translated, the Russian blog post linked (${JSON.stringify({ blog: ru.blog, m: /Модели и данные/.test(ru.text), w: /смертельно опасные/.test(ru.text) })})${ru.left.length ? ` (left: ${ru.left.slice(0, 4).join(" | ")})` : ""}`);
   await p.click("#btn-about-close");
   const h = await lc.newPage(); h.on("pageerror", e => errors.push(`manual about: ${e.message}`));
-  await h.goto(U("help.html")); await h.waitForSelector("#about-body .about-head");
+  // the interface is in Russian now, so help.html opens the Russian manual
+  await h.goto(U("help.html")); await h.waitForURL(/help-ru\.html/).catch(() => {}); await h.waitForSelector("#about-body .about-head");
   const man = await h.evaluate(() => ({ text: document.getElementById("about-body").innerText, toc: [...document.querySelectorAll("#toc-list a")].map(a => a.textContent) }));
-  check(/Norman Koren/.test(man.text) && /Igor Gubin/.test(man.text) && /RADIO BOB/.test(man.text) && man.toc.includes("19. About and credits"),
-    "the manual ends with About and credits, with every credit shown and listed in the contents");
+  check(/Norman Koren/.test(man.text) && /Igor Gubin/.test(man.text) && /RADIO BOB/.test(man.text) && /Модели и данные/i.test(man.text) && /смертельно опасные/.test(man.text) && man.toc.includes("19. О программе и благодарности"),
+    "the manual ends with About and credits, with every credit shown and listed in the contents (in Russian, as the interface is)");
   await lc.close();
 }
