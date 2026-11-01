@@ -120,10 +120,12 @@
   // light: while dragging, keep the pours as they were filled (they refill when the drag ends)
   function analyse(light) {
     if (S.raw) S.netlist = B.withHeaters(S.raw, S.board.rules);
-    if (!S.netlist) { S.model = null; S.conn = null; S.drc = []; S.fills = []; cons.solve(); return; }
+    if (!S.netlist) { S.model = null; S.conn = null; S.drc = []; S.fills = []; cons.solve(); if (dimui.enforce()) cons.solve(); return; }
     S.hv = B.hvNets(S.netlist.volts, S.board.rules.hvVolts);
     S.model = B.model(S.board, S.netlist);
     cons.solve();   // construction geometry, and the holes tied to it moved where it now puts them
+    // driving dimensions: what they hold moved back where it belongs (what was just moved by hand stays)
+    if (dimui.enforce()) { S.model = B.model(S.board, S.netlist); cons.solve(); }
     // names of earlier versions stored in the board (net classes, pours, vias) move to today's
     if (B.migrateNetNames(S.board, S.model)) save();
     // star grounding: the ground returns and the star point steer the ground's ratsnest
@@ -487,10 +489,11 @@
   TOOL_HELP.hole = "Mounting hole: click to place one; it sticks to holes, pads, board corners, construction points and crossings and stays tied to them (Alt: the grid only). Type Δx Δy (and Ø) to place it that far from where the pointer sticks";
   function setTool(t) {
     if (cons.HELP[t]) TOOL_HELP[t] = cons.HELP[t];
+    if (t === "dim") TOOL_HELP.dim = dimui.HELP;
     if (S.route && t !== "route") finishRoute();
     if (t !== "measure") S.measure = null;
     if (t !== S.tool || (t !== "pour" && t !== "keepout")) S.poly = null;
-    S.tool = t; cons.toolChanged(t);
+    S.tool = t; cons.toolChanged(t); dimui.toolChanged(t);
     document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
     const more = $("btn-tool-more"), folded = more && more.parentElement.querySelector(`.menu-item[data-tool="${t}"]`);   // the narrow toolbar's More tools
     if (more) { more.classList.toggle("active", !!folded); if (folded) more.querySelector(".tm-ico").innerHTML = folded.querySelector("svg").outerHTML; }
@@ -828,6 +831,7 @@
     }
     if (S.tool === "measure") { const sp = snapPoint(x, y, e.shiftKey || e.altKey); S.measure = !S.measure || S.measure.b ? { a: sp.p, sa: sp, b: null } : { ...S.measure, b: sp.p, sb: sp }; S.mLast = null; render(); return; }
     if (cons.onDown(x, y, e)) return;   // construction tools and the hole tool
+    if (dimui.onDown(x, y, e)) return;   // the Dimension tool
     if (S.tool !== "select") { placeAt(x, y); return; }
     if (onHandle(x, y)) { S.drag = { kind: "outline", w0: S.board.outline.w, h0: S.board.outline.h, mx: x, sy, moved: false }; return; }
     let zc;
@@ -843,6 +847,7 @@
       S.drag = a.locked ? { kind: "locked" } : { kind: "corner", list, i: S.sel.i, k: zc, x0: a.pts[zc][0], y0: a.pts[zc][1], mx: x, my: y, moved: false }; return;
     }
     // what is under the pointer: vias, holes, texts, then a track right under it, a part, a track near it
+    if (dimui.select(x, y)) return;   // a dimension (its value or its line)
     if (cons.select(x, y, true, e.altKey)) return;   // a construction point (or, with Alt, any construction)
     let hit = null, i;
     if ((i = hitVia(x, y)) >= 0) hit = { kind: "via", id: i };
@@ -905,6 +910,8 @@
       if (!d.noted) { d.noted = true; lockedNote(); }
     } else if (d && d.kind === "cons") {
       cons.drag(d, x, y);
+    } else if (d && d.kind === "dim") {
+      dimui.drag(d, x, y);
     } else if (d && LISTS[d.kind]) {
       const o = S.board[LISTS[d.kind]][d.i]; o.x = snap(d.x0 + x - d.mx); o.y = snapY(d.y0 + y - d.my); d.moved = true; analyse(true); render();
     } else if (d && d.kind === "board") {
@@ -917,7 +924,7 @@
     const p = hitPad(x, y);
     S.hover = p ? p.net : null;
     S.snapHint = S.tool === "measure" ? snapPoint(x, y, e.shiftKey || e.altKey) : null;
-    cons.onMove(x, y, e);
+    cons.onMove(x, y, e); dimui.onMove(x, y);
     // the part under the pointer gets a faint outline and the move cursor
     const hp = S.tool === "select" && !d && e.target === canvas ? hitPart(x, y) : null, hk = hp ? hp.key : null;
     if (hk !== S.hoverPart) { S.hoverPart = hk; render(); }
@@ -973,6 +980,7 @@
       if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); }
       return;
     }
+    if (MODALS.every(id => $(id).hidden) && dimui.onKey(e)) return;   // the Dimension tool: its value, H V A, Enter, Esc
     if (MODALS.every(id => $(id).hidden) && cons.hudKey(e)) return;   // numbers typed with a construction tool or the hole tool go into its HUD (3 too)
     if (e.code === "Digit3" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); open3D(); return; }
     if (!MODALS.every(id => $(id).hidden)) return;
@@ -1013,6 +1021,7 @@
     else if (L === "v") { if (S.route) routeVia(); else setLayer(S.layer === "F.Cu" ? "B.Cu" : "F.Cu"); }
     else if (L === "t") setTool("text");
     else if (L === "h") setTool("hole");
+    else if (L === "d" && e.shiftKey) setTool("dim");
     else if (L === "d") setTool("measure");
     else if (L === "s") setTool("select");
     else if (L === "p") setTool("pour");
@@ -1057,7 +1066,7 @@
   const objOf = (kind, id) => (kind === "part" ? S.board.parts[id] : (S.board[MLIST[kind] || AREAS[kind]] || [])[id]);
   const isLocked = (kind, id) => !!(objOf(kind, id) || {}).locked;
   function selItems() {
-    const s = S.sel; if (!s || s.kind === "cons") return [];
+    const s = S.sel; if (!s || s.kind === "cons" || s.kind === "dim") return [];
     if (s.kind === "multi") return [...s.parts.map(k => ["part", k]), ...Object.entries(MLIST).flatMap(([k, l]) => s[l].map(i => [k, i]))];
     return [[s.kind, s.kind === "part" ? s.key : s.i]];
   }
@@ -1098,6 +1107,7 @@
   const lockedNote = () => msg("Locked: it stays put. Select it and press L to unlock");
   function nudge(dx, dy) {
     if (S.sel && S.sel.kind === "cons") { cons.nudge(dx, dy); return; }
+    if (S.sel && S.sel.kind === "dim") return;
     const it = selItems(); if (!it.length) return;
     if (it.every(([k, id]) => isLocked(k, id))) { lockedNote(); return; }
     moveItems(it, snapshot(it), dx, dy); commit();
@@ -1169,6 +1179,7 @@
   }
   function deleteSel() {
     if (S.sel && S.sel.kind === "cons") { cons.deleteSel(); return; }
+    if (S.sel && S.sel.kind === "dim") { dimui.deleteSel(); return; }
     const it = selItems(); if (!it.length) return;
     const parts = it.filter(([k]) => k === "part").length, locked = it.filter(([k, id]) => k !== "part" && isLocked(k, id)).length, del = it.filter(([k, id]) => k !== "part" && !isLocked(k, id));
     if (!del.length) { msg(parts ? "Parts come from the schematic: delete them there (then Update from schematic)" : "Locked: press L to unlock it first"); return; }
@@ -1324,9 +1335,11 @@
   const NOTE = ["unplaced", "check", "class", "silk", "dangling", "stopper", "coupling", "heat", "support"];
   const errors = () => S.drc.filter(d => !NOTE.includes(d.kind)).length;
   // the drawing of the board: render() asks for a frame (board-draw.js)
-  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected, consDraw: (c, px, mark) => cons.draw(c, px, mark) });
+  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected, consDraw: (c, px, mark) => { cons.draw(c, px, mark); dimui.draw(c, px); } });
   // construction geometry: the Construct menu's tools, the HUD, tied holes (board-cons.js)
   const cons = BoardCons({ $, B, S, commit, msg, snap, esc, kv, analyse, snapPoint, setTool, render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
+  // driving dimensions: the Dimension tool, Align, enforcing them after each change (board-dimui.js)
+  const dimui = BoardDimUI({ $, S, commit, msg, esc, cons, selItems: () => selItems(), render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
 
   // ---------------------------------------------------------------------------
   // Design rules window: rules, checks, net classes; edited on a copy, Apply commits
@@ -1336,7 +1349,7 @@
     current: "Track width for the current", courtyard: "Parts overlapping", height: "Part height under the lid", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", holeedge: "Hole to the board edge", pinout: "Pinouts to check",
     star: "Ground returns meet only at the star point", stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket" };
   // the side panels: parts list, inspector, rule check, layers (board-panels.js)
-  const { renderLayers, renderNets, renderPanels } = BoardPanels({ $, B, cons, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth });
+  const { renderLayers, renderNets, renderPanels } = BoardPanels({ $, B, cons, dimui, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth });
   function openRules() {
     draft = JSON.parse(JSON.stringify(S.board.rules));
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; el.classList.remove("invalid"); });
@@ -1538,12 +1551,12 @@
   const { stopRouting, autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute } = BoardAutoroute({ $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render: () => render(), renderPanels: () => renderPanels() });
   function msg(t) { if (t) { const el = $("st-msg"); el.textContent = t; el.title = t; } }
   function init() {
-    canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0; measureCardInit(); cons.init();
+    canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0; measureCardInit(); cons.init(); dimui.init();
     canvas.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
     canvas.addEventListener("dblclick", e => {
       if (S.route) finishRoute(); else if (S.poly) closePoly();
-      else { const [x, y] = toWorld(...evPos(e)), k = hitAreaCorner(x, y); if (k >= 0) dropCorner(k); }
+      else { const [x, y] = toWorld(...evPos(e)); if (S.tool === "select" && dimui.dbl(x, y)) return; const k = hitAreaCorner(x, y); if (k >= 0) dropCorner(k); }
     });
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("contextmenu", e => e.preventDefault());
@@ -1619,6 +1632,6 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { cons, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { cons, dimui, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

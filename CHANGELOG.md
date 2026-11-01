@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.169.0] - 2026-11-01
+
+### Added
+- **Driving dimensions in the Board window** (Construct ▾ → Dimension, Shift+D), the way a mechanical 2D sketcher does it. Click two things — a pad or a part's origin, a mounting hole, a via, a text, a keep-out corner or edge, a board corner, edge or centre, a construction point or line — place the dimension (above or below: horizontal; to the side: vertical; between: aligned; or H, V, A; a point and a line: the distance square to it), type the value and press Enter: the second thing moves there, the tracks on its pads following. They stay that far apart: drag either and the other follows, and a thing held in one direction only slides in the other; what cannot move goes back and the status line names the dimension that holds it. Locked things never move.
+- **Align horizontally / vertically** (Construct ▾) for two or more selected parts, holes, vias or texts: the others line up with the first and stay lined up.
+- **Reference dimensions and how defined a thing is.** A dimension that would over-constrain the board becomes a reference one (grey, in brackets: it only reads the distance); one that can no longer be met is drawn red. The inspector of a dimension edits its value and role; a part's, hole's, via's, text's or keep-out's inspector says how many dimensions hold it and whether it is fully defined or still free to move sideways or up and down, with Remove its dimensions. Show and Clear dimensions are in the menu. Our own least-change solver (Newton steps of the smallest move, the thing just dragged held still; the rank of the equations tells redundant dimensions and what is fully defined) solves 100 dimensions in a few milliseconds to 0.001 mm.
+- Dimensions are notes for the designer: saved with the board, never exported (silkscreen, Gerbers, drill files, PDFs, KiCad, STEP, SVG). Help, README, hover hints and Russian included.
+
 ## [3.168.0] - 2026-11-01
 
 ### Added
