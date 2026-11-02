@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.175.0] - 2026-11-02
+
+### Changed
+- **Example 04 now plays into a speaker.** The IRF820 source follower runs at ~29 mA (R7 5.6 kΩ 10 W, VT1 ~4 W on a heatsink) and feeds a Hammond 1627SEA (2.5 kΩ:8 Ω) through a 10 µF parafeed capacitor (no DC in the transformer), with an 8 Ω speaker on the secondary: about 0.5 W at 1 Vpk in. The board grows to 110 × 96 mm with the transformer's wire pads and a speaker terminal on the right edge, the 10 W resistor along the bottom; 0 to route, no rule violations. Every other amplifier example already drives a speaker.
+
 ## [3.174.1] - 2026-11-01
 
 ### Changed
