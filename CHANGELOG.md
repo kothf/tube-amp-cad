@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.177.0] - 2026-11-02
+
+### Changed
+- **No more Windows menu: the CAD's menus are arranged the way other simulators arrange them.** LTspice, Multisim, Altium and KiCad keep their Window menu for tiling and switching open windows, and put the instruments and analyses with simulation (Multisim's *Simulate → Instruments / Analyses*, LTspice's and Qucs's Simulate menu), the PCB behind a switch (KiCad's *Switch to PCB editor*, Proteus's module tabs) and the manual under Help. So:
+  - **Analyze ▾**, next to *▶ Simulate*: *Instruments* (Oscilloscope, Spectrum analyzer, Bode plotter, Curve tracer, each in its own window ↗) and *Analyses* (Tolerance runs, Power sweep, Noise and hum, Parameter sweep, Listen, each a tab under the schematic; they were in *View ▾*). Below 1080 px it shows only its icon, so the toolbar stays one row down to 940 px in English and Russian.
+  - **View ▾** keeps what the schematic shows (Voltages, Currents, Legend, Bill of materials, Checks) and takes *Board in this window*, with the interface language.
+  - **?** is now the **Help menu**: *Quick help and shortcuts* (F1 or ? still open it straight away), *Manual* ↗ and *About & credits*.
+  - *Board layout* left the menus: the *Schematic | Board* switch at the left of the toolbar (Alt+B) is the one way to the board, as before.
+
 ## [3.176.0] - 2026-11-02
 
 ### Changed

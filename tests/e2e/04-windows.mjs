@@ -174,11 +174,11 @@ import { U, browser, cad, check, ctx, open } from "./harness.mjs";
     const C = TubeCAD, S = C.state; S.comps = []; S.wires = [];
     const a = C.makeComp("scope", {}, 300, 300, 0), b = C.makeComp("scope", {}, 300, 500, 0); S.comps.push(a, b); C.commit(); return [a.id, b.id];
   });
-  await cad.click("#btn-windows"); await cad.click("#btn-open-scope");
+  await cad.click("#btn-analyze"); await cad.click("#btn-open-scope");
   await cad.waitForTimeout(800);
-  await cad.click("#btn-windows"); await cad.click("#btn-open-scope");
+  await cad.click("#btn-analyze"); await cad.click("#btn-open-scope");
   await cad.waitForTimeout(800);
-  check(opened.length === 1, `Windows ▸ Oscilloscope twice opens one window (${opened.length})`);
+  check(opened.length === 1, `Analyze ▾ → Oscilloscope twice opens one window (${opened.length})`);
   const win = opened[0];
   await win.waitForFunction(() => window.Instrument, null, { timeout: 8000 }).catch(() => {});
   // double-clicking the second scope part on the sheet switches the open window to it

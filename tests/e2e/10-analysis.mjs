@@ -9,7 +9,7 @@ import { cad, check, open } from "./harness.mjs";
   const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^05-/.test(x.file))));
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 });
-  await cad.click("#btn-view"); await cad.click("#btn-power"); await cad.keyboard.press("Escape");
+  await cad.click("#btn-analyze"); await cad.click("#btn-power"); await cad.keyboard.press("Escape");
   check(await cad.evaluate(() => !document.getElementById("pw-pane").hidden && document.getElementById("btn-power").getAttribute("aria-checked") === "true"), "View ▾ → Power sweep opens the Power tab, ticked");
   const out = await cad.evaluate(() => [...document.querySelectorAll("#pw-out option")].map(o => o.textContent));
   check(out[0] === "BA1 speaker" && out.some(o => /P1 CH1/.test(o)), `the output list offers the speaker first, then the scope channels (${out.join(", ")})`);
@@ -45,7 +45,7 @@ import { cad, check, open } from "./harness.mjs";
 
 // --- Listen ---------------------------------------------------------------------------------
 {
-  await cad.click("#btn-view"); await cad.click("#btn-listen"); await cad.keyboard.press("Escape");
+  await cad.click("#btn-analyze"); await cad.click("#btn-listen"); await cad.keyboard.press("Escape");
   check(await cad.evaluate(() => !document.getElementById("ls-pane").hidden && document.getElementById("btn-listen").getAttribute("aria-checked") === "true"), "View ▾ → Listen opens the Listen tab, ticked");
   const render = async () => {
     const seq = await cad.evaluate(() => TubeCAD.state.listen.seq);
@@ -115,7 +115,7 @@ import { cad, check, open } from "./harness.mjs";
   const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^03-/.test(x.file))));
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 });
-  await cad.click("#btn-view"); await cad.click("#btn-sweep"); await cad.keyboard.press("Escape");
+  await cad.click("#btn-analyze"); await cad.click("#btn-sweep"); await cad.keyboard.press("Escape");
   check(await cad.evaluate(() => !document.getElementById("sw-pane").hidden && document.getElementById("btn-sweep").getAttribute("aria-checked") === "true"), "View ▾ → Parameter sweep opens the Sweep tab, ticked");
   const r2 = await cad.evaluate(() => TubeCAD.state.comps.find(c => c.label === "R2"));
   await cad.selectOption("#sw-part", r2.id);
@@ -146,7 +146,7 @@ import { cad, check, open } from "./harness.mjs";
   const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^07-/.test(x.file))));
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 120000 });
-  await cad.click("#btn-view"); await cad.click("#btn-noise"); await cad.keyboard.press("Escape");
+  await cad.click("#btn-analyze"); await cad.click("#btn-noise"); await cad.keyboard.press("Escape");
   check(await cad.evaluate(() => !document.getElementById("nz-pane").hidden && document.getElementById("btn-noise").getAttribute("aria-checked") === "true"), "View ▾ → Noise and hum opens the Noise tab, ticked");
   const runNoise = async heaters => {
     await cad.selectOption("#nz-heaters", heaters);

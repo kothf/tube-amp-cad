@@ -82,7 +82,7 @@ import { U, browser, check, errors } from "./harness.mjs";
   }
   // the manual: help.html opens its Russian translation, with the parts reference in Russian too;
   // its EN button switches the manual (and the interface) back to English
-  const [man] = await Promise.all([lc.waitForEvent("page"), p.click("#btn-windows").then(() => p.click("#btn-open-manual"))]);
+  const [man] = await Promise.all([lc.waitForEvent("page"), p.click("#btn-help").then(() => p.click("#btn-open-manual"))]);
   man.on("pageerror", e => errors.push(`language manual: ${e.message}`));
   await man.waitForURL(/help-ru\.html/, { timeout: 15000 }).catch(() => {}); await man.waitForLoadState("load"); await man.waitForTimeout(500);
   const mr = await man.evaluate(() => ({ url: location.pathname, h1: document.querySelector("h1").textContent, parts: document.querySelectorAll(".part").length, res: (document.querySelector("#part-resistor") || {}).innerText || "", toc: document.querySelectorAll("#toc-list li").length, name: window.name }));
@@ -101,7 +101,7 @@ import { U, browser, check, errors } from "./harness.mjs";
   const lc = await browser.newContext({ viewport: { width: 1500, height: 900 } });
   const p = await lc.newPage(); p.on("pageerror", e => errors.push(`about: ${e.message}`));
   await p.goto(U("circuit_sandbox.html")); await p.waitForFunction(() => window.TubeCAD && window.I18n && window.TubeAbout);
-  const openAbout = async () => { await p.click("#btn-help"); await p.click("#btn-help-about"); await p.waitForTimeout(150); };
+  const openAbout = async () => { await p.click("#btn-help"); await p.click("#menu-help-about"); await p.waitForTimeout(150); };
   await openAbout();
   const en = await p.evaluate(() => {
     const m = document.getElementById("about-modal"), img = m.querySelector(".about-head img");

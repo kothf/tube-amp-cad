@@ -34,7 +34,7 @@ import { cad, check } from "./harness.mjs";
   check(await amp() === R.snapped[0] && !p.apply && !/circuit changed/.test(p.text), "Apply sets the found value, shown as applied (not as a changed circuit)");
   // undo after Apply and a Listen render, the way it is done: the toolbar's button, the Edit menu,
   // and Ctrl+Z with the focus still on the Listen source list
-  await cad.click("#btn-view"); await cad.click("#btn-listen"); await cad.keyboard.press("Escape");
+  await cad.click("#btn-analyze"); await cad.click("#btn-listen"); await cad.keyboard.press("Escape");
   await cad.selectOption("#ls-src", "riff"); await cad.fill("#ls-len", "1"); await cad.press("#ls-len", "Tab");
   { const seq = await cad.evaluate(() => TubeCAD.state.listen.seq); await cad.click("#btn-ls-run");
     await cad.waitForFunction(seq => TubeCAD.state.listen.seq !== seq && !TubeCAD.state.listen.job, seq, { timeout: 180000 }); }
