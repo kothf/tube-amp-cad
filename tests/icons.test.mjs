@@ -37,3 +37,10 @@ test("each icon is one svg of the house style, its numbers inside the box", () =
   }
   assert.equal(Icons.svg("no-such-icon"), "");
 });
+
+test("the parts panel's group icons exist", () => {
+  const src = read("cad-palette.js"), map = /const GROUP_ICON = \{([\s\S]*?)\};/.exec(src)[1];
+  const names = [...map.matchAll(/:\s*"([^"]+)"/g)].map(m => m[1]).concat(["search", "fold", "star"]);
+  assert.ok(names.length > 12);
+  for (const n of names) assert.ok(Icons.svg(n), `cad-palette.js: no icon "${n}"`);
+});

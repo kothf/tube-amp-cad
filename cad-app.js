@@ -4,7 +4,7 @@
    ============================================================================= */
 (function () {
   "use strict";
-  const { LIB, DRAW, COL, PALETTE, parseEng, fmtEng, tubeByName, tubeKind } = CadLib;
+  const { LIB, DRAW, COL, parseEng, fmtEng, tubeByName, tubeKind } = CadLib;
   const GRID = 10;
   const STORAGE_KEY = "tubecad_circuit_v2";
   const FILE_KEY = "tubecad_file_v1";        // the open file's name and whether it had unsaved changes (for a reload)
@@ -1683,135 +1683,55 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Parts palette: collapsible groups (state kept per browser) and one search box for
-  // parts, part numbers (2N3904, IRF540, 125ESE …), tubes and values ("47k" → 47 kΩ resistor)
+  // Parts panel (cad-palette.js): search, Favorites, Recent, the library with a picture of
+  // each part's symbol, a preview card; a part is placed by click-then-click or by dragging
   // ---------------------------------------------------------------------------
-  const PAL_KEY = "tubecad_palette";
-  const palState = { closed: { Transformers: true, Semiconductors: true, Instruments: true, Document: true, Tubes: true }, allTubes: false };
-  try { Object.assign(palState, JSON.parse(localStorage.getItem(PAL_KEY)) || {}); } catch (e) {}
-  const savePal = () => { try { localStorage.setItem(PAL_KEY, JSON.stringify(palState)); } catch (e) {} };
+  // a part's symbol as a small picture (a data URL), drawn by the sheet's own code, cached
   const escH = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
-  function palItem(label, sub, type, params, extraClass, title) {
-    const b = document.createElement("button");
-    b.className = "pal-item" + (extraClass ? " " + extraClass : "");
-    b.innerHTML = `<span>${escH(label)}</span>${sub ? `<em>${escH(sub)}</em>` : ""}`;
-    const what = title || (window.Hints && Hints.parts[type]) || "";
-    b.dataset.hint = (what ? what + "\n" : "") + "Click, then click on the sheet to place (Shift-click places several).";
-    b.dataset.hintTitle = label;
-    b.addEventListener("click", () => startPlacing(type, params, b));
-    return b;
+  const thumbs = new Map();
+  function partThumb(type, params, w, h, big) {
+    const key = `${type}|${JSON.stringify(params || {})}|${w}x${h}`;
+    if (thumbs.has(key)) return thumbs.get(key);
+    const def = LIB[type]; let url = "";
+    if (def && DRAW[type]) {
+      const c = { id: "pal-thumb", type, x: 0, y: 0, rot: 0, label: "", params: Object.assign({}, def.defaults, def.newDefaults || {}, params || {}) };
+      if (type === "tube") c.params.connection = tubeKind(tubeByName(c.params.tube)) === "pentode" ? "pentode" : "triode";
+      const b = compBBox(c), bw = Math.max(1, b.x2 - b.x1), bh = Math.max(1, b.y2 - b.y1);
+      const dpr = Math.min(2, window.devicePixelRatio || 1), cv = document.createElement("canvas");
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      const g = cv.getContext("2d"), s = Math.min((w - 2) / bw, (h - 2) / bh, big ? 1.6 : 1.2);
+      g.setTransform(dpr * s, 0, 0, dpr * s, dpr * (w / 2 - s * (b.x1 + b.x2) / 2), dpr * (h / 2 - s * (b.y1 + b.y2) / 2));
+      // strokes stay at least about a pixel wide however small the symbol is drawn
+      const lw = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, "lineWidth"), minW = 1.05 / s;
+      Object.defineProperty(g, "lineWidth", { configurable: true, get() { return lw.get.call(this); }, set(v) { lw.set.call(this, Math.max(+v || 0, minW)); } });
+      const keep = ctx, printing = S.printing; ctx = g; S.printing = true;
+      try { drawBody(c, false, true); url = cv.toDataURL(); } catch (e) { url = ""; }
+      finally { ctx = keep; S.printing = printing; }
+    }
+    thumbs.set(key, url);
+    return url;
   }
-  const tubeItem = t => palItem(t.commonName, t.type.replace(/ (Triode|Pentode|Tetrode|Rectifier)$/, ""), "tube", { tube: t.commonName }, "tube", `${t.type}. ${t.nameWestern} · ${t.nameGost}\nVa max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A`);
-  // everything the search can find: [group, label, sub, type, params, text to match]
-  function searchables() {
-    const L = CadLib, out = [];
-    PALETTE.forEach(g => g.items.forEach(it => {
-      if (it.sub) return;
-      if (it[1] && (L.BJTS[it[1].model] || L.MOSFETS[it[1].model] || L.JFETS[it[1].model] || L.REGS[it[1].model])) return;   // a catalog part: its own entry below
-      const [type, params, label] = it, def = LIB[type], p = Object.assign({}, def.defaults, params || {}), sub = def.value({ params: p });
-      out.push([g.group, label || def.name, sub, type, params, `${label || ""} ${def.name} ${sub} ${type}`]);
-    }));
-    Object.entries(L.BJTS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "NPN" : "PNP"} · ${k}`, `${m.v} V ${m.p} W`, m.pol > 0 ? "npn" : "pnp", { model: k }, `${k} transistor bjt ${m.pol > 0 ? "npn" : "pnp"} ${m.ge ? "germanium" : "silicon"} ${m.use}`]));
-    Object.entries(L.MOSFETS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "N" : "P"}-MOSFET · ${k}`, `${m.v} V ${m.p} W`, m.pol > 0 ? "nmos" : "pmos", { model: k }, `${k} mosfet fet ${m.use}`]));
-    Object.entries(L.JFETS).forEach(([k, m]) => out.push(["Semiconductors", `${m.pol > 0 ? "N" : "P"}-JFET · ${k}`, `${fmtEng(m.beta * m.vto * m.vto, "A", 2)} IDSS`, m.pol > 0 ? "njf" : "pjf", { model: k }, `${k} jfet fet junction ${m.use}`]));
-    Object.entries(L.REGS).forEach(([k, m]) => out.push(["Integrated circuits", `Regulator · ${k}`, m.use, "reg", { model: k }, `${k} regulator voltage ${m.adj ? "adjustable" : "fixed"} ${m.pol > 0 ? "positive" : "negative"} ${m.use} lm${k} ${m.pkg}`]));
-    Object.entries(L.SHUNTS).forEach(([k, m]) => out.push(["Integrated circuits", `Shunt reference · ${k}`, m.use, "tl431", { model: k }, `${k} shunt reference regulator programmable zener ${m.use}`]));
-    Object.entries(L.ZENERS).forEach(([k, z]) => out.push(["Semiconductors", `Zener · ${k}`, `${z.bv} V ${z.p} W`, "zener", { model: k }, `${k} zener ${z.bv}v`]));
-    Object.keys(L.LEDS).forEach(k => out.push(["Semiconductors", `LED · ${k}`, `${L.LEDS[k].vf} V`, "led", { color: k }, `led ${k}`]));
-    Object.entries(L.DIODES).forEach(([k, d]) => out.push(["Semiconductors", `Diode · ${k}`, d.use, "diode", { model: k }, `${k} diode ${d.kind} ${d.use}`]));
-    Object.entries(L.BRIDGES).forEach(([k, b]) => out.push(["Semiconductors", `Bridge rectifier · ${k}`, b.use, "bridge", { model: k }, `${k} bridge rectifier ${b.use}`]));
-    Object.entries(L.NTCS).forEach(([k, m]) => out.push(["Passive", `Inrush limiter · ${k}`, m.use, "ntc", { model: k }, `${k} ntc thermistor inrush current limiter soft start ${m.use}`]));
-    Object.entries(L.MOVS).forEach(([k, m]) => out.push(["Passive", `Varistor · ${k}`, m.use, "mov", { model: k }, `${k} mov varistor surge protection ${m.use}`]));
-    Object.entries(L.GASREGS).forEach(([k, m]) => out.push(["Gas-discharge tubes", `Voltage regulator · ${k}`, m.use, "gasreg", { model: k }, `${k} ${k.replace("0", "o")} vr gas regulator glow discharge stabilizer ${m.use}`]));
-    L.SPEAKER_PRESETS.forEach(p => out.push(["Passive", p.name, `${p.r} Ω, fs ${p.fs} Hz`, "speaker", { model: "ts", r: p.r, re: p.re, le: p.le, fs: p.fs, qms: p.qms, qes: p.qes }, `${p.name} ${p.id.startsWith("hp") ? "headphones headphone phones earphones" : "speaker loudspeaker driver"}`]));
-    Object.entries(L.CHIPAMPS).forEach(([k, m]) => out.push(["Integrated circuits", `Power amplifier · ${k}`, m.use, "chipamp", { model: k }, `${k} power amplifier chip amp gainclone ic ${m.pkg} ${m.use}`]));
-    Object.entries(L.NEONS).forEach(([k, m]) => out.push(["Gas-discharge tubes", `Neon lamp · ${k}`, m.use, "neon", { model: k }, `${k} neon lamp glow indicator pilot light ne2 ${m.use}`]));
-    Object.entries(L.EYES).forEach(([k, m]) => out.push(["Gas-discharge tubes", `Magic eye · ${k}`, m.use, "eye", { model: k }, `${k} magic eye tuning indicator electron ray cat's eye level meter ${m.use}`]));
-    Object.entries(L.RELAYS).forEach(([k, m]) => out.push(["Switches & relays", `Relay · ${k}`, m.use, "relay", { model: k }, `${k} relay omron ${m.poles > 1 ? "dpdt" : "spdt"} coil ${m.use} mute standby channel`]));
-    Object.entries(L.VACTROLS).forEach(([k, m]) => out.push(["Switches & relays", `Vactrol · ${k}`, m.use, "vactrol", { model: k }, `${k} vactrol optocoupler opto ldr photoresistor led cds ${m.use}`]));
-    L.PICKUPS.forEach(p => out.push(["Sources", `Guitar pickup · ${p.name}`, `${fmtEng(p.l, "H")} ${fmtEng(p.r, "Ω")}`, "pickup", { preset: p.id, r: p.r, l: p.l, c: p.c, amp: p.amp }, `${p.name} guitar pickup bass single coil humbucker source`]));
-    L.CARTRIDGES.forEach(p => out.push(["Sources", `Phono cartridge · ${p.name}`, fmtEng(p.mv, "V"), "phono", { preset: p.id, mv: p.mv, r: p.r, l: p.l }, `${p.name} phono cartridge turntable record riaa mm mc vinyl source`]));
-    L.ITX_PRESETS.forEach(p => out.push(["Transformers", p.name, "", "itx", Object.assign({}, ...["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"].map(k => ({ [k]: p[k] }))), `${p.name} transformer interstage input step-up`]));
-    Object.entries(L.JACKS).forEach(([k, j]) => out.push(["Ground & connectors", `Jack · ${j.use}`, k, "jack", { kind: k }, `jack socket input output ${k} ${j.use} phone headphone`]));
-    Object.entries(L.OUTPUT_TX).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `${m.w} W ${m.ma} mA`, "opt_cat", { model: k }, `${k} ${m.name} output transformer single-ended`]));
-    Object.entries(L.OPT_SE).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `SE ${fmtEng(m.p.zp, "Ω")} ${m.w} W ${m.ma} mA`, "opt_se", Object.assign({}, m.p), `${k} ${m.name} output transformer single-ended ${m.maker}`]));
-    Object.entries(L.OPT_PP).forEach(([k, m]) => out.push(["Transformers", `Output · ${m.name}`, `PP ${fmtEng(m.p.zaa, "Ω")} ${m.w} W`, "opt_pp", Object.assign({}, m.p), `${k} ${m.name} output transformer push-pull ultralinear ${m.maker}`]));
-    Object.entries(L.POWER_TX).forEach(([k, m]) => out.push(["Transformers", `Power · ${m.name}`, m.rated, "ptx_cat", { model: k }, `${k} ${m.name} power transformer ${m.rated}`]));
-    TUBE_DATABASE.forEach(t => out.push(["Tubes", t, "", "tube", { tube: t.commonName }, `${t.commonName} ${t.nameGost} ${t.nameWestern} ${t.type}`]));
-    return out;
-  }
-  // a typed value becomes the part it describes: 47k → resistor, 100n / 100nF → capacitor, 47u → electrolytic, 5H → choke
-  function valueHits(q) {
-    const m = /^([\d.,]+\s*(?:meg|[pnuµmkKMG])?)\s*(Ω|ohm|r|f|h|v)?$/i.exec(q.trim()); if (!m) return [];
-    const v = parseEng(m[1].replace(/\s+/g, "")); if (!(v > 0)) return [];
-    const u = (m[2] || "").toLowerCase(), out = [];
-    if (u === "f" || (!u && /[pnuµ]$/i.test(m[1]))) { out.push(["Value", "Capacitor", fmtEng(v, "F"), "capacitor", { c: v }]); if (v >= 1e-6) out.push(["Value", "Electrolytic cap", fmtEng(v, "F"), "electrolytic", { c: v }]); }
-    else if (u === "h") out.push(["Value", "Inductor / choke", fmtEng(v, "H"), "inductor", { l: v }]);
-    else if (u === "v") out.push(["Value", "DC supply", fmtEng(v, "V"), "vdc", { v }]);
-    else { out.push(["Value", "Resistor", fmtEng(v, "Ω"), "resistor", { r: v }]); out.push(["Value", "Potentiometer", fmtEng(v, "Ω"), "pot", { r: v }]); }
-    return out;
-  }
+  let palette = null;
   function buildPalette() {
-    const host = document.getElementById("palette");
-    host.innerHTML = "";
-    const search = document.createElement("input");
-    search.type = "search"; search.className = "pal-search"; search.id = "pal-search";
-    search.placeholder = "Search parts, 2N3904, EL84, 47k…"; search.setAttribute("aria-label", "Search parts");
-    host.appendChild(search);
-    const body = document.createElement("div"); host.appendChild(body);
-    const index = searchables();
-    const group = (title, count) => {
-      const h = document.createElement("button"); h.className = "pal-group" + (palState.closed[title] ? " closed" : ""); h.type = "button";
-      h.innerHTML = `<span class="chev">▾</span>${escH(title)}${count ? `<small>${count}</small>` : ""}`;
-      h.setAttribute("aria-expanded", String(!palState.closed[title]));
-      const box = document.createElement("div"); box.className = "pal-box"; box.hidden = !!palState.closed[title];
-      h.addEventListener("click", () => { palState.closed[title] = !palState.closed[title]; savePal(); h.classList.toggle("closed"); box.hidden = !!palState.closed[title]; h.setAttribute("aria-expanded", String(!box.hidden)); });
-      body.appendChild(h); body.appendChild(box);
-      return box;
-    };
-    const browse = () => {
-      body.innerHTML = "";
-      PALETTE.forEach(g => {
-        const box = group(g.group);
-        g.items.forEach(it => {
-          if (it.sub) { const h = document.createElement("div"); h.className = "pal-sub"; h.textContent = it.sub; box.appendChild(h); return; }
-          const [type, params, label] = it, def = LIB[type], p = Object.assign({}, def.defaults, params || {});
-          box.appendChild(palItem(label || def.name, def.value({ params: p }), type, params));
-        });
-      });
-      // tubes: the popular ones, or all of them by kind
-      const box = group("Tubes", TUBE_DATABASE.length);
-      const toggle = document.createElement("button"); toggle.type = "button"; toggle.className = "pal-more";
-      toggle.textContent = palState.allTubes ? "Show popular tubes only" : `Show all ${TUBE_DATABASE.length} tubes`;
-      toggle.addEventListener("click", () => { palState.allTubes = !palState.allTubes; savePal(); browse(); });
-      if (palState.allTubes) {
-        [["triode", "Triodes"], ["pentode", "Pentodes & beam tetrodes"], ["rectifier", "Rectifiers"]].forEach(([kind, title]) => {
-          const h = document.createElement("div"); h.className = "pal-sub"; h.textContent = title; box.appendChild(h);
-          TUBE_DATABASE.filter(t => tubeKind(t) === kind).forEach(t => box.appendChild(tubeItem(t)));
-        });
-      } else TUBE_DATABASE.filter(t => t.isFavorite).forEach(t => box.appendChild(tubeItem(t)));
-      box.appendChild(toggle);
-    };
-    const find = q => {
-      body.innerHTML = "";
-      const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-      const hits = valueHits(q).concat(index.filter(e => words.every(w => e[5].toLowerCase().includes(w))));
-      if (!hits.length) { body.innerHTML = `<p class="pal-none">Nothing found for “${escH(q)}”.</p>`; return; }
-      let last = null;
-      hits.slice(0, 80).forEach(([g, label, sub, type, params]) => {
-        if (g !== last) { const h = document.createElement("div"); h.className = "pal-sub"; h.textContent = g; body.appendChild(h); last = g; }
-        body.appendChild(type === "tube" && typeof label === "object" ? tubeItem(label) : palItem(label, sub, type, params));
-      });
-    };
-    const update = () => { const q = search.value.trim(); if (q) find(q); else browse(); };
-    search.addEventListener("input", update);
-    search.addEventListener("keydown", e => {
-      if (e.key === "Enter") { const first = body.querySelector(".pal-item"); if (first) first.click(); }
-      else if (e.key === "Escape") { search.value = ""; update(); search.blur(); }
+    if (palette) { palette.rebuild(); return; }
+    palette = CadPalette({
+      host: document.getElementById("palette"),
+      thumb: partThumb,
+      pick: (e, el) => startPlacing(e.type, e.params, el),
+      dragEnd: dropped => { if (!dropped && S.placing) { S.placing = null; setTool("select"); } }
     });
-    update();
+    // a part dragged from the panel: its ghost follows the pointer over the sheet, the drop places it
+    const isPart = ev => [...(ev.dataTransfer && ev.dataTransfer.types || [])].includes(palette.DRAG_TYPE);
+    canvas.addEventListener("dragover", ev => { if (!isPart(ev) || !S.placing) return; ev.preventDefault(); ev.dataTransfer.dropEffect = "copy"; evPos(ev); render(); });
+    canvas.addEventListener("dragleave", () => render());
+    canvas.addEventListener("drop", ev => {
+      if (!isPart(ev) || !S.placing) return;
+      ev.preventDefault();
+      const m = evPos(ev), c = makeComp(S.placing.type, S.placing.params, snap(m.wx), snap(m.wy), S.placing.rot);
+      S.comps.push(c); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id);
+      S.placing = null; setTool("select"); commit(); canvas.focus();
+    });
   }
-
 
   function selectedComp() { return S.sel.comps.size === 1 && !S.sel.wires.size ? S.comps.find(c => S.sel.comps.has(c.id)) : null; }
 
@@ -2909,7 +2829,7 @@
     window.addEventListener("resize", render);
     // palette and inspector widths: drag the edges (double-click resets)
     Panels.columns(document.querySelector("main"), { key: "cad", minViewport: 900, minCenter: 360,
-      cols: [{ index: 0, side: "left", def: 210, min: 150, max: 480 }, { index: 2, side: "right", def: 280, min: 200, max: 700 }],
+      cols: [{ index: 0, side: "left", def: 240, min: 170, max: 480 }, { index: 2, side: "right", def: 280, min: 200, max: 700 }],
       template: w => `${w[0]}px 1fr ${w[1]}px` });
 
     buildPalette();

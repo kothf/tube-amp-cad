@@ -85,7 +85,19 @@
     copy: `<rect x="5.5" y="5.5" width="9" height="9" rx="1"/><path d="M10.5 5.5v-3a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h3"/>`,
     paste: `<rect x="3" y="2.5" width="10" height="12" rx="1"/><path d="M6 1.5h4v2.2H6z"/>`,
     duplicate: `<rect x="5.5" y="5.5" width="9" height="9" rx="1"/><path d="M10.5 5.5v-3a1 1 0 0 0-1-1h-7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h3"/><path d="M10 8v4M8 10h4"/>`,
-    "select-all": `<rect x="2" y="2" width="12" height="12" rx="1" stroke-dasharray="2 2"/><path d="M5.5 8l2 2 3-4"/>`
+    "select-all": `<rect x="2" y="2" width="12" height="12" rx="1" stroke-dasharray="2 2"/><path d="M5.5 8l2 2 3-4"/>`,
+    // parts panel: search, fold, favourites and the library's groups
+    search: `<circle cx="7" cy="7" r="4.5"/><path d="M10.3 10.3l4.2 4.2"/>`,
+    fold: `<path d="M4.5 1.5 8 5l3.5-3.5M4.5 14.5 8 11l3.5 3.5M2 8h12"/>`,
+    star: `<path d="M8 1.6l1.95 3.95 4.35.63-3.15 3.07.74 4.33L8 11.53l-3.89 2.05.74-4.33L1.7 6.18l4.35-.63z"/>`,
+    "pal-passive": `<path d="M1 8h3M12 8h3"/><rect x="4" y="5.5" width="8" height="5" rx=".5"/>`,
+    "pal-switch": `<circle cx="3.5" cy="11" r="1.3"/><circle cx="12.5" cy="11" r="1.3"/><path d="M1 11h1.2M13.8 11H15M4.6 10.3 12 5.5"/>`,
+    "pal-transformer": `<path d="M4 1.5v1a1.6 1.6 0 0 1 0 3.2 1.6 1.6 0 0 1 0 3.2 1.6 1.6 0 0 1 0 3.2v1.4M12 1.5v1a1.6 1.6 0 0 0 0 3.2 1.6 1.6 0 0 0 0 3.2 1.6 1.6 0 0 0 0 3.2v1.4M7.3 2v12M8.7 2v12"/>`,
+    "pal-source": `<circle cx="8" cy="8" r="6"/><path d="M4.5 8c1-2.6 2.5-2.6 3.5 0s2.5 2.6 3.5 0"/>`,
+    "pal-ground": `<path d="M8 1.5V8M2.5 8h11M4.8 10.8h6.4M7 13.6h2"/>`,
+    "pal-semi": `<path d="M1 8h4M11 8h4M5 3.8v8.4L11 8z"/><path d="M11 3.8v8.4"/>`,
+    "pal-neon": `<circle cx="8" cy="8" r="6.3"/><path d="M5.8 4.5v7M10.2 4.5v7M8 1.7v-.2M8 14.3v.2"/>`,
+    "pal-tube": `<circle cx="8" cy="8" r="6.5"/><path d="M5.5 4.5h5M8 1.5v3M4.8 8h1.3M7.35 8h1.3M9.9 8h1.3M5.5 11.2h5"/>`
   };
   const svg = name => P[name] ? `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true">${P[name]}</svg>` : "";
   function node(name) {

@@ -171,10 +171,14 @@
 <p>On narrow screens the toolbar drops the product name (the switch's labels too) and then the file name, so it stays one row from about 940 px up. At 900 px and below the inspector becomes a drawer over the right of the sheet: it slides in when you select something and out when the selection is cleared, and the <span class="ui">Inspector</span> button in the toolbar shows or hides it at any time.</p>
 
 <h3 id="palette">3.2 Palette</h3>
+<p>The parts panel works like the part choosers of KiCad and Altium: a search box on top, the library below it, a preview of the part at the bottom.</p>
 <ul>
-  <li>Groups: <b>Passive</b>, <b>Transformers</b>, <b>Sources</b> (DC supplies and AC sources), <b>Ground &amp; connectors</b>, <b>Semiconductors</b>, <b>Integrated circuits</b>, <b>Instruments</b>, <b>Document</b>, <b>Tubes</b>. Click a group's title to fold it; the browser remembers which are open.</li>
-  <li><b>Search box.</b> Finds parts by name; part numbers (2N3904, IRF540, 1N4742A, 125ESE, 373BX); tubes (EL84, 6N2P, 300B); and <b>values</b>: <code>47k</code> offers a 47 kΩ resistor or pot, <code>100n</code> a 100 nF capacitor, <code>47u</code> an electrolytic, <code>5H</code> a choke, <code>300V</code> a supply. <kbd>Enter</kbd> picks the first match.</li>
-  <li>Click a part, then click the sheet. <kbd>Shift</kbd>-click places several. <kbd>Esc</kbd> stops placing.</li>
+  <li><b>Rows.</b> Each part shows a small picture of its own schematic symbol, its name and its value. Group titles carry an icon and the number of parts.</li>
+  <li>Groups: <b>Favorites</b> and <b>Recent</b> (when there are any), <b>Passive</b>, <b>Switches &amp; relays</b>, <b>Transformers</b>, <b>Sources</b> (DC supplies and AC sources), <b>Ground &amp; connectors</b>, <b>Semiconductors</b>, <b>Integrated circuits</b>, <b>Gas-discharge tubes</b>, <b>Instruments</b>, <b>Document</b>, <b>Tubes</b>. Click a group's title to fold it; the button next to the search box folds them all (or opens them all again). The browser remembers which are open.</li>
+  <li><b>Search box.</b> Finds parts by name; part numbers (2N3904, IRF540, 1N4742A, 125ESE, 373BX); tubes (EL84, 6N2P, 300B); and <b>values</b>: <code>47k</code> offers a 47 kΩ resistor or pot, <code>100n</code> a 100 nF capacitor, <code>47u</code> an electrolytic, <code>5H</code> a choke, <code>300V</code> a supply. The typed text is marked in the names. <kbd>↓</kbd> / <kbd>↑</kbd> walk the results, <kbd>Enter</kbd> picks the marked one (or the first), <kbd>Esc</kbd> clears the box.</li>
+  <li><b>Placing.</b> Click a part, then click the sheet; <kbd>Shift</kbd>-click places several; <kbd>Esc</kbd> stops placing. Or drag the part from the panel onto the sheet: its symbol follows the pointer and drops where you let go.</li>
+  <li><b>Preview.</b> Point at a part (or reach it with the arrow keys): the card at the bottom draws its symbol large, with its value and what it is (a tube: its type, both names, ratings and heater). The card's title folds it away.</li>
+  <li><b>Favorites.</b> Right-click a part, or click ☆ in the preview, to keep it in Favorites at the top of the panel; again to take it out. <b>Recent</b> lists the last 8 parts you picked. Both are kept in the browser.</li>
   <li>The Tubes group shows the popular tubes first; the button under the list shows all 110.</li>
 </ul>
 

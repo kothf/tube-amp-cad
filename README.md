@@ -41,8 +41,12 @@ Firefox is not tested.
   - values: `47k` offers a 47 kΩ resistor or potentiometer, `100n` a
     100 nF capacitor, `47u` an electrolytic, `5H` a choke, `300V` a supply.
 
-  Enter picks the first match. Click a palette group's title to fold it; the
-  browser remembers which groups are open.
+  ↓ / ↑ walk the results and Enter picks the marked one (or the first). Each
+  row shows a small picture of the part's own symbol; pointing at a part shows
+  it large in the preview card under the list, with what it is. Drag a part
+  onto the sheet to place it there. Right-click a part (or ☆ in the preview)
+  to keep it in Favorites; Recent lists the last parts picked. Click a group's
+  title to fold it; the browser remembers which groups are open.
 - **Wiring.** Click a pin, click the corners, and finish on a pin or a wire.
   <kbd>W</kbd> starts a wire anywhere. A wire ending on another wire joins it
   with a junction dot; plain crossings stay unconnected.
