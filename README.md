@@ -239,7 +239,7 @@ the rest; every board opens with 0 connections open and 0 rule messages:
 | Push-pull EL84 ultralinear, Hammond 1608 | tubes | Mullard-style: 12AX7 stage, split-load phase splitter, 2 × EL84 UL into 8 kΩ, 14 dB feedback; 11 W at 0.9 % THD, the core saturating at 15 Hz |
 | Push-pull 6V6 guitar amplifier, Hammond 1750H | tubes | Tweed-style: 12AX7 stage, split-load splitter, cathode-biased 6V6GT pair, no feedback; 7.7 W at 2 % THD |
 | 12AX7: plate resistor vs current source | tube + transistor | J. Broskie, TubeCAD (2000): gain 70 with a 150k plate resistor, 100 with an MPSA92 current source |
-| 12AX7 stage + IRF820 follower | tube + MOSFET | The GE 12AX7 data sheet's resistance-coupled stage (gain 50) driving a MOSFET follower |
+| 12AX7 stage + IRF820 follower | tube + MOSFET | The GE 12AX7 data sheet's resistance-coupled stage (gain 50) driving a MOSFET follower, which feeds an 8 Ω speaker through a parafeed output transformer (about 0.5 W) |
 | 10 W complementary MOSFET amplifier | MOSFETs | homemade-circuits.com, fig. 1 |
 | 2N3904 common emitter, RE unbypassed | transistor | University of Washington lab notes (2017), bench measurements |
 | 2N3904 common emitter, RE bypassed | transistor | the same, with 10 µF across RE |
@@ -1174,7 +1174,7 @@ sources were drawn and simulated, two of them against bench measurements:
 | 2N3904 common emitter, RE unbypassed (UW BEE 332 lab, measured with actual part values) | VE 0.710 V, VC 6.47 V, gain −4.89 | VE 0.7096 V, VC 6.54 V, gain −4.72 |
 | same, RE bypassed by 10 µF, small signal | gain −121 | −114 (the lab's Multisim run); hand calculation ≈ −122 |
 | 12AX7 with an MPSA92 current-source load from 170 V, against 150k from 300 V (TubeCAD) | gain 104 and 75 at 1 mA, 148 / 146 V plate | 100 and 70 at 1 mA, 150 V |
-| IRF820 source follower on 300 V, gate at ~170 V (forum design replacing a 6C4) | 3.53 mA, 0.48 W | ~3.5 mA, ~0.46 W |
+| IRF820 source follower on 300 V, gate at ~170 V (forum design replacing a 6C4; example 04 now runs it at ~29 mA with a 5.6 kΩ source resistor to drive its output transformer) | 3.53 mA, 0.48 W | ~3.5 mA, ~0.46 W |
 | 12AX7 RC stage per the GE datasheet table (300 V, 100k, 900 Ω bypassed) | 40.3 Vrms at 5 % THD; gain 60 | 40 Vrms at 5 % THD; gain 50 |
 | 10 W complementary MOSFET amplifier (IRF540 / IRF9540, homemade-circuits.com) | 30 mA idle with the bias preset, gain 11.0, < 0.01 % THD to 4 W, 8.4 W at 1 % on an ideal 30 V supply | ~30 mA, gain ≈ 10, < 0.1 %, 6–7 W on a loaded 30 V supply |
 
