@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.176.0] - 2026-11-02
+
+### Changed
+- **A new parts panel**, after the part choosers of KiCad and Altium. Each part is a compact row with a small picture of its own schematic symbol (drawn by the sheet's code), its name and its value in a quieter colour; group titles have line icons and part counts and stay at the top while their parts scroll; sub-groups are small captions instead of bright blue text.
+- **Preview card** under the list: point at a part (or reach it with ↓ ↑ from the search box) to see its symbol large, its value and what it is (a tube's type, names, ratings and heater). Its title folds it away. The hover tooltip on palette parts is gone: the card says the same, without covering the sheet.
+- **Search**: a search icon and a fold-all button beside the box; the typed text is marked in the names; ↓ ↑ walk the results and Enter picks the marked one.
+
+### Added
+- **Drag a part onto the sheet** to place it: its symbol follows the pointer and lands where you let go.
+- **Favorites and Recent** at the top of the panel: right-click a part (or ☆ in the preview) to keep it in Favorites; Recent lists the last 8 parts picked. Kept in the browser.
+- The palette is 240 px wide by default (was 210).
+
 ## [3.175.0] - 2026-11-02
 
 ### Changed

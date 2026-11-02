@@ -56,8 +56,9 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   check(tip.length > 30, `hovering an inspector label shows its hint ("${tip.slice(0, 60)}…")`);
   const unhinted = await cad.evaluate(() => [...document.querySelectorAll("#inspector .kv > span:first-child, #inspector .row > span:first-child")].filter(e => !e.classList.contains("has-hint")).map(e => e.textContent));
   check(unhinted.length === 0, `every label in a tube's inspector has a hint${unhinted.length ? ` (missing: ${unhinted.join(", ")})` : ""}`);
-  const palHint = await cad.evaluate(() => document.querySelector(".pal-item").dataset.hint || "");
-  check(/Click, then click on the sheet/.test(palHint) && palHint.length > 60, "palette parts carry a hint of what they are");
+  await cad.hover(".pal-item"); await cad.waitForTimeout(100);
+  const palHint = await cad.evaluate(() => document.getElementById("pal-preview").textContent || "");
+  check(/Click, then click on the sheet/.test(palHint) && palHint.length > 100, "pointing at a palette part shows what it is in the preview");
   // the manual
   const [man] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-windows").then(() => cad.click("#btn-open-manual"))]);
   await man.waitForLoadState(); await man.waitForTimeout(500);

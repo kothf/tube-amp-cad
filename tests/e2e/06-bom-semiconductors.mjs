@@ -148,6 +148,30 @@ import { readFile } from "node:fs/promises";
   await cad.keyboard.press("Escape"); await search.fill(""); await cad.keyboard.press("Escape");
   check(hit.length === 1 && /NPN · 2N2222A/.test(hit[0]) && tubes.some(t => /^EL84/.test(t)) && /Resistor\s*47kΩ/.test(val) && placing && placing.type === "resistor" && placing.params.r === 47000,
     `palette search finds part numbers (${hit[0]}), tubes (EL84) and values ("47k" → ${val && val.replace(/\s+/g, " ")}; Enter picks it)`);
+  {
+    // the parts panel: every row shows its symbol, ↓ + Enter picks from the search, right-click
+    // adds to Favorites (kept after a reload), a picked part goes to Recent, a part dragged onto the sheet is placed there
+    const thumbs = await cad.evaluate(() => [...document.querySelectorAll("#palette .pal-item")].filter(el => el.offsetParent).map(el => el.querySelector("img.pal-thumb").src.startsWith("data:image/png") && el.querySelector("img.pal-thumb").src.length > 300));
+    check(thumbs.length > 20 && thumbs.every(Boolean), `palette: every visible part shows a picture of its symbol (${thumbs.length} rows)`);
+    await search.fill("ecc83"); await search.press("ArrowDown"); await search.press("ArrowDown");
+    const kb = await cad.evaluate(() => ({ marked: document.querySelector("#palette .pal-item.kb")?.textContent, preview: document.querySelector("#pal-preview .pal-pname b")?.textContent }));
+    await search.press("Enter");
+    const kbPick = await cad.evaluate(() => TubeCAD.state.placing);
+    await cad.keyboard.press("Escape"); await search.fill(""); await cad.keyboard.press("Escape");
+    check(kb.marked && kb.preview && kb.marked.startsWith(kb.preview) && kbPick && kbPick.type === "tube" && kb.marked.startsWith(kbPick.params.tube), `palette: ↓ marks a found part, the preview shows it, Enter picks it (${kb.preview})`);
+    await cad.locator("#palette .pal-item", { hasText: "Zener diode" }).first().click({ button: "right" });
+    const favs = await cad.evaluate(() => JSON.parse(localStorage.getItem("tubecad_palette")).fav.map(f => f.type));
+    await cad.locator("#palette .pal-item", { hasText: "Zener diode" }).first().hover();
+    const star = await cad.evaluate(() => document.querySelector("#pal-preview .pal-fav").classList.contains("on"));
+    const before = await cad.evaluate(() => TubeCAD.state.comps.length);
+    await cad.locator("#palette .pal-item", { hasText: "Zener diode" }).first().dragTo(cad.locator("#cad"), { targetPosition: { x: 420, y: 260 } });
+    const dropped = await cad.evaluate(n => ({ n: TubeCAD.state.comps.length - n, last: TubeCAD.state.comps[TubeCAD.state.comps.length - 1].type, placing: !!TubeCAD.state.placing }), before);
+    const top = await cad.evaluate(() => [...document.querySelectorAll("#palette .pal-group")].slice(0, 2).map(g => g.dataset.group));
+    check(favs.includes("zener") && star && dropped.n === 1 && dropped.last === "zener" && !dropped.placing,
+      `palette: right-click adds a part to Favorites (★ in the preview); dragging it onto the sheet places one (${JSON.stringify(dropped)})`);
+    await cad.evaluate(() => TubeCAD.undo());
+    check(top[0] === "Favorites", `palette: Favorites come first (${top.join(", ")})`);
+  }
   for (const name of ["NPN transistor", "PNP transistor", "NPN, high voltage", "N-MOSFET, depletion", "P-MOSFET", "PNP, germanium", "NPN, germanium", "PNP, germanium (USSR)", "Zener diode", "LED"])
     check(await cad.getByRole("button", { name: new RegExp("^" + name.replace(/[()]/g, "\\$&")) }).count() > 0, `palette offers "${name}" under Semiconductors`);
   {
@@ -155,7 +179,7 @@ import { readFile } from "node:fs/promises";
     const pal = await cad.evaluate(() => {
       const out = {}; let g = null, sub = null;
       document.querySelectorAll("#palette .pal-group, #palette .pal-sub, #palette .pal-item").forEach(el => {
-        if (el.classList.contains("pal-group")) { g = el.textContent.replace("▾", "").trim(); sub = null; out[g] = []; }
+        if (el.classList.contains("pal-group")) { g = el.dataset.group; sub = null; out[g] = []; }
         else if (el.classList.contains("pal-sub")) sub = el.textContent;
         else if (g && el.offsetParent !== null) out[g].push((sub ? sub + ": " : "") + el.querySelector("span").textContent);
       });

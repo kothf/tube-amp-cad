@@ -48,26 +48,62 @@
     .seg-group #zoom-label { display: grid; place-items: center; border: 1px solid var(--line); background: var(--bg); }
     #zoom-label { min-width: 48px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-    main { display: grid; grid-template-columns: 210px 1fr 280px; min-height: 0; }
+    main { display: grid; grid-template-columns: 240px 1fr 280px; min-height: 0; }
 
-    /* palette */
-    #palette { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 8px; }
-    .pal-group { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; padding: 4px 2px; cursor: pointer; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 8px 0 4px; text-align: left; }
-    .pal-group:hover { color: var(--text); }
-    .pal-group .chev { display: inline-block; width: 10px; transition: transform .12s; }
+    /* parts panel (cad-palette.js): search bar, the list, the preview card */
+    #palette { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .pal-bar { display: flex; gap: 6px; padding: 8px 8px 6px; border-bottom: 1px solid var(--line); flex: none; }
+    .pal-find { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
+    .pal-find > .ico { position: absolute; left: 8px; width: 14px; height: 14px; color: var(--muted); pointer-events: none; }
+    .pal-search { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px 6px 28px; color: var(--text); }
+    .pal-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,229,255,.15); }
+    .pal-tool { flex: none; width: 30px; display: grid; place-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--muted); cursor: pointer; }
+    .pal-tool:hover { color: var(--text); border-color: #3a5170; }
+    .pal-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 6px 8px; }
+    .pal-group { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; width: calc(100% + 12px); margin: 0 -6px; background: var(--panel); border: 0; border-bottom: 1px solid #1a2534; padding: 7px 10px 6px; cursor: pointer; font-size: 12px; font-weight: 600; color: #c9d4df; text-align: left; }
+    .pal-group > .ico { width: 15px; height: 15px; color: var(--accent); opacity: .85; flex: none; }
+    .pal-group:hover { color: var(--text); background: #121a25; }
+    .pal-group:disabled { cursor: default; color: var(--muted); background: var(--panel); }
+    .pal-group .pal-gt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pal-group small { color: var(--muted); font-weight: 400; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .pal-group .chev { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid var(--muted); transition: transform .12s; flex: none; }
     .pal-group.closed .chev { transform: rotate(-90deg); }
-    .pal-group small { margin-left: auto; font-weight: 400; letter-spacing: 0; }
+    .pal-box { padding: 4px 0 6px; }
     .pal-box[hidden] { display: none; }
-    .pal-more { width: 100%; background: none; border: 1px dashed var(--line); border-radius: 6px; color: var(--accent); padding: 4px 8px; margin: 4px 0 8px; cursor: pointer; font-size: 12px; }
-    .pal-none { color: var(--muted); font-size: 12px; margin: 8px 4px; }
-    #pal-search { position: sticky; top: -8px; z-index: 2; margin-bottom: 4px; }
-    .pal-sub { font-size: 11px; color: var(--accent); margin: 8px 2px 4px; }
-    .pal-item { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; width: 100%; text-align: left; background: var(--panel2); border: 1px solid transparent; border-radius: 6px; padding: 5px 8px; margin-bottom: 3px; cursor: pointer; }
-    .pal-item:hover { border-color: var(--line); }
-    .pal-item.active { border-color: var(--accent); background: #0d3442; }
-    .pal-item em { font-style: normal; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 95px; }
+    .pal-sub { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); margin: 8px 4px 3px; }
+    .pal-sub::after { content: ""; flex: 1; height: 1px; background: #1a2534; }
+    .pal-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; text-align: left; background: none; border: 0; border-left: 2px solid transparent; border-radius: 5px; padding: 2px 8px 2px 4px; cursor: pointer; color: var(--text); font-size: 12.5px; }
+    .pal-item:hover, .pal-item.kb { background: #16212e; }
+    .pal-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+    .pal-item.active { background: #0d3442; border-left-color: var(--accent); }
+    .pal-thumb { width: 34px; height: 22px; flex: none; border-radius: 3px; background: #0b1119; }
+    .pal-item > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pal-item mark { background: none; color: var(--accent); font-weight: 600; }
+    .pal-item em { font-style: normal; font: 11px ui-monospace, Menlo, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42%; flex: 0 1 auto; min-width: 0; }
     .pal-item.tube span { font-family: ui-monospace, Menlo, monospace; }
-    .pal-search { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; margin-bottom: 4px; }
+    .pal-more { width: 100%; background: none; border: 1px dashed var(--line); border-radius: 6px; color: var(--accent); padding: 4px 8px; margin: 6px 0 4px; cursor: pointer; font-size: 12px; }
+    .pal-none { color: var(--muted); font-size: 12px; margin: 10px 6px; }
+    .pal-preview { flex: none; border-top: 1px solid var(--line); background: #0c121a; padding: 4px 10px 10px; max-height: 45%; overflow-y: auto; }
+    .pal-preview.folded { padding-bottom: 4px; }
+    .pal-ptoggle { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; color: var(--muted); font-size: 10.5px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; padding: 4px 0; cursor: pointer; text-align: left; }
+    .pal-ptoggle:hover { color: var(--text); }
+    .pal-ptoggle .chev { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; transition: transform .12s; }
+    .pal-preview.folded .pal-ptoggle .chev { transform: rotate(180deg); }
+    .pal-pempty { color: var(--muted); font-size: 12px; margin: 6px 0 2px; }
+    .pal-pbox { display: grid; place-items: center; background: var(--bg); border: 1px solid #1a2534; border-radius: 6px; height: 88px; margin: 2px 0 8px; }
+    .pal-pbox img { width: 200px; height: 80px; max-width: 100%; object-fit: contain; }
+    .pal-pname { display: flex; align-items: center; gap: 8px; }
+    .pal-pname b { flex: 1; min-width: 0; font-size: 13px; }
+    .pal-pname em { font-style: normal; font: 12px ui-monospace, Menlo, monospace; color: var(--accent); white-space: nowrap; }
+    .pal-pdesc { font-size: 12px; line-height: 1.45; color: #b6c2cf; margin-top: 4px; }
+    .pal-pdesc p { margin: 0 0 3px; }
+    .pal-fav { flex: none; display: grid; place-items: center; width: 26px; height: 24px; background: none; border: 1px solid transparent; border-radius: 6px; color: var(--muted); cursor: pointer; }
+    .pal-fav:hover { border-color: var(--line); color: var(--text); }
+    .pal-fav .ico { width: 15px; height: 15px; }
+    .pal-fav.on { color: var(--amber); }
+    .pal-fav.on .ico { fill: currentColor; }
+    .pal-phow { font-size: 11px; color: var(--muted); margin: 6px 0 0; }
+    @media (max-height: 700px) { .pal-pbox { height: 60px; } .pal-pbox img { height: 54px; } .pal-phow { display: none; } }
 
     /* canvas */
     #stage { position: relative; min-width: 0; min-height: 0; }
@@ -804,7 +840,7 @@
         <li><b>Switch:</b> double-click to flip it; sections named SA1.1, SA1.2… flip together.</li>
         <li><b>Standards:</b> symbols follow IEC 60617 and designations use the classic letter codes (R, C, L, T, VL, VD, VT, HL, SA, BA, G, P; ГОСТ 2.710). Add a <i>Drawing frame</i> for an IEC 61082 sheet with reference grid and title block.</li>
         <li><b>Several sheets:</b> File → Add sheet… places a further sheet; carry a rail or signal to another sheet with <i>Sheet connectors</i> of the same name. File → Export sheet… saves one sheet or each sheet as PDF or PNG.</li>
-        <li><b>Panels:</b> drag the edge of the palette, the inspector or the BOM to resize it; double-click the edge to reset it. Click a palette group's title to fold it.</li>
+        <li><b>Panels:</b> drag the edge of the palette, the inspector or the BOM to resize it; double-click the edge to reset it. Click a palette group's title to fold it. Drag a part from the palette onto the sheet to place it; right-click a part to add it to Favorites.</li>
       </ul>
       <h3>Keyboard</h3>
       <div class="help-keys" id="help-keys"></div>
@@ -1001,6 +1037,7 @@
   <script src="cad-kicad.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
   <script src="cad-recent.js?v=dev"></script>
+  <script src="cad-palette.js?v=dev"></script>
   <script src="cad-blocks.js?v=dev"></script>
   <script src="cad-revisions.js?v=dev"></script>
   <script src="cad-rev-dialog.js?v=dev"></script>
