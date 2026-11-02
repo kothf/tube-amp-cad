@@ -95,8 +95,8 @@ Firefox is not tested.
   come from Katsnelson & Larionov for the Soviet tubes and from the makers'
   datasheets for the others (RCA, Philips, Mullard, Western Electric); a
   rating a datasheet does not give is not checked.
-- **Toolbar.** One row: the *Schematic | Board* switch (the same switch in the Board window leads back; Alt+B and Alt+S from any window; *Windows ▾ → Board in this window* makes the board a tab of the CAD window instead of a window of its own), *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic (the legend fades while the pointer is over it, so the drawing under it shows), and the bill of materials, Checks and Tolerance tabs under it, ticked on or off), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, reusable blocks, renumber), undo / redo, the *Select | Wire | Probe* tool, zoom and *Fit*, *● Live | ▶ Simulate*, and *Windows ▾* (oscilloscope, spectrum analyzer, Bode plotter, curve tracer, board layout and the manual). *RU / EN* switches the interface between Russian and English (also *View ▾ → Interface*): the CAD, the Board window, the instruments and the hover hints follow, every open window at once, and so does the manual (`help-ru.html`, its Russian translation). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
-- **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html` (in Russian `help-ru.html`, chosen by the interface language; the *RU / EN* button at the top of its contents switches it), opens from *Windows ▾ → Manual*, the help dialog, or **?** in each instrument. It covers:
+- **Toolbar.** One row: the *Schematic | Board* switch (the same switch in the Board window leads back; Alt+B and Alt+S from any window; *View ▾ → Board in this window* makes the board a tab of the CAD window instead of a window of its own), *File ▾*, *View ▾* (the Voltages, Currents and Legend on the schematic (the legend fades while the pointer is over it, so the drawing under it shows), the bill of materials and Checks tabs under it, ticked on or off, Board in this window and the interface language), *Edit ▾* (undo, redo, rotate, mirror, duplicate, delete, copy, paste, select all, reusable blocks, renumber), undo / redo, the *Select | Wire | Probe* tool, zoom and *Fit*, *● Live | ▶ Simulate | ∿ Animate*, *Analyze ▾* next to Simulate (the instruments: oscilloscope, spectrum analyzer, Bode plotter and curve tracer, each in its own window; the analyses: tolerance runs, power sweep, listen, parameter sweep and noise and hum, each a tab under the schematic), and **?**, the Help menu (quick help and shortcuts, F1; the manual; about). The menus follow other simulators: instruments and analyses sit with simulation (Multisim's and LTspice's Simulate menu), the board is reached by its switch (KiCad's Switch to PCB editor, Proteus's tabs) and the manual is under Help, so there is no Windows menu. *RU / EN* switches the interface between Russian and English (also *View ▾ → Interface*): the CAD, the Board window, the instruments and the hover hints follow, every open window at once, and so does the manual (`help-ru.html`, its Russian translation). The right mouse button on a part or wire opens the editing commands there. At 900 px and below the inspector is a drawer that slides in when something is selected (*Inspector* button).
+- **Hints and manual.** Every field, readout, instrument setting and model coefficient explains itself when you rest the pointer on it (labels with a dotted underline). The manual, `help.html` (in Russian `help-ru.html`, chosen by the interface language; the *RU / EN* button at the top of its contents switches it), opens from **?** → *Manual* (the Help menu), the help dialog, or **?** in each instrument. It covers:
   - a quick start, then every part and field;
   - all 99 tubes in a sortable table;
   - every readout and the checks;
@@ -382,7 +382,7 @@ the circuit that was on the sheet.
 
   Click a line to select its parts; selecting a part scrolls to its line.
   Export as TXT, CSV, XLSX or PDF.
-- **Tolerance runs.** *View ▾ → Tolerance runs* opens the *Tolerance* tab
+- **Tolerance runs.** *Analyze ▾ → Tolerance runs* opens the *Tolerance* tab
   under the schematic. It simulates the circuit as drawn and then once per run
   with every resistor, pot and capacitor at a random value within its
   tolerance (±5 % and ±20 % by default) and every tube drawing more or less
@@ -398,7 +398,7 @@ the circuit that was on the sheet.
     drawn already settled, so it has only a short way to go: the stereo
     Gubin example's 10 runs take 5.4 s instead of 11 s on 4 cores, with the
     same table.
-- **Power sweep.** *View ▾ → Power sweep* opens the *Power* tab under the
+- **Power sweep.** *Analyze ▾ → Power sweep* opens the *Power* tab under the
   schematic. It simulates the circuit at a row of input levels (from −24 to
   +12 dB of the generator's level by default; every generator is scaled
   together, the mains is not) and reads the output power at 1 %, 5 % and
@@ -409,7 +409,7 @@ the circuit that was on the sheet.
   - around the THD marks the sweep adds levels where the distortion jumps
     between two of them, so a clipping output stage is read closely. The
     stereo Gubin example reads 1.71 W at 1 % THD in 12 s on 4 cores.
-- **Listen.** *View ▾ → Listen* opens the *Listen* tab under the schematic: a
+- **Listen.** *Analyze ▾ → Listen* opens the *Listen* tab under the schematic: a
   recording played through the simulated circuit, heard through the
   computer's speakers, with A/B between input and output as it plays:
   - a guitar riff made here, the generator's own tone, or your WAV or MP3 file
@@ -419,7 +419,7 @@ the circuit that was on the sheet.
   - rendered at 48 kHz, every sample a simulation step, a piece of the clip per
     core (each with a 0.4 s lead-in from the settled circuit, joined with a
     crossfade, on whole mains periods); *Save WAV* keeps the output.
-- **Parameter sweep.** *View ▾ → Parameter sweep* opens the *Sweep* tab under
+- **Parameter sweep.** *Analyze ▾ → Parameter sweep* opens the *Sweep* tab under
   the schematic: one value of one part (a resistor, a capacitor, a pot's
   wiper, a supply's voltage, a generator's frequency…) stepped over a range,
   log or linear, the circuit simulated at every step on all cores:
@@ -438,7 +438,7 @@ the circuit that was on the sheet.
   *Update PCB from Schematic* pairs the two. Checked with KiCad 7.0.11: on
   every example KiCad's netlist of the schematic joins exactly the pads the
   board joins, and its DRC agrees with the Board window's.
-- **Noise and hum.** *View ▾ → Noise and hum* opens the *Noise* tab under
+- **Noise and hum.** *Analyze ▾ → Noise and hum* opens the *Noise* tab under
   the schematic: what the amplifier puts out with no signal:
   - thermal, tube (2.5/gm, pentode partition, 1/f), shot and FET channel
     noise carried to the output; flat and A-weighted over 20 Hz – 20 kHz,
@@ -528,7 +528,7 @@ and the instruments only listen, so you can arrange them on several monitors.
 
 ![Board Design: two 12AX7 stages placed on a 140 × 84 mm board with rounded corners and four M3 holes, the ratsnest still to route, layers and rules on the right](docs/board.png)
 
-*Board* at the left of the toolbar (or *Windows ▾ → Board layout*) opens the PCB layout of the circuit; *Schematic* in the Board window goes back. The board takes its
+*Board* at the left of the toolbar (or Alt+B) opens the PCB layout of the circuit; *Schematic* in the Board window goes back. The board takes its
 parts and connections from the schematic, and the CAD saves the layout inside
 the circuit file, so one file holds both.
 

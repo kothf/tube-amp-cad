@@ -41,9 +41,22 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   const off = await cad.evaluate(() => !TubeCAD.state.showVolts && document.getElementById("btn-volts").getAttribute("aria-checked") === "false");
   await cad.click("#btn-volts"); await cad.keyboard.press("Escape");
   check(viewOpen && stillOpen && off && await cad.evaluate(() => TubeCAD.state.showVolts), "View ▾ ticks Voltages off and on, staying open and reporting aria-checked");
-  await cad.click("#btn-windows"); await cad.click("#btn-file");
-  check(await cad.evaluate(() => document.querySelector("#win-menu .menu-list").hidden && !document.querySelector("#file-menu .menu-list").hidden), "opening one toolbar menu closes the other");
+  await cad.click("#btn-analyze"); await cad.click("#btn-file");
+  check(await cad.evaluate(() => document.querySelector("#analyze-menu .menu-list").hidden && !document.querySelector("#file-menu .menu-list").hidden), "opening one toolbar menu closes the other");
   await cad.keyboard.press("Escape");
+  // the menus as other simulators have them: instruments and analyses under Analyze, the board
+  // switch's option under View, the manual and About under Help (the ? button), no Windows menu
+  const where = await cad.evaluate(() => {
+    const ids = sel => [...document.querySelectorAll(sel + " .menu-item")].map(b => b.id);
+    return { an: ids("#analyze-menu"), view: ids("#view-menu"), help: ids("#help-menu"), win: !!document.getElementById("win-menu") };
+  });
+  check(["btn-open-scope", "btn-open-spectrum", "btn-open-bode", "btn-open-tracer", "btn-tolerance", "btn-power", "btn-noise", "btn-sweep", "btn-listen"].every(i => where.an.includes(i)) &&
+    where.view.includes("btn-board-tab") && !where.view.includes("btn-tolerance") && ["menu-help-keys", "btn-open-manual", "menu-help-about"].every(i => where.help.includes(i)) && !where.win,
+    `menus: Analyze ▾ has the instruments and analyses, View ▾ Board in this window, Help ▾ the manual (${JSON.stringify(where)})`);
+  await cad.click("#btn-help"); await cad.click("#menu-help-keys");
+  const quick = await cad.evaluate(() => !document.getElementById("help-modal").hidden && document.querySelector("#help-menu .menu-list").hidden);
+  await cad.keyboard.press("Escape");
+  check(quick && await cad.evaluate(() => document.getElementById("help-modal").hidden), "Help ▾ → Quick help and shortcuts opens the help window, Esc closes it");
   // hover hints: an inspector field and a readout
   cad.once("dialog", d => d.accept());
   await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /gubin/.test(x.file))));
@@ -60,10 +73,10 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   const palHint = await cad.evaluate(() => document.getElementById("pal-preview").textContent || "");
   check(/Click, then click on the sheet/.test(palHint) && palHint.length > 100, "pointing at a palette part shows what it is in the preview");
   // the manual
-  const [man] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-windows").then(() => cad.click("#btn-open-manual"))]);
+  const [man] = await Promise.all([ctx.waitForEvent("page"), cad.click("#btn-help").then(() => cad.click("#btn-open-manual"))]);
   await man.waitForLoadState(); await man.waitForTimeout(500);
   const m = await man.evaluate(() => ({ parts: document.querySelectorAll(".part").length, tubes: document.querySelectorAll("#tube-table tr").length - 1, gloss: document.querySelectorAll("#glossary tr").length, toc: document.querySelectorAll("#toc-list li").length, name: window.name }));
-  check(m.parts >= 28 && m.tubes >= 110 && m.gloss > 100 && m.toc > 40 && m.name === "tube_help", `Windows ▸ Manual opens the manual: ${m.parts} parts, ${m.tubes} tubes, ${m.gloss} glossary rows, ${m.toc} contents entries`);
+  check(m.parts >= 28 && m.tubes >= 110 && m.gloss > 100 && m.toc > 40 && m.name === "tube_help", `Help ▾ → Manual opens the manual: ${m.parts} parts, ${m.tubes} tubes, ${m.gloss} glossary rows, ${m.toc} contents entries`);
   await man.fill("#q", "Miller"); await man.waitForTimeout(400);
   const found = await man.evaluate(() => document.querySelectorAll("main mark").length);
   check(found > 2, `searching the manual marks the matches (${found})`);
@@ -73,7 +86,7 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
 {
   await cad.bringToFront();
   const n0 = ctx.pages().length;
-  await cad.click("#btn-windows"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
+  await cad.click("#btn-view"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
   await cad.click("#btn-doc-board");
   await cad.waitForFunction(() => { const f = document.getElementById("board-tab"); return f && f.contentWindow.BoardApp && f.contentWindow.BoardApp.state.model; }, null, { timeout: 10000 }).catch(() => {});
   const t1 = await cad.evaluate(() => { const f = document.getElementById("board-tab"), r = f.getBoundingClientRect(); return { shown: !f.hidden && r.width === innerWidth && r.height === innerHeight && /[?&]v=/.test(f.src), parts: f.contentWindow.BoardApp.state.model.parts.length, name: f.contentWindow.name }; });
@@ -93,8 +106,8 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   }
   check(flips.every(Boolean), `the Schematic | Board switch flips the board in this window again and again (${flips.map(f => f ? "ok" : "stuck").join(" ")})`);
   check(t1.shown && t1.parts > 0 && !t1.name && t2 && t3 && t4 && ctx.pages().length === n0,
-    `Windows ▾ → Board in this window: Board shows the layout over the whole window (${t1.parts} parts), Schematic or Alt+S hides it, Alt+B shows it again, no new window`);
-  await cad.click("#btn-windows"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
+    `View ▾ → Board in this window: Board shows the layout over the whole window (${t1.parts} parts), Schematic or Alt+S hides it, Alt+B shows it again, no new window`);
+  await cad.click("#btn-view"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
   check(await cad.evaluate(() => !document.getElementById("board-tab")), "unticked, the board frame goes and the board has its own window again");
 }
 // --- Safari: a page may raise only a window it opened ---------------------------------------
@@ -121,7 +134,7 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   await sp.frameLocator("#board-tab").locator("#btn-cad").click(); await sp.waitForTimeout(100);
   await ss.close();
   // ticked off: the Board window cannot bring the CAD's tab up, and says so instead of doing nothing
-  await sp.click("#btn-windows"); await sp.click("#btn-board-tab"); await sp.keyboard.press("Escape");
+  await sp.click("#btn-view"); await sp.click("#btn-board-tab"); await sp.keyboard.press("Escape");
   const [sb] = await Promise.all([sc.waitForEvent("page"), sp.click("#btn-doc-board")]);
   sb.on("pageerror", e => errors.push(`safari board: ${e.message}`));
   await sb.waitForFunction(() => window.BoardApp && BoardApp.state.model, null, { timeout: 10000 }).catch(() => {});

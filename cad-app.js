@@ -2888,16 +2888,20 @@
     bind("btn-tool-select", () => { S.placing = null; setTool("select"); });
     bind("btn-tool-wire", () => { S.placing = null; setTool(S.tool === "wire" ? "select" : "wire"); });
     bind("btn-tool-probe", () => cmds.run("probe"));
-    cmds.bind("btn-help", "help").helpRows(document.getElementById("help-keys"));
+    // the ? button opens the Help menu; F1 and ? open the quick help straight away
+    cmds.helpRows(document.getElementById("help-keys"));
+    bind("menu-help-keys", () => cmds.run("help"));
     bind("btn-help-close", () => { document.getElementById("help-modal").hidden = true; });
     bind("btn-help-manual", () => { document.getElementById("help-modal").hidden = true; ToolWindows.open("help.html"); });
-    bind("btn-help-about", () => {
+    const openAbout = () => {
       document.getElementById("help-modal").hidden = true;
       // filled when opened, so the blog link follows the language in use
       document.getElementById("about-body").innerHTML = TubeAbout.html({ version: (VERSION.match(/[?&]v=([^&]+)/) || [])[1] || "dev", ru: !!window.I18n && window.I18n.lang === "ru" });
       document.getElementById("about-modal").hidden = false;
       document.getElementById("btn-about-close").focus();
-    });
+    };
+    bind("btn-help-about", openAbout);
+    bind("menu-help-about", openAbout);
     bind("btn-about-close", () => { document.getElementById("about-modal").hidden = true; });
     document.getElementById("about-modal").addEventListener("click", e => { if (e.target.id === "about-modal") e.target.hidden = true; });
     bind("btn-open-manual", () => ToolWindows.open("help.html"));
@@ -2930,7 +2934,6 @@
     tune.init(ai);
     design.init(ai);
     datasheet.init(ai);
-    bind("btn-open-board", showBoard);
     cmds.bind("btn-board-tab", "board-tab");
     cmds.bind("btn-doc-board", "board");
     bind("btn-open-tracer", () => ToolWindows.open("index.html"));

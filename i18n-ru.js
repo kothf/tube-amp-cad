@@ -6,7 +6,7 @@
   const text = {
     // --- toolbar and menus --------------------------------------------------------------------
     "Schematic": "Схема", "Board": "Плата", "Untitled": "Без имени",
-    "File ▾": "Файл ▾", "View ▾": "Вид ▾", "Edit ▾": "Правка ▾", "AI ▾": "ИИ ▾", "Windows ▾": "Окна ▾",
+    "File ▾": "Файл ▾", "View ▾": "Вид ▾", "Edit ▾": "Правка ▾", "AI ▾": "ИИ ▾",
     "New…": "Новая…", "with frame": "с рамкой", "Add sheet…": "Добавить лист…", "next sheet": "следующий лист",
     "Open…": "Открыть…", "Save": "Сохранить", "Save as…": "Сохранить как…", "Share link…": "Ссылка…", "copy URL": "скопировать адрес",
     "Revisions…": "Ревизии…", "project history": "история проекта", "Examples": "Примеры",
@@ -35,7 +35,7 @@
     "▶ Simulate": "▶ Расчёт", "Animate": "Анимация", "Instruments": "Приборы", "Oscilloscope": "Осциллограф",
     "Spectrum analyzer": "Анализатор спектра", "Bode plotter": "АЧХ и ФЧХ", "Curve tracer": "Характериограф",
     "Board layout": "Разводка платы", "Board in this window": "Плата в этом окне", "a tab, not a window": "вкладкой, не окном",
-    "Manual": "Руководство", "Inspector": "Свойства", "Windows": "Окна", "Help": "Справка",
+    "Manual": "Руководство", "Inspector": "Свойства", "Help": "Справка",
     "Oscilloscope ↗": "Осциллограф ↗", "Spectrum analyzer ↗": "Анализатор спектра ↗", "Bode plotter ↗": "АЧХ и ФЧХ ↗", "Curve tracer ↗": "Характериограф ↗", "Manual ↗": "Руководство ↗",
     "EN": "EN", "RU": "RU", "Interface language": "Язык интерфейса",
     // --- parts palette ------------------------------------------------------------------------
@@ -174,7 +174,8 @@
     "Zoom out": "Уменьшить", "Zoom in (+)": "Увеличить (+)", "Zoom in": "Увеличить", "Show one sheet": "Показать один лист", "Simulation": "Расчёт",
     "Simulate until fully settled (Ctrl+Enter); click again to stop": "Рассчитать до полного установления (Ctrl+Enter); щёлкните снова, чтобы остановить",
     "Live: re-simulate after every edit (a run that does not settle in time continues in the background)": "Авто: пересчитывать после каждой правки (неустановившийся расчёт продолжается в фоне)",
-    "Instruments and the board layout, each in its own window": "Приборы и разводка платы, каждый в своём окне", "Help and keyboard shortcuts (F1 or ?)": "Справка и горячие клавиши (F1 или ?)",
+    "Help and keyboard shortcuts (F1 or ?)": "Справка и горячие клавиши (F1 или ?)",
+    "Analyze ▾": "Анализ ▾", "Analyze": "Анализ", "Analyses": "Расчёты", "Instruments (each in its own window) and analyses (in the panel under the schematic)": "Приборы (каждый в своём окне) и расчёты (в панели под схемой)", "Each opens in its own window, so it can sit on a second monitor": "Каждый открывается в своём окне, его можно вынести на второй монитор", "Each runs the circuit many times and shows its result in the panel under the schematic": "Каждый прогоняет схему много раз и показывает итог в панели под схемой", "Full oscilloscope for the first scope part, in its own window": "Полный осциллограф для первого осциллографа на схеме, в своём окне", "FFT of a scope part's channels, in its own window": "БПФ каналов осциллографа, в своём окне", "Frequency response (gain and phase) at a scope part's channels, in its own window": "Частотная характеристика (усиление и фаза) на каналах осциллографа, в своём окне", "Plate curves with this circuit's operating point, in its own window": "Анодные характеристики с рабочей точкой этой схемы, в своём окне", "Help: shortcuts, the manual, about (F1 or ? opens the quick help)": "Справка: клавиши, руководство, о программе (F1 или ? открывает краткую справку)", "Quick help and shortcuts": "Краткая справка и клавиши", "The tools, the mouse and every keyboard shortcut on one page": "Инструменты, мышь и все горячие клавиши на одной странице", "Every feature, part, value and coefficient explained, in its own window": "Каждая функция, деталь, параметр и коэффициент с пояснением, в своём окне", "About & credits": "О программе", "Who made the app, what it is built on, licence and disclaimer": "Кто сделал программу, на чём она построена, лицензия и оговорка",
     "Every feature, part, value and coefficient explained": "Каждая функция, деталь, параметр и коэффициент с пояснением",
     "Previous sheet (Page Up)": "Предыдущий лист (Page Up)", "Previous sheet": "Предыдущий лист", "Next sheet (Page Down)": "Следующий лист (Page Down)", "Next sheet": "Следующий лист",
     "Bill of materials (B)": "Перечень элементов (B)", "Close (B)": "Закрыть (B)", "Drag to resize": "Перетащите, чтобы изменить размер", "Drag to resize · double-click to reset": "Перетащите, чтобы изменить размер · двойной щелчок — сброс",
@@ -212,7 +213,7 @@
     "Measure:": "Измерения:",
     "every wire shows its DC voltage and current (": "на каждом проводе видно его постоянное напряжение и ток (",
     "turns them on and off); hover a wire for both. Wire an Oscilloscope to see waveforms; double-click it for the full scope.": "включает и выключает их); наведите на провод, чтобы увидеть оба. Подключите осциллограф, чтобы увидеть форму сигнала; двойной щелчок открывает полный осциллограф.",
-    "Windows ▾ → Spectrum analyzer": "Окна ▾ → Анализатор спектра",
+    "Analyze ▾ → Spectrum analyzer": "Анализ ▾ → Анализатор спектра",
     "shows the harmonics of its channels,": "показывает гармоники его каналов,",
     "their frequency response (gain and phase from 1 Hz to 1 MHz).": "их частотную характеристику (усиление и фазу от 1 Гц до 1 МГц).",
     "Ratings:": "Режимы:",
