@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.178.1] - 2026-11-03
+
+### Fixed
+- **A dual valve's sections share their socket.** Picking a *Tube socket* for one section of a dual triode (VL2.1 in the Gubin amplifier) now sets it on the other section too, and either section's inspector shows it; before, the other section kept *Any socket* and a pick made there was ignored.
+
 ## [3.178.0] - 2026-11-03
 
 ### Added

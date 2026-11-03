@@ -1722,7 +1722,7 @@
       pinNumbers: () => ({ A: "5", K: "2" }),
       value: c => c.params.model,
       fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(GASREGS).map(([k, m]) => [k, `${k} · ${m.vm} V, ${m.imin * 1000}–${m.imax * 1000} mA · ${m.use}`]) },
-        { key: "sock", label: "Tube socket", kind: "select", wide: true, options: c => socketOptions((GASREGS[c.params.model] || {}).socket || "B7G") }],
+        { key: "sock", label: "Tube socket", kind: "select", wide: true, shared: true, options: c => socketOptions((GASREGS[c.params.model] || {}).socket || "B7G") }],
       info: c => {
         const m = GASREGS[c.params.model] || GASREGS["0A2"];
         return `${c.params.model}: a glow-discharge regulator holding about ${m.vm} V across it at ${m.imin * 1000}–${m.imax * 1000} mA (it rises ${(m.r * (m.imax - m.imin)).toFixed(1)} V over that range). ` +
@@ -1973,7 +1973,7 @@
       fields: [
         { key: "tube", label: "Tube type", kind: "tube" },
         // the real socket (tube-db.js TUBE_SOCKETS): its footprint and 3D model on the board, its number on the BOM
-        { key: "sock", label: "Tube socket", kind: "select", wide: true, options: c => socketOptions(root.tubeSocketBase ? root.tubeSocketBase(tubeByName(c.params.tube)) : null),
+        { key: "sock", label: "Tube socket", kind: "select", wide: true, shared: true, options: c => socketOptions(root.tubeSocketBase ? root.tubeSocketBase(tubeByName(c.params.tube)) : null),
           when: c => !!(root.tubeSocketBase && root.tubeSocketBase(tubeByName(c.params.tube))) },
         { key: "connection", label: "Model", kind: "select", options: [["pentode", "Pentode / beam (A G1 G2 K)"], ["triode", "Triode-connected (A G K)"]], when: c => tubeKind(tubeByName(c.params.tube)) === "pentode" },
         // the heater's DC potential, for the heater-to-cathode check: 0 V for a grounded heater or
