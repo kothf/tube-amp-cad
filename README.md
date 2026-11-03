@@ -550,7 +550,8 @@ the circuit file, so one file holds both.
     that differ between makers are flagged); TO-3 power transistors get three
     wire pads, as the can sits on the chassis heatsink;
   - pots (9, 16 and 24 mm) and a 3296W trimmer;
-  - real tube sockets (B9A noval, B7G, Magnoval, octal, UX4), drawn from the
+  - real tube sockets (B9A noval, B7G, Magnoval, octal, UX4 with its pins on a
+    16.25 mm circle, as real UX4 sockets), drawn from the
     component side; both sections of a dual tube share one socket, each on
     its own pins; a valve with its anode on a top cap gets a "cap" pad for
     the lead to it, and the suppressor grid joins the cathode (a

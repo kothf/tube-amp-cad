@@ -124,7 +124,7 @@
    "y": 400,
    "rot": 0,
    "params": {
-    "c": 2.2e-07,
+    "c": 2.2e-7,
     "v": "400"
    },
    "label": "C2"
@@ -584,6 +584,7 @@
    "hvClearance": 2,
    "hvVolts": 60,
    "edgeClearance": 0.5,
+   "holeEdge": 1,
    "viaDrill": 0.8,
    "viaPad": 1.8,
    "minDrill": 0.6,
@@ -613,6 +614,7 @@
     "edge": true,
     "unplaced": true,
     "annular": true,
+    "viapad": true,
     "drill": true,
     "width": true,
     "class": true,
@@ -623,6 +625,7 @@
     "keepout": true,
     "silk": true,
     "dangling": true,
+    "holeedge": true,
     "stopper": true,
     "coupling": true,
     "heat": true,
@@ -922,29 +925,6 @@
     "w": 0.6,
     "pts": [
      [
-      92,
-      36.92
-     ],
-     [
-      96.75,
-      35.5
-     ],
-     [
-      102.5,
-      35.5
-     ],
-     [
-      107.15,
-      34.15
-     ]
-    ],
-    "net": "VL2-G"
-   },
-   {
-    "layer": "F.Cu",
-    "w": 0.6,
-    "pts": [
-     [
       94.5,
       90
      ],
@@ -1000,29 +980,6 @@
      ],
      [
       122.85,
-      49.85
-     ]
-    ],
-    "net": "VL2-K"
-   },
-   {
-    "layer": "F.Cu",
-    "w": 0.6,
-    "pts": [
-     [
-      122.85,
-      49.85
-     ],
-     [
-      118,
-      49.75
-     ],
-     [
-      112,
-      49.75
-     ],
-     [
-      107.15,
       49.85
      ]
     ],
@@ -1154,6 +1111,52 @@
      ]
     ],
     "net": "HTR6.3_B"
+   },
+   {
+    "layer": "F.Cu",
+    "w": 0.6,
+    "pts": [
+     [
+      92,
+      36.92
+     ],
+     [
+      96.75,
+      36.5
+     ],
+     [
+      104.5,
+      36.5
+     ],
+     [
+      109.255,
+      36.255
+     ]
+    ],
+    "net": "VL2-G"
+   },
+   {
+    "layer": "F.Cu",
+    "w": 0.6,
+    "pts": [
+     [
+      120.745,
+      47.745
+     ],
+     [
+      115.75,
+      47.75
+     ],
+     [
+      114.25,
+      47.75
+     ],
+     [
+      109.255,
+      47.745
+     ]
+    ],
+    "net": "VL2-K"
    }
   ],
   "vias": [
@@ -1206,6 +1209,15 @@
     "thermal": true
    }
   ],
-  "keepouts": []
+  "keepouts": [],
+  "construct": {
+   "items": [],
+   "hide": false,
+   "lock": false
+  },
+  "dims": {
+   "items": [],
+   "hide": false
+  }
  }
 }
