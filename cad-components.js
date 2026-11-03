@@ -75,6 +75,16 @@
   // ---------------------------------------------------------------------------
   // Tube catalog from the shared database
   // ---------------------------------------------------------------------------
+  // The "Socket" choices for a base: any socket (the generic footprint), then the shop's sockets,
+  // the ones that solder into the board first, then those that sit on the chassis (wired)
+  const SOCKET_MOUNT = { pcb: "PCB mount", chassis: "chassis mount", bottom: "under-chassis mount", panel: "panel mount" };
+  function socketOptions(base) {
+    const all = (root.TUBE_SOCKETS || []).filter(s => base && s.base === base);
+    const row = s => [s.id, `${s.id}${s.gold ? ` / ${s.gold}` : ""} · ${s.mat}, ${SOCKET_MOUNT[s.mount]}${s.screw ? `, screws ${s.screw} mm` : ""}${s.cut ? `, cut-out Ø${s.cut}` : ""}${s.note ? ` (${s.note})` : ""}`];
+    return [["", "Any socket (generic footprint)"],
+      ...all.filter(s => s.body).map(s => [...row(s), "On the board: footprint and 3D model"]),
+      ...all.filter(s => !s.body).map(s => [...row(s), "On the chassis or a panel: wired to the board"])];
+  }
   function tubeByName(name) {
     return (root.TUBE_DATABASE || []).find(t => t.commonName === name) || null;
   }
@@ -1711,7 +1721,8 @@
       pins: () => [{ id: "A", x: 0, y: -30, name: "anode" }, { id: "K", x: 0, y: 30, name: "cathode" }],
       pinNumbers: () => ({ A: "5", K: "2" }),
       value: c => c.params.model,
-      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(GASREGS).map(([k, m]) => [k, `${k} · ${m.vm} V, ${m.imin * 1000}–${m.imax * 1000} mA · ${m.use}`]) }],
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(GASREGS).map(([k, m]) => [k, `${k} · ${m.vm} V, ${m.imin * 1000}–${m.imax * 1000} mA · ${m.use}`]) },
+        { key: "sock", label: "Tube socket", kind: "select", wide: true, options: c => socketOptions((GASREGS[c.params.model] || {}).socket || "B7G") }],
       info: c => {
         const m = GASREGS[c.params.model] || GASREGS["0A2"];
         return `${c.params.model}: a glow-discharge regulator holding about ${m.vm} V across it at ${m.imin * 1000}–${m.imax * 1000} mA (it rises ${(m.r * (m.imax - m.imin)).toFixed(1)} V over that range). ` +
@@ -1961,6 +1972,9 @@
       value: c => c.params.tube + (tubeKind(tubeByName(c.params.tube)) === "pentode" && c.params.connection === "triode" ? " (triode)" : ""),
       fields: [
         { key: "tube", label: "Tube type", kind: "tube" },
+        // the real socket (tube-db.js TUBE_SOCKETS): its footprint and 3D model on the board, its number on the BOM
+        { key: "sock", label: "Tube socket", kind: "select", wide: true, options: c => socketOptions(root.tubeSocketBase ? root.tubeSocketBase(tubeByName(c.params.tube)) : null),
+          when: c => !!(root.tubeSocketBase && root.tubeSocketBase(tubeByName(c.params.tube))) },
         { key: "connection", label: "Model", kind: "select", options: [["pentode", "Pentode / beam (A G1 G2 K)"], ["triode", "Triode-connected (A G K)"]], when: c => tubeKind(tubeByName(c.params.tube)) === "pentode" },
         // the heater's DC potential, for the heater-to-cathode check: 0 V for a grounded heater or
         // centre tap, more for a heater raised to protect cathode followers and stacked stages
@@ -2963,5 +2977,5 @@
     return wrap;
   }
 
-  root.CadLib = { anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
+  root.CadLib = { socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);

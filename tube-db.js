@@ -1952,3 +1952,161 @@ var TUBE_BULBS = {
 };
 var TUBE_BULBS_LIKE = { "6P14P": "EL84", "6P14P-EV": "EL84", "6P27S": "EL34", "6P6S": "6V6GT", "6N13S": "6AS7G", "2A3": "6S4S" };
 TUBE_DATABASE.forEach(t => { const b = TUBE_BULBS[t.commonName] || TUBE_BULBS[TUBE_BULBS_LIKE[t.commonName]]; if (b) t.bulb = b; });
+
+/* Tube sockets sold by GoodComponent (GD-Parts / EIZZ / CMC, www.goodcomponent.com), for the
+   valves above: the board footprint and 3D model of the ones that solder into a board, and the
+   part number on the BOM's socket line for all of them. Sizes in mm, read off each product's own
+   dimension drawing (src "drawing") and its listed specs; scanned 2026-11-03.
+     id: the maker's item number (gold: the same socket with gold-plated contacts, its own number)
+     p: the shop's product number (its page: TUBE_SOCKET_URL)    base: the valve base it takes
+     mount: "pcb" (solders into the board) | "chassis" (top of the chassis, wired) |
+            "bottom" (under the chassis plate, wired) | "panel" (on a panel, wired)
+     mat, col: body material and colour ("white" ceramic/PTFE, "black", "brown", "tan" plastic)
+     cut: the chassis cut-out Ø, screw: mounting screws' centre distance (where the shop gives them)
+   A board socket also has
+     tail: Ø of the circle its solder tails come down on (bent out past the contacts on most
+           noval sockets; straight under the contacts on others), tw: a flat tail's width,
+           pins: round pins' Ø by pin number ("1,4": 3.2 …)
+     body: its parts as [Ø, z from, z to] above the board; flange: { l: length, d: round part Ø,
+           z, t: thickness, hole: screw hole Ø, c: compass angle of the screws' axis from the
+           base's key or gap (seen from above, key down; 0: the screws on the key's axis) };
+           shield: [Ø, z from, z to] (an aluminium can); ears: [[compass angle, radius, hole Ø]]
+           (locating lugs in unplated holes)
+   Left out of the board list (on the BOM only): the PCB sockets whose page gives no drawing of
+   where their tails come down (GZC9-Y-3, GZC7-Y, GZC7-Y-B, GZC8-Y-4, GZC9-F-Y-55, the CMC and
+   EIZZ straight-pin ones). */
+/* exported TUBE_SOCKETS, TUBE_SOCKET_URL, tubeSocketBase */
+var TUBE_SOCKETS = [
+  // ---- noval B9A, solder into the board ----
+  { id: "GZS9-F", p: 1181, base: "B9A", mount: "pcb", mat: "plastic", col: "tan", cut: 19.5, screw: 28, src: "drawing",
+    tail: 20, tw: 1.6, body: [[18.3, 0, 2], [19.5, 2.8, 8.5]], flange: { l: 34.8, d: 23.2, z: 2, t: 0.8, hole: 3.5, c: 18 } },
+  { id: "GZS9-F-D", p: 1523, base: "B9A", mount: "pcb", mat: "plastic", col: "brown", cut: 18, screw: 28, src: "drawing",
+    tail: 20, tw: 1.6, body: [[20, 0, 2]], flange: { l: 35, d: 26.6, z: 2, t: 0.8, hole: 3.3, c: 36 }, shield: [24, 2.8, 19] },
+  { id: "PCP9-Y-1", p: 1183, base: "B9A", mount: "pcb", mat: "bakelite", col: "black", cut: 19, screw: 27.5, src: "drawing",
+    tail: 19, tw: 1.2, body: [[19, 0, 9]], flange: { l: 34.5, d: 27.5, z: 0, t: 0.8, hole: 2.4, c: 162 }, shield: [24, 0.8, 21] },
+  { id: "PCP9-Y", p: 454, base: "B9A", mount: "pcb", mat: "bakelite", col: "black", cut: 19, src: "drawing",
+    tail: 20, tw: 1.2, body: [[19, 0, 5.2], [23, 5.2, 7], [19, 7, 9]] },
+  { id: "GZS9-B-1", p: 1340, base: "B9A", mount: "pcb", mat: "plastic", col: "brown", cut: 23, src: "drawing",
+    tail: 20, tw: 1.6, body: [[18.5, 0, 7.5], [23, 7.5, 8.5]] },
+  { id: "GZS9-Y", gold: "GZS9-Y-G", p: 1713, base: "B9A", mount: "pcb", mat: "plastic", col: "white", cut: 18, src: "drawing",
+    tail: 18, tw: 1.2, body: [[18, 0, 10.3]] },
+  { id: "GZS9PC9C", p: 1909, base: "B9A", mount: "pcb", mat: "plastic", col: "brown", src: "drawing",
+    tail: 17.5, tw: 1.2, body: [[27, 0, 5], [18, 5, 8.5]], ears: [[180, 16, 2.6], [54, 16, 2.6], [306, 16, 2.6]] },
+  { id: "GZC9-A", p: 423, base: "B9A", mount: "pcb", mat: "ceramic", col: "white", cut: 17.8, src: "drawing",
+    tail: 18, tw: 1.2, body: [[18, 2, 11]] },
+  { id: "GZC9-B", p: 425, base: "B9A", mount: "pcb", mat: "ceramic", col: "white", src: "drawing",
+    tail: 20, tw: 1.2, body: [[18, 0, 4], [22.2, 4, 6.6], [18, 6.6, 10]] },
+  { id: "GZC9-Y", gold: "GZC9-Y-G", p: 446, base: "B9A", mount: "pcb", mat: "ceramic", col: "white", cut: 25.5, src: "drawing",
+    tail: 21.5, tw: 1.6, body: [[22, 0, 9], [25, 9, 11]] },
+  { id: "GZC9-Y-1", gold: "GZC9-Y-1-G", p: 448, base: "B9A", mount: "pcb", mat: "ceramic", col: "white", cut: 25.5, src: "drawing",
+    tail: 21.5, tw: 1.6, body: [[25, 0, 8], [21.5, 8, 11]] },
+  { id: "GZC9-Y-4", gold: "GZC9-Y-4-G", p: 451, base: "B9A", mount: "pcb", mat: "ceramic", col: "white", cut: 21, src: "drawing",
+    tail: 20.5, tw: 1.7, body: [[21, 0, 8], [24.5, 8, 10.5]] },
+  // ---- magnoval B9D ----
+  { id: "GZC9-Y-2", gold: "GZC9-Y-2-G", p: 1176, base: "B9D", mount: "pcb", mat: "ceramic", col: "white", cut: 26, src: "drawing",
+    tail: 26, tw: 1.6, body: [[26, 0, 9.5], [30, 9.5, 11.5]] },
+  // ---- octal K8A ----
+  { id: "GZC8-Y", gold: "GZC8-Y-G", p: 1170, base: "OCTAL", mount: "pcb", mat: "ceramic", col: "white", cut: 26.5, src: "drawing",
+    tail: 26, tw: 2, body: [[26.5, 0, 6.5], [30, 6.5, 14]] },
+  { id: "GZC8-Y-2", gold: "GZC8-Y-2-G", p: 384, base: "OCTAL", mount: "pcb", mat: "ceramic", col: "white", cut: 26.5, src: "drawing",
+    tail: 26.5, tw: 2, body: [[26.5, 0, 10], [30, 10, 14.5]] },
+  { id: "GZC8-Y-5", gold: "GZC8-Y-5-G", p: 1732, base: "OCTAL", mount: "pcb", mat: "ceramic", col: "white", cut: 26, screw: 38.5, src: "drawing",
+    tail: 17.5, tw: 1.4, body: [[26, 0, 8], [29.5, 8.8, 14]], flange: { l: 47, d: 29.5, z: 8, t: 0.8, hole: 2.8, c: 0 } },
+  { id: "GZC8-Y-7", gold: "GZC8-Y-7-G", p: 1731, base: "OCTAL", mount: "pcb", mat: "ceramic", col: "white", cut: 26, screw: 38.7, src: "drawing",
+    tail: 17.5, tw: 1.4, body: [[24.5, 0, 8], [26, 8.8, 14]], flange: { l: 47, d: 29.5, z: 8, t: 0.8, hole: 3.2, c: 0 } },
+  { id: "GZS8-F", p: 405, base: "OCTAL", mount: "pcb", mat: "plastic", col: "tan", cut: 30, screw: 38, src: "drawing",
+    tail: 17.5, tw: 1.4, body: [[27, 0, 10.5], [30, 11.3, 14.5]], flange: { l: 50, d: 34, z: 10.5, t: 0.8, hole: 3.2, c: 0 } },
+  { id: "GZS8-F-1", gold: "GZS8-F-1-G", p: 406, base: "OCTAL", mount: "pcb", mat: "plastic", col: "tan", cut: 30, screw: 38, src: "drawing",
+    tail: 17.5, tw: 1.4, body: [[27, 0, 10.5], [30, 11.3, 14.5]], flange: { l: 50, d: 34, z: 10.5, t: 0.8, hole: 3.2, c: 0 } },
+  // ---- UX4 (2A3, 300B): machined round pins straight down ----
+  { id: "GZC4-T-G", p: 322, base: "UX4", mount: "pcb", mat: "ceramic", col: "white", cut: 26.5, screw: 35, src: "drawing",
+    tail: 16.25, pins: { "1": 3.2, "4": 3.2, "2": 2.5, "3": 2.5 }, body: [[26.5, 0, 13], [30, 13, 17]], flange: { l: 42, d: 30, z: 13, t: 1.5, hole: 3.5, c: 90 } },
+  // ---- on the chassis or a panel, wired to the board (BOM only) ----
+  { id: "GZS9-F2-D", p: 1341, base: "B9A", mount: "chassis", mat: "plastic", screw: 28, cut: 20 },
+  { id: "GZC9-F-A", p: 1173, base: "B9A", mount: "chassis", mat: "ceramic", screw: 28, cut: 21.5 },
+  { id: "GZC9-F-Y-55", p: 1268, base: "B9A", mount: "pcb", mat: "ceramic", screw: 28, cut: 21.5, note: "with a 55 mm shield; no drawing of its tails" },
+  { id: "GZC9-Y-3", gold: "GZC9-Y-3-G", p: 1439, base: "B9A", mount: "pcb", mat: "ceramic", cut: 21, note: "no drawing of its tails" },
+  { id: "PCP9-F", gold: "PCP9-F-G", p: 1182, base: "B9A", mount: "chassis", mat: "bakelite", screw: 28 },
+  { id: "GZC9-C", p: 427, base: "B9A", mount: "chassis", mat: "ceramic", screw: 28, cut: 18 },
+  { id: "GZC9-C-1", gold: "GZC9-C-1-G", p: 429, base: "B9A", mount: "bottom", mat: "ceramic", screw: 28, cut: 18 },
+  { id: "GZC9-D", gold: "GZC9-D-G", p: 431, base: "B9A", mount: "bottom", mat: "ceramic", screw: 29, cut: 19 },
+  { id: "GZC9-F", p: 436, base: "B9A", mount: "chassis", mat: "ceramic", screw: 29, cut: 21.5 },
+  { id: "GZC9-F-6", p: 438, base: "B9A", mount: "chassis", mat: "ceramic", screw: 29, cut: 21.5 },
+  { id: "GZC9-T-G", p: 435, base: "B9A", mount: "chassis", mat: "ceramic", screw: 29, cut: 21 },
+  { id: "GZC9-T1-G", p: 434, base: "B9A", mount: "chassis", mat: "ceramic", screw: 29, cut: 21 },
+  { id: "GZC9-T2-G", p: 1729, base: "B9A", mount: "chassis", mat: "ceramic", screw: 29, cut: 21 },
+  { id: "GZC9-T3-G", p: 1728, base: "B9A", mount: "chassis", mat: "ceramic", screw: 29, cut: 21 },
+  { id: "GZC9-D1-G", p: 433, base: "B9A", mount: "chassis", mat: "PTFE", screw: 29, cut: 21 },
+  { id: "CMCB-9", p: 418, base: "B9A", mount: "chassis", mat: "bakelite", screw: 29, cut: 21 },
+  { id: "CMCT-9", p: 419, base: "B9A", mount: "chassis", mat: "PTFE", screw: 29, cut: 21 },
+  { id: "EZ-1309A", p: 1864, base: "B9A", mount: "chassis", mat: "bakelite", screw: 29, cut: 21 },
+  { id: "EZ-1309B", p: 2008, base: "B9A", mount: "chassis", mat: "bakelite", screw: 29, cut: 21 },
+  { id: "EZ-9B", p: 1805, base: "B9A", mount: "chassis", mat: "PI", screw: 30, cut: 21 },
+  { id: "GZC7-Y", gold: "GZC7-Y-G", p: 353, base: "B7G", mount: "pcb", mat: "ceramic", cut: 19, note: "no drawing of its tails" },
+  { id: "GZC7-Y-B", gold: "GZC7-Y-B-G", p: 355, base: "B7G", mount: "pcb", mat: "ceramic", cut: 17.8, note: "no drawing of its tails" },
+  { id: "GZC7-F", gold: "GZC7-F-G", p: 350, base: "B7G", mount: "chassis", mat: "ceramic", screw: 22.5, cut: 16 },
+  { id: "GZC7-D1-G", p: 373, base: "B7G", mount: "chassis", mat: "PTFE", screw: 30, cut: 21 },
+  { id: "GZC9-2", p: 420, base: "B9D", mount: "chassis", mat: "ceramic", screw: 35, cut: 26 },
+  { id: "GZC9-2-F", gold: "GZC9-2-F-G", p: 421, base: "B9D", mount: "bottom", mat: "ceramic", screw: 39, cut: 26 },
+  { id: "GZC8-Y-4", gold: "GZC8-Y-4-G", p: 1906, base: "OCTAL", mount: "pcb", mat: "ceramic", note: "long pins; no drawing" },
+  { id: "GZC8-T1-G", p: 377, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 35, cut: 27, note: "straight pins, also on a board; no drawing" },
+  { id: "GZC8-T2-G", p: 2003, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 35, cut: 27, note: "straight pins, also on a board; no drawing" },
+  { id: "GZC8-T3-G", p: 1559, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 35, cut: 27 },
+  { id: "GZC8-T-G", p: 376, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 35, cut: 27 },
+  { id: "GZC8-D1-G", p: 374, base: "OCTAL", mount: "chassis", mat: "PTFE", screw: 35, cut: 27 },
+  { id: "GZC8-1", gold: "GZC8-1-G", p: 378, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 35, cut: 26.5 },
+  { id: "GZC8-1-A", gold: "GZC8-1-A-G", p: 380, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 38.5, cut: 25 },
+  { id: "GZC8-1-B", gold: "GZC8-1-B-G", p: 382, base: "OCTAL", mount: "bottom", mat: "ceramic", screw: 38.5, cut: 26.5 },
+  { id: "GZC8-Y-1", gold: "GZC8-Y-1-G", p: 386, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 35, cut: 26.5 },
+  { id: "GZC8-Y-3", gold: "GZC8-Y-3-G", p: 388, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 38.7, cut: 26 },
+  { id: "GZC8-Y-6", gold: "GZC8-Y-6-G", p: 1730, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 38.5, cut: 26 },
+  { id: "8MPC1", gold: "8MPC1-G", p: 1869, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 39, cut: 36 },
+  { id: "GZC8-NS", gold: "GZC8-NS-G", p: 396, base: "OCTAL", mount: "panel", mat: "ceramic", screw: 45 },
+  { id: "GZS8-A", p: 401, base: "OCTAL", mount: "chassis", mat: "bakelite", screw: 33.3, cut: 25 },
+  { id: "GZS8-B", p: 403, base: "OCTAL", mount: "chassis", mat: "bakelite", screw: 38, cut: 26.5 },
+  { id: "GZS8-B-1", gold: "GZS8-B1-G", p: 1773, base: "OCTAL", mount: "bottom", mat: "bakelite", screw: 38, cut: 26.5 },
+  { id: "GZS8-F-2", gold: "GZS8-F-2-G", p: 407, base: "OCTAL", mount: "chassis", mat: "plastic", screw: 38, cut: 30 },
+  { id: "S8WPF", gold: "S8WPF-G", p: 408, base: "OCTAL", mount: "chassis", mat: "bakelite", screw: 39.5, cut: 29 },
+  { id: "S8WPI", p: 409, base: "OCTAL", mount: "chassis", mat: "bakelite", cut: 29 },
+  { id: "CMCB-8", p: 412, base: "OCTAL", mount: "chassis", mat: "bakelite", screw: 35, cut: 27 },
+  { id: "CMCT-8", p: 413, base: "OCTAL", mount: "chassis", mat: "PTFE", screw: 35, cut: 27 },
+  { id: "EZ-1308A", p: 1865, base: "OCTAL", mount: "chassis", mat: "bakelite", screw: 35, cut: 27 },
+  { id: "EZ-1308B", p: 2007, base: "OCTAL", mount: "chassis", mat: "bakelite", screw: 35, cut: 27 },
+  { id: "EZ-8B", p: 1807, base: "OCTAL", mount: "bottom", mat: "PI", screw: 36, cut: 27 },
+  { id: "GZC4-1", gold: "GZC4-1-G", p: 314, base: "UX4", mount: "panel", mat: "ceramic", screw: 45 },
+  { id: "GZC4-2", p: 315, base: "UX4", mount: "chassis", mat: "ceramic", screw: 39.5, cut: 30.5 },
+  { id: "GZC4-2-1", p: 321, base: "UX4", mount: "bottom", mat: "ceramic", screw: 39.5, cut: 30.5 },
+  { id: "GZC4-T1-G", p: 323, base: "UX4", mount: "chassis", mat: "ceramic", screw: 35, cut: 27 },
+  { id: "GZC4-T2-G", p: 1558, base: "UX4", mount: "chassis", mat: "ceramic", screw: 35, cut: 27 },
+  { id: "GZC4-D-G", p: 324, base: "UX4", mount: "chassis", mat: "PTFE", screw: 35, cut: 27 },
+  { id: "GZC4-D1-G", p: 372, base: "UX4", mount: "chassis", mat: "PTFE", screw: 35, cut: 27 },
+  { id: "GZS4-2", p: 328, base: "UX4", mount: "chassis", mat: "bakelite", cut: 29 },
+  { id: "GZS4-F", p: 329, base: "UX4", mount: "chassis", mat: "bakelite", screw: 38, cut: 29 },
+  { id: "CMCB-4", p: 414, base: "UX4", mount: "chassis", mat: "bakelite", screw: 35, cut: 27 },
+  { id: "CMCT-4", p: 415, base: "UX4", mount: "chassis", mat: "PTFE", screw: 35, cut: 27 },
+  { id: "300B-DG", p: 1884, base: "UX4", mount: "chassis", mat: "PTFE", note: "Ø65, screws 52 mm apart (diagonal)" },
+  { id: "GZC6-1", gold: "GZC6-1-G", p: 343, base: "UX6", mount: "panel", mat: "ceramic", screw: 44.5 },
+  { id: "GZC6-2", gold: "GZC6-2-G", p: 345, base: "UX6", mount: "chassis", mat: "ceramic", screw: 39, cut: 31 },
+  { id: "GZC6-2-1", p: 1774, base: "UX6", mount: "bottom", mat: "ceramic", screw: 39, cut: 31 },
+  { id: "GZC4-3B", p: 319, base: "JUMBO", mount: "chassis", mat: "ceramic" },
+  { id: "GZC4-D2-G", p: 326, base: "JUMBO", mount: "chassis", mat: "ceramic", note: "screws on a 49 × 49 square" },
+  { id: "EZ-845-D", p: 1768, base: "JUMBO", mount: "chassis", mat: "PTFE", note: "screws on a 49 × 49 square" },
+  { id: "FU50R", gold: "FU50R-G", p: 391, base: "GU50", mount: "chassis", mat: "ceramic" },
+  { id: "GZC7-C", p: 348, base: "B7A", mount: "chassis", mat: "ceramic" },
+  { id: "GZC7-4", p: 358, base: "GM70", mount: "panel", mat: "ceramic" }
+];
+var TUBE_SOCKET_URL = s => `https://www.goodcomponent.com/products/vacuum-tube-soket/socket/${s.p}.html`;
+/* The base a valve fits, as TUBE_SOCKETS names it (null: wire leads, nuvistors, the other glass bases) */
+function tubeSocketBase(t) {
+  const s = (t && t.socket) || "";
+  if (/Magnoval|B9D/i.test(s)) return "B9D";
+  if (/Noval|B9A/i.test(s)) return "B9A";
+  if (/B7G|^Miniature/i.test(s)) return "B7G";
+  if (/Octal|K8A/i.test(s)) return "OCTAL";
+  if (/UX4/i.test(s)) return "UX4";
+  if (/Jumbo/i.test(s)) return "JUMBO";
+  if (/GU-50/i.test(s)) return "GU50";
+  if (/GM-70/i.test(s)) return "GM70";
+  if (t && t.commonName === "6S33S-V") return "B7A";
+  return null;
+}

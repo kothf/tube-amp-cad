@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.178.0] - 2026-11-03
+
+### Added
+- **Real tube sockets from GoodComponent.** The tube's inspector has a **Tube socket** field listing GoodComponent's sockets for the valve's base (92 in all: noval, B7G, Magnoval, octal, UX4, jumbo 4-pin, ГУ-50, ГМ-70, 6С33С), the board ones first.
+  - The 20 PCB-mount sockets with a published drawing get their own **board footprint**, measured from the drawing: tails on their own circle (bent-out tails on Ø21.5 for GZC9-Y, for example), drill per tail size, flange screw holes as unplated holes, the flange outline in silk. Picking a socket sets the board footprint once; a footprint picked by hand afterwards stays.
+  - Each of them gets its **3D model**: ceramic, bakelite or PTFE body to its heights, the metal flange with its screws, the shield can (PCP9-Y-1, GZS9-B-1), and the valve seated on top of the socket.
+  - Chassis, under-chassis and panel sockets put the valve on wire pads.
+  - The **BOM** socket line shows the picked socket's item number (and its gold-pin version) with a link to its shop page.
+
 ## [3.177.0] - 2026-11-02
 
 ### Changed

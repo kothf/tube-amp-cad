@@ -76,7 +76,7 @@
       if (!Object.keys(S.board.parts).length && (m.netlist.parts || []).length) { const r = B.sync(S.board, S.netlist); placed = r.added.length > 0; if (placed) msg(`Placed ${r.added.length} parts below the board: drag them onto it, or Place all on the board`); }
       // a part number typed in the BOM that names the real part: its footprint (once per new number)
       const byNo = Object.keys(S.board.parts).length ? B.applyPartNumbers(S.board, S.netlist) : [];
-      if (byNo.length) { if (S.hIndex >= 0) pushHistory(); save(); msg(byNo.length === 1 ? `${byNo[0].ref}: ${byNo[0].fp} from its part number (${byNo[0].text})` : `${byNo.length} parts took the footprint their part number names (${byNo.map(x => x.ref).join(", ")})`); }
+      if (byNo.length) { if (S.hIndex >= 0) pushHistory(); save(); msg(byNo.length === 1 ? `${byNo[0].ref}: ${byNo[0].fp} from its ${/^socket /.test(byNo[0].text) ? "" : "part number "}(${byNo[0].text})` : `${byNo.length} parts took the footprint their part number or socket names (${byNo.map(x => x.ref).join(", ")})`); }
       if (S.hIndex < 0) pushHistory();
       if (placed) save();                     // the first placement goes into the circuit file too
       analyse(); checkSync();
