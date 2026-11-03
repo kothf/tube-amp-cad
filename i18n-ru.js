@@ -1786,8 +1786,9 @@
   const SOCK_MAT = { ceramic: "керамика", plastic: "пластик", bakelite: "бакелит", PTFE: "фторопласт", PI: "полиимид" };
   const SOCK_MOUNT = { "PCB mount": "на плату", "chassis mount": "на шасси", "under-chassis mount": "под шасси", "panel mount": "на панель" };
   const sockRow = (m, id, mat, mount, rest) => `${id} · ${SOCK_MAT[mat] || mat}, ${SOCK_MOUNT[mount]}` + rest.replace(/, screws ([\d.]+) mm/, ", винты через $1 мм").replace(/, cut-out Ø([\d.]+)/, ", вырез Ø$1")
-    .replace(" (no drawing of its tails)", " (нет чертежа выводов)").replace(" (long pins; no drawing)", " (длинные выводы; нет чертежа)").replace(" (straight pins, also on a board; no drawing)", " (прямые выводы, можно на плату; нет чертежа)")
-    .replace(/ \(with a 55 mm shield; no drawing of its tails\)/, " (с экраном 55 мм; нет чертежа выводов)").replace(/ \(screws on a 49 × 49 square\)/, " (винты по квадрату 49 × 49)").replace(/ \(Ø65, screws 52 mm apart \(diagonal\)\)/, " (Ø65, винты через 52 мм по диагонали)");
+    .replace(" (no drawing of its tails)", " (нет чертежа выводов)").replace(" (its drawing gives no tail circle)", " (на чертеже нет окружности выводов)").replace(" (long pins; no drawing)", " (длинные выводы; нет чертежа)").replace(" (straight pins, also on a board; no drawing)", " (прямые выводы, можно на плату; нет чертежа)")
+    .replace(/ \(with a 55 mm shield; no drawing of its tails\)/, " (с экраном 55 мм; нет чертежа выводов)").replace(/ \(screws on a 49 × 49 square\)/, " (винты по квадрату 49 × 49)").replace(/ \(Ø65, screws 52 mm apart \(diagonal\)\)/, " (Ø65, винты через 52 мм по диагонали)")
+    .replace(/ \(with a (\d+) mm shield\)/, " (с экраном $1 мм)").replace(/ \(with a (\d+) mm valve clamp\)/, " (с прижимом лампы $1 мм)").replace(/ \(screws (\d+) mm apart across the diagonal\)/, " (винты через $1 мм по диагонали)");
   const patterns = [
     [/^(\S+(?: \/ \S+)?) · (ceramic|plastic|bakelite|PTFE|PI), (PCB mount|chassis mount|under-chassis mount|panel mount)(.*)$/, sockRow],
     // driving dimensions: the things they name and the sentences they make

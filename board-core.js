@@ -498,7 +498,7 @@
       pads.push(pad("cap", 0, y, 3, 1.3, "circle", "cap"));
       silk.push({ t: "circle", x: 0, y, r: 2.6 });
     }
-    const f = fp(`SOCKET-${s.base}${cap ? "-CAP" : ""}.${s.id}`, `${s.id} (GoodComponent${s.gold ? `; gold pins ${s.gold}` : ""}), ${S.title} ${s.mat} socket, PCB mount, tails on Ø${s.tail}${s.screw && s.flange ? `, screws ${s.screw} apart` : ""}`, pads, silk, holes);
+    const f = fp(`SOCKET-${s.base}${cap ? "-CAP" : ""}.${s.id}`, `${root.tubeSocketName ? root.tubeSocketName(s) : s.id}, ${S.title} ${s.mat} socket, PCB mount, tails on Ø${s.tail}${s.screw && s.flange ? `, screws ${s.screw} apart` : ""}`, pads, silk, holes);
     f.gc = s.id;
     return f;
   }
