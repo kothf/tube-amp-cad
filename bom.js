@@ -125,6 +125,17 @@
     return "";
   }
 
+  const MOUNT = { pcb: "PCB mount", chassis: "chassis mount", bottom: "under-chassis mount", panel: "panel mount" };
+  // the socket a valve takes (tube-db.js TUBE_SOCKETS): picked in its Socket field (when it fits
+  // the valve's base), else the real socket its board footprint names ("SOCKET-B9A.GZC9-Y")
+  function socketOf(members, bp) {
+    const t = root.CadLib.tubeByName(members[0].params.tube), base = root.tubeSocketBase ? root.tubeSocketBase(t) : null;
+    const id = members.map(m => m.params.sock).find(Boolean);
+    if (id && (root.TUBE_SOCKETS || []).some(s => s.id === id && s.base === base)) return id;
+    const m = bp && /^SOCKET-[A-Z0-9]+(?:-CAP)?\.([A-Z0-9-]+)$/.exec(bp.fp || "");
+    return m ? m[1] : null;
+  }
+
   /** Group parts into BOM lines.
       opts.bench: include sources and instruments; opts.sockets: add a socket line per tube base;
       opts.board: the circuit's board document: a part with an SMD footprint there says so (and its
@@ -166,11 +177,16 @@
       const L = lines.get([c.type, desc, value, rating, partno].join("\u0001"));
       if (partno && !L.mpn && root.PartNo) L.mpn = root.PartNo.resolve(c.params, c.type);
       if (opts.sockets && c.type === "tube" && rating && !/wire leads/i.test(rating)) {
-        if (!sockets.has(rating)) sockets.set(rating, []);
-        sockets.get(rating).push(ref);
+        const id = socketOf(members, bp), k = rating + "\u0001" + (id || "");
+        if (!sockets.has(k)) sockets.set(k, { rating, id, refs: [] });
+        sockets.get(k).refs.push(ref);
       }
     });
-    sockets.forEach((refs, socket) => lines.set("socket\u0001" + socket, { refs, comps: [], desc: "Tube socket", value: socket, rating: "for " + compressRefs(refs.slice().sort(refCmp)), partno: "", socket: true }));
+    sockets.forEach(({ rating, id, refs }, k) => {
+      const s = id && (root.TUBE_SOCKETS || []).find(x => x.id === id);
+      lines.set("socket\u0001" + k, { refs, comps: [], desc: "Tube socket" + (s ? `, ${s.mat}, ${MOUNT[s.mount]}` : ""), value: rating,
+        rating: (s ? `GoodComponent ${s.id}${s.gold ? ` (gold pins: ${s.gold})` : ""}; ` : "") + "for " + compressRefs(refs.slice().sort(refCmp)), partno: s ? s.id : "", socket: true, sock: s || null });
+    });
     const rows = [...lines.values()].map(L => {
       L.refs.sort(refCmp);
       // the worst case of the line; a warning on any of its parts shows
@@ -178,7 +194,8 @@
       const top = st.reduce((a, b) => (!a || b.v > a.v ? b : a), null), bad = st.find(x => x.warn);
       const pn = L.mpn, pkg = pn && pn.known ? root.PartNo.describe(pn) + (pn.warn.length ? " (" + pn.warn.join("; ") + ")" : "") : "";
       return { qty: L.refs.length, refs: L.socket ? "" : compressRefs(L.refs), refList: L.refs, desc: L.desc, value: L.value, rating: L.rating, partno: L.partno, pkg, mpn: pn || null,
-        sim: top ? top.text + (bad ? " (" + (bad.note || "over rating") + ")" : "") : "", warn: !!bad, ids: L.comps.map(c => c.id), socket: !!L.socket };
+        sim: top ? top.text + (bad ? " (" + (bad.note || "over rating") + ")" : "") : "", warn: !!bad, ids: L.comps.map(c => c.id), socket: !!L.socket,
+        url: L.sock && root.TUBE_SOCKET_URL ? root.TUBE_SOCKET_URL(L.sock) : "" };
     });
     // by designator, sockets after the parts
     rows.sort((a, b) => (a.socket - b.socket) || refCmp(a.refList[0], b.refList[0]) || (a.value < b.value ? -1 : 1));

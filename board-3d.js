@@ -17,7 +17,8 @@
     band: [0.75, 0.75, 0.75], film: [0.82, 0.22, 0.14], disc: [0.9, 0.6, 0.25], ecap: [0.12, 0.2, 0.45], ecapTop: [0.7, 0.72, 0.75], snapin: [0.13, 0.13, 0.15],
     glass: [0.78, 0.88, 0.95], neon: [1, 0.62, 0.42], plate: [0.3, 0.3, 0.32], getter: [0.62, 0.62, 0.66], ceramic: [0.9, 0.87, 0.78], bakelite: [0.16, 0.13, 0.11], core: [0.36, 0.36, 0.39],
     coil: [0.86, 0.55, 0.2], terminal: [0.1, 0.55, 0.28], jack: [0.15, 0.15, 0.16], pot: [0.25, 0.27, 0.32], trim: [0.2, 0.35, 0.75], led: [0.9, 0.15, 0.1],
-    wireRed: [0.8, 0.12, 0.1], wireBlack: [0.08, 0.08, 0.08], generic: [0.55, 0.55, 0.58], chipCap: [0.66, 0.52, 0.34], glassRed: [0.7, 0.2, 0.15]
+    wireRed: [0.8, 0.12, 0.1], wireBlack: [0.08, 0.08, 0.08], generic: [0.55, 0.55, 0.58], chipCap: [0.66, 0.52, 0.34], glassRed: [0.7, 0.2, 0.15],
+    sockBrown: [0.45, 0.33, 0.25], sockTan: [0.72, 0.62, 0.52]
   };
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const avg = pts => { const s = [0, 0, 0]; pts.forEach(p => { s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; }); return s.map(v => v / pts.length); };
@@ -155,12 +156,31 @@
       pads.forEach(p => { lead(p.x, p.y, 3); out.push(cylY(p.x, 3, 0.4, Math.min(p.y, r.y + r.h), Math.max(p.y, r.y + r.h), C.lead, to)); });
     } else if (name === "TRIM-3296W") {
       out.push(box(-4.75, -2.4, 4.75, 2.4, 0.5, 10, C.trim, to), cylZ(-3.9, -1.5, 0.9, 10, 11, C.metal, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
-    } else if ((m = /^SOCKET-([A-Z0-9]+)(-CAP)?$/.exec(name))) {
+    } else if ((m = /^SOCKET-([A-Z0-9]+)(-CAP)?(?:\.([A-Z0-9-]+))?$/.exec(name))) {
       // the valve's own envelope where its datasheet gives it (tube-db.js TUBE_BULBS), else the socket's usual one
       const k = m[1], S = D.SOCKETS[k] || { body: 26 }, tb = tubeOf(g), [td, th] = (tb && tb.bulb && tb.bulb.d ? [tb.bulb.d, tb.bulb.h] : null) || TUBE[k] || [22, 50];
-      const dark = k === "OCTAL" || k === "UX4" || k === "UX6", zs = 6;
-      out.push(cylZ(0, 0, S.body / 2, 0, zs, dark ? C.bakelite : C.ceramic, to));
-      pads.forEach(p => lead(p.x, p.y, 1));
+      const real = m[3] && (root.TUBE_SOCKETS || []).find(x => x.id === m[3] && x.body);
+      const dark = k === "OCTAL" || k === "UX4" || k === "UX6";
+      let zs = 6;
+      if (real) {
+        // the real socket: its body's parts, the steel flange, the aluminium shield, from its drawing
+        const col = { white: C.ceramic, black: C.bakelite, brown: C.sockBrown, tan: C.sockTan }[real.col] || C.ceramic;
+        real.body.forEach(([d, z1, z2]) => out.push(cylZ(0, 0, d / 2, z1, z2, col, to)));
+        zs = Math.max(...real.body.map(b => b[2]));
+        const F = real.flange;
+        if (F && real.screw) {
+          const o = B().gcFlange(real), holes = (fp.holes || []).map(h => [h.x, h.y, h.d]);
+          out.push(prism("z", o, F.z, F.z + F.t, real.mat === "ceramic" || real.col === "tan" || real.shield ? C.metal : col, to));
+          // the screw heads standing in the flange's holes
+          holes.forEach(([x, y, d]) => out.push(cylZ(x, y, d / 2 + 1.2, F.z + F.t, F.z + F.t + 1.6, C.metal, to)));
+        } else if (F) out.push(cylZ(0, 0, F.d / 2, F.z, F.z + F.t, col, to));
+        if (real.shield) out.push(cylZ(0, 0, real.shield[0] / 2, real.shield[1], real.shield[2], C.metal, to, { alpha: 0.85 }));
+        (real.ears || []).forEach(([a, r]) => { const x = r * Math.sin(a * Math.PI / 180), y = -r * Math.cos(a * Math.PI / 180); out.push(cylZ(x, y, 1.6, 0, 1.5, col, to)); });
+        pads.forEach(p => lead(p.x, p.y, 1));
+      } else {
+        out.push(cylZ(0, 0, S.body / 2, 0, zs, dark ? C.bakelite : C.ceramic, to));
+        pads.forEach(p => lead(p.x, p.y, 1));
+      }
       if (opts.tubes !== false) {
         const rr = td / 2;
         if (m[2]) out.push(cylZ(0, 0, Math.min(4.5, rr * 0.3), zs + th, zs + th + 6, C.metal, to));   // the top cap

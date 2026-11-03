@@ -186,7 +186,7 @@
         bom.rows.map((r, i) => `<tr data-i="${i}"${r.ids.some(id => S.sel.comps.has(id)) ? ' class="sel"' : ""}>
           <td class="n">${r.item}</td><td class="n">${r.qty}</td><td class="mono">${esc(r.refs)}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.value)}</td>
           <td>${esc(r.rating)}</td><td class="mono${r.warn ? " warn" : ""}">${esc(r.sim)}</td>
-          <td>${r.socket ? "" : `<input type="text" value="${esc(r.partno)}" spellcheck="false" placeholder="maker's part no." aria-label="Part number for ${esc(r.refs)}">`}</td>${pkgCell(r, i)}</tr>`).join("") + "</tbody>";
+          <td>${r.socket ? (r.partno ? `<span class="mono">${esc(r.partno)}</span> <a class="bom-src" href="${esc(r.url)}" target="_blank" rel="noopener" title="The socket's page at GoodComponent (pick it in the valve's Socket field)">shop ↗</a>` : `<small class="muted" title="Pick the real socket in the valve's Socket field: its footprint and 3D model go to the board, its number here">no socket picked</small>`) : `<input type="text" value="${esc(r.partno)}" spellcheck="false" placeholder="maker's part no." aria-label="Part number for ${esc(r.refs)}">`}</td>${pkgCell(r, i)}</tr>`).join("") + "</tbody>";
       table.querySelectorAll("[data-look]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); lookUp([bom.rows[+b.dataset.look]]); }));
       const all = document.getElementById("btn-bom-lookall"), todo = bom.rows.filter(r => r.partno && !r.socket && !(r.mpn && r.mpn.source === "DigiKey"));
       if (all) { all.disabled = !todo.length; all.onclick = () => lookUp(todo); }

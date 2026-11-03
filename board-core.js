@@ -443,6 +443,67 @@
     }
     return fp(`${SOCKETS[kind] ? `SOCKET-${kind}` : `SOCKET-${nPins}`}${cap ? "-CAP" : ""}`, `Tube socket, ${s.title}, top view${cap ? ", with a pad for the top-cap lead" : ""}`, pads, silk);
   }
+  // A real socket from the shop's list (tube-db.js TUBE_SOCKETS): "SOCKET-B9A.GZC9-Y". Its tails
+  // come down on their own circle (bent out past the contacts on most PCB novals), at the
+  // contacts' angles; a flange's screws go in unplated holes, as do the locating ears
+  const gcList = () => root.TUBE_SOCKETS || [];
+  const gcBoard = id => gcList().find(s => s.id === id && s.body && SOCKETS[s.base]) || null;
+  // the convex outline of a flange: its round middle and an ear round each screw
+  // (rMin: no smaller round middle, for a silkscreen that keeps off the tails' pads)
+  function flangeOutline(s, rMin) {
+    const F = s.flange, pts = [], ring = (cx, cy, r) => { for (let k = 0; k < 48; k++) { const a = 2 * Math.PI * k / 48; pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
+    ring(0, 0, Math.max(F.d / 2, rMin || 0));
+    if (s.screw) {
+      const re = Math.max(F.hole / 2 + 1.5, (F.l - s.screw) / 2), c = F.c * Math.PI / 180, ux = Math.sin(c), uy = -Math.cos(c);
+      [1, -1].forEach(k => ring(k * ux * s.screw / 2, k * uy * s.screw / 2, re));
+    }
+    // monotone chain
+    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], hi = [];
+    pts.forEach(p => { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); });
+    pts.slice().reverse().forEach(p => { while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); });
+    return lo.slice(0, -1).concat(hi.slice(0, -1)).map(([x, y]) => [+x.toFixed(3), +y.toFixed(3)]);
+  }
+  // the hole for a tail: a round pin's Ø + 0.3; a flat tail's diagonal (0.5 mm stock) + 0.25
+  const tailDrill = (s, k) => {
+    const d = s.pins && s.pins[String(k)] ? s.pins[String(k)] + 0.3 : Math.hypot(s.tw || 1.2, 0.5) + 0.25;
+    return Math.round(d * 10) / 10;
+  };
+  function gcSocket(id, cap) {
+    const s = gcBoard(id); if (!s) return null;
+    const S = SOCKETS[s.base], r = s.tail / 2, pads = [];
+    const spacing = 2 * r * Math.sin(S.step * Math.PI / 360);
+    for (let k = 1; k <= S.n; k++) {
+      const a = (90 - (k + S.offset) * S.step) * Math.PI / 180, dr = tailDrill(s, k);
+      pads.push(pad(k, +(r * Math.cos(a)).toFixed(3), +(r * Math.sin(a)).toFixed(3), +Math.min(dr + 0.8, spacing - 0.5).toFixed(2), dr, k === 1 ? "rect" : "circle"));
+    }
+    const dMax = Math.max(...s.body.map(b => b[0]), s.shield ? s.shield[0] : 0, s.flange && !s.screw ? s.flange.d : 0);
+    // the outline: the body, or round the tails where they stand at (or past) its edge
+    const rs = Math.max(dMax / 2, r + Math.max(...pads.map(p => p.w)) / 2 + 0.35);
+    const silk = [{ t: "circle", x: 0, y: 0, r: +rs.toFixed(2) }];
+    silk.push({ t: "line", x1: 0, y1: rs - 2.5, x2: 0, y2: rs + 0.5 });   // the key / gap, down
+    const holes = [];
+    if (s.flange && s.screw) {
+      const o = flangeOutline(s, rs + 0.3);
+      o.forEach((p, i) => { const q = o[(i + 1) % o.length]; silk.push({ t: "line", x1: p[0], y1: p[1], x2: q[0], y2: q[1] }); });
+      const c = s.flange.c * Math.PI / 180;
+      [1, -1].forEach(k => holes.push({ x: +(k * Math.sin(c) * s.screw / 2).toFixed(3), y: +(-k * Math.cos(c) * s.screw / 2).toFixed(3), d: s.flange.hole }));
+    }
+    (s.ears || []).forEach(([ang, er, d]) => {
+      const a = ang * Math.PI / 180, x = +(er * Math.sin(a)).toFixed(3), y = +(-er * Math.cos(a)).toFixed(3);
+      holes.push({ x, y, d }); silk.push({ t: "circle", x, y, r: d / 2 + 1.2 });
+    });
+    if (cap) {
+      const y = -Math.max(rs, ...holes.map(h => -h.y + h.d)) - 3.5;
+      pads.push(pad("cap", 0, y, 3, 1.3, "circle", "cap"));
+      silk.push({ t: "circle", x: 0, y, r: 2.6 });
+    }
+    const f = fp(`SOCKET-${s.base}${cap ? "-CAP" : ""}.${s.id}`, `${s.id} (GoodComponent${s.gold ? `; gold pins ${s.gold}` : ""}), ${S.title} ${s.mat} socket, PCB mount, tails on Ø${s.tail}${s.screw && s.flange ? `, screws ${s.screw} apart` : ""}`, pads, silk, holes);
+    f.gc = s.id;
+    return f;
+  }
+  // the board sockets that take a base, and every socket (board or not) for it
+  const gcFor = base => gcList().filter(s => s.base === base && s.body && SOCKETS[s.base]).map(s => s.id);
   // wires to a chassis-mounted part (transformer, choke, speaker, pot, jack, mains, supply)
   function wirePads(names) {
     const n = names.length, x0 = -(n - 1) / 2 * 5.08;
@@ -600,6 +661,7 @@
     if (name === "SW-PUSH-6MM") return push6();
     if ((m = /^XFMR-EI(\d+)-(SE|PP|PTP|PT|IS)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], m[2]);
     if ((m = /^CHOKE-EI(\d+)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], "CHOKE");
+    if ((m = /^SOCKET-([A-Z0-9]+)(-CAP)?\.([A-Z0-9-]+)$/.exec(name))) return gcBoard(m[3]) && gcBoard(m[3]).base === m[1] ? gcSocket(m[3], !!m[2]) : null;
     if ((m = /^SOCKET-([A-Z0-9]+)(-CAP)?$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1], !!m[2]) : socket(m[1], 0, !!m[2]);
     if ((m = /^DIP-(\d+)$/.exec(name)) && [8, 14, 16].includes(+m[1])) return dip(+m[1]);
     if ((m = /^STAR-(M3|M4)$/.exec(name))) return starPoint(m[1]);
@@ -706,6 +768,7 @@
       g.defaultFp = g.options[0];
       g.smdFp = smdOptions(g)[0] || null;   // the SMD version's footprint (null: the part stays through-hole)
       partNumber(g);
+      socketChoice(g);
       return g;
     }).sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }));
   }
@@ -726,6 +789,20 @@
     if (!g.options.includes(f)) g.options = [f, ...g.options];
     else if (!isSmd(f)) g.options = [f, ...g.options.filter(o => o !== f)];
   }
+  // The socket picked for a valve in the schematic (its "Socket" field, params.sock, an item of
+  // tube-db.js TUBE_SOCKETS): g.sock its id, g.sockFp the footprint it means: the socket's own on
+  // the board, or the wire pads when it sits on the chassis
+  function socketChoice(g) {
+    g.sock = null; g.sockFp = null;
+    if (g.type !== "tube" && g.type !== "gasreg") return;
+    const id = g.members.map(m => m.params && m.params.sock).find(Boolean); if (!id) return;
+    const s = gcList().find(x => x.id === id); if (!s) return;
+    g.sock = id;
+    const f = s.body ? g.options.find(o => o.endsWith("." + id)) : g.options.find(o => /^WIRE-/.test(o));
+    if (!f) return;
+    g.sockFp = f; g.defaultFp = f;
+    g.options = [f, ...g.options.filter(o => o !== f)];
+  }
   /** Board parts whose part number changed since the board last saw it take the footprint it
       names (once: picking another footprint by hand afterwards stays). Returns [{ ref, fp, text }]. */
   function applyPartNumbers(board, netlist, parts) {
@@ -736,6 +813,12 @@
       if ((bp.mpn || "") === key) return;
       if (key) bp.mpn = key; else delete bp.mpn;
       if (g.mpnFp && bp.fp !== g.mpnFp) { bp.fp = g.mpnFp; done.push({ ref: g.ref, fp: g.mpnFp, text: P.describe(g.mpn) }); }
+    });
+    // a valve whose socket was picked (or changed) in the schematic takes that socket's footprint, once
+    (parts || physicalParts(netlist)).forEach(g => {
+      const bp = board.parts[g.key]; if (!bp || (bp.sock || "") === (g.sock || "")) return;
+      if (g.sock) bp.sock = g.sock; else delete bp.sock;
+      if (g.sockFp && bp.fp !== g.sockFp) { bp.fp = g.sockFp; done.push({ ref: g.ref, fp: g.sockFp, text: `socket ${g.sock}` }); }
     });
     return done;
   }
@@ -829,7 +912,7 @@
       // interstage and input transformers: small cores, board mount first
       case "itx": return p.ct === "yes" ? [...eiFor("IS", 38), "WIRE-5", "TERM-5.08-5"] : [...eiFor("SE", 38), "WIRE-4", "TERM-5.08-4"];
       // a glow tube in its socket: the miniature types B7G, the octal ones octal
-      case "gasreg": { const d = `SOCKET-${(L.GASREGS[p.model] || {}).socket || "B7G"}`; return [d, ...["SOCKET-B7G", "SOCKET-OCTAL"].filter(a => a !== d), "WIRE-2"]; }
+      case "gasreg": { const b = (L.GASREGS[p.model] || {}).socket || "B7G", d = `SOCKET-${b}`; return [d, ...gcFor(b).map(id => `${d}.${id}`), ...["SOCKET-B7G", "SOCKET-OCTAL"].filter(a => a !== d), "WIRE-2"]; }
       case "opt_pp": return ["WIRE-7", ...eiFor("PP", 76), "TERM-5.08-7"];
       case "ptx": return ["WIRE-3", ...eiFor("PT", 76), "TERM-5.08-3"];
       case "ptx_cat": return ["WIRE-5", ...eiFor("PTP", 76), "TERM-5.08-5"];
@@ -874,7 +957,9 @@
       case "tube": {
         const t = L.tubeByName(p.tube), d = socketFor(t), cap = t && /top cap/i.test(t.socket) ? "-CAP" : "";
         const all = ["B9A", "B7G", "B9D", "OCTAL", "UX4"].map(k => `SOCKET-${k}${cap}`);
-        return d ? [d, ...all.filter(a => a !== d), `WIRE-${wires}`] : [`WIRE-${wires}`, ...all];
+        // the real sockets of its base from the shop's list come right after the generic one
+        const real = d ? gcFor(/^SOCKET-([A-Z0-9]+)/.exec(d)[1]).map(id => `${d}.${id}`) : [];
+        return d ? [d, ...real, ...all.filter(a => a !== d), `WIRE-${wires}`] : [`WIRE-${wires}`, ...all];
       }
       default: return [`WIRE-${wires}`];
     }
@@ -984,6 +1069,7 @@
       if (x + w > Math.max(board.outline.w, 160)) { x = 8; y += rowH + 6; rowH = 0; }
       board.parts[g.key] = { ref: g.ref, fp: g.mpnFp || g.defaultFp, x: snap(x - f.box[0], 1.27), y: snap(y - f.box[1], 1.27), rot: 0, side: "F" };
       if (g.mpn && root.PartNo) board.parts[g.key].mpn = root.PartNo.norm(g.members[0].params.partno);
+      if (g.sock) board.parts[g.key].sock = g.sock;
       x += w + 6; rowH = Math.max(rowH, h);
       added.push(g.ref);
     });
@@ -1429,9 +1515,9 @@
     const out = new Map();
     if (board.rules.socketBody === false) return out;
     model.parts.forEach(g => {
-      const m = g.fp && g.place && /^SOCKET-(.+?)(-CAP)?$/.exec(g.fp.name); if (!m) return;
-      // the top cap's pad stands outside the body
-      const S = SOCKETS[m[1]], pads = model.pads.filter(p => p.part === g.key && p.num !== "cap"), cap = p => padCapsule(p);
+      const m = g.fp && g.place && /^SOCKET-([A-Z0-9]+)(-CAP)?(?:\.([A-Z0-9-]+))?$/.exec(g.fp.name); if (!m) return;
+      // the top cap's pad stands outside the body; a real socket's body is its own (its widest part on the board)
+      const real = m[3] && gcBoard(m[3]), S = real ? { body: Math.max(...real.body.filter(b => b[1] < 1).map(b => b[0]), real.tail + 1) } : SOCKETS[m[1]], pads = model.pads.filter(p => p.part === g.key && p.num !== "cap"), cap = p => padCapsule(p);
       const body = S ? S.body / 2 : Math.max(...g.fp.pads.filter(p => p.num !== "cap").map(p => Math.hypot(p.x, p.y))) + 4;
       pads.forEach(p => {
         const gp = Math.min(...pads.filter(q => q !== p).map(q => { const a = cap(p), b = cap(q); return segSeg(a.s, b.s) - a.r - b.r; }));
@@ -2028,5 +2114,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

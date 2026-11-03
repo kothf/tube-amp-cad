@@ -522,7 +522,7 @@ test("3D: every footprint's body and the drilled board are closed, outward solid
     for (const sec of type === "switch" ? [1, 2] : [1]) {
       const nl = { parts: Array.from({ length: sec }, (_, k) => ({ id: "c" + k, type, label: sec > 1 ? `X1.${k + 1}` : "X1", params, pins: pins.map(p => ({ id: p.id, net: 1 })) })) };
       const [g] = B.physicalParts(nl);
-      for (const o of g.options.concat(type === "tube" ? ["SOCKET-B9A", "SOCKET-B7G", "SOCKET-B9D", "SOCKET-OCTAL", "SOCKET-UX4", "SOCKET-B9D-CAP", "SOCKET-B9A-CAP"] : [])) {
+      for (const o of g.options.concat(type === "tube" ? ["SOCKET-B9A", "SOCKET-B7G", "SOCKET-B9D", "SOCKET-OCTAL", "SOCKET-UX4", "SOCKET-B9D-CAP", "SOCKET-B9A-CAP", ...globalThis.TUBE_SOCKETS.filter(s => s.body).map(s => `SOCKET-${s.base}.${s.id}`), "SOCKET-B9D-CAP.GZC9-Y-2"] : [])) {
         if (seen.has(o)) continue; seen.add(o);
         const fp = B.footprint(o, g.members.flatMap(m => m.pins.map(p => (sec > 1 ? m.label.split(".").pop() + "." : "") + p.id)));
         for (const side of ["F", "B"]) for (const rot of [0, 1]) {
