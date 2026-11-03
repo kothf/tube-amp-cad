@@ -1975,9 +1975,11 @@ TUBE_DATABASE.forEach(t => { const b = TUBE_BULBS[t.commonName] || TUBE_BULBS[TU
    Soviet sockets (shop: "tec", tec.org.ru's catalogue): name is the designation (ПЛК9-2П), id the
    same in Latin letters for footprint names, url the shop's page; their sizes from the shop's
    drawings.
-   Left out of the board list (on the BOM only): the PCB sockets whose page gives no drawing of
-   where their tails come down (GZC9-Y-3, GZC7-Y, GZC7-Y-B, GZC8-Y-4, GZC9-F-Y-55, the CMC and
-   EIZZ straight-pin ones). */
+   Left out of the board list (on the BOM only): the PCB sockets with no drawing of where their
+   tails come down, at the shop or elsewhere (Parts Connexion, the maker Dongxin's own pages,
+   tec.org.ru): GZC7-Y-B, GZC8-Y-4, GZC9-F-Y-55, ПЛ9-4К, ПЛ7-4К, the CMC and EIZZ straight-pin
+   ones; and GZC9-Y-3, whose drawing (Dongxin's) gives its body (Ø21 × 10.5) but not the circle
+   of its tails. */
 /* exported TUBE_SOCKETS, TUBE_SOCKET_URL, tubeSocketBase, tubeSocketName */
 var TUBE_SOCKETS = [
   // ---- noval B9A, solder into the board ----
@@ -2005,6 +2007,9 @@ var TUBE_SOCKETS = [
     tail: 21.5, tw: 1.6, body: [[25, 0, 8], [21.5, 8, 11]] },
   { id: "GZC9-Y-4", gold: "GZC9-Y-4-G", p: 451, base: "B9A", mount: "pcb", mat: "ceramic", col: "white", cut: 21, src: "drawing",
     tail: 20.5, tw: 1.7, body: [[21, 0, 8], [24.5, 8, 10.5]] },
+  // ---- miniature B7G (the drawing from Parts Connexion's sheet for it, SOCKET-59028/59029) ----
+  { id: "GZC7-Y", gold: "GZC7-Y-G", p: 353, base: "B7G", mount: "pcb", mat: "ceramic", col: "white", cut: 19, src: "drawing",
+    tail: 9.5, tw: 1.7, body: [[15.9, 0, 9.8], [18.6, 5.8, 8.3]] },
   // ---- magnoval B9D ----
   { id: "GZC9-Y-2", gold: "GZC9-Y-2-G", p: 1176, base: "B9D", mount: "pcb", mat: "ceramic", col: "white", cut: 26, src: "drawing",
     tail: 26, tw: 1.6, body: [[26, 0, 9.5], [30, 9.5, 11.5]] },
@@ -2028,7 +2033,7 @@ var TUBE_SOCKETS = [
   { id: "GZS9-F2-D", p: 1341, base: "B9A", mount: "chassis", mat: "plastic", screw: 28, cut: 20 },
   { id: "GZC9-F-A", p: 1173, base: "B9A", mount: "chassis", mat: "ceramic", screw: 28, cut: 21.5 },
   { id: "GZC9-F-Y-55", p: 1268, base: "B9A", mount: "pcb", mat: "ceramic", screw: 28, cut: 21.5, note: "with a 55 mm shield; no drawing of its tails" },
-  { id: "GZC9-Y-3", gold: "GZC9-Y-3-G", p: 1439, base: "B9A", mount: "pcb", mat: "ceramic", cut: 21, note: "no drawing of its tails" },
+  { id: "GZC9-Y-3", gold: "GZC9-Y-3-G", p: 1439, base: "B9A", mount: "pcb", mat: "ceramic", cut: 21, note: "its drawing gives no tail circle" },
   { id: "PCP9-F", gold: "PCP9-F-G", p: 1182, base: "B9A", mount: "chassis", mat: "bakelite", screw: 28 },
   { id: "GZC9-C", p: 427, base: "B9A", mount: "chassis", mat: "ceramic", screw: 28, cut: 18 },
   { id: "GZC9-C-1", gold: "GZC9-C-1-G", p: 429, base: "B9A", mount: "bottom", mat: "ceramic", screw: 28, cut: 18 },
@@ -2045,7 +2050,6 @@ var TUBE_SOCKETS = [
   { id: "EZ-1309A", p: 1864, base: "B9A", mount: "chassis", mat: "bakelite", screw: 29, cut: 21 },
   { id: "EZ-1309B", p: 2008, base: "B9A", mount: "chassis", mat: "bakelite", screw: 29, cut: 21 },
   { id: "EZ-9B", p: 1805, base: "B9A", mount: "chassis", mat: "PI", screw: 30, cut: 21 },
-  { id: "GZC7-Y", gold: "GZC7-Y-G", p: 353, base: "B7G", mount: "pcb", mat: "ceramic", cut: 19, note: "no drawing of its tails" },
   { id: "GZC7-Y-B", gold: "GZC7-Y-B-G", p: 355, base: "B7G", mount: "pcb", mat: "ceramic", cut: 17.8, note: "no drawing of its tails" },
   { id: "GZC7-F", gold: "GZC7-F-G", p: 350, base: "B7G", mount: "chassis", mat: "ceramic", screw: 22.5, cut: 16 },
   { id: "GZC7-D1-G", p: 373, base: "B7G", mount: "chassis", mat: "PTFE", screw: 30, cut: 21 },

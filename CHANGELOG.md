@@ -13,6 +13,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
   - **ПЛК9-2П** (noval, tails bent out to Ø20), **ПЛК7-1П** (B7G, tails straight down on Ø9.5) and **ПЛК8-ПО** (octal, straight down on Ø17.5) solder into the board: their footprints and 3D models are taken from the shop's drawings.
   - ПЛ9-4К and ПЛ7-4К (board sockets with no drawing of their tails) and the chassis ones, with mounting screws and cut-outs where the drawings give them (ПЛК9-Ф, ПЛК9-Д40/55/60, ПЛК9-Э46/75, ПЛ9-3ПЭ-55, ПЛК7-Ф, ПЛК7-Д55, ПЛК7-Э46/55/60, ПЛ7-2КЭ-46/55, ПЛ7-1К, ПП-7, ПЛ8-1П, ПЛ8-3П, ПЛ8-1К, ПЛК8-2в, ПЛ24Ш-2К, ПЛКМ-2, ПЛКМ-4/1, ПЛК-300B, ПЛК-ГУ50, ПЛК-6С33С-Gold), go on the BOM.
   - The BOM's socket line gives the designation, its Latin spelling (the PDF fonts have no Cyrillic) and a link to the shop's page.
+- **GZC7-Y** (GoodComponent's ceramic B7G board socket) has its footprint and 3D model now, from Parts Connexion's drawing of it (tails straight down on Ø9.5). The other board sockets still without one were looked for elsewhere too (Parts Connexion, the maker Dongxin's pages, the KiCad library work, Russian shops): no drawing of their tails is published, so GZC7-Y-B, GZC8-Y-4, GZC9-F-Y-55, ПЛ9-4К and ПЛ7-4К stay BOM only; Dongxin's GZC9-Y-3 drawing gives its body but not its tail circle.
 
 ## [3.178.2] - 2026-11-03
 

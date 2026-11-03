@@ -34,7 +34,7 @@ test("the list: unique numbers, a known base and mount for each; the board ones 
     s.body.forEach(([d, z1, z2]) => assert.ok(d > 10 && z2 > z1 && z1 >= 0, s.id));
     if (s.flange && s.screw) assert.ok(s.flange.l > s.screw && s.flange.hole > 2, s.id);
   }
-  assert.equal(LIST.filter(s => s.body).length, 23);
+  assert.equal(LIST.filter(s => s.body).length, 24);
   assert.ok(LIST.filter(s => s.shop === "tec").length >= 30, "the Soviet ones too");
   assert.equal(globalThis.TUBE_SOCKET_URL(LIST[0]), "https://www.goodcomponent.com/products/vacuum-tube-soket/socket/1181.html");
 });
@@ -76,13 +76,13 @@ test("footprints: the tails on the drawing's circle at the contacts' angles, scr
   assert.equal(B.footprint("SOCKET-OCTAL.GZC9-Y"), null, "a socket of another base is not a footprint");
   // the Soviet board sockets, from tec.org.ru's drawings: ПЛК9-2П tails bent out to Ø20,
   // ПЛК7-1П straight down on Ø9.5, ПЛК8-ПО straight down on Ø17.5
-  for (const [name, r] of [["SOCKET-B9A.PLK9-2P", 10], ["SOCKET-B7G.PLK7-1P", 4.75], ["SOCKET-OCTAL.PLK8-PO", 8.75]]) {
+  for (const [name, r] of [["SOCKET-B9A.PLK9-2P", 10], ["SOCKET-B7G.PLK7-1P", 4.75], ["SOCKET-OCTAL.PLK8-PO", 8.75], ["SOCKET-B7G.GZC7-Y", 4.75]]) {
     const q = B.footprint(name), gen = B.footprint(name.split(".")[0]);
     q.pads.forEach((p, i) => {
       assert.ok(Math.abs(Math.hypot(p.x, p.y) - r) < 0.01, `${name} pad ${p.num} on Ø${2 * r}`);
       assert.ok(Math.abs(Math.atan2(p.y, p.x) - Math.atan2(gen.pads[i].y, gen.pads[i].x)) < 1e-3, `${name} pad ${p.num} at the contact's angle`);
     });
-    assert.match(q.title, /\(PLK[0-9]-[A-Z0-9]+, tec\.org\.ru\)/);
+    if (/PLK/.test(name)) assert.match(q.title, /\(PLK[0-9]-[A-Z0-9]+, tec\.org\.ru\)/);
   }
 });
 
