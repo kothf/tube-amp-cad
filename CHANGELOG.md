@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.178.2] - 2026-11-03
+
+### Fixed
+- **The generic UX4 socket footprint (2A3, 300B and other 4-pin valves on *Any socket*) has its pins on a 16.25 mm circle**, as real UX4 sockets do (GoodComponent's GZC4-T-G drawing); it had them on 22.2 mm, so a board made with it would not take a real socket. Example 13's board is re-routed for it (0 to route, 0 rule violations). The other generic sockets were checked against their standards and are right.
+
 ## [3.178.1] - 2026-11-03
 
 ### Fixed

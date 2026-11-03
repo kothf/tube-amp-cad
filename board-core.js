@@ -422,7 +422,7 @@
     "B7G": { title: "Miniature 7-pin (B7G)", n: 7, dia: 9.53, step: 45, offset: 0, body: 18, drill: 1.2, padD: 2.2 },
     "B9D": { title: "Magnoval (B9D)", n: 9, dia: 17.45, step: 36, offset: 0, body: 30, drill: 1.6, padD: 2.8 },
     "OCTAL": { title: "Octal (K8A)", n: 8, dia: 17.45, step: 45, offset: -0.5, body: 34, drill: 2.0, padD: 3.4 },
-    "UX4": { title: "UX4 4-pin", n: 4, dia: 22.2, step: 90, offset: -0.5, body: 38, drill: 3.4, padD: 5 },
+    "UX4": { title: "UX4 4-pin", n: 4, dia: 16.25, step: 90, offset: -0.5, body: 38, drill: 3.4, padD: 5 },
     "UX6": { title: "UX6 6-pin", n: 6, dia: 19.05, step: 60, offset: -0.5, body: 38, drill: 3.4, padD: 5 }
   };
   // A valve with its anode (or a rectifier's) on a top cap: one more pad, "cap", behind the socket
