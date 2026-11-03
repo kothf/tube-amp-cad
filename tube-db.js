@@ -1972,10 +1972,13 @@ TUBE_DATABASE.forEach(t => { const b = TUBE_BULBS[t.commonName] || TUBE_BULBS[TU
            base's key or gap (seen from above, key down; 0: the screws on the key's axis) };
            shield: [Ø, z from, z to] (an aluminium can); ears: [[compass angle, radius, hole Ø]]
            (locating lugs in unplated holes)
+   Soviet sockets (shop: "tec", tec.org.ru's catalogue): name is the designation (ПЛК9-2П), id the
+   same in Latin letters for footprint names, url the shop's page; their sizes from the shop's
+   drawings.
    Left out of the board list (on the BOM only): the PCB sockets whose page gives no drawing of
    where their tails come down (GZC9-Y-3, GZC7-Y, GZC7-Y-B, GZC8-Y-4, GZC9-F-Y-55, the CMC and
    EIZZ straight-pin ones). */
-/* exported TUBE_SOCKETS, TUBE_SOCKET_URL, tubeSocketBase */
+/* exported TUBE_SOCKETS, TUBE_SOCKET_URL, tubeSocketBase, tubeSocketName */
 var TUBE_SOCKETS = [
   // ---- noval B9A, solder into the board ----
   { id: "GZS9-F", p: 1181, base: "B9A", mount: "pcb", mat: "plastic", col: "tan", cut: 19.5, screw: 28, src: "drawing",
@@ -2093,9 +2096,52 @@ var TUBE_SOCKETS = [
   { id: "EZ-845-D", p: 1768, base: "JUMBO", mount: "chassis", mat: "PTFE", note: "screws on a 49 × 49 square" },
   { id: "FU50R", gold: "FU50R-G", p: 391, base: "GU50", mount: "chassis", mat: "ceramic" },
   { id: "GZC7-C", p: 348, base: "B7A", mount: "chassis", mat: "ceramic" },
-  { id: "GZC7-4", p: 358, base: "GM70", mount: "panel", mat: "ceramic" }
+  { id: "GZC7-4", p: 358, base: "GM70", mount: "panel", mat: "ceramic" },
+  // ---- Soviet sockets (ПЛК, ПЛ, ПП; and the Chinese ones made to them), as sold by tec.org.ru;
+  //      name: the designation, id: the same in Latin letters (footprint names stay ASCII) ----
+  // on the board, from the shop's drawings
+  { id: "PLK9-2P", name: "ПЛК9-2П", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_2p/190-1-0-2778", base: "B9A", mount: "pcb", mat: "ceramic", col: "white", src: "drawing",
+    tail: 20, tw: 1.2, body: [[18, 0, 10], [22.2, 2.9, 7.1]] },
+  { id: "PLK7-1P", name: "ПЛК7-1П", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk7_1p/190-1-0-3362", base: "B7G", mount: "pcb", mat: "ceramic", col: "white", src: "drawing",
+    tail: 9.5, tw: 1.7, body: [[16, 0, 10.2], [19, 6.5, 9]] },
+  { id: "PLK8-PO", name: "ПЛК8-ПО", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk8_po/190-1-0-3189", base: "OCTAL", mount: "pcb", mat: "ceramic", col: "white", src: "drawing",
+    tail: 17.5, tw: 2, body: [[26.5, 0, 14.5], [30, 4.7, 10.6]] },
+  // on the board, no drawing of their tails
+  { id: "PL9-4K", name: "ПЛ9-4К", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_p/190-1-0-1501", base: "B9A", mount: "pcb", mat: "ceramic", note: "no drawing of its tails" },
+  { id: "PL7-4K", name: "ПЛ7-4К", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk7_p/190-1-0-1502", base: "B7G", mount: "pcb", mat: "ceramic", note: "no drawing of its tails" },
+  // on the chassis, wired
+  { id: "PLK9-F", name: "ПЛК9-Ф", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_f/190-1-0-2220", base: "B9A", mount: "chassis", mat: "ceramic", screw: 28, cut: 22 },
+  { id: "PLK9-D40", name: "ПЛК9-Д40", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_d40/190-1-0-2869", base: "B9A", mount: "chassis", mat: "ceramic", note: "with a 40 mm valve clamp" },
+  { id: "PLK9-D55", name: "ПЛК9-Д55", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_d55/190-1-0-1378", base: "B9A", mount: "chassis", mat: "ceramic", note: "with a 55 mm valve clamp" },
+  { id: "PLK9-D60", name: "ПЛК9-Д60", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_d60/190-1-0-1762", base: "B9A", mount: "chassis", mat: "ceramic", note: "with a 60 mm valve clamp" },
+  { id: "PLK9-E46", name: "ПЛК9-Э46", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_eh46/190-1-0-1519", base: "B9A", mount: "chassis", mat: "ceramic", note: "with a 46 mm shield" },
+  { id: "PLK9-E75", name: "ПЛК9-Э75", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_eh75/190-1-0-2759", base: "B9A", mount: "chassis", mat: "ceramic", note: "with a 75 mm shield" },
+  { id: "PL9-3PE-55", name: "ПЛ9-3ПЭ-55", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/pl9_3peh_55/190-1-0-4718", base: "B9A", mount: "chassis", mat: "plastic", note: "with a 55 mm shield" },
+  { id: "PLK7-F", name: "ПЛК7-Ф", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk7_f/190-1-0-4087", base: "B7G", mount: "chassis", mat: "ceramic" },
+  { id: "PLK7-D55", name: "ПЛК7-Д55", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk7_d55/190-1-0-3590", base: "B7G", mount: "chassis", mat: "ceramic", note: "with a 55 mm valve clamp" },
+  { id: "PLK7-E46", name: "ПЛК7-Э46", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk7_eh46/190-1-0-1774", base: "B7G", mount: "chassis", mat: "ceramic", screw: 22.5, note: "with a 46 mm shield" },
+  { id: "PLK7-E55", name: "ПЛК7-Э55", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk7_eh55/190-1-0-1775", base: "B7G", mount: "chassis", mat: "ceramic", screw: 22.5, note: "with a 55 mm shield" },
+  { id: "PLK7-E60", name: "ПЛК7-Э60", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk7_eh60/190-1-0-4144", base: "B7G", mount: "chassis", mat: "ceramic", screw: 22.5, note: "with a 60 mm shield" },
+  { id: "PL7-2KE-46", name: "ПЛ7-2КЭ-46", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/pl7_2keh_46/190-1-0-3763", base: "B7G", mount: "chassis", mat: "ceramic", screw: 22.2, note: "with a 46 mm shield" },
+  { id: "PL7-2KE-55", name: "ПЛ7-2КЭ-55", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/pl7_2keh_55/190-1-0-3762", base: "B7G", mount: "chassis", mat: "ceramic", screw: 22.2, note: "with a 55 mm shield" },
+  { id: "PL7-1K", name: "ПЛ7-1К", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/pl7_1k/190-1-0-1806", base: "B7G", mount: "chassis", mat: "ceramic" },
+  { id: "PP-7", name: "ПП-7", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/pp_7/190-1-0-2120", base: "B7G", mount: "chassis", mat: "ceramic", screw: 23, cut: 16 },
+  { id: "PL8-1P", name: "ПЛ8-1П", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/radiolampy_oktalnye/pl8_1p/246-1-0-1481", base: "OCTAL", mount: "chassis", mat: "bakelite" },
+  { id: "PL8-3P", name: "ПЛ8-3П", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/radiolampy_oktalnye/pl8_3p/246-1-0-4836", base: "OCTAL", mount: "chassis", mat: "bakelite", cut: 27.5 },
+  { id: "PL8-1K", name: "ПЛ8-1К", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/radiolampy_oktalnye/pl8_1k_panel_lampovaja/246-1-0-3116", base: "OCTAL", mount: "chassis", mat: "ceramic" },
+  { id: "PLK8-2V", name: "ПЛК8-2в", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/radiolampy_oktalnye/plk8_2p/246-1-0-1400", base: "OCTAL", mount: "chassis", mat: "ceramic" },
+  { id: "PL24SH-2K", name: "ПЛ24Ш-2К", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/pl24sh_2k_magnoval/190-1-0-1756", base: "B9D", mount: "chassis", mat: "ceramic" },
+  { id: "PLKM-2", name: "ПЛКМ-2", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plkm_2/190-1-0-3390", base: "B9D", mount: "chassis", mat: "ceramic", screw: 35, cut: 26 },
+  { id: "PLKM-4-1", name: "ПЛКМ-4/1", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plkm_4_1/190-1-0-4204", base: "B9D", mount: "chassis", mat: "ceramic" },
+  { id: "PLK-300B", name: "ПЛК-300B", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk_300b/190-1-0-2024", base: "UX4", mount: "chassis", mat: "ceramic", screw: 45 },
+  { id: "PLK-GU50", name: "ПЛК-ГУ50", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk_gu50/190-1-0-3383", base: "GU50", mount: "chassis", mat: "ceramic", cut: 33 },
+  { id: "PLK-6S33S", name: "ПЛК-6С33С-Gold", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk_6s33s_gold_china/190-1-0-3389", base: "B7A", mount: "chassis", mat: "ceramic", cut: 26, note: "screws 68 mm apart across the diagonal" }
 ];
-var TUBE_SOCKET_URL = s => `https://www.goodcomponent.com/products/vacuum-tube-soket/socket/${s.p}.html`;
+/* A socket's page: GoodComponent's by its product number, or the address it carries */
+var TUBE_SOCKET_URL = s => s.url || `https://www.goodcomponent.com/products/vacuum-tube-soket/socket/${s.p}.html`;
+/* How a socket is named on the BOM and in titles: GoodComponent's item number, or a Soviet
+   designation with its Latin spelling (for the PDFs' fonts) and where to buy it */
+var tubeSocketName = s => s.name ? `${s.name} (${s.id}, tec.org.ru)` : `GoodComponent ${s.id}${s.gold ? ` (gold pins: ${s.gold})` : ""}`;
 /* The base a valve fits, as TUBE_SOCKETS names it (null: wire leads, nuvistors, the other glass bases) */
 function tubeSocketBase(t) {
   const s = (t && t.socket) || "";

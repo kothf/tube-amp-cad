@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.179.0] - 2026-11-03
+
+### Added
+- **Soviet tube sockets.** The *Tube socket* list also has 31 Soviet sockets (ПЛК, ПЛ, ПП and the Chinese ones made to them), as sold by tec.org.ru, under their designations.
+  - **ПЛК9-2П** (noval, tails bent out to Ø20), **ПЛК7-1П** (B7G, tails straight down on Ø9.5) and **ПЛК8-ПО** (octal, straight down on Ø17.5) solder into the board: their footprints and 3D models are taken from the shop's drawings.
+  - ПЛ9-4К and ПЛ7-4К (board sockets with no drawing of their tails) and the chassis ones, with mounting screws and cut-outs where the drawings give them (ПЛК9-Ф, ПЛК9-Д40/55/60, ПЛК9-Э46/75, ПЛ9-3ПЭ-55, ПЛК7-Ф, ПЛК7-Д55, ПЛК7-Э46/55/60, ПЛ7-2КЭ-46/55, ПЛ7-1К, ПП-7, ПЛ8-1П, ПЛ8-3П, ПЛ8-1К, ПЛК8-2в, ПЛ24Ш-2К, ПЛКМ-2, ПЛКМ-4/1, ПЛК-300B, ПЛК-ГУ50, ПЛК-6С33С-Gold), go on the BOM.
+  - The BOM's socket line gives the designation, its Latin spelling (the PDF fonts have no Cyrillic) and a link to the shop's page.
+
 ## [3.178.2] - 2026-11-03
 
 ### Fixed

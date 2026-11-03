@@ -185,7 +185,7 @@
     sockets.forEach(({ rating, id, refs }, k) => {
       const s = id && (root.TUBE_SOCKETS || []).find(x => x.id === id);
       lines.set("socket\u0001" + k, { refs, comps: [], desc: "Tube socket" + (s ? `, ${s.mat}, ${MOUNT[s.mount]}` : ""), value: rating,
-        rating: (s ? `GoodComponent ${s.id}${s.gold ? ` (gold pins: ${s.gold})` : ""}; ` : "") + "for " + compressRefs(refs.slice().sort(refCmp)), partno: s ? s.id : "", socket: true, sock: s || null });
+        rating: (s ? `${root.tubeSocketName(s)}; ` : "") + "for " + compressRefs(refs.slice().sort(refCmp)), partno: s ? s.name || s.id : "", socket: true, sock: s || null });
     });
     const rows = [...lines.values()].map(L => {
       L.refs.sort(refCmp);

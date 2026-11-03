@@ -26,7 +26,7 @@ test("the list: unique numbers, a known base and mount for each; the board ones 
   for (const s of LIST) {
     assert.ok(["B9A", "B7G", "B9D", "OCTAL", "UX4", "UX6", "JUMBO", "GU50", "GM70", "B7A"].includes(s.base), s.id);
     assert.ok(["pcb", "chassis", "bottom", "panel"].includes(s.mount), s.id);
-    assert.ok(s.p > 0, s.id);
+    assert.ok(s.p > 0 || (s.shop === "tec" && /^https:\/\/tec\.org\.ru\/board\//.test(s.url) && s.name && /^[A-Z0-9-]+$/.test(s.id)), s.id);
     if (!s.body) continue;
     assert.equal(s.mount, "pcb", `${s.id}: a board footprint only for a PCB socket`);
     assert.equal(s.src, "drawing");
@@ -34,7 +34,8 @@ test("the list: unique numbers, a known base and mount for each; the board ones 
     s.body.forEach(([d, z1, z2]) => assert.ok(d > 10 && z2 > z1 && z1 >= 0, s.id));
     if (s.flange && s.screw) assert.ok(s.flange.l > s.screw && s.flange.hole > 2, s.id);
   }
-  assert.equal(LIST.filter(s => s.body).length, 20);
+  assert.equal(LIST.filter(s => s.body).length, 23);
+  assert.ok(LIST.filter(s => s.shop === "tec").length >= 30, "the Soviet ones too");
   assert.equal(globalThis.TUBE_SOCKET_URL(LIST[0]), "https://www.goodcomponent.com/products/vacuum-tube-soket/socket/1181.html");
 });
 
@@ -73,6 +74,16 @@ test("footprints: the tails on the drawing's circle at the contacts' angles, scr
     });
   }
   assert.equal(B.footprint("SOCKET-OCTAL.GZC9-Y"), null, "a socket of another base is not a footprint");
+  // the Soviet board sockets, from tec.org.ru's drawings: ПЛК9-2П tails bent out to Ø20,
+  // ПЛК7-1П straight down on Ø9.5, ПЛК8-ПО straight down on Ø17.5
+  for (const [name, r] of [["SOCKET-B9A.PLK9-2P", 10], ["SOCKET-B7G.PLK7-1P", 4.75], ["SOCKET-OCTAL.PLK8-PO", 8.75]]) {
+    const q = B.footprint(name), gen = B.footprint(name.split(".")[0]);
+    q.pads.forEach((p, i) => {
+      assert.ok(Math.abs(Math.hypot(p.x, p.y) - r) < 0.01, `${name} pad ${p.num} on Ø${2 * r}`);
+      assert.ok(Math.abs(Math.atan2(p.y, p.x) - Math.atan2(gen.pads[i].y, gen.pads[i].x)) < 1e-3, `${name} pad ${p.num} at the contact's angle`);
+    });
+    assert.match(q.title, /\(PLK[0-9]-[A-Z0-9]+, tec\.org\.ru\)/);
+  }
 });
 
 test("the Socket field lists the board sockets of the valve's base first, then the chassis ones", () => {
@@ -142,6 +153,11 @@ test("BOM: a socket line per socket picked, with its number and the shop's page"
   const nl = amp(""), [v2] = B.physicalParts(nl).filter(g => g.ref === "VL2");
   const board = { parts: { [v2.key]: { fp: "SOCKET-OCTAL.GZS8-F" } } };
   assert.equal(BOM.build(nl.parts, { sockets: true, board }).find(r => r.socket && /Octal/.test(r.value)).partno, "GZS8-F");
+  // a Soviet one: its designation, its Latin spelling and the shop
+  const sov = BOM.build(amp("PLK9-2P").parts, { sockets: true }).find(r => r.socket && /Noval/.test(r.value));
+  assert.equal(sov.partno, "ПЛК9-2П");
+  assert.match(sov.rating, /^ПЛК9-2П \(PLK9-2P, tec\.org\.ru\); for VL1/);
+  assert.equal(sov.url, "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_2p/190-1-0-2778");
   // a pick that doesn't fit the valve's base is ignored
   const odd = amp("GZC8-Y-5");
   assert.equal(BOM.build(odd.parts, { sockets: true }).find(r => r.socket && /Noval/.test(r.value)).partno, "");

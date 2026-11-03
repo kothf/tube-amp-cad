@@ -80,7 +80,7 @@
   const SOCKET_MOUNT = { pcb: "PCB mount", chassis: "chassis mount", bottom: "under-chassis mount", panel: "panel mount" };
   function socketOptions(base) {
     const all = (root.TUBE_SOCKETS || []).filter(s => base && s.base === base);
-    const row = s => [s.id, `${s.id}${s.gold ? ` / ${s.gold}` : ""} · ${s.mat}, ${SOCKET_MOUNT[s.mount]}${s.screw ? `, screws ${s.screw} mm` : ""}${s.cut ? `, cut-out Ø${s.cut}` : ""}${s.note ? ` (${s.note})` : ""}`];
+    const row = s => [s.id, `${s.name || s.id}${s.gold ? ` / ${s.gold}` : ""} · ${s.mat}, ${SOCKET_MOUNT[s.mount]}${s.screw ? `, screws ${s.screw} mm` : ""}${s.cut ? `, cut-out Ø${s.cut}` : ""}${s.note ? ` (${s.note})` : ""}`];
     return [["", "Any socket (generic footprint)"],
       ...all.filter(s => s.body).map(s => [...row(s), "On the board: footprint and 3D model"]),
       ...all.filter(s => !s.body).map(s => [...row(s), "On the chassis or a panel: wired to the board"])];
