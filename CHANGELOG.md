@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.179.1] - 2026-11-03
+
+### Removed
+- **Board sockets with no drawing of their tails are no longer offered** (GZC7-Y-B, GZC8-Y-4, GZC9-F-Y-55, GZC9-Y-3, ПЛ9-4К, ПЛ7-4К): no shop, maker or catalogue publishes where their tails come down, and a footprint guessed from photos would not fit. The *Tube socket* list now has 88 GoodComponent and 29 Soviet sockets; chassis sockets stay, as they are wired to the board. A circuit saved with one of them shows *Any socket*.
+
 ## [3.179.0] - 2026-11-03
 
 ### Added

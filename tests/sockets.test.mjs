@@ -35,7 +35,9 @@ test("the list: unique numbers, a known base and mount for each; the board ones 
     if (s.flange && s.screw) assert.ok(s.flange.l > s.screw && s.flange.hole > 2, s.id);
   }
   assert.equal(LIST.filter(s => s.body).length, 24);
-  assert.ok(LIST.filter(s => s.shop === "tec").length >= 30, "the Soviet ones too");
+  assert.ok(LIST.filter(s => s.shop === "tec").length >= 29, "the Soviet ones too");
+  // no drawing, not offered: every board socket on the list has its tails from a drawing
+  LIST.filter(s => s.mount === "pcb").forEach(s => assert.ok(s.body && s.src === "drawing", `${s.id}: a board socket with no drawing`));
   assert.equal(globalThis.TUBE_SOCKET_URL(LIST[0]), "https://www.goodcomponent.com/products/vacuum-tube-soket/socket/1181.html");
 });
 

@@ -1975,11 +1975,10 @@ TUBE_DATABASE.forEach(t => { const b = TUBE_BULBS[t.commonName] || TUBE_BULBS[TU
    Soviet sockets (shop: "tec", tec.org.ru's catalogue): name is the designation (ПЛК9-2П), id the
    same in Latin letters for footprint names, url the shop's page; their sizes from the shop's
    drawings.
-   Left out of the board list (on the BOM only): the PCB sockets with no drawing of where their
-   tails come down, at the shop or elsewhere (Parts Connexion, the maker Dongxin's own pages,
-   tec.org.ru): GZC7-Y-B, GZC8-Y-4, GZC9-F-Y-55, ПЛ9-4К, ПЛ7-4К, the CMC and EIZZ straight-pin
-   ones; and GZC9-Y-3, whose drawing (Dongxin's) gives its body (Ø21 × 10.5) but not the circle
-   of its tails. */
+   Left out altogether (Andrey: no drawing, not used): the board sockets with no drawing of where
+   their tails come down, at the shop or elsewhere (Parts Connexion, the maker Dongxin's pages,
+   tec.org.ru): GZC7-Y-B, GZC8-Y-4, GZC9-F-Y-55, GZC9-Y-3 (its drawing gives no tail circle),
+   ПЛ9-4К, ПЛ7-4К. Chassis sockets are wired, so they are listed without one. */
 /* exported TUBE_SOCKETS, TUBE_SOCKET_URL, tubeSocketBase, tubeSocketName */
 var TUBE_SOCKETS = [
   // ---- noval B9A, solder into the board ----
@@ -2032,8 +2031,6 @@ var TUBE_SOCKETS = [
   // ---- on the chassis or a panel, wired to the board (BOM only) ----
   { id: "GZS9-F2-D", p: 1341, base: "B9A", mount: "chassis", mat: "plastic", screw: 28, cut: 20 },
   { id: "GZC9-F-A", p: 1173, base: "B9A", mount: "chassis", mat: "ceramic", screw: 28, cut: 21.5 },
-  { id: "GZC9-F-Y-55", p: 1268, base: "B9A", mount: "pcb", mat: "ceramic", screw: 28, cut: 21.5, note: "with a 55 mm shield; no drawing of its tails" },
-  { id: "GZC9-Y-3", gold: "GZC9-Y-3-G", p: 1439, base: "B9A", mount: "pcb", mat: "ceramic", cut: 21, note: "its drawing gives no tail circle" },
   { id: "PCP9-F", gold: "PCP9-F-G", p: 1182, base: "B9A", mount: "chassis", mat: "bakelite", screw: 28 },
   { id: "GZC9-C", p: 427, base: "B9A", mount: "chassis", mat: "ceramic", screw: 28, cut: 18 },
   { id: "GZC9-C-1", gold: "GZC9-C-1-G", p: 429, base: "B9A", mount: "bottom", mat: "ceramic", screw: 28, cut: 18 },
@@ -2050,12 +2047,10 @@ var TUBE_SOCKETS = [
   { id: "EZ-1309A", p: 1864, base: "B9A", mount: "chassis", mat: "bakelite", screw: 29, cut: 21 },
   { id: "EZ-1309B", p: 2008, base: "B9A", mount: "chassis", mat: "bakelite", screw: 29, cut: 21 },
   { id: "EZ-9B", p: 1805, base: "B9A", mount: "chassis", mat: "PI", screw: 30, cut: 21 },
-  { id: "GZC7-Y-B", gold: "GZC7-Y-B-G", p: 355, base: "B7G", mount: "pcb", mat: "ceramic", cut: 17.8, note: "no drawing of its tails" },
   { id: "GZC7-F", gold: "GZC7-F-G", p: 350, base: "B7G", mount: "chassis", mat: "ceramic", screw: 22.5, cut: 16 },
   { id: "GZC7-D1-G", p: 373, base: "B7G", mount: "chassis", mat: "PTFE", screw: 30, cut: 21 },
   { id: "GZC9-2", p: 420, base: "B9D", mount: "chassis", mat: "ceramic", screw: 35, cut: 26 },
   { id: "GZC9-2-F", gold: "GZC9-2-F-G", p: 421, base: "B9D", mount: "bottom", mat: "ceramic", screw: 39, cut: 26 },
-  { id: "GZC8-Y-4", gold: "GZC8-Y-4-G", p: 1906, base: "OCTAL", mount: "pcb", mat: "ceramic", note: "long pins; no drawing" },
   { id: "GZC8-T1-G", p: 377, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 35, cut: 27, note: "straight pins, also on a board; no drawing" },
   { id: "GZC8-T2-G", p: 2003, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 35, cut: 27, note: "straight pins, also on a board; no drawing" },
   { id: "GZC8-T3-G", p: 1559, base: "OCTAL", mount: "chassis", mat: "ceramic", screw: 35, cut: 27 },
@@ -2110,9 +2105,6 @@ var TUBE_SOCKETS = [
     tail: 9.5, tw: 1.7, body: [[16, 0, 10.2], [19, 6.5, 9]] },
   { id: "PLK8-PO", name: "ПЛК8-ПО", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk8_po/190-1-0-3189", base: "OCTAL", mount: "pcb", mat: "ceramic", col: "white", src: "drawing",
     tail: 17.5, tw: 2, body: [[26.5, 0, 14.5], [30, 4.7, 10.6]] },
-  // on the board, no drawing of their tails
-  { id: "PL9-4K", name: "ПЛ9-4К", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_p/190-1-0-1501", base: "B9A", mount: "pcb", mat: "ceramic", note: "no drawing of its tails" },
-  { id: "PL7-4K", name: "ПЛ7-4К", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk7_p/190-1-0-1502", base: "B7G", mount: "pcb", mat: "ceramic", note: "no drawing of its tails" },
   // on the chassis, wired
   { id: "PLK9-F", name: "ПЛК9-Ф", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_f/190-1-0-2220", base: "B9A", mount: "chassis", mat: "ceramic", screw: 28, cut: 22 },
   { id: "PLK9-D40", name: "ПЛК9-Д40", shop: "tec", url: "https://tec.org.ru/board/ehlekrovakuumnye_pribory/lamppovye_paneli/plk9_d40/190-1-0-2869", base: "B9A", mount: "chassis", mat: "ceramic", note: "with a 40 mm valve clamp" },
