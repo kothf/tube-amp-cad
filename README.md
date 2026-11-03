@@ -558,13 +558,13 @@ the circuit file, so one file holds both.
     triode-connected pentode's screen its anode); valves on bases with no
     board socket here (wire-lead subminiatures, nuvistors, 211, 845, ГМ-70,
     ГУ-50, 6С33С) go on wire pads to a chassis socket;
-  - GoodComponent's real sockets (92 of them, for every base the tube library
+  - GoodComponent's real sockets (88 of them, for every base the tube library
     uses): pick one in the tube's *Tube socket* field (a dual valve's sections
     share it). The 21 PCB-mount ones with a
     published drawing get their own footprint (tails on the drawing's circle,
     flange screw holes, outline) and 3D model (body, flange, shield); a
     chassis or panel socket puts the valve on wire pads. The BOM lists the
-    socket's item number with a link to its shop page; Soviet sockets too (31
+    socket's item number with a link to its shop page; Soviet sockets too (29
     from tec.org.ru: ПЛК9-2П, ПЛК7-1П and ПЛК8-ПО with footprints and 3D from
     the shop's drawings, the rest chassis-mount);
   - board-mount EI transformers and chokes (EI30 to EI96, primary on one
