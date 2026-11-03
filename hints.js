@@ -503,7 +503,7 @@
     "Mirror": "Mirror the symbol left to right, so a signal can come from the other side without crossing wires (M).",
     "Part number": "The part number to buy, for the bill of materials. Saved with the circuit.",
     "Tube type": "The tube type. Ratings, pinout, heater and interelectrode capacitances come with it.",
-    "Tube socket": "The real socket from GoodComponent's range for this valve's base. A PCB-mount one puts its own footprint on the board (its tails' circle, the flange's screw holes, its outline) and its 3D model under the valve; a chassis-mount one leaves the valve on wire pads. Its item number goes on the BOM's socket line.",
+    "Tube socket": "The real socket from GoodComponent's range for this valve's base. A PCB-mount one puts its own footprint on the board (its tails' circle, the flange's screw holes, its outline) and its 3D model under the valve; a chassis-mount one leaves the valve on wire pads. Its item number goes on the BOM's socket line. The sections of a dual valve share it: set it in one, the other follows.",
     // section titles
     "Open in": "This scope's channels in the full instrument windows.",
     "Operating point": "The circuit at rest (DC) and the averages over the signal cycle, from the latest simulation. A spinning percentage means the run is still settling.",

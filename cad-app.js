@@ -907,6 +907,14 @@
   // then top to bottom. Parts whose labels share a base before a dot (a dual
   // triode VL1.1/VL1.2, the sections SA1.1/SA1.2 of one switch) stay one
   // object with their sections.
+  // The sections of one physical part: the parts of its type whose labels share the base before
+  // the dot (VL2.1 and VL2.2 are one dual triode), the part itself first.
+  function sectionsOf(c) {
+    const l = c.label || "", i = l.lastIndexOf(".");
+    if (i <= 0) return [c];
+    const base = l.slice(0, i);
+    return [c, ...S.comps.filter(q => q !== c && q.type === c.type && (q.label || "").lastIndexOf(".") > 0 && q.label.slice(0, q.label.lastIndexOf(".")) === base)];
+  }
   function renumber() {
     const groups = new Map();
     S.comps.forEach(c => {
@@ -1835,9 +1843,11 @@
           if (!groups[g]) { groups[g] = document.createElement("optgroup"); groups[g].label = g; el.appendChild(groups[g]); }
           groups[g].appendChild(o);
         });
-        el.value = String(f.get ? f.get(c) : c.params[f.key]);
+        // a setting of the whole physical part (a dual triode's socket): every section shows and takes it
+        const secs = f.shared ? sectionsOf(c) : [c];
+        el.value = String(f.get ? f.get(c) : f.shared ? (secs.map(q => q.params[f.key]).find(Boolean) || "") : c.params[f.key]);
         if (el.selectedIndex < 0) el.selectedIndex = 0;   // a setting the part was saved without (e.g. Mirror) shows its default
-        el.addEventListener("change", () => { if (LIB[c.type].flip && f.key === "pos") setSwitch(c, el.value); else if (f.apply) { f.apply(c, el.value); commit(); } else { c.params[f.key] = el.value; commit(); } });
+        el.addEventListener("change", () => { if (LIB[c.type].flip && f.key === "pos") setSwitch(c, el.value); else if (f.apply) { f.apply(c, el.value); commit(); } else { secs.forEach(q => { q.params[f.key] = el.value; }); commit(); } });
       } else if (f.kind === "range") {
         const wrap = document.createElement("div"); wrap.className = "range-wrap";
         const r = document.createElement("input"); r.type = "range"; r.min = f.min; r.max = f.max; r.step = f.step; r.value = c.params[f.key];

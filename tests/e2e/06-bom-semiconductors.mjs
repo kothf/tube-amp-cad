@@ -25,6 +25,22 @@ import { readFile } from "node:fs/promises";
   const sock = bom.rows.filter(r => r.desc === "Tube socket");
   check(sock.length === 1 && sock[0].value === "Noval B9A" && sock[0].qty === 2, `tube sockets are counted per base (${sock.map(r => r.qty + " × " + r.value).join(", ")})`);
   check(bom.rows.map(r => r.item).join() === bom.rows.map((_, i) => i + 1).join() && bom.rows[0].refs.startsWith("C"), "lines are numbered in designator order");
+  {
+    // a dual triode's sections sit in one socket: picked in one, the other shows and takes it
+    const pickIn = async (label, v) => {
+      await cad.evaluate(l => { const S = TubeCAD.state; S.sel.comps = new Set([S.comps.find(c => c.label === l).id]); TubeCAD.updateInspector(); }, label);
+      const sel = cad.locator("#inspector select").filter({ has: cad.locator('option[value="GZC9-Y"]') });
+      if (v) await sel.selectOption(v);
+      return sel.inputValue();
+    };
+    await pickIn("VL1.1", "GZS9-F");
+    const shown = await pickIn("VL1.2"), socks = await cad.evaluate(() => TubeCAD.state.comps.filter(c => /^VL1\./.test(c.label)).map(c => c.params.sock).join());
+    check(shown === "GZS9-F" && socks === "GZS9-F,GZS9-F", `a socket picked for VL1.1 goes to VL1.2 too (${socks})`);
+    await pickIn("VL1.2", "GZC9-Y");
+    const back = await cad.evaluate(() => TubeCAD.state.comps.filter(c => /^VL1\./.test(c.label)).map(c => c.params.sock).join());
+    check(back === "GZC9-Y,GZC9-Y" && (await cad.evaluate(() => TubeCAD.state.comps.find(c => c.label === "VL2").params.sock || "")) === "", `and back from VL1.2, leaving VL2 alone (${back})`);
+    await cad.evaluate(() => { TubeCAD.state.comps.forEach(c => { delete c.params.sock; }); TubeCAD.state.sel.comps = new Set(); TubeCAD.commit(); TubeCAD.updateInspector(); });
+  }
 
   await cad.keyboard.press("Escape"); await cad.locator("#cad").focus(); await cad.keyboard.press("b");
   check(await cad.isVisible("#bom") && (await cad.locator("#bom-table tbody tr").count()) === bom.rows.length, "B opens the BOM panel under the schematic with every line");

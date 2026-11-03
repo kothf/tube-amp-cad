@@ -558,7 +558,8 @@ the circuit file, so one file holds both.
     board socket here (wire-lead subminiatures, nuvistors, 211, 845, ГМ-70,
     ГУ-50, 6С33С) go on wire pads to a chassis socket;
   - GoodComponent's real sockets (92 of them, for every base the tube library
-    uses): pick one in the tube's *Tube socket* field. The 20 PCB-mount ones with a
+    uses): pick one in the tube's *Tube socket* field (a dual valve's sections
+    share it). The 20 PCB-mount ones with a
     published drawing get their own footprint (tails on the drawing's circle,
     flange screw holes, outline) and 3D model (body, flange, shield); a
     chassis or panel socket puts the valve on wire pads. The BOM lists the
