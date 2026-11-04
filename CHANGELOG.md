@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.180.0] - 2026-11-04
+
+### Changed
+- **A transformer shows its model when you select it.** The output transformers' *Model* and the interstage's *Kind* are now kept with the part, so the type you picked stays in the inspector (and on the schematic label) when you type your own value over a field: the list marks it *(edited)* and the inspector names each value that differs from the datasheet. *Custom (your datasheet values)* is a transformer of your own. Circuits saved before are recognised by their values, as before.
+
+### Fixed
+- **Examples 13 and 14 showed "Your datasheet values" instead of their transformer.** Example 13's 1627SEA had a leakage of 16.2 mH against the model's 20.2 mH, and the 1608's primary DCR of 101.7 Ω (from Hammond's drawing) was rounded to 102 Ω in the catalogue, so neither matched. Example 13 now has the model's leakage (no change at 1 kHz), the catalogue keeps the drawing's 101.7 Ω, and examples 04, 13, 14 and 15 name their transformer (1627SEA, 1608, 1750H). The Gubin examples' output transformers are their own, so they show *Custom*.
+- **Capacitances under 1 nF showed as 0 in the inspector** (a transformer's 200 pF winding capacitance, a 100 pF capacitor): the field now shows them in pico (200p). The value itself was always kept and simulated.
+
 ## [3.179.1] - 2026-11-03
 
 ### Removed

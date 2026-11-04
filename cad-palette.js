@@ -79,11 +79,11 @@
       Object.entries(L.VACTROLS).forEach(([k, m]) => X("Switches & relays", `Vactrol · ${k}`, m.use, "vactrol", { model: k }, `${k} vactrol optocoupler opto ldr photoresistor led cds ${m.use}`));
       L.PICKUPS.forEach(p => X("Sources", `Guitar pickup · ${p.name}`, `${fmtEng(p.l, "H")} ${fmtEng(p.r, "Ω")}`, "pickup", { preset: p.id, r: p.r, l: p.l, c: p.c, amp: p.amp }, `${p.name} guitar pickup bass single coil humbucker source`));
       L.CARTRIDGES.forEach(p => X("Sources", `Phono cartridge · ${p.name}`, fmtEng(p.mv, "V"), "phono", { preset: p.id, mv: p.mv, r: p.r, l: p.l }, `${p.name} phono cartridge turntable record riaa mm mc vinyl source`));
-      L.ITX_PRESETS.forEach(p => X("Transformers", p.name, "", "itx", Object.assign({}, ...["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"].map(k => ({ [k]: p[k] }))), `${p.name} transformer interstage input step-up`));
+      L.ITX_PRESETS.forEach(p => X("Transformers", p.name, "", "itx", Object.assign({ preset: p.id }, ...["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"].map(k => ({ [k]: p[k] }))), `${p.name} transformer interstage input step-up`));
       Object.entries(L.JACKS).forEach(([k, j]) => X("Ground & connectors", `Jack · ${j.use}`, k, "jack", { kind: k }, `jack socket input output ${k} ${j.use} phone headphone`));
       Object.entries(L.OUTPUT_TX).forEach(([k, m]) => X("Transformers", `Output · ${m.name}`, `${m.w} W ${m.ma} mA`, "opt_cat", { model: k }, `${k} ${m.name} output transformer single-ended`));
-      Object.entries(L.OPT_SE).forEach(([k, m]) => X("Transformers", `Output · ${m.name}`, `SE ${fmtEng(m.p.zp, "Ω")} ${m.w} W ${m.ma} mA`, "opt_se", Object.assign({}, m.p), `${k} ${m.name} output transformer single-ended ${m.maker}`));
-      Object.entries(L.OPT_PP).forEach(([k, m]) => X("Transformers", `Output · ${m.name}`, `PP ${fmtEng(m.p.zaa, "Ω")} ${m.w} W`, "opt_pp", Object.assign({}, m.p), `${k} ${m.name} output transformer push-pull ultralinear ${m.maker}`));
+      Object.entries(L.OPT_SE).forEach(([k, m]) => X("Transformers", `Output · ${m.name}`, `SE ${fmtEng(m.p.zp, "Ω")} ${m.w} W ${m.ma} mA`, "opt_se", Object.assign({ model: k }, m.p), `${k} ${m.name} output transformer single-ended ${m.maker}`));
+      Object.entries(L.OPT_PP).forEach(([k, m]) => X("Transformers", `Output · ${m.name}`, `PP ${fmtEng(m.p.zaa, "Ω")} ${m.w} W`, "opt_pp", Object.assign({ model: k }, m.p), `${k} ${m.name} output transformer push-pull ultralinear ${m.maker}`));
       Object.entries(L.POWER_TX).forEach(([k, m]) => X("Transformers", `Power · ${m.name}`, m.rated, "ptx_cat", { model: k }, `${k} ${m.name} power transformer ${m.rated}`));
       TUBES().forEach(t => out.push(tubeEntry(t)));
       return out;
