@@ -1136,7 +1136,16 @@
     { id: "line11", name: "Line input 1:1 (10 kΩ : 10 kΩ)", ratio: 1, lp: 20, dcrp: 50, dcrs: 60, llk: 2e-3, cs: 100e-12, idc: 0, ct: "no" }
   ];
   const ITX_KEYS = ["ratio", "lp", "dcrp", "dcrs", "llk", "cs", "idc", "ct"];
-  const itxPreset = id => { const p = ITX_PRESETS.find(q => q.id === id); return Object.assign({}, ...ITX_KEYS.map(k => ({ [k]: p[k] }))); };
+  const ITX_FIELD_NAMES = { ratio: "turns ratio", lp: "primary inductance", dcrp: "primary DCR", dcrs: "secondary DCR", llk: "leakage", cs: "winding capacitance", idc: "DC rating", ct: "centre tap" };
+  // the interstage's kind: the one picked (params.preset, kept when a value is typed over it), else the one whose values it has
+  function itxKind(c) {
+    if (c.params.preset === "custom") return null;
+    const same = (a, b) => (typeof a === "string" ? a === b : Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a)));
+    const edited = p => ITX_KEYS.filter(k => !same(p[k], c.params[k]));
+    const p = ITX_PRESETS.find(q => q.id === c.params.preset) || ITX_PRESETS.find(q => !edited(q).length);
+    return p ? Object.assign({ edited: edited(p) }, p) : null;
+  }
+  const itxPreset = id => { const p = ITX_PRESETS.find(q => q.id === id); return Object.assign({ preset: id }, ...ITX_KEYS.map(k => ({ [k]: p[k] }))); };
   // Output transformers from the makers' data, for the generic single-ended and push-pull parts'
   // Model field (a model fills in the fields; type your own over them). Hammond values are from each
   // part's drawing (hammfg.com/files/parts/pdf/<model>.pdf); the 1627–1640SEA inductance and DC
@@ -1211,18 +1220,30 @@
     if (!llkh) { llk = optDerive.llk(zaa, fhi); est.push("leakage"); }
     if (!dcrh) { const r = optDerive.dcr(zaa, loss); dcrh = r / 2; dcrs = r * 8 / zaa; est.push("winding resistances"); }
     OPT_PP[k] = { name: `${maker} ${k}`, maker, w, flo, fhi, est,
-      p: { zaa, zs: 8, lp: +lp.toPrecision(3), llk: +llk.toPrecision(3), cw: 300e-12, tap: 40, dcrp: +dcrh.toPrecision(3), dcrs: +dcrs.toPrecision(3), pw: w, flo } };
+      p: { zaa, zs: 8, lp: +lp.toPrecision(3), llk: +llk.toPrecision(3), cw: 300e-12, tap: 40, dcrp: +dcrh.toPrecision(4), dcrs: +dcrs.toPrecision(3), pw: w, flo } };
   });
   // the fields a model sets, and those that must match for the part to show the model's name (the
   // secondary impedance and its resistance may be changed: another tap of the same transformer)
   const OPT_KEYS = { opt_se: ["zp", "lp", "llk", "dcrp", "idc", "pw", "flo"], opt_pp: ["zaa", "lp", "llk", "tap", "dcrp", "pw", "flo"] };
+  // The part's model: the one picked in the Model list (kept in params.model, so the type stays
+  // shown when a value is typed over it: edited lists those values), else, for a part saved before
+  // that, the model whose values it has. "custom": the user's own values, no model.
+  const OPT_UNITS = { lp: "H", llk: "H", tap: "%", idc: "A", pw: "W", flo: "Hz" };
+  const OPT_FIELD_NAMES = { zp: "primary impedance", zaa: "plate-to-plate impedance", lp: "primary inductance", llk: "leakage", tap: "UL tap", dcrp: "primary DCR", idc: "DC rating", pw: "rated power", flo: "full-power frequency" };
   function optModel(c) {
     const cat = c.type === "opt_pp" ? OPT_PP : c.type === "opt_se" ? OPT_SE : null;
-    if (!cat) return null;
+    if (!cat || c.params.model === "custom") return null;
     const keys = OPT_KEYS[c.type], same = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a));
-    const k = Object.keys(cat).find(id => keys.every(f => same(+cat[id].p[f], +c.params[f])));
-    return k ? Object.assign({ id: k }, cat[k]) : null;
+    const edited = id => keys.filter(f => !same(+cat[id].p[f], +c.params[f]));
+    const k = Object.prototype.hasOwnProperty.call(cat, c.params.model) ? c.params.model : Object.keys(cat).find(id => !edited(id).length);
+    return k ? Object.assign({ id: k, edited: edited(k) }, cat[k]) : null;
   }
+  // the Model list of an output transformer: its own model marked "(edited)" when values were typed over it
+  function optOptions(c, cat, desc) {
+    const m = optModel(c);
+    return [["custom", "Custom (your datasheet values)"]].concat(Object.entries(cat).map(([k, x]) => [k, `${x.name}${m && m.id === k && m.edited.length ? " (edited)" : ""} · ${desc(x)}`]));
+  }
+  const optPick = (c, v, cat) => { const m = cat[v]; if (m) Object.assign(c.params, m.p, { model: v }); else c.params.model = "custom"; };
   // The core's knee (sim-engine.js coreFlux): at the rated power and the lowest frequency of the band,
   // on top of the flux of the rated DC (single-ended), the core stands at 75 % of the knee, where its
   // magnetising current is 10 % above the straight line (a few % distortion in the primary current).
@@ -1237,7 +1258,8 @@
   function optInfo(c) {
     const p = c.params, pp = c.type === "opt_pp", z = Math.max(+(pp ? p.zaa : p.zp) || 1, 1), m = optModel(c);
     const lp = +p.lp || 0, llk = +p.llk || 0, cw = +p.cw || 0, f = v => (v >= 1000 ? (v / 1000).toPrecision(3) + " kHz" : v.toPrecision(3) + " Hz");
-    let t = m ? `${m.name}: ${m.w} W${m.ma ? `, ${m.ma} mA DC max` : ""}, ±1 dB ${f(m.flo)}–${f(m.fhi)} at full power. ` : "";
+    let t = m ? `${m.name}: ${m.w} W${m.ma ? `, ${m.ma} mA DC max` : ""}, ±1 dB ${f(m.flo)}–${f(m.fhi)} at full power. ` : "Custom transformer: your own values (pick a Model to fill in a real part's). ";
+    if (m && m.edited.length) t += `Your values in place of the datasheet's: ${m.edited.map(k => `${OPT_FIELD_NAMES[k]} ${fmtEng(+p[k], OPT_UNITS[k] || "Ω")} (datasheet ${fmtEng(+m.p[k], OPT_UNITS[k] || "Ω")})`).join(", ")}. `;
     t += `From a source of ${fmtEng(z, "Ω")} into its rated load the bass is 3 dB down at ${f(z / 2 / (2 * Math.PI * Math.max(lp, 1e-9)))} (primary inductance), ` +
       `the treble at ${f(2 * z / (2 * Math.PI * Math.max(llk, 1e-12)))} (leakage)`;
     t += cw > 0 && llk > 0 ? `, and the leakage resonates with the winding capacitance at ${f(1 / (2 * Math.PI * Math.sqrt(llk * cw)))}. ` : ". ";
@@ -1649,9 +1671,9 @@
       pins: () => [{ id: "P1", x: -40, y: -30, name: "primary (B+)" }, { id: "P2", x: -40, y: 30, name: "primary (anode)" }, { id: "S1", x: 40, y: -30 }, { id: "S2", x: 40, y: 30 }],
       value: c => { const m = optModel(c); return (m ? m.id + " " : "") + fmtEng(c.params.zp, "") + ":" + fmtEng(c.params.zs, "Ω"); },
       fields: [
-        { key: "model", label: "Model", kind: "select", wide: true, options: () => [["custom", "Your datasheet values"]].concat(Object.entries(OPT_SE).map(([k, m]) => [k, `${m.name} · ${fmtEng(m.p.zp, "Ω")}, ${m.w} W, ${m.ma} mA`])),
+        { key: "model", label: "Model", kind: "select", wide: true, options: c => optOptions(c, OPT_SE, m => `${fmtEng(m.p.zp, "Ω")}, ${m.w} W, ${m.ma} mA`),
           get: c => (optModel(c) || { id: "custom" }).id,
-          apply: (c, v) => { const m = OPT_SE[v]; if (m) Object.assign(c.params, m.p); } },
+          apply: (c, v) => optPick(c, v, OPT_SE) },
         { key: "zp", label: "Primary impedance", unit: "Ω", kind: "eng" },
         { key: "zs", label: "Secondary impedance", unit: "Ω", kind: "eng" },
         { key: "lp", label: "Primary inductance", unit: "H", kind: "eng" },
@@ -1681,9 +1703,9 @@
         ...(c.params.ct === "yes" ? [{ id: "SC", x: 40, y: 0, name: "secondary centre tap" }] : []), { id: "S2", x: 40, y: 30, name: "secondary (end)" }],
       value: c => "1:" + fmtEng(c.params.ratio, "") + (c.params.ct === "yes" ? " CT" : ""),
       fields: [
-        { key: "preset", label: "Kind", kind: "select", wide: true, options: () => [["custom", "Your datasheet values"]].concat(ITX_PRESETS.map(p => [p.id, p.name])),
-          get: c => (ITX_PRESETS.find(p => ITX_KEYS.every(k => (typeof p[k] === "string" ? p[k] === c.params[k] : Math.abs(p[k] - c.params[k]) <= 1e-9 * Math.max(1, Math.abs(p[k]))))) || { id: "custom" }).id,
-          apply: (c, v) => { const p = ITX_PRESETS.find(q => q.id === v); if (p) ITX_KEYS.forEach(k => { c.params[k] = p[k]; }); } },
+        { key: "preset", label: "Kind", kind: "select", wide: true, options: c => { const m = itxKind(c); return [["custom", "Custom (your datasheet values)"]].concat(ITX_PRESETS.map(p => [p.id, p.name + (m && m.id === p.id && m.edited.length ? " (edited)" : "")])); },
+          get: c => (itxKind(c) || { id: "custom" }).id,
+          apply: (c, v) => { const p = ITX_PRESETS.find(q => q.id === v); if (p) { ITX_KEYS.forEach(k => { c.params[k] = p[k]; }); c.params.preset = v; } else c.params.preset = "custom"; } },
         { key: "ratio", label: "Turns ratio, secondary : primary (1 : n)", unit: "", kind: "eng" },
         { key: "ct", label: "Secondary centre tap", kind: "select", options: [["no", "No"], ["yes", "Yes (SC pin)"]] },
         { key: "lp", label: "Primary inductance", unit: "H", kind: "eng" },
@@ -1694,8 +1716,8 @@
         { key: "idc", label: "Primary DC rating (0: ungapped)", unit: "A", kind: "eng" }
       ],
       info: c => {
-        const p = c.params, n = +p.ratio || 1;
-        return `A small-signal transformer, 1:${fmtEng(n, "")}${p.ct === "yes" ? " with a centre-tapped secondary (SC) for a push-pull pair's grids" : ""}. ` +
+        const p = c.params, n = +p.ratio || 1, m = itxKind(c);
+        return (m ? `${m.name}${m.edited.length ? ", with your own " + m.edited.map(k => ITX_FIELD_NAMES[k]).join(", ") : ""}. ` : "Custom: your own values. ") + `A small-signal transformer, 1:${fmtEng(n, "")}${p.ct === "yes" ? " with a centre-tapped secondary (SC) for a push-pull pair's grids" : ""}. ` +
           `It steps the voltage up ${fmtEng(n, "")} times and the impedance ${fmtEng(n * n, "")} times. The bass falls where the primary inductance (${fmtEng(p.lp, "H")}) meets the source resistance; ` +
           `the treble where the leakage inductance (${fmtEng(p.llk, "H")}) resonates with the secondary's capacitance (${fmtEng(p.cs, "F")}, ${fmtEng(p.cs * n * n, "F")} seen at the primary): ` +
           `load the secondary to damp that peak. ${+p.idc > 0 ? `Gapped for ${fmtEng(p.idc, "A")} of DC in the primary (the driver's idle current, parafeed not needed).` : "Ungapped: keep DC out of the primary (parafeed through a capacitor, or a push-pull driver)."} ` +
@@ -1812,9 +1834,9 @@
         { id: "U2", x: -40, y: 20, name: "UL tap 2" }, { id: "P2", x: -40, y: 40, name: "anode 2" }, { id: "S1", x: 40, y: -30 }, { id: "S2", x: 40, y: 30 }],
       value: c => { const m = optModel(c); return (m ? m.id + " " : "") + fmtEng(c.params.zaa, "") + ":" + fmtEng(c.params.zs, "Ω"); },
       fields: [
-        { key: "model", label: "Model", kind: "select", wide: true, options: () => [["custom", "Your datasheet values"]].concat(Object.entries(OPT_PP).map(([k, m]) => [k, `${m.name} · ${fmtEng(m.p.zaa, "Ω")}, ${m.w} W`])),
+        { key: "model", label: "Model", kind: "select", wide: true, options: c => optOptions(c, OPT_PP, m => `${fmtEng(m.p.zaa, "Ω")}, ${m.w} W`),
           get: c => (optModel(c) || { id: "custom" }).id,
-          apply: (c, v) => { const m = OPT_PP[v]; if (m) Object.assign(c.params, m.p); } },
+          apply: (c, v) => optPick(c, v, OPT_PP) },
         { key: "zaa", label: "Plate-to-plate Z", unit: "Ω", kind: "eng" },
         { key: "zs", label: "Secondary impedance", unit: "Ω", kind: "eng" },
         { key: "lp", label: "Primary inductance (plate to plate)", unit: "H", kind: "eng" },

@@ -1741,6 +1741,12 @@
     });
   }
 
+  // a field's number without its unit; farads and henries keep pico values (fmtEng reads anything
+  // under a nano as round-off unless told the unit, which showed a 200 pF capacitance as 0)
+  function engText(v, unit) {
+    const u = unit === "F" || unit === "H" ? unit : "", t = fmtEng(v, u);
+    return u && t.endsWith(u) ? t.slice(0, -u.length) : t;
+  }
   function selectedComp() { return S.sel.comps.size === 1 && !S.sel.wires.size ? S.comps.find(c => S.sel.comps.has(c.id)) : null; }
 
   // Tell the curve tracer which tube is selected so its graph follows the editor
@@ -1810,7 +1816,7 @@
       if (f.kind === "eng") {
         // magnitude: the field shows the size of a signed value whose sign another field sets (the
         // DC supply's Polarity); a typed minus still flips it
-        el = input("text", f.optional && !(c.params[f.key] > 0) ? "" : fmtEng(f.magnitude ? Math.abs(c.params[f.key]) : c.params[f.key], ""), v => {
+        el = input("text", f.optional && !(c.params[f.key] > 0) ? "" : engText(f.magnitude ? Math.abs(c.params[f.key]) : c.params[f.key], f.unit), v => {
           if (f.optional && !String(v).trim()) { delete c.params[f.key]; commit(); return; }
           let n = parseEng(v);
           if (f.magnitude && n >= 0 && c.params[f.key] < 0) n = -n;
