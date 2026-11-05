@@ -129,6 +129,7 @@
     "Whoever opens this link gets the same circuit, with its imported tubes.": "Кто откроет эту ссылку, получит ту же схему вместе с импортированными лампами.",
     "Include the board layout": "Включить разводку платы", "Copy link": "Скопировать ссылку",
     "Project revisions": "Ревизии проекта", "Manager ↗": "Менеджер ↗", "Sign in ↗": "Войти ↗", "Project": "Проект", "New project…": "Новый проект…",
+    "Compare with…": "Сравнить с…", "Comparing…": "Сравниваю…", "No changes: the two are the same design.": "Изменений нет: это одна и та же схема.",
     "Download all": "Скачать все", "Save revision": "Сохранить ревизию", "Revisions, newest first": "Ревизии, новые сверху", "★ Milestones": "★ Вехи", "Revisions": "Ревизии",
     "Projects and their revisions are private to the owner of aerocat.tech: sign in with the site's login (Cloudflare Access) first. The login opens in its own window and closes itself.":
       "Проекты и их ревизии доступны только владельцу aerocat.tech: сначала войдите через вход сайта (Cloudflare Access). Окно входа откроется отдельно и закроется само.",
@@ -1793,6 +1794,8 @@
   const patterns = [
     // revisions: Restore as new, and what it says after
     [/^Restore as r(\d+)$/, "Восстановить как r$1"],
+    [/^Open r(\d+), mark changes since r(\d+)$/, "Открыть r$1, отметить изменения с r$2"],
+    [/^Changes since r(\d+): (.*)$/, (m, n, t) => `Изменения с r${n}: ${t}`],
     [/^Restoring r(\d+)…$/, "Восстанавливаю r$1…"],
     [/^r(\d+) is the newest revision again, as r(\d+)\. The sheet is unchanged: Open puts it there\.$/, "r$1 снова самая новая ревизия, как r$2. Лист не изменился: «Открыть» поставит её на лист."],
     // a transformer's model with values typed over it (the Model and Kind lists)

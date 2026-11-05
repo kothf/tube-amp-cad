@@ -216,6 +216,7 @@
     "frame.locked": "A locked frame cannot be dragged or deleted by accident.",
     "frame.size": "Sheet format (ISO 216).",
     "frame.orient": "Landscape or portrait.",
+    "frame.rev": "The drawing's revision, as you write it (A, B…). Type auto to show the project revision the sheet came from (File ▾ → Revisions…): r5, or r5+ once the sheet has changed since. Board texts can show it too: write ${REV}.",
     "offsheet.name": "Every connector with this name is the same net. Five or more with one name read as a supply rail (B+, bias).",
     "scope.ch1": "Volts per division on CH1. Auto picks a round value that shows the whole signal.",
     "scope.ch2": "Volts per division on CH2. Auto picks a round value that shows the whole signal.",

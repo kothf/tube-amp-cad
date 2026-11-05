@@ -62,7 +62,7 @@
         // the sheet's name: what its title adds to the others' ("…: power supply" → power supply)
         const sub = /:\s*([^:]+)$/.exec(p.title || ""), nm = (sub ? sub[1] : "").replace(/[/\\]/g, "-").trim();
         s.name = nm && !sheets.slice(0, i).some(o => o.name === nm) ? nm : "Sheet" + (i + 1); s.symbols = []; s.wires = []; s.junctions = []; s.labels = []; s.notes = [];
-        s.title = { title: p.title || name, date: p.date, rev: p.rev, company: p.owner, comments: [p.docno, p.reference, p.creator ? "Drawn: " + p.creator : ""] };
+        s.title = { title: p.title || name, date: p.date, rev: /^\s*auto\s*$/i.test(p.rev || "") ? (window.CadRevLabel || "") : p.rev, company: p.owner, comments: [p.docno, p.reference, p.creator ? "Drawn: " + p.creator : ""] };
       });
       const mm = (s, x, y) => [(x - s.ox) * K.UNIT + s.offX, (y - s.oy) * K.UNIT + s.offY];
       // pins to pads, and the board's parts by member id
@@ -197,7 +197,7 @@
         const fills = (side.board.zones || []).length ? BC.fillZones(side.board, model, c0, hvSet, side.netlist, []) : [];
         const conn = fills.length ? BC.connectivity(side.board, model.pads, fills) : c0;
         const sheetOf = id => { if (!multi) return ""; const c = S.comps.find(x => x.id === id), b = c ? compBBox(c) : null; return b ? sheets[sheetIndex(sheets, (b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2)].uuid + "/" : ""; };
-        files[name + ".kicad_pcb"] = K.pcb(side.board, model, conn, { title: f0.title, date: f0.date, rev: f0.rev, company: f0.company, version: String(VERSION).replace(/^\?v=/, ""), sheetOf, rename });
+        files[name + ".kicad_pcb"] = K.pcb(side.board, model, conn, { title: f0.title, date: f0.date, rev: /^\s*auto\s*$/i.test(f0.rev || "") ? (window.CadRevLabel || "") : f0.rev, company: f0.company, version: String(VERSION).replace(/^\?v=/, ""), sheetOf, rename });
         files[name + ".kicad_dru"] = K.rules(side.board, model, hvSet, side.netlist, rename);
         Object.assign(files, K.footprintLib(model, side.board));
         files["fp-lib-table"] = K.FP_TABLE;

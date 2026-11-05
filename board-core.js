@@ -696,8 +696,10 @@
   };
   /** Text as strokes, centred on (x, y): size is the cap height; rot in 90° steps (counter-clockwise
       on screen), mirror for the bottom side. Returns { w: stroke width, lines: [[[x, y]...]...], width } */
+  // ${REV} in a board text: the revision the CAD's sheet came from (File ▾ → Revisions…), r5 or r5+
+  const revText = t => String(t).replace(/\$\{REV(?:ISION)?\}/gi, () => (typeof root !== "undefined" && root.CadRevLabel) || "");
   function strokeText(text, x, y, size, rot, mirror) {
-    const u = size / 6, chars = [...String(text)].map(c => (GLYPHS[c] ? c : c.toUpperCase())), adv = 6 * u, W = Math.max(0, chars.length * adv - 2 * u), lines = [];
+    const u = size / 6, chars = [...revText(text)].map(c => (GLYPHS[c] ? c : c.toUpperCase())), adv = 6 * u, W = Math.max(0, chars.length * adv - 2 * u), lines = [];
     const tf = (px, py) => { let X = px - W / 2, Y = py - 3 * u; for (let r = 0; r < ((rot || 0) & 3); r++) [X, Y] = [Y, -X]; if (mirror) X = -X; return [+(x + X).toFixed(4), +(y + Y).toFixed(4)]; };
     chars.forEach((ch, i) => { const g = GLYPHS[ch]; if (g) g.split("|").forEach(st => lines.push(st.split(" ").map(pt => { const [a, b] = pt.split(",").map(Number); return tf(i * adv + a * u, b * u); }))); });
     return { w: +Math.max(0.12, size / 8).toFixed(3), lines, width: W };

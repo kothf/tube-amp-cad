@@ -67,7 +67,7 @@
         if (hi - lo > 1e-3) ranges[n] = [+lo.toPrecision(4), +hi.toPrecision(4)];
       });
       const f = frames()[0];
-      return { parts, names, volts, ranges, title: f ? f.params.title || "" : "", docno: f ? f.params.docno || "" : "", frame: f ? { ...f.params } : null, tubes: usedCustomTubes() };
+      return { parts, names, volts, ranges, title: f ? f.params.title || "" : "", docno: f ? f.params.docno || "" : "", frame: f ? { ...f.params } : null, rev: root.CadRevLabel || "", tubes: usedCustomTubes() };
     }
     let boardTimer = 0;
     function sendBoardNetlist(withBoard) {

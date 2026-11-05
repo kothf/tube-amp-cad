@@ -117,7 +117,40 @@ import { U, cad, check, ctx, open } from "./harness.mjs";
   await cad.waitForFunction(() => document.querySelectorAll("#rev-list .rev-item").length === 4);
   const r4 = (await items())[0];
   check(r4.n === 4 && /Restored r2/.test(r4.text) && /from r2|restored r2/.test(r4.text) && /^r3/.test(await $("rev-at").textContent()), `Restore as r4 saves r2 again as the newest, the sheet untouched (${r4.text})`);
+  // Compare with…: two revisions side by side, every change between them, no sheet touched
+  await cad.click("#rev-list .rev-item[data-n='3']");
+  await cad.selectOption("#rev-pair", "2");
+  await cad.waitForFunction(() => /r2 → r3/.test(document.querySelector(".rev-pair-head").textContent) && /changed/i.test(document.getElementById("rev-pair-list").textContent));
+  check(new RegExp(r.label + ".*3\\.3k → 4\\.7k").test(await $("rev-pair-list").textContent()), `Compare with… lists what changed between r2 and r3 (${(await $("rev-pair-list").textContent()).trim()})`);
+  await cad.click("#rev-preview button[data-act=pair-off]");
   await cad.click("#rev-close");
+  // connections, not wire drawings: a part moved with its wires is no change of connections
+  const moved = await cad.evaluate(() => {
+    const T = TubeCAD, a = JSON.parse(T.circuitJSON()), b = structuredClone(a);
+    const c = b.comps.find(x => x.type === "resistor");
+    const pins = T.compPins(a.comps.find(x => x.id === c.id)).map(p => p.x + "," + p.y);
+    c.x += 20;
+    b.wires.forEach(w => { if (pins.includes(w.x1 + "," + w.y1)) w.x1 += 20; if (pins.includes(w.x2 + "," + w.y2)) w.x2 += 20; });
+    const d = CadRevisions.diff(a, b, { netsOf: T.netsOf });
+    // and a wire end taken off a pin is a rewiring
+    const e = structuredClone(a), w = e.wires.find(x => pins.includes(x.x1 + "," + x.y1)); w.x1 += 5; w.x2 += 5;
+    const f = CadRevisions.diff(a, e, { netsOf: T.netsOf });
+    return { text: d.text, redrawn: d.wires.redrawn, rewired: f.changed.filter(x => x.rewired).map(x => x.part + ": " + x.what.join("; ")).join(" | ") };
+  });
+  check(moved.redrawn && /moved 1 part · wires redrawn, same connections/.test(moved.text), `a part moved with its wires: "${moved.text}"`);
+  check(/pin .*off/.test(moved.rewired), `a wire taken off a pin shows as rewired (${moved.rewired})`);
+  // the title block's Rev. auto, and a saved file that remembers its revision
+  const rl = await cad.evaluate(() => {
+    const f = TubeCAD.frames()[0]; f.params.rev = "auto"; TubeCAD.commit();
+    const j = JSON.parse(TubeCAD.circuitJSON());
+    return { label: window.CadRevLabel, link: j.revLink, text: JSON.stringify(j) };
+  });
+  check(/^r3\+?$/.test(rl.label) && rl.link && rl.link.n === 3, `Rev. "auto" shows ${rl.label}, and a saved file keeps its project and revision (r${rl.link && rl.link.n})`);
+  await cad.evaluate(() => TubeCAD.revisions().detach());
+  await cad.waitForFunction(() => document.getElementById("rev-at").hidden);
+  await cad.evaluate(t => TubeCAD.openText(t, "saved.json"), rl.text);
+  await cad.waitForFunction(() => /^r3/.test(document.getElementById("rev-at").textContent) && !document.getElementById("rev-at").hidden);
+  check(true, "opening that file again brings its revision back (the r3 chip)");
 
   // the manager page: space, projects with their revisions, the short links
   await fetch(`http://127.0.0.1:${store.address().port}/api/share`, { method: "POST", body: (await cad.evaluate(() => TubeCAD.shareLink())).long.split("#c=")[1] });
