@@ -71,6 +71,7 @@
       // imported SPICE tubes of the circuit: their socket and pinout come with them
       if (window.SpiceModel && Array.isArray(m.netlist.tubes)) m.netlist.tubes.forEach(t => { try { SpiceModel.register(t); } catch (e) { /* a built-in of that name */ } });
       S.raw = m.netlist; S.netlist = B.withHeaters(S.raw, S.board.rules);
+      window.CadRevLabel = m.netlist.rev || "";      // ${REV} in board texts, "auto" in the sheet's Rev. field
       // a new board (or one without parts) takes the schematic's parts at once
       let placed = false;
       if (!Object.keys(S.board.parts).length && (m.netlist.parts || []).length) { const r = B.sync(S.board, S.netlist); placed = r.added.length > 0; if (placed) msg(`Placed ${r.added.length} parts below the board: drag them onto it, or Place all on the board`); }
@@ -91,6 +92,11 @@
       // wires of one net selected there: highlight that net here; cleared there: off again
       if (!g && typeof m.net === "number" && S.model.names[m.net] !== undefined) { S.netHL = m.net; S.netFromCad = true; msg(`Highlighting ${netName(m.net)} (selected in the schematic)`); renderNets(); render(); }
       else if (S.netFromCad && S.netHL !== null) { S.netHL = null; S.netFromCad = false; renderNets(); render(); }
+    } else if (m.type === "BOARD_DIFF") {
+      // Compare in the CAD's Revisions: the board's changes since that revision, drawn over the board
+      S.revDiff = m.diff || null;
+      if (S.revDiff) msg(`Changes since ${m.rev || "the revision"}: ${S.revDiff.text}`); else msg("Compare finished");
+      render();
     } else if (m.type === "ACK" && pendingAck[m.id]) { clearTimeout(pendingAck[m.id]); delete pendingAck[m.id]; S.saved = true; status("ok", linkText()); }
   };
   // cross-probing: a part selected here is selected in the schematic too

@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.182.0] - 2026-11-05
+
+### Added
+- **Compare any two revisions.** *Compare with…* in File ▾ → Revisions… (or Shift+click in the list) shows two revisions side by side with every change between them, without opening either; *Open rB, mark changes since rA* puts the newer one on the sheet with Compare on.
+- **Compare by connections.** What a pin is connected to is compared, not how the wires are drawn: a part moved with its wires says *wires redrawn, same connections* instead of a count of wires; a pin that now joins other pins is listed as rewired, with what it joins and leaves.
+- **The board in Compare.** Parts placed, taken off, moved or turned, footprints, tracks (with their length), vias, the outline and the rest are listed, and the Board window draws them over the board while Compare is on. Each revision keeps a picture of its board (Sheet | Board in the preview).
+- **A saved file remembers its revision**: File ▾ → Save keeps the project and revision the sheet came from, and opening the file again brings the r5 chip back. Each browser tab keeps its own revision.
+- **Revision in the title block and on the board**: *auto* in the title block's Rev. field shows r5 (r5+ once changed since) on the sheet, in prints, PDFs and the KiCad export; `${REV}` in a board text puts it on the silkscreen and in the Gerbers.
+
 ## [3.181.0] - 2026-11-05
 
 ### Added

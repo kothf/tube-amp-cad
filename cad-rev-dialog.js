@@ -12,6 +12,10 @@
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   function CadRevDialog(cad) {
     const { circuitJSON, openDesign, setStatus, sheetName, isDirty, showDiff, focusDiff, thumbnail } = cad;
+    // the connections of a design (Compare goes by which pins share a net), the board window's
+    // overlay, and what to redraw when the revision's label changes (title block, board texts)
+    const DOPT = { netsOf: cad.netsOf };
+    const sendBoardDiff = cad.boardDiff || (() => {}), relabel = cad.relabel || (() => {});
     const R = root.CadRevisions, api = R.client(location.origin);
     const $ = id => document.getElementById(id);
     const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -21,7 +25,11 @@
     let projects = [], revs = [], pending = null, seq = 0, pick = null, starsOnly = false, nowHash = "";
     let cur = load(KEY) || "";
     // the revision the sheet came from (opened or saved): { project, name, n, hash }
-    let at = (() => { try { return JSON.parse(load(AT)) || null; } catch (e) { return null; } })();
+    // kept per tab (sessionStorage), so two tabs on two projects each keep theirs; a new tab starts
+    // from the last one any tab had (the circuit it restores is that one too)
+    const loadAt = () => { try { const v = sessionStorage.getItem(AT); if (v) return JSON.parse(v); } catch (e) { /* no session storage */ } try { return JSON.parse(load(AT)) || null; } catch (e) { return null; } };
+    const keepAt = v => { keep(AT, v); try { if (v === null) sessionStorage.removeItem(AT); else sessionStorage.setItem(AT, v); } catch (e) { /* private window */ } };
+    let at = loadAt();
     let diff = null;                         // Compare on the sheet: { project, n, name }
     const remember = id => { cur = id; keep(KEY, id); };
     const info = (text, kind) => { const el = $("rev-info"); el.textContent = text || ""; el.className = "insp-help" + (kind ? " " + kind : ""); };
@@ -36,7 +44,8 @@
       if (s < 172800) return "yesterday";
       return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
     }
-    const sheet = () => JSON.parse(circuitJSON());
+    // the design as a revision keeps it: without the note of the revision it came from
+    const sheet = () => { const d = JSON.parse(circuitJSON()); delete d.revLink; return d; };
     // the store's fingerprint of a design (server: SHA-256 of its JSON, base64url, 16 characters)
     async function hashOf(d) {
       if (!(root.crypto && crypto.subtle)) return "";
@@ -62,13 +71,28 @@
     function chip() {
       const el = $("rev-at"); if (!el) return;
       el.hidden = !at;
-      if (!at) return;
+      if (!at) { label(""); return; }
       const changed = nowHash && nowHash !== at.hash;
+      label(`r${at.n}${changed ? "+" : ""}`);
       el.innerHTML = `r${at.n}${changed ? '<span class="dirty"> •</span>' : ""}`;
       el.title = `${at.name} · revision r${at.n}` + (changed ? " · the sheet has changed since: Ctrl+Alt+S saves the next revision" : " · the sheet is this revision") + " (click for the revisions)";
     }
-    function attach(project, name, n, hash) { at = { project, name, n, hash }; keep(AT, JSON.stringify(at)); nowHash = hash; chip(); }
-    function detach() { at = null; keep(AT, null); closeDiff(); chip(); }
+    // the revision as the title block and board texts show it ("auto" in the frame's Rev. field,
+    // ${REV} in a board text): r5, or r5+ once the sheet has changed since
+    function label(t) {
+      if ((root.CadRevLabel || "") === t) return;
+      root.CadRevLabel = t; relabel();
+    }
+    function attach(project, name, n, hash) { at = { project, name, n, hash }; keepAt(JSON.stringify(at)); nowHash = hash; chip(); }
+    // what a saved file keeps of it, so opening the file again knows its project and revision
+    const link = () => (at ? { project: at.project, name: at.name, n: at.n, hash: at.hash } : null);
+    function relink(l) {
+      if (!l || !R.PID.test(String(l.project)) || !Number.isInteger(l.n) || typeof l.hash !== "string") return;
+      at = { project: l.project, name: String(l.name || "the project").slice(0, 120), n: l.n, hash: l.hash }; keepAt(JSON.stringify(at));
+      if (cur !== at.project) remember(at.project);
+      hashOf(sheet()).then(h => { nowHash = h; chip(); }).catch(() => {});
+    }
+    function detach() { at = null; keepAt(null); closeDiff(); chip(); }
     let tick = 0;
     // the sheet changed: the chip's •, and Compare follows the edits
     function changed() {
@@ -156,19 +180,62 @@
       svg.innerHTML = lines.join("") + dots.join("");
     }
     // the revision picked: its picture and what it holds, with its buttons
+    let picKind = "sheet", pair = null, pairSeq = 0;     // the preview's picture (sheet | board); Compare with: the other revision's number
+    const pics = r => [r.thumb ? ["sheet", "Sheet", api.thumbUrl(cur, r.n)] : null, r.bthumb ? ["board", "Board", api.bthumbUrl(cur, r.n)] : null].filter(Boolean);
+    function picture(r, small) {
+      const list = pics(r); if (!list.length) return `<div class="rev-pic${small ? " small" : ""}"><span>No picture${r.n && !r.thumb ? " (saved before 3.144.0)" : ""}</span></div>`;
+      const p = list.find(x => x[0] === picKind) || list[0];
+      return `<div class="rev-pic${small ? " small" : ""}"><img alt="r${r.n}, ${p[1].toLowerCase()}" src="${esc(p[2])}"></div>`;
+    }
+    // the revision picked: its picture and what it holds, with its buttons; or, with Compare with…,
+    // what changed between it and another one
     function preview() {
       const r = revs.find(x => x.n === pick), el = $("rev-preview");
       if (!r) { el.innerHTML = `<div class="rev-empty">${cur ? "Pick a revision to see it here." : ""}</div>`; return; }
-      el.innerHTML = `<div class="rev-pic">${r.thumb ? `<img alt="r${r.n}, first sheet" src="${esc(api.thumbUrl(cur, r.n))}">` : `<span>No picture (saved before 3.144.0)</span>`}</div>
+      if (pair !== null && pair !== r.n && revs.some(x => x.n === pair)) { comparePair(r, revs.find(x => x.n === pair)); return; }
+      pair = null;
+      const tabs = pics(r).length > 1 ? `<div class="rev-tabs">${pics(r).map(([k, t]) => `<button class="btn toggle${k === (pics(r).find(x => x[0] === picKind) || pics(r)[0])[0] ? " active" : ""}" data-pic="${k}">${t}</button>`).join("")}</div>` : "";
+      const others = revs.filter(x => x.n !== r.n);
+      el.innerHTML = `${tabs}${picture(r)}
         <div class="rev-meta"><b>r${r.n}</b>${r.milestone ? ` <span class="star">★ ${esc(r.milestone)}</span>` : ""} · ${esc(when(r.time))}${r.parent ? ` · from r${r.parent}` : ""}</div>
         <div class="rev-msg">${esc(r.message) || '<span class="muted">No message</span>'}</div>
         ${r.summary ? `<div class="rev-sum">${esc(r.summary)}</div>` : ""}
         <div class="rev-btns">
           <button class="btn active" data-act="open" title="Put this revision on the sheet (the next Save revision is made from it)">Open</button>
           <button class="btn" data-act="compare" title="Mark on the sheet what changed since this revision, and step through the changes">Compare on the sheet</button>
+          ${others.length ? `<select id="rev-pair" aria-label="Compare with another revision" title="What changed between this revision and another one, without opening either (Shift+click in the list does it too)"><option value="">Compare with…</option>${others.map(x => `<option value="${x.n}">r${x.n}${x.milestone ? " ★ " + esc(x.milestone) : ""}${x.message ? " · " + esc(x.message.slice(0, 40)) : ""}</option>`).join("")}</select>` : ""}
           <button class="btn" data-act="star" title="A milestone stands out in the list and can be shown alone">${r.milestone ? "★ Milestone…" : "☆ Milestone…"}</button>
           ${r !== revs[0] ? `<button class="btn" data-act="restore" title="Save this revision again as the newest one (r${revs[0].n + 1}, from r${r.n}), without touching the sheet; nothing is lost">Restore as r${revs[0].n + 1}</button>` : ""}
         </div>`;
+    }
+    // two revisions side by side: their pictures, and every change from the older to the newer
+    async function comparePair(r, o) {
+      const el = $("rev-preview"), A = o.n < r.n ? o : r, B = o.n < r.n ? r : o, my = ++pairSeq;
+      const row = (k, cls, items) => (items.length ? `<div class="rev-ch"><span class="k ${cls}">${k}</span> ${items.join(", ")}</div>` : "");
+      el.innerHTML = `<div class="rev-pair-head"><b>r${A.n}</b> → <b>r${B.n}</b><span class="sp"></span><button class="btn" data-act="pair-off" title="Back to r${r.n} alone">✕</button></div>
+        <div class="rev-two">${picture(A, true)}${picture(B, true)}</div>
+        <div class="rev-sum" id="rev-pair-list">Comparing…</div>
+        <div class="rev-btns"><button class="btn active" data-act="pair-open" data-a="${A.n}" data-b="${B.n}" title="Put r${B.n} on the sheet and mark on it what changed since r${A.n}">Open r${B.n}, mark changes since r${A.n}</button></div>`;
+      try {
+        const [da, db] = await Promise.all([design(cur, A.n), design(cur, B.n)]);
+        if (my !== pairSeq) return;
+        const d = R.diff(da, db, DOPT), parts = d.changed.filter(c => !c.frame);
+        const out = d.none ? "No changes: the two are the same design." : [
+          row("added", "added", d.added.map(esc)), row("removed", "removed", d.removed.map(esc)),
+          parts.map(c => `<div class="rev-ch"><span class="k ${c.rewired ? "rewired" : "changed"}">${c.rewired ? "rewired" : "changed"}</span> <b>${esc(c.part)}</b> ${c.what.map(esc).join("; ")}</div>`).join(""),
+          d.changed.some(c => c.frame) ? row("title", "changed", ["title block"]) : "",
+          row("moved", "moved", d.moved.map(esc)),
+          d.wires.redrawn ? row("wires", "moved", ["redrawn, same connections"]) : d.wires.added || d.wires.removed ? row("wires", "changed", [`+${d.wires.added} −${d.wires.removed}`]) : "",
+          d.boardDiff ? row("board", "board", [esc(d.boardDiff.text)]) : "", d.tubes ? row("tubes", "changed", ["imported tubes changed"]) : "",
+        ].join("");
+        $("rev-pair-list").innerHTML = out;
+      } catch (err) { if (my === pairSeq) $("rev-pair-list").textContent = err.message; }
+    }
+    // Open the newer one, then Compare on the sheet against the older one
+    async function openPair(a, b) {
+      pair = null;
+      await openRev(cur, b);
+      if (at && at.n === b && at.project === cur) await compare(a);
     }
     // what Save revision would keep: the changes since the revision the sheet came from (else the latest)
     async function showChanges(my) {
@@ -176,7 +243,7 @@
       if (!revs.length) { el.textContent = "The first revision of this project."; return; }
       const base = baseRev();
       try {
-        const d = R.diff(await design(cur, base.n), sheet());
+        const d = R.diff(await design(cur, base.n), sheet(), DOPT);
         if (my !== seq) return;
         el.textContent = d.none ? `The sheet is the same as r${base.n}: nothing new to save.` : `Changes since r${base.n}: ${d.text}`;
       } catch (err) { el.textContent = ""; }
@@ -188,8 +255,11 @@
       const btn = $("rev-save"); btn.disabled = true;
       try {
         const d = sheet(), base = baseRev(), latest = revs[0];
-        const summary = base ? (base !== latest ? `from r${base.n}: ` : "") + R.diff(await design(cur, base.n), d).text : "first revision";
-        const r = await api.saveRevision(cur, { message: $("rev-message").value.trim(), summary, parent: base && base !== latest ? base.n : undefined, thumb: thumbnail ? thumbnail() : undefined, design: d });
+        const summary = base ? (base !== latest ? `from r${base.n}: ` : "") + R.diff(await design(cur, base.n), d, DOPT).text : "first revision";
+        // the pictures show the title block as the new revision will have it
+        const was = root.CadRevLabel; label(`r${(latest ? latest.n : 0) + 1}`);
+        const thumb = thumbnail ? thumbnail() : undefined; label(was || "");
+        const r = await api.saveRevision(cur, { message: $("rev-message").value.trim(), summary, parent: base && base !== latest ? base.n : undefined, thumb, bthumb: R.boardPicture(d.board) || undefined, design: d });
         if (r.same) info(`The sheet is the same as r${r.n}: nothing new saved.`);
         else { designs.set(cur + "." + r.n, d); $("rev-message").value = ""; info(`Saved r${r.n} of ${projectName()}.`, "ok"); setStatus("ok", `Saved revision r${r.n} of ${projectName()}`); }
         attach(cur, projectName(), r.n, r.hash);
@@ -211,7 +281,8 @@
 
     // ---- Compare on the sheet ----
     async function markDiff(jump) {
-      const old = await design(diff.project, diff.n), d = R.diff(old, sheet());
+      const old = await design(diff.project, diff.n), d = R.diff(old, sheet(), DOPT);
+      sendBoardDiff(d.boardDiff, `r${diff.n}`);
       const prev = S().revDiff, idx = prev && !jump ? Math.min(prev.idx, Math.max(0, d.marks.length - 1)) : 0;
       showDiff(Object.assign(d, { idx }));
       bar(d);
@@ -238,7 +309,7 @@
     }
     function closeDiff() {
       if (!diff && !S().revDiff) return;
-      diff = null; showDiff(null);
+      diff = null; showDiff(null); sendBoardDiff(null);
       const el = $("rev-diff-bar"); if (el) el.hidden = true;
     }
     function step(k) {
@@ -269,7 +340,7 @@
         let thumb;
         if (r.thumb) thumb = await fetch(api.thumbUrl(cur, n), { credentials: "same-origin" }).then(x => (x.ok ? x.blob() : null)).then(b => b && new Promise(res => { const f = new FileReader(); f.onload = () => res(f.result); f.readAsDataURL(b); })).catch(() => undefined);
         const msg = $("rev-message").value.trim();
-        const saved = await api.saveRevision(cur, { message: msg || `Restored r${n}${r.message ? ": " + r.message : ""}`, summary: `restored r${n}: ` + R.diff(now, d).text, parent: n, thumb: thumb || undefined, metrics: r.metrics, design: d, force: true });
+        const saved = await api.saveRevision(cur, { message: msg || `Restored r${n}${r.message ? ": " + r.message : ""}`, summary: `restored r${n}: ` + R.diff(now, d, DOPT).text, parent: n, thumb: thumb || undefined, bthumb: R.boardPicture(d.board) || undefined, metrics: r.metrics, design: d, force: true });
         designs.set(cur + "." + saved.n, d); $("rev-message").value = "";
         pick = saved.n;
         info(`r${n} is the newest revision again, as r${saved.n}. The sheet is unchanged: Open puts it there.`, "ok");
@@ -330,9 +401,17 @@
       $("rev-save").addEventListener("click", save);
       $("rev-export").addEventListener("click", download);
       $("rev-stars").addEventListener("click", () => { starsOnly = !starsOnly; list(); });
-      $("rev-list").addEventListener("click", e => { const b = e.target.closest("[data-n]"); if (!b) return; pick = +b.dataset.n; list(); preview(); });
+      $("rev-list").addEventListener("click", e => {
+        const b = e.target.closest("[data-n]"); if (!b) return;
+        // Shift+click: compare the one picked with this one
+        if (e.shiftKey && pick !== null && +b.dataset.n !== pick) { pair = +b.dataset.n; preview(); return; }
+        pick = +b.dataset.n; pair = null; list(); preview();
+      });
+      $("rev-preview").addEventListener("change", e => { if (e.target.id === "rev-pair" && e.target.value) { pair = +e.target.value; preview(); } });
       $("rev-list").addEventListener("dblclick", e => { const b = e.target.closest("[data-n]"); if (b) openRev(cur, +b.dataset.n); });
       $("rev-preview").addEventListener("click", e => {
+        const t = e.target.closest("button[data-pic]");
+        if (t) { picKind = t.dataset.pic; preview(); return; }
         const b = e.target.closest("button[data-act]"); if (!b || pick === null) return;
         const act = b.dataset.act;
         if (act === "open") openRev(cur, pick);
@@ -341,6 +420,8 @@
         else if (act === "star-ok") setStar(pick, $("rev-star-name").value);
         else if (act === "star-off") setStar(pick, "");
         else if (act === "restore") restore(pick);
+        else if (act === "pair-off") { pair = null; preview(); }
+        else if (act === "pair-open") openPair(+b.dataset.a, +b.dataset.b);
         else preview();
       });
       $("rev-diff-bar").addEventListener("click", e => {
@@ -351,7 +432,7 @@
       if (c) c.addEventListener("click", () => open());
       if (at) hashOf(sheet()).then(h => { nowHash = h; chip(); }).catch(() => {}); else chip();
     }
-    return { open, openFromLink, wire, quickSave, changed, detach, closeDiff, state: () => ({ cur, projects, revs, at, pick }) };
+    return { open, openFromLink, wire, quickSave, changed, detach, closeDiff, link, relink, state: () => ({ cur, projects, revs, at, pick, pair }) };
   }
   root.CadRevDialog = CadRevDialog;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -35,6 +35,38 @@
       ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = alpha; ctx.drawImage(pourCanvas, 0, 0); ctx.restore();
     }
     const selColor = (kind, i, c) => (isSel(kind, i) ? "#00e5ff" : c);
+    // Compare (File ▾ → Revisions… in the CAD): what changed on the board since a revision. Tracks
+    // and vias added glow green, those taken out are dashed red where they were, parts moved or
+    // turned are boxed in blue with a line from where they stood, parts placed in green, parts taken
+    // off dashed red
+    const DIFF = { placed: "#3fb950", moved: "#79c0ff", changed: "#ffb300", "taken off": "#ff7b72" };
+    function drawRevDiff(D, px) {
+      ctx.save(); ctx.lineCap = "round"; ctx.lineJoin = "round";
+      const path = t => { ctx.beginPath(); t.pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); };
+      ctx.strokeStyle = "rgba(63,185,80,0.55)";
+      (D.tracksAdded || []).forEach(t => { ctx.lineWidth = t.w + 1.2; path(t); });
+      ctx.strokeStyle = "rgba(255,123,114,0.85)"; ctx.setLineDash([1.2, 0.9]);
+      (D.tracksRemoved || []).forEach(t => { ctx.lineWidth = Math.max(0.25, t.w * 0.5); path(t); });
+      ctx.setLineDash([]);
+      const ring = (v, col, dash) => { ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.2, 2 * px); ctx.setLineDash(dash ? [0.6, 0.5] : []); ctx.beginPath(); ctx.arc(v.x, v.y, (v.pad || 1.8) / 2 + 0.6, 0, Math.PI * 2); ctx.stroke(); };
+      (D.viasAdded || []).forEach(v => ring(v, "#3fb950"));
+      (D.viasRemoved || []).forEach(v => ring(v, "#ff7b72", true));
+      ctx.setLineDash([]);
+      const byId = new Map((S.model ? S.model.parts : []).filter(g => g.place).flatMap(g => g.members.map(m => [m.id, g])));
+      (D.parts || []).forEach(p => {
+        const col = DIFF[p.kind] || "#ffb300", g = byId.get(p.id);
+        let b = g ? partBox(g) : { x1: p.x - 3, y1: p.y - 3, x2: p.x + 3, y2: p.y + 3 };
+        if (p.kind === "taken off") b = { x1: p.x - 3, y1: p.y - 3, x2: p.x + 3, y2: p.y + 3 };
+        const m = 0.8;
+        ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.2, 1.6 * px); ctx.setLineDash(p.kind === "taken off" ? [0.8, 0.6] : []);
+        ctx.strokeRect(b.x1 - m, b.y1 - m, b.x2 - b.x1 + 2 * m, b.y2 - b.y1 + 2 * m);
+        if (p.from && (p.from.x !== p.x || p.from.y !== p.y)) {
+          ctx.setLineDash([0.8, 0.6]); ctx.beginPath(); ctx.moveTo(p.from.x, p.from.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+          ctx.beginPath(); ctx.arc(p.from.x, p.from.y, 0.7, 0, Math.PI * 2); ctx.stroke();
+        }
+      });
+      ctx.restore();
+    }
     function draw() {
       queued = false;
       const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -226,6 +258,7 @@
         $("st-msg").textContent = `Measure: ${r.title}${r.vtype === "none" ? "" : " " + BoardMeasure.label(r, U)}${r.ok === false ? " (too close)" : ""}${ends}`;
         measureCard(r);
       } else measureCard(null);
+      if (S.revDiff) drawRevDiff(S.revDiff, px);
       if (S.show.drc) S.drc.forEach(d => {
         if (d.kind === "unplaced") return;
         const r = Math.max(0.8, 6 * px);

@@ -6,6 +6,8 @@
    ============================================================================= */
 (function (root) {
   "use strict";
+  // the title block's Rev. field: "auto" shows the revision the sheet came from (File ▾ → Revisions…: r5, r5+ once changed since)
+  const revOf = v => (/^\s*auto\s*$/i.test(String(v || "")) ? (root.CadRevLabel || "–") : v);
 
   // ---------------------------------------------------------------------------
   // Engineering-notation helpers: "4.7k" <-> 4700
@@ -561,7 +563,7 @@
       field(0, 0, 70, "Responsible department", p.dept); field(70, 0, 40, "Technical reference", p.reference);
       field(110, 0, 35, "Document type", p.doctype); field(145, 0, 35, "Document status", p.status);
       field(0, 9, 70, "Created by", p.creator); field(70, 9, 40, "Approved by", p.approver); field(110, 9, 70, "Legal owner", p.owner);
-      field(0, 18, 110, "Title", p.title, 5); field(110, 18, 35, "Identification number", p.docno, 4.2); field(145, 18, 35, "Rev.", p.rev);
+      field(0, 18, 110, "Title", p.title, 5); field(110, 18, 35, "Identification number", p.docno, 4.2); field(145, 18, 35, "Rev.", revOf(p.rev));
       field(0, 27, 55, "Date of issue", p.date); field(55, 27, 55, "Lang.", p.lang); field(110, 27, 35, "Sheet", p.sheet); field(145, 27, 35, "Standards", "IEC 61082", 2.6);
       ctx.restore();
     },

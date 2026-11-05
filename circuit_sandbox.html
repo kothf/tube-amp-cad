@@ -386,6 +386,15 @@
     .rev-msg { font-size: 13px; }
     .rev-sum { color: var(--muted); max-height: 6em; overflow: auto; }
     .rev-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+    .rev-btns select { max-width: 150px; }
+    .rev-tabs { display: flex; gap: 4px; } .rev-tabs .btn { padding: 1px 8px; font-size: 11px; }
+    .rev-pair-head { display: flex; align-items: center; gap: 6px; font-size: 13px; } .rev-pair-head b { color: var(--accent); font-family: ui-monospace, Menlo, monospace; } .rev-pair-head .sp { flex: 1; } .rev-pair-head .btn { padding: 0 7px; }
+    .rev-two { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .rev-pic.small { font-size: 10px; }
+    #rev-pair-list { max-height: 14em; }
+    .rev-ch { margin: 2px 0; color: var(--text); } .rev-ch b { font-weight: 600; }
+    .rev-ch .k { display: inline-block; min-width: 56px; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+    .rev-ch .k.added { color: #3fb950; } .rev-ch .k.removed { color: #ff7b72; } .rev-ch .k.changed { color: #ffb300; } .rev-ch .k.moved { color: #79c0ff; } .rev-ch .k.rewired { color: #f778ba; } .rev-ch .k.board { color: #b388ff; }
     .rev-btns input { flex: 1; min-width: 140px; }
     /* the toolbar's revision chip, and Compare's bar over the sheet */
     .rev-at { font: 600 11px ui-monospace, Menlo, monospace; color: var(--accent); background: #0d1520; border: 1px solid #263445; border-radius: 6px; padding: 3px 7px; margin-right: 8px; cursor: pointer; }

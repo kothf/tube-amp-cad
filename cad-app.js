@@ -92,36 +92,44 @@
   // ---------------------------------------------------------------------------
   // Topology: nets from coincident points
   // ---------------------------------------------------------------------------
-  function computeTopology() {
+  function computeTopology(comps = S.comps, wires = S.wires) {
     const parent = new Map();
     const find = k => { if (!parent.has(k)) parent.set(k, k); let r = k; while (parent.get(r) !== r) r = parent.get(r); let c = k; while (parent.get(c) !== r) { const n = parent.get(c); parent.set(c, r); c = n; } return r; };
     const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
     const degree = new Map(), pinAt = new Map();
     const bump = k => degree.set(k, (degree.get(k) || 0) + 1);
-    S.wires.forEach(w => { const a = key(w.x1, w.y1), b = key(w.x2, w.y2); union(a, b); bump(a); bump(b); });
-    S.comps.forEach(c => compPins(c).forEach(p => { const k = key(p.x, p.y); find(k); bump(k); if (!pinAt.has(k)) pinAt.set(k, []); pinAt.get(k).push({ c, p }); }));
+    wires.forEach(w => { const a = key(w.x1, w.y1), b = key(w.x2, w.y2); union(a, b); bump(a); bump(b); });
+    comps.forEach(c => compPins(c).forEach(p => { const k = key(p.x, p.y); find(k); bump(k); if (!pinAt.has(k)) pinAt.set(k, []); pinAt.get(k).push({ c, p }); }));
     let groundRoot = null;
-    S.comps.forEach(c => { if (c.type === "ground") { const p = compPins(c)[0]; const r = find(key(p.x, p.y)); if (groundRoot === null) groundRoot = r; else union(r, groundRoot); } });
+    comps.forEach(c => { if (c.type === "ground") { const p = compPins(c)[0]; const r = find(key(p.x, p.y)); if (groundRoot === null) groundRoot = r; else union(r, groundRoot); } });
     // sheet connectors and power rails with the same name are one net (as if wired)
     const byName = new Map();
-    S.comps.forEach(c => { if (c.type !== "offsheet" && c.type !== "rail") return; const n = connName(c); if (!n) return; const r = find(key(c.x, c.y)); if (byName.has(n)) union(r, byName.get(n)); else byName.set(n, r); });
+    comps.forEach(c => { if (c.type !== "offsheet" && c.type !== "rail") return; const n = connName(c); if (!n) return; const r = find(key(c.x, c.y)); if (byName.has(n)) union(r, byName.get(n)); else byName.set(n, r); });
     if (groundRoot !== null) groundRoot = find(groundRoot);
     const netOfRoot = new Map();
     let next = 1;
     if (groundRoot !== null) netOfRoot.set(groundRoot, 0);
     const netOfKey = k => { const r = find(k); if (!netOfRoot.has(r)) netOfRoot.set(r, next++); return netOfRoot.get(r); };
     const pinNet = new Map();
-    S.comps.forEach(c => compPins(c).forEach(p => pinNet.set(c.id + ":" + p.id, netOfKey(key(p.x, p.y)))));
+    comps.forEach(c => compPins(c).forEach(p => pinNet.set(c.id + ":" + p.id, netOfKey(key(p.x, p.y)))));
     const wireNet = new Map();
-    S.wires.forEach(w => wireNet.set(w.id, netOfKey(key(w.x1, w.y1))));
+    wires.forEach(w => wireNet.set(w.id, netOfKey(key(w.x1, w.y1))));
     // connection count per pin (other things touching it)
     const pinConnected = new Map();
-    S.comps.forEach(c => compPins(c).forEach(p => pinConnected.set(c.id + ":" + p.id, (degree.get(key(p.x, p.y)) || 0) > 1)));
+    comps.forEach(c => compPins(c).forEach(p => pinConnected.set(c.id + ":" + p.id, (degree.get(key(p.x, p.y)) || 0) > 1)));
     const junctions = [];
     degree.forEach((d, k) => { if (d >= 3) { const [x, y] = k.split(",").map(Number); junctions.push({ x, y }); } });
     return { pinNet, wireNet, nodeCount: next, hasGround: groundRoot !== null, pinConnected, junctions, degree, pinAt };
   }
   function topo() { if (!S.topo) S.topo = computeTopology(); return S.topo; }
+  // the connections of a design as File › Save writes it (a revision): "partId:pinId" → net number,
+  // and each pin's name, for Compare (cad-revisions.js compares which pins share a net, not wires)
+  function netsOf(d) {
+    const comps = (d && d.comps || []).filter(c => LIB[c.type]).map(c => Object.assign({}, c, { params: Object.assign({}, LIB[c.type].defaults, c.params) }));
+    const T = computeTopology(comps, (d && d.wires) || []), pins = new Map();
+    comps.forEach(c => { try { LIB[c.type].pins(c).forEach(p => pins.set(c.id + ":" + p.id, p.name || String(p.id))); } catch (e) { /* a part that cannot say */ } });
+    return { net: T.pinNet, pins };
+  }
   const connName = c => String(c.params.name || "").trim().toUpperCase();
 
   // ---------------------------------------------------------------------------
@@ -2433,7 +2441,8 @@
   const JSON_TYPES = [{ description: "Tube Amp CAD circuit", accept: { "application/json": [".json"] } }];
   // imported SPICE tubes the circuit uses travel inside the file, so it opens anywhere
   function usedCustomTubes() { return [...new Set(S.comps.filter(c => c.type === "tube").map(c => c.params.tube))].map(tubeByName).filter(t => window.SpiceModel && SpiceModel.isCustom(t)); }
-  const circuitJSON = () => { const tubes = usedCustomTubes(); return JSON.stringify(Object.assign({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, S.blocks.length ? { blocks: S.blocks } : {}, tubes.length ? { tubes } : {}, S.board ? { board: S.board } : {}), null, 1); };
+  // revLink: the project and revision the sheet came from (File ▾ → Revisions…), so the file knows them when opened again
+  const circuitJSON = () => { const tubes = usedCustomTubes(), rl = revisions && revisions.link(); return JSON.stringify(Object.assign({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, S.blocks.length ? { blocks: S.blocks } : {}, tubes.length ? { tubes } : {}, S.board ? { board: S.board } : {}, rl ? { revLink: rl } : {}), null, 1); };
   // Reusable blocks (cad-blocks.js): Edit ▾ → Blocks…, the copies' outlines and their inspector
   const blocks = CadBlocks({ S, LIB, commit, compBBox, drawComp, esc: escH, getCtx: () => ctx, makeComp, newId, render, setStatus, snap, updateInspector });
   // ---------------------------------------------------------------------------
@@ -2663,6 +2672,7 @@
       storeBoard(d.board || null);
       S.sel.comps.clear(); S.sel.wires.clear();
       setCurFile(handle, name);
+      if (revisions && d.revLink) revisions.relink(d.revLink);   // a file saved from a revision: its chip comes back
       commit(); fitStart(); markClean();
       sendBoardNetlist(true);                 // an open board window switches to this file's board
       return true;
@@ -2892,7 +2902,9 @@
     window.addEventListener("hashchange", openSharedLink);
     // File ▾ → Revisions… (cad-rev-dialog.js), and #rev=<project>.<n> addresses from the project manager
     if (window.CadRecent) recent = CadRecent({ host: document.getElementById("recent-list"), openText, openExample: f => { const ex = EXAMPLES.find(x => x.file === f); if (ex) openExample(ex); }, examples: EXAMPLES, setStatus, notice: (k, t) => { setStatus(k, t); whenSimulated().then(() => setStatus(k, t)); } });
-    revisions = window.CadRevDialog ? CadRevDialog({ circuitJSON, openDesign, setStatus, sheetName, isDirty, showDiff, focusDiff, thumbnail, fitStart }) : null;
+    revisions = window.CadRevDialog ? CadRevDialog({ circuitJSON, openDesign, setStatus, sheetName, isDirty, showDiff, focusDiff, thumbnail, fitStart, netsOf,
+      boardDiff: (diff, rev) => { if (channel) try { channel.postMessage({ type: "BOARD_DIFF", diff: diff || null, rev }); } catch (e) { /* nothing listens */ } },
+      relabel: () => { render(); sendBoardNetlist(); } }) : null;
     if (revisions) {
       revisions.wire();
       bind("btn-revisions", () => revisions.open());
@@ -2982,6 +2994,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires };
+  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
