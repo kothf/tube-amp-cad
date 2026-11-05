@@ -152,25 +152,54 @@ import { U, cad, check, ctx, open } from "./harness.mjs";
   await cad.waitForFunction(() => /^r3/.test(document.getElementById("rev-at").textContent) && !document.getElementById("rev-at").hidden);
   check(true, "opening that file again brings its revision back (the r3 chip)");
 
+  // Performance: a revision saved after a simulation keeps its results, shown against the one before
+  await cad.evaluate(() => { const c = TubeCAD.state.comps.find(x => x.type === "resistor"); c.params.r = 5600; TubeCAD.commit(); TubeCAD.runSim(); });
+  await cad.waitForFunction(() => TubeCAD.perfMetrics(), null, { timeout: 20000 });
+  await cad.keyboard.press("Control+Alt+KeyS");
+  await cad.waitForFunction(() => document.activeElement.id === "rev-message");
+  await cad.keyboard.type("with results"); await cad.keyboard.press("Enter");
+  await cad.waitForFunction(() => document.querySelectorAll("#rev-list .rev-item").length === 5 && document.querySelector("#rev-preview .rev-perf tr"));
+  const perfRows = await cad.evaluate(() => [...document.querySelectorAll("#rev-preview .rev-perf tr")].map(t => t.textContent.trim()).slice(0, 3).join(" | "));
+  check(perfRows.length > 0, `r5 keeps the simulation's results (${perfRows})`);
+  // a milestone with its release package (BOM and schematic PDF; the Gerbers when the board has parts)
+  await cad.click("#rev-preview button[data-act=star]");
+  check(await cad.evaluate(() => document.getElementById("rev-star-pkg").checked), "starring the revision on the sheet offers to keep the release package");
+  await $("rev-star-name").fill("Sent to fab");
+  await $("rev-star-name").press("Enter");
+  await cad.waitForFunction(() => /BOM\.csv/.test((document.querySelector("#rev-preview .rev-files") || {}).textContent || ""), null, { timeout: 20000 });
+  check(/schematic\.pdf/.test(await cad.locator("#rev-preview .rev-files").textContent()), `the release package is kept with it (${(await cad.locator("#rev-preview .rev-files").textContent()).trim()})`);
+  await cad.click("#rev-close");
+  // Autosaves: copies kept in this browser
+  await cad.evaluate(() => { const c = TubeCAD.state.comps.find(x => x.type === "resistor"); c.params.r = 6800; TubeCAD.commit(); return TubeCAD.autosave().keep(true); });
+  await cad.click("#btn-file"); await cad.click("#btn-autosaves");
+  await cad.waitForFunction(() => !document.getElementById("autosave-modal").hidden && document.querySelectorAll("#autosave-list [data-open]").length >= 1);
+  check(true, "File → Autosaves… lists the copies this browser kept");
+  await cad.click("#autosave-close");
+  // the start screen shows the projects
+  await cad.evaluate(() => TubeCAD.openStart());
+  await cad.waitForFunction(() => !document.getElementById("start-projects").hidden && /Gubin stereo/.test(document.getElementById("start-projects").textContent));
+  check(true, "the start screen shows your projects over the examples");
+  await cad.evaluate(() => { document.getElementById("start-modal").hidden = true; });
+
   // the manager page: space, projects with their revisions, the short links
   await fetch(`http://127.0.0.1:${store.address().port}/api/share`, { method: "POST", body: (await cad.evaluate(() => TubeCAD.shareLink())).long.split("#c=")[1] });
   const m = await open("projects", "projects.html");
   await m.waitForFunction(() => !document.getElementById("projects-card").hidden && document.querySelectorAll("#links tr[data-s]").length === 1);
   check(/Gubin stereo/.test(await m.locator("#projects").textContent()) && /of 100\.0 MB/.test(await m.locator("#m-total").textContent()), "the manager lists the project and the space taken of 100 MB, and the short link");
   await m.click("tr.proj td.name");
-  await m.waitForFunction(() => document.querySelectorAll("tr.revs tr[data-n]").length === 4);
-  check(await m.evaluate(() => document.querySelectorAll("tr.revs td.pic img").length === 4 && /★ Sent to fab/.test(document.querySelector("tr.revs tr[data-n='2']").textContent)), "each revision shows its picture, and the milestone");
-  check(await m.evaluate(() => /Open r4/.test(document.querySelector("tr.proj").textContent) && !!document.querySelector("tr.proj td.pic img")), "a project shows its newest picture and opens its newest revision");
-  const href = await m.locator("tr.revs tr[data-n='2'] a").getAttribute("href");
+  await m.waitForFunction(() => document.querySelectorAll("tr.revs tr[data-n]").length === 5);
+  check(await m.evaluate(() => document.querySelectorAll("tr.revs td.pic img").length === 5 && /★ Sent to fab/.test(document.querySelector("tr.revs tr[data-n='2']").textContent)), "each revision shows its picture, and the milestone");
+  check(await m.evaluate(() => /Open r5/.test(document.querySelector("tr.proj").textContent) && !!document.querySelector("tr.proj td.pic img")), "a project shows its newest picture and opens its newest revision");
+  const href = await m.locator("tr.revs tr[data-n='2'] a.btn[href^='circuit_sandbox']").getAttribute("href");
   check(/^circuit_sandbox\.html#rev=[A-Za-z0-9_-]{10}\.2$/.test(href), `each revision opens in the CAD (${href})`);
   await m.click("tr.revs tr[data-n='1'] button[data-act=del-rev]");
   await m.waitForFunction(() => !document.getElementById("ask").hidden);
   check(/trash/.test(await m.locator("#ask").textContent()), "deleting asks first, in the page's own dialog");
   await m.click("#ask-ok");
-  await m.waitForFunction(() => document.querySelectorAll("tr.revs tr[data-n]").length === 3 && !document.getElementById("trash-card").hidden);
+  await m.waitForFunction(() => document.querySelectorAll("tr.revs tr[data-n]").length === 4 && !document.getElementById("trash-card").hidden);
   check(/r1 of Gubin stereo/.test(await m.locator("#trash").textContent()), "a deleted revision goes to the trash");
   await m.click("#trash button[data-act=restore-rev]");
-  await m.waitForFunction(() => document.querySelectorAll("tr.revs tr[data-n]").length === 4 && document.getElementById("trash-card").hidden);
+  await m.waitForFunction(() => document.querySelectorAll("tr.revs tr[data-n]").length === 5 && document.getElementById("trash-card").hidden);
   check(true, "and comes back with Restore");
   await m.selectOption("tr.proj select[data-act=status]", "building");
   await m.waitForFunction(() => document.querySelector("tr.proj select").value === "building" && /building/.test(document.querySelector("tr.proj select").className));
@@ -198,7 +227,7 @@ import { U, cad, check, ctx, open } from "./harness.mjs";
   // Import project…: a Download all file comes back as a new project
   const bundle = await m.evaluate(async () => (await fetch(document.querySelector("tr.proj a[download]").href)).text());
   await m.locator("#import-file").setInputFiles({ name: "gubin-revisions.json", mimeType: "application/json", buffer: Buffer.from(bundle) });
-  await m.waitForFunction(() => document.querySelectorAll("tr.proj").length === 2 && /Imported Gubin stereo: 4 revisions/.test(document.getElementById("say").textContent));
+  await m.waitForFunction(() => document.querySelectorAll("tr.proj").length === 2 && /Imported Gubin stereo: 5 revisions/.test(document.getElementById("say").textContent));
   check(true, "Import project… brings a Download all file back as a project with all its revisions");
   await m.close();
   await ctx.unroute(/\/api\/rev\//);

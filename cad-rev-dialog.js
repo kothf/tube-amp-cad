@@ -200,6 +200,8 @@
         <div class="rev-meta"><b>r${r.n}</b>${r.milestone ? ` <span class="star">★ ${esc(r.milestone)}</span>` : ""} · ${esc(when(r.time))}${r.parent ? ` · from r${r.parent}` : ""}</div>
         <div class="rev-msg">${esc(r.message) || '<span class="muted">No message</span>'}</div>
         ${r.summary ? `<div class="rev-sum">${esc(r.summary)}</div>` : ""}
+        ${r.files ? `<div class="rev-files"><span class="muted">Release package:</span> ${r.files.map(f => `<a href="${esc(api.fileUrl(cur, r.n, f.name))}" download="${esc(f.name)}" title="${Math.max(1, Math.round(f.size / 1024))} kB">${esc(f.name)}</a>`).join(" · ")}</div>` : ""}
+        ${perf(r)}
         <div class="rev-btns">
           <button class="btn active" data-act="open" title="Put this revision on the sheet (the next Save revision is made from it)">Open</button>
           <button class="btn" data-act="compare" title="Mark on the sheet what changed since this revision, and step through the changes">Compare on the sheet</button>
@@ -207,6 +209,35 @@
           <button class="btn" data-act="star" title="A milestone stands out in the list and can be shown alone">${r.milestone ? "★ Milestone…" : "☆ Milestone…"}</button>
           ${r !== revs[0] ? `<button class="btn" data-act="restore" title="Save this revision again as the newest one (r${revs[0].n + 1}, from r${r.n}), without touching the sheet; nothing is lost">Restore as r${revs[0].n + 1}</button>` : ""}
         </div>`;
+    }
+    // Performance: what the simulation gave when the revision was saved, against the revision before
+    // it that has results, and how one reading went over the whole history
+    let perfKey = null;
+    const fmtV = v => { const a = Math.abs(v); return a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : a >= 0.01 ? v.toFixed(3) : v.toPrecision(2); };
+    function perfRows(m, o) {
+      return Object.keys(m).map(k => {
+        const v = m[k], w = o && o[k];
+        const d = Number.isFinite(w) && w !== v ? v - w : null, pct = d !== null && w ? 100 * d / Math.abs(w) : null;
+        return `<tr data-k="${esc(k)}"${k === perfKey ? ' class="on"' : ""}><td>${esc(k)}</td><td class="v">${fmtV(v)}</td><td class="d ${d === null ? "" : d > 0 ? "up" : "down"}">${d === null ? "" : (d > 0 ? "+" : "−") + fmtV(Math.abs(d)) + (pct !== null && Math.abs(pct) >= 0.1 ? ` (${pct > 0 ? "+" : "−"}${Math.abs(pct).toFixed(Math.abs(pct) < 10 ? 1 : 0)} %)` : "")}</td></tr>`;
+      }).join("");
+    }
+    function perf(r) {
+      if (!r.metrics) return revs.some(x => x.metrics) ? `<div class="rev-perf muted">No simulation results kept with r${r.n} (it was not simulated as saved).</div>` : "";
+      const older = revs.filter(x => x.n < r.n && x.metrics)[0];
+      if (!perfKey || !(perfKey in r.metrics)) perfKey = Object.keys(r.metrics)[0];
+      return `<details class="rev-perf" open><summary>Performance${older ? ` <span class="muted">vs r${older.n}</span>` : ""}</summary>
+        ${trend(perfKey)}<table>${perfRows(r.metrics, older && older.metrics)}</table></details>`;
+    }
+    // one reading over every revision that has it, oldest left (click a row for another reading)
+    function trend(k) {
+      const pts = revs.filter(x => x.metrics && Number.isFinite(x.metrics[k])).slice().reverse();
+      if (pts.length < 2) return "";
+      const W = 340, H = 64, P = 6, vs = pts.map(x => x.metrics[k]), lo = Math.min(...vs), hi = Math.max(...vs), span = hi - lo || Math.abs(hi) || 1;
+      const X = i => P + i * (W - 2 * P) / (pts.length - 1), Y = v => H - P - (v - lo) / span * (H - 2 * P - 10);
+      return `<svg class="rev-trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(k)} over the revisions">
+        <text x="${P}" y="10">${esc(k)}: ${fmtV(lo)} … ${fmtV(hi)}</text>
+        <polyline points="${pts.map((x, i) => X(i) + "," + Y(x.metrics[k])).join(" ")}"/>
+        ${pts.map((x, i) => `<circle cx="${X(i)}" cy="${Y(x.metrics[k])}" r="${x.n === pick ? 3.6 : 2.4}" class="${x.n === pick ? "on" : ""}${x.milestone ? " ms" : ""}"><title>r${x.n}: ${fmtV(x.metrics[k])}</title></circle>`).join("")}</svg>`;
     }
     // two revisions side by side: their pictures, and every change from the older to the newer
     async function comparePair(r, o) {
@@ -228,7 +259,8 @@
           d.wires.redrawn ? row("wires", "moved", ["redrawn, same connections"]) : d.wires.added || d.wires.removed ? row("wires", "changed", [`+${d.wires.added} −${d.wires.removed}`]) : "",
           d.boardDiff ? row("board", "board", [esc(d.boardDiff.text)]) : "", d.tubes ? row("tubes", "changed", ["imported tubes changed"]) : "",
         ].join("");
-        $("rev-pair-list").innerHTML = out;
+        const perfA = A.metrics, perfB = B.metrics;
+        $("rev-pair-list").innerHTML = out + (perfA && perfB ? `<div class="rev-ch"><span class="k board">results</span></div><table class="rev-perf-t">${perfRows(perfB, perfA)}</table>` : "");
       } catch (err) { if (my === pairSeq) $("rev-pair-list").textContent = err.message; }
     }
     // Open the newer one, then Compare on the sheet against the older one
@@ -259,7 +291,8 @@
         // the pictures show the title block as the new revision will have it
         const was = root.CadRevLabel; label(`r${(latest ? latest.n : 0) + 1}`);
         const thumb = thumbnail ? thumbnail() : undefined; label(was || "");
-        const r = await api.saveRevision(cur, { message: $("rev-message").value.trim(), summary, parent: base && base !== latest ? base.n : undefined, thumb, bthumb: R.boardPicture(d.board) || undefined, design: d });
+        const metrics = cad.perfMetrics ? cad.perfMetrics() : null;
+        const r = await api.saveRevision(cur, { message: $("rev-message").value.trim(), summary, parent: base && base !== latest ? base.n : undefined, thumb, bthumb: R.boardPicture(d.board) || undefined, metrics: metrics || undefined, design: d });
         if (r.same) info(`The sheet is the same as r${r.n}: nothing new saved.`);
         else { designs.set(cur + "." + r.n, d); $("rev-message").value = ""; info(`Saved r${r.n} of ${projectName()}.`, "ok"); setStatus("ok", `Saved revision r${r.n} of ${projectName()}`); }
         attach(cur, projectName(), r.n, r.hash);
@@ -323,12 +356,24 @@
       const r = revs.find(x => x.n === n), row = $("rev-preview").querySelector(".rev-btns"); if (!r || !row) return;
       row.innerHTML = `<input type="text" id="rev-star-name" list="rev-star-names" spellcheck="false" placeholder="Sent to fab, Built, Measured…" aria-label="Milestone name" value="${esc(r.milestone || "")}">
         <datalist id="rev-star-names"><option value="Sent to fab"><option value="Built"><option value="Measured"><option value="Released"></datalist>
-        <button class="btn active" data-act="star-ok">Save</button>${r.milestone ? '<button class="btn" data-act="star-off">Take off</button>' : ""}<button class="btn" data-act="star-cancel">Cancel</button>`;
+        <button class="btn active" data-act="star-ok">Save</button>${r.milestone ? '<button class="btn" data-act="star-off">Take off</button>' : ""}<button class="btn" data-act="star-cancel">Cancel</button>
+        ${cad.releasePackage ? `<label class="rev-pkg" title="${r.hash === nowHash ? "Made from the sheet, which is this revision" : `The package is made from the sheet: Open r${r.n} first`}"><input type="checkbox" id="rev-star-pkg"${r.hash === nowHash ? (r.files ? "" : " checked") : " disabled"}> Keep the release package with it: Gerbers, BOM, schematic PDF${r.hash === nowHash ? "" : ` (Open r${r.n} first)`}</label>` : ""}`;
       const inp = $("rev-star-name"); inp.focus(); inp.select();
       inp.addEventListener("keydown", e => { if (e.key === "Enter") setStar(n, inp.value); if (e.key === "Escape") { e.stopPropagation(); preview(); } });
     }
     async function setStar(n, name) {
-      try { await api.updateRevision(cur, n, { milestone: String(name || "").trim() }); await loadRevs(); } catch (err) { failed(err); }
+      const pkg = $("rev-star-pkg") && $("rev-star-pkg").checked && String(name || "").trim();
+      try {
+        await api.updateRevision(cur, n, { milestone: String(name || "").trim() });
+        // the release package: made from the sheet (which is this revision), kept with it on the server
+        if (pkg) {
+          info("Making the release package…");
+          const files = cad.releasePackage();
+          for (const f of files) { info(`Keeping ${f.name}…`); await api.addFile(cur, n, f); }
+          info(`Kept with r${n}: ${files.map(f => f.name).join(", ")}.`, "ok");
+        }
+        await loadRevs();
+      } catch (err) { failed(err); }
     }
     // Restore as new: the old revision becomes the newest one again (its own picture, "from rN"),
     // the ones after it stay in the history; the sheet is left as it is
@@ -410,6 +455,8 @@
       $("rev-preview").addEventListener("change", e => { if (e.target.id === "rev-pair" && e.target.value) { pair = +e.target.value; preview(); } });
       $("rev-list").addEventListener("dblclick", e => { const b = e.target.closest("[data-n]"); if (b) openRev(cur, +b.dataset.n); });
       $("rev-preview").addEventListener("click", e => {
+        const row = e.target.closest(".rev-perf tr[data-k]");
+        if (row) { perfKey = row.dataset.k; preview(); return; }
         const t = e.target.closest("button[data-pic]");
         if (t) { picKind = t.dataset.pic; preview(); return; }
         const b = e.target.closest("button[data-act]"); if (!b || pick === null) return;

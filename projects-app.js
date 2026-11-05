@@ -84,7 +84,7 @@
       <td class="n">r${r.n}</td>
       <td class="pic wide-only">${r.thumb ? `<img loading="lazy" alt="r${r.n}" src="${esc(api.thumbUrl(p.id, r.n))}">` : ""}</td>
       <td class="t wide-only">${esc(when(r.time))}${r.parent ? `<div class="muted">from r${r.parent}</div>` : ""}</td>
-      <td>${r.milestone ? `<span class="star">★ ${esc(r.milestone)}</span><br>` : ""}${esc(r.message) || '<span class="muted">–</span>'}</td><td class="sum wide-only">${esc(r.summary)}</td><td class="num wide-only">${size(r.size)}</td>
+      <td>${r.milestone ? `<span class="star">★ ${esc(r.milestone)}</span><br>` : ""}${esc(r.message) || '<span class="muted">–</span>'}</td><td class="sum wide-only">${esc(r.summary)}${r.files ? `<div class="files">${r.files.map(f => `<a href="${esc(api.fileUrl(p.id, r.n, f.name))}" download>${esc(f.name)}</a>`).join(" · ")}</div>` : ""}${r.metrics && r.metrics["Output (W)"] !== undefined ? `<div class="muted">output ${(+r.metrics["Output (W)"]).toPrecision(3)} W</div>` : ""}</td><td class="num wide-only">${size(r.size)}</td>
       <td class="act"><a class="btn" href="circuit_sandbox.html${R.hashOf(p.id, r.n)}" target="_blank" rel="noopener" title="Open this revision in the CAD">Open in CAD ↗</a> ${r !== revs[0] ? `<button class="btn" data-act="restore" title="Save it again as the newest revision (from r${r.n}); nothing is lost">Restore as new</button> ` : ""}<button class="btn" data-act="download">.json</button> <button class="btn" data-act="message" title="Its message and milestone">Edit…</button> <button class="btn danger" data-act="del-rev">Delete</button></td></tr>`).join("") + `</tbody></table>`;
   }
   function showLinks() {

@@ -216,6 +216,15 @@
         return files;
       } catch (err) { setStatus("error", "KiCad export failed: " + err.message); throw err; }
     }
-    return { exportKicad, kicadFiles };
+    // the board's Gerber and drill files in one zip (as the Board window's Export ▾ → Gerbers writes
+    // them), for a revision's release package; null when no part is placed on the board yet
+    function fabZip() {
+      const side = boardSide(); if (!side.placed) return null;
+      const BC = BoardCore, R = side.board.rules, hvSet = BC.hvNets(side.netlist.volts, R.hvVolts), model = side.placed, c0 = BC.connectivity(side.board, model.pads);
+      const fills = (side.board.zones || []).length ? BC.fillZones(side.board, model, c0, hvSet, side.netlist, []) : [];
+      const f0 = (frames()[0] || {}).params || {};
+      return BoardFab.zip(BoardFab.fabFiles(side.board, model, fills, { base: baseName(), title: f0.title || f0.docno || baseName(), version: String(VERSION).replace(/^\?v=/, "") }));
+    }
+    return { exportKicad, kicadFiles, fabZip };
   };
 })(window);

@@ -129,6 +129,10 @@
     "Whoever opens this link gets the same circuit, with its imported tubes.": "Кто откроет эту ссылку, получит ту же схему вместе с импортированными лампами.",
     "Include the board layout": "Включить разводку платы", "Copy link": "Скопировать ссылку",
     "Project revisions": "Ревизии проекта", "Manager ↗": "Менеджер ↗", "Sign in ↗": "Войти ↗", "Project": "Проект", "New project…": "Новый проект…",
+    "Your projects": "Ваши проекты", "Autosaves…": "Автосохранения…", "Autosaves": "Автосохранения", "this browser": "этот браузер", "the oldest kept": "самая старая из хранимых",
+    "Copies of the circuit this browser keeps while you edit, every 5 minutes and when the tab closes: open an earlier one": "Копии схемы, которые этот браузер хранит, пока вы правите, — каждые 5 минут и при закрытии вкладки: откройте более раннюю",
+    "While you edit, this browser keeps a copy of the circuit every 5 minutes and when the tab is closed (the newest 60, nowhere else). Open puts one on the sheet: Ctrl+Z brings the circuit back, File ▾ → Save or Save revision keeps it.": "Пока вы правите, этот браузер хранит копию схемы каждые 5 минут и при закрытии вкладки (60 новейших, больше нигде). «Открыть» ставит копию на лист: Ctrl+Z возвращает схему, Файл ▾ → Сохранить или Сохранить ревизию её сохраняют.",
+    "No copies yet: one is kept every 5 minutes while you edit, and when the tab is closed.": "Копий пока нет: копия сохраняется каждые 5 минут, пока вы правите, и при закрытии вкладки.",
     "Compare with…": "Сравнить с…", "Comparing…": "Сравниваю…", "No changes: the two are the same design.": "Изменений нет: это одна и та же схема.",
     "Download all": "Скачать все", "Save revision": "Сохранить ревизию", "Revisions, newest first": "Ревизии, новые сверху", "★ Milestones": "★ Вехи", "Revisions": "Ревизии",
     "Projects and their revisions are private to the owner of aerocat.tech: sign in with the site's login (Cloudflare Access) first. The login opens in its own window and closes itself.":
@@ -1794,6 +1798,8 @@
   const patterns = [
     // revisions: Restore as new, and what it says after
     [/^Restore as r(\d+)$/, "Восстановить как r$1"],
+    [/^(\d+) parts$/, "$1 деталей"],
+    [/^(\d+) min ago$/, "$1 мин назад"], [/^(\d+) h ago$/, "$1 ч назад"],
     [/^Open r(\d+), mark changes since r(\d+)$/, "Открыть r$1, отметить изменения с r$2"],
     [/^Changes since r(\d+): (.*)$/, (m, n, t) => `Изменения с r${n}: ${t}`],
     [/^Restoring r(\d+)…$/, "Восстанавливаю r$1…"],
