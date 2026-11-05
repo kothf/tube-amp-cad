@@ -27,6 +27,14 @@ if ! grep -q 'location /api/rev/' "$NGINX_CONF"; then
   echo "added /api/rev/ to $NGINX_CONF"
 fi
 
+# since 3.181.0 an imported project or a release package can be larger than 6 MB
+if grep -q 'location /api/rev/' "$NGINX_CONF" && awk '/location \/api\/rev\/ \{/{f=1} f&&/client_max_body_size 6m;/{found=1} f&&/}/{f=0} END{exit !found}' "$NGINX_CONF"; then
+  cp "$NGINX_CONF" "$NGINX_CONF.bak-$(date +%Y%m%d-%H%M%S)"
+  awk '/location \/api\/rev\/ \{/{f=1} f&&/client_max_body_size 6m;/{sub(/6m/,"48m")} f&&/}/{f=0} {print}' "$NGINX_CONF" > "$NGINX_CONF.new"
+  cat "$NGINX_CONF.new" > "$NGINX_CONF" && rm -f "$NGINX_CONF.new"
+  echo "/api/rev/ takes up to 48 MB now"
+fi
+
 docker compose up -d --build
 docker exec "$NGINX" nginx -t && docker exec "$NGINX" nginx -s reload
 sleep 2

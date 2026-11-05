@@ -153,6 +153,14 @@ test("revisions and links share the store: links give way, revisions are refused
   assert.equal((await api(`/projects/${p.id}`, { method: "DELETE" })).status, 200, "the owner deletes a whole project");
   const left = (await (await api("/projects")).json());
   assert.deepEqual(left.map(x => x.id), [pid]);
+  const trash = await (await api("/trash")).json();
+  assert.deepEqual(trash.projects.map(x => x.id), [p.id], "a deleted project waits in the trash");
+  assert.equal(trash.days, 30);
+  assert.equal((await api(`/projects/${p.id}`)).status, 404, "out of sight while in the trash");
+  assert.equal((await api(`/projects/${p.id}/restore`, { method: "POST" })).status, 200, "and comes back");
+  assert.equal((await (await api("/projects")).json()).length, 2);
+  await api(`/projects/${p.id}`, { method: "DELETE" });
+  assert.equal((await api(`/projects/${p.id}?purge=1`, { method: "DELETE" })).status, 200, "emptied from the trash by hand");
   assert.equal((await (await api("/me")).json()).revisions.bytes, left[0].bytes, "its room is given back");
 });
 
@@ -174,5 +182,48 @@ test("a revision keeps its picture, the revision it came from, and a milestone n
   const before = (await (await api("/me")).json()).revisions.bytes;
   await api(`/projects/${pid}/revs/${r.n}`, { method: "DELETE" });
   assert.equal((await api(`/projects/${pid}/revs/${r.n}/thumb`)).status, 404);
-  assert.ok((await (await api("/me")).json()).revisions.bytes < before, "its picture goes with it");
+  assert.equal((await (await api("/me")).json()).revisions.bytes, before, "in the trash it keeps its room");
+  assert.equal((await api(`/projects/${pid}/revs/${r.n}/restore`, { method: "POST" })).status, 200, "a revision comes back from the trash");
+  assert.equal((await api(`/projects/${pid}/revs/${r.n}/thumb`)).status, 200, "with its picture");
+  await api(`/projects/${pid}/revs/${r.n}`, { method: "DELETE" });
+  assert.equal((await api(`/projects/${pid}/revs/${r.n}?purge=1`, { method: "DELETE" })).status, 200);
+  assert.ok((await (await api("/me")).json()).revisions.bytes < before, "emptied, its picture goes with it");
+});
+
+test("status, tags, metrics, a board picture, release files, search", async () => {
+  const p = await (await api(`/projects/${pid}`, { method: "PATCH", body: { status: "building", tags: "SE, 2A3, se" } })).json();
+  assert.equal(p.status, "building"); assert.deepEqual(p.tags, ["se", "2a3"]);
+  assert.equal((await api(`/projects/${pid}`, { method: "PATCH", body: { status: "nonsense" } })).status, 400);
+  const png = "data:image/png;base64," + Buffer.from("board picture", "latin1").toString("base64");
+  const r = await (await api(`/projects/${pid}/revs`, { method: "POST", body: { message: "lower hum", bthumb: png, metrics: { "gain dB": 23.456789, "P 1% W": 3.1, bad: "x", inf: null }, design: example("15-6v6-push-pull-guitar-1750h.json") } })).json();
+  assert.deepEqual(r.metrics, { "gain dB": 23.4568, "P 1% W": 3.1 }, "numbers only");
+  assert.equal(r.bthumb, "image/png");
+  assert.equal((await api(`/projects/${pid}/revs/${r.n}/bthumb`)).status, 200);
+  const files = await api(`/projects/${pid}/revs/${r.n}/files`, { method: "POST", body: { name: "EX-gerbers.zip", type: "application/zip", data: Buffer.from("PK zip").toString("base64") } });
+  assert.equal(files.status, 201);
+  assert.deepEqual((await files.json()).map(f => f.name), ["EX-gerbers.zip"]);
+  assert.equal((await api(`/projects/${pid}/revs/${r.n}/files`, { method: "POST", body: { name: "../etc/passwd", type: "text/plain", data: "eA==" } })).status, 400, "only plain file names");
+  const got = await api(`/projects/${pid}/revs/${r.n}/files/EX-gerbers.zip`);
+  assert.equal(got.headers.get("content-disposition"), 'attachment; filename="EX-gerbers.zip"');
+  assert.equal(Buffer.from(await got.arrayBuffer()).toString(), "PK zip");
+  const hits = await (await api("/search?q=HUM")).json();
+  assert.deepEqual(hits.map(h => h.n), [r.n]);
+  assert.deepEqual((await (await api("/search?q=2a3")).json()).map(h => h.n), [null], "tags are searched");
+
+  // a whole project out and back in: designs, pictures, files, milestones
+  await api(`/projects/${pid}/revs/${r.n}`, { method: "PATCH", body: { milestone: "Sent to fab" } });
+  const bundle = await (await api(`/projects/${pid}/export`)).json();
+  const x = bundle.project.revs.find(v => v.n === r.n);
+  assert.match(x.bthumbData, /^data:image\/png;base64,/); assert.equal(x.files[0].data, Buffer.from("PK zip").toString("base64"));
+  assert.equal((await api("/import", { method: "POST", body: { app: "TubeAmpCAD-project", project: Object.assign({}, bundle.project, { revs: [{ n: 1, design: { not: "a design" } }] }) } })).status, 400, "only designs");
+  const imp = await api("/import", { method: "POST", body: bundle });
+  assert.equal(imp.status, 201);
+  const np = await imp.json();
+  assert.notEqual(np.id, pid, "a project that is still there gets a new id");
+  const full = await (await api(`/projects/${np.id}`)).json();
+  assert.deepEqual(full.revs.map(v => [v.n, v.message, v.milestone || null, v.hash]), bundle.project.revs.map(v => [v.n, v.message, v.milestone || null, v.hash]));
+  assert.equal(full.status, "building");
+  assert.equal(Buffer.from(await (await api(`/projects/${np.id}/revs/${r.n}/files/EX-gerbers.zip`)).arrayBuffer()).toString(), "PK zip");
+  assert.deepEqual(await (await api(`/projects/${np.id}/revs/${r.n}`)).json(), example("15-6v6-push-pull-guitar-1750h.json"));
+  await api(`/projects/${np.id}`, { method: "DELETE" }); await api(`/projects/${np.id}?purge=1`, { method: "DELETE" });
 });
