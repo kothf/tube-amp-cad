@@ -16,7 +16,7 @@
   const key = (x, y) => x + "," + y;
 
   // File ▾ → Revisions… (cad-rev-dialog.js), made in init()
-  let revisions = null;
+  let revisions = null, autosave = null;
 
   // ---------------------------------------------------------------------------
   // State
@@ -256,6 +256,7 @@
   function circuitChanged() {
     S.topo = null;
     if (revisions) revisions.changed();
+    if (autosave) autosave.changed();
     scheduleBoardNetlist();
     updateSheetNav();
     if (S.trans && !S.trans.stale && !S.trans.running) { S.trans.stale = true; if (channel) channel.postMessage(transientMessage()); }
@@ -311,7 +312,7 @@
   // The board window or tab, the netlist and board document it shares with the CAD, cross-probing (cad-board-link.js)
   const { BOARD_KEY, boardNetlist, isBoardTab, probeBoard, scheduleBoardNetlist, selectFromBoard, selectNetFromBoard, sendBoardNetlist, setBoardTab, showBoard, storeBoard } = CadBoardLink({ S, VERSION, channel, compBBox, compPins, frames, getCanvas: () => canvas, netDC, netWave, pinCurrents, render, selSig, showFile, topo, updateInspector, usedCustomTubes });
   // KiCad export: schematic, board and project in one ZIP (cad-kicad.js, kicad-export.js)
-  const { exportKicad, kicadFiles } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo });
+  const { exportKicad, kicadFiles, fabZip } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo });
   S.showLegend = (() => { try { return localStorage.getItem(LEGEND_KEY) !== "0"; } catch (e) { return true; } })();
   S.sim.live = (() => { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch (e) { return true; } })();
 
@@ -520,6 +521,33 @@
         if (ch) ["ch1", "ch2"].forEach(k => { const st = stats(ch[k]); if (st) out.push({ key: c.id + ":" + k, label: `${name} ${k.toUpperCase()} AC`, unit: "Vrms", v: st.rmsAC }); });
       }
     });
+    return out;
+  }
+  // what a revision keeps of the simulation (File ▾ → Revisions…, Performance): the power totals and
+  // each tube's, transistor's, speaker's and scope channel's readings, "name (unit)" → number; null
+  // when there is no result for the circuit as it is now (not simulated since the last edit)
+  function perfMetrics() {
+    if (!S.sim.result || S.sim.topo !== S.topo || !S.topo) return null;
+    const m = {}, t = powerTotals();
+    if (t) {
+      if (t.out > 0) m["Output (W)"] = t.out;
+      if (t.tubes > 0) m["Tubes dissipation (W)"] = t.tubes;
+      if (t.semi > 0) m["Transistors dissipation (W)"] = t.semi;
+      if (t.haveSup) m["From DC supplies (W)"] = t.sup;
+      if (t.out > 0 && t.haveSup && t.sup > 0) m["Efficiency (%)"] = 100 * t.out / t.sup;
+    }
+    measurements().forEach(x => { if (Number.isFinite(x.v) && Object.keys(m).length < 40) m[`${x.label} (${x.unit})`] = x.v; });
+    return Object.keys(m).length ? m : null;
+  }
+  // a revision's release package (File ▾ → Revisions…, a milestone): what goes to the fab and to the
+  // bench, made from the sheet as it is now: the Gerbers (when the board has parts on it), the BOM
+  // and the schematic as PDF. → [{ name, type, data (base64) }]
+  function releasePackage() {
+    const b64 = bytes => { const u = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes; let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+    const base = baseName().replace(/[^A-Za-z0-9_.-]+/g, "_").slice(0, 50) || "design", out = [];
+    try { const z = fabZip(); if (z) out.push({ name: base + "-gerbers.zip", type: "application/zip", data: b64(z) }); } catch (e) { /* no board to make */ }
+    try { out.push({ name: base + "-BOM.csv", type: "text/csv", data: b64(BomLib.toCsv(bomData())) }); } catch (e) { /* no BOM */ }
+    try { out.push({ name: base + "-schematic.pdf", type: "application/pdf", data: b64(exportPDF(false)) }); } catch (e) { /* no PDF */ }
     return out;
   }
   // fn() with another run's result in place of the last simulation (synchronous, so nothing sees the swap)
@@ -1963,7 +1991,20 @@
   }
   // where the power goes: output into speakers, dissipation per kind of part, what the DC supplies deliver
   function powerSummary() {
-    const r = S.sim.result; if (!r) return "";
+    const t = powerTotals(); if (!t) return "";
+    const { out, tubes, semi, ics, res, sup, haveSup } = t;
+    let h = `<div class="insp-sub">Power</div>`;
+    if (out > 0) h += kv("Output (speakers)", fmtEng(out, "W", 2));
+    if (tubes > 0) h += kv("Tubes (anode + screen)", fmtEng(tubes, "W", 2));
+    if (semi > 0) h += kv("Transistors", fmtEng(semi, "W", 2));
+    if (ics > 0) h += kv("Integrated circuits", fmtEng(ics, "W", 2));
+    if (res > 0) h += kv("Resistors", fmtEng(res, "W", 2));
+    if (haveSup) h += kv("From DC supplies", fmtEng(sup, "W", 2));
+    return h;
+  }
+  // the last result's power: into the speakers, per kind of part, and from the DC supplies (W)
+  function powerTotals() {
+    const r = S.sim.result; if (!r) return null;
     let out = 0, tubes = 0, res = 0, semi = 0, ics = 0, sup = 0, haveSup = false;
     S.comps.forEach(c => {
       if (c.type === "speaker") { const sp = speakerPower(c); if (sp) out += sp.p; }
@@ -1974,14 +2015,7 @@
       else if (c.type === "reg" || c.type === "tl431") { const d = (r.dc.devices[c.id] || {}).main; if (d && d.pd > 0) ics += d.pd; }
       else if (c.type === "vdc" || c.type === "rail") { const d = (r.dc.devices[c.id] || {}).main; if (d) { sup += -d.i * c.params.v; haveSup = true; } }
     });
-    let h = `<div class="insp-sub">Power</div>`;
-    if (out > 0) h += kv("Output (speakers)", fmtEng(out, "W", 2));
-    if (tubes > 0) h += kv("Tubes (anode + screen)", fmtEng(tubes, "W", 2));
-    if (semi > 0) h += kv("Transistors", fmtEng(semi, "W", 2));
-    if (ics > 0) h += kv("Integrated circuits", fmtEng(ics, "W", 2));
-    if (res > 0) h += kv("Resistors", fmtEng(res, "W", 2));
-    if (haveSup) h += kv("From DC supplies", fmtEng(sup, "W", 2));
-    return h;
+    return { out, tubes, semi, ics, res, sup, haveSup };
   }
 
   function circuitReadout() {
@@ -2574,8 +2608,25 @@
     });
   }
   const startOn = () => { try { return localStorage.getItem(START_KEY) !== "0"; } catch (e) { return true; } };
+  // the owner's projects on aerocat.tech (signed in), newest first, over the examples: a click opens the newest revision
+  async function startProjects() {
+    const host = document.getElementById("start-projects"), R = window.CadRevisions;
+    if (!host || !R) return;
+    const api = R.client(location.origin); if (!api.available) return;
+    let list;
+    try { list = await api.projects(); } catch (e) { host.hidden = true; return; }     // not signed in: the examples only
+    list = list.filter(p => p.last && p.status !== "archived").slice(0, 8);
+    if (!list.length) { host.hidden = true; return; }
+    const ST = { idea: "Idea", design: "Design", building: "Building", done: "Done" };
+    host.innerHTML = `<div class="start-group">Your projects<a href="projects.html" target="_blank" rel="noopener" title="Every project, revision and short link on the server">Manager ↗</a></div><div class="start-grid">` + list.map(p => `<button class="start-card proj" data-p="${escH(p.id)}" data-n="${p.last.n}" title="Open r${p.last.n} of ${escH(p.name)}${p.last.message ? ": " + escH(p.last.message) : ""}">
+      ${p.thumb ? `<img src="${escH(api.thumbUrl(p.id, p.thumb))}" alt="" loading="lazy">` : ""}<b>${escH(p.name)}</b>
+      <span class="start-st">r${p.last.n}${p.status && ST[p.status] ? " · " + ST[p.status] : ""}${p.milestones ? " · ★" + p.milestones : ""} · ${escH(new Date(p.last.time).toLocaleDateString(undefined, { month: "short", day: "numeric" }))}${p.last.message ? " · " + escH(p.last.message.slice(0, 60)) : ""}</span></button>`).join("") + "</div>";
+    host.hidden = false;
+    host.querySelectorAll("[data-p]").forEach(b => b.addEventListener("click", () => { closeStart(); location.hash = R.hashOf(b.dataset.p, +b.dataset.n); }));
+  }
   function openStart() {
     buildGallery();
+    startProjects();
     document.getElementById("start-show").checked = startOn();
     document.getElementById("start-modal").hidden = false;
     const c = document.querySelector("#start-gallery .start-card"); if (c) c.focus();
@@ -2902,9 +2953,12 @@
     window.addEventListener("hashchange", openSharedLink);
     // File ▾ → Revisions… (cad-rev-dialog.js), and #rev=<project>.<n> addresses from the project manager
     if (window.CadRecent) recent = CadRecent({ host: document.getElementById("recent-list"), openText, openExample: f => { const ex = EXAMPLES.find(x => x.file === f); if (ex) openExample(ex); }, examples: EXAMPLES, setStatus, notice: (k, t) => { setStatus(k, t); whenSimulated().then(() => setStatus(k, t)); } });
-    revisions = window.CadRevDialog ? CadRevDialog({ circuitJSON, openDesign, setStatus, sheetName, isDirty, showDiff, focusDiff, thumbnail, fitStart, netsOf,
+    revisions = window.CadRevDialog ? CadRevDialog({ circuitJSON, openDesign, setStatus, sheetName, isDirty, showDiff, focusDiff, thumbnail, fitStart, netsOf, perfMetrics, releasePackage,
       boardDiff: (diff, rev) => { if (channel) try { channel.postMessage({ type: "BOARD_DIFF", diff: diff || null, rev }); } catch (e) { /* nothing listens */ } },
       relabel: () => { render(); sendBoardNetlist(); } }) : null;
+    // File ▾ → Autosaves… (cad-autosave.js): copies kept in this browser while editing
+    autosave = window.CadAutosave ? CadAutosave({ circuitJSON, openDesign, isDirty, setStatus, fileName: () => curFile.name, diff: (a, b) => CadRevisions.diff(a, b, { netsOf }) }) : null;
+    if (autosave) { autosave.wire(); bind("btn-autosaves", () => autosave.open()); }
     if (revisions) {
       revisions.wire();
       bind("btn-revisions", () => revisions.open());
@@ -2994,6 +3048,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf };
+  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

@@ -140,7 +140,9 @@ Firefox is not tested.
   - File → Open / Save / Save as (JSON). In Chrome and Edge, Save writes back
     to the opened file after asking; in Safari and other browsers it
     downloads the file.
-  - The circuit is also autosaved in the browser.
+  - The circuit is also autosaved in the browser, and File → Autosaves…
+    keeps a copy every 5 minutes of editing and when the tab closes (the
+    newest 60, in this browser only); Open puts one back on the sheet.
   - File → Recent files lists the last 8 circuits opened or saved (and the
     examples opened), newest first; a click opens one again. Chrome and Edge
     read the file itself again; when it is gone, not allowed, or the browser

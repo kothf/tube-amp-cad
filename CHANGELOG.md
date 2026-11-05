@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.183.0] - 2026-11-05
+
+### Added
+- **Performance history.** A revision saved right after a simulation keeps its results (output power, efficiency, dissipation, measurements); the Revisions preview lists them with the change since the revision before and charts one over every revision (click a row). *Compare with…* shows both revisions' results side by side; the manager shows each revision's output power.
+- **Release package with a milestone.** Starring the revision on the sheet offers to keep its Gerbers, BOM and schematic PDF with it on the server, listed for download in the preview and the manager and carried in *Download all*.
+- **File ▾ → Autosaves…**: copies kept in this browser while you edit (every 5 minutes of editing and when the tab is hidden or closed, the newest 60), each with what changed; Open puts one on the sheet, Ctrl+Z undoes it.
+- **Your projects on the start screen** (signed in on aerocat.tech): up to 8 projects with their pictures, revision, status and milestones over the examples; a click opens the newest revision.
+
 ## [3.182.0] - 2026-11-05
 
 ### Added
