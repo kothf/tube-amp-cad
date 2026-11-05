@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.181.0] - 2026-11-05
+
+### Added
+- **Trash for projects and revisions.** Deleting a project or a revision (in the project manager) moves it to a **Trash** card at the bottom of `projects.html`, where *Restore* brings it back for 30 days; after that it is deleted for good, or at once with *Delete for good*. Revision numbers are never reused.
+- **Import project…** in the manager: a *Download all* file, a design saved with File ▾ → Save (as one revision), or a project's folder from a backup (`revisions/<id>/`) becomes a project again, with its numbers, messages, milestones and pictures. *Download all* now also carries the pictures, so nothing is lost on the way out and back.
+- **Restore as new.** An older revision can be saved again as the newest one (*Restore as rN* in File ▾ → Revisions…, *Restore as new* in the manager), marked *from rN*, without touching the sheet; the revisions after it stay.
+- **History graph** in the Revisions list: each revision is joined to the one before it, and one saved after opening an older revision branches off from that one, so tries that went another way stand out; milestones are gold dots.
+- **The manager shows more and finds more**: each project's newest picture, milestones, a **status** (Idea, Design, Building, Done, Archived) picked in the list and a status filter (archived ones hidden by default), **tags** (Edit…), *Open rN ↗* for the newest revision, and a search that looks through every project and revision on the server (names, notes, tags, messages, changes, milestones), listing the revisions it found with the words in bold.
+- **Nightly backup of the server's store** (projects, revisions, short links) to the desktop, with a copy kept where the NUC cannot reach it, and restore instructions next to the backups (see `server/share/README.md`).
+- The store also keeps a board picture, simulation results and release files with a revision (used by the next versions).
+
+### Changed
+- The store accepts up to 48 MB a request under `/api/rev/` (an imported project) and has 256 MB of memory; `update.sh` raises the nginx limit once.
+
 ## [3.180.0] - 2026-11-04
 
 ### Changed

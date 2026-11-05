@@ -124,10 +124,36 @@
       if (!cur) { body.innerHTML = `<div class="rev-empty">Make a project, then Save revision keeps this design as its first revision.</div>`; return; }
       if (!revs.length) { body.innerHTML = `<div class="rev-empty">No revisions yet: Save revision keeps this design as r1.</div>`; return; }
       if (!shown.length) { body.innerHTML = `<div class="rev-empty">No milestones yet: pick a revision and press ☆ Milestone.</div>`; return; }
-      body.innerHTML = shown.map(r => `<button class="rev-item${r.n === pick ? " on" : ""}${r.hash === nowHash ? " cur" : ""}" data-n="${r.n}" title="${esc(when(r.time))} · double-click opens it">
-        <span class="rn">r${r.n}</span>
+      body.innerHTML = `<svg class="rev-tree" aria-hidden="true"></svg>` + shown.map(r => `<button class="rev-item${r.n === pick ? " on" : ""}${r.hash === nowHash ? " cur" : ""}" data-n="${r.n}" title="${esc(when(r.time))} · double-click opens it">
+        <span class="rg"></span><span class="rn">r${r.n}</span>
         <span class="rt">${r.milestone ? `<span class="star">★ ${esc(r.milestone)}</span> ` : ""}${esc(r.message) || '<span class="muted">No message</span>'}<small>${esc(r.summary)}</small></span>
         <span class="ra">${esc(ago(r.time))}${r.hash === nowHash ? '<b title="The sheet is this revision">● sheet</b>' : ""}</span></button>`).join("");
+      tree(body, shown);
+    }
+    // the history as a graph in the list's left edge: each revision joined to the one it was made
+    // from (the one before it, or its "from rN"); a revision made from an older one branches off to
+    // the right, so tries that went another way stand out
+    function tree(body, shown) {
+      const svg = body.querySelector(".rev-tree"); if (!svg) return;
+      const rows = new Map([...body.querySelectorAll(".rev-item")].map(el => [+el.dataset.n, el]));
+      const y = n => { const el = rows.get(n); return el ? el.offsetTop + el.offsetHeight / 2 : null; };
+      const h = body.scrollHeight;
+      svg.setAttribute("height", h); svg.style.height = h + "px";
+      const X0 = 9, X1 = 19, lines = [], dots = [];
+      const older = shown.slice().sort((a, b) => a.n - b.n);
+      older.forEach((r, i) => {
+        const base = r.parent && rows.has(r.parent) ? r.parent : i > 0 ? older[i - 1].n : null;
+        const y1 = y(r.n);
+        if (base !== null) {
+          const y0 = y(base);
+          if (r.parent && rows.has(r.parent) && (i === 0 || older[i - 1].n !== r.parent)) {
+            // a branch: out of the older revision to the right, up, and in to this one
+            lines.push(`<path class="br" d="M${X0} ${y0} C${X1} ${y0} ${X1} ${y0 - 8} ${X1} ${y0 - 14} L${X1} ${y1 + 14} C${X1} ${y1 + 8} ${X1} ${y1} ${X0} ${y1}"/>`);
+          } else lines.push(`<path d="M${X0} ${y0} L${X0} ${y1}"/>`);
+        }
+        dots.push(`<circle cx="${X0}" cy="${y1}" r="${r.milestone ? 4.5 : 3.5}" class="${r.milestone ? "ms" : ""}${r.hash === nowHash ? " now" : ""}${r.parent ? " from" : ""}"><title>r${r.n}${r.parent ? " · made from r" + r.parent : ""}</title></circle>`);
+      });
+      svg.innerHTML = lines.join("") + dots.join("");
     }
     // the revision picked: its picture and what it holds, with its buttons
     function preview() {
@@ -141,6 +167,7 @@
           <button class="btn active" data-act="open" title="Put this revision on the sheet (the next Save revision is made from it)">Open</button>
           <button class="btn" data-act="compare" title="Mark on the sheet what changed since this revision, and step through the changes">Compare on the sheet</button>
           <button class="btn" data-act="star" title="A milestone stands out in the list and can be shown alone">${r.milestone ? "★ Milestone…" : "☆ Milestone…"}</button>
+          ${r !== revs[0] ? `<button class="btn" data-act="restore" title="Save this revision again as the newest one (r${revs[0].n + 1}, from r${r.n}), without touching the sheet; nothing is lost">Restore as r${revs[0].n + 1}</button>` : ""}
         </div>`;
     }
     // what Save revision would keep: the changes since the revision the sheet came from (else the latest)
@@ -232,6 +259,23 @@
     async function setStar(n, name) {
       try { await api.updateRevision(cur, n, { milestone: String(name || "").trim() }); await loadRevs(); } catch (err) { failed(err); }
     }
+    // Restore as new: the old revision becomes the newest one again (its own picture, "from rN"),
+    // the ones after it stay in the history; the sheet is left as it is
+    async function restore(n) {
+      const r = revs.find(x => x.n === n), latest = revs[0]; if (!r || !latest) return;
+      info(`Restoring r${n}…`);
+      try {
+        const d = await design(cur, n), now = await design(cur, latest.n);
+        let thumb;
+        if (r.thumb) thumb = await fetch(api.thumbUrl(cur, n), { credentials: "same-origin" }).then(x => (x.ok ? x.blob() : null)).then(b => b && new Promise(res => { const f = new FileReader(); f.onload = () => res(f.result); f.readAsDataURL(b); })).catch(() => undefined);
+        const msg = $("rev-message").value.trim();
+        const saved = await api.saveRevision(cur, { message: msg || `Restored r${n}${r.message ? ": " + r.message : ""}`, summary: `restored r${n}: ` + R.diff(now, d).text, parent: n, thumb: thumb || undefined, metrics: r.metrics, design: d, force: true });
+        designs.set(cur + "." + saved.n, d); $("rev-message").value = "";
+        pick = saved.n;
+        info(`r${n} is the newest revision again, as r${saved.n}. The sheet is unchanged: Open puts it there.`, "ok");
+        await loadProjects();
+      } catch (err) { failed(err); }
+    }
     function showNew(on) {
       $("rev-new-row").hidden = !on;
       if (on) { const n = $("rev-new-name"); n.value = sheetName().name || ""; n.focus(); n.select(); }
@@ -296,6 +340,7 @@
         else if (act === "star") star(pick);
         else if (act === "star-ok") setStar(pick, $("rev-star-name").value);
         else if (act === "star-off") setStar(pick, "");
+        else if (act === "restore") restore(pick);
         else preview();
       });
       $("rev-diff-bar").addEventListener("click", e => {

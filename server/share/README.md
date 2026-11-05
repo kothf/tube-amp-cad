@@ -45,6 +45,22 @@ Space: links and revisions share `MAX_TOTAL` (100 MB). A new revision makes room
 oldest links; revisions are never deleted except by you. `MAX_REVISIONS` and `MAX_SHARES` cap each
 part (both 100 MB by default, so revisions may take it all). The manager shows what is used.
 
+Deleting a project or a revision moves it to the trash (it keeps its files and its room); the
+trash is emptied after `TRASH_DAYS` (30) days, or by hand in the manager. `POST /api/rev/import`
+takes a project as `/export` writes it (the manager's Import project…).
+
+## Backups
+
+The NUC copies the store to the desktop: `~/scripts/tubecad-backup.sh` (from the NUC user's
+crontab, 03:20 and 15:20 and after a reboot) writes `tubecad_<time>.tar.gz` and its SHA-256 to
+`/mnt/Projects/tubecad-backup/snapshots/` (the desktop's Samba share `Projects`), only when
+something changed, and checks that the share is really mounted first. The store's container
+cannot see the share. Because the NUC can write to that share, the desktop's own crontab copies
+every new archive (checked against its checksum) into `/media/pinkfloyd/Terra/Andrew/tubecad-backup-vault/`,
+outside every share, and never deletes there. How to restore, also onto a new NUC:
+`README-RESTORE.md` in the backup folder. One project alone can go back through the manager's
+Import project… (its folder from an archive).
+
 ## Updating the NUC
 
 ```sh

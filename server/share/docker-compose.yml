@@ -20,7 +20,7 @@ services:
       - ./data:/data
       - ./revisions:/revs
     networks: [share]
-    mem_limit: 128m
+    mem_limit: 256m
     cpus: 0.5
     read_only: true
     tmpfs: [/tmp]

@@ -359,8 +359,15 @@
     .rev-filter { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
     .rev-filter .btn { padding: 1px 8px; font-size: 11px; }
     .rev-filter .btn.active { color: #e3b341; border-color: #e3b341; }
-    .rev-items { max-height: 44vh; min-height: 160px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
-    .rev-item { display: grid; grid-template-columns: 36px minmax(0, 1fr) max-content; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: var(--text); padding: 6px 8px; font: 12px system-ui, sans-serif; cursor: pointer; }
+    .rev-items { max-height: 44vh; min-height: 160px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; position: relative; }
+    .rev-tree { position: absolute; left: 2px; top: 0; width: 26px; pointer-events: none; overflow: visible; z-index: 1; }
+    .rev-tree path { stroke: #3a4c63; stroke-width: 1.6; fill: none; }
+    .rev-tree path.br { stroke: #b388ff; stroke-dasharray: 3 2; }
+    .rev-tree circle { fill: #0b1119; stroke: var(--accent); stroke-width: 1.6; }
+    .rev-tree circle.from { stroke: #b388ff; }
+    .rev-tree circle.ms { fill: #e3b341; stroke: #e3b341; }
+    .rev-tree circle.now { fill: var(--ok); stroke: var(--ok); }
+    .rev-item { display: grid; grid-template-columns: 20px 36px minmax(0, 1fr) max-content; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: var(--text); padding: 6px 8px; font: 12px system-ui, sans-serif; cursor: pointer; }
     .rev-item:first-child { border-top: 0; }
     .rev-item:hover { background: #121b27; }
     .rev-item.on { background: #13263a; box-shadow: inset 3px 0 0 var(--accent); }
