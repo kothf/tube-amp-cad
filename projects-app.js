@@ -21,7 +21,7 @@
     say("Asking aerocat.tech…");
     try {
       const me = await api.me();
-      [projects, links, trash] = await Promise.all([api.projects(), api.shares(), api.trash()]);
+      [projects, links, trash] = await Promise.all([api.projects(), api.shares(), api.trash().catch(e => { if (e.signin) throw e; return null; })]);
       for (const id of [...open.keys()]) { if (projects.some(p => p.id === id)) open.set(id, (await api.project(id)).revs.slice().reverse()); else open.delete(id); }
       $("signin").hidden = true;
       $("who").textContent = "Signed in as " + me.email;
@@ -29,7 +29,8 @@
       ["space-card", "projects-card", "links-card"].forEach(id => { $(id).hidden = false; });
       $("import").hidden = false;
       if ($("p-filter").value.trim()) search();
-      say("");
+      // a store older than this page has no trash (nor import, search, release files): say how to update it
+      say(trash ? "" : "The store on the server is older than this page: the trash, import, search and release files need it updated (run server/share/update.sh on the server).", !trash);
     } catch (err) {
       ["space-card", "projects-card", "links-card", "trash-card"].forEach(id => { $(id).hidden = true; });
       $("import").hidden = true;

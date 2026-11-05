@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.183.1] - 2026-11-05
+
+### Fixed
+- The project manager no longer stops at *Could not read the store: not found* when the store on the server is older than the page (no trash yet): it lists the projects and says to run `server/share/update.sh`.
+
 ## [3.183.0] - 2026-11-05
 
 ### Added
