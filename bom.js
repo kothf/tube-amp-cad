@@ -78,7 +78,12 @@
       case "isrc": return ["Current source (ideal)", f(p.i, "A"), ""];
       case "chipamp": { const m = L.CHIPAMPS[p.model] || {}; return ["Power amplifier IC", p.model, m.pkg ? `${m.pkg}, ${m.pout}${m.pkg === "DIP-8" ? "" : ", on a heatsink"}` : ""]; }
       case "neon": { const m = L.NEONS[p.model] || {}; return ["Neon indicator lamp", p.model, m.vs ? `strikes at ${m.vs} V, ${f(m.i, "A")}; series resistor ${f(m.rser, "Ω")} on 230 V` : ""]; }
-      case "eye": { const m = L.EYES[p.model] || {}; return ["Tuning indicator tube (magic eye)", p.model, m.vt ? `target ${m.vt} V ${f(m.it, "A")}, ${m.base === "OCTAL" ? "octal" : "6-pin"} socket, 6.3 V 0.3 A heater` : ""]; }
+      case "eye": { const m = L.EYES[p.model] || {}; return ["Tuning indicator tube (magic eye)", p.model, m.vt ? `target ${m.vt} V ${f(m.it, "A")}, ${m.base === "OCTAL" ? "octal" : m.base === "B9A" ? "noval" : "6-pin"} socket, 6.3 V ${m.ih || 0.3} A heater` : ""]; }
+      case "hgrect": { const m = L.HGRECTS[p.model] || {}; return ["Mercury-vapour rectifier tube", p.model, m.vf ? `${m.full ? "full-wave" : "half-wave"}, ${f(m.idc, "A")}, ${m.piv} V PIV, UX4 socket${m.cap ? " + top cap" : ""}, ${m.vf} V ${m.ihf} A filament` : ""]; }
+      case "lamp": { const m = L.LAMPS[p.model] || {}; return ["Incandescent lamp", p.model, m.use ? `${m.v} V ${f(m.i, "A")}, ${m.base}` : ""]; }
+      case "battery": { const m = L.BATTERIES[p.model] || {}; return ["Battery", p.model, m.use ? `${m.use}, ${m.mah} mAh` : ""]; }
+      case "meter": { const m = L.meterModel(p); return [p.kind === "vu" ? "VU meter" : "Panel meter, moving coil", p.kind === "vu" ? `0 VU = ${p.ref === "0" ? "0" : "+4"} dBu` : f(m.fs, p.kind === "v" ? "V" : "A") + " FS", p.kind === "vu" ? "with 3.6 kΩ build-out" : `${f(m.r, "Ω")}`]; }
+      case "nixie": { const m = L.NIXIES[p.model] || {}; return ["Nixie tube", p.model, m.i ? `${f(m.i, "A")} a digit, 200 V supply or more` : ""]; }
       case "gasreg": { const m = L.GASREGS[p.model] || {}; return ["Gas voltage regulator tube", p.model, `${m.vm} V, ${m.imin * 1000}–${m.imax * 1000} mA, ${m.socket === "OCTAL" ? "octal" : "B7G"} socket`]; }
       case "itx": return [`Transformer, ${+p.idc > 0 ? "interstage (gapped)" : "signal"}`, "1:" + p.ratio + (p.ct === "yes" ? " CT" : ""), "Lp " + f(p.lp, "H") + ", DCR " + f(p.dcrp, "Ω") + " / " + f(p.dcrs, "Ω") + (+p.idc > 0 ? ", " + f(p.idc, "A") + " DC" : "")];
       case "vcvs": return ["Voltage-controlled voltage source (ideal)", "×" + p.gain, ""];

@@ -216,8 +216,8 @@ test("every part has a through-hole footprint, and every footprint it offers tak
       const nl = { parts: Array.from({ length: sections }, (_, k) => ({ id: "c" + k, type, label: sections > 1 ? `X1.${k + 1}` : "X1", params, pins: pins.map((p, i) => ({ id: p.id, net: k * 10 + i + 1 })) })) };
       const [g] = B.physicalParts(nl);
       // transformers, filter chokes and the mains inlet go on the chassis: wire pads by default
-      // (and panel switches: a toggle, a rotary selector)
-      const chassis = /^(opt_|ptx)/.test(type) || type === "iec" || type === "rotary" || (type === "spst" && params.kind === "toggle") || (type === "inductor" && (+params.l || 0) >= 0.05);
+      // (and panel switches: a toggle, a rotary selector; the panel's lamps, meters, nixies and the battery)
+      const chassis = /^(opt_|ptx)/.test(type) || ["iec", "rotary", "lamp", "battery", "meter", "nixie"].includes(type) || (type === "spst" && params.kind === "toggle") || (type === "inductor" && (+params.l || 0) >= 0.05);
       if (type !== "tube") assert.equal(/^WIRE-/.test(g.options[0]), chassis, `${type}: ${chassis ? "wire pads" : "a real footprint"} by default (${g.options[0]})`);
       for (const o of g.options) {
         const f = B.footprint(o, g.members.flatMap(m => m.pins.map(p => (sections > 1 ? m.label.split(".").pop() + "." : "") + p.id)));

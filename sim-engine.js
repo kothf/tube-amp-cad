@@ -1158,7 +1158,8 @@
   //   same circuit with other part values (tolerance runs); it changes how long the run takes, not
   //   where it settles. result.warm: the settled state at a period's start, before the capture.
   // ---------------------------------------------------------------------------
-  // Inrush limiters (NTC thermistors): an R element with ntc { r25, k, n } runs at its self-heated
+  // Inrush limiters (NTC thermistors) and lamps: an R element with ntc { r25, k, n } runs at its self-heated
+  // resistance (a lamp's filament, n < 0, at R = max(r25, k·I^−n), its cold resistance r25 the floor)
   // resistance R = min(r25, k·I^−n) for its rms current I (the makers' law). The body's thermal time
   // constant (tens of seconds) is far longer than any capture, so in the steady state it holds one
   // value through the cycle: the run is repeated from its last settled state, R moved partway toward
@@ -1179,7 +1180,8 @@
       r.ntc = {};
       let moved = 0;
       hot.forEach(e => {
-        const i = rmsCurrent(r, e), want = Math.min(e.ntc.r25, e.ntc.k * Math.pow(Math.max(i, 1e-12), -e.ntc.n));
+        // an NTC's law falls with the current, held under r25; a lamp's tungsten (n < 0) rises with it, held over its cold r25
+        const i = rmsCurrent(r, e), law = e.ntc.k * Math.pow(Math.max(i, 1e-12), -e.ntc.n), want = e.ntc.n < 0 ? Math.max(e.ntc.r25, law) : Math.min(e.ntc.r25, law);
         r.ntc[e.id] = { r: e.r, i };
         // a damped step in log R: the current falls as R rises, which a full step would overshoot
         const next = Math.exp(Math.log(e.r) + 0.6 * (Math.log(want) - Math.log(e.r)));
@@ -1628,7 +1630,7 @@
     opts = opts || {};
     if (opts.soft && opts.soft.at > 0) {
       let nodeCount = netlist.nodeCount;
-      const els = netlist.elements.map(e => Object.assign({}, e)), ntc = els.filter(e => e.ntc);
+      const els = netlist.elements.map(e => Object.assign({}, e)), ntc = els.filter(e => e.ntc && e.ntc.n > 0);
       if (ntc.length) ntc.forEach(e => { e.soft = true; });
       else els.filter(e => e.acMains).forEach(e => { const n = nodeCount++, a = e.nodes[0]; e.nodes = [n, e.nodes[1]]; els.push({ id: e.id + "~soft", kind: "R", nodes: [a, n], r: Math.max(0.01, +opts.soft.r || 0), soft: true }); });
       netlist = Object.assign({}, netlist, { nodeCount, elements: els });

@@ -452,7 +452,7 @@
   }
 
   // AC animation (View ▾ → Animate): dots for each wire's current, a tint for each node's AC (cad-anim.js)
-  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, heaterLevel, ledLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
+  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, heaterLevel, lampLevel, ledLevel, meterReading, needleLevel, nixieLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
 
   function limitRows(c) {
     return tubeLimits(c).filter(o => o.key !== "Vg2k").map(o => kv(o.label, `${o.value} · ${Math.round(o.share * 100)}% of ${o.lim}`, o.share > 1 ? "bad" : o.share > 0.85 ? "warn" : "")).join("");
@@ -1414,13 +1414,17 @@
     ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "rail" || c.type === "isrc" || c.type === "vcvs" || c.type === "vccs" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" || c.type === "pickup" || c.type === "phono" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
-    if (["led", "vactrol", "neon", "gasreg"].includes(c.type) && !ghost && !S.printing) c._lit = ledLevel(c);
+    if (["led", "vactrol", "neon", "gasreg", "hgrect"].includes(c.type) && !ghost && !S.printing) c._lit = ledLevel(c);
+    if (c.type === "hgrect" && !ghost && !S.printing) c._heat = heaterLevel(c);
+    if (c.type === "lamp" && !ghost && !S.printing) c._lit = lampLevel(c);
+    if (c.type === "nixie" && !ghost && !S.printing) { const n = nixieLevel(c); if (n) { c._digit = n.digit; c._lit = n.lit; } }
+    if (c.type === "meter" && !ghost && !S.printing) c._needle = needleLevel(c);
     if (c.type === "eye" && !ghost && !S.printing) c._eye = eyeLevel(c);
     if (c.type === "tube" && !ghost && !S.printing) { const h = anodeHeat(c); if (h) c._hot = h.glow; c._heat = heaterLevel(c); }
     // a relay drawn pulled in when the simulation (its settled average) has it so
     if (c.type === "relay" && !ghost && !S.printing && S.sim.result && S.sim.result.dc) { const d = (S.sim.result.dc.devices[c.id] || {}).main; c._on = !!(d && d.q > 0.5); }
     DRAW[c.type](ctx, c);
-    delete c._sel; delete c._lit; delete c._on; delete c._eye; delete c._hot; delete c._heat;
+    delete c._sel; delete c._lit; delete c._on; delete c._eye; delete c._hot; delete c._heat; delete c._digit; delete c._needle;
     if (mirrored) { if (ownFill) ctx.fillText = prevFill; else delete ctx.fillText; }
     ctx.restore();
   }
@@ -1935,7 +1939,9 @@
         const wrap = document.createElement("div"); wrap.className = "range-wrap";
         const r = document.createElement("input"); r.type = "range"; r.min = f.min; r.max = f.max; r.step = f.step; r.value = c.params[f.key];
         const lab = document.createElement("span"); lab.textContent = f.format(c.params[f.key]);
-        r.addEventListener("input", () => { c.params[f.key] = parseFloat(r.value); lab.textContent = f.format(c.params[f.key]); S.topo = null; scheduleSim(60); render(); });
+        // a dual-gang pot's sections (R1.1, R1.2) turn together
+        const gang = c.type === "pot" && f.key === "pos" && switchGang(c);
+        r.addEventListener("input", () => { const v = parseFloat(r.value); S.comps.forEach(k => { if (k === c || (gang && k.type === c.type && switchGang(k) === gang)) k.params[f.key] = v; }); lab.textContent = f.format(c.params[f.key]); S.topo = null; scheduleSim(60); render(); });
         r.addEventListener("change", () => commit());
         wrap.appendChild(r); wrap.appendChild(lab); el = wrap;
       } else if (f.kind === "tube") {
@@ -2204,6 +2210,35 @@
       if (!d.q) issues.push(`${c.label} (${c.params.model}) does not strike: it needs ${m.vs} V across it to light, and then ${m.imin * 1000}–${m.imax * 1000} mA through it.`);
       else if (d.i > m.imax) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(d.i, "A", 2)}, more than its ${m.imax * 1000} mA maximum: raise its series resistor.`);
       else if (d.i < m.imin) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(d.i, "A", 2)}, less than the ${m.imin * 1000} mA it needs to regulate: lower its series resistor or lighten the load.`);
+    });
+    // mercury-vapour rectifiers: the DC (cathode) current, each anode's peak and its peak inverse voltage;
+    // panel meters: pinned past full scale; lamps: over their rated voltage; nixies: over twice their current
+    S.comps.forEach(c => {
+      if (!S.sim.result) return;
+      if (c.type === "hgrect") {
+        const m = CadLib.HGRECTS[c.params.model]; if (!m) return;
+        const ik = pinCurrent(c, "K"), wk = netWave(pinNetOf(c, "K")) || null;
+        if (ik !== null && Math.abs(ik) > m.idc) issues.push(`${c.label} (${c.params.model}) delivers ${fmtEng(Math.abs(ik), "A", 2)} DC, more than its ${fmtEng(m.idc, "A")} rating.`);
+        ["A1", "A2"].filter(a => compPins(c).some(q => q.id === a)).forEach(a => {
+          const wa = netWave(pinNetOf(c, a)); if (!wa) return;
+          let piv = 0; for (let k = 0; k < wa.length; k++) piv = Math.max(piv, (wk ? wk[k] : 0) - wa[k]);
+          if (piv > m.piv) issues.push(`${c.label} (${c.params.model}) sees ${fmtEng(piv, "V", 3)} peak inverse on ${a === "A1" && !m.full ? "its anode" : "anode " + a.slice(1)}, more than its ${m.piv} V: it arcs back.`);
+        });
+      }
+      if (c.type === "meter") {
+        const x = meterReading(c);
+        if (x !== null && x > 1.05) issues.push(`${c.label} reads past full scale (${Math.round(x * 100)} %): its needle pins. ${c.params.kind === "vu" ? "Pad the line down or set 0 VU to +4 dBu." : "Choose a larger full scale or add a shunt or multiplier."}`);
+        else if (x !== null && x < -0.03) issues.push(`${c.label} reads backwards: swap its + and − leads.`);
+      }
+      if (c.type === "lamp") {
+        const m = CadLib.LAMPS[c.params.model], e = S.sim.result.ntc && S.sim.result.ntc[c.id];
+        if (m && e && e.i * e.r > 1.1 * m.v) issues.push(`${c.label} (${c.params.model}) runs at ${fmtEng(e.i * e.r, "V", 3)}, over its ${m.v} V rating: it burns out early (life falls about as V^−12).`);
+      }
+      if (c.type === "nixie") {
+        const m = CadLib.NIXIES[c.params.model]; if (!m) return;
+        const ia = pinCurrent(c, "A");
+        if (ia !== null && ia > 2 * m.i) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(ia, "A", 2)}, over twice the ${fmtEng(m.i, "A")} a digit wants: raise its anode resistor.`);
+      }
     });
     // neon lamps: no more than twice the design current; magic eyes: the target within its rating
     S.comps.forEach(c => {
@@ -2797,7 +2832,7 @@
         case "R": {
           // an inrush limiter at the resistance it settled at (cold before a simulation)
           const hot = e.ntc && S.sim.result && S.sim.result.ntc && S.sim.result.ntc[e.id];
-          if (e.ntc) lines.push(`* ${id}: NTC inrush limiter, ${hot ? "self-heated as simulated" : "cold"} (${e.ntc.r25} ohm at 25 C)`);
+          if (e.ntc) lines.push(e.ntc.n < 0 ? `* ${id}: lamp filament, ${hot ? "at its resistance as simulated" : "at its rated (hot) resistance"} (${+e.ntc.r25.toPrecision(3)} ohm cold)` : `* ${id}: NTC inrush limiter, ${hot ? "self-heated as simulated" : "cold"} (${e.ntc.r25} ohm at 25 C)`);
           lines.push(`R${id} ${nd[0]} ${nd[1]} ${hot ? +hot.r.toPrecision(4) : e.r}`);
           break;
         }
@@ -3089,6 +3124,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
