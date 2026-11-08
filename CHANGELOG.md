@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.184.0] - 2026-11-08
+
+### Added
+- **Window tabs at the bottom of the CAD**, like the part / assembly / drawing tabs of a mechanical CAD: Schematic, Board, the instruments (oscilloscope, spectrum analyzer, Bode plotter, curve tracer) and the manual switch inside one browser tab instead of separate browser windows. **+** opens a tool in a tab, × closes one, ⧉ moves one to a window of its own (for a second monitor; its tab then brings that window up), a reload keeps the open tabs, Alt+S / Alt+B still jump. A tool window of its own (Board or Schematic button) brings up the CAD showing that tab.
+
+### Changed
+- *View ▾ → Board in this window* is now **Windows as tabs**, on by default and covering every tool, not only the board; untick it for a window per tool as before.
+
 ## [3.183.1] - 2026-11-05
 
 ### Fixed

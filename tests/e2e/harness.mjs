@@ -28,16 +28,19 @@ export const browser = process.env.BROWSER === "webkit" ? await webkit.launch() 
 // the start screen stays shut in every context, unless asked for with { startScreen: true }
 // (tests/e2e/05-sheets-files.mjs checks it in a context of its own)
 const newContext = browser.newContext.bind(browser);
-browser.newContext = async ({ startScreen, ...opts } = {}) => {
+// and the tools open in windows of their own (the parts drive them as pages), unless asked for
+// tabs at the bottom of the CAD with { tabs: true } (tests/e2e/04b-window-tabs.mjs)
+browser.newContext = async ({ startScreen, tabs, ...opts } = {}) => {
   const c = await newContext(opts);
   if (!startScreen) await c.addInitScript(() => { try { localStorage.setItem("tubecad_start", "0"); } catch (e) { /* no storage */ } });
+  if (!tabs) await c.addInitScript(() => { try { if (localStorage.getItem("tubecad_tabs") === null) localStorage.setItem("tubecad_tabs", "0"); } catch (e) { /* no storage */ } });
   return c;
 };
 export const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
 export const errors = [], missing = [];
 export const open = async (name, page) => {
   const p = await ctx.newPage();
-  p.on("pageerror", e => errors.push(`${name}: ${e.message}`));
+  p.on("pageerror", e => { errors.push(`${name}: ${e.message}`); if (process.env.E2E_STACK) console.log("STACK", e.stack); });
   // the Board window asks for Freerouting on this computer every few seconds: no answer there (or one a CORS check refuses) is not an error of the page
   // nor is the link store's 404 (the test server has none; 11-share plays one where it needs it), nor the revisions' 401 before signing in
   p.on("console", m => { if (m.type() === "error" && !/^http:\/\/127\.0\.0\.1:\d+\/v1\/|\/api\/(share|rev)(\/|$)|streams\.radiobob\.de\//.test((m.location() || {}).url || "") && !/127\.0\.0\.1:\d+\/v1\/|Failed to load resource: net::ERR_FAILED/.test(m.text())) errors.push(`${name}: ${m.text()}`); });

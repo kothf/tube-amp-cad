@@ -12,7 +12,7 @@
       --accent: #00e5ff; --amber: #ffd54f; --ok: #3fb950; --bad: #ff7b72; --warn: #ffb300;
     }
     select:not([class]), select.btn { background-color: var(--panel2, #131b26); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
-    body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
+    body { background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; display: grid; grid-template-rows: auto 1fr auto auto; overflow: hidden; }
     button, input, select { font: inherit; color: inherit; }
 
     /* toolbar */
@@ -23,8 +23,28 @@
     @media (max-width: 1080px) { header > .cur-file { display: none; } #btn-analyze .an-lbl { display: none; } #btn-analyze .an-ico { display: inline; } }
     @media (max-width: 1140px) { header > .sep { display: none; } #zoom-label { min-width: 40px; } }   /* the groups' gaps stand for the separators, so the AI menu still fits one row at 1000 px */
     #btn-analyze .an-ico { display: none; vertical-align: -3px; }
-    #board-tab { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 50; background: var(--bg); }
-    #board-tab[hidden] { display: none; }
+    /* window tabs at the bottom (cad-tabs.js): a tool's page in a frame over the CAD, above the strip */
+    iframe.tab-frame { position: fixed; left: 0; top: 0; width: 100%; height: calc(100% - var(--wt-h, 0px)); border: 0; z-index: 50; background: var(--bg); }
+    iframe.tab-frame[hidden] { display: none; }
+    body.win-tabs-on { --wt-h: 30px; }
+    #win-tabs { grid-row: 4; position: relative; z-index: 51; display: flex; align-items: stretch; gap: 2px; height: 30px; padding: 0 6px; background: var(--bg); border-top: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+    #win-tabs[hidden] { display: none; }
+    .wt-tab { display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; margin-top: -1px; border: 1px solid transparent; border-top: 0; border-radius: 0 0 6px 6px; color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; flex-shrink: 0; }
+    .wt-tab:hover { background: var(--panel); color: var(--text); }
+    .wt-tab.on { background: var(--panel); color: var(--text); border-color: var(--line); box-shadow: inset 0 -2px 0 var(--accent); }
+    .wt-tab.away { opacity: .55; font-style: italic; }
+    .wt-tab:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+    .wt-tab .ico { width: 14px; height: 14px; }
+    .wt-btn { border: 0; background: none; color: var(--muted); padding: 0 3px; line-height: 18px; border-radius: 4px; cursor: pointer; visibility: hidden; }
+    .wt-tab:hover .wt-btn, .wt-tab.on .wt-btn { visibility: visible; }
+    .wt-btn:hover { background: var(--panel2); color: var(--text); }
+    .wt-add { border: 0; background: none; color: var(--muted); font-size: 16px; padding: 0 10px; cursor: pointer; flex-shrink: 0; }
+    .wt-add:hover { color: var(--accent); }
+    .wt-menu { position: fixed; bottom: 34px; z-index: 60; min-width: 190px; padding: 4px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
+    .wt-menu[hidden] { display: none; }
+    .wt-mi { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 0; background: none; text-align: left; border-radius: 5px; cursor: pointer; }
+    .wt-mi:hover, .wt-mi:focus-visible { background: var(--panel); color: var(--accent); }
+    @media (max-width: 700px) { .wt-tab .wt-lbl { display: none; } .wt-tab.on .wt-lbl { display: inline; } }
     .brand { font-weight: 700; letter-spacing: .5px; margin-right: 8px; white-space: nowrap; }
     .brand b { color: var(--accent); }
     .brand-ver { display: block; font: 400 10px/1.2 ui-monospace, Menlo, monospace; letter-spacing: 0; color: var(--muted); }
@@ -526,7 +546,7 @@
     <div class="brand" title="Tube Amp CAD">⚡ <b>Tube Amp</b> <span>CAD</span><small class="brand-ver" id="app-version"></small></div>
     <div class="seg-group doc-switch" role="group" aria-label="Design">
       <button class="btn" id="btn-doc-sch" aria-current="page" title="Schematic: the circuit you are editing"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8h3l1-3 1.5 6 1.5-6 1.5 6 1-3h4.5"/></svg><span class="ds-lbl">Schematic</span></button>
-      <button class="btn" id="btn-doc-board" title="Board: the PCB layout of this circuit, in its own window (Alt+B)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/><path d="M6.2 6H9l2 2v.8"/></svg><span class="ds-lbl">Board</span></button>
+      <button class="btn" id="btn-doc-board" title="Board: the PCB layout of this circuit, in its tab at the bottom or a window of its own (Alt+B)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/><path d="M6.2 6H9l2 2v.8"/></svg><span class="ds-lbl">Board</span></button>
     </div>
     <span class="cur-file untitled" id="cur-file" title="The circuit file open now">Untitled</span>
     <button class="rev-at" id="rev-at" hidden></button>
@@ -565,8 +585,8 @@
         <button class="menu-item check" data-ico="bom" role="menuitemcheckbox" aria-checked="false" id="btn-bom" title="Bill of materials under the schematic; export TXT, CSV, XLSX or PDF (B)">Bill of materials<kbd>B</kbd></button>
         <button class="menu-item check" data-ico="checks" role="menuitemcheckbox" aria-checked="false" id="btn-checks" title="Every part beyond its rating and every wiring problem, in the panel under the schematic">Checks<kbd>under the schematic</kbd></button>
         <div class="menu-sep"></div>
-        <div class="menu-head">Board</div>
-        <button class="menu-item check" data-ico="tab" role="menuitemcheckbox" id="btn-board-tab" title="Ticked: the board opens in this window, in place of the schematic, and the Schematic | Board switch flips between them. Not ticked: the board gets a window of its own (for a second monitor)">Board in this window<kbd>a tab, not a window</kbd></button>
+        <div class="menu-head">Windows</div>
+        <button class="menu-item check" data-ico="tab" role="menuitemcheckbox" id="btn-board-tab" title="Ticked: the board, the instruments and the manual open as tabs at the bottom of this window, and the tabs switch between them. Not ticked: each gets a window of its own (for a second monitor)">Windows as tabs<kbd>tabs at the bottom</kbd></button>
         <div class="menu-sep"></div>
         <div class="menu-head">Interface</div>
         <button class="menu-item check" role="menuitemradio" aria-checked="true" data-lang="en" data-i18n-skip title="Menus, buttons and tooltips in English">English</button>
@@ -615,13 +635,13 @@
       <button class="btn toggle" id="btn-anim" title="Animate the AC: one signal cycle slowed to 3 s (a slow one in real time); dots run along each wire, violet flowing with the DC where the node's voltage is mostly DC, pale swinging with the AC elsewhere; wires turn orange when their node swings up and blue when it swings down; LEDs light with their current. A cycle of 0.25 s or longer (a 555 flasher) plays in real time" aria-pressed="false" aria-label="Animate">∿<span class="wide-lbl"> Animate</span></button>
     </div>
     <div class="menu" id="analyze-menu">
-      <button class="btn" id="btn-analyze" aria-haspopup="true" aria-expanded="false" title="Instruments (each in its own window) and analyses (in the panel under the schematic)" aria-label="Analyze"><svg class="ico an-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M3.5 8c1-3 2-3 3 0s2 3 3 0 2-3 3 0"/></svg><span class="an-lbl">Analyze ▾</span></button>
+      <button class="btn" id="btn-analyze" aria-haspopup="true" aria-expanded="false" title="Instruments (each in a tab at the bottom or a window of its own) and analyses (in the panel under the schematic)" aria-label="Analyze"><svg class="ico an-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M3.5 8c1-3 2-3 3 0s2 3 3 0 2-3 3 0"/></svg><span class="an-lbl">Analyze ▾</span></button>
       <div class="menu-list" role="menu" hidden>
-        <div class="menu-head" title="Each opens in its own window, so it can sit on a second monitor">Instruments</div>
-        <button class="menu-item" data-ico="scope" role="menuitem" id="btn-open-scope" title="Full oscilloscope for the first scope part, in its own window">Oscilloscope<kbd>↗</kbd></button>
-        <button class="menu-item" data-ico="spectrum" role="menuitem" id="btn-open-spectrum" title="FFT of a scope part's channels, in its own window">Spectrum analyzer<kbd>↗</kbd></button>
-        <button class="menu-item" data-ico="bode" role="menuitem" id="btn-open-bode" title="Frequency response (gain and phase) at a scope part's channels, in its own window">Bode plotter<kbd>↗</kbd></button>
-        <button class="menu-item" data-ico="tracer" role="menuitem" id="btn-open-tracer" title="Plate curves with this circuit's operating point, in its own window">Curve tracer<kbd>↗</kbd></button>
+        <div class="menu-head" title="Each opens in a tab at the bottom; untick View ▾ → Windows as tabs, or press ⧉ on its tab, for a window of its own on a second monitor">Instruments</div>
+        <button class="menu-item" data-ico="scope" role="menuitem" id="btn-open-scope" title="Full oscilloscope for the first scope part, in a tab at the bottom or a window of its own">Oscilloscope<kbd>↗</kbd></button>
+        <button class="menu-item" data-ico="spectrum" role="menuitem" id="btn-open-spectrum" title="FFT of a scope part's channels, in a tab at the bottom or a window of its own">Spectrum analyzer<kbd>↗</kbd></button>
+        <button class="menu-item" data-ico="bode" role="menuitem" id="btn-open-bode" title="Frequency response (gain and phase) at a scope part's channels, in a tab at the bottom or a window of its own">Bode plotter<kbd>↗</kbd></button>
+        <button class="menu-item" data-ico="tracer" role="menuitem" id="btn-open-tracer" title="Plate curves with this circuit's operating point, in a tab at the bottom or a window of its own">Curve tracer<kbd>↗</kbd></button>
         <div class="menu-sep"></div>
         <div class="menu-head" title="Each runs the circuit many times and shows its result in the panel under the schematic">Analyses</div>
         <button class="menu-item check" data-ico="tolerance" role="menuitemcheckbox" aria-checked="false" id="btn-tolerance" title="The circuit simulated many times with its parts spread within their tolerances: each value's spread">Tolerance runs<kbd>under the schematic</kbd></button>
@@ -638,7 +658,7 @@
       <button class="btn ib" id="btn-help" aria-haspopup="true" aria-expanded="false" title="Help: shortcuts, the manual, about (F1 or ? opens the quick help)" aria-label="Help"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M6.1 6.2a2 2 0 1 1 2.6 1.9c-.5.2-.7.6-.7 1.1v.5"/><path d="M8 11.6v.2"/></svg></button>
       <div class="menu-list right" role="menu" hidden>
         <button class="menu-item" data-ico="keyboard" role="menuitem" id="menu-help-keys" title="The tools, the mouse and every keyboard shortcut on one page">Quick help and shortcuts<kbd>F1</kbd></button>
-        <button class="menu-item" data-ico="book" role="menuitem" id="btn-open-manual" title="Every feature, part, value and coefficient explained, in its own window">Manual<kbd>↗</kbd></button>
+        <button class="menu-item" data-ico="book" role="menuitem" id="btn-open-manual" title="Every feature, part, value and coefficient explained, in a tab at the bottom or a window of its own">Manual<kbd>↗</kbd></button>
         <div class="menu-sep"></div>
         <button class="menu-item" data-ico="info" role="menuitem" id="menu-help-about" title="Who made the app, what it is built on, licence and disclaimer">About &amp; credits</button>
       </div>
@@ -1076,6 +1096,7 @@
   <script src="cad-export.js?v=dev"></script>
   <script src="cad-results.js?v=dev"></script>
   <script src="cad-board-link.js?v=dev"></script>
+  <script src="cad-tabs.js?v=dev"></script>
   <script src="board-core.js?v=dev"></script>
   <script src="board-fab.js?v=dev"></script>
   <script src="kicad-export.js?v=dev"></script>

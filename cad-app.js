@@ -1044,7 +1044,7 @@
     .add({ id: "print", keys: ["Ctrl+P"], prevent: true, inInputs: true, run: () => openPrintDialog(), help: "print the sheet, all sheets or the bill of materials" })
     .add({ id: "simulate", keys: ["Ctrl+Enter"], prevent: true, run: () => runSim("full"), help: "simulate until settled" })
     .add({ id: "board", keys: ["Alt+B"], prevent: true, inInputs: true, run: showBoard, help: "the board layout (Alt+S in the Board window comes back)" })
-    .add({ id: "board-tab", label: "Board in this window", run: () => setBoardTab(!isBoardTab()), check: isBoardTab })
+    .add({ id: "board-tab", label: "Windows as tabs", run: () => setBoardTab(!isBoardTab()), check: isBoardTab })
     .add({ id: "help", keys: ["F1"], inInputs: true, prevent: true, run: toggleHelp, help: "this help (also ?)" })
     .add({ id: "help-alt", keys: ["?"], prevent: true, run: toggleHelp })
     .add({ id: "inspector", label: "Inspector", run: () => setDrawer(!document.body.classList.contains("insp-open")), check: () => document.body.classList.contains("insp-open") })

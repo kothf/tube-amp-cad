@@ -60,6 +60,7 @@
     bode: AXES + `<path d="M3 4.5h5c2 0 3.5 2 5.5 7.5"/>`,
     tracer: AXES + `<path d="M2 13.5C3 8 4 6 14 6M2 13.5C3 11 4 9.5 14 9.5M2 13.5c1-1 2-1.5 12-1.5"/>`,
     board: `<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><circle cx="5" cy="6" r="1.2"/><circle cx="11" cy="10" r="1.2"/><path d="M6.2 6H9l2 2v.8"/>`,
+    schematic: `<path d="M1 8h3l1-3 1.5 6 1.5-6 1.5 6 1-3h4.5"/>`,
     tab: `<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M1.5 6h13M6 2.5V6"/>`,
     book: `<path d="M8 4C6.5 2.5 4 2 1.5 2.5v10C4 12 6.5 12.5 8 14c1.5-1.5 4-2 6.5-1.5v-10C12 2 9.5 2.5 8 4z"/><path d="M8 4v10"/>`,
     keyboard: `<rect x="1" y="4" width="14" height="8.5" rx="1.2"/><path d="M3.5 6.8h1M6.5 6.8h1M9.5 6.8h1M12.5 6.8h.1M3.5 9.2h.1M5.5 10h5M12.5 9.2h.1"/>`,

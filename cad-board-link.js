@@ -1,4 +1,4 @@
-/* The CAD's side of Board Design: the board window (or the board as a tab of this window), the
+/* The CAD's side of Board Design: the board window (or the board's tab at the bottom), the
    netlist it gets (BOARD_NETLIST), the board document the CAD keeps with the circuit (BOARD_SAVE
    stores it without echoing, so nothing loops), and cross-probing of parts and nets both ways. */
 (function (root) {
@@ -6,41 +6,11 @@
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadBoardLink = function (cad) {
     const { S, VERSION, channel, compBBox, compPins, frames, getCanvas, netDC, netWave, pinCurrents, render, selSig, showFile, topo, updateInspector, usedCustomTubes } = cad;
-    // The board as a tab of this window (Windows ▾ → Board in this window): board.html in a frame
-    // over the whole page, shown by Board and hidden by the Schematic button in its own toolbar.
-    // Off (the default), the board has a window of its own, for a second monitor; in Safari, which
-    // will not let the Board window bring this one back, on unless it was unticked.
-    const BOARD_TAB_KEY = "tubecad_board_tab";
-    let boardTab = !!ToolWindows.cantRaise;
-    try { const v = localStorage.getItem(BOARD_TAB_KEY); if (v !== null) boardTab = v === "1"; } catch (e) {}
-    const boardFrame = () => document.getElementById("board-tab");
-    function showBoard() {
-      if (!boardTab) { ToolWindows.open("board.html"); return; }
-      let f = boardFrame();
-      if (!f) { f = document.createElement("iframe"); f.id = "board-tab"; f.title = "Board Design"; f.src = "board.html" + VERSION; document.body.appendChild(f); f.addEventListener("load", () => { if (!f.hidden) f.contentWindow.focus(); }); }
-      f.hidden = false; document.body.classList.add("board-tab-on");
-      try { f.contentWindow.focus(); } catch (e) {}
-    }
-    function showSchematic() {
-      const f = boardFrame(); if (f) f.hidden = true;
-      document.body.classList.remove("board-tab-on");
-      window.focus(); getCanvas().focus();
-    }
-    function setBoardTab(on) {
-      boardTab = !!on;
-      try { localStorage.setItem(BOARD_TAB_KEY, boardTab ? "1" : "0"); } catch (e) {}
-      const f = boardFrame();
-      if (!boardTab && f) { const was = !f.hidden; f.remove(); document.body.classList.remove("board-tab-on"); if (was) ToolWindows.open("board.html"); }
-    }
-    // the framed board's Schematic button (windows.js) asks for the schematic
-    window.addEventListener("message", e => { if (e.origin === location.origin && e.data && e.data.type === "SHOW_PAGE" && e.data.page === "circuit_sandbox.html") showSchematic(); });
-    // an instrument's Board button (ToolWindows.openBoard) when the board lives in this window
-    if (channel) channel.addEventListener("message", e => { if (e.data && e.data.type === "SHOW_BOARD") showBoard(); });
-    const q = new URLSearchParams(location.search);
-    if (q.get("board") === "1") {
-      q.delete("board"); try { history.replaceState(null, "", location.pathname + (String(q) ? "?" + q : "") + location.hash); } catch (e) {}   // a reload stays on the schematic
-      if (document.readyState === "complete") setTimeout(showBoard); else window.addEventListener("load", () => showBoard(), { once: true });
-    }
+    // The board: a tab at the bottom of this window (View ▾ → Windows as tabs, cad-tabs.js) or a
+    // window of its own; ToolWindows.open picks
+    const showBoard = () => ToolWindows.open("board.html");
+    const isBoardTab = () => ToolWindows.tabsOn();
+    const setBoardTab = on => { if (ToolWindows.tabs) ToolWindows.tabs.setEnabled(on); else ToolWindows.setTabsOn(on); };
 
     // Board Design: the board window takes the netlist from here; the CAD keeps the board
     // document with the circuit (file and browser storage). The board window sends its
@@ -111,7 +81,6 @@
       probeSig = selSig();
       updateInspector(); render();
     }
-    const isBoardTab = () => boardTab;
     return { BOARD_KEY, boardNetlist, isBoardTab, probeBoard, scheduleBoardNetlist, selectFromBoard, selectNetFromBoard, sendBoardNetlist, setBoardTab, showBoard, storeBoard };
   };
 })(window);
