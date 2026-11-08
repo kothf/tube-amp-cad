@@ -17,11 +17,11 @@
 
   const parts = {
     resistor: "A fixed resistor. Its power rating sets the symbol's marking and the check: the simulated dissipation is compared with it.",
-    pot: "A potentiometer: two resistors either side of the wiper. Linear or audio (log) taper. Volume control, bias adjustment, balance.",
+    pot: "A potentiometer: two resistors either side of the wiper. Linear or audio (log) taper. Volume control, bias adjustment, balance. Under Animate drag its wiper (or use the wheel over it) to turn it live.",
     capacitor: "A film or ceramic capacitor: coupling, bypass, tone networks, Miller compensation.",
     electrolytic: "A polarised electrolytic: reservoir and smoothing capacitors, cathode bypass. Set its voltage rating for Checks, or the BOM picks one from the peak voltage it sees.",
     inductor: "A choke or inductor with its winding resistance: a supply filter choke, a plate choke load.",
-    switch: "A changeover switch (SPDT). Double-click it on the sheet to flip it. Sections named SA1.1, SA1.2 … flip together as one ganged switch.",
+    switch: "A changeover switch (SPDT). Double-click it on the sheet to flip it (a single click under Animate). Sections named SA1.1, SA1.2 … flip together as one ganged switch.",
     speaker: "A loudspeaker. Either an ideal resistor, or a real driver from its Thiele–Small parameters, whose impedance rises at resonance and with frequency, as an amplifier really sees it.",
     opt_se: "A single-ended output transformer: impedance ratio, primary inductance (bass), leakage and winding capacitance (treble), winding resistances, and a core that saturates past its rated power at low frequencies. Pick a Hammond or Edcor model, or type your own datasheet values.",
     opt_cat: "A Hammond 125SE single-ended output transformer, modelled from the maker's data: windings, inductance, DCR and rated DC current, with leakage and a core that saturates past the rated power below 100 Hz.",
@@ -54,7 +54,7 @@
     opamp: "An op-amp (LM741, LM301A, LM324, TL071/072/074): a two-stage model with the datasheet's gain, gain-bandwidth, slew rate, output swing and current limit. Wire V+ and V− to the rails; the amplifiers of a dual or quad (DA1.1, DA1.2 …) share one package on the board.",
     vdc: "A DC supply with an internal resistance, positive or negative: B+, a grid-bias supply, a low-voltage rail.",
     rail: "A power rail, the VCC arrow: an ideal DC supply from its pin to ground, without drawing the supply or its ground. Rails and sheet connectors with the same name are one net.",
-    spst: "An on–off switch: a toggle that stays where it is put, or a push button that makes (normally open) or breaks (normally closed) while pressed. Double-click it on the sheet to flip or press it.",
+    spst: "An on–off switch: a toggle that stays where it is put, or a push button that makes (normally open) or breaks (normally closed) while pressed. Double-click it on the sheet to flip or press it (a single click under Animate).",
     rotary: "A rotary selector, one pole of 2 to 12 ways: an input selector, a tone or bias switch. Double-click it to turn it on a way; sections SA1.1, SA1.2 … turn together as one multi-pole switch.",
     relay: "A relay (Omron G5LE-1 SPDT, G5V-2 DPDT): its coil's resistance and inductance, pulling in at 75 % of the rated voltage and dropping out at 5–10 %. Muting, standby delay, channel switching. Put a diode across the coil.",
     vactrol: "A vactrol (VTL5C3, VTL5C1): an LED shining on a CdS photoresistor. The cell's resistance follows the LED's current, quickly brightening and slowly dimming: tremolo, compressors, soft switching without clicks.",

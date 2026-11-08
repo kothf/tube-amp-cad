@@ -277,7 +277,12 @@ the circuit that was on the sheet.
     node's voltage. Where the node's DC voltage is at least its AC rms, violet
     dots flow steadily with the DC current; elsewhere pale dots swing with
     the AC current. Each node's wires turn
-    orange as it swings up and blue as it swings down.
+    orange as it swings up and blue as it swings down. Tube heaters glow
+    once simulated and, from the moment Animate is pressed, warm up from
+    cold over each tube's own warm-up time.
+  - **Play it live under Animate**: drag a pot's wiper (or turn it with the
+    wheel) and click a switch, button, selector or switched jack; the
+    circuit is simulated again as you turn, and letting go is one undo step.
   - AC is marked apart from DC: a net with AC on it adds it in cyan as
     "~20.1Vrms" after the yellow DC ("162V ~20.1Vrms"); a net with no DC
     shows the AC alone. Wires carrying the signal (AC at least 1 % of the DC)

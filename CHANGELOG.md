@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.185.0] - 2026-11-08
+
+### Added
+- **Glowing tube heaters.** Once a circuit is simulated every tube's heater glows orange on the schematic (a directly heated filament, as on a 2A3, 300B or 5U4G, brighter and yellower). Pressing ∿ Animate switches the amp on: each heater starts cold and warms up over its own warm-up time (the oscilloscope's power-on model), dull red first, orange when hot.
+- **Play the circuit live under ∿ Animate.** The sheet becomes the amp's front panel: drag a potentiometer's wiper along its body (or turn it with the mouse wheel, 2 % a notch; Ctrl+wheel still zooms) and a single click flips a switch, presses a button, steps a rotary selector or plugs a switched jack. The circuit runs again as you turn (a quick run, even with Live off), so dots, stickers, LEDs, eyes and the scope parts follow; letting go is one undo step.
+
 ## [3.184.0] - 2026-11-08
 
 ### Added

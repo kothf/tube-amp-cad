@@ -10,7 +10,9 @@
    milliamps; brighter dots, more current.
    LEDs light up by their current: with the animation on, at its moment; otherwise by the
    settled average. So do neon lamps (orange, on either polarity) and gas regulators (violet), and a
-   magic eye's shadow opens and closes with its triode's plate against its target. A free-running 555 sets its own cycle (the simulation finds its period), so a 555
+   magic eye's shadow opens and closes with its triode's plate against its target. Tube heaters glow
+   orange once simulated and, from the moment Animate is pressed, warm up from cold over each
+   tube's own warm-up time. A free-running 555 sets its own cycle (the simulation finds its period), so a 555
    flasher animates as any other circuit. A circuit with LEDs but no cycle at all (no signal
    generator, mains or free-running 555) plays its power-on transient instead, in real time and
    looping, so the LEDs light as they would on the bench. */
@@ -92,11 +94,12 @@
       S.anim.raf = requestAnimationFrame(animTick);
     }
     function setAnim(on) {
-      S.anim.on = on; S.anim.last = 0;
+      S.anim.on = on; S.anim.last = 0; S.anim.since = on ? performance.now() : 0;
       const b = document.getElementById("btn-anim"); if (b) { b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); }
       cancelAnimationFrame(S.anim.raf);
       if (on) {
-        if (!animData() && !powerOn()) setStatus("warn", S.sim.result ? "Nothing to animate: the circuit has no signal (add a signal generator) and no LED to blink" : "Simulate first: the animation plays the simulated signal");
+        if (!animData() && !powerOn() && !S.comps.some(c => c.type === "tube")) setStatus("warn", S.sim.result ? "Nothing to animate: the circuit has no signal (add a signal generator) and no LED to blink" : "Simulate first: the animation plays the simulated signal");
+        else if (S.comps.some(c => c.type === "pot" || (CadLib.LIB[c.type] || {}).flip)) setStatus("ok", "Animate: drag a pot's wiper (or turn it with the wheel) and click a switch to play the circuit live");
         S.anim.raf = requestAnimationFrame(animTick);
       }
       render();
@@ -172,6 +175,19 @@
       }
       return vt === null || !isFinite(vt) || !isFinite(vp) ? null : CadLib.eyeShadow(m, vt, vp);
     }
+    // how brightly a tube's heater (its filament, on a directly heated tube) glows now, 0 (cold) to 1:
+    // dark with nothing simulated, fully hot on a settled result, and warming from cold over the
+    // tube's own warm-up time constant (CadLib.tubeWarmup, the scope's power-on model) from the
+    // moment Animate is pressed, as on the bench after switch-on. It glows from about 750 K (dull
+    // red) to the working 1050 K (orange); the heater runs hotter than the cathode, so it shows
+    // before the cathode emits
+    function heaterLevel(c) {
+      if (!S.sim.result) return 0;
+      const w = CadLib.tubeWarmup(CadLib.tubeByName(c.params.tube), c);
+      if (!S.anim.on || !S.anim.since || !w) return 1;
+      const T = TubeSimEngine.cathodeWarm((performance.now() - S.anim.since) / 1000, w.tau * 0.5).T;
+      return Math.min(1, Math.max(0, (T - 750) / (TubeSimEngine.CATHODE.hot - 750)));
+    }
     // under the wires: each node's AC voltage as a tint
     function drawAnimTint(T) {
       const ctx = getCtx();
@@ -219,6 +235,6 @@
       for (let i = 0; i <= 60; i++) { const px = sx + sw * i / 60, py = sy - 5 * Math.sin(2 * Math.PI * i / 60); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
       ctx.stroke(); ctx.fillStyle = "#ffd54f"; ctx.beginPath(); ctx.arc(sx + sw * ph, sy - 5 * Math.sin(2 * Math.PI * ph), 3, 0, Math.PI * 2); ctx.fill();
     }
-    return { animData, changed, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, ledLevel, setAnim };
+    return { animData, changed, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, heaterLevel, ledLevel, setAnim };
   };
 })(window);

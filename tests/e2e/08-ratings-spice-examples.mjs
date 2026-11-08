@@ -184,6 +184,32 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     check(blink.on > 0.5 && blink.off === 0 && blink.wires > 5 && !blink.power, `flashing-LED example: Animate runs ${blink.wires} wires over the 555's cycle and the LED blinks (brightness ${blink.off} to ${blink.on && blink.on.toFixed(2)})`);
   }
   {
+    // the Gubin amplifier under Animate: the heaters glow once simulated and start cold when Animate switches the amp on;
+    // the sheet is its front panel: dragging the volume pot's wiper turns it (a new run, one undo step), a click flips SA1
+    const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+    cad.once("dialog", d => d.accept());
+    await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^06-/.test(x.file))));
+    await cad.waitForFunction(s0 => { const m = TubeCAD.state.sim; return m.seq !== s0 && !m.busy && !m.pending && m.result; }, s0, { timeout: 60000 }).catch(() => {});
+    await cad.bringToFront();
+    const hot = await cad.evaluate(() => TubeCAD.state.comps.filter(c => c.type === "tube").map(c => TubeCAD.heaterLevel(c)));
+    await cad.click("#btn-anim");
+    const cold = await cad.evaluate(() => TubeCAD.state.comps.filter(c => c.type === "tube").map(c => TubeCAD.heaterLevel(c)));
+    check(hot.length >= 2 && hot.every(v => v === 1) && cold.every(v => v < 0.2), `heaters glow once simulated (${hot.join(", ")}) and start cold when Animate switches the amp on (${cold.map(v => v.toFixed(2)).join(", ")})`);
+    const at = l => cad.evaluate(l => { const S = TubeCAD.state, c = S.comps.find(k => k.label === l), r = document.getElementById("cad").getBoundingClientRect(); return { x: r.left + c.x * S.view.scale + S.view.ox, y: r.top + c.y * S.view.scale + S.view.oy, s: S.view.scale, rot: c.rot & 3, flip: c.params.flip === "yes" ? -1 : 1, pos: c.params.pos, id: c.id }; }, l);
+    const pot = await at("R1"), h0 = await cad.evaluate(() => TubeCAD.state.hIndex), q0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+    // the wiper runs along the body's local x, which a turned pot carries down the sheet
+    const ux = [1, 0, -1, 0][pot.rot] * pot.flip, uy = [0, 1, 0, -1][pot.rot] * pot.flip;
+    await cad.mouse.move(pot.x - 10 * pot.s * ux, pot.y - 10 * pot.s * uy); await cad.mouse.down();
+    await cad.mouse.move(pot.x + 6 * pot.s * ux, pot.y + 6 * pot.s * uy, { steps: 6 }); await cad.mouse.up();
+    await cad.waitForTimeout(400);
+    const knob = await cad.evaluate(([id, h0, q0]) => { const S = TubeCAD.state, c = S.comps.find(k => k.id === id); return { pos: c.params.pos, steps: S.hIndex - h0, runs: S.sim.seq - q0, still: S.comps.find(k => k.id === id).x }; }, [pot.id, h0, q0]);
+    const sw = await at("SA1.1");
+    await cad.mouse.click(sw.x, sw.y); await cad.waitForTimeout(200);
+    const flipped = await cad.evaluate(id => TubeCAD.state.comps.find(k => k.id === id).params.pos, sw.id);
+    await cad.click("#btn-anim");
+    check(Math.abs(knob.pos - 0.7) < 0.07 && knob.steps === 1 && knob.runs >= 1 && flipped !== sw.pos, `Animate front panel: dragging R1's wiper turns it to ${Math.round(knob.pos * 100)} % (${knob.runs} runs, ${knob.steps} undo step), a click flips SA1.1 (${sw.pos} → ${flipped})`);
+  }
+  {
     // the Gubin supply: a 5Ц4С at 115 mA is within its 125 mA (2 × 62 mA per anode), and its peak anode current is checked against 375 mA
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
     cad.once("dialog", d => d.accept());
