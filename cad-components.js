@@ -770,12 +770,26 @@
       ctx.fillStyle = COL.fill;
       ctx.beginPath(); ctx.arc(0, -8, 26, Math.PI, 2 * Math.PI); ctx.lineTo(26, 14); ctx.arc(0, 14, 26, 0, Math.PI); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.lineWidth = 1.6;
+      // the heater's glow (c._heat, 0 cold to 1 hot, set while the sheet is drawn): dull red to
+      // orange, a directly heated filament brighter and yellower; drawn under the lines
+      const heat = c._heat > 0 ? c._heat : 0;
+      const glow = (pts, dh) => {
+        if (!heat) return;
+        ctx.save();
+        const g = Math.round((dh ? 120 : 70) + (dh ? 110 : 90) * heat), a = (0.35 + 0.65 * heat).toFixed(3);
+        ctx.strokeStyle = `rgba(255,${g},${dh ? Math.round(60 * heat) : 30},${a})`; ctx.shadowColor = `rgba(255,${g},40,0.95)`;
+        ctx.shadowBlur = (dh ? 8 : 5) + (dh ? 12 : 8) * heat; ctx.lineWidth = dh ? 3.2 : 2.6; ctx.lineCap = "round";
+        if (typeof pts === "function") pts(); else line(ctx, pts);
+        ctx.restore();
+      };
       const cathode = () => {
         if (t && t.pinout && t.pinout.some(p => /^F/.test(p.sym)) && !t.pinout.some(p => /^K/.test(p.sym))) {
           // directly heated (IEC 60617): the filament is the cathode, its two legs joined at the K terminal
+          glow([-8, 44, -8, 36, 0, 26, 8, 36, 8, 44], true);
           line(ctx, [0, 50, 0, 44, -8, 44, -8, 36, 0, 26, 8, 36, 8, 44, 0, 44]);
           return;
         }
+        glow(() => { ctx.beginPath(); ctx.moveTo(6.5, 44); ctx.lineTo(6.5, 32); ctx.arc(10, 32, 3.5, Math.PI, 2 * Math.PI); ctx.lineTo(13.5, 44); ctx.stroke(); }, false);
         ctx.beginPath(); ctx.moveTo(0, 50); ctx.lineTo(0, 24); ctx.arc(8, 24, 8, Math.PI, 2 * Math.PI); ctx.lineTo(16, 27); ctx.stroke();
         ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(6.5, 46); ctx.lineTo(6.5, 32); ctx.arc(10, 32, 3.5, Math.PI, 2 * Math.PI); ctx.lineTo(13.5, 46); ctx.stroke();

@@ -452,7 +452,7 @@
   }
 
   // AC animation (View ▾ → Animate): dots for each wire's current, a tint for each node's AC (cad-anim.js)
-  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, ledLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
+  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, heaterLevel, ledLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
 
   function limitRows(c) {
     return tubeLimits(c).filter(o => o.key !== "Vg2k").map(o => kv(o.label, `${o.value} · ${Math.round(o.share * 100)}% of ${o.lim}`, o.share > 1 ? "bad" : o.share > 0.85 ? "warn" : "")).join("");
@@ -849,6 +849,8 @@
     }
 
     if (S.tool === "probe") { S.probe.pin = probeAt(m.wx, m.wy); S.probe.hover = null; render(); return; }
+    // while Animate plays, the sheet is the amp's front panel: drag a pot's wiper, click a switch
+    if (S.anim.on && S.tool === "select" && !e.shiftKey) { const k = hitComp(m.wx, m.wy); if (k && playPress(k, m)) return; }
 
     const pin = hitPin(m.wx, m.wy);
     if (pin && S.tool === "select") { S.wiring = { x: pin.p.x, y: pin.p.y, hFirst: null }; S.sel.comps.clear(); S.sel.wires.clear(); updateInspector(); render(); return; }
@@ -899,6 +901,7 @@
     if (lh !== legendHover) { legendHover = lh; render(); }
     const d = S.drag;
     if (d && d.kind === "pan") { S.view.ox = d.ox + (m.sx - d.sx); S.view.oy = d.oy + (m.sy - d.sy); render(); return; }
+    if (d && d.kind === "knob") { setKnob(d.c, knobAt(d.c, m)); return; }
     if (d && d.kind === "comps") { updateCompDrag(m.wx, m.wy); return; }
     if (d && d.kind === "wire") { updateWireDrag(m.wx, m.wy); return; }
     if (d && d.kind === "box") { d.x1 = m.wx; d.y1 = m.wy; render(); return; }
@@ -919,6 +922,7 @@
     S.drag = null;
     if (!d) return;
     if ((d.kind === "comps" || d.kind === "wire") && d.moved) commit();
+    if (d.kind === "knob") { if (d.c.params.pos !== d.pos0) commit(); updateInspector(); }
     if (d.kind === "box") {
       const x1 = Math.min(d.x0, d.x1), x2 = Math.max(d.x0, d.x1), y1 = Math.min(d.y0, d.y1), y2 = Math.max(d.y0, d.y1);
       if (x2 - x1 > 2 || y2 - y1 > 2) {
@@ -934,6 +938,7 @@
     const m = evPos(e);
     const c = hitComp(m.wx, m.wy);
     if (c && c.type === "scope" && !S.wiring) ToolWindows.open("oscilloscope.html", { scope: c.id });
+    if (S.anim.on && S.tool === "select") return;   // Animate: a single click already flipped it
     // a switch, a push button or a selector moves on to its next position
     if (c && LIB[c.type].flip && !S.wiring) { setSwitch(c, LIB[c.type].flip(c)); updateInspector(); }
     if (c && c.type === "jack" && c.params.kind === "TS-SW" && !S.wiring) { c.params.plug = c.params.plug === "in" ? "out" : "in"; commit(); updateInspector(); }
@@ -979,9 +984,44 @@
     commit();
   }
 
+  // Animate's front panel: a pot's wiper follows the pointer (its knob, from the pointer along the
+  // pot's body), a switch, button, selector, relay contact or switched jack moves on a single
+  // click. The circuit runs again (a quick run, even with Live off) as the knob turns, so the
+  // dots, LEDs, eyes and meters follow; letting go is one undo step.
+  const playKnob = c => c.type === "pot";
+  function knobAt(c, m) {
+    const r = (c.rot & 3) * Math.PI / 2, dx = m.wx - c.x, dy = m.wy - c.y;
+    const lx = (dx * Math.cos(r) + dy * Math.sin(r)) * flipX(c);
+    return Math.round(Math.min(1, Math.max(0, (lx + 15) / 30)) * 100) / 100;
+  }
+  let knobTimer = null, knobCommit = null;
+  function setKnob(c, pos) {
+    if (S.drag && S.drag.kind === "knob") S.drag.moved = true;
+    if (c.params.pos === pos) return;
+    const g = switchGang(c);
+    S.comps.forEach(k => { if (k === c || (g && k.type === c.type && switchGang(k) === g)) k.params.pos = pos; });
+    setStatus("ok", `${desig(c) || LIB[c.type].name} turned to ${Math.round(pos * 100)} %`);
+    clearTimeout(knobTimer);
+    knobTimer = setTimeout(() => { knobTimer = null; clearTimeout(simTimer); simTimer = null; runSim("live"); }, 60);
+    render();
+  }
+  function playPress(c, m) {
+    if (playKnob(c)) { S.drag = { kind: "knob", c, pos0: c.params.pos, moved: false }; setKnob(c, knobAt(c, m)); return true; }
+    if (LIB[c.type].flip) { setSwitch(c, LIB[c.type].flip(c)); updateInspector(); return true; }
+    if (c.type === "jack" && c.params.kind === "TS-SW") { c.params.plug = c.params.plug === "in" ? "out" : "in"; commit(); updateInspector(); return true; }
+    return false;
+  }
   function onWheel(e) {
     e.preventDefault();
     const m = evPos(e);
+    // Animate: the wheel over a pot turns it, 2 % a notch (Ctrl+wheel still zooms)
+    const k = S.anim.on && !e.ctrlKey && !e.shiftKey && hitComp(m.wx, m.wy);
+    if (k && playKnob(k)) {
+      const p0 = k.params.pos !== undefined ? k.params.pos : 0.5;
+      setKnob(k, Math.round(Math.min(1, Math.max(0, p0 + (e.deltaY < 0 ? 0.02 : -0.02))) * 100) / 100);
+      clearTimeout(knobCommit); knobCommit = setTimeout(() => { commit(); updateInspector(); }, 500);
+      return;
+    }
     if (e.shiftKey) { S.view.ox -= e.deltaY || e.deltaX; render(); return; }
     // a sideways swipe on a touchpad (or a tilted wheel) scrolls left and right
     if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(e.deltaY)) { S.view.ox -= e.deltaX; render(); return; }
@@ -1096,6 +1136,7 @@
     if (S.spaceDown) cursor = "grab";
     else if (S.tool === "probe") cursor = "crosshair";
     else if (S.placing || S.placingBlock || S.wiring || S.tool === "wire" || pin) cursor = "crosshair";
+    else if (S.anim.on && S.tool === "select" && hitComp(m.wx, m.wy) && (() => { const k = hitComp(m.wx, m.wy); return playKnob(k) || LIB[k.type].flip || (k.type === "jack" && k.params.kind === "TS-SW"); })()) { const k = hitComp(m.wx, m.wy); cursor = playKnob(k) ? (k.rot & 1 ? "ns-resize" : "ew-resize") : "pointer"; }
     else if (!pin) { const w = hitWire(m.wx, m.wy); if (w) cursor = isH(w) ? "ns-resize" : "ew-resize"; else if (hitComp(m.wx, m.wy)) cursor = "move"; }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
     const el = document.getElementById("status-hover");
@@ -1375,11 +1416,11 @@
     c._sel = sel;
     if (["led", "vactrol", "neon", "gasreg"].includes(c.type) && !ghost && !S.printing) c._lit = ledLevel(c);
     if (c.type === "eye" && !ghost && !S.printing) c._eye = eyeLevel(c);
-    if (c.type === "tube" && !ghost && !S.printing) { const h = anodeHeat(c); if (h) c._hot = h.glow; }
+    if (c.type === "tube" && !ghost && !S.printing) { const h = anodeHeat(c); if (h) c._hot = h.glow; c._heat = heaterLevel(c); }
     // a relay drawn pulled in when the simulation (its settled average) has it so
     if (c.type === "relay" && !ghost && !S.printing && S.sim.result && S.sim.result.dc) { const d = (S.sim.result.dc.devices[c.id] || {}).main; c._on = !!(d && d.q > 0.5); }
     DRAW[c.type](ctx, c);
-    delete c._sel; delete c._lit; delete c._on; delete c._eye; delete c._hot;
+    delete c._sel; delete c._lit; delete c._on; delete c._eye; delete c._hot; delete c._heat;
     if (mirrored) { if (ownFill) ctx.fillText = prevFill; else delete ctx.fillText; }
     ctx.restore();
   }
@@ -3048,6 +3089,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
