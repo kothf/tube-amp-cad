@@ -12,8 +12,7 @@
   const framed = window.parent !== window;
   if (NAMES[page] && !framed) window.name = NAMES[page];
   // Safari brings a window to the front only for the page that opened it: the Board window or an
-  // instrument cannot raise the CAD's tab. The CAD then keeps the board in its own window (a tab of
-  // it) by default, and a button that could not switch says so.
+  // instrument cannot raise the CAD's tab. With window tabs off, a button that could not switch says so.
   const ua = navigator.userAgent || "";
   const cantRaise = /Safari\//.test(ua) && !/Chrome\/|Chromium\/|CriOS\/|FxiOS\/|Edg\/|Android/.test(ua);
   const TITLES = { "circuit_sandbox.html": "The Circuit CAD", "index.html": "The curve tracer", "oscilloscope.html": "The oscilloscope", "spectrum_analyzer.html": "The spectrum analyzer", "bode.html": "The Bode plotter", "board.html": "The Board Design", "help.html": "The help" };
@@ -27,7 +26,7 @@
       document.body.appendChild(n);
     }
     n.textContent = `${TITLES[file] || "That window"} is open in another tab, but Safari does not let a page bring another tab to the front: switch to it yourself.` +
-      (file === "circuit_sandbox.html" && page === "board.html" ? " Or tick Windows ▾ → Board in this window in the Circuit CAD: the Schematic | Board switch then flips in one window." : "");
+      (file === "circuit_sandbox.html" && page === "board.html" ? " Or tick View ▾ → Windows as tabs in the Circuit CAD: the board and the instruments are then tabs at the bottom of one window." : "");
     n.hidden = false; clearTimeout(notRaised.t); notRaised.t = setTimeout(() => { n.hidden = true; }, 9000);
   }
   // the release this page belongs to (its ?v= stamp). A tool window left open from an older
@@ -36,10 +35,31 @@
   const version = (() => { const sc = document.currentScript; return (sc && new URL(sc.src, location.href).searchParams.get("v")) || ""; })();
   const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tube_cad_v2") : null;
 
-  /** Open a tool page, or focus it if it is already open. params: e.g. { scope: id } */
+  // Windows as tabs (View ▾ in the CAD, on unless unticked): the tools are tabs at the bottom of
+  // the CAD's window (cad-tabs.js), not windows of their own
+  const TABS_KEY = "tubecad_tabs";
+  function tabsOn() { try { return localStorage.getItem(TABS_KEY) !== "0"; } catch (e) { return true; } }
+  function setTabsOn(on) { try { localStorage.setItem(TABS_KEY, on ? "1" : "0"); } catch (e) {} }
+  const CAD = "circuit_sandbox.html";
+  // the CAD that holds this page in a tab (its tab host), if any
+  function host() { if (!framed) return null; try { const t = window.parent.ToolWindows && window.parent.ToolWindows.tabs; return t || null; } catch (e) { return null; } }
+
+  /** Open a tool page, or focus it if it is already open. params: e.g. { scope: id }
+      With window tabs on: the CAD shows it in a tab (a tab of this window, of the window that
+      holds this page, or of the CAD window this tool window finds or opens). */
   function open(file, params) {
-    // framed: the page that holds this one may be the one asked for (the Board's Schematic button)
-    if (framed) { try { if (window.parent.location.pathname.split("/").pop() === file) { window.parent.postMessage({ type: "SHOW_PAGE", page: file }, location.origin); return window.parent; } } catch (e) {} }
+    const h = host() || (root.ToolWindows && root.ToolWindows.tabs);
+    if (h && (framed || tabsOn()) && h.handles(file)) { h.show(file, params); return framed ? window.parent : window; }
+    if (tabsOn() && page !== CAD && file !== CAD && NAMES[file]) {
+      // a tool window of its own: the CAD window comes up showing the tool's tab
+      const w = openWindow(CAD, Object.assign({ tab: file }, params || {}));   // a CAD opened now shows the tab once loaded
+      if (bc) bc.postMessage({ type: "SHOW_TAB", page: file, params: params || null });   // an open one at once
+      return w;
+    }
+    return openWindow(file, params);
+  }
+  /** Open a tool page in a window of its own, or focus that window if it is already open */
+  function openWindow(file, params) {
     const q = new URLSearchParams(params || {}); if (version) q.set("v", version);
     const name = NAMES[file], url = new URL(file + (String(q) ? "?" + q : ""), location.href).href;
     let w = null;
@@ -56,22 +76,14 @@
     if (cantRaise && !mine.has(w)) setTimeout(() => { if (document.hasFocus()) notRaised(file); }, 300);
     return w;
   }
-  /** The board, from a window other than the CAD: its own window, or, when the CAD keeps the
-      board in a tab of its own window (Windows ▾ → Board in this window), the CAD showing it */
-  function openBoard() {
-    let tab = cantRaise;
-    try { const v = localStorage.getItem("tubecad_board_tab"); if (v !== null) tab = v === "1"; } catch (e) {}
-    if (!tab) return open("board.html");
-    const w = open("circuit_sandbox.html", { board: "1" });   // a CAD opened now shows the board once loaded
-    if (bc) bc.postMessage({ type: "SHOW_BOARD" });          // an open one at once
-    return w;
-  }
+  /** The board, from a window other than the CAD: a tab of the CAD (window tabs on) or its own window */
+  const openBoard = () => open("board.html");
   // Alt+S: the schematic, Alt+B: the board, from any window (the CAD binds Alt+B in its own command table)
   document.addEventListener("keydown", e => {
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const to = e.code === "KeyS" ? "circuit_sandbox.html" : e.code === "KeyB" ? "board.html" : null;
-    if (!to || to === page || (page === "circuit_sandbox.html" && to === "board.html")) return;
-    e.preventDefault(); if (to === "board.html") openBoard(); else open(to);
+    if (!to || to === page || (page === CAD && to === "board.html")) return;
+    e.preventDefault(); open(to);
   });
-  root.ToolWindows = { open, openBoard, NAMES, cantRaise, version };
+  root.ToolWindows = { open, openWindow, openBoard, tabsOn, setTabsOn, framed, myName: NAMES[page], channel: bc, NAMES, cantRaise, version };
 })(window);

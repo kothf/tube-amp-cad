@@ -52,7 +52,7 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   });
   check(["btn-open-scope", "btn-open-spectrum", "btn-open-bode", "btn-open-tracer", "btn-tolerance", "btn-power", "btn-noise", "btn-sweep", "btn-listen"].every(i => where.an.includes(i)) &&
     where.view.includes("btn-board-tab") && !where.view.includes("btn-tolerance") && ["menu-help-keys", "btn-open-manual", "menu-help-about"].every(i => where.help.includes(i)) && !where.win,
-    `menus: Analyze ▾ has the instruments and analyses, View ▾ Board in this window, Help ▾ the manual (${JSON.stringify(where)})`);
+    `menus: Analyze ▾ has the instruments and analyses, View ▾ Windows as tabs, Help ▾ the manual (${JSON.stringify(where)})`);
   await cad.click("#btn-help"); await cad.click("#menu-help-keys");
   const quick = await cad.evaluate(() => !document.getElementById("help-modal").hidden && document.querySelector("#help-menu .menu-list").hidden);
   await cad.keyboard.press("Escape");
@@ -89,7 +89,7 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   await cad.click("#btn-view"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
   await cad.click("#btn-doc-board");
   await cad.waitForFunction(() => { const f = document.getElementById("board-tab"); return f && f.contentWindow.BoardApp && f.contentWindow.BoardApp.state.model; }, null, { timeout: 10000 }).catch(() => {});
-  const t1 = await cad.evaluate(() => { const f = document.getElementById("board-tab"), r = f.getBoundingClientRect(); return { shown: !f.hidden && r.width === innerWidth && r.height === innerHeight && /[?&]v=/.test(f.src), parts: f.contentWindow.BoardApp.state.model.parts.length, name: f.contentWindow.name }; });
+  const t1 = await cad.evaluate(() => { const f = document.getElementById("board-tab"), r = f.getBoundingClientRect(); return { shown: !f.hidden && r.width === innerWidth && r.top === 0 && Math.abs(r.bottom - document.getElementById("win-tabs").getBoundingClientRect().top) < 2 && /[?&]v=/.test(f.src), parts: f.contentWindow.BoardApp.state.model.parts.length, name: f.contentWindow.name }; });
   await cad.frameLocator("#board-tab").locator("#btn-cad").click(); await cad.waitForTimeout(150);
   const t2 = await cad.evaluate(() => document.getElementById("board-tab").hidden);
   await cad.keyboard.press("Alt+B"); await cad.waitForTimeout(150);
@@ -106,14 +106,14 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   }
   check(flips.every(Boolean), `the Schematic | Board switch flips the board in this window again and again (${flips.map(f => f ? "ok" : "stuck").join(" ")})`);
   check(t1.shown && t1.parts > 0 && !t1.name && t2 && t3 && t4 && ctx.pages().length === n0,
-    `View ▾ → Board in this window: Board shows the layout over the whole window (${t1.parts} parts), Schematic or Alt+S hides it, Alt+B shows it again, no new window`);
+    `View ▾ → Windows as tabs: Board shows the layout over the window down to the tab strip (${t1.parts} parts), Schematic or Alt+S hides it, Alt+B shows it again, no new window`);
   await cad.click("#btn-view"); await cad.click("#btn-board-tab"); await cad.keyboard.press("Escape");
-  check(await cad.evaluate(() => !document.getElementById("board-tab")), "unticked, the board frame goes and the board has its own window again");
+  check(await cad.evaluate(() => !document.getElementById("board-tab") && document.getElementById("win-tabs").hidden), "unticked, the board frame and the tab strip go and the board has its own window again");
 }
 // --- Safari: a page may raise only a window it opened ---------------------------------------
 {
   const SAFARI = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
-  const sc = await browser.newContext({ viewport: { width: 1500, height: 900 }, userAgent: SAFARI });
+  const sc = await browser.newContext({ viewport: { width: 1500, height: 900 }, userAgent: SAFARI, tabs: true });
   const sp = await sc.newPage(); sp.on("pageerror", e => errors.push(`safari cad: ${e.message}`));
   await sp.goto(U("circuit_sandbox.html")); await sp.waitForFunction(() => window.TubeCAD);
   const flips = [];
@@ -124,9 +124,9 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
     await sp.frameLocator("#board-tab").locator("#btn-cad").click(); await sp.waitForTimeout(100);
     flips.push(await sp.evaluate(() => document.getElementById("board-tab").hidden));
   }
-  check(flips.every(Boolean) && sc.pages().length === 1, `in Safari the board opens in the CAD window by default and the switch flips every time (${flips.map(f => f ? "ok" : "stuck").join(" ")})`);
+  check(flips.every(Boolean) && sc.pages().length === 1, `in Safari (as everywhere) the board opens in a tab of the CAD window by default and the switch flips every time (${flips.map(f => f ? "ok" : "stuck").join(" ")})`);
   // an instrument's Schematic | Board switch: Board shows the board in the CAD window too, no window of its own
-  const [ss] = await Promise.all([sc.waitForEvent("page"), sp.evaluate(() => { ToolWindows.open("oscilloscope.html"); })]);
+  const [ss] = await Promise.all([sc.waitForEvent("page"), sp.evaluate(() => { ToolWindows.openWindow("oscilloscope.html"); })]);
   ss.on("pageerror", e => errors.push(`safari scope: ${e.message}`));
   await ss.waitForSelector("#btn-board"); await ss.click("#btn-board");
   await sp.waitForFunction(() => { const f = document.getElementById("board-tab"); return f && !f.hidden; }, null, { timeout: 15000 }).catch(() => {});
@@ -141,6 +141,6 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   await sb.click("#btn-cad");
   await sb.waitForSelector("#win-note:not([hidden])", { timeout: 2000 }).catch(() => {});
   const note = await sb.evaluate(() => { const n = document.getElementById("win-note"); return n && !n.hidden ? n.textContent : ""; });
-  check(/Safari/.test(note) && /Board in this window/.test(note) && sc.pages().length === 2, `in Safari with the board in its own window, Schematic there explains why the CAD did not come up ("${note.slice(0, 60)}…")`);
+  check(/Safari/.test(note) && /Windows as tabs/.test(note) && sc.pages().length === 2, `in Safari with the board in its own window, Schematic there explains why the CAD did not come up ("${note.slice(0, 60)}…")`);
   await sc.close();
 }

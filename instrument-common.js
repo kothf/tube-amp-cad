@@ -24,7 +24,7 @@
       else if (d.type === "AC_RESULT") Inst.ac = d;                 // frequency response (Bode plotter)
       else if (d.type === "LOOP_RESULT") Inst.loop = d;             // loop gain (Bode plotter's Loop gain mode)
       else if (d.type === "SIM_STATUS") Inst.cad = Object.assign({ at: Date.now() }, d);
-      else if (d.type === "SELECT_SCOPE") { if (d.target === window.name && d.id) Inst.selectScope(d.id); return; }
+      else if (d.type === "SELECT_SCOPE") { if (d.target === (window.name || (window.ToolWindows && window.ToolWindows.myName)) && d.id) Inst.selectScope(d.id); return; }
       else if (d.type === "ACK") { if (pending[d.id]) { clearTimeout(pending[d.id]); delete pending[d.id]; } }
       else return;
       Inst.listeners.forEach(f => f());
