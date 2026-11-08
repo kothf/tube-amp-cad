@@ -26,6 +26,8 @@
     let pourCanvas = null;
     function drawPours(layer, alpha) {
       const fs = S.fills.filter(f => f.layer === layer && !f.tear); if (!fs.length) return;
+      // a board in a hidden tab has no size: nothing to paint (drawImage refuses an empty canvas)
+      if (!canvas.width || !canvas.height) return;
       if (!pourCanvas) pourCanvas = document.createElement("canvas");
       if (pourCanvas.width !== canvas.width || pourCanvas.height !== canvas.height) { pourCanvas.width = canvas.width; pourCanvas.height = canvas.height; }
       const pc = pourCanvas.getContext("2d"), { scale, ox, oy } = S.view;
