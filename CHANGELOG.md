@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.186.0] - 2026-11-08
+
+### Added
+- **Noval magic eyes** from their datasheets: EM84 and the Soviet 6Е3П, bar indicators whose two green bars grow together as the grid goes to −22 V (Philips data), and 6Е1П, a noval fan whose shadow widens from 7° at 0 V to about 55° at −15 V (its datasheet curve). Both move under Animate.
+- **Mercury-vapour rectifiers** 83 (full-wave) and 866A (half-wave, top cap): a near constant 15 V arc drop at any current; the vapour glows blue with each conduction pulse under Animate and the filament glows. Checks compare the DC current and each anode's peak inverse voltage with the ratings.
+- **Incandescent lamps** #47, #44, #1869, #327 and a 60 W 230 V bulb: the filament's resistance follows its rms current (cold about a twelfth of hot), so a lamp limits current softly (dim-bulb tester); it glows on the sheet from dull red to warm white.
+- **Nixie tube** ИН-14: the digit whose cathode is pulled down glows orange; a rotary selector on its cathodes steps the digit with a click under Animate.
+- **Panel meters**: a moving-coil ammeter or voltmeter and a VU meter (0 VU at +4 or 0 dBu), the needle drawn on the sheet and moving with a meter's ballistics under Animate; Checks warn when it pins.
+- **Batteries**: 9 V PP3, AA cells and packs, Li-ion 18650 cells and packs, 12 V lead-acid, with *Charge left* setting the voltage and internal resistance; the inspector estimates how long it lasts.
+- **Potentiometers**: reverse-log taper, dual-gang (stereo) pots by naming sections R1.1 / R1.2 (they turn together on the sheet and in the inspector), and switched pots (an on–off switch at the start of the travel).
+
 ## [3.185.0] - 2026-11-08
 
 ### Added

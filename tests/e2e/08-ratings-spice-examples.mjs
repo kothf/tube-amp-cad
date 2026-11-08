@@ -208,7 +208,31 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     const flipped = await cad.evaluate(id => TubeCAD.state.comps.find(k => k.id === id).params.pos, sw.id);
     await cad.click("#btn-anim");
     check(Math.abs(knob.pos - 0.7) < 0.07 && knob.steps === 1 && knob.runs >= 1 && flipped !== sw.pos, `Animate front panel: dragging R1's wiper turns it to ${Math.round(knob.pos * 100)} % (${knob.runs} runs, ${knob.steps} undo step), a click flips SA1.1 (${sw.pos} → ${flipped})`);
+  }  {
+    // the new indicator parts on a sheet of their own: a battery lighting a pilot lamp, a nixie with its digit 4 pulled down,
+    // a 1 mA meter at half scale, an EM84 with its grid at the cathode; their glow, digit, needle and bars from the simulation
+    const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+    await cad.evaluate(() => {
+      const T = TubeCAD, S = T.state;
+      S.comps = []; S.wires = [];
+      const put = (type, params, x, y) => { const c = T.makeComp(type, params || {}, x, y, 0); S.comps.push(c); return c; };
+      const pin = (c, id) => T.compPins(c).find(q => q.id === id);
+      const wire = (a, pa, z, pz) => { const A = pin(a, pa), Z = pin(z, pz); T.lRoute(A.x, A.y, Z.x, Z.y, true).forEach(q => T.addSegment(...q)); };
+      const gnd = (c, id) => { const P = pin(c, id), g = put("ground", {}, P.x, P.y + 40); wire(c, id, g, T.compPins(g)[0].id); };
+      const bat = put("battery", { model: "4xAA" }, 100, 300), lamp = put("lamp", { model: "47" }, 200, 200); wire(bat, "+", lamp, "1"); gnd(bat, "-"); gnd(lamp, "2");
+      const v = put("vdc", { v: 220 }, 400, 300), r = put("resistor", { r: 22e3 }, 500, 200), n = put("nixie", {}, 700, 300); wire(v, "+", r, "1"); wire(r, "2", n, "A"); gnd(v, "-"); gnd(n, "K4");
+      const v2 = put("vdc", { v: 0.05 }, 1000, 300), m = put("meter", { kind: "a", fs: "1m" }, 1100, 200); wire(v2, "+", m, "+"); gnd(v2, "-"); gnd(m, "-");
+      T.commit();
+    });
+    await cad.waitForFunction(s0 => { const m = TubeCAD.state.sim; return m.seq !== s0 && !m.busy && !m.pending && m.result; }, s0, { timeout: 60000 }).catch(() => {});
+    const got = await cad.evaluate(() => {
+      const S = TubeCAD.state, by = t => S.comps.find(c => c.type === t);
+      return { lamp: TubeCAD.lampLevel(by("lamp")), nixie: TubeCAD.nixieLevel(by("nixie")), meter: TubeCAD.meterReading(by("meter")), issues: TubeCAD.circuitIssues() };
+    });
+    check(got.lamp > 0.5 && got.lamp < 1.3 && got.nixie && got.nixie.digit === 4 && got.nixie.lit > 0.5 && Math.abs(got.meter - 0.5) < 0.01,
+      `new indicators: a pilot lamp on 4 × AA lit ${got.lamp && got.lamp.toFixed(2)}, the nixie shows ${got.nixie && got.nixie.digit}, the 1 mA meter reads ${got.meter && got.meter.toFixed(3)} of full scale`);
   }
+
   {
     // the Gubin supply: a 5Ц4С at 115 mA is within its 125 mA (2 × 62 mA per anode), and its peak anode current is checked against 375 mA
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);

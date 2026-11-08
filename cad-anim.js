@@ -32,6 +32,8 @@
       if (c.type === "led" || c.type === "vactrol") return { full: LED_FULL, min: 1e-4, probe: true };
       if (c.type === "neon") { const m = CadLib.NEONS[c.params.model] || CadLib.NEONS["NE-2"]; return { full: m.i, min: m.iext / 2, abs: true, probe: true }; }
       if (c.type === "gasreg") { const m = CadLib.GASREGS[c.params.model] || CadLib.GASREGS["0A2"]; return { full: m.imax, min: m.iext / 2 }; }
+      // a mercury-vapour rectifier glows blue by its filament's (cathode's) current, full at twice its DC rating
+      if (c.type === "hgrect") { const m = CadLib.HGRECTS[c.params.model] || CadLib.HGRECTS["83"]; return { full: 2 * m.idc, min: m.iext, abs: true, pin: "K" }; }
       return null;
     }
     // what the power-on playback shows: the probed glows and the magic eyes
@@ -48,7 +50,13 @@
       // each LED's (neon's, gas regulator's) current at the frames; each magic eye's target and
       // plate over its cathode
       const leds = new Map(), eyes = new Map();
-      S.comps.forEach(c => { if (glowSpec(c) && pinFrames.every(pm => pm.has(c.id + ":A"))) leds.set(c.id, pinFrames.map(pm => pm.get(c.id + ":A"))); });
+      S.comps.forEach(c => { const g = glowSpec(c), pin = g && c.id + ":" + (g.pin || "A"); if (g && pinFrames.every(pm => pm.has(pin))) leds.set(c.id, pinFrames.map(pm => pm.get(pin))); });
+      // each nixie's cathodes' currents at the frames, and each meter's current
+      const nixies = new Map(), meters = new Map();
+      S.comps.forEach(c => {
+        if (c.type === "nixie") { const ks = Array.from({ length: 10 }, (_, k) => c.id + ":K" + k); if (pinFrames.every(pm => ks.every(k => pm.has(k)))) nixies.set(c.id, pinFrames.map(pm => ks.map(k => -pm.get(k)))); }
+        if (c.type === "meter" && pinFrames.every(pm => pm.has(c.id + ":+"))) meters.set(c.id, pinFrames.map(pm => pm.get(c.id + ":+")));
+      });
       S.comps.forEach(c => {
         if (c.type !== "eye") return;
         const w = pid => { const n = T.pinNet.get(c.id + ":" + pid), a = n > 0 && r.tran.nodes[n]; return n === 0 ? F.at.map(() => 0) : a ? F.at.map(k => a[k]) : null; };
@@ -74,7 +82,7 @@
           if ((a.mode === "dc" ? dcI : a.pk) >= 1e-6) wires.set(w.id, a);
         }
       });
-      S.anim.data = { r, n, wires, nets, leds, eyes, f: signalFreq() };
+      S.anim.data = { r, n, wires, nets, leds, eyes, nixies, meters, f: signalFreq() };
       return S.anim.data;
     }
     // a quantity at the animation's phase, between its frames
@@ -157,7 +165,7 @@
       else if (d) { const a = d.leds.get(c.id); if (a) i = Math.max(...[0, 0.005, 0.01, 0.015].map(b => { const v = animAt(a, (S.anim.phase - b + 1) % 1); return g.abs ? Math.abs(v) : v; })); }
       // settled on AC, a neon by its average current either way (the frames' mean of its size)
       if (i === null && g.abs && S.sim.result) { const a = (animData() || { leds: new Map() }).leds.get(c.id); if (a) i = a.reduce((s, v) => s + Math.abs(v), 0) / a.length; }
-      if (i === null && S.sim.result) i = pinCurrent(c, "A");
+      if (i === null && S.sim.result) i = pinCurrent(c, g.pin || "A");
       if (i === null || !isFinite(i)) return null;
       if (g.abs) i = Math.abs(i);
       return i > g.min ? Math.min(1, Math.sqrt(i / g.full)) : 0;
@@ -183,10 +191,60 @@
     // before the cathode emits
     function heaterLevel(c) {
       if (!S.sim.result) return 0;
-      const w = CadLib.tubeWarmup(CadLib.tubeByName(c.params.tube), c);
+      const w = c.type === "hgrect" ? { tau: 1.5 } : CadLib.tubeWarmup(CadLib.tubeByName(c.params.tube), c);
       if (!S.anim.on || !S.anim.since || !w) return 1;
       const T = TubeSimEngine.cathodeWarm((performance.now() - S.anim.since) / 1000, w.tau * 0.5).T;
       return Math.min(1, Math.max(0, (T - 750) / (TubeSimEngine.CATHODE.hot - 750)));
+    }
+    // a lamp's light, 0 to about 1.3, from its filament's settled rms current (its heat outlasts a cycle)
+    function lampLevel(c) {
+      const r = S.sim.result, e = r && r.ntc && r.ntc[c.id];
+      if (!e) return null;
+      return CadLib.lampGlow(CadLib.LAMPS[c.params.model] || CadLib.LAMPS["47"], e.i * e.r);
+    }
+    // a nixie now: { digit, lit 0–1 } for the cathode with the most current, or null
+    function nixieLevel(c) {
+      const m = CadLib.NIXIES[c.params.model] || CadLib.NIXIES["IN-14"];
+      let cur = null;
+      const d = cycle(), a = d && d.nixies.get(c.id);
+      if (a) { const j = Math.floor(S.anim.phase * a.length) % a.length; cur = a[j]; }
+      else if (S.sim.result) cur = Array.from({ length: 10 }, (_, k) => { const v = pinCurrent(c, "K" + k); return v === null ? 0 : -v; });
+      if (!cur) return null;
+      let k = 0; cur.forEach((v, j) => { if (v > cur[k]) k = j; });
+      return cur[k] > m.iext ? { digit: k, lit: Math.min(1, Math.sqrt(cur[k] / m.i)) } : { digit: null, lit: 0 };
+    }
+    // a panel meter's reading, 0 to 1 of its travel (signed), for its needle: the movement's average
+    // current over full scale, a VU meter's rms against its full travel; under Animate a slow cycle
+    // played in real time (a 555 metronome) gives it the moment's value
+    function meterReading(c) {
+      const m = CadLib.meterModel(c.params), r = S.sim.result;
+      if (!r) return null;
+      const d = cycle(), a = d && d.meters.get(c.id);
+      if (m.kind === "vu") {
+        const T = S.sim.topo || topo(), wave = p => { const n = T.pinNet.get(c.id + ":" + p); return n > 0 && r.tran ? r.tran.nodes[n] : null; };
+        const wp = wave("+"), wm = wave("-");
+        if (!wp && !wm) return 0;
+        const len = (wp || wm).length;
+        let sa = 0; for (let k = 0; k < len; k++) sa += Math.abs((wp ? wp[k] : 0) - (wm ? wm[k] : 0));
+        return (sa / len) * 1.1107 / m.vref;
+      }
+      if (a && d.f > 0 && cycleS(d) === 1 / d.f) return animAt(a, S.anim.phase) / m.ifs;
+      const i = pinCurrent(c, "+");
+      return i === null ? null : i / m.ifs;
+    }
+    // the needle, moved towards the reading with a meter's ballistics while Animate runs (a second-
+    // order movement, 99 % in about 300 ms with about 1.5 % overshoot); straight to it otherwise
+    function needleLevel(c) {
+      const want = meterReading(c);
+      if (want === null || !isFinite(want)) return 0;
+      const nd = S.anim.needles || (S.anim.needles = new Map());
+      let st = nd.get(c.id);
+      const now = performance.now();
+      if (!S.anim.on || !st) { st = { x: want, v: 0, t: now }; nd.set(c.id, st); return want; }
+      const wn = 14, z = 0.8;
+      let dt = Math.min(0.1, (now - st.t) / 1000); st.t = now;
+      while (dt > 0) { const h = Math.min(dt, 0.004); st.v += h * (wn * wn * (want - st.x) - 2 * z * wn * st.v); st.x += h * st.v; dt -= h; }
+      return st.x;
     }
     // under the wires: each node's AC voltage as a tint
     function drawAnimTint(T) {
@@ -235,6 +293,6 @@
       for (let i = 0; i <= 60; i++) { const px = sx + sw * i / 60, py = sy - 5 * Math.sin(2 * Math.PI * i / 60); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
       ctx.stroke(); ctx.fillStyle = "#ffd54f"; ctx.beginPath(); ctx.arc(sx + sw * ph, sy - 5 * Math.sin(2 * Math.PI * ph), 3, 0, Math.PI * 2); ctx.fill();
     }
-    return { animData, changed, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, heaterLevel, ledLevel, setAnim };
+    return { animData, changed, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, heaterLevel, lampLevel, ledLevel, meterReading, needleLevel, nixieLevel, setAnim };
   };
 })(window);

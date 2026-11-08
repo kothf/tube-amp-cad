@@ -224,7 +224,7 @@
   // the lit LEDs' colours (r,g,b)
   const LED_GLOW = { red: "255,69,58", yellow: "255,214,10", green: "48,209,88", blue: "64,156,255" };
   // the glow of a neon (orange), a gas regulator (violet) and a magic eye's target (green)
-  const GAS_GLOW = { neon: "255,112,40", gasreg: "190,120,255", eye: "90,255,160" };
+  const GAS_GLOW = { neon: "255,112,40", gasreg: "190,120,255", eye: "90,255,160", hg: "120,170,255" };
   const COL = { body: "#58a6ff", bodySel: "#00e5ff", tube: "#e6edf3", hot: "#ff7b72", text: "#e6edf3", value: "#79c0ff", fill: "#0d1420" };
   function line(ctx, pts) { ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]); ctx.stroke(); }
 
@@ -326,6 +326,13 @@
       const wx = -15 + 30 * (c.params.pos !== undefined ? c.params.pos : 0.5);
       line(ctx, [0, -20, 0, -14, wx, -14, wx, -7]);
       ctx.beginPath(); ctx.moveTo(wx - 3, -11); ctx.lineTo(wx, -7); ctx.lineTo(wx + 3, -11); ctx.stroke();
+      if (c.params.sw === "spst") {
+        // the switch under the track, linked to the knob (dashed): closed once it leaves the end
+        const on = c.params.pos > 0.03;
+        line(ctx, [-10, 20, -6, 20]); line(ctx, [6, 20, 10, 20]);
+        line(ctx, on ? [-6, 20, 6, 19] : [-6, 20, 5, 13]);
+        ctx.save(); ctx.setLineDash([2, 2]); line(ctx, [0, on ? 19.5 : 16.5, 0, 6]); ctx.restore();
+      }
     },
     capacitor(ctx) {
       line(ctx, [-20, 0, -4, 0]); line(ctx, [4, 0, 20, 0]);
@@ -736,6 +743,70 @@
       ctx.save(); ctx.lineWidth = 2.2; line(ctx, [-5, -6, -5, 6]); line(ctx, [5, -6, 5, 6]); ctx.restore();
       ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(0, 7, 1.6, 0, Math.PI * 2); ctx.fill();
     },
+    // a mercury-vapour rectifier: the envelope with the dot of its gas fill, the anodes above, the
+    // directly heated filament (the cathode) below; the vapour glows blue with the current (c._lit)
+    // and the filament with its heat (c._heat)
+    hgrect(ctx, c) {
+      const m = HGRECTS[c && c.params.model] || HGRECTS["83"], lit = c && c._lit, heat = c && c._heat;
+      ctx.beginPath(); ctx.arc(0, -8, 26, Math.PI, 2 * Math.PI); ctx.lineTo(26, 14); ctx.arc(0, 14, 26, 0, Math.PI); ctx.closePath();
+      ctx.fillStyle = COL.fill; ctx.fill();
+      if (lit > 0) { ctx.save(); ctx.fillStyle = `rgba(${GAS_GLOW.hg},${(0.2 + 0.65 * lit).toFixed(3)})`; ctx.shadowColor = `rgba(${GAS_GLOW.hg},0.9)`; ctx.shadowBlur = 6 + 14 * lit; ctx.fill(); ctx.restore(); }
+      ctx.stroke();
+      if (m.full) { line(ctx, [-24, -16, -14, -16]); line(ctx, [-20, -16, -20, -50]); line(ctx, [14, -16, 24, -16]); line(ctx, [20, -16, 20, -50]); }
+      else { line(ctx, [-10, -18, 10, -18]); line(ctx, [0, -18, 0, -50]); }
+      if (heat > 0) { ctx.save(); ctx.strokeStyle = `rgba(255,${Math.round(120 + 110 * heat)},${Math.round(60 * heat)},${(0.35 + 0.65 * heat).toFixed(3)})`; ctx.shadowColor = "rgba(255,200,60,0.95)"; ctx.shadowBlur = 8 + 12 * heat; ctx.lineWidth = 3.2; line(ctx, [-8, 44, -8, 36, 0, 26, 8, 36, 8, 44]); ctx.restore(); }
+      line(ctx, [0, 50, 0, 44, -8, 44, -8, 36, 0, 26, 8, 36, 8, 44, 0, 44]);
+      ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(14, 8, 2.2, 0, Math.PI * 2); ctx.fill();
+    },
+    // an incandescent lamp (IEC 60617 S00965): a circle with a cross; lit (c._lit, 0 to about 1.3)
+    // it glows from dull red to warm white
+    lamp(ctx, c) {
+      const lit = c && c._lit;
+      line(ctx, [-20, 0, -11, 0]); line(ctx, [20, 0, 11, 0]);
+      ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      if (lit > 0.003) {
+        const t = Math.min(1, lit), g = Math.round(90 + 150 * t), b = Math.round(30 + 170 * Math.max(0, t - 0.5) * 2);
+        ctx.save(); ctx.fillStyle = `rgba(255,${g},${b},${(0.3 + 0.7 * Math.min(1, Math.sqrt(lit))).toFixed(3)})`; ctx.shadowColor = `rgba(255,${g},${b},0.95)`; ctx.shadowBlur = 4 + 18 * t; ctx.fill(); ctx.restore();
+      }
+      ctx.stroke();
+      line(ctx, [-7.8, -7.8, 7.8, 7.8]); line(ctx, [-7.8, 7.8, 7.8, -7.8]);
+    },
+    // a battery (IEC 60617 S00898 multi-cell): long (+) and short plates, the dashes between
+    battery(ctx) {
+      line(ctx, [0, -30, 0, -8]); line(ctx, [0, 30, 0, 8]);
+      ctx.save(); ctx.lineWidth = 2; line(ctx, [-12, -8, 12, -8]); line(ctx, [-12, 4, 12, 4]); ctx.lineWidth = 4; line(ctx, [-6, -2, 6, -2]); line(ctx, [-6, 8, 6, 8]); ctx.restore();
+      ctx.font = "9px sans-serif"; ctx.fillStyle = ctx.strokeStyle; ctx.textAlign = "left"; ctx.fillText("+", 9, -12);
+    },
+    // a panel meter: the face with its scale arc and the needle (c._needle, 0 to 1 of the travel,
+    // a little past it when pinned), the unit below the arc; a VU meter's red zone past 0 VU
+    meter(ctx, c) {
+      const p = (c && c.params) || {}, kind = p.kind || "a", n = c && c._needle !== undefined ? c._needle : 0;
+      line(ctx, [-30, 0, -24, 0]); line(ctx, [30, 0, 24, 0]);
+      ctx.fillStyle = kind === "vu" ? "#2a2414" : COL.fill; ctx.fillRect(-24, -20, 48, 34); ctx.strokeRect(-24, -20, 48, 34);
+      const cx = 0, cy = 10, R = 22, a0 = -Math.PI * 0.78, a1 = -Math.PI * 0.22;
+      ctx.save(); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(cx, cy, R, a0, a1); ctx.stroke();
+      if (kind === "vu") { ctx.strokeStyle = "#f05050"; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(cx, cy, R, a0 + (a1 - a0) * 0.708, a1); ctx.stroke(); }
+      ctx.restore();
+      ctx.font = "8px sans-serif"; ctx.fillStyle = kind === "vu" ? "#e9d9a8" : ctx.strokeStyle; ctx.textAlign = "center";
+      ctx.fillText(kind === "vu" ? "VU" : kind === "v" ? "V" : (/u$/.test(p.fs) ? "µA" : /m$/.test(p.fs) ? "mA" : "A"), 0, 8);
+      const a = a0 + (a1 - a0) * Math.min(1.06, Math.max(-0.04, n));
+      ctx.save(); ctx.strokeStyle = kind === "vu" ? "#ffb347" : "#ff6b6b"; ctx.lineWidth = 1.4; line(ctx, [cx, cy, cx + (R + 2) * Math.cos(a), cy + (R + 2) * Math.sin(a)]); ctx.restore();
+      ctx.beginPath(); ctx.arc(cx, cy, 2, 0, Math.PI * 2); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+    },
+    // a nixie tube: the envelope, the anode mesh above, the cathodes' leads below and the digit
+    // that glows (c._digit 0–9 and c._lit its brightness), the other digits faint behind it
+    nixie(ctx, c) {
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-48, -30, 96, 62, 14) : ctx.rect(-48, -30, 96, 62); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
+      line(ctx, [0, -40, 0, -24]); ctx.save(); ctx.setLineDash([2, 2]); line(ctx, [-16, -24, 16, -24]); ctx.restore();
+      for (let k = 0; k < 10; k++) line(ctx, [-45 + 10 * k, 40, -45 + 10 * k, 32]);
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = "34px ui-monospace, monospace"; ctx.fillStyle = "rgba(160,170,180,0.18)"; ctx.fillText("8", 0, 4);
+      const d = c && c._digit, lit = c && c._lit;
+      if (d !== undefined && d !== null && lit > 0) {
+        ctx.save(); ctx.fillStyle = `rgba(${GAS_GLOW.neon},${(0.35 + 0.65 * lit).toFixed(3)})`; ctx.shadowColor = `rgba(${GAS_GLOW.neon},0.95)`; ctx.shadowBlur = 10 + 10 * lit; ctx.fillText(String(d), 0, 4); ctx.restore();
+      }
+      ctx.textBaseline = "alphabetic";
+    },
     // a magic eye: in its envelope the target, a disc whose green fan lights round the cathode's
     // cap but for the shadow (opening upwards, 90° wide at most), and below it the triode: plate,
     // grid (dashed) and cathode. c._eye { shadow 0–1, glow 0–1 } is set while the sheet is drawn
@@ -746,6 +817,17 @@
       line(ctx, [0, -40, 0, -26]); line(ctx, [0, 40, 0, 28]); line(ctx, [-8, 28, 8, 28]);
       line(ctx, [-30, 20, -10, 20]); ctx.save(); ctx.setLineDash([3, 2.5]); line(ctx, [-10, 20, 10, 20]); ctx.restore();
       line(ctx, [-8, 10, 8, 10]); line(ctx, [8, 10, 30, 10]);
+      const m = EYES[c && c.params.model] || {};
+      if (m.kind === "bar") {
+        // a bar indicator (EM84): two green bars growing towards each other, the shadow between them
+        const gap = 3 + 22 * (e ? e.shadow : 1), bw = (34 - gap) / 2, y0 = -14, h = 8;
+        [[-17, bw], [17 - bw, bw]].forEach(([x, w]) => {
+          ctx.beginPath(); ctx.rect(x, y0, w, h);
+          if (e && e.glow > 0) { ctx.fillStyle = `rgba(${GAS_GLOW.eye},${(0.25 + 0.75 * e.glow).toFixed(3)})`; ctx.fill(); }
+          ctx.stroke();
+        });
+        return;
+      }
       const sh = (e ? e.shadow : 1) * Math.PI / 2, a0 = -Math.PI / 2 + sh / 2, a1 = 3 * Math.PI / 2 - sh / 2;
       ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, a0, a1); ctx.closePath();
       if (e && e.glow > 0) { ctx.fillStyle = `rgba(${GAS_GLOW.eye},${(0.25 + 0.75 * e.glow).toFixed(3)})`; ctx.fill(); }
@@ -1348,7 +1430,19 @@
   const EYES = {
     "6E5": { mu: 35, kg: 1443, kp: 800, kvb: 100, x: 1.4, perv: 4.5e-3 / Math.pow(250, 1.5), vt: 250, it: 4.5e-3, rl: 1e6, ip0: 0.24e-3, ec0: -8, span: 0.96, base: "UX6", pins: { P: "2", G: "3", T: "4", K: "5" }, heater: "pins 1 and 6", use: "sharp cutoff, closes at −8 V" },
     "6E5C": { mu: 35, kg: 1443, kp: 800, kvb: 100, x: 1.4, perv: 4.5e-3 / Math.pow(250, 1.5), vt: 250, it: 4.5e-3, rl: 1e6, ip0: 0.24e-3, ec0: -8, span: 0.96, base: "OCTAL", pins: { P: "3", G: "5", T: "4", K: "8" }, heater: "pins 2 and 7", use: "6Е5С, octal, closes at −8 V" },
-    "6U5": { mu: 12, kg: 100.2e3, kp: 500, kvb: 100, x: 1.4, perv: 4e-3 / Math.pow(250, 1.5), vt: 250, it: 4e-3, rl: 1e6, ip0: 0.19e-3, ec0: -22, span: 0.76, base: "UX6", pins: { P: "2", G: "3", T: "4", K: "5" }, heater: "pins 1 and 6", use: "remote cutoff, closes at −22 V" }
+    "6U5": { mu: 12, kg: 100.2e3, kp: 500, kvb: 100, x: 1.4, perv: 4e-3 / Math.pow(250, 1.5), vt: 250, it: 4e-3, rl: 1e6, ip0: 0.19e-3, ec0: -22, span: 0.76, base: "UX6", pins: { P: "2", G: "3", T: "4", K: "5" }, heater: "pins 1 and 6", use: "remote cutoff, closes at −22 V" },
+    // noval eyes. shade: the shadow (0–1 of the full pattern) against the triode's plate at vt,
+    // [plate V, shadow] in order, straight between them and held past the ends (scaled with the
+    // target's voltage). kind "bar": two green bars with the shadow between them, len mm long.
+    // EM84 (Philips 1959/1962): Vb = target 250 V, 470 kΩ, 0 V: 0.45 mA, 21 mm shadow, −22 V:
+    // 0.06 mA, bars meet; target 1.0–1.8 mA; the deflector D (pin 7) joined to the plate (pin 9).
+    // 6Е3П: the Soviet EM84, interchangeable (radiomuseum.org)
+    "EM84": { mu: 10, kg: 28840, kp: 200, kvb: 300, x: 1.4, perv: 1.8e-3 / Math.pow(250, 1.5), vt: 250, it: 1.8e-3, rl: 470e3, ip0: 0.45e-3, ec0: -22, kind: "bar", len: 21, shade: [[38.1, 1], [221.8, 0]], base: "B9A", pins: { G: "1", K: "3", T: "6", P: "7,9" }, heater: "pins 4 and 5", ih: 0.21, use: "bar indicator, bars meet at −22 V" },
+    "6E3P": { mu: 10, kg: 28840, kp: 200, kvb: 300, x: 1.4, perv: 1.8e-3 / Math.pow(250, 1.5), vt: 250, it: 1.8e-3, rl: 470e3, ip0: 0.45e-3, ec0: -22, kind: "bar", len: 21, shade: [[38.1, 1], [221.8, 0]], base: "B9A", pins: { G: "1", K: "3", T: "6", P: "7,9" }, heater: "pins 4 and 5", ih: 0.27, use: "6Е3П, Soviet EM84" },
+    // 6Е1П (the Soviet EM80 kind; datasheet): µ 24, the triode fitted to its averaged anode curves;
+    // target 250 V up to 4 mA, plate through 0.5 MΩ; its shadow widens as the grid goes negative:
+    // about 7° at 0 V, 33° at −5 V, 50° at −10 V, 55° at −15 V (the datasheet's curve), cut off at −15 ± 5 V
+    "6E1P": { mu: 24, kg: 2884, kp: 50, kvb: 300, x: 1.3, perv: 4e-3 / Math.pow(250, 1.5), vt: 250, it: 4e-3, rl: 0.5e6, ip0: 0.47e-3, ec0: -15, kind: "fan", shade: [[16.7, 7 / 90], [131, 50 / 90], [170, 55 / 90]], base: "B9A", pins: { G: "1", K: "2", T: "3,8,9", P: "7" }, heater: "pins 4 and 5", ih: 0.3, use: "6Е1П, noval fan, shadow widens to 55° at −15 V" }
   };
   // A tube's anode, cooled by radiation: P = k·(T⁴ − T0⁴), at about 400 °C at its rated dissipation
   // inside a chassis at 40 °C. It glows dull red from the Draper point (525 °C, about twice the
@@ -1363,8 +1457,88 @@
   // and the ray-control electrode's voltages over the cathode
   function eyeShadow(m, vt, vp) {
     if (!(vt > 1)) return { shadow: 0, glow: 0 };
-    return { shadow: Math.min(1, Math.max(0, (vt - vp) / (m.span * vt))), glow: Math.min(1, Math.sqrt(m.perv * Math.pow(vt, 1.5) / m.it)) };
+    const glow = Math.min(1, Math.sqrt(m.perv * Math.pow(vt, 1.5) / m.it));
+    if (m.shade) {
+      const q = m.shade, v = vp * m.vt / vt;
+      let sh = v <= q[0][0] ? q[0][1] : q[q.length - 1][1];
+      for (let i = 1; i < q.length; i++) if (v >= q[i - 1][0] && v <= q[i][0]) { const u = (v - q[i - 1][0]) / (q[i][0] - q[i - 1][0]); sh = q[i - 1][1] + u * (q[i][1] - q[i - 1][1]); break; }
+      return { shadow: Math.min(1, Math.max(0, sh)), glow };
+    }
+    return { shadow: Math.min(1, Math.max(0, (vt - vp) / (m.span * vt))), glow };
   }
+  // how an eye's shadow reads: degrees of its fan, or mm between its bars
+  const eyeShadowText = (m, s) => (m.kind === "bar" ? `${(m.len * s).toFixed(1)} mm between the bars` : `${Math.round(90 * s)}°`);
+  // Mercury-vapour rectifiers (hgrect part): once its vapour ionises an anode conducts with a near
+  // constant arc drop of about 15 V whatever the current (the GLOW element: strikes at vs, holds vm
+  // plus r·i, out below iext), and blocks the other way. 83: full-wave, 5 V 3 A filament, 225 mA DC,
+  // 1400 V peak inverse, 0.675 A peak per plate; 866A: half-wave, anode on the top cap, 2.5 V 5 A
+  // filament, 250 mA, 5000 V (RCA TT-3). The filament must heat for 30 s before the plates get their
+  // voltage, or the arc pits the cathode. Under Animate the vapour glows blue with the current.
+  const HGRECTS = {
+    "83": { full: true, vf: 5, ihf: 3, vs: 20, vm: 14, r: 2, iext: 1e-3, idc: 0.225, ipk: 0.675, piv: 1400, pins: { A1: "2", A2: "3", K: "1,4" }, use: "full-wave, 225 mA" },
+    "866A": { full: false, vf: 2.5, ihf: 5, vs: 20, vm: 14, r: 2, iext: 1e-3, idc: 0.25, ipk: 0, piv: 5000, cap: true, pins: { A1: "cap", K: "1,4" }, use: "half-wave, high voltage, 250 mA" }
+  };
+  // Incandescent lamps (lamp part): the tungsten's resistance climbs with its temperature, so the
+  // filament draws what its rating says at its rated voltage and far less cold. With P = I²R
+  // radiated as T⁴ and R ∝ T^1.2, R = Rhot·(I/Irated)^0.857 at its rms current (a lamp's few tens of
+  // ms are long beside an audio cycle), never under its cold resistance (about Rhot/12, Rhot/15 for
+  // a mains bulb). Its light goes as about V^3.4: drawn from dull red to warm white.
+  const LAMPS = {
+    "47": { v: 6.3, i: 0.15, cold: 1 / 12, base: "BA9s", use: "#47 pilot lamp, 6.3 V 0.15 A" },
+    "44": { v: 6.3, i: 0.25, cold: 1 / 12, base: "BA9s", use: "#44 pilot lamp, 6.3 V 0.25 A" },
+    "1869": { v: 10, i: 0.014, cold: 1 / 10, base: "T1¾ wire leads", use: "#1869, 10 V 14 mA, wire leads" },
+    "327": { v: 28, i: 0.04, cold: 1 / 10, base: "T1¾ flanged", use: "#327, 28 V 40 mA" },
+    "60W": { v: 230, i: 60 / 230, cold: 1 / 15, base: "E27", use: "60 W 230 V bulb (dim-bulb tester)" }
+  };
+  const lampLaw = m => { const rh = m.v / m.i, n = -0.857; return { rh, r25: rh * m.cold, k: rh / Math.pow(m.i, -n), n }; };
+  // the light of a lamp, 0 dark to 1 at its rating (a little over 1 above it), from its voltage
+  const lampGlow = (m, v) => Math.min(1.3, Math.pow(Math.max(0, Math.abs(v)) / m.v, 3.4));
+  // Batteries (battery part): cells in series, each an open-circuit voltage by its charge left
+  // (typical discharge curves at light load) behind an internal resistance that grows as it runs
+  // down (doubles near empty for alkaline). mah: capacity at light load
+  const CELL_OCV = {
+    alk: [[0, 1.0], [0.05, 1.1], [0.2, 1.2], [0.5, 1.3], [0.9, 1.45], [1, 1.58]],
+    li: [[0, 3.0], [0.05, 3.4], [0.2, 3.6], [0.5, 3.7], [0.9, 4.05], [1, 4.2]],
+    pb: [[0, 1.93], [0.5, 2.03], [1, 2.13]]
+  };
+  const BATTERIES = {
+    "PP3": { cells: 6, chem: "alk", ri: 1.7, mah: 550, use: "9 V PP3 alkaline" },
+    "AA": { cells: 1, chem: "alk", ri: 0.15, mah: 2500, use: "1.5 V AA alkaline cell" },
+    "2xAA": { cells: 2, chem: "alk", ri: 0.3, mah: 2500, use: "3 V, 2 × AA" },
+    "4xAA": { cells: 4, chem: "alk", ri: 0.6, mah: 2500, use: "6 V, 4 × AA" },
+    "6xAA": { cells: 6, chem: "alk", ri: 0.9, mah: 2500, use: "9 V, 6 × AA" },
+    "8xAA": { cells: 8, chem: "alk", ri: 1.2, mah: 2500, use: "12 V, 8 × AA" },
+    "18650": { cells: 1, chem: "li", ri: 0.05, mah: 3000, use: "3.7 V Li-ion 18650" },
+    "2S18650": { cells: 2, chem: "li", ri: 0.1, mah: 3000, use: "7.4 V, 2 × 18650" },
+    "3S18650": { cells: 3, chem: "li", ri: 0.15, mah: 3000, use: "11.1 V, 3 × 18650" },
+    "SLA12": { cells: 6, chem: "pb", ri: 0.025, mah: 7000, use: "12 V 7 Ah sealed lead-acid" }
+  };
+  function batteryState(m, charge) {
+    const q = Math.min(1, Math.max(0, +charge)), t = CELL_OCV[m.chem];
+    let v = t[0][1];
+    for (let i = 1; i < t.length; i++) if (q <= t[i][0]) { const u = (q - t[i - 1][0]) / (t[i][0] - t[i - 1][0]); v = t[i - 1][1] + u * (t[i][1] - t[i - 1][1]); break; }
+    return { emf: v * m.cells, ri: m.ri * (1 + (m.chem === "alk" ? 2 : 1) * Math.pow(1 - q, 3)), mah: m.mah * q };
+  }
+  // Panel meters (meter part). A moving-coil movement reads the average current through its coil
+  // (rcoil), full scale fs; as a voltmeter the multiplier puts fs volts on 1 mA. A VU meter (IEC
+  // 60268-17): 3.9 kΩ with its 3.6 kΩ build-out (7.5 kΩ across the line), a full-wave rectified,
+  // average-reading movement scaled to rms, 0 VU at +4 dBu (1.228 V) or 0 dBu, +3 VU at full
+  // travel; the needle reaches 99 % in 300 ms with 1–1.5 % overshoot
+  const METER_FS = { "50u": 50e-6, "100u": 100e-6, "200u": 200e-6, "500u": 500e-6, "1m": 1e-3, "10m": 10e-3, "100m": 100e-3, "1": 1, "10V": 10, "30V": 30, "100V": 100, "300V": 300, "500V": 500 };
+  const METER_RCOIL = { "50u": 2000, "100u": 1000, "200u": 500, "500u": 200, "1m": 100, "10m": 5, "100m": 0.5, "1": 0.05 };
+  function meterModel(p) {
+    if (p.kind === "vu") return { kind: "vu", r: 7500, vref: (p.ref === "0" ? 0.775 : 1.228) * Math.pow(10, 3 / 20) };
+    const fs = METER_FS[p.fs] || 1e-3;
+    if (p.kind === "v") return { kind: "v", r: fs / 1e-3, ifs: 1e-3, fs };
+    return { kind: "a", r: METER_RCOIL[p.fs] || 100, ifs: fs, fs };
+  }
+  // Nixie tubes (nixie part): ten cold cathodes shaped as digits round one anode mesh. Each glows
+  // (the GLOW element) when its cathode is pulled low enough to strike; the lit one is the cathode
+  // carrying the current. ИН-14: strikes at 170 V or less, burns at 150 V or less (catalogue), about
+  // 2.5 mA a digit; needs 200 V or more through an anode resistor
+  const NIXIES = {
+    "IN-14": { vs: 170, vm: 140, r: 4000, iext: 0.3e-3, i: 2.5e-3, use: "ИН-14, side view, 0–9" }
+  };
   const OPAMPS = {
     "LM741": { units: 1, a0: 200e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 80e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.7e-3, vmax: 36, cc: 30e-12, input: "bipolar (NPN)", use: "the classic general-purpose op-amp" },
     "LM301A": { units: 1, a0: 160e3, gbw: 1e6, sr: 0.5e6, rin: 2e6, ib: 70e-9, ro: 150, isc: 25e-3, isk: 25e-3, dhi: 1, dlo: 1, iq: 1.8e-3, vmax: 36, cc: 0, input: "bipolar (NPN)", use: "externally compensated, 30 pF between pins 1 and 8" },
@@ -1515,21 +1689,29 @@
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "R", nodes: [net("1"), net("2")], r: Math.max(c.params.r, 1e-3) })
     },
     pot: {
-      name: "Potentiometer", prefix: "R", group: "Passive", bbox: [-30, -22, 30, 10],
+      // sections named R1.1, R1.2 are one dual-gang (stereo) pot and turn together; sw "spst" adds the
+      // on–off switch of a switched pot (S1, S2), on once the knob leaves its anticlockwise end
+      name: "Potentiometer", prefix: "R", group: "Passive", bbox: c => (c && c.params.sw === "spst" ? [-30, -22, 30, 22] : [-30, -22, 30, 10]),
       defaults: { r: 1e6, pos: 0.5, taper: "lin" },
-      pins: () => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }, { id: "W", x: 0, y: -20, name: "wiper" }],
+      pins: c => [{ id: "1", x: -30, y: 0 }, { id: "2", x: 30, y: 0 }, { id: "W", x: 0, y: -20, name: "wiper" }]
+        .concat(c && c.params.sw === "spst" ? [{ id: "S1", x: -10, y: 20, name: "switch" }, { id: "S2", x: 10, y: 20, name: "switch" }] : []),
       value: c => fmtEng(c.params.r, "Ω") + " " + Math.round(c.params.pos * 100) + "%",
       fields: [
         { key: "r", label: "Total resistance", unit: "Ω", kind: "eng" },
-        { key: "taper", label: "Taper", kind: "select", options: [["lin", "Linear"], ["log", "Audio (log)"]] },
+        { key: "taper", label: "Taper", kind: "select", options: [["lin", "Linear"], ["log", "Audio (log)"], ["rlog", "Reverse log (anti-log)"]] },
+        { key: "sw", label: "Switch", kind: "select", options: [["", "None"], ["spst", "On–off switch at the start (switched pot)"]] },
         { key: "pos", label: "Wiper position", kind: "range", min: 0, max: 1, step: 0.01, format: v => Math.round(v * 100) + "%" }
       ],
+      info: c => `${c.params.taper === "log" ? "Audio (log) taper: about 10 % of the track at half travel, for volume." : c.params.taper === "rlog" ? "Reverse log taper: about 90 % of the track at half travel (the mirror of audio taper), for a control that turns the other way." : "Linear taper."} ` +
+        `Name two pots R1.1 and R1.2 and they are one dual-gang (stereo) pot: they turn together, on the sheet and in the inspector.${c.params.sw === "spst" ? " The switch (S1–S2) closes as the knob leaves its anticlockwise end (above 3 %), as on a radio's volume-and-power knob." : ""} Under Animate drag its wiper or use the wheel over it.`,
       build: (c, net, alloc, out) => {
         let f = c.params.pos;
         if (c.params.taper === "log") f = (Math.pow(10, 2 * f) - 1) / 99;   // ~10% at mid travel
+        else if (c.params.taper === "rlog") f = 1 - (Math.pow(10, 2 * (1 - f)) - 1) / 99;   // ~90% at mid travel
         const r = Math.max(c.params.r, 1);
         out.push({ id: c.id + "#a", kind: "R", nodes: [net("1"), net("W")], r: Math.max(r * f, 0.1) });
         out.push({ id: c.id + "#b", kind: "R", nodes: [net("W"), net("2")], r: Math.max(r * (1 - f), 0.1) });
+        if (c.params.sw === "spst") out.push({ id: c.id + "#sw", kind: "R", nodes: [net("S1"), net("S2")], r: c.params.pos > 0.03 ? 0.01 : 1e9 });
       }
     },
     capacitor: {
@@ -1804,14 +1986,108 @@
       fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(EYES).map(([k, m]) => [k, `${k} · ${m.use}`]) }],
       info: c => {
         const m = EYES[c.params.model] || EYES["6E5"];
-        return `${c.params.model} (${m.use}): the target at ${m.vt} V draws about ${fmtEng(m.it, "A")} and glows green; the triode's plate goes to the same supply through ${fmtEng(m.rl, "Ω")}. ` +
-          `With the grid at the cathode the plate sits low and the shadow opens to 90°; as the grid goes negative (the AGC of a tuned radio, a rectified signal for a level meter) the plate rises towards the target and the shadow closes, shut at about ${m.ec0} V. ` +
-          `Under Animate the eye opens and closes with its grid. Pins: target ${m.pins.T}, plate ${m.pins.P}, grid ${m.pins.G}, cathode ${m.pins.K}, heater ${m.heater} (6.3 V, 0.3 A), ${m.base === "OCTAL" ? "octal" : "6-pin"} base.`;
+        const how = m.kind === "bar"
+          ? `With the grid at the cathode the plate sits low and the two green bars stand ${m.len} mm apart; as the grid goes negative (the AGC of a tuned radio, a rectified signal for a recording level meter) the plate rises and the bars grow until they meet at about ${m.ec0} V. The deflector (pin 7) is joined to the plate (pin 9), as the datasheet runs it. `
+          : m.shade && m.shade[m.shade.length - 1][1] > m.shade[0][1]
+            ? `With the grid at the cathode the shadow is a narrow ${Math.round(90 * m.shade[0][1])}°; as the grid goes negative it widens, to about ${Math.round(90 * m.shade[m.shade.length - 1][1])}° near cutoff (${m.ec0} V), as the datasheet's curve. `
+            : `With the grid at the cathode the plate sits low and the shadow opens to 90°; as the grid goes negative (the AGC of a tuned radio, a rectified signal for a level meter) the plate rises towards the target and the shadow closes, shut at about ${m.ec0} V. `;
+        return `${c.params.model} (${m.use}): the target at ${m.vt} V draws about ${fmtEng(m.it, "A")} and glows green; the triode's plate goes to the same supply through ${fmtEng(m.rl, "Ω")}. ` + how +
+          `Under Animate the eye moves with its grid. Pins: target ${m.pins.T}, plate ${m.pins.P}, grid ${m.pins.G}, cathode ${m.pins.K}, heater ${m.heater} (6.3 V, ${m.ih || 0.3} A), ${m.base === "OCTAL" ? "octal" : m.base === "B9A" ? "noval (B9A)" : "6-pin"} base.`;
       },
       build: (c, net, alloc, out) => {
         const m = EYES[c.params.model] || EYES["6E5"];
         out.push({ id: c.id, kind: "TRIODE", nodes: [net("P"), net("G"), net("K")], model: { mu: m.mu, kg: m.kg, kp: m.kp, kvb: m.kvb, x: m.x } });
         out.push({ id: c.id + "#t", kind: "VDIODE", nodes: [net("T"), net("K")], perveance: m.perv, part: "target" });
+      }
+    },
+    hgrect: {
+      // VL like any tube: a mercury-vapour rectifier, its anodes (A1, A2 on a full-wave one) and its
+      // directly heated filament K (B+ is taken from it, as from a 5U4G's)
+      name: "Mercury-vapour rectifier", prefix: "VL", group: "Tubes", bbox: [-30, -50, 30, 50],
+      defaults: { model: "83" },
+      pins: c => ((HGRECTS[c.params.model] || HGRECTS["83"]).full
+        ? [{ id: "A1", x: -20, y: -50, name: "anode 1" }, { id: "A2", x: 20, y: -50, name: "anode 2" }, { id: "K", x: 0, y: 50, name: "filament (cathode)" }]
+        : [{ id: "A1", x: 0, y: -50, name: "anode (top cap)" }, { id: "K", x: 0, y: 50, name: "filament (cathode)" }]),
+      pinNumbers: c => Object.assign({}, (HGRECTS[c.params.model] || HGRECTS["83"]).pins),
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(HGRECTS).map(([k, m]) => [k, `${k} · ${m.use}`]) }],
+      info: c => {
+        const m = HGRECTS[c.params.model] || HGRECTS["83"];
+        return `${c.params.model} (${m.use}): once the mercury vapour strikes (about ${m.vs} V) an anode conducts with an almost constant drop of about 15 V whatever the current, so the supply stays stiff under load where a vacuum rectifier sags; reversed it blocks up to ${m.piv} V peak. ` +
+          `${m.vf} V ${m.ihf} A filament: heat it 30 s before the anodes get their voltage (a delay relay or a standby switch), and keep the tube upright. ${m.full ? "Pins: anodes 2 and 3, filament 1 and 4 (UX4)." : "Anode on the top cap, filament pins 1 and 4 (UX4)."} ` +
+          `Checks compare its DC current with ${fmtEng(m.idc, "A")}${m.ipk ? `, its peak with ${fmtEng(m.ipk, "A")} a plate` : ""} and its peak inverse voltage with ${m.piv} V. Under Animate the vapour glows blue with each conduction pulse.`;
+      },
+      build: (c, net, alloc, out) => {
+        const m = HGRECTS[c.params.model] || HGRECTS["83"], g = { vm: m.vm, vs: m.vs, r: m.r, iext: m.iext };
+        out.push({ id: c.id, kind: "GLOW", nodes: [net("A1"), net("K")], model: g });
+        if (m.full) out.push({ id: c.id + "#2", kind: "GLOW", nodes: [net("A2"), net("K")], model: g });
+      }
+    },
+    lamp: {
+      // HL (ГОСТ 2.732): an incandescent lamp, its filament's resistance by its current (LAMPS)
+      name: "Incandescent lamp", prefix: "HL", group: "Gas-discharge tubes", bbox: [-20, -12, 20, 12],
+      defaults: { model: "47" },
+      pins: () => [{ id: "1", x: -20, y: 0, name: "1" }, { id: "2", x: 20, y: 0, name: "2" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(LAMPS).map(([k, m]) => [k, m.use]) }],
+      info: c => {
+        const m = LAMPS[c.params.model] || LAMPS["47"], l = lampLaw(m);
+        return `${m.use}: ${fmtEng(l.rh, "Ω")} hot at its rated ${m.v} V, about ${fmtEng(l.r25, "Ω")} cold, so it draws several times its current at switch-on. In between its resistance follows its rms current (R ∝ I^0.857, from the filament's radiation and tungsten's resistance), which is what makes a lamp a soft current limiter: in series with the mains as a dim-bulb tester, in series with a tweeter, or as a pilot light dimmed on a lower heater voltage. It glows from dull red to warm white with its voltage (light about V^3.4). Base: ${m.base}.`;
+      },
+      build: (c, net, alloc, out) => {
+        const m = LAMPS[c.params.model] || LAMPS["47"], l = lampLaw(m);
+        out.push({ id: c.id, kind: "R", nodes: [net("1"), net("2")], r: l.rh, ntc: { r25: l.r25, k: l.k, n: l.n } });
+      }
+    },
+    battery: {
+      // GB (ГОСТ 2.710): cells in series behind their internal resistance (BATTERIES, batteryState)
+      name: "Battery", prefix: "GB", group: "Sources", bbox: [-14, -30, 14, 30],
+      defaults: { model: "PP3", charge: 1 },
+      pins: () => [{ id: "+", x: 0, y: -30, name: "+" }, { id: "-", x: 0, y: 30, name: "−" }],
+      value: c => { const m = BATTERIES[c.params.model] || BATTERIES.PP3, b = batteryState(m, c.params.charge); return `${b.emf.toFixed(1)}V ${Math.round(c.params.charge * 100)}%`; },
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(BATTERIES).map(([k, m]) => [k, m.use]) },
+        { key: "charge", label: "Charge left", kind: "select", options: [[1, "100 % (new)"], [0.75, "75 %"], [0.5, "50 %"], [0.25, "25 %"], [0.1, "10 %"], [0.03, "3 % (nearly flat)"]] }],
+      info: c => {
+        const m = BATTERIES[c.params.model] || BATTERIES.PP3, b = batteryState(m, c.params.charge);
+        return `${m.use}: ${b.emf.toFixed(2)} V open-circuit at ${Math.round(c.params.charge * 100)} % charge, ${fmtEng(b.ri, "Ω")} inside (it grows as the battery runs down), so the voltage sags with the load. About ${Math.round(m.mah)} mAh new at a light load. Lower Charge left to hear a pedal or preamp on a tired battery.`;
+      },
+      build: (c, net, alloc, out) => {
+        const m = BATTERIES[c.params.model] || BATTERIES.PP3, b = batteryState(m, c.params.charge), mid = alloc();
+        out.push({ id: c.id, kind: "V", nodes: [mid, net("-")], v: b.emf });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("+"), mid], r: Math.max(b.ri, 1e-3) });
+      }
+    },
+    meter: {
+      // PA / PV (ГОСТ 2.710): a panel meter, a moving-coil movement in series (an ammeter) or with its
+      // multiplier across (a voltmeter), or a VU meter across a line (meterModel)
+      name: "Panel meter", prefix: "PA", prefixFor: c => (c.params.kind === "a" ? "PA" : "PV"), group: "Instruments", bbox: [-30, -20, 30, 14],
+      defaults: { kind: "a", fs: "1m", ref: "4" },
+      pins: () => [{ id: "+", x: -30, y: 0, name: "+" }, { id: "-", x: 30, y: 0, name: "−" }],
+      value: c => (c.params.kind === "vu" ? `VU ${c.params.ref === "0" ? "0" : "+4"} dBu` : c.params.kind === "v" ? `${fmtEng(METER_FS[c.params.fs] || 10, "V")} FS` : `${fmtEng(METER_FS[c.params.fs] || 1e-3, "A")} FS`),
+      fields: [{ key: "kind", label: "Kind", kind: "select", wide: true, options: [["a", "Ammeter: moving coil in series"], ["v", "Voltmeter: moving coil with its multiplier (1 mA)"], ["vu", "VU meter across a line (IEC 60268-17)"]] },
+        { key: "fs", label: "Full scale", kind: "select", options: c => (c.params.kind === "v" ? ["10V", "30V", "100V", "300V", "500V"] : ["50u", "100u", "200u", "500u", "1m", "10m", "100m", "1"]).map(k => [k, fmtEng(METER_FS[k], c.params.kind === "v" ? "V" : "A")]), when: c => c.params.kind !== "vu" },
+        { key: "ref", label: "0 VU at", kind: "select", options: [["4", "+4 dBu (1.228 V, studio)"], ["0", "0 dBu (0.775 V)"]], when: c => c.params.kind === "vu" }],
+      info: c => {
+        const m = meterModel(c.params);
+        if (m.kind === "vu") return `A VU meter: 7.5 kΩ across the line (its 3.9 kΩ and the 3.6 kΩ build-out), reading the rectified average scaled to rms, 0 VU at ${c.params.ref === "0" ? "0 dBu (0.775 V)" : "+4 dBu (1.228 V)"} and +3 VU at full travel; the needle takes 300 ms to reach a step (99 %), with a slight overshoot. Under Animate it swings with the music's level and to a new reading as you turn a knob.`;
+        return `A moving-coil panel meter, ${m.kind === "v" ? `${fmtEng(m.fs, "V")} full scale: a 1 mA movement with its multiplier, ${fmtEng(m.r, "Ω")} in all (1 kΩ/V), across what it measures` : `${fmtEng(m.fs, "A")} full scale, its coil ${fmtEng(m.r, "Ω")}, in series with what it measures`}. It reads the average current (on AC the needle sits at the average, as a real one does unless it has a rectifier). Under Animate the needle moves to each new reading with a meter's damping and swings with a slow cycle (a 555 metronome); past full scale it pins, which Checks report.`;
+      },
+      build: (c, net, alloc, out) => out.push({ id: c.id, kind: "R", nodes: [net("+"), net("-")], r: meterModel(c.params).r })
+    },
+    nixie: {
+      // HG (ГОСТ 2.710): a nixie tube, its anode and the ten digit cathodes (NIXIES)
+      name: "Nixie tube", prefix: "HG", group: "Gas-discharge tubes", bbox: [-50, -40, 50, 40],
+      defaults: { model: "IN-14" },
+      pins: () => [{ id: "A", x: 0, y: -40, name: "anode" }, ...Array.from({ length: 10 }, (_, k) => ({ id: "K" + k, x: -45 + 10 * k, y: 40, name: "cathode " + k }))],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(NIXIES).map(([k, m]) => [k, m.use]) }],
+      info: c => {
+        const m = NIXIES[c.params.model] || NIXIES["IN-14"];
+        return `${m.use}: the anode goes to 200 V or more through a resistor (about 15–33 kΩ for ${fmtEng(m.i, "A")} from 200–250 V); pull one cathode down (a switch, a K155ID1 / 74141 driver, a high-voltage transistor) and its digit strikes at about ${m.vs} V and burns at about ${m.vm + m.r * m.i} V. The digit with the current glows orange on the sheet, settled and under Animate; with a rotary selector on the cathodes a click under Animate steps the digit. The tube has flying leads: wire it to the board.`;
+      },
+      build: (c, net, alloc, out) => {
+        const m = NIXIES[c.params.model] || NIXIES["IN-14"], g = { vm: m.vm, vs: m.vs, r: m.r, iext: m.iext };
+        for (let k = 0; k < 10; k++) out.push({ id: k ? c.id + "#" + k : c.id, kind: "GLOW", nodes: [net("A"), net("K" + k)], model: g });
       }
     },
     opt_cat: {
@@ -2627,7 +2903,7 @@
       ["opt_cat", null, "Output 125SE"], ["ptx_cat", null, "Power 300"]] },
     { group: "Sources", items: [
       { sub: "DC supplies" },
-      ["vdc"], ["rail"], ["isrc"],
+      ["vdc"], ["rail"], ["isrc"], ["battery", null, "Battery 9 V (PP3)"], ["battery", { model: "8xAA" }, "Battery 12 V (8 × AA)"], ["battery", { model: "18650" }, "Li-ion cell 18650"],
       { sub: "AC sources" },
       ["siggen"], ["mains"],
       { sub: "Instruments and records" }, ["pickup", null, "Guitar pickup, single coil"], ["pickup", { preset: "paf", r: 8e3, l: 4.4, c: 150e-12, amp: 0.3 }, "Guitar pickup, humbucker"], ["phono", null, "Phono cartridge, moving magnet"], ["phono", { preset: "dl103", mv: 0.3e-3, r: 40, l: 30e-6 }, "Phono cartridge, moving coil"],
@@ -2648,8 +2924,10 @@
       { sub: "Regulators" }, ["reg", { model: "LM317" }, "LM317 adjustable"], ["reg", { model: "LM337" }, "LM337 adjustable, negative"],
       ["reg", { model: "7812" }, "78xx fixed"], ["reg", { model: "7912" }, "79xx fixed, negative"], ["tl431", null, "TL431 shunt reference"]] },
     { group: "Gas-discharge tubes", items: [["gasreg", null, "Voltage regulator 0A2 (150 V)"], ["gasreg", { model: "0B2" }, "Voltage regulator 0B2 (108 V)"], ["gasreg", { model: "0D3" }, "Voltage regulator 0D3 (153 V, octal)"],
-      { sub: "Indicators" }, ["neon", null, "Neon lamp NE-2"], ["neon", { model: "NE-2H" }, "Neon lamp NE-2H (bright)"], ["eye", null, "Magic eye 6E5"], ["eye", { model: "6U5" }, "Magic eye 6U5 (remote cutoff)"]] },
-    { group: "Instruments", items: [["scope"]] },
+      { sub: "Indicators" }, ["neon", null, "Neon lamp NE-2"], ["neon", { model: "NE-2H" }, "Neon lamp NE-2H (bright)"], ["eye", null, "Magic eye 6E5"], ["eye", { model: "6U5" }, "Magic eye 6U5 (remote cutoff)"],
+      ["eye", { model: "EM84" }, "Magic eye EM84 (bar)"], ["eye", { model: "6E1P" }, "Magic eye 6E1P (noval fan)"], ["nixie", null, "Nixie tube IN-14"], ["lamp", null, "Pilot lamp #47 (6.3 V)"], ["lamp", { model: "60W" }, "Bulb 60 W 230 V (dim-bulb)"],
+      { sub: "Rectifiers" }, ["hgrect", null, "Mercury-vapour rectifier 83"], ["hgrect", { model: "866A" }, "Mercury-vapour rectifier 866A"]] },
+    { group: "Instruments", items: [["scope"], ["meter", null, "Panel meter (moving coil)"], ["meter", { kind: "vu" }, "VU meter"]] },
     { group: "Document", items: [["frame"], ["note"]] }
   ];
 
@@ -2929,13 +3207,60 @@
       return h;
     }
   };
+  UI.hgrect = {
+    readout: (c, R) => {
+      const m = HGRECTS[c.params.model] || HGRECTS["83"], ik = R.pinCurrent("K");
+      if (ik === null) return R.note("No data.");
+      return R.kv("DC out", fmtEng(Math.abs(ik), "A", 3) + ` · rating ${fmtEng(m.idc, "A")}`, Math.abs(ik) > m.idc ? "bad" : "") + R.kv("Arc drop", "about 15 V") + R.note(`Heat the ${m.vf} V filament 30 s before the anodes get their voltage.`);
+    }
+  };
+  UI.lamp = {
+    readout: (c, R) => {
+      const m = LAMPS[c.params.model] || LAMPS["47"], e = R.r.ntc && R.r.ntc[c.id];
+      if (!e) return R.note("No data.");
+      const v = e.i * e.r;
+      return R.kv("Voltage (rms)", fmtEng(v, "V", 3), v > 1.1 * m.v ? "bad" : "") + R.kv("Current (rms)", fmtEng(e.i, "A", 3)) + R.kv("Filament", `${fmtEng(e.r, "Ω", 3)} (cold ${fmtEng(lampLaw(m).r25, "Ω", 2)})`) + R.kv("Light", `${Math.round(100 * Math.min(1.3, lampGlow(m, v)))} % of rated`);
+    }
+  };
+  UI.battery = {
+    readout: (c, R) => {
+      const m = BATTERIES[c.params.model] || BATTERIES.PP3, b = batteryState(m, c.params.charge), v = R.vAcross("+", "-"), i = R.pinCurrent("-");
+      if (v === null || i === null) return R.note("No data.");
+      const load = Math.max(0, i);
+      return R.kv("Terminal voltage", fmtEng(v, "V", 3) + ` (${b.emf.toFixed(2)} V open)`) + R.kv("Load current", fmtEng(load, "A", 3)) +
+        (load > 1e-6 ? R.kv("Runs for about", (() => { const h = b.mah / 1000 / load; return h >= 48 ? `${Math.round(h / 24)} days` : h >= 1 ? `${h.toFixed(1)} h` : `${Math.round(h * 60)} min`; })()) : "") +
+        R.note("The runtime is a light-load estimate from the charge left; heavy loads get less from a cell.");
+    }
+  };
+  UI.meter = {
+    readout: (c, R) => {
+      const m = meterModel(c.params);
+      if (m.kind === "vu") {
+        const v = R.vRms("+", "-");
+        if (v === null) return R.note("No data.");
+        const vu = 20 * Math.log10(Math.max(v, 1e-9) / (m.vref / Math.pow(10, 3 / 20)));
+        return R.kv("Reading", `${vu >= 0 ? "+" : ""}${vu.toFixed(1)} VU`, vu > 3 ? "bad" : "") + R.kv("Line (rms)", fmtEng(v, "V", 3));
+      }
+      const i = R.pinCurrent("+");
+      if (i === null) return R.note("No data.");
+      const x = i / m.ifs;
+      return R.kv("Reading", `${m.kind === "v" ? fmtEng(x * m.fs, "V", 3) : fmtEng(i, "A", 3)} · ${Math.round(x * 100)} % of full scale`, x > 1.05 || x < -0.03 ? "bad" : "");
+    }
+  };
+  UI.nixie = {
+    readout: (c, R) => {
+      const m = NIXIES[c.params.model] || NIXIES["IN-14"], cur = Array.from({ length: 10 }, (_, k) => -(R.pinCurrent("K" + k) || 0));
+      let k = 0; cur.forEach((v, j) => { if (v > cur[k]) k = j; });
+      return cur[k] > m.iext ? R.kv("Lit digit", String(k)) + R.kv("Current", fmtEng(cur[k], "A", 2) + ` · about ${fmtEng(m.i, "A")} wanted`, cur[k] > 2 * m.i ? "bad" : "") : R.note(`Dark: pull a cathode down and give the anode ${m.vs} V or more to strike.`, "warn");
+    }
+  };
   UI.eye = {
     readout: (c, R) => {
       const m = EYES[c.params.model] || EYES["6E5"], vt = R.vAcross("T", "K"), vp = R.vAcross("P", "K"), vg = R.vAcross("G", "K");
       if (vt === null || vp === null) return R.note("No data.");
       const e = eyeShadow(m, vt, vp);
       return R.kv("Target", fmtEng(vt, "V", 3), vt > 1.1 * m.vt ? "bad" : "") + R.kv("Triode plate", fmtEng(vp, "V", 3)) + R.kv("Grid", fmtEng(vg, "V", 3)) +
-        R.kv("Shadow", `${Math.round(90 * e.shadow)}°${e.shadow > 0.98 ? " (fully open)" : e.shadow < 0.02 ? " (closed)" : ""}`) + (R.r.dcAveraged ? R.note("Averages over the settled cycle: Animate shows it moving.") : "");
+        R.kv("Shadow", `${eyeShadowText(m, e.shadow)}${m.shade ? "" : e.shadow > 0.98 ? " (fully open)" : e.shadow < 0.02 ? " (closed)" : ""}`) + (R.r.dcAveraged ? R.note("Averages over the settled cycle: Animate shows it moving.") : "");
     }
   };
   UI.tl431 = {
@@ -3015,5 +3340,5 @@
     return wrap;
   }
 
-  root.CadLib = { socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
+  root.CadLib = { socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);

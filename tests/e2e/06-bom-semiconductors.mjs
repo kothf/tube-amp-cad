@@ -202,7 +202,7 @@ import { readFile } from "node:fs/promises";
       return out;
     });
     const src = (pal.Sources || []).join(" | "), gc = (pal["Ground & connectors"] || []).join(" | ");
-    check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | AC sources: Signal generator | AC sources: AC mains | Instruments and records: Guitar pickup, single coil | Instruments and records: Guitar pickup, humbucker | Instruments and records: Phono cartridge, moving magnet | Instruments and records: Phono cartridge, moving coil | Controlled sources: Voltage-controlled voltage (E) | Controlled sources: Voltage-controlled current (G)"
+    check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | DC supplies: Battery 9 V (PP3) | DC supplies: Battery 12 V (8 × AA) | DC supplies: Li-ion cell 18650 | AC sources: Signal generator | AC sources: AC mains | Instruments and records: Guitar pickup, single coil | Instruments and records: Guitar pickup, humbucker | Instruments and records: Phono cartridge, moving magnet | Instruments and records: Phono cartridge, moving coil | Controlled sources: Voltage-controlled voltage (E) | Controlled sources: Voltage-controlled current (G)"
       && gc === "Ground | Sheet connector | Connectors: Jack, 6.35 mm switched | Connectors: RCA socket | Connectors: IEC mains inlet | Connectors: Terminal block | Connectors: Pin header | Connectors: Faston tab", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
     // the current source: 2 mA from ground up into 10 kΩ gives 20 V; the inspector reads it
     await cad.evaluate(() => {

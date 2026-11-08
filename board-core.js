@@ -839,7 +839,7 @@
       case "zener": { const z = L.ZENERS[p.model] || {}; return z.p >= 5 ? ["SMC", "SMB"] : z.p >= 1 ? ["SMA", "SMB"] : ["SOD-123", "SOD-323", "MINIMELF"]; }
       case "led": return ["LED-1206", "LED-0805"];
       case "inductor": return +p.l < 0.05 ? ["CHIP-1210", "CHIP-1812"] : [];
-      case "pot": return ["TRIM-TC33"];
+      case "pot": return g.members.length > 1 || g.members.some(m => m.params && m.params.sw === "spst") ? [] : ["TRIM-TC33"];
       case "timer555": return ["SOIC-8"];
       case "chipamp": return p.model === "LM386" ? ["SOIC-8"] : [];
       case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "SOIC-14" : "SOIC-8"]; }
@@ -875,7 +875,8 @@
     const eiFor = (kind, size) => first(kind === "CHOKE" ? `CHOKE-EI${size}` : `XFMR-EI${size}-${kind}`, EI.map(s => (kind === "CHOKE" ? `CHOKE-EI${s}` : `XFMR-EI${s}-${kind}`)));
     switch (t) {
       case "resistor": { const d = "AXIAL-" + (AXIAL_FOR_WATTS[String(p.w || "")] || 10.16); return [...first(d, axials), "WIRE-2"]; }
-      case "pot": return ["POT-16MM", "POT-24MM", "POT-9MM", "TRIM-3296W", "TERM-5.08-3", "WIRE-3"];
+      // a dual-gang or switched pot sits on the front panel, wired
+      case "pot": return g.members.length > 1 || g.members.some(m => m.params && m.params.sw === "spst") ? [`WIRE-${wires}`, `TERM-5.08-${wires}`] : ["POT-16MM", "POT-24MM", "POT-9MM", "TRIM-3296W", "TERM-5.08-3", "WIRE-3"];
       case "capacitor": {
         const boxes = Object.keys(BOX).map(k => "BOX-" + k), discs = ["DISC-5.08", "DISC-2.54", "DISC-7.62"];
         return p.c <= 1e-9 ? [...discs, ...boxes, ...axials, "WIRE-2"] : [...first("BOX-" + boxFor(p.c), boxes), ...discs, ...axials, "WIRE-2"];
@@ -927,6 +928,13 @@
       // a neon on the board or on the panel; a magic eye in its socket (often on the front panel: wired)
       case "neon": return ["NEON-T2", "WIRE-2"];
       case "eye": { const d = `SOCKET-${(L.EYES[p.model] || {}).base || "UX6"}`; return [d, "WIRE-4"]; }
+      // a mercury-vapour rectifier in its UX4 socket (the 866A's anode on its top cap); a lamp, a battery
+      // and a panel meter on the chassis or the front panel, wired; a nixie's flying leads, wired
+      case "hgrect": { const m = L.HGRECTS[p.model] || L.HGRECTS["83"]; return [m.cap ? "SOCKET-UX4-CAP" : "SOCKET-UX4", m.full ? "WIRE-3" : "WIRE-2"]; }
+      case "lamp": return ["WIRE-2", t2];
+      case "battery": return ["WIRE-2", t2];
+      case "meter": return ["WIRE-2", t2];
+      case "nixie": return ["WIRE-11"];
       case "speaker": return [t2, "JACK-6.35", "WIRE-2"];
       case "siggen": return ["JACK-RCA", "JACK-6.35", "JACK-3.5", t2, "WIRE-2"];
       case "vdc": return [t2, "TERM-7.5-2", "WIRE-2"];
