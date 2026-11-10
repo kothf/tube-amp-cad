@@ -87,10 +87,14 @@
 </head>
 <body>
   <header>
-    <div class="brand">TUBE AMP CAD<span>projects on the server</span></div>
+    <div class="brand">TUBE AMP CAD<span id="brand-where">projects on the server</span></div>
+    <select id="store" aria-label="Where the projects are kept" title="Where projects and their revisions are kept: on aerocat.tech (its owner only), or in a vault, a folder on this computer that you choose. Add as many folders as you like (one for each project, say) and switch between them here"><option value="site">aerocat.tech</option><option value="vault">A folder on this computer (vault)…</option></select>
     <span id="who"></span>
     <span class="spacer"></span>
     <button class="btn active" id="signin" hidden title="Opens the site's login in its own window: your e-mail, then the code it sends you">Sign in ↗</button>
+    <button class="btn active" id="folder-grant" hidden title="The browser asks whether this page may change files in the folder">Allow</button>
+    <button class="btn" id="folder-forget" hidden title="Take this folder off the list. Its files stay where they are, and Add a folder… brings it back">Forget folder</button>
+    <button class="btn" id="folder-pick" hidden title="The browser's folder dialog: pick an empty folder for a new vault, or a vault made before">Choose folder…</button>
     <button class="btn" id="import" hidden title="Bring back a project: a Download all file, a saved design, or a project's folder from a backup">Import project…</button>
     <input type="file" id="import-file" accept=".json,application/json" hidden>
     <input type="file" id="import-folder" webkitdirectory multiple hidden>
@@ -159,6 +163,7 @@
       <div class="ask-actions"><button class="btn" id="ask-cancel">Cancel</button><button class="btn active" id="ask-ok">OK</button></div>
     </div>
   </div>
+  <script src="cad-vault.js?v=dev"></script>
   <script src="cad-revisions.js?v=dev"></script>
   <script src="projects-app.js?v=dev"></script>
 </body>

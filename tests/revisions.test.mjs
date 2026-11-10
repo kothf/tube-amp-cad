@@ -70,8 +70,13 @@ test("the board: parts placed and moved, tracks and vias, the outline", () => {
 });
 
 test("the #rev= address", () => {
-  assert.deepEqual(R.fromHash("#rev=Ab3xK9_qZw.12"), { project: "Ab3xK9_qZw", n: 12 });
-  assert.deepEqual(R.fromHash("#x=1&rev=Ab3xK9_qZw.3"), { project: "Ab3xK9_qZw", n: 3 });
+  assert.deepEqual(R.fromHash("#rev=Ab3xK9_qZw.12"), { project: "Ab3xK9_qZw", n: 12, vault: false });
+  assert.deepEqual(R.fromHash("#x=1&rev=Ab3xK9_qZw.3"), { project: "Ab3xK9_qZw", n: 3, vault: false });
+  // a revision in a folder vault (cad-vault.js): the vault's id rides along
+  assert.deepEqual(R.fromHash("#rev=Ab3xK9_qZw.3&vault=Kd93mXq2Lp"), { project: "Ab3xK9_qZw", n: 3, vault: "Kd93mXq2Lp" });
+  assert.equal(R.hashOf("Ab3xK9_qZw", 4, "Kd93mXq2Lp"), "#rev=Ab3xK9_qZw.4&vault=Kd93mXq2Lp");
+  assert.equal(R.hashOf("Ab3xK9_qZw", 4, true), "#rev=Ab3xK9_qZw.4&vault=1");
+  assert.equal(R.storeName("https://aerocat.tech"), "site", "without cad-vault.js loaded there is only the site's store");
   assert.equal(R.fromHash("#rev=short.1"), null);
   assert.equal(R.fromHash("#rev=Ab3xK9_qZw"), null);
   assert.equal(R.hashOf("Ab3xK9_qZw", 4), "#rev=Ab3xK9_qZw.4");
