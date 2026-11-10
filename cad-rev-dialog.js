@@ -81,21 +81,27 @@
       permission: "The browser wants your leave again to use the vault's folder (it asks after a restart). Press Allow, then answer its question.",
       gone: "The vault's folder cannot be found: it was moved, renamed, or is on a drive that is not connected. Connect the drive and open Revisions again, or choose the folder again.",
       unsupported: "This browser cannot open a folder on the computer, which a vault needs: Chrome and Edge can.",
+      // Safari, Firefox: a folder can be read, not written
+      reading: "This browser can read a vault's folder but cannot save into it. Choose the folder (a vault made in Chrome or Edge, or one project's folder) to list its revisions, open them and compare them; the browser asks for the folder again after the page is reloaded. Saving revisions into a folder needs Chrome or Edge.",
+      readonly: "This browser can only read the vault's folder: saving into it needs Chrome or Edge.",
     };
+    let readOnly = false;                    // the store shown cannot be written (a vault in Safari or Firefox)
     async function needFolder(why) {
       $("rev-modal").hidden = false; view("vault"); info(""); $("rev-who").textContent = "";
       const st = vault ? await vault.status() : { name: "" };
+      if (why === "none" && vault && !vault.writes) why = "reading";
       $("rev-vault-text").textContent = VAULT_TEXT[why] || VAULT_TEXT.none;
       $("rev-vault-grant").hidden = why !== "permission";
       $("rev-vault-grant").textContent = `Allow ${st.name || "the folder"}`;
       $("rev-vault-pick").hidden = why === "unsupported";
-      $("rev-vault-pick").textContent = why === "none" ? "Choose folder…" : "Add another folder…";
+      $("rev-vault-pick").textContent = why === "none" || why === "reading" ? "Choose folder…" : "Add another folder…";
       $("rev-vault-pick").classList.toggle("active", why !== "permission");
       await showStore();
     }
     // a failure: the login or the folder wants the user, or something to say
     function failed(err) {
       if (err && err.signin) { $("rev-modal").hidden = false; view("signin"); info(""); }
+      else if (err && err.folder === "readonly") info(VAULT_TEXT.readonly, "warn");
       else if (err && err.folder) needFolder(err.folder);
       else info(err.message, "warn");
     }
@@ -168,12 +174,13 @@
       await showStore();
       if (!api.available) { $("rev-who").textContent = ""; if (store === "vault") needFolder("unsupported"); else view("off"); return; }
       info(store === "vault" ? "Reading the folder…" : "Asking aerocat.tech…");
-      const my = store;
+      const my = store; readOnly = false;
       try {
         const me = await api.me();
         if (my !== store) return;
         const inProjects = `${mb(me.revisions.bytes)} in ${me.revisions.projects} project${me.revisions.projects === 1 ? "" : "s"}`;
-        $("rev-who").textContent = me.vault ? `Folder ${me.folder} · ${inProjects}` : `${me.email} · ${inProjects}, ${mb(me.total.max - me.total.bytes)} free`;
+        readOnly = !!me.readOnly;
+        $("rev-who").textContent = me.vault ? `Folder ${me.folder} · ${inProjects}${readOnly ? " · read only" : ""}` : `${me.email} · ${inProjects}, ${mb(me.total.max - me.total.bytes)} free`;
         if (me.vault) cur = load(curKey()) || cur;      // the vault's id is known now: its own last project
         view("main"); info(""); await showStore();
         if (atHere() && !pending && at.project !== cur) remember(at.project);
@@ -187,8 +194,9 @@
       sel.innerHTML = projects.length ? projects.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.count} rev${p.count === 1 ? "" : "s"}</option>`).join("") : `<option value="">No projects yet: make one with New project…</option>`;
       if (!projects.some(p => p.id === cur)) cur = projects.length ? projects[0].id : "";
       sel.value = cur; sel.disabled = !projects.length;
-      $("rev-save").disabled = $("rev-export").disabled = !cur;
-      showNew(!projects.length);
+      $("rev-export").disabled = !cur; $("rev-save").disabled = !cur || readOnly; $("rev-new").disabled = readOnly;
+      $("rev-save").title = readOnly ? VAULT_TEXT.readonly : "Keep the design as it is now, board included, as the project's next revision (Ctrl+Alt+S)";
+      showNew(!projects.length && !readOnly);
       await loadRevs();
     }
     async function loadRevs() {
@@ -207,7 +215,7 @@
       const body = $("rev-list"), shown = revs.filter(r => !starsOnly || r.milestone);
       $("rev-stars").classList.toggle("active", starsOnly);
       $("rev-stars").textContent = `★ Milestones${revs.some(r => r.milestone) ? " (" + revs.filter(r => r.milestone).length + ")" : ""}`;
-      if (!cur) { body.innerHTML = `<div class="rev-empty">Make a project, then Save revision keeps this design as its first revision.</div>`; return; }
+      if (!cur) { body.innerHTML = `<div class="rev-empty">${readOnly ? "No projects in this folder." : "Make a project, then Save revision keeps this design as its first revision."}</div>`; return; }
       if (!revs.length) { body.innerHTML = `<div class="rev-empty">No revisions yet: Save revision keeps this design as r1.</div>`; return; }
       if (!shown.length) { body.innerHTML = `<div class="rev-empty">No milestones yet: pick a revision and press ☆ Milestone.</div>`; return; }
       body.innerHTML = `<svg class="rev-tree" aria-hidden="true"></svg>` + shown.map(r => `<button class="rev-item${r.n === pick ? " on" : ""}${r.hash === nowHash ? " cur" : ""}" data-n="${r.n}" title="${esc(when(r.time))} · double-click opens it">
@@ -360,7 +368,7 @@
         attach(cur, projectName(), r.n, r.hash);
         pick = r.n;
         await loadProjects();
-      } catch (err) { failed(err); } finally { btn.disabled = !cur; }
+      } catch (err) { failed(err); } finally { btn.disabled = !cur || readOnly; }
     }
     async function openRev(project, n, fromLink) {
       try {

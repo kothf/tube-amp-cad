@@ -142,7 +142,7 @@ test("a folder not ready says why: leave to use it, moved away, a browser withou
   await v.createProject("Amp");
   root.permission = "prompt";
   await assert.rejects(v.projects(), e => e.folder === "permission");
-  assert.deepEqual(await v.status(), { supported: true, id: v.id(), name: "vault", granted: false, count: 1 });
+  assert.deepEqual(await v.status(), { supported: true, writes: true, id: v.id(), name: "vault", granted: false, count: 1 });
   assert.equal(await v.grant(), true);
   assert.equal((await v.projects()).length, 1);
   // a project's folder renamed by hand is still found, by the id in its project.json
@@ -176,4 +176,28 @@ test("several vaults: each folder added is remembered, and Kept in switches betw
   assert.ok(a.kids.has("A"), "a folder taken off the list keeps its files");
   await v.disconnect();
   await assert.rejects(v.projects(), e => e.folder === "none");
+});
+
+test("a folder only read (Safari, Firefox): listed, opened and exported, nothing saved", async () => {
+  // a vault written by a browser that can, then its files as a folder <input> gives them
+  const root = dir("My vault"), w = V.client({ handle: root }), d = example("08-555-astable.json");
+  const p = await w.createProject("Amp"); await w.saveRevision(p.id, { message: "one", design: d, thumb: PNG });
+  const files = [], walk = (h, path) => { for (const [n, k] of h.kids) { if (k.kind === "directory") walk(k, path + "/" + n); else files.push(Object.assign(new Blob([k.data]), { name: n, webkitRelativePath: path + "/" + n })); } };
+  walk(root, "My vault");
+  const v = V.client({ handle: V.fromFiles(files) });
+  assert.equal(v.readOnly, true); assert.equal(v.writes, false);
+  const me = await v.me();
+  assert.equal(me.readOnly, true); assert.equal(me.folder, "My vault"); assert.equal(me.id, w.id(), "the vault keeps its id");
+  assert.deepEqual((await v.projects()).map(x => [x.name, x.count]), [["Amp", 1]]);
+  await v.project(p.id);
+  assert.match(v.thumbUrl(p.id, 1), /^blob:/);
+  assert.deepEqual(await v.revision(p.id, 1), d);
+  assert.equal((await v.exportBundle(p.id)).project.revs.length, 1);
+  await assert.rejects(v.saveRevision(p.id, { design: d, force: true }), e => e.folder === "readonly");
+  await assert.rejects(v.createProject("B"), e => e.folder === "readonly");
+  await assert.rejects(v.deleteProject(p.id), e => e.folder === "readonly");
+  // one project's folder picked by itself stands as a vault with that project
+  const one = V.client({ handle: V.fromFiles(files.filter(f => f.webkitRelativePath.startsWith("My vault/Amp/")).map(f => Object.assign(new Blob([f]), { name: f.name, webkitRelativePath: f.webkitRelativePath.slice("My vault/".length) }))) });
+  assert.deepEqual((await one.projects()).map(x => x.name), ["Amp"]);
+  assert.equal(V.fromFiles([]), null);
 });

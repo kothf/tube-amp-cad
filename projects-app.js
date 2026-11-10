@@ -10,7 +10,7 @@
   let api = R.active(location.origin), vaultName = "";
   const inVault = () => api.kind === "vault";
   // the other store, for Copy: null where there is none (another copy of the app, a browser without folders)
-  const other = () => (inVault() ? (site.available ? site : null) : (vault && vault.supported ? vault : null));
+  const other = () => (inVault() ? (site.available ? site : null) : (vault && vault.writes ? vault : null));
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const size = n => n >= 1073741824 ? (n / 1073741824).toFixed(1) + " GB" : n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " kB" : n + " B";
@@ -28,6 +28,7 @@
     CARDS.forEach(id => { $(id).hidden = true; });
     $("import").hidden = true; $("who").textContent = "";
     const st = await vault.status();
+    if (why === "none" && !vault.writes) why = "reading";
     $("folder-grant").hidden = why !== "permission"; $("folder-grant").textContent = `Allow ${st.name || "the folder"}`;
     $("folder-pick").hidden = why === "unsupported"; $("folder-pick").textContent = st.name ? "Add a folder…" : "Choose folder…";
     $("folder-forget").hidden = !st.name;
@@ -36,6 +37,7 @@
       permission: "The browser wants your leave again to use the vault's folder (it asks after a restart): press Allow.",
       gone: "The vault's folder cannot be found: it was moved, renamed, or is on a drive that is not connected. Connect the drive and press Refresh, or choose the folder again.",
       unsupported: "This browser cannot open a folder on the computer, which a vault needs: Chrome and Edge can.",
+      reading: "This browser can read a vault's folder but cannot save into it. Press Choose folder… and pick a vault made in Chrome or Edge (or one project's folder) to see its projects and revisions and open them in the CAD; changing them needs Chrome or Edge.",
     }[why]);
   }
   async function load() {
@@ -61,12 +63,12 @@
       for (const id of [...open.keys()]) { if (projects.some(p => p.id === id)) open.set(id, (await api.project(id)).revs.slice().reverse()); else open.delete(id); }
       if (my !== api) return;
       $("signin").hidden = true;
-      $("who").textContent = me.vault ? `Folder ${me.folder} · ${size(me.revisions.bytes)}, ${me.revisions.count} revision${me.revisions.count === 1 ? "" : "s"} in ${me.revisions.projects} project${me.revisions.projects === 1 ? "" : "s"}` : "Signed in as " + me.email;
+      $("who").textContent = me.vault ? `Folder ${me.folder} · ${size(me.revisions.bytes)}, ${me.revisions.count} revision${me.revisions.count === 1 ? "" : "s"} in ${me.revisions.projects} project${me.revisions.projects === 1 ? "" : "s"}${me.readOnly ? " · read only (this browser cannot save into a folder)" : ""}` : "Signed in as " + me.email;
       if (!me.vault) space(me);
       showProjects(); showLinks(); showTrash();
       $("projects-card").hidden = false; $("space-card").hidden = $("links-card").hidden = !!me.vault;
       $("folder-pick").hidden = !me.vault; $("folder-pick").textContent = "Add a folder…"; $("folder-forget").hidden = !me.vault;
-      $("import").hidden = false;
+      $("import").hidden = !!me.readOnly;
       if ($("p-filter").value.trim()) search();
       // a store older than this page has no trash (nor import, search, release files): say how to update it
       say(trash || me.vault ? "" : "The store on the server is older than this page: the trash, import, search and release files need it updated (run server/share/update.sh on the server).", !trash);
@@ -217,7 +219,7 @@
     } catch (err) { if (err.signin || err.folder) load(); else say("Could not import: " + err.message, true); }
   }
   async function act(fn, done) {
-    try { await fn(); await (done || load)(); } catch (err) { if (err.signin || err.folder) load(); else say(err.message, true); }
+    try { await fn(); await (done || load)(); } catch (err) { if (err.folder === "readonly") say("This browser can only read the vault's folder: changing it needs Chrome or Edge.", true); else if (err.signin || err.folder) load(); else say(err.message, true); }
   }
   // the page's own dialog: a question, optional fields, and the button that does it → the fields' values, or null
   function ask({ title, text, fields = [], ok, danger }) {
