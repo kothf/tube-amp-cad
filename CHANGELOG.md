@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.187.1] - 2026-11-10
+
+### Fixed
+- **Zooming and panning a big circuit no longer stutters.** With the voltages, currents and the animation on, a large schematic (the 50 W CFP amplifier, example 17) took longer to draw than a wheel notch lasts, so the view froze and jumped. Now the wheel (and dragging the view with the middle button or Space) stretches and moves the picture last drawn, and the sheet is drawn sharp again once the view rests (160 ms; on a long zoom it is redrawn on the way when the picture runs out). On a CPU slowed four times, a wheel step went from 66 ms to 17 ms.
+- The sheet draws only what is on screen (parts, wires, stickers, animated dots); the grid, junctions and each wire's dots are filled in one go; the zoom readout no longer makes the hover hints rescan the page on every notch; dragging the view no longer places the stickers anew on every move.
+
 ## [3.187.0] - 2026-11-10
 
 ### Added

@@ -1,5 +1,5 @@
 // Editing with the real mouse and keyboard, files, the inspector
-import { cad, check, clickAt, pin, sameNet, state, toScreen } from "./harness.mjs";
+import { box, cad, check, clickAt, pin, sameNet, state, toScreen } from "./harness.mjs";
 
 await cad.getByRole("button", { name: /^Resistor/ }).click();
 const [mx, my] = await toScreen(300, 200);
@@ -149,3 +149,23 @@ await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
 check(await sameNet("ra:2", "ca:1") && await sameNet("rb:1", "ca:1"), "a stored circuit with a T joint loads connected (same as File → Open)");
 await cad.evaluate(s => { localStorage.setItem("tubecad_circuit_v2", s); }, saved);
 await cad.reload(); await cad.waitForFunction(() => window.TubeCAD);
+
+// zooming with the wheel stretches the picture last drawn (a CSS transform) and draws the sheet
+// sharp once the view rests; the point under the pointer stays put across notches, stretched or not
+{
+  await cad.evaluate(() => { const S = TubeCAD.state; S.view = { scale: 1, ox: 0, oy: 0 }; TubeCAD.commit(); });
+  await cad.waitForTimeout(300);
+  const [px, py] = [box.x + 400, box.y + 300];
+  await cad.mouse.move(px, py);
+  const under = () => cad.evaluate(([sx, sy]) => { const v = TubeCAD.state.view; return [(sx - v.ox) / v.scale, (sy - v.oy) / v.scale]; }, [400, 300]);
+  const w0 = await under();
+  await cad.mouse.wheel(0, -100); await cad.mouse.wheel(0, -100);
+  await cad.waitForTimeout(40);
+  const mid = await cad.evaluate(() => ({ t: document.getElementById("cad").style.transform, s: TubeCAD.state.view.scale }));
+  const w1 = await under();
+  await cad.waitForTimeout(400);
+  const rest = await cad.evaluate(() => document.getElementById("cad").style.transform);
+  check(mid.s > 1.2 && /scale/.test(mid.t) && rest === "" && Math.hypot(w1[0] - w0[0], w1[1] - w0[1]) < 0.5,
+    `wheel zoom stretches the picture while turning (${mid.t || "none"}) and redraws when it rests (${rest || "no transform"}), the point under the pointer kept`);
+  await cad.evaluate(() => { TubeCAD.state.view = { scale: 1, ox: 0, oy: 0 }; TubeCAD.commit(); });
+}
