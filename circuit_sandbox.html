@@ -559,7 +559,7 @@
         <button class="menu-item" data-ico="save" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <button class="menu-item" data-ico="save-as" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
         <button class="menu-item" data-ico="link" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
-        <button class="menu-item" data-ico="history" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
+        <button class="menu-item" data-ico="history" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept in a folder on this computer that you choose (a vault), or on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
         <button class="menu-item" data-ico="history" role="menuitem" id="btn-autosaves" title="Copies of the circuit this browser keeps while you edit, every 5 minutes and when the tab closes: open an earlier one">Autosaves…<kbd>this browser</kbd></button>
         <button class="menu-item" data-ico="gallery" role="menuitem" id="btn-start" title="Every example with its picture, and New and Open: the screen shown at start">Gallery…<kbd>examples</kbd></button>
         <div class="menu-sep"></div>
@@ -1004,8 +1004,17 @@
   <div class="modal" id="rev-modal" hidden>
     <div class="modal-box" style="width: min(980px, 96vw)">
       <div class="rev-head"><div class="insp-title">Project revisions</div><span class="rev-who" id="rev-who"></span><a class="btn" id="rev-manager" href="projects.html" target="_blank" rel="noopener" title="Every project, revision and short link kept on the server, and the space they take">Manager ↗</a></div>
+      <div class="rev-row" id="rev-store-row">
+        <label for="rev-store">Kept in</label>
+        <select id="rev-store" aria-label="Where the revisions are kept" title="Where projects and their revisions are kept: on aerocat.tech (its owner only), or in a vault, a folder on this computer that you choose. Add as many folders as you like (one for each project, say) and switch between them here"><option value="site">aerocat.tech (the site's owner)</option><option value="vault">A folder on this computer (vault)…</option></select>
+        <button class="btn" id="rev-folder-forget" hidden title="Take this folder off the list. Its files stay where they are, and Add a folder… brings it back">Forget folder</button>
+      </div>
       <div id="rev-off" hidden>
-        <p class="insp-help">Revisions are kept on aerocat.tech, for the site's owner only. Open the CAD there to use them.</p>
+        <p class="insp-help">Revisions are kept on aerocat.tech, for the site's owner only. Open the CAD there to use them, or keep them in a folder on this computer: pick it in Kept in above.</p>
+      </div>
+      <div id="rev-vault" hidden>
+        <p class="insp-help" id="rev-vault-text"></p>
+        <div class="modal-actions" style="justify-content: flex-start"><button class="btn active" id="rev-vault-grant" hidden title="The browser asks whether this page may change files in the folder">Allow</button><button class="btn active" id="rev-vault-pick" title="The browser's folder dialog: pick an empty folder for a new vault, or a vault made before">Choose folder…</button></div>
       </div>
       <div id="rev-signin" hidden>
         <p class="insp-help">Projects and their revisions are private to the owner of aerocat.tech: sign in with the site's login (Cloudflare Access) first. The login opens in its own window and closes itself.</p>
@@ -1106,6 +1115,7 @@
   <script src="cad-autosave.js?v=dev"></script>
   <script src="cad-palette.js?v=dev"></script>
   <script src="cad-blocks.js?v=dev"></script>
+  <script src="cad-vault.js?v=dev"></script>
   <script src="cad-revisions.js?v=dev"></script>
   <script src="cad-rev-dialog.js?v=dev"></script>
   <script src="ai-client.js?v=dev"></script>

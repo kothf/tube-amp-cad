@@ -229,6 +229,98 @@ import { U, cad, check, ctx, open } from "./harness.mjs";
   await m.locator("#import-file").setInputFiles({ name: "gubin-revisions.json", mimeType: "application/json", buffer: Buffer.from(bundle) });
   await m.waitForFunction(() => document.querySelectorAll("tr.proj").length === 2 && /Imported Gubin stereo: 5 revisions/.test(document.getElementById("say").textContent));
   check(true, "Import project… brings a Download all file back as a project with all its revisions");
+
+  // The vault: the same revisions kept in a folder on this computer (cad-vault.js). The browser's
+  // folder dialog cannot be driven here, so it is played by a folder of the browser's own storage,
+  // which answers the same calls.
+  if (process.env.BROWSER !== "webkit") {
+    const picker = () => {
+      window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle(window.PICK || "My vault", { create: true });
+      // this browser falls over reading such a stand-in folder back from IndexedDB: the list is kept by name instead
+      window.CadVaultKeep = {
+        load: async () => Promise.all(JSON.parse(localStorage.getItem("test.vaults") || "[]").map(async v => Object.assign(v, { handle: await (await navigator.storage.getDirectory()).getDirectoryHandle(v.name) }))),
+        save: async list => localStorage.setItem("test.vaults", JSON.stringify(list.map(v => ({ id: v.id, name: v.name })))),
+      };
+    };
+    await ctx.addInitScript(picker);
+    await m.reload();
+    await m.waitForFunction(() => document.querySelectorAll("tr.proj").length === 2);
+    await m.selectOption("#store", "vault");
+    await m.waitForFunction(() => /A vault is a folder on this computer/.test(document.getElementById("say").textContent) && !document.getElementById("folder-pick").hidden);
+    check(await m.evaluate(() => document.getElementById("projects-card").hidden), "the manager's Kept in switch goes to the vault, which asks for a folder first");
+    await m.click("#folder-pick");
+    await m.waitForFunction(() => !document.getElementById("projects-card").hidden && /Folder My vault/.test(document.getElementById("who").textContent));
+    check(/No projects yet/.test(await m.locator("#projects").textContent()) && await m.evaluate(() => document.getElementById("links-card").hidden), "Choose folder… makes the folder a vault: no projects yet, and no server cards");
+    await m.selectOption("#store", "site");
+    await m.waitForFunction(() => document.querySelectorAll("tr.proj").length === 2 && !document.getElementById("space-card").hidden);
+    await m.click("tr.proj:last-of-type button[data-act=copy], tr.proj button[data-act=copy]");
+    await m.waitForFunction(() => /Copied .* to the folder My vault: 5 revisions/.test(document.getElementById("say").textContent), null, { timeout: 20000 });
+    check(true, "Copy to folder takes a project with all its revisions from the server into the vault");
+    await m.selectOption("#store", { label: "Folder: My vault" });
+    await m.waitForFunction(() => document.querySelectorAll("tr.proj").length === 1 && /5/.test(document.querySelector("tr.proj td.num").textContent));
+    await m.click("tr.proj td.name");
+    await m.waitForFunction(() => document.querySelectorAll("tr.revs tr[data-n]").length === 5 && [...document.querySelectorAll("tr.revs td.pic img")].every(i => i.complete && i.naturalWidth > 50));
+    check(await m.evaluate(() => document.querySelectorAll("tr.revs td.pic img").length === 5 && /BOM\.csv/.test(document.querySelector("tr.revs").textContent)), "the vault's project lists its revisions with their pictures and release files, read from the folder");
+    const vhref = await m.locator("tr.revs tr[data-n='2'] a.btn[href^='circuit_sandbox']").getAttribute("href");
+    check(/#rev=[A-Za-z0-9_-]{10}\.2&vault=[A-Za-z0-9]{10}$/.test(vhref), `a vault revision's address says it is in the vault (${vhref})`);
+    const files = await m.evaluate(async () => {
+      const out = [], walk = async (d, pre) => { for await (const [n, h] of d.entries()) { out.push(pre + n); if (h.kind === "directory") await walk(h, pre + n + "/"); } };
+      await walk(await (await navigator.storage.getDirectory()).getDirectoryHandle("My vault"), "");
+      const f = await (await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle("My vault")).getDirectoryHandle(out.find(x => !x.includes("/") && !x.endsWith(".json")))).getFileHandle("r2.json")).getFile();
+      return { out, app: JSON.parse(await f.text()).app };
+    });
+    check(files.out.includes("tubecad-vault.json") && files.out.some(f => /^[^/]+\/project\.json$/.test(f)) && files.out.some(f => /\/r2\.sheet\.(webp|png|jpg)$/.test(f)) && files.out.some(f => /\/r5\.files\/.*BOM\.csv$/.test(f)) && files.app === "TubeAmpCAD",
+      "in the folder: a folder for the project, r<n>.json designs that File → Open reads, their pictures and release files");
+    await m.click("tr.revs tr[data-n='1'] button[data-act=del-rev]");
+    await m.click("#ask-ok");
+    await m.waitForFunction(() => document.querySelectorAll("tr.revs tr[data-n]").length === 4 && /r1 of/.test(document.getElementById("trash").textContent));
+    await m.click("#trash button[data-act=restore-rev]");
+    await m.waitForFunction(() => document.querySelectorAll("tr.revs tr[data-n]").length === 5 && document.getElementById("trash-card").hidden);
+    check(true, "the vault has its trash too: a deleted revision comes back with Restore");
+
+    // the CAD on the vault: a #rev=…&vault=1 address, then the dialog
+    const c3 = await open("cad-vault", vhref);
+    c3.on("dialog", d => d.accept().catch(() => {}));
+    // the revision is on the sheet once the chip names it (the circuit restored at load may look the same)
+    await c3.waitForFunction(() => window.TubeCAD && !location.hash && (TubeCAD.state.comps.find(x => x.type === "resistor") || {}).params?.r === 3300 && TubeCAD.revisions().state().at?.store === "vault" && TubeCAD.revisions().state().at.n === 2 && document.getElementById("rev-modal").hidden, null, { timeout: 30000 });
+    check(await c3.evaluate(() => TubeCAD.revisions().state().store === "vault" && /^r2/.test(document.getElementById("rev-at").textContent)), "a vault address opens that revision from the folder (the r2 chip)");
+    await c3.evaluate(() => { const c = TubeCAD.state.comps.find(x => x.type === "resistor"); c.params.r = 4700; TubeCAD.commit(); });
+    await c3.bringToFront();
+    await c3.evaluate(() => TubeCAD.revisions().quickSave());
+    await c3.waitForFunction(() => document.activeElement.id === "rev-message" && document.querySelectorAll("#rev-list .rev-item").length === 5);
+    check(await c3.evaluate(() => /^vault:/.test(document.getElementById("rev-store").value) && /Folder My vault/.test(document.getElementById("rev-who").textContent) && !document.getElementById("rev-folder-forget").hidden && /Changes since r2/.test(document.getElementById("rev-changes").textContent)),
+      "the Revisions dialog says it is kept in the folder, and what changed since r2");
+    await c3.keyboard.type("4.7 k, in the vault"); await c3.keyboard.press("Enter");
+    await c3.waitForFunction(() => document.querySelectorAll("#rev-list .rev-item").length === 6 && /^r6$/.test(document.getElementById("rev-at").textContent));
+    await c3.waitForFunction(() => { const i = document.querySelector("#rev-preview img"); return i && i.complete && i.naturalWidth > 100; });
+    check(/from r2/.test(await c3.locator("#rev-list .rev-item[data-n='6']").textContent()), "Save revision writes r6 into the folder, made from r2, with its picture");
+    await c3.click("#rev-list .rev-item[data-n='5']");
+    await c3.click("#rev-preview button[data-act=compare]");
+    await c3.waitForFunction(() => !document.getElementById("rev-diff-bar").hidden && /Changes since r5/.test(document.getElementById("rev-diff-bar").textContent));
+    check(/changed/.test(await c3.locator("#rev-diff-bar").textContent()), "Compare on the sheet works against a revision in the folder");
+    await c3.click("#rev-diff-bar button[data-act=done]");
+    const [dl] = await Promise.all([c3.waitForEvent("download"), c3.evaluate(() => TubeCAD.revisions().open().then(() => document.getElementById("rev-export").click()))]);
+    const all = JSON.parse(await (await import("node:fs/promises")).readFile(await dl.path(), "utf8"));
+    check(all.app === "TubeAmpCAD-project" && all.project.revs.length === 6 && /^data:image/.test(all.project.revs[5].thumbData), `Download all puts the vault's project in one file (${dl.suggestedFilename()})`);
+    // a second vault: Add a folder… in Kept in, with projects of its own; the first is one pick away
+    await c3.evaluate(() => { window.PICK = "Second amp"; });
+    await c3.selectOption("#rev-store", "add");
+    await c3.waitForFunction(() => /Folder Second amp/.test(document.getElementById("rev-who").textContent) && !document.getElementById("rev-new-row").hidden);
+    check(await c3.evaluate(() => [...document.getElementById("rev-store").options].map(o => o.textContent).join("|")) === "aerocat.tech (the site's owner)|Folder: My vault|Folder: Second amp|Add a folder…", "Add a folder… makes a second vault, empty, and Kept in lists both folders");
+    await c3.locator("#rev-new-name").fill("Second"); await c3.click("#rev-new-ok");
+    await c3.waitForFunction(() => /first revision/.test(document.getElementById("rev-changes").textContent));
+    await c3.click("#rev-save");
+    await c3.waitForFunction(() => document.querySelectorAll("#rev-list .rev-item").length === 1 && /^r1$/.test(document.getElementById("rev-at").textContent));
+    const saved2 = JSON.parse(await c3.evaluate(() => TubeCAD.circuitJSON())).revLink;
+    await c3.selectOption("#rev-store", { label: "Folder: My vault" });
+    await c3.waitForFunction(() => /Folder My vault/.test(document.getElementById("rev-who").textContent) && document.querySelectorAll("#rev-list .rev-item").length === 6);
+    check(saved2.store === "vault" && /^[A-Za-z0-9]{10}$/.test(saved2.vault), "each vault keeps its own projects, and a saved file names the vault its revision is in");
+    // back to the site's store: the choice is remembered, so the pages after this one find it as before
+    await c3.selectOption("#rev-store", "site");
+    await c3.waitForFunction(() => /owner@example\.com/.test(document.getElementById("rev-who").textContent) && document.getElementById("rev-folder-forget").hidden && document.querySelectorAll("#rev-list .rev-item").length === 5);
+    check(await c3.evaluate(() => localStorage.getItem("tubecad.rev.store") === "site" && document.querySelectorAll("#rev-project option").length === 2), "Kept in switches back to aerocat.tech, with its own projects");
+    await c3.close();
+  }
   await m.close();
   await ctx.unroute(/\/api\/rev\//);
   store.close(); certs.close(); rmSync(dir, { recursive: true, force: true });

@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.187.0] - 2026-11-10
+
+### Added
+- **Vaults: revisions kept in a folder on your computer.** In File ▾ → Revisions…, the new **Kept in** list chooses where projects and their revisions live: on aerocat.tech as before (the site's owner only), or in a vault, a folder on this computer that you choose with the browser's folder dialog. Everything in the dialog works on the folder: New project, Save revision (Ctrl+Alt+S), the list with its history graph, Open, Compare on the sheet, Compare with…, milestones and their release package, Restore as rN, Download all, the toolbar's r5 chip and Rev. auto. Nothing is sent anywhere and no login is needed, so revisions now work on any copy of the app.
+- **Several vaults.** Add a folder… in Kept in adds another vault (one folder for each project, for example), the list switches between them and Forget folder takes one off the list, leaving its files. Each vault has an id in its `tubecad-vault.json`; a circuit saved with File ▾ → Save names the vault its revision is in and switches to it when opened, and a `#rev=…&vault=<id>` address opens a revision from that vault.
+- **Plain files in the folder**: a folder for each project, named after it, with `project.json`; each revision as `r<n>.json`, a design that File ▾ → Open reads, with `r<n>.sheet.webp`, `r<n>.board.webp` and its release files in `r<n>.files`. A project's folder may be renamed or moved within the vault (it is found by its id).
+- **The project manager on a vault**: `projects.html` has the same Kept in switch; on a vault it lists the folder's projects with status, tags and search, their revisions with pictures and release files, the Trash (30 days) and Import project…. **Copy to folder** and **Copy to aerocat.tech** copy a project with all its revisions, pictures and release files from one store to the other.
+- The start screen's **Your projects** shows the projects of the store chosen, the vault's included.
+
+### Notes
+- Folders need the File System Access API: Chrome, Edge and other Chromium browsers. Firefox and Safari keep the site's store only. After a browser restart the browser may ask again for leave to use the folder (Allow).
+
 ## [3.186.0] - 2026-11-08
 
 ### Added

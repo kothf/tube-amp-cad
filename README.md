@@ -150,6 +150,18 @@ Firefox is not tested.
     cannot open files by itself, the copy kept in the browser at the last open
     or save opens instead (the status line says so). *Clear recent files*
     empties the list.
+  - File → Revisions… keeps a project's history as numbered revisions (r1,
+    r2…) with a message, what changed, pictures of the sheet and the board,
+    milestones, Compare on the sheet and Restore. *Kept in* chooses where: on
+    aerocat.tech (the site's owner only, `server/share/`), or in a **vault**,
+    a folder on your computer that you choose (`cad-vault.js`, Chrome and
+    Edge). A vault holds plain files: a folder for each project with
+    `project.json`, and each revision as `r<n>.json` (File → Open reads it)
+    with its pictures and release files. Add as many vault folders as you
+    like, one for each project for example, and switch between them in
+    *Kept in*; nothing leaves the computer. The project manager
+    (`projects.html`) lists either store and copies a project with all its
+    revisions between the folder and the site.
   - File → Share link… packs the whole design (circuit, imported tubes,
     board) into a link; whoever opens it gets the same circuit. On
     aerocat.tech the link is short (`/s/<id>`, kept by the link store in

@@ -32,7 +32,7 @@
     }
     const P = id => "/projects/" + encodeURIComponent(id);
     return {
-      available: !!b,
+      kind: "site", available: !!b,
       me: () => call("/me"),
       projects: () => call("/projects"),
       createProject: (name, notes) => call("/projects", { method: "POST", body: { name, notes } }),
@@ -57,6 +57,7 @@
       deleteFile: (id, n, name) => call(P(id) + "/revs/" + n + "/files/" + encodeURIComponent(name), { method: "DELETE" }),
       fileUrl: (id, n, name) => b + P(id) + "/revs/" + n + "/files/" + encodeURIComponent(name),
       exportUrl: id => b + P(id) + "/export",
+      exportBundle: id => call(P(id) + "/export"),
       shares: () => call("/shares"),
       deleteShare: id => call("/shares/" + encodeURIComponent(id), { method: "DELETE" }),
       // the login in a window of its own; resolves when it says it is done or is closed
@@ -236,13 +237,31 @@
     } catch (e) { return null; }
   }
 
-  // "#rev=<project>.<n>" in an address → { project, n }, or null
+  // "#rev=<project>.<n>" in an address → { project, n, vault }, or null; "&vault=<id>" after it: the
+  // revision is in that folder vault (cad-vault.js; "1": the one in use), not on the site
   function fromHash(hash) {
-    const m = String(hash || "").replace(/^#/, "").split("&").map(p => p.split("=")).find(p => p[0] === "rev");
+    const parts = String(hash || "").replace(/^#/, "").split("&").map(p => p.split("=")), m = parts.find(p => p[0] === "rev");
     const v = m && /^([A-Za-z0-9_-]{10})\.(\d+)$/.exec(m[1] || "");
-    return v ? { project: v[1], n: +v[2] } : null;
+    const w = parts.find(p => p[0] === "vault" && /^[A-Za-z0-9_-]{1,20}$/.test(p[1] || ""));
+    return v ? { project: v[1], n: +v[2], vault: w ? w[1] : false } : null;
   }
-  const hashOf = (project, n) => `#rev=${project}.${n}`;
+  // vault: the vault's id (cad-vault.js), or true for the one in use
+  const hashOf = (project, n, vault) => `#rev=${project}.${n}${vault ? "&vault=" + (vault === true ? "1" : vault) : ""}`;
 
-  root.CadRevisions = { SITE, base, client, diff, boardDiff, boardPicture, fromHash, hashOf, PID };
+  // Where revisions are kept, chosen in the Revisions dialog and remembered in this browser:
+  // "site" (aerocat.tech) or "vault" (a folder on this computer). Away from aerocat.tech, where the
+  // site's store cannot be reached, it is the vault whenever the browser can open folders.
+  const STORE_KEY = "tubecad.rev.store";
+  function storeName(origin) {
+    const V = root.CadVault;
+    if (!V) return "site";
+    let v = null; try { v = localStorage.getItem(STORE_KEY); } catch (e) { /* private window */ }
+    if (v === "vault" || v === "site") return v;
+    return !base(origin) && V.shared().supported ? "vault" : "site";
+  }
+  function setStore(v) { try { localStorage.setItem(STORE_KEY, v === "vault" ? "vault" : "site"); } catch (e) { /* private window */ } }
+  // the client of the store chosen
+  const active = origin => (storeName(origin) === "vault" ? root.CadVault.shared() : client(origin));
+
+  root.CadRevisions = { SITE, base, client, diff, boardDiff, boardPicture, fromHash, hashOf, PID, storeName, setStore, active };
 })(typeof window !== "undefined" ? window : globalThis);

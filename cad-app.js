@@ -2684,21 +2684,22 @@
     });
   }
   const startOn = () => { try { return localStorage.getItem(START_KEY) !== "0"; } catch (e) { return true; } };
-  // the owner's projects on aerocat.tech (signed in), newest first, over the examples: a click opens the newest revision
+  // the user's projects (on aerocat.tech when signed in, or in the folder vault), newest first, over the examples: a click opens the newest revision
   async function startProjects() {
     const host = document.getElementById("start-projects"), R = window.CadRevisions;
     if (!host || !R) return;
-    const api = R.client(location.origin); if (!api.available) return;
+    // from the store chosen in File ▾ → Revisions…: aerocat.tech, or the folder vault (cad-vault.js)
+    const api = R.active(location.origin), inVault = api.kind === "vault"; if (!api.available) return;
     let list;
-    try { list = await api.projects(); } catch (e) { host.hidden = true; return; }     // not signed in: the examples only
+    try { list = await api.projects(); } catch (e) { host.hidden = true; return; }     // not signed in, or no folder yet: the examples only
     list = list.filter(p => p.last && p.status !== "archived").slice(0, 8);
     if (!list.length) { host.hidden = true; return; }
     const ST = { idea: "Idea", design: "Design", building: "Building", done: "Done" };
-    host.innerHTML = `<div class="start-group">Your projects<a href="projects.html" target="_blank" rel="noopener" title="Every project, revision and short link on the server">Manager ↗</a></div><div class="start-grid">` + list.map(p => `<button class="start-card proj" data-p="${escH(p.id)}" data-n="${p.last.n}" title="Open r${p.last.n} of ${escH(p.name)}${p.last.message ? ": " + escH(p.last.message) : ""}">
+    host.innerHTML = `<div class="start-group">Your projects<a href="projects.html" target="_blank" rel="noopener" title="${inVault ? "Every project and revision in the folder vault" : "Every project, revision and short link on the server"}">Manager ↗</a></div><div class="start-grid">` + list.map(p => `<button class="start-card proj" data-p="${escH(p.id)}" data-n="${p.last.n}" title="Open r${p.last.n} of ${escH(p.name)}${p.last.message ? ": " + escH(p.last.message) : ""}">
       ${p.thumb ? `<img src="${escH(api.thumbUrl(p.id, p.thumb))}" alt="" loading="lazy">` : ""}<b>${escH(p.name)}</b>
       <span class="start-st">r${p.last.n}${p.status && ST[p.status] ? " · " + ST[p.status] : ""}${p.milestones ? " · ★" + p.milestones : ""} · ${escH(new Date(p.last.time).toLocaleDateString(undefined, { month: "short", day: "numeric" }))}${p.last.message ? " · " + escH(p.last.message.slice(0, 60)) : ""}</span></button>`).join("") + "</div>";
     host.hidden = false;
-    host.querySelectorAll("[data-p]").forEach(b => b.addEventListener("click", () => { closeStart(); location.hash = R.hashOf(b.dataset.p, +b.dataset.n); }));
+    host.querySelectorAll("[data-p]").forEach(b => b.addEventListener("click", () => { closeStart(); location.hash = R.hashOf(b.dataset.p, +b.dataset.n, inVault && (api.id() || true)); }));
   }
   function openStart() {
     buildGallery();

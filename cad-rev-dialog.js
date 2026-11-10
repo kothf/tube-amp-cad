@@ -1,5 +1,7 @@
-/* File ▾ → Revisions…: the design kept as numbered revisions of a project on aerocat.tech, for the
-   site's owner only (cad-revisions.js talks to the store, server/share/revisions.mjs keeps it).
+/* File ▾ → Revisions…: the design kept as numbered revisions of a project, either on aerocat.tech
+   for the site's owner only (cad-revisions.js talks to the store, server/share/revisions.mjs keeps
+   it) or in a folder on this computer that the user picks, a vault (cad-vault.js; "Kept in" at the
+   top of the dialog chooses, and the choice is remembered).
    The dialog lists a project's revisions with a preview of the one picked (its picture, message,
    changes and the revision it was made from). Save revision (Ctrl+Alt+S) keeps the sheet as it is
    now, board included, with a message, a summary of what changed and a picture of the first
@@ -16,14 +18,19 @@
     // overlay, and what to redraw when the revision's label changes (title block, board texts)
     const DOPT = { netsOf: cad.netsOf };
     const sendBoardDiff = cad.boardDiff || (() => {}), relabel = cad.relabel || (() => {});
-    const R = root.CadRevisions, api = R.client(location.origin);
+    const R = root.CadRevisions, site = R.client(location.origin), vault = root.CadVault ? root.CadVault.shared() : null;
+    // where the revisions are kept: "site" (aerocat.tech) or "vault" (a folder on this computer)
+    let store = R.storeName(location.origin), api = store === "vault" ? vault : site;
+    const apiOf = st => (st === "vault" && vault ? vault : site);
     const $ = id => document.getElementById(id);
     const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
     const load = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
     const keep = (k, v) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* private window */ } };
     const designs = new Map();               // "<project>.<n>" → design, read once
     let projects = [], revs = [], pending = null, seq = 0, pick = null, starsOnly = false, nowHash = "";
-    let cur = load(KEY) || "";
+    // the project last shown, kept for the site and for each vault
+    const curKey = () => KEY + (store === "vault" ? ".vault" + (vault && vault.id() ? "." + vault.id() : "") : "");
+    let cur = load(curKey()) || "";
     // the revision the sheet came from (opened or saved): { project, name, n, hash }
     // kept per tab (sessionStorage), so two tabs on two projects each keep theirs; a new tab starts
     // from the last one any tab had (the circuit it restores is that one too)
@@ -31,7 +38,15 @@
     const keepAt = v => { keep(AT, v); try { if (v === null) sessionStorage.removeItem(AT); else sessionStorage.setItem(AT, v); } catch (e) { /* private window */ } };
     let at = loadAt();
     let diff = null;                         // Compare on the sheet: { project, n, name }
-    const remember = id => { cur = id; keep(KEY, id); };
+    const remember = id => { cur = id; keep(curKey(), id); };
+    // the sheet's revision is one of the store now shown
+    const atHere = () => !!at && (at.store || "site") === store && (store !== "vault" || !at.vault || at.vault === vault.id());
+    function setStore(st) {
+      st = st === "vault" && vault ? "vault" : "site";
+      if (st === store) return;
+      store = st; api = apiOf(st); R.setStore(st);
+      cur = load(curKey()) || ""; projects = []; revs = []; pick = null; pair = null; seq++;
+    }
     const info = (text, kind) => { const el = $("rev-info"); el.textContent = text || ""; el.className = "insp-help" + (kind ? " " + kind : ""); };
     const when = t => { const d = new Date(t); return isNaN(d) ? "" : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); };
     // "just now", "5 min ago", "3 h ago", "yesterday", else the date
@@ -53,19 +68,55 @@
       let s = ""; b.forEach(x => { s += String.fromCharCode(x); });
       return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "").slice(0, 16);
     }
-    async function design(project, n) {
-      const k = project + "." + n;
-      if (!designs.has(k)) designs.set(k, await api.revision(project, n));
+    const dkey = (project, n, st) => (st || store) + ":" + project + "." + n;     // a project's id is its own in every store and vault
+    async function design(project, n, st) {
+      const k = dkey(project, n, st);
+      if (!designs.has(k)) designs.set(k, await apiOf(st || store).revision(project, n));
       return designs.get(k);
     }
-    function view(which) { ["off", "signin", "main"].forEach(w => { $("rev-" + w).hidden = w !== which; }); }
-    // a failure: the login wants the user, or something to say
+    function view(which) { ["off", "signin", "vault", "main"].forEach(w => { $("rev-" + w).hidden = w !== which; }); }
+    // the folder is not ready (cad-vault.js NeedFolder): say why, with the button that mends it
+    const VAULT_TEXT = {
+      none: "A vault is a folder on this computer that keeps your projects and their revisions as plain files: a folder for each project, each revision a design that File ▾ → Open reads, with its pictures next to it. Choose a folder (an empty one, or a vault made before); the browser asks once for leave to change the files in it. Nothing is sent anywhere.",
+      permission: "The browser wants your leave again to use the vault's folder (it asks after a restart). Press Allow, then answer its question.",
+      gone: "The vault's folder cannot be found: it was moved, renamed, or is on a drive that is not connected. Connect the drive and open Revisions again, or choose the folder again.",
+      unsupported: "This browser cannot open a folder on the computer, which a vault needs: Chrome and Edge can.",
+    };
+    async function needFolder(why) {
+      $("rev-modal").hidden = false; view("vault"); info(""); $("rev-who").textContent = "";
+      const st = vault ? await vault.status() : { name: "" };
+      $("rev-vault-text").textContent = VAULT_TEXT[why] || VAULT_TEXT.none;
+      $("rev-vault-grant").hidden = why !== "permission";
+      $("rev-vault-grant").textContent = `Allow ${st.name || "the folder"}`;
+      $("rev-vault-pick").hidden = why === "unsupported";
+      $("rev-vault-pick").textContent = why === "none" ? "Choose folder…" : "Add another folder…";
+      $("rev-vault-pick").classList.toggle("active", why !== "permission");
+      await showStore();
+    }
+    // a failure: the login or the folder wants the user, or something to say
     function failed(err) {
       if (err && err.signin) { $("rev-modal").hidden = false; view("signin"); info(""); }
+      else if (err && err.folder) needFolder(err.folder);
       else info(err.message, "warn");
     }
+    // "Kept in": aerocat.tech, every vault folder this browser remembers, and Add a folder…
+    async function showStore() {
+      const sel = $("rev-store"); if (!sel) return;
+      const list = vault && vault.supported ? await vault.vaults() : [];
+      sel.innerHTML = `<option value="site">aerocat.tech (the site's owner)</option>`
+        + list.map(v => `<option value="vault:${esc(v.id)}">Folder: ${esc(v.name)}</option>`).join("")
+        + (list.length ? `<option value="add">Add a folder…</option>` : `<option value="vault"${vault ? "" : " disabled"}>A folder on this computer (vault)…</option>`);
+      const now = list.find(v => v.current);
+      sel.value = store === "vault" ? (now ? "vault:" + now.id : "vault") : "site";
+      $("rev-folder-forget").hidden = !(store === "vault" && now);
+      $("rev-manager").title = store === "vault" ? "Every project and revision kept in the folder: rename, delete, restore, copy to and from aerocat.tech" : "Every project, revision and short link kept on the server, and the space they take";
+    }
+    // another vault of the list
+    async function useVault(id) {
+      if (vault.id() !== id) { await vault.select(id); projects = []; revs = []; pick = null; pair = null; seq++; }
+    }
     const mb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " kB";
-    const projectName = id => (projects.find(p => p.id === (id || cur)) || {}).name || (at && at.project === (id || cur) ? at.name : "the project");
+    const projectName = id => (projects.find(p => p.id === (id || cur)) || {}).name || (atHere() && at.project === (id || cur) ? at.name : "the project");
 
     // ---- the toolbar's chip: which revision the sheet came from, • when changed since ----
     function chip() {
@@ -75,7 +126,7 @@
       const changed = nowHash && nowHash !== at.hash;
       label(`r${at.n}${changed ? "+" : ""}`);
       el.innerHTML = `r${at.n}${changed ? '<span class="dirty"> •</span>' : ""}`;
-      el.title = `${at.name} · revision r${at.n}` + (changed ? " · the sheet has changed since: Ctrl+Alt+S saves the next revision" : " · the sheet is this revision") + " (click for the revisions)";
+      el.title = `${at.name} · revision r${at.n}${at.store === "vault" ? " · kept in the folder vault" : ""}` + (changed ? " · the sheet has changed since: Ctrl+Alt+S saves the next revision" : " · the sheet is this revision") + " (click for the revisions)";
     }
     // the revision as the title block and board texts show it ("auto" in the frame's Rev. field,
     // ${REV} in a board text): r5, or r5+ once the sheet has changed since
@@ -83,13 +134,19 @@
       if ((root.CadRevLabel || "") === t) return;
       root.CadRevLabel = t; relabel();
     }
-    function attach(project, name, n, hash) { at = { project, name, n, hash }; keepAt(JSON.stringify(at)); nowHash = hash; chip(); }
+    function attach(project, name, n, hash) { at = Object.assign({ project, name, n, hash, store }, store === "vault" ? { vault: vault.id() } : {}); keepAt(JSON.stringify(at)); nowHash = hash; chip(); }
     // what a saved file keeps of it, so opening the file again knows its project and revision
-    const link = () => (at ? { project: at.project, name: at.name, n: at.n, hash: at.hash } : null);
+    const link = () => (at ? Object.assign({ project: at.project, name: at.name, n: at.n, hash: at.hash }, at.store === "vault" ? { store: "vault", vault: at.vault } : {}) : null);
     function relink(l) {
       if (!l || !R.PID.test(String(l.project)) || !Number.isInteger(l.n) || typeof l.hash !== "string") return;
-      at = { project: l.project, name: String(l.name || "the project").slice(0, 120), n: l.n, hash: l.hash }; keepAt(JSON.stringify(at));
-      if (cur !== at.project) remember(at.project);
+      at = { project: l.project, name: String(l.name || "the project").slice(0, 120), n: l.n, hash: l.hash, store: l.store === "vault" && vault ? "vault" : "site" };
+      if (at.store === "vault" && typeof l.vault === "string") at.vault = l.vault.slice(0, 20);
+      keepAt(JSON.stringify(at));
+      setStore(at.store);
+      // a file from another vault of this browser's list: that vault comes with it
+      const there = at.vault && at.store === "vault" ? useVault(at.vault) : Promise.resolve();
+      there.then(() => { cur = load(curKey()) || ""; if (atHere() && cur !== at.project) remember(at.project); }).catch(() => {});
+      if (at.store !== "vault" && cur !== at.project) remember(at.project);
       hashOf(sheet()).then(h => { nowHash = h; chip(); }).catch(() => {});
     }
     function detach() { at = null; keepAt(null); closeDiff(); chip(); }
@@ -107,14 +164,19 @@
     async function open(want) {
       $("rev-modal").hidden = false;
       info("");
-      if (!api.available) { view("off"); $("rev-who").textContent = ""; return; }
-      if (want) pending = want;
-      info("Asking aerocat.tech…");
+      if (want) { pending = want; setStore(want.vault ? "vault" : "site"); if (typeof want.vault === "string" && want.vault !== "1") await useVault(want.vault); }
+      await showStore();
+      if (!api.available) { $("rev-who").textContent = ""; if (store === "vault") needFolder("unsupported"); else view("off"); return; }
+      info(store === "vault" ? "Reading the folder…" : "Asking aerocat.tech…");
+      const my = store;
       try {
         const me = await api.me();
-        $("rev-who").textContent = `${me.email} · ${mb(me.revisions.bytes)} in ${me.revisions.projects} project${me.revisions.projects === 1 ? "" : "s"}, ${mb(me.total.max - me.total.bytes)} free`;
-        view("main"); info("");
-        if (at && !pending && at.project !== cur) remember(at.project);
+        if (my !== store) return;
+        const inProjects = `${mb(me.revisions.bytes)} in ${me.revisions.projects} project${me.revisions.projects === 1 ? "" : "s"}`;
+        $("rev-who").textContent = me.vault ? `Folder ${me.folder} · ${inProjects}` : `${me.email} · ${inProjects}, ${mb(me.total.max - me.total.bytes)} free`;
+        if (me.vault) cur = load(curKey()) || cur;      // the vault's id is known now: its own last project
+        view("main"); info(""); await showStore();
+        if (atHere() && !pending && at.project !== cur) remember(at.project);
         await loadProjects();
         if (pending) { const p = pending; pending = null; await openRev(p.project, p.n, true); }
       } catch (err) { failed(err); }
@@ -126,7 +188,7 @@
       if (!projects.some(p => p.id === cur)) cur = projects.length ? projects[0].id : "";
       sel.value = cur; sel.disabled = !projects.length;
       $("rev-save").disabled = $("rev-export").disabled = !cur;
-      if (!projects.length) showNew(true);
+      showNew(!projects.length);
       await loadRevs();
     }
     async function loadRevs() {
@@ -137,7 +199,7 @@
       if (my !== seq) return;
       revs = p.revs.slice().reverse();
       nowHash = await hashOf(sheet()); chip();
-      if (!revs.some(r => r.n === pick)) pick = at && at.project === cur && revs.some(r => r.n === at.n) ? at.n : revs.length ? revs[0].n : null;
+      if (!revs.some(r => r.n === pick)) pick = atHere() && at.project === cur && revs.some(r => r.n === at.n) ? at.n : revs.length ? revs[0].n : null;
       list(); preview();
       await showChanges(my);
     }
@@ -267,7 +329,7 @@
     async function openPair(a, b) {
       pair = null;
       await openRev(cur, b);
-      if (at && at.n === b && at.project === cur) await compare(a);
+      if (atHere() && at.n === b && at.project === cur) await compare(a);
     }
     // what Save revision would keep: the changes since the revision the sheet came from (else the latest)
     async function showChanges(my) {
@@ -281,7 +343,7 @@
       } catch (err) { el.textContent = ""; }
     }
     // the revision the next one is made from: the one the sheet came from, if it is in this project
-    const baseRev = () => (at && at.project === cur && revs.find(r => r.n === at.n)) || revs[0];
+    const baseRev = () => (atHere() && at.project === cur && revs.find(r => r.n === at.n)) || revs[0];
     async function save() {
       if (!cur) return;
       const btn = $("rev-save"); btn.disabled = true;
@@ -294,7 +356,7 @@
         const metrics = cad.perfMetrics ? cad.perfMetrics() : null;
         const r = await api.saveRevision(cur, { message: $("rev-message").value.trim(), summary, parent: base && base !== latest ? base.n : undefined, thumb, bthumb: R.boardPicture(d.board) || undefined, metrics: metrics || undefined, design: d });
         if (r.same) info(`The sheet is the same as r${r.n}: nothing new saved.`);
-        else { designs.set(cur + "." + r.n, d); $("rev-message").value = ""; info(`Saved r${r.n} of ${projectName()}.`, "ok"); setStatus("ok", `Saved revision r${r.n} of ${projectName()}`); }
+        else { designs.set(dkey(cur, r.n), d); $("rev-message").value = ""; info(`Saved r${r.n} of ${projectName()}.`, "ok"); setStatus("ok", `Saved revision r${r.n} of ${projectName()}`); }
         attach(cur, projectName(), r.n, r.hash);
         pick = r.n;
         await loadProjects();
@@ -314,7 +376,7 @@
 
     // ---- Compare on the sheet ----
     async function markDiff(jump) {
-      const old = await design(diff.project, diff.n), d = R.diff(old, sheet(), DOPT);
+      const old = await design(diff.project, diff.n, diff.store), d = R.diff(old, sheet(), DOPT);
       sendBoardDiff(d.boardDiff, `r${diff.n}`);
       const prev = S().revDiff, idx = prev && !jump ? Math.min(prev.idx, Math.max(0, d.marks.length - 1)) : 0;
       showDiff(Object.assign(d, { idx }));
@@ -323,7 +385,7 @@
     }
     const S = () => (root.TubeCAD && root.TubeCAD.state) || {};
     async function compare(n) {
-      diff = { project: cur, n, name: projectName() };
+      diff = { project: cur, n, name: projectName(), store };
       $("rev-modal").hidden = true;
       try { await markDiff(true); } catch (err) { diff = null; failed(err); }
     }
@@ -386,7 +448,7 @@
         if (r.thumb) thumb = await fetch(api.thumbUrl(cur, n), { credentials: "same-origin" }).then(x => (x.ok ? x.blob() : null)).then(b => b && new Promise(res => { const f = new FileReader(); f.onload = () => res(f.result); f.readAsDataURL(b); })).catch(() => undefined);
         const msg = $("rev-message").value.trim();
         const saved = await api.saveRevision(cur, { message: msg || `Restored r${n}${r.message ? ": " + r.message : ""}`, summary: `restored r${n}: ` + R.diff(now, d, DOPT).text, parent: n, thumb: thumb || undefined, bthumb: R.boardPicture(d.board) || undefined, metrics: r.metrics, design: d, force: true });
-        designs.set(cur + "." + saved.n, d); $("rev-message").value = "";
+        designs.set(dkey(cur, saved.n), d); $("rev-message").value = "";
         pick = saved.n;
         info(`r${n} is the newest revision again, as r${saved.n}. The sheet is unchanged: Open puts it there.`, "ok");
         await loadProjects();
@@ -407,9 +469,28 @@
         $("rev-message").focus();
       } catch (err) { failed(err); }
     }
-    function download() {
+    async function download() {
       if (!cur) return;
-      const a = document.createElement("a"); a.href = api.exportUrl(cur); a.download = ""; document.body.appendChild(a); a.click(); a.remove();
+      const a = document.createElement("a");
+      if (api.exportUrl) { a.href = api.exportUrl(cur); a.download = ""; }
+      else {
+        // the vault: the file is put together here
+        try { info("Putting the file together…"); a.href = URL.createObjectURL(new Blob([JSON.stringify(await api.exportBundle(cur))], { type: "application/json" })); info(""); } catch (err) { failed(err); return; }
+        a.download = `${projectName().replace(/[^\w.-]+/g, "_").slice(0, 60) || cur}-revisions.json`;
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      }
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+    // the folder for the vault (the browser's own dialog), then what it holds
+    async function pickFolder() {
+      try {
+        const name = await vault.choose();
+        if (name) { setStore("vault"); projects = []; revs = []; pick = null; pair = null; seq++; cur = load(curKey()) || ""; setStatus("ok", `Revisions are kept in the folder ${name}`); }
+        await open();
+      } catch (err) {
+        // the browser wants a click of a button for its folder dialog: the vault's page has one
+        if (err && (err.name === "SecurityError" || err.name === "NotAllowedError")) { setStore("vault"); needFolder("none"); } else failed(err);
+      }
     }
     // Ctrl+Alt+S: the dialog, ready for the message
     async function quickSave() {
@@ -422,10 +503,14 @@
       const want = R.fromHash(location.hash);
       if (!want) return false;
       try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* file:// */ }
-      if (!api.available) { setStatus("error", "Revisions are kept on aerocat.tech: open the link there"); return true; }
+      setStore(want.vault ? "vault" : "site");
+      if (!api.available) { setStatus("error", store === "vault" ? "The revision is kept in a folder on this computer, which this browser cannot open: use Chrome or Edge" : "Revisions are kept on aerocat.tech: open the link there"); return true; }
       (async () => {
-        try { projects = await api.projects(); await openRev(want.project, want.n, true); }
-        catch (err) { if (err.signin) open(want); else setStatus("error", "Could not open the revision: " + err.message); }
+        try {
+          if (typeof want.vault === "string" && want.vault !== "1" && !(await vault.select(want.vault))) { setStatus("error", "The revision is in a vault folder this browser does not know: add the folder in File ▾ → Revisions… → Kept in"); return; }
+          projects = await api.projects(); await openRev(want.project, want.n, true);
+        }
+        catch (err) { if (err.signin || err.folder) open(want); else setStatus("error", "Could not open the revision: " + err.message); }
       })();
       return true;
     }
@@ -439,6 +524,22 @@
         if (e.key === "Enter" && e.target.id === "rev-new-name") create();
       });
       $("rev-signin-btn").addEventListener("click", async () => { info("Waiting for the login window…"); await api.signIn(); open(); });
+      $("rev-store").addEventListener("change", async e => {
+        const v = e.target.value;
+        if (v === "add") { await pickFolder(); return; }
+        setStore(v === "site" ? "site" : "vault");
+        if (v.startsWith("vault:")) await useVault(v.slice(6));
+        cur = load(curKey()) || "";
+        open();
+      });
+      $("rev-folder-forget").addEventListener("click", async () => {
+        const st = await vault.status();
+        if (!confirm(`Take the folder ${st.name} off this list?\n\nIts files stay where they are; Add a folder… brings it back.`)) return;
+        await vault.disconnect(); projects = []; revs = []; pick = null; seq++; cur = load(curKey()) || "";
+        open();
+      });
+      $("rev-vault-pick").addEventListener("click", pickFolder);
+      $("rev-vault-grant").addEventListener("click", async () => { if (await vault.grant()) open(); else info("The browser did not give leave to use the folder.", "warn"); });
       $("rev-project").addEventListener("change", e => { remember(e.target.value); pick = null; loadRevs().catch(failed); });
       $("rev-new").addEventListener("click", () => showNew($("rev-new-row").hidden));
       $("rev-new-ok").addEventListener("click", create);
@@ -479,7 +580,7 @@
       if (c) c.addEventListener("click", () => open());
       if (at) hashOf(sheet()).then(h => { nowHash = h; chip(); }).catch(() => {}); else chip();
     }
-    return { open, openFromLink, wire, quickSave, changed, detach, closeDiff, link, relink, state: () => ({ cur, projects, revs, at, pick, pair }) };
+    return { open, openFromLink, wire, quickSave, changed, detach, closeDiff, link, relink, state: () => ({ cur, projects, revs, at, pick, pair, store }), api: () => api, setStore };
   }
   root.CadRevDialog = CadRevDialog;
 })(typeof window !== "undefined" ? window : globalThis);
