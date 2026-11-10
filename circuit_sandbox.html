@@ -126,7 +126,7 @@
     @media (max-height: 700px) { .pal-pbox { height: 60px; } .pal-pbox img { height: 54px; } .pal-phow { display: none; } }
 
     /* canvas */
-    #stage { position: relative; min-width: 0; min-height: 0; }
+    #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #0a0e14; }
     .probe-card { position: absolute; z-index: 5; width: 188px; padding: 5px 6px 4px; background: rgba(15,21,30,0.94); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.45); font: 11px/1.35 ui-monospace, Menlo, monospace; color: var(--text); pointer-events: none; }
     .probe-card.pin { border-color: #ff5c5c; pointer-events: auto; }
     .probe-head { display: flex; align-items: center; gap: 4px; color: #ffd54f; font-weight: 600; margin-bottom: 2px; }
@@ -139,7 +139,7 @@
     .probe-scope { display: block; width: 176px; height: 88px; margin-top: 4px; border-radius: 3px; }
     .probe-scale { color: var(--muted); font-size: 9.5px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .probe-card [hidden] { display: none; }
-    #cad { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+    #cad { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; transform-origin: 0 0; }
     /* the horizontal scroll bar under the drawing: the sheets marked on its track */
     #hscroll { position: absolute; left: 0; right: 0; bottom: 0; height: 18px; display: flex; background: rgba(15,21,30,0.92); border-top: 1px solid var(--line); user-select: none; }
     #hscroll[hidden] { display: none; }

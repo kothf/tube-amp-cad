@@ -806,7 +806,7 @@
   // Mouse / keyboard
   // ---------------------------------------------------------------------------
   function evPos(e) {
-    const r = canvas.getBoundingClientRect();
+    const r = canvas.parentElement.getBoundingClientRect();   // the stage: the canvas may be stretched for a moment (see gesture)
     const sx = e.clientX - r.left, sy = e.clientY - r.top;
     const w = toWorld(sx, sy);
     S.mouse = { sx, sy, wx: w.x, wy: w.y };
@@ -900,7 +900,7 @@
     const lh = !!legendBox && m.sx > legendBox.x - 12 && m.sx < legendBox.x + legendBox.w + 12 && m.sy > legendBox.y - 12 && m.sy < legendBox.y + legendBox.h + 12;
     if (lh !== legendHover) { legendHover = lh; render(); }
     const d = S.drag;
-    if (d && d.kind === "pan") { S.view.ox = d.ox + (m.sx - d.sx); S.view.oy = d.oy + (m.sy - d.sy); render(); return; }
+    if (d && d.kind === "pan") { S.view.ox = d.ox + (m.sx - d.sx); S.view.oy = d.oy + (m.sy - d.sy); gesture(); render(); return; }
     if (d && d.kind === "knob") { setKnob(d.c, knobAt(d.c, m)); return; }
     if (d && d.kind === "comps") { updateCompDrag(m.wx, m.wy); return; }
     if (d && d.kind === "wire") { updateWireDrag(m.wx, m.wy); return; }
@@ -1022,6 +1022,7 @@
       clearTimeout(knobCommit); knobCommit = setTimeout(() => { commit(); updateInspector(); }, 500);
       return;
     }
+    gesture();
     if (e.shiftKey) { S.view.ox -= e.deltaY || e.deltaX; render(); return; }
     // a sideways swipe on a touchpad (or a tilted wheel) scrolls left and right
     if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(e.deltaY)) { S.view.ox -= e.deltaX; render(); return; }
@@ -1158,63 +1159,109 @@
     requestAnimationFrame(draw);
   }
 
+  // Zooming and panning with the wheel (or dragging the view) move and stretch the picture
+  // last drawn (a CSS transform on the canvas, which costs the page next to nothing) until the
+  // view rests for GESTURE_MS: a big circuit with its stickers and the animation takes longer to
+  // draw than a wheel notch lasts. It is drawn anew on the way, at most every REDRAW_MS, once
+  // the picture leaves more than a sixth of the view bare or is stretched past twice its size.
+  const GESTURE_MS = 160, REDRAW_MS = 100;
+  let drawnView = null, drawnAt = 0, gestureAt = 0, gestureTimer = null, stretched = false;
+  function gesture() {
+    gestureAt = performance.now();
+    clearTimeout(gestureTimer);
+    gestureTimer = setTimeout(() => { gestureTimer = null; gestureAt = 0; render(); }, GESTURE_MS);
+  }
+  function stretch(rel, x0, y0) {
+    stretched = rel !== null;
+    canvas.style.transform = stretched ? `translate(${x0}px, ${y0}px) scale(${rel})` : "";
+  }
+
   function draw() {
     renderQueued = false;
-    const W = canvas.clientWidth, H = canvas.clientHeight;
+    const W = canvas.clientWidth, H = canvas.clientHeight, v = S.view;
+    if (gestureAt && drawnView && !forceRecord && (!S.drag || S.drag.kind === "pan") && !S.wiring && !S.placing) {
+      const rel = v.scale / drawnView.scale, x0 = v.ox - drawnView.ox * rel, y0 = v.oy - drawnView.oy * rel;
+      const bare = Math.max(0, x0, y0, W - (x0 + W * rel), H - (y0 + H * rel));
+      if ((rel <= 2 && bare <= Math.min(W, H) / 6) || performance.now() - drawnAt < REDRAW_MS) { stretch(rel, x0, y0); return; }
+    }
+    if (stretched) stretch(null);
     if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
+    drawScene(W, H);
+    drawOverlays(W, H);
+    drawnView = { scale: v.scale, ox: v.ox, oy: v.oy }; drawnAt = performance.now();
+  }
+  // the drawing itself, in the view S.view, W × H (CSS pixels) at dpr
+  function drawScene(W, H) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#0a0e14"; ctx.fillRect(0, 0, W, H);
     const { scale, ox, oy } = S.view;
 
-    // grid dots
+    // grid dots: one path filled once (thousands of fillRect calls a frame made zooming out stutter)
     const step = scale < 0.6 ? 50 : (scale < 1.2 ? 20 : 10);
     const tl = toWorld(0, 0), br = toWorld(W, H);
     ctx.fillStyle = "#1a2433";
     const sz = Math.max(1, 1.4 * Math.min(scale, 1.5));
+    ctx.beginPath();
     for (let x = Math.floor(tl.x / step) * step; x <= br.x; x += step)
       for (let y = Math.floor(tl.y / step) * step; y <= br.y; y += step)
-        ctx.fillRect(x * scale + ox - sz / 2, y * scale + oy - sz / 2, sz, sz);
+        ctx.rect(x * scale + ox - sz / 2, y * scale + oy - sz / 2, sz, sz);
+    ctx.fill();
 
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
     const T = topo();
 
-    // drawing sheets lie behind everything; every text the sheet and parts print is recorded
-    // so the stickers can keep clear of it
-    textBoxes = [];
-    ctx.fillText = function (t, x, y, mw) { recordText(this, String(t), x, y); return CanvasRenderingContext2D.prototype.fillText.call(this, t, x, y, mw); };
+    // Only what lies on screen is drawn (a part's labels may stand a little off its symbol).
+    // The texts of the sheets and parts are recorded, so the stickers can keep clear of them,
+    // only on a frame that places the stickers anew: then everything is drawn and measured.
+    const record = forceRecord || stickersDue();
+    const M = 80 / Math.min(scale, 1), vx1 = tl.x - M, vy1 = tl.y - M, vx2 = br.x + M, vy2 = br.y + M;
+    const seen = record ? () => true : (x1, y1, x2, y2) => x2 >= vx1 && x1 <= vx2 && y2 >= vy1 && y1 <= vy2;
+    const compSeen = c => { const b = compBBox(c); return seen(b.x1, b.y1, b.x2, b.y2); };
+    const wireSeen = w => seen(Math.min(w.x1, w.x2), Math.min(w.y1, w.y2), Math.max(w.x1, w.x2), Math.max(w.y1, w.y2));
+    const wires = record ? S.wires : S.wires.filter(wireSeen);
+    view = { seen, wires };
+
+    // drawing sheets lie behind everything
+    if (record) {
+      textBoxes = [];
+      ctx.fillText = function (t, x, y, mw) { recordText(this, String(t), x, y); return CanvasRenderingContext2D.prototype.fillText.call(this, t, x, y, mw); };
+    }
     recordingFrame = true;
-    S.comps.forEach(c => { if (c.type === "frame") drawComp(c, S.sel.comps.has(c.id), false); });
+    S.comps.forEach(c => { if (c.type === "frame" && compSeen(c)) drawComp(c, S.sel.comps.has(c.id), false); });
     recordingFrame = false;
     // wires
     ctx.lineCap = "round";
-    drawAnimTint(T);
+    drawAnimTint(T, wires);
     // with the voltages shown, wires that carry signal (AC) get a cyan glow under them (the animation tints them instead)
     if (S.showVolts && !S.anim.on && S.sim.result && S.sim.result.tran) {
       ctx.strokeStyle = "rgba(0,229,255,0.30)"; ctx.lineWidth = 7;
-      S.wires.forEach(w => { const ac = netAC(T.wireNet.get(w.id)); if (ac && ac.signal) { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); } });
+      wires.forEach(w => { const ac = netAC(T.wireNet.get(w.id)); if (ac && ac.signal) { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); } });
     }
     drawProbeGlow(T);
-    S.wires.forEach(w => {
+    wires.forEach(w => {
       const sel = S.sel.wires.has(w.id);
       ctx.strokeStyle = sel ? "#ffd54f" : "#3fb950";
       ctx.lineWidth = sel ? 3 : 2;
       ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
     });
-    drawAnimDots();
+    drawAnimDots(wires);
     // dangling wire ends
     ctx.fillStyle = "#ff7b72";
     T.degree.forEach((d, k) => {
       if (d !== 1 || T.pinAt.has(k)) return;
       const [x, y] = k.split(",").map(Number);
+      if (!seen(x, y, x, y)) return;
       ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
     });
     // junction dots
     ctx.fillStyle = "#3fb950";
-    T.junctions.forEach(j => { ctx.beginPath(); ctx.arc(j.x, j.y, 4, 0, Math.PI * 2); ctx.fill(); });
+    ctx.beginPath();
+    T.junctions.forEach(j => { if (seen(j.x, j.y, j.x, j.y)) { ctx.moveTo(j.x + 4, j.y); ctx.arc(j.x, j.y, 4, 0, Math.PI * 2); } });
+    ctx.fill();
 
     // components
-    S.comps.forEach(c => { if (c.type !== "frame") drawComp(c, S.sel.comps.has(c.id), false); });
-    delete ctx.fillText;
+    S.comps.forEach(c => { if (c.type !== "frame" && compSeen(c)) drawComp(c, S.sel.comps.has(c.id), false); });
+    if (record) delete ctx.fillText;
 
     // voltage and current stickers
     if ((S.showVolts || S.showAmps) && S.sim.result) drawStickers(T);
@@ -1248,8 +1295,10 @@
       ctx.strokeRect(Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0));
       ctx.setLineDash([]);
     }
-
-    // empty-sheet hint
+  }
+  // what stands over the drawing in screen space: the empty-sheet hint, legend, animation's time line, probe cards
+  function drawOverlays(W, H) {
+    const T = topo();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (!S.comps.length && !S.wires.length) {
       ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center"; ctx.font = "15px system-ui, sans-serif";
@@ -1595,7 +1644,12 @@
   // wire, current below / left), else the one that covers least. Placement is
   // recomputed only when the circuit, the result or the switches change.
   // ---------------------------------------------------------------------------
-  let textBoxes = [], stickerCache = null, recordingFrame = false;
+  let textBoxes = [], stickerCache = null, recordingFrame = false, forceRecord = false;
+  // what the frame being drawn shows: seen(x1, y1, x2, y2) says whether a box is on screen, wires the wires that are
+  let view = { seen: () => true, wires: [] };
+  const stickerKey = () => [S.history[S.hIndex], S.sim.result, S.showVolts, S.showAmps, S.wires];
+  // the stickers are placed anew on this frame (while dragging, every frame)
+  const stickersDue = () => (S.showVolts || S.showAmps) && !!S.sim.result && ((!!S.drag && S.drag.kind !== "pan" && S.drag.kind !== "box") || !stickerCache || stickerCache.key.some((k, i) => k !== stickerKey()[i]));
   const TAG_H = 12;
   // record the world-space box of a text drawn with the current transform
   function recordText(c2, t, x, y) {
@@ -1713,10 +1767,10 @@
     return out;
   }
   function drawStickers(T) {
-    const key = [S.history[S.hIndex], S.sim.result, S.showVolts, S.showAmps, S.wires];
-    if (S.drag || !stickerCache || stickerCache.key.some((k, i) => k !== key[i])) stickerCache = { key, list: placeStickers(T) };
+    if (stickersDue()) stickerCache = { key: stickerKey(), list: placeStickers(T) };
     ctx.font = "9px ui-monospace, monospace";
     stickerCache.list.forEach(t => {
+      if (!view.seen(t.x, t.y, t.x + t.w, t.y + TAG_H)) return;
       ctx.fillStyle = "rgba(10,14,20,0.85)"; ctx.fillRect(t.x, t.y, t.w, TAG_H);
       ctx.strokeStyle = t.line; ctx.lineWidth = 0.8; ctx.strokeRect(t.x, t.y, t.w, TAG_H);
       if (!t.parts) { ctx.fillStyle = t.fg; ctx.fillText(t.txt, t.x + 3, t.y + 9); return; }
@@ -1725,6 +1779,7 @@
   }
   // for tests: how many stickers and how many still cover a text or another sticker
   function stickerReport() {
+    forceRecord = true; try { draw(); } finally { forceRecord = false; }   // every text of the drawing, measured now
     const list = (stickerCache && stickerCache.list) || [];
     const box = t => ({ x1: t.x, y1: t.y, x2: t.x + t.w, y2: t.y + TAG_H });
     const onText = list.filter(t => textBoxes.some(b => overlap(box(t), b) > 0.5)).map(t => t.txt);
@@ -1760,7 +1815,11 @@
     document.querySelectorAll(".pal-item.active").forEach(el => { if (!S.placing) el.classList.remove("active"); });
     render();
   }
-  function updateZoomLabel() { document.getElementById("zoom-label").textContent = Math.round(S.view.scale * 100) + "%"; }
+  // the text node's value, not textContent: a new child would wake the hints' page scan (hints.js) on every wheel notch
+  function updateZoomLabel() {
+    const el = document.getElementById("zoom-label"), t = Math.round(S.view.scale * 100) + "%";
+    if (el.firstChild && el.firstChild.nodeType === 3 && !el.firstChild.nextSibling) { if (el.firstChild.nodeValue !== t) el.firstChild.nodeValue = t; } else el.textContent = t;
+  }
 
   function startPlacing(type, params, el) {
     S.placing = { type, params: params || {}, rot: 0 };

@@ -247,11 +247,12 @@
       return st.x;
     }
     // under the wires: each node's AC voltage as a tint
-    function drawAnimTint(T) {
+    // (wires: the ones on screen)
+    function drawAnimTint(T, wires = S.wires) {
       const ctx = getCtx();
       const d = cycle(); if (!d) return;
       ctx.lineCap = "round";
-      S.wires.forEach(w => {
+      wires.forEach(w => {
         const a = d.nets.get(T.wireNet.get(w.id)); if (!a) return;
         const v = animAt(a.ac, S.anim.phase) / a.pk;
         ctx.strokeStyle = v >= 0 ? `rgba(255,150,60,${(0.12 + 0.5 * v).toFixed(3)})` : `rgba(70,160,255,${(0.12 - 0.5 * v).toFixed(3)})`;
@@ -259,16 +260,18 @@
       });
     }
     // over the wires: the current as moving dots (spaced 12 units, from x1,y1 towards x2,y2 when positive), violet DC or pale AC
-    function drawAnimDots() {
+    function drawAnimDots(wires = S.wires) {
       const ctx = getCtx();
       const d = cycle(); if (!d) return;
-      d.wires.forEach((a, id) => {
-        const w = S.wires.find(q => q.id === id); if (!w) return;
+      wires.forEach(w => {
+        const a = d.wires.get(w.id), id = w.id; if (!a) return;
         const L = Math.hypot(w.x2 - w.x1, w.y2 - w.y1); if (L < 1) return;
         const ux = (w.x2 - w.x1) / L, uy = (w.y2 - w.y1) / L, off = (((S.anim.off.get(id) || 0) % 12) + 12) % 12;
         const dc = a.mode === "dc", bright = Math.max(0.35, Math.min(1, (Math.log10(dc ? Math.abs(a.dc) : a.pk) + 6.5) / 5));
         ctx.fillStyle = dc ? `rgba(210,168,255,${bright.toFixed(2)})` : `rgba(255,247,194,${bright.toFixed(2)})`;
-        for (let s = off; s <= L; s += 12) { ctx.beginPath(); ctx.arc(w.x1 + ux * s, w.y1 + uy * s, 2.2, 0, Math.PI * 2); ctx.fill(); }
+        ctx.beginPath();   // a wire's dots in one path
+        for (let s = off; s <= L; s += 12) { const x = w.x1 + ux * s, y = w.y1 + uy * s; ctx.moveTo(x + 2.2, y); ctx.arc(x, y, 2.2, 0, Math.PI * 2); }
+        ctx.fill();
       });
     }
     // the time line, top left of the sheet
