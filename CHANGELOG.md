@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.190.0] - 2026-11-11
+
+### Changed
+- **More realistic 3D and STEP models of the XT power connectors.** The housing now has its chamfered end (the − side) along its whole length, as on Amass's drawings; a male has its shroud, a hollow mouth with a wall of 0.8 / 1.0 / 1.2 mm (XT30 / XT60 / XT90), round its gold pins with rounded tips; a female has its insert with a gold socket for each pin, open into the mouth; the + and − are moulded on top; the XT30's pegs stand in their ears and the XT60 / XT90's tabs go down into the board; the legs bend down into their holes. Upright ones (XT30UPB, XT60 solder cups) get the same shroud or insert on top and their cups down into the board. The STEP export writes these faces with their holes (inner bounds), checked valid in OpenCascade.
+- The 3D view splits a face with holes, or a concave one, into triangles properly (it used to fan from one corner, which only suits a convex face without holes).
+
 ## [3.189.0] - 2026-11-11
 
 ### Added
