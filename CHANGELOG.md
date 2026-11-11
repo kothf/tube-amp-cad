@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.189.0] - 2026-11-11
+
 ### Added
 - **Open KiCad project** (File ▾ → Open KiCad project…): a KiCad schematic and its board open as a circuit. Select the project's `.kicad_sch` sheets, its `.kicad_pcb` and `.kicad_pro` together in the file dialog (or a ZIP of the project's folder); a schematic or a board alone opens too, and File ▾ → Open… takes the same files. KiCad 6 and later.
 - **Symbols become the program's own parts where it has them**, and simulate: resistors, potentiometers, capacitors, chokes, diodes, zeners, LEDs, transistors, MOSFETs and JFETs (told by their pin names), op-amps, the 555, connectors, and valves under any of their names (ECC83, 12AX7, 6Н2П), a dual valve's units as its sections. A type with no model here simulates as the nearest one and the list says so.
@@ -17,6 +19,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - Opening or editing a very large circuit no longer stalls: joining wires at their crossings took time growing with the square of the sheet (87 s on a 2,400-wire sheet), now a fraction of a second.
+## [3.188.0] - 2026-11-11
+
+### Added
+- **XT power connectors** (Ground & connectors → Power connectors (XT)): the Amass connectors of drone and RC batteries, chargers and controllers. XT30 (20 A), XT60 (35 A) and XT90 (45 A), each male (pins, designator XP) and female (sockets, XS): right-angle on the board (XT30PW, XT60PW, XT90PW), vertical on the board (XT30UPB), the XT60's solder cups upright in the board (XT60-M / -F), on a lead (XT30U, XT90H), and the XT90-S anti-spark female. Pick the model in the inspector's Model list; the parts search finds them by series, "drone", "lipo", "male", "female" and so on.
+- **Their footprints and 3D bodies from Amass's spec sheets**: pin pitch (5, 7.2, 10.9 mm) and holes, the plated mounting tabs and pegs (MP pads, no net; the tabs' slots drilled round), the housing's outline on the silkscreen with + and − beside the pins, the yellow housing with its mouth and gold contacts in 3D at its real height. − is the contact at the housing's chamfered end, so a series' male and female are mirror images, as they mate. A right-angle one lies with its mouth at the bottom and can sit flush with the board's edge (no courtyard margin beyond the mouth). Cable versions get wire pads.
+- **BOM**: an XT connector's line carries the Amass order code (XT60PW-M30.G.Y …) and its rating (35 A, 500 V DC) unless you type another part number; the inspector shows the code in the Part number field.
 
 ## [3.187.1] - 2026-11-10
 

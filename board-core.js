@@ -357,6 +357,66 @@
     return fp(`FASTON-${size}`, `Quick-connect tab ${size} mm (Keystone ${big ? "1287" : "1285"}), board mount`, [pad(1, 0, 0, big ? 2.8 : 2.4, big ? 1.35 : 1.2, "rect", "1")],
       [{ t: "rect", x: -w / 2 - 0.8, y: -2, w: w + 1.6, h: 4 }, { t: "line", x1: -w / 2, y1: 0, x2: -2.2, y2: 0 }, { t: "line", x1: 2.2, y1: 0, x2: w / 2, y2: 0 }]);
   }
+  // Amass XT power connectors (Amass spec sheets and KiCad's Connector_AMASS), seen from above.
+  // Right-angle ones (PW) lie with their mouth to the front, at the bottom (+y), over the board's
+  // edge; the vertical ones (UPB, and the XT60's solder cups pushed into the board) stand with
+  // their chamfered end to the left. − is always the contact at the housing's chamfered end, so
+  // the male and the female of one series are mirror images. The housings' tabs and pegs solder
+  // into plated mounting pads (MP, no net); the tab slots are drilled round.
+  //   pads: [x of −, x of +], pin drill / pad Ø, mounting pads [[x, y]...] with their drill / pad Ø,
+  //   body: [[x1, y1, x2, y2] ...] (the housing's outline, rear part first), h: height above the board
+  const XT_FP = {
+    "XT30PW-M": { pads: [-2.5, 2.5], drill: 1.7, d: 3.0, mp: [[-5.5, 10], [5.5, 10]], mpDrill: 1.0, mpD: 1.7, body: [[-4.95, 4.1, 4.95, 13.1]], h: 5.2 },
+    "XT30PW-F": { pads: [2.5, -2.5], drill: 1.7, d: 3.0, mp: [[-5.5, 5], [5.5, 5]], mpDrill: 1.0, mpD: 1.7, body: [[-4.95, 4, 4.95, 8.05], [-4.42, 8.05, 4.42, 14.05]], h: 5.15 },
+    "XT60PW-M": { pads: [3.6, -3.6], drill: 2.7, d: 4.1, mp: [[-6.75, 6], [6.75, 6]], mpDrill: 1.9, mpD: 2.6, body: [[-7.75, -1.85, 7.75, 16.35]], h: 8.45 },
+    "XT60PW-F": { pads: [-3.6, 3.6], drill: 2.7, d: 4.1, mp: [[-6.75, 6], [6.75, 6]], mpDrill: 1.9, mpD: 2.6, body: [[-7.75, -1.85, 7.75, 15.35]], h: 8.4 },
+    "XT90PW-M": { pads: [5.45, -5.45], drill: 3.9, d: 6.4, mp: [[-9.45, 9.4], [9.45, 9.4]], mpDrill: 2.1, mpD: 2.9, body: [[-10.4, -2.5, 10.4, 24.6]], h: 10.2 },
+    "XT90PW-F": { pads: [-5.45, 5.45], drill: 3.9, d: 6.4, mp: [[-9.45, 8.9], [9.45, 8.9]], mpDrill: 2.1, mpD: 2.9, body: [[-10.4, -2.5, 10.4, 22.9]], h: 10.2 },
+    "XT30UPB-M": { pads: [-2.5, 2.5], drill: 1.8, d: 3.0, body: [[-5.1, -2.6, 5.1, 2.6]], ch: 1.7, h: 10.7, up: true },
+    "XT30UPB-F": { pads: [-2.5, 2.5], drill: 1.8, d: 3.0, body: [[-5.1, -2.6, 5.1, 2.6]], ch: 1.7, h: 9.4, up: true },
+    "XT60-M": { pads: [-3.6, 3.6], drill: 4.5, d: 6.0, body: [[-7.75, -4.05, 7.75, 4.05]], ch: 2.75, h: 16, up: true },
+    "XT60-F": { pads: [-3.6, 3.6], drill: 4.5, d: 6.0, body: [[-7.75, -4.05, 7.75, 4.05]], ch: 2.75, h: 15.7, up: true }
+  };
+  function xtFp(model) {
+    const X = XT_FP[model], [xm, xp] = X.pads, silk = [], sign = (x, y, plus) => { silk.push({ t: "line", x1: x - 0.8, y1: y, x2: x + 0.8, y2: y }); if (plus) silk.push({ t: "line", x1: x, y1: y - 0.8, x2: x, y2: y + 0.8 }); };
+    X.body.forEach(([x1, y1, x2, y2]) => {
+      if (!X.ch) return silk.push({ t: "rect", x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+      // the upright housing, its − end's corners chamfered, drawn 0.8 mm out so its big pads leave it whole
+      const o = 0.8; x1 -= o; y1 -= o; x2 += o; y2 += o;
+      const c = X.ch + o * 0.4, pts = [[x1 + c, y1], [x2, y1], [x2, y2], [x1 + c, y2], [x1, y2 - c * 0.9], [x1, y1 + c * 0.9]];
+      pts.forEach((p, k) => { const q = pts[(k + 1) % pts.length]; silk.push({ t: "line", x1: p[0], y1: p[1], x2: q[0], y2: q[1] }); });
+    });
+    // + and − behind their pads
+    const sy = Math.min(X.body[0][1] - (X.up ? 0.8 : 0), -X.d / 2) - 1.4;
+    sign(xm, sy, false); sign(xp, sy, true);
+    const pads = [pad(1, xm, 0, X.d, X.drill, "rect", "-"), pad(2, xp, 0, X.d, X.drill, "circle", "+")];
+    (X.mp || []).forEach(([x, y], k) => pads.push(pad(3 + k, x, y, X.mpD, X.mpDrill, "circle", "MP")));
+    // the outline's lines broken where they would cross a pad (the rear of a right-angle housing runs
+    // between its pins, its sides past the mounting tabs)
+    const lines = [];
+    silk.forEach(q => {
+      const segs = q.t === "rect" ? [[q.x, q.y, q.x + q.w, q.y], [q.x + q.w, q.y, q.x + q.w, q.y + q.h], [q.x + q.w, q.y + q.h, q.x, q.y + q.h], [q.x, q.y + q.h, q.x, q.y]] : [[q.x1, q.y1, q.x2, q.y2]];
+      segs.forEach(([x1, y1, x2, y2]) => {
+        const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy, cut = [];
+        pads.forEach(pd => {
+          // a square pad counts as its circumcircle
+          const r = (pd.shape === "rect" ? pd.w * Math.SQRT1_2 : pd.w / 2) + 0.35, fx = x1 - pd.x, fy = y1 - pd.y, b = fx * dx + fy * dy, c = fx * fx + fy * fy - r * r, disc = b * b - L2 * c;
+          if (disc > 0) cut.push([(-b - Math.sqrt(disc)) / L2, (-b + Math.sqrt(disc)) / L2]);
+        });
+        cut.sort((a, b) => a[0] - b[0]);
+        let t0 = 0;
+        cut.forEach(([a, b]) => { if (a > t0 + 0.02) lines.push({ t: "line", x1: +(x1 + dx * t0).toFixed(3), y1: +(y1 + dy * t0).toFixed(3), x2: +(x1 + dx * Math.min(a, 1)).toFixed(3), y2: +(y1 + dy * Math.min(a, 1)).toFixed(3) }); t0 = Math.max(t0, b); });
+        if (t0 < 0.98) lines.push({ t: "line", x1: +(x1 + dx * t0).toFixed(3), y1: +(y1 + dy * t0).toFixed(3), x2, y2 });
+      });
+    });
+    silk.length = 0; silk.push(...lines);
+    const kind = X.up ? (model.startsWith("XT60-") ? "solder cups upright in the board" : "vertical") : "right-angle, mouth at the bottom";
+    const f = fp(`AMASS-${model}`, `Amass ${model} power connector, ${kind}`, pads, silk);
+    f.xt = { model, h: X.h, up: !!X.up, body: X.body, ch: X.ch || 0, male: /-M$/.test(model) }; f.zHeight = X.h;
+    // the mouth may sit flush with the board's edge: no courtyard margin beyond it
+    if (!X.up) f.box[3] = Math.max(...X.body.map(b => b[3]));
+    return f;
+  }
   // fuse holders: clips for 5 × 20 mm (Littelfuse 519, pins 5 mm apart, clips 20.6 mm) and 6.3 × 32 mm
   // (Littelfuse 102071, 7.6 and 34.7 mm) cartridges, each clip on two pins; a TR5 subminiature fuse
   // (Littelfuse 372/395, Ø 8.5 mm, 5.08 mm)
@@ -645,6 +705,7 @@
     if ((m = /^JACK-NJ(2|3|5)FD-V$/.exec(name))) return njfd(+m[1]);
     if ((m = /^HEADER-1x(\d+)$/.exec(name)) && +m[1] >= 1 && +m[1] <= 20) return header(+m[1]);
     if ((m = /^FASTON-(6\.3|4\.8)$/.exec(name))) return faston(m[1]);
+    if ((m = /^AMASS-(.+)$/.exec(name)) && XT_FP[m[1]]) return xtFp(m[1]);
     if ((m = /^FUSE-(5X20|6\.3X32|TR5)$/.exec(name))) return fuseFp(m[1]);
     if ((m = /^(MOV|NTC)-D([\d.]+)-P([\d.]+)$/.exec(name))) {
       const L = root.CadLib, t = m[1] === "MOV" ? L.MOVS : L.NTCS, part = Object.values(t).find(x => String(x.d) === m[2] && String(x.p) === m[3]);
@@ -915,6 +976,8 @@
       case "terminal": return [`TERM-${p.pitch === "7.5" ? "7.5" : "5.08"}-${wires}`, `TERM-${p.pitch === "7.5" ? "5.08" : "7.5"}-${wires}`, `WIRE-${wires}`];
       case "header": return [`HEADER-1x${wires}`, `WIRE-${wires}`];
       case "faston": return [`FASTON-${p.size === "4.8" ? "4.8" : "6.3"}`, `FASTON-${p.size === "4.8" ? "6.3" : "4.8"}`, "WIRE-1"];
+      // XT power connectors: the board-mount ones on their own pattern, the cable ones wired
+      case "xt": { const k = L.XTS && L.XTS[p.model] ? p.model : "XT60PW-M"; return XT_FP[k] ? [`AMASS-${k}`, "WIRE-2"] : ["WIRE-2"]; }
       // a fuse in board clips (or a panel holder on the chassis, wired)
       case "fuse": { const k = { "6.3x32": "FUSE-6.3X32", TR5: "FUSE-TR5" }[p.size] || "FUSE-5X20"; return first(k, ["FUSE-5X20", "FUSE-6.3X32", "FUSE-TR5"]).concat("WIRE-2"); }
       case "ntc": { const m = L.NTCS[p.model] || L.NTCS["SL22 10005"]; return [`NTC-D${m.d}-P${m.p}`, "WIRE-2"]; }

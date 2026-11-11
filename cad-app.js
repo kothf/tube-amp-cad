@@ -2035,7 +2035,10 @@
     const panel = def.panel && def.panel(c, readoutApi(c));
     if (panel) host.appendChild(panel);
     if (!def.noLabel) {
-      host.appendChild(row("Part number (BOM)", input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); updateInspector(); })));
+      const pnIn = input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); updateInspector(); });
+      // a part with its own maker's number (an XT connector's order code) shows it until another is typed
+      if (def.partNo && def.partNo(c)) { pnIn.placeholder = def.partNo(c); pnIn.title = "The maker's order code goes to the BOM unless you type another"; }
+      host.appendChild(row("Part number (BOM)", pnIn));
       // what the number says the real part is: Board Design takes its footprint and size (mpn.js)
       const pn = window.PartNo && PartNo.resolve(c.params, c.type);
       if (pn) { const p = document.createElement("p"); p.className = "insp-help" + (pn.warn.length ? " warn" : pn.known ? " ok" : ""); p.textContent = PartNo.describe(pn) + pn.warn.map(w => " · " + w).join(""); host.appendChild(p); }

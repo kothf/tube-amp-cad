@@ -203,7 +203,7 @@ import { readFile } from "node:fs/promises";
     });
     const src = (pal.Sources || []).join(" | "), gc = (pal["Ground & connectors"] || []).join(" | ");
     check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | DC supplies: Battery 9 V (PP3) | DC supplies: Battery 12 V (8 × AA) | DC supplies: Li-ion cell 18650 | AC sources: Signal generator | AC sources: AC mains | Instruments and records: Guitar pickup, single coil | Instruments and records: Guitar pickup, humbucker | Instruments and records: Phono cartridge, moving magnet | Instruments and records: Phono cartridge, moving coil | Controlled sources: Voltage-controlled voltage (E) | Controlled sources: Voltage-controlled current (G)"
-      && gc === "Ground | Sheet connector | Connectors: Jack, 6.35 mm switched | Connectors: RCA socket | Connectors: IEC mains inlet | Connectors: Terminal block | Connectors: Pin header | Connectors: Faston tab", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
+      && gc === "Ground | Sheet connector | Connectors: Jack, 6.35 mm switched | Connectors: RCA socket | Connectors: IEC mains inlet | Connectors: Terminal block | Connectors: Pin header | Connectors: Faston tab | Power connectors (XT): XT30 male, PCB | Power connectors (XT): XT30 female, PCB | Power connectors (XT): XT60 male, PCB | Power connectors (XT): XT60 female, PCB | Power connectors (XT): XT90 male, PCB | Power connectors (XT): XT90 female, PCB | Power connectors (XT): XT90-S female, anti-spark", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
     // the current source: 2 mA from ground up into 10 kΩ gives 20 V; the inspector reads it
     await cad.evaluate(() => {
       const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
@@ -387,6 +387,23 @@ import { readFile } from "node:fs/promises";
     check(/Bridge rectifier DF10M/.test(bom), `BOM: the bridge (${bom})`);
     const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
     check((sp.match(/^\.model DMOD_\S+ D\(Is=7e-9 N=1\.8 TT=0\.0000043\)$/gm) || []).length === 4, "SPICE export: the bridge's four diodes with TT");
+    await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+  }
+  {
+    // XT power connectors: a male XT60 on the board and an XT90-S female on a lead get XP1 and XS1, the
+    // BOM their Amass order codes; the inspector offers every model and shows the code as the part number
+    const got = await cad.evaluate(async () => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const a = C.makeComp("xt", { model: "XT60PW-M" }, 300, 300, 0), b = C.makeComp("xt", { model: "XT90S-F" }, 500, 300, 0); S.comps.push(a, b);
+      S.sel.comps.add(a.id); C.commit(); C.updateInspector && C.updateInspector();
+      await new Promise(r => setTimeout(r, 200));
+      const sel = [...document.querySelectorAll("#inspector select")].find(el => [...el.options].some(o => o.value === "XT90S-F"));
+      const pn = [...document.querySelectorAll("#inspector input[type=text]")].find(el => el.placeholder === "XT60PW-M30.G.Y");
+      return { labels: S.comps.map(c => c.label).join(" "), options: sel ? sel.options.length : 0, pn: !!pn, bom: C.bomData().rows.map(r => `${r.refs} ${r.partno} ${r.rating}`).join(" | ") };
+    });
+    check(got.labels === "XP1 XS1", `XT: a male is XP, a female XS (${got.labels})`);
+    check(got.options === 15 && got.pn, `XT: the Model list has all 15 models (${got.options}); the order code shows in Part number (${got.pn})`);
+    check(/XP1 XT60PW-M30\.G\.Y 35 A, 500 V DC/.test(got.bom) && /XS1 XT90S-F\.G\.Y 45 A/.test(got.bom), `XT: BOM order codes and ratings (${got.bom})`);
     await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
   }
   {
