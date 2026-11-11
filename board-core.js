@@ -85,6 +85,7 @@
   function normaliseBoard(b) {
     const d = newBoard();
     if (!b || typeof b !== "object") return d;
+    registerFootprints(b);
     return {
       ...d, ...b,
       outline: { ...d.outline, ...(b.outline || {}) },
@@ -672,7 +673,16 @@
   /** A footprint by name ("AXIAL-10.16", "TO-92-EBC", "SOCKET-B9A", "WIRE-3" …) */
   // body: the real part's size ({ l, d, w, h, lead } in mm, from its part number or set by hand):
   // the silkscreen outline and the holes follow it (f.body keeps it for the 3D model)
+  // Footprints a board brings with it (board.footprints: a KiCad board's own, kicad-import.js), by
+  // name ("KICAD:…"): drawn, checked and exported like the ones above
+  const CUSTOM = new Map();
+  const isCustom = name => CUSTOM.has(String(name || ""));
+  function registerFootprints(board) {
+    const fps = board && board.footprints;
+    if (fps && typeof fps === "object") Object.keys(fps).forEach(k => { const f = fps[k]; if (f && Array.isArray(f.pads) && Array.isArray(f.box)) CUSTOM.set(k, f); });
+  }
   function footprint(name, pinNames, body) {
+    if (CUSTOM.has(name)) { const c = CUSTOM.get(name); return { ...c, name, title: c.title || name, silk: c.silk || [], holes: c.holes || [], custom: true }; }
     const f = shape(name, pinNames, body);
     if (f && body && Object.keys(body).length) f.body = body;
     return f;
@@ -814,16 +824,19 @@
   // not on the board: these, and the sources that stand for an instrument off it (a guitar's pickup, a turntable's cartridge)
   const SKIP = new Set(["frame", "note", "ground", "offsheet", "rail", "scope", "vcvs", "vccs", "pickup", "phono"]);
   function physicalParts(netlist) {
-    const L = root.CadLib, groups = new Map();
+    const L = root.CadLib, groups = new Map(), baseOf = p => { const lab = String(p.label || "").trim(), i = lab.lastIndexOf("."); return i > 0 ? lab.slice(0, i) : lab; };
+    // a unit kept as KiCad drew it (a valve's heater, VL1.H) belongs to the part of its name
+    const own = new Map();
+    (netlist.parts || []).forEach(p => { const b = baseOf(p); if (p.type !== "kicad" && b && L.LIB[p.type] && !SKIP.has(p.type)) own.set(b, own.has(b) && own.get(b) !== p.type ? null : p.type); });
     (netlist.parts || []).forEach(p => {
       if (SKIP.has(p.type) || (!L.LIB[p.type] && p.type !== "heater" && p.type !== "star")) return;
-      const lab = String(p.label || "").trim(), i = lab.lastIndexOf("."), base = i > 0 ? lab.slice(0, i) : lab;
-      const k = base ? p.type + "|" + base : p.id;
-      if (!groups.has(k)) groups.set(k, { ref: base || "?", type: p.type, members: [] });
+      const base = baseOf(p), type = p.type === "kicad" && own.get(base) ? own.get(base) : p.type;
+      const k = base ? type + "|" + base : p.id;
+      if (!groups.has(k)) groups.set(k, { ref: base || "?", type, members: [] });
       groups.get(k).members.push(p);
     });
     return [...groups.values()].map(g => {
-      g.members.sort((a, b) => String(a.label).localeCompare(String(b.label), undefined, { numeric: true }));
+      g.members.sort((a, b) => (a.type !== g.type) - (b.type !== g.type) || String(a.label).localeCompare(String(b.label), undefined, { numeric: true }));
       g.key = g.members.map(m => m.id).sort().join("+");
       const first = g.members[0], def = L.LIB[g.type];
       g.value = g.type === "heater" ? `${first.params.v} V ~ ${fmtA(first.params.i)}` : g.type === "star" ? "star ground" : def.value ? def.value({ params: first.params, label: first.label }) : "";
@@ -1040,15 +1053,21 @@
   // wired to a chassis-mounted part (wire pads or a screw terminal) rather than soldered in
   const isOffboard = g => !!(g.fp && /^(WIRE|TERM)-/.test(g.fp.name));
   // which schematic pins land on each pad: Map padNum -> [{ comp, pin }]
-  function padMap(g, f) {
+  function padMap(g, f, bp) {
     const L = root.CadLib, map = new Map(), add = (num, comp, pin) => { num = String(num); if (!map.has(num)) map.set(num, []); map.get(num).push({ comp, pin }); };
     const one = g.members[0];
+    // a KiCad footprint under one of the app's parts: the pads as the KiCad symbol numbered its pins
+    // (bp.pins: pad → [[section, pin]])
+    if (f.custom && bp && bp.pins && !(L.LIB[g.type] && L.LIB[g.type].pinNumbers)) {
+      Object.entries(bp.pins).forEach(([num, list]) => (list || []).forEach(([mi, pin]) => { const m = g.members[mi]; if (m && m.pins.some(p => p.id === pin)) add(num, m.id, pin); }));
+      return map;
+    }
     if (/^(WIRE|TERM)-/.test(f.name)) { let k = 1; g.members.forEach(m => m.pins.forEach(p => add(k++, m.id, p.id))); return map; }
     if (L.LIB[g.type] && L.LIB[g.type].pinNumbers) {
       // pin numbers from the part's pinout (a tube's, an op-amp's); the sections of a dual tube or
       // the amplifiers of a dual op-amp each bring their own
       g.members.forEach(m => {
-        const nums = L.LIB[g.type].pinNumbers({ params: m.params, label: m.label });
+        const nums = ((L.LIB[m.type] && L.LIB[m.type].pinNumbers) || L.LIB[g.type].pinNumbers)({ params: m.params, label: m.label });
         m.pins.forEach(p => String(nums[p.id] || p.pads || "").split(",").filter(Boolean).forEach(n => add(n.trim(), m.id, p.id)));
       });
       return map;
@@ -1129,13 +1148,14 @@
   // ---------------------------------------------------------------------------
   // only: a test on a part's reference that limits the update to those parts (the board's own XH / XG)
   function sync(board, netlist, only) {
+    registerFootprints(board);
     const ok = r => !only || only(r), parts = physicalParts(netlist), keys = new Set(parts.map(g => g.key)), added = [], removed = [];
     Object.keys(board.parts).forEach(k => { if (!keys.has(k) && ok(board.parts[k].ref)) { removed.push(board.parts[k].ref); delete board.parts[k]; } });
     let x = 8, y = board.outline.h + 18, rowH = 0;
     parts.forEach(g => {
       const old = board.parts[g.key];
       // a footprint that no longer fits (a resistor's rating changed): the default, SMD when it was SMD
-      if (old) { old.ref = g.ref; if (!g.options.includes(old.fp)) old.fp = (isSmd(old.fp) && g.smdFp) || g.defaultFp; return; }
+      if (old) { old.ref = g.ref; if (!g.options.includes(old.fp) && !isCustom(old.fp)) old.fp = (isSmd(old.fp) && g.smdFp) || g.defaultFp; return; }
       if (!ok(g.ref)) return;
       const f = footprint(g.mpnFp || g.defaultFp, g.members.flatMap(m => m.pins.map(p => (g.members.length > 1 ? m.label.split(".").pop() + "." : "") + p.id)));
       const w = f.box[2] - f.box[0], h = f.box[3] - f.box[1];
@@ -1173,6 +1193,7 @@
   /** Everything the editor needs about a board against a netlist: physical parts with
       their footprints, pads in board coordinates with nets, net names */
   function model(board, netlist) {
+    registerFootprints(board);
     const parts = physicalParts(netlist), pads = [], holes = [], padsByPart = new Map(), netOf = {};
     (netlist.parts || []).forEach(p => p.pins.forEach(q => { netOf[p.id + ":" + q.id] = q.net; }));
     parts.forEach(g => {
@@ -1181,12 +1202,13 @@
       // the body: the part number's size, what was set by hand over it
       const f = partFootprint(g, bp, pinNames);
       g.fp = f; g.place = bp;
-      const map = padMap(g, f), list = [];
+      if (f.custom && !g.options.includes(f.name)) g.options = [f.name, ...g.options];
+      const map = padMap(g, f, bp), list = [];
       f.pads.forEach(p => {
         const conns = map.get(p.num) || [], nets = [...new Set(conns.map(c => netOf[c.comp + ":" + c.pin]).filter(n => n !== undefined))];
         const [x, y] = place([p.x, p.y], bp), [w, h] = placeSize(p, bp);
         // an SMD pad is on the part's side only
-        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, pitchRing: p.pitchRing, smd: !!p.smd, paste: p.paste, layers: p.smd ? [bp.side === "B" ? "B.Cu" : "F.Cu"] : COPPER,
+        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, pitchRing: p.pitchRing, smd: !!p.smd, paste: p.paste, layers: p.smd ? [(bp.side === "B") !== !!p.back ? "B.Cu" : "F.Cu"] : COPPER,
           net: nets.length ? nets[0] : null, pins: conns, conflict: nets.length > 1 };
         list.push(P); pads.push(P);
       });
@@ -2073,11 +2095,14 @@
     const parts = (netlist.parts || []).map(p => ({ ...p, pins: p.pins.slice() })), volts = { ...(netlist.volts || {}) }, names = { ...(netlist.names || {}) };
     const groups = new Map(), done = new Set(), hasGnd = names[0] === "GND";
     const fmtV = v => String(+(+v).toFixed(2));
+    // a valve whose heater is drawn (a KiCad sheet's heater unit, VL1.H) is wired as drawn
+    const drawn = new Set(parts.filter(p => p.type === "kicad").map(p => { const lab = String(p.label || "").trim(), dot = lab.lastIndexOf("."); return dot > 0 ? lab.slice(0, dot) : lab; }));
     const group = (key, name, v, a, b) => { if (!groups.has(key)) groups.set(key, { key, name, v, a, b, i: 0, tubes: [], hv: 0 }); return groups.get(key); };
     parts.forEach(p => {
       if (p.type !== "tube") return;
       const lab = String(p.label || "").trim(), dot = lab.lastIndexOf("."), base = dot > 0 ? lab.slice(0, dot) : lab, id = base || p.id;
       if (done.has(id)) return; done.add(id);
+      if (drawn.has(id)) return;
       const t = L.tubeByName(p.params && p.params.tube); if (!t || !t.pinout) return;
       const po = t.pinout, pins = f => po.filter(f).map(q => String(q.pin));
       if (shields && hasGnd) { const s = pins(q => q.sym === "S"); if (s.length) p.pins.push({ id: "S", name: "internal shield", net: 0, pads: s.join(",") }); }
@@ -2187,5 +2212,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { registerFootprints, isCustom, gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

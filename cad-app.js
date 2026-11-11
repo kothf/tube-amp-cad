@@ -183,24 +183,26 @@
     const seen = new Set();
     wires = wires.filter(w => { const a = key(w.x1, w.y1), b = key(w.x2, w.y2); const k = a < b ? a + "|" + b : b + "|" + a; if (seen.has(k)) return false; seen.add(k); return true; });
     // split wires where an endpoint or a pin lies on their interior
-    const points = [];
-    wires.forEach(w => { points.push([w.x1, w.y1], [w.x2, w.y2]); });
-    S.comps.forEach(c => compPins(c).forEach(p => points.push([p.x, p.y])));
+    // (the points by their row and column, so a big sheet does not try every point on every wire)
+    const rows = new Map(), cols = new Map(), mark = (x, y) => { if (!rows.has(y)) rows.set(y, new Set()); rows.get(y).add(x); if (!cols.has(x)) cols.set(x, new Set()); cols.get(x).add(y); };
+    wires.forEach(w => { mark(w.x1, w.y1); mark(w.x2, w.y2); });
+    S.comps.forEach(c => compPins(c).forEach(p => mark(p.x, p.y)));
+    const cut = [];
+    wires.forEach(w => {
+      const h = isH(w), a = h ? w.x1 : w.y1, b = h ? w.x2 : w.y2, lo = Math.min(a, b), hi = Math.max(a, b), on = [];
+      ((h ? rows.get(w.y1) : cols.get(w.x1)) || []).forEach(v => { if (v > lo && v < hi) on.push(v); });
+      if (!on.length) { cut.push(w); return; }
+      on.sort((p, q) => (a < b ? p - q : q - p));
+      const pt = v => (h ? [v, w.y1] : [w.x1, v]);
+      let from = [w.x1, w.y1];
+      [...on.map(pt), [w.x2, w.y2]].forEach((to, i) => {
+        const part = { id: i ? newId("w") : w.id, x1: from[0], y1: from[1], x2: to[0], y2: to[1] };
+        if (i && S.sel.wires.has(w.id)) S.sel.wires.add(part.id);
+        cut.push(part); from = to;
+      });
+    });
+    wires = cut;
     let changed = true;
-    while (changed) {
-      changed = false;
-      for (let i = 0; i < wires.length && !changed; i++) {
-        const w = wires[i];
-        for (const [x, y] of points) {
-          if (onSegInterior(w, x, y)) {
-            wires.splice(i, 1, { id: w.id, x1: w.x1, y1: w.y1, x2: x, y2: y }, { id: newId("w"), x1: x, y1: y, x2: w.x2, y2: w.y2 });
-            if (S.sel.wires.has(w.id)) S.sel.wires.add(wires[i + 1].id);
-            changed = true;
-            break;
-          }
-        }
-      }
-    }
     // merge collinear pairs meeting at a point with exactly two wire ends and no pin
     const pinKeys = new Set();
     S.comps.forEach(c => compPins(c).forEach(p => pinKeys.add(key(p.x, p.y))));
@@ -312,7 +314,8 @@
   // The board window or tab, the netlist and board document it shares with the CAD, cross-probing (cad-board-link.js)
   const { BOARD_KEY, boardNetlist, isBoardTab, probeBoard, scheduleBoardNetlist, selectFromBoard, selectNetFromBoard, sendBoardNetlist, setBoardTab, showBoard, storeBoard } = CadBoardLink({ S, VERSION, channel, compBBox, compPins, frames, getCanvas: () => canvas, netDC, netWave, pinCurrents, render, selSig, showFile, topo, updateInspector, usedCustomTubes });
   // KiCad export: schematic, board and project in one ZIP (cad-kicad.js, kicad-export.js)
-  const { exportKicad, kicadFiles, fabZip } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo });
+  const { exportKicad, kicadFiles, fabZip, openKicad, openKicadDialog, isKicadFile } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo, showBoard, storeBoard, sendBoardNetlist,
+    openDesign: (d, what, ask) => openDesign(d, what, ask), setName: n => { setCurFile(null, n); markClean(); } });
   S.showLegend = (() => { try { return localStorage.getItem(LEGEND_KEY) !== "0"; } catch (e) { return true; } })();
   S.sim.live = (() => { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch (e) { return true; } })();
 
@@ -2869,6 +2872,7 @@
     } catch (err) { setStatus("error", `Could not open ${name || "file"}: ` + err.message); return false; }
   }
   function openFile(file, handle) {
+    if (isKicadFile(file.name)) { openKicad([file]); return; }      // a KiCad schematic or board, or a ZIP of a project
     const rd = new FileReader();
     rd.onload = () => { if (openText(rd.result, file.name, handle)) recent.addFile(file.name, handle || null, rd.result); };
     rd.readAsText(file);
@@ -2876,10 +2880,14 @@
   // Open: with the File System Access API the handle is kept, so Save can write the file back
   async function openDialog() {
     if (typeof window.showOpenFilePicker !== "function") { document.getElementById("file-input").click(); return; }
-    let h;
-    try { [h] = await window.showOpenFilePicker({ types: JSON_TYPES }); }
+    let hs;
+    try { hs = await window.showOpenFilePicker({ types: JSON_TYPES, multiple: true }); }
     catch (err) { if (err.name !== "AbortError") setStatus("error", "Open: " + err.message); return; }
-    try { openFile(await h.getFile(), h); } catch (err) { setStatus("error", "Could not open file: " + err.message); }
+    try {
+      // KiCad files picked here (under "All files"): the project's files together
+      const files = await Promise.all(hs.map(h => h.getFile()));
+      if (files.some(f => isKicadFile(f.name))) openKicad(files); else openFile(files[0], hs[0]);
+    } catch (err) { setStatus("error", "Could not open file: " + err.message); }
   }
 
   function spiceNetlist() {
@@ -3078,7 +3086,7 @@
     bind("btn-start-new", () => { closeStart(); openSheetDialog("new"); });
     bind("btn-start-open", () => { closeStart(); openDialog(); });
     document.getElementById("start-show").addEventListener("change", e => { try { localStorage.setItem(START_KEY, e.target.checked ? "1" : "0"); } catch (err) { /* private mode */ } });
-    document.getElementById("file-input").addEventListener("change", e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; });
+    document.getElementById("file-input").addEventListener("change", e => { const fl = [...e.target.files]; if (fl.some(f => isKicadFile(f.name))) openKicad(fl); else if (fl[0]) openFile(fl[0]); e.target.value = ""; });
     bind("btn-save", saveFile);
     bind("btn-save-as", saveFileAs);
     bind("btn-save-cancel", () => { document.getElementById("save-modal").hidden = true; });
@@ -3141,6 +3149,7 @@
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
     cmds.bind("btn-volts", "volts").bind("btn-amps", "amps").bind("btn-legend", "legend").bind("btn-anim", "anim");
     bind("btn-kicad", () => exportKicad());
+    bind("btn-kicad-open", () => openKicadDialog());
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
@@ -3187,6 +3196,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

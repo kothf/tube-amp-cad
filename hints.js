@@ -79,10 +79,14 @@
     offsheet: "A sheet connector: joins every connector with the same signal name, on this sheet and the others, without drawing the wire.",
     scope: "A two-channel oscilloscope with its probes. Its screen is live on the schematic; double-click for the full instrument, the spectrum analyzer and the Bode plotter.",
     note: "A text note on the drawing.",
+    kicad: "A part imported from KiCad that the app has no part of its own for: drawn as in KiCad, wired on the sheet and on the board, listed in the bill of materials, left out of the simulation.",
     frame: "An ISO 5457 drawing frame with reference grid and an ISO 7200 title block. Locked against moving unless unlocked.",
   };
 
   const fields = {
+    "kicad.value": "The value as the KiCad schematic gives it. It goes into the bill of materials.",
+    "kicad.footprint": "The footprint the KiCad schematic names for the part. The board that came with the project draws it as the board file has it.",
+    "kicad.lib": "The KiCad library and symbol the drawing comes from.",
     "resistor.r": "Resistance. Type values with SI prefixes: 4.7k, 1M, 220, 0.47.",
     "resistor.w": "The power rating of the part you will buy. Checks compare the simulated dissipation with it; the symbol is marked per ГОСТ 2.728. Rate a resistor at about twice what it dissipates.",
     "pot.r": "End-to-end resistance of the track.",
