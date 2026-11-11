@@ -471,7 +471,7 @@
     // more; the best routed one stays (fewest open connections, then rule messages, then track length),
     // and Route & nudge's rounds then work on what it left open. The board's outline, holes, keep-outs,
     // locked parts and locked copper hold throughout.
-    const PANEL = new Set(["pot", "switch", "spst", "rotary", "jack", "iec", "terminal", "header", "faston", "fuse", "heater", "star"]);
+    const PANEL = new Set(["pot", "switch", "spst", "rotary", "jack", "iec", "terminal", "header", "faston", "xt", "fuse", "heater", "star"]);
     const HOWS = [{ wire: 0.3, anchor: 0.5, what: "near the schematic's places" }, { what: "for the shortest wiring" }, { wire: 0.5, anchor: 0.2, roomy: 1.4, what: "with more room round each part" },
       { roomy: 1.2, what: "short wiring, a little more room" }, { wire: 0.3, anchor: 0.5, turn: false, what: "near the schematic's places, turns kept" }];
     const SEEDS = [1, 2], TOP = 3, MORE = 3;

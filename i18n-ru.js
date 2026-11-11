@@ -64,7 +64,7 @@
     "Controlled sources": "Управляемые источники", "Voltage-controlled voltage (E)": "ИНУН (E)", "Voltage-controlled current (G)": "ИТУН (G)",
     "Ground & connectors": "Земля и разъёмы", "Ground": "Земля", "Sheet connector": "Межлистовой соединитель", "Connectors": "Разъёмы",
     "Jack, 6.35 mm switched": "Гнездо 6,35 мм с контактом", "RCA socket": "Гнездо RCA", "IEC mains inlet": "Сетевой разъём IEC",
-    "Terminal block": "Клеммник", "Pin header": "Штыревой разъём", "Faston tab": "Клемма Faston",
+    "Terminal block": "Клеммник", "Pin header": "Штыревой разъём", "Faston tab": "Клемма Faston", "Power connector (XT)": "Силовой разъём (XT)", "Power connectors (XT)": "Силовые разъёмы (XT)",
     "Semiconductors": "Полупроводники", "Silicon diode": "Кремниевый диод", "Diode, ultrafast": "Диод быстрый", "Diode, Schottky": "Диод Шоттки",
     "Diode, SiC Schottky": "Диод Шоттки SiC", "Bridge rectifier": "Диодный мост", "Zener diode": "Стабилитрон", "LED": "Светодиод", "red LED": "красный светодиод",
     "Transistors": "Транзисторы", "NPN transistor": "Транзистор NPN", "PNP transistor": "Транзистор PNP", "NPN, high voltage": "NPN высоковольтный",
@@ -2004,6 +2004,11 @@
     [/^(\d+) wire pads? to a chassis-mounted part(\.?)$/, "Площадок для проводов: $1, к детали на шасси$2"],
     [/^Screw terminal, (\d+) way, ([\d.]+) mm pitch \(wire entry at the top\)(\.?)$/, "Винтовая клеммная колодка, $1 конт., шаг $2 мм (ввод провода сверху)$3"],
     [/^Pin header 1 × (\d+), 2\.54 mm, straight(\.?)$/, "Штыревая линейка 1 × $1, 2,54 мм, прямая$2"],
+    // XT power connectors: what each model is (the Model list, the parts search), the palette's entries, the footprint
+    [/^(XT\d+(?:-S)?) (male|female)(, anti-spark)?, (right-angle PCB|vertical PCB|PCB|on a lead \((\d+) AWG\)|solder cups \(lead or upright in the board\))$/, (m, s, g, sp, how, awg) =>
+      `${s} ${g === "male" ? "вилка" : "гнездо"}${sp ? ", с защитой от искрения" : ""}, ${{ "right-angle PCB": "на плату, угловой", "vertical PCB": "на плату, вертикальный", PCB: "на плату", "solder cups (lead or upright in the board)": "чашки под пайку (на кабель или стоя в плату)" }[how] || `на кабель (${awg} AWG)`}`],
+    [/^XT90-S female, anti-spark$/, "XT90-S гнездо, с защитой от искрения"],
+    [/^Amass (XT\S+) power connector, (right-angle, mouth at the bottom|vertical|solder cups upright in the board)(\.?)$/, (m, k, how, dot) => `Силовой разъём Amass ${k}, ${{ "right-angle, mouth at the bottom": "угловой, гнездом вниз", vertical: "вертикальный", "solder cups upright in the board": "чашками под пайку стоя в плату" }[how]}${dot}`],
     [/^DIP-(\d+), 2\.54 mm pitch, rows 7\.62 mm apart \(pin 1 square, the notch at the top\)(\.?)$/, "DIP-$1, шаг 2,54 мм, ряды через 7,62 мм (вывод 1 квадратный, ключ сверху)$2"],
     [/^needs ([\d.]+) mm$/, "нужно $1 мм"],
   ];
