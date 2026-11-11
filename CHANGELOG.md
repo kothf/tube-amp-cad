@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Open KiCad project** (File ▾ → Open KiCad project…): a KiCad schematic and its board open as a circuit. Select the project's `.kicad_sch` sheets, its `.kicad_pcb` and `.kicad_pro` together in the file dialog (or a ZIP of the project's folder); a schematic or a board alone opens too, and File ▾ → Open… takes the same files. KiCad 6 and later.
+- **Symbols become the program's own parts where it has them**, and simulate: resistors, potentiometers, capacitors, chokes, diodes, zeners, LEDs, transistors, MOSFETs and JFETs (told by their pin names), op-amps, the 555, connectors, and valves under any of their names (ECC83, 12AX7, 6Н2П), a dual valve's units as its sections. A type with no model here simulates as the nearest one and the list says so.
+- **Imported part**: any other symbol is kept as KiCad draws it, with its pins, value and footprint. It is wired on the sheet and on the board and listed in the bill of materials, but left out of the simulation.
+- **KiCad's nets**: wires and junctions, local, global and hierarchical labels, power symbols (GND becomes ground, +12V-like supplies power rails, other names sheet connectors), hierarchical sheets (each a sheet with its frame; a sheet used twice comes twice), buses by the names of their members. Compared with KiCad 7.0.11's own netlist on KiCad's demo projects: 13 of 14 agree pin for pin; the last has wires drawn over each other, which the list points out.
+- **The board comes too**: outline, each footprint as the board file has it (pads, silkscreen, holes) in its place and on its side, tracks, vias, copper pours, keep-outs, mounting holes and texts. Top and bottom copper only. The board's rules are set from the layout so that it passes its own check.
+- **Round trip**: a project exported with Export KiCad project opens again as the circuit and board it was (all 20 examples do).
+- A list after opening says what came over (sheets, parts simulated and kept, tracks, vias) and what to check; **Show the board** opens the board.
+
+### Fixed
+- Opening or editing a very large circuit no longer stalls: joining wires at their crossings took time growing with the square of the sheet (87 s on a 2,400-wire sheet), now a fraction of a second.
+
 ## [3.187.1] - 2026-11-10
 
 ### Fixed

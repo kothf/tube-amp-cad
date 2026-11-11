@@ -52,7 +52,9 @@
   const paperLine = p => (p.size === "User" ? `(paper "User" ${n(p.w)} ${n(p.h)})` : `(paper ${q(p.size)}${p.portrait ? " portrait" : ""})`);
   function titleBlock(meta) {
     const t = [["title", meta.title], ["date", meta.date], ["rev", meta.rev], ["company", meta.company]].filter(([, v]) => v);
-    const c = (meta.comments || []).filter(Boolean).slice(0, 9).map((v, i) => `(comment ${i + 1} ${q(v)})`);
+    const c = (meta.comments || []).filter(Boolean).slice(0, 8).map((v, i) => `(comment ${i + 1} ${q(v)})`);
+    // the drawing frame's own fields, for this app's KiCad import
+    if (meta.frame) c.push(`(comment 9 ${q("TubeAmpCAD " + JSON.stringify(meta.frame))})`);
     return t.length || c.length ? `(title_block ${t.map(([k, v]) => `(${k} ${q(v)})`).join(" ")} ${c.join(" ")})` : "";
   }
 
@@ -402,6 +404,8 @@
     const prop = (k, v, p, i) => `  (property ${q(k)} ${q(v)} (at ${n(p ? p.x : s.x)} ${n(p ? p.y : s.y)} ${n(p && p.angle ? p.angle : 0)}) ${justify(p && p.h, p && p.v, !p || p.hide)})`;
     const out = [`(symbol (lib_id ${q(LIBNAME + ":" + libName(s.lib))}) (at ${n(s.x)} ${n(s.y)} 0) (unit ${s.unit || 1})`, `  (in_bom ${s.inBom ? "yes" : "no"}) (on_board ${s.onBoard ? "yes" : "no"}) (dnp no)`, `  (uuid ${s.uuid})`,
       prop("Reference", s.ref, s.props && s.props.ref, 0), prop("Value", s.value, s.props && s.props.value, 1), prop("Footprint", s.footprint || "", null, 2), prop("Datasheet", "", null, 3)];
+    // what the part is here, so that this app's KiCad import (kicad-import.js) gets its own part back
+    if (s.mark) out.push(prop("TubeAmpCAD", JSON.stringify(s.mark), null, 4));
     (s.pins || []).forEach(p => out.push(`  (pin ${q(p)} (uuid ${uuid(s.uuid + ":pin:" + p)}))`));
     out.push(`  (instances (project ${q(project)} (path ${q(sheetPath)} (reference ${q(s.ref)}) (unit ${s.unit || 1}))))`, ")");
     return out.join("\n");

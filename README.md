@@ -458,6 +458,25 @@ the circuit that was on the sheet.
   *Update PCB from Schematic* pairs the two. Checked with KiCad 7.0.11: on
   every example KiCad's netlist of the schematic joins exactly the pads the
   board joins, and its DRC agrees with the Board window's.
+- **Open KiCad project.** *File ▾ → Open KiCad project…* opens a KiCad
+  schematic and its board as a circuit here: select the project's
+  `.kicad_sch` sheets, its `.kicad_pcb` and `.kicad_pro` together, or a ZIP
+  of the folder (KiCad 6 and later; a schematic or a board alone opens too).
+  - Symbols the program has a part for become that part and simulate:
+    passives, diodes, transistors (by their pin names), op-amps, the 555,
+    connectors, and valves under any of their names (ECC83 = 12AX7 = 6Н2П).
+    Everything else is kept as KiCad draws it, an *Imported part*: wired on
+    the sheet and the board, in the BOM, left out of the simulation.
+  - Nets are KiCad's: junctions, local, global and hierarchical labels,
+    power symbols, hierarchical sheets (a sheet each), buses by name. On 13
+    of KiCad's 14 demo projects the nets equal KiCad's own netlist pin for
+    pin (`tests/kicad-oracle.mjs`, with kicad-cli); the one that differs
+    has wires drawn on top of each other, which the list points out.
+  - The board comes with its outline, footprints as the file has them,
+    tracks, vias, pours, keep-outs, holes and texts (top and bottom copper);
+    its rules are set from the layout.
+  - A project this program exported comes back as it was. A list says what
+    came over and what to check.
 - **Noise and hum.** *Analyze ▾ → Noise and hum* opens the *Noise* tab under
   the schematic: what the amplifier puts out with no signal:
   - thermal, tube (2.5/gm, pentode partition, 1/f), shot and FET channel

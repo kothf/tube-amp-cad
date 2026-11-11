@@ -902,6 +902,33 @@
       }
       ctx.setLineDash([]);
     },
+    // a part imported from KiCad that the app has no part of its own for: the symbol as KiCad draws
+    // it (params.sym, kicad-import.js symData), its leads, pin names and numbers
+    kicad(ctx, c) {
+      const sym = c.params.sym || { g: [], pins: [] }, up = t => { ctx.save(); ctx.translate(t[0], t[1]); if ((c.rot & 3) === 1 || (c.rot & 3) === 2) ctx.rotate(Math.PI); ctx.fillText(t[2], 0, 0); ctx.restore(); };
+      (sym.g || []).forEach(s => {
+        if (s[0] === "p") {
+          ctx.beginPath(); ctx.moveTo(s[2], s[3]); for (let i = 4; i + 1 < s.length; i += 2) ctx.lineTo(s[i], s[i + 1]);
+          if (s[1]) { ctx.fillStyle = s[1] === 1 ? ctx.strokeStyle : COL.fill; ctx.fill(); }
+          ctx.stroke();
+        } else if (s[0] === "c") { ctx.beginPath(); ctx.arc(s[2], s[3], s[4], 0, Math.PI * 2); if (s[1]) { ctx.fillStyle = s[1] === 1 ? ctx.strokeStyle : COL.fill; ctx.fill(); } ctx.stroke(); }
+      });
+      ctx.fillStyle = COL.value; ctx.textBaseline = "middle";
+      (sym.g || []).forEach(s => { if (s[0] === "t") { ctx.font = `${Math.max(7, Math.min(14, Math.round(s[3])))}px ui-monospace, monospace`; ctx.textAlign = "center"; up([s[1], s[2], s[4]]); } });
+      (sym.pins || []).forEach(p => {
+        if (p.h) return;
+        const a = (p.a || 0) * Math.PI / 180, dx = Math.round(Math.cos(a)), dy = -Math.round(Math.sin(a)), ex = p.x + dx * p.l, ey = p.y + dy * p.l;
+        line(ctx, [p.x, p.y, ex, ey]);
+        ctx.font = "8px ui-monospace, monospace";
+        if (sym.pm && p.num && p.l >= 8) { ctx.fillStyle = "#8b949e"; ctx.textAlign = "center"; up([p.x + dx * p.l / 2 + (dy ? 6 : 0), p.y + dy * p.l / 2 - (dx ? 6 : 0), p.num]); }
+        if (sym.pn !== undefined && sym.pn > 0 && p.name) {
+          ctx.fillStyle = COL.value;
+          const flipped = (c.rot & 3) === 1 || (c.rot & 3) === 2, right = dx > 0 || (!dx && dy > 0);
+          if (dx) { ctx.textAlign = (right !== flipped) ? "left" : "right"; up([ex + dx * (sym.pn + 2), ey, p.name]); }
+          else { ctx.save(); ctx.translate(ex, ey + dy * (sym.pn + 2)); ctx.rotate(-Math.PI / 2 + (flipped ? Math.PI : 0)); ctx.textAlign = (dy > 0) !== flipped ? "right" : "left"; ctx.fillText(p.name, 0, 0); ctx.restore(); }
+        }
+      });
+    },
     scope(ctx) {
       ctx.fillStyle = "#101824"; ctx.fillRect(-70, -45, 140, 90); ctx.strokeRect(-70, -45, 140, 90);
       line(ctx, [-80, -30, -70, -30]); line(ctx, [-80, -10, -70, -10]); line(ctx, [-80, 30, -70, 30]);
@@ -2863,6 +2890,21 @@
         out.push({ id: c.id + "#r", kind: "D", nodes: [net("2"), mid], is: d.is, n: d.n });
         out.push({ id: c.id + "#c", kind: "C", nodes: [net("1"), net("2")], c: m.c });
       }
+    },
+    // A part imported from KiCad (File ▾ → Open… a .kicad_sch) that the app has no part of its own
+    // for: it keeps KiCad's drawing and pins (params.sym) and its footprint on the board, joins its
+    // nets, and is left out of the simulation
+    kicad: {
+      name: "Imported part (KiCad)", prefix: "U", group: "Imported",
+      bbox: c => (c && c.params.sym && c.params.sym.box) || [-20, -20, 20, 20],
+      defaults: { value: "", footprint: "", lib: "", desc: "" },
+      pins: c => ((c && c.params.sym && c.params.sym.pins) || []).map(p => ({ id: p.id, x: p.x, y: p.y, name: p.name || "pin " + p.num })),
+      // the pads behind the pins: KiCad's pin numbers
+      pinNumbers: c => Object.fromEntries(((c.params.sym && c.params.sym.pins) || []).map(p => [p.id, p.num || p.id])),
+      value: c => c.params.value || "",
+      fields: [{ key: "value", label: "Value", kind: "text" }, { key: "footprint", label: "Footprint (KiCad)", kind: "text", wide: true }, { key: "lib", label: "Symbol (KiCad)", kind: "text", wide: true }],
+      info: () => "Imported from KiCad as drawn there: the app has no part of its own for it, so it joins its nets on the sheet and on the board but is left out of the simulation. Replace it with a part from the panel to simulate it.",
+      build: () => {}
     },
     scope: {
       // its screen stays upright (no rotation), but it mirrors: the inputs then come in on the right
