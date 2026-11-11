@@ -66,6 +66,7 @@
       case "terminal": return ["Terminal block", `${p.ways} ways`, `${p.pitch} mm pitch`];
       case "header": return ["Pin header, 2.54 mm", `1 × ${p.ways}`, ""];
       case "faston": return ["Quick-connect tab, board mount", `${p.size} mm`, ""];
+      case "xt": { const m = L.XTS[p.model] || {}; return [`Power connector, Amass ${m.s || "XT"} ${m.g === "F" ? "female" : "male"}${m.spark ? ", anti-spark" : ""}, ${{ pw: "right-angle PCB", pb: "vertical PCB", v: "solder cups", cable: "cable" }[m.mount] || ""}`, p.model, m.a ? `${m.a} A, ${m.v} V DC` : ""]; }
       case "zener": { const z = L.ZENERS[p.model] || {}; return ["Zener diode", p.model, z.bv + " V, " + z.p + " W"]; }
       case "led": { const l = L.LEDS[p.color] || {}; return ["LED, " + p.color, "", l.vf + " V at 10 mA, " + l.i * 1000 + " mA max"]; }
       case "npn": case "pnp": { const m = L.BJTS[p.model]; return ["Transistor, " + c.type.toUpperCase(), p.model, m ? L.semiRating(m) : ""]; }
@@ -176,11 +177,12 @@
         const st = members.map(opts.stress).filter(Boolean);
         if (st.length) rating = capRating(c.type, Math.max(...st.map(x => x.v)));
       }
-      const partno = String(c.params.partno || "").trim();
+      // the part's own maker's number (an XT connector's order code) unless one is typed in
+      const def = root.CadLib.LIB[c.type], own = def && def.partNo, partno = String(c.params.partno || (own ? own(c) : "")).trim();
       add([c.type, desc, value, rating, partno].join("\u0001"), ref, members, desc, value, rating, partno);
       // what the part number says the part is (mpn.js): its package and size, and where it disagrees with the schematic
       const L = lines.get([c.type, desc, value, rating, partno].join("\u0001"));
-      if (partno && !L.mpn && root.PartNo) L.mpn = root.PartNo.resolve(c.params, c.type);
+      if (partno && !L.mpn && root.PartNo) L.mpn = root.PartNo.resolve(c.params.partno ? c.params : { ...c.params, partno }, c.type);
       if (opts.sockets && c.type === "tube" && rating && !/wire leads/i.test(rating)) {
         const id = socketOf(members, bp), k = rating + "\u0001" + (id || "");
         if (!sockets.has(k)) sockets.set(k, { rating, id, refs: [] });

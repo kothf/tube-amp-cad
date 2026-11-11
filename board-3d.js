@@ -18,7 +18,7 @@
     glass: [0.78, 0.88, 0.95], neon: [1, 0.62, 0.42], plate: [0.3, 0.3, 0.32], getter: [0.62, 0.62, 0.66], ceramic: [0.9, 0.87, 0.78], bakelite: [0.16, 0.13, 0.11], core: [0.36, 0.36, 0.39],
     coil: [0.86, 0.55, 0.2], terminal: [0.1, 0.55, 0.28], jack: [0.15, 0.15, 0.16], pot: [0.25, 0.27, 0.32], trim: [0.2, 0.35, 0.75], led: [0.9, 0.15, 0.1],
     wireRed: [0.8, 0.12, 0.1], wireBlack: [0.08, 0.08, 0.08], generic: [0.55, 0.55, 0.58], chipCap: [0.66, 0.52, 0.34], glassRed: [0.7, 0.2, 0.15],
-    sockBrown: [0.45, 0.33, 0.25], sockTan: [0.72, 0.62, 0.52]
+    sockBrown: [0.45, 0.33, 0.25], sockTan: [0.72, 0.62, 0.52], xt: [0.96, 0.74, 0.12], gold: [0.85, 0.68, 0.3]
   };
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const avg = pts => { const s = [0, 0, 0]; pts.forEach(p => { s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; }); return s.map(v => v / pts.length); };
@@ -247,6 +247,28 @@
       const r = fp.silk.find(q => q.t === "rect");
       out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, 0, 2.5, C.black, to));
       pads.forEach(p => out.push(box(p.x - 0.32, p.y - 0.32, p.x + 0.32, p.y + 0.32, -3 - t, 8.5, C.metal, to)));
+    } else if (fp.xt) {
+      // an Amass XT connector: the yellow housing (its datasheet outline and height), gold contacts in its mouth
+      const X = fp.xt, H = X.h, rc = pads[0].drill * (X.up ? 0.42 : 0.6);
+      if (X.up) {
+        const [x1, y1, x2, y2] = X.body[0], c = X.ch, poly = [[x1 + c, y1], [x2, y1], [x2, y2], [x1 + c, y2], [x1, y2 - c * 0.9], [x1, y1 + c * 0.9]];
+        out.push(prism("z", poly, 0, H, C.xt, to));
+        pads.filter(p => p.name !== "MP").forEach(p => { out.push(cylZ(p.x, p.y, rc, H - (X.male ? 3 : 0.4), H + 0.01, X.male ? C.gold : C.black, to)); lead(p.x, p.y, 0.5); });
+      } else {
+        X.body.forEach(([x1, y1, x2, y2]) => out.push(box(x1, y1, x2, y2, 0, H, C.xt, to)));
+        const front = X.body[X.body.length - 1][3], back = X.body[0][1], zc = H / 2;
+        pads.forEach(p => {
+          lead(p.x, p.y, p.name === "MP" ? 1 : zc);
+          if (p.name === "MP") return;
+          if (p.y < back) out.push(cylY(p.x, zc, lr * 1.6, p.y, back, C.gold, to));
+          // the contact seen in the mouth: a male's pin, a female's socket with its hole
+          out.push(cylY(p.x, zc, rc, front + 0.02, front + 0.06, C.gold, to));
+          if (!X.male) out.push(cylY(p.x, zc, rc * 0.6, front + 0.06, front + 0.1, C.black, to));
+        });
+        // the mouth's dark recess round the contacts
+        const [mx1, , mx2] = X.body[X.body.length - 1];
+        out.push(box(mx1 + 0.8, front, mx2 - 0.8, front + 0.02, 0.8, H - 0.8, C.black, to));
+      }
     } else if ((m = /^FASTON-(6\.3|4\.8)$/.exec(name))) {
       const w = m[1] === "6.3" ? 6.35 : 4.75;
       out.push(box(-w / 2 - 0.8, -1.2, w / 2 + 0.8, 1.2, 0, 1.2, C.metal, to), box(-w / 2, -0.4, w / 2, 0.4, 1.2, 9, C.metal, to)); lead(0, 0, 0.5);

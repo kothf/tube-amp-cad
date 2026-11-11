@@ -29,7 +29,7 @@
   const B = () => root.BoardCore;
   const GRID = 1.27, CELL = 2.54;
   // parts that stay where the user put them: valves, transformers, controls, connectors, things on panels
-  const FIXED = new Set(["tube", "gasreg", "neon", "eye", "opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat", "itx", "pot", "switch", "spst", "rotary", "jack", "iec", "terminal", "header", "faston", "fuse", "heater", "star"]);
+  const FIXED = new Set(["tube", "gasreg", "neon", "eye", "opt_se", "opt_cat", "opt_pp", "ptx", "ptx_cat", "itx", "pot", "switch", "spst", "rotary", "jack", "iec", "terminal", "header", "faston", "xt", "fuse", "heater", "star"]);
   const BIG = 1200;   // mm² of courtyard: bigger parts stay too
 
   // a seeded random source (mulberry32): the same board and seed give the same moves
