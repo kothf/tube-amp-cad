@@ -822,6 +822,23 @@ the circuit file, so one file holds both.
 - **Mounting holes** are not plated (NPTH) or plated (PTH): a plated one has a
   copper ring on both sides (Ø 6 mm round an M3 hole by default) and may
   take a net, GND for a grounded chassis screw, which a pour of that net joins.
+- **Board outline sketch** (Construct ▾ → Board outline sketch…, Board setup,
+  or a double-click on the board's edge): the board can be any shape. Its
+  edge is drawn as a 2D sketch of lines and arcs, with circles, rectangles,
+  regular polygons, slots and fillets as tools (<kbd>L</kbd> <kbd>A</kbd>
+  <kbd>C</kbd> <kbd>R</kbd> <kbd>P</kbd> <kbd>O</kbd> <kbd>F</kbd>); a closed
+  shape inside the edge is a cut-out. Sizes are typed by the pointer
+  (length and angle, Ø, W H, R, N, X Y); points snap to the sketch's ends,
+  middles and centres and to everything on the board. Ends drag (the corner's
+  lines follow), an arc bends by its middle mark, a line splits on a
+  double-click, and the selected line, arc or circle has its numbers in the
+  bar. Finish checks the sketch (closed, not crossing, cut-outs inside) and
+  makes it the outline; Cancel leaves the board as it was. The design-rule
+  check, copper pours, the grid router and Freerouting, the silkscreen, the
+  3D view, STEP (arcs as cylinders), the Gerber Edge_Cuts file (a closed
+  contour for the edge and for each cut-out), PDF, SVG and KiCad export and
+  import all follow the shape. Board setup also offers a round board by its
+  diameter.
 - **Construction geometry** (Construct ▾) for placing mounting holes
   exactly: dashed construction lines (<kbd>C</kbd>: two points or one and an
   angle), offsets of a board edge, the whole outline or a construction line
@@ -964,7 +981,8 @@ the circuit file, so one file holds both.
 
   Click an entry to go to it. The status bar is green only when the board is
   finished: no violations, no warnings, nothing left to route.
-- **Board setup** (*Board ▾ → Board setup…*): outline size, corner radius, mounting holes (one
+- **Board setup** (*Board ▾ → Board setup…*): the outline (a rectangle with its size and corner
+  radius, a round board by its diameter, or a sketch of any shape with cut-outs), mounting holes (one
   in each corner, M2.5–M4, chosen inset), board thickness and copper weight.
 - **Layers:** top and bottom copper, copper pours, both silkscreens, outline, mounting holes,
   ratsnest and rule markers. Each can be shown or hidden, or shown alone

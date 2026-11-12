@@ -155,9 +155,25 @@
     const base = Math.atan2(dy, dx), off = Math.acos(c.r / d);
     return [base + off, base - off].map(a => [c.cx + c.r * Math.cos(a), c.cy + c.r * Math.sin(a)]).filter(q => onArc(c, angOf(c, q[0], q[1])));
   }
-  /** the board outline as curves, user frame: 4 edges, then the 4 rounded corners (null when square) */
+  // a board with a shape of its own (board-outline.js): every line and arc of its edge, then of each
+  // cut-out, in the order they run (an arc's angles turn over with the Y axis)
+  const OLB = () => root.BoardOutline, shaped = o => !!(o && o.shape && OLB() && OLB().isShape(o));
+  function shapeCurves(o, d) {
+    const H = o.h, S = d ? OLB().offsetSegs(o, d) : OLB().segs(o);
+    return S.map(s => {
+      if (!s) return null;
+      if (s.t === "L") return L(s.x2, H - s.y2, s.x1, H - s.y1, "seg");   // turned round: the board on its left, as a rectangle's edges
+      const a = norm360(-s.a0 / RAD), b = norm360(-(s.a0 + s.sw) / RAD);
+      return s.sw > 0 ? C(s.cx, H - s.cy, s.r, b, a) : { ...C(s.cx, H - s.cy, s.r, a, b), cv: true };   // cv: the board is outside the arc (a notch, a cut-out)
+    });
+  }
+  /** what an outline curve is called: "bottom edge", or on a shaped board "edge 3", "arc 5" */
+  const outlineName = (o, k, c) => (shaped(o) ? `${c && c.t === "C" ? "arc" : "edge"} ${k + 1}` : EDGE_NAMES[k] || "edge");
+  /** the board outline as curves, user frame: 4 edges, then the 4 rounded corners (null when square);
+      a board with a shape of its own: see shapeCurves */
   function outlineCurves(o, d) {
     d = d || 0;
+    if (shaped(o)) return shapeCurves(o, d);
     const w = o.w, h = o.h, r0 = Math.max(0, Math.min(o.r || 0, w / 2, h / 2)), r = r0 - d, x0 = d, y0 = d, x1 = w - d, y1 = h - d;
     if (x1 - x0 < 1e-9 || y1 - y0 < 1e-9) return [];
     if (r <= 1e-9) return [L(x0, y0, x1, y0, "seg"), L(x1, y0, x1, y1, "seg"), L(x1, y1, x0, y1, "seg"), L(x0, y1, x0, y0, "seg"), null, null, null, null];
@@ -249,7 +265,7 @@
       if (g.id === "@outline") {
         if (g.k === undefined || g.k === null) return { curves: outlineCurves(o, d), pts: [] };
         const c = outline[g.k]; if (!c) return lost;
-        return { curves: [c.t === "L" ? offsetCurve(c, d, "line") : offsetCurve(c, -d)].filter(Boolean), pts: [] };   // edges run counter-clockwise: left is inwards
+        return { curves: [c.t === "L" ? offsetCurve(c, d, "line") : offsetCurve(c, c.cv ? d : -d)].filter(Boolean), pts: [] };   // edges run counter-clockwise: left is inwards
       }
       if (typeof g.id === "string" && g.id.startsWith("@ko:")) {
         const k = (board.keepouts || []).find(q => q.id === g.id.slice(4)), cs = ko[g.id.slice(4)], c = cs && cs[g.k || 0]; if (!c) return lost;
@@ -332,6 +348,25 @@
       if (last) last.set(h, [h.x, H - h.y]);
     });
     return lost;
+  }
+  /** The board's box moved under the construction (its outline got another shape): every plain
+      coordinate (a fixed point, a detached item, a hole's fixed tie) moves by dx, dy (user frame) so it
+      stays where it is on the board; map { old: new } renumbers the outline's curves (an edge that is
+      gone leaves its reference lost: k = -1). Tied holes become new objects, so applyHoles puts them
+      where their ties now point instead of taking them for moved by hand. */
+  function shift(board, dx, dy, map) {
+    const walk = v => {
+      if (Array.isArray(v)) { v.forEach(walk); return; }
+      if (!v || typeof v !== "object") return;
+      if (v.id === "@outline" && Number.isInteger(v.k) && map) v.k = map[v.k] === undefined ? -1 : map[v.k];
+      if (v.t === "L" && Number.isFinite(v.x1)) { v.x1 = R4(v.x1 + dx); v.y1 = R4(v.y1 + dy); v.x2 = R4(v.x2 + dx); v.y2 = R4(v.y2 + dy); }
+      else if (v.t === "C" && Number.isFinite(v.cx)) { v.cx = R4(v.cx + dx); v.cy = R4(v.cy + dy); }
+      else if (!v.ref && !v.t && Number.isFinite(v.x) && Number.isFinite(v.y)) { v.x = R4(v.x + dx); v.y = R4(v.y + dy); }
+      Object.entries(v).forEach(([k, q]) => { if (k === "pts" && Array.isArray(q) && q.every(p => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]))) q.forEach(p => { p[0] = R4(p[0] + dx); p[1] = R4(p[1] + dy); }); else walk(q); });
+    };
+    walk((board.construct && board.construct.items) || []);
+    board.holes = (board.holes || []).map(h => { if (!h.at) return h; walk(h.at); return { ...h }; });
+    ((board.dims && board.dims.items) || []).forEach(d => { [d.a, d.b].forEach(f => { if (f && f.t === "cl" && f.g) walk(f.g); if (f && f.t === "cp" && f.ref) walk(f.ref); }); });
   }
   /** a point P made to land on `to` (user frame), keeping its reference: dx, dy from it */
   function rebase(sol, P, to) {
@@ -420,7 +455,7 @@
   // ---------------------------------------------------------------------------
   function label(it) { return it.name || `${({ point: "point", line: "line", offset: "offset", circle: "circle", array: "array", polar: "polar array", fixed: "construction" })[it.k] || it.k} ${String(it.id).replace(/^c/, "C")}`; }
   function curveName(sol, g) {
-    if (g.id === "@outline") return `board ${EDGE_NAMES[g.k] || "edge"}`;
+    if (g.id === "@outline") return `board ${outlineName(sol.board.outline, g.k, sol.outline[g.k])}`;
     if (typeof g.id === "string" && g.id.startsWith("@ko:")) { const k = (sol.board.keepouts || []).find(q => q.id === g.id.slice(4)); return `keep-out ${k && k.name ? `"${k.name}" ` : ""}edge ${(g.k || 0) + 1}`; }
     const it = sol.board.construct.items.find(q => q.id === g.id); if (!it) return "a curve that is gone";
     const r = sol.items[g.id], many = r && r.curves.length > 1;
@@ -481,5 +516,5 @@
     return out;
   }
 
-  root.BoardConstruct = { KINDS, NAMES, BOARD_AT, EDGE_NAMES, SNAP_DEFAULT, normalise, newId, idOf, add, intersect, nearest, offsetCurve, tangents, outlineCurves, onArc, turnCurve, solve, applyHoles, rebase, detach, dependents, allCurves, snaps, pick, hitItem, label, curveName, refName, pointName, describe, pointsOf };
+  root.BoardConstruct = { KINDS, NAMES, BOARD_AT, EDGE_NAMES, SNAP_DEFAULT, normalise, newId, idOf, add, intersect, nearest, offsetCurve, tangents, outlineCurves, outlineName, onArc, turnCurve, solve, applyHoles, shift, rebase, detach, dependents, allCurves, snaps, pick, hitItem, label, curveName, refName, pointName, describe, pointsOf };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -195,10 +195,13 @@
   }
   function refresh() { analyse(); checkSync(); save(); render(); renderPanels(); sheetUi(); if (viewer && !$("view3d").hidden) { clearTimeout(v3Timer); v3Timer = setTimeout(() => build3D(false), 150); } }
   function commit(text) { pushHistory(); refresh(); if (text) msg(text); }
-  function undo() { if (S.hIndex > 0) { S.hIndex--; restore(); } }
-  function redo() { if (S.hIndex < S.history.length - 1) { S.hIndex++; restore(); } }
+  function undo() { if (sketch.active()) { sketch.undo(); return; } if (S.hIndex > 0) { S.hIndex--; restore(); } }
+  function redo() { if (sketch.active()) { sketch.redo(); return; } if (S.hIndex < S.history.length - 1) { S.hIndex++; restore(); } }
   // a board of another height: the screen keeps the origin (the bottom-left corner) still
-  function restore() { const h0 = S.board.outline.h; S.board = JSON.parse(S.history[S.hIndex]); S.view.oy += (h0 - S.board.outline.h) * S.view.scale; S.sel = null; S.measure = null; refresh(); }
+  // (outline.at: where the box's top-left corner is in a frame that never moves; setHeight and a new
+  // outline shape keep it, so the screen stays still whichever corner the change moved)
+  const atOf = o => (Array.isArray(o.at) ? o.at : [0, 0]);
+  function restore() { const a0 = atOf(S.board.outline); S.board = JSON.parse(S.history[S.hIndex]); const a1 = atOf(S.board.outline); S.view.ox += (a1[0] - a0[0]) * S.view.scale; S.view.oy += (a1[1] - a0[1]) * S.view.scale; S.sel = null; S.measure = null; refresh(); }
   // A new board height keeps the origin where it is: everything on the board (and a locked
   // sheet) moves down by the change in the document, so only the top edge moves.
   function setHeight(h) {
@@ -211,7 +214,32 @@
     // behind they drew as stray copper until the full analyse at the end (new arrays: some are shared)
     const sp = pts => pts.map(q => [q[0], +(q[1] + dh).toFixed(4)]);
     S.fills.forEach(f => { if (f.pts) f.pts = sp(f.pts); f.ops = f.ops.map(op => ({ ...op, ...(op.pts ? { pts: sp(op.pts) } : {}), ...(Number.isFinite(op.y) ? { y: +(op.y + dh).toFixed(4) } : {}) })); });
-    b.outline.h = h; S.view.oy -= dh * S.view.scale; S.measure = null;
+    b.outline.h = h; b.outline.at = [atOf(b.outline)[0], +(atOf(b.outline)[1] - dh).toFixed(4)]; S.view.oy -= dh * S.view.scale; S.measure = null;
+  }
+  // Everything on the board moved by dx, dy in the document (the outline's box starts at 0, 0 again
+  // after its shape changed); the screen stays still
+  function shiftBoard(dx, dy) {
+    const b = S.board; if (!dx && !dy) return;
+    const mv = o => { if (Number.isFinite(o.x)) o.x = +(o.x + dx).toFixed(4); if (Number.isFinite(o.y)) o.y = +(o.y + dy).toFixed(4); }, mp = p => { p[0] = +(p[0] + dx).toFixed(4); p[1] = +(p[1] + dy).toFixed(4); };
+    Object.values(b.parts).forEach(mv); b.vias.forEach(mv); b.holes.forEach(mv); b.texts.forEach(mv);
+    b.tracks.forEach(t => t.pts.forEach(mp)); b.zones.forEach(z => z.pts && z.pts.forEach(mp)); b.keepouts.forEach(k => k.pts.forEach(mp));
+    if (b.sheet && b.sheet.locked && Number.isFinite(b.sheet.y)) { b.sheet.x = +(b.sheet.x + dx).toFixed(4); b.sheet.y = +(b.sheet.y + dy).toFixed(4); }
+    S.view.ox -= dx * S.view.scale; S.view.oy -= dy * S.view.scale;
+  }
+  /** A new outline (from the sketch, or Board setup's shape): o is { w, h, r, shape? } with its box at
+      0, 0; dx, dy: how far the sketch moved to get there, so the board's things move as much and stay where
+      they are under it. remap(oldCurves, newCurves, newH) → { old curve index: new } keeps the
+      construction lines tied to an edge on that edge. */
+  function applyOutline(o, dx, dy, remap, text) {
+    const b = S.board, K = window.BoardConstruct, old = b.outline, h0 = old.h, oldCurves = K.outlineCurves(old);
+    dx = dx || 0; dy = dy || 0;
+    shiftBoard(dx, dy);
+    const at0 = atOf(old);
+    b.outline = { ...o, at: [+(at0[0] - dx).toFixed(4), +(at0[1] - dy).toFixed(4)] };
+    // the construction's own coordinates count from the bottom-left corner of the box, Y up
+    K.shift(b, dx, +(o.h - h0 - dy).toFixed(4), remap ? remap(oldCurves, K.outlineCurves(b.outline), o.h) : null);
+    S.sel = null; S.measure = null;
+    commit(text || `Board outline: ${BoardOutline.describe(b.outline)}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -307,7 +335,7 @@
   // grabbed on the line and up to 8 px outside; a pour's outline (0.5 mm in) is picked further in
   const onEdge = (x, y) => { const d = B.edgeDist(x, y, S.board.outline) * S.view.scale; return S.show["Edge.Cuts"] && !!sheetPlace() && d >= -8 && d <= 2; };
   // the board's resize handle: its top-right corner (the origin, bottom left, stays put)
-  const onHandle = (x, y) => { const o = S.board.outline, t = 6 / S.view.scale; return S.show["Edge.Cuts"] && Math.abs(x - o.w) <= t && Math.abs(y) <= t; };
+  const onHandle = (x, y) => { const o = S.board.outline, t = 6 / S.view.scale; return !o.shape && S.show["Edge.Cuts"] && Math.abs(x - o.w) <= t && Math.abs(y) <= t; };
   function netAt(x, y) {
     const p = hitPad(x, y); if (p) return { net: p.net, pad: p };
     const vi = hitVia(x, y); if (vi >= 0 && S.conn) { const it = S.conn.items.find(it => it.kind === "via" && it.vi === vi); if (it && it.net !== null && it.net !== "short") { const v = S.board.vias[vi]; return { net: it.net, at: [v.x, v.y] }; } }
@@ -494,6 +522,7 @@
     keepout: "Keep-out area: click the corners, double-click to close; no tracks, vias or pour may enter it (set in the inspector)" };
   TOOL_HELP.hole = "Mounting hole: click to place one; it sticks to holes, pads, board corners, construction points and crossings and stays tied to them (Alt: the grid only). Type Δx Δy (and Ø) to place it that far from where the pointer sticks";
   function setTool(t) {
+    if (sketch.active() && t !== "select") { msg("Finish or cancel the outline sketch first (the bar over the board)"); return; }
     if (cons.HELP[t]) TOOL_HELP[t] = cons.HELP[t];
     if (t === "dim") TOOL_HELP.dim = dimui.HELP;
     if (S.route && t !== "route") finishRoute();
@@ -542,7 +571,11 @@
     if (copper) S.board.vias.forEach((v, i) => at(v.x, v.y, "via", "centre", { kind: "via", via: v, net: connNet("via", "vi", i) }));
     if (S.show.Holes) holes().forEach(h => at(h.x, h.y, `${h.ref ? h.ref + " " : ""}hole Ø${h.d}`, "centre", holeEnt(h)));
     S.board.tracks.forEach((t, ti) => { if (S.show[t.layer]) t.pts.forEach((p, k) => at(p[0], p[1], k && k < t.pts.length - 1 ? "track corner" : "track end", "corner", { track: t })); });
-    if (S.show["Edge.Cuts"]) {
+    const shapeSegs = BoardOutline.isShape(o) ? BoardOutline.segs(o) : null;   // a shape of its own: its real corners, middles, arc centres
+    if (S.show["Edge.Cuts"] && shapeSegs) {
+      shapeSegs.forEach(g => { at(g.x1, g.y1, "board corner", "corner"); const m = BoardOutline.segMid(g); at(m[0], m[1], "middle of the board edge", "corner", { kind: "edge", seg: [g.x1, g.y1, g.x2, g.y2] }); if (g.t === "A") at(g.cx, g.cy, "arc centre", "centre"); });
+      at(o.w / 2, o.h / 2, "board centre", "centre");
+    } else if (S.show["Edge.Cuts"]) {
       [[0, 0], [o.w, 0], [0, o.h], [o.w, o.h]].forEach(p => at(p[0], p[1], "board corner", "corner"));
       [[o.w / 2, 0], [o.w / 2, o.h], [0, o.h / 2], [o.w, o.h / 2]].forEach((p, i) => at(p[0], p[1], "middle of the board edge", "corner", { kind: "edge", seg: edges[[0, 2, 3, 1][i]] }));
       at(o.w / 2, o.h / 2, "board centre", "centre");
@@ -562,7 +595,11 @@
     };
     S.board.tracks.forEach((t, ti) => { if (S.show[t.layer]) for (let k = 0; k + 1 < t.pts.length; k++) on(t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1], "on a track", { kind: "track", track: t, net: netOfTrack(ti) }); });
     if (S.show.Holes) holes().forEach(h => { const d = Math.hypot(x - h.x, y - h.y); if (d > 1e-9) at(h.x + (x - h.x) / d * h.d / 2, h.y + (y - h.y) / d * h.d / 2, "hole rim", "on", holeEnt(h)); });
-    if (S.show["Edge.Cuts"]) edges.forEach(([a, b, c, d]) => on(a, b, c, d, "board edge", { kind: "edge" }));
+    if (S.show["Edge.Cuts"] && shapeSegs) shapeSegs.forEach(g => {
+      if (g.t === "L") { on(g.x1, g.y1, g.x2, g.y2, "board edge", { kind: "edge" }); return; }
+      const a = Math.atan2(y - g.cy, x - g.cx); if (BoardOutline.onArc(g, a)) at(g.cx + g.r * Math.cos(a), g.cy + g.r * Math.sin(a), "board edge", "on", { kind: "edge" });
+    });
+    else if (S.show["Edge.Cuts"]) edges.forEach(([a, b, c, d]) => on(a, b, c, d, "board edge", { kind: "edge" }));
     cons.snapInto(x, y, at, "on");   // onto a construction line or circle
     return best || grid;
   }
@@ -838,6 +875,7 @@
       render(); return;
     }
     if (S.tool === "measure") { const sp = snapPoint(x, y, e.shiftKey || e.altKey); S.measure = !S.measure || S.measure.b ? { a: sp.p, sa: sp, b: null } : { ...S.measure, b: sp.p, sb: sp }; S.mLast = null; render(); return; }
+    if (sketch.onDown(x, y, e)) return;   // the outline sketch: nothing else is edited while it is open
     if (cons.onDown(x, y, e)) return;   // construction tools and the hole tool
     if (dimui.onDown(x, y, e)) return;   // the Dimension tool
     if (S.tool !== "select") { placeAt(x, y); return; }
@@ -897,6 +935,7 @@
     if (S.route) followPointer(x, y);
     const d = S.drag;
     if (d && d.kind === "pan") { S.view.ox = d.ox + sx - d.sx; S.view.oy = d.oy + sy - d.sy; render(); return; }
+    if (sketch.onMove(x, y, e)) { render(); return; }
     if (d && d.kind === "part") {
       const bp = S.board.parts[d.key], nx = snap(d.x0 + x - d.mx), ny = snapY(d.y0 + y - d.my);
       if (nx !== bp.x || ny !== bp.y) { bp.x = nx; bp.y = ny; moveEnds(d.ends, nx - d.x0, ny - d.y0); d.moved = true; analyse(true); render(); }
@@ -945,6 +984,7 @@
   }
   function onUp(e) {
     const d = S.drag; S.drag = null;
+    if (sketch.onUp()) return;
     if (d && d.kind === "dim" && d.edit && !d.moved) { dimui.editAt(d.id); return; }   // the Dimension tool: a click on a value opens its box
     if (d && d.kind === "pan" && d.menu && e && Math.hypot(S.view.ox - d.ox, S.view.oy - d.oy) < 3) { const [x, y] = toWorld(...evPos(e)); openCtx(e.clientX, e.clientY, x, y); return; }
     if (d && d.kind === "box") {
@@ -989,6 +1029,7 @@
       if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); }
       return;
     }
+    if (MODALS.every(id => $(id).hidden) && sketch.onKey(e, /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(e.key).toLowerCase())) return;   // the outline sketch takes the keyboard while it is open
     if (MODALS.every(id => $(id).hidden) && dimui.onKey(e)) return;   // the Dimension tool: its value, H V A, Enter, Esc
     if (MODALS.every(id => $(id).hidden) && cons.hudKey(e)) return;   // numbers typed with a construction tool or the hole tool go into its HUD (3 too)
     if (e.code === "Digit3" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); open3D(); return; }
@@ -1344,10 +1385,11 @@
   const NOTE = ["unplaced", "check", "class", "silk", "dangling", "stopper", "coupling", "heat", "support"];
   const errors = () => S.drc.filter(d => !NOTE.includes(d.kind)).length;
   // the drawing of the board: render() asks for a frame (board-draw.js)
-  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected, consDraw: (c, px, mark) => { cons.draw(c, px, mark); dimui.draw(c, px); } });
+  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected, consDraw: (c, px, mark) => { cons.draw(c, px, mark); dimui.draw(c, px); sketch.draw(c, px); } });
   // construction geometry: the Construct menu's tools, the HUD, tied holes (board-cons.js)
   const cons = BoardCons({ $, B, S, commit, msg, snap, esc, kv, analyse, snapPoint, setTool, render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
   // driving dimensions: the Dimension tool, Align, enforcing them after each change (board-dimui.js)
+  const sketch = BoardSketch({ $, S, msg, snapPoint, setTool, applyOutline, render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
   const dimui = BoardDimUI({ $, S, commit, msg, esc, cons, selItems: () => selItems(), render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
 
   // ---------------------------------------------------------------------------
@@ -1394,8 +1436,16 @@
   // Board setup window: outline, corners, mounting holes, layer stack
   // ---------------------------------------------------------------------------
   let setupHoles = null;
+  function setupShape() {
+    const v = $("setup-shape").value;
+    document.querySelectorAll("#setup-modal [data-shape]").forEach(el => { el.hidden = el.dataset.shape !== v; });
+  }
   function openSetup() {
-    const o = S.board.outline;
+    const o = S.board.outline, shaped = BoardOutline.isShape(o), E = shaped ? BoardOutline.toEntities(o) : [], round = shaped && E.length === 1 && E[0].t === "C";
+    $("setup-shape").value = round ? "round" : shaped ? "custom" : "rect"; $("setup-shape").querySelector('[value="custom"]').disabled = !shaped || round;
+    $("setup-dia").value = round ? o.w : Math.min(o.w, o.h); $("setup-dia").classList.remove("invalid");
+    $("setup-custom").textContent = shaped && !round ? `The board has its own shape: ${BoardOutline.describe(o)}. Sketch the outline… edits it; Rectangle or Round replaces it.` : "";
+    setupShape();
     document.querySelectorAll("#setup-modal [data-o]").forEach(el => { el.value = o[el.dataset.o] || 0; el.classList.remove("invalid"); });
     document.querySelectorAll("#setup-modal [data-s]").forEach(el => { el.value = String(S.board.stackup[el.dataset.s]); });
     setupHoles = S.board.holes.slice(); holesNow();
@@ -1404,19 +1454,32 @@
   }
   const holesNow = () => { $("holes-now").textContent = setupHoles.length ? `${setupHoles.length} mounting hole${setupHoles.length > 1 ? "s" : ""}: ${setupHoles.map(h => `Ø${h.d} at ${h.x.toFixed(1)}, ${showY(h.y).toFixed(1)}`).slice(0, 4).join("; ")}` : "No mounting holes."; };
   function readOutline() {
+    const kind = $("setup-shape").value;
+    if (kind === "custom") return S.board.outline;
+    if (kind === "round") { const el = $("setup-dia"), d = parseFloat(String(el.value).replace(",", ".")); if (!(d >= 10)) { el.classList.add("invalid"); return null; } return BoardOutline.circleOutline(d); }
     const o = {}; let ok = true;
     document.querySelectorAll("#setup-modal [data-o]").forEach(el => { const v = parseFloat(String(el.value).replace(",", ".")); const min = el.dataset.o === "r" ? 0 : 10; if (!(v >= min)) { el.classList.add("invalid"); ok = false; } else o[el.dataset.o] = v; });
     return ok ? o : null;
   }
   function applySetup() {
     const o = readOutline(); if (!o) return;
-    setHeight(o.h);   // the origin (bottom left) stays put; the holes kept from before move with the board
-    S.board.outline = { ...S.board.outline, ...o, r: Math.min(o.r, o.w / 2, o.h / 2) };
+    const was = S.board.outline, kind = $("setup-shape").value;
+    if (kind === "rect") {
+      setHeight(o.h);   // the origin (bottom left) stays put; the holes kept from before move with the board
+      const next = { ...S.board.outline, ...o, r: Math.min(o.r, o.w / 2, o.h / 2) }; delete next.shape;
+      // from a shape of its own back to a rectangle: what was tied to its edges is let go
+      if (was.shape) window.BoardConstruct.shift(S.board, 0, 0, {});
+      S.board.outline = next;
+    } else if (kind === "round" && JSON.stringify(o.shape) !== JSON.stringify(was.shape)) {
+      // a round board in the place of the old box: its bottom-left corner stays the origin
+      setHeight(o.h); window.BoardConstruct.shift(S.board, 0, 0, {});
+      S.board.outline = { ...o, at: S.board.outline.at };
+    }
     document.querySelectorAll("#setup-modal [data-s]").forEach(el => { S.board.stackup[el.dataset.s] = +el.value; });
     S.board.holes = setupHoles;
     const sh = S.board.sheet || {}, size = $("sheet-size").value, orient = $("sheet-orient").value;
     $("setup-modal").hidden = true;
-    if (size !== sh.size || orient !== sh.orient) setSheet({ size, orient }, `Board ${S.board.outline.w} × ${S.board.outline.h} mm`); else commit(`Board ${S.board.outline.w} × ${S.board.outline.h} mm`);
+    if (size !== sh.size || orient !== sh.orient) setSheet({ size, orient }, `Board ${BoardOutline.describe(S.board.outline)}`); else commit(`Board ${BoardOutline.describe(S.board.outline)}`);
     fit();
   }
 
@@ -1426,7 +1489,8 @@
   function svgDoc(layers, mirror) {
     const o = S.board.outline, M = S.model, parts = [], color = layers.length > 1, r = Math.min(o.r || 0, o.w / 2, o.h / 2);
     const tr = mirror ? ` transform="translate(${o.w} 0) scale(-1 1)"` : "";
-    parts.push(`<rect x="0" y="0" width="${o.w}" height="${o.h}" rx="${r}" fill="${color ? "#0c1712" : "white"}" stroke="${color ? COLORS["Edge.Cuts"] : "black"}" stroke-width="0.15"/>`);
+    if (BoardOutline.isShape(o)) parts.push(`<path d="${BoardOutline.svgPath(o)}" fill-rule="evenodd" fill="${color ? "#0c1712" : "white"}" stroke="${color ? COLORS["Edge.Cuts"] : "black"}" stroke-width="0.15"/>`);
+    else parts.push(`<rect x="0" y="0" width="${o.w}" height="${o.h}" rx="${r}" fill="${color ? "#0c1712" : "white"}" stroke="${color ? COLORS["Edge.Cuts"] : "black"}" stroke-width="0.15"/>`);
     const ink = l => (color ? COLORS[l] : "black");
     ["B.Cu", "F.Cu"].filter(l => layers.includes(l)).forEach(l => {
       S.fills.filter(f => f.tear && f.layer === l).forEach(f => parts.push(`<polygon points="${f.pts.map(p => p.join(",")).join(" ")}" fill="${ink(l)}"/>`));
@@ -1464,6 +1528,8 @@
     x.globalCompositeOperation = "destination-out"; x.fillStyle = "#000";
     const d = BoardFab.drills(S.board, S.model);
     d.pth.concat(d.npth).forEach(([dia, pts]) => pts.forEach(([hx, hy]) => { x.beginPath(); x.arc(hx, hy, +dia / 2, 0, Math.PI * 2); x.fill(); }));
+    // a board with a shape of its own: its cut-outs are open too
+    if (BoardOutline.isShape(o)) BoardOutline.polys(o, 0.02).slice(1).forEach(pl => { x.beginPath(); pl.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]))); x.closePath(); x.fill(); });
     return c;
   }
   function build3D(frame) {
@@ -1560,12 +1626,12 @@
   const { stopRouting, autoRoute, clearStale, dsnOf, importSes, pollRouter, rearrange, routeNudge, router, routerSave, routerSetup, routerTest, routerUi, routerStatusLink, routerWhere, unroute } = BoardAutoroute({ $, B, S, analyse, appVersion, baseName, commit, dropResidue, msg, render: () => render(), renderPanels: () => renderPanels() });
   function msg(t) { if (t) { const el = $("st-msg"); el.textContent = t; el.title = t; } }
   function init() {
-    canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0; measureCardInit(); cons.init(); dimui.init();
+    canvas = $("pcb"); attachCanvas(canvas); canvas.tabIndex = 0; measureCardInit(); cons.init(); dimui.init(); sketch.init();
     canvas.addEventListener("mousedown", onDown);
     window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
     canvas.addEventListener("dblclick", e => {
       if (S.route) finishRoute(); else if (S.poly) closePoly();
-      else { const [x, y] = toWorld(...evPos(e)); if (S.tool === "select" && dimui.dbl(x, y)) return; const k = hitAreaCorner(x, y); if (k >= 0) dropCorner(k); }
+      else { const [x, y] = toWorld(...evPos(e)); if (sketch.active()) { sketch.dbl(x, y); return; } if (S.tool === "select" && dimui.dbl(x, y)) return; const k = hitAreaCorner(x, y); if (k >= 0) dropCorner(k); else if (S.tool === "select" && S.show["Edge.Cuts"] && Math.abs(B.edgeDist(x, y, S.board.outline)) * S.view.scale <= 5 && !hitPart(x, y)) sketch.open(); }   // a double-click on the board's edge: its sketch
     });
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("contextmenu", e => e.preventDefault());
@@ -1605,7 +1671,17 @@
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => el.addEventListener("change", rulesNets));
     $("rules-ipc").addEventListener("change", rulesNets);
     $("setup-apply").onclick = applySetup; $("setup-cancel").onclick = () => { $("setup-modal").hidden = true; };
-    $("holes-corners").onclick = () => { const o = readOutline() || S.board.outline, d = +$("hole-d").value, inset = parseFloat($("hole-inset").value) || 5; setupHoles = B.cornerHoles(o, d, inset).map((h, k) => ({ ...h, locked: true, at: { ref: { t: "board", at: ["TL", "TR", "BL", "BR"][k] }, dx: k % 2 ? -inset : inset, dy: k < 2 ? -inset : inset } })); holesNow(); };   // tied to the corners: a resized board takes them along
+    $("setup-shape").onchange = setupShape;
+    $("setup-sketch").onclick = () => { $("setup-modal").hidden = true; sketch.open(); };
+    $("holes-corners").onclick = () => {
+      const o = readOutline() || S.board.outline, d = +$("hole-d").value, inset = parseFloat($("hole-inset").value) || 5;
+      if (BoardOutline.isShape(o)) {
+        // a shape of its own: from each corner of the box towards the middle, the first place the inset inside the edge
+        setupHoles = [[0, 0], [o.w, 0], [0, o.h], [o.w, o.h]].map(([cx, cy]) => { for (let t = 0; t <= 1; t += 0.002) { const x = cx + (o.w / 2 - cx) * t, y = cy + (o.h / 2 - cy) * t; if (B.edgeDist(x, y, o) >= inset) return { x: +x.toFixed(2), y: +y.toFixed(2), d, locked: true }; } return null; }).filter(Boolean);
+        holesNow(); return;
+      }
+      setupHoles = B.cornerHoles(o, d, inset).map((h, k) => ({ ...h, locked: true, at: { ref: { t: "board", at: ["TL", "TR", "BL", "BR"][k] }, dx: k % 2 ? -inset : inset, dy: k < 2 ? -inset : inset } })); holesNow();   // tied to the corners: a resized board takes them along
+    };
     $("holes-clear").onclick = () => { setupHoles = []; holesNow(); };
     $("btn-cad").onclick = () => ToolWindows.open("circuit_sandbox.html");
     $("btn-help").onclick = () => { $("help-modal").hidden = false; }; $("btn-help-close").onclick = () => { $("help-modal").hidden = true; };
@@ -1641,6 +1717,6 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { cons, dimui, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

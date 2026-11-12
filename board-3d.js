@@ -464,11 +464,15 @@
     const area = ring.reduce((s, p, i) => { const q = ring[(i + 1) % ring.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0);
     if (area < 0) ring = ring.reverse();                       // counter-clockwise seen from above
     ring = ring.filter((p, i) => { const q = ring[(i + 1) % ring.length]; return Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-6; });
-    const holes = [];
+    let holes = [];
     model.pads.forEach(p => { if (keep.has(p.part) && !p.smd && B().edgeDist(p.x, p.y, o) > p.drill / 2) holes.push([p.x, p.y, p.drill / 2]); });
     board.vias.forEach(v => holes.push([v.x, v.y, (v.drill || R.viaDrill) / 2]));
     (board.holes || []).forEach(h => holes.push([h.x, h.y, h.d / 2]));
     (model.holes || []).forEach(h => { if (keep.has(h.part)) holes.push([h.x, h.y, h.d / 2]); });
+    // a board with a shape of its own: a hole that breaks through the edge or into a cut-out is left out
+    // (a solid cannot have it), and the cut-outs are openings through the board like the holes
+    const OL = root.BoardOutline, shaped = !!(OL && OL.isShape(o)), cuts = shaped ? OL.polys(o, 0.02).slice(1) : [];
+    if (shaped) holes = holes.filter(([x, y, r]) => OL.dist(o, x, y) > r + 0.01);
     const V = [], F = [], n = ring.length;
     ring.forEach(([x, y]) => V.push([x, y, 0])); ring.forEach(([x, y]) => V.push([x, y, t]));
     const topLoops = [ring.map((_, i) => n + i)], botLoops = [ring.map((_, i) => i)];
@@ -482,6 +486,14 @@
         f.vn = f.loops[0].map(e => unit([x - V[e][0], -y - V[e][1], 0])); F.push(f);
       }
     });
+    cuts.forEach(pl => {
+      // counter-clockwise seen from above (as the edge), its walls facing into the opening
+      let c = pl.map(([x, y]) => [x, -y]); if (c.reduce((a, p, i) => { const q = c[(i + 1) % c.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0) < 0) c = c.reverse();
+      const k = c.length, base = V.length;
+      c.forEach(([x, y]) => V.push([x, y, 0])); c.forEach(([x, y]) => V.push([x, y, t]));
+      botLoops.push(c.map((_, i) => base + i)); topLoops.push(c.map((_, i) => base + k + i));
+      for (let i = 0; i < k; i++) { const j = (i + 1) % k, a = c[i], b = c[j]; F.push(face(V, [[base + i, base + j, base + k + j, base + k + i]], [a[1] - b[1], b[0] - a[0], 0])); }
+    });
     F.push(face(V, topLoops, [0, 0, 1]), face(V, botLoops, [0, 0, -1]));
     // the true shape for STEP: the outline's straight sides and quarter-circle corners (counter-clockwise
     // seen from above, world y = -board y), and the holes as circles
@@ -490,8 +502,19 @@
     const line = p => outer.push({ p });
     line([Rc, -H]); corner([W - Rc, -H], [W - Rc, -H + Rc]); line([W, -H + Rc]); corner([W, -Rc], [W - Rc, -Rc]);
     line([W - Rc, 0]); corner([Rc, 0], [Rc, -Rc]); line([0, -Rc]); corner([0, -H + Rc], [Rc, -H + Rc]);
-    const segs = outer.filter((s, i) => { const q = outer[(i + 1) % outer.length].p; return s.c || Math.hypot(s.p[0] - q[0], s.p[1] - q[1]) > 1e-6; });
-    const round = { o: [0, 0, 0], a: [0, 0, 1], x: [1, 0, 0], h: t, outer: segs, holes: holes.map(([x, y, r]) => ({ c: [x, -y], r })) };
+    let segs = outer.filter((s, i) => { const q = outer[(i + 1) % outer.length].p; return s.c || Math.hypot(s.p[0] - q[0], s.p[1] - q[1]) > 1e-6; });
+    const rh = holes.map(([x, y, r]) => ({ c: [x, -y], r }));
+    if (shaped) {
+      // its own lines and arcs: every loop counter-clockwise in the world (y turned over). The edge runs
+      // the other way round there, so it is walked backwards; a cut-out already runs that way
+      const loops = o.shape.map((l, li) => {
+        const S = OL.loopSegs(l);
+        return li ? S.map(q => (q.t === "A" ? { p: [q.x1, -q.y1], c: [q.cx, -q.cy], r: q.r, cw: q.sw > 0 } : { p: [q.x1, -q.y1] }))
+          : S.slice().reverse().map(q => (q.t === "A" ? { p: [q.x2, -q.y2], c: [q.cx, -q.cy], r: q.r, cw: q.sw < 0 } : { p: [q.x2, -q.y2] }));
+      });
+      segs = loops[0]; loops.slice(1).forEach(l => rh.push({ segs: l }));
+    }
+    const round = { o: [0, 0, 0], a: [0, 0, 1], x: [1, 0, 0], h: t, outer: segs, holes: rh };
     return { name: "Board", ref: "", color: C.board, alpha: 1, verts: V, faces: F, board: true, uv: { w: o.w, h: o.h }, round };
   }
 
@@ -546,7 +569,8 @@
       const vec = ([u, v]) => [0, 1, 2].map(k => u * X[k] + v * Y[k]);
       const place = (p, n, r) => E(`AXIS2_PLACEMENT_3D('',${pt(p)},${dir(n)},${dir(r)})`);
       const lineE = (va, vb, pa, pb) => { const d = sub(pb, pa); return E(`EDGE_CURVE('',${va},${vb},${E(`LINE('',${pt(pa)},${E(`VECTOR('',${dir(unit(d))},${R(Math.hypot(...d))})`)})`)},.T.)`); };
-      const arcE = (va, vb, c, r, w) => E(`EDGE_CURVE('',${va},${vb},${E(`CIRCLE('',${place(at(c, w), A, X)},${R(r)})`)},.T.)`);
+      // an arc turns counter-clockwise about the axis; a clockwise one (cw) is a circle about the axis turned over
+      const arcE = (va, vb, c, r, w, cw) => E(`EDGE_CURVE('',${va},${vb},${E(`CIRCLE('',${place(at(c, w), cw ? A.map(v => -v) : A, X)},${R(r)})`)},.T.)`);
       const oe = (e, fw) => E(`ORIENTED_EDGE('',*,*,${e},${fw ? ".T." : ".F."})`);
       const bound = (edges, outer) => E(`${outer ? "FACE_OUTER_BOUND" : "FACE_BOUND"}('',${E(`EDGE_LOOP('',(${edges.join(",")}))`)},.T.)`);
       const faces = [], botHoles = [], topHoles = [];
@@ -557,18 +581,24 @@
         const eb = [], et = [];
         segs.forEach((s, i) => {
           const j = (i + 1) % n, q = segs[j].p;
-          eb.push(s.c ? arcE(vb[i], vb[j], s.c, s.r, 0) : lineE(vb[i], vb[j], at(s.p, 0), at(q, 0)));
-          et.push(s.c ? arcE(vt[i], vt[j], s.c, s.r, g.h) : lineE(vt[i], vt[j], at(s.p, g.h), at(q, g.h)));
+          eb.push(s.c ? arcE(vb[i], vb[j], s.c, s.r, 0, s.cw) : lineE(vb[i], vb[j], at(s.p, 0), at(q, 0)));
+          et.push(s.c ? arcE(vt[i], vt[j], s.c, s.r, g.h, s.cw) : lineE(vt[i], vt[j], at(s.p, g.h), at(q, g.h)));
+          // the loop turns counter-clockwise about the normal that looks away from the material: the other
+          // way round on a hole's wall. The face keeps its surface's own normal (a plane's: to the right of
+          // travel; a cylinder's: away from its axis) where that is the same one: on the outer profile's
+          // lines and counter-clockwise arcs, and on a hole's clockwise arcs (a bulge of material into it)
+          const same = s.c ? !!s.cw === hole : !hole;
           const loop = hole ? [oe(eb[i], false), oe(up[i], true), oe(et[i], true), oe(up[j], false)] : [oe(eb[i], true), oe(up[j], true), oe(et[i], false), oe(up[i], false)];
           let surf;
           if (s.c) surf = E(`CYLINDRICAL_SURFACE('',${place(at(s.c, 0), A, X)},${R(s.r)})`);
           else { const d = unit(vec([q[0] - s.p[0], q[1] - s.p[1]])), nrm = [d[1] * A[2] - d[2] * A[1], d[2] * A[0] - d[0] * A[2], d[0] * A[1] - d[1] * A[0]]; surf = E(`PLANE('',${place(at(s.p, 0), nrm, d)})`); }
-          faces.push(E(`ADVANCED_FACE('',(${bound(loop, true)}),${surf},${hole && s.c ? ".F." : ".T."})`));
+          faces.push(E(`ADVANCED_FACE('',(${bound(loop, true)}),${surf},${same ? ".T." : ".F."})`));
         });
         return { eb, et };
       };
       const o = ring(g.outer, false);
-      g.holes.forEach(h => { const e = ring([{ p: [h.c[0] + h.r, h.c[1]], c: h.c, r: h.r }], true); botHoles.push(bound([oe(e.eb[0], true)], false)); topHoles.push(bound([oe(e.et[0], false)], false)); });
+      // a hole: a circle { c, r }, or any closed profile { segs } (counter-clockwise, like the outer one)
+      g.holes.forEach(h => { const e = ring(h.segs || [{ p: [h.c[0] + h.r, h.c[1]], c: h.c, r: h.r }], true); botHoles.push(bound(e.eb.map(q => oe(q, true)), false)); topHoles.push(bound(e.et.map(q => oe(q, false)).reverse(), false)); });
       const bot = bound(o.eb.map(e => oe(e, false)).reverse(), true), top = bound(o.et.map(e => oe(e, true)), true);
       faces.push(E(`ADVANCED_FACE('',(${[bot].concat(botHoles).join(",")}),${E(`PLANE('',${place(g.o, A.map(c => -c), X)})`)},.T.)`));
       faces.push(E(`ADVANCED_FACE('',(${[top].concat(topHoles).join(",")}),${E(`PLANE('',${place(at([0, 0], g.h), A, X)})`)},.T.)`));
