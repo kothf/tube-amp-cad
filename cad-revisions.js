@@ -257,7 +257,7 @@
     if (!V) return "site";
     let v = null; try { v = localStorage.getItem(STORE_KEY); } catch (e) { /* private window */ }
     if (v === "vault" || v === "site") return v;
-    return !base(origin) && V.shared().supported ? "vault" : "site";
+    return !base(origin) && V.shared().writes ? "vault" : "site";
   }
   function setStore(v) { try { localStorage.setItem(STORE_KEY, v === "vault" ? "vault" : "site"); } catch (e) { /* private window */ } }
   // the client of the store chosen
