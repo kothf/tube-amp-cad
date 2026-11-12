@@ -183,24 +183,26 @@
     const seen = new Set();
     wires = wires.filter(w => { const a = key(w.x1, w.y1), b = key(w.x2, w.y2); const k = a < b ? a + "|" + b : b + "|" + a; if (seen.has(k)) return false; seen.add(k); return true; });
     // split wires where an endpoint or a pin lies on their interior
-    const points = [];
-    wires.forEach(w => { points.push([w.x1, w.y1], [w.x2, w.y2]); });
-    S.comps.forEach(c => compPins(c).forEach(p => points.push([p.x, p.y])));
+    // (the points by their row and column, so a big sheet does not try every point on every wire)
+    const rows = new Map(), cols = new Map(), mark = (x, y) => { if (!rows.has(y)) rows.set(y, new Set()); rows.get(y).add(x); if (!cols.has(x)) cols.set(x, new Set()); cols.get(x).add(y); };
+    wires.forEach(w => { mark(w.x1, w.y1); mark(w.x2, w.y2); });
+    S.comps.forEach(c => compPins(c).forEach(p => mark(p.x, p.y)));
+    const cut = [];
+    wires.forEach(w => {
+      const h = isH(w), a = h ? w.x1 : w.y1, b = h ? w.x2 : w.y2, lo = Math.min(a, b), hi = Math.max(a, b), on = [];
+      ((h ? rows.get(w.y1) : cols.get(w.x1)) || []).forEach(v => { if (v > lo && v < hi) on.push(v); });
+      if (!on.length) { cut.push(w); return; }
+      on.sort((p, q) => (a < b ? p - q : q - p));
+      const pt = v => (h ? [v, w.y1] : [w.x1, v]);
+      let from = [w.x1, w.y1];
+      [...on.map(pt), [w.x2, w.y2]].forEach((to, i) => {
+        const part = { id: i ? newId("w") : w.id, x1: from[0], y1: from[1], x2: to[0], y2: to[1] };
+        if (i && S.sel.wires.has(w.id)) S.sel.wires.add(part.id);
+        cut.push(part); from = to;
+      });
+    });
+    wires = cut;
     let changed = true;
-    while (changed) {
-      changed = false;
-      for (let i = 0; i < wires.length && !changed; i++) {
-        const w = wires[i];
-        for (const [x, y] of points) {
-          if (onSegInterior(w, x, y)) {
-            wires.splice(i, 1, { id: w.id, x1: w.x1, y1: w.y1, x2: x, y2: y }, { id: newId("w"), x1: x, y1: y, x2: w.x2, y2: w.y2 });
-            if (S.sel.wires.has(w.id)) S.sel.wires.add(wires[i + 1].id);
-            changed = true;
-            break;
-          }
-        }
-      }
-    }
     // merge collinear pairs meeting at a point with exactly two wire ends and no pin
     const pinKeys = new Set();
     S.comps.forEach(c => compPins(c).forEach(p => pinKeys.add(key(p.x, p.y))));
@@ -312,7 +314,8 @@
   // The board window or tab, the netlist and board document it shares with the CAD, cross-probing (cad-board-link.js)
   const { BOARD_KEY, boardNetlist, isBoardTab, probeBoard, scheduleBoardNetlist, selectFromBoard, selectNetFromBoard, sendBoardNetlist, setBoardTab, showBoard, storeBoard } = CadBoardLink({ S, VERSION, channel, compBBox, compPins, frames, getCanvas: () => canvas, netDC, netWave, pinCurrents, render, selSig, showFile, topo, updateInspector, usedCustomTubes });
   // KiCad export: schematic, board and project in one ZIP (cad-kicad.js, kicad-export.js)
-  const { exportKicad, kicadFiles, fabZip } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo });
+  const { exportKicad, kicadFiles, fabZip, openKicad, openKicadDialog, isKicadFile } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo, showBoard, storeBoard, sendBoardNetlist,
+    openDesign: (d, what, ask) => openDesign(d, what, ask), setName: n => { setCurFile(null, n); markClean(); } });
   S.showLegend = (() => { try { return localStorage.getItem(LEGEND_KEY) !== "0"; } catch (e) { return true; } })();
   S.sim.live = (() => { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch (e) { return true; } })();
 
@@ -806,7 +809,7 @@
   // Mouse / keyboard
   // ---------------------------------------------------------------------------
   function evPos(e) {
-    const r = canvas.getBoundingClientRect();
+    const r = canvas.parentElement.getBoundingClientRect();   // the stage: the canvas may be stretched for a moment (see gesture)
     const sx = e.clientX - r.left, sy = e.clientY - r.top;
     const w = toWorld(sx, sy);
     S.mouse = { sx, sy, wx: w.x, wy: w.y };
@@ -900,7 +903,7 @@
     const lh = !!legendBox && m.sx > legendBox.x - 12 && m.sx < legendBox.x + legendBox.w + 12 && m.sy > legendBox.y - 12 && m.sy < legendBox.y + legendBox.h + 12;
     if (lh !== legendHover) { legendHover = lh; render(); }
     const d = S.drag;
-    if (d && d.kind === "pan") { S.view.ox = d.ox + (m.sx - d.sx); S.view.oy = d.oy + (m.sy - d.sy); render(); return; }
+    if (d && d.kind === "pan") { S.view.ox = d.ox + (m.sx - d.sx); S.view.oy = d.oy + (m.sy - d.sy); gesture(); render(); return; }
     if (d && d.kind === "knob") { setKnob(d.c, knobAt(d.c, m)); return; }
     if (d && d.kind === "comps") { updateCompDrag(m.wx, m.wy); return; }
     if (d && d.kind === "wire") { updateWireDrag(m.wx, m.wy); return; }
@@ -1022,6 +1025,7 @@
       clearTimeout(knobCommit); knobCommit = setTimeout(() => { commit(); updateInspector(); }, 500);
       return;
     }
+    gesture();
     if (e.shiftKey) { S.view.ox -= e.deltaY || e.deltaX; render(); return; }
     // a sideways swipe on a touchpad (or a tilted wheel) scrolls left and right
     if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(e.deltaY)) { S.view.ox -= e.deltaX; render(); return; }
@@ -1158,63 +1162,109 @@
     requestAnimationFrame(draw);
   }
 
+  // Zooming and panning with the wheel (or dragging the view) move and stretch the picture
+  // last drawn (a CSS transform on the canvas, which costs the page next to nothing) until the
+  // view rests for GESTURE_MS: a big circuit with its stickers and the animation takes longer to
+  // draw than a wheel notch lasts. It is drawn anew on the way, at most every REDRAW_MS, once
+  // the picture leaves more than a sixth of the view bare or is stretched past twice its size.
+  const GESTURE_MS = 160, REDRAW_MS = 100;
+  let drawnView = null, drawnAt = 0, gestureAt = 0, gestureTimer = null, stretched = false;
+  function gesture() {
+    gestureAt = performance.now();
+    clearTimeout(gestureTimer);
+    gestureTimer = setTimeout(() => { gestureTimer = null; gestureAt = 0; render(); }, GESTURE_MS);
+  }
+  function stretch(rel, x0, y0) {
+    stretched = rel !== null;
+    canvas.style.transform = stretched ? `translate(${x0}px, ${y0}px) scale(${rel})` : "";
+  }
+
   function draw() {
     renderQueued = false;
-    const W = canvas.clientWidth, H = canvas.clientHeight;
+    const W = canvas.clientWidth, H = canvas.clientHeight, v = S.view;
+    if (gestureAt && drawnView && !forceRecord && (!S.drag || S.drag.kind === "pan") && !S.wiring && !S.placing) {
+      const rel = v.scale / drawnView.scale, x0 = v.ox - drawnView.ox * rel, y0 = v.oy - drawnView.oy * rel;
+      const bare = Math.max(0, x0, y0, W - (x0 + W * rel), H - (y0 + H * rel));
+      if ((rel <= 2 && bare <= Math.min(W, H) / 6) || performance.now() - drawnAt < REDRAW_MS) { stretch(rel, x0, y0); return; }
+    }
+    if (stretched) stretch(null);
     if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
+    drawScene(W, H);
+    drawOverlays(W, H);
+    drawnView = { scale: v.scale, ox: v.ox, oy: v.oy }; drawnAt = performance.now();
+  }
+  // the drawing itself, in the view S.view, W × H (CSS pixels) at dpr
+  function drawScene(W, H) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#0a0e14"; ctx.fillRect(0, 0, W, H);
     const { scale, ox, oy } = S.view;
 
-    // grid dots
+    // grid dots: one path filled once (thousands of fillRect calls a frame made zooming out stutter)
     const step = scale < 0.6 ? 50 : (scale < 1.2 ? 20 : 10);
     const tl = toWorld(0, 0), br = toWorld(W, H);
     ctx.fillStyle = "#1a2433";
     const sz = Math.max(1, 1.4 * Math.min(scale, 1.5));
+    ctx.beginPath();
     for (let x = Math.floor(tl.x / step) * step; x <= br.x; x += step)
       for (let y = Math.floor(tl.y / step) * step; y <= br.y; y += step)
-        ctx.fillRect(x * scale + ox - sz / 2, y * scale + oy - sz / 2, sz, sz);
+        ctx.rect(x * scale + ox - sz / 2, y * scale + oy - sz / 2, sz, sz);
+    ctx.fill();
 
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
     const T = topo();
 
-    // drawing sheets lie behind everything; every text the sheet and parts print is recorded
-    // so the stickers can keep clear of it
-    textBoxes = [];
-    ctx.fillText = function (t, x, y, mw) { recordText(this, String(t), x, y); return CanvasRenderingContext2D.prototype.fillText.call(this, t, x, y, mw); };
+    // Only what lies on screen is drawn (a part's labels may stand a little off its symbol).
+    // The texts of the sheets and parts are recorded, so the stickers can keep clear of them,
+    // only on a frame that places the stickers anew: then everything is drawn and measured.
+    const record = forceRecord || stickersDue();
+    const M = 80 / Math.min(scale, 1), vx1 = tl.x - M, vy1 = tl.y - M, vx2 = br.x + M, vy2 = br.y + M;
+    const seen = record ? () => true : (x1, y1, x2, y2) => x2 >= vx1 && x1 <= vx2 && y2 >= vy1 && y1 <= vy2;
+    const compSeen = c => { const b = compBBox(c); return seen(b.x1, b.y1, b.x2, b.y2); };
+    const wireSeen = w => seen(Math.min(w.x1, w.x2), Math.min(w.y1, w.y2), Math.max(w.x1, w.x2), Math.max(w.y1, w.y2));
+    const wires = record ? S.wires : S.wires.filter(wireSeen);
+    view = { seen, wires };
+
+    // drawing sheets lie behind everything
+    if (record) {
+      textBoxes = [];
+      ctx.fillText = function (t, x, y, mw) { recordText(this, String(t), x, y); return CanvasRenderingContext2D.prototype.fillText.call(this, t, x, y, mw); };
+    }
     recordingFrame = true;
-    S.comps.forEach(c => { if (c.type === "frame") drawComp(c, S.sel.comps.has(c.id), false); });
+    S.comps.forEach(c => { if (c.type === "frame" && compSeen(c)) drawComp(c, S.sel.comps.has(c.id), false); });
     recordingFrame = false;
     // wires
     ctx.lineCap = "round";
-    drawAnimTint(T);
+    drawAnimTint(T, wires);
     // with the voltages shown, wires that carry signal (AC) get a cyan glow under them (the animation tints them instead)
     if (S.showVolts && !S.anim.on && S.sim.result && S.sim.result.tran) {
       ctx.strokeStyle = "rgba(0,229,255,0.30)"; ctx.lineWidth = 7;
-      S.wires.forEach(w => { const ac = netAC(T.wireNet.get(w.id)); if (ac && ac.signal) { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); } });
+      wires.forEach(w => { const ac = netAC(T.wireNet.get(w.id)); if (ac && ac.signal) { ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke(); } });
     }
     drawProbeGlow(T);
-    S.wires.forEach(w => {
+    wires.forEach(w => {
       const sel = S.sel.wires.has(w.id);
       ctx.strokeStyle = sel ? "#ffd54f" : "#3fb950";
       ctx.lineWidth = sel ? 3 : 2;
       ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
     });
-    drawAnimDots();
+    drawAnimDots(wires);
     // dangling wire ends
     ctx.fillStyle = "#ff7b72";
     T.degree.forEach((d, k) => {
       if (d !== 1 || T.pinAt.has(k)) return;
       const [x, y] = k.split(",").map(Number);
+      if (!seen(x, y, x, y)) return;
       ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
     });
     // junction dots
     ctx.fillStyle = "#3fb950";
-    T.junctions.forEach(j => { ctx.beginPath(); ctx.arc(j.x, j.y, 4, 0, Math.PI * 2); ctx.fill(); });
+    ctx.beginPath();
+    T.junctions.forEach(j => { if (seen(j.x, j.y, j.x, j.y)) { ctx.moveTo(j.x + 4, j.y); ctx.arc(j.x, j.y, 4, 0, Math.PI * 2); } });
+    ctx.fill();
 
     // components
-    S.comps.forEach(c => { if (c.type !== "frame") drawComp(c, S.sel.comps.has(c.id), false); });
-    delete ctx.fillText;
+    S.comps.forEach(c => { if (c.type !== "frame" && compSeen(c)) drawComp(c, S.sel.comps.has(c.id), false); });
+    if (record) delete ctx.fillText;
 
     // voltage and current stickers
     if ((S.showVolts || S.showAmps) && S.sim.result) drawStickers(T);
@@ -1248,8 +1298,10 @@
       ctx.strokeRect(Math.min(d.x0, d.x1), Math.min(d.y0, d.y1), Math.abs(d.x1 - d.x0), Math.abs(d.y1 - d.y0));
       ctx.setLineDash([]);
     }
-
-    // empty-sheet hint
+  }
+  // what stands over the drawing in screen space: the empty-sheet hint, legend, animation's time line, probe cards
+  function drawOverlays(W, H) {
+    const T = topo();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (!S.comps.length && !S.wires.length) {
       ctx.fillStyle = "#5c6b80"; ctx.textAlign = "center"; ctx.font = "15px system-ui, sans-serif";
@@ -1595,7 +1647,12 @@
   // wire, current below / left), else the one that covers least. Placement is
   // recomputed only when the circuit, the result or the switches change.
   // ---------------------------------------------------------------------------
-  let textBoxes = [], stickerCache = null, recordingFrame = false;
+  let textBoxes = [], stickerCache = null, recordingFrame = false, forceRecord = false;
+  // what the frame being drawn shows: seen(x1, y1, x2, y2) says whether a box is on screen, wires the wires that are
+  let view = { seen: () => true, wires: [] };
+  const stickerKey = () => [S.history[S.hIndex], S.sim.result, S.showVolts, S.showAmps, S.wires];
+  // the stickers are placed anew on this frame (while dragging, every frame)
+  const stickersDue = () => (S.showVolts || S.showAmps) && !!S.sim.result && ((!!S.drag && S.drag.kind !== "pan" && S.drag.kind !== "box") || !stickerCache || stickerCache.key.some((k, i) => k !== stickerKey()[i]));
   const TAG_H = 12;
   // record the world-space box of a text drawn with the current transform
   function recordText(c2, t, x, y) {
@@ -1713,10 +1770,10 @@
     return out;
   }
   function drawStickers(T) {
-    const key = [S.history[S.hIndex], S.sim.result, S.showVolts, S.showAmps, S.wires];
-    if (S.drag || !stickerCache || stickerCache.key.some((k, i) => k !== key[i])) stickerCache = { key, list: placeStickers(T) };
+    if (stickersDue()) stickerCache = { key: stickerKey(), list: placeStickers(T) };
     ctx.font = "9px ui-monospace, monospace";
     stickerCache.list.forEach(t => {
+      if (!view.seen(t.x, t.y, t.x + t.w, t.y + TAG_H)) return;
       ctx.fillStyle = "rgba(10,14,20,0.85)"; ctx.fillRect(t.x, t.y, t.w, TAG_H);
       ctx.strokeStyle = t.line; ctx.lineWidth = 0.8; ctx.strokeRect(t.x, t.y, t.w, TAG_H);
       if (!t.parts) { ctx.fillStyle = t.fg; ctx.fillText(t.txt, t.x + 3, t.y + 9); return; }
@@ -1725,6 +1782,7 @@
   }
   // for tests: how many stickers and how many still cover a text or another sticker
   function stickerReport() {
+    forceRecord = true; try { draw(); } finally { forceRecord = false; }   // every text of the drawing, measured now
     const list = (stickerCache && stickerCache.list) || [];
     const box = t => ({ x1: t.x, y1: t.y, x2: t.x + t.w, y2: t.y + TAG_H });
     const onText = list.filter(t => textBoxes.some(b => overlap(box(t), b) > 0.5)).map(t => t.txt);
@@ -1760,7 +1818,11 @@
     document.querySelectorAll(".pal-item.active").forEach(el => { if (!S.placing) el.classList.remove("active"); });
     render();
   }
-  function updateZoomLabel() { document.getElementById("zoom-label").textContent = Math.round(S.view.scale * 100) + "%"; }
+  // the text node's value, not textContent: a new child would wake the hints' page scan (hints.js) on every wheel notch
+  function updateZoomLabel() {
+    const el = document.getElementById("zoom-label"), t = Math.round(S.view.scale * 100) + "%";
+    if (el.firstChild && el.firstChild.nodeType === 3 && !el.firstChild.nextSibling) { if (el.firstChild.nodeValue !== t) el.firstChild.nodeValue = t; } else el.textContent = t;
+  }
 
   function startPlacing(type, params, el) {
     S.placing = { type, params: params || {}, rot: 0 };
@@ -1973,7 +2035,10 @@
     const panel = def.panel && def.panel(c, readoutApi(c));
     if (panel) host.appendChild(panel);
     if (!def.noLabel) {
-      host.appendChild(row("Part number (BOM)", input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); updateInspector(); })));
+      const pnIn = input("text", c.params.partno || "", v => { c.params.partno = v.trim(); commit(); updateInspector(); });
+      // a part with its own maker's number (an XT connector's order code) shows it until another is typed
+      if (def.partNo && def.partNo(c)) { pnIn.placeholder = def.partNo(c); pnIn.title = "The maker's order code goes to the BOM unless you type another"; }
+      host.appendChild(row("Part number (BOM)", pnIn));
       // what the number says the real part is: Board Design takes its footprint and size (mpn.js)
       const pn = window.PartNo && PartNo.resolve(c.params, c.type);
       if (pn) { const p = document.createElement("p"); p.className = "insp-help" + (pn.warn.length ? " warn" : pn.known ? " ok" : ""); p.textContent = PartNo.describe(pn) + pn.warn.map(w => " · " + w).join(""); host.appendChild(p); }
@@ -2807,6 +2872,7 @@
     } catch (err) { setStatus("error", `Could not open ${name || "file"}: ` + err.message); return false; }
   }
   function openFile(file, handle) {
+    if (isKicadFile(file.name)) { openKicad([file]); return; }      // a KiCad schematic or board, or a ZIP of a project
     const rd = new FileReader();
     rd.onload = () => { if (openText(rd.result, file.name, handle)) recent.addFile(file.name, handle || null, rd.result); };
     rd.readAsText(file);
@@ -2814,10 +2880,14 @@
   // Open: with the File System Access API the handle is kept, so Save can write the file back
   async function openDialog() {
     if (typeof window.showOpenFilePicker !== "function") { document.getElementById("file-input").click(); return; }
-    let h;
-    try { [h] = await window.showOpenFilePicker({ types: JSON_TYPES }); }
+    let hs;
+    try { hs = await window.showOpenFilePicker({ types: JSON_TYPES, multiple: true }); }
     catch (err) { if (err.name !== "AbortError") setStatus("error", "Open: " + err.message); return; }
-    try { openFile(await h.getFile(), h); } catch (err) { setStatus("error", "Could not open file: " + err.message); }
+    try {
+      // KiCad files picked here (under "All files"): the project's files together
+      const files = await Promise.all(hs.map(h => h.getFile()));
+      if (files.some(f => isKicadFile(f.name))) openKicad(files); else openFile(files[0], hs[0]);
+    } catch (err) { setStatus("error", "Could not open file: " + err.message); }
   }
 
   function spiceNetlist() {
@@ -3016,7 +3086,7 @@
     bind("btn-start-new", () => { closeStart(); openSheetDialog("new"); });
     bind("btn-start-open", () => { closeStart(); openDialog(); });
     document.getElementById("start-show").addEventListener("change", e => { try { localStorage.setItem(START_KEY, e.target.checked ? "1" : "0"); } catch (err) { /* private mode */ } });
-    document.getElementById("file-input").addEventListener("change", e => { if (e.target.files[0]) openFile(e.target.files[0]); e.target.value = ""; });
+    document.getElementById("file-input").addEventListener("change", e => { const fl = [...e.target.files]; if (fl.some(f => isKicadFile(f.name))) openKicad(fl); else if (fl[0]) openFile(fl[0]); e.target.value = ""; });
     bind("btn-save", saveFile);
     bind("btn-save-as", saveFileAs);
     bind("btn-save-cancel", () => { document.getElementById("save-modal").hidden = true; });
@@ -3079,6 +3149,7 @@
     bind("btn-sim", () => { if (S.sim.busy && S.sim.mode === "full") { cancelRun(); setStatus("idle", "Stopped"); } else runSim("full"); });
     cmds.bind("btn-volts", "volts").bind("btn-amps", "amps").bind("btn-legend", "legend").bind("btn-anim", "anim");
     bind("btn-kicad", () => exportKicad());
+    bind("btn-kicad-open", () => openKicadDialog());
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
@@ -3125,6 +3196,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

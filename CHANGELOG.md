@@ -6,10 +6,44 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.188.0] - 2026-11-10
+<<<<<<< HEAD
+## [3.191.0] - 2026-11-12
 
 ### Added
 - **Vaults in Safari and Firefox, read only.** These browsers cannot write into a folder, but they can read one you pick. In File ▾ → Revisions… → Kept in → A folder on this computer, **Choose folder…** now opens the browser's folder picker there: pick a vault made in Chrome or Edge (or one project's folder) and its projects and revisions are listed with their pictures, opened, compared on the sheet and with each other, and downloaded. Save revision, New project, milestones, Restore and Delete are off or say that saving needs Chrome or Edge. The folder is asked for again after the page is reloaded. The project manager reads a vault the same way.
+=======
+## [3.190.0] - 2026-11-11
+
+### Changed
+- **More realistic 3D and STEP models of the XT power connectors.** The housing now has its chamfered end (the − side) along its whole length, as on Amass's drawings; a male has its shroud, a hollow mouth with a wall of 0.8 / 1.0 / 1.2 mm (XT30 / XT60 / XT90), round its gold pins with rounded tips; a female has its insert with a gold socket for each pin, open into the mouth; the + and − are moulded on top; the XT30's pegs stand in their ears and the XT60 / XT90's tabs go down into the board; the legs bend down into their holes. Upright ones (XT30UPB, XT60 solder cups) get the same shroud or insert on top and their cups down into the board. The STEP export writes these faces with their holes (inner bounds), checked valid in OpenCascade.
+- The 3D view splits a face with holes, or a concave one, into triangles properly (it used to fan from one corner, which only suits a convex face without holes).
+
+## [3.189.0] - 2026-11-11
+
+### Added
+- **Open KiCad project** (File ▾ → Open KiCad project…): a KiCad schematic and its board open as a circuit. Select the project's `.kicad_sch` sheets, its `.kicad_pcb` and `.kicad_pro` together in the file dialog (or a ZIP of the project's folder); a schematic or a board alone opens too, and File ▾ → Open… takes the same files. KiCad 6 and later.
+- **Symbols become the program's own parts where it has them**, and simulate: resistors, potentiometers, capacitors, chokes, diodes, zeners, LEDs, transistors, MOSFETs and JFETs (told by their pin names), op-amps, the 555, connectors, and valves under any of their names (ECC83, 12AX7, 6Н2П), a dual valve's units as its sections. A type with no model here simulates as the nearest one and the list says so.
+- **Imported part**: any other symbol is kept as KiCad draws it, with its pins, value and footprint. It is wired on the sheet and on the board and listed in the bill of materials, but left out of the simulation.
+- **KiCad's nets**: wires and junctions, local, global and hierarchical labels, power symbols (GND becomes ground, +12V-like supplies power rails, other names sheet connectors), hierarchical sheets (each a sheet with its frame; a sheet used twice comes twice), buses by the names of their members. Compared with KiCad 7.0.11's own netlist on KiCad's demo projects: 13 of 14 agree pin for pin; the last has wires drawn over each other, which the list points out.
+- **The board comes too**: outline, each footprint as the board file has it (pads, silkscreen, holes) in its place and on its side, tracks, vias, copper pours, keep-outs, mounting holes and texts. Top and bottom copper only. The board's rules are set from the layout so that it passes its own check.
+- **Round trip**: a project exported with Export KiCad project opens again as the circuit and board it was (all 20 examples do).
+- A list after opening says what came over (sheets, parts simulated and kept, tracks, vias) and what to check; **Show the board** opens the board.
+
+### Fixed
+- Opening or editing a very large circuit no longer stalls: joining wires at their crossings took time growing with the square of the sheet (87 s on a 2,400-wire sheet), now a fraction of a second.
+## [3.188.0] - 2026-11-11
+
+### Added
+- **XT power connectors** (Ground & connectors → Power connectors (XT)): the Amass connectors of drone and RC batteries, chargers and controllers. XT30 (20 A), XT60 (35 A) and XT90 (45 A), each male (pins, designator XP) and female (sockets, XS): right-angle on the board (XT30PW, XT60PW, XT90PW), vertical on the board (XT30UPB), the XT60's solder cups upright in the board (XT60-M / -F), on a lead (XT30U, XT90H), and the XT90-S anti-spark female. Pick the model in the inspector's Model list; the parts search finds them by series, "drone", "lipo", "male", "female" and so on.
+- **Their footprints and 3D bodies from Amass's spec sheets**: pin pitch (5, 7.2, 10.9 mm) and holes, the plated mounting tabs and pegs (MP pads, no net; the tabs' slots drilled round), the housing's outline on the silkscreen with + and − beside the pins, the yellow housing with its mouth and gold contacts in 3D at its real height. − is the contact at the housing's chamfered end, so a series' male and female are mirror images, as they mate. A right-angle one lies with its mouth at the bottom and can sit flush with the board's edge (no courtyard margin beyond the mouth). Cable versions get wire pads.
+- **BOM**: an XT connector's line carries the Amass order code (XT60PW-M30.G.Y …) and its rating (35 A, 500 V DC) unless you type another part number; the inspector shows the code in the Part number field.
+
+## [3.187.1] - 2026-11-10
+
+### Fixed
+- **Zooming and panning a big circuit no longer stutters.** With the voltages, currents and the animation on, a large schematic (the 50 W CFP amplifier, example 17) took longer to draw than a wheel notch lasts, so the view froze and jumped. Now the wheel (and dragging the view with the middle button or Space) stretches and moves the picture last drawn, and the sheet is drawn sharp again once the view rests (160 ms; on a long zoom it is redrawn on the way when the picture runs out). On a CPU slowed four times, a wheel step went from 66 ms to 17 ms.
+- The sheet draws only what is on screen (parts, wires, stickers, animated dots); the grid, junctions and each wire's dots are filled in one go; the zoom readout no longer makes the hover hints rescan the page on every notch; dragging the view no longer places the stickers anew on every move.
+>>>>>>> origin/main
 
 ## [3.187.0] - 2026-11-10
 

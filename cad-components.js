@@ -613,6 +613,18 @@
       ctx.strokeRect(-8, -8, 12, 20 * (n - 1) + 16);
       for (let i = 0; i < n; i++) { line(ctx, [-30, i * 20, -5, i * 20]); ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(-5, i * 20 - 2.5, 6, 5); line(ctx, [1, i * 20, 12, i * 20]); }
     },
+    // XT power connector: the housing with its chamfered − end; pins (male) or sockets (female), + and − marked
+    xt(ctx, c) {
+      const male = (XTS[c.params.model] || {}).g !== "F";
+      ctx.fillStyle = COL.fill; ctx.beginPath(); ctx.moveTo(-10, -9); ctx.lineTo(14, -9); ctx.lineTo(14, 23); ctx.lineTo(10, 29); ctx.lineTo(-6, 29); ctx.lineTo(-10, 23); ctx.closePath(); ctx.fill(); ctx.stroke();
+      for (const y of [0, 20]) {
+        line(ctx, [-30, y, male ? -4 : -3, y]);
+        if (male) { ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(-4, y - 2, 9, 4); }
+        else { ctx.beginPath(); ctx.arc(1, y, 4, Math.PI / 2, Math.PI * 1.5); ctx.stroke(); }
+      }
+      ctx.fillStyle = COL.value; ctx.font = "8px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("+", 10, 0); ctx.fillText("−", 10, 20); ctx.textBaseline = "alphabetic";
+    },
     faston(ctx) {
       line(ctx, [-20, 0, -6, 0]);
       ctx.fillStyle = COL.fill; ctx.fillRect(-6, -4, 16, 8); ctx.strokeRect(-6, -4, 16, 8);
@@ -902,6 +914,33 @@
       }
       ctx.setLineDash([]);
     },
+    // a part imported from KiCad that the app has no part of its own for: the symbol as KiCad draws
+    // it (params.sym, kicad-import.js symData), its leads, pin names and numbers
+    kicad(ctx, c) {
+      const sym = c.params.sym || { g: [], pins: [] }, up = t => { ctx.save(); ctx.translate(t[0], t[1]); if ((c.rot & 3) === 1 || (c.rot & 3) === 2) ctx.rotate(Math.PI); ctx.fillText(t[2], 0, 0); ctx.restore(); };
+      (sym.g || []).forEach(s => {
+        if (s[0] === "p") {
+          ctx.beginPath(); ctx.moveTo(s[2], s[3]); for (let i = 4; i + 1 < s.length; i += 2) ctx.lineTo(s[i], s[i + 1]);
+          if (s[1]) { ctx.fillStyle = s[1] === 1 ? ctx.strokeStyle : COL.fill; ctx.fill(); }
+          ctx.stroke();
+        } else if (s[0] === "c") { ctx.beginPath(); ctx.arc(s[2], s[3], s[4], 0, Math.PI * 2); if (s[1]) { ctx.fillStyle = s[1] === 1 ? ctx.strokeStyle : COL.fill; ctx.fill(); } ctx.stroke(); }
+      });
+      ctx.fillStyle = COL.value; ctx.textBaseline = "middle";
+      (sym.g || []).forEach(s => { if (s[0] === "t") { ctx.font = `${Math.max(7, Math.min(14, Math.round(s[3])))}px ui-monospace, monospace`; ctx.textAlign = "center"; up([s[1], s[2], s[4]]); } });
+      (sym.pins || []).forEach(p => {
+        if (p.h) return;
+        const a = (p.a || 0) * Math.PI / 180, dx = Math.round(Math.cos(a)), dy = -Math.round(Math.sin(a)), ex = p.x + dx * p.l, ey = p.y + dy * p.l;
+        line(ctx, [p.x, p.y, ex, ey]);
+        ctx.font = "8px ui-monospace, monospace";
+        if (sym.pm && p.num && p.l >= 8) { ctx.fillStyle = "#8b949e"; ctx.textAlign = "center"; up([p.x + dx * p.l / 2 + (dy ? 6 : 0), p.y + dy * p.l / 2 - (dx ? 6 : 0), p.num]); }
+        if (sym.pn !== undefined && sym.pn > 0 && p.name) {
+          ctx.fillStyle = COL.value;
+          const flipped = (c.rot & 3) === 1 || (c.rot & 3) === 2, right = dx > 0 || (!dx && dy > 0);
+          if (dx) { ctx.textAlign = (right !== flipped) ? "left" : "right"; up([ex + dx * (sym.pn + 2), ey, p.name]); }
+          else { ctx.save(); ctx.translate(ex, ey + dy * (sym.pn + 2)); ctx.rotate(-Math.PI / 2 + (flipped ? Math.PI : 0)); ctx.textAlign = (dy > 0) !== flipped ? "right" : "left"; ctx.fillText(p.name, 0, 0); ctx.restore(); }
+        }
+      });
+    },
     scope(ctx) {
       ctx.fillStyle = "#101824"; ctx.fillRect(-70, -45, 140, 90); ctx.strokeRect(-70, -45, 140, 90);
       line(ctx, [-80, -30, -70, -30]); line(ctx, [-80, -10, -70, -10]); line(ctx, [-80, 30, -70, 30]);
@@ -1150,6 +1189,28 @@
     "TRS": { pins: ["+", "R", "-"], size: "6.35", use: "6.35 mm stereo (headphones)" },
     "TRS-3.5": { pins: ["+", "R", "-"], size: "3.5", use: "3.5 mm stereo" },
     "RCA": { pins: ["+", "-"], size: "RCA", use: "RCA (phono) socket" }
+  };
+  // Amass XT power connectors (drone and RC batteries, chargers, ESCs; Amass catalogue and spec
+  // sheets): series, M (male: pins) or F (female: sockets), mount (pw: right-angle on the board,
+  // pb: upright on the board, v: the cable connector's solder cups pushed into the board, cable: on
+  // a lead), current (A, ΔT < 85 K), voltage (V DC), the order code. Both contacts carry the
+  // signs moulded on the housing; − is the contact at the chamfered end.
+  const XTS = {
+    "XT30PW-M": { s: "XT30", g: "M", mount: "pw", a: 20, v: 500, mpn: "XT30PW-M30.G.Y", use: "XT30 male, right-angle PCB" },
+    "XT30PW-F": { s: "XT30", g: "F", mount: "pw", a: 20, v: 500, mpn: "XT30PW-F30.G.Y", use: "XT30 female, right-angle PCB" },
+    "XT30UPB-M": { s: "XT30", g: "M", mount: "pb", a: 20, v: 500, mpn: "XT30UPB-M30.G.Y", use: "XT30 male, vertical PCB" },
+    "XT30UPB-F": { s: "XT30", g: "F", mount: "pb", a: 20, v: 500, mpn: "XT30UPB-F30.G.Y", use: "XT30 female, vertical PCB" },
+    "XT30U-M": { s: "XT30", g: "M", mount: "cable", a: 20, v: 500, mpn: "XT30U-M.G.Y", use: "XT30 male, on a lead (16 AWG)" },
+    "XT30U-F": { s: "XT30", g: "F", mount: "cable", a: 20, v: 500, mpn: "XT30U-F.G.Y", use: "XT30 female, on a lead (16 AWG)" },
+    "XT60PW-M": { s: "XT60", g: "M", mount: "pw", a: 35, v: 500, mpn: "XT60PW-M30.G.Y", use: "XT60 male, right-angle PCB" },
+    "XT60PW-F": { s: "XT60", g: "F", mount: "pw", a: 35, v: 500, mpn: "XT60PW-F30.G.Y", use: "XT60 female, right-angle PCB" },
+    "XT60-M": { s: "XT60", g: "M", mount: "v", a: 35, v: 500, mpn: "XT60-M.G.Y", use: "XT60 male, solder cups (lead or upright in the board)" },
+    "XT60-F": { s: "XT60", g: "F", mount: "v", a: 35, v: 500, mpn: "XT60-F.G.Y", use: "XT60 female, solder cups (lead or upright in the board)" },
+    "XT90PW-M": { s: "XT90", g: "M", mount: "pw", a: 45, v: 150, mpn: "XT90PW-M30.G.Y", use: "XT90 male, right-angle PCB" },
+    "XT90PW-F": { s: "XT90", g: "F", mount: "pw", a: 45, v: 150, mpn: "XT90PW-F30.G.Y", use: "XT90 female, right-angle PCB" },
+    "XT90H-M": { s: "XT90", g: "M", mount: "cable", a: 45, v: 500, mpn: "XT90H-M.G.Y", use: "XT90 male, on a lead (10 AWG)" },
+    "XT90H-F": { s: "XT90", g: "F", mount: "cable", a: 45, v: 500, mpn: "XT90H-F.G.Y", use: "XT90 female, on a lead (10 AWG)" },
+    "XT90S-F": { s: "XT90", g: "F", mount: "cable", a: 45, v: 500, mpn: "XT90S-F.G.Y", use: "XT90-S female, anti-spark, on a lead (10 AWG)", spark: true }
   };
   // JFETs, SPICE NJF / PJF level 1: pinch-off vto (V, the gate-source voltage at which the channel
   // closes: negative N-channel, positive P-channel), beta (A/V², so IDSS = beta·vto²), lambda,
@@ -2798,6 +2859,21 @@
       info: () => "IEC 60320 C14 inlet, chassis mounted: line, neutral and protective earth, wired to the board by their Faston tabs. Feed it from the AC mains part; PE goes to the chassis (and ground) for safety.",
       build: () => {}
     },
+    xt: {
+      name: "Power connector (XT)", prefix: "XP", prefixFor: c => ((XTS[c.params.model] || {}).g === "F" ? "XS" : "XP"), group: "Ground & connectors", bbox: [-30, -12, 22, 32],
+      defaults: { model: "XT60PW-M" },
+      pins: () => [{ id: "+", x: -30, y: 0, name: "plus" }, { id: "-", x: -30, y: 20, name: "minus" }],
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Model", kind: "select", options: () => Object.entries(XTS).map(([k, m]) => [k, `${k} · ${m.use}`]), wide: true }],
+      partNo: c => (XTS[c.params.model] || {}).mpn || "",
+      info: c => {
+        const m = XTS[c.params.model] || XTS["XT60PW-M"], how = { cable: "On a lead, wired to the board's pads.", v: "Its solder cups go straight into the board, or it sits on a lead.", pb: "Soldered to the board, standing up.", pw: "Soldered to the board, lying flat with its mouth at the board's edge." }[m.mount];
+        return `Amass ${c.params.model}: ${m.use}, ${m.a} A, ${m.v} V DC. ${m.g === "M" ? `Male: its pins go into an ${m.s} female.` : `Female: its sockets take an ${m.s} male.`}` +
+          (m.spark ? " Anti-spark: a resistor in the connector precharges the load's capacitors before the main contacts meet." : "") +
+          ` + and − are moulded on the housing; − is the contact at its chamfered end. ${how} Nothing of it is simulated.`;
+      },
+      build: () => {}
+    },
     terminal: {
       name: "Terminal block", prefix: "XT", group: "Ground & connectors",
       bbox: c => [-30, -10, 14, 20 * Math.max(2, +c.params.ways || 2) - 10],
@@ -2864,6 +2940,21 @@
         out.push({ id: c.id + "#c", kind: "C", nodes: [net("1"), net("2")], c: m.c });
       }
     },
+    // A part imported from KiCad (File ▾ → Open… a .kicad_sch) that the app has no part of its own
+    // for: it keeps KiCad's drawing and pins (params.sym) and its footprint on the board, joins its
+    // nets, and is left out of the simulation
+    kicad: {
+      name: "Imported part (KiCad)", prefix: "U", group: "Imported",
+      bbox: c => (c && c.params.sym && c.params.sym.box) || [-20, -20, 20, 20],
+      defaults: { value: "", footprint: "", lib: "", desc: "" },
+      pins: c => ((c && c.params.sym && c.params.sym.pins) || []).map(p => ({ id: p.id, x: p.x, y: p.y, name: p.name || "pin " + p.num })),
+      // the pads behind the pins: KiCad's pin numbers
+      pinNumbers: c => Object.fromEntries(((c.params.sym && c.params.sym.pins) || []).map(p => [p.id, p.num || p.id])),
+      value: c => c.params.value || "",
+      fields: [{ key: "value", label: "Value", kind: "text" }, { key: "footprint", label: "Footprint (KiCad)", kind: "text", wide: true }, { key: "lib", label: "Symbol (KiCad)", kind: "text", wide: true }],
+      info: () => "Imported from KiCad as drawn there: the app has no part of its own for it, so it joins its nets on the sheet and on the board but is left out of the simulation. Replace it with a part from the panel to simulate it.",
+      build: () => {}
+    },
     scope: {
       // its screen stays upright (no rotation), but it mirrors: the inputs then come in on the right
       name: "Oscilloscope", prefix: "P", group: "Instruments", bbox: [-80, -45, 70, 45], noRotate: true, mirror: true,
@@ -2909,7 +3000,9 @@
       { sub: "Instruments and records" }, ["pickup", null, "Guitar pickup, single coil"], ["pickup", { preset: "paf", r: 8e3, l: 4.4, c: 150e-12, amp: 0.3 }, "Guitar pickup, humbucker"], ["phono", null, "Phono cartridge, moving magnet"], ["phono", { preset: "dl103", mv: 0.3e-3, r: 40, l: 30e-6 }, "Phono cartridge, moving coil"],
       { sub: "Controlled sources" }, ["vcvs", null, "Voltage-controlled voltage (E)"], ["vccs", null, "Voltage-controlled current (G)"]] },
     { group: "Ground & connectors", items: [["ground"], ["offsheet"],
-      { sub: "Connectors" }, ["jack", null, "Jack, 6.35 mm switched"], ["jack", { kind: "RCA" }, "RCA socket"], ["iec"], ["terminal"], ["header"], ["faston"]] },
+      { sub: "Connectors" }, ["jack", null, "Jack, 6.35 mm switched"], ["jack", { kind: "RCA" }, "RCA socket"], ["iec"], ["terminal"], ["header"], ["faston"],
+      { sub: "Power connectors (XT)" }, ["xt", { model: "XT30PW-M" }, "XT30 male, PCB"], ["xt", { model: "XT30PW-F" }, "XT30 female, PCB"], ["xt", null, "XT60 male, PCB"], ["xt", { model: "XT60PW-F" }, "XT60 female, PCB"],
+      ["xt", { model: "XT90PW-M" }, "XT90 male, PCB"], ["xt", { model: "XT90PW-F" }, "XT90 female, PCB"], ["xt", { model: "XT90S-F" }, "XT90-S female, anti-spark"]] },
     { group: "Semiconductors", items: [["diode"], ["diode", { model: "UF4007" }, "Diode, ultrafast"], ["diode", { model: "1N5819" }, "Diode, Schottky"], ["diode", { model: "C3D02060A" }, "Diode, SiC Schottky"], ["bridge"], ["zener"], ["led"],
       { sub: "Transistors" }, ["npn"], ["pnp"], ["npn", { model: "MJE340" }, "NPN, high voltage"], ["pnp", { model: "MJE350" }, "PNP, high voltage"],
       ["pnp", { model: "AC128" }, "PNP, germanium"], ["npn", { model: "AC127" }, "NPN, germanium"], ["pnp", { model: "MP39B" }, "PNP, germanium (USSR)"],
@@ -3340,5 +3433,5 @@
     return wrap;
   }
 
-  root.CadLib = { socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
+  root.CadLib = { socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);

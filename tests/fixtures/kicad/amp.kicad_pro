@@ -1,0 +1,4 @@
+{
+  "board": { "design_settings": { "rules": { "min_clearance": 0.25, "min_track_width": 0.3 } } },
+  "meta": { "filename": "amp.kicad_pro", "version": 1 }
+}

@@ -40,6 +40,7 @@
     terminal: "A screw terminal block on the board, 2 to 8 ways, 5.08 or 7.5 mm pitch: where wires from the chassis land.",
     header: "A straight 2.54 mm pin header for a plug-on lead.",
     faston: "A board-mounted quick-connect tab (6.3 or 4.8 mm) for one wire.",
+    xt: "An Amass XT power connector, as on drone and RC batteries, chargers and controllers: XT30 (20 A), XT60 (35 A), XT90 (45 A), male or female, right-angle or vertical on the board, or on a lead; XT90-S anti-spark. Real footprints, 3D and order codes.",
     zener: "A zener diode, 3.3 to 200 V: the whole 1 W 1N4728A–1N4764A series and 5 W 1N53xxB, for screen regulators, shunt references, cathode bias.",
     led: "An LED: as a cathode-bias element (≈1.6–3 V, nearly independent of current) or an indicator.",
     npn: "An NPN bipolar transistor (Gummel-Poon model): current sources, followers, drivers, solid-state output stages.",
@@ -78,10 +79,14 @@
     offsheet: "A sheet connector: joins every connector with the same signal name, on this sheet and the others, without drawing the wire.",
     scope: "A two-channel oscilloscope with its probes. Its screen is live on the schematic; double-click for the full instrument, the spectrum analyzer and the Bode plotter.",
     note: "A text note on the drawing.",
+    kicad: "A part imported from KiCad that the app has no part of its own for: drawn as in KiCad, wired on the sheet and on the board, listed in the bill of materials, left out of the simulation.",
     frame: "An ISO 5457 drawing frame with reference grid and an ISO 7200 title block. Locked against moving unless unlocked.",
   };
 
   const fields = {
+    "kicad.value": "The value as the KiCad schematic gives it. It goes into the bill of materials.",
+    "kicad.footprint": "The footprint the KiCad schematic names for the part. The board that came with the project draws it as the board file has it.",
+    "kicad.lib": "The KiCad library and symbol the drawing comes from.",
     "resistor.r": "Resistance. Type values with SI prefixes: 4.7k, 1M, 220, 0.47.",
     "resistor.w": "The power rating of the part you will buy. Checks compare the simulated dissipation with it; the symbol is marked per ГОСТ 2.728. Rate a resistor at about twice what it dissipates.",
     "pot.r": "End-to-end resistance of the track.",
@@ -151,6 +156,7 @@
     "terminal.pitch": "5.08 mm for signal and supply wiring; 7.5 mm, with more creepage, for mains and HT.",
     "header.ways": "Pins in the row.",
     "faston.size": "6.3 mm (0.250\") for mains and heater current, 4.8 mm (0.187\") for lighter wires.",
+    "xt.model": "Series (XT30 20 A, XT60 35 A, XT90 45 A), male (M, pins) or female (F, sockets) and mounting: PW right-angle on the board, UPB vertical on the board, XT60 solder cups upright in the board, U / H on a lead. A male mates with a female of the same series. The footprint and 3D body follow it.",
     "capacitor.v": "The capacitor's voltage rating. Checks warns once the peak voltage across it passes 80 % of it. Left unset, the BOM picks one from the simulated peak.",
     "electrolytic.v": "The capacitor's voltage rating. Checks warns once the peak voltage across it passes 80 % of it, and when it sits the wrong way round. Left unset, the BOM picks one from the simulated peak.",
     "zener.model": "Zener voltage and power rating (1 W or 5 W). The check compares the dissipation with it.",

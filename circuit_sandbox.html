@@ -126,7 +126,7 @@
     @media (max-height: 700px) { .pal-pbox { height: 60px; } .pal-pbox img { height: 54px; } .pal-phow { display: none; } }
 
     /* canvas */
-    #stage { position: relative; min-width: 0; min-height: 0; }
+    #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #0a0e14; }
     .probe-card { position: absolute; z-index: 5; width: 188px; padding: 5px 6px 4px; background: rgba(15,21,30,0.94); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.45); font: 11px/1.35 ui-monospace, Menlo, monospace; color: var(--text); pointer-events: none; }
     .probe-card.pin { border-color: #ff5c5c; pointer-events: auto; }
     .probe-head { display: flex; align-items: center; gap: 4px; color: #ffd54f; font-weight: 600; margin-bottom: 2px; }
@@ -139,7 +139,7 @@
     .probe-scope { display: block; width: 176px; height: 88px; margin-top: 4px; border-radius: 3px; }
     .probe-scale { color: var(--muted); font-size: 9.5px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .probe-card [hidden] { display: none; }
-    #cad { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+    #cad { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; transform-origin: 0 0; }
     /* the horizontal scroll bar under the drawing: the sheets marked on its track */
     #hscroll { position: absolute; left: 0; right: 0; bottom: 0; height: 18px; display: flex; background: rgba(15,21,30,0.92); border-top: 1px solid var(--line); user-select: none; }
     #hscroll[hidden] { display: none; }
@@ -556,6 +556,7 @@
         <button class="menu-item" data-ico="new" role="menuitem" id="btn-new">New…<kbd>with frame</kbd></button>
         <button class="menu-item" data-ico="sheet" role="menuitem" id="btn-add-sheet">Add sheet…<kbd>next sheet</kbd></button>
         <button class="menu-item" data-ico="open" role="menuitem" id="btn-open">Open…<kbd>Ctrl+O</kbd></button>
+        <button class="menu-item" data-ico="chip" role="menuitem" id="btn-kicad-open" title="Open a KiCad schematic and board as a circuit: select the project's .kicad_sch files and its .kicad_pcb together (Ctrl+click), or a ZIP of the project's folder. Symbols the app has parts for become those parts and simulate; the others are kept as KiCad draws them">Open KiCad project…<kbd>.kicad_sch / _pcb</kbd></button>
         <button class="menu-item" data-ico="save" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <button class="menu-item" data-ico="save-as" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
         <button class="menu-item" data-ico="link" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
@@ -610,7 +611,7 @@
         <button class="menu-item" data-ico="key" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
       </div>
     </div>
-    <input type="file" id="file-input" accept=".json,application/json" hidden>
+    <input type="file" id="file-input" accept=".json,application/json,.kicad_sch,.kicad_pcb,.kicad_pro,.zip" multiple hidden>
     <span class="sep"></span>
     <button class="btn ib" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7"/></svg></button>
     <button class="btn ib" id="btn-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5l3 3-3 3"/><path d="M13.5 6.5h-7a4 4 0 0 0 0 8H9"/></svg></button>
@@ -1109,6 +1110,7 @@
   <script src="board-core.js?v=dev"></script>
   <script src="board-fab.js?v=dev"></script>
   <script src="kicad-export.js?v=dev"></script>
+  <script src="kicad-import.js?v=dev"></script>
   <script src="cad-kicad.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
   <script src="cad-recent.js?v=dev"></script>

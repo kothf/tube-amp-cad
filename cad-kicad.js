@@ -2,7 +2,9 @@
    parts on it, the project file with the net classes, and the libraries their symbols and
    footprints come from, in one ZIP. The files are written by kicad-export.js; this part
    gathers the circuit: which sheet each part is on, each symbol as the CAD draws it, the
-   footprint pad behind every pin (BoardCore's mapping, as the board has it). */
+   footprint pad behind every pin (BoardCore's mapping, as the board has it).
+   And the way back (File ▾ → Open KiCad project…): the files picked, or a ZIP of them, read by
+   kicad-import.js and opened as the circuit with its board, then the list of what came over. */
 (function (root) {
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
@@ -62,7 +64,7 @@
         // the sheet's name: what its title adds to the others' ("…: power supply" → power supply)
         const sub = /:\s*([^:]+)$/.exec(p.title || ""), nm = (sub ? sub[1] : "").replace(/[/\\]/g, "-").trim();
         s.name = nm && !sheets.slice(0, i).some(o => o.name === nm) ? nm : "Sheet" + (i + 1); s.symbols = []; s.wires = []; s.junctions = []; s.labels = []; s.notes = [];
-        s.title = { title: p.title || name, date: p.date, rev: /^\s*auto\s*$/i.test(p.rev || "") ? (window.CadRevLabel || "") : p.rev, company: p.owner, comments: [p.docno, p.reference, p.creator ? "Drawn: " + p.creator : ""] };
+        s.title = { title: p.title || name, date: p.date, rev: /^\s*auto\s*$/i.test(p.rev || "") ? (window.CadRevLabel || "") : p.rev, company: p.owner, comments: [p.docno, p.reference, p.creator ? "Drawn: " + p.creator : ""], frame: f ? { p, o: [s.ox - f.x, s.oy - f.y, s.offX, s.offY], at: [f.x, f.y], l: f.label || "" } : null };
       });
       const mm = (s, x, y) => [(x - s.ox) * K.UNIT + s.offX, (y - s.oy) * K.UNIT + s.offY];
       // pins to pads, and the board's parts by member id
@@ -120,7 +122,7 @@
           symbols.push({ name: lib, power: true, ref: "#PWR", value: nm, inBom: false, onBoard: false, units: [u] });
           const vp = d ? mm(s, c.x + d[0] * 26, c.y + d[1] * 26 + (d[1] ? d[1] * 4 : 4)) : [x, y];
           s.symbols.push({ lib, unit: 1, x, y, uuid: K.uuid("pwr:" + c.id), ref: "#PWR" + String(++pwr).padStart(3, "0"), value: nm, inBom: false, onBoard: false,
-            props: { ref: { x, y, hide: true }, value: { x: vp[0], y: vp[1], h: d && d[0] < 0 ? "right" : d && d[0] > 0 ? "left" : "center", hide: c.type === "ground" } }, pins: ["1"] });
+            props: { ref: { x, y, hide: true }, value: { x: vp[0], y: vp[1], h: d && d[0] < 0 ? "right" : d && d[0] > 0 ? "left" : "center", hide: c.type === "ground" } }, pins: ["1"], mark: { t: c.type, p: c.params, r: c.rot, l: c.label || "" } });
           return;
         }
         const g = groupOf.get(c.id), members = g ? g.members : [{ id: c.id }], k = Math.max(0, members.findIndex(m => m.id === c.id));
@@ -141,7 +143,7 @@
         lib.units[k] = u;
         const L = label(c, b), P = ([px, py, h]) => { const [X, Y] = mm(s, px, py); return { x: X, y: Y, h, v: "bottom" }; };
         s.symbols.push({ lib: lib.name, unit: k + 1, x, y, uuid: K.symbolUuid(c.id), ref, value: lib.value || "~", footprint: lib.footprint, inBom: lib.inBom, onBoard: lib.onBoard,
-          props: { ref: P(L.ref), value: P(L.value) }, pins: [...new Set(u.pins.map(p => p.num))] });
+          props: { ref: P(L.ref), value: P(L.value) }, pins: [...new Set(u.pins.map(p => p.num))], mark: { t: c.type, p: c.params, r: c.rot, l: c.label || "" } });
       });
       // pads the board wires that no symbol has a pin for (a valve's heater and internal shield):
       // one more unit of the part, as KiCad's own valve symbols keep the heater apart
@@ -153,7 +155,7 @@
         const s = sheets[firstOf.get(g.key)], box = boxUnit(s, more.map(pd => ({ num: pd.num, name: pd.pins[0].pin, netName: pd.netName })), g.members.length > 1 ? "heaters" : "heater");
         lib.units.push(box.u);
         s.symbols.push({ lib: lib.name, unit: lib.units.length, x: box.x, y: box.y, uuid: K.uuid("sym:" + g.key + ":heater"), ref: g.ref, value: lib.value || "~", footprint: lib.footprint, inBom: true, onBoard: true,
-          props: { ref: box.ref, value: { x: box.x, y: box.y, hide: true } }, pins: more.map(pd => pd.num) });
+          props: { ref: box.ref, value: { x: box.x, y: box.y, hide: true } }, pins: more.map(pd => pd.num), mark: { skip: 1 } });
       });
       // parts only the board has (the heater supplies XH…, the star point XG…)
       const ids = new Set(S.comps.map(c => c.id));
@@ -162,7 +164,7 @@
         const lib = { name: uniqueLib(g.ref), ref: g.ref.replace(/\d+$/, ""), value: g.value, footprint: K.LIBNAME + ":" + K.fpName(g.fp), inBom: true, onBoard: true, units: [box.u], description: "On the board only (Board Design adds it)" };
         symbols.push(lib);
         s.symbols.push({ lib: lib.name, unit: 1, x: box.x, y: box.y, uuid: K.symbolUuid(g.members[0].id), ref: g.ref, value: g.value, footprint: lib.footprint, inBom: true, onBoard: true,
-          props: { ref: box.ref, value: { x: box.x, y: box.y, hide: true } }, pins: g.fp.pads.map(pd => pd.num) });
+          props: { ref: box.ref, value: { x: box.x, y: box.y, hide: true } }, pins: g.fp.pads.map(pd => pd.num), mark: { skip: 1, k: g.key } });
       });
       // the nets the net classes name (power and high voltage): their board name on a label at one
       // of their pins, so the classes hold in KiCad. A label names a net on its own sheet only, so
@@ -225,6 +227,101 @@
       const f0 = (frames()[0] || {}).params || {};
       return BoardFab.zip(BoardFab.fabFiles(side.board, model, fills, { base: baseName(), title: f0.title || f0.docno || baseName(), version: String(VERSION).replace(/^\?v=/, "") }));
     }
-    return { exportKicad, kicadFiles, fabZip };
+
+    // -------------------------------------------------------------------------
+    // Open KiCad project (File ▾): the .kicad_sch files and the .kicad_pcb, picked together or
+    // in a ZIP of the project's folder, become the circuit and its board (kicad-import.js)
+    // -------------------------------------------------------------------------
+    const KICAD_FILE = /\.kicad_(sch|pcb|pro)$/i;
+    const isKicadFile = name => KICAD_FILE.test(String(name || "")) || /\.zip$/i.test(String(name || ""));
+    // the KiCad files inside a ZIP (stored or deflated), by their names without the folders
+    async function unzip(buf) {
+      const dv = new DataView(buf), u8 = new Uint8Array(buf), out = {};
+      let e = buf.byteLength - 22;
+      while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+      if (e < 0) throw new Error("not a ZIP file");
+      let p = dv.getUint32(e + 16, true);
+      for (let n = dv.getUint16(e + 10, true); n > 0 && dv.getUint32(p, true) === 0x02014b50; n--) {
+        const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), at = dv.getUint32(p + 42, true);
+        const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nl));
+        p += 46 + nl + xl + cl;
+        if (!KICAD_FILE.test(name) || /(^|\/)(__MACOSX|\.)/.test(name) || /-backups\//.test(name)) continue;
+        const start = at + 30 + dv.getUint16(at + 26, true) + dv.getUint16(at + 28, true), data = u8.subarray(start, start + size);
+        if (method === 0) out[name] = new TextDecoder().decode(data);
+        else if (method === 8 && typeof DecompressionStream === "function") out[name] = await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+        else throw new Error("this browser cannot unpack the ZIP: unpack it and select the KiCad files themselves");
+      }
+      return out;
+    }
+    async function kicadTexts(list) {
+      const files = {};
+      for (const f of list) {
+        if (/\.zip$/i.test(f.name)) Object.assign(files, await unzip(await f.arrayBuffer()));
+        else if (KICAD_FILE.test(f.name)) files[f.name] = await f.text();
+      }
+      // a ZIP with several projects: the first one's folder
+      const pros = Object.keys(files).filter(n => /\.kicad_pro$/i.test(n));
+      if (pros.length > 1) { const dir = pros.sort((a, b) => a.split("/").length - b.split("/").length)[0].replace(/[^/]*$/, ""); Object.keys(files).forEach(n => { if (!n.startsWith(dir) || (n !== pros[0] && /\.kicad_pro$/i.test(n))) delete files[n]; }); }
+      return files;
+    }
+    const escH = t => String(t).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+    // what came over, and what to look at
+    function showReport(name, r) {
+      let m = document.getElementById("kicad-modal");
+      if (!m) {
+        m = document.createElement("div"); m.className = "modal"; m.id = "kicad-modal"; m.hidden = true;
+        m.innerHTML = `<div class="modal-box" role="dialog" aria-labelledby="kicad-title" style="width: min(620px, 94vw); max-height: 86vh; overflow-y: auto"><div class="insp-title" id="kicad-title">KiCad project opened</div><div id="kicad-body"></div><div class="modal-actions"><button class="btn" id="kicad-board" title="Open the board that came with the project in Board Design">Show the board</button><button class="btn active" id="kicad-ok">OK</button></div></div>`;
+        document.body.appendChild(m);
+        m.addEventListener("keydown", e => { if (e.key === "Escape" || e.key === "Enter") m.hidden = true; });
+        m.addEventListener("mousedown", e => { if (e.target === m) m.hidden = true; });
+        m.querySelector("#kicad-ok").onclick = () => { m.hidden = true; };
+        m.querySelector("#kicad-board").onclick = () => { m.hidden = true; cad.showBoard(); };
+      }
+      const row = (k, v) => `<div class="kv"><span>${k}</span><b>${escH(v)}</b></div>`, b = r.board;
+      m.querySelector("#kicad-body").innerHTML = `<p class="insp-help" data-i18n-skip>${escH(name)}</p>`
+        + row("Sheets", r.sheets) + row("Parts", r.parts) + row("As the app's own parts (simulated)", r.own) + row("Kept as drawn in KiCad", r.kept) + row("Wires", r.wires) + row("Net names (connectors)", r.connectors)
+        + (b ? row("Board: footprints placed", b.parts) + row("Board: tracks", b.tracks) + row("Board: vias", b.vias) + row("Board: copper pours", b.zones) + row("Board: mounting holes", b.holes) : "")
+        + (r.notes.length ? `<div class="insp-sub">To know</div><ul class="insp-help" style="margin: 4px 0 0; padding-left: 18px">${r.notes.map(n => `<li>${escH(n)}</li>`).join("")}</ul>` : "");
+      m.querySelector("#kicad-board").hidden = !b;
+      m.hidden = false; m.querySelector("#kicad-ok").focus();
+    }
+    // the pours and plated holes of the KiCad board take the net names the board has here
+    function boardNames(report) {
+      const BC = BoardCore, doc = S.board; if (!doc || !report.board) return;
+      const board = BC.normaliseBoard(doc), model = BC.model(board, BC.withHeaters(boardNetlist(), board.rules)), nameOf = {};
+      model.pads.forEach(p => { const k = report.padNets[p.ref + ":" + p.num]; if (k && p.netName && !nameOf[k]) nameOf[k] = p.netName; });
+      const fix = nm => nameOf[nm] || nameOf["/" + nm] || String(nm || "").replace(/^\//, "");
+      (doc.zones || []).forEach(z => { z.net = fix(z.net); });
+      (doc.holes || []).forEach(h => { if (h.net) h.net = fix(h.net); });
+      doc.zones = (doc.zones || []).filter(z => Object.values(model.names).includes(z.net) || z.net === "GND");
+    }
+    /** Open KiCad files (File objects: .kicad_sch, .kicad_pcb, .kicad_pro, or a .zip of them) as the circuit */
+    async function openKicad(list) {
+      try {
+        const files = await kicadTexts([...list]), names = Object.keys(files);
+        if (!names.some(n => /\.kicad_(sch|pcb)$/i.test(n))) {
+          setStatus("warn", names.length ? "A .kicad_pro file alone holds no drawing: select the project's .kicad_sch and .kicad_pcb files with it (Ctrl+click), or a ZIP of the project's folder" : "No KiCad files there: select the project's .kicad_sch and .kicad_pcb files, or a ZIP of its folder");
+          return null;
+        }
+        const res = KicadImport.importProject(files);
+        if (!cad.openDesign(res.design, "KiCad project " + res.name, true)) return null;
+        if (res.design.board) { boardNames(res.report); cad.storeBoard(S.board); cad.sendBoardNetlist(true); }
+        cad.setName(res.name + ".json");
+        const r = res.report;
+        setStatus("ok", `Opened KiCad project ${res.name}: ${r.parts} parts on ${r.sheets} sheet${r.sheets === 1 ? "" : "s"}${r.board ? `, the board with ${r.board.parts} footprints and ${r.board.tracks} tracks` : ""}. Save keeps it as a Tube Amp CAD file`);
+        showReport(res.name, r);
+        return res;
+      } catch (err) { setStatus("error", "Could not open the KiCad project: " + err.message); return null; }
+    }
+    function openKicadDialog() {
+      let inp = document.getElementById("kicad-input");
+      if (!inp) {
+        inp = document.createElement("input"); inp.type = "file"; inp.id = "kicad-input"; inp.multiple = true; inp.hidden = true; inp.accept = ".kicad_sch,.kicad_pcb,.kicad_pro,.zip";
+        inp.addEventListener("change", () => { if (inp.files.length) openKicad(inp.files); inp.value = ""; });
+        document.body.appendChild(inp);
+      }
+      inp.click();
+    }
+    return { exportKicad, kicadFiles, fabZip, openKicad, openKicadDialog, isKicadFile };
   };
 })(window);

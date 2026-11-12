@@ -18,7 +18,7 @@
     glass: [0.78, 0.88, 0.95], neon: [1, 0.62, 0.42], plate: [0.3, 0.3, 0.32], getter: [0.62, 0.62, 0.66], ceramic: [0.9, 0.87, 0.78], bakelite: [0.16, 0.13, 0.11], core: [0.36, 0.36, 0.39],
     coil: [0.86, 0.55, 0.2], terminal: [0.1, 0.55, 0.28], jack: [0.15, 0.15, 0.16], pot: [0.25, 0.27, 0.32], trim: [0.2, 0.35, 0.75], led: [0.9, 0.15, 0.1],
     wireRed: [0.8, 0.12, 0.1], wireBlack: [0.08, 0.08, 0.08], generic: [0.55, 0.55, 0.58], chipCap: [0.66, 0.52, 0.34], glassRed: [0.7, 0.2, 0.15],
-    sockBrown: [0.45, 0.33, 0.25], sockTan: [0.72, 0.62, 0.52]
+    sockBrown: [0.45, 0.33, 0.25], sockTan: [0.72, 0.62, 0.52], xt: [0.96, 0.74, 0.12], gold: [0.85, 0.68, 0.3]
   };
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const avg = pts => { const s = [0, 0, 0]; pts.forEach(p => { s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; }); return s.map(v => v / pts.length); };
@@ -61,6 +61,69 @@
     s.faces.forEach((f, i) => { if (i > 1) f.vn = f.loops[0].map(k => radial(s.verts[k])); });
     return s;
   }
+  // a prism with holes through it (a connector's shroud round its mouth, an insert with its socket
+  // holes): the outer polygon and each hole's polygon, all in the same plane, extruded from a1 to a2
+  function holedPrism(axis, outer, holes, a1, a2, color, to) {
+    const P = (u, v, w) => (axis === "z" ? [u, v, w] : axis === "x" ? [w, u, v] : [u, w, v]);
+    const V = [], F = [], rings = [outer, ...holes].map(poly => {
+      const b = V.length; poly.forEach(([u, v]) => V.push(to(P(u, v, a1)))); const t = V.length; poly.forEach(([u, v]) => V.push(to(P(u, v, a2))));
+      return { poly, b, t, n: poly.length };
+    });
+    const axisW = sub(to(P(0, 0, a2)), to(P(0, 0, a1)));
+    F.push(face(V, rings.map(r => r.poly.map((_, i) => r.b + i)), axisW.map(c => -c)), face(V, rings.map(r => r.poly.map((_, i) => r.t + i)), axisW));
+    rings.forEach((r, k) => {
+      const mid = avg(V.slice(r.b, r.b + r.n).concat(V.slice(r.t, r.t + r.n)));
+      for (let i = 0; i < r.n; i++) {
+        const j = (i + 1) % r.n, q = [r.b + i, r.b + j, r.t + j, r.t + i], out = sub(avg(q.map(e => V[e])), mid);
+        F.push(face(V, [q], k ? out.map(c => -c) : out));       // a hole's walls face into the hole
+      }
+    });
+    return { color, alpha: 1, verts: V, faces: F };
+  }
+  /** A face as triangles (index triples into V), for the 3D view: a fan when it is one convex loop,
+      else its holes bridged into the outer loop and the result cut into ears */
+  function triangles(V, f) {
+    const n = f.n, ax = Math.abs(n[0]) > Math.abs(n[1]) ? (Math.abs(n[0]) > Math.abs(n[2]) ? 0 : 2) : (Math.abs(n[1]) > Math.abs(n[2]) ? 1 : 2);
+    const iu = (ax + 1) % 3, iv = (ax + 2) % 3, sg = n[ax] >= 0 ? 1 : -1;
+    const P = i => [V[i][iu] * sg, V[i][iv]];
+    const cross = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const L0 = f.loops[0];
+    const convex = L0.every((_, i) => cross(P(L0[i]), P(L0[(i + 1) % L0.length]), P(L0[(i + 2) % L0.length])) >= -1e-9);
+    const fan = L => { const t = []; for (let i = 1; i + 1 < L.length; i++) t.push([L[0], L[i], L[i + 1]]); return t; };
+    if (f.loops.length === 1 && convex) return fan(L0);
+    // bridge each hole, rightmost first, to the nearest outer vertex to its right it can see
+    let poly = L0.slice();
+    const segHit = (a, b, c, d) => { const d1 = cross(c, d, a), d2 = cross(c, d, b), d3 = cross(a, b, c), d4 = cross(a, b, d); return d1 * d2 < -1e-12 && d3 * d4 < -1e-12; };
+    f.loops.slice(1).map(h => { let m = 0; h.forEach((e, k) => { if (P(e)[0] > P(h[m])[0]) m = k; }); return { h, m, x: P(h[m])[0] }; }).sort((a, b) => b.x - a.x).forEach(({ h, m }) => {
+      const M = P(h[m]), all = [poly, ...f.loops.slice(1)];
+      let best = -1, bd = Infinity;
+      poly.forEach((e, k) => {
+        const Q = P(e), d = Math.hypot(Q[0] - M[0], Q[1] - M[1]);
+        if (d >= bd || Q[0] < M[0] - 1e-9) return;
+        const blocked = all.some(L => L.some((a, i) => { const b = L[(i + 1) % L.length]; return a !== e && b !== e && a !== h[m] && b !== h[m] && segHit(M, Q, P(a), P(b)); }));
+        if (!blocked) { best = k; bd = d; }
+      });
+      if (best < 0) return;
+      const hole = h.slice(m).concat(h.slice(0, m + 1));
+      poly = poly.slice(0, best + 1).concat(hole, poly.slice(best));
+    });
+    // ear clipping (the bridged polygon repeats the bridge's two ends)
+    const out = [], idx = poly.slice();
+    let guard = idx.length * idx.length + 10;
+    while (idx.length > 3 && guard-- > 0) {
+      let cut = false;
+      for (let i = 0; i < idx.length; i++) {
+        const a = idx[(i + idx.length - 1) % idx.length], b = idx[i], c = idx[(i + 1) % idx.length], A = P(a), Bp = P(b), Cp = P(c);
+        if (cross(A, Bp, Cp) <= 1e-12) continue;
+        const inside = idx.some(e => { if (e === a || e === b || e === c) return false; const Q = P(e); return cross(A, Bp, Q) > 1e-12 && cross(Bp, Cp, Q) > 1e-12 && cross(Cp, A, Q) > 1e-12; });
+        if (inside) continue;
+        out.push([a, b, c]); idx.splice(i, 1); cut = true; break;
+      }
+      if (!cut) break;
+    }
+    if (idx.length === 3) out.push(idx);
+    return out.length ? out : fan(L0);
+  }
   // a round wire swept along a polyline (the corners mitred): a solid of planar faces, for a bent lead.
   // path: local [x, y, z] points; the ring at each corner lies in the plane halfway between its two runs
   function wire(path, r, color, to) {
@@ -98,6 +161,76 @@
   // the valve on its socket: diameter and seated height
   const TUBE = { B9A: [22.2, 49], B7G: [19, 44], B9D: [30, 78], OCTAL: [33, 95], UX4: [52, 130], UX6: [30, 92] };
   const tubeOf = g => { const L = root.CadLib, p = g.members && g.members[0] && g.members[0].params; return L && p && p.tube ? L.tubeByName(p.tube) : null; };
+  // An Amass XT connector, from its drawing: the yellow housing in its chamfered profile (− end), a
+  // male's shroud round its gold pins, a female's insert with a gold socket in each hole, the solder
+  // legs (a right-angle one's bent down behind it), the mounting tabs or pegs, + and − moulded on top.
+  // Right-angle (PW) ones lie with the mouth at +y; upright ones open upwards.
+  function xtBody(fp, pads, out, to, t, lead) {
+    const X = fp.xt, H = X.h, M = X.mate || { pin: 2, wall: 0.8, dep: 5, cf: 1 }, male = X.male;
+    const minus = pads.find(p => p.name === "-"), plus = pads.find(p => p.name === "+"), contacts = [minus, plus], mSide = Math.sign(minus.x - plus.x) || -1;
+    const rPin = M.pin / 2, rSock = M.pin * 0.72, gap = 0.2;
+    // the profile: a rectangle u1..u2 × v1..v2 with the − end's two corners chamfered (c)
+    const prof = (u1, v1, u2, v2, c) => {
+      c = Math.max(0.3, Math.min(c, (v2 - v1) / 3, (u2 - u1) / 4));
+      return mSide < 0 ? [[u1 + c, v1], [u2, v1], [u2, v2], [u1 + c, v2], [u1, v2 - c], [u1, v1 + c]] : [[u1, v1], [u2 - c, v1], [u2, v1 + c], [u2, v2 - c], [u2 - c, v2], [u1, v2]];
+    };
+    const ring = (cx, cy, r) => circle(r, sides(r)).map(([a, b]) => [cx + a, cy + b]);
+    const metal = C.gold;
+    if (!X.up) {
+      const rear = X.body[0], frontR = X.body[X.body.length - 1], back = rear[1], front = frontR[3], D = Math.min(M.dep, (front - back) * 0.6), zc = H / 2;
+      const [x1, , x2] = rear, full = prof(x1, 0, x2, H, M.cf);
+      if (male) {
+        out.push(prism("y", full, back, front - D, C.xt, to));
+        const s = M.wall;
+        out.push(holedPrism("y", full, [prof(x1 + s, s, x2 - s, H - s, M.cf - s * 0.4)], front - D, front, C.xt, to));
+        contacts.forEach(p => { out.push(cylY(p.x, zc, rPin, front - D, front - 1.4, metal, to), cylY(p.x, zc, rPin * 0.8, front - 1.4, front - 0.8, metal, to)); });
+      } else {
+        // the insert: narrower than the rear by the male's wall, as the drawing's step shows
+        const s = X.body.length > 1 ? Math.max(0.3, x2 - frontR[2]) : M.wall + gap, ins = prof(x1 + s, s, x2 - s, H - s, M.cf - s * 0.4);
+        out.push(prism("y", full, back, front - D, C.xt, to));
+        out.push(holedPrism("y", ins, contacts.map(p => ring(p.x, zc, rSock)), front - D, front, C.xt, to));
+        contacts.forEach(p => out.push(holedPrism("y", ring(p.x, zc, rSock - 0.02), [ring(p.x, zc, rPin + 0.05)], front - D, front - 0.5, metal, to), cylY(p.x, zc, rSock, front - D - 0.01, front - D + 0.3, C.black, to)));
+      }
+      // + and − moulded on the top, over their contacts
+      contacts.forEach(p => {
+        const y = front - Math.min(2.5, D * 0.4), a = Math.min(1.4, rSock * 0.9), w = 0.35;
+        out.push(box(p.x - a / 2, y - w / 2, p.x + a / 2, y + w / 2, H, H + 0.15, C.xt, to));
+        if (p === plus) out.push(box(p.x - w / 2, y - a / 2, p.x + w / 2, y + a / 2, H, H + 0.15, C.xt, to));
+      });
+      // the solder legs: out of the back and bent down (XT30), or straight down under the housing
+      contacts.forEach(p => {
+        const r = Math.min(p.drill * 0.38, rPin * 0.8);
+        if (p.y < back - 0.2) out.push(wire([[p.x, back + 1, zc], [p.x, p.y + Math.min(1.2, zc), zc], [p.x, p.y, zc - Math.min(1.2, zc)], [p.x, p.y, -1.2 - t]], r, metal, to));
+        else out.push(cylZ(p.x, p.y, r, -1.2 - t, zc, metal, to));
+      });
+      // mounting: XT30's plastic ears with metal pegs, the bigger ones' tin-plated tabs
+      pads.filter(p => p.name === "MP").forEach(p => {
+        if (p.drill <= 1.2) {
+          // the ear reaches into the housing's side, its peg's hole well inside it
+          const e1 = p.x < 0 ? p.x - 1.25 : Math.min(x2 - 0.5, p.x - 1.25), e2 = p.x < 0 ? Math.max(x1 + 0.5, p.x + 1.25) : p.x + 1.25;
+          out.push(holedPrism("z", rect(e1, p.y - 1.3, e2, p.y + 1.3), [ring(p.x, p.y, p.drill / 2 + 0.05)], 0, 1.4, C.xt, to));
+          out.push(cylZ(p.x, p.y, p.drill / 2 - 0.05, -1.2 - t, 2.4, C.metal, to));
+        } else {
+          const w = Math.min(p.drill * 0.35, 0.8), l = p.drill * 0.9;
+          out.push(box(p.x - w / 2, p.y - l / 2, p.x + w / 2, p.y + l / 2, -1.2 - t, H * 0.55, C.metal, to));
+        }
+      });
+    } else {
+      // upright: the housing stands on the board, the mouth on top
+      const [x1, y1, x2, y2] = X.body[0], D = Math.min(M.dep, H * 0.55), full = prof(x1, y1, x2, y2, X.ch || M.cf);
+      out.push(prism("z", full, 0.2, H - D, C.xt, to));
+      if (male) {
+        out.push(holedPrism("z", full, [prof(x1 + M.wall, y1 + M.wall, x2 - M.wall, y2 - M.wall, (X.ch || M.cf) - M.wall * 0.4)], H - D, H, C.xt, to));
+        contacts.forEach(p => out.push(cylZ(p.x, p.y, rPin, H - D, H - 1.4, metal, to), cylZ(p.x, p.y, rPin * 0.8, H - 1.4, H - 0.8, metal, to)));
+      } else {
+        const s = M.wall + gap, ins = prof(x1 + s, y1 + s, x2 - s, y2 - s, (X.ch || M.cf) - s * 0.4), rs = Math.min(rSock, (y2 - y1) / 2 - s - 0.15);
+        out.push(holedPrism("z", ins, contacts.map(p => ring(p.x, p.y, rs)), H - D, H, C.xt, to));
+        contacts.forEach(p => out.push(holedPrism("z", ring(p.x, p.y, rs - 0.02), [ring(p.x, p.y, Math.min(rPin + 0.05, rs - 0.3))], H - D, H - 0.5, metal, to), cylZ(p.x, p.y, rs, H - D - 0.01, H - D + 0.3, C.black, to)));
+      }
+      // the solder cups or pins into their holes
+      contacts.forEach(p => out.push(cylZ(p.x, p.y, Math.min(p.drill * 0.42, rPin), -1.2 - t, 0.2, metal, to)));
+    }
+  }
   function partBodies(g, t, opts) {
     const fp = g.fp, name = fp.name, P = g.place, out = [], side = P.side === "B" ? "B" : "F";
     const to = ([x, y, z]) => { const [X, Y] = B().place([x, y], P); return [X, -Y, side === "B" ? -z : t + z]; };
@@ -247,6 +380,8 @@
       const r = fp.silk.find(q => q.t === "rect");
       out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, 0, 2.5, C.black, to));
       pads.forEach(p => out.push(box(p.x - 0.32, p.y - 0.32, p.x + 0.32, p.y + 0.32, -3 - t, 8.5, C.metal, to)));
+    } else if (fp.xt) {
+      xtBody(fp, pads, out, to, t, lead);
     } else if ((m = /^FASTON-(6\.3|4\.8)$/.exec(name))) {
       const w = m[1] === "6.3" ? 6.35 : 4.75;
       out.push(box(-w / 2 - 0.8, -1.2, w / 2 + 0.8, 1.2, 0, 1.2, C.metal, to), box(-w / 2, -0.4, w / 2, 0.4, 1.2, 9, C.metal, to)); lead(0, 0, 0.5);
@@ -490,5 +625,5 @@
     if ((m = /^SNAPIN-D(\d+)$/.exec(n))) return { kind: "can", d: +m[1], h: SNAPIN_H[+m[1]] || +m[1] * 1.6 };
     return null;
   }
-  root.Board3D = { scene, step, partBodies, boardSolid, preview, standardBody, COLORS: C, TUBE };
+  root.Board3D = { scene, step, partBodies, boardSolid, preview, standardBody, triangles, COLORS: C, TUBE };
 })(typeof window !== "undefined" ? window : globalThis);

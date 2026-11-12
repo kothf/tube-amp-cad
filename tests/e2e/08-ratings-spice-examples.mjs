@@ -517,3 +517,55 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     check(!/error/i.test(out), "ngspice runs the exported supply without an error");
   }
 }
+
+// ---------------------------------------------------------------------------
+// KiCad import (File ▾ → Open KiCad project…): the Gubin example's own KiCad export, picked in
+// the file dialog, comes back as the same circuit with its board; the dialog says what came
+// ---------------------------------------------------------------------------
+{
+  cad.once("dialog", d => d.accept());
+  await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^07-/.test(x.file))));
+  await cad.waitForFunction(() => TubeCAD.state.comps.some(c => c.label === "VL1") && TubeCAD.state.board, null, { timeout: 30000 });
+  const snap = () => cad.evaluate(() => {
+    const S = TubeCAD.state;
+    return { comps: S.comps.map(c => [c.type, c.x, c.y, c.rot, c.label, JSON.stringify(c.params)].join("|")).sort(), wires: S.wires.length,
+      parts: Object.values(S.board.parts).map(p => [p.ref, p.fp, p.x, p.y, p.rot || 0, p.side || "F"].join("|")).sort(), vias: S.board.vias.length, zones: (S.board.zones || []).length, holes: (S.board.holes || []).length, outline: [S.board.outline.w, S.board.outline.h].join("×") };
+  });
+  const before = await snap();
+  const files = await cad.evaluate(() => { const f = TubeCAD.kicadFiles(); return Object.keys(f).filter(n => /\.kicad_(sch|pcb|pro)$/.test(n)).map(n => ({ name: n, text: f[n] })); });
+  const dialogs = []; const onDialog = d => { dialogs.push(d.message()); d.accept(); }; cad.on("dialog", onDialog);
+  await cad.click("#btn-file"); await cad.click("#btn-kicad-open");
+  await cad.setInputFiles("#kicad-input", files.map(f => ({ name: f.name, mimeType: "text/plain", buffer: Buffer.from(f.text, "utf8") })));
+  await cad.waitForSelector("#kicad-modal:not([hidden])", { timeout: 30000 }).catch(() => {});
+  const said = await cad.evaluate(() => { const m = document.getElementById("kicad-modal"); return m && !m.hidden ? { text: m.innerText.replace(/\s+/g, " "), board: !document.getElementById("kicad-board").hidden } : null; });
+  await cad.click("#kicad-ok").catch(() => {});
+  const after = await snap(), lost = before.comps.filter(x => !after.comps.includes(x)), extra = after.comps.filter(x => !before.comps.includes(x)), moved = before.parts.filter(x => !after.parts.includes(x));
+  check(said && /KiCad project opened/.test(said.text) && /Sheets 3/.test(said.text) && said.board,
+    `File ▾ → Open KiCad project… with the Gubin example's own export (${files.length} files): the list of what came (${said ? said.text.slice(0, 120) : "no dialog"}…) and Show the board`);
+  check(!lost.length && !extra.length && after.wires === before.wires, `it comes back as the circuit it was: ${after.comps.length} parts and frames in place with their values, ${after.wires} wires${lost.length || extra.length ? ` (lost ${lost.slice(0, 2).join("; ")}; new ${extra.slice(0, 2).join("; ")})` : ""}`);
+  check(!moved.length && after.parts.length === before.parts.length && after.vias === before.vias && after.zones === before.zones && after.holes === before.holes && after.outline === before.outline,
+    `and its board: ${after.parts.length} footprints where they were (the heater terminals the board adds too), ${after.vias} vias, the pour, ${after.holes} holes, ${after.outline} mm${moved.length ? " (not: " + moved.slice(0, 3).join("; ") + ")" : ""}`);
+  // a symbol the app has no part for stays as KiCad draws it, with its pins, and is listed in the inspector as an imported part
+  const kept = await cad.evaluate(() => {
+    const P = '(pin passive line (at X 0 A) (length 2.54) (name "N" (effects (font (size 1.27 1.27)))) (number "M" (effects (font (size 1.27 1.27)))))';
+    const pin = (x, a, n, m) => P.replace("X", x).replace("A", a).replace("N", n).replace("M", m);
+    const sch = `(kicad_sch (version 20230121) (generator eeschema) (uuid 11111111-0000-0000-0000-000000000001) (paper "A4")
+      (lib_symbols (symbol "my:RELAYX" (in_bom yes) (on_board yes) (property "Reference" "K" (at 0 5 0)) (property "Value" "RELAYX" (at 0 -5 0))
+        (symbol "RELAYX_0_1" (rectangle (start -5.08 2.54) (end 5.08 -2.54) (stroke (width 0.254) (type default)) (fill (type none))))
+        (symbol "RELAYX_1_1" ${pin(-7.62, 0, "COIL", 1)} ${pin(7.62, 180, "NO", 2)})))
+      (symbol (lib_id "my:RELAYX") (at 101.6 50.8 0) (unit 1) (in_bom yes) (on_board yes) (uuid 11111111-0000-0000-0000-000000000002)
+        (property "Reference" "K1" (at 101.6 44 0)) (property "Value" "RELAYX" (at 101.6 57 0)) (property "Footprint" "my:RelayX" (at 0 0 0))
+        (pin "1" (uuid 11111111-0000-0000-0000-000000000003)) (pin "2" (uuid 11111111-0000-0000-0000-000000000004))
+        (instances (project "x" (path "/11111111-0000-0000-0000-000000000001" (reference "K1") (unit 1)))))
+      (sheet_instances (path "/" (page "1"))))`;
+    return TubeCAD.openKicad([new File([sch], "x.kicad_sch")]).then(res => {
+      const S = TubeCAD.state, c = S.comps.find(c => c.label === "K1"); if (!c) return null;
+      S.sel.comps.clear(); S.sel.comps.add(c.id); TubeCAD.updateInspector();
+      const m = document.getElementById("kicad-modal"), text = m.innerText.replace(/\s+/g, " "); m.hidden = true;
+      return { type: c.type, pins: c.params.sym.pins.map(p => p.num + " " + p.name).join(", "), insp: document.getElementById("inspector").innerText.replace(/\s+/g, " ").slice(0, 200), kept: res.report.kept, text, bom: JSON.stringify(TubeCAD.bomData()).includes("RELAYX") };
+    });
+  });
+  check(kept && kept.type === "kicad" && kept.pins === "1 COIL, 2 NO" && kept.kept === 1 && /Imported part \(KiCad\)/.test(kept.insp) && /Kept as drawn in KiCad 1/.test(kept.text) && kept.bom,
+    `a symbol the app has no part for is kept as KiCad draws it: an imported part with its pins (${kept && kept.pins}), in the inspector and the bill of materials`);
+  cad.off("dialog", onDialog);
+}
