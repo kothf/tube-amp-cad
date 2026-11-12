@@ -10,6 +10,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 - **Vaults in Safari and Firefox, read only.** These browsers cannot write into a folder, but they can read one you pick. In File ▾ → Revisions… → Kept in → A folder on this computer, **Choose folder…** now opens the browser's folder picker there: pick a vault made in Chrome or Edge (or one project's folder) and its projects and revisions are listed with their pictures, opened, compared on the sheet and with each other, and downloaded. Save revision, New project, milestones, Restore and Delete are off or say that saving needs Chrome or Edge. The folder is asked for again after the page is reloaded. The project manager reads a vault the same way.
+
 ## [3.190.0] - 2026-11-11
 
 ### Changed
