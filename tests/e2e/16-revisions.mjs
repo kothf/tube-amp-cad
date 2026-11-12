@@ -70,7 +70,8 @@ import { U, cad, check, ctx, open } from "./harness.mjs";
   const row2 = (await items()).find(x => x.n === 2);
   check(/R to 3\.3 k/.test(row2.text) && new RegExp(r.label + ": r ").test(row2.text) && row2.cur && row2.on, `r2 keeps its message and what changed, and is picked (${row2.text})`);
   await $("rev-message").press("Enter");
-  await cad.waitForFunction(() => /same as r2/.test(document.getElementById("rev-info").textContent));
+  // the note comes before the list is read again (which redraws the preview): wait for Save to come back
+  await cad.waitForFunction(() => /same as r2/.test(document.getElementById("rev-info").textContent) && !document.getElementById("rev-save").disabled);
   check((await items()).length === 2, "saving the same design again makes no new revision");
 
   // a milestone

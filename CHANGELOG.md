@@ -20,9 +20,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Changed
 - A rectangular board, with or without rounded corners, is written and exported exactly as before.
 
-### Fixed
-- CHANGELOG: merge markers left around the 3.191.0 entry removed.
-
 ## [3.191.0] - 2026-11-12
 
 ### Added
