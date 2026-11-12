@@ -6,12 +6,28 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-<<<<<<< HEAD
+## [3.192.0] - 2026-11-12
+
+### Added
+- **Board outline sketch**: the board no longer has to be a rectangle. Construct ▾ → Board outline sketch… (or Board setup → Sketch the outline…, or a double-click on the board's edge) opens the outline as a sketch on the board. Tools: Select (S), Line (L), Arc through three points (A), Circle (C), Rectangle (R), regular Polygon (P), Slot (O) and Fillet (F); lengths, radii, angles and the number of sides can be typed while drawing. Corners drag with the lines that meet there, the mark in the middle of an arc bends it, a double-click on a line adds a corner, Del removes what is selected. The sketch has its own Undo and Redo; Finish makes it the board, Cancel leaves the board as it was.
+- **Cut-outs**: a closed shape drawn inside the edge is a cut-out (a window, a slot for a transformer's lugs, a round opening). Any number of them.
+- **Round board** in Board setup: Shape → Round and a diameter.
+- The sketch is checked as it is drawn: an open end, lines that cross or touch, a cut-out inside another one are named in the bar (a loose end is red), and Finish waits until the shape closes.
+- **Everything follows the shape**: the copper pours and their clearance to the edge and to each cut-out, the design-rule check (copper, holes and parts by the real edge), both routers (cut-outs are closed to tracks in the built-in one and in Freerouting), snapping and construction geometry (each edge and arc of the outline can be offset and referenced), the silkscreen, the 3D view and the STEP model (true arcs and cylinders), the printed and SVG drawings.
+- **Gerber**: the Edge_Cuts file has one closed contour for the edge and one per cut-out; pours are cut back from them; silkscreen is clipped to the board. **KiCad**: the outline is exported as lines and arcs on Edge.Cuts, and a KiCad board with a shaped outline opens with its shape and cut-outs.
+- Tests of the Gerber export for round, polygon and cut-out boards: the outline contours close and lie on the true edge, no copper or silkscreen outside the board or inside a cut-out, drills inside the board; the same files pass the Gerber fabrication check.
+
+### Changed
+- A rectangular board, with or without rounded corners, is written and exported exactly as before.
+
+### Fixed
+- CHANGELOG: merge markers left around the 3.191.0 entry removed.
+
 ## [3.191.0] - 2026-11-12
 
 ### Added
 - **Vaults in Safari and Firefox, read only.** These browsers cannot write into a folder, but they can read one you pick. In File ▾ → Revisions… → Kept in → A folder on this computer, **Choose folder…** now opens the browser's folder picker there: pick a vault made in Chrome or Edge (or one project's folder) and its projects and revisions are listed with their pictures, opened, compared on the sheet and with each other, and downloaded. Save revision, New project, milestones, Restore and Delete are off or say that saving needs Chrome or Edge. The folder is asked for again after the page is reloaded. The project manager reads a vault the same way.
-=======
+
 ## [3.190.0] - 2026-11-11
 
 ### Changed
@@ -43,7 +59,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - **Zooming and panning a big circuit no longer stutters.** With the voltages, currents and the animation on, a large schematic (the 50 W CFP amplifier, example 17) took longer to draw than a wheel notch lasts, so the view froze and jumped. Now the wheel (and dragging the view with the middle button or Space) stretches and moves the picture last drawn, and the sheet is drawn sharp again once the view rests (160 ms; on a long zoom it is redrawn on the way when the picture runs out). On a CPU slowed four times, a wheel step went from 66 ms to 17 ms.
 - The sheet draws only what is on screen (parts, wires, stickers, animated dots); the grid, junctions and each wire's dots are filled in one go; the zoom readout no longer makes the hover hints rescan the page on every notch; dragging the view no longer places the stickers anew on every move.
->>>>>>> origin/main
 
 ## [3.187.0] - 2026-11-10
 

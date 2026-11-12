@@ -730,13 +730,13 @@ import { readFile } from "node:fs/promises";
     const open = await bd.evaluate(() => ({ on: BoardApp.sketch.active(), bar: !document.getElementById("skbar").hidden, n: BoardApp.sketch.state().ents.length }));
     await bd.keyboard.press("c");
     let p = await at(o.w - 9, o.h / 2); await bd.mouse.click(p[0], p[1]);
-    await bd.keyboard.type("2.5"); await bd.keyboard.press("Enter");
+    await bd.keyboard.type("5"); await bd.keyboard.press("Enter");
     const drawn = await bd.evaluate(() => { const s = BoardApp.sketch.state(); return { n: s.ents.length, c: s.ents.find(e => e.t === "C"), err: s.res.error || null }; });
     await bd.click("#sk-finish"); await bd.waitForTimeout(300);
     const done = await bd.evaluate(() => { const S = BoardApp.state, o = S.board.outline; return { on: BoardApp.sketch.active(), loops: o.shape ? o.shape.length : 0, w: o.w, h: o.h, area: o.shape ? BoardOutline.area(o) : 0 }; });
     const c1 = await cuts();
-    check(open.on && open.bar && open.n === 4 && drawn.n === 5 && drawn.c && Math.abs(drawn.c.r - 2.5) < 1e-6 && !drawn.err && !done.on && done.loops === 2 && done.w === o.w && done.h === o.h && Math.abs(o.w * o.h - done.area - Math.PI * 6.25) < 0.01 && c0 === 1 && c1 === 2,
-      `Construct ▾ → Sketch the outline opens the sketch on the board's ${open.n} edges; a circle of radius 2.5 typed inside is a cut-out after Finish (${done.loops} loops, ${(o.w * o.h - done.area).toFixed(2)} mm² less) and the Gerber outline file has ${c1} closed contours (was ${c0})`);
+    check(open.on && open.bar && open.n === (o.r ? 8 : 4) && drawn.n === open.n + 1 && drawn.c && Math.abs(drawn.c.r - 2.5) < 1e-6 && !drawn.err && !done.on && done.loops === 2 && done.w === o.w && done.h === o.h && Math.abs(o.w * o.h - (4 - Math.PI) * (o.r || 0) ** 2 - done.area - Math.PI * 6.25) < 0.01 && c0 === 1 && c1 === 2,
+      `Construct ▾ → Sketch the outline opens the sketch on the board's ${open.n} edges; a circle of diameter 5 typed inside is a cut-out after Finish (${done.loops} loops) and the Gerber outline file has ${c1} closed contours (was ${c0})`);
     await bd.keyboard.press("Control+z"); await bd.waitForTimeout(200);
     const un = await bd.evaluate(() => !BoardApp.state.board.outline.shape);
     await bd.evaluate(() => BoardApp.openSetup()); await bd.selectOption("#setup-shape", "round"); await bd.fill("#setup-dia", "90"); await bd.click("#setup-apply"); await bd.waitForTimeout(300);
