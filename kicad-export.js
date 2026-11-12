@@ -173,6 +173,14 @@
       body.push([`(footprint ${q(LIBNAME + ":" + holeName(h))} (layer "F.Cu")`, `  (tstamp ${uuid(sd)})`, `  (at ${n(h.x)} ${n(h.y)})`, ...holeItems(h, sd, "H" + (i + 1), netRef(holeNet[i])), ")"].join("\n"));
     });
     // the outline: a rectangle, its corners rounded
+    const OL = root.BoardOutline;
+    if (OL && OL.isShape(o)) {
+      // a shape of its own: every line and arc of the edge and of the cut-outs (KiCad's arcs: start, a point on it, end)
+      OL.segs(o).forEach((sg, k) => {
+        if (sg.t === "A") { const mm = OL.segMid(sg); body.push(`(gr_arc (start ${n(sg.x1)} ${n(sg.y1)}) (mid ${n(mm[0])} ${n(mm[1])}) (end ${n(sg.x2)} ${n(sg.y2)}) ${stroke(0.1)} (layer "Edge.Cuts") (tstamp ${uuid("arc:" + k)}))`); }
+        else body.push(`(gr_line (start ${n(sg.x1)} ${n(sg.y1)}) (end ${n(sg.x2)} ${n(sg.y2)}) ${stroke(0.1)} (layer "Edge.Cuts") (tstamp ${uuid("edge:" + k)}))`);
+      });
+    } else {
     const r = Math.max(0, Math.min(o.r || 0, o.w / 2, o.h / 2)), W = o.w, H = o.h, edge = (s, e, k) => `(gr_line (start ${n(s[0])} ${n(s[1])}) (end ${n(e[0])} ${n(e[1])}) ${stroke(0.1)} (layer "Edge.Cuts") (tstamp ${uuid("edge:" + k)}))`;
     const sides = [[[r, 0], [W - r, 0]], [[W, r], [W, H - r]], [[W - r, H], [r, H]], [[0, H - r], [0, r]]];
     sides.forEach((s, k) => { if (Math.hypot(s[1][0] - s[0][0], s[1][1] - s[0][1]) > 1e-6) body.push(edge(s[0], s[1], k)); });
@@ -180,6 +188,7 @@
       const P = d => [cx + r * Math.cos(d * Math.PI / 180), cy + r * Math.sin(d * Math.PI / 180)], s = P(a0), mm = P(a0 + 45), e = P(a0 + 90);
       body.push(`(gr_arc (start ${n(s[0])} ${n(s[1])}) (mid ${n(mm[0])} ${n(mm[1])}) (end ${n(e[0])} ${n(e[1])}) ${stroke(0.1)} (layer "Edge.Cuts") (tstamp ${uuid("arc:" + k)}))`);
     });
+    }
     // texts (our size is the cap height, as KiCad's)
     (board.texts || []).forEach((t, i) => {
       const mir = /^B\./.test(t.layer), a = ang(((t.rot || 0) & 3) * 90);

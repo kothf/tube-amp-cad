@@ -91,7 +91,12 @@
       const pk = K.pick(S.csol, x, H() - y, tol, {});
       if (!pk || !pk.c || pk.c.t !== "L") return null;
       const c = pk.c, seg = [c.x1, H() - c.y1, c.x2, H() - c.y2];
-      if (pk.id === "@outline") return pk.k <= 3 ? { line: seg, name: `board ${D.EDGE_NAMES[pk.k]}`, make: () => ({ t: "edge", k: pk.k }) } : null;
+      if (pk.id === "@outline") {
+        // a board with a shape of its own: only a straight run along the box round it stands for that side
+        let k = pk.k;
+        if (o.shape) { const near = (a, b) => Math.abs(a - b) < 1e-4; k = near(c.y1, 0) && near(c.y2, 0) ? 0 : near(c.x1, o.w) && near(c.x2, o.w) ? 1 : near(c.y1, o.h) && near(c.y2, o.h) ? 2 : near(c.x1, 0) && near(c.x2, 0) ? 3 : 9; }
+        return k <= 3 ? { line: seg, name: `board ${D.EDGE_NAMES[k]}`, make: () => ({ t: "edge", k }) } : null;
+      }
       if (typeof pk.id === "string" && pk.id.startsWith("@ko:")) return { line: seg, name: `keep-out edge ${pk.k + 1}`, make: () => ({ t: "koe", id: pk.id.slice(4), k: pk.k }) };
       return { line: seg, name: "construction line", make: () => ({ t: "cl", g: { id: pk.id, k: pk.k || 0 } }) };
     }

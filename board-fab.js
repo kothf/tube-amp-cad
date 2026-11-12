@@ -20,7 +20,7 @@
     model.parts.forEach(g => {
       if (!g.place || !g.fp) return;
       const c = [[g.fp.box[0], g.fp.box[1]], [g.fp.box[2], g.fp.box[1]], [g.fp.box[0], g.fp.box[3]], [g.fp.box[2], g.fp.box[3]]].map(p => C.place(p, g.place));
-      if (c.some(([x, y]) => C.edgeDist(x, y, o) >= 0)) keep.add(g.key);
+      if (c.concat([[g.place.x, g.place.y]]).some(([x, y]) => C.edgeDist(x, y, o) >= 0)) keep.add(g.key);
     });
     return keep;
   }
@@ -76,7 +76,9 @@
       board.texts.filter(t => t.layer === layer).forEach(t => draw.push(...textOps(t, side === "B")));
       // kept on the board, and off every opening in the mask (pads, holes) with a 0.1 mm gap: what
       // the board maker would otherwise clip by hand
-      draw.forEach(op => { if (op.t === "line") clipToConvex(op.pts, inside).forEach(pts => ops.push({ ...op, pts })); else ops.push(op); });
+      // (a board with a shape of its own: off its edge and out of its cut-outs, wherever they run)
+      const OL = root.BoardOutline, shaped = OL && OL.isShape(board.outline), clip = pts => (shaped ? OL.clipPolyline(board.outline, pts, 0.1) : clipToConvex(pts, inside));
+      draw.forEach(op => { if (op.t === "line") clip(op.pts).forEach(pts => ops.push({ ...op, pts })); else ops.push(op); });
       if (ops.length) {
         const e = (R.maskExpansion || 0) + 0.1;
         pads.forEach(p => { if (C.onSide(p, side)) ops.push({ pol: "C", ...C.flashOf(p, e) }); });
@@ -93,8 +95,9 @@
         for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) ops.push({ pol: "D", t: "flash", shape: "R", x: r4(p.x - p.w / 2 + (i + 0.5) * cw), y: r4(p.y - p.h / 2 + (j + 0.5) * ch), w, h });
       });
     } else if (layer === "Edge.Cuts") {
-      const P = C.outlinePoly(board.outline, 0);
-      ops.push({ pol: "D", t: "line", w: EDGE_W, pts: P.concat([P[0]]), fn: "Profile" });
+      // the edge, and each cut-out of a board with a shape of its own, as closed contours
+      const OL = root.BoardOutline, loops = OL && OL.isShape(board.outline) ? OL.polys(board.outline, 0.005) : [C.outlinePoly(board.outline, 0)];
+      loops.forEach(P => ops.push({ pol: "D", t: "line", w: EDGE_W, pts: P.concat([P[0]]), fn: "Profile" }));
     }
     return ops;
   }
@@ -197,7 +200,7 @@
     const R = board.rules, st = board.stackup, n = t => t.reduce((s, [, p]) => s + p.length, 0), dias = t => [...new Set(t.map(x => x[0]))].join(", ");
     const ph = (board.holes || []).filter(h => h.plated).length, nw = board.tracks.map(t => t.w);
     files[`${base}-README.txt`] = [`${(meta && meta.title) || base} — manufacturing files from Tube Amp CAD ${(meta && meta.version) || ""}`, "",
-      `Board: ${board.outline.w} × ${board.outline.h} mm${board.outline.r ? `, corner radius ${board.outline.r} mm` : ""}, 2 layers, ${st.thickness} mm FR-4, ${st.copper} µm copper (${st.copper >= 70 ? 2 : 1} oz)`,
+      `Board: ${root.BoardOutline && root.BoardOutline.isShape(board.outline) ? root.BoardOutline.describe(board.outline) + " (the Edge_Cuts file has the edge" + (board.outline.shape.length > 1 ? " and the cut-outs to rout" : "") + ")" : `${board.outline.w} × ${board.outline.h} mm${board.outline.r ? `, corner radius ${board.outline.r} mm` : ""}`}, 2 layers, ${st.thickness} mm FR-4, ${st.copper} µm copper (${st.copper >= 70 ? 2 : 1} oz)`,
       `Tracks ${nw.length ? `${Math.min(...nw)}–${Math.max(...nw)} mm wide` : "none"} (design minimum ${R.minTrack} mm); clearance ${R.clearance} mm, high voltage ${R.hvClearance} mm and more by IPC-2221B ${R.ipc || "B2"} where the voltage asks`,
       `Holes: ${n(d.pth)} plated (${dias(d.pth)} mm${ph ? `; ${ph} of them plated mounting holes` : ""})${d.npth.length ? `, ${n(d.npth)} not plated (${dias(d.npth)} mm)` : ""}`,
       // mounting holes with a finish or a tolerance (the drill files carry only the diameter)
