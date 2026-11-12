@@ -85,6 +85,27 @@ test("board: every model on every footprint it offers, pins on their pads, a 3D 
   }
 });
 
+test("3D: a detailed housing, the male's shroud round its pins, the female's insert with a socket per pin, faces with holes split into the right triangles", () => {
+  const cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], sub = (a, b) => a.map((c, i) => c - b[i]);
+  const area = (V, L, n) => { let s = [0, 0, 0]; for (let i = 0; i < L.length; i++) { const c = cr(V[L[i]], V[L[(i + 1) % L.length]]); s = s.map((x, k) => x + c[k]); } return Math.abs(s[0] * n[0] + s[1] * n[1] + s[2] * n[2]) / 2; };
+  for (const n of ["XT30PW-M", "XT30PW-F", "XT60PW-M", "XT60PW-F", "XT90PW-M", "XT90PW-F", "XT30UPB-M", "XT30UPB-F", "XT60-M", "XT60-F"]) {
+    const f = B.footprint("AMASS-" + n), bodies = D3.partBodies({ id: "x", label: "XP1", fp: f, place: { x: 50, y: 40, rot: 0, side: "F" } }, 1.6, {});
+    const holed = bodies.flatMap(s => s.faces.filter(fc => fc.loops.length > 1).map(fc => ({ s, fc })));
+    // male: the shroud's mouth is one ring; female: the insert's face has one socket per pin, plus a gold ring in each
+    if (f.xt.male) assert.ok(holed.some(h => h.fc.loops.length === 2), n + ": shroud");
+    else assert.ok(holed.some(h => h.fc.loops.length === 3), n + ": insert with two sockets");
+    assert.ok(bodies.some(s => s.color === D3.COLORS.gold), n + ": gold contacts");
+    for (const s of bodies) for (const fc of s.faces) {
+      const want = area(s.verts, fc.loops[0], fc.n) - fc.loops.slice(1).reduce((a, l) => a + area(s.verts, l, fc.n), 0);
+      const got = D3.triangles(s.verts, fc).reduce((a, t) => a + Math.hypot(...cr(sub(s.verts[t[1]], s.verts[t[0]]), sub(s.verts[t[2]], s.verts[t[0]]))) / 2, 0);
+      near(got, want, 1e-6 * Math.max(1, want) + 1e-6, n + " face area");
+    }
+    // STEP: every hole loop becomes an inner bound of its face
+    const step = D3.step({ board: bodies[0], bodies: bodies.slice(1), t: 1.6 }, { title: n });
+    assert.ok((step.match(/FACE_BOUND\(/g) || []).length >= holed.reduce((a, h) => a + h.fc.loops.length - 1, 0), n + ": STEP inner bounds");
+  }
+});
+
 test("BOM: the Amass order code as the part number unless one is typed, the rating from the spec sheet", () => {
   const circuit = { comps: [{ id: "a", type: "xt", label: "XP1", params: { model: "XT60PW-M" } }, { id: "b", type: "xt", label: "XS1", params: { model: "XT90S-F" } }, { id: "c", type: "xt", label: "XP2", params: { model: "XT30PW-M", partno: "MY-123" } }] };
   const rows = BOM.build(circuit.comps, {}), by = r => rows.find(x => x.refs === r);

@@ -56,7 +56,9 @@
         s.faces.forEach(f => {
           const top = s.board && f.n[2] > 0.99, bottom = s.board && f.n[2] < -0.99, g = top && textures && textures.top ? "top" : bottom && textures && textures.bottom ? "bottom" : s.alpha < 1 ? "glass" : "solid";
           const L = f.loops[0], col = [...s.color, s.alpha < 1 ? s.alpha : 1];
-          for (let i = 1; i + 1 < L.length; i++) [0, i, i + 1].forEach(j => { const p = V[L[j]]; groups[g].push(...p, ...(f.vn ? f.vn[j] : f.n), ...col, ...uvOf(p)); });
+          // a face with holes or a concave outline is cut into triangles; the rest are fans
+          if (root.Board3D && !s.board && (f.loops.length > 1 || L.length > 4)) root.Board3D.triangles(V, f).forEach(t => t.forEach(i => { const p = V[i], j = f.vn ? L.indexOf(i) : -1; groups[g].push(...p, ...(j >= 0 ? f.vn[j] : f.n), ...col, ...uvOf(p)); }));
+          else for (let i = 1; i + 1 < L.length; i++) [0, i, i + 1].forEach(j => { const p = V[L[j]]; groups[g].push(...p, ...(f.vn ? f.vn[j] : f.n), ...col, ...uvOf(p)); });
         });
       });
       Object.entries(groups).forEach(([k, a]) => {

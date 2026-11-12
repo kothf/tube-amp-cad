@@ -377,6 +377,9 @@
     "XT60-M": { pads: [-3.6, 3.6], drill: 4.5, d: 6.0, body: [[-7.75, -4.05, 7.75, 4.05]], ch: 2.75, h: 16, up: true },
     "XT60-F": { pads: [-3.6, 3.6], drill: 4.5, d: 6.0, body: [[-7.75, -4.05, 7.75, 4.05]], ch: 2.75, h: 15.7, up: true }
   };
+  // the mating parts by series (Amass drawings, rounded): a male's pin Ø, the shroud's wall, the mouth's
+  // depth (how far the female's insert goes in) and the chamfer at the housing's − end
+  const XT_MATE = { XT30: { pin: 2.0, wall: 0.8, dep: 5, cf: 1.0 }, XT60: { pin: 3.5, wall: 1.0, dep: 7.7, cf: 1.6 }, XT90: { pin: 4.5, wall: 1.2, dep: 10, cf: 2.0 } };
   function xtFp(model) {
     const X = XT_FP[model], [xm, xp] = X.pads, silk = [], sign = (x, y, plus) => { silk.push({ t: "line", x1: x - 0.8, y1: y, x2: x + 0.8, y2: y }); if (plus) silk.push({ t: "line", x1: x, y1: y - 0.8, x2: x, y2: y + 0.8 }); };
     X.body.forEach(([x1, y1, x2, y2]) => {
@@ -412,7 +415,7 @@
     silk.length = 0; silk.push(...lines);
     const kind = X.up ? (model.startsWith("XT60-") ? "solder cups upright in the board" : "vertical") : "right-angle, mouth at the bottom";
     const f = fp(`AMASS-${model}`, `Amass ${model} power connector, ${kind}`, pads, silk);
-    f.xt = { model, h: X.h, up: !!X.up, body: X.body, ch: X.ch || 0, male: /-M$/.test(model) }; f.zHeight = X.h;
+    f.xt = { model, h: X.h, up: !!X.up, body: X.body, ch: X.ch || 0, male: /-M$/.test(model), mate: XT_MATE[model.slice(0, 4)] }; f.zHeight = X.h;
     // the mouth may sit flush with the board's edge: no courtyard margin beyond it
     if (!X.up) f.box[3] = Math.max(...X.body.map(b => b[3]));
     return f;
