@@ -15,7 +15,10 @@
    the vault. There can be several vaults (a folder for each project, say): the browser remembers
    every folder added and "Kept in" switches between them; each vault has an id in its
    tubecad-vault.json, which a saved design and a #rev= address name. Deleting moves a project or revision to the trash (a mark in project.json; the files
-   stay) for TRASH_DAYS, then it goes for good. */
+   stay) for TRASH_DAYS, then it goes for good.
+   Safari and Firefox cannot write into a folder, only read one the user picks (a folder <input>):
+   there a vault is read only — its projects and revisions are listed, opened and compared, nothing
+   is saved — and the folder is asked for again after the page is reloaded. */
 (function (root) {
   "use strict";
   const PID = /^[A-Za-z0-9_-]{10}$/, FILE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/, MIME = /^[a-z]+\/[a-z0-9.+-]{1,60}$/;
@@ -28,7 +31,7 @@
   // (no folder picked), "permission" (the browser wants leave again), "gone" (moved or deleted)
   class NeedFolder extends Error {
     constructor(why, name) {
-      super({ unsupported: "this browser cannot open a folder: use Chrome or Edge", none: "choose a folder for the vault first", permission: `allow the browser to use the folder ${name || ""} again`.replace("  ", " "), gone: `the folder ${name || ""} cannot be found: choose it again`.replace("  ", " ") }[why]);
+      super({ unsupported: "this browser cannot open a folder: use Chrome or Edge", readonly: "this browser can only read the vault's folder: saving into it needs Chrome or Edge", none: "choose a folder for the vault first", permission: `allow the browser to use the folder ${name || ""} again`.replace("  ", " "), gone: `the folder ${name || ""} cannot be found: choose it again`.replace("  ", " ") }[why]);
       this.folder = why;
     }
   }
@@ -76,6 +79,45 @@
     return n;
   }
 
+  // ---- a folder read through a folder <input> (Safari, Firefox): the same calls, reading only ----
+  const lost = () => Object.assign(new Error("not found"), { name: "NotFoundError" });
+  function readDir(name) {
+    const kids = new Map();
+    return {
+      kind: "directory", name, kids, readOnly: true,
+      async getDirectoryHandle(n, o) { const k = kids.get(n); if (k && k.kind === "directory") return k; if (o && o.create) throw new NeedFolder("readonly"); throw lost(); },
+      async getFileHandle(n, o) { const k = kids.get(n); if (k && k.kind === "file") return k; if (o && o.create) throw new NeedFolder("readonly"); throw lost(); },
+      async removeEntry() { throw new NeedFolder("readonly"); },
+      async *entries() { yield* [...kids.entries()]; },
+    };
+  }
+  // the files of a folder <input> (each with webkitRelativePath "Folder/Project/r1.json") → that folder;
+  // a single project's folder picked (project.json at its top) stands as a vault with that one project
+  function fromFiles(files) {
+    const list = [...files].filter(f => f && (f.webkitRelativePath || f.name));
+    if (!list.length) return null;
+    const top = (list[0].webkitRelativePath || "").split("/")[0] || "folder", dir = readDir(top);
+    for (const f of list) {
+      const path = (f.webkitRelativePath || f.name).split("/").slice(1);
+      if (!path.length) path.push(f.name);
+      let d = dir;
+      for (const p of path.slice(0, -1)) { if (!d.kids.has(p)) d.kids.set(p, readDir(p)); d = d.kids.get(p); if (d.kind !== "directory") break; }
+      if (d.kind === "directory") d.kids.set(path[path.length - 1], { kind: "file", name: path[path.length - 1], getFile: async () => f, createWritable: async () => { throw new NeedFolder("readonly"); } });
+    }
+    if (dir.kids.has("project.json") && !dir.kids.has(MARK)) { const up = readDir(top); up.kids.set(top, dir); return up; }
+    return dir;
+  }
+  // the browser's folder <input>, opened (needs a click) → its files, or null when cancelled
+  function pickFiles() {
+    return new Promise(res => {
+      const inp = root.document.createElement("input");
+      inp.type = "file"; inp.webkitdirectory = true; inp.multiple = true; inp.hidden = true;
+      inp.addEventListener("change", () => { const f = [...inp.files]; inp.remove(); res(f.length ? f : null); });
+      inp.addEventListener("cancel", () => { inp.remove(); res(null); });
+      root.document.body.appendChild(inp); inp.click();
+    });
+  }
+
   // ---- the handle, remembered between visits ----
   function idb(mode, fn) {
     return new Promise((res, rej) => {
@@ -94,7 +136,10 @@
   // o.handle: a folder given outright (tests); o.now: the clock; o.trashDays
   function client(o = {}) {
     const now = o.now || (() => Date.now()), trashDays = o.trashDays || TRASH_DAYS;
-    const supported = !!o.handle || typeof root.showDirectoryPicker === "function";
+    // writes: folders can be written (Chrome, Edge); else, where a folder <input> exists, they can be read
+    const writes = o.handle ? !o.handle.readOnly : typeof root.showDirectoryPicker === "function";
+    const supported = !!o.handle || writes || !!(root.HTMLInputElement && "webkitdirectory" in root.HTMLInputElement.prototype);
+    const ro = () => !!(cur && cur.handle && cur.handle.readOnly);
     // the folders remembered: [{ id (from the folder's tubecad-vault.json, "" until read), handle, name }], and the one in use
     let vaults = o.handle ? [{ id: "", handle: o.handle, name: o.handle.name }] : [], cur = vaults[0] || null, asked = !!o.handle, checked = false;
     const CUR = "tubecad.vault.cur";
@@ -102,7 +147,7 @@
     // the list of folders is kept in IndexedDB, which can hold a folder's handle; o.keep or
     // window.CadVaultKeep ({ load, save }) keeps it elsewhere (the tests' stand-in folders)
     const kept = o.keep || root.CadVaultKeep || { load: () => idb("readonly", s => s.get("vaults")), save: list => idb("readwrite", s => s.put(list, "vaults")) };
-    const persist = async () => { try { await kept.save(vaults.map(v => ({ id: v.id, handle: v.handle, name: v.name }))); } catch (e) { /* no IndexedDB: the folders are asked for again next time */ } };
+    const persist = async () => { try { await kept.save(vaults.filter(v => !v.handle.readOnly).map(v => ({ id: v.id, handle: v.handle, name: v.name }))); } catch (e) { /* no IndexedDB: the folders are asked for again next time */ } };
     const reset = () => { checked = false; where.clear(); forget(); };
     const urls = new Map();          // "<project>/<n>/thumb" → object URL of the picture or file
     const where = new Map();         // project id → its folder's name, as last seen
@@ -120,6 +165,7 @@
     async function mark(h) {
       let m = await readJSON(h, MARK).catch(() => null);
       if (!m || m.app !== "TubeAmpCAD-vault" || !PID.test(String(m.id))) {
+        if (h.readOnly) return newId();      // a folder only read gets no mark: an id for this visit
         m = { app: "TubeAmpCAD-vault", version: 1, id: newId(), created: (m && m.created) || new Date(now()).toISOString(), note: "Tube Amp CAD keeps projects and their revisions in this folder (File > Revisions). Each project is a folder; r<n>.json is a design that File > Open opens." };
         await write(h, MARK, JSON.stringify(m, null, 1));
       }
@@ -136,7 +182,7 @@
         try { id = await mark(h); } catch (e) { throw gone(e, h); }
         if (cur.id !== id) { cur.id = id; keepCur(); if (!o.handle) await persist(); }
         checked = true;
-        await purgeOld(h);
+        if (!h.readOnly) await purgeOld(h);
       }
       return h;
     }
@@ -148,7 +194,7 @@
       const p = queue.then(run); queue = p.catch(() => {}); return p;
     }
     const guard = fn => async (...a) => { try { return await fn(...a); } catch (e) { if (e && (e.name === "NotFoundError" || e.name === "NotAllowedError") && !e.folder) checked = false; throw gone(e); } };
-    const change = fn => guard((...a) => serial(() => fn(...a)));
+    const change = fn => guard((...a) => { if (ro()) throw new NeedFolder("readonly"); return serial(() => fn(...a)); });
 
     // every project in the folder: id → { dir, meta, name }
     async function scan(h) {
@@ -254,16 +300,18 @@
     const stamp = () => new Date(now()).toISOString();
 
     const api = {
-      kind: "vault", supported,
+      kind: "vault", supported, writes,
+      // the folder in use can only be read (Safari, Firefox)
+      get readOnly() { return ro(); },
       get available() { return supported; },
       // what is known of the folder in use without touching it: { supported, id, name, granted, count (folders remembered) }
       async status() {
-        if (!supported) return { supported: false, id: "", name: "", granted: false, count: 0 };
+        if (!supported) return { supported: false, writes, id: "", name: "", granted: false, count: 0 };
         const h = await remembered();
-        if (!h) return { supported: true, id: "", name: "", granted: false, count: 0 };
+        if (!h) return { supported: true, writes, id: "", name: "", granted: false, count: 0 };
         let granted = true;
         try { if (h.queryPermission) granted = (await h.queryPermission({ mode: "readwrite" })) === "granted"; } catch (e) { granted = false; }
-        return { supported: true, id: cur.id, name: h.name, granted, count: vaults.length };
+        return { supported: true, writes, id: cur.id, name: h.name, granted, count: vaults.length };
       },
       // the id of the vault in use ("" before its folder was read)
       id: () => (cur ? cur.id : ""),
@@ -274,7 +322,8 @@
       async choose() {
         if (!supported) throw new NeedFolder("unsupported");
         let h;
-        try { h = await root.showDirectoryPicker({ id: "tubecad-vault", mode: "readwrite" }); }
+        if (!writes) { h = fromFiles((await pickFiles()) || []); if (!h) return null; }
+        else try { h = await root.showDirectoryPicker({ id: "tubecad-vault", mode: "readwrite" }); }
         catch (e) { if (e && e.name === "AbortError") return null; throw e; }
         await api.use(h);
         return h.name;
@@ -321,7 +370,7 @@
         let bytes = 0; for (const p of all) bytes += await sizeOf(p.dir);
         const on = all.filter(p => !p.meta.deleted);
         return {
-          vault: true, id: cur.id, folder: h.name, email: "",
+          vault: true, id: cur.id, folder: h.name, email: "", readOnly: !!h.readOnly,
           revisions: { bytes, projects: on.length, count: on.reduce((n, p) => n + live(p.meta).length, 0), max: null },
           trash: { projects: all.length - on.length, revisions: on.reduce((n, p) => n + p.meta.revs.filter(r => r.deleted).length, 0), days: trashDays },
         };
@@ -475,5 +524,5 @@
   let one = null;
   // the vault of this browser (one for the page)
   const shared = () => one || (one = client());
-  root.CadVault = { client, shared, NeedFolder, MARK };
+  root.CadVault = { client, shared, fromFiles, NeedFolder, MARK };
 })(typeof window !== "undefined" ? window : globalThis);

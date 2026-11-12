@@ -154,8 +154,8 @@ Firefox is not tested.
     r2…) with a message, what changed, pictures of the sheet and the board,
     milestones, Compare on the sheet and Restore. *Kept in* chooses where: on
     aerocat.tech (the site's owner only, `server/share/`), or in a **vault**,
-    a folder on your computer that you choose (`cad-vault.js`, Chrome and
-    Edge). A vault holds plain files: a folder for each project with
+    a folder on your computer that you choose (`cad-vault.js`; Chrome and
+    Edge read and write it, Safari and Firefox open it read only). A vault holds plain files: a folder for each project with
     `project.json`, and each revision as `r<n>.json` (File → Open reads it)
     with its pictures and release files. Add as many vault folders as you
     like, one for each project for example, and switch between them in

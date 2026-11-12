@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+<<<<<<< HEAD
+## [3.191.0] - 2026-11-12
+
+### Added
+- **Vaults in Safari and Firefox, read only.** These browsers cannot write into a folder, but they can read one you pick. In File ▾ → Revisions… → Kept in → A folder on this computer, **Choose folder…** now opens the browser's folder picker there: pick a vault made in Chrome or Edge (or one project's folder) and its projects and revisions are listed with their pictures, opened, compared on the sheet and with each other, and downloaded. Save revision, New project, milestones, Restore and Delete are off or say that saving needs Chrome or Edge. The folder is asked for again after the page is reloaded. The project manager reads a vault the same way.
+=======
 ## [3.190.0] - 2026-11-11
 
 ### Changed
@@ -37,6 +43,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - **Zooming and panning a big circuit no longer stutters.** With the voltages, currents and the animation on, a large schematic (the 50 W CFP amplifier, example 17) took longer to draw than a wheel notch lasts, so the view froze and jumped. Now the wheel (and dragging the view with the middle button or Space) stretches and moves the picture last drawn, and the sheet is drawn sharp again once the view rests (160 ms; on a long zoom it is redrawn on the way when the picture runs out). On a CPU slowed four times, a wheel step went from 66 ms to 17 ms.
 - The sheet draws only what is on screen (parts, wires, stickers, animated dots); the grid, junctions and each wire's dots are filled in one go; the zoom readout no longer makes the hover hints rescan the page on every notch; dragging the view no longer places the stickers anew on every move.
+>>>>>>> origin/main
 
 ## [3.187.0] - 2026-11-10
 

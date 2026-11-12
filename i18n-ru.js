@@ -355,6 +355,9 @@
     "Keep the design as it is now, board included, as the project's next revision (Ctrl+Alt+S)": "Сохранить проект как есть, с платой, следующей ревизией (Ctrl+Alt+S)",
     "Show only the revisions starred as milestones": "Показать только ревизии, отмеченные как вехи",
     // revisions kept in a folder on this computer (cad-vault.js)
+    "This browser can read a vault's folder but cannot save into it. Choose the folder (a vault made in Chrome or Edge, or one project's folder) to list its revisions, open them and compare them; the browser asks for the folder again after the page is reloaded. Saving revisions into a folder needs Chrome or Edge.": "Этот браузер умеет читать папку хранилища, но не умеет в неё сохранять. Выберите папку (хранилище, созданное в Chrome или Edge, или папку одного проекта), чтобы увидеть её ревизии, открывать и сравнивать их; после перезагрузки страницы браузер спросит папку снова. Чтобы сохранять ревизии в папку, нужен Chrome или Edge.",
+    "This browser can only read the vault's folder: saving into it needs Chrome or Edge.": "Этот браузер умеет только читать папку хранилища: чтобы сохранять в неё, нужен Chrome или Edge.",
+    "No projects in this folder.": "В этой папке нет проектов.",
     "Kept in": "Хранить в",
     "Where the revisions are kept": "Где хранятся ревизии",
     "Where the projects are kept": "Где хранятся проекты",
@@ -1931,6 +1934,7 @@
     [/^Restoring r(\d+)…$/, "Восстанавливаю r$1…"],
     // the vault: folders by their names
     [/^Folder: (.+)$/, "Папка: $1"], [/^Allow (.+)$/, "Разрешить $1"],
+    [/^Folder (.+) · (.+) in (\d+) projects? · read only$/, "Папка $1 · $2, проектов: $3 · только чтение"],
     [/^Folder (.+) · (.+) in (\d+) projects?$/, "Папка $1 · $2, проектов: $3"],
     [/^Revisions are kept in the folder (.+)$/, "Ревизии хранятся в папке $1"],
     [/^r(\d+) is the newest revision again, as r(\d+)\. The sheet is unchanged: Open puts it there\.$/, "r$1 снова самая новая ревизия, как r$2. Лист не изменился: «Открыть» поставит её на лист."],

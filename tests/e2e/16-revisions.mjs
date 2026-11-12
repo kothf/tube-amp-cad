@@ -3,7 +3,7 @@
 // manager (projects.html) shows and changes what is stored
 import { createServer } from "node:http";
 import { createSign, generateKeyPairSync } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { U, cad, check, ctx, open } from "./harness.mjs";
@@ -320,6 +320,35 @@ import { U, cad, check, ctx, open } from "./harness.mjs";
     await c3.waitForFunction(() => /owner@example\.com/.test(document.getElementById("rev-who").textContent) && document.getElementById("rev-folder-forget").hidden && document.querySelectorAll("#rev-list .rev-item").length === 5);
     check(await c3.evaluate(() => localStorage.getItem("tubecad.rev.store") === "site" && document.querySelectorAll("#rev-project option").length === 2), "Kept in switches back to aerocat.tech, with its own projects");
     await c3.close();
+
+    // A browser that cannot write into folders (Safari, Firefox; here Chromium without its folder
+    // dialog): a vault's folder is picked with a folder <input> and only read
+    const vdir = join(dir, "Old vault"), pdir = join(vdir, "Preamp");
+    mkdirSync(pdir, { recursive: true });
+    const design = await cad.evaluate(() => { const d = JSON.parse(TubeCAD.circuitJSON()); delete d.revLink; return d; });
+    writeFileSync(join(vdir, "tubecad-vault.json"), JSON.stringify({ app: "TubeAmpCAD-vault", version: 1, id: "OldVault01" }));
+    writeFileSync(join(pdir, "project.json"), JSON.stringify({ id: "Preamp0001", name: "Preamp", created: "2026-01-02T10:00:00Z", updated: "2026-01-02T10:00:00Z", revs: [{ n: 1, time: "2026-01-02T10:00:00Z", message: "from the other computer", summary: "first revision", size: 1, hash: "x" }] }));
+    writeFileSync(join(pdir, "r1.json"), JSON.stringify(design));
+    const s4 = await ctx.newPage();
+    s4.on("dialog", d => d.accept().catch(() => {}));
+    await s4.addInitScript(() => { window.showDirectoryPicker = undefined; try { localStorage.removeItem("test.vaults"); } catch (e) { /* no storage */ } });
+    await s4.goto(U("circuit_sandbox.html"));
+    await s4.waitForFunction(() => window.TubeCAD && TubeCAD.revisions());
+    await s4.evaluate(() => TubeCAD.revisions().open());
+    await s4.waitForFunction(() => /owner@example\.com/.test(document.getElementById("rev-who").textContent));
+    await s4.selectOption("#rev-store", "vault");
+    await s4.waitForFunction(() => !document.getElementById("rev-vault").hidden);
+    check(/can read a vault's folder but cannot save into it/.test(await s4.locator("#rev-vault-text").textContent()), "a browser that cannot write into folders says a vault is read only there");
+    const [chooser] = await Promise.all([s4.waitForEvent("filechooser"), s4.click("#rev-vault-pick")]);
+    await chooser.setFiles(vdir);
+    await s4.waitForFunction(() => !document.getElementById("rev-main").hidden && document.querySelectorAll("#rev-list .rev-item").length === 1);
+    check(await s4.evaluate(() => /Folder Old vault .* read only/.test(document.getElementById("rev-who").textContent) && document.getElementById("rev-save").disabled && document.getElementById("rev-new").disabled && /from the other computer/.test(document.getElementById("rev-list").textContent)),
+      "the folder picked is listed, read only: its project and revision show, Save revision and New project are off");
+    await s4.click("#rev-preview button[data-act=open]");
+    await s4.waitForFunction(() => document.getElementById("rev-modal").hidden && /^r1/.test(document.getElementById("rev-at").textContent) && TubeCAD.revisions().state().at.vault === "OldVault01");
+    check(true, "Open puts a revision of the read-only vault on the sheet");
+    await s4.evaluate(() => { localStorage.setItem("tubecad.rev.store", "site"); localStorage.removeItem("tubecad.rev.at"); });
+    await s4.close();
   }
   await m.close();
   await ctx.unroute(/\/api\/rev\//);
