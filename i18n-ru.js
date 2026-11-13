@@ -2140,6 +2140,14 @@
     [/^Amass (XT\S+) power connector, (right-angle, mouth at the bottom|vertical|solder cups upright in the board)(\.?)$/, (m, k, how, dot) => `Силовой разъём Amass ${k}, ${{ "right-angle, mouth at the bottom": "угловой, гнездом вниз", vertical: "вертикальный", "solder cups upright in the board": "чашками под пайку стоя в плату" }[how]}${dot}`],
     [/^DIP-(\d+), 2\.54 mm pitch, rows 7\.62 mm apart \(pin 1 square, the notch at the top\)(\.?)$/, "DIP-$1, шаг 2,54 мм, ряды через 7,62 мм (вывод 1 квадратный, ключ сверху)$2"],
     [/^needs ([\d.]+) mm$/, "нужно $1 мм"],
+    // the rules on pin types (cad-erc.js)
+    [/^No DC path for (.+): only capacitors and other inputs are wired to (?:it|them)\. Give (?:it|each) a resistor to ground or to its bias \(a grid leak, a gate or base resistor\)\.$/, "Нет пути по постоянному току для $1: подключены только конденсаторы и другие входы. Нужен резистор на землю или к цепи смещения (резистор утечки сетки, резистор затвора или базы)."],
+    [/^Supply pins? fed by nothing: (.+)\.$/, "Выводы питания ни к чему не подключены: $1."],
+    [/^Outputs wired together: (.+)\. Put a resistor in each, or use one\.$/, "Выходы соединены вместе: $1. Поставьте в каждый резистор или оставьте один."],
+    [/^Outputs? wired to ground: (.+)\.$/, "Выход соединён с землёй: $1."],
+    [/^Output (.+) wired straight to the supply (.+)\.$/, "Выход $1 соединён прямо с питанием $2."],
+    [/^(\S+): its supply pins (\S+) and (\S+) are on one net, so it has no supply\.$/, "$1: выводы питания $2 и $3 на одной цепи, питания нет."],
+    [/^(\S+) is shorted: both its terminals are on one net\.$/, "$1 закорочен: оба вывода на одной цепи."],
     // SPICE parts (cad-components.js LIB.spice, spice-part.js, the checks)
     [/^SPICE (subcircuit|model) (\S+), simulated as written: (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `SPICE-${k === "model" ? "модель" : "подсхема"} ${n}, считается как написана: элементов ${e}, узлов ${nd}.${rest}`],
     [/^(Subcircuit|Model) (\S+): (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `${k === "Model" ? "Модель" : "Подсхема"} ${n}: элементов ${e}, узлов ${nd}.${rest ? " Пять выводов: принята за ОУ в обычном порядке (неинвертирующий вход, инвертирующий вход, V+, V−, выход); сверьте с комментарием модели." : ""}`],

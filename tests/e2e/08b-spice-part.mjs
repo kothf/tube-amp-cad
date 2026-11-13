@@ -73,5 +73,33 @@ import { execFileSync } from "node:child_process";
   check(dev.n === 8 && dev.sym === "npn" && dev.map === "C,B,E" && /8 parts/.test(dev.count), `a library of several parts lists them (${dev.count}); a lone NPN model takes the transistor's symbol`);
   await cad.click("#sppart-cancel");
   check(await cad.evaluate(() => document.getElementById("sppart-modal").hidden && TubeCAD.state.comps.find(c => c.type === "spice").params.sub === "TESTAMP"), "Cancel leaves the part's model as it was");
+  // --- the rules on pin types: an op-amp input behind a capacitor only is named in the Checks; a resistor to ground clears it ---
+  const ercOf = () => cad.evaluate(() => TubeCAD.circuitIssues().join(" | "));
+  const ids = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state, U = S.comps.find(c => c.type === "spice"), pin = (c, p) => C.compPins(c).find(q => q.id === p);
+    // cut the + input from ground: a capacitor in between
+    const g = S.comps.filter(c => c.type === "ground").find(c => { const p = pin(c, "G"), q = pin(U, "+"); return C.topo().pinNet.get(U.id + ":+") === 0 && Math.abs(p.x - q.x) < 80 && p.y > q.y; });
+    S.wires = S.wires.filter(w => !((w.x1 === pin(U, "+").x && w.y1 === pin(U, "+").y) || (w.x2 === pin(U, "+").x && w.y2 === pin(U, "+").y)));
+    const cap = C.makeComp("capacitor", { c: 1e-6 }, 300, 380, 0); S.comps.push(cap);
+    const wire = (p, q, h) => C.lRoute(p.x, p.y, q.x, q.y, h !== false).forEach(s => C.addSegment(...s));
+    wire(pin(U, "+"), pin(cap, "2"), false); wire(pin(cap, "1"), pin(g, "G"), false);
+    C.commit(); return { u: U.id, label: U.label, cap: cap.id };
+  });
+  const flagged = await ercOf();
+  check(new RegExp(`No DC path for ${ids.label}\\.\\+: only capacitors`).test(flagged), `Checks: an input with only a capacitor on it has no DC path (${(/No DC path[^|]*/.exec(flagged) || [flagged.slice(0, 80)])[0].slice(0, 60)}…)`);
+  await cad.evaluate(i => {
+    const C = TubeCAD, S = C.state, U = S.comps.find(c => c.id === i.u), pin = (c, p) => C.compPins(c).find(q => q.id === p);
+    const r = C.makeComp("resistor", { r: 1e6 }, 340, 340, 1), g = C.makeComp("ground", {}, 340, 400, 0); S.comps.push(r, g);
+    const wire = (p, q, h) => C.lRoute(p.x, p.y, q.x, q.y, h !== false).forEach(s => C.addSegment(...s));
+    wire(pin(U, "+"), pin(r, "1"), true); wire(pin(r, "2"), pin(g, "G"), false); C.commit();
+  }, ids);
+  check(!/No DC path/.test(await ercOf()), "a resistor to ground gives the path: the message goes");
+  // every example passes the rules
+  const yes = d => d.accept().catch(() => {});
+  cad.on("dialog", yes);
+  const seen = await cad.evaluate(async () => { const out = []; for (const ex of TubeCAD.EXAMPLES) { await TubeCAD.openExample(ex); out.push({ file: ex.file, parts: TubeCAD.state.comps.length, erc: TubeCAD.erc().map(i => i.text) }); } return out; });
+  cad.off("dialog", yes);
+  const dirty = seen.filter(x => x.erc.length).map(x => `${x.file}: ${x.erc[0]}`);
+  check(seen.length >= 20 && seen.every(x => x.parts > 5) && dirty.length === 0, `all ${seen.length} examples pass the pin rules${dirty.length ? ": " + dirty.join(" | ").slice(0, 300) : ""}`);
   await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
 }

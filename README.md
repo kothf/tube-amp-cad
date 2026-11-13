@@ -254,6 +254,20 @@ the model or open the file.
   (`tests/spicenet.test.mjs`), and `npm run test:ngspice` runs a set of
   makers' models against ngspice (`tests/models.mjs`).
 
+### Pin rules (ERC)
+
+Every pin has a role (an input, an output, a supply pin, a source, a plain
+terminal) and the Checks hold the wiring to it (`cad-erc.js`):
+
+- an input with **no DC path**: a grid behind its coupling capacitor without
+  a leak, a gate, a base or an op-amp input with nothing but capacitors on
+  it (the path is followed through resistors, chokes, windings, switches);
+- an IC's **supply pin fed by nothing**, or both supply pins on one net;
+- **outputs wired together**, to ground or straight to a supply;
+- a supply shorted by its own wiring.
+
+A SPICE part takes the roles of its symbol. All 20 examples pass.
+
 ### Examples
 
 **File ▾ → Gallery…** opens circuits drawn from published sources and compared

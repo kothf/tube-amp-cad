@@ -2160,6 +2160,13 @@
     if (!host.hidden) host.innerHTML = checksHTML(issues);
   }
   // wiring problems and every part beyond its rating, one sentence each
+  // the circuit as cad-erc.js checks it: every part with the net of each wired pin
+  function erc() {
+    if (!window.CadErc || !hasCircuit()) return [];
+    const T = topo(), skip = new Set(["frame", "note", "scope"]);
+    return CadErc.check({ parts: S.comps.filter(c => !skip.has(c.type)).map(c => ({ label: c.label || LIB[c.type].name, type: c.type, params: c.params,
+      pins: compPins(c).map(p => { const k = c.id + ":" + p.id; return { id: p.id, net: T.pinConnected.get(k) ? T.pinNet.get(k) : undefined }; }) })) });
+  }
   function circuitIssues() {
     const T = topo();
     const issues = [];
@@ -2186,6 +2193,8 @@
       if (na !== undefined && na === nb && T.pinConnected.get(c.id + ":" + a)) shorted.push(`${c.label}(${a}–${b})`);
     }));
     if (shorted.length) issues.push("Shorted by wiring: " + shorted.join(", "));
+    // the rules on pin types (cad-erc.js): inputs with no DC path, supply pins fed by nothing, outputs against each other
+    erc().forEach(i => issues.push(i.text));
     // SPICE parts: one without a model, or with a model the simulator cannot run, is left out
     S.comps.forEach(c => {
       if (c.type !== "spice") return;
@@ -3226,6 +3235,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

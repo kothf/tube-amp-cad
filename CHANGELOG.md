@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.194.0] - 2026-11-13
+
+### Added
+- **Pin rules in the Checks (ERC).** Every pin now has a role: an input (a grid, a gate, a base, an op-amp's inputs, a regulator's ADJ, a 555's trigger and threshold), an output (an op-amp's, a regulator's, a 555's), a supply pin, a source, or a plain terminal. The Checks hold the wiring to the roles:
+  - **an input with no DC path**: a grid behind its coupling capacitor with no grid leak, a gate, a base or an op-amp input with nothing but capacitors and other inputs on it. The path is followed through resistors, pots, chokes, transformer windings, switches, fuses and lamps, however far, so a grid stopper leading to a leak, a bias supply or the stage before (DC coupling) is fine;
+  - **a supply pin fed by nothing**, or an IC's two supply pins on one net;
+  - **outputs wired together** (two op-amps, two regulators), an output wired to ground or straight to a rail or a supply;
+  - **a supply shorted** by its own wiring.
+- A SPICE part takes the roles of its symbol (an op-amp's, a transistor's); a box only where the model's pin names are plain (`IN+`, `OUT`, `VCC`), every other pin is left alone, so there are no guesses.
+- All 20 examples pass the rules without a message. The rules are in a file of their own, `cad-erc.js`, with no drawing code, and tested in `tests/erc.test.mjs`.
+
 ## [3.193.0] - 2026-11-13
 
 ### Added
