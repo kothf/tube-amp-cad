@@ -95,7 +95,7 @@ test("junction capacitances follow their voltage, a transit time and a JFET's ga
   // the diode's 100 pF at zero bias is 18 pF with 30 V across it
   const cj = els.find(e => /#cj$/i.test(e.id) || /#cj$/i.test(e.name || ""));
   assert.ok(cj && cj.junc && cj.c === 100e-12, "the capacitor keeps its zero-bias value and its law");
-  assert.ok(f.warnings.some(w => /transit time/.test(w)) && !f.warnings.some(w => /zero-bias/.test(w)), "what is simplified is said");
+  assert.ok(!f.warnings.some(w => /transit time|zero-bias/.test(w)), "nothing is simplified away");
 });
 
 test("a junction's capacitance in the waveform: the corner of 100 kΩ and a diode follows the bias", () => {

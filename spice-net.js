@@ -13,8 +13,9 @@
    A lone .MODEL (a transistor or a diode from a maker's file) is wrapped as a part with
    that device's pins.
 
-   Junction capacitances follow the voltage across them (the engine's capAt); a transistor's
-   transit time counts in the small-signal analyses only. Not carried over: temperature terms
+   Junction capacitances follow the voltage across them (the engine's capAt, stepped by its
+   chargeAt); a transistor's transit times TF and TR store charge in the waveform and the
+   small-signal analyses; a VDMOS's Cgd follows CGDMIN … CGDMAX (A). Not carried over: temperature terms
    and noise parameters. Not supported (an error): LAPLACE and FREQ sources,
    transmission lines, BSIM MOSFETs, time-dependent expressions.
 
@@ -328,10 +329,10 @@
         const c2 = series(nm + "#rc", c, rc), b2 = series(nm + "#rb", b, rb), e2 = series(nm + "#re", e, re);
         const el = { name: nm, kind: "BJT", n: [c2, b2, e2], model: mdl }, tf = mp(m, "tf", 0, no);
         if (tf > 0) el.tf = tf;
+        const tr = mp(m, "tr", 0, no); if (tr > 0) el.tr = tr;
         if (rb > 0 || re > 0 || rc > 0) el.ext = [c, b, e];
         push(el);
         const cje = mp(m, "cje", 0, no) * area, cjc = mp(m, "cjc", 0, no) * area;
-        if (tf > 0) warn.add("A transistor's transit time (TF) counts in the frequency response (Bode, noise), not in the waveform: fast edges come out a little faster than the model's");
         const je = junc(m, "vje|pe", "mje|me", no, 0.75, 0.33), jc = junc(m, "vjc|pc", "mjc|mc", no, 0.75, 0.33);
         if (pol > 0) { cap(nm + "#cje", b2, e2, cje, je); cap(nm + "#cjc", b2, c2, cjc, jc); } else { cap(nm + "#cje", e2, b2, cje, je); cap(nm + "#cjc", c2, b2, cjc, jc); }
       }
@@ -352,8 +353,12 @@
           // the body diode and the capacitances of LTspice's VDMOS
           const is = mp(m, "is", 1e-14, no), bd = series(nm + "#rb", pol > 0 ? s2 : d2, mp(m, "rb", 0, no));
           push({ name: nm + "#body", kind: "D", n: pol > 0 ? [bd, d2] : [bd, s2], is, n_: mp(m, "n", 1, no), tt: mp(m, "tt", 0, no) || undefined });
-          cap(nm + "#cgs", g2, s2, mp(m, "cgs", 0, no)); cap(nm + "#cgd", g2, d2, mp(m, "cgdmin", 0, no)); cap(nm + "#cds", d2, s2, mp(m, "cjo", 0, no));
-          if (m.p.cgdmax !== undefined) warn.add("A power MOSFET's gate-drain capacitance is fixed at its small (high-voltage) value");
+          // Cgd follows VDMOS's law in vgd (CGDMIN … CGDMAX, A), the drain-source C the body diode's junction law
+          cap(nm + "#cgs", g2, s2, mp(m, "cgs", 0, no));
+          const cmin = mp(m, "cgdmin", 0, no), cmax = m.p.cgdmax !== undefined ? mp(m, "cgdmax", 0, no) : undefined;
+          if (cmax !== undefined && cmax > 0 && g2 !== d2) push({ name: nm + "#cgd", kind: "C", n: pol > 0 ? [g2, d2] : [d2, g2], c: cmin, vdm: { min: cmin, max: cmax, a: mp(m, "a", 1, no) } });
+          else cap(nm + "#cgd", g2, d2, cmin);
+          cap(nm + "#cds", pol > 0 ? s2 : d2, pol > 0 ? d2 : s2, mp(m, "cjo", 0, no), junc(m, "vj", "m", no, 1, 0.5));
         } else {
           cap(nm + "#cgs", g2, s2, mp(m, "cgso", 0, no) * w * mult); cap(nm + "#cgd", g2, d2, mp(m, "cgdo", 0, no) * w * mult); cap(nm + "#cbd", d2, s2, mp(m, "cbd", 0, no) * mult);
         }

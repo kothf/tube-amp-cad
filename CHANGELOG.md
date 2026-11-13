@@ -6,6 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.206.0] - 2026-11-13
+
+Phase 1 of the simulation engine plan: fast edges right. Every waveform bench against ngspice now agrees within 2 % of its swing (a diode's reverse recovery was 22 % off, a saturating switch 2.9 %, a switch with transit times 92 %).
+
+### Added
+- **Fine steps inside fast edges.** A time step whose third difference over the steps before (Gear-2's error) passes 0.25 V plus 1 % of the node's voltage and ¾ of those steps' own changes held an edge or a sharp kink, and is run again as 8 finer Gear-2 steps (any of them again as 8); a smooth waveform is left alone, even at a power-on run's coarse step. The time grid is kept, so a period still ends on its last step and the harmonics stay exact; the full run, the power-on run and Listen all use it.
+- **A transistor's transit times in the waveform.** An imported SPICE BJT's TF stores TF · If/qb between base and emitter and its TR stores TR · Ir between base and collector, so a saturated switch keeps conducting for its storage time, as in ngspice. TR now counts in Bode and noise too.
+- **A power MOSFET's Miller capacitance.** An imported VDMOS's gate-drain capacitance follows its CGDMIN … CGDMAX law (with A) in the gate-drain voltage, growing as the drain falls; its drain-source capacitance follows the body diode's junction law (CJO, VJ, M).
+
+### Changed
+- **Junction capacitors step their charge,** not their capacitance at the step before, as SPICE does: nothing is lost or gained however far the voltage swings in one step.
+
+### Tests
+- `tests/models.mjs`: a VDMOS switch bench; every waveform bench held to 2 %; ngspice's waveform read at a sixteenth of a step so an edge shorter than a step is matched where it is.
+
 ## [3.205.0] - 2026-11-13
 
 Phase 2 of the simulation engine plan: faster. On one core, against 3.204.0, the full run of every example is 2.1× faster (the stereo amplifier, example 07, 2.3×; the 50 W amplifier, example 17, 1.8×) and the one-second power-on runs 2.1×; results are unchanged within the solver's tolerance, and every check against ngspice still passes.

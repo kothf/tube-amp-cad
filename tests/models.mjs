@@ -7,9 +7,9 @@
  *   1  the test fixtures (tests/fixtures): device models, sources, a switch, a
  *      table, a polynomial; an op-amp macromodel as a ×11 amplifier; the devices'
  *      capacitances and transit time in small amplifiers (acdev.lib); waveforms
- *      (trandev.lib): a diode's reverse recovery, transistor and CMOS switches, a class-B
+ *      (trandev.lib): a diode's reverse recovery, transistor, CMOS and power MOSFET switches, a class-B
  *      follower clipping, a varactor swung hard, each driven by a square or a sine and its
- *      settled period compared with ngspice's point by point (within a time step)
+ *      settled period compared with ngspice's point by point (within a time step), each within 2 % of its swing
  *   2  makers' models (tests/models.json): each op-amp as a ×11 amplifier on
  *      ±supplies with 0.1 V in: its output voltage, then its gain and phase
  *      (0.1 dB and 1° up to 20 kHz, 0.3 dB and 3° up to 1 MHz). The files are not kept in this repository:
@@ -147,11 +147,11 @@ function oursTran(text, sub, d) {
 function theirsTran(text, sub, d, pins, dt, n) {
   // a step either side of the window, so each sample can be matched within a step
   const cir = join(work, "t.cir"), data = join(work, "t.txt"), t0 = SETTLE / d.f - dt, t1 = SETTLE / d.f + dt * n;
-  writeFileSync(cir, `* bench\n${text}\n${driveSpice(d)}\nX0 ${pins.join(" ")} ${sub}\n.options method=gear\n.control\nset noaskquit\nset wr_singlescale\nset wr_vecnames\noption numdgt=9\ntran ${dt / 4} ${t1} ${t0} ${dt / 4}\nlinearize\nwrdata ${data} ${pins.map(p => `v(${p})`).join(" ")}\n.endc\n.end\n`, "latin1");
+  writeFileSync(cir, `* bench\n${text}\n${driveSpice(d)}\nX0 ${pins.join(" ")} ${sub}\n.options method=gear\n.control\nset noaskquit\nset wr_singlescale\nset wr_vecnames\noption numdgt=9\ntran ${dt / 16} ${t1} ${t0} ${dt / 16}\nlinearize\nwrdata ${data} ${pins.map(p => `v(${p})`).join(" ")}\n.endc\n.end\n`, "latin1");
   let out = ""; try { out = execFileSync(NGSPICE, ["-b", cir], { encoding: "latin1", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { out = String(e.stdout || "") + String(e.stderr || ""); }
   let txt = ""; try { txt = readFileSync(data, "utf8"); } catch { return { error: (out.match(/error[^\n]*/gi) || ["no result"]).slice(0, 2).join(" | ") }; }
   const lines = txt.trim().split("\n"), head = lines[0].trim().split(/\s+/), rows = lines.slice(1).map(l => l.trim().split(/\s+/).map(Number));
-  const at = (p, t) => { const k = head.indexOf(`v(${p})`), x = Math.max(0, (t - t0) / (dt / 4)), i = Math.min(Math.floor(x), rows.length - 2), u = x - i; return rows[i][k] + (rows[i + 1][k] - rows[i][k]) * u; };
+  const at = (p, t) => { const k = head.indexOf(`v(${p})`), x = Math.max(0, (t - t0) / (dt / 16)), i = Math.min(Math.floor(x), rows.length - 2), u = x - i; return rows[i][k] + (rows[i + 1][k] - rows[i][k]) * u; };
   return { at, t: j => SETTLE / d.f + j * dt };
 }
 // the largest difference at any sample, as a share of the waveform's swing in ngspice; a sample
@@ -168,7 +168,7 @@ function compareTran(text, sub, d) {
     const A = a.w[p], B = A.map((_, j) => b.at(p, b.t(j))), sw = Math.max(...B) - Math.min(...B) || 1;
     A.forEach((v, j) => {
       let e = Infinity;
-      for (let s = -4; s <= 4; s++) e = Math.min(e, Math.abs(v - b.at(p, b.t(j) + s * a.dt / 4)) / sw);
+      for (let s = -16; s <= 16; s++) e = Math.min(e, Math.abs(v - b.at(p, b.t(j) + s * a.dt / 16)) / sw);
       if (!(e <= worst)) { worst = e; at = `${p} at ${(j * a.dt * d.f % 1 * 100).toFixed(0)} % of a period: ${v.toFixed(3)} V / ngspice ${B[j].toFixed(3)} V`; }
     });
   });
@@ -176,23 +176,22 @@ function compareTran(text, sub, d) {
 }
 {
   const text = fixture("trandev.lib");
-  // tol: the worst difference allowed now, a share of the swing. Edges faster than the simulator's
-  // step (a period over 160) come out a step's worth wrong, and a diode's recovery overshoots after
-  // its stored charge runs out: those benches hold today's numbers, so they cannot get worse, until
-  // an error-controlled time step brings them to TRAN_TOL. known: what the engine does not model
-  // in a waveform yet.
+  // Each within TRAN_TOL of its swing: the simulator runs a step that holds an edge again as finer
+  // steps, so a diode's recovery or a switch's edge is resolved inside the time grid. tol: a looser
+  // bound for a bench that cannot meet it yet; known: what the engine does not model in a waveform yet.
   const benches = [
-    { sub: "recovery", d: { wave: "square", f: 1e4, amp: 5 }, what: "a diode's reverse recovery (TT)", tol: 0.25 },
-    { sub: "switch", d: { wave: "square", f: 1e4, amp: 2.5, off: 2.5 }, what: "a saturating transistor switch", tol: 0.07 },
-    { sub: "switchtf", d: { wave: "square", f: 1e4, amp: 2.5, off: 2.5 }, what: "the switch with a transit time (TF)", known: "a transistor's transit time counts in the frequency response only, not in the waveform" },
-    { sub: "cmos", d: { wave: "square", f: 1e4, amp: 5, off: 5 }, what: "a CMOS inverter into 1 nF", tol: 0.04 },
+    { sub: "recovery", d: { wave: "square", f: 1e4, amp: 5 }, what: "a diode's reverse recovery (TT)" },
+    { sub: "switch", d: { wave: "square", f: 1e4, amp: 2.5, off: 2.5 }, what: "a saturating transistor switch" },
+    { sub: "switchtf", d: { wave: "square", f: 1e4, amp: 2.5, off: 2.5 }, what: "the switch with transit times (TF, and TR's storage time)" },
+    { sub: "cmos", d: { wave: "square", f: 1e4, amp: 5, off: 5 }, what: "a CMOS inverter into 1 nF" },
     { sub: "classb", d: { wave: "sine", f: 1e3, amp: 20 }, what: "a class-B follower clipping into 8 ohm" },
+    { sub: "vdmos", d: { wave: "square", f: 1e4, amp: 5, off: 5 }, what: "a power MOSFET switch (Miller plateau, Cgd from CGDMIN to CGDMAX)" },
     { sub: "varactor", d: { wave: "sine", f: 1e4, amp: 10 }, what: "a varactor swung hard (junction charge)" }
   ];
   const TRAN_TOL = 0.02;
   for (const bn of benches.filter(x => !ONLY || x.sub.includes(ONLY))) {
     const tol = bn.tol || TRAN_TOL, r = compareTran(text, bn.sub, bn.d), good = !r.error && r.worst <= tol;
-    const line = `waveform of ${bn.what}: ${r.error || `within ${(r.worst * 100).toFixed(2)} % of its swing${tol > TRAN_TOL ? ` (allowed ${Math.round(tol * 100)} % until the error-controlled step; aim ${Math.round(TRAN_TOL * 100)} %)` : ""} (worst ${r.at})`}`;
+    const line = `waveform of ${bn.what}: ${r.error || `within ${(r.worst * 100).toFixed(2)} % of its swing${tol > TRAN_TOL ? ` (allowed ${Math.round(tol * 100)} %; aim ${Math.round(TRAN_TOL * 100)} %)` : ""} (worst ${r.at})`}`;
     if (bn.tol && good && r.worst <= TRAN_TOL) { check(false, `${line}: within ${TRAN_TOL * 100} % now, take its tol off`); continue; }
     if (bn.known) { if (good) check(false, `${line}: marked known (${bn.known}) but it agrees now, take the mark off`); else console.log(`KNOWN ${line} (${bn.known})`); continue; }
     check(good, line);
