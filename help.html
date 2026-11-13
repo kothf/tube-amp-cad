@@ -853,7 +853,8 @@
 <ul>
   <li><b>Solver.</b> Modified nodal analysis. Newton–Raphson with gmin and source stepping for the DC operating point; transient with Gear's second-order method (BDF2), which keeps resonances at their true Q without trapezoidal ringing.</li>
   <li><b>Steady state by shooting.</b> The steady state is the state that one period maps onto itself; Newton–GMRES finds it, so slow coupling, cathode and filter capacitors settle in a few dozen periods instead of hundreds. If it does not converge in time, plain settling continues, extrapolating the slowly decaying response (minimal polynomial extrapolation).</li>
-  <li><b>Sparse solves.</b> A sparse LU (Gilbert–Peierls, as KLU) whose numeric part runs as WebAssembly; work grows about linearly with the circuit.</li>
+  <li><b>Sparse solves.</b> A sparse LU (Gilbert–Peierls, as KLU) whose numeric part runs as WebAssembly; work grows about linearly with the circuit. Later Newton iterations reuse the first one's pivots and only redo the numbers.</li>
+  <li><b>Fast iterations.</b> The linear parts are stamped once per time step, not on every iteration, and tubes, BJTs and MOSFETs give their exact derivatives in one evaluation instead of one finite difference per terminal. A time step that will not converge is solved by gmin stepping, as the operating point is. Together these make the full and power-on runs about twice as fast as in 3.204.</li>
   <li><b>Triodes:</b> Koren's published equation unmodified:</li>
 </ul>
 <pre>E1 = (Va / kp) · ln(1 + exp(kp · (1/µ + Vg / √(kvb + Va²))))

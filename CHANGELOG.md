@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.205.0] - 2026-11-13
+
+Phase 2 of the simulation engine plan: faster. On one core, against 3.204.0, the full run of every example is 2.1× faster (the stereo amplifier, example 07, 2.3×; the 50 W amplifier, example 17, 1.8×) and the one-second power-on runs 2.1×; results are unchanged within the solver's tolerance, and every check against ngspice still passes.
+
+### Changed
+- **Linear parts stamped once per time step.** Resistors, capacitors at the step, inductors, transformers below saturation, sources, controlled sources and held relays stamp the same numbers on every Newton iteration; they are stamped on the first and copied back on the rest.
+- **The LU refactors on the last pivots.** After the first solve, Newton iterations reuse its pattern and pivot order and only redo the numbers (as KLU's refactor), in WebAssembly and in JavaScript alike; a pivot that falls below 10⁻³ of its column brings a fresh factorisation.
+- **Worked-out Jacobians** for tubes (Koren's triode and pentode, with grid current, screen current and its knee share, grid shift and current scale), BJTs (Gummel–Poon with Early effect, high injection, leakage and recombination currents) and MOSFETs: one evaluation per Newton iteration instead of one per terminal. Imported SPICE tubes, a warming cathode, op-amps and regulators are still differenced, now one evaluation per terminal but the last (their currents depend only on voltage differences and sum to zero). A test holds every worked-out derivative to its finite difference over a spread of operating points.
+
+### Fixed
+- A Newton iteration caught in a two-step cycle (long and short updates in turn, as a floating bridge rectifier's input can be) is now damped and converges; before, such a step could stop the transient ("Transient did not converge").
+- A time step that fails at its smallest subdivision is solved by gmin stepping, from 1 S to 1 pS, as the DC operating point is. Example 20's power-on run needs it.
+
+### Tests
+- `tests/bench.mjs` holds a full run to its Newton iterations per time step (how many periods the steady-state search takes swings with the last digits of the arithmetic) and a power-on run to its total.
+
 ## [3.204.0] - 2026-11-13
 
 Phase 0 of the simulation engine plan: measure before changing.

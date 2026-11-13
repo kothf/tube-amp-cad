@@ -918,3 +918,57 @@ test("result.stats counts the engine's work: DC solves, time steps, Newton itera
   const p = E.startup(astable555(10e3, 100e3, 1e-7, 9), { tStop: 0.01 });
   assert.ok(p.ok && p.stats.steps > 0, JSON.stringify(p.stats));
 });
+
+test("worked-out Jacobians (tubes, BJT, MOSFET) agree with finite differences of the same currents", () => {
+  // a deterministic spread of operating points: cut off, the knee, grid current, saturation, reverse
+  let seed = 7; const rnd = (a, b) => { seed = (seed * 16807) % 2147483647; return a + (b - a) * seed / 2147483647; };
+  const check = (I, J, f, V, d, what) => {
+    const m = V.length;
+    for (let s = 0; s < m; s++) {
+      const Vp = V.slice(), Vm = V.slice(); Vp[s] += d; Vm[s] -= d;
+      const Ip = f(Vp), Im = f(Vm);
+      for (let t = 0; t < I.length; t++) {
+        const fd = (Ip[t] - Im[t]) / (2 * d), an = J[t][s], scale = Math.max(...J[t].map(Math.abs), 1e-12);
+        assert.ok(Math.abs(an - fd) <= 1e-4 * scale + 1e-12, `${what} at ${V.map(v => v.toFixed(3))}: dI${t}/dV${s} ${an} vs ${fd}`);
+      }
+    }
+    const I0 = f(V);
+    I.forEach((v, t) => assert.ok(Math.abs(v - I0[t]) <= 1e-15 + 1e-12 * Math.abs(I0[t]), `${what}: current ${t} ${v} vs ${I0[t]}`));
+  };
+  const db = globalThis.TUBE_DATABASE;
+  for (const name of ["12AX7", "6SN7", "2A3", "300B"]) {
+    const t = db.find(x => x.commonName === name); if (!t) continue;
+    for (const extra of [{}, { gridShift: 0.4, iScale: 1.1 }]) {
+      const e = Object.assign({ kind: "TRIODE", model: t.koren.Triode }, extra);
+      for (let k = 0; k < 40; k++) {
+        const V = [rnd(-5, 400), rnd(-8, 3)];
+        const r = E.tubeJacobian(e, V[0], V[1]);
+        check(r.I, r.J, W => E.tubeCurrents(e, W[0], W[1]), V, 1e-5, name);
+      }
+    }
+  }
+  for (const t of db.filter(x => x.koren && x.koren.Pentode).slice(0, 6)) {
+    const e = { kind: "PENTODE", model: t.koren.Pentode, gridShift: 0.2 };
+    for (let k = 0; k < 40; k++) {
+      const V = [rnd(-5, 400), rnd(-30, 3), k < 4 ? rnd(0.1, 1.9) : rnd(-5, 300)];
+      const r = E.tubeJacobian(e, V[0], V[1], V[2]);
+      check(r.I, r.J, W => E.tubeCurrents(e, W[0], W[1], W[2]), V, 1e-5, t.commonName);
+    }
+  }
+  const bjts = [
+    { pol: 1, is: 1e-14, bf: 200, br: 4, nf: 1, vaf: 100, ikf: 0.3 },
+    { pol: -1, is: 2e-14, bf: 150, br: 3, vaf: 60, var: 20, ikf: 2, ise: 1e-13, ne: 1.6, isc: 1e-13, nc: 2 },
+    { pol: 1, is: 5e-6, bf: 80, br: 2, vt: 0.0272, icbo: 2e-6 }   // germanium, with its leakage
+  ];
+  for (const m of bjts) for (let k = 0; k < 60; k++) {
+    const vb = rnd(-1, 1), V = [vb - m.pol * rnd(-3, 0.5), vb, vb - m.pol * rnd(-1, m.is > 1e-9 ? 0.3 : 0.75)];
+    const r = E.Semi.bjtJ(V, m);
+    check(r.I, r.J, W => E.Semi.bjt(W, m), V, 1e-7, "BJT");
+  }
+  const moss = [{ pol: 1, vto: 3.5, kp: 2, lambda: 0.01 }, { pol: -1, vto: -3, kp: 1.5 }];
+  for (const m of moss) for (let k = 0; k < 60; k++) {
+    const V = [rnd(-5, 20), rnd(-10, 10), rnd(-2, 2)];
+    const r = E.Semi.mosJ(V, m);
+    check(r.I, r.J, W => E.Semi.mos(W, m), V, 1e-6, "MOSFET");
+  }
+});

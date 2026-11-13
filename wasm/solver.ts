@@ -8,7 +8,8 @@
 // The engine lays out its arrays in this module's memory and passes their byte offsets in a table at
 // `tab` (i32 each, in this order):
 //   cp, ri, cs, q, vals, b, pinv, x, xi, stk, ps, mark, Lp, Up, Li, Lx, Ui, Ux, capL, capU
-// Returns 1 (b holds x), 0 (singular), -1 (L needs more room than capL), -2 (U needs more than capU).
+// Returns 1 (b holds x), 0 (singular), -1 (L needs more room than capL), -2 (U needs more than capU);
+// refactor also -3 (a pivot too small: factor afresh).
 
 @inline function I(base: usize, i: i32): i32 { return load<i32>(base + (<usize>i << 2)); }
 @inline function SI(base: usize, i: i32, v: i32): void { store<i32>(base + (<usize>i << 2), v); }
@@ -67,7 +68,44 @@ export function solve(n: i32, tab: usize): i32 {
     for (let p = top; p < n; p++) { const r = I(xi, p); if (I(pinv, r) < 0) { SI(Li, lnz, r); SF(Lx, lnz, F(x, r) / piv); lnz++; } }
   }
   SI(Lp, n, lnz); SI(Up, n, unz);
-  // P b, then L, then U, then the column order back
+  substitute(n, b, q, pinv, x, Lp, Li, Lx, Up, Ui, Ux);
+  return 1;
+}
+
+// The numbers again on the pattern and pivots of the last solve (the matrix's pattern unchanged):
+// no search for each column's pattern and no choice of pivot, so it is several times quicker.
+// A pivot that has become small next to the rest of its column (below tol of the largest) would
+// lose accuracy: then it returns -3 and the engine factors afresh with solve.
+export function refactor(n: i32, tab: usize, tol: f64): i32 {
+  const cp = <usize>I(tab, 0), ri = <usize>I(tab, 1), cs = <usize>I(tab, 2), q = <usize>I(tab, 3), vals = <usize>I(tab, 4), b = <usize>I(tab, 5);
+  const pinv = <usize>I(tab, 6), x = <usize>I(tab, 7), rowOf = <usize>I(tab, 8);
+  const Lp = <usize>I(tab, 12), Up = <usize>I(tab, 13), Li = <usize>I(tab, 14), Lx = <usize>I(tab, 15), Ui = <usize>I(tab, 16), Ux = <usize>I(tab, 17);
+  for (let i = 0; i < n; i++) SI(rowOf, I(pinv, i), i);
+  for (let k = 0; k < n; k++) {
+    const col = I(q, k), u0 = I(Up, k), d = I(Up, k + 1) - 1, l0 = I(Lp, k), l1 = I(Lp, k + 1);
+    for (let p = u0; p < d; p++) SF(x, I(rowOf, I(Ui, p)), 0);
+    for (let p = l0; p < l1; p++) SF(x, I(Li, p), 0);
+    for (let p = I(cp, col); p < I(cp, col + 1); p++) SF(x, I(ri, p), F(vals, I(cs, p)));
+    // x = L \ x, in the order the last solve found (topological)
+    for (let p = u0; p < d; p++) {
+      const c = I(Ui, p), xr = F(x, I(rowOf, c));
+      SF(Ux, p, xr);
+      if (xr == 0) continue;
+      for (let pp = I(Lp, c) + 1; pp < I(Lp, c + 1); pp++) { const t = I(Li, pp); SF(x, t, F(x, t) - F(Lx, pp) * xr); }
+    }
+    const piv = F(x, I(Li, l0));
+    let amax: f64 = 0;
+    for (let p = l0 + 1; p < l1; p++) { const a = Math.abs(F(x, I(Li, p))); if (a > amax) amax = a; }
+    if (!(Math.abs(piv) > 1e-300) || Math.abs(piv) < tol * amax) return -3;
+    SF(Ux, d, piv);
+    for (let p = l0 + 1; p < l1; p++) SF(Lx, p, F(x, I(Li, p)) / piv);
+  }
+  substitute(n, b, q, pinv, x, Lp, Li, Lx, Up, Ui, Ux);
+  return 1;
+}
+
+// P b, then L, then U, then the column order back: b becomes x
+function substitute(n: i32, b: usize, q: usize, pinv: usize, x: usize, Lp: usize, Li: usize, Lx: usize, Up: usize, Ui: usize, Ux: usize): void {
   for (let i = 0; i < n; i++) SF(x, I(pinv, i), F(b, i));
   for (let k = 0; k < n; k++) {
     const v = F(x, k); if (v == 0) continue;
@@ -79,5 +117,4 @@ export function solve(n: i32, tab: usize): i32 {
     for (let p = I(Up, k); p < d; p++) { const t = I(Ui, p); SF(x, t, F(x, t) - F(Ux, p) * v); }
   }
   for (let k = 0; k < n; k++) SF(b, I(q, k), F(x, k));
-  return 1;
 }
