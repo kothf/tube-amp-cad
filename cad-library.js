@@ -5,7 +5,7 @@
    The dialog (the panel's Parts library… button): add symbols from KiCad's .kicad_sym files and
    footprints from .kicad_mod files, give a part its designator letter, footprint and SPICE
    model, save the library as a file or open one.
-   Depends on: part-lib.js, kicad-import.js, spice-part.js (the Model… dialog), cad-symedit.js (the drawing)
+   Depends on: part-lib.js, kicad-import.js, spice-part.js (the Model… dialog), cad-symedit.js (the drawing), cad-fpedit.js (the footprint)
    ============================================================================= */
 (function (root) {
   "use strict";
@@ -125,6 +125,14 @@
       const p = lib.parts.find(x => x.id === id); if (!p) return;
       root.SymbolEditor.open(p.name, p.units, units => { p.units = units; if (units.length > 1) delete p.spice; else if (p.spice) { const ids = new Set(units[0].pins.map(q => q.id)); p.spice.map = (p.spice.map || []).map(m => (m === "0" || ids.has(m) ? m : "")); } if (p.fp && P.unmatched(p, lib.footprints[p.fp]).length && P.best(p, lib.footprints)) p.fp = P.best(p, lib.footprints); changed(); render(); });
     }
+    // the footprint editor (cad-fpedit.js) on a part's footprint, or on a new one made for its pins
+    function footprintOf(id, fresh) {
+      const p = lib.parts.find(x => x.id === id); if (!p) return;
+      const was = !fresh && p.fp && lib.footprints[p.fp] ? p.fp : "", nums = [...new Set(p.units.flatMap(u => u.pins.map(q => String(q.num || q.id))))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      let name = p.name; for (let k = 2; !was && lib.footprints[name]; k++) name = `${p.name} ${k}`;
+      root.FootprintEditor.open(was ? lib.footprints[was] : P.fpFor(p, name), f => { P.fpStore(lib, f, was); p.fp = f.name; changed(); render(); },
+        { pins: nums, taken: Object.keys(lib.footprints).filter(k => k !== was), used: was ? lib.parts.filter(x => x.fp === was).length : 0 });
+    }
     function close() { const m = $("plib-modal"); if (m) m.hidden = true; offer = null; }
     function open(id) {
       if (!$("plib-modal")) build();
@@ -177,7 +185,7 @@
             <span>Name</span><input type="text" id="plib-name" value="${esc(p.name)}">
             <span title="The letters of its designator on the sheet: DA1, VT3, X2">Designator</span><input type="text" id="plib-prefix" maxlength="4" value="${esc(p.prefix)}">
             <span>Description</span><input type="text" id="plib-desc" value="${esc(p.desc)}">
-            <span title="The pads on the board. A pin goes to the pad of its number.">Footprint</span><select id="plib-fp"><option value="">None: a row of pads on the board</option>${fits.length ? `<optgroup label="Fit this part">${fits.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}</optgroup>` : ""}${others.length ? `<optgroup label="Other footprints">${others.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}</optgroup>` : ""}</select>
+            <span title="The pads on the board. A pin goes to the pad of its number.">Footprint</span><div class="plib-fprow"><select id="plib-fp"><option value="">None: a row of pads on the board</option>${fits.length ? `<optgroup label="Fit this part">${fits.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}</optgroup>` : ""}${others.length ? `<optgroup label="Other footprints">${others.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}</optgroup>` : ""}</select><button class="btn" id="plib-fpedit" title="Change this footprint: pads, holes, silkscreen. Every part that uses it follows."${fp ? "" : " disabled"}>Edit…</button><button class="btn" id="plib-fpnew" title="Draw a footprint for this part: a usual package from a few numbers, or pad by pad">Draw…</button></div>
             <span title="How the part is simulated">SPICE model</span><div class="plib-model">${p.units.length > 1 ? `<span class="muted">A part of several units is not simulated yet.</span>` : `<span>${p.spice ? esc(p.spice.sub) : "none: left out of the simulation"}</span><button class="btn" id="plib-model">Model…</button>${p.spice ? `<button class="btn" id="plib-nomodel">Remove</button>` : ""}`}</div>
           </div>
           <p class="insp-help">${pins} pin${pins === 1 ? "" : "s"}${p.units.length > 1 ? ` in ${p.units.length} units` : ""}${p.src ? ` · from ${esc(p.src)}` : ""}${p.fpHint ? ` · KiCad names the footprint ${esc(p.fpHint)}` : p.filters ? ` · KiCad's footprints for it: ${esc(p.filters)}` : ""}</p>
@@ -198,6 +206,8 @@
         r => { p.spice = { text: r.text, sub: r.sub, map: r.map }; changed(); render(); }, { pins: p.units[0].pins.map(q => ({ id: q.id, name: q.name })) });
       if ($("plib-nomodel")) $("plib-nomodel").onclick = () => { delete p.spice; changed(); render(); };
       $("plib-draw").onclick = () => draw(p.id);
+      $("plib-fpedit").onclick = () => footprintOf(p.id, false);
+      $("plib-fpnew").onclick = () => footprintOf(p.id, true);
       $("plib-copy").onclick = () => {
         const q = JSON.parse(JSON.stringify(p)); q.id = ""; q.src = `a copy of ${p.name}`;
         let name = `${p.name} copy`; for (let k = 2; lib.parts.some(x => x.name.toLowerCase() === name.toLowerCase()); k++) name = `${p.name} copy ${k}`;
@@ -208,7 +218,7 @@
     }
 
     return {
-      ready, open, close, entries, addFiles, draw, takeOffered: names => takeOffered(new Set(names)),
+      ready, open, close, entries, addFiles, draw, footprintOf, takeOffered: names => takeOffered(new Set(names)),
       get: () => lib, part: id => lib.parts.find(p => p.id === id) || null, paramsOf: (id, unit) => { const p = lib.parts.find(x => x.id === id); return p ? paramsOf(p, unit) : null; },
       offered: () => (offer ? offer.syms.map(s => s.name) : []),
       clear() { lib = P.empty(); sel = null; return changed(); }

@@ -136,3 +136,44 @@ test("a drawing put in order: ids from the numbers, a repeated number said, the 
   assert.deepEqual(L.LIB.part.pins(c).map(p => [p.id, p.name]), [["1", "A"], ["2", "B"]]);
   assert.equal(lib.parts[0].src, "drawn here");
 });
+
+test("the usual packages as footprints: centred, pad 1 top left, counted anticlockwise; surface pads make it SMD", () => {
+  const dip = P.fpPattern("dip", { n: 8 }, "D8");
+  assert.deepEqual(dip.pads.map(p => [p.num, p.x, p.y]), [["1", -3.81, -3.81], ["2", -3.81, -1.27], ["3", -3.81, 1.27], ["4", -3.81, 3.81], ["5", 3.81, 3.81], ["6", 3.81, 1.27], ["7", 3.81, -1.27], ["8", 3.81, -3.81]]);
+  assert.equal(dip.pads[0].shape, "rect"); assert.equal(dip.pads[1].shape, "circle"); assert.equal(dip.pads[0].drill, 0.8); assert.ok(!dip.smd);
+  assert.deepEqual(dip.box.map((v, i) => v + dip.box[(i + 2) % 4]), [0, 0, 0, 0], "centred");
+  const so = P.fpPattern("soic", { n: 14, pitch: "1,27", row: 5.4 }, "SO14");
+  assert.equal(so.pads.length, 14); assert.ok(so.smd && so.pads.every(p => p.smd && !p.drill && p.shape === "rect" && p.w > p.h));
+  assert.deepEqual([so.pads[0].x, so.pads[0].y, so.pads[7].x, so.pads[7].y], [-2.7, -3.81, 2.7, 3.81]);
+  const q = P.fpPattern("quad", { n: 30 }, "Q");
+  assert.equal(q.pads.length, 32, "a multiple of four"); assert.deepEqual([q.pads[0].x, q.pads[8].y, q.pads[16].x, q.pads[24].y], [-4.2, 4.2, 4.2, -4.2]);
+  assert.equal(P.fpPattern("sip", { n: 5 }, "S").pads.map(p => p.x).join(), "-5.08,-2.54,0,2.54,5.08");
+  assert.equal(P.fpPattern("two", { pitch: 7.5, drill: 0 }, "T").smd, true);
+});
+
+test("a footprint put in order: numbers rounded, its box measured, what is wrong said; a new name is followed by its parts", () => {
+  const f = { name: " MINE ", pads: [{ num: 1, x: 0.00049, y: 0, shape: "rect", w: 2, h: 1, drill: 0, back: true }, { num: "2", x: 5, y: 0, w: 1, h: 1, drill: 0.9 }], silk: [{ t: "line", x1: 1, y1: 1, x2: 1, y2: 1 }, { t: "circle", x: 0, y: -3, r: 0.5 }], holes: [{ x: 0, y: 4, d: 3 }] };
+  const why = P.fpTidy(f);
+  assert.equal(f.name, "MINE"); assert.equal(f.title, "MINE");
+  assert.deepEqual(f.pads[0], { num: "1", name: "1", x: 0, y: 0, shape: "rect", w: 2, h: 1, drill: 0, smd: true, back: true });
+  assert.equal(f.silk.length, 1, "a line of no length is dropped"); assert.ok(!f.smd, "one drilled pad: not SMD");
+  assert.deepEqual(f.box, [-1.75, -3.5, 5.75, 5.75]);
+  assert.equal(why.length, 1); assert.match(why[0], /pad 2 leaves no copper/);
+  assert.deepEqual(P.fpTidy({ name: "", pads: [] }), ["The footprint has no name", "The footprint has no pads"]);
+  const lib = library(), amp = lib.parts.find(p => p.name === "TESTAMP");
+  amp.fp = "DIP-8_TEST";
+  const g = structuredClone(lib.footprints["DIP-8_TEST"]); g.name = "DIP-8_MINE"; P.fpStore(lib, g, "DIP-8_TEST");
+  assert.equal(amp.fp, "DIP-8_MINE"); assert.ok(!lib.footprints["DIP-8_TEST"] && lib.footprints["DIP-8_MINE"]);
+});
+
+test("a footprint made for a part's pins goes to the board: every pin on the pad of its number", () => {
+  const lib = library(), amp = lib.parts.find(p => p.name === "TESTAMP");
+  const f = P.fpFor(amp, "AMP-FP");
+  assert.deepEqual(P.unmatched(amp, f), []);
+  P.fpStore(lib, f, ""); amp.fp = f.name;
+  const c = comp(lib, "TESTAMP", 1, "a", "DA1"), netlist = { parts: [{ id: c.id, type: "part", label: c.label, params: c.params, pins: L.LIB.part.pins(c).map(q => ({ id: q.id, net: `N${q.id}` })) }] };
+  assert.equal(B.physicalParts(netlist)[0].options[0], "LIB:AMP-FP");
+  const board = B.newBoard(); B.sync(board, netlist);
+  const m = B.model(board, netlist);
+  assert.equal(m.pads.length, f.pads.length); assert.ok(m.pads.every(p => p.net === `N${p.num}`));
+});
