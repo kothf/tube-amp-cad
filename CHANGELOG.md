@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.204.0] - 2026-11-13
+
+Phase 0 of the simulation engine plan: measure before changing.
+
+### Added
+- **Speed benchmark** (`tests/bench.mjs`, in `npm run test:ngspice`): the live run, the full run, the Bode sweep and the power-on run of every example, timed, with the engine's own work counters (Newton solves at DC and per time step, their iterations, the model evaluations the Jacobians took, the solves that failed) in each result's `stats`. The counts, which do not depend on the machine, are held to within 20 % of `tests/bench-baseline.json`, so a change that makes the engine work harder fails CI.
+- **Waveforms against ngspice** (`tests/fixtures/trandev.lib`): a diode's reverse recovery, a saturating transistor switch (with and without transit time), a CMOS inverter, a class-B follower clipping into 8 Ω and a varactor swung hard, each settled period compared with ngspice's point by point. The class-B stage and the varactor agree within 0.2 % of their swing; fast edges are held at today's error until the error-controlled time step (phase 1).
+- **The 555 in the SPICE export.** An NE555 is written as `NE555_SIM`, a behavioural subcircuit with the simulator's own equations, so an exported 555 circuit runs in ngspice and LTspice as it is (a maker's NE555 model with the same pins can still replace it). The five 555 examples are now compared with ngspice instead of skipped: the astable, the flashing LED and the simplest oscillator agree (the period within 0.03 %); the metronome and the tachometer are listed as known differences with the reason.
+
+### Fixed
+- The exported op-amp subcircuit used `limit()`, which ngspice's B sources do not have (it read as 0, so in ngspice the op-amp's output and stage currents came half from each supply rail instead of from the rail that sources them); it uses `min`/`max` now.
+
+### Found (for the next phases)
+- Example 17's one-second power-on run does not converge at 25 µs with hot cathodes.
+- A diode's recovery overshoots for a step after its stored charge runs out when the step is long against the recovery.
+
 ## [3.203.0] - 2026-11-13
 
 Found by building six known circuits (a CMoy headphone amplifier, a Distortion+, a silicon Fuzz Face, an LPB-1 booster, a MOSFET headphone follower and a state-variable filter) with *Add part…*, simulating them and designing their boards.

@@ -761,7 +761,10 @@
     let anyFree = false;
     els.forEach(e => { if (LINEAR[e.kind] && !e.ntc) return; (e.nodes || []).concat(e.windings ? e.windings.flatMap(w => [w.a, w.b]) : [], e.ext || []).forEach(k => { if (k > 0) free[k - 1] = 0; }); });
     for (let k = 0; k < nNodes - 1; k++) if (free[k]) anyFree = true;
-    return { nNodes, nUnk, els, timers, capped, free: anyFree ? free : null };
+    // stats: work counters for the benchmark (tests/bench.mjs): Newton solves at DC and in the
+    // transient (one per time step, sub-steps included), their iterations, the device-model
+    // evaluations the Jacobians took, and the solves that did not converge
+    return { nNodes, nUnk, els, timers, capped, free: anyFree ? free : null, stats: { dc: 0, steps: 0, newton: 0, evals: 0, fails: 0 } };
   }
 
   // A transformer's saturating core (XFMR with sat: { ls, p, air }): the flux linkage λ (V·s, on the
@@ -805,6 +808,8 @@
     const maxStep = mode.dc ? 25 : 15;
     const maxIter = opts.maxIter || (mode.dc ? 300 : 60);
     const srcScale = opts.srcScale === undefined ? 1 : opts.srcScale;
+    const st = circ.stats;
+    if (st) { if (mode.dc) st.dc++; else st.steps++; }
 
     const addA = (i, j, v) => { if (i > 0 && j > 0) A.add(i - 1, j - 1, v); };
     const addB = (i, v) => { if (i > 0) b[i - 1] += v; };
@@ -817,6 +822,7 @@
     const stampNonlinear = (nodes, fn, V0, dAbs) => {
       const I0 = fn(V0);
       const m = nodes.length;
+      if (st) st.evals += m + 1;
       const rhs = I0.map(v => -v);
       for (let s = 0; s < m; s++) {
         const d = dAbs || 1e-6 * Math.max(1, Math.abs(V0[s]));
@@ -840,6 +846,7 @@
     let lastDv = null, stall = 0;
     const capStep = circ.capped ? new Float64Array(circ.nNodes).fill(2) : null, capDir = capStep ? new Float64Array(circ.nNodes) : null;
     for (let iter = 0; iter < maxIter; iter++) {
+      if (st) st.newton++;
       A.clear(); b.fill(0);
       let limited = false;   // a junction voltage was limited: this iterate is not a solution yet
       for (let i = 1; i < circ.nNodes; i++) addA(i, i, gmin);
@@ -1084,6 +1091,7 @@
       else stall = 0;
       lastDv = maxDv;
     }
+    if (st) st.fails++;
     return { ok: false, x, error: "no convergence" };
   }
 
@@ -1683,7 +1691,7 @@
     }
     if (settled) progress(1);
     result.ok = true;
-    result.elapsedMs = Date.now() - t0; result.solver = wasm ? "wasm" : "js";
+    result.elapsedMs = Date.now() - t0; result.solver = wasm ? "wasm" : "js"; result.stats = circ.stats;
     return result;
   }
 
@@ -1693,7 +1701,7 @@
     // an op-amp as a subcircuit (pins IN+ IN− OUT V+ V− N1 N2) of current sources, Semi.opamp term
     // by term; the shared terms are behavioural voltages on inner nodes (a current X as X volts)
     opamp: (m, name) => {
-      const sp = x => `0.05*(max((${x})/0.05,0)+ln(1+exp(-abs((${x})/0.05))))`, pos = X => `${X}/(1+exp(limit(-${X}*1e9,-60,60)))`;
+      const sp = x => `0.05*(max((${x})/0.05,0)+ln(1+exp(-abs((${x})/0.05))))`, pos = X => `${X}/(1+exp(min(max(-${X}*1e9,-60),60)))`;
       const L = [`.subckt ${name} INP INN OUT VP VN N1 N2`, `RIN INP INN ${g(m.rin)}`,
         "BON ON 0 V=1/(1+exp(-(V(VP,VN)-2)/0.3))", "BVM VM 0 V=(V(VP)+V(VN))/2",
         `BHI HI 0 V=max(V(VP)-${g(m.dhi)},V(VM))`, `BLO LO 0 V=min(V(VN)+${g(m.dlo)},V(VM))`,
@@ -1726,6 +1734,27 @@
       else { B("P", "IN", "OUT", "V(IP)"); B("Q", "IN", "REF", `${g(m.iq)}*V(ON)`); L.push(`RDIV OUT REF ${g(m.rdiv)}`); }
       L.push(".ends");
       return L;
+    },
+    // an NE555 (pins GND TRIG OUT RESET CV THR DIS VCC, as the part's 1-8) the way the engine runs it:
+    // the 5k-5k-5k divider, the supply current and the reset pin's pull-up; the latch a node Q
+    // (0 reset, 1 set) that a fast loop (10 ns) pulls towards what the comparators ask for (reset wins,
+    // then the trigger, then the threshold; with none on, it holds), the comparators smoothed over
+    // 1 mV so the transient steps through a flip; the output and discharge currents timerCurrents's.
+    // (min/max, not limit(): ngspice's B sources have no limit())
+    timer555: name => {
+      const m = NE555, u = x => `(1/(1+exp(min(max(-(${x})/1e-3,-60),60))))`, s = 0.005;
+      const sp = x => `${s}*(max((${x})/${s},0)+ln(1+exp(-abs((${x})/${s}))))`, sat = (v, r, imax) => `${g(imax)}*tanh(${v}/${g(r * imax)})`;
+      // the transistors switch as Q passes ½ (a gradual hand-over would let the discharge hold THR at
+      // CV against the latch); 10 pF on OUT and DIS give ngspice's step control a time constant there
+      const q = "(1/(1+exp(min(max(-(V(Q)-0.5)/0.02,-60),60))))";
+      return [`.subckt ${name} GND TRIG OUT RESET CV THR DIS VCC`,
+        "R1 VCC CV 5k", "R2 CV LO 5k", "R3 LO GND 5k", "RIQ VCC GND 1.7k", "RRST VCC RESET 33k",
+        `BR R 0 V=${u(`${m.vreset}-V(RESET,GND)`)}`, `BT T 0 V=${u("V(LO,TRIG)")}`, `BH H 0 V=${u("V(THR,CV)")}`,
+        "BW W 0 V=(1-V(R))*(V(T)+(1-V(T))*(1-V(H))*(1/(1+exp(min(max(-(V(Q)-0.5)/0.05,-60),60)))))",
+        "BQ 0 Q I=(V(W)-V(Q))/1k", "CQ Q 0 10p IC=0", "COUT OUT GND 10p", "CDIS DIS GND 10p",
+        `BHI VCC OUT I=${q}*${g(m.ih)}*tanh(${sp(`V(VCC,OUT)-${m.drop}`)}/${g(m.rh * m.ih)})`,
+        `BLO OUT GND I=(1-${q})*${sat("V(OUT,GND)", m.rl, m.il)}`,
+        `BDS DIS GND I=(1-${q})*${sat("V(DIS,GND)", m.rd, m.id)}`, ".ends"];
     },
     shunt: (m, name) => {
       const sp = (x, w) => `${w}*(max((${x})/${w},0)+ln(1+exp(-abs((${x})/${w}))))`;
@@ -1892,7 +1921,7 @@
       if (Date.now() - t0 > budgetMs) { result.error = `Stopped after ${(s * h).toFixed(3)} s of circuit time: the run took longer than ${Math.round(budgetMs / 1000)} s`; return result; }
     }
     result.ok = true;
-    result.tStop = tStop; result.h = h; result.steps = steps; result.points = nOut; result.dt = tStop / nOut;
+    result.tStop = tStop; result.h = h; result.steps = steps; result.stats = circ.stats; result.points = nOut; result.dt = tStop / nOut;
     result.probes = probes; result.min = mins; result.max = maxs;
     result.watch = watch.map(w => ({ max: w.max, maxAt: w.maxAt, min: w.min, minAt: w.minAt, lo: w.ok ? w.lo : null, hi: w.ok ? w.hi : null }));
     result.watchDt = nW ? tStop / nW : 0;
@@ -1945,7 +1974,7 @@
       if (opts.onProgress && (s + 1) / samples - lastProg >= 0.01) { lastProg = (s + 1) / samples; opts.onProgress(lastProg); }
       if ((s & 255) === 0 && Date.now() - t0 > budgetMs) return { ok: false, error: `Stopped after ${(s / rate).toFixed(2)} s of audio: it took longer than ${Math.round(budgetMs / 1000)} s`, at: s / rate };
     }
-    return { ok: true, rate, out, elapsedMs: Date.now() - t0 };
+    return { ok: true, rate, out, elapsedMs: Date.now() - t0, stats: circ.stats };
   }
 
   // ---------------------------------------------------------------------------

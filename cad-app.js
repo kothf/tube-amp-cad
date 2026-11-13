@@ -3067,10 +3067,11 @@
           if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NMOS" : "PMOS"}(LEVEL=1 VTO=${m.vto} KP=${m.kp} LAMBDA=${m.lambda || 0})`); }
           break;
         }
-        // a 555 by its pins 1-8 (GND TRIG OUT RESET CV THR DIS VCC): the maker's NE555 macro model goes with it
+        // a 555 by its pins 1-8 (GND TRIG OUT RESET CV THR DIS VCC): the engine's own NE555 as a behavioural
+        // subcircuit (a maker's macro model with the same pin order can take its place)
         case "TIMER555":
-          if (!models.has("NE555")) { models.add("NE555"); lines.push("* NE555: include a NE555 subcircuit with pins 1-8 in order (GND TRIG OUT RESET CV THR DIS VCC), e.g. TI's NE555 macro model"); }
-          lines.push(`X${id} ${nd.slice(0, 8).join(" ")} NE555`);
+          if (!models.has("NE555_SIM")) { models.add("NE555_SIM"); lines.push("* NE555_SIM: the simulator's NE555 (pins GND TRIG OUT RESET CV THR DIS VCC); a maker's NE555 model with these pins can replace it", ...TubeSimEngine.Spice.timer555("NE555_SIM")); }
+          lines.push(`X${id} ${nd.slice(0, 8).join(" ")} NE555_SIM`);
           break;
         case "REG": case "SHUNT": {
           const pm = (S.comps.find(c => c.id === e.id) || { params: {} }).params.model || id, name = `${e.kind}_${pm}`.replace(/[^A-Za-z0-9_]/g, "_");
@@ -3118,6 +3119,9 @@
       }
     });
     lines.push(...spiceTexts);
+    // a 555's output switches in nanoseconds: under the trapezoidal rule its node rings from step to
+    // step (tens of volts in a sample), so the run integrates by Gear's method
+    if (models.has("NE555_SIM")) lines.push("* the 555 switches fast: Gear integration, as the trapezoidal rule rings on its output", ".options method=gear");
     const f = signalFreq() || 1000;
     // the print step also as the time step: ngspice refuses a time step of 0 (LTspice takes it)
     const step = (1 / f / 200).toPrecision(3);

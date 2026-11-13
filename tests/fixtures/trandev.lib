@@ -1,0 +1,56 @@
+* Waveforms of device models, against ngspice's transient (tests/models.mjs, part 1).
+* Each bench's pin "in" is driven by the test (a square or a sine); the others are compared.
+* A diode's stored charge (TT): reverse recovery, driven ±5 V at 10 kHz through 1 k
+.model DRR D(IS=1e-14 N=1 RS=0.5 TT=5u CJO=20p VJ=0.7 M=0.5)
+.subckt recovery in k
+D1 in k DRR
+R1 k 0 1k
+.ends
+* A saturating transistor switch without transit time: 0 to 5 V at 10 kHz into 4.7 k
+.model QSW NPN(IS=1e-14 BF=100 BR=2 CJE=10p CJC=5p RB=20 VAF=100)
+.subckt switch in c
+Vcc vcc 0 5
+Rb in b 4.7k
+Q1 c b 0 QSW
+Rc vcc c 1k
+Cl c 0 20p
+.ends
+* The same switch whose transistor has a transit time (TF): stored charge delays its turn-off
+.model QTF NPN(IS=1e-14 BF=100 BR=2 CJE=10p CJC=5p RB=20 VAF=100 TF=200n TR=2u)
+.subckt switchtf in c
+Vcc vcc 0 5
+Rb in b 4.7k
+Q1 c b 0 QTF
+Rc vcc c 1k
+Cl c 0 20p
+.ends
+* A CMOS inverter into 1 nF, 0 to 10 V at 10 kHz through 1 k
+.model NSW NMOS(LEVEL=1 VTO=1.5 KP=20m LAMBDA=0.01)
+.model PSW PMOS(LEVEL=1 VTO=-1.5 KP=10m LAMBDA=0.01)
+.subckt cmos in o
+Vdd vdd 0 10
+Rg in g 1k
+Cg g 0 100p
+M1 o g 0 0 NSW
+M2 o g vdd vdd PSW
+Cl o 0 1n
+.ends
+* A class-B follower clipping into 8 ohm: 1 kHz, 20 V peak through 100 ohm, ±15 V rails
+.model QBN NPN(IS=1e-13 BF=80 VAF=100 IKF=3 CJE=200p CJC=100p RB=2 RE=0.05)
+.model QBP PNP(IS=1e-13 BF=60 VAF=80 IKF=3 CJE=250p CJC=150p RB=2 RE=0.05)
+.subckt classb in b o
+Vp vp 0 15
+Vn vn 0 -15
+Rs in b 100
+Q1 vp b o QBN
+Q2 vn b o QBP
+Rl o 0 8
+.ends
+* A varactor's charge: a reverse-biased junction (CJO 1 nF) swung hard by a 10 kHz sine through 10 k
+.model DVC D(IS=1e-14 CJO=1n VJ=0.7 M=0.5 FC=0.5)
+.subckt varactor in k
+Vb b 0 12
+R1 in k 10k
+D1 k b DVC
+R2 k 0 100k
+.ends

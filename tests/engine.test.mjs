@@ -898,3 +898,23 @@ test("transformer core: DC in a single-ended primary lowers the small-signal ind
     near(Math.hypot(ac.re[3][k], ac.im[3][k]) * n, Math.hypot(h[0], h[1]), 1e-4, `|H| at ${f.toFixed(0)} Hz`);
   });
 });
+
+test("SPICE export of the 555: a subcircuit with the chip's pins in order, no limit() (ngspice's B sources have none)", () => {
+  const L = E.Spice.timer555("NE555_SIM");
+  assert.equal(L[0], ".subckt NE555_SIM GND TRIG OUT RESET CV THR DIS VCC");
+  assert.equal(L.at(-1), ".ends");
+  // the divider and the latch's comparators
+  ["R1 VCC CV 5k", "R2 CV LO 5k", "R3 LO GND 5k"].forEach(x => assert.ok(L.includes(x), x));
+  const opamp = E.Spice.opamp({ rin: 1e12, dhi: 1.5, dlo: 1.5, i1: 1e-5, gm1: 1e-3, i2: 1e-3, gm2: 1e-2, isc: 0.04, isk: 0.04, ro: 50, r1: 1e5, r2: 1e5, iq: 1e-3, ib: 0 }, "X");
+  for (const line of [...L, ...opamp]) assert.ok(!/\blimit\(/.test(line), line);
+});
+
+test("result.stats counts the engine's work: DC solves, time steps, Newton iterations, model evaluations", () => {
+  const r = E.simulate(astable555(10e3, 100e3, 1e-7, 9), { budgetMs: 2500 });
+  assert.ok(r.ok, r.error);
+  const s = r.stats;
+  assert.ok(s.dc >= 1 && s.steps > 100 && s.newton >= s.dc + s.steps && s.evals > 0, JSON.stringify(s));
+  assert.equal(s.fails, 0);
+  const p = E.startup(astable555(10e3, 100e3, 1e-7, 9), { tStop: 0.01 });
+  assert.ok(p.ok && p.stats.steps > 0, JSON.stringify(p.stats));
+});
