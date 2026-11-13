@@ -1272,9 +1272,11 @@
       let scale = limDv > maxStep ? maxStep / limDv : 1;
       let conv = scale === 1;
       // an iteration that is not getting closer (bouncing across a device's
-      // turn-on, say) takes half a step; so does one that is no closer than two
-      // iterations ago (a two-step cycle, long and short updates in turn)
-      if (iter >= 8 && lastDv !== null && maxDv > 1e-4 && (maxDv > 0.9 * lastDv || (lastDv2 !== null && maxDv > 0.9 * lastDv2))) { scale *= 0.5; conv = false; }
+      // turn-on, say) takes half a step; so does a small one (under 10 mV) that is no
+      // closer than two iterations ago (a two-step cycle, long and short updates in turn,
+      // as a floating bridge's input can settle into; large swings, as gmin stepping
+      // makes, are left alone)
+      if (iter >= 8 && lastDv !== null && maxDv > 1e-4 && (maxDv > 0.9 * lastDv || (maxDv < 0.01 && lastDv2 !== null && maxDv > 0.9 * lastDv2))) { scale *= 0.5; conv = false; }
       for (let i = 0; i < n; i++) {
         let nx;
         if (cap && i < circ.nNodes - 1 && cap[i]) {
