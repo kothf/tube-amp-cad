@@ -154,6 +154,59 @@
   }
 
   // ---------------------------------------------------------------------------
+  // The same currents with their derivatives, worked out (not by finite differences): one
+  // evaluation per Newton iteration instead of one per terminal. Koren's equations only; an
+  // imported SPICE tube or a warming cathode returns null and is differenced as before.
+  // Returns { I: [ia, ig(, ig2)], J: rows of d/d[vak, vgk(, vg2k)] }.
+  const sigmoid = x => (x > 60 ? 1 : x < -60 ? 0 : 1 / (1 + Math.exp(-x)));
+  function screenFadeD(v) { if (v >= SCREEN_FADE || v <= 0) return 0; const s = v / SCREEN_FADE; return 6 * s * (1 - s) / SCREEN_FADE; }
+  // Koren's space-charge term 2·E1^x/kg and its slope in E1
+  const korenPow = (e1, p) => (e1 > 0 ? [2 * Math.pow(e1, p.x) / p.kg, 2 * p.x * Math.pow(e1, p.x - 1) / p.kg] : [0, 0]);
+  const gridID = (vgk, p) => (vgk > 0 ? [(0.2 / p.kg) * Math.pow(vgk, 1.5), (0.3 / p.kg) * Math.sqrt(vgk)] : [0, 0]);
+  function tubeJacobian(e, vak, vgk, vg2k) {
+    const p = e.model;
+    if (p.spice || e._emit !== undefined) return null;
+    const sh = e.gridShift || 0, sc = e.iScale || 1, vg = vgk + sh, [ig, dig] = gridID(vgk, p);
+    if (e.kind !== "PENTODE") {
+      let ia = 0, da = 0, dg = 0;
+      if (vak > 0) {
+        const R = Math.sqrt(p.kvb + vak * vak), u = p.kp * (1 / p.mu + vg / R), sp = softplus(u), sg = sigmoid(u);
+        const e1 = (vak / p.kp) * sp, [f, df] = korenPow(e1, p);
+        ia = f; da = df * (sp / p.kp - vak * vak * sg * vg / (R * R * R)); dg = df * vak * sg / R;
+      }
+      return { I: [sc * ia, sc * ig], J: [[sc * da, sc * dg], [0, sc * dig]] };
+    }
+    // pentode: Is (space charge), the plate's share, the screen's
+    let is = 0, isG = 0, isS = 0;
+    if (vg2k > 0) {
+      const u = p.kp * (1 / p.mu + vg / vg2k), sp = softplus(u), sg = sigmoid(u), e1 = (vg2k / p.kp) * sp;
+      if (e1 > 0) {
+        const [f, df] = korenPow(e1, p), fd = screenFade(vg2k);
+        is = f * fd; isG = df * sg * fd; isS = df * (sp / p.kp - sg * vg / vg2k) * fd + f * screenFadeD(vg2k);
+      }
+    }
+    let ia = 0, iaA = 0, iaG = 0, iaS = 0;
+    if (vak > 0) {
+      const th = Math.tanh(vak / p.vk), sl = 1 + vak / p.lam, k = th * sl;
+      ia = is * k; iaA = is * ((1 - th * th) / p.vk * sl + th / p.lam); iaG = isG * k; iaS = isS * k;
+    }
+    let i2 = 0, i2A = 0, i2G = 0, i2S = 0;
+    if (vg2k > 0) {
+      const ee = vg + vg2k / p.mu, kg2 = p.kg2 || 1500, fd = screenFade(vg2k);
+      if (ee > 0) {
+        const pw = Math.pow(ee, p.x) / kg2, dpw = p.x * Math.pow(ee, p.x - 1) / kg2;
+        i2 = pw * fd; i2G = dpw * fd; i2S = dpw / p.mu * fd + pw * screenFadeD(vg2k);
+      }
+      if (p.ks) {
+        const va = Math.max(vak, 0), th = Math.tanh(va / p.vk), k = p.ks * (1 - th);
+        i2 += k * is; i2G += k * isG; i2S += k * isS;
+        if (vak > 0) i2A = -p.ks * is * (1 - th * th) / p.vk;
+      }
+    }
+    return { I: [sc * ia, sc * ig, sc * i2], J: [[sc * iaA, sc * iaG, sc * iaS], [0, sc * dig, 0], [sc * i2A, sc * i2G, sc * i2S]] };
+  }
+
+  // ---------------------------------------------------------------------------
   // Semiconductors. Currents into each terminal for terminal voltages V.
   // BJT (nodes C, B, E): SPICE Gummel-Poon without the low-current
   // recombination terms: IS, BF, BR, NF, VAF (Early), IKF (high-injection knee).
@@ -170,6 +223,7 @@
   // and capacitances are separate D and C elements (see cad-components.js).
   // ---------------------------------------------------------------------------
   const VT = 0.025852;
+  const EXP80 = Math.exp(80);
   const Semi = {
     // the forward transport current If / qb (what a transit time's charge is counted from), signed as the base's
     bjtForward(V, m) {
@@ -190,6 +244,47 @@
       if (m.ise) ib += m.ise * (Math.exp(Math.min(vbe / ((m.ne || 1.5) * vt), 80)) - 1);
       if (m.isc) { const l = m.isc * (Math.exp(Math.min(vbc / ((m.nc || 2) * vt), 80)) - 1); ib += l; ic -= l; }
       return [p * ic, p * ib, -p * (ic + ib)];
+    },
+    // the same currents with their Jacobian (rows C, B, E; columns VC, VB, VE), worked out
+    bjtJ(V, m) {
+      const p = m.pol, vbe = p * (V[1] - V[2]), vbc = p * (V[1] - V[0]), vt = m.vt || VT;
+      // e^a held flat past a = 80, as bjt() has it (its slope there 0)
+      const xp = a => (a < 80 ? Math.exp(a) : EXP80), dxp = a => (a < 80 ? Math.exp(a) : 0);
+      const jexp = (v, n) => { const a = v / (n * vt); return [m.is * (xp(a) - 1), m.is * dxp(a) / (n * vt)]; };
+      const [If, dIf] = jexp(vbe, m.nf || 1), [Ir, dIr] = jexp(vbc, m.nr || 1), br = m.br || 1;
+      const den = 1 - vbc / (m.vaf || 1e9) - (m.var ? vbe / m.var : 0);
+      let q1 = 20, dq1e = 0, dq1c = 0;
+      if (den > 0.05) { q1 = 1 / den; dq1c = q1 * q1 / (m.vaf || 1e9); dq1e = m.var ? q1 * q1 / m.var : 0; }
+      const q2 = m.ikf ? Math.max(If, 0) / m.ikf : 0, dq2e = m.ikf && If > 0 ? dIf / m.ikf : 0, S = Math.sqrt(1 + 4 * q2);
+      const qb = q1 * (1 + S) / 2, dqbe = dq1e * (1 + S) / 2 + q1 * dq2e / S, dqbc = dq1c * (1 + S) / 2;
+      const xl = vbc / vt;
+      let lk = 0, dlk = 0;
+      if (m.icbo) { if (xl <= 0) { const ex = Math.exp(xl); lk = m.icbo * (1 - ex); dlk = -m.icbo * ex / vt; } else { lk = -m.icbo * xl; dlk = -m.icbo / vt; } }
+      const it = If - Ir;
+      let ib = If / m.bf + Ir / br - lk, ic = it / qb - Ir / br + lk;
+      let ibE = dIf / m.bf, ibC = dIr / br - dlk;
+      let icE = dIf / qb - it / (qb * qb) * dqbe, icC = -dIr / qb - it / (qb * qb) * dqbc - dIr / br + dlk;
+      if (m.ise) { const n = (m.ne || 1.5) * vt, a = vbe / n; ib += m.ise * (xp(a) - 1); ibE += m.ise * dxp(a) / n; }
+      if (m.isc) {
+        const n = (m.nc || 2) * vt, a = vbc / n; let l = 0, dl = 0;
+        l = m.isc * (xp(a) - 1); dl = m.isc * dxp(a) / n;
+        ib += l; ic -= l; ibC += dl; icC -= dl;
+      }
+      // vbe = p(VB − VE), vbc = p(VB − VC); the currents p·ic, p·ib, −p·(ic + ib)
+      const rc = [-icC, icE + icC, -icE], rb = [-ibC, ibE + ibC, -ibE];
+      return { I: [p * ic, p * ib, -p * (ic + ib)], J: [rc, rb, rc.map((v, k) => -(v + rb[k]))] };
+    },
+    // a MOSFET's currents and Jacobian (rows D, G, S; columns VD, VG, VS)
+    mosJ(V, m) {
+      const p = m.pol;
+      let vds = p * (V[0] - V[2]), vgs = p * (V[1] - V[2]), sw = 1;
+      if (vds < 0) { vds = -vds; vgs = p * (V[1] - V[0]); sw = -1; }
+      const s = m.s || 0.05, a = (vgs - m.vto * p) / s, vov = s * softplus(a), dvov = sigmoid(a), lam = m.lambda || 0, L = 1 + lam * vds;
+      let i0, dov, dds;
+      if (vds < vov) { i0 = m.kp * (vov - vds / 2) * vds; dov = m.kp * vds; dds = m.kp * (vov - vds); } else { i0 = m.kp / 2 * vov * vov; dov = m.kp * vov; dds = 0; }
+      const id = i0 * L, gm = dov * dvov * L, gds = dds * L + i0 * lam;
+      const rd = sw > 0 ? [gds, gm, -(gds + gm)] : [gds + gm, -gm, -gds];
+      return { I: [p * sw * id, 0, -p * sw * id], J: [rd, [0, 0, 0], rd.map(v => -v)] };
     },
     mos(V, m) {
       const p = m.pol;
@@ -425,6 +520,9 @@
   // per circuit, so each stamp finds its slot at once and the solve touches only nonzeros.
   // LU: Gilbert–Peierls (left-looking, as KLU), columns in minimum-degree order, partial pivoting.
   // ---------------------------------------------------------------------------
+  // a kept pivot must stay at least this share of the largest entry below it in its column (as KLU's
+  // threshold), or the matrix is factored afresh with new pivots
+  const PIVOT_TOL = 1e-3;
   function SparseMatrix(n) {
     this.n = n; this.slot = new Int32Array(n * n).fill(-1);
     this.nnz = 0; this.rows = new Int32Array(64); this.cols = new Int32Array(64); this.vals = new Float64Array(64);
@@ -465,12 +563,16 @@
       const nb = [...adj[best]];
       for (const a of nb) { adj[a].delete(best); for (const c of nb) if (c !== a) adj[a].add(c); }
     }
-    this.q = q; this.dirty = false; this.layout = -1;   // the WebAssembly copy of the pattern is out of date
+    this.q = q; this.dirty = false; this.layout = -1; this.factored = false;   // the WebAssembly copy of the pattern is out of date
   };
   // A x = b: b is overwritten with x; false when the matrix is singular
   SparseMatrix.prototype.solve = function (b) {
     if (this.dirty) this.analyse();
-    return wasm ? this.solveWasm(b) : this.solveJS(b);
+    if (wasm) return this.solveWasm(b);
+    if (this.factored && this.refactorJS()) { this.substituteJS(b); return true; }
+    if (this.stats) this.stats.lu++;
+    this.factored = this.solveJS(b);
+    return this.factored;
   };
   // the WebAssembly kernel (wasm/solver.ts): the same steps as solveJS. The arrays live in its
   // memory; the pattern's go in when it changes, the values and b on every solve.
@@ -478,10 +580,13 @@
     const n = this.n, nz = this.nnz;
     for (;;) {
       if (wasm.owner !== this || this.layout !== wasm.layoutId) this.place();
-      const L = this.lay, mem = wasm.memory.buffer, F = new Float64Array(mem), vals = this.vals;
-      for (let s = 0; s < nz; s++) F[(L.vals >> 3) + s] = vals[s];
+      const L = this.lay, mem = wasm.memory.buffer, F = wasm.f64 && wasm.f64.buffer === mem ? wasm.f64 : (wasm.f64 = new Float64Array(mem)), vals = this.vals;
+      F.set(vals.subarray(0, nz), L.vals >> 3);
       for (let i = 0; i < n; i++) F[(L.b >> 3) + i] = b[i];
-      const r = wasm.solve(n, L.tab);
+      // the last factors' pattern and pivots again, when they hold (most Newton iterations); else afresh
+      let r = this.factored ? wasm.refactor(n, L.tab, PIVOT_TOL) : -3;
+      if (r === -3) { r = wasm.solve(n, L.tab); if (this.stats) this.stats.lu++; }
+      this.factored = r === 1;
       if (r === 1) { for (let i = 0; i < n; i++) b[i] = F[(L.b >> 3) + i]; return true; }
       if (r === 0) return false;
       if (r === -1) this.capL *= 2; else this.capU *= 2;   // L or U needs more room: lay out again
@@ -501,7 +606,7 @@
     ["cp", "ri", "cs", "q", "vals", "b", "pinv", "x", "xi", "stk", "ps", "mark", "Lp", "Up", "Li", "Lx", "Ui", "Ux"].forEach((k, i) => { I[(L.tab >> 2) + i] = L[k]; });
     I[(L.tab >> 2) + 18] = this.capL; I[(L.tab >> 2) + 19] = this.capU;
     I.set(this.cp, L.cp >> 2); I.set(this.ri, L.ri >> 2); I.set(this.cs, L.cs >> 2); I.set(this.q, L.q >> 2);
-    this.lay = L; wasm.owner = this; this.layout = wasm.layoutId = (wasm.layoutId || 0) + 1;
+    this.lay = L; wasm.owner = this; this.layout = wasm.layoutId = (wasm.layoutId || 0) + 1; this.factored = false;
   };
   SparseMatrix.prototype.solveJS = function (b) {
     const n = this.n, cp = this.cp, ri = this.ri, cs = this.cs, vals = this.vals, q = this.q;
@@ -551,12 +656,41 @@
       for (let p = top; p < n; p++) { const r = xi[p]; if (pinv[r] < 0) { Li[lnz] = r; Lx[lnz++] = x[r] / piv; } }
     }
     Lp[n] = lnz; Up[n] = unz;
+    this.substituteJS(b);
+    return true;
+  };
+  // as the WebAssembly's refactor: the numbers on the last pattern and pivots; false when a pivot is too small
+  SparseMatrix.prototype.refactorJS = function () {
+    const n = this.n, cp = this.cp, ri = this.ri, cs = this.cs, vals = this.vals, q = this.q, pinv = this.pinv, x = this.x, rowOf = this.xi;
+    const Lp = this.Lp, Up = this.Up, Li = this.Li, Lx = this.Lx, Ui = this.Ui, Ux = this.Ux;
+    for (let i = 0; i < n; i++) rowOf[pinv[i]] = i;
+    for (let k = 0; k < n; k++) {
+      const col = q[k], u0 = Up[k], d = Up[k + 1] - 1, l0 = Lp[k], l1 = Lp[k + 1];
+      for (let p = u0; p < d; p++) x[rowOf[Ui[p]]] = 0;
+      for (let p = l0; p < l1; p++) x[Li[p]] = 0;
+      for (let p = cp[col]; p < cp[col + 1]; p++) x[ri[p]] = vals[cs[p]];
+      for (let p = u0; p < d; p++) {
+        const c = Ui[p], xr = x[rowOf[c]];
+        Ux[p] = xr;
+        if (xr === 0) continue;
+        for (let pp = Lp[c] + 1; pp < Lp[c + 1]; pp++) x[Li[pp]] -= Lx[pp] * xr;
+      }
+      const piv = x[Li[l0]];
+      let amax = 0;
+      for (let p = l0 + 1; p < l1; p++) amax = Math.max(amax, Math.abs(x[Li[p]]));
+      if (!(Math.abs(piv) > 1e-300) || Math.abs(piv) < PIVOT_TOL * amax) return false;
+      Ux[d] = piv;
+      for (let p = l0 + 1; p < l1; p++) Lx[p] = x[Li[p]] / piv;
+    }
+    return true;
+  };
+  SparseMatrix.prototype.substituteJS = function (b) {
+    const n = this.n, q = this.q, pinv = this.pinv, x = this.x, Lp = this.Lp, Up = this.Up, Li = this.Li, Lx = this.Lx, Ui = this.Ui, Ux = this.Ux;
     // P b, then L, then U, then the column order back
     for (let i = 0; i < n; i++) x[pinv[i]] = b[i];
     for (let k = 0; k < n; k++) { const v = x[k]; if (v === 0) continue; for (let p = Lp[k] + 1; p < Lp[k + 1]; p++) x[pinv[Li[p]]] -= Lx[p] * v; }
     for (let k = n - 1; k >= 0; k--) { const d = Up[k + 1] - 1; x[k] /= Ux[d]; const v = x[k]; if (v === 0) continue; for (let p = Up[k]; p < d; p++) x[Ui[p]] -= Ux[p] * v; }
     for (let k = 0; k < n; k++) b[q[k]] = x[k];
-    return true;
   };
 
   // The sparse LU's numeric part runs as WebAssembly (wasm/solver.ts, built into sim-solver.wasm)
@@ -569,7 +703,7 @@
   function useWasm(on) {
     wasm = null;
     if (on === false || !wasmModule) return false;
-    try { const ex = new WebAssembly.Instance(wasmModule, {}).exports; wasm = { solve: ex.solve, memory: ex.memory, owner: null, layoutId: 0 }; } catch (e) { wasm = null; }
+    try { const ex = new WebAssembly.Instance(wasmModule, {}).exports; wasm = { solve: ex.solve, refactor: ex.refactor, memory: ex.memory, owner: null, layoutId: 0 }; } catch (e) { wasm = null; }
     return !!wasm;
   }
 
@@ -764,7 +898,7 @@
     // stats: work counters for the benchmark (tests/bench.mjs): Newton solves at DC and in the
     // transient (one per time step, sub-steps included), their iterations, the device-model
     // evaluations the Jacobians took, and the solves that did not converge
-    return { nNodes, nUnk, els, timers, capped, free: anyFree ? free : null, stats: { dc: 0, steps: 0, newton: 0, evals: 0, fails: 0 } };
+    return { nNodes, nUnk, els, timers, capped, free: anyFree ? free : null, stats: { dc: 0, steps: 0, newton: 0, evals: 0, fails: 0, lu: 0 } };
   }
 
   // A transformer's saturating core (XFMR with sat: { ls, p, air }): the flux linkage λ (V·s, on the
@@ -799,6 +933,17 @@
   // Assemble and Newton-solve one operating point
   // mode: { dc: true } or { h, t, prev } ; srcScale for source stepping
   // ---------------------------------------------------------------------------
+  // a circuit's elements split into those whose stamps do not depend on the iterate (lin) and
+  // the rest (nl), for the DC operating point or a transient step
+  const LINEAR_KINDS = new Set(["R", "C", "L", "V", "VSRC", "I", "E", "G", "RELAY"]);
+  function linearSplit(circ, dc) {
+    const key = dc ? "_splitDC" : "_splitTR";
+    if (circ[key] && circ[key].n === circ.els.length) return circ[key];
+    const lin = [], nl = [];
+    circ.els.forEach(e => ((LINEAR_KINDS.has(e.kind) || (e.kind === "XFMR" && !(e.sat && !dc))) ? lin : nl).push(e));
+    return (circ[key] = { lin, nl, n: circ.els.length });
+  }
+
   function newtonSolve(circ, x0, mode, opts) {
     const n = circ.nUnk;
     const x = x0.slice();
@@ -810,6 +955,7 @@
     const srcScale = opts.srcScale === undefined ? 1 : opts.srcScale;
     const st = circ.stats;
     if (st) { if (mode.dc) st.dc++; else st.steps++; }
+    A.stats = st;
 
     const addA = (i, j, v) => { if (i > 0 && j > 0) A.add(i - 1, j - 1, v); };
     const addB = (i, v) => { if (i > 0) b[i - 1] += v; };
@@ -819,12 +965,15 @@
     // I(V) ~= I0 + J (V - V0)  ->  A += J,  b += J V0 - I0
     // dAbs: a fixed difference step (V) for exponential devices, where 1 ppm of a
     // few hundred volts would already be a coarse step
+    // Every such part's currents depend only on the differences of its terminal voltages (raising
+    // them all together changes nothing), so the last terminal's column is minus the sum of the
+    // others: m evaluations, not m + 1
     const stampNonlinear = (nodes, fn, V0, dAbs) => {
       const I0 = fn(V0);
-      const m = nodes.length;
-      if (st) st.evals += m + 1;
-      const rhs = I0.map(v => -v);
-      for (let s = 0; s < m; s++) {
+      const m = nodes.length, r = m - 1;
+      if (st) st.evals += m;
+      const rhs = I0.map(v => -v), Jr = new Float64Array(m);
+      for (let s = 0; s < r; s++) {
         const d = dAbs || 1e-6 * Math.max(1, Math.abs(V0[s]));
         const Vp = V0.slice(); Vp[s] += d;
         const Ip = fn(Vp);
@@ -832,10 +981,55 @@
           const J = (Ip[t] - I0[t]) / d;
           if (J === 0) continue;
           addA(nodes[t], nodes[s], J);
-          rhs[t] += J * V0[s];
+          rhs[t] += J * (V0[s] - V0[r]);
+          Jr[t] -= J;
         }
       }
-      for (let t = 0; t < m; t++) addB(nodes[t], rhs[t]);
+      for (let t = 0; t < m; t++) { if (Jr[t] !== 0) addA(nodes[t], nodes[r], Jr[t]); addB(nodes[t], rhs[t]); }
+    };
+
+    // a part from its worked-out Jacobian (fnJ returns { I, J }, J over all its terminals)
+    const stampJacobian = (nodes, fnJ, V0, model) => {
+      const { I, J } = fnJ(V0, model), m = nodes.length;
+      if (st) st.evals++;
+      for (let t = 0; t < m; t++) {
+        let rhs = -I[t];
+        const row = J[t];
+        // an entry the row's own rounding hides is left out, as a finite difference would find it: one below
+        // 1e-14 of the row's largest, or, in a row carrying more than a kiloampere (an iterate on its way, or
+        // a curve swept far past any rating), one whose current over a microvolt is below the rounding of
+        // the row's current (1e-9 of it per volt). Kept there, it ties the nodes together through a current
+        // known only to its rounding, and the solve wobbles at that level and never converges
+        let big = 0; for (let s = 0; s < m; s++) big = Math.max(big, Math.abs(row[s]));
+        const tiny = Math.abs(I[t]) > 1e3 ? Math.max(1e-14 * big, 1e-9 * Math.abs(I[t])) : 0;
+        for (let s = 0; s < m; s++) { const g = row[s]; if (g === 0 || Math.abs(g) < tiny) continue; addA(nodes[t], nodes[s], g); rhs += g * V0[s]; }
+        addB(nodes[t], rhs);
+      }
+    };
+    // a tube from its worked-out Jacobian: the currents into A, G (, G2) are functions of the
+    // voltages to K, the cathode's current minus their sum; false when it has none (differenced)
+    const stampTube = (e, nd, V0) => {
+      const m = nd.length, k = m - 1, vk = V0[k];
+      const r = m === 4 ? tubeJacobian(e, V0[0] - vk, V0[1] - vk, V0[2] - vk) : tubeJacobian(e, V0[0] - vk, V0[1] - vk);
+      if (!r) return false;
+      if (st) st.evals++;
+      let sumI = 0;
+      const colK = new Float64Array(k);   // d(sum of currents)/d(each terminal voltage), for the cathode's row
+      let sumK = 0;
+      for (let t = 0; t < k; t++) {
+        const row = r.J[t];
+        let rk = 0, rhs = -r.I[t];
+        for (let s = 0; s < k; s++) { const J = row[s]; if (J === 0) continue; addA(nd[t], nd[s], J); rk -= J; rhs += J * (V0[s] - vk); colK[s] += J; }
+        if (rk !== 0) addA(nd[t], nd[k], rk);
+        addB(nd[t], rhs);
+        sumI += r.I[t]; sumK += rk;
+      }
+      // the cathode: −(ia + ig + ig2)
+      let rhsK = sumI;
+      for (let s = 0; s < k; s++) if (colK[s] !== 0) { addA(nd[k], nd[s], -colK[s]); rhsK -= colK[s] * (V0[s] - vk); }
+      if (sumK !== 0) addA(nd[k], nd[k], -sumK);
+      addB(nd[k], rhsK);
+      return true;
     };
 
     // integration: backward Euler (a0 = 1, a1 = −1), or Gear's second-order BDF2 (3/2, −2, 1/2)
@@ -843,217 +1037,231 @@
     // their Q, and still strongly damped at high frequencies (no trapezoidal ringing at a
     // rectifier's switching)
     const P2 = !mode.dc && mode.prev2 ? mode.prev2 : null, ID0 = P2 ? 1.5 : 1, ID1 = P2 ? -2 : -1, ID2 = 0.5;
-    let lastDv = null, stall = 0;
+    let lastDv = null, lastDv2 = null, stall = 0;
     const capStep = circ.capped ? new Float64Array(circ.nNodes).fill(2) : null, capDir = capStep ? new Float64Array(circ.nNodes) : null;
-    for (let iter = 0; iter < maxIter; iter++) {
-      if (st) st.newton++;
-      A.clear(); b.fill(0);
-      let limited = false;   // a junction voltage was limited: this iterate is not a solution yet
-      for (let i = 1; i < circ.nNodes; i++) addA(i, i, gmin);
-
-      for (const e of circ.els) {
-        const nd = e.nodes;
-        switch (e.kind) {
-          case "R": stampG(nd[0], nd[1], 1 / Math.max(e.r, 1e-6)); break;
-          case "C":
-            if (!mode.dc) {
-              // i = C/h · (a0·v + a1·v₋₁ + a2·v₋₂): backward Euler, or Gear-2 with history
-              // (a junction's capacitance at the voltage of the step before)
-              const v1 = vn(mode.prev, nd[0]) - vn(mode.prev, nd[1]), k = (e.junc ? capAt(e, v1) : e.c) / mode.h;
-              const hist = k * (ID1 * v1 + (P2 ? ID2 * (vn(P2, nd[0]) - vn(P2, nd[1])) : 0));
-              stampG(nd[0], nd[1], ID0 * k);
-              addB(nd[0], -hist); addB(nd[1], hist);
-            }
-            break;
-          case "L": {
-            // branch current i flows a -> b through the inductor
-            const br = e.branch;
-            if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
-            if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
-            addAu(br, br, -R_SERIES);   // keeps a shorted inductor solvable
-            if (!mode.dc) { const k = e.l / mode.h; addAu(br, br, -ID0 * k); b[br] += k * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0)); }
-            break;
+    let limited = false;   // a junction voltage was limited: this iterate is not a solution yet
+    const stampEl = e => {
+      const nd = e.nodes;
+      switch (e.kind) {
+        case "R": stampG(nd[0], nd[1], 1 / Math.max(e.r, 1e-6)); break;
+        case "C":
+          if (!mode.dc) {
+            // i = C/h · (a0·v + a1·v₋₁ + a2·v₋₂): backward Euler, or Gear-2 with history
+            // (a junction's capacitance at the voltage of the step before)
+            const v1 = vn(mode.prev, nd[0]) - vn(mode.prev, nd[1]), k = (e.junc ? capAt(e, v1) : e.c) / mode.h;
+            const hist = k * (ID1 * v1 + (P2 ? ID2 * (vn(P2, nd[0]) - vn(P2, nd[1])) : 0));
+            stampG(nd[0], nd[1], ID0 * k);
+            addB(nd[0], -hist); addB(nd[1], hist);
           }
-          case "XFMR": {
-            const W = e.windings.length;
-            let sat = null, im0 = 0, lam1 = 0, lam2 = 0;
-            if (e.sat && !mode.dc) {
-              im0 = magCurrent(e, x); sat = coreFlux(e, im0);
-              lam1 = coreFlux(e, magCurrent(e, mode.prev))[0]; if (P2) lam2 = coreFlux(e, magCurrent(e, P2))[0];
-            }
-            for (let j = 0; j < W; j++) {
-              const w = e.windings[j], br = e.branches[j];
-              if (w.a > 0) { addAu(w.a - 1, br, 1); addAu(br, w.a - 1, 1); }
-              if (w.b > 0) { addAu(w.b - 1, br, -1); addAu(br, w.b - 1, -1); }
-              addAu(br, br, -R_SERIES);
-              if (!mode.dc && e.sat) {
-                // v_j = n_j·dλ/dt + leak_j·di_j/dt, λ = coreFlux(im) linearised at this iterate
-                const nj = e.n[j], ID = ID0 / mode.h, lk = w.leak || 0;
-                for (let k = 0; k < W; k++) addAu(br, e.branches[k], -ID * (nj * e.n[k] * sat[1] + (k === j ? lk : 0)));
-                b[br] += (nj * (ID0 * (sat[0] - sat[1] * im0) + ID1 * lam1 + (P2 ? ID2 * lam2 : 0)) + lk * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0))) / mode.h;
-              } else if (!mode.dc) {
-                let hist = 0;
-                for (let k = 0; k < W; k++) {
-                  const m = e.Lmat[j * W + k] / mode.h, bk = e.branches[k];
-                  addAu(br, bk, -ID0 * m);
-                  hist += m * (ID1 * mode.prev[bk] + (P2 ? ID2 * P2[bk] : 0));
-                }
-                b[br] += hist;
+          break;
+        case "L": {
+          // branch current i flows a -> b through the inductor
+          const br = e.branch;
+          if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
+          if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
+          addAu(br, br, -R_SERIES);   // keeps a shorted inductor solvable
+          if (!mode.dc) { const k = e.l / mode.h; addAu(br, br, -ID0 * k); b[br] += k * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0)); }
+          break;
+        }
+        case "XFMR": {
+          const W = e.windings.length;
+          let sat = null, im0 = 0, lam1 = 0, lam2 = 0;
+          if (e.sat && !mode.dc) {
+            im0 = magCurrent(e, x); sat = coreFlux(e, im0);
+            lam1 = coreFlux(e, magCurrent(e, mode.prev))[0]; if (P2) lam2 = coreFlux(e, magCurrent(e, P2))[0];
+          }
+          for (let j = 0; j < W; j++) {
+            const w = e.windings[j], br = e.branches[j];
+            if (w.a > 0) { addAu(w.a - 1, br, 1); addAu(br, w.a - 1, 1); }
+            if (w.b > 0) { addAu(w.b - 1, br, -1); addAu(br, w.b - 1, -1); }
+            addAu(br, br, -R_SERIES);
+            if (!mode.dc && e.sat) {
+              // v_j = n_j·dλ/dt + leak_j·di_j/dt, λ = coreFlux(im) linearised at this iterate
+              const nj = e.n[j], ID = ID0 / mode.h, lk = w.leak || 0;
+              for (let k = 0; k < W; k++) addAu(br, e.branches[k], -ID * (nj * e.n[k] * sat[1] + (k === j ? lk : 0)));
+              b[br] += (nj * (ID0 * (sat[0] - sat[1] * im0) + ID1 * lam1 + (P2 ? ID2 * lam2 : 0)) + lk * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0))) / mode.h;
+            } else if (!mode.dc) {
+              let hist = 0;
+              for (let k = 0; k < W; k++) {
+                const m = e.Lmat[j * W + k] / mode.h, bk = e.branches[k];
+                addAu(br, bk, -ID0 * m);
+                hist += m * (ID1 * mode.prev[bk] + (P2 ? ID2 * P2[bk] : 0));
               }
+              b[br] += hist;
             }
-            break;
           }
-          case "V": case "VSRC": {
+          break;
+        }
+        case "V": case "VSRC": {
+          const br = e.branch;
+          if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
+          if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
+          let val;
+          if (e.kind === "V") val = e.v * srcScale;
+          else if (mode.dc) val = (e.dcValue !== undefined ? e.dcValue : (e.offset || 0)) * srcScale;
+          else val = waveValue(e, mode.t, srcScale);
+          b[br] += val;
+          break;
+        }
+        case "I": {
+          // current e.i flows from node a through the source to node b: out of a, into b
+          const i = e.i * srcScale;
+          addB(nd[0], -i); addB(nd[1], i);
+          break;
+        }
+        case "E": {
+          // nodes out+, out−, ctl+, ctl−: v(out+) − v(out−) = gain · (v(ctl+) − v(ctl−)), its current a branch
+          const br = e.branch;
+          if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
+          if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
+          if (nd[2] > 0) addAu(br, nd[2] - 1, -e.gain);
+          if (nd[3] > 0) addAu(br, nd[3] - 1, e.gain);
+          break;
+        }
+        case "G":
+          // nodes out+, out−, ctl+, ctl−: gm · (v(ctl+) − v(ctl−)) flows out of out+, through the source, into out−
+          addA(nd[0], nd[2], e.gm); addA(nd[0], nd[3], -e.gm); addA(nd[1], nd[2], -e.gm); addA(nd[1], nd[3], e.gm);
+          break;
+        case "B": {
+          // value f(u) linearized at this iterate: f ≈ f0 + Σ J·(u − u0)
+          const f0 = bValue(e, x), J = bSlopes(e, x, f0);
+          let k0 = f0; for (let q = 0; q < J.length; q++) k0 -= J[q][1] * x[J[q][0]];
+          if (e.out === "v") {
             const br = e.branch;
             if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
             if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
-            let val;
-            if (e.kind === "V") val = e.v * srcScale;
-            else if (mode.dc) val = (e.dcValue !== undefined ? e.dcValue : (e.offset || 0)) * srcScale;
-            else val = waveValue(e, mode.t, srcScale);
-            b[br] += val;
-            break;
+            for (let q = 0; q < J.length; q++) addAu(br, J[q][0], -J[q][1]);
+            b[br] += k0;
+          } else {
+            for (let q = 0; q < J.length; q++) { if (nd[0] > 0) addAu(nd[0] - 1, J[q][0], J[q][1]); if (nd[1] > 0) addAu(nd[1] - 1, J[q][0], -J[q][1]); }
+            addB(nd[0], -k0); addB(nd[1], k0);
           }
-          case "I": {
-            // current e.i flows from node a through the source to node b: out of a, into b
-            const i = e.i * srcScale;
-            addB(nd[0], -i); addB(nd[1], i);
-            break;
+          break;
+        }
+        case "D": {
+          const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852;
+          const vcrit = nVt * Math.log(nVt / (Math.SQRT2 * Is));
+          const raw = vn(x, nd[0]) - vn(x, nd[1]);
+          // limited against the previous iterate (pnjlim)
+          const vd = pnjlim(raw, e._vlast, nVt, vcrit);
+          if (Math.abs(vd - raw) > 1e-9) limited = true;
+          e._vlast = vd;
+          const ex = Math.exp(Math.min(vd / nVt, 80));
+          let id = Is * (ex - 1), gd = Is * ex / nVt + 1e-12;
+          if (e.tt && !mode.dc) {
+            // stored charge (SPICE TT): q = tt·id, its current dq/dt by the same rule as a capacitor's;
+            // this is what makes a diode keep conducting backwards for a while (reverse recovery)
+            const idAt = X => Is * (Math.exp(Math.min((vn(X, nd[0]) - vn(X, nd[1])) / nVt, 80)) - 1), k = e.tt / mode.h;
+            id += k * (ID0 * id + ID1 * idAt(mode.prev) + (P2 ? ID2 * idAt(P2) : 0));
+            gd += k * ID0 * (gd - 1e-12);
           }
-          case "E": {
-            // nodes out+, out−, ctl+, ctl−: v(out+) − v(out−) = gain · (v(ctl+) − v(ctl−)), its current a branch
-            const br = e.branch;
-            if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
-            if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
-            if (nd[2] > 0) addAu(br, nd[2] - 1, -e.gain);
-            if (nd[3] > 0) addAu(br, nd[3] - 1, e.gain);
-            break;
-          }
-          case "G":
-            // nodes out+, out−, ctl+, ctl−: gm · (v(ctl+) − v(ctl−)) flows out of out+, through the source, into out−
-            addA(nd[0], nd[2], e.gm); addA(nd[0], nd[3], -e.gm); addA(nd[1], nd[2], -e.gm); addA(nd[1], nd[3], e.gm);
-            break;
-          case "B": {
-            // value f(u) linearized at this iterate: f ≈ f0 + Σ J·(u − u0)
-            const f0 = bValue(e, x), J = bSlopes(e, x, f0);
-            let k0 = f0; for (let q = 0; q < J.length; q++) k0 -= J[q][1] * x[J[q][0]];
-            if (e.out === "v") {
-              const br = e.branch;
-              if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
-              if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
-              for (let q = 0; q < J.length; q++) addAu(br, J[q][0], -J[q][1]);
-              b[br] += k0;
-            } else {
-              for (let q = 0; q < J.length; q++) { if (nd[0] > 0) addAu(nd[0] - 1, J[q][0], J[q][1]); if (nd[1] > 0) addAu(nd[1] - 1, J[q][0], -J[q][1]); }
-              addB(nd[0], -k0); addB(nd[1], k0);
-            }
-            break;
-          }
-          case "D": {
-            const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852;
-            const vcrit = nVt * Math.log(nVt / (Math.SQRT2 * Is));
-            const raw = vn(x, nd[0]) - vn(x, nd[1]);
-            // limited against the previous iterate (pnjlim)
-            const vd = pnjlim(raw, e._vlast, nVt, vcrit);
-            if (Math.abs(vd - raw) > 1e-9) limited = true;
-            e._vlast = vd;
-            const ex = Math.exp(Math.min(vd / nVt, 80));
-            let id = Is * (ex - 1), gd = Is * ex / nVt + 1e-12;
-            if (e.tt && !mode.dc) {
-              // stored charge (SPICE TT): q = tt·id, its current dq/dt by the same rule as a capacitor's;
-              // this is what makes a diode keep conducting backwards for a while (reverse recovery)
-              const idAt = X => Is * (Math.exp(Math.min((vn(X, nd[0]) - vn(X, nd[1])) / nVt, 80)) - 1), k = e.tt / mode.h;
-              id += k * (ID0 * id + ID1 * idAt(mode.prev) + (P2 ? ID2 * idAt(P2) : 0));
-              gd += k * ID0 * (gd - 1e-12);
-            }
-            stampG(nd[0], nd[1], gd);
-            const ieq = id - gd * vd;
-            addB(nd[0], -ieq); addB(nd[1], ieq);
-            break;
-          }
-          case "VDIODE": {
-            const V0 = [vn(x, nd[0]), vn(x, nd[1])];
-            stampNonlinear(nd, V => { const i = vdiodeI(e, V[0] - V[1]); return [i, -i]; }, V0);
-            break;
-          }
-          case "BJT": {
-            // junction voltages limited against the last iterate, the device linearized there
-            const p = e.model.pol, vt = e.model.vt || VT, nVt = (e.model.nf || 1) * vt, vcrit = nVt * Math.log(nVt / (Math.SQRT2 * e.model.is));
-            const V = nd.map(k => vn(x, k));
-            const rbe = p * (V[1] - V[2]), rbc = p * (V[1] - V[0]);
-            const vbe = pnjlim(rbe, e._vbe, nVt, vcrit), vbc = pnjlim(rbc, e._vbc, vt, vt * Math.log(vt / (Math.SQRT2 * e.model.is)));
-            if (Math.abs(vbe - rbe) > 1e-9 || Math.abs(vbc - rbc) > 1e-9) limited = true;
-            e._vbe = vbe; e._vbc = vbc;
-            const vb = V[2] + p * vbe;
-            stampNonlinear(nd, W => Semi.bjt(W, e.model), [vb - p * vbc, vb, V[2]], 1e-7);
-            break;
-          }
-          case "MOS":
-            stampNonlinear(nd, W => Semi.mos(W, e.model), nd.map(k => vn(x, k)), 1e-6);
-            break;
-          case "OPAMP":
-            stampNonlinear(nd, W => Semi.opamp(W, e.model, mode.dc, e._gain), nd.map(k => vn(x, k)), 1e-6);
-            break;
-          case "REG":
-            stampNonlinear(nd, W => Semi.reg(W, e.model, e._gain, e._lin), nd.map(k => vn(x, k)), 1e-6);
-            break;
-          case "SHUNT":
-            stampNonlinear(nd, W => Semi.shunt(W, e.model, e._gain, e._lin), nd.map(k => vn(x, k)), 1e-6);
-            break;
-          case "TRIODE": {
-            const V0 = nd.map(k => vn(x, k));   // A, G, K
-            stampNonlinear(nd, V => {
-              const [ia, ig] = tubeCurrents(e, V[0] - V[2], V[1] - V[2]);
-              return [ia, ig, -(ia + ig)];
-            }, V0);
-            break;
-          }
-          case "PENTODE": {
-            const V0 = nd.map(k => vn(x, k));   // A, G1, G2, K
+          stampG(nd[0], nd[1], gd);
+          const ieq = id - gd * vd;
+          addB(nd[0], -ieq); addB(nd[1], ieq);
+          break;
+        }
+        case "VDIODE": {
+          const V0 = [vn(x, nd[0]), vn(x, nd[1])];
+          stampNonlinear(nd, V => { const i = vdiodeI(e, V[0] - V[1]); return [i, -i]; }, V0);
+          break;
+        }
+        case "BJT": {
+          // junction voltages limited against the last iterate, the device linearized there
+          const p = e.model.pol, vt = e.model.vt || VT, nVt = (e.model.nf || 1) * vt, vcrit = nVt * Math.log(nVt / (Math.SQRT2 * e.model.is));
+          const V = nd.map(k => vn(x, k));
+          const rbe = p * (V[1] - V[2]), rbc = p * (V[1] - V[0]);
+          const vbe = pnjlim(rbe, e._vbe, nVt, vcrit), vbc = pnjlim(rbc, e._vbc, vt, vt * Math.log(vt / (Math.SQRT2 * e.model.is)));
+          if (Math.abs(vbe - rbe) > 1e-9 || Math.abs(vbc - rbc) > 1e-9) limited = true;
+          e._vbe = vbe; e._vbc = vbc;
+          const vb = V[2] + p * vbe;
+          stampJacobian(nd, Semi.bjtJ, [vb - p * vbc, vb, V[2]], e.model);
+          break;
+        }
+        case "MOS":
+          stampJacobian(nd, Semi.mosJ, nd.map(k => vn(x, k)), e.model);
+          break;
+        case "OPAMP":
+          stampNonlinear(nd, W => Semi.opamp(W, e.model, mode.dc, e._gain), nd.map(k => vn(x, k)), 1e-6);
+          break;
+        case "REG":
+          stampNonlinear(nd, W => Semi.reg(W, e.model, e._gain, e._lin), nd.map(k => vn(x, k)), 1e-6);
+          break;
+        case "SHUNT":
+          stampNonlinear(nd, W => Semi.shunt(W, e.model, e._gain, e._lin), nd.map(k => vn(x, k)), 1e-6);
+          break;
+        case "TRIODE": case "PENTODE": {
+          const V0 = nd.map(k => vn(x, k));   // A, G, (G2,) K
+          if (stampTube(e, nd, V0)) break;
+          if (e.kind === "PENTODE") {
             stampNonlinear(nd, V => {
               const [ia, ig, ig2] = tubeCurrents(e, V[0] - V[3], V[1] - V[3], V[2] - V[3]);
               return [ia, ig, ig2, -(ia + ig + ig2)];
             }, V0);
             break;
           }
-          case "TIMER555": {
-            // the latch held at its value at the start of the solve
-            const q = latchOf(e, x0), tn = [nd[0], nd[2], nd[6], nd[7]];
-            addAu(e.latch, e.latch, 1); b[e.latch] += q;
-            stampNonlinear(tn, V => timerCurrents(V, q), tn.map(k => vn(x, k)), 1e-6);
-            break;
-          }
-          case "GLOW": {
-            const q = latchOf(e, x0);
-            addAu(e.latch, e.latch, 1); b[e.latch] += q;
-            stampNonlinear(nd, V => glowCurrents(V, e.model, q), nd.map(k => vn(x, k)), 1e-6);
-            break;
-          }
-          case "RELAY": {
-            // the latch held; the contacts, closed or open, are plain conductances
-            const q = latchOf(e, x0), gon = 1 / e.model.ron, goff = 1 / e.model.roff;
-            addAu(e.latch, e.latch, 1); b[e.latch] += q;
-            for (let p = 2; p + 2 < nd.length; p += 3) { stampG(nd[p], nd[p + 1], q ? goff : gon); stampG(nd[p], nd[p + 2], q ? gon : goff); }
-            break;
-          }
-          case "LDR": {
-            // the light: x − a·max(i, 0) = (1 − a)·x₋₁, with a = 1 − e^(−h/τ) in a step and 1 at DC
-            const m = e.model, l = e.light, il = (vn(x, nd[2]) - vn(x, nd[3])) / m.rs;
-            let a = 1, xp = 0;
-            if (!mode.dc) { xp = mode.prev[l]; a = 1 - Math.exp(-mode.h / (il > xp ? m.ton : m.toff)); }
-            addAu(l, l, 1); b[l] += (1 - a) * xp;
-            if (il > 0) { if (nd[2] > 0) addAu(l, nd[2] - 1, -a / m.rs); if (nd[3] > 0) addAu(l, nd[3] - 1, a / m.rs); }
-            // the cell: g(light)·(vA − vB), linearized in the light too
-            const xl = x[l], [g, dg] = ldrG(m, xl), vab = vn(x, nd[0]) - vn(x, nd[1]), k = dg * vab;
-            stampG(nd[0], nd[1], g);
-            if (nd[0] > 0) { addAu(nd[0] - 1, l, k); b[nd[0] - 1] += k * xl; }
-            if (nd[1] > 0) { addAu(nd[1] - 1, l, -k); b[nd[1] - 1] -= k * xl; }
-            break;
-          }
+          stampNonlinear(nd, V => {
+            const [ia, ig] = tubeCurrents(e, V[0] - V[2], V[1] - V[2]);
+            return [ia, ig, -(ia + ig)];
+          }, V0);
+          break;
+        }
+        case "TIMER555": {
+          // the latch held at its value at the start of the solve
+          const q = latchOf(e, x0), tn = [nd[0], nd[2], nd[6], nd[7]];
+          addAu(e.latch, e.latch, 1); b[e.latch] += q;
+          stampNonlinear(tn, V => timerCurrents(V, q), tn.map(k => vn(x, k)), 1e-6);
+          break;
+        }
+        case "GLOW": {
+          const q = latchOf(e, x0);
+          addAu(e.latch, e.latch, 1); b[e.latch] += q;
+          stampNonlinear(nd, V => glowCurrents(V, e.model, q), nd.map(k => vn(x, k)), 1e-6);
+          break;
+        }
+        case "RELAY": {
+          // the latch held; the contacts, closed or open, are plain conductances
+          const q = latchOf(e, x0), gon = 1 / e.model.ron, goff = 1 / e.model.roff;
+          addAu(e.latch, e.latch, 1); b[e.latch] += q;
+          for (let p = 2; p + 2 < nd.length; p += 3) { stampG(nd[p], nd[p + 1], q ? goff : gon); stampG(nd[p], nd[p + 2], q ? gon : goff); }
+          break;
+        }
+        case "LDR": {
+          // the light: x − a·max(i, 0) = (1 − a)·x₋₁, with a = 1 − e^(−h/τ) in a step and 1 at DC
+          const m = e.model, l = e.light, il = (vn(x, nd[2]) - vn(x, nd[3])) / m.rs;
+          let a = 1, xp = 0;
+          if (!mode.dc) { xp = mode.prev[l]; a = 1 - Math.exp(-mode.h / (il > xp ? m.ton : m.toff)); }
+          addAu(l, l, 1); b[l] += (1 - a) * xp;
+          if (il > 0) { if (nd[2] > 0) addAu(l, nd[2] - 1, -a / m.rs); if (nd[3] > 0) addAu(l, nd[3] - 1, a / m.rs); }
+          // the cell: g(light)·(vA − vB), linearized in the light too
+          const xl = x[l], [g, dg] = ldrG(m, xl), vab = vn(x, nd[0]) - vn(x, nd[1]), k = dg * vab;
+          stampG(nd[0], nd[1], g);
+          if (nd[0] > 0) { addAu(nd[0] - 1, l, k); b[nd[0] - 1] += k * xl; }
+          if (nd[1] > 0) { addAu(nd[1] - 1, l, -k); b[nd[1] - 1] -= k * xl; }
+          break;
         }
       }
+    };
+    // The linear parts (resistors, capacitors at this step, inductors, transformers below
+    // saturation, sources, controlled sources, relays held) stamp the same numbers on every
+    // iteration of a solve: stamped once, kept, and copied back before the nonlinear parts stamp
+    const part = linearSplit(circ, mode.dc);
+    let linV = null, linB = null, linN = 0;
+    const sol = new Float64Array(n);
+    for (let iter = 0; iter < maxIter; iter++) {
+      if (st) st.newton++;
+      limited = false;
+      if (!linV) {
+        A.clear(); b.fill(0);
+        for (let i = 1; i < circ.nNodes; i++) addA(i, i, gmin);
+        for (const e of part.lin) stampEl(e);
+        linN = A.nnz; linV = A.vals.slice(0, linN); linB = b.slice();
+      } else {
+        A.vals.set(linV); if (A.nnz > linN) A.vals.fill(0, linN, A.nnz);
+        b.set(linB);
+      }
+      for (const e of part.nl) stampEl(e);
 
-      const sol = Array.from(b);
+      sol.set(b);
       if (!A.solve(sol)) return { ok: false, x, error: "singular matrix" };
 
       // Damped update on node voltages
@@ -1064,8 +1272,11 @@
       let scale = limDv > maxStep ? maxStep / limDv : 1;
       let conv = scale === 1;
       // an iteration that is not getting closer (bouncing across a device's
-      // turn-on, say) takes half a step
-      if (iter >= 8 && lastDv !== null && maxDv > 0.9 * lastDv && maxDv > 1e-4) { scale *= 0.5; conv = false; }
+      // turn-on, say) takes half a step; so does a small one (under 10 mV) that is no
+      // closer than two iterations ago (a two-step cycle, long and short updates in turn,
+      // as a floating bridge's input can settle into; large swings, as gmin stepping
+      // makes, are left alone)
+      if (iter >= 8 && lastDv !== null && maxDv > 1e-4 && (maxDv > 0.9 * lastDv || (maxDv < 0.01 && lastDv2 !== null && maxDv > 0.9 * lastDv2))) { scale *= 0.5; conv = false; }
       for (let i = 0; i < n; i++) {
         let nx;
         if (cap && i < circ.nNodes - 1 && cap[i]) {
@@ -1079,20 +1290,40 @@
       }
       if (!isFinite(maxDv)) return { ok: false, x, error: "numerical overflow" };
       let vmax = 0; for (let i = 0; i < circ.nNodes - 1; i++) vmax = Math.max(vmax, Math.abs(x[i]));
-      const floor = 1e-4 + 5e-6 * vmax;
+      const floor = 1e-4 + 5e-6 * Math.min(vmax, 1e3);   // (a behavioural node at a megavolt must not loosen it for all)
       if (conv && iter > 0 && !limited) return { ok: true, x, iter };
       // Round-off floor: with hundreds of volts on some nodes the solution can
       // settle into a microvolt-level wobble that never meets the 1 µV test
       // (whether it does depends on node order). An update below 100 µV (and
-      // 5 ppm of the largest node voltage: a bridge's AC side, floating on
-      // junctions of a few milliohms, wobbles more) that has stopped shrinking
+      // 5 ppm of the largest node voltage, up to 1 kV: a bridge's AC side, floating
+      // on junctions of a few milliohms, wobbles more) that has stopped shrinking
       // for a few iterations is converged.
       if (maxDv < floor && lastDv !== null && maxDv > 0.5 * lastDv && !limited) { if (++stall >= 3) return { ok: true, x, iter }; }
       else stall = 0;
-      lastDv = maxDv;
+      lastDv2 = lastDv; lastDv = maxDv;
     }
     if (st) st.fails++;
     return { ok: false, x, error: "no convergence" };
+  }
+
+  // A time step that still fails at the smallest subdivision: a long Newton run; then, as for the
+  // DC operating point, gmin stepping: the step solved with a conductance from every node to ground,
+  // from 1 S down to the usual 1 pS, each solve starting from the last, the steps
+  // made finer where one fails (a power amplifier switched
+  // on from cold has every junction swinging at once in its first microseconds)
+  function lastResortStep(circ, xprev, hh, tNext) {
+    const mode = { h: hh, t: tNext, prev: xprev, prev2: null };
+    const r = newtonSolve(circ, xprev, mode, { gmin: 1e-12, maxIter: 400 });
+    if (r.ok) return r.x;
+    let x = xprev, g = 1, k = 10;
+    const r0 = newtonSolve(circ, x, mode, { gmin: g, maxIter: 200 });
+    if (!r0.ok) return null;
+    x = r0.x;
+    while (g > 1e-12) {
+      const gn = Math.max(g / k, 1e-12), rg = newtonSolve(circ, x, mode, { gmin: gn, maxIter: 200 });
+      if (rg.ok) { x = rg.x; g = gn; k = Math.min(k * 2, 10); } else if ((k = Math.sqrt(k)) < 1.05) return null;
+    }
+    return x;
   }
 
   function dcOperatingPoint(circ) {
@@ -1418,7 +1649,7 @@
       // the last resort: more iterations (a source that steps at t = 0, such as the mains starting at
       // its peak, charges a rectifier's reservoir through a winding: the damped Newton walks the
       // node up 15 V an iteration, and halves that once the steps stop shrinking)
-      if ((depth || 0) >= 2) { const r2 = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: null }, { gmin: 1e-12, maxIter: 400 }); return r2.ok ? r2.x : null; }
+      if ((depth || 0) >= 2) return lastResortStep(circ, xprev, hh, tNext);
       let xs = xprev;
       for (let k = 1; k <= 8; k++) {
         xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1);
@@ -1839,7 +2070,7 @@
       const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
       const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
       if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
-      if ((depth || 0) >= 3) { const r2 = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: null }, { gmin: 1e-12, maxIter: 400 }); return r2.ok ? r2.x : null; }   // as in simulate()
+      if ((depth || 0) >= 3) return lastResortStep(circ, xprev, hh, tNext);   // as in simulate()
       let xs = xprev;
       for (let k = 1; k <= 8; k++) { xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
       if (!depth) xBack = null;
@@ -1957,7 +2188,7 @@
       const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
       const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
       if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
-      if ((depth || 0) >= 2) { const r2 = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: null }, { gmin: 1e-12, maxIter: 400 }); return r2.ok ? r2.x : null; }
+      if ((depth || 0) >= 2) return lastResortStep(circ, xprev, hh, tNext);
       let xs = xprev;
       for (let k = 1; k <= 8; k++) { xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
       if (!depth) xBack = null;
@@ -2264,7 +2495,7 @@
     return { ok: true, freqs, total, gain: { re: gRe, im: gIm }, sources: src.map((p, j) => ({ id: p.id, kind: p.kind, psd: psd[j] })), elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, NE555, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, NE555, tubeCurrents, tubeJacobian, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

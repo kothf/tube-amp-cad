@@ -1182,8 +1182,22 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   whose numeric part runs as WebAssembly: `wasm/solver.ts`, built into
   `sim-solver.wasm`, with the same steps as the JavaScript, which takes over
   where WebAssembly is missing. Work grows about linearly with the circuit.
+  The first solve picks the pivots; later Newton iterations refactor the
+  numbers on the same pattern and pivots, without the search, and pivot afresh
+  only when a kept pivot falls below 10⁻³ of its column (as KLU does).
   Together with shooting, this settles the 10-tube stereo EL84 amplifier in
   1.6 s in the browser (36 s with the dense JavaScript solver of 3.50).
+- **Fast Newton iterations.** Resistors, capacitors at the step, inductors,
+  transformers below saturation and the sources stamp the same numbers on
+  every iteration of a time step, so they are stamped once and copied back.
+  Tubes (Koren's equations), BJTs and MOSFETs give their Jacobian worked out
+  in one evaluation instead of one finite difference per terminal (a test holds
+  each to its finite difference); the rest (op-amps, regulators, imported
+  SPICE tubes, a warming cathode) are differenced, one evaluation per terminal
+  but the last. A time step that fails at its smallest subdivision is solved
+  by gmin stepping, as the DC operating point is. On one core, against 3.204:
+  the full run of every example 2.1× faster (the stereo amplifier, ex 07,
+  2.3×), the power-on runs 2.1×.
 - **Triodes** use [Koren's](https://www.normankoren.com/Audio/Tubemodspice_article.html)
   published equation unmodified, so their parameters are interchangeable with
   Koren-style SPICE models.
@@ -1425,9 +1439,10 @@ npm run build:wasm  # sim-solver.wasm from wasm/solver.ts, after changing the so
 - `node tests/bench.mjs` (part of `npm run test:ngspice`) times the live run,
   the full run, the Bode sweep and the power-on run of every example, and
   counts the engine's work (Newton solves and iterations, model evaluations).
-  Times depend on the machine, the counts do not: a full or power-on run
-  taking more than 20 % more Newton iterations than `tests/bench-baseline.json`
-  fails it. `BENCH_UPDATE=1` writes a new baseline, `BENCH_JSON=file` the
+  Times depend on the machine, the counts do not: a power-on run taking more
+  than 20 % more Newton iterations than `tests/bench-baseline.json`, or a full
+  run taking 20 % more iterations per time step, fails it (a full run's number
+  of periods swings with the last digits of the arithmetic). `BENCH_UPDATE=1` writes a new baseline, `BENCH_JSON=file` the
   whole report.
 - `BROWSER=webkit npm run test:e2e` (and `test:reference`) runs the same
   suites in WebKit, Safari's engine, after `npx playwright install webkit`.

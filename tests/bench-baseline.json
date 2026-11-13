@@ -1,237 +1,237 @@
 {
  "06-gubin-6n23p-6p14p.json": {
   "full": {
-   "newton": 12202,
-   "steps": 4100,
-   "evals": 219636
+   "newton": 11604,
+   "steps": 3900,
+   "evals": 46416
   },
   "power-on": {
-   "newton": 158625,
+   "newton": 158675,
    "steps": 40000,
-   "evals": 2855250
+   "evals": 634700
   }
  },
  "07-gubin-5ts4s-stereo.json": {
   "full": {
-   "newton": 149358,
-   "steps": 40400,
-   "evals": 3584592
+   "newton": 168768,
+   "steps": 45200,
+   "evals": 1350144
   },
   "power-on": {
-   "newton": 135809,
+   "newton": 135821,
    "steps": 40000,
-   "evals": 3259416
+   "evals": 1086568
   }
  },
  "13-2a3-single-ended-1627sea.json": {
   "full": {
    "newton": 19411,
    "steps": 6600,
-   "evals": 155288
+   "evals": 38822
   },
   "power-on": {
-   "newton": 148761,
+   "newton": 148743,
    "steps": 40000,
-   "evals": 1190088
+   "evals": 297486
   }
  },
  "14-el84-push-pull-ultralinear-1608.json": {
   "full": {
    "newton": 18589,
    "steps": 6200,
-   "evals": 334602
+   "evals": 74356
   },
   "power-on": {
-   "newton": 167815,
+   "newton": 167335,
    "steps": 40000,
-   "evals": 3020670
+   "evals": 669340
   }
  },
  "15-6v6-push-pull-guitar-1750h.json": {
   "full": {
-   "newton": 20476,
+   "newton": 20473,
    "steps": 6900,
-   "evals": 368568
+   "evals": 81892
   },
   "power-on": {
-   "newton": 150410,
+   "newton": 148347,
    "steps": 40000,
-   "evals": 2707380
+   "evals": 593388
   }
  },
  "03-12ax7-ccs-vs-resistor.json": {
   "full": {
-   "newton": 3110,
+   "newton": 3201,
    "steps": 1500,
-   "evals": 37320
+   "evals": 9603
   },
   "power-on": {
-   "newton": 85432,
-   "steps": 40016,
-   "evals": 1025184
+   "newton": 85579,
+   "steps": 40025,
+   "evals": 256737
   }
  },
  "04-12ax7-irf820-follower.json": {
   "full": {
-   "newton": 11351,
+   "newton": 11364,
    "steps": 4300,
-   "evals": 90808
+   "evals": 22728
   },
   "power-on": {
-   "newton": 115543,
+   "newton": 115570,
    "steps": 40024,
-   "evals": 924344
+   "evals": 231140
   }
  },
  "05-10w-mosfet-amplifier.json": {
   "full": {
-   "newton": 14543,
+   "newton": 14868,
    "steps": 5300,
-   "evals": 232688
+   "evals": 59472
   },
   "power-on": {
-   "newton": 115776,
+   "newton": 115930,
    "steps": 40000,
-   "evals": 1852416
+   "evals": 463720
   }
  },
  "01-2n3904-ce-unbypassed.json": {
   "full": {
-   "newton": 6083,
+   "newton": 6079,
    "steps": 2300,
-   "evals": 24332
+   "evals": 6079
   },
   "power-on": {
-   "newton": 120095,
+   "newton": 120097,
    "steps": 40000,
-   "evals": 480380
+   "evals": 120097
   }
  },
  "02-2n3904-ce-bypassed.json": {
   "full": {
-   "newton": 9684,
+   "newton": 9686,
    "steps": 3300,
-   "evals": 38736
+   "evals": 9686
   },
   "power-on": {
-   "newton": 118914,
+   "newton": 118917,
    "steps": 40000,
-   "evals": 475656
+   "evals": 118917
   }
  },
  "16-12w-cfp-amplifier-smd.json": {
   "full": {
-   "newton": 9714,
+   "newton": 8728,
    "steps": 3100,
-   "evals": 388560
+   "evals": 87280
   },
   "power-on": {
-   "newton": 136175,
-   "steps": 40008,
-   "evals": 5447000
+   "newton": 136266,
+   "steps": 40016,
+   "evals": 1362660
   }
  },
  "17-50w-cfp-amplifier-mjl-smd.json": {
   "full": {
-   "newton": 9074,
-   "steps": 3500,
-   "evals": 362960
+   "newton": 9341,
+   "steps": 3100,
+   "evals": 93410
   }
  },
  "18-14w-class-a-amplifier-smd.json": {
   "full": {
-   "newton": 7305,
+   "newton": 7669,
    "steps": 2700,
-   "evals": 350640
+   "evals": 92028
   },
   "power-on": {
-   "newton": 113099,
-   "steps": 40024,
-   "evals": 5428752
+   "newton": 112200,
+   "steps": 40025,
+   "evals": 1346400
   }
  },
  "19-30w-quasi-complementary-smd.json": {
   "full": {
-   "newton": 9879,
+   "newton": 9928,
    "steps": 3500,
-   "evals": 434676
+   "evals": 109208
   },
   "power-on": {
-   "newton": 144506,
-   "steps": 40232,
-   "evals": 6358264
+   "newton": 144493,
+   "steps": 40224,
+   "evals": 1589423
   }
  },
  "20-40w-mosfet-amplifier-smd.json": {
   "full": {
-   "newton": 11680,
+   "newton": 11704,
    "steps": 3700,
-   "evals": 560640
+   "evals": 140448
   },
   "power-on": {
-   "newton": 138221,
-   "steps": 40073,
-   "evals": 6634608
+   "newton": 138768,
+   "steps": 40087,
+   "evals": 1665216
   }
  },
  "08-555-astable.json": {
   "full": {
    "newton": 5787,
    "steps": 2766,
-   "evals": 28935
+   "evals": 23148
   },
   "power-on": {
    "newton": 60300,
    "steps": 22705,
-   "evals": 301500
+   "evals": 241200
   }
  },
  "09-555-flashing-led.json": {
   "full": {
    "newton": 11167,
    "steps": 5522,
-   "evals": 55835
+   "evals": 44668
   },
   "power-on": {
    "newton": 40033,
    "steps": 20005,
-   "evals": 200165
+   "evals": 160132
   }
  },
  "10-555-metronome.json": {
   "full": {
    "newton": 13025,
    "steps": 6343,
-   "evals": 65125
+   "evals": 52100
   },
   "power-on": {
    "newton": 40073,
    "steps": 20001,
-   "evals": 200365
+   "evals": 160292
   }
  },
  "11-555-car-tachometer.json": {
   "full": {
    "newton": 3772,
    "steps": 1828,
-   "evals": 18860
+   "evals": 15088
   },
   "power-on": {
    "newton": 41159,
    "steps": 20200,
-   "evals": 205795
+   "evals": 164636
   }
  },
  "12-555-simplest-oscillator.json": {
   "full": {
    "newton": 5042,
    "steps": 2435,
-   "evals": 25210
+   "evals": 20168
   },
   "power-on": {
    "newton": 53145,
    "steps": 22285,
-   "evals": 265725
+   "evals": 212580
   }
  }
 }

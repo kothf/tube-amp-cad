@@ -11,10 +11,12 @@
  * For each it prints the time and the work counted by the engine (result.stats): Newton
  * solves at DC and in the transient, their iterations, and the device-model evaluations
  * the Jacobians took. Times depend on the machine; the counts do not, so the counts are
- * what the run checks: tests/bench-baseline.json holds them, and a full or power-on run
- * that takes more than 20 % more Newton iterations than its baseline fails the run (a
- * change that slows the engine down is seen even where CI's machines vary). Fewer is
- * fine: BENCH_UPDATE=1 writes the new counts as the baseline.
+ * what the run checks: tests/bench-baseline.json holds them, and a run that works more than
+ * 20 % harder than its baseline fails (a change that slows the engine down is seen even where
+ * CI's machines vary). Power-on: its Newton iterations, over a fixed second. Full: its Newton
+ * iterations per time step, since how many periods the steady-state search takes swings with
+ * the last digits of the arithmetic (ex 07 between 38 000 and 50 000 steps). Less is fine:
+ * BENCH_UPDATE=1 writes the new counts as the baseline.
  *
  *   node tests/bench.mjs [root]
  *
@@ -97,8 +99,12 @@ for (const row of report) {
   for (const k of CHECKED) {
     const r = R[k], b = base[k];
     if (!r || !r.ok) { if (b) { console.log(`  FAIL ${k}: ${r ? r.error : "not run"}`); failed++; } continue; }
-    if (b && r.stats.newton > b.newton * SLACK) { console.log(`  FAIL ${k}: ${r.stats.newton} Newton iterations, baseline ${b.newton} (more than ${Math.round((SLACK - 1) * 100)} % up)`); failed++; }
-    else if (b && r.stats.newton < b.newton / SLACK) console.log(`  note ${k}: ${r.stats.newton} Newton iterations, baseline ${b.newton}: faster, BENCH_UPDATE=1 keeps it`);
+    if (!b) continue;
+    // the work: Newton iterations (power-on), or Newton iterations per step (full)
+    const per = k === "full", work = x => (per ? x.newton / Math.max(x.steps, 1) : x.newton), w = work(r.stats), wb = work(b);
+    const say = x => (per ? `${x.toFixed(2)} Newton iterations a step` : `${x} Newton iterations`);
+    if (w > wb * SLACK) { console.log(`  FAIL ${k}: ${say(w)}, baseline ${say(wb)} (more than ${Math.round((SLACK - 1) * 100)} % up)`); failed++; }
+    else if (w < wb / SLACK) console.log(`  note ${k}: ${say(w)}, baseline ${say(wb)}: less work, BENCH_UPDATE=1 keeps it`);
   }
 }
 console.log(`${pad("total", 40)} ${["live", "full", "ac", "power-on"].map(k => lpad(Math.round(total[k] || 0), 12)).join(" ")}`);
