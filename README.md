@@ -1317,7 +1317,13 @@ The test suite checks the engine against independent results:
   checked against ngspice's own JFET (DC and AC within 0.05 %);
 - every example against ngspice (`tests/ngspice.mjs`, in CI): the circuit's
   SPICE export run through ngspice, its DC operating point within 0.3 % and
-  the signal at every node within 3 % of the CAD's;
+  the signal at every node within 3 % of the CAD's, a 555 astable's period
+  within 0.5 %;
+- waveforms against ngspice (`tests/models.mjs`, `tests/fixtures/trandev.lib`):
+  a class-B follower clipping into 8 Ω and a varactor swung hard within 0.2 %
+  of their swing, point by point; a diode's recovery and fast switches are held
+  at today's error (a time step's worth on their edges) until the
+  error-controlled step;
 - regulators and the TL431: each type's output against its formula
   (Vout = 1.25 V·(1 + R2/R1) + Iadj·R2), its short-circuit current, its
   dropout and its ripple rejection, the TL431 against
@@ -1409,9 +1415,20 @@ npm run build:wasm  # sim-solver.wasm from wasm/solver.ts, after changing the so
 - `npm run test:reference` runs the reference circuits above.
 - `npm run test:ngspice` opens every example, simulates it and runs its SPICE
   export through ngspice (`apt install ngspice`), then compares the DC
-  operating point and the signal at every node. The 555 examples are skipped:
-  the export leaves the NE555 to the maker's macro model. CI runs it on each
-  push and pull request.
+  operating point and the signal at every node, and a free-running
+  oscillator's period (the 555 examples, through the export's behavioural
+  `NE555_SIM`; the metronome and the tachometer are listed as known
+  differences, with the reason). It also runs `tests/models.mjs` (makers'
+  op-amp models, and waveforms of switching benches in
+  `tests/fixtures/trandev.lib` point by point) and the speed benchmark below.
+  CI runs it on each push and pull request.
+- `node tests/bench.mjs` (part of `npm run test:ngspice`) times the live run,
+  the full run, the Bode sweep and the power-on run of every example, and
+  counts the engine's work (Newton solves and iterations, model evaluations).
+  Times depend on the machine, the counts do not: a full or power-on run
+  taking more than 20 % more Newton iterations than `tests/bench-baseline.json`
+  fails it. `BENCH_UPDATE=1` writes a new baseline, `BENCH_JSON=file` the
+  whole report.
 - `BROWSER=webkit npm run test:e2e` (and `test:reference`) runs the same
   suites in WebKit, Safari's engine, after `npx playwright install webkit`.
 
