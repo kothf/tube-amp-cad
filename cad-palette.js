@@ -195,6 +195,12 @@
         own.slice(0, LIB_SHOWN).forEach(e => box.appendChild(row(e)));
         if (own.length > LIB_SHOWN) { const p = document.createElement("p"); p.className = "pal-none"; p.textContent = `First ${LIB_SHOWN} of ${own.length}: search finds the rest.`; box.appendChild(p); }
         if (!own.length) { const p = document.createElement("p"); p.className = "pal-none"; p.textContent = "Your own parts: symbols and footprints from KiCad's libraries, with a SPICE model if you give one."; box.appendChild(p); }
+        if (o.addPart) {
+          const a = document.createElement("button"); a.type = "button"; a.className = "pal-more pal-add"; a.id = "pal-add"; a.textContent = "+ Add part…";
+          a.title = "A part by its maker's part number: its SPICE model is found and downloaded, you choose the package";
+          a.addEventListener("click", () => o.addPart(""));
+          box.appendChild(a);
+        }
         const b = document.createElement("button"); b.type = "button"; b.className = "pal-more"; b.id = "pal-library"; b.textContent = "Parts library…";
         b.title = "Add parts from KiCad symbol and footprint files, set their footprints and SPICE models";
         b.addEventListener("click", () => o.openLibrary());
@@ -222,7 +228,12 @@
       if (!index) index = searchables();
       const words = q.toLowerCase().split(/\s+/).filter(Boolean);
       const hits = valueHits(q).concat(mine().concat(index).filter(e => words.every(w => e.find.toLowerCase().includes(w))));
-      if (!hits.length) { list.innerHTML = `<p class="pal-none">Nothing found for “${esc(q)}”.</p>`; return; }
+      if (!hits.length) {
+        list.innerHTML = `<p class="pal-none">Nothing found for “${esc(q)}”.</p>`;
+        // a part number, by the look of it: offer to add it
+        if (o.addPart && /^\S{3,40}$/.test(q.trim()) && /\d/.test(q)) { const a = document.createElement("button"); a.type = "button"; a.className = "pal-more pal-add"; a.id = "pal-add-found"; a.textContent = `+ Add ${q.trim()} by its part number…`; a.addEventListener("click", () => o.addPart(q.trim())); list.appendChild(a); }
+        return;
+      }
       let last = null, box = null;
       hits.slice(0, 80).forEach(e => {
         if (e.g !== last) { box = section(e.g, 0, false); last = e.g; }

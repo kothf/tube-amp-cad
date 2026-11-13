@@ -282,6 +282,15 @@ A SPICE part takes the roles of its symbol. All 20 examples pass.
 not code, a drawing with pins, a footprint and, if you give it one, a SPICE
 model. *Parts library…* in the panel opens it.
 
+- **Add part… by part number:** type the maker's part number (TL072CP, 2N3904,
+  IRF540N), choose the package, place it. The SPICE model is looked up in the
+  public [KiCad-Spice-Library](https://github.com/kicad-spice-library/KiCad-Spice-Library)
+  (an index of about 49,000 names ships with the app, `spice-index.json`; the
+  one model's file is downloaded when you add the part). The drawing follows
+  from what the model is; a dual or quad op-amp becomes a library part with a
+  unit per amplifier. No model for the number: the dialog says so and takes
+  the maker's file from you instead.
+
 - **From KiCad's libraries:** *Add from KiCad files…* reads symbol libraries
   (`.kicad_sym`) and footprints (`.kicad_mod`), several at once. A symbol
   library lists its symbols with a Find box; tick the ones to add. Derived

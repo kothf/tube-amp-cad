@@ -267,8 +267,9 @@
   }
   function resolve(params, type) {
     const p = params || {}, r = lookup(p.partno, type, p), s = p.part;
-    if (!s || !r || s.no !== norm(p.partno)) return r;
-    const warn = s.specs ? fromSpecs(s.specs, type, p).warn : r.known ? r.warn : [];
+    // (a record the rules here know nothing about is still the part: one added by its number with its package picked)
+    if (!s || s.no !== norm(p.partno)) return r;
+    const warn = s.specs ? fromSpecs(s.specs, type, p).warn : r && r.known ? r.warn : [];
     return { maker: s.maker || "", text: s.text || "", fp: s.fp || null, pkg: s.pkg || null, body: s.body || null, warn, known: true, saved: true, source: s.source || "", url: s.url || "" };
   }
 

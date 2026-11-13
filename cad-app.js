@@ -281,7 +281,7 @@
   // ---------------------------------------------------------------------------
   function nextLabel(prefix) {
     let n = 0;
-    S.comps.forEach(c => { const m = c.label && c.label.match(new RegExp("^" + prefix + "(\\d+)$")); if (m) n = Math.max(n, +m[1]); });
+    S.comps.forEach(c => { const m = c.label && c.label.match(new RegExp("^" + prefix + "(\\d+)(?:\\.\\d+)?$")); if (m) n = Math.max(n, +m[1]); });
     return prefix + (n + 1);
   }
   function makeComp(type, params, x, y, rot) {
@@ -839,6 +839,11 @@
       const c = makeComp(S.placing.type, S.placing.params, gx, gy, S.placing.rot);
       S.comps.push(c);
       S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id);
+      // the other units of a package placed with it (Add part…: a dual op-amp's second amplifier and supply pins), under one designator
+      if (S.placing.more && S.placing.more.length) {
+        const base = c.label; c.label = base + ".1";
+        S.placing.more.forEach((u, i) => { const k = makeComp(S.placing.type, u.params, gx + u.dx, gy + u.dy, 0); k.label = `${base}.${i + 2}`; S.comps.push(k); S.sel.comps.add(k.id); });
+      }
       commit();
       if (!e.shiftKey) { S.placing = null; setTool("select"); }
       return;
@@ -1282,7 +1287,9 @@
     if (S.placing) {
       const g = { id: "ghost", type: S.placing.type, x: snap(S.mouse.wx), y: snap(S.mouse.wy), rot: S.placing.rot, params: Object.assign({}, LIB[S.placing.type].defaults, S.placing.params), label: "" };
       if (g.type === "tube") g.params.connection = tubeKind(tubeByName(g.params.tube)) === "pentode" ? "pentode" : "triode";
-      ctx.globalAlpha = 0.55; drawComp(g, false, true); ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.55; drawComp(g, false, true);
+      (S.placing.more || []).forEach(u => drawComp({ id: "ghost", type: g.type, x: g.x + u.dx, y: g.y + u.dy, rot: 0, params: Object.assign({}, LIB[g.type].defaults, u.params), label: "" }, false, true));
+      ctx.globalAlpha = 1;
     }
     // wiring preview
     if (S.wiring) {
@@ -1830,8 +1837,9 @@
     if (el.firstChild && el.firstChild.nodeType === 3 && !el.firstChild.nextSibling) { if (el.firstChild.nodeValue !== t) el.firstChild.nodeValue = t; } else el.textContent = t;
   }
 
-  function startPlacing(type, params, el) {
+  function startPlacing(type, params, el, more) {
     S.placing = { type, params: params || {}, rot: 0 };
+    if (more && more.length) S.placing.more = more;
     S.wiring = null;
     document.querySelectorAll(".pal-item.active").forEach(x => x.classList.remove("active"));
     if (el) el.classList.add("active");
@@ -1872,6 +1880,10 @@
   // the user's own parts (cad-library.js): kept in this browser, listed in the panel as My library
   const library = CadLibrary({ thumb: (...a) => partThumb(...a), setStatus: (...a) => setStatus(...a), changed: () => { if (palette) palette.rebuild(); updateInspector(); }, place: params => startPlacing("part", params),
     sheet: { placed: id => { const all = S.comps.filter(c => c.type === "part" && c.params.lib === id); return { n: all.length, old: all.filter(c => (library.differs(c.params) || []).length).length }; }, update: id => updateFromLibrary(S.comps.filter(c => c.type === "part" && c.params.lib === id)) } });
+  // Add part…: a part by its maker's number, its model found and downloaded (cad-addpart.js)
+  const addPart = CadAddPart({ thumb: (...a) => partThumb(...a), setStatus: (...a) => setStatus(...a), library, index: "spice-index.json" + VERSION,
+    place: (type, params, more) => startPlacing(type, params, null, more),
+    pasteModel: () => SpicePart.open(null, r => { startPlacing("spice", r); setStatus("ok", `${r.name || r.sub}: click where it goes.`); }) });
   // parts placed from the user's library brought up to it (their values, units and wires stay); returns how many changed
   function updateFromLibrary(comps) {
     let n = 0;
@@ -1885,7 +1897,7 @@
       host: document.getElementById("palette"),
       thumb: partThumb,
       pick: (e, el) => startPlacing(e.type, e.params, el),
-      library: () => library.entries(), openLibrary: () => library.open(),
+      library: () => library.entries(), openLibrary: () => library.open(), addPart: pn => addPart.open(pn),
       dragEnd: dropped => { if (!dropped && S.placing) { S.placing = null; setTool("select"); } }
     });
     // a part dragged from the panel: its ghost follows the pointer over the sheet, the drop places it
@@ -3276,6 +3288,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { library, blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { library, addPart, blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

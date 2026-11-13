@@ -296,6 +296,25 @@
     lib.footprints[f.name] = f;
   }
 
+  // ---- parts made from a part number (cad-addpart.js) ----
+  /** A dual or quad op-amp as a library part: an amplifier per unit and a unit for the supply, on the
+      package's standard pins (dual: 1 out, 2 −, 3 +, 4 V−, 5 +, 6 −, 7 out, 8 V+; quad: V+ on 4, V− on 11),
+      with a footprint of that many pads. spice: { text, sub } of ONE amplifier, its pins in the
+      usual order (+, −, V+, V−, out). pkg: dip | soic. Returns { part, fp }. */
+  function opampPackage(name, amps, pkg, spice) {
+    const quad = amps >= 4, n = quad ? 14 : 8, vp = quad ? "4" : "8", vn = quad ? "11" : "4";
+    const PINS = quad ? [["3", "2", "1"], ["5", "6", "7"], ["10", "9", "8"], ["12", "13", "14"]] : [["3", "2", "1"], ["5", "6", "7"]];
+    const pin = (num, nm, x, y, a) => ({ id: num, num, name: nm, x, y, a, l: 20 });
+    const units = PINS.map(([p, m, o]) => ({ g: [["p", 2, -40, -40, 40, 0, -40, 40, -40, -40], ["t", -30, -20, 10, "+"], ["t", -30, 20, 10, "−"]], pins: [pin(p, "+", -60, -20, 0), pin(m, "-", -60, 20, 0), pin(o, "", 60, 0, 180)], box: [0, 0, 0, 0], pm: 1 }));
+    units.push({ g: [["p", 2, -20, -20, 20, -20, 20, 20, -20, 20, -20, -20]], pins: [pin(vp, "V+", 0, -40, 270), pin(vn, "V-", 0, 40, 90)], box: [0, 0, 0, 0], pn: 3, pm: 1 });
+    units.forEach(u => tidy(u));
+    const fpName = `${pkg === "soic" ? "SOIC" : "DIP"}-${n}`, fp = fpPattern(pkg === "soic" ? "soic" : "dip", { n }, fpName);
+    fp.title = `${fpName}, ${quad ? "quad" : "dual"} op-amp`;
+    const part = { id: "", name: String(name), prefix: "DA", desc: `${quad ? "Quad" : "Dual"} op-amp`, keywords: "op-amp", datasheet: "", units, fp: fpName, fpHint: "", filters: "", src: "its part number" };
+    if (spice && spice.text) part.spice = { text: spice.text, sub: spice.sub, map: ["3", "2", vp, vn, "1"] };
+    return { part, fp };
+  }
+
   /** The library as a file's text, and back (an error names what is wrong) */
   function toFile(lib, name) { return JSON.stringify({ format: FORMAT, version: VERSION, name: name || "", parts: lib.parts, footprints: lib.footprints }); }
   function check(d) {
@@ -311,5 +330,5 @@
   }
   function fromFile(text) { let d; try { d = JSON.parse(text); } catch (e) { throw new Error("not a parts library of this app"); } return check(d); }
 
-  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, unitMaps, differs, refreshed, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS };
+  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, unitMaps, differs, refreshed, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS, opampPackage };
 })(typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : globalThis);

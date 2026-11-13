@@ -224,6 +224,8 @@
     }
 
     return {
+      // a part made elsewhere (Add part…): into the library with its footprint (one of that name already here stays); returns its id
+      addPart(part, fp) { P.add(lib, [part], fp && !lib.footprints[fp.name] ? { [fp.name]: fp } : {}); const q = lib.parts.find(x => x.name.toLowerCase() === String(part.name).toLowerCase()); changed(); return q ? q.id : null; },
       ready, open, close, entries, addFiles, draw, footprintOf, differs: params => P.differs(lib, params), refreshed: params => P.refreshed(lib, params), takeOffered: names => takeOffered(new Set(names)),
       get: () => lib, part: id => lib.parts.find(p => p.id === id) || null, paramsOf: (id, unit) => { const p = lib.parts.find(x => x.id === id); return p ? paramsOf(p, unit) : null; },
       offered: () => (offer ? offer.syms.map(s => s.name) : []),
