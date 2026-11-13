@@ -478,6 +478,23 @@
     .symed-table .btn { padding: 1px 7px; }
     .symed-box summary { cursor: pointer; color: var(--accent); margin: 4px 0; }
     #symed-msg { min-height: 16px; color: var(--warn, #d29922); }
+    #fped-svg { width: 100%; height: min(56vh, 520px); background: #0b1a12; border: 1px solid var(--line); border-radius: 6px; touch-action: none; outline: none; --px: .05; }
+    #fped-svg:focus-visible { border-color: var(--accent); }
+    #fped-svg[data-tool=select] [data-k] { cursor: move; } #fped-svg:not([data-tool=select]) { cursor: crosshair; }
+    #fped-svg .dot { fill: #2f5540; } #fped-svg .axis { stroke: #2f5540; stroke-width: calc(var(--px) * 1px); fill: none; }
+    #fped-svg .silk line, #fped-svg .silk circle { stroke: #e6edf3; stroke-width: .15; fill: none; stroke-linecap: round; }
+    #fped-svg .silk .grab { stroke: transparent; stroke-width: calc(var(--px) * 9px); }
+    #fped-svg .pad rect, #fped-svg .pad ellipse { fill: #c8a23c; } #fped-svg .pad.smd rect, #fped-svg .pad.smd ellipse { fill: #d0603a; } #fped-svg .pad.back rect, #fped-svg .pad.back ellipse { fill: #3a78d0; }
+    #fped-svg .pad .drill { fill: #0b1a12; } #fped-svg .pad text { fill: #fff; font-family: ui-monospace, monospace; pointer-events: none; paint-order: stroke; stroke: rgba(0,0,0,.55); stroke-width: calc(var(--px) * 2px); }
+    #fped-svg .hole circle { fill: #0b1a12; stroke: #8b949e; stroke-width: calc(var(--px) * 1.5px); } #fped-svg .hole path { stroke: #8b949e; stroke-width: calc(var(--px) * 1px); }
+    #fped-svg .draft { stroke: #d29922; stroke-width: calc(var(--px) * 1.5px); stroke-dasharray: .4 .3; fill: none; }
+    #fped-svg .pad.on rect, #fped-svg .pad.on ellipse, #fped-svg .hole.on circle { stroke: #f0883e; stroke-width: calc(var(--px) * 2.5px); }
+    #fped-svg .silk.on line:first-child, #fped-svg .silk.on circle:first-child { stroke: #f0883e; }
+    .fped-grid { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; color: var(--muted); } .fped .fped-grid select { width: auto; }
+    #fped-pads { max-height: 22vh; overflow: auto; } #fped-pos { min-height: 16px; font-family: ui-monospace, monospace; }
+    .fped-table td:nth-child(2), .fped-table td:nth-child(3) { width: 64px; }
+    #fped-msg { min-height: 16px; color: var(--warn, #d29922); }
+    .plib-fprow { display: flex; gap: 6px; min-width: 0; } .plib-fprow select { flex: 1; min-width: 0; }
     .plib { width: min(900px, 96vw); max-height: 92vh; display: flex; flex-direction: column; }
     .plib #plib-body { min-height: 0; overflow: auto; }
     .plib-bar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 8px 0; }
@@ -1179,6 +1196,7 @@
   <script src="cad-share.js?v=dev"></script>
   <script src="part-lib.js?v=dev"></script>
   <script src="cad-symedit.js?v=dev"></script>
+  <script src="cad-fpedit.js?v=dev"></script>
   <script src="cad-library.js?v=dev"></script>
   <script src="cad-recent.js?v=dev"></script>
   <script src="cad-autosave.js?v=dev"></script>

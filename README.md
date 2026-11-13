@@ -291,6 +291,12 @@ model. *Parts library…* in the panel opens it.
   filters allow as soon as that footprint is in the library; the list shows
   the ones with a pad for every pin first. A pin goes to the pad of its
   number.
+- **Footprint drawn here:** *Draw…* and *Edit…* beside the Footprint list open
+  the footprint editor, in millimetres: *Make a usual package* (DIP, a row,
+  SOIC, QFP or two pads from the count, pitch, row distance, pad and hole),
+  Pad, Hole, Line, Rectangle and Circle tools, a grid from 2.54 to 0.1 mm,
+  typed coordinates, a table of the pads, Undo, zoom. A pin left without a
+  pad is named; every part that uses the footprint follows an edit.
 - **SPICE model:** *Model…* sets a maker's `.SUBCKT` or `.MODEL` on the
   part's own pins; the part is then simulated as written (see the SPICE part
   above). Without a model it is left out of the simulation.
@@ -302,7 +308,7 @@ model. *Parts library…* in the panel opens it.
   on the sheet carries its drawing, footprint and model in the circuit file,
   so the circuit opens anywhere.
 - **Code:** `part-lib.js` (data, no DOM), `cad-symedit.js` (the symbol
-  editor), `cad-library.js` (the dialog and
+  editor), `cad-fpedit.js` (the footprint editor), `cad-library.js` (the dialog and
   the store), `LIB.part` in `cad-components.js`, `KicadImport.readSymbols` /
   `readFootprint`; tests in `tests/partlib.test.mjs` and
   `tests/e2e/08c-parts-library.mjs`.

@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.199.0] - 2026-11-13
+
+### Added
+- **Footprint editor: draw your own footprints.** In the Parts library, next to a part's *Footprint* list, *Draw…* starts a footprint for the part, with pads already numbered as its pins, and *Edit…* changes the one it has, one taken from KiCad included. Every part that uses the footprint follows the change, a new name too.
+  - **Usual packages from a few numbers:** *Make a usual package* lays out two drilled rows (DIP), one row (a header), two rows of surface pads (SOIC, SOT), four sides (QFP) or two pads, from the number of pads, the pitch, the distance between the rows, the pad and the hole. Centred, pad 1 at the top left, counted anticlockwise, with a silkscreen outline and a mark at pad 1.
+  - **By hand:** *Pad*, *Hole* (a mounting hole with no copper), *Line*, *Rectangle* and *Circle* (silkscreen) tools; *Select* moves and deletes, the arrow keys nudge by a grid step, Undo (Ctrl+Z). The pointer snaps to a grid of 2.54 down to 0.1 mm; numbers typed at the right or in the table of pads are kept as typed (a comma works as the decimal point).
+  - **Pads:** through-hole or surface (top or bottom), round or rectangular, with width, height and hole. A new pad takes the first pin number of the part that has no pad yet; a pin left without a pad, and a hole that leaves no copper round it, are named at the bottom.
+  - **View:** the wheel zooms, dragging the empty board moves the view, *Fit* shows it all; *Centre on the pads* puts the footprint's centre, about which the part turns, in the middle of the pads.
+- For developers: `cad-fpedit.js` (`FootprintEditor`), `PartLib.fpPattern` / `fpFor` / `fpTidy` / `fpStore`; tests in `tests/partlib.test.mjs` and `tests/e2e/08c-parts-library.mjs`.
+
 ## [3.198.0] - 2026-11-13
 
 ### Added
