@@ -90,6 +90,63 @@ import { fileURLToPath } from "node:url";
   check(dual.before === "1,2,3" && dual.after === "8,4" && !dual.model, `a part of several units: the inspector's Unit list switches the drawing and its pins (${dual.before} → ${dual.after})`);
   await cad.evaluate(uid => { const S = TubeCAD.state; S.comps = S.comps.filter(c => c.id !== uid); TubeCAD.commit(); }, dual.id);
 
+  // New part…: the symbol editor. A box from a list of pins, a circle, a line, a text and a pin drawn; Undo; Save
+  await cad.click("#pal-library");
+  await cad.click("#plib-new");
+  await cad.waitForSelector("#symed-svg");
+  const pt = (x, y) => cad.evaluate(([x, y]) => { const s = document.getElementById("symed-svg"), q = s.createSVGPoint(); q.x = x; q.y = y; const r = q.matrixTransform(s.getScreenCTM()); return [r.x, r.y]; }, [x, y]);
+  const drawn = () => cad.evaluate(() => SymbolEditor.result()[SymbolEditor.state().u]);
+  await cad.click(".symed-box summary");
+  await cad.fill("#symed-list", "1 OUT\n2 IN-\n3 IN+\n4 V-\n5 NC\n6 NC\n7 NC\n8 V+");
+  await cad.click("#symed-make");
+  let d = await drawn();
+  check(d.pins.length === 8 && d.pins.find(p => p.num === "8").x === 50 && d.pins.find(p => p.num === "1").name === "OUT" && d.g.length === 1, "New part… opens the drawing; a list of pins makes a box with them round it as on a DIP");
+  await cad.click('#symed-tools [data-tool="circle"]');
+  { const a = await pt(0, 0), b = await pt(15, 0); await cad.mouse.move(...a); await cad.mouse.down(); await cad.mouse.move(...b); await cad.mouse.up(); }
+  await cad.click('#symed-tools [data-tool="line"]');
+  for (const q of [[-20, -30], [20, -30], [20, -20]]) await cad.mouse.click(...await pt(...q));
+  await cad.keyboard.press("Enter");
+  await cad.click('#symed-tools [data-tool="text"]');
+  await cad.mouse.click(...await pt(0, 30));
+  await cad.fill("#symed-text", "AMP");
+  await cad.click('#symed-tools [data-tool="pin"]');
+  await cad.selectOption("#symed-side", "bottom");
+  await cad.mouse.click(...await pt(0, 70));
+  await cad.fill("#symed-name", "TAB");
+  d = await drawn();
+  const tab = d.pins.find(p => p.name === "TAB");
+  check(JSON.stringify(d.g.slice(1)) === JSON.stringify([["c", 0, 0, 0, 15], ["p", 0, -20, -30, 20, -30, 20, -20], ["t", 0, 30, 10, "AMP"]]) && tab && tab.num === "9" && tab.x === 0 && tab.y === 70 && tab.a === 90, "a circle, a line of three points, a text and a pin on the bottom are drawn where clicked, the pin numbered on");
+  // a pin dragged with Select moves on the grid; a number used twice stops the save and is said
+  await cad.click('#symed-tools [data-tool="select"]');
+  { const a = await pt(0, 62), b = await pt(21, 62); await cad.mouse.move(...a); await cad.mouse.down(); await cad.mouse.move(...b, { steps: 3 }); await cad.mouse.up(); }
+  d = await drawn();
+  check(d.pins.find(p => p.name === "TAB").x === 20, "Select drags a pin, on the sheet's grid");
+  await cad.fill("#symed-num", "8");
+  const dup = await cad.evaluate(() => ({ off: document.getElementById("symed-ok").disabled, msg: document.getElementById("symed-msg").textContent }));
+  check(dup.off && /Pin number 8 is used twice/.test(dup.msg), `a pin number used twice is refused (${dup.msg})`);
+  await cad.fill("#symed-num", "9");
+  await cad.click("#symed-undo");
+  // + Unit: a second unit with the same body and its own pins
+  await cad.click("#symed-addunit");
+  await cad.click('#symed-tools [data-tool="pin"]');
+  await cad.mouse.click(...await pt(-50, 0));
+  const u2 = await cad.evaluate(() => ({ n: SymbolEditor.state().units.length, pin: SymbolEditor.result()[1].pins.map(p => p.num).join(), ok: !document.getElementById("symed-ok").disabled }));
+  check(u2.n === 2 && u2.pin === "10" && u2.ok, "+ Unit adds a unit of the package; its pins are numbered on from the other units'");
+  await cad.click("#symed-ok");
+  const made = await cad.evaluate(() => { const p = TubeCAD.library.get().parts.find(x => x.name === "New part"); return p && { units: p.units.map(u => u.pins.length).join(), src: p.src, pal: [...document.querySelectorAll("#palette .pal-item")].some(el => /New part/.test(el.textContent)), shown: !document.getElementById("plib-modal").hidden && document.getElementById("plib-name").value }; });
+  check(made && made.units === "9,1" && made.src === "drawn here" && made.pal && made.shown === "New part", "Save the drawing: the part is in the library and in the panel");
+  // Edit drawing… changes it; Duplicate makes a second part; a part placed before keeps its own copy
+  await cad.click("#plib-draw");
+  await cad.waitForSelector("#symed-svg");
+  await cad.click("#symed-delunit");
+  await cad.click("#symed-ok");
+  await cad.click("#plib-copy");
+  const two = await cad.evaluate(() => TubeCAD.library.get().parts.filter(x => /^New part/.test(x.name)).map(x => `${x.name}:${x.units.length}`).join());
+  check(two === "New part:1,New part copy:1", `Edit drawing… and Duplicate (${two})`);
+  await cad.evaluate(() => { const L = TubeCAD.library; L.get().parts.filter(x => /^New part/.test(x.name)).map(x => x.id).forEach(id => { document.querySelector(`.plib-list button[data-id="${id}"]`).click(); document.getElementById("plib-del").click(); }); });
+  check(await cad.evaluate(() => TubeCAD.library.get().parts.length) === 2, "Delete the part removes it from the library");
+  await cad.click("#plib-close");
+
   // the library as a file; it is still there in a new page; a circuit with the part opens without the library
   await cad.click("#pal-library");
   const [dl] = await Promise.all([cad.waitForEvent("download"), cad.click("#plib-save")]);

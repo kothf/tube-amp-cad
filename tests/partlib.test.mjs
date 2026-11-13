@@ -108,3 +108,31 @@ test("a library part with a SPICE model is simulated by it: a ×11 amplifier", (
   // without a model it adds nothing
   const bare = comp(library(), "TESTAMP", 1, "v", "DA2"), none = []; L.LIB.part.build(bare, () => 1, () => 2, none); assert.equal(none.length, 0);
 });
+
+test("a box from a list of pins: round the box as on a DIP, or on the sides asked for; pins on the sheet's grid", () => {
+  const list = P.pinList("1 OUT\n2 IN-\n3 IN+\n4 V-\n5 NC\n6 NC\n7 NC\n8 V+"), s = P.boxSymbol(list);
+  assert.deepEqual(list[1], { num: "2", name: "IN-", side: undefined });
+  const at = n => { const p = s.pins.find(q => q.num === n); return [p.x, p.y, p.a]; };
+  assert.deepEqual(at("1"), [-50, -30, 0]); assert.deepEqual(at("4"), [-50, 30, 0]);
+  assert.deepEqual(at("5"), [50, 30, 180], "pin 5 opposite pin 4"); assert.deepEqual(at("8"), [50, -30, 180], "pin 8 opposite pin 1");
+  assert.ok(s.pins.every(p => p.x % 10 === 0 && p.y % 10 === 0 && p.id === p.num));
+  assert.deepEqual(s.box, [-52, -52, 52, 52]);
+  const t = P.boxSymbol(P.pinList("1 IN left\n2 GND bottom\n3 OUT right\n4 VCC top"));
+  assert.deepEqual(t.pins.map(p => [p.num, p.x, p.y, p.a]), [["1", -50, 0, 0], ["3", 50, 0, 180], ["4", 0, -50, 270], ["2", 0, 50, 90]]);
+  // every pin's inner end is on the body's edge
+  const body = t.g[0], x1 = body[2], y1 = body[3], x2 = body[4], y2 = body[7];
+  t.pins.forEach(p => { const [ex, ey] = P.pinEnd(p); assert.ok(ex === x1 || ex === x2 || ey === y1 || ey === y2, `pin ${p.num} ends at ${ex},${ey}`); });
+});
+
+test("a drawing put in order: ids from the numbers, a repeated number said, the box measured again", () => {
+  const s = { g: [["c", 0, 0, 0, 30], ["t", 0, 50, 10, "X"]], pins: [{ num: " 1 ", x: -52, y: 3, a: 0, l: 20 }, { num: "1", x: 50, y: 0, a: 45, l: 20 }, { name: "K", x: 0, y: 60, a: 90, l: 10 }] };
+  assert.deepEqual(P.tidy(s), ["Pin number 1 is used twice"]);
+  assert.deepEqual(s.pins.map(p => [p.id, p.x, p.y, p.a]), [["1", -50, 0, 0], ["1#2", 50, 0, 0], ["K", 0, 60, 90]]);
+  assert.deepEqual(s.box, [-52, -32, 72, 62]);
+  assert.deepEqual(P.tidy({ g: [], pins: [] }), ["The drawing has no pins"]);
+  // a part drawn here is a library part like any other
+  const lib = P.empty(); P.add(lib, [P.blank("Mine", "DA", P.boxSymbol(P.pinList("1 A\n2 B")))], {});
+  const c = { id: "m", type: "part", label: "DA1", params: P.params(lib, lib.parts[0], 1) };
+  assert.deepEqual(L.LIB.part.pins(c).map(p => [p.id, p.name]), [["1", "A"], ["2", "B"]]);
+  assert.equal(lib.parts[0].src, "drawn here");
+});

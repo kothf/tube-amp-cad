@@ -282,6 +282,11 @@ model. *Parts library…* in the panel opens it.
   (`.kicad_sym`) and footprints (`.kicad_mod`), several at once. A symbol
   library lists its symbols with a Find box; tick the ones to add. Derived
   symbols (`extends`) come with their parent's drawing.
+- **Drawn here:** *New part…* and *Edit drawing…* open the symbol editor:
+  Line, Rectangle, Circle, Text and Pin tools, Select to move and delete,
+  Undo, units of a package, a table of the pins, and *Make a box from a list
+  of pins* (one line per pin, as on a DIP or with sides) for ICs. Pins snap
+  to the sheet's grid; a pin number used twice is refused.
 - **Footprint:** a part takes the footprint its symbol names or its KiCad
   filters allow as soon as that footprint is in the library; the list shows
   the ones with a pad for every pin first. A pin goes to the pad of its
@@ -296,7 +301,8 @@ model. *Parts library…* in the panel opens it.
   (`my-parts.tubelib`) with *Save as a file* / *Open a library file…*. A part
   on the sheet carries its drawing, footprint and model in the circuit file,
   so the circuit opens anywhere.
-- **Code:** `part-lib.js` (data, no DOM), `cad-library.js` (the dialog and
+- **Code:** `part-lib.js` (data, no DOM), `cad-symedit.js` (the symbol
+  editor), `cad-library.js` (the dialog and
   the store), `LIB.part` in `cad-components.js`, `KicadImport.readSymbols` /
   `readFootprint`; tests in `tests/partlib.test.mjs` and
   `tests/e2e/08c-parts-library.mjs`.
