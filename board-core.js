@@ -842,6 +842,8 @@
     // a unit kept as KiCad drew it (a valve's heater, VL1.H) belongs to the part of its name
     const own = new Map();
     (netlist.parts || []).forEach(p => { const b = baseOf(p); if (p.type !== "kicad" && b && L.LIB[p.type] && !SKIP.has(p.type)) own.set(b, own.has(b) && own.get(b) !== p.type ? null : p.type); });
+    // a library part brings its footprint with it (params.fp, part-lib.js): known by its name from here on
+    (netlist.parts || []).forEach(p => { const f = p.type === "part" && p.params && p.params.fp; if (f && Array.isArray(f.pads) && Array.isArray(f.box) && f.name) CUSTOM.set("LIB:" + f.name, f); });
     (netlist.parts || []).forEach(p => {
       if (SKIP.has(p.type) || (!L.LIB[p.type] && p.type !== "heater" && p.type !== "star")) return;
       const base = baseOf(p), type = p.type === "kicad" && own.get(base) ? own.get(base) : p.type;
@@ -1077,6 +1079,11 @@
           case "njf": case "pjf": return ["TO-92-DSG", "TO-92-DGS", "TO-92-SGD", "TO-18-DSG", "WIRE-3"];
           default: return wires <= 3 ? [`WIRE-${wires}`] : wires <= 16 ? [`DIP-${wires <= 8 ? 8 : wires <= 14 ? 14 : 16}`, `WIRE-${wires}`] : [`WIRE-${wires}`];
         }
+      }
+      // a library part: its own footprint, else a DIP its pins fit or a row of pads
+      case "part": {
+        const own = p.fp && p.fp.name && CUSTOM.has("LIB:" + p.fp.name) ? ["LIB:" + p.fp.name] : [];
+        return [...own, ...(wires > 3 && wires <= 16 && !own.length ? [`DIP-${wires <= 8 ? 8 : wires <= 14 ? 14 : 16}`] : []), `WIRE-${wires}`];
       }
       case "tube": {
         const t = L.tubeByName(p.tube), d = socketFor(t), cap = t && /top cap/i.test(t.socket) ? "-CAP" : "";

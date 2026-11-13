@@ -446,6 +446,34 @@
     .block-make { display: grid; grid-template-columns: 1fr auto; gap: 6px 8px; align-items: center; margin: 8px 0 12px; }
     .block-make span { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
     .block-make input { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+    .plib { width: min(900px, 96vw); max-height: 92vh; display: flex; flex-direction: column; }
+    .plib #plib-body { min-height: 0; overflow: auto; }
+    .plib-bar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 8px 0; }
+    .plib-bar input[type=search] { flex: 1 1 140px; }
+    .plib input[type=text], .plib input[type=search], .plib select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; min-width: 0; }
+    .plib-grid { display: grid; grid-template-columns: minmax(180px, 250px) 1fr; gap: 12px; }
+    @media (max-width: 640px) { .plib-grid { grid-template-columns: 1fr; } }
+    .plib-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .plib-list { border: 1px solid var(--line); border-radius: 6px; max-height: 46vh; overflow: auto; }
+    .plib-list button { display: grid; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--text); padding: 5px 8px; font: inherit; cursor: pointer; }
+    .plib-list button span { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .plib-list button.on, .plib-list button:hover { background: var(--bg); }
+    .plib-list button.on b { color: var(--accent); }
+    .plib-pics { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+    .plib-sym { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; }
+    .plib-fp { width: 150px; height: 110px; flex: none; }
+    .plib-fp .silk { stroke: #c9d1d9; fill: none; }
+    .plib-fp .pad { fill: #d29922; } .plib-fp .smd { fill: #f85149; } .plib-fp .drill { fill: var(--bg); }
+    .plib-nofp { width: 150px; height: 110px; display: grid; place-items: center; color: var(--muted); font-size: 12px; border: 1px dashed var(--line); border-radius: 6px; }
+    .plib-form { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; margin: 10px 0 6px; font-size: 12px; }
+    .plib-form > span { color: var(--muted); }
+    .plib-model { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .plib-warn { color: var(--warn, #d29922); font-size: 12px; margin: 4px 0; }
+    .plib-empty { color: var(--muted); padding: 18px 4px; }
+    .plib-olist { border: 1px solid var(--line); border-radius: 6px; max-height: 50vh; overflow: auto; }
+    .plib-olist label { display: grid; grid-template-columns: auto minmax(90px, 180px) 1fr; gap: 8px; padding: 3px 8px; border-bottom: 1px solid var(--line); font-size: 12px; align-items: center; cursor: pointer; }
+    .plib-olist label span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .plib .muted { color: var(--muted); padding: 6px 8px; font-size: 12px; }
     .block-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .block-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 10px 6px 4px; border-bottom: 1px solid var(--line); }
     .block-table td { padding: 5px 6px; border-bottom: 1px solid var(--line); }
@@ -1117,6 +1145,8 @@
   <script src="kicad-import.js?v=dev"></script>
   <script src="cad-kicad.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
+  <script src="part-lib.js?v=dev"></script>
+  <script src="cad-library.js?v=dev"></script>
   <script src="cad-recent.js?v=dev"></script>
   <script src="cad-autosave.js?v=dev"></script>
   <script src="cad-palette.js?v=dev"></script>

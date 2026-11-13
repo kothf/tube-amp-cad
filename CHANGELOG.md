@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.197.0] - 2026-11-13
+
+### Added
+- **Your own parts library.** Parts are no longer only the ones built into the program: *My library* at the top of the parts panel holds your own, and each of them is data (a drawing with pins, a footprint, a SPICE model), not code. *Parts library…* in the panel opens it.
+  - **From KiCad's libraries:** *Add from KiCad files…* reads symbol libraries (`.kicad_sym`) and footprint files (`.kicad_mod`), several at once. A symbol library lists its symbols with a Find box: tick the ones to add, or take all. Derived symbols come with their parent's drawing; power symbols are left out. KiCad's reference letters become the program's designators (U → DA, Q → VT, D → VD).
+  - **Footprint:** a part takes by itself the footprint its symbol names or its KiCad footprint filters allow, once it is in the library. The list offers the footprints that have a pad for every pin first, and a warning names pins the chosen footprint has no pad for. On the board the part has its own footprint, each pin on the pad of its number; it is routed, checked and exported to Gerber and KiCad like any other.
+  - **SPICE model:** *Model…* puts a maker's `.SUBCKT` or `.MODEL` on the part's own pins (the model dialog of the SPICE part, with the part's drawing kept). The part is then simulated as written.
+  - **Units:** a part of several units (a dual op-amp, a double triode as KiCad draws it) is placed unit by unit with *Unit of the package* in the inspector; units under one designator (DA1.1, DA1.2, DA1.3) share one footprint. Such parts are not simulated yet.
+  - **Kept** in this browser, and as a file: *Save as a file* writes `my-parts.tubelib`, *Open a library file…* adds one. A part on the sheet carries its drawing, footprint and model in the circuit file, so a circuit opens on a computer that does not have the library.
+- For developers: `part-lib.js` (the library as data, no DOM), `cad-library.js` (store and dialog), `KicadImport.readSymbols` / `readFootprint`, the part type `part`; tests in `tests/partlib.test.mjs` and `tests/e2e/08c-parts-library.mjs`.
+
 ## [3.196.0] - 2026-11-13
 
 ### Added

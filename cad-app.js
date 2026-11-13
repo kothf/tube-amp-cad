@@ -1863,12 +1863,15 @@
     return url;
   }
   let palette = null;
+  // the user's own parts (cad-library.js): kept in this browser, listed in the panel as My library
+  const library = CadLibrary({ thumb: (...a) => partThumb(...a), setStatus: (...a) => setStatus(...a), changed: () => { if (palette) palette.rebuild(); }, place: params => startPlacing("part", params) });
   function buildPalette() {
     if (palette) { palette.rebuild(); return; }
     palette = CadPalette({
       host: document.getElementById("palette"),
       thumb: partThumb,
       pick: (e, el) => startPlacing(e.type, e.params, el),
+      library: () => library.entries(), openLibrary: () => library.open(),
       dragEnd: dropped => { if (!dropped && S.placing) { S.placing = null; setTool("select"); } }
     });
     // a part dragged from the panel: its ghost follows the pointer over the sheet, the drop places it
@@ -2027,10 +2030,15 @@
       }
       else if (f.kind === "spice") {
         // a SPICE part's model: its name, and the dialog that takes one (spice-part.js)
-        const name = document.createElement("span"); name.className = "spice-name"; name.textContent = c.params.text ? c.params.name || c.params.sub : "none yet";
+        const name = document.createElement("span"); name.className = "spice-name"; name.textContent = c.params.text ? (c.type === "part" ? c.params.sub : c.params.name || c.params.sub) : "none yet";
         const btn = document.createElement("button"); btn.className = "btn"; btn.id = "btn-spice-model"; btn.textContent = "Model…";
         btn.title = "Paste or open a SPICE model (a maker's .SUBCKT or .MODEL), choose its symbol and say which pin is which";
-        btn.onclick = () => SpicePart.open(c.params, r => {
+        // a library part keeps its drawing: the model goes on its own pins
+        if (c.type === "part") btn.onclick = () => SpicePart.open(c.params.text ? { text: c.params.text, sub: c.params.sub, name: c.params.sub, sym: "own", map: c.params.map } : null, r => {
+          c.params.text = r.text; c.params.sub = r.sub; c.params.map = r.map;
+          S.topo = null; commit(); updateInspector(); setStatus("ok", `${c.label}: model ${r.sub} set`);
+        }, { pins: LIB.part.pins(c) });
+        else btn.onclick = () => SpicePart.open(c.params, r => {
           // a new symbol has other pins: the wires stay where they are, the label takes the symbol's class of letter
           const was = c.params.sym; Object.assign(c.params, r);
           if (was !== r.sym) { const def = LIB.spice, cls = def.prefixFor(c); if (c.label && !c.label.startsWith(cls)) c.label = nextLabel(cls); }
@@ -3235,6 +3243,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { library, blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

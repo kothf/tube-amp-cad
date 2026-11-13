@@ -320,6 +320,18 @@
 
 <!-- ======================================================================= -->
 <h2 id="simulation">6. Simulation</h2>
+<h3 id="parts-library">5.5 Your own parts library</h3>
+<p>Parts are not only the ones built into the program. <span class="ui">My library</span> at the top of the parts panel holds your own: each is a drawing with pins, a footprint and, if you give it one, a SPICE model. The quickest source is KiCad's libraries, which cover most parts made. Press <span class="ui">Parts library…</span> in the panel.</p>
+<ul>
+  <li><b>Add from KiCad files…</b> takes symbol libraries (<code>.kicad_sym</code>) and footprint files (<code>.kicad_mod</code>), several at once; to take a whole <code>.pretty</code> folder, select all the files in it. A symbol library lists its symbols with a Find box: tick the ones you want, or add them all. Power symbols are left out, a derived symbol comes with its parent's drawing.</li>
+  <li><b>The footprint.</b> A part takes by itself the footprint its symbol names, or one its KiCad footprint filters allow, once that footprint is in the library. The <span class="ui">Footprint</span> list shows the ones that have a pad for every pin first. A pin goes to the pad of its number; pins the footprint has no pad for are named in a warning. A part with no footprint gets a DIP or a row of pads on the board.</li>
+  <li><b>The designator</b> letters come from KiCad's reference (U becomes DA, Q becomes VT, D becomes VD, J becomes X) and can be changed.</li>
+  <li><b>The SPICE model.</b> <span class="ui">Model…</span> opens the same dialog as the <a href="#spice-part">SPICE part</a>'s; here the part keeps its own drawing and each pin of the model is set on one of its pins. With a model the part is simulated as written; without one it joins its nets on the sheet and on the board and is left out of the simulation.</li>
+  <li><b>Parts of several units</b> (a dual op-amp's two amplifiers and its supply pins) are placed unit by unit: choose <span class="ui">Unit of the package</span> in the inspector and give the units one designator (DA1.1, DA1.2, DA1.3), and they share one footprint on the board. Such a part is not simulated yet.</li>
+  <li><b>Where it is kept.</b> The library lives in this browser. <span class="ui">Save as a file</span> writes all of it to one file (<code>my-parts.tubelib</code>) to keep or to pass on, <span class="ui">Open a library file…</span> adds such a file's parts. A part placed on the sheet carries a copy of its drawing, footprint and model in the circuit file, so the circuit opens on any computer, with or without the library.</li>
+  <li><b>On the board and in the exports</b> the part's own footprint is drawn, routed, checked and written to Gerber and KiCad files like any other.</li>
+</ul>
+
 <h3 id="sim-what">6.1 What is simulated</h3>
 <p>Every run computes:</p>
 <ol>
