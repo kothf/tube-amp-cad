@@ -449,6 +449,7 @@
 <h3 id="checks-circuit">9.1 Circuit checks</h3>
 <ul>
   <li>Unconnected pins, shorted parts, a missing ground, sheet connectors without a partner.</li>
+  <li><b>Pin rules.</b> Every pin has a role (an input, an output, a supply pin, a source, a plain terminal), and the wiring is checked against it: an input with <b>no DC path</b> (a grid behind its coupling capacitor without a grid leak, a gate, a base or an op-amp input with only capacitors on it: the path is followed through resistors, chokes, windings, switches and fuses, however far); an IC's <b>supply pin fed by nothing</b>, or both on one net; <b>outputs wired together</b>, to ground or straight to a supply; a supply shorted by its own wiring. A SPICE part takes the roles of its symbol; a box only where the model's pin names are plain (<code>IN+</code>, <code>OUT</code>, <code>VCC</code>).</li>
   <li>Resistor dissipation against its power rating (rate a resistor at about twice what it dissipates).</li>
   <li>Output-transformer primary DC current against its rating (single-ended cores saturate above it), and an output transformer's core driven into saturation (its flux over the run past 95 % of the knee).</li>
   <li>Transistor Vce and dissipation; zener power.</li>
