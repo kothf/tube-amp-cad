@@ -1,0 +1,144 @@
+/**
+ * SPICE parts (spice-net.js, the engine's behavioural source, cad-components.js LIB.spice): a
+ * maker's .SUBCKT or .MODEL turned into the simulator's own elements. The numbers the device
+ * bench is held to are ngspice 42's for the same file (tests/models.mjs compares them live
+ * where ngspice is installed).
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { runInThisContext } from "node:vm";
+
+for (const f of ["tube-db.js", "spice-model.js", "spice-net.js", "sim-engine.js", "cad-components.js", "board-core.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+const E = globalThis.TubeSimEngine, L = globalThis.CadLib, SN = globalThis.SpiceNet, B = globalThis.BoardCore;
+E.loadWasm(readFileSync(new URL("../sim-solver.wasm", import.meta.url)));
+const fixture = name => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
+const AMP = fixture("testamp.lib"), DEV = fixture("devices.lib");
+const near = (actual, expected, relTol, msg) => assert.ok(Math.abs(actual - expected) <= relTol * Math.abs(expected) + 1e-9, `${msg}: got ${actual}, expected ${expected} ±${relTol * 100}%`);
+
+// a subcircuit run on its own: its pins on nodes 1 … n, the DC voltage of every named node
+function runSub(text, sub) {
+  const f = SN.flatten(text, sub);
+  let n = f.nNodes;
+  const map = {}; let q = f.nNodes; for (let k = 1; k < f.nNodes; k++) map[k] = k <= f.pins.length ? k : q++;
+  const els = SN.build({ text, sub }, f.pins.map((_, i) => i + 1), () => n++, "U");
+  const res = E.simulate({ nodeCount: n, elements: els }, {});
+  assert.ok(res.ok, `${sub} solves${res.ok ? "" : ": " + res.error}`);
+  const v = {}; Object.entries(f.nodeNames).forEach(([name, k]) => { v[name] = k === 0 ? 0 : res.dc.nodes[map[k]]; });
+  return { v, f, res };
+}
+// a circuit from CAD parts: [{ type, params, pins: { pin: node } }]
+function circuit(parts) {
+  let n = 0;
+  parts.forEach(p => Object.values(p.pins).forEach(v => { n = Math.max(n, v); }));
+  const els = [];
+  parts.forEach((p, i) => {
+    const c = { id: p.id || "p" + i, type: p.type, label: p.label || "", params: Object.assign({}, L.LIB[p.type].defaults, p.params) };
+    L.LIB[p.type].build(c, pin => (p.pins[pin] !== undefined ? p.pins[pin] : ++n), () => ++n, els);
+  });
+  return { nodeCount: n + 1, elements: els };
+}
+const R = (r, a, b) => ({ type: "resistor", params: { r }, pins: { 1: a, 2: b } });
+const SUPPLY = [{ type: "vdc", params: { v: 15 }, pins: { "+": 1, "-": 0 } }, { type: "vdc", params: { v: 15 }, pins: { "+": 0, "-": 2 } }];
+const gen = (p, node) => ({ id: "gen", type: "siggen", params: Object.assign({ rs: 1e-3 }, p), pins: { "+": node, "-": 0 } });
+const spiceAmp = pins => ({ id: "U", type: "spice", params: { name: "TESTAMP", text: AMP, sub: "TESTAMP", sym: "opamp", pinNames: ["inp", "inn", "vcc", "vee", "out"], map: ["+", "-", "V+", "V-", "OUT"] }, pins: Object.assign({ "V+": 1, "V-": 2 }, pins) });
+const swing = (r, node) => { const w = r.tran.nodes[node]; let lo = Infinity, hi = -Infinity; for (const x of w) { lo = Math.min(lo, x); hi = Math.max(hi, x); } return [lo, hi]; };
+
+test("the engine's behavioural source: a current and a voltage from an expression of node voltages and a branch current", () => {
+  // 10 V on 1 kΩ + 1 kΩ: node 2 at 5 V; B1 drives 1 mA·V(2)² into 100 Ω (2.5 V); B2 is twice that as a voltage; B3 mirrors V1's current
+  const els = [{ id: "V1", kind: "V", nodes: [1, 0], v: 10 }, { id: "R1", kind: "R", nodes: [1, 2], r: 1e3 }, { id: "R2", kind: "R", nodes: [2, 0], r: 1e3 },
+    { id: "B1", kind: "B", out: "i", nodes: [0, 3, 2], ast: { k: "b", op: "*", a: { k: "n", v: 1e-3 }, b: { k: "b", op: "*", a: { k: "v", a: 2, b: 0 }, b: { k: "v", a: 2, b: 0 } } }, ctl: [] },
+    { id: "R3", kind: "R", nodes: [3, 0], r: 100 },
+    { id: "B2", kind: "B", out: "v", nodes: [4, 0, 3], ast: { k: "b", op: "*", a: { k: "n", v: 2 }, b: { k: "v", a: 2, b: 1 } }, ctl: [] }, { id: "R4", kind: "R", nodes: [4, 0], r: 1e3 },
+    { id: "B3", kind: "B", out: "i", nodes: [0, 5], ast: { k: "b", op: "*", a: { k: "n", v: -1 }, b: { k: "i", n: 0 } }, ctl: ["V1"] }, { id: "R5", kind: "R", nodes: [5, 0], r: 1e3 }];
+  const res = E.simulate({ nodeCount: 6, elements: els }, {});
+  assert.ok(res.ok, res.error);
+  near(res.dc.nodes[2], 5, 1e-6, "divider"); near(res.dc.nodes[3], 2.5, 1e-6, "1 mA·V² into 100 Ω"); near(res.dc.nodes[4], 5, 1e-6, "twice that, as a voltage");
+  near(res.dc.nodes[5], 5, 1e-6, "the supply's 5 mA mirrored into 1 kΩ");
+});
+
+test("a library's parts are listed, and one is cut out with what it needs", () => {
+  const parts = SN.list(DEV);
+  assert.deepEqual(parts.filter(p => p.kind === "subckt").map(p => [p.name, p.pins.length]), [["halver", 2], ["bench", 15]]);
+  assert.deepEqual(parts.filter(p => p.kind !== "subckt").map(p => `${p.name}:${p.kind}`).sort(), ["dtest:d", "jtest:njf", "mtest:nmos", "mtestp:pmos", "qtest:npn", "qtestp:pnp"]);
+  const cut = SN.extract(DEV, "halver");
+  assert.ok(/\.subckt halver/i.test(cut) && /\.param half/i.test(cut) && !/bench|QTEST/i.test(cut), "the subcircuit and the parameter it uses, nothing else");
+  near(runSub(cut + "\n.subckt t a b\nV1 a 0 3\nX1 a b halver\n.ends", "t").v.b, 1.5, 1e-6, "the cut-out part runs");
+  const one = SN.extract(DEV, "DTEST");
+  assert.ok(/^\.model DTEST/im.test(one) && !/QTEST|subckt/i.test(one), "a lone model: its line");
+  assert.deepEqual(SN.flatten(one, "DTEST").pins, ["a", "k"]);
+});
+
+test("devices, sources, a switch, a table and a polynomial agree with ngspice (DC, within 0.3 %)", () => {
+  const NG = { c: 5.907477, b: 1.987827, e: 1.306174, d1: 0.5987344, z: 100.1902, jd: 10.50032, md: 5.249465, mg: 4.307692, pc: 2.957193, pd: 11.95787, sw: 11.88119, tbl: 5.615385, po: 22.81201, bs: 2.004428, hv: 2.153846 };
+  const { v, f } = runSub(DEV, "bench");
+  for (const k in NG) near(v[k], NG[k], 3e-3, `V(${k})`);
+  assert.ok(f.warnings.some(w => /Junction capacitances/.test(w)), "what is left out is said");
+});
+
+test("what cannot be simulated is refused with the reason", () => {
+  assert.throws(() => SN.flatten(".subckt f a b\nE1 b 0 LAPLACE {V(a)} = {1/(1+s)}\n.ends", "f"), /LAPLACE/i);
+  assert.throws(() => SN.flatten(".subckt f a b\nT1 a 0 b 0 Z0=50 TD=1n\n.ends", "f"), /transmission line/i);
+  assert.throws(() => SN.flatten(".subckt f a b\nX1 a b nothere\n.ends", "f"), /nothere/i);
+  assert.throws(() => SN.flatten(AMP, "other"), /no \.SUBCKT or \.MODEL/i);
+});
+
+test("a SPICE part with an op-amp's model, in the op-amp's symbol: gain, the rails, the model's own pole", () => {
+  // ×11 non-inverting: 0.5 V peak gives 5.5 V peak
+  let r = E.simulate(circuit([...SUPPLY, gen({ amp: 0.5, freq: 100 }, 3), R(10e3, 5, 4), R(1e3, 4, 0), R(10e3, 5, 0), spiceAmp({ "+": 3, "-": 4, OUT: 5 })]), { budgetMs: 20000 });
+  assert.ok(r.ok, r.error);
+  let [lo, hi] = swing(r, 5);
+  near(hi, 5.5, 5e-3, "×11, positive peak"); near(lo, -5.5, 5e-3, "×11, negative peak");
+  // 3 V peak: the model's clamps a volt and a half inside ±15 V
+  r = E.simulate(circuit([...SUPPLY, gen({ amp: 3, freq: 1000 }, 3), R(10e3, 5, 4), R(1e3, 4, 0), R(10e3, 5, 0), spiceAmp({ "+": 3, "-": 4, OUT: 5 })]), { budgetMs: 20000 });
+  [lo, hi] = swing(r, 5);
+  assert.ok(hi > 13 && hi < 14.5 && lo < -13 && lo > -14.5, `clips inside the rails (${lo.toFixed(2)} … ${hi.toFixed(2)} V)`);
+  // open loop: 100 dB at DC, one pole at 1 Hz, so ×100 at 1 kHz (a follower's bandwidth 100 kHz)
+  const nl = circuit([...SUPPLY, gen({ amp: 1e-3, freq: 1000 }, 3), R(10e3, 5, 0), spiceAmp({ "+": 3, "-": 5, OUT: 5 })]);
+  const ac = E.acSweep(nl, { inputs: [{ id: "gen" }], fStart: 1e3, fStop: 1e7, perDecade: 50, probes: [[5, 0]] });
+  const g = Array.from(ac.freqs, (f, k) => Math.hypot(ac.probes[0].re[k], ac.probes[0].im[k])), k3 = g.findIndex(x => x < Math.SQRT1_2);
+  near(ac.freqs[k3], 100e3, 0.08, "follower −3 dB at the model's gain-bandwidth");
+});
+
+test("a SPICE part's pins: ground, left open, and a model that fails leaves the part out", () => {
+  const p = { name: "h", text: DEV, sub: "halver", sym: "box", pinNames: ["in", "out"], map: ["1", "2"] };
+  let r = E.simulate(circuit([{ type: "vdc", params: { v: 8 }, pins: { "+": 1, "-": 0 } }, { id: "U", type: "spice", params: p, pins: { 1: 1, 2: 2 } }]), {});
+  near(r.dc.nodes[2], 4, 1e-6, "half of 8 V");
+  // the input to ground: 0 V out; left open: a gigohm keeps it from floating
+  r = E.simulate(circuit([{ type: "vdc", params: { v: 8 }, pins: { "+": 1, "-": 0 } }, R(1e3, 1, 0), { id: "U", type: "spice", params: { ...p, map: ["0", "2"] }, pins: { 2: 2 } }]), {});
+  assert.ok(r.ok && Math.abs(r.dc.nodes[2]) < 1e-9, "input grounded");
+  r = E.simulate(circuit([{ type: "vdc", params: { v: 8 }, pins: { "+": 1, "-": 0 } }, R(1e3, 1, 0), { id: "U", type: "spice", params: { ...p, map: ["", "2"] }, pins: { 2: 2 } }]), {});
+  assert.ok(r.ok, "an open pin does not float");
+  const els = [];
+  const bad = { id: "U", type: "spice", label: "DA1", params: { ...p, text: ".subckt halver in out\nE1 out 0 LAPLACE {V(in)} = {1/(1+s)}\n.ends" } };
+  assert.match(L.spiceElements(bad, () => 1, () => 2, els), /LAPLACE/i);
+  assert.equal(els.length, 0, "nothing of it in the netlist");
+  assert.match(L.LIB.spice.info(bad), /cannot be simulated/);
+  assert.match(L.LIB.spice.info({ params: L.LIB.spice.defaults }), /No model yet/);
+});
+
+test("a SPICE part takes the pins and the letter of its symbol", () => {
+  const c = sym => ({ params: { ...L.LIB.spice.defaults, sym, pinNames: ["a", "b", "c", "d", "e"], map: [] } });
+  assert.deepEqual(L.LIB.spice.pins(c("opamp")).map(p => p.id).sort(), ["+", "-", "OUT", "V+", "V-"]);
+  assert.deepEqual(L.LIB.spice.pins(c("nmos")).map(p => p.id).sort(), ["D", "G", "S"]);
+  assert.deepEqual(L.LIB.spice.pins(c("box")).map(p => [p.id, p.name]), [["1", "a"], ["2", "b"], ["3", "c"], ["4", "d"], ["5", "e"]]);
+  assert.deepEqual(["opamp", "npn", "diode", "box"].map(s => L.LIB.spice.prefixFor(c(s))), ["DA", "VT", "VD", "DA"]);
+});
+
+test("on the board: an op-amp's DIP-8, a transistor's cases by pin letters, a box in a DIP in the model's pin order", () => {
+  const part = (sym, pinNames, map, nets) => ({ parts: [{ id: "u", type: "spice", label: "DA1", params: { ...L.LIB.spice.defaults, sym, pinNames, map }, pins: Object.entries(nets).map(([id, net]) => ({ id, net })) }] });
+  const pads = (g, name) => { const out = {}; B.padMap(g, B.footprint(name, g.members[0].pins.map(p => p.id))).forEach((list, num) => list.forEach(x => { out[x.pin] = num; })); return out; };
+  let [g] = B.physicalParts(part("opamp", ["inp", "inn", "vcc", "vee", "out"], ["+", "-", "V+", "V-", "OUT"], { "+": 1, "-": 2, "V+": 3, "V-": 4, OUT: 5 }));
+  assert.equal(g.options[0], "DIP-8"); assert.ok(g.options.includes("SOIC-8"));
+  assert.deepEqual(pads(g, "DIP-8"), { "+": "3", "-": "2", "V+": "7", "V-": "4", OUT: "6" });
+  [g] = B.physicalParts(part("npn", ["c", "b", "e"], ["C", "B", "E"], { C: 1, B: 2, E: 3 }));
+  assert.equal(g.options[0], "TO-92-EBC");
+  assert.deepEqual(pads(g, "TO-92-EBC"), { E: "1", B: "2", C: "3" }); assert.deepEqual(pads(g, "TO-220-ECB"), { E: "1", C: "2", B: "3" });
+  [g] = B.physicalParts(part("nmos", ["d", "g", "s"], ["D", "G", "S"], { D: 1, G: 2, S: 3 }));
+  assert.equal(g.options[0], "TO-220-GDS"); assert.deepEqual(pads(g, "TO-220-GDS"), { G: "1", D: "2", S: "3" });
+  [g] = B.physicalParts(part("diode", ["a", "k"], ["A", "K"], { A: 1, K: 2 }));
+  assert.deepEqual(pads(g, g.options[0]), { K: "1", A: "2" });
+  [g] = B.physicalParts(part("box", ["in", "gnd", "en", "fb", "out", "nc"], ["1", "2", "3", "4", "5", "6"], { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6 }));
+  assert.equal(g.options[0], "DIP-8"); assert.deepEqual(pads(g, "DIP-8"), { 1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6" });
+  for (const o of g.options) assert.ok(B.footprint(o, g.members[0].pins.map(p => p.id)), o);
+});

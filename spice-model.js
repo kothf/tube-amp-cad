@@ -30,12 +30,13 @@
   function logicalLines(text) {
     const out = [];
     let pending = [];                                     // comment lines just read
-    String(text || "").replace(/\r\n?/g, "\n").split("\n").forEach((raw, no) => {
+    // (stray control characters, as old makers' files have them, are spaces)
+    String(text || "").replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, " ").split("\n").forEach((raw, no) => {
       const t = raw.trim();
       if (!t) return;
       if (t[0] === "*") { pending.push(t.slice(1).trim()); if (pending.length > 4) pending.shift(); if (out.length) out[out.length - 1].after.push(t.slice(1).trim()); return; }
       let body = t, comment = "";
-      const sc = body.search(/;|\s\$\s?/);
+      const sc = body.search(/;|\s\$(?=\s|$)/);
       if (sc >= 0) { comment = body.slice(sc).replace(/^[;$\s]+/, ""); body = body.slice(0, sc).trim(); }
       if (body[0] === "+" && out.length) { const prev = out[out.length - 1]; prev.s += " " + body.slice(1).trim(); if (comment) prev.comment += " " + comment; prev.raw.push(raw); return; }
       if (!body) { if (comment && out.length) out[out.length - 1].after.push(comment); return; }
@@ -58,7 +59,7 @@
   }
   const unbrace = s => { s = String(s).trim(); return s[0] === "{" && s[s.length - 1] === "}" ? s.slice(1, -1) : s[0] === "'" && s[s.length - 1] === "'" ? s.slice(1, -1) : s; };
   function assignments(list, into, order) {
-    list.forEach(tk => { const i = tk.indexOf("="); if (i > 0) { const k = tk.slice(0, i).toLowerCase(); into[k] = unbrace(tk.slice(i + 1)); if (order) order.push(k); } });
+    list.forEach(tk => { const i = tk.indexOf("="); if (i > 0) { const k = tk.slice(0, i).toLowerCase(); into[k] = unbrace(tk.slice(i + 1).replace(/,+$/, "")); if (order) order.push(k); } });
   }
 
   /** Read a library: { subckts: [{ name, pins, hint, ... }], params, funcs, models, warnings } */
@@ -71,10 +72,12 @@
       into[m[1].toLowerCase()] = { args: m[2].split(",").map(a => a.trim().toLowerCase()).filter(Boolean), body: unbrace(m[3]) };
     };
     const addModel = (into, s) => {
-      const m = /^\.model\s+(\S+)\s+([a-z]+)\s*\(?([^)]*)\)?/i.exec(s);
+      const m = /^\.model\s+(\S+)\s+([a-z]+)\s*([\s\S]*)$/i.exec(s.replace(/^(\.model\s+\S+\s+)\(\s*([a-z]+)\b([\s\S]*?)\)?\s*$/i, "$1$2 ($3)"));
       if (!m) return;
-      const p = {}; assignments(tokens(m[3].replace(/,/g, " ")), p);
-      into[m[1].toLowerCase()] = { type: m[2].toLowerCase(), p };
+      let body = m[3].trim(), type = m[2]; if (body[0] === "(") body = body.slice(1).replace(/\)\s*$/, "");
+      const p = {}, tk = tokens(body.replace(/,/g, " ")); assignments(tk, p);
+      tk.forEach(t => { if (!t.includes("=") && /^[a-z_]\w*$/i.test(t)) p[t.toLowerCase()] = "1"; });   // a flag: VDMOS's pchan
+      into[m[1].toLowerCase()] = { type: type.toLowerCase(), p };
     };
     L.forEach(line => {
       const s = line.s, low = s.toLowerCase();
@@ -109,7 +112,7 @@
   // ---------------------------------------------------------------------------
   // Expressions: tokens, a Pratt parser, compiled to closures over the node voltages
   // ---------------------------------------------------------------------------
-  const OPS = ["**", "<=", ">=", "==", "!=", "<>", "&&", "||", "+", "-", "*", "/", "^", "<", ">", "!", "?", ":", "(", ")", ","];
+  const OPS = ["**", "<=", ">=", "==", "!=", "<>", "&&", "||", "&", "|", "+", "-", "*", "/", "^", "<", ">", "!", "?", ":", "(", ")", ","];
   function lex(src) {
     const out = []; let i = 0;
     while (i < src.length) {
@@ -119,6 +122,7 @@
       if (nm && /[\d.]/.test(c)) { const v = num(nm[0]); if (isNaN(v)) throw new Error(`bad number "${nm[0]}"`); out.push({ t: "num", v, s: nm[0] }); i += nm[0].length; continue; }
       const id = /^[a-z_][\w.$]*/i.exec(src.slice(i));
       if (id) { out.push({ t: "id", s: id[0] }); i += id[0].length; continue; }
+      if (c === "{" || c === "}") { out.push({ t: "op", s: c === "{" ? "(" : ")" }); i++; continue; }   // braces inside an expression: brackets
       const op = OPS.find(o => src.startsWith(o, i));
       if (op) { out.push({ t: "op", s: op }); i += op.length; continue; }
       throw new Error(`unexpected "${c}"`);
@@ -131,10 +135,11 @@
     sgn: Math.sign, sign: Math.sign, uramp: x => (x > 0 ? x : 0), u: x => (x > 0 ? 1 : 0), u2: x => Math.max(0, Math.min(1, x)),
     limit: (x, a, b) => Math.max(Math.min(a, b), Math.min(Math.max(a, b), x)), min: Math.min, max: Math.max, if: (c, a, b) => (c ? a : b),
     sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan, arctan: Math.atan, atan2: Math.atan2,
-    sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh, asinh: Math.asinh, floor: Math.floor, ceil: Math.ceil, round: Math.round, int: Math.trunc, sq: x => x * x
+    sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh, asinh: Math.asinh, floor: Math.floor, ceil: Math.ceil, round: Math.round, int: Math.trunc, sq: x => x * x,
+    stp: x => (x >= 0 ? 1 : 0), hypot: Math.hypot, cbrt: Math.cbrt, expm1: Math.expm1, log1p: Math.log1p, db: x => 20 * Math.log10(Math.abs(x)), uplim: (x, a) => Math.min(x, a), dnlim: (x, a) => Math.max(x, a)
   };
   const CONSTS = { pi: Math.PI, temp: 27, true: 1, false: 0 };
-  const BIN = { "||": [1, (a, b) => (a || b ? 1 : 0)], "&&": [2, (a, b) => (a && b ? 1 : 0)], "==": [3, (a, b) => (a === b ? 1 : 0)], "!=": [3, (a, b) => (a !== b ? 1 : 0)], "<>": [3, (a, b) => (a !== b ? 1 : 0)],
+  const BIN = { "||": [1, (a, b) => (a || b ? 1 : 0)], "|": [1, (a, b) => (a || b ? 1 : 0)], "&&": [2, (a, b) => (a && b ? 1 : 0)], "&": [2, (a, b) => (a && b ? 1 : 0)], "==": [3, (a, b) => (a === b ? 1 : 0)], "!=": [3, (a, b) => (a !== b ? 1 : 0)], "<>": [3, (a, b) => (a !== b ? 1 : 0)],
     "<": [4, (a, b) => (a < b ? 1 : 0)], ">": [4, (a, b) => (a > b ? 1 : 0)], "<=": [4, (a, b) => (a <= b ? 1 : 0)], ">=": [4, (a, b) => (a >= b ? 1 : 0)],
     "+": [5, (a, b) => a + b], "-": [5, (a, b) => a - b], "*": [6, (a, b) => a * b], "/": [6, (a, b) => a / b], "**": [8, (a, b) => Math.pow(a, b)], "^": [8, (a, b) => Math.pow(a, b)] };
   /** Parse an expression to an AST: { k: "n", v } | { k: "v", a, b } | { k: "id", s } | { k: "f", s, args } | { k: "u", op, x } | { k: "b", op, a, b } | { k: "?", c, a, b } */
@@ -155,7 +160,10 @@
             for (;;) { const u = next(); if (!u) throw new Error("V( is not closed"); if (u.s === ")") { nodes.push(cur); break; } if (u.s === ",") { nodes.push(cur); cur = ""; } else cur += u.s; }
             return { k: "v", a: nodes[0].toLowerCase(), b: nodes[1] ? nodes[1].toLowerCase() : "0" };
           }
-          if (name === "i") throw new Error("branch currents I(…) are not supported");
+          if (name === "i") {                              // I(Vname): the current through a source (general parts, spice-net.js)
+            let cur = ""; for (;;) { const u = next(); if (!u) throw new Error("I( is not closed"); if (u.s === ")") break; cur += u.s; }
+            return { k: "i", s: cur.toLowerCase() };
+          }
           const args = [];
           if (peek() && peek().s === ")") next(); else { for (;;) { args.push(expr(0)); const u = next(); if (!u) throw new Error(`${name}( is not closed`); if (u.s === ")") break; if (u.s !== ",") throw new Error(`expected "," or ")" in ${name}(…)`); } }
           return { k: "f", s: name, args };
@@ -184,6 +192,7 @@
     switch (ast.k) {
       case "n": { const v = ast.v; return () => v; }
       case "v": { const a = nodeIndex(ast.a), b = nodeIndex(ast.b); return V => V[a] - V[b]; }
+      case "i": throw new Error("branch currents I(…) are not supported");
       case "id": {
         if (args && ast.s in args) { const k = args[ast.s]; return k; }
         const v = scope.param(ast.s);
@@ -224,7 +233,7 @@
         const a = J(ast.a), b = J(ast.b), op = ast.op;
         if (op === "**" || op === "^") return `Math.pow(${a},${b})`;
         if ("+-*/".includes(op)) return `(${a}${op}${b})`;
-        const js = { "<>": "!==", "==": "===", "!=": "!==" }[op] || op;
+        const js = { "<>": "!==", "==": "===", "!=": "!==", "|": "||", "&": "&&" }[op] || op;
         return `((${a}${js}${b})?1:0)`;
       }
       case "?": return `(${J(ast.c)}?${J(ast.a)}:${J(ast.b)})`;
@@ -562,5 +571,5 @@
   function loadSaved() { saved().forEach(e => { try { register(e); } catch (err) { /* a built-in of that name now exists */ } }); }
   if (root.localStorage && root.TUBE_DATABASE) loadSaved();
 
-  root.SpiceModel = { num, parseLib, extract, parseExpr, compile, guessRoles, hintMap, plausibility, adapter, tube, estimate, makeTube, register, add, remove, isCustom, loadSaved, kindOf, STORE };
+  root.SpiceModel = { FUNCS, CONSTS, tokens, unbrace, makeScope, num, parseLib, extract, parseExpr, compile, guessRoles, hintMap, plausibility, adapter, tube, estimate, makeTube, register, add, remove, isCustom, loadSaved, kindOf, STORE };
 })(typeof window !== "undefined" ? window : globalThis);
