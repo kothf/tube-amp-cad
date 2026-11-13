@@ -36,7 +36,10 @@
 
     // ---------------------------------------------------------------------------------------
     // entries: { g (group), sub, label, value, type, params, desc, tube (a tube's name), find (search text) }
-    const keyOf = e => e.type + "|" + JSON.stringify(e.params || {});
+    // (a part of the user's library by its id there: its values are its whole drawing)
+    const keyOf = e => (e.lib ? "part|lib:" + e.lib : e.type + "|" + JSON.stringify(e.params || {}));
+    const mine = () => (o.library ? o.library() : []);
+    const LIB_SHOWN = 60;
     const tubeDesc = t => `${t.type}. ${t.nameWestern} · ${t.nameGost}\nVa max ${t.vaMax} V · Pa max ${t.paMax} W · heater ${t.vh} V / ${t.ih} A`;
     const tubeEntry = (t, g) => ({ g: g || "Tubes", label: t.commonName, value: t.type.replace(/ (Triode|Pentode|Tetrode|Rectifier)$/, ""), type: "tube", params: { tube: t.commonName }, tube: t.commonName, desc: tubeDesc(t), find: `${t.commonName} ${t.nameGost} ${t.nameWestern} ${t.type}` });
     function libEntry(g, sub, it) {
@@ -107,8 +110,10 @@
       return (root.Hints && root.Hints.parts[e.type]) || "";
     }
     // the stored form of an entry (Favorites, Recent)
-    const slim = e => ({ g: e.g, label: e.label, value: e.value || "", type: e.type, params: e.params || null, tube: e.tube });
-    const valid = e => e && LIB[e.type] && (!e.tube || TUBES().some(t => t.commonName === e.tube));
+    const slim = e => (e.lib ? { g: e.g, label: e.label, type: e.type, lib: e.lib } : { g: e.g, label: e.label, value: e.value || "", type: e.type, params: e.params || null, tube: e.tube });
+    const valid = e => e && LIB[e.type] && (!e.tube || TUBES().some(t => t.commonName === e.tube)) && (!e.lib || mine().some(m => m.lib === e.lib)) && (e.type !== "part" || e.lib);
+    // a kept library part is the library's part of today
+    const fresh = e => (e.lib ? mine().find(m => m.lib === e.lib) || e : e);
     const isFav = e => st.fav.some(f => keyOf(f) === keyOf(e));
     function toggleFav(e) {
       const k = keyOf(e);
@@ -182,8 +187,19 @@
     function browse() {
       list.innerHTML = "";
       const fav = st.fav.filter(valid), rec = st.recent.filter(valid);
-      if (fav.length) { const box = section("Favorites", fav.length, true); fav.forEach(e => box.appendChild(row(e))); }
-      if (rec.length) { const box = section("Recent", 0, true); rec.forEach(e => box.appendChild(row(e))); }
+      if (fav.length) { const box = section("Favorites", fav.length, true); fav.forEach(e => box.appendChild(row(fresh(e)))); }
+      if (rec.length) { const box = section("Recent", 0, true); rec.forEach(e => box.appendChild(row(fresh(e)))); }
+      // the user's own parts (cad-library.js), and the way into the library
+      if (o.library) {
+        const own = mine(), box = section("My library", own.length, true);
+        own.slice(0, LIB_SHOWN).forEach(e => box.appendChild(row(e)));
+        if (own.length > LIB_SHOWN) { const p = document.createElement("p"); p.className = "pal-none"; p.textContent = `First ${LIB_SHOWN} of ${own.length}: search finds the rest.`; box.appendChild(p); }
+        if (!own.length) { const p = document.createElement("p"); p.className = "pal-none"; p.textContent = "Your own parts: symbols and footprints from KiCad's libraries, with a SPICE model if you give one."; box.appendChild(p); }
+        const b = document.createElement("button"); b.type = "button"; b.className = "pal-more"; b.id = "pal-library"; b.textContent = "Parts library…";
+        b.title = "Add parts from KiCad symbol and footprint files, set their footprints and SPICE models";
+        b.addEventListener("click", () => o.openLibrary());
+        box.appendChild(b);
+      }
       groups().forEach(g => {
         const n = g.items.filter(i => !i.head).length, box = section(g.title, n, true);
         g.items.forEach(it => { if (it.head) subHead(box, it.head); else box.appendChild(row(it)); });
@@ -205,7 +221,7 @@
       list.innerHTML = "";
       if (!index) index = searchables();
       const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-      const hits = valueHits(q).concat(index.filter(e => words.every(w => e.find.toLowerCase().includes(w))));
+      const hits = valueHits(q).concat(mine().concat(index).filter(e => words.every(w => e.find.toLowerCase().includes(w))));
       if (!hits.length) { list.innerHTML = `<p class="pal-none">Nothing found for “${esc(q)}”.</p>`; return; }
       let last = null, box = null;
       hits.slice(0, 80).forEach(e => {
@@ -263,7 +279,7 @@
     });
     bar.querySelector("#pal-fold").addEventListener("click", () => {
       if (search.value) { search.value = ""; }
-      const titles = ["Favorites", "Recent", ...PALETTE.map(g => g.group), "Tubes"], anyOpen = titles.some(t => !st.closed[t]);
+      const titles = ["Favorites", "Recent", "My library", ...PALETTE.map(g => g.group), "Tubes"], anyOpen = titles.some(t => !st.closed[t]);
       titles.forEach(t => { st.closed[t] = anyOpen; });
       save(); render();
     });
@@ -272,7 +288,7 @@
     return {
       rebuild() { index = null; render(); show(shown); },
       focus() { search.focus(); search.select(); },
-      state: st, keyOf, entryOf: k => (index || (index = searchables())).concat(st.fav, st.recent).find(e => keyOf(e) === k),
+      state: st, keyOf, entryOf: k => mine().concat(index || (index = searchables()), st.fav, st.recent).find(e => keyOf(e) === k),
       dragging: () => dragging, DRAG_TYPE
     };
   }

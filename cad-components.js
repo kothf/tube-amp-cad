@@ -933,8 +933,10 @@
     },
     // a part imported from KiCad that the app has no part of its own for: the symbol as KiCad draws
     // it (params.sym, kicad-import.js symData), its leads, pin names and numbers
-    kicad(ctx, c) {
-      const sym = c.params.sym || { g: [], pins: [] }, up = t => { ctx.save(); ctx.translate(t[0], t[1]); if ((c.rot & 3) === 1 || (c.rot & 3) === 2) ctx.rotate(Math.PI); ctx.fillText(t[2], 0, 0); ctx.restore(); };
+    // a library part (part-lib.js): the unit's own drawing, drawn the same way
+    part(ctx, c) { DRAW.kicad(ctx, c, partSym(c)); },
+    kicad(ctx, c, own) {
+      const sym = own || c.params.sym || { g: [], pins: [] }, up = t => { ctx.save(); ctx.translate(t[0], t[1]); if ((c.rot & 3) === 1 || (c.rot & 3) === 2) ctx.rotate(Math.PI); ctx.fillText(t[2], 0, 0); ctx.restore(); };
       (sym.g || []).forEach(s => {
         if (s[0] === "p") {
           ctx.beginPath(); ctx.moveTo(s[2], s[3]); for (let i = 4; i + 1 < s.length; i += 2) ctx.lineTo(s[i], s[i + 1]);
@@ -1737,6 +1739,9 @@
   // the symbol a lone device model takes (SpiceNet's kinds)
   const SPICE_KIND_SYM = { d: "diode", npn: "npn", pnp: "pnp", nmos: "nmos", pmos: "pmos", vdmos: "nmos", njf: "njf", pjf: "pjf" };
   // the box of a SPICE part: its pins down the left side, then down the right, and its size
+  // the drawing of a library part's unit (params.syms, part-lib.js)
+  const NO_SYM = { g: [], pins: [], box: [-20, -20, 20, 20] };
+  function partSym(c) { const p = (c && c.params) || {}, list = p.syms || []; return list[Math.min(Math.max((+p.unit || 1) - 1, 0), Math.max(list.length - 1, 0))] || NO_SYM; }
   function spiceBox(c) {
     const names = (c && c.params.pinNames) || [], n = names.length, nl = Math.ceil(n / 2), nr = n - nl, rows = Math.max(nl, nr, 1);
     const len = names.reduce((m, s) => Math.max(m, String(s).length), 2), chars = Math.min(len, 9), hw = Math.max(30, Math.ceil((chars * 4.3 + 8) / 10) * 10), hh = rows * 10;
@@ -3024,6 +3029,29 @@
       },
       build: (c, net, alloc, out) => { spiceElements(c, net, alloc, out); }
     },
+    // A part of the user's library (part-lib.js, cad-library.js): data, not code. It carries its
+    // drawing (params.syms, one per unit of the package), its footprint (params.fp) and, when it has
+    // one, a SPICE model (text, sub, map: the model's pins on the part's pins), simulated as written
+    part: {
+      name: "Library part", prefix: "U", prefixFor: c => (c.params && c.params.prefix) || "U", group: "My library",
+      bbox: c => (c && partSym(c).box) || [-20, -20, 20, 20],
+      defaults: { name: "", value: "", desc: "", prefix: "U", lib: "", unit: 1, units: 1, syms: [], fp: null, text: "", sub: "", map: [] },
+      pins: c => (c ? partSym(c).pins || [] : []).map(p => ({ id: p.id, x: p.x, y: p.y, name: p.name || "pin " + (p.num || p.id) })),
+      pinNumbers: c => Object.fromEntries((partSym(c).pins || []).map(p => [p.id, p.num || p.id])),
+      value: c => c.params.value || c.params.name || "",
+      fields: [{ key: "value", label: "Value", kind: "text" },
+        { key: "unit", label: "Unit of the package", kind: "select", options: c => (c.params.syms || []).map((u, i) => [String(i + 1), `${String.fromCharCode(65 + i % 26)} (${(u.pins || []).length} pin${(u.pins || []).length === 1 ? "" : "s"})`]), when: c => (c.params.syms || []).length > 1 },
+        { key: "model", label: "SPICE model", kind: "spice", wide: true, when: c => (c.params.syms || []).length <= 1 }],
+      info: c => {
+        const p = c.params, SN = root.SpiceNet, fp = p.fp ? `Footprint ${p.fp.name} (${p.fp.pads.length} pads).` : "No footprint of its own: the board gives it a row of pads; set one in the parts library.";
+        const head = `${p.name || "A part"} from your parts library${p.desc ? ": " + p.desc : ""}. ${fp} `;
+        if ((p.syms || []).length > 1) return head + "The units of one package share the designator (DA1.1, DA1.2). A part of several units is left out of the simulation.";
+        if (!p.text) return head + "It has no SPICE model, so it is left out of the simulation: press Model… to give it one.";
+        try { const f = SN.flat(p.text, p.sub); return head + `Simulated by its SPICE ${f.kind === "subckt" ? "subcircuit" : "model"} ${f.name} as written. ` + (f.warnings.length ? f.warnings.join(". ") + "." : ""); }
+        catch (e) { return head + `The model cannot be simulated: ${e.message}. The part is left out of the simulation.`; }
+      },
+      build: (c, net, alloc, out) => { if ((c.params.syms || []).length <= 1) spiceElements(c, net, alloc, out); }
+    },
     // A part imported from KiCad (File ▾ → Open… a .kicad_sch) that the app has no part of its own
     // for: it keeps KiCad's drawing and pins (params.sym) and its footprint on the board, joins its
     // nets, and is left out of the simulation
@@ -3518,5 +3546,5 @@
     return wrap;
   }
 
-  root.CadLib = { SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
+  root.CadLib = { partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);

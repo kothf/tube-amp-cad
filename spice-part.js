@@ -9,7 +9,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
   const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-  let st = null, timer = 0, onDone = null;
+  let st = null, timer = 0, onDone = null, ownPins = null;
 
   function build() {
     const m = document.createElement("div"); m.className = "modal"; m.id = "sppart-modal"; m.hidden = true;
@@ -51,7 +51,7 @@
 
   function parse(keep) {
     const text = $("sppart-text").value;
-    st = { text, lib: null, items: [], f: null, keep: keep || null };
+    st = { text, lib: null, items: [], f: null, keep: keep || null, own: ownPins };
     $("sppart-sub").innerHTML = ""; $("sppart-pins").innerHTML = ""; $("sppart-count").textContent = ""; $("sppart-est").textContent = "";
     if (!text.trim()) { say("", ""); validate(); return; }
     try { st.lib = root.SpiceModel.parseLib(text); st.items = root.SpiceNet.list(st.lib); } catch (e) { say("warn", "⚠ " + esc(e.message)); validate(); return; }
@@ -83,8 +83,13 @@
     const keep = st.keep && String(st.keep.sub).toLowerCase() === name.toLowerCase() ? st.keep : null;
     try { st.f = root.SpiceNet.flatten(st.lib, name); } catch (e) { say("warn", `⚠ ${esc(name)} cannot be simulated: ${esc(e.message)}`); validate(); return; }
     const f = st.f, S = syms(), fits = Object.keys(S).filter(k => S[k].pins.length <= f.pins.length);
-    $("sppart-sym").innerHTML = `<option value="box">Box with the model's pins</option>` + fits.map(k => `<option value="${k}">${esc(S[k].name)}</option>`).join("");
-    $("sppart-sym").value = keep && (keep.sym === "box" || fits.includes(keep.sym)) ? keep.sym : fits.includes(guessSym(f)) ? guessSym(f) : "box";
+    // a library part keeps its own drawing: the model's pins go to its pins
+    if (st.own) { $("sppart-sym").innerHTML = `<option value="own">The part's own drawing</option>`; $("sppart-sym").value = "own"; }
+    else {
+      $("sppart-sym").innerHTML = `<option value="box">Box with the model's pins</option>` + fits.map(k => `<option value="${k}">${esc(S[k].name)}</option>`).join("");
+      $("sppart-sym").value = keep && (keep.sym === "box" || fits.includes(keep.sym)) ? keep.sym : fits.includes(guessSym(f)) ? guessSym(f) : "box";
+    }
+    $("sppart-sym").disabled = !!st.own;
     $("sppart-name").value = keep && keep.name ? keep.name : f.name.toUpperCase() === f.name ? f.name : f.name;
     fillPins(keep);
     const notes = f.warnings.map(w => `• ${esc(w)}`);
@@ -98,17 +103,19 @@
   function fillPins(keep) {
     const f = st.f, host = $("sppart-pins"); host.innerHTML = ""; if (!f) return;
     const sym = $("sppart-sym").value, sy = syms()[sym], lib = root.CadLib.LIB;
-    const symPins = sy ? lib[sy.type].pins({ params: {} }).filter(p => sy.pins.includes(p.id)) : [];
+    const own = sym === "own" ? st.own : null, symPins = own || (sy ? lib[sy.type].pins({ params: {} }).filter(p => sy.pins.includes(p.id)) : []);
+    // a library part's pin for a pin of the model: the one of its name or number, else the next in order
+    const guess = (p, i) => { const q = own.find(o => String(o.name || "").toLowerCase() === p.toLowerCase()) || own.find(o => String(o.id).toLowerCase() === p.toLowerCase()) || own[i]; return q ? q.id : ""; };
     f.pins.forEach((p, i) => {
       const row = document.createElement("label"); row.className = "spimp-pin";
       row.innerHTML = `<code title="Pin ${i + 1} of the model">${esc(p)}</code>`;
-      if (!sy) {
+      if (!sy && !own) {
         const inp = document.createElement("input"); inp.type = "text"; inp.maxLength = 9; inp.value = keep && keep.sym === "box" && keep.pinNames && keep.pinNames[i] ? keep.pinNames[i] : p.toUpperCase();
         inp.title = "The name drawn in the box"; row.appendChild(inp);
       } else {
         const sel = document.createElement("select");
         sel.innerHTML = symPins.map(q => `<option value="${esc(q.id)}">${esc(q.id)}${q.name ? " · " + esc(q.name) : ""}</option>`).join("") + `<option value="0">Ground</option><option value="">Not connected</option>`;
-        const def = keep && keep.sym === sym && keep.map && keep.map[i] !== undefined ? keep.map[i] : i < sy.pins.length ? sy.pins[i] : "";
+        const def = keep && keep.sym === sym && keep.map && keep.map[i] !== undefined ? keep.map[i] : own ? guess(p, i) : i < sy.pins.length ? sy.pins[i] : "";
         sel.value = def; sel.onchange = validate; row.appendChild(sel);
       }
       host.appendChild(row);
@@ -117,6 +124,7 @@
   function result() {
     const f = st.f, sym = $("sppart-sym").value, sy = syms()[sym], rows = [...document.querySelectorAll("#sppart-pins .spimp-pin")];
     const text = root.SpiceNet.extract(st.text, f.name) || st.text;
+    if (sym === "own") return { name: $("sppart-name").value.trim(), text, sub: f.name, sym: "own", map: rows.map(r => r.querySelector("select").value) };
     if (!sy) return { name: $("sppart-name").value.trim(), text, sub: f.name, sym: "box", pinNames: rows.map((r, i) => r.querySelector("input").value.trim() || String(i + 1)), map: f.pins.map((_, i) => String(i + 1)) };
     return { name: $("sppart-name").value.trim(), text, sub: f.name, sym, pinNames: f.pins.slice(), map: rows.map(r => r.querySelector("select").value) };
   }
@@ -126,7 +134,11 @@
     else if (!$("sppart-name").value.trim()) why = "Give it a name";
     else {
       const sy = syms()[$("sppart-sym").value];
-      if (sy) {
+      if ($("sppart-sym").value === "own") {
+        const map = [...document.querySelectorAll("#sppart-pins select")].map(s => s.value), twice = [...new Set(map.filter(m => m && m !== "0" && map.filter(x => x === m).length > 1))];
+        if (!map.some(m => m && m !== "0")) why = "No pin of the model is a pin of the part";
+        else if (twice.length) why = `Two pins of the model are the part's ${twice.join(", ")}`;
+      } else if (sy) {
         const map = [...document.querySelectorAll("#sppart-pins select")].map(s => s.value), miss = sy.pins.filter(id => !map.includes(id)), twice = sy.pins.filter(id => map.filter(m => m === id).length > 1);
         if (miss.length) why = `No pin of the model is the symbol's ${miss.join(", ")}`;
         else if (twice.length) why = `Two pins of the model are the symbol's ${twice.join(", ")}`;
@@ -138,10 +150,13 @@
   function done() { if (!validate()) return; const r = result(), cb = onDone; close(); if (cb) cb(r); }
   function close() { $("sppart-modal").hidden = true; onDone = null; }
   /** Open for a part's params (its model, if it has one, is shown); cb(params to set) on "Use this model" */
-  function open(params, cb) {
+  // opts.pins: the pins of a library part ([{ id, name }]): the model is set on them, the drawing stays
+  function open(params, cb, opts) {
     if (!$("sppart-modal")) build();
-    onDone = cb;
+    onDone = cb; ownPins = opts && opts.pins ? opts.pins : null;
     $("sppart-text").value = (params && params.text) || "";
+    // over whatever dialog asked for it (the parts library's)
+    document.body.appendChild($("sppart-modal"));
     $("sppart-modal").hidden = false;
     parse(params && params.text ? { sub: params.sub, name: params.name, sym: params.sym, map: params.map, pinNames: params.pinNames } : null);
     $("sppart-text").focus();

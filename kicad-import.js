@@ -608,32 +608,60 @@
     out[0] = s; out[n] = e;
     return out;
   }
+  const P = (e, h) => { const a = kid(e, h); return a ? [+a[1], +a[2]] : [0, 0]; }, layersOf = e => { const l = kid(e, "layers") || kid(e, "layer") || []; return l.slice(1).map(String); };
+  // a board's or a footprint's drawing (gr_… / fp_…) as polylines with their layer
+  const shapes = (e, pre, out) => {
+    kids(e, pre + "line").forEach(g => out.push({ layer: layersOf(g)[0], pts: [P(g, "start"), P(g, "end")] }));
+    kids(e, pre + "rect").forEach(g => { const a = P(g, "start"), b = P(g, "end"); out.push({ layer: layersOf(g)[0], pts: [a, [b[0], a[1]], b, [a[0], b[1]], a], rect: true }); });
+    kids(e, pre + "arc").forEach(g => out.push({ layer: layersOf(g)[0], pts: arcPoints(P(g, "start"), P(g, "mid"), P(g, "end")), arc: [P(g, "start"), P(g, "end")], mid: P(g, "mid") }));
+    kids(e, pre + "circle").forEach(g => { const c = P(g, "center"), q = P(g, "end"), r = Math.hypot(q[0] - c[0], q[1] - c[1]); out.push({ layer: layersOf(g)[0], circle: [c[0], c[1], r], pts: [[c[0] - r, c[1] - r], [c[0] + r, c[1] + r]] }); });
+    kids(e, pre + "poly").forEach(g => { const pts = xyList(g); if (pts.length > 1) out.push({ layer: layersOf(g)[0], pts: pts.concat([pts[0]]) }); });
+  };
+  // one footprint of a board or of a .kicad_mod file: its place, pads and drawing as the file has them
+  function footprintOf(e, netOf) {
+    const a = kid(e, "at") || [0, 0, 0, 0], f = { lib: String(e[1]), layer: String(val(e, "layer", "F.Cu")), x: +a[1], y: +a[2], a: +a[3] || 0, ref: prop(e, "Reference"), value: prop(e, "Value"), path: String(val(e, "path", "")), pads: [], gfx: [], descr: String(val(e, "descr", "")) };
+    kids(e, "fp_text").forEach(x => { if (x[1] === "reference") f.ref = String(x[2]); else if (x[1] === "value") f.value = String(x[2]); });
+    kids(e, "pad").forEach(p => {
+      const q = kid(p, "at") || [0, 0, 0, 0], sz = kid(p, "size") || [0, 1, 1], dr = kid(p, "drill") || [];
+      const oval = dr[1] === "oval", d1 = +(oval ? dr[2] : dr[1]) || 0, d2 = oval ? +dr[3] || d1 : d1;
+      f.pads.push({ num: String(p[1]), type: String(p[2]), shape: String(p[3]), x: +q[1], y: +q[2], a: +q[3] || 0, w: +sz[1], h: +sz[2], drill: Math.min(d1, d2), layers: layersOf(p), net: netOf(p) });
+    });
+    shapes(e, "fp_", f.gfx);
+    return f;
+  }
+  /** A footprint file (.kicad_mod) as BoardCore keeps footprints: { name, title, pads, silk, holes, box } */
+  function readFootprint(text, name) {
+    const t = parse(text);
+    if (t[0] !== "footprint" && t[0] !== "module") throw new Error("not a KiCad footprint");
+    const f = footprintOf(t, () => "");
+    f.x = f.y = f.a = 0; f.layer = "F.Cu";
+    const d = fpData(f, name || String(t[1]));
+    d.tags = String(val(t, "tags", ""));
+    return d;
+  }
+  /** A symbol library (.kicad_sym): [{ name, ref, value, desc, footprint, filters, keywords, datasheet, units, power, sym(unit) }],
+      a derived symbol (extends) with its parent's drawing. sym(unit) is the drawing and pins as a part keeps them. */
+  function readSymbols(text) {
+    const t = parse(text);
+    if (t[0] !== "kicad_symbol_lib") throw new Error("not a KiCad symbol library");
+    const raw = new Map(kids(t, "symbol").map(s => [String(s[1]), s])), out = [];
+    raw.forEach((s, name) => {
+      let base = s; for (let k = 0; k < 8 && kid(base, "extends"); k++) { const up = raw.get(String(kid(base, "extends")[1])); if (!up) break; base = up; }
+      const lib = libSymbol(base), U = 1 / 0.127;
+      out.push({ name, ref: prop(s, "Reference") || lib.ref || "U", value: prop(s, "Value") || name, desc: prop(s, "Description") || prop(s, "ki_description"), footprint: prop(s, "Footprint"),
+        filters: prop(s, "ki_fp_filters"), keywords: prop(s, "ki_keywords"), datasheet: prop(s, "Datasheet"), units: Math.max(lib.count, 1), power: lib.power,
+        sym: unit => symData(lib, unit || 1, U) });
+    });
+    return out;
+  }
   function readPcb(text) {
     const t = parse(text);
     if (t[0] !== "kicad_pcb") throw new Error("not a KiCad board");
-    const P = (e, h) => { const a = kid(e, h); return a ? [+a[1], +a[2]] : [0, 0]; }, layersOf = e => { const l = kid(e, "layers") || kid(e, "layer") || []; return l.slice(1).map(String); };
     const pcb = { nets: {}, footprints: [], segments: [], vias: [], zones: [], edges: [], texts: [], copperLayers: 2, generator: String(val(t, "generator", "")) };
     pcb.copperLayers = (kid(t, "layers") || []).filter(l => Array.isArray(l) && /\.Cu$/.test(String(l[1]))).length;
     kids(t, "net").forEach(n => { pcb.nets[n[1]] = String(n[2] || ""); });
     const netOf = e => { const n = kid(e, "net"); return n ? (n[2] !== undefined ? String(n[2]) : pcb.nets[n[1]] || "") : ""; };
-    const shapes = (e, pre, out) => {
-      kids(e, pre + "line").forEach(g => out.push({ layer: layersOf(g)[0], pts: [P(g, "start"), P(g, "end")] }));
-      kids(e, pre + "rect").forEach(g => { const a = P(g, "start"), b = P(g, "end"); out.push({ layer: layersOf(g)[0], pts: [a, [b[0], a[1]], b, [a[0], b[1]], a], rect: true }); });
-      kids(e, pre + "arc").forEach(g => out.push({ layer: layersOf(g)[0], pts: arcPoints(P(g, "start"), P(g, "mid"), P(g, "end")), arc: [P(g, "start"), P(g, "end")], mid: P(g, "mid") }));
-      kids(e, pre + "circle").forEach(g => { const c = P(g, "center"), q = P(g, "end"), r = Math.hypot(q[0] - c[0], q[1] - c[1]); out.push({ layer: layersOf(g)[0], circle: [c[0], c[1], r], pts: [[c[0] - r, c[1] - r], [c[0] + r, c[1] + r]] }); });
-      kids(e, pre + "poly").forEach(g => { const pts = xyList(g); if (pts.length > 1) out.push({ layer: layersOf(g)[0], pts: pts.concat([pts[0]]) }); });
-    };
-    (kids(t, "footprint").concat(kids(t, "module"))).forEach(e => {
-      const a = kid(e, "at") || [0, 0, 0, 0], f = { lib: String(e[1]), layer: String(val(e, "layer", "F.Cu")), x: +a[1], y: +a[2], a: +a[3] || 0, ref: prop(e, "Reference"), value: prop(e, "Value"), path: String(val(e, "path", "")), pads: [], gfx: [], descr: String(val(e, "descr", "")) };
-      kids(e, "fp_text").forEach(x => { if (x[1] === "reference") f.ref = String(x[2]); else if (x[1] === "value") f.value = String(x[2]); });
-      kids(e, "pad").forEach(p => {
-        const q = kid(p, "at") || [0, 0, 0, 0], sz = kid(p, "size") || [0, 1, 1], dr = kid(p, "drill") || [];
-        const oval = dr[1] === "oval", d1 = +(oval ? dr[2] : dr[1]) || 0, d2 = oval ? +dr[3] || d1 : d1;
-        f.pads.push({ num: String(p[1]), type: String(p[2]), shape: String(p[3]), x: +q[1], y: +q[2], a: +q[3] || 0, w: +sz[1], h: +sz[2], drill: Math.min(d1, d2), layers: layersOf(p), net: netOf(p) });
-      });
-      shapes(e, "fp_", f.gfx);
-      pcb.footprints.push(f);
-    });
+    (kids(t, "footprint").concat(kids(t, "module"))).forEach(e => pcb.footprints.push(footprintOf(e, netOf)));
     kids(t, "segment").forEach(e => pcb.segments.push({ pts: [P(e, "start"), P(e, "end")], w: +val(e, "width", 0.25), layer: layersOf(e)[0], net: netOf(e) }));
     kids(t, "arc").forEach(e => pcb.segments.push({ pts: arcPoints(P(e, "start"), P(e, "mid"), P(e, "end")), w: +val(e, "width", 0.25), layer: layersOf(e)[0], net: netOf(e) }));
     kids(t, "via").forEach(e => { const p = P(e, "at"); pcb.vias.push({ x: p[0], y: p[1], pad: +val(e, "size", 0.8), drill: +val(e, "drill", 0.4), net: netOf(e) }); });
@@ -850,5 +878,5 @@
     return board;
   }
 
-  root.KicadImport = { parse, readSch, readPcb, importProject, mapPart, matrix, engValue, findTube, symData, fpData };
+  root.KicadImport = { parse, readSch, readPcb, readSymbols, readFootprint, importProject, mapPart, matrix, engValue, findTube, symData, fpData };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -272,6 +272,35 @@ terminal) and the Checks hold the wiring to it (`cad-erc.js`):
 
 A SPICE part takes the roles of its symbol. All 20 examples pass.
 
+### Your own parts library
+
+*My library* at the top of the parts panel holds your own parts: each is data,
+not code, a drawing with pins, a footprint and, if you give it one, a SPICE
+model. *Parts library…* in the panel opens it.
+
+- **From KiCad's libraries:** *Add from KiCad files…* reads symbol libraries
+  (`.kicad_sym`) and footprints (`.kicad_mod`), several at once. A symbol
+  library lists its symbols with a Find box; tick the ones to add. Derived
+  symbols (`extends`) come with their parent's drawing.
+- **Footprint:** a part takes the footprint its symbol names or its KiCad
+  filters allow as soon as that footprint is in the library; the list shows
+  the ones with a pad for every pin first. A pin goes to the pad of its
+  number.
+- **SPICE model:** *Model…* sets a maker's `.SUBCKT` or `.MODEL` on the
+  part's own pins; the part is then simulated as written (see the SPICE part
+  above). Without a model it is left out of the simulation.
+- **Units:** a dual op-amp's amplifiers and supply pins are placed unit by
+  unit (the inspector's *Unit of the package*) and share one footprint under
+  one designator (DA1.1, DA1.2, DA1.3).
+- **Where it's kept:** in this browser (IndexedDB), and as a file
+  (`my-parts.tubelib`) with *Save as a file* / *Open a library file…*. A part
+  on the sheet carries its drawing, footprint and model in the circuit file,
+  so the circuit opens anywhere.
+- **Code:** `part-lib.js` (data, no DOM), `cad-library.js` (the dialog and
+  the store), `LIB.part` in `cad-components.js`, `KicadImport.readSymbols` /
+  `readFootprint`; tests in `tests/partlib.test.mjs` and
+  `tests/e2e/08c-parts-library.mjs`.
+
 ### Examples
 
 **File ▾ → Gallery…** opens circuits drawn from published sources and compared
