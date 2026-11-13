@@ -171,6 +171,13 @@
   // ---------------------------------------------------------------------------
   const VT = 0.025852;
   const Semi = {
+    // the forward transport current If / qb (what a transit time's charge is counted from), signed as the base's
+    bjtForward(V, m) {
+      const p = m.pol, vbe = p * (V[1] - V[2]), vbc = p * (V[1] - V[0]), vt = m.vt || VT;
+      const If = m.is * (Math.exp(Math.min(vbe / ((m.nf || 1) * vt), 80)) - 1);
+      const q1 = 1 / Math.max(1 - vbc / (m.vaf || 1e9) - (m.var ? vbe / m.var : 0), 0.05), q2 = m.ikf ? Math.max(If, 0) / m.ikf : 0;
+      return p * If / (q1 * (1 + Math.sqrt(1 + 4 * q2)) / 2);
+    },
     bjt(V, m) {
       const p = m.pol, vbe = p * (V[1] - V[2]), vbc = p * (V[1] - V[0]), vt = m.vt || VT;
       const If = m.is * (Math.exp(Math.min(vbe / ((m.nf || 1) * vt), 80)) - 1), Ir = m.is * (Math.exp(Math.min(vbc / ((m.nr || 1) * vt), 80)) - 1);
@@ -188,7 +195,7 @@
       const p = m.pol;
       let vds = p * (V[0] - V[2]), vgs = p * (V[1] - V[2]), sw = 1;
       if (vds < 0) { vds = -vds; vgs = p * (V[1] - V[0]); sw = -1; }
-      const s = 0.05, vov = s * softplus((vgs - m.vto * p) / s);
+      const s = m.s || 0.05, vov = s * softplus((vgs - m.vto * p) / s);
       const id = (vds < vov ? m.kp * (vov - vds / 2) * vds : m.kp / 2 * vov * vov) * (1 + (m.lambda || 0) * vds);
       return [p * sw * id, 0, -p * sw * id];
     },
@@ -618,6 +625,13 @@
   // between its points, level beyond them). out "i": that current flows from node a through the
   // source to node b; out "v": v(a) − v(b) is the expression (its current a branch unknown).
   // ---------------------------------------------------------------------------
+  // a capacitor's value at the voltage v across it (first node positive). A junction's (junc:
+  // { vj, m, fc }, c its zero-bias value) is SPICE's depletion law, linear past fc·vj forward
+  function capAt(e, v) {
+    const j = e.junc; if (!j) return e.c;
+    const vj = j.vj > 0 ? j.vj : 1, m = j.m >= 0 ? j.m : 0.5, fc = j.fc > 0 && j.fc < 1 ? j.fc : 0.5;
+    return v < fc * vj ? e.c * Math.pow(1 - v / vj, -m) : e.c * Math.pow(1 - fc, -(1 + m)) * (1 - fc * (1 + m) + m * v / vj);
+  }
   const tableAt = (x, p) => {
     const n = p.length;
     if (!(x > p[0])) return p[1];
@@ -837,7 +851,8 @@
           case "C":
             if (!mode.dc) {
               // i = C/h · (a0·v + a1·v₋₁ + a2·v₋₂): backward Euler, or Gear-2 with history
-              const k = e.c / mode.h, v1 = vn(mode.prev, nd[0]) - vn(mode.prev, nd[1]);
+              // (a junction's capacitance at the voltage of the step before)
+              const v1 = vn(mode.prev, nd[0]) - vn(mode.prev, nd[1]), k = (e.junc ? capAt(e, v1) : e.c) / mode.h;
               const hist = k * (ID1 * v1 + (P2 ? ID2 * (vn(P2, nd[0]) - vn(P2, nd[1])) : 0));
               stampG(nd[0], nd[1], ID0 * k);
               addB(nd[0], -hist); addB(nd[1], hist);
@@ -1250,7 +1265,7 @@
     let k = 0;
     circ.els.forEach(e => {
       if (!e.id) return;
-      const tc = e.kind === "C" ? (() => { const nd = e.nodes, i = e.c * ((vn(x, nd[0]) - vn(x, nd[1])) - (vn(xp, nd[0]) - vn(xp, nd[1]))) / h; return [[nd[0], i], [nd[1], -i]]; })() : terminalCurrents(e, x);
+      const tc = e.kind === "C" ? (() => { const nd = e.nodes, i = (e.junc ? capAt(e, vn(xp, nd[0]) - vn(xp, nd[1])) : e.c) * ((vn(x, nd[0]) - vn(x, nd[1])) - (vn(xp, nd[0]) - vn(xp, nd[1]))) / h; return [[nd[0], i], [nd[1], -i]]; })() : terminalCurrents(e, x);
       tc.forEach(([, i]) => { vals[k++] = i; });
     });
     return vals;
@@ -1969,12 +1984,12 @@
     const stamp2 = (add, a, b, g) => { add(a, a, g); add(b, b, g); add(a, b, -g); add(b, a, -g); };
     const branch = (a, b, br) => { if (a > 0) { Gm[at(a - 1, br)] += 1; Gm[at(br, a - 1)] += 1; } if (b > 0) { Gm[at(b - 1, br)] -= 1; Gm[at(br, b - 1)] -= 1; } };
     // a device's currents into its terminals, differentiated at the operating point (central differences)
-    const jac = (nodes, fn, d) => {
+    const jac = (nodes, fn, d, add) => {
       const V0 = nodes.map(k => vn(x, k)), m = nodes.length;
       for (let s = 0; s < m; s++) {
         const Vp = V0.slice(), Vm = V0.slice(); Vp[s] += d; Vm[s] -= d;
         const Ip = fn(Vp), Im = fn(Vm);
-        for (let t = 0; t < m; t++) { const J = (Ip[t] - Im[t]) / (2 * d); if (J) addG(nodes[t], nodes[s], J); }
+        for (let t = 0; t < m; t++) { const J = (Ip[t] - Im[t]) / (2 * d); if (J) (add || addG)(nodes[t], nodes[s], J); }
       }
     };
     const inputs = new Map((opts.inputs || []).map(i => [i.id, i]));
@@ -1984,7 +1999,7 @@
       const nd = e.nodes;
       switch (e.kind) {
         case "R": stamp2(addG, nd[0], nd[1], 1 / Math.max(e.r, 1e-6)); break;
-        case "C": stamp2(addB, nd[0], nd[1], e.c); break;
+        case "C": stamp2(addB, nd[0], nd[1], e.junc ? capAt(e, vn(x, nd[0]) - vn(x, nd[1])) : e.c); break;
         case "L": branch(nd[0], nd[1], e.branch); Gm[at(e.branch, e.branch)] -= R_SERIES; Bm[at(e.branch, e.branch)] -= e.l; break;
         case "XFMR": {
           const W = e.windings.length, Lm = xfmrIncremental(e, x, opts.op && opts.opIm ? opts.opIm[e.id] || 0 : undefined);
@@ -2016,7 +2031,12 @@
           break;
         }
         case "VDIODE": { const P = e.perveance; jac(nd, V => { const v = V[0] - V[1]; const i = v > 0 ? P * Math.pow(v, 1.5) : 0; return [i, -i]; }, 1e-3); break; }
-        case "BJT": jac(nd, W => Semi.bjt(W, e.model), 1e-6); break;
+        case "BJT":
+          jac(nd, W => Semi.bjt(W, e.model), 1e-6);
+          // the transit time's charge TF · If / qb sits between base and emitter and follows both
+          // junctions' voltages (SPICE's diffusion capacitance and its collector term)
+          if (e.tf > 0) jac(nd, W => { const q = e.tf * Semi.bjtForward(W, e.model); return [0, q, -q]; }, 1e-6, addB);
+          break;
         case "MOS": jac(nd, W => Semi.mos(W, e.model), 1e-5); break;
         case "OPAMP": jac(nd, W => Semi.opamp(W, e.model), 1e-6); break;
         case "REG": jac(nd, W => Semi.reg(W, e.model), 1e-6); break;

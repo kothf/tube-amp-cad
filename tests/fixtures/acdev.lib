@@ -1,0 +1,42 @@
+* Frequency response of device models: a junction's capacitance under reverse bias,
+* a transistor's junction capacitances and transit time, a JFET at a small overdrive.
+* tests/models.mjs runs "bench" here and in ngspice; tests/spicenet.test.mjs keeps ngspice's numbers.
+.model DV D(IS=1e-14 CJO=100p VJ=0.7 M=0.45 RS=1)
+.model QT NPN(IS=1e-14 BF=200 VAF=80 CJE=12p VJE=0.7 MJE=0.35 CJC=6p VJC=0.6 MJC=0.4 TF=0.4n RB=50)
+.model QP PNP(IS=2e-14 BF=150 VAF=60 CJE=15p CJC=9p TF=0.6n RB=40)
+.model JN NJF(VTO=-2 BETA=1.2m LAMBDA=0.01 CGS=4p CGD=3p PB=0.8 IS=1e-14)
+.subckt bench in dv qc pc jn
+Vcc vcc 0 30
+Vin in 0 DC 0 AC 1
+* a diode 30 V in reverse behind 100 k
+Rd1 vcc dv 100k
+Cd in dvx 1u
+Rd2 dvx dv 100k
+D1 0 dv DV
+* a common-emitter stage
+Cq in qx 1u
+Rq1 vcc qb 470k
+Rq2 qb 0 68k
+Rqs qx qb 4.7k
+Rqc vcc qc 4.7k
+Rqe qe 0 1k
+Cqe qe 0 100u
+Q1 qc qb qe QT
+* the same with a PNP
+Cp in px 1u
+Rp1 pb 0 470k
+Rp2 vcc pb 68k
+Rps px pb 4.7k
+Rpc pc 0 4.7k
+Rpe vcc pe 1k
+Cpe vcc pe 100u
+Q2 pc pb pe QP
+* a JFET close to pinch-off
+Cj in jx 1u
+Rjg jg 0 1Meg
+Rjs jx jg 47k
+Rjd vcc jn 22k
+Rjx js 0 3.3k
+Cjx js 0 100u
+J1 jn jg js JN
+.ends

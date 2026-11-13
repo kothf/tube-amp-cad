@@ -244,15 +244,19 @@ the model or open the file.
   of the symbol, to ground or to nothing.
 - **What it refuses, with the reason:** `LAPLACE` and frequency tables,
   transmission lines, digital (`A`) devices, BSIM MOSFETs, expressions of
-  time. Junction capacitances stay at their zero-bias values, and the dialog
-  says so.
+  time. Junction capacitances follow the voltage across them; a transistor's
+  transit time counts in the frequency response (Bode, noise) and not in the
+  waveform, and the dialog says so.
 - **Where it's kept:** inside the circuit file. The SPICE export writes the
   part as one line with its model as it came; the board gives it a DIP-8 /
   SOIC-8, a transistor or diode case, or a DIP in the model's pin order.
 - **Checked:** a bench of device models, sources, a switch, a table and a
   polynomial gives ngspice's operating point within 0.1 %
-  (`tests/spicenet.test.mjs`), and `npm run test:ngspice` runs a set of
-  makers' models against ngspice (`tests/models.mjs`).
+  and its frequency response to 10 MHz within 0.02 dB
+  (`tests/spicenet.test.mjs`), and `npm run test:ngspice` runs 64 makers'
+  op-amp models against ngspice (`tests/models.mjs`): the output voltage
+  within 2 %, gain and phase from 10 Hz to 1 MHz within 0.1 dB and 1° up to
+  20 kHz, 0.3 dB and 3° up to 1 MHz.
 
 ### Pin rules (ERC)
 

@@ -73,7 +73,46 @@ test("devices, sources, a switch, a table and a polynomial agree with ngspice (D
   const NG = { c: 5.907477, b: 1.987827, e: 1.306174, d1: 0.5987344, z: 100.1902, jd: 10.50032, md: 5.249465, mg: 4.307692, pc: 2.957193, pd: 11.95787, sw: 11.88119, tbl: 5.615385, po: 22.81201, bs: 2.004428, hv: 2.153846 };
   const { v, f } = runSub(DEV, "bench");
   for (const k in NG) near(v[k], NG[k], 3e-3, `V(${k})`);
-  assert.ok(f.warnings.some(w => /Junction capacitances/.test(w)), "what is left out is said");
+});
+
+test("junction capacitances follow their voltage, a transit time and a JFET's gain agree with ngspice (AC, 1 kHz to 10 MHz)", () => {
+  // ngspice 42, ac dec 1 1k 10Meg on tests/fixtures/acdev.lib: dB and degrees at each pin
+  const NG = {
+    dv: [[-6.02079, -6.03488, -7.25411, -21.3157, -41.1867], [-0.282764, -3.27547, -29.8164, -80.0957, -88.9347]],
+    qc: [[42.52684, 42.52683, 40.77505, 25.43521, 5.514292], [-176.310, 176.3456, 144.6355, 97.81077, 88.73296]],
+    pc: [[40.91805, 40.87913, 37.27462, 19.68573, -0.292762], [-176.960, 173.8043, 131.0032, 94.67026, 87.49137]],
+    jn: [[29.75327, 29.73681, 28.34116, 13.79493, -6.12045], [179.7866, 176.4609, 148.1461, 98.56670, 84.96493]] };
+  const text = fixture("acdev.lib"), f = SN.flatten(text, "bench");
+  let n = f.nNodes;
+  const els = SN.build({ text, sub: "bench" }, f.pins.map((_, i) => i + 1), () => n++, "U");
+  const pins = Object.keys(NG), ac = E.acSweep({ nodeCount: n, elements: els }, { inputs: [{ id: els.find(e => /#vin$/i.test(e.id)).id }], fStart: 1e3, fStop: 1e7, perDecade: 1, probes: pins.map(p => [f.pins.indexOf(p) + 1, 0]) });
+  assert.ok(ac.ok, "the sweep runs");
+  pins.forEach((p, i) => NG[p][0].forEach((db, k) => {
+    const re = ac.probes[i].re[k], im = ac.probes[i].im[k]; let d = Math.abs(Math.atan2(im, re) * 180 / Math.PI - NG[p][1][k]) % 360; if (d > 180) d = 360 - d;
+    assert.ok(Math.abs(20 * Math.log10(Math.hypot(re, im)) - db) < 0.02, `${p} at ${ac.freqs[k]} Hz: ${(20 * Math.log10(Math.hypot(re, im))).toFixed(3)} dB, ngspice ${db}`);
+    assert.ok(d < 0.2, `${p} at ${ac.freqs[k]} Hz: phase ${d.toFixed(2)}° from ngspice`);
+  }));
+  // the diode's 100 pF at zero bias is 18 pF with 30 V across it
+  const cj = els.find(e => /#cj$/i.test(e.id) || /#cj$/i.test(e.name || ""));
+  assert.ok(cj && cj.junc && cj.c === 100e-12, "the capacitor keeps its zero-bias value and its law");
+  assert.ok(f.warnings.some(w => /transit time/.test(w)) && !f.warnings.some(w => /zero-bias/.test(w)), "what is simplified is said");
+});
+
+test("a junction's capacitance in the waveform: the corner of 100 kΩ and a diode follows the bias", () => {
+  // 100 pF at zero bias: C = 100 pF · (1 + V / 0.7)^−0.45; a sine at that corner comes out at 0.707
+  const text = ".model DV D(IS=1e-14 CJO=100p VJ=0.7 M=0.45)\n.subckt dio a k\nD1 a k DV\n.ends";
+  const gain = bias => {
+    const c = 100e-12 * Math.pow(1 + bias / 0.7, -0.45), freq = 1 / (2 * Math.PI * 100e3 * c);
+    let n = 3;
+    const els = [{ id: "G", kind: "VSRC", nodes: [1, 0], wave: "sine", freq, amp: 0.2, offset: bias }, { id: "R", kind: "R", nodes: [1, 2], r: 100e3 }];
+    SN.build({ text, sub: "dio" }, [0, 2], () => n++, "D").forEach(e => els.push(e));
+    const r = E.simulate({ nodeCount: n, elements: els });
+    assert.ok(r.ok, r.error);
+    const [lo, hi] = swing(r, 2);
+    return (hi - lo) / 0.4;
+  };
+  near(gain(5), Math.SQRT1_2, 0.03, "5 V in reverse");
+  near(gain(30), Math.SQRT1_2, 0.03, "30 V in reverse");
 });
 
 test("what cannot be simulated is refused with the reason", () => {
