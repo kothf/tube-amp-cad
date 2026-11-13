@@ -463,7 +463,7 @@ import { readFile } from "node:fs/promises";
   await bd.evaluate(() => { BoardApp.state.board.tracks.pop(); BoardApp.commit(); });
 
   // manufacturing outputs: the Gerber ZIP (the board is unfinished: confirm) and the print PDF
-  bd.once("dialog", d => d.accept());
+  bd.once("dialog", d => d.accept().catch(() => {}));
   await bd.click("#btn-export");
   const [zipDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-gerber")]);
   const zipBuf = await readFile(await zipDl.path());
@@ -790,7 +790,7 @@ const NOTES = ["unplaced", "check", "class", "silk", "dangling", "stopper", "cou
   await bw.waitForFunction(() => window.BoardApp);
   const res = [];
   for (const f of await cad.evaluate(() => TubeCAD.EXAMPLES.map(x => x.file))) {
-    cad.once("dialog", d => d.accept());
+    cad.once("dialog", d => d.accept().catch(() => {}));
     await cad.evaluate(f => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => x.file === f)), f);
     const want = await cad.evaluate(() => TubeCAD.state.board && JSON.stringify(Object.keys(TubeCAD.state.board.parts).sort()) + TubeCAD.state.board.tracks.length);
     if (!want) { res.push({ f, no: true }); continue; }

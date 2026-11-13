@@ -103,7 +103,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const items = await cad.evaluate(() => TubeCAD.EXAMPLES.map(e => e.title));
   check(items.length === 20 && items.some(t => /Gubin three-tube amplifier/.test(t)) && items.some(t => /Gubin stereo amplifier with 5Ц4С supply/.test(t)) && items.some(t => /12AX7: plate resistor vs current source/.test(t)), `the gallery has the ${items.length} example circuits`);
   await cad.click("#btn-file"); await cad.click("#btn-start");
-  cad.once("dialog", d => d.accept());
+  cad.once("dialog", d => d.accept().catch(() => {}));
   const seq0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.click('.start-card[data-example^="03-"]');
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, seq0, { timeout: 30000 }).catch(() => {});
@@ -117,7 +117,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   const res = [];
   for (const e of await cad.evaluate(() => TubeCAD.EXAMPLES.map(x => x.file))) {
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
-    cad.once("dialog", d => d.accept());
+    cad.once("dialog", d => d.accept().catch(() => {}));
     await cad.evaluate(f => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => x.file === f)), e);
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
     res.push(await cad.evaluate(f => ({ f, ok: !!TubeCAD.state.sim.result && TubeCAD.state.sim.result.ok && !TubeCAD.state.sim.error, parts: TubeCAD.state.comps.length }), e));
@@ -128,7 +128,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     // a transistor in the circuit on the curve tracer: its operating point lies on the tracer's own curve
     // (the same model), and the simulated load line runs through it
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
-    cad.once("dialog", d => d.accept());
+    cad.once("dialog", d => d.accept().catch(() => {}));
     await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^01-/.test(x.file))));
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
     await tracer.bringToFront();
@@ -147,7 +147,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   {
     // the MOSFET amplifier keeps its bias under signal: the gate-to-gate spread averaged over the transient stays
     // at its DC value (a diode feeding the bootstrap capacitor pumped it from 6.2 to 8.3 V, 4 A through both MOSFETs)
-    cad.once("dialog", d => d.accept());
+    cad.once("dialog", d => d.accept().catch(() => {}));
     await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => x.file.startsWith("05-"))));
     await cad.waitForFunction(() => !TubeCAD.state.sim.busy, null, { timeout: 60000 }).catch(() => {});
     const s0 = await cad.evaluate(() => { const s = TubeCAD.state.sim.seq; TubeCAD.runSim("full"); return s; });
@@ -164,7 +164,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     // the flashing-LED example has no source to follow: the simulation finds the 555's own period, the scope
     // shows its square wave, and Animate runs the wire animation over that cycle in real time, the LED blinking
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
-    cad.once("dialog", d => d.accept());
+    cad.once("dialog", d => d.accept().catch(() => {}));
     await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /flashing-led/.test(x.file))));
     // a run of the MOSFET amplifier before it may still finish after the example opened: wait for a result of the 555's own circuit
     await cad.waitForFunction(s0 => { const m = TubeCAD.state.sim; return m.seq !== s0 && !m.busy && !m.pending && m.result && m.topo === TubeCAD.topo(); }, s0, { timeout: 60000 }).catch(() => {});
@@ -187,7 +187,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     // the Gubin amplifier under Animate: the heaters glow once simulated and start cold when Animate switches the amp on;
     // the sheet is its front panel: dragging the volume pot's wiper turns it (a new run, one undo step), a click flips SA1
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
-    cad.once("dialog", d => d.accept());
+    cad.once("dialog", d => d.accept().catch(() => {}));
     await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^06-/.test(x.file))));
     await cad.waitForFunction(s0 => { const m = TubeCAD.state.sim; return m.seq !== s0 && !m.busy && !m.pending && m.result; }, s0, { timeout: 60000 }).catch(() => {});
     await cad.bringToFront();
@@ -236,7 +236,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   {
     // the Gubin supply: a 5Ц4С at 115 mA is within its 125 mA (2 × 62 mA per anode), and its peak anode current is checked against 375 mA
     const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
-    cad.once("dialog", d => d.accept());
+    cad.once("dialog", d => d.accept().catch(() => {}));
     await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^07-/.test(x.file))));
     await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 }).catch(() => {});
     const t = await cad.evaluate(() => { const S = TubeCAD.state, v = S.comps.find(c => c.label === "VL1"); S.sel.comps.clear(); S.sel.comps.add(v.id); TubeCAD.updateInspector(); return document.getElementById("inspector").innerText; });
@@ -523,7 +523,7 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
 // the file dialog, comes back as the same circuit with its board; the dialog says what came
 // ---------------------------------------------------------------------------
 {
-  cad.once("dialog", d => d.accept());
+  cad.once("dialog", d => d.accept().catch(() => {}));
   await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^07-/.test(x.file))));
   await cad.waitForFunction(() => TubeCAD.state.comps.some(c => c.label === "VL1") && TubeCAD.state.board, null, { timeout: 30000 });
   const snap = () => cad.evaluate(() => {
