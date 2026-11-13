@@ -93,11 +93,34 @@
   function unused(lib) { const used = new Set(lib.parts.map(p => p.fp).filter(Boolean)); return Object.keys(lib.footprints).filter(k => !used.has(k)); }
 
   /** What a part placed on the sheet carries (LIB.part's params): unit is 1-based */
+  /** How a part's model goes on its units. One unit: one instance. A package of several units:
+      the units that are drawn alike (the two amplifiers of a dual op-amp) each get an instance when the
+      model's pins are mapped to one of them only, the pins on other units (the supply) shared; a model
+      mapped across units that are alike, or to a package with no two units alike, is the whole package's.
+      Returns { pack (one instance for the package), maps: { unit number: map } } or null without a model. */
+  function unitMaps(part) {
+    const sp = part.spice; if (!sp || !sp.text) return null;
+    const map = sp.map || [], units = part.units || [], maps = {};
+    if (units.length <= 1) return { pack: false, maps: { 1: map.slice() } };
+    const sig = u => (u.pins || []).map(p => `${p.x},${p.y},${p.a}`).sort().join(";"), sigs = units.map(sig);
+    const home = id => units.findIndex(u => (u.pins || []).some(p => p.id === id));
+    // the units the model's pins sit on that have a twin
+    const twins = new Set(map.filter(m => m && m !== "0").map(home).filter(k => k >= 0 && sigs.filter(x => x === sigs[k]).length > 1));
+    if (twins.size !== 1) { units.forEach((u, k) => { maps[k + 1] = map.slice(); }); return { pack: true, maps }; }
+    const r = [...twins][0], ref = units[r];
+    units.forEach((u, k) => {
+      if (sigs[k] !== sigs[r]) return;
+      const twin = id => { const p = ref.pins.find(q => q.id === id); if (!p) return id; const q = u.pins.find(t => t.x === p.x && t.y === p.y && t.a === p.a); return q ? q.id : ""; };
+      maps[k + 1] = map.map(m => (m && m !== "0" ? twin(m) : m));
+    });
+    return { pack: false, maps };
+  }
   function params(lib, part, unit) {
     const u = Math.min(Math.max(1, unit || 1), part.units.length), fp = part.fp && lib.footprints[part.fp];
     const p = { name: part.name, value: part.name, prefix: part.prefix || "U", desc: part.desc || "", lib: part.id, unit: u, units: part.units.length, syms: clone(part.units), fp: fp ? Object.assign(clone(fp), { name: part.fp }) : null, text: "", sub: "", map: [] };
     if (part.datasheet) p.datasheet = part.datasheet;
-    if (part.spice && part.spice.text && part.units.length === 1) { p.text = part.spice.text; p.sub = part.spice.sub; p.map = clone(part.spice.map || []); }
+    // the model and its pins as the library has them, whatever the unit: LIB.part works out the unit's share (unitMaps)
+    if (part.spice && part.spice.text) { p.text = part.spice.text; p.sub = part.spice.sub; p.map = clone(part.spice.map || []); }
     return p;
   }
 
@@ -112,7 +135,7 @@
     const now = params(lib, part, placed.unit), out = [];
     if (canon(now.syms) !== canon(placed.syms || [])) out.push("drawing");
     if (canon(now.fp) !== canon(placed.fp || null)) out.push("footprint");
-    if ((now.text || part.units.length > 1) && (now.text !== (placed.text || "") || now.sub !== (placed.sub || "") || canon(now.map) !== canon(placed.map || []))) out.push("model");
+    if (((part.spice && part.spice.text) || part.units.length > 1) && (now.text !== (placed.text || "") || now.sub !== (placed.sub || "") || canon(now.map) !== canon(placed.map || []))) out.push("model");
     if (now.name !== placed.name || now.prefix !== placed.prefix || now.desc !== (placed.desc || "")) out.push("name");
     return out;
   }
@@ -125,7 +148,7 @@
     const now = params(lib, part, placed.unit), out = Object.assign({}, placed, { name: now.name, prefix: now.prefix, desc: now.desc, unit: now.unit, units: now.units, syms: now.syms, fp: now.fp });
     if (!placed.value || placed.value === placed.name) out.value = now.name;
     if (now.datasheet) out.datasheet = now.datasheet;
-    if (now.text || part.units.length > 1) { out.text = now.text; out.sub = now.sub; out.map = now.map; }
+    if ((part.spice && part.spice.text) || part.units.length > 1) { out.text = now.text; out.sub = now.sub; out.map = now.map; }
     return out;
   }
 
@@ -288,5 +311,5 @@
   }
   function fromFile(text) { let d; try { d = JSON.parse(text); } catch (e) { throw new Error("not a parts library of this app"); } return check(d); }
 
-  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, differs, refreshed, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS };
+  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, unitMaps, differs, refreshed, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS };
 })(typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : globalThis);

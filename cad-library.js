@@ -124,7 +124,7 @@
     // the symbol editor on a part's drawing (cad-symedit.js)
     function draw(id) {
       const p = lib.parts.find(x => x.id === id); if (!p) return;
-      root.SymbolEditor.open(p.name, p.units, units => { p.units = units; if (units.length > 1) delete p.spice; else if (p.spice) { const ids = new Set(units[0].pins.map(q => q.id)); p.spice.map = (p.spice.map || []).map(m => (m === "0" || ids.has(m) ? m : "")); } if (p.fp && P.unmatched(p, lib.footprints[p.fp]).length && P.best(p, lib.footprints)) p.fp = P.best(p, lib.footprints); changed(); render(); });
+      root.SymbolEditor.open(p.name, p.units, units => { p.units = units; if (p.spice) { const ids = new Set(units.flatMap(u => u.pins.map(q => q.id))); p.spice.map = (p.spice.map || []).map(m => (m === "0" || ids.has(m) ? m : "")); } if (p.fp && P.unmatched(p, lib.footprints[p.fp]).length && P.best(p, lib.footprints)) p.fp = P.best(p, lib.footprints); changed(); render(); });
     }
     // the footprint editor (cad-fpedit.js) on a part's footprint, or on a new one made for its pins
     function footprintOf(id, fresh) {
@@ -176,6 +176,7 @@
       const q = find.toLowerCase().split(/\s+/).filter(Boolean), list = lib.parts.filter(p => q.every(w => `${p.name} ${p.desc} ${p.keywords}`.toLowerCase().includes(w)));
       const p = lib.parts.find(x => x.id === sel), fits = P.fits(p, lib.footprints), others = Object.keys(lib.footprints).filter(k => !fits.includes(k)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
       const fp = p.fp && lib.footprints[p.fp], miss = P.unmatched(p, fp), pins = p.units.reduce((n, u) => n + u.pins.length, 0), unused = P.unused(lib);
+      const um = P.unitMaps(p), many = p.units.length > 1;
       const on = (o.sheet && o.sheet.placed(p.id)) || { n: 0, old: 0 };
       $("plib-body").innerHTML = `<div class="plib-grid">
         <div class="plib-left"><input type="search" id="plib-find" placeholder="Find a part…" value="${esc(find)}">
@@ -188,7 +189,7 @@
             <span title="The letters of its designator on the sheet: DA1, VT3, X2">Designator</span><input type="text" id="plib-prefix" maxlength="4" value="${esc(p.prefix)}">
             <span>Description</span><input type="text" id="plib-desc" value="${esc(p.desc)}">
             <span title="The pads on the board. A pin goes to the pad of its number.">Footprint</span><div class="plib-fprow"><select id="plib-fp"><option value="">None: a row of pads on the board</option>${fits.length ? `<optgroup label="Fit this part">${fits.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}</optgroup>` : ""}${others.length ? `<optgroup label="Other footprints">${others.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}</optgroup>` : ""}</select><button class="btn" id="plib-fpedit" title="Change this footprint: pads, holes, silkscreen. Every part that uses it follows."${fp ? "" : " disabled"}>Edit…</button><button class="btn" id="plib-fpnew" title="Draw a footprint for this part: a usual package from a few numbers, or pad by pad">Draw…</button></div>
-            <span title="How the part is simulated">SPICE model</span><div class="plib-model">${p.units.length > 1 ? `<span class="muted">A part of several units is not simulated yet.</span>` : `<span>${p.spice ? esc(p.spice.sub) : "none: left out of the simulation"}</span><button class="btn" id="plib-model">Model…</button>${p.spice ? `<button class="btn" id="plib-nomodel">Remove</button>` : ""}`}</div>
+            <span title="How the part is simulated">SPICE model</span><div class="plib-model"><span>${p.spice ? esc(p.spice.sub) + (um && p.units.length > 1 ? (um.pack ? ": one model for the whole package" : `: one for each of units ${Object.keys(um.maps).map(k => String.fromCharCode(64 + +k)).join(", ")}`) : "") : "none: left out of the simulation"}</span><button class="btn" id="plib-model">Model…</button>${p.spice ? `<button class="btn" id="plib-nomodel">Remove</button>` : ""}</div>
           </div>
           <p class="insp-help">${pins} pin${pins === 1 ? "" : "s"}${p.units.length > 1 ? ` in ${p.units.length} units` : ""}${p.src ? ` · from ${esc(p.src)}` : ""}${p.fpHint ? ` · KiCad names the footprint ${esc(p.fpHint)}` : p.filters ? ` · KiCad's footprints for it: ${esc(p.filters)}` : ""}</p>
           ${miss.length ? `<p class="plib-warn">⚠ The footprint has no pad ${miss.length === 1 ? "number" : "numbers"} ${esc(miss.slice(0, 12).join(", "))}${miss.length > 12 ? "…" : ""}: ${miss.length === 1 ? "that pin stays" : "those pins stay"} unconnected on the board.</p>` : ""}
@@ -206,7 +207,8 @@
       set("plib-fp", v => { p.fp = v; });
       if ($("plib-clean")) $("plib-clean").onclick = () => { unused.forEach(k => delete lib.footprints[k]); changed(); render(); };
       if ($("plib-model")) $("plib-model").onclick = () => root.SpicePart.open(p.spice ? { text: p.spice.text, sub: p.spice.sub, name: p.spice.sub, sym: "own", map: p.spice.map } : null,
-        r => { p.spice = { text: r.text, sub: r.sub, map: r.map }; changed(); render(); }, { pins: p.units[0].pins.map(q => ({ id: q.id, name: q.name })) });
+        r => { p.spice = { text: r.text, sub: r.sub, map: r.map }; changed(); render(); }, { pins: p.units.flatMap((u, k) => u.pins.map(q => ({ id: q.id, name: q.name || "", unit: many ? String.fromCharCode(65 + k) : "" }))),
+          note: many ? "A model of one amplifier: give its pins to unit A and the supply pins where they are; every unit drawn like A gets its own. A model of the whole package: give its pins to all the units." : "" });
       if ($("plib-nomodel")) $("plib-nomodel").onclick = () => { delete p.spice; changed(); render(); };
       if ($("plib-update")) $("plib-update").onclick = () => { const n = o.sheet.update(p.id); o.setStatus("ok", `${p.name}: ${n} part${n === 1 ? "" : "s"} on the sheet updated from the library.`); render(); };
       $("plib-draw").onclick = () => draw(p.id);

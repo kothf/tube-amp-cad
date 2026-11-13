@@ -111,6 +111,50 @@ import { fileURLToPath } from "node:url";
   check(upd2.desc === "A test amplifier" && /1 on the sheet, up to date/.test(upd2.on), "Update it in the dialog brings every one on the sheet up to date");
   await cad.click("#plib-close");
 
+  // a package of several units is simulated: a model of one amplifier on the dual's unit A goes on unit B too, the supply on unit C
+  await cad.click("#pal-library");
+  await cad.click('.plib-list button[data-id="dualamp"]');
+  await cad.click("#plib-model");
+  await cad.fill("#sppart-text", AMP);
+  await cad.waitForFunction(() => !document.getElementById("sppart-ok").disabled, null, { timeout: 5000 }).catch(() => {});
+  const dmap = await cad.evaluate(() => ({ map: [...document.querySelectorAll("#sppart-pins select")].map(s => s.value).join(","), opt: document.querySelector("#sppart-pins select").options[0].textContent, note: document.getElementById("sppart-note").textContent }));
+  check(dmap.map === "3,2,8,4,1" && /^1 · A$/.test(dmap.opt) && /every unit drawn like A/.test(dmap.note), `Model… on a dual: the pins are offered unit by unit and an op-amp's usual names find them (${dmap.map})`);
+  await cad.click("#sppart-ok");
+  const dmodel = await cad.evaluate(() => document.querySelector(".plib-model").textContent);
+  check(/TESTAMP: one for each of units A, B/.test(dmodel), `the dialog says how the model goes on the units (${dmodel.replace(/Model….*/, "").trim()})`);
+  await cad.click("#plib-close");
+  const kept0 = await cad.evaluate(() => TubeCAD.circuitJSON());
+  const dsim = await cad.evaluate(async () => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+    const add = (type, params, x, y, rot, label) => { const c = C.makeComp(type, params, x, y, rot || 0); if (label) c.label = label; S.comps.push(c); return c; };
+    const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+    const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+    const A = add("part", C.library.paramsOf("dualamp", 1), 400, 300, 0, "DA1.1"), B = add("part", C.library.paramsOf("dualamp", 2), 700, 300, 0, "DA1.2");
+    const G = add("siggen", { amp: 0.5, freq: 100, rs: 0 }, 160, 400), g1 = add("ground", {}, 160, 480), RL = add("resistor", { r: 10e3 }, 880, 380, 1), g5 = add("ground", {}, 880, 460);
+    wire(pin(G, "+"), pin(A, "3"), false); wire(pin(G, "-"), pin(g1, "G"));
+    wire(pin(A, "1"), pin(A, "2"), false); wire(pin(A, "1"), pin(B, "5"), false); wire(pin(B, "7"), pin(B, "6"), false);
+    wire(pin(B, "7"), pin(RL, "1")); wire(pin(RL, "2"), pin(g5, "G"));
+    C.commit();
+    const without = C.circuitIssues().filter(t => /its model needs pin/.test(t));
+    const U = add("part", C.library.paramsOf("dualamp", 3), 1040, 330, 0, "DA1.3"), P = add("vdc", { v: 15 }, 1200, 140), N = add("vdc", { v: 15 }, 1200, 520), g3 = add("ground", {}, 1200, 220), g4 = add("ground", {}, 1280, 500);
+    wire(pin(U, "8"), pin(P, "+"), false); wire(pin(P, "-"), pin(g3, "G")); wire(pin(U, "4"), pin(N, "-"), false); wire(pin(N, "+"), pin(g4, "G"));
+    S.sel.comps.add(B.id); C.commit(); C.updateInspector();
+    return { without, b: B.id, insp: document.getElementById("inspector").textContent.replace(/\s+/g, " ") };
+  });
+  await cad.waitForTimeout(600);
+  await cad.waitForFunction(() => !TubeCAD.state.sim.busy && !TubeCAD.state.sim.pending && TubeCAD.state.sim.result, null, { timeout: 30000 }).catch(() => {});
+  const drun = await cad.evaluate(uid => {
+    const C = TubeCAD, S = C.state, T = C.topo(), r = S.sim.result, w = r && r.tran && r.tran.nodes[T.pinNet.get(uid + ":7")];
+    let lo = Infinity, hi = -Infinity; if (w) for (const x of w) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
+    return { err: S.sim.error, pp: hi - lo, issues: C.circuitIssues().filter(t => /its model needs pin/.test(t)).length, x: (C.spiceNetlist().match(/^X\S+ .* TESTAMP$/gm) || []).length };
+  }, dsim.b);
+  check(dsim.without.length === 2 && /DA1\.1: its model needs pin 8, 4 of the package/.test(dsim.without[0]), `without the supply unit on the sheet the checks say so (${dsim.without[0]})`);
+  check(!drun.err && Math.abs(drun.pp - 1) < 0.01 && drun.issues === 0 && drun.x === 2, `two followers on the dual's units A and B, the supply on unit C: 1 Vpp in, ${drun.pp && drun.pp.toFixed(3)} Vpp out; the SPICE export has the two instances`);
+  check(/This unit is simulated by its SPICE subcircuit TESTAMP/i.test(dsim.insp), "the inspector of a unit says it is simulated by the model");
+  await cad.evaluate(json => { TubeCAD.openText(json, "kept.json"); }, kept0);
+  await cad.waitForFunction(() => TubeCAD.state.comps.some(c => c.type === "part" && c.params.lib === "testamp"));
+  await cad.evaluate(() => { const L = TubeCAD.library.part("dualamp"); delete L.spice; });
+
   // New part…: the symbol editor. A box from a list of pins, a circle, a line, a text and a pin drawn; Undo; Save
   await cad.click("#pal-library");
   await cad.click("#plib-new");

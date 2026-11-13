@@ -319,6 +319,9 @@
   S.showLegend = (() => { try { return localStorage.getItem(LEGEND_KEY) !== "0"; } catch (e) { return true; } })();
   S.sim.live = (() => { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch (e) { return true; } })();
 
+  // the other units on the sheet of the package a library part's unit belongs to (DA1.1 with DA1.2, DA1.3)
+  const packOf = c => String(c.label || "").replace(/\.\d+$/, "");
+  const packageUnits = c => S.comps.filter(o => o !== c && o.type === "part" && o.params.lib === c.params.lib && packOf(o) === packOf(c));
   function buildNetlist() {
     const T = topo();
     let nodeCount = T.nodeCount;
@@ -328,7 +331,10 @@
       const net = pid => T.pinNet.get(c.id + ":" + pid);
       // power rails of one net are one supply: the first of them is its source
       if (c.type === "rail") { if (railNets.has(net("1"))) return; railNets.add(net("1")); }
-      LIB[c.type].build(c, net, alloc, elements);
+      if (c.type !== "part" || !((c.params.syms || []).length > 1)) { LIB[c.type].build(c, net, alloc, elements); return; }
+      // a unit of a package from the user's library: its model may need pins of the package's other units
+      const sibs = packageUnits(c);
+      LIB.part.build(c, pid => { const k = net(pid); if (k !== undefined) return k; for (const o of sibs) { const q = T.pinNet.get(o.id + ":" + pid); if (q !== undefined) return q; } return undefined; }, alloc, elements, { first: !sibs.some(o => +o.params.unit < +c.params.unit) });
     });
     return { nodeCount, elements };
   }
@@ -2228,6 +2234,14 @@
       if (!c.params.text) { issues.push(`${c.label} has no SPICE model yet (select it, then Model…): it is left out of the simulation.`); return; }
       try { window.SpiceNet.flat(c.params.text, c.params.sub).warnings.forEach(w => issues.push(`${c.label} (${c.params.sub}): ${w}.`)); }
       catch (e) { issues.push(`${c.label}: the model ${c.params.sub} cannot be simulated (${e.message}): the part is left out.`); }
+    });
+    // a unit of a library part's package whose model needs pins of a unit that is not on the sheet
+    S.comps.forEach(c => {
+      const m = c.type === "part" && (c.params.syms || []).length > 1 ? LIB.part.model(c) : null; if (!m) return;
+      const own = new Set(compPins(c).map(q => q.id)), sibs = packageUnits(c), have = new Set(sibs.flatMap(o => compPins(o).map(q => q.id)));
+      if (m.pack && sibs.some(o => +o.params.unit < +c.params.unit)) return;
+      const miss = m.map.filter(k => k && k !== "0" && !own.has(k) && !have.has(k));
+      if (miss.length) issues.push(`${c.label}: its model needs pin ${[...new Set(miss)].join(", ")} of the package, on a unit that is not on the sheet (the supply pins, usually): place that unit and wire it.`);
     });
     if (S.sim.error) issues.push(S.sim.error);
     (S.sim.warnings || []).forEach(w => issues.push(w));
