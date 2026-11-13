@@ -50,7 +50,7 @@ function ours(lib, bench, name) {
 function theirs(lib, bench, name, nodes) {
   const cir = join(work, "t.cir");
   // (ngspice refuses a file that is not UTF-8: old libraries' comments in other code pages go as "?")
-  writeFileSync(cir, `* bench\n${lib.replace(/[^\x00-\x7f]/g, "?")}\n${bench}\nX0 ${nodes.join(" ")} ${name}\n.op\n.control\nset noaskquit\nop\nprint ${nodes.map(n => `v(${n})`).join(" ")}\n.endc\n.end\n`, "latin1");
+  writeFileSync(cir, `* bench\n${lib.replace(/[\u0080-\uffff]/g, "?")}\n${bench}\nX0 ${nodes.join(" ")} ${name}\n.op\n.control\nset noaskquit\nop\nprint ${nodes.map(n => `v(${n})`).join(" ")}\n.endc\n.end\n`, "latin1");
   let out; try { out = execFileSync(NGSPICE, ["-b", cir], { encoding: "latin1", timeout: 60000, stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { out = String(e.stdout || "") + String(e.stderr || ""); }
   const v = {}; nodes.forEach(n => { const m = new RegExp(`v\\(${n}\\) = ([-+0-9.e]+)`, "i").exec(out); if (m) v[n] = +m[1]; });
   return Object.keys(v).length === nodes.length ? { v } : { error: (out.match(/error[^\n]*/gi) || ["no result"]).slice(0, 2).join(" | ") };

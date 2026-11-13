@@ -31,7 +31,7 @@
     const out = [];
     let pending = [];                                     // comment lines just read
     // (stray control characters, as old makers' files have them, are spaces)
-    String(text || "").replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, " ").split("\n").forEach((raw, no) => {
+    String(text || "").replace(/\r\n?/g, "\n").replace(/[^\n\t\x20-\x7e\u0080-\uffff]/g, " ").split("\n").forEach((raw, no) => {
       const t = raw.trim();
       if (!t) return;
       if (t[0] === "*") { pending.push(t.slice(1).trim()); if (pending.length > 4) pending.shift(); if (out.length) out[out.length - 1].after.push(t.slice(1).trim()); return; }
