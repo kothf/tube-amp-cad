@@ -931,6 +931,17 @@
       case "timer555": return ["SOIC-8"];
       case "chipamp": return p.model === "LM386" ? ["SOIC-8"] : [];
       case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "SOIC-14" : "SOIC-8"]; }
+      case "spice": {
+        const n = g.members[0].pins.length;
+        switch (p.sym) {
+          case "opamp": return ["SOIC-8"];
+          case "diode": return ["SMA", "SMB", "SMC", "SOD-123", "SOD-323", "MINIMELF"];
+          case "npn": case "pnp": return ["SOT-23-BEC"];
+          case "nmos": case "pmos": return ["SOT-23-GSD"];
+          case "njf": case "pjf": return ["SOT-23-DSG"];
+          default: return n > 3 && n <= 16 ? [`SOIC-${n <= 8 ? 8 : n <= 14 ? 14 : 16}`] : [];
+        }
+      }
       // JFETs: SOT-23 D-S-G as the MMBFJ201, MMBF5457 (MMBFJ175 for the P-channel ones)
       case "njf": case "pjf": return ["SOT-23-DSG"];
       // regulators: SOT-223 / DPAK with the output (LM317) or ground (78xx) or input (79xx) on the tab,
@@ -1054,6 +1065,19 @@
       }
       // an op-amp's package; its amplifiers (DA1.1 … DA1.4) share it
       case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "DIP-14" : "DIP-8", `WIRE-${wires}`]; }
+      // a SPICE part: the case of the symbol it took (an op-amp a DIP-8, a transistor the usual
+      // cases); a box a DIP its pins fit, pad 1 the model's first pin (three pins or fewer: wired)
+      case "spice": {
+        const cases = ["TO-92", "TO-18", "TO-126", "TO-220", "TO-247", "TO-3P", "TO-264"];
+        switch (p.sym) {
+          case "opamp": return ["DIP-8", `WIRE-${wires}`];
+          case "diode": return [...diodes.slice(1), diodes[0], "DO-201AD", "TO-220-KA", "WIRE-2"];
+          case "npn": case "pnp": return [...cases.map(k => `${k}-EBC`), ...cases.map(k => `${k}-ECB`), "WIRE-3"];
+          case "nmos": case "pmos": return [...cases.slice(3).map(k => `${k}-GDS`), ...cases.slice(0, 3).map(k => `${k}-GDS`), "WIRE-3"];
+          case "njf": case "pjf": return ["TO-92-DSG", "TO-92-DGS", "TO-92-SGD", "TO-18-DSG", "WIRE-3"];
+          default: return wires <= 3 ? [`WIRE-${wires}`] : wires <= 16 ? [`DIP-${wires <= 8 ? 8 : wires <= 14 ? 14 : 16}`, `WIRE-${wires}`] : [`WIRE-${wires}`];
+        }
+      }
       case "tube": {
         const t = L.tubeByName(p.tube), d = socketFor(t), cap = t && /top cap/i.test(t.socket) ? "-CAP" : "";
         const all = ["B9A", "B7G", "B9D", "OCTAL", "UX4"].map(k => `SOCKET-${k}${cap}`);
@@ -1077,7 +1101,7 @@
       return map;
     }
     if (/^(WIRE|TERM)-/.test(f.name)) { let k = 1; g.members.forEach(m => m.pins.forEach(p => add(k++, m.id, p.id))); return map; }
-    if (L.LIB[g.type] && L.LIB[g.type].pinNumbers) {
+    if (L.LIB[g.type] && L.LIB[g.type].pinNumbers && L.LIB[g.type].pinNumbers({ params: one.params, label: one.label })) {
       // pin numbers from the part's pinout (a tube's, an op-amp's); the sections of a dual tube or
       // the amplifiers of a dual op-amp each bring their own
       g.members.forEach(m => {

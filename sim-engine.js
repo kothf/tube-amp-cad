@@ -17,7 +17,9 @@
 
    Netlist: { nodeCount, elements: [{ id, kind, nodes: [...], ...params }] }
    kinds: R, C, L, XFMR, V, VSRC, I, D, VDIODE, BJT, MOS, TRIODE, PENTODE, TIMER555, E, G, GLOW,
-   RELAY (a latched coil with its contacts), LDR (a light-dependent resistor lit by a current)
+   RELAY (a latched coil with its contacts), LDR (a light-dependent resistor lit by a current),
+   B (a behavioural source: a current, or a voltage, that is any expression of node voltages and of the
+   currents through other sources; what an imported SPICE model's B, E, G, F, H and S elements become)
    acSweep: the small-signal frequency response, linearized at an operating point.
    loopGain: the return ratio of a feedback loop broken at a part's terminal (Middlebrook's double injection).
    noiseSweep: every noise source carried to an output by the adjoint, and the gain from a generator.
@@ -171,12 +173,15 @@
   const Semi = {
     bjt(V, m) {
       const p = m.pol, vbe = p * (V[1] - V[2]), vbc = p * (V[1] - V[0]), vt = m.vt || VT;
-      const If = m.is * (Math.exp(Math.min(vbe / ((m.nf || 1) * vt), 80)) - 1), Ir = m.is * (Math.exp(Math.min(vbc / vt, 80)) - 1);
-      const q1 = 1 / Math.max(1 - vbc / (m.vaf || 1e9), 0.05), q2 = m.ikf ? Math.max(If, 0) / m.ikf : 0;
+      const If = m.is * (Math.exp(Math.min(vbe / ((m.nf || 1) * vt), 80)) - 1), Ir = m.is * (Math.exp(Math.min(vbc / ((m.nr || 1) * vt), 80)) - 1);
+      const q1 = 1 / Math.max(1 - vbc / (m.vaf || 1e9) - (m.var ? vbe / m.var : 0), 0.05), q2 = m.ikf ? Math.max(If, 0) / m.ikf : 0;
       const qb = q1 * (1 + Math.sqrt(1 + 4 * q2)) / 2;
       // leakage: icbo·(1 − e^(vbc/vt)) reverse-biased, carried on linearly (same slope) when forward
       const xl = vbc / vt, lk = m.icbo ? m.icbo * (xl <= 0 ? 1 - Math.exp(xl) : -xl) : 0;
-      const icc = (If - Ir) / qb, ib = If / m.bf + Ir / (m.br || 1) - lk, ic = icc - Ir / (m.br || 1) + lk;
+      let ib = If / m.bf + Ir / (m.br || 1) - lk, ic = (If - Ir) / qb - Ir / (m.br || 1) + lk;
+      // an imported SPICE model's leakage (recombination) currents: the fall of the gain at low currents
+      if (m.ise) ib += m.ise * (Math.exp(Math.min(vbe / ((m.ne || 1.5) * vt), 80)) - 1);
+      if (m.isc) { const l = m.isc * (Math.exp(Math.min(vbc / ((m.nc || 2) * vt), 80)) - 1); ib += l; ic -= l; }
       return [p * ic, p * ib, -p * (ic + ib)];
     },
     mos(V, m) {
@@ -258,8 +263,9 @@
     }
   };
   // SPICE pnjlim: limits a junction voltage step so exp() cannot run away between iterations
+  // (a junction with a saturation current so large that vcrit is negative, an op-amp macromodel's clamp: only forward voltages are limited)
   function pnjlim(vnew, vold, nVt, vcrit) {
-    if (vold !== undefined && vnew > vcrit && Math.abs(vnew - vold) > 2 * nVt) {
+    if (vold !== undefined && vnew > vcrit && vnew > 0 && Math.abs(vnew - vold) > 2 * nVt) {
       if (vold > 0) { const arg = 1 + (vnew - vold) / nVt; vnew = arg > 0 ? vold + nVt * Math.log(arg) : vcrit; }
       else vnew = nVt * Math.log(vnew / nVt);
     }
@@ -603,6 +609,95 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Behavioural sources (kind B): { nodes: [a, b, …], out: "i" | "v", ast, ctl: [element ids] }.
+  // The expression is a closed tree (spice-net.js makes it: parameters already numbers, functions
+  // inlined): { k: "n", v } · { k: "v", a, b } (the voltage between two of the element's own nodes,
+  // by their place in nodes) · { k: "i", n } (the current through the n-th element of ctl, a
+  // source or an inductor) · { k: "u", op, x } · { k: "b", op, a, b } · { k: "?", c, a, b } ·
+  // { k: "f", s, args } (SpiceModel's functions) · { k: "tbl", x, pts } (a table, straight lines
+  // between its points, level beyond them). out "i": that current flows from node a through the
+  // source to node b; out "v": v(a) − v(b) is the expression (its current a branch unknown).
+  // ---------------------------------------------------------------------------
+  const tableAt = (x, p) => {
+    const n = p.length;
+    if (!(x > p[0])) return p[1];
+    if (x >= p[n - 2]) return p[n - 1];
+    let k = 2; while (p[k] < x) k += 2;
+    return p[k - 1] + (p[k + 1] - p[k - 1]) * (x - p[k - 2]) / ((p[k] - p[k - 2]) || 1e-300);
+  };
+  const BOPS = { "||": (a, b) => (a || b ? 1 : 0), "&&": (a, b) => (a && b ? 1 : 0), "==": (a, b) => (a === b ? 1 : 0), "!=": (a, b) => (a !== b ? 1 : 0), "<>": (a, b) => (a !== b ? 1 : 0),
+    "<": (a, b) => (a < b ? 1 : 0), ">": (a, b) => (a > b ? 1 : 0), "<=": (a, b) => (a <= b ? 1 : 0), ">=": (a, b) => (a >= b ? 1 : 0),
+    "+": (a, b) => a + b, "-": (a, b) => a - b, "*": (a, b) => a * b, "/": (a, b) => a / b, "**": Math.pow, "^": Math.pow };
+  const bFuncs = () => (root.SpiceModel && root.SpiceModel.FUNCS) || {};
+  function bJs(t) {
+    switch (t.k) {
+      case "n": return `(${+t.v})`;
+      case "v": return `(V[${t.a | 0}]-V[${t.b | 0}])`;
+      case "i": return `I[${t.n | 0}]`;
+      case "u": return t.op === "-" ? `(-${bJs(t.x)})` : t.op === "!" ? `(${bJs(t.x)}?0:1)` : bJs(t.x);
+      case "b": {
+        const a = bJs(t.a), b = bJs(t.b), op = t.op;
+        if (op === "**" || op === "^") return `Math.pow(${a},${b})`;
+        if (op === "+" || op === "-" || op === "*" || op === "/") return `(${a}${op}${b})`;
+        if (!BOPS[op]) throw new Error("bad operator");
+        return `((${a}${{ "<>": "!==", "==": "===", "!=": "!==" }[op] || op}${b})?1:0)`;
+      }
+      case "?": return `(${bJs(t.c)}?${bJs(t.a)}:${bJs(t.b)})`;
+      case "f": if (!/^[a-z_][a-z0-9_]*$/.test(t.s) || !bFuncs()[t.s]) throw new Error(`unknown function ${t.s}()`); return `F.${t.s}(${t.args.map(bJs).join(",")})`;
+      case "tbl": return `T(${bJs(t.x)},[${t.pts.map(Number).join(",")}])`;
+    }
+    throw new Error("bad expression");
+  }
+  function bClosure(t) {
+    switch (t.k) {
+      case "n": { const v = +t.v; return () => v; }
+      case "v": { const a = t.a | 0, b = t.b | 0; return V => V[a] - V[b]; }
+      case "i": { const n = t.n | 0; return (V, I) => I[n]; }
+      case "u": { const x = bClosure(t.x); return t.op === "-" ? (V, I) => -x(V, I) : t.op === "!" ? (V, I) => (x(V, I) ? 0 : 1) : x; }
+      case "b": { const a = bClosure(t.a), b = bClosure(t.b), f = BOPS[t.op]; if (!f) throw new Error("bad operator"); return (V, I) => f(a(V, I), b(V, I)); }
+      case "?": { const c = bClosure(t.c), a = bClosure(t.a), b = bClosure(t.b); return (V, I) => (c(V, I) ? a(V, I) : b(V, I)); }
+      case "f": { const f = bFuncs()[t.s], A = t.args.map(bClosure); if (!f) throw new Error(`unknown function ${t.s}()`); return (V, I) => f(...A.map(g => g(V, I))); }
+      case "tbl": { const x = bClosure(t.x), p = t.pts.map(Number); return (V, I) => tableAt(x(V, I), p); }
+    }
+    throw new Error("bad expression");
+  }
+  // compiled once per expression (its JavaScript is the key: a tolerance run builds the same circuit thousands of times)
+  const bCache = new Map();
+  let bFast = true;
+  function bCompile(ast) {
+    if (!bFast) return bClosure(ast);
+    const js = bJs(ast);
+    let f = bCache.get(js);
+    if (!f) {
+      try { const g = new Function("F", "T", "V", "I", `"use strict";return ${js};`), F = bFuncs(); f = (V, I) => g(F, tableAt, V, I); }
+      catch (e) { bFast = false; return bClosure(ast); }                     // a page that forbids it (CSP): closures
+      bCache.set(js, f); if (bCache.size > 2000) bCache.delete(bCache.keys().next().value);
+    }
+    return f;
+  }
+  // a B element's value at the unknowns x, and what it depends on: [unknown index (−1: ground), is a current]
+  function bValue(e, x) {
+    const V = e._V, I = e._I, nd = e.nodes;
+    for (let k = 0; k < nd.length; k++) V[k] = nd[k] === 0 ? 0 : x[nd[k] - 1];
+    for (let k = 0; k < I.length; k++) I[k] = x[e.ctlIdx[k]];
+    const v = e._f(V, I);
+    return isFinite(v) ? v : (v > 0 ? 1e30 : v < 0 ? -1e30 : 0);
+  }
+  // its slopes: [[unknown index, d value / d unknown], …] at x (which is restored), by differences
+  function bSlopes(e, x, f0, central) {
+    const out = [], seen = e._seen;
+    for (let q = 0; q < seen.length; q++) {
+      const u = seen[q], cur = u >= e._nV, x0 = x[u], d = cur ? 1e-6 * Math.max(1e-3, Math.abs(x0)) : 1e-6 * Math.max(1, Math.abs(x0));
+      x[u] = x0 + d; const fp = bValue(e, x);
+      let J;
+      if (central) { x[u] = x0 - d; J = (fp - bValue(e, x)) / (2 * d); } else J = (fp - f0) / d;
+      x[u] = x0;
+      if (J !== 0 && isFinite(J)) out.push([u, J]);
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
   // Circuit build: assign unknown indices
   // ---------------------------------------------------------------------------
   function buildCircuit(netlist) {
@@ -610,7 +705,7 @@
     let nUnk = nNodes - 1;
     const els = netlist.elements.map(e => Object.assign({}, e));
     els.forEach(e => {
-      if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L" || e.kind === "E") e.branch = nUnk++;
+      if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L" || e.kind === "E" || (e.kind === "B" && e.out === "v")) e.branch = nUnk++;
       else if (LATCHED.has(e.kind)) e.latch = nUnk++;
       else if (e.kind === "LDR") e.light = nUnk++;
       else if (e.kind === "XFMR") {
@@ -631,9 +726,28 @@
     // conduction, so far from the solution Newton sees no slope there and would throw the pin
     // anywhere; these nodes move at most 2 V an iteration, outside the common damping, and half as far
   // each time they turn back (newtonSolve)
+    // behavioural sources: compiled, the sources whose currents they read found, the unknowns they depend on listed
+    const bs = els.filter(e => e.kind === "B");
+    if (bs.length) {
+      const byId = new Map(els.map(e => [e.id, e]));
+      bs.forEach(e => {
+        e._f = bCompile(e.ast);
+        e.ctlIdx = (e.ctl || []).map(id => { const c = byId.get(id); if (!c || c.branch === undefined) throw new Error(`${e.id}: no source ${id} to read the current of`); return c.branch; });
+        e._V = new Float64Array(e.nodes.length); e._I = new Float64Array(e.ctlIdx.length);
+        const set = new Set(); e.nodes.forEach(k => { if (k > 0) set.add(k - 1); }); e.ctlIdx.forEach(k => set.add(k));
+        e._seen = [...set]; e._nV = nNodes - 1;
+      });
+    }
     const timers = els.filter(e => LATCHED.has(e.kind)), t555 = timers.filter(e => e.kind === "TIMER555"), capped = t555.length ? new Uint8Array(nNodes) : null;
     t555.forEach(e => [e.nodes[2], e.nodes[6]].forEach(k => { if (k > 0) capped[k - 1] = 1; }));
-    return { nNodes, nUnk, els, timers, capped };
+    // nodes no nonlinear part is on (between resistors, capacitors and linear sources: the inside
+    // of a maker's macromodel is full of them, some behind a gain of a million): Newton's step
+    // there needs no limit, and must not hold the other nodes' steps back
+    const LINEAR = { R: 1, C: 1, L: 1, V: 1, VSRC: 1, I: 1, E: 1, G: 1 }, free = new Uint8Array(nNodes).fill(1);
+    let anyFree = false;
+    els.forEach(e => { if (LINEAR[e.kind] && !e.ntc) return; (e.nodes || []).concat(e.windings ? e.windings.flatMap(w => [w.a, w.b]) : [], e.ext || []).forEach(k => { if (k > 0) free[k - 1] = 0; }); });
+    for (let k = 0; k < nNodes - 1; k++) if (free[k]) anyFree = true;
+    return { nNodes, nUnk, els, timers, capped, free: anyFree ? free : null };
   }
 
   // A transformer's saturating core (XFMR with sat: { ls, p, air }): the flux linkage λ (V·s, on the
@@ -797,6 +911,22 @@
             // nodes out+, out−, ctl+, ctl−: gm · (v(ctl+) − v(ctl−)) flows out of out+, through the source, into out−
             addA(nd[0], nd[2], e.gm); addA(nd[0], nd[3], -e.gm); addA(nd[1], nd[2], -e.gm); addA(nd[1], nd[3], e.gm);
             break;
+          case "B": {
+            // value f(u) linearized at this iterate: f ≈ f0 + Σ J·(u − u0)
+            const f0 = bValue(e, x), J = bSlopes(e, x, f0);
+            let k0 = f0; for (let q = 0; q < J.length; q++) k0 -= J[q][1] * x[J[q][0]];
+            if (e.out === "v") {
+              const br = e.branch;
+              if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
+              if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
+              for (let q = 0; q < J.length; q++) addAu(br, J[q][0], -J[q][1]);
+              b[br] += k0;
+            } else {
+              for (let q = 0; q < J.length; q++) { if (nd[0] > 0) addAu(nd[0] - 1, J[q][0], J[q][1]); if (nd[1] > 0) addAu(nd[1] - 1, J[q][0], -J[q][1]); }
+              addB(nd[0], -k0); addB(nd[1], k0);
+            }
+            break;
+          }
           case "D": {
             const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852;
             const vcrit = nVt * Math.log(nVt / (Math.SQRT2 * Is));
@@ -906,9 +1036,10 @@
 
       // Damped update on node voltages
       let maxDv = 0;
-      const cap = circ.capped;
-      for (let i = 0; i < circ.nNodes - 1; i++) if (!(cap && cap[i])) maxDv = Math.max(maxDv, Math.abs(sol[i] - x[i]));
-      let scale = maxDv > maxStep ? maxStep / maxDv : 1;
+      const cap = circ.capped, free = circ.free;
+      let limDv = 0;      // the largest step of a node a nonlinear part is on: the one the limit is for
+      for (let i = 0; i < circ.nNodes - 1; i++) if (!(cap && cap[i])) { const d = Math.abs(sol[i] - x[i]); maxDv = Math.max(maxDv, d); if (!(free && free[i])) limDv = Math.max(limDv, d); }
+      let scale = limDv > maxStep ? maxStep / limDv : 1;
       let conv = scale === 1;
       // an iteration that is not getting closer (bouncing across a device's
       // turn-on, say) takes half a step
@@ -1057,6 +1188,7 @@
     if (e.kind === "XFMR") { const im = magCurrent(e, x); return e.sat ? { im, flux: coreFlux(e, im)[0] / e.sat.ls } : { im }; }
     if (e.kind === "I") return { i: e.i, vd: v[0] - v[1] };
     if (e.kind === "E") return { i: x[e.branch], vd: v[0] - v[1], vc: v[2] - v[3] };
+    if (e.kind === "B") return { i: e.out === "v" ? x[e.branch] : bValue(e, x), vd: v[0] - v[1] };
     if (e.kind === "G") return { i: e.gm * (v[2] - v[3]), vd: v[0] - v[1], vc: v[2] - v[3] };
     if (e.kind === "GLOW") { const I = glowCurrents(v, e.model, latchOf(e, x)); return { q: latchOf(e, x), vd: v[0] - v[1], i: I[0] }; }
     // a relay: pulled in or not, and the voltage across the coil's resistance (its current × R)
@@ -1080,6 +1212,7 @@
       case "I": return two(e.i);
       case "L": case "V": case "VSRC": case "E": return two(x[e.branch]);
       case "G": return two(e.gm * (v[2] - v[3]));
+      case "B": return two(e.out === "v" ? x[e.branch] : bValue(e, x));
       case "D": return two(deviceState(e, x).i);
       case "VDIODE": return two(deviceState(e, x).i);
       case "XFMR": { const out = []; e.windings.forEach((w, j) => { const i = x[e.branches[j]]; out.push([w.a, i], [w.b, -i]); }); return out; }
@@ -1867,6 +2000,12 @@
           if (nd[3] > 0) Gm[at(e.branch, nd[3] - 1)] += e.gain;
           break;
         case "G": addG(nd[0], nd[2], e.gm); addG(nd[0], nd[3], -e.gm); addG(nd[1], nd[2], -e.gm); addG(nd[1], nd[3], e.gm); break;
+        case "B": {
+          const xs = Float64Array.from(x), J = bSlopes(e, xs, 0, true);
+          if (e.out === "v") { branch(nd[0], nd[1], e.branch); J.forEach(([u, j]) => { Gm[at(e.branch, u)] -= j; }); }
+          else J.forEach(([u, j]) => { if (nd[0] > 0) Gm[at(nd[0] - 1, u)] += j; if (nd[1] > 0) Gm[at(nd[1] - 1, u)] -= j; });
+          break;
+        }
         case "V": case "VSRC": branch(nd[0], nd[1], e.branch); drive(e, e.branch, 1); break;
         // a current source is open; driven, its current flows out of node a into node b
         case "I": if (nd[0] > 0) drive(e, nd[0] - 1, -1); if (nd[1] > 0) drive(e, nd[1] - 1, 1); break;

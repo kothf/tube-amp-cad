@@ -1,0 +1,50 @@
+* Device models written for the tests of spice-net.js (round numbers, no maker's part), and a
+* bench that biases each one: a common-emitter stage, a diode forward and in breakdown, a
+* self-biased JFET, a MOSFET, a switch, a table, a polynomial and a behavioural source.
+.model QTEST NPN(IS=1e-14 BF=300 VAF=80 IKF=0.1 ISE=5e-15 NE=1.4 BR=2 RB=20 RC=1 RE=0.2 CJE=5p CJC=4p)
+.model QTESTP PNP(IS=2e-14 BF=150 VAF=50 RB=30)
+.model DTEST D(IS=3e-9 RS=0.5 N=1.8 BV=100 IBV=100u CJO=4p)
+.model JTEST NJF(BETA=1m VTO=-1.5 LAMBDA=2m IS=1e-13 RD=1 RS=1 CGS=4p CGD=4p)
+.model MTEST NMOS(LEVEL=1 VTO=3.5 KP=2 LAMBDA=0.01 RD=0.02 RS=0.01)
+.model MTESTP PMOS(LEVEL=1 VTO=-2 KP=0.5 LAMBDA=0.02)
+.model SWT SW(VT=2 VH=0 RON=10 ROFF=1Meg)
+.param half=0.5
+.subckt halver in out
+E1 out 0 VALUE={V(in)*half}
+R1 out 0 1Meg
+.ends
+.subckt bench c b e d1 z jd md mg pc pd sw tbl po bs hv
+V1 vcc 0 12
+R1 vcc c 2.2k
+R2 vcc b 100k
+R3 b 0 22k
+R4 e 0 470
+Q1 c b e QTEST
+R5 vcc d1 10k
+D1 d1 0 DTEST
+R6 nvz z 10k
+Vz nvz 0 150
+D2 0 z DTEST
+R7 vcc jd 2.2k
+J1 jd 0 js JTEST
+R8 js 0 1k
+R9 vcc md 10
+R10 vcc mg 100k
+R11 mg 0 56k
+M1 md mg 0 0 MTEST
+R12 vcc pe 1k
+Q2 pc pb pe QTESTP
+R13 pb 0 470k
+R14 pc 0 1k
+M2 pd mg vcc vcc MTESTP
+R15 pd 0 100
+S1 vcc sw mg 0 SWT
+R16 sw 0 1k
+E2 tbl 0 TABLE {V(mg)} = (0,0) (2,1) (6,9)
+R17 tbl 0 1k
+E3 po 0 POLY(2) mg 0 e 0 1 2 3 0.5
+R18 po 0 1k
+B1 0 bs I=1m*tanh(V(mg)-4)+V(e)*V(e)*1m
+R19 bs 0 1k
+X1 mg hv halver
+.ends

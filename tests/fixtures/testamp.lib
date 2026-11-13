@@ -1,0 +1,16 @@
+* An op-amp macromodel written for the tests of spice-net.js: a transconductance stage on a
+* dominant pole, clamps a volt and a half inside the rails, a buffer and an output resistor.
+.SUBCKT TESTAMP inp inn vcc vee out
+Rin inp inn 2Meg
+Cin inp inn 1.4p
+G1 0 n1 inp inn 1m
+R1 n1 0 100Meg
+C1 n1 0 1.59n
+D1 n1 vh DCLAMP
+D2 vl n1 DCLAMP
+Eh vh 0 VALUE={V(vcc)-2.1}
+El vl 0 VALUE={V(vee)+2.1}
+E2 n2 0 n1 0 1
+Ro n2 out 75
+.MODEL DCLAMP D(IS=1e-14)
+.ENDS
