@@ -972,3 +972,22 @@ test("worked-out Jacobians (tubes, BJT, MOSFET) agree with finite differences of
     check(r.I, r.J, W => E.Semi.mos(W, m), V, 1e-6, "MOSFET");
   }
 });
+
+test("a junction's and a VDMOS gate-drain capacitor's charge is the integral of its capacitance", () => {
+  const els = [
+    { c: 1e-9, junc: { vj: 0.7, m: 0.5, fc: 0.5 } },
+    { c: 10e-12, junc: { vj: 0.75, m: 0.33, fc: 0.5 } },
+    { c: 5e-12, junc: { vj: 1, m: 1, fc: 0.5 } },
+    { c: 40e-12, vdm: { min: 40e-12, max: 1.5e-9, a: 0.5 } }
+  ];
+  for (const e of els) {
+    assert.ok(E.chargeAt(e, 0) === 0, "no charge at 0 V");
+    for (let v = -30; v <= 2; v += 0.37) {
+      const d = 1e-4, num = (E.chargeAt(e, v + d) - E.chargeAt(e, v - d)) / (2 * d), c = E.capAt(e, v);
+      assert.ok(Math.abs(num - c) <= 1e-5 * Math.abs(c) + 1e-18, `C at ${v.toFixed(2)} V: dq/dv ${num} vs ${c}`);
+    }
+  }
+  // the VDMOS law: CGDMAX with the gate above the drain, CGDMIN far below it
+  const g = els[3];
+  assert.ok(Math.abs(E.capAt(g, 100) - 1.5e-9) < 1e-12 && Math.abs(E.capAt(g, -1e6) - 40e-12) < 1e-12);
+});

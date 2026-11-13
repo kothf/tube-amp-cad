@@ -232,6 +232,11 @@
       const q1 = 1 / Math.max(1 - vbc / (m.vaf || 1e9) - (m.var ? vbe / m.var : 0), 0.05), q2 = m.ikf ? Math.max(If, 0) / m.ikf : 0;
       return p * If / (q1 * (1 + Math.sqrt(1 + 4 * q2)) / 2);
     },
+    // the charges a transit time stores, signed as the base's: [TF · If / qb, TR · Ir]
+    bjtCharges(V, m, tf, tr) {
+      const p = m.pol, vbc = p * (V[1] - V[0]), vt = m.vt || VT;
+      return [tf ? tf * Semi.bjtForward(V, m) : 0, tr ? p * tr * m.is * (Math.exp(Math.min(vbc / ((m.nr || 1) * vt), 80)) - 1) : 0];
+    },
     bjt(V, m) {
       const p = m.pol, vbe = p * (V[1] - V[2]), vbc = p * (V[1] - V[0]), vt = m.vt || VT;
       const If = m.is * (Math.exp(Math.min(vbe / ((m.nf || 1) * vt), 80)) - 1), Ir = m.is * (Math.exp(Math.min(vbc / ((m.nr || 1) * vt), 80)) - 1);
@@ -482,6 +487,45 @@
     xm[ev.e.latch] = ev.want; told(tNext - h + hm);
     return timerStep(circ, step, xm, tNext, h - hm, n + 1);
   }
+
+  // A step's local error, by its third difference over the steps before (h³·v‴, which Gear-2's
+  // error follows). Past 0.25 V plus 1 % of the node's voltage, and past ¾ of the largest of those
+  // steps' own changes, an edge or a sharp kink fell inside the step: it is run again as 8 steps of
+  // Gear-2 (and any of those again as 8). A smooth waveform, even at a coarse step (a power-on
+  // run's), has a third difference far below its first ones; an edge has its whole height in it.
+  // The grid stays as it was, so a period still ends on its last step and the harmonics stay exact;
+  // only the inside of a fast edge is resolved. hist: the states one, two and three steps back,
+  // [x₋₃, x₋₂, x₋₁] (x₋₃ null when the run has not got it: the second difference then). Returns
+  // null when the step needs nothing finer, or a finer run does not converge (its own result stands).
+  // tol: { abs, rel } in place of 0.25 V and 1 % (a power-on run, whose step is set for the
+  // envelope, takes 1 V and 2 %: an audio signal's kinks there are no edges to resolve)
+  const REFINE_ABS = 0.25, REFINE_REL = 0.01, REFINE_SLOPE = 0.75;
+  function needsRefine(circ, hist, xn, tol) {
+    const abs = tol && tol.abs || REFINE_ABS, rel = tol && tol.rel || REFINE_REL;
+    const [b3, b2, xp] = hist;
+    for (let i = 0, nv = circ.nNodes - 1; i < nv; i++) {
+      const e = Math.abs(b3 ? xn[i] - 3 * xp[i] + 3 * b2[i] - b3[i] : xn[i] - 2 * xp[i] + b2[i]);
+      if (e <= abs + rel * Math.max(Math.abs(xn[i]), Math.abs(xp[i]))) continue;
+      if (e > REFINE_SLOPE * Math.max(Math.abs(xn[i] - xp[i]), Math.abs(xp[i] - b2[i]), b3 ? Math.abs(b2[i] - b3[i]) : 0)) return true;
+    }
+    return false;
+  }
+  function refineStep(circ, hist, xn, tNext, hh, level, tol) {
+    if (!needsRefine(circ, hist, xn, tol)) return null;
+    const N = 8, hs = hh / N;
+    let h3 = null, h2 = null, xs = hist[2];
+    for (let k = 1; k <= N; k++) {
+      const tk = tNext - hh + hs * k, r = newtonSolve(circ, xs, { h: hs, t: tk, prev: xs, prev2: h2 }, { gmin: 1e-12 });
+      if (!r.ok) return null;
+      const xr = level < 1 && h2 ? refineStep(circ, [h3, h2, xs], r.x, tk, hs, level + 1, tol) : null;
+      h3 = h2; h2 = xs; xs = xr || r.x;
+    }
+    return xs;
+  }
+  // a time step's solver keeps x₋₃ beside its Gear history x₋₂ (xBack): good while xBack is the
+  // array it was kept with (a run that changes its step rescales xBack into a new one)
+  const refineHist = (hk, gear, xBack, xprev) => [gear && hk.b === xBack ? hk.b3 : null, gear ? xBack : null, xprev];
+  const keepHist = (hk, gear, xBack, xprev) => { hk.b3 = gear ? xBack : null; hk.b = xprev; };
 
   // ---------------------------------------------------------------------------
   // Dense linear solve with partial pivoting (in place)
@@ -761,10 +805,29 @@
   // ---------------------------------------------------------------------------
   // a capacitor's value at the voltage v across it (first node positive). A junction's (junc:
   // { vj, m, fc }, c its zero-bias value) is SPICE's depletion law, linear past fc·vj forward
+  // A power MOSFET's gate-drain capacitance (vdm: { min, max, a }, v = vgd) is the VDMOS law: CGDMAX
+  // with the gate above the drain, falling to CGDMIN as the drain rises past it (Miller C grows at low Vds).
   function capAt(e, v) {
+    const g = e.vdm;
+    if (g) { const s = (g.max - g.min) / (1 + Math.PI / 2), y = g.max - s; return v > 0 ? s * Math.tanh(g.a * v) + y : s * Math.atan(g.a * v) + y; }
     const j = e.junc; if (!j) return e.c;
     const vj = j.vj > 0 ? j.vj : 1, m = j.m >= 0 ? j.m : 0.5, fc = j.fc > 0 && j.fc < 1 ? j.fc : 0.5;
     return v < fc * vj ? e.c * Math.pow(1 - v / vj, -m) : e.c * Math.pow(1 - fc, -(1 + m)) * (1 - fc * (1 + m) + m * v / vj);
+  }
+  // its charge at v (0 at 0 V): the integral of capAt, so a transient that steps the charge
+  // conserves it however far the voltage swings in one step (SPICE's charge-based capacitors)
+  function chargeAt(e, v) {
+    const g = e.vdm;
+    if (g) {
+      const s = (g.max - g.min) / (1 + Math.PI / 2), y = g.max - s, a = g.a, u = a * v;
+      return v > 0 ? y * v + s * (Math.abs(u) > 30 ? Math.abs(u) - Math.LN2 : Math.log(Math.cosh(u))) / a : y * v + s * (v * Math.atan(u) - Math.log1p(u * u) / (2 * a));
+    }
+    const j = e.junc; if (!j) return e.c * v;
+    const vj = j.vj > 0 ? j.vj : 1, m = j.m >= 0 ? j.m : 0.5, fc = j.fc > 0 && j.fc < 1 ? j.fc : 0.5, c = e.c;
+    const qd = x => (Math.abs(1 - m) < 1e-9 ? -c * vj * Math.log(1 - x / vj) : c * vj * (1 - Math.pow(1 - x / vj, 1 - m)) / (1 - m));
+    const v1 = fc * vj;
+    if (v < v1) return qd(v);
+    return qd(v1) + c * Math.pow(1 - fc, -(1 + m)) * ((1 - fc * (1 + m)) * (v - v1) + m * (v * v - v1 * v1) / (2 * vj));
   }
   const tableAt = (x, p) => {
     const n = p.length;
@@ -940,7 +1003,8 @@
     const key = dc ? "_splitDC" : "_splitTR";
     if (circ[key] && circ[key].n === circ.els.length) return circ[key];
     const lin = [], nl = [];
-    circ.els.forEach(e => ((LINEAR_KINDS.has(e.kind) || (e.kind === "XFMR" && !(e.sat && !dc))) ? lin : nl).push(e));
+    // a junction's capacitor in the transient follows the voltage of this iterate: not linear
+    circ.els.forEach(e => (((LINEAR_KINDS.has(e.kind) && !(e.kind === "C" && !dc && (e.junc || e.vdm))) || (e.kind === "XFMR" && !(e.sat && !dc))) ? lin : nl).push(e));
     return (circ[key] = { lin, nl, n: circ.els.length });
   }
 
@@ -1045,10 +1109,16 @@
       switch (e.kind) {
         case "R": stampG(nd[0], nd[1], 1 / Math.max(e.r, 1e-6)); break;
         case "C":
-          if (!mode.dc) {
+          if (mode.dc) break;
+          if (e.junc || e.vdm) {
+            // i = (a0·q(v) + a1·q₋₁ + a2·q₋₂)/h on the charge, linearized at this iterate's voltage
+            const v0 = vn(x, nd[0]) - vn(x, nd[1]), q = X => chargeAt(e, vn(X, nd[0]) - vn(X, nd[1]));
+            const i = (ID0 * chargeAt(e, v0) + ID1 * q(mode.prev) + (P2 ? ID2 * q(P2) : 0)) / mode.h, g = ID0 * capAt(e, v0) / mode.h;
+            stampG(nd[0], nd[1], g);
+            addB(nd[0], -(i - g * v0)); addB(nd[1], i - g * v0);
+          } else {
             // i = C/h · (a0·v + a1·v₋₁ + a2·v₋₂): backward Euler, or Gear-2 with history
-            // (a junction's capacitance at the voltage of the step before)
-            const v1 = vn(mode.prev, nd[0]) - vn(mode.prev, nd[1]), k = (e.junc ? capAt(e, v1) : e.c) / mode.h;
+            const v1 = vn(mode.prev, nd[0]) - vn(mode.prev, nd[1]), k = e.c / mode.h;
             const hist = k * (ID1 * v1 + (P2 ? ID2 * (vn(P2, nd[0]) - vn(P2, nd[1])) : 0));
             stampG(nd[0], nd[1], ID0 * k);
             addB(nd[0], -hist); addB(nd[1], hist);
@@ -1175,6 +1245,16 @@
           e._vbe = vbe; e._vbc = vbc;
           const vb = V[2] + p * vbe;
           stampJacobian(nd, Semi.bjtJ, [vb - p * vbc, vb, V[2]], e.model);
+          if ((e.tf > 0 || e.tr > 0) && !mode.dc) {
+            // the stored charges, stepped as a capacitor's: TF · If / qb between base and emitter and
+            // TR · Ir between base and collector (turn-on delay, and the storage time of a saturated switch)
+            const qs = W => Semi.bjtCharges(W, e.model, e.tf || 0, e.tr || 0), at = X => qs(nd.map(k => vn(X, k)));
+            const h1 = at(mode.prev), h2 = P2 ? at(P2) : null;
+            stampNonlinear(nd, W => {
+              const q = qs(W), f = (ID0 * q[0] + ID1 * h1[0] + (h2 ? ID2 * h2[0] : 0)) / mode.h, r = (ID0 * q[1] + ID1 * h1[1] + (h2 ? ID2 * h2[1] : 0)) / mode.h;
+              return [-r, f + r, -f];
+            }, [vb - p * vbc, vb, V[2]], 1e-6);
+          }
           break;
         }
         case "MOS":
@@ -1504,7 +1584,7 @@
     let k = 0;
     circ.els.forEach(e => {
       if (!e.id) return;
-      const tc = e.kind === "C" ? (() => { const nd = e.nodes, i = (e.junc ? capAt(e, vn(xp, nd[0]) - vn(xp, nd[1])) : e.c) * ((vn(x, nd[0]) - vn(x, nd[1])) - (vn(xp, nd[0]) - vn(xp, nd[1]))) / h; return [[nd[0], i], [nd[1], -i]]; })() : terminalCurrents(e, x);
+      const tc = e.kind === "C" ? (() => { const nd = e.nodes, i = (chargeAt(e, vn(x, nd[0]) - vn(x, nd[1])) - chargeAt(e, vn(xp, nd[0]) - vn(xp, nd[1]))) / h; return [[nd[0], i], [nd[1], -i]]; })() : terminalCurrents(e, x);
       tc.forEach(([, i]) => { vals[k++] = i; });
     });
     return vals;
@@ -1642,10 +1722,16 @@
     let xBack = null, hBack = 0;
     // a step that does not converge is retried as 8 sub-steps, and each of those
     // again as 8 (h/64), before the run gives up
+    const hk = {};   // x₋₃ for the step refinement
     const solveStep = (xprev, tNext, hh, depth) => {
       const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
       const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
-      if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
+      if (r.ok) {
+        if (depth) return r.x;
+        const xr = gear && refineStep(circ, refineHist(hk, gear, xBack, xprev), r.x, tNext, hh, 0, hk.tol);
+        keepHist(hk, gear, xBack, xprev); xBack = xprev; hBack = hh;
+        return xr || r.x;
+      }
       // the last resort: more iterations (a source that steps at t = 0, such as the mains starting at
       // its peak, charges a rectifier's reservoir through a winding: the damped Newton walks the
       // node up 15 V an iteration, and halves that once the steps stop shrinking)
@@ -2066,10 +2152,16 @@
     const mins = probes.map(() => new Float32Array(nOut)), maxs = probes.map(() => new Float32Array(nOut));
     mins.forEach(a => a.fill(Infinity)); maxs.forEach(a => a.fill(-Infinity));
     let xBack = null, hBack = 0;          // BDF2 history, as in simulate()
+    const hk = { tol: { abs: 1, rel: 0.02 } };   // x₋₃ for the step refinement, its tolerance for an envelope
     const solveStep = (xprev, tNext, hh, depth) => {
       const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
       const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
-      if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
+      if (r.ok) {
+        if (depth) return r.x;
+        const xr = gear && refineStep(circ, refineHist(hk, gear, xBack, xprev), r.x, tNext, hh, 0, hk.tol);
+        keepHist(hk, gear, xBack, xprev); xBack = xprev; hBack = hh;
+        return xr || r.x;
+      }
       if ((depth || 0) >= 3) return lastResortStep(circ, xprev, hh, tNext);   // as in simulate()
       let xs = xprev;
       for (let k = 1; k <= 8; k++) { xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
@@ -2184,10 +2276,16 @@
     const probes = (opts.probes || []).map(p => Array.isArray(p) ? p : [p, 0]).filter(([a, b]) => a >= 0 && a < circ.nNodes && b >= 0 && b < circ.nNodes);
     const out = probes.map(() => new Float32Array(samples));
     let xBack = null, hBack = 0;          // BDF2 history, as in simulate()
+    const hk = {};   // x₋₃ for the step refinement
     const solveStep = (xprev, tNext, hh, depth) => {
       const gear = !depth && xBack && Math.abs(hBack - hh) <= 1e-9 * hh;
       const r = newtonSolve(circ, xprev, { h: hh, t: tNext, prev: xprev, prev2: gear ? xBack : null }, { gmin: 1e-12 });
-      if (r.ok) { if (!depth) { xBack = xprev; hBack = hh; } return r.x; }
+      if (r.ok) {
+        if (depth) return r.x;
+        const xr = gear && refineStep(circ, refineHist(hk, gear, xBack, xprev), r.x, tNext, hh, 0, hk.tol);
+        keepHist(hk, gear, xBack, xprev); xBack = xprev; hBack = hh;
+        return xr || r.x;
+      }
       if ((depth || 0) >= 2) return lastResortStep(circ, xprev, hh, tNext);
       let xs = xprev;
       for (let k = 1; k <= 8; k++) { xs = solveStep(xs, tNext - hh + hh * k / 8, hh / 8, (depth || 0) + 1); if (!xs) return null; }
@@ -2259,7 +2357,7 @@
       const nd = e.nodes;
       switch (e.kind) {
         case "R": stamp2(addG, nd[0], nd[1], 1 / Math.max(e.r, 1e-6)); break;
-        case "C": stamp2(addB, nd[0], nd[1], e.junc ? capAt(e, vn(x, nd[0]) - vn(x, nd[1])) : e.c); break;
+        case "C": stamp2(addB, nd[0], nd[1], e.junc || e.vdm ? capAt(e, vn(x, nd[0]) - vn(x, nd[1])) : e.c); break;
         case "L": branch(nd[0], nd[1], e.branch); Gm[at(e.branch, e.branch)] -= R_SERIES; Bm[at(e.branch, e.branch)] -= e.l; break;
         case "XFMR": {
           const W = e.windings.length, Lm = xfmrIncremental(e, x, opts.op && opts.opIm ? opts.opIm[e.id] || 0 : undefined);
@@ -2295,7 +2393,7 @@
           jac(nd, W => Semi.bjt(W, e.model), 1e-6);
           // the transit time's charge TF · If / qb sits between base and emitter and follows both
           // junctions' voltages (SPICE's diffusion capacitance and its collector term)
-          if (e.tf > 0) jac(nd, W => { const q = e.tf * Semi.bjtForward(W, e.model); return [0, q, -q]; }, 1e-6, addB);
+          if (e.tf > 0 || e.tr > 0) jac(nd, W => { const [f, r] = Semi.bjtCharges(W, e.model, e.tf || 0, e.tr || 0); return [-r, f + r, -f]; }, 1e-6, addB);
           break;
         case "MOS": jac(nd, W => Semi.mos(W, e.model), 1e-5); break;
         case "OPAMP": jac(nd, W => Semi.opamp(W, e.model), 1e-6); break;
@@ -2495,7 +2593,7 @@
     return { ok: true, freqs, total, gain: { re: gRe, im: gIm }, sources: src.map((p, j) => ({ id: p.id, kind: p.kind, psd: psd[j] })), elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, NE555, tubeCurrents, tubeJacobian, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, NE555, tubeCurrents, tubeJacobian, capAt, chargeAt, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

@@ -54,3 +54,12 @@ R1 in k 10k
 D1 k b DVC
 R2 k 0 100k
 .ends
+* A power MOSFET switch (VDMOS): 0 to 10 V at 10 kHz through 470 ohm into the gate, 24 V through 47 ohm;
+* its gate-drain capacitance grows from CGDMIN to CGDMAX as the drain falls (the Miller plateau)
+.model MPW VDMOS(VTO=3.5 KP=5 RD=20m RS=10m CGS=800p CGDMAX=1.5n CGDMIN=40p A=0.5 CJO=500p IS=1e-12)
+.subckt vdmos in g d
+Vdd vdd 0 24
+Rg in g 470
+M1 d g 0 MPW
+Rd vdd d 47
+.ends

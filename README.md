@@ -248,9 +248,10 @@ the model or open the file.
   of the symbol, to ground or to nothing.
 - **What it refuses, with the reason:** `LAPLACE` and frequency tables,
   transmission lines, digital (`A`) devices, BSIM MOSFETs, expressions of
-  time. Junction capacitances follow the voltage across them; a transistor's
-  transit time counts in the frequency response (Bode, noise) and not in the
-  waveform, and the dialog says so.
+  time. Junction capacitances follow the voltage across them and step their
+  charge; a transistor's transit times (TF, TR) shape the waveform and the
+  frequency response; a VDMOS power MOSFET's gate-drain capacitance follows
+  CGDMIN … CGDMAX with its drain voltage (the Miller plateau).
 - **Where it's kept:** inside the circuit file. The SPICE export writes the
   part as one line with its model as it came; the board gives it a DIP-8 /
   SOIC-8, a transistor or diode case, or a DIP in the model's pin order.
@@ -1198,6 +1199,13 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   by gmin stepping, as the DC operating point is. On one core, against 3.204:
   the full run of every example 2.1× faster (the stereo amplifier, ex 07,
   2.3×), the power-on runs 2.1×.
+- **Fine steps inside fast edges.** A time step whose third difference over
+  the steps before (h³·v‴, Gear-2's error) passes 0.25 V + 1 % of the node and
+  ¾ of those steps' own changes held an edge or a sharp kink, and is run again
+  as 8 Gear-2 steps (any of those again as 8). The grid stays, so harmonics stay exact;
+  a diode's recovery went from 22 % to 0.14 % of its swing off ngspice, a
+  saturating switch from 2.9 % to 0.3 %. Junction capacitors and a BJT's
+  stored charges (TF · If/qb, TR · Ir) are stepped by their charge.
 - **Triodes** use [Koren's](https://www.normankoren.com/Audio/Tubemodspice_article.html)
   published equation unmodified, so their parameters are interchangeable with
   Koren-style SPICE models.
@@ -1334,10 +1342,10 @@ The test suite checks the engine against independent results:
   the signal at every node within 3 % of the CAD's, a 555 astable's period
   within 0.5 %;
 - waveforms against ngspice (`tests/models.mjs`, `tests/fixtures/trandev.lib`):
-  a class-B follower clipping into 8 Ω and a varactor swung hard within 0.2 %
-  of their swing, point by point; a diode's recovery and fast switches are held
-  at today's error (a time step's worth on their edges) until the
-  error-controlled step;
+  a diode's reverse recovery, transistor switches with and without transit
+  times, a CMOS inverter, a VDMOS power switch, a class-B follower clipping
+  into 8 Ω and a varactor swung hard, each within 2 % of its swing, point by
+  point;
 - regulators and the TL431: each type's output against its formula
   (Vout = 1.25 V·(1 + R2/R1) + Iadj·R2), its short-circuit current, its
   dropout and its ripple rejection, the TL431 against
