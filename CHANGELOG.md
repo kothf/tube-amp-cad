@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.202.0] - 2026-11-13
+
+### Added
+- **Add part… by part number.** *+ Add part…* in *My library*: type the maker's part number (TL072CP, 2N3904, IRF540N, 1N4148), choose the package, place it. The part's SPICE model is looked up in the public KiCad-Spice-Library (an index of about 49,000 names ships with the app) and that one model is downloaded; the drawing follows from what the model is (op-amp, transistor, diode, else a box with the model's pins). The usual package and, for a transistor, the usual pin order of the number's family are offered first. A dual or quad op-amp goes into *My library* with a unit per amplifier and all its units are placed together (DA1.1, DA1.2, DA1.3). The chosen package goes to the board with the part. A number the library does not have is said plainly, with *I have the model file…* as the way on. The parts panel's search offers the dialog for a number it does not know.
+
+### Fixed
+- A part number with a saved package is honoured on the board even when no lookup knows the number.
+- A new part's designator counts the units already on the sheet (DA1.1 … makes the next one DA2).
+
 ## [3.201.0] - 2026-11-13
 
 ### Added
