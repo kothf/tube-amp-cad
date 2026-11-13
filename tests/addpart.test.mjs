@@ -92,3 +92,36 @@ test("the package chosen with the part reaches the board, with no table of part 
   // another number typed over it later: the saved package no longer belongs to it
   assert.notEqual((B.physicalParts({ parts: [{ id: "q", type: "spice", label: "VT1", params: { ...prm, partno: "2N3904" }, pins: L.LIB.spice.pins(c).map(p => ({ id: p.id, net: "n" + p.id })) }] })[0]).mpnFp, "TO-92-CBE");
 });
+
+test("a number the app has a part of its own for: that part is offered, whatever its ordering letters", () => {
+  const b = n => { const r = A.builtin(n); return r ? `${r.key} ${r.type}` : null; };
+  assert.deepEqual(["TL072CP", "2N3904BU", "2N2222", "LM317T", "LM317LZ", "LM7805CT", "L7812CV", "NE555P", "OPA2134PA", "LM386N-1", "1N4733A", "IRF540N", "BD139-16"].map(b),
+    ["TL072 opamp", "2N3904 npn", "2N2222A npn", "LM317 reg", "LM317L reg", "7805 reg", "7812 reg", "NE555 timer555", "OPA2134 opamp", "LM386 chipamp", "1N4733A zener", "IRF540 nmos", "BD139 npn"]);
+  // another part altogether, or another gain group, is not it
+  assert.deepEqual(["BC547C", "IRF5305", "TL0722", "LM35", "2N39", "XYZ1", ""].map(b), [null, null, null, null, null, null, null]);
+  assert.equal(A.builtin("2N3904").what, L.LIB.npn.name);
+});
+
+test("a transistor or a diode written as a small subcircuit is drawn as what it is, its pins by name or in the makers' order", () => {
+  const sub = (pins, body) => ({ kind: "subckt", pins: pins.split(" "), text: `.SUBCKT X ${pins}\n${body}\n.ENDS` });
+  assert.equal(F.symFor(sub("1 2 3", "M1 9 7 8 8 MM\nRG 2 7 4\nD1 3 1 MD\n.MODEL MM NMOS LEVEL=1 VTO=3\n.MODEL MD D IS=1e-12")), "nmos");
+  assert.equal(F.symFor(sub("1 2 3", "M1 9 7 8 8 MM\n.MODEL MM PMOS LEVEL=1 VTO=-3")), "pmos");
+  assert.equal(F.symFor(sub("1 2 3", "Q1 1 2 4 QA\nQ2 1 4 3 QA 4\nR1 2 4 8k\n.MODEL QA NPN BF=100")), "npn");
+  assert.equal(F.symFor(sub("1 2 3", "Q1 1 2 3 QA\n.MODEL QA PNP BF=100")), "pnp");
+  assert.equal(F.symFor(sub("1 2", "D1 1 2 DF\nDZ 3 1 DR\nVZ 2 3 3.7\n.MODEL DF D IS=1e-12\n.MODEL DR D IS=1e-14")), "diode");
+  assert.equal(F.symFor(sub("1 2 3", "X1 1 2 3 OTHER")), "box", "another subcircuit inside: not a lone device");
+  assert.equal(F.symFor(sub("1 2 3", "Q1 1 2 3 QA\nM1 1 2 3 3 MM\n.MODEL QA NPN\n.MODEL MM NMOS")), "box");
+  assert.equal(F.symFor({ kind: "vdmos", pins: ["D", "G", "S"], text: ".model P1 VDMOS(pchan Vto=-3 Kp=5)" }), "pmos", "a P-channel power MOSFET");
+  assert.equal(F.symFor({ kind: "vdmos", pins: ["D", "G", "S"], text: ".model N1 VDMOS(Vto=3 Kp=5)" }), "nmos");
+  assert.deepEqual(F.mapFor({ pins: ["1", "2", "3"] }, ["C", "B", "E"]), ["C", "B", "E"]);
+  assert.deepEqual(F.mapFor({ pins: ["e", "b", "c"] }, ["C", "B", "E"]), ["E", "B", "C"]);
+  assert.deepEqual(F.mapFor({ pins: ["drain", "gate", "source"] }, ["D", "G", "S"]), ["D", "G", "S"]);
+  assert.deepEqual(F.mapFor({ pins: ["K", "A"] }, ["A", "K"]), ["K", "A"]);
+});
+
+test("LTspice's lateral PNP (LPNP) is read as a PNP, so a model that uses it is simulated", () => {
+  const text = ".SUBCKT LAT c b e\nQ1 c b e 0 PN\n.model PN LPNP(BF=25 Rb=250)\n.ENDS";
+  const flat = globalThis.SpiceNet.flat(text, "LAT");
+  assert.ok(flat, "flattened without an error");
+  assert.deepEqual(["2N2222A", "BC108B", "2N2907A"].map(n => A.usualCase(n, "bjt")), ["TO-18", "TO-18", "TO-18"]);
+});

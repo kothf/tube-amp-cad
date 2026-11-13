@@ -288,7 +288,8 @@ model. *Parts library…* in the panel opens it.
   (an index of about 49,000 names ships with the app, `spice-index.json`; the
   one model's file is downloaded when you add the part). The drawing follows
   from what the model is; a dual or quad op-amp becomes a library part with a
-  unit per amplifier. No model for the number: the dialog says so and takes
+  unit per amplifier. A number the app has built in (2N3904, TL072, LM317T,
+  NE555P) is offered as the built-in part first. No model for the number: the dialog says so and takes
   the maker's file from you instead.
 
 - **From KiCad's libraries:** *Add from KiCad files…* reads symbol libraries

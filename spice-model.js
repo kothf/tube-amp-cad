@@ -77,7 +77,7 @@
       let body = m[3].trim(), type = m[2]; if (body[0] === "(") body = body.slice(1).replace(/\)\s*$/, "");
       const p = {}, tk = tokens(body.replace(/,/g, " ")); assignments(tk, p);
       tk.forEach(t => { if (!t.includes("=") && /^[a-z_]\w*$/i.test(t)) p[t.toLowerCase()] = "1"; });   // a flag: VDMOS's pchan
-      into[m[1].toLowerCase()] = { type: type.toLowerCase(), p };
+      into[m[1].toLowerCase()] = { type: type.toLowerCase().replace(/^lpnp$/, "pnp"), p };   // LTspice's lateral PNP is a PNP here
     };
     L.forEach(line => {
       const s = line.s, low = s.toLowerCase();
