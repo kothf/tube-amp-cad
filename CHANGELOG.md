@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.193.0] - 2026-11-13
+
+### Added
+- **SPICE part: any part from its maker's SPICE model.** A part the library does not have (another op-amp, a regulator, a power MOSFET, a driver IC, a transistor, a diode) now runs on the model its maker publishes. Place **SPICE part** (Parts → Integrated circuits), press **Model…** in its inspector and paste the model or open the file (`.lib`, `.mod`, `.cir` …). The model is turned into the simulator's own elements, so the part runs together with the valves in everything the program does: live simulation, steady state, tolerance runs, Tune, the instruments. No second simulator, no setting to choose.
+- **What a model may hold:** `.SUBCKT … .ENDS` with subcircuits inside subcircuits, `PARAMS:`, `.PARAM`, `.FUNC`, or a lone `.MODEL`. Elements: R, C, L and coupled inductors (`K`), DC sources, diodes (series resistance, breakdown), bipolar transistors (Gummel-Poon with the leakage terms ISE / ISC and base, emitter and collector resistance), MOSFETs (levels 1 to 3 as the square law, LTspice's `VDMOS`), JFETs, the controlled sources `E G F H` (linear, `VALUE={…}`, `TABLE`, `POLY`), behavioural `B` sources with `V()` and `I()`, and the switches `S` and `W`. PSpice, LTspice and ngspice spellings are read.
+- **The dialog:** a file of many parts lists them (with a Find box for long files) and keeps only the one picked and what it needs. A lone transistor or diode model takes that device's symbol; a subcircuit of five pins is offered as an op-amp in the usual pin order; anything else is a box with the model's pins, whose names can be changed. Each pin of the model is set to a pin of the symbol, to ground or to nothing. What the model leaves out is listed (junction capacitances at their zero-bias values, transit times).
+- **What is refused, with the reason:** `LAPLACE` and frequency tables, transmission lines, digital (`A`) devices, BSIM MOSFETs (level 4 and up), expressions of time. A part without a model, or with one that cannot be simulated, shows in the Checks and is left out of the run.
+- **Board, files, export:** the model is saved inside the circuit file with the part. The SPICE export writes the part as one line and its model as it came. On the board the part takes a DIP-8 or SOIC-8 with the single op-amp's pinout (an op-amp), the usual transistor and diode cases, or a DIP in the model's pin order (a box); wire pads are always offered.
+- **The simulator's behavioural source** (element kind `B` in `sim-engine.js`): a current or a voltage that is any expression of node voltages and branch currents, in the operating point, the transient and the small-signal (Bode, noise) analyses.
+- **Checked against ngspice:** a bench of device models, sources, a switch, a table and a polynomial gives ngspice's operating point within 0.1 % (`tests/spicenet.test.mjs`). `npm run test:ngspice` now also runs 64 makers' op-amp models (Texas Instruments, Linear Technology, Analog Devices, Burr-Brown, Maxim, Motorola, Philips, JRC, National) as ×11 amplifiers in both simulators: 63 agree within 2 %, one (MAX407) is not solved yet and is marked so. The model files are not in this repository: the test reads them from the KiCad-Spice-Library project at a fixed commit. Of 283 well-known op-amp models tried while building this, 245 agree with ngspice, none gives a different answer, and ngspice itself cannot read the other 38.
+
+### Fixed
+- **Operating point of circuits with very steep linear stages.** Newton's step limit (25 V a step) was taken from every node, also from nodes that only resistors, capacitors and linear sources are on. Inside a maker's macromodel such a node can sit behind a gain of a million, and its huge first step held all the other nodes still, so the operating point was not found. The limit now looks only at nodes a nonlinear part is on. Circuits made of the program's own parts solve as before.
+- A diode model with a very large saturation current (IS of 0.1 A, as some macromodels use for ideal clamps) made the junction-voltage limiter take the logarithm of a negative number.
+- SPICE libraries: `$` inside a node name (PSpice's `$N_0001`) is no longer read as a comment; `|` and `&` in expressions, `.MODEL name (TYPE …)` and stray control characters in old files are read.
+
 ## [3.192.0] - 2026-11-12
 
 ### Added

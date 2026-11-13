@@ -1427,7 +1427,7 @@
     ["G", -40, 0, 0, 1], ["G1", -40, 0, 0, 1], ["G2", 40, -10, 0, -1], ["K", 0, 44, -1, 0], ["H", 10, 47, 0, 1]];
   // (a part with pinSpots of its own, an op-amp, brings them in the same form)
   function drawPinNumbers(c, sel) {
-    const def = LIB[c.type], nums = def.pinNumbers(c), ids = new Set(compPins(c).map(p => p.id).concat("H"));
+    const def = LIB[c.type], nums = def.pinNumbers(c) || {}, ids = new Set(compPins(c).map(p => p.id).concat("H"));
     ctx.save();
     ctx.font = "9px ui-monospace, Menlo, monospace";
     ctx.fillStyle = sel ? COL.bodySel : COL.value;
@@ -2025,6 +2025,19 @@
         imp.onclick = () => SpiceImport.open(done);
         el = document.createElement("div"); el.className = "tube-pick"; el.appendChild(sel); el.appendChild(imp);
       }
+      else if (f.kind === "spice") {
+        // a SPICE part's model: its name, and the dialog that takes one (spice-part.js)
+        const name = document.createElement("span"); name.className = "spice-name"; name.textContent = c.params.text ? c.params.name || c.params.sub : "none yet";
+        const btn = document.createElement("button"); btn.className = "btn"; btn.id = "btn-spice-model"; btn.textContent = "Model…";
+        btn.title = "Paste or open a SPICE model (a maker's .SUBCKT or .MODEL), choose its symbol and say which pin is which";
+        btn.onclick = () => SpicePart.open(c.params, r => {
+          // a new symbol has other pins: the wires stay where they are, the label takes the symbol's class of letter
+          const was = c.params.sym; Object.assign(c.params, r);
+          if (was !== r.sym) { const def = LIB.spice, cls = def.prefixFor(c); if (c.label && !c.label.startsWith(cls)) c.label = nextLabel(cls); }
+          S.topo = null; commit(); updateInspector(); setStatus("ok", `${c.label}: model ${r.sub} set`);
+        });
+        el = document.createElement("div"); el.className = "tube-pick"; el.appendChild(name); el.appendChild(btn);
+      }
       const r = row(f.label + (f.unit && f.kind !== "range" ? ` (${f.unit})` : ""), el, f.wide || f.kind === "tube");
       if (window.Hints) Hints.attach(r.firstChild, Hints.field(c.type, f.key) || Hints.label(f.label), f.label);
       host.appendChild(r);
@@ -2173,6 +2186,13 @@
       if (na !== undefined && na === nb && T.pinConnected.get(c.id + ":" + a)) shorted.push(`${c.label}(${a}–${b})`);
     }));
     if (shorted.length) issues.push("Shorted by wiring: " + shorted.join(", "));
+    // SPICE parts: one without a model, or with a model the simulator cannot run, is left out
+    S.comps.forEach(c => {
+      if (c.type !== "spice") return;
+      if (!c.params.text) { issues.push(`${c.label} has no SPICE model yet (select it, then Model…): it is left out of the simulation.`); return; }
+      try { window.SpiceNet.flat(c.params.text, c.params.sub).warnings.forEach(w => issues.push(`${c.label} (${c.params.sub}): ${w}.`)); }
+      catch (e) { issues.push(`${c.label}: the model ${c.params.sub} cannot be simulated (${e.message}): the part is left out.`); }
+    });
     if (S.sim.error) issues.push(S.sim.error);
     (S.sim.warnings || []).forEach(w => issues.push(w));
     S.comps.forEach(c => { if (c.type !== "opt_cat") return; const i = otDcCurrent(c), m = CadLib.OUTPUT_TX[c.params.model]; if (i !== null && m && i * 1000 > m.ma) issues.push(`${c.label} (${m.name}) carries ${(i * 1000).toFixed(0)} mA DC, more than its ${m.ma} mA rating.`); });
@@ -2894,8 +2914,17 @@
     const nl = buildNetlist();
     const nn = n => (n === 0 ? "0" : "N" + n);
     const lines = ["* Tube Amp CAD export — " + new Date().toISOString().slice(0, 10), "* Koren tube models as behavioural sources (LTspice and ngspice syntax)"];
-    const models = new Set();
+    const models = new Set(), spiceTexts = [];
     nl.elements.forEach(e => {
+      if (e.xref) {
+        // a SPICE part: one line, and its model as it came (once per model)
+        const x = e.xref, xc = S.comps.find(c => c.id === x.id), xid = x.id.replace(/[^A-Za-z0-9_]/g, "_"), xn = x.nodes.map(nn), key = "SPICE:" + x.sub.toLowerCase();
+        const text = (xc && xc.params.text || "").replace(/^\s*\.end\s*$/gim, "").trim();
+        if (!models.has(key)) { models.add(key); spiceTexts.push(`* ${xc ? xc.label + ": " : ""}the model of ${x.sub}, as it came`, text); }
+        if (x.kind === "subckt") lines.push(`X${xid} ${xn.join(" ")} ${x.sub}`);
+        else lines.push(`${{ d: "D", npn: "Q", pnp: "Q", njf: "J", pjf: "J" }[x.kind] || "M"}${xid} ${xn.join(" ")}${/mos$/.test(x.kind) ? " " + xn[2] : ""} ${x.sub}`);
+        x.open.forEach((k, i) => lines.push(`R${xid}_open${i} ${nn(k)} 0 1e9`));
+      }
       if (e.internal) return;   // inside a part that goes out as a subcircuit (a 555's divider)
       const id = (e.id || "X").replace(/[^A-Za-z0-9_]/g, "_");
       const nd = (e.nodes || []).map(nn);
@@ -3026,6 +3055,7 @@
         }
       }
     });
+    lines.push(...spiceTexts);
     const f = signalFreq() || 1000;
     // the print step also as the time step: ngspice refuses a time step of 0 (LTspice takes it)
     const step = (1 / f / 200).toPrecision(3);

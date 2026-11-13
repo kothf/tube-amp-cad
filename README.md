@@ -220,6 +220,40 @@ Paste the `.SUBCKT … .ENDS` text or open the file.
 - **Checked:** Koren's published 12AX7 model gives the same currents as the
   built-in Koren equations with the same parameters.
 
+### Any part from a maker's SPICE model (the SPICE part)
+
+A part the library does not have (another op-amp, a regulator, a power
+MOSFET, a transistor, a diode) runs on the model its maker publishes. Place
+*SPICE part* (Integrated circuits), press *Model…* in its inspector and paste
+the model or open the file.
+
+- **One simulator.** The model is turned into the simulator's own elements,
+  so the part runs with the valves in everything the program does: live
+  simulation, steady state, tolerance runs, Tune, the instruments.
+- **What it reads:** `.SUBCKT … .ENDS` (nested subcircuits, `PARAMS:`,
+  `.PARAM`, `.FUNC`) or a lone `.MODEL`; R, C, L, coupled inductors (`K`), DC
+  sources, diodes (series resistance, breakdown), bipolar transistors
+  (Gummel-Poon with leakage terms and terminal resistances), MOSFETs (levels
+  1 to 3 as the square law, LTspice's `VDMOS`), JFETs, controlled sources
+  `E G F H` (linear, `VALUE={…}`, `TABLE`, `POLY`), behavioural `B` sources
+  with `V()` and `I()`, switches `S` and `W`; PSpice, LTspice and ngspice
+  spellings.
+- **Symbol and pins:** a lone transistor or diode model takes that device's
+  symbol; five pins are offered as an op-amp in the usual order; anything
+  else is a box with the model's pins. Each pin of the model is set to a pin
+  of the symbol, to ground or to nothing.
+- **What it refuses, with the reason:** `LAPLACE` and frequency tables,
+  transmission lines, digital (`A`) devices, BSIM MOSFETs, expressions of
+  time. Junction capacitances stay at their zero-bias values, and the dialog
+  says so.
+- **Where it's kept:** inside the circuit file. The SPICE export writes the
+  part as one line with its model as it came; the board gives it a DIP-8 /
+  SOIC-8, a transistor or diode case, or a DIP in the model's pin order.
+- **Checked:** a bench of device models, sources, a switch, a table and a
+  polynomial gives ngspice's operating point within 0.1 %
+  (`tests/spicenet.test.mjs`), and `npm run test:ngspice` runs a set of
+  makers' models against ngspice (`tests/models.mjs`).
+
 ### Examples
 
 **File ▾ → Gallery…** opens circuits drawn from published sources and compared

@@ -506,6 +506,14 @@
     "Use a tube model from Koren, Ayumi, Duncan, Reefman or a maker's library": "Модель лампы от Корена, Ayumi, Дункана, Рифмана или из библиотеки производителя",
     "paste or open its .SUBCKT": "вставьте или откройте её .SUBCKT",
     "Import SPICE model…": "Импорт SPICE-модели…",
+    "Any part with a SPICE model": "Любая деталь со SPICE-моделью", "SPICE part (a maker's model)": "SPICE-деталь (модель производителя)", "SPICE part": "SPICE-деталь",
+    "Model…": "Модель…", "none yet": "пока нет", "no model": "нет модели",
+    "Paste or open a SPICE model (a maker's .SUBCKT or .MODEL), choose its symbol and say which pin is which": "Вставьте или откройте SPICE-модель (.SUBCKT или .MODEL производителя), выберите обозначение и укажите, какой вывод какой",
+    "No model yet: press Model… and paste or open a SPICE model (a .SUBCKT or a .MODEL from a maker's file). It is simulated as written.": "Модели пока нет: нажмите «Модель…» и вставьте или откройте SPICE-модель (.SUBCKT или .MODEL из файла производителя). Она считается как написана.",
+    "SPICE part: its model": "SPICE-деталь: модель", "Open a model file…": "Открыть файл модели…", "Part in the file": "Деталь в файле", "Symbol": "Обозначение",
+    "Box with the model's pins": "Прямоугольник с выводами модели", "Use this model": "Взять эту модель", "Not connected": "Не подключён",
+    "A file may hold many parts: the one this part is": "В файле может быть много деталей: какая из них эта", "The name drawn in the box": "Имя, которое пишется в прямоугольнике",
+    "Put the model in the part (it is saved with the circuit)": "Поставить модель в деталь (сохраняется вместе со схемой)", "Paste a model first": "Сначала вставьте модель", "Give it a name": "Дайте ей имя",
     "Heater DC potential (V)": "Потенциал накала (В)",
     "Va (anode–cathode)": "Va (анод–катод)",
     "Vgk (bias)": "Vgk (смещение)",
@@ -2132,6 +2140,14 @@
     [/^Amass (XT\S+) power connector, (right-angle, mouth at the bottom|vertical|solder cups upright in the board)(\.?)$/, (m, k, how, dot) => `Силовой разъём Amass ${k}, ${{ "right-angle, mouth at the bottom": "угловой, гнездом вниз", vertical: "вертикальный", "solder cups upright in the board": "чашками под пайку стоя в плату" }[how]}${dot}`],
     [/^DIP-(\d+), 2\.54 mm pitch, rows 7\.62 mm apart \(pin 1 square, the notch at the top\)(\.?)$/, "DIP-$1, шаг 2,54 мм, ряды через 7,62 мм (вывод 1 квадратный, ключ сверху)$2"],
     [/^needs ([\d.]+) mm$/, "нужно $1 мм"],
+    // SPICE parts (cad-components.js LIB.spice, spice-part.js, the checks)
+    [/^SPICE (subcircuit|model) (\S+), simulated as written: (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `SPICE-${k === "model" ? "модель" : "подсхема"} ${n}, считается как написана: элементов ${e}, узлов ${nd}.${rest}`],
+    [/^(Subcircuit|Model) (\S+): (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `${k === "Model" ? "Модель" : "Подсхема"} ${n}: элементов ${e}, узлов ${nd}.${rest ? " Пять выводов: принята за ОУ в обычном порядке (неинвертирующий вход, инвертирующий вход, V+, V−, выход); сверьте с комментарием модели." : ""}`],
+    [/^The model cannot be simulated: (.+)\. The part is left out of the simulation\.$/, "Модель нельзя посчитать: $1. Деталь исключена из расчёта."],
+    [/^(\S+) has no SPICE model yet \(select it, then Model…\): it is left out of the simulation\.$/, "У $1 пока нет SPICE-модели (выделите деталь и нажмите «Модель…»): она исключена из расчёта."],
+    [/^(\S+): the model (\S+) cannot be simulated \((.+)\): the part is left out\.$/, "$1: модель $2 нельзя посчитать ($3): деталь исключена."],
+    [/^(\d+) parts? in the text$/, "Деталей в тексте: $1"],
+    [/^(\S+): model (\S+) set$/, "$1: модель $2 поставлена"],
   ];
   root.I18N_RU = { text, patterns };
 })(window);

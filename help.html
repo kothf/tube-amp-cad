@@ -307,6 +307,17 @@
   <li><b>Where it is kept:</b> in the browser and inside every circuit file that uses it, so the file opens on another computer. The curve tracer shows it, and the SPICE export writes the subcircuit as imported.</li>
 </ul>
 
+<h3 id="spice-part">5.4 Any part from a maker's SPICE model (the SPICE part)</h3>
+<p>A part the library does not have (another op-amp, a regulator, a power MOSFET, a driver IC, a transistor or a diode) can run on the model its maker publishes. Place <span class="ui">SPICE part</span> (Integrated circuits), select it and press <span class="ui">Model…</span>: paste the model's text or open the file (<code>.lib</code>, <code>.mod</code>, <code>.cir</code>…). The part is simulated by this simulator, together with the valves: live simulation, steady state, tolerance runs, Tune and the instruments all work on it.</p>
+<ul>
+  <li><b>What it reads:</b> a <code>.SUBCKT … .ENDS</code> with whatever it holds (subcircuits inside subcircuits, <code>PARAMS:</code>, <code>.PARAM</code>, <code>.FUNC</code>), or a lone <code>.MODEL</code>. Elements: R, C, L and coupled inductors (<code>K</code>), DC sources, diodes with series resistance and breakdown, bipolar transistors (Gummel–Poon with its leakage terms and base, emitter and collector resistance), MOSFETs (levels 1 to 3 as the square law, and LTspice's <code>VDMOS</code>), JFETs, the controlled sources <code>E G F H</code> (linear, <code>VALUE={…}</code>, <code>TABLE</code>, <code>POLY</code>), behavioural <code>B</code> sources with <code>V()</code> and <code>I()</code>, and the switches <code>S</code> and <code>W</code>. PSpice, LTspice and ngspice spellings are all taken.</li>
+  <li><b>A file of many parts:</b> pick the one you want under <span class="ui">Part in the file</span> (a Find box appears for long files). Only that part and what it needs is kept.</li>
+  <li><b>Symbol and pins.</b> A lone transistor or diode model takes that device's symbol. A subcircuit of five pins is offered as an op-amp in the usual order (non-inverting input, inverting input, V+, V−, output): check it against the comment at the top of the model, and set each pin of the model to the symbol's pin it is, to ground or to nothing. Any other part is a box with the model's pins down its sides; the names drawn can be changed.</li>
+  <li><b>What is not simulated,</b> and said when you load the model: <code>LAPLACE</code> and frequency tables, transmission lines, digital (<code>A</code>) devices, BSIM MOSFETs (level 4 and up) and expressions of time. Such a model is refused with the reason. Simplifications that change little at audio frequencies are listed too: junction capacitances stay at their zero-bias values, transit times and noise parameters are not used, a signal source inside the model is taken at its DC value.</li>
+  <li><b>Accuracy:</b> the same file gives the same operating point here as in ngspice (the tests hold device models within 0.3 % and compare makers' op-amp models with ngspice). A model that cannot be solved shows in the Checks, and the part is left out of the run.</li>
+  <li><b>Where it is kept:</b> inside the circuit file, with the part. The SPICE export writes the part as one line and the model as it came; on the board the part takes a DIP-8 or SOIC-8 (an op-amp), the usual transistor and diode cases, or a DIP in the model's pin order (a box), and wire pads are always offered.</li>
+</ul>
+
 <!-- ======================================================================= -->
 <h2 id="simulation">6. Simulation</h2>
 <h3 id="sim-what">6.1 What is simulated</h3>
@@ -448,6 +459,7 @@
   <li>Neon lamps and gas regulators that do not strike, or carry less than they need or more than their rating; a magic eye's target over its voltage.</li>
   <li>Interstage and input transformers: DC in an ungapped primary (feed it through a capacitor), or more than the gap allows.</li>
   <li>Power rails of one name with different voltages.</li>
+  <li>A SPICE part without a model, or with a model that cannot be simulated (it is left out of the run), and what a model leaves out.</li>
 </ul>
 <h3 id="checks-tube">9.2 Tube ratings</h3>
 <table>
@@ -929,6 +941,7 @@ Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
 
 <script src="tube-db.js?v=dev"></script>
 <script src="spice-model.js?v=dev"></script>
+<script src="spice-net.js?v=dev"></script>
 <script src="sim-engine.js?v=dev"></script>
 <script src="cad-components.js?v=dev"></script>
 <script src="hints.js?v=dev"></script>

@@ -914,6 +914,23 @@
       }
       ctx.setLineDash([]);
     },
+    // a part that runs a SPICE model (spice-net.js): the symbol picked for it, else a box with
+    // the model's pin names inside
+    spice(ctx, c) {
+      const sy = SPICE_SYMS[c.params.sym];
+      if (sy) { DRAW[sy.type](ctx, { type: "spice", params: {}, rot: c.rot, label: c.label }); return; }
+      const g = spiceBox(c), up = (t, x, y) => { ctx.save(); ctx.translate(x, y); if ((c.rot & 3) === 1 || (c.rot & 3) === 2) ctx.rotate(Math.PI); ctx.fillText(t, 0, 0); ctx.restore(); };
+      ctx.fillStyle = COL.fill; ctx.fillRect(-g.hw, -g.hh, 2 * g.hw, 2 * g.hh); ctx.strokeRect(-g.hw, -g.hh, 2 * g.hw, 2 * g.hh);
+      ctx.font = "7px ui-monospace, monospace"; ctx.textBaseline = "middle";
+      const flipped = (c.rot & 3) === 1 || (c.rot & 3) === 2;
+      g.pins.forEach(p => {
+        const left = p.x < 0;
+        line(ctx, [p.x, p.y, left ? -g.hw : g.hw, p.y]);
+        ctx.fillStyle = COL.value; ctx.textAlign = left !== flipped ? "left" : "right";
+        up(String(p.name).slice(0, g.chars), left ? -g.hw + 3 : g.hw - 3, p.y);
+      });
+      ctx.textBaseline = "alphabetic";
+    },
     // a part imported from KiCad that the app has no part of its own for: the symbol as KiCad draws
     // it (params.sym, kicad-import.js symData), its leads, pin names and numbers
     kicad(ctx, c) {
@@ -1706,6 +1723,41 @@
         out.push({ id: c.id + "#cgs", kind: "C", nodes: [g, s], c: m.cgs }, { id: c.id + "#cgd", kind: "C", nodes: [g, d], c: m.cgd });
       }
     };
+  }
+
+  // SPICE parts (LIB.spice): the symbols one can take, each with the pins of the part it is drawn
+  // as, in the order models usually list them; "box" is a rectangle with every pin of the model
+  const SPICE_SYMS = {
+    opamp: { type: "opamp", name: "Op-amp", pins: ["+", "-", "V+", "V-", "OUT"], prefix: "DA" },
+    npn: { type: "npn", name: "NPN transistor", pins: ["C", "B", "E"], prefix: "VT" }, pnp: { type: "pnp", name: "PNP transistor", pins: ["C", "B", "E"], prefix: "VT" },
+    nmos: { type: "nmos", name: "N-channel MOSFET", pins: ["D", "G", "S"], prefix: "VT" }, pmos: { type: "pmos", name: "P-channel MOSFET", pins: ["D", "G", "S"], prefix: "VT" },
+    njf: { type: "njf", name: "N-channel JFET", pins: ["D", "G", "S"], prefix: "VT" }, pjf: { type: "pjf", name: "P-channel JFET", pins: ["D", "G", "S"], prefix: "VT" },
+    diode: { type: "diode", name: "Diode", pins: ["A", "K"], prefix: "VD" }
+  };
+  // the symbol a lone device model takes (SpiceNet's kinds)
+  const SPICE_KIND_SYM = { d: "diode", npn: "npn", pnp: "pnp", nmos: "nmos", pmos: "pmos", vdmos: "nmos", njf: "njf", pjf: "pjf" };
+  // the box of a SPICE part: its pins down the left side, then down the right, and its size
+  function spiceBox(c) {
+    const names = (c && c.params.pinNames) || [], n = names.length, nl = Math.ceil(n / 2), nr = n - nl, rows = Math.max(nl, nr, 1);
+    const len = names.reduce((m, s) => Math.max(m, String(s).length), 2), chars = Math.min(len, 9), hw = Math.max(30, Math.ceil((chars * 4.3 + 8) / 10) * 10), hh = rows * 10;
+    const y = (i, k) => (i - (k - 1) / 2) * 20;
+    return { hw, hh, chars, pins: names.map((nm, i) => (i < nl ? { id: String(i + 1), x: -hw - 20, y: y(i, nl), name: nm } : { id: String(i + 1), x: hw + 20, y: y(i - nl, nr), name: nm })) };
+  }
+  // the engine's elements of a SPICE part, or the error its model gives
+  function spiceElements(c, net, alloc, out) {
+    const p = c.params, SN = root.SpiceNet;
+    if (!p.text || !SN) return null;
+    try {
+      const f = SN.flat(p.text, p.sub), map = p.map || [], open = [];
+      const nodes = f.pins.map((_, i) => { const m = map[i]; if (m === "0") return 0; if (m) return net(m); const k = alloc(); open.push(k); return k; });
+      const first = out.length;
+      SN.build({ text: p.text, sub: p.sub }, nodes, alloc, c.id, out);
+      // for the SPICE export, which writes the part as one line and its model as it came
+      if (out[first]) out[first].xref = { id: c.id, nodes, sub: f.name, kind: f.kind, open };
+      // a pin left open: a gigohm to ground, so that its node is never floating
+      open.forEach((k, i) => out.push({ id: `${c.id}#open${i}`, kind: "R", nodes: [k, 0], r: 1e9, internal: true }));
+      return null;
+    } catch (e) { return e.message || String(e); }
   }
 
   // JFET parts: drain up, gate left, source down. The channel is the engine's square-law FET
@@ -2940,6 +2992,38 @@
         out.push({ id: c.id + "#c", kind: "C", nodes: [net("1"), net("2")], c: m.c });
       }
     },
+    // A part that runs a SPICE model as written: a maker's .SUBCKT (an op-amp, a regulator, a power
+    // MOSFET) or a lone .MODEL (spice-net.js turns it into the simulator's own elements). params:
+    // name; text (the model), sub (which subcircuit or model in it); pinNames (the model's pins);
+    // sym (SPICE_SYMS, else a box); map (per model pin: the symbol's pin it is, "0" ground, "" open)
+    spice: {
+      name: "SPICE part", prefix: "DA", prefixFor: c => (SPICE_SYMS[c.params.sym] || {}).prefix || "DA", group: "Integrated circuits",
+      bbox: c => { const sy = c && SPICE_SYMS[c.params.sym]; if (sy) { const b = LIB[sy.type].bbox; return typeof b === "function" ? b() : b; } const g = spiceBox(c); return [-g.hw - 20, -g.hh, g.hw + 20, g.hh]; },
+      defaults: { name: "", text: "", sub: "", sym: "box", pinNames: ["1", "2", "3", "4"], map: ["1", "2", "3", "4"], pkg: "" },
+      pins: c => { const sy = c && SPICE_SYMS[c.params.sym]; return sy ? LIB[sy.type].pins({ params: {} }).filter(p => sy.pins.includes(p.id)) : spiceBox(c).pins; },
+      // the pads behind the pins: a box's in the model's pin order, 1 up
+      pinNumbers: c => {
+        const sym = c.params.sym;
+        // an op-amp: the single op-amp's 8-pin case; a diode: the band's pad first; a transistor: the
+        // footprint's own letters (null: board-core.js matches the pads by name)
+        if (sym === "opamp") return { "+": "3", "-": "2", "V+": "7", "V-": "4", OUT: "6" };
+        if (sym === "diode") return { K: "1", A: "2" };
+        if (SPICE_SYMS[sym]) return null;
+        return Object.fromEntries((c.params.pinNames || []).map((_, i) => [String(i + 1), String(i + 1)]));
+      },
+      value: c => c.params.name || c.params.sub || "no model",
+      fields: [{ key: "model", label: "Model", kind: "spice", wide: true }],
+      info: c => {
+        const p = c.params, SN = root.SpiceNet;
+        if (!p.text) return "No model yet: press Model… and paste or open a SPICE model (a .SUBCKT or a .MODEL from a maker's file). It is simulated as written.";
+        try {
+          const f = SN.flat(p.text, p.sub);
+          return `SPICE ${f.kind === "subckt" ? "subcircuit" : "model"} ${f.name}, simulated as written: ${f.els.length} element${f.els.length === 1 ? "" : "s"} on ${f.nNodes - 1} nodes. `
+            + (f.warnings.length ? f.warnings.join(". ") + "." : "");
+        } catch (e) { return `The model cannot be simulated: ${e.message}. The part is left out of the simulation.`; }
+      },
+      build: (c, net, alloc, out) => { spiceElements(c, net, alloc, out); }
+    },
     // A part imported from KiCad (File ▾ → Open… a .kicad_sch) that the app has no part of its own
     // for: it keeps KiCad's drawing and pins (params.sym) and its footprint on the board, joins its
     // nets, and is left out of the simulation
@@ -3015,7 +3099,8 @@
       { sub: "Power amplifiers" }, ["chipamp", null, "LM386 (low voltage, 0.5 W)"], ["chipamp", { model: "TDA2050" }, "TDA2050 (32 W)"], ["chipamp", { model: "LM3886" }, "LM3886 (68 W)"],
       { sub: "Timers" }, ["timer555", null, "NE555 timer"],
       { sub: "Regulators" }, ["reg", { model: "LM317" }, "LM317 adjustable"], ["reg", { model: "LM337" }, "LM337 adjustable, negative"],
-      ["reg", { model: "7812" }, "78xx fixed"], ["reg", { model: "7912" }, "79xx fixed, negative"], ["tl431", null, "TL431 shunt reference"]] },
+      ["reg", { model: "7812" }, "78xx fixed"], ["reg", { model: "7912" }, "79xx fixed, negative"], ["tl431", null, "TL431 shunt reference"],
+      { sub: "Any part with a SPICE model" }, ["spice", null, "SPICE part (a maker's model)"]] },
     { group: "Gas-discharge tubes", items: [["gasreg", null, "Voltage regulator 0A2 (150 V)"], ["gasreg", { model: "0B2" }, "Voltage regulator 0B2 (108 V)"], ["gasreg", { model: "0D3" }, "Voltage regulator 0D3 (153 V, octal)"],
       { sub: "Indicators" }, ["neon", null, "Neon lamp NE-2"], ["neon", { model: "NE-2H" }, "Neon lamp NE-2H (bright)"], ["eye", null, "Magic eye 6E5"], ["eye", { model: "6U5" }, "Magic eye 6U5 (remote cutoff)"],
       ["eye", { model: "EM84" }, "Magic eye EM84 (bar)"], ["eye", { model: "6E1P" }, "Magic eye 6E1P (noval fan)"], ["nixie", null, "Nixie tube IN-14"], ["lamp", null, "Pilot lamp #47 (6.3 V)"], ["lamp", { model: "60W" }, "Bulb 60 W 230 V (dim-bulb)"],
@@ -3433,5 +3518,5 @@
     return wrap;
   }
 
-  root.CadLib = { socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
+  root.CadLib = { SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);
