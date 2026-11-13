@@ -996,12 +996,12 @@
         let rhs = -I[t];
         const row = J[t];
         // an entry the row's own rounding hides is left out, as a finite difference would find it: one below
-        // 1e-14 of the row's largest, or one whose current over a microvolt is below the rounding of the
-        // row's current (1e-9 of it per volt). Kept, it ties the nodes together through a current known
-        // only to its rounding, and with currents far past a part's rating (an iterate on its way, or a
-        // curve swept too far) the solve then wobbles at that level and never converges
+        // 1e-14 of the row's largest, or, in a row carrying more than a kiloampere (an iterate on its way, or
+        // a curve swept far past any rating), one whose current over a microvolt is below the rounding of
+        // the row's current (1e-9 of it per volt). Kept there, it ties the nodes together through a current
+        // known only to its rounding, and the solve wobbles at that level and never converges
         let big = 0; for (let s = 0; s < m; s++) big = Math.max(big, Math.abs(row[s]));
-        const tiny = Math.max(1e-14 * big, 1e-9 * Math.abs(I[t]));
+        const tiny = Math.abs(I[t]) > 1e3 ? Math.max(1e-14 * big, 1e-9 * Math.abs(I[t])) : 0;
         for (let s = 0; s < m; s++) { const g = row[s]; if (g === 0 || Math.abs(g) < tiny) continue; addA(nodes[t], nodes[s], g); rhs += g * V0[s]; }
         addB(nodes[t], rhs);
       }
@@ -1290,13 +1290,13 @@
       }
       if (!isFinite(maxDv)) return { ok: false, x, error: "numerical overflow" };
       let vmax = 0; for (let i = 0; i < circ.nNodes - 1; i++) vmax = Math.max(vmax, Math.abs(x[i]));
-      const floor = 1e-4 + 5e-6 * vmax;
+      const floor = 1e-4 + 5e-6 * Math.min(vmax, 1e3);   // (a behavioural node at a megavolt must not loosen it for all)
       if (conv && iter > 0 && !limited) return { ok: true, x, iter };
       // Round-off floor: with hundreds of volts on some nodes the solution can
       // settle into a microvolt-level wobble that never meets the 1 µV test
       // (whether it does depends on node order). An update below 100 µV (and
-      // 5 ppm of the largest node voltage: a bridge's AC side, floating on
-      // junctions of a few milliohms, wobbles more) that has stopped shrinking
+      // 5 ppm of the largest node voltage, up to 1 kV: a bridge's AC side, floating
+      // on junctions of a few milliohms, wobbles more) that has stopped shrinking
       // for a few iterations is converged.
       if (maxDv < floor && lastDv !== null && maxDv > 0.5 * lastDv && !limited) { if (++stall >= 3) return { ok: true, x, iter }; }
       else stall = 0;
