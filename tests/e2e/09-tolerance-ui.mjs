@@ -3,9 +3,13 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
 
 // --- Tolerance runs (Monte Carlo) ---------------------------------------------------------
 {
-  cad.once("dialog", d => d.accept());
+  // the question comes only when the circuit before has unsaved edits: a handler nobody called must
+  // not wait for the next dialog (two handlers on one dialog: the second accept throws)
+  const yes = d => d.accept().catch(() => {});
+  cad.once("dialog", yes);
   const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
   await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^03-/.test(x.file))));
+  cad.off("dialog", yes);
   await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, s0, { timeout: 60000 });
   await cad.evaluate(() => TubeCAD.toggleBom(true, "tolerance"));
   for (const [id, v] of [["#tol-runs", "6"], ["#tol-seed", "42"]]) { await cad.fill(id, v); await cad.press(id, "Tab"); }
@@ -58,7 +62,7 @@ import { U, browser, cad, check, ctx, errors } from "./harness.mjs";
   await cad.keyboard.press("Escape");
   check(quick && await cad.evaluate(() => document.getElementById("help-modal").hidden), "Help ▾ → Quick help and shortcuts opens the help window, Esc closes it");
   // hover hints: an inspector field and a readout
-  cad.once("dialog", d => d.accept());
+  cad.once("dialog", d => d.accept().catch(() => {}));
   await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /gubin/.test(x.file))));
   await cad.waitForFunction(() => TubeCAD.state.sim.result && !TubeCAD.state.sim.busy && TubeCAD.state.comps.some(c => c.type === "tube"), null, { timeout: 60000 });
   await cad.evaluate(() => { const S = TubeCAD.state, t = S.comps.filter(c => c.type === "tube").pop(); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(t.id); TubeCAD.updateInspector(); });
