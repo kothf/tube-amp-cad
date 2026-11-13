@@ -13,9 +13,9 @@
    A lone .MODEL (a transistor or a diode from a maker's file) is wrapped as a part with
    that device's pins.
 
-   Not carried over, and said so in warnings: junction capacitances vary with voltage in
-   SPICE and are fixed at their zero-bias values here; transit times, temperature terms
-   and noise parameters are left out. Not supported (an error): LAPLACE and FREQ sources,
+   Junction capacitances follow the voltage across them (the engine's capAt); a transistor's
+   transit time counts in the small-signal analyses only. Not carried over: temperature terms
+   and noise parameters. Not supported (an error): LAPLACE and FREQ sources,
    transmission lines, BSIM MOSFETs, time-dependent expressions.
 
    build(spec, pinNodes, alloc, id) gives the engine's elements for one part of a circuit.
@@ -24,6 +24,9 @@
   "use strict";
   const SM = root.SpiceModel;
   const VT = 0.025852;
+  // The engine rounds a FET's turn-on over 50 mV for its own parts; a maker's model sets the
+  // gain of an input pair by a few tens of millivolts of overdrive, so here the corner is sharp.
+  const FET_S = 0.002;
   const DEVICE_PINS = { d: ["A", "K"], npn: ["C", "B", "E"], pnp: ["C", "B", "E"], nmos: ["D", "G", "S"], pmos: ["D", "G", "S"], vdmos: ["D", "G", "S"], njf: ["D", "G", "S"], pjf: ["D", "G", "S"] };
   const DEVICE_LINE = { d: "D1 A K", npn: "Q1 C B E", pnp: "Q1 C B E", nmos: "M1 D G S S", pmos: "M1 D G S S", vdmos: "M1 D G S", njf: "J1 D G S", pjf: "J1 D G S" };
   const DEVICE_NAME = { d: "diode", npn: "NPN transistor", pnp: "PNP transistor", nmos: "N-channel MOSFET", pmos: "P-channel MOSFET", vdmos: "power MOSFET", njf: "N-channel JFET", pjf: "P-channel JFET" };
@@ -299,13 +302,15 @@
 
       // --- devices ---------------------------------------------------------------
       function series(nm, a, r) { if (!(r > 0)) return a; const k = nNodes++; push({ name: nm, kind: "R", n: [a, k], r }); return k; }
-      function cap(nm, a, b, c) { if (c > 0 && a !== b) push({ name: nm, kind: "C", n: [a, b], c }); }
+      // a capacitor; a junction's (p side first) with its law: c is the zero-bias value, the engine
+      // takes it at the voltage across it (junc: { vj, m, fc })
+      function cap(nm, a, b, c, junc) { if (c > 0 && a !== b) push(junc ? { name: nm, kind: "C", n: [a, b], c, junc } : { name: nm, kind: "C", n: [a, b], c }); }
+      function junc(m, vj, mj, no, dvj, dm) { return { vj: mp(m, vj, dvj, no), m: mp(m, mj, dm, no), fc: mp(m, "fc", 0.5, no) }; }
       function diode(nm, a, k, m, area, no) {
         const is = mp(m, "is|js", 1e-14, no) * area, n = mp(m, "n", 1, no), rs = mp(m, "rs", 0, no) / area, bv = mp(m, "bv|vb|vrb", 0, no);
         const a2 = series(nm + "#rs", a, rs);
         push({ name: nm, kind: "D", n: [a2, k], is, n_: n, tt: mp(m, "tt", 0, no) || undefined });
-        const cj = mp(m, "cjo|cj0|cj", 0, no) * area; if (cj > 0) warn.add("Junction capacitances are fixed at their zero-bias values");
-        cap(nm + "#cj", a2, k, cj);
+        cap(nm + "#cj", a2, k, mp(m, "cjo|cj0|cj", 0, no) * area, junc(m, "vj|pb", "m|mj", no, 1, 0.5));
         if (bv > 0 && isFinite(bv)) {
           // reverse breakdown: a junction in series with a source, conducting IBV at BV
           const ibv = mp(m, "ibv", 1e-3, no) * area, mid = nNodes++, isb = 1e-14, nbv = mp(m, "nbv", 1, no);
@@ -321,13 +326,14 @@
         Object.keys(mdl).forEach(k => { if (mdl[k] === undefined) delete mdl[k]; });
         const rb = mp(m, "rb", 0, no) / area, re = mp(m, "re", 0, no) / area, rc = mp(m, "rc", 0, no) / area;
         const c2 = series(nm + "#rc", c, rc), b2 = series(nm + "#rb", b, rb), e2 = series(nm + "#re", e, re);
-        const el = { name: nm, kind: "BJT", n: [c2, b2, e2], model: mdl };
+        const el = { name: nm, kind: "BJT", n: [c2, b2, e2], model: mdl }, tf = mp(m, "tf", 0, no);
+        if (tf > 0) el.tf = tf;
         if (rb > 0 || re > 0 || rc > 0) el.ext = [c, b, e];
         push(el);
         const cje = mp(m, "cje", 0, no) * area, cjc = mp(m, "cjc", 0, no) * area;
-        if (cje > 0 || cjc > 0) warn.add("Junction capacitances are fixed at their zero-bias values");
-        if (mp(m, "tf", 0, no) > 0) warn.add("Transit times (TF, TR) are left out: the transistors are faster than the model's at high frequencies");
-        cap(nm + "#cje", b2, e2, cje); cap(nm + "#cjc", b2, c2, cjc);
+        if (tf > 0) warn.add("A transistor's transit time (TF) counts in the frequency response (Bode, noise), not in the waveform: fast edges come out a little faster than the model's");
+        const je = junc(m, "vje|pe", "mje|me", no, 0.75, 0.33), jc = junc(m, "vjc|pc", "mjc|mc", no, 0.75, 0.33);
+        if (pol > 0) { cap(nm + "#cje", b2, e2, cje, je); cap(nm + "#cjc", b2, c2, cjc, jc); } else { cap(nm + "#cje", e2, b2, cje, je); cap(nm + "#cjc", c2, b2, cjc, jc); }
       }
       function mos(nm, d, g, s, m, ip, no) {
         const vd = m.type === "vdmos";
@@ -341,7 +347,7 @@
         if (isNaN(kp)) { const uo = mp(m, "uo", 600, no), tox = mp(m, "tox", 1e-7, no); kp = uo * 1e-4 * 3.9 * 8.854e-12 / tox; }
         const beta = vd ? kp * mult : kp * (w / leff) * mult, vto = mp(m, "vto|vt0", 0, no);
         const d2 = series(nm + "#rd", d, mp(m, "rd", 0, no) / mult), s2 = series(nm + "#rs", s, mp(m, "rs", 0, no) / mult), g2 = series(nm + "#rg", g, mp(m, "rg", 0, no));
-        push({ name: nm, kind: "MOS", n: [d2, g2, s2], model: { pol, vto, kp: beta, lambda: mp(m, "lambda", 0, no) } });
+        push({ name: nm, kind: "MOS", n: [d2, g2, s2], model: { pol, vto, kp: beta, lambda: mp(m, "lambda", 0, no), s: FET_S } });
         if (vd) {
           // the body diode and the capacitances of LTspice's VDMOS
           const is = mp(m, "is", 1e-14, no), bd = series(nm + "#rb", pol > 0 ? s2 : d2, mp(m, "rb", 0, no));
@@ -357,9 +363,10 @@
         const d2 = series(nm + "#rd", d, mp(m, "rd", 0, no) / area), s2 = series(nm + "#rs", s, mp(m, "rs", 0, no) / area);
         // SPICE's JFET: VTO is negative for both polarities; the engine's FET takes the N-channel's sign times pol
         const vto = -Math.abs(mp(m, "vto", -2, no)) * pol;
-        push({ name: nm, kind: "MOS", n: [d2, g, s2], model: { pol, vto, kp: 2 * beta, lambda: mp(m, "lambda", 0, no), jf: { beta, is } } });
+        push({ name: nm, kind: "MOS", n: [d2, g, s2], model: { pol, vto, kp: 2 * beta, lambda: mp(m, "lambda", 0, no), s: FET_S, jf: { beta, is } } });
         push({ name: nm + "#gs", kind: "D", n: pol > 0 ? [g, s2] : [s2, g], is, n_: mp(m, "n", 1, no) }, { name: nm + "#gd", kind: "D", n: pol > 0 ? [g, d2] : [d2, g], is, n_: mp(m, "n", 1, no) });
-        cap(nm + "#cgs", g, s2, mp(m, "cgs", 0, no) * area); cap(nm + "#cgd", g, d2, mp(m, "cgd", 0, no) * area);
+        const jg = junc(m, "pb", "m", no, 1, 0.5), cgs = mp(m, "cgs", 0, no) * area, cgd = mp(m, "cgd", 0, no) * area;
+        if (pol > 0) { cap(nm + "#cgs", g, s2, cgs, jg); cap(nm + "#cgd", g, d2, cgd, jg); } else { cap(nm + "#cgs", s2, g, cgs, jg); cap(nm + "#cgd", d2, g, cgd, jg); }
       }
     }
     expand(top, top.pins.map((_, i) => i + 1), SM.makeScope(lib, top, overrides), "", 0);

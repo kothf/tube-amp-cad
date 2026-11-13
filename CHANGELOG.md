@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.196.0] - 2026-11-13
+
+### Added
+- **SPICE parts: the frequency response is checked against ngspice.** `npm run test:ngspice` now compares gain and phase from 10 Hz to 1 MHz for each of the 64 makers' op-amp models (as a ×11 amplifier), after the output voltage: all agree within 0.1 dB and 1° up to 20 kHz and within 0.3 dB and 3° up to 1 MHz. A bench of small amplifiers (`tests/fixtures/acdev.lib`) holds a diode's, a transistor's and a JFET's capacitances to ngspice within 0.02 dB up to 10 MHz.
+- **Junction capacitances in a SPICE model follow the voltage across them** (CJO / VJ / M, CJE, CJC, a JFET's CGS and CGD, with FC), in the waveform and in the Bode and Noise windows. They used to stay at their zero-bias values, which made a reverse-biased junction several times too large.
+- **A transistor's transit time (TF)** in a SPICE model counts in the frequency response (Bode, noise) with its collector-voltage term, as in SPICE. It is still left out of the waveform, and the dialog says so.
+
+### Fixed
+- **JFET and MOSFET inputs in makers' models had the wrong gain near pinch-off.** The simulator rounds a FET's turn-on over 50 mV, which is right for a power stage but changed the gain of an input pair biased at a few tens of millivolts of overdrive: the LM833 and MC33078 came out 0.8 dB off at 1 MHz, the LT1113 1.3 dB. A SPICE part's FETs now keep the model's sharp square law. The library's own FETs are unchanged.
+
 ## [3.195.0] - 2026-11-13
 
 ### Added
