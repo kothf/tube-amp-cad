@@ -6,12 +6,41 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-<<<<<<< HEAD
+## [3.193.0] - 2026-11-13
+
+### Added
+- **SPICE part: any part from its maker's SPICE model.** A part the library does not have (another op-amp, a regulator, a power MOSFET, a driver IC, a transistor, a diode) now runs on the model its maker publishes. Place **SPICE part** (Parts → Integrated circuits), press **Model…** in its inspector and paste the model or open the file (`.lib`, `.mod`, `.cir` …). The model is turned into the simulator's own elements, so the part runs together with the valves in everything the program does: live simulation, steady state, tolerance runs, Tune, the instruments. No second simulator, no setting to choose.
+- **What a model may hold:** `.SUBCKT … .ENDS` with subcircuits inside subcircuits, `PARAMS:`, `.PARAM`, `.FUNC`, or a lone `.MODEL`. Elements: R, C, L and coupled inductors (`K`), DC sources, diodes (series resistance, breakdown), bipolar transistors (Gummel-Poon with the leakage terms ISE / ISC and base, emitter and collector resistance), MOSFETs (levels 1 to 3 as the square law, LTspice's `VDMOS`), JFETs, the controlled sources `E G F H` (linear, `VALUE={…}`, `TABLE`, `POLY`), behavioural `B` sources with `V()` and `I()`, and the switches `S` and `W`. PSpice, LTspice and ngspice spellings are read.
+- **The dialog:** a file of many parts lists them (with a Find box for long files) and keeps only the one picked and what it needs. A lone transistor or diode model takes that device's symbol; a subcircuit of five pins is offered as an op-amp in the usual pin order; anything else is a box with the model's pins, whose names can be changed. Each pin of the model is set to a pin of the symbol, to ground or to nothing. What the model leaves out is listed (junction capacitances at their zero-bias values, transit times).
+- **What is refused, with the reason:** `LAPLACE` and frequency tables, transmission lines, digital (`A`) devices, BSIM MOSFETs (level 4 and up), expressions of time. A part without a model, or with one that cannot be simulated, shows in the Checks and is left out of the run.
+- **Board, files, export:** the model is saved inside the circuit file with the part. The SPICE export writes the part as one line and its model as it came. On the board the part takes a DIP-8 or SOIC-8 with the single op-amp's pinout (an op-amp), the usual transistor and diode cases, or a DIP in the model's pin order (a box); wire pads are always offered.
+- **The simulator's behavioural source** (element kind `B` in `sim-engine.js`): a current or a voltage that is any expression of node voltages and branch currents, in the operating point, the transient and the small-signal (Bode, noise) analyses.
+- **Checked against ngspice:** a bench of device models, sources, a switch, a table and a polynomial gives ngspice's operating point within 0.1 % (`tests/spicenet.test.mjs`). `npm run test:ngspice` now also runs 64 makers' op-amp models (Texas Instruments, Linear Technology, Analog Devices, Burr-Brown, Maxim, Motorola, Philips, JRC, National) as ×11 amplifiers in both simulators: 63 agree within 2 %, one (MAX407) is not solved yet and is marked so. The model files are not in this repository: the test reads them from the KiCad-Spice-Library project at a fixed commit. Of 283 well-known op-amp models tried while building this, 245 agree with ngspice, none gives a different answer, and ngspice itself cannot read the other 38.
+
+### Fixed
+- **Operating point of circuits with very steep linear stages.** Newton's step limit (25 V a step) was taken from every node, also from nodes that only resistors, capacitors and linear sources are on. Inside a maker's macromodel such a node can sit behind a gain of a million, and its huge first step held all the other nodes still, so the operating point was not found. The limit now looks only at nodes a nonlinear part is on. Circuits made of the program's own parts solve as before.
+- A diode model with a very large saturation current (IS of 0.1 A, as some macromodels use for ideal clamps) made the junction-voltage limiter take the logarithm of a negative number.
+- SPICE libraries: `$` inside a node name (PSpice's `$N_0001`) is no longer read as a comment; `|` and `&` in expressions, `.MODEL name (TYPE …)` and stray control characters in old files are read.
+
+## [3.192.0] - 2026-11-12
+
+### Added
+- **Board outline sketch**: the board no longer has to be a rectangle. Construct ▾ → Board outline sketch… (or Board setup → Sketch the outline…, or a double-click on the board's edge) opens the outline as a sketch on the board. Tools: Select (S), Line (L), Arc through three points (A), Circle (C), Rectangle (R), regular Polygon (P), Slot (O) and Fillet (F); lengths, radii, angles and the number of sides can be typed while drawing. Corners drag with the lines that meet there, the mark in the middle of an arc bends it, a double-click on a line adds a corner, Del removes what is selected. The sketch has its own Undo and Redo; Finish makes it the board, Cancel leaves the board as it was.
+- **Cut-outs**: a closed shape drawn inside the edge is a cut-out (a window, a slot for a transformer's lugs, a round opening). Any number of them.
+- **Round board** in Board setup: Shape → Round and a diameter.
+- The sketch is checked as it is drawn: an open end, lines that cross or touch, a cut-out inside another one are named in the bar (a loose end is red), and Finish waits until the shape closes.
+- **Everything follows the shape**: the copper pours and their clearance to the edge and to each cut-out, the design-rule check (copper, holes and parts by the real edge), both routers (cut-outs are closed to tracks in the built-in one and in Freerouting), snapping and construction geometry (each edge and arc of the outline can be offset and referenced), the silkscreen, the 3D view and the STEP model (true arcs and cylinders), the printed and SVG drawings.
+- **Gerber**: the Edge_Cuts file has one closed contour for the edge and one per cut-out; pours are cut back from them; silkscreen is clipped to the board. **KiCad**: the outline is exported as lines and arcs on Edge.Cuts, and a KiCad board with a shaped outline opens with its shape and cut-outs.
+- Tests of the Gerber export for round, polygon and cut-out boards: the outline contours close and lie on the true edge, no copper or silkscreen outside the board or inside a cut-out, drills inside the board; the same files pass the Gerber fabrication check.
+
+### Changed
+- A rectangular board, with or without rounded corners, is written and exported exactly as before.
+
 ## [3.191.0] - 2026-11-12
 
 ### Added
 - **Vaults in Safari and Firefox, read only.** These browsers cannot write into a folder, but they can read one you pick. In File ▾ → Revisions… → Kept in → A folder on this computer, **Choose folder…** now opens the browser's folder picker there: pick a vault made in Chrome or Edge (or one project's folder) and its projects and revisions are listed with their pictures, opened, compared on the sheet and with each other, and downloaded. Save revision, New project, milestones, Restore and Delete are off or say that saving needs Chrome or Edge. The folder is asked for again after the page is reloaded. The project manager reads a vault the same way.
-=======
+
 ## [3.190.0] - 2026-11-11
 
 ### Changed
@@ -43,7 +72,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - **Zooming and panning a big circuit no longer stutters.** With the voltages, currents and the animation on, a large schematic (the 50 W CFP amplifier, example 17) took longer to draw than a wheel notch lasts, so the view froze and jumped. Now the wheel (and dragging the view with the middle button or Space) stretches and moves the picture last drawn, and the sheet is drawn sharp again once the view rests (160 ms; on a long zoom it is redrawn on the way when the picture runs out). On a CPU slowed four times, a wheel step went from 66 ms to 17 ms.
 - The sheet draws only what is on screen (parts, wires, stickers, animated dots); the grid, junctions and each wire's dots are filled in one go; the zoom readout no longer makes the hover hints rescan the page on every notch; dragging the view no longer places the stickers anew on every move.
->>>>>>> origin/main
 
 ## [3.187.0] - 2026-11-10
 

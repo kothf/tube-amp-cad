@@ -132,7 +132,7 @@
     function offsetD(pk, u) {
       const c = pk.c, s = sol();
       if (pk.id === "@outline" && (pk.k === undefined || pk.k === null)) return B.edgeDist(u[0], H() - u[1], S.board.outline);
-      if (c.t === "C") { const d = Math.hypot(u[0] - c.cx, u[1] - c.cy) - c.r; return pk.id === "@outline" ? -d : d; }
+      if (c.t === "C") { const d = Math.hypot(u[0] - c.cx, u[1] - c.cy) - c.r; return pk.id === "@outline" && !c.cv ? -d : d; }
       const len = Math.hypot(c.x2 - c.x1, c.y2 - c.y1), left = ((c.x2 - c.x1) * (u[1] - c.y1) - (c.y2 - c.y1) * (u[0] - c.x1)) / len;
       if (typeof pk.id === "string" && pk.id.startsWith("@ko:")) { const ko = S.board.keepouts.find(q => q.id === pk.id.slice(4)); return ko && s.koTurn(ko) > 0 ? -left : left; }
       return left;
@@ -430,7 +430,7 @@
     }
     function lineRefs() {
       const s = sol(), out = [["", "the X axis"]];
-      s.outline.forEach((c, k) => { if (c && c.t === "L") out.push([`@outline|${k}`, `board ${K.EDGE_NAMES[k]}`]); });
+      s.outline.forEach((c, k) => { if (c && c.t === "L") out.push([`@outline|${k}`, `board ${K.outlineName(S.board.outline, k, c)}`]); });
       cs().items.forEach(it => { const r = s.items[it.id]; if (r && r.curves.length === 1 && r.curves[0].t === "L") out.push([`${it.id}|0`, K.label(it)]); });
       return out;
     }

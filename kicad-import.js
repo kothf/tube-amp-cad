@@ -619,7 +619,7 @@
     const shapes = (e, pre, out) => {
       kids(e, pre + "line").forEach(g => out.push({ layer: layersOf(g)[0], pts: [P(g, "start"), P(g, "end")] }));
       kids(e, pre + "rect").forEach(g => { const a = P(g, "start"), b = P(g, "end"); out.push({ layer: layersOf(g)[0], pts: [a, [b[0], a[1]], b, [a[0], b[1]], a], rect: true }); });
-      kids(e, pre + "arc").forEach(g => out.push({ layer: layersOf(g)[0], pts: arcPoints(P(g, "start"), P(g, "mid"), P(g, "end")), arc: [P(g, "start"), P(g, "end")] }));
+      kids(e, pre + "arc").forEach(g => out.push({ layer: layersOf(g)[0], pts: arcPoints(P(g, "start"), P(g, "mid"), P(g, "end")), arc: [P(g, "start"), P(g, "end")], mid: P(g, "mid") }));
       kids(e, pre + "circle").forEach(g => { const c = P(g, "center"), q = P(g, "end"), r = Math.hypot(q[0] - c[0], q[1] - c[1]); out.push({ layer: layersOf(g)[0], circle: [c[0], c[1], r], pts: [[c[0] - r, c[1] - r], [c[0] + r, c[1] + r]] }); });
       kids(e, pre + "poly").forEach(g => { const pts = xyList(g); if (pts.length > 1) out.push({ layer: layersOf(g)[0], pts: pts.concat([pts[0]]) }); });
     };
@@ -720,6 +720,7 @@
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     const add = (x, y) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); };
     const edges = pcb.edges.filter(g => g.layer === "Edge.Cuts");
+    let plainEdge = true;
     edges.forEach(g => g.pts.forEach(p => add(p[0], p[1])));
     pcb.footprints.forEach(f => f.gfx.filter(g => g.layer === "Edge.Cuts").forEach(g => g.pts.forEach(p => { const k = f.a * Math.PI / 180; add(f.x + p[0] * Math.cos(k) + p[1] * Math.sin(k), f.y - p[0] * Math.sin(k) + p[1] * Math.cos(k)); })));
     if (!isFinite(x1)) {
@@ -729,10 +730,25 @@
       note("The board has no outline (Edge.Cuts): a rectangle round its parts was drawn.");
     } else {
       const plain = edges.every(g => g.rect || (g.pts.length === 2 && (Math.abs(g.pts[0][0] - g.pts[1][0]) < 1e-6 || Math.abs(g.pts[0][1] - g.pts[1][1]) < 1e-6)) || g.arc);
-      if (!plain || edges.some(g => g.pts.some(p => p[0] > x1 + 1e-3 && p[0] < x2 - 1e-3 && p[1] > y1 + 1e-3 && p[1] < y2 - 1e-3 && !g.arc))) note("The board's outline is not a plain rectangle: the rectangle round it was taken (cut-outs and slanted edges are not kept).");
+      plainEdge = !(!plain || ![0, 4].includes(edges.filter(g => g.arc).length) || edges.some(g => g.pts.some(p => p[0] > x1 + 1e-3 && p[0] < x2 - 1e-3 && p[1] > y1 + 1e-3 && p[1] < y2 - 1e-3 && !g.arc)));
     }
     const arcs = edges.filter(g => g.arc).map(g => Math.hypot(g.arc[0][0] - g.arc[1][0], g.arc[0][1] - g.arc[1][1]) / Math.SQRT2);
     board.outline = { w: r4(x2 - x1), h: r4(y2 - y1), r: arcs.length === 4 && Math.max(...arcs) - Math.min(...arcs) < 0.01 ? r4(arcs[0]) : 0 };
+    // an edge that is no plain rectangle: its own lines, arcs and circles chained into the board's shape
+    // (cut-outs inside it too), when they close; else the rectangle round it stays, with a note
+    const OL = root.BoardOutline;
+    let ownShape = false;
+    if (OL && edges.length && !plainEdge) {
+      const ents = [];
+      edges.forEach(g => {
+        if (g.circle) ents.push({ t: "C", cx: g.circle[0] - x1, cy: g.circle[1] - y1, r: g.circle[2] });
+        else if (g.arc) { const b = OL.bulge3(g.arc[0], g.arc[1], g.mid); ents.push({ t: b ? "A" : "L", x1: g.arc[0][0] - x1, y1: g.arc[0][1] - y1, x2: g.arc[1][0] - x1, y2: g.arc[1][1] - y1, ...(b ? { b } : {}) }); }
+        else for (let k = 0; k + 1 < g.pts.length; k++) ents.push({ t: "L", x1: g.pts[k][0] - x1, y1: g.pts[k][1] - y1, x2: g.pts[k + 1][0] - x1, y2: g.pts[k + 1][1] - y1 });
+      });
+      const res = OL.fromEntities(ents, 0.02);
+      if (!res.error && Math.abs(res.dx) < 0.01 && Math.abs(res.dy) < 0.01 && Math.abs(res.w - (x2 - x1)) < 0.01 && Math.abs(res.h - (y2 - y1)) < 0.01) { board.outline = OL.outlineOf(res); ownShape = !!board.outline.shape; }
+    }
+    if (isFinite(x1) && edges.length && !plainEdge && !ownShape) note("The board's outline is not a plain rectangle: the rectangle round it was taken (cut-outs and slanted edges are not kept).");
     const X = x => r4(x - x1), Y = y => r4(y - y1);
     rb.origin = [r4(x1), r4(y1)];
     if (pcb.copperLayers > 2) note(`The board has ${pcb.copperLayers} copper layers: the app's boards have two, so only the top and bottom copper came over.`);

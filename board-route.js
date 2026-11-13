@@ -37,7 +37,7 @@
     model.parts.forEach(g => {
       if (!g.place || !g.fp) return;
       const c = [[g.fp.box[0], g.fp.box[1]], [g.fp.box[2], g.fp.box[1]], [g.fp.box[0], g.fp.box[3]], [g.fp.box[2], g.fp.box[3]]].map(p => C.place(p, g.place));
-      if (c.some(([x, y]) => C.edgeDist(x, y, board.outline) >= 0)) keep.add(g.key);
+      if (c.concat([[g.place.x, g.place.y]]).some(([x, y]) => C.edgeDist(x, y, board.outline) >= 0)) keep.add(g.key);
     });
     return keep;
   }
@@ -160,6 +160,11 @@
     cc.forEach((L, i) => w(`    (layer ${L} (type signal) (property (index ${i})))`));
     const poly = C.outlinePoly(board.outline, 0);
     w(`    (boundary (path pcb 0 ${poly.concat([poly[0]]).map(([x, y]) => pt(x, y)).join(" ")}) (clearance_class edge))`);
+    // a board with a shape of its own: each cut-out is closed to tracks and vias on both layers
+    if (root.BoardOutline && root.BoardOutline.isShape(board.outline)) root.BoardOutline.polys(board.outline, 0.02).slice(1).forEach(pl => {
+      const P = pl.concat([pl[0]]).map(([x, y]) => pt(x, y)).join(" ");
+      cc.forEach(L => w(`    (keepout "cutout" (polygon ${L} 0 ${P}) (clearance_class edge))`));
+    });
     // mounting holes: the screw is at chassis potential, a plated ring without a net is chassis copper
     (board.holes || []).forEach(h => {
       if (h.plated && h.net) return;

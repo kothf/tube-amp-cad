@@ -73,8 +73,12 @@
     return out;
   }
   const classRule = (cls, R) => ({ track: cls === "Signal" ? R.track : R.power, clearance: cls === "HV" ? R.hvClearance : R.clearance });
-  // signed distance from the board edge, positive inside (a rectangle with rounded corners)
+  // board-outline.js: boards that are not a plain rectangle (outline.shape: an edge of lines and arcs, cut-outs)
+  const OL = () => root.BoardOutline, shaped = o => !!(o && o.shape && OL() && OL().isShape(o));
+  // signed distance from the board edge, positive inside (a rectangle with rounded corners, or the
+  // outline's own shape: then from the nearest edge, a cut-out's too)
   function edgeDist(x, y, o) {
+    if (shaped(o)) return OL().dist(o, x, y);
     const r = Math.max(0, Math.min(o.r || 0, o.w / 2, o.h / 2));
     const qx = Math.abs(x - o.w / 2) - (o.w / 2 - r), qy = Math.abs(y - o.h / 2) - (o.h / 2 - r);
     return -(Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r);
@@ -82,13 +86,20 @@
   // corner mounting holes: n per corner pattern, inset from the edges
   function cornerHoles(o, d, inset) { return [[inset, inset], [o.w - inset, inset], [inset, o.h - inset], [o.w - inset, o.h - inset]].map(([x, y]) => ({ x, y, d })); }
 
+  // a shape that is no list of loops of [x, y, bulge] is dropped (the board is then its rectangle)
+  function cleanOutline(o) {
+    if (o.shape === undefined) return o;
+    const ok = Array.isArray(o.shape) && o.shape.length && o.shape.every(l => Array.isArray(l) && l.length >= 2 && l.every(p => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]) && (p[2] === undefined || Number.isFinite(p[2]))));
+    if (ok) return o;
+    const c = { ...o }; delete c.shape; return c;
+  }
   function normaliseBoard(b) {
     const d = newBoard();
     if (!b || typeof b !== "object") return d;
     registerFootprints(b);
     return {
       ...d, ...b,
-      outline: { ...d.outline, ...(b.outline || {}) },
+      outline: cleanOutline({ ...d.outline, ...(b.outline || {}) }),
       stackup: { ...d.stackup, ...(b.stackup || {}) },
       sheet: { ...d.sheet, ...(b.sheet || {}) },
       rules: { ...d.rules, ...(b.rules || {}), netClass: { ...((b.rules || {}).netClass || {}) }, checks: { ...d.rules.checks, ...((b.rules || {}).checks || {}) } },
@@ -1408,8 +1419,11 @@
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) ins = !ins; }
     return ins;
   }
-  /** The outline as a polygon (corner arcs in steps), inset by d */
+  /** The outline as a polygon (corner arcs in steps), inset by d. A board with a shape of its own: its
+      edge when d is 0, else the box round it inset (what lies outside the edge is cut off the pours
+      and the silkscreen by other means: OL().outside, OL().clipPolyline) */
   function outlinePoly(o, d) {
+    if (shaped(o)) { if (!d) return OL().poly(o, 0.005); return [[d, d], [o.w - d, d], [o.w - d, o.h - d], [d, o.h - d]]; }
     const R = Math.max(0, Math.min(o.r || 0, o.w / 2, o.h / 2)), r = Math.max(0, R - d), pts = [];
     const c = (cx, cy, a0) => { for (let k = 0; k <= (r > 0 ? 8 : 0); k++) { const a = (a0 + k * 90 / 8) * Math.PI / 180; pts.push([+(cx + r * Math.cos(a)).toFixed(4), +(cy + r * Math.sin(a)).toFixed(4)]); } };
     const m = Math.max(R, d);
@@ -1496,6 +1510,13 @@
       const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]), bx1 = Math.min(...xs), bx2 = Math.max(...xs), by1 = Math.min(...ys), by2 = Math.max(...ys);
       const near = (s, r) => Math.max(s[0], s[2]) + r >= bx1 && Math.min(s[0], s[2]) - r <= bx2 && Math.max(s[1], s[3]) + r >= by1 && Math.min(s[1], s[3]) - r <= by2;
       const ops = [{ pol: "D", t: "region", pts: poly }], own = [], others = [];
+      // a board with a shape of its own: the pour is cut off outside the edge and in every cut-out, and
+      // kept the edge clearance off them all
+      if (shaped(o)) {
+        const P = OL().polys(o, 0.02), ew = +(2 * R.edgeClearance).toFixed(4);
+        ops.push({ pol: "C", t: "region", pts: OL().outside(o, 2, 0.02) });
+        P.forEach((pl, i) => { if (i) ops.push({ pol: "C", t: "region", pts: pl }); if (ew > 0) ops.push({ pol: "C", t: "line", w: ew, pts: pl.concat([pl[0]]) }); });
+      }
       (board.keepouts || []).forEach(k => { if (k.pour !== false && koLayers(k).includes(L)) ops.push({ pol: "C", t: "region", pts: k.pts }); });
       conn.items.forEach(it => {
         if (!it.layers.includes(L)) return;
@@ -1694,7 +1715,7 @@
       if (!g.place || !g.fp) return;
       const c = [[g.fp.box[0], g.fp.box[1]], [g.fp.box[2], g.fp.box[1]], [g.fp.box[0], g.fp.box[3]], [g.fp.box[2], g.fp.box[3]]].map(pt => place(pt, g.place));
       const n = c.filter(([x, y]) => ins(x, y)).length;
-      if (n === 0) { placedOff.add(g.key); if (on("unplaced")) out.push({ kind: "unplaced", x: g.place.x, y: g.place.y, msg: `${g.ref} is not on the board yet` }); }
+      if (n === 0 && !ins(g.place.x, g.place.y)) { placedOff.add(g.key); if (on("unplaced")) out.push({ kind: "unplaced", x: g.place.x, y: g.place.y, msg: `${g.ref} is not on the board yet` }); }
       else if (n < 4 && on("edge")) out.push({ kind: "edge", x: g.place.x, y: g.place.y, msg: `${g.ref} reaches over the board edge` });
     });
     if (on("edge")) items.forEach(it => {

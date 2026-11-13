@@ -12,6 +12,7 @@
     function attachCanvas(cv) { canvas = cv; ctx = cv.getContext("2d"); dpr = window.devicePixelRatio || 1; }
     function render() { if (queued) return; queued = true; requestAnimationFrame(draw); }
     function outlinePath(c, o) {
+      if (o.shape && window.BoardOutline && BoardOutline.isShape(o)) { c.beginPath(); BoardOutline.trace(o, c); return; }
       const r = Math.max(0, Math.min(o.r || 0, o.w / 2, o.h / 2));
       c.beginPath(); c.moveTo(r, 0); c.lineTo(o.w - r, 0); c.arcTo(o.w, 0, o.w, r, r); c.lineTo(o.w, o.h - r); c.arcTo(o.w, o.h, o.w - r, o.h, r);
       c.lineTo(r, o.h); c.arcTo(0, o.h, 0, o.h - r, r); c.lineTo(0, r); c.arcTo(0, 0, r, 0, r); c.closePath();
@@ -82,7 +83,7 @@
       const px = 1 / scale, o = S.board.outline;
       if (sheet) { ctx.save(); ctx.translate(sheet.x, sheet.y); ctx.scale(1 / sheet.MM, 1 / sheet.MM); CadLib.DRAW.frame(ctx, { params: sheet.params }); ctx.restore(); }
       if (S.axes) axisLines(W, H);
-      outlinePath(ctx, o); ctx.fillStyle = "#0c1712"; ctx.fill();
+      outlinePath(ctx, o); ctx.fillStyle = "#0c1712"; ctx.fill("evenodd");
       if (S.show["Edge.Cuts"]) { ctx.strokeStyle = COLORS["Edge.Cuts"]; ctx.lineWidth = Math.max(0.15, 1.2 * px); ctx.stroke(); }
       // copper: the inactive layer dimmed underneath, the active one on top
       const order = S.layer === "F.Cu" ? ["B.Cu", "F.Cu"] : ["F.Cu", "B.Cu"];
@@ -269,7 +270,7 @@
         ctx.beginPath(); ctx.moveTo(d.x - r * 0.6, d.y - r * 0.6); ctx.lineTo(d.x + r * 0.6, d.y + r * 0.6); ctx.moveTo(d.x + r * 0.6, d.y - r * 0.6); ctx.lineTo(d.x - r * 0.6, d.y + r * 0.6); ctx.stroke();
       });
       // the board's resize handle (select tool)
-      if (S.tool === "select" && S.show["Edge.Cuts"]) { const t = 5 * px; ctx.fillStyle = COLORS["Edge.Cuts"]; ctx.fillRect(o.w - t, -t, 2 * t, 2 * t); }
+      if (S.tool === "select" && S.show["Edge.Cuts"] && !o.shape) { const t = 5 * px; ctx.fillStyle = COLORS["Edge.Cuts"]; ctx.fillRect(o.w - t, -t, 2 * t, 2 * t); }
       if (S.axes) axisMarks(W, H);
       $("z-pct").textContent = `${Math.round(S.view.scale / 3.7795 * 100)}%`;
       const c = S.conn, errs = errors();

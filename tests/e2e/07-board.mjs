@@ -720,6 +720,32 @@ import { readFile } from "node:fs/promises";
     check(pop !== null && Math.abs(o.h - r20.y - 20) < 1e-6 && shut, `placed without a value, the Modify box pops up (${pop} selected); 20 Enter puts ${rs[0].ref} 20 mm above the board's bottom edge (${(o.h - r20.y).toFixed(2)})`);
     await bd.keyboard.press("Escape");
   }
+  // the outline sketch: a round cut-out drawn in the board, Finish, the Gerber outline file has it; Board setup makes the board round
+  {
+    await bd.keyboard.press("Escape");
+    const o = await bd.evaluate(() => ({ ...BoardApp.state.board.outline }));
+    const cuts = () => bd.evaluate(() => { const f = BoardApp.fabFiles(), k = Object.keys(f).find(n => /Edge_Cuts/.test(n)); return (f[k].match(/D02\*/g) || []).length; });
+    const c0 = await cuts();
+    await bd.click("#btn-cons"); await bd.click("#btn-sketch");
+    const open = await bd.evaluate(() => ({ on: BoardApp.sketch.active(), bar: !document.getElementById("skbar").hidden, n: BoardApp.sketch.state().ents.length }));
+    await bd.keyboard.press("c");
+    let p = await at(o.w - 9, o.h / 2); await bd.mouse.click(p[0], p[1]);
+    await bd.keyboard.type("5"); await bd.keyboard.press("Enter");
+    const drawn = await bd.evaluate(() => { const s = BoardApp.sketch.state(); return { n: s.ents.length, c: s.ents.find(e => e.t === "C"), err: s.res.error || null }; });
+    await bd.click("#sk-finish"); await bd.waitForTimeout(300);
+    const done = await bd.evaluate(() => { const S = BoardApp.state, o = S.board.outline; return { on: BoardApp.sketch.active(), loops: o.shape ? o.shape.length : 0, w: o.w, h: o.h, area: o.shape ? BoardOutline.area(o) : 0 }; });
+    const c1 = await cuts();
+    check(open.on && open.bar && open.n === (o.r ? 8 : 4) && drawn.n === open.n + 1 && drawn.c && Math.abs(drawn.c.r - 2.5) < 1e-6 && !drawn.err && !done.on && done.loops === 2 && done.w === o.w && done.h === o.h && Math.abs(o.w * o.h - (4 - Math.PI) * (o.r || 0) ** 2 - done.area - Math.PI * 6.25) < 0.01 && c0 === 1 && c1 === 2,
+      `Construct ▾ → Sketch the outline opens the sketch on the board's ${open.n} edges; a circle of diameter 5 typed inside is a cut-out after Finish (${done.loops} loops) and the Gerber outline file has ${c1} closed contours (was ${c0})`);
+    await bd.keyboard.press("Control+z"); await bd.waitForTimeout(200);
+    const un = await bd.evaluate(() => !BoardApp.state.board.outline.shape);
+    await bd.evaluate(() => BoardApp.openSetup()); await bd.selectOption("#setup-shape", "round"); await bd.fill("#setup-dia", "90"); await bd.click("#setup-apply"); await bd.waitForTimeout(300);
+    const rd = await bd.evaluate(() => { const o = BoardApp.state.board.outline; return { w: o.w, h: o.h, d: BoardOutline.describe(o), area: BoardOutline.area(o) }; });
+    const c2 = await cuts();
+    await bd.keyboard.press("Control+z"); await bd.waitForTimeout(200);
+    const back = await bd.evaluate(() => ({ ...BoardApp.state.board.outline }));
+    check(un && rd.w === 90 && rd.h === 90 && Math.abs(rd.area - Math.PI * 2025) < 0.01 && c2 === 1 && !back.shape && back.w === o.w && back.h === o.h, `Ctrl+Z takes the cut-out back; Board setup → Round, 90 gives a round board (${rd.d}); Ctrl+Z brings the ${back.w} × ${back.h} mm rectangle back`);
+  }
   await bd.close();
 }
 

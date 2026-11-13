@@ -285,7 +285,7 @@
         h.appendChild(lockField(t)); h.appendChild(delBtn()); return;
       }
       const M = S.model, c = S.conn, errs = errors();
-      h.innerHTML = `<div class="insp-title">Board</div>` + kv("Size", `${o.w} × ${o.h} mm${o.r ? `, r ${o.r}` : ""}`) +
+      h.innerHTML = `<div class="insp-title">Board</div>` + kv("Size", `${+(+o.w).toFixed(2)} × ${+(+o.h).toFixed(2)} mm${o.shape ? (window.BoardOutline.describe(o).startsWith("round") ? ", round" : ", own shape") + (o.shape.length > 1 ? `, ${o.shape.length - 1} cut-out${o.shape.length > 2 ? "s" : ""}` : "") : o.r ? `, r ${o.r}` : ""}`) +
         kv("Stack", `2 layers · ${S.board.stackup.thickness} mm · ${S.board.stackup.copper} µm`) +
         (M ? kv("Parts", `${M.parts.length - S.drc.filter(d => d.kind === "unplaced").length} placed of ${M.parts.length}`) + kv("Tracks · vias · holes", `${S.board.tracks.length} · ${S.board.vias.length} · ${S.board.holes.length}`) +
           kv("To route", c ? c.unrouted : "—", c && c.unrouted ? "" : "ok") + kv("Rule violations", errs, errs ? "bad" : "ok") : "") +
