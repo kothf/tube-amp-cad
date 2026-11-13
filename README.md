@@ -213,6 +213,10 @@ Paste the `.SUBCKT … .ENDS` text or open the file.
 - **What it's like:** each imported tube takes its socket, pinout and heater
   from a tube you choose, so the board footprint and the warnings work. Pa
   and Va maximums are set in the dialog.
+- **Parts already placed:** a placed part keeps its own copy. When its
+  library part has changed, the library dialog (*Update them*) and the
+  part's inspector (*Update from the library*) bring it up to date; values,
+  part numbers and wires stay, one Undo takes it back.
 - **Where it's kept:** in the browser, and inside every circuit file that
   uses it, so the file opens on another computer. The curve tracer shows it
   with its model, and the SPICE netlist export writes the subcircuit as

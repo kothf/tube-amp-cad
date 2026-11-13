@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.200.0] - 2026-11-13
+
+### Added
+- **Parts on the sheet follow your library when you ask.** A part placed from *My library* carries its own copy, so a circuit never changes behind your back; now it can be brought up to date after you change the library part's drawing, footprint, model or name.
+  - **In the Parts library** a part says how many of it are on the sheet and how many were placed before your changes; *Update them* brings all of them up to date.
+  - **In the inspector** a placed part whose library part has changed says what has changed (drawing, footprint, SPICE model, name); *Update from the library* updates it, all the units of its package together.
+  - The value you typed, the part number and the wires stay. A model set on the sheet stays unless the library part has one of its own. A wire to a pin that moved has to be joined again. One Undo takes the update back.
+- For developers: `PartLib.differs` / `refreshed`, `updateFromLibrary` in `cad-app.js`; tests in `tests/partlib.test.mjs` and `tests/e2e/08c-parts-library.mjs`.
+
 ## [3.199.0] - 2026-11-13
 
 ### Added

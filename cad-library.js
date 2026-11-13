@@ -14,6 +14,7 @@
 
   function CadLibrary(o) {
     // o: { thumb(type, params, w, h, big), setStatus(kind, text), changed() (the panel is drawn again), place(params) }
+    //      sheet: { placed(id) → { n, old } (how many of the part are on the sheet, how many differ from the library), update(id) → n }
     const P = root.PartLib;
     let lib = P.empty(), dbp = null, sel = null, offer = null, find = "";
     const $ = id => document.getElementById(id);
@@ -175,6 +176,7 @@
       const q = find.toLowerCase().split(/\s+/).filter(Boolean), list = lib.parts.filter(p => q.every(w => `${p.name} ${p.desc} ${p.keywords}`.toLowerCase().includes(w)));
       const p = lib.parts.find(x => x.id === sel), fits = P.fits(p, lib.footprints), others = Object.keys(lib.footprints).filter(k => !fits.includes(k)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
       const fp = p.fp && lib.footprints[p.fp], miss = P.unmatched(p, fp), pins = p.units.reduce((n, u) => n + u.pins.length, 0), unused = P.unused(lib);
+      const on = (o.sheet && o.sheet.placed(p.id)) || { n: 0, old: 0 };
       $("plib-body").innerHTML = `<div class="plib-grid">
         <div class="plib-left"><input type="search" id="plib-find" placeholder="Find a part…" value="${esc(find)}">
           <div class="plib-list" role="listbox" aria-label="Parts">${list.map(x => `<button type="button" role="option" aria-selected="${x.id === sel}" class="${x.id === sel ? "on" : ""}" data-id="${esc(x.id)}"><b>${esc(x.name)}</b><span>${esc(x.fp || "no footprint")}</span></button>`).join("") || `<p class="muted">Nothing found.</p>`}</div>
@@ -190,6 +192,7 @@
           </div>
           <p class="insp-help">${pins} pin${pins === 1 ? "" : "s"}${p.units.length > 1 ? ` in ${p.units.length} units` : ""}${p.src ? ` · from ${esc(p.src)}` : ""}${p.fpHint ? ` · KiCad names the footprint ${esc(p.fpHint)}` : p.filters ? ` · KiCad's footprints for it: ${esc(p.filters)}` : ""}</p>
           ${miss.length ? `<p class="plib-warn">⚠ The footprint has no pad ${miss.length === 1 ? "number" : "numbers"} ${esc(miss.slice(0, 12).join(", "))}${miss.length > 12 ? "…" : ""}: ${miss.length === 1 ? "that pin stays" : "those pins stay"} unconnected on the board.</p>` : ""}
+          ${on.old ? `<p class="plib-warn plib-stale">${on.old === 1 ? "1 of this part on the sheet was" : `${on.old} of this part on the sheet were`} placed before your changes. <button class="btn" id="plib-update" title="The drawing, footprint and model of the ones on the sheet become the library's. Their values and wires stay; a wire to a pin that moved has to be joined again. One Undo takes it back.">Update ${on.old === 1 ? "it" : "them"}</button></p>` : on.n ? `<p class="insp-help plib-onsheet">${on.n} on the sheet, up to date.</p>` : ""}
           <div class="plib-bar"><button class="btn active" id="plib-place" title="Close and place it on the sheet">Place on the sheet</button><button class="btn" id="plib-draw" title="Change the drawing and the pins: lines, rectangles, circles, text, pins, units">Edit drawing…</button><button class="btn" id="plib-copy" title="A second part with the same drawing, footprint and model, to change">Duplicate</button><button class="btn" id="plib-del">Delete the part</button></div>
         </div></div>`;
       $("plib-fp").value = p.fp || "";
@@ -205,6 +208,7 @@
       if ($("plib-model")) $("plib-model").onclick = () => root.SpicePart.open(p.spice ? { text: p.spice.text, sub: p.spice.sub, name: p.spice.sub, sym: "own", map: p.spice.map } : null,
         r => { p.spice = { text: r.text, sub: r.sub, map: r.map }; changed(); render(); }, { pins: p.units[0].pins.map(q => ({ id: q.id, name: q.name })) });
       if ($("plib-nomodel")) $("plib-nomodel").onclick = () => { delete p.spice; changed(); render(); };
+      if ($("plib-update")) $("plib-update").onclick = () => { const n = o.sheet.update(p.id); o.setStatus("ok", `${p.name}: ${n} part${n === 1 ? "" : "s"} on the sheet updated from the library.`); render(); };
       $("plib-draw").onclick = () => draw(p.id);
       $("plib-fpedit").onclick = () => footprintOf(p.id, false);
       $("plib-fpnew").onclick = () => footprintOf(p.id, true);
@@ -218,7 +222,7 @@
     }
 
     return {
-      ready, open, close, entries, addFiles, draw, footprintOf, takeOffered: names => takeOffered(new Set(names)),
+      ready, open, close, entries, addFiles, draw, footprintOf, differs: params => P.differs(lib, params), refreshed: params => P.refreshed(lib, params), takeOffered: names => takeOffered(new Set(names)),
       get: () => lib, part: id => lib.parts.find(p => p.id === id) || null, paramsOf: (id, unit) => { const p = lib.parts.find(x => x.id === id); return p ? paramsOf(p, unit) : null; },
       offered: () => (offer ? offer.syms.map(s => s.name) : []),
       clear() { lib = P.empty(); sel = null; return changed(); }

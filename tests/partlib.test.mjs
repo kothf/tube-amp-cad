@@ -177,3 +177,31 @@ test("a footprint made for a part's pins goes to the board: every pin on the pad
   const m = B.model(board, netlist);
   assert.equal(m.pads.length, f.pads.length); assert.ok(m.pads.every(p => p.net === `N${p.num}`));
 });
+
+test("a placed part against its library part: what has changed is named, and it is brought up to date keeping the sheet's own", () => {
+  const lib = library(), amp = lib.parts.find(p => p.name === "TESTAMP");
+  amp.fp = "DIP-8_TEST";
+  const c = comp(lib, "TESTAMP", 1, "a", "DA1");
+  c.params.value = "LM4562"; c.params.partno = "LM4562NA";
+  assert.deepEqual(P.differs(lib, c.params), []);
+  assert.deepEqual(P.differs(lib, JSON.parse(JSON.stringify(c.params))), [], "a circuit file's round trip changes nothing");
+  assert.equal(P.differs(lib, Object.assign({}, c.params, { lib: "gone" })), null);
+  // a model set on the sheet where the library has none is the sheet's own
+  c.params.text = AMP; c.params.sub = "TESTAMP"; c.params.map = ["3", "2", "7", "4", "6"];
+  assert.deepEqual(P.differs(lib, c.params), []);
+  amp.units[0].pins[0].name = "PLUS"; amp.units[0].g.push(["c", 0, 0, 0, 5]);
+  const f = structuredClone(lib.footprints["DIP-8_TEST"]); f.pads[0].w = 2; P.fpStore(lib, f, "DIP-8_TEST");
+  amp.desc = "Changed";
+  assert.deepEqual(P.differs(lib, c.params), ["drawing", "footprint", "name"]);
+  const now = P.refreshed(lib, c.params);
+  assert.deepEqual(P.differs(lib, now), []);
+  assert.equal(now.value, "LM4562"); assert.equal(now.partno, "LM4562NA"); assert.equal(now.sub, "TESTAMP", "the sheet's model stays");
+  assert.equal(now.fp.pads[0].w, 2); assert.equal(now.syms[0].pins[0].name, "PLUS");
+  // the library's model, once it has one, is the part's
+  amp.spice = { text: AMP, sub: "TESTAMP", map: ["3", "2", "7", "4", ""] };
+  assert.deepEqual(P.differs(lib, now), ["model"]);
+  assert.deepEqual(P.refreshed(lib, now).map, ["3", "2", "7", "4", ""]);
+  // a renamed part: a value that was the name follows, a typed one stays
+  const d = comp(lib, "TESTAMP", 1, "b", "DA2"); amp.name = "TESTAMP2";
+  assert.equal(P.refreshed(lib, d.params).value, "TESTAMP2"); assert.equal(P.refreshed(lib, now).value, "LM4562");
+});
