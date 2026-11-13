@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.198.0] - 2026-11-13
+
+### Added
+- **Symbol editor: draw your own parts.** In the Parts library, *New part…* starts a part of your own and *Edit drawing…* changes the drawing of any part, one taken from KiCad included; *Duplicate* makes a copy to change.
+  - **Tools:** Line (point after point), Rectangle, Circle, Text and Pin, Select to move and delete, Undo (Ctrl+Z). The drawing sits on half the sheet's grid, pins on the grid itself, so wires meet them.
+  - **Pins:** each has a number (its pad on the footprint), a name, a side of the body and a length, set at the right or in the table of the unit's pins. New pins are numbered on from the highest. A pin number used twice in the package is refused, with the number named.
+  - **Make a box from a list of pins:** one line per pin, number then name, makes an IC's box with the pins round it as on a DIP; `left`, `right`, `top` or `bottom` after a pin puts it on that side.
+  - **Units:** *+ Unit* adds another unit of the same package (a second amplifier, the supply pins), each with its own drawing and pins.
+  - Parts already on a sheet keep the drawing they were placed with. After a drawing changes, a SPICE model keeps the pins that still exist, and the footprint is chosen again if the old one no longer has every pad.
+- For developers: `cad-symedit.js` (`SymbolEditor`), `PartLib.boxSymbol` / `pinList` / `tidy` / `bounds`.
+
 ## [3.197.0] - 2026-11-13
 
 ### Added

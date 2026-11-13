@@ -101,6 +101,69 @@
     return p;
   }
 
+  // ---- drawings made here (the symbol editor, cad-symedit.js) ----
+  const SIDE_ANGLE = { left: 0, right: 180, top: 270, bottom: 90 }, ANGLE_SIDE = { 0: "left", 180: "right", 270: "top", 90: "bottom" };
+  /** The inner end of a pin (where it meets the body) */
+  function pinEnd(p) { const a = (p.a || 0) * Math.PI / 180; return [p.x + Math.round(Math.cos(a)) * (p.l || 0), p.y - Math.round(Math.sin(a)) * (p.l || 0)]; }
+  /** A drawing's box from what is in it (2 of margin, as KiCad's symbols get) */
+  function bounds(sym) {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    const add = (x, y) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); };
+    (sym.g || []).forEach(s => {
+      if (s[0] === "p") for (let i = 2; i + 1 < s.length; i += 2) add(s[i], s[i + 1]);
+      else if (s[0] === "c") { add(s[2] - s[4], s[3] - s[4]); add(s[2] + s[4], s[3] + s[4]); }
+      else if (s[0] === "t") add(s[1], s[2]);
+    });
+    (sym.pins || []).forEach(p => { add(p.x, p.y); add(...pinEnd(p)); });
+    if (!isFinite(x1)) return [-20, -20, 20, 20];
+    return [Math.floor(x1) - 2, Math.floor(y1) - 2, Math.ceil(x2) + 2, Math.ceil(y2) + 2];
+  }
+  /** A drawing put in order after editing: every pin's id is its number (the name, or a count, where
+      it has none; "#2" after a repeat), the box is measured again. Returns what is wrong with it. */
+  function tidy(sym) {
+    const used = new Set(), twice = [];
+    (sym.pins || []).forEach((p, i) => {
+      p.num = String(p.num === undefined || p.num === null ? "" : p.num).trim(); p.name = String(p.name || "").trim();
+      const base = p.num || p.name || String(i + 1); let id = base;
+      if (used.has(id)) { if (p.num && !twice.includes(p.num)) twice.push(p.num); for (let k = 2; used.has(id); k++) id = `${base}#${k}`; }
+      used.add(id); p.id = id;
+      p.x = Math.round(p.x / 10) * 10; p.y = Math.round(p.y / 10) * 10; p.l = Math.max(0, +p.l || 0); p.a = ANGLE_SIDE[p.a] ? p.a : 0;
+    });
+    sym.box = bounds(sym);
+    const out = [];
+    if (!(sym.pins || []).length) out.push("The drawing has no pins");
+    if (twice.length) out.push(`Pin number ${twice.join(", ")} is used twice`);
+    return out;
+  }
+  /** A box with pins on its sides: list [{ num, name, side }] (side left | right | top | bottom; without
+      sides the first half goes down the left, the rest up the right, as on a DIP) */
+  function boxSymbol(list) {
+    const n = list.length, half = Math.ceil(n / 2), by = { left: [], right: [], top: [], bottom: [] };
+    list.forEach((p, i) => { const side = SIDE_ANGLE[p.side] !== undefined ? p.side : i < half ? "left" : "right"; by[side].push(p); });
+    if (!list.some(p => SIDE_ANGLE[p.side] !== undefined)) by.right.reverse();
+    const chars = k => by[k].reduce((m, p) => Math.max(m, String(p.name || "").length), 0);
+    const rows = Math.max(by.left.length, by.right.length, 1), cols = Math.max(by.top.length, by.bottom.length, 0);
+    const hw = Math.max(30, Math.ceil(((chars("left") + chars("right")) * 5 + 16) / 20) * 10, cols * 10 + 10), hh = Math.max(20, rows * 10 + 10, by.top.length || by.bottom.length ? Math.ceil((Math.max(chars("top"), chars("bottom")) * 5 + rows * 20 + 20) / 20) * 10 : 0);
+    const L = 20, pins = [], put = (k, p, x, y) => pins.push({ id: "", num: String(p.num || ""), name: String(p.name || ""), x, y, a: SIDE_ANGLE[k], l: L });
+    const spread = (m, i) => (i - (m - 1) / 2) * 20, even = v => Math.round(v / 10) * 10;
+    by.left.forEach((p, i) => put("left", p, -hw - L, even(spread(by.left.length, i))));
+    by.right.forEach((p, i) => put("right", p, hw + L, even(spread(by.right.length, i))));
+    by.top.forEach((p, i) => put("top", p, even(spread(by.top.length, i)), -hh - L));
+    by.bottom.forEach((p, i) => put("bottom", p, even(spread(by.bottom.length, i)), hh + L));
+    const sym = { g: [["p", 2, -hw, -hh, hw, -hh, hw, hh, -hw, hh, -hw, -hh]], pins, box: [0, 0, 0, 0], pn: 3, pm: 1 };
+    tidy(sym);
+    return sym;
+  }
+  /** Lines of text as pins: "1 IN+", "2 IN- left", "8 VCC top" (number, name, side) */
+  function pinList(text) {
+    return String(text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+      const t = l.split(/[\s,;]+/), side = SIDE_ANGLE[String(t[t.length - 1]).toLowerCase()] !== undefined && t.length > 1 ? t.pop().toLowerCase() : undefined;
+      return { num: t[0], name: t.slice(1).join(" "), side };
+    });
+  }
+  /** A new part with a drawing made here */
+  function blank(name, prefix, sym) { return { id: "", name: String(name || "New part"), prefix: prefix || "DA", desc: "", keywords: "", datasheet: "", units: [sym || boxSymbol([{ num: "1", name: "" }, { num: "2", name: "" }])], fp: "", fpHint: "", filters: "", src: "drawn here" }; }
+
   /** The library as a file's text, and back (an error names what is wrong) */
   function toFile(lib, name) { return JSON.stringify({ format: FORMAT, version: VERSION, name: name || "", parts: lib.parts, footprints: lib.footprints }); }
   function check(d) {
@@ -116,5 +179,5 @@
   }
   function fromFile(text) { let d; try { d = JSON.parse(text); } catch (e) { throw new Error("not a parts library of this app"); } return check(d); }
 
-  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, toFile, fromFile, check, prefixOf, glob };
+  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE };
 })(typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : globalThis);

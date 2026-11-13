@@ -5,7 +5,7 @@
    The dialog (the panel's Parts library… button): add symbols from KiCad's .kicad_sym files and
    footprints from .kicad_mod files, give a part its designator letter, footprint and SPICE
    model, save the library as a file or open one.
-   Depends on: part-lib.js, kicad-import.js, spice-part.js (the Model… dialog)
+   Depends on: part-lib.js, kicad-import.js, spice-part.js (the Model… dialog), cad-symedit.js (the drawing)
    ============================================================================= */
 (function (root) {
   "use strict";
@@ -91,6 +91,7 @@
         <p class="insp-help">Your own parts, kept in this browser: each is a drawing with pins, a footprint and, if you give it one, a SPICE model. Add symbols from KiCad's symbol libraries (<code>.kicad_sym</code>) and footprints from its footprint files (<code>.kicad_mod</code>; select all the files of a <code>.pretty</code> folder at once). A part placed on the sheet takes a copy of everything, so the circuit opens anywhere.</p>
         <div class="plib-bar">
           <button class="btn active" id="plib-add" title="KiCad symbol libraries (.kicad_sym) and footprints (.kicad_mod), several at once">Add from KiCad files…</button>
+          <button class="btn" id="plib-new" title="A part you draw yourself: a box with its pins to start with, then lines, circles, text and pins">New part…</button>
           <button class="btn" id="plib-open" title="Add the parts of a library file saved here or by somebody else">Open a library file…</button>
           <button class="btn" id="plib-save" title="All the parts and footprints as one file, to keep or to pass on">Save as a file</button>
           <input type="file" id="plib-file" multiple accept=".kicad_sym,.kicad_mod,.json,.tubelib" hidden>
@@ -109,10 +110,20 @@
         e.target.value = "";
         addFiles(files); render();
       };
+      $("plib-new").onclick = () => {
+        offer = null;
+        let name = "New part"; for (let k = 2; lib.parts.some(x => x.name.toLowerCase() === name.toLowerCase()); k++) name = `New part ${k}`;
+        P.add(lib, [P.blank(name)], {}); sel = lib.parts.find(x => x.name === name).id; changed(); render(); draw(sel);
+      };
       $("plib-save").onclick = () => {
         const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([P.toFile(lib, "My parts")], { type: "application/json" })); a.download = "my-parts.tubelib";
         document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
       };
+    }
+    // the symbol editor on a part's drawing (cad-symedit.js)
+    function draw(id) {
+      const p = lib.parts.find(x => x.id === id); if (!p) return;
+      root.SymbolEditor.open(p.name, p.units, units => { p.units = units; if (units.length > 1) delete p.spice; else if (p.spice) { const ids = new Set(units[0].pins.map(q => q.id)); p.spice.map = (p.spice.map || []).map(m => (m === "0" || ids.has(m) ? m : "")); } if (p.fp && P.unmatched(p, lib.footprints[p.fp]).length && P.best(p, lib.footprints)) p.fp = P.best(p, lib.footprints); changed(); render(); });
     }
     function close() { const m = $("plib-modal"); if (m) m.hidden = true; offer = null; }
     function open(id) {
@@ -149,7 +160,7 @@
       $("plib-save").disabled = !lib.parts.length && !nf;
       if (offer) { renderOffer(); return; }
       if (!lib.parts.length) {
-        $("plib-body").innerHTML = `<p class="plib-empty">No parts yet. Press <b>Add from KiCad files…</b> and choose a symbol library, for instance <code>Amplifier_Operational.kicad_sym</code> from KiCad's own libraries, and the footprints the parts need.${nf ? ` ${nf} footprint${nf === 1 ? " is" : "s are"} waiting for their parts.` : ""}</p>`;
+        $("plib-body").innerHTML = `<p class="plib-empty">No parts yet. Press <b>Add from KiCad files…</b> and choose a symbol library, for instance <code>Amplifier_Operational.kicad_sym</code> from KiCad's own libraries, and the footprints the parts need. Or press <b>New part…</b> and draw one.${nf ? ` ${nf} footprint${nf === 1 ? " is" : "s are"} waiting for their parts.` : ""}</p>`;
         return;
       }
       if (!lib.parts.some(p => p.id === sel)) sel = lib.parts[0].id;
@@ -171,7 +182,7 @@
           </div>
           <p class="insp-help">${pins} pin${pins === 1 ? "" : "s"}${p.units.length > 1 ? ` in ${p.units.length} units` : ""}${p.src ? ` · from ${esc(p.src)}` : ""}${p.fpHint ? ` · KiCad names the footprint ${esc(p.fpHint)}` : p.filters ? ` · KiCad's footprints for it: ${esc(p.filters)}` : ""}</p>
           ${miss.length ? `<p class="plib-warn">⚠ The footprint has no pad ${miss.length === 1 ? "number" : "numbers"} ${esc(miss.slice(0, 12).join(", "))}${miss.length > 12 ? "…" : ""}: ${miss.length === 1 ? "that pin stays" : "those pins stay"} unconnected on the board.</p>` : ""}
-          <div class="plib-bar"><button class="btn active" id="plib-place" title="Close and place it on the sheet">Place on the sheet</button><button class="btn" id="plib-del">Delete the part</button></div>
+          <div class="plib-bar"><button class="btn active" id="plib-place" title="Close and place it on the sheet">Place on the sheet</button><button class="btn" id="plib-draw" title="Change the drawing and the pins: lines, rectangles, circles, text, pins, units">Edit drawing…</button><button class="btn" id="plib-copy" title="A second part with the same drawing, footprint and model, to change">Duplicate</button><button class="btn" id="plib-del">Delete the part</button></div>
         </div></div>`;
       $("plib-fp").value = p.fp || "";
       const f = $("plib-find");
@@ -186,12 +197,18 @@
       if ($("plib-model")) $("plib-model").onclick = () => root.SpicePart.open(p.spice ? { text: p.spice.text, sub: p.spice.sub, name: p.spice.sub, sym: "own", map: p.spice.map } : null,
         r => { p.spice = { text: r.text, sub: r.sub, map: r.map }; changed(); render(); }, { pins: p.units[0].pins.map(q => ({ id: q.id, name: q.name })) });
       if ($("plib-nomodel")) $("plib-nomodel").onclick = () => { delete p.spice; changed(); render(); };
+      $("plib-draw").onclick = () => draw(p.id);
+      $("plib-copy").onclick = () => {
+        const q = JSON.parse(JSON.stringify(p)); q.id = ""; q.src = `a copy of ${p.name}`;
+        let name = `${p.name} copy`; for (let k = 2; lib.parts.some(x => x.name.toLowerCase() === name.toLowerCase()); k++) name = `${p.name} copy ${k}`;
+        q.name = name; P.add(lib, [q], {}); sel = lib.parts.find(x => x.name === name).id; changed(); render();
+      };
       $("plib-del").onclick = () => { P.remove(lib, p.id); sel = null; changed(); render(); };
       $("plib-place").onclick = () => { close(); o.place(paramsOf(p)); };
     }
 
     return {
-      ready, open, close, entries, addFiles, takeOffered: names => takeOffered(new Set(names)),
+      ready, open, close, entries, addFiles, draw, takeOffered: names => takeOffered(new Set(names)),
       get: () => lib, part: id => lib.parts.find(p => p.id === id) || null, paramsOf: (id, unit) => { const p = lib.parts.find(x => x.id === id); return p ? paramsOf(p, unit) : null; },
       offered: () => (offer ? offer.syms.map(s => s.name) : []),
       clear() { lib = P.empty(); sel = null; return changed(); }

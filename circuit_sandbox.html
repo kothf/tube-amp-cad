@@ -446,6 +446,38 @@
     .block-make { display: grid; grid-template-columns: 1fr auto; gap: 6px 8px; align-items: center; margin: 8px 0 12px; }
     .block-make span { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
     .block-make input { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+    .symed { width: min(980px, 97vw); max-height: 94vh; display: flex; flex-direction: column; }
+    .symed-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+    .symed-sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+    .symed-grid { display: grid; grid-template-columns: 1fr minmax(230px, 280px); gap: 12px; min-height: 0; overflow: auto; }
+    @media (max-width: 700px) { .symed-grid { grid-template-columns: 1fr; } }
+    .symed-stage { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    #symed-svg { width: 100%; height: min(56vh, 520px); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; touch-action: none; outline: none; }
+    #symed-svg:focus-visible { border-color: var(--accent); }
+    #symed-svg[data-tool=select] [data-k] { cursor: move; } #symed-svg:not([data-tool=select]) { cursor: crosshair; }
+    #symed-svg .dot { fill: #30363d; } #symed-svg .axis { stroke: #30363d; stroke-width: .6; fill: none; }
+    #symed-svg .shape { stroke: #58a6ff; stroke-width: 1.4; fill: none; stroke-linejoin: round; }
+    #symed-svg .shape.back { fill: rgba(88,166,255,.12); } #symed-svg .shape.solid { fill: #58a6ff; }
+    #symed-svg .shape.draft { stroke-dasharray: 4 3; stroke: #d29922; }
+    #symed-svg .label { fill: #c9d1d9; font-family: ui-monospace, monospace; }
+    #symed-svg .pin line { stroke: #58a6ff; stroke-width: 1.4; } #symed-svg .pin .end { fill: #f85149; } #symed-svg .pin .grab { fill: transparent; }
+    #symed-svg .pin .num { fill: #8b949e; font-family: ui-monospace, monospace; } #symed-svg .pin .name { fill: #c9d1d9; font-family: ui-monospace, monospace; }
+    #symed-svg .shape.on, #symed-svg .pin.on line { stroke: #f0883e; } #symed-svg text.on, #symed-svg .pin.on text { fill: #f0883e; }
+    #symed-svg .pin.on .grab { stroke: #f0883e; stroke-width: .6; stroke-dasharray: 2 2; }
+    .symed-units { display: flex; flex-wrap: wrap; gap: 4px; }
+    .symed-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; }
+    .symed-f { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: center; margin: 3px 0; }
+    .symed-f span { color: var(--muted); }
+    .symed input[type=text], .symed select, .symed textarea { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; font: inherit; min-width: 0; width: 100%; }
+    .symed textarea { height: 110px; font: 12px ui-monospace, monospace; }
+    #symed-pins { max-height: 26vh; overflow: auto; }
+    .symed-table { width: 100%; border-collapse: collapse; }
+    .symed-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 2px 4px; }
+    .symed-table td { padding: 1px 2px; } .symed-table td:first-child { width: 58px; } .symed-table td:last-child { width: 26px; }
+    .symed-table tr.on input { border-color: #f0883e; }
+    .symed-table .btn { padding: 1px 7px; }
+    .symed-box summary { cursor: pointer; color: var(--accent); margin: 4px 0; }
+    #symed-msg { min-height: 16px; color: var(--warn, #d29922); }
     .plib { width: min(900px, 96vw); max-height: 92vh; display: flex; flex-direction: column; }
     .plib #plib-body { min-height: 0; overflow: auto; }
     .plib-bar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 8px 0; }
@@ -1146,6 +1178,7 @@
   <script src="cad-kicad.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
   <script src="part-lib.js?v=dev"></script>
+  <script src="cad-symedit.js?v=dev"></script>
   <script src="cad-library.js?v=dev"></script>
   <script src="cad-recent.js?v=dev"></script>
   <script src="cad-autosave.js?v=dev"></script>
