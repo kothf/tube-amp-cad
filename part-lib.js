@@ -101,6 +101,34 @@
     return p;
   }
 
+  // the same data whatever the order of its keys
+  const canon = o => JSON.stringify(o, (k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map(q => [q, v[q]])) : v));
+  /** What a part placed on a sheet (its params) no longer has as its library part has it:
+      a list of "drawing", "footprint", "model", "name" (empty: up to date; null: the library has no such part).
+      A model set on the sheet for a part whose library part has none is the sheet's own, not a difference. */
+  function differs(lib, placed) {
+    const part = placed && placed.lib ? lib.parts.find(p => p.id === placed.lib) : null;
+    if (!part) return null;
+    const now = params(lib, part, placed.unit), out = [];
+    if (canon(now.syms) !== canon(placed.syms || [])) out.push("drawing");
+    if (canon(now.fp) !== canon(placed.fp || null)) out.push("footprint");
+    if ((now.text || part.units.length > 1) && (now.text !== (placed.text || "") || now.sub !== (placed.sub || "") || canon(now.map) !== canon(placed.map || []))) out.push("model");
+    if (now.name !== placed.name || now.prefix !== placed.prefix || now.desc !== (placed.desc || "")) out.push("name");
+    return out;
+  }
+  /** The params of a placed part brought up to its library part: the drawing, footprint, name and (where the
+      library has one) the model are the library's; the value typed on the sheet, the unit and every other
+      field of the sheet's stay. Null when the library has no such part. */
+  function refreshed(lib, placed) {
+    const part = placed && placed.lib ? lib.parts.find(p => p.id === placed.lib) : null;
+    if (!part) return null;
+    const now = params(lib, part, placed.unit), out = Object.assign({}, placed, { name: now.name, prefix: now.prefix, desc: now.desc, unit: now.unit, units: now.units, syms: now.syms, fp: now.fp });
+    if (!placed.value || placed.value === placed.name) out.value = now.name;
+    if (now.datasheet) out.datasheet = now.datasheet;
+    if (now.text || part.units.length > 1) { out.text = now.text; out.sub = now.sub; out.map = now.map; }
+    return out;
+  }
+
   // ---- drawings made here (the symbol editor, cad-symedit.js) ----
   const SIDE_ANGLE = { left: 0, right: 180, top: 270, bottom: 90 }, ANGLE_SIDE = { 0: "left", 180: "right", 270: "top", 90: "bottom" };
   /** The inner end of a pin (where it meets the body) */
@@ -260,5 +288,5 @@
   }
   function fromFile(text) { let d; try { d = JSON.parse(text); } catch (e) { throw new Error("not a parts library of this app"); } return check(d); }
 
-  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS };
+  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, differs, refreshed, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS };
 })(typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : globalThis);

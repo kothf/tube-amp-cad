@@ -90,6 +90,27 @@ import { fileURLToPath } from "node:url";
   check(dual.before === "1,2,3" && dual.after === "8,4" && !dual.model, `a part of several units: the inspector's Unit list switches the drawing and its pins (${dual.before} → ${dual.after})`);
   await cad.evaluate(uid => { const S = TubeCAD.state; S.comps = S.comps.filter(c => c.id !== uid); TubeCAD.commit(); }, dual.id);
 
+  // a part on the sheet follows the library when asked: the dialog and the inspector say it is behind, Update brings it up
+  await cad.click("#pal-library");
+  await cad.click('.plib-list button[data-id="testamp"]');
+  const fresh = await cad.evaluate(() => ({ on: (document.querySelector(".plib-onsheet") || {}).textContent, old: !!document.querySelector(".plib-stale") }));
+  await cad.fill("#plib-desc", "A test amplifier, changed"); await cad.press("#plib-desc", "Enter");
+  const stale = await cad.evaluate(() => ({ text: (document.querySelector(".plib-stale") || {}).textContent, btn: !!document.getElementById("plib-update") }));
+  check(/1 on the sheet, up to date/.test(fresh.on) && !fresh.old && /1 of this part on the sheet was placed before your changes/.test(stale.text) && stale.btn, "the library dialog says how many of a part are on the sheet, and when they are behind it");
+  await cad.click("#plib-close");
+  const behind = await cad.evaluate(uid => { const C = TubeCAD, S = C.state; S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(uid); C.updateInspector(); return { note: (document.getElementById("insp-lib-old") || {}).textContent, btn: !!document.getElementById("btn-lib-update") }; }, id);
+  check(/Its name in your parts library has changed since it was placed/.test(behind.note) && behind.btn, `the inspector of the placed part says its library part has changed (${behind.note})`);
+  await cad.click("#btn-lib-update");
+  const upd = await cad.evaluate(uid => { const c = TubeCAD.state.comps.find(k => k.id === uid); return { desc: c.params.desc, note: !!document.getElementById("insp-lib-old"), insp: document.getElementById("inspector").textContent, wires: TubeCAD.state.wires.length, model: c.params.sub }; }, id);
+  check(upd.desc === "A test amplifier, changed" && !upd.note && /A test amplifier, changed/.test(upd.insp) && upd.model === "TESTAMP" && upd.wires > 0, "Update from the library: the part takes the library's version, its wires and model stay");
+  await cad.click("#pal-library");
+  await cad.click('.plib-list button[data-id="testamp"]');
+  await cad.fill("#plib-desc", "A test amplifier"); await cad.press("#plib-desc", "Enter");
+  await cad.click("#plib-update");
+  const upd2 = await cad.evaluate(uid => ({ desc: TubeCAD.state.comps.find(k => k.id === uid).params.desc, on: (document.querySelector(".plib-onsheet") || {}).textContent, status: document.getElementById("status-text") ? document.getElementById("status-text").textContent : "" }), id);
+  check(upd2.desc === "A test amplifier" && /1 on the sheet, up to date/.test(upd2.on), "Update it in the dialog brings every one on the sheet up to date");
+  await cad.click("#plib-close");
+
   // New part…: the symbol editor. A box from a list of pins, a circle, a line, a text and a pin drawn; Undo; Save
   await cad.click("#pal-library");
   await cad.click("#plib-new");

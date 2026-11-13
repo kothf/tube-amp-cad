@@ -1864,7 +1864,15 @@
   }
   let palette = null;
   // the user's own parts (cad-library.js): kept in this browser, listed in the panel as My library
-  const library = CadLibrary({ thumb: (...a) => partThumb(...a), setStatus: (...a) => setStatus(...a), changed: () => { if (palette) palette.rebuild(); }, place: params => startPlacing("part", params) });
+  const library = CadLibrary({ thumb: (...a) => partThumb(...a), setStatus: (...a) => setStatus(...a), changed: () => { if (palette) palette.rebuild(); updateInspector(); }, place: params => startPlacing("part", params),
+    sheet: { placed: id => { const all = S.comps.filter(c => c.type === "part" && c.params.lib === id); return { n: all.length, old: all.filter(c => (library.differs(c.params) || []).length).length }; }, update: id => updateFromLibrary(S.comps.filter(c => c.type === "part" && c.params.lib === id)) } });
+  // parts placed from the user's library brought up to it (their values, units and wires stay); returns how many changed
+  function updateFromLibrary(comps) {
+    let n = 0;
+    comps.forEach(c => { if (!(library.differs(c.params) || []).length) return; const p = library.refreshed(c.params); if (!p) return; c.params = p; n++; });
+    if (n) { S.topo = null; commit(); updateInspector(); }
+    return n;
+  }
   function buildPalette() {
     if (palette) { palette.rebuild(); return; }
     palette = CadPalette({
@@ -2053,6 +2061,17 @@
     // what the part library adds for this kind of part: a line of text, then a panel (cad-components.js)
     const info = def.info && def.info(c);
     if (info) { const p = document.createElement("p"); p.className = "insp-help"; p.textContent = info; host.appendChild(p); }
+    // a part from the user's library whose library part has changed since it was placed
+    const old = c.type === "part" ? library.differs(c.params) : null;
+    if (old && old.length) {
+      const p = document.createElement("p"); p.className = "insp-help warn"; p.id = "insp-lib-old";
+      const WHAT = { drawing: "drawing", footprint: "footprint", model: "SPICE model", name: "name" };
+      p.textContent = `Its ${old.map(k => WHAT[k]).join(", ").replace(/, ([^,]*)$/, " and $1")} in your parts library ${old.length === 1 ? "has" : "have"} changed since it was placed. `;
+      const b = document.createElement("button"); b.className = "btn"; b.id = "btn-lib-update"; b.textContent = "Update from the library";
+      b.title = "Take the library's drawing, footprint and model. The value and the wires stay; a wire to a pin that moved has to be joined again.";
+      b.onclick = () => { const same = S.comps.filter(k => k.type === "part" && k.params.lib === c.params.lib && k.label.replace(/\.\d+$/, "") === c.label.replace(/\.\d+$/, "")); const n = updateFromLibrary(same.length ? same : [c]); setStatus("ok", `${c.label.replace(/\.\d+$/, "")}: updated from the library${n > 1 ? ` (${n} units)` : ""}`); };
+      p.appendChild(b); host.appendChild(p);
+    }
     const panel = def.panel && def.panel(c, readoutApi(c));
     if (panel) host.appendChild(panel);
     if (!def.noLabel) {

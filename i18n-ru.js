@@ -839,6 +839,11 @@
     "X, mm": "X, мм",
     "Y, mm": "Y, мм",
     // --- the user's parts library (cad-library.js, cad-palette.js, LIB.part) ---
+    "Update it": "Обновить её",
+    "Update them": "Обновить их",
+    "The drawing, footprint and model of the ones on the sheet become the library's. Their values and wires stay; a wire to a pin that moved has to be joined again. One Undo takes it back.": "Рисунок, посадочное место и модель деталей на листе становятся как в библиотеке. Номиналы и провода остаются; провод к сдвинувшемуся выводу нужно подвести заново. Одна отмена возвращает всё назад.",
+    "Update from the library": "Обновить из библиотеки",
+    "Take the library's drawing, footprint and model. The value and the wires stay; a wire to a pin that moved has to be joined again.": "Взять рисунок, посадочное место и модель из библиотеки. Номинал и провода остаются; провод к сдвинувшемуся выводу нужно подвести заново.",
     "Parts library…": "Библиотека деталей…",
     "Parts library": "Библиотека деталей",
     "Library part": "Деталь библиотеки",
@@ -2318,6 +2323,12 @@
     [/^⚠ (.*)$/, (m, t) => "⚠ " + t.replace(/Unit ([A-Z]) has no pins/g, "В части $1 нет выводов").replace(/The drawing has no pins/g, "В рисунке нет выводов").replace(/Pin number (.+?) is used twice/g, "Номер вывода $1 использован дважды")
       .replace(/The footprint has no name/g, "У посадочного места нет имени").replace(/The footprint has no pads/g, "В посадочном месте нет площадок").replace(/The hole of pad (.+?) leaves no copper round it/g, "Отверстие площадки $1 не оставляет меди вокруг")
       .replace(/Another footprint is called (.+?)(?=\. |\.$)/g, "Имя $1 уже у другого посадочного места").replace(/No pad for pin (.+?) of the part/g, "Нет площадки для вывода $1 детали")],
+    // placed parts and the library
+    [/^(\d+) of this part on the sheet (?:was|were) placed before your changes\.$/, "На листе деталей, поставленных до ваших изменений: $1."],
+    [/^(\d+) on the sheet, up to date\.$/, "На листе: $1, все как в библиотеке."],
+    [/^(.+): (\d+) parts? on the sheet updated from the library\.$/, "$1: обновлено деталей на листе: $2."],
+    [/^(.+): updated from the library(?: \((\d+) units\))?$/, (m, a, n) => `${a}: обновлено из библиотеки${n ? ` (частей: ${n})` : ""}`],
+    [/^Its (.+) in your parts library (?:has|have) changed since it was placed\.$/, (m, a) => `В вашей библиотеке с тех пор, как деталь поставлена, изменились: ${a.replace("drawing", "рисунок").replace("footprint", "посадочное место").replace("SPICE model", "SPICE-модель").replace("name", "имя").replace(" and ", ", ")}.`],
     // the footprint editor (cad-fpedit.js)
     [/^Footprint: (\d+) parts use it$/, "Посадочное место: используется в деталях: $1"],
   ];
