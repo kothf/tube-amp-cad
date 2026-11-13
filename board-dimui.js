@@ -12,11 +12,11 @@
     const D = root.BoardDims, K = root.BoardConstruct, R4 = v => Math.round(v * 1e4) / 1e4;
     const render = () => app.render(), renderPanels = () => app.renderPanels();
     const COLOR = "#4fc3f7", REF = "#9aa7b4", BAD = "#ff5252", SEL = "#ffffff";
-    const HELP = "Dimension (D): click two things (a pad, a part's origin, a hole, a via, a text, a keep-out corner or edge, a board corner or edge, a construction point or line), then place it: up or down for horizontal, sideways for vertical, between for aligned (or H, V, A). Type the value and press Enter: the second thing moves. The tool stays on for the next one; drag a dimension's value to move it, click it to change it. Esc cancels, Esc again leaves";
+    const HELP = "Dimension (D): click two things (a pad, a part's origin, a hole, a via, a text, a keep-out corner or edge, a board corner or edge, a construction point or line), then place it: up or down for horizontal, sideways for vertical, between for aligned (or H, V, A). Type the value and press Enter: the second thing moves. The board's outline is dimensioned too: two of its edges (the distance between them: the board's width or height), one edge twice (its length), an arc or a circle of a sketched outline (radius, diameter); the edge picked second moves. The tool stays on for the next one; drag a dimension's value to move it, click it to change it. Esc cancels, Esc again leaves";
     const T = { a: null, b: null, hover: null, force: null, val: "", m: null };   // the tool in progress
     const E = { id: null };   // the dimension whose value is being typed in the box on its label
     const last = new Map();   // body → where it was after the last solve (board frame): what moved since was moved by hand
-    let prefer = null, note = "";
+    let prefer = null, note = "", reshaped = false;
     const H = () => S.board.outline.h;
     const dims = () => S.board.dims || D.normalise(S.board);
     const shown = () => !dims().hide;
@@ -44,29 +44,53 @@
     }
     function bodies() {
       const b = S.board, out = new Set();
-      dims().items.forEach(d => [d.a, d.b].forEach(f => { const k = D.bodyOf(b, f); if (k) out.add(k); }));
+      dims().items.forEach(d => [d.a, d.b].forEach(f => D.featKeys(b, f).forEach(k => out.add(k))));
       return out;
     }
     /** returns true when something moved (the model must be built again) */
     function enforce(pref) {
       const b = S.board; D.normalise(b);
-      if (!dims().items.length) { S.dsol = null; last.clear(); return false; }
+      if (!dims().items.length) { S.dsol = null; last.clear(); reshaped = false; return false; }
       const keys = bodies(), p0 = new Map(), pinned = new Set();
-      keys.forEach(k => { const p = D.bodyPos(b, k); if (!p) return; p0.set(k, p); const l = last.get(k); if (l && Math.hypot(l[0] - p[0], l[1] - p[1]) > 1e-6) pinned.add(k); });
+      // where things are is compared in a frame that stays still when the board's box moves under them
+      const fix = p => { const at = b.outline.at || [0, 0]; return [p[0] + at[0], p[1] + at[1]]; };
+      let ovFree = reshaped; reshaped = false;
+      keys.forEach(k => {
+        const p = D.bodyPos(b, k); if (!p) return; p0.set(k, p);
+        const l = last.get(k), q = fix(p); if (!l || Math.hypot(l[0] - q[0], l[1] - q[1]) <= 1e-6) return;
+        if (D.isOv(k)) ovFree = true; else pinned.add(k);   // an outline reshaped by hand: its own dimensions pull it back
+      });
       const pr = pref || prefer; prefer = null;
-      let r = D.solve(b, S.model, { csol: S.csol, pinned, prefer: pr || undefined }), moved = false;
+      const opt = { csol: S.csol, ovFree };
+      let r = D.solve(b, S.model, { ...opt, pinned, prefer: pr || undefined }), moved = false;
       if (!r.ok && pinned.size) {
         // it cannot go there: back where it was, and the dimension that stopped it named
         const why = r.bad.map(id => dims().items.find(d => d.id === id)).filter(Boolean)[0];
-        pinned.forEach(k => { const p = D.bodyPos(b, k), l = last.get(k); if (p && l) moved = slide(k, l[0] - p[0], l[1] - p[1], p0) || moved; });
-        r = D.solve(b, S.model, { csol: S.csol });
+        pinned.forEach(k => { const p = D.bodyPos(b, k), l = last.get(k); if (p && l) { const q = fix(p); moved = slide(k, l[0] - q[0], l[1] - q[1], p0) || moved; } });
+        r = D.solve(b, S.model, opt);
         note = why ? `Held by a dimension: ${D.describe(b, S.model, why)}. Change or delete it (or make it a reference) to move this` : "Held by its dimensions";
       }
-      r.T.forEach(([dx, dy], k) => { moved = slide(k, dx, dy, p0) || moved; });
-      keys.forEach(k => { const p = D.bodyPos(b, k); if (p) last.set(k, p); });
+      const ovT = new Map();
+      r.T.forEach(([dx, dy], k) => { if (D.isOv(k)) ovT.set(k, [dx, dy]); else moved = slide(k, dx, dy, p0) || moved; });
+      // the outline's corners moved: the board takes its new size or shape, everything on it stays in its place
+      const mo = r.ok ? D.movedOutline(b, ovT) : null;
+      if (mo && mo.error) { r.ok = false; note = note || `The board outline stays as it is: its dimensions would break it (${mo.error})`; }
+      else if (mo) { app.moveOutline(mo.o, mo.dx, mo.dy); moved = true; if (ovFree && !pr) note = note || "The board's outline is held by its dimensions: change a dimension's value (double-click it), or delete it, to give the board another size"; }
+      last.clear(); bodies().forEach(k => { const p = D.bodyPos(b, k); if (p) last.set(k, fix(p)); });
       S.dsol = { ok: r.ok, bad: new Set(r.bad), lost: new Set(r.lost) };
       if (note) { const n = note; note = ""; setTimeout(() => msg(n), 0); }
       return moved;
+    }
+    /** the outline got another shape (a sketch, Board setup): map { old segment: new } keeps the
+        dimensions on its corners, edges and arcs; the ones whose edge is gone go with it */
+    // a solution the board can take: met, and the outline (if it moves) still an outline
+    function fits(r) { if (!r.ok) return false; const mo = D.movedOutline(S.board, r.T); return !(mo && mo.error); }
+    function outlineChanged(old, map) {
+      const b = S.board;
+      const gone = old && old.shape ? D.remapOutline(b, b.outline.shape ? map : null) : 0;
+      [...last.keys()].forEach(k => { if (D.isOv(k)) last.delete(k); });
+      reshaped = true;
+      return gone;
     }
 
     // ---------------------------------------------------------------------------
@@ -82,6 +106,13 @@
       b.vias.forEach(v => at(v.x, v.y, "via", () => ({ t: "via", id: K.idOf(b, v, "v") })));
       b.texts.forEach(t => at(t.x, t.y, `text "${t.text}"`, () => ({ t: "text", id: D.textId(b, t) })));
       b.keepouts.forEach(ko => ko.pts.forEach((p, k) => at(p[0], p[1], "keep-out corner", () => ({ t: "ko", id: K.idOf(b, ko, "k"), k }))));
+      // a sketched outline: its corners, and the centres of its arcs and circles
+      const env = o.shape ? D.makeEnv(b, S.model, S.csol) : null;
+      if (env) env.ov.forEach((v, k) => {
+        if (!v.full) at(v.x, v.y, "outline corner", () => ({ t: "ov", k }));
+        const a = v.b ? env.arc({ t: "oc", k }, null) : null;
+        if (a && !(v.full && env.ov[v.n].n === k && v.n < k)) at(a.c[0], a.c[1], v.full ? "centre of the outline's circle" : "centre of the outline's arc", () => ({ t: "oc", k }));
+      });
       [["BL", 0, o.h], ["BR", o.w, o.h], ["TL", 0, 0], ["TR", o.w, 0], ["C", o.w / 2, o.h / 2], ["B", o.w / 2, o.h], ["T", o.w / 2, 0], ["L", 0, o.h / 2], ["R", o.w, o.h / 2]]
         .forEach(([k, px, py]) => at(px, py, k === "C" ? "board centre" : k.length === 2 ? "board corner" : "middle of the board edge", () => ({ t: "board", at: k })));
       if (app.cons) app.cons.snapInto(x, y, (px, py, what, shape, ent) => { if (ent && ent.ref) at(px, py, what, () => ({ t: "cp", ref: ent.ref })); }, "point");
@@ -89,13 +120,24 @@
       // failing a point: a line (board edge, keep-out edge, construction line)
       if (!S.csol) return null;
       const pk = K.pick(S.csol, x, H() - y, tol, {});
-      if (!pk || !pk.c || pk.c.t !== "L") return null;
+      if (!pk || !pk.c) return null;
+      if (pk.id === "@outline" && o.shape) {
+        // a sketched outline: each edge is a line of its own (it moves), each arc or circle has a radius
+        const v = env.ov[pk.k]; if (!v) return null;
+        const corner = k => ({ p: [env.ov[k].x, env.ov[k].y], name: "outline corner", make: () => ({ t: "ov", k }) });
+        if (!v.b) return { line: [v.x, v.y, env.ov[v.n].x, env.ov[v.n].y], name: `outline edge ${pk.k + 1}`, make: () => ({ t: "oe", k: pk.k }), ends: [corner(pk.k), corner(v.n)] };
+        const a = env.arc({ t: "oe", k: pk.k }, null);
+        return { arc: a, name: a.full ? "outline circle" : `outline arc ${pk.k + 1}`, make: () => ({ t: "oe", k: pk.k }) };
+      }
+      if (pk.c.t !== "L") return null;
       const c = pk.c, seg = [c.x1, H() - c.y1, c.x2, H() - c.y2];
       if (pk.id === "@outline") {
         // a board with a shape of its own: only a straight run along the box round it stands for that side
         let k = pk.k;
         if (o.shape) { const near = (a, b) => Math.abs(a - b) < 1e-4; k = near(c.y1, 0) && near(c.y2, 0) ? 0 : near(c.x1, o.w) && near(c.x2, o.w) ? 1 : near(c.y1, o.h) && near(c.y2, o.h) ? 2 : near(c.x1, 0) && near(c.x2, 0) ? 3 : 9; }
-        return k <= 3 ? { line: seg, name: `board ${D.EDGE_NAMES[k]}`, make: () => ({ t: "edge", k }) } : null;
+        if (k > 3) return null;
+        const P = { BL: [0, o.h], BR: [o.w, o.h], TR: [o.w, 0], TL: [0, 0] }, corner = at => ({ p: P[at], name: "board corner", make: () => ({ t: "board", at }) });
+        return { line: seg, name: `board ${D.EDGE_NAMES[k]}`, make: () => ({ t: "edge", k }), ends: o.shape ? null : [["BL", "BR"], ["BR", "TR"], ["TR", "TL"], ["TL", "BL"]][k].map(corner) };
       }
       if (typeof pk.id === "string" && pk.id.startsWith("@ko:")) return { line: seg, name: `keep-out edge ${pk.k + 1}`, make: () => ({ t: "koe", id: pk.id.slice(4), k: pk.k }) };
       return { line: seg, name: "construction line", make: () => ({ t: "cl", g: { id: pk.id, k: pk.k || 0 } }) };
@@ -122,6 +164,7 @@
     function pending() {
       if (!T.a || !T.b) return null;
       const A = T.a, Bf = T.b, m = T.m || A.p || Bf.p;
+      if (A.arc) return { k: A.arc.full ? "dia" : "rad", arc: A.arc, ang: m ? Math.atan2(m[1] - A.arc.c[1], m[0] - A.arc.c[0]) : -Math.PI / 4 };
       if (A.line || Bf.line) { const pt = A.line ? Bf : A, ln = A.line ? A : Bf; return { k: "pl", pa: pt.p, line: ln.line, pt, ln }; }
       const k = kindOf(A.p, Bf.p, m);
       return { k, pa: A.p, pb: Bf.p, o: offsetFor(k, A.p, Bf.p, m) };
@@ -141,11 +184,21 @@
       if (own) { S.sel = { kind: "dim", id: own }; S.drag = { ...grab(own, x, y), edit: true }; renderPanels(); render(); return true; }
       const f = featureAt(x, y);
       if (!f) { msg("Nothing to dimension there: click a pad, a part's origin, a hole, a via, a text, a keep-out, the board's corner or edge, or construction"); return true; }
-      if (!T.a) { T.a = f; msg(`From ${f.name}: now click the second thing (it is the one that moves)`); }
+      if (!T.a && f.arc) { T.a = T.b = f; T.m = [x, y]; msg(`${f.arc.full ? "Diameter" : "Radius"} of the ${f.name}: place it, type the value, then Enter or click. Esc cancels`); }
+      else if (!T.a) { T.a = f; msg(`From ${f.name}: now click the second thing (it is the one that moves)`); }
       else {
-        if (f.line && T.a.line) { msg("Two lines: click a point (a pad, hole, via, corner…) for one of them"); return true; }
-        if (f.p && T.a.p && Math.hypot(f.p[0] - T.a.p[0], f.p[1] - T.a.p[1]) < 1e-6 && f.name === T.a.name) return true;
-        T.b = f; T.m = [x, y];
+        let g = f;
+        if (g.arc) { msg("An arc or a circle is dimensioned on its own (its radius or diameter): press Esc and click it first. For a distance to it click its centre"); return true; }
+        if (g.line && T.a.line) {
+          const same = g.name === T.a.name && g.line.every((v, i) => Math.abs(v - T.a.line[i]) < 1e-6);
+          if (same && g.ends) { T.a = g.ends[0]; g = g.ends[1]; }   // one edge twice: its length
+          else if (!same && T.a.ends) T.a = T.a.ends[0];              // two edges: from the first one's corner to the second (the second moves)
+          else if (!same && g.ends) g = g.ends[0];
+          else { msg("Two lines: click a point (a pad, hole, via, corner…) for one of them"); return true; }
+        }
+        const f2 = g;
+        if (f2.p && T.a.p && Math.hypot(f2.p[0] - T.a.p[0], f2.p[1] - T.a.p[1]) < 1e-6 && f2.name === T.a.name) return true;
+        T.b = f2; T.m = [x, y];
         msg("Place it (up/down: horizontal, sideways: vertical, between: aligned; or H, V, A), type the value, then Enter or click. Esc cancels");
       }
       hud(); render(); return true;
@@ -161,12 +214,13 @@
       const p = pending(); if (!p) return;
       const b = S.board; D.normalise(b);
       let dim;
-      if (p.k === "pl") dim = { k: "pl", a: p.pt.make(), b: p.ln.make() };
+      if (p.k === "rad" || p.k === "dia") dim = { k: p.k, a: T.a.make(), b: T.a.make(), ang: R4(p.ang) };
+      else if (p.k === "pl") dim = { k: "pl", a: p.pt.make(), b: p.ln.make() };
       else dim = { k: p.k, a: T.a.make(), b: T.b.make(), o: R4(p.o) };
       const typed = T.val.trim() === "" ? null : parseFloat(T.val.replace(",", "."));
       // the thing picked second moves (a line that cannot move: the point does)
-      const second = p.k === "pl" ? (T.b.line ? dim.b : dim.a) : dim.b, first = second === dim.a ? dim.b : dim.a;
-      const mover = D.bodyOf(b, second) || D.bodyOf(b, first);
+      const second = p.k === "pl" ? (T.b.line ? dim.b : dim.a) : dim.b;
+      const mover = D.movers(b, dim, second);
       cancel();
       const made = add(dim, typed, mover);
       // nothing typed while placing: the Modify box asks for the value (as in SolidWorks)
@@ -179,7 +233,7 @@
       dim.id = D.newId(b);
       if (D.HAS_VALUE[dim.k]) {
         if (typed === null || !Number.isFinite(typed)) dim.v = cur;
-        else if (dim.k === "dist") dim.v = R4(Math.abs(typed));
+        else if (dim.k === "dist" || dim.k === "rad" || dim.k === "dia") dim.v = R4(Math.abs(typed));
         else { const s = cur < 0 ? -1 : 1; dim.v = R4(typed < 0 ? -s * Math.abs(typed) : s * typed); }
       }
       dims().items.push(dim);
@@ -188,9 +242,9 @@
         dim.ref = true; dim.v = cur;
         commit(`Reference dimension (a driving one would over-constrain: the other dimensions or locks already fix this): ${D.describe(b, S.model, dim)}`); return dim;
       }
-      const pref = new Set(mover ? [mover] : []);
+      const pref = mover instanceof Set ? mover : new Set(mover ? [mover] : []);
       const r = D.solve(b, S.model, { csol: S.csol, prefer: pref });
-      if (!r.ok) { dim.ref = true; dim.v = cur; commit(`Reference dimension: ${say} cannot be met with the other dimensions (or a locked part); it shows ${fmt(cur)} mm`); return dim; }
+      if (!fits(r)) { dim.ref = true; dim.v = cur; commit(`Reference dimension: ${say} cannot be met with the other dimensions (or a locked part, or the outline would cross itself); it shows ${fmt(cur)} mm`); return dim; }
       enforce(pref);
       commit(`Dimension: ${say}${dim.k === "hz" || dim.k === "vt" ? "" : ". Click its value to change it, drag the value to move it; the tool stays on for the next one"}`);
       return dim;
@@ -199,12 +253,12 @@
       if (!D.HAS_VALUE[dim.k] || !Number.isFinite(v)) return false;
       const old = dim.v;
       // the side it is on stays; a minus sign puts it on the other side
-      dim.v = dim.k === "dist" ? R4(Math.abs(v)) : R4((old < 0 ? -1 : 1) * v);
+      dim.v = dim.k === "dist" || dim.k === "rad" || dim.k === "dia" ? R4(Math.abs(v)) : R4((old < 0 ? -1 : 1) * v);
       if (dim.ref) { commit(); return true; }
-      const mover = D.bodyOf(S.board, dim.b) || D.bodyOf(S.board, dim.a);
-      const r = D.solve(S.board, S.model, { csol: S.csol, prefer: new Set(mover ? [mover] : []) });
-      if (!r.ok) { dim.v = old; msg(`${fmt(v)} mm cannot be met with the other dimensions (or a locked part)`); renderPanels(); render(); return false; }
-      enforce(new Set(mover ? [mover] : []));
+      const pref = D.movers(S.board, dim, dim.b);
+      const r = D.solve(S.board, S.model, { csol: S.csol, prefer: pref });
+      if (!fits(r)) { dim.v = old; msg(`${fmt(v)} mm cannot be met with the other dimensions (or a locked part, or the outline would cross itself)`); renderPanels(); render(); return false; }
+      enforce(pref);
       commit(D.describe(S.board, S.model, dim));
       return true;
     }
@@ -212,8 +266,8 @@
       if (!on) {
         dim.ref = false;
         if (D.redundant(S.board, S.model, dim, S.csol)) { dim.ref = true; msg("It stays a reference: the other dimensions already fix this"); renderPanels(); return; }
-        const mover = D.bodyOf(S.board, dim.b) || D.bodyOf(S.board, dim.a), pref = new Set(mover ? [mover] : []);
-        if (!D.solve(S.board, S.model, { csol: S.csol, prefer: pref }).ok) { dim.ref = true; msg("It cannot drive: it fights the other dimensions"); renderPanels(); return; }
+        const pref = D.movers(S.board, dim, dim.b);
+        if (!fits(D.solve(S.board, S.model, { csol: S.csol, prefer: pref }))) { dim.ref = true; msg("It cannot drive: it fights the other dimensions"); renderPanels(); return; }
         enforce(pref); commit("Driving dimension: it holds them " + fmt(dim.v) + " mm apart"); return;
       }
       dim.ref = true; commit("Reference dimension: it only shows the distance");
@@ -273,7 +327,7 @@
     // the value slides along its dimension line by d.s mm from the middle (it may go past an end: the
     // line runs on to it, as in a drawing), wherever the user dragged it
     function slid(sh, d) {
-      const s = Number.isFinite(d.s) ? d.s : 0; if (!s || !sh) return sh;
+      const s = Number.isFinite(d.s) ? d.s : 0; if (!s || !sh || sh.fixed) return sh;
       const [A, Bq] = sh.line, dx = Bq[0] - A[0], dy = Bq[1] - A[1], L = Math.hypot(dx, dy); if (L < 1e-9) return sh;
       const ux = dx / L, uy = dy / L, m = [(A[0] + Bq[0]) / 2, (A[1] + Bq[1]) / 2];
       sh.lbl = [m[0] + ux * s, m[1] + uy * s];
@@ -281,7 +335,13 @@
       return sh;
     }
     function shape(d, env) { return slid(shapeBase(d, env), d); }
+    // a radius: from the centre to the rim; a diameter: across, through the centre; the value half way out
+    function arcShape(a, ang, dia) {
+      const u = [Math.cos(ang), Math.sin(ang)], rim = [a.c[0] + u[0] * a.r, a.c[1] + u[1] * a.r], from = dia ? [a.c[0] - u[0] * a.r, a.c[1] - u[1] * a.r] : a.c;
+      return { line: [from, rim], ext: [], lbl: [a.c[0] + u[0] * a.r / 2, a.c[1] + u[1] * a.r / 2], arrows: true, fixed: true };
+    }
     function shapeBase(d, env) {
+      if (d.k === "rad" || d.k === "dia") { const a = env.arc(d.a, null); return a ? arcShape(a, Number.isFinite(d.ang) ? d.ang : -Math.PI / 4, d.k === "dia") : null; }
       if (d.k === "pl") {
         const p = env.point(d.a, null), l = env.line(d.b, null); if (!p || !l) return null;
         const dx = l[2] - l[0], dy = l[3] - l[1], L2 = dx * dx + dy * dy || 1, t = ((p[0] - l[0]) * dx + (p[1] - l[1]) * dy) / L2, f = [l[0] + t * dx, l[1] + t * dy];
@@ -301,8 +361,8 @@
     }
     const textOf = (d, env) => {
       if (d.k === "hz" || d.k === "vt") return d.k === "hz" ? "═ H" : "‖ V";
-      const v = d.ref ? D.measure(env, d) : d.v;
-      return v === null ? "?" : d.ref ? `(${fmt(v)})` : fmt(v);
+      const v = d.ref ? D.measure(env, d) : d.v, pre = d.k === "rad" ? "R" : d.k === "dia" ? "⌀" : "";
+      return v === null ? "?" : d.ref ? `(${pre}${fmt(v)})` : pre + fmt(v);
     };
 
     // ---------------------------------------------------------------------------
@@ -344,13 +404,15 @@
         if (f.p) { ctx.beginPath(); ctx.arc(f.p[0], f.p[1], 5 * px, 0, Math.PI * 2); ctx.stroke(); }
         else if (f.line) { ctx.beginPath(); ctx.moveTo(f.line[0], f.line[1]); ctx.lineTo(f.line[2], f.line[3]); ctx.stroke(); }
       };
-      mark(T.a, COLOR); mark(T.b, COLOR);
-      if (!T.b && T.hover) { mark(T.hover, "#ffd54f"); if (T.m) { ctx.font = `${11 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillStyle = "#ffd54f"; ctx.fillText(tr(T.hover.name), T.m[0] + 10 * px, T.m[1] - 6 * px); } }
+      const mark0 = mark, markArc = (f, col) => { if (f && f.arc) { ctx.strokeStyle = col; ctx.lineWidth = 1.5 * px; ctx.beginPath(); const a = f.arc, a0 = Math.atan2(a.a[1] - a.c[1], a.a[0] - a.c[0]); if (a.full) ctx.arc(a.c[0], a.c[1], a.r, 0, Math.PI * 2); else ctx.arc(a.c[0], a.c[1], a.r, a0, a0 + a.sw, a.sw < 0); ctx.stroke(); } else mark0(f, col); };
+      markArc(T.a, COLOR); if (T.b !== T.a) markArc(T.b, COLOR);
+      if (!T.b && T.hover) { markArc(T.hover, "#ffd54f"); if (T.m) { ctx.font = `${11 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillStyle = "#ffd54f"; ctx.fillText(tr(T.hover.name), T.m[0] + 10 * px, T.m[1] - 6 * px); } }
       const p = pending(); if (!p) return;
-      drawOne(ctx, px, shapeRaw(p), T.val ? T.val : fmt(liveValue(p)), "#ffd54f", false);
+      drawOne(ctx, px, shapeRaw(p), (p.k === "rad" ? "R" : p.k === "dia" ? "⌀" : "") + (T.val ? T.val : fmt(liveValue(p))), "#ffd54f", false);
     }
     function shapeRaw(p) {
       const { pa, pb, o } = p;
+      if (p.arc) return arcShape(p.arc, p.ang, p.k === "dia");
       if (p.k === "pl") { const l = p.line, dx = l[2] - l[0], dy = l[3] - l[1], L2 = dx * dx + dy * dy || 1, t = ((pa[0] - l[0]) * dx + (pa[1] - l[1]) * dy) / L2, f = [l[0] + t * dx, l[1] + t * dy]; return { line: [pa, f], ext: [], lbl: [(pa[0] + f[0]) / 2, (pa[1] + f[1]) / 2], arrows: true }; }
       if (p.k === "dx") { const y = pa[1] + o, A = [pa[0], y], Bq = [pb[0], y]; return { line: [A, Bq], ext: [[pa, A], [pb, Bq]], lbl: [(A[0] + Bq[0]) / 2, y], arrows: true }; }
       if (p.k === "dy") { const x = pa[0] + o, A = [x, pa[1]], Bq = [x, pb[1]]; return { line: [A, Bq], ext: [[pa, A], [pb, Bq]], lbl: [x, (A[1] + Bq[1]) / 2], arrows: true }; }
@@ -358,12 +420,13 @@
       return { line: [A, Bq], ext: [[pa, A], [pb, Bq]], lbl: [(A[0] + Bq[0]) / 2, (A[1] + Bq[1]) / 2], arrows: true };
     }
     function liveValue(p) {
+      if (p.arc) return p.arc.r * (p.k === "dia" ? 2 : 1);
       if (p.k === "pl") return D.signedDist(p.pa, p.line);
       if (p.k === "dx") return p.pb[0] - p.pa[0];
       if (p.k === "dy") return p.pa[1] - p.pb[1];
       return Math.hypot(p.pb[0] - p.pa[0], p.pb[1] - p.pa[1]);
     }
-    const kindName = k => ({ dx: "Horizontal", dy: "Vertical", dist: "Aligned", pl: "To the line" })[k] || k;
+    const kindName = k => ({ dx: "Horizontal", dy: "Vertical", dist: "Aligned", pl: "To the line", rad: "Radius", dia: "Diameter" })[k] || k;
 
     // the HUD: the value typed while placing (on the dimension's label), or the box on an existing
     // dimension's label while its value is changed
@@ -373,7 +436,7 @@
       const p = active() && pending();
       if (!p) { el.hidden = true; return; }
       el.hidden = false;
-      el.innerHTML = `<span>${app.esc(tr(kindName(p.k)))}</span><input data-k="v" value="${app.esc(T.val)}" placeholder="${fmt(liveValue(p))}" title="${app.esc(tr("The value, mm: Enter makes it; empty keeps the distance as it is"))}"><small>mm</small><small class="chud-k">${p.k === "pl" ? "" : "H V A · "}Enter · Esc</small>`;
+      el.innerHTML = `<span>${app.esc(tr(kindName(p.k)))}</span><input data-k="v" value="${app.esc(T.val)}" placeholder="${fmt(liveValue(p))}" title="${app.esc(tr("The value, mm: Enter makes it; empty keeps the distance as it is"))}"><small>mm</small><small class="chud-k">${p.k === "pl" || p.arc ? "" : "H V A · "}Enter · Esc</small>`;
       const inp = el.querySelector("input");
       inp.oninput = () => { T.val = inp.value; render(); };
       inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); place(); app.canvas().focus(); } else if (e.key === "Escape") { e.preventDefault(); cancel(); app.canvas().focus(); } else if (/^[hHvVaA]$/.test(e.key)) { e.preventDefault(); forceKind(e.key); } };
@@ -428,8 +491,9 @@
     // follows, its extension lines still on them) and along the line (past an end, the line runs on)
     function drag(dr, x, y) {
       if (!dr.moved && Math.hypot(x - dr.mx, y - dr.my) * S.view.scale < 3) return;   // a click, not a drag (the pointer may twitch)
-      const d = dims().items.find(q => q.id === dr.id); if (!d || !["dx", "dy", "dist", "pl"].includes(d.k)) return;
+      const d = dims().items.find(q => q.id === dr.id); if (!d || !["dx", "dy", "dist", "pl", "rad", "dia"].includes(d.k)) return;
       const env = D.makeEnv(S.board, S.model, S.csol), m = [x - (dr.gx || 0), y - (dr.gy || 0)];
+      if (d.k === "rad" || d.k === "dia") { const a = env.arc(d.a, null); if (a) { d.ang = R4(Math.atan2(m[1] - a.c[1], m[0] - a.c[0])); dr.moved = true; render(); } return; }
       if (d.k === "pl") {
         const p = env.point(d.a, null), l = env.line(d.b, null); if (!p || !l) return;
         const dx = l[2] - l[0], dy = l[3] - l[1], L = Math.hypot(dx, dy) || 1;
@@ -552,6 +616,6 @@
       menuState();
     }
 
-    return { HELP, enforce, toolChanged, onDown, onMove, onKey, cancel, select, drag, deleteSel, dbl, editAt, closeEdit, fromMeasure, hit, draw, inspector, bodyInfo, align, clearAll, setShown, menuState, init, add, setValue, featureAt, isSel: id => !!(S.sel && S.sel.kind === "dim" && S.sel.id === id) };
+    return { HELP, enforce, toolChanged, onDown, onMove, onKey, cancel, select, drag, deleteSel, dbl, editAt, closeEdit, fromMeasure, hit, draw, outlineChanged, inspector, bodyInfo, align, clearAll, setShown, menuState, init, add, setValue, featureAt, isSel: id => !!(S.sel && S.sel.kind === "dim" && S.sel.id === id) };
   };
 })(typeof window !== "undefined" ? window : globalThis);

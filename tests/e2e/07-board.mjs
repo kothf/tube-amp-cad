@@ -746,6 +746,40 @@ import { readFile } from "node:fs/promises";
     const back = await bd.evaluate(() => ({ ...BoardApp.state.board.outline }));
     check(un && rd.w === 90 && rd.h === 90 && Math.abs(rd.area - Math.PI * 2025) < 0.01 && c2 === 1 && !back.shape && back.w === o.w && back.h === o.h, `Ctrl+Z takes the cut-out back; Board setup → Round, 90 gives a round board (${rd.d}); Ctrl+Z brings the ${back.w} × ${back.h} mm rectangle back`);
   }
+  // the outline is dimensioned: two edges of the board give its width (the edge clicked second moves), a round board its diameter
+  {
+    await bd.keyboard.press("Escape"); await bd.keyboard.press("Escape");
+    const o = await bd.evaluate(() => ({ ...BoardApp.state.board.outline })), n0 = await bd.evaluate(() => BoardApp.state.board.dims.items.length);
+    // a height along the edges where the tool finds the edge itself (no pad, hole or middle mark near)
+    const yy = await bd.evaluate(() => { const o = BoardApp.state.board.outline, ok = (x, y) => { const f = BoardApp.dimui.featureAt(x, y); return f && f.line && /edge/.test(f.name); }; for (let k = 1; k < 20; k++) { const y = o.h * k / 20; if (Math.abs(y - o.h / 2) > 8 && ok(0, y) && ok(o.w, y)) return y; } return null; });
+    const p1 = await bd.evaluate(() => Object.values(BoardApp.state.board.parts).map(p => [p.x, p.y]));
+    await bd.keyboard.press("d");
+    let p = await at(0, yy); await bd.mouse.click(p[0], p[1]);
+    p = await at(o.w, yy); await bd.mouse.click(p[0], p[1]);
+    p = await at(o.w / 2, yy); await bd.mouse.move(p[0], p[1], { steps: 3 }); await bd.mouse.click(p[0], p[1]);
+    await bd.waitForTimeout(80);
+    const pop = await bd.evaluate(() => { const h = document.getElementById("dmod"), i = h.querySelector("input"); return !h.hidden && i ? i.value : null; });
+    await bd.keyboard.type(String(o.w + 12)); await bd.keyboard.press("Enter"); await bd.waitForTimeout(200);
+    const w1 = await bd.evaluate(() => { const S = BoardApp.state, d = S.board.dims.items.slice(-1)[0]; return { w: S.board.outline.w, h: S.board.outline.h, n: S.board.dims.items.length, k: d.k, ref: !!d.ref, parts: Object.values(S.board.parts).map(p => [p.x, p.y]) }; });
+    check(yy !== null && pop !== null && Math.abs(+pop - o.w) < 0.01 && w1.n === n0 + 1 && !w1.ref && Math.abs(w1.w - o.w - 12) < 1e-6 && w1.h === o.h && JSON.stringify(w1.parts) === JSON.stringify(p1),
+      `Dimension: the board's left edge, then its right edge reads the width (${pop}); ${o.w + 12} Enter makes the board ${w1.w} mm wide (was ${o.w}), the right edge moved and every part stayed`);
+    // Board setup cannot give it another width while the dimension holds
+    await bd.keyboard.press("Escape"); await bd.keyboard.press("Escape");
+    await bd.evaluate(() => BoardApp.openSetup()); await bd.fill('#setup-modal input[data-o="w"]', String(o.w + 40)); await bd.click("#setup-apply"); await bd.waitForTimeout(300);
+    const held = await bd.evaluate(() => BoardApp.state.board.outline.w);
+    check(Math.abs(held - o.w - 12) < 1e-6, `the width dimension holds: Board setup asking for ${o.w + 40} mm leaves the board ${held} mm wide`);
+    // a round board's diameter
+    await bd.evaluate(() => { BoardApp.state.board.dims.items = []; BoardApp.applyOutline(BoardOutline.circleOutline(100), 0, 0); BoardApp.fit(); });
+    await bd.waitForTimeout(200);
+    await bd.keyboard.press("d");
+    p = await at(50 + 50 * Math.cos(0.5), 50 + 50 * Math.sin(0.5)); await bd.mouse.click(p[0], p[1]);
+    p = await at(70, 40); await bd.mouse.move(p[0], p[1], { steps: 3 }); await bd.mouse.click(p[0], p[1]);
+    await bd.waitForTimeout(80);
+    await bd.keyboard.type("80"); await bd.keyboard.press("Enter"); await bd.waitForTimeout(200);
+    const rd = await bd.evaluate(() => { const S = BoardApp.state, o = S.board.outline, d = S.board.dims.items[0]; return { w: o.w, h: o.h, k: d && d.k, v: d && d.v, txt: BoardOutline.describe(o), cuts: Object.keys(BoardApp.fabFiles()).length }; });
+    check(rd.k === "dia" && rd.v === 80 && rd.w === 80 && rd.h === 80 && rd.cuts > 0, `a click on a round board's edge dimensions its diameter: 80 Enter makes it ${rd.txt}`);
+    await bd.keyboard.press("Escape"); await bd.keyboard.press("Escape");
+  }
   await bd.close();
 }
 

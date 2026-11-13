@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.193.0] - 2026-11-13
+
+### Added
+- **Dimensions drive the board's outline.** With the Dimension tool (D), click one edge of the board and then another: the dimension between them is the board's width or height, and the value typed moves the edge clicked second, with everything on the board staying in its place. One edge clicked twice (or two of its corners) gives its length.
+- **On a sketched outline** every edge, corner and arc centre can be dimensioned; a click on an arc gives its radius (R), on a circle (a round board, a round cut-out) its diameter (⌀). Each line keeps its direction and each arc its angle, so a dimension changes sizes and never the kind of shape; a rounded corner or a round cut-out keeps its radius unless its own dimension changes it.
+- A part or a hole dimensioned from an edge moves as before (the edge does not come to it) and follows the edge when the board's size changes.
+- A size held by a dimension cannot be changed by Board setup, by dragging the board's edge or by the sketch: the status line says so. A value that would make the outline cross itself or leave a cut-out outside the board is refused. A sketch that removes an edge removes the dimensions on it and says how many.
+
+### Changed
+- Two lines clicked in the Dimension tool (two board edges, an edge and a construction line) now give the distance between them; it used to ask for a point.
+
 ## [3.192.0] - 2026-11-12
 
 ### Added
