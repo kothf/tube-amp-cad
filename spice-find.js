@@ -55,9 +55,32 @@
       one of two or three pins whose only semiconductor is a diode or one transistor, that device; else a box */
   function symFor(m) {
     const K = root.CadLib.SPICE_KIND_SYM;
+    if (m.kind === "vdmos") return /\bpchan\b/i.test(m.text || "") ? "pmos" : "nmos";
     if (K[m.kind]) return K[m.kind];
     if (m.pins.length === 5) return "opamp";
-    return "box";
+    return lone(m) || "box";
   }
-  root.SpiceFind = { KINDS, norm, read, load, candidates, urlOf, cut, get, symFor, reset() { index = null; loading = null; } };
+  // a subcircuit of two or three pins around one kind of device: a maker's power MOSFET or Darlington
+  // (the element lines' first letters and the types of its .MODELs say which)
+  function lone(m) {
+    const lines = String(m.text || "").split(/\r?\n/).map(l => l.trim()), has = ch => lines.some(l => l[0] && l[0].toUpperCase() === ch);
+    const types = lines.map(l => /^\.model\s+\S+\s+\(?\s*([a-z]+)/i.exec(l)).filter(Boolean).map(x => x[1].toLowerCase()), pch = lines.some(l => /^\.model\b.*\bpchan\b/i.test(l));
+    if (has("X")) return null;
+    if (m.pins.length === 3) {
+      if (has("M") && !has("Q") && !has("J")) return types.includes("pmos") || pch ? "pmos" : types.includes("nmos") || types.includes("vdmos") ? "nmos" : null;
+      if (has("Q") && !has("M") && !has("J")) return types.includes("npn") && !types.includes("pnp") && !types.includes("lpnp") ? "npn" : types.includes("pnp") && !types.includes("npn") ? "pnp" : null;
+      if (has("J") && !has("M") && !has("Q")) return types.includes("pjf") ? "pjf" : types.includes("njf") ? "njf" : null;
+    }
+    if (m.pins.length === 2 && has("D") && !has("M") && !has("Q") && !has("J")) return "diode";
+    return null;
+  }
+  /** Which pin of the symbol each pin of the model takes: by name where the model names them
+      (c b e, d g s, a k, in any order), else in the usual order of makers' files */
+  function mapFor(m, symPins) {
+    const short = { collector: "c", base: "b", emitter: "e", drain: "d", gate: "g", source: "s", anode: "a", cathode: "k" };
+    const names = m.pins.map(p => { const t = String(p).toLowerCase(); return short[t] || t; }), want = symPins.map(p => p.toLowerCase());
+    if (names.length === want.length && want.every(w => names.includes(w)) && new Set(names).size === names.length) return names.map(n => symPins[want.indexOf(n)]);
+    return m.pins.map((_, i) => (i < symPins.length ? symPins[i] : ""));
+  }
+  root.SpiceFind = { KINDS, norm, read, load, candidates, urlOf, cut, get, symFor, mapFor, reset() { index = null; loading = null; } };
 })(typeof window !== "undefined" ? window : globalThis);

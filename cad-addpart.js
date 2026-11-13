@@ -36,6 +36,7 @@
     if (family === "diode") return /^(1N4148|1N914|1N4448|BA[STVWX]?\d|1N34|1N60|BZX|1N7\d\d|1N52\d\d)/.test(n) ? "DIODE-7.62" : /^(1N54\d\d|1N582\d|MUR4|UF54|FR30|SB[35]\d\d|MBR3|BY[25]\d\d)/.test(n) ? "DO-201AD" : "DIODE-10.16";
     if (/^(MMB|BC8[0-6]\d|BSS|2N7002|AO3|SI23|IRLML|FMM|BF8)/.test(n)) return "SOT-23";
     if (family === "bjt") {
+      if (/^(2N2222|2N2907|2N2219|2N2905|2N2369|2N930|BC10[7-9]|BC17[7-9]|BCY\d)/.test(n)) return "TO-18";
       if (/^(MJL|2SC5200|2SA1943|2SC3281|2SA1302|2SC2922|2SA1216)/.test(n)) return "TO-264";
       if (/^(MJW|TIP3[56]|TIP14[0-7]|TIP29\d\d|2SC5242|2SA1962|NJW|BU[X]?\d|FJA)/.test(n)) return "TO-247";
       if (/^(BD1[3-8]\d|BD2[23]\d|BD43\d|BD67\d|BD68\d|MJE3[45]0|MJE1[78]\d|MJE2[04]\d|2SC2690|2SA1220|2SB649|2SD669|2SC3503|2SA1381|KSC3503|KSA1381|KSE3[45]0)/.test(n)) return "TO-126";
@@ -56,6 +57,21 @@
     if (/(0[678]4|LM324|LM2902|LM348|4134|LM837|MC3340[34]|TLC27[47]4|OPA4\d|AD8[46]4|LMV?324|TS9[12]4)/.test(n)) return 4;
     if (/(0[678]2|553[23]|LM358|LM2904|LM833|1458|4558|4560|4580|2068|2114|4562|LME497[12]0|OPA2\d|AD8[26]2|AD712|LF353|LF412|TLC27[27]2|MC33078|LM4562|RC4559|OP2[27]5|LT1057|TS9[12]2)/.test(n)) return 2;
     return 1;
+  }
+
+  /** The app's own part of that number, if it has one: { key, type, params, what }. The ordering letters
+      at the end of the number do not count (a 2N3904BU is the 2N3904, an LM7805CT the 7805). */
+  function builtin(pn) {
+    const L = root.CadLib, q = String(pn || "").toUpperCase().replace(/\s+/g, ""); if (!L || q.length < 3) return null;
+    const T = [["BJTS", m => (m.pol > 0 ? "npn" : "pnp")], ["MOSFETS", m => (m.pol > 0 ? "nmos" : "pmos")], ["JFETS", m => (m.pol > 0 ? "njf" : "pjf")], ["REGS", () => "reg"], ["SHUNTS", () => "tl431"],
+      ["DIODES", () => "diode"], ["ZENERS", () => "zener"], ["OPAMPS", () => "opamp"], ["CHIPAMPS", () => "chipamp"], ["BRIDGES", () => "bridge"]];
+    const fits = (k, s) => s === k || (s.startsWith(k) && !/\d/.test(s[k.length])) || (k.startsWith(s) && /^[A-Z]{1,2}$/.test(k.slice(s.length)));
+    const tries = [q].concat(/^(LM|L|MC|UA|KA|NJM|TS)(7[89]L?\d\d)/.test(q) ? [q.replace(/^(LM|L|MC|UA|KA|NJM|TS)/, "")] : []);
+    let best = null;
+    T.forEach(([tab, type]) => Object.keys(L[tab] || {}).forEach(k => { const K = k.toUpperCase(); if (tries.some(s => fits(K, s)) && L.LIB[type(L[tab][k])] && (!best || K.length > best.key.length || (K === q && best.key.toUpperCase() !== q))) best = { key: k, type: type(L[tab][k]), params: { model: k } }; }));
+    if (!best && /^(NE|LM|SE|SA|NA|TLC|ICM|LMC)?7?555/.test(q) && L.LIB.timer555) best = { key: "NE555", type: "timer555", params: { model: "NE555" } };
+    if (best) best.what = L.LIB[best.type].name;
+    return best;
   }
 
   function CadAddPart(o) {
@@ -97,23 +113,40 @@
       st.pn = pn; st.list = []; st.model = null; $("addpart-body").innerHTML = ""; $("addpart-ok").disabled = true;
       if (pn.length < 3) { say("warn", "Type at least three characters of the part number."); return; }
       say("", "Looking it up…");
-      let ix;
-      try { ix = await F.load(o.index); } catch (e) { if (st && mine === st.busy) say("warn", `⚠ The list of models could not be read (${e.message}). Check the connection and try again.`); return; }
+      const own = builtin(pn);
+      let ix = null, failed = "";
+      try { ix = await F.load(o.index); } catch (e) { failed = e.message; }
       if (!st || mine !== st.busy) return;
-      st.ix = ix; st.list = F.candidates(ix, pn, 12);
+      if (!ix && !own) { say("warn", `⚠ The list of models could not be read (${failed}). Check the connection and try again.`); return; }
+      st.ix = ix; st.list = (own ? [{ name: own.key, kind: "own", own, why: own.key.toUpperCase() === F.norm(pn) ? "exact" : "base", file: "" }] : []).concat(ix ? F.candidates(ix, pn, 12) : []);
       if (!st.list.length) { say("warn", `No model of ${pn} in the library. If you have the maker's model file, press “I have the model file…”; the part number may also be spelled differently there (try it without its last letters).`); return; }
       await take(0);
     }
     // download candidate k and show what it is
     async function take(k) {
       const c = st.list[k], mine = ++st.busy; st.k = k; st.model = null; $("addpart-ok").disabled = true;
+      if (c.own) { st.model = { own: c.own }; st.sym = null; st.amps = 1; st.pkg = null; st.order = null; say("", ""); render(); return; }
       say("", `Downloading the model of ${c.name}…`);
       let m;
       try { m = await F.get(st.ix, c); SN.flat(m.text, m.sub); }
       catch (e) { if (st && mine === st.busy) { say("warn", `⚠ ${c.name}: ${e.message}.${st.list.length > 1 ? " Another of the list may work." : ""}`); render(); } return; }
       if (!st || mine !== st.busy) return;
-      st.model = m; st.sym = F.symFor(m); st.amps = st.sym === "opamp" ? usualAmps(st.pn) : 1; st.pkg = null; st.order = null;
+      st.model = m; st.sym = F.symFor(m); st.swap = st.sym === "diode" && m.pins.length === 2 && !root.CadLib.SPICE_KIND_SYM[m.kind] && backwards(m); st.amps = st.sym === "opamp" ? usualAmps(st.pn) : 1; st.pkg = null; st.order = null;
       say("", ""); render();
+    }
+    // a diode written as a subcircuit: which of its two pins is the anode is found by trying it both ways
+    // (a volt through 1 kΩ: the forward way drops less); true when the model's first pin is the cathode
+    function backwards(m) {
+      const E = root.TubeSimEngine, def = root.CadLib.LIB.spice; if (!E || !E.simulate) return false;
+      const drop = map => {
+        try {
+          const c = { id: "t", type: "spice", label: "VD0", params: { name: m.sub, text: m.text, sub: m.sub, sym: "diode", pinNames: m.pins.slice(), map } }, els = [{ id: "v", kind: "V", nodes: [2, 0], v: 1 }, { id: "r", kind: "R", nodes: [2, 1], r: 1000 }];
+          let n = 3; def.build(c, pin => (pin === "A" ? 1 : 0), () => n++, els);
+          const r = E.simulate({ nodeCount: n, elements: els }, {}); return r && r.ok ? r.dc.nodes[1] : NaN;
+        } catch (e) { return NaN; }
+      };
+      const f = drop(["A", "K"]), b = drop(["K", "A"]);
+      return isFinite(f) && isFinite(b) && b < f - 0.05;
     }
     // the footprints the board has for a SPICE part of this drawing (through-hole first, then surface)
     function boardOptions(sym, pins) {
@@ -136,15 +169,23 @@
     // what goes on the sheet: a SPICE part's params
     function spiceParams() {
       const m = st.model, S = root.CadLib.SPICE_SYMS[st.sym], N = root.PartNo, name = st.list[st.k].name;
-      const p = { name, text: m.text, sub: m.sub, sym: st.sym, pinNames: S ? m.pins.slice() : m.pins.map(x => String(x).toUpperCase()), map: S ? m.pins.map((_, i) => (i < S.pins.length ? S.pins[i] : "")) : m.pins.map((_, i) => String(i + 1)) };
+      const p = { name, text: m.text, sub: m.sub, sym: st.sym, pinNames: S ? m.pins.slice() : m.pins.map(x => String(x).toUpperCase()), map: S ? (st.swap ? F.mapFor(m, S.pins).reverse() : F.mapFor(m, S.pins)) : m.pins.map((_, i) => String(i + 1)) };
       p.partno = st.pn;
       if (N && st.pkg) p.part = { no: N.norm(st.pn), maker: "", text: FAMILY[st.sym] ? st.pkg : (DIODE_NAMES[st.pkg] || st.pkg).replace(/^WIRE-(\d+)$/, "wire pads").replace(/ \(.*$/, "").replace(/,.*$/, ""), fp: fpName(), source: "Add part" };
       return p;
     }
     function render() {
       const host = $("addpart-body"), c = st.list[st.k], m = st.model;
-      const pick = st.list.length > 1 ? `<label class="addpart-f"><span>Model</span><select id="addpart-cand">${st.list.map((x, i) => `<option value="${i}">${esc(x.name)} · ${esc(F.KINDS[x.kind] || "model")}${x.kind === "X" && x.pins ? `, ${x.pins} pins` : ""}</option>`).join("")}</select></label>` : "";
+      const pick = st.list.length > 1 ? `<label class="addpart-f"><span>Model</span><select id="addpart-cand">${st.list.map((x, i) => `<option value="${i}">${esc(x.name)} · ${x.own ? "built into the app" : esc(F.KINDS[x.kind] || "model")}${x.kind === "X" && x.pins ? `, ${x.pins} pins` : ""}</option>`).join("")}</select></label>` : "";
       if (!m) { host.innerHTML = pick; if (pick) { $("addpart-cand").value = String(st.k); $("addpart-cand").onchange = () => take(+$("addpart-cand").value); } return; }
+      if (m.own) {
+        host.innerHTML = `<div class="addpart-found"><img id="addpart-pic" alt="" src="${o.thumb(m.own.type, m.own.params, 150, 110, true)}">
+          <div><b>${esc(c.name)}</b><span>${esc(m.own.what)}</span>${c.why !== "exact" ? `<span>the nearest to ${esc(st.pn)}</span>` : ""}<span class="muted">Built into the app</span></div></div>
+        ${pick}
+        <p class="insp-help" id="addpart-own">The app has this part built in: its model and pinout are checked against the datasheet. Its package is chosen on the board, where the usual one is already taken.${st.list.length > 1 ? " The maker's SPICE model is in the Model list, if you prefer it." : ""}</p>`;
+        if (pick) { $("addpart-cand").value = String(st.k); $("addpart-cand").onchange = () => take(+$("addpart-cand").value); }
+        $("addpart-ok").disabled = false; return;
+      }
       const packs = packages();
       if (!st.pkg || !packs.some(p => p.id === st.pkg)) { const u = usualCase(st.pn, FAMILY[st.sym] || st.sym); st.pkg = packs.some(p => p.id === u) ? u : packs.length ? packs[0].id : null; }
       const fam = FAMILY[st.sym], ords = orders();
@@ -169,6 +210,7 @@
     function done() {
       if (!st || !st.model) return;
       const m = st.model, name = st.list[st.k].name, pn = st.pn;
+      if (m.own) { const prm = Object.assign({}, m.own.params, { partno: pn }); close(); o.place(m.own.type, prm); o.setStatus("ok", `${name}: click where it goes.`); return; }
       if (st.sym === "opamp" && st.amps > 1) {
         // a dual or quad: a library part of several units, all of them placed at once
         const made = root.PartLib.opampPackage(name, st.amps, /^SOIC/.test(st.pkg) ? "soic" : "dip", { text: m.text, sub: m.sub });
@@ -182,8 +224,8 @@
       close(); o.place("spice", p);
       o.setStatus("ok", `${name}${p.part ? ` in ${p.part.text}` : ""}: click where it goes.`);
     }
-    return { open, close, find, state: () => st, params: () => (st && st.model ? spiceParams() : null) };
+    return { open, close, find, state: () => st, params: () => (st && st.model && !st.model.own ? spiceParams() : null) };
   }
   root.CadAddPart = CadAddPart;
-  root.CadAddPart.usualOrder = usualOrder; root.CadAddPart.usualAmps = usualAmps; root.CadAddPart.usualCase = usualCase;
+  root.CadAddPart.usualOrder = usualOrder; root.CadAddPart.usualAmps = usualAmps; root.CadAddPart.usualCase = usualCase; root.CadAddPart.builtin = builtin;
 })(typeof window !== "undefined" ? window : globalThis);

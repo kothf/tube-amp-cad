@@ -46,6 +46,15 @@ import { fileURLToPath } from "node:url";
   const pk = await cad.evaluate(() => { const g = BoardCore.physicalParts(TubeCAD.boardNetlist()).find(x => x.type === "part"); return { fp: g.defaultFp, members: g.members.length }; });
   check(pk.fp === "LIB:SOIC-8" && pk.members === 3, `one package on the board for its units (${pk.fp})`);
 
+  // a number the app has a part of its own for: that part is offered first
+  await cad.evaluate(() => TubeCAD.addPart.open("2N3904BU")); await pending();
+  const own = await cad.evaluate(() => ({ own: !!TubeCAD.addPart.state().model.own, note: !!document.getElementById("addpart-own"), text: document.getElementById("addpart-body").textContent, pkg: !!document.getElementById("addpart-pkg") }));
+  check(own.own && own.note && /2N3904/.test(own.text) && /Built into the app/.test(own.text) && !own.pkg, "2N3904BU: the app's own 2N3904 is offered, built in");
+  await cad.click("#addpart-ok");
+  await clickAt(700, 200); await cad.keyboard.press("Escape");
+  s = await state(); const bi = s.comps.find(c => c.type === "npn");
+  check(!!bi && bi.params.model === "2N3904" && bi.params.partno === "2N3904BU", "and placed as the built-in transistor, with the number typed");
+
   // not in the library: said plainly, with the way on
   await cad.evaluate(() => TubeCAD.addPart.open("ZZZ99999")); await pending();
   check(await cad.evaluate(() => /No model of ZZZ99999/.test(document.getElementById("addpart-msg").textContent) && document.getElementById("addpart-ok").disabled && !!document.getElementById("addpart-paste")), "a number the library does not have: said so, with “I have the model file…”");

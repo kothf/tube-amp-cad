@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.203.0] - 2026-11-13
+
+Found by building six known circuits (a CMoy headphone amplifier, a Distortion+, a silicon Fuzz Face, an LPB-1 booster, a MOSFET headphone follower and a state-variable filter) with *Add part…*, simulating them and designing their boards.
+
+### Added
+- **Add part… offers the app's own part first.** A number the program has built in (2N3904, TL072CP, LM317T, LM7805CT, NE555P, OPA2134PA, LM386N-1 …) is offered as the built-in part, whose model and pinout are checked against the datasheet; the maker's SPICE model stays in the *Model* list. This also covers numbers the public library has no usable model for (OPA2134, NE555).
+- **Makers' transistors and diodes written as subcircuits are drawn as what they are.** A power MOSFET, a Darlington (TIP120) or a zener whose model is a small subcircuit comes as a transistor or a diode with its usual packages, not as a box on wire pads. A diode subcircuit's anode is found by trying the model both ways.
+
+### Fixed
+- A P-channel power MOSFET model (VDMOS with `pchan`) was drawn as an N-channel one.
+- Models that use LTspice's lateral PNP (`LPNP`, as the LM386's) could not be read.
+- Metal-can transistors (2N2222A, BC108, 2N2907A) are offered in TO-18, not TO-92.
+
 ## [3.202.0] - 2026-11-13
 
 ### Added
