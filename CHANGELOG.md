@@ -13,6 +13,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - A part number with a saved package is honoured on the board even when no lookup knows the number.
+- The Board window no longer throws an error when the Circuit CAD sends it the circuit while it is still loading (the message now waits until the window is ready).
 - A new part's designator counts the units already on the sheet (DA1.1 … makes the next one DA2).
 
 ## [3.201.0] - 2026-11-13

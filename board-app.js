@@ -61,7 +61,10 @@
   const bc = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("tube_cad_v2") : null;
   let saveTimer = 0, helloTimer = 0, reqId = 0;
   const pendingAck = {};
+  // a message of the CAD that comes while this page is still loading waits for init (it draws on the canvas)
+  const early = [];
   if (bc) bc.onmessage = e => {
+    if (!canvas) { early.push(e); return; }
     const m = e.data || {};
     if (m.type === "BOARD_NETLIST") {
       clearTimeout(helloTimer);
@@ -1726,5 +1729,6 @@
     renderPanels(); fit(); hello();
   }
   window.BoardApp = { cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
+  const boot = () => { init(); early.splice(0).forEach(e => bc.onmessage(e)); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();
