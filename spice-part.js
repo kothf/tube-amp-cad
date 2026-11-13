@@ -29,6 +29,7 @@
             <span title="How the part is drawn on the sheet">Symbol</span><select id="sppart-sym"></select>
             <span title="Each pin of the model, in the model's order, and the pin of the symbol it is">Pins</span><div id="sppart-pins"></div>
           </div>
+          <div class="insp-help" id="sppart-note"></div>
           <div class="insp-help" id="sppart-est"></div>
         </div>
       </div>
@@ -105,7 +106,9 @@
     const sym = $("sppart-sym").value, sy = syms()[sym], lib = root.CadLib.LIB;
     const own = sym === "own" ? st.own : null, symPins = own || (sy ? lib[sy.type].pins({ params: {} }).filter(p => sy.pins.includes(p.id)) : []);
     // a library part's pin for a pin of the model: the one of its name or number, else the next in order
-    const guess = (p, i) => { const q = own.find(o => String(o.name || "").toLowerCase() === p.toLowerCase()) || own.find(o => String(o.id).toLowerCase() === p.toLowerCase()) || own[i]; return q ? q.id : ""; };
+    // (an op-amp's usual names too: inp is the pin drawn "+", vee the one drawn "V-", out the output that has no name)
+    const ALIAS = { inp: ["+", "in+"], "in+": ["+", "inp"], inn: ["-", "in-", "−"], "in-": ["-", "inn", "−"], vcc: ["v+", "vdd", "vp"], vdd: ["v+", "vcc"], vp: ["v+", "vcc"], vee: ["v-", "vss", "vn", "v−"], vss: ["v-", "vee"], vn: ["v-", "vee"], out: ["output", "o", "~", ""], output: ["out", ""] };
+    const guess = (p, i) => { const n = p.toLowerCase(), named = o => String(o.name || "").toLowerCase(), q = own.find(o => named(o) === n) || own.find(o => String(o.id).toLowerCase() === n) || (ALIAS[n] && own.find(o => ALIAS[n].includes(named(o)))) || own[i]; return q ? q.id : ""; };
     f.pins.forEach((p, i) => {
       const row = document.createElement("label"); row.className = "spimp-pin";
       row.innerHTML = `<code title="Pin ${i + 1} of the model">${esc(p)}</code>`;
@@ -114,7 +117,7 @@
         inp.title = "The name drawn in the box"; row.appendChild(inp);
       } else {
         const sel = document.createElement("select");
-        sel.innerHTML = symPins.map(q => `<option value="${esc(q.id)}">${esc(q.id)}${q.name ? " · " + esc(q.name) : ""}</option>`).join("") + `<option value="0">Ground</option><option value="">Not connected</option>`;
+        sel.innerHTML = symPins.map(q => `<option value="${esc(q.id)}">${esc(q.id)}${q.unit || q.name ? " · " + (q.unit ? esc(q.unit) + (q.name ? ": " : "") : "") + esc(q.name || "") : ""}</option>`).join("") + `<option value="0">Ground</option><option value="">Not connected</option>`;
         const def = keep && keep.sym === sym && keep.map && keep.map[i] !== undefined ? keep.map[i] : own ? guess(p, i) : i < sy.pins.length ? sy.pins[i] : "";
         sel.value = def; sel.onchange = validate; row.appendChild(sel);
       }
@@ -150,10 +153,11 @@
   function done() { if (!validate()) return; const r = result(), cb = onDone; close(); if (cb) cb(r); }
   function close() { $("sppart-modal").hidden = true; onDone = null; }
   /** Open for a part's params (its model, if it has one, is shown); cb(params to set) on "Use this model" */
-  // opts.pins: the pins of a library part ([{ id, name }]): the model is set on them, the drawing stays
+  // opts.pins: the pins of a library part ([{ id, name, unit }]): the model is set on them, the drawing stays; opts.note: a line of advice
   function open(params, cb, opts) {
     if (!$("sppart-modal")) build();
     onDone = cb; ownPins = opts && opts.pins ? opts.pins : null;
+    $("sppart-note").textContent = (opts && opts.note) || "";
     $("sppart-text").value = (params && params.text) || "";
     // over whatever dialog asked for it (the parts library's)
     document.body.appendChild($("sppart-modal"));

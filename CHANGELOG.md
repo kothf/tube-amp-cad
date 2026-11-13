@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.201.0] - 2026-11-13
+
+### Added
+- **Library parts of several units are simulated.** A dual or quad op-amp placed unit by unit from *My library* (DA1.1, DA1.2 and the supply unit DA1.3) now runs in the simulation instead of being left out.
+  - **A model of one amplifier:** in the Parts library, *Model…* lists the package's pins unit by unit (A, B, C). Give the model's inputs and output to unit A and its supply pins to the pins where they are drawn; every unit drawn like A gets its own copy of the model, and the supply pins are shared.
+  - **A model of the whole package** (its pins on all the units) is used once.
+  - The dialog says which it is ("one for each of units A, B" or "one model for the whole package"), and an op-amp's usual pin names (inp, inn, vcc, vee, out) find the pins drawn +, −, V+, V− and the output by themselves.
+  - The supply unit has to be on the sheet and wired: the checks name a unit whose model needs pins of a unit that is not there. The SPICE export writes one subcircuit call per simulated unit.
+- For developers: `PartLib.unitMaps`, `LIB.part.model`, a unit's `net()` reaching its package's other units in `buildNetlist`; tests in `tests/partlib.test.mjs` and `tests/e2e/08c-parts-library.mjs`.
+
 ## [3.200.0] - 2026-11-13
 
 ### Added

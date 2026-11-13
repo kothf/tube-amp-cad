@@ -73,7 +73,7 @@ test("a library part on the sheet: its unit's pins and box, its designator's let
   assert.equal(def.prefixFor(c), "DA"); assert.equal(def.value(c), "DUALAMP");
   const b = def.bbox(c); assert.ok(b[0] <= -60 && b[2] >= 60);
   c.params.unit = "3"; assert.deepEqual(def.pins(c).map(p => p.id), ["8", "4"], "the inspector's Unit list gives a string");
-  assert.match(def.info(c), /left out of the simulation/);
+  assert.match(def.info(c), /has no SPICE model, so it is left out of the simulation: set one in the parts library/);
   // a part of the palette's defaults (no drawing) still has a box
   assert.deepEqual(def.bbox({ params: def.defaults }), [-20, -20, 20, 20]);
 });
@@ -204,4 +204,32 @@ test("a placed part against its library part: what has changed is named, and it 
   // a renamed part: a value that was the name follows, a typed one stays
   const d = comp(lib, "TESTAMP", 1, "b", "DA2"); amp.name = "TESTAMP2";
   assert.equal(P.refreshed(lib, d.params).value, "TESTAMP2"); assert.equal(P.refreshed(lib, now).value, "LM4562");
+});
+
+test("a package of several units is simulated: a model of one amplifier goes on every unit drawn alike, the supply shared", () => {
+  const lib = library(), dual = lib.parts.find(p => p.name === "DUALAMP");
+  assert.equal(P.unitMaps(dual), null);
+  dual.spice = { text: AMP, sub: "TESTAMP", map: ["3", "2", "8", "4", "1"] };
+  const um = P.unitMaps(dual);
+  assert.equal(um.pack, false); assert.deepEqual(um.maps, { 1: ["3", "2", "8", "4", "1"], 2: ["5", "6", "8", "4", "7"] });
+  // mapped across both amplifiers: the whole package's, one instance
+  assert.equal(P.unitMaps({ units: dual.units, spice: { text: AMP, sub: "X", map: ["3", "2", "8", "4", "7"] } }).pack, true);
+  // A as a ×11 amplifier, B as a follower of it; the supply pins on unit C
+  const a = comp(lib, "DUALAMP", 1, "a", "DA1.1"), b = comp(lib, "DUALAMP", 2, "b", "DA1.2"), c = comp(lib, "DUALAMP", 3, "c", "DA1.3");
+  const nets = { a: { 3: 1, 2: 2, 1: 5 }, b: { 5: 5, 6: 6, 7: 6 }, c: { 8: 3, 4: 4 } }; let n = 7;
+  const els = [{ id: "vp", kind: "V", nodes: [3, 0], v: 15 }, { id: "vn", kind: "V", nodes: [4, 0], v: -15 }, { id: "vi", kind: "V", nodes: [1, 0], v: 0.1 },
+    { id: "r1", kind: "R", nodes: [5, 2], r: 10e3 }, { id: "r2", kind: "R", nodes: [2, 0], r: 1e3 }, { id: "rl", kind: "R", nodes: [6, 0], r: 10e3 }];
+  const all = [a, b, c], net = k => pin => { for (const u of [k, ...all.filter(x => x !== k)]) { const v = nets[u.id][pin]; if (v !== undefined) return v; } return undefined; };
+  const before = els.length;
+  all.forEach(u => L.LIB.part.build(u, net(u), () => n++, els, { first: u === a }));
+  assert.equal(els.filter(e => e.xref).length, 2, "two instances: A and B; C adds none");
+  assert.ok(els.length > before);
+  const res = E.simulate({ nodeCount: n, elements: els }, {});
+  assert.ok(res.ok, res.error);
+  assert.ok(Math.abs(res.dc.nodes[5] - 1.1) < 0.005, `A out ${res.dc.nodes[5]}`); assert.ok(Math.abs(res.dc.nodes[6] - 1.1) < 0.005, `B out ${res.dc.nodes[6]}`);
+  assert.match(L.LIB.part.info(a), /This unit is simulated by its SPICE subcircuit TESTAMP/i); assert.match(L.LIB.part.info(c), /no share of the model/);
+  // the inspector's Unit list moves a placed unit: its share of the model follows
+  b.params.unit = "1"; assert.deepEqual(L.LIB.part.model(b).map, ["3", "2", "8", "4", "1"]);
+  // without the supply unit on the sheet its pins are left open, not a crash
+  const lone = []; L.LIB.part.build(a, pin => nets.a[pin], () => n++, lone, { first: true }); assert.ok(lone.some(e => /#open/.test(e.id)));
 });

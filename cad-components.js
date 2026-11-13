@@ -1749,12 +1749,21 @@
     return { hw, hh, chars, pins: names.map((nm, i) => (i < nl ? { id: String(i + 1), x: -hw - 20, y: y(i, nl), name: nm } : { id: String(i + 1), x: hw + 20, y: y(i - nl, nr), name: nm })) };
   }
   // the engine's elements of a SPICE part, or the error its model gives
-  function spiceElements(c, net, alloc, out) {
+  // a library part's unit and the model: { map (the model's pins on the package's pins, for this unit), pack
+  // (one model for the whole package) }, or null when this unit has no share of it (part-lib.js unitMaps)
+  function partModel(c) {
+    const p = c.params; if (!p.text) return null;
+    if (!((p.syms || []).length > 1) || !root.PartLib) return { map: p.map || [], pack: false };
+    const um = root.PartLib.unitMaps({ units: p.syms, spice: { text: p.text, sub: p.sub, map: p.map || [] } }), map = um && um.maps[+p.unit || 1];
+    return map ? { map, pack: um.pack } : null;
+  }
+  function spiceElements(c, net, alloc, out, pinMap) {
     const p = c.params, SN = root.SpiceNet;
     if (!p.text || !SN) return null;
     try {
-      const f = SN.flat(p.text, p.sub), map = p.map || [], open = [];
-      const nodes = f.pins.map((_, i) => { const m = map[i]; if (m === "0") return 0; if (m) return net(m); const k = alloc(); open.push(k); return k; });
+      const f = SN.flat(p.text, p.sub), map = pinMap || p.map || [], open = [];
+      // a pin on no net (not mapped, or on a unit of the package that is not on the sheet) is left open
+      const nodes = f.pins.map((_, i) => { const m = map[i]; if (m === "0") return 0; const at = m ? net(m) : undefined; if (at !== undefined) return at; const k = alloc(); open.push(k); return k; });
       const first = out.length;
       SN.build({ text: p.text, sub: p.sub }, nodes, alloc, c.id, out);
       // for the SPICE export, which writes the part as one line and its model as it came
@@ -3045,12 +3054,19 @@
       info: c => {
         const p = c.params, SN = root.SpiceNet, fp = p.fp ? `Footprint ${p.fp.name} (${p.fp.pads.length} pads).` : "No footprint of its own: the board gives it a row of pads; set one in the parts library.";
         const head = `${p.name || "A part"} from your parts library${p.desc ? ": " + p.desc : ""}. ${fp} `;
-        if ((p.syms || []).length > 1) return head + "The units of one package share the designator (DA1.1, DA1.2). A part of several units is left out of the simulation.";
+        const many = (p.syms || []).length > 1, units = many ? "The units of one package share the designator (DA1.1, DA1.2). " : "";
+        const m = partModel(c);
+        if (many && !p.text) return head + units + "The part has no SPICE model, so it is left out of the simulation: set one in the parts library.";
+        if (many && !m) return head + units + "This unit has no share of the model: the other units are simulated and take this one's pins (the supply) from here.";
         if (!p.text) return head + "It has no SPICE model, so it is left out of the simulation: press Model… to give it one.";
+        if (many) { try { const f = SN.flat(p.text, p.sub); return head + units + (m.pack ? `The whole package is simulated by its SPICE ${f.kind === "subckt" ? "subcircuit" : "model"} ${f.name}; put all its units on the sheet. ` : `This unit is simulated by its SPICE ${f.kind === "subckt" ? "subcircuit" : "model"} ${f.name}, with the pins it needs from the package's other units (the supply): put those on the sheet too. `) + (f.warnings.length ? f.warnings.join(". ") + "." : ""); } catch (e) { return head + `The model cannot be simulated: ${e.message}. The part is left out of the simulation.`; } }
         try { const f = SN.flat(p.text, p.sub); return head + `Simulated by its SPICE ${f.kind === "subckt" ? "subcircuit" : "model"} ${f.name} as written. ` + (f.warnings.length ? f.warnings.join(". ") + "." : ""); }
         catch (e) { return head + `The model cannot be simulated: ${e.message}. The part is left out of the simulation.`; }
       },
-      build: (c, net, alloc, out) => { if ((c.params.syms || []).length <= 1) spiceElements(c, net, alloc, out); }
+      // a unit of a package: its own instance of the model (net() reaches the pins of the package's other
+      // units on the sheet: the supply), or, for a model of the whole package, the first unit's alone
+      model: partModel,
+      build: (c, net, alloc, out, ctx) => { const m = partModel(c); if (!m || (m.pack && ctx && !ctx.first)) return; spiceElements(c, net, alloc, out, m.map); }
     },
     // A part imported from KiCad (File ▾ → Open… a .kicad_sch) that the app has no part of its own
     // for: it keeps KiCad's drawing and pins (params.sym) and its footprint on the board, joins its

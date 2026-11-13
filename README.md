@@ -306,7 +306,9 @@ model. *Parts library…* in the panel opens it.
   above). Without a model it is left out of the simulation.
 - **Units:** a dual op-amp's amplifiers and supply pins are placed unit by
   unit (the inspector's *Unit of the package*) and share one footprint under
-  one designator (DA1.1, DA1.2, DA1.3).
+  one designator (DA1.1, DA1.2, DA1.3). They are simulated: a model of one
+  amplifier set on unit A goes on every unit drawn like it, with the supply
+  pins of the package shared; a model of the whole package is used once.
 - **Where it's kept:** in this browser (IndexedDB), and as a file
   (`my-parts.tubelib`) with *Save as a file* / *Open a library file…*. A part
   on the sheet carries its drawing, footprint and model in the circuit file,

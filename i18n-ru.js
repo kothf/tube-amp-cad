@@ -839,6 +839,7 @@
     "X, mm": "X, мм",
     "Y, mm": "Y, мм",
     // --- the user's parts library (cad-library.js, cad-palette.js, LIB.part) ---
+    "A model of one amplifier: give its pins to unit A and the supply pins where they are; every unit drawn like A gets its own. A model of the whole package: give its pins to all the units.": "Модель одного усилителя: назначьте её выводы части A, а выводы питания там, где они есть; каждая часть, нарисованная как A, получит свою копию. Модель всего корпуса: назначьте её выводы всем частям.",
     "Update it": "Обновить её",
     "Update them": "Обновить их",
     "The drawing, footprint and model of the ones on the sheet become the library's. Their values and wires stay; a wire to a pin that moved has to be joined again. One Undo takes it back.": "Рисунок, посадочное место и модель деталей на листе становятся как в библиотеке. Номиналы и провода остаются; провод к сдвинувшемуся выводу нужно подвести заново. Одна отмена возвращает всё назад.",
@@ -2324,6 +2325,9 @@
       .replace(/The footprint has no name/g, "У посадочного места нет имени").replace(/The footprint has no pads/g, "В посадочном месте нет площадок").replace(/The hole of pad (.+?) leaves no copper round it/g, "Отверстие площадки $1 не оставляет меди вокруг")
       .replace(/Another footprint is called (.+?)(?=\. |\.$)/g, "Имя $1 уже у другого посадочного места").replace(/No pad for pin (.+?) of the part/g, "Нет площадки для вывода $1 детали")],
     // placed parts and the library
+    [/^(.+): one model for the whole package$/, "$1: одна модель на весь корпус"],
+    [/^(.+): one for each of units (.+)$/, "$1: по одной на каждую из частей $2"],
+    [/^(.+): its model needs pin (.+) of the package, on a unit that is not on the sheet \(the supply pins, usually\): place that unit and wire it\.$/, "$1: модели нужен вывод $2 корпуса на части, которой нет на листе (обычно это выводы питания): поставьте эту часть и подключите её."],
     [/^(\d+) of this part on the sheet (?:was|were) placed before your changes\.$/, "На листе деталей, поставленных до ваших изменений: $1."],
     [/^(\d+) on the sheet, up to date\.$/, "На листе: $1, все как в библиотеке."],
     [/^(.+): (\d+) parts? on the sheet updated from the library\.$/, "$1: обновлено деталей на листе: $2."],
