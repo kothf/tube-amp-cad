@@ -231,15 +231,23 @@
       they are under it. remap(oldCurves, newCurves, newH) → { old curve index: new } keeps the
       construction lines tied to an edge on that edge. */
   function applyOutline(o, dx, dy, remap, text) {
+    const old = S.board.outline, map = moveOutline(o, dx, dy, remap);
+    const gone = dimui.outlineChanged(old, map);
+    S.sel = null; S.measure = null;
+    commit((text || `Board outline: ${BoardOutline.describe(S.board.outline)}`) + (gone ? `; ${gone > 1 ? `${gone} dimensions went with the edges they were on` : "1 dimension went with the edge it was on"}` : ""));
+  }
+  /** the outline replaced and everything on the board kept in its place, without a step for Ctrl+Z
+      (the dimensions resize the board this way from inside analyse); → the curve map, if any */
+  function moveOutline(o, dx, dy, remap) {
     const b = S.board, K = window.BoardConstruct, old = b.outline, h0 = old.h, oldCurves = K.outlineCurves(old);
     dx = dx || 0; dy = dy || 0;
     shiftBoard(dx, dy);
     const at0 = atOf(old);
     b.outline = { ...o, at: [+(at0[0] - dx).toFixed(4), +(at0[1] - dy).toFixed(4)] };
     // the construction's own coordinates count from the bottom-left corner of the box, Y up
-    K.shift(b, dx, +(o.h - h0 - dy).toFixed(4), remap ? remap(oldCurves, K.outlineCurves(b.outline), o.h) : null);
-    S.sel = null; S.measure = null;
-    commit(text || `Board outline: ${BoardOutline.describe(b.outline)}`);
+    const map = remap ? remap(oldCurves, K.outlineCurves(b.outline), o.h) : null;
+    K.shift(b, dx, +(o.h - h0 - dy).toFixed(4), map);
+    return map;
   }
 
   // ---------------------------------------------------------------------------
@@ -1390,7 +1398,7 @@
   const cons = BoardCons({ $, B, S, commit, msg, snap, esc, kv, analyse, snapPoint, setTool, render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
   // driving dimensions: the Dimension tool, Align, enforcing them after each change (board-dimui.js)
   const sketch = BoardSketch({ $, S, msg, snapPoint, setTool, applyOutline, render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
-  const dimui = BoardDimUI({ $, S, commit, msg, esc, cons, selItems: () => selItems(), render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
+  const dimui = BoardDimUI({ $, S, commit, msg, esc, cons, moveOutline: (o, dx, dy) => moveOutline(o, dx, dy), selItems: () => selItems(), render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
 
   // ---------------------------------------------------------------------------
   // Design rules window: rules, checks, net classes; edited on a copy, Apply commits

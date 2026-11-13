@@ -897,6 +897,9 @@ the circuit file, so one file holds both.
   sketcher. Click two things, place the dimension (horizontal, vertical or
   aligned; or a point to a line), type the value: the second one moves, its
   tracks following, and they stay that far apart when either is dragged.
+  The board's outline is driven too: two edges give the board's width or
+  height, an edge its length, an arc or circle of a sketched outline its radius
+  or diameter (the edge picked second moves; lines keep their direction).
   Align horizontally / vertically keeps a selection lined up. A dimension that
   would over-constrain becomes a reference one; the inspector says what is
   fully defined. Dimensions are designer's notes, never exported.
