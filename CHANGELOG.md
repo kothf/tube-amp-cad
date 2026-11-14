@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.209.0] - 2026-11-14
+
+Phase 4 of the simulation engine plan, item 4: makers' transistor models at any temperature.
+
+### Added
+- **A SPICE part's transistors follow its Temperature** by their own temperature terms: IS by XTI and EG, BF and BR by XTB, ISE and ISC by their emission coefficients, all from the model's TNOM (on the simulator's scale, where SPICE's nominal 27 °C is 25 °C). The field shows on any SPICE part or library part whose model has transistors in it. Checked against ngspice at −20, 75 and 125 °C: within 0.04 %.
+- **A lone NPN or PNP model can heat itself**: Cooling, Case and Ptot (its thermal path, as the library's transistors get theirs from their datasheet) and Heatsink Rth, on the same heatsinks as the library's parts. Its readout shows VCE, VBE, IC, IB, the dissipation and the junction temperature.
+- The SPICE export writes a lone transistor's temperature on its line (`temp=`), the simulated junction temperature when it heats itself.
+
+### Fixed
+- **The band gap's share of a transistor's temperature drift** now uses SPICE's temperature scale, as the thermal voltage already did (25.852 mV is kT/q at SPICE's 27 °C). A transistor at 125 °C sat 2.7 mV off ngspice in VBE; it now agrees within 0.3 mV.
+
+### Tests
+- `tests/models.mjs`: three transistor models (silicon NPN with ISE, PNP with ISC and TNOM=25, germanium) at −20, 75 and 125 °C against ngspice.
+- `tests/thermal.test.mjs`: a SPICE part at 75 °C, self-heated in a TO-220, and which fields it shows.
+
 ## [3.208.0] - 2026-11-14
 
 Phase 4 of the simulation engine plan, part 1: transistors that heat themselves.

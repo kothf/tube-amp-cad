@@ -15,8 +15,9 @@
 
    Junction capacitances follow the voltage across them (the engine's capAt, stepped by its
    chargeAt); a transistor's transit times TF and TR store charge in the waveform and the
-   small-signal analyses; a VDMOS's Cgd follows CGDMIN … CGDMAX (A). Not carried over: temperature terms
-   and noise parameters. Not supported (an error): LAPLACE and FREQ sources,
+   small-signal analyses; a VDMOS's Cgd follows CGDMIN … CGDMAX (A). A transistor's temperature
+   terms (XTI, EG, XTB, TNOM) set it at another temperature, or as it heats itself (build's spec).
+   Not carried over: the other temperature terms and noise parameters. Not supported (an error): LAPLACE and FREQ sources,
    transmission lines, BSIM MOSFETs, time-dependent expressions.
 
    build(spec, pinNodes, alloc, id) gives the engine's elements for one part of a circuit.
@@ -327,7 +328,10 @@
         Object.keys(mdl).forEach(k => { if (mdl[k] === undefined) delete mdl[k]; });
         const rb = mp(m, "rb", 0, no) / area, re = mp(m, "re", 0, no) / area, rc = mp(m, "rc", 0, no) / area;
         const c2 = series(nm + "#rc", c, rc), b2 = series(nm + "#rb", b, rb), e2 = series(nm + "#re", e, re);
-        const el = { name: nm, kind: "BJT", n: [c2, b2, e2], model: mdl }, tf = mp(m, "tf", 0, no);
+        // the temperature terms, for a part run at another temperature or heating itself (build's
+        // spec.temp, spec.therm): TNOM on the engine's scale (its 25 °C is SPICE's nominal 27 °C)
+        const tnom = mp(m, "tnom", 27, no), tdata = { xti: mp(m, "xti", 3, no), eg: mp(m, "eg", 1.11, no), xtb: mp(m, "xtb", 0, no), tnom: +((tnom + 273.15) * 298.15 / 300.15 - 273.15).toFixed(4) };
+        const el = { name: nm, kind: "BJT", n: [c2, b2, e2], model: mdl, tdata }, tf = mp(m, "tf", 0, no);
         if (tf > 0) el.tf = tf;
         const tr = mp(m, "tr", 0, no); if (tr > 0) el.tr = tr;
         if (rb > 0 || re > 0 || rc > 0) el.ext = [c, b, e];
@@ -410,6 +414,8 @@
    * The engine's elements of one part: spec { text, sub }, pinNodes the circuit's nodes of its
    * pins in the model's order (null: a pin left open gets a node of its own), alloc() a new node.
    */
+  //   spec.temp: the temperature (°C, the engine's scale) its transistors run at, by their XTI, EG,
+  //   XTB from TNOM; spec.therm: a lone transistor model heats itself (the engine's therm)
   function build(spec, pinNodes, alloc, id, out) {
     const f = flat(spec.text, spec.sub), map = new Array(f.nNodes);
     map[0] = 0;
@@ -420,6 +426,11 @@
       const o = { id: eid(e.name), kind: e.kind, nodes: e.n.map(k => map[k]), internal: true };
       for (const k in e) if (k !== "name" && k !== "kind" && k !== "n" && k !== "n_") o[k] = e[k];
       if (e.n_ !== undefined) o.n = e.n_;
+      delete o.tdata;
+      if (e.kind === "BJT" && (spec.therm || (spec.temp !== undefined && spec.temp !== null && isFinite(spec.temp)))) {
+        o.model0 = Object.assign({}, e.model, e.tdata);
+        if (spec.therm && f.kind !== "subckt") o.therm = Object.assign({}, spec.therm); else o.temp = +spec.temp;
+      }
       if (e.kind === "XFMR") { o.windings = e.windings.map(w => ({ a: map[w.a], b: map[w.b], turns: w.turns })); o.nodes = []; }
       if (e.ext) o.ext = e.ext.map(k => map[k]);
       if (e.ctl) o.ctl = e.ctl.map(eid);

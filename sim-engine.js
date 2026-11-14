@@ -916,6 +916,8 @@
     let nUnk = nNodes - 1;
     const els = netlist.elements.map(e => Object.assign({}, e));
     els.forEach(e => {
+      // a transistor given as its data at Tnom (model0) and a temperature, without self-heating
+      if (e.kind === "BJT" && e.model0 && e.temp !== undefined && !e.therm) e.model = Object.assign(bjtAtT(e.model0, e.temp), { pol: e.model.pol });
       if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L" || e.kind === "E" || (e.kind === "B" && e.out === "v")) e.branch = nUnk++;
       else if (LATCHED.has(e.kind)) e.latch = nUnk++;
       else if (e.kind === "LDR") e.light = nUnk++;
@@ -1692,11 +1694,21 @@
   // their temperature. IS, hFE, VT and the leakage follow the temperature as the CAD's Temperature
   // field does (bjtAtT). ta: the ambient (the part's Temperature field).
   // ---------------------------------------------------------------------------
-  const T0K = 298.15, K_Q = 8.617333e-5, R_CS = 0.5, RUNAWAY = 250;
+  // KT_SCALE: the engine's kT/q at its 25 °C (25.852 mV) is SPICE's at 27 °C, so the band gap's
+  // term takes kelvins on that scale (the SPICE export writes temperatures the same way)
+  const T0K = 298.15, K_Q = 8.617333e-5, KT_SCALE = 298.15 / 300.15, R_CS = 0.5, RUNAWAY = 250;
+  // A Gummel-Poon model at tC (°C) from its data at tnom (25 °C unless the model says), SPICE's law:
+  // IS·(T/Tnom)^XTI·e^(EG/k·(1/Tnom − 1/T)), BF and BR ·(T/Tnom)^XTB, ISE and ISC with their own
+  // emission coefficients and over (T/Tnom)^XTB, VT = kT/q. The CAD's own parts leave XTI, EG and XTB
+  // out: 3, 1.11 eV (0.67 germanium) and 1.5 then; an imported model carries its own (XTB 0 if unset).
   function bjtAtT(m0, tC) {
-    const T = tC + 273.15, r = T / T0K, eg = m0.ge ? 0.67 : 1.11;
-    return Object.assign({}, m0, { is: m0.is * Math.pow(r, 3) * Math.exp(eg / K_Q * (1 / T0K - 1 / T)), bf: m0.bf * Math.pow(r, 1.5), br: (m0.br || 1) * Math.pow(r, 1.5),
-      vt: 0.025852 * r, icbo: m0.icbo ? m0.icbo * Math.pow(2, (T - T0K) / 10) : 0, t: tC });
+    const T = tC + 273.15, Tn = (m0.tnom === undefined ? 25 : m0.tnom) + 273.15, r = T / Tn, lr = Math.log(r);
+    const eg = m0.eg !== undefined ? m0.eg : m0.ge ? 0.67 : 1.11, xti = m0.xti !== undefined ? m0.xti : 3, xtb = m0.xtb !== undefined ? m0.xtb : 1.5;
+    const fl = eg / K_Q * KT_SCALE * (1 / Tn - 1 / T) + xti * lr, bfac = Math.exp(xtb * lr), vt0 = m0.vt0 || 0.025852 * Tn / T0K;
+    const out = Object.assign({}, m0, { is: m0.is * Math.exp(fl), bf: m0.bf * bfac, br: (m0.br || 1) * bfac, vt: vt0 * r, icbo: m0.icbo ? m0.icbo * Math.pow(2, (T - Tn) / 10) : 0, t: tC });
+    if (m0.ise) out.ise = m0.ise * Math.exp(fl / (m0.ne || 1.5)) / bfac;
+    if (m0.isc) out.isc = m0.isc * Math.exp(fl / (m0.nc || 2)) / bfac;
+    return out;
   }
   const heatedBjts = circ => circ.els.filter(e => e.therm && e.model0 && e.kind === "BJT");
   const setTemp = (e, tC) => { e._tj = tC; e.model = Object.assign(bjtAtT(e.model0, tC), { pol: e.model.pol }); };
