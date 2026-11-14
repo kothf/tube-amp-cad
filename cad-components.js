@@ -1680,8 +1680,8 @@
   const T0 = 298.15, K_Q = 8.617333e-5;
   function bjtAt(m, t) {
     const T = (isFinite(t) ? t : 25) + 273.15, r = T / T0, eg = m.ge ? 0.67 : 1.11;
-    return Object.assign({}, m, { is: m.is * Math.pow(r, 3) * Math.exp(eg / K_Q * (1 / T0 - 1 / T)), bf: m.bf * Math.pow(r, 1.5), br: (m.br || 1) * Math.pow(r, 1.5),
-      vt: 0.025852 * r,   // the simulator's kT/q at 25 °C, scaled
+    return Object.assign({}, m, { is: m.is * Math.pow(r, 3) * Math.exp(eg / K_Q * (298.15 / 300.15) * (1 / T0 - 1 / T)), bf: m.bf * Math.pow(r, 1.5), br: (m.br || 1) * Math.pow(r, 1.5),
+      vt: 0.025852 * r,   // the simulator's kT/q at 25 °C, scaled (it is SPICE's at 27 °C: the band gap's term on that scale too)
       icbo: m.icbo ? m.icbo * Math.pow(2, (T - T0) / 10) : 0, t: T - 273.15 });
   }
   // A BJT's thermal path for self-heating (the engine's therm): junction→case rjc and case→air rca
@@ -1782,6 +1782,32 @@
     const um = root.PartLib.unitMaps({ units: p.syms, spice: { text: p.text, sub: p.sub, map: p.map || [] } }), map = um && um.maps[+p.unit || 1];
     return map ? { map, pack: um.pack } : null;
   }
+  // A SPICE part's transistors: "lone" for a lone NPN or PNP model (it can heat itself), "sub" for a
+  // subcircuit with transistors in it (they follow its Temperature), else null
+  function spiceBjt(c) {
+    const p = c.params, SN = root.SpiceNet;
+    if (!p.text || !SN || (p.syms || []).length > 1) return null;
+    try { const f = SN.flat(p.text, p.sub); return f.kind === "npn" || f.kind === "pnp" ? "lone" : f.els.some(e => e.kind === "BJT") ? "sub" : null; } catch (e) { return null; }
+  }
+  // the fields that set a SPICE part's transistors' temperature, and a lone one's cooling (its
+  // package and Ptot give its thermal path, as the CAD's own transistors' do)
+  const SPICE_THERM_FIELDS = [
+    { key: "temp", label: "Temperature", unit: "°C", kind: "number", min: -40, max: 150, dflt: 25, when: c => !!spiceBjt(c) },
+    { key: "thermal", label: "Cooling", kind: "select", options: [["", "Fixed temperature"], ["air", "Self-heating, free air"], ["hs1", "Self-heating, heatsink 1"], ["hs2", "Self-heating, heatsink 2"], ["hs3", "Self-heating, heatsink 3"], ["hs4", "Self-heating, heatsink 4"]], when: c => spiceBjt(c) === "lone" },
+    { key: "tpkg", label: "Case", kind: "select", options: [["TO-92", "TO-92"], ["TO-126", "TO-126"], ["TO-220", "TO-220"], ["TO-247", "TO-247"], ["TO-264", "TO-264"], ["TO-3", "TO-3"]], when: c => spiceBjt(c) === "lone" && !!c.params.thermal },
+    { key: "ptot", label: "Ptot", unit: "W", kind: "number", min: 0.05, max: 1000, dflt: 0.625, when: c => spiceBjt(c) === "lone" && !!c.params.thermal },
+    { key: "hsr", label: "Heatsink Rth", unit: "°C/W", kind: "number", min: 0.05, max: 100, dflt: 1.5, when: c => spiceBjt(c) === "lone" && /^hs/.test(c.params.thermal || "") }];
+  // SN.build's temperature and self-heating for a SPICE part (nothing when it is at 25 °C and fixed)
+  function spiceTherm(c) {
+    const p = c.params, kind = spiceBjt(c); if (!kind) return {};
+    const ta = isFinite(p.temp) && p.temp !== "" && p.temp !== null ? +p.temp : 25, o = {};
+    if (ta !== 25) o.temp = ta;
+    if (kind === "lone" && p.thermal) {
+      const th = bjtThermal({ p: isFinite(p.ptot) && +p.ptot > 0 ? +p.ptot : 0.625, pkg: p.tpkg || "TO-92" });
+      o.temp = ta; o.therm = { ta, rjc: th.rjc, rca: th.rca, cc: th.cc, tjmax: th.tjmax, sink: /^hs/.test(p.thermal) ? p.thermal : "", rsa: isFinite(p.hsr) && p.hsr > 0 ? +p.hsr : 1.5, cs: 100 };
+    }
+    return o;
+  }
   function spiceElements(c, net, alloc, out, pinMap) {
     const p = c.params, SN = root.SpiceNet;
     if (!p.text || !SN) return null;
@@ -1790,7 +1816,7 @@
       // a pin on no net (not mapped, or on a unit of the package that is not on the sheet) is left open
       const nodes = f.pins.map((_, i) => { const m = map[i]; if (m === "0") return 0; const at = m ? net(m) : undefined; if (at !== undefined) return at; const k = alloc(); open.push(k); return k; });
       const first = out.length;
-      SN.build({ text: p.text, sub: p.sub }, nodes, alloc, c.id, out);
+      SN.build(Object.assign({ text: p.text, sub: p.sub }, spiceTherm(c)), nodes, alloc, c.id, out);
       // for the SPICE export, which writes the part as one line and its model as it came
       if (out[first]) out[first].xref = { id: c.id, nodes, sub: f.name, kind: f.kind, open };
       // a pin left open: a gigohm to ground, so that its node is never floating
@@ -3051,7 +3077,7 @@
         return Object.fromEntries((c.params.pinNames || []).map((_, i) => [String(i + 1), String(i + 1)]));
       },
       value: c => c.params.name || c.params.sub || "no model",
-      fields: [{ key: "model", label: "Model", kind: "spice", wide: true }],
+      fields: [{ key: "model", label: "Model", kind: "spice", wide: true }].concat(SPICE_THERM_FIELDS),
       info: c => {
         const p = c.params, SN = root.SpiceNet;
         if (!p.text) return "No model yet: press Model… and paste or open a SPICE model (a .SUBCKT or a .MODEL from a maker's file). It is simulated as written.";
@@ -3075,7 +3101,7 @@
       value: c => c.params.value || c.params.name || "",
       fields: [{ key: "value", label: "Value", kind: "text" },
         { key: "unit", label: "Unit of the package", kind: "select", options: c => (c.params.syms || []).map((u, i) => [String(i + 1), `${String.fromCharCode(65 + i % 26)} (${(u.pins || []).length} pin${(u.pins || []).length === 1 ? "" : "s"})`]), when: c => (c.params.syms || []).length > 1 },
-        { key: "model", label: "SPICE model", kind: "spice", wide: true, when: c => (c.params.syms || []).length <= 1 }],
+        { key: "model", label: "SPICE model", kind: "spice", wide: true, when: c => (c.params.syms || []).length <= 1 }].concat(SPICE_THERM_FIELDS),
       info: c => {
         const p = c.params, SN = root.SpiceNet, fp = p.fp ? `Footprint ${p.fp.name} (${p.fp.pads.length} pads).` : "No footprint of its own: the board gives it a row of pads; set one in the parts library.";
         const head = `${p.name || "A part"} from your parts library${p.desc ? ": " + p.desc : ""}. ${fp} `;
@@ -3405,6 +3431,25 @@
     return h;
   };
   ["npn", "pnp", "nmos", "pmos", "njf", "pjf"].forEach(t => { UI[t] = { readout: semiReadout }; });
+  // a SPICE part that is a lone NPN or PNP model: its operating point, and its junction's temperature
+  // when it heats itself (nothing for other SPICE parts)
+  const spiceReadout = (c, R) => {
+    if (spiceBjt(c) !== "lone") return "";
+    const id = c.id + "#q1", d = (R.r.dc.devices[id] || {}).main, kv = R.kv;
+    if (!d) return "";
+    let h = kv("Vce", fmtEng(d.vce, "V", 2)) + kv("Vbe", fmtEng(d.vbe, "V", 3)) + kv("Ic", fmtEng(d.ic, "A", 2)) + kv("Ib", fmtEng(d.ib, "A", 2));
+    const p = c.params, ptot = c.params.thermal && +p.ptot > 0 ? +p.ptot : 0;
+    h += kv("Dissipation", fmtEng(d.pd, "W", 2) + (ptot ? ` · ${Math.round(d.pd / ptot * 100)}% of ${ptot} W` : ""), ptot && d.pd > ptot ? "bad" : "");
+    const th = R.r.thermal && R.r.thermal[id];
+    if (th) {
+      const idle = th.tjIdle !== undefined ? th.tjIdle : th.tj, lvl = t => (t > 150 ? "bad" : t > 125 ? "warn" : "");
+      h += kv("Junction (idle)", `${idle.toFixed(1)} °C`, lvl(idle));
+      if (Math.abs(th.tjAvg - idle) > 0.5) h += kv("Junction (signal)", `${th.tjAvg.toFixed(1)} °C at ${fmtEng(th.pAvg, "W", 2)} average`, lvl(th.tjAvg));
+      if (th.sink) h += kv("Heatsink", `${th.sink.slice(2)}: ${th.ts.toFixed(1)} °C`);
+    }
+    return h;
+  };
+  UI.spice = { readout: spiceReadout }; UI.part = { readout: spiceReadout };
   // op-amps: the output and how close it runs to its limits, the input difference, the package's heat
   UI.opamp = {
     readout: (c, R) => {

@@ -373,6 +373,7 @@
     "VDS for ID–VGS, gm": "The drain voltage the transfer and transconductance curves are drawn at. Blank: the operating point's, or 10 V.",
     "Temperature": "Junction temperature of the part (with Cooling set to self-heating: the air around it). The model scales IS, BF and BR as SPICE does; a germanium part's leakage doubles every 10 °C.",
     "Cooling": "Fixed temperature: the junction stays at Temperature. Self-heating: the junction runs at the temperature its own dissipation gives through its package (and the heatsink), so the bias drifts as it warms. Parts on the same heatsink number share it: put the VBE multiplier on the output transistors' heatsink to see how well it tracks.",
+    "Case": "The transistor's package, for its thermal path when it heats itself: a power package meets the air through its own resistance (TO-126 100, TO-220 62.5, TO-247 40, TO-264 and TO-3 35 °C/W); a TO-92 is a small part, its Ptot the whole path.",
     "Heatsink Rth": "Thermal resistance of the heatsink to the air (°C/W), shared by every part on this heatsink number. Each part adds its junction-to-case resistance and 0.5 °C/W for the insulating pad.",
     "VCEO": "Maximum collector–emitter voltage with the base open.",
     "IC max": "Maximum continuous collector current.",

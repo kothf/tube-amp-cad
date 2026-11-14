@@ -124,6 +124,42 @@ const ampBench = (sub, vs) => `.subckt bench inp inn out\nVp vp 0 ${vs}\nVn vn 0
   check(acGood(qa), `the test op-amp's gain and phase: ${acLine(qa)}`);
 }
 
+// --- 1a: temperature: makers' transistor models at −20, 75 and 125 °C (their XTI, EG, XTB from TNOM) ---
+// the engine's 25 °C is SPICE's nominal 27 °C (the same kT/q), so ngspice runs at that scale's temperature
+{
+  const lib = `.model QN NPN(IS=6.734f XTI=3 EG=1.11 VAF=74.03 BF=416.4 NE=1.259 ISE=6.734f IKF=66.78m XTB=1.5 BR=.7371 NC=2 ISC=0 RC=1 RB=10)
+.model QP PNP(IS=1.41f XTI=3 EG=1.11 VAF=18.7 BF=180.7 NE=1.5 ISE=0 IKF=80m XTB=1.5 BR=4.977 NC=2 ISC=2f RC=2.5 RB=10 TNOM=25)
+.model QG PNP(IS=2u XTI=3 EG=0.67 BF=90 VAF=30 XTB=1.2 RB=50)`;
+  const bench = `.subckt bench c b e c2 b2 e2 c3 b3
+V1 vcc 0 12
+R1 vcc b 1Meg
+Rc vcc c 2.2k
+Re e 0 100
+Q1 c b e QN
+R2 b2 0 470k
+Rc2 c2 0 3.3k
+Re2 vcc e2 220
+Q2 c2 b2 e2 QP
+R3 b3 0 1.5Meg
+Rc3 c3 0 4.7k
+Q3 c3 b3 vcc QG
+.ends`;
+  const nodes = ["c", "b", "e", "c2", "b2", "e2", "c3", "b3"];
+  for (const t of [-20, 75, 125]) {
+    const text = lib + "\n" + bench, f = SN.flatten(text, "bench");
+    let n = f.nNodes, a = null;
+    try {
+      const els = SN.build({ text, sub: "bench", temp: t }, f.pins.map((_, i) => i + 1), () => n++, "U");
+      const res = E.simulate({ nodeCount: n, elements: els }, {});
+      if (res.ok) { a = {}; f.pins.forEach((p, i) => { a[p] = res.dc.nodes[i + 1]; }); }
+    } catch (e) { a = null; }
+    const b = theirs(lib + `\n.temp ${((t + 273.15) * 300.15 / 298.15 - 273.15).toFixed(4)}`, bench, "bench", nodes).v;
+    let worst = 0, at = "";
+    if (a && b) nodes.forEach(k => { const err = Math.abs(a[k] - b[k]) / (Math.abs(b[k]) + 0.01); if (!(err <= worst)) { worst = err; at = `V(${k}) ${a[k].toPrecision(5)} / ngspice ${b[k].toPrecision(5)}`; } });
+    check(a && b && worst < 1e-3, `transistor models at ${t} °C (XTI, EG, XTB, TNOM, ISE, ISC, germanium EG): ${a && b ? `within ${(worst * 100).toFixed(3)} % of ngspice (${at})` : "no result"}`);
+  }
+}
+
 // --- 1b: waveforms (tests/fixtures/trandev.lib): each bench's "in" driven by a square or a sine, the
 // simulator's settled period against ngspice's after it has run SETTLE periods, point by point ---
 const SETTLE = 40;

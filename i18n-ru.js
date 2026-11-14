@@ -2069,6 +2069,8 @@
     "Junction (idle)": "Переход (покой)",
     "Junction (signal)": "Переход (с сигналом)",
     "Heatsink": "Радиатор",
+    "Case": "Корпус",
+    "Ptot (W)": "Ptot (Вт)",
     "knee vk": "излом vk",
     "slope λ": "наклон λ",
     "screen share ks": "доля экранной сетки ks",

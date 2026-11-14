@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+for (const f of ["tube-db.js", "spice-model.js", "spice-net.js", "sim-engine.js", "cad-components.js", "board-core.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
 const E = globalThis.TubeSimEngine, L = globalThis.CadLib;
 E.loadWasm(readFileSync(new URL("../sim-solver.wasm", import.meta.url)));
 
@@ -108,4 +108,26 @@ test("CAD: Cooling sets the thermal path from the package and Ptot, and a heatsi
   // a small part: its Ptot is in free air, the whole path
   const s = (() => { const c = { id: "VT2", type: "npn", params: { model: "2N3904", thermal: "air" } }, els = []; L.LIB.npn.build(c, p => ({ C: 1, B: 2, E: 3 })[p], () => 9, els); return els[0]; })();
   near(s.therm.rjc + s.therm.rca, 125 / 0.625, 1e-9, "2N3904: 200 °C/W junction to air");
+});
+
+test("CAD: a SPICE part's transistor runs at its Temperature, and a lone one heats itself", () => {
+  const text = ".model QX NPN(IS=1e-12 BF=60 VAF=100 IKF=5 XTI=3 EG=1.11 XTB=1.5)";
+  const run = params => {
+    const c = { id: "VT9", type: "spice", params: Object.assign({ text, sub: "", sym: "npn", map: ["C", "B", "E"] }, params) };
+    const els = [{ id: "v", kind: "V", nodes: [1, 0], v: 20 }, { id: "vb", kind: "V", nodes: [2, 0], v: 1.3 }, { id: "rc", kind: "R", nodes: [1, 3], r: 10 }, { id: "re", kind: "R", nodes: [4, 0], r: 10 }];
+    let n = 5;
+    L.LIB.spice.build(c, p => ({ C: 3, B: 2, E: 4 })[p], () => n++, els);
+    return { r: E.simulate({ nodeCount: n, elements: els }), q: els.find(e => e.kind === "BJT") };
+  };
+  const at25 = run({}), at75 = run({ temp: 75 }), hot = run({ thermal: "air", tpkg: "TO-220", ptot: 40 });
+  assert.equal(at25.q.model0, undefined, "at 25 °C the model goes as written");
+  assert.equal(at75.q.temp, 75);
+  assert.ok(at75.r.dc.devices[at75.q.id].main.vbe < at25.r.dc.devices[at25.q.id].main.vbe - 0.08, "VBE about 2 mV/°C lower at 75 °C");
+  const th = hot.r.thermal[hot.q.id], d = hot.r.dc.devices[hot.q.id].main;
+  near(th.tj, 25 + (125 / 40 + (62.5 - 125 / 40)) * d.pd, 0.05, "TO-220, 40 W: 62.5 °C/W to the air");
+  // a SPICE part's fields: Temperature for any model with transistors, Cooling for a lone one
+  const fields = L.LIB.spice.fields, f = k => fields.find(x => x.key === k);
+  const lone = { params: { text, sub: "" } }, sub = { params: { text: ".subckt D c b e\nQ1 c b x QX\nQ2 c x e QX\n" + text + "\n.ends", sub: "D" } }, none = { params: { text: ".subckt R a b\nR1 a b 1k\n.ends", sub: "R" } };
+  assert.ok(f("temp").when(lone) && f("temp").when(sub) && !f("temp").when(none));
+  assert.ok(f("thermal").when(lone) && !f("thermal").when(sub));
 });

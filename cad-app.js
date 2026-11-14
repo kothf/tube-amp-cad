@@ -2155,8 +2155,8 @@
   function liveReadout(c) {
     const head = `<div class="insp-sub">Operating point${simPct()}</div>`;
     if (!S.sim.result) return head + `<p class="insp-help">${S.sim.error || (S.sim.busy ? "Simulating…" : "Not simulated yet.")}</p>`;
-    const f = LIB[c.type].readout;
-    return f ? head + f(c, readoutApi(c)) : "";
+    const f = LIB[c.type].readout, body = f ? f(c, readoutApi(c)) : "";
+    return body ? head + body : "";
   }
 
   function buildCircuitPanel(host) {
@@ -2990,7 +2990,13 @@
         const text = (xc && xc.params.text || "").replace(/^\s*\.end\s*$/gim, "").trim();
         if (!models.has(key)) { models.add(key); spiceTexts.push(`* ${xc ? xc.label + ": " : ""}the model of ${x.sub}, as it came`, text); }
         if (x.kind === "subckt") lines.push(`X${xid} ${xn.join(" ")} ${x.sub}`);
-        else lines.push(`${{ d: "D", npn: "Q", pnp: "Q", njf: "J", pjf: "J" }[x.kind] || "M"}${xid} ${xn.join(" ")}${/mos$/.test(x.kind) ? " " + xn[2] : ""} ${x.sub}`);
+        else {
+          // a lone transistor at another temperature, or self-heated (at its simulated junction temperature)
+          const q = (x.kind === "npn" || x.kind === "pnp") && nl.elements.find(o => o.kind === "BJT" && o.id === x.id + "#q1");
+          const tq = q && q.therm && S.sim.result && S.sim.result.tj && S.sim.result.tj[q.id] !== undefined ? S.sim.result.tj[q.id] : q && q.temp !== undefined ? q.temp : undefined;
+          if (q && q.therm && tq !== undefined) lines.push(`* ${xid}: self-heated, at the ${+tq.toFixed(1)} C junction temperature it was simulated at`);
+          lines.push(`${{ d: "D", npn: "Q", pnp: "Q", njf: "J", pjf: "J" }[x.kind] || "M"}${xid} ${xn.join(" ")}${/mos$/.test(x.kind) ? " " + xn[2] : ""} ${x.sub}${tq !== undefined && Math.abs(tq - 25) > 1e-9 ? ` temp=${+((tq + 273.15) * 300.15 / 298.15 - 273.15).toFixed(2)}` : ""}`);
+        }
         x.open.forEach((k, i) => lines.push(`R${xid}_open${i} ${nn(k)} 0 1e9`));
       }
       if (e.internal) return;   // inside a part that goes out as a subcircuit (a 555's divider)
