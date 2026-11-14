@@ -138,7 +138,7 @@ import { readFile } from "node:fs/promises";
 
   // Design rules window: the nets with their classes; B+ (300 V) is HV automatically, a class set by hand sticks
   await bd.click("#btn-board"); await bd.click("#btn-rules");
-  const nets = await bd.evaluate(() => [...document.querySelectorAll("#rules-nets tr")].map(tr => [...tr.cells].map(c => c.textContent.trim())));
+  const nets = await bd.evaluate(() => [...document.querySelectorAll("#rules-nets tr")].map(tr => [...tr.cells].map(c => { const i = c.querySelector("input"); return i ? i.value || i.placeholder : c.textContent.trim(); })));
   const rail = nets.find(r => /^300 V$/.test(r[2]));
   check(await bd.isVisible("#rules-modal") && rail && /Auto \(HV\)/.test(rail[3]) && rail[4] === "1" && rail[5] === "2", `Design rules lists every net with its class: the 300 V rail is HV automatically (${rail && rail.join(" | ")})`);
   await bd.fill('#rules-modal [data-r="clearance"]', "0.8"); await bd.press('#rules-modal [data-r="clearance"]', "Tab");
@@ -150,6 +150,18 @@ import { readFile } from "node:fs/promises";
   check(!(await bd.isVisible("#rules-modal")) && rr.c === 0.8 && rr.cls === "HV", `Apply keeps the edited clearance (0.8 mm) and the class set by hand (${netNameSet} → HV)`);
   await cad.waitForFunction(n => TubeCAD.state.board.rules.clearance === 0.8 && TubeCAD.state.board.rules.netClass[n] === "HV", netNameSet, { timeout: 5000 }).catch(() => {});
   check(await cad.evaluate(() => TubeCAD.state.board.rules.clearance === 0.8), "the rules are saved with the board in the circuit");
+  // a class of your own (+ Add class), a net given to it, a clearance between it and Signal, a net's own width
+  await bd.click("#btn-board"); await bd.click("#btn-rules"); await bd.click("#rules-add-class");
+  await bd.fill('#rules-classes input[data-k="clearance"]', "0.3"); await bd.press('#rules-classes input[data-k="clearance"]', "Tab");
+  await bd.locator(`#rules-nets select[data-net="${netNameSet}"]`).selectOption("Class 1");
+  const pairIn = bd.locator('#rules-matrix input[data-pair="Class 1|Signal"]');
+  await pairIn.fill("0.25"); await pairIn.press("Tab");
+  const ownW = bd.locator(`#rules-nets input[data-own="track"][data-net="${netNameSet}"]`);
+  await ownW.fill("0.7"); await ownW.press("Tab");
+  const cnt = await bd.evaluate(() => [...document.querySelectorAll("#rules-classes tr")].map(tr => tr.cells[5].textContent.trim()));
+  await bd.click("#rules-apply");
+  const ur = await bd.evaluate(n => { const R = BoardApp.state.board.rules; return { cls: R.classes.map(c => c.name + ":" + c.clearance).join(), net: R.netClass[n], m: R.matrix["Class 1|Signal"], own: (R.netRule[n] || {}).track }; }, netNameSet);
+  check(ur.cls === "Class 1:0.3" && ur.net === "Class 1" && ur.m === 0.25 && ur.own === 0.7 && cnt[3] === "1", `Design rules: a class of your own with a net in it, a clearance between classes and a net's own width (${JSON.stringify(ur)}, nets per class ${cnt.join("/")})`);
 
   // Board setup: size, rounded corners, a mounting hole in each corner
   await bd.click("#btn-board"); await bd.click("#btn-setup");
@@ -461,6 +473,13 @@ import { readFile } from "node:fs/promises";
   const koMsg = await bd.evaluate(() => BoardApp.state.drc.filter(d => d.kind === "keepout").map(d => d.msg).join("; "));
   check(kos.length === 1 && kos[0] === 4 && /runs through a keep-out area/.test(koMsg), `K draws a keep-out area (${kos.join(",")} corners); a track through it is reported (${koMsg})`);
   await bd.evaluate(() => { BoardApp.state.board.tracks.pop(); BoardApp.commit(); });
+  // a rule area from the Board menu: its own clearance, no keep-out
+  await bd.click("#btn-board"); await bd.locator('[data-tool="rulearea"]:visible').first().click();
+  for (const [x, y] of [[20, 60], [45, 60], [45, 80]]) { const q = await W(x, y); await bd.mouse.click(q[0], q[1]); }
+  const qr = await W(20, 80); await bd.mouse.click(qr[0], qr[1]); await bd.mouse.dblclick(qr[0], qr[1]);
+  const ra = await bd.evaluate(() => { const k = BoardApp.state.board.keepouts[BoardApp.state.board.keepouts.length - 1]; return { rule: k.rule, tracks: k.tracks, title: document.querySelector("#inspector .insp-title").textContent }; });
+  check(ra.rule && ra.rule.clearance > 0 && ra.tracks === false && /Rule area/.test(ra.title), `Draw a rule area: an area with its own clearance and width, shown in the inspector (${JSON.stringify(ra)})`);
+  await bd.evaluate(() => { BoardApp.state.board.keepouts.pop(); BoardApp.commit(); });
 
   // manufacturing outputs: the Gerber ZIP (the board is unfinished: confirm) and the print PDF
   bd.once("dialog", d => d.accept().catch(() => {}));

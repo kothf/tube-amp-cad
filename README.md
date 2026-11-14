@@ -1072,6 +1072,13 @@ the circuit file, so one file holds both.
   **Net classes** sort every net into Signal, Power or HV: automatically, from
   its simulated DC voltage (above 60 V by default is HV) and GND being Power,
   or as you set it per net.
+  Add **your own classes** (width, clearance, via drill and pad), a
+  **clearance matrix** between classes, and a width or clearance of a single
+  net's own. **Rule areas** (Board ▾ → Draw a rule area) give the copper
+  inside them their own clearance and track width, for a neck-down between
+  fine-pitch pins or more room round a mains entry. The live check, both
+  routers, pours and the KiCad export (net classes, custom rules) follow them;
+  the clearance by voltage (IPC-2221B) is always the floor.
 - **Design-rule check**, live:
   - clearance between nets and to mounting holes (a square pin 1 pad as its
     exact rectangle, corners included, as are the grid router, teardrops and

@@ -6,8 +6,9 @@
   "use strict";
   // app: what this part needs from board-app.js; returns what board-app.js uses of it
   root.BoardDraw = function (app) {
-    const { $, B, COLORS, NOTE, S, consDraw, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected } = app;
+    const { $, B, COLORS, NOTE, S, consDraw, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected } = app;
     let canvas = null, ctx = null, dpr = 1, queued = false;
+    const RULE_AREA = "#b392f0";   // rule areas: violet, dotted
     // the board's canvas, from init
     function attachCanvas(cv) { canvas = cv; ctx = cv.getContext("2d"); dpr = window.devicePixelRatio || 1; }
     function render() { if (queued) return; queued = true; requestAnimationFrame(draw); }
@@ -190,15 +191,20 @@
       // keep-out areas: hatched, dashed orange
       if (S.show.keepouts) S.board.keepouts.forEach((k, i) => {
         if (!B.koLayers(k).some(l => S.show[l])) return;
-        const P = k.pts, sel = S.sel && S.sel.kind === "keepout" && S.sel.i === i, col = sel ? "#00e5ff" : COLORS.keepouts;
+        const P = k.pts, sel = S.sel && S.sel.kind === "keepout" && S.sel.i === i, col = sel ? "#00e5ff" : k.rule ? RULE_AREA : COLORS.keepouts;
         const xs = P.map(p => p[0]), ys = P.map(p => p[1]), x1 = Math.min(...xs), x2 = Math.max(...xs), y1 = Math.min(...ys), y2 = Math.max(...ys), step = Math.max(1.2, 9 * px);
         ctx.save(); ctx.beginPath(); P.forEach((p, n) => (n ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.clip();
-        ctx.strokeStyle = col; ctx.globalAlpha = 0.35; ctx.lineWidth = Math.max(0.08, px); ctx.beginPath();
-        for (let t = x1 - (y2 - y1); t < x2; t += step) { ctx.moveTo(t, y2); ctx.lineTo(t + (y2 - y1), y1); }
-        ctx.stroke(); ctx.restore();
-        ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.1, (sel ? 1.8 : 1.2) * px); ctx.setLineDash([6 * px, 4 * px]);
+        // a rule area: a light wash, no hatching (nothing is forbidden in it)
+        if (k.rule) { ctx.fillStyle = col; ctx.globalAlpha = 0.07; ctx.fillRect(x1, y1, x2 - x1, y2 - y1); ctx.restore(); }
+        else {
+          ctx.strokeStyle = col; ctx.globalAlpha = 0.35; ctx.lineWidth = Math.max(0.08, px); ctx.beginPath();
+          for (let t = x1 - (y2 - y1); t < x2; t += step) { ctx.moveTo(t, y2); ctx.lineTo(t + (y2 - y1), y1); }
+          ctx.stroke(); ctx.restore();
+        }
+        ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.1, (sel ? 1.8 : 1.2) * px); ctx.setLineDash(k.rule ? [2 * px, 3 * px] : [6 * px, 4 * px]);
         ctx.beginPath(); P.forEach((p, n) => (n ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
-        if (k.name) { ctx.fillStyle = col; ctx.font = `${11 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(k.name, x1 + 3 * px, y1 + 3 * px); }
+        const tag = k.rule ? [k.name || "Rule area", k.rule.clearance > 0 ? `clr ${k.rule.clearance}` : "", k.rule.track > 0 ? `w ${k.rule.track}` : ""].filter(Boolean).join(" · ") : k.name;
+        if (tag) { ctx.fillStyle = col; ctx.font = `${11 * px}px ui-monospace, monospace`; ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(tag, x1 + 3 * px, y1 + 3 * px); }
         if (sel) areaHandles(P, px);
       });
       // a padlock on locked parts and holes
@@ -212,13 +218,13 @@
       }
       if (S.poly) {
         const pts = S.poly.concat([[snap(S.mouse[0]), snapY(S.mouse[1])]]);
-        ctx.strokeStyle = S.tool === "keepout" ? COLORS.keepouts : COLORS[S.layer]; ctx.lineWidth = Math.max(0.1, 1.5 * px); ctx.setLineDash([5 * px, 4 * px]);
+        ctx.strokeStyle = S.tool === "keepout" ? COLORS.keepouts : S.tool === "rulearea" ? RULE_AREA : COLORS[S.layer]; ctx.lineWidth = Math.max(0.1, 1.5 * px); ctx.setLineDash([5 * px, 4 * px]);
         ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); if (pts.length > 2) ctx.lineTo(pts[0][0], pts[0][1]); ctx.stroke(); ctx.setLineDash([]);
         ctx.fillStyle = COLORS[S.layer]; S.poly.forEach(p => ctx.fillRect(p[0] - 2.5 * px, p[1] - 2.5 * px, 5 * px, 5 * px));
       }
       if (S.route) {
         const r = S.route, rt = routeTail(), tail = rt.pts, pts = r.pts.concat(tail.slice(1)), bad = rt.bad;
-        const need = bad && bad.need ? bad.need : B.classRule(classOf(r.net), S.board.rules).clearance;
+        const need = bad && bad.need ? bad.need : B.netRule(r.net, S.model ? S.model.names : {}, S.hv, S.board.rules).clearance;
         ctx.lineCap = "round"; ctx.lineJoin = "round";
         // the clearance halo of the segments being placed: red when they come too close
         ctx.strokeStyle = bad ? "rgba(255,80,80,0.28)" : "rgba(0,229,255,0.13)"; ctx.lineWidth = r.w + 2 * need;
