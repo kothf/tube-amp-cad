@@ -1427,10 +1427,19 @@
   // magnetising current is 10 % above the straight line (a few % distortion in the primary current).
   // twice the voltage, or the same voltage at half the frequency, and it saturates.
   // z: the primary's impedance for that power; pw 0 or flo 0: no saturation (a linear core).
-  function optSat(lp, z, pw, flo, idc) {
+  // core: its material's hysteresis (sim-engine.js coreLam), the plays' widest half-width as a share
+  // of the knee's magnetising current: GOSS silicon steel 8 %, nickel (permalloy) 1.5 %, amorphous or
+  // nanocrystalline 2 %; a gapped single-ended core 40 % of that (the gap shears the loop); 30 % of the
+  // flux through the plays (a swing too small to move them sees 70 % of Lp, as a core's initial
+  // permeability is below its working one). "" (files from before 3.210): no hysteresis. A push-pull
+  // core of GOSS from a 3 kΩ source: about 0.2 % THD at 20 Hz, 0.07 % at 50 Hz, nothing at 1 kHz.
+  const CORE_HYS = { si: 0.08, ni: 0.015, amo: 0.02 };
+  const CORE_OPTIONS = [["", "Ideal (no hysteresis)"], ["si", "Silicon steel (GOSS)"], ["ni", "Nickel (permalloy)"], ["amo", "Amorphous / nanocrystalline"]];
+  function optSat(lp, z, pw, flo, idc, core) {
     if (!(+pw > 0 && +flo > 0)) return undefined;
-    const lac = Math.sqrt(2 * pw * z) / (2 * Math.PI * flo), ldc = lp * Math.max(+idc || 0, 0);
-    return { ls: (lac + ldc) / 0.75, p: 4, air: 0.01 };
+    const lac = Math.sqrt(2 * pw * z) / (2 * Math.PI * flo), ldc = lp * Math.max(+idc || 0, 0), ls = (lac + ldc) / 0.75, sat = { ls, p: 4, air: 0.01 };
+    if (CORE_HYS[core]) sat.hys = { w: 0.3, h: CORE_HYS[core] * (+idc > 0 ? 0.4 : 1) * ls / lp };
+    return sat;
   }
   // the inspector's line for the generic output transformers: where the bass and the treble go, and the core
   function optInfo(c) {
@@ -2044,6 +2053,8 @@
     opt_se: {
       name: "Output transformer, single-ended", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
       defaults: { zp: 5000, zs: 8, lp: 20, llk: 15e-3, cw: 200e-12, dcrp: 150, dcrs: 0.5, idc: 0.1, pw: 10, flo: 40 },
+      // a new transformer's core: silicon steel with its hysteresis (files from before have none)
+      newDefaults: { core: "si" },
       pins: () => [{ id: "P1", x: -40, y: -30, name: "primary (B+)" }, { id: "P2", x: -40, y: 30, name: "primary (anode)" }, { id: "S1", x: 40, y: -30 }, { id: "S2", x: 40, y: 30 }],
       value: c => { const m = optModel(c); return (m ? m.id + " " : "") + fmtEng(c.params.zp, "") + ":" + fmtEng(c.params.zs, "Ω"); },
       fields: [
@@ -2059,7 +2070,8 @@
         { key: "dcrs", label: "Secondary DCR", unit: "Ω", kind: "eng" },
         { key: "idc", label: "Max DC current", unit: "A", kind: "eng" },
         { key: "pw", label: "Rated power (0: core never saturates)", unit: "W", kind: "eng" },
-        { key: "flo", label: "Full power down to", unit: "Hz", kind: "eng" }
+        { key: "flo", label: "Full power down to", unit: "Hz", kind: "eng" },
+        { key: "core", label: "Core material", kind: "select", options: CORE_OPTIONS }
       ],
       info: c => optInfo(c),
       build: (c, net, alloc, out) => {
@@ -2067,7 +2079,7 @@
         const a = alloc(), s = alloc();
         out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), a], r: Math.max(+p.dcrp || 0, 1e-3) });
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(+p.dcrs || 0, 1e-3) });
-        out.push({ id: c.id, kind: "XFMR", nodes: [], lp, k: 1, primaryTurns: 1, sat: optSat(lp, zp, +p.pw, +p.flo, +p.idc),
+        out.push({ id: c.id, kind: "XFMR", nodes: [], lp, k: 1, primaryTurns: 1, sat: optSat(lp, zp, +p.pw, +p.flo, +p.idc, p.core),
           windings: [{ a: a, b: net("P2"), turns: 1, leak: Math.max(+p.llk || 0, 1e-6 * lp) }, { a: s, b: net("S2"), turns: 1 / n }] });
         if (+p.cw > 0) out.push({ id: c.id + "#cw", kind: "C", nodes: [net("P1"), net("P2")], c: +p.cw });
       }
@@ -2271,12 +2283,15 @@
     opt_cat: {
       name: "Output transformer, single-ended (Hammond 125SE)", prefix: "T", group: "Transformers", bbox: [-40, -34, 40, 34],
       defaults: { model: "125ESE", tap: "GRN" },
+      // a new transformer's core: silicon steel with its hysteresis (files from before have none)
+      newDefaults: { core: "si" },
       pins: () => [{ id: "P1", x: -40, y: -30, name: "primary BRN (B+)" }, { id: "P2", x: -40, y: 30, name: "primary BLU (anode)" },
         { id: "S1", x: 40, y: -30, name: "secondary tap" }, { id: "S2", x: 40, y: 30, name: "secondary BLK (0)" }],
       value: c => `${c.params.model} ${c.params.tap}`,
       fields: [
         { key: "model", label: "Model", kind: "select", options: () => Object.entries(OUTPUT_TX).map(([k, m]) => [k, `${k} · ${m.w} W, ${m.ma} mA`]), wide: true },
-        { key: "tap", label: "Secondary tap", kind: "select", options: Object.entries(SE_TAPS).map(([t, z]) => [t, `${t}: ${z} Ω → 10k, ${z / 2} Ω → 5k`]), wide: true }
+        { key: "tap", label: "Secondary tap", kind: "select", options: Object.entries(SE_TAPS).map(([t, z]) => [t, `${t}: ${z} Ω → 10k, ${z / 2} Ω → 5k`]), wide: true },
+        { key: "core", label: "Core material", kind: "select", options: CORE_OPTIONS }
       ],
       info: c => {
         const m = OUTPUT_TX[c.params.model] || OUTPUT_TX["125ESE"], z = SE_TAPS[c.params.tap] || 8;
@@ -2291,7 +2306,7 @@
         const a = alloc(), s = alloc();
         out.push({ id: c.id + "#rp", kind: "R", nodes: [net("P1"), a], r: m.rp });
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(m.rs[c.params.tap] || 0.2, 1e-3) });
-        out.push({ id: c.id, kind: "XFMR", nodes: [], lp: m.lp, k: 1, primaryTurns: 1, sat: optSat(m.lp, 5000, m.w, 100, m.ma / 1000),
+        out.push({ id: c.id, kind: "XFMR", nodes: [], lp: m.lp, k: 1, primaryTurns: 1, sat: optSat(m.lp, 5000, m.w, 100, m.ma / 1000, c.params.core),
           windings: [{ a: a, b: net("P2"), turns: 1, leak: SE125.llk }, { a: s, b: net("S2"), turns: 1 / n }] });
         out.push({ id: c.id + "#cw", kind: "C", nodes: [net("P1"), net("P2")], c: SE125.cw });
       }
@@ -2299,6 +2314,8 @@
     opt_pp: {
       name: "Output transformer, push-pull / UL", prefix: "T", group: "Transformers", bbox: [-40, -44, 40, 44],
       defaults: { zaa: 8000, zs: 8, lp: 30, llk: 20e-3, cw: 300e-12, tap: 43, dcrp: 120, dcrs: 0.4, pw: 30, flo: 30 },
+      // a new transformer's core: silicon steel with its hysteresis (files from before have none)
+      newDefaults: { core: "si" },
       pins: () => [
         { id: "P1", x: -40, y: -40, name: "anode 1" }, { id: "U1", x: -40, y: -20, name: "UL tap 1" }, { id: "CT", x: -40, y: 0, name: "centre tap (B+)" },
         { id: "U2", x: -40, y: 20, name: "UL tap 2" }, { id: "P2", x: -40, y: 40, name: "anode 2" }, { id: "S1", x: 40, y: -30 }, { id: "S2", x: 40, y: 30 }],
@@ -2316,7 +2333,8 @@
         { key: "dcrp", label: "DCR per half", unit: "Ω", kind: "eng" },
         { key: "dcrs", label: "Secondary DCR", unit: "Ω", kind: "eng" },
         { key: "pw", label: "Rated power (0: core never saturates)", unit: "W", kind: "eng" },
-        { key: "flo", label: "Full power down to", unit: "Hz", kind: "eng" }
+        { key: "flo", label: "Full power down to", unit: "Hz", kind: "eng" },
+        { key: "core", label: "Core material", kind: "select", options: CORE_OPTIONS }
       ],
       info: c => optInfo(c),
       build: (c, net, alloc, out) => {
@@ -2326,7 +2344,7 @@
         out.push({ id: c.id + "#r1", kind: "R", nodes: [net("P1"), a1], r: Math.max(+p.dcrp || 0, 1e-3) });
         out.push({ id: c.id + "#r2", kind: "R", nodes: [net("P2"), a2], r: Math.max(+p.dcrp || 0, 1e-3) });
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("S1"), s], r: Math.max(+p.dcrs || 0, 1e-3) });
-        out.push({ id: c.id, kind: "XFMR", nodes: [], lp, k: 1, primaryTurns: 1, sat: optSat(lp, zaa, +p.pw, +p.flo, 0),
+        out.push({ id: c.id, kind: "XFMR", nodes: [], lp, k: 1, primaryTurns: 1, sat: optSat(lp, zaa, +p.pw, +p.flo, 0, p.core),
           windings: [
             { a: a1, b: net("U1"), turns: 0.5 * (1 - t), leak: lk * (1 - t) }, { a: net("U1"), b: net("CT"), turns: 0.5 * t, leak: lk * t },
             { a: net("CT"), b: net("U2"), turns: 0.5 * t, leak: lk * t }, { a: net("U2"), b: a2, turns: 0.5 * (1 - t), leak: lk * (1 - t) },

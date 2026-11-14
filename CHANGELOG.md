@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.210.0] - 2026-11-14
+
+Phase 4 of the simulation engine plan, item 2: output transformer core hysteresis.
+
+### Added
+- **Core material** on every output transformer: *Silicon steel (GOSS)* (a new transformer's), *Nickel (permalloy)*, *Amorphous / nanocrystalline*, or *Ideal (no hysteresis)*, which transformers in files saved before 3.210 keep, so their results do not change. The core's flux now lags its magnetising current in a loop (a Prandtl–Ishlinskii model: four plays carrying 30 % of the flux, the widest 8 % of the knee's magnetising current for silicon steel, 1.5 % nickel, 2 % amorphous, 40 % of that in a gapped single-ended core). The loop's area is the core's hysteresis loss. It does not depend on the frequency, and for small swings it grows as the cube of the swing (Rayleigh's law). It gives a real transformer's bass distortion: a push-pull silicon-steel core driven from 3 kΩ shows about 0.2 % THD at 20 Hz, 0.07 % at 50 Hz and nothing at 1 kHz. In the 2A3 single-ended example at 30 Hz, THD goes from 5.3 % to 5.7 %.
+- The plays' states are unknowns of the circuit, carried from step to step by every run (the steady-state search, the power-on run, Listen). The Bode plotter keeps the full primary inductance.
+
+### Tests
+- `tests/thermal.test.mjs`: an ideal core loses nothing; a silicon-steel loop loses the same per cycle at 20 and 40 Hz for the same flux, and its loss grows faster than the square of a small swing; new transformers default to silicon steel and old ones stay ideal.
+
 ## [3.209.0] - 2026-11-14
 
 Phase 4 of the simulation engine plan, item 4: makers' transistor models at any temperature.

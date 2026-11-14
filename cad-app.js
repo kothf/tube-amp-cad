@@ -3105,7 +3105,7 @@
           // each winding's leakage on top of its share of the magnetising inductance, so the
           // coupling is below 1 by the leakage; a saturating core goes out linear (its slope at zero)
           const AL = e.lp / Math.pow(e.primaryTurns, 2), names = [], Ls = e.windings.map(w => AL * w.turns * w.turns + (w.leak || 0));
-          if (e.sat) lines.push(`* ${id}: core saturation not exported (linear core)`);
+          if (e.sat) lines.push(`* ${id}: core saturation${e.sat.hys ? " and hysteresis" : ""} not exported (linear core)`);
           e.windings.forEach((w, j) => { const n = `L${id}_${j}`; names.push(n); lines.push(`${n} ${nn(w.a)} ${nn(w.b)} ${Ls[j]}`); });
           // the coupling pair by pair: ngspice's K takes two inductors only
           names.forEach((a, j) => names.slice(j + 1).forEach((b, k) => {

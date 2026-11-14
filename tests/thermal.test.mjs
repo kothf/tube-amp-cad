@@ -131,3 +131,41 @@ test("CAD: a SPICE part's transistor runs at its Temperature, and a lone one hea
   assert.ok(f("temp").when(lone) && f("temp").when(sub) && !f("temp").when(none));
   assert.ok(f("thermal").when(lone) && !f("thermal").when(sub));
 });
+
+// --- output transformer core hysteresis (sim-engine.js coreLam, corePlay) -----------------------------
+// a 20 H primary driven by a sine through 100 Ω, an 8 Ω load at 30:1; the core's loss is the power into
+// the primary less the power in the load
+const coreRun = (hys, amp, f) => {
+  const sat = Object.assign({ ls: 2, p: 4, air: 0.01 }, hys ? { hys } : {});
+  const r = E.simulate({ nodeCount: 4, elements: [{ id: "g", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: f, amp }, { id: "r", kind: "R", nodes: [1, 2], r: 100 },
+    { id: "t", kind: "XFMR", nodes: [], lp: 20, k: 1, primaryTurns: 1, sat, windings: [{ a: 2, b: 0, turns: 1 }, { a: 3, b: 0, turns: 1 / 30 }] }, { id: "rl", kind: "R", nodes: [3, 0], r: 8 }] }, { budgetMs: 30000 });
+  assert.ok(r.ok, r.error);
+  const T = r.tran, n = T.samples - 1; let pin = 0, pl = 0;
+  for (let k = 0; k < n; k++) { pin += T.nodes[2][k] * (T.nodes[1][k] - T.nodes[2][k]) / 100; pl += T.nodes[3][k] * T.nodes[3][k] / 8; }
+  return (pin - pl) / n;
+};
+test("core hysteresis: a loss per cycle that grows with the swing and not with the frequency", () => {
+  const hys = { w: 0.3, h: 0.008 };
+  const plain = coreRun(null, 200, 20), hi = coreRun(hys, 200, 20), fast = coreRun(hys, 200, 40);
+  assert.ok(Math.abs(plain) < 2e-3, `an ideal core loses nothing: ${plain} W`);
+  assert.ok(hi > 0.1, `the loop's loss: ${hi} W`);
+  // small swings, inside the plays' widths: the loop's area grows faster than the square of the swing (Rayleigh)
+  const s1 = coreRun(hys, 5, 20), s2 = coreRun(hys, 10, 20);
+  assert.ok(s2 / s1 > 3, `twice a small swing: ${(s2 / s1).toFixed(2)}× the loss`);
+  // rate-independent: the same flux swing at twice the frequency (twice the voltage) loses as much per cycle
+  const fast2 = coreRun(hys, 400, 40);
+  near(fast2 / 40, hi / 20, 0.15 * hi / 20, "loss per cycle at 40 Hz vs 20 Hz, same flux");
+  assert.ok(fast < fast2, `${fast} < ${fast2}`);
+});
+
+test("CAD: a new output transformer's core is silicon steel with hysteresis; one from an old file is ideal", () => {
+  for (const t of ["opt_se", "opt_pp", "opt_cat"]) {
+    const def = L.LIB[t];
+    assert.equal(def.newDefaults.core, "si", t);
+    assert.ok(def.fields.some(f => f.key === "core"), t);
+    const build = core => { const els = []; let n = 10; def.build({ id: "T1", type: t, params: Object.assign({}, def.defaults, { core }) }, p => ({ P1: 1, P2: 2, PC: 3, S1: 4, S2: 0, CT: 3, B: 3 })[p] || 0, () => n++, els); return els.find(e => e.kind === "XFMR"); };
+    assert.equal(build("").sat.hys, undefined, t + ": ideal");
+    const h = build("si").sat.hys;
+    assert.ok(h && h.w === 0.3 && h.h > 0, t + ": silicon steel");
+  }
+});

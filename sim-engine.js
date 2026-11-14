@@ -923,6 +923,7 @@
       else if (e.kind === "LDR") e.light = nUnk++;
       else if (e.kind === "XFMR") {
         e.branches = e.windings.map(() => nUnk++);
+        if (e.sat && e.sat.hys) e.plays = PLAYS.map(() => nUnk++);   // the core's hysteresis states (corePlay)
         // Inductance matrix: L_jk = AL * Nj * Nk * (j===k ? 1 : k), plus each winding's own
         // leakage inductance (w.leak, H) on the diagonal
         const W = e.windings.length;
@@ -978,6 +979,31 @@
     const s = e.sat, x = e.lp * im / s.ls, ax = Math.abs(x), q = 1 + Math.pow(ax, s.p), r = Math.pow(q, -1 / s.p);
     return [(1 - s.air) * s.ls * x * r + s.air * e.lp * im, e.lp * ((1 - s.air) * r / q + s.air)];
   }
+  // Core hysteresis (sat.hys { w, h }, a Prandtl–Ishlinskii model): a share w of the flux follows the
+  // magnetising current through four plays (backlash) of half-widths h·PLAYS[k] amps: a play's state p_k
+  // moves only when im leaves the band p_k ± its width, so rising and falling flux take different
+  // paths, a loop whose area is the core's hysteresis loss per cycle; the rest (1 − w) follows im
+  // itself. The widths halve from h down, each play weighed by its width (a near-even spread of widths,
+  // which gives Rayleigh's law: the loop's area grows as the cube of the swing, its distortion in
+  // proportion to the swing, down to small signals). The p_k are unknowns of the circuit (e.plays), so
+  // every run carries them from step to step; the steady-state search does not steer them (they close
+  // their loop within a cycle of whatever drives them, and steering a play's corner slows it down).
+  //   λ = (1 − w)·λcore(im) + w·Σ c_k·λcore(p_k);  returns [λ, dλ/dim, [dλ/dp_k]]
+  const PLAYS = [1, 0.5, 0.25, 0.125], PLAY_W = PLAYS.map(r => r / PLAYS.reduce((a, b) => a + b, 0));
+  function coreLam(e, im, ps) {
+    const h = e.sat.hys, a = coreFlux(e, im);
+    if (!h) return [a[0], a[1], []];
+    let lam = (1 - h.w) * a[0]; const d = ps.map((p, k) => { const b = coreFlux(e, p); lam += h.w * PLAY_W[k] * b[0]; return h.w * PLAY_W[k] * b[1]; });
+    return [lam, (1 - h.w) * a[1], d];
+  }
+  // play k's new state from its last p0 and the current im: p0 clamped into im ± its width, the
+  // corners rounded over 5 % of the width for Newton; returns [p, dp/dim]
+  function corePlay(e, k, p0, im) {
+    const h = e.sat.hys.h * PLAYS[k], d = 0.2 * h, sp = u => (u > 30 * d ? u : d * Math.log1p(Math.exp(u / d))), sg = u => 1 / (1 + Math.exp(-u / d));
+    const u1 = im - h - p0, u2 = p0 - im - h;
+    return [p0 + sp(u1) - sp(u2), sg(u1) + sg(u2)];
+  }
+  const playsOf = (e, x) => e.plays.map(i => x[i]);
   // the magnetising current of an XFMR in the unknowns x: Σ n_j·i_j
   function magCurrent(e, x) { let im = 0; e.branches.forEach((b, j) => { im += e.n[j] * x[b]; }); return im; }
   // the small-signal inductance matrix at the operating point x: a saturating core's magnetising
@@ -1140,10 +1166,27 @@
         }
         case "XFMR": {
           const W = e.windings.length;
-          let sat = null, im0 = 0, lam1 = 0, lam2 = 0;
+          let sat = null, im0 = 0, lam1 = 0, lam2 = 0, hysB = 0;
+          const pl = e.plays;
           if (e.sat && !mode.dc) {
-            im0 = magCurrent(e, x); sat = coreFlux(e, im0);
-            lam1 = coreFlux(e, magCurrent(e, mode.prev))[0]; if (P2) lam2 = coreFlux(e, magCurrent(e, P2))[0];
+            im0 = magCurrent(e, x);
+            if (pl) {
+              sat = coreLam(e, im0, playsOf(e, x));
+              lam1 = coreLam(e, magCurrent(e, mode.prev), playsOf(e, mode.prev))[0]; if (P2) lam2 = coreLam(e, magCurrent(e, P2), playsOf(e, P2))[0];
+              pl.forEach((u, q) => {
+                hysB += sat[2][q] * x[u];
+                // each play: p = corePlay(p₋₁, im), linearized in im
+                const [pv, dp] = corePlay(e, q, mode.prev[u], im0);
+                addAu(u, u, 1); for (let k = 0; k < W; k++) addAu(u, e.branches[k], -dp * e.n[k]);
+                b[u] += pv - dp * im0;
+              });
+            } else {
+              sat = coreFlux(e, im0);
+              lam1 = coreFlux(e, magCurrent(e, mode.prev))[0]; if (P2) lam2 = coreFlux(e, magCurrent(e, P2))[0];
+            }
+          } else if (pl) {
+            // at DC the plays sit on the magnetising current
+            pl.forEach(u => { addAu(u, u, 1); for (let k = 0; k < W; k++) addAu(u, e.branches[k], -e.n[k]); });
           }
           for (let j = 0; j < W; j++) {
             const w = e.windings[j], br = e.branches[j];
@@ -1154,7 +1197,8 @@
               // v_j = n_j·dλ/dt + leak_j·di_j/dt, λ = coreFlux(im) linearised at this iterate
               const nj = e.n[j], ID = ID0 / mode.h, lk = w.leak || 0;
               for (let k = 0; k < W; k++) addAu(br, e.branches[k], -ID * (nj * e.n[k] * sat[1] + (k === j ? lk : 0)));
-              b[br] += (nj * (ID0 * (sat[0] - sat[1] * im0) + ID1 * lam1 + (P2 ? ID2 * lam2 : 0)) + lk * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0))) / mode.h;
+              if (pl) pl.forEach((u, q) => addAu(br, u, -ID * nj * sat[2][q]));
+              b[br] += (nj * (ID0 * (sat[0] - sat[1] * im0 - hysB) + ID1 * lam1 + (P2 ? ID2 * lam2 : 0)) + lk * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0))) / mode.h;
             } else if (!mode.dc) {
               let hist = 0;
               for (let k = 0; k < W; k++) {
@@ -1585,7 +1629,7 @@
     if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") return { i: x[e.branch], vd: v[0] - v[1] };
     if (e.kind === "C") return { vd: v[0] - v[1] };
     // a transformer: its magnetising current, and with a saturating core the flux as a share of the knee
-    if (e.kind === "XFMR") { const im = magCurrent(e, x); return e.sat ? { im, flux: coreFlux(e, im)[0] / e.sat.ls } : { im }; }
+    if (e.kind === "XFMR") { const im = magCurrent(e, x); return e.sat ? { im, flux: (e.plays ? coreLam(e, im, playsOf(e, x)) : coreFlux(e, im))[0] / e.sat.ls } : { im }; }
     if (e.kind === "I") return { i: e.i, vd: v[0] - v[1] };
     if (e.kind === "E") return { i: x[e.branch], vd: v[0] - v[1], vc: v[2] - v[3] };
     if (e.kind === "B") return { i: e.out === "v" ? x[e.branch] : bValue(e, x), vd: v[0] - v[1] };
@@ -2602,6 +2646,8 @@
             branch(w.a, w.b, e.branches[j]); Gm[at(e.branches[j], e.branches[j])] -= R_SERIES;
             for (let k = 0; k < W; k++) Bm[at(e.branches[j], e.branches[k])] -= Lm[j * W + k];
           });
+          // a small signal about the operating point: the hysteresis play follows the magnetising current
+          if (e.plays) e.plays.forEach(u => { Gm[at(u, u)] = 1; e.branches.forEach((b2, k) => { Gm[at(u, b2)] -= e.n[k]; }); });
           break;
         }
         case "E":
