@@ -52,9 +52,14 @@
       const pour = new Set(S.fills.filter(f => !f.tear).map(f => f.net));
       const rows = nets.map(n => ({ n, name: netName(n), cls: classOf(n), pads: M.pads.filter(p => p.net === n).length, todo: todo[n] || 0, len: len[n] || 0, I: (S.amps || {})[n] || 0 }))
         .filter(r => (r.pads > 1 || r.len) && (!(S.find || "").trim() || r.name.toLowerCase().includes(S.find.trim().toLowerCase()))).sort((a, b) => (b.todo > 0) - (a.todo > 0) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+      // nets in a differential pair or a length group show their routed length
+      const R = S.board.rules, lenTag = r => {
+        const pr = B.pairOf(r.name, R), g = (R.lengths || []).find(g => g.nets.includes(r.name));
+        return pr || g ? ` <small class="help" title="Routed length; ${pr ? `pair with ${esc(pr.partner)}, skew ${pr.skew} mm` : `length group "${esc(g.name)}", ± ${g.tol} mm`}">${r.len.toFixed(2)} mm · ${pr ? `pair ${esc(pr.partner)}` : esc(g.name)}</small>` : "";
+      };
       $("nets-count").textContent = String(rows.length);
       host.innerHTML = `<p class="help">Click a net to highlight it (again: off), or point at a pad and press the key left of 1 (\`).</p>` + rows.map(r => `<button class="net${r.n === S.netHL ? " active" : ""}" data-n="${esc(r.n)}" title="${esc(r.name)}: ${r.pads} pads, ${r.len.toFixed(1)} mm of track${pour.has(r.n) ? ", copper pour" : ""}${r.I ? `, ${B.fmtA(r.I)} DC: ${B.currentWidth(r.I, S.board.rules, S.board.stackup)} mm wide at least` : ""}">
-        <span class="nm">${esc(r.name)}${r.I >= 0.001 ? ` <small class="help">${B.fmtA(r.I)}</small>` : ""}</span><span class="cls cls-${r.cls}">${r.cls}</span><span class="${r.todo ? "todo" : "done"}">${r.todo ? `${r.todo} to route` : pour.has(r.n) ? "pour ✓" : "✓"}</span></button>`).join("");
+        <span class="nm">${esc(r.name)}${r.I >= 0.001 ? ` <small class="help">${B.fmtA(r.I)}</small>` : ""}${lenTag(r)}</span><span class="cls cls-${r.cls}">${r.cls}</span><span class="${r.todo ? "todo" : "done"}">${r.todo ? `${r.todo} to route` : pour.has(r.n) ? "pour ✓" : "✓"}</span></button>`).join("");
       host.querySelectorAll(".net").forEach(b => b.addEventListener("click", () => { const n = isNaN(+b.dataset.n) ? b.dataset.n : +b.dataset.n; highlightNet(n); }));
     }
     // layers: colour, visibility, active copper layer (click its name), "only" shows that layer alone

@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.219.0] - 2026-11-14
+## [3.220.0] - 2026-11-14
 
 General-purpose simulation, part 2: the Transient tab's waveform viewer.
 
@@ -21,6 +21,19 @@ General-purpose simulation, part 2: the Transient tab's waveform viewer.
 ### Tests
 - `tests/wavemath.test.mjs`: parsing, units, d/integ, error messages, the FFT against a sine and a square's harmonics, and recorded currents against an RC's exact current.
 - e2e (Transient tab on example 08): a second pane with a resistor's current and an expression of it, a typo refused, the FFT's peak at the 555's frequency, cursors A/B with Δt and their columns, a reference run drawn dashed.
+
+## [3.219.0] - 2026-11-14
+
+Board design plan, phase B4: impedance, differential pairs and matched lengths.
+
+### Added
+- **Impedance calculator** (Board ▾): a track's Z₀ and a pair's Zdiff on each copper layer from the layer stack (microstrip outside, stripline inside; Hammerstad-Jensen and IPC-2141A), delay per mm, and the width for a Z₀ or the gap for a Zdiff.
+- **Board setup → Dielectric εr and Dielectric (mm)**: the thickness of each dielectric between copper layers as the fab lists it (empty: the board's thickness shared out); the KiCad stackup uses them.
+- **Differential pairs** in Design rules: two nets with width, gap (allowed between the two even below their class's clearance) and skew, with the pair's Zdiff on the top layer; nets named like pairs are offered first. The pair's width goes before its class's; the check reports skew beyond the limit.
+- **Length groups** in Design rules: nets whose routed lengths must match within a tolerance of the longest or of a target; the check reports the short ones, the Nets tab shows the lengths.
+- A track's right-click menu: **Route the partner alongside** (the pair's other track at the gap, from and to its nearest pads) and **Add a meander** (a serpentine adding just the missing length, clear of other copper).
+- KiCad export: pair width, gap and skew, and length groups (skew or a length window) as custom rules; the first pair's width and gap on the net classes.
+- `board-hs.js` (no DOM) with `tests/hs.test.mjs`.
 
 ## [3.218.0] - 2026-11-14
 
