@@ -3055,6 +3055,7 @@
     // logic: from its state at DC (with uic, settled on the starting voltages), its sources started
     const dig = circ.dig;
     if (dig) { if (opts.uic) { dig.dcInit(); dig.dcUpdate(x); } dig.start(); }
+    let digFresh = !!(dig && opts.uic);
     circ.els.forEach(e => { delete e._vlast; });
     // the sources' corners
     const waves = circ.els.filter(e => e.tw).map(e => e.tw);
@@ -3157,7 +3158,12 @@
       else for (let k = 0; k < n; k++) xd[k] = (xn[k] - xp[k]) / hh;
       steps++; t = tNext; x = xn;
       // the logic's events up to t: a DAC that starts a new level makes this a corner
-      const kicked = dig ? dig.advance(t, x) : false;
+      // (from zero, the logic takes its starting states again at the first step: the supplies are
+      // on by then, as XSPICE reads its bridges once the sources have their values; a flip-flop
+      // held by a pin tied to a supply that was still at 0 V does not start undefined)
+      let kicked = false;
+      if (digFresh) { digFresh = false; dig.dcInit(); dig.dcUpdate(x); dig.start(); kicked = true; }
+      else if (dig) kicked = dig.advance(t, x);
       if (clock) clock(heatOf(hotB, x), hh);
       curPrev = xp; curH = hh;
       keep(t, x, corner || t >= tStop * (1 - 1e-12));

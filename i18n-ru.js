@@ -208,7 +208,7 @@
     "74HC00 quad NAND": "74HC00, 4 × 2И-НЕ", "74HC04 hex inverter": "74HC04, 6 инверторов", "74HC14 Schmitt inverter": "74HC14, инвертор с триггером Шмитта",
     "74HC74 dual D flip-flop": "74HC74, два D-триггера", "74HC393 dual 4-bit counter": "74HC393, два 4-разрядных счётчика", "74HC4040 12-bit counter": "74HC4040, 12-разрядный счётчик",
     "CD4011 quad NAND": "CD4011, 4 × 2И-НЕ", "CD4013 dual D flip-flop": "CD4013, два D-триггера", "CD4017 decade counter": "CD4017, десятичный счётчик", "CD40106 Schmitt inverter": "CD40106, инвертор с триггером Шмитта",
-    "Clock": "Тактовый", "Bit pattern": "Последовательность битов", "Bits (0, 1, x)": "Биты (0, 1, x)", "Bit time": "Длительность бита", "No: hold the last bit": "Нет: держать последний бит",
+    "Clock": "Тактовый", "Clock or bit pattern": "Тактовый сигнал или биты", "Bit pattern": "Последовательность битов", "Bits (0, 1, x)": "Биты (0, 1, x)", "Bit time": "Длительность бита", "No: hold the last bit": "Нет: держать последний бит",
     "Low level": "Низкий уровень", "High level": "Высокий уровень", "Rise and fall time": "Время фронтов", "Output resistance": "Выходное сопротивление",
     "NE555 timer": "Таймер NE555", "Regulators": "Стабилизаторы", "LM317 adjustable": "LM317 регулируемый", "LM337 adjustable, negative": "LM337 регулируемый, отрицательный",
     "78xx fixed": "78xx фиксированный", "79xx fixed, negative": "79xx фиксированный, отрицательный", "TL431 shunt reference": "TL431 параллельный стабилизатор",

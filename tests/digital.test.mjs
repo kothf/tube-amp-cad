@@ -134,3 +134,19 @@ A5 [c] [clk] ad
   assert.ok(r.ok, r.error);
   assert.ok(r.digital.some(d => d.name === "U1#q") && r.digital.some(d => d.name === "U2#q"));
 });
+
+test("from zero (uic) a flip-flop whose active-low preset and clear are tied to the supply starts at its ic, not undefined", () => {
+  // the supply is 0 V before the first step: read then, PRE and CLR would both be active and Q X
+  const els = [
+    { id: "VCC", kind: "V", nodes: [1, 0], v: 5 },
+    { id: "AP", kind: "ADC", nodes: [1, 0, 1], out: "pre", p: { lo: 0.5, hi: 0.5 } },
+    { id: "AC", kind: "ADC", nodes: [1, 0, 1], out: "clr", p: { lo: 0.5, hi: 0.5 } },
+    { id: "CK", kind: "DIG", type: "clock", in: [], out: ["clk"], p: { period: 2e-6, delay: 1e-6 } },
+    { id: "PD", kind: "DIG", type: "pulldown", in: [], out: ["d"], p: {} },
+    { id: "FF", kind: "DIG", type: "dff", in: ["d", "clk", "pre", "clr"], out: ["q", "qn"], inv: { in: [false, false, true, true], out: [false, false] }, p: { clk_delay: 10e-9, ic: 0 } },
+    { id: "R", kind: "R", nodes: [1, 0], r: 1e3 }];
+  const r = E.transient({ nodeCount: 2, elements: els }, { tStop: 3e-6, uic: true });
+  assert.ok(r.ok, r.error);
+  assert.equal(stateAt(net(r, "q"), 0.5e-6), 0, "Q at its ic before the first clock");
+  assert.equal(stateAt(net(r, "qn"), 0.5e-6), 1);
+});

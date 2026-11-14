@@ -2995,9 +2995,11 @@
     }
     return "";
   }
-  function spiceNetlist() {
-    const nl = buildNetlist();
-    const nn = n => (n === 0 ? "0" : "N" + n);
+  // the nets are N1, N2 …; a maker's model of that name (BSIM cards are often N1 and P1) would read as
+  // the node in ngspice, so the nets then take the next prefix free of every model and subcircuit name
+  function spiceNetlist(prefix) {
+    const P = prefix || "N", nl = buildNetlist();
+    const nn = n => (n === 0 ? "0" : P + n);
     const lines = ["* Tube Amp CAD export — " + new Date().toISOString().slice(0, 10), "* Koren tube models as behavioural sources (LTspice and ngspice syntax)"];
     const models = new Set(), spiceTexts = [];
     nl.elements.forEach(e => {
@@ -3191,7 +3193,10 @@
     // the print step also as the time step: ngspice refuses a time step of 0 (LTspice takes it)
     const step = (1 / f / 200).toPrecision(3);
     lines.push(`.tran ${step} ${(20 / f).toPrecision(3)} ${(10 / f).toPrecision(3)} ${step}${logic ? " uic" : ""}`, ".end");
-    return lines.join("\n");
+    const text = lines.join("\n"), names = new Set([...text.matchAll(/^\s*\.(?:model|subckt)\s+(\S+)/gim)].map(m => m[1].toUpperCase()));
+    const clash = [...names].some(k => k.startsWith(P) && /^\d+$/.test(k.slice(P.length)));
+    if (clash && P.length < 6) return spiceNetlist({ N: "NET", NET: "NODE", NODE: "NN_" }[P] || P + "_");
+    return text;
   }
 
   // ---------------------------------------------------------------------------
