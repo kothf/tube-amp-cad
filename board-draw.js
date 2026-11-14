@@ -73,6 +73,7 @@
     }
     function draw() {
       queued = false;
+      const RT = S.route && S.conn ? routeTail() : null, SH = RT && RT.shove;   // the route's tail, and the tracks it pushes aside
       const W = canvas.clientWidth, H = canvas.clientHeight;
       if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = "#070b10"; ctx.fillRect(0, 0, W, H);
@@ -107,7 +108,11 @@
           const sel = trackSelected(i), n = netOfTrack(i), lit = hl !== null && n === hl;
           ctx.globalAlpha = NH !== null && !lit && !sel ? base * 0.25 : base;
           ctx.strokeStyle = sel ? "#00e5ff" : COLORS[layer]; ctx.lineWidth = t.w;
-          ctx.beginPath(); t.pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke();
+          const tp = SH && SH.has(i) ? SH.get(i) : t.pts;
+          if (tp !== t.pts) {   // pushed aside by the route: where it was, faint
+            const a = ctx.globalAlpha; ctx.globalAlpha = a * 0.25; ctx.beginPath(); t.pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); ctx.globalAlpha = a;
+          }
+          ctx.beginPath(); tp.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke();
           if (lit && !sel) { ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = t.w * 0.35; ctx.stroke(); }
         });
         ctx.globalAlpha = base;
@@ -225,7 +230,7 @@
         ctx.fillStyle = COLORS[S.layer]; S.poly.forEach(p => ctx.fillRect(p[0] - 2.5 * px, p[1] - 2.5 * px, 5 * px, 5 * px));
       }
       if (S.route) {
-        const r = S.route, rt = routeTail(), tail = rt.pts, pts = r.pts.concat(tail.slice(1)), bad = rt.bad;
+        const r = S.route, rt = RT || routeTail(), tail = rt.pts, pts = r.pts.concat(tail.slice(1)), bad = rt.bad;
         const need = bad && bad.need ? bad.need : B.netRule(r.net, S.model ? S.model.names : {}, S.hv, S.board.rules).clearance;
         ctx.lineCap = "round"; ctx.lineJoin = "round";
         // the clearance halo of the segments being placed: red when they come too close
@@ -235,7 +240,7 @@
         ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); ctx.globalAlpha = 1;
         if (bad) {
           ctx.strokeStyle = "#ff5050"; ctx.lineWidth = Math.max(0.12, 1.5 * px); ctx.beginPath(); ctx.arc(bad.x, bad.y, Math.max(1, 8 * px), 0, Math.PI * 2); ctx.stroke();
-          $("st-msg").textContent = `Too close to ${bad.what}${bad.net ? " (" + bad.net + ")" : ""}: ${Math.max(0, bad.g).toFixed(2)} < ${bad.need} mm — Shift+click places it anyway`;
+          $("st-msg").textContent = `Too close to ${bad.what}${bad.net ? " (" + bad.net + ")" : ""}: ${Math.max(0, bad.g).toFixed(2)} < ${bad.need} mm${bad.shove ? ` (cannot push it aside: ${bad.shove})` : ""} — Shift+click places it anyway`;
         }
         r.segs.forEach(t => { ctx.strokeStyle = COLORS[t.layer]; ctx.lineWidth = t.w; ctx.beginPath(); t.pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); });
       }

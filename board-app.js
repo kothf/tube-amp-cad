@@ -29,6 +29,7 @@
     measure: null,          // { a: [x, y], b: [x, y] | null, sa, sb: what each end stuck to }
     snapHint: null,         // the measure tool: where the pointer sticks (snapPoint)
     mMode: "centre",        // smart measure between two round things: centre | min (edge to edge) | max (outer span)
+    shoveOn: (() => { try { return localStorage.getItem("tubecad_shove") !== "0"; } catch (e) { return true; } })(),   // routing pushes other nets' tracks aside
     mUnits: (() => { try { return localStorage.getItem("tubecad_munits") || "mm"; } catch (e) { return "mm"; } })(),
     pins: [],               // pinned measurements: { r } (BoardMeasure results); kept until taken off
     gridStyle: "lines", axes: true,   // the screen grid (lines | dots | off) and the X / Y axes
@@ -425,27 +426,58 @@
     const a = [last].concat(bend(last, t.p, r.flip)), badA = tailCheck(a);
     if (!badA) return { pts: a, t, bad: null };
     const b = [last].concat(bend(last, t.p, !r.flip)), badB = tailCheck(b);
-    return badB ? { pts: a, t, bad: badA } : { pts: b, t, bad: null };
+    if (!badB) return { pts: b, t, bad: null };
+    // push and shove: other nets' tracks step aside when only tracks are in the way
+    if (S.shoveOn && S.conn) {
+      for (const pts of [a, b]) {
+        if (tailCheck(pts, { tracks: false })) continue;
+        const sh = shoveFor(pts);
+        if (sh.moved) return { pts, t, bad: null, shove: sh.moved };
+      }
+      const sh = tailCheck(a, { tracks: false }) ? null : shoveFor(a);
+      if (sh && sh.fail) badA.shove = sh.fail;
+    }
+    return { pts: a, t, bad: badA };
+  }
+  // the tracks the segments pts would push aside (BoardShove), cached for the same tail
+  function shoveFor(pts) {
+    const r = S.route, key = JSON.stringify([pts, r.layer, r.w]);
+    if (r.shoveKey === key && r.shoveConn === S.conn) return r.shoveRes;
+    const tracks = S.board.tracks.map((t, i) => ({ layer: t.layer, w: t.w, pts: t.pts, net: netOfTrack(i), locked: !!t.locked }));
+    const segs = []; for (let k = 0; k + 1 < pts.length; k++) segs.push([pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]]);
+    const need = (a, b) => S.clr ? S.clr.need(a, b).c : Math.max(ruleOf(a).clearance, ruleOf(b).clearance);
+    const res = BoardShove.shove({ tracks, layer: r.layer, net: r.net, segs, r: r.w / 2, need,
+      fixed: (s, w2, net) => segBad(s, net, w2, r.layer, { tracks: false }) });
+    r.shoveKey = key; r.shoveConn = S.conn; r.shoveRes = res;
+    return res;
   }
   // the clearance of the segments to the pointer against other nets' copper, holes and the edge
   function routeCheck() { return S.route && S.conn ? routeTail().bad : null; }
-  function tailCheck(pts) {
-    const r = S.route, mine = ruleOf(r.net).clearance, w2 = r.w / 2;
+  function tailCheck(pts, o) {
+    const r = S.route;
     for (let k = 0; k + 1 < pts.length; k++) {
-      const s = [pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]];
-      for (const it of S.conn.items) {
-        if (!it.layers.includes(r.layer) || (it.net === r.net && r.net !== null)) continue;
-        if (it.kind === "via" && (r.vias || []).includes(it.vi)) continue;   // the route's own via: not joined to its net until the route ends
-        let need = S.clr ? S.clr.need(r.net, it.net, { s, r: w2, layers: [r.layer] }, it).c : Math.max(mine, ruleOf(it.net).clearance); const g = B.segSeg(s, it.s) - w2 - it.r;
-        if (g < need - 1e-6 && it.kind === "pad") { const eg = B.entryGap(s, it, S.conn.items); if (eg !== null) need = Math.min(need, eg - 0.02); }
-        if (g < need - 1e-6 && it.kind === "pad" && S.sp) { const us = B.underSocket(S.sp, it, { s }); if (us !== null) need = Math.min(need, us); }
-        if (g < need - 1e-6 && it.kind === "track" && B.anchoredOk({ s, r: w2 }, it, g, need, S.conn.items)) continue;
-        if (g < need - 1e-6) { const [x, y] = it.kind === "pad" ? [it.pad.x, it.pad.y] : [(it.s[0] + it.s[2]) / 2, (it.s[1] + it.s[3]) / 2]; return { x, y, g, need, what: it.kind === "pad" ? `${it.pad.ref}-${it.pad.num}` : it.kind === "via" ? "a via" : "a track", net: netName(it.net) }; }
-      }
-      for (const ko of S.board.keepouts) if (ko.tracks !== false && B.koLayers(ko).includes(r.layer) && B.segInPoly(s, ko.pts, w2)) return { x: s[2], y: s[3], g: 0, need: 0, what: ko.name ? `keep-out "${ko.name}"` : "a keep-out area", net: "", ko: true };
-      const hn = Math.max(mine, S.clr ? S.clr.toChassis(r.net).c : 0);
-      for (const h of B.npHoles(S.board, S.model)) { const need = h.part ? mine : hn, g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < need - 1e-6) return { x: h.x, y: h.y, g, need, what: h.part ? `${h.ref}'s unplated hole` : "a mounting hole", net: "" }; }
+      const bad = segBad([pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]], r.net, r.w / 2, r.layer, Object.assign({ vias: r.vias || [] }, o));
+      if (bad) return bad;
     }
+    return null;
+  }
+  // one segment s of net (half width w2) on layer against other nets' copper (o.tracks false: not
+  // their tracks), keep-outs and holes: null, or what it comes too close to
+  function segBad(s, net, w2, layer, o) {
+    o = o || {}; const mine = ruleOf(net).clearance, own = o.vias || [];
+    for (const it of S.conn.items) {
+      if (!it.layers.includes(layer) || (it.net === net && net !== null)) continue;
+      if (it.kind === "track" && o.tracks === false) continue;
+      if (it.kind === "via" && own.includes(it.vi)) continue;   // the route's own via: not joined to its net until the route ends
+      let need = S.clr ? S.clr.need(net, it.net, { s, r: w2, layers: [layer] }, it).c : Math.max(mine, ruleOf(it.net).clearance); const g = B.segSeg(s, it.s) - w2 - it.r;
+      if (g < need - 1e-6 && it.kind === "pad") { const eg = B.entryGap(s, it, S.conn.items); if (eg !== null) need = Math.min(need, eg - 0.02); }
+      if (g < need - 1e-6 && it.kind === "pad" && S.sp) { const us = B.underSocket(S.sp, it, { s }); if (us !== null) need = Math.min(need, us); }
+      if (g < need - 1e-6 && it.kind === "track" && B.anchoredOk({ s, r: w2 }, it, g, need, S.conn.items)) continue;
+      if (g < need - 1e-6) { const [x, y] = it.kind === "pad" ? [it.pad.x, it.pad.y] : [(it.s[0] + it.s[2]) / 2, (it.s[1] + it.s[3]) / 2]; return { x, y, g, need, what: it.kind === "pad" ? `${it.pad.ref}-${it.pad.num}` : it.kind === "via" ? "a via" : "a track", net: netName(it.net) }; }
+    }
+    for (const ko of S.board.keepouts) if (ko.tracks !== false && B.koLayers(ko).includes(layer) && B.segInPoly(s, ko.pts, w2)) return { x: s[2], y: s[3], g: 0, need: 0, what: ko.name ? `keep-out "${ko.name}"` : "a keep-out area", net: "", ko: true };
+    const hn = Math.max(mine, S.clr ? S.clr.toChassis(net).c : 0);
+    for (const h of B.npHoles(S.board, S.model)) { const need = h.part ? mine : hn, g = B.segDist(s[0], s[1], s[2], s[3], h.x, h.y) - w2 - h.d / 2; if (g < need - 1e-6) return { x: h.x, y: h.y, g, need, what: h.part ? `${h.ref}'s unplated hole` : "a mounting hole", net: "" }; }
     return null;
   }
   // where the route goes next: { p, end: the click finishes it there, what }.
@@ -502,8 +534,15 @@
     const p = hitPad(tgt[0], tgt[1]);
     // an SMD pad on the other side: the track needs a via (V) to get there
     if (p && p.smd && !p.layers.includes(r.layer)) { msg(`${p.ref}-${p.num} is an SMD pad on ${p.layers[0] === "F.Cu" ? "the top" : "the bottom"}, this track is on ${r.layer}: place a via (V) first`); return; }
+    if (tail.shove) {
+      // the pushed tracks take their new shape; Backspace past this corner puts them back
+      const old = []; tail.shove.forEach((pts, ti) => { old.push([ti, S.board.tracks[ti].pts]); S.board.tracks[ti].pts = pts; });
+      (r.shoved = r.shoved || []).push({ n: r.pts.length, segs: r.segs.length, old });
+      msg(`Pushed ${old.length === 1 ? "a track" : old.length + " tracks"} aside (Backspace puts ${old.length === 1 ? "it" : "them"} back)`);
+    }
     tail.pts.slice(1).forEach(q => r.pts.push(q));
     newCorner(r);
+    if (tail.shove) analyse();
     if (p && r.pts.length > 1) {
       if (p.net !== r.net) msg(`${p.ref}-${p.num} is on ${netName(p.net)}, not ${netName(r.net)}: the check will report a short`);
       finishRoute(); return;
@@ -519,6 +558,23 @@
     r.layer = typeof to === "string" ? to : r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last]; r.via = S.board.vias.length - 1; (r.vias = r.vias || []).push(r.via); newCorner(r);
     setLayer(r.layer); analyse(); render();
   }
+  // push and shove on or off (Route ▾, Shift+X); kept in this browser
+  function setShove(on, quiet) {
+    S.shoveOn = !!on; try { localStorage.setItem("tubecad_shove", on ? "1" : "0"); } catch (e) { /* no storage */ }
+    const mi = $("mi-shove"); if (mi) { mi.querySelector("small").textContent = on ? "on: other nets' tracks step aside" : "off: tracks in the way stop the route"; mi.setAttribute("aria-checked", on ? "true" : "false"); }
+    if (!quiet) msg(on ? "Push and shove on: while routing, other nets' tracks step aside when only they are in the way (Shift+X: off)" : "Push and shove off: tracks in the way stop the route (Shift+X: on)");
+    if (S.route) { S.routeBad = routeCheck(); render(); }
+  }
+  // corners taken back past a push: the pushed tracks go back where they were (all: the route dropped)
+  function unshove(r, all) {
+    let back = false;
+    while (r.shoved && r.shoved.length) {
+      const l = r.shoved[r.shoved.length - 1];
+      if (!all && (r.segs.length > l.segs || (r.segs.length === l.segs && r.pts.length > l.n))) break;
+      l.old.forEach(([ti, pts]) => { if (S.board.tracks[ti]) S.board.tracks[ti].pts = pts; }); r.shoved.pop(); back = true;
+    }
+    if (back) analyse();
+  }
   function finishRoute() {
     const r = S.route; if (!r) return;
     // stopped right after a via (V, then Esc): the via goes too, unless it already joins copper
@@ -529,7 +585,7 @@
     if (vi >= 0 && !joins) S.board.vias.pop();
     if (r.pts.length > 1) r.segs.push({ layer: r.layer, w: r.w, pts: r.pts });
     S.route = null;
-    if (!r.segs.length) { if (vi >= 0) { if (joins) commit(); else analyse(); } render(); return; }
+    if (!r.segs.length) { if (vi >= 0 || (r.shoved && r.shoved.length)) { if (joins || (r.shoved && r.shoved.length)) commit(); else analyse(); } render(); return; }
     r.segs.forEach(t => { const pts = tidy(t.pts); if (pts.length > 1) S.board.tracks.push({ layer: t.layer, w: +t.w.toFixed(3), pts, net: storedNet(r.net) }); });
     commit();
   }
@@ -1085,10 +1141,10 @@
     if (cons.onKey(e, L)) return;   // the HUD's numbers, Esc in a construction tool, C / O / Shift+C / Shift+P
     if (e.key === "Escape") { if (S.route) finishRoute(); else if (S.measure) { S.measure = null; render(); } else { S.sel = null; setTool("select"); renderPanels(); } return; }
     if (S.route && (e.code === "Slash" || e.key === "/")) { e.preventDefault(); S.route.flip = !S.route.flip; S.route.manual = true; msg(S.route.flip ? "Diagonal first, until the next corner (/: straight first)" : "Straight first, until the next corner (/: diagonal first)"); S.routeBad = routeCheck(); render(); return; }
-    if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); newCorner(S.route); render(); return; }
+    if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); unshove(S.route); newCorner(S.route); render(); return; }
     if ((e.key === "Delete" || e.key === "Backspace") && S.sel) { e.preventDefault(); deleteSel(); return; }
     // while routing, Ctrl+Z takes back the last corner (or drops the route), not a finished track
-    if (ctrl && L === "z" && S.route && !e.shiftKey) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); else if (S.route.segs.length) finishRoute(); else { S.route = null; msg("Route dropped"); } S.routeBad = routeCheck(); render(); return; }
+    if (ctrl && L === "z" && S.route && !e.shiftKey) { e.preventDefault(); if (S.route.pts.length > 1) { S.route.pts.pop(); unshove(S.route); } else if (S.route.segs.length) finishRoute(); else { unshove(S.route, true); S.route = null; msg("Route dropped"); } S.routeBad = routeCheck(); render(); return; }
     if (ctrl && L === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (ctrl && L === "y") { e.preventDefault(); redo(); return; }
     if (ctrl) return;
@@ -1097,6 +1153,7 @@
     else if (e.code === "Minus" || e.code === "NumpadSubtract" || e.key === "-") zoomAt(0.8);
     else if (L === "z") zoomToSel();
     else if (e.code === "Backslash" || e.key === "\\") setBare(!S.bare);
+    else if (L === "x" && e.shiftKey) setShove(!S.shoveOn);
     else if (L === "x") setTool(S.tool === "route" ? "select" : "route");
     else if (L === "v" && e.shiftKey) { if (S.route || !toggleMount()) setTool("via"); }
     else if (L === "v") { if (S.route) routeVia(); else setLayer(S.layer === "F.Cu" ? "B.Cu" : "F.Cu"); }
@@ -1830,7 +1887,7 @@
     document.querySelectorAll("[data-tab]").forEach(t => { t.onclick = () => { document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x === t)); $("parts").hidden = t.dataset.tab !== "parts"; $("nets").hidden = t.dataset.tab !== "nets"; }; });
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     $("ex-dsn").onclick = () => { list.hidden = true; if (S.model) download(dsnOf().text, baseName() + ".dsn", "text/plain"); };
-    $("btn-autoroute").onclick = autoRoute; $("st-stop").onclick = stopRouting; $("btn-nudge").onclick = routeNudge; $("btn-rearrange").onclick = rearrange; $("mi-autoroute").onclick = autoRoute; $("btn-unroute").onclick = unroute; $("btn-router").onclick = routerSetup;
+    $("btn-autoroute").onclick = autoRoute; $("st-stop").onclick = stopRouting; $("btn-nudge").onclick = routeNudge; $("btn-rearrange").onclick = rearrange; $("mi-autoroute").onclick = autoRoute; $("mi-shove").onclick = () => setShove(!S.shoveOn); setShove(S.shoveOn, true); $("btn-unroute").onclick = unroute; $("btn-router").onclick = routerSetup;
     $("router-test").onclick = routerTest; $("router-save").onclick = routerSave; $("router-cancel").onclick = () => { $("router-modal").hidden = true; };
     $("router-addr").onkeydown = e => { if (e.key === "Enter") routerSave(); };
     $("router-use-server").onchange = $("router-use-own").onchange = routerWhere;

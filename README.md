@@ -812,6 +812,12 @@ the circuit file, so one file holds both.
     red, and the click is refused, when the next segment would come too close
     to another net's copper or a mounting hole (<kbd>Shift</kbd>+click places
     it anyway).
+  - **Push and shove** (*Route ▾ → Push and shove*, <kbd>Shift</kbd>+<kbd>X</kbd>,
+    on by default): other nets' tracks in the way step aside by just the
+    clearance they lack, with 45° jogs, and push the next ones in turn. Pads,
+    vias, holes, keep-outs, locked tracks and track ends stay put; if a push
+    needs them to move, nothing moves and the status line says why.
+    <kbd>Backspace</kbd> puts pushed tracks back.
   - A track entering a tube pin may pass the socket's other pins as closely as
     the pin itself does: the socket's own pin spacing is a limit no layout can
     beat.
