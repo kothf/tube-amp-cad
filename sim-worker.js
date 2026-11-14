@@ -13,7 +13,7 @@
                 { seq, netlist, options, kind: "noise" }        noise at an output (noiseSweep; options.out, options.op)
    Message out: { seq, result }, and { seq, progress } (0…1) along the way; a startup run with
    options.partial also sends { seq, partial } (the engine's onPartial snapshots). */
-importScripts("spice-model.js" + self.location.search, "bsim3.js" + self.location.search, "bsim4.js" + self.location.search, "sim-engine.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
+importScripts("spice-model.js" + self.location.search, "bsim3.js" + self.location.search, "bsim4.js" + self.location.search, "sim-digital.js" + self.location.search, "sim-engine.js" + self.location.search);   // same ?v= as the page, so caches never mix versions
 
 // the linear solver as WebAssembly (wasm/solver.ts); until it is in, or if it cannot load, the engine solves in JavaScript
 const solverReady = fetch("sim-solver.wasm" + self.location.search).then(r => (r.ok ? r.arrayBuffer() : null))

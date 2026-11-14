@@ -1452,7 +1452,7 @@
     ctx.save();
     ctx.font = "9px ui-monospace, Menlo, monospace";
     ctx.fillStyle = sel ? COL.bodySel : COL.value;
-    for (const [id, x, y, nx, ny] of def.pinSpots || TUBE_PIN_SPOTS) {
+    for (const [id, x, y, nx, ny] of (typeof def.pinSpots === "function" ? def.pinSpots(c) : def.pinSpots) || TUBE_PIN_SPOTS) {
       if (!nums[id] || !ids.has(id)) continue;
       const f = flipX(c), [px, py] = rotPt(f * x, y, c.rot), [dx, dy] = rotPt(f * nx, ny, c.rot);
       ctx.textAlign = dx > 0 ? "left" : dx < 0 ? "right" : "center";
@@ -3119,6 +3119,33 @@
           lines.push(`X${id} ${nd.join(" ")} ${name}`);
           break;
         }
+        // a logic IC's unit: an XSPICE subcircuit per type (ngspice's code models; LTspice has none),
+        // its pins found from the pin elements the part was built of
+        case "DIG": {
+          const xc = S.comps.find(c => c.id === e.id);
+          if (!xc || xc.type !== "logic") { lines.push(`* ${id}: logic not exported`); break; }
+          const pm = xc.params.model, name = `LOGIC_${pm}`.replace(/[^A-Za-z0-9_]/g, "_"), m = CadLib.LOGIC_ICS[pm] || {}, { ins, outs } = CadLib.logicPinIds(m), at = k => nl.elements.find(o => o.id === e.id + k);
+          if (!models.has(name)) { models.add(name); lines.push(...CadLib.logicSpice(pm, name)); }
+          const first = at("#in" + ins[0]);
+          lines.push(`X${id} ${ins.map(k => nn(at("#in" + k).nodes[0])).join(" ")} ${outs.map(k => nn(at("#ro" + k).nodes[1])).join(" ")} ${nn(first.nodes[2])} ${nn(first.nodes[1])} ${name}`);
+          break;
+        }
+        // a logic source: its clock as a PULSE, its bits as a PWL, at the levels
+        case "DAC": {
+          const gen = nl.elements.find(o => o.kind === "DIG" && o.out && o.out[0] === e.in), p = e.p, g = v => +(+v).toPrecision(7), tr = p.trise || 1e-12;
+          if (!gen || (gen.type !== "clock" && gen.type !== "pattern")) { lines.push(`* ${id}: logic output not exported`); break; }
+          if (gen.type === "clock") {
+            const gp = gen.p;
+            lines.push(`V${id} ${nd[0]} ${nd[1]} ${twText({ type: "pulse", v1: p.lo, v2: p.hi, td: gp.delay || 0, tr, tf: tr, pw: gp.period * (gp.duty || 0.5) - tr, per: gp.period })}`);
+          } else {
+            // two points at each bit's edge (its ramp), the first bit again at the end when it repeats
+            const gp = gen.p, lv = b => (b === "1" ? p.hi : b === "0" ? p.lo : (p.lo + p.hi) / 2), bits = gp.bits.split("").concat(gp.repeat ? [gp.bits[0]] : []), t0 = gp.delay || 0, pts = [0, g(p.lo)];
+            let last = p.lo;
+            bits.forEach((b, k) => { const t = t0 + k * gp.tbit; pts.push(g(t), g(last), g(t + tr), g(lv(b))); last = lv(b); });
+            lines.push(`V${id} ${nd[0]} ${nd[1]} PWL(${pts.join(" ")})${gp.repeat ? ` r=${g(t0 + tr)}` : ""}`);
+          }
+          break;
+        }
         case "VDIODE": lines.push(`B${id}${e.part || ""} ${nd[0]} ${nd[1]} I=${e.perveance}*pwr(max(V(${nd[0]},${nd[1]}),0),1.5)`); break;
         case "XFMR": {
           // each winding's leakage on top of its share of the magnetising inductance, so the
@@ -3156,10 +3183,14 @@
     // a 555's output switches in nanoseconds: under the trapezoidal rule its node rings from step to
     // step (tens of volts in a sample), so the run integrates by Gear's method
     if (models.has("NE555_SIM")) lines.push("* the 555 switches fast: Gear integration, as the trapezoidal rule rings on its output", ".options method=gear");
+    // logic (XSPICE, ngspice only): a gate in a loop (an RC oscillator) has no operating point, and
+    // ngspice's would give up on it, so the run starts from zero as the CAD's power-on does
+    const logic = [...models].some(k => /^LOGIC_/.test(k));
+    if (logic) lines.push("* logic ICs as XSPICE code models (ngspice; LTspice does not read A devices); the run starts from zero (uic): an oscillator has no operating point");
     const f = signalFreq() || 1000;
     // the print step also as the time step: ngspice refuses a time step of 0 (LTspice takes it)
     const step = (1 / f / 200).toPrecision(3);
-    lines.push(`.tran ${step} ${(20 / f).toPrecision(3)} ${(10 / f).toPrecision(3)} ${step}`, ".end");
+    lines.push(`.tran ${step} ${(20 / f).toPrecision(3)} ${(10 / f).toPrecision(3)} ${step}${logic ? " uic" : ""}`, ".end");
     return lines.join("\n");
   }
 

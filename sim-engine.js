@@ -1263,10 +1263,11 @@
     let nUnk = nNodes - 1;
     const els = netlist.elements.map(e => Object.assign({}, e));
     els.forEach(e => {
+      if (!e.nodes) e.nodes = [];   // a logic part has nets, no nodes
       // a transistor given as its data at Tnom (model0) and a temperature, without self-heating
       if (e.kind === "BJT" && e.model0 && e.temp !== undefined && !e.therm) e.model = Object.assign(bjtAtT(e.model0, e.temp), { pol: e.model.pol });
       if (e.kind === "BSIM") e._dev = bsimDevice(e);
-      if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L" || e.kind === "E" || (e.kind === "B" && e.out === "v")) e.branch = nUnk++;
+      if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L" || e.kind === "E" || e.kind === "DAC" || (e.kind === "B" && e.out === "v")) e.branch = nUnk++;
       else if (LATCHED.has(e.kind)) e.latch = nUnk++;
       else if (e.kind === "LDR") e.light = nUnk++;
       else if (e.kind === "TLINE") { e.branches = [nUnk++, nUnk++]; e._h = { t: [], w1: [], w2: [] }; }
@@ -1306,7 +1307,7 @@
     // nodes no nonlinear part is on (between resistors, capacitors and linear sources: the inside
     // of a maker's macromodel is full of them, some behind a gain of a million): Newton's step
     // there needs no limit, and must not hold the other nodes' steps back
-    const LINEAR = { R: 1, C: 1, L: 1, V: 1, VSRC: 1, I: 1, E: 1, G: 1, TLINE: 1 }, free = new Uint8Array(nNodes).fill(1);
+    const LINEAR = { R: 1, C: 1, L: 1, V: 1, VSRC: 1, I: 1, E: 1, G: 1, TLINE: 1, DAC: 1, ADC: 1, DIG: 1 }, free = new Uint8Array(nNodes).fill(1);
     let anyFree = false;
     // (a behavioural source counts as linear here: its expressions are smooth, and a gain node of a
     // macromodel may have to travel a megavolt, 25 V an iteration would never get it there)
@@ -1315,7 +1316,13 @@
     // stats: work counters for the benchmark (tests/bench.mjs): Newton solves at DC and in the
     // transient (one per time step, sub-steps included), their iterations, the device-model
     // evaluations the Jacobians took, and the solves that did not converge
-    return { nNodes, nUnk, els, timers, capped, free: anyFree ? free : null, stats: { dc: 0, steps: 0, newton: 0, evals: 0, fails: 0, lu: 0 } };
+    // logic (sim-digital.js): its nets and parts, met through the ADC and DAC bridges
+    let dig = null;
+    if (els.some(e => e.kind === "DIG" || e.kind === "ADC" || e.kind === "DAC")) {
+      if (!root.TubeDigital) throw new Error("the logic simulator (sim-digital.js) is not loaded");
+      dig = root.TubeDigital.create(els);
+    }
+    return { nNodes, nUnk, els, timers, capped, dig, free: anyFree ? free : null, stats: { dc: 0, steps: 0, newton: 0, evals: 0, fails: 0, lu: 0 } };
   }
 
   // A transformer's saturating core (XFMR with sat: { ls, p, air }): the flux linkage λ (V·s, on the
@@ -1377,7 +1384,7 @@
   // ---------------------------------------------------------------------------
   // a circuit's elements split into those whose stamps do not depend on the iterate (lin) and
   // the rest (nl), for the DC operating point or a transient step
-  const LINEAR_KINDS = new Set(["R", "C", "L", "V", "VSRC", "I", "E", "G", "RELAY", "TLINE"]);
+  const LINEAR_KINDS = new Set(["R", "C", "L", "V", "VSRC", "I", "E", "G", "RELAY", "TLINE", "DAC", "ADC", "DIG"]);
 
   // A lossless transmission line (TLINE: ports a1 b1 and a2 b2, impedance z0, delay td), by Branin's
   // method: each port is z0 in series with the wave that left the other port td before,
@@ -1604,6 +1611,18 @@
           else if (mode.dc) val = (e.dcValue !== undefined ? e.dcValue : (e.offset || 0)) * srcScale;
           else val = waveValue(e, mode.t, srcScale);
           b[br] += val;
+          break;
+        }
+        case "DAC": {
+          // a logic level as a voltage (sim-digital.js): v(out) − (1 − s)·v(lo) − s·v(hi) = c, its
+          // current a branch, returned through lo and hi in those shares
+          const br = e.branch, { s: sh, c } = circ.dig.dacStamp(e.id, mode.t, mode.dc || !circ.tw);
+          const lo = nd[1], hi = nd.length > 2 ? nd[2] : nd[1];
+          e._s = sh;
+          if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
+          if (lo > 0) { addAu(lo - 1, br, -(1 - sh)); addAu(br, lo - 1, -(1 - sh)); }
+          if (hi > 0) { addAu(hi - 1, br, -sh); addAu(br, hi - 1, -sh); }
+          b[br] += c * srcScale;
           break;
         }
         case "I": {
@@ -1910,8 +1929,22 @@
     return x;
   }
 
+  // with logic: the logic settled at time 0 and the analogue solved with the levels its DACs
+  // drive, the ADCs read and the logic settled again, until the DACs keep their levels (XSPICE's
+  // DC iteration; a loop through analogue and logic that oscillates stops after 30 rounds)
   function dcOperatingPoint(circ) {
-    let r = dcSolve(circ, new Array(circ.nUnk).fill(0));
+    if (!circ.dig) return dcOperatingAnalog(circ, new Array(circ.nUnk).fill(0));
+    circ.dig.dcInit();
+    let x0 = new Array(circ.nUnk).fill(0), r = null;
+    for (let k = 0; k < 30; k++) {
+      r = dcOperatingAnalog(circ, x0);
+      if (!r.ok || !circ.dig.dcUpdate(r.x)) break;
+      x0 = r.x;
+    }
+    return r;
+  }
+  function dcOperatingAnalog(circ, x0) {
+    let r = dcSolve(circ, x0);
     // a 555's latch set as its comparators find the solution, and solved again (an astable has no
     // DC state: after a few flips it keeps the last, and the transient starts it off)
     for (let k = 0; k < 4 && r.ok && circ.timers.length; k++) {
@@ -2081,6 +2114,8 @@
       case "C": return two(0);
       case "I": return two(e.i);
       case "L": case "V": case "VSRC": case "E": return two(x[e.branch]);
+      case "DAC": { const i = x[e.branch], sh = e._s || 0, hi = nd.length > 2 ? nd[2] : nd[1]; return hi === nd[1] ? two(i) : [[nd[0], i], [nd[1], -(1 - sh) * i], [hi, -sh * i]]; }
+      case "ADC": return [];
       case "G": return two(e.gm * (v[2] - v[3]));
       case "B": return two(e.out === "v" ? x[e.branch] : bValue(e, x));
       case "D": return two(deviceState(e, x).i);
@@ -3015,11 +3050,15 @@
       if (!dc.ok) return { ok: false, error: dc.error === "singular matrix" ? "The circuit has a floating node or a loop of voltage sources (no DC operating point)" : "No DC operating point: " + (dc.error || "did not converge"), stuck: stuckOf(c0) };
       x = dc.x.slice(0, n);
       circ.stats.dc += c0 === circ ? 0 : c0.stats.dc;
+      if (c0 !== circ && c0.dig) circ.dig = c0.dig;
     }
+    // logic: from its state at DC (with uic, settled on the starting voltages), its sources started
+    const dig = circ.dig;
+    if (dig) { if (opts.uic) { dig.dcInit(); dig.dcUpdate(x); } dig.start(); }
     circ.els.forEach(e => { delete e._vlast; });
     // the sources' corners
     const waves = circ.els.filter(e => e.tw).map(e => e.tw);
-    const nextBreak = t => { let b = tStop; for (const w of waves) { const v = srcBreak(w, t); if (v < b) b = v; } return b; };
+    const nextBreak = t => { let b = tStop; for (const w of waves) { const v = srcBreak(w, t); if (v < b) b = v; } if (dig) b = Math.min(b, dig.nextTime(t)); return b; };
     // the record: every unknown at each kept step, and with opts.currents every part's terminal
     // currents after them (as currentsOf lists them; a capacitor's from its charge over the step)
     const curIds = opts.currents ? currentsOf(circ, x, []) : null, nI = curIds ? curIds.length / 3 : 0, curVals = new Float64Array(nI);
@@ -3085,7 +3124,7 @@
       }
       return e;
     };
-    let fails = 0, lastErr = 0, lastErr2 = 0;
+    let fails = 0, lastErr = 0, lastErr2 = 0, landTries = 0;
     while (t < tStop * (1 - 1e-12)) {
       // land on the next corner (or tStart, or tStop): a step that would end just short of it is
       // stretched to it, one that would leave a sliver is halved
@@ -3106,11 +3145,19 @@
       const flipped = lat0 && latchesOf(xn).some((v, k) => v !== lat0[k]);
       const err = flipped ? 0 : lte(tNext, xn);
       if (err > 1 && hh > hMin * 4) { rejected++; h = hh * Math.max(0.1, 0.9 * Math.pow(err, -1 / 3)); continue; }
+      // a logic input that crossed a threshold within the step: the step is cut just past the crossing
+      if (dig && landTries < 4) {
+        const f = dig.crossing(xp, xn);
+        if (f !== null && 1 - f > 1e-3 && hh * f > hMin) { landTries++; rejected++; h = Math.max(hh * f * (1 + 1e-4), hMin); continue; }
+      }
+      landTries = 0;
       // accepted: every unknown's slope at its end, as the step's own rule has it
       const xd0 = hist[hist.length - 1][2], xd = new Float64Array(n);
       if (trapUsed && xd0) for (let k = 0; k < n; k++) xd[k] = 2 * (xn[k] - xp[k]) / hh - xd0[k];
       else for (let k = 0; k < n; k++) xd[k] = (xn[k] - xp[k]) / hh;
       steps++; t = tNext; x = xn;
+      // the logic's events up to t: a DAC that starts a new level makes this a corner
+      const kicked = dig ? dig.advance(t, x) : false;
       if (clock) clock(heatOf(hotB, x), hh);
       curPrev = xp; curH = hh;
       keep(t, x, corner || t >= tStop * (1 - 1e-12));
@@ -3119,7 +3166,7 @@
       const ahead = lastErr > 0 && err > lastErr ? err * Math.min(4, err / lastErr) : err;
       const grow = hist.length < 2 ? 2 : Math.min(2, Math.max(0.5, 0.9 * Math.pow(Math.max(ahead, lastErr, lastErr2, 1e-6), -1 / 3)));
       lastErr2 = lastErr; lastErr = err;
-      if (corner || flipped) {
+      if (corner || flipped || kicked) {
         // a fresh start past a corner (or a flip): a tenth of the shorter piece either side
         const nb2 = nextBreak(t);
         if (corner) { h = Math.min(hh, 0.02 * Math.min(t - prevBreak || Infinity, nb2 - t)); prevBreak = t; }
@@ -3128,6 +3175,7 @@
       } else {
         hist.push([t, x, xd]); if (hist.length > 3) hist.shift();
         h = hh * grow;
+        if (dig) nb = nextBreak(t);
       }
       h = Math.max(Math.min(h, maxStep), hMin);
       if (fails) fails = 0;
@@ -3141,6 +3189,8 @@
     const result = { ok: true, t: T.slice(0, m), nodes, currents, points: m,
       pinI: nI ? { ids: Array.from({ length: nI }, (_, k) => [curIds[3 * k], curIds[3 * k + 1]]), vals: X.slice(n).map(a => a.slice(0, m)) } : null, steps, rejected, tStop, tStart, maxStep, elapsedMs: Date.now() - t0w, stats: circ.stats };
     if (hotB.length) { result.thermal = {}; hotB.forEach(e => { result.thermal[e.id] = { tj: e._tj }; }); }
+    // the logic nets: each one's changes (t, state 0/1/2 = X), from the start
+    if (dig) result.digital = dig.record();
     return result;
   }
   // ---------------------------------------------------------------------------
@@ -3337,6 +3387,14 @@
           break;
         }
         case "V": case "VSRC": branch(nd[0], nd[1], e.branch); drive(e, e.branch, 1); break;
+        case "DAC": {
+          // the logic level held: the output follows its rails in their shares
+          const { s: sh } = circ.dig.dacStamp(e.id, 0, true), br = e.branch, hi = nd.length > 2 ? nd[2] : nd[1];
+          if (nd[0] > 0) { Gm[at(nd[0] - 1, br)] += 1; Gm[at(br, nd[0] - 1)] += 1; }
+          if (nd[1] > 0) { Gm[at(nd[1] - 1, br)] -= 1 - sh; Gm[at(br, nd[1] - 1)] -= 1 - sh; }
+          if (hi > 0) { Gm[at(hi - 1, br)] -= sh; Gm[at(br, hi - 1)] -= sh; }
+          break;
+        }
         // a current source is open; driven, its current flows out of node a into node b
         case "I": if (nd[0] > 0) drive(e, nd[0] - 1, -1); if (nd[1] > 0) drive(e, nd[1] - 1, 1); break;
         case "D": {
