@@ -16,7 +16,7 @@
   "use strict";
   const LIB_KEY = "tubecad_blocks_v1";
   // values each copy keeps for itself: a sheet connector's signal name
-  const PER_COPY = { offsheet: ["name"] };
+  const PER_COPY = { offsheet: ["name"], sheetsym: ["inst", "title"] };
   const clone = o => JSON.parse(JSON.stringify(o));
   const floor10 = v => Math.floor(v / 10) * 10;
   // JSON with sorted keys, so the same values always give the same text
@@ -152,9 +152,11 @@
   function CadBlocks(cad) {
     const { S, LIB, commit, compBBox, drawComp, esc, getCtx, makeComp, newId, render, setStatus, snap, updateInspector } = cad;
     const defOf = id => S.blocks.find(b => b.id === id);
+    const H = () => (cad.hier ? cad.hier() : null), isSheet = def => !!(def && def.sheet);
     const selComps = () => S.comps.filter(c => S.sel.comps.has(c.id) && c.type !== "frame");
     let note = "";   // what the last copy placed said (the status line soon shows the simulation)
-    const memberSel = () => { const c = S.comps.find(k => S.sel.comps.has(k.id) && k.block); return c || null; };
+    // a selected part of a plain block's copy (a hierarchical sheet's parts are cad-hier.js's)
+    const memberSel = () => { const c = S.comps.find(k => S.sel.comps.has(k.id) && k.block && !isSheet(defOf(k.block.d))); return c || null; };
 
     // designators for a new copy: each designator base of the block (VL1 of VL1.1 and VL1.2) gets
     // the next free number of its letter code, so a dual triode's sections stay one tube
@@ -180,7 +182,8 @@
     }
     // a copy of the block drawn with its corner at (ox, oy); reuse: Map(member → the part it
     // replaces), whose id, designator and own values the new part keeps
-    function stamp(def, ox, oy, copyId, reuse) {
+    const freeName = base => { let n = base, k = 2; const taken = new Set(S.comps.filter(c => c.type === "offsheet").map(c => String(c.params.name || "").trim().toUpperCase())); while (taken.has(n.toUpperCase())) n = base + "_" + k++; return n; };
+    function stamp(def, ox, oy, copyId, reuse, rename) {
       const label = labeller(), comps = [], wires = [];
       def.comps.forEach(dm => {
         if (!LIB[dm.type]) return;
@@ -188,7 +191,11 @@
         c.params = Object.assign({}, LIB[dm.type].defaults, clone(dm.params));
         const old = reuse && reuse.get(dm.m);
         if (old) { c.id = old.id; c.label = old.label; Object.assign(c.params, own(c.type, old.params)); }
-        else if (c.label) c.label = label(dm.label) || c.label;
+        else {
+          if (c.label) c.label = label(dm.label) || c.label;
+          // a new copy's sheet connector gets a name of its own (IN → IN_2), so the copies do not join
+          if (rename && c.type === "offsheet" && String(c.params.name || "").trim()) c.params.name = freeName(String(c.params.name).trim().replace(/_\d+$/, "") + "_" + rename);
+        }
         c.block = { i: copyId, d: def.id, m: dm.m };
         S.comps.push(c); comps.push(c);
       });
@@ -295,19 +302,21 @@
       const def = defOf(S.placingBlock);
       S.placingBlock = null;
       if (!def) return;
+      if (isSheet(def)) { H().dropSymbol(def, wx, wy); return; }
       const o = corner(def, wx, wy);
-      const { comps, wires } = stamp(def, o.x, o.y, newId("i"));
+      const { comps, wires } = stamp(def, o.x, o.y, newId("i"), null, copies(S.comps, def.id).size + 1);
       S.sel.comps.clear(); S.sel.wires.clear();
       comps.forEach(c => S.sel.comps.add(c.id)); wires.forEach(w => S.sel.wires.add(w.id));
       commit();
       const n = copies(S.comps, def.id).size;
-      note = `Copy ${n} of “${def.name}” placed.` + (hasConnectors(def) ? " Its sheet connectors have the same names as the first copy's, so they join it: rename them in this copy (each copy keeps its own names)." : "");
-      setStatus(hasConnectors(def) ? "warn" : "ok", note);
+      note = `Copy ${n} of “${def.name}” placed.` + (hasConnectors(def) ? ` Its sheet connectors got names of their own (${comps.filter(c => c.type === "offsheet").map(c => c.params.name).join(", ")}), so they do not join the first copy's: rename them as you need (each copy keeps its own).` : "");
+      setStatus("ok", note);
     }
     function cancelPlace() { if (!S.placingBlock) return false; S.placingBlock = null; setStatus("ok", "Placing cancelled."); render(); return true; }
     function drawGhost() {
       const def = S.placingBlock && defOf(S.placingBlock), ctx = getCtx();
       if (!def) return;
+      if (isSheet(def)) { H().drawGhost(def, ctx, S.mouse.wx, S.mouse.wy); return; }
       const o = corner(def, S.mouse.wx, S.mouse.wy);
       ctx.save(); ctx.globalAlpha = 0.55;
       ctx.strokeStyle = "#3fb950"; ctx.lineWidth = 2; ctx.lineCap = "round";
@@ -322,31 +331,44 @@
     function drawOutlines() {
       if (!S.blocks.length) return;
       const ctx = getCtx(), k = 1 / S.view.scale;
+      const nos = new Map();
       copies(S.comps).forEach(v => {
-        const def = defOf(v.d); if (!def) return;
-        const b = boxOf(v.comps, 8), on = v.comps.some(c => S.sel.comps.has(c.id));
+        const def = defOf(v.d); if (!def || isSheet(def)) return;
+        nos.set(def.id, (nos.get(def.id) || 0) + 1);
+        const b = boxOf(v.comps, 8), on = v.comps.some(c => S.sel.comps.has(c.id)), total = copies(S.comps, def.id).size;
         ctx.save();
         ctx.strokeStyle = on ? "rgba(121,192,255,0.85)" : "rgba(121,192,255,0.32)";
         ctx.lineWidth = k; ctx.setLineDash([6 * k, 4 * k]);
         ctx.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
         ctx.setLineDash([]);
         ctx.fillStyle = ctx.strokeStyle; ctx.font = `${Math.max(9, 10 * k)}px system-ui, sans-serif`; ctx.textBaseline = "bottom";
-        ctx.fillText(def.name, b.x1 + 2 * k, b.y1 - 2 * k);
+        ctx.fillText(total > 1 ? `${def.name} · ${nos.get(def.id)}/${total}` : def.name, b.x1 + 2 * k, b.y1 - 2 * k);
         ctx.restore();
       });
     }
 
+    // how a copy's drawing differs from its block (parts added, moved or taken out), or ""
+    function drawnOtherwise(def, copyId) {
+      const v = copies(S.comps, def.id).get(copyId); if (!v) return "";
+      const o = origin(def, v.comps); if (!o) return "";
+      const moved = v.comps.filter(c => { const dm = def.comps.find(k => k.m === c.block.m); return dm && (dm.x + o.x !== c.x || dm.y + o.y !== c.y || (dm.rot || 0) !== (c.rot || 0)); }).length;
+      const missing = def.comps.filter(dm => !v.comps.some(c => c.block.m === dm.m)).length;
+      const b = boxOf(v.comps, 10), extra = S.comps.filter(k => !k.block && k.type !== "frame" && (() => { const q = compBBox(k); return q.x1 >= b.x1 && q.x2 <= b.x2 && q.y1 >= b.y1 && q.y2 <= b.y2; })()).length;
+      return [moved ? `${moved} part(s) moved` : "", missing ? `${missing} part(s) taken out` : "", extra ? `${extra} part(s) added inside it` : ""].filter(Boolean).join(", ");
+    }
     // the inspector of a part in a copy: the block, its copies and what can be done
     function inspector(host, c) {
       if (!c.block) return;
       const def = defOf(c.block.d); if (!def) return;
-      const all = [...copies(S.comps, def.id).keys()], no = all.indexOf(c.block.i) + 1;
+      const all = [...copies(S.comps, def.id).keys()], no = all.indexOf(c.block.i) + 1, odd = drawnOtherwise(def, c.block.i);
       const box = document.createElement("div");
       box.className = "insp-block";
       box.innerHTML = `<div class="insp-sub">Block</div>
         <p class="insp-help"><b>${esc(def.name)}</b>, copy ${no} of ${all.length}. A value changed here changes in every copy${PER_COPY[c.type] ? " (the signal name stays this copy's own)" : ""}.</p>
+        ${odd ? `<p class="insp-help warn">This copy is drawn differently from the block (${esc(odd)}). <button class="btn" data-a="upd" title="Make this copy, as drawn now, the block: every other copy is drawn again from it">Update block from this copy</button></p>` : ""}
         <div class="insp-block-btns"><button class="btn" data-a="select" title="Select this copy's parts and wires, to move it or to update the block from it">Select this copy</button><button class="btn" data-a="detach" title="This copy's parts become ordinary parts, with values of their own">Detach</button><button class="btn" data-a="list" title="Every block of the circuit and of your library">Blocks…</button></div>`;
       box.querySelector('[data-a="select"]').addEventListener("click", () => selectCopy(c));
+      const ub = box.querySelector('[data-a="upd"]'); if (ub) ub.addEventListener("click", () => { selectCopy(c); update(); });
       box.querySelector('[data-a="detach"]').addEventListener("click", () => detach(c));
       box.querySelector('[data-a="list"]').addEventListener("click", () => openDialog());
       host.appendChild(box);
@@ -358,8 +380,10 @@
       box.className = "insp-block-btns";
       const tagged = selComps().filter(c => c.block), ids = new Set(tagged.map(c => c.block.i));
       box.innerHTML = `<button class="btn" data-a="make" title="The selected parts and wires become a block you can place again (Edit ▾ → Blocks…)">Make block…</button>` +
-        (ids.size === 1 ? `<button class="btn" data-a="update" title="This copy, with what you added to it or changed in its drawing, becomes the block; every other copy is drawn again from it">Update block from selection</button>` : "");
+        `<button class="btn" data-a="sheet" title="The selected stage moves to a sheet of its own; a sheet symbol with a pin for every wire crossing its edge takes its place">Make sheet…</button>` +
+        (ids.size === 1 && !isSheet(defOf(tagged[0].block.d)) ? `<button class="btn" data-a="update" title="This copy, with what you added to it or changed in its drawing, becomes the block; every other copy is drawn again from it">Update block from selection</button>` : "");
       box.querySelector('[data-a="make"]').addEventListener("click", () => openDialog("make"));
+      box.querySelector('[data-a="sheet"]').addEventListener("click", () => openDialog("sheet"));
       const u = box.querySelector('[data-a="update"]'); if (u) u.addEventListener("click", update);
       host.appendChild(box);
     }
@@ -372,35 +396,41 @@
       const m = modal(); if (!m) return;
       m.hidden = false;
       renderDialog(mode);
-      const f = m.querySelector(mode === "make" ? "#block-name" : "button"); if (f) f.focus();
+      const f = m.querySelector(mode === "make" || mode === "sheet" ? "#block-name" : "button"); if (f) f.focus();
     }
     function renderDialog(mode) {
       const host = document.getElementById("block-body"); if (!host) return;
       const n = selComps().length, lib = loadLib();
       const count = def => copies(S.comps, def.id).size;
-      const rows = S.blocks.map(def => `<tr data-id="${esc(def.id)}"><td>${esc(def.name)}</td><td>${def.comps.length}</td><td>${count(def)}</td><td class="act">
+      const H0 = H(), count2 = def => (isSheet(def) && H0 ? H0.instFrames(def.id).length : count(def));
+      const rows = S.blocks.map(def => `<tr data-id="${esc(def.id)}"><td>${esc(def.name)}${isSheet(def) ? ' <span class="muted" title="A hierarchical sheet: each instance is a symbol on the sheet above and a sheet of its own; any change on one instance\'s sheet goes to all">(sheet)</span>' : ""}</td><td>${def.comps.length}</td><td>${count2(def)}</td><td class="act">
         <button class="btn" data-a="place" title="Click on the sheet where the copy goes">Place</button>
         <button class="btn" data-a="rename">Rename</button>
         <button class="btn" data-a="keep" title="Keep a copy of this block in this browser, to place it in other circuits">${lib.some(b => b.id === def.id) ? "Update library" : "Save to library"}</button>
-        <button class="btn" data-a="del" title="Forget the block; its copies stay as ordinary parts">Delete</button></td></tr>`).join("");
+        <button class="btn" data-a="del" title="${isSheet(def) ? "Delete the sheet: its symbols and every instance's sheet with its parts" : "Forget the block; its copies stay as ordinary parts"}">Delete</button></td></tr>`).join("");
       const libRows = lib.map(def => `<tr data-lib="${esc(def.id)}"><td>${esc(def.name)}</td><td>${def.comps.length}</td><td></td><td class="act">
         <button class="btn" data-a="lplace" title="Add the block to this circuit and place a copy">Place</button>
         <button class="btn" data-a="ldel">Remove</button></td></tr>`).join("");
+      const sheet = mode === "sheet";
       host.innerHTML = `
         <div class="block-make">
-          <span>New block from the ${n ? n + " selected part(s)" : "selection (select parts first)"}</span>
+          <span>${sheet ? "New hierarchical sheet" : "New block"} from the ${n ? n + " selected part(s)" : "selection (select parts first)"}${sheet ? ": the stage moves to a sheet of its own and a sheet symbol takes its place, with a pin wherever a wire crosses its edge" : ""}</span>
           <input type="text" id="block-name" placeholder="e.g. Channel, Phase splitter" ${n ? "" : "disabled"}>
-          <button class="btn active" id="btn-block-create" ${n ? "" : "disabled"}>Make block</button>
+          <button class="btn active" id="btn-block-create" ${n ? "" : "disabled"} data-sheet="${sheet ? 1 : 0}">${sheet ? "Make sheet" : "Make block"}</button>
         </div>
         <table class="block-table"><thead><tr><th>In this circuit</th><th>Parts</th><th>Copies</th><th></th></tr></thead>
           <tbody>${rows || `<tr><td colspan="4" class="muted">No blocks yet: select a stage or a channel and make one.</td></tr>`}</tbody>
           <thead><tr><th>My library (this browser)</th><th>Parts</th><th></th><th></th></tr></thead>
-          <tbody>${libRows || `<tr><td colspan="4" class="muted">Empty: Save to library keeps a block here for other circuits.</td></tr>`}</tbody></table>`;
+          <tbody>${libRows || `<tr><td colspan="4" class="muted">Empty: Save to library keeps a block here for other circuits.</td></tr>`}</tbody></table>
+        <div class="block-lib-io"><button class="btn" id="btn-block-export" title="Save your library of blocks as a file, to take it to another browser or computer" ${lib.length ? "" : "disabled"}>Export library…</button><button class="btn" id="btn-block-import" title="Add the blocks of a library file (exported here) to your library">Import library…</button><input type="file" id="block-import-file" accept=".json,application/json" hidden></div>`;
+      host.querySelector("#btn-block-export").addEventListener("click", exportLib);
+      host.querySelector("#btn-block-import").addEventListener("click", () => host.querySelector("#block-import-file").click());
+      host.querySelector("#block-import-file").addEventListener("change", e => { const f = e.target.files[0]; if (f) f.text().then(t => { importLib(t); renderDialog(); }); });
       const name = host.querySelector("#block-name");
-      const doMake = () => { if (make_(name.value)) renderDialog(); };
+      const doMake = () => { if (sheet) { if (H() && H().makeFromSelection(name.value)) closeDialog(); return; } if (make_(name.value)) renderDialog(); };
       host.querySelector("#btn-block-create").addEventListener("click", doMake);
       name.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); doMake(); } });
-      if (mode === "make" && n) setTimeout(() => name.focus(), 0);
+      if ((mode === "make" || sheet) && n) setTimeout(() => name.focus(), 0);
       host.querySelectorAll("button[data-a]").forEach(b => b.addEventListener("click", () => {
         const tr = b.closest("tr"), def = tr.dataset.id && defOf(tr.dataset.id), a = b.dataset.a;
         if (a === "place" && def) startPlace(def.id);
@@ -412,6 +442,12 @@
           const ok = saveLib(list);
           setStatus(ok ? "ok" : "warn", ok ? `“${def.name}” is in your library: Edit ▾ → Blocks… in any circuit places it.` : "This browser would not store the library.");
           renderDialog();
+        } else if (a === "del" && def && isSheet(def)) {
+          const nSym = S.comps.filter(c => c.type === "sheetsym" && c.params.def === def.id).length;
+          if (nSym && !window.confirm(`Delete the sheet “${def.name}”: its ${nSym} symbol(s) and every instance's sheet with the parts on it? (Ctrl+Z brings them back.)`)) return;
+          S.comps = S.comps.filter(c => !(c.type === "sheetsym" && c.params.def === def.id));
+          S.blocks = S.blocks.filter(x => x !== def);
+          commit(); renderDialog();
         } else if (a === "del" && def) {
           S.comps.forEach(c => { if (c.block && c.block.d === def.id) delete c.block; });
           S.blocks = S.blocks.filter(x => x !== def);
@@ -422,6 +458,21 @@
           startPlace(d.id);
         } else if (a === "ldel") { saveLib(loadLib().filter(x => x.id !== tr.dataset.lib)); renderDialog(); }
       }));
+    }
+    // the library as a file, and back
+    function exportLib() {
+      const text = JSON.stringify({ app: "TubeAmpCAD", kind: "blocks", blocks: loadLib() }, null, 1);
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "application/json" })); a.download = "tubecad-blocks.json"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      setStatus("ok", `Saved tubecad-blocks.json (${loadLib().length} block(s)): Import library… adds them in another browser.`);
+    }
+    function importLib(text) {
+      let d; try { d = JSON.parse(text); } catch (e) { setStatus("warn", "That file is not a block library (not JSON)."); return 0; }
+      const list = (Array.isArray(d) ? d : d && Array.isArray(d.blocks) ? d.blocks : []).filter(b => b && b.id && b.name && Array.isArray(b.comps) && Array.isArray(b.wires));
+      if (!list.length) { setStatus("warn", "No blocks in that file."); return 0; }
+      const lib = loadLib(); list.forEach(b => { const i = lib.findIndex(x => x.id === b.id); if (i >= 0) lib[i] = b; else lib.push(b); });
+      const ok = saveLib(lib);
+      setStatus(ok ? "ok" : "warn", ok ? `${list.length} block(s) added to your library.` : "This browser would not store the library.");
+      return ok ? list.length : 0;
     }
     // Before every snapshot: values edited on one copy go to the others
     function beforeCommit() { if (S.blocks.length) sync(S.blocks, S.comps, S.sel.comps); }
@@ -435,8 +486,9 @@
       const close = m.querySelector("#btn-block-close"); if (close) close.addEventListener("click", closeDialog);
       m.addEventListener("mousedown", e => { if (e.target === m) closeDialog(); });
     }
-    return { make: make_, update, selectCopy, detach, startPlace, drop, cancelPlace, drawGhost, drawOutlines, inspector, selectionTools, openDialog, closeDialog, isOpen, beforeCommit, load, init, member: memberSel, note: () => note, canUpdate: () => new Set(selComps().filter(c => c.block).map(c => c.block.i)).size === 1 };
+    return { make: make_, update, selectCopy, detach, startPlace, drop, cancelPlace, drawGhost, drawOutlines, inspector, selectionTools, openDialog, closeDialog, isOpen, beforeCommit, load, init, exportLib, importLib, drawnOtherwise: (id, i) => drawnOtherwise(defOf(id), i), member: memberSel,
+      note: () => note, canUpdate: () => { const t = selComps().filter(c => c.block); return new Set(t.map(c => c.block.i)).size === 1 && !isSheet(defOf(t[0].block.d)); } };
   }
-  Object.assign(CadBlocks, { make, extent, copies, origin, sync, subtract, shared, canon, PER_COPY, LIB_KEY });
+  Object.assign(CadBlocks, { make, extent, copies, origin, sync, subtract, shared, ownOf: own, canon, PER_COPY, LIB_KEY });
   root.CadBlocks = CadBlocks;
 })(typeof window !== "undefined" ? window : globalThis);

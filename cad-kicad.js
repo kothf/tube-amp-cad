@@ -11,7 +11,7 @@
   root.CadKicad = function (cad) {
     const { S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo } = cad;
     const { LIB } = CadLib;
-    const POWER = new Set(["ground", "rail", "offsheet"]);
+    const POWER = new Set(["ground", "rail", "offsheet", "hport"]);
     const snap = v => Math.round(v / 10) * 10;
 
     // The board side: the netlist as the board sees it, the model of the board (null without
@@ -114,9 +114,20 @@
         if (c.type === "note") { const t = String(c.params.text || "").trim(); if (t) s.notes.push({ x, y, text: t, size: (+c.params.size || 12) * K.UNIT * 0.72 }); return; }
         const rec = drawn(c), pins = compPins(c), u = { shapes: rec.shapes, texts: rec.texts, pins: [] };
         const at = (px, py) => [(px - c.x) * K.UNIT, (py - c.y) * K.UNIT];
+        if (c.type === "sheetsym") {
+          // a hierarchical sheet's symbol: KiCad gets the circuit flat (each instance on a sheet of
+          // its own), so each pin is a label of its net's own name, as its port on the sheet below
+          pins.forEach(p => {
+            const net = T.pinNet.get(c.id + ":" + p.id), nm = netName(net), [px, py] = mm(s, p.x, p.y);
+            s.labels.push({ x: px, y: py, text: nm, angle: p.x <= c.x ? 180 : 0, global: true }); globalNames.add(nm);
+          });
+          s.notes.push({ x, y: y - 2, text: `${c.params.title ? c.params.title + " · " : ""}${c.params.name || "Sheet"} (hierarchical sheet)`, size: 1.27 });
+          return;
+        }
         if (POWER.has(c.type)) {
           // ground, rails and sheet connectors: power symbols, one net by name across the sheets
-          const net = T.pinNet.get(c.id + ":" + pins[0].id), nm = c.type === "ground" ? "GND" : String(c.params.name || "").trim() || netName(net);
+          // (a hierarchical port by its net's own name: two instances' ports of one name are two nets)
+          const net = T.pinNet.get(c.id + ":" + pins[0].id), nm = c.type === "ground" ? "GND" : c.type === "hport" ? netName(net) : String(c.params.name || "").trim() || netName(net);
           pins.forEach(p => u.pins.push({ x: at(p.x, p.y)[0], y: at(p.x, p.y)[1], num: "1", name: nm, type: "power_in", hidden: true }));
           const lib = uniqueLib("PWR_" + nm + "_" + c.id), d = c.type === "ground" ? null : c.type === "rail" ? [[0, -1], [1, 0], [0, 1], [-1, 0]][c.rot & 3] : [[1, 0], [0, 1], [-1, 0], [0, -1]][c.rot & 3];
           symbols.push({ name: lib, power: true, ref: "#PWR", value: nm, inBom: false, onBoard: false, units: [u] });

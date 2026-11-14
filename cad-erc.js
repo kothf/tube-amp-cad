@@ -23,7 +23,7 @@
   // a SPICE part's box pin, by what its maker called it (only the plain cases: a wrong guess is a false alarm)
   const boxRole = name => { const n = String(name || "").toLowerCase().replace(/[\s_]/g, ""); return /^(vcc|vdd|vee|vss|v\+|v-|vs\+|vs-|vp|vn|vin)$/.test(n) ? "pwr" : /^(out|output|vout|vo)$/.test(n) ? "out" : /^(in\+|in-|\+in|-in|inp|inn|inv|noninv|adj|fb)$/.test(n) ? "in" : "def"; };
   const ROLES = {
-    ground: () => "-", offsheet: () => "-", capacitor: () => "-", electrolytic: () => "-", note: () => "-", frame: () => "-", scope: () => "-", mov: () => "-",
+    ground: () => "-", offsheet: () => "-", hport: () => "-", sheetsym: () => "-", capacitor: () => "-", electrolytic: () => "-", note: () => "-", frame: () => "-", scope: () => "-", mov: () => "-",
     tube: id => (/^G\d?$/.test(id) ? "in" : "def"), eye: id => (id === "G" ? "in" : "def"),
     npn: id => (id === "B" ? "in" : "def"), pnp: id => (id === "B" ? "in" : "def"),
     nmos: id => (id === "G" ? "in" : "def"), pmos: id => (id === "G" ? "in" : "def"), njf: id => (id === "G" ? "in" : "def"), pjf: id => (id === "G" ? "in" : "def"),
