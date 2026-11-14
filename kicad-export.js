@@ -209,8 +209,8 @@
       body.push(`(zone (net ${netNo(z.net)}) (net_name ${q(rn(z.net))}) (layer ${q(z.layer)}) (tstamp ${uuid("zone:" + i)}) (hatch edge 0.5)\n  (connect_pads${thermal ? "" : " yes"} (clearance ${n(R.clearance)}))\n  (min_thickness 0.25) (filled_areas_thickness no)\n  (fill (thermal_gap ${n(gap)}) (thermal_bridge_width ${n(spoke)}))\n  ${pts(P)}\n)`);
     });
     (board.keepouts || []).forEach((k, i) => {
-      const L = (Array.isArray(k.layers) && k.layers.length ? k.layers : ["F.Cu", "B.Cu"]).map(q).join(" "), na = v => (v ? "not_allowed" : "allowed");
-      body.push(`(zone (net 0) (net_name "") (layers ${L}) (tstamp ${uuid("keepout:" + i)})${k.name ? ` (name ${q(k.name)})` : ""} (hatch edge 0.5)\n  (connect_pads (clearance 0))\n  (min_thickness 0.25) (filled_areas_thickness no)\n  (keepout (tracks ${na(k.tracks !== false)}) (vias ${na(k.vias !== false)}) (pads allowed) (copperpour ${na(k.pour !== false)}) (footprints ${na(!!k.parts)}))\n  (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))\n  ${pts(k.pts)}\n)`);
+      const L = (Array.isArray(k.layers) && k.layers.length ? k.layers : ["F.Cu", "B.Cu"]).map(q).join(" "), na = v => (v ? "not_allowed" : "allowed"), zn = areaName(board, k);
+      body.push(`(zone (net 0) (net_name "") (layers ${L}) (tstamp ${uuid("keepout:" + i)})${zn ? ` (name ${q(zn)})` : ""} (hatch edge 0.5)\n  (connect_pads (clearance 0))\n  (min_thickness 0.25) (filled_areas_thickness no)\n  (keepout (tracks ${na(k.tracks !== false)}) (vias ${na(k.vias !== false)}) (pads allowed) (copperpour ${na(k.pour !== false)}) (footprints ${na(!!k.parts)}))\n  (fill (thermal_gap 0.5) (thermal_bridge_width 0.5))\n  ${pts(k.pts)}\n)`);
     });
 
     const head = [`(kicad_pcb (version ${PCB_VERSION}) (generator pcbnew)`, "", `  (general (thickness ${n((board.stackup && board.stackup.thickness) || 1.6)}))`, "",
@@ -222,11 +222,17 @@
   }
 
   // ---------------------------------------------------------------------------
-  // The project file: net classes (Signal / Power / HV, by name) and the board's rules
+  // a rule area's name in KiCad (the custom rules find it by insideArea): its own, else "Rule area <n>"
+  function areaName(board, k) {
+    if (!k.rule) return k.name || "";
+    const ra = (board.keepouts || []).filter(x => x && x.rule), i = ra.indexOf(k);
+    return k.name || `Rule area ${i + 1}`;
+  }
+  // The project file: net classes (Signal / Power / HV, your own, by name) and the board's rules
   // ---------------------------------------------------------------------------
   function project(name, board, model, hv, rename) {
     const C = root.BoardCore, R = board ? board.rules : null;
-    const cls = (nm, cl) => ({ name: nm, clearance: cl.clearance, track_width: cl.track, via_diameter: R.viaPad, via_drill: R.viaDrill, microvia_diameter: 0.3, microvia_drill: 0.1,
+    const cls = (nm, cl) => ({ name: nm, clearance: cl.clearance, track_width: cl.track, via_diameter: cl.viaPad || R.viaPad, via_drill: cl.viaDrill || R.viaDrill, microvia_diameter: 0.3, microvia_drill: 0.1,
       diff_pair_gap: 0.25, diff_pair_via_gap: 0.25, diff_pair_width: 0.2, line_style: 0, pcb_color: "rgba(0, 0, 0, 0.000)", schematic_color: "rgba(0, 0, 0, 0.000)", wire_width: 6, bus_width: 12 });
     const pro = { meta: { filename: name + ".kicad_pro", version: 1 }, board: { design_settings: {}, layer_presets: [], viewports: [] }, boards: [], libraries: { pinned_footprint_libs: [], pinned_symbol_libs: [] },
       net_settings: { classes: [], meta: { version: 3 }, net_colors: null, netclass_assignments: null, netclass_patterns: [] }, pcbnew: { last_paths: {}, page_layout_descr_file: "" },
@@ -234,7 +240,7 @@
     if (R && C) {
       pro.board.design_settings = { defaults: { board_outline_line_width: 0.1, copper_line_width: 0.2, copper_text_size_h: 1.5, copper_text_size_v: 1.5, silk_line_width: 0.15, silk_text_size_h: 1.27, silk_text_size_v: 1.27 },
         rules: { min_clearance: R.clearance, min_copper_edge_clearance: R.edgeClearance, min_through_hole_diameter: R.minDrill, min_track_width: R.minTrack, min_via_annular_width: R.minAnnular, min_via_diameter: +(R.minDrill + 2 * R.minAnnular).toFixed(3), solder_mask_clearance: R.maskExpansion || 0 } };
-      pro.net_settings.classes = [cls("Default", C.classRule("Signal", R)), ...["Power", "HV"].map(k => cls(k, C.classRule(k, R)))];
+      pro.net_settings.classes = [cls("Default", C.classRule("Signal", R)), ...C.classNames(R).slice(1).map(k => cls(k, C.classRule(k, R)))];
       if (model) {
         const seen = new Set();
         Object.keys(model.names).forEach(k => {
@@ -256,10 +262,27 @@
     const C = root.BoardCore, R = board.rules, CR = C.clearanceRules(board, model, hv, netlist), out = ["(version 1)", ""];
     const nm = k => { const s = model.names[k] || "N" + k; return String((rename && rename[s]) || s).replace(/'/g, "?"); };
     const nets = [...new Set(model.pads.map(p => p.net).filter(k => k !== null && k !== undefined))];
-    const base = (a, b) => Math.max(C.classRule(C.netClassOf(a, model.names, hv, R), R).clearance, C.classRule(C.netClassOf(b, model.names, hv, R), R).clearance);
+    // KiCad takes the last rule that matches: the class matrix, each net's own rule and the rule
+    // areas first, the voltage (IPC-2221B) floors after them
+    const kcls = c => (c === "Signal" ? "Default" : c).replace(/'/g, "?");
+    Object.entries(R.matrix || {}).forEach(([k, v]) => {
+      const [a, b] = k.split("|");
+      out.push(`(rule ${q(`Classes ${a} to ${b}`)}`, `  (constraint clearance (min ${n(v)}mm))`, `  (condition "(A.NetClass == '${kcls(a)}' && B.NetClass == '${kcls(b)}') || (A.NetClass == '${kcls(b)}' && B.NetClass == '${kcls(a)}')"))`, "");
+    });
+    Object.entries(R.netRule || {}).forEach(([net, o]) => {
+      const k = Object.keys(model.names).find(x => model.names[x] === net); if (k === undefined) return;
+      const nn = nm(k);
+      if (o.track > 0) out.push(`(rule ${q(`Net ${nn} width`)}`, `  (constraint track_width (min ${n(Math.min(o.track, R.minTrack))}mm) (opt ${n(o.track)}mm))`, `  (condition "A.NetName == '${nn}'"))`, "");
+      if (o.clearance > 0) out.push(`(rule ${q(`Net ${nn} clearance`)}`, `  (constraint clearance (min ${n(o.clearance)}mm))`, `  (condition "A.NetName == '${nn}' || B.NetName == '${nn}'"))`, "");
+    });
+    (board.keepouts || []).filter(k => k && k.rule).forEach(k => {
+      const an = areaName(board, k).replace(/'/g, "?"), r = k.rule;
+      if (r.clearance > 0) out.push(`(rule ${q(`${an} clearance`)}`, `  (constraint clearance (min ${n(r.clearance)}mm))`, `  (condition "A.insideArea('${an}') || B.insideArea('${an}')"))`, "");
+      if (r.track > 0 || r.minTrack > 0) out.push(`(rule ${q(`${an} width`)}`, `  (constraint track_width${r.minTrack > 0 ? ` (min ${n(r.minTrack)}mm)` : ""}${r.track > 0 ? ` (opt ${n(r.track)}mm)` : ""})`, `  (condition "A.insideArea('${an}')"))`, "");
+    });
     for (let i = 0; i < nets.length; i++) for (let j = i + 1; j < nets.length; j++) {
       const a = nets[i], b = nets[j], need = CR.need(a, b);
-      if (!need.ipc || need.c <= base(a, b) + 1e-6) continue;
+      if (!need.ipc) continue;
       out.push(`(rule ${q(`IPC-2221 ${nm(a)} to ${nm(b)}, ${Math.round(need.v)} V`)}`, `  (constraint clearance (min ${n(need.c)}mm))`,
         `  (condition "(A.NetName == '${nm(a)}' && B.NetName == '${nm(b)}') || (A.NetName == '${nm(b)}' && B.NetName == '${nm(a)}')"))`, "");
     }

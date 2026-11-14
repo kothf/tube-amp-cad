@@ -215,10 +215,20 @@
       if (s && s.kind === "keepout") {
         const k = S.board.keepouts[s.i]; if (!k) { S.sel = null; return renderInspector(); }
         const L = B.koLayers(k), yes = [["yes", "Not allowed"], ["no", "Allowed"]];
-        h.innerHTML = `<div class="insp-title">Keep-out area</div><p class="help">Nothing it forbids may enter it: the check reports it, routing refuses it, pours leave it empty. Typical: under a power transformer, round a mains entry, by a heater.</p>`;
+        h.innerHTML = k.rule ? `<div class="insp-title">Rule area</div><p class="help">Copper inside it (or touching it) keeps the area's own clearance and track width instead of the net classes': a neck-down between fine-pitch pins, more room round a mains entry. The check, both routers, pours and the KiCad export follow it; the voltage clearance (IPC-2221B) still holds. Empty: the class's value.</p>`
+          : `<div class="insp-title">Keep-out area</div><p class="help">Nothing it forbids may enter it: the check reports it, routing refuses it, pours leave it empty. Typical: under a power transformer, round a mains entry, by a heater.</p>`;
+        const kind = field("Kind", k.rule ? "rule" : "keepout", v => {
+          if (v === "rule" && !k.rule) { const R = S.board.rules; k.rule = { clearance: R.clearance, track: R.track, minTrack: R.minTrack }; Object.assign(k, { tracks: false, vias: false, pour: false, parts: false }); }
+          else if (v === "keepout" && k.rule) { delete k.rule; Object.assign(k, { tracks: true, vias: true, pour: true, parts: false }); }
+          commit();
+        }, [["keepout", "Keep-out: forbids tracks, vias, pour or parts"], ["rule", "Rule area: its own clearance and width"]]);
+        kind.title = "A keep-out forbids copper or parts; a rule area lets copper in but with its own clearance and track width"; h.appendChild(kind);
         h.appendChild(field("Name", k.name || "", v => { k.name = v; commit(); }, "text"));
         h.appendChild(field("Layers", L.length === 2 ? "both" : L[0], v => { k.layers = v === "both" ? ["F.Cu", "B.Cu"] : [v]; commit(); }, [["both", "Both copper layers"], ["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
-        [["tracks", "Tracks"], ["vias", "Vias"], ["pour", "Copper pour"], ["parts", "Parts"]].forEach(([key, t]) => h.appendChild(field(t, (key === "parts" ? !!k.parts : k[key] !== false) ? "yes" : "no", v => { k[key] = v === "yes"; commit(); }, yes)));
+        if (k.rule) [["clearance", "Clearance (mm)", "Between copper of different nets when either piece lies in the area"], ["track", "Track width (mm)", "The width a track inside the area should have (the class check asks it)"], ["minTrack", "Minimum width (mm)", "No track inside the area may be narrower"]].forEach(([key, t, tip]) => {
+          const f = field(t, k.rule[key] > 0 ? k.rule[key] : "", v => { const x = parseFloat(String(v).replace(",", ".")); if (x > 0) k.rule[key] = x; else delete k.rule[key]; commit(); }, "text"); f.title = tip; h.appendChild(f);
+        });
+        else [["tracks", "Tracks"], ["vias", "Vias"], ["pour", "Copper pour"], ["parts", "Parts"]].forEach(([key, t]) => h.appendChild(field(t, (key === "parts" ? !!k.parts : k[key] !== false) ? "yes" : "no", v => { k[key] = v === "yes"; commit(); }, yes)));
         h.insertAdjacentHTML("beforeend", `<p class="help">Drag a corner to move it; drag the <b>+</b> on an edge to add one; double-click a corner to remove it.</p>`);
         dimInfo();
         h.appendChild(lockField(k)); h.appendChild(delBtn()); return;

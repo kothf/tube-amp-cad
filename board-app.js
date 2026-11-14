@@ -177,7 +177,8 @@
   }
   const netName = n => (n === null || n === undefined ? "no net" : n === "short" ? "SHORT" : (S.model && S.model.names[n]) || String(n));
   const classOf = n => (n === null || n === undefined || n === "short" || !S.model ? "Signal" : B.netClassOf(n, S.model.names, S.hv, S.board.rules));
-  const trackWidth = n => B.classRule(classOf(n), S.board.rules).track;
+  const ruleOf = n => B.netRule(n === undefined || !S.model ? null : n, S.model ? S.model.names : {}, S.hv, S.board.rules);
+  const trackWidth = n => ruleOf(n).track;
   const storedNet = n => (n === null || n === undefined || n === "short" ? undefined : netName(n));
   const netOfTrack = ti => { const it = S.conn && S.conn.items.find(it => it.kind === "track" && it.ti === ti); return it ? it.net : null; };
   // a track's points without repeats and without corners that are not corners
@@ -421,13 +422,13 @@
   // the clearance of the segments to the pointer against other nets' copper, holes and the edge
   function routeCheck() { return S.route && S.conn ? routeTail().bad : null; }
   function tailCheck(pts) {
-    const r = S.route, R = S.board.rules, mine = B.classRule(classOf(r.net), R).clearance, w2 = r.w / 2;
+    const r = S.route, mine = ruleOf(r.net).clearance, w2 = r.w / 2;
     for (let k = 0; k + 1 < pts.length; k++) {
       const s = [pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]];
       for (const it of S.conn.items) {
         if (!it.layers.includes(r.layer) || (it.net === r.net && r.net !== null)) continue;
         if (it.kind === "via" && (r.vias || []).includes(it.vi)) continue;   // the route's own via: not joined to its net until the route ends
-        let need = Math.max(mine, B.classRule(classOf(it.net), R).clearance, S.clr ? S.clr.need(r.net, it.net).c : 0); const g = B.segSeg(s, it.s) - w2 - it.r;
+        let need = S.clr ? S.clr.need(r.net, it.net, { s, r: w2, layers: [r.layer] }, it).c : Math.max(mine, ruleOf(it.net).clearance); const g = B.segSeg(s, it.s) - w2 - it.r;
         if (g < need - 1e-6 && it.kind === "pad") { const eg = B.entryGap(s, it, S.conn.items); if (eg !== null) need = Math.min(need, eg - 0.02); }
         if (g < need - 1e-6 && it.kind === "pad" && S.sp) { const us = B.underSocket(S.sp, it, { s }); if (us !== null) need = Math.min(need, us); }
         if (g < need - 1e-6 && it.kind === "track" && B.anchoredOk({ s, r: w2 }, it, g, need, S.conn.items)) continue;
@@ -505,7 +506,7 @@
   function routeVia() {
     const r = S.route, last = r.pts[r.pts.length - 1];
     if (r.pts.length > 1) r.segs.push({ layer: r.layer, w: r.w, pts: r.pts.slice() });
-    S.board.vias.push({ x: last[0], y: last[1], drill: S.board.rules.viaDrill, pad: S.board.rules.viaPad, net: storedNet(r.net) });
+    const vr = ruleOf(r.net); S.board.vias.push({ x: last[0], y: last[1], drill: vr.viaDrill, pad: vr.viaPad, net: storedNet(r.net) });
     r.layer = r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last]; r.via = S.board.vias.length - 1; (r.vias = r.vias || []).push(r.via); newCorner(r);
     setLayer(r.layer); analyse(); render();
   }
@@ -530,7 +531,8 @@
   const TOOL_HELP = { select: "Select: drag parts, vias, texts and holes; drag the board's top-right corner handle to resize it (the origin, bottom left, stays put)", route: "Route: click a pad to start a track",
     via: "Via: click to place a via", text: "Text: click where the text goes, then type it in the inspector", hole: "Mounting hole: click to place one", measure: "Smart measure (Shift+D): click a pad, via, hole, track or board edge for its size, then a second one for what relates them (pitch, edge to edge against the rule, angle); C: centre / edge / span, Enter keeps it (between two pads, holes, vias or corners as a dimension). For dimensions that stay and move things: Dimension (D)",
     pour: "Copper pour: click the corners on the active layer, double-click (or click the first corner) to close; Backspace: take back a corner",
-    keepout: "Keep-out area: click the corners, double-click to close; no tracks, vias or pour may enter it (set in the inspector)" };
+    keepout: "Keep-out area: click the corners, double-click to close; no tracks, vias or pour may enter it (set in the inspector)",
+    rulearea: "Rule area: click the corners, double-click to close; copper inside it keeps the area's own clearance and track width (a neck-down between fine-pitch pins, more room round a mains entry; set in the inspector)" };
   TOOL_HELP.hole = "Mounting hole: click to place one; it sticks to holes, pads, board corners, construction points and crossings and stays tied to them (Alt: the grid only). Type Δx Δy (and Ø) to place it that far from where the pointer sticks";
   function setTool(t) {
     if (sketch.active() && t !== "select") { msg("Finish or cancel the outline sketch first (the bar over the board)"); return; }
@@ -538,7 +540,7 @@
     if (t === "dim") TOOL_HELP.dim = dimui.HELP;
     if (S.route && t !== "route") finishRoute();
     if (t !== "measure") S.measure = null;
-    if (t !== S.tool || (t !== "pour" && t !== "keepout")) S.poly = null;
+    if (t !== S.tool || (t !== "pour" && t !== "keepout" && t !== "rulearea")) S.poly = null;
     S.tool = t; cons.toolChanged(t); dimui.toolChanged(t);
     document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
     const more = $("btn-tool-more"), folded = more && more.parentElement.querySelector(`.menu-item[data-tool="${t}"]`);   // the narrow toolbar's More tools
@@ -697,6 +699,12 @@
     const pts = tidy((S.poly || []).concat([S.poly[0]])).slice(0, -1);
     S.poly = null;
     if (pts.length < 3) { msg("An area needs at least three corners"); render(); return; }
+    if (S.tool === "rulearea") {
+      const R = S.board.rules, n = B.ruleAreas(S.board).length + 1;
+      S.board.keepouts.push({ name: `Rule area ${n}`, pts, layers: ["F.Cu", "B.Cu"], tracks: false, vias: false, pour: false, parts: false, rule: { clearance: +Math.min(0.2, R.clearance).toFixed(2), track: +Math.min(0.25, R.track).toFixed(2), minTrack: +Math.min(0.2, R.minTrack).toFixed(2) } });
+      S.sel = { kind: "keepout", i: S.board.keepouts.length - 1 }; setTool("select");
+      commit("Rule area: copper inside keeps its clearance and width (the inspector sets them)"); return;
+    }
     if (S.tool === "keepout") {
       S.board.keepouts.push({ name: "", pts, layers: ["F.Cu", "B.Cu"], tracks: true, vias: true, pour: true, parts: false });
       S.sel = { kind: "keepout", i: S.board.keepouts.length - 1 }; setTool("select");
@@ -769,7 +777,9 @@
   // current asks); the corners placed so far keep the old width
   function routeWidth() {
     const r = S.route, R = S.board.rules, need = Math.ceil(B.currentWidth((S.amps || {})[r.net], R, S.board.stackup) * 20) / 20;
-    const opts = [...new Set([trackWidth(r.net), R.track, R.power, R.minTrack, need].filter(v => v >= R.minTrack - 1e-9).map(v => +(+v).toFixed(2)))].sort((a, b) => a - b);
+    // in a rule area: its width and minimum too (a neck-down between fine-pitch pins)
+    const last = r.pts[r.pts.length - 1], inA = B.ruleAreas(S.board).filter(k => B.koLayers(k).includes(r.layer) && B.pip(last[0], last[1], k.pts)), aMin = inA.filter(k => k.rule.minTrack > 0).map(k => +k.rule.minTrack), minT = aMin.length ? Math.min(...aMin) : R.minTrack;
+    const opts = [...new Set([trackWidth(r.net), R.track, R.power, R.minTrack, need, ...inA.map(k => +k.rule.track || 0), ...aMin].filter(v => v >= minT - 1e-9).map(v => +(+v).toFixed(2)))].sort((a, b) => a - b);
     const w = opts[(opts.indexOf(+r.w.toFixed(2)) + 1) % opts.length];
     if (r.pts.length > 1) { r.segs.push({ layer: r.layer, w: r.w, pts: r.pts.slice() }); r.pts = [r.pts[r.pts.length - 1]]; }
     r.w = w; S.routeBad = routeCheck();
@@ -878,7 +888,7 @@
     closeCtx();
     if (e.button === 1 || e.button === 2 || S.space) { if (S.space) S.spacePanned = true; S.drag = { kind: "pan", sx, sy, ox: S.view.ox, oy: S.view.oy, menu: e.button === 2 && !S.space && !S.route && !S.poly }; e.preventDefault(); return; }
     if (S.tool === "route") { if (S.route) routeClick(e); else startRoute(x, y); return; }
-    if (S.tool === "pour" || S.tool === "keepout") {
+    if (S.tool === "pour" || S.tool === "keepout" || S.tool === "rulearea") {
       const pt = [snap(x), snapY(y)];
       if (!S.poly) S.poly = [pt];
       else if (S.poly.length >= 3 && Math.hypot(pt[0] - S.poly[0][0], pt[1] - S.poly[0][1]) <= 6 / S.view.scale + 1e-6) closePoly();
@@ -1413,7 +1423,7 @@
   // the side panels: parts list, inspector, rule check, layers (board-panels.js)
   const { renderLayers, renderNets, renderPanels } = BoardPanels({ $, B, cons, dimui, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth });
   function openRules() {
-    draft = JSON.parse(JSON.stringify(S.board.rules));
+    draft = B.normaliseRules(JSON.parse(JSON.stringify(S.board.rules)));
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; el.classList.remove("invalid"); });
     $("rules-tent").checked = draft.tentVias !== false;
     $("rules-ipc").value = draft.ipc || "B2"; $("rules-heaters").checked = draft.heaters !== false; $("rules-shields").checked = draft.shields !== false; $("rules-h126").value = draft.heater126 ? "1" : "0"; $("rules-socket").checked = draft.socketBody !== false;
@@ -1431,17 +1441,74 @@
     document.querySelectorAll("#rules-checks [data-c]").forEach(el => { draft.checks[el.dataset.c] = el.checked; });
     return ok;
   }
+  // the nets with their class and own rule; then the classes and the matrix, which show the nets' counts
   function rulesNets() {
     const tb = $("rules-nets");
-    if (!S.model) { tb.innerHTML = `<tr><td colspan="6">The nets arrive from the Circuit CAD.</td></tr>`; return; }
     readRules();
+    if (!S.model) { tb.innerHTML = `<tr><td colspan="7">The nets arrive from the Circuit CAD.</td></tr>`; rulesClasses(); return; }
     const hv = B.hvNets(S.netlist.volts, draft.hvVolts), rows = B.netTable({ ...S.board, rules: draft }, S.model, hv, S.netlist.volts), cr = B.clearanceRules({ ...S.board, rules: draft }, S.model, hv, S.netlist);
+    const names = B.classNames(draft), cc = c => (B.CLASSES.includes(c) ? `cls-${c}` : "cls-user"), base = n => B.classRule(B.netClassOf(n, S.model.names, hv, draft), draft);
     tb.innerHTML = rows.map(r => `<tr><td>${esc(r.name)}</td><td>${r.pads}</td><td>${r.volts === null ? "—" : r.volts.toFixed(Math.abs(r.volts) >= 100 ? 0 : 1) + " V"}</td>
-      <td><select data-net="${esc(r.name)}"><option value="">Auto (${esc(B.netClassOf(r.net, S.model.names, hv, { ...draft, netClass: {} }))})</option>${B.CLASSES.map(c => `<option value="${c}" ${r.manual && r.cls === c ? "selected" : ""}>${c}</option>`).join("")}</select></td>
-      <td class="cls-${r.cls}">${r.track}</td><td class="cls-${r.cls}">${+Math.max(r.clearance, cr.toChassis(r.net).c).toFixed(2)}</td></tr>`).join("");
+      <td><select data-net="${esc(r.name)}"><option value="">Auto (${esc(B.netClassOf(r.net, S.model.names, hv, { ...draft, netClass: {} }))})</option>${names.map(c => `<option value="${esc(c)}" ${r.manual && r.cls === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></td>
+      <td class="${cc(r.cls)}"><input class="cell" data-own="track" data-net="${esc(r.name)}" value="${r.own && r.own.track ? r.own.track : ""}" placeholder="${base(r.net).track}"></td>
+      <td class="${cc(r.cls)}"><input class="cell" data-own="clearance" data-net="${esc(r.name)}" value="${r.own && r.own.clearance ? r.own.clearance : ""}" placeholder="${base(r.net).clearance}"></td>
+      <td class="${cc(r.cls)}">${+Math.max(r.clearance, cr.toChassis(r.net).c).toFixed(2)}</td></tr>`).join("");
     tb.querySelectorAll("select").forEach(sel => sel.addEventListener("change", () => { if (sel.value) draft.netClass[sel.dataset.net] = sel.value; else delete draft.netClass[sel.dataset.net]; rulesNets(); }));
+    tb.querySelectorAll("input[data-own]").forEach(el => el.addEventListener("change", () => {
+      const nm = el.dataset.net, k = el.dataset.own, t = String(el.value).trim(), v = parseFloat(t.replace(",", "."));
+      if (t && !(v > 0)) { el.classList.add("invalid"); return; }
+      const o = { ...(draft.netRule[nm] || {}) }; if (t) o[k] = v; else delete o[k];
+      if (Object.keys(o).length) draft.netRule[nm] = o; else delete draft.netRule[nm];
+      rulesNets();
+    }));
+    rulesClasses(rows);
   }
-  function applyRules() { if (!readRules()) return; S.board.rules = draft; $("rules-modal").hidden = true; commit("Design rules applied"); }
+  // your own classes (the built-in three shown for reference) and the class-to-class matrix
+  function rulesClasses(rows) {
+    const count = c => (rows || []).filter(r => r.cls === c).length, tb = $("rules-classes");
+    const builtin = B.CLASSES.map(c => { const r = B.classRule(c, draft); return `<tr><td class="cls-${c}">${c}</td><td>${r.track}</td><td>${r.clearance}</td><td>${r.viaDrill}</td><td>${r.viaPad}</td><td>${rows ? count(c) : "—"}</td><td></td></tr>`; });
+    const own = draft.classes.map((c, i) => `<tr><td><input class="cell name" data-ci="${i}" data-k="name" value="${esc(c.name)}" title="The class's name (also in the KiCad export)"></td>${["track", "clearance", "viaDrill", "viaPad"].map(k => `<td><input class="cell" data-ci="${i}" data-k="${k}" value="${c[k] > 0 ? c[k] : ""}" placeholder="${k === "viaDrill" ? draft.viaDrill : k === "viaPad" ? draft.viaPad : ""}"></td>`).join("")}<td>${rows ? count(c.name) : "—"}</td><td><button class="btn" data-del="${i}" title="Remove the class (its nets go back to Auto)">×</button></td></tr>`);
+    tb.innerHTML = builtin.concat(own).join("");
+    tb.querySelectorAll("input[data-ci]").forEach(el => el.addEventListener("change", () => {
+      const c = draft.classes[+el.dataset.ci], k = el.dataset.k, t = String(el.value).trim();
+      if (k === "name") {
+        if (!t || B.classNames(draft).some(n => n === t && n !== c.name)) { el.classList.add("invalid"); return; }
+        renameClass(c.name, t); c.name = t;
+      } else {
+        const v = parseFloat(t.replace(",", "."));
+        if (t ? !(v > 0) : k === "track" || k === "clearance") { el.classList.add("invalid"); return; }
+        if (t) c[k] = v; else delete c[k];
+      }
+      rulesNets();
+    }));
+    tb.querySelectorAll("button[data-del]").forEach(b => b.addEventListener("click", () => { const c = draft.classes[+b.dataset.del]; renameClass(c.name, null); draft.classes.splice(+b.dataset.del, 1); rulesNets(); }));
+    rulesMatrix();
+  }
+  // a class renamed (or removed: to null): the nets given to it and the matrix follow
+  function renameClass(from, to) {
+    Object.keys(draft.netClass).forEach(n => { if (draft.netClass[n] === from) { if (to) draft.netClass[n] = to; else delete draft.netClass[n]; } });
+    const m = {}; Object.entries(draft.matrix).forEach(([k, v]) => { const [a, b] = k.split("|").map(x => (x === from ? to : x)); if (a && b) m[B.pairKey(a, b)] = v; }); draft.matrix = m;
+  }
+  function rulesMatrix() {
+    const names = B.classNames(draft), tb = $("rules-matrix"), cl = c => B.classRule(c, draft).clearance;
+    tb.innerHTML = `<thead><tr><th></th>${names.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>` + names.map((a, i) => `<tr><th>${esc(a)}</th>${names.map((b, j) => {
+      if (j < i) return `<td class="self">·</td>`;
+      const k = B.pairKey(a, b), v = draft.matrix[k];
+      return `<td><input class="cell" data-pair="${esc(k)}" value="${v > 0 ? v : ""}" placeholder="${Math.max(cl(a), cl(b))}" title="${esc(a)} to ${esc(b)}: clearance (mm); empty: the larger of the two classes'"></td>`;
+    }).join("")}</tr>`).join("") + "</tbody>";
+    tb.querySelectorAll("input[data-pair]").forEach(el => el.addEventListener("change", () => {
+      const t = String(el.value).trim(), v = parseFloat(t.replace(",", "."));
+      if (t && !(v > 0)) { el.classList.add("invalid"); return; }
+      if (t) draft.matrix[el.dataset.pair] = v; else delete draft.matrix[el.dataset.pair];
+      rulesNets();
+    }));
+  }
+  function addClass() {
+    let n = 1; while (B.classNames(draft).includes(`Class ${n}`)) n++;
+    draft.classes.push({ name: `Class ${n}`, track: draft.track, clearance: draft.clearance });
+    rulesNets();
+  }
+  function applyRules() { if (!readRules()) return; S.board.rules = B.normaliseRules(draft); $("rules-modal").hidden = true; commit("Design rules applied"); }
 
   // ---------------------------------------------------------------------------
   // Board setup window: outline, corners, mounting holes, layer stack
@@ -1678,7 +1745,8 @@
     $("btn-sync").onclick = syncNow; $("banner-sync").onclick = syncNow;
     $("btn-setup").onclick = openSetup; $("btn-rules").onclick = openRules;
     $("rules-apply").onclick = applyRules; $("rules-cancel").onclick = () => { $("rules-modal").hidden = true; };
-    $("rules-reset").onclick = () => { const nc = draft.netClass; draft = { ...B.defaultRules(), netClass: nc }; $("rules-tent").checked = true; document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; }); document.querySelectorAll("#rules-checks [data-c]").forEach(el => { el.checked = true; }); rulesNets(); };
+    $("rules-add-class").onclick = addClass;
+    $("rules-reset").onclick = () => { const { netClass, classes, matrix, netRule } = draft; draft = { ...B.defaultRules(), netClass, classes, matrix, netRule }; $("rules-tent").checked = true; document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; }); document.querySelectorAll("#rules-checks [data-c]").forEach(el => { el.checked = true; }); rulesNets(); };
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => el.addEventListener("change", rulesNets));
     $("rules-ipc").addEventListener("change", rulesNets);
     $("setup-apply").onclick = applySetup; $("setup-cancel").onclick = () => { $("setup-modal").hidden = true; };

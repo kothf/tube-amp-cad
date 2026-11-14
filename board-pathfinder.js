@@ -61,10 +61,12 @@
       of the nets' pieces are still apart; conflicts: 0 when every net keeps clear of the others. */
   function route(board, model, conn, opts) {
     const C = B(), o = opts || {}, R = board.rules, L = C.COPPER, names = model.names, outl = board.outline, t0 = Date.now();
-    const need = (a, b) => (o.clr ? o.clr.need(a, b).c : R.clearance);
-    const amps = o.amps || {};
-    const widthOf = n => Math.max(C.classRule(C.netClassOf(n, names, o.hv, R), R).track, Math.ceil(C.currentWidth(amps[n], R, board.stackup) * 20) / 20);
-    const viaR = R.viaPad / 2;
+    // ia, ib: the items (a wall in a rule area takes the area's clearance)
+    const need = (a, b, ia, ib) => (o.clr ? o.clr.need(a, b, ia, ib).c : R.clearance);
+    const amps = o.amps || {}, ruleOf = n => C.netRule(n, names, o.hv, R);
+    const widthOf = n => Math.max(ruleOf(n).track, Math.ceil(C.currentWidth(amps[n], R, board.stackup) * 20) / 20);
+    // each net's vias: its class's size
+    const viaRof = n => ruleOf(n).viaPad / 2;
     const nameId = new Map(Object.entries(names).map(([k, v]) => [v, isNaN(+k) ? k : +k]));
     const netOf = it => (typeof it.net === "number" ? it.net : it.kind === "track" && nameId.has(board.tracks[it.ti].net) ? nameId.get(board.tracks[it.ti].net) : it.kind === "via" && nameId.has(board.vias[it.vi].net) ? nameId.get(board.vias[it.vi].net) : null);
     const poured = new Set((board.zones || []).map(z => z.net)), star = R.ground === "star";
@@ -77,7 +79,7 @@
     const X = c => (c % nx) * p, Y = c => Math.floor(c / nx) * p;
     // the nets: their copper that may come up (keep), what stays (pads, locked copper)
     const nets = new Map();
-    const netRec = n => { if (!nets.has(n)) nets.set(n, { id: n, ver: 0, w: widthOf(n), fixed: [], keep: [], paths: [], vias: [], dirty: false, groupsLeft: 0 }); return nets.get(n); };
+    const netRec = n => { if (!nets.has(n)) nets.set(n, { id: n, ver: 0, w: widthOf(n), vr: viaRof(n), fixed: [], keep: [], paths: [], vias: [], dirty: false, groupsLeft: 0 }); return nets.get(n); };
     const may = n => routable(n) && (!o.nets || o.nets.has(n));
     const frozen = [];   // copper that stays and is a wall to every other net
     conn.items.forEach(it => {
@@ -123,12 +125,15 @@
     const SP = C.socketPads(board, model), holes = C.npHoles ? C.npHoles(board, model) : (board.holes || []).filter(h => !h.plated);
     const kos = (board.keepouts || []).filter(k => k.tracks !== false);
     const edge = new Float32Array(N); for (let c = 0; c < N; c++) edge[c] = C.edgeDist(X(c), Y(c), outl);
-    const classClr = n => C.classRule(C.netClassOf(n, names, o.hv, R), R).clearance;
+    const classClr = n => ruleOf(n).clearance;
+    // rule areas: a wall in one takes the area's clearance (need with the item); a route of ours passing
+    // through an area that asks more than the wall's own clearance keeps the area's from it
+    const areas = C.ruleAreas ? C.ruleAreas(board).filter(k => k.rule.clearance > 0).map(k => ({ pts: k.pts, c: +k.rule.clearance, ls: C.koLayers(k).map(l => L.indexOf(l)) })) : [];
     // the cells shut to net r: track[l * N + c], via[c]
     const hardCache = new Map();
     function hard(r) {
       if (hardCache.has(r.id)) return hardCache.get(r.id);
-      const T = new Uint8Array(NL * N), V = new Uint8Array(N), hw = r.w / 2, ec = R.edgeClearance || 0.5;
+      const T = new Uint8Array(NL * N), V = new Uint8Array(N), hw = r.w / 2, ec = R.edgeClearance || 0.5, viaR = r.vr;
       for (let c = 0; c < N; c++) { if (edge[c] < ec + hw) { for (let l = 0; l < NL; l++) T[l * N + c] = 1; } if (edge[c] < ec + viaR) V[c] = 1; }
       walls.forEach(({ it, net }) => {
         // distance from a cell to the item's copper edge: a square pad's corners reach past its capsule
@@ -140,11 +145,12 @@
           if (it.kind === "pad" && it.pad.smd) stamp(it.s, it.r + ext + viaR + VIA_OFF_PAD + MARGIN, (c, x, y) => { if (dEdge(x, y) < viaR + VIA_OFF_PAD) V[c] = 1; });
           return;
         }
-        const g = need(r.id, net), sb = it.kind === "pad" ? SP.get(it.pad) : null, gs = sb ? Math.min(g, sb.gap - 0.02) : g;
-        const ls = it.layers.map(li);
-        const mark = (rad, fn) => stamp(it.s, it.r + ext + rad + Math.max(g, gs), (c, x, y) => {
+        const g = need(r.id, net, null, it), sb = it.kind === "pad" ? SP.get(it.pad) : null, gs = sb ? Math.min(g, sb.gap - 0.02) : g;
+        const ls = it.layers.map(li), up = areas.filter(k => k.c > g + 1e-9 && k.ls.some(l => ls.includes(l))), gUp = up.length ? Math.max(...up.map(k => k.c)) : g;
+        const gAt = (x, y) => (up.length ? Math.max(g, ...up.filter(k => C.pip(x, y, k.pts)).map(k => k.c)) : g);
+        const mark = (rad, fn) => stamp(it.s, it.r + ext + rad + Math.max(g, gs, gUp), (c, x, y) => {
           if (sb && gs < g && Math.hypot(x - sb.x, y - sb.y) <= sb.r) { if (dEdge(x, y) >= rad + gs) return; }
-          else if (dEdge(x, y) >= rad + g) return;
+          else if (dEdge(x, y) >= rad + gAt(x, y)) return;
           fn(c);
         });
         mark(hw + MARGIN, c => ls.forEach(l => { T[l * N + c] = 1; }));
@@ -183,7 +189,7 @@
       r.keep.forEach(it => out.push({ s: it.s, r: it.r, ls: it.layers.map(li), via: it.kind === "via", it }));
       r.paths.forEach(path => runs(path).forEach(run => out.push({ s: [X(run.a), Y(run.a), X(run.b), Y(run.b)], r: r.w / 2, ls: [run.l], via: false })));
       r.paths.forEach(path => tails(path).forEach(([P, st]) => { const sg = tailSeg(P, st); if (sg) out.push({ s: sg, r: r.w / 2, ls: [Math.floor(st / N)], via: false }); }));
-      r.vias.forEach(c => out.push({ s: [X(c), Y(c), X(c), Y(c)], r: viaR, ls: L.map((_, l) => l), via: true }));
+      r.vias.forEach(c => out.push({ s: [X(c), Y(c), X(c), Y(c)], r: r.vr, ls: L.map((_, l) => l), via: true }));
       return out;
     }
     // a path's ends that run on straight to a pad's middle: [[pad item, state]]
@@ -263,7 +269,7 @@
       });
       nets.forEach(q => {
         if (q === r || (!q.keep.length && !q.paths.length)) return;
-        const g = need(r.id, q.id), qi = idx.get(q.id), c = cellsNear(q, hw + g + MARGIN, viaR + g + MARGIN), tok = ++token;
+        const g = need(r.id, q.id), qi = idx.get(q.id), c = cellsNear(q, hw + g + MARGIN, r.vr + g + MARGIN), tok = ++token;
         for (let k = 0; k < c.T.length; k++) { const s = c.T[k]; seenT[s] = tok; if (softT[s] < 255) softT[s]++; whoT[s] = qi; }
         for (let k = 0; k < c.V.length; k++) { const s = c.V[k]; seenV[s] = tok; if (softV[s] < 255) softV[s]++; whoV[s] = qi; }
       });
@@ -414,7 +420,7 @@
       if (rip) hit.forEach((pts, qi) => {
         const q = nets.get(netIds[qi]); if (!q || !q.keep.length) return;
         const g = need(r.id, q.id) + r.w / 2 + MARGIN, before = q.keep.length;
-        q.keep = q.keep.filter(it => !pts.some(([x, y]) => C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) < it.r + Math.max(g, viaR - r.w / 2 + g)));
+        q.keep = q.keep.filter(it => !pts.some(([x, y]) => C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) < it.r + Math.max(g, r.vr - r.w / 2 + g)));
         if (q.keep.length !== before) { q.dirty = true; q.ver++; }
       });
       return n;
@@ -593,7 +599,7 @@
           k = m + 1;
         }
       });
-      r.vias.forEach(c => addV.push({ x: r4(X(c)), y: r4(Y(c)), drill: R.viaDrill, pad: R.viaPad, net: name }));
+      const vr = ruleOf(r.id); r.vias.forEach(c => addV.push({ x: r4(X(c)), y: r4(Y(c)), drill: vr.viaDrill, pad: vr.viaPad, net: name }));
     });
     let open = 0; nets.forEach(r => { open += r.groupsLeft; });
     return { cut: { tracks: cutT, vias: cutV }, add: { tracks: addT, vias: addV }, open, conflicts: total, iters: it, ms: Date.now() - t0, pitch: p };

@@ -137,3 +137,19 @@ test("SMD parts: crossing nets drop to the bottom through vias beside the pads, 
   const c2 = check(board, nl), d2 = B.drc(board, c2.m, c2.conn, c2.hv, [], nl).filter(d => d.kind === "viapad");
   assert.equal(d2.length, 1); assert.match(d2[0].msg, /a via in its SMD pad/);
 });
+
+test("your own net classes: a class with a wide clearance and big vias, a rule area that asks more; the routes keep both", () => {
+  const { board, nl } = setup(NETLIST, AT);
+  Object.assign(board.rules, { classes: [{ name: "Wide", track: 0.8, clearance: 1.2, viaDrill: 1, viaPad: 2.2 }], netClass: { C: "Wide" } });
+  // a rule area across the middle: copper in it keeps 1 mm from other nets
+  board.keepouts.push({ name: "Middle", pts: [[20, 15], [45, 15], [45, 35], [20, 35]], layers: ["F.Cu", "B.Cu"], tracks: false, vias: false, pour: false, parts: false, rule: { clearance: 1 } });
+  const c0 = check(board, nl), r = PF.route(board, c0.m, c0.conn, { clr: c0.clr, hv: c0.hv, netlist: nl });
+  assert.equal(r.open, 0); assert.equal(r.conflicts, 0);
+  apply(board, r);
+  const c1 = check(board, nl);
+  assert.equal(c1.conn.unrouted, 0);
+  assert.deepEqual(c1.drc.map(d => d.msg), [], "no clearance error against the class or the area");
+  const cTracks = r.add.tracks.filter(t => t.net === "C");
+  assert.ok(cTracks.length && cTracks.every(t => t.w >= 0.8), "net C has its class's width");
+  r.add.vias.filter(v => v.net === "C").forEach(v => assert.deepEqual([v.drill, v.pad], [1, 2.2], "its vias are its class's"));
+});

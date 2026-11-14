@@ -76,6 +76,11 @@
     .dlg td { padding: 2px 6px; border-bottom: 1px dashed #1a2433; font-family: ui-monospace, Menlo, monospace; }
     .dlg td select { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; }
     .dlg .nets { max-height: 230px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
+    .dlg td input.cell { width: 64px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; color: inherit; }
+    .dlg td input.cell.name { width: 110px; } .dlg td input.cell:placeholder-shown { border-style: dashed; }
+    .dlg td input.cell.invalid { border-color: var(--bad); }
+    .dlg .matrix th, .dlg .matrix td { text-align: center; } .dlg .matrix td.self { color: var(--muted); }
+    .cls-user { color: #b392f0; }
     .dlg .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 18px; font-size: 12px; }
     .dlg .checks label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
     .dlg .actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 12px; }
@@ -283,11 +288,12 @@
       <button class="btn" data-tool="measure" title="Smart measure (Shift+D): click a pad, via, hole, track or the board edge for its size, a second for what relates them: pitch, copper edge to edge against the rule, square to a track or edge, the angle. C: centre / edge / span; Enter keeps it (between two pads, holes, vias or corners: as a dimension); Shift: the grid only"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11 11 1.5l3.5 3.5L5 14.5z"/><path d="M4.5 8 6 9.5M6.8 5.7 8.3 7.2M9.1 3.4l1.5 1.5"/></svg><span class="lbl">Measure</span><kbd class="tk">⇧D</kbd></button>
       <button class="btn" data-tool="dim" title="Dimension (D): click two things (pads, part origins, holes, vias, texts, keep-outs, board corners or edges), place it, type the value: the second one moves to it and they stay that far apart. The tool stays on for the next one; drag a value to move the dimension, click it to change it; Esc leaves. Designer notes only: never on the silkscreen, Gerbers or exports"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4v8M14 4v8M2 8h12"/><path d="M4.5 6 2 8l2.5 2M11.5 6 14 8l-2.5 2"/></svg><span class="lbl">Dimension</span><kbd class="tk">D</kbd></button>
       <div class="menu tool-more">
-        <button class="btn" id="btn-tool-more" title="More tools: Text (T), Hole (H), Keep-out (K), Measure (Shift+D), Dimension (D)" aria-label="More tools"><span class="tm-ico"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10M8 3.5V13M6 13h4"/></svg></span>▾</button>
+        <button class="btn" id="btn-tool-more" title="More tools: Text (T), Hole (H), Keep-out (K), Rule area, Measure (Shift+D), Dimension (D)" aria-label="More tools"><span class="tm-ico"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10M8 3.5V13M6 13h4"/></svg></span>▾</button>
         <div class="menu-list" hidden>
           <button class="menu-item" data-tool="text"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10M8 3.5V13M6 13h4"/></svg>Text</span><small>T</small></button>
           <button class="menu-item" data-tool="hole"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3.5M8 11.5V15M1 8h3.5M11.5 8H15"/></svg>Hole</span><small>H</small></button>
           <button class="menu-item" data-tool="keepout"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2 1.6"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/></svg>Keep-out</span><small>K</small></button>
+          <button class="menu-item" data-tool="rulearea" title="Rule area: copper inside keeps its own clearance and track width (a neck-down between fine-pitch pins, more room round a mains entry); click the corners, double-click to close"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="1 1.6"/><path d="M5 8h6M5 6v4M11 6v4"/></svg>Rule area</span><small></small></button>
           <button class="menu-item" data-tool="measure"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11 11 1.5l3.5 3.5L5 14.5z"/><path d="M4.5 8 6 9.5M6.8 5.7 8.3 7.2M9.1 3.4l1.5 1.5"/></svg>Measure</span><small>⇧D</small></button>
           <button class="menu-item" data-tool="dim"><span class="mi-l"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4v8M14 4v8M2 8h12"/><path d="M4.5 6 2 8l2.5 2M11.5 6 14 8l-2.5 2"/></svg>Dimension</span><small>D</small></button>
         </div>
@@ -366,7 +372,8 @@
       <button class="btn" id="btn-board" aria-haspopup="true" title="Board setup and design rules">Board ▾</button>
       <div class="menu-list right" hidden>
         <button class="menu-item" data-ico="sliders" id="btn-setup" title="Board setup: outline, corners, mounting holes, drawing sheet, layer stack">Board setup…<small>outline, holes, stack</small></button>
-        <button class="menu-item" data-ico="clearance" id="btn-rules" title="Design rules: clearances (by voltage), widths, vias, heaters, valve checks, net classes">Design rules…<small>clearances, heaters, checks</small></button>
+        <button class="menu-item" data-ico="clearance" id="btn-rules" title="Design rules: clearances (by voltage), widths, vias, heaters, valve checks, net classes (your own too), clearance between classes, each net's own rule">Design rules…<small>clearances, classes, checks</small></button>
+        <button class="menu-item" data-ico="clearance" data-tool="rulearea" title="Rule area: draw an area where copper keeps its own clearance and track width (a neck-down between fine-pitch pins, more room round a mains entry); click the corners, double-click to close">Draw a rule area<small>own clearance, width</small></button>
       </div>
     </div>
     <div class="menu" id="export-menu">
@@ -568,8 +575,16 @@
         </div>
       </div>
       <h3>Net classes</h3>
-      <div class="nets"><table><thead><tr><th>Net</th><th>Pads</th><th>DC</th><th>Class</th><th>Width</th><th title="The clearance to 0 V copper: the class's, or IPC-2221B's for the net's voltage when that is more">To GND</th></tr></thead><tbody id="rules-nets"></tbody></table></div>
-      <div class="actions"><button class="btn" id="rules-reset" title="The default rules (net class choices are kept)">Defaults</button><span class="spacer"></span><button class="btn" id="rules-cancel">Cancel</button><button class="btn active" id="rules-apply">Apply</button></div>
+      <p class="help">Signal, Power and HV are built in: their widths and clearances are the ones above. Add your own classes (a 50 Ω line, a fine-pitch bus, mains) with their width, clearance and via, then give nets to them below.</p>
+      <div class="nets"><table><thead><tr><th>Class</th><th>Width (mm)</th><th>Clearance (mm)</th><th title="Vias the routers drop on this class's nets">Via drill (mm)</th><th>Via pad (mm)</th><th>Nets</th><th></th></tr></thead><tbody id="rules-classes"></tbody></table></div>
+      <div class="actions" style="justify-content:flex-start;margin-top:6px"><button class="btn" id="rules-add-class" title="A net class of your own: its width, clearance and via size">+ Add class</button></div>
+      <h3>Clearance between classes</h3>
+      <p class="help">Empty: the larger of the two classes' clearances. A value here holds between copper of those two classes instead (more or less). A net's own clearance below, and the voltage between two nets (IPC-2221B), still come first.</p>
+      <div class="nets"><table class="matrix" id="rules-matrix"></table></div>
+      <h3>Nets</h3>
+      <p class="help">Each net's class, and a width or clearance of its own where it needs one (empty: its class's).</p>
+      <div class="nets"><table><thead><tr><th>Net</th><th>Pads</th><th>DC</th><th>Class</th><th title="The net's own track width; empty: its class's">Width</th><th title="The net's own clearance to every other net; empty: its class's">Clearance</th><th title="The clearance to 0 V copper: the net's, or IPC-2221B's for the net's voltage when that is more">To GND</th></tr></thead><tbody id="rules-nets"></tbody></table></div>
+      <div class="actions"><button class="btn" id="rules-reset" title="The default rules (your classes, the class matrix and each net's class and own rule are kept)">Defaults</button><span class="spacer"></span><button class="btn" id="rules-cancel">Cancel</button><button class="btn active" id="rules-apply">Apply</button></div>
     </div>
   </div>
 
