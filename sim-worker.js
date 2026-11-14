@@ -25,7 +25,7 @@ self.onmessage = async (e) => {
   try {
     if (kind === "op") {
       const r = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress }));
-      result = r.ok ? { ok: true, op: r.dc.nodes, opIm: TubeSimEngine.opMagnetising(r) } : { ok: false, error: r.error };
+      result = r.ok ? { ok: true, op: r.dc.nodes, opIm: TubeSimEngine.opMagnetising(r), tj: r.tj } : { ok: false, error: r.error };
     } else if (kind === "ac") {
       const ac = TubeSimEngine.acSweep(netlist, options);
       result = ac.ok ? { ok: true, freqs: ac.freqs, probes: ac.probes, elapsedMs: ac.elapsedMs } : ac;
