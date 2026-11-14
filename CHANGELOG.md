@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.224.0] - 2026-11-14
+
+Board design: panels.
+
+### Added
+- **Panel** (Board window, Export ▾ → Panel…): several copies of the board, or other boards read from their Gerber ZIPs, on one panel. Each board has rows, columns and a quarter turn; the boards come apart by tabs with mouse bites across a routed gap (tabs found by rays from each board's sides to the rail or the next board, so any outline works, round boards too) or along V-score lines from edge to edge (refused where a line would cut a board). Rails top and bottom, left and right, all round or none, with 3 fiducials (on the bottom too when it has SMD parts), 4 tooling holes and the panel's name on the silkscreen. A picture of the panel as it will be routed; Export panel Gerbers (ZIP): every layer, Edge_Cuts with the tabs, a V-score file, drill files with the bites and tooling holes marked (X2 `MechanicalDrill,Breakout` / `Tooling`, fiducials `FiducialPad,Panel`), a placement file with references numbered by board, a README.
+- Reading Gerber and Excellon files back (`BoardPanel.parseGerber`, `parseExcellon`, `pieceFromFiles`, `unzip`, stored and deflated ZIPs): arcs, regions, KiCad's RoundRect pads, X2 file functions or KiCad/Protel file names.
+- `board-panelize.js` (layout, tabs, files; no DOM) and `board-panel-ui.js` (the dialog); `tests/panel.test.mjs`; an e2e check in part 07.
+
+### Changed
+- The board's undo history leaves out the panel (`board.panel`, which can hold whole boards); Undo keeps the panel as it is.
+
 ## [3.223.0] - 2026-11-14
 
 Board design: fixes from a field test on real boards (4- and 6-layer versions of two valve amplifiers with planes and a split plane, push and shove on three routed boards, a differential pair and a length group on a new balanced-input board).

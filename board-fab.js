@@ -107,7 +107,7 @@
   // ---------------------------------------------------------------------------
   const FUNC = {
     "F.Cu": ["Copper,L1,Top", "Positive"], "B.Cu": ["Copper,L2,Bot", "Positive"], "F.Mask": ["Soldermask,Top", "Negative"], "B.Mask": ["Soldermask,Bot", "Negative"],
-    "F.Paste": ["Paste,Top", "Positive"], "B.Paste": ["Paste,Bot", "Positive"], "F.SilkS": ["Legend,Top", "Positive"], "B.SilkS": ["Legend,Bot", "Positive"], "Edge.Cuts": ["Profile,NP", "Positive"]
+    "F.Paste": ["Paste,Top", "Positive"], "B.Paste": ["Paste,Bot", "Positive"], "F.SilkS": ["Legend,Top", "Positive"], "B.SilkS": ["Legend,Bot", "Positive"], "Edge.Cuts": ["Profile,NP", "Positive"], "V-score": ["Other,V-score", "Positive"]
   };
   // plain ASCII for comments and attribute values (older CAM software reads nothing else): Cyrillic
   // transliterated, × as x, the rest dropped; commas, * and % are syntax in Gerber, so they go too
