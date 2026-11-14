@@ -258,6 +258,7 @@
     "Vg2 (screen)": "Screen voltage used for these curves.",
     "Ia (anode current)": "Idle anode (plate) current, DC.",
     "Ia": "Anode current at the operating point.",
+    "Ig (grid current)": "Grid current, DC. It starts just below 0 V (a few hundred nA at about −0.5 V for an ECC83) and grows fast once the grid is positive, more so when the plate is low. Through a 1 MΩ grid leak, 1 µA is 1 V of bias lost.",
     "Ig2 (screen current)": "Screen current. It rises sharply when the plate swings below the screen voltage (in the knee).",
     "Ig2": "Screen current at the operating point.",
     "Pa (dissipation)": "Anode dissipation, averaged over the signal cycle: the heat on the plate. Keep it under Pa max; 70 % is a common design target for long life.",

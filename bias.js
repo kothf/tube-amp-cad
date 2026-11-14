@@ -90,7 +90,8 @@
         out.push(Object.assign(res, pick ? { kind: "fixed", part: pick.part, type: pick.type } : { kind: null, fixed: true, reason: "the negative bias supply has no resistor or pot to set it" }));
         return;
       }
-      if (region.has(k)) { out.push(Object.assign(res, { kind: null, reason: Math.abs(V(g) - V(k)) < 0.05 ? "zero bias: grid and cathode return to the same point" : "the cathode is on the grid's DC return" })); return; }
+      // (the grid current through the leak gives it a little negative bias, under a volt: still zero bias)
+      if (region.has(k)) { out.push(Object.assign(res, { kind: null, reason: Math.abs(V(g) - V(k)) < 1.5 ? "zero bias: grid and cathode return to the same point" : "the cathode is on the grid's DC return" })); return; }
       // shortest DC path from the cathode to the grid's return: its first element
       const first = new Map([[k, null]]), q = [k];
       let hit = null;

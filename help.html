@@ -871,7 +871,11 @@ Ia = 2 · E1^x / kg1</pre>
 Ia  = Is · tanh(Va / vk) · (1 + Va / λ)
 Ig2 = (Vg + Vg2/µ)^x / kg2 + ks · Is · (1 − tanh(Va / vk))</pre>
 <ul>
-  <li>Grid conduction is included; below 2 V on the screen the currents fade smoothly to zero.</li>
+  <li>Below 2 V on the screen the currents fade smoothly to zero.</li>
+  <li><b>Grid current:</b> the space current toward the grid is Child's law on the tube's own perveance, and the next electrode (the plate of a triode, the screen of a pentode) takes the larger share as its voltage rises (Spangenberg's and Porter's current division; the plate acts on the grid through µ). It starts softly below 0 V, as a real grid's does:
+<pre>Vgeff = 0.3 · ln(1 + exp((Vg + 0.1) / 0.3))
+Ig    = 2 · Vgeff^1.5 / kg1 / (1 + 40 · √(Vacc / (µ · Vgeff)))      Vacc = Va (triode), Vg2 (pentode)</pre>
+  With the plate at the cathode all the space current reaches the grid; at a working plate voltage the grid takes a small share. The three numbers are fitted to the grid current starting points (Ig = +0.3 µA) that Philips publishes in its ECC83 and ECC82 amplifier tables: 36 points, within 0.14 V rms. An ECC83 at 150 V draws about 0.3 µA at −0.5 V, 80 µA at +1 V and 0.3 mA at +2 V. The inspector shows a tube's Ig once it is above 1 nA, in amber above 1 µA (a volt of bias lost in a 1 MΩ grid leak), and a zero-bias stage now gets its few tenths of a volt of grid-leak bias.</li>
   <li><b>Interelectrode capacitances</b>: Cgk, Cga, Cak (triode); Cin, Cg1a, Cout (pentode), from the datasheets, a Soviet tube taking its Western analog's, else typical values.</li>
   <li><b>AC analysis:</b> every device linearised at the operating point (its Jacobian by central differences of the same equations); the complex system G + jωC solved at 40 frequencies per decade.</li>
   <li><b>Rectifier tubes:</b> vacuum diodes (Child–Langmuir), perveance from datasheet drops.</li>

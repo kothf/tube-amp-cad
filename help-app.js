@@ -91,7 +91,7 @@
   // ---- glossary of readouts -------------------------------------------------
   try {
     const groups = [
-      ["Tube operating point", ["Va (anode–cathode)", "Vg1k (bias)", "Vg2k (screen)", "Ia (anode current)", "Ig2 (screen current)", "Pa (dissipation)", "Pg2 (screen dissipation)", "Ik (cathode current)", "Vhk (cathode above heater)", "Vhk (heater above cathode)", "Grid circuit R (cathode bias)", "Grid circuit R (fixed bias)", "Rectified current", "Peak inverse voltage"]],
+      ["Tube operating point", ["Va (anode–cathode)", "Vg1k (bias)", "Vg2k (screen)", "Ia (anode current)", "Ig2 (screen current)", "Ig (grid current)", "Pa (dissipation)", "Pg2 (screen dissipation)", "Ik (cathode current)", "Vhk (cathode above heater)", "Vhk (heater above cathode)", "Grid circuit R (cathode bias)", "Grid circuit R (fixed bias)", "Rectified current", "Peak inverse voltage"]],
       ["With signal", ["Plate swing", "Grid swing", "Plate/grid gain", "THD at plate", "Average Pa"]],
       ["Circuit summary", ["Parts · wires · nets", "From DC supplies", "Output (speakers)", "Tubes (anode + screen)", "Transistors", "Op-amps", "Resistors"]],
       ["Other parts", ["Voltage", "Current (DC)", "Current supplied", "DC drop", "DC voltage across", "Dissipation", "Power (avg)", "Wiper DC", "Primary DC current", "Voltage (A–K)", "Current (A→K)", "hFE (Ic/Ib)", "Ib"]],

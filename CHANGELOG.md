@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.211.0] - 2026-11-14
+
+Phase 4 of the simulation engine plan, item 3: grid current.
+
+### Changed
+- **Grid current follows a better law, for every tube.** The space current toward the grid is Child's law on the tube's own perveance (2/kg1 · Vg^1.5), and the plate (a pentode's screen) takes the larger share as its voltage rises, by Spangenberg's and Porter's current division: Ig = 2/kg1 · Vg^1.5 / (1 + 40·√(Vacc / (µ·Vg))). With the plate at the cathode the grid takes it all; at a working plate voltage a small share. It starts softly below 0 V, as a real grid does. Its constants are fitted to the grid current starting points (Ig = +0.3 µA) that Philips prints in the ECC83 and ECC82 amplifier tables: 36 points, within 0.14 V rms, the worst 0.35 V. Before, grid current started at exactly 0 V and did not depend on the plate. An ECC83 at 150 V now draws about 0.3 µA at −0.5 V, 80 µA at +1 V and 0.3 mA at +2 V (before: none, 0.29 mA and 0.8 mA); with its plate at 5 V, five times as much. Overdriven stages block a little later, and a stage with its plate low in the swing (a cathode follower, a starved preamp) clamps harder.
+- A zero-bias stage gets its grid-leak bias (a few tenths of a volt through 1 MΩ), and the bias finder still names it zero bias.
+- The SPICE export writes the same law.
+- **The steady-state search retries a stalled Newton step with a tighter inner solve** (GMRES to a hundredth of the residual instead of a tenth) before leaving the rest to plain settling. A lightly damped slow pair, as the EL84 push-pull example's coupling capacitors, grid leaks and feedback make once its output grids reach the grid current, has an all but singular period map: the search stalled just short of its target, and the plain settling then ran to its 20 000-period limit (90 s instead of 0.2 s). It now settles in 28 periods. ngspice, run for 3 s on the same circuit, shows the same slow ring dying away at about 0.5 Hz.
+
+### Added
+- The inspector shows a tube's **Ig (grid current)** once it is above 1 nA, in amber above 1 µA.
+
+### Tests
+- `tests/bench.mjs`: a settled run that takes more than twice its baseline's steps fails (the per-step check alone let a 400 times longer run pass).
+- `tests/engine.test.mjs`: the 36 Philips points (rms under 0.15 V, none over 0.4 V); all the space current reaching the grid with the plate at the cathode, less as the plate rises; the analytic slopes against differences.
+
 ## [3.210.0] - 2026-11-14
 
 Phase 4 of the simulation engine plan, item 2: output transformer core hysteresis.

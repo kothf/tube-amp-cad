@@ -1219,8 +1219,12 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   datasheets. Below 2 V on the screen the currents fade in smoothly to zero
   at 0 V (Koren's terms do not go to zero there when the grid is above the
   cathode, and that jump stalls the solver at a cold start).
-- Grid conduction and screen current are included, and the exported SPICE
-  models use exactly the same equations.
+- Grid current and screen current are included, and the exported SPICE
+  models use exactly the same equations. Grid current is Child's law on the
+  tube's own perveance, shared with the plate (or a pentode's screen) by
+  Spangenberg's current division, and starts softly below 0 V; its three
+  constants are fitted to the grid current starting points (Ig = +0.3 µA)
+  in Philips' ECC83 and ECC82 amplifier tables (36 points, 0.14 V rms).
 - **Interelectrode capacitances** are part of every tube: Cgk, Cga and Cak
   for a triode; input, Cg1a and output for a pentode. They come from the
   datasheets (RCA, Philips, Western Electric, GEC), a Soviet tube takes its
