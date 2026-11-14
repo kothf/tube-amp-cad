@@ -145,7 +145,7 @@
     }
     function signalFreq() {
       const g = S.comps.find(c => c.type === "siggen");
-      return g ? g.params.freq : (S.sim.result && S.sim.result.tran ? S.sim.result.tran.fBase : 0);
+      return g ? CadLib.LIB.siggen.freqOf(g) : (S.sim.result && S.sim.result.tran ? S.sim.result.tran.fBase : 0);
     }
 
     // the load line for the curve tracer: the last whole cycle of the signal. The capture holds

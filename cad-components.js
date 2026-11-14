@@ -1864,6 +1864,34 @@
   // ---------------------------------------------------------------------------
   // a capacitor's voltage rating: Checks warns from 80 % of it; left unset, the BOM picks one from the simulation
   const capRatingField = list => ({ key: "v", label: "Voltage rating", kind: "select", options: [["", "Not set (the BOM picks one)"]].concat(list.map(v => [String(v), v + " V"])) });
+  // the signal generator's waveforms: sine, square and triangle repeat at its frequency; pulse
+  // (SPICE's PULSE), PWL, exponential (EXP) and FM (SFFM) are time waveforms for the engine (srcAt)
+  const GEN_PERIODIC = c => !["pulse", "pwl", "exp"].includes(c.params.wave);
+  const GEN_LEVELS = c => c.params.wave === "pulse" || c.params.wave === "exp";
+  // "0 0, 1m 5, 2m 0": time and value pairs (engineering notation), times never going back; null if not
+  function pwlPoints(text) {
+    const tk = String(text || "").split(/[\s,;]+/).filter(Boolean).map(parseEng);
+    if (tk.length < 2 || tk.length % 2 || tk.some(v => !isFinite(v))) return null;
+    for (let i = 2; i < tk.length; i += 2) if (tk[i] < tk[i - 2]) return null;
+    return tk;
+  }
+  function genWave(p) {
+    const n = (v, d) => (isFinite(+v) ? +v : d);
+    switch (p.wave) {
+      case "pulse": return { type: "pulse", v1: n(p.vlo, 0), v2: n(p.vhi, 1), td: Math.max(0, n(p.td, 0)), tr: Math.max(0, n(p.tr, 0)), tf: Math.max(0, n(p.tf, 0)), pw: Math.max(0, n(p.pw, 0)), per: Math.max(0, n(p.per, 0)) };
+      case "exp": return { type: "exp", v1: n(p.vlo, 0), v2: n(p.vhi, 1), td1: Math.max(0, n(p.td, 0)), tau1: Math.max(0, n(p.tau1, 0)), td2: Math.max(0, n(p.td2, 0)), tau2: Math.max(0, n(p.tau2, 0)) };
+      case "pwl": { const pts = pwlPoints(p.pwl) || [0, 0]; return { type: "pwl", pts, r: p.pwlrep === "yes" && pts.length > 2 ? pts[0] : -1 }; }
+      case "fm": return { type: "sffm", vo: n(p.offset, 0), va: n(p.amp, 1), fc: Math.max(0, n(p.freq, 1000)), mdi: Math.max(0, n(p.mdi, 0)), fs: Math.max(0, n(p.fm, 0)) };
+    }
+    return null;
+  }
+  function genFreq(p) {
+    if (p.wave === "pulse") return p.per > 0 ? 1 / p.per : 0;
+    if (p.wave === "exp") return 0;
+    if (p.wave === "pwl") { const w = genWave(p), n = w.pts.length; return w.r >= 0 && w.pts[n - 2] > w.r ? 1 / (w.pts[n - 2] - w.r) : 0; }
+    return +p.freq || 0;
+  }
+
   const LIB = {
     resistor: {
       name: "Resistor", prefix: "R", group: "Passive", bbox: [-30, -10, 30, 10],
@@ -2688,27 +2716,63 @@
     },
     siggen: {
       name: "Signal generator", prefix: "G", group: "Sources", bbox: [-16, -30, 16, 30],
-      defaults: { wave: "sine", freq: 1000, amp: 1, offset: 0, phase: 0, rs: 50 },
+      defaults: { wave: "sine", freq: 1000, amp: 1, offset: 0, phase: 0, rs: 50, vlo: 0, vhi: 1, td: 0, tr: 1e-6, tf: 1e-6, pw: 0.5e-3, per: 1e-3, tau1: 1e-4, td2: 1e-3, tau2: 1e-4, pwl: "0 0, 1m 1, 2m 0", pwlrep: "no", mdi: 5, fm: 100 },
       pins: () => [{ id: "+", x: 0, y: -30, name: "output" }, { id: "-", x: 0, y: 30, name: "common" }],
-      value: c => fmtEng(c.params.amp, "Vpk") + " " + fmtEng(c.params.freq, "Hz"),
+      value: c => {
+        const p = c.params;
+        if (p.wave === "pulse") return `${fmtEng(p.vlo, "V")}…${fmtEng(p.vhi, "V")}` + (p.per > 0 ? " " + fmtEng(1 / p.per, "Hz") : "");
+        if (p.wave === "exp") return `exp ${fmtEng(p.vlo, "V")}…${fmtEng(p.vhi, "V")}`;
+        if (p.wave === "pwl") return "PWL";
+        return fmtEng(p.amp, "Vpk") + " " + fmtEng(p.freq, "Hz") + (p.wave === "fm" ? " FM" : "");
+      },
       fields: [
         { kind: "heading", label: "Signal" },
-        { key: "wave", label: "Waveform", kind: "select", options: [["sine", "Sine"], ["square", "Square"], ["triangle", "Triangle"]] },
-        { key: "freq", label: "Frequency", unit: "Hz", kind: "eng" },
-        { key: "phase", label: "Phase", kind: "select", options: [["0", "0°"], ["90", "90°"], ["180", "180° (inverted)"], ["270", "270°"]] },
-        { kind: "heading", label: "Level" },
-        { key: "amp", label: "Amplitude", unit: "Vpk", kind: "eng" },
+        { key: "wave", label: "Waveform", kind: "select", options: [["sine", "Sine"], ["square", "Square"], ["triangle", "Triangle"], ["pulse", "Pulse"], ["pwl", "Piecewise linear (PWL)"], ["exp", "Exponential"], ["fm", "FM (frequency modulated)"]] },
+        { key: "freq", label: "Frequency", unit: "Hz", kind: "eng", when: c => GEN_PERIODIC(c) },
+        { key: "phase", label: "Phase", kind: "select", options: [["0", "0°"], ["90", "90°"], ["180", "180° (inverted)"], ["270", "270°"]], when: c => GEN_PERIODIC(c) && c.params.wave !== "fm" },
+        { key: "mdi", label: "Modulation index", kind: "number", min: 0, max: 1000, dflt: 5, when: c => c.params.wave === "fm" },
+        { key: "fm", label: "Modulation frequency", unit: "Hz", kind: "eng", when: c => c.params.wave === "fm" },
+        // pulse and exponential: SPICE's PULSE and EXP, their levels and times
+        { key: "vlo", label: "Initial level", unit: "V", kind: "eng", signed: true, zero: true, when: c => GEN_LEVELS(c) },
+        { key: "vhi", label: "Pulsed level", unit: "V", kind: "eng", signed: true, zero: true, when: c => c.params.wave === "pulse" },
+        { key: "vhi", label: "Final level", unit: "V", kind: "eng", signed: true, zero: true, when: c => c.params.wave === "exp" },
+        { key: "td", label: "Delay", unit: "s", kind: "eng", zero: true, when: c => GEN_LEVELS(c) },
+        { key: "tr", label: "Rise time", unit: "s", kind: "eng", zero: true, when: c => c.params.wave === "pulse" },
+        { key: "tf", label: "Fall time", unit: "s", kind: "eng", zero: true, when: c => c.params.wave === "pulse" },
+        { key: "pw", label: "Pulse width", unit: "s", kind: "eng", when: c => c.params.wave === "pulse" },
+        { key: "per", label: "Period", unit: "s", kind: "eng", zero: true, placeholder: "0 = once", when: c => c.params.wave === "pulse" },
+        { key: "tau1", label: "Rise time constant", unit: "s", kind: "eng", when: c => c.params.wave === "exp" },
+        { key: "td2", label: "Fall delay", unit: "s", kind: "eng", zero: true, when: c => c.params.wave === "exp" },
+        { key: "tau2", label: "Fall time constant", unit: "s", kind: "eng", when: c => c.params.wave === "exp" },
+        { key: "pwl", label: "Points (time value, …)", kind: "text", wide: true, placeholder: "0 0, 1m 5, 2m 0", check: v => !!pwlPoints(v), when: c => c.params.wave === "pwl" },
+        { key: "pwlrep", label: "Repeat", kind: "select", options: [["no", "No: hold the last value"], ["yes", "Yes: start again"]], when: c => c.params.wave === "pwl" },
+        { kind: "heading", label: "Level", when: c => GEN_PERIODIC(c) },
+        { key: "amp", label: "Amplitude", unit: "Vpk", kind: "eng", when: c => GEN_PERIODIC(c) },
         // the same amplitude as RMS and as dBV (0 dBV = 1 Vrms), using the waveform's crest factor
-        { key: "amp", label: "Amplitude", unit: "Vrms", kind: "level", as: "rms" },
-        { key: "amp", label: "Level", unit: "dBV", kind: "level", as: "dbv" },
-        { key: "offset", label: "DC offset", unit: "V", kind: "eng" },
+        { key: "amp", label: "Amplitude", unit: "Vrms", kind: "level", as: "rms", when: c => GEN_PERIODIC(c) },
+        { key: "amp", label: "Level", unit: "dBV", kind: "level", as: "dbv", when: c => GEN_PERIODIC(c) },
+        { key: "offset", label: "DC offset", unit: "V", kind: "eng", when: c => GEN_PERIODIC(c) },
         { kind: "heading", label: "Output" },
         { key: "rs", label: "Output impedance", unit: "Ω", kind: "eng" }
       ],
-      info: () => "The + pin carries the signal, the - pin is its common (ground). The simulation window and the instruments follow its frequency.",
+      info: c => (GEN_PERIODIC(c) || (c.params.wave === "pulse" && c.params.per > 0)
+        ? "The + pin carries the signal, the - pin is its common (ground). The simulation window and the instruments follow its frequency."
+        : "The + pin carries the signal, the - pin is its common (ground). A one-off waveform: see it with Analyze ▾ Transient, which runs from the start for as long as you set."),
+      // the time waveform (sim-engine srcAt) of a pulse, PWL, exponential or FM generator; null for sine, square, triangle
+      wave: c => genWave(c.params),
+      // the frequency the steady state and the instruments follow (0: none, a one-off waveform)
+      freqOf: c => genFreq(c.params),
       build: (c, net, alloc, out) => {
-        const p = c.params, mid = alloc();
-        out.push({ id: c.id, kind: "VSRC", nodes: [mid, net("-")], wave: p.wave, freq: Math.max(p.freq, 0.1), amp: p.amp, offset: p.offset || 0, phase: parseFloat(p.phase) || 0 });
+        const p = c.params, mid = alloc(), tw = genWave(p), f = genFreq(p);
+        const el = { id: c.id, kind: "VSRC", nodes: [mid, net("-")], wave: p.wave, freq: f > 0 ? Math.max(f, 0.1) : 0, amp: p.amp, offset: p.offset || 0, phase: parseFloat(p.phase) || 0 };
+        if (tw) {
+          el.tw = tw;
+          // the steady state's period and the operating point's value (the waveform at 0)
+          if (tw.type !== "sffm") { el.amp = (+p.vhi - +p.vlo) / 2 || 1e-9; el.offset = 0; }
+          el.dcValue = root.TubeSimEngine ? root.TubeSimEngine.srcAt(tw, 0) : tw.type === "pwl" ? tw.pts[1] || 0 : tw.v1 !== undefined ? tw.v1 : tw.vo || 0;
+          if (tw.type === "pwl") el.amp = 1;
+        }
+        out.push(el);
         out.push({ id: c.id + "#rs", kind: "R", nodes: [net("+"), mid], r: Math.max(p.rs, 1e-3) });
       }
     },
@@ -3659,5 +3723,5 @@
     return wrap;
   }
 
-  root.CadLib = { partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, tubeByName, tubeKind, tubeWarmup };
+  root.CadLib = { partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, pwlPoints, genWave, genFreq, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);

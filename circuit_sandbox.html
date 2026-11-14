@@ -271,6 +271,22 @@
     .sw-title { font-size: 12px; margin-bottom: 6px; font-weight: 600; }
     .sw-waves { margin-top: 8px; } .sw-waves polyline { fill: none; stroke-width: 1.2; opacity: .75; } .sw-waves polyline.on { stroke-width: 2.4; opacity: 1; }
     .pw-chart .ax.warn { fill: var(--warn); }
+    .tr-wrap { padding: 6px 12px 10px; }
+    .tr-chips { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+    .tr-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 1px 4px 1px 8px; font-size: 12px; }
+    .tr-chip.gone { opacity: .5; text-decoration: line-through; }
+    .tr-chip i, .tr-val i, .tr-sw { display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+    .tr-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 3px; }
+    .tr-x:hover { color: var(--text); }
+    .tr-info { font-size: 11px; margin-left: 6px; }
+    .tr-chart { cursor: crosshair; user-select: none; }
+    .tr-chart polyline { stroke-width: 1.3; }
+    .tr-chart .tr-cursor { stroke: #ffffff88; stroke-width: 1; stroke-dasharray: 3 3; }
+    .tr-chart .tr-zoom { fill: #00e5ff22; stroke: #00e5ff88; }
+    .tr-read { font-size: 12px; min-height: 20px; margin: 4px 0 6px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .tr-table td:first-child { white-space: nowrap; }
+    .tr-ic { width: 130px; }
+    .tol-num.bad { border-color: var(--warn); }
     .sw-steps { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
     .sw-step { background: var(--panel2); border: 1px solid; border-left-width: 4px; border-radius: 4px; padding: 1px 7px; font: 11px ui-monospace, Menlo, monospace; color: var(--text); cursor: pointer; }
     .sw-step.on { background: #0d3442; } .sw-step.pend { opacity: .5; } .sw-step.bad { text-decoration: line-through; color: var(--muted); }
@@ -735,6 +751,7 @@
         <button class="menu-item check" data-ico="power" role="menuitemcheckbox" aria-checked="false" id="btn-power" title="The circuit simulated at a row of input levels: the output power against its distortion, and the power at 1 %, 5 % and 10 % THD">Power sweep<kbd>under the schematic</kbd></button>
         <button class="menu-item check" data-ico="noise" role="menuitemcheckbox" aria-checked="false" id="btn-noise" title="Noise and hum at the output with no signal: the signal-to-noise ratio in dB(A), the input noise and the parts it comes from, the supply's ripple and AC heater hum">Noise and hum<kbd>under the schematic</kbd></button>
         <button class="menu-item check" data-ico="sweep" role="menuitemcheckbox" aria-checked="false" id="btn-sweep" title="One part's value stepped over a range, the circuit simulated at each step: how every tube, transistor, speaker and scope channel follows">Parameter sweep<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" data-ico="tr" role="menuitemcheckbox" aria-checked="false" id="btn-transient" title="The circuit run from its operating point (or from zero) for as long as you set, at the steps it needs: start-up, pulses and steps, oscillators, switching supplies; any net plotted">Transient<kbd>under the schematic</kbd></button>
         <button class="menu-item check" data-ico="listen" role="menuitemcheckbox" aria-checked="false" id="btn-listen" title="Hear the circuit: a recording (WAV, MP3, a guitar riff or the generator's tone) played through it, A/B against the input">Listen<kbd>under the schematic</kbd></button>
       </div>
     </div>
@@ -773,6 +790,7 @@
             <button class="dock-tab" role="tab" data-tab="power" aria-controls="pw-pane" title="Output power against distortion over a row of input levels">Power</button>
             <button class="dock-tab" role="tab" data-tab="noise" aria-controls="nz-pane" title="Noise and hum at the output with no signal: S/N in dB(A), input noise, supply ripple, AC heaters">Noise</button>
             <button class="dock-tab" role="tab" data-tab="sweep" aria-controls="sw-pane" title="One part's value stepped over a range">Sweep</button>
+            <button class="dock-tab" role="tab" data-tab="transient" aria-controls="tr-pane" title="The circuit run from its operating point (or from zero) for as long as you set: start-up, pulses, oscillators, switching supplies">Transient</button>
             <button class="dock-tab" role="tab" data-tab="listen" aria-controls="ls-pane" title="Hear a recording played through the circuit">Listen</button>
             <button class="dock-tab" role="tab" data-tab="tune" aria-controls="tune-pane" title="Auto-tune: part values changed until the simulated circuit meets your goals (no AI key needed)">Tune</button>
             <button class="dock-tab" role="tab" data-tab="ai" aria-controls="ai-pane" title="The AI assistant: ask about this circuit or the app (your own Claude, ChatGPT or Gemini key)">AI</button>
@@ -813,6 +831,15 @@
             <label title="How many values">Steps <input type="number" id="sw-steps" class="tol-num" min="2" max="60" step="1"></label>
             <label title="Evenly spaced, or evenly in ratio (as resistor values are)"><select id="sw-log" class="tol-sel"><option value="log">Log</option><option value="lin">Linear</option></select></label>
             <button class="btn" id="btn-sw-run" title="Run the sweep; press again to stop">▶ Run</button>
+          </span>
+          <span class="bom-tools" data-for="transient">
+            <label title="How long the run lasts, from switch-on (10m, 2.5, 500u…)">Stop <input type="text" id="tr-stop" class="tol-num sw-num"> s</label>
+            <label title="The longest step the run may take (empty: automatic, a five-hundredth of the run; the steps shorten by themselves wherever the waveform turns fast)">Max step <input type="text" id="tr-step" class="tol-num sw-num" placeholder="auto"> s</label>
+            <label title="Keep the waveforms only from this time on (empty: from the start)">Save from <input type="text" id="tr-from" class="tol-num sw-num" placeholder="0"> s</label>
+            <label title="Where the run starts: the DC operating point (the circuit already on), or zero (every capacitor empty and every inductor without current, SPICE's UIC)">Start <select id="tr-start" class="tol-sel"><option value="op">Operating point</option><option value="zero">Zero (UIC)</option></select></label>
+            <label title="Initial conditions (SPICE's .ic): nets held at a voltage at the start, NAME=VOLTS separated by commas. Name a sheet connector or rail, or a part's pin as R3.2 or C1.+">.ic <input type="text" id="tr-ic" class="tol-num tr-ic" placeholder="OUT=0, C1.+=5"></label>
+            <select id="tr-add" class="tol-sel" title="Add a net to the chart: connectors and rails by name, scope channels, any part's pin (R3.2)"></select>
+            <button class="btn" id="btn-tr-run" title="Run the transient; press again to stop">▶ Run</button>
           </span>
           <span class="bom-tools" data-for="listen">
             <label title="What drives the circuit's generator">Play <select id="ls-src" class="tol-sel"><option value="riff">Guitar riff (made here)</option><option value="tone">The generator's tone</option><option value="file">Your file (WAV, MP3)</option><option value="radio">70s rock radio (live)</option></select></label>
@@ -856,6 +883,7 @@
         <div class="bom-scroll" id="ls-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="sw-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="nz-pane" role="tabpanel" hidden></div>
+        <div class="bom-scroll" id="tr-pane" role="tabpanel" hidden></div>
         <div class="bom-scroll" id="tune-pane" role="tabpanel" hidden></div>
         <div class="ai-pane" id="ai-pane" role="tabpanel" hidden>
           <div class="ai-log" id="ai-log" aria-live="polite"></div>
@@ -1187,6 +1215,7 @@
   <script src="cad-bom.js?v=dev"></script>
   <script src="cad-tolerance.js?v=dev"></script>
   <script src="cad-power.js?v=dev"></script>
+  <script src="cad-transient.js?v=dev"></script>
   <script src="cad-noise.js?v=dev"></script>
   <script src="cad-listen.js?v=dev"></script>
   <script src="cad-sweep.js?v=dev"></script>

@@ -45,6 +45,7 @@
     power: AXES + `<path d="M3.5 12.5C7.5 12 10.5 9 12.5 3"/>`,
     noise: `<path d="M1 8h2l1-4 1.5 8L7 4.5l1.5 6.5L10 6l1 4 1-2h3"/>`,
     sweep: `<path d="M1.5 13.5h3v-3h3v-3h3v-3h4"/>`,
+    tr: `<path d="M1.5 12.5h3v-9h1.5c1 0 1.5 9 3.5 9s2.5-6 5-6"/>`,
     listen: `<path d="M2.5 11V8.5a5.5 5.5 0 0 1 11 0V11"/><rect x="1.5" y="10" width="3" height="4.5" rx="1"/><rect x="11.5" y="10" width="3" height="4.5" rx="1"/>`,
     // AI
     chat: `<path d="M2.5 2.5h11a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H7.5L4 14v-3H2.5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1z"/>`,

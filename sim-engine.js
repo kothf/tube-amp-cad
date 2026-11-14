@@ -1020,7 +1020,74 @@
   // ---------------------------------------------------------------------------
   // Source waveforms
   // ---------------------------------------------------------------------------
+  // A time waveform (tw) as SPICE's sources give them, on a generator (VSRC) or on a V or I of a
+  // SPICE part: { type: "pulse", v1, v2, td, tr, tf, pw, per } · { type: "sin", vo, va, freq, td,
+  // theta, phase } · { type: "exp", v1, v2, td1, tau1, td2, tau2 } · { type: "sffm", vo, va, fc,
+  // mdi, fs } · { type: "pwl", pts: [t0, v0, t1, v1, …], r } (r ≥ 0: repeats from that time on).
+  // A rise or fall of 0 is a step; a period of 0 (or none) never repeats.
+  function srcAt(w, t) {
+    switch (w.type) {
+      case "pulse": {
+        const td = w.td || 0, tr = w.tr || 0, tf = w.tf || 0, pw = w.pw > 0 ? w.pw : Infinity, per = w.per > 0 ? w.per : Infinity;
+        if (t <= td) return w.v1;
+        let u = t - td; if (isFinite(per) && u >= per) u -= per * Math.floor(u / per);
+        if (u < tr) return w.v1 + (w.v2 - w.v1) * u / tr;
+        u -= tr; if (u <= pw) return w.v2;
+        u -= pw; if (u < tf) return w.v2 + (w.v1 - w.v2) * u / tf;
+        return w.v1;
+      }
+      case "sin": {
+        const td = w.td || 0, ph = (w.phase || 0) * Math.PI / 180;
+        if (t <= td) return w.vo + w.va * Math.sin(ph);
+        const u = t - td;
+        return w.vo + w.va * Math.exp(-u * (w.theta || 0)) * Math.sin(2 * Math.PI * w.freq * u + ph);
+      }
+      case "exp": {
+        const td1 = w.td1 || 0, td2 = w.td2 !== undefined ? w.td2 : Infinity, k = (dt, tau) => (tau > 0 ? 1 - Math.exp(-dt / tau) : 1);
+        if (t <= td1) return w.v1;
+        let v = w.v1 + (w.v2 - w.v1) * k(t - td1, w.tau1);
+        if (t > td2) v += (w.v1 - w.v2) * k(t - td2, w.tau2);
+        return v;
+      }
+      case "sffm": return w.vo + w.va * Math.sin(2 * Math.PI * w.fc * t + (w.mdi || 0) * Math.sin(2 * Math.PI * (w.fs || 0) * t));
+      case "pwl": {
+        const p = w.pts, n = p.length;
+        if (!n) return 0;
+        const last = p[n - 2];
+        if (w.r >= 0 && w.r < last && t > last) t = w.r + (t - last) % (last - w.r);
+        return tableAt(t, p);
+      }
+    }
+    return 0;
+  }
+  // the first corner of a waveform after t (Infinity: none): a transient lands its steps on them
+  function srcBreak(w, t) {
+    const eps = 1e-12 * Math.max(1, Math.abs(t));
+    const after = list => { let b = Infinity; for (const v of list) if (v > t + eps && v < b) b = v; return b; };
+    switch (w.type) {
+      case "pulse": {
+        const td = w.td || 0, tr = w.tr || 0, tf = w.tf || 0, pw = w.pw > 0 ? w.pw : Infinity, per = w.per > 0 ? w.per : Infinity;
+        const corners = [0, tr, tr + pw, tr + pw + tf].filter(isFinite);
+        const k0 = isFinite(per) && t > td ? Math.floor((t - td) / per) : 0;
+        for (let k = k0; k <= k0 + 1; k++) { const b = after(corners.map(c => td + (isFinite(per) ? k * per : 0) + c)); if (isFinite(b)) return b; if (!isFinite(per)) break; }
+        return Infinity;
+      }
+      case "sin": return after([w.td || 0]);
+      case "exp": return after([w.td1 || 0, w.td2 !== undefined ? w.td2 : Infinity]);
+      case "pwl": {
+        const p = w.pts, n = p.length; if (!n) return Infinity;
+        const ts = []; for (let k = 0; k < n; k += 2) ts.push(p[k]);
+        const last = ts[ts.length - 1];
+        if (!(w.r >= 0 && w.r < last) || t < last) return after(ts);
+        const span = last - w.r, k = Math.floor((t - last) / span);
+        for (let j = k; j <= k + 1; j++) { const b = after(ts.filter(v => v > w.r).map(v => v + (j + 1) * span)); if (isFinite(b)) return b; }
+        return Infinity;
+      }
+    }
+    return Infinity;
+  }
   function waveValue(el, t, scale) {
+    if (el.tw) return scale * srcAt(el.tw, t);
     // a recording (audio()): its samples at el.rate, linear between them, silent after the end
     if (el.samples) {
       const p = t * el.rate, k = Math.floor(p), a = el.samples[k] || 0, b = el.samples[k + 1] || 0;
@@ -1043,7 +1110,7 @@
   // inlined): { k: "n", v } · { k: "v", a, b } (the voltage between two of the element's own nodes,
   // by their place in nodes) · { k: "i", n } (the current through the n-th element of ctl, a
   // source or an inductor) · { k: "u", op, x } · { k: "b", op, a, b } · { k: "?", c, a, b } ·
-  // { k: "f", s, args } (SpiceModel's functions) · { k: "tbl", x, pts } (a table, straight lines
+  // { k: "t" } (the time, 0 at DC) · { k: "f", s, args } (SpiceModel's functions) · { k: "tbl", x, pts } (a table, straight lines
   // between its points, level beyond them). out "i": that current flows from node a through the
   // source to node b; out "v": v(a) − v(b) is the expression (its current a branch unknown).
   // ---------------------------------------------------------------------------
@@ -1089,6 +1156,7 @@
       case "n": return `(${+t.v})`;
       case "v": return `(V[${t.a | 0}]-V[${t.b | 0}])`;
       case "i": return `I[${t.n | 0}]`;
+      case "t": return "S.t";
       case "u": return t.op === "-" ? `(-${bJs(t.x)})` : t.op === "!" ? `(${bJs(t.x)}?0:1)` : bJs(t.x);
       case "b": {
         const a = bJs(t.a), b = bJs(t.b), op = t.op;
@@ -1108,6 +1176,7 @@
       case "n": { const v = +t.v; return () => v; }
       case "v": { const a = t.a | 0, b = t.b | 0; return V => V[a] - V[b]; }
       case "i": { const n = t.n | 0; return (V, I) => I[n]; }
+      case "t": return () => BT.t;
       case "u": { const x = bClosure(t.x); return t.op === "-" ? (V, I) => -x(V, I) : t.op === "!" ? (V, I) => (x(V, I) ? 0 : 1) : x; }
       case "b": { const a = bClosure(t.a), b = bClosure(t.b), f = BOPS[t.op]; if (!f) throw new Error("bad operator"); return (V, I) => f(a(V, I), b(V, I)); }
       case "?": { const c = bClosure(t.c), a = bClosure(t.a), b = bClosure(t.b); return (V, I) => (c(V, I) ? a(V, I) : b(V, I)); }
@@ -1118,13 +1187,15 @@
   }
   // compiled once per expression (its JavaScript is the key: a tolerance run builds the same circuit thousands of times)
   const bCache = new Map();
+  // the time a behavioural source's expression reads ({ k: "t" }, SPICE's time): the solve's (0 at DC)
+  const BT = { t: 0 };
   let bFast = true;
   function bCompile(ast) {
     if (!bFast) return bClosure(ast);
     const js = bJs(ast);
     let f = bCache.get(js);
     if (!f) {
-      try { const g = new Function("F", "T", "V", "I", `"use strict";return ${js};`), F = bFuncs(); f = (V, I) => g(F, tableAt, V, I); }
+      try { const g = new Function("F", "T", "S", "V", "I", `"use strict";return ${js};`), F = bFuncs(); f = (V, I) => g(F, tableAt, BT, V, I); }
       catch (e) { bFast = false; return bClosure(ast); }                     // a page that forbids it (CSP): closures
       bCache.set(js, f); if (bCache.size > 2000) bCache.delete(bCache.keys().next().value);
     }
@@ -1312,6 +1383,7 @@
 
   function newtonSolve(circ, x0, mode, opts) {
     circ._stuck = null;
+    BT.t = mode.dc ? 0 : mode.t || 0;
     const n = circ.nUnk;
     const x = x0.slice();
     const A = circ.matrix && circ.matrix.n === n ? circ.matrix : (circ.matrix = new SparseMatrix(n));   // kept with the circuit: its pattern and column order
@@ -1403,7 +1475,12 @@
     // when the step before was as long as this one: second-order accurate, so resonances keep
     // their Q, and still strongly damped at high frequencies (no trapezoidal ringing at a
     // rectifier's switching)
-    const P2 = !mode.dc && mode.prev2 ? mode.prev2 : null, ID0 = P2 ? 1.5 : 1, ID1 = P2 ? -2 : -1, ID2 = 0.5;
+    // Gear-2 over steps of different lengths (mode.w: this step over the one before, 1 when equal)
+    const P2 = !mode.dc && mode.prev2 ? mode.prev2 : null, w2 = P2 && mode.w > 0 ? mode.w : 1;
+    const ID0 = P2 ? (1 + 2 * w2) / (1 + w2) : 1, ID1 = P2 ? -(1 + w2) : -1, ID2 = w2 * w2 / (1 + w2);
+    // the free transient's linear capacitors and inductors: trapezoidal (mode.xdot, every unknown's
+    // slope at the step before), which keeps an LC tank's Q where Gear-2 damps it over many periods
+    const XD = !mode.dc && mode.xdot ? mode.xdot : null;
     let lastDv = null, lastDv2 = null, stall = 0;
     const capStep = circ.capped ? new Float64Array(circ.nNodes).fill(2) : null, capDir = capStep ? new Float64Array(circ.nNodes) : null;
     let limited = false;   // a junction voltage was limited: this iterate is not a solution yet
@@ -1422,6 +1499,7 @@
           } else {
             // i = C/h · (a0·v + a1·v₋₁ + a2·v₋₂): backward Euler, or Gear-2 with history
             const v1 = vn(mode.prev, nd[0]) - vn(mode.prev, nd[1]), k = e.c / mode.h;
+            if (XD) { const hist = -2 * k * v1 - e.c * (vn(XD, nd[0]) - vn(XD, nd[1])); stampG(nd[0], nd[1], 2 * k); addB(nd[0], -hist); addB(nd[1], hist); break; }
             const hist = k * (ID1 * v1 + (P2 ? ID2 * (vn(P2, nd[0]) - vn(P2, nd[1])) : 0));
             stampG(nd[0], nd[1], ID0 * k);
             addB(nd[0], -hist); addB(nd[1], hist);
@@ -1433,7 +1511,8 @@
           if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
           if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
           addAu(br, br, -R_SERIES);   // keeps a shorted inductor solvable
-          if (!mode.dc) { const k = e.l / mode.h; addAu(br, br, -ID0 * k); b[br] += k * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0)); }
+          if (XD) { const k = e.l / mode.h; addAu(br, br, -2 * k); b[br] += -2 * k * mode.prev[br] - e.l * XD[br]; }
+          else if (!mode.dc) { const k = e.l / mode.h; addAu(br, br, -ID0 * k); b[br] += k * (ID1 * mode.prev[br] + (P2 ? ID2 * P2[br] : 0)); }
           break;
         }
         case "XFMR": {
@@ -1488,7 +1567,7 @@
           if (nd[0] > 0) { addAu(nd[0] - 1, br, 1); addAu(br, nd[0] - 1, 1); }
           if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
           let val;
-          if (e.kind === "V") val = e.v * srcScale;
+          if (e.kind === "V") val = (e.tw && circ.tw && !mode.dc ? srcAt(e.tw, mode.t) : e.v) * srcScale;
           else if (mode.dc) val = (e.dcValue !== undefined ? e.dcValue : (e.offset || 0)) * srcScale;
           else val = waveValue(e, mode.t, srcScale);
           b[br] += val;
@@ -1496,7 +1575,7 @@
         }
         case "I": {
           // current e.i flows from node a through the source to node b: out of a, into b
-          const i = e.i * srcScale;
+          const i = (e.tw && circ.tw && !mode.dc ? srcAt(e.tw, mode.t) : e.i) * srcScale;
           addB(nd[0], -i); addB(nd[1], i);
           break;
         }
@@ -2837,6 +2916,178 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Free transient (Simulate ▾ Transient, the Transient tab): the circuit from its operating point
+  // (or from zero, SPICE's UIC) to tStop, at steps the circuit asks for. Each step is Gear-2 over
+  // steps of any length (backward Euler for the first, and after a corner of a source or a 555's
+  // flip); its local error is the distance from a quadratic through the three states before
+  // (the predictor): past the tolerance the step is run again shorter, well inside it the next one
+  // is longer (at most twice, never past maxStep). Steps land on every corner of every source
+  // (PULSE, PWL, EXP, SIN's delay), and the step after one is a tenth of the shorter piece either side.
+  //   opts: { tStop, tStart (saved from), maxStep (tStop/500 by default), uic (start from zero),
+  //           ic: { node: volts } (held at the operating point, or set at the start with uic),
+  //           reltol (1e-3), vntol (1e-4 V), maxValues (values kept: past it every other point
+  //           is dropped), budgetMs, onProgress(f) }
+  //   returns { ok, t: Float64Array, nodes: [null, Float32Array per node], currents: { id: Float32Array }
+  //             (the branch currents of sources and inductors, into their first node), points, steps,
+  //             rejected, tStop, tStart, elapsedMs, stats } or { ok: false, error, at, stuck }
+  // ---------------------------------------------------------------------------
+  // a step's distance from the predictor may be this many times the tolerance (reltol·|v| + vntol):
+  // its true error is a fraction of that distance (a twelfth for the trapezoid)
+  const LTE_TOL = 2;
+  function transient(netlist, opts) {
+    opts = opts || {};
+    const t0w = Date.now(), tStop = +opts.tStop, budgetMs = opts.budgetMs || 120000;
+    if (!(tStop > 0)) return { ok: false, error: "Set a stop time" };
+    const tStart = Math.max(0, Math.min(+opts.tStart || 0, tStop));
+    const maxStep = opts.maxStep > 0 ? Math.min(+opts.maxStep, tStop) : tStop / 500;
+    const reltol = opts.reltol > 0 ? +opts.reltol : 1e-3, vntol = opts.vntol > 0 ? +opts.vntol : 1e-4;
+    const ic = opts.ic || {};
+    const circ = buildCircuit(netlist), n = circ.nUnk, nv = circ.nNodes - 1;
+    if (circ.nNodes < 2) return { ok: false, error: "Circuit is empty" };
+    // a SPICE part's own SIN, PULSE… sources play their waveforms here (elsewhere their DC value)
+    circ.tw = true;
+    const icNodes = Object.keys(ic).map(Number).filter(k => k > 0 && k < circ.nNodes && isFinite(+ic[k]));
+    // the starting state
+    let x;
+    if (opts.uic) {
+      x = new Array(n).fill(0);
+      icNodes.forEach(k => { x[k - 1] = +ic[k]; });
+    } else {
+      // .ic at the operating point: each node held through 1 mΩ (a Norton source), then let go
+      let c0 = circ;
+      if (icNodes.length) {
+        const R = 1e-3, els = netlist.elements.slice();
+        icNodes.forEach(k => { els.push({ id: "#ic" + k, kind: "R", nodes: [k, 0], r: R }, { id: "#ic" + k + "i", kind: "I", nodes: [0, k], i: +ic[k] / R }); });
+        c0 = buildCircuit(Object.assign({}, netlist, { elements: els }));
+      }
+      const dc = dcOperatingPoint(c0);
+      if (!dc.ok) return { ok: false, error: dc.error === "singular matrix" ? "The circuit has a floating node or a loop of voltage sources (no DC operating point)" : "No DC operating point: " + (dc.error || "did not converge"), stuck: stuckOf(c0) };
+      x = dc.x.slice(0, n);
+      circ.stats.dc += c0 === circ ? 0 : c0.stats.dc;
+    }
+    circ.els.forEach(e => { delete e._vlast; });
+    // the sources' corners
+    const waves = circ.els.filter(e => e.tw).map(e => e.tw);
+    const nextBreak = t => { let b = tStop; for (const w of waves) { const v = srcBreak(w, t); if (v < b) b = v; } return b; };
+    // the record: every unknown at each kept step
+    const maxValues = opts.maxValues > 0 ? opts.maxValues : 8e6;
+    const cap = Math.max(1000, Math.floor(maxValues / Math.max(1, n)));
+    let size = Math.min(cap, 4096), T = new Float64Array(size), X = Array.from({ length: n }, () => new Float32Array(size)), m = 0, stride = 1, skip = 0;
+    const keep = (t, xs, force) => {
+      if (t < tStart - 1e-12 * tStop) return;
+      if (!force && ++skip < stride) return;
+      skip = 0;
+      if (m === size) {
+        if (size < cap) {
+          size = Math.min(cap, size * 2);
+          const T2 = new Float64Array(size); T2.set(T); T = T2;
+          X = X.map(a => { const b = new Float32Array(size); b.set(a); return b; });
+        } else {
+          // full: every other point goes, and from now on every other step is kept
+          let j = 0; for (let i = 0; i < m; i += 2) { T[j] = T[i]; X.forEach(a => { a[j] = a[i]; }); j++; }
+          m = j; stride *= 2;
+        }
+      }
+      T[m] = t; for (let k = 0; k < n; k++) X[k][m] = xs[k];
+      m++;
+    };
+    // self-heated transistors start at their ambient and warm through the run, as in startup()
+    const hotB = heatedBjts(circ), clock = hotB.length ? thermalClock(hotB) : null;
+    const latchesOf = xs => circ.timers.map(e => xs[e.latch]);
+    const hMin = Math.max(1e-18, tStop * 1e-13);
+    // history: the accepted states [t, x] since the last corner (the predictor and Gear-2 use them)
+    let hist = [[0, x]];
+    let t = 0, h = Math.min(maxStep, tStop * 1e-5), steps = 0, rejected = 0, lastProg = 0, prevBreak = 0;
+    let nb = nextBreak(0);
+    h = Math.min(h, 0.1 * nb);
+    if (tStart <= 0) keep(0, x, true);
+    // one step from the last accepted state; a step timerStep cuts at a flip is a fresh start (Euler)
+    // (linear capacitors and inductors trapezoidal from the slopes of the step before, the rest Gear-2)
+    let trapUsed = false;
+    const solve = (xp, tN, hs) => {
+      const last = hist[hist.length - 1], before = hist.length > 1 ? hist[hist.length - 2] : null;
+      const cont = xp === last[1] && Math.abs(tN - hs - last[0]) <= 1e-9 * hs, gear = cont && before;
+      trapUsed = !!(cont && last[2]);
+      const r = newtonSolve(circ, xp, { h: hs, t: tN, prev: xp, prev2: gear ? before[1] : null, w: gear ? hs / (last[0] - before[0]) : 1, xdot: trapUsed ? last[2] : null }, { gmin: 1e-12 });
+      return r.ok ? r.x : null;
+    };
+    // the local error of a step to (tN, xn) against a quadratic through the three states before, in tolerances
+    // (the second step after a corner, with two states behind it, against a straight line: a
+    // stricter test, for the few steps until there are three)
+    const lte = (tN, xn) => {
+      const L = hist.length; if (L < 2) return 0;
+      let la = 0, lb, lc, xa = null;
+      const [tb, xb] = hist[L - 2], [tc, xc] = hist[L - 1];
+      if (L >= 3) {
+        const ta = hist[L - 3][0]; xa = hist[L - 3][1];
+        la = ((tN - tb) * (tN - tc)) / ((ta - tb) * (ta - tc)); lb = ((tN - ta) * (tN - tc)) / ((tb - ta) * (tb - tc)); lc = ((tN - ta) * (tN - tb)) / ((tc - ta) * (tc - tb));
+      } else { lb = (tN - tc) / (tb - tc); lc = (tN - tb) / (tc - tb); }
+      let e = 0;
+      for (let i = 0; i < nv; i++) {
+        const p = (xa ? la * xa[i] : 0) + lb * xb[i] + lc * xc[i], d = Math.abs(xn[i] - p) / (LTE_TOL * (reltol * Math.max(Math.abs(xn[i]), Math.abs(xc[i])) + vntol));
+        if (d > e) e = d;
+      }
+      return e;
+    };
+    let fails = 0, lastErr = 0, lastErr2 = 0;
+    while (t < tStop * (1 - 1e-12)) {
+      // land on the next corner (or tStart, or tStop): a step that would end just short of it is
+      // stretched to it, one that would leave a sliver is halved
+      const target = tStart > t * (1 + 1e-12) && tStart < nb ? tStart : nb;
+      let hh = Math.min(h, maxStep), corner = false;
+      if (t + hh >= target - 1e-9 * hh) { hh = target - t; corner = target === nb; }
+      else if (t + 1.5 * hh > target) hh = (target - t) / 2;
+      const tNext = corner || target - t === hh ? target : t + hh;
+      hh = tNext - t;
+      const xp = hist[hist.length - 1][1], lat0 = circ.timers.length ? latchesOf(xp) : null;
+      let xn = timerStep(circ, solve, xp, tNext, hh);
+      if (!xn) {
+        circ.stats.fails++;
+        if (hh > hMin * 8) { h = hh / 8; fails++; continue; }
+        xn = lastResortStep(circ, xp, hh, tNext);
+        if (!xn) return { ok: false, error: `Transient did not converge at t = ${fmtTime(tNext)}`, at: tNext, stuck: stuckOf(circ) };
+      }
+      const flipped = lat0 && latchesOf(xn).some((v, k) => v !== lat0[k]);
+      const err = flipped ? 0 : lte(tNext, xn);
+      if (err > 1 && hh > hMin * 4) { rejected++; h = hh * Math.max(0.1, 0.9 * Math.pow(err, -1 / 3)); continue; }
+      // accepted: every unknown's slope at its end, as the step's own rule has it
+      const xd0 = hist[hist.length - 1][2], xd = new Float64Array(n);
+      if (trapUsed && xd0) for (let k = 0; k < n; k++) xd[k] = 2 * (xn[k] - xp[k]) / hh - xd0[k];
+      else for (let k = 0; k < n; k++) xd[k] = (xn[k] - xp[k]) / hh;
+      steps++; t = tNext; x = xn;
+      if (clock) clock(heatOf(hotB, x), hh);
+      keep(t, x, corner || t >= tStop * (1 - 1e-12));
+      // (an error that dips where the third derivative crosses zero does not lengthen the step: the
+      // larger of the last two steps' errors is the floor; a rising error is taken to go on rising)
+      const ahead = lastErr > 0 && err > lastErr ? err * Math.min(4, err / lastErr) : err;
+      const grow = hist.length < 2 ? 2 : Math.min(2, Math.max(0.5, 0.9 * Math.pow(Math.max(ahead, lastErr, lastErr2, 1e-6), -1 / 3)));
+      lastErr2 = lastErr; lastErr = err;
+      if (corner || flipped) {
+        // a fresh start past a corner (or a flip): a tenth of the shorter piece either side
+        const nb2 = nextBreak(t);
+        if (corner) { h = Math.min(hh, 0.02 * Math.min(t - prevBreak || Infinity, nb2 - t)); prevBreak = t; }
+        else h = Math.min(hh, maxStep) / 10;   // a latch's flip: its output's edge in short steps
+        hist = [[t, x]]; nb = nb2;
+      } else {
+        hist.push([t, x, xd]); if (hist.length > 3) hist.shift();
+        h = hh * grow;
+      }
+      h = Math.max(Math.min(h, maxStep), hMin);
+      if (fails) fails = 0;
+      if (opts.onProgress && t / tStop - lastProg >= 0.01) { lastProg = t / tStop; opts.onProgress(lastProg); }
+      if (Date.now() - t0w > budgetMs) return { ok: false, error: `Stopped at t = ${fmtTime(t)}: the run took longer than ${Math.round(budgetMs / 1000)} s`, at: t };
+    }
+    const nodes = [null];
+    for (let k = 0; k < nv; k++) nodes.push(X[k].slice(0, m));
+    const currents = {};
+    circ.els.forEach(e => { if (e.branch !== undefined && e.id && !currents[e.id]) currents[e.id] = X[e.branch].slice(0, m); });
+    const result = { ok: true, t: T.slice(0, m), nodes, currents, points: m, steps, rejected, tStop, tStart, maxStep, elapsedMs: Date.now() - t0w, stats: circ.stats };
+    if (hotB.length) { result.thermal = {}; hotB.forEach(e => { result.thermal[e.id] = { tj: e._tj }; }); }
+    return result;
+  }
+  const fmtTime = t => (t >= 1 ? t.toPrecision(4) + " s" : t >= 1e-3 ? (t * 1e3).toPrecision(4) + " ms" : t >= 1e-6 ? (t * 1e6).toPrecision(4) + " µs" : (t * 1e9).toPrecision(4) + " ns");
+
+  // ---------------------------------------------------------------------------
   // Audio: the circuit playing a recording, for the CAD's Listen tab. From the settled state
   // (opts.warm: a steady-state run's result.warm, the state at the start of a mains period, so the
   // mains go on in phase; else the DC point), a plain transient at a fixed step, every sample kept.
@@ -2912,6 +3163,7 @@
   // The circuit linearized at an operating point: Y(ω) = G + jωB and the right-hand side of the driven
   // sources (opts.inputs), on the unknowns of buildCircuit (node i at i − 1, then the branches).
   function acLinearize(netlist, opts) {
+    BT.t = 0;
     const circ = buildCircuit(withTemps(netlist, opts.tj)), n = circ.nUnk, nN = circ.nNodes;
     if (nN < 2) return { ok: false, error: "Circuit is empty" };
     let x;
@@ -3208,7 +3460,7 @@
     return { ok: true, freqs, total, gain: { re: gRe, im: gIm }, sources: src.map((p, j) => ({ id: p.id, kind: p.kind, psd: psd[j] })), elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, NE555, tubeCurrents, tubeJacobian, capAt, chargeAt, dcPseudoTransient, stuckOf, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, NE555, tubeCurrents, tubeJacobian, capAt, chargeAt, dcPseudoTransient, stuckOf, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, transient, srcAt, srcBreak, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);
