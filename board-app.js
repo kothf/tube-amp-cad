@@ -558,6 +558,86 @@
     r.layer = typeof to === "string" ? to : r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last]; r.via = S.board.vias.length - 1; (r.vias = r.vias || []).push(r.via); newCorner(r);
     setLayer(r.layer); analyse(); render();
   }
+  // ---------------------------------------------------------------------------
+  // Differential pairs and length matching (board-hs.js)
+  // ---------------------------------------------------------------------------
+  const netId = name => { if (!S.model) return null; const e = Object.entries(S.model.names).find(([, v]) => v === name); return e ? (isNaN(+e[0]) ? e[0] : +e[0]) : null; };
+  // the length net n should have: its pair partner's when that is longer, else its length group's
+  // target or longest; { target, tol, why } or null
+  function lengthTarget(n) {
+    if (!S.conn || !window.BoardHs) return null;
+    const L = BoardHs.netLengths(S.conn), nm = netName(n), cur = L.get(n) || 0, R = S.board.rules, pr = B.pairOf(nm, R);
+    if (pr) { const o = L.get(netId(pr.partner)) || 0; if (o > cur + pr.skew / 2) return { target: o, tol: pr.skew, why: `to ${pr.partner}'s ${o.toFixed(2)} mm` }; }
+    const g = (R.lengths || []).find(g => g.nets.includes(nm));
+    if (g) {
+      const target = g.target > 0 ? g.target : Math.max(...g.nets.map(x => L.get(netId(x)) || 0));
+      if (target > cur + g.tol / 2) return { target, tol: g.tol, why: `to ${target.toFixed(2)} mm, group "${g.name}"` };
+    }
+    return null;
+  }
+  // a serpentine on the clicked segment (else the longest that has room) adds what the net lacks;
+  // its runs keep the net's clearance from everything else
+  function addMeander(ti, k) {
+    const t = S.board.tracks[ti], n = netOfTrack(ti), lt = lengthTarget(n);
+    if (t.locked) return lockedNote();
+    if (!lt) { msg(`${netName(n)} is long enough`); return; }
+    const extra = lt.target - (BoardHs.netLengths(S.conn).get(n) || 0), rule = ruleOf(n), s = +Math.max(3 * t.w, t.w + 2 * rule.clearance).toFixed(3);
+    const len = j => Math.hypot(t.pts[j + 1][0] - t.pts[j][0], t.pts[j + 1][1] - t.pts[j][1]);
+    const order = [k].concat(t.pts.slice(1).map((p, j) => j).filter(j => j !== k).sort((a, b) => len(b) - len(a)));
+    let why = "";
+    for (const j of order) for (const side of [1, -1]) {
+      const m = BoardHs.meander(t.pts, j, extra, { s, amax: 4 * s, side });
+      if (m.fail) { why = why || m.fail; continue; }
+      let bad = null;
+      for (let q = j; q + 1 < m.pts.length - (t.pts.length - j - 2) && !bad; q++) bad = segBad([m.pts[q][0], m.pts[q][1], m.pts[q + 1][0], m.pts[q + 1][1]], n, t.w / 2, t.layer);
+      if (bad) { why = why || `too close to ${bad.what}${bad.net ? " on " + bad.net : ""}`; continue; }
+      t.pts = m.pts; commit(`Meander on ${netName(n)}: +${extra.toFixed(2)} mm (${m.n} turns of ${m.A.toFixed(2)} mm), ${lt.why}`); return;
+    }
+    msg(`No room for a meander on this track (${why}). Try a longer straight segment`);
+  }
+  // the pair's other track, alongside this one at the pair's gap, from and to the partner's pads nearest its ends
+  function routePartner(ti) {
+    const t = S.board.tracks[ti], n = netOfTrack(ti), R = S.board.rules, pr = B.pairOf(netName(n), R), pn = netId(pr.partner);
+    const pads = S.conn.items.filter(it => it.kind === "pad" && it.net === pn && it.layers.includes(t.layer)).map(it => it.pad);
+    if (!pads.length) { msg(`${pr.partner} has no pad on ${B.layerName(t.layer).toLowerCase()} to start from`); return; }
+    const nearest = p => pads.reduce((b, q) => (Math.hypot(q.x - p[0], q.y - p[1]) < Math.hypot(b.x - p[0], b.y - p[1]) ? q : b));
+    const w = pr.width > 0 ? pr.width : t.w, d = (t.w + w) / 2 + (pr.gap > 0 ? pr.gap : ruleOf(n).clearance), a = t.pts[0], z = t.pts[t.pts.length - 1], pa = nearest(a), pb = nearest(z);
+    if (pa === pb) { msg(`${pr.partner} needs a pad near each end of this track`); return; }
+    let best = null;
+    for (const side of [d, -d]) {
+      const off = BoardHs.offsetPath(t.pts, side), cost = Math.hypot(off[0][0] - pa.x, off[0][1] - pa.y) + Math.hypot(off[off.length - 1][0] - pb.x, off[off.length - 1][1] - pb.y);
+      if (!best || cost < best.cost) best = { off, cost };
+    }
+    const o = best.off, pts = [[pa.x, pa.y]].concat(bend([pa.x, pa.y], o[0], false), o.slice(1), bend(o[o.length - 1], [pb.x, pb.y], true)), clean = tidy(pts);
+    for (let q = 0; q + 1 < clean.length; q++) {
+      const bad = segBad([clean[q][0], clean[q][1], clean[q + 1][0], clean[q + 1][1]], pn, w / 2, t.layer);
+      if (bad) { msg(`${pr.partner} cannot run alongside here: too close to ${bad.what}${bad.net ? " on " + bad.net : ""} (${Math.max(0, bad.g).toFixed(2)} < ${bad.need} mm)`); return; }
+    }
+    S.board.tracks.push({ layer: t.layer, w: +w.toFixed(3), pts: clean, net: pr.partner });
+    commit(`${pr.partner} routed alongside ${netName(n)} (pair gap ${(d - (t.w + w) / 2).toFixed(2)} mm)`);
+  }
+  // the impedance calculator (Board ▾): the selected track's layer and width to start with
+  function openImpedance() {
+    const sel = S.sel && S.sel.kind === "track" ? S.board.tracks[S.sel.i] : null, ly = $("imp-layer");
+    ly.innerHTML = B.copperOf(S.board).filter(l => !B.isPlane(S.board, l)).map(l => `<option value="${l}">${esc(B.layerName(l))}</option>`).join("");
+    ly.value = sel ? sel.layer : S.layer; if (!ly.value) ly.selectedIndex = 0;
+    if (sel) $("imp-w").value = sel.w;
+    const pr = sel && B.pairOf(netName(netOfTrack(S.sel.i)), S.board.rules); if (pr && pr.gap) $("imp-gap").value = pr.gap;
+    impNow(); $("imp-modal").hidden = false;
+  }
+  const impNum = id => parseFloat(String($(id).value).replace(",", "."));
+  function impNow() {
+    const l = $("imp-layer").value, w = impNum("imp-w"), g = impNum("imp-gap"), out = $("imp-out");
+    if (!(w > 0)) { out.textContent = "A width above 0, please"; return; }
+    const r = BoardHs.impedance(S.board, l, w, g > 0 ? g : 0), geo = r.kind === "microstrip" ? `microstrip, ${r.h.toFixed(3)} mm over the next layer` : `stripline, ${r.h1.toFixed(3)} mm and ${r.h2.toFixed(3)} mm to its neighbours`;
+    out.innerHTML = `<b>Z₀ ${r.z0.toFixed(1)} Ω</b>${r.zdiff ? ` · <b>Zdiff ${r.zdiff.toFixed(1)} Ω</b>` : ""} · delay ${r.delay.toFixed(2)} ps/mm (εeff ${r.eeff.toFixed(2)})<br><span class="mut">${geo}, εr ${r.er}, copper ${Math.round(r.t * 1000)} µm</span>`;
+  }
+  function impFit(kind) {
+    const l = $("imp-layer").value;
+    if (kind === "w") { const z = impNum("imp-z0"), w = z > 0 ? BoardHs.widthFor(S.board, l, z) : null; if (w) $("imp-w").value = w.toFixed(3); else msg(`${z} Ω is out of reach on ${B.layerName(l)} (width 0.05-10 mm)`); }
+    else { const z = impNum("imp-zd"), w = impNum("imp-w"), g = z > 0 && w > 0 ? BoardHs.gapFor(S.board, l, w, z) : null; if (g) $("imp-gap").value = g.toFixed(3); else msg(`${z} Ω differential is out of reach at ${w} mm (gap 0.05-10 mm): change the width first`); }
+    impNow();
+  }
   // push and shove on or off (Route ▾, Shift+X); kept in this browser
   function setShove(on, quiet) {
     S.shoveOn = !!on; try { localStorage.setItem("tubecad_shove", on ? "1" : "0"); } catch (e) { /* no storage */ }
@@ -908,6 +988,11 @@
       [[R.track, "signal"], [R.power, "power"], [R.minTrack, "minimum"]].filter(([w]) => w !== t.w).forEach(([w, nm]) => it(`Width ${w} mm (${nm})`, "", () => { if (t.locked) return lockedNote(); t.w = w; commit(`Track ${w} mm`); }));
       it(`Move to the ${t.layer === "F.Cu" ? "bottom" : "top"} layer`, "", () => { if (t.locked) return lockedNote(); t.layer = t.layer === "F.Cu" ? "B.Cu" : "F.Cu"; commit(`Track moved to ${t.layer}`); });
       if (n !== null && n !== "short") it(`Highlight ${netName(n)}`, "`", () => highlightNet(n));
+      if (n !== null && n !== "short" && window.BoardHs) {
+        const pr = B.pairOf(netName(n), R), lt = lengthTarget(n);
+        if (pr) it(`Route ${pr.partner} alongside (pair)`, "", () => routePartner(seg.i));
+        if (lt) it(`Add a meander (${lt.why})`, "", () => addMeander(seg.i, seg.k));
+      }
       it(t.locked ? "Unlock" : "Lock", "L", lockSel); sep(); it("Delete", "Del", deleteSel);
     } else if (g) {
       selectPart(g); const bp = S.board.parts[g.key];
@@ -1095,7 +1180,7 @@
     S.view.ox = sx - (sx - S.view.ox) * f; S.view.oy = sy - (sy - S.view.oy) * f; S.view.scale = s;
     render();
   }
-  const MODALS = ["help-modal", "rules-modal", "setup-modal", "print-modal"];
+  const MODALS = ["help-modal", "rules-modal", "setup-modal", "print-modal", "imp-modal"];
   function highlightNet(n) { S.netHL = n === null || n === undefined || n === S.netHL ? null : n; S.netFromCad = false;
     if (bc && typeof S.netHL === "number") bc.postMessage({ type: "BOARD_NET", net: S.netHL });   // cross-probing: its wires are selected in the schematic
     msg(S.netHL === null ? "Net highlight off" : `Highlighting ${netName(S.netHL)} (again: off)`); renderNets(); render(); }
@@ -1486,7 +1571,7 @@
   let draft = null;
   const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", viapad: "Vias in SMD pads", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class",
     current: "Track width for the current", courtyard: "Parts overlapping", height: "Part height under the lid", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", holeedge: "Hole to the board edge", pinout: "Pinouts to check",
-    star: "Ground returns meet only at the star point", stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket" };
+    star: "Ground returns meet only at the star point", stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket", length: "Lengths: pair skew and length groups" };
   // the side panels: parts list, inspector, rule check, layers (board-panels.js)
   const { renderLayers, renderNets, renderPanels } = BoardPanels({ $, B, cons, dimui, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth });
   function openRules() {
@@ -1549,8 +1634,48 @@
       rulesNets();
     }));
     tb.querySelectorAll("button[data-del]").forEach(b => b.addEventListener("click", () => { const c = draft.classes[+b.dataset.del]; renameClass(c.name, null); draft.classes.splice(+b.dataset.del, 1); rulesNets(); }));
-    rulesMatrix();
+    rulesMatrix(); rulesPairs(); rulesLengths();
   }
+  // the nets' names, for the pair and length-group pickers
+  const netNames = () => (S.model ? [...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) : []);
+  function rulesPairs() {
+    const tb = $("rules-pairs"), nets = netNames(), num = v => (v > 0 ? v : "");
+    const opt = (sel, taken) => `<option value=""></option>` + nets.filter(n => n === sel || !taken.has(n)).map(n => `<option ${n === sel ? "selected" : ""}>${esc(n)}</option>`).join("");
+    const taken = new Set(draft.pairs.flatMap(q => [q.p, q.n]));
+    tb.innerHTML = draft.pairs.map((q, i) => {
+      const w = q.width > 0 ? q.width : B.classRule(B.netClassOf(null, {}, null, draft), draft).track, z = q.gap > 0 && window.BoardHs ? BoardHs.impedance(S.board, "F.Cu", w, q.gap).zdiff : null;
+      return `<tr><td><select data-pi="${i}" data-k="p">${opt(q.p, taken)}</select></td><td><select data-pi="${i}" data-k="n">${opt(q.n, taken)}</select></td>
+        <td><input class="cell" data-pi="${i}" data-k="width" value="${num(q.width)}" placeholder="class"></td><td><input class="cell" data-pi="${i}" data-k="gap" value="${num(q.gap)}" placeholder="class"></td>
+        <td><input class="cell" data-pi="${i}" data-k="skew" value="${q.skew}"></td><td>${z ? `${z.toFixed(0)} Ω` : "—"}</td><td><button class="btn" data-pdel="${i}" title="Remove the pair">×</button></td></tr>`;
+    }).join("") || `<tr><td colspan="7" class="mut">No pairs.</td></tr>`;
+    tb.querySelectorAll("[data-pi]").forEach(el => el.addEventListener("change", () => {
+      const q = draft.pairs[+el.dataset.pi], k = el.dataset.k, t = String(el.value).trim();
+      if (k === "p" || k === "n") q[k] = t;
+      else { const v = parseFloat(t.replace(",", ".")); if (t ? !(k === "skew" ? v >= 0 : v > 0) : k === "skew") { el.classList.add("invalid"); return; } if (t) q[k] = v; else delete q[k]; }
+      setTimeout(rulesPairs);   // after the blur that sent the change: the row is redrawn under it
+    }));
+    tb.querySelectorAll("[data-pdel]").forEach(b => b.addEventListener("click", () => { draft.pairs.splice(+b.dataset.pdel, 1); rulesPairs(); }));
+    const guess = window.BoardHs ? BoardHs.guessPairs(nets).filter(([a, b]) => !taken.has(a) && !taken.has(b)) : [];
+    $("rules-pair-hint").textContent = guess.length ? ` Named like pairs: ${guess.map(g => g.join(" / ")).join(", ")} (+ Add pair takes the first)` : "";
+  }
+  function addPair() {
+    const nets = netNames(), taken = new Set(draft.pairs.flatMap(q => [q.p, q.n])), g = window.BoardHs ? BoardHs.guessPairs(nets).find(([a, b]) => !taken.has(a) && !taken.has(b)) : null;
+    draft.pairs.push({ p: g ? g[0] : "", n: g ? g[1] : "", skew: 0.5 }); rulesPairs();
+  }
+  function rulesLengths() {
+    const tb = $("rules-lengths");
+    tb.innerHTML = draft.lengths.map((g, i) => `<tr><td><input class="cell name" data-li="${i}" data-k="name" value="${esc(g.name)}"></td><td><input class="cell nets" data-li="${i}" data-k="nets" value="${esc(g.nets.join(", "))}" placeholder="net, net, …" title="Net names, separated by commas"></td>
+      <td><input class="cell" data-li="${i}" data-k="tol" value="${g.tol}"></td><td><input class="cell" data-li="${i}" data-k="target" value="${g.target > 0 ? g.target : ""}" placeholder="longest"></td><td><button class="btn" data-ldel="${i}" title="Remove the group">×</button></td></tr>`).join("") || `<tr><td colspan="5" class="mut">No length groups.</td></tr>`;
+    tb.querySelectorAll("[data-li]").forEach(el => el.addEventListener("change", () => {
+      const g = draft.lengths[+el.dataset.li], k = el.dataset.k, t = String(el.value).trim();
+      if (k === "name") g.name = t || g.name;
+      else if (k === "nets") { const all = new Set(netNames()), list = t.split(/[,;]+/).map(x => x.trim()).filter(Boolean); if (list.some(n => !all.has(n))) { el.classList.add("invalid"); el.title = `Not a net here: ${list.filter(n => !all.has(n)).join(", ")}`; return; } g.nets = list; }
+      else { const v = parseFloat(t.replace(",", ".")); if (t ? !(v > 0) : k === "tol") { el.classList.add("invalid"); return; } if (t) g[k] = v; else delete g[k]; }
+      setTimeout(rulesLengths);
+    }));
+    tb.querySelectorAll("[data-ldel]").forEach(b => b.addEventListener("click", () => { draft.lengths.splice(+b.dataset.ldel, 1); rulesLengths(); }));
+  }
+  function addLength() { draft.lengths.push({ name: `Group ${draft.lengths.length + 1}`, nets: [], tol: 1 }); rulesLengths(); }
   // a class renamed (or removed: to null): the nets given to it and the matrix follow
   function renameClass(from, to) {
     Object.keys(draft.netClass).forEach(n => { if (draft.netClass[n] === from) { if (to) draft.netClass[n] = to; else delete draft.netClass[n]; } });
@@ -1575,7 +1700,7 @@
     draft.classes.push({ name: `Class ${n}`, track: draft.track, clearance: draft.clearance });
     rulesNets();
   }
-  function applyRules() { if (!readRules()) return; S.board.rules = B.normaliseRules(draft); $("rules-modal").hidden = true; commit("Design rules applied"); }
+  function applyRules() { if (!readRules()) return; draft.pairs = draft.pairs.filter(q => q.p && q.n); S.board.rules = B.normaliseRules(draft); $("rules-modal").hidden = true; commit("Design rules applied"); }
 
   // ---------------------------------------------------------------------------
   // Board setup window: outline, corners, mounting holes, layer stack
@@ -1595,6 +1720,7 @@
     document.querySelectorAll("#setup-modal [data-s]").forEach(el => { el.value = String(S.board.stackup[el.dataset.s]); });
     setupStack = JSON.parse(JSON.stringify(B.normaliseStackup(S.board.stackup))); $("setup-layers").value = String(setupStack.layers);
     $("setup-innercu").value = String(setupStack.innerCopper || setupStack.copper || 35); stackUi();
+    $("setup-er").value = setupStack.er > 0 ? String(setupStack.er) : ""; $("setup-diel").value = (setupStack.diel || []).join("  ");
     setupHoles = S.board.holes.slice(); holesNow();
     const sh = S.board.sheet || {}; $("sheet-size").value = sh.size || "auto"; $("sheet-orient").value = sh.orient || "landscape";
     $("setup-modal").hidden = false;
@@ -1615,13 +1741,15 @@
     st.inner = Array.from({ length: st.layers - 2 }, (_, i) => st.inner[i] || (i === 0 ? { type: "plane", net: nets.includes("GND") ? "GND" : nets[0] || "GND" } : { type: "signal" }));
     host.innerHTML = st.inner.map((e, i) => `<div class="row"><span>Inner ${i + 1} (In${i + 1}.Cu)</span><span><select data-in="${i}" title="Signal: tracks run on it. Plane: one net's copper over the whole board (a pour of that net, priority 0); a pour of higher priority on it makes a split plane"><option value="signal" ${e.type !== "plane" ? "selected" : ""}>Signal</option><option value="plane" ${e.type === "plane" ? "selected" : ""}>Plane</option></select>${e.type === "plane" ? `<select data-net="${i}">${(nets.includes(e.net) ? nets : [e.net].concat(nets)).map(n => `<option ${n === e.net ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>` : ""}</span></div>`).join("");
     $("setup-innercu-row").hidden = st.layers === 2;
+    $("setup-diel").placeholder = window.BoardHs ? BoardHs.dielectrics({ ...S.board, stackup: { ...S.board.stackup, layers: st.layers, inner: st.inner, diel: undefined } }).map(v => v.toFixed(3)).join("  ") : "";
+    $("setup-diel").title = `${st.layers - 1} thicknesses in mm, top first, separated by spaces (prepreg and core as your fab lists them); empty: the board's thickness shared out evenly`;
     host.querySelectorAll("select[data-in]").forEach(el => el.addEventListener("change", () => { const i = +el.dataset.in; st.inner[i] = el.value === "plane" ? { type: "plane", net: nets.includes("GND") ? "GND" : nets[0] || "GND" } : { type: "signal" }; stackUi(); }));
     host.querySelectorAll("select[data-net]").forEach(el => el.addEventListener("change", () => { st.inner[+el.dataset.net].net = el.value; }));
   }
   // the stack-up applied: copper on layers the board no longer has goes; each plane layer has its
   // whole-board pour (plane: true), a layer turned back to signal loses it
   function applyStack(st) {
-    const b = S.board, before = B.copperOf(b).length; b.stackup = B.normaliseStackup({ ...b.stackup, layers: st.layers, inner: st.inner, innerCopper: st.innerCopper });
+    const b = S.board, before = B.copperOf(b).length; b.stackup = B.normaliseStackup({ ...b.stackup, layers: st.layers, inner: st.inner, innerCopper: st.innerCopper, er: st.er, diel: st.diel });
     const CU = B.copperOf(b), nT = b.tracks.length, nZ = b.zones.length;
     b.tracks = b.tracks.filter(t => CU.includes(t.layer)); b.zones = b.zones.filter(z => CU.includes(z.layer));
     b.keepouts.forEach(k => { if (Array.isArray(k.layers)) { k.layers = k.layers.filter(l => CU.includes(l)); if (!k.layers.length) delete k.layers; } });
@@ -1651,6 +1779,10 @@
     }
     document.querySelectorAll("#setup-modal [data-s]").forEach(el => { S.board.stackup[el.dataset.s] = +el.value; });
     setupStack.innerCopper = +$("setup-innercu").value;
+    // the dielectric for impedance: εr and the thickness of each gap between copper layers (empty: the thickness shared out)
+    const er = parseFloat(String($("setup-er").value).replace(",", ".")); setupStack.er = er > 1 ? er : undefined;
+    const dl = String($("setup-diel").value).split(/[;\s]+|,(?=\s)/).map(v => parseFloat(v.replace(",", "."))).filter(v => v > 0);
+    setupStack.diel = dl.length === setupStack.layers - 1 ? dl : undefined;
     const stackMsg = applyStack(setupStack);
     S.board.holes = setupHoles;
     const sh = S.board.sheet || {}, size = $("sheet-size").value, orient = $("sheet-orient").value;
@@ -1844,8 +1976,9 @@
     $("btn-sync").onclick = syncNow; $("banner-sync").onclick = syncNow;
     $("btn-setup").onclick = openSetup; $("btn-rules").onclick = openRules;
     $("rules-apply").onclick = applyRules; $("rules-cancel").onclick = () => { $("rules-modal").hidden = true; };
-    $("rules-add-class").onclick = addClass;
-    $("rules-reset").onclick = () => { const { netClass, classes, matrix, netRule } = draft; draft = { ...B.defaultRules(), netClass, classes, matrix, netRule }; $("rules-tent").checked = true; document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; }); document.querySelectorAll("#rules-checks [data-c]").forEach(el => { el.checked = true; }); rulesNets(); };
+    $("btn-imp").onclick = openImpedance; $("imp-close").onclick = () => { $("imp-modal").hidden = true; }; ["imp-layer", "imp-w", "imp-gap"].forEach(id => $(id).addEventListener("input", impNow)); $("imp-fit-w").onclick = () => impFit("w"); $("imp-fit-g").onclick = () => impFit("g");
+    $("rules-add-class").onclick = addClass; $("rules-add-pair").onclick = addPair; $("rules-add-length").onclick = addLength;
+    $("rules-reset").onclick = () => { const { netClass, classes, matrix, netRule, pairs, lengths } = draft; draft = { ...B.defaultRules(), netClass, classes, matrix, netRule, pairs, lengths }; $("rules-tent").checked = true; document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; }); document.querySelectorAll("#rules-checks [data-c]").forEach(el => { el.checked = true; }); rulesNets(); };
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => el.addEventListener("change", rulesNets));
     $("rules-ipc").addEventListener("change", rulesNets);
     $("setup-layers").onchange = () => { setupStack.layers = +$("setup-layers").value; stackUi(); };
@@ -1896,7 +2029,7 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   const boot = () => { init(); early.splice(0).forEach(e => bc.onmessage(e)); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

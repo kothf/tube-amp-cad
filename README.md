@@ -813,6 +813,13 @@ the circuit file, so one file holds both.
   - A track entering a tube pin may pass the socket's other pins as closely as
     the pin itself does: the socket's own pin spacing is a limit no layout can
     beat.
+- **Impedance, pairs, lengths.** *Board ▾ → Impedance calculator…*: Z₀ and
+  Zdiff of a track or pair on each layer from the stack (εr and each
+  dielectric's thickness in Board setup), or the width and gap for a target.
+  *Design rules* gets differential pairs (width, gap, skew) and length groups
+  (tolerance, target); the check reports skew and short nets, and a track's
+  right-click menu routes a pair's partner alongside or adds a meander that
+  makes up the missing length. The KiCad export writes them as custom rules.
 - **Auto-route** routes the open connections with the board's own grid
   router, in the browser; no server is needed. Ticked in *Route ▾ →
   Freerouting…*, [Freerouting](https://www.freerouting.app) (free, GPL-3)

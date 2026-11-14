@@ -64,6 +64,8 @@
       classes: [],                                                // your own net classes: { name, track, clearance, viaDrill, viaPad }
       matrix: {},                                                 // class-to-class clearance: "A|B" (names sorted) -> mm
       netRule: {},                                                // one net's own width / clearance: net name -> { track, clearance }
+      pairs: [],                                                  // differential pairs: { p, n (net names), width, gap (edge to edge), skew (mm) }
+      lengths: [],                                                // length groups: { name, nets: [names], tol (mm), target (mm, 0: match the longest) }
       ipc: "B2",                                                  // clearance by voltage: IPC-2221B table B2 | B4 | A6 | off
       heaters: true, heater126: false, shields: true,             // heater wiring on the board; 12AX7-type heaters at 12.6 V; internal shields to GND
       stopperMax: 10, couplingLen: 10, couplingGap: 2, heatGap: 10, hotWatts: 1, socketHole: 40,   // valve layout checks (mm, W)
@@ -71,7 +73,7 @@
       teardrops: true,                                            // copper fillets where tracks meet pads and vias
       socketBody: true,                                           // under a valve socket's body a track may pass its pins as close as they are to each other
       maxHeight: 0,                                               // the room under the enclosure's lid above the board's top (mm; 0: no limit)
-      checks: { star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, viapad: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, height: true, keepout: true, silk: true, dangling: true, holeedge: true, stopper: true, coupling: true, heat: true, support: true }
+      checks: { star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, viapad: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, height: true, keepout: true, silk: true, dangling: true, holeedge: true, stopper: true, coupling: true, heat: true, support: true, length: true }
     };
   }
   const CLASSES = ["Signal", "Power", "HV"];
@@ -88,7 +90,16 @@
     Object.entries(R.matrix && typeof R.matrix === "object" ? R.matrix : {}).forEach(([k, v]) => { const [a, b] = k.split("|"); if (names.has(a) && names.has(b) && pos(v)) matrix[pairKey(a, b)] = +v; });
     const netRule = {};
     Object.entries(R.netRule && typeof R.netRule === "object" ? R.netRule : {}).forEach(([n, o]) => { if (!o) return; const r = {}; if (pos(o.track)) r.track = +o.track; if (pos(o.clearance)) r.clearance = +o.clearance; if (Object.keys(r).length) netRule[n] = r; });
-    return { ...R, classes, matrix, netRule };
+    const used = new Set(), pairs = (Array.isArray(R.pairs) ? R.pairs : []).filter(q => q && typeof q.p === "string" && typeof q.n === "string" && q.p && q.n && q.p !== q.n && !used.has(q.p) && !used.has(q.n) && used.add(q.p) && used.add(q.n))
+      .map(q => ({ p: q.p, n: q.n, ...(pos(q.width) ? { width: +q.width } : {}), ...(pos(q.gap) ? { gap: +q.gap } : {}), skew: Number.isFinite(+q.skew) && +q.skew >= 0 ? +q.skew : 0.5 }));
+    const lengths = (Array.isArray(R.lengths) ? R.lengths : []).filter(g => g && Array.isArray(g.nets))
+      .map((g, i) => ({ name: String(g.name || `Group ${i + 1}`), nets: [...new Set(g.nets.filter(n => typeof n === "string" && n))], tol: pos(g.tol) ? +g.tol : 1, ...(pos(g.target) ? { target: +g.target } : {}) })).filter(g => g.nets.length);
+    return { ...R, classes, matrix, netRule, pairs, lengths };
+  }
+  // the differential pair a net (by name) is in: { p, n, width, gap, skew, partner }
+  function pairOf(name, R) {
+    const q = ((R && R.pairs) || []).find(q => q.p === name || q.n === name);
+    return q ? { ...q, partner: q.p === name ? q.n : q.p } : null;
   }
   function netClassOf(net, names, hv, R) {
     const m = R.netClass && R.netClass[names[net]];
@@ -121,7 +132,9 @@
       Returns { cls, track, clearance, viaDrill, viaPad, own: { track, clearance } | null } */
   function netRule(net, names, hv, R) {
     const cls = net === null || net === undefined || net === "short" ? "Signal" : netClassOf(net, names, hv, R), r = classRule(cls, R), own = (R.netRule || {})[names[net]] || null;
-    return { cls, ...r, track: own && own.track > 0 ? own.track : r.track, clearance: own && own.clearance > 0 ? own.clearance : r.clearance, own };
+    // a differential pair's width comes before the class's (a net's own width before both)
+    const pr = net === null || net === undefined ? null : pairOf(names[net], R), pw = pr && pr.width > 0 ? pr.width : 0;
+    return { cls, ...r, track: own && own.track > 0 ? own.track : pw || r.track, clearance: own && own.clearance > 0 ? own.clearance : r.clearance, own, pair: pr };
   }
   // rule areas: keep-outs that carry a rule ({ clearance, track, minTrack }) for the copper inside them
   const ruleAreas = board => (board.keepouts || []).filter(k => k && k.rule && Array.isArray(k.pts) && k.pts.length >= 3);
@@ -159,7 +172,10 @@
   function normaliseStackup(st) {
     const layers = LAYER_COUNTS.includes(+st.layers) ? +st.layers : 2, inner = Array.isArray(st.inner) ? st.inner : [];
     return { ...st, layers, inner: Array.from({ length: layers - 2 }, (_, i) => { const e = inner[i] || {}; return e.type === "plane" ? { type: "plane", net: String(e.net || "GND") } : { type: "signal" }; }),
-      ...(st.innerCopper > 0 ? { innerCopper: +st.innerCopper } : {}) };
+      ...(st.innerCopper > 0 ? { innerCopper: +st.innerCopper } : {}),
+      // the dielectric between neighbouring copper layers (mm; one per gap, top first) and its εr, for impedance
+      ...(Array.isArray(st.diel) && st.diel.length === layers - 1 && st.diel.every(v => +v > 0) ? { diel: st.diel.map(Number) } : { diel: undefined }),
+      ...(st.er > 0 ? { er: +st.er } : {}) };
   }
   function normaliseBoard(b) {
     const d = newBoard();
@@ -1935,6 +1951,8 @@
     }
     valveChecks(board, model, conn, netlist, on, placedOff, onBoard, out);
     if (on("star") && board.rules.ground === "star") starCheck(board, model, conn, fills, netlist, out);
+    // differential pairs' skew and length groups (board-hs.js)
+    if (on("length") && root.BoardHs) root.BoardHs.drc(board, model, conn).forEach(d => out.push(d));
     if (on("pinout")) model.parts.forEach(g => { const m = g.members[0].params.model; if (PINOUT[m] && PINOUT[m][1] === "verify" && g.place) out.push({ kind: "check", x: g.place.x, y: g.place.y, msg: `${g.ref} (${m}): pinouts differ between makers — check the ${g.fp.name} pin order against your part's datasheet` }); });
     return out;
   }
@@ -2346,6 +2364,8 @@
     const memo = new Map();
     function baseOf(a, b) {
       const ra = nr(a), rb = nr(b);
+      // the two nets of a differential pair keep the pair's gap between them (closer than the class may allow)
+      if (ra.pair && ra.pair.gap > 0 && ra.pair.partner === names[b]) return ra.pair.gap;
       if ((ra.own && ra.own.clearance > 0) || (rb.own && rb.own.clearance > 0)) return Math.max(ra.clearance, rb.clearance);
       const m = M[pairKey(ra.cls, rb.cls)];
       return m > 0 ? m : Math.max(ra.clearance, rb.clearance);
@@ -2368,5 +2388,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { registerFootprints, isCustom, gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, normaliseStackup, defaultRules, normaliseRules, ALLCU, LAYER_COUNTS, copperOf, innerOf, isPlane, routeLayers, layerName, CLASSES, classNames, userClasses, pairKey, netClassOf, classRule, netRule, ruleAreas, areasOf, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { registerFootprints, isCustom, gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, normaliseStackup, defaultRules, normaliseRules, ALLCU, LAYER_COUNTS, copperOf, innerOf, isPlane, routeLayers, layerName, CLASSES, classNames, userClasses, pairKey, netClassOf, classRule, netRule, pairOf, ruleAreas, areasOf, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);
