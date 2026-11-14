@@ -181,3 +181,11 @@ test("on the board: an op-amp's DIP-8, a transistor's cases by pin letters, a bo
   assert.equal(g.options[0], "DIP-8"); assert.deepEqual(pads(g, "DIP-8"), { 1: "1", 2: "2", 3: "3", 4: "4", 5: "5", 6: "6" });
   for (const o of g.options) assert.ok(B.footprint(o, g.members[0].pins.map(p => p.id)), o);
 });
+
+test("a source's value may be written DC=… (as some makers' files do)", () => {
+  const text = ".subckt b out\nI1 0 out DC=2m\nR1 out 0 1k\n.ends", f = SN.flatten(text, "b");
+  let n = f.nNodes;
+  const els = SN.build({ text, sub: "b" }, f.pins.map((_, i) => i + 1), () => n++, "U");
+  const r = E.simulate({ nodeCount: n, elements: els }, {});
+  assert.ok(r.ok && Math.abs(r.dc.nodes[1] - 2) < 1e-6, `2 mA into 1 k: ${r.ok ? r.dc.nodes[1] : r.error}`);
+});

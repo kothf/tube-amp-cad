@@ -956,7 +956,9 @@
     // there needs no limit, and must not hold the other nodes' steps back
     const LINEAR = { R: 1, C: 1, L: 1, V: 1, VSRC: 1, I: 1, E: 1, G: 1 }, free = new Uint8Array(nNodes).fill(1);
     let anyFree = false;
-    els.forEach(e => { if (LINEAR[e.kind] && !e.ntc) return; (e.nodes || []).concat(e.windings ? e.windings.flatMap(w => [w.a, w.b]) : [], e.ext || []).forEach(k => { if (k > 0) free[k - 1] = 0; }); });
+    // (a behavioural source counts as linear here: its expressions are smooth, and a gain node of a
+    // macromodel may have to travel a megavolt, 25 V an iteration would never get it there)
+    els.forEach(e => { if ((LINEAR[e.kind] || e.kind === "B") && !e.ntc) return; (e.nodes || []).concat(e.windings ? e.windings.flatMap(w => [w.a, w.b]) : [], e.ext || []).forEach(k => { if (k > 0) free[k - 1] = 0; }); });
     for (let k = 0; k < nNodes - 1; k++) if (free[k]) anyFree = true;
     // stats: work counters for the benchmark (tests/bench.mjs): Newton solves at DC and in the
     // transient (one per time step, sub-steps included), their iterations, the device-model
@@ -1009,6 +1011,7 @@
   }
 
   function newtonSolve(circ, x0, mode, opts) {
+    circ._stuck = null;
     const n = circ.nUnk;
     const x = x0.slice();
     const A = circ.matrix && circ.matrix.n === n ? circ.matrix : (circ.matrix = new SparseMatrix(n));   // kept with the circuit: its pattern and column order
@@ -1333,6 +1336,9 @@
       if (!linV) {
         A.clear(); b.fill(0);
         for (let i = 1; i < circ.nNodes; i++) addA(i, i, gmin);
+        // pseudo-transient (opts.pt: { g, x }): every node held to where it was by a conductance g,
+        // as a capacitor C = g·h to ground holds it over a step h
+        if (opts.pt) for (let i = 1; i < circ.nNodes; i++) { addA(i, i, opts.pt.g); b[i - 1] += opts.pt.g * opts.pt.x[i - 1]; }
         for (const e of part.lin) stampEl(e);
         linN = A.nnz; linV = A.vals.slice(0, linN); linB = b.slice();
       } else {
@@ -1383,7 +1389,25 @@
       lastDv2 = lastDv; lastDv = maxDv;
     }
     if (st) st.fails++;
+    // the nodes Newton was still moving most when it gave up: where the circuit is stuck
+    const far = [];
+    for (let i = 0; i < circ.nNodes - 1; i++) far.push([Math.abs(sol[i] - x[i]), i + 1]);
+    circ._stuck = far.sort((a, b) => b[0] - a[0]).slice(0, 3).filter(f => f[0] > 0).map(f => f[1]);
     return { ok: false, x, error: "no convergence" };
+  }
+
+  // The parts on the nodes a failed solve was stuck at, for the CAD to name and show: the ids
+  // of their parts (an element's own id up to "#" or "~", its part's), devices before passives
+  function stuckOf(circ) {
+    const nodes = circ._stuck || [], seen = new Set(), parts = [];
+    if (!nodes.length) return null;
+    const on = e => (e.nodes || []).concat(e.ext || [], e.windings ? e.windings.flatMap(w => [w.a, w.b]) : []).some(k => nodes.includes(k));
+    const passive = e => ["R", "C", "L", "V", "VSRC", "I"].includes(e.kind);
+    circ.els.filter(e => e.id && on(e)).sort((a, b) => passive(a) - passive(b)).forEach(e => {
+      const id = String(e.id).split(/[#~]/)[0];
+      if (!seen.has(id)) { seen.add(id); parts.push(id); }
+    });
+    return { nodes, parts: parts.slice(0, 4) };
   }
 
   // A time step that still fails at the smallest subdivision: a long Newton run; then, as for the
@@ -1397,11 +1421,25 @@
     if (r.ok) return r.x;
     let x = xprev, g = 1, k = 10;
     const r0 = newtonSolve(circ, x, mode, { gmin: g, maxIter: 200 });
-    if (!r0.ok) return null;
-    x = r0.x;
-    while (g > 1e-12) {
-      const gn = Math.max(g / k, 1e-12), rg = newtonSolve(circ, x, mode, { gmin: gn, maxIter: 200 });
-      if (rg.ok) { x = rg.x; g = gn; k = Math.min(k * 2, 10); } else if ((k = Math.sqrt(k)) < 1.05) return null;
+    if (r0.ok) {
+      x = r0.x;
+      while (g > 1e-12) {
+        const gn = Math.max(g / k, 1e-12), rg = newtonSolve(circ, x, mode, { gmin: gn, maxIter: 200 });
+        if (rg.ok) { x = rg.x; g = gn; k = Math.min(k * 2, 10); } else if ((k = Math.sqrt(k)) < 1.05) break;
+      }
+      if (g <= 1e-12) return x;
+    }
+    // then source stepping, as the DC operating point does: the sources brought up from nothing
+    // within the step, each solve starting from the last (a circuit switched on from cold, its
+    // supplies jumping to ±30 V across uncharged capacitors, drives every junction at once: Newton
+    // from nothing then wanders off to absurd voltages, while a few hundred volts at a time it follows)
+    let sc = 0, d = 0.1;
+    const rs0 = newtonSolve(circ, xprev, mode, { gmin: 1e-12, maxIter: 200, srcScale: 0 });
+    if (!rs0.ok) return null;
+    x = rs0.x;
+    while (sc < 1) {
+      const sn = Math.min(1, sc + d), rs = newtonSolve(circ, x, mode, { gmin: 1e-12, maxIter: 200, srcScale: sn });
+      if (rs.ok) { x = rs.x; sc = sn; d = Math.min(d * 2, 0.25); } else if ((d /= 4) < 1e-4) return null;
     }
     return x;
   }
@@ -1473,9 +1511,35 @@
     while (s < 1) {
       const sn = Math.min(1, s + ds), rn = newtonSolve(circ, x, { dc: true }, { gmin: 1e-9, srcScale: sn });
       r = rn;
-      if (rn.ok) { x = rn.x; s = sn; ds = Math.min(ds * 1.5, 0.2); } else { ds /= 4; if (ds < 1e-4 || ++fails > 40) return r; }
+      if (rn.ok) { x = rn.x; s = sn; ds = Math.min(ds * 1.5, 0.2); } else { ds /= 4; if (ds < 1e-4 || ++fails > 40) break; }
     }
-    return r;
+    if (r.ok) return r;
+    const pt = dcPseudoTransient(circ, zero);
+    return pt.ok ? pt : r;
+  }
+  // The last way to the operating point (ngspice's optran): a capacitor on every node to ground,
+  // and the circuit let run to rest from nothing in growing steps. Each step is an easy problem (the
+  // nodes held near where they were), so Newton follows the circuit where it cannot jump to the
+  // answer in one go: a loop of high gain, a product of two voltages, a latch that must find its
+  // side. The capacitors' conductance g = C/h starts at 1 S and falls fourfold a step (rises
+  // fourfold after a step that fails); once it is below 1 nS and the nodes stop moving, a plain
+  // solve from there must agree.
+  function dcPseudoTransient(circ, x0) {
+    let x = x0, g = 1, k = 4, steps = 0;
+    const r = { ok: false, x, error: "no convergence" };
+    while (steps++ < 600) {
+      const rn = newtonSolve(circ, x, { dc: true }, { gmin: 1e-12, pt: { g, x } });
+      if (!rn.ok) {
+        // the step was too long: back to the last conductance, and a smaller stride from it
+        g *= k; k = Math.sqrt(k); if (k < 1.01 || g > 1e6) break; g /= k; continue;
+      }
+      let dv = 0; for (let i = 0; i < circ.nNodes - 1; i++) dv = Math.max(dv, Math.abs(rn.x[i] - x[i]));
+      x = rn.x;
+      if (g < 1e-9 && dv < 1e-6) break;
+      k = Math.min(k * 1.5, 4); g = Math.max(g / k, 1e-12);
+    }
+    const p = newtonSolve(circ, x, { dc: true }, { gmin: 1e-12 });
+    return p.ok ? p : r;
   }
 
   // ---------------------------------------------------------------------------
@@ -1695,6 +1759,7 @@
       result.error = dc.error === "singular matrix"
         ? "Circuit cannot be solved: check for voltage sources wired in parallel or shorted, or a supply with no return path"
         : "DC operating point did not converge (" + dc.error + ")";
+      if (dc.error !== "singular matrix") result.stuck = stuckOf(circ);
       return result;
     }
     result.dc = { nodes: [0].concat(dc.x.slice(0, nodeCount - 1)), devices: {} };
@@ -1790,7 +1855,7 @@
         // each part of the state weighed by its size over a period (a winding's current may pass zero
         // just as the period starts): one period run while the peaks are noted
         peak = new Float64Array(x.length);
-        if (!runPeriod(hc, coarseSteps)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
+        if (!runPeriod(hc, coarseSteps)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; result.stuck = stuckOf(circ); return result; }
         periods++;
         const pk = peak; peak = null;
         const nU = st.length, tB = t, target = 5e-5, D = st.map(i => (i < nodeCount - 1 ? 1 + pk[i] : 1e-3 + pk[i]));
@@ -1856,7 +1921,7 @@
       let hist = [x.slice()], lastChange = Infinity, worst = 0;
       while (!settled && periods < maxPeriods) {
         const start = x.slice();
-        if (!runPeriod(hc, coarseSteps)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
+        if (!runPeriod(hc, coarseSteps)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; result.stuck = stuckOf(circ); return result; }
         periods++;
         const change = periodChange(x, start);
         // distance to steady state estimated from the decay rate per period
@@ -1884,7 +1949,7 @@
       if (xBack && Math.abs(hBack - h) > 1e-9 * h) { xBack = x.map((v, i) => v + (xBack[i] - v) * h / hBack); hBack = h; }
       for (let k = 0; k < 2; k++) {
         const start = x.slice();
-        if (!runPeriod(h, stepsPerPeriod)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
+        if (!runPeriod(h, stepsPerPeriod)) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; result.stuck = stuckOf(circ); return result; }
         if (periodChange(x, start) < 1e-4) break;
       }
       // a run that stopped unsettled (out of time) holds its percentage: it is not nearly done
@@ -1908,7 +1973,7 @@
       const e0 = oscs.find(e => e.kind === "TIMER555") || oscs[0], tLimit = opts.oscLimit || 30, falls = [];
       let rose = false;
       let w = window, hh = w / 400;
-      const fail = () => { circ.onFlip = null; result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; };
+      const fail = () => { circ.onFlip = null; result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; result.stuck = stuckOf(circ); return result; };
       // on at step hh until the output has fallen n times in all, or past tEnd; false: did not converge.
       // A fall counts once the latch has risen (one before that only leaves the DC state, no whole
       // cycle before it), at the time it flipped
@@ -1989,7 +2054,7 @@
     for (let s = 1; s < nCap; s++) {
       t += h;
       const nx = step(x, t, h);
-      if (!nx) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; return result; }
+      if (!nx) { result.error = "Transient did not converge at t=" + (t * 1000).toFixed(3) + " ms"; result.stuck = stuckOf(circ); return result; }
       x = nx;
       record(s);
       if ((s & 63) === 0 && settled) progress(0.88 + 0.12 * s / nCap);
@@ -2237,7 +2302,7 @@
       warmTo(s * h);
       if (softOn && s * h >= opts.soft.at) { softOn = false; soft.forEach(e => { e.r = 0.01; delete e.ntc; }); }   // the relay closes across the soft-start resistance
       const nx = step(x, s * h, h);
-      if (!nx) { result.error = "Transient did not converge at t=" + (s * h * 1000).toFixed(3) + " ms"; return result; }
+      if (!nx) { result.error = "Transient did not converge at t=" + (s * h * 1000).toFixed(3) + " ms"; result.stuck = stuckOf(circ); return result; }
       x = nx; record(s, x);
       if (opts.onProgress && s / steps - lastProg >= 0.02) { lastProg = s / steps; opts.onProgress(lastProg); }
       if (opts.onPartial && Date.now() - lastPart >= partialMs) { lastPart = Date.now(); opts.onPartial(snapshot(s)); }
@@ -2296,7 +2361,7 @@
     for (let s = 0; s < samples; s++) {
       for (let k = 1; k <= sub; k++) {
         const nx = timerStep(circ, solveStep, x, (s * sub + k) * h, h);
-        if (!nx) return { ok: false, error: "Transient did not converge at t=" + (((s * sub + k) * h) * 1000).toFixed(3) + " ms", at: s / rate };
+        if (!nx) return { ok: false, error: "Transient did not converge at t=" + (((s * sub + k) * h) * 1000).toFixed(3) + " ms", at: s / rate, stuck: stuckOf(circ) };
         x = nx;
       }
       probes.forEach(([p, q], j) => { out[j][s] = vn(x, p) - vn(x, q); });
@@ -2593,7 +2658,7 @@
     return { ok: true, freqs, total, gain: { re: gRe, im: gIm }, sources: src.map((p, j) => ({ id: p.id, kind: p.kind, psd: psd[j] })), elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, NE555, tubeCurrents, tubeJacobian, capAt, chargeAt, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, NE555, tubeCurrents, tubeJacobian, capAt, chargeAt, dcPseudoTransient, stuckOf, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);
