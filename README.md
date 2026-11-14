@@ -243,6 +243,13 @@ the model or open the file.
   `E G F H` (linear, `VALUE={…}`, `TABLE`, `POLY`), behavioural `B` sources
   with `V()` and `I()`, switches `S` and `W`; PSpice, LTspice and ngspice
   spellings.
+- **BSIM MOSFETs:** `LEVEL=8`/`49` (BSIM3v3) and `LEVEL=14`/`54` (BSIM4)
+  models run Berkeley's own equations, ported line by line from ngspice
+  (BSIM3 3.3.0, BSIM4 4.8.2): binning, temperature, the charge model,
+  BSIM4's `RDSMOD=1`, `RBODYMOD=1` and `RGATEMOD=1` inner nodes. A lone BSIM
+  model gets a four-pin MOSFET symbol (with the bulk). Checked against
+  ngspice by `tests/bsim-ngspice.mjs`: device curves exact, AC to 10 GHz
+  within 0.001 dB, a ring oscillator's period within 0.05 %.
 - **Symbol and pins:** a lone transistor or diode model takes that device's
   symbol; five pins are offered as an op-amp in the usual order; anything
   else is a box with the model's pins. Each pin of the model is set to a pin
@@ -255,7 +262,8 @@ the model or open the file.
   as e^(−jωTD) in the frequency response.
 - **What it refuses, with the reason:** `LAPLACE` other than a ratio of
   polynomials, a `FREQ` table's `DELAY`, `CHEBYSHEV` filters,
-  lossy transmission lines, digital (`A`) devices, BSIM MOSFETs, expressions of
+  lossy transmission lines, digital (`A`) devices, BSIM4's gate resistance
+  modes 2 and 3 and non-quasi-static mode, expressions of
   time. Junction capacitances follow the voltage across them and step their
   charge; a transistor's transit times (TF, TR) shape the waveform and the
   frequency response; a VDMOS power MOSFET's gate-drain capacitance follows

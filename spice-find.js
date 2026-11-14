@@ -56,7 +56,7 @@
   function symFor(m) {
     const K = root.CadLib.SPICE_KIND_SYM;
     if (m.kind === "vdmos") return /\bpchan\b/i.test(m.text || "") ? "pmos" : "nmos";
-    if (K[m.kind]) return K[m.kind];
+    if (K[m.kind]) return (K[m.kind] === "nmos" || K[m.kind] === "pmos") && m.pins.length === 4 ? K[m.kind] + "4" : K[m.kind];
     if (m.pins.length === 5) return "opamp";
     return lone(m) || "box";
   }

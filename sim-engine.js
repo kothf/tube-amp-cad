@@ -535,6 +535,23 @@
       else { const dd = 2 * vdsat - vds, d1 = vdsat - vds, d2 = dd * dd; cgd = cox * (1 - vdsat * vdsat / d2) / 3; cgs = cox * (1 - d1 * d1 / d2) / 3; cgb = 0; }
       return sw ? [2 * cgd, 2 * cgs, 2 * cgb] : [2 * cgs, 2 * cgd, 2 * cgb];
     },
+    // A BSIM3 or BSIM4 MOSFET (bsim3.js, bsim4.js, ngspice's own model code): its currents I and
+    // charges Q into its nodes. e.model.slots puts BSIM's terminals on the element's nodes (BSIM3: D, G,
+    // S, B; BSIM4: D', G, S', B', DB, SB, D, S, the last four the body network's and the outer drain and
+    // source, often the same nodes as the first). e._dev: the device bsimDevice set up.
+    bsim(V, e) {
+      const dev = e._dev, sl = e.model.slots, p = dev.type, k = p * (dev.mult || 1), vs = V[sl[2]];
+      const I = new Array(V.length).fill(0), Q = new Array(V.length).fill(0);
+      if (e.model.ver === 3) {
+        const o = root.Bsim3.eval(dev, p * (V[sl[0]] - vs), p * (V[sl[1]] - vs), p * (V[sl[3]] - vs));
+        const oi = [o.id, o.ig, o.is, o.ib], oq = [o.qd, o.qg, o.qs, o.qb];
+        for (let t = 0; t < 4; t++) { I[sl[t]] += k * oi[t]; Q[sl[t]] += k * oq[t]; }
+      } else {
+        const v = [0, 1, 3, 4, 5, 6, 7].map(t => p * (V[sl[t]] - vs)), o = root.Bsim4.eval(dev, v);
+        for (let t = 0; t < 8; t++) { I[sl[t]] += k * o.i[t]; Q[sl[t]] += k * o.q[t]; }
+      }
+      return { I, Q };
+    },
     mos(V, m) {
       const p = m.pol;
       let vds = p * (V[0] - V[2]), vgs = p * (V[1] - V[2]), sw = 1;
@@ -1226,6 +1243,21 @@
   // ---------------------------------------------------------------------------
   // Circuit build: assign unknown indices
   // ---------------------------------------------------------------------------
+  // a BSIM element's device (Bsim3/Bsim4.setup), kept for the next build of the same part: the model
+  // card, the instance and the temperature (the engine's 25 °C is SPICE's nominal 27 °C)
+  const bsimCache = new Map();
+  function bsimDevice(e) {
+    const m = e.model, tC = e.temp !== undefined && isFinite(e.temp) ? (e.temp + 273.15) * 300.15 / 298.15 - 273.15 : 27;
+    const key = JSON.stringify([m.ver, m.params, m.inst, tC]);
+    let dev = bsimCache.get(key);
+    if (!dev) {
+      const B = root[m.ver === 3 ? "Bsim3" : "Bsim4"];
+      if (!B) throw new Error(`${e.id}: the BSIM${m.ver} model (bsim${m.ver}.js) is not loaded`);
+      dev = B.setup(m.params, m.inst, tC); bsimCache.set(key, dev);
+      if (bsimCache.size > 200) bsimCache.delete(bsimCache.keys().next().value);
+    }
+    return dev;
+  }
   function buildCircuit(netlist) {
     const nNodes = netlist.nodeCount;            // includes ground (0)
     let nUnk = nNodes - 1;
@@ -1233,6 +1265,7 @@
     els.forEach(e => {
       // a transistor given as its data at Tnom (model0) and a temperature, without self-heating
       if (e.kind === "BJT" && e.model0 && e.temp !== undefined && !e.therm) e.model = Object.assign(bjtAtT(e.model0, e.temp), { pol: e.model.pol });
+      if (e.kind === "BSIM") e._dev = bsimDevice(e);
       if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L" || e.kind === "E" || (e.kind === "B" && e.out === "v")) e.branch = nUnk++;
       else if (LATCHED.has(e.kind)) e.latch = nUnk++;
       else if (e.kind === "LDR") e.light = nUnk++;
@@ -1686,6 +1719,16 @@
           }
           break;
         }
+        case "BSIM": {
+          const V = nd.map(k => vn(x, k));
+          if (mode.dc) { stampNonlinear(nd, W => Semi.bsim(W, e).I, V, 1e-6); break; }
+          // the terminal charges, stepped as a capacitor's (charge-conserving): the steps before's charges
+          // kept for this step's iterations
+          if (e._qp !== mode.prev) { e._qp = mode.prev; e._q1 = Semi.bsim(nd.map(k => vn(mode.prev, k)), e).Q; e._q2 = P2 ? Semi.bsim(nd.map(k => vn(P2, k)), e).Q : null; }
+          const q1 = e._q1, q2 = P2 ? e._q2 || Semi.bsim(nd.map(k => vn(P2, k)), e).Q : null;
+          stampNonlinear(nd, W => { const r = Semi.bsim(W, e); return r.I.map((i, t) => i + (ID0 * r.Q[t] + ID1 * q1[t] + (q2 ? ID2 * q2[t] : 0)) / mode.h); }, V, 1e-6);
+          break;
+        }
         case "OPAMP":
           stampNonlinear(nd, W => Semi.opamp(W, e.model, mode.dc, e._gain), nd.map(k => vn(x, k)), 1e-6);
           break;
@@ -1988,6 +2031,11 @@
     }
     if (e.kind === "MOS") { const [id] = Semi.mos(v, e.model), p = e.model.pol; return { vds: p * (v[0] - v[2]), vgs: p * (v[1] - v[2]), id: p * id, pd: (v[0] - v[2]) * id }; }
     if (e.kind === "MOS4") { const [id] = Semi.mosx(v, e.model), p = e.model.pol; return { vds: p * (v[0] - v[2]), vgs: p * (v[1] - v[2]), vbs: p * (v[3] - v[2]), id: p * id, pd: (v[0] - v[2]) * id }; }
+    if (e.kind === "BSIM") {
+      // read at the outer drain and source (BSIM4's slots 6, 7), the drain current in the part's own polarity
+      const sl = e.model.slots, p = e._dev.type, I = Semi.bsim(v, e).I, D = e.model.ver === 3 ? sl[0] : sl[6], S = e.model.ver === 3 ? sl[2] : sl[7], id = I[D];
+      return { vds: p * (v[D] - v[S]), vgs: p * (v[sl[1]] - v[S]), vbs: p * (v[sl[3]] - v[S]), id: p * id, pd: I.reduce((a, i, k) => a + i * v[k], 0) };
+    }
     if (e.kind === "OPAMP") {
       // vd: IN+ − IN−; iout: out of the output pin; pd: the power the package dissipates
       // clip: how far the output stage is driven past its limit (V; > 0.05 is clipping)
@@ -2044,6 +2092,7 @@
       case "BJT": return Semi.bjt(v, e.model).map((i, k) => [nd[k], i]);
       case "MOS": return Semi.mos(v, e.model).map((i, k) => [nd[k], i]);
       case "MOS4": return Semi.mosx(v, e.model).map((i, k) => [nd[k], i]);
+      case "BSIM": return Semi.bsim(v, e).I.map((i, k) => [nd[k], i]);
       case "TIMER555": { const I = timerCurrents([v[0], v[2], v[6], v[7]], latchOf(e, x)); return [[nd[0], I[0]], [nd[2], I[1]], [nd[6], I[2]], [nd[7], I[3]]]; }
       case "OPAMP": return Semi.opamp(v, e.model).map((i, k) => [nd[k], i]);
       case "GLOW": return two(glowCurrents(v, e.model, latchOf(e, x))[0]);
@@ -2590,7 +2639,7 @@
     // (an op-amp's trace is its clip: how far past its output limit it is driven; a transistor's
     // its collector or drain current, in its own polarity: the curve tracer's load line)
     // a saturating transformer's trace is its core flux, as a share of the knee)
-    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP" || e.kind === "BJT" || e.kind === "MOS" || e.kind === "MOS4" || (e.kind === "XFMR" && e.sat));
+    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP" || e.kind === "BJT" || e.kind === "MOS" || e.kind === "MOS4" || e.kind === "BSIM" || (e.kind === "XFMR" && e.sat));
     const devTrace = {};
     devIdx.forEach(e => { devTrace[e.id + (e.part ? "#" + e.part : "")] = { i: new Float32Array(nCap), ig2: e.kind === "PENTODE" ? new Float32Array(nCap) : null }; });
     // A circuit run from AC (a rectified supply) has no true DC solution: the
@@ -3310,6 +3359,7 @@
           stamp2(addB, nd[1], nd[2], C[0]); stamp2(addB, nd[1], nd[0], C[1]); stamp2(addB, nd[1], nd[3], C[2]);
           break;
         }
+        case "BSIM": jac(nd, W => Semi.bsim(W, e).I, 1e-6); jac(nd, W => Semi.bsim(W, e).Q, 1e-5, addB); break;
         case "OPAMP": jac(nd, W => Semi.opamp(W, e.model), 1e-6); break;
         case "REG": jac(nd, W => Semi.reg(W, e.model), 1e-6); break;
         case "SHUNT": jac(nd, W => Semi.shunt(W, e.model), 1e-6); break;
@@ -3488,6 +3538,13 @@
           const d = 1e-5, Vp = V.slice(), Vm = V.slice(), f = e.kind === "MOS4" ? Semi.mosx : Semi.mos; Vp[1] += d; Vm[1] -= d;
           const gm = Math.abs(f(Vp, e.model)[0] - f(Vm, e.model)[0]) / (2 * d);
           add(e, nd[0], nd[2], 4 * kT * (2 / 3) * gm);
+          break;
+        }
+        case "BSIM": {
+          // the channel's thermal noise, 4kT·(2/3)·gm, between the inner drain and source
+          const sl = e.model.slots, d = 1e-5, Vp = V.slice(), Vm = V.slice(); Vp[sl[1]] += d; Vm[sl[1]] -= d;
+          const gm = Math.abs(Semi.bsim(Vp, e).I[sl[0]] - Semi.bsim(Vm, e).I[sl[0]]) / (2 * d);
+          add(e, nd[sl[0]], nd[sl[2]], 4 * kT * (2 / 3) * gm);
           break;
         }
         case "D": { const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852, id = Is * (Math.exp(Math.min((V[0] - V[1]) / nVt, 80)) - 1); add(e, nd[0], nd[1], 2 * q * Math.abs(id)); break; }

@@ -126,7 +126,7 @@ test("MOSFET levels 1, 2 and 3 by their own equations, with the bulk, its juncti
   near(I([0, 8, 2, 0]), -I([2, 8, 0, 0]), 1e-12, "reversed, the same current the other way");
   const m1 = m4.find(e => e.model.level === 1).model, I1 = V => E.Semi.mosx(V, m1)[0];
   assert.ok(I1([10, 4, 0, -5]) < 0.5 * I1([10, 4, 0, 0]), "the body effect (GAMMA): less current with the bulk 5 V below the source");
-  assert.throws(() => SN.flatten(".model MB NMOS(LEVEL=8)\n.subckt f d g s\nM1 d g s s MB\n.ends", "f"), /level 8/i);
+  assert.throws(() => SN.flatten(".model MB NMOS(LEVEL=7)\n.subckt f d g s\nM1 d g s s MB\n.ends", "f"), /level 7/i);
 });
 
 test("LAPLACE sources: PSpice's and LTspice's spellings, the response a ratio of polynomials in s gives, exactly", () => {

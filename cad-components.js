@@ -247,7 +247,8 @@
   }
   // IEC 60617 S00706-S00709 insulated-gate FET with envelope: gate lead on the source side,
   // channel broken (enhancement) or solid (depletion), substrate arrow in (N) or out (P), tied to the source
-  function drawMos(ctx, c, pol) {
+  // (bulk: a four-terminal MOSFET, its substrate lead out to the right instead of tied to the source)
+  function drawMos(ctx, c, pol, bulk) {
     const m = MOSFETS[c.params.model] || {}, depletion = pol > 0 ? m.vto < 0 : m.vto > 0;
     ctx.beginPath(); ctx.arc(3, 0, 19, 0, Math.PI * 2); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke();
     line(ctx, [-30, 10, -11, 10]); line(ctx, [-11, -10, -11, 10]);
@@ -257,7 +258,7 @@
     ctx.lineWidth = 2;
     line(ctx, [-5, -9, 10, -9, 10, -30]);
     line(ctx, [-5, 9, 10, 9, 10, 30]);
-    line(ctx, [-5, 0, 10, 0, 10, 9]);
+    if (bulk) line(ctx, [-5, 0, 30, 0]); else line(ctx, [-5, 0, 10, 0, 10, 9]);
     if (pol > 0) arrowHead(ctx, -4, 0, -1, 0, 7, 3.5); else arrowHead(ctx, 9, 0, 1, 0, 7, 3.5);
   }
 
@@ -918,6 +919,7 @@
     // the model's pin names inside
     spice(ctx, c) {
       const sy = SPICE_SYMS[c.params.sym];
+      if (sy && sy.bulk) { drawMos(ctx, { params: {} }, sy.bulk, true); return; }
       if (sy) { DRAW[sy.type](ctx, { type: "spice", params: {}, rot: c.rot, label: c.label }); return; }
       const g = spiceBox(c), up = (t, x, y) => { ctx.save(); ctx.translate(x, y); if ((c.rot & 3) === 1 || (c.rot & 3) === 2) ctx.rotate(Math.PI); ctx.fillText(t, 0, 0); ctx.restore(); };
       ctx.fillStyle = COL.fill; ctx.fillRect(-g.hw, -g.hh, 2 * g.hw, 2 * g.hh); ctx.strokeRect(-g.hw, -g.hh, 2 * g.hw, 2 * g.hh);
@@ -1767,6 +1769,8 @@
     opamp: { type: "opamp", name: "Op-amp", pins: ["+", "-", "V+", "V-", "OUT"], prefix: "DA" },
     npn: { type: "npn", name: "NPN transistor", pins: ["C", "B", "E"], prefix: "VT" }, pnp: { type: "pnp", name: "PNP transistor", pins: ["C", "B", "E"], prefix: "VT" },
     nmos: { type: "nmos", name: "N-channel MOSFET", pins: ["D", "G", "S"], prefix: "VT" }, pmos: { type: "pmos", name: "P-channel MOSFET", pins: ["D", "G", "S"], prefix: "VT" },
+    // four terminals (a BSIM model's IC transistor): the bulk on its own pin
+    nmos4: { type: "nmos", name: "N-channel MOSFET with bulk", pins: ["D", "G", "S", "B"], prefix: "VT", bulk: 1 }, pmos4: { type: "pmos", name: "P-channel MOSFET with bulk", pins: ["D", "G", "S", "B"], prefix: "VT", bulk: -1 },
     njf: { type: "njf", name: "N-channel JFET", pins: ["D", "G", "S"], prefix: "VT" }, pjf: { type: "pjf", name: "P-channel JFET", pins: ["D", "G", "S"], prefix: "VT" },
     diode: { type: "diode", name: "Diode", pins: ["A", "K"], prefix: "VD" }
   };
@@ -3145,9 +3149,9 @@
     // sym (SPICE_SYMS, else a box); map (per model pin: the symbol's pin it is, "0" ground, "" open)
     spice: {
       name: "SPICE part", prefix: "DA", prefixFor: c => (SPICE_SYMS[c.params.sym] || {}).prefix || "DA", group: "Integrated circuits",
-      bbox: c => { const sy = c && SPICE_SYMS[c.params.sym]; if (sy) { const b = LIB[sy.type].bbox; return typeof b === "function" ? b() : b; } const g = spiceBox(c); return [-g.hw - 20, -g.hh, g.hw + 20, g.hh]; },
+      bbox: c => { const sy = c && SPICE_SYMS[c.params.sym]; if (sy && sy.bulk) return [-30, -30, 30, 30]; if (sy) { const b = LIB[sy.type].bbox; return typeof b === "function" ? b() : b; } const g = spiceBox(c); return [-g.hw - 20, -g.hh, g.hw + 20, g.hh]; },
       defaults: { name: "", text: "", sub: "", sym: "box", pinNames: ["1", "2", "3", "4"], map: ["1", "2", "3", "4"], pkg: "" },
-      pins: c => { const sy = c && SPICE_SYMS[c.params.sym]; return sy ? LIB[sy.type].pins({ params: {} }).filter(p => sy.pins.includes(p.id)) : spiceBox(c).pins; },
+      pins: c => { const sy = c && SPICE_SYMS[c.params.sym]; return sy ? LIB[sy.type].pins({ params: {} }).filter(p => sy.pins.includes(p.id)).concat(sy.bulk ? [{ id: "B", x: 30, y: 0, name: "bulk" }] : []) : spiceBox(c).pins; },
       // the pads behind the pins: a box's in the model's pin order, 1 up
       pinNumbers: c => {
         const sym = c.params.sym;
@@ -3165,7 +3169,9 @@
         if (!p.text) return "No model yet: press Model… and paste or open a SPICE model (a .SUBCKT or a .MODEL from a maker's file). It is simulated as written.";
         try {
           const f = SN.flat(p.text, p.sub);
+          const bsim = f.els.filter(e => e.kind === "BSIM").map(e => e.model.ver);
           return `SPICE ${f.kind === "subckt" ? "subcircuit" : "model"} ${f.name}, simulated as written: ${f.els.length} element${f.els.length === 1 ? "" : "s"} on ${f.nNodes - 1} nodes. `
+            + (bsim.length ? `Its MOSFETs run Berkeley's BSIM${[...new Set(bsim)].join(" and BSIM")} model, as ngspice does. ` : "")
             + (f.warnings.length ? f.warnings.join(". ") + "." : "");
         } catch (e) { return `The model cannot be simulated: ${e.message}. The part is left out of the simulation.`; }
       },
