@@ -1,0 +1,20 @@
+* Lossless transmission lines (T): a 50 ohm line of 100 us between mismatched ends (its reflections
+* bounce), a 600 ohm quarter wave at 50 kHz given by F= and NL= into a resistor and a capacitor, and
+* a matched 75 ohm line of 1 us, shorter than the simulator's time step. tests/models.mjs runs them
+* here and in ngspice, the operating point, the response and a waveform through them.
+.subckt lines in o1 m2 o2 o3
+R1 in a1 25
+T1 a1 0 o1 0 Z0=50 TD=100u
+R1L o1 0 200
+R2 in m2 300
+T2 m2 0 o2 0 Z0=600 F=50k NL=0.25
+R2L o2 0 1k
+C2L o2 0 10n
+R3 in a3 75
+T3 a3 0 o3 0 Z0=75 TD=1u
+R3L o3 0 75
+.ends
+.subckt bench in o1 m2 o2 o3
+Vin in 0 DC 1 AC 1
+X1 in o1 m2 o2 o3 lines
+.ends

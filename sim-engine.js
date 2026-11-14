@@ -1165,6 +1165,7 @@
       if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L" || e.kind === "E" || (e.kind === "B" && e.out === "v")) e.branch = nUnk++;
       else if (LATCHED.has(e.kind)) e.latch = nUnk++;
       else if (e.kind === "LDR") e.light = nUnk++;
+      else if (e.kind === "TLINE") { e.branches = [nUnk++, nUnk++]; e._h = { t: [], w1: [], w2: [] }; }
       else if (e.kind === "XFMR") {
         e.branches = e.windings.map(() => nUnk++);
         if (e.sat && e.sat.hys) e.plays = PLAYS.map(() => nUnk++);   // the core's hysteresis states (corePlay)
@@ -1201,7 +1202,7 @@
     // nodes no nonlinear part is on (between resistors, capacitors and linear sources: the inside
     // of a maker's macromodel is full of them, some behind a gain of a million): Newton's step
     // there needs no limit, and must not hold the other nodes' steps back
-    const LINEAR = { R: 1, C: 1, L: 1, V: 1, VSRC: 1, I: 1, E: 1, G: 1 }, free = new Uint8Array(nNodes).fill(1);
+    const LINEAR = { R: 1, C: 1, L: 1, V: 1, VSRC: 1, I: 1, E: 1, G: 1, TLINE: 1 }, free = new Uint8Array(nNodes).fill(1);
     let anyFree = false;
     // (a behavioural source counts as linear here: its expressions are smooth, and a gain node of a
     // macromodel may have to travel a megavolt, 25 V an iteration would never get it there)
@@ -1272,7 +1273,34 @@
   // ---------------------------------------------------------------------------
   // a circuit's elements split into those whose stamps do not depend on the iterate (lin) and
   // the rest (nl), for the DC operating point or a transient step
-  const LINEAR_KINDS = new Set(["R", "C", "L", "V", "VSRC", "I", "E", "G", "RELAY"]);
+  const LINEAR_KINDS = new Set(["R", "C", "L", "V", "VSRC", "I", "E", "G", "RELAY", "TLINE"]);
+
+  // A lossless transmission line (TLINE: ports a1 b1 and a2 b2, impedance z0, delay td), by Branin's
+  // method: each port is z0 in series with the wave that left the other port td before,
+  //   v1 − z0·i1 = w2(t − td),  w2 = v2 + z0·i2   (and the same the other way)
+  // i1, i2 are the currents into a1 and a2 (branches). The waves of the solved steps are kept
+  // (tlineWave): a time between two of them is interpolated linearly; a delay shorter than the
+  // step lands between the step's start and its own end, and that end's share is solved with it.
+  // At DC the line is a wire between the ports; in AC the delay is e^(−jω·td) (acSolve).
+  function tlineWave(e, x, p) { const nd = e.nodes, k = 2 * p; return vn(x, nd[k]) - vn(x, nd[k + 1]) + e.z0 * x[e.branches[p]]; }
+  // the far ends' waves arriving at this step's end mode.t: [a, c1, c2], wave = a·(this step's own) + c
+  function tlineIncoming(e, mode) {
+    const H = e._h, tp = mode.t - mode.h, eps = 1e-9 * mode.h;
+    // the step's start is a solved state: kept (a step solved again, or a run going back, replaces the later ones)
+    while (H.t.length && H.t[H.t.length - 1] > tp - eps) { H.t.pop(); H.w1.pop(); H.w2.pop(); }
+    H.t.push(tp); H.w1.push(tlineWave(e, mode.prev, 0)); H.w2.push(tlineWave(e, mode.prev, 1));
+    const target = mode.t - e.td, n = H.t.length;
+    // the oldest a later step still needs: one wave at or before tp − td
+    let k0 = 0; while (k0 + 1 < n && H.t[k0 + 1] <= tp - e.td) k0++;
+    if (k0 > 256) { H.t.splice(0, k0); H.w1.splice(0, k0); H.w2.splice(0, k0); }
+    if (target >= tp) { const a = Math.min(1, (target - tp) / mode.h); return [a, (1 - a) * H.w1[H.t.length - 1], (1 - a) * H.w2[H.t.length - 1]]; }
+    const T = H.t;
+    if (target <= T[0]) return [0, H.w1[0], H.w2[0]];   // before the run: the line as it stood at its start
+    let lo = 0, hi = T.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= target) lo = m; else hi = m; }
+    const f = (target - T[lo]) / (T[hi] - T[lo]);
+    return [0, H.w1[lo] + f * (H.w1[hi] - H.w1[lo]), H.w2[lo] + f * (H.w2[hi] - H.w2[lo])];
+  }
   function linearSplit(circ, dc) {
     const key = dc ? "_splitDC" : "_splitTR";
     if (circ[key] && circ[key].n === circ.els.length) return circ[key];
@@ -1479,6 +1507,15 @@
           if (nd[1] > 0) { addAu(nd[1] - 1, br, -1); addAu(br, nd[1] - 1, -1); }
           if (nd[2] > 0) addAu(br, nd[2] - 1, -e.gain);
           if (nd[3] > 0) addAu(br, nd[3] - 1, e.gain);
+          break;
+        }
+        case "TLINE": {
+          const [b1, b2] = e.branches, z = e.z0, [a, c1, c2] = mode.dc ? [1, 0, 0] : tlineIncoming(e, mode);
+          const port = (p, m, br) => { if (p > 0) { addAu(p - 1, br, 1); addAu(br, p - 1, 1); } if (m > 0) { addAu(m - 1, br, -1); addAu(br, m - 1, -1); } addAu(br, br, -z); };
+          const far = (row, p, m, br) => { if (p > 0) addAu(row, p - 1, -a); if (m > 0) addAu(row, m - 1, a); addAu(row, br, -a * z); };
+          port(nd[0], nd[1], b1); port(nd[2], nd[3], b2);
+          far(b1, nd[2], nd[3], b2); b[b1] += c2;
+          far(b2, nd[0], nd[1], b1); b[b2] += c1;
           break;
         }
         case "G":
@@ -1922,6 +1959,7 @@
       case "D": return two(deviceState(e, x).i);
       case "VDIODE": return two(deviceState(e, x).i);
       case "XFMR": { const out = []; e.windings.forEach((w, j) => { const i = x[e.branches[j]]; out.push([w.a, i], [w.b, -i]); }); return out; }
+      case "TLINE": { const [i1, i2] = e.branches.map(b => x[b]); return [[nd[0], i1], [nd[1], -i1], [nd[2], i2], [nd[3], -i2]]; }
       case "TRIODE": { const s = deviceState(e, x); return [[nd[0], s.ia], [nd[1], s.ig], [nd[2], -(s.ia + s.ig)]]; }
       case "PENTODE": { const s = deviceState(e, x); return [[nd[0], s.ia], [nd[1], s.ig], [nd[2], s.ig2], [nd[3], -(s.ia + s.ig + s.ig2)]]; }
       case "BJT": return Semi.bjt(v, e.model).map((i, k) => [nd[k], i]);
@@ -2297,12 +2335,14 @@
       // the circuit's size, and the answer does not hang on rounding as an extrapolation does. A step
       // that does not lower the residual is damped (Levenberg–Marquardt); when Newton stops gaining,
       // or the time runs short, the plain settling below carries on from the best state found.
-      if (!opts.noShooting) {
+      // a transmission line longer than a step keeps waves no state holds: plain settling only
+      const longLine = circ.els.some(e => e.kind === "TLINE" && e.td > hc * (1 - 1e-9));
+      if (!opts.noShooting && !longLine) {
         // the state: node voltages (the capacitors' charge) and inductor and winding currents; a
         // voltage source's current is no state (each step makes it anew), so it is neither moved nor compared
         const st = [];
         for (let i = 0; i < nodeCount - 1; i++) st.push(i);
-        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); else if (LATCHED.has(e.kind)) st.push(e.latch); else if (e.kind === "LDR") st.push(e.light); });
+        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); else if (LATCHED.has(e.kind)) st.push(e.latch); else if (e.kind === "LDR") st.push(e.light); else if (e.kind === "TLINE") e.branches.forEach(b => st.push(b)); });
         // each part of the state weighed by its size over a period (a winding's current may pass zero
         // just as the period starts): one period run while the peaks are noted
         peak = new Float64Array(x.length);
@@ -2390,7 +2430,7 @@
         worst = Math.max(worst, off);
         if (worst > 1e-4) progress(0.05 + 0.83 * Math.max(0, Math.min(1, Math.log(worst / off) / Math.log(worst / 1e-4))));
         hist.push(x.slice());
-        if (hist.length >= 7 && !opts.noExtrapolate) {
+        if (hist.length >= 7 && !opts.noExtrapolate && !longLine) {
           const xe = mpeExtrapolate(hist);
           // accept the jump only if it lands somewhere sane
           if (xe && xe.every(isFinite) && periodChange(xe, x) < 0.5) { x = xe; xBack = null; extrapolations++; }
@@ -2906,6 +2946,7 @@
     const inputs = new Map((opts.inputs || []).map(i => [i.id, i]));
     const drive = (e, k, sign) => { const inp = inputs.get(e.id); if (!inp) return; const ph = (inp.phase || 0) * Math.PI / 180, m = inp.mag === undefined ? 1 : inp.mag; rhs[k] += sign * m * Math.cos(ph); rhs[n + k] += sign * m * Math.sin(ph); };
     for (let i = 1; i < nN; i++) addG(i, i, 1e-12);
+    const tl = [];   // transmission lines: their delays go in at each frequency (acSolve)
     for (const e of circ.els) {
       const nd = e.nodes;
       switch (e.kind) {
@@ -2927,6 +2968,12 @@
           if (nd[2] > 0) Gm[at(e.branch, nd[2] - 1)] -= e.gain;
           if (nd[3] > 0) Gm[at(e.branch, nd[3] - 1)] += e.gain;
           break;
+        case "TLINE": {
+          const [b1, b2] = e.branches;
+          branch(nd[0], nd[1], b1); branch(nd[2], nd[3], b2); Gm[at(b1, b1)] -= e.z0; Gm[at(b2, b2)] -= e.z0;
+          tl.push(e);
+          break;
+        }
         case "G": addG(nd[0], nd[2], e.gm); addG(nd[0], nd[3], -e.gm); addG(nd[1], nd[2], -e.gm); addG(nd[1], nd[3], e.gm); break;
         case "B": {
           const xs = Float64Array.from(x), J = bSlopes(e, xs, 0, true);
@@ -2975,7 +3022,7 @@
         case "LDR": Gm[at(e.light, e.light)] = 1; stamp2(addG, nd[0], nd[1], ldrG(e.model, x[e.light])[0]); break;
       }
     }
-    return { ok: true, circ, n, nN, Gm, Bm, rhs, x };
+    return { ok: true, circ, n, nN, Gm, Bm, rhs, x, tl };
   }
   // Y(ω) solved for several right-hand sides at once (each [re, im] of length n, overwritten with
   // the solution), or with Yᵀ (transpose: the adjoint, for noise); complex Gaussian elimination
@@ -2985,6 +3032,13 @@
     const Ar = sys.Ar || (sys.Ar = new Float64Array(n * n)), Ai = sys.Ai || (sys.Ai = new Float64Array(n * n));
     if (transpose) { for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { Ar[at(i, j)] = Gm[at(j, i)]; Ai[at(i, j)] = w * Bm[at(j, i)]; } }
     else for (let i = 0; i < n * n; i++) { Ar[i] = Gm[i]; Ai[i] = w * Bm[i]; }
+    // a transmission line's far-end wave, delayed: −e^(−jω·td)·(v + z0·i) in each port's row
+    (sys.tl || []).forEach(e => {
+      const kr = -Math.cos(w * e.td), ki = Math.sin(w * e.td), nd = e.nodes, [b1, b2] = e.branches;
+      const put = (r, c, s) => { const q = transpose ? at(c, r) : at(r, c); Ar[q] += s * kr; Ai[q] += s * ki; };
+      const far = (row, p, m, br) => { if (p > 0) put(row, p - 1, 1); if (m > 0) put(row, m - 1, -1); put(row, br, e.z0); };
+      far(b1, nd[2], nd[3], b2); far(b2, nd[0], nd[1], b1);
+    });
     const R = rhsList.length;
     for (let c = 0; c < n; c++) {
       let p = c, best = 0;

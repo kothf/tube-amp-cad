@@ -6,6 +6,26 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.214.0] - 2026-11-14
+
+Phase 5 of the simulation engine plan, item 2: lossless transmission lines.
+
+### Added
+- **Lossless transmission lines in a SPICE part.** `T a1 b1 a2 b2 Z0=… TD=…` is simulated, and so are `F=` with `NL=` (a quarter wave when NL is left out) and PSpice's per-length `L`, `C` and `LEN`.
+  - The engine's new TLINE element follows Branin's method: each port is Z0 in series with the wave that left the other port TD earlier. The waves of the solved steps are kept, and a time between two steps is interpolated.
+  - A line shorter than the time step still works: the delay lands inside the step and is solved with it.
+  - At DC the line is a wire. In the frequency response, the noise and the loop gain the delay is exact (e^(−jωTD)).
+  - The steady-state search (shooting) runs as before for a line shorter than a step, with the line's currents as part of the state. A longer line keeps waves no state holds, so that circuit settles by plain stepping instead.
+  - Refused, with the reason: lossy lines (`O`, `U`, and `T` with R or G).
+
+### Tests
+- `tests/fixtures/tlinedev.lib`: a 50 Ω line of 100 µs between mismatched ends, a 600 Ω quarter wave at 50 kHz given by F and NL into a resistor and a capacitor, and a matched 75 Ω line of 1 µs, shorter than a time step. `tests/models.mjs` checks them against ngspice:
+  - the operating points, exactly;
+  - the response from 10 Hz to 1 MHz, within 0.0001 dB;
+  - a 1 kHz square wave through them, within 0.83 % of its swing.
+- `tests/spicenet.test.mjs`: the three spellings, a matched line delaying a sine by TD (waveform and AC), and the refusals.
+- The ngspice waveform harness deletes the last bench's data before each run, so a run that gives none cannot pass on old data. A bench can settle for fewer periods in ngspice (`settle`).
+
 ## [3.213.0] - 2026-11-14
 
 Phase 5 of the simulation engine plan, item 1: LAPLACE sources and FREQ tables.

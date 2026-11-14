@@ -137,6 +137,12 @@ const ampBench = (sub, vs) => `.subckt bench inp inn out\nVp vp 0 ${vs}\nVn vn 0
   check(ld.v && Object.keys(want).every(k => Math.abs(ld.v[k] - want[k]) < (k === "fr" ? 1e-4 : 1e-6)), `LAPLACE sources and a FREQ table, operating points at H(0): ${ld.error || Object.keys(want).map(k => `${k} ${ld.v[k].toFixed(6)} V`).join(", ")}`);
   const lac = compareAc(la, "", "bench", lpins, lpins.slice(1), 1e5, lng);
   check(!lac.error && !lac.dead && lac.all[0] <= 0.01 && lac.all[1] <= 0.1, `LAPLACE sources and a FREQ table, 10 Hz to 100 kHz: ${lac.error || `within ${lac.all[0].toFixed(4)} dB and ${lac.all[1].toFixed(3)}° of ngspice (${lac.at})`}`);
+  // lossless transmission lines (T): mismatched, a quarter wave by F= and NL=, one shorter than a time step
+  const tl = fixture("tlinedev.lib"), tj = tl.search(/^\.subckt bench/m), tpins = ["in", "o1", "m2", "o2", "o3"];
+  const td = compare(tl.slice(0, tj), tl.slice(tj), "bench", tpins);
+  check(td.a.v && td.b.v && td.worst < 1e-6, `transmission lines, operating points: ${td.a.error || td.b.error || `within ${(td.worst * 100).toFixed(5)} % of ngspice (${td.at})`}`);
+  const tac = compareAc(tl.slice(0, tj), tl.slice(tj), "bench", tpins, tpins.slice(1));
+  check(!tac.error && !tac.dead && tac.all[0] <= 0.01 && tac.all[1] <= 0.1, `transmission lines, 10 Hz to 1 MHz: ${tac.error || `within ${tac.all[0].toFixed(4)} dB and ${tac.all[1].toFixed(3)}° of ngspice (${tac.at})`}`);
 }
 
 // --- 1a: temperature: makers' transistor models at −20, 75 and 125 °C (their XTI, EG, XTB from TNOM) ---
@@ -197,13 +203,14 @@ function oursTran(text, sub, d) {
 }
 function theirsTran(text, sub, d, pins, dt, n) {
   // a step either side of the window, so each sample can be matched within a step
-  const cir = join(work, "t.cir"), data = join(work, "t.txt"), t0 = SETTLE / d.f - dt, t1 = SETTLE / d.f + dt * n;
+  const cir = join(work, "t.cir"), data = join(work, "t.txt"), t0 = (d.settle || SETTLE) / d.f - dt, t1 = (d.settle || SETTLE) / d.f + dt * n;
   writeFileSync(cir, `* bench\n${text}\n${driveSpice(d)}\nX0 ${pins.join(" ")} ${sub}\n.options method=gear\n.control\nset noaskquit\nset wr_singlescale\nset wr_vecnames\noption numdgt=9\ntran ${dt / 16} ${t1} ${t0} ${dt / 16}\nlinearize\nwrdata ${data} ${pins.map(p => `v(${p})`).join(" ")}\n.endc\n.end\n`, "latin1");
-  let out = ""; try { out = execFileSync(NGSPICE, ["-b", cir], { encoding: "latin1", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { out = String(e.stdout || "") + String(e.stderr || ""); }
+  rmSync(data, { force: true });   // (a run that gives no data must not read the last bench's)
+  let out = ""; try { out = execFileSync(NGSPICE, ["-b", cir], { encoding: "latin1", timeout: 300000, stdio: ["ignore", "pipe", "pipe"] }); } catch (e) { out = String(e.stdout || "") + String(e.stderr || ""); }
   let txt = ""; try { txt = readFileSync(data, "utf8"); } catch { return { error: (out.match(/error[^\n]*/gi) || ["no result"]).slice(0, 2).join(" | ") }; }
   const lines = txt.trim().split("\n"), head = lines[0].trim().split(/\s+/), rows = lines.slice(1).map(l => l.trim().split(/\s+/).map(Number));
   const at = (p, t) => { const k = head.indexOf(`v(${p})`), x = Math.max(0, (t - t0) / (dt / 16)), i = Math.min(Math.floor(x), rows.length - 2), u = x - i; return rows[i][k] + (rows[i + 1][k] - rows[i][k]) * u; };
-  return { at, t: j => SETTLE / d.f + j * dt };
+  return { at, t: j => (d.settle || SETTLE) / d.f + j * dt };
 }
 // the largest difference at any sample, as a share of the waveform's swing in ngspice; a sample
 // matches ngspice's waveform anywhere within one of the simulator's time steps of it (an edge
@@ -255,6 +262,9 @@ function compareTran(text, sub, d, ngText = text) {
   // a square wave through the LAPLACE sources, against s_xfer
   const la = fixture("lapdev.lib"), lt = compareTran(la, "filters", { wave: "square", f: 300, amp: 1 }, lapNg(la));
   check(!lt.error && lt.worst <= 0.02, `waveform of LAPLACE sources and a FREQ table (a 300 Hz square wave): ${lt.error || `within ${(lt.worst * 100).toFixed(2)} % of its swing (worst ${lt.at})`}`);
+  // a square wave through the transmission lines: the reflections' steps on the mismatched one
+  const tw = compareTran(fixture("tlinedev.lib"), "lines", { wave: "square", f: 1e3, amp: 1, settle: 4 });   // (settled in microseconds; ngspice's steps are slow with lines)
+  check(!tw.error && tw.worst <= 0.02, `waveform through transmission lines (a 1 kHz square wave): ${tw.error || `within ${(tw.worst * 100).toFixed(2)} % of its swing (worst ${tw.at})`}`);
 }
 
 // --- 2: makers' models ---
