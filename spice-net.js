@@ -6,7 +6,8 @@
    the subcircuits it calls, into the simulator's own elements on local nodes:
      R C L K · V I (their DC values) · D Q M J with their .MODEL (diode, Gummel–Poon BJT,
      level 1 to 3 MOSFET by its own equations with its bulk, LTspice's VDMOS as the square law, JFET) · E G F H, linear,
-     VALUE = {…}, TABLE and POLY(n) · B (I = or V =) · S and W switches · X.
+     VALUE = {…}, TABLE and POLY(n), LAPLACE (H(s) as a state-space network) and FREQ (a table fitted
+     to H(s) by vector fitting) · B (I = or V =, Laplace=) · S and W switches · X.
    What depends on voltages or currents by an expression becomes a behavioural source
    (the engine's kind B) with a closed expression tree: parameters are numbers by then,
    .FUNC bodies are inlined, nodes are the element's own.
@@ -17,8 +18,8 @@
    chargeAt); a transistor's transit times TF and TR store charge in the waveform and the
    small-signal analyses; a VDMOS's Cgd follows CGDMIN … CGDMAX (A). A transistor's temperature
    terms (XTI, EG, XTB, TNOM) set it at another temperature, or as it heats itself (build's spec).
-   Not carried over: the other temperature terms and noise parameters. Not supported (an error): LAPLACE and FREQ sources,
-   transmission lines, BSIM MOSFETs, time-dependent expressions.
+   Not carried over: the other temperature terms and noise parameters. Not supported (an error): CHEBYSHEV
+   sources, transmission lines, BSIM MOSFETs, time-dependent expressions.
 
    build(spec, pinNodes, alloc, id) gives the engine's elements for one part of a circuit.
    ============================================================================= */
