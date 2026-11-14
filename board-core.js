@@ -41,7 +41,10 @@
       viaDrill: 0.8, viaPad: 1.8, minDrill: 0.6, minAnnular: 0.3,
       maskExpansion: 0.05, tentVias: true,                        // solder mask: opening around pads; vias covered
       tempRise: 10,                                               // °C a track may warm up at its DC current (IPC-2221, outer layer)
-      netClass: {},                                               // net name -> "Signal" | "Power" | "HV"
+      netClass: {},                                               // net name -> "Signal" | "Power" | "HV" | one of classes[].name
+      classes: [],                                                // your own net classes: { name, track, clearance, viaDrill, viaPad }
+      matrix: {},                                                 // class-to-class clearance: "A|B" (names sorted) -> mm
+      netRule: {},                                                // one net's own width / clearance: net name -> { track, clearance }
       ipc: "B2",                                                  // clearance by voltage: IPC-2221B table B2 | B4 | A6 | off
       heaters: true, heater126: false, shields: true,             // heater wiring on the board; 12AX7-type heaters at 12.6 V; internal shields to GND
       stopperMax: 10, couplingLen: 10, couplingGap: 2, heatGap: 10, hotWatts: 1, socketHole: 40,   // valve layout checks (mm, W)
@@ -53,9 +56,24 @@
     };
   }
   const CLASSES = ["Signal", "Power", "HV"];
+  // the classes a net may belong to: the three built in, then your own (Board ▾ → Design rules…)
+  const userClasses = R => (Array.isArray(R && R.classes) ? R.classes.filter(c => c && typeof c.name === "string" && c.name && !CLASSES.includes(c.name)) : []);
+  const classNames = R => CLASSES.concat(userClasses(R).map(c => c.name));
+  const pairKey = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
+  // the rules as saved: your own classes, the matrix and the per-net rules kept only where they make sense
+  function normaliseRules(R) {
+    const pos = v => Number.isFinite(+v) && +v > 0;
+    const seen = new Set(), classes = (Array.isArray(R.classes) ? R.classes : []).filter(c => c && typeof c.name === "string" && c.name.trim() && !CLASSES.includes(c.name.trim()) && !seen.has(c.name.trim()) && seen.add(c.name.trim()))
+      .map(c => ({ name: c.name.trim(), track: pos(c.track) ? +c.track : R.track, clearance: pos(c.clearance) ? +c.clearance : R.clearance, ...(pos(c.viaDrill) ? { viaDrill: +c.viaDrill } : {}), ...(pos(c.viaPad) ? { viaPad: +c.viaPad } : {}) }));
+    const names = new Set(CLASSES.concat(classes.map(c => c.name))), matrix = {};
+    Object.entries(R.matrix && typeof R.matrix === "object" ? R.matrix : {}).forEach(([k, v]) => { const [a, b] = k.split("|"); if (names.has(a) && names.has(b) && pos(v)) matrix[pairKey(a, b)] = +v; });
+    const netRule = {};
+    Object.entries(R.netRule && typeof R.netRule === "object" ? R.netRule : {}).forEach(([n, o]) => { if (!o) return; const r = {}; if (pos(o.track)) r.track = +o.track; if (pos(o.clearance)) r.clearance = +o.clearance; if (Object.keys(r).length) netRule[n] = r; });
+    return { ...R, classes, matrix, netRule };
+  }
   function netClassOf(net, names, hv, R) {
     const m = R.netClass && R.netClass[names[net]];
-    if (CLASSES.includes(m)) return m;
+    if (m && classNames(R).includes(m)) return m;
     if (hv && hv.has(net)) return "HV";
     return names[net] === "GND" || isHeaterNet(names[net]) ? "Power" : "Signal";
   }
@@ -72,7 +90,25 @@
     (netlist.parts || []).forEach(p => p.pins.forEach(q => { if (q.net === undefined || q.net === null || !Number.isFinite(q.i)) return; out[q.net] = Math.max(out[q.net] || 0, Math.abs(q.i)); }));
     return out;
   }
-  const classRule = (cls, R) => ({ track: cls === "Signal" ? R.track : R.power, clearance: cls === "HV" ? R.hvClearance : R.clearance });
+  /** A class's rule: { track, clearance, viaDrill, viaPad } (the three built in from the rules' own fields) */
+  function classRule(cls, R) {
+    const u = !CLASSES.includes(cls) && userClasses(R).find(c => c.name === cls);
+    if (u) return { track: u.track > 0 ? u.track : R.track, clearance: u.clearance > 0 ? u.clearance : R.clearance, viaDrill: u.viaDrill > 0 ? u.viaDrill : R.viaDrill, viaPad: u.viaPad > 0 ? u.viaPad : R.viaPad };
+    return { track: cls === "Power" || cls === "HV" ? R.power : R.track, clearance: cls === "HV" ? R.hvClearance : R.clearance, viaDrill: R.viaDrill, viaPad: R.viaPad };
+  }
+  /** One net's rule: its class's, with the net's own width or clearance in its place where set.
+      Returns { cls, track, clearance, viaDrill, viaPad, own: { track, clearance } | null } */
+  function netRule(net, names, hv, R) {
+    const cls = net === null || net === undefined || net === "short" ? "Signal" : netClassOf(net, names, hv, R), r = classRule(cls, R), own = (R.netRule || {})[names[net]] || null;
+    return { cls, ...r, track: own && own.track > 0 ? own.track : r.track, clearance: own && own.clearance > 0 ? own.clearance : r.clearance, own };
+  }
+  // rule areas: keep-outs that carry a rule ({ clearance, track, minTrack }) for the copper inside them
+  const ruleAreas = board => (board.keepouts || []).filter(k => k && k.rule && Array.isArray(k.pts) && k.pts.length >= 3);
+  /** The rule areas an item (a conn item: s, r, layers) lies in or touches */
+  function areasOf(board, it) {
+    if (!it || !it.s) return [];
+    return ruleAreas(board).filter(k => koLayers(k).some(l => !it.layers || it.layers.includes(l)) && segInPoly(it.s, k.pts, it.r || 0));
+  }
   // board-outline.js: boards that are not a plain rectangle (outline.shape: an edge of lines and arcs, cut-outs)
   const OL = () => root.BoardOutline, shaped = o => !!(o && o.shape && OL() && OL().isShape(o));
   // signed distance from the board edge, positive inside (a rectangle with rounded corners, or the
@@ -102,11 +138,11 @@
       outline: cleanOutline({ ...d.outline, ...(b.outline || {}) }),
       stackup: { ...d.stackup, ...(b.stackup || {}) },
       sheet: { ...d.sheet, ...(b.sheet || {}) },
-      rules: { ...d.rules, ...(b.rules || {}), netClass: { ...((b.rules || {}).netClass || {}) }, checks: { ...d.rules.checks, ...((b.rules || {}).checks || {}) } },
+      rules: normaliseRules({ ...d.rules, ...(b.rules || {}), netClass: { ...((b.rules || {}).netClass || {}) }, checks: { ...d.rules.checks, ...((b.rules || {}).checks || {}) } }),
       holes: Array.isArray(b.holes) ? b.holes : [],
       texts: Array.isArray(b.texts) ? b.texts : [],
       zones: Array.isArray(b.zones) ? b.zones.filter(z => z && COPPER.includes(z.layer)) : [],
-      keepouts: Array.isArray(b.keepouts) ? b.keepouts.filter(k => k && Array.isArray(k.pts) && k.pts.length >= 3) : [],
+      keepouts: Array.isArray(b.keepouts) ? b.keepouts.filter(k => k && Array.isArray(k.pts) && k.pts.length >= 3).map(k => (k.rule ? { ...k, tracks: false, vias: false, pour: false, parts: false } : k)) : [],
       parts: b.parts && typeof b.parts === "object" ? b.parts : {},
       tracks: Array.isArray(b.tracks) ? b.tracks.filter(t => t && Array.isArray(t.pts) && t.pts.length >= 2 && COPPER.includes(t.layer)) : [],
       vias: Array.isArray(b.vias) ? b.vias : []
@@ -1503,7 +1539,6 @@
     const R = board.rules, zones = board.zones || [], o = board.outline;
     if (!zones.length || !model) return [];
     const byName = {}; Object.entries(model.names).forEach(([n, nm]) => { byName[nm] = isNaN(+n) ? n : +n; });
-    const cls = n => (n === null || n === undefined || n === "short" ? "Signal" : netClassOf(n, model.names, hv, R));
     // an item's net: from the copper it touches, else the net stored on the track or via
     const netOf = it => {
       if (it.net !== null && it.net !== undefined) return it.net;
@@ -1512,8 +1547,8 @@
     };
     const nx = Math.max(1, Math.ceil(o.w / RES)), ny = Math.max(1, Math.ceil(o.h / RES)), CR = clearanceRules(board, model, hv, netlist);
     return zones.map((z, zi) => {
-      const net = byName[z.net], L = z.layer, poly = zonePoly(board, z), zc = classRule(cls(net), R).clearance;
-      const need = n => Math.max(zc, classRule(cls(n), R).clearance, CR.need(net, n).c), gapT = z.gap > 0 ? z.gap : 0.5, spoke = z.spoke > 0 ? z.spoke : 0.8;
+      const net = byName[z.net], L = z.layer, poly = zonePoly(board, z), zc = netRule(net, model.names, hv, R).clearance;
+      const need = (n, it) => CR.need(net, n, null, it).c, gapT = z.gap > 0 ? z.gap : 0.5, spoke = z.spoke > 0 ? z.spoke : 0.8;
       const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]), bx1 = Math.min(...xs), bx2 = Math.max(...xs), by1 = Math.min(...ys), by2 = Math.max(...ys);
       const near = (s, r) => Math.max(s[0], s[2]) + r >= bx1 && Math.min(s[0], s[2]) - r <= bx2 && Math.max(s[1], s[3]) + r >= by1 && Math.min(s[1], s[3]) - r <= by2;
       const ops = [{ pol: "D", t: "region", pts: poly }], own = [], others = [];
@@ -1529,7 +1564,7 @@
         if (!it.layers.includes(L)) return;
         const n = netOf(it);
         if (net !== undefined && n === net) { if (it.kind === "pad" && z.thermal !== false) own.push(it); return; }
-        const c = need(n); others.push({ it, c });
+        const c = need(n, it); others.push({ it, c });
         if (near(it.s, it.r + c)) ops.push(itemOp("C", it, c));
       });
       const hcm = Math.max(zc, CR.toChassis(net).c);
@@ -1692,7 +1727,7 @@
       const a = items[i], b = items[j];
       if (a.cluster === b.cluster || !shareLayer(a, b)) continue;
       if (a.kind === "pad" && b.kind === "pad" && a.pad.part === b.pad.part) continue;   // within a footprint: the maker's spacing
-      const ca = cls(a.net), cb = cls(b.net), g = gap(a, b), rq = CR.need(a.net, b.net);
+      const ca = cls(a.net), cb = cls(b.net), g = gap(a, b), rq = CR.need(a.net, b.net, a, b);
       let need = rq.c;
       if (g < need - 1e-6 && a.kind !== b.kind && (a.kind === "pad" || b.kind === "pad") && (a.kind === "track" || b.kind === "track")) {
         const [t, p] = a.kind === "track" ? [a, b] : [b, a], eg = entryGap(t.s, p, items);
@@ -1705,12 +1740,12 @@
       if (g < need - 1e-6 && a.kind === "track" && b.kind === "track" && anchoredOk(a, b, g, need, items)) continue;
       if (g < need - 1e-6) {
         const [x, y] = nearest(a.s, b.s), hvx = ca === "HV" || cb === "HV";
-        out.push({ kind: "clearance", x, y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm${vNote(rq, hvx)}`, between: [label(a), label(b)] });
+        out.push({ kind: "clearance", x, y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm${vNote(rq, hvx)}${rq.area && !rq.ipc ? ` (rule area "${rq.area}")` : ""}`, between: [label(a), label(b)] });
       }
     }
     // mounting holes against copper (a part's own unplated hole: the net class's clearance, its own pads too)
     if (on("clearance")) npHoles(board, model).forEach(hl => items.forEach(it => {
-      const rq = hl.part ? { c: 0 } : CR.toChassis(it.net), g = segItem([hl.x, hl.y, hl.x, hl.y], it) - hl.d / 2, need = Math.max(classRule(cls(it.net), R).clearance, rq.c);
+      const rq = hl.part ? { c: 0 } : CR.toChassis(it.net), g = segItem([hl.x, hl.y, hl.x, hl.y], it) - hl.d / 2, need = Math.max(netRule(it.net, model.names, hv, R).clearance, rq.c);
       if (g < need - 1e-6) out.push({ kind: "clearance", x: hl.x, y: hl.y, msg: `Clearance ${Math.max(0, g).toFixed(2)} mm < ${+need.toFixed(2)} mm to ${hl.part ? `${hl.ref}'s unplated hole` : "a mounting hole (its screw is at chassis potential)"}${rq.ipc ? `; ${Math.round(rq.v)} V: IPC-2221B ${CR.table}` : ""}`, between: [label(it), hl.part ? `${hl.ref} hole` : "hole"] });
     }));
     if (on("short")) conn.clusters.forEach(c => { if (c.nets.size > 1) { const p = c.pads[0]; out.push({ kind: "short", x: p.x, y: p.y, msg: `Short between ${[...c.nets].map(n => model.names[n] || n).join(" and ")}` }); } });
@@ -1768,12 +1803,16 @@
       if (it && (want === undefined || String(it.net) !== String(want))) out.push({ kind: "dangling", x: h.x, y: h.y, msg: want === undefined ? `Plated hole: there is no net ${h.net}` : `Plated hole for ${h.net} is not connected to it: run a track or a ${h.net} pour to its ring` });
     });
     // track widths: the minimum, and the width of the net's class
+    // inside a rule area its own minimum and width hold (a neck-down between fine-pitch pins)
+    const RA = ruleAreas(board).filter(k => k.rule.track > 0 || k.rule.minTrack > 0);
     if (on("width") || on("class")) board.tracks.forEach((t, ti) => {
       const it = items.find(x => x.kind === "track" && x.ti === ti), p = t.pts[0];
-      if (on("width") && t.w < R.minTrack - 1e-6) out.push({ kind: "width", x: p[0], y: p[1], msg: `Track ${t.w} mm narrower than the minimum ${R.minTrack} mm` });
+      const segs = t.pts.slice(1).map((q, k) => [t.pts[k][0], t.pts[k][1], q[0], q[1]]), inA = RA.filter(k => koLayers(k).includes(t.layer) && segs.length && segs.every(sg => segInPoly(sg, k.pts, 0) && pip((sg[0] + sg[2]) / 2, (sg[1] + sg[3]) / 2, k.pts)));
+      const minT = inA.some(k => k.rule.minTrack > 0) ? Math.min(...inA.filter(k => k.rule.minTrack > 0).map(k => +k.rule.minTrack)) : R.minTrack;
+      if (on("width") && t.w < minT - 1e-6) out.push({ kind: "width", x: p[0], y: p[1], msg: `Track ${t.w} mm narrower than the minimum ${minT} mm${minT !== R.minTrack ? ` of rule area "${inA[0].name || "rule area"}"` : ""}` });
       else if (on("class") && it && it.net !== null && it.net !== "short") {
-        const c = cls(it.net), want = classRule(c, R).track;
-        if (t.w < want - 1e-6) out.push({ kind: "class", x: p[0], y: p[1], msg: `Track on ${model.names[it.net] || it.net} (${c}) is ${t.w} mm; the class asks ${want} mm` });
+        const r = netRule(it.net, model.names, hv, R), aw = inA.filter(k => k.rule.track > 0), want = aw.length ? Math.min(...aw.map(k => +k.rule.track)) : r.track;
+        if (t.w < want - 1e-6) out.push({ kind: "class", x: p[0], y: p[1], msg: `Track on ${model.names[it.net] || it.net} (${r.own && r.own.track ? "its own rule" : r.cls}) is ${t.w} mm; ${aw.length ? `rule area "${aw[0].name || "rule area"}"` : r.own && r.own.track ? "the net" : "the class"} asks ${want} mm` });
       }
     });
     // pours: a net that is not in the schematic; pours of different nets overlapping on a layer
@@ -2056,8 +2095,8 @@
   /** Each net with its class (manual or automatic), voltage, width and clearance — for the rules window */
   function netTable(board, model, hv, volts) {
     const R = board.rules, nets = [...new Set(model.pads.filter(p => p.net !== null).map(p => p.net))];
-    return nets.map(n => { const name = model.names[n] || String(n), c = netClassOf(n, model.names, hv, R), r = classRule(c, R);
-      return { net: n, name, cls: c, manual: CLASSES.includes((R.netClass || {})[name]), volts: volts && volts[n] !== undefined ? volts[n] : null, track: r.track, clearance: r.clearance, pads: model.pads.filter(p => p.net === n).length }; })
+    return nets.map(n => { const name = model.names[n] || String(n), r = netRule(n, model.names, hv, R);
+      return { net: n, name, cls: r.cls, manual: classNames(R).includes((R.netClass || {})[name]), volts: volts && volts[n] !== undefined ? volts[n] : null, track: r.track, clearance: r.clearance, own: r.own, pads: model.pads.filter(p => p.net === n).length }; })
       .sort((a, b) => Math.abs(b.volts || 0) - Math.abs(a.volts || 0) || a.name.localeCompare(b.name));
   }
   const label = it => (it.kind === "pad" ? `${it.pad.ref}-${it.pad.num}` : it.kind === "via" ? "via" : it.kind === "hole" ? "plated hole" : `track (${it.layers[0]})`);
@@ -2242,11 +2281,14 @@
     out[0] = out[0] || { lo: 0, hi: 0, why: "" };
     return out;
   }
-  /** The clearance two nets need: the larger of their classes' clearances and, with a voltage
-      table chosen, IPC-2221B for the largest voltage between them. Returns { c, v, ipc } */
+  /** The clearance two nets need. The base: a net's own clearance when either has one set (the
+      larger of the two nets'), else the class-to-class matrix's entry for their classes, else the
+      larger of their classes' clearances. Items given (conn items) and lying in a rule area: the
+      area's clearance is the base (the largest, when in several). With a voltage table chosen,
+      IPC-2221B for the largest voltage between them is the floor. Returns { c, v, ipc, area } */
   function clearanceRules(board, model, hv, netlist) {
     const R = board.rules, names = (model && model.names) || {}, ranges = netRanges(netlist), table = R.ipc === undefined ? "B2" : R.ipc;
-    const cls = n => (n === null || n === undefined || n === "short" ? "Signal" : netClassOf(n, names, hv, R));
+    const nr = n => netRule(n, names, hv, R), M = R.matrix || {}, areas = ruleAreas(board).filter(k => k.rule.clearance > 0);
     const span = n => (n === null || n === undefined || n === "short" ? null : ranges[n] || null);
     const between = (a, b) => {
       const ra = span(a), rb = span(b);
@@ -2256,9 +2298,22 @@
       return Math.max(Math.abs(A.hi - Bq.lo), Math.abs(Bq.hi - A.lo));
     };
     const memo = new Map();
-    function need(a, b) {
+    function baseOf(a, b) {
+      const ra = nr(a), rb = nr(b);
+      if ((ra.own && ra.own.clearance > 0) || (rb.own && rb.own.clearance > 0)) return Math.max(ra.clearance, rb.clearance);
+      const m = M[pairKey(ra.cls, rb.cls)];
+      return m > 0 ? m : Math.max(ra.clearance, rb.clearance);
+    }
+    function need(a, b, ia, ib) {
+      if (areas.length && (ia || ib)) {
+        const inA = areas.filter(k => [ia, ib].some(it => it && it.s && koLayers(k).some(l => !it.layers || it.layers.includes(l)) && segInPoly(it.s, k.pts, it.r || 0)));
+        if (inA.length) {
+          const r0 = need(a, b), base = Math.max(...inA.map(k => +k.rule.clearance)), ic = table && table !== "off" ? ipcClearance(r0.v, table) : 0;
+          return { ...r0, c: Math.max(base, ic), ipc: ic > base + 1e-9, area: inA[0].name || "rule area" };
+        }
+      }
       const k = a + "|" + b; if (memo.has(k)) return memo.get(k);
-      const base = Math.max(classRule(cls(a), R).clearance, classRule(cls(b), R).clearance), v = between(a, b), ic = table && table !== "off" ? ipcClearance(v, table) : 0;
+      const base = baseOf(a, b), v = between(a, b), ic = table && table !== "off" ? ipcClearance(v, table) : 0;
       const r = { c: Math.max(base, ic), v, ipc: ic > base + 1e-9, why: (span(a) || {}).why || (span(b) || {}).why || "" };
       memo.set(k, r); memo.set(b + "|" + a, r); return r;
     }
@@ -2267,5 +2322,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { registerFootprints, isCustom, gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, CLASSES, netClassOf, classRule, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { registerFootprints, isCustom, gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, normaliseRules, CLASSES, classNames, userClasses, pairKey, netClassOf, classRule, netRule, ruleAreas, areasOf, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

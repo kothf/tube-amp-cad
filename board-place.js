@@ -680,7 +680,7 @@
   // what the checks share: the pads at the ends of open connections, track widths, clearances
   function checkCtx(board, model, conn, rats, o) {
     const C = B(), R = board.rules, names = model.names, amps = o.amps || {};
-    const widthOf = n => (n === null || n === undefined ? R.track : Math.max(C.classRule(C.netClassOf(n, names, o.hv, R), R).track, Math.ceil(C.currentWidth(amps[n], R, board.stackup) * 20) / 20));
+    const widthOf = n => (n === null || n === undefined ? R.track : Math.max(C.netRule(n, names, o.hv, R).track, Math.ceil(C.currentWidth(amps[n], R, board.stackup) * 20) / 20));
     const need = (a, b) => (o.clr ? o.clr.need(a, b).c : R.clearance);
     const padItem = new Map(conn.items.filter(it => it.kind === "pad").map(it => [it.pad, it]));
     const at = (x, y) => `${x.toFixed(3)},${y.toFixed(3)}`, padAt = new Map(model.pads.map(p => [at(p.x, p.y), p]));
@@ -1064,7 +1064,7 @@
       const flush = () => { const simple = pts.filter((q, n) => n === 0 || n === pts.length - 1 || Math.abs((q[0] - pts[n - 1][0]) * (pts[n + 1][1] - q[1]) - (q[1] - pts[n - 1][1]) * (pts[n + 1][0] - q[0])) > 1e-9).filter((q, n, arr) => n === 0 || Math.hypot(q[0] - arr[n - 1][0], q[1] - arr[n - 1][1]) > 1e-6); if (simple.length > 1) add.tracks.push({ layer: Ly, w, pts: simple.map(q => [+q[0].toFixed(4), +q[1].toFixed(4)]), net }); };
       seq.forEach((c, n) => {
         const q = [cx(c), cy(c)], l2 = L[layerOf(c)];
-        if (n && l2 !== Ly) { flush(); add.vias.push({ x: +q[0].toFixed(4), y: +q[1].toFixed(4), drill: R.viaDrill, pad: R.viaPad, net }); pts = [q]; Ly = l2; return; }
+        if (n && l2 !== Ly) { flush(); const vr = C.netRule(p.net, names, o.hv, R); add.vias.push({ x: +q[0].toFixed(4), y: +q[1].toFixed(4), drill: vr.viaDrill, pad: vr.viaPad, net }); pts = [q]; Ly = l2; return; }
         pts.push(q);
       });
       pts.push([eb.x, eb.y]); flush();

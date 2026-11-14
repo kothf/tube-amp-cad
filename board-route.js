@@ -141,7 +141,12 @@
     const nameOf = new Map(), dsnNames = {}, nm = namer();
     nets.forEach(n => { const s = nm(netName(n)); nameOf.set(n, s); dsnNames[s] = n; });
     const amps = o.amps || {};
-    const widthOf = n => Math.max(C.classRule(C.netClassOf(n, names, o.hv, R), R).track, Math.ceil(C.currentWidth(amps[n], R, board.stackup) * 20) / 20);
+    const ruleOf = n => C.netRule(n, names, o.hv, R);
+    const widthOf = n => Math.max(ruleOf(n).track, Math.ceil(C.currentWidth(amps[n], R, board.stackup) * 20) / 20);
+    // vias: each net's class gives their size; a padstack for each size (V<pad µm>)
+    const viaStack = pd => `V${um(pd)}`, viaSizes = {};
+    [{ viaPad: R.viaPad, viaDrill: R.viaDrill }].concat(nets.map(ruleOf)).forEach(r => { viaSizes[viaStack(r.viaPad)] = { pad: r.viaPad, drill: r.viaDrill }; });
+    board.vias.forEach(v => { const pd = v.pad || R.viaPad; if (!viaSizes[viaStack(pd)]) viaSizes[viaStack(pd)] = { pad: pd, drill: v.drill || R.viaDrill }; });
     // valve socket pins (with the design rule on): under the socket's body a track may pass a pin as
     // close as its neighbour is; that is near the pin anyway, so each such pin gets a clearance class
     // of its own (p<net>.<k>) with that spacing as the most any track needs from it
@@ -180,7 +185,7 @@
         else if (k.vias !== false) w(`    (via_keepout ${q(k.name || "")} (polygon ${L} 0 ${P}) (clearance_class zero))`);
       });
     });
-    w(`    (via "V${um(R.viaPad)}")`);
+    w(`    (via ${q(viaStack(R.viaPad))})`);
     w(`    (rule`);
     w(`      (width ${um(R.track)})`);
     w(`      (clearance ${um(R.clearance)})`);
@@ -224,7 +229,7 @@
     });
     plated.forEach(({ h, i }) => { const ps = { name: `C${um(C.holeRing(h))}`, shape: L => `(circle ${L} ${um(C.holeRing(h))})` }; stacks.set(ps.name, ps); w(`    (image "IMG_H${i + 1}" (pin ${ps.name} 1 0 0))`); });
     stacks.forEach(ps => w(`    (padstack ${ps.name} ${(ps.layers || cc).map(L => `(shape ${ps.shape(L)})`).join(" ")} (attach off))`));
-    w(`    (padstack "V${um(R.viaPad)}" ${cc.map(L => `(shape (circle ${L} ${um(R.viaPad)}))`).join(" ")} (attach off))`);
+    Object.entries(viaSizes).forEach(([nm, v]) => w(`    (padstack ${q(nm)} ${cc.map(L => `(shape (circle ${L} ${um(v.pad)}))`).join(" ")} (attach off))`));
     w(`  )`);
     // nets and their classes: the width each net's tracks need (its class, or its DC current)
     w(`  (network`);
@@ -235,7 +240,7 @@
     plated.forEach(({ h, i }) => { const n = holeNet(h); if (route.has(n)) pinsOf.get(n) && pinsOf.get(n).push(`H${i + 1}-1`); });
     nets.forEach(n => w(`    (net ${q(nameOf.get(n))}${pinsOf.has(n) ? ` (pins ${pinsOf.get(n).join(" ")})` : ""})`));
     // each net's vias keep its tracks' clearances: a via of its own (V<i>) in a via rule of its own
-    nets.forEach(n => w(`    (via V${cls(n)} "V${um(R.viaPad)}" t${cls(n)})`));
+    nets.forEach(n => w(`    (via V${cls(n)} ${q(viaStack(ruleOf(n).viaPad))} t${cls(n)})`));
     nets.forEach(n => w(`    (via_rule R${cls(n)} V${cls(n)})`));
     nets.forEach(n => w(`    (class c${cls(n)} ${q(nameOf.get(n))} (clearance_class t${cls(n)}) (via_rule R${cls(n)}) (rule (width ${um(widthOf(n))})))`));
     w(`  )`);
@@ -246,10 +251,10 @@
     const netTag = n => (idx.has(n) ? ` (net ${q(nameOf.get(n))})` : "");
     board.tracks.forEach((t, ti) => w(`    (wire (path ${t.layer} ${um(t.w)} ${t.pts.map(([x, y]) => pt(x, y)).join(" ")})${netTag(trackNet.get(ti))} (clearance_class t${cls(trackNet.get(ti))}) (type protect))`));
     stubs.forEach(t => w(`    (wire (path ${t.layer} ${um(t.w)} ${t.pts.map(([x, y]) => pt(x, y)).join(" ")}) (net ${q(nameOf.get(t.netKey))}) (clearance_class s${cls(t.netKey)}) (type protect))`));
-    board.vias.forEach((v, vi) => w(`    (via "V${um(R.viaPad)}" ${pt(v.x, v.y)}${netTag(viaNet.get(vi))} (clearance_class t${cls(viaNet.get(vi))}) (type protect))`));
+    board.vias.forEach((v, vi) => w(`    (via ${q(viaStack(v.pad || R.viaPad))} ${pt(v.x, v.y)}${netTag(viaNet.get(vi))} (clearance_class t${cls(viaNet.get(vi))}) (type protect))`));
     w(`  )`);
     w(`)`);
-    return { text: out.join("\n") + "\n", nets: dsnNames, skipped, stubs };
+    return { text: out.join("\n") + "\n", nets: dsnNames, skipped, stubs, viaSizes };
   }
 
   // a small s-expression reader: lists of tokens (strings keep their quotes off)
@@ -297,7 +302,8 @@
       all(n, "via").forEach(v => {
         const x = X(+v[2]), y = Y(+v[3]);
         if (board.vias.some(b => same([b.x, b.y], [x, y])) || (find(v, "type") || [])[1] === "protect") return;
-        vias.push({ x, y, drill: R.viaDrill, pad: R.viaPad, net: name });
+        const vs = (d && d.viaSizes && d.viaSizes[v[1]]) || { drill: R.viaDrill, pad: R.viaPad };
+        vias.push({ x, y, drill: vs.drill, pad: vs.pad, net: name });
       });
     });
     // an escape stub stays where a new track or via of its net touches it

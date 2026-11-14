@@ -25,6 +25,23 @@ General-purpose simulation, part 1: a free transient analysis with time sources.
 - `tests/transient-ngspice.mjs` (in `npm run test:ngspice`): ten benches against ngspice's `.tran`, every probe within 1 % of its swing at 400 instants (2 % for an RLC ring of Q 30 and a BJT switch).
 - e2e: the Transient tab on example 08 (the 555's frequency from the edges, initial-condition errors, traces, zoom, CSV, the pulse fields and the export).
 
+## [3.215.0] - 2026-11-14
+
+Board design plan, phase B1: your own design rules.
+
+### Added
+- **Your own net classes.** Board ▾ → Design rules… → *+ Add class*: a class with its own track width, clearance and via drill and pad, beside the built-in Signal, Power and HV. Nets are given to it in the net table. The routers drop vias of the class's size on its nets.
+- **Clearance between classes.** A matrix in the same window: empty, two classes keep the larger of their clearances; a value there holds between those two classes instead (more or less).
+- **A net's own width and clearance**, in the net table (empty: its class's). The order is the net's own clearance, then the matrix, then the classes; the clearance by voltage (IPC-2221B) is always the floor.
+- **Rule areas.** Board ▾ → *Draw a rule area* (also in More tools, or a keep-out's *Kind* in the inspector): copper inside keeps the area's own clearance, track width and minimum width: a neck-down between fine-pitch pins, more room round a mains entry. A pair of pieces takes the area's clearance when either lies in it; a track wholly inside takes its widths. While routing, *W* offers the area's widths. Drawn dotted violet with its values.
+- The live check, interactive routing, the grid router (per-net via size; an area's larger clearance round routes passing through it), Freerouting (a via padstack per size), pours and teardrops follow all of it.
+- **KiCad export:** your classes go into the project file with their vias; the matrix, each net's own rule and the rule areas (named KiCad rule areas with `insideArea` conditions) into the custom rules, before the voltage rules so those stay the floor.
+
+### Tests
+- `tests/board.test.mjs`: classes, matrix, net rules and their order; rule areas lowering and raising the clearance, the width inside and outside an area; cleaning of saved rules; the Specctra via padstack; the KiCad project classes and custom rules.
+- `tests/pathfinder.test.mjs`: the grid router keeps a wide class's clearance, width and vias and a rule area's larger clearance, with no clearance error after.
+- e2e (Board): a class of your own with a net in it, a matrix entry and a net's own width through the Design rules window; a rule area drawn from the Board menu.
+
 ## [3.214.0] - 2026-11-14
 
 Phase 5 of the simulation engine plan, item 2: lossless transmission lines.

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js", "board-route.js", "board-3d.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js", "board-route.js", "board-3d.js", "kicad-export.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
 const B = globalThis.BoardCore, L = globalThis.CadLib, F = globalThis.BoardFab, BR = globalThis.BoardRoute;
 // the rules before 3.113.0 (1 mm signal, 2 mm power tracks, 0.6 mm clearance): the geometry of some checks below is drawn for them
 const classic = board => (Object.assign(board.rules, { track: 1, power: 2, clearance: 0.6 }), board);
@@ -198,6 +198,82 @@ test("net classes: automatic by voltage and name, or set by hand; the HV class a
   board.tracks.push({ layer: "F.Cu", w: 1, pts: [[r1.x, r1.y], [r1.x, r1.y - 8]] });
   const m3 = B.model(board, NETLIST), c = B.connectivity(board, m3.pads);
   assert.ok(B.drc(board, m3, c, hv).some(x => x.kind === "class" && /B\+ \(HV\) is 1 mm; the class asks 2 mm/.test(x.msg)));
+});
+
+test("your own net classes, a clearance matrix between classes, each net's own rule, rule areas", () => {
+  const board = classic(B.newBoard()); B.sync(board, NETLIST);
+  board.rules.ipc = "off";
+  const m = B.model(board, NETLIST), n2 = m.names[2], n3 = m.names[3], n4 = m.names[4], none = new Set();
+  // a class of your own; nets 3 and 4 in it
+  board.rules = B.normaliseRules({ ...board.rules, classes: [{ name: "Fine", track: 0.2, clearance: 0.15, viaPad: 1.2, viaDrill: 0.5 }, { name: "Signal", track: 9 }, { name: "Fine", track: 1 }, { name: "" }], netClass: { [n3]: "Fine", [n4]: "Fine" }, matrix: { "Fine|Nope": 1, "Signal|Fine": 0.25 }, netRule: { X: { track: -1 } } });
+  assert.deepEqual(board.rules.classes.map(c => c.name), ["Fine"], "built-in names, repeats and empty names are dropped");
+  assert.deepEqual(board.rules.matrix, { "Fine|Signal": 0.25 }, "pairs of unknown classes dropped; the key sorted");
+  assert.deepEqual(board.rules.netRule, {});
+  assert.equal(B.netClassOf(3, m.names, none, board.rules), "Fine");
+  assert.deepEqual(B.classNames(board.rules), ["Signal", "Power", "HV", "Fine"]);
+  const r3 = B.netRule(3, m.names, none, board.rules);
+  assert.deepEqual([r3.cls, r3.track, r3.clearance, r3.viaPad, r3.viaDrill], ["Fine", 0.2, 0.15, 1.2, 0.5]);
+  let CR = B.clearanceRules(board, m, none, NETLIST);
+  assert.equal(CR.need(3, 4).c, 0.15, "within the class: its clearance");
+  assert.equal(CR.need(3, 2).c, 0.25, "Fine to Signal: the matrix's value, not the larger 0.6");
+  delete board.rules.matrix["Fine|Signal"];
+  assert.equal(B.clearanceRules(board, m, none, NETLIST).need(3, 2).c, 0.6, "without it: the larger of the two classes'");
+  // a net's own rule comes before the matrix
+  board.rules.matrix["Fine|Signal"] = 0.25; board.rules.netRule[n2] = { clearance: 1, track: 0.9 };
+  CR = B.clearanceRules(board, m, none, NETLIST);
+  assert.equal(CR.need(3, 2).c, 1, "net 2's own clearance");
+  assert.equal(B.netRule(2, m.names, none, board.rules).track, 0.9);
+  const rows = B.netTable(board, m, none, NETLIST.volts);
+  assert.deepEqual(rows.find(r => r.name === n2).own, { clearance: 1, track: 0.9 });
+  assert.ok(rows.find(r => r.name === n3).manual, "a net given your own class counts as set by hand");
+  // the DRC: a track on net 2 narrower than its own rule
+  delete board.rules.netRule[n2];
+  Object.assign(board.parts.r1, { x: 30, y: 30, rot: 0 });
+  let m2 = B.model(board, NETLIST);
+  const r1a = m2.pads.find(p => p.ref === "R1" && p.num === "1"), r1b = m2.pads.find(p => p.ref === "R1" && p.num === "2");
+  board.rules.netRule[n2] = { track: 0.9 };
+  board.tracks.push({ layer: "F.Cu", w: 0.6, pts: [[r1b.x, r1b.y], [r1b.x, r1b.y - 8]] });
+  m2 = B.model(board, NETLIST); let c = B.connectivity(board, m2.pads);
+  assert.ok(B.drc(board, m2, c, none).some(x => x.kind === "class" && /its own rule\) is 0\.6 mm; the net asks 0\.9 mm/.test(x.msg)), "the net's own width");
+  board.tracks.pop(); delete board.rules.netRule[n2];
+  // a free track (no net: Signal) 0.3 mm from R1-1 (B+, Power... HV only by voltage): the 0.6 mm clearance
+  const y = r1a.y + r1a.h / 2 + 0.3 + 0.2;
+  board.tracks.push({ layer: "B.Cu", w: 0.4, pts: [[r1a.x - 10, y], [r1a.x + 10, y]] });
+  m2 = B.model(board, NETLIST); c = B.connectivity(board, m2.pads);
+  const clr = () => B.drc(board, m2, c, none).filter(d => d.kind === "clearance");
+  assert.ok(clr().some(d => /0\.30 mm < 0\.6 mm/.test(d.msg)));
+  // a rule area round R1 lets copper in it come to 0.25 mm
+  const area = { name: "Neck", pts: [[r1a.x - 4, r1a.y - 4], [r1a.x + 4, r1a.y - 4], [r1a.x + 4, r1a.y + 4], [r1a.x - 4, r1a.y + 4]], layers: ["F.Cu", "B.Cu"], rule: { clearance: 0.25, minTrack: 0.2, track: 0.3 } };
+  board.keepouts.push(area);
+  board.keepouts = B.normaliseBoard(board).keepouts;
+  assert.deepEqual([board.keepouts[0].tracks, board.keepouts[0].vias, board.keepouts[0].pour, board.keepouts[0].parts], [false, false, false, false], "a rule area forbids nothing");
+  assert.equal(B.ruleAreas(board).length, 1);
+  assert.deepEqual(clr().map(d => d.msg), [], "inside the area 0.25 mm holds");
+  assert.ok(!B.drc(board, m2, c, none).some(d => d.kind === "keepout"), "a rule area is no keep-out");
+  board.keepouts[0].rule.clearance = 1;
+  assert.ok(clr().some(d => /0\.30 mm < 1 mm \(rule area "Neck"\)/.test(d.msg)), "an area may ask more too");
+  board.keepouts[0].rule.clearance = 0.25;
+  // widths: a 0.25 mm track wholly inside the area passes its 0.2 mm minimum; outside, the board's 0.4 mm holds
+  board.tracks = [{ layer: "F.Cu", w: 0.25, pts: [[r1a.x - 3, r1a.y - 3], [r1a.x + 3, r1a.y - 3]] }, { layer: "F.Cu", w: 0.25, pts: [[r1a.x + 20, r1a.y - 3], [r1a.x + 26, r1a.y - 3]] }];
+  m2 = B.model(board, NETLIST); c = B.connectivity(board, m2.pads);
+  const w = B.drc(board, m2, c, none).filter(d => d.kind === "width");
+  assert.equal(w.length, 1, w.map(d => d.msg).join("; "));
+  assert.ok(Math.abs(w[0].x - (r1a.x + 20)) < 1e-6, "only the track outside the area");
+  // the Specctra design: a padstack for the class's vias; the KiCad project and custom rules carry it all
+  board.tracks = []; Object.assign(board.parts["v1a+v1b"], { x: 80, y: 40, rot: 0 }); Object.assign(board.parts.r2, { x: 60, y: 70, rot: 0 });
+  m2 = B.model(board, NETLIST); c = B.connectivity(board, m2.pads);
+  const dsn = BR.toDsn(board, m2, c, B.clearanceRules(board, m2, none, NETLIST), { hv: none }).text;
+  assert.match(dsn, /\(padstack "V1200" /); assert.match(dsn, /\(via V\d+ "V1200" t\d+\)/);
+  const K = globalThis.KicadExport;
+  {
+    const pro = JSON.parse(K.project("t", board, m2, none)), dru = K.rules(board, m2, none, NETLIST);
+    const fine = pro.net_settings.classes.find(x => x.name === "Fine");
+    assert.deepEqual([fine.track_width, fine.clearance, fine.via_diameter, fine.via_drill], [0.2, 0.15, 1.2, 0.5]);
+    assert.ok(pro.net_settings.netclass_patterns.some(x => x.netclass === "Fine" && x.pattern === n3));
+    assert.match(dru, /\(rule "Classes Fine to Signal"\n {2}\(constraint clearance \(min 0\.25mm\)\)\n {2}\(condition "\(A\.NetClass == 'Fine' && B\.NetClass == 'Default'\)/);
+    assert.match(dru, /A\.insideArea\('Neck'\) \|\| B\.insideArea\('Neck'\)/);
+    assert.match(dru, /\(constraint track_width \(min 0\.2mm\) \(opt 0\.3mm\)\)/);
+  }
 });
 
 test("board setup: corner mounting holes sit inset from each corner; an older board file gains the new fields", () => {
