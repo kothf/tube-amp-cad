@@ -238,7 +238,8 @@ the model or open the file.
   `.PARAM`, `.FUNC`) or a lone `.MODEL`; R, C, L, coupled inductors (`K`), DC
   sources, diodes (series resistance, breakdown), bipolar transistors
   (Gummel-Poon with leakage terms and terminal resistances), MOSFETs (levels
-  1 to 3 as the square law, LTspice's `VDMOS`), JFETs, controlled sources
+  1, 2 and 3 each by its own equations with the bulk as a fourth pin, bulk
+  junctions and Meyer's gate capacitances; LTspice's `VDMOS`), JFETs, controlled sources
   `E G F H` (linear, `VALUE={…}`, `TABLE`, `POLY`), behavioural `B` sources
   with `V()` and `I()`, switches `S` and `W`; PSpice, LTspice and ngspice
   spellings.

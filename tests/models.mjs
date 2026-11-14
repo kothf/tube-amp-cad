@@ -122,6 +122,12 @@ const ampBench = (sub, vs) => `.subckt bench inp inn out\nVp vp 0 ${vs}\nVn vn 0
   check(!w.error && w.all[0] <= 0.05 && w.all[1] <= 0.5, `junction capacitances, transit time and a JFET's gain, 10 Hz to 10 MHz: ${w.error || `within ${w.all[0].toFixed(3)} dB and ${w.all[1].toFixed(2)}° of ngspice (${w.at})`}`);
   const qa = compareAc(fixture("testamp.lib"), ampBench("TESTAMP", 15), "bench", ["inp", "inn", "out"], ["out"]);
   check(acGood(qa), `the test op-amp's gain and phase: ${acLine(qa)}`);
+  // MOSFET levels 1 to 3: the bulk terminal, junctions, Meyer's gate capacitances
+  const mo = fixture("mosdev.lib"), mj = mo.search(/^\.subckt bench/m), mpins = /^\.subckt bench (.*)$/m.exec(mo)[1].trim().split(/\s+/);
+  const md = compare(mo.slice(0, mj), mo.slice(mj), "bench", mpins);
+  check(md.a.v && md.b.v && md.worst < 1e-3, `MOSFET levels 1, 2 and 3 with the body effect, operating points: ${md.a.error || md.b.error || `${mpins.length} nodes within ${(md.worst * 100).toFixed(3)} % of ngspice (${md.at})`}`);
+  const ma = compareAc(mo.slice(0, mj), mo.slice(mj), "bench", mpins, mpins.slice(1), 1e7);
+  check(!ma.error && ma.all[0] <= 0.05 && ma.all[1] <= 0.5, `MOSFET levels 1, 2 and 3 with junction and Meyer gate capacitances, 10 Hz to 10 MHz: ${ma.error || `within ${ma.all[0].toFixed(3)} dB and ${ma.all[1].toFixed(2)}° of ngspice (${ma.at})`}`);
 }
 
 // --- 1a: temperature: makers' transistor models at −20, 75 and 125 °C (their XTI, EG, XTB from TNOM) ---
@@ -222,7 +228,9 @@ function compareTran(text, sub, d) {
     { sub: "cmos", d: { wave: "square", f: 1e4, amp: 5, off: 5 }, what: "a CMOS inverter into 1 nF" },
     { sub: "classb", d: { wave: "sine", f: 1e3, amp: 20 }, what: "a class-B follower clipping into 8 ohm" },
     { sub: "vdmos", d: { wave: "square", f: 1e4, amp: 5, off: 5 }, what: "a power MOSFET switch (Miller plateau, Cgd from CGDMIN to CGDMAX)" },
-    { sub: "varactor", d: { wave: "sine", f: 1e4, amp: 10 }, what: "a varactor swung hard (junction charge)" }
+    { sub: "varactor", d: { wave: "sine", f: 1e4, amp: 10 }, what: "a varactor swung hard (junction charge)" },
+    { sub: "mos3sw", d: { wave: "square", f: 1e4, amp: 5, off: 5 }, what: "a level 3 power MOSFET switch (Meyer gate charge, the drain junction)" },
+    { sub: "cmos2", d: { wave: "square", f: 1e5, amp: 2.5, off: 2.5 }, what: "a level 2 CMOS inverter into 20 pF (Meyer gate charge)" }
   ];
   const TRAN_TOL = 0.02;
   for (const bn of benches.filter(x => !ONLY || x.sub.includes(ONLY))) {

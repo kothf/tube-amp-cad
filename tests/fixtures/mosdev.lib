@@ -1,0 +1,47 @@
+* MOSFET levels 1, 2 and 3 with their bulk terminals, junctions and Meyer gate capacitances:
+* a power device as a follower, a level 2 stage on a level 2 current-mirror load, a level 1 stage
+* with its bulk 5 V below the source, a level 3 P-channel stage. Our own model cards.
+* tests/models.mjs runs "bench" here and in ngspice (operating point and 10 Hz to 10 MHz). No VMAX on
+* the level 3 stage: ngspice's own slope of a level 3 current with VMAX in saturation is some 6 % off
+* (its gm against its current's change), so its gain there is no reference; the drain current is.
+.model MN3 NMOS(LEVEL=3 VTO=3.2 KP=20.5u THETA=0.05 VMAX=3e5 ETA=0.001 KAPPA=0.4 TOX=100n NFS=6.6e11 PHI=0.6 RS=20m RD=50m CGSO=1.2n CGDO=0.2n CBD=600p PB=0.8 MJ=0.5 IS=1e-12)
+.model MN2 NMOS(LEVEL=2 VTO=0.9 UO=550 TOX=40n NSUB=3e15 UCRIT=5e4 UEXP=0.15 VMAX=5e4 NEFF=2 XJ=0.5u LD=0.2u DELTA=0.5 NFS=1e11 LAMBDA=0.02 CGSO=0.3n CGDO=0.3n CJ=2e-4 MJ=0.45 PB=0.75)
+.model MP2 PMOS(LEVEL=2 VTO=-0.9 UO=220 TOX=40n NSUB=5e15 UCRIT=5e4 UEXP=0.15 XJ=0.5u LD=0.2u LAMBDA=0.03 CGSO=0.3n CGDO=0.3n CJ=3e-4)
+.model MN1 NMOS(LEVEL=1 VTO=1.2 KP=50u GAMMA=0.6 PHI=0.7 LAMBDA=0.02 TOX=50n CGSO=0.5n CGDO=0.5n CBD=2p CBS=2p)
+.model MP3 PMOS(LEVEL=3 VTO=-1.0 UO=250 TOX=30n NSUB=1e16 THETA=0.1 ETA=0.05 KAPPA=0.3 XJ=0.3u LD=0.1u CGSO=0.4n CGDO=0.4n CJ=3e-4 CJSW=2e-10)
+.subckt bench in ls cs l1 p3
+Vcc vcc 0 15
+Vee vee 0 -5
+Vin in 0 DC 0 AC 1
+* a power device as a source follower, 1 A idle
+Cf in fx 10u
+Rf1 vcc fg 100k
+Rf2 fg 0 39k
+Rfs fx fg 1k
+M1 vcc fg ls ls MN3 W=0.3 L=2u
+Rls ls 0 4.7
+* a level 2 stage on a current-mirror load
+Cc in cx 10u
+Rc1 vcc cg 200k
+Rc2 cg 0 33k
+Rcs cx cg 1k
+M2 cs cg 0 0 MN2 W=40u L=4u AD=200p AS=200p
+M3 cs pm vcc vcc MP2 W=60u L=4u AD=300p AS=300p
+M4 pm pm vcc vcc MP2 W=60u L=4u AD=300p AS=300p
+Rref pm 0 47k
+Cload cs 0 2p
+* level 1, its bulk 5 V below the source
+Cl in lx 10u
+Rl1 vcc lg 100k
+Rl2 lg 0 27k
+Rls2 lx lg 1k
+M5 l1 lg 0 vee MN1 W=100u L=5u
+Rd5 vcc l1 22k
+* a level 3 P-channel stage, the bulk at the supply
+Cp in px 10u
+Rp1 vcc pg 33k
+Rp2 pg 0 150k
+Rps px pg 1k
+M6 p3 pg vcc vcc MP3 W=50u L=2u AD=250p AS=250p PD=60u PS=60u
+Rd6 p3 0 4.7k
+.ends

@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.212.0] - 2026-11-14
+
+Phase 5 of the simulation engine plan, item 3: MOSFET levels 2 and 3.
+
+### Changed
+- **A SPICE part's MOSFETs run by their own level's equations.** Levels 1, 2 and 3 are ported from ngspice (mos1load.c, mos2load.c, mos3load.c), and each model card is set up the way ngspice sets it up: KP from UO and TOX, PHI, GAMMA and VTO from NSUB. Before, levels 2 and 3 ran as level 1 and lost their mobility and short-channel terms; makers' power MOSFET subcircuits are often level 3. What the levels add:
+  - level 2: mobility falling with the gate field (UCRIT, UEXP), Baum's velocity saturation (VMAX, NEFF), Grove-Frohman saturation voltage, short- and narrow-channel thresholds (XJ, DELTA), weak inversion (NFS), channel length modulation from LAMBDA or from the depletion width;
+  - level 3: THETA, VMAX, ETA (the drain lowering the threshold), KAPPA, XJ, LD, DELTA, NFS.
+- **The bulk is a fourth pin, and all levels have the body effect** (GAMMA, or NSUB). A line with three nodes takes the source as the bulk. The drain and source junctions to the bulk are diodes (IS, or JS by AD/AS) with their capacitances: CBD/CBS or CJ by the area, CJSW by the perimeter, each with its grading (MJ, MJSW).
+- **Gate capacitances by Meyer's model** come from the oxide (TOX), on top of the overlaps (CGSO, CGDO, and now CGBO). They act in the waveform and the frequency response as ngspice's do. Level 1 has them only when TOX is given, as in ngspice.
+- The drain current agrees with ngspice's to 0.002 % on a grid of gate, drain and bulk voltages, forward and reversed, for N and P devices of each level.
+
+### Tests
+- `tests/fixtures/mosdev.lib` (own model cards): a level 3 power follower, a level 2 stage on a level 2 mirror, a level 1 stage with its bulk 5 V below the source, a level 3 P-channel stage. `tests/models.mjs` checks it against ngspice: operating points within 0.001 %, 10 Hz to 10 MHz within 0.03 dB and 0.07°. Two waveforms join the transient benches: a level 3 power switch and a level 2 CMOS inverter, both within 1.6 % of ngspice.
+- `tests/spicenet.test.mjs` keeps ngspice's numbers for the fixture, the reversed drain and the body effect.
+- ngspice's own gm for a level 3 device with VMAX in saturation is about 6 % off the slope of its own current, so its gain there is no reference; the fixture leaves VMAX off the stage whose gain is compared (the drain current is still compared with VMAX).
+
 ## [3.211.0] - 2026-11-14
 
 Phase 4 of the simulation engine plan, item 3: grid current.
