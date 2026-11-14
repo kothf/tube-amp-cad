@@ -7,7 +7,7 @@
      R C L K · V I (their DC values) · D Q M J with their .MODEL (diode, Gummel–Poon BJT,
      level 1 to 3 MOSFET by its own equations with its bulk, LTspice's VDMOS as the square law, JFET) · E G F H, linear,
      VALUE = {…}, TABLE and POLY(n), LAPLACE (H(s) as a state-space network) and FREQ (a table fitted
-     to H(s) by vector fitting) · B (I = or V =, Laplace=) · S and W switches · X.
+     to H(s) by vector fitting) · B (I = or V =, Laplace=) · S and W switches · T (lossless) · X.
    What depends on voltages or currents by an expression becomes a behavioural source
    (the engine's kind B) with a closed expression tree: parameters are numbers by then,
    .FUNC bodies are inlined, nodes are the element's own.
@@ -18,8 +18,8 @@
    chargeAt); a transistor's transit times TF and TR store charge in the waveform and the
    small-signal analyses; a VDMOS's Cgd follows CGDMIN … CGDMAX (A). A transistor's temperature
    terms (XTI, EG, XTB, TNOM) set it at another temperature, or as it heats itself (build's spec).
-   Not carried over: the other temperature terms and noise parameters. Not supported (an error): CHEBYSHEV
-   sources, transmission lines, BSIM MOSFETs, time-dependent expressions.
+   Not carried over: the other temperature terms and noise parameters. Lossless transmission lines (T) are
+   the engine's TLINE. Not supported (an error): CHEBYSHEV sources, lossy lines (O, U, T with R or G), BSIM MOSFETs, time-dependent expressions.
 
    build(spec, pinNodes, alloc, id) gives the engine's elements for one part of a circuit.
    ============================================================================= */
@@ -574,7 +574,19 @@
           const over = {}, raw = eq < 0 ? {} : params(tk.slice(eq));
           Object.keys(raw).forEach(k => { over[k] = String(val(raw[k], no)); });
           expand(child, nodes, SM.makeScope(lib, child, over), prefix + nm + ".", depth + 1);
-        } else if (kind === "T" || kind === "O" || kind === "U") throw new Error(`${at(no)}transmission lines (${tk[0]}) are not supported`);
+        } else if (kind === "T") {
+          // a lossless transmission line: T a1 b1 a2 b2 Z0= TD= (or F= [NL=], NL defaulting to a quarter
+          // wave); PSpice's own form by its per-length L and C and LEN (R and G zero) too
+          if (tk.length < 5) throw new Error(`${at(no)}${tk[0]} is not complete`);
+          const p = params(tk.slice(5)), pv = (k, d) => (p[k] !== undefined ? val(p[k], no) : d);
+          if (pv("r", 0) || pv("g", 0)) throw new Error(`${at(no)}${tk[0]}: a lossy line (R or G) is not supported, only the lossless one`);
+          let z0 = pv("z0", NaN), td = pv("td", NaN);
+          if (isNaN(z0) && p.zo !== undefined) z0 = pv("zo", NaN);
+          if (isNaN(z0) && p.l !== undefined && p.c !== undefined) { const L = pv("l", 0), C = pv("c", 0), len = pv("len", 1); z0 = Math.sqrt(L / C); td = len * Math.sqrt(L * C); }
+          if (isNaN(td) && p.f !== undefined) td = pv("nl", 0.25) / pv("f", 0);
+          if (!(z0 > 0) || !(td > 0) || !isFinite(td)) throw new Error(`${at(no)}${tk[0]} needs Z0= and TD= (or F=)`);
+          push({ name: prefix + nm, kind: "TLINE", n: [node(tk[1]), node(tk[2]), node(tk[3]), node(tk[4])], z0, td });
+        } else if (kind === "O" || kind === "U") throw new Error(`${at(no)}lossy transmission lines (${tk[0]}) are not supported`);
         else if (kind === "A") throw new Error(`${at(no)}LTspice's special devices (${tk[0]}) are not supported`);
         else throw new Error(`${at(no)}element ${tk[0]} is not supported`);
       });

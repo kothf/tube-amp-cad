@@ -179,6 +179,27 @@ test("a FREQ table is fitted by a ratio of polynomials: a third-order Butterwort
   assert.throws(() => SN.flatten(".subckt f a b\nE1 b 0 FREQ {V(a)} = (10, 0, 0) (100, -1, -10) (1k, -3, -45) DELAY=1u\n.ends", "f"), /DELAY/);
 });
 
+test("a lossless transmission line: its three spellings, and a matched line delays the wave by TD", () => {
+  const line = spec => { const text = `.subckt f a b\n${spec}\n.ends`; let n = 3; return SN.build({ text, sub: "f" }, [1, 2], () => n++, "U").find(e => e.kind === "TLINE"); };
+  const t1 = line("T1 a 0 b 0 Z0=50 TD=25u"), t2 = line("T1 a 0 b 0 Z0=75 F=10k NL=0.5"), t3 = line("T1 a 0 b 0 L=250n C=100p LEN=2"), t4 = line("T1 a 0 b 0 Z0=600 F=1Meg");
+  assert.equal(t1.z0, 50); near(t1.td, 25e-6, 1e-12, "TD");
+  assert.equal(t2.z0, 75); near(t2.td, 50e-6, 1e-12, "TD from F and NL");
+  near(t3.z0, 50, 1e-12, "Z0 from L and C"); near(t3.td, 2 * 5e-9, 1e-12, "TD from L, C and LEN");
+  near(t4.td, 0.25e-6, 1e-12, "a quarter wave when NL is left out");
+  // 10 kHz through 50 Ω, a 50 Ω line of a quarter period and 50 Ω: half the source, 25 µs late
+  const els = [{ id: "G", kind: "VSRC", nodes: [1, 0], wave: "sine", freq: 1e4, amp: 1 }, { id: "R1", kind: "R", nodes: [1, 2], r: 50 },
+    { id: "T", kind: "TLINE", nodes: [2, 0, 3, 0], z0: 50, td: 25e-6 }, { id: "R2", kind: "R", nodes: [3, 0], r: 50 }];
+  const r = E.simulate({ nodeCount: 4, elements: els });
+  assert.ok(r.ok, r.error);
+  const T = r.tran, lag = Math.round(25e-6 / T.dt);
+  let worst = 0;
+  for (let j = lag; j < T.samples; j++) worst = Math.max(worst, Math.abs(T.nodes[3][j] - 0.5 * T.nodes[1][j - lag]), Math.abs(T.nodes[2][j] - 0.5 * T.nodes[1][j]));
+  assert.ok(worst < 0.005, `the delayed wave is off by ${worst} V`);
+  // in AC: the same, e^(−jωTD) at 10 kHz is −j
+  const ac = E.acSweep({ nodeCount: 4, elements: els }, { inputs: [{ id: "G" }], fStart: 1e4, fStop: 1e4, perDecade: 1, probes: [[3, 0]] });
+  assert.ok(Math.abs(ac.probes[0].re[0]) < 1e-9 && Math.abs(ac.probes[0].im[0] + 0.5) < 1e-9, `${ac.probes[0].re[0]} ${ac.probes[0].im[0]}`);
+});
+
 test("a junction's capacitance in the waveform: the corner of 100 kΩ and a diode follows the bias", () => {
   // 100 pF at zero bias: C = 100 pF · (1 + V / 0.7)^−0.45; a sine at that corner comes out at 0.707
   const text = ".model DV D(IS=1e-14 CJO=100p VJ=0.7 M=0.45)\n.subckt dio a k\nD1 a k DV\n.ends";
@@ -199,7 +220,9 @@ test("a junction's capacitance in the waveform: the corner of 100 kΩ and a diod
 test("what cannot be simulated is refused with the reason", () => {
   assert.throws(() => SN.flatten(".subckt f a b\nE1 b 0 LAPLACE {V(a)} = {exp(-s*1u)/(1+s)}\n.ends", "f"), /ratio of polynomials/i);
   assert.throws(() => SN.flatten(".subckt f a b\nE1 b 0 LAPLACE {V(a)} = {1+s}\n.ends", "f"), /differentiator/i);
-  assert.throws(() => SN.flatten(".subckt f a b\nT1 a 0 b 0 Z0=50 TD=1n\n.ends", "f"), /transmission line/i);
+  assert.throws(() => SN.flatten(".subckt f a b\nT1 a 0 b 0 Z0=50 TD=1n R=1 L=1u C=1p LEN=1\n.ends", "f"), /lossy line/i);
+  assert.throws(() => SN.flatten(".subckt f a b\nO1 a 0 b 0 LOSSY\n.model LOSSY LTRA(R=1 L=1u C=1p LEN=1)\n.ends", "f"), /lossy transmission line/i);
+  assert.throws(() => SN.flatten(".subckt f a b\nT1 a 0 b 0 Z0=50\n.ends", "f"), /needs Z0= and TD=/i);
   assert.throws(() => SN.flatten(".subckt f a b\nX1 a b nothere\n.ends", "f"), /nothere/i);
   assert.throws(() => SN.flatten(AMP, "other"), /no \.SUBCKT or \.MODEL/i);
 });

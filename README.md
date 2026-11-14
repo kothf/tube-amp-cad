@@ -250,9 +250,12 @@ the model or open the file.
 - **Transfer functions:** `LAPLACE` sources (PSpice's and LTspice's
   spellings), any ratio of polynomials in s, run exactly; `FREQ` tables
   fitted by a ratio of polynomials (vector fitting).
+- **Transmission lines:** lossless `T` lines (`Z0=` with `TD=`, or `F=` and
+  `NL=`, or PSpice's `L`, `C` and `LEN`), delayed exactly in the waveform and
+  as e^(−jωTD) in the frequency response.
 - **What it refuses, with the reason:** `LAPLACE` other than a ratio of
-  polynomials, a `FREQ` table's `DELAY`,
-  transmission lines, digital (`A`) devices, BSIM MOSFETs, expressions of
+  polynomials, a `FREQ` table's `DELAY`, `CHEBYSHEV` filters,
+  lossy transmission lines, digital (`A`) devices, BSIM MOSFETs, expressions of
   time. Junction capacitances follow the voltage across them and step their
   charge; a transistor's transit times (TF, TR) shape the waveform and the
   frequency response; a VDMOS power MOSFET's gate-drain capacitance follows
