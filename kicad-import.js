@@ -779,7 +779,11 @@
     if (isFinite(x1) && edges.length && !plainEdge && !ownShape) note("The board's outline is not a plain rectangle: the rectangle round it was taken (cut-outs and slanted edges are not kept).");
     const X = x => r4(x - x1), Y = y => r4(y - y1);
     rb.origin = [r4(x1), r4(y1)];
-    if (pcb.copperLayers > 2) note(`The board has ${pcb.copperLayers} copper layers: the app's boards have two, so only the top and bottom copper came over.`);
+    // 4 and 6 layers come over with their inner layers (as signal layers); more: top, bottom and In1–In4
+    board.stackup.layers = pcb.copperLayers >= 6 ? 6 : pcb.copperLayers >= 4 ? 4 : 2;
+    board.stackup = BC.normaliseStackup(board.stackup);
+    const CU = BC.copperOf(board);
+    if (pcb.copperLayers > 6) note(`The board has ${pcb.copperLayers} copper layers: the app's boards have six at most, so the top, the bottom and In1–In4 came over.`);
     // footprints
     board.footprints = {};
     const sameFp = (a, b) => JSON.stringify([a.pads, a.silk, a.holes, a.box]) === JSON.stringify([b.pads, b.silk, b.holes, b.box]);
@@ -831,7 +835,7 @@
     if (rb.missing.length) note(`Footprints with no symbol in the schematic were left out: ${rb.missing.slice(0, 12).join(", ")}${rb.missing.length > 12 ? " …" : ""}.`);
     // tracks: runs of segments joined end to end become one track
     let inner = 0;
-    const segs = pcb.segments.filter(s => { if (s.layer === "F.Cu" || s.layer === "B.Cu") return true; inner++; return false; }).map(s => ({ layer: s.layer, w: s.w, net: s.net, pts: s.pts.map(p => [X(p[0]), Y(p[1])]) }));
+    const segs = pcb.segments.filter(s => { if (CU.includes(s.layer)) return true; inner++; return false; }).map(s => ({ layer: s.layer, w: s.w, net: s.net, pts: s.pts.map(p => [X(p[0]), Y(p[1])]) }));
     const ends = new Map(), ek = (s, p) => s.layer + "|" + p[0] + "|" + p[1];
     segs.forEach(s => [s.pts[0], s.pts[s.pts.length - 1]].forEach(p => { const k = ek(s, p); ends.set(k, (ends.get(k) || 0) + 1); }));
     const open = new Map();
@@ -843,11 +847,11 @@
     });
     board.tracks.forEach(t => { delete t.net; });
     rb.tracks = board.tracks.length;
-    if (inner) note(`${inner} track segment${inner > 1 ? "s" : ""} on inner layers did not come over.`);
+    if (inner) note(`${inner} track segment${inner > 1 ? "s" : ""} on layers past the sixth did not come over.`);
     pcb.vias.forEach(v => board.vias.push({ x: X(v.x), y: Y(v.y), drill: v.drill, pad: v.pad }));
     rb.vias = board.vias.length;
     pcb.zones.forEach(z => {
-      const pts = z.pts.map(p => [X(p[0]), Y(p[1])]), layers = z.layers.flatMap(l => (l === "F&B.Cu" || l === "*.Cu" ? ["F.Cu", "B.Cu"] : [l])).filter(l => l === "F.Cu" || l === "B.Cu");
+      const pts = z.pts.map(p => [X(p[0]), Y(p[1])]), layers = z.layers.flatMap(l => (l === "F&B.Cu" ? ["F.Cu", "B.Cu"] : l === "*.Cu" ? CU : [l])).filter(l => CU.includes(l));
       if (z.keepout) { if (layers.length) board.keepouts.push({ name: z.name || "Keep-out", pts, layers, tracks: z.keepout.tracks, vias: z.keepout.vias, pour: z.keepout.pour, parts: z.keepout.parts }); return; }
       layers.forEach(layer => { if (z.net) { board.zones.push({ net: z.net, layer, pts, thermal: true }); rb.zones++; } });
     });

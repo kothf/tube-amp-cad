@@ -93,7 +93,7 @@
     }
     if (e.kind === "track") {
       const s = e.seg, t = e.track, L = segLen(s);
-      const rows = [["Width", "len", t.w], ["Segment angle", "ang", angOf(s[2] - s[0], s[3] - s[1])], ["Whole track", "len", trackLen(t)], ["Corners", "text", String(Math.max(0, t.pts.length - 2))], ["Layer", "text", t.layer === "B.Cu" ? "bottom (B.Cu)" : "top (F.Cu)"], ...netRow(e, env)];
+      const rows = [["Width", "len", t.w], ["Segment angle", "ang", angOf(s[2] - s[0], s[3] - s[1])], ["Whole track", "len", trackLen(t)], ["Corners", "text", String(Math.max(0, t.pts.length - 2))], ["Layer", "text", `${(root.BoardCore ? root.BoardCore.layerName(t.layer) : t.layer).toLowerCase()} (${t.layer})`], ...netRow(e, env)];
       return out("Track segment", L, "len", rows, { aux: [s] });
     }
     if (e.kind === "edge") {

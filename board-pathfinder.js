@@ -60,7 +60,8 @@
       cut: indexes of the board's tracks and vias to take off; add: the new ones. open: how many
       of the nets' pieces are still apart; conflicts: 0 when every net keeps clear of the others. */
   function route(board, model, conn, opts) {
-    const C = B(), o = opts || {}, R = board.rules, L = C.COPPER, names = model.names, outl = board.outline, t0 = Date.now();
+    // the layers tracks may run on: top, bottom and the inner signal layers (not the planes)
+    const C = B(), o = opts || {}, R = board.rules, L = C.routeLayers ? C.routeLayers(board) : C.COPPER, names = model.names, outl = board.outline, t0 = Date.now();
     // ia, ib: the items (a wall in a rule area takes the area's clearance)
     const need = (a, b, ia, ib) => (o.clr ? o.clr.need(a, b, ia, ib).c : R.clearance);
     const amps = o.amps || {}, ruleOf = n => C.netRule(n, names, o.hv, R);
@@ -134,6 +135,8 @@
     function hard(r) {
       if (hardCache.has(r.id)) return hardCache.get(r.id);
       const T = new Uint8Array(NL * N), V = new Uint8Array(N), hw = r.w / 2, ec = R.edgeClearance || 0.5, viaR = r.vr;
+      // an inner layer's thinner, cooler copper needs a wider track for the same current: such a net stays outside
+      L.forEach((Ly, l) => { if (/^In\d\.Cu$/.test(Ly) && amps[r.id] && C.currentWidth(amps[r.id], R, board.stackup, Ly) > r.w + 1e-9) T.fill(1, l * N, (l + 1) * N); });
       for (let c = 0; c < N; c++) { if (edge[c] < ec + hw) { for (let l = 0; l < NL; l++) T[l * N + c] = 1; } if (edge[c] < ec + viaR) V[c] = 1; }
       walls.forEach(({ it, net }) => {
         // distance from a cell to the item's copper edge: a square pad's corners reach past its capsule
@@ -146,7 +149,7 @@
           return;
         }
         const g = need(r.id, net, null, it), sb = it.kind === "pad" ? SP.get(it.pad) : null, gs = sb ? Math.min(g, sb.gap - 0.02) : g;
-        const ls = it.layers.map(li), up = areas.filter(k => k.c > g + 1e-9 && k.ls.some(l => ls.includes(l))), gUp = up.length ? Math.max(...up.map(k => k.c)) : g;
+        const ls = it.layers.map(li).filter(l => l >= 0), up = areas.filter(k => k.c > g + 1e-9 && k.ls.some(l => ls.includes(l))), gUp = up.length ? Math.max(...up.map(k => k.c)) : g;
         const gAt = (x, y) => (up.length ? Math.max(g, ...up.filter(k => C.pip(x, y, k.pts)).map(k => k.c)) : g);
         const mark = (rad, fn) => stamp(it.s, it.r + ext + rad + Math.max(g, gs, gUp), (c, x, y) => {
           if (sb && gs < g && Math.hypot(x - sb.x, y - sb.y) <= sb.r) { if (dEdge(x, y) >= rad + gs) return; }
@@ -186,7 +189,7 @@
     // a net's copper as shapes: the keep (board copper) and its grid paths' straight runs
     function shapes(r) {
       const out = [];
-      r.keep.forEach(it => out.push({ s: it.s, r: it.r, ls: it.layers.map(li), via: it.kind === "via", it }));
+      r.keep.forEach(it => out.push({ s: it.s, r: it.r, ls: it.layers.map(li).filter(l => l >= 0), via: it.kind === "via", it }));
       r.paths.forEach(path => runs(path).forEach(run => out.push({ s: [X(run.a), Y(run.a), X(run.b), Y(run.b)], r: r.w / 2, ls: [run.l], via: false })));
       r.paths.forEach(path => tails(path).forEach(([P, st]) => { const sg = tailSeg(P, st); if (sg) out.push({ s: sg, r: r.w / 2, ls: [Math.floor(st / N)], via: false }); }));
       r.vias.forEach(c => out.push({ s: [X(c), Y(c), X(c), Y(c)], r: r.vr, ls: L.map((_, l) => l), via: true }));
@@ -499,7 +502,7 @@
     nets.forEach(r => {
       if (!r.paths.length || !r.keep.length) return;
       const padGroups = () => {
-        const all = r.fixed.map(it => ({ s: it.s, r: it.r, ls: it.layers.map(li), it })).concat(shapes(r)), par = all.map((_, i) => i), f = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+        const all = r.fixed.map(it => ({ s: it.s, r: it.r, ls: it.layers.map(li).filter(l => l >= 0), it })).concat(shapes(r)), par = all.map((_, i) => i), f = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
         for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
           const a = all[i], b = all[j], pa = a.it && a.it.kind === "pad", pb = b.it && b.it.kind === "pad";
           if (pa && pb) { if (pourJoined.has(a.it) && pourJoined.has(b.it) && a.it.cluster === b.it.cluster) par[f(i)] = f(j); continue; }
@@ -524,14 +527,14 @@
     // dropped, so a route joined there stays joined), and a via that meets nothing goes
     nets.forEach(r => {
       for (let pass = 0; pass < 200; pass++) {
-        const all = shapes(r).concat(r.fixed.map(it => ({ s: it.s, r: it.r, ls: it.layers.map(li), it })));
+        const all = shapes(r).concat(r.fixed.map(it => ({ s: it.s, r: it.r, ls: it.layers.map(li).filter(l => l >= 0), it })));
         const byT = new Map(); r.keep.forEach(it => { if (it.kind === "track") { if (!byT.has(it.ti)) byT.set(it.ti, []); byT.get(it.ti).push(it); } });
         const swap = new Map();
         byT.forEach(list => {
           list.sort((u, v) => u.k - v.k);
           const runsOf = []; list.forEach(it => { const last = runsOf[runsOf.length - 1]; if (last && last[last.length - 1].k === it.k - 1) last.push(it); else runsOf.push([it]); });
           runsOf.forEach(run => {
-            const own = new Set(run), ls = run[0].layers.map(li), w = run[0].r;
+            const own = new Set(run), ls = run[0].layers.map(li).filter(l => l >= 0), w = run[0].r;
             const meets = (x, y, d) => all.some(q => !own.has(q.it) && q.ls.some(l => ls.includes(l)) && C.segDist(q.s[0], q.s[1], q.s[2], q.s[3], x, y) <= q.r + w + 1e-6 - (d || 0));
             // the end at (s[e], s[e+1]) of item it: how far along it the first meeting is (1: none)
             const cut = (it, fromStart) => {

@@ -276,6 +276,65 @@ test("your own net classes, a clearance matrix between classes, each net's own r
   }
 });
 
+test("4 and 6 layers: inner layers, planes and split planes, vias into a plane, Gerber, Specctra and KiCad layers", () => {
+  const board = B.normaliseBoard({ ...B.newBoard(), stackup: { layers: 6, thickness: 1.6, copper: 35, inner: [{ type: "plane", net: "GND" }, { type: "signal" }] } });
+  assert.equal(board.stackup.inner.length, 4, "an entry for each inner layer");
+  assert.deepEqual(board.stackup.inner.map(e => e.type), ["plane", "signal", "signal", "signal"]);
+  assert.deepEqual(B.copperOf(board), ["F.Cu", "In1.Cu", "In2.Cu", "In3.Cu", "In4.Cu", "B.Cu"]);
+  assert.equal(B.normaliseStackup({ layers: 3 }).layers, 2, "only 2, 4 or 6");
+  board.stackup = B.normaliseStackup({ ...board.stackup, layers: 4 });
+  assert.deepEqual(B.copperOf(board), ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]);
+  assert.ok(B.isPlane(board, "In1.Cu") && !B.isPlane(board, "In2.Cu") && !B.isPlane(board, "F.Cu"));
+  assert.equal(B.layerName("In2.Cu"), "Inner 2");
+  // a keep-out saved on "both layers" covers the inner layers too
+  const kb = B.normaliseBoard({ ...board, keepouts: [{ pts: [[0, 0], [5, 0], [5, 5]], layers: ["F.Cu", "B.Cu"] }] });
+  assert.ok(B.koLayers(kb.keepouts[0]).includes("In1.Cu"));
+  B.sync(board, NETLIST);
+  Object.assign(board.parts.r1, { x: 30, y: 30, rot: 0 }); Object.assign(board.parts.r2, { x: 60, y: 30, rot: 0 }); Object.assign(board.parts.c1, { x: 60, y: 60, rot: 0 });
+  // the GND plane on In1; a via from R2's ground pin drops into it
+  board.zones.push({ net: "GND", layer: "In1.Cu", pts: null, thermal: true, plane: true });
+  let m = B.model(board, NETLIST);
+  const r2g = m.pads.find(p => p.ref === "R2" && p.net === 0);
+  assert.deepEqual(r2g.layers, B.copperOf(board), "a through-hole pad is on every layer");
+  board.tracks.push({ layer: "F.Cu", w: 0.6, pts: [[r2g.x, r2g.y], [r2g.x, r2g.y - 6]] });
+  board.vias.push({ x: r2g.x, y: r2g.y - 6, drill: 0.8, pad: 1.8 });
+  const fillsOf = () => { m = B.model(board, NETLIST); const c0 = B.connectivity(board, m.pads), f = B.fillZones(board, m, c0, new Set(), NETLIST, []); return { f, c: B.connectivity(board, m.pads, f) }; };
+  let { f, c } = fillsOf();
+  const drc = () => B.drc(board, m, c, new Set(), f, NETLIST);
+  assert.ok(!drc().some(d => d.kind === "dangling"), "the via joins the top track and the plane: " + drc().filter(d => d.kind === "dangling").map(d => d.msg).join("; "));
+  // a track on the plane layer, or on a layer the board does not have, is reported
+  board.tracks.push({ layer: "In1.Cu", w: 0.6, pts: [[5, 5], [10, 5]] }, { layer: "In3.Cu", w: 0.6, pts: [[5, 9], [10, 9]] });
+  ({ f, c } = fillsOf());
+  const ko = drc().filter(d => d.kind === "keepout").map(d => d.msg).join("; ");
+  assert.match(ko, /In1\.Cu, a GND plane/); assert.match(ko, /In3\.Cu: the board has 4 layers/);
+  board.tracks.splice(1, 2);
+  // a split plane: B+ over a corner of In1 at a higher priority; GND goes round it, no overlap reported
+  board.zones.push({ net: "B+", layer: "In1.Cu", pts: [[100, 60], [150, 60], [150, 95], [100, 95]], thermal: true, priority: 1 });
+  ({ f, c } = fillsOf());
+  assert.ok(!drc().some(d => /overlap/.test(d.msg)), "pours of different priority may overlap");
+  const gnd = f.find(z => z.net === 0 || z.zone === 0);
+  assert.ok(gnd.ops.some(o => o.pol === "C" && o.t === "region" && o.pts.length === 4 && o.pts[0][0] === 100), "the GND plane is cut where B+ is");
+  board.zones[1].priority = 0;
+  ({ f, c } = fillsOf());
+  assert.ok(drc().some(d => /overlap/.test(d.msg)), "the same priority: still an overlap");
+  board.zones.pop();
+  ({ f, c } = fillsOf());
+  // Gerber: a file for each inner layer, L2 the plane, L3 a signal layer, the bottom L4
+  const files = F.fabFiles(board, m, f, { base: "t" });
+  assert.ok(files["t-In1_Cu.gbr"] && files["t-In2_Cu.gbr"], Object.keys(files).join(", "));
+  assert.match(files["t-In1_Cu.gbr"], /%TF\.FileFunction,Copper,L2,Inr,Plane\*%/);
+  assert.match(files["t-In2_Cu.gbr"], /%TF\.FileFunction,Copper,L3,Inr,Signal\*%/);
+  assert.match(files["t-B_Cu.gbr"], /%TF\.FileFunction,Copper,L4,Bot\*%/);
+  assert.match(files["t-README.txt"], /4 layers.*L2 In1\.Cu \(GND plane\)/s);
+  // Specctra: four layers, the plane a power layer
+  const dsn = BR.toDsn(board, m, c, B.clearanceRules(board, m, new Set(), NETLIST), {}).text;
+  assert.match(dsn, /\(layer In1\.Cu \(type power\) \(property \(index 1\)\)\)/); assert.match(dsn, /\(layer In2\.Cu \(type signal\) \(property \(index 2\)\)\)/);
+  // KiCad: the inner layers in the layer table and the physical stack-up
+  const pcb = globalThis.KicadExport.pcb(board, m, c, {});
+  assert.match(pcb, /\(1 "In1\.Cu" power\)/); assert.match(pcb, /\(2 "In2\.Cu" signal\)/);
+  assert.match(pcb, /\(stackup .*\(layer "In2\.Cu" \(type "copper"\)/);
+});
+
 test("board setup: corner mounting holes sit inset from each corner; an older board file gains the new fields", () => {
   const holes = B.cornerHoles({ w: 100, h: 60 }, 3.2, 5);
   assert.deepEqual(holes.map(h => [h.x, h.y]), [[5, 5], [95, 5], [5, 55], [95, 55]]);

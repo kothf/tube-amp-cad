@@ -153,3 +153,26 @@ test("your own net classes: a class with a wide clearance and big vias, a rule a
   assert.ok(cTracks.length && cTracks.every(t => t.w >= 0.8), "net C has its class's width");
   r.add.vias.filter(v => v.net === "C").forEach(v => assert.deepEqual([v.drill, v.pad], [1, 2.2], "its vias are its class's"));
 });
+
+test("4 and 6 layers: the grid router runs tracks on the inner signal layers, never on a plane; a high-current net stays outside", () => {
+  const { board, nl } = setup(NETLIST, AT);
+  board.stackup = B.normaliseStackup({ ...board.stackup, layers: 4, inner: [{ type: "signal" }, { type: "plane", net: "GND" }] });
+  board.zones.push({ net: "GND", layer: "In2.Cu", pts: null, thermal: true, plane: true });
+  assert.deepEqual(B.copperOf(board), ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]);
+  assert.deepEqual(B.routeLayers(board), ["F.Cu", "In1.Cu", "B.Cu"]);
+  // keep top and bottom out of the middle: the crossings must use In1
+  board.keepouts.push({ name: "", pts: [[14, 0], [44, 0], [44, 50], [14, 50]], layers: ["F.Cu", "B.Cu"], tracks: true, vias: false, pour: true, parts: false });
+  const c0 = check(board, nl), r = PF.route(board, c0.m, c0.conn, { clr: c0.clr, hv: c0.hv, netlist: nl });
+  assert.equal(r.open, 0); assert.equal(r.conflicts, 0);
+  assert.ok(r.add.tracks.some(t => t.layer === "In1.Cu"), "tracks on the inner signal layer");
+  assert.ok(!r.add.tracks.some(t => t.layer === "In2.Cu"), "none on the plane");
+  apply(board, r);
+  const c1 = check(board, nl);
+  assert.equal(c1.conn.unrouted, 0);
+  assert.deepEqual(c1.drc.map(d => d.msg), []);
+  // 2 A on net C: on an inner layer it would need a wider track than its class gives, so it keeps to top and bottom
+  board.tracks = []; board.vias = [];
+  const c2 = check(board, nl), r2 = PF.route(board, c2.m, c2.conn, { clr: c2.clr, hv: c2.hv, netlist: nl, amps: { 3: 2 } });
+  assert.ok(B.currentWidth(2, board.rules, board.stackup, "In1.Cu") > B.currentWidth(2, board.rules, board.stackup, "F.Cu"), "an inner layer needs more width for the same current");
+  assert.ok(!r2.add.tracks.some(t => t.net === "C" && t.layer === "In1.Cu"), "net C keeps off the inner layer");
+});

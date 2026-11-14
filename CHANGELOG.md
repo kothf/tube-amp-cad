@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.216.0] - 2026-11-14
+
+Board design plan, phase B2: 4 and 6 layers.
+
+### Added
+- **4- and 6-layer boards.** Board ▾ → Board setup… → *Copper layers* 2, 4 or 6. Each inner layer (In1.Cu next to the top) is a signal layer or a plane of one net (In1 starts as a GND plane, the others as signal layers), with its own inner copper weight.
+- **Planes and split planes.** A plane is a whole-layer pour of its net: through-hole pads and vias of that net join it by thermal spokes, everything else is cleared. Draw a smaller pour of another net on the same layer with a higher *Priority* (zone inspector) for a split plane; the plane is cut round it with the clearance.
+- **Routing on inner layers.** Picking an inner signal layer in the layer bar while routing places a via and carries on there; the grid router and Freerouting use the inner signal layers and treat planes as power layers; inner tracks carry less current per width (IPC-2221 k = 0.024), so heavy nets stay outside.
+- **Layer bar, inspector and check** know the inner layers: tracks, zones and keep-outs can go on them (keep-outs on *Every copper layer*), and the check flags copper on a missing or plane layer.
+- **Gerber** writes one file per inner layer (`In1_Cu.gbr`, X2 `Copper,L2,Inr,Plane|Signal`); **KiCad export** writes the layers and a stackup with dielectrics; **KiCad import** keeps inner tracks and zones of boards up to 6 layers.
+
 ## [3.215.0] - 2026-11-14
 
 Board design plan, phase B1: your own design rules.
