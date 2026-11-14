@@ -155,6 +155,50 @@ test("grid conduction clamps a positively driven grid near the cathode", () => {
   assert.ok(vg > 0 && vg < 2, `grid at ${vg.toFixed(2)} V (5 V through 100k)`);
 });
 
+// Philips' amplifier tables (ECC83 and ECC82 data sheets, 1955-1960) give each stage's output "at
+// grid current starting point" (Ig = +0.3 µA). The grid's peak there is the input's peak minus the
+// bias (Ia·Rk, with the rise of the mean current that the stage's distortion brings), at the plate's
+// lowest voltage. Rows: Ra, Rg' (next grid leak), then per supply: Vb, Rk, Ia (mA), Vo (Veff), gain, dtot (%).
+const PHILIPS_GRID_START = {
+  "12AX7": [[47e3, 150e3, [[200, 1500, .86, 18, 34, 8.5], [250, 1200, 1.18, 23, 37.5, 7], [300, 1000, 1.55, 26, 40, 5], [350, 820, 1.98, 33, 42.5, 4.4], [400, 680, 2.45, 37, 44, 3.6]]],
+    [100e3, 330e3, [[200, 1800, .65, 20, 50, 4.8], [250, 1500, .86, 26, 54.5, 3.9], [300, 1200, 1.11, 30, 57, 2.7], [350, 1000, 1.4, 36, 61, 2.2], [400, 820, 1.72, 38, 63, 1.7]]],
+    [220e3, 680e3, [[200, 3300, .36, 24, 56, 4.6], [250, 2700, .48, 28, 66.5, 3.4], [300, 2200, .63, 36, 72, 2.6], [350, 1500, .85, 37, 75.5, 1.6], [400, 1200, 1.02, 38, 76.5, 1.1]]]],
+  "12AU7": [[47e3, 150e3, [[100, 1200, 1.2, 11, 13.5, 5.6], [150, 1200, 1.82, 18, 13.5, 6.1], [200, 1200, 2.41, 26, 13.5, 6.3], [250, 1200, 3.02, 34, 13.5, 6.4], [300, 1200, 3.65, 43, 13.5, 6.5], [350, 1200, 4.3, 51, 13.5, 6.6], [400, 1200, 5, 59, 13.5, 6.7]]],
+    [100e3, 330e3, [[100, 2200, .66, 10, 14, 4.8], [150, 2200, .98, 17, 14, 5.6], [200, 2200, 1.3, 25, 14, 5.8], [250, 2200, 1.63, 32, 14, 5.9], [300, 2200, 1.97, 41, 14, 6], [350, 2200, 2.3, 49, 14, 6.1], [400, 2200, 2.62, 57, 14, 6.2]]],
+    [220e3, 680e3, [[100, 3900, .33, 8, 14.5, 4], [150, 3900, .5, 15, 14.5, 4.4], [200, 3900, .66, 22, 14.5, 4.7], [250, 3900, .82, 28, 14.5, 4.8], [300, 3900, .98, 36, 14.5, 4.9], [350, 3900, 1.16, 43, 14.5, 5], [400, 3900, 1.31, 50, 14.5, 5.1]]]]
+};
+
+test("grid current starts where Philips' data sheets say (ECC83, ECC82: 36 published points)", () => {
+  let s = 0, n = 0, worst = 0;
+  for (const [name, tables] of Object.entries(PHILIPS_GRID_START)) {
+    const p = tube(name).koren.Triode;
+    for (const [ra, rg, rows] of tables) for (const [vb, rk, ia, vo, gain, d] of rows) {
+      const rl = ra * rg / (ra + rg), i1 = vo * Math.SQRT2 / rl, bias = (ia * 1e-3 + d / 100 * i1) * rk;
+      const want = vo / gain * Math.SQRT2 - bias, vamin = vb - ia * 1e-3 * (ra + rk) - vo * Math.SQRT2;
+      let lo = -5, hi = 3;
+      for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; E.Koren.gridI(m, vamin, p) > 0.3e-6 ? (hi = m) : (lo = m); }
+      const e = (lo + hi) / 2 - want; s += e * e; n++; worst = Math.max(worst, Math.abs(e));
+    }
+  }
+  assert.equal(n, 36);
+  assert.ok(Math.sqrt(s / n) < 0.15, `rms ${Math.sqrt(s / n).toFixed(3)} V`);
+  assert.ok(worst < 0.4, `worst ${worst.toFixed(2)} V`);
+});
+
+test("grid current: all the space current reaches the grid with the plate at the cathode, the plate takes more as it rises", () => {
+  const p = tube("12AX7").koren.Triode, ig = (vg, va) => E.Koren.gridI(vg, va, p);
+  near(ig(10, 0), 2 / p.kg * Math.pow(10 + 0.1, 1.5), 0.001, "Child's law on the tube's perveance (Vg + the 0.1 V contact offset)");
+  assert.ok(ig(2, 0) > ig(2, 10) && ig(2, 10) > ig(2, 100) && ig(2, 100) > ig(2, 300), "falls with the plate voltage");
+  assert.ok(ig(-3, 250) < 1e-9 && ig(-0.3, 250) > 0.3e-6 && ig(-0.3, 250) < 5e-6, "starts below 0 V");
+  // the analytic slopes, against differences
+  const h = 1e-6;
+  for (const [va, vg] of [[150, -0.5], [150, 2], [3, 1]]) {
+    const J = E.tubeJacobian({ kind: "TRIODE", model: p }, va, vg).J[1];
+    near(J[0], (ig(vg, va + h) - ig(vg, va - h)) / (2 * h), 1e-4, `dIg/dVa at ${va}, ${vg}`);
+    near(J[1], (ig(vg + h, va) - ig(vg - h, va)) / (2 * h), 1e-4, `dIg/dVg at ${va}, ${vg}`);
+  }
+});
+
 test("12AX7 common-cathode stage: DC point and gain", () => {
   const p = tube("12AX7").koren.Triode;
   // independent DC solve: Ia = f(B+ - Ia(Ra+Rk), -Ia*Rk) by bisection

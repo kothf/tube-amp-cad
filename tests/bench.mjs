@@ -15,7 +15,8 @@
  * 20 % harder than its baseline fails (a change that slows the engine down is seen even where
  * CI's machines vary). Power-on: its Newton iterations, over a fixed second. Full: its Newton
  * iterations per time step, since how many periods the steady-state search takes swings with
- * the last digits of the arithmetic (ex 07 between 38 000 and 50 000 steps). Less is fine:
+ * the last digits of the arithmetic (ex 07 between 38 000 and 50 000 steps), and its steps no more
+ * than twice the baseline's (a steady state the shooting stops finding). Less is fine:
  * BENCH_UPDATE=1 writes the new counts as the baseline.
  *
  *   node tests/bench.mjs [root]
@@ -105,6 +106,9 @@ for (const row of report) {
     const say = x => (per ? `${x.toFixed(2)} Newton iterations a step` : `${x} Newton iterations`);
     if (w > wb * SLACK) { console.log(`  FAIL ${k}: ${say(w)}, baseline ${say(wb)} (more than ${Math.round((SLACK - 1) * 100)} % up)`); failed++; }
     else if (w < wb / SLACK) console.log(`  note ${k}: ${say(w)}, baseline ${say(wb)}: less work, BENCH_UPDATE=1 keeps it`);
+    // and the steps the settling took: a steady state the shooting no longer finds is left to the plain
+    // settling, every step as easy as before but hundreds of times as many
+    if (per && r.stats.steps > 2 * b.steps) { console.log(`  FAIL ${k}: ${r.stats.steps} steps to settle, baseline ${b.steps} (more than twice)`); failed++; }
   }
 }
 console.log(`${pad("total", 40)} ${["live", "full", "ac", "power-on"].map(k => lpad(Math.round(total[k] || 0), 12)).join(" ")}`);

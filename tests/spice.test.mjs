@@ -114,7 +114,8 @@ test("the engine runs an imported model: a 12AX7 stage matches the built-in Kore
     { id: "Co", kind: "C", nodes: [2, 6], c: 0.1e-6 }, { id: "RL", kind: "R", nodes: [6, 0], r: 470e3 }] });
   const a = run(KP), b = run({ spice: spec, mu: 100 });
   assert.ok(a.ok && b.ok, b.error);
-  assert.ok(Math.abs(a.dc.nodes[2] - b.dc.nodes[2]) < 0.05, `plate ${a.dc.nodes[2]} vs ${b.dc.nodes[2]}`);
+  // (the built-in grid draws a few nA at −1.4 V through the 1 MΩ leak: a millivolt more bias)
+  assert.ok(Math.abs(a.dc.nodes[2] - b.dc.nodes[2]) < 0.15, `plate ${a.dc.nodes[2]} vs ${b.dc.nodes[2]}`);
   const pp = x => Math.max(...x) - Math.min(...x);
   assert.ok(Math.abs(pp(a.tran.nodes[6]) / pp(b.tran.nodes[6]) - 1) < 0.003, "the same gain");
   const est = S.estimate(spec, 300);

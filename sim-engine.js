@@ -77,23 +77,43 @@
       if (vak === undefined || !p.ks) return base;
       return base + p.ks * Koren.pentodeIs(vgk, vg2k, p) * (1 - Math.tanh(Math.max(vak, 0) / p.vk));
     },
-    // Grid conduction above 0 V (Child-Langmuir), scaled with tube size
-    gridI(vgk, p) {
-      return vgk > 0 ? (0.2 / p.kg) * Math.pow(vgk, 1.5) : 0;
-    }
+    // Grid current (the grid as the anode of a diode, the plate or screen taking its share)
+    gridI(vgk, acc, p) { return gridIJ(vgk, acc, p)[0]; }
   };
+
+  // Grid current. The space current toward a positive grid is Child's law on the tube's own
+  // perveance, 2/kg · Vg^1.5 (all of it reaches the grid when the plate is at the cathode);
+  // the electrode beyond (the plate of a triode, the screen of a pentode) takes the larger share as
+  // its voltage rises: Ig = 2/kg · Vg^1.5 / (1 + D·√(Vacc / (mu·Vg))), the current division law of
+  // Spangenberg and Porter (the plate's field at the grid is its voltage over mu). Vg starts softly
+  // below 0 V: vs·ln(1 + e^((Vgk + vc)/vs)), the electrons' own energy and the contact potential.
+  // vc, vs and D are fitted to the grid current starting points (Ig = +0.3 µA) that Philips
+  // publishes for the ECC83 and ECC82 amplifier tables: 36 points, within 0.14 V rms.
+  const GRID = { vc: 0.1, vs: 0.3, D: 40 };
+  // [ig, dIg/dVgk, dIg/dVacc]
+  function gridIJ(vgk, acc, p) {
+    const u = (vgk + GRID.vc) / GRID.vs, g = GRID.vs * softplus(u);
+    if (!(g > 1e-12)) return [0, 0, 0];
+    const dg = sigmoid(u), k = 2 / p.kg, base = k * Math.pow(g, 1.5), dbase = 1.5 * k * Math.sqrt(g) * dg;
+    // the accelerating voltage, smoothed at 0 (acc²/(acc + 1)) so the square root has a slope there
+    const a = acc > 0 ? acc * acc / (acc + 1) : 0, da = acc > 0 ? acc * (acc + 2) / ((acc + 1) * (acc + 1)) : 0;
+    const mg = (p.mu || 1) * g, s = Math.sqrt(a / mg), den = 1 + GRID.D * s;
+    const ig = base / den;
+    const dsG = a > 0 ? -s / (2 * g) : 0, dsA = a > 0 ? da / (2 * Math.sqrt(a * mg)) : 0;
+    return [ig, (dbase * den - base * GRID.D * dsG * dg) / (den * den), -base * GRID.D * dsA / (den * den)];
+  }
   // One entry for every tube model: Koren's equations, or an imported SPICE model
   // (spice-model.js) when the parameters carry one ({ spice: { text, sub, roles } }).
   const Tube = {
     /** [ia, ig] */
     triode(vak, vgk, p) {
       if (p.spice) return root.SpiceModel.tube(p.spice).triode(vak, vgk);
-      return [Koren.triodeIa(vak, vgk, p), Koren.gridI(vgk, p)];
+      return [Koren.triodeIa(vak, vgk, p), Koren.gridI(vgk, vak, p)];
     },
     /** [ia, ig, ig2] */
     pentode(vak, vgk, vg2k, p) {
       if (p.spice) return root.SpiceModel.tube(p.spice).pentode(vak, vgk, vg2k);
-      return [Koren.pentodeIa(vak, vgk, vg2k, p), Koren.gridI(vgk, p), Koren.screenI(vgk, vg2k, p, vak)];
+      return [Koren.pentodeIa(vak, vgk, vg2k, p), Koren.gridI(vgk, vg2k, p), Koren.screenI(vgk, vg2k, p, vak)];
     },
     ia(kind, p, vak, vgk, vg2k) { return kind === "pentode" ? Tube.pentode(vak, vgk, vg2k, p)[0] : Tube.triode(vak, vgk, p)[0]; }
   };
@@ -162,19 +182,18 @@
   function screenFadeD(v) { if (v >= SCREEN_FADE || v <= 0) return 0; const s = v / SCREEN_FADE; return 6 * s * (1 - s) / SCREEN_FADE; }
   // Koren's space-charge term 2·E1^x/kg and its slope in E1
   const korenPow = (e1, p) => (e1 > 0 ? [2 * Math.pow(e1, p.x) / p.kg, 2 * p.x * Math.pow(e1, p.x - 1) / p.kg] : [0, 0]);
-  const gridID = (vgk, p) => (vgk > 0 ? [(0.2 / p.kg) * Math.pow(vgk, 1.5), (0.3 / p.kg) * Math.sqrt(vgk)] : [0, 0]);
   function tubeJacobian(e, vak, vgk, vg2k) {
     const p = e.model;
     if (p.spice || e._emit !== undefined) return null;
-    const sh = e.gridShift || 0, sc = e.iScale || 1, vg = vgk + sh, [ig, dig] = gridID(vgk, p);
-    if (e.kind !== "PENTODE") {
+    const sh = e.gridShift || 0, sc = e.iScale || 1, vg = vgk + sh, pent = e.kind === "PENTODE", [ig, dig, diA] = gridIJ(vgk, pent ? vg2k : vak, p);
+    if (!pent) {
       let ia = 0, da = 0, dg = 0;
       if (vak > 0) {
         const R = Math.sqrt(p.kvb + vak * vak), u = p.kp * (1 / p.mu + vg / R), sp = softplus(u), sg = sigmoid(u);
         const e1 = (vak / p.kp) * sp, [f, df] = korenPow(e1, p);
         ia = f; da = df * (sp / p.kp - vak * vak * sg * vg / (R * R * R)); dg = df * vak * sg / R;
       }
-      return { I: [sc * ia, sc * ig], J: [[sc * da, sc * dg], [0, sc * dig]] };
+      return { I: [sc * ia, sc * ig], J: [[sc * da, sc * dg], [sc * diA, sc * dig]] };
     }
     // pentode: Is (space charge), the plate's share, the screen's
     let is = 0, isG = 0, isS = 0;
@@ -203,7 +222,7 @@
         if (vak > 0) i2A = -p.ks * is * (1 - th * th) / p.vk;
       }
     }
-    return { I: [sc * ia, sc * ig, sc * i2], J: [[sc * iaA, sc * iaG, sc * iaS], [0, sc * dig, 0], [sc * i2A, sc * i2G, sc * i2S]] };
+    return { I: [sc * ia, sc * ig, sc * i2], J: [[sc * iaA, sc * iaG, sc * iaS], [0, sc * dig, sc * diA], [sc * i2A, sc * i2G, sc * i2S]] };
   }
 
   // ---------------------------------------------------------------------------
@@ -2063,6 +2082,10 @@
           for (let a = 0; a < k; a++) M[a * k + a] += mu * dmax + 1e-14 * dmax;
           return solveLinear(M, g, k) ? g : null;
         };
+        // GMRES stops at a tenth of the residual; a step that then gains too little (a lightly damped slow
+        // pair, as a push-pull amplifier's coupling capacitors, grid leaks and feedback make: its
+        // (J − I) all but singular) is retried with GMRES to a hundredth before the plain settling takes over
+        let gtol = 0.1;
         let s = st.map(g => x[g]), ph = phiOf(s), best = null, startRes = 0, converged = false, lastStep = Infinity;
         while (ph && !timeUp()) {
           const r = resid(ph, s), beta = norm(r);
@@ -2084,7 +2107,7 @@
             y = lsq(H, beta, 0);
             if (!y) break;
             let rho = 0; for (let q = 0; q <= H.length; q++) { let v = q === 0 ? beta : 0; for (let a = 0; a < H.length; a++) v -= (H[a][q] || 0) * y[a]; rho += v * v; }
-            if (Math.sqrt(rho) < 0.1 * beta || h[j + 1] < 1e-12) break;
+            if (Math.sqrt(rho) < gtol * beta || h[j + 1] < 1e-12) break;
             V.push(w.map(v => v / h[j + 1]));
           }
           if (!y) break;
@@ -2097,7 +2120,7 @@
             const pT = phiOf(sT);
             if (pT && norm(resid(pT, sT)) < beta) { lastStep = 0; for (let i = 0; i < nU; i++) lastStep = Math.max(lastStep, Math.abs(sT[i] - s[i]) / D[i]); s = sT; ph = pT; moved = true; break; }
           }
-          if (!moved || norm(resid(ph, s)) > 0.8 * beta) break;   // Newton no longer gains: the plain settling takes over
+          if (!moved || norm(resid(ph, s)) > 0.8 * beta) { if (gtol > 0.01) { gtol = 0.01; continue; } break; }   // Newton no longer gains: the plain settling takes over
         }
         // carry on from the steady state found (or the nearest to it): one more period, so that x
         // is again the whole solution, at the period's end
@@ -2343,9 +2366,14 @@
       return [`.subckt ${name} K A REF`, `BK K A I=${g(m.imax)}*tanh(${sp(`${g(m.gm)}*(V(REF,A)-${g(m.vref)})`, 2e-4)}/${g(m.imax)})*tanh(${sp("V(K,A)-1", 0.05)}/0.5)`,
         `ROFF K A ${g(m.roff)}`, `RREF REF A ${g(m.rref)}`, ".ends"];
     },
+    // the grid current law (gridIJ), on the grid voltage and the accelerating electrode's
+    grid: (m, vg, va) => {
+      const G = `${g(GRID.vs)}*ln(1+exp(min((${vg}+${g(GRID.vc)})/${g(GRID.vs)},500)))`, a = `pwr(max(${va},0),2)/(max(${va},0)+1)`;
+      return `${g(2 / m.kg)}*pwr(${G},1.5)/(1+${g(GRID.D)}*sqrt(${a}/(${g(m.mu)}*max(${G},1e-30))))`;
+    },
     triode: m => ({
       plate: `pwr(max(V(A,K)/${g(m.kp)}*ln(1+exp(${g(m.kp)}*(1/${g(m.mu)}+V(G,K)/sqrt(${g(m.kvb)}+V(A,K)*V(A,K))))),0),${g(m.x)})*${g(2 / m.kg)}`,
-      grid: `${g(0.2 / m.kg)}*pwr(max(V(G,K),0),1.5)`
+      grid: Spice.grid(m, "V(G,K)", "V(A,K)")
     }),
     pentode: m => {
       // with the fade-in below SCREEN_FADE volts on the screen: s²(3 − 2s), s = Vg2k / SCREEN_FADE
@@ -2356,7 +2384,7 @@
       return {
         plate: `${is}*tanh(${va}/${g(m.vk)})*(1+${va}/${g(m.lam)})`,
         screen: `pwr(max(V(G1,K)+V(G2,K)/${g(m.mu)},0),${g(m.x)})/${g(m.kg2 || 1500)}*${fade}+${g(m.ks || 0)}*${is}*(1-tanh(${va}/${g(m.vk)}))`,
-        grid: `${g(0.2 / m.kg)}*pwr(max(V(G1,K),0),1.5)`
+        grid: Spice.grid(m, "V(G1,K)", "V(G2,K)")
       };
     }
   };

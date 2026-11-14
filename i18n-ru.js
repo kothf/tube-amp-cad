@@ -2054,6 +2054,7 @@
     "Vg1k (bias)": "Vg1k (смещение)",
     "Vg2k (screen)": "Vg2k (экранная сетка)",
     "Ig2 (screen current)": "Ig2 (ток экранной сетки)",
+    "Ig (grid current)": "Ig (сеточный ток)",
     "Pg2 (screen dissipation)": "Pg2 (мощность на экранной сетке)",
     "Vhk (heater above cathode)": "Vhk (накал выше катода)",
     "Dissipation": "Рассеиваемая мощность",

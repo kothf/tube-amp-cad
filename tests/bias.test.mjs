@@ -47,7 +47,8 @@ test("bias: a tube's gridShift moves its plate and screen currents along the gri
     Object.assign({ id: "T", kind: "PENTODE", nodes: [1, 2, 3, 0], model: EL84 }, extra)] }, {}).dc.devices.T.main;
   const shifted = at(-8, { gridShift: 0.5 }), plain = at(-7.5);
   near(shifted.ia, plain.ia, 1e-9, "plate at -8 V shifted +0.5 V = plate at -7.5 V"); near(shifted.ig2, plain.ig2, 1e-9, "screen likewise");
-  assert.equal(at(-0.2, { gridShift: 0.5 }).ig, 0, "no grid current below 0 V, whatever the shift");
+  near(at(-0.2, { gridShift: 0.5 }).ig, at(-0.2).ig, 1e-9, "grid current as without the shift");
+  assert.ok(at(-0.2).ig < 20e-6, "and only microamps below 0 V");
 });
 
 test("bias: a tube's iScale scales all its currents (the pot check's weaker and stronger tubes)", () => {

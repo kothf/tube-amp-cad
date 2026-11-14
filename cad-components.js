@@ -3256,6 +3256,7 @@
         if (d.kind === "pentode") { const l = R.tubeLimits().find(o => o.key === "Vg2k"); h += kv("Vg2k (screen)", fmtEng(dc.vg2k, "V", 1) + (l ? ` · ${Math.round(l.share * 100)}% of ${l.lim}` : ""), l && l.share > 1 ? "bad" : ""); }
         h += kv("Ia (anode current)", fmtEng(dc.ia, "A", 2));
         if (d.kind === "pentode") h += kv("Ig2 (screen current)", fmtEng(dc.ig2, "A", 2));
+        if (dc.ig > 1e-9) h += kv("Ig (grid current)", fmtEng(dc.ig, "A", 2), dc.ig > 1e-6 ? "warn" : "");
         h += kv("Pa (dissipation)", `${fmtEng(pa, "W", 2)} · ${Math.round(pa / d.paMax * 100)}% of ${d.paMax} W`, over ? "bad" : (pa > 0.85 * d.paMax ? "warn" : ""));
         h += R.limitRows();
         if (d.metrics) {
