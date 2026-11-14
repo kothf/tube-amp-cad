@@ -56,7 +56,7 @@
     const { S, buildNetlist, cmds, compPins, desig, esc, fmtEng, parseEng, pool, setStatus, topo } = cad;
     const LIB = CadLib.LIB, WM = WaveMath;
     const KEY = "tubecad_tran";
-    const opts = { stop: "10m", step: "", from: "", start: "op", ic: "" };
+    const opts = { mode: "tran", stop: "10m", step: "", from: "", start: "op", ic: "", dcPart: "", dcField: "", dcFrom: "", dcTo: "", dcSteps: 51, dcLog: false };
     try { Object.assign(opts, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
     const save = () => { try { localStorage.setItem(KEY, JSON.stringify(opts)); } catch (e) {} };
     // job: the run under way; result: the engine's; traces: what is plotted, [{ expr, pane }] (a net's
@@ -64,7 +64,7 @@
     // in time, or their spectrum); active: the pane new traces go to; view: the time span shown
     // [t0, t1] (null: all); hover: the pointer's time (or frequency in a spectrum); cur: cursors A and
     // B (times); ref: a run kept to compare against ({ t, data: { expr: y }, label })
-    const TR = S.tran = { seq: 0, job: null, result: null, nets: null, T: null, stale: false, error: null, traces: null, panes: [{ fft: false }], active: 0, view: null, hover: null, hoverPane: 0, cur: { a: null, b: null }, ref: null, progress: 0 };
+    const TR = S.tran = { seq: 0, job: null, result: null, nets: null, T: null, stale: false, error: null, traces: null, panes: [{ fft: false }], active: 0, view: null, hover: null, hoverPane: 0, cur: { a: null, b: null }, ref: null, meas: [], progress: 0 };
     let job = null, cache = new Map(), cacheOf = null;
 
     // every net with a name: { net, name, key, kind: "conn" | "scope" | "pin" }. A net is named by
@@ -122,6 +122,7 @@
     }
     function run() {
       stop();
+      if (opts.mode === "dc") return runDc();
       const T = topo();
       TR.error = !S.comps.length ? "Empty sheet" : !T.hasGround ? "Add a ground symbol to simulate" : null;
       const tStop = parseEng(opts.stop), maxStep = opts.step ? parseEng(opts.step) : 0, tStart = opts.from ? parseEng(opts.from) : 0;
@@ -144,6 +145,7 @@
         if (TR.seq !== seq) return;
         job = null; TR.job = null;
         if (result.ok) {
+          result.kind = "tran";
           TR.result = result; TR.nets = list; TR.T = T; TR.error = null;
           // the zoom and the cursors stay while they fit the new run
           if (TR.view && !(TR.view[0] >= result.t[0] && TR.view[1] <= result.tStop)) TR.view = null;
@@ -159,6 +161,83 @@
         urgent: true, onResult: done,
         onProgress: f => { if (TR.seq !== seq) return; TR.progress = f; setStatus("busy", `Transient… ${Math.floor(f * 100)} %`, f); const b = document.getElementById("btn-tr-run"); if (b) b.textContent = `■ Stop · ${Math.floor(f * 100)} %`; }
       });
+    }
+    // what a DC sweep can step: the parts with a numeric value ([{ id, name, fields }]), and the
+    // temperature of every part that has one (the transistors, built in and in SPICE parts)
+    function dcTargets() {
+      const out = [];
+      S.comps.forEach(c => { const d = desig(c), def = LIB[c.type]; if (!d || !def || SKIP.has(c.type)) return; const fields = CadSweep.fieldsOf(def, c).filter(f => f.key !== "temp"); if (fields.length) out.push({ id: c.id, name: d, fields }); });
+      return out.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    }
+    const tempParts = () => S.comps.filter(c => LIB[c.type] && (LIB[c.type].fields || []).some(f => f.key === "temp" && (!f.when || f.when(c))));
+    // the sweep asked for: { label, unit, key, parts: [comp], values } or { error }
+    function dcPlan() {
+      let parts, key, label, unit, a, b, field = null;
+      if (opts.dcPart === "@temp") {
+        parts = tempParts(); key = "temp"; label = "temperature"; unit = "°C";
+        if (!parts.length) return { error: "No part here has a temperature to sweep (the transistors, built in or in a SPICE part, do)" };
+        a = opts.dcFrom === "" ? -20 : parseEng(opts.dcFrom); b = opts.dcTo === "" ? 100 : parseEng(opts.dcTo);
+      } else {
+        const c = S.comps.find(x => x.id === opts.dcPart);
+        if (!c) return { error: "Pick what to sweep: a part's value (a supply's voltage, a resistor…) or the temperature" };
+        const fields = CadSweep.fieldsOf(LIB[c.type], c).filter(f => f.key !== "temp");
+        field = fields.find(f => f.key === opts.dcField) || fields[0];
+        if (!field) return { error: `${desig(c)} has no value to sweep` };
+        parts = [c]; key = field.key; label = `${desig(c)} ${field.label.toLowerCase()}`; unit = field.unit || "";
+        const nom = +c.params[key];
+        a = opts.dcFrom === "" ? (field.range ? field.min || 0 : nom >= 0 ? 0 : 2 * nom) : parseEng(opts.dcFrom);
+        b = opts.dcTo === "" ? (field.range ? (field.max === undefined ? 1 : field.max) : nom > 0 ? 2 * nom : nom < 0 ? 0 : 1) : parseEng(opts.dcTo);
+      }
+      if (!isFinite(a) || !isFinite(b) || a === b) return { error: "Set From and To (two different values)" };
+      if (a > b) { const x = a; a = b; b = x; }
+      const steps = Math.max(2, Math.min(1001, Math.round(+opts.dcSteps) || 51));
+      return { label, unit, key, parts, values: CadSweep.values(a, b, steps, opts.dcLog && a > 0), field };
+    }
+    function runDc() {
+      const T = topo();
+      TR.error = !S.comps.length ? "Empty sheet" : !T.hasGround ? "Add a ground symbol to simulate" : null;
+      const plan = TR.error ? null : dcPlan();
+      if (plan && plan.error) TR.error = plan.error;
+      if (TR.error) { TR.result = null; render(); return; }
+      const list = netNames();
+      // each value's netlist: the parts' value set, the netlist built, the value put back (nothing sees it)
+      const keep = plan.parts.map(c => c.params[plan.key]);
+      const netlists = plan.values.map(v => { plan.parts.forEach(c => { c.params[plan.key] = v; }); try { return buildNetlist(); } finally { plan.parts.forEach((c, k) => { c.params[plan.key] = keep[k]; }); } });
+      const seq = ++TR.seq;
+      TR.job = { seq, t0: Date.now() }; TR.progress = 0; TR.stale = false;
+      if (!TR.traces) TR.traces = defaultTraces(list).map(x => asTrace(x));
+      const options = { netlists, x: plan.values, currents: true, budgetMs: 300000 };
+      const done = result => {
+        if (TR.seq !== seq) return;
+        job = null; TR.job = null;
+        if (result.ok) {
+          Object.assign(result, { kind: "dc", xUnit: plan.unit, sweepName: plan.label });
+          TR.result = result; TR.nets = list; TR.T = T; TR.error = null;
+          if (TR.view && !(TR.view[0] >= result.t[0] && TR.view[1] <= result.t[result.t.length - 1])) TR.view = null;
+          ["a", "b"].forEach(k => { if (TR.cur[k] !== null && !(TR.cur[k] >= result.t[0] && TR.cur[k] <= result.t[result.t.length - 1])) TR.cur[k] = null; });
+        } else { TR.result = null; TR.error = result.error || "The DC sweep failed"; }
+        setStatus(result.ok ? (result.failed.length ? "warn" : "ok") : "error", result.ok ? `DC sweep of ${plan.label}: ${result.points} points in ${(result.elapsedMs / 1000).toFixed(1)} s${result.failed.length ? `, ${result.failed.length} without an operating point (gaps)` : ""}` : "DC sweep: " + TR.error);
+        render(); cmds.sync();
+      };
+      render(); cmds.sync();
+      setStatus("busy", "DC sweep…", 0);
+      if (!pool.ok) { setTimeout(() => done(TubeSimEngine.dcSweep(netlists, options)), 0); return; }
+      job = pool.run({ options, kind: "dcsweep" }, {
+        urgent: true, onResult: done,
+        onProgress: f => { if (TR.seq !== seq) return; TR.progress = f; setStatus("busy", `DC sweep… ${Math.floor(f * 100)} %`, f); const b = document.getElementById("btn-tr-run"); if (b) b.textContent = `■ Stop · ${Math.floor(f * 100)} %`; }
+      });
+    }
+    // the tool row: the transient's fields or the DC sweep's
+    function syncMode() {
+      document.querySelectorAll(".tr-only").forEach(el => { el.hidden = opts.mode === "dc"; });
+      document.querySelectorAll(".dc-only").forEach(el => { el.hidden = opts.mode !== "dc"; });
+      const ps = document.getElementById("tr-dc-part"), fs = document.getElementById("tr-dc-field");
+      if (!ps || opts.mode !== "dc") return;
+      const tg = dcTargets();
+      const html = `<option value="">Sweep…</option><option value="@temp">Temperature (every transistor)</option>` + tg.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
+      if (document.activeElement !== ps) { if (ps.innerHTML !== html) ps.innerHTML = html; ps.value = tg.some(x => x.id === opts.dcPart) || opts.dcPart === "@temp" ? opts.dcPart : ""; }
+      const t = tg.find(x => x.id === opts.dcPart), fh = t ? t.fields.map(f => `<option value="${esc(f.key)}">${esc(f.label)}${f.unit ? ` (${esc(f.unit)})` : ""}</option>`).join("") : "";
+      if (fs && document.activeElement !== fs) { if (fs.innerHTML !== fh) fs.innerHTML = fh; fs.hidden = !t; if (t) fs.value = t.fields.some(f => f.key === opts.dcField) ? opts.dcField : t.fields[0].key; }
     }
     function changed() { if (TR.result && !TR.stale) { TR.stale = true; render(); } }
 
@@ -214,6 +293,9 @@
       });
     }
     const span = () => { const t = TR.result.t; return TR.view || [t[0], t[t.length - 1]]; };
+    // a DC sweep's result reads as a run whose "time" is the swept value
+    const isDc = () => !!(TR.result && TR.result.kind === "dc");
+    const fmtX = x => (isDc() ? fmtEng(x, TR.result.xUnit || "") : fmtEng(x, "s"));
     const unitOfPane = tr => { const u = [...new Set(tr.filter(q => q.y).map(q => q.unit))]; return u.length === 1 ? u[0] : ""; };
 
     const W = 900, L = 58, R = 12, Tp = 10, B = 28;
@@ -247,7 +329,7 @@
       const pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
       const X = x => L + (x - v0) / sp * (W - L - R), Y = v => Tp + (hi - v) / (hi - lo) * (H - Tp - B), unit = unitOfPane(tr);
       let s = `<svg class="pw-chart tr-chart" ${p === 0 ? 'id="tr-chart" ' : ""}data-pane="${p}" data-kind="time" viewBox="0 0 ${W} ${H}" role="img" aria-label="Waveforms, pane ${p + 1}">`;
-      nice(v0, v1, 8).forEach(x => { s += `<line class="g1" x1="${X(x).toFixed(1)}" x2="${X(x).toFixed(1)}" y1="${Tp}" y2="${H - B}"/><text class="ax" x="${X(x).toFixed(1)}" y="${H - B + 14}" text-anchor="middle">${esc(fmtEng(x, "s"))}</text>`; });
+      nice(v0, v1, 8).forEach(x => { s += `<line class="g1" x1="${X(x).toFixed(1)}" x2="${X(x).toFixed(1)}" y1="${Tp}" y2="${H - B}"/><text class="ax" x="${X(x).toFixed(1)}" y="${H - B + 14}" text-anchor="middle">${esc(fmtX(x))}</text>`; });
       nice(lo, hi, 5).forEach(v => { s += `<line class="g1" x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="ax" x="${L - 5}" y="${(Y(v) + 3).toFixed(1)}" text-anchor="end">${esc(fmtEng(v, unit))}</text>`; });
       refs.forEach(x => { s += polyline(ref.t, x.y, ri0, ri1, X, Y, v0, sp, "tr-ref", x.q.color); });
       tr.forEach(q => { if (q.y) s += polyline(t, q.y, i0, i1, X, Y, v0, sp, "", q.color); });
@@ -294,15 +376,16 @@
       if (TR.panes[p] && TR.panes[p].fft) {
         return `<b class="mono">${esc(fmtEng(x, "Hz"))}</b> ` + tr.filter(q => q.y && q.pane === p).map(q => { const sp = spectrum(q); if (!sp) return ""; const k = Math.max(1, Math.min(sp.a.length - 1, Math.round(x / sp.df))); return `<span class="tr-val"><i style="background:${q.color}"></i>${esc(q.name)} <b class="mono">${(20 * Math.log10(sp.a[k] || 1e-30)).toFixed(1)} dB${esc(q.unit)}</b> <span class="muted">(${esc(fmtEng(sp.a[k], q.unit, 3))})</span></span>`; }).join(" ");
       }
-      return `<b class="mono">${esc(fmtEng(x, "s"))}</b> ` + tr.filter(q => q.y && !TR.panes[q.pane].fft).map(q => `<span class="tr-val"><i style="background:${q.color}"></i>${esc(q.name)} <b class="mono">${esc(fmtEng(valueAt(r.t, q.y, x), q.unit))}</b></span>`).join(" ");
+      return `<b class="mono">${esc(fmtX(x))}</b> ` + tr.filter(q => q.y && !TR.panes[q.pane].fft).map(q => `<span class="tr-val"><i style="background:${q.color}"></i>${esc(q.name)} <b class="mono">${esc(fmtEng(valueAt(r.t, q.y, x), q.unit))}</b></span>`).join(" ");
     }
     function cursorLine() {
       const a = TR.cur.a, b = TR.cur.b;
       if (a === null && b === null) return "";
       const d = a !== null && b !== null ? Math.abs(b - a) : null;
-      return `<div class="tr-curline"><span class="tr-mk">A</span> ${a === null ? "—" : esc(fmtEng(a, "s"))} <span class="tr-mk">B</span> ${b === null ? "—" : esc(fmtEng(b, "s"))}${d ? ` · Δt <b class="mono">${esc(fmtEng(d, "s"))}</b> · 1/Δt <b class="mono">${esc(fmtEng(1 / d, "Hz"))}</b>` : ""} <button class="btn tr-curx" id="btn-tr-curx" title="Take the cursors off">Clear cursors</button></div>`;
+      return `<div class="tr-curline"><span class="tr-mk">A</span> ${a === null ? "—" : esc(fmtX(a))} <span class="tr-mk">B</span> ${b === null ? "—" : esc(fmtX(b))}${d ? (isDc() ? ` · Δ <b class="mono">${esc(fmtX(d))}</b>` : ` · Δt <b class="mono">${esc(fmtX(d))}</b> · 1/Δt <b class="mono">${esc(fmtEng(1 / d, "Hz"))}</b>`) : ""} <button class="btn tr-curx" id="btn-tr-curx" title="Take the cursors off">Clear cursors</button></div>`;
     }
     function render() {
+      syncMode();
       const host = document.getElementById("tr-pane"), btn = document.getElementById("btn-tr-run");
       if (btn) btn.textContent = TR.job ? `■ Stop · ${Math.floor(TR.progress * 100)} %` : "▶ Run";
       const add = document.getElementById("tr-add");
@@ -319,11 +402,13 @@
       }
       if (!host || host.hidden) return;
       if (TR.error && !TR.job) { host.innerHTML = `<div class="bom-empty">${esc(TR.error)}</div>`; return; }
+      if (!TR.result && opts.mode === "dc") { host.innerHTML = `<div class="bom-empty">${TR.job ? "Running the DC sweep…" : "Pick what to sweep (a part's value, such as a supply's voltage or a resistor, or the temperature of every transistor), From, To and the number of points, and press ▶ Run: the circuit's DC operating point at each value, plotted against it (SPICE's .dc). Plot nets, currents (I(R3)) and expressions as in a transient; the cursors read the curves, and Measure finds a value, a slope or where a curve crosses a level."}</div>`; return; }
       if (!TR.result) {
         host.innerHTML = `<div class="bom-empty">${TR.job ? "Running the transient…" : `Press ▶ Run: the circuit runs from ${opts.start === "zero" ? "zero (every capacitor empty)" : "its operating point"} for ${esc(opts.stop || "?")}s, at the steps it needs, and the chart shows the scope channels and named nets (add any net with + Plot a net, or type an expression such as V(OUT)-V(IN) or I(R3)). A pulse, PWL or exponential generator gives one-off events: start-up, a step response, a switching supply's soft start.`}</div>`;
         return;
       }
       if (TR.active >= TR.panes.length) TR.active = TR.panes.length - 1;
+      if (isDc()) TR.panes.forEach(pn => { pn.fft = false; });
       const tr = shown(), r = TR.result, t = r.t, [v0, v1] = span();
       const ca = TR.cur.a, cb = TR.cur.b, both = ca !== null && cb !== null && ca !== cb;
       const [s0, s1] = both ? [Math.min(ca, cb), Math.max(ca, cb)] : [v0, v1], i0 = indexAt(t, s0), i1 = Math.min(t.length - 1, indexAt(t, s1));
@@ -333,7 +418,7 @@
         let info = "";
         if (pn.fft) info = mine.filter(q => q.y).map(q => { const pk = WM.peak(spectrum(q)); return pk ? `<span class="muted tr-info">${esc(q.name)} peak ${esc(fmtEng(pk.f, "Hz", 1))} ${esc(fmtEng(pk.a, q.unit, 3))}</span>` : ""; }).join("");
         return `<div class="tr-panebox${p === TR.active ? " on" : ""}" data-pane="${p}"><div class="tr-chips"><button class="tr-pn" data-p="${p}" title="New traces go to this pane">${TR.panes.length > 1 ? `Pane ${p + 1}` : "Traces"}</button>${mine.map(chip).join("")}`
-          + `<span class="tr-pane-tools"><button class="btn tr-fft${pn.fft ? " active" : ""}" data-p="${p}" title="Show this pane's traces as a spectrum (FFT of the time shown, or from cursor A to B), or back in time">${pn.fft ? "Time" : "FFT"}</button>${TR.panes.length > 1 ? `<button class="btn tr-px" data-p="${p}" title="Remove this pane and its traces">×</button>` : ""}</span></div>${info ? `<div class="tr-chips">${info}</div>` : ""}`
+          + `<span class="tr-pane-tools">${isDc() ? "" : `<button class="btn tr-fft${pn.fft ? " active" : ""}" data-p="${p}" title="Show this pane's traces as a spectrum (FFT of the time shown, or from cursor A to B), or back in time">${pn.fft ? "Time" : "FFT"}</button>`}${TR.panes.length > 1 ? `<button class="btn tr-px" data-p="${p}" title="Remove this pane and its traces">×</button>` : ""}</span></div>${info ? `<div class="tr-chips">${info}</div>` : ""}`
           + (pn.fft ? chartFft(p, mine) : chartTime(p, mine)) + `</div>`;
       }).join("");
       const timeTr = tr.filter(q => q.y && !TR.panes[q.pane].fft);
@@ -345,18 +430,36 @@
       const over = both ? "from A to B" : "over the time shown";
       const note = (TR.stale ? `<div class="bom-empty tol-note">The circuit changed since this run: press ▶ Run again.</div>` : "")
         + (TR.job ? `<div class="bom-empty tol-note">Running again…</div>` : "");
-      host.innerHTML = note + `<div class="tr-wrap"><div class="tr-chips"><span class="muted tr-info" title="Steps the run took, and how many were taken again shorter because the waveform turned faster than the step">${esc(fmtEng(r.tStop, "s"))} · ${r.steps} steps · ${r.points} points${TR.view ? ` · showing ${esc(fmtEng(v0, "s"))} to ${esc(fmtEng(v1, "s"))}` : ""}</span>`
+      host.innerHTML = note + `<div class="tr-wrap"><div class="tr-chips">${isDc() ? `<span class="muted tr-info" title="The swept value and how many points were solved">DC sweep of ${esc(r.sweepName)} · ${r.points} points${r.failed.length ? ` · ${r.failed.length} without an operating point` : ""}${TR.view ? ` · showing ${esc(fmtX(v0))} to ${esc(fmtX(v1))}` : ""}</span>` : `<span class="muted tr-info" title="Steps the run took, and how many were taken again shorter because the waveform turned faster than the step">${esc(fmtEng(r.tStop, "s"))} · ${r.steps} steps · ${r.points} points${TR.view ? ` · showing ${esc(fmtX(v0))} to ${esc(fmtX(v1))}` : ""}</span>`}`
         + `<button class="btn" id="btn-tr-pane" title="Add a pane under the others: traces added next go there (each pane has its own scale)">+ Pane</button>`
         + `<button class="btn" id="btn-tr-keep" title="Keep this run's traces to compare: they are drawn dashed under the next runs">${TR.ref ? "Keep this run instead" : "Keep as reference"}</button>${TR.ref ? `<button class="btn" id="btn-tr-unref" title="Stop drawing the kept run (${esc(TR.ref.label)})">Clear reference</button>` : ""}`
         + `<button class="btn tr-csv" id="btn-tr-csv" title="Save the traces in time as a CSV file (time and one column per trace)">CSV</button>${TR.view ? `<button class="btn" id="btn-tr-all" title="Show the whole run (or double-click the chart)">Show all</button>` : ""}</div>`
         + panes + `<div class="tr-read" id="tr-read">${readout(tr)}</div>` + cursorLine()
-        + `<table class="nz-table tr-table"><thead><tr><th style="text-align:left" title="Figures ${over}">Trace</th><th>Min</th><th>Max</th><th title="Peak to peak">p-p</th><th title="Average ${over}">Average</th><th title="RMS ${over} (with the DC)">RMS</th><th title="At the end of the time shown">End</th>${ca !== null ? `<th title="At cursor A">At A</th>` : ""}${cb !== null ? `<th title="At cursor B">At B</th>` : ""}${both ? `<th title="The value at B less the value at A">B − A</th>` : ""}</tr></thead><tbody>${rows}</tbody></table></div>`;
+        + `<table class="nz-table tr-table"><thead><tr><th style="text-align:left" title="Figures ${over}">Trace</th><th>Min</th><th>Max</th><th title="Peak to peak">p-p</th><th title="Average ${over}">Average</th><th title="RMS ${over} (with the DC)">RMS</th><th title="At the end of the time shown">End</th>${ca !== null ? `<th title="At cursor A">At A</th>` : ""}${cb !== null ? `<th title="At cursor B">At B</th>` : ""}${both ? `<th title="The value at B less the value at A">B − A</th>` : ""}</tr></thead><tbody>${rows}</tbody></table>${measures(tr, s0, s1)}</div>`;
+    }
+    // the measurements (SPICE's .meas): each a kind, a trace and its parameter, worked out over the
+    // time shown (or from cursor A to B)
+    // four significant figures in engineering notation (617.2 Hz, 2.197 ms)
+    const sig4 = (v, unit) => { const a = Math.abs(v); if (!a) return fmtEng(0, unit); const m = a / Math.pow(1000, Math.floor(Math.log10(a) / 3)); return fmtEng(v, unit, Math.max(0, 3 - Math.floor(Math.log10(m * 1.0000001)))); };
+    const DC_KINDS = ["max", "min", "pp", "avg", "at", "slope", "when", "integ"];
+    function measures(tr, s0, s1) {
+      const M = WM.MEASURES, kinds = Object.keys(M).filter(k => !isDc() || DC_KINDS.includes(k)), r = TR.result, xu = isDc() ? r.xUnit || "" : "s";
+      const opt = (sel, list) => list.map(([v, l]) => `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${esc(l)}</option>`).join("");
+      const rows = TR.meas.map((m, k) => {
+        const def = M[m.kind], v = evalTrace(m.expr);
+        let val = NaN;
+        if (v.y && def) val = WM.measure(m.kind, r.t, v.y, s0, s1, { at: m.at, level: m.level });
+        const unit = def ? def.unit(v.unit || "", xu) : "";
+        const par = def && def.param ? `<input type="text" class="tol-num tr-meas-p" data-k="${k}" value="${esc(m[def.param] === undefined || !isFinite(m[def.param]) ? "" : String(+(+m[def.param]).toPrecision(4)))}" title="${def.param === "at" ? (isDc() ? "At this value of the sweep" : "At this time") : "The level the trace crosses"}" placeholder="${def.param === "at" ? (isDc() ? "value" : "time") : "level"}">` : "";
+        return `<tr><td><select class="tol-sel tr-meas-k" data-k="${k}">${opt(m.kind, kinds.map(x => [x, M[x].label]))}</select></td><td><select class="tol-sel tr-meas-tr" data-k="${k}">${opt(m.expr, tr.map(q => [q.expr, q.expr]))}</select></td><td>${par}</td><td class="n mono">${v.error ? `<span class="tr-err">${esc(v.error)}</span>` : isFinite(val) ? esc(sig4(val, unit)) : `<span class="muted" title="The trace does not have it over this span (no edge, no crossing, no full period)">—</span>`}</td><td><button class="tr-x tr-meas-x" data-k="${k}" title="Remove this measurement" aria-label="Remove">×</button></td></tr>`;
+      }).join("");
+      return `<div class="tr-meas"><select id="tr-meas-add" class="tol-sel" title="Add a measurement of a trace over the span shown (or from cursor A to B): its extremes, average, RMS, value or slope at a point, where it first crosses a level${isDc() ? "" : ", rise and fall time, overshoot, settling time, period, frequency, duty cycle"}"><option value="">+ Measure…</option>${opt("", kinds.map(x => [x, M[x].label]))}</select>${rows ? `<table class="nz-table tr-table tr-meas-t"><tbody>${rows}</tbody></table>` : ""}</div>`;
     }
     function exportCsv() {
       const r = TR.result; if (!r) return "";
       const tr = shown().filter(q => q.y);
       const head = q => { const v = evalTrace(q.expr); return v.net ? `V(${q.name})` : q.name + (q.unit ? ` (${q.unit})` : ""); };
-      const lines = ["time," + tr.map(q => `"${head(q).replace(/"/g, "'")}"`).join(",")];
+      const lines = [(isDc() ? `"${r.sweepName}${r.xUnit ? ` (${r.xUnit})` : ""}"` : "time") + "," + tr.map(q => `"${head(q).replace(/"/g, "'")}"`).join(",")];
       for (let i = 0; i < r.t.length; i++) lines.push(+r.t[i].toPrecision(9) + "," + tr.map(q => +q.y[i].toPrecision(7)).join(","));
       const data = lines.join("\n") + "\n";
       const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], { type: "text/csv;charset=utf-8" })); a.download = "transient.csv"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -369,6 +472,22 @@
       TR.traces = (TR.traces || []).concat({ expr, pane: TR.active });
       render();
       return true;
+    }
+    // a measurement's parameter to begin with: the middle of the span, or half way up the trace
+    function defaultsOf(m) {
+      const r = TR.result; if (!r) return m;
+      const [v0, v1] = span();
+      if (m.at === undefined) m.at = (v0 + v1) / 2;
+      if (m.level === undefined) { const v = evalTrace(m.expr); if (v.y) { const st = traceStats(r.t, v.y, indexAt(r.t, v0), Math.min(r.t.length - 1, indexAt(r.t, v1))); m.level = st ? (st.min + st.max) / 2 : 0; } else m.level = 0; }
+      return m;
+    }
+    function addMeasure(kind, expr) {
+      if (!kind || !WM.MEASURES[kind] || !TR.result) return null;
+      const tr = shown(), q = tr.find(x => x.expr === expr) || tr.find(x => x.y && !TR.panes[x.pane].fft) || tr[0];
+      if (!q) return null;
+      const m = defaultsOf({ kind, expr: q.expr });
+      TR.meas.push(m); render();
+      return m;
     }
     function keepRef() {
       const r = TR.result; if (!r) return;
@@ -397,6 +516,16 @@
       bindIn("tr-step", "step", v => parseEng(v) > 0);
       bindIn("tr-from", "from", v => parseEng(v) >= 0);
       bindIn("tr-ic", "ic", v => !parseIc(v, parseEng).error);
+      const mo = document.getElementById("tr-mode");
+      if (mo) { mo.value = opts.mode; mo.addEventListener("change", () => { opts.mode = mo.value; save(); TR.meas = []; TR.result = null; TR.error = null; TR.view = null; TR.cur = { a: null, b: null }; TR.ref = null; render(); }); }
+      bindIn("tr-dc-from", "dcFrom", v => isFinite(parseEng(v)));
+      bindIn("tr-dc-to", "dcTo", v => isFinite(parseEng(v)));
+      bindIn("tr-dc-steps", "dcSteps", v => +v >= 2 && +v <= 1001);
+      const lg = document.getElementById("tr-dc-log");
+      if (lg) { lg.checked = !!opts.dcLog; lg.addEventListener("change", () => { opts.dcLog = lg.checked; save(); }); }
+      const ps = document.getElementById("tr-dc-part"), fs = document.getElementById("tr-dc-field");
+      if (ps) ps.addEventListener("change", () => { opts.dcPart = ps.value; opts.dcField = ""; opts.dcFrom = ""; opts.dcTo = ""; ["tr-dc-from", "tr-dc-to"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; }); save(); render(); });
+      if (fs) fs.addEventListener("change", () => { opts.dcField = fs.value; opts.dcFrom = ""; opts.dcTo = ""; ["tr-dc-from", "tr-dc-to"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; }); save(); render(); });
       const st = document.getElementById("tr-start");
       if (st) { st.value = opts.start; st.addEventListener("change", () => { opts.start = st.value; save(); render(); }); }
       const add = document.getElementById("tr-add");
@@ -414,7 +543,16 @@
       if (btn) btn.addEventListener("click", () => (TR.job ? stop() : run()));
       const host = document.getElementById("tr-pane");
       if (!host) return;
+      host.addEventListener("change", e => {
+        const k = e.target.dataset && +e.target.dataset.k, m = TR.meas[k];
+        if (e.target.id === "tr-meas-add") { addMeasure(e.target.value); return; }
+        if (!m) return;
+        if (e.target.classList.contains("tr-meas-k")) { m.kind = e.target.value; defaultsOf(m); render(); }
+        else if (e.target.classList.contains("tr-meas-tr")) { m.expr = e.target.value; render(); }
+        else if (e.target.classList.contains("tr-meas-p")) { const d = WM.MEASURES[m.kind], v = parseEng(e.target.value); if (d && d.param && isFinite(v)) { m[d.param] = v; render(); } else e.target.classList.add("bad"); }
+      });
       host.addEventListener("click", e => {
+        const mx = e.target.closest(".tr-meas-x"); if (mx) { TR.meas.splice(+mx.dataset.k, 1); render(); return; }
         const mv = e.target.closest(".tr-mv"); if (mv) { const q = TR.traces[+mv.dataset.k]; q.pane = (q.pane + 1) % TR.panes.length; render(); return; }
         const x = e.target.closest(".tr-x"); if (x) { TR.traces.splice(+x.dataset.k, 1); render(); return; }
         const pn = e.target.closest(".tr-pn"); if (pn) { TR.active = +pn.dataset.p; render(); return; }
@@ -465,7 +603,9 @@
       render();
     }
     return {
-      changed, init, render, run, stop, exportCsv, netNames, currentNames, shown, opts, addTrace, keepRef, evalTrace,
+      changed, init, render, run, stop, exportCsv, netNames, currentNames, shown, opts, addTrace, keepRef, evalTrace, addMeasure, dcTargets,
+      setMode: m => { opts.mode = m === "dc" ? "dc" : "tran"; TR.meas = []; const el = document.getElementById("tr-mode"); if (el) el.value = opts.mode; TR.result = null; TR.view = null; TR.cur = { a: null, b: null }; render(); },
+      setDc: o => { Object.assign(opts, o); ["dcFrom", "dcTo", "dcSteps"].forEach(k => { const el = document.getElementById("tr-dc-" + k.slice(2).toLowerCase()); if (el) el.value = opts[k]; }); render(); },
       setTraces: list => { TR.traces = list.map(x => asTrace(x)); TR.traces.forEach(q => { while (q.pane >= TR.panes.length) TR.panes.push({ fft: false }); }); render(); },
       setPanes: n => { while (TR.panes.length < n) TR.panes.push({ fft: false }); render(); },
       setCursor: (k, v) => { TR.cur[k] = v; render(); }

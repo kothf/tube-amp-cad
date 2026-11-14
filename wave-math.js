@@ -195,5 +195,70 @@
     return { f: (best + d) * sp.df, a: Math.sqrt(l * l + c * c + r * r) / Math.sqrt(1.5) };
   }
 
-  root.WaveMath = { parse, evaluate, refs, fft, peak, unitOp };
+
+  // ---- measurements over [x0, x1] of a trace (SPICE's .meas), x the time or the swept value ----
+  const lerpAt = (x, y, v) => {
+    const n = x.length; if (!n) return NaN;
+    if (v <= x[0]) return y[0]; if (v >= x[n - 1]) return y[n - 1];
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (x[m] <= v) lo = m; else hi = m; }
+    return y[lo] + (y[hi] - y[lo]) * (v - x[lo]) / ((x[hi] - x[lo]) || 1);
+  };
+  // the span's samples: [xs, ys] with the ends interpolated in
+  function slice(x, y, x0, x1) {
+    const xs = [x0], ys = [lerpAt(x, y, x0)];
+    for (let k = 0; k < x.length; k++) if (x[k] > x0 && x[k] < x1) { xs.push(x[k]); ys.push(y[k]); }
+    xs.push(x1); ys.push(lerpAt(x, y, x1));
+    return [xs, ys];
+  }
+  // every crossing of level: [{ x, dir: +1 rising | −1 falling }]
+  function crossings(xs, ys, level) {
+    const out = [];
+    for (let k = 1; k < xs.length; k++) {
+      const a = ys[k - 1] - level, b = ys[k] - level;
+      if ((a < 0 && b >= 0) || (a > 0 && b <= 0)) out.push({ x: xs[k - 1] + (xs[k] - xs[k - 1]) * a / (a - b), dir: b > a ? 1 : -1 });
+    }
+    return out;
+  }
+  // the extremes of an array (a spread runs out of stack on a long record)
+  const maxOf = a => { let m = -Infinity; for (let k = 0; k < a.length; k++) if (a[k] > m) m = a[k]; return m; };
+  const minOf = a => { let m = Infinity; for (let k = 0; k < a.length; k++) if (a[k] < m) m = a[k]; return m; };
+  const MEASURES = {
+    max: { label: "Maximum", unit: u => u, f: (xs, ys) => maxOf(ys) },
+    min: { label: "Minimum", unit: u => u, f: (xs, ys) => minOf(ys) },
+    pp: { label: "Peak to peak", unit: u => u, f: (xs, ys) => maxOf(ys) - minOf(ys) },
+    avg: { label: "Average", unit: u => u, f: (xs, ys) => integral(xs, ys) / ((xs[xs.length - 1] - xs[0]) || 1) },
+    rms: { label: "RMS", unit: u => u, f: (xs, ys) => { let s = 0; for (let k = 1; k < xs.length; k++) { const a = ys[k - 1], b = ys[k]; s += (a * a + a * b + b * b) / 3 * (xs[k] - xs[k - 1]); } return Math.sqrt(Math.max(0, s / ((xs[xs.length - 1] - xs[0]) || 1))); } },
+    integ: { label: "Integral", unit: (u, xu) => (u && xu ? u + "·" + xu : u || xu), f: (xs, ys) => integral(xs, ys) },
+    at: { label: "Value at", param: "at", unit: u => u, f: (xs, ys, p) => lerpAt(xs, ys, p.at) },
+    slope: { label: "Slope at", param: "at", unit: (u, xu) => (xu ? (u || "1") + "/" + xu : u), f: (xs, ys, p) => { const h = (xs[xs.length - 1] - xs[0]) * 1e-4; return (lerpAt(xs, ys, p.at + h) - lerpAt(xs, ys, p.at - h)) / (2 * h); } },
+    when: { label: "First crossing of", param: "level", unit: (u, xu) => xu, f: (xs, ys, p) => { const c = crossings(xs, ys, p.level)[0]; return c ? c.x : NaN; } },
+    rise: { label: "Rise time 10–90 %", unit: (u, xu) => xu, f: (xs, ys) => edgeTime(xs, ys, 1) },
+    fall: { label: "Fall time 90–10 %", unit: (u, xu) => xu, f: (xs, ys) => edgeTime(xs, ys, -1) },
+    overshoot: { label: "Overshoot", unit: () => "%", f: (xs, ys) => { const y0 = ys[0], y1 = ys[ys.length - 1], d = y1 - y0; if (!d) return NaN; const pk = d > 0 ? maxOf(ys) : minOf(ys); return Math.max(0, (pk - y1) / d * 100); } },
+    settle: { label: "Settling time (2 %)", unit: (u, xu) => xu, f: (xs, ys) => { const y0 = ys[0], y1 = ys[ys.length - 1], band = Math.abs(y1 - y0) * 0.02; if (!band) return NaN; for (let k = ys.length - 1; k >= 0; k--) if (Math.abs(ys[k] - y1) > band) return (k + 1 < xs.length ? xs[k + 1] : xs[k]) - xs[0]; return 0; } },
+    period: { label: "Period", unit: (u, xu) => xu, f: (xs, ys) => { const ups = midCross(xs, ys).filter(c => c.dir > 0); return ups.length > 1 ? (ups[ups.length - 1].x - ups[0].x) / (ups.length - 1) : NaN; } },
+    freq: { label: "Frequency", unit: () => "Hz", f: (xs, ys) => { const ups = midCross(xs, ys).filter(c => c.dir > 0); return ups.length > 1 ? (ups.length - 1) / (ups[ups.length - 1].x - ups[0].x) : NaN; } },
+    duty: { label: "Duty cycle", unit: () => "%", f: (xs, ys) => { const c = midCross(xs, ys), u = c.findIndex(q => q.dir > 0); if (u < 0) return NaN; const next = c.slice(u + 1), d = next.find(q => q.dir < 0), u2 = next.find(q => q.dir > 0 && (!d || q.x > d.x)); return d && u2 ? (d.x - c[u].x) / (u2.x - c[u].x) * 100 : NaN; } }
+  };
+  function integral(xs, ys) { let s = 0; for (let k = 1; k < xs.length; k++) s += (ys[k] + ys[k - 1]) / 2 * (xs[k] - xs[k - 1]); return s; }
+  function midCross(xs, ys) { const lo = minOf(ys), hi = maxOf(ys); return hi > lo ? crossings(xs, ys, (lo + hi) / 2) : []; }
+  // the first rising (dir 1) or falling edge's time between 10 % and 90 % of the span's range
+  function edgeTime(xs, ys, dir) {
+    const lo = minOf(ys), hi = maxOf(ys); if (!(hi > lo)) return NaN;
+    const a = lo + 0.1 * (hi - lo), b = lo + 0.9 * (hi - lo);
+    const [first, second] = dir > 0 ? [a, b] : [b, a];
+    const c1 = crossings(xs, ys, first).filter(c => c.dir === dir);
+    for (const c of c1) { const c2 = crossings(xs, ys, second).find(q => q.dir === dir && q.x >= c.x); if (c2) return c2.x - c.x; }
+    return NaN;
+  }
+  // one measurement: kind (a key of MEASURES), the record x, y, its span [x0, x1] and the kind's
+  // parameter ({ at } or { level }); NaN when the trace does not have it (no edge, no period…)
+  function measure(kind, x, y, x0, x1, p) {
+    const m = MEASURES[kind]; if (!m || !(x1 > x0)) return NaN;
+    const [xs, ys] = slice(x, y, x0, x1);
+    return m.f(xs, ys, p || {});
+  }
+
+  root.WaveMath = { parse, evaluate, refs, fft, peak, unitOp, measure, MEASURES, crossings };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -91,3 +91,40 @@ test("the run records every part's current (opts.currents): a capacitor charging
   const plain = E.transient({ nodeCount: 3, elements: [{ id: "V1", kind: "V", nodes: [1, 0], v: 1 }, { id: "R1", kind: "R", nodes: [1, 2], r: 1000 }, { id: "C1", kind: "C", nodes: [2, 0], c: 1e-6 }] }, { tStop: 1e-3 });
   assert.equal(plain.pinI, null, "without opts.currents nothing extra is kept");
 });
+
+test("measurements (SPICE's .meas) over a span", () => {
+  const x = Float64Array.from({ length: 20001 }, (_, k) => k * 1e-6);
+  const sq = x.map(v => ((v * 1000) % 1 < 0.3 ? 5 : 0));
+  const m = (k, y, p, x0 = 0, x1 = 0.02) => W.measure(k, x, y, x0, x1, p);
+  near(m("freq", sq), 1000, 0.01, "frequency of a 1 kHz square");
+  near(m("period", sq), 1e-3, 1e-8, "its period");
+  near(m("duty", sq), 30, 0.1, "its duty cycle");
+  near(m("avg", sq), 1.5, 0.01, "its average");
+  near(m("rms", sq), Math.sqrt(0.3 * 25), 0.01, "its RMS");
+  near(m("pp", sq), 5, 0, "peak to peak");
+  near(m("at", sq, { at: 0.0002 }), 5, 0, "value at a time");
+  near(m("when", sq, { level: 2.5 }, 0.0005), 0.001, 2e-6, "first crossing after the span's start");
+  const rc = x.map(v => 1 - Math.exp(-v / 1e-3));
+  near(m("rise", rc), 1e-3 * Math.log(9), 2e-6, "an RC's rise time is RC·ln 9");
+  near(m("slope", rc, { at: 1e-3 }), Math.exp(-1) / 1e-3, 1, "its slope at RC");
+  near(m("integ", rc.map(() => 2), {}, 0, 0.01), 0.02, 1e-12, "the integral of a constant");
+  const ring = x.map(v => 1 - Math.exp(-v / 2e-3) * Math.cos(2 * Math.PI * 1000 * v));
+  near(m("overshoot", ring), 100 * Math.exp(-0.5e-3 / 2e-3) * 1, 3, "a ring's overshoot");
+  const st = m("settle", ring);
+  assert.ok(st > 5e-3 && st < 8.5e-3, `a ring settles into 2 % when its envelope is below it (${st})`);
+  assert.ok(Number.isNaN(m("freq", rc)), "no period in a single rise: NaN (shown as —)");
+});
+
+test("a DC sweep follows a diode's curve from point to point, with every part's current", () => {
+  const xs = []; for (let v = -1; v <= 3.0001; v += 0.1) xs.push(+v.toFixed(3));
+  const nl = xs.map(v => ({ nodeCount: 3, elements: [{ id: "V1", kind: "V", nodes: [1, 0], v }, { id: "R1", kind: "R", nodes: [1, 2], r: 100 }, { id: "D1", kind: "D", nodes: [2, 0], is: 1e-14, n: 1 }] }));
+  const r = E.dcSweep(nl, { x: xs, currents: true });
+  assert.ok(r.ok, r.error); assert.deepEqual(r.failed, []);
+  assert.equal(r.t.length, xs.length);
+  near(r.nodes[2][0], -1, 1e-6, "reverse: the diode blocks");
+  const k = xs.indexOf(3), vd = r.nodes[2][k], id = (3 - vd) / 100;
+  near(id, 1e-14 * (Math.exp(vd / 0.025852) - 1), id * 0.01, "forward: the diode's own law at 3 V");
+  const j = r.pinI.ids.findIndex(([e, n]) => e === "D1" && n === 2);
+  near(r.pinI.vals[j][k], id, id * 1e-3, "the diode's current is recorded");
+  near(r.currents.V1[k], -id, id * 1e-3, "and the source's branch current");
+});

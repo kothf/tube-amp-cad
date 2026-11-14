@@ -590,6 +590,19 @@ the circuit that was on the sheet.
     the strongest line named); cursors A and B (click, Shift+click) with Δt,
     1/Δt and each trace's values, the figures taken between them; *Keep as
     reference* draws a run dashed under the next ones;
+  - **DC sweep** (the tab's first list; SPICE's `.dc`): the operating point at
+    2 to 1001 values of a part's value (a supply's voltage, a current source,
+    a resistor, a pot…) or of the temperature of every transistor (by its own
+    XTI, EG, XTB, as SPICE), each point continuing from the one before; the
+    same viewer with the swept value on the axis. Checked against ngspice's
+    `.dc` on six circuits (diode, zener knee, BJT output curve, BJT bias
+    against temperature, MOSFET transfer curve, current-fed diode) within
+    0.5 % of the swing, `tests/dcsweep-ngspice.mjs`;
+  - **Measurements** (SPICE's `.meas`): *+ Measure…* adds max, min, p-p,
+    average, RMS, integral, value and slope at a point, first crossing of a
+    level, rise and fall time (10–90 %), overshoot, settling time (2 %),
+    period, frequency and duty cycle of a trace, over the span shown or from
+    cursor A to B;
   - the signal generator's *pulse*, *PWL*, *exponential* and *FM* waves and
     the `PULSE`/`SIN`/`EXP`/`SFFM`/`PWL` sources and `time` in B sources of a
     SPICE part play here (the other analyses take their DC value).
@@ -1513,7 +1526,8 @@ npm run build:wasm  # sim-solver.wasm from wasm/solver.ts, after changing the so
   differences, with the reason). It also runs `tests/models.mjs` (makers'
   op-amp models, and waveforms of switching benches in
   `tests/fixtures/trandev.lib` point by point), `tests/transient-ngspice.mjs`
-  (the Transient tab's run against `.tran`) and the speed benchmark below.
+  (the Transient tab's run against `.tran`), `tests/dcsweep-ngspice.mjs` (its
+  DC sweep against `.dc`) and the speed benchmark below.
   CI runs it on each push and pull request.
 - `node tests/bench.mjs` (part of `npm run test:ngspice`) times the live run,
   the full run, the Bode sweep and the power-on run of every example, and

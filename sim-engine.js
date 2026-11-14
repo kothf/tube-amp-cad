@@ -3094,6 +3094,51 @@
     if (hotB.length) { result.thermal = {}; hotB.forEach(e => { result.thermal[e.id] = { tj: e._tj }; }); }
     return result;
   }
+  // ---------------------------------------------------------------------------
+  // DC sweep (SPICE's .dc, and .temp stepped): the operating point of each netlist in turn, the
+  // circuit with one value changed a step at a time. Each point starts from the one before (a
+  // continuation: the solve follows a hysteresis or a switching point the way the sweep runs) and
+  // falls back to a solve from scratch.
+  //   netlists: [netlist...] in sweep order; opts: { x: [the swept values], currents, budgetMs, onProgress(f) }
+  //   returns { ok, t: Float64Array (the swept values, named t so a viewer of time reads it the same),
+  //             nodes: [null, Float32Array per node], currents, pinI (as transient's), points, failed: [index…] }
+  // ---------------------------------------------------------------------------
+  function dcSweep(netlists, opts) {
+    opts = opts || {};
+    const t0w = Date.now(), N = netlists.length, budgetMs = opts.budgetMs || 120000;
+    if (!N) return { ok: false, error: "Nothing to sweep" };
+    const xs = Float64Array.from(opts.x || netlists.map((_, k) => k));
+    let prev = null, nU = -1, nv = 0, X = null, curIds = null, curK = null, curV = null;
+    const failed = [];
+    for (let k = 0; k < N; k++) {
+      const circ = buildCircuit(netlists[k]);
+      if (circ.nNodes < 2) return { ok: false, error: "Circuit is empty" };
+      if (nU < 0) {
+        nU = circ.nUnk; nv = circ.nNodes - 1;
+        X = Array.from({ length: nU }, () => new Float32Array(N).fill(NaN));
+        if (opts.currents) { curIds = currentsOf(circ, new Array(nU).fill(0), []); curK = curIds.length / 3; curV = Array.from({ length: curK }, () => new Float32Array(N).fill(NaN)); }
+      }
+      let x = null;
+      if (prev && circ.nUnk === nU) { const r = newtonSolve(circ, prev, { dc: true }, { gmin: 1e-12 }); if (r.ok) x = r.x; }
+      if (!x) { const r = dcOperatingPoint(circ); if (r.ok) x = r.x; }
+      if (!x || circ.nUnk !== nU) { failed.push(k); prev = null; continue; }
+      prev = x;
+      for (let i = 0; i < nU; i++) X[i][k] = x[i];
+      if (curK) {
+        const c = currentsOf(circ, x, []);
+        if (c.length === curIds.length) for (let j = 0; j < curK; j++) curV[j][k] = c[3 * j + 2];
+      }
+      if (opts.onProgress) opts.onProgress((k + 1) / N);
+      if (Date.now() - t0w > budgetMs) return { ok: false, error: `Stopped at point ${k + 1} of ${N}: the sweep took longer than ${Math.round(budgetMs / 1000)} s` };
+    }
+    if (failed.length === N) return { ok: false, error: "No operating point at any value of the sweep" };
+    const nodes = [null];
+    for (let i = 0; i < nv; i++) nodes.push(X[i]);
+    const currents = {};
+    buildCircuit(netlists[0]).els.forEach(e => { if (e.branch !== undefined && e.id && !currents[e.id]) currents[e.id] = X[e.branch]; });
+    return { ok: true, t: xs, nodes, currents, pinI: curK ? { ids: Array.from({ length: curK }, (_, j) => [curIds[3 * j], curIds[3 * j + 1]]), vals: curV } : null,
+      points: N, steps: N, rejected: 0, failed, tStop: xs[N - 1], tStart: xs[0], elapsedMs: Date.now() - t0w };
+  }
   const fmtTime = t => (t >= 1 ? t.toPrecision(4) + " s" : t >= 1e-3 ? (t * 1e3).toPrecision(4) + " ms" : t >= 1e-6 ? (t * 1e6).toPrecision(4) + " µs" : (t * 1e9).toPrecision(4) + " ns");
 
   // ---------------------------------------------------------------------------
@@ -3469,7 +3514,7 @@
     return { ok: true, freqs, total, gain: { re: gRe, im: gIm }, sources: src.map((p, j) => ({ id: p.id, kind: p.kind, psd: psd[j] })), elapsedMs: Date.now() - t0 };
   }
 
-  const Engine = { Tube, Koren, Semi, NE555, tubeCurrents, tubeJacobian, capAt, chargeAt, dcPseudoTransient, stuckOf, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, transient, srcAt, srcBreak, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
+  const Engine = { Tube, Koren, Semi, NE555, tubeCurrents, tubeJacobian, capAt, chargeAt, dcPseudoTransient, stuckOf, cathodeWarm, CATHODE, timerCurrents, terminalCurrents, Spice, RECTIFIER_PERVEANCE, simulate, startup, transient, dcSweep, srcAt, srcBreak, audio, acSweep, acPoints, loopGain, noiseSweep, opMagnetising, coreFlux, buildCircuit, dcOperatingPoint, solveLinear, invertMatrix, SparseMatrix,
     loadWasm, useWasm, solver: () => (wasm ? "wasm" : "js") };
   root.TubeSimEngine = Engine;
 })(globalThis);

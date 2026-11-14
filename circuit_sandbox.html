@@ -287,6 +287,11 @@
     .tr-table td:first-child { white-space: nowrap; }
     .tr-ic { width: 130px; }
     .tr-expr { width: 150px; }
+    .bom-tools .tr-only:not([hidden]), .bom-tools .dc-only:not([hidden]) { display: contents; }
+    .tr-meas { margin-top: 8px; }
+    .tr-meas-t { margin-top: 4px; max-width: 760px; }
+    .tr-meas-t td { padding: 2px 6px; }
+    .tr-meas-p { width: 80px; }
     .tr-panebox { border-left: 2px solid transparent; padding-left: 6px; margin-bottom: 6px; }
     .tr-panebox.on { border-left-color: var(--accent); }
     .tr-pn { background: none; border: 0; color: var(--muted); font-size: 11px; cursor: pointer; padding: 0 4px 0 0; }
@@ -763,7 +768,7 @@
         <button class="menu-item check" data-ico="power" role="menuitemcheckbox" aria-checked="false" id="btn-power" title="The circuit simulated at a row of input levels: the output power against its distortion, and the power at 1 %, 5 % and 10 % THD">Power sweep<kbd>under the schematic</kbd></button>
         <button class="menu-item check" data-ico="noise" role="menuitemcheckbox" aria-checked="false" id="btn-noise" title="Noise and hum at the output with no signal: the signal-to-noise ratio in dB(A), the input noise and the parts it comes from, the supply's ripple and AC heater hum">Noise and hum<kbd>under the schematic</kbd></button>
         <button class="menu-item check" data-ico="sweep" role="menuitemcheckbox" aria-checked="false" id="btn-sweep" title="One part's value stepped over a range, the circuit simulated at each step: how every tube, transistor, speaker and scope channel follows">Parameter sweep<kbd>under the schematic</kbd></button>
-        <button class="menu-item check" data-ico="tr" role="menuitemcheckbox" aria-checked="false" id="btn-transient" title="The circuit run from its operating point (or from zero) for as long as you set, at the steps it needs: start-up, pulses and steps, oscillators, switching supplies; any net plotted">Transient<kbd>under the schematic</kbd></button>
+        <button class="menu-item check" data-ico="tr" role="menuitemcheckbox" aria-checked="false" id="btn-transient" title="The circuit run from its operating point (or from zero) for as long as you set, at the steps it needs: start-up, pulses and steps, oscillators, switching supplies; or a DC sweep of a supply, a part's value or the temperature. Any net, current or expression plotted, with measurements">Transient<kbd>under the schematic</kbd></button>
         <button class="menu-item check" data-ico="listen" role="menuitemcheckbox" aria-checked="false" id="btn-listen" title="Hear the circuit: a recording (WAV, MP3, a guitar riff or the generator's tone) played through it, A/B against the input">Listen<kbd>under the schematic</kbd></button>
       </div>
     </div>
@@ -845,11 +850,17 @@
             <button class="btn" id="btn-sw-run" title="Run the sweep; press again to stop">▶ Run</button>
           </span>
           <span class="bom-tools" data-for="transient">
-            <label title="How long the run lasts, from switch-on (10m, 2.5, 500u…)">Stop <input type="text" id="tr-stop" class="tol-num sw-num"> s</label>
+            <select id="tr-mode" class="tol-sel" title="Transient: the circuit in time (SPICE's .tran). DC sweep: its operating point as one value is stepped, a supply's voltage, a part's value or the temperature (SPICE's .dc)"><option value="tran">Transient</option><option value="dc">DC sweep</option></select>
+            <span class="dc-only" hidden><select id="tr-dc-part" class="tol-sel" title="What to sweep: a part's value (its first numeric field to begin with, such as a supply's voltage) or the temperature of every transistor"></select> <select id="tr-dc-field" class="tol-sel" title="Which of the part's values to sweep"></select>
+            <label title="The first value of the sweep (empty: zero, or the field's lowest)">From <input type="text" id="tr-dc-from" class="tol-num sw-num" placeholder="auto"></label>
+            <label title="The last value of the sweep (empty: twice the part's value, or the field's highest)">To <input type="text" id="tr-dc-to" class="tol-num sw-num" placeholder="auto"></label>
+            <label title="How many values, from 2 to 1001">Points <input type="text" id="tr-dc-steps" class="tol-num sw-num"></label>
+            <label title="Space the values evenly in ratio (log) instead of evenly"><input type="checkbox" id="tr-dc-log"> Log</label></span>
+            <span class="tr-only"><label title="How long the run lasts, from switch-on (10m, 2.5, 500u…)">Stop <input type="text" id="tr-stop" class="tol-num sw-num"> s</label>
             <label title="The longest step the run may take (empty: automatic, a five-hundredth of the run; the steps shorten by themselves wherever the waveform turns fast)">Max step <input type="text" id="tr-step" class="tol-num sw-num" placeholder="auto"> s</label>
             <label title="Keep the waveforms only from this time on (empty: from the start)">Save from <input type="text" id="tr-from" class="tol-num sw-num" placeholder="0"> s</label>
             <label title="Where the run starts: the DC operating point (the circuit already on), or zero (every capacitor empty and every inductor without current, SPICE's UIC)">Start <select id="tr-start" class="tol-sel"><option value="op">Operating point</option><option value="zero">Zero (UIC)</option></select></label>
-            <label title="Initial conditions (SPICE's .ic): nets held at a voltage at the start, NAME=VOLTS separated by commas. Name a sheet connector or rail, or a part's pin as R3.2 or C1.+">.ic <input type="text" id="tr-ic" class="tol-num tr-ic" placeholder="OUT=0, C1.+=5"></label>
+            <label title="Initial conditions (SPICE's .ic): nets held at a voltage at the start, NAME=VOLTS separated by commas. Name a sheet connector or rail, or a part's pin as R3.2 or C1.+">.ic <input type="text" id="tr-ic" class="tol-num tr-ic" placeholder="OUT=0, C1.+=5"></label></span>
             <select id="tr-add" class="tol-sel" title="Add a net to the chart: connectors and rails by name, scope channels, any part's pin (R3.2)"></select>
             <input type="text" id="tr-expr" class="tol-num tr-expr" list="tr-names" placeholder="V(OUT)-V(IN), I(R3)…" title="Plot a current or an expression (Enter): V(OUT), V(A,B), I(R3) (into its first pin), I(Q1.C), V(R1.1)*I(R1) (watts), d(x), integ(x), abs, sqrt, db, min, max, time. It goes to the pane picked (+ Pane adds one)"><datalist id="tr-names"></datalist>
             <button class="btn" id="btn-tr-run" title="Run the transient; press again to stop">▶ Run</button>
