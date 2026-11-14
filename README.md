@@ -609,7 +609,10 @@ the circuit that was on the sheet.
   - Checked against ngspice's `.tran` on ten benches (RC, RLC ring,
     rectifier, PWL into RL, EXP, SFFM, current pulse, B source reading time,
     a BJT switch, `uic` with `.ic`): within 1 % of each node's swing (2 % for
-    the ring and the switch), `tests/transient-ngspice.mjs`.
+    the ring and the switch), `tests/transient-ngspice.mjs`; and four
+    switching converters (buck 12→5 V, boost 5→12 V, flyback 24→5 V with
+    coupled windings, class-D half bridge): start-up within 2 % of the swing,
+    output average within 1 % and ripple within 10 %, `tests/smps-ngspice.mjs`.
 - **KiCad.** *Export KiCad project* (File menu) writes a ZIP for KiCad 7 or
   later: the schematic (each symbol as drawn here, dual valves as units of
   one symbol, a sheet per drawing frame), the board when its parts are
@@ -1527,7 +1530,8 @@ npm run build:wasm  # sim-solver.wasm from wasm/solver.ts, after changing the so
   op-amp models, and waveforms of switching benches in
   `tests/fixtures/trandev.lib` point by point), `tests/transient-ngspice.mjs`
   (the Transient tab's run against `.tran`), `tests/dcsweep-ngspice.mjs` (its
-  DC sweep against `.dc`) and the speed benchmark below.
+  DC sweep against `.dc`), `tests/smps-ngspice.mjs` (buck, boost, flyback and
+  class-D converters against `.tran`) and the speed benchmark below.
   CI runs it on each push and pull request.
 - `node tests/bench.mjs` (part of `npm run test:ngspice`) times the live run,
   the full run, the Bode sweep and the power-on run of every example, and

@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.222.0] - 2026-11-14
+
+General-purpose simulation, part 4: switching converters checked against ngspice.
+
+### Added
+- `tests/smps-ngspice.mjs` (in `npm run test:ngspice`): a 12 V to 5 V buck, a 5 V to 12 V boost, a 24 V to 5 V flyback (coupled windings, RCD snubber, RC across the output diode) and a class-D half bridge (1 kHz sine against a 250 kHz triangle, body diodes, LC filter), each switched by SPICE switches and started from zero, run in the Transient engine and in ngspice's `.tran`. All four agree: the start-up waveform within 0.2 % of its swing (limit 2 %), the output's average over the last periods within 1 % and its ripple within 10 %, the switching node's average within 1 % of the input.
+- Manual (*How it steps*) and README: which converters are checked, and why an undamped switching edge (leakage against a diode's capacitance) costs many steps, here as in SPICE.
+
+### Notes
+- ngspice's `SW` model reads only `VT`/`VH`; PSpice's `VON`/`VOFF` are ignored there (it switches at 0 V), while this program takes them as PSpice does. The benches use `VT`/`VH` so both read the same switch.
+
 ## [3.221.0] - 2026-11-14
 
 General-purpose simulation, part 3: DC and temperature sweeps, and measurements.
