@@ -1262,3 +1262,13 @@ test("differential pairs and length groups: rules, the pair's width and gap, ske
   const pro = JSON.parse(globalThis.KicadExport.project("t", board, m, none));
   assert.equal(pro.net_settings.classes[0].diff_pair_width, 0.25); assert.equal(pro.net_settings.classes[0].diff_pair_gap, 0.2);
 });
+
+test("a track joining two pads of one footprint may pass a third as close as the nearer pad is (entryGap)", () => {
+  // a transformer's pins in a column, 5.08 mm apart, 1.4 mm pads: pin 1, then pins 2 and 3 joined by a track
+  const pad = (num, y) => ({ kind: "pad", pad: { part: "T1", num }, s: [10, y, 10, y], r: 0.7, layers: ["F.Cu"] });
+  const items = [pad("1", 0), pad("2", 5.08), pad("3", 10.16)];
+  // pin 3 to pin 2 (as a straight run, after its corners were merged): next to pin 1 it is where it enters pin 2
+  const eg = B.entryGap([10, 10.16, 10, 5.08], items[0], items);
+  assert.ok(Math.abs(eg - 3.68) < 1e-6, `pin 2's spacing to pin 1, not pin 3's (${eg})`);
+  assert.equal(B.entryGap([20, 0, 30, 0], items[0], items), null, "a track from elsewhere gets no allowance");
+});

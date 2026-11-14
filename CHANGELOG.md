@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.223.0] - 2026-11-14
+
+Board design: fixes from a field test on real boards (4- and 6-layer versions of two valve amplifiers with planes and a split plane, push and shove on three routed boards, a differential pair and a length group on a new balanced-input board).
+
+### Fixed
+- **Routing by hand past a square or rectangular pad**: the clearance shown while routing measured every pad as a rounded shape, so a diagonal passing a square pad's corner was accepted and then reported by the check (seen on a TO-247 pad). It now measures the pad as the check does, and the other bend is taken when that one keeps the clearance. Push and shove uses the same measure for what it must not run into.
+- **A track joining two pins of one part** (a transformer's or a socket's) is allowed as close to a third pin as the nearer of its two pins is; it took the farther one, so a straight run from pin 3 to pin 2 beside pin 1 was accepted while drawn in two pieces and reported once its corners were merged.
+- **Push and shove** near a track's end on a pad: the pushed track now jogs out from the pad itself, steeper than 45°, instead of giving up with "would move the track's end". Only a track whose end the new one reaches past still refuses.
+- **Route the partner alongside** failed whenever the partner's pads sat further apart than the pair's gap (any connector or through-hole pad: "too close to XT1-1"). The partner now fans in from its own pad with a 45° bend and runs beside the track from just past it, and fans out at the far end the same way; of the two sides, the shorter partner wins.
+- **Add a meander** asked for 4 spacings of straight segment where one bump needs 3, and gave up on a short segment; it now tries the runs closer together, down to the track width plus the clearance. "1 turns" reads "1 turn".
+
+### Added
+- `BoardHs.subPath` (a stretch of a path by length along it), with tests for it, the closer meander runs, the push at a track's end and the pin-to-pin allowance.
+
 ## [3.222.0] - 2026-11-14
 
 General-purpose simulation, part 4: switching converters checked against ngspice.

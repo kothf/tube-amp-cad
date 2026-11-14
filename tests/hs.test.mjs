@@ -57,7 +57,12 @@ test("a meander adds exactly the length asked for, within the segment; a partner
   const m = H.meander([[0, 0], [40, 0]], 0, 7.5, { s: 1, amax: 3 });
   assert.ok(m.pts, m.fail); near(H.pathLength(m.pts) - 40, 7.5, 1e-3, "added length");
   assert.ok(m.pts.every(p => p[0] >= 0 && p[0] <= 40 && p[1] >= 0 && p[1] <= 3 + 1e-9), "inside the segment's span and amplitude");
-  assert.match(H.meander([[0, 0], [3, 0]], 0, 2, { s: 1 }).fail, /too short/);
+  assert.match(H.meander([[0, 0], [2.5, 0]], 0, 2, { s: 1 }).fail, /too short/);
+  // one bump needs 3 s; a shorter segment brings the runs closer, down to smin
+  assert.ok(H.meander([[0, 0], [3, 0]], 0, 2, { s: 1 }).pts);
+  const nm = H.meander([[0, 0], [2.5, 0]], 0, 2, { s: 1, smin: 0.6 });
+  assert.ok(nm.pts && Math.abs(H.pathLength(nm.pts) - 4.5) < 1e-3, `closer runs on a 2.5 mm segment add the 2 mm (${nm.fail || H.pathLength(nm.pts)})`);
+  assert.match(H.meander([[0, 0], [1.5, 0]], 0, 2, { s: 1, smin: 0.6 }).fail, /too short/);
   assert.match(H.meander([[0, 0], [10, 0]], 0, 50, { s: 1, amax: 2 }).fail, /not enough room/);
   const o = H.offsetPath([[0, 0], [10, 0], [15, 5], [15, 20]], 0.5);
   const seg = (p, k) => [p[k], p[k + 1]];
@@ -66,4 +71,11 @@ test("a meander adds exactly the length asked for, within the segment; a partner
     const dx = b2[0] - a[0], dy = b2[1] - a[1], l = Math.hypot(dx, dy), dist = Math.abs((c[0] - a[0]) * dy - (c[1] - a[1]) * dx) / l;
     near(dist, 0.5, 1e-3, `offset of segment ${k}`); near((d[0] - c[0]) * dy - (d[1] - c[1]) * dx, 0, 1e-3, "parallel");
   }
+});
+
+test("subPath cuts a stretch of a path by length along it", () => {
+  const p = [[0, 0], [10, 0], [10, 10]];
+  assert.deepEqual(H.subPath(p, 2, 15), [[2, 0], [10, 0], [10, 5]]);
+  assert.deepEqual(H.subPath(p, 0, 20), p);
+  assert.deepEqual(H.subPath(p, 11, 13), [[10, 1], [10, 3]]);
 });

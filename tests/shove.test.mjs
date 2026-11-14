@@ -59,6 +59,21 @@ test("nothing moves when a push would cross a track, move a locked one or a trac
   assert.ok(res2.fail, "blocked chain fails");
 });
 
+test("a push close to the track's end (a pad) jogs out from the end itself, which stays put", () => {
+  const B = T([[0, 2], [20, 2]], "B"), s = [[1, 1.9, 8, 1.9]];
+  const res = run([B], s);
+  assert.ok(res.moved, res.fail);
+  const p = res.moved.get(0);
+  assert.deepEqual(p[0], [0, 2]); assert.deepEqual(p[p.length - 1], [20, 2]);
+  assert.ok(p[1][1] > 2.6 && p[1][0] < 0.7, `steep jog off the end (${JSON.stringify(p[1])})`);
+  assert.ok(clearOk([B], res, s, 0.25, 0.3));
+  // the same at the far end
+  const r2 = run([B], [[12, 1.9, 19, 1.9]]);
+  assert.ok(r2.moved, r2.fail);
+  assert.deepEqual(r2.moved.get(0).slice(-1)[0], [20, 2]);
+  assert.ok(clearOk([B], r2, [[12, 1.9, 19, 1.9]], 0.25, 0.3));
+});
+
 test("same net and other layers are left alone; the answer is the same every time", () => {
   const tracks = [T([[0, 2], [20, 2]], "NEW"), T([[0, 2], [20, 2]], "B", { layer: "B.Cu" })];
   const res = run(tracks, [[5, 1.5, 12, 1.5]]);
