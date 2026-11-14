@@ -918,17 +918,23 @@ import { readFile } from "node:fs/promises";
     const blk = S.model.parts.filter(g => g.members.every(m => m.block)), insts = [...new Set(blk.map(g => g.members[0].block.i))];
     const of = i => blk.filter(g => g.members[0].block.i === i), sig = g => g.members.map(m => m.block.m).sort().join();
     const one = of(insts[0]), two = of(insts[1]);
-    one.forEach((g, k) => Object.assign(S.board.parts[g.key], { x: 10 + (k % 3) * 9, y: 10 + Math.floor(k / 3) * 14, rot: 1 }));
+    one.forEach((g, k) => Object.assign(S.board.parts[g.key], { x: 150 + (k % 3) * 9, y: 150 + Math.floor(k / 3) * 14, rot: 1 }));   // clear of the example's own parts
     A.commit("test layout");
     // one track on a net of copy 1's own (R1 to its neighbour), drawn by hand
     const pads = S.model.pads.filter(p => one.some(g => g.key === p.part) && p.net !== null), local = pads.find(p => pads.some(q => q !== p && q.net === p.net && q.part !== p.part) && !S.model.pads.some(q => q.net === p.net && two.some(g => g.key === q.part)));
     const mate = local && pads.find(q => q !== local && q.net === local.net && q.part !== local.part);
-    if (local && mate) { S.board.tracks.push({ layer: "B.Cu", w: 0.8, pts: [[local.x, local.y], [mate.x, mate.y]] }); A.commit("track"); }
+    // round the other pads: out to the free lane between the columns, past every pad of the copy, across, back in to the second
+    const yb = Math.max(...pads.map(p => p.y)) + 4, lane = x => x + 4.5;
+    if (local && mate) { S.board.tracks.push({ layer: "B.Cu", w: 0.8, pts: [[local.x, local.y], [lane(local.x), local.y], [lane(local.x), yb], [lane(mate.x), yb], [lane(mate.x), mate.y], [mate.x, mate.y]] }); A.commit("track"); }
     S.sel = { kind: "multi", parts: one.map(g => g.key), tracks: [], vias: [], holes: [], texts: [], zones: [] };
     const nt = S.board.tracks.length;
     A.replicateLayout();
     const rel = list => { const b = list.map(g => [sig(g), S.board.parts[g.key]]).sort((a, c) => a[0] < c[0] ? -1 : 1), o = b[0][1]; return b.map(([k, p]) => [k, +(p.x - o.x).toFixed(3), +(p.y - o.y).toFixed(3), p.rot].join(":")).join(" "); };
-    return { n: [one.length, two.length], same: rel(one) === rel(two), tracks: S.board.tracks.length - nt, had: !!(local && mate) };
+    // the copy has the track too: from its twin of R1's pad to its twin of the neighbour's
+    const twinPad = p => { const g = one.find(g => g.key === p.part), h = two.find(h => sig(h) === sig(g)); return S.model.pads.find(q => q.part === h.key && q.num === p.num); };
+    const ta = local && twinPad(local), tb = mate && twinPad(mate), at = (p, q) => Math.hypot(p[0] - q.x, p[1] - q.y) < 0.01;
+    const copied = !!(ta && tb) && S.board.tracks.some(t => at(t.pts[0], ta) && at(t.pts[t.pts.length - 1], tb));
+    return { n: [one.length, two.length], same: rel(one) === rel(two), tracks: copied ? 1 : 0, had: !!(local && mate), nt };
   });
   check(rep.n[0] === rep.n[1] && rep.n[0] >= 6 && rep.same && rep.had && rep.tracks === 1, `Route ▾ → Copy layout to other copies: the second sheet instance takes the first one's placement and its track (${rep.n[0]} parts, ${rep.tracks} track)`);
   await bw.close();

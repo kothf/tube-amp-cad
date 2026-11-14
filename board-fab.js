@@ -182,7 +182,7 @@
       `; #@! TF.GenerationSoftware,Tube Amp CAD,Board Design,${ascii((meta && meta.version) || "", true)}`, `; #@! TF.FileFunction,${plated ? "Plated,1,2,PTH" : "NonPlated,1,2,NPTH"}`, "FMAT,2", "METRIC"];
     tools.forEach(([d, , fn], i) => out.push(`; #@! TA.AperFunction,${plated ? "Plated,PTH" : "NonPlated,NPTH"},${fn}`, `T${i + 1}C${d}`));
     out.push("%", "G90", "G05");
-    tools.forEach(([, pts], i) => { out.push(`T${i + 1}`); pts.forEach(([x, y]) => out.push(`X${f3(x)}Y${f3(H - y)}`)); });
+    tools.forEach(([, pts], i) => { out.push(`T${i + 1}`); pts.forEach(p => out.push(p.length === 4 ? `X${f3(p[0])}Y${f3(H - p[1])}G85X${f3(p[2])}Y${f3(H - p[3])}` : `X${f3(p[0])}Y${f3(H - p[1])}`)); });  // [x1, y1, x2, y2]: a slot (G85)
     out.push("M30");
     return out.join("\n") + "\n";
   }

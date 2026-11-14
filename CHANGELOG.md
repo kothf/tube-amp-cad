@@ -18,6 +18,13 @@ Schematic: hierarchical sheets, built on reusable blocks; board: copy a channel'
 - The simulation, BOM, ERC, board netlist and saved file see the flat circuit; KiCad export writes every sheet as its own schematic, ports as global labels.
 - **Board: Route ▾ → Copy layout to other copies**: select the parts of one placed and routed copy of a block or sheet instance; every other copy gets the same placement, turn, side and mounting at the same distances (anchored on its part matching the first selected; copies still waiting below a fresh board go beside the first), with the tracks and vias of its own nets (shared nets such as ground and supplies untouched; locked parts and copper stay put). Board netlist parts carry their block tag.
 - **Blocks**: a newly placed copy's sheet connectors are renamed at once (IN → IN_2, IN_3), so copies never join by accident; the dashed outline numbers the copies (Channel · 2/2); a copy whose drawing differs from the block (parts moved, added inside, taken out) says so in the inspector with *Update block from this copy*; *Export library…* / *Import library…* (`tubecad-blocks.json`) move the block library between browsers.
+- **Panel**: oval holes of the boards read from Gerber ZIPs come through: KiCad's routed slots (`G00`/`M15`/`G01`/`M16`) and `G85` slots are read and written to the panel's drill file as `G85` slots (they were left out with a note; seen on two real KiCad 8 boards). Sizes in the Panel dialog show to 0.01 mm.
+
+### Fixed (field test)
+- A new copy of a block whose drawing had two connectors of one name (a feedback loop drawn with two NFB connectors) gave them two different names (NFB_2, NFB_2_2), opening the loop in the copy; one name now gets one new name in a copy. Connectors named like a supply (+325V, B+, −15V, VCC, 12V) or used in three places or more keep their names, so a copy still reaches the power supply. A copy placed from the library into an empty circuit keeps its names.
+- A second instance of a hierarchical sheet shared its sheet's connectors with the first (two channels joined through NFB); a new instance's connectors are renamed as for a block's copy.
+- Copy layout to other copies left an older layout's copper where the copy now stands, shorting nets; that copper is cleared.
+
 - Tests: e2e part `05c-hier` (make sheet on example 03 with nets compared, step in and out, second instance, sync of values and parts, delete and undo, nested sheet, save and reopen, KiCad sheets, simulation, palette sheet and port) and a Copy layout check in part 07.
 
 ## [3.225.0] - 2026-11-14

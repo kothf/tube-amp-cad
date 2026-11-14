@@ -182,9 +182,8 @@
     }
     // a copy of the block drawn with its corner at (ox, oy); reuse: Map(member → the part it
     // replaces), whose id, designator and own values the new part keeps
-    const freeName = base => { let n = base, k = 2; const taken = new Set(S.comps.filter(c => c.type === "offsheet").map(c => String(c.params.name || "").trim().toUpperCase())); while (taken.has(n.toUpperCase())) n = base + "_" + k++; return n; };
     function stamp(def, ox, oy, copyId, reuse, rename) {
-      const label = labeller(), comps = [], wires = [];
+      const label = labeller(), comps = [], wires = [], renames = new Map();
       def.comps.forEach(dm => {
         if (!LIB[dm.type]) return;
         const c = makeComp(dm.type, dm.params, ox + dm.x, oy + dm.y, dm.rot);
@@ -194,7 +193,8 @@
         else {
           if (c.label) c.label = label(dm.label) || c.label;
           // a new copy's sheet connector gets a name of its own (IN → IN_2), so the copies do not join
-          if (rename && c.type === "offsheet" && String(c.params.name || "").trim()) c.params.name = freeName(String(c.params.name).trim().replace(/_\d+$/, "") + "_" + rename);
+          // (one name, one new name: the copy's two NFB connectors both become NFB_2)
+          if (rename && c.type === "offsheet") c.params.name = copyName(renames, c.params.name, rename, S.comps);
         }
         c.block = { i: copyId, d: def.id, m: dm.m };
         S.comps.push(c); comps.push(c);
@@ -216,7 +216,6 @@
     }
     const selWires = comps => { const w = S.wires.filter(x => S.sel.wires.has(x.id)); return w.length ? w : wiresInside(comps, 10); };
     const uniqueName = base => { let n = base, k = 2; while (S.blocks.some(b => b.name === n)) n = base + " " + k++; return n; };
-    const hasConnectors = def => def.comps.some(c => PER_COPY[c.type]);
 
     // Edit ▾ → Make block from selection: the selected parts (and their wires) become a block, and
     // they its first copy
@@ -309,7 +308,9 @@
       comps.forEach(c => S.sel.comps.add(c.id)); wires.forEach(w => S.sel.wires.add(w.id));
       commit();
       const n = copies(S.comps, def.id).size;
-      note = `Copy ${n} of “${def.name}” placed.` + (hasConnectors(def) ? ` Its sheet connectors got names of their own (${comps.filter(c => c.type === "offsheet").map(c => c.params.name).join(", ")}), so they do not join the first copy's: rename them as you need (each copy keeps its own).` : "");
+      const os = comps.filter(c => c.type === "offsheet"), was = c => { const dm = def.comps.find(k => k.m === c.block.m); return dm ? String(dm.params.name || "").trim() : ""; };
+      const renamed = os.filter(c => String(c.params.name).trim() !== was(c)), shared = n > 1 ? os.filter(c => String(c.params.name).trim() === was(c)) : [];
+      note = `Copy ${n} of “${def.name}” placed.` + (renamed.length ? ` Its sheet connectors got names of their own (${[...new Set(renamed.map(c => c.params.name))].join(", ")}), so they do not join the first copy's: rename them as you need (each copy keeps its own).` : "") + (shared.length ? ` Supply connectors stay shared (${[...new Set(shared.map(c => c.params.name))].join(", ")}).` : "");
       setStatus("ok", note);
     }
     function cancelPlace() { if (!S.placingBlock) return false; S.placingBlock = null; setStatus("ok", "Placing cancelled."); render(); return true; }
@@ -489,6 +490,17 @@
     return { make: make_, update, selectCopy, detach, startPlace, drop, cancelPlace, drawGhost, drawOutlines, inspector, selectionTools, openDialog, closeDialog, isOpen, beforeCommit, load, init, exportLib, importLib, drawnOtherwise: (id, i) => drawnOtherwise(defOf(id), i), member: memberSel,
       note: () => note, canUpdate: () => { const t = selComps().filter(c => c.block); return new Set(t.map(c => c.block.i)).size === 1 && !isSheet(defOf(t[0].block.d)); } };
   }
-  Object.assign(CadBlocks, { make, extent, copies, origin, sync, subtract, shared, ownOf: own, canon, PER_COPY, LIB_KEY });
+  // a new copy's (or sheet instance's) connector name: IN → IN_2 for copy 2, the same new name for
+  // every connector of one name in the copy. A name like a supply's (+325V, B+, -15V, VCC, 12V)
+  // or one already used in three places or more is a rail every copy shares: it stays
+  function copyName(renames, name, k, comps) {
+    const was = String(name || "").trim(); if (!was || k < 2) return name;
+    const used = n => comps.filter(c => c.type === "offsheet" && String(c.params.name || "").trim().toUpperCase() === n.toUpperCase()).length;
+    if (/^[+\-\u2212]|^(B\+|HT|V(CC|DD|EE|SS|BAT)\b)|\d\s*V$/i.test(was) || used(was) >= 3) return name;
+    const key = was.toUpperCase();
+    if (!renames.has(key)) { const base = was.replace(/_\d+$/, "") + "_" + k; let n = base, j = 2; while (used(n)) n = base + "_" + j++; renames.set(key, n); }
+    return renames.get(key);
+  }
+  Object.assign(CadBlocks, { copyName, make, extent, copies, origin, sync, subtract, shared, ownOf: own, canon, PER_COPY, LIB_KEY });
   root.CadBlocks = CadBlocks;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -163,3 +163,20 @@ test("round boards: tabs where the edges come closest, every board held", () => 
   const vs = BP.layout({ mode: "vscore", items: [{ src: "this", rows: 1, cols: 2 }] }, { this: pc });
   assert.ok(vs.warnings.some(w => /not a plain rectangle/.test(w)));
 });
+
+test("slots in a drill file: KiCad's routed oval holes and G85 come through the panel as slots", () => {
+  const drl = ["M48", "; #@! TF.FileFunction,Plated,1,2,PTH", "FMAT,2", "METRIC", "T1C1.000", "T2C1.200", "%", "G90", "G05",
+    "T1", "X10.0Y-20.0",
+    "T2", "G00X30.0Y-20.0", "M15", "G01X33.0Y-20.0", "M16", "G05",
+    "X40.0Y-20.0G85X40.0Y-24.0", "M30"].join("\n");
+  const d = BP.parseExcellon(drl);
+  assert.deepEqual(d.errors, []);
+  assert.deepEqual(d.tools, [["1.000", [[10, 20]]], ["1.200", [[30, 20, 33, 20], [40, 20, 40, 24]]]]);
+  // turned a quarter and written again: the slots are G85 lines with both ends moved
+  const pc = { name: "s", layers: { "F.Cu": [], "B.Cu": [] }, loops: [[[0, 0], [50, 0], [50, 30], [0, 30]]], drills: { pth: d.tools.map(([dia, pts]) => [dia, pts, "ComponentDrill"]), npth: [] }, pos: [], copper: ["F.Cu", "B.Cu"] };
+  const out = F.excellon(pc.drills.pth, true, { outline: { w: 50, h: 30 } }, {});
+  assert.match(out, /X30\.000Y10\.000G85X33\.000Y10\.000/);
+  const back = BP.parseExcellon(out);
+  assert.equal(back.tools[1][1].length, 2);
+  assert.equal(back.tools[1][1][0].length, 4);
+});

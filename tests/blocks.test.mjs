@@ -67,3 +67,12 @@ test("an old copy's wires come out of wiring merged or split around them", () =>
     { id: "c", x1: 0, y1: 100, x2: 100, y2: 100 }
   ]);
 });
+
+test("a copy's connector names: one new name per name, supplies kept, the first copy untouched", () => {
+  const comps = ["NFB", "NFB", "IN", "+325V", "OUT", "OUT", "OUT"].map(name => ({ type: "offsheet", params: { name } }));
+  const r = new Map(), n = x => B.copyName(r, x, 2, comps);
+  assert.deepEqual(["NFB", "NFB", "IN", "+325V", "B+", "VCC", "-15V", "12V", "OUT"].map(n), ["NFB_2", "NFB_2", "IN_2", "+325V", "B+", "VCC", "-15V", "12V", "OUT"]);
+  assert.equal(B.copyName(new Map(), "NFB", 1, comps), "NFB");
+  // a name taken already gets the next free one
+  assert.equal(B.copyName(new Map(), "IN", 2, comps.concat([{ type: "offsheet", params: { name: "IN_2" } }])), "IN_2_2");
+});

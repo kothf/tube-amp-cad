@@ -76,15 +76,20 @@
       return label => { const m = /^([A-Za-z]+)(\d+)(\..+)?$/.exec(label || ""); if (!m) return null; const base = m[1] + m[2]; if (!bases.has(base)) bases.set(base, next(m[1])); return bases.get(base) + (m[3] || ""); };
     }
     // an instance's sheet drawn from its block at the frame; reuse: member → the part it replaces
-    function stamp(def, inst, f, reuse) {
-      const label = labeller();
+    function stamp(def, inst, f, reuse, k) {
+      const label = labeller(), renames = new Map();
       def.comps.forEach(dm => {
         if (!LIB[dm.type]) return;
         const c = makeComp(dm.type, dm.params, f.x + dm.x, f.y + dm.y, dm.rot);
         c.params = Object.assign({}, LIB[dm.type].defaults, clone(dm.params));
         const old = reuse && reuse.get(dm.m);
         if (old && old.type === dm.type) { c.id = old.id; c.label = old.label; Object.assign(c.params, B.ownOf(c.type, old.params)); }
-        else { if (c.label) c.label = label(dm.label) || c.label; if (c.type === "sheetsym") c.params.inst = ""; }
+        else {
+          if (c.label) c.label = label(dm.label) || c.label;
+          if (c.type === "sheetsym") c.params.inst = "";
+          // a new instance's sheet connectors get names of their own (NFB → NFB_2), supplies stay shared
+          if (c.type === "offsheet" && k) c.params.name = B.copyName(renames, c.params.name, k, S.comps);
+        }
         c.block = { i: inst, d: def.id, m: dm.m };
         S.comps.push(c);
       });
@@ -140,7 +145,7 @@
         const dup = inst && S.comps.some((o, j) => j < k && o.type === "sheetsym" && o.params.inst === inst);
         if (!f || dup) {
           const ni = newId("i"), nf = newFrame(def, ni, `${def.name}${c.params.title ? " (" + c.params.title + ")" : ""}`);
-          stamp(def, ni, nf, null);
+          stamp(def, ni, nf, null, instFrames(def.id).length);
           c.params.inst = ni; changed = true; guard++;
         }
       }

@@ -1396,6 +1396,8 @@
     // nets: a pad's net in the source copy and the same pad's net in a copy
     const padNet = (key, num) => { const p = S.model.pads.find(q => q.part === key && q.num === num); return p ? p.net : null; };
     let placed = 0, tracks = 0, vias = 0;
+    const viaNet = vi => { const it = S.conn && S.conn.items.find(x => x.kind === "via" && x.vi === vi); return it ? it.net : null; };
+    const srcT = S.board.tracks.map((t, ti) => [{ ...t, pts: t.pts.map(p => p.slice()) }, netOfTrack(ti)]), srcV = S.board.vias.map((v, vi) => [{ ...v }, viaNet(vi)]);
     others.forEach(oi => {
       const twin = g => S.model.parts.find(h => { const b = blockOf(h); return b && b.i === oi && sig(h) === sig(g); });
       const pairs = src.map(g => [g, twin(g)]).filter(([, h]) => h);
@@ -1414,14 +1416,19 @@
       shared.forEach(n => map.delete(n));
       if (!map.size) return;
       const dst = new Set(map.values()), name = n => storedNet(n);
-      // the copy's own tracks and vias go, the source's come over moved by the same step
-      const oldT = S.board.tracks.map((t, ti) => [t, netOfTrack(ti)]);
-      S.board.tracks = oldT.filter(([t, n]) => t.locked || !dst.has(n)).map(([t]) => t);
-      const viaNet = vi => { const it = S.conn && S.conn.items.find(x => x.kind === "via" && x.vi === vi); return it ? it.net : null; };
-      const oldV = S.board.vias.map((v, vi) => [v, viaNet(vi)]);
-      S.board.vias = oldV.filter(([v, n]) => v.locked || !dst.has(n)).map(([v]) => v);
-      oldT.forEach(([t, n]) => { if (map.has(n)) { S.board.tracks.push({ ...t, locked: undefined, pts: t.pts.map(([x, y]) => [+(x + dx).toFixed(4), +(y + dy).toFixed(4)]), net: name(map.get(n)) }); tracks++; } });
-      oldV.forEach(([v, n]) => { if (map.has(n)) { S.board.vias.push({ ...v, locked: undefined, x: +(v.x + dx).toFixed(4), y: +(v.y + dy).toFixed(4), net: name(map.get(n)) }); vias++; } });
+      // with the parts in their new places: the copy's own copper goes, and so does copper left
+      // over there that now joins nothing or shorts nets (an older layout of that copy); then the
+      // source's tracks and vias come over moved by the same step
+      analyse();
+      const box = [Infinity, Infinity, -Infinity, -Infinity];
+      S.model.pads.filter(p => pairs.some(([, h]) => h.key === p.part)).forEach(p => { box[0] = Math.min(box[0], p.x - 3); box[1] = Math.min(box[1], p.y - 3); box[2] = Math.max(box[2], p.x + 3); box[3] = Math.max(box[3], p.y + 3); });
+      const inBox = pts => pts.some(([x, y]) => x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3]);
+      const goes = (n, pts) => dst.has(n) || ((n === null || n === "short") && inBox(pts));
+      const nowT = S.board.tracks.map((t, ti) => [t, netOfTrack(ti)]), nowV = S.board.vias.map((v, vi) => [v, viaNet(vi)]);
+      S.board.tracks = nowT.filter(([t, n]) => t.locked || !goes(n, t.pts)).map(([t]) => t);
+      S.board.vias = nowV.filter(([v, n]) => v.locked || !goes(n, [[v.x, v.y]])).map(([v]) => v);
+      srcT.forEach(([t, n]) => { if (map.has(n)) { S.board.tracks.push({ ...t, locked: undefined, pts: t.pts.map(([x, y]) => [+(x + dx).toFixed(4), +(y + dy).toFixed(4)]), net: name(map.get(n)) }); tracks++; } });
+      srcV.forEach(([v, n]) => { if (map.has(n)) { S.board.vias.push({ ...v, locked: undefined, x: +(v.x + dx).toFixed(4), y: +(v.y + dy).toFixed(4), net: name(map.get(n)) }); vias++; } });
     });
     commit(`Layout of ${src.length} part${src.length > 1 ? "s" : ""} copied to ${others.length} other cop${others.length > 1 ? "ies" : "y"}: ${placed} part${placed === 1 ? "" : "s"} placed${tracks ? `, ${tracks} track${tracks > 1 ? "s" : ""}` : ""}${vias ? `, ${vias} via${vias > 1 ? "s" : ""}` : ""} (Ctrl+Z takes it back)`);
   }
