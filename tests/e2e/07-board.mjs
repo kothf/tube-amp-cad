@@ -519,6 +519,45 @@ import { readFile } from "node:fs/promises";
     }
   }
 
+  // impedance calculator: Z0 from the stack, and the width for 50 Ω; a differential pair in Design rules
+  {
+    await bd.click("#btn-board"); await bd.click("#btn-imp");
+    await bd.fill("#imp-w", "0.3"); await bd.dispatchEvent("#imp-w", "input");
+    const z1 = await bd.evaluate(() => document.getElementById("imp-out").textContent);
+    await bd.fill("#imp-z0", "50"); await bd.click("#imp-fit-w");
+    const fit = await bd.evaluate(() => ({ w: +document.getElementById("imp-w").value, out: document.getElementById("imp-out").textContent }));
+    await bd.click("#imp-close");
+    const z0 = s => +((s.match(/Z₀ ([\d.]+)/) || [])[1] || 0);
+    check(z0(z1) > 60 && Math.abs(z0(fit.out) - 50) < 0.5 && fit.w > 2 && fit.w < 4, `Impedance calculator: 0.3 mm on the top of a 1.6 mm two-layer board is ${z0(z1)} Ω; 50 Ω needs ${fit.w} mm ("${fit.out.split("·")[0].trim()}")`);
+    await bd.click("#btn-board"); await bd.click("#btn-rules"); await bd.click("#rules-add-pair");
+    const opts = await bd.evaluate(() => [...document.querySelectorAll('#rules-pairs select[data-k="p"] option')].map(o => o.value).filter(Boolean));
+    await bd.selectOption('#rules-pairs select[data-k="p"]', opts[0]); await bd.selectOption('#rules-pairs select[data-k="n"]', opts[1]);
+    await bd.fill('#rules-pairs input[data-k="gap"]', "0.3"); await bd.dispatchEvent('#rules-pairs input[data-k="gap"]', "change"); await bd.waitForTimeout(50);
+    const zd = await bd.evaluate(() => document.querySelector("#rules-pairs tr td:nth-child(6)").textContent);
+    await bd.click("#rules-apply");
+    const pairs = await bd.evaluate(() => BoardApp.state.board.rules.pairs);
+    check(pairs.length === 1 && pairs[0].p === opts[0] && pairs[0].n === opts[1] && pairs[0].gap === 0.3 && /Ω/.test(zd), `Design rules: a differential pair (${JSON.stringify(pairs[0])}, Zdiff ${zd} on the top layer)`);
+    await bd.evaluate(() => { BoardApp.state.board.rules.pairs = []; BoardApp.commit(); });
+  }
+  // a meander makes up a length group's target: a straight track out of a free pad, 6 mm more wanted
+  {
+    const mr = await bd.evaluate(() => {
+      const S = BoardApp.state, o = S.board.outline, items = S.conn.items;
+      const free = (p, x1, y1, x2, y2) => x1 > 1 && y1 > 1 && x2 < o.w - 1 && y2 < o.h - 1 && !items.some(it => (it.kind !== "pad" || it.pad !== p) && [[it.s[0], it.s[1]], [it.s[2], it.s[3]], [(it.s[0] + it.s[2]) / 2, (it.s[1] + it.s[3]) / 2]].some(([x, y]) => x > x1 - it.r - 1 && x < x2 + it.r + 1 && y > y1 - it.r - 1 && y < y2 + it.r + 1));
+      const p = S.model.pads.find(q => q.net !== null && S.board.parts[q.part] && free(q, q.x + 1.5, q.y - 10, q.x + 34, q.y + 10));
+      if (!p) return null;
+      const name = S.model.names[p.net], len0 = BoardHs.netLengths(S.conn).get(p.net) || 0;
+      S.board.tracks.push({ layer: "F.Cu", w: 0.3, pts: [[p.x, p.y], [p.x + 30, p.y]], net: name });
+      S.board.rules.lengths = [{ name: "test", nets: [name], tol: 0.2, target: +(len0 + 36).toFixed(3) }]; BoardApp.commit();
+      const ti = S.board.tracks.length - 1, before = BoardHs.netLengths(S.conn).get(p.net);
+      BoardApp.addMeander(ti, 0);
+      const after = BoardHs.netLengths(S.conn).get(p.net), st = document.getElementById("st-msg").textContent, pts = S.board.tracks[ti].pts.length;
+      S.board.tracks.splice(ti, 1); S.board.rules.lengths = []; BoardApp.commit();
+      return { before, after, target: len0 + 36, st, pts };
+    });
+    check(mr && Math.abs(mr.after - mr.target) < 0.05 && mr.pts > 2 && /Meander on/.test(mr.st), `Add a meander brings a net to its length group's target (${mr && mr.before.toFixed(2)} → ${mr && mr.after.toFixed(2)} mm of ${mr && mr.target.toFixed(2)}; "${mr && mr.st}")`);
+  }
+
   // manufacturing outputs: the Gerber ZIP (the board is unfinished: confirm) and the print PDF
   bd.once("dialog", d => d.accept().catch(() => {}));
   await bd.click("#btn-export");

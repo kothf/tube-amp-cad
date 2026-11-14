@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js", "board-route.js", "board-3d.js", "kicad-export.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-core.js", "pdf-export.js", "board-fab.js", "board-route.js", "board-3d.js", "kicad-export.js", "board-hs.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
 const B = globalThis.BoardCore, L = globalThis.CadLib, F = globalThis.BoardFab, BR = globalThis.BoardRoute;
 // the rules before 3.113.0 (1 mm signal, 2 mm power tracks, 0.6 mm clearance): the geometry of some checks below is drawn for them
 const classic = board => (Object.assign(board.rules, { track: 1, power: 2, clearance: 0.6 }), board);
@@ -1230,4 +1230,35 @@ test("a square pad's corners count in the clearance (the capsule missed them by 
   // two square pads: the gap between their boxes; a segment touching or inside the box: 0
   assert.ok(Math.abs(B.itemGap(pad, { kind: "pad", s: [4, 4, 4, 4], r: 1, box: [3, 3, 5, 5] }) - Math.hypot(2, 2)) < 1e-9);
   assert.equal(B.segItem([0.5, 0.5, 3, 3], pad), 0);
+});
+
+test("differential pairs and length groups: rules, the pair's width and gap, skew and length checks, KiCad rules", () => {
+  const board = classic(B.newBoard()); B.sync(board, NETLIST); board.rules.ipc = "off";
+  Object.assign(board.parts.r1, { x: 30, y: 30, rot: 0 });
+  let m = B.model(board, NETLIST);
+  const pa = m.pads.find(p => p.ref === "R1" && p.num === "1"), pb = m.pads.find(p => p.ref === "R1" && p.num === "2"), A = m.names[pa.net], Bn = m.names[pb.net], none = new Set();
+  board.rules = B.normaliseRules({ ...board.rules, pairs: [{ p: A, n: Bn, width: 0.25, gap: 0.2, skew: 1 }, { p: A, n: "X" }, { p: "Y", n: "Y" }], lengths: [{ name: "bus", nets: [A, Bn, A], tol: 0.5 }, { nets: "bad" }] });
+  assert.equal(board.rules.pairs.length, 1, "a net in two pairs, or paired with itself, is dropped");
+  assert.deepEqual(board.rules.lengths, [{ name: "bus", nets: [A, Bn], tol: 0.5 }]);
+  assert.equal(B.pairOf(Bn, board.rules).partner, A);
+  assert.equal(B.netRule(pa.net, m.names, none, board.rules).track, 0.25, "the pair's width before the class's");
+  const CR = B.clearanceRules(board, m, none, NETLIST);
+  assert.equal(CR.need(pa.net, pb.net).c, 0.2, "the two nets of a pair keep the pair's gap, closer than the class's 0.6");
+  assert.equal(CR.need(pa.net, 0).c, 0.6, "to other nets: the class's");
+  // tracks out of each pad: 10 and 15 mm: 5 mm skew
+  board.tracks.push({ layer: "B.Cu", w: 0.25, pts: [[pa.x, pa.y], [pa.x - 10, pa.y]], net: A }, { layer: "B.Cu", w: 0.25, pts: [[pb.x, pb.y], [pb.x + 15, pb.y]], net: Bn });
+  m = B.model(board, NETLIST);
+  const c = B.connectivity(board, m.pads), d = B.drc(board, m, c, none);
+  const skew = d.find(x => x.kind === "skew"), len = d.filter(x => x.kind === "length");
+  assert.ok(skew && /5\.00 mm apart/.test(skew.msg) && skew.msg.includes(`lengthen ${A}`), JSON.stringify(skew));
+  assert.equal(len.length, 1, "the shorter net of the group is reported");
+  board.rules.checks.length = false;
+  assert.ok(!B.drc(board, m, c, none).some(x => x.kind === "skew" || x.kind === "length"), "the check can be turned off");
+  board.rules.checks.length = true;
+  // KiCad: pair width, gap, skew and the group's skew as custom rules; the pair's width and gap on the classes
+  const dru = globalThis.KicadExport.rules(board, m, none, NETLIST);
+  assert.match(dru, new RegExp(`Pair ${A.replace(/[+]/g, "\\+")} / .* gap[\\s\\S]*constraint clearance \\(min 0\\.2mm\\)`));
+  assert.match(dru, /constraint skew \(max 1mm\)/); assert.match(dru, /Length group bus"\s*\(constraint skew \(max 0\.5mm\)\)/);
+  const pro = JSON.parse(globalThis.KicadExport.project("t", board, m, none));
+  assert.equal(pro.net_settings.classes[0].diff_pair_width, 0.25); assert.equal(pro.net_settings.classes[0].diff_pair_gap, 0.2);
 });

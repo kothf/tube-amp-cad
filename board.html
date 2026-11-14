@@ -77,7 +77,7 @@
     .dlg td select { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; }
     .dlg .nets { max-height: 230px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
     .dlg td input.cell { width: 64px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; font: inherit; color: inherit; }
-    .dlg td input.cell.name { width: 110px; } .dlg td input.cell:placeholder-shown { border-style: dashed; }
+    .dlg td input.cell.name { width: 110px; } .dlg td input.cell.nets { width: 220px; } .dlg td input.cell:placeholder-shown { border-style: dashed; }
     .dlg td input.cell.invalid { border-color: var(--bad); }
     .dlg .matrix th, .dlg .matrix td { text-align: center; } .dlg .matrix td.self { color: var(--muted); }
     .cls-user { color: #b392f0; }
@@ -376,6 +376,7 @@
       <div class="menu-list right" hidden>
         <button class="menu-item" data-ico="sliders" id="btn-setup" title="Board setup: outline, corners, mounting holes, drawing sheet, layer stack">Board setup…<small>outline, holes, stack</small></button>
         <button class="menu-item" data-ico="clearance" id="btn-rules" title="Design rules: clearances (by voltage), widths, vias, heaters, valve checks, net classes (your own too), clearance between classes, each net's own rule">Design rules…<small>clearances, classes, checks</small></button>
+        <button class="menu-item" data-ico="sliders" id="btn-imp" title="Impedance calculator: a track's or a pair's impedance on each layer of the stack, or the width and gap for a target">Impedance calculator…<small>Z₀, Zdiff from the stack</small></button>
         <button class="menu-item" data-ico="clearance" data-tool="rulearea" title="Rule area: draw an area where copper keeps its own clearance and track width (a neck-down between fine-pitch pins, more room round a mains entry); click the corners, double-click to close">Draw a rule area<small>own clearance, width</small></button>
       </div>
     </div>
@@ -587,6 +588,14 @@
       <h3>Nets</h3>
       <p class="help">Each net's class, and a width or clearance of its own where it needs one (empty: its class's).</p>
       <div class="nets"><table><thead><tr><th>Net</th><th>Pads</th><th>DC</th><th>Class</th><th title="The net's own track width; empty: its class's">Width</th><th title="The net's own clearance to every other net; empty: its class's">Clearance</th><th title="The clearance to 0 V copper: the net's, or IPC-2221B's for the net's voltage when that is more">To GND</th></tr></thead><tbody id="rules-nets"></tbody></table></div>
+      <h3 id="rules-pairs-h">Differential pairs</h3>
+      <p class="help">Two nets routed side by side: the pair's width, the gap between them (edge to edge; closer than the class's clearance is allowed between the two) and how far their lengths may differ (skew). The impedance is worked out from the layer stack (Board setup) for the top layer.</p>
+      <div class="nets"><table><thead><tr><th>+ net</th><th>− net</th><th title="Track width of both nets (empty: their class's)">Width</th><th title="Edge-to-edge gap between the two tracks">Gap</th><th title="How far the two routed lengths may differ (mm)">Skew</th><th title="Differential impedance on the top layer for this width and gap (Board ▾ → Impedance calculator for other layers)">Zdiff</th><th></th></tr></thead><tbody id="rules-pairs"></tbody></table></div>
+      <div class="actions" style="justify-content:flex-start;margin-top:6px"><button class="btn" id="rules-add-pair" title="A differential pair: pick its two nets">+ Add pair</button><span id="rules-pair-hint" class="mut"></span></div>
+      <h3 id="rules-lengths-h">Length groups</h3>
+      <p class="help">Nets whose routed lengths must match (a bus, a clock and its data): within the tolerance of the longest, or of a target length when one is set. The check reports the short ones; a track's right-click menu adds a meander.</p>
+      <div class="nets"><table><thead><tr><th>Group</th><th title="The nets, separated by commas">Nets</th><th title="How far a net may differ (mm)">Tolerance</th><th title="A length every net should have (mm); empty: match the longest">Target</th><th></th></tr></thead><tbody id="rules-lengths"></tbody></table></div>
+      <div class="actions" style="justify-content:flex-start;margin-top:6px"><button class="btn" id="rules-add-length" title="A group of nets whose lengths must match">+ Add length group</button></div>
       <div class="actions"><button class="btn" id="rules-reset" title="The default rules (your classes, the class matrix and each net's class and own rule are kept)">Defaults</button><span class="spacer"></span><button class="btn" id="rules-cancel">Cancel</button><button class="btn active" id="rules-apply">Apply</button></div>
     </div>
   </div>
@@ -611,6 +620,19 @@
     </div>
   </div>
 
+  <div class="modal" id="imp-modal" hidden>
+    <div class="modal-box dlg" style="width: min(480px, 96vw)">
+      <div class="insp-title">Impedance calculator</div>
+      <p class="help">From the layer stack in Board setup (thickness, copper, εr, dielectrics): a track on an outer layer is a microstrip over the next layer, on an inner layer a stripline between its neighbours. Hammerstad-Jensen and IPC-2141A estimates, within a few per cent of a field solver; solder mask (2-3 Ω lower on outer layers) is not counted. For a controlled-impedance order, ask the fab for their stack-up and numbers.</p>
+      <div class="row"><span>Layer</span><select id="imp-layer"></select></div>
+      <div class="row"><span>Track width (mm)</span><input id="imp-w" value="0.3"></div>
+      <div class="row" title="Edge-to-edge gap of a differential pair; empty: a single track"><span>Pair gap (mm)</span><input id="imp-gap" placeholder="single track"></div>
+      <p class="help" id="imp-out"></p>
+      <div class="row"><span>Width for Z₀ (Ω)</span><span><input id="imp-z0" value="50" style="width:60px"> <button class="btn" id="imp-fit-w" title="Set the width for this single-ended impedance">Find width</button></span></div>
+      <div class="row"><span>Gap for Zdiff (Ω)</span><span><input id="imp-zd" value="100" style="width:60px"> <button class="btn" id="imp-fit-g" title="Set the pair gap for this differential impedance at the width above">Find gap</button></span></div>
+      <div class="actions"><span class="spacer"></span><button class="btn active" id="imp-close">Close</button></div>
+    </div>
+  </div>
   <div class="modal" id="setup-modal" hidden>
     <div class="modal-box dlg" style="width: min(560px, 96vw)">
       <div class="insp-title">Board setup</div>
@@ -637,6 +659,8 @@
       <div class="row" id="setup-innercu-row" title="Inner layers are usually thinner copper; the current check widens tracks on them (IPC-2221: half the outer layer's current for the same width and rise)"><span>Inner copper (µm)</span><select id="setup-innercu"><option value="18">18 (½ oz)</option><option value="35">35 (1 oz)</option><option value="70">70 (2 oz)</option></select></div>
       <div class="row"><span>Board thickness (mm)</span><select data-s="thickness"><option value="0.8">0.8</option><option value="1">1.0</option><option value="1.2">1.2</option><option value="1.6">1.6</option><option value="2">2.0</option></select></div>
       <div class="row"><span>Copper (µm)</span><select data-s="copper"><option value="18">18 (½ oz)</option><option value="35">35 (1 oz)</option><option value="70">70 (2 oz)</option></select></div>
+      <div class="row" title="The dielectric's relative permittivity, for the impedance of tracks and pairs (FR4: 4.2-4.7; empty: 4.5)"><span>Dielectric εr</span><input id="setup-er" placeholder="4.5"></div>
+      <div class="row"><span>Dielectric (mm)</span><input id="setup-diel"></div>
       <div class="actions"><button class="btn" id="setup-cancel">Cancel</button><button class="btn active" id="setup-apply">Apply</button></div>
     </div>
   </div>
@@ -665,6 +689,7 @@
   <script src="board-place.js?v=dev"></script>
   <script src="board-pathfinder.js?v=dev"></script>
   <script src="board-shove.js?v=dev"></script>
+  <script src="board-hs.js?v=dev"></script>
   <script src="board-3d.js?v=dev"></script>
   <script src="board-3d-view.js?v=dev"></script>
   <script src="board-measure.js?v=dev"></script>

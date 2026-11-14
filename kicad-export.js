@@ -53,10 +53,11 @@
     const C = root.BoardCore, st = board.stackup || {}, CU = C && C.copperOf ? C.copperOf(board) : ["F.Cu", "B.Cu"];
     const tOut = (st.copper || 35) / 1000, tIn = (st.innerCopper || st.copper || 35) / 1000, total = st.thickness || 1.6;
     const diel = Math.max(0.05, (total - 2 * tOut - (CU.length - 2) * tIn) / (CU.length - 1)), er = st.er > 0 ? st.er : 4.5;
+    const D = Array.isArray(st.diel) && st.diel.length === CU.length - 1 ? st.diel : CU.slice(1).map(() => diel);   // the stack-up's own dielectrics, else shared out
     const L = ['(layer "F.SilkS" (type "Top Silk Screen"))', '(layer "F.Paste" (type "Top Solder Paste"))', '(layer "F.Mask" (type "Top Solder Mask") (thickness 0.01))'];
     CU.forEach((l, i) => {
       L.push(`(layer ${q(l)} (type "copper") (thickness ${n(i === 0 || i === CU.length - 1 ? tOut : tIn)}))`);
-      if (i < CU.length - 1) L.push(`(layer "dielectric ${i + 1}" (type "${i % 2 ? "prepreg" : "core"}") (thickness ${n(diel)}) (material "FR4") (epsilon_r ${n(er)}) (loss_tangent 0.02))`);
+      if (i < CU.length - 1) L.push(`(layer "dielectric ${i + 1}" (type "${i % 2 ? "prepreg" : "core"}") (thickness ${n(D[i])}) (material "FR4") (epsilon_r ${n(er)}) (loss_tangent 0.02))`);
     });
     L.push('(layer "B.Mask" (type "Bottom Solder Mask") (thickness 0.01))', '(layer "B.Paste" (type "Bottom Solder Paste"))', '(layer "B.SilkS" (type "Bottom Silk Screen"))');
     return ` (stackup ${L.join(" ")} (copper_finish "HAL SnPb") (dielectric_constraints no))`;
@@ -259,6 +260,9 @@
       pro.board.design_settings = { defaults: { board_outline_line_width: 0.1, copper_line_width: 0.2, copper_text_size_h: 1.5, copper_text_size_v: 1.5, silk_line_width: 0.15, silk_text_size_h: 1.27, silk_text_size_v: 1.27 },
         rules: { min_clearance: R.clearance, min_copper_edge_clearance: R.edgeClearance, min_through_hole_diameter: R.minDrill, min_track_width: R.minTrack, min_via_annular_width: R.minAnnular, min_via_diameter: +(R.minDrill + 2 * R.minAnnular).toFixed(3), solder_mask_clearance: R.maskExpansion || 0 } };
       pro.net_settings.classes = [cls("Default", C.classRule("Signal", R)), ...C.classNames(R).slice(1).map(k => cls(k, C.classRule(k, R)))];
+      // KiCad's pair router takes its width and gap from the class: the first pair's go on every class
+      const p0 = (R.pairs || []).find(x => x.width > 0 || x.gap > 0);
+      if (p0) pro.net_settings.classes.forEach(c => { if (p0.width > 0) c.diff_pair_width = p0.width; if (p0.gap > 0) c.diff_pair_gap = p0.gap; });
       if (model) {
         const seen = new Set();
         Object.keys(model.names).forEach(k => {
@@ -292,6 +296,21 @@
       const nn = nm(k);
       if (o.track > 0) out.push(`(rule ${q(`Net ${nn} width`)}`, `  (constraint track_width (min ${n(Math.min(o.track, R.minTrack))}mm) (opt ${n(o.track)}mm))`, `  (condition "A.NetName == '${nn}'"))`, "");
       if (o.clearance > 0) out.push(`(rule ${q(`Net ${nn} clearance`)}`, `  (constraint clearance (min ${n(o.clearance)}mm))`, `  (condition "A.NetName == '${nn}' || B.NetName == '${nn}'"))`, "");
+    });
+    // differential pairs: width, the gap between the two (a clearance rule just for them) and skew;
+    // length groups: skew across the group, or a length window round the target
+    const nn = name => { const k = Object.keys(model.names).find(x => model.names[x] === name); return k === undefined ? null : nm(k); };
+    (R.pairs || []).forEach(pr => {
+      const a = nn(pr.p), b = nn(pr.n); if (!a || !b) return;
+      const cond = `A.NetName == '${a}' || A.NetName == '${b}'`;
+      if (pr.width > 0) out.push(`(rule ${q(`Pair ${a} / ${b} width`)}`, `  (constraint track_width (min ${n(Math.min(pr.width, R.minTrack))}mm) (opt ${n(pr.width)}mm))`, `  (condition "${cond}"))`, "");
+      if (pr.gap > 0) out.push(`(rule ${q(`Pair ${a} / ${b} gap`)}`, `  (constraint clearance (min ${n(pr.gap)}mm))`, `  (condition "(A.NetName == '${a}' && B.NetName == '${b}') || (A.NetName == '${b}' && B.NetName == '${a}')"))`, "");
+      out.push(`(rule ${q(`Pair ${a} / ${b} skew`)}`, `  (constraint skew (max ${n(pr.skew > 0 ? pr.skew : 0.5)}mm))`, `  (condition "${cond}"))`, "");
+    });
+    (R.lengths || []).forEach(g => {
+      const ns = g.nets.map(nn).filter(Boolean); if (ns.length < 2 && !(g.target > 0 && ns.length)) return;
+      const cond = ns.map(x => `A.NetName == '${x}'`).join(" || "), gn = String(g.name).replace(/["']/g, "?");
+      out.push(`(rule ${q(`Length group ${gn}`)}`, g.target > 0 ? `  (constraint length (min ${n(Math.max(0, g.target - g.tol))}mm) (max ${n(g.target + g.tol)}mm))` : `  (constraint skew (max ${n(g.tol)}mm))`, `  (condition "${cond}"))`, "");
     });
     (board.keepouts || []).filter(k => k && k.rule).forEach(k => {
       const an = areaName(board, k).replace(/'/g, "?"), r = k.rule;
