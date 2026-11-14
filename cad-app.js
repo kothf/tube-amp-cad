@@ -435,7 +435,8 @@
     {
       S.sim.result = result.ok ? result : null;
       S.sim.error = result.ok ? null : result.error;
-      S.sim.warnings = result.warnings || [];
+      // the engine names a part by its id: the sheet's label instead (a self-heated transistor's warnings)
+      S.sim.warnings = (result.warnings || []).map(w => (/\bc\d+_\d+/.test(w) ? S.comps.reduce((t, c) => t.split(c.id).join(c.label), w) : w));
       S.sim.topo = S.sim.topoForRun;
       detectBias();
       // the BOM's Sim. max column for every part, whether the BOM is open or not
@@ -3049,7 +3050,10 @@
           // simulator's kT/q at 25 °C (25.85 mV) is SPICE's at its nominal 27 °C, so the data go out at
           // TNOM=27 and a temperature on that scale (ngspice runs at 27 °C unless told otherwise)
           const m0 = CadLib.BJTS[(S.comps.find(c => c.id === e.id) || { params: {} }).params.model] || m;
-          if (m.t !== undefined && Math.abs(m.t - 25) > 1e-9) lines[lines.length - 1] += ` temp=${+((m.t + 273.15) * 300.15 / 298.15 - 273.15).toFixed(2)}`;
+          // a self-heated part: the junction temperature it was simulated at (SPICE's BJT does not heat itself)
+          const tjSim = e.therm && S.sim.result && S.sim.result.tj ? S.sim.result.tj[e.id] : undefined, tE = tjSim !== undefined ? tjSim : m.t;
+          if (tjSim !== undefined) lines.splice(lines.length - 1, 0, `* ${id}: self-heated, at the ${+tjSim.toFixed(1)} C junction temperature it was simulated at`);
+          if (tE !== undefined && Math.abs(tE - 25) > 1e-9) lines[lines.length - 1] += ` temp=${+((tE + 273.15) * 300.15 / 298.15 - 273.15).toFixed(2)}`;
           if (!models.has(mn)) { models.add(mn); lines.push(`.model ${mn} ${m.pol > 0 ? "NPN" : "PNP"}(IS=${m0.is} BF=${m0.bf} BR=${m0.br || 1} NF=${m.nf || 1} VAF=${m.vaf} IKF=${m.ikf} EG=${m.ge ? 0.67 : 1.11} XTI=3 XTB=1.5 TNOM=27)`); }
           // germanium leakage, collector to base: ICBO at this temperature, saturating as in the simulator
           if (m.icbo) {

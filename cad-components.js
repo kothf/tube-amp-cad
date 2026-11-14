@@ -1684,6 +1684,19 @@
       vt: 0.025852 * r,   // the simulator's kT/q at 25 °C, scaled
       icbo: m.icbo ? m.icbo * Math.pow(2, (T - T0) / 10) : 0, t: T - 273.15 });
   }
+  // A BJT's thermal path for self-heating (the engine's therm): junction→case rjc and case→air rca
+  // (°C/W), case heat capacity cc (J/K), from its package and Ptot. A power part's Ptot is at a 25 °C
+  // case, so rjc = (Tjmax − 25)/Ptot and the case meets the air through its package's free-air
+  // resistance; a small part's Ptot is in free air, the whole path, about a third of it inside.
+  // Tjmax: 150 °C silicon, 90 °C germanium.
+  const PKG_RJA = { "TO-126": 100, "TO-220": 62.5, "TO-220F": 62.5, "TO-247": 40, "TO-3P": 40, "TO-264": 35, "TO-3": 35, "TO-1": 35, "SOT-9": 60 };
+  const PKG_CC = { "TO-92": 0.1, "TO-18": 0.1, "TO-5": 0.2, "TO-126": 0.5, "TO-220": 1, "TO-220F": 1, "TO-247": 2, "TO-3P": 2, "TO-264": 3, "TO-3": 5, "TO-1": 5, "SOT-9": 1 };
+  function bjtThermal(m) {
+    const tjmax = m.ge ? 90 : 150, rth = (tjmax - 25) / Math.max(m.p || 0.5, 0.05), rja = PKG_RJA[m.pkg];
+    const cc = PKG_CC[m.pkg] || 0.2;
+    if (rja && m.p > 1) return { rjc: rth, rca: Math.max(rja - rth, 5), cc, tjmax };
+    return { rjc: rth / 3, rca: rth * 2 / 3, cc, tjmax };
+  }
   // BJT and MOSFET parts: same pins (C/D up, B/G left, E/S down) for both polarities
   function bjtPart(pol) {
     const def = pol > 0 ? "2N3904" : "2N3906";
@@ -1693,21 +1706,33 @@
       pins: () => [{ id: "C", x: 10, y: -30, name: "collector" }, { id: "B", x: -30, y: 0, name: "base" }, { id: "E", x: 10, y: 30, name: "emitter" }],
       value: c => c.params.model,
       fields: [{ key: "model", label: "Type", kind: "select", options: semiOptions(BJTS, pol), wide: true },
-        // junction temperature: the ambient, or warmer for a part that runs hot or sits by a tube
-        { key: "temp", label: "Temperature", unit: "°C", kind: "number", min: -40, max: 150, dflt: 25 }],
+        // junction temperature: the ambient, or warmer for a part that runs hot or sits by a tube;
+        // with self-heating, the air around it
+        { key: "temp", label: "Temperature", unit: "°C", kind: "number", min: -40, max: 150, dflt: 25 },
+        // self-heating: the junction runs at the temperature its own dissipation gives, in free air
+        // or on a heatsink that every part set to the same heatsink shares (a VBE multiplier with its outputs)
+        { key: "thermal", label: "Cooling", kind: "select", options: [["", "Fixed temperature"], ["air", "Self-heating, free air"], ["hs1", "Self-heating, heatsink 1"], ["hs2", "Self-heating, heatsink 2"], ["hs3", "Self-heating, heatsink 3"], ["hs4", "Self-heating, heatsink 4"]] },
+        { key: "hsr", label: "Heatsink Rth", unit: "°C/W", kind: "number", min: 0.05, max: 100, dflt: 1.5, when: c => /^hs/.test(c.params.thermal || "") }],
       info: c => { const m = BJTS[c.params.model] || BJTS[def], t = isFinite(c.params.temp) ? c.params.temp : 25, a = bjtAt(m, t);
-        return `${c.params.model} (${m.use}): Vceo ${m.v} V, Ic ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: Gummel-Poon${m.ge ? " (germanium)" : ""} at ${t} °C, hFE ≈ ${Math.round(a.bf)}, Early voltage ${Math.round(m.vaf)} V${m.rb || m.re ? `, base resistance ${m.rb || 0} Ω, emitter resistance ${fmtEng(m.re || 0, "Ω")}` : ""}${m.ge ? `, leakage ICBO ${fmtEng(a.icbo, "A", 2)} (${fmtEng(m.icbo, "A", 2)} at 25 °C, doubling every 10 °C)` : ""}.`; },
+        const th = c.params.thermal ? bjtThermal(m) : null, cool = th ? (c.params.thermal === "air" ? `, self-heating in free air (Rth j-c ${+th.rjc.toFixed(1)} °C/W, case to air ${+th.rca.toFixed(0)} °C/W)` : `, self-heating on heatsink ${c.params.thermal.slice(2)} (Rth j-c ${+th.rjc.toFixed(2)} °C/W, 0.5 °C/W insulator, heatsink ${isFinite(c.params.hsr) && c.params.hsr > 0 ? c.params.hsr : 1.5} °C/W)`) + `, Tj max ${th.tjmax} °C` : "";
+        return `${c.params.model} (${m.use}): Vceo ${m.v} V, Ic ${m.i} A, Ptot ${m.p} W, ${m.pkg}. Model: Gummel-Poon${m.ge ? " (germanium)" : ""} at ${t} °C${th ? " ambient" + cool : ""}, hFE ≈ ${Math.round(a.bf)}, Early voltage ${Math.round(m.vaf)} V${m.rb || m.re ? `, base resistance ${m.rb || 0} Ω, emitter resistance ${fmtEng(m.re || 0, "Ω")}` : ""}${m.ge ? `, leakage ICBO ${fmtEng(a.icbo, "A", 2)} (${fmtEng(m.icbo, "A", 2)} at 25 °C, doubling every 10 °C)` : ""}.`; },
       build: (c, net, alloc, out) => {
         const m = bjtAt(Object.assign({}, BJTS[c.params.model] || BJTS[def], { pol }), c.params.temp);
         // base and emitter resistance: the junctions sit on inner nodes behind them, the capacitances too
         const b = m.rb ? alloc() : net("B"), e = m.re ? alloc() : net("E");
         out.push(Object.assign({ id: c.id, kind: "BJT", nodes: [net("C"), b, e], model: { pol, is: m.is, bf: m.bf, br: m.br, vaf: m.vaf, ikf: m.ikf, nf: 1, vt: m.vt, icbo: m.icbo, t: m.t, ge: m.ge ? 1 : 0, rb: m.rb || 0, re: m.re || 0 } },
-          m.rb || m.re ? { ext: [net("C"), net("B"), net("E")] } : {}));
+          m.rb || m.re ? { ext: [net("C"), net("B"), net("E")] } : {}, c.params.thermal ? bjtTherm(c, BJTS[c.params.model] || BJTS[def], pol) : {}));
         if (m.rb) out.push({ id: c.id + "#rb", kind: "R", nodes: [net("B"), b], r: m.rb });
         if (m.re) out.push({ id: c.id + "#re", kind: "R", nodes: [e, net("E")], r: m.re });
         out.push({ id: c.id + "#cbe", kind: "C", nodes: [b, e], c: m.cbe }, { id: c.id + "#cbc", kind: "C", nodes: [b, net("C")], c: m.cbc });
       }
     };
+  }
+  // the engine's self-heating fields for a BJT: its model at 25 °C (model0) and its thermal path (therm)
+  function bjtTherm(c, base, pol) {
+    const m0 = bjtAt(Object.assign({}, base, { pol }), 25), th = bjtThermal(base), ta = isFinite(c.params.temp) ? +c.params.temp : 25, hs = c.params.thermal;
+    return { model0: { pol, is: m0.is, bf: m0.bf, br: m0.br, vaf: m0.vaf, ikf: m0.ikf, nf: 1, vt: m0.vt, icbo: m0.icbo, t: 25, ge: m0.ge ? 1 : 0, rb: m0.rb || 0, re: m0.re || 0 },
+      therm: { ta, rjc: th.rjc, rca: th.rca, cc: th.cc, tjmax: th.tjmax, sink: /^hs/.test(hs) ? hs : "", rsa: isFinite(c.params.hsr) && c.params.hsr > 0 ? +c.params.hsr : 1.5, cs: 100 } };
   }
   function mosPart(pol) {
     const def = pol > 0 ? "IRF820" : "IRF9610";
@@ -3368,7 +3393,15 @@
     if (bip && d.vce < 0.3 && d.ic > 1e-6) h += R.note("Saturated (Vce below 0.3 V).", "warn");
     if (jf) { const idss = m.beta * m.vto * m.vto; h += kv("Id / IDSS", `${Math.round(Math.abs(iMain) / idss * 100)}% of ${fmtEng(idss, "A", 2)}`); if (d.vgs > 0.4) h += R.note("The gate is forward-biased: it conducts and draws current.", "warn"); }
     if (!bip && Math.abs(iMain) < 1e-6) h += R.note(jf ? "Off: Vgs beyond the pinch-off." : "Off: Vgs below the threshold.");
-    if (m.p > 2) h += R.note(`Rated ${m.p} W with the case at 25 °C: needs a heatsink well before that.`);
+    // self-heating: the junction's temperature from its own dissipation, its heatsink's, and with the signal on
+    const th = bip && R.r.thermal && R.r.thermal[c.id];
+    if (th) {
+      const tjmax = m.ge ? 90 : 150, lvl = t => (t > tjmax ? "bad" : t > tjmax - 25 ? "warn" : "");
+      const idle = th.tjIdle !== undefined ? th.tjIdle : th.tj;
+      h += kv("Junction (idle)", `${idle.toFixed(1)} °C`, lvl(idle));
+      if (Math.abs(th.tjAvg - idle) > 0.5) h += kv("Junction (signal)", `${th.tjAvg.toFixed(1)} °C at ${fmtEng(th.pAvg, "W", 2)} average`, lvl(th.tjAvg));
+      if (th.sink) h += kv("Heatsink", `${th.sink.slice(2)}: ${th.ts.toFixed(1)} °C`);
+    } else if (m.p > 2) h += R.note(`Rated ${m.p} W with the case at 25 °C: needs a heatsink well before that.`);
     return h;
   };
   ["npn", "pnp", "nmos", "pmos", "njf", "pjf"].forEach(t => { UI[t] = { readout: semiReadout }; });

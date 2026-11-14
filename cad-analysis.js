@@ -268,20 +268,20 @@
       const progress = f => { if (S.ac.seq === seq && channel) channel.postMessage(acMessage({ running: true, progress: f, gen: g.id, gens })); };
       if (!pool.ok) {
         setTimeout(() => {
-          let op = null, opIm = null;
-          if (averaged) { const r = TubeSimEngine.simulate(nl, options); if (!r.ok) { done({ ok: false, error: r.error }); return; } op = r.dc.nodes; opIm = TubeSimEngine.opMagnetising(r); }
-          done(TubeSimEngine.acSweep(nl, Object.assign({}, options, { op, opIm })));
+          let op = null, opIm = null, tj = null;
+          if (averaged) { const r = TubeSimEngine.simulate(nl, options); if (!r.ok) { done({ ok: false, error: r.error }); return; } op = r.dc.nodes; opIm = TubeSimEngine.opMagnetising(r); tj = r.tj; }
+          done(TubeSimEngine.acSweep(nl, Object.assign({}, options, { op, opIm, tj })));
         }, 0);
         return;
       }
       // the sweep in pieces, one per core (at least 20 points each), all at once; then joined in order
-      const sweep = (op, opIm) => {
+      const sweep = (op, opIm, tj) => {
         const K = TubeSimEngine.acPoints(options), parts = Math.max(1, Math.min(pool.size, Math.floor(K / 20)));
         const got = new Array(parts);
         let left = parts;
         for (let i = 0; i < parts; i++) {
           const kFrom = Math.round(i * K / parts), kTo = Math.round((i + 1) * K / parts);
-          aJobs.push(pool.run({ netlist: nl, options: Object.assign({}, options, { op, opIm, kFrom, kTo }), kind: "ac" }, {
+          aJobs.push(pool.run({ netlist: nl, options: Object.assign({}, options, { op, opIm, tj, kFrom, kTo }), kind: "ac" }, {
             urgent: i === 0, high: true,
             onResult: r => {
               if (S.ac.seq !== seq) return;
@@ -299,7 +299,7 @@
       if (!averaged) { sweep(null); return; }
       aJobs.push(pool.run({ netlist: nl, options, kind: "op" }, {
         urgent: true, onProgress: f => progress(0.9 * f),
-        onResult: r => { if (S.ac.seq !== seq) return; aJobs = []; if (r.ok) sweep(r.op, r.opIm); else done(r); }
+        onResult: r => { if (S.ac.seq !== seq) return; aJobs = []; if (r.ok) sweep(r.op, r.opIm, r.tj); else done(r); }
       }));
     }
 
@@ -374,17 +374,17 @@
       };
       if (!pool.ok) {
         setTimeout(() => {
-          let op = null, opIm = null;
-          if (averaged) { const r = TubeSimEngine.simulate(nl, {}); if (!r.ok) { done({ ok: false, error: r.error }); return; } op = r.dc.nodes; opIm = TubeSimEngine.opMagnetising(r); }
-          done(TubeSimEngine.loopGain(nl, Object.assign({}, options, { op, opIm })));
+          let op = null, opIm = null, tj = null;
+          if (averaged) { const r = TubeSimEngine.simulate(nl, {}); if (!r.ok) { done({ ok: false, error: r.error }); return; } op = r.dc.nodes; opIm = TubeSimEngine.opMagnetising(r); tj = r.tj; }
+          done(TubeSimEngine.loopGain(nl, Object.assign({}, options, { op, opIm, tj })));
         }, 0);
         return;
       }
-      const sweep = (op, opIm) => lJobs.push(pool.run({ netlist: nl, options: Object.assign({}, options, { op, opIm }), kind: "loop" }, { urgent: true, high: true, onResult: done }));
+      const sweep = (op, opIm, tj) => lJobs.push(pool.run({ netlist: nl, options: Object.assign({}, options, { op, opIm, tj }), kind: "loop" }, { urgent: true, high: true, onResult: done }));
       if (!averaged) { sweep(null); return; }
       lJobs.push(pool.run({ netlist: nl, options: {}, kind: "op" }, {
         urgent: true, onProgress: f => { if (S.loop.seq === seq && channel) channel.postMessage(loopMessage({ running: true, progress: 0.9 * f })); },
-        onResult: r => { if (S.loop.seq !== seq) return; lJobs = []; if (r.ok) sweep(r.op, r.opIm); else done(r); }
+        onResult: r => { if (S.loop.seq !== seq) return; lJobs = []; if (r.ok) sweep(r.op, r.opIm, r.tj); else done(r); }
       }));
     }
     return { acMessage, loopMessage, loopPlaces, runAC, runLoop, runTransient, stopTransient, transientMessage };

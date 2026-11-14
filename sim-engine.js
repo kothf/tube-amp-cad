@@ -1684,6 +1684,107 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Self-heating of transistors (electro-thermal). A BJT element with therm { ta, rjc, rca, cc, sink,
+  // rsa, cs } and model0 (its model at 25 °C) runs at its own junction temperature: its dissipation
+  // flows through the thermal resistance junction→case rjc, and from the case either to the air
+  // (rca, free air) or through 0.5 °C/W of insulator to a heatsink shared by every part with the same
+  // sink name (rsa to the air), so a bias transistor on the output transistors' heatsink follows
+  // their temperature. IS, hFE, VT and the leakage follow the temperature as the CAD's Temperature
+  // field does (bjtAtT). ta: the ambient (the part's Temperature field).
+  // ---------------------------------------------------------------------------
+  const T0K = 298.15, K_Q = 8.617333e-5, R_CS = 0.5, RUNAWAY = 250;
+  function bjtAtT(m0, tC) {
+    const T = tC + 273.15, r = T / T0K, eg = m0.ge ? 0.67 : 1.11;
+    return Object.assign({}, m0, { is: m0.is * Math.pow(r, 3) * Math.exp(eg / K_Q * (1 / T0K - 1 / T)), bf: m0.bf * Math.pow(r, 1.5), br: (m0.br || 1) * Math.pow(r, 1.5),
+      vt: 0.025852 * r, icbo: m0.icbo ? m0.icbo * Math.pow(2, (T - T0K) / 10) : 0, t: tC });
+  }
+  const heatedBjts = circ => circ.els.filter(e => e.therm && e.model0 && e.kind === "BJT");
+  const setTemp = (e, tC) => { e._tj = tC; e.model = Object.assign(bjtAtT(e.model0, tC), { pol: e.model.pol }); };
+  // the dissipation of each heated part at x (W, never below 0)
+  const heatOf = (hot, x) => hot.map(e => Math.max(0, deviceState(e, x).pd || 0));
+  // each sink's ambient, thermal resistance and capacitance: its parts' highest ambient, lowest Rsa, the sum of their sink shares
+  function sinksOf(hot) {
+    const S = new Map();
+    hot.forEach(e => {
+      const k = e.therm.sink; if (!k) return;
+      const g = S.get(k) || { ta: -Infinity, rsa: Infinity, cs: 0 };
+      g.ta = Math.max(g.ta, e.therm.ta); g.rsa = Math.min(g.rsa, e.therm.rsa > 0 ? e.therm.rsa : 1.5); g.cs = Math.max(g.cs, e.therm.cs || 100);
+      S.set(k, g);
+    });
+    return S;
+  }
+  // the junction temperatures that powers P give in the steady state: [tj per part], and each sink's temperature
+  function thermalSteady(hot, P) {
+    const S = sinksOf(hot), sum = new Map();
+    hot.forEach((e, i) => { if (e.therm.sink) sum.set(e.therm.sink, (sum.get(e.therm.sink) || 0) + P[i]); });
+    const ts = new Map(); S.forEach((g, k) => ts.set(k, g.ta + g.rsa * (sum.get(k) || 0)));
+    return { tj: hot.map((e, i) => (e.therm.sink ? ts.get(e.therm.sink) + (e.therm.rjc + R_CS) * P[i] : e.therm.ta + (e.therm.rjc + e.therm.rca) * P[i])), ts };
+  }
+  // The operating point with the parts at the temperatures their own dissipation gives: solved
+  // again at each new set of temperatures until they move by under 0.01 °C (a damped step where
+  // they swing). extra: { id: W } added to a part's dissipation (the signal's share, from the run
+  // before). Returns { x, runaway: the part past 250 °C, or null } or null when a solve fails.
+  function thermalDC(circ, x, extra) {
+    const hot = heatedBjts(circ);
+    if (!hot.length) return { x, runaway: null };
+    let w = 1, last = Infinity;
+    for (let k = 0; k < 80; k++) {
+      const P = heatOf(hot, x).map((p, i) => p + Math.max(0, (extra && extra[hot[i].id]) || 0)), { tj } = thermalSteady(hot, P);
+      let d = 0; hot.forEach((e, i) => { d = Math.max(d, e._tj === undefined ? Infinity : Math.abs(tj[i] - e._tj)); });
+      const hotOne = hot.find((e, i) => tj[i] > RUNAWAY);
+      if (hotOne) {
+        // held at 250 °C, the hottest the models stand for: the operating point there, flagged
+        hot.forEach((e, i) => setTemp(e, Math.min(tj[i], RUNAWAY)));
+        let r = newtonSolve(circ, x, { dc: true }, { gmin: 1e-12 });
+        if (!r.ok) r = dcSolve(circ, x);
+        return r.ok ? { x: r.x, runaway: hotOne } : null;
+      }
+      if (d < 0.01) break;
+      if (d > 0.7 * last) w = Math.max(0.2, w / 2);   // the temperatures swing or creep: smaller steps
+      last = d;
+      hot.forEach((e, i) => setTemp(e, e._tj === undefined ? tj[i] : e._tj + w * (tj[i] - e._tj)));
+      let r = newtonSolve(circ, x, { dc: true }, { gmin: 1e-12 });
+      if (!r.ok) r = dcSolve(circ, x);
+      if (!r.ok) return null;
+      x = r.x;
+    }
+    return { x, runaway: null };
+  }
+  // The temperatures through a power-on run: every part starts at its ambient. The junction sits
+  // rjc·P above its case at once (its own capacitance is tiny); a case in free air warms toward
+  // ta + rca·P with its time constant rca·cc, a heatsink toward ta + rsa·ΣP with rsa·cs (its parts'
+  // cases 0.5 °C/W above it). Each step moves them exactly as a single RC would over that step.
+  function thermalClock(hot) {
+    const S = sinksOf(hot), ts = new Map(), tc = hot.map(e => e.therm.ta);
+    S.forEach((g, k) => ts.set(k, g.ta));
+    hot.forEach(e => setTemp(e, e.therm.ta));
+    return (P, dt) => {
+      const sum = new Map();
+      hot.forEach((e, i) => { if (e.therm.sink) sum.set(e.therm.sink, (sum.get(e.therm.sink) || 0) + P[i]); });
+      S.forEach((g, k) => { const tau = g.rsa * g.cs, end = g.ta + g.rsa * (sum.get(k) || 0); ts.set(k, end + (ts.get(k) - end) * Math.exp(-dt / tau)); });
+      hot.forEach((e, i) => {
+        let tj;
+        if (e.therm.sink) tj = ts.get(e.therm.sink) + (e.therm.rjc + R_CS) * P[i];
+        else {
+          const tau = e.therm.rca * (e.therm.cc || 0.1), end = e.therm.ta + e.therm.rca * P[i];
+          tc[i] = end + (tc[i] - end) * Math.exp(-dt / tau);
+          tj = tc[i] + e.therm.rjc * P[i];
+        }
+        tj = Math.min(tj, RUNAWAY);
+        if (Math.abs(tj - e._tj) > 0.01) setTemp(e, tj);
+      });
+      return ts;
+    };
+  }
+  // the temperatures a run ended at, { id: °C }, to hand to the frequency-response analyses (opts.tj)
+  const tempsOf = circ => { const o = {}; heatedBjts(circ).forEach(e => { o[e.id] = e._tj; }); return o; };
+  // a netlist's heated parts set to temperatures tj ({ id: °C }): for acSweep, loopGain, noiseSweep
+  function withTemps(netlist, tj) {
+    if (!tj) return netlist;
+    return Object.assign({}, netlist, { elements: netlist.elements.map(e => (e.therm && e.model0 && tj[e.id] !== undefined ? Object.assign({}, e, { model: Object.assign(bjtAtT(e.model0, tj[e.id]), { pol: e.model.pol }) }) : e)) });
+  }
+
+  // ---------------------------------------------------------------------------
   // Full analysis: DC operating point + periodic steady-state transient
   //   opts.warm: where the settling starts instead of the DC point, the result.warm of a run of the
   //   same circuit with other part values (tolerance runs); it changes how long the run takes, not
@@ -1697,6 +1798,7 @@
   // that law each time, until R changes by under 1 %. result.ntc: { id: { r, i } }, the resistance
   // each ran at and its rms current. The power-on transient (startup) keeps r25: the part starts cold.
   function simulate(netlist, opts) {
+    if (netlist.elements.some(e => e.therm && e.model0) && !netlist.elements.some(e => e.ntc)) return simulateHeated(netlist, opts);
     if (!netlist.elements.some(e => e.ntc)) return simulateOnce(netlist, opts);
     opts = opts || {};
     const t0 = Date.now(), budget = opts.budgetMs || 2500;
@@ -1722,6 +1824,28 @@
       if (moved < 0.01) break;
       warm = r.warm;
     }
+    return r;
+  }
+  // Self-heated transistors with a signal: the operating point's temperatures come from the parts'
+  // idle dissipation (result.thermal[id].tjIdle); the signal adds its own (a class-AB output stage at full power runs far
+  // hotter than at idle), and the temperatures follow the average over the capture, as a bench
+  // amplifier's do once warm. The run is repeated from its settled state with each part's extra
+  // dissipation until the temperatures move by under 1 °C (three runs at most).
+  function simulateHeated(netlist, opts) {
+    opts = opts || {};
+    const t0 = Date.now(), budget = opts.budgetMs || 2500;
+    let r = simulateOnce(netlist, opts);
+    const first = r;
+    for (let it = 0; it < 2 && r.ok && r.thermal && r.tran; it++) {
+      const extra = {}; let moved = 0;
+      Object.keys(r.thermal).forEach(id => { const th = r.thermal[id]; extra[id] = Math.max(0, th.pAvg - th.p); moved = Math.max(moved, Math.abs(th.tjAvg - th.tj)); });
+      if (moved < 1) break;
+      const r2 = simulateOnce(netlist, Object.assign({}, opts, { warm: r.warm, thermExtra: extra, budgetMs: Math.max(budget - (Date.now() - t0), budget / 4), onProgress: undefined }));
+      if (!r2.ok) break;
+      r = r2;
+    }
+    // tjIdle: each part's temperature with no signal, from the first run
+    if (r.ok && r.thermal && first.thermal) Object.keys(r.thermal).forEach(id => { r.thermal[id].tjIdle = first.thermal[id] ? first.thermal[id].tj : r.thermal[id].tj; });
     return r;
   }
   // an R element's rms current over the capture (its DC current without one)
@@ -1761,6 +1885,14 @@
         : "DC operating point did not converge (" + dc.error + ")";
       if (dc.error !== "singular matrix") result.stuck = stuckOf(circ);
       return result;
+    }
+    const hotParts = heatedBjts(circ);
+    if (hotParts.length) {
+      const th = thermalDC(circ, dc.x, opts.thermExtra);
+      if (!th) { result.error = "DC operating point did not converge with the transistors at their own temperatures"; result.stuck = stuckOf(circ); return result; }
+      dc.x = th.x;
+      hotParts.forEach(e => { if (e.therm.tjmax && e._tj > e.therm.tjmax && e !== th.runaway) result.warnings.push(`${e.id.split("#")[0]} runs at ${Math.round(e._tj)} °C, past its ${e.therm.tjmax} °C maximum: a bigger heatsink, or less dissipation`); });
+      if (th.runaway) result.warnings.push(`Overheating: ${th.runaway.id.split("#")[0]} passes ${RUNAWAY} °C, held there (thermal runaway, its heat raising its current, or more dissipation than its cooling takes): more emitter resistance, the bias transistor on its heatsink, or a bigger heatsink`);
     }
     result.dc = { nodes: [0].concat(dc.x.slice(0, nodeCount - 1)), devices: {} };
     circ.els.forEach(e => { if (e.id) result.dc.devices[e.id] = Object.assign(result.dc.devices[e.id] || {}, { [e.kind === "VDIODE" ? e.part || "d" : "main"]: deviceState(e, dc.x) }); });
@@ -2032,7 +2164,9 @@
     const nFr = Math.min(120, span), frAt = new Set(Array.from({ length: nFr }, (_, j) => 1 + Math.round(j * span / nFr)));
     const frames = { layout: currentsOf(circ, x, []).map((v, k) => (k % 3 === 2 ? 0 : v)), at: [], cur: [] };
     let xPrev = x;
+    const pSum = new Float64Array(hotParts.length);
     const record = (k) => {
+      if (hotParts.length && k < nCap - 1) heatOf(hotParts, x).forEach((p, i) => { pSum[i] += p; });
       if (frAt.has(k)) { frames.at.push(k); frames.cur.push(instantCurrents(circ, x, xPrev, h, new Float32Array(frames.layout.length / 3))); }
       xPrev = x;
       for (let i = 1; i < nodeCount; i++) nodes[i][k] = x[i - 1];
@@ -2070,6 +2204,16 @@
       result.dcEstimate = result.dc;
       result.dc = avg;
       result.dcAveraged = true;
+    }
+    if (hotParts.length) {
+      // each heated part: its junction temperature and dissipation at the operating point (tj, p),
+      // its average dissipation over the capture and the steady temperatures that gives (pAvg, tjAvg),
+      // its heatsink's temperature (ts)
+      const p0 = heatOf(hotParts, dc.x), pAvg = nCap > 1 ? Array.from(pSum, v => v / (nCap - 1)) : p0, avg = thermalSteady(hotParts, pAvg);
+      const st0 = thermalSteady(hotParts, hotParts.map((e, i) => p0[i] + Math.max(0, (opts.thermExtra && opts.thermExtra[e.id]) || 0)));
+      result.thermal = {};
+      hotParts.forEach((e, i) => { result.thermal[e.id] = { tj: e._tj, p: p0[i], pAvg: pAvg[i], tjAvg: avg.tj[i], ts: e.therm.sink ? st0.ts.get(e.therm.sink) : null, sink: e.therm.sink || null }; });
+      result.tj = tempsOf(circ);
     }
     if (settled) progress(1);
     result.ok = true;
@@ -2298,12 +2442,15 @@
     };
     warmTo(0);
     record(0, x);
+    // self-heated transistors start at their ambient and warm through the run (thermalClock)
+    const hotB = heatedBjts(circ), clock = hotB.length ? thermalClock(hotB) : null, tjMax = hotB.map(() => -Infinity);
     for (let s = 1; s <= steps; s++) {
       warmTo(s * h);
       if (softOn && s * h >= opts.soft.at) { softOn = false; soft.forEach(e => { e.r = 0.01; delete e.ntc; }); }   // the relay closes across the soft-start resistance
       const nx = step(x, s * h, h);
       if (!nx) { result.error = "Transient did not converge at t=" + (s * h * 1000).toFixed(3) + " ms"; result.stuck = stuckOf(circ); return result; }
       x = nx; record(s, x);
+      if (clock) { clock(heatOf(hotB, x), h); hotB.forEach((e, i) => { tjMax[i] = Math.max(tjMax[i], e._tj); }); }
       if (opts.onProgress && s / steps - lastProg >= 0.02) { lastProg = s / steps; opts.onProgress(lastProg); }
       if (opts.onPartial && Date.now() - lastPart >= partialMs) { lastPart = Date.now(); opts.onPartial(snapshot(s)); }
       if (Date.now() - t0 > budgetMs) { result.error = `Stopped after ${(s * h).toFixed(3)} s of circuit time: the run took longer than ${Math.round(budgetMs / 1000)} s`; return result; }
@@ -2315,6 +2462,8 @@
     result.watchDt = nW ? tStop / nW : 0;
     result.warmOffset = off; result.relayAt = soft.length ? opts.soft.at : null; result.soft = soft.length ? (soft.some(e => e.id.endsWith("~soft")) ? "resistor" : "ntc") : null;
     result.tubes = tubes.map((e, j) => ({ id: e.id, part: e.part || null, kind: e.kind, tau: heated.includes(e) ? e.heat.tau : 0, peak: track[j].peak, peakAt: track[j].peakAt, endPeak: track[j].endPeak, worst: track[j].worst, cold: track[j].cold }));
+    // each self-heated transistor: its junction temperature at the end and its highest on the way
+    if (hotB.length) { result.thermal = {}; hotB.forEach((e, i) => { result.thermal[e.id] = { tj: e._tj, tjMax: tjMax[i] }; }); }
     result.elapsedMs = Date.now() - t0;
     return result;
   }
@@ -2395,11 +2544,22 @@
   // The circuit linearized at an operating point: Y(ω) = G + jωB and the right-hand side of the driven
   // sources (opts.inputs), on the unknowns of buildCircuit (node i at i − 1, then the branches).
   function acLinearize(netlist, opts) {
-    const circ = buildCircuit(netlist), n = circ.nUnk, nN = circ.nNodes;
+    const circ = buildCircuit(withTemps(netlist, opts.tj)), n = circ.nUnk, nN = circ.nNodes;
     if (nN < 2) return { ok: false, error: "Circuit is empty" };
     let x;
-    if (opts.op) { x = new Array(n).fill(0); for (let i = 1; i < nN; i++) x[i - 1] = opts.op[i] || 0; }
-    else { const dc = dcOperatingPoint(circ); if (!dc.ok) return { ok: false, error: "DC operating point did not converge (" + dc.error + ")" }; x = dc.x; }
+    // self-heated transistors without their temperatures (opts.tj): at the ones their dissipation gives
+    const hot = opts.tj ? [] : heatedBjts(circ);
+    if (opts.op) {
+      x = new Array(n).fill(0); for (let i = 1; i < nN; i++) x[i - 1] = opts.op[i] || 0;
+      for (let k = 0; k < 20 && hot.length; k++) {   // the operating point is given: only the temperatures to settle
+        const { tj } = thermalSteady(hot, heatOf(hot, x)); let d = 0;
+        hot.forEach((e, i) => { const t = Math.min(tj[i], RUNAWAY); d = Math.max(d, Math.abs(t - (e._tj === undefined ? e.therm.ta : e._tj))); setTemp(e, t); });
+        if (d < 0.01) break;
+      }
+    } else {
+      const dc = dcOperatingPoint(circ); if (!dc.ok) return { ok: false, error: "DC operating point did not converge (" + dc.error + ")" }; x = dc.x;
+      if (hot.length) { const th = thermalDC(circ, x); if (th) x = th.x; }
+    }
     const Gm = new Float64Array(n * n), Bm = new Float64Array(n * n), rhs = new Float64Array(2 * n);
     const at = (i, j) => i * n + j;
     const addG = (i, j, v) => { if (i > 0 && j > 0) Gm[at(i - 1, j - 1)] += v; };

@@ -6,6 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.208.0] - 2026-11-14
+
+Phase 4 of the simulation engine plan, part 1: transistors that heat themselves.
+
+### Added
+- **Cooling** on every bipolar transistor: *Fixed temperature* (as before), *Self-heating, free air*, or *Self-heating, heatsink 1–4*. A self-heated junction runs at the temperature its own dissipation gives through its package (junction to case (150 − 25)/Ptot for a power part, the package's free-air resistance beyond it; a small part's whole path from its Ptot), and Temperature becomes the air around it. Parts with the same heatsink number share it (**Heatsink Rth**, 1.5 °C/W by default, plus 0.5 °C/W of insulating pad each), so a VBE multiplier on the output transistors' heatsink tracks them, and one left in free air shows the idle current climbing as they warm. In the 50 W CFP example with the multiplier on the heatsink, the idle current goes from 54 mA cold to 74 mA warm and about 110 mA warmed by its test signal (9 W average in each output transistor).
+- The operating point is solved again at each set of temperatures until they settle (damped where they swing). With a signal, the run is repeated with the extra heat the signal brings, averaged over the capture.
+- **Overheating warning**: a junction that would pass 250 °C (thermal runaway, or more heat than its cooling takes) is held there and flagged; a junction past its 150 °C maximum is flagged too.
+- **Warm-up in the power-on run**: every part starts at the air temperature; the case (in free air) and the heatsink warm with their time constants, the junction rides Rjc·P above its case.
+- The transistor's readout shows the junction at idle and with the signal, and its heatsink's temperature.
+- Bode, loop gain and noise linearize self-heated parts at the temperatures the run settled at. The SPICE export writes each self-heated part at its simulated junction temperature.
+
+### Tests
+- `tests/thermal.test.mjs`: the junction at ta + (Rjc + Rca)·P, a shared heatsink, runaway held at 250 °C, the power-on warm-up against 1 − e^(−t/τ), AC at the run's temperatures, and the CAD fields.
+
 ## [3.207.0] - 2026-11-14
 
 Phase 3 of the simulation engine plan: never stuck. The two circuits that would not solve now do, and a run that still fails says where.
