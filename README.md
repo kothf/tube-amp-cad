@@ -1218,6 +1218,15 @@ the circuit file, so one file holds both.
     Gerber library (gerbonara): every pad, via and hole in place. Parts not
     on the board are left out; an unfinished board (unrouted, rule violations)
     asks first.
+  - **Panel (Export ▾ → Panel…)**: copies of the board, and other boards
+    read from their Gerber ZIPs (this program's or KiCad's), on one panel:
+    rows, columns and a quarter turn per board; the boards held by tabs with
+    mouse bites across a routed gap (found along an edge of any shape, round
+    boards too) or cut along V-score lines (rectangles in a grid); rails with
+    3 fiducials, 4 tooling holes and the panel's name. Exports the whole
+    panel's Gerbers, the edge with its tabs, a V-score file, drill files
+    (bites and tooling holes marked as such), a placement file with
+    references numbered by board, and a README.
   - **KiCad board (ZIP)**: the `.kicad_pcb` with its project file (net
     classes), custom rules (clearance by voltage, the parts' pin spacing) and
     footprint library, to finish or fabricate the board in KiCad 7 or later.

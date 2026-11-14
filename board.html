@@ -103,6 +103,12 @@
     #st-spark { width: 64px; height: 16px; color: var(--accent); }
     #st-stop { padding: 1px 8px; font-size: 11px; }
     #st-pos { margin-left: auto; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+    .panel-grid { display: grid; grid-template-columns: 360px 1fr; gap: 14px; }
+    .panel-grid .row { grid-template-columns: 1fr 150px; }
+    .chkrow { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); margin: 8px 0 5px; }
+    #panel-canvas { width: 100%; height: 380px; border: 1px solid var(--line); border-radius: 6px; background: #0b1118; display: block; }
+    #panel-out .bad { color: var(--bad); } #panel-out .warnc { color: var(--warn); }
+    @media (max-width: 760px) { .panel-grid { grid-template-columns: 1fr; } #panel-canvas { height: 240px; } }
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 30; }
     .modal[hidden] { display: none; }
     .router-where { display: grid; gap: 4px; margin: 6px 0 8px; }
@@ -388,6 +394,7 @@
         <button class="menu-item" data-ico="layers" id="ex-gerber">Gerber + drill files (ZIP)<small>for the board maker</small></button>
         <button class="menu-item" data-ico="pdf" id="ex-pdf">Print set (PDF)<small>assembly, copper 1:1, drill map</small></button>
         <button class="menu-item" data-ico="mirror" id="ex-toner">Toner transfer (PDF)<small>copper 1:1, ready to iron on</small></button>
+        <button class="menu-item" data-ico="layers" id="ex-panel" title="Several copies of this board, or other boards from their Gerber ZIPs, on one panel: rails, tabs with mouse bites or V-score, fiducials and tooling holes, and the panel's Gerbers">Panel…<small>copies on one panel, mouse bites or V-score</small></button>
         <button class="menu-item" data-ico="chip" id="ex-kicad">KiCad board (ZIP)<small>.kicad_pcb with its rules, for KiCad 7 or later</small></button>
         <button class="menu-item" data-ico="cube" id="ex-step" title="The board and every part in colour, for a chassis CAD: round bodies, leads and holes as true cylinders and circles; faces with openings (a connector's mouth, sockets) keep their holes">3D model (STEP)<small>board and parts, for a chassis CAD</small></button>
         <button class="menu-item" data-ico="pen" id="ex-svg">Board drawing (SVG)<small>all layers, 1:1 mm</small></button>
@@ -633,6 +640,34 @@
       <div class="actions"><span class="spacer"></span><button class="btn active" id="imp-close">Close</button></div>
     </div>
   </div>
+  <div class="modal" id="panel-modal" hidden>
+    <div class="modal-box dlg" style="width: min(980px, 97vw)">
+      <div class="insp-title">Panel</div>
+      <p class="help">Copies of this board, and other boards from their Gerber ZIPs (this program's or KiCad's), on one panel for the board maker. The boards come apart by tabs with mouse bites (any outline) or along V-score lines (rectangles in a grid). Fiducials and tooling holes go on the rails for an assembly line. Export writes the whole panel's Gerbers, drill files and placement file.</p>
+      <div class="panel-grid">
+        <div>
+          <div class="row"><span>Boards come apart by</span><select data-p="mode" title="Mouse bites: tabs across a routed gap, each with rows of small holes to snap along. V-score: a groove cut from both sides along straight lines from edge to edge (rectangular boards in a grid)"><option value="bites">Tabs with mouse bites</option><option value="vscore">V-score</option></select></div>
+          <div class="row" data-bites><span>Routed gap (mm)</span><input data-p="gap" title="The milled gap round each board (the router bit's width: 2 mm is usual)"></div>
+          <div class="row"><span>Rails</span><select data-p="rails" title="Strips of board along the panel's edges, for the assembly machine's conveyor, fiducials and tooling holes"><option value="tb">Top and bottom</option><option value="lr">Left and right</option><option value="frame">All round</option><option value="none">None</option></select></div>
+          <div class="row"><span>Rail width (mm)</span><input data-p="rail"></div>
+          <div class="row" data-bites><span>Tab width (mm)</span><input data-p="tabW" title="How wide each tab is"></div>
+          <div class="row" data-bites><span>A tab every (mm)</span><input data-p="tabEvery" title="One tab per this much of a board's side (at least one per side that faces a rail or another board)"></div>
+          <div class="row" data-bites><span>Bite hole Ø (mm)</span><input data-p="biteD"></div>
+          <div class="row" data-bites><span>Bite pitch (mm)</span><input data-p="bitePitch" title="Centre-to-centre distance of the holes in a row"></div>
+          <div class="row" data-bites><span>Holes into the board (mm)</span><input data-p="biteOff" title="How far the row of holes sits inside the board's edge (0: on the edge; more: a cleaner edge after the break, the stubs filed off less)"></div>
+          <label class="chkrow"><input type="checkbox" data-p="fid"> Fiducials</label>
+          <div class="row"><span>Fiducial Ø, mask opening Ø (mm)</span><span style="display:flex;gap:4px"><input data-p="fidD" title="The copper dot"><input data-p="fidMask" title="The bare ring round it"></span></div>
+          <label class="chkrow"><input type="checkbox" data-p="tool"> Tooling holes</label>
+          <div class="row"><span>Tooling hole Ø, from the end (mm)</span><span style="display:flex;gap:4px"><input data-p="toolD"><input data-p="inset" title="Distance of the tooling holes from the panel's ends"></span></div>
+          <label class="chkrow"><input type="checkbox" data-p="label"> Name on the rail</label>
+        </div>
+        <div><canvas id="panel-canvas" title="The panel: top copper, silkscreen, the routed edge (yellow), tabs, holes, fiducials; V-score lines dashed red; each board's number (the placement file's R1-2 is R1 on board 2)"></canvas><p class="help" id="panel-out"></p></div>
+      </div>
+      <h3>Boards on the panel</h3>
+      <div class="nets"><table><thead><tr><th>Board</th><th>Size (mm)</th><th title="Copies down">Rows</th><th title="Copies across">Columns</th><th title="Turned clockwise">Turn</th><th></th></tr></thead><tbody id="panel-items"></tbody></table></div>
+      <div class="actions"><button class="btn" id="panel-add-this" title="Put this board on the panel">Add this board</button><button class="btn" id="panel-add-zip" title="Another board from its Gerber ZIP (or a single Gerber file set zipped): this program's or KiCad's">Add a board from Gerbers…</button><input type="file" id="panel-file" accept=".zip,application/zip" hidden><span class="spacer"></span><button class="btn" id="panel-close">Close</button><button class="btn active" id="panel-export" title="The panel's Gerbers, drill files, placement file and a README, in one ZIP">Export panel Gerbers (ZIP)</button></div>
+    </div>
+  </div>
   <div class="modal" id="setup-modal" hidden>
     <div class="modal-box dlg" style="width: min(560px, 96vw)">
       <div class="insp-title">Board setup</div>
@@ -692,6 +727,8 @@
   <script src="board-pathfinder.js?v=dev"></script>
   <script src="board-shove.js?v=dev"></script>
   <script src="board-hs.js?v=dev"></script>
+  <script src="board-panelize.js?v=dev"></script>
+  <script src="board-panel-ui.js?v=dev"></script>
   <script src="board-3d.js?v=dev"></script>
   <script src="board-3d-view.js?v=dev"></script>
   <script src="board-measure.js?v=dev"></script>
