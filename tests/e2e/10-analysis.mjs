@@ -265,6 +265,30 @@ import { cad, check, open } from "./harness.mjs";
   check(await cad.evaluate(() => document.querySelectorAll("#tr-pane .tr-ref").length) >= 2, "Keep as reference draws the kept run's traces dashed under the new run");
   await cad.click("#btn-tr-unref");
   await cad.evaluate(() => { const T = TubeCAD.state.tran; T.panes.splice(1); T.traces = T.traces.filter(q => q.pane === 0); TubeCAD.transient.render(); });
+  // measurements: the 555's frequency and duty cycle from its output
+  const ms = await cad.evaluate(() => {
+    const sh = TubeCAD.transient.shown().filter(q => q.y), sw = q => Math.max(...q.y) - Math.min(...q.y), out = sh.slice().sort((a, b) => sw(b) - sw(a))[0];
+    TubeCAD.state.tran.view = [1e-3, 6e-3];   // past the first cycle, which starts half charged
+    TubeCAD.transient.addMeasure("freq", out.expr); TubeCAD.transient.addMeasure("duty", out.expr);
+    return [...document.querySelectorAll("#tr-pane .tr-meas-t tr")].map(r => r.lastElementChild.previousElementSibling.textContent);
+  });
+  const mf = +((/([\d.]+)Hz/.exec(ms[0] || "") || [])[1] || 0);
+  check(ms.length === 2 && Math.abs(mf / 678 - 1) < 0.03 && /%/.test(ms[1]), `+ Measure gives the output's frequency and duty cycle over the time shown (${ms.join(", ")})`);
+  await cad.evaluate(() => { TubeCAD.state.tran.view = null; TubeCAD.state.tran.meas = []; TubeCAD.transient.render(); });
+  // DC sweep: a supply stepped, the operating point at each value
+  await cad.selectOption("#tr-mode", "dc");
+  check(await cad.evaluate(() => document.querySelector(".tr-only").hidden && !document.querySelector(".dc-only").hidden && !TubeCAD.state.tran.meas.length), "DC sweep shows its own fields in the tool row");
+  const vcc = await cad.evaluate(() => (TubeCAD.transient.dcTargets().find(t => t.fields.some(f => f.key === "v")) || {}).id);
+  await cad.selectOption("#tr-dc-part", vcc);
+  await cad.fill("#tr-dc-from", "5"); await cad.press("#tr-dc-from", "Tab");
+  await cad.fill("#tr-dc-to", "15"); await cad.press("#tr-dc-to", "Tab");
+  await cad.fill("#tr-dc-steps", "11"); await cad.press("#tr-dc-steps", "Tab");
+  await cad.click("#btn-tr-run");
+  await cad.waitForFunction(() => { const T = TubeCAD.state.tran; return !T.job && (T.result || T.error); }, null, { timeout: 60000 });
+  const dc = await cad.evaluate(() => { const T = TubeCAD.state.tran, r = T.result; return { err: T.error, kind: r && r.kind, x: r && Array.from(r.t), unit: r && r.xUnit, info: document.querySelector("#tr-pane .tr-info").textContent, fft: document.querySelectorAll("#tr-pane .tr-fft").length, csv: TubeCAD.transient.exportCsv().split("\n")[0] }; });
+  check(!dc.err && dc.kind === "dc" && dc.x.length === 11 && dc.x[0] === 5 && dc.x[10] === 15 && dc.unit === "V" && /DC sweep of/.test(dc.info), `the DC sweep runs the operating point at 11 values of the supply, 5 to 15 V (${dc.info})`);
+  check(dc.fft === 0 && /^"[^"]+ \(V\)",/.test(dc.csv), `no FFT on a sweep; the CSV's first column is the swept value (${dc.csv.slice(0, 40)})`);
+  await cad.selectOption("#tr-mode", "tran");
   // the signal generator's pulse: its own fields, its SPICE line
   const pulse = await cad.evaluate(() => {
     const C = TubeCAD, S = C.state, g = C.makeComp("siggen", { wave: "pulse", vlo: 0, vhi: 5, per: 0 }, 2000, 2000, 0); S.comps.push(g);

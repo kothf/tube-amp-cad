@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.221.0] - 2026-11-14
+
+General-purpose simulation, part 3: DC and temperature sweeps, and measurements.
+
+### Added
+- **DC sweep** (SPICE's `.dc`): the Transient tab's first list switches between *Transient* and *DC sweep*. Sweep any numeric value of a part (a supply's voltage, a current source, a resistor, a pot's wiper…) or the temperature of every transistor (built in or in a SPICE part, by its own XTI/EG/XTB data), from/to, 2 to 1001 points, linear or log. Each point starts from the one before; a value with no operating point leaves a gap and is counted. Traces, currents, expressions, panes, cursors, the reference run and the CSV work as in a transient, against the swept value.
+- **Measurements** (SPICE's `.meas`): *+ Measure…* under the table adds a row worked out over the span shown or from cursor A to B, refreshed on every run, zoom or cursor move: maximum, minimum, peak to peak, average, RMS, integral, value at, slope at, first crossing of a level, rise and fall time (10–90 %), overshoot, settling time (2 %), period, frequency and duty cycle.
+- Engine: `dcSweep(netlists, {x})` (warm-started Newton per point, operating-point fallback) and a `dcsweep` worker job; `WaveMath.measure`.
+- `tests/dcsweep-ngspice.mjs` (in `npm run test:ngspice`): six circuits (diode and resistor, zener knee, BJT output curve, BJT bias against temperature, MOSFET transfer, current-fed diode) against ngspice's `.dc`, every point within 0.5 % of the swing plus 1 mV.
+
 ## [3.220.0] - 2026-11-14
 
 General-purpose simulation, part 2: the Transient tab's waveform viewer.
