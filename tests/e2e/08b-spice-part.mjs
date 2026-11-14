@@ -62,10 +62,10 @@ import { execFileSync } from "node:child_process";
 
   // a model the simulator cannot run: said in the dialog; put in a part by hand, the part is left out and the checks say why
   await cad.click("#btn-spice-model");
-  await cad.fill("#sppart-text", ".subckt lap in out\nE1 out 0 LAPLACE {V(in)} = {1/(1+s)}\n.ends");
+  await cad.fill("#sppart-text", ".subckt lap in out\nE1 out 0 CHEBYSHEV {V(in)} = LP 1k 2k 0.1 50\n.ends");
   await cad.waitForFunction(() => /cannot be simulated/.test(document.getElementById("sppart-msg").textContent), null, { timeout: 5000 }).catch(() => {});
   const bad = await cad.evaluate(() => ({ off: document.getElementById("sppart-ok").disabled, msg: document.getElementById("sppart-msg").textContent }));
-  check(bad.off && /cannot be simulated/.test(bad.msg) && /LAPLACE/i.test(bad.msg), "a model with a LAPLACE source is refused in the dialog, with the reason");
+  check(bad.off && /cannot be simulated/.test(bad.msg) && /CHEBYSHEV/i.test(bad.msg), "a model with a CHEBYSHEV source is refused in the dialog, with the reason");
   // a lone .MODEL out of a file of several parts: found with its kind, drawn as that device
   await cad.fill("#sppart-text", DEV);
   await cad.selectOption("#sppart-sub", "qtest");

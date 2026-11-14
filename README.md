@@ -247,7 +247,11 @@ the model or open the file.
   symbol; five pins are offered as an op-amp in the usual order; anything
   else is a box with the model's pins. Each pin of the model is set to a pin
   of the symbol, to ground or to nothing.
-- **What it refuses, with the reason:** `LAPLACE` and frequency tables,
+- **Transfer functions:** `LAPLACE` sources (PSpice's and LTspice's
+  spellings), any ratio of polynomials in s, run exactly; `FREQ` tables
+  fitted by a ratio of polynomials (vector fitting).
+- **What it refuses, with the reason:** `LAPLACE` other than a ratio of
+  polynomials, a `FREQ` table's `DELAY`,
   transmission lines, digital (`A`) devices, BSIM MOSFETs, expressions of
   time. Junction capacitances follow the voltage across them and step their
   charge; a transistor's transit times (TF, TR) shape the waveform and the

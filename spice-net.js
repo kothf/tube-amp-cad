@@ -6,7 +6,8 @@
    the subcircuits it calls, into the simulator's own elements on local nodes:
      R C L K · V I (their DC values) · D Q M J with their .MODEL (diode, Gummel–Poon BJT,
      level 1 to 3 MOSFET by its own equations with its bulk, LTspice's VDMOS as the square law, JFET) · E G F H, linear,
-     VALUE = {…}, TABLE and POLY(n) · B (I = or V =) · S and W switches · X.
+     VALUE = {…}, TABLE and POLY(n), LAPLACE (H(s) as a state-space network) and FREQ (a table fitted
+     to H(s) by vector fitting) · B (I = or V =, Laplace=) · S and W switches · X.
    What depends on voltages or currents by an expression becomes a behavioural source
    (the engine's kind B) with a closed expression tree: parameters are numbers by then,
    .FUNC bodies are inlined, nodes are the element's own.
@@ -17,8 +18,8 @@
    chargeAt); a transistor's transit times TF and TR store charge in the waveform and the
    small-signal analyses; a VDMOS's Cgd follows CGDMIN … CGDMAX (A). A transistor's temperature
    terms (XTI, EG, XTB, TNOM) set it at another temperature, or as it heats itself (build's spec).
-   Not carried over: the other temperature terms and noise parameters. Not supported (an error): LAPLACE and FREQ sources,
-   transmission lines, BSIM MOSFETs, time-dependent expressions.
+   Not carried over: the other temperature terms and noise parameters. Not supported (an error): CHEBYSHEV
+   sources, transmission lines, BSIM MOSFETs, time-dependent expressions.
 
    build(spec, pinNodes, alloc, id) gives the engine's elements for one part of a circuit.
    ============================================================================= */
@@ -94,6 +95,178 @@
       case "f": return SM.FUNCS[t.s](...t.args.map(evalClosed));
     }
     throw new Error("a value here cannot depend on voltages or currents");
+  }
+  // --- LAPLACE: a transfer function in s as a ratio of polynomials (coefficients from s^0 up) ---
+  const S_VAR = { k: "s" };
+  // a {…} or '…' group from position i (spaces before it skipped), or a bare expression up to a space
+  // outside brackets: { text, end }
+  function group(str, i) {
+    while (i < str.length && /\s/.test(str[i])) i++;
+    const open = str[i], close = { "{": "}", "'": "'" }[open];
+    let depth = 0, j = i;
+    if (close) {
+      for (; j < str.length; j++) {
+        if (str[j] === close && (open === "'" ? j > i : --depth === 0)) return { text: str.slice(i + 1, j), end: j + 1 };
+        if (str[j] === open && open !== "'") depth++;
+      }
+      throw new Error(`${open} is not closed`);
+    }
+    for (; j < str.length; j++) { if (str[j] === "(" || str[j] === "{") depth++; else if (str[j] === ")" || str[j] === "}") depth--; else if (/\s/.test(str[j]) && depth <= 0) break; }
+    return { text: str.slice(i, j), end: j };
+  }
+  const pAdd = (a, b) => Array.from({ length: Math.max(a.length, b.length) }, (_, i) => (a[i] || 0) + (b[i] || 0));
+  const pMul = (a, b) => { const r = new Array(a.length + b.length - 1).fill(0); a.forEach((x, i) => b.forEach((y, j) => { r[i + j] += x * y; })); return r; };
+  const pTrim = a => { let n = a.length; while (n > 1 && a[n - 1] === 0) n--; return a.slice(0, n); };
+  function rational(t) {
+    switch (t.k) {
+      case "n": return [[t.v], [1]];
+      case "s": return [[0, 1], [1]];
+      case "u": { const [n, d] = rational(t.x); return t.op === "-" ? [n.map(v => -v), d] : [n, d]; }
+      case "b": {
+        if (t.op === "^" || t.op === "**") {
+          if (!isN(t.b) || !Number.isInteger(t.b.v) || Math.abs(t.b.v) > 12) throw new Error("LAPLACE: s may be raised only to a whole power");
+          const [n, d] = rational(t.a); let rn = [1], rd = [1];
+          for (let i = 0; i < Math.abs(t.b.v); i++) { rn = pMul(rn, n); rd = pMul(rd, d); }
+          return t.b.v < 0 ? [rd, rn] : [rn, rd];
+        }
+        const [an, ad] = rational(t.a), [bn, bd] = rational(t.b);
+        if (t.op === "+") return [pAdd(pMul(an, bd), pMul(bn, ad)), pMul(ad, bd)];
+        if (t.op === "-") return [pAdd(pMul(an, bd), pMul(bn, ad).map(v => -v)), pMul(ad, bd)];
+        if (t.op === "*") return [pMul(an, bn), pMul(ad, bd)];
+        if (t.op === "/") return [pMul(an, bd), pMul(ad, bn)];
+      }
+    }
+    throw new Error("LAPLACE: only a ratio of polynomials in s can be simulated (no delays or roots of s)");
+  }
+  // H(s) = N/D as controllable-canonical state space on the scale w0 (s = w0·p), so the states keep
+  // sensible sizes however far the poles lie: { w0, a: D monic in p (a0 … a(n−1)), c: output weights of
+  // the states, d: the direct share of the input }
+  function laplaceState(num, den, ws = 1) {
+    num = pTrim(num); den = pTrim(den);
+    const n = den.length - 1, an = den[n];
+    if (!an) throw new Error("LAPLACE: the denominator is zero");
+    if (num.length - 1 > n) throw new Error("LAPLACE: the numerator's degree is above the denominator's (an ideal differentiator)");
+    let w0 = 0;
+    for (let k = 0; k < n; k++) if (den[k]) w0 = Math.max(w0, Math.pow(Math.abs(den[k] / an), 1 / (n - k)));
+    if (!(w0 > 0) || !isFinite(w0)) w0 = 1;
+    const a = den.slice(0, n).map((v, k) => v * Math.pow(w0, k - n) / an), b = Array.from({ length: n + 1 }, (_, k) => (num[k] || 0) * Math.pow(w0, k - n) / an);
+    return { w0: w0 * ws, a, c: a.map((ak, k) => b[k] - ak * b[n]), d: b[n] };
+  }
+  // --- FREQ: a table of the response (Hz, complex values) fitted by a ratio of polynomials, Gustavsen's
+  // vector fitting (deterministic: starting poles spread over the table's decades, ten relocations per
+  // order), the order raised in pairs until the fit is within 0.05 dB and 0.5° or 16 is reached.
+  // Returns { num, den, ws, order, dB, deg }: polynomials in p = s/ws ---
+  const cx = { add: (a, b) => [a[0] + b[0], a[1] + b[1]], sub: (a, b) => [a[0] - b[0], a[1] - b[1]], mul: (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]],
+    div: (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; } };
+  // least squares by Householder QR: A (rows × cols, row arrays), y → x
+  function lsq(A, y) {
+    const m = A.length, n = A[0].length, R = A.map(r => r.slice()), b = y.slice();
+    // column scaling keeps the basis functions comparable
+    const sc = Array.from({ length: n }, (_, j) => Math.sqrt(R.reduce((t, r) => t + r[j] * r[j], 0)) || 1);
+    R.forEach(r => { for (let j = 0; j < n; j++) r[j] /= sc[j]; });
+    for (let k = 0; k < n; k++) {
+      let nr = 0; for (let i = k; i < m; i++) nr += R[i][k] * R[i][k];
+      nr = Math.sqrt(nr); if (!nr) continue;
+      const al = R[k][k] > 0 ? -nr : nr, v = new Float64Array(m); v[k] = R[k][k] - al; for (let i = k + 1; i < m; i++) v[i] = R[i][k];
+      const vv = v.reduce((t, x) => t + x * x, 0); if (!vv) continue;
+      for (let j = k; j < n; j++) { let d = 0; for (let i = k; i < m; i++) d += v[i] * R[i][j]; d *= 2 / vv; for (let i = k; i < m; i++) R[i][j] -= d * v[i]; }
+      let d = 0; for (let i = k; i < m; i++) d += v[i] * b[i]; d *= 2 / vv; for (let i = k; i < m; i++) b[i] -= d * v[i];
+    }
+    const x = new Array(n).fill(0);
+    for (let k = n - 1; k >= 0; k--) { let t = b[k]; for (let j = k + 1; j < n; j++) t -= R[k][j] * x[j]; x[k] = Math.abs(R[k][k]) > 1e-300 ? t / R[k][k] : 0; }
+    return x.map((v, j) => v / sc[j]);
+  }
+  // the roots of a real polynomial (coefficients from p^0 up), Aberth's iteration from points on a circle
+  function roots(c) {
+    c = pTrim(c); const n = c.length - 1; if (n < 1) return [];
+    const lead = c[n], a = c.map(v => v / lead), ev = z => { let p = [1, 0], d = [0, 0]; for (let k = n - 1; k >= 0; k--) { d = cx.add(cx.mul(d, z), p); p = cx.add(cx.mul(p, z), [a[k], 0]); } return [p, d]; };
+    const R = 1 + Math.max(...a.slice(0, n).map(Math.abs));
+    let z = Array.from({ length: n }, (_, k) => [0.5 * R * Math.cos(2 * Math.PI * k / n + 0.4), 0.5 * R * Math.sin(2 * Math.PI * k / n + 0.4)]);
+    for (let it = 0; it < 500; it++) {
+      let move = 0;
+      z = z.map((zk, k) => {
+        const [p, d] = ev(zk), ratio = cx.div(p, d);
+        let sum = [0, 0]; z.forEach((zj, j) => { if (j !== k) sum = cx.add(sum, cx.div([1, 0], cx.sub(zk, zj))); });
+        const w = cx.div(ratio, cx.sub([1, 0], cx.mul(ratio, sum))), nz = cx.sub(zk, w);
+        move = Math.max(move, Math.hypot(w[0], w[1]) / (1 + Math.hypot(nz[0], nz[1])));
+        return nz;
+      });
+      if (move < 1e-14) break;
+    }
+    return z;
+  }
+  // a set of poles (complex pairs kept together, each pair once with im > 0, real poles im 0) as the real basis of partial fractions at p
+  function basis(poles, p) {
+    const out = [];
+    poles.forEach(a => {
+      if (a[1] === 0) out.push(cx.div([1, 0], cx.sub(p, a)));
+      else { const u = cx.div([1, 0], cx.sub(p, a)), v = cx.div([1, 0], cx.sub(p, [a[0], -a[1]])); out.push(cx.add(u, v), cx.mul([0, 1], cx.sub(u, v))); }
+    });
+    return out;
+  }
+  function polyOfPoles(poles) { let d = [1]; poles.forEach(a => { d = a[1] === 0 ? pMul(d, [-a[0], 1]) : pMul(d, [a[0] * a[0] + a[1] * a[1], -2 * a[0], 1]); }); return d; }
+  function vectorFit(freqs, H) {
+    const ws = 2 * Math.PI * Math.sqrt(freqs[0] * freqs[freqs.length - 1]), P = freqs.map(f => [0, 2 * Math.PI * f / ws]);
+    const lo = Math.log10(2 * Math.PI * freqs[0] / ws), hi = Math.log10(2 * Math.PI * freqs[freqs.length - 1] / ws);
+    const evalFit = (poles, r, d, p) => { const B = basis(poles, p); let v = [d, 0]; B.forEach((b, i) => { v = cx.add(v, [b[0] * r[i], b[1] * r[i]]); }); return v; };
+    const err = (poles, r, d) => {
+      let dB = 0, deg = 0;
+      P.forEach((p, k) => {
+        const v = evalFit(poles, r, d, p), m1 = Math.hypot(v[0], v[1]), m2 = Math.hypot(H[k][0], H[k][1]);
+        dB = Math.max(dB, Math.abs(20 * Math.log10((m1 + 1e-300) / (m2 + 1e-300))));
+        let ph = Math.abs(Math.atan2(v[1], v[0]) - Math.atan2(H[k][1], H[k][0])) * 180 / Math.PI % 360; if (ph > 180) ph = 360 - ph;
+        if (m2 > 1e-6 * Math.max(...H.map(h => Math.hypot(h[0], h[1])))) deg = Math.max(deg, ph);
+      });
+      return [dB, deg];
+    };
+    // residues and d for fixed poles
+    const residues = poles => {
+      const A = [], y = [];
+      P.forEach((p, k) => { const B = basis(poles, p); A.push([...B.map(b => b[0]), 1]); y.push(H[k][0]); A.push([...B.map(b => b[1]), 0]); y.push(H[k][1]); });
+      const x = lsq(A, y); return { r: x.slice(0, -1), d: x[x.length - 1] };
+    };
+    let best = null;
+    for (let N = 2; N <= 16; N += 2) {
+      let poles = Array.from({ length: N / 2 }, (_, i) => { const b = Math.pow(10, N === 2 ? (lo + hi) / 2 : lo + (hi - lo) * i / (N / 2 - 1)); return [-b / 100, b]; });
+      for (let it = 0; it < 10; it++) {
+        // σ(p)·H ≈ Σ c·φ + d, σ = 1 + Σ c̃·φ: linear in c, d, c̃
+        const A = [], y = [];
+        P.forEach((p, k) => {
+          const B = basis(poles, p), h = H[k], fB = B.map(b => cx.mul(h, b));
+          A.push([...B.map(b => b[0]), 1, ...fB.map(b => -b[0])]); y.push(h[0]);
+          A.push([...B.map(b => b[1]), 0, ...fB.map(b => -b[1])]); y.push(h[1]);
+        });
+        const x = lsq(A, y), nb = basis(poles, [0, 0]).length, ct = x.slice(nb + 1);
+        // σ's zeros: the new poles. σ = (D + Σ c̃·numerators)/D over the old poles' polynomial D
+        let num = polyOfPoles(poles), i = 0;
+        poles.forEach((a, j) => {
+          const rest = polyOfPoles(poles.filter((_, q) => q !== j));
+          if (a[1] === 0) { num = pAdd(num, rest.map(v => v * ct[i])); i++; }
+          else {
+            // c1·(1/(p−a) + 1/(p−a*)) + c2·j(1/(p−a) − 1/(p−a*)) = (c1·(2p − 2α) − c2·2β)/((p−α)² + β²)
+            num = pAdd(num, pMul(rest, [-2 * a[0] * ct[i] - 2 * a[1] * ct[i + 1], 2 * ct[i]])); i += 2;
+          }
+        });
+        const z = roots(num).map(r => [-Math.abs(r[0]) || -1e-6, r[1]]);
+        // keep one of each pair (im > 0) and the real ones
+        const np = []; z.filter(r => Math.abs(r[1]) <= 1e-9 * (1 + Math.abs(r[0]))).forEach(r => np.push([r[0], 0]));
+        z.filter(r => r[1] > 1e-9 * (1 + Math.abs(r[0]))).forEach(r => np.push(r));
+        if (np.reduce((t, r) => t + (r[1] === 0 ? 1 : 2), 0) !== N) break;   // an odd split: keep the poles as they were
+        poles = np;
+      }
+      const { r, d } = residues(poles), [dB, deg] = err(poles, r, d);
+      if (!best || dB + deg / 10 < best.dB + best.deg / 10) best = { poles, r, d, dB, deg, N };
+      if (dB <= 0.05 && deg <= 0.5) break;
+    }
+    // N/D: D the poles' polynomial, N = d·D + the residues over the rest
+    const { poles, r, d } = best, den = polyOfPoles(poles);
+    let num = den.map(v => v * d), i = 0;
+    poles.forEach((a, j) => {
+      const rest = polyOfPoles(poles.filter((_, q) => q !== j));
+      if (a[1] === 0) { num = pAdd(num, rest.map(v => v * r[i])); i++; }
+      else { num = pAdd(num, pMul(rest, [-2 * a[0] * r[i] - 2 * a[1] * r[i + 1], 2 * r[i]])); i += 2; }
+    });
+    return { num, den, ws, order: best.N, dB: best.dB, deg: best.deg };
   }
   const fold = t => {
     if (t.k === "u" && isN(t.x)) return { k: "n", v: evalClosed(t) };
@@ -211,6 +384,31 @@
       };
       const slot = (el, k) => { let i = el.n.indexOf(k, 2); if (i < 0) { el.n.push(k); i = el.n.length - 1; } return i; };
       const bsrc = (nm, a, b, out) => ({ name: prefix + nm, kind: "B", n: [a, b], out, ctl: [] });
+      // a LAPLACE source: its input (an expression, or a function of ctx) on a node of its own, the
+      // transfer function's states on capacitors of 1/w0 driven by linear transconductances, and
+      // the output (a voltage between a and b, or a current from a to b) a weighted sum of them
+      const laplace = (nm, a, b, out, input, htext, no) => {
+        let st;
+        try { st = typeof htext === "object" ? laplaceState(htext.num, htext.den, htext.ws) : laplaceState(...rational(close(SM.parseExpr(SM.unbrace(htext)), scope, null, { s: S_VAR }))); } catch (e) { throw new Error(`${at(no)}${nm}: ${e.message}`); }
+        const u = nNodes++, n = st.a.length, x = Array.from({ length: n }, () => nNodes++);
+        push(behave({ name: prefix + nm + "#in", kind: "B", n: [u, 0], out: "v", ctl: [] }, typeof input === "function" ? input : SM.unbrace(input), no));
+        x.forEach((k, i) => {
+          push({ name: prefix + nm + "#c" + i, kind: "C", n: [k, 0], c: 1 / st.w0 }, { name: prefix + nm + "#g" + i, kind: "R", n: [k, 0], r: 1e12 });
+          if (i < n - 1) push({ name: prefix + nm + "#x" + i, kind: "G", n: [0, k, x[i + 1], 0], gm: 1 });
+        });
+        if (n) {
+          const last = x[n - 1];
+          push({ name: prefix + nm + "#u", kind: "G", n: [0, last, u, 0], gm: 1 });
+          st.a.forEach((ak, i) => { if (ak) push({ name: prefix + nm + "#a" + i, kind: "G", n: [0, last, x[i], 0], gm: -ak }); });
+        }
+        const N = v => ({ k: "n", v }), B = (op, p, q) => ({ k: "b", op, a: p, b: q });
+        const el = bsrc(nm, a, b, out);
+        const V = k => ({ k: "v", a: slot(el, k), b: slot(el, 0) });
+        let e = B("*", N(st.d), V(u));
+        st.c.forEach((ci, i) => { if (ci) e = B("+", e, B("*", N(ci), V(x[i]))); });
+        el.ast = e;
+        push(el);
+      };
       const areaOf = (t, no) => (t && !t.includes("=") && !/^(on|off)$/i.test(t) ? val(t, no) : 1);
       const params = tk => { const p = {}; tk.forEach(t => { const i = t.indexOf("="); if (i > 0) p[t.slice(0, i).toLowerCase()] = SM.unbrace(t.slice(i + 1)); }); return p; };
 
@@ -272,8 +470,39 @@
         } else if (kind === "E" || kind === "G" || kind === "F" || kind === "H") {
           need(4);
           const a = node(tk[1]), b = node(tk[2]), out = kind === "E" || kind === "H" ? "v" : "i", byI = kind === "F" || kind === "H";
-          const lap = /\b(LAPLACE|FREQ|CHEBYSHEV)\b/i.exec(s);
-          if (lap) throw new Error(`${at(no)}${tk[0]}: ${lap[1].toUpperCase()} sources are not supported`);
+          const lap = /\bCHEBYSHEV\b/i.exec(s);
+          if (lap) throw new Error(`${at(no)}${tk[0]}: CHEBYSHEV sources are not supported`);
+          const fq = /\bfreq\s*(?=[{'])/i.exec(sn);
+          if (fq && !byI) {
+            // PSpice: E a b FREQ {in} = [MAG|DB] [DEG|RAD] [R_I] (f, a, b) … [DELAY=t]: the table fitted by a ratio
+            // of polynomials (vectorFit), then run as a LAPLACE source
+            const g1 = group(sn, fq.index + fq[0].length), rest = sn.slice(g1.end).replace(/^\s*=?\s*/, "");
+            const dl = /\bdelay=(\S+)/i.exec(rest);
+            if (dl && val(dl[1], no) !== 0) throw new Error(`${at(no)}${tk[0]}: a FREQ table's DELAY is not supported`);
+            const words = (rest.match(/^[^(]*/) || [""])[0].toLowerCase(), ri = /\br_i\b/.test(words), mag = /\bmag\b/.test(words), rad = /\brad\b/.test(words);
+            const nums = (rest.replace(/\bdelay=\S+/i, "").slice(words.length).match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?(?:meg|[tgkmunpf])?/gi) || []).map(SM.num);
+            if (nums.length < 6 || nums.length % 3) throw new Error(`${at(no)}${tk[0]}: the FREQ table's points are not understood`);
+            const fs = [], H = [];
+            for (let i = 0; i < nums.length; i += 3) {
+              const f = nums[i], x = nums[i + 1], y = nums[i + 2];
+              if (!(f > 0)) continue;   // a point at 0 Hz: the fit's own value there stands
+              if (fs.length && !(f > fs[fs.length - 1])) throw new Error(`${at(no)}${tk[0]}: the FREQ table's frequencies must run upwards`);
+              const m = ri ? null : mag ? x : Math.pow(10, x / 20), ph = ri ? 0 : rad ? y : y * Math.PI / 180;
+              fs.push(f); H.push(ri ? [x, y] : [m * Math.cos(ph), m * Math.sin(ph)]);
+            }
+            if (fs.length < 3) throw new Error(`${at(no)}${tk[0]}: a FREQ table needs at least three points above 0 Hz`);
+            const fit = vectorFit(fs, H);
+            warn.add(`${tk[0]}: its FREQ table is run as a fitted transfer function of order ${fit.order} (within ${fit.dB < 0.01 ? "0.01" : fit.dB.toFixed(2)} dB and ${fit.deg < 0.1 ? "0.1" : fit.deg.toFixed(1)}° of the table)`);
+            laplace(nm, a, b, out, g1.text, { num: fit.num, den: fit.den, ws: fit.ws }, no);
+            return;
+          }
+          if (/\blaplace\b/i.test(sn) && !byI) {
+            // PSpice: E a b LAPLACE {in} = {H(s)}; LTspice: E a b c d Laplace=H(s)
+            const ps = /\blaplace\s*(?=[{'])/i.exec(sn);
+            if (ps) { const g1 = group(sn, ps.index + ps[0].length), eq = sn.slice(g1.end).replace(/^\s*=?\s*/, ""); laplace(nm, a, b, out, g1.text, group(eq, 0).text, no); }
+            else { need(5); laplace(nm, a, b, out, ctx => ctx.v(tk[3], tk[4]), group(sn, /\blaplace=/i.exec(sn).index + 8).text, no); }
+            return;
+          }
           const vE = after(/\b(?:VALUE|VOL|CUR)\s*=?\s*(?=[{'(\w-])/i), tb = /\bTABLE\s*=?\s*(\{[^}]*\}|'[^']*')?\s*=?\s*([\s\S]*)$/i.exec(sn), pm = /\bPOLY\s*\(\s*(\d+)\s*\)/i.exec(s);
           if (tb) {
             // TABLE {expr} = (x, y) (x, y) …; LTspice: E a b c d table = (x, y, …)
@@ -308,7 +537,14 @@
         } else if (kind === "B") {
           need(4);
           const iE = after(/\bI\s*=/i), vE = after(/\bV\s*=/i), a = node(tk[1]), b = node(tk[2]);
-          if (/\blaplace\s*=/i.test(sn)) throw new Error(`${at(no)}${tk[0]}: LAPLACE sources are not supported`);
+          const lp = /\blaplace=/i.exec(sn);
+          if (lp) {
+            // LTspice: B a b V=expr Laplace=H(s) (or I=): the expression filtered by H
+            const ex = iE !== null && (vE === null || sn.search(/\bI\s*=/i) < sn.search(/\bV\s*=/i)) ? iE : vE;
+            if (ex === null) throw new Error(`${at(no)}${tk[0]} needs I= or V=`);
+            laplace(nm, a, b, ex === iE ? "i" : "v", group(ex, 0).text, group(sn, lp.index + lp[0].length).text, no);
+            return;
+          }
           if (iE !== null && (vE === null || sn.search(/\bI\s*=/i) < sn.search(/\bV\s*=/i))) push(behave(bsrc(nm, a, b, "i"), cut(iE), no));
           else if (vE !== null) push(behave(bsrc(nm, a, b, "v"), cut(vE), no));
           else throw new Error(`${at(no)}${tk[0]} needs I= or V=`);
@@ -527,5 +763,5 @@
     return globals.concat(...need.reverse().map(sub => sub.raw.concat(sub.raw.some(r => /^\s*\.ends\b/i.test(r)) ? [] : [".ENDS"]))).join("\n") + "\n";
   }
 
-  root.SpiceNet = { extract, list, flatten, flat, build, close, evalClosed, polyAst, DEVICE_PINS, DEVICE_NAME };
+  root.SpiceNet = { extract, list, flatten, flat, build, close, evalClosed, polyAst, vectorFit, DEVICE_PINS, DEVICE_NAME };
 })(typeof window !== "undefined" ? window : globalThis);
