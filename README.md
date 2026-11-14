@@ -1132,7 +1132,12 @@ the circuit file, so one file holds both.
   finished: no violations, no warnings, nothing left to route.
 - **Board setup** (*Board ▾ → Board setup…*): the outline (a rectangle with its size and corner
   radius, a round board by its diameter, or a sketch of any shape with cut-outs), mounting holes (one
-  in each corner, M2.5–M4, chosen inset), board thickness and copper weight.
+  in each corner, M2.5–M4, chosen inset), board thickness and copper weight, and the
+  **layer stack: 2, 4 or 6 copper layers**. Each inner layer is a signal layer or
+  a plane of one net (its pour over the whole board; a pour of higher priority on
+  it makes a split plane). The grid router and Freerouting route on the inner
+  signal layers; Gerbers, the README and the KiCad export (layers and physical
+  stack-up) carry them; KiCad 4 and 6 layer boards import with them.
 - **Layers:** top and bottom copper, copper pours, both silkscreens, outline, mounting holes,
   ratsnest and rule markers. Each can be shown or hidden, or shown alone
   (*only*). Click a copper layer to make it active, and dim the inactive

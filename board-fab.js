@@ -55,7 +55,7 @@
   function layerOps(board, model, fills, layer) {
     const C = B(), R = board.rules, keep = placedParts(board, model), ops = [];
     const pads = model.pads.filter(p => keep.has(p.part)), holes = board.holes || [], partHoles = (model.holes || []).filter(h => keep.has(h.part));
-    if (layer === "F.Cu" || layer === "B.Cu") {
+    if (/^(F|B|In\d)\.Cu$/.test(layer)) {
       (fills || []).filter(f => f.layer === layer).forEach(f => ops.push(...f.ops.map(op => (op.pol === "D" ? { ...op, fn: "Conductor" } : op))));
       board.tracks.filter(t => t.layer === layer).forEach(t => ops.push({ pol: "D", t: "line", w: t.w, pts: t.pts, fn: "Conductor" }));
       pads.forEach(p => { if (!p.layers || p.layers.includes(layer)) ops.push({ pol: "D", ...C.flashOf(p, 0), fn: p.smd ? "SMDPad,CuDef" : "ComponentPad" }); });
@@ -128,7 +128,9 @@
     // one aperture per shape, size and function (a pad and a via of one size are told apart)
     const ap = new Map(), shapeKey = op => (op.t === "line" || op.shape === "C" ? `C,${f6(op.w)}` : `${op.shape},${f6(op.w)}X${f6(op.h)}`), key = op => `${shapeKey(op)}|${op.pol === "C" ? "" : op.fn || ""}`;
     ops.forEach(op => { if (op.t !== "region" && !ap.has(key(op))) ap.set(key(op), 10 + ap.size); });
-    const [func, pol] = FUNC[layer] || ["Other,Drawing", "Positive"];
+    // copper: L1 the top, Ln the bottom, inner layers between (a plane layer is a plane, the rest signal)
+    const CU = B().copperOf ? B().copperOf(board) : ["F.Cu", "B.Cu"], li = CU.indexOf(layer);
+    const [func, pol] = li >= 0 ? [`Copper,L${li + 1},${li === 0 ? "Top" : li === CU.length - 1 ? "Bot" : "Inr"}${li > 0 && li < CU.length - 1 ? (B().isPlane(board, layer) ? ",Plane" : ",Signal") : ""}`, "Positive"] : FUNC[layer] || ["Other,Drawing", "Positive"];
     const out = [`G04 Tube Amp CAD board: ${ascii((meta && meta.title) || "board")} - ${layer}*`,
       `%TF.GenerationSoftware,Tube Amp CAD,Board Design,${ascii((meta && meta.version) || "", true)}*%`];
     if (meta && meta.date) out.push(`%TF.CreationDate,${meta.date}*%`);
@@ -188,7 +190,7 @@
   /** All the manufacturing files: { name: text } (KiCad-style names) */
   function fabFiles(board, model, fills, meta) {
     const base = (meta && meta.base) || "board", files = {};
-    const L = { "F.Cu": "F_Cu", "B.Cu": "B_Cu", "F.Mask": "F_Mask", "B.Mask": "B_Mask", "F.SilkS": "F_Silkscreen", "B.SilkS": "B_Silkscreen", "Edge.Cuts": "Edge_Cuts" };
+    const L = { "F.Cu": "F_Cu", ...Object.fromEntries((B().copperOf ? B().copperOf(board) : []).slice(1, -1).map(l => [l, l.replace(".", "_")])), "B.Cu": "B_Cu", "F.Mask": "F_Mask", "B.Mask": "B_Mask", "F.SilkS": "F_Silkscreen", "B.SilkS": "B_Silkscreen", "Edge.Cuts": "Edge_Cuts" };
     // with SMD parts: their solder paste stencils, and the placement file for the assembly machine
     const keep = placedParts(board, model), smd = model.parts.filter(g => keep.has(g.key) && g.fp && g.fp.smd);
     [["F", "F.Paste", "F_Paste"], ["B", "B.Paste", "B_Paste"]].forEach(([s, layer, suffix]) => { if (smd.some(g => (g.place.side || "F") === s)) L[layer] = suffix; });
@@ -200,7 +202,7 @@
     const R = board.rules, st = board.stackup, n = t => t.reduce((s, [, p]) => s + p.length, 0), dias = t => [...new Set(t.map(x => x[0]))].join(", ");
     const ph = (board.holes || []).filter(h => h.plated).length, nw = board.tracks.map(t => t.w);
     files[`${base}-README.txt`] = [`${(meta && meta.title) || base} — manufacturing files from Tube Amp CAD ${(meta && meta.version) || ""}`, "",
-      `Board: ${root.BoardOutline && root.BoardOutline.isShape(board.outline) ? root.BoardOutline.describe(board.outline) + " (the Edge_Cuts file has the edge" + (board.outline.shape.length > 1 ? " and the cut-outs to rout" : "") + ")" : `${board.outline.w} × ${board.outline.h} mm${board.outline.r ? `, corner radius ${board.outline.r} mm` : ""}`}, 2 layers, ${st.thickness} mm FR-4, ${st.copper} µm copper (${st.copper >= 70 ? 2 : 1} oz)`,
+      `Board: ${root.BoardOutline && root.BoardOutline.isShape(board.outline) ? root.BoardOutline.describe(board.outline) + " (the Edge_Cuts file has the edge" + (board.outline.shape.length > 1 ? " and the cut-outs to rout" : "") + ")" : `${board.outline.w} × ${board.outline.h} mm${board.outline.r ? `, corner radius ${board.outline.r} mm` : ""}`}, ${B().copperOf ? B().copperOf(board).length : 2} layers, ${st.thickness} mm FR-4, ${st.copper} µm copper (${st.copper >= 70 ? 2 : 1} oz)${B().copperOf && B().copperOf(board).length > 2 ? `; inner layers ${st.innerCopper || st.copper} µm, top to bottom: ${B().copperOf(board).map((l, i) => `L${i + 1} ${l}${B().isPlane(board, l) ? ` (${B().innerOf(board, l).net} plane)` : ""}`).join(", ")}` : ""}`,
       `Tracks ${nw.length ? `${Math.min(...nw)}–${Math.max(...nw)} mm wide` : "none"} (design minimum ${R.minTrack} mm); clearance ${R.clearance} mm, high voltage ${R.hvClearance} mm and more by IPC-2221B ${R.ipc || "B2"} where the voltage asks`,
       `Holes: ${n(d.pth)} plated (${dias(d.pth)} mm${ph ? `; ${ph} of them plated mounting holes` : ""})${d.npth.length ? `, ${n(d.npth)} not plated (${dias(d.npth)} mm)` : ""}`,
       // mounting holes with a finish or a tolerance (the drill files carry only the diameter)

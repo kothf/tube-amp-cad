@@ -87,7 +87,8 @@
       outlinePath(ctx, o); ctx.fillStyle = "#0c1712"; ctx.fill("evenodd");
       if (S.show["Edge.Cuts"]) { ctx.strokeStyle = COLORS["Edge.Cuts"]; ctx.lineWidth = Math.max(0.15, 1.2 * px); ctx.stroke(); }
       // copper: the inactive layer dimmed underneath, the active one on top
-      const order = S.layer === "F.Cu" ? ["B.Cu", "F.Cu"] : ["F.Cu", "B.Cu"];
+      // (bottom first, inner layers between, the active layer last)
+      const CU = B.copperOf(S.board), order = CU.slice().reverse().filter(l => l !== S.layer).concat(CU.includes(S.layer) ? [S.layer] : []);
       const NH = S.netHL, hl = NH !== null ? NH : S.hover !== null && S.hover !== undefined ? S.hover : S.route ? S.route.net : null;
       order.forEach(layer => {
         if (!S.show[layer]) return;
@@ -146,7 +147,8 @@
       });
       // pads (through-hole: on both layers; SMD: on their side's layer, when it is shown; the
       // bottom's SMD pads paler, under the rest) and vias, when any copper layer is shown
-      if (S.model && (S.show["F.Cu"] || S.show["B.Cu"])) {
+      const anyCu = CU.some(l => S.show[l]);
+      if (S.model && anyCu) {
         const pads = S.model.pads.filter(p => !p.smd || S.show[p.layers[0]]).sort((a, b) => (b.smd && b.layers[0] === "B.Cu") - (a.smd && a.layers[0] === "B.Cu"));
         pads.forEach(p => {
           const lit = hl !== null && p.net === hl, under = p.smd && p.layers[0] === "B.Cu";
@@ -164,7 +166,7 @@
         ctx.strokeStyle = COLORS.Holes; ctx.lineWidth = Math.max(0.12, px); ctx.stroke();
         ctx.beginPath(); ctx.arc(h.x, h.y, h.d / 2 + S.board.rules.clearance, 0, Math.PI * 2); ctx.setLineDash([2 * px, 2 * px]); ctx.stroke(); ctx.setLineDash([]);
       });
-      if (S.show["F.Cu"] || S.show["B.Cu"]) S.board.vias.forEach((v, i) => {
+      if (anyCu) S.board.vias.forEach((v, i) => {
         ctx.fillStyle = selColor("via", i, "#a9b4c2"); ctx.beginPath(); ctx.arc(v.x, v.y, (v.pad || S.board.rules.viaPad) / 2, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = "#070b10"; ctx.beginPath(); ctx.arc(v.x, v.y, (v.drill || S.board.rules.viaDrill) / 2, 0, Math.PI * 2); ctx.fill();
       });

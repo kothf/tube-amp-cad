@@ -10,7 +10,7 @@
   const B = BoardCore, $ = id => document.getElementById(id);
   const VERSION = (() => { const sc = document.currentScript; const q = sc && sc.src.split("?")[1]; return q ? "?" + q : ""; })();
   const LAYER_INFO = [
-    ["F.Cu", "Top copper", "#e5534b"], ["B.Cu", "Bottom copper", "#4d8fdc"], ["zones", "Copper pours", "#8b949e"], ["F.SilkS", "Top silkscreen", "#e6edf3"], ["B.SilkS", "Bottom silkscreen", "#b392f0"],
+    ["F.Cu", "Top copper", "#e5534b"], ["In1.Cu", "Inner 1 copper", "#c9b458"], ["In2.Cu", "Inner 2 copper", "#c264c2"], ["In3.Cu", "Inner 3 copper", "#3fb9a8"], ["In4.Cu", "Inner 4 copper", "#9a8cff"], ["B.Cu", "Bottom copper", "#4d8fdc"], ["zones", "Copper pours", "#8b949e"], ["F.SilkS", "Top silkscreen", "#e6edf3"], ["B.SilkS", "Bottom silkscreen", "#b392f0"],
     ["Edge.Cuts", "Board outline", "#ffd54f"], ["keepouts", "Keep-out areas", "#ff9e3d"], ["Holes", "Mounting holes", "#9aa7b4"], ["rats", "Ratsnest", "#c9d1d9"], ["drc", "Rule markers", "#ff7b72"]
   ];
   const COLORS = Object.fromEntries(LAYER_INFO.map(([k, , c]) => [k, c]));
@@ -127,7 +127,15 @@
   // Model and checks
   // ---------------------------------------------------------------------------
   // light: while dragging, keep the pours as they were filled (they refill when the drag ends)
+  // the layer picker: the layers tracks may run on (inner signal layers on a 4 or 6 layer board)
+  function layerPicker() {
+    const el = $("layer"), RL = B.routeLayers(S.board), key = RL.join();
+    if (el.dataset.k !== key) { el.dataset.k = key; el.innerHTML = RL.map(L => `<option value="${L}">${B.layerName(L)} copper</option>`).join(""); }
+    if (!RL.includes(S.layer)) S.layer = "F.Cu";
+    el.value = S.layer;
+  }
   function analyse(light) {
+    layerPicker();
     if (S.raw) S.netlist = B.withHeaters(S.raw, S.board.rules);
     if (!S.netlist) { S.model = null; S.conn = null; S.drc = []; S.fills = []; cons.solve(); if (dimui.enforce()) cons.solve(); return; }
     S.hv = B.hvNets(S.netlist.volts, S.board.rules.hvVolts);
@@ -503,11 +511,12 @@
     if (tail.t.end && r.pts.length > 1) { finishRoute(); msg(`Joined the ${tail.t.what} of ${netName(r.net)}`); return; }
     render();
   }
-  function routeVia() {
+  // a via, and the route goes on on layer to (by default top <-> bottom)
+  function routeVia(to) {
     const r = S.route, last = r.pts[r.pts.length - 1];
     if (r.pts.length > 1) r.segs.push({ layer: r.layer, w: r.w, pts: r.pts.slice() });
     const vr = ruleOf(r.net); S.board.vias.push({ x: last[0], y: last[1], drill: vr.viaDrill, pad: vr.viaPad, net: storedNet(r.net) });
-    r.layer = r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last]; r.via = S.board.vias.length - 1; (r.vias = r.vias || []).push(r.via); newCorner(r);
+    r.layer = typeof to === "string" ? to : r.layer === "F.Cu" ? "B.Cu" : "F.Cu"; r.pts = [last]; r.via = S.board.vias.length - 1; (r.vias = r.vias || []).push(r.via); newCorner(r);
     setLayer(r.layer); analyse(); render();
   }
   function finishRoute() {
@@ -553,8 +562,9 @@
   // first corner the track simply starts on the other side, after it a via goes in (as V does)
   function setLayer(l) {
     const r = S.route;
+    if (/\.Cu$/.test(l) && !B.routeLayers(S.board).includes(l)) { msg(B.copperOf(S.board).includes(l) ? `${l} is a ${B.innerOf(S.board, l).net} plane: no tracks on it (Board setup sets the layers)` : `The board has no ${l} (Board setup → layers)`); $("layer").value = S.layer; renderLayers(); return; }
     if (r && l !== r.layer && /\.Cu$/.test(l)) {
-      if (r.pts.length > 1) { routeVia(); return; }
+      if (r.pts.length > 1) { routeVia(l); return; }
       const p = hitPad(r.pts[0][0], r.pts[0][1]);
       if (p && p.smd && !p.layers.includes(l)) { msg(`${p.ref}-${p.num} is an SMD pad on ${r.layer === "F.Cu" ? "the top" : "the bottom"}: the track starts there`); $("layer").value = S.layer; renderLayers(); return; }
       r.layer = l; S.routeBad = routeCheck();
@@ -794,7 +804,7 @@
       r.segs.forEach(t => { for (let k = 1; k < t.pts.length; k++) len += Math.hypot(t.pts[k][0] - t.pts[k - 1][0], t.pts[k][1] - t.pts[k - 1][1]); });
       for (let k = 1; k < pts.length; k++) len += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
       const bad = S.routeBad;
-      return `<b>${esc(netName(r.net))}</b> · ${r.w} mm · ${r.layer === "F.Cu" ? "top" : "bottom"} · ${len.toFixed(1)} mm` + (bad ? `<br><span class="bad">too close to ${esc(bad.what)}: ${Math.max(0, bad.g).toFixed(2)} &lt; ${bad.need} mm</span>` : "") +
+      return `<b>${esc(netName(r.net))}</b> · ${r.w} mm · ${B.layerName(r.layer).toLowerCase()} · ${len.toFixed(1)} mm` + (bad ? `<br><span class="bad">too close to ${esc(bad.what)}: ${Math.max(0, bad.g).toFixed(2)} &lt; ${bad.need} mm</span>` : "") +
         `<br><span class="mut">W width · V via · / bend · ⌫ corner · Esc end</span>`;
     }
     if (S.tool !== "select" || S.drag || !S.model) return "";
@@ -802,7 +812,7 @@
     const netLine = n => { const I = (S.amps || {})[n]; return `${esc(netName(n))} <span class="mut">${classOf(n)}${volts[n] !== undefined ? " · " + fmtV(volts[n]) : ""}${I ? " · " + B.fmtA(I) : ""}</span>`; };
     if (p) return `<b>${esc(p.ref)}-${esc(p.num)}</b>${p.name !== p.num ? " " + esc(p.name) : ""} · ${p.net === null ? "<span class='mut'>no net</span>" : netLine(p.net)}`;
     const vi = hitVia(x, y); if (vi >= 0) { const it = S.conn && S.conn.items.find(q => q.kind === "via" && q.vi === vi); return `<b>Via</b> · ${it && it.net !== null ? netLine(it.net) : "<span class='mut'>no net</span>"}`; }
-    const h = hitSeg(x, y); if (h) { const t = S.board.tracks[h.i], n = netOfTrack(h.i); return `<b>Track</b> ${t.w} mm · ${t.layer === "F.Cu" ? "top" : "bottom"} · ${n === null ? "<span class='mut'>no net</span>" : netLine(n)}`; }
+    const h = hitSeg(x, y); if (h) { const t = S.board.tracks[h.i], n = netOfTrack(h.i); return `<b>Track</b> ${t.w} mm · ${B.layerName(t.layer).toLowerCase()} · ${n === null ? "<span class='mut'>no net</span>" : netLine(n)}`; }
     const g = hitPart(x, y);
     if (g) { const gr = S.gg && S.gg.byPart.get(g.key); return `<b>${esc(g.ref)}</b> ${esc(g.value || "")} <span class="mut">· ${esc(g.fp.name)}${g.place.side === "B" ? " · bottom" : ""}${g.place.locked ? " · locked" : ""}${gr ? " · ground: " + esc(gr.group) : ""}</span>`; }
     return "";
@@ -1526,6 +1536,8 @@
     setupShape();
     document.querySelectorAll("#setup-modal [data-o]").forEach(el => { el.value = o[el.dataset.o] || 0; el.classList.remove("invalid"); });
     document.querySelectorAll("#setup-modal [data-s]").forEach(el => { el.value = String(S.board.stackup[el.dataset.s]); });
+    setupStack = JSON.parse(JSON.stringify(B.normaliseStackup(S.board.stackup))); $("setup-layers").value = String(setupStack.layers);
+    $("setup-innercu").value = String(setupStack.innerCopper || setupStack.copper || 35); stackUi();
     setupHoles = S.board.holes.slice(); holesNow();
     const sh = S.board.sheet || {}; $("sheet-size").value = sh.size || "auto"; $("sheet-orient").value = sh.orient || "landscape";
     $("setup-modal").hidden = false;
@@ -1538,6 +1550,33 @@
     const o = {}; let ok = true;
     document.querySelectorAll("#setup-modal [data-o]").forEach(el => { const v = parseFloat(String(el.value).replace(",", ".")); const min = el.dataset.o === "r" ? 0 : 10; if (!(v >= min)) { el.classList.add("invalid"); ok = false; } else o[el.dataset.o] = v; });
     return ok ? o : null;
+  }
+  // the inner layers in Board setup: each a signal layer or a plane of one net
+  let setupStack = null;
+  function stackUi() {
+    const st = setupStack, host = $("setup-inner"), nets = S.model ? [...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))].sort((a, b) => (b === "GND") - (a === "GND") || a.localeCompare(b, undefined, { numeric: true })) : ["GND"];
+    st.inner = Array.from({ length: st.layers - 2 }, (_, i) => st.inner[i] || (i === 0 ? { type: "plane", net: nets.includes("GND") ? "GND" : nets[0] || "GND" } : { type: "signal" }));
+    host.innerHTML = st.inner.map((e, i) => `<div class="row"><span>Inner ${i + 1} (In${i + 1}.Cu)</span><span><select data-in="${i}" title="Signal: tracks run on it. Plane: one net's copper over the whole board (a pour of that net, priority 0); a pour of higher priority on it makes a split plane"><option value="signal" ${e.type !== "plane" ? "selected" : ""}>Signal</option><option value="plane" ${e.type === "plane" ? "selected" : ""}>Plane</option></select>${e.type === "plane" ? `<select data-net="${i}">${(nets.includes(e.net) ? nets : [e.net].concat(nets)).map(n => `<option ${n === e.net ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>` : ""}</span></div>`).join("");
+    $("setup-innercu-row").hidden = st.layers === 2;
+    host.querySelectorAll("select[data-in]").forEach(el => el.addEventListener("change", () => { const i = +el.dataset.in; st.inner[i] = el.value === "plane" ? { type: "plane", net: nets.includes("GND") ? "GND" : nets[0] || "GND" } : { type: "signal" }; stackUi(); }));
+    host.querySelectorAll("select[data-net]").forEach(el => el.addEventListener("change", () => { st.inner[+el.dataset.net].net = el.value; }));
+  }
+  // the stack-up applied: copper on layers the board no longer has goes; each plane layer has its
+  // whole-board pour (plane: true), a layer turned back to signal loses it
+  function applyStack(st) {
+    const b = S.board, before = B.copperOf(b).length; b.stackup = B.normaliseStackup({ ...b.stackup, layers: st.layers, inner: st.inner, innerCopper: st.innerCopper });
+    const CU = B.copperOf(b), nT = b.tracks.length, nZ = b.zones.length;
+    b.tracks = b.tracks.filter(t => CU.includes(t.layer)); b.zones = b.zones.filter(z => CU.includes(z.layer));
+    b.keepouts.forEach(k => { if (Array.isArray(k.layers)) { k.layers = k.layers.filter(l => CU.includes(l)); if (!k.layers.length) delete k.layers; } });
+    CU.forEach(L => {
+      const inn = B.innerOf(b, L); if (!inn) return;
+      const i = b.zones.findIndex(z => z.layer === L && z.plane);
+      if (inn.type === "plane") { if (i >= 0) b.zones[i].net = inn.net; else b.zones.push({ net: inn.net, layer: L, pts: null, thermal: true, gap: 0.5, spoke: 0.8, plane: true }); }
+      else if (i >= 0) b.zones.splice(i, 1);
+    });
+    if (!CU.includes(S.layer)) S.layer = "F.Cu";
+    const gone = (nT - b.tracks.length) + (nZ - b.zones.length > 0 && CU.length < before ? nZ - b.zones.length : 0);
+    return CU.length !== before ? `${CU.length} copper layers${gone ? ` (${gone} tracks and pours on the removed layers deleted)` : ""}` : "";
   }
   function applySetup() {
     const o = readOutline(); if (!o) return;
@@ -1554,10 +1593,13 @@
       S.board.outline = { ...o, at: S.board.outline.at };
     }
     document.querySelectorAll("#setup-modal [data-s]").forEach(el => { S.board.stackup[el.dataset.s] = +el.value; });
+    setupStack.innerCopper = +$("setup-innercu").value;
+    const stackMsg = applyStack(setupStack);
     S.board.holes = setupHoles;
     const sh = S.board.sheet || {}, size = $("sheet-size").value, orient = $("sheet-orient").value;
     $("setup-modal").hidden = true;
-    if (size !== sh.size || orient !== sh.orient) setSheet({ size, orient }, `Board ${BoardOutline.describe(S.board.outline)}`); else commit(`Board ${BoardOutline.describe(S.board.outline)}`);
+    const what = `Board ${BoardOutline.describe(S.board.outline)}${stackMsg ? ", " + stackMsg : ""}`;
+    if (size !== sh.size || orient !== sh.orient) setSheet({ size, orient }, what); else commit(what);
     fit();
   }
 
@@ -1749,6 +1791,7 @@
     $("rules-reset").onclick = () => { const { netClass, classes, matrix, netRule } = draft; draft = { ...B.defaultRules(), netClass, classes, matrix, netRule }; $("rules-tent").checked = true; document.querySelectorAll("#rules-modal [data-r]").forEach(el => { el.value = draft[el.dataset.r]; }); document.querySelectorAll("#rules-checks [data-c]").forEach(el => { el.checked = true; }); rulesNets(); };
     document.querySelectorAll("#rules-modal [data-r]").forEach(el => el.addEventListener("change", rulesNets));
     $("rules-ipc").addEventListener("change", rulesNets);
+    $("setup-layers").onchange = () => { setupStack.layers = +$("setup-layers").value; stackUi(); };
     $("setup-apply").onclick = applySetup; $("setup-cancel").onclick = () => { $("setup-modal").hidden = true; };
     $("setup-shape").onchange = setupShape;
     $("setup-sketch").onclick = () => { $("setup-modal").hidden = true; sketch.open(); };

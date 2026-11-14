@@ -119,7 +119,7 @@
       nets: { dsn name -> net key }, skipped: [net names left out] }. opts.only: Map of net name -> Set of
       "x,y" pad positions: route only those nets, between those pads */
   function toDsn(board, model, conn, clr, opts) {
-    const C = B(), R = board.rules, o = opts || {}, keep = onBoard(board, model), cc = C.COPPER;
+    const C = B(), R = board.rules, o = opts || {}, keep = onBoard(board, model), cc = C.copperOf ? C.copperOf(board) : C.COPPER;
     const pads = model.pads.filter(p => keep.has(p.part));
     const names = model.names, netName = n => names[n] || "N" + n;
     // the nets to route: two or more pads on the board, no pour of their own
@@ -162,7 +162,8 @@
     w(`  (resolution um 10)`);
     w(`  (unit um)`);
     w(`  (structure`);
-    cc.forEach((L, i) => w(`    (layer ${L} (type signal) (property (index ${i})))`));
+    // a plane layer is a power layer to Freerouting: no tracks on it
+    cc.forEach((L, i) => w(`    (layer ${L} (type ${C.isPlane && C.isPlane(board, L) ? "power" : "signal"}) (property (index ${i})))`));
     const poly = C.outlinePoly(board.outline, 0);
     w(`    (boundary (path pcb 0 ${poly.concat([poly[0]]).map(([x, y]) => pt(x, y)).join(" ")}) (clearance_class edge))`);
     // a board with a shape of its own: each cut-out is closed to tracks and vias on both layers
@@ -180,7 +181,7 @@
     (model.holes || []).forEach(h => { if (keep.has(h.part)) cc.forEach(L => w(`    (keepout "" (circle ${L} ${um(h.d)} ${pt(h.x, h.y)}))`)); });
     (board.keepouts || []).forEach(k => {
       const P = k.pts.concat([k.pts[0]]).map(([x, y]) => pt(x, y)).join(" ");
-      C.koLayers(k).forEach(L => {
+      C.koLayers(k).filter(L => cc.includes(L)).forEach(L => {
         if (k.tracks !== false) w(`    (keepout ${q(k.name || "")} (polygon ${L} 0 ${P}) (clearance_class zero))`);
         else if (k.vias !== false) w(`    (via_keepout ${q(k.name || "")} (polygon ${L} 0 ${P}) (clearance_class zero))`);
       });
@@ -326,16 +327,17 @@
       touches nothing, and vias joining one layer only, go (again until none is left). got:
       fromSes's result, changed in place; pads: the model's pads */
   function prune(got, board, pads) {
-    const C = B(), R = board.rules;
+    const C = B(), R = board.rules, CU = C.copperOf ? C.copperOf(board) : C.COPPER;
     const padIts = pads.map(p => { const r = Math.min(p.w, p.h) / 2, l = Math.max(p.w, p.h) / 2 - r, hz = p.w >= p.h; return { s: hz ? [p.x - l, p.y, p.x + l, p.y] : [p.x, p.y - l, p.x, p.y + l], r: p.shape === "rect" ? r * 1.15 : r, layers: p.layers || C.COPPER }; });
-    const holeIts = (board.holes || []).filter(h => h.plated).map(h => ({ s: [h.x, h.y, h.x, h.y], r: C.holeRing(h) / 2, layers: C.COPPER }));
+    const holeIts = (board.holes || []).filter(h => h.plated).map(h => ({ s: [h.x, h.y, h.x, h.y], r: C.holeRing(h) / 2, layers: CU }));
     const segs = (t, src) => t.pts.slice(1).map((p, i) => ({ s: [t.pts[i][0], t.pts[i][1], p[0], p[1]], r: t.w / 2, layers: [t.layer], src }));
-    const viaIt = (v, src) => ({ s: [v.x, v.y, v.x, v.y], r: (v.pad || R.viaPad) / 2, layers: C.COPPER, src });
+    const viaIt = (v, src) => ({ s: [v.x, v.y, v.x, v.y], r: (v.pad || R.viaPad) / 2, layers: CU, src });
     for (let pass = 0; pass < 50; pass++) {
       const all = padIts.concat(holeIts, board.tracks.flatMap(t => segs(t, null)), board.vias.map(v => viaIt(v, null)), got.tracks.flatMap(t => segs(t, t)), got.vias.map(v => viaIt(v, v)));
       const at = (x, y, L, self, r) => all.some(it => it.src !== self && it.layers.includes(L) && C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) <= it.r + r + 1e-6);
       const tracks = got.tracks.filter(t => [t.pts[0], t.pts[t.pts.length - 1]].every(([x, y]) => at(x, y, t.layer, t, t.w / 2)));
-      const vias = got.vias.filter(v => C.COPPER.every(L => at(v.x, v.y, L, v, (v.pad || R.viaPad) / 2)));
+      // a via must join copper on two layers at least (top and bottom, or an inner one; a plane counts for its net)
+      const vias = got.vias.filter(v => CU.filter(L => (C.isPlane && C.isPlane(board, L) && C.innerOf(board, L).net === v.net) || at(v.x, v.y, L, v, (v.pad || R.viaPad) / 2)).length >= 2);
       if (tracks.length === got.tracks.length && vias.length === got.vias.length) break;
       got.tracks = tracks; got.vias = vias;
     }
