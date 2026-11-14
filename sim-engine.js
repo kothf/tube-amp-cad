@@ -243,6 +243,197 @@
   // ---------------------------------------------------------------------------
   const VT = 0.025852;
   const EXP80 = Math.exp(80);
+  // ---------------------------------------------------------------------------
+  // SPICE MOSFET levels 2 and 3: the drain current (vds ≥ 0, the source the lower end; vgs, vbs from it),
+  // ported from ngspice's mos3load.c (moseq3) and mos2load.c (moseq2), without their charges.
+  // P: { beta, leff, weff, vbi, phi, gamma, eta, theta, vmax, us, kappa, alpha, xd, xj, ld, nfs, cox, narrow, vt, ... }
+  // ---------------------------------------------------------------------------
+  const Q_E = 1.6021766208e-19;
+  // the threshold (von) and saturation voltage the last call worked out, for Meyer's gate capacitances
+  const MOS_OUT = { von: 0, vdsat: 0 };
+  // level 1, the square law with the body effect (mos1load.c)
+  function mos1Id(vds, vgs, vbs, P) {
+    const sarg = vbs <= 0 ? Math.sqrt(P.phi - vbs) : Math.max(0, Math.sqrt(P.phi) - vbs / (2 * Math.sqrt(P.phi)));
+    // (P.s: the turn-on rounded over a few millivolts, as the 3-pin FET's, so Newton's method sees a
+    // slope below the threshold: a switch in a maker's model, off in the operating point, else stalls it)
+    const von = P.vbi + P.gamma * sarg, vgst = P.s ? P.s * softplus((vgs - von) / P.s) : vgs - von;
+    MOS_OUT.von = von; MOS_OUT.vdsat = Math.max(vgst, 0);
+    if (vgst <= 0) return 0;
+    const betap = P.beta * (1 + P.lambda * vds);
+    return vgst <= vds ? 0.5 * betap * vgst * vgst : betap * vds * (vgst - 0.5 * vds);
+  }
+  function mos3Id(vds, vgs, vbs, P) {
+    const L = P.leff, eta = P.eta * 8.15e-22 / (P.cox * L * L * L);
+    let phibs, sqphbs;
+    if (vbs <= 0) { phibs = P.phi - vbs; sqphbs = Math.sqrt(phibs); }
+    else { const sq = Math.sqrt(P.phi); sqphbs = sq / (1 + vbs / (P.phi + P.phi)); phibs = sqphbs * sqphbs; }
+    let fshort = 1;
+    if (P.xj !== 0 && P.xd !== 0) {
+      const wps = P.xd * sqphbs, wponxj = wps / P.xj, xjonxl = P.xj / L, djonxj = P.ld / P.xj;
+      const wconxj = 0.0631353 + 0.8013292 * wponxj - 0.01110777 * wponxj * wponxj;
+      const arga = wconxj + djonxj, argc = wponxj / (1 + wponxj), argb = Math.sqrt(1 - argc * argc);
+      fshort = 1 - xjonxl * (arga * argb - djonxj);
+    }
+    const gammas = P.gamma * fshort, fbodys = 0.5 * gammas / (sqphbs + sqphbs), fbody = fbodys + P.narrow / P.weff;
+    const qbonco = gammas * sqphbs + P.narrow * phibs / P.weff;
+    const vth = P.vbi - eta * vds + qbonco;
+    let von = vth, xn = 1;
+    if (P.nfs !== 0) {
+      const csonco = Q_E * P.nfs * 1e4 / P.cox;
+      xn = 1 + csonco + qbonco / (phibs + phibs); von = vth + P.vt * xn;
+    }
+    MOS_OUT.von = von; MOS_OUT.vdsat = 0;
+    if (P.nfs === 0 && vgs <= von) return 0;
+    const vgsx = Math.max(vgs, von);
+    const fgate = 1 / (1 + P.theta * (vgsx - vth)), us = P.us * 1e-4 * fgate;
+    let vdsat = (vgsx - vth) / (1 + fbody), onvdsc = 0;
+    if (P.vmax > 0) {
+      const vdsc = L * P.vmax / us; onvdsc = 1 / vdsc;
+      const arga = (vgsx - vth) / (1 + fbody), argb = Math.sqrt(arga * arga + vdsc * vdsc);
+      vdsat = arga + vdsc - argb;
+    }
+    MOS_OUT.vdsat = vdsat;
+    const vdsx = Math.min(vds, vdsat);
+    if (vdsx === 0) return 0;
+    const cdo = vgsx - vth - 0.5 * (1 + fbody) * vdsx;
+    let cdrain = P.beta * fgate * cdo * vdsx, fdrain = 0;
+    if (P.vmax > 0) { fdrain = 1 / (1 + vdsx * onvdsc); cdrain *= fdrain; }
+    // channel length modulation
+    let delxl = null;
+    if (vds <= vdsat) {
+      if (P.vmax > 0 || P.alpha === 0) delxl = null;
+      else { const r = vds / vdsat; delxl = Math.sqrt(P.kappa * P.alpha * vdsat / 8) * r * r * r * r; }
+    } else if (P.vmax <= 0) {
+      delxl = Math.sqrt(P.kappa * P.alpha * (vds - vdsat + vdsat / 8));
+    } else if (P.alpha !== 0) {
+      const cdsat = cdrain, gdsat = Math.max(1e-12, cdsat * (1 - fdrain) * onvdsc);
+      const emax = P.kappa * cdsat / L / gdsat, arga = 0.5 * emax * P.alpha, argc = P.kappa * P.alpha;
+      delxl = Math.sqrt(arga * arga + argc * (vds - vdsat)) - arga;
+    }
+    if (delxl !== null) {
+      if (delxl > 0.5 * L) delxl = L - L * L / (4 * delxl);
+      cdrain /= 1 - delxl / L;
+    }
+    if (vgs < von) cdrain *= Math.exp((vgs - von) / (xn * P.vt));
+    return cdrain;
+  }
+
+  const EPSSIL = 11.7 * 8.854214871e-12;
+  const MOS2_SIG1 = [1, -1, 1, -1], MOS2_SIG2 = [1, 1, -1, -1];
+  function mos2Id(vds, vgs, vbs, P) {
+    const L = P.leff, phi = P.phi, phiMinVbs = phi - vbs;
+    const sphi = Math.sqrt(phi), sphi3 = phi * sphi;
+    let sarg1, dsrgdb, barg;
+    if (vbs <= 0) { sarg1 = Math.sqrt(phiMinVbs); dsrgdb = -0.5 / sarg1; }
+    else { sarg1 = sphi / (1 + 0.5 * vbs / phi); dsrgdb = -0.5 * sarg1 * sarg1 / sphi3; }
+    let dbrgdb;
+    if (vbs - vds <= 0) { barg = Math.sqrt(phiMinVbs + vds); dbrgdb = -0.5 / barg; }
+    else { barg = sphi / (1 + 0.5 * (vbs - vds) / phi); dbrgdb = -0.5 * barg * barg / sphi3; }
+    const factor = P.factor, eta = 1 + factor;
+    const vbin = P.vbi + factor * phiMinVbs;
+    let gamasd = P.gamma, dgddvb = 0;
+    if ((P.gamma > 0 || P.nsub > 0) && P.xj > 0) {
+      const xwd = P.xd * barg, xws = P.xd * sarg1, t = 2 / P.xj;
+      const argxs = 1 + xws * t, argxd = 1 + xwd * t, args = Math.sqrt(argxs), argd = Math.sqrt(argxd);
+      const t2 = 0.5 * P.xj / L;
+      gamasd = P.gamma * (1 - t2 * (args - 1) - t2 * (argd - 1));
+      const dbargs = 0.5 / L * P.xd * dsrgdb / args, dbargd = 0.5 / L * P.xd * dbrgdb / argd;
+      dgddvb = -P.gamma * (dbargs + dbargd);
+    }
+    let von = vbin + gamasd * sarg1, xn = 1, argg = 0;
+    const nfs = P.nfs !== 0;
+    if (nfs) {
+      xn = 1 + Q_E * P.nfs * 1e4 / P.cox - (gamasd * dsrgdb + dgddvb * sarg1) + factor;
+      von += P.vt * xn; argg = 1 / (P.vt * xn);
+    }
+    MOS_OUT.von = von; MOS_OUT.vdsat = 0;
+    if (!nfs && vgs <= vbin) return 0;
+    const vgst = vgs - von;
+    const sarg3 = sarg1 * sarg1 * sarg1;
+    let body = barg * barg * barg - sarg3;
+    // mobility falling with the gate field (UCRIT, UEXP)
+    let ufact = 1;
+    const ucr = P.ucrit * 100 * EPSSIL / P.cox;
+    if (vgst > ucr) ufact = Math.exp(P.uexp * Math.log(ucr / vgst));
+    const ueff = P.us * 1e-4 * ufact;
+    // saturation voltage, Grove-Frohman
+    const vgsx = nfs ? Math.max(vgs, von) : vgs;
+    let gammad = gamasd / eta, vdsat;
+    if (gammad > 0) {
+      const g2 = gammad * gammad, argv = (vgsx - vbin) / eta + phiMinVbs;
+      vdsat = argv <= 0 ? 0 : Math.max(0, (vgsx - vbin) / eta + g2 * (1 - Math.sqrt(1 + 4 * argv / g2)) / 2);
+    } else vdsat = Math.max(0, (vgsx - vbin) / eta);
+    if (P.vmax > 0) {
+      // Baum's scattering-limited velocity: the smallest valid root of a quartic
+      const v1 = (vgsx - vbin) / eta + phiMinVbs, v2 = phiMinVbs, xv = P.vmax * L / ueff;
+      const a1 = gammad / 0.75, b1 = -2 * (v1 + xv), c1 = -2 * gammad * xv;
+      const d1 = 2 * v1 * (v2 + xv) - v2 * v2 - 4 / 3 * gammad * sarg3;
+      const a = -b1, b = a1 * c1 - 4 * d1, c = -d1 * (a1 * a1 - 4 * b1) - c1 * c1;
+      const r = -a * a / 3 + b, s = 2 * a * a * a / 27 - a * b / 3 + c;
+      const r3 = r * r * r, s2 = s * s, p = s2 / 4 + r3 / 27, p0 = Math.abs(p), p2 = Math.sqrt(p0);
+      let y3;
+      if (p < 0) {
+        const ro = Math.exp(Math.log(Math.sqrt(s2 / 4 + p0)) / 3), fi = Math.atan(-2 * p2 / s);
+        y3 = 2 * ro * Math.cos(fi / 3) - a / 3;
+      } else {
+        const p3 = Math.exp(Math.log(Math.abs(-s / 2 + p2)) / 3), p4 = Math.exp(Math.log(Math.abs(-s / 2 - p2)) / 3);
+        y3 = p3 + p4 - a / 3;
+      }
+      const a3 = Math.sqrt(a1 * a1 / 4 - b1 + y3), b3 = Math.sqrt(y3 * y3 / 4 - d1);
+      const x4 = [];
+      for (let i = 0; i < 4; i++) {
+        const a4 = a1 / 2 + MOS2_SIG1[i] * a3, b4 = y3 / 2 + MOS2_SIG2[i] * b3, d4 = a4 * a4 / 4 - b4;
+        if (d4 < 0) continue;
+        const t = Math.sqrt(d4); x4.push(-a4 / 2 + t, -a4 / 2 - t);
+      }
+      let xvalid = null;
+      for (const x of x4) {
+        if (!(x > 0)) continue;
+        const poly = x * x * x * x + a1 * x * x * x + b1 * x * x + c1 * x + d1;
+        if (Math.abs(poly) > 1e-6) continue;
+        if (xvalid === null || x < xvalid) xvalid = x;
+      }
+      if (xvalid !== null) vdsat = xvalid * xvalid - phiMinVbs;
+    }
+    MOS_OUT.vdsat = vdsat;
+    // channel length modulation: LAMBDA, or from the depletion width when NSUB is given
+    let xlamda = P.lambda, bsarg = 0, bodys = 0;
+    if (vds !== 0) {
+      bsarg = vbs - vdsat <= 0 ? Math.sqrt(vdsat + phiMinVbs) : sphi / (1 + 0.5 * (vbs - vdsat) / phi);
+      bodys = bsarg * bsarg * bsarg - sarg3;
+      if (P.nsub !== 0 && !(xlamda > 0)) {
+        if (P.vmax <= 0) {
+          const argv = (vds - vdsat) / 4, sargv = Math.sqrt(1 + argv * argv);
+          xlamda = P.xd / (L * vds) * Math.sqrt(argv + sargv);
+        } else {
+          const xdv = P.xd / Math.sqrt(P.neff), xlv = P.vmax * xdv / (2 * ueff);
+          const xls = Math.sqrt(xlv * xlv + Math.max(vds - vdsat, 0));
+          xlamda = xdv / (L * vds) * (xls - xlv);
+        }
+      }
+    }
+    // channel shortening stops at punch-through
+    let xwb = P.xd * Math.sqrt(P.pb);
+    const xld = L - xwb;
+    let clfact = 1 - xlamda * vds;
+    const deltal = xlamda * vds * L;
+    if (P.nsub === 0) xwb = 0.25e-6;
+    if (L * clfact < xwb) clfact = xwb / (1 + (deltal - xld) / xwb) / L;
+    const beta1 = P.beta * ufact / clfact;
+    gammad = gamasd;
+    if (vds <= 1e-10) return 0;
+    if (nfs ? vgs <= von : vgs <= vbin) {
+      if (!nfs) return 0;
+      // weak inversion
+      if (vdsat <= 0) return 0;
+      const vdson = Math.min(vdsat, vds), bd = vds > vdsat ? bodys : body;
+      const cdson = beta1 * ((von - vbin - eta * vdson * 0.5) * vdson - gammad * bd / 1.5);
+      return cdson * Math.exp(argg * (vgs - von));
+    }
+    if (vds <= vdsat) return beta1 * ((vgs - vbin - eta * vds / 2) * vds - gammad * body / 1.5);
+    return beta1 * ((vgs - vbin - eta * vdsat / 2) * vdsat - gammad * bodys / 1.5);
+  }
+
   const Semi = {
     // the forward transport current If / qb (what a transit time's charge is counted from), signed as the base's
     bjtForward(V, m) {
@@ -309,6 +500,40 @@
       const id = i0 * L, gm = dov * dvov * L, gds = dds * L + i0 * lam;
       const rd = sw > 0 ? [gds, gm, -(gds + gm)] : [gds + gm, -gm, -gds];
       return { I: [p * sw * id, 0, -p * sw * id], J: [rd, [0, 0, 0], rd.map(v => -v)] };
+    },
+    // A MOSFET with its bulk (nodes D, G, S, B) by SPICE's level 2 or 3 equations, as ngspice's mos2load.c
+    // and mos3load.c have them: the body effect on the threshold, mobility falling with the gate field
+    // (level 3: THETA; level 2: UCRIT, UEXP), velocity saturation (VMAX), drain-induced threshold shift
+    // (level 3: ETA), short-channel and narrow-width terms (XJ, DELTA), weak inversion (NFS) and channel
+    // length modulation (KAPPA, or LAMBDA). The channel current only: the bulk junctions are D elements.
+    // m.p holds the setup spice-net worked out (mosSetup). Returns the currents into D, G, S, B.
+    mosx(V, m) {
+      const p = m.pol, P = m.p;
+      let vds = p * (V[0] - V[2]), vgs = p * (V[1] - V[2]), vbs = p * (V[3] - V[2]), mode = 1;
+      if (vds < 0) { mode = -1; vds = -vds; vgs = p * (V[1] - V[0]); vbs = p * (V[3] - V[0]); }
+      const id = (m.level === 3 ? mos3Id : m.level === 2 ? mos2Id : mos1Id)(vds, vgs, vbs, P);
+      const i = p * mode * id;
+      return [i, 0, -i, 0];
+    },
+    // its gate capacitances by Meyer's model (ngspice's DEVqmeyer, whole values, not its halves): the
+    // channel's share of the oxide capacitance P.cmey (Cox·W·Leff) to source, drain and bulk by the
+    // region it works in. [Cgs, Cgd, Cgb], the overlap capacitances not included (C elements of their own)
+    mosMeyer(V, m) {
+      const p = m.pol, P = m.p, cox = P.cmey;
+      if (!(cox > 0)) return [0, 0, 0];
+      let vds = p * (V[0] - V[2]), vgs = p * (V[1] - V[2]), vbs = p * (V[3] - V[2]), sw = false;
+      if (vds < 0) { sw = true; vds = -vds; vgs = p * (V[1] - V[0]); vbs = p * (V[3] - V[0]); }
+      (m.level === 3 ? mos3Id : m.level === 2 ? mos2Id : mos1Id)(vds, vgs, vbs, P);
+      const phi = P.phi, vgst = vgs - MOS_OUT.von, vdsat = Math.max(MOS_OUT.vdsat, 0.025);
+      let cgs, cgd, cgb;
+      if (vgst <= -phi) { cgb = cox / 2; cgs = 0; cgd = 0; }
+      else if (vgst <= -phi / 2) { cgb = -vgst * cox / (2 * phi); cgs = 0; cgd = 0; }
+      else if (vgst <= 0) {
+        cgb = -vgst * cox / (2 * phi); cgs = vgst * cox / (1.5 * phi) + cox / 3; cgd = 0;
+        if (vds < vdsat) { const dd = 2 * vdsat - vds, d1 = vdsat - vds, d2 = dd * dd; cgd = cgs * (1 - vdsat * vdsat / d2); cgs *= 1 - d1 * d1 / d2; }
+      } else if (vdsat <= vds) { cgs = cox / 3; cgd = 0; cgb = 0; }
+      else { const dd = 2 * vdsat - vds, d1 = vdsat - vds, d2 = dd * dd; cgd = cox * (1 - vdsat * vdsat / d2) / 3; cgs = cox * (1 - d1 * d1 / d2) / 3; cgb = 0; }
+      return sw ? [2 * cgd, 2 * cgs, 2 * cgb] : [2 * cgs, 2 * cgd, 2 * cgb];
     },
     mos(V, m) {
       const p = m.pol;
@@ -1328,6 +1553,23 @@
         case "MOS":
           stampJacobian(nd, Semi.mosJ, nd.map(k => vn(x, k)), e.model);
           break;
+        case "MOS4": {
+          const V = nd.map(k => vn(x, k));
+          stampNonlinear(nd, W => Semi.mosx(W, e.model), V, 1e-6);
+          if (!mode.dc && e.model.p.cmey > 0) {
+            // Meyer's gate capacitances, as SPICE takes them: the mean of this iterate's and the step
+            // before's values, each a capacitor on the gate's voltage history (not charge-conserving)
+            const C0 = Semi.mosMeyer(V, e.model), C1 = Semi.mosMeyer(nd.map(k => vn(mode.prev, k)), e.model);
+            [nd[2], nd[0], nd[3]].forEach((o, j) => {
+              const c = (C0[j] + C1[j]) / 2;
+              if (!(c > 0) || o === nd[1]) return;
+              const k = c / mode.h, hist = k * (ID1 * (vn(mode.prev, nd[1]) - vn(mode.prev, o)) + (P2 ? ID2 * (vn(P2, nd[1]) - vn(P2, o)) : 0));
+              stampG(nd[1], o, ID0 * k);
+              addB(nd[1], -hist); addB(o, hist);
+            });
+          }
+          break;
+        }
         case "OPAMP":
           stampNonlinear(nd, W => Semi.opamp(W, e.model, mode.dc, e._gain), nd.map(k => vn(x, k)), 1e-6);
           break;
@@ -1629,6 +1871,7 @@
       return { vce: p * (w[0] - w[2]), vbe: p * (w[1] - w[2]), ic: p * ic, ib: p * ib, pd: (w[0] - w[2]) * ic + (w[1] - w[2]) * ib };
     }
     if (e.kind === "MOS") { const [id] = Semi.mos(v, e.model), p = e.model.pol; return { vds: p * (v[0] - v[2]), vgs: p * (v[1] - v[2]), id: p * id, pd: (v[0] - v[2]) * id }; }
+    if (e.kind === "MOS4") { const [id] = Semi.mosx(v, e.model), p = e.model.pol; return { vds: p * (v[0] - v[2]), vgs: p * (v[1] - v[2]), vbs: p * (v[3] - v[2]), id: p * id, pd: (v[0] - v[2]) * id }; }
     if (e.kind === "OPAMP") {
       // vd: IN+ − IN−; iout: out of the output pin; pd: the power the package dissipates
       // clip: how far the output stage is driven past its limit (V; > 0.05 is clipping)
@@ -1683,6 +1926,7 @@
       case "PENTODE": { const s = deviceState(e, x); return [[nd[0], s.ia], [nd[1], s.ig], [nd[2], s.ig2], [nd[3], -(s.ia + s.ig + s.ig2)]]; }
       case "BJT": return Semi.bjt(v, e.model).map((i, k) => [nd[k], i]);
       case "MOS": return Semi.mos(v, e.model).map((i, k) => [nd[k], i]);
+      case "MOS4": return Semi.mosx(v, e.model).map((i, k) => [nd[k], i]);
       case "TIMER555": { const I = timerCurrents([v[0], v[2], v[6], v[7]], latchOf(e, x)); return [[nd[0], I[0]], [nd[2], I[1]], [nd[6], I[2]], [nd[7], I[3]]]; }
       case "OPAMP": return Semi.opamp(v, e.model).map((i, k) => [nd[k], i]);
       case "GLOW": return two(glowCurrents(v, e.model, latchOf(e, x))[0]);
@@ -2227,7 +2471,7 @@
     // (an op-amp's trace is its clip: how far past its output limit it is driven; a transistor's
     // its collector or drain current, in its own polarity: the curve tracer's load line)
     // a saturating transformer's trace is its core flux, as a share of the knee)
-    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP" || e.kind === "BJT" || e.kind === "MOS" || (e.kind === "XFMR" && e.sat));
+    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP" || e.kind === "BJT" || e.kind === "MOS" || e.kind === "MOS4" || (e.kind === "XFMR" && e.sat));
     const devTrace = {};
     devIdx.forEach(e => { devTrace[e.id + (e.part ? "#" + e.part : "")] = { i: new Float32Array(nCap), ig2: e.kind === "PENTODE" ? new Float32Array(nCap) : null }; });
     // A circuit run from AC (a rectified supply) has no true DC solution: the
@@ -2707,6 +2951,12 @@
           if (e.tf > 0 || e.tr > 0) jac(nd, W => { const [f, r] = Semi.bjtCharges(W, e.model, e.tf || 0, e.tr || 0); return [-r, f + r, -f]; }, 1e-6, addB);
           break;
         case "MOS": jac(nd, W => Semi.mos(W, e.model), 1e-5); break;
+        case "MOS4": {
+          jac(nd, W => Semi.mosx(W, e.model), 1e-5);
+          const C = Semi.mosMeyer(nd.map(k => vn(x, k)), e.model);
+          stamp2(addB, nd[1], nd[2], C[0]); stamp2(addB, nd[1], nd[0], C[1]); stamp2(addB, nd[1], nd[3], C[2]);
+          break;
+        }
         case "OPAMP": jac(nd, W => Semi.opamp(W, e.model), 1e-6); break;
         case "REG": jac(nd, W => Semi.reg(W, e.model), 1e-6); break;
         case "SHUNT": jac(nd, W => Semi.shunt(W, e.model), 1e-6); break;
@@ -2874,9 +3124,9 @@
           break;
         }
         case "BJT": { const I = Semi.bjt(V, e.model); add(e, nd[0], nd[2], 2 * q * Math.abs(I[0])); add(e, nd[1], nd[2], 2 * q * Math.abs(I[1])); break; }
-        case "MOS": {
-          const d = 1e-5, Vp = V.slice(), Vm = V.slice(); Vp[1] += d; Vm[1] -= d;
-          const gm = Math.abs(Semi.mos(Vp, e.model)[0] - Semi.mos(Vm, e.model)[0]) / (2 * d);
+        case "MOS": case "MOS4": {
+          const d = 1e-5, Vp = V.slice(), Vm = V.slice(), f = e.kind === "MOS4" ? Semi.mosx : Semi.mos; Vp[1] += d; Vm[1] -= d;
+          const gm = Math.abs(f(Vp, e.model)[0] - f(Vm, e.model)[0]) / (2 * d);
           add(e, nd[0], nd[2], 4 * kT * (2 / 3) * gm);
           break;
         }

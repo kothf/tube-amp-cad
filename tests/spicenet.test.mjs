@@ -98,6 +98,37 @@ test("junction capacitances follow their voltage, a transit time and a JFET's ga
   assert.ok(!f.warnings.some(w => /transit time|zero-bias/.test(w)), "nothing is simplified away");
 });
 
+test("MOSFET levels 1, 2 and 3 by their own equations, with the bulk, its junctions and Meyer's gate capacitances, agree with ngspice", () => {
+  // ngspice 42 on tests/fixtures/mosdev.lib: the operating point, then ac dec 1 1k 10Meg (dB and degrees at each pin)
+  const DC = { ls: 0.692988, cs: 5.341496, l1: 2.146461, p3: 6.467345 };
+  const NG = {
+    ls: [[-2.16277, -2.16315, -2.20086, -4.90645, -21.6627], [-0.0224196, -0.534860, -5.36412, -43.2105, -84.1746]],
+    cs: [[25.76580, 25.76569, 25.75452, 24.76121, 11.44818], [-179.998, 179.7104, 177.0757, 152.9298, 100.6738]],
+    l1: [[25.39429, 25.39429, 25.39400, 25.36522, 23.16252], [-179.964, 179.9560, 179.5190, 175.1960, 139.4693]],
+    p3: [[14.10788, 14.10788, 14.10788, 14.10786, 14.10591], [-179.968, -179.998, 179.9858, 179.8551, 178.5512]] };
+  const text = fixture("mosdev.lib"), { v, f } = runSub(text, "bench");
+  for (const k in DC) near(v[k], DC[k], 2e-4, `V(${k})`);
+  assert.ok(!f.warnings.some(w => /level/i.test(w)), "no level is run as another");
+  let n = f.nNodes;
+  const els = SN.build({ text, sub: "bench" }, f.pins.map((_, i) => i + 1), () => n++, "U");
+  const m4 = els.filter(e => e.kind === "MOS4");
+  assert.deepEqual(m4.map(e => e.model.level).sort(), [1, 2, 2, 2, 3, 3], "each MOSFET by its own level, with its bulk");
+  const pins = Object.keys(NG), ac = E.acSweep({ nodeCount: n, elements: els }, { inputs: [{ id: els.find(e => /#vin$/i.test(e.id)).id }], fStart: 1e3, fStop: 1e7, perDecade: 1, probes: pins.map(p => [f.pins.indexOf(p) + 1, 0]) });
+  assert.ok(ac.ok, "the sweep runs");
+  pins.forEach((p, i) => NG[p][0].forEach((db, k) => {
+    const re = ac.probes[i].re[k], im = ac.probes[i].im[k]; let d = Math.abs(Math.atan2(im, re) * 180 / Math.PI - NG[p][1][k]) % 360; if (d > 180) d = 360 - d;
+    assert.ok(Math.abs(20 * Math.log10(Math.hypot(re, im)) - db) < 0.05, `${p} at ${ac.freqs[k]} Hz: ${(20 * Math.log10(Math.hypot(re, im))).toFixed(3)} dB, ngspice ${db}`);
+    assert.ok(d < 0.3, `${p} at ${ac.freqs[k]} Hz: phase ${d.toFixed(2)}° from ngspice`);
+  }));
+  // the drain and source swap when the drain goes below the source; the bulk below the source raises the threshold
+  const m = m4.find(e => e.model.level === 3 && e.model.pol > 0).model;
+  const I = V => E.Semi.mosx(V, m)[0];
+  near(I([0, 8, 2, 0]), -I([2, 8, 0, 0]), 1e-12, "reversed, the same current the other way");
+  const m1 = m4.find(e => e.model.level === 1).model, I1 = V => E.Semi.mosx(V, m1)[0];
+  assert.ok(I1([10, 4, 0, -5]) < 0.5 * I1([10, 4, 0, 0]), "the body effect (GAMMA): less current with the bulk 5 V below the source");
+  assert.throws(() => SN.flatten(".model MB NMOS(LEVEL=8)\n.subckt f d g s\nM1 d g s s MB\n.ends", "f"), /level 8/i);
+});
+
 test("a junction's capacitance in the waveform: the corner of 100 kΩ and a diode follows the bias", () => {
   // 100 pF at zero bias: C = 100 pF · (1 + V / 0.7)^−0.45; a sine at that corner comes out at 0.707
   const text = ".model DV D(IS=1e-14 CJO=100p VJ=0.7 M=0.45)\n.subckt dio a k\nD1 a k DV\n.ends";

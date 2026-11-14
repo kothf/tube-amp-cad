@@ -24,7 +24,7 @@
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdtemp, rm, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
-import { tmpdir } from "node:os";
+import { tmpdir, cpus } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 
@@ -99,7 +99,12 @@ const KNOWN = {
   "11-555-car-tachometer.json": "the one-shot's trigger pulses (a 100 nF, 10 kΩ differentiator) come out differently with ngspice's time step: under study"
 };
 
-const results = [];
+// The CAD runs the examples one after another (one page); each one's ngspice runs go on in the
+// background meanwhile, as many at once as the machine has processors, so the slow transients overlap
+const slots = Math.max(1, Math.min(8, cpus().length)), pending = [];
+let running = 0; const queue = [];
+const slot = () => (running < slots ? (running++, Promise.resolve()) : new Promise(r => queue.push(r)));
+const free = () => { const next = queue.shift(); if (next) next(); else running--; };
 const examples = await page.evaluate(() => TubeCAD.EXAMPLES.map(e => ({ file: e.file, title: e.title })));
 for (const ex of examples.filter(e => !process.env.ONLY || e.file.includes(process.env.ONLY))) {
   const app = await page.evaluate(async file => {
@@ -118,8 +123,13 @@ for (const ex of examples.filter(e => !process.env.ONLY || e.file.includes(proce
     const free = !S.sim.netlist.elements.some(e => e.kind === "VSRC" && e.freq > 0 && e.amp);
     return { spice: C.spiceNetlist(), dc: r.dc.nodes, averaged: !!r.dcAveraged, waves, window: tr.dt * (tr.samples - 1), dt: tr.dt, free };
   }, ex.file);
+  pending.push(slot().then(() => compareOne(ex, app)).finally(free));
+}
+const results = await Promise.all(pending);
+
+async function compareOne(ex, app) {
   const name = ex.file.replace(/\.json$/, "");
-  if (app.error) { results.push({ ex, error: `CAD: ${app.error}` }); continue; }
+  if (app.error) return { ex, error: `CAD: ${app.error}` };
 
   // the operating point
   const body = app.spice.replace(/^\.tran .*$/m, "").replace(/^\.end\s*$/m, "");
@@ -130,7 +140,7 @@ for (const ex of examples.filter(e => !process.env.ONLY || e.file.includes(proce
     await writeFile(op, `${body}\n.control\nop\nprint ${nodes.map(n => `v(n${n})`).join(" ")}\n.endc\n.end\n`);
     const r = await ngspice(op);
     const v = {}; for (const m of r.out.matchAll(/^\s*v\(n(\d+)\)\s*=\s*([-+0-9.eE]+)/gm)) v[m[1]] = +m[2];
-    if (!Object.keys(v).length) { results.push({ ex, error: `ngspice .op: ${(r.out.match(/^.*error.*$/im) || [r.out.slice(0, 300)])[0]}` }); continue; }
+    if (!Object.keys(v).length) return { ex, error: `ngspice .op: ${(r.out.match(/^.*error.*$/im) || [r.out.slice(0, 300)])[0]}` };
     for (const n of nodes) if (v[n] !== undefined) rows.push({ what: "DC", node: n, app: app.dc[n], ng: v[n], tol: TOL.dc });
   }
 
@@ -144,7 +154,7 @@ for (const ex of examples.filter(e => !process.env.ONLY || e.file.includes(proce
   let txt = "";
   try { txt = await readFile(data, "utf8"); } catch { /* reported below */ }
   const lines = txt.trim().split("\n");
-  if (lines.length < 3) { results.push({ ex, error: `ngspice tran: ${(r.out.match(/^.*error.*$/im) || [r.out.slice(-300)])[0]}` }); continue; }
+  if (lines.length < 3) return { ex, error: `ngspice tran: ${(r.out.match(/^.*error.*$/im) || [r.out.slice(-300)])[0]}` };
   const head = lines[0].trim().split(/\s+/).slice(1).map(h => +h.match(/n(\d+)/)[1]);
   const cols = head.map(() => []);
   for (const l of lines.slice(1)) { const f = l.trim().split(/\s+/); head.forEach((_, k) => cols[k].push(+f[k + 1])); }
@@ -158,7 +168,7 @@ for (const ex of examples.filter(e => !process.env.ONLY || e.file.includes(proce
   });
   // and an oscillator's period, at the node that swings most
   if (osc) rows.push({ what: "period", node: osc.n, app: period(app.waves[osc.n], app.dt), ng: period(cols[osc.k], step), tol: TOL.period, unit: "s" });
-  results.push({ ex, rows });
+  return { ex, rows };
 }
 
 // ---- report ------------------------------------------------------------------------

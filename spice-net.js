@@ -5,7 +5,7 @@
    flatten(text, name) reads a library (SpiceModel.parseLib) and turns one .SUBCKT, with
    the subcircuits it calls, into the simulator's own elements on local nodes:
      R C L K · V I (their DC values) · D Q M J with their .MODEL (diode, Gummel–Poon BJT,
-     level 1 to 3 MOSFET and LTspice's VDMOS as the square law, JFET) · E G F H, linear,
+     level 1 to 3 MOSFET by its own equations with its bulk, LTspice's VDMOS as the square law, JFET) · E G F H, linear,
      VALUE = {…}, TABLE and POLY(n) · B (I = or V =) · S and W switches · X.
    What depends on voltages or currents by an expression becomes a behavioural source
    (the engine's kind B) with a closed expression tree: parameters are numbers by then,
@@ -29,6 +29,47 @@
   // The engine rounds a FET's turn-on over 50 mV for its own parts; a maker's model sets the
   // gain of an input pair by a few tens of millivolts of overdrive, so here the corner is sharp.
   const FET_S = 0.002;
+  // A level 1, 2 or 3 MOSFET's constants for the engine's mos1Id/mos2Id/mos3Id (Semi.mosx), worked out
+  // as ngspice's mos1temp.c, mos2temp.c and mos3temp.c do at the nominal temperature (27 °C): KP from
+  // UO and TOX, PHI, GAMMA and VTO from NSUB where those are not given, the depletion width's
+  // coefficient, the short- and narrow-channel factors. vbi is signed for the engine (N-channel sense).
+  const EPSSIL = 11.7 * 8.854214871e-12, Q_E = 1.6021766208e-19, KOQ = 1.38064852e-23 / 1.6021766208e-19;
+  function mosSetup(m, level, pol, w, l, mult, no, mp) {
+    const vt = KOQ * 300.15, eg = 1.16 - 7.02e-4 * 300.15 * 300.15 / (300.15 + 1108);
+    const toxGiven = m.p.tox !== undefined, tox = mp(m, "tox", 1e-7, no);
+    const cox = level === 1 && !(toxGiven && tox > 0) ? 0 : 3.9 * 8.854214871e-12 / tox;
+    const uo = mp(m, "uo|u0", 600, no);
+    let kp = mp(m, "kp", NaN, no);
+    if (isNaN(kp)) kp = cox > 0 ? uo * 1e-4 * cox : 2e-5;
+    let phi = mp(m, "phi", 0.6, no), gamma = mp(m, "gamma", NaN, no), vto = mp(m, "vto|vt0", NaN, no), xd = 0, nsub = mp(m, "nsub", 0, no);
+    // (level 3 takes the intrinsic density at TNOM, levels 1 and 2 the 300 K value)
+    const ni = level === 3 ? 1.45e16 * Math.pow(300.15 / 300, 1.5) * Math.exp(0.5 * eg * (1 / 300 - 1 / 300.15) / KOQ) : 1.45e16;
+    if (nsub > 0 && cox > 0) {
+      if (nsub * 1e6 > ni) {
+        if (m.p.phi === undefined) phi = Math.max(0.1, 2 * vt * Math.log(nsub * 1e6 / ni));
+        const fermis = pol * 0.5 * phi, tpg = mp(m, "tpg", 1, no);
+        const wkfng = tpg !== 0 ? 3.25 + 0.5 * eg - pol * tpg * 0.5 * eg : 3.2, wkfngs = wkfng - (3.25 + 0.5 * eg + fermis);
+        if (isNaN(gamma)) gamma = Math.sqrt(2 * EPSSIL * Q_E * nsub * 1e6) / cox;
+        if (isNaN(vto)) vto = wkfngs - mp(m, "nss", 0, no) * 1e4 * Q_E / cox + pol * (gamma * Math.sqrt(phi) + phi);
+        xd = Math.sqrt(2 * EPSSIL / (Q_E * nsub * 1e6));
+      } else nsub = 0;
+    } else nsub = 0;
+    if (isNaN(gamma)) gamma = 0;
+    if (isNaN(vto)) vto = 0;
+    const ld = mp(m, "ld", 0, no);
+    const leff = Math.max(level === 3 ? l - 2 * ld + mp(m, "xl", 0, no) : l - 2 * ld, 1e-9), weff = Math.max(level === 3 ? w - 2 * mp(m, "wd", 0, no) + mp(m, "xw", 0, no) : w, 1e-9);
+    const P = { level, beta: kp * mult * weff / leff, leff, weff, phi, gamma, vbi: pol * vto - gamma * Math.sqrt(phi), lambda: mp(m, "lambda", 0, no), vt,
+      cox, cmey: cox * leff * weff * mult, xd, nsub, ld, us: uo, xj: mp(m, "xj", 0, no), nfs: mp(m, "nfs", 0, no), vmax: mp(m, "vmax", 0, no) };
+    if (level === 1) P.s = FET_S;
+    else if (level === 2) {
+      Object.assign(P, { factor: 0.25 * Math.PI * mp(m, "delta", 0, no) * EPSSIL / (cox * weff), ucrit: mp(m, "ucrit", 1e4, no), uexp: mp(m, "uexp", 0, no),
+        neff: mp(m, "neff", 1, no), pb: mp(m, "pb", 0.8, no) });
+    } else if (level === 3) {
+      Object.assign(P, { eta: mp(m, "eta", 0, no), theta: mp(m, "theta", 0, no), kappa: mp(m, "kappa", 0.2, no), alpha: xd * xd,
+        narrow: mp(m, "delta", 0, no) * 0.5 * Math.PI * EPSSIL / cox });
+    }
+    return P;
+  }
   const DEVICE_PINS = { d: ["A", "K"], npn: ["C", "B", "E"], pnp: ["C", "B", "E"], nmos: ["D", "G", "S"], pmos: ["D", "G", "S"], vdmos: ["D", "G", "S"], njf: ["D", "G", "S"], pjf: ["D", "G", "S"] };
   const DEVICE_LINE = { d: "D1 A K", npn: "Q1 C B E", pnp: "Q1 C B E", nmos: "M1 D G S S", pmos: "M1 D G S S", vdmos: "M1 D G S", njf: "J1 D G S", pjf: "J1 D G S" };
   const DEVICE_NAME = { d: "diode", npn: "NPN transistor", pnp: "PNP transistor", nmos: "N-channel MOSFET", pmos: "P-channel MOSFET", vdmos: "power MOSFET", njf: "N-channel JFET", pjf: "P-channel JFET" };
@@ -222,7 +263,7 @@
         } else if (kind === "M") {
           need(5);
           const mi = [4, 5].find(i => tk[i] && scope.model(tk[i].toLowerCase())); if (!mi) throw new Error(`${at(no)}no .MODEL for ${tk[0]}`);
-          mos(prefix + nm, node(tk[1]), node(tk[2]), node(tk[3]), model(tk[mi], no), params(tk.slice(mi + 1)), no);
+          mos(prefix + nm, node(tk[1]), node(tk[2]), node(tk[3]), model(tk[mi], no), params(tk.slice(mi + 1)), no, mi === 5 ? node(tk[4]) : null);
         } else if (kind === "J") {
           need(5);
           const m = model(tk[4], no), area = areaOf(tk[5], no);
@@ -340,20 +381,17 @@
         const je = junc(m, "vje|pe", "mje|me", no, 0.75, 0.33), jc = junc(m, "vjc|pc", "mjc|mc", no, 0.75, 0.33);
         if (pol > 0) { cap(nm + "#cje", b2, e2, cje, je); cap(nm + "#cjc", b2, c2, cjc, jc); } else { cap(nm + "#cje", e2, b2, cje, je); cap(nm + "#cjc", c2, b2, cjc, jc); }
       }
-      function mos(nm, d, g, s, m, ip, no) {
+      function mos(nm, d, g, s, m, ip, no, b) {
         const vd = m.type === "vdmos";
         if (m.type !== "nmos" && m.type !== "pmos" && !vd) throw new Error(`${at(no)}${nm}: not a MOSFET model`);
         const pol = vd ? (m.p.pchan ? -1 : 1) : m.type === "nmos" ? 1 : -1, level = vd ? 1 : mp(m, "level", 1, no);
         if (level > 3) throw new Error(`${at(no)}${nm}: MOSFET model level ${level} (BSIM) is not supported`);
-        if (level > 1) warn.add(`MOSFET level ${level} models run as the square law (level 1): mobility and short-channel terms are left out`);
-        const mult = ip.m !== undefined ? val(ip.m, no) : 1, w = ip.w !== undefined ? val(ip.w, no) : mp(m, "w", 1e-4, no), l = ip.l !== undefined ? val(ip.l, no) : mp(m, "l", 1e-4, no);
-        const ld = vd ? 0 : mp(m, "ld", 0, no), leff = Math.max(l - 2 * ld, 1e-9);
-        let kp = mp(m, "kp", NaN, no);
-        if (isNaN(kp)) { const uo = mp(m, "uo", 600, no), tox = mp(m, "tox", 1e-7, no); kp = uo * 1e-4 * 3.9 * 8.854e-12 / tox; }
-        const beta = vd ? kp * mult : kp * (w / leff) * mult, vto = mp(m, "vto|vt0", 0, no);
+        const ipv = (k, def) => (ip[k] !== undefined ? val(ip[k], no) : def);
+        const mult = ipv("m", 1), w = ipv("w", mp(m, "w", 1e-4, no)), l = ipv("l", mp(m, "l", 1e-4, no));
         const d2 = series(nm + "#rd", d, mp(m, "rd", 0, no) / mult), s2 = series(nm + "#rs", s, mp(m, "rs", 0, no) / mult), g2 = series(nm + "#rg", g, mp(m, "rg", 0, no));
-        push({ name: nm, kind: "MOS", n: [d2, g2, s2], model: { pol, vto, kp: beta, lambda: mp(m, "lambda", 0, no), s: FET_S } });
         if (vd) {
+          const kp = mp(m, "kp", 2e-5, no) * mult, vto = mp(m, "vto|vt0", 0, no);
+          push({ name: nm, kind: "MOS", n: [d2, g2, s2], model: { pol, vto, kp, lambda: mp(m, "lambda", 0, no), s: FET_S } });
           // the body diode and the capacitances of LTspice's VDMOS
           const is = mp(m, "is", 1e-14, no), bd = series(nm + "#rb", pol > 0 ? s2 : d2, mp(m, "rb", 0, no));
           push({ name: nm + "#body", kind: "D", n: pol > 0 ? [bd, d2] : [bd, s2], is, n_: mp(m, "n", 1, no), tt: mp(m, "tt", 0, no) || undefined });
@@ -363,9 +401,30 @@
           if (cmax !== undefined && cmax > 0 && g2 !== d2) push({ name: nm + "#cgd", kind: "C", n: pol > 0 ? [g2, d2] : [d2, g2], c: cmin, vdm: { min: cmin, max: cmax, a: mp(m, "a", 1, no) } });
           else cap(nm + "#cgd", g2, d2, cmin);
           cap(nm + "#cds", pol > 0 ? s2 : d2, pol > 0 ? d2 : s2, mp(m, "cjo", 0, no), junc(m, "vj", "m", no, 1, 0.5));
-        } else {
-          cap(nm + "#cgs", g2, s2, mp(m, "cgso", 0, no) * w * mult); cap(nm + "#cgd", g2, d2, mp(m, "cgdo", 0, no) * w * mult); cap(nm + "#cbd", d2, s2, mp(m, "cbd", 0, no) * mult);
+          return;
         }
+        // SPICE's MOSFET levels 1 to 3 (ngspice's mos1/2/3temp.c setup at the nominal temperature):
+        // the channel by its level's equations with the bulk as a fourth terminal (the source when
+        // the line names none), the bulk junctions as diodes, Meyer's gate capacitances from TOX
+        const bulk = b === null || b === undefined ? s : b, P = mosSetup(m, level, pol, w, l, mult, no, mp);
+        push({ name: nm, kind: "MOS4", n: [d2, g2, s2, bulk], model: { pol, level, p: P } });
+        const ad = ipv("ad", 0), as = ipv("as", 0), pd = ipv("pd", 0), ps = ipv("ps", 0), js = mp(m, "js", 0, no);
+        const isj = mp(m, "is", 1e-14, no) * mult, isd = js > 0 && ad > 0 && as > 0 ? js * ad * mult : isj, iss = js > 0 && ad > 0 && as > 0 ? js * as * mult : isj;
+        // the bulk junctions' capacitances: the bottom (CBD, CBS or CJ by the area) and the sidewall (CJSW by
+        // the perimeter), each by its own grading (MJ, MJSW)
+        const jb = junc(m, "pb", "mj", no, 0.8, 0.5), jsw = { vj: jb.vj, m: mp(m, "mjsw", level === 1 ? 0.5 : 0.33, no), fc: jb.fc }, cj = mp(m, "cj", 0, no), cjsw = mp(m, "cjsw", 0, no);
+        const cbd = (m.p.cbd !== undefined ? mp(m, "cbd", 0, no) : cj * ad) * mult, cbs = (m.p.cbs !== undefined ? mp(m, "cbs", 0, no) : cj * as) * mult;
+        const junction = (k, o, is, c, csw) => {
+          if (o === bulk) return;
+          const [a, c2] = pol > 0 ? [bulk, o] : [o, bulk];
+          // (with SPICE's gmin across it: a bulk on a node of its own, as switches in makers' models
+          // tie theirs through 1 TΩ, is then held where SPICE holds it)
+          push({ name: nm + "#b" + k, kind: "D", n: [a, c2], is, n_: 1 }, { name: nm + "#b" + k + "g", kind: "R", n: [a, c2], r: 1e12 });
+          cap(nm + "#cb" + k, a, c2, c, jb); cap(nm + "#cb" + k + "sw", a, c2, csw, jsw);
+        };
+        junction("d", d2, isd, cbd, cjsw * pd * mult); junction("s", s2, iss, cbs, cjsw * ps * mult);
+        cap(nm + "#cgs", g2, s2, mp(m, "cgso", 0, no) * P.weff * mult); cap(nm + "#cgd", g2, d2, mp(m, "cgdo", 0, no) * P.weff * mult);
+        cap(nm + "#cgb", g2, bulk, mp(m, "cgbo", 0, no) * P.leff * mult);
       }
       function jfet(nm, d, g, s, m, area, no) {
         const pol = m.type === "njf" ? 1 : -1, beta = mp(m, "beta", 1e-4, no) * area, is = mp(m, "is", 1e-14, no) * area;
