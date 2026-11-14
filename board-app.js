@@ -469,7 +469,7 @@
       if (!it.layers.includes(layer) || (it.net === net && net !== null)) continue;
       if (it.kind === "track" && o.tracks === false) continue;
       if (it.kind === "via" && own.includes(it.vi)) continue;   // the route's own via: not joined to its net until the route ends
-      let need = S.clr ? S.clr.need(net, it.net, { s, r: w2, layers: [layer] }, it).c : Math.max(mine, ruleOf(it.net).clearance); const g = B.segSeg(s, it.s) - w2 - it.r;
+      let need = S.clr ? S.clr.need(net, it.net, { s, r: w2, layers: [layer] }, it).c : Math.max(mine, ruleOf(it.net).clearance); const g = B.segItem(s, it) - w2;   // a square pad as its rectangle, as the check measures it
       if (g < need - 1e-6 && it.kind === "pad") { const eg = B.entryGap(s, it, S.conn.items); if (eg !== null) need = Math.min(need, eg - 0.02); }
       if (g < need - 1e-6 && it.kind === "pad" && S.sp) { const us = B.underSocket(S.sp, it, { s }); if (us !== null) need = Math.min(need, us); }
       if (g < need - 1e-6 && it.kind === "track" && B.anchoredOk({ s, r: w2 }, it, g, need, S.conn.items)) continue;
@@ -586,12 +586,12 @@
     const order = [k].concat(t.pts.slice(1).map((p, j) => j).filter(j => j !== k).sort((a, b) => len(b) - len(a)));
     let why = "";
     for (const j of order) for (const side of [1, -1]) {
-      const m = BoardHs.meander(t.pts, j, extra, { s, amax: 4 * s, side });
+      const m = BoardHs.meander(t.pts, j, extra, { s, amax: 4 * s, side, smin: +(t.w + rule.clearance).toFixed(3) });   // runs 3 widths apart, closer on a short segment
       if (m.fail) { why = why || m.fail; continue; }
       let bad = null;
       for (let q = j; q + 1 < m.pts.length - (t.pts.length - j - 2) && !bad; q++) bad = segBad([m.pts[q][0], m.pts[q][1], m.pts[q + 1][0], m.pts[q + 1][1]], n, t.w / 2, t.layer);
       if (bad) { why = why || `too close to ${bad.what}${bad.net ? " on " + bad.net : ""}`; continue; }
-      t.pts = m.pts; commit(`Meander on ${netName(n)}: +${extra.toFixed(2)} mm (${m.n} turns of ${m.A.toFixed(2)} mm), ${lt.why}`); return;
+      t.pts = m.pts; commit(`Meander on ${netName(n)}: +${extra.toFixed(2)} mm (${m.n} turn${m.n === 1 ? "" : "s"} of ${m.A.toFixed(2)} mm), ${lt.why}`); return;
     }
     msg(`No room for a meander on this track (${why}). Try a longer straight segment`);
   }
@@ -603,16 +603,32 @@
     const nearest = p => pads.reduce((b, q) => (Math.hypot(q.x - p[0], q.y - p[1]) < Math.hypot(b.x - p[0], b.y - p[1]) ? q : b));
     const w = pr.width > 0 ? pr.width : t.w, d = (t.w + w) / 2 + (pr.gap > 0 ? pr.gap : ruleOf(n).clearance), a = t.pts[0], z = t.pts[t.pts.length - 1], pa = nearest(a), pb = nearest(z);
     if (pa === pb) { msg(`${pr.partner} needs a pad near each end of this track`); return; }
-    let best = null;
+    // the partner runs beside the track at the pair's spacing, but its pads are its own: where they
+    // sit off that line (a connector's pins further apart than the pair) the run starts and ends a
+    // little in from the track's ends, and the partner fans in to it from its pads with a 45° bend
+    const segsBad = pts => { for (let q = 0; q + 1 < pts.length; q++) { const b = segBad([pts[q][0], pts[q][1], pts[q + 1][0], pts[q + 1][1]], pn, w / 2, t.layer); if (b) return b; } return null; };
+    const STEP = 0.25;
+    let best = null, why = null;
     for (const side of [d, -d]) {
-      const off = BoardHs.offsetPath(t.pts, side), cost = Math.hypot(off[0][0] - pa.x, off[0][1] - pa.y) + Math.hypot(off[off.length - 1][0] - pb.x, off[off.length - 1][1] - pb.y);
-      if (!best || cost < best.cost) best = { off, cost };
+      const off = BoardHs.offsetPath(t.pts, side), L = BoardHs.pathLength(off), mid = L / 2;
+      // the least trim at the start (then at the end) that lets the partner leave its pad cleanly
+      let head = null, tail = null;
+      for (let ts = 0; ts < mid - STEP && !head; ts += STEP) for (const alt of [false, true]) {
+        const o = BoardHs.subPath(off, ts, mid), pts = tidy([[pa.x, pa.y]].concat(bend([pa.x, pa.y], o[0], alt), o.slice(1)));
+        const b = segsBad(pts); if (!b) { head = pts; break; } if (!why) why = b;
+      }
+      if (!head) continue;
+      for (let te = 0; te < mid - STEP && !tail; te += STEP) for (const alt of [true, false]) {
+        const o = BoardHs.subPath(off, mid, L - te), pts = tidy(o.concat(bend(o[o.length - 1], [pb.x, pb.y], alt)));
+        const b = segsBad(pts); if (!b) { tail = pts; break; } if (!why) why = b;
+      }
+      if (!tail) continue;
+      const pts = tidy(head.concat(tail.slice(1))), coupled = BoardHs.pathLength(pts);
+      // the side whose partner stays closest to the track's length (the shortest fan-in) wins
+      if (!best || coupled < best.len) best = { pts, len: coupled };
     }
-    const o = best.off, pts = [[pa.x, pa.y]].concat(bend([pa.x, pa.y], o[0], false), o.slice(1), bend(o[o.length - 1], [pb.x, pb.y], true)), clean = tidy(pts);
-    for (let q = 0; q + 1 < clean.length; q++) {
-      const bad = segBad([clean[q][0], clean[q][1], clean[q + 1][0], clean[q + 1][1]], pn, w / 2, t.layer);
-      if (bad) { msg(`${pr.partner} cannot run alongside here: too close to ${bad.what}${bad.net ? " on " + bad.net : ""} (${Math.max(0, bad.g).toFixed(2)} < ${bad.need} mm)`); return; }
-    }
+    if (!best) { const bad = why || {}; msg(`${pr.partner} cannot run alongside here: too close to ${bad.what || "copper"}${bad.net ? " on " + bad.net : ""}${bad.need !== undefined ? ` (${Math.max(0, bad.g).toFixed(2)} < ${bad.need} mm)` : ""}`); return; }
+    const clean = best.pts;
     S.board.tracks.push({ layer: t.layer, w: +w.toFixed(3), pts: clean, net: pr.partner });
     commit(`${pr.partner} routed alongside ${netName(n)} (pair gap ${(d - (t.w + w) / 2).toFixed(2)} mm)`);
   }

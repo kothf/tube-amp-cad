@@ -1413,7 +1413,9 @@
     items.forEach(q => {
       if (q.kind !== "pad" || q === padIt || q.pad.part !== padIt.pad.part) return;
       const inside = (x, y) => segDist(q.s[0], q.s[1], q.s[2], q.s[3], x, y) <= q.r + 1e-6;
-      if (inside(s[0], s[1]) || inside(s[2], s[3])) { const g = gap(q, padIt); best = best === null ? g : Math.max(best, g); }
+      // a track joining two pads of the footprint: the pad nearest padIt is where it comes close
+      // (taking the farther one refused a straight run pad to pad once its corners were merged)
+      if (inside(s[0], s[1]) || inside(s[2], s[3])) { const g = gap(q, padIt); best = best === null ? g : Math.min(best, g); }
     });
     return best;
   }

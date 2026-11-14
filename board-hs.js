@@ -136,16 +136,18 @@
   }
   // a serpentine on segment k of pts adding `extra` mm: bumps of amplitude A at pitch 2·s (s = the
   // gap between runs, centre to centre), 45° chamfers c = s / 4 on the outer corners, on side o.side (+1 left, -1 right),
-  // with at least s clear of each end. o: { s, amax, side }. The last amplitude is trimmed so the
-  // added length is exact.
+  // with at least s clear of each end. o: { s, amax, side, smin }. The last amplitude is trimmed so the
+  // added length is exact. A segment too short for runs s apart tries them closer, down to o.smin.
   function meander(pts, k, extra, o) {
     const A0 = pts[k], B0 = pts[k + 1], L = Math.hypot(B0[0] - A0[0], B0[1] - A0[1]);
     if (!(extra > 0)) return { fail: "nothing to add" };
     const s = o.s, c = s / 4, amax = o.amax || 3 * s, side = o.side || 1, loss = 2 * c * (2 - Math.SQRT2);
-    const nMax = Math.floor((L - 2 * s) / (2 * s));
-    if (nMax < 1) return { fail: `the segment is too short for a meander (${L.toFixed(2)} mm; ${(4 * s).toFixed(2)} mm at least)` };
+    const closer = o.smin > 0 && s > o.smin + 1e-9 ? () => meander(pts, k, extra, Object.assign({}, o, { s: Math.max(o.smin, s * 0.85), amax })) : null;
+    // n bumps span (2n - 1)·s, with s clear at each end
+    const nMax = Math.floor((L - s) / (2 * s));
+    if (nMax < 1) return closer ? closer() : { fail: `the segment is too short for a meander (${L.toFixed(2)} mm; ${(3 * s).toFixed(2)} mm at least)` };
     const per = 2 * amax - loss, n = Math.ceil(extra / per);
-    if (n > nMax) return { fail: `not enough room: ${(nMax * per).toFixed(2)} mm at most on this segment, ${extra.toFixed(2)} mm wanted` };
+    if (n > nMax) return closer ? closer() : { fail: `not enough room: ${(nMax * per).toFixed(2)} mm at most on this segment, ${extra.toFixed(2)} mm wanted` };
     const A = (extra / n + loss) / 2;
     if (A < 2 * c) return meander(pts, k, extra, Object.assign({}, o, { s: s * 0.75 }));
     const e = [(B0[0] - A0[0]) / L, (B0[1] - A0[1]) / L], u = [-e[1] * side, e[0] * side];
@@ -159,5 +161,18 @@
     return { pts: res, n, A };
   }
   const pathLength = pts => pts.slice(1).reduce((a, p, i) => a + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
-  root.BoardHs = { dielectrics, layerGeom, microstrip, stripline, impedance, widthFor, gapFor, netLengths, pairsOf, groupsOf, guessPairs, drc, offsetPath, meander, pathLength };
+  // the part of a path from length a to length b along it (0 ≤ a < b ≤ its length)
+  function subPath(pts, a, b) {
+    const out = []; let run = 0;
+    const at = (k, t) => [Math.round((pts[k][0] + (pts[k + 1][0] - pts[k][0]) * t) * 1e4) / 1e4, Math.round((pts[k][1] + (pts[k + 1][1] - pts[k][1]) * t) * 1e4) / 1e4];
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const l = Math.hypot(pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]), r0 = run, r1 = run + l; run = r1;
+      if (r1 < a - 1e-9 || l < 1e-9) continue;
+      if (!out.length) out.push(at(k, Math.max(0, (a - r0) / l)));
+      if (r1 >= b - 1e-9) { out.push(at(k, (b - r0) / l)); break; }
+      out.push(pts[k + 1].slice());
+    }
+    return out;
+  }
+  root.BoardHs = { dielectrics, layerGeom, microstrip, stripline, impedance, widthFor, gapFor, netLengths, pairsOf, groupsOf, guessPairs, drc, offsetPath, meander, pathLength, subPath };
 })(typeof window !== "undefined" ? window : globalThis);

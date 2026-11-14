@@ -76,14 +76,20 @@
     const at = (t, off) => [A[0] + e[0] * t + u[0] * off, A[1] + e[1] * t + u[1] * off];
     const first = k === 0, last = k + 1 === pts.length - 1;
     const out = pts.slice(0, k + 1);
-    // the jog in: from t0 - d on the line to t0 out at d; past A: A itself moves (a bend) or fails (an end)
+    // the jog in: from t0 - d on the line to t0 out at d; past A: A itself moves (a bend), or at the
+    // track's end (on a pad or via) the jog leaves the end itself, steeper than 45°; a pusher
+    // reaching past the end cannot be cleared
+    // a jog straight off the end E to Q keeps clear of every pusher (the end itself sits on a pad or via,
+    // which the pushers already keep clear of)
+    const jogOk = (E, Q) => ps.every(p => segSeg(p, [E[0], E[1], Q[0], Q[1]]) >= m - EPS);
     if (t0 - d < 0) {
-      if (first) return { fail: "would move the track's end", at: A };
-      out[k] = at(0, d);
+      if (!first) out[k] = at(0, d);
+      else { const Q = at(Math.max(t0, 0), d); if (!jogOk(A, Q)) return { fail: "would move the track's end", at: A }; out.push(Q); }
     } else { out.push(at(t0 - d, 0)); out.push(at(t0, d)); }
     if (t1 + d > L) {
-      if (last) return { fail: "would move the track's end", at: B };
-      out.push(at(L, d)); return { pts: out.concat(pts.slice(k + 2)) };
+      if (!last) { out.push(at(L, d)); return { pts: out.concat(pts.slice(k + 2)) }; }
+      const Q = at(Math.min(t1, L), d); if (!jogOk(B, Q)) return { fail: "would move the track's end", at: B };
+      out.push(Q); out.push(B); return { pts: out.concat(pts.slice(k + 2)) };
     }
     out.push(at(t1, d)); out.push(at(t1 + d, 0)); out.push(B);
     return { pts: out.concat(pts.slice(k + 2)) };
