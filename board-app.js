@@ -202,7 +202,7 @@
   // History
   // ---------------------------------------------------------------------------
   function pushHistory() {
-    S.history = S.history.slice(0, S.hIndex + 1); S.history.push(JSON.stringify(S.board));
+    S.history = S.history.slice(0, S.hIndex + 1); S.history.push(JSON.stringify({ ...S.board, panel: undefined }));   // the panel (and its boards) stays out of undo
     if (S.history.length > 200) S.history.shift();
     S.hIndex = S.history.length - 1;
   }
@@ -214,7 +214,7 @@
   // (outline.at: where the box's top-left corner is in a frame that never moves; setHeight and a new
   // outline shape keep it, so the screen stays still whichever corner the change moved)
   const atOf = o => (Array.isArray(o.at) ? o.at : [0, 0]);
-  function restore() { const a0 = atOf(S.board.outline); S.board = JSON.parse(S.history[S.hIndex]); const a1 = atOf(S.board.outline); S.view.ox += (a1[0] - a0[0]) * S.view.scale; S.view.oy += (a1[1] - a0[1]) * S.view.scale; S.sel = null; S.measure = null; refresh(); }
+  function restore() { const a0 = atOf(S.board.outline), panel = S.board.panel; S.board = JSON.parse(S.history[S.hIndex]); if (panel) S.board.panel = panel; const a1 = atOf(S.board.outline); S.view.ox += (a1[0] - a0[0]) * S.view.scale; S.view.oy += (a1[1] - a0[1]) * S.view.scale; S.sel = null; S.measure = null; refresh(); }
   // A new board height keeps the origin where it is: everything on the board (and a locked
   // sheet) moves down by the change in the document, so only the top edge moves.
   function setHeight(h) {
@@ -1196,7 +1196,7 @@
     S.view.ox = sx - (sx - S.view.ox) * f; S.view.oy = sy - (sy - S.view.oy) * f; S.view.scale = s;
     render();
   }
-  const MODALS = ["help-modal", "rules-modal", "setup-modal", "print-modal", "imp-modal"];
+  const MODALS = ["help-modal", "rules-modal", "setup-modal", "print-modal", "imp-modal", "panel-modal"];
   function highlightNet(n) { S.netHL = n === null || n === undefined || n === S.netHL ? null : n; S.netFromCad = false;
     if (bc && typeof S.netHL === "number") bc.postMessage({ type: "BOARD_NET", net: S.netHL });   // cross-probing: its wires are selected in the schematic
     msg(S.netHL === null ? "Net highlight off" : `Highlighting ${netName(S.netHL)} (again: off)`); renderNets(); render(); }
@@ -1579,6 +1579,7 @@
   const cons = BoardCons({ $, B, S, commit, msg, snap, esc, kv, analyse, snapPoint, setTool, render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
   // driving dimensions: the Dimension tool, Align, enforcing them after each change (board-dimui.js)
   const sketch = BoardSketch({ $, S, msg, snapPoint, setTool, applyOutline, render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
+  const panelUi = BoardPanelUI({ $, S, save, msg, esc, download: (data, name, type) => download(data, name, type), fabMeta: () => fabMeta(), fabReady: what => fabReady(what) });
   const dimui = BoardDimUI({ $, S, commit, msg, esc, cons, moveOutline: (o, dx, dy) => moveOutline(o, dx, dy), selItems: () => selItems(), render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
 
   // ---------------------------------------------------------------------------
@@ -2018,6 +2019,7 @@
     const list = $("export-menu").querySelector(".menu-list");
     $("ex-svg").onclick = () => { list.hidden = true; download(svgDoc(["F.Cu", "B.Cu", "F.SilkS", "Edge.Cuts"], false), baseName() + "-board.svg", "image/svg+xml"); };
     $("ex-gerber").onclick = () => { list.hidden = true; exportGerber(); };
+    panelUi.init();
     $("ex-step").onclick = () => { list.hidden = true; exportStep(); };
     $("ex-kicad").onclick = () => { list.hidden = true; exportKicad(); };
     $("btn-3d").onclick = () => ($("view3d").hidden ? open3D() : close3D());
@@ -2045,7 +2047,7 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { panel: panelUi, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   const boot = () => { init(); early.splice(0).forEach(e => bc.onmessage(e)); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

@@ -570,6 +570,27 @@ import { readFile } from "node:fs/promises";
   check(/gerbers\.zip$/.test(zipDl.suggestedFilename()) && zipBuf.slice(0, 2).toString() === "PK" && zipNames.some(n => /-B_Cu\.gbr$/.test(n)) && zipNames.some(n => /-PTH\.drl$/.test(n)) && /G36\*/.test(zipBuf.toString("latin1")),
     `Export → Gerber + drill files gives ${zipDl.suggestedFilename()} with the copper, mask, silkscreen, outline and drill files (the pour as a region)`);
   check(/-prints\.pdf$/.test(pdfDl.suggestedFilename()) && pdfBuf.slice(0, 4).toString() === "%PDF" && /\/Count 4/.test(pdfBuf.toString("latin1")), `Export → Print set gives a four-page PDF (${pdfDl.suggestedFilename()})`);
+  // Panel: 2 × 2 copies with mouse bites, then this board's own Gerber ZIP added as a second board;
+  // V-score refuses the mix; the panel ZIP holds the panel's files with the bites and tooling holes
+  {
+    await bd.click("#btn-export"); await bd.click("#ex-panel");
+    await bd.waitForSelector("#panel-modal:not([hidden])");
+    const p1 = await bd.evaluate(() => document.getElementById("panel-out").textContent);
+    await bd.evaluate(async buf => { const files = await BoardPanel.unzip(new Uint8Array(buf)); BoardApp.panel.addFiles(files, "Copy"); }, [...zipBuf]);
+    const p2 = await bd.evaluate(() => [BoardApp.state.board.panel.items.length, document.querySelectorAll("#panel-items tr[data-i]").length, document.getElementById("panel-out").textContent]);
+    await bd.selectOption('#panel-items tr[data-i="1"] select', "1"); await bd.waitForTimeout(250);
+    await bd.selectOption('#panel-modal [data-p="mode"]', "vscore"); await bd.waitForTimeout(250);
+    const p3 = await bd.evaluate(() => [document.getElementById("panel-out").textContent, document.getElementById("panel-export").disabled]);
+    await bd.selectOption('#panel-modal [data-p="mode"]', "bites"); await bd.waitForTimeout(250);
+    bd.once("dialog", d => d.accept().catch(() => {}));
+    const [pDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#panel-export")]);
+    const pText = (await readFile(await pDl.path())).toString("latin1");
+    // the panel stays out of undo: Ctrl+Z after it does not take it away
+    await bd.click("#panel-close");
+    const kept = await bd.evaluate(() => { BoardApp.undo(); BoardApp.redo(); return BoardApp.state.board.panel.items.length; });
+    check(/4 boards, \d+ tabs/.test(p1) && p2[0] === 2 && p2[1] === 2 && /5 boards/.test(p2[2]) && /cut through a board/.test(p3[0]) && p3[1] && /panel-gerbers\.zip$/.test(pDl.suggestedFilename()) && /-panel-Edge_Cuts\.gbr/.test(pText) && /MechanicalDrill,Breakout/.test(pText) && /MechanicalDrill,Tooling/.test(pText) && /FiducialPad,Panel/.test(pText) && kept === 2,
+      `Export → Panel: 2 × 2 copies (${p1.split(".")[0]}), another board from its Gerber ZIP (${p2[2].split(".")[0]}), turned a quarter, V-score refuses the mix, and the panel ZIP has the edge, bites, tooling holes and fiducials (${pDl.suggestedFilename()}); undo leaves the panel alone`);
+  }
   // KiCad: the board with its project, rules and footprints, as a ZIP (no question: it is finished there)
   await bd.click("#btn-export");
   const [kiDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-kicad")]);
