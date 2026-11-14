@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.216.0] - 2026-11-14
+
+General-purpose simulation, part 1: a free transient analysis with time sources.
+
+### Added
+- **Transient tab** (*Analyze ▾ → Transient*): the circuit run in time with its own stop time, maximum step and record start, from the operating point or from zero (`uic`), with initial conditions (`out=4 C3.1=0`).
+  - Traces by net, connector, scope channel or part pin; a chart with min/max per pixel, cursor readout, drag zoom and double-click to show all; min, max, p-p, average, RMS and end value per trace; *CSV* export of every trace.
+  - Runs in a worker, with a progress line and *Stop*.
+- **Signal generator waves for the time domain**: pulse (low and pulsed level, delay, rise, fall, width, period), piecewise linear (time-value pairs, repeating or not), exponential (SPICE EXP) and FM (SPICE SFFM). The SPICE export writes them as PULSE, PWL, EXP and SFFM.
+- **SPICE part sources**: `PULSE`, `SIN`, `EXP`, `SFFM` and `PWL` (with `r=` and `td=`) on V and I lines, and `time` in B-source expressions. They play in the Transient tab; the other analyses take their DC value, and the part says so.
+
+### Changed
+- The engine's transient takes variable steps: the error of each step is estimated from a predictor through the last three states, steps grow at most ×2, and the corners of every source are breakpoints (the step restarts small after each). Linear capacitors and inductors are integrated by the trapezoid rule (an LC ring keeps its amplitude), the rest by variable-step Gear-2.
+
+### Tests
+- `tests/transient.test.mjs`: source shapes and corners, RC and LC against the closed form, `.ic`, `uic`, record start and thinning, SPICE source lines and `time`, generator waves, the tab's helpers.
+- `tests/transient-ngspice.mjs` (in `npm run test:ngspice`): ten benches against ngspice's `.tran`, every probe within 1 % of its swing at 400 instants (2 % for an RLC ring of Q 30 and a BJT switch).
+- e2e: the Transient tab on example 08 (the 555's frequency from the edges, initial-condition errors, traces, zoom, CSV, the pulse fields and the export).
+
 ## [3.214.0] - 2026-11-14
 
 Phase 5 of the simulation engine plan, item 2: lossless transmission lines.

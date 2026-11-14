@@ -4,7 +4,7 @@
 
    flatten(text, name) reads a library (SpiceModel.parseLib) and turns one .SUBCKT, with
    the subcircuits it calls, into the simulator's own elements on local nodes:
-     R C L K · V I (their DC values) · D Q M J with their .MODEL (diode, Gummel–Poon BJT,
+     R C L K · V I (DC, and SIN PULSE EXP SFFM PWL in the transient) · D Q M J with their .MODEL (diode, Gummel–Poon BJT,
      level 1 to 3 MOSFET by its own equations with its bulk, LTspice's VDMOS as the square law, JFET) · E G F H, linear,
      VALUE = {…}, TABLE and POLY(n), LAPLACE (H(s) as a state-space network) and FREQ (a table fitted
      to H(s) by vector fitting) · B (I = or V =, Laplace=) · S and W switches · T (lossless) · X.
@@ -19,7 +19,7 @@
    small-signal analyses; a VDMOS's Cgd follows CGDMIN … CGDMAX (A). A transistor's temperature
    terms (XTI, EG, XTB, TNOM) set it at another temperature, or as it heats itself (build's spec).
    Not carried over: the other temperature terms and noise parameters. Lossless transmission lines (T) are
-   the engine's TLINE. Not supported (an error): CHEBYSHEV sources, lossy lines (O, U, T with R or G), BSIM MOSFETs, time-dependent expressions.
+   the engine's TLINE. Not supported (an error): CHEBYSHEV sources, lossy lines (O, U, T with R or G), BSIM MOSFETs, PWL from a file. B sources may read time.
 
    build(spec, pinNodes, alloc, id) gives the engine's elements for one part of a circuit.
    ============================================================================= */
@@ -282,7 +282,7 @@
       case "n": return ast;
       case "id":
         if (bound && ast.s in bound) return bound[ast.s];
-        if (ast.s === "time") throw new Error("time-dependent expressions are not supported");
+        if (ast.s === "time") { if (!ctx) throw new Error("a value here cannot depend on time"); return { k: "t" }; }
         return { k: "n", v: scope.param(ast.s) };
       case "v": if (!ctx) throw new Error("a value here cannot depend on voltages"); return ctx.v(ast.a, ast.b);
       case "i": if (!ctx) throw new Error("a value here cannot depend on currents"); return ctx.i(ast.s);
@@ -370,6 +370,29 @@
           return evalClosed(close(SM.parseExpr(s), scope, null));
         } catch (e) { throw new Error(`${at(no)}${e.message}`); }
       };
+      // SIN, PULSE, EXP, SFFM and PWL of a V or I line (with or without the brackets; PWL's r= and
+      // td=): the engine's time waveform, or null (a DC source, or a kind it does not have: a warning)
+      const srcWave = (text, no) => {
+        const m = /(?:^|\s)(sin|pulse|pwl|exp|sffm)(\s*\(([^)]*)\)|((?:\s+[^\s=()]+)*))/i.exec(text);
+        if (!m) { if (/(?:^|\s)(am|trnoise|trrandom)\b/i.test(text)) warn.add("An AM or noise source inside the model is taken at its DC value"); return null; }
+        const type = m[1].toLowerCase(), raw = (m[3] !== undefined ? m[3] : m[4] || "").trim();
+        if (/^file\b/i.test(raw) || /file=/i.test(raw)) throw new Error(`${at(no)}PWL from a file is not supported: list the points`);
+        const a = raw ? raw.split(/[\s,]+/).filter(Boolean).map(t => val(t, no)) : [], g = (i, d) => (a[i] !== undefined ? a[i] : d);
+        const kw = {}; text.slice(m.index + m[0].length).replace(/\s*=\s*/g, "=").split(/\s+/).forEach(t => { const i = t.indexOf("="); if (i > 0) kw[t.slice(0, i).toLowerCase()] = val(t.slice(i + 1), no); });
+        switch (type) {
+          case "sin": return { type, vo: g(0, 0), va: g(1, 0), freq: g(2, 0), td: g(3, 0), theta: g(4, 0), phase: g(5, 0) };
+          case "pulse": return { type, v1: g(0, 0), v2: g(1, 0), td: g(2, 0), tr: g(3, 0), tf: g(4, 0), pw: g(5, 0), per: g(6, 0) };
+          case "exp": { const td1 = g(2, 0); return { type, v1: g(0, 0), v2: g(1, 0), td1, tau1: g(3, 0), td2: g(4, undefined), tau2: g(5, 0) }; }
+          case "sffm": return { type, vo: g(0, 0), va: g(1, 0), fc: g(2, 0), mdi: g(3, 0), fs: g(4, 0) };
+          case "pwl": {
+            if (a.length < 2 || a.length % 2) throw new Error(`${at(no)}PWL needs pairs of time and value`);
+            const td = kw.td || 0, pts = a.map((v, i) => (i % 2 ? v : v + td));
+            for (let i = 2; i < pts.length; i += 2) if (!(pts[i] >= pts[i - 2])) throw new Error(`${at(no)}PWL times must not go back`);
+            return { type, pts, r: kw.r !== undefined ? kw.r + td : -1 };
+          }
+        }
+        return null;
+      };
       const model = (nm, no) => { const m = scope.model(String(nm || "").toLowerCase()); if (!m) throw new Error(`${at(no)}no .MODEL ${nm}`); return m; };
       // a model's parameter (the first of the names it has), or the default
       const mp = (m, names, def, no) => { for (const k of names.split("|")) if (m.p[k] !== undefined) return val(m.p[k], no); return def; };
@@ -444,9 +467,13 @@
         } else if (kind === "V" || kind === "I") {
           need(3);
           const rest = tk.slice(3).filter(t => !/^dc$/i.test(t)).map(t => t.replace(/^dc=/i, "")), first = rest[0];   // (DC=62.66U as well as DC 62.66U)
-          const v = first && !/^(ac|sin|pulse|pwl|exp|sffm|rser=|cpar=)/i.test(first) ? val(first, no) : 0;
-          if (rest.some(t => /^(sin|pulse|pwl|exp|sffm)/i.test(t))) warn.add("A signal source inside the model is taken at its DC value");
-          push(kind === "V" ? { name: prefix + nm, kind: "V", n: [node(tk[1]), node(tk[2])], v } : { name: prefix + nm, kind: "I", n: [node(tk[1]), node(tk[2])], i: v });
+          const dcGiven = first && !/^(ac|sin|pulse|pwl|exp|sffm|am|trnoise|trrandom|rser=|cpar=)/i.test(first);
+          // a time waveform (the transient's; the operating point takes the DC value, else its value at 0)
+          const tw = srcWave(tk.slice(3).join(" "), no);
+          const v = dcGiven ? val(first, no) : tw && root.TubeSimEngine ? root.TubeSimEngine.srcAt(tw, 0) : 0;
+          const el = kind === "V" ? { name: prefix + nm, kind: "V", n: [node(tk[1]), node(tk[2])], v } : { name: prefix + nm, kind: "I", n: [node(tk[1]), node(tk[2])], i: v };
+          if (tw) { el.tw = tw; warn.add("A signal source inside the model plays its waveform in the Transient tab; the other analyses take its DC value"); }
+          push(el);
         } else if (kind === "D") {
           need(4);
           const m = model(tk[3], no), area = areaOf(tk[4], no);

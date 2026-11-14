@@ -1,6 +1,7 @@
 /* Runs the circuit engine off the UI thread; the CAD keeps one per processor core (sim-pool.js).
    Message in:  { seq, netlist, options }                      steady state (simulate)
                 { seq, netlist, options, kind: "startup" }      power-on transient
+                { seq, netlist, options, kind: "tran" }         free transient (transient: options.tStop, maxStep, uic, ic…)
                 { seq, netlist, options, kind: "op" }           the operating point a frequency response is linearized at:
                                                                  a mains-fed circuit's averaged steady state ({ ok, op, opIm: transformers' magnetising currents })
                 { seq, netlist, options, kind: "audio" }        the circuit playing a recording (audio: a source carries
@@ -32,6 +33,7 @@ self.onmessage = async (e) => {
     } else if (kind === "loop") result = TubeSimEngine.loopGain(netlist, options);
     else if (kind === "noise") result = TubeSimEngine.noiseSweep(netlist, options);
     else if (kind === "audio") result = TubeSimEngine.audio(netlist, Object.assign({}, options, { onProgress }));
+    else if (kind === "tran") result = TubeSimEngine.transient(netlist, Object.assign({}, options, { onProgress }));
     else if (kind === "startup") result = TubeSimEngine.startup(netlist, Object.assign({}, options, { onProgress, onPartial: options.partial ? p => self.postMessage({ seq, partial: p }) : undefined }));
     else result = TubeSimEngine.simulate(netlist, Object.assign({}, options, { onProgress }));
   } catch (err) {
@@ -43,6 +45,7 @@ self.onmessage = async (e) => {
     Object.values(result.tran.devices).forEach(d => { transfer.push(d.i.buffer); if (d.ig2) transfer.push(d.ig2.buffer); });
   }
   if (result.out) result.out.forEach(a => transfer.push(a.buffer));
+  if (kind === "tran" && result.ok) { transfer.push(result.t.buffer); result.nodes.forEach(a => { if (a) transfer.push(a.buffer); }); Object.values(result.currents).forEach(a => transfer.push(a.buffer)); }
   if (result.min) { result.min.forEach(a => transfer.push(a.buffer)); result.max.forEach(a => transfer.push(a.buffer)); }
   if (result.probes && result.freqs) { transfer.push(result.freqs.buffer); result.probes.forEach(p => { transfer.push(p.re.buffer, p.im.buffer); }); }
   self.postMessage({ seq, result }, transfer);
