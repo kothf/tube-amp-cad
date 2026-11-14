@@ -582,6 +582,14 @@ the circuit that was on the sheet.
     (`R3.2`); the chart draws min/max per pixel, a cursor reads every trace,
     drag to zoom, double-click to show all; min, max, p-p, average, RMS and
     end value per trace, and *CSV* writes them all;
+  - a waveform viewer: any part's current (`I(R3)` into its first pin,
+    `I(Q1.C)`) and expressions over the run (`V(OUT,IN)`,
+    `V(R1.1,R1.2)*I(R1)` in W, `d()`, `integ()`, `db`, `abs`, `min`/`max`…,
+    with units that follow the arithmetic, `wave-math.js`); several panes,
+    each with its own scale, in time or as a spectrum (*FFT*, Hann window,
+    the strongest line named); cursors A and B (click, Shift+click) with Δt,
+    1/Δt and each trace's values, the figures taken between them; *Keep as
+    reference* draws a run dashed under the next ones;
   - the signal generator's *pulse*, *PWL*, *exponential* and *FM* waves and
     the `PULSE`/`SIN`/`EXP`/`SFFM`/`PWL` sources and `time` in B sources of a
     SPICE part play here (the other analyses take their DC value).

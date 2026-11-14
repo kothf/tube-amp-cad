@@ -286,6 +286,18 @@
     .tr-read { font-size: 12px; min-height: 20px; margin: 4px 0 6px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
     .tr-table td:first-child { white-space: nowrap; }
     .tr-ic { width: 130px; }
+    .tr-expr { width: 150px; }
+    .tr-panebox { border-left: 2px solid transparent; padding-left: 6px; margin-bottom: 6px; }
+    .tr-panebox.on { border-left-color: var(--accent); }
+    .tr-pn { background: none; border: 0; color: var(--muted); font-size: 11px; cursor: pointer; padding: 0 4px 0 0; }
+    .tr-panebox.on .tr-pn { color: var(--accent); }
+    .tr-pane-tools { margin-left: auto; display: inline-flex; gap: 4px; }
+    .tr-err { color: var(--warn); font-size: 11px; }
+    .tr-chart .tr-ref { stroke-dasharray: 4 3; opacity: .55; }
+    .tr-chart .tr-mark { stroke: #ffffffcc; stroke-width: 1; }
+    .tr-chart .tr-mark-l { fill: #fff; font: 10px ui-monospace, Menlo, monospace; }
+    .tr-curline { font-size: 12px; margin: 0 0 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .tr-mk { display: inline-block; background: #ffffff22; border-radius: 3px; padding: 0 4px; font-weight: 600; }
     .tol-num.bad { border-color: var(--warn); }
     .sw-steps { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
     .sw-step { background: var(--panel2); border: 1px solid; border-left-width: 4px; border-radius: 4px; padding: 1px 7px; font: 11px ui-monospace, Menlo, monospace; color: var(--text); cursor: pointer; }
@@ -839,6 +851,7 @@
             <label title="Where the run starts: the DC operating point (the circuit already on), or zero (every capacitor empty and every inductor without current, SPICE's UIC)">Start <select id="tr-start" class="tol-sel"><option value="op">Operating point</option><option value="zero">Zero (UIC)</option></select></label>
             <label title="Initial conditions (SPICE's .ic): nets held at a voltage at the start, NAME=VOLTS separated by commas. Name a sheet connector or rail, or a part's pin as R3.2 or C1.+">.ic <input type="text" id="tr-ic" class="tol-num tr-ic" placeholder="OUT=0, C1.+=5"></label>
             <select id="tr-add" class="tol-sel" title="Add a net to the chart: connectors and rails by name, scope channels, any part's pin (R3.2)"></select>
+            <input type="text" id="tr-expr" class="tol-num tr-expr" list="tr-names" placeholder="V(OUT)-V(IN), I(R3)…" title="Plot a current or an expression (Enter): V(OUT), V(A,B), I(R3) (into its first pin), I(Q1.C), V(R1.1)*I(R1) (watts), d(x), integ(x), abs, sqrt, db, min, max, time. It goes to the pane picked (+ Pane adds one)"><datalist id="tr-names"></datalist>
             <button class="btn" id="btn-tr-run" title="Run the transient; press again to stop">▶ Run</button>
           </span>
           <span class="bom-tools" data-for="listen">
@@ -1215,6 +1228,7 @@
   <script src="cad-bom.js?v=dev"></script>
   <script src="cad-tolerance.js?v=dev"></script>
   <script src="cad-power.js?v=dev"></script>
+  <script src="wave-math.js?v=dev"></script>
   <script src="cad-transient.js?v=dev"></script>
   <script src="cad-noise.js?v=dev"></script>
   <script src="cad-listen.js?v=dev"></script>
