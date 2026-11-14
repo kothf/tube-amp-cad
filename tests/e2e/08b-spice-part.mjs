@@ -102,4 +102,37 @@ import { execFileSync } from "node:child_process";
   const dirty = seen.filter(x => x.erc.length).map(x => `${x.file}: ${x.erc[0]}`);
   check(seen.length >= 20 && seen.every(x => x.parts > 5) && dirty.length === 0, `all ${seen.length} examples pass the pin rules${dirty.length ? ": " + dirty.join(" | ").slice(0, 300) : ""}`);
   await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
+
+  // --- BSIM: an IC process's MOSFET (a lone .MODEL at LEVEL 54) is a four-terminal part; a CMOS inverter of two ---
+  const BS = await readFile(new URL("../fixtures/bsim.lib", import.meta.url), "utf8");
+  await cad.evaluate(() => { const C = TubeCAD, S = C.state; const u = C.makeComp("spice", {}, 300, 300, 0); S.comps.push(u); S.sel.comps.clear(); S.sel.comps.add(u.id); C.commit(); C.updateInspector(); });
+  await cad.click("#btn-spice-model");
+  await cad.fill("#sppart-text", BS);
+  await cad.waitForFunction(() => [...document.getElementById("sppart-sub").options].some(o => o.value === "p4"), null, { timeout: 5000 }).catch(() => {});
+  await cad.selectOption("#sppart-sub", "p4");
+  const bdlg = await cad.evaluate(() => ({ sym: document.getElementById("sppart-sym").value, map: [...document.querySelectorAll("#sppart-pins select")].map(s => s.value).join(","), opt: document.getElementById("sppart-sub").selectedOptions[0].textContent }));
+  check(bdlg.sym === "pmos4" && bdlg.map === "D,G,S,B" && /BSIM4/.test(bdlg.opt), `Model…: a BSIM4 card is a P-channel MOSFET with its bulk (${bdlg.opt}; ${bdlg.sym} ${bdlg.map})`);
+  await cad.click("#sppart-cancel");
+  const inv = await cad.evaluate(async lib => {
+    const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+    const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };
+    const pin = (c, p) => C.compPins(c).find(q => q.id === p);
+    const wire = (p, q, hFirst) => C.lRoute(p.x, p.y, q.x, q.y, hFirst !== false).forEach(s => C.addSegment(...s));
+    const mp = add("spice", { name: "p4", text: lib, sub: "p4", sym: "pmos4", pinNames: ["D", "G", "S", "B"], map: ["D", "G", "S", "B"] }, 400, 200, 0);
+    const mn = add("spice", { name: "n4", text: lib, sub: "n4", sym: "nmos4", pinNames: ["D", "G", "S", "B"], map: ["D", "G", "S", "B"] }, 400, 400, 0);
+    const vdd = add("vdc", { v: 1.1 }, 600, 140), vin = add("vdc", { v: 0.2 }, 200, 340), g1 = add("ground", {}, 600, 200), g2 = add("ground", {}, 200, 420), g3 = add("ground", {}, 400, 480), RL = add("resistor", { r: 1e6 }, 520, 380, 1), g4 = add("ground", {}, 520, 460);
+    wire(pin(vdd, "-"), pin(g1, "G")); wire(pin(vin, "-"), pin(g2, "G"));
+    wire(pin(mp, "S"), pin(vdd, "+"), false); wire(pin(mp, "B"), pin(mp, "S"), false);
+    wire(pin(mn, "S"), pin(g3, "G")); wire(pin(mn, "B"), pin(mn, "S"), false);
+    wire(pin(mp, "D"), pin(mn, "D")); wire(pin(vin, "+"), pin(mp, "G"), false); wire(pin(mn, "G"), pin(mp, "G"));
+    wire(pin(mn, "D"), pin(RL, "1"), false); wire(pin(RL, "2"), pin(g4, "G"));
+    const seq0 = S.sim.seq; C.commit();
+    for (let k = 0; k < 600 && (S.sim.seq === seq0 || S.sim.busy || !S.sim.result); k++) await new Promise(r => setTimeout(r, 50));
+    const T = C.topo(), v = S.sim.result && S.sim.result.dc.nodes[T.pinNet.get(mn.id + ":D")];
+    S.sel.comps.clear(); S.sel.comps.add(mn.id); C.updateInspector();
+    return { err: S.sim.error, v, issues: C.circuitIssues().join(" | "), insp: document.getElementById("inspector").textContent.replace(/\s+/g, " "), spice: C.spiceNetlist() };
+  }, BS);
+  check(!inv.err && inv.v > 1.09 && inv.v < 1.1001 && !/cannot be simulated/.test(inv.issues), `a CMOS inverter of two BSIM4 parts: 0.2 V in, ${inv.v && inv.v.toFixed(4)} V out (high)`);
+  check(/level=54/i.test(inv.spice) && /\bn4\b/.test(inv.spice), "the SPICE export carries the BSIM cards");
+  await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.sel.comps.clear(); TubeCAD.commit(); });
 }

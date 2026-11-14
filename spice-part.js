@@ -76,7 +76,7 @@
   }
   // the symbol a model most likely wants: a lone device its own, five pins an op-amp, else a box
   function guessSym(f) {
-    const k = root.CadLib.SPICE_KIND_SYM[f.kind]; if (k) return k;
+    const k = root.CadLib.SPICE_KIND_SYM[f.kind]; if (k) return (k === "nmos" || k === "pmos") && f.pins.length === 4 ? k + "4" : k;
     return f.pins.length === 5 ? "opamp" : "box";
   }
   function pick(name) {
@@ -104,7 +104,7 @@
   function fillPins(keep) {
     const f = st.f, host = $("sppart-pins"); host.innerHTML = ""; if (!f) return;
     const sym = $("sppart-sym").value, sy = syms()[sym], lib = root.CadLib.LIB;
-    const own = sym === "own" ? st.own : null, symPins = own || (sy ? lib[sy.type].pins({ params: {} }).filter(p => sy.pins.includes(p.id)) : []);
+    const own = sym === "own" ? st.own : null, symPins = own || (sy ? lib.spice.pins({ params: { sym } }) : []);
     // a library part's pin for a pin of the model: the one of its name or number, else the next in order
     // (an op-amp's usual names too: inp is the pin drawn "+", vee the one drawn "V-", out the output that has no name)
     const ALIAS = { inp: ["+", "in+"], "in+": ["+", "inp"], inn: ["-", "in-", "−"], "in-": ["-", "inn", "−"], vcc: ["v+", "vdd", "vp"], vdd: ["v+", "vcc"], vp: ["v+", "vcc"], vee: ["v-", "vss", "vn", "v−"], vss: ["v-", "vee"], vn: ["v-", "vee"], out: ["output", "o", "~", ""], output: ["out", ""] };

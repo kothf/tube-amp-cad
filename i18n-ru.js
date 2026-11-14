@@ -2545,7 +2545,7 @@
     [/^(\S+): its supply pins (\S+) and (\S+) are on one net, so it has no supply\.$/, "$1: выводы питания $2 и $3 на одной цепи, питания нет."],
     [/^(\S+) is shorted: both its terminals are on one net\.$/, "$1 закорочен: оба вывода на одной цепи."],
     // SPICE parts (cad-components.js LIB.spice, spice-part.js, the checks)
-    [/^SPICE (subcircuit|model) (\S+), simulated as written: (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `SPICE-${k === "model" ? "модель" : "подсхема"} ${n}, считается как написана: элементов ${e}, узлов ${nd}.${rest}`],
+    [/^SPICE (subcircuit|model) (\S+), simulated as written: (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `SPICE-${k === "model" ? "модель" : "подсхема"} ${n}, считается как написана: элементов ${e}, узлов ${nd}.${rest.replace(/ Its MOSFETs run Berkeley's (BSIM\d)(?: and (BSIM\d))? model, as ngspice does\./, (x, a, b) => ` Её МОП-транзисторы считаются по берклиевской модели ${a}${b ? " и " + b : ""}, как в ngspice.`)}`],
     [/^(Subcircuit|Model) (\S+): (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `${k === "Model" ? "Модель" : "Подсхема"} ${n}: элементов ${e}, узлов ${nd}.${rest ? " Пять выводов: принята за ОУ в обычном порядке (неинвертирующий вход, инвертирующий вход, V+, V−, выход); сверьте с комментарием модели." : ""}`],
     [/^The model cannot be simulated: (.+)\. The part is left out of the simulation\.$/, "Модель нельзя посчитать: $1. Деталь исключена из расчёта."],
     [/^(\S+) has no SPICE model yet \(select it, then Model…\): it is left out of the simulation\.$/, "У $1 пока нет SPICE-модели (выделите деталь и нажмите «Модель…»): она исключена из расчёта."],

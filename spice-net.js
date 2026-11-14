@@ -5,7 +5,7 @@
    flatten(text, name) reads a library (SpiceModel.parseLib) and turns one .SUBCKT, with
    the subcircuits it calls, into the simulator's own elements on local nodes:
      R C L K · V I (DC, and SIN PULSE EXP SFFM PWL in the transient) · D Q M J with their .MODEL (diode, Gummel–Poon BJT,
-     level 1 to 3 MOSFET by its own equations with its bulk, LTspice's VDMOS as the square law, JFET) · E G F H, linear,
+     level 1 to 3 MOSFET by its own equations with its bulk, BSIM3v3 and BSIM4 (ngspice's code), LTspice's VDMOS as the square law, JFET) · E G F H, linear,
      VALUE = {…}, TABLE and POLY(n), LAPLACE (H(s) as a state-space network) and FREQ (a table fitted
      to H(s) by vector fitting) · B (I = or V =, Laplace=) · S and W switches · T (lossless) · X.
    What depends on voltages or currents by an expression becomes a behavioural source
@@ -19,7 +19,7 @@
    small-signal analyses; a VDMOS's Cgd follows CGDMIN … CGDMAX (A). A transistor's temperature
    terms (XTI, EG, XTB, TNOM) set it at another temperature, or as it heats itself (build's spec).
    Not carried over: the other temperature terms and noise parameters. Lossless transmission lines (T) are
-   the engine's TLINE. Not supported (an error): CHEBYSHEV sources, lossy lines (O, U, T with R or G), BSIM MOSFETs, PWL from a file. B sources may read time.
+   the engine's TLINE. Not supported (an error): CHEBYSHEV sources, lossy lines (O, U, T with R or G), PWL from a file. B sources may read time. MOSFETs at LEVEL 8, 49, 53 (BSIM3v3) and 14, 54 (BSIM4) are BSIM elements (bsim3.js, bsim4.js).
 
    build(spec, pinNodes, alloc, id) gives the engine's elements for one part of a circuit.
    ============================================================================= */
@@ -30,6 +30,8 @@
   // The engine rounds a FET's turn-on over 50 mV for its own parts; a maker's model sets the
   // gain of an input pair by a few tens of millivolts of overdrive, so here the corner is sharp.
   const FET_S = 0.002;
+  // the MOSFET levels that are BSIM models: BSIM3v3 (ngspice 8, HSPICE 49 and 53) and BSIM4 (ngspice 14, HSPICE 54)
+  const BSIM_LEVEL = { 8: 3, 49: 3, 53: 3, 14: 4, 54: 4 };
   // A level 1, 2 or 3 MOSFET's constants for the engine's mos1Id/mos2Id/mos3Id (Semi.mosx), worked out
   // as ngspice's mos1temp.c, mos2temp.c and mos3temp.c do at the nominal temperature (27 °C): KP from
   // UO and TOX, PHI, GAMMA and VTO from NSUB where those are not given, the depletion width's
@@ -73,13 +75,17 @@
   }
   const DEVICE_PINS = { d: ["A", "K"], npn: ["C", "B", "E"], pnp: ["C", "B", "E"], nmos: ["D", "G", "S"], pmos: ["D", "G", "S"], vdmos: ["D", "G", "S"], njf: ["D", "G", "S"], pjf: ["D", "G", "S"] };
   const DEVICE_LINE = { d: "D1 A K", npn: "Q1 C B E", pnp: "Q1 C B E", nmos: "M1 D G S S", pmos: "M1 D G S S", vdmos: "M1 D G S", njf: "J1 D G S", pjf: "J1 D G S" };
+  // a lone BSIM MOSFET model (an IC process's transistor) keeps its bulk as a fourth pin: D, G, S, B
+  const bsimOf = m => ((m.type === "nmos" || m.type === "pmos") && m.p && m.p.level !== undefined ? BSIM_LEVEL[Math.round(parseFloat(m.p.level))] || 0 : 0);
+  const devicePins = m => (bsimOf(m) ? ["D", "G", "S", "B"] : DEVICE_PINS[m.type]);
+  const deviceLine = m => (bsimOf(m) ? "M1 D G S B" : DEVICE_LINE[m.type]);
   const DEVICE_NAME = { d: "diode", npn: "NPN transistor", pnp: "PNP transistor", nmos: "N-channel MOSFET", pmos: "P-channel MOSFET", vdmos: "power MOSFET", njf: "N-channel JFET", pjf: "P-channel JFET" };
 
   /** What a library offers as parts: its subcircuits, and its device models outside them */
   function list(text) {
     const lib = typeof text === "string" ? SM.parseLib(text) : text, out = [];
     lib.subckts.forEach(s => out.push({ name: s.name, kind: "subckt", pins: s.pins.slice(), hint: s.hint || "" }));
-    Object.keys(lib.models).forEach(k => { const m = lib.models[k]; if (DEVICE_PINS[m.type]) out.push({ name: k, kind: m.type, pins: DEVICE_PINS[m.type].slice(), hint: DEVICE_NAME[m.type] }); });
+    Object.keys(lib.models).forEach(k => { const m = lib.models[k]; if (DEVICE_PINS[m.type]) out.push({ name: k, kind: m.type, pins: devicePins(m).slice(), hint: DEVICE_NAME[m.type] + (bsimOf(m) ? ` (BSIM${bsimOf(m)}, with its bulk)` : "") }); });
     return out;
   }
 
@@ -343,7 +349,7 @@
       const mk = want && lib.models[want] ? want : !want ? Object.keys(lib.models).find(k => DEVICE_PINS[lib.models[k].type]) : null, m = mk && lib.models[mk];
       if (!m || !DEVICE_PINS[m.type]) throw new Error(want ? `no .SUBCKT or .MODEL ${name}` : "no .SUBCKT or device .MODEL in the text");
       kind = m.type;
-      top = { name: mk, pins: DEVICE_PINS[m.type].map(p => p.toLowerCase()), params: {}, paramOrder: [], funcs: {}, models: {}, els: [{ s: `${DEVICE_LINE[m.type]} ${mk}`, no: 0 }], hint: "" };
+      top = { name: mk, pins: devicePins(m).map(p => p.toLowerCase()), params: {}, paramOrder: [], funcs: {}, models: {}, els: [{ s: `${deviceLine(m)} ${mk}`, no: 0 }], hint: "" };
     }
     const els = [], warn = new Set(), couplings = [];
     let topMap = null;
@@ -656,11 +662,46 @@
         const je = junc(m, "vje|pe", "mje|me", no, 0.75, 0.33), jc = junc(m, "vjc|pc", "mjc|mc", no, 0.75, 0.33);
         if (pol > 0) { cap(nm + "#cje", b2, e2, cje, je); cap(nm + "#cjc", b2, c2, cjc, jc); } else { cap(nm + "#cje", e2, b2, cje, je); cap(nm + "#cjc", c2, b2, cjc, jc); }
       }
+      // BSIM3v3 (levels 8, 49, 53) and BSIM4 (14, 54) by the Berkeley models themselves (bsim3.js, bsim4.js,
+      // ported from ngspice): one BSIM element carries the model card and the instance line, the engine
+      // sets it up; here the fixed resistors around it: the sheet resistance of the drain and source
+      // (NRD, NRS × RSH; BSIM4 with RDSMOD=1 works its own bias-dependent ones out), BSIM4's gate electrode
+      // (RGATEMOD=1) and body network (RBODYMOD=1, five resistors to the junctions' own nodes)
+      function bsimFet(nm, d, g, s, m, ip, no, b, ver, pol) {
+        const B = root[ver === 3 ? "Bsim3" : "Bsim4"];
+        if (!B) throw new Error(`${at(no)}${nm}: the BSIM${ver} model (bsim${ver}.js) is not loaded`);
+        const params = { type: pol }, inst = {};
+        for (const k in m.p) {
+          if (k === "level") continue;
+          if (k === "version") { params.version = String(m.p[k]).replace(/^["']|["']$/g, ""); continue; }
+          const v = val(m.p[k], no); if (isFinite(v)) params[k] = v;
+        }
+        for (const k in ip) { const v = val(ip[k], no); if (isFinite(v)) inst[k] = v; }
+        let dev;
+        try { dev = B.setup(params, inst, 27); } catch (e) { throw new Error(`${at(no)}${nm}: ${e.message}`); }
+        const mult = dev.mult || 1, bulk = b === null || b === undefined ? s : b;
+        const nd = { D: d, G: g, S: s, B: bulk }, fresh = () => nNodes++;
+        if (ver === 3) {
+          const d2 = series(nm + "#rd", d, dev.rd / mult), s2 = series(nm + "#rs", s, dev.rs / mult);
+          push({ name: nm, kind: "BSIM", n: [d2, g, s2, bulk], model: { ver, params, inst, slots: [0, 1, 2, 3] } });
+          return;
+        }
+        const has = (a, c) => dev.r.some(r => (r[0] === a && r[1] === c) || (r[0] === c && r[1] === a));
+        nd.Di = dev.rdsMod || has("D", "Di") ? fresh() : d;
+        nd.Si = dev.rdsMod || has("S", "Si") ? fresh() : s;
+        nd.Gi = has("G", "Gi") ? fresh() : g;
+        if (dev.rbodyMod) { nd.Bi = fresh(); nd.DB = fresh(); nd.SB = fresh(); } else nd.Bi = nd.DB = nd.SB = bulk;
+        dev.r.forEach(([a, c, gr], k) => { if (gr > 0) push({ name: nm + "#r" + k, kind: "R", n: [nd[a], nd[c]], r: 1 / (gr * mult) }); });
+        const term = [nd.Di, nd.Gi, nd.Si, nd.Bi, nd.DB, nd.SB, nd.D, nd.S], n = [];
+        const slots = term.map(k => { let i = n.indexOf(k); if (i < 0) { n.push(k); i = n.length - 1; } return i; });
+        push({ name: nm, kind: "BSIM", n, model: { ver, params, inst, slots } });
+      }
       function mos(nm, d, g, s, m, ip, no, b) {
         const vd = m.type === "vdmos";
         if (m.type !== "nmos" && m.type !== "pmos" && !vd) throw new Error(`${at(no)}${nm}: not a MOSFET model`);
         const pol = vd ? (m.p.pchan ? -1 : 1) : m.type === "nmos" ? 1 : -1, level = vd ? 1 : mp(m, "level", 1, no);
-        if (level > 3) throw new Error(`${at(no)}${nm}: MOSFET model level ${level} (BSIM) is not supported`);
+        if (!vd && BSIM_LEVEL[level]) return bsimFet(nm, d, g, s, m, ip, no, b, BSIM_LEVEL[level], pol);
+        if (level > 3) throw new Error(`${at(no)}${nm}: MOSFET model level ${level} is not supported (levels 1, 2, 3, BSIM3 8/49 and BSIM4 14/54 are)`);
         const ipv = (k, def) => (ip[k] !== undefined ? val(ip[k], no) : def);
         const mult = ipv("m", 1), w = ipv("w", mp(m, "w", 1e-4, no)), l = ipv("l", mp(m, "l", 1e-4, no));
         const d2 = series(nm + "#rd", d, mp(m, "rd", 0, no) / mult), s2 = series(nm + "#rs", s, mp(m, "rs", 0, no) / mult), g2 = series(nm + "#rg", g, mp(m, "rg", 0, no));
@@ -765,6 +806,7 @@
         o.model0 = Object.assign({}, e.model, e.tdata);
         if (spec.therm && f.kind !== "subckt") o.therm = Object.assign({}, spec.therm); else o.temp = +spec.temp;
       }
+      if (e.kind === "BSIM" && spec.temp !== undefined && spec.temp !== null && isFinite(spec.temp)) o.temp = +spec.temp;
       if (e.kind === "XFMR") { o.windings = e.windings.map(w => ({ a: map[w.a], b: map[w.b], turns: w.turns })); o.nodes = []; }
       if (e.ext) o.ext = e.ext.map(k => map[k]);
       if (e.ctl) o.ctl = e.ctl.map(eid);
