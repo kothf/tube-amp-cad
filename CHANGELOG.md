@@ -19,6 +19,10 @@ General-purpose simulation: logic and mixed-signal.
 - **SPICE export** of logic ICs as XSPICE subcircuits (`LOGIC_74HC14` …: `hyst` and `adc_bridge` inputs, `d_` models, rail-scaled `dac_bridge` outputs; a ripple counter as toggle flip-flops, the 4017 as a Johnson ring with decoding gates) and of a logic source as `PULSE`/`PWL`; a circuit with logic runs from zero (`uic`).
 - `tests/digital.test.mjs`, `tests/digital-ngspice.mjs` (eight XSPICE benches and every logic IC against ngspice, edge for edge), e2e part `10b-logic`.
 
+### Fixed (field test against ngspice)
+- From zero, a flip-flop whose active-low preset and clear are tied to the supply started at X (the logic read the supplies at 0 V); it now starts at its initial state, and a clock that rises within the first step still counts, as in ngspice.
+- The SPICE export named its nets `N1`, `N2` …, which ngspice reads as a model when a card is called `N1` (as BSIM cards often are); the nets then go out as `NET1` ….
+
 ## [3.225.0] - 2026-11-14
 
 General-purpose simulation: BSIM MOSFET models.

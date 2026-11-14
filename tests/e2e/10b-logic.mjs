@@ -75,4 +75,11 @@ import { cad, check } from "./harness.mjs";
   check(fp.some(x => /^DD1 DIP-14/.test(x)) && fp.some(x => /^DD3 DIP-16/.test(x)), `the logic ICs get DIP footprints (${fp.join(", ")})`);
   const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
   check(/\.subckt LOGIC_74HC14 A Y VCC GND/.test(sp) && /d_inverter/.test(sp) && /\.subckt LOGIC_CD4017/.test(sp) && /PULSE\(0 5 0 /.test(sp) && /\.tran .* uic/.test(sp), "the SPICE export writes each logic type as an XSPICE subcircuit, the logic source as a PULSE, and starts from zero");
+  // a maker's card named N1 (as BSIM cards often are): the nets then go out as NET1 …, not N1, which
+  // ngspice would read as the model
+  const sp2 = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state, m = C.makeComp("spice", { name: "N1", text: ".model N1 nmos level=1 vto=1 kp=1e-3", sub: "N1", sym: "nmos", pinNames: ["D", "G", "S"], map: ["D", "G", "S"] }, 900, 700, 0);
+    S.comps.push(m); C.commit(); const out = C.spiceNetlist(); S.comps.pop(); C.commit(); return out;
+  });
+  check(!/\bN\d+\b/.test(sp2.replace(/^\.model N1 .*$/m, "")) && /\bNET\d+\b/.test(sp2), "a model named N1 moves the exported nets to NET1 …");
 }

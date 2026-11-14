@@ -355,6 +355,22 @@
       settle(0, false);
       sim.t = 0; sim.kick = false;
     };
+    // from zero (uic): the first accepted step t, its solution x. The logic set up on the starting
+    // voltages (all zero, the supplies too) read every input as X; it starts again on x, so that a
+    // preset or clear tied to the supply holds as it does in ngspice, but a clock that went from
+    // that X to 1 over the step still counts as an edge (XSPICE: any change to 1 clocks)
+    sim.restart = (t, x) => {
+      const old = devs.map(d => [d.oclk, d.oce]);
+      sim.dcInit(); sim.dcUpdate(x); sim.start();
+      devs.forEach((d, k) => {
+        if (old[k][0] === undefined || d.oclk === old[k][0]) return;
+        d.oclk = old[k][0]; if (old[k][1] !== undefined) d.oce = old[k][1];
+        d.wake = t;
+      });
+      sim.kick = false; sim.t = t;
+      settle(t, false);
+      return true;
+    };
     // the next time anything happens after t: an event, a part's own wake, a ramp's end
     sim.nextTime = t => {
       let m = Infinity;

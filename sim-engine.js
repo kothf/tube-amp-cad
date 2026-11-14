@@ -3162,7 +3162,7 @@
       // on by then, as XSPICE reads its bridges once the sources have their values; a flip-flop
       // held by a pin tied to a supply that was still at 0 V does not start undefined)
       let kicked = false;
-      if (digFresh) { digFresh = false; dig.dcInit(); dig.dcUpdate(x); dig.start(); kicked = true; }
+      if (digFresh) { digFresh = false; kicked = dig.restart(t, x); }
       else if (dig) kicked = dig.advance(t, x);
       if (clock) clock(heatOf(hotB, x), hh);
       curPrev = xp; curH = hh;

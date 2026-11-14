@@ -150,3 +150,17 @@ test("from zero (uic) a flip-flop whose active-low preset and clear are tied to 
   assert.equal(stateAt(net(r, "q"), 0.5e-6), 0, "Q at its ic before the first clock");
   assert.equal(stateAt(net(r, "qn"), 0.5e-6), 1);
 });
+
+test("from zero (uic) a clock that rises within the first step still clocks a flip-flop (as in ngspice)", () => {
+  // a 555's output, say: 0 V at the start, high by the end of the first step
+  const els = [
+    { id: "V", kind: "V", nodes: [1, 0], v: 5 },
+    { id: "R", kind: "R", nodes: [1, 2], r: 1 },
+    { id: "C", kind: "C", nodes: [2, 0], c: 1e-12 },
+    { id: "AK", kind: "ADC", nodes: [2], out: "clk", p: { lo: 2.5, hi: 2.5 } },
+    { id: "PU", kind: "DIG", type: "pullup", in: [], out: ["d"], p: {} },
+    { id: "FF", kind: "DIG", type: "dff", in: ["d", "clk", null, null], out: ["q", "qn"], p: { clk_delay: 10e-9, ic: 0 } }];
+  const r = E.transient({ nodeCount: 3, elements: els }, { tStop: 1e-6, uic: true });
+  assert.ok(r.ok, r.error);
+  assert.equal(stateAt(net(r, "q"), 0.5e-6), 1, "the edge from 0 V counted");
+});
