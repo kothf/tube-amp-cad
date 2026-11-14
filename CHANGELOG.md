@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.207.0] - 2026-11-14
+
+Phase 3 of the simulation engine plan: never stuck. The two circuits that would not solve now do, and a run that still fails says where.
+
+### Fixed
+- **Example 17's power-on run** (the 50 W CFP amplifier switched on from cold) no longer stops at its first step. Its ±30 V rails jump across empty capacitors and drive every junction at once, and Newton wandered off to absurd voltages. A time step that fails at its smallest subdivision is now also solved by source stepping, the sources brought up from nothing within the step. The run now settles to the same operating point the DC solve finds.
+- A source written `I1 4 99 DC=62.66U` (DC=value, as in some makers' files) is read; before, the model was refused.
+- **Maxim's MAX406/MAX407 models** solve. Their gain node sits at about 1.7 MV and feeds a product of two voltages. Newton's 25 V step limit held it back, so the solve ran out of iterations. A node that only behavioural sources read is now free of the limit, as other linear inner nodes already were. MAX407 agrees with ngspice within 0.00 %, and its "known" mark is gone.
+
+### Added
+- **Pseudo-transient for the operating point** (as ngspice's optran), tried when gain, gmin and source stepping all fail. It puts a conductance on every node toward the last state, starting at 1 S and falling fourfold a step (less after a step that fails), and lets the circuit run to rest from nothing. A plain solve from there must then agree.
+- **The stuck parts are named.** When a solve or a run fails, the status line names the parts on the nodes Newton was still moving most (devices first) and selects them on the sheet: "… · stuck near Q3, R12 (selected)".
+
+### Tests
+- `tests/opamp-survey.mjs` (not in CI) runs any number of the library's five-pin models as ×11 amplifiers here and in ngspice. In a seeded sample of 400, 256 are op-amps that ngspice can run (124 it cannot read, 20 are other parts). Of those 256, 254 agree within 2 %, one transimpedance model is 2 % off, and one uses a single-argument GAUSS() that is not supported.
+- An engine test checks that the pseudo-transient finds the same operating point as the ladder, and that a stuck solve names the transistor before its resistors.
+
 ## [3.206.0] - 2026-11-13
 
 Phase 1 of the simulation engine plan: fast edges right. Every waveform bench against ngspice now agrees within 2 % of its swing (a diode's reverse recovery was 22 % off, a saturating switch 2.9 %, a switch with transit times 92 %).

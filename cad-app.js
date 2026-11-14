@@ -451,7 +451,12 @@
         if (!(S.trans && S.trans.running && showBusy()))   // the power-on transient still runs: its progress stays on the line
           setStatus(S.sim.warnings.length ? "warn" : "ok", `Simulated in ${took} · ${what}` + (result.dcAveraged ? " · DC values averaged over the window" : "") + (S.sim.warnings.length ? " · " + S.sim.warnings[0] : ""));
         if (more) { broadcast(); updateInspector(true); render(); runSim("full"); simBusy("Preliminary result shown · settling fully…"); return; }
-      } else setStatus("error", result.error);
+      } else {
+        // the parts the solver was stuck at, named on the status line and selected on the sheet
+        const stuck = (result.stuck && result.stuck.parts || []).map(id => S.comps.find(c => c.id === id)).filter(Boolean);
+        if (stuck.length) { S.sel.comps.clear(); S.sel.wires.clear(); stuck.forEach(c => S.sel.comps.add(c.id)); }
+        setStatus("error", result.error + (stuck.length ? " · stuck near " + stuck.map(c => c.label || c.type).join(", ") + " (selected)" : ""));
+      }
       broadcast();
       updateInspector(true);
       render();

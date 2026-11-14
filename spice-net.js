@@ -203,7 +203,7 @@
           couplings.push({ ls: tk.slice(1, -1).map(t => prefix + t.toLowerCase()), k: val(tk[tk.length - 1], no), no });
         } else if (kind === "V" || kind === "I") {
           need(3);
-          const rest = tk.slice(3).filter(t => !/^dc$/i.test(t)), first = rest[0];
+          const rest = tk.slice(3).filter(t => !/^dc$/i.test(t)).map(t => t.replace(/^dc=/i, "")), first = rest[0];   // (DC=62.66U as well as DC 62.66U)
           const v = first && !/^(ac|sin|pulse|pwl|exp|sffm|rser=|cpar=)/i.test(first) ? val(first, no) : 0;
           if (rest.some(t => /^(sin|pulse|pwl|exp|sffm)/i.test(t))) warn.add("A signal source inside the model is taken at its DC value");
           push(kind === "V" ? { name: prefix + nm, kind: "V", n: [node(tk[1]), node(tk[2])], v } : { name: prefix + nm, kind: "I", n: [node(tk[1]), node(tk[2])], i: v });

@@ -1196,7 +1196,11 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   each to its finite difference); the rest (op-amps, regulators, imported
   SPICE tubes, a warming cathode) are differenced, one evaluation per terminal
   but the last. A time step that fails at its smallest subdivision is solved
-  by gmin stepping, as the DC operating point is. On one core, against 3.204:
+  by gmin stepping, then source stepping, as the DC operating point is; the
+  operating point's last resort is a pseudo-transient (a conductance to the last
+  state on every node, falling fourfold a step, as ngspice's optran). A run
+  that fails names the parts on the nodes Newton was still moving most and
+  selects them on the sheet. On one core, against 3.204:
   the full run of every example 2.1× faster (the stereo amplifier, ex 07,
   2.3×), the power-on runs 2.1×.
 - **Fine steps inside fast edges.** A time step whose third difference over

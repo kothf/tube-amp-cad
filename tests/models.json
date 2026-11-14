@@ -66,6 +66,6 @@
   { "sub": "MAX412", "maker": "Maxim", "file": "Models/Manufacturer/Maxim Integrated/MAX410.FAM" },
   { "sub": "MAX427", "maker": "Maxim", "file": "Models/Manufacturer/Maxim Integrated/MAX427.FAM" },
   { "sub": "MAX439", "maker": "Maxim", "file": "Models/Manufacturer/Maxim Integrated/MAX402.FAM" },
-  { "sub": "MAX407", "maker": "Maxim", "file": "Models/Manufacturer/Maxim Integrated/MAX406.FAM", "known": "its gain is a product of two voltages in a POLY source: the operating point is not found" }
+  { "sub": "MAX407", "maker": "Maxim", "file": "Models/Manufacturer/Maxim Integrated/MAX406.FAM" }
  ]
 }

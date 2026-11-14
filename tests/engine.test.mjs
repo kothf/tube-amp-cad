@@ -991,3 +991,18 @@ test("a junction's and a VDMOS gate-drain capacitor's charge is the integral of 
   const g = els[3];
   assert.ok(Math.abs(E.capAt(g, 100) - 1.5e-9) < 1e-12 && Math.abs(E.capAt(g, -1e6) - 40e-12) < 1e-12);
 });
+
+test("the pseudo-transient fallback finds the operating point the usual ladder finds; a failed solve names the parts it was stuck at", () => {
+  const Q = { pol: 1, is: 7e-15, bf: 290, br: 7.5, vaf: 63, ikf: 0.1, nf: 1, vt: 0.025852 };
+  const netlist = { nodeCount: 5, elements: [
+    { id: "v1", kind: "V", nodes: [1, 0], v: 15 },
+    { id: "rb1", kind: "R", nodes: [1, 2], r: 100e3 }, { id: "rb2", kind: "R", nodes: [2, 0], r: 15e3 },
+    { id: "rc", kind: "R", nodes: [1, 3], r: 4.7e3 }, { id: "re", kind: "R", nodes: [4, 0], r: 1e3 },
+    { id: "q1", kind: "BJT", nodes: [3, 2, 4], model: Q }] };
+  const circ = E.buildCircuit(netlist), dc = E.dcOperatingPoint(circ), pt = E.dcPseudoTransient(E.buildCircuit(netlist), new Array(circ.nUnk).fill(0));
+  assert.ok(dc.ok && pt.ok, "both solve");
+  for (let i = 0; i < 4; i++) assert.ok(Math.abs(dc.x[i] - pt.x[i]) < 1e-4, `node ${i + 1}: ${dc.x[i]} / ${pt.x[i]}`);
+  // the collector node stuck: the transistor first, then the resistors on it, by part
+  circ._stuck = [3];
+  assert.deepEqual(E.stuckOf(circ), { nodes: [3], parts: ["q1", "rc"] });
+});
