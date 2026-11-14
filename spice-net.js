@@ -60,7 +60,8 @@
     const leff = Math.max(level === 3 ? l - 2 * ld + mp(m, "xl", 0, no) : l - 2 * ld, 1e-9), weff = Math.max(level === 3 ? w - 2 * mp(m, "wd", 0, no) + mp(m, "xw", 0, no) : w, 1e-9);
     const P = { level, beta: kp * mult * weff / leff, leff, weff, phi, gamma, vbi: pol * vto - gamma * Math.sqrt(phi), lambda: mp(m, "lambda", 0, no), vt,
       cox, cmey: cox * leff * weff * mult, xd, nsub, ld, us: uo, xj: mp(m, "xj", 0, no), nfs: mp(m, "nfs", 0, no), vmax: mp(m, "vmax", 0, no) };
-    if (level === 2) {
+    if (level === 1) P.s = FET_S;
+    else if (level === 2) {
       Object.assign(P, { factor: 0.25 * Math.PI * mp(m, "delta", 0, no) * EPSSIL / (cox * weff), ucrit: mp(m, "ucrit", 1e4, no), uexp: mp(m, "uexp", 0, no),
         neff: mp(m, "neff", 1, no), pb: mp(m, "pb", 0.8, no) });
     } else if (level === 3) {
@@ -416,7 +417,9 @@
         const junction = (k, o, is, c, csw) => {
           if (o === bulk) return;
           const [a, c2] = pol > 0 ? [bulk, o] : [o, bulk];
-          push({ name: nm + "#b" + k, kind: "D", n: [a, c2], is, n_: 1 });
+          // (with SPICE's gmin across it: a bulk on a node of its own, as switches in makers' models
+          // tie theirs through 1 TΩ, is then held where SPICE holds it)
+          push({ name: nm + "#b" + k, kind: "D", n: [a, c2], is, n_: 1 }, { name: nm + "#b" + k + "g", kind: "R", n: [a, c2], r: 1e12 });
           cap(nm + "#cb" + k, a, c2, c, jb); cap(nm + "#cb" + k + "sw", a, c2, csw, jsw);
         };
         junction("d", d2, isd, cbd, cjsw * pd * mult); junction("s", s2, iss, cbs, cjsw * ps * mult);

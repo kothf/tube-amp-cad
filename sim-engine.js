@@ -254,7 +254,9 @@
   // level 1, the square law with the body effect (mos1load.c)
   function mos1Id(vds, vgs, vbs, P) {
     const sarg = vbs <= 0 ? Math.sqrt(P.phi - vbs) : Math.max(0, Math.sqrt(P.phi) - vbs / (2 * Math.sqrt(P.phi)));
-    const von = P.vbi + P.gamma * sarg, vgst = vgs - von;
+    // (P.s: the turn-on rounded over a few millivolts, as the 3-pin FET's, so Newton's method sees a
+    // slope below the threshold: a switch in a maker's model, off in the operating point, else stalls it)
+    const von = P.vbi + P.gamma * sarg, vgst = P.s ? P.s * softplus((vgs - von) / P.s) : vgs - von;
     MOS_OUT.von = von; MOS_OUT.vdsat = Math.max(vgst, 0);
     if (vgst <= 0) return 0;
     const betap = P.beta * (1 + P.lambda * vds);

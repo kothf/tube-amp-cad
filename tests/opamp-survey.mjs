@@ -35,6 +35,7 @@ for (const file of files.sort()) {
 let seed = 12345; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
 for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
 if (process.env.SAMPLE) list = list.slice(0, +process.env.SAMPLE);
+if (process.env.ONLY) list = list.filter(x => process.env.ONLY.toLowerCase().split(",").includes(x[1].toLowerCase()));   // ONLY=TLV2461,OPA301: just those
 const work = mkdtempSync(join(tmpdir(), "tubecad-survey-"));
 const bench = sub => `.subckt bench inp inn out\nVp vp 0 15\nVn vn 0 -15\nVin inp 0 DC 0.1\nR1 out inn 10k\nR2 inn 0 1k\nRL out 0 10k\nX1 inp inn vp vn out ${sub}\n.ends`;
 const n = { models: list.length, ngspiceCannot: 0, notOpAmp: 0, within2: 0, off: 0, notSolved: 0 }, bad = [];
