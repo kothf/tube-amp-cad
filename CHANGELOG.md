@@ -6,6 +6,27 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.213.0] - 2026-11-14
+
+Phase 5 of the simulation engine plan, item 1: LAPLACE sources and FREQ tables.
+
+### Added
+- **LAPLACE sources in a SPICE part.** PSpice's `E` or `G … LAPLACE {input} = {H(s)}` and LTspice's `Laplace=` on `E`, `G` and `B` (`B … V=expr Laplace=…` filters the expression) are simulated.
+  - H(s) can be any ratio of polynomials in s, written with the model's parameters and functions.
+  - It becomes a small state-space circuit of its own: states on capacitors, scaled to the poles' frequency so they keep sensible sizes. The response is therefore exact in the waveform, the frequency response and the operating point (H(0)).
+  - Refused, with the reason: anything that is not a ratio of polynomials (a delay `exp(-s·T)`, a root of s), and a numerator of higher degree than the denominator (an ideal differentiator).
+- **FREQ tables** (`E` or `G … FREQ {input} = [DB|MAG] [DEG|RAD] [R_I] (f, a, b) …`) are fitted by a ratio of polynomials and then run as a LAPLACE source.
+  - The fit is Gustavsen's vector fitting. It is deterministic: the starting poles are spread over the table's decades, then relocated ten times per order, and the order rises in pairs until the fit is within 0.05 dB and 0.5° (16 at most).
+  - The fitted order and how close it comes are listed with the model's notes.
+  - A table's `DELAY` is refused.
+
+### Tests
+- `tests/fixtures/lapdev.lib`: a second-order low-pass, a high-pass, a band-pass on a behavioural input with an offset, a transconductance with a zero and a pole, and a FREQ table of a third-order Butterworth. `tests/models.mjs` checks them against ngspice's XSPICE `s_xfer`:
+  - the response from 10 Hz to 100 kHz, within 0.003 dB and 0.1°;
+  - a 300 Hz square wave, within 1.1 % of its swing (the transconductance's 100 kHz pole on the edges);
+  - the operating points, against H(0). ngspice's `s_xfer` does not give its own operating point right.
+- `tests/spicenet.test.mjs`: every LAPLACE spelling's response against H(jω) computed directly (to 1 ppm), the FREQ fit against the Butterworth's (0.01 dB), and the refusals.
+
 ## [3.212.0] - 2026-11-14
 
 Phase 5 of the simulation engine plan, item 3: MOSFET levels 2 and 3.

@@ -129,6 +129,56 @@ test("MOSFET levels 1, 2 and 3 by their own equations, with the bulk, its juncti
   assert.throws(() => SN.flatten(".model MB NMOS(LEVEL=8)\n.subckt f d g s\nM1 d g s s MB\n.ends", "f"), /level 8/i);
 });
 
+test("LAPLACE sources: PSpice's and LTspice's spellings, the response a ratio of polynomials in s gives, exactly", () => {
+  const text = `.param fc=1k
+.subckt f in lp hp bp g4
+E1 lp 0 LAPLACE {V(in)} = {1/(1+1.41421356*s/(2*pi*fc)+(s/(2*pi*fc))**2)}
+E2 hp 0 in 0 Laplace=s/(s+628.318531)
+B3 bp 0 V=0.5*V(in)+0.1 Laplace=(s/1e4)/(1+s/1e4+(s/1e4)^2)
+G4 0 g4 LAPLACE {V(in)} = {1m*(1+s/1e3)/(1+s/1e5)}
+R4 g4 0 1k
+.ends`;
+  const H = [
+    s => 1 / (1 + 1.41421356 * s / (2 * Math.PI * 1e3) + (s / (2 * Math.PI * 1e3)) ** 2),
+    s => s / (s + 628.318531),
+    s => 0.5 * (s / 1e4) / (1 + s / 1e4 + (s / 1e4) ** 2),
+    s => 1 * (1 + s / 1e3) / (1 + s / 1e5)];
+  const f = SN.flatten(text, "f"); let n = f.nNodes;
+  const els = SN.build({ text, sub: "f" }, [1, 2, 3, 4, 5], () => n++, "U");
+  els.push({ id: "vin", kind: "V", nodes: [1, 0], v: 0.5 });
+  const ac = E.acSweep({ nodeCount: n, elements: els }, { inputs: [{ id: "vin" }], fStart: 10, fStop: 1e5, perDecade: 2, probes: [[2, 0], [3, 0], [4, 0], [5, 0]] });
+  assert.ok(ac.ok, "the sweep runs");
+  // complex arithmetic on [re, im]: each H at jω
+  const C = { add: (a, b) => [a[0] + b[0], a[1] + b[1]], mul: (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]], div: (a, b) => { const d = b[0] * b[0] + b[1] * b[1]; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; } };
+  const Hc = [
+    w => C.div([1, 0], C.add(C.add([1, 0], [0, 1.41421356 * w / (2 * Math.PI * 1e3)]), [-((w / (2 * Math.PI * 1e3)) ** 2), 0])),
+    w => C.div([0, w], [628.318531, w]),
+    w => C.div([0, 0.5 * w / 1e4], [1 - (w / 1e4) ** 2, w / 1e4]),
+    w => C.div([1, w / 1e3], [1, w / 1e5])];
+  ac.freqs.forEach((fq, k) => Hc.forEach((h, i) => {
+    const want = h(2 * Math.PI * fq), got = [ac.probes[i].re[k], ac.probes[i].im[k]];
+    assert.ok(Math.hypot(got[0] - want[0], got[1] - want[1]) <= 1e-6 * Math.hypot(...want) + 1e-12, `output ${i + 1} at ${fq} Hz: ${got} against ${want}`);
+  }));
+  // the operating point is H(0) times the input (the band-pass's offset blocked)
+  const r = E.simulate({ nodeCount: n, elements: els });
+  assert.ok(r.ok, r.error);
+  [[2, H[0](0) * 0.5], [3, 0], [4, 0], [5, 0.5]].forEach(([k, v]) => assert.ok(Math.abs(r.dc.nodes[k] - v) < 1e-6, `node ${k}: ${r.dc.nodes[k]} V, H(0) gives ${v} V`));
+});
+
+test("a FREQ table is fitted by a ratio of polynomials: a third-order Butterworth's table gives its response back", () => {
+  const text = fixture("lapdev.lib"), f = SN.flatten(text, "filters");
+  assert.ok(f.warnings.some(w => /E5: its FREQ table is run as a fitted transfer function of order \d+ \(within 0\.01 dB and 0\.1°/.test(w)), f.warnings.join("; "));
+  let n = f.nNodes;
+  const els = SN.build({ text, sub: "filters" }, [1, 2, 3, 4, 5, 6], () => n++, "U");
+  els.push({ id: "vin", kind: "V", nodes: [1, 0], v: 0 });
+  const ac = E.acSweep({ nodeCount: n, elements: els }, { inputs: [{ id: "vin" }], fStart: 10, fStop: 1e5, perDecade: 5, probes: [[6, 0]] });
+  ac.freqs.forEach((fq, k) => {
+    const p = fq / 5000, re = 1 - 2 * p * p, im = 2 * p - p * p * p, d = re * re + im * im, want = [re / d, -im / d], got = [ac.probes[0].re[k], ac.probes[0].im[k]];
+    assert.ok(Math.abs(20 * Math.log10(Math.hypot(...got) / Math.hypot(...want))) < 0.01, `${fq} Hz: ${20 * Math.log10(Math.hypot(...got))} dB`);
+  });
+  assert.throws(() => SN.flatten(".subckt f a b\nE1 b 0 FREQ {V(a)} = (10, 0, 0) (100, -1, -10) (1k, -3, -45) DELAY=1u\n.ends", "f"), /DELAY/);
+});
+
 test("a junction's capacitance in the waveform: the corner of 100 kΩ and a diode follows the bias", () => {
   // 100 pF at zero bias: C = 100 pF · (1 + V / 0.7)^−0.45; a sine at that corner comes out at 0.707
   const text = ".model DV D(IS=1e-14 CJO=100p VJ=0.7 M=0.45)\n.subckt dio a k\nD1 a k DV\n.ends";
@@ -147,7 +197,8 @@ test("a junction's capacitance in the waveform: the corner of 100 kΩ and a diod
 });
 
 test("what cannot be simulated is refused with the reason", () => {
-  assert.throws(() => SN.flatten(".subckt f a b\nE1 b 0 LAPLACE {V(a)} = {1/(1+s)}\n.ends", "f"), /LAPLACE/i);
+  assert.throws(() => SN.flatten(".subckt f a b\nE1 b 0 LAPLACE {V(a)} = {exp(-s*1u)/(1+s)}\n.ends", "f"), /ratio of polynomials/i);
+  assert.throws(() => SN.flatten(".subckt f a b\nE1 b 0 LAPLACE {V(a)} = {1+s}\n.ends", "f"), /differentiator/i);
   assert.throws(() => SN.flatten(".subckt f a b\nT1 a 0 b 0 Z0=50 TD=1n\n.ends", "f"), /transmission line/i);
   assert.throws(() => SN.flatten(".subckt f a b\nX1 a b nothere\n.ends", "f"), /nothere/i);
   assert.throws(() => SN.flatten(AMP, "other"), /no \.SUBCKT or \.MODEL/i);
@@ -180,8 +231,8 @@ test("a SPICE part's pins: ground, left open, and a model that fails leaves the 
   r = E.simulate(circuit([{ type: "vdc", params: { v: 8 }, pins: { "+": 1, "-": 0 } }, R(1e3, 1, 0), { id: "U", type: "spice", params: { ...p, map: ["", "2"] }, pins: { 2: 2 } }]), {});
   assert.ok(r.ok, "an open pin does not float");
   const els = [];
-  const bad = { id: "U", type: "spice", label: "DA1", params: { ...p, text: ".subckt halver in out\nE1 out 0 LAPLACE {V(in)} = {1/(1+s)}\n.ends" } };
-  assert.match(L.spiceElements(bad, () => 1, () => 2, els), /LAPLACE/i);
+  const bad = { id: "U", type: "spice", label: "DA1", params: { ...p, text: ".subckt halver in out\nA1 in out filt\n.ends" } };
+  assert.match(L.spiceElements(bad, () => 1, () => 2, els), /A1/);
   assert.equal(els.length, 0, "nothing of it in the netlist");
   assert.match(L.LIB.spice.info(bad), /cannot be simulated/);
   assert.match(L.LIB.spice.info({ params: L.LIB.spice.defaults }), /No model yet/);

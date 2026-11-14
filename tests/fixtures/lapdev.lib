@@ -1,0 +1,34 @@
+* LAPLACE sources, in PSpice's and LTspice's spellings: a second-order low-pass (f0 1 kHz, Q 0.707),
+* a first-order high-pass, a band-pass on a behavioural input with an offset, a transconductance
+* with a zero and a pole, a FREQ table of a third-order Butterworth low-pass (5 kHz, dB and degrees). tests/models.mjs runs them here and in ngspice, where each LAPLACE line is
+* replaced by the "*ng" lines before it (the FREQ table by the filter it was made from) (XSPICE's s_xfer, coefficients from the highest power down).
+.param f0=1k
+.subckt filters in lp hp bp g4 fr
+*ng A1 in lp f1
+*ng .model f1 s_xfer(num_coeff=[1] den_coeff=[1 1.41421356 1] denormalized_freq=6283.18531)
+E1 lp 0 LAPLACE {V(in)} = {1/(1+1.41421356*s/(2*pi*f0)+(s/(2*pi*f0))**2)}
+*ng A2 in hp f2
+*ng .model f2 s_xfer(num_coeff=[1 0] den_coeff=[1 628.318531])
+E2 hp 0 in 0 Laplace=s/(s+628.318531)
+*ng B3 x3 0 V=0.5*V(in)+0.1
+*ng A3 x3 bp f3
+*ng .model f3 s_xfer(num_coeff=[1e-4 0] den_coeff=[1e-8 1e-4 1])
+B3 bp 0 V=0.5*V(in)+0.1 Laplace=(s/1e4)/(1+s/1e4+(s/1e4)^2)
+*ng A4 in y4 f4
+*ng G4 0 g4 y4 0 1
+*ng .model f4 s_xfer(num_coeff=[1e-6 1e-3] den_coeff=[1e-5 1])
+G4 0 g4 LAPLACE {V(in)} = {1m*(1+s/1e3)/(1+s/1e5)}
+R4 g4 0 1k
+*ng A5 in fr f5
+*ng .model f5 s_xfer(num_coeff=[1] den_coeff=[1 2 2 1] denormalized_freq=31415.9265)
+E5 fr 0 FREQ {V(in)} = DB DEG
++ (10, 0.00000, -0.2292) (17.7828, -0.00000, -0.4076) (31.6228, -0.00000, -0.7247) (56.2341, -0.00000, -1.2888)
++ (100, -0.00000, -2.2920) (177.828, -0.00000, -4.0764) (316.228, -0.00000, -7.2523) (562.341, -0.00001, -12.9155)
++ (1000, -0.00028, -23.0782) (1778.28, -0.00878, -41.7323) (3162.28, -0.26942, -78.8200) (5623.41, -4.80561, -151.6125)
++ (10000, -18.12913, 150.2551) (17782.8, -33.06395, 122.6822) (31622.8, -48.06187, 108.1962) (56234.1, -63.06180, 100.2023)
++ (100000, -78.06180, 95.7320)
+.ends
+.subckt bench in lp hp bp g4 fr
+Vin in 0 DC 0.5 AC 1
+X1 in lp hp bp g4 fr filters
+.ends

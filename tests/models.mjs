@@ -61,8 +61,8 @@ function theirs(lib, bench, name, nodes) {
   return Object.keys(v).length === nodes.length ? { v } : { error: (out.match(/error[^\n]*/gi) || ["no result"]).slice(0, 2).join(" | ") };
 }
 // both, and the worst difference (relative, with 10 mV of floor)
-function compare(lib, bench, name, nodes) {
-  const a = ours(lib, bench, name), b = theirs(lib, bench, name, nodes);
+function compare(lib, bench, name, nodes, ngLib = lib) {
+  const a = ours(lib, bench, name), b = theirs(ngLib, bench, name, nodes);
   let worst = 0, at = "";
   if (a.v && b.v) nodes.forEach(n => { const err = Math.abs(a.v[n] - b.v[n]) / (Math.abs(b.v[n]) + 0.01); if (!(err <= worst)) { worst = err; at = `V(${n}) ${a.v[n].toPrecision(5)} / ngspice ${b.v[n].toPrecision(5)}`; } });
   return { a, b, worst, at };
@@ -91,8 +91,8 @@ function theirsAc(lib, bench, name, nodes, pins, f1) {
   return { f: first.map(r => r[0]), db: pins.map(p => (cols[`vdb(${p})`] || []).map(r => r[1])), ph: pins.map(p => (cols[`vp(${p})`] || []).map(r => r[1])) };
 }
 // the worst differences up to 20 kHz and over the whole sweep: { lo: [dB, °], all: [dB, °], at } or { error }, { dead } when ngspice shows no signal
-function compareAc(lib, bench, name, nodes, pins, f1 = F1) {
-  const a = oursAc(lib, bench, name, pins, f1), b = theirsAc(lib, bench, name, nodes, pins, f1);
+function compareAc(lib, bench, name, nodes, pins, f1 = F1, ngLib = lib) {
+  const a = oursAc(lib, bench, name, pins, f1), b = theirsAc(ngLib, bench, name, nodes, pins, f1);
   if (a.error || b.error) return { error: b.error ? "ngspice: " + b.error : a.error };
   const r = { lo: [0, 0], all: [0, 0], at: "" };
   for (let i = 0; i < pins.length; i++) for (let k = 0; k < b.f.length; k++) {
@@ -106,6 +106,8 @@ function compareAc(lib, bench, name, nodes, pins, f1 = F1) {
 }
 const acGood = r => !r.error && !r.dead && r.lo[0] <= 0.1 && r.lo[1] <= 1 && r.all[0] <= 0.3 && r.all[1] <= 3;
 const acLine = r => r.error || (r.dead ? "no signal at the output in ngspice" : `${r.lo[0].toFixed(2)} dB ${r.lo[1].toFixed(1)}° to 20 kHz, ${r.all[0].toFixed(2)} dB ${r.all[1].toFixed(1)}° to 1 MHz`);
+// the LAPLACE fixture for ngspice: its "*ng" lines (XSPICE's s_xfer) in place of the LAPLACE lines
+const lapNg = t => { let drop = false; return t.replace(/^\*ng /gm, "").split("\n").filter(l => { if (/^\+/.test(l)) return !drop; drop = /laplace|\bfreq\b/i.test(l) && !/^\*/.test(l); return !drop; }).join("\n"); };
 const fixture = name => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "latin1");
 // an op-amp of five pins (+ − V+ V− out) as a ×11 amplifier: 0.1 V in, 10 kΩ and 1 kΩ, 10 kΩ load
 const ampBench = (sub, vs) => `.subckt bench inp inn out\nVp vp 0 ${vs}\nVn vn 0 ${-vs}\nVin inp 0 DC 0.1 AC 1\nR1 out inn 10k\nR2 inn 0 1k\nRL out 0 10k\nX1 inp inn vp vn out ${sub}\n.ends`;
@@ -128,6 +130,13 @@ const ampBench = (sub, vs) => `.subckt bench inp inn out\nVp vp 0 ${vs}\nVn vn 0
   check(md.a.v && md.b.v && md.worst < 1e-3, `MOSFET levels 1, 2 and 3 with the body effect, operating points: ${md.a.error || md.b.error || `${mpins.length} nodes within ${(md.worst * 100).toFixed(3)} % of ngspice (${md.at})`}`);
   const ma = compareAc(mo.slice(0, mj), mo.slice(mj), "bench", mpins, mpins.slice(1), 1e7);
   check(!ma.error && ma.all[0] <= 0.05 && ma.all[1] <= 0.5, `MOSFET levels 1, 2 and 3 with junction and Meyer gate capacitances, 10 Hz to 10 MHz: ${ma.error || `within ${ma.all[0].toFixed(3)} dB and ${ma.all[1].toFixed(2)}° of ngspice (${ma.at})`}`);
+  // LAPLACE sources and a FREQ table against XSPICE's s_xfer: the operating point, the response, a square wave through them
+  const la = fixture("lapdev.lib"), lng = lapNg(la);
+  // (s_xfer's own operating point is not H(0): ngspice puts the low-pass at 0 and the high-pass at its input, so the DC is checked against H(0))
+  const lpins = ["in", "lp", "hp", "bp", "g4", "fr"], ld = ours(la, "", "bench"), want = { lp: 0.5, hp: 0, bp: 0, g4: 0.5, fr: 0.5 };
+  check(ld.v && Object.keys(want).every(k => Math.abs(ld.v[k] - want[k]) < (k === "fr" ? 1e-4 : 1e-6)), `LAPLACE sources and a FREQ table, operating points at H(0): ${ld.error || Object.keys(want).map(k => `${k} ${ld.v[k].toFixed(6)} V`).join(", ")}`);
+  const lac = compareAc(la, "", "bench", lpins, lpins.slice(1), 1e5, lng);
+  check(!lac.error && !lac.dead && lac.all[0] <= 0.01 && lac.all[1] <= 0.1, `LAPLACE sources and a FREQ table, 10 Hz to 100 kHz: ${lac.error || `within ${lac.all[0].toFixed(4)} dB and ${lac.all[1].toFixed(3)}° of ngspice (${lac.at})`}`);
 }
 
 // --- 1a: temperature: makers' transistor models at −20, 75 and 125 °C (their XTI, EG, XTB from TNOM) ---
@@ -199,11 +208,11 @@ function theirsTran(text, sub, d, pins, dt, n) {
 // the largest difference at any sample, as a share of the waveform's swing in ngspice; a sample
 // matches ngspice's waveform anywhere within one of the simulator's time steps of it (an edge
 // a fraction of a step early or late is the time grid, not the model)
-function compareTran(text, sub, d) {
+function compareTran(text, sub, d, ngText = text) {
   const pins = new RegExp(`^\\.subckt ${sub} (.*)$`, "mi").exec(text)[1].trim().split(/\s+/);
   const a = oursTran(text, sub, d);
   if (a.error) return { error: a.error };
-  const b = theirsTran(text, sub, d, pins, a.dt, a.n);
+  const b = theirsTran(ngText, sub, d, pins, a.dt, a.n);
   if (b.error) return { error: "ngspice: " + b.error };
   let worst = 0, at = "";
   pins.filter(p => p !== "in").forEach(p => {
@@ -240,6 +249,12 @@ function compareTran(text, sub, d) {
     if (bn.known) { if (good) check(false, `${line}: marked known (${bn.known}) but it agrees now, take the mark off`); else console.log(`KNOWN ${line} (${bn.known})`); continue; }
     check(good, line);
   }
+}
+
+{
+  // a square wave through the LAPLACE sources, against s_xfer
+  const la = fixture("lapdev.lib"), lt = compareTran(la, "filters", { wave: "square", f: 300, amp: 1 }, lapNg(la));
+  check(!lt.error && lt.worst <= 0.02, `waveform of LAPLACE sources and a FREQ table (a 300 Hz square wave): ${lt.error || `within ${(lt.worst * 100).toFixed(2)} % of its swing (worst ${lt.at})`}`);
 }
 
 // --- 2: makers' models ---
