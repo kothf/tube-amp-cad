@@ -1377,6 +1377,61 @@
     });
     commit(`Turned ${it.length} items 90°`);
   }
+  // Copy this layout to the other copies: the selected parts of one copy of a block (or one
+  // instance of a hierarchical sheet) set where the same parts of every other copy go, at the
+  // same distances from each other, with the tracks and vias of the copy's own nets. Each other
+  // copy keeps the place of its part that matches the first selected one; shared nets (ground,
+  // supplies) are left as they are. Locked parts and tracks stay put.
+  function replicateLayout() {
+    if (!S.model) return;
+    const keys = S.sel && S.sel.kind === "part" ? [S.sel.key] : S.sel && S.sel.kind === "multi" ? S.sel.parts.slice() : [];
+    const blockOf = g => { const b = g && g.members.map(m => m.block).filter(Boolean); return b && b.length === g.members.length && new Set(b.map(x => x.i)).size === 1 ? b[0] : null; };
+    const src = keys.map(k => S.model.parts.find(g => g.key === k)).filter(g => blockOf(g));
+    const ids = new Set(src.map(g => blockOf(g).i));
+    if (!src.length || ids.size !== 1) { msg("Select parts of one copy of a block (or one instance of a hierarchical sheet), placed and routed as you want them, then copy the layout to the others"); return; }
+    const { i: si, d } = blockOf(src[0]);
+    const sig = g => g.members.map(m => m.block.m).sort().join("+");
+    const others = [...new Set(S.model.parts.map(g => blockOf(g)).filter(b => b && b.d === d && b.i !== si).map(b => b.i))];
+    if (!others.length) { msg("This block has no other copy on the board"); return; }
+    // nets: a pad's net in the source copy and the same pad's net in a copy
+    const padNet = (key, num) => { const p = S.model.pads.find(q => q.part === key && q.num === num); return p ? p.net : null; };
+    let placed = 0, tracks = 0, vias = 0;
+    const viaNet = vi => { const it = S.conn && S.conn.items.find(x => x.kind === "via" && x.vi === vi); return it ? it.net : null; };
+    const srcT = S.board.tracks.map((t, ti) => [{ ...t, pts: t.pts.map(p => p.slice()) }, netOfTrack(ti)]), srcV = S.board.vias.map((v, vi) => [{ ...v }, viaNet(vi)]);
+    others.forEach(oi => {
+      const twin = g => S.model.parts.find(h => { const b = blockOf(h); return b && b.i === oi && sig(h) === sig(g); });
+      const pairs = src.map(g => [g, twin(g)]).filter(([, h]) => h);
+      if (!pairs.length) return;
+      const [a0, b0] = pairs[0], A = S.board.parts[a0.key], Bp = S.board.parts[b0.key];
+      // a copy still waiting off the board goes beside the source copy instead, one width along
+      const off = h => S.drc.some(e => e.kind === "unplaced" && e.msg.startsWith(h.ref + " "));
+      let dx = Bp.x - A.x, dy = Bp.y - A.y;
+      if (pairs.every(([, h]) => off(h))) { const xs = src.map(g => S.board.parts[g.key].x); dx = (Math.max(...xs) - Math.min(...xs) + 12) * (others.indexOf(oi) + 1); dy = 0; }
+      const map = new Map(), shared = new Set();
+      pairs.forEach(([g, h]) => {
+        const bp = S.board.parts[g.key], hp = S.board.parts[h.key];
+        if (!hp.locked) { hp.x = +(bp.x + dx).toFixed(4); hp.y = +(bp.y + dy).toFixed(4); hp.rot = bp.rot || 0; hp.side = bp.side; if (bp.mount) hp.mount = bp.mount; else delete hp.mount; placed++; }
+        S.model.pads.filter(p => p.part === g.key).forEach(p => { const n = padNet(h.key, p.num); if (p.net === null || n === null || p.net === undefined || n === undefined) return; if (p.net === n) shared.add(p.net); else if (!map.has(p.net)) map.set(p.net, n); });
+      });
+      shared.forEach(n => map.delete(n));
+      if (!map.size) return;
+      const dst = new Set(map.values()), name = n => storedNet(n);
+      // with the parts in their new places: the copy's own copper goes, and so does copper left
+      // over there that now joins nothing or shorts nets (an older layout of that copy); then the
+      // source's tracks and vias come over moved by the same step
+      analyse();
+      const box = [Infinity, Infinity, -Infinity, -Infinity];
+      S.model.pads.filter(p => pairs.some(([, h]) => h.key === p.part)).forEach(p => { box[0] = Math.min(box[0], p.x - 3); box[1] = Math.min(box[1], p.y - 3); box[2] = Math.max(box[2], p.x + 3); box[3] = Math.max(box[3], p.y + 3); });
+      const inBox = pts => pts.some(([x, y]) => x >= box[0] && x <= box[2] && y >= box[1] && y <= box[3]);
+      const goes = (n, pts) => dst.has(n) || ((n === null || n === "short") && inBox(pts));
+      const nowT = S.board.tracks.map((t, ti) => [t, netOfTrack(ti)]), nowV = S.board.vias.map((v, vi) => [v, viaNet(vi)]);
+      S.board.tracks = nowT.filter(([t, n]) => t.locked || !goes(n, t.pts)).map(([t]) => t);
+      S.board.vias = nowV.filter(([v, n]) => v.locked || !goes(n, [[v.x, v.y]])).map(([v]) => v);
+      srcT.forEach(([t, n]) => { if (map.has(n)) { S.board.tracks.push({ ...t, locked: undefined, pts: t.pts.map(([x, y]) => [+(x + dx).toFixed(4), +(y + dy).toFixed(4)]), net: name(map.get(n)) }); tracks++; } });
+      srcV.forEach(([v, n]) => { if (map.has(n)) { S.board.vias.push({ ...v, locked: undefined, x: +(v.x + dx).toFixed(4), y: +(v.y + dy).toFixed(4), net: name(map.get(n)) }); vias++; } });
+    });
+    commit(`Layout of ${src.length} part${src.length > 1 ? "s" : ""} copied to ${others.length} other cop${others.length > 1 ? "ies" : "y"}: ${placed} part${placed === 1 ? "" : "s"} placed${tracks ? `, ${tracks} track${tracks > 1 ? "s" : ""}` : ""}${vias ? `, ${vias} via${vias > 1 ? "s" : ""}` : ""} (Ctrl+Z takes it back)`);
+  }
   // Mounting of axial resistors: lying down (horizontal) or standing up (vertical, Shift+V). The pads
   // move to the pitch the body and leads need; the ends of the tracks on them follow, so nothing is
   // unrouted. keys: the parts (default: the selection or the part being dragged); to: "H" | "V" | undefined (swap)
@@ -2038,7 +2093,7 @@
     document.querySelectorAll("[data-tab]").forEach(t => { t.onclick = () => { document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x === t)); $("parts").hidden = t.dataset.tab !== "parts"; $("nets").hidden = t.dataset.tab !== "nets"; }; });
     $("ex-json").onclick = () => { list.hidden = true; download(JSON.stringify(S.board, null, 1), baseName() + "-board.json", "application/json"); };
     $("ex-dsn").onclick = () => { list.hidden = true; if (S.model) download(dsnOf().text, baseName() + ".dsn", "text/plain"); };
-    $("btn-autoroute").onclick = autoRoute; $("st-stop").onclick = stopRouting; $("btn-nudge").onclick = routeNudge; $("btn-rearrange").onclick = rearrange; $("mi-autoroute").onclick = autoRoute; $("mi-shove").onclick = () => setShove(!S.shoveOn); setShove(S.shoveOn, true); $("btn-unroute").onclick = unroute; $("btn-router").onclick = routerSetup;
+    $("btn-autoroute").onclick = autoRoute; $("st-stop").onclick = stopRouting; $("btn-nudge").onclick = routeNudge; $("btn-rearrange").onclick = rearrange; $("mi-autoroute").onclick = autoRoute; $("mi-shove").onclick = () => setShove(!S.shoveOn); setShove(S.shoveOn, true); $("btn-unroute").onclick = unroute; $("btn-replicate").onclick = replicateLayout; $("btn-router").onclick = routerSetup;
     $("router-test").onclick = routerTest; $("router-save").onclick = routerSave; $("router-cancel").onclick = () => { $("router-modal").hidden = true; };
     $("router-addr").onkeydown = e => { if (e.key === "Enter") routerSave(); };
     $("router-use-server").onchange = $("router-use-own").onchange = routerWhere;
@@ -2047,7 +2102,7 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { panel: panelUi, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   const boot = () => { init(); early.splice(0).forEach(e => bc.onmessage(e)); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

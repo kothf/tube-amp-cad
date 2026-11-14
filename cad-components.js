@@ -575,6 +575,36 @@
       field(0, 27, 55, "Date of issue", p.date); field(55, 27, 55, "Lang.", p.lang); field(110, 27, 35, "Sheet", p.sheet); field(145, 27, 35, "Standards", "IEC 61082", 2.6);
       ctx.restore();
     },
+    // hierarchical sheet port: where a wire leaves its sheet for the sheet symbol's pin of the
+    // same name on the sheet above. The flag says which way the signal goes (into the sheet's
+    // circuit, out of it, both ways, a supply); the name is drawn upright by the app
+    hport(ctx, c) {
+      line(ctx, [0, 0, 6, 0]);
+      const d = c.params.dir;
+      if (d === "in") line(ctx, [6, 0, 12, -6, 26, -6, 26, 6, 12, 6, 6, 0]);
+      else if (d === "out") line(ctx, [6, -6, 20, -6, 26, 0, 20, 6, 6, 6, 6, -6]);
+      else if (d === "pwr") { ctx.strokeRect(6, -6, 20, 12); line(ctx, [10, -6, 10, 6]); }
+      else line(ctx, [6, 0, 12, -6, 20, -6, 26, 0, 20, 6, 12, 6, 6, 0]);
+    },
+    // hierarchical sheet symbol: a box standing for a sheet below, its ports as pins on its edge
+    sheetsym(ctx, c) {
+      const p = c.params, w = +p.w || 160, h = +p.h || 100;
+      ctx.save();
+      ctx.fillStyle = "rgba(121,192,255,0.06)"; ctx.fillRect(0, 0, w, h);
+      ctx.lineWidth = Math.max(ctx.lineWidth, 2); ctx.strokeRect(0, 0, w, h);
+      ctx.restore();
+      ctx.save();
+      ctx.font = "9px ui-monospace, Menlo, monospace"; ctx.textBaseline = "middle"; ctx.fillStyle = COL.value;
+      (p.pins || []).forEach(q => {
+        const a = +q.a || 0, at = q.s === "R" ? [w, a] : q.s === "T" ? [a, 0] : q.s === "B" ? [a, h] : [0, a];
+        // a small flag inside the edge for each pin, its name beside it
+        const inward = q.s === "R" ? [-1, 0] : q.s === "T" ? [0, 1] : q.s === "B" ? [0, -1] : [1, 0];
+        line(ctx, [at[0], at[1], at[0] + inward[0] * 6, at[1] + inward[1] * 6]);
+        if (q.s === "L" || q.s === "R") { ctx.textAlign = q.s === "L" ? "left" : "right"; ctx.fillText(q.n, at[0] + inward[0] * 9, at[1]); }
+        else { ctx.textAlign = "center"; ctx.fillText(q.n, at[0], at[1] + inward[1] * 12); }
+      });
+      ctx.restore();
+    },
     // sheet connector (interruption point, IEC 61082-1 6.4): conductor end with an open
     // arrow; the signal name and the cross-reference are drawn upright by the app
     offsheet(ctx) {
@@ -3020,6 +3050,30 @@
       // one ideal source per net: the CAD's netlist keeps the first rail of each net (buildNetlist)
       build: (c, net, alloc, out) => { if (net("1") !== 0) out.push({ id: c.id, kind: "V", nodes: [net("1"), 0], v: +c.params.v || 0 }); }
     },
+    // Hierarchy (cad-hier.js): a port on a sheet below, and the symbol of that sheet on the sheet
+    // above. Neither is simulated: the CAD joins each port to the pin of its name on its sheet's
+    // symbol (computeTopology), one instance at a time
+    hport: {
+      name: "Sheet port", prefix: "", group: "Ground & connectors", noLabel: true,
+      bbox: c => [0, -10, 30 + 7 * String(c.params.name || "").length, 10],
+      defaults: { name: "IN", dir: "in", side: "auto" },
+      pins: () => [{ id: "1", x: 0, y: 0 }],
+      value: c => c.params.name || "",
+      fields: [{ key: "name", label: "Port name", kind: "text" }, { key: "dir", label: "Signal", kind: "select", options: [["in", "Into this sheet"], ["out", "Out of this sheet"], ["bi", "Both ways"], ["pwr", "Supply"]] },
+        { key: "side", label: "On the symbol", kind: "select", options: [["auto", "Auto (in: left, out: right)"], ["L", "Left side"], ["R", "Right side"], ["T", "Top"], ["B", "Bottom"]] }],
+      info: () => "A port of a hierarchical sheet: the wire here joins the pin of the same name on this sheet's symbol on the sheet above, separately for each instance (the left and right channels stay apart). Every port is a pin of the symbol; the side it sits on follows the signal's direction unless set.",
+      build: () => {}
+    },
+    sheetsym: {
+      name: "Hierarchical sheet", prefix: "", group: "Ground & connectors", noLabel: true, noRotate: true,
+      bbox: c => [-4, -16, (+c.params.w || 160) + 4, (+c.params.h || 100) + 16],
+      defaults: { def: "", inst: "", name: "", title: "", w: 160, h: 100, pins: [] },
+      pins: c => { const w = +c.params.w || 160, h = +c.params.h || 100; return (c.params.pins || []).map(q => ({ id: q.n, name: q.n, x: q.s === "R" ? w : q.s === "L" ? 0 : +q.a, y: q.s === "T" ? 0 : q.s === "B" ? h : +q.a })); },
+      value: c => c.params.title || c.params.name || "",
+      fields: [{ key: "title", label: "Instance name", kind: "text" }],
+      info: () => "A sheet below this one, drawn as a box: its ports are the pins on the edge. Double-click it (or Open sheet) to step in; Alt+Backspace steps back out. Each symbol is one instance with parts and designators of its own; what you change on any instance's sheet (values, parts, wires) changes on every instance.",
+      build: () => {}
+    },
     offsheet: {
       name: "Sheet connector", prefix: "", group: "Ground & connectors", noLabel: true,
       // the arrow plus room for the name beyond its tip (for picking)
@@ -3266,7 +3320,7 @@
       ["siggen"], ["mains"],
       { sub: "Instruments and records" }, ["pickup", null, "Guitar pickup, single coil"], ["pickup", { preset: "paf", r: 8e3, l: 4.4, c: 150e-12, amp: 0.3 }, "Guitar pickup, humbucker"], ["phono", null, "Phono cartridge, moving magnet"], ["phono", { preset: "dl103", mv: 0.3e-3, r: 40, l: 30e-6 }, "Phono cartridge, moving coil"],
       { sub: "Controlled sources" }, ["vcvs", null, "Voltage-controlled voltage (E)"], ["vccs", null, "Voltage-controlled current (G)"]] },
-    { group: "Ground & connectors", items: [["ground"], ["offsheet"],
+    { group: "Ground & connectors", items: [["ground"], ["offsheet"], ["sheetsym", null, "Hierarchical sheet"], ["hport", null, "Sheet port (hierarchy)"],
       { sub: "Connectors" }, ["jack", null, "Jack, 6.35 mm switched"], ["jack", { kind: "RCA" }, "RCA socket"], ["iec"], ["terminal"], ["header"], ["faston"],
       { sub: "Power connectors (XT)" }, ["xt", { model: "XT30PW-M" }, "XT30 male, PCB"], ["xt", { model: "XT30PW-F" }, "XT30 female, PCB"], ["xt", null, "XT60 male, PCB"], ["xt", { model: "XT60PW-F" }, "XT60 female, PCB"],
       ["xt", { model: "XT90PW-M" }, "XT90 male, PCB"], ["xt", { model: "XT90PW-F" }, "XT90 female, PCB"], ["xt", { model: "XT90S-F" }, "XT90-S female, anti-spark"]] },

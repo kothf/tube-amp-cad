@@ -6,6 +6,7 @@
 (function (root) {
   "use strict";
   function BoardPanelUI(ctx) {
+    const mm = v => String(+(+v).toFixed(2));   // sizes shown to 0.01 mm
     const { $, S, save, msg, esc, download, fabMeta, fabReady } = ctx;
     const BP = root.BoardPanel, F = root.BoardFab;
     let thisPiece = null, thisKey = null, timer = 0;
@@ -36,7 +37,7 @@
       const all = pieces();
       $("panel-items").innerHTML = p.items.map((it, i) => {
         const pc = all[it.src], name = it.src === "this" ? "This board" : pc ? pc.name : "(missing)";
-        return `<tr data-i="${i}"><td title="${esc(name)}">${esc(name)}</td><td>${pc ? `${pc.w} × ${pc.h}` : "–"}</td>
+        return `<tr data-i="${i}"><td title="${esc(name)}">${esc(name)}</td><td>${pc ? `${mm(pc.w)} × ${mm(pc.h)}` : "–"}</td>
           <td><input class="cell" data-f="rows" value="${it.rows}" title="Copies down"></td><td><input class="cell" data-f="cols" value="${it.cols}" title="Copies across"></td>
           <td><select data-f="rot" title="Turned clockwise">${[0, 1, 2, 3].map(k => `<option value="${k}"${k === it.rot ? " selected" : ""}>${k * 90}°</option>`).join("")}</select></td>
           <td><button class="btn" data-del="${i}" title="Take this board off the panel">×</button></td></tr>`;
@@ -61,7 +62,7 @@
       const cv = $("panel-canvas"), lay = BP.layout(panel(), pieces());
       const out = $("panel-out");
       const lines = [];
-      if (lay.boards.length) lines.push(`<b>${lay.W} × ${lay.H} mm</b>, ${lay.boards.length} board${lay.boards.length > 1 ? "s" : ""}${lay.P.mode === "bites" ? `, ${lay.tabs.length} tabs, ${lay.bites.length} mouse-bite holes` : `, ${lay.vscore.length} V-score lines`}${lay.fids.length ? `, ${lay.fids.length} fiducials` : ""}${lay.tools.length ? `, ${lay.tools.length} tooling holes` : ""}.`);
+      if (lay.boards.length) lines.push(`<b>${mm(lay.W)} × ${mm(lay.H)} mm</b>, ${lay.boards.length} board${lay.boards.length > 1 ? "s" : ""}${lay.P.mode === "bites" ? `, ${lay.tabs.length} tabs, ${lay.bites.length} mouse-bite holes` : `, ${lay.vscore.length} V-score lines`}${lay.fids.length ? `, ${lay.fids.length} fiducials` : ""}${lay.tools.length ? `, ${lay.tools.length} tooling holes` : ""}.`);
       lay.errors.forEach(e => lines.push(`<span class="bad">${esc(e)}</span>`));
       lay.warnings.forEach(w => lines.push(`<span class="warnc">${esc(w)}</span>`));
       out.innerHTML = lines.join("<br>");
@@ -80,7 +81,7 @@
         F.paint(c, b.pc.layers["F.Cu"] || [], "#c8763a", "#1d3b2a");
         F.paint(c, (b.pc.layers["F.SilkS"] || []).filter(op => op.pol !== "C"), "rgba(240,240,240,0.8)", "#1d3b2a");
         c.fillStyle = "#0b1118";
-        (b.pc.drills.pth || []).concat(b.pc.drills.npth || []).forEach(([d, pts]) => pts.forEach(([x, y]) => { c.beginPath(); c.arc(x, y, +d / 2, 0, Math.PI * 2); c.fill(); }));
+        (b.pc.drills.pth || []).concat(b.pc.drills.npth || []).forEach(([d, pts]) => pts.forEach(p => { if (p.length === 4) { c.save(); c.lineWidth = +d; c.lineCap = "round"; c.strokeStyle = c.fillStyle; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(p[2], p[3]); c.stroke(); c.restore(); return; } c.beginPath(); c.arc(p[0], p[1], +d / 2, 0, Math.PI * 2); c.fill(); }));
       });
       // routed away: what lies between the boards (the gap) shows dark, so the tabs stand out
       if (lay.P.mode === "bites") {
@@ -119,7 +120,7 @@
         const size = JSON.stringify(pc).length;
         p.pieces[id] = pc; p.items.push({ src: id, rows: 1, cols: 1, rot: 0 });
         S.board.panel = BP.normalise(p); save();
-        msg(`${name}: ${pc.w} × ${pc.h} mm, ${pc.copper.length} layers added to the panel${pc.warnings && pc.warnings.length ? " (" + pc.warnings[0] + ")" : ""}${size > 1.5e6 ? " · it is big and makes the circuit file bigger" : ""}`);
+        msg(`${name}: ${mm(pc.w)} × ${mm(pc.h)} mm, ${pc.copper.length} layers added to the panel${pc.warnings && pc.warnings.length ? " (" + pc.warnings[0] + ")" : ""}${size > 1.5e6 ? " · it is big and makes the circuit file bigger" : ""}`);
         fill(); draw();
       } catch (e) { msg(`Could not read ${file.name}: ${e.message || e}`); }
     }
