@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.218.0] - 2026-11-14
+
+Board design plan, phase B3: push and shove.
+
+### Added
+- **Push and shove while routing** (Route ▾ → *Push and shove*, Shift+X, on by default). When only other nets' tracks are in the way of the track being placed, they step aside instead of refusing the click: the part beside the new track moves out by just the clearance it lacks, with a 45° jog in and out, its ends staying put; a jog that would run past a bend moves the bend. Pushed tracks push the next ones in turn (a chain).
+- Pads, vias, holes, keep-outs, locked tracks and track ends never move; a push that would need them to, or would cross two tracks, moves nothing, and the status line says why. The pushed tracks are drawn where they would go while the pointer moves (their old place faint); Backspace past that corner puts them back, and the whole route is one Ctrl+Z step.
+- `board-shove.js`: the shove itself, deterministic and tested on its own (`tests/shove.test.mjs`).
+
 ## [3.217.0] - 2026-11-14
 
 General-purpose simulation, part 1: a free transient analysis with time sources.

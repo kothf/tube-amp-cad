@@ -488,6 +488,36 @@ import { readFile } from "node:fs/promises";
   const ra = await bd.evaluate(() => { const k = BoardApp.state.board.keepouts[BoardApp.state.board.keepouts.length - 1]; return { rule: k.rule, tracks: k.tracks, title: document.querySelector("#inspector .insp-title").textContent }; });
   check(ra.rule && ra.rule.clearance > 0 && ra.tracks === false && /Rule area/.test(ra.title), `Draw a rule area: an area with its own clearance and width, shown in the inspector (${JSON.stringify(ra)})`);
   await bd.evaluate(() => { BoardApp.state.board.keepouts.pop(); BoardApp.commit(); });
+  // push and shove: a track routed along beside another net's track pushes it aside; Backspace puts it back;
+  // Shift+X turns it off, and then the same track is refused
+  {
+    // a pad with room to its right and below (no other copper there), and the other net with the smallest clearance to it
+    const nets = await bd.evaluate(() => {
+      const S = BoardApp.state, o = S.board.outline, items = S.conn.items;
+      const free = (p, x1, y1, x2, y2) => x1 > 1 && y1 > 1 && x2 < o.w - 1 && y2 < o.h - 1 && !items.some(it => (it.kind !== "pad" || it.pad !== p) && [[it.s[0], it.s[1]], [it.s[2], it.s[3]], [(it.s[0] + it.s[2]) / 2, (it.s[1] + it.s[3]) / 2]].some(([x, y]) => x > x1 - it.r - 1 && x < x2 + it.r + 1 && y > y1 - it.r - 1 && y < y2 + it.r + 1));
+      const p = S.model.pads.find(q => q.net !== null && S.board.parts[q.part] && free(q, q.x + 1.5, q.y - 3, q.x + 34, q.y + 18));
+      if (!p) return null;
+      let best = null; new Set(S.model.pads.map(q => q.net)).forEach(n => { if (n === null || n === p.net) return; const c = S.clr.need(p.net, n).c; if (!best || c < best.c) best = { n, c }; });
+      return { x: p.x, y: p.y, ref: `${p.ref}-${p.num}`, nb: S.model.names[best.n], c: best.c };
+    });
+    if (!nets) check(false, "push and shove: no pad with room beside it on the test board");
+    else {
+    await bd.click('[data-tool="route"]'); const qa = await W(nets.x, nets.y); await bd.mouse.click(qa[0], qa[1]);
+    const yB = await bd.evaluate(n => { const S = BoardApp.state, y = n.y + S.route.w / 2 + 0.25 + n.c * 0.5; S.board.tracks.push({ layer: S.route.layer, w: 0.5, pts: [[n.x + 3, n.y + 16], [n.x + 3, y], [n.x + 32, y], [n.x + 32, n.y + 16]], net: n.nb }); BoardApp.analyse(); return y; }, nets);
+    const qb = await W(nets.x + 25, nets.y); await bd.mouse.move(qb[0], qb[1], { steps: 4 });
+    const live = await bd.evaluate(() => ({ bad: BoardApp.routeCheck(), on: BoardApp.state.shoveOn }));
+    await bd.mouse.click(qb[0], qb[1]);
+    const pushed = await bd.evaluate(() => { const t = BoardApp.state.board.tracks[BoardApp.state.board.tracks.length - 1]; return { y: Math.max(...t.pts.filter(p => p[1] < t.pts[0][1] - 1).map(p => p[1])), st: document.getElementById("st-msg").textContent, drc: BoardApp.state.drc.filter(d => /clearance|too close/i.test(d.kind + d.msg)).length }; });
+    await bd.keyboard.press("Backspace");
+    const back = await bd.evaluate(() => { const t = BoardApp.state.board.tracks[BoardApp.state.board.tracks.length - 1]; return t.pts[1][1]; });
+    await bd.keyboard.press("Shift+X"); await bd.mouse.move(qb[0] + 3, qb[1], { steps: 2 }); await bd.mouse.move(qb[0], qb[1], { steps: 2 });
+    const off = await bd.evaluate(() => ({ bad: !!BoardApp.routeCheck(), on: BoardApp.state.shoveOn }));
+    await bd.keyboard.press("Shift+X"); await bd.keyboard.press("Escape"); await bd.keyboard.press("s");
+    check(live.on && !live.bad && pushed.y > yB + 0.1 && /Pushed a track aside/.test(pushed.st) && Math.abs(back - yB) < 1e-6 && !off.on && off.bad,
+      `push and shove: routing from ${nets.ref} beside ${nets.nb}'s track pushes it aside (y ${yB.toFixed(3)} → ${pushed.y.toFixed(3)} mm, "${pushed.st}"); Backspace puts it back (${back.toFixed(3)}); Shift+X off refuses the track (${off.bad})`);
+    await bd.evaluate(() => { const S = BoardApp.state; S.board.tracks.splice(-1, 1); BoardApp.commit(); });
+    }
+  }
 
   // manufacturing outputs: the Gerber ZIP (the board is unfinished: confirm) and the print PDF
   bd.once("dialog", d => d.accept().catch(() => {}));
