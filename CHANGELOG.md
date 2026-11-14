@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.220.0] - 2026-11-14
+
+General-purpose simulation, part 2: the Transient tab's waveform viewer.
+
+### Added
+- **Currents and expressions as traces.** The box next to *+ Plot a net* takes `I(R3)` (into a two-pin part's first pin), `I(Q1.C)` (into one pin), `V(OUT,IN)`, and arithmetic over the run: `+ − * / ^`, SPICE number suffixes, `abs sqrt exp ln log10 db sin cos tan atan sgn min max pow`, `d()` (derivative), `integ()` (running integral), `time`, `pi`. Units follow (V·A = W, V/A = Ω, d(V) = V/s, ∫A = C) and label the axes, the readout, the table and the CSV. A mistake is named before it becomes a trace. The list offers every net and every part's current.
+- **Panes.** *+ Pane* adds a chart with its own scale under the others; traces go to the pane picked, ⇅ moves one, × removes a pane. The panes share the time axis, zoom and cursors.
+- **FFT.** A pane shows its traces as a spectrum (dB, log frequency) over the time shown or from cursor A to B, Hann-windowed so a sine reads its own amplitude; the strongest line of each trace is named.
+- **Cursors A and B.** Click for A, Shift+click for B: their times, Δt and 1/Δt; the table adds each trace at A, at B and B − A, and its figures cover A to B.
+- **Reference run.** *Keep as reference* keeps the traces; later runs draw them dashed under the new ones.
+- The engine's free transient records every part's terminal current when asked (`opts.currents`, `result.pinI`; a capacitor's from its charge over the step).
+
+### Tests
+- `tests/wavemath.test.mjs`: parsing, units, d/integ, error messages, the FFT against a sine and a square's harmonics, and recorded currents against an RC's exact current.
+- e2e (Transient tab on example 08): a second pane with a resistor's current and an expression of it, a typo refused, the FFT's peak at the 555's frequency, cursors A/B with Δt and their columns, a reference run drawn dashed.
+
 ## [3.219.0] - 2026-11-14
 
 Board design plan, phase B4: impedance, differential pairs and matched lengths.

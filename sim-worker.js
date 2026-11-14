@@ -45,7 +45,7 @@ self.onmessage = async (e) => {
     Object.values(result.tran.devices).forEach(d => { transfer.push(d.i.buffer); if (d.ig2) transfer.push(d.ig2.buffer); });
   }
   if (result.out) result.out.forEach(a => transfer.push(a.buffer));
-  if (kind === "tran" && result.ok) { transfer.push(result.t.buffer); result.nodes.forEach(a => { if (a) transfer.push(a.buffer); }); Object.values(result.currents).forEach(a => transfer.push(a.buffer)); }
+  if (kind === "tran" && result.ok) { transfer.push(result.t.buffer); result.nodes.forEach(a => { if (a) transfer.push(a.buffer); }); Object.values(result.currents).forEach(a => transfer.push(a.buffer)); if (result.pinI) result.pinI.vals.forEach(a => transfer.push(a.buffer)); }
   if (result.min) { result.min.forEach(a => transfer.push(a.buffer)); result.max.forEach(a => transfer.push(a.buffer)); }
   if (result.probes && result.freqs) { transfer.push(result.freqs.buffer); result.probes.forEach(p => { transfer.push(p.re.buffer, p.im.buffer); }); }
   self.postMessage({ seq, result }, transfer);

@@ -2926,9 +2926,11 @@
   //   opts: { tStop, tStart (saved from), maxStep (tStop/500 by default), uic (start from zero),
   //           ic: { node: volts } (held at the operating point, or set at the start with uic),
   //           reltol (1e-3), vntol (1e-4 V), maxValues (values kept: past it every other point
-  //           is dropped), budgetMs, onProgress(f) }
+  //           is dropped), currents (also record every part's terminal currents), budgetMs, onProgress(f) }
   //   returns { ok, t: Float64Array, nodes: [null, Float32Array per node], currents: { id: Float32Array }
-  //             (the branch currents of sources and inductors, into their first node), points, steps,
+  //             (the branch currents of sources and inductors, into their first node), pinI (with
+  //             opts.currents: { ids: [[element id, node]...], vals: [Float32Array...] }, the current
+  //             from that node into that element), points, steps,
   //             rejected, tStop, tStart, elapsedMs, stats } or { ok: false, error, at, stuck }
   // ---------------------------------------------------------------------------
   // a step's distance from the predictor may be this many times the tolerance (reltol·|v| + vntol):
@@ -2969,10 +2971,14 @@
     // the sources' corners
     const waves = circ.els.filter(e => e.tw).map(e => e.tw);
     const nextBreak = t => { let b = tStop; for (const w of waves) { const v = srcBreak(w, t); if (v < b) b = v; } return b; };
-    // the record: every unknown at each kept step
+    // the record: every unknown at each kept step, and with opts.currents every part's terminal
+    // currents after them (as currentsOf lists them; a capacitor's from its charge over the step)
+    const curIds = opts.currents ? currentsOf(circ, x, []) : null, nI = curIds ? curIds.length / 3 : 0, curVals = new Float64Array(nI);
+    const nRec = n + nI;
     const maxValues = opts.maxValues > 0 ? opts.maxValues : 8e6;
-    const cap = Math.max(1000, Math.floor(maxValues / Math.max(1, n)));
-    let size = Math.min(cap, 4096), T = new Float64Array(size), X = Array.from({ length: n }, () => new Float32Array(size)), m = 0, stride = 1, skip = 0;
+    const cap = Math.max(1000, Math.floor(maxValues / Math.max(1, nRec)));
+    let size = Math.min(cap, 4096), T = new Float64Array(size), X = Array.from({ length: nRec }, () => new Float32Array(size)), m = 0, stride = 1, skip = 0;
+    let curPrev = null, curH = 1;
     const keep = (t, xs, force) => {
       if (t < tStart - 1e-12 * tStop) return;
       if (!force && ++skip < stride) return;
@@ -2989,6 +2995,7 @@
         }
       }
       T[m] = t; for (let k = 0; k < n; k++) X[k][m] = xs[k];
+      if (nI) { instantCurrents(circ, xs, curPrev || xs, curH, curVals); for (let k = 0; k < nI; k++) X[n + k][m] = curVals[k]; }
       m++;
     };
     // self-heated transistors start at their ambient and warm through the run, as in startup()
@@ -3056,6 +3063,7 @@
       else for (let k = 0; k < n; k++) xd[k] = (xn[k] - xp[k]) / hh;
       steps++; t = tNext; x = xn;
       if (clock) clock(heatOf(hotB, x), hh);
+      curPrev = xp; curH = hh;
       keep(t, x, corner || t >= tStop * (1 - 1e-12));
       // (an error that dips where the third derivative crosses zero does not lengthen the step: the
       // larger of the last two steps' errors is the floor; a rising error is taken to go on rising)
@@ -3081,7 +3089,8 @@
     for (let k = 0; k < nv; k++) nodes.push(X[k].slice(0, m));
     const currents = {};
     circ.els.forEach(e => { if (e.branch !== undefined && e.id && !currents[e.id]) currents[e.id] = X[e.branch].slice(0, m); });
-    const result = { ok: true, t: T.slice(0, m), nodes, currents, points: m, steps, rejected, tStop, tStart, maxStep, elapsedMs: Date.now() - t0w, stats: circ.stats };
+    const result = { ok: true, t: T.slice(0, m), nodes, currents, points: m,
+      pinI: nI ? { ids: Array.from({ length: nI }, (_, k) => [curIds[3 * k], curIds[3 * k + 1]]), vals: X.slice(n).map(a => a.slice(0, m)) } : null, steps, rejected, tStop, tStart, maxStep, elapsedMs: Date.now() - t0w, stats: circ.stats };
     if (hotB.length) { result.thermal = {}; hotB.forEach(e => { result.thermal[e.id] = { tj: e._tj }; }); }
     return result;
   }

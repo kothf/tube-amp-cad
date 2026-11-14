@@ -219,7 +219,7 @@ import { cad, check, open } from "./harness.mjs";
     const u = ups.filter(x => x > 0.5e-3);   // (the first cycle starts from the operating point, half charged)
     return { err: T.error, traces: T.traces, n: sh.length, ups: u.map(x => +(x * 1e3).toFixed(3)), f: u.length > 2 ? (u.length - 1) / (u[u.length - 1] - u[0]) : 0, rows: document.querySelectorAll("#tr-pane .tr-table tbody tr").length };
   });
-  check(!tr.err && tr.n >= 1 && tr.rows === tr.n, `the run plots the scope channels with a row of figures each (${tr.traces.join(", ")})`);
+  check(!tr.err && tr.n >= 1 && tr.rows === tr.n, `the run plots the scope channels with a row of figures each (${tr.traces.map(q => q.expr).join(", ")})`);
   check(Math.abs(tr.f / 678 - 1) < 0.03, `the 555 astable runs at its own frequency (${tr.f.toFixed(0)} Hz, edges at ${tr.ups.join(", ")} ms; the steady state reads 678 Hz)`);
   const csv = await cad.evaluate(() => TubeCAD.transient.exportCsv());
   check(/^time,"V\(/.test(csv) && csv.split("\n").length > 100, "CSV holds the time and a column per trace");
@@ -238,6 +238,33 @@ import { cad, check, open } from "./harness.mjs";
   check(await cad.evaluate(() => TubeCAD.state.tran.traces.length) === n0 + 1, `+ Plot a net adds ${opt}`);
   await cad.click(`#tr-pane .tr-x[data-k="${n0}"]`);
   check(await cad.evaluate(() => TubeCAD.state.tran.traces.length) === n0, "its × takes it off");
+  // the waveform viewer: a second pane, a part's current and an expression typed in, a typo refused
+  await cad.click("#btn-tr-pane");
+  const iName = await cad.evaluate(() => TubeCAD.transient.currentNames().find(x => /^I\(R\d+\)$/.test(x)));
+  for (const e of [iName, `${iName}*${iName}*1k`, "bogus("]) { await cad.fill("#tr-expr", e); await cad.press("#tr-expr", "Enter"); }
+  const wv = await cad.evaluate(() => ({ panes: document.querySelectorAll("#tr-pane .tr-chart").length, tr: TubeCAD.transient.shown().filter(q => q.pane === 1).map(q => ({ e: q.expr, u: q.unit, ok: !!q.y, max: q.y ? Math.max(...q.y) : 0 })), bad: document.getElementById("tr-expr").classList.contains("bad") }));
+  check(wv.panes === 2 && wv.tr.length === 2 && wv.tr.every(q => q.ok) && wv.tr[0].u === "A" && wv.tr[0].max > 1e-4 && wv.tr[1].u === "A²", `+ Pane adds a chart; ${iName} and an expression of it plot there with their units (${JSON.stringify(wv.tr.map(q => [q.e, q.u]))})`);
+  check(wv.bad, "an expression with a mistake is not added, and its box says so");
+  // the first pane as a spectrum: the 555's fundamental
+  await cad.click('#tr-pane .tr-fft[data-p="0"]');
+  const pk = await cad.evaluate(() => [...document.querySelectorAll("#tr-pane .tr-info")].map(e => e.textContent).find(x => /peak/.test(x)) || "");
+  const pf = +((/peak ([\d.]+)(k?)Hz/.exec(pk) || [])[1] || 0);
+  check(Math.abs(pf / 678 - 1) < 0.05, `FFT shows the spectrum and its peak near the 555's 678 Hz (${pk})`);
+  await cad.click('#tr-pane .tr-fft[data-p="0"]');
+  // cursors A and B: Δt and the values at each
+  const cb = await cad.locator("#tr-chart").boundingBox();
+  await cad.mouse.click(cb.x + cb.width * 0.3, cb.y + cb.height / 2);
+  await cad.keyboard.down("Shift"); await cad.mouse.click(cb.x + cb.width * 0.6, cb.y + cb.height / 2); await cad.keyboard.up("Shift");
+  const cu = await cad.evaluate(() => ({ c: TubeCAD.state.tran.cur, line: (document.querySelector("#tr-pane .tr-curline") || {}).textContent || "", cols: document.querySelectorAll("#tr-pane .tr-table thead th").length }));
+  check(cu.c.a !== null && cu.c.b > cu.c.a && /Δt/.test(cu.line) && cu.cols === 10, `a click sets cursor A, Shift+click B: Δt, 1/Δt and columns at A, at B and B − A (${cu.line.trim()})`);
+  await cad.click("#btn-tr-curx");
+  // a run kept as a reference, drawn dashed under the next
+  await cad.click("#btn-tr-keep");
+  await cad.click("#btn-tr-run");
+  await cad.waitForFunction(() => { const T = TubeCAD.state.tran; return !T.job && T.result; }, null, { timeout: 60000 });
+  check(await cad.evaluate(() => document.querySelectorAll("#tr-pane .tr-ref").length) >= 2, "Keep as reference draws the kept run's traces dashed under the new run");
+  await cad.click("#btn-tr-unref");
+  await cad.evaluate(() => { const T = TubeCAD.state.tran; T.panes.splice(1); T.traces = T.traces.filter(q => q.pane === 0); TubeCAD.transient.render(); });
   // the signal generator's pulse: its own fields, its SPICE line
   const pulse = await cad.evaluate(() => {
     const C = TubeCAD, S = C.state, g = C.makeComp("siggen", { wave: "pulse", vlo: 0, vhi: 5, per: 0 }, 2000, 2000, 0); S.comps.push(g);
