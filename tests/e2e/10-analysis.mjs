@@ -193,3 +193,61 @@ import { cad, check, open } from "./harness.mjs";
   check(R.verdict[0] === "bad" && /Other end/.test(R.verdict[1]), "broken at the other end, the panel says the loop reads as positive feedback and to tick Other end");
   await bode.close();
 }
+
+// --- Free transient: the Transient tab ---------------------------------------------------------
+{
+  await cad.bringToFront();
+  const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+  cad.once("dialog", d => d.accept().catch(() => {}));
+  await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^08-/.test(x.file))));
+  await cad.waitForFunction(s0 => TubeCAD.state.sim.seq !== s0 && !TubeCAD.state.sim.busy, s0, { timeout: 60000 });
+  cad.removeAllListeners("dialog");
+  await cad.click("#btn-analyze"); await cad.click("#btn-transient"); await cad.keyboard.press("Escape");
+  check(await cad.evaluate(() => !document.getElementById("tr-pane").hidden && document.getElementById("btn-transient").getAttribute("aria-checked") === "true"), "Analyze ▾ → Transient opens the Transient tab, ticked");
+  await cad.fill("#tr-stop", "6m"); await cad.press("#tr-stop", "Tab");
+  await cad.fill("#tr-ic", "NOSUCHNET=1"); await cad.press("#tr-ic", "Tab");
+  await cad.click("#btn-tr-run");
+  check(/no net called NOSUCHNET/.test(await cad.textContent("#tr-pane")), "an initial condition on a net that is not there says so");
+  await cad.fill("#tr-ic", ""); await cad.press("#tr-ic", "Tab");
+  await cad.click("#btn-tr-run");
+  await cad.waitForFunction(() => { const T = TubeCAD.state.tran; return !T.job && (T.result || T.error); }, null, { timeout: 60000 });
+  const tr = await cad.evaluate(() => {
+    const T = TubeCAD.state.tran, sh = TubeCAD.transient.shown().filter(q => q.y), r = T.result;
+    // the 555's output: its rising edges, and the frequency between the first and the last
+    const sw = q => Math.max(...q.y) - Math.min(...q.y), out = sh.slice().sort((a, b) => sw(b) - sw(a))[0], y = out.y, mid = (Math.max(...y) + Math.min(...y)) / 2, ups = [];
+    for (let i = 1; i < y.length; i++) if (y[i - 1] < mid && y[i] >= mid) ups.push(r.t[i]);
+    const u = ups.filter(x => x > 0.5e-3);   // (the first cycle starts from the operating point, half charged)
+    return { err: T.error, traces: T.traces, n: sh.length, ups: u.map(x => +(x * 1e3).toFixed(3)), f: u.length > 2 ? (u.length - 1) / (u[u.length - 1] - u[0]) : 0, rows: document.querySelectorAll("#tr-pane .tr-table tbody tr").length };
+  });
+  check(!tr.err && tr.n >= 1 && tr.rows === tr.n, `the run plots the scope channels with a row of figures each (${tr.traces.join(", ")})`);
+  check(Math.abs(tr.f / 678 - 1) < 0.03, `the 555 astable runs at its own frequency (${tr.f.toFixed(0)} Hz, edges at ${tr.ups.join(", ")} ms; the steady state reads 678 Hz)`);
+  const csv = await cad.evaluate(() => TubeCAD.transient.exportCsv());
+  check(/^time,"V\(/.test(csv) && csv.split("\n").length > 100, "CSV holds the time and a column per trace");
+  // drag across the chart: zoom to that span; Show all goes back
+  const b = await cad.locator("#tr-chart").boundingBox();
+  await cad.mouse.move(b.x + b.width * 0.3, b.y + b.height / 2); await cad.mouse.down(); await cad.mouse.move(b.x + b.width * 0.5, b.y + b.height / 2, { steps: 4 }); await cad.mouse.up();
+  const v = await cad.evaluate(() => TubeCAD.state.tran.view);
+  check(v && v[0] > 1e-3 && v[1] < 4e-3, `a drag zooms the chart to that span (${v && v.map(x => (x * 1e3).toFixed(2)).join("–")} ms)`);
+  check(/ms/.test(await cad.textContent("#tr-read")), "the cursor reads the traces under the pointer");
+  await cad.click("#btn-tr-all");
+  check(await cad.evaluate(() => TubeCAD.state.tran.view === null), "Show all puts the whole run back");
+  // a net added from the list, removed with its ×
+  const n0 = await cad.evaluate(() => TubeCAD.state.tran.traces.length);
+  const opt = await cad.evaluate(() => [...document.querySelectorAll("#tr-add option")].map(o => o.value).find(Boolean));
+  await cad.selectOption("#tr-add", opt);
+  check(await cad.evaluate(() => TubeCAD.state.tran.traces.length) === n0 + 1, `+ Plot a net adds ${opt}`);
+  await cad.click(`#tr-pane .tr-x[data-k="${n0}"]`);
+  check(await cad.evaluate(() => TubeCAD.state.tran.traces.length) === n0, "its × takes it off");
+  // the signal generator's pulse: its own fields, its SPICE line
+  const pulse = await cad.evaluate(() => {
+    const C = TubeCAD, S = C.state, g = C.makeComp("siggen", { wave: "pulse", vlo: 0, vhi: 5, per: 0 }, 2000, 2000, 0); S.comps.push(g);
+    S.sel.comps.clear(); S.sel.comps.add(g.id); C.commit(); C.updateInspector();
+    const labels = [...document.querySelectorAll("#inspector label.row > span:first-child")].map(l => l.textContent);
+    const line = C.spiceNetlist().split("\n").find(l => /PULSE\(/.test(l));
+    S.comps = S.comps.filter(c => c !== g); C.commit();
+    return { labels: labels.join("|"), line };
+  });
+  check(/Pulse width/.test(pulse.labels) && /Rise time/.test(pulse.labels) && !/Amplitude/.test(pulse.labels), "a pulse generator shows its levels and times, not an amplitude");
+  check(/PULSE\(0 5 0 /.test(pulse.line || ""), `the SPICE export writes it as PULSE (${pulse.line})`);
+  await cad.evaluate(() => TubeCAD.toggleBom(false));
+}
