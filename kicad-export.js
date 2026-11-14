@@ -43,6 +43,24 @@
     [38, "B.Mask", "user"], [39, "F.Mask", "user"], [40, "Dwgs.User", "user", "User.Drawings"], [41, "Cmts.User", "user", "User.Comments"],
     [42, "Eco1.User", "user", "User.Eco1"], [43, "Eco2.User", "user", "User.Eco2"], [44, "Edge.Cuts", "user"], [45, "Margin", "user"],
     [46, "B.CrtYd", "user", "B.Courtyard"], [47, "F.CrtYd", "user", "F.Courtyard"], [48, "B.Fab", "user"], [49, "F.Fab", "user"]];
+  // the board's layers: its inner copper (In1.Cu = 1 …; a plane layer is KiCad's "power") after the top
+  function layersOf(board) {
+    const C = root.BoardCore, CU = C && C.copperOf ? C.copperOf(board) : ["F.Cu", "B.Cu"];
+    return [PCB_LAYERS[0]].concat(CU.slice(1, -1).map((l, i) => [i + 1, l, C.isPlane(board, l) ? "power" : "signal"]), PCB_LAYERS.slice(1));
+  }
+  // the physical stack-up: copper (outer, inner thickness) and FR-4 between, the board's thickness shared out
+  function stackupOf(board) {
+    const C = root.BoardCore, st = board.stackup || {}, CU = C && C.copperOf ? C.copperOf(board) : ["F.Cu", "B.Cu"];
+    const tOut = (st.copper || 35) / 1000, tIn = (st.innerCopper || st.copper || 35) / 1000, total = st.thickness || 1.6;
+    const diel = Math.max(0.05, (total - 2 * tOut - (CU.length - 2) * tIn) / (CU.length - 1)), er = st.er > 0 ? st.er : 4.5;
+    const L = ['(layer "F.SilkS" (type "Top Silk Screen"))', '(layer "F.Paste" (type "Top Solder Paste"))', '(layer "F.Mask" (type "Top Solder Mask") (thickness 0.01))'];
+    CU.forEach((l, i) => {
+      L.push(`(layer ${q(l)} (type "copper") (thickness ${n(i === 0 || i === CU.length - 1 ? tOut : tIn)}))`);
+      if (i < CU.length - 1) L.push(`(layer "dielectric ${i + 1}" (type "${i % 2 ? "prepreg" : "core"}") (thickness ${n(diel)}) (material "FR4") (epsilon_r ${n(er)}) (loss_tangent 0.02))`);
+    });
+    L.push('(layer "B.Mask" (type "Bottom Solder Mask") (thickness 0.01))', '(layer "B.Paste" (type "Bottom Solder Paste"))', '(layer "B.SilkS" (type "Bottom Silk Screen"))');
+    return ` (stackup ${L.join(" ")} (copper_finish "HAL SnPb") (dielectric_constraints no))`;
+  }
   const PAPERS = [["A4", 297, 210], ["A3", 420, 297], ["A2", 594, 420], ["A1", 841, 594], ["A0", 1189, 841]];
   // the smallest landscape ISO sheet holding w × h mm with a margin, else a sheet of that size
   function paperFor(w, h, margin) {
@@ -215,8 +233,8 @@
 
     const head = [`(kicad_pcb (version ${PCB_VERSION}) (generator pcbnew)`, "", `  (general (thickness ${n((board.stackup && board.stackup.thickness) || 1.6)}))`, "",
       `  ${paperLine(paperFor(o.w, o.h))}`, `  ${titleBlock({ ...m, comments: [m.version ? "Tube Amp CAD " + m.version : "Tube Amp CAD"] })}`, "",
-      "  (layers", ...PCB_LAYERS.map(([id, nm, t, user]) => `    (${id} ${q(nm)} ${t}${user ? " " + q(user) : ""})`), "  )", "",
-      `  (setup (pad_to_mask_clearance ${n(R.maskExpansion || 0)}) (allow_soldermask_bridges_in_footprints no))`, "",
+      "  (layers", ...layersOf(board).map(([id, nm, t, user]) => `    (${id} ${q(nm)} ${t}${user ? " " + q(user) : ""})`), "  )", "",
+      `  (setup${stackupOf(board)} (pad_to_mask_clearance ${n(R.maskExpansion || 0)}) (allow_soldermask_bridges_in_footprints no))`, "",
       ...[...nets.entries()].map(([nm, i]) => `  (net ${i} ${q(nm)})`), ""];
     return head.join("\n") + body.map(s => "  " + s.replace(/\n/g, "\n  ")).join("\n") + "\n)\n";
   }

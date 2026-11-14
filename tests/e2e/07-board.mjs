@@ -169,6 +169,14 @@ import { readFile } from "node:fs/promises";
   await bd.click("#holes-corners"); await bd.click("#setup-apply");
   const su = await bd.evaluate(() => ({ o: BoardApp.state.board.outline, holes: BoardApp.state.board.holes.map(h => [h.x, h.y, h.d]) }));
   check(su.o.w === 120 && su.o.h === 90 && su.o.r === 4 && su.holes.length === 4 && su.holes[3][0] === 115 && su.holes[3][2] === 3.2, `Board setup: 120 × 90 mm, 4 mm corners, four M3 holes 5 mm in (${JSON.stringify(su.holes)})`);
+  // 4 layers: inner 1 a GND plane (its pour made), inner 2 a signal layer in the layer picker; back to 2 layers
+  await bd.click("#btn-board"); await bd.click("#btn-setup"); await bd.selectOption("#setup-layers", "4");
+  const inner = await bd.evaluate(() => [...document.querySelectorAll("#setup-inner select[data-in]")].map(s => s.value));
+  await bd.click("#setup-apply");
+  const l4 = await bd.evaluate(() => { const b = BoardApp.state.board; return { n: b.stackup.layers, plane: b.zones.filter(z => z.plane).map(z => z.layer + ":" + z.net).join(), pick: [...document.querySelectorAll("#layer option")].map(o => o.value).join(), panel: [...document.querySelectorAll("#layers .layer")].map(r => r.dataset.l).filter(l => /^In/.test(l)).join() }; });
+  check(inner.join() === "plane,signal" && l4.n === 4 && l4.plane === "In1.Cu:GND" && l4.pick === "F.Cu,In2.Cu,B.Cu" && l4.panel === "In1.Cu,In2.Cu", `Board setup → 4 layers: a GND plane on inner 1, inner 2 routable (${JSON.stringify(l4)})`);
+  await bd.click("#btn-board"); await bd.click("#btn-setup"); await bd.selectOption("#setup-layers", "2"); await bd.click("#setup-apply");
+  check(await bd.evaluate(() => BoardApp.state.board.stackup.layers === 2 && !BoardApp.state.board.zones.some(z => /^In/.test(z.layer))), "back to 2 layers: the inner plane goes with its layer");
 
   // tools with the mouse: via, text, hole, measure; the corner handle resizes the board
   const at = (x, y) => bd.evaluate(([x, y]) => BoardApp.toScreen(x, y), [x, y]).then(([sx, sy]) => [cv.x + sx, cv.y + sy]);

@@ -81,6 +81,7 @@
     .dlg td input.cell.invalid { border-color: var(--bad); }
     .dlg .matrix th, .dlg .matrix td { text-align: center; } .dlg .matrix td.self { color: var(--muted); }
     .cls-user { color: #b392f0; }
+    #setup-inner .row select + select { margin-left: 4px; }
     .dlg .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 18px; font-size: 12px; }
     .dlg .checks label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
     .dlg .actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 12px; }
@@ -629,7 +630,9 @@
       <div class="row"><span>Orientation</span><select id="sheet-orient"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></div>
       <p class="help">The board is drawn on the sheet with an ISO 5457 frame, reference grid and ISO 7200 title block like the Circuit CAD's frames; the title block takes its fields from the schematic's first frame. Unlocked, the sheet follows the board; <b>Lock sheet</b> on the toolbar keeps it where it is.</p>
       <h3>Layer stack</h3>
-      <div class="row"><span>Copper layers</span><select disabled><option>2 layers</option></select></div>
+      <div class="row" title="2: top and bottom. 4 and 6: inner layers between them, each a signal layer (tracks) or a plane (one net's copper over the whole board, joined to its pins and vias)"><span>Copper layers</span><select id="setup-layers"><option value="2">2 layers</option><option value="4">4 layers</option><option value="6">6 layers</option></select></div>
+      <div id="setup-inner"></div>
+      <div class="row" id="setup-innercu-row" title="Inner layers are usually thinner copper; the current check widens tracks on them (IPC-2221: half the outer layer's current for the same width and rise)"><span>Inner copper (µm)</span><select id="setup-innercu"><option value="18">18 (½ oz)</option><option value="35">35 (1 oz)</option><option value="70">70 (2 oz)</option></select></div>
       <div class="row"><span>Board thickness (mm)</span><select data-s="thickness"><option value="0.8">0.8</option><option value="1">1.0</option><option value="1.2">1.2</option><option value="1.6">1.6</option><option value="2">2.0</option></select></div>
       <div class="row"><span>Copper (µm)</span><select data-s="copper"><option value="18">18 (½ oz)</option><option value="35">35 (1 oz)</option><option value="70">70 (2 oz)</option></select></div>
       <div class="actions"><button class="btn" id="setup-cancel">Cancel</button><button class="btn active" id="setup-apply">Apply</button></div>

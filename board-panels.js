@@ -60,7 +60,8 @@
     // layers: colour, visibility, active copper layer (click its name), "only" shows that layer alone
     function renderLayers() {
       const lh = $("layers");
-      lh.innerHTML = LAYER_INFO.map(([k, t, c]) => `<div class="layer${k === S.layer ? " active" : ""}" data-l="${k}"><input type="checkbox" ${S.show[k] ? "checked" : ""} aria-label="Show ${t}"><span class="sw" style="background:${c}"></span><span class="nm" title="${k.endsWith("Cu") ? "Make it the active layer for new tracks (V)" : t}">${t}</span>${k === S.layer ? `<span class="tag">active</span>` : "<span></span>"}<button class="solo" title="Show only this layer (again: show all)">only</button></div>`).join("");
+      const CU = B.copperOf(S.board);
+      lh.innerHTML = LAYER_INFO.filter(([k]) => !/^In\d\.Cu$/.test(k) || CU.includes(k)).map(([k, t, c]) => `<div class="layer${k === S.layer ? " active" : ""}" data-l="${k}"><input type="checkbox" ${S.show[k] ? "checked" : ""} aria-label="Show ${t}"><span class="sw" style="background:${c}"></span><span class="nm" title="${k.endsWith("Cu") ? "Make it the active layer for new tracks (V)" : t}">${t}</span>${k === S.layer ? `<span class="tag">active</span>` : "<span></span>"}<button class="solo" title="Show only this layer (again: show all)">only</button></div>`).join("");
       lh.querySelectorAll(".layer").forEach(row => {
         const k = row.dataset.l;
         row.querySelector("input").addEventListener("change", e => { S.show[k] = e.target.checked; render(); });
@@ -80,6 +81,8 @@
       else { el = document.createElement("input"); el.value = value; el.addEventListener("change", () => { const n = type === "text" ? el.value : parseFloat(String(el.value).replace(",", ".")); if (type !== "text" && !isFinite(n)) { el.classList.add("invalid"); return; } onSet(n); }); el.addEventListener("keydown", e => { if (e.key === "Enter") el.blur(); }); }
       row.appendChild(el); return row;
     }
+    // the board's copper layers for a Layer field (signal: only the ones tracks may run on)
+    const cuOpts = signal => (signal ? B.routeLayers(S.board) : B.copperOf(S.board)).map(L => [L, `${B.layerName(L)} copper${B.isPlane(S.board, L) ? ` (${B.innerOf(S.board, L).net} plane)` : ""}`]);
     const lockField = o => field("Position", o.locked ? "locked" : "free", v => { if (v === "locked") o.locked = true; else delete o.locked; commit(); }, [["free", "Free"], ["locked", "Locked (L)"]]);
     // SMD: the parts' surface-mount versions (their default SMD footprint) or back to through-hole.
     // Parts that stay through-hole (valves, transformers, power cases) leave it off and greyed.
@@ -182,9 +185,9 @@
         const it = S.conn && S.conn.items.find(x => x.kind === "track" && x.ti === s.i), net = it ? it.net : null;
         let len = 0; for (let k = 0; k + 1 < t.pts.length; k++) len += Math.hypot(t.pts[k + 1][0] - t.pts[k][0], t.pts[k + 1][1] - t.pts[k][1]);
         h.innerHTML = `<div class="insp-title">Track</div>` + kv("Net", esc(net === null ? "not connected" : netName(net)), net === "short" ? "bad" : "") + kv("Class", `${classOf(net)} · ${trackWidth(net)} mm`) + kv("Length", len.toFixed(2) + " mm");
-        h.appendChild(field("Layer", t.layer, v => { t.layer = v; commit(); }, [["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
+        h.appendChild(field("Layer", t.layer, v => { t.layer = v; commit(); }, cuOpts(true)));
         h.appendChild(field("Width (mm)", t.w, v => { if (v > 0) { t.w = v; commit(); } }));
-        const I = net !== null && net !== "short" ? (S.amps || {})[net] : 0, need = B.currentWidth(I, R, S.board.stackup);
+        const I = net !== null && net !== "short" ? (S.amps || {})[net] : 0, need = B.currentWidth(I, R, S.board.stackup, t.layer);
         if (I) h.insertAdjacentHTML("beforeend", kv("DC current", `${B.fmtA(I)} · needs ${need} mm`, need > t.w ? "bad" : "ok"));
         h.appendChild(lockField(t)); h.appendChild(delBtn()); return;
       }
@@ -224,7 +227,7 @@
         }, [["keepout", "Keep-out: forbids tracks, vias, pour or parts"], ["rule", "Rule area: its own clearance and width"]]);
         kind.title = "A keep-out forbids copper or parts; a rule area lets copper in but with its own clearance and track width"; h.appendChild(kind);
         h.appendChild(field("Name", k.name || "", v => { k.name = v; commit(); }, "text"));
-        h.appendChild(field("Layers", L.length === 2 ? "both" : L[0], v => { k.layers = v === "both" ? ["F.Cu", "B.Cu"] : [v]; commit(); }, [["both", "Both copper layers"], ["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
+        h.appendChild(field("Layers", L.length > 1 ? "all" : L[0], v => { if (v === "all") delete k.layers; else k.layers = [v]; commit(); }, [["all", "Every copper layer"]].concat(cuOpts())));
         if (k.rule) [["clearance", "Clearance (mm)", "Between copper of different nets when either piece lies in the area"], ["track", "Track width (mm)", "The width a track inside the area should have (the class check asks it)"], ["minTrack", "Minimum width (mm)", "No track inside the area may be narrower"]].forEach(([key, t, tip]) => {
           const f = field(t, k.rule[key] > 0 ? k.rule[key] : "", v => { const x = parseFloat(String(v).replace(",", ".")); if (x > 0) k.rule[key] = x; else delete k.rule[key]; commit(); }, "text"); f.title = tip; h.appendChild(f);
         });
@@ -238,8 +241,10 @@
         const f = S.fills.find(x => x.zone === s.i), nets = S.model ? [...new Set(S.model.pads.filter(p => p.net !== null).map(p => p.netName))].sort((a, b) => (b === "GND") - (a === "GND") || a.localeCompare(b, undefined, { numeric: true })) : [z.net];
         if (!nets.includes(z.net)) nets.unshift(z.net);
         h.innerHTML = `<div class="insp-title">Copper pour</div>` + (f ? kv("Pieces", f.pieces + (f.islands ? ` · ${f.islands} island${f.islands > 1 ? "s" : ""} removed` : "")) : "");
-        h.appendChild(field("Net", z.net, v => { z.net = v; commit(); }, nets.map(n => [n, n])));
-        h.appendChild(field("Layer", z.layer, v => { z.layer = v; commit(); }, [["F.Cu", "Top copper"], ["B.Cu", "Bottom copper"]]));
+        h.appendChild(field("Net", z.net, v => { z.net = v; const inn = z.plane && /^In(\d)\.Cu$/.exec(z.layer), st = S.board.stackup; if (inn && st.inner && st.inner[+inn[1] - 1]) st.inner[+inn[1] - 1].net = v; commit(); }, nets.map(n => [n, n])));
+        if (z.plane) h.insertAdjacentHTML("beforeend", `<p class="help">The ${esc(B.layerName(z.layer).toLowerCase())} layer's plane (Board setup). Every pin and via of its net joins it; other nets' holes pass through with the clearance round them. A pour of higher priority on this layer makes a split plane.</p>`);
+        h.appendChild(field("Layer", z.layer, v => { z.layer = v; commit(); }, cuOpts()));
+        if (B.copperOf(S.board).length > 2 || z.priority) { const pr = field("Priority", +z.priority || 0, v => { if (v > 0) z.priority = Math.round(v); else delete z.priority; commit(); }); pr.title = "Split planes: a pour of higher priority on the same layer is kept whole; lower ones of other nets go round it (0: none)"; h.appendChild(pr); }
         h.appendChild(field("Area", z.pts ? "poly" : "board", v => { if (v === "board") { z.pts = null; } else if (!z.pts) z.pts = boardShape(); commit(); }, [["board", "The whole board (follows its size)"], ["poly", "Its own outline (drag the corners)"]]));
         if (z.pts) h.insertAdjacentHTML("beforeend", kv("Corners", z.pts.length));
         const shp = document.createElement("div"); shp.className = "align"; shp.style.gridTemplateColumns = "1fr 1fr";
@@ -296,7 +301,7 @@
       }
       const M = S.model, c = S.conn, errs = errors();
       h.innerHTML = `<div class="insp-title">Board</div>` + kv("Size", `${+(+o.w).toFixed(2)} × ${+(+o.h).toFixed(2)} mm${o.shape ? (window.BoardOutline.describe(o).startsWith("round") ? ", round" : ", own shape") + (o.shape.length > 1 ? `, ${o.shape.length - 1} cut-out${o.shape.length > 2 ? "s" : ""}` : "") : o.r ? `, r ${o.r}` : ""}`) +
-        kv("Stack", `2 layers · ${S.board.stackup.thickness} mm · ${S.board.stackup.copper} µm`) +
+        kv("Stack", `${B.copperOf(S.board).length} layers · ${S.board.stackup.thickness} mm · ${S.board.stackup.copper} µm`) + (B.copperOf(S.board).length > 2 ? kv("Inner layers", B.copperOf(S.board).slice(1, -1).map(L => (B.isPlane(S.board, L) ? `${B.innerOf(S.board, L).net} plane` : "signal")).join(" · ")) : "") +
         (M ? kv("Parts", `${M.parts.length - S.drc.filter(d => d.kind === "unplaced").length} placed of ${M.parts.length}`) + kv("Tracks · vias · holes", `${S.board.tracks.length} · ${S.board.vias.length} · ${S.board.holes.length}`) +
           kv("To route", c ? c.unrouted : "—", c && c.unrouted ? "" : "ok") + kv("Rule violations", errs, errs ? "bad" : "ok") : "") +
         `<h2>Rules in force</h2>` + kv("Clearance · HV", `${R.clearance} · ${R.hvClearance} mm`) + kv("Tracks: signal · power", `${R.track} · ${R.power} mm`) + kv(`High-voltage nets (> ${R.hvVolts} V)`, S.hv.size);

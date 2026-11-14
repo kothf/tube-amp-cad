@@ -11,6 +11,25 @@
   const DOC_VERSION = 1;
   const LAYERS = ["F.Cu", "B.Cu", "F.SilkS", "B.SilkS", "Edge.Cuts"];
   const COPPER = ["F.Cu", "B.Cu"];
+  // every copper layer a board may have (6 layers at most), top to bottom
+  const ALLCU = ["F.Cu", "In1.Cu", "In2.Cu", "In3.Cu", "In4.Cu", "B.Cu"];
+  const LAYER_COUNTS = [2, 4, 6];
+  /** The board's copper layers, top to bottom: F.Cu, In1.Cu … In(n-2).Cu, B.Cu */
+  function copperOf(board) {
+    const n = board && board.stackup && LAYER_COUNTS.includes(+board.stackup.layers) ? +board.stackup.layers : 2;
+    return ["F.Cu"].concat(Array.from({ length: n - 2 }, (_, i) => `In${i + 1}.Cu`), ["B.Cu"]);
+  }
+  /** An inner layer's setup: { type: "signal" | "plane", net } (a plane carries its net's pour, no tracks) */
+  function innerOf(board, L) {
+    const m = /^In(\d)\.Cu$/.exec(L); if (!m) return null;
+    const st = (board && board.stackup) || {}, e = (Array.isArray(st.inner) ? st.inner : [])[+m[1] - 1] || {};
+    return { type: e.type === "plane" ? "plane" : "signal", net: e.net || "" };
+  }
+  const isPlane = (board, L) => { const i = innerOf(board, L); return !!(i && i.type === "plane"); };
+  /** The layers tracks may run on: the board's copper less its plane layers */
+  const routeLayers = board => copperOf(board).filter(L => !isPlane(board, L));
+  /** A layer's name for people: Top, Inner 1 …, Bottom */
+  const layerName = L => (L === "F.Cu" ? "Top" : L === "B.Cu" ? "Bottom" : /^In(\d)\.Cu$/.test(L) ? "Inner " + L[2] : L);
 
   // ---------------------------------------------------------------------------
   // The board document (saved inside the circuit file as "board")
@@ -20,7 +39,7 @@
       app: "TubeAmpCAD-Board", version: DOC_VERSION, units: "mm",
       outline: { w: 160, h: 100, r: 0 },          // r: corner radius
       sheet: { size: "auto", orient: "landscape" },   // the drawing sheet round the board: auto | A4..A0 | none
-      stackup: { layers: 2, thickness: 1.6, copper: 35 },   // mm, µm
+      stackup: { layers: 2, thickness: 1.6, copper: 35, inner: [] },   // mm, µm; inner: per inner layer { type: "signal" | "plane", net } (In1.Cu first)
       rules: defaultRules(),
       parts: {},            // key -> { ref, fp, x, y, rot, side }   key: the schematic part ids, joined by "+"
       tracks: [],           // { layer, w, pts: [[x, y], ...] }
@@ -77,11 +96,13 @@
     if (hv && hv.has(net)) return "HV";
     return names[net] === "GND" || isHeaterNet(names[net]) ? "Power" : "Signal";
   }
-  /** Track width (mm) for a DC current on an outer layer: IPC-2221, I = 0.048 · ΔT^0.44 · A^0.725
-      (A in mil²), copper thickness from the stack-up */
-  function currentWidth(I, R, stackup) {
+  /** Track width (mm) for a DC current: IPC-2221, I = k · ΔT^0.44 · A^0.725 (A in mil²), k = 0.048 on
+      an outer layer, 0.024 on an inner one (layer: In1.Cu …; its copper: the stack-up's inner copper),
+      copper thickness from the stack-up */
+  function currentWidth(I, R, stackup, layer) {
     const a = Math.abs(I || 0); if (!a) return 0;
-    const area = Math.pow(a / (0.048 * Math.pow(R.tempRise > 0 ? R.tempRise : 10, 0.44)), 1 / 0.725), tMil = ((stackup && stackup.copper) || 35) / 25.4;
+    const inner = /^In\d\.Cu$/.test(layer || ""), k = inner ? 0.024 : 0.048, cu = inner && stackup && stackup.innerCopper > 0 ? stackup.innerCopper : (stackup && stackup.copper) || 35;
+    const area = Math.pow(a / (k * Math.pow(R.tempRise > 0 ? R.tempRise : 10, 0.44)), 1 / 0.725), tMil = cu / 25.4;
     return +(area / tMil * 0.0254).toFixed(3);
   }
   /** The DC current a net's copper must carry: the largest current into any pin on it */
@@ -129,6 +150,17 @@
     if (ok) return o;
     const c = { ...o }; delete c.shape; return c;
   }
+  // a keep-out on top and bottom (as "both layers" was saved before inner layers): every layer
+  function allLayers(k) {
+    if (!Array.isArray(k.layers) || k.layers.length !== 2 || !k.layers.includes("F.Cu") || !k.layers.includes("B.Cu")) return k;
+    const c = { ...k }; delete c.layers; return c;
+  }
+  // the stack-up: 2, 4 or 6 layers; one entry per inner layer
+  function normaliseStackup(st) {
+    const layers = LAYER_COUNTS.includes(+st.layers) ? +st.layers : 2, inner = Array.isArray(st.inner) ? st.inner : [];
+    return { ...st, layers, inner: Array.from({ length: layers - 2 }, (_, i) => { const e = inner[i] || {}; return e.type === "plane" ? { type: "plane", net: String(e.net || "GND") } : { type: "signal" }; }),
+      ...(st.innerCopper > 0 ? { innerCopper: +st.innerCopper } : {}) };
+  }
   function normaliseBoard(b) {
     const d = newBoard();
     if (!b || typeof b !== "object") return d;
@@ -136,15 +168,15 @@
     return {
       ...d, ...b,
       outline: cleanOutline({ ...d.outline, ...(b.outline || {}) }),
-      stackup: { ...d.stackup, ...(b.stackup || {}) },
+      stackup: normaliseStackup({ ...d.stackup, ...(b.stackup || {}) }),
       sheet: { ...d.sheet, ...(b.sheet || {}) },
       rules: normaliseRules({ ...d.rules, ...(b.rules || {}), netClass: { ...((b.rules || {}).netClass || {}) }, checks: { ...d.rules.checks, ...((b.rules || {}).checks || {}) } }),
       holes: Array.isArray(b.holes) ? b.holes : [],
       texts: Array.isArray(b.texts) ? b.texts : [],
-      zones: Array.isArray(b.zones) ? b.zones.filter(z => z && COPPER.includes(z.layer)) : [],
-      keepouts: Array.isArray(b.keepouts) ? b.keepouts.filter(k => k && Array.isArray(k.pts) && k.pts.length >= 3).map(k => (k.rule ? { ...k, tracks: false, vias: false, pour: false, parts: false } : k)) : [],
+      zones: Array.isArray(b.zones) ? b.zones.filter(z => z && ALLCU.includes(z.layer)) : [],
+      keepouts: Array.isArray(b.keepouts) ? b.keepouts.filter(k => k && Array.isArray(k.pts) && k.pts.length >= 3).map(k => (k.rule ? { ...k, tracks: false, vias: false, pour: false, parts: false } : k)).map(allLayers) : [],
       parts: b.parts && typeof b.parts === "object" ? b.parts : {},
-      tracks: Array.isArray(b.tracks) ? b.tracks.filter(t => t && Array.isArray(t.pts) && t.pts.length >= 2 && COPPER.includes(t.layer)) : [],
+      tracks: Array.isArray(b.tracks) ? b.tracks.filter(t => t && Array.isArray(t.pts) && t.pts.length >= 2 && ALLCU.includes(t.layer)) : [],
       vias: Array.isArray(b.vias) ? b.vias : []
     };
   }
@@ -1275,7 +1307,7 @@
       their footprints, pads in board coordinates with nets, net names */
   function model(board, netlist) {
     registerFootprints(board);
-    const parts = physicalParts(netlist), pads = [], holes = [], padsByPart = new Map(), netOf = {};
+    const parts = physicalParts(netlist), pads = [], holes = [], padsByPart = new Map(), netOf = {}, CU = copperOf(board);
     (netlist.parts || []).forEach(p => p.pins.forEach(q => { netOf[p.id + ":" + q.id] = q.net; }));
     parts.forEach(g => {
       const bp = board.parts[g.key]; if (!bp) return;
@@ -1289,7 +1321,7 @@
         const conns = map.get(p.num) || [], nets = [...new Set(conns.map(c => netOf[c.comp + ":" + c.pin]).filter(n => n !== undefined))];
         const [x, y] = place([p.x, p.y], bp), [w, h] = placeSize(p, bp);
         // an SMD pad is on the part's side only
-        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, pitchRing: p.pitchRing, smd: !!p.smd, paste: p.paste, layers: p.smd ? [(bp.side === "B") !== !!p.back ? "B.Cu" : "F.Cu"] : COPPER,
+        const P = { part: g.key, ref: g.ref, num: p.num, name: p.name, x, y, w, h, shape: p.shape, drill: p.drill, pitchRing: p.pitchRing, smd: !!p.smd, paste: p.paste, layers: p.smd ? [(bp.side === "B") !== !!p.back ? "B.Cu" : "F.Cu"] : CU,
           net: nets.length ? nets[0] : null, pins: conns, conflict: nets.length > 1 };
         list.push(P); pads.push(P);
       });
@@ -1333,10 +1365,11 @@
   function copperItems(board, pads) {
     const items = [];
     // a square pad also keeps its exact rectangle: the capsule misses its corners by up to 0.14 mm
-    pads.forEach((p, i) => { const c = padCapsule(p); items.push({ kind: "pad", i, layers: p.layers || COPPER, s: c.s, r: c.r, pad: p, box: p.shape === "rect" ? [p.x - p.w / 2, p.y - p.h / 2, p.x + p.w / 2, p.y + p.h / 2] : null }); });
+    pads.forEach((p, i) => { const c = padCapsule(p); items.push({ kind: "pad", i, layers: p.layers || copperOf(board), s: c.s, r: c.r, pad: p, box: p.shape === "rect" ? [p.x - p.w / 2, p.y - p.h / 2, p.x + p.w / 2, p.y + p.h / 2] : null }); });
     board.tracks.forEach((t, ti) => { for (let k = 0; k + 1 < t.pts.length; k++) items.push({ kind: "track", ti, k, layers: [t.layer], s: [t.pts[k][0], t.pts[k][1], t.pts[k + 1][0], t.pts[k + 1][1]], r: t.w / 2 }); });
-    board.vias.forEach((v, vi) => items.push({ kind: "via", vi, layers: COPPER, s: [v.x, v.y, v.x, v.y], r: (v.pad || board.rules.viaPad) / 2 }));
-    (board.holes || []).forEach((h, hi) => { if (h.plated) items.push({ kind: "hole", hi, layers: COPPER, s: [h.x, h.y, h.x, h.y], r: holeRing(h) / 2 }); });
+    const CU = copperOf(board);
+    board.vias.forEach((v, vi) => items.push({ kind: "via", vi, layers: CU, s: [v.x, v.y, v.x, v.y], r: (v.pad || board.rules.viaPad) / 2 }));
+    (board.holes || []).forEach((h, hi) => { if (h.plated) items.push({ kind: "hole", hi, layers: CU, s: [h.x, h.y, h.x, h.y], r: holeRing(h) / 2 }); });
     return items;
   }
   const shareLayer = (a, b) => a.layers.some(l => b.layers.includes(l));
@@ -1560,6 +1593,12 @@
         P.forEach((pl, i) => { if (i) ops.push({ pol: "C", t: "region", pts: pl }); if (ew > 0) ops.push({ pol: "C", t: "line", w: ew, pts: pl.concat([pl[0]]) }); });
       }
       (board.keepouts || []).forEach(k => { if (k.pour !== false && koLayers(k).includes(L)) ops.push({ pol: "C", t: "region", pts: k.pts }); });
+      // a split plane: a pour of higher priority on this layer (another net) is cut out, with the clearance round it
+      zones.forEach((z2, j) => {
+        if (j === zi || z2.layer !== L || z2.net === z.net || !((+z2.priority || 0) > (+z.priority || 0))) return;
+        const P2 = zonePoly(board, z2), c = need(byName[z2.net]);
+        ops.push({ pol: "C", t: "region", pts: P2 }, { pol: "C", t: "line", w: +(2 * c).toFixed(4), pts: P2.concat([P2[0]]) });
+      });
       conn.items.forEach(it => {
         if (!it.layers.includes(L)) return;
         const n = netOf(it);
@@ -1684,7 +1723,8 @@
     for (let i = 0, j = A.length - 1; i < A.length; j = i++) if (segInPoly([A[j][0], A[j][1], A[i][0], A[i][1]], Bp, 0)) return true;
     return false;
   }
-  const koLayers = k => (Array.isArray(k.layers) && k.layers.length ? k.layers : COPPER);
+  // a keep-out's layers; none named: every copper layer
+  const koLayers = k => (Array.isArray(k.layers) && k.layers.length ? k.layers : ALLCU);
 
   /** Design-rule check. Kinds: clearance (copper of different nodes closer than their net
       classes allow; holes against copper), short, edge (copper or parts over or too near the
@@ -1820,7 +1860,7 @@
       const P = zonePoly(board, z);
       if (!Object.values(model.names).includes(z.net)) out.push({ kind: "check", x: P[0][0], y: P[0][1], msg: `Copper pour on ${z.layer}: net ${z.net || "(none)"} is not in the schematic` });
       (board.zones || []).slice(i + 1).forEach(z2 => {
-        if (z2.layer !== z.layer || z2.net === z.net) return;
+        if (z2.layer !== z.layer || z2.net === z.net || (+z2.priority || 0) !== (+z.priority || 0)) return;
         const Q = zonePoly(board, z2), hitP = P.find(p => pip(p[0], p[1], Q)) || Q.find(q => pip(q[0], q[1], P));
         if (hitP) out.push({ kind: "clearance", x: hitP[0], y: hitP[1], msg: `Copper pours of ${z.net} and ${z2.net} overlap on ${z.layer}` });
       });
@@ -1829,7 +1869,7 @@
     const amps = netlist ? netCurrents(netlist) : {};
     if (on("current")) board.tracks.forEach((t, ti) => {
       const it = items.find(x => x.kind === "track" && x.ti === ti); if (!it || it.net === null || it.net === "short") return;
-      const I = amps[it.net], need = currentWidth(I, R, board.stackup);
+      const I = amps[it.net], need = currentWidth(I, R, board.stackup, t.layer);
       if (need > t.w + 1e-6) out.push({ kind: "current", x: t.pts[0][0], y: t.pts[0][1], msg: `Track on ${model.names[it.net] || it.net} carries ${fmtA(I)}: ${t.w} mm < ${need} mm for a ${R.tempRise || 10} °C rise` });
     });
     // courtyards: parts on the same side overlapping
@@ -1850,6 +1890,12 @@
       const r = h.d / 2 + 1.9, dx = Math.max(b.x1 - h.x, 0, h.x - b.x2), dy = Math.max(b.y1 - h.y, 0, h.y - b.y2);
       if (Math.hypot(dx, dy) < r - 0.05) out.push({ kind: "courtyard", x: h.x, y: h.y, msg: `Mounting hole (Ø ${h.d} mm) under ${g.ref}: the screw head, washer and standoff need Ø ${+(2 * r).toFixed(1)} mm clear of parts` });
     }));
+    // copper on a layer the board does not have, or a track on a plane layer (it would split the plane)
+    if (on("keepout")) {
+      const CU = copperOf(board);
+      board.tracks.forEach(t => { const p = t.pts[0]; if (!CU.includes(t.layer)) out.push({ kind: "keepout", x: p[0], y: p[1], msg: `A track on ${t.layer}: the board has ${CU.length} layers (Board setup)` }); else if (isPlane(board, t.layer)) out.push({ kind: "keepout", x: p[0], y: p[1], msg: `A track on ${t.layer}, a ${innerOf(board, t.layer).net} plane: it cuts the plane; route it on a signal layer` }); });
+      (board.zones || []).forEach(z => { if (!CU.includes(z.layer)) { const P = zonePoly(board, z); out.push({ kind: "keepout", x: P[0][0], y: P[0][1], msg: `A ${z.net} pour on ${z.layer}: the board has ${CU.length} layers (Board setup)` }); } });
+    }
     // keep-out areas
     if (on("keepout")) (board.keepouts || []).forEach(k => {
       const P = k.pts, L = koLayers(k), nm = k.name ? `keep-out "${k.name}"` : "a keep-out area";
@@ -1879,10 +1925,10 @@
           if (!touch) out.push({ kind: "dangling", x, y, msg: `A track end on ${t.layer} is not connected` });
         });
       });
-      // a via should join copper on both layers (copper, or a pour of its net)
+      // a via should join copper on two layers at least (copper, or a pour of its net)
       items.forEach((v, k) => {
         if (v.kind !== "via") return;
-        const on = COPPER.filter(L => inPour.has(k) && (fills || []).some(f => f.layer === L && f.links.some(l => l.includes(k))) ||
+        const on = copperOf(board).filter(L => inPour.has(k) && (fills || []).some(f => f.layer === L && f.links.some(l => l.includes(k))) ||
           items.some(it => it !== v && it.layers.includes(L) && gap(it, v) <= 1e-6));
         if (on.length < 2) out.push({ kind: "dangling", x: v.s[0], y: v.s[1], msg: on.length ? `A via joins copper on ${on[0]} only` : "A via is not connected" });
       });
@@ -2322,5 +2368,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { registerFootprints, isCustom, gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, defaultRules, normaliseRules, CLASSES, classNames, userClasses, pairKey, netClassOf, classRule, netRule, ruleAreas, areasOf, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { registerFootprints, isCustom, gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, normaliseStackup, defaultRules, normaliseRules, ALLCU, LAYER_COUNTS, copperOf, innerOf, isPlane, routeLayers, layerName, CLASSES, classNames, userClasses, pairKey, netClassOf, classRule, netRule, ruleAreas, areasOf, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);
