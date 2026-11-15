@@ -70,7 +70,7 @@
   function mapPiece(pc, f, swap) {
     const layers = {};
     Object.entries(pc.layers).forEach(([l, ops]) => { layers[l] = mapOps(ops, f, swap); });
-    const dr = t => t.map(([d, pts, fn]) => [d, pts.map(p => f(p[0], p[1])), fn]);
+    const dr = t => t.map(([d, pts, fn]) => [d, pts.map(p => (p.length === 4 ? f(p[0], p[1]).concat(f(p[2], p[3])) : f(p[0], p[1]))), fn]);
     return { ...pc, layers, loops: pc.loops.map(L => L.map(p => f(p[0], p[1]))), drills: { pth: dr(pc.drills.pth || []), npth: dr(pc.drills.npth || []) }, pos: (pc.pos || []).map(r => { const [x, y] = f(r.x, r.y); return { ...r, x, y }; }) };
   }
   // corner at (0, 0), numbers rounded
@@ -180,10 +180,14 @@
     }
     return { ops, func, errors };
   }
-  /** An Excellon drill file: { tools: [[dia, pts]...], plated (true, false or null: not said), errors } */
+  /** An Excellon drill file: { tools: [[dia, pts]...], plated (true, false or null: not said), errors }.
+      A point is [x, y]; a slot is [x1, y1, x2, y2], from G85 or from a routed path (G00 to its
+      start, M15, G01 to each next point, M16), as KiCad writes oval holes */
   function parseExcellon(text) {
     const tools = new Map(), errors = [];
-    let scale = 1, cur = null, plated = null, x = 0, y = 0, header = true;
+    let scale = 1, cur = null, plated = null, x = 0, y = 0, header = true, route = null, down = false;
+    const c = s => (s.includes(".") ? parseFloat(s) : parseInt(s, 10) / 1000) * scale;
+    const xy = (l, px, py) => { const X = /X([+-]?[\d.]+)/.exec(l), Y = /Y([+-]?[\d.]+)/.exec(l); return [X ? c(X[1]) : px, Y ? c(Y[1]) : py, !!(X || Y)]; };
     String(text).split(/\r?\n/).forEach(raw => {
       const l = raw.trim(); if (!l) return;
       let m;
@@ -193,12 +197,22 @@
       if ((m = /^T(\d+)C([\d.]+)/.exec(l))) { tools.set(+m[1], { d: +(+m[2] * scale).toFixed(3), pts: [] }); return; }
       if ((m = /^T(\d+)$/.exec(l))) { cur = tools.get(+m[1]) || null; return; }
       if (header) return;
-      if (/^G85/.test(l) || /G85/.test(l)) { errors.push("slots (G85) are left out"); return; }
-      if (/^(G00|G01|M15|M16)/.test(l)) { errors.push("routed paths are left out"); return; }
-      const X = /X([+-]?[\d.]+)/.exec(l), Y = /Y([+-]?[\d.]+)/.exec(l);
-      if (!X && !Y) return;
-      const c = s => (s.includes(".") ? parseFloat(s) : parseInt(s, 10) / 1000) * scale;
-      if (X) x = c(X[1]); if (Y) y = c(Y[1]);
+      // G85: a slot from the point before it to the point after it, on one line
+      if ((m = /^(.*)G85(.*)$/.exec(l))) {
+        const [x1, y1] = xy(m[1], x, y), [x2, y2] = xy(m[2], x1, y1); x = x2; y = y2;
+        if (cur) cur.pts.push([r4(x1), r4(-y1), r4(x2), r4(-y2)]);
+        return;
+      }
+      if (/^G00/.test(l)) { [x, y] = xy(l, x, y); route = [x, y]; down = false; return; }
+      if (/^M15/.test(l)) { down = true; return; }
+      if (/^G01/.test(l)) { const [nx, ny] = xy(l, x, y); if (down && route && cur) cur.pts.push([r4(x), r4(-y), r4(nx), r4(-ny)]); else if (!down) errors.push("a routed move without the tool down is left out"); x = nx; y = ny; return; }
+      if (/^(G02|G03)/.test(l)) { errors.push("routed arcs are left out"); [x, y] = xy(l, x, y); return; }
+      if (/^(M16|M17)/.test(l)) { down = false; return; }
+      if (/^G05/.test(l)) { route = null; down = false; return; }
+      const [nx, ny, any] = xy(l, x, y);
+      if (!any) return;
+      x = nx; y = ny;
+      if (down && route && cur) { cur.pts.push([r4(route[0]), r4(-route[1]), r4(x), r4(-y)]); return; }
       if (cur) cur.pts.push([r4(x), r4(-y)]);
     });
     return { tools: [...tools.values()].filter(t => t.pts.length).map(t => [t.d.toFixed(3), t.pts]), plated, errors };

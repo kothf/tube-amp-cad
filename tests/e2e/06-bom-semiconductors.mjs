@@ -203,7 +203,7 @@ import { readFile } from "node:fs/promises";
     });
     const src = (pal.Sources || []).join(" | "), gc = (pal["Ground & connectors"] || []).join(" | ");
     check(src === "DC supplies: DC supply | DC supplies: Power rail | DC supplies: Current source | DC supplies: Battery 9 V (PP3) | DC supplies: Battery 12 V (8 × AA) | DC supplies: Li-ion cell 18650 | AC sources: Signal generator | AC sources: AC mains | Logic: Clock or bit pattern | Instruments and records: Guitar pickup, single coil | Instruments and records: Guitar pickup, humbucker | Instruments and records: Phono cartridge, moving magnet | Instruments and records: Phono cartridge, moving coil | Controlled sources: Voltage-controlled voltage (E) | Controlled sources: Voltage-controlled current (G)"
-      && gc === "Ground | Sheet connector | Connectors: Jack, 6.35 mm switched | Connectors: RCA socket | Connectors: IEC mains inlet | Connectors: Terminal block | Connectors: Pin header | Connectors: Faston tab | Power connectors (XT): XT30 male, PCB | Power connectors (XT): XT30 female, PCB | Power connectors (XT): XT60 male, PCB | Power connectors (XT): XT60 female, PCB | Power connectors (XT): XT90 male, PCB | Power connectors (XT): XT90 female, PCB | Power connectors (XT): XT90-S female, anti-spark", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
+      && gc === "Ground | Sheet connector | Hierarchical sheet | Sheet port (hierarchy) | Connectors: Jack, 6.35 mm switched | Connectors: RCA socket | Connectors: IEC mains inlet | Connectors: Terminal block | Connectors: Pin header | Connectors: Faston tab | Power connectors (XT): XT30 male, PCB | Power connectors (XT): XT30 female, PCB | Power connectors (XT): XT60 male, PCB | Power connectors (XT): XT60 female, PCB | Power connectors (XT): XT90 male, PCB | Power connectors (XT): XT90 female, PCB | Power connectors (XT): XT90-S female, anti-spark", `palette: Sources split into DC supplies and AC sources (${src}); Ground & connectors apart (${gc})`);
     // the current source: 2 mA from ground up into 10 kΩ gives 20 V; the inspector reads it
     await cad.evaluate(() => {
       const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
@@ -664,7 +664,7 @@ import { readFile } from "node:fs/promises";
     }
     return { bad, skip };
   });
-  check(!mall.bad.length && mall.skip.sort().join() === "frame,note", `Mirror flips the pins of every rotatable part, and the oscilloscope, left to right (${mall.bad.length ? "wrong: " + mall.bad.join(", ") : "all " + (await cad.evaluate(() => Object.keys(CadLib.LIB).length)) + " types checked"}; frame and notes stay put)`);
+  check(!mall.bad.length && mall.skip.sort().join() === "frame,note,sheetsym", `Mirror flips the pins of every rotatable part, and the oscilloscope, left to right (${mall.bad.length ? "wrong: " + mall.bad.join(", ") : "all " + (await cad.evaluate(() => Object.keys(CadLib.LIB).length)) + " types checked"}; frame, notes and sheet symbols stay put)`);
   // the oscilloscope mirrored: its inputs on the right, the Mirror field in its inspector, the screen still upright (no rotation)
   const scm = await cad.evaluate(() => {
     const C = TubeCAD, S = C.state, c = C.makeComp("scope", {}, 5000, 5000, 0); S.comps.push(c);

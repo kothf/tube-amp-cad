@@ -105,6 +105,12 @@
     // sheet connectors and power rails with the same name are one net (as if wired)
     const byName = new Map();
     comps.forEach(c => { if (c.type !== "offsheet" && c.type !== "rail") return; const n = connName(c); if (!n) return; const r = find(key(c.x, c.y)); if (byName.has(n)) union(r, byName.get(n)); else byName.set(n, r); });
+    // hierarchy (cad-hier.js): a sheet's port joins the pin of its name on that instance's sheet symbol
+    const byPort = (k, r) => { if (byName.has(k)) union(r, byName.get(k)); else byName.set(k, r); };
+    comps.forEach(c => {
+      if (c.type === "hport" && c.block) { const n = connName(c); if (n) byPort("\u0001" + c.block.i + "\u0001" + n, find(key(c.x, c.y))); }
+      else if (c.type === "sheetsym" && c.params.inst) compPins(c).forEach(p => byPort("\u0001" + c.params.inst + "\u0001" + String(p.id).trim().toUpperCase(), find(key(p.x, p.y))));
+    });
     if (groundRoot !== null) groundRoot = find(groundRoot);
     const netOfRoot = new Map();
     let next = 1;
@@ -246,6 +252,8 @@
     if (window.PartNo) S.comps.forEach(c => PartNo.keep(c));
     // a value edited on one copy of a block goes to every copy
     blocks.beforeCommit();
+    // hierarchical sheets: the instance changed goes to the others, new symbols get their sheets
+    if (hier.beforeCommit()) normalizeWires();   // the symbols' pins (new or moved) split the wires they stand on
     numberSheets();
     S.history = S.history.slice(0, S.hIndex + 1);
     S.history.push(snapshot());
@@ -698,7 +706,8 @@
     return S.comps.some(c => compPins(c).some(p => p.x === x && p.y === y));
   }
   // a sheet frame is locked unless unlocked in its inspector (older files have no setting: locked)
-  const isLocked = c => c.type === "frame" && c.params.locked !== "no";
+  // (a hierarchical sheet's frame always: its symbol is what moves or deletes it)
+  const isLocked = c => c.type === "frame" && (c.params.locked !== "no" || !!c.sheetOf);
   const lockedNote = () => setStatus("warn", "The sheet frame is locked: select it and set Position to Unlocked in the inspector to move or delete it.");
   function deleteSelection() {
     if (!S.sel.comps.size && !S.sel.wires.size) return;
@@ -911,7 +920,8 @@
     }
     const item = id => { const k = cmds.get(id); return { label: k.label, key: k.keys[0], icon: k.icon, run: () => cmds.run(id) }; };
     const n = S.sel.comps.size + S.sel.wires.size;
-    const items = c || w ? ["rotate", "mirror", "duplicate", "delete", null, "copy", "paste", null, "block-make"].concat(c && c.block ? ["block-select", "block-update", "block-detach"] : []) : ["paste", "select-all", null, "fit", "undo", "redo", null, "blocks"];
+    const items = c || w ? (c && c.type === "sheetsym" ? ["sheet-open", null] : []).concat(["rotate", "mirror", "duplicate", "delete", null, "copy", "paste", null, "block-make", "sheet-make"]).concat(c && blocks.member() ? ["block-select", "block-update", "block-detach"] : []).concat(hier.instOfComp(c) ? ["sheet-up"] : [])
+      : ["paste", "select-all", null, "fit", "undo", "redo", null, "blocks"].concat((currentSheet() || {}).sheetOf ? ["sheet-up"] : []);
     const title = c ? (n > 1 ? `${n} selected` : desig(c) || LIB[c.type].name) : w ? (n > 1 ? `${n} selected` : "Wire") : "";
     UiKit.contextMenu(items.map(id => (id ? item(id) : null)), e.clientX, e.clientY, title);
   }
@@ -959,6 +969,7 @@
     const m = evPos(e);
     const c = hitComp(m.wx, m.wy);
     if (c && c.type === "scope" && !S.wiring) ToolWindows.open("oscilloscope.html", { scope: c.id });
+    if (c && c.type === "sheetsym" && !S.wiring && !S.anim.on) { hier.enter(c); return; }
     if (S.anim.on && S.tool === "select") return;   // Animate: a single click already flipped it
     // a switch, a push button or a selector moves on to its next position
     if (c && LIB[c.type].flip && !S.wiring) { setSwitch(c, LIB[c.type].flip(c)); updateInspector(); }
@@ -1116,6 +1127,9 @@
     .add({ id: "block-update", label: "Update block from selection", title: "The selected copy, with parts or wires added or moved, becomes the block; every other copy is drawn again from it", when: () => blocks.canUpdate(), run: () => blocks.update() })
     .add({ id: "block-select", label: "Select this copy", title: "Select the parts and wires of this copy of the block", when: () => !!blocks.member(), run: () => blocks.selectCopy() })
     .add({ id: "block-detach", label: "Detach from block", title: "This copy's parts become ordinary parts with values of their own", when: () => !!blocks.member(), run: () => blocks.detach() })
+    .add({ id: "sheet-make", label: "Make sheet from selection…", title: "The selected stage moves to a sheet of its own; a sheet symbol takes its place, with a pin wherever a wire crossed its edge. Place more instances of it (a second channel) from Blocks…", when: () => S.sel.comps.size > 0, run: () => blocks.openDialog("sheet") })
+    .add({ id: "sheet-open", label: "Open sheet", title: "Step into this sheet symbol's sheet (double-click does too)", when: () => { const c = S.comps.find(k => S.sel.comps.has(k.id)); return !!c && c.type === "sheetsym"; }, run: () => hier.enter(S.comps.find(k => S.sel.comps.has(k.id))) })
+    .add({ id: "sheet-up", label: "Up to the sheet above", keys: ["Alt+Backspace"], prevent: true, title: "Back to the sheet holding this sheet's symbol", when: () => !!(currentSheet() || {}).sheetOf, run: () => hier.leave(), help: "from a hierarchical sheet up to the sheet above" })
     .add({ id: "renumber", menuId: "menu-renumber", label: "Renumber designations", title: "Letter code (R, C, L, T, VL …) and number for every part, in reading order", run: () => renumber() })
     // settings without a key: View menu ticks and the toolbar's switches
     .add({ id: "volts", run: () => toggleView("showVolts"), check: () => S.showVolts })
@@ -1528,6 +1542,26 @@
         ctx.strokeStyle = "#ff7b72"; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.stroke();
       });
+    }
+    if (c.type === "hport") {
+      // the port's name beyond its flag, upright whichever way it points
+      const d = [[1, 0], [0, 1], [-1, 0], [0, -1]][c.rot & 3], tx = c.x + d[0] * 30, ty = c.y + d[1] * 30;
+      ctx.textAlign = d[0] > 0 ? "left" : d[0] < 0 ? "right" : "center"; ctx.font = "bold 11px ui-monospace, Menlo, monospace"; ctx.fillStyle = sel ? COL.bodySel : "#d2a8ff";
+      ctx.fillText(c.params.name || "", tx, d[1] > 0 ? ty + 8 : d[1] < 0 ? ty - 4 : ty + 4);
+      if (!c.block && !S.printing) { ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = "#ff7b72"; ctx.fillText("not on a hierarchical sheet", tx, (d[1] > 0 ? ty + 8 : d[1] < 0 ? ty - 4 : ty + 4) + 12); }
+      ctx.textAlign = "left";
+      return;
+    }
+    if (c.type === "sheetsym") {
+      // the instance's name over the box, the sheet's (the block's) under it
+      const w = +c.params.w || 160, h = +c.params.h || 100;
+      ctx.textAlign = "left"; ctx.font = "bold 11px ui-monospace, Menlo, monospace"; ctx.fillStyle = sel ? COL.bodySel : COL.text;
+      ctx.fillText((c.params.title ? c.params.title + " · " : "") + (c.params.name || "Sheet"), c.x, c.y - 5);
+      const f = hier.frameOf(c.params.inst);
+      ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
+      ctx.fillText(f ? `sheet ${sheetNo(f)} ↓` : "no sheet yet", c.x, c.y + h + 12);
+      ctx.textAlign = "left"; void w;
+      return;
     }
     if (c.type === "offsheet") {
       const d = [[1, 0], [0, 1], [-1, 0], [0, -1]][c.rot & 3], tx = c.x + d[0] * 26, ty = c.y + d[1] * 26;
@@ -1987,7 +2021,7 @@
     host.innerHTML = `<div class="insp-title">${def.name}</div>`;
     if (window.Hints) Hints.attach(host.firstChild, Hints.parts[c.type], def.name);
     if (!def.noLabel) host.appendChild(row("Designator", input("text", c.label, v => { c.label = v.trim() || c.label; commit(); })));
-    blocks.inspector(host, c);
+    if (!hier.inspector(host, c)) blocks.inspector(host, c);
     (canMirror(c.type) ? def.fields.concat([CadLib.FLIP_FIELD]) : def.fields).forEach(f => {
       if (f.when && !f.when(c)) return;
       // a heading over the fields that follow it (the signal generator's Signal / Level / Output)
@@ -2540,7 +2574,8 @@
     const nav = document.getElementById("sheet-nav"); if (!nav) return;
     const list = frames(), cur = nav.value;
     nav.hidden = list.length < 2;
-    nav.innerHTML = `<option value="">All sheets</option>` + list.map((f, i) => `<option value="${f.id}">Sheet ${sheetNo(f, list)}${f.params.title ? " · " + f.params.title.replace(/[<&]/g, "") : ""}</option>`).join("");
+    // a hierarchical sheet is listed under its parent's level: "  ↳ Sheet 3 · Channel (L)"
+    nav.innerHTML = `<option value="">All sheets</option>` + list.map((f, i) => { const d = f.sheetOf ? hier.depth(f) : 0; return `<option value="${f.id}">${d ? "\u00a0\u00a0".repeat(d) + "↳ " : ""}Sheet ${sheetNo(f, list)}${f.sheetOf && f.sheetOf.t ? " · " + f.sheetOf.t.replace(/[<&]/g, "") : f.params.title ? " · " + f.params.title.replace(/[<&]/g, "") : ""}</option>`; }).join("");
     nav.value = list.some(f => f.id === cur) ? cur : "";
   }
   // The horizontal scroll bar under the drawing: its track spans the whole drawing (and the
@@ -2712,7 +2747,10 @@
   // revLink: the project and revision the sheet came from (File ▾ → Revisions…), so the file knows them when opened again
   const circuitJSON = () => { const tubes = usedCustomTubes(), rl = revisions && revisions.link(); return JSON.stringify(Object.assign({ app: "TubeAmpCAD", version: 2, comps: S.comps, wires: S.wires }, S.blocks.length ? { blocks: S.blocks } : {}, tubes.length ? { tubes } : {}, S.board ? { board: S.board } : {}, rl ? { revLink: rl } : {}), null, 1); };
   // Reusable blocks (cad-blocks.js): Edit ▾ → Blocks…, the copies' outlines and their inspector
-  const blocks = CadBlocks({ S, LIB, commit, compBBox, drawComp, esc: escH, getCtx: () => ctx, makeComp, newId, render, setStatus, snap, updateInspector });
+  const blocks = CadBlocks({ S, LIB, commit, compBBox, drawComp, esc: escH, getCtx: () => ctx, makeComp, newId, render, setStatus, snap, updateInspector, hier: () => hier });
+  // Hierarchical sheets (cad-hier.js), on top of the blocks: sheet symbols, ports, instances
+  const hier = CadHier({ S, LIB, commit, compBBox, makeComp, newId, frames, fitSheet, setStatus, render, updateInspector, esc: escH, topo, compPins, currentSheet: () => currentSheet(),
+    startPlace: id => blocks.startPlace(id), openBlocks: () => blocks.openDialog() });
   // ---------------------------------------------------------------------------
   // Examples (File menu): circuits drawn from published sources and checked against them
   // (docs: the README's Accuracy section and tests/reference.mjs)
@@ -3223,7 +3261,7 @@
       template: w => `${w[0]}px 1fr ${w[1]}px` });
 
     buildPalette();
-    cmds.menuItems(document.querySelector("#edit-menu .menu-list"), ["undo", "redo", null, "rotate", "mirror", "duplicate", "delete", null, "copy", "paste", "select-all", null, "block-make", "block-update", "blocks", null, "renumber"]);
+    cmds.menuItems(document.querySelector("#edit-menu .menu-list"), ["undo", "redo", null, "rotate", "mirror", "duplicate", "delete", null, "copy", "paste", "select-all", null, "block-make", "block-update", "blocks", null, "sheet-make", "sheet-up", null, "renumber"]);
     blocks.init();
     // the version under the name: "?v=3.72.0" is stamped by npm run package, the source says "dev"
     const ver = (VERSION.match(/[?&]v=([^&]+)/) || [])[1];
@@ -3364,6 +3402,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { library, addPart, blocks, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, transient, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { library, addPart, blocks, hier, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, transient, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.226.0] - 2026-11-14
+## [3.227.0] - 2026-11-15
 
 General-purpose simulation: logic and mixed-signal.
 
@@ -22,6 +22,27 @@ General-purpose simulation: logic and mixed-signal.
 ### Fixed (field test against ngspice)
 - From zero, a flip-flop whose active-low preset and clear are tied to the supply started at X (the logic read the supplies at 0 V); it now starts at its initial state, and a clock that rises within the first step still counts, as in ngspice.
 - The SPICE export named its nets `N1`, `N2` …, which ngspice reads as a model when a card is called `N1` (as BSIM cards often are); the nets then go out as `NET1` ….
+
+## [3.226.0] - 2026-11-14
+
+Schematic: hierarchical sheets, built on reusable blocks; board: copy a channel's layout to the others.
+
+### Added
+- **Hierarchical sheets** (`cad-hier.js`). *Edit ▾ → Make sheet from selection…* (right mouse button, *Make sheet…* in the inspector of a selection) moves the selected stage to a sheet of its own, sized for it, and puts a **sheet symbol** in its place: a box with a pin wherever a wire crossed the selection's edge, named after the net (or the pin it reaches, `R2.1`), standing where the wire left the stage so the outside wiring is unchanged. Ground crossings get ground symbols on either side instead of ports; wiring crossing the edge several times as one piece gets one port; wires left ending in nothing are taken back to where they meet something; a part outside with a pin inside the box is named and nothing changes. Checked on both halves of all 20 examples: every net the same.
+- Palette (*Ground & connectors*): **Hierarchical sheet** (an empty box with a sheet of its own) and **Sheet port (hierarchy)** (name, signal direction in/out/both/supply, side on the box). A port on a sheet is a pin of its box: renaming renames it, deleting removes it, the box grows for new pins.
+- Step in by double-clicking the box (*Open sheet*), out with **Alt+Backspace** (*Up to the sheet above*), which selects the box. The sheet list indents sheets under their parent (↳) with each instance's name.
+- **Instances**: *Place another instance* (inspector, or Blocks… → Place) adds a box with a sheet and designators of its own; *Instance name* per box (Left, Right). A port joins only its own instance's pin. A value, part or wire changed on any instance's sheet changes on every instance's sheet, and the instance you edited becomes the drawing for the others (designators, connector names and identities kept). Sheets inside sheets; a sheet holding its own symbol is refused. Deleting a box deletes its sheet; Undo restores it.
+- The simulation, BOM, ERC, board netlist and saved file see the flat circuit; KiCad export writes every sheet as its own schematic, ports as global labels.
+- **Board: Route ▾ → Copy layout to other copies**: select the parts of one placed and routed copy of a block or sheet instance; every other copy gets the same placement, turn, side and mounting at the same distances (anchored on its part matching the first selected; copies still waiting below a fresh board go beside the first), with the tracks and vias of its own nets (shared nets such as ground and supplies untouched; locked parts and copper stay put). Board netlist parts carry their block tag.
+- **Blocks**: a newly placed copy's sheet connectors are renamed at once (IN → IN_2, IN_3), so copies never join by accident; the dashed outline numbers the copies (Channel · 2/2); a copy whose drawing differs from the block (parts moved, added inside, taken out) says so in the inspector with *Update block from this copy*; *Export library…* / *Import library…* (`tubecad-blocks.json`) move the block library between browsers.
+- **Panel**: oval holes of the boards read from Gerber ZIPs come through: KiCad's routed slots (`G00`/`M15`/`G01`/`M16`) and `G85` slots are read and written to the panel's drill file as `G85` slots (they were left out with a note; seen on two real KiCad 8 boards). Sizes in the Panel dialog show to 0.01 mm.
+
+### Fixed (field test)
+- A new copy of a block whose drawing had two connectors of one name (a feedback loop drawn with two NFB connectors) gave them two different names (NFB_2, NFB_2_2), opening the loop in the copy; one name now gets one new name in a copy. Connectors named like a supply (+325V, B+, −15V, VCC, 12V) or used in three places or more keep their names, so a copy still reaches the power supply. A copy placed from the library into an empty circuit keeps its names.
+- A second instance of a hierarchical sheet shared its sheet's connectors with the first (two channels joined through NFB); a new instance's connectors are renamed as for a block's copy.
+- Copy layout to other copies left an older layout's copper where the copy now stands, shorting nets; that copper is cleared.
+
+- Tests: e2e part `05c-hier` (make sheet on example 03 with nets compared, step in and out, second instance, sync of values and parts, delete and undo, nested sheet, save and reopen, KiCad sheets, simulation, palette sheet and port) and a Copy layout check in part 07.
 
 ## [3.225.0] - 2026-11-14
 

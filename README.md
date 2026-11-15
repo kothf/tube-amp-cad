@@ -135,8 +135,21 @@ Firefox is not tested.
   two channels of a stereo amplifier). A value changed on any copy changes
   on every copy; after changing the drawing of one copy, *Update block from
   selection* redraws the others. Sheet-connector names stay each copy's
-  own, designators are numbered per copy, and blocks can be kept in a
-  library in the browser for other circuits.
+  own (a new copy's are renamed IN_2…), designators are numbered per copy,
+  a copy drawn differently is flagged with *Update block from this copy*,
+  and blocks can be kept in a library in the browser for other circuits
+  (*Export library…* / *Import library…* move it between browsers).
+- **Hierarchical sheets** (Edit ▾ → Make sheet from selection…): a stage
+  moves to a sheet of its own and a box with a pin for every wire that
+  crossed its edge takes its place, every net kept (ground stays ground
+  symbols). Double-click the box to step in, Alt+Backspace to go back up.
+  Place more instances (a second channel): each has a sheet and designators
+  of its own, ports join only their own instance's pins, and a change on
+  any instance's sheet goes to all. Sheets can hold sheets; the palette has
+  an empty *Hierarchical sheet* and *Sheet port*. Simulation, BOM, checks,
+  the board and KiCad export (a schematic per sheet) see the flat circuit.
+  On the board, *Route ▾ → Copy layout to other copies* places and routes
+  the other instances like the first.
 - **Files.**
   - File → Open / Save / Save as (JSON). In Chrome and Edge, Save writes back
     to the opened file after asking; in Safari and other browsers it
