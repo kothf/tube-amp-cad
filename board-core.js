@@ -1017,6 +1017,7 @@
       case "timer555": return ["SOIC-8"];
       case "chipamp": return p.model === "LM386" ? ["SOIC-8"] : [];
       case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "SOIC-14" : "SOIC-8"]; }
+      case "logic": { const m = L.LOGIC_ICS[p.model] || {}; return [m.pkg === 16 ? "SOIC-16" : "SOIC-14"]; }
       case "spice": {
         const n = g.members[0].pins.length;
         switch (p.sym) {
@@ -1124,6 +1125,8 @@
       case "nixie": return ["WIRE-11"];
       case "speaker": return [t2, "JACK-6.35", "WIRE-2"];
       case "siggen": return ["JACK-RCA", "JACK-6.35", "JACK-3.5", t2, "WIRE-2"];
+      // a logic source stands for the board or microcontroller pin that drives it: two terminals
+      case "logicsrc": return [t2, "WIRE-2"];
       case "vdc": return [t2, "TERM-7.5-2", "WIRE-2"];
       // the ideal current source stands for a small current-source board: wired in by two terminals
       case "isrc": return [t2, "WIRE-2"];
@@ -1151,6 +1154,8 @@
       }
       // an op-amp's package; its amplifiers (DA1.1 … DA1.4) share it
       case "opamp": { const m = L.OPAMPS[p.model] || {}; return [m.units === 4 ? "DIP-14" : "DIP-8", `WIRE-${wires}`]; }
+      // a logic IC's package; its gates (DD1.1 … DD1.4) share it
+      case "logic": { const m = L.LOGIC_ICS[p.model] || {}; return [m.pkg === 16 ? "DIP-16" : "DIP-14", `WIRE-${wires}`]; }
       // a SPICE part: the case of the symbol it took (an op-amp a DIP-8, a transistor the usual
       // cases); a box a DIP its pins fit, pad 1 the model's first pin (three pins or fewer: wired)
       case "spice": {

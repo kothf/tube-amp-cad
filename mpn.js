@@ -141,6 +141,15 @@
       const s = SEMI.find(([re]) => re.test(pn));
       return s ? out({ maker: "", pkg: s[1], text: s[2] }) : unknown(raw, "no package code in it: the model's own case");
     }
+    if (type === "logic") {
+      // 74HC14D, SN74HC14N, CD4017BE, CD4017BM96: the family letters and the type number, then the package code
+      const model = norm(p.model || ""), core = model.replace(/^(74|CD)/, ""), i = core ? pn.indexOf(core) : -1;
+      const tail = (i >= 0 ? pn.slice(i + core.length) : pn.replace(/^[A-Z]*\d+[A-Z]?/, "")).replace(/^B(?=[A-Z])/, "");
+      const code = tail.replace(/,\d+$/, "").replace(/(R2|R|T|TR|96|G4|E4)$/, "").replace(/-?\d$/, ""), s = code === "E" || code === "EE" ? [null, "DIP"] : IC_SUFFIX.find(([re]) => re.test(code));
+      if (!s) return unknown(raw);
+      const n = ((root.CadLib && root.CadLib.LOGIC_ICS && root.CadLib.LOGIC_ICS[p.model]) || {}).pkg || 14;
+      return out({ pkg: `${s[1]}-${n}`, text: `${s[1]}-${n} (the order code's “${tail || "?"}”)` });
+    }
     if (type === "opamp" || type === "timer555" || type === "chipamp") {
       const model = norm(p.model || (type === "timer555" ? "555" : "")), i = model ? pn.indexOf(model.replace(/^NE|^LM/, "")) : -1;
       const tail = i >= 0 ? pn.slice(i + model.replace(/^NE|^LM/, "").length) : pn.replace(/^[A-Z]*\d+[A-Z]?/, "");

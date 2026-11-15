@@ -72,7 +72,7 @@
       into[m[1].toLowerCase()] = { args: m[2].split(",").map(a => a.trim().toLowerCase()).filter(Boolean), body: unbrace(m[3]) };
     };
     const addModel = (into, s) => {
-      const m = /^\.model\s+(\S+)\s+([a-z]+)\s*([\s\S]*)$/i.exec(s.replace(/^(\.model\s+\S+\s+)\(\s*([a-z]+)\b([\s\S]*?)\)?\s*$/i, "$1$2 ($3)"));
+      const m = /^\.model\s+(\S+)\s+([a-z][a-z0-9_]*)\s*([\s\S]*)$/i.exec(s.replace(/^(\.model\s+\S+\s+)\(\s*([a-z][a-z0-9_]*)\b([\s\S]*?)\)?\s*$/i, "$1$2 ($3)"));
       if (!m) return;
       let body = m[3].trim(), type = m[2]; if (body[0] === "(") body = body.slice(1).replace(/\)\s*$/, "");
       const p = {}, tk = tokens(body.replace(/,/g, " ")); assignments(tk, p);

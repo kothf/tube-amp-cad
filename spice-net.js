@@ -7,7 +7,10 @@
      R C L K · V I (DC, and SIN PULSE EXP SFFM PWL in the transient) · D Q M J with their .MODEL (diode, Gummel–Poon BJT,
      level 1 to 3 MOSFET by its own equations with its bulk, BSIM3v3 and BSIM4 (ngspice's code), LTspice's VDMOS as the square law, JFET) · E G F H, linear,
      VALUE = {…}, TABLE and POLY(n), LAPLACE (H(s) as a state-space network) and FREQ (a table fitted
-     to H(s) by vector fitting) · B (I = or V =, Laplace=) · S and W switches · T (lossless) · X.
+     to H(s) by vector fitting) · B (I = or V =, Laplace=) · S and W switches · T (lossless) · X ·
+     A, XSPICE's digital code models (gates, flip-flops, latches, d_fdiv, d_lut) as the engine's DIG
+     elements and adc_bridge / dac_bridge as its ADC and DAC, run by sim-digital.js; logic nodes
+     are keys of their own (scoped like nodes, prefixed with the part's id by build).
    What depends on voltages or currents by an expression becomes a behavioural source
    (the engine's kind B) with a closed expression tree: parameters are numbers by then,
    .FUNC bodies are inlined, nodes are the element's own.
@@ -19,7 +22,7 @@
    small-signal analyses; a VDMOS's Cgd follows CGDMIN … CGDMAX (A). A transistor's temperature
    terms (XTI, EG, XTB, TNOM) set it at another temperature, or as it heats itself (build's spec).
    Not carried over: the other temperature terms and noise parameters. Lossless transmission lines (T) are
-   the engine's TLINE. Not supported (an error): CHEBYSHEV sources, lossy lines (O, U, T with R or G), PWL from a file. B sources may read time. MOSFETs at LEVEL 8, 49, 53 (BSIM3v3) and 14, 54 (BSIM4) are BSIM elements (bsim3.js, bsim4.js).
+   the engine's TLINE. Not supported (an error): CHEBYSHEV sources, lossy lines (O, U, T with R or G), PWL from a file, d_osc, d_source, d_state, d_ram. B sources may read time. MOSFETs at LEVEL 8, 49, 53 (BSIM3v3) and 14, 54 (BSIM4) are BSIM elements (bsim3.js, bsim4.js).
 
    build(spec, pinNodes, alloc, id) gives the engine's elements for one part of a circuit.
    ============================================================================= */
@@ -358,9 +361,12 @@
     const uniq = nm => { let k = nm, i = 2; while (used.has(k)) k = nm + "_" + i++; used.add(k); return k; };
     const push = e => { e.name = uniq(e.name); els.push(e); return e; };
 
-    function expand(sub, pinNodes, scope, prefix, depth) {
+    function expand(sub, pinNodes, scope, prefix, depth, dpins) {
       if (depth > 12) throw new Error(`subcircuits nested too deep (${sub.name})`);
       const map = new Map(); sub.pins.forEach((p, i) => map.set(p, pinNodes[i]));
+      // logic nets by name, in a space of their own: a pin's from the line that called the subcircuit
+      const dmap = new Map(); sub.pins.forEach((p, i) => dmap.set(p, dpins[i]));
+      const dkey = raw => { const nm = String(raw).toLowerCase(); return dmap.has(nm) ? dmap.get(nm) : prefix + nm; };
       const node = raw => {
         const nm = String(raw).toLowerCase().replace(/^\(|[),]+$/g, "");
         if (map.has(nm)) return map.get(nm);
@@ -606,7 +612,7 @@
           if (nodes.length !== child.pins.length) throw new Error(`${at(no)}${tk[0]}: ${sname} has ${child.pins.length} pins, ${nodes.length} given`);
           const over = {}, raw = eq < 0 ? {} : params(tk.slice(eq));
           Object.keys(raw).forEach(k => { over[k] = String(val(raw[k], no)); });
-          expand(child, nodes, SM.makeScope(lib, child, over), prefix + nm + ".", depth + 1);
+          expand(child, nodes, SM.makeScope(lib, child, over), prefix + nm + ".", depth + 1, head.slice(1, -1).map(dkey));
         } else if (kind === "T") {
           // a lossless transmission line: T a1 b1 a2 b2 Z0= TD= (or F= [NL=], NL defaulting to a quarter
           // wave); PSpice's own form by its per-length L and C and LEN (R and G zero) too
@@ -620,9 +626,62 @@
           if (!(z0 > 0) || !(td > 0) || !isFinite(td)) throw new Error(`${at(no)}${tk[0]} needs Z0= and TD= (or F=)`);
           push({ name: prefix + nm, kind: "TLINE", n: [node(tk[1]), node(tk[2]), node(tk[3]), node(tk[4])], z0, td });
         } else if (kind === "O" || kind === "U") throw new Error(`${at(no)}lossy transmission lines (${tk[0]}) are not supported`);
-        else if (kind === "A") throw new Error(`${at(no)}LTspice's special devices (${tk[0]}) are not supported`);
+        else if (kind === "A") xspice(s, no);
         else throw new Error(`${at(no)}element ${tk[0]} is not supported`);
       });
+
+      // --- XSPICE code models: logic and its bridges (sim-digital.js) ---------------------
+      // A<name> <ports…> <model>: a port is a node, NULL, or [a vector of them]; ~ before a logic
+      // node inverts it; %d, %v, %g ahead of a port name its kind (%vd, %id and the rest: refused)
+      function xspice(line, no) {
+        const tks = line.replace(/\[/g, " [ ").replace(/\]/g, " ] ").trim().split(/\s+/), name = tks[0].toLowerCase(), mname = tks[tks.length - 1];
+        const m = scope.model(String(mname).toLowerCase());
+        if (!m) throw new Error(`${at(no)}${tks[0]}: no .MODEL ${mname}`);
+        const type = String(m.type || "").toLowerCase();
+        const ports = [];
+        let vec = null;
+        for (const t of tks.slice(1, -1)) {
+          if (t === "[") { vec = []; continue; }
+          if (t === "]") { ports.push(vec || []); vec = null; continue; }
+          if (/^%/.test(t)) { if (!/^%(d|v|g)$/i.test(t)) throw new Error(`${at(no)}${tks[0]}: port kind ${t} is not supported`); continue; }
+          if (vec) vec.push(t); else ports.push(t);
+        }
+        const P = (k, def) => { const v = m.p[k]; if (v === undefined) return def; const x = val(v, no); return isFinite(x) ? x : def; };
+        const dn = t => {
+          if (/^null$/i.test(t)) return { key: null, inv: false };
+          const inv = t[0] === "~", key = dkey(inv ? t.slice(1) : t);
+          if (key.startsWith("#pin:")) throw new Error(`${at(no)}${tks[0]}: the part's pin ${key.slice(5)} is used as a logic node; put an adc_bridge or dac_bridge inside the model`);
+          return { key, inv };
+        };
+        const list = q => (Array.isArray(q) ? q : [q]);
+        if (type === "adc_bridge" || type === "dac_bridge") {
+          if (ports.length !== 2) throw new Error(`${at(no)}${tks[0]}: ${type} takes an input and an output port`);
+          const ins = list(ports[0]), outs = list(ports[1]);
+          if (ins.length !== outs.length) throw new Error(`${at(no)}${tks[0]}: ${ins.length} inputs and ${outs.length} outputs`);
+          ins.forEach((a, k) => {
+            if (type === "adc_bridge") {
+              const o = dn(outs[k]);
+              push({ name: prefix + name + (ins.length > 1 ? "#" + k : ""), kind: "ADC", n: [node(a)], out: o.key, inv: o.inv, p: { lo: P("in_low", 0.1), hi: P("in_high", 0.9), rise: P("rise_delay", 1e-9), fall: P("fall_delay", 1e-9) } });
+            } else {
+              const i = dn(a), lo = P("out_low", 0), hi = P("out_high", 1);
+              const undef = m.p.out_undef !== undefined ? P("out_undef", 0.5) : m.p.out_low !== undefined && m.p.out_high !== undefined ? (lo + hi) / 2 : 0.5;
+              push({ name: prefix + name + (ins.length > 1 ? "#" + k : ""), kind: "DAC", n: [node(outs[k]), 0], in: i.key, inv: i.inv, p: { lo, hi, undef, trise: P("t_rise", 1e-9), tfall: P("t_fall", 1e-9) } });
+            }
+          });
+          return;
+        }
+        const prim = type.replace(/^d_/, ""), spec = root.TubeDigital && root.TubeDigital.PORTS[prim];
+        if (!/^d_/.test(type) || !spec) throw new Error(`${at(no)}${tks[0]}: code model ${type} is not supported (the logic ones are: d_and, d_nand, d_or, d_nor, d_xor, d_xnor, d_buffer, d_inverter, d_open_c, d_open_e, d_tristate, d_pullup, d_pulldown, d_lut, d_dff, d_jkff, d_tff, d_srff, d_dlatch, d_srlatch, d_fdiv, and adc_bridge, dac_bridge)`);
+        const [inSpec, outSpec] = spec, want = inSpec.length + outSpec.length;
+        if (ports.length !== want) throw new Error(`${at(no)}${tks[0]}: ${type} has ${want} ports, ${ports.length} given`);
+        const ins = [], outs = [], invIn = [], invOut = [];
+        inSpec.forEach((nmP, k) => { list(ports[k]).forEach(t => { const d = dn(t); ins.push(d.key); invIn.push(d.inv); }); if (nmP.endsWith("*") && !Array.isArray(ports[k])) throw new Error(`${at(no)}${tks[0]}: ${type}'s inputs go in [ ]`); });
+        outSpec.forEach((_, k) => { const d = dn(ports[inSpec.length + k]); outs.push(d.key); invOut.push(d.inv); });
+        const p = {};
+        for (const k in m.p) { if (k === "family" || k === "level") continue; if (k === "table_values") { p[k] = SM.unbrace(String(m.p[k])).replace(/^"|"$/g, ""); continue; } const x = val(m.p[k], no); if (isFinite(x)) p[k] = x; }
+        if (/^(true|1)$/i.test(String(m.p.inertial_delay || ""))) warn.add("Logic gates take transport delays (inertial_delay is not followed)");
+        push({ name: prefix + name, kind: "DIG", n: [], type: prim, in: ins, out: outs, inv: { in: invIn, out: invOut }, p });
+      }
 
       // --- devices ---------------------------------------------------------------
       function series(nm, a, r) { if (!(r > 0)) return a; const k = nNodes++; push({ name: nm, kind: "R", n: [a, k], r }); return k; }
@@ -753,7 +812,7 @@
         if (pol > 0) { cap(nm + "#cgs", g, s2, cgs, jg); cap(nm + "#cgd", g, d2, cgd, jg); } else { cap(nm + "#cgs", s2, g, cgs, jg); cap(nm + "#cgd", d2, g, cgd, jg); }
       }
     }
-    expand(top, top.pins.map((_, i) => i + 1), SM.makeScope(lib, top, overrides), "", 0);
+    expand(top, top.pins.map((_, i) => i + 1), SM.makeScope(lib, top, overrides), "", 0, top.pins.map(p => "#pin:" + p));
 
     // coupled inductors: each group of windings on one core becomes a transformer
     if (couplings.length) {
@@ -809,6 +868,11 @@
       if (e.kind === "BSIM" && spec.temp !== undefined && spec.temp !== null && isFinite(spec.temp)) o.temp = +spec.temp;
       if (e.kind === "XFMR") { o.windings = e.windings.map(w => ({ a: map[w.a], b: map[w.b], turns: w.turns })); o.nodes = []; }
       if (e.ext) o.ext = e.ext.map(k => map[k]);
+      // logic nets: the part's own (its id before each name)
+      const dk = k => (k === null || k === undefined ? null : id + "#" + k);
+      if (e.kind === "DIG") { o.in = e.in.map(dk); o.out = e.out.map(dk); }
+      if (e.kind === "ADC") o.out = dk(e.out);
+      if (e.kind === "DAC") o.in = dk(e.in);
       if (e.ctl) o.ctl = e.ctl.map(eid);
       if (o.tt === undefined) delete o.tt;
       out.push(o);

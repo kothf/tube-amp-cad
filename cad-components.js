@@ -712,6 +712,55 @@
       ctx.font = "bold 9px ui-monospace, monospace"; ctx.fillText("555", 8, -14);
       ctx.textBaseline = "alphabetic";
     },
+    logic(ctx, c) {
+      // IEC 60617-12 rectangular logic symbols: the function's sign inside, a bubble where a pin
+      // is active low (an inverting output, PRE and CLR, a counter clocked on its falling edge)
+      const m = logicIc(c), G = logicGeom(m), [x0, y0, x1, y1] = G.box, ids = logicPinIds(m);
+      ctx.fillStyle = COL.fill; ctx.fillRect(x0, y0, x1 - x0, y1 - y0); ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      const bubbled = new Set(m.kind === "nand" || m.kind === "nor" || m.kind === "inverter" ? ["Y"] : m.kind === "dff" ? (m.lowSR ? ["PRE", "CLR", "QN"] : ["QN"]) : m.kind === "counter" ? ["CP"] : []);
+      const bub = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = COL.fill; ctx.fill(); ctx.stroke(); };
+      G.pins.forEach(p => {
+        const ex = p.side === "l" ? x0 : p.side === "r" ? x1 : p.x, ey = p.side === "t" ? y0 : p.side === "b" ? y1 : p.y;
+        const b = bubbled.has(p.id), dx = Math.sign(p.x - ex) * 3, dy = Math.sign(p.y - ey) * 3;
+        line(ctx, [p.x, p.y, b ? ex + 2 * dx : ex, b ? ey + 2 * dy : ey]);
+        if (b) bub(ex + dx, ey + dy);
+      });
+      ctx.fillStyle = COL.value; ctx.textBaseline = "middle";
+      const sign = { nand: "&", and: "&", nor: "≥1", or: "≥1", xor: "=1", inverter: "1" }[m.kind];
+      if (sign) {
+        ctx.font = "bold 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText(sign, 0, m.schmitt ? -6 : 0);
+        if (m.schmitt) { ctx.lineWidth = 1; line(ctx, [-6, 9, 2, 9, 2, 3, 6, 3]); line(ctx, [-2, 9, -2, 3, 6, 3]); }
+      } else {
+        ctx.font = "7px ui-monospace, monospace";
+        const lab = { D: "D", CLK: "C1", S: "S", R: "R", PRE: "S", CLR: "R", Q: "Q", QN: "Q̄", CP: "+", MR: "CT=0", CE: "EN", RST: "R", CO: "CO" };
+        G.pins.forEach(p => {
+          if (p.id === "VCC" || p.id === "GND") return;
+          const t = lab[p.id] || p.id;
+          if (p.side === "l") { ctx.textAlign = "left"; ctx.fillText(t, x0 + 3 + (p.id === "CLK" || p.id === "CP" ? 6 : 0), p.y); }
+          else if (p.side === "r") { ctx.textAlign = "right"; ctx.fillText(t, x1 - 3, p.y); }
+          else { ctx.textAlign = "center"; ctx.fillText(t, p.x, p.side === "t" ? y0 + 6 : y1 - 6); }
+          // a clock input: the dynamic-input triangle
+          if (p.id === "CLK" || p.id === "CP") { ctx.lineWidth = 1; line(ctx, [x0, p.y - 3, x0 + 5, p.y, x0, p.y + 3]); }
+        });
+        ctx.font = "bold 8px ui-monospace, monospace"; ctx.textAlign = "center";
+        const head = m.kind === "dff" ? "" : m.kind === "johnson" ? "CTR DIV10" : `CTR${m.bits}`;
+        if (head) ctx.fillText(head, 0, y0 + 7);
+      }
+      // the supplies' names left of their leads (the pin numbers go on the right)
+      ctx.fillStyle = COL.text; ctx.font = "6px ui-monospace, monospace"; ctx.textAlign = "right";
+      ctx.fillText(m.fam === "cd" ? "VDD" : "VCC", G.pins.find(p => p.id === "VCC").x - 2, y0 - 4); ctx.fillText(m.fam === "cd" ? "VSS" : "GND", G.pins.find(p => p.id === "GND").x - 2, y1 + 4);
+      ctx.textBaseline = "alphabetic";
+      void ids;
+    },
+    logicsrc(ctx, c) {
+      // IEC 60617 generator (square with G) qualified with a pulse train
+      line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
+      ctx.fillStyle = COL.fill; ctx.fillRect(-14, -14, 28, 28); ctx.strokeRect(-14, -14, 28, 28);
+      ctx.fillStyle = ctx.strokeStyle; ctx.font = "bold 11px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.fillText("G", 0, -1);
+      ctx.lineWidth = 1.2;
+      if (c && c.params.wave === "pattern") line(ctx, [-9, 9, -6, 9, -6, 4, -2, 4, -2, 9, 1, 9, 1, 4, 8, 4]);
+      else line(ctx, [-9, 9, -6, 9, -6, 4, -2, 4, -2, 9, 2, 9, 2, 4, 6, 4, 6, 9, 9, 9]);
+    },
     isrc(ctx) {
       // a circle with the arrow of the current's direction, from the - pin to the + pin
       line(ctx, [0, -30, 0, -14]); line(ctx, [0, 14, 0, 30]);
@@ -1697,6 +1746,123 @@
     "LM3886": { a0: 5.6e5, gbw: 8e6, sr: 19e6, rin: 1e6, ib: 0.2e-6, ro: 0.1, isc: 11.5, isk: 11.5, dhi: 3.2, dlo: 3.2, iq: 50e-3, vmax: 84, vmin: 20, cc: 10e-12, pmax: 125, gmin: 10, pkg: "TO-220-11",
       pins: { "V+": "1,5", OUT: "3", "V-": "4", GND: "7", MUTE: "8", "-": "9", "+": "10" }, pout: "68 W into 4 Ω, 38 W into 8 Ω from ±28 V", use: "68 W, mute, overture series" }
   };
+  // ---------------------------------------------------------------------------
+  // Logic ICs, 74HC and CD4000B: their logic runs in the logic simulator (sim-digital.js) in the
+  // Transient tab; their pins are analogue. Each input reads high above a share of the supply and
+  // low below another (th: a little hysteresis; st: a Schmitt trigger's), with the input's
+  // capacitance and the clamp diodes to the rails; each output swings rail to rail behind its
+  // output resistance in the family's transition time, its current from VCC or into GND. The
+  // delays are the datasheets' typical ones at 5 V (74HC, NXP) and 10 V (CD4000B, TI); the other
+  // analyses hold the state the logic has at the start.
+  //   units: each unit's package pins, in its symbol's pin order (inputs, then outputs); pkg: pins
+  // ---------------------------------------------------------------------------
+  const LOGIC_FAMS = {
+    hc: { name: "74HC", vmin: 2, vmax: 6, th: [0.47, 0.53], st: [0.31, 0.53], rout: 50, tt: 7e-9, cin: 3.5e-12 },
+    cd: { name: "CD4000B", vmin: 3, vmax: 18, th: [0.47, 0.53], st: [0.39, 0.59], rout: 300, tt: 50e-9, cin: 5e-12 }
+  };
+  const LG2 = [[1, 2, 3], [4, 5, 6], [9, 10, 8], [12, 13, 11]], LG2N = [[2, 3, 1], [5, 6, 4], [8, 9, 10], [11, 12, 13]], LG2C = [[1, 2, 3], [5, 6, 4], [8, 9, 10], [12, 13, 11]], LINV = [[1, 2], [3, 4], [5, 6], [9, 8], [11, 10], [13, 12]];
+  const LCTR12 = [[10, 11, 9, 7, 6, 5, 3, 2, 4, 13, 12, 14, 15, 1]];
+  const LOGIC_ICS = {
+    "74HC00": { fam: "hc", kind: "nand", units: LG2, pkg: 14, tpd: 7e-9, use: "quad 2-input NAND" },
+    "74HC02": { fam: "hc", kind: "nor", units: LG2N, pkg: 14, tpd: 7e-9, use: "quad 2-input NOR" },
+    "74HC04": { fam: "hc", kind: "inverter", units: LINV, pkg: 14, tpd: 7e-9, use: "hex inverter" },
+    "74HC08": { fam: "hc", kind: "and", units: LG2, pkg: 14, tpd: 7e-9, use: "quad 2-input AND" },
+    "74HC14": { fam: "hc", kind: "inverter", schmitt: true, units: LINV, pkg: 14, tpd: 12e-9, use: "hex Schmitt-trigger inverter" },
+    "74HC32": { fam: "hc", kind: "or", units: LG2, pkg: 14, tpd: 7e-9, use: "quad 2-input OR" },
+    "74HC86": { fam: "hc", kind: "xor", units: LG2, pkg: 14, tpd: 11e-9, use: "quad 2-input XOR" },
+    "74HC74": { fam: "hc", kind: "dff", lowSR: true, units: [[2, 3, 4, 1, 5, 6], [12, 11, 10, 13, 9, 8]], pkg: 14, tpd: 14e-9, use: "dual D flip-flop, preset and clear" },
+    "74HC393": { fam: "hc", kind: "counter", bits: 4, units: [[1, 2, 3, 4, 5, 6], [13, 12, 11, 10, 9, 8]], pkg: 14, tpd: 11e-9, stage: 6e-9, use: "dual 4-bit binary ripple counter" },
+    "74HC4040": { fam: "hc", kind: "counter", bits: 12, units: LCTR12, pkg: 16, tpd: 14e-9, stage: 8e-9, use: "12-stage binary ripple counter" },
+    "CD4001": { fam: "cd", kind: "nor", units: LG2C, pkg: 14, tpd: 60e-9, use: "quad 2-input NOR" },
+    "CD4011": { fam: "cd", kind: "nand", units: LG2C, pkg: 14, tpd: 60e-9, use: "quad 2-input NAND" },
+    "CD4013": { fam: "cd", kind: "dff", units: [[5, 3, 6, 4, 1, 2], [9, 11, 8, 10, 13, 12]], pkg: 14, tpd: 65e-9, use: "dual D flip-flop, set and reset" },
+    "CD4017": { fam: "cd", kind: "johnson", units: [[14, 13, 15, 3, 2, 4, 7, 10, 1, 5, 6, 9, 11, 12]], pkg: 16, tpd: 130e-9, use: "decade counter, 10 decoded outputs" },
+    "CD4040": { fam: "cd", kind: "counter", bits: 12, units: LCTR12, pkg: 16, tpd: 90e-9, stage: 40e-9, use: "12-stage binary ripple counter" },
+    "CD4069": { fam: "cd", kind: "inverter", units: LINV, pkg: 14, tpd: 30e-9, use: "hex inverter" },
+    "CD4070": { fam: "cd", kind: "xor", units: LG2C, pkg: 14, tpd: 70e-9, use: "quad 2-input XOR" },
+    "CD4093": { fam: "cd", kind: "nand", schmitt: true, units: LG2C, pkg: 14, tpd: 90e-9, use: "quad 2-input Schmitt-trigger NAND" },
+    "CD40106": { fam: "cd", kind: "inverter", schmitt: true, units: LINV, pkg: 14, tpd: 70e-9, use: "hex Schmitt-trigger inverter" }
+  };
+  const logicIc = c => LOGIC_ICS[c.params.model] || LOGIC_ICS["74HC00"];
+  // the unit of a package from the designation suffix: DD1.3 is the third gate
+  const logicUnit = c => { const m = logicIc(c), k = +((/\.(\d+)$/.exec(c.label || "") || [])[1] || 1); return k >= 1 && k <= m.units.length ? k : 1; };
+  // a unit's pins: its inputs and outputs (ids), as the units' package pins list them
+  function logicPinIds(m) {
+    switch (m.kind) {
+      case "inverter": return { ins: ["A"], outs: ["Y"] };
+      case "dff": return { ins: ["D", "CLK", m.lowSR ? "PRE" : "S", m.lowSR ? "CLR" : "R"], outs: ["Q", "QN"] };
+      case "counter": return { ins: ["CP", "MR"], outs: Array.from({ length: m.bits }, (_, i) => "Q" + i) };
+      case "johnson": return { ins: ["CLK", "CE", "RST"], outs: Array.from({ length: 10 }, (_, i) => "Q" + i).concat("CO") };
+      default: return { ins: ["A", "B"], outs: ["Y"] };
+    }
+  }
+  const LOGIC_PIN_NAMES = { A: "input A", B: "input B", Y: "output", D: "data", CLK: "clock", S: "set (high)", R: "reset (high)", PRE: "preset (low)", CLR: "clear (low)", Q: "output Q", QN: "output Q̄",
+    CP: "clock (counts on its falling edge)", MR: "master reset (high)", CE: "clock enable (low)", RST: "reset (high)", CO: "carry out (high for counts 0–4)" };
+  // a unit's symbol: its box and its pins ({ id, x, y, name, side })
+  function logicGeom(m) {
+    const ids = logicPinIds(m), P = (id, x, y, side) => ({ id, x, y, side, name: LOGIC_PIN_NAMES[id] || (/^Q\d+$/.test(id) ? "output " + id : id) });
+    const vdd = m.fam === "cd" ? "VDD" : "VCC", vss = m.fam === "cd" ? "VSS" : "GND";
+    const sup = (y0, y1, x) => [Object.assign(P("VCC", x || 0, y0, "t"), { name: `supply (${vdd})` }), Object.assign(P("GND", x || 0, y1, "b"), { name: `ground (${vss})` })];
+    switch (m.kind) {
+      case "inverter": return { box: [-15, -20, 15, 20], bbox: [-30, -30, 30, 30], pins: [P("A", -30, 0, "l"), P("Y", 30, 0, "r"), ...sup(-30, 30)] };
+      case "dff": return { box: [-25, -30, 25, 30], bbox: [-40, -40, 40, 40], pins: [P("D", -40, -20, "l"), P("CLK", -40, 0, "l"), P(ids.ins[2], -10, -40, "t"), P(ids.ins[3], -10, 40, "b"), P("Q", 40, -20, "r"), P("QN", 40, 20, "r"), ...sup(-40, 40, 10)] };
+      case "counter": case "johnson": {
+        // the outputs start a row down: the top row holds the CTR heading
+        const n = ids.outs.length, top = -10 * Math.floor(n / 2) - 20, bot = top + 10 * (n + 2);
+        const ys = ids.ins.length === 2 ? [-10, 10] : [-10, 0, 10], left = ids.ins.map((id, k) => P(id, -40, ys[k], "l"));
+        return { box: [-25, top, 25, bot], bbox: [-40, top - 10, 40, bot + 10], pins: [...left, ...ids.outs.map((id, i) => P(id, 40, top + 10 * (i + 2), "r")), ...sup(top - 10, bot + 10)] };
+      }
+      default: return { box: [-15, -20, 15, 20], bbox: [-30, -30, 30, 30], pins: [P("A", -30, -10, "l"), P("B", -30, 10, "l"), P("Y", 30, 0, "r"), ...sup(-30, 30)] };
+    }
+  }
+  // the package pin of each symbol pin of unit k (1…), supplies included
+  function logicPinNumbers(m, k) {
+    const ids = logicPinIds(m), u = m.units[k - 1] || m.units[0], out = {};
+    ids.ins.concat(ids.outs).forEach((id, i) => { out[id] = String(u[i]); });
+    out.VCC = String(m.pkg); out.GND = String(m.pkg / 2);
+    return out;
+  }
+
+  // a unit as an XSPICE subcircuit for the SPICE export (ngspice): pins ins…, outs…, VCC, GND. Each
+  // input read against the rails through ngspice's hyst model (the two thresholds) into an
+  // adc_bridge, the logic as d_ models (a ripple counter as toggle flip-flops, the 4017 as a
+  // five-stage Johnson ring and its decoding gates), each output a dac_bridge scaled to the rails
+  // behind the output resistance. The output's current comes from GND here, not from VCC
+  function logicSpice(model, name) {
+    const m = LOGIC_ICS[model] || LOGIC_ICS["74HC00"], F = LOGIC_FAMS[m.fam], { ins, outs } = logicPinIds(m), th = m.schmitt ? F.st : F.th, g = v => +(+v).toPrecision(6), d = g(m.tpd), z = 1e-12;
+    const L = [`.subckt ${name} ${ins.join(" ")} ${outs.join(" ")} VCC GND`, `* ${model} (${m.use}), one unit; thresholds ${th[0]} and ${th[1]} of the supply`];
+    L.push(`.model ${name}_hy hyst(in_low=${g((th[0] + th[1]) / 2 - 1e-5)} in_high=${g((th[0] + th[1]) / 2 + 1e-5)} hyst=${g((th[1] - th[0]) / 2)} out_lower_limit=0 out_upper_limit=1 input_domain=0.001 fraction=TRUE)`,
+      `.model ${name}_ad adc_bridge(in_low=0.5 in_high=0.5 rise_delay=${z} fall_delay=${z})`, `.model ${name}_da dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=${g(F.tt)} t_fall=${g(F.tt)})`);
+    ins.forEach(id => L.push(`Bn_${id} n_${id} 0 V=(V(${id})-V(GND))/max(V(VCC)-V(GND),1e-3)`, `Ah_${id} n_${id} h_${id} ${name}_hy`, `Aa_${id} [h_${id}] [d_${id}] ${name}_ad`,
+      `C_${id} ${id} GND ${g(F.cin)}`, `Dl_${id} GND ${id} ${name}_cl`, `Dh_${id} ${id} VCC ${name}_cl`));
+    L.push(`.model ${name}_cl D(IS=1e-15 N=1)`);
+    const dl = id => "d_" + id, q = dl;
+    switch (m.kind) {
+      case "dff": {
+        const inv = m.lowSR ? "~" : "";
+        L.push(`Ag ${dl("D")} ${dl("CLK")} ${inv}${dl(ins[2])} ${inv}${dl(ins[3])} ${q("Q")} ${q("QN")} ${name}_ff`, `.model ${name}_ff d_dff(clk_delay=${d} set_delay=${d} reset_delay=${d} ic=0 rise_delay=${z} fall_delay=${z})`);
+        break;
+      }
+      case "counter":
+        L.push(`Ag_one one ${name}_one`, `.model ${name}_one d_pullup`);
+        outs.forEach((id, i) => L.push(`Ag${i} one ${i ? "~" + q(outs[i - 1]) : "~" + dl("CP")} NULL ${dl("MR")} ${q(id)} NULL ${name}_t${i ? 1 : 0}`));
+        L.push(`.model ${name}_t0 d_tff(clk_delay=${d} reset_delay=${d} ic=0 rise_delay=${z} fall_delay=${z})`, `.model ${name}_t1 d_tff(clk_delay=${g(m.stage)} reset_delay=${d} ic=0 rise_delay=${z} fall_delay=${z})`);
+        break;
+      case "johnson":
+        L.push(`Ag_ck [${dl("CLK")} ~${dl("CE")}] ck ${name}_and`);
+        for (let i = 0; i < 5; i++) L.push(`Ag_s${i} ${i ? "s" + (i - 1) : "~s4"} ck NULL ${dl("RST")} s${i} NULL ${name}_ff`);
+        [["~s0", "~s4"], ["s0", "~s1"], ["s1", "~s2"], ["s2", "~s3"], ["s3", "~s4"], ["s0", "s4"], ["~s0", "s1"], ["~s1", "s2"], ["~s2", "s3"], ["~s3", "s4"]].forEach((ab, i) => L.push(`Ag_q${i} [${ab.join(" ")}] ${q("Q" + i)} ${name}_and`));
+        L.push(`Ag_co ~s4 ${q("CO")} ${name}_buf`, `.model ${name}_ff d_dff(clk_delay=${g(m.tpd - 2 * z)} reset_delay=${g(m.tpd - 2 * z)} ic=0 rise_delay=${z} fall_delay=${z})`,
+          `.model ${name}_and d_and(rise_delay=${z} fall_delay=${z})`, `.model ${name}_buf d_buffer(rise_delay=${z} fall_delay=${z})`);
+        break;
+      case "inverter": L.push(`Ag ${dl("A")} ${q("Y")} ${name}_g`, `.model ${name}_g d_inverter(rise_delay=${d} fall_delay=${d})`); break;
+      default: L.push(`Ag [${dl("A")} ${dl("B")}] ${q("Y")} ${name}_g`, `.model ${name}_g d_${m.kind}(rise_delay=${d} fall_delay=${d})`);
+    }
+    outs.forEach(id => L.push(`Ao_${id} [${q(id)}] [s_${id}] ${name}_da`, `Bo_${id} m_${id} GND V=V(s_${id})*(V(VCC)-V(GND))`, `Ro_${id} m_${id} ${id} ${F.rout}`));
+    L.push(`.ends ${name}`);
+    return L;
+  }
+
   // the amplifier of a dual or quad from the designation suffix: DA1.2 is the second one
   const opampUnit = c => { const m = OPAMPS[c.params.model] || OPAMPS.TL071, k = +((/\.(\d+)$/.exec(c.label || "") || [])[1] || 1); return k >= 1 && k <= m.units ? k : 1; };
   // the engine's macromodel (sim-engine.js Semi.opamp) from the datasheet values: stage two has a
@@ -2995,6 +3161,82 @@
           { id: c.id + "#rst", kind: "R", nodes: [p("8"), p("4")], r: 33e3, internal: true });   // reset pin: 0.4 mA out of it pulled to 0 V from 15 V
       }
     },
+    // a logic IC's unit (DD1.1 … DD1.4 are the gates of one package, as an op-amp's amplifiers are)
+    logic: {
+      name: "Logic IC", prefix: "DD", group: "Integrated circuits",
+      defaults: { model: "74HC00" },
+      bbox: c => logicGeom(logicIc(c)).bbox,
+      pins: c => logicGeom(logicIc(c)).pins.map(p => ({ id: p.id, x: p.x, y: p.y, name: p.name })),
+      pinSpots: c => logicGeom(logicIc(c)).pins.map(p => p.side === "l" ? [p.id, p.x + 4, p.y, 0, -1] : p.side === "r" ? [p.id, p.x - 4, p.y, 0, -1] : p.side === "t" ? [p.id, p.x, p.y + 4, 1, 0] : [p.id, p.x, p.y - 4, 1, 0]),
+      pinNumbers: c => logicPinNumbers(logicIc(c), logicUnit(c)),
+      value: c => c.params.model,
+      fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(LOGIC_ICS).map(([k, m]) => [k, `${k} · ${m.use}`, LOGIC_FAMS[m.fam].name]) }],
+      info: c => {
+        const m = logicIc(c), F = LOGIC_FAMS[m.fam], u = logicUnit(c), n = m.units.length, nums = logicPinNumbers(m, u), base = c.label && c.label.includes(".") ? c.label.slice(0, c.label.lastIndexOf(".")) : c.label || "DD1";
+        const what = { nand: "NAND gate", nor: "NOR gate", and: "AND gate", or: "OR gate", xor: "XOR gate", inverter: "inverter", dff: "D flip-flop", counter: "counter", johnson: "counter" }[m.kind];
+        return `${c.params.model} (${m.use}), ${F.name}, DIP-${m.pkg}: supply ${F.vmin}–${F.vmax} V on pins ${nums.VCC} and ${nums.GND}. `
+          + (n > 1 ? `This is ${what} ${u} of ${n}: name the others ${base}.1 … .${n} to put them in one package, and wire the supply on each. ` : "")
+          + `Its logic runs in Analyze ▾ Transient (logic simulator, delays ${fmtEng(m.tpd, "s")}${m.stage ? `, ${fmtEng(m.stage, "s")} more per stage` : ""}); the other analyses hold the state it starts in. `
+          + `Inputs switch at ${m.schmitt ? `${Math.round(F.st[1] * 100)} % of the supply rising and ${Math.round(F.st[0] * 100)} % falling (Schmitt trigger)` : "half the supply"}, with ${fmtEng(F.cin, "F")} and clamp diodes to the rails; outputs swing rail to rail through ${F.rout} Ω in ${fmtEng(F.tt, "s")}. `
+          + (m.kind === "dff" ? (m.lowSR ? "PRE and CLR are active low: tie them high when not used. " : "S and R are active high: tie them low when not used. ") : "")
+          + (m.kind === "counter" ? "It counts on the clock's falling edge; MR high clears it. " : "")
+          + (m.kind === "johnson" ? "It counts on the clock's rising edge while CE is low; RST high returns it to Q0. " : "")
+          + "Unused inputs must go to a rail: a CMOS input left open floats.";
+      },
+      build: (c, net, alloc, out) => {
+        const m = logicIc(c), F = LOGIC_FAMS[m.fam], { ins, outs } = logicPinIds(m), g = net("GND"), v = net("VCC"), key = id => c.id + "#" + id, th = m.schmitt ? F.st : F.th;
+        // the pins: an input read against the rails, an output driven between them
+        ins.forEach(id => {
+          const n = net(id);
+          out.push({ id: c.id + "#in" + id, kind: "ADC", nodes: [n, g, v], out: key(id), p: { lo: th[0], hi: th[1], hyst: true, rise: 0, fall: 0 }, internal: true });
+          out.push({ id: c.id + "#ci" + id, kind: "C", nodes: [n, g], c: F.cin, internal: true });
+          out.push({ id: c.id + "#dl" + id, kind: "D", nodes: [g, n], is: 1e-15, n: 1, internal: true }, { id: c.id + "#dh" + id, kind: "D", nodes: [n, v], is: 1e-15, n: 1, internal: true });
+        });
+        outs.forEach(id => {
+          const mid = alloc();
+          out.push({ id: c.id + "#o" + id, kind: "DAC", nodes: [mid, g, v], in: key(id), p: { trise: F.tt, tfall: F.tt }, internal: true });
+          out.push({ id: c.id + "#ro" + id, kind: "R", nodes: [mid, net(id)], r: F.rout, internal: true });
+        });
+        const d = m.tpd;
+        if (m.kind === "dff") out.push({ id: c.id, kind: "DIG", type: "dff", in: ins.map(key), out: outs.map(key), inv: { in: [false, false, !!m.lowSR, !!m.lowSR], out: [false, false] }, p: { clk_delay: d, set_delay: d, reset_delay: d, rise_delay: 0, fall_delay: 0, ic: 0 } });
+        else if (m.kind === "counter") out.push({ id: c.id, kind: "DIG", type: "counter", in: ins.map(key), out: outs.map(key), p: { delay: d, stage: m.stage, reset_delay: d, edge: "fall" } });
+        else if (m.kind === "johnson") out.push({ id: c.id, kind: "DIG", type: "johnson", in: ins.map(key), out: outs.map(key), p: { delay: d } });
+        else out.push({ id: c.id, kind: "DIG", type: m.kind, in: ins.map(key), out: outs.map(key), p: { rise_delay: d, fall_delay: d } });
+        // a gigohm from each supply pin to ground: a unit left unwired does not float
+        out.push({ id: c.id + "#lv", kind: "R", nodes: [v, 0], r: 1e9, internal: true }, { id: c.id + "#lg", kind: "R", nodes: [g, 0], r: 1e9, internal: true });
+      }
+    },
+    // a logic source: a clock or a bit pattern (the logic simulator's), at set levels behind its
+    // output resistance: what a microcontroller's pin or a pulse generator gives a circuit
+    logicsrc: {
+      name: "Logic source", prefix: "G", group: "Sources", bbox: [-16, -30, 16, 30],
+      defaults: { wave: "clock", freq: 1000, duty: 50, td: 0, bits: "10110010", tbit: 1e-3, rep: "yes", vlo: 0, vhi: 5, tr: 10e-9, rs: 50 },
+      pins: () => [{ id: "+", x: 0, y: -30, name: "output" }, { id: "-", x: 0, y: 30, name: "common" }],
+      value: c => (c.params.wave === "clock" ? `${fmtEng(c.params.freq, "Hz")} ${fmtEng(c.params.vhi, "V")}` : `${String(c.params.bits || "").slice(0, 8)}${String(c.params.bits || "").length > 8 ? "…" : ""}`),
+      fields: [
+        { key: "wave", label: "Output", kind: "select", options: [["clock", "Clock"], ["pattern", "Bit pattern"]] },
+        { key: "freq", label: "Frequency", unit: "Hz", kind: "eng", when: c => c.params.wave === "clock" },
+        { key: "duty", label: "Duty cycle", unit: "%", kind: "number", min: 1, max: 99, dflt: 50, when: c => c.params.wave === "clock" },
+        { key: "bits", label: "Bits (0, 1, x)", kind: "text", wide: true, placeholder: "10110010", check: v => /^[01xX]+$/.test(String(v).replace(/[\s_]/g, "")), when: c => c.params.wave === "pattern" },
+        { key: "tbit", label: "Bit time", unit: "s", kind: "eng", when: c => c.params.wave === "pattern" },
+        { key: "rep", label: "Repeat", kind: "select", options: [["yes", "Yes: start again"], ["no", "No: hold the last bit"]], when: c => c.params.wave === "pattern" },
+        { key: "td", label: "Delay", unit: "s", kind: "eng", zero: true },
+        { key: "vlo", label: "Low level", unit: "V", kind: "eng", signed: true, zero: true },
+        { key: "vhi", label: "High level", unit: "V", kind: "eng", signed: true, zero: true },
+        { key: "tr", label: "Rise and fall time", unit: "s", kind: "eng" },
+        { key: "rs", label: "Output resistance", unit: "Ω", kind: "eng" }],
+      info: c => (c.params.wave === "clock"
+        ? `A clock of ${fmtEng(c.params.freq, "Hz")}, high ${Math.round(+c.params.duty || 50)} % of each period, from the delay on.`
+        : "The bits one after another, a bit time each, from the delay on (x: undefined, half way between the levels).")
+        + " The + pin is the output, the - pin its common. It plays in Analyze ▾ Transient (low before the delay); the other analyses hold its level at the start.",
+      build: (c, net, alloc, out) => {
+        const p = c.params, mid = alloc(), k = c.id + "#d", t = Math.max(+p.tr || 0, 1e-12);
+        if (p.wave === "pattern") out.push({ id: c.id + "#gen", kind: "DIG", type: "pattern", in: [], out: [k], p: { bits: String(p.bits || "0").replace(/[\s_]/g, "").toLowerCase(), tbit: Math.max(+p.tbit || 1e-3, 1e-12), delay: Math.max(+p.td || 0, 0), repeat: p.rep !== "no" }, internal: true });
+        else { const f = Math.max(+p.freq || 1, 1e-6); out.push({ id: c.id + "#gen", kind: "DIG", type: "clock", in: [], out: [k], p: { period: 1 / f, duty: Math.min(0.99, Math.max(0.01, (+p.duty || 50) / 100)), delay: Math.max(+p.td || 0, 0) }, internal: true }); }
+        out.push({ id: c.id, kind: "DAC", nodes: [mid, net("-")], in: k, p: { lo: +p.vlo || 0, hi: +p.vhi || 0, trise: t, tfall: t } });
+        out.push({ id: c.id + "#rs", kind: "R", nodes: [net("+"), mid], r: Math.max(+p.rs || 0, 1e-3) });
+      }
+    },
     note: {
       name: "Text note", prefix: "", group: "Document", noLabel: true, noRotate: true,
       bbox: c => { const h = +c.params.size || 12, w = Math.max(20, String(c.params.text || "").length * h * 0.62); return [0, -h, w, 3]; },
@@ -3318,6 +3560,7 @@
       ["vdc"], ["rail"], ["isrc"], ["battery", null, "Battery 9 V (PP3)"], ["battery", { model: "8xAA" }, "Battery 12 V (8 × AA)"], ["battery", { model: "18650" }, "Li-ion cell 18650"],
       { sub: "AC sources" },
       ["siggen"], ["mains"],
+      { sub: "Logic" }, ["logicsrc", null, "Clock or bit pattern"],
       { sub: "Instruments and records" }, ["pickup", null, "Guitar pickup, single coil"], ["pickup", { preset: "paf", r: 8e3, l: 4.4, c: 150e-12, amp: 0.3 }, "Guitar pickup, humbucker"], ["phono", null, "Phono cartridge, moving magnet"], ["phono", { preset: "dl103", mv: 0.3e-3, r: 40, l: 30e-6 }, "Phono cartridge, moving coil"],
       { sub: "Controlled sources" }, ["vcvs", null, "Voltage-controlled voltage (E)"], ["vccs", null, "Voltage-controlled current (G)"]] },
     { group: "Ground & connectors", items: [["ground"], ["offsheet"], ["sheetsym", null, "Hierarchical sheet"], ["hport", null, "Sheet port (hierarchy)"],
@@ -3335,6 +3578,9 @@
       ["opamp", { model: "LM741" }, "LM741"], ["opamp", { model: "LM301A" }, "LM301A (external comp.)"], ["opamp", { model: "LM324" }, "LM324 (quad, single supply)"], ["opamp", { model: "NE5532" }, "NE5532 (dual, low noise)"], ["opamp", { model: "OPA2134" }, "OPA2134 (dual FET, audio)"], ["opamp", { model: "LM4562" }, "LM4562 (dual, audio)"],
       { sub: "Power amplifiers" }, ["chipamp", null, "LM386 (low voltage, 0.5 W)"], ["chipamp", { model: "TDA2050" }, "TDA2050 (32 W)"], ["chipamp", { model: "LM3886" }, "LM3886 (68 W)"],
       { sub: "Timers" }, ["timer555", null, "NE555 timer"],
+      { sub: "Logic" }, ["logic", { model: "74HC00" }, "74HC00 quad NAND"], ["logic", { model: "74HC04" }, "74HC04 hex inverter"], ["logic", { model: "74HC14" }, "74HC14 Schmitt inverter"],
+      ["logic", { model: "74HC74" }, "74HC74 dual D flip-flop"], ["logic", { model: "74HC393" }, "74HC393 dual 4-bit counter"], ["logic", { model: "74HC4040" }, "74HC4040 12-bit counter"],
+      ["logic", { model: "CD4011" }, "CD4011 quad NAND"], ["logic", { model: "CD4013" }, "CD4013 dual D flip-flop"], ["logic", { model: "CD4017" }, "CD4017 decade counter"], ["logic", { model: "CD40106" }, "CD40106 Schmitt inverter"],
       { sub: "Regulators" }, ["reg", { model: "LM317" }, "LM317 adjustable"], ["reg", { model: "LM337" }, "LM337 adjustable, negative"],
       ["reg", { model: "7812" }, "78xx fixed"], ["reg", { model: "7912" }, "79xx fixed, negative"], ["tl431", null, "TL431 shunt reference"],
       { sub: "Any part with a SPICE model" }, ["spice", null, "SPICE part (a maker's model)"]] },
@@ -3783,5 +4029,5 @@
     return wrap;
   }
 
-  root.CadLib = { partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, pwlPoints, genWave, genFreq, tubeByName, tubeKind, tubeWarmup };
+  root.CadLib = { LOGIC_ICS, LOGIC_FAMS, logicGeom, logicPinIds, logicSpice, partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, pwlPoints, genWave, genFreq, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);

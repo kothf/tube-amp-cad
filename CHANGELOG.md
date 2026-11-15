@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.227.0] - 2026-11-15
+
+General-purpose simulation: logic and mixed-signal.
+
+### Added
+- **Logic simulator** (`sim-digital.js`), event-driven beside the analogue solver as XSPICE's: states 0, 1 and X with strong, resistive and high-impedance strengths resolved on shared nets, transport delays (a later event replaces a pending one), threshold crossings of analogue inputs cutting the time step, logic events as breakpoints, outputs ramping over their transition time. At the operating point the logic and the analogue are iterated together without delays; the frequency response sees each logic output as its rails. Results carry the logic nets (`result.digital`).
+- **XSPICE `A` devices in SPICE parts**: gates, buffers, open collector/emitter, tristate, pull-ups, `d_dff`, `d_jkff`, `d_tff`, `d_srff`, `d_dlatch`, `d_srlatch`, `d_fdiv`, `d_lut`, `adc_bridge`, `dac_bridge`; vectors, `~` and `NULL`. `d_osc`, `d_source`, `d_state` and `d_ram` are refused with the reason.
+- **Logic ICs** (Integrated circuits › Logic): 74HC00/02/04/08/14/32/86, 74HC74, 74HC393, 74HC4040, CD4001/4011/4013/4017/4040/4069/4070/4093/40106. One symbol per gate, flip-flop or counter (DD1.1 … share one DIP-14/16, SOIC from the order code), analogue pins around the logic (thresholds as shares of the supply, Schmitt hysteresis, input capacitance, clamp diodes, rail-to-rail outputs behind 50 or 300 Ω, the datasheets' delays). Checks know their inputs, outputs and supply pins.
+- **Logic source** (Sources): a clock or a bit pattern at set levels behind an output resistance.
+- **Transient tab**: *Logic* shows a pane as lanes (high, low, X hatched; a voltage thresholded at 30/70 % of its swing), the readout gives 0, 1 or X; the logic nets are listed under *Logic nets* in + Plot a net and typed as `D(DD1.1:Y)` or `D(U3:q)`.
+- **SPICE export** of logic ICs as XSPICE subcircuits (`LOGIC_74HC14` …: `hyst` and `adc_bridge` inputs, `d_` models, rail-scaled `dac_bridge` outputs; a ripple counter as toggle flip-flops, the 4017 as a Johnson ring with decoding gates) and of a logic source as `PULSE`/`PWL`; a circuit with logic runs from zero (`uic`).
+- `tests/digital.test.mjs`, `tests/digital-ngspice.mjs` (eight XSPICE benches and every logic IC against ngspice, edge for edge), e2e part `10b-logic`.
+
+### Fixed (field test against ngspice)
+- From zero, a flip-flop whose active-low preset and clear are tied to the supply started at X (the logic read the supplies at 0 V); it now starts at its initial state, and a clock that rises within the first step still counts, as in ngspice.
+- The SPICE export named its nets `N1`, `N2` …, which ngspice reads as a model when a card is called `N1` (as BSIM cards often are); the nets then go out as `NET1` ….
+
 ## [3.226.0] - 2026-11-14
 
 Schematic: hierarchical sheets, built on reusable blocks; board: copy a channel's layout to the others.

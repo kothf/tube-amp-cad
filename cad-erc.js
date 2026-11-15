@@ -29,6 +29,7 @@
     nmos: id => (id === "G" ? "in" : "def"), pmos: id => (id === "G" ? "in" : "def"), njf: id => (id === "G" ? "in" : "def"), pjf: id => (id === "G" ? "in" : "def"),
     opamp: id => (id === "+" || id === "-" ? "in" : id === "OUT" ? "out" : id === "V+" || id === "V-" ? "pwr" : "-"),
     chipamp: id => (id === "+" || id === "-" ? "in" : id === "OUT" ? "out" : id === "V+" || id === "V-" ? "pwr" : "-"),
+    logic: id => (id === "VCC" || id === "GND" ? "pwr" : /^(Y|Q\d*|QN|CO)$/.test(id) ? "out" : "in"), logicsrc: id => (id === "+" ? "src" : "-"),
     timer555: id => ({ 1: "pwr", 8: "pwr", 3: "out", 2: "in", 6: "in", 4: "in" }[id] || "def"),
     reg: id => (id === "O" ? "out" : id === "I" ? "pwr" : "in"), tl431: id => (id === "R" ? "in" : "def"),
     vcvs: id => (/^C/.test(id) ? "in" : "src"), vccs: id => (/^C/.test(id) ? "in" : "def"),
@@ -86,7 +87,7 @@
     // 4: an IC's supply pins on one net; a supply's own terminals on one net
     parts.forEach(part => {
       const pw = part.pins.filter(p => wired(p) && roleOf(part, p.id) === "pwr");
-      if (pw.length === 2 && pw[0].net === pw[1].net && (part.type === "opamp" || part.type === "chipamp" || part.type === "timer555" || part.type === "spice")) say("power", `${part.label}: its supply pins ${pw[0].id} and ${pw[1].id} are on one net, so it has no supply.`, [{ part }]);
+      if (pw.length === 2 && pw[0].net === pw[1].net && (part.type === "opamp" || part.type === "chipamp" || part.type === "timer555" || part.type === "logic" || part.type === "spice")) say("power", `${part.label}: its supply pins ${pw[0].id} and ${pw[1].id} are on one net, so it has no supply.`, [{ part }]);
       if ((part.type === "vdc" || part.type === "battery" || part.type === "mains") && part.pins.length === 2 && wired(part.pins[0]) && part.pins[0].net === part.pins[1].net) say("short", `${part.label} is shorted: both its terminals are on one net.`, [{ part }]);
     });
     return issues;

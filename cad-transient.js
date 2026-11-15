@@ -267,14 +267,31 @@
       if (!y) throw new Error(`${desig(c)} is not in this run: run again`);
       return y;
     }
+    // the logic simulator's nets (result.digital): a logic IC's inputs and outputs and a SPICE part's
+    // logic nodes, each named by its part and node (DD1.1:Y, U3:q), plotted as D(DD1.1:Y)
+    function digitalNames(r) {
+      return ((r && r.digital) || []).map((d, k) => {
+        const i = d.name.indexOf("#"), c = i > 0 ? S.comps.find(x => x.id === d.name.slice(0, i)) : null, who = c ? desig(c) || c.id : d.name.slice(0, i);
+        return { k, name: i > 0 ? `${who}:${d.name.slice(i + 1)}` : d.name, own: c && c.type === "logicsrc" };
+      }).filter(x => !x.own);
+    }
+    // a logic net as a trace on the run's time points: 0, 1, or ½ for X (undefined)
+    function digitalTrace(r, name) {
+      const hit = digitalNames(r).find(x => x.name.toUpperCase() === name.trim().toUpperCase()); if (!hit) return null;
+      const d = r.digital[hit.k], y = new Float64Array(r.t.length), lv = v => (v === 0 ? 0 : v === 1 ? 1 : 0.5);
+      let j = 0, v = d.v.length ? lv(d.v[0]) : 0.5;
+      for (let i = 0; i < r.t.length; i++) { while (j < d.t.length && d.t[j] <= r.t[i]) v = lv(d.v[j++]); y[i] = v; }
+      return y;
+    }
     // a trace's values in the run: { y, unit } or { error }
     function evalTrace(expr) {
       const r = TR.result; if (!r) return { error: "no run" };
       if (cacheOf !== r) { cache = new Map(); cacheOf = r; }
       if (cache.has(expr)) return cache.get(expr);
       let out;
-      const net = findNet(TR.nets || [], expr);
+      const net = findNet(TR.nets || [], expr), dm = /^\s*D\((.+)\)\s*$/i.exec(expr);
       if (net !== undefined) out = { y: r.nodes[net], unit: "V", net: true };
+      else if (dm) { const y = digitalTrace(r, dm[1]); out = y ? { y, unit: "", dig: true } : { error: `no logic net ${dm[1]}` }; }
       else {
         try {
           const tree = WM.parse(expr);
@@ -289,7 +306,7 @@
       if (!TR.traces) return [];
       return TR.traces.map((tr, k) => {
         const v = TR.result ? evalTrace(tr.expr) : { error: "no run" };
-        return { name: tr.expr, expr: tr.expr, pane: tr.pane, color: COLORS[k % COLORS.length], y: v.y || null, unit: v.unit || "", missing: !v.y, error: v.error || null, k };
+        return { name: tr.expr, expr: tr.expr, pane: tr.pane, color: COLORS[k % COLORS.length], y: v.y || null, unit: v.unit || "", dig: !!v.dig, missing: !v.y, error: v.error || null, k };
       });
     }
     const span = () => { const t = TR.result.t; return TR.view || [t[0], t[t.length - 1]]; };
@@ -338,6 +355,39 @@
       s += `<rect class="tr-zoom" x="0" y="${Tp}" width="0" height="${H - Tp - B}" visibility="hidden"/>`;
       return s + "</svg>";
     }
+    // a pane as logic: a lane per trace, high, low or X (hatched). A logic net (D(…)) is its states;
+    // a voltage is high above 70 % of its swing over the run, low below 30 %, X between
+    const LANE = 30;
+    const logicH = n => Tp + Math.max(1, n) * LANE + B;
+    function logicLevels(q) {
+      if (q.dig) return { lo: 0.25, hi: 0.75 };
+      let mn = Infinity, mx = -Infinity; for (let i = 0; i < q.y.length; i++) { const v = q.y[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+      const sw = mx - mn; return sw > 1e-9 ? { lo: mn + 0.3 * sw, hi: mn + 0.7 * sw } : { lo: mn - 1, hi: mn + 1 };
+    }
+    const logicState = (v, lv) => (v >= lv.hi ? 1 : v <= lv.lo ? 0 : 0.5);
+    function chartLogic(p, tr) {
+      const qs = tr.filter(q => q.y), H = logicH(qs.length), r = TR.result, t = r.t, n = t.length, [v0, v1] = span(), sp = (v1 - v0) || 1;
+      const i0 = Math.max(0, indexAt(t, v0) - 1), i1 = Math.min(n - 1, indexAt(t, v1)), X = x => L + (Math.max(v0, Math.min(v1, x)) - v0) / sp * (W - L - R);
+      let s = `<svg class="pw-chart tr-chart tr-logic" ${p === 0 ? 'id="tr-chart" ' : ""}data-pane="${p}" data-kind="time" viewBox="0 0 ${W} ${H}" role="img" aria-label="Logic, pane ${p + 1}">`
+        + `<defs><pattern id="tr-hatch-${p}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" class="tr-hatch"/></pattern></defs>`;
+      nice(v0, v1, 8).forEach(x => { s += `<line class="g1" x1="${X(x).toFixed(1)}" x2="${X(x).toFixed(1)}" y1="${Tp}" y2="${H - B}"/><text class="ax" x="${X(x).toFixed(1)}" y="${H - B + 14}" text-anchor="middle">${esc(fmtX(x))}</text>`; });
+      if (!qs.length) s += `<text class="ax" x="${W / 2}" y="${Tp + LANE / 2}" text-anchor="middle">Nothing to show</text>`;
+      qs.forEach((q, k) => {
+        const lv = logicLevels(q), yHi = Tp + k * LANE + 6, yLo = Tp + (k + 1) * LANE - 6, yOf = st => (st === 1 ? yHi : st === 0 ? yLo : (yHi + yLo) / 2);
+        // the runs of one state over the time shown
+        const runs = []; let st = logicState(q.y[i0], lv), a = Math.max(v0, t[i0]);
+        for (let i = i0 + 1; i <= i1; i++) { const x = logicState(q.y[i], lv); if (x !== st) { runs.push([a, t[i], st]); st = x; a = t[i]; } }
+        runs.push([a, Math.min(v1, t[i1]), st]);
+        const pts = [];
+        runs.forEach(([a0, a1, x]) => { pts.push(`${X(a0).toFixed(1)},${yOf(x).toFixed(1)}`, `${X(a1).toFixed(1)},${yOf(x).toFixed(1)}`); if (x === 0.5) s += `<rect x="${X(a0).toFixed(1)}" y="${yHi}" width="${Math.max(0.5, X(a1) - X(a0)).toFixed(1)}" height="${yLo - yHi}" fill="url(#tr-hatch-${p})" class="tr-x-run"/>`; });
+        s += `<line class="g2" x1="${L}" x2="${W - R}" y1="${Tp + (k + 1) * LANE}" y2="${Tp + (k + 1) * LANE}"/><text class="ax" x="${L - 5}" y="${((yHi + yLo) / 2 + 3).toFixed(1)}" text-anchor="end">${esc((nm => (nm.length > 8 ? nm.slice(0, 7) + "…" : nm))(q.name.replace(/^D\((.*)\)$/i, "$1")))}</text>`;
+        s += `<polyline style="stroke:${q.color}" points="${pts.join(" ")}"/>`;
+      });
+      ["a", "b"].forEach(k => { const c = TR.cur[k]; if (c !== null && c >= v0 && c <= v1) s += `<line class="tr-mark" x1="${X(c).toFixed(1)}" x2="${X(c).toFixed(1)}" y1="${Tp}" y2="${H - B}"/><text class="tr-mark-l" x="${(X(c) + 3).toFixed(1)}" y="${Tp + 11}">${k.toUpperCase()}</text>`; });
+      if (TR.hover !== null && TR.hoverPane >= 0 && !TR.panes[TR.hoverPane].fft && TR.hover >= v0 && TR.hover <= v1) s += `<line class="tr-cursor" x1="${X(TR.hover).toFixed(1)}" x2="${X(TR.hover).toFixed(1)}" y1="${Tp}" y2="${H - B}"/>`;
+      s += `<rect class="tr-zoom" x="0" y="${Tp}" width="0" height="${H - Tp - B}" visibility="hidden"/>`;
+      return s + "</svg>";
+    }
     // the spectra of a pane's traces over the time shown (A to B when both cursors are set)
     const fftSpan = () => { const [v0, v1] = span(), a = TR.cur.a, b = TR.cur.b; return a !== null && b !== null && Math.abs(b - a) > 0 ? [Math.min(a, b), Math.max(a, b)] : [v0, v1]; };
     const fftCache = new Map();
@@ -376,7 +426,8 @@
       if (TR.panes[p] && TR.panes[p].fft) {
         return `<b class="mono">${esc(fmtEng(x, "Hz"))}</b> ` + tr.filter(q => q.y && q.pane === p).map(q => { const sp = spectrum(q); if (!sp) return ""; const k = Math.max(1, Math.min(sp.a.length - 1, Math.round(x / sp.df))); return `<span class="tr-val"><i style="background:${q.color}"></i>${esc(q.name)} <b class="mono">${(20 * Math.log10(sp.a[k] || 1e-30)).toFixed(1)} dB${esc(q.unit)}</b> <span class="muted">(${esc(fmtEng(sp.a[k], q.unit, 3))})</span></span>`; }).join(" ");
       }
-      return `<b class="mono">${esc(fmtX(x))}</b> ` + tr.filter(q => q.y && !TR.panes[q.pane].fft).map(q => `<span class="tr-val"><i style="background:${q.color}"></i>${esc(q.name)} <b class="mono">${esc(fmtEng(valueAt(r.t, q.y, x), q.unit))}</b></span>`).join(" ");
+      const val = q => { const v = valueAt(r.t, q.y, x); if (!TR.panes[q.pane].logic && !q.dig) return fmtEng(v, q.unit); const st = logicState(v, logicLevels(q)); return st === 0.5 ? "X" : String(st); };
+      return `<b class="mono">${esc(fmtX(x))}</b> ` + tr.filter(q => q.y && !TR.panes[q.pane].fft).map(q => `<span class="tr-val"><i style="background:${q.color}"></i>${esc(q.name)} <b class="mono">${esc(val(q))}</b></span>`).join(" ");
     }
     function cursorLine() {
       const a = TR.cur.a, b = TR.cur.b;
@@ -391,13 +442,15 @@
       const add = document.getElementById("tr-add");
       if (add && document.activeElement !== add) {
         const list = TR.nets && TR.result ? TR.nets : netNames(), have = new Set((TR.traces || []).map(x => x.expr.toUpperCase()));
-        const html = `<option value="">+ Plot a net…</option>` + list.filter(x => !have.has(x.key)).map(x => `<option value="${esc(x.name)}">${esc(x.name)}${x.alias && x.alias.length ? " (" + esc(x.alias.slice(0, 2).join(", ")) + ")" : ""}</option>`).join("");
+        const dig = digitalNames(TR.result).map(x => `D(${x.name})`).filter(x => !have.has(x.toUpperCase()));
+        const html = `<option value="">+ Plot a net…</option>` + list.filter(x => !have.has(x.key)).map(x => `<option value="${esc(x.name)}">${esc(x.name)}${x.alias && x.alias.length ? " (" + esc(x.alias.slice(0, 2).join(", ")) + ")" : ""}</option>`).join("")
+          + (dig.length ? `<optgroup label="Logic nets">${dig.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join("")}</optgroup>` : "");
         if (add.innerHTML !== html) add.innerHTML = html;
         add.value = "";
       }
       const dl = document.getElementById("tr-names");
       if (dl && document.activeElement !== document.getElementById("tr-expr")) {
-        const html = (TR.nets && TR.result ? TR.nets : netNames()).map(x => `<option value="${esc(/^[A-Za-z_][\w.]*$/.test(x.name) ? x.name : `V(${x.name})`)}">`).join("") + currentNames().map(x => `<option value="${esc(x)}">`).join("");
+        const html = (TR.nets && TR.result ? TR.nets : netNames()).map(x => `<option value="${esc(/^[A-Za-z_][\w.]*$/.test(x.name) ? x.name : `V(${x.name})`)}">`).join("") + currentNames().map(x => `<option value="${esc(x)}">`).join("") + digitalNames(TR.result).map(x => `<option value="${esc(`D(${x.name})`)}">`).join("");
         if (dl.innerHTML !== html) dl.innerHTML = html;
       }
       if (!host || host.hidden) return;
@@ -418,8 +471,8 @@
         let info = "";
         if (pn.fft) info = mine.filter(q => q.y).map(q => { const pk = WM.peak(spectrum(q)); return pk ? `<span class="muted tr-info">${esc(q.name)} peak ${esc(fmtEng(pk.f, "Hz", 1))} ${esc(fmtEng(pk.a, q.unit, 3))}</span>` : ""; }).join("");
         return `<div class="tr-panebox${p === TR.active ? " on" : ""}" data-pane="${p}"><div class="tr-chips"><button class="tr-pn" data-p="${p}" title="New traces go to this pane">${TR.panes.length > 1 ? `Pane ${p + 1}` : "Traces"}</button>${mine.map(chip).join("")}`
-          + `<span class="tr-pane-tools">${isDc() ? "" : `<button class="btn tr-fft${pn.fft ? " active" : ""}" data-p="${p}" title="Show this pane's traces as a spectrum (FFT of the time shown, or from cursor A to B), or back in time">${pn.fft ? "Time" : "FFT"}</button>`}${TR.panes.length > 1 ? `<button class="btn tr-px" data-p="${p}" title="Remove this pane and its traces">×</button>` : ""}</span></div>${info ? `<div class="tr-chips">${info}</div>` : ""}`
-          + (pn.fft ? chartFft(p, mine) : chartTime(p, mine)) + `</div>`;
+          + `<span class="tr-pane-tools">${isDc() ? "" : `<button class="btn tr-logic-b${pn.logic ? " active" : ""}" data-p="${p}" title="Show this pane's traces as logic: a lane each, high, low or X (between 30 and 70 % of a voltage's swing), as a logic analyser does">${pn.logic ? "Analogue" : "Logic"}</button><button class="btn tr-fft${pn.fft ? " active" : ""}" data-p="${p}" title="Show this pane's traces as a spectrum (FFT of the time shown, or from cursor A to B), or back in time">${pn.fft ? "Time" : "FFT"}</button>`}${TR.panes.length > 1 ? `<button class="btn tr-px" data-p="${p}" title="Remove this pane and its traces">×</button>` : ""}</span></div>${info ? `<div class="tr-chips">${info}</div>` : ""}`
+          + (pn.fft ? chartFft(p, mine) : pn.logic ? chartLogic(p, mine) : chartTime(p, mine)) + `</div>`;
       }).join("");
       const timeTr = tr.filter(q => q.y && !TR.panes[q.pane].fft);
       const rows = timeTr.map(q => {
@@ -536,7 +589,7 @@
         e.preventDefault();
         const v = ex.value.trim(); if (!v) return;
         // a typo is caught before it becomes a trace (names are checked against the run)
-        try { if (findNet(TR.nets || netNames(), v) === undefined) WM.parse(v); ex.classList.remove("bad"); } catch (err) { ex.classList.add("bad"); ex.title = err.message; setStatus("warn", "Expression: " + err.message); return; }
+        try { if (findNet(TR.nets || netNames(), v) === undefined && !/^D\(.+\)$/i.test(v)) WM.parse(v); ex.classList.remove("bad"); } catch (err) { ex.classList.add("bad"); ex.title = err.message; setStatus("warn", "Expression: " + err.message); return; }
         addTrace(v); ex.value = "";
       });
       const btn = document.getElementById("btn-tr-run");
@@ -556,7 +609,8 @@
         const mv = e.target.closest(".tr-mv"); if (mv) { const q = TR.traces[+mv.dataset.k]; q.pane = (q.pane + 1) % TR.panes.length; render(); return; }
         const x = e.target.closest(".tr-x"); if (x) { TR.traces.splice(+x.dataset.k, 1); render(); return; }
         const pn = e.target.closest(".tr-pn"); if (pn) { TR.active = +pn.dataset.p; render(); return; }
-        const ff = e.target.closest(".tr-fft"); if (ff) { const p = TR.panes[+ff.dataset.p]; p.fft = !p.fft; TR.hover = null; render(); return; }
+        const ff = e.target.closest(".tr-fft"); if (ff) { const p = TR.panes[+ff.dataset.p]; p.fft = !p.fft; p.logic = false; TR.hover = null; render(); return; }
+        const lg = e.target.closest(".tr-logic-b"); if (lg) { const p = TR.panes[+lg.dataset.p]; p.logic = !p.logic; p.fft = false; TR.hover = null; render(); return; }
         const px = e.target.closest(".tr-px"); if (px) { const p = +px.dataset.p; TR.panes.splice(p, 1); TR.traces = TR.traces.filter(q => q.pane !== p).map(q => (q.pane > p ? Object.assign(q, { pane: q.pane - 1 }) : q)); TR.active = Math.min(TR.active, TR.panes.length - 1); render(); return; }
         if (e.target.closest("#btn-tr-pane")) { TR.panes.push({ fft: false }); TR.active = TR.panes.length - 1; render(); return; }
         if (e.target.closest("#btn-tr-keep")) { keepRef(); return; }
@@ -584,7 +638,7 @@
           let cur = c.querySelector(".tr-cursor");
           const on = p.fft ? c === svg : c.dataset.kind === "time";
           if (!on) { if (cur) cur.remove(); return; }
-          if (!cur) { cur = document.createElementNS("http://www.w3.org/2000/svg", "line"); cur.setAttribute("class", "tr-cursor"); cur.setAttribute("y1", Tp); cur.setAttribute("y2", paneH() - B); c.appendChild(cur); }
+          if (!cur) { cur = document.createElementNS("http://www.w3.org/2000/svg", "line"); cur.setAttribute("class", "tr-cursor"); cur.setAttribute("y1", Tp); cur.setAttribute("y2", c.viewBox.baseVal.height - B); c.appendChild(cur); }
           cur.setAttribute("x1", p.x); cur.setAttribute("x2", p.x);
         });
         const rd = document.getElementById("tr-read"); if (rd) rd.innerHTML = readout(shown());
