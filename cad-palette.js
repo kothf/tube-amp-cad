@@ -20,6 +20,7 @@
   };
   const HOW = "Click, then click on the sheet to place (Shift-click places several).";
   const HOW_MORE = "Or drag it onto the sheet.";
+  const GE_NOTE = "Germanium: VBE about 0.2 V, slow (low fT), with collector leakage that doubles every 10 °C. Pinouts of old cans vary: check the part you have.";
 
   function CadPalette(o) {
     // o: { host, thumb(type, params, w, h) → data URL or "", pick(entry, el), dropAt(entry, event) }
@@ -107,7 +108,9 @@
     function describe(e) {
       if (e.desc) return e.desc;
       if (e.tube) { const t = TUBES().find(x => x.commonName === e.tube); return t ? tubeDesc(t) : ""; }
-      return (root.Hints && root.Hints.parts[e.type]) || "";
+      const base = (root.Hints && root.Hints.parts[e.type]) || "", m = e.params && e.params.model && L.BJTS[e.params.model];
+      // a germanium transistor (Semiconductors › Germanium transistors): what sets it apart from a silicon one
+      return m && m.ge && (e.type === "npn" || e.type === "pnp") ? base + "\n" + GE_NOTE : base;
     }
     // the stored form of an entry (Favorites, Recent)
     const slim = e => (e.lib ? { g: e.g, label: e.label, type: e.type, lib: e.lib } : { g: e.g, label: e.label, value: e.value || "", type: e.type, params: e.params || null, tube: e.tube });

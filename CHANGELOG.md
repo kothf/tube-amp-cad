@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.228.0] - 2026-11-15
+
+### Changed
+- **Germanium transistors in the parts panel.** All 20 germanium BJTs (AC127/AC128, AC187/AC188, OC71, NKT275, 2N404, AD149, AD161/AD162; USSR MP39B, MP40A, MP41A, MP42B, MP25B, MP26B, MP38A, GT402G/GT404G, P213B) are listed under Semiconductors › *Germanium transistors*, at the bottom of the transistors, Western first, then USSR, pairs side by side. Before, only AC128, AC127 and MP39B had rows; the rest were reachable only through search or a transistor's Type list. The rows work as every other part: search, Favorites, Recent, drag onto the sheet. The preview card of a germanium part adds a line on what sets it apart (VBE about 0.2 V, low fT, leakage doubling every 10 °C, pinouts vary). Russian labels and manual updated.
+
 ## [3.227.0] - 2026-11-15
 
 General-purpose simulation: logic and mixed-signal.
