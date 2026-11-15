@@ -547,6 +547,7 @@
   };
 
   root.I18N_HINTS_RU = { parts, fields, labels, text: {
+    "Germanium: VBE about 0.2 V, slow (low fT), with collector leakage that doubles every 10 °C. Pinouts of old cans vary: check the part you have.": "Германий: VBE около 0,2 В, медленный (низкая fT), обратный ток коллектора удваивается каждые 10 °C. Цоколёвка старых корпусов бывает разной: проверьте свою деталь.",
     "Click, then click on the sheet to place (Shift-click places several).": "Щёлкните, затем щёлкните на листе, чтобы поставить (Shift+щелчок ставит несколько).",
   } };
 })(window);

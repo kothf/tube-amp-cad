@@ -202,6 +202,7 @@
     "Diode, SiC Schottky": "Диод Шоттки SiC", "Bridge rectifier": "Диодный мост", "Zener diode": "Стабилитрон", "LED": "Светодиод", "red LED": "красный светодиод",
     "Transistors": "Транзисторы", "NPN transistor": "Транзистор NPN", "PNP transistor": "Транзистор PNP", "NPN, high voltage": "NPN высоковольтный",
     "PNP, high voltage": "PNP высоковольтный", "PNP, germanium": "PNP германиевый", "NPN, germanium": "NPN германиевый", "PNP, germanium (USSR)": "PNP германиевый (СССР)",
+    "Germanium transistors": "Германиевые транзисторы", "PNP, Fuzz Face": "PNP, Fuzz Face", "NPN, AC128 pair": "NPN, пара к AC128", "PNP, output pair": "PNP, выходная пара", "NPN, output pair": "NPN, выходная пара", "PNP, Tone Bender": "PNP, Tone Bender", "PNP, general use": "PNP, общего назнач.", "PNP, power, TO-3": "PNP, мощный, TO-3", "PNP, power": "PNP, мощный", "NPN, power": "NPN, мощный", "PNP, small signal": "PNP, малосигнальный", "PNP, 30 V": "PNP, 30 В", "PNP, low noise": "PNP, малошумящий", "PNP, fuzz, switch": "PNP, фузз, ключ", "PNP, 40 V": "PNP, 40 В", "PNP, 70 V": "PNP, 70 В", "NPN, small signal": "NPN, малосигнальный", "PNP, driver": "PNP, предвыходной", "NPN, driver": "NPN, предвыходной",
     "N-MOSFET, depletion": "N-MOSFET обеднённого типа", "N-JFET, low noise": "N-JFET малошумящий",
     "Integrated circuits": "Микросхемы", "Op-amps": "Операционные усилители", "Power amplifiers": "Усилители мощности", "Timers": "Таймеры",
     "Logic": "Логика", "Logic IC": "Логическая микросхема", "Logic source": "Логический источник",
