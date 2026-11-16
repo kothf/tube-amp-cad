@@ -21,6 +21,20 @@
     .card h3 { margin: 0 0 10px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 10px; }
     .card h3 .spacer { flex: 1; }
     .card h3 input { text-transform: none; letter-spacing: 0; }
+    /* the Vaults window (cad-vaults-ui.js) */
+    .insp-help { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+    .vaults { display: flex; flex-direction: column; gap: 10px; }
+    .vault-sec { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    .vault-sec h4 { margin: 0 0 6px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+    .vault-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; flex-wrap: wrap; }
+    .vault-row.on { background: rgba(0, 229, 255, .1); }
+    .vault-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
+    .vault-on { font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 9px; padding: 0 6px; }
+    .vault-acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+    .vault-note { margin: 4px 0; }
+    .vault-row .vault-note { font-size: 11px; color: var(--muted); font-weight: normal; }
+    .vault-btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+    .vault-new-name { min-width: 160px; flex: 0 1 220px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
     #say { font-size: 15px; margin: 0; }
     #say.bad { color: var(--bad); }
     .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
@@ -71,7 +85,7 @@
     .ask-box h4 { margin: 0 0 8px; color: var(--accent); font-size: 14px; }
     .ask-box p { margin: 0 0 10px; color: var(--muted); }
     .ask-box label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
-    .ask-box input, .ask-box textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 13px system-ui, sans-serif; }
+    .ask-box input, .ask-box textarea, .ask-box select { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: 13px system-ui, sans-serif; }
     .ask-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
     .btn.danger-fill { background: #3a1517; border-color: var(--bad); color: var(--bad); }
     .table-wrap { overflow-x: auto; }
@@ -88,13 +102,12 @@
 <body>
   <header>
     <div class="brand">TUBE AMP CAD<span id="brand-where">projects on the server</span></div>
-    <select id="store" aria-label="Where the projects are kept" title="Where projects and their revisions are kept: on aerocat.tech (its owner only), or in a vault, a folder on this computer that you choose. Add as many folders as you like (one for each project, say) and switch between them here"><option value="site">aerocat.tech</option><option value="vault">A folder on this computer (vault)…</option></select>
+    <select id="store" aria-label="Where the projects are kept" title="Where projects and their revisions are kept: on aerocat.tech (its owner only), in a vault in a folder on this computer, or in a vault in this browser. Make as many vaults as you like (one for each project, say) and switch between them here"><option value="site">aerocat.tech</option><option value="manage">New vault…</option></select>
     <span id="who"></span>
     <span class="spacer"></span>
     <button class="btn active" id="signin" hidden title="Opens the site's login in its own window: your e-mail, then the code it sends you">Sign in ↗</button>
     <button class="btn active" id="folder-grant" hidden title="The browser asks whether this page may change files in the folder">Allow</button>
-    <button class="btn" id="folder-forget" hidden title="Take this folder off the list. Its files stay where they are, and Add a folder… brings it back">Forget folder</button>
-    <button class="btn" id="folder-pick" hidden title="The browser's folder dialog: pick an empty folder for a new vault, or a vault made before">Choose folder…</button>
+    <button class="btn" id="vaults-btn" title="Every vault in one list: on the server, in folders on this computer and in this browser. Make a new one, open a folder, back up, import a backup, forget or delete">Vaults…</button>
     <button class="btn" id="import" hidden title="Bring back a project: a Download all file, a saved design, or a project's folder from a backup">Import project…</button>
     <input type="file" id="import-file" accept=".json,application/json" hidden>
     <input type="file" id="import-folder" webkitdirectory multiple hidden>
@@ -104,6 +117,10 @@
   <main>
     <section class="card" id="msg-card">
       <p id="say">Asking aerocat.tech…</p>
+    </section>
+    <section class="card" id="vaults-card" hidden>
+      <h3>Vaults<span class="spacer"></span><button class="btn" id="vaults-close">Close</button></h3>
+      <div id="vaults-box"></div>
     </section>
     <section class="card" id="space-card" hidden>
       <h3>Space on the server</h3>
@@ -164,6 +181,7 @@
     </div>
   </div>
   <script src="cad-vault.js?v=dev"></script>
+  <script src="cad-vaults-ui.js?v=dev"></script>
   <script src="cad-revisions.js?v=dev"></script>
   <script src="projects-app.js?v=dev"></script>
 </body>

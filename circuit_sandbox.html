@@ -415,6 +415,19 @@
     .rev-row[hidden] { display: none; }
     .rev-row, .rev-save { display: flex; gap: 6px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
     .rev-row label { color: var(--muted); font-size: 12px; }
+    /* the Vaults window (cad-vaults-ui.js) */
+    .vaults { display: flex; flex-direction: column; gap: 10px; }
+    .vault-sec { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+    .vault-sec h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .vault-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; flex-wrap: wrap; }
+    .vault-row.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+    .vault-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46ch; }
+    .vault-on { font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 9px; padding: 0 6px; }
+    .vault-acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+    .vault-note { margin: 4px 0; font-weight: normal; }
+    .vault-row .vault-note { color: var(--muted); font-size: 11px; }
+    .vault-btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+    .vault-new-name { min-width: 160px; flex: 0 1 220px; }
     .rev-row select { flex: 1; min-width: 180px; }
     #rev-modal input[type=text], #rev-modal select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
     #rev-new-name, #rev-message { flex: 1; min-width: 200px; }
@@ -683,7 +696,8 @@
         <button class="menu-item" data-ico="save" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <button class="menu-item" data-ico="save-as" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
         <button class="menu-item" data-ico="link" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
-        <button class="menu-item" data-ico="history" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept in a folder on this computer that you choose (a vault), or on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
+        <button class="menu-item" data-ico="history" role="menuitem" id="btn-revisions" title="Save this design as a revision of a project and open earlier ones; kept in a vault (a folder on this computer that you choose, or this browser's own storage), or on aerocat.tech for its owner only (Cloudflare login)">Revisions…<kbd>project history</kbd></button>
+        <button class="menu-item" data-ico="open" role="menuitem" id="btn-vaults" title="Where projects and revisions are kept: make a vault in a folder on this computer or in this browser, open a vault folder, back up, import a backup, switch between them">Vaults…<kbd>where revisions are kept</kbd></button>
         <button class="menu-item" data-ico="history" role="menuitem" id="btn-autosaves" title="Copies of the circuit this browser keeps while you edit, every 5 minutes and when the tab closes: open an earlier one">Autosaves…<kbd>this browser</kbd></button>
         <button class="menu-item" data-ico="gallery" role="menuitem" id="btn-start" title="Every example with its picture, and New and Open: the screen shown at start">Gallery…<kbd>examples</kbd></button>
         <div class="menu-sep"></div>
@@ -1149,15 +1163,16 @@
       <div class="rev-head"><div class="insp-title">Project revisions</div><span class="rev-who" id="rev-who"></span><a class="btn" id="rev-manager" href="projects.html" target="_blank" rel="noopener" title="Every project, revision and short link kept on the server, and the space they take">Manager ↗</a></div>
       <div class="rev-row" id="rev-store-row">
         <label for="rev-store">Kept in</label>
-        <select id="rev-store" aria-label="Where the revisions are kept" title="Where projects and their revisions are kept: on aerocat.tech (its owner only), or in a vault, a folder on this computer that you choose. Add as many folders as you like (one for each project, say) and switch between them here"><option value="site">aerocat.tech (the site's owner)</option><option value="vault">A folder on this computer (vault)…</option></select>
-        <button class="btn" id="rev-folder-forget" hidden title="Take this folder off the list. Its files stay where they are, and Add a folder… brings it back">Forget folder</button>
+        <select id="rev-store" aria-label="Where the revisions are kept" title="Where projects and their revisions are kept: on aerocat.tech (its owner only), in a vault in a folder on this computer, or in a vault in this browser. Make as many vaults as you like (one for each project, say) and switch between them here"><option value="site">aerocat.tech (the site's owner)</option><option value="manage">New vault…</option></select>
+        <button class="btn" id="rev-vaults-btn" data-ico="open" title="Every vault in one list: on the server, in folders on this computer and in this browser. Make a new one, open a folder, back up, import a backup, forget or delete">Vaults…</button>
       </div>
       <div id="rev-off" hidden>
-        <p class="insp-help">Revisions are kept on aerocat.tech, for the site's owner only. Open the CAD there to use them, or keep them in a folder on this computer: pick it in Kept in above.</p>
+        <p class="insp-help">Revisions are kept on aerocat.tech, for the site's owner only. Open the CAD there to use them, or keep them in a vault, in a folder on this computer or in this browser: Vaults… above makes one.</p>
       </div>
       <div id="rev-vault" hidden>
         <p class="insp-help" id="rev-vault-text"></p>
-        <div class="modal-actions" style="justify-content: flex-start"><button class="btn active" id="rev-vault-grant" hidden title="The browser asks whether this page may change files in the folder">Allow</button><button class="btn active" id="rev-vault-pick" title="The browser's folder dialog: pick an empty folder for a new vault, or a vault made before">Choose folder…</button></div>
+        <div class="modal-actions" style="justify-content: flex-start"><button class="btn active" id="rev-vault-grant" hidden title="The browser asks whether this page may change files in the folder">Allow</button></div>
+        <div id="rev-vaults"></div>
       </div>
       <div id="rev-signin" hidden>
         <p class="insp-help">Projects and their revisions are private to the owner of aerocat.tech: sign in with the site's login (Cloudflare Access) first. The login opens in its own window and closes itself.</p>
@@ -1276,6 +1291,7 @@
   <script src="cad-blocks.js?v=dev"></script>
   <script src="cad-hier.js?v=dev"></script>
   <script src="cad-vault.js?v=dev"></script>
+  <script src="cad-vaults-ui.js?v=dev"></script>
   <script src="cad-revisions.js?v=dev"></script>
   <script src="cad-rev-dialog.js?v=dev"></script>
   <script src="ai-client.js?v=dev"></script>

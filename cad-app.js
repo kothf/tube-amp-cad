@@ -3313,6 +3313,7 @@
     if (revisions) {
       revisions.wire();
       bind("btn-revisions", () => revisions.open());
+      bind("btn-vaults", () => revisions.manage());
       window.addEventListener("hashchange", () => revisions.openFromLink());
     }
     document.getElementById("save-name").addEventListener("keydown", e => { if (e.key === "Enter") saveDialogOk(); });

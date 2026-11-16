@@ -1,7 +1,8 @@
 /* File ▾ → Revisions…: the design kept as numbered revisions of a project, either on aerocat.tech
    for the site's owner only (cad-revisions.js talks to the store, server/share/revisions.mjs keeps
-   it) or in a folder on this computer that the user picks, a vault (cad-vault.js; "Kept in" at the
-   top of the dialog chooses, and the choice is remembered).
+   it) or in a vault: a folder on this computer that the user picks, or a vault kept in this browser
+   (cad-vault.js; "Kept in" at the top of the dialog chooses, and the choice is remembered; the
+   Vaults window, cad-vaults-ui.js, makes and manages them).
    The dialog lists a project's revisions with a preview of the one picked (its picture, message,
    changes and the revision it was made from). Save revision (Ctrl+Alt+S) keeps the sheet as it is
    now, board included, with a message, a summary of what changed and a picture of the first
@@ -75,29 +76,47 @@
       return designs.get(k);
     }
     function view(which) { ["off", "signin", "vault", "main"].forEach(w => { $("rev-" + w).hidden = w !== which; }); }
+    // the Vaults window (cad-vaults-ui.js), drawn in the dialog's vault page
+    const ui = vault && root.CadVaultsUI ? root.CadVaultsUI.VaultsUI({
+      el: $("rev-vaults"), vault, site, store: () => store, say: info,
+      confirm: t => Promise.resolve(root.confirm(t)),
+      siteNote: site.available ? "For the site's owner only: the browser signs in on aerocat.tech (Cloudflare login)." : "Only on aerocat.tech, for the site's owner: open the CAD there to use it.",
+      // Use: the vault (or the site) the revisions go to from now on; null: only the lists changed
+      use: async where => {
+        if (!where) { await showStore(); return; }
+        if (where === "site") { setStore("site"); await open(); return; }
+        if (vault.id() !== where.id) await vault.select(where.id);
+        setStore("vault"); projects = []; revs = []; pick = null; pair = null; seq++; cur = load(curKey()) || "";
+        await open();
+      },
+    }) : null;
     // the folder is not ready (cad-vault.js NeedFolder): say why, with the button that mends it
     const VAULT_TEXT = {
-      none: "A vault is a folder on this computer that keeps your projects and their revisions as plain files: a folder for each project, each revision a design that File ▾ → Open reads, with its pictures next to it. Choose a folder (an empty one, or a vault made before); the browser asks once for leave to change the files in it. Nothing is sent anywhere.",
+      none: "Choose where to keep your projects and their revisions: make a vault in a folder on this computer (each project a folder, each revision a design that File ▾ → Open reads, with its pictures next to it), or a vault in this browser. Nothing is sent anywhere.",
+      manage: "",
       permission: "The browser wants your leave again to use the vault's folder (it asks after a restart). Press Allow, then answer its question.",
       gone: "The vault's folder cannot be found: it was moved, renamed, or is on a drive that is not connected. Connect the drive and open Revisions again, or choose the folder again.",
-      unsupported: "This browser cannot open a folder on the computer, which a vault needs: Chrome and Edge can.",
-      // Safari, Firefox: a folder can be read, not written
-      reading: "This browser can read a vault's folder but cannot save into it. Choose the folder (a vault made in Chrome or Edge, or one project's folder) to list its revisions, open them and compare them; the browser asks for the folder again after the page is reloaded. Saving revisions into a folder needs Chrome or Edge.",
+      unsupported: "This browser can keep no vault: it can neither open a folder on the computer nor keep one in its own storage.",
+      // Safari, Firefox: a folder can be read, not written; a browser vault can be written
+      reading: "This browser can read a vault's folder but cannot save into it: Open vault folder (read only)… lists its revisions, opens and compares them. To save revisions here, make a vault in this browser.",
       readonly: "This browser can only read the vault's folder: saving into it needs Chrome or Edge.",
     };
     let readOnly = false;                    // the store shown cannot be written (a vault in Safari or Firefox)
+    // why "manage": the Vaults window by itself (File ▾ → Vaults…, Kept in → Manage vaults…)
     async function needFolder(why) {
-      $("rev-modal").hidden = false; view("vault"); info(""); $("rev-who").textContent = "";
+      $("rev-modal").hidden = false; view("vault"); info(""); if (why !== "manage") $("rev-who").textContent = "";
       const st = vault ? await vault.status() : { name: "" };
-      if (why === "none" && vault && !vault.writes) why = "reading";
-      $("rev-vault-text").textContent = VAULT_TEXT[why] || VAULT_TEXT.none;
+      if (why === "none" && vault && !vault.writes && vault.reads && !vault.browser) why = "reading";
+      const text = why in VAULT_TEXT ? VAULT_TEXT[why] : VAULT_TEXT.none;
+      $("rev-vault-text").textContent = text; $("rev-vault-text").hidden = !text;
       $("rev-vault-grant").hidden = why !== "permission";
       $("rev-vault-grant").textContent = `Allow ${st.name || "the folder"}`;
-      $("rev-vault-pick").hidden = why === "unsupported";
-      $("rev-vault-pick").textContent = why === "none" || why === "reading" ? "Choose folder…" : "Add another folder…";
-      $("rev-vault-pick").classList.toggle("active", why !== "permission");
+      $("rev-vaults").hidden = !ui;
+      if (ui) await ui.draw();
       await showStore();
     }
+    // File ▾ → Vaults…: the dialog on the Vaults window
+    const manage = () => needFolder("manage");
     // a failure: the login or the folder wants the user, or something to say
     function failed(err) {
       if (err && err.signin) { $("rev-modal").hidden = false; view("signin"); info(""); }
@@ -105,17 +124,13 @@
       else if (err && err.folder) needFolder(err.folder);
       else info(err.message, "warn");
     }
-    // "Kept in": aerocat.tech, every vault folder this browser remembers, and Add a folder…
+    // "Kept in": aerocat.tech, the vault folders this browser remembers, the vaults kept in it, and Manage vaults…
     async function showStore() {
       const sel = $("rev-store"); if (!sel) return;
       const list = vault && vault.supported ? await vault.vaults() : [];
-      sel.innerHTML = `<option value="site">aerocat.tech (the site's owner)</option>`
-        + list.map(v => `<option value="vault:${esc(v.id)}">Folder: ${esc(v.name)}</option>`).join("")
-        + (list.length ? `<option value="add">Add a folder…</option>` : `<option value="vault"${vault ? "" : " disabled"}>A folder on this computer (vault)…</option>`);
-      const now = list.find(v => v.current);
-      sel.value = store === "vault" ? (now ? "vault:" + now.id : "vault") : "site";
-      $("rev-folder-forget").hidden = !(store === "vault" && now);
-      $("rev-manager").title = store === "vault" ? "Every project and revision kept in the folder: rename, delete, restore, copy to and from aerocat.tech" : "Every project, revision and short link kept on the server, and the space they take";
+      const o = root.CadVaultsUI ? root.CadVaultsUI.storeOptions(list, store, { siteLabel: "aerocat.tech (the site's owner)" }) : { html: `<option value="site">aerocat.tech (the site's owner)</option>`, value: "site" };
+      sel.innerHTML = o.html; sel.value = o.value;
+      $("rev-manager").title = store === "vault" ? "Every project and revision kept in the vault: rename, delete, restore, copy to another vault or to aerocat.tech" : "Every project, revision and short link kept on the server, and the space they take";
     }
     // another vault of the list
     async function useVault(id) {
@@ -132,7 +147,7 @@
       const changed = nowHash && nowHash !== at.hash;
       label(`r${at.n}${changed ? "+" : ""}`);
       el.innerHTML = `r${at.n}${changed ? '<span class="dirty"> •</span>' : ""}`;
-      el.title = `${at.name} · revision r${at.n}${at.store === "vault" ? " · kept in the folder vault" : ""}` + (changed ? " · the sheet has changed since: Ctrl+Alt+S saves the next revision" : " · the sheet is this revision") + " (click for the revisions)";
+      el.title = `${at.name} · revision r${at.n}${at.store === "vault" ? " · kept in a vault" : ""}` + (changed ? " · the sheet has changed since: Ctrl+Alt+S saves the next revision" : " · the sheet is this revision") + " (click for the revisions)";
     }
     // the revision as the title block and board texts show it ("auto" in the frame's Rev. field,
     // ${REV} in a board text): r5, or r5+ once the sheet has changed since
@@ -180,7 +195,7 @@
         if (my !== store) return;
         const inProjects = `${mb(me.revisions.bytes)} in ${me.revisions.projects} project${me.revisions.projects === 1 ? "" : "s"}`;
         readOnly = !!me.readOnly;
-        $("rev-who").textContent = me.vault ? `Folder ${me.folder} · ${inProjects}${readOnly ? " · read only" : ""}` : `${me.email} · ${inProjects}, ${mb(me.total.max - me.total.bytes)} free`;
+        $("rev-who").textContent = me.vault ? `${me.where === "browser" ? "Browser vault" : "Folder"} ${me.folder} · ${inProjects}${readOnly ? " · read only" : ""}` : `${me.email} · ${inProjects}, ${mb(me.total.max - me.total.bytes)} free`;
         if (me.vault) cur = load(curKey()) || cur;      // the vault's id is known now: its own last project
         view("main"); info(""); await showStore();
         if (atHere() && !pending && at.project !== cur) remember(at.project);
@@ -489,17 +504,6 @@
       }
       document.body.appendChild(a); a.click(); a.remove();
     }
-    // the folder for the vault (the browser's own dialog), then what it holds
-    async function pickFolder() {
-      try {
-        const name = await vault.choose();
-        if (name) { setStore("vault"); projects = []; revs = []; pick = null; pair = null; seq++; cur = load(curKey()) || ""; setStatus("ok", `Revisions are kept in the folder ${name}`); }
-        await open();
-      } catch (err) {
-        // the browser wants a click of a button for its folder dialog: the vault's page has one
-        if (err && (err.name === "SecurityError" || err.name === "NotAllowedError")) { setStore("vault"); needFolder("none"); } else failed(err);
-      }
-    }
     // Ctrl+Alt+S: the dialog, ready for the message
     async function quickSave() {
       await open();
@@ -512,10 +516,10 @@
       if (!want) return false;
       try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* file:// */ }
       setStore(want.vault ? "vault" : "site");
-      if (!api.available) { setStatus("error", store === "vault" ? "The revision is kept in a folder on this computer, which this browser cannot open: use Chrome or Edge" : "Revisions are kept on aerocat.tech: open the link there"); return true; }
+      if (!api.available) { setStatus("error", store === "vault" ? "The revision is kept in a vault, which this browser cannot keep" : "Revisions are kept on aerocat.tech: open the link there"); return true; }
       (async () => {
         try {
-          if (typeof want.vault === "string" && want.vault !== "1" && !(await vault.select(want.vault))) { setStatus("error", "The revision is in a vault folder this browser does not know: add the folder in File ▾ → Revisions… → Kept in"); return; }
+          if (typeof want.vault === "string" && want.vault !== "1" && !(await vault.select(want.vault))) { setStatus("error", "The revision is in a vault this browser does not know: open its folder, or import its backup, in File ▾ → Vaults…"); return; }
           projects = await api.projects(); await openRev(want.project, want.n, true);
         }
         catch (err) { if (err.signin || err.folder) open(want); else setStatus("error", "Could not open the revision: " + err.message); }
@@ -534,19 +538,13 @@
       $("rev-signin-btn").addEventListener("click", async () => { info("Waiting for the login window…"); await api.signIn(); open(); });
       $("rev-store").addEventListener("change", async e => {
         const v = e.target.value;
-        if (v === "add") { await pickFolder(); return; }
+        if (v === "manage") { await manage(); return; }
         setStore(v === "site" ? "site" : "vault");
         if (v.startsWith("vault:")) await useVault(v.slice(6));
         cur = load(curKey()) || "";
         open();
       });
-      $("rev-folder-forget").addEventListener("click", async () => {
-        const st = await vault.status();
-        if (!confirm(`Take the folder ${st.name} off this list?\n\nIts files stay where they are; Add a folder… brings it back.`)) return;
-        await vault.disconnect(); projects = []; revs = []; pick = null; seq++; cur = load(curKey()) || "";
-        open();
-      });
-      $("rev-vault-pick").addEventListener("click", pickFolder);
+      $("rev-vaults-btn").addEventListener("click", manage);
       $("rev-vault-grant").addEventListener("click", async () => { if (await vault.grant()) open(); else info("The browser did not give leave to use the folder.", "warn"); });
       $("rev-project").addEventListener("change", e => { remember(e.target.value); pick = null; loadRevs().catch(failed); });
       $("rev-new").addEventListener("click", () => showNew($("rev-new-row").hidden));
@@ -588,7 +586,7 @@
       if (c) c.addEventListener("click", () => open());
       if (at) hashOf(sheet()).then(h => { nowHash = h; chip(); }).catch(() => {}); else chip();
     }
-    return { open, openFromLink, wire, quickSave, changed, detach, closeDiff, link, relink, state: () => ({ cur, projects, revs, at, pick, pair, store }), api: () => api, setStore };
+    return { open, manage, openFromLink, wire, quickSave, changed, detach, closeDiff, link, relink, state: () => ({ cur, projects, revs, at, pick, pair, store }), api: () => api, setStore };
   }
   root.CadRevDialog = CadRevDialog;
 })(typeof window !== "undefined" ? window : globalThis);

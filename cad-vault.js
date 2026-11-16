@@ -18,11 +18,15 @@
    stay) for TRASH_DAYS, then it goes for good.
    Safari and Firefox cannot write into a folder, only read one the user picks (a folder <input>):
    there a vault is read only — its projects and revisions are listed, opened and compared, nothing
-   is saved — and the folder is asked for again after the page is reloaded. */
+   is saved — and the folder is asked for again after the page is reloaded.
+   A vault can also be kept in this browser (as in MöbiusCAD): a folder of the same files in the
+   browser's own private storage (OPFS, tubecad-vaults/<name>/), which every current browser can
+   write, Safari and Firefox included. It needs no folder dialog and no leave; Back up writes the
+   vault's files into a ZIP and Import backup… brings one back as a browser vault. */
 (function (root) {
   "use strict";
   const PID = /^[A-Za-z0-9_-]{10}$/, FILE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/, MIME = /^[a-z]+\/[a-z0-9.+-]{1,60}$/;
-  const MARK = "tubecad-vault.json", DB = "tubecad-vault", STORE = "kv", DAY = 86400e3, TRASH_DAYS = 30;
+  const MARK = "tubecad-vault.json", DB = "tubecad-vault", STORE = "kv", BROWSER = "tubecad-vaults", DAY = 86400e3, TRASH_DAYS = 30;
   const MAX_THUMB = 2 * 1024 * 1024, MAX_FILES = 40;
   const STATUSES = ["", "idea", "design", "building", "done", "archived"];
   const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
@@ -68,8 +72,77 @@
   const readText = async (dir, name) => (await fileOf(dir, name)).text();
   const readJSON = async (dir, name) => JSON.parse(await readText(dir, name));
   async function write(dir, name, data) {
-    const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
-    await w.write(data); await w.close();
+    const fh = await dir.getFileHandle(name, { create: true });
+    if (fh.createWritable) { const w = await fh.createWritable(); await w.write(data); await w.close(); return; }
+    // Safari before 26 writes the browser's own storage only from a worker (a sync access handle)
+    await opfsWrite(fh, typeof data === "string" ? new TextEncoder().encode(data) : data);
+  }
+  let worker = null, wseq = 0;
+  const waiting = new Map();
+  async function opfsWrite(fh, bytes) {
+    const top = root.navigator && root.navigator.storage && root.navigator.storage.getDirectory ? await root.navigator.storage.getDirectory() : null;
+    const path = top && top.resolve ? await top.resolve(fh) : null;
+    if (!path || !root.Worker) throw new NeedFolder("readonly");
+    if (!worker) {
+      const src = `onmessage = async e => { const { id, path, bytes } = e.data; try { let d = await navigator.storage.getDirectory(); for (const p of path.slice(0, -1)) d = await d.getDirectoryHandle(p); const h = await (await d.getFileHandle(path[path.length - 1], { create: true })).createSyncAccessHandle(); try { h.truncate(0); h.write(bytes, { at: 0 }); h.flush(); } finally { h.close(); } postMessage({ id }); } catch (err) { postMessage({ id, error: String(err && err.message || err) }); } };`;
+      worker = new root.Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+      worker.onmessage = e => { const w = waiting.get(e.data.id); if (!w) return; waiting.delete(e.data.id); if (e.data.error) w.rej(new Error(e.data.error)); else w.res(); };
+    }
+    const id = ++wseq;
+    return new Promise((res, rej) => { waiting.set(id, { res, rej }); worker.postMessage({ id, path, bytes }); });
+  }
+
+  // ---- a vault's files in a ZIP (Back up) and back (Import backup…) ----
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = b => { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  // [[path, bytes]] → a ZIP (stored, no compression: the pictures are compressed already)
+  function zip(files, when) {
+    const enc = new TextEncoder(), d = when || new Date();
+    const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), date = ((Math.max(1980, d.getFullYear()) - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const parts = [], dir = []; let off = 0;
+    for (const [name, data] of files) {
+      const nb = enc.encode(name), crc = crc32(data), h = new DataView(new ArrayBuffer(30));
+      [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x800, 2], [8, 0, 2], [10, time, 2], [12, date, 2], [14, crc, 4], [18, data.length, 4], [22, data.length, 4], [26, nb.length, 2], [28, 0, 2]].forEach(([o, v, n]) => (n === 4 ? h.setUint32(o, v, true) : h.setUint16(o, v, true)));
+      const c = new DataView(new ArrayBuffer(46));
+      [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0x800, 2], [10, 0, 2], [12, time, 2], [14, date, 2], [16, crc, 4], [20, data.length, 4], [24, data.length, 4], [28, nb.length, 2], [30, 0, 2], [32, 0, 2], [34, 0, 2], [36, 0, 2], [38, 0, 4], [42, off, 4]].forEach(([o, v, n]) => (n === 4 ? c.setUint32(o, v, true) : c.setUint16(o, v, true)));
+      parts.push(new Uint8Array(h.buffer), nb, data); dir.push(new Uint8Array(c.buffer), nb);
+      off += 30 + nb.length + data.length;
+    }
+    const size = dir.reduce((n, x) => n + x.length, 0), e = new DataView(new ArrayBuffer(22));
+    [[0, 0x06054b50, 4], [8, files.length, 2], [10, files.length, 2], [12, size, 4], [16, off, 4]].forEach(([o, v, n]) => (n === 4 ? e.setUint32(o, v, true) : e.setUint16(o, v, true)));
+    const all = [...parts, ...dir, new Uint8Array(e.buffer)], out = new Uint8Array(all.reduce((n, x) => n + x.length, 0));
+    let at = 0; for (const x of all) { out.set(x, at); at += x.length; }
+    return out;
+  }
+  // a ZIP → Map(path → bytes); stored and deflated entries (a backup zipped again by hand)
+  async function unzip(buf) {
+    const b = new Uint8Array(buf), v = new DataView(b.buffer, b.byteOffset, b.byteLength), out = new Map(), dec = new TextDecoder();
+    let e = -1;
+    for (let i = b.length - 22; i >= Math.max(0, b.length - 65557); i--) if (v.getUint32(i, true) === 0x06054b50) { e = i; break; }
+    if (e < 0) throw new Error("not a ZIP file");
+    let p = v.getUint32(e + 16, true);
+    const n = v.getUint16(e + 10, true);
+    for (let k = 0; k < n; k++) {
+      if (v.getUint32(p, true) !== 0x02014b50) throw new Error("a damaged ZIP file");
+      const method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true), nl = v.getUint16(p + 28, true), xl = v.getUint16(p + 30, true), cl = v.getUint16(p + 32, true), lo = v.getUint32(p + 42, true);
+      const name = dec.decode(b.subarray(p + 46, p + 46 + nl));
+      p += 46 + nl + xl + cl;
+      if (name.endsWith("/")) continue;
+      const start = lo + 30 + v.getUint16(lo + 26, true) + v.getUint16(lo + 28, true), raw = b.subarray(start, start + csize);
+      if (method === 0) out.set(name, raw.slice());
+      else if (method === 8 && root.DecompressionStream) out.set(name, new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new root.DecompressionStream("deflate-raw"))).arrayBuffer()));
+      else throw new Error(`${name}: a ZIP packed in a way this page cannot read`);
+    }
+    return out;
+  }
+  // every file under a folder: [[path, bytes]]
+  async function filesOf(dir, pre = "") {
+    const out = [];
+    for (const [n, h] of (await names(dir)).sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+      if (h.kind === "directory") out.push(...await filesOf(h, pre + n + "/"));
+      else out.push([pre + n, new Uint8Array(await (await h.getFile()).arrayBuffer())]);
+    }
+    return out;
   }
   const drop = (dir, name) => dir.removeEntry(name, { recursive: true }).catch(() => {});
   async function names(dir) { const out = []; for await (const [name, h] of dir.entries()) out.push([name, h]); return out; }
@@ -138,35 +211,62 @@
     const now = o.now || (() => Date.now()), trashDays = o.trashDays || TRASH_DAYS;
     // writes: folders can be written (Chrome, Edge); else, where a folder <input> exists, they can be read
     const writes = o.handle ? !o.handle.readOnly : typeof root.showDirectoryPicker === "function";
-    const supported = !!o.handle || writes || !!(root.HTMLInputElement && "webkitdirectory" in root.HTMLInputElement.prototype);
+    // vaults in this browser's own storage (OPFS): o.browserRoot gives their parent folder (tests)
+    const opfs = root.navigator && root.navigator.storage && typeof root.navigator.storage.getDirectory === "function";
+    const browserRoot = o.browserRoot || (o.handle || !opfs ? null : async () => (await root.navigator.storage.getDirectory()).getDirectoryHandle(BROWSER, { create: true }));
+    const browser = !!browserRoot;
+    // a folder can at least be read (a folder <input>: Safari, Firefox)
+    const reads = writes || !!(root.HTMLInputElement && "webkitdirectory" in root.HTMLInputElement.prototype);
+    const supported = !!o.handle || reads || browser;
     const ro = () => !!(cur && cur.handle && cur.handle.readOnly);
-    // the folders remembered: [{ id (from the folder's tubecad-vault.json, "" until read), handle, name }], and the one in use
-    let vaults = o.handle ? [{ id: "", handle: o.handle, name: o.handle.name }] : [], cur = vaults[0] || null, asked = !!o.handle, checked = false;
+    // the vaults known: [{ id (from the folder's tubecad-vault.json, "" until read), handle, name, kind }], and the one in use;
+    // kind "folder": a folder on this computer, remembered in IndexedDB; "browser": one in this browser's storage, found there
+    let vaults = o.handle ? [{ id: "", handle: o.handle, name: o.handle.name, kind: "folder" }] : [], cur = vaults[0] || null, asked = !!o.handle, checked = false;
     const CUR = "tubecad.vault.cur";
     const keepCur = () => { try { if (cur && cur.id) root.localStorage.setItem(CUR, cur.id); else root.localStorage.removeItem(CUR); } catch (e) { /* no storage */ } };
     // the list of folders is kept in IndexedDB, which can hold a folder's handle; o.keep or
     // window.CadVaultKeep ({ load, save }) keeps it elsewhere (the tests' stand-in folders)
     const kept = o.keep || root.CadVaultKeep || { load: () => idb("readonly", s => s.get("vaults")), save: list => idb("readwrite", s => s.put(list, "vaults")) };
-    const persist = async () => { try { await kept.save(vaults.filter(v => !v.handle.readOnly).map(v => ({ id: v.id, handle: v.handle, name: v.name }))); } catch (e) { /* no IndexedDB: the folders are asked for again next time */ } };
+    const persist = async () => { try { await kept.save(vaults.filter(v => !v.handle.readOnly && v.kind !== "browser").map(v => ({ id: v.id, handle: v.handle, name: v.name }))); } catch (e) { /* no IndexedDB: the folders are asked for again next time */ } };
     const reset = () => { checked = false; where.clear(); forget(); };
     const urls = new Map();          // "<project>/<n>/thumb" → object URL of the picture or file
     const where = new Map();         // project id → its folder's name, as last seen
 
-    async function remembered() {
-      if (!asked) {
+    // again: read the browser's vaults afresh (one was made, deleted or brought back)
+    async function remembered(again) {
+      if (!asked || again) {
+        if (!asked) {
+          try { vaults = ((await kept.load()) || []).filter(v => v && v.handle).map(v => Object.assign(v, { kind: "folder" })); } catch (e) { vaults = []; }
+        }
         asked = true;
-        try { vaults = ((await kept.load()) || []).filter(v => v && v.handle); } catch (e) { vaults = []; }
-        let id = ""; try { id = root.localStorage.getItem(CUR) || ""; } catch (e) { /* no storage */ }
-        cur = vaults.find(v => v.id === id) || vaults[0] || null;
+        const was = cur;
+        vaults = vaults.filter(v => v.kind !== "browser").concat(await browserVaults());
+        let id = was ? was.id : ""; if (!was) try { id = root.localStorage.getItem(CUR) || ""; } catch (e) { /* no storage */ }
+        cur = vaults.find(v => v.id === id && (!was || v.kind === was.kind)) || vaults.find(v => v.id === id) || vaults[0] || null;
+        if (cur !== was) { reset(); keepCur(); }
       }
       return cur && cur.handle;
     }
-    // the folder's mark, written when it has none: → the vault's id
-    async function mark(h) {
+    // the vaults kept in this browser: a folder each under tubecad-vaults/, by the name in its mark
+    async function browserVaults() {
+      if (!browserRoot) return [];
+      const out = [];
+      try {
+        for (const [name, h] of await names(await browserRoot())) {
+          if (h.kind !== "directory") continue;
+          const m = await readJSON(h, MARK).catch(() => null);
+          if (m && m.app === "TubeAmpCAD-vault" && PID.test(String(m.id))) out.push({ id: m.id, handle: h, name: clip(m.name, 60) || name, kind: "browser", dir: name });
+        }
+      } catch (e) { return []; }
+      return out.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    // the folder's mark, written when it has none: → the vault's id (name: a browser vault's name)
+    async function mark(h, name) {
       let m = await readJSON(h, MARK).catch(() => null);
       if (!m || m.app !== "TubeAmpCAD-vault" || !PID.test(String(m.id))) {
         if (h.readOnly) return newId();      // a folder only read gets no mark: an id for this visit
-        m = { app: "TubeAmpCAD-vault", version: 1, id: newId(), created: (m && m.created) || new Date(now()).toISOString(), note: "Tube Amp CAD keeps projects and their revisions in this folder (File > Revisions). Each project is a folder; r<n>.json is a design that File > Open opens." };
+        m = { app: "TubeAmpCAD-vault", version: 1, id: newId(), created: (m && m.created) || new Date(now()).toISOString(), note: "Tube Amp CAD keeps projects and their revisions in this folder (File > Revisions). Each project is a folder; r<n>.json is a design that File > Open reads." };
+        if (name) m.name = name;
         await write(h, MARK, JSON.stringify(m, null, 1));
       }
       return m.id;
@@ -300,41 +400,176 @@
     const stamp = () => new Date(now()).toISOString();
 
     const api = {
-      kind: "vault", supported, writes,
+      kind: "vault", supported, writes, reads, browser,
       // the folder in use can only be read (Safari, Firefox)
       get readOnly() { return ro(); },
       get available() { return supported; },
       // what is known of the folder in use without touching it: { supported, id, name, granted, count (folders remembered) }
       async status() {
-        if (!supported) return { supported: false, writes, id: "", name: "", granted: false, count: 0 };
+        if (!supported) return { supported: false, writes, browser, id: "", name: "", kind: "", granted: false, count: 0 };
         const h = await remembered();
-        if (!h) return { supported: true, writes, id: "", name: "", granted: false, count: 0 };
+        if (!h) return { supported: true, writes, browser, id: "", name: "", kind: "", granted: false, count: 0 };
         let granted = true;
         try { if (h.queryPermission) granted = (await h.queryPermission({ mode: "readwrite" })) === "granted"; } catch (e) { granted = false; }
-        return { supported: true, writes, id: cur.id, name: h.name, granted, count: vaults.length };
+        return { supported: true, writes, browser, id: cur.id, name: cur.name, kind: cur.kind, granted, count: vaults.length };
       },
       // the id of the vault in use ("" before its folder was read)
       id: () => (cur ? cur.id : ""),
-      // every folder remembered: [{ id, name, current }]
-      async vaults() { await remembered(); return vaults.map(v => ({ id: v.id, name: v.name, current: v === cur })); },
+      // the vault in use: { id, name, kind } or null
+      current: () => (cur ? { id: cur.id, name: cur.name, kind: cur.kind, readOnly: !!cur.handle.readOnly } : null),
+      // every vault known, folders first then this browser's: [{ id, name, kind, current, readOnly }]
+      async vaults(again) { await remembered(again); return vaults.map(v => ({ id: v.id, name: v.name, kind: v.kind, current: v === cur, readOnly: !!v.handle.readOnly })); },
+      // the browser's folder dialog (needs a click) → { handle, name, vault (it holds one already) } or null
+      async pickFolder() {
+        if (!reads && !o.pick) throw new NeedFolder("unsupported");
+        let h;
+        if (o.pick) h = await o.pick();
+        else if (!writes) { h = fromFiles((await pickFiles()) || []); if (!h) return null; }
+        else try { h = await root.showDirectoryPicker({ id: "tubecad-vault", mode: "readwrite" }); }
+        catch (e) { if (e && e.name === "AbortError") return null; throw e; }
+        if (!h) return null;
+        const m = await readJSON(h, MARK).catch(() => null);
+        return { handle: h, name: h.name, vault: !!(m && m.app === "TubeAmpCAD-vault") };
+      },
+      // a new vault in this browser's own storage, named so; it becomes the one in use → { id, name }
+      async createBrowser(name) {
+        if (!browserRoot) throw new NeedFolder("unsupported");
+        const nm = clip(name, 60) || "My vault";
+        await remembered();
+        if (vaults.some(v => v.kind === "browser" && v.name.toLowerCase() === nm.toLowerCase())) throw new Error(`this browser has a vault named ${nm} already`);
+        const top = await browserRoot(), d = await makeDir(top, nm), id = await mark(d.dir, nm);
+        // ask the browser to keep its storage when space runs short (granted quietly or not at all)
+        try { if (!o.browserRoot && root.navigator.storage.persist) await root.navigator.storage.persist(); } catch (e) { /* kept as best it can */ }
+        await remembered(true);
+        cur = vaults.find(v => v.id === id && v.kind === "browser") || cur; reset(); keepCur();
+        await folder();
+        return { id, name: nm };
+      },
+      // a browser vault deleted for good (its projects and revisions with it)
+      async destroy(id) {
+        await remembered();
+        const v = vaults.find(x => x.id === id && x.kind === "browser");
+        if (!v) throw new Error("no such vault in this browser");
+        await (await browserRoot()).removeEntry(v.dir, { recursive: true });
+        const was = v === cur;
+        await remembered(true);
+        // the vault in use went: another of this browser's, else one that can be written, takes its place
+        if (was) { cur = vaults.find(x => x.kind === "browser") || vaults.find(x => !x.handle.readOnly) || vaults[0] || null; reset(); keepCur(); }
+      },
+      // every file of a vault in a ZIP, under a folder named after it → { name, bytes, files }
+      async backup(id) {
+        await remembered();
+        const v = id === undefined ? cur : vaults.find(x => x.id === id);
+        if (!v) throw new NeedFolder("none");
+        if (v.handle.queryPermission && (await v.handle.queryPermission({ mode: "read" })) !== "granted") {
+          if (!v.handle.requestPermission || (await v.handle.requestPermission({ mode: "read" })) !== "granted") throw new NeedFolder("permission", v.name);
+        }
+        const top = folderName(v.name), list = await filesOf(v.handle).catch(e => { throw gone(e, v.handle); });
+        return { name: top, files: list.length, bytes: zip(list.map(([p, b]) => [top + "/" + p, b]), new Date(now())) };
+      },
+      // a backup ZIP → a new vault in this browser, in use now → { id, name, projects }
+      async restore(buf) {
+        if (!browserRoot) throw new NeedFolder("unsupported");
+        const all = await unzip(buf);
+        const markPath = [...all.keys()].filter(k => k === MARK || k.endsWith("/" + MARK)).sort((a, b) => a.length - b.length)[0];
+        if (!markPath) throw new Error("not a Tube Amp CAD vault backup (Back up in the Vaults window writes one)");
+        const pre = markPath.slice(0, -MARK.length);
+        let m; try { m = JSON.parse(new TextDecoder().decode(all.get(markPath))); } catch (e) { m = null; }
+        if (!m || m.app !== "TubeAmpCAD-vault") throw new Error("not a Tube Amp CAD vault backup");
+        await remembered();
+        const base = clip(m.name, 60) || pre.replace(/\/$/, "").split("/").pop() || "Restored vault";
+        let nm = base;
+        for (let i = 2; vaults.some(v => v.kind === "browser" && v.name.toLowerCase() === nm.toLowerCase()); i++) nm = `${base} (${i})`;
+        // the same id twice would mix two vaults up: the copy gets its own when the first is still here
+        if (!PID.test(String(m.id)) || vaults.some(v => v.id === m.id)) m.id = newId();
+        m.name = nm;
+        const top = await browserRoot(), d = await makeDir(top, nm);
+        try {
+          for (const [k, bytes] of all) {
+            if (!k.startsWith(pre) || k === markPath) continue;
+            const path = k.slice(pre.length).split("/");
+            if (path.some(x => !x || x === "." || x === "..")) continue;
+            let dir = d.dir;
+            for (const x of path.slice(0, -1)) dir = await dir.getDirectoryHandle(x, { create: true });
+            await write(dir, path[path.length - 1], bytes);
+          }
+          await write(d.dir, MARK, JSON.stringify(m, null, 1));
+        } catch (e) { await top.removeEntry(d.name, { recursive: true }).catch(() => {}); throw e; }
+        await remembered(true);
+        cur = vaults.find(v => v.id === m.id && v.kind === "browser") || cur; reset(); keepCur();
+        const h = await folder();
+        return { id: m.id, name: nm, projects: [...(await scan(h)).values()].filter(p => !p.meta.deleted).length };
+      },
+      // design files in the vault's folder that are not revisions yet (a vault made in a project's folder):
+      // *.json at its top, and in its subfolders that are not projects → [{ path, name }]
+      looseDesigns: guard(async () => {
+        const h = await folder(), out = [];
+        const look = async (dir, pre, depth) => {
+          for (const [n, x] of await names(dir)) {
+            if (x.kind === "directory") {
+              if (depth < 2 && !n.startsWith(".") && !(await x.getFileHandle("project.json").then(() => true, () => false))) await look(x, pre + n + "/", depth + 1);
+              continue;
+            }
+            if (!/\.json$/i.test(n) || n === MARK || n === "project.json") continue;
+            const f = await x.getFile().catch(() => null);
+            if (!f || f.size > 8 * 1024 * 1024) continue;
+            let d = null; try { d = JSON.parse(await f.text()); } catch (e) { continue; }
+            if (isDesign(d)) out.push({ path: pre + n, name: n.replace(/\.json$/i, "") });
+          }
+        };
+        await look(h, "", 0);
+        return out.sort((a, b) => a.path.localeCompare(b.path));
+      }),
+      // those design files as projects, each with the file as its first revision (the files stay) → how many
+      adopt: change(async paths => {
+        const h = await folder();
+        let n = 0;
+        for (const path of paths || []) {
+          const parts = String(path).split("/");
+          let dir = h;
+          try {
+            for (const x of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(x);
+            const d = await readJSON(dir, parts[parts.length - 1]);
+            if (!isDesign(d)) continue;
+            const nm = clip(parts[parts.length - 1].replace(/\.json$/i, ""), 120) || "Project";
+            const all = await scan(h);
+            let id; do id = newId(); while (all.has(id));
+            const md = await makeDir(h, nm), t = stamp();
+            const p = { dir: md.dir, name: md.name, meta: { id, name: nm, notes: "", created: t, updated: t, revs: [] } };
+            const r = await putRev(p, 1, JSON.stringify(d, null, 1), { time: t, message: `Added from ${path}` });
+            p.meta.revs.push(r);
+            await saveMeta(p); where.set(id, md.name); n++;
+          } catch (e) { /* a file that cannot be read is left out */ }
+        }
+        return n;
+      }),
+      // another vault of the list, as a client of its own (Copy to…); the browser may ask for leave (needs a click)
+      async other(id) {
+        await remembered();
+        const v = vaults.find(x => x.id === id);
+        if (!v) throw new NeedFolder("gone");
+        if (v.handle.readOnly) throw new NeedFolder("readonly");
+        const h = v.handle;
+        if (h.queryPermission && (await h.queryPermission({ mode: "readwrite" })) !== "granted") {
+          if (!h.requestPermission || (await h.requestPermission({ mode: "readwrite" })) !== "granted") throw new NeedFolder("permission", v.name);
+        }
+        return client({ handle: h, now: o.now, trashDays: o.trashDays });
+      },
       // the browser's folder dialog (needs a click): the folder picked joins the list and is the one
       // in use; → its name, or null when cancelled
       async choose() {
-        if (!supported) throw new NeedFolder("unsupported");
-        let h;
-        if (!writes) { h = fromFiles((await pickFiles()) || []); if (!h) return null; }
-        else try { h = await root.showDirectoryPicker({ id: "tubecad-vault", mode: "readwrite" }); }
-        catch (e) { if (e && e.name === "AbortError") return null; throw e; }
-        await api.use(h);
-        return h.name;
+        const got = await api.pickFolder();
+        if (!got) return null;
+        await api.use(got.handle);
+        return got.name;
       },
       async use(h) {
         await remembered();
         const id = await mark(h);
         // the same vault again (by its id, or the very folder): its place in the list, with the new handle
         let v = null;
-        for (const x of vaults) if (x.id === id || (x.handle.isSameEntry && await x.handle.isSameEntry(h).catch(() => false))) { v = x; break; }
-        if (v) Object.assign(v, { id, handle: h, name: h.name }); else vaults.push(v = { id, handle: h, name: h.name });
+        for (const x of vaults) if (x.kind !== "browser" && (x.id === id || (x.handle.isSameEntry && await x.handle.isSameEntry(h).catch(() => false)))) { v = x; break; }
+        if (v) Object.assign(v, { id, handle: h, name: h.name }); else vaults.splice(vaults.filter(x => x.kind !== "browser").length, 0, v = { id, handle: h, name: h.name, kind: "folder" });
         cur = v; reset(); keepCur();
         await persist();
         await folder();
@@ -342,7 +577,7 @@
       // switch to another folder of the list → false when it is not there
       async select(id) {
         await remembered();
-        const v = vaults.find(x => x.id === id);
+        const v = vaults.find(x => x.id === id) || (await remembered(true), vaults.find(x => x.id === id));
         if (!v) return false;
         if (v !== cur) { cur = v; reset(); keepCur(); }
         return true;
@@ -357,8 +592,8 @@
       // take a folder off the list (the one in use when none is named); its files stay where they are
       async disconnect(id) {
         await remembered();
-        const v = id === undefined ? cur : vaults.find(x => x.id === id);
-        if (!v) return;
+        const v = id === undefined ? cur : vaults.find(x => x.id === id && x.kind !== "browser");
+        if (!v || v.kind === "browser") return;
         vaults = vaults.filter(x => x !== v);
         if (v === cur) { cur = vaults[0] || null; reset(); keepCur(); }
         await persist();
@@ -370,7 +605,7 @@
         let bytes = 0; for (const p of all) bytes += await sizeOf(p.dir);
         const on = all.filter(p => !p.meta.deleted);
         return {
-          vault: true, id: cur.id, folder: h.name, email: "", readOnly: !!h.readOnly,
+          vault: true, id: cur.id, folder: cur.name, where: cur.kind, email: "", readOnly: !!h.readOnly,
           revisions: { bytes, projects: on.length, count: on.reduce((n, p) => n + live(p.meta).length, 0), max: null },
           trash: { projects: all.length - on.length, revisions: on.reduce((n, p) => n + p.meta.revs.filter(r => r.deleted).length, 0), days: trashDays },
         };
@@ -524,5 +759,5 @@
   let one = null;
   // the vault of this browser (one for the page)
   const shared = () => one || (one = client());
-  root.CadVault = { client, shared, fromFiles, NeedFolder, MARK };
+  root.CadVault = { client, shared, fromFiles, NeedFolder, MARK, zip, unzip };
 })(typeof window !== "undefined" ? window : globalThis);
