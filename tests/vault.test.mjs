@@ -142,7 +142,7 @@ test("a folder not ready says why: leave to use it, moved away, a browser withou
   await v.createProject("Amp");
   root.permission = "prompt";
   await assert.rejects(v.projects(), e => e.folder === "permission");
-  assert.deepEqual(await v.status(), { supported: true, writes: true, id: v.id(), name: "vault", granted: false, count: 1 });
+  assert.deepEqual(await v.status(), { supported: true, writes: true, browser: false, id: v.id(), name: "vault", kind: "folder", granted: false, count: 1 });
   assert.equal(await v.grant(), true);
   assert.equal((await v.projects()).length, 1);
   // a project's folder renamed by hand is still found, by the id in its project.json
@@ -162,7 +162,7 @@ test("several vaults: each folder added is remembered, and Kept in switches betw
   await v.use(b);
   const idB = v.id();
   assert.notEqual(idB, idA);
-  assert.deepEqual(await v.vaults(), [{ id: idA, name: "Amp A", current: false }, { id: idB, name: "Amp B", current: true }]);
+  assert.deepEqual(await v.vaults(), [{ id: idA, name: "Amp A", kind: "folder", current: false, readOnly: false }, { id: idB, name: "Amp B", kind: "folder", current: true, readOnly: false }]);
   assert.deepEqual(await v.projects(), [], "the second folder has its own projects");
   await v.createProject("B");
   assert.equal(await v.select(idA), true);
@@ -171,7 +171,7 @@ test("several vaults: each folder added is remembered, and Kept in switches betw
   await v.use(a);
   assert.equal((await v.vaults()).length, 2, "a folder added again is not listed twice");
   await v.disconnect();
-  assert.deepEqual(await v.vaults(), [{ id: idB, name: "Amp B", current: true }]);
+  assert.deepEqual(await v.vaults(), [{ id: idB, name: "Amp B", kind: "folder", current: true, readOnly: false }]);
   assert.deepEqual((await v.projects()).map(p => p.name), ["B"]);
   assert.ok(a.kids.has("A"), "a folder taken off the list keeps its files");
   await v.disconnect();
@@ -200,4 +200,101 @@ test("a folder only read (Safari, Firefox): listed, opened and exported, nothing
   const one = V.client({ handle: V.fromFiles(files.filter(f => f.webkitRelativePath.startsWith("My vault/Amp/")).map(f => Object.assign(new Blob([f]), { name: f.name, webkitRelativePath: f.webkitRelativePath.slice("My vault/".length) }))) });
   assert.deepEqual((await one.projects()).map(x => x.name), ["Amp"]);
   assert.equal(V.fromFiles([]), null);
+});
+
+// the vaults of a browser: folders remembered (o.keep), browser vaults under o.browserRoot, the folder dialog (o.pick)
+function browserClient(opts = {}) {
+  const store = opts.store || { list: [] }, top = opts.top || dir("tubecad-vaults");
+  const v = V.client({ keep: { load: async () => store.list.slice(), save: async l => { store.list = l.slice(); } }, browserRoot: async () => top, pick: opts.pick });
+  return { v, store, top };
+}
+
+test("a vault in this browser: made by name, listed with the folders, kept by its own storage", async () => {
+  const folderA = dir("Amp A"), { v, store, top } = browserClient({ pick: async () => folderA }), d = example("08-555-astable.json");
+  await assert.rejects(v.projects(), e => e.folder === "none", "nothing set up yet");
+  const b = await v.createBrowser("Bench / tests");
+  assert.equal(b.name, "Bench / tests");
+  assert.deepEqual(v.current(), { id: b.id, name: "Bench / tests", kind: "browser", readOnly: false });
+  assert.ok(top.kids.has("Bench _ tests"), "its folder in the browser's storage");
+  assert.equal(JSON.parse(await text(top, "Bench _ tests", V.MARK)).name, "Bench / tests");
+  const p = await v.createProject("Amp"); await v.saveRevision(p.id, { message: "one", design: d });
+  assert.equal((await v.me()).where, "browser");
+  await assert.rejects(v.createBrowser("bench / TESTS"), /already/);
+  // a folder too: both listed, folders first; only the folder is remembered in the list kept
+  const got = await v.pickFolder();
+  assert.deepEqual([got.name, got.vault], ["Amp A", false]);
+  await v.use(got.handle);
+  assert.deepEqual((await v.vaults()).map(x => [x.name, x.kind, x.current]), [["Amp A", "folder", true], ["Bench / tests", "browser", false]]);
+  assert.deepEqual(store.list.map(x => x.name), ["Amp A"]);
+  // a new page finds both again
+  const again = browserClient({ store, top }).v;
+  assert.deepEqual((await again.vaults()).map(x => [x.name, x.kind]), [["Amp A", "folder"], ["Bench / tests", "browser"]]);
+  assert.equal(await again.select(b.id), true);
+  assert.deepEqual((await again.projects()).map(x => x.name), ["Amp"]);
+  // Forget is for folders; a browser vault is deleted
+  await again.disconnect(b.id);
+  assert.equal((await again.vaults()).length, 2, "a browser vault is not forgotten, it is deleted");
+  await again.destroy(b.id);
+  assert.deepEqual((await again.vaults(true)).map(x => x.name), ["Amp A"]);
+  assert.ok(!top.kids.has("Bench _ tests"));
+});
+
+test("Back up writes every file of a vault into a ZIP; Import backup… brings it back as a browser vault", async () => {
+  const { v } = browserClient(), d = example("08-555-astable.json");
+  const b = await v.createBrowser("Bench");
+  const p = await v.createProject("Amp"); await v.saveRevision(p.id, { message: "one", design: d, thumb: PNG });
+  await v.updateRevision(p.id, 1, { milestone: "Sent to fab" });
+  await v.addFile(p.id, 1, { name: "gerbers.zip", type: "application/zip", data: btoa("PK fake") });
+  const z = await v.backup();
+  assert.equal(z.name, "Bench"); assert.ok(z.files >= 5);
+  const back = await V.unzip(z.bytes);
+  assert.ok(back.has("Bench/" + V.MARK) && back.has("Bench/Amp/r1.json") && back.has("Bench/Amp/r1.files/gerbers.zip"));
+  // the vault is still here: the copy gets a name and an id of its own
+  const r = await v.restore(z.bytes);
+  assert.equal(r.name, "Bench (2)"); assert.notEqual(r.id, b.id); assert.equal(r.projects, 1);
+  assert.equal(v.current().id, r.id);
+  assert.deepEqual(await v.revision(p.id, 1), d);
+  assert.equal((await v.project(p.id)).revs[0].milestone, "Sent to fab");
+  // in another browser (nothing there yet) it keeps its id, so links to its revisions still work
+  const other = browserClient().v, r2 = await other.restore(z.bytes);
+  assert.deepEqual([r2.id, r2.name], [b.id, "Bench"]);
+  await assert.rejects(other.restore(V.zip([["a.txt", new TextEncoder().encode("x")]])), /not a Tube Amp CAD vault backup/);
+  await assert.rejects(other.restore(new Uint8Array(10)), /not a ZIP/);
+});
+
+test("a new vault in a project's folder offers the designs already there as projects", async () => {
+  const f = dir("Amps"), d = example("08-555-astable.json"), d2 = example("01-2n3904-ce-unbypassed.json");
+  const put = async (h, n, x) => { const fh = await h.getFileHandle(n, { create: true }), w = await fh.createWritable(); await w.write(x); await w.close(); };
+  await put(f, "555 astable.json", JSON.stringify(d));
+  await put(f, "notes.json", JSON.stringify({ a: 1 }));
+  await put(await f.getDirectoryHandle("old", { create: true }), "ce stage.json", JSON.stringify(d2));
+  const { v } = browserClient({ pick: async () => f });
+  const got = await v.pickFolder();
+  assert.equal(got.vault, false);
+  await v.use(got.handle);
+  const loose = await v.looseDesigns();
+  assert.deepEqual(loose.map(x => x.path), ["555 astable.json", "old/ce stage.json"]);
+  assert.equal(await v.adopt(loose.map(x => x.path)), 2);
+  const ps = await v.projects();
+  assert.deepEqual(ps.map(x => x.name).sort(), ["555 astable", "ce stage"]);
+  assert.deepEqual(await v.revision(ps.find(x => x.name === "ce stage").id, 1), d2);
+  assert.ok(f.kids.has("555 astable.json"), "the file stays where it was");
+  assert.deepEqual((await v.looseDesigns()).map(x => x.path), ["555 astable.json", "old/ce stage.json"], "project folders are not looked into");
+});
+
+test("Copy to…: another vault of the list as a client of its own", async () => {
+  const a = dir("Amp A"), { v } = browserClient({ pick: async () => a }), d = example("08-555-astable.json");
+  const b = await v.createBrowser("Bench");
+  const p = await v.createProject("Amp"); await v.saveRevision(p.id, { design: d });
+  await v.use((await v.pickFolder()).handle);
+  const idA = v.id();
+  const to = await v.other(b.id);
+  assert.deepEqual((await to.projects()).map(x => x.name), ["Amp"]);
+  await v.select(b.id);
+  const bundle = await v.exportBundle(p.id), toA = await v.other(idA);
+  await toA.importProject(bundle);
+  await v.select(idA);
+  assert.deepEqual((await v.projects()).map(x => x.name), ["Amp"]);
+  a.permission = "denied"; a.requestPermission = async () => "denied";
+  await assert.rejects(v.other(idA), e => e.folder === "permission");
 });

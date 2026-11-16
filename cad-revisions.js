@@ -249,15 +249,15 @@
   const hashOf = (project, n, vault) => `#rev=${project}.${n}${vault ? "&vault=" + (vault === true ? "1" : vault) : ""}`;
 
   // Where revisions are kept, chosen in the Revisions dialog and remembered in this browser:
-  // "site" (aerocat.tech) or "vault" (a folder on this computer). Away from aerocat.tech, where the
-  // site's store cannot be reached, it is the vault whenever the browser can open folders.
+  // "site" (aerocat.tech) or "vault" (a folder on this computer, or a vault in this browser). Away from
+  // aerocat.tech, where the site's store cannot be reached, it is a vault whenever the browser can keep one.
   const STORE_KEY = "tubecad.rev.store";
   function storeName(origin) {
     const V = root.CadVault;
     if (!V) return "site";
     let v = null; try { v = localStorage.getItem(STORE_KEY); } catch (e) { /* private window */ }
     if (v === "vault" || v === "site") return v;
-    return !base(origin) && V.shared().writes ? "vault" : "site";
+    return !base(origin) && (V.shared().writes || V.shared().browser) ? "vault" : "site";
   }
   function setStore(v) { try { localStorage.setItem(STORE_KEY, v === "vault" ? "vault" : "site"); } catch (e) { /* private window */ } }
   // the client of the store chosen

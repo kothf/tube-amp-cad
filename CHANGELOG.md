@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.229.0] - 2026-11-16
+
+Vaults: on the server, in a folder, in this browser, managed in one place (as in MöbiusCAD).
+
+### Added
+- **File ▾ → Vaults…** (`cad-vaults-ui.js`; also *Vaults…* beside Kept in, *Manage vaults…* at the end of the Kept in list, and *Vaults…* in the project manager): every place projects and revisions can be kept, in three groups as MöbiusCAD's Vault menu: **On the server** (aerocat.tech), **In a folder on this computer** (*New vault in a folder…*, *Open vault folder…*, the folders used before) and **In this browser** (the vaults kept there, *New browser vault* with a name, *Import backup…*). The vault in use is marked *In use*; the others have **Use**. Each vault has **Back up** (all its files as one ZIP); a folder has **Forget** (its files stay), a browser vault **Delete…** (for good, after a question that counts what goes with it).
+- **Browser vaults**: the same vault files kept in the browser's own private storage (OPFS, `tubecad-vaults/<name>/`): no folder to pick and no leave to give, and they save in **Safari and Firefox** too, where a folder can only be read (Safari before 26 writes through a worker). The page asks the browser to keep its storage when space runs short.
+- **Import backup…** turns a backup ZIP into a new browser vault (its own name and id when the original is still in this browser, else its id, so saved files and `#rev=` links still find it).
+- **A new vault in a project's folder** offers the designs already there (`*.json` at its top and in its subfolders) as projects, each file as its first revision, where they are. *Open vault folder…* on a folder with no vault asks before making one; *New vault in a folder…* on a folder that holds one opens it.
+- **Copy to…** in the project manager copies a project to any other vault (folder or browser) or to aerocat.tech, not just between the site and one folder.
+
+### Changed
+- **Kept in** groups its list: On the server / In a folder on this computer / In this browser, then *Manage vaults…* (*New vault…* when there is none). *Add a folder…* and *Forget folder* moved into the Vaults window.
+- When nothing is set up yet (away from aerocat.tech), Revisions opens on the Vaults window; away from aerocat.tech the default is a vault wherever the browser can keep one (a browser vault counts).
+- The Revisions dialog and the project manager say *Browser vault <name>* for a vault kept in the browser. Russian labels, both manuals and the README updated.
+
 ## [3.228.0] - 2026-11-15
 
 ### Changed
