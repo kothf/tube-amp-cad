@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.229.0] - 2026-11-16
+
+### Changed
+- **Lamps glow.** An incandescent lamp lights up on the sheet with a halo of light round the bulb (wider and brighter with its light) and its filament (the cross) shining hotter than the glass, dull red to warm white. A neon lamp gets an orange halo and glowing electrodes.
+- **Lamps under ∿ Animate** follow their current through the filament's heat: each lamp model has a thermal time constant (about 20 ms for a #1869 to 0.1 s for a 60 W bulb) and the light comes from the power it holds, so a lamp a slow 555 flashes blinks, fading in and out, while one on mains or an audio signal holds steady. Before, a lamp showed only its settled average, lit steadily even in a flasher.
+
 ## [3.228.0] - 2026-11-15
 
 ### Changed

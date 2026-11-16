@@ -829,10 +829,19 @@
     neon(ctx, c) {
       const lit = c && c._lit;
       line(ctx, [-20, 0, -5, 0]); line(ctx, [20, 0, 5, 0]);
+      if (lit > 0) {
+        // its orange light round the bulb, wider with the current
+        const R = 13 + 14 * Math.sqrt(Math.min(1, lit)), halo = ctx.createRadialGradient(0, 0, 9, 0, 0, R);
+        halo.addColorStop(0, `rgba(${GAS_GLOW.neon},${(0.5 * Math.sqrt(Math.min(1, lit))).toFixed(3)})`); halo.addColorStop(1, `rgba(${GAS_GLOW.neon},0)`);
+        ctx.save(); ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      }
       ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2);
       if (lit > 0) { ctx.fillStyle = `rgba(${GAS_GLOW.neon},${(0.25 + 0.75 * lit).toFixed(3)})`; ctx.fill(); }
       ctx.stroke();
-      ctx.save(); ctx.lineWidth = 2.2; line(ctx, [-5, -6, -5, 6]); line(ctx, [5, -6, 5, 6]); ctx.restore();
+      ctx.save(); ctx.lineWidth = 2.2; line(ctx, [-5, -6, -5, 6]); line(ctx, [5, -6, 5, 6]);
+      // the glow sits on the electrodes
+      if (lit > 0) { ctx.strokeStyle = `rgba(255,190,120,${Math.min(1, 0.3 + lit).toFixed(3)})`; ctx.shadowColor = `rgba(${GAS_GLOW.neon},1)`; ctx.shadowBlur = 4 + 8 * lit; line(ctx, [-5, -6, -5, 6]); line(ctx, [5, -6, 5, 6]); }
+      ctx.restore();
       ctx.fillStyle = ctx.strokeStyle; ctx.beginPath(); ctx.arc(0, 7, 1.6, 0, Math.PI * 2); ctx.fill();
     },
     // a mercury-vapour rectifier: the envelope with the dot of its gas fill, the anodes above, the
@@ -852,16 +861,27 @@
     },
     // an incandescent lamp (IEC 60617 S00965): a circle with a cross; lit (c._lit, 0 to about 1.3)
     // it glows from dull red to warm white
+    // the light spills round the bulb as a halo, wider and brighter with it, and the filament (the
+    // cross) shines hotter than the glass, from dull red to near white
     lamp(ctx, c) {
       const lit = c && c._lit;
       line(ctx, [-20, 0, -11, 0]); line(ctx, [20, 0, 11, 0]);
-      ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2);
-      if (lit > 0.003) {
-        const t = Math.min(1, lit), g = Math.round(90 + 150 * t), b = Math.round(30 + 170 * Math.max(0, t - 0.5) * 2);
-        ctx.save(); ctx.fillStyle = `rgba(255,${g},${b},${(0.3 + 0.7 * Math.min(1, Math.sqrt(lit))).toFixed(3)})`; ctx.shadowColor = `rgba(255,${g},${b},0.95)`; ctx.shadowBlur = 4 + 18 * t; ctx.fill(); ctx.restore();
+      const on = lit > 0.003, t = on ? Math.min(1, lit) : 0, s = Math.sqrt(t);
+      const g = Math.round(90 + 150 * t), b = Math.round(30 + 170 * Math.max(0, t - 0.5) * 2);
+      if (on) {
+        const R = 13 + 18 * s, halo = ctx.createRadialGradient(0, 0, 9, 0, 0, R);
+        halo.addColorStop(0, `rgba(255,${g},${b},${(0.55 * s).toFixed(3)})`); halo.addColorStop(1, `rgba(255,${g},${b},0)`);
+        ctx.save(); ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       }
+      ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      if (on) { ctx.save(); ctx.fillStyle = `rgba(255,${g},${b},${(0.3 + 0.7 * Math.min(1, Math.sqrt(lit))).toFixed(3)})`; ctx.shadowColor = `rgba(255,${g},${b},0.95)`; ctx.shadowBlur = 4 + 18 * t; ctx.fill(); ctx.restore(); }
       ctx.stroke();
       line(ctx, [-7.8, -7.8, 7.8, 7.8]); line(ctx, [-7.8, 7.8, 7.8, -7.8]);
+      if (on) {
+        const fg = Math.round(150 + 105 * t), fb = Math.round(60 + 195 * Math.max(0, t - 0.4) / 0.6);
+        ctx.save(); ctx.globalAlpha = Math.min(1, 0.4 + 1.5 * t); ctx.strokeStyle = `rgb(255,${fg},${fb})`; ctx.shadowColor = `rgba(255,${fg},${fb},1)`; ctx.shadowBlur = 5 + 10 * t; ctx.lineWidth = 2.4;
+        line(ctx, [-7.8, -7.8, 7.8, 7.8]); line(ctx, [-7.8, 7.8, 7.8, -7.8]); ctx.restore();
+      }
     },
     // a battery (IEC 60617 S00898 multi-cell): long (+) and short plates, the dashes between
     battery(ctx) {
@@ -1653,16 +1673,34 @@
   // radiated as T⁴ and R ∝ T^1.2, R = Rhot·(I/Irated)^0.857 at its rms current (a lamp's few tens of
   // ms are long beside an audio cycle), never under its cold resistance (about Rhot/12, Rhot/15 for
   // a mains bulb). Its light goes as about V^3.4: drawn from dull red to warm white.
+  // tau: the filament's thermal time constant (s), about: a thin filament heats and cools in a few
+  // tens of ms, a mains bulb's in about a tenth of a second. It sets how its light follows a slow
+  // signal (a lamp a 555 flashes) and how little it flickers on 100 Hz
   const LAMPS = {
-    "47": { v: 6.3, i: 0.15, cold: 1 / 12, base: "BA9s", use: "#47 pilot lamp, 6.3 V 0.15 A" },
-    "44": { v: 6.3, i: 0.25, cold: 1 / 12, base: "BA9s", use: "#44 pilot lamp, 6.3 V 0.25 A" },
-    "1869": { v: 10, i: 0.014, cold: 1 / 10, base: "T1¾ wire leads", use: "#1869, 10 V 14 mA, wire leads" },
-    "327": { v: 28, i: 0.04, cold: 1 / 10, base: "T1¾ flanged", use: "#327, 28 V 40 mA" },
-    "60W": { v: 230, i: 60 / 230, cold: 1 / 15, base: "E27", use: "60 W 230 V bulb (dim-bulb tester)" }
+    "47": { v: 6.3, i: 0.15, cold: 1 / 12, tau: 0.05, base: "BA9s", use: "#47 pilot lamp, 6.3 V 0.15 A" },
+    "44": { v: 6.3, i: 0.25, cold: 1 / 12, tau: 0.06, base: "BA9s", use: "#44 pilot lamp, 6.3 V 0.25 A" },
+    "1869": { v: 10, i: 0.014, cold: 1 / 10, tau: 0.02, base: "T1¾ wire leads", use: "#1869, 10 V 14 mA, wire leads" },
+    "327": { v: 28, i: 0.04, cold: 1 / 10, tau: 0.03, base: "T1¾ flanged", use: "#327, 28 V 40 mA" },
+    "60W": { v: 230, i: 60 / 230, cold: 1 / 15, tau: 0.1, base: "E27", use: "60 W 230 V bulb (dim-bulb tester)" }
   };
   const lampLaw = m => { const rh = m.v / m.i, n = -0.857; return { rh, r25: rh * m.cold, k: rh / Math.pow(m.i, -n), n }; };
   // the light of a lamp, 0 dark to 1 at its rating (a little over 1 above it), from its voltage
   const lampGlow = (m, v) => Math.min(1.3, Math.pow(Math.max(0, Math.abs(v)) / m.v, 3.4));
+  // ...and from the power its filament holds (its heat, the power averaged over its time constant):
+  // on the hot law V ∝ I^1.857, so P ∝ V^1.54 and the light ∝ V^3.4 ∝ P^2.21
+  const lampGlowP = (m, p) => Math.min(1.3, Math.pow(Math.max(0, p) / (m.v * m.i), 3.4 / (1 + 1 / 1.857)));
+  // the filament's heat through one period of a cycle (s), from its power at n even instants:
+  // the first-order lag (tau) in its periodic steady state, so a lamp a slow 555 flashes blinks,
+  // fading in and out, where one on 100 Hz or an audio signal holds nearly steady
+  function lampHeat(m, p, period) {
+    const n = p.length, h = period / n, tau = m.tau || 0.05;
+    const b = -Math.expm1(-h / tau), a = 1 - b, one = -Math.expm1(-period / tau);   // 1 − a^n
+    let x = 0; for (let k = 0; k < n; k++) x = a * x + b * p[k];
+    x = one > 1e-9 ? x / one : p.reduce((s, v) => s + v, 0) / n;
+    const out = new Float64Array(n);
+    for (let k = 0; k < n; k++) { x = a * x + b * p[k]; out[k] = x; }
+    return out;
+  }
   // Batteries (battery part): cells in series, each an open-circuit voltage by its charge left
   // (typical discharge curves at light load) behind an internal resistance that grows as it runs
   // down (doubles near empty for alkaline). mah: capacity at light load
@@ -2450,7 +2488,7 @@
       fields: [{ key: "model", label: "Type", kind: "select", wide: true, options: () => Object.entries(LAMPS).map(([k, m]) => [k, m.use]) }],
       info: c => {
         const m = LAMPS[c.params.model] || LAMPS["47"], l = lampLaw(m);
-        return `${m.use}: ${fmtEng(l.rh, "Ω")} hot at its rated ${m.v} V, about ${fmtEng(l.r25, "Ω")} cold, so it draws several times its current at switch-on. In between its resistance follows its rms current (R ∝ I^0.857, from the filament's radiation and tungsten's resistance), which is what makes a lamp a soft current limiter: in series with the mains as a dim-bulb tester, in series with a tweeter, or as a pilot light dimmed on a lower heater voltage. It glows from dull red to warm white with its voltage (light about V^3.4). Base: ${m.base}.`;
+        return `${m.use}: ${fmtEng(l.rh, "Ω")} hot at its rated ${m.v} V, about ${fmtEng(l.r25, "Ω")} cold, so it draws several times its current at switch-on. In between its resistance follows its rms current (R ∝ I^0.857, from the filament's radiation and tungsten's resistance), which is what makes a lamp a soft current limiter: in series with the mains as a dim-bulb tester, in series with a tweeter, or as a pilot light dimmed on a lower heater voltage. It glows from dull red to warm white with its voltage (light about V^3.4); under Animate it follows its current with its filament's heat (about ${Math.round(m.tau * 1000)} ms), so a lamp a slow 555 drives blinks. Base: ${m.base}.`;
       },
       build: (c, net, alloc, out) => {
         const m = LAMPS[c.params.model] || LAMPS["47"], l = lampLaw(m);
@@ -4037,5 +4075,5 @@
     return wrap;
   }
 
-  root.CadLib = { LOGIC_ICS, LOGIC_FAMS, logicGeom, logicPinIds, logicSpice, partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, pwlPoints, genWave, genFreq, tubeByName, tubeKind, tubeWarmup };
+  root.CadLib = { LOGIC_ICS, LOGIC_FAMS, logicGeom, logicPinIds, logicSpice, partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, lampGlowP, lampHeat, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, pwlPoints, genWave, genFreq, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);
