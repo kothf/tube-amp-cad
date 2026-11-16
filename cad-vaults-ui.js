@@ -37,6 +37,9 @@
     const say = host.say || (() => {});
     const ask = host.confirm || (t => Promise.resolve(root.confirm(t)));
     let busy = false;
+    // The ZIP input lives outside the redrawn part, so a redraw (after Back up, say) never swaps it while a file is being picked.
+    el.innerHTML = '<div class="vaults-body"></div><input type="file" class="vault-zip" accept=".zip,application/zip" hidden>';
+    const body = el.querySelector(".vaults-body"), zipIn = el.querySelector(".vault-zip");
 
     async function draw() {
       const list = vault ? await vault.vaults(true).catch(() => []) : [];
@@ -49,7 +52,7 @@
       const folderActs = v => (v.readOnly ? "" : `<button class="btn" data-v="backup" title="Every file of this vault in one ZIP, to keep somewhere safe; Import backup… brings it back">Back up</button>`)
         + `<button class="btn" data-v="forget" title="Take this folder off the list. Its files stay where they are, and Open vault folder… brings it back">Forget</button>`;
       const browserActs = `<button class="btn" data-v="backup" title="Every file of this vault in one ZIP, to keep somewhere safe; Import backup… brings it back">Back up</button><button class="btn danger" data-v="delete" title="Delete this vault and everything in it from this browser, for good">Delete…</button>`;
-      el.innerHTML = `<div class="vaults">
+      body.innerHTML = `<div class="vaults">
         <p class="insp-help vault-lead">A vault keeps your projects and every revision of them. Keep them on the server, in a folder on this computer, or in this browser, and switch between them any time.</p>
         <section class="vault-sec"><h4>On the server</h4>
           <div class="vault-row${store === "site" ? " on" : ""}"><span class="vault-name">aerocat.tech</span>${badge(store === "site")}<span class="vault-acts">${store === "site" ? "" : `<button class="btn" data-v="site" title="Keep projects and revisions on aerocat.tech, for the site's owner (Cloudflare login)"${siteOn ? "" : " disabled"}>Use</button>`}</span></div>
@@ -65,7 +68,7 @@
         <section class="vault-sec"><h4>In this browser</h4>
           ${here.map(v => row(v, browserActs)).join("")}
           ${vault && vault.browser ? `<p class="insp-help vault-note">Kept in this browser's own storage on this computer: no folder to pick, and it works in Safari and Firefox too. Clearing the site's data deletes it, so Back up now and then.</p>
-          <div class="vault-btns"><input type="text" class="vault-new-name" maxlength="60" spellcheck="false" placeholder="Vault name" aria-label="New browser vault's name"><button class="btn active" data-v="new-ws" title="A new vault in this browser's own storage, with this name">New browser vault</button><button class="btn" data-v="import" title="A vault backup (Back up) becomes a vault in this browser">Import backup…</button><input type="file" class="vault-zip" accept=".zip,application/zip" hidden></div>`
+          <div class="vault-btns"><input type="text" class="vault-new-name" maxlength="60" spellcheck="false" placeholder="Vault name" aria-label="New browser vault's name"><button class="btn active" data-v="new-ws" title="A new vault in this browser's own storage, with this name">New browser vault</button><button class="btn" data-v="import" title="A vault backup (Back up) becomes a vault in this browser">Import backup…</button></div>`
           : `<p class="insp-help vault-note">${esc(NOBROWSER)}</p>`}
         </section>
       </div>`;
@@ -115,7 +118,7 @@
           await useVault(r.id, `New vault ${r.name} in this browser`);
           break;
         }
-        case "import": el.querySelector(".vault-zip").click(); return;
+        case "import": zipIn.click(); return;
         case "backup": {
           say("Putting the backup together…");
           const z = await vault.backup(id);
