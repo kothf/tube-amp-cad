@@ -232,6 +232,33 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     check(got.lamp > 0.5 && got.lamp < 1.3 && got.nixie && got.nixie.digit === 4 && got.nixie.lit > 0.5 && Math.abs(got.meter - 0.5) < 0.01,
       `new indicators: a pilot lamp on 4 × AA lit ${got.lamp && got.lamp.toFixed(2)}, the nixie shows ${got.nixie && got.nixie.digit}, the 1 mA meter reads ${got.meter && got.meter.toFixed(3)} of full scale`);
   }
+  {
+    // a lamp flashed by a 2 Hz pulse: lit steadily on the sheet (its average), under Animate it blinks
+    // with its filament's lag (dark late in the off half, lit late in the on half)
+    const s0 = await cad.evaluate(() => TubeCAD.state.sim.seq);
+    await cad.evaluate(() => {
+      const T = TubeCAD, S = T.state;
+      S.comps = []; S.wires = [];
+      const put = (type, params, x, y) => { const c = T.makeComp(type, params || {}, x, y, 0); S.comps.push(c); return c; };
+      const pin = (c, id) => T.compPins(c).find(q => q.id === id);
+      const wire = (a, pa, z, pz) => { const A = pin(a, pa), Z = pin(z, pz); T.lRoute(A.x, A.y, Z.x, Z.y, true).forEach(q => T.addSegment(...q)); };
+      const gnd = (c, id) => { const P = pin(c, id), g = put("ground", {}, P.x, P.y + 40); wire(c, id, g, T.compPins(g)[0].id); };
+      const g = put("siggen", { wave: "pulse", vlo: 0, vhi: 10, per: 0.5, pw: 0.25, tr: 1e-4, tf: 1e-4, rs: 1 }, 100, 300), l = put("lamp", { model: "1869" }, 200, 200);
+      wire(g, "+", l, "1"); gnd(g, "-"); gnd(l, "2");
+      T.commit();
+    });
+    await cad.waitForFunction(s0 => { const m = TubeCAD.state.sim; return m.seq !== s0 && !m.busy && !m.pending && m.result; }, s0, { timeout: 60000 }).catch(() => {});
+    const got = await cad.evaluate(() => {
+      const T = TubeCAD, S = T.state, l = S.comps.find(c => c.type === "lamp"), still = T.lampLevel(l);
+      T.setAnim(true);
+      const at = ph => { S.anim.phase = ph; return T.lampLevel(l); };
+      const r = { still, lit: Math.max(at(0.4), at(0.9)), dark: Math.min(at(0.4), at(0.9)), lamps: !!(T.anim().data && T.anim().data.lamps.size) };
+      T.setAnim(false);
+      return r;
+    });
+    check(got.lamps && got.still > 0.05 && got.lit > 0.7 && got.dark < 0.02,
+      `a lamp flashed at 2 Hz: ${got.still && got.still.toFixed(2)} settled, under Animate ${got.lit && got.lit.toFixed(2)} lit and ${got.dark && got.dark.toFixed(3)} dark`);
+  }
 
   {
     // the Gubin supply: a 5Ц4С at 115 mA is within its 125 mA (2 × 62 mA per anode), and its peak anode current is checked against 375 mA

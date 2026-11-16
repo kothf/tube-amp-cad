@@ -9,7 +9,8 @@
    to each wire's own peak, so the microamps at a grid move as visibly as the plate's
    milliamps; brighter dots, more current.
    LEDs light up by their current: with the animation on, at its moment; otherwise by the
-   settled average. So do neon lamps (orange, on either polarity) and gas regulators (violet), and a
+   settled average. So do neon lamps (orange, on either polarity) and gas regulators (violet);
+   incandescent lamps follow their current through the filament's heat (CadLib.lampHeat), and a
    magic eye's shadow opens and closes with its triode's plate against its target. Tube heaters glow
    orange once simulated and, from the moment Animate is pressed, warm up from cold over each
    tube's own warm-up time. A free-running 555 sets its own cycle (the simulation finds its period), so a 555
@@ -57,6 +58,15 @@
         if (c.type === "nixie") { const ks = Array.from({ length: 10 }, (_, k) => c.id + ":K" + k); if (pinFrames.every(pm => ks.every(k => pm.has(k)))) nixies.set(c.id, pinFrames.map(pm => ks.map(k => -pm.get(k)))); }
         if (c.type === "meter" && pinFrames.every(pm => pm.has(c.id + ":+"))) meters.set(c.id, pinFrames.map(pm => pm.get(c.id + ":+")));
       });
+      // each lamp's light at the frames: its filament's power (i²R at the resistance it settled at)
+      // through its thermal lag over the period the frames span
+      const lamps = new Map(), spanS = F.at.length > 1 ? (F.at[F.at.length - 1] - F.at[0]) * F.at.length / (F.at.length - 1) * r.tran.dt : 0;
+      S.comps.forEach(c => {
+        const e = c.type === "lamp" && r.ntc && r.ntc[c.id], pin = c.id + ":1";
+        if (!e || !(spanS > 0) || !pinFrames.every(pm => pm.has(pin))) return;
+        const m = CadLib.LAMPS[c.params.model] || CadLib.LAMPS["47"], heat = CadLib.lampHeat(m, pinFrames.map(pm => pm.get(pin) * pm.get(pin) * e.r), spanS);
+        lamps.set(c.id, Array.from(heat, p => CadLib.lampGlowP(m, p)));
+      });
       S.comps.forEach(c => {
         if (c.type !== "eye") return;
         const w = pid => { const n = T.pinNet.get(c.id + ":" + pid), a = n > 0 && r.tran.nodes[n]; return n === 0 ? F.at.map(() => 0) : a ? F.at.map(k => a[k]) : null; };
@@ -82,7 +92,7 @@
           if ((a.mode === "dc" ? dcI : a.pk) >= 1e-6) wires.set(w.id, a);
         }
       });
-      S.anim.data = { r, n, wires, nets, leds, eyes, nixies, meters, f: signalFreq() };
+      S.anim.data = { r, n, wires, nets, leds, eyes, lamps, nixies, meters, f: signalFreq() };
       return S.anim.data;
     }
     // a quantity at the animation's phase, between its frames
@@ -196,10 +206,14 @@
       const T = TubeSimEngine.cathodeWarm((performance.now() - S.anim.since) / 1000, w.tau * 0.5).T;
       return Math.min(1, Math.max(0, (T - 750) / (TubeSimEngine.CATHODE.hot - 750)));
     }
-    // a lamp's light, 0 to about 1.3, from its filament's settled rms current (its heat outlasts a cycle)
+    // a lamp's light, 0 to about 1.3: from its filament's settled rms current (its heat outlasts a
+    // cycle of mains or audio); under Animate its heat at the moment, lagging its power by the
+    // filament's time constant, so a lamp a slow 555 drives blinks with a soft edge
     function lampLevel(c) {
       const r = S.sim.result, e = r && r.ntc && r.ntc[c.id];
       if (!e) return null;
+      const d = cycle(), a = d && d.lamps && d.lamps.get(c.id);
+      if (a && a.length) return animAt(a, S.anim.phase);
       return CadLib.lampGlow(CadLib.LAMPS[c.params.model] || CadLib.LAMPS["47"], e.i * e.r);
     }
     // a nixie now: { digit, lit 0–1 } for the cathode with the most current, or null

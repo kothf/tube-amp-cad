@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.229.0] - 2026-11-16
+## [3.230.0] - 2026-11-16
 
 Vaults: on the server, in a folder, in this browser, managed in one place (as in MöbiusCAD).
 
@@ -21,6 +21,12 @@ Vaults: on the server, in a folder, in this browser, managed in one place (as in
 - **Kept in** groups its list: On the server / In a folder on this computer / In this browser, then *Manage vaults…* (*New vault…* when there is none). *Add a folder…* and *Forget folder* moved into the Vaults window.
 - When nothing is set up yet (away from aerocat.tech), Revisions opens on the Vaults window; away from aerocat.tech the default is a vault wherever the browser can keep one (a browser vault counts).
 - The Revisions dialog and the project manager say *Browser vault <name>* for a vault kept in the browser. Russian labels, both manuals and the README updated.
+
+## [3.229.0] - 2026-11-16
+
+### Changed
+- **Lamps glow.** An incandescent lamp lights up on the sheet with a halo of light round the bulb (wider and brighter with its light) and its filament (the cross) shining hotter than the glass, dull red to warm white. A neon lamp gets an orange halo and glowing electrodes.
+- **Lamps under ∿ Animate** follow their current through the filament's heat: each lamp model has a thermal time constant (about 20 ms for a #1869 to 0.1 s for a 60 W bulb) and the light comes from the power it holds, so a lamp a slow 555 flashes blinks, fading in and out, while one on mains or an audio signal holds steady. Before, a lamp showed only its settled average, lit steadily even in a flasher.
 
 ## [3.228.0] - 2026-11-15
 

@@ -206,6 +206,23 @@ test("incandescent lamps: the rated current at the rated voltage, about a twelft
   assert.ok(L.lampGlow(L.LAMPS["47"], 3.15) < 0.11, "a tenth of the light at half voltage");
 });
 
+test("lamp light under Animate: from the power its filament holds; it blinks on a slow 555 cycle, holds steady on 100 Hz", () => {
+  const m = L.LAMPS["47"], prated = m.v * m.i;
+  // the light by power agrees with the light by voltage on the hot law (P ∝ V^1.54)
+  for (const v of [2, 3.15, 5, 6.3]) near(L.lampGlowP(m, prated * Math.pow(v / m.v, 1 + 1 / 1.857)), L.lampGlow(m, v), 1e-9, `the same light at ${v} V`);
+  // a square of full power, half the time on, 120 instants a period
+  const sq = Array.from({ length: 120 }, (_, k) => (k < 60 ? prated : 0));
+  const slow = L.lampHeat(m, sq, 1.2), fast = L.lampHeat(m, sq, 0.01);
+  // periodic: the heat at the period's end leads back to its start
+  near(L.lampHeat(m, sq.concat(sq), 2.4)[119], slow[119], 1e-9, "the periodic steady state");
+  assert.ok(slow[59] > 0.99 * prated && slow[119] < 0.01 * prated, `0.6 s on, 0.6 s off: full on (${(slow[59] / prated).toFixed(3)}) and dark (${(slow[119] / prated).toFixed(4)})`);
+  assert.ok(slow[1] < 0.5 * prated, "it takes the filament's time constant to light");
+  const mean = fast.reduce((a, v) => a + v, 0) / fast.length, swing = Math.max(...fast) - Math.min(...fast);
+  near(mean, prated / 2, 0.01, "on 100 Hz: the average power");
+  assert.ok(swing < 0.1 * prated, `on 100 Hz it barely flickers (${(swing / prated * 100).toFixed(1)} % of rated power)`);
+  for (const [k, l] of Object.entries(L.LAMPS)) assert.ok(l.tau > 0.005 && l.tau < 0.5, `${k}: a filament time constant (${l.tau} s)`);
+});
+
 test("batteries: open-circuit voltage by the charge left, sagging across the internal resistance; a 9 V PP3 at 25 % into 100 Ω", () => {
   const m = L.BATTERIES.PP3, b = L.batteryState(m, 0.25);
   near(L.batteryState(m, 1).emf, 9.48, 1e-6, "new PP3"); assert.ok(b.emf < 7.6 && b.emf > 7, `PP3 at 25 %: ${b.emf}`);
