@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.230.1] - 2026-11-16
+
+### Fixed
+- **Vaults → Import backup…**: the hidden file input stays in place when the vault list redraws (after *Back up*, say), so the picked ZIP is always read. 3.230.0 was never released, so this release brings the Vaults window too.
+
 ## [3.230.0] - 2026-11-16
 
 Vaults: on the server, in a folder, in this browser, managed in one place (as in MöbiusCAD).
