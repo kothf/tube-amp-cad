@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.232.0] - 2026-11-17
+
+### Added
+- **More app settings** in *View ▾ → Settings…*, grouped: *Animations* (Part animations, and **Animate speed**: one slowed-down cycle in 1, 2, 3, 5 or 10 s), *Simulation* (**Live time limit**: 1, 2.5, 5 or 10 s before a Live run stops), *New circuits* (**Created by** and **Legal owner** written into the title block of every new circuit and sheet; the **sheet** format and orientation File ▾ → New offers; **Mains** 230 V 50 Hz, 220 V 50 Hz, 240 V 50 Hz, 120 V 60 Hz, 100 V 50/60 Hz for a new AC mains part, a new generic power transformer's frequency and a new Hammond transformer's nearest primary tap), *Start-up and view* (language, start screen at launch, Live, windows as tabs, legend: the menus' own switches, gathered), *Board* (measure units mm, mil or inch; an open Board window follows) and *Keys* (whether an AI key and a DigiKey key are saved, Edit… opens each dialog). Parts already placed and files opened keep their values.
+
 ## [3.231.0] - 2026-11-17
 
 ### Added

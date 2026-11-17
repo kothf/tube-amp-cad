@@ -295,7 +295,7 @@
   }
   function makeComp(type, params, x, y, rot) {
     const def = LIB[type];
-    const c = { id: newId("c"), type, x: snap(x), y: snap(y), rot: def.noRotate ? 0 : (rot || 0), params: Object.assign({}, def.defaults, def.newDefaults || {}, params || {}) };
+    const c = { id: newId("c"), type, x: snap(x), y: snap(y), rot: def.noRotate ? 0 : (rot || 0), params: Object.assign({}, def.defaults, def.newDefaults || {}, CadSettings.partDefaults(type), params || {}) };
     if (type === "tube") {
       const t = tubeByName(c.params.tube);
       c.params.connection = tubeKind(t) === "pentode" ? "pentode" : "triode";
@@ -405,7 +405,7 @@
     simBusy(mode === "full" ? "Simulating until settled…" : "Simulating…");
     simButton();
     // the animation's frames over one period of the signal generator
-    const g = S.comps.find(c => c.type === "siggen"), gf = g ? LIB.siggen.freqOf(g) : 0, options = Object.assign({}, RUN_OPTIONS[mode], gf > 0 ? { frameSpan: 1 / gf } : {});
+    const g = S.comps.find(c => c.type === "siggen"), gf = g ? LIB.siggen.freqOf(g) : 0, options = Object.assign({}, RUN_OPTIONS[mode], mode === "live" ? { budgetMs: CadSettings.liveMs() } : {}, gf > 0 ? { frameSpan: 1 / gf } : {});
     if (pool.ok) simJob = pool.run({ netlist, options }, { urgent: true, onResult: result => { simJob = null; onSimResult({ seq, result }); }, onProgress: progress => onSimProgress({ seq, progress }) });
     else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, options) }), 0);
   }
@@ -2511,10 +2511,12 @@
       : "The sheet starts with an IEC 61082 drawing frame: ISO 5457 border, reference grid and an ISO 7200 title block.";
     document.getElementById("new-title").placeholder = mode === "add" ? "Sheet title (empty: same as sheet 1)" : "e.g. 2 × EL84 single-ended amplifier";
     document.getElementById("btn-new-create").textContent = mode === "add" ? "Add" : "Create";
+    // the format and orientation from Settings (New circuits), as the dialog opens
+    if (mode !== "add") ["new-size", "new-orient"].forEach((id, k) => { const v = CadSettings.get(k ? "orient" : "size"); document.getElementById(id).querySelectorAll(".btn").forEach(b => b.classList.toggle("active", b.dataset.v === v)); });
     m.hidden = false; document.getElementById("new-title").focus();
   }
   function newCircuit(opts) {
-    opts = Object.assign({ size: "A3", orient: "landscape", title: "" }, opts);
+    opts = Object.assign({ size: CadSettings.get("size"), orient: CadSettings.get("orient"), title: "" }, opts);
     if (revisions) revisions.detach();
     const f = makeComp("frame", { size: opts.size, orient: opts.orient, title: opts.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
     S.comps = [f]; S.wires = []; S.blocks = []; S.sel.comps.clear(); S.sel.wires.clear();
@@ -2710,7 +2712,7 @@
   const sweep = CadSweep({ S, buildNetlist, cmds, commit, desig, esc: escH, fmtEng, harmonics, measurements, parseEng: CadLib.parseEng, pool, scopeChannels, setStatus, signalFreq, speakerWave, topo, withResult });
   // Listen: the Listen tab (cad-listen.js)
   const listen = CadListen({ S, buildNetlist, cmds, desig, esc: escH, fmtEng, pool, setStatus, topo });
-  const { bomData, bomOpts, clearBomShown, exportBom, initBom, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); transient.render(); noise.render(); sweep.render(); listen.render(); tune.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
+  const { bomData, bomOpts, clearBomShown, exportBom, initBom, openKeyDialog, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); transient.render(); noise.render(); sweep.render(); listen.render(); tune.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
   // The AI assistant: the AI tab and the AI menu (cad-ai.js)
   const ai = CadAi({ S, VERSION, circuitIssues, commit, compPins, desig, fmtEng, harmonics, measurements, netAC, netDC, runSim, selectParts: selectFromBoard, setStatus, signalFreq, speakerWave, toggleBom, topo, tubeData, undo, whenSimulated });
   // Auto-tune: the Tune tab (cad-tune.js)
@@ -3376,8 +3378,20 @@
     datasheet.init(ai);
     cmds.bind("btn-board-tab", "board-tab");
     cmds.bind("menu-settings", "settings");
-    // Settings (View ▾ → Settings…): part animations on or off redraw the sheet, here and in the other windows
+    // Settings (View ▾ → Settings…): a change redraws the sheet, here and in the other windows;
+    // the window reaches the switches kept elsewhere through these
     CadSettings.onChange(() => { animChanged(); render(); });
+    CadSettings.init({
+      lang: () => (window.I18n ? window.I18n.lang : "en"), setLang: l => window.I18n && window.I18n.set(l),
+      startOn, setStart: on => { try { localStorage.setItem(START_KEY, on ? "1" : "0"); } catch (e) { /* private mode */ } const b = document.getElementById("start-show"); if (b) b.checked = on; },
+      live: () => S.sim.live, setLive: on => { if (on !== S.sim.live) setLive(on); },
+      tabs: isBoardTab, setTabs: on => { if (on !== isBoardTab()) setBoardTab(on); },
+      legend: () => S.showLegend, setLegend: on => { if (on !== S.showLegend) cmds.run("legend"); },
+      units: () => { try { return localStorage.getItem("tubecad_munits") || "mm"; } catch (e) { return "mm"; } },
+      setUnits: u => { try { localStorage.setItem("tubecad_munits", u); } catch (e) { /* private mode */ } },
+      aiKey: () => { const c = AiClient.load(); return AiClient.ready(c) ? AiClient.label(c) : ""; }, editAi: () => ai.openSettings(),
+      dkKey: () => !!(window.PartSearch && PartSearch.ready()), editDk: () => window.PartSearch && openKeyDialog()
+    });
     cmds.bind("btn-doc-board", "board");
     bind("btn-open-tracer", () => ToolWindows.open("index.html"));
     bind("btn-open-scope", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("oscilloscope.html", sc ? { scope: sc.id } : null); });

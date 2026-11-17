@@ -660,7 +660,14 @@
     .menu-head { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px 2px; }
     .menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
     /* Settings: a switch and what it does */
-    .set-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px; margin: 8px 0; border-radius: 6px; cursor: pointer; }
+    .set-scroll { max-height: min(66vh, 640px); overflow-y: auto; padding-right: 4px; }
+    .set-head { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted, #8b949e); margin: 14px 0 4px; border-bottom: 1px solid var(--border, #26344a); padding-bottom: 3px; }
+    .set-head:first-child { margin-top: 4px; }
+    .new-form.set-form { grid-template-columns: 130px 1fr; margin: 6px 0; }
+    .set-form select, .set-form input { min-width: 0; }
+    .set-pair { display: flex; gap: 8px; align-items: center; }
+    .set-state { flex: 1; color: var(--muted, #8b949e); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .set-row { display: flex; gap: 10px; align-items: flex-start; padding: 5px 8px; margin: 2px 0; border-radius: 6px; cursor: pointer; }
     .set-row:hover { background: rgba(88,166,255,0.08); }
     .set-row input { margin-top: 3px; flex: none; }
     .set-row span { display: flex; flex-direction: column; gap: 2px; }
@@ -736,7 +743,7 @@
         <button class="menu-item check" role="menuitemradio" aria-checked="true" data-lang="en" data-i18n-skip title="Menus, buttons and tooltips in English">English</button>
         <button class="menu-item check" role="menuitemradio" aria-checked="false" data-lang="ru" data-i18n-skip title="Меню, кнопки и подсказки на русском">Русский</button>
         <div class="menu-sep"></div>
-        <button class="menu-item" data-ico="sliders" role="menuitem" id="menu-settings" title="App settings: part animations on or off (glow, needles, magic eyes, nixies…)">Settings…<kbd>part animations</kbd></button>
+        <button class="menu-item" data-ico="sliders" role="menuitem" id="menu-settings" title="App settings: part animations, Animate speed, Live time limit, defaults for new circuits (author, sheet, mains), start-up, board units, keys">Settings…<kbd>animations, defaults, keys</kbd></button>
       </div>
     </div>
     <div class="menu" id="edit-menu">
@@ -950,9 +957,44 @@
   </footer>
 
   <div class="modal" id="settings-modal" hidden>
-    <div class="modal-box" style="width: min(520px, 94vw)">
+    <div class="modal-box set-box" style="width: min(600px, 94vw)">
       <div class="insp-title">Settings</div>
-      <label class="set-row" title="On: the parts come alive from the simulation. Off: every part is drawn plain, as on paper"><input type="checkbox" id="set-animations"><span><b>Part animations</b><small>LEDs, neon lamps and gas tubes light up, lamps and tube heaters glow, anodes glow red-hot, magic eyes and nixies light, meter needles move and relays pull in, from the simulation. Off: every part is drawn plain, as on paper. The simulation and its numbers are the same either way, and ∿ Animate still runs the current along the wires. Kept in this browser.</small></span></label>
+      <div class="set-scroll">
+        <div class="set-head">Animations</div>
+        <label class="set-row" title="On: the parts come alive from the simulation. Off: every part is drawn plain, as on paper"><input type="checkbox" id="set-animations"><span><b>Part animations</b><small>LEDs, neon lamps and gas tubes light up, lamps and tube heaters glow, anodes glow red-hot, magic eyes and nixies light, meter needles move and relays pull in, from the simulation. Off: every part is drawn plain, as on paper. The simulation and its numbers are the same either way, and ∿ Animate still runs the current along the wires.</small></span></label>
+        <div class="new-form set-form">
+          <span title="How long ∿ Animate takes to play one cycle of a fast signal (audio, mains), slowed down so it can be followed. A cycle of a quarter second or more (a slow 555) plays in real time">Animate speed</span><select id="set-anim-s"></select>
+        </div>
+        <div class="set-head">Simulation</div>
+        <div class="new-form set-form">
+          <span title="How long a Live run (after each edit) may take before it stops and asks for ▶ Simulate. Longer lets Live keep up with big circuits; shorter keeps editing quick. ▶ Simulate itself runs up to 2 minutes">Live time limit</span><select id="set-live-s"></select>
+        </div>
+        <div class="set-head">New circuits</div>
+        <div class="new-form set-form">
+          <span title="Written in the title block's Created by of every new circuit and sheet">Created by</span><input type="text" id="set-author" placeholder="e.g. A. Dumchin" spellcheck="false">
+          <span title="Written in the title block's Legal owner of every new circuit and sheet">Legal owner</span><input type="text" id="set-owner" placeholder="e.g. your company" spellcheck="false">
+          <span title="The drawing frame File ▾ → New offers first">Sheet</span><span class="set-pair"><select id="set-size"></select><select id="set-orient"><option value="landscape">Landscape</option><option value="portrait">Portrait</option></select></span>
+          <span title="The voltage and frequency a new AC mains part gets, the frequency of a new generic power transformer and the primary tap of a new Hammond transformer. Parts already placed keep theirs">Mains</span><select id="set-mains"></select>
+        </div>
+        <div class="set-head">Start-up and view</div>
+        <div class="new-form set-form">
+          <span title="Menus, buttons, hints and the manual">Language</span><select id="set-lang" data-i18n-skip><option value="en">English</option><option value="ru">Русский</option></select>
+        </div>
+        <label class="set-row" title="The start screen with the gallery of examples when the app opens"><input type="checkbox" id="set-start"><span><b>Start screen at launch</b></span></label>
+        <label class="set-row" title="The circuit re-simulates after every edit (the ● Live switch)"><input type="checkbox" id="set-live"><span><b>Live simulation</b></span></label>
+        <label class="set-row" title="The board, the instruments and the manual open as tabs at the bottom of this window, not in windows of their own"><input type="checkbox" id="set-tabs"><span><b>Windows as tabs</b></span></label>
+        <label class="set-row" title="The key to the glow and sticker colours in the corner of the sheet"><input type="checkbox" id="set-legend"><span><b>Legend on the sheet</b></span></label>
+        <div class="set-head">Board</div>
+        <div class="new-form set-form">
+          <span title="The units the Board window's measure tool shows">Measure units</span><select id="set-units"><option value="mm">mm</option><option value="mil">mil</option><option value="in">inch</option></select>
+        </div>
+        <div class="set-head">Keys</div>
+        <div class="new-form set-form">
+          <span title="Your API key for Claude, ChatGPT or Gemini, for the AI menu (kept in this browser only)">AI</span><span class="set-pair"><span id="set-ai-state" class="set-state"></span><button class="btn" id="btn-set-ai" title="Open AI settings: provider, key and model">Edit…</button></span>
+          <span title="Your DigiKey API key, for looking up part numbers in the bill of materials (kept in this browser only)">DigiKey</span><span class="set-pair"><span id="set-dk-state" class="set-state"></span><button class="btn" id="btn-set-dk" title="Open the DigiKey key dialog">Edit…</button></span>
+        </div>
+      </div>
+      <p class="insp-help">Kept in this browser; changes apply at once.</p>
       <div class="modal-actions">
         <button class="btn active" id="btn-settings-close">Close</button>
       </div>

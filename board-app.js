@@ -839,6 +839,8 @@
       else if (a === "clear") { S.pins = []; S.mLast = null; render(); }
       else if (a === "copy") { const r = S.measure && measureResult(S.snapHint); if (r) { const t = measureText(r); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => msg("Copied the measurement"), () => msg(t.split("\n")[0])); } }
     });
+    // the units changed in the CAD's Settings (another window, or the CAD around this tab)
+    window.addEventListener("storage", e => { if (e.key === "tubecad_munits" && e.newValue && e.newValue !== S.mUnits) { S.mUnits = e.newValue; S.mLast = null; render(); } });
     box.addEventListener("change", e => { if (e.target.dataset.mc === "units") { S.mUnits = e.target.value; try { localStorage.setItem("tubecad_munits", S.mUnits); } catch (x) { /* private mode */ } S.mLast = null; render(); } });
   }
   function placeAt(x, y) {

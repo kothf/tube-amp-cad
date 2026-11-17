@@ -276,6 +276,23 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     check(shown && lit > 400 && plain < 200 && back > 400 && /"animations":false/.test(stored) && await cad.evaluate(() => CadSettings.animations()),
       `Settings → Part animations: the lit lamp ${lit} bright, ${plain} with animations off (kept: ${stored}), ${back} on again`);
   }
+  {
+    // Settings → New circuits, Animate speed, Live time limit, Board units: new parts and sheets take them, placed ones keep theirs
+    await cad.click("#btn-view"); await cad.click("#menu-settings");
+    await cad.fill("#set-author", "A. Tester"); await cad.selectOption("#set-mains", "120/60"); await cad.selectOption("#set-size", "A4");
+    await cad.selectOption("#set-anim-s", "5"); await cad.selectOption("#set-live-s", "5"); await cad.selectOption("#set-units", "mil");
+    await cad.click("#btn-settings-close");
+    const got = await cad.evaluate(() => {
+      const T = TubeCAD, mk = (t, p) => T.makeComp(t, p || {}, 0, 0, 0).params, m = mk("mains"), x = mk("ptx"), h = mk("ptx_cat"), f = mk("frame"), kept = mk("mains", { vrms: 230, freq: "50" });
+      const r = [m.vrms, m.freq, x.freq, h.tap, f.creator, kept.vrms, CadSettings.animSeconds(), CadSettings.liveMs(), localStorage.getItem("tubecad_munits")];
+      // back to the defaults for the parts after this one
+      localStorage.removeItem(CadSettings.KEY); localStorage.removeItem("tubecad_munits");
+      Object.entries(CadSettings.DEFAULTS).forEach(([k, v]) => CadSettings.set(k, v));
+      return r;
+    });
+    check(JSON.stringify(got) === JSON.stringify([120, "60", 60, "120", "A. Tester", 230, 5, 5000, "mil"]),
+      `Settings → new parts: mains ${got[0]} V ${got[1]} Hz, transformer ${got[2]} Hz, Hammond tap ${got[3]}, title block by ${got[4]}, a part given 230 V keeps ${got[5]}; Animate ${got[6]} s, Live ${got[7]} ms, board units ${got[8]}`);
+  }
 
   {
     // the Gubin supply: a 5Ц4С at 115 mA is within its 125 mA (2 × 62 mA per anode), and its peak anode current is checked against 375 mA

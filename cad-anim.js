@@ -1,4 +1,4 @@
-/* AC animation: one period of the signal, slowed to ANIM_S seconds (a cycle of REAL_S or more, such
+/* AC animation: one period of the signal, slowed to ANIM_S seconds (Settings → Animate speed, 3 by default) (a cycle of REAL_S or more, such
    as a slow 555 flasher's, plays in real time). Each wire's current (the
    simulation's terminal currents at 120 instants, carried through the wiring as for the
    current stickers) runs as dots along it, showing only its DC or its AC, by its node's
@@ -22,9 +22,11 @@
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadAnim = function (cad) {
     const { S, buildNetlist, fmtEng, getCtx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents } = cad;
-    const ANIM_S = 3, REAL_S = 0.25, ANIM_DC_SPEED = 25;   // DC dots: units a second, about the AC dots' average
+    const REAL_S = 0.25, ANIM_DC_SPEED = 25;   // DC dots: units a second, about the AC dots' average
+    // ANIM_S: how long a slowed-down cycle plays (Settings → Animate speed, 3 s unless changed)
+    const animS = () => CadSettings.animSeconds();
     // how long one cycle of the animation takes (s)
-    const cycleS = d => (d.f > 0 && 1 / d.f >= REAL_S ? 1 / d.f : ANIM_S);
+    const cycleS = d => (d.f > 0 && 1 / d.f >= REAL_S ? 1 / d.f : animS());
     // the parts that light by their current in pin A: an LED, a vactrol's LED (full brightness at
     // 10 mA), a neon (at its design current, either way) and a gas regulator (at its maximum);
     // probed at power-on across their sense resistor (c.id#rs: the gas regulator has none)
@@ -303,7 +305,7 @@
         ctx.fillStyle = P.ok ? "#ffd54f" : "#58a6ff"; ctx.fillRect(x + 7, y + 21, (w - 14) * f, 5);
         return;
       }
-      ctx.fillText(`AC · ${fmtEng(d.f, "Hz")}, ${cycleS(d) === ANIM_S ? `one cycle in ${ANIM_S} s` : "real time"} · ${Math.round(ph * 360)}°`, x + 7, y + 13);
+      ctx.fillText(`AC · ${fmtEng(d.f, "Hz")}, ${d.f > 0 && 1 / d.f >= REAL_S ? "real time" : `one cycle in ${animS()} s`} · ${Math.round(ph * 360)}°`, x + 7, y + 13);
       // one cycle of a sine, with the moment marked
       const sx = x + 7, sw = w - 14, sy = y + 24;
       ctx.strokeStyle = "rgba(201,209,217,0.5)"; ctx.beginPath();
