@@ -405,7 +405,7 @@
     simBusy(mode === "full" ? "Simulating until settled…" : "Simulating…");
     simButton();
     // the animation's frames over one period of the signal generator
-    const g = S.comps.find(c => c.type === "siggen"), gf = g ? LIB.siggen.freqOf(g) : 0, options = Object.assign({}, RUN_OPTIONS[mode], mode === "live" ? { budgetMs: CadSettings.liveMs() } : {}, gf > 0 ? { frameSpan: 1 / gf } : {});
+    const g = S.comps.find(c => c.type === "siggen"), gf = g ? LIB.siggen.freqOf(g) : 0, options = Object.assign({}, RUN_OPTIONS[mode], gf > 0 ? { frameSpan: 1 / gf } : {});
     if (pool.ok) simJob = pool.run({ netlist, options }, { urgent: true, onResult: result => { simJob = null; onSimResult({ seq, result }); }, onProgress: progress => onSimProgress({ seq, progress }) });
     else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, options) }), 0);
   }
@@ -3380,7 +3380,9 @@
     cmds.bind("menu-settings", "settings");
     // Settings (View ▾ → Settings…): a change redraws the sheet, here and in the other windows;
     // the window reaches the switches kept elsewhere through these
-    CadSettings.onChange(() => { animChanged(); render(); });
+    // (a Live run's time limit is Settings → Live time limit)
+    let liveMs = RUN_OPTIONS.live.budgetMs = CadSettings.liveMs();
+    CadSettings.onChange(() => { if (CadSettings.liveMs() !== liveMs) liveMs = RUN_OPTIONS.live.budgetMs = CadSettings.liveMs(); animChanged(); render(); });
     CadSettings.init({
       lang: () => (window.I18n ? window.I18n.lang : "en"), setLang: l => window.I18n && window.I18n.set(l),
       startOn, setStart: on => { try { localStorage.setItem(START_KEY, on ? "1" : "0"); } catch (e) { /* private mode */ } const b = document.getElementById("start-show"); if (b) b.checked = on; },
