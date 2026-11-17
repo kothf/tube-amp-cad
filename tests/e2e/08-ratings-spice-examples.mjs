@@ -259,6 +259,23 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
     check(got.lamps && got.still > 0.05 && got.lit > 0.7 && got.dark < 0.02,
       `a lamp flashed at 2 Hz: ${got.still && got.still.toFixed(2)} settled, under Animate ${got.lit && got.lit.toFixed(2)} lit and ${got.dark && got.dark.toFixed(3)} dark`);
   }
+  {
+    // View ▾ → Settings… → Part animations off: the lit lamp is drawn plain (its middle dark), on again: lit
+    const glow = () => cad.evaluate(() => {
+      const T = TubeCAD, S = T.state, l = S.comps.find(c => c.type === "lamp"), cv = document.getElementById("cad"), k = cv.width / cv.getBoundingClientRect().width;
+      S.view = { scale: 2, ox: 300 - 2 * l.x, oy: 200 - 2 * l.y }; T.setAnim(false);   // setAnim draws the sheet
+      return new Promise(res => setTimeout(() => { const p = cv.getContext("2d").getImageData(Math.round(300 * k), Math.round(192 * k), 1, 1).data; res(p[0] + p[1] + p[2]); }, 300));
+    });
+    const lit = await glow();
+    await cad.click("#btn-view"); await cad.click("#menu-settings");
+    const shown = await cad.isVisible("#settings-modal");
+    await cad.uncheck("#set-animations");
+    const plain = await glow(), stored = await cad.evaluate(() => localStorage.getItem(CadSettings.KEY));
+    await cad.check("#set-animations"); await cad.click("#btn-settings-close");
+    const back = await glow();
+    check(shown && lit > 400 && plain < 200 && back > 400 && /"animations":false/.test(stored) && await cad.evaluate(() => CadSettings.animations()),
+      `Settings → Part animations: the lit lamp ${lit} bright, ${plain} with animations off (kept: ${stored}), ${back} on again`);
+  }
 
   {
     // the Gubin supply: a 5Ц4С at 115 mA is within its 125 mA (2 × 62 mA per anode), and its peak anode current is checked against 375 mA

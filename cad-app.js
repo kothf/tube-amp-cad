@@ -1130,6 +1130,7 @@
     .add({ id: "sheet-make", label: "Make sheet from selection…", title: "The selected stage moves to a sheet of its own; a sheet symbol takes its place, with a pin wherever a wire crossed its edge. Place more instances of it (a second channel) from Blocks…", when: () => S.sel.comps.size > 0, run: () => blocks.openDialog("sheet") })
     .add({ id: "sheet-open", label: "Open sheet", title: "Step into this sheet symbol's sheet (double-click does too)", when: () => { const c = S.comps.find(k => S.sel.comps.has(k.id)); return !!c && c.type === "sheetsym"; }, run: () => hier.enter(S.comps.find(k => S.sel.comps.has(k.id))) })
     .add({ id: "sheet-up", label: "Up to the sheet above", keys: ["Alt+Backspace"], prevent: true, title: "Back to the sheet holding this sheet's symbol", when: () => !!(currentSheet() || {}).sheetOf, run: () => hier.leave(), help: "from a hierarchical sheet up to the sheet above" })
+    .add({ id: "settings", label: "Settings…", title: "Part animations on or off", run: () => CadSettings.openDialog() })
     .add({ id: "renumber", menuId: "menu-renumber", label: "Renumber designations", title: "Letter code (R, C, L, T, VL …) and number for every part, in reading order", run: () => renumber() })
     // settings without a key: View menu ticks and the toolbar's switches
     .add({ id: "volts", run: () => toggleView("showVolts"), check: () => S.showVolts })
@@ -1501,15 +1502,17 @@
     ctx.strokeStyle = sel ? COL.bodySel : (c.type === "ground" ? "#8b949e" : (c.type === "vdc" || c.type === "rail" || c.type === "isrc" || c.type === "vcvs" || c.type === "vccs" || c.type === "ptx" || c.type === "ptx_cat" || c.type === "mains" ? "#ff9e64" : (c.type === "siggen" || c.type === "pickup" || c.type === "phono" ? "#00e5ff" : COL.body)));
     ctx.lineWidth = 2;
     c._sel = sel;
-    if (["led", "vactrol", "neon", "gasreg", "hgrect"].includes(c.type) && !ghost && !S.printing) c._lit = ledLevel(c);
-    if (c.type === "hgrect" && !ghost && !S.printing) c._heat = heaterLevel(c);
-    if (c.type === "lamp" && !ghost && !S.printing) c._lit = lampLevel(c);
-    if (c.type === "nixie" && !ghost && !S.printing) { const n = nixieLevel(c); if (n) { c._digit = n.digit; c._lit = n.lit; } }
-    if (c.type === "meter" && !ghost && !S.printing) c._needle = needleLevel(c);
-    if (c.type === "eye" && !ghost && !S.printing) c._eye = eyeLevel(c);
-    if (c.type === "tube" && !ghost && !S.printing) { const h = anodeHeat(c); if (h) c._hot = h.glow; c._heat = heaterLevel(c); }
+    // the parts' animations, unless Settings turned them off (CadSettings): drawn plain then
+    const live = !ghost && !S.printing && CadSettings.animations();
+    if (["led", "vactrol", "neon", "gasreg", "hgrect"].includes(c.type) && live) c._lit = ledLevel(c);
+    if (c.type === "hgrect" && live) c._heat = heaterLevel(c);
+    if (c.type === "lamp" && live) c._lit = lampLevel(c);
+    if (c.type === "nixie" && live) { const n = nixieLevel(c); if (n) { c._digit = n.digit; c._lit = n.lit; } }
+    if (c.type === "meter" && live) c._needle = needleLevel(c);
+    if (c.type === "eye" && live) c._eye = eyeLevel(c);
+    if (c.type === "tube" && live) { const h = anodeHeat(c); if (h) c._hot = h.glow; c._heat = heaterLevel(c); }
     // a relay drawn pulled in when the simulation (its settled average) has it so
-    if (c.type === "relay" && !ghost && !S.printing && S.sim.result && S.sim.result.dc) { const d = (S.sim.result.dc.devices[c.id] || {}).main; c._on = !!(d && d.q > 0.5); }
+    if (c.type === "relay" && live && S.sim.result && S.sim.result.dc) { const d = (S.sim.result.dc.devices[c.id] || {}).main; c._on = !!(d && d.q > 0.5); }
     DRAW[c.type](ctx, c);
     delete c._sel; delete c._lit; delete c._on; delete c._eye; delete c._hot; delete c._heat; delete c._digit; delete c._needle;
     if (mirrored) { if (ownFill) ctx.fillText = prevFill; else delete ctx.fillText; }
@@ -3372,6 +3375,9 @@
     design.init(ai);
     datasheet.init(ai);
     cmds.bind("btn-board-tab", "board-tab");
+    cmds.bind("menu-settings", "settings");
+    // Settings (View ▾ → Settings…): part animations on or off redraw the sheet, here and in the other windows
+    CadSettings.onChange(() => { animChanged(); render(); });
     cmds.bind("btn-doc-board", "board");
     bind("btn-open-tracer", () => ToolWindows.open("index.html"));
     bind("btn-open-scope", () => { const sc = S.comps.find(c => c.type === "scope"); ToolWindows.open("oscilloscope.html", sc ? { scope: sc.id } : null); });

@@ -128,7 +128,7 @@
     // netlist changes
     function powerOn() {
       const r = S.sim.result;
-      if (!S.anim.on || !S.comps.some(powerShows) || S.comps.some(c => c.type === "siggen" || c.type === "mains") || (r && r.tran && r.tran.fBase)) return null;
+      if (!S.anim.on || !CadSettings.animations() || !S.comps.some(powerShows) || S.comps.some(c => c.type === "siggen" || c.type === "mains") || (r && r.tran && r.tran.fBase)) return null;
       if (S.anim.power && !S.anim.power.dirty) return S.anim.power;
       const netlist = buildNetlist(), key = JSON.stringify(netlist.elements), old = S.anim.power;
       if (old && old.key === key) { old.dirty = false; return old; }

@@ -659,6 +659,12 @@
     #help-modal h3 { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
     .menu-head { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px 2px; }
     .menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+    /* Settings: a switch and what it does */
+    .set-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px; margin: 8px 0; border-radius: 6px; cursor: pointer; }
+    .set-row:hover { background: rgba(88,166,255,0.08); }
+    .set-row input { margin-top: 3px; flex: none; }
+    .set-row span { display: flex; flex-direction: column; gap: 2px; }
+    .set-row small { color: var(--muted, #8b949e); font-size: 11.5px; line-height: 1.35; }
     .new-form { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin: 10px 0; }
     .new-form .seg { display: flex; gap: 6px; flex-wrap: wrap; }
     #save-name { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: inherit; }
@@ -729,6 +735,8 @@
         <div class="menu-head">Interface</div>
         <button class="menu-item check" role="menuitemradio" aria-checked="true" data-lang="en" data-i18n-skip title="Menus, buttons and tooltips in English">English</button>
         <button class="menu-item check" role="menuitemradio" aria-checked="false" data-lang="ru" data-i18n-skip title="Меню, кнопки и подсказки на русском">Русский</button>
+        <div class="menu-sep"></div>
+        <button class="menu-item" data-ico="sliders" role="menuitem" id="menu-settings" title="App settings: part animations on or off (glow, needles, magic eyes, nixies…)">Settings…<kbd>part animations</kbd></button>
       </div>
     </div>
     <div class="menu" id="edit-menu">
@@ -941,6 +949,15 @@
     <span id="status-hover"></span>
   </footer>
 
+  <div class="modal" id="settings-modal" hidden>
+    <div class="modal-box" style="width: min(520px, 94vw)">
+      <div class="insp-title">Settings</div>
+      <label class="set-row" title="On: the parts come alive from the simulation. Off: every part is drawn plain, as on paper"><input type="checkbox" id="set-animations"><span><b>Part animations</b><small>LEDs, neon lamps and gas tubes light up, lamps and tube heaters glow, anodes glow red-hot, magic eyes and nixies light, meter needles move and relays pull in, from the simulation. Off: every part is drawn plain, as on paper. The simulation and its numbers are the same either way, and ∿ Animate still runs the current along the wires. Kept in this browser.</small></span></label>
+      <div class="modal-actions">
+        <button class="btn active" id="btn-settings-close">Close</button>
+      </div>
+    </div>
+  </div>
   <div class="modal" id="dk-modal" hidden>
     <div class="modal-box" style="width: min(520px, 94vw)">
       <div class="insp-title">DigiKey API key</div>
@@ -1266,6 +1283,7 @@
   <script src="cad-noise.js?v=dev"></script>
   <script src="cad-listen.js?v=dev"></script>
   <script src="cad-sweep.js?v=dev"></script>
+  <script src="cad-settings.js?v=dev"></script>
   <script src="cad-anim.js?v=dev"></script>
   <script src="cad-probe.js?v=dev"></script>
   <script src="cad-export.js?v=dev"></script>

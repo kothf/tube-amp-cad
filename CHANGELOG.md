@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.231.0] - 2026-11-17
+
+### Added
+- **Settings: Part animations on or off.** *View ▾ → Settings…* opens the app's Settings window with one switch for every part at once: LEDs, neon lamps, gas regulators and mercury vapour lighting up, lamps and tube heaters glowing, red-hot anodes, magic eyes, nixie digits, meter needles and relays pulling in. Off, every part is drawn plain, as on paper (the power-on playback that lights LEDs is skipped too); the simulation and its numbers are unchanged, and ∿ Animate still runs the current along the wires. Kept in this browser and followed by its other windows at once.
+
 ## [3.230.1] - 2026-11-16
 
 ### Fixed
