@@ -414,18 +414,8 @@
       const path = []; for (let s = found; s >= 0; s = SI[4 * s + 2]) path.push(s);
       return path.reverse();
     }
-    // what a tail costs: its length outside the pad, dearer where other nets are near
-    function tailCost(P, st, pf) {
-      const sg = tailSeg(P, st); if (!sg) return 0;
-      const l = Math.floor(st / N), len = Math.hypot(sg[2] - sg[0], sg[3] - sg[1]), n2 = Math.max(1, Math.ceil(len / (p / 2)));
-      let c = 0;
-      for (let k = 0; k < n2; k++) {
-        const i = Math.round((sg[0] + (sg[2] - sg[0]) * (k + 0.5) / n2) / p), j = Math.round((sg[1] + (sg[3] - sg[1]) * (k + 0.5) / n2) / p);
-        c += (len / n2) * (1 + (i >= 0 && j >= 0 && i < nx && j < ny ? pf * softT[l * N + j * nx + i] : 0));
-      }
-      return c * (1 + histT[st]);
-    }
-    // the same for every entry cell of a pad, its sample cells kept (they do not change): { off, idx, w, none }
+    // what a tail costs: its length outside the pad, dearer where other nets are near. The cells it is
+    // sampled at are the same every time, so they are kept per entry cell of a pad: { off, idx, w, none }
     function tailSamples(P, e) {
       const n = e.length, off = new Int32Array(n + 1), w = new Float64Array(n), none = new Uint8Array(n), idx = [];
       for (let q = 0; q < n; q++) {
