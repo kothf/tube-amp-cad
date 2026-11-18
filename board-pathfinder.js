@@ -27,28 +27,29 @@
   const VIA_OFF_PAD = 0.15;
   const DI = [1, -1, 0, 0, 1, 1, -1, -1], DJ = [0, 0, 1, -1, 1, -1, 1, -1];
 
-  // a binary min-heap of integer keys by float priority
+  // a binary min-heap of integer keys by float priority (a key and its priority side by side in one buffer)
   function heap(cap) {
-    let key = new Int32Array(cap), pri = new Float64Array(cap), n = 0;
+    let buf = new ArrayBuffer(16 * cap), pri = new Float64Array(buf), key = new Int32Array(buf), n = 0;
     return {
       get size() { return n; },
       clear() { n = 0; },
       push(k, p) {
-        if (n === key.length) { const k2 = new Int32Array(n * 2), p2 = new Float64Array(n * 2); k2.set(key); p2.set(pri); key = k2; pri = p2; }
+        if (n === cap) { const b2 = new ArrayBuffer(32 * cap), p2 = new Float64Array(b2); p2.set(pri); cap *= 2; buf = b2; pri = p2; key = new Int32Array(b2); }
         let i = n++;
-        while (i > 0) { const up = (i - 1) >> 1; if (pri[up] <= p) break; key[i] = key[up]; pri[i] = pri[up]; i = up; }
-        key[i] = k; pri[i] = p;
+        while (i > 0) { const up = (i - 1) >> 1; if (pri[2 * up] <= p) break; key[4 * i + 2] = key[4 * up + 2]; pri[2 * i] = pri[2 * up]; i = up; }
+        key[4 * i + 2] = k; pri[2 * i] = p;
       },
       pop() {
-        const top = key[0], k = key[--n], p = pri[n];
+        const top = key[2], k = key[4 * --n + 2], p = pri[2 * n];
         let i = 0;
         for (;;) {
           let c = 2 * i + 1; if (c >= n) break;
-          if (c + 1 < n && pri[c + 1] < pri[c]) c++;
-          if (pri[c] >= p) break;
-          key[i] = key[c]; pri[i] = pri[c]; i = c;
+          if (c + 1 < n && pri[2 * c + 2] < pri[2 * c]) c++;
+          const pc = pri[2 * c];
+          if (pc >= p) break;
+          key[4 * i + 2] = key[4 * c + 2]; pri[2 * i] = pc; i = c;
         }
-        key[i] = k; pri[i] = p;
+        key[4 * i + 2] = k; pri[2 * i] = p;
         return top;
       }
     };
@@ -345,38 +346,43 @@
       if (!out.length) { const i = Math.min(nx - 1, Math.max(0, Math.round(it.s[0] / p))), j = Math.min(ny - 1, Math.max(0, Math.round(it.s[1] / p))); ls.forEach(l => out.push(l * N + j * nx + i)); }
       return out;
     }
-    const S2 = NL * N, SINK = S2, dist = new Float64Array(S2 + 1), from = new Int32Array(S2 + 1), stamp2 = new Int32Array(S2 + 1), goal = new Int32Array(S2 + 1), Q = heap(1 << 16);
+    const S2 = NL * N, SINK = S2, SB = new ArrayBuffer(16 * (S2 + 1)), SD = new Float64Array(SB), SI = new Int32Array(SB), goal = new Int32Array(S2 + 1), Q = heap(1 << 16);
     let run = 0;
     const VIA = o.viaCost || 3, BEND = 0.1;
     // A* from the tree's cells to any cell of the target group; returns the path (states, tree end first) or null
     // A* from the tree's cells to the target group's (a cell's start or finish cost: the tail to its pad);
     // returns the path (states, tree end first) or null
     function astar(r, H, tree, target, tb, pf) {
-      run++;
+      run += 2;   // (a state's mark: run when it is reached or bettered, run + 1 once its neighbours are looked at)
+      const run1 = run + 1;
       target.forEach((v, s) => { goal[s] = run; });
       const tb0 = tb[0], tb1 = tb[1], tb2 = tb[2], tb3 = tb[3], K2 = SQ2 - 1;
       const hx = (s) => { const c = s % N, i = c % nx, j = (c - i) / nx, dx = Math.max(0, tb0 - i, i - tb2), dy = Math.max(0, tb1 - j, j - tb3); return p * (Math.max(dx, dy) + K2 * Math.min(dx, dy)); };
       Q.clear();
-      tree.forEach((v, s) => { if (stamp2[s] === run && dist[s] <= v.c) return; stamp2[s] = run; dist[s] = v.c; from[s] = -1; Q.push(s, v.c + hx(s)); });
+      tree.forEach((v, s) => { if ((SI[4 * s + 3] | 1) === run1 && SD[2 * s] <= v.c) return; SI[4 * s + 3] = run; SD[2 * s] = v.c; SI[4 * s + 2] = -1; Q.push(s, v.c + hx(s)); });
       const HT = H.T, HV = H.V, term = r.term, pD = p * SQ2, bend = BEND * p, maxPops = 4 * S2;
       // what a layer's pour adds for this net
       const pm = new Float64Array(NL); for (let l = 0; l < NL; l++) pm[l] = pourLayer.has(l) && pourLayer.get(l) !== r.id ? POUR : 0;
       let found = -1, pops = 0;
       while (Q.size) {
         const s = Q.pop(); pops++;
-        if (s === SINK) { found = from[SINK]; break; }
-        const ds = dist[s];
-        if (goal[s] === run) { const nd = ds + target.get(s).c; if (stamp2[SINK] !== run || dist[SINK] > nd) { stamp2[SINK] = run; dist[SINK] = nd; from[SINK] = s; Q.push(SINK, nd); } }
+        if (s === SINK) { found = SI[4 * SINK + 2]; break; }
+        // an entry left behind when its state was bettered, and that state already done at its best: looking
+        // at its neighbours again would change nothing
+        if (SI[4 * s + 3] === run1) { if (pops > maxPops) break; continue; }
+        SI[4 * s + 3] = run1;
+        const ds = SD[2 * s];
+        if (goal[s] === run) { const nd = ds + target.get(s).c; if (SI[4 * SINK + 3] !== run || SD[2 * SINK] > nd) { SI[4 * SINK + 3] = run; SD[2 * SINK] = nd; SI[4 * SINK + 2] = s; Q.push(SINK, nd); } }
         const l = Math.floor(s / N), c = s - l * N, i = c % nx, j = (c - i) / nx, lN = l * N, pml = pm[l];
-        const pr = from[s], pdir = pr >= 0 && Math.floor(pr / N) === l ? s - pr : 0;
+        const pr = SI[4 * s + 2], pdir = pr >= 0 && Math.floor(pr / N) === l ? s - pr : 0;
         for (let d = 0; d < 8; d++) {
           const a = i + DI[d], b = j + DJ[d]; if (a < 0 || b < 0 || a >= nx || b >= ny) continue;
           const c2 = b * nx + a, s2 = lN + c2;
           if (HT[s2] && goal[s2] !== run && !term.has(s2)) continue;
           const cost = (d < 4 ? p : pD) * (1 + histT[s2] + COUPLE * nearT[c2] + pml) * (1 + pf * softT[s2]) + (pdir && s2 - s !== pdir ? bend : 0), nd = ds + cost;
-          if (stamp2[s2] === run && dist[s2] <= nd) continue;
+          if ((SI[4 * s2 + 3] | 1) === run1 && SD[2 * s2] <= nd) continue;
           const dx = Math.max(0, tb0 - a, a - tb2), dy = Math.max(0, tb1 - b, b - tb3);
-          stamp2[s2] = run; dist[s2] = nd; from[s2] = s; Q.push(s2, nd + p * (Math.max(dx, dy) + K2 * Math.min(dx, dy)));
+          SI[4 * s2 + 3] = run; SD[2 * s2] = nd; SI[4 * s2 + 2] = s; Q.push(s2, nd + p * (Math.max(dx, dy) + K2 * Math.min(dx, dy)));
         }
         if (!HV[c]) {
           const vc = VIA * (1 + histV[c]) * (1 + pf * softV[c]), dx = Math.max(0, tb0 - i, i - tb2), dy = Math.max(0, tb1 - j, j - tb3), h = p * (Math.max(dx, dy) + K2 * Math.min(dx, dy));
@@ -384,14 +390,14 @@
             if (l2 === l) continue;
             const s2 = l2 * N + c, nd = ds + vc;
             if (HT[s2] && goal[s2] !== run && !term.has(s2)) continue;
-            if (stamp2[s2] === run && dist[s2] <= nd) continue;
-            stamp2[s2] = run; dist[s2] = nd; from[s2] = s; Q.push(s2, nd + h);
+            if ((SI[4 * s2 + 3] | 1) === run1 && SD[2 * s2] <= nd) continue;
+            SI[4 * s2 + 3] = run; SD[2 * s2] = nd; SI[4 * s2 + 2] = s; Q.push(s2, nd + h);
           }
         }
         if (pops > maxPops) break;
       }
       if (found < 0) return null;
-      const path = []; for (let s = found; s >= 0; s = from[s]) path.push(s);
+      const path = []; for (let s = found; s >= 0; s = SI[4 * s + 2]) path.push(s);
       return path.reverse();
     }
     // what a tail costs: its length outside the pad, dearer where other nets are near
