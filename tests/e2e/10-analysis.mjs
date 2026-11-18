@@ -245,6 +245,12 @@ import { cad, check, open } from "./harness.mjs";
   const wv = await cad.evaluate(() => ({ panes: document.querySelectorAll("#tr-pane .tr-chart").length, tr: TubeCAD.transient.shown().filter(q => q.pane === 1).map(q => ({ e: q.expr, u: q.unit, ok: !!q.y, max: q.y ? Math.max(...q.y) : 0 })), bad: document.getElementById("tr-expr").classList.contains("bad") }));
   check(wv.panes === 2 && wv.tr.length === 2 && wv.tr.every(q => q.ok) && wv.tr[0].u === "A" && wv.tr[0].max > 1e-4 && wv.tr[1].u === "A²", `+ Pane adds a chart; ${iName} and an expression of it plot there with their units (${JSON.stringify(wv.tr.map(q => [q.e, q.u]))})`);
   check(wv.bad, "an expression with a mistake is not added, and its box says so");
+  // a pin of a part of more than two pins (the 555's): its own current, not refused as sharing a net with itself
+  const pName = await cad.evaluate(() => TubeCAD.transient.currentNames().find(x => /^I\([^.()]+\.[^.()]+\)$/.test(x)));
+  await cad.fill("#tr-expr", pName); await cad.press("#tr-expr", "Enter");
+  const pt = await cad.evaluate(n => TubeCAD.transient.shown().find(q => q.expr === n), pName);
+  check(pt && pt.y && !pt.error, `${pName}, a pin's current, plots (${pt && pt.error})`);
+  await cad.evaluate(n => { const T = TubeCAD.state.tran; T.traces = T.traces.filter(q => q.expr !== n); TubeCAD.transient.render(); }, pName);
   // the first pane as a spectrum: the 555's fundamental
   await cad.click('#tr-pane .tr-fft[data-p="0"]');
   const pk = await cad.evaluate(() => [...document.querySelectorAll("#tr-pane .tr-info")].map(e => e.textContent).find(x => /peak/.test(x)) || "");

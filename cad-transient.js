@@ -256,11 +256,15 @@
       if (!pin) { if (pins.length !== 2) throw new Error(`name a pin of ${desig(c)}: ${pins.map(p => `I(${desig(c)}.${p.id})`).slice(0, 3).join(", ")}`); pin = pins[0]; }
       const net = T.pinNet.get(c.id + ":" + pin.id);
       if (net === undefined) throw new Error(`${desig(c)}.${pin.id} is not connected`);
-      if (pins.some(p => p !== pin && T.pinNet.get(c.id + ":" + p.id) === net)) throw new Error(`${desig(c)} has another pin on the same net: its current there is not known`);
+      // a part built of several elements may say which one a pin belongs to (a relay's coil pins its
+      // coil, the others its contacts): then a pin sharing its net with another of the part's pins
+      // (a coil and a common contact on one supply) still has its own current
+      const pe = LIB[c.type] && LIB[c.type].pinEl, own = pe ? c.id + pe(pin.id) : null;
+      if (pins.some(p => p.id !== pin.id && T.pinNet.get(c.id + ":" + p.id) === net && (!pe || pe(p.id) === pe(pin.id)))) throw new Error(`${desig(c)} has another pin on the same net: its current there is not known`);
       let y = null;
       r.pinI.ids.forEach(([id, node], k) => {
         const s = String(id), h = s.indexOf("#");
-        if ((h < 0 ? s : s.slice(0, h)) !== c.id || node !== net) return;
+        if ((own ? s !== own : (h < 0 ? s : s.slice(0, h)) !== c.id) || node !== net) return;
         const v = r.pinI.vals[k];
         if (!y) y = Float64Array.from(v); else for (let i = 0; i < y.length; i++) y[i] += v[i];
       });

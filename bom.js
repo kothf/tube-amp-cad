@@ -45,7 +45,7 @@
       case "switch": return ["Changeover switch" + (n > 1 ? ", " + n + " poles" : ""), "", ""];
       case "spst": return [p.kind === "toggle" ? "Toggle switch, on–off" + (n > 1 ? ", " + n + " poles" : "") : `Push button, normally ${p.kind === "nc" ? "closed" : "open"}`, "", p.kind === "toggle" ? "" : "6 × 6 mm tactile"];
       case "rotary": return ["Rotary switch", `${n} pole${n > 1 ? "s" : ""}, ${p.ways} ways`, ""];
-      case "relay": { const m = L.RELAYS[p.model] || {}; return ["Relay, " + (m.poles > 1 ? "DPDT" : "SPDT"), `Omron ${p.model}-${p.v}VDC`, m.use || ""]; }
+      case "relay": { const m = L.RELAYS[p.model] || {}; return ["Relay, " + (m.poles > 1 ? "DPDT" : "SPDT"), `Omron ${p.model} DC${p.v}`, m.use || ""]; }   // Omron's ordering code: model, then the coil as DC12
       case "vactrol": { const m = L.VACTROLS[p.model] || {}; return ["Optocoupler, LED and photoresistor (vactrol)", p.model, m.r10 ? `${f(m.r10, "Ω")} at 10 mA, ${f(m.rdark, "Ω")} dark` : ""]; }
       case "pickup": return ["Guitar pickup (source)", f(p.l, "H") + " " + f(p.r, "Ω"), ""];
       case "phono": return ["Phono cartridge (source)", f(p.mv, "V"), ""];

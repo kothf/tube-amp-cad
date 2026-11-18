@@ -2691,7 +2691,16 @@
     const frames = { layout: currentsOf(circ, x, []).map((v, k) => (k % 3 === 2 ? 0 : v)), at: [], cur: [] };
     let xPrev = x;
     const pSum = new Float64Array(hotParts.length);
+    // the relays: how much of the window each is pulled in (a coil on AC or on pulses switches its
+    // contacts within the cycle: its operating point alone would show it at rest), and its state at
+    // each animation frame, so the contacts move under Animate
+    const relays = circ.timers.filter(e => e.kind === "RELAY"), relSum = new Float64Array(relays.length);
+    if (relays.length) frames.relays = { ids: relays.map(e => e.id), q: [] };
     const record = (k) => {
+      if (relays.length) {
+        if (k < nCap - 1) relays.forEach((e, i) => { relSum[i] += latchOf(e, x); });
+        if (frAt.has(k)) frames.relays.q.push(relays.map(e => latchOf(e, x)));
+      }
       if (hotParts.length && k < nCap - 1) heatOf(hotParts, x).forEach((p, i) => { pSum[i] += p; });
       if (frAt.has(k)) { frames.at.push(k); frames.cur.push(instantCurrents(circ, x, xPrev, h, new Float32Array(frames.layout.length / 3))); }
       xPrev = x;
@@ -2730,6 +2739,13 @@
       result.dcEstimate = result.dc;
       result.dc = avg;
       result.dcAveraged = true;
+    } else if (relays.length && nCap > 1) {
+      // a signal-driven run keeps its operating point, but a relay that switched within the window
+      // reports the share of it that it was pulled in (q between 0 and 1)
+      relays.forEach((e, i) => {
+        const q = relSum[i] / (nCap - 1), d = result.dc.devices[e.id];
+        if (d && d.main && Math.abs(q - d.main.q) > 1e-9) result.dc.devices[e.id] = Object.assign({}, d, { main: Object.assign({}, d.main, { q }) });
+      });
     }
     if (hotParts.length) {
       // each heated part: its junction temperature and dissipation at the operating point (tj, p),
