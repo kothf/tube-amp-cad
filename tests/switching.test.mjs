@@ -66,6 +66,26 @@ test("relays: the coil's inductance delays pull-in to 60 % of the operate time; 
   assert.ok(Math.abs((open - fall) * dt - 9.97e-3) <= dt, `drop-out ${(open - fall) * dt * 1e3} ms (ngspice 9.97 ms)`);
 });
 
+test("relays: a DC coil on 50 Hz AC chatters; the run reports the share of the cycle it is pulled in and its state at each animation frame", () => {
+  // 12 V rms straight across a 12 V coil: its current passes zero twice a cycle and lags the voltage by
+  // the coil's L/R; it pulls in above 9 V's worth and lets go below 1.2 V's worth, each half-cycle
+  const gen = { id: "G", type: "siggen", params: { wave: "sine", freq: 50, amp: 12 * Math.SQRT2, rs: 0.1 }, pins: { "+": 1, "-": 0 } };
+  const r = E.simulate(circuit(relayRig("G5LE-1", "12", [gen])), { budgetMs: 20000 });
+  assert.ok(r.ok, r.error);
+  const q = r.dc.devices.K.main.q, no = r.tran.nodes[4], n = no.length - 1;
+  const closed = Array.from(no.slice(0, n)).filter(v => v > 2.5).length / n;
+  assert.ok(q > 0.3 && q < 0.9, `pulled in part of the time: ${q}`);
+  assert.ok(Math.abs(q - closed) < 0.02, `the share pulled in (${q}) is the share of the window its NO contact carries the 5 V (${closed})`);
+  const F = r.tran.frames.relays;
+  assert.deepEqual(F.ids, ["K"]);
+  assert.equal(F.q.length, r.tran.frames.at.length, "a state at every frame");
+  const flips = F.q.filter((s, j) => j && s[0] !== F.q[j - 1][0]).length;
+  assert.ok(flips >= 2, `the contacts open and close within the frames' cycle (${flips} flips)`);
+  // on DC it stays put, and no frames say otherwise
+  const d = E.simulate(circuit(relayRig("G5LE-1", "12", [vdc(12, 1)])), { budgetMs: 5000 });
+  assert.equal(d.dc.devices.K.main.q, 1);
+});
+
 test("vactrols: the cell's resistance at 1 mA and 10 mA in the LED, dark without; it brightens in ton and dims to 100 kΩ in toff", () => {
   for (const [model, m] of Object.entries(L.VACTROLS)) {
     for (const [i, want] of [[1e-3, m.r1], [10e-3, m.r10]]) {
