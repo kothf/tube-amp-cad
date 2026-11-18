@@ -158,21 +158,34 @@
         // distance from a cell to the item's copper edge: a square pad's corners reach past its capsule
         const ext = it.box ? Math.max(0, Math.hypot(it.pad.w, it.pad.h) / 2 - it.r) : 0;
         const dEdge = (x, y) => (it.box ? C.segBox([x, y, x, y], it.box) : C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) - it.r);
+        // dEdge(x, y) >= lim, told from the squares wherever they are not within a hair of each other
+        const bx = it.box, is = it.s, sdx = is[2] - is[0], sdy = is[3] - is[1], sl2 = sdx * sdx + sdy * sdy, ir = it.r;
+        const clear = (x, y, lim) => {
+          let d2, thr;
+          if (bx) {
+            if (x >= bx[0] - 1e-9 && x <= bx[2] + 1e-9 && y >= bx[1] - 1e-9 && y <= bx[3] + 1e-9) return 0 >= lim;
+            const ex = Math.max(bx[0] - x, 0, x - bx[2]), ey = Math.max(bx[1] - y, 0, y - bx[3]); d2 = ex * ex + ey * ey; thr = lim;
+          } else {
+            const t = sl2 ? Math.max(0, Math.min(1, ((x - is[0]) * sdx + (y - is[1]) * sdy) / sl2)) : 0, ex = x - is[0] - t * sdx, ey = y - is[1] - t * sdy; d2 = ex * ex + ey * ey; thr = lim + ir;
+          }
+          if (thr > 0) { const t2 = thr * thr; if (d2 > t2 * (1 + 1e-9)) return true; if (d2 < t2 * (1 - 1e-9)) return false; }
+          return dEdge(x, y) >= lim;
+        };
         // no via in the net's own SMD pads (solder paste runs down the hole and the joint starves):
         // the track leaves the pad and drops through just beside it, the mask web between them intact
         if (net === r.id) {
-          if (it.kind === "pad" && it.pad.smd) stamp(it.s, it.r + ext + viaR + VIA_OFF_PAD + MARGIN, (c, x, y) => { if (dEdge(x, y) < viaR + VIA_OFF_PAD) V[c] = 1; });
+          if (it.kind === "pad" && it.pad.smd) stamp(it.s, it.r + ext + viaR + VIA_OFF_PAD + MARGIN, (c, x, y) => { if (!clear(x, y, viaR + VIA_OFF_PAD)) V[c] = 1; });
           return;
         }
         const g = need(r.id, net, null, it), sb = it.kind === "pad" ? SP.get(it.pad) : null, gs = sb ? Math.min(g, sb.gap - 0.02) : g;
         const ls = it.layers.map(li).filter(l => l >= 0), up = areas.filter(k => k.c > g + 1e-9 && k.ls.some(l => ls.includes(l))), gUp = up.length ? Math.max(...up.map(k => k.c)) : g;
         const gAt = (x, y) => (up.length ? Math.max(g, ...up.filter(k => C.pip(x, y, k.pts)).map(k => k.c)) : g);
         const mark = (rad, fn) => stamp(it.s, it.r + ext + rad + Math.max(g, gs, gUp), (c, x, y) => {
-          if (sb && gs < g && Math.hypot(x - sb.x, y - sb.y) <= sb.r) { if (dEdge(x, y) >= rad + gs) return; }
-          else if (dEdge(x, y) >= rad + gAt(x, y)) return;
+          if (sb && gs < g && Math.hypot(x - sb.x, y - sb.y) <= sb.r) { if (clear(x, y, rad + gs)) return; }
+          else if (clear(x, y, rad + gAt(x, y))) return;
           fn(c);
         });
-        mark(hw + MARGIN, c => ls.forEach(l => { T[l * N + c] = 1; }));
+        mark(hw + MARGIN, c => { for (let q = 0; q < ls.length; q++) T[ls[q] * N + c] = 1; });
         mark(viaR + MARGIN, c => { V[c] = 1; });
         // a socket pin lets passing copper as near as the pins' spacing, but the track into it runs to its
         // middle and keeps the full clearance: shut the ring round the middle that track would need
@@ -273,7 +286,8 @@
       token++;
       const T = [], V = [];
       shapes(q).forEach(sh => {
-        stamp(sh.s, sh.r + eT, c => sh.ls.forEach(l => { const k = l * N + c; if (seenT[k] !== token) { seenT[k] = token; T.push(k); } }));
+        const ls = sh.ls, nl = ls.length;
+        stamp(sh.s, sh.r + eT, c => { for (let q = 0; q < nl; q++) { const k = ls[q] * N + c; if (seenT[k] !== token) { seenT[k] = token; T.push(k); } } });
         stamp(sh.s, sh.r + eV, c => { if (seenV[c] !== token) { seenV[c] = token; V.push(c); } });
       });
       const v = { T: Int32Array.from(T), V: Int32Array.from(V) }; q.near.m.set(key, v);
@@ -411,6 +425,28 @@
       }
       return c * (1 + histT[st]);
     }
+    // the same for every entry cell of a pad, its sample cells kept (they do not change): { off, idx, w, none }
+    function tailSamples(P, e) {
+      const n = e.length, off = new Int32Array(n + 1), w = new Float64Array(n), none = new Uint8Array(n), idx = [];
+      for (let q = 0; q < n; q++) {
+        const st = e[q], sg = tailSeg(P, st);
+        if (!sg) { none[q] = 1; off[q + 1] = idx.length; continue; }
+        const l = Math.floor(st / N), len = Math.hypot(sg[2] - sg[0], sg[3] - sg[1]), n2 = Math.max(1, Math.ceil(len / (p / 2)));
+        for (let k = 0; k < n2; k++) {
+          const i = Math.round((sg[0] + (sg[2] - sg[0]) * (k + 0.5) / n2) / p), j = Math.round((sg[1] + (sg[3] - sg[1]) * (k + 0.5) / n2) / p);
+          idx.push(i >= 0 && j >= 0 && i < nx && j < ny ? l * N + j * nx + i : -1);
+        }
+        w[q] = len / n2; off[q + 1] = idx.length;
+      }
+      return { off, idx: Int32Array.from(idx), w, none };
+    }
+    function tailCostAt(tl, q, st, pf) {
+      if (tl.none[q]) return 0;
+      const idx = tl.idx, wq = tl.w[q];
+      let c = 0;
+      for (let m = tl.off[q], e = tl.off[q + 1]; m < e; m++) { const k = idx[m]; c += wq * (1 + (k >= 0 ? pf * softT[k] : 0)); }
+      return c * (1 + histT[st]);
+    }
     const ENTRY = 5;
     const entryCache = new Map();
     function entries(r, H, P) {
@@ -452,7 +488,7 @@
         const m = new Map(), put = (s2, c, P) => { const v = m.get(s2); if (!v || c < v.c) m.set(s2, { c, P }); };
         g.forEach(it => {
           const e = it.kind === "pad" ? entries(r, H, it) : [];
-          if (e.length) e.forEach(s2 => put(s2, tailCost(it, s2, pf), it));
+          if (e.length) { const tl = e.tail || (e.tail = tailSamples(it, e)); for (let q = 0; q < e.length; q++) put(e[q], tailCostAt(tl, q, e[q], pf), it); }
           else cellsOf(it, r.w).forEach(s2 => put(s2, 0, null));
         });
         return m;
