@@ -6,6 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.237.0] - 2026-11-19
+
+The other parts checked for the relays' bugs: what a part shows with a signal on, and the Transient tab's pin currents.
+
+### Fixed
+- **Parts a signal drives no longer read "at rest".** A signal-driven run kept only the operating point (the circuit with no signal), so a rectifier meter on audio read 0, a neon on a sine's peaks read dark, an LED or a rectifier fed by the generator showed no current, a magic eye on a rectified level stayed open, a battery's runtime ignored the signal's drain and a class-B output transistor showed its idle dissipation only. The run now also keeps its averages over the cycle; the inspector shows them as rows *with signal*: a meter's reading (and its needle), a diode's and an LED's average current, a neon or gas regulator *lit N % of the time*, a magic eye, a battery's load and runtime, a vactrol's cell (average and swing), a nixie's digit, and the *Dissipation with signal (avg)* of transistors, op-amps, power amplifier ICs, regulators, TL431s and zeners. Needles, lamps and LEDs on the sheet follow the averages when Animate is off.
+- **Checks and the BOM's Sim. max take the worse of rest and signal**: a transistor, a power amplifier IC or a zener over its rating with the signal on, an LED over its maximum current on average, a diode's or a vactrol's or a nixie's current, a neon's.
+- **Transient pin currents add up**: a capacitor's current was taken by backward Euler while the step used the trapezoidal or Gear rule (up to 3 % off at a node, more in a switching transistor's edge); it now uses the step's own rule. A diode's stored charge (TT), a transistor's transit-time charges and a MOSFET's gate charges are now in its pins' currents, so a 1N4007's reverse recovery shows in `I(VD1.A)` and a switch's storage time in `I(Q1.C)`.
+- **A saturated op-amp (a comparator) read its supply currents and dissipation wrongly** at the operating point (an LM4562 showed −98 mA into V+): they are now its solution's own.
+- **Ideal inputs read zero in the Transient tab** (a 555's trigger and threshold, a controlled source's control pins) instead of "not in this run: run again"; a connector says it carries no current of its own.
+- BOM: a pilot lamp is listed by its trade number, #47.
+
+### Tests
+- `tests/signal-avg.test.mjs`: a half-wave rectifier's average current with the signal, a neon on 115 V peak lit part of each cycle, the pin currents of an RC, a switching 2N3904 and a recovering 1N4007 adding up at their nodes, a saturated op-amp's DC currents. Browser tests (`tests/e2e/06b-signal-parts.mjs`): a rectifier meter, a neon and an LED on a generator in the inspector, Checks and the sheet; a 555's trigger current and a terminal block's in the Transient tab.
+
 ## [3.236.0] - 2026-11-18
 
 Relays: the armature's release time.

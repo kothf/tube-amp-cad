@@ -3730,7 +3730,14 @@
     vactrol: {
       readout: (c, R) => {
         const d = R.r.dc.devices[c.id], i = R.pinCurrent("A"), m = d && d.main;
-        return R.kv("LED current", fmtEng(i, "A", 2), i > 0.04 ? "bad" : "") + R.kv("Cell resistance", m ? fmtEng(m.r, "Ω", 3) : "—") + (m && R.r.dcAveraged ? R.note("Averages over the settled cycle.") : "");
+        let h = R.kv("LED current", fmtEng(i, "A", 2), i > 0.04 ? "bad" : "") + R.kv("Cell resistance", m ? fmtEng(m.r, "Ω", 3) : "—") + (m && R.r.dcAveraged ? R.note("Averages over the settled cycle.") : "");
+        // an LFO or pulses on the LED (a tremolo, a compressor): the cell over the cycle, its swing from the run's trace
+        const s = R.sig.on && (R.sig.dev() || {}).main, is = R.sig.pinCurrent("A"), tr = R.r.tran && R.r.tran.devices[c.id];
+        if (s && m && (R.sig.differs(s.r, m.r) || R.sig.differs(is, i, 1e-5))) {
+          h += R.kv("LED current with signal (avg)", fmtEng(is, "A", 2), is > 0.04 ? "bad" : "") + R.kv("Cell with signal (avg)", fmtEng(s.r, "Ω", 3));
+          if (tr && tr.r) { let lo = Infinity, hi = 0; for (const v of tr.r) { if (v < lo) lo = v; if (v > hi) hi = v; } h += R.kv("Cell swing", `${fmtEng(lo, "Ω", 3)} to ${fmtEng(hi, "Ω", 3)}`); }
+        }
+        return h;
       }
     },
     pickup: { readout: (c, R) => R.kv("Signal at the pins", fmtEng((R.stats(R.wave("+")) || {}).rmsAC, "Vrms", 3)) },
@@ -3861,6 +3868,7 @@
     // germanium: the leakage at the part's temperature, and how much of Ic it makes up ((hFE + 1)·ICBO)
     if (bip && m.ge) { const a = bjtAt(m, c.params.temp), iceo = (a.bf + 1) * a.icbo; h += kv(`Leakage at ${+a.t.toFixed(1)} °C`, `ICBO ${fmtEng(a.icbo, "A", 2)} · ×hFE ≈ ${fmtEng(iceo, "A", 2)}`, Math.abs(d.ic) > 0 && iceo > 0.5 * Math.abs(d.ic) ? "warn" : ""); }
     h += kv("Dissipation", `${fmtEng(d.pd, "W", 2)} · ${Math.round(d.pd / m.p * 100)}% of ${m.p} W`, d.pd > m.p ? "bad" : d.pd > 0.6 * m.p ? "warn" : "");
+    h += sigPowerRow(c, R, d.pd, m.p);
     if (bip && d.vce < 0.3 && d.ic > 1e-6) h += R.note("Saturated (Vce below 0.3 V).", "warn");
     if (jf) { const idss = m.beta * m.vto * m.vto; h += kv("Id / IDSS", `${Math.round(Math.abs(iMain) / idss * 100)}% of ${fmtEng(idss, "A", 2)}`); if (d.vgs > 0.4) h += R.note("The gate is forward-biased: it conducts and draws current.", "warn"); }
     if (!bip && Math.abs(iMain) < 1e-6) h += R.note(jf ? "Off: Vgs beyond the pinch-off." : "Off: Vgs below the threshold.");
@@ -3876,6 +3884,14 @@
     return h;
   };
   ["npn", "pnp", "nmos", "pmos", "njf", "pjf"].forEach(t => { UI[t] = { readout: semiReadout }; });
+  // a part's dissipation averaged over the signal's cycle, as a row when the signal moves it (a
+  // class-B output transistor idles cool and heats with the signal); pmax: its rating, for the colour
+  function sigPowerRow(c, R, pd, pmax, id) {
+    if (!R.sig || !R.sig.on) return "";
+    const s = (R.sig.dev(id) || {}).main, p = s && s.pd;
+    if (p === undefined || p === null || !R.sig.differs(p, pd, 1e-3)) return "";
+    return R.kv("Dissipation with signal (avg)", fmtEng(p, "W", 2) + (pmax ? ` · ${Math.round(p / pmax * 100)}% of ${pmax} W` : ""), pmax && p > pmax ? "bad" : pmax && p > 0.6 * pmax ? "warn" : "");
+  }
   // a SPICE part that is a lone NPN or PNP model: its operating point, and its junction's temperature
   // when it heats itself (nothing for other SPICE parts)
   const spiceReadout = (c, R) => {
@@ -3908,6 +3924,7 @@
       if (w) { const s = R.stats(w); h += kv("Output swing", `${fmtEng(s.pp, "Vpp", 2)} · ${fmtEng(s.min, "V", 2)} to ${fmtEng(s.max, "V", 2)}`, clipped ? "warn" : ""); }
       if (clipped && !stuck) h += R.note(`The output reaches its limit (${m.dhi} V below V+, ${m.dlo} V above V−, less the drop across its ${m.ro} Ω output resistance): it clips.`, "warn");
       h += kv("Dissipation", fmtEng(d.pd, "W", 2) + (m.pmax ? ` · ${m.pmax} W max` : ""), m.pmax && d.pd > m.pmax ? "bad" : "");
+      h += sigPowerRow(c, R, d.pd, m.pmax);
       if (stuck) h += R.note("The output sits at its limit: no negative feedback, or the inputs are outside what the circuit can follow.", "warn");
       if (d.vs < 2) h += R.note("No supply: wire V+ and V− to the rails.", "warn");
       return h;
@@ -3924,6 +3941,7 @@
       h += kv("Headroom (IN − OUT)", fmtEng(d.vio, "V", 2), d.vio > m.vmax ? "bad" : drop ? "warn" : "");
       h += kv("Output current", fmtEng(d.iout, "A", 2), d.iout > 0.9 * m.ilim ? "warn" : "");
       h += kv("Dissipation", fmtEng(d.pd, "W", 2), d.pd > m.p ? "bad" : hot ? "warn" : "");
+      h += sigPowerRow(c, R, d.pd, m.p);
       if (drop) h += R.note(`In dropout: the input is too close to the output to regulate (it needs about ${(m.vdo + 0.5).toFixed(1)} V or more; ripple troughs count).`, "warn");
       if (m.adj && d.iout < m.iq) h += R.note(`Below the minimum load (${fmtEng(m.iq, "A")}): the output rises. Lower R1 or add a load.`, "warn");
       if (hot) h += R.note(m.pkg === "TO-92" ? "A TO-92 manages about 0.6 W in still air." : "Above about 2 W a TO-220 needs a heatsink.", hot && d.pd > m.p ? "bad" : "");
@@ -3932,11 +3950,14 @@
   };
   UI.gasreg = {
     readout: (c, R) => {
-      const d = (R.r.dc.devices[c.id] || {}).main, m = GASREGS[c.params.model];
-      if (!d || !m) return R.note("No data.");
-      let h = R.kv("State", d.q ? "lit (regulating)" : "dark", d.q ? "" : "warn") + R.kv("Voltage (A − K)", fmtEng(d.vd, "V", 3));
+      const d0 = (R.r.dc.devices[c.id] || {}).main, m = GASREGS[c.params.model];
+      if (!d0 || !m) return R.note("No data.");
+      // with a signal (or pulses) on it, as it is over the cycle: lit part of the time
+      const d = (R.sig.on && (R.sig.dev() || {}).main) || d0, part = d.q > 0.005 && d.q < 0.995;
+      let h = R.kv("State", part ? `lit ${Math.round(d.q * 100)} % of the time` : d.q > 0.5 ? "lit (regulating)" : "dark", d.q > 0.995 ? "" : "warn") + R.kv("Voltage (A − K)", fmtEng(d.vd, "V", 3));
       h += R.kv("Current", fmtEng(d.i, "A", 2) + ` · range ${m.imin * 1000}–${m.imax * 1000} mA`, d.q && (d.i > m.imax ? "bad" : d.i < m.imin ? "warn" : ""));
-      if (!d.q) h += R.note(`Dark: it strikes at ${m.vs} V and goes out below ${m.iext * 1000} mA.`, "warn");
+      if (part) h += R.note(`It strikes and goes out within the cycle: it only regulates while lit. Animate shows it flicker.`, "warn");
+      else if (!(d.q > 0.5)) h += R.note(`Dark: it strikes at ${m.vs} V and goes out below ${m.iext * 1000} mA.`, "warn");
       return h;
     }
   };
@@ -3946,6 +3967,14 @@
       if (!a || !b) return R.note("No data.");
       const lit = a.q > 0 || b.q > 0, i = R.pinCurrent("A");
       if (R.r.dcAveraged) return R.kv("Voltage (rms)", fmtEng(R.vRms("A", "K"), "V", 3)) + R.note(lit ? "Lit over the settled cycle (on AC on both half-cycles): Animate shows it." : `Dark: it strikes at about ${m.vs} V.`, lit ? "" : "warn");
+      // a signal (or pulses) on it: lit while the peaks pass its striking voltage, either way round
+      const sa = R.sig.on && (R.sig.dev() || {}).main, sb = R.sig.on && (R.sig.dev(c.id + "#rev") || {}).main;
+      if (sa && sb && sa.q + sb.q > 0.005 && R.sig.differs(sa.q + sb.q, (a.q || 0) + (b.q || 0), 0.005)) {
+        const q = Math.min(1, sa.q + sb.q), ia = Math.abs(sa.i || 0) + Math.abs(sb.i || 0);
+        return R.kv("State", q > 0.995 ? "lit" : `lit ${Math.round(q * 100)} % of the time`, q > 0.995 ? "" : "warn") + R.kv("Voltage (rms)", fmtEng(R.vRms("A", "K"), "V", 3))
+          + R.kv("Current (avg)", fmtEng(ia, "A", 2) + ` · design ${fmtEng(m.i, "A")}`, ia > 2 * m.i ? "bad" : "")
+          + R.note(`With the signal on it strikes on the peaks (above about ${m.vs} V) and goes out between them: it flickers (Animate shows it). At rest, with no signal, it is ${lit ? "lit" : "dark"}.`);
+      }
       let h = R.kv("State", lit ? "lit" : "dark", lit ? "" : "warn") + R.kv("Voltage", fmtEng(R.vAcross("A", "K"), "V", 3));
       h += R.kv("Current", fmtEng(Math.abs(i), "A", 2) + ` · design ${fmtEng(m.i, "A")}`, Math.abs(i) > 2 * m.i ? "bad" : "");
       if (!lit) h += R.note(`Dark: it strikes at about ${m.vs} V.`, "warn");
@@ -3969,11 +3998,13 @@
   };
   UI.battery = {
     readout: (c, R) => {
-      const m = BATTERIES[c.params.model] || BATTERIES.PP3, b = batteryState(m, c.params.charge), v = R.vAcross("+", "-"), i = R.pinCurrent("-");
+      // the drain with the signal on (a class-B stage draws more with it): the runtime from that
+      const m = BATTERIES[c.params.model] || BATTERIES.PP3, b = batteryState(m, c.params.charge), v = R.vAcross("+", "-"), i = R.sig.pinCurrent("-"), i0 = R.pinCurrent("-");
       if (v === null || i === null) return R.note("No data.");
       const load = Math.max(0, i);
       return R.kv("Terminal voltage", fmtEng(v, "V", 3) + ` (${b.emf.toFixed(2)} V open)`) + R.kv("Load current", fmtEng(load, "A", 3)) +
         (load > 1e-6 ? R.kv("Runs for about", (() => { const h = b.mah / 1000 / load; return h >= 48 ? `${Math.round(h / 24)} days` : h >= 1 ? `${h.toFixed(1)} h` : `${Math.round(h * 60)} min`; })()) : "") +
+        (R.sig.on && R.sig.differs(i, i0, 1e-5) ? R.note(`The load current is the average with the signal on (${fmtEng(Math.max(0, i0 || 0), "A", 3)} at rest).`) : "") +
         R.note("The runtime is a light-load estimate from the charge left; heavy loads get less from a cell.");
     }
   };
@@ -3986,26 +4017,29 @@
         const vu = 20 * Math.log10(Math.max(v, 1e-9) / (m.vref / Math.pow(10, 3 / 20)));
         return R.kv("Reading", `${vu >= 0 ? "+" : ""}${vu.toFixed(1)} VU`, vu > 3 ? "bad" : "") + R.kv("Line (rms)", fmtEng(v, "V", 3));
       }
-      const i = R.pinCurrent("+");
+      // a moving coil reads the average current: with a signal on, over its cycle (a rectifier meter)
+      const i0 = R.pinCurrent("+"), i = R.sig.pinCurrent("+");
       if (i === null) return R.note("No data.");
-      const x = i / m.ifs;
-      return R.kv("Reading", `${m.kind === "v" ? fmtEng(x * m.fs, "V", 3) : fmtEng(i, "A", 3)} · ${Math.round(x * 100)} % of full scale`, x > 1.05 || x < -0.03 ? "bad" : "");
+      const x = i / m.ifs, fmtR = v => (m.kind === "v" ? fmtEng(v / m.ifs * m.fs, "V", 3) : fmtEng(v, "A", 3));
+      return R.kv("Reading", `${fmtR(i)} · ${Math.round(x * 100)} % of full scale`, x > 1.05 || x < -0.03 ? "bad" : "")
+        + (R.sig.on && R.sig.differs(i, i0, 0.005 * m.ifs) ? R.note(`The average over the signal's cycle, as the needle settles to it (with no signal it reads ${fmtR(i0 || 0)}).`) : "");
     }
   };
   UI.nixie = {
     readout: (c, R) => {
-      const m = NIXIES[c.params.model] || NIXIES["IN-14"], cur = Array.from({ length: 10 }, (_, k) => -(R.pinCurrent("K" + k) || 0));
+      const m = NIXIES[c.params.model] || NIXIES["IN-14"], cur = Array.from({ length: 10 }, (_, k) => -(R.sig.pinCurrent("K" + k) || 0));
       let k = 0; cur.forEach((v, j) => { if (v > cur[k]) k = j; });
       return cur[k] > m.iext ? R.kv("Lit digit", String(k)) + R.kv("Current", fmtEng(cur[k], "A", 2) + ` · about ${fmtEng(m.i, "A")} wanted`, cur[k] > 2 * m.i ? "bad" : "") : R.note(`Dark: pull a cathode down and give the anode ${m.vs} V or more to strike.`, "warn");
     }
   };
   UI.eye = {
     readout: (c, R) => {
-      const m = EYES[c.params.model] || EYES["6E5"], vt = R.vAcross("T", "K"), vp = R.vAcross("P", "K"), vg = R.vAcross("G", "K");
+      // with a signal on (a rectified audio level on its grid): the averages over the cycle, as the eye follows them
+      const V = R.sig.on ? R.sig.vAcross : R.vAcross, m = EYES[c.params.model] || EYES["6E5"], vt = V("T", "K"), vp = V("P", "K"), vg = V("G", "K");
       if (vt === null || vp === null) return R.note("No data.");
-      const e = eyeShadow(m, vt, vp);
+      const e = eyeShadow(m, vt, vp), moved = R.sig.on && R.sig.differs(vp, R.vAcross("P", "K"), 0.5);
       return R.kv("Target", fmtEng(vt, "V", 3), vt > 1.1 * m.vt ? "bad" : "") + R.kv("Triode plate", fmtEng(vp, "V", 3)) + R.kv("Grid", fmtEng(vg, "V", 3)) +
-        R.kv("Shadow", `${eyeShadowText(m, e.shadow)}${m.shade ? "" : e.shadow > 0.98 ? " (fully open)" : e.shadow < 0.02 ? " (closed)" : ""}`) + (R.r.dcAveraged ? R.note("Averages over the settled cycle: Animate shows it moving.") : "");
+        R.kv("Shadow", `${eyeShadowText(m, e.shadow)}${m.shade ? "" : e.shadow > 0.98 ? " (fully open)" : e.shadow < 0.02 ? " (closed)" : ""}`) + (R.r.dcAveraged || moved ? R.note("Averages over the settled cycle: Animate shows it moving.") : "");
     }
   };
   UI.tl431 = {
@@ -4015,16 +4049,32 @@
       let h = kv("Cathode (K − A)", fmtEng(d.vka, "V", 3), d.vka > m.v ? "bad" : "") + kv("REF − A", fmtEng(d.vref, "V", 4));
       h += kv("Cathode current", fmtEng(d.ik, "A", 2), d.ik > m.imax * 0.66 ? "warn" : "");
       h += kv("Dissipation", fmtEng(d.pd, "W", 2), d.pd > m.p ? "bad" : d.pd > 0.6 * m.p ? "warn" : "");
+      h += sigPowerRow(c, R, d.pd, m.p);
       if (d.ik < 1e-3 && d.vref > m.vref - 0.05) h += R.note("Less than 1 mA in the cathode: below the current it needs to regulate.", "warn");
       return h;
     }
   };
+  // the power all of a part's elements take in, from an element-state lookup (dev(id) → { main, … }):
+  // a zener's diodes, its dynamic resistance and its breakdown source together
+  function partPower(c, dev) {
+    const r = dev(c.id); if (!r) return null;
+    let p = 0; const add = d => { Object.values(d || {}).forEach(s => { if (s && typeof s.pd === "number") p += s.pd; }); };
+    add(r); ["#zz", "#bd", "#bv"].forEach(k => add(dev(c.id + k)));
+    return p;
+  }
   // diodes: voltage and current; a zener's dissipation, an LED's maximum current
   const diodeReadout = (c, R) => {
-    const v = R.vAcross("A", "K"), i = R.pinCurrent("A");
+    const v = R.vAcross("A", "K"), i = R.pinCurrent("A"), is = R.sig.pinCurrent("A"), moved = R.sig.on && R.sig.differs(is, i, 1e-6);
     let h = R.kv("Voltage (A–K)", fmtEng(v, "V", 3)) + R.kv("Current (A→K)", fmtEng(i, "A", 2));
-    if (c.type === "zener") { const z = ZENERS[c.params.model], p = Math.abs(v * i); if (z) h += R.kv("Dissipation", `${fmtEng(p, "W", 2)} · ${Math.round(p / z.p * 100)}% of ${z.p} W`, p > z.p ? "bad" : p > 0.6 * z.p ? "warn" : ""); }
-    if (c.type === "led") { const l = LEDS[c.params.color]; if (l && i > l.i) h += R.note(`Above the ${l.i * 1000} mA maximum.`, "warn"); }
+    // with the signal on: its average current (a clipper, a rectifier, an LED blinking on pulses)
+    if (moved) h += R.kv("Current with signal (avg)", fmtEng(is, "A", 2));
+    if (c.type === "zener") {
+      const z = ZENERS[c.params.model], p = Math.abs(v * i);
+      if (z) h += R.kv("Dissipation", `${fmtEng(p, "W", 2)} · ${Math.round(p / z.p * 100)}% of ${z.p} W`, p > z.p ? "bad" : p > 0.6 * z.p ? "warn" : "");
+      const ps = R.sig.on ? partPower(c, R.sig.dev) : null;
+      if (z && ps !== null && R.sig.differs(ps, p, 1e-3)) h += R.kv("Dissipation with signal (avg)", `${fmtEng(ps, "W", 2)} · ${Math.round(ps / z.p * 100)}% of ${z.p} W`, ps > z.p ? "bad" : ps > 0.6 * z.p ? "warn" : "");
+    }
+    if (c.type === "led") { const l = LEDS[c.params.color], im = Math.max(i || 0, moved ? is : 0); if (l && im > l.i) h += R.note(`Above the ${l.i * 1000} mA maximum.`, "warn"); }
     return h;
   };
   ["diode", "zener", "led"].forEach(t => { UI[t] = { readout: diodeReadout }; });

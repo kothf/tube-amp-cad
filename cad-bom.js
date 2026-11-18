@@ -5,7 +5,7 @@
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadBom = function (cad) {
-    const { S, baseName, bind, cmds, renderChecks, renderTolerance, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf } = cad;
+    const { S, baseName, bind, cmds, renderChecks, renderTolerance, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent: dcPinCurrent, pinNetOf, sigDevice, sigPinCurrent, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf } = cad;
     const BOM_KEY = "tubecad_bom";
     const bomOpts = { open: false, tab: "bom", sockets: true, bench: false, height: 0 };   // open, tab: the panel under the sheet and its tab
     try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
@@ -19,6 +19,12 @@
     // transformer's DC current, a speaker's power. v orders the parts of one BOM line.
     const DIODE_RATE = CadLib.DIODES;
     const share = (x, m) => (m > 0 ? ` · ${Math.round(x / m * 100)}%` : "");
+    // the worse of a pin's DC current and its average with the signal on (a rectifier or an LED driven by
+    // the signal carries nothing at its operating point); likewise a part's dissipation
+    function pinCurrent(c, pid) {
+      const a = dcPinCurrent(c, pid), b = sigPinCurrent(c, pid);
+      return a === null ? b : b === null ? a : Math.abs(b) > Math.abs(a) ? b : a;
+    }
     function partStress(c) {
       const r = S.sim.result;
       if (!r) return null;
@@ -115,7 +121,8 @@
       }
       if (CadLib.isTransistor(c.type) || c.type === "reg" || c.type === "tl431") {
         const d = (S.sim.result.dc.devices[c.id] || {}).main, m = (c.type === "reg" ? CadLib.REGS : c.type === "tl431" ? CadLib.SHUNTS : CadLib.semiTable(c.type))[c.params.model];
-        return d && m ? { v: d.pd, text: fmtEng(d.pd, "W"), warn: d.pd > m.p } : null;
+        const ds = (sigDevice(c.id) || {}).main, pd = d ? Math.max(d.pd, ds && isFinite(ds.pd) ? ds.pd : -Infinity) : 0;
+        return d && m ? { v: pd, text: fmtEng(pd, "W"), warn: pd > m.p } : null;
       }
       if (c.type === "zener" || c.type === "led") {
         const i = pinCurrent(c, "A"), va = netDC(pinNetOf(c, "A")), vk = netDC(pinNetOf(c, "K"));

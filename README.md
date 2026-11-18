@@ -75,6 +75,13 @@ Firefox is not tested.
   or dBV. With a simulation result it adds:
   - the part's operating point: Va, Vg, Ia, Pa and gain for a tube; Vce, Ic,
     hFE and dissipation for a transistor;
+  - for a part a signal or pulses drive, what it does with the signal on (its
+    average over the cycle, as on the bench): a rectifier meter's reading, a
+    diode's or an LED's current, a neon or gas regulator lit part of the time,
+    a magic eye, a battery's drain, a vactrol's cell, a nixie's digit, and the
+    dissipation with signal of transistors, op-amps, power amplifier ICs,
+    regulators and zeners (a class-B output idles cool); Checks and the BOM's
+    *Sim. max* take the worse of rest and signal;
   - checks against the part's ratings.
 
   With nothing selected it shows a power summary instead: output into the
@@ -629,7 +636,10 @@ the circuit that was on the sheet.
     drag to zoom, double-click to show all; min, max, p-p, average, RMS and
     end value per trace, and *CSV* writes them all;
   - a waveform viewer: any part's current (`I(R3)` into its first pin,
-    `I(Q1.C)`) and expressions over the run (`V(OUT,IN)`,
+    `I(Q1.C)`; a part's pin currents add up to zero at every instant, with
+    capacitor currents by the step's own rule and stored charges (a diode's
+    reverse recovery, a switch's storage time) in its pins; an ideal input
+    such as a 555's trigger reads zero) and expressions over the run (`V(OUT,IN)`,
     `V(R1.1,R1.2)*I(R1)` in W, `d()`, `integ()`, `db`, `abs`, `min`/`max`…,
     with units that follow the arithmetic, `wave-math.js`); several panes,
     each with its own scale, in time, as a spectrum (*FFT*, Hann window,
@@ -1462,6 +1472,11 @@ The test suite checks the engine against independent results:
   every animation frame),
   a vactrol's cell at its datasheet points and times, the RIAA cut against IEC
   60098 to 1 ppm, a pickup's resonance against 1/(2π√(LC));
+- parts a signal drives and the transient's pin currents
+  (`tests/signal-avg.test.mjs`): a half-wave rectifier's average current with
+  the signal against (Vpk − VF)/(πR), a neon on 115 V peak lit part of each
+  cycle, the pin currents of an RC, a switching 2N3904 and a recovering 1N4007
+  adding up to zero at their nodes, a saturated op-amp's DC currents;
 - indicators and chip amps (`tests/indicators.test.mjs`): neon lamps either way
   round and a neon flasher's period, magic eyes' shadow against RCA's data (the
   exported triode agrees with ngspice within 0.3 V), the LM386's gains of 20 and

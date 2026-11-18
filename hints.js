@@ -563,7 +563,7 @@
     "Tube socket": "The real socket for this valve's base, from GoodComponent's range or a Soviet one (ПЛК, ПЛ, ПП; tec.org.ru). A PCB-mount one puts its own footprint on the board (its tails' circle, the flange's screw holes, its outline) and its 3D model under the valve; a chassis-mount one leaves the valve on wire pads. Its item number goes on the BOM's socket line. The sections of a dual valve share it: set it in one, the other follows.",
     // section titles
     "Open in": "This scope's channels in the full instrument windows.",
-    "Operating point": "The circuit at rest (DC) and the averages over the signal cycle, from the latest simulation. A spinning percentage means the run is still settling.",
+    "Operating point": "The circuit at rest (DC) and, for a part a signal or pulses drive, its averages over the signal's cycle (rows marked with signal: a meter's reading, an LED's current, a neon lit part of the time, a transistor's dissipation), from the latest simulation. A spinning percentage means the run is still settling.",
     "With signal": "What the signal does at this part: swings, gain, distortion and average dissipation over a cycle.",
     "Checks": "Problems found in the circuit: unconnected pins, shorted parts, a missing ground, and every part beyond its ratings.",
     "Ratings": "The tube's maximum ratings from its datasheet or the Katsnelson & Larionov handbook.",
