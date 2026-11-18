@@ -1095,7 +1095,9 @@
       else { const sg = seg || hitSeg(x, y); if (sg) hit = { kind: "track", id: sg.i, k: sg.k }; }
     }
     if (hit) {
-      if (e.shiftKey) { toggleSel(hit.kind, hit.id); renderPanels(); render(); return; }
+      // Shift or Ctrl: a click adds it to the selection or takes it out; a drag copies the selected
+      // tracks, vias, holes and texts (with it) and moves the copy (see copyDrag)
+      if (e.shiftKey || e.ctrlKey || e.metaKey) { S.drag = { kind: "modclick", hit, mx: x, my: y, sx, sy }; return; }
       if (S.sel && S.sel.kind === "multi" && isSel(hit.kind, hit.id)) { const items = selItems(); S.drag = { kind: "group", items, base: snapshot(items), mx: x, my: y, moved: false }; return; }
       if (hit.kind === "part") selectPart(S.model.parts.find(g => g.key === hit.id)); else S.sel = { kind: hit.kind, i: hit.id };
       const o = objOf(hit.kind, hit.id);
@@ -1129,9 +1131,10 @@
     if (d && d.kind === "part") {
       const bp = S.board.parts[d.key], nx = snap(d.x0 + x - d.mx), ny = snapY(d.y0 + y - d.my);
       if (nx !== bp.x || ny !== bp.y) { bp.x = nx; bp.y = ny; moveEnds(d.ends, nx - d.x0, ny - d.y0); d.moved = true; analyse(true); render(); }
+    } else if (d && d.kind === "modclick") {
+      if (Math.hypot(sx - d.sx, sy - d.sy) > 4) copyDrag(d, x, y);
     } else if (d && d.kind === "group") {
-      const dx = snap(x - d.mx), dy = snap(y - d.my);
-      if (dx !== d.dx || dy !== d.dy) { d.dx = dx; d.dy = dy; moveItems(d.items, d.base, dx, dy); d.moved = !!(dx || dy); analyse(true); render(); }
+      onMoveGroup(x, y);
     } else if (d && d.kind === "seg") {
       const t = S.board.tracks[d.i], np = dragSeg(d.pts0, d.k, x - d.mx, y - d.my);
       if (JSON.stringify(np) !== JSON.stringify(t.pts)) { t.pts = np; d.moved = true; analyse(true); render(); }
@@ -1174,6 +1177,8 @@
   }
   function onUp(e) {
     const d = S.drag; S.drag = null;
+    if (d && d.kind === "modclick") { toggleSel(d.hit.kind, d.hit.id); renderPanels(); render(); return; }
+    if (d && d.kind === "group" && d.copy && !d.dx && !d.dy) { undoDrag(); msg("Copy dropped where it started: nothing copied"); return; }
     if (sketch.onUp()) return;
     if (d && d.kind === "dim" && d.edit && !d.moved) { dimui.editAt(d.id); return; }   // the Dimension tool: a click on a value opens its box
     if (d && d.kind === "pan" && d.menu && e && Math.hypot(S.view.ox - d.ox, S.view.oy - d.oy) < 3) { const [x, y] = toWorld(...evPos(e)); openCtx(e.clientX, e.clientY, x, y); return; }
@@ -1190,6 +1195,7 @@
       if (n > 3 && (flat || Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-6 || Math.hypot(b[0] - c[0], b[1] - c[1]) < 1e-6)) { P.splice(d.k, 1); commit(d.added ? undefined : `Corner merged: ${P.length} left`); return; }
       commit(d.added ? `Corner added: ${P.length} corners (double-click a corner to remove it)` : undefined); return;
     }
+    if (d && d.kind === "group" && d.copy) { commit(`Copied ${d.items.length} item${d.items.length > 1 ? "s" : ""}${d.parts ? `; ${d.parts} part${d.parts > 1 ? "s" : ""} not copied (parts come from the schematic: copy them there)` : ""}: the copy is selected (Ctrl+Z takes it back)`); return; }
     if (d && d.kind !== "pan" && d.moved) commit(d.kind === "outline" ? `Board ${S.board.outline.w} × ${S.board.outline.h} mm` : d.kind === "board" ? `Board moved on the sheet: origin ${onSheet().map(v => v.toFixed(2)).join(", ")} mm from the sheet's bottom-left corner (the sheet is locked)` : undefined);
   }
   function onWheel(e) {
@@ -1242,6 +1248,7 @@
     if (ARROWS[e.key] && S.sel && !S.route) { e.preventDefault(); const k = S.grid * (e.shiftKey ? 10 : 1); nudge(ARROWS[e.key][0] * k, ARROWS[e.key][1] * k); return; }
     if (S.tool === "measure" && !ctrl && measureKey(e, L)) return;
     if (cons.onKey(e, L)) return;   // the HUD's numbers, Esc in a construction tool, C / O / Shift+C / Shift+P
+    if (e.key === "Escape" && S.drag && S.drag.moved && !["pan", "box", "board", "outline", "locked"].includes(S.drag.kind)) { S.drag = null; undoDrag(); msg("Move cancelled"); return; }
     if (e.key === "Escape") { if (S.route) finishRoute(); else if (S.measure) { S.measure = null; render(); } else { S.sel = null; setTool("select"); renderPanels(); } return; }
     if (S.route && (e.code === "Slash" || e.key === "/")) { e.preventDefault(); S.route.flip = !S.route.flip; S.route.manual = true; msg(S.route.flip ? "Diagonal first, until the next corner (/: straight first)" : "Straight first, until the next corner (/: diagonal first)"); S.routeBad = routeCheck(); render(); return; }
     if (e.key === "Backspace" && S.route) { e.preventDefault(); if (S.route.pts.length > 1) S.route.pts.pop(); unshove(S.route); newCorner(S.route); render(); return; }
@@ -1346,6 +1353,26 @@
   }
   function moveEnds(ends, dx, dy) { (ends || []).forEach(e => { const t = S.board.tracks[e.ti]; if (t) t.pts[e.k] = [+(e.x + dx).toFixed(4), +(e.y + dy).toFixed(4)]; }); }
   const lockedNote = () => msg("Locked: it stays put. Select it and press L to unlock");
+  // Shift+drag (or Ctrl+drag) on the board: the selected tracks, vias, mounting holes and texts are
+  // copied where they stand and the copy follows the pointer (parts come from the schematic, so
+  // they are not copied here); the copy is selected, the originals stay
+  function copyDrag(d, x, y) {
+    if (!isSel(d.hit.kind, d.hit.id)) toggleSel(d.hit.kind, d.hit.id);
+    const it = selItems(), parts = it.filter(([k]) => k === "part").length, src = it.filter(([k]) => MLIST[k]);
+    if (!src.length) { S.drag = { kind: "locked", noted: true }; msg("Parts come from the schematic: copy them there (Shift+drag in the schematic), then Update from schematic"); return; }
+    const m = newMulti();
+    src.forEach(([k, i]) => { const l = MLIST[k], o = JSON.parse(JSON.stringify(S.board[l][i])); delete o.locked; S.board[l].push(o); m[l].push(S.board[l].length - 1); });
+    S.sel = simplify(m);
+    const items = selItems();
+    S.drag = { kind: "group", items, base: snapshot(items), mx: d.mx, my: d.my, moved: true, copy: true, parts };
+    onMoveGroup(x, y);
+  }
+  function onMoveGroup(x, y) {
+    const d = S.drag, dx = snap(x - d.mx), dy = snap(y - d.my);
+    if (dx !== d.dx || dy !== d.dy) { d.dx = dx; d.dy = dy; moveItems(d.items, d.base, dx, dy); d.moved = d.copy || !!(dx || dy); analyse(true); render(); }
+  }
+  // Esc while dragging: back to the last saved step (a copy being dragged goes away)
+  function undoDrag() { if (S.hIndex >= 0) restore(); render(); }
   function nudge(dx, dy) {
     if (S.sel && S.sel.kind === "cons") { cons.nudge(dx, dy); return; }
     if (S.sel && S.sel.kind === "dim") return;

@@ -309,15 +309,15 @@
     "Hover any underlined label in the app for what it means. The full manual explains every part, value and instrument, with a design cookbook.":
       "Наведите на любую подчёркнутую надпись, чтобы узнать, что она значит. Полное руководство описывает каждую деталь, параметр и прибор, с рецептами проектирования.",
     "Shortcuts go by the key's position, so they work with any keyboard layout (Russian included).": "Сочетания клавиш привязаны к положению клавиш и работают в любой раскладке, включая русскую.",
-    "cancel / clear the selection": "отмена / снять выделение", "previous sheet": "предыдущий лист", "fit the sheet in use; again: all sheets": "вписать текущий лист; ещё раз — все листы",
+    "cancel / clear the selection": "отмена / снять выделение", "cancel / clear the selection (while dragging: put it back)": "отмена / снять выделение (при перетаскивании — вернуть на место)", "previous sheet": "предыдущий лист", "fit the sheet in use; again: all sheets": "вписать текущий лист; ещё раз — все листы",
     "bill of materials": "перечень элементов", "undo": "отменить", "copy": "копировать", "paste": "вставить", "select all": "выделить всё", "save": "сохранить",
-    "save as": "сохранить как", "open": "открыть", "delete": "удалить", "wire tool": "провод", "select tool": "выбор", "mirror left–right": "отразить",
+    "save as": "сохранить как", "open": "открыть", "delete": "удалить", "wire tool": "провод", "select tool": "выбор", "mirror left–right": "отразить", "mirror left–right (a group as one drawing, with its wires)": "отразить (группу — как один рисунок, вместе с проводами)",
     "duplicate (also Ctrl+D)": "дублировать (также Ctrl+D)", "simulate until settled": "рассчитать до установления", "this help (also ?)": "эта справка (также ?)",
     "zoom out": "уменьшить", "zoom in · wheel zooms at the pointer": "увеличить · колесо масштабирует у курсора", "redo (also Ctrl+Shift+Z)": "повторить (также Ctrl+Shift+Z)",
     "print the sheet, all sheets or the bill of materials": "печать листа, всех листов или перечня", "save a revision of the project (File ▾ → Revisions…)": "сохранить ревизию проекта (Файл ▾ → Ревизии…)",
     "the board layout (Alt+S in the Board window comes back)": "разводка платы (Alt+S в окне платы — назад)",
     "voltmeter probe: point at a wire or pin for its DC, AC and waveform; click to leave the probe there": "щуп вольтметра: наведите на провод или вывод — постоянное, переменное напряжение и форма; щелчок оставляет щуп",
-    "rotate the selection, the part being placed or the parts being dragged (a tap: Space held down while dragging pans; R also rotates)": "повернуть выделение, ставимую или перетаскиваемую деталь (нажатие; Пробел с перетаскиванием сдвигает вид; R тоже поворачивает)",
+    "rotate the selection (a group turns about its middle with its wires), the part being placed or the parts being dragged (a tap: Space held down while dragging pans; R also rotates)": "повернуть выделение (группа поворачивается вокруг середины вместе с проводами), ставимую или перетаскиваемую деталь (нажатие; Пробел с перетаскиванием сдвигает вид; R тоже поворачивает)",
     // start screen
     "Tube Amp CAD": "Tube Amp CAD", "New circuit…": "Новая схема…", "Show this when the CAD opens on an empty sheet": "Показывать, когда САПР открывается с пустым листом",
     "Draw an amplifier, simulate it, measure and listen to it, then lay out its board. Open an example to see how it works, or start a circuit of your own.":
@@ -387,6 +387,16 @@
     "Edit:": "Правка:",
     "right-click a part or wire for Rotate, Mirror, Duplicate, Delete, Copy and Paste; the same are in": "правый щелчок по детали или проводу: Повернуть, Отразить, Дублировать, Удалить, Копировать и Вставить; то же есть в",
     "Move:": "Перемещение:",
+    "Group:": "Группа:",
+    "drag a box (left to right: inside; right to left: touching) or": "обведите рамкой (слева направо — внутри, справа налево — касание) или",
+    "+click. Drag one to move all;": "+щелчок. Потяните одну — двигается всё;",
+    "turns and": "поворачивает, а",
+    "mirrors the group with its wires.": "зеркалит группу вместе с проводами.",
+    "+drag copies.": "+перетаскивание копирует.",
+    "while dragging puts it back.": "во время перетаскивания возвращает на место.",
+    "Move cancelled": "Перемещение отменено",
+    "Copy dropped where it started: nothing copied": "Копия отпущена на прежнем месте: ничего не скопировано",
+    "Parts come from the schematic: copy them there (Shift+drag in the schematic), then Update from schematic": "Детали приходят из схемы: копируйте их там (Shift+перетаскивание в схеме), затем «Обновить из схемы»",
     "drag parts (wires follow) or drag a wire segment sideways. Sheet frames are locked; unlock one in its inspector to move it.": "перетаскивайте детали (провода следуют) или сдвигайте отрезок провода вбок. Рамки листов закреплены; открепите рамку в её инспекторе, чтобы двигать.",
     "View:": "Вид:",
     "wheel zooms,": "колесо масштабирует,",
@@ -1590,7 +1600,8 @@
     "on an edge to add a corner; double-click a corner to remove it; drag its outline or inside it to move it. Its inspector": "на ребре, чтобы добавить угол; двойной щелчок по углу удаляет его; тяните контур или внутренность, чтобы сдвинуть. Её инспектор",
     "Round the parts, Board rectangle": "Вокруг деталей, Прямоугольник платы",
     "select what lies inside the box (left to right) or what it touches (right to left); Shift adds": "выделить то, что внутри рамки (слева направо) или что она задевает (справа налево); Shift добавляет",
-    "add a part, track, via, text or hole to the selection (or take it out)": "добавить деталь, дорожку, переходное отверстие, надпись или отверстие к выделению (или убрать)",
+    "add a part, track, via, text or hole to the selection (or take it out); Ctrl+click too": "добавить деталь, дорожку, переходное отверстие, надпись или отверстие к выделению (или убрать); Ctrl+щелчок тоже",
+    "copy the selected tracks, vias, holes and texts and move the copy (Ctrl+drag too; parts are copied in the schematic)": "скопировать выделенные дорожки, переходные и крепёжные отверстия, надписи и сдвинуть копию (Ctrl+перетаскивание тоже; детали копируются в схеме)",
     "nudge the selection one grid step (Shift": "сдвинуть выделение на шаг сетки (Shift",
     "ten); R turns a selection 90° about its middle": "— на десять); R поворачивает выделение на 90° вокруг его середины",
     "lock the selection in place (again": "закрепить выделение на месте (ещё раз",
@@ -1617,7 +1628,7 @@
     "delete the selected track, via, text or hole": "удалить выделенную дорожку, переходное отверстие, надпись или отверстие",
     "fit the board ·": "плата во весь экран ·",
     "the whole drawing sheet (View ▾ → Sheet or Board ▾ → Board setup… sets its format; View ▾ → Lock sheet keeps it in place)": "весь лист чертежа (формат задаёт Вид ▾ → Лист или Плата ▾ → Настройка платы…; Вид ▾ → Закрепить лист держит его на месте)",
-    "end routing / clear the selection": "закончить трассировку / снять выделение",
+    "end routing / clear the selection; while dragging: put it back": "закончить трассировку / снять выделение; при перетаскивании — вернуть на место",
     "undo ·": "отменить ·",
     "redo": "повторить",
     "print": "печать",
@@ -2551,6 +2562,9 @@
   // an outline in words (board-outline.js describe): "round Ø60 mm", "custom shape 120 × 90 mm, 2 cut-outs", "100 × 60 mm, corners R5"
   const ruOutline = d => d.replace(/^round Ø([\d.]+) mm/, "круглая Ø$1 мм").replace(/^custom shape ([\d.]+ × [\d.]+) mm/, "своя форма $1 мм").replace(/^([\d.]+ × [\d.]+) mm/, "$1 мм").replace(/, corners R([\d.]+)/, ", углы R$1").replace(/, (\d+) cut-outs?/, ", вырезов: $1");
   const patterns = [
+    // group editing (3.235)
+    [/^(\d+) parts? and (\d+) wires? selected: drag one to move them all, Shift\+drag copies, Space turns, M mirrors, Del deletes$/, "Выделено деталей: $1, проводов: $2. Потяните одну — двигается всё; Shift+перетаскивание копирует, Space поворачивает, M зеркалит, Del удаляет"],
+    [/^Copied (\d+) items?(?:; (\d+) parts? not copied \(parts come from the schematic: copy them there\))?: the copy is selected \(Ctrl\+Z takes it back\)$/, (m, n, k) => `Скопировано: ${n}${k ? `; деталей не скопировано: ${k} (детали приходят из схемы, копируйте их там)` : ""}. Копия выделена (Ctrl+Z её убирает)`],
     // Settings (3.232)
     [/^(\d+(?:\.\d+)?) s per cycle$/, "$1 с на период"],
     [/^(\d+(?:\.\d+)?) s$/, "$1 с"],

@@ -729,12 +729,61 @@
   }
   function mirrorSelection() {
     if (S.placing) { if (canMirror(S.placing.type)) { S.placing.params = Object.assign({}, S.placing.params, { flip: S.placing.params && S.placing.params.flip === "yes" ? "no" : "yes" }); render(); } return; }
+    if (isGroup()) { if (!S.drag && turnGroup(true)) commit(); return; }
     let any = false;
     S.comps.forEach(c => { if (S.sel.comps.has(c.id) && canMirror(c.type)) { c.params.flip = c.params.flip === "yes" ? "no" : "yes"; any = true; } });
     if (any) commit();
   }
+  // A group (two or more parts, or parts with wires) turns or mirrors as one drawing about its
+  // middle, snapped to the grid: the parts swing round with their wires, and wires running from
+  // the group to parts left out keep their ends on the pins (an L where they no longer line up)
+  const isGroup = () => S.sel.comps.size + S.sel.wires.size > 1;
+  function followWires(wires0, pinMove, T) {
+    const out = [];
+    wires0.forEach(w => {
+      const selW = S.sel.wires.has(w.id);
+      const m1 = selW ? T(w.x1, w.y1) : pinMove.get(key(w.x1, w.y1)), m2 = selW ? T(w.x2, w.y2) : pinMove.get(key(w.x2, w.y2));
+      if (m1 && m2) { out.push({ id: w.id, x1: m1[0], y1: m1[1], x2: m2[0], y2: m2[1] }); return; }
+      if (!m1 && !m2) { out.push(w); return; }
+      const F = m1 ? [w.x2, w.y2] : [w.x1, w.y1], E = m1 || m2;
+      if (F[0] === E[0] || F[1] === E[1]) { out.push({ id: w.id, x1: F[0], y1: F[1], x2: E[0], y2: E[1] }); return; }
+      const corner = isH(w) ? [E[0], F[1]] : [F[0], E[1]];
+      out.push({ id: w.id, x1: F[0], y1: F[1], x2: corner[0], y2: corner[1] });
+      out.push({ id: w.id + "_j", x1: corner[0], y1: corner[1], x2: E[0], y2: E[1] });
+    });
+    return out.filter(x => x.x1 !== x.x2 || x.y1 !== x.y2);
+  }
+  function turnGroup(mirror) {
+    const comps = S.comps.filter(c => S.sel.comps.has(c.id) && !isLocked(c)), wires = S.wires.filter(w => S.sel.wires.has(w.id));
+    if (!comps.length && !wires.length) return false;
+    const xs = [], ys = [];
+    comps.forEach(c => { const b = compBBox(c); xs.push(b.x1, b.x2); ys.push(b.y1, b.y2); });
+    wires.forEach(w => { xs.push(w.x1, w.x2); ys.push(w.y1, w.y2); });
+    const cx = snap((Math.min(...xs) + Math.max(...xs)) / 2), cy = snap((Math.min(...ys) + Math.max(...ys)) / 2);
+    // turning: (dx, dy) → (−dy, dx), the way a part's own rot + 1 goes (clockwise on the screen); mirroring: x → −x
+    const T = mirror ? (x, y) => [2 * cx - x, y] : (x, y) => [cx - (y - cy), cy + (x - cx)];
+    const pinMove = new Map();
+    comps.forEach(c => {
+      const before = compPins(c);
+      [c.x, c.y] = T(c.x, c.y);
+      if (mirror) { if (canMirror(c.type)) { c.params.flip = c.params.flip === "yes" ? "no" : "yes"; c.rot = (4 - c.rot) & 3; } }
+      else if (!LIB[c.type].noRotate) c.rot = (c.rot + 1) & 3;
+      const after = compPins(c);
+      before.forEach((p, i) => { if (after[i]) pinMove.set(key(p.x, p.y), [after[i].x, after[i].y]); });
+    });
+    S.wires = followWires(S.wires, pinMove, T);
+    S.topo = null;
+    return true;
+  }
   function rotateSelection() {
     if (S.placing) { if (!LIB[S.placing.type].noRotate) S.placing.rot = (S.placing.rot + 1) & 3; render(); return; }
+    if (isGroup() && S.drag && S.drag.kind === "comps") {
+      // a group being dragged turns about its middle; the drag goes on from here, one undo step with the move
+      if (S.drag.copy && !S.drag.copied) copyForDrag();
+      if (turnGroup(false)) { const d = S.drag; startCompDrag(S.mouse.wx, S.mouse.wy, d.copy); Object.assign(S.drag, { moved: true, copied: d.copied }); render(); }
+      return;
+    }
+    if (isGroup() && !S.drag) { if (turnGroup(false)) commit(); return; }
     // parts being dragged turn where they are; letting go commits the move and the turn as one step
     const dragging = S.drag && S.drag.kind === "comps", moving = dragging && new Set(S.drag.comps0.map(o => o.id));
     let any = false;
@@ -761,37 +810,41 @@
   }
 
   // Component drag with rubber-banding of attached wires
-  function startCompDrag(wx, wy) {
+  // (copy: Shift or Ctrl held on the part: the first move leaves the selection where it was and
+  // drags a copy of it instead, see copyForDrag)
+  function startCompDrag(wx, wy, copy) {
     const moving = new Set([...S.sel.comps].filter(id => !isLocked(S.comps.find(c => c.id === id) || {})));
     const pinKeys = new Set();
     S.comps.forEach(c => { if (moving.has(c.id)) compPins(c).forEach(p => pinKeys.add(key(p.x, p.y))); });
     S.drag = {
-      kind: "comps", x0: snap(wx), y0: snap(wy), moved: false,
+      kind: "comps", x0: snap(wx), y0: snap(wy), moved: false, copy: !!copy,
       comps0: S.comps.filter(c => moving.has(c.id)).map(c => ({ id: c.id, x: c.x, y: c.y })),
       wires0: S.wires.map(w => Object.assign({}, w)),
-      pinKeys
+      pinKeys: copy ? new Set() : pinKeys
     };
   }
+  // Shift+drag (or Ctrl+drag): the selection is copied where it stands and the copy follows the
+  // pointer; the originals and their wires stay as they were
+  function copyForDrag() {
+    const d = S.drag;
+    const comps = S.comps.filter(c => S.sel.comps.has(c.id) && !isLocked(c)), wires = S.wires.filter(w => S.sel.wires.has(w.id));
+    S.sel.comps.clear(); S.sel.wires.clear();
+    comps.forEach(c => { const n = makeComp(c.type, JSON.parse(JSON.stringify(c.params)), c.x, c.y, c.rot); S.comps.push(n); S.sel.comps.add(n.id); });
+    wires.forEach(w => { const id = newId("w"); S.wires.push({ id, x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 }); S.sel.wires.add(id); });
+    startCompDrag(d.x0, d.y0, true);
+    Object.assign(S.drag, { copied: comps.length + wires.length });
+    updateInspector();
+  }
   function updateCompDrag(wx, wy) {
-    const d = S.drag, dx = snap(wx) - d.x0, dy = snap(wy) - d.y0;
+    let d = S.drag;
+    const dx = snap(wx) - d.x0, dy = snap(wy) - d.y0;
     if (!dx && !dy && !d.moved) return;
+    if (d.copy && !d.copied) { copyForDrag(); d = S.drag; }
     if (!d.comps0.length && !S.sel.wires.size) { if (!d.warned) { d.warned = true; lockedNote(); } return; }
     d.moved = true;
     d.comps0.forEach(o => { const c = S.comps.find(k => k.id === o.id); if (c) { c.x = o.x + dx; c.y = o.y + dy; } });
-    const out = [];
-    d.wires0.forEach(w => {
-      const selW = S.sel.wires.has(w.id);
-      const a = selW || d.pinKeys.has(key(w.x1, w.y1)), b = selW || d.pinKeys.has(key(w.x2, w.y2));
-      if (a && b) { out.push({ id: w.id, x1: w.x1 + dx, y1: w.y1 + dy, x2: w.x2 + dx, y2: w.y2 + dy }); return; }
-      if (!a && !b) { out.push(w); return; }
-      const F = a ? [w.x2, w.y2] : [w.x1, w.y1];
-      const E = a ? [w.x1 + dx, w.y1 + dy] : [w.x2 + dx, w.y2 + dy];
-      if (F[0] === E[0] || F[1] === E[1]) { out.push({ id: w.id, x1: F[0], y1: F[1], x2: E[0], y2: E[1] }); return; }
-      const corner = isH(w) ? [E[0], F[1]] : [F[0], E[1]];
-      out.push({ id: w.id, x1: F[0], y1: F[1], x2: corner[0], y2: corner[1] });
-      out.push({ id: w.id + "_j", x1: corner[0], y1: corner[1], x2: E[0], y2: E[1] });
-    });
-    S.wires = out;
+    const pinMove = new Map([...d.pinKeys].map(k => { const [x, y] = k.split(",").map(Number); return [k, [x + dx, y + dy]]; }));
+    S.wires = followWires(d.wires0, pinMove, (x, y) => [x + dx, y + dy]);
     S.topo = null;
     render();
   }
@@ -897,21 +950,26 @@
       render(); return;
     }
 
+    // Shift or Ctrl on a part or wire: a click adds it to the selection or takes it out; a drag
+    // copies the selection (with it) and moves the copy (the toggle waits for the button to come up)
+    const add = e.shiftKey || e.ctrlKey || e.metaKey;
     const c = hitComp(m.wx, m.wy);
     if (c) {
-      if (e.shiftKey) { S.sel.comps.has(c.id) ? S.sel.comps.delete(c.id) : S.sel.comps.add(c.id); }
-      else if (!S.sel.comps.has(c.id)) { S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id); }
-      startCompDrag(m.wx, m.wy);
+      if (add) { const was = S.sel.comps.has(c.id); S.sel.comps.add(c.id); startCompDrag(m.wx, m.wy, true); S.drag.toggle = { comp: c.id, was }; }
+      else { if (!S.sel.comps.has(c.id)) { S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id); } startCompDrag(m.wx, m.wy); }
       updateInspector(); render(); return;
     }
     const w = hitWire(m.wx, m.wy);
     if (w) {
-      if (e.shiftKey) { S.sel.wires.has(w.id) ? S.sel.wires.delete(w.id) : S.sel.wires.add(w.id); }
-      else { S.sel.comps.clear(); S.sel.wires.clear(); S.sel.wires.add(w.id); }
-      startWireDrag(w, m.wx, m.wy);
+      if (add) { const was = S.sel.wires.has(w.id); S.sel.wires.add(w.id); startCompDrag(m.wx, m.wy, true); S.drag.toggle = { wire: w.id, was }; }
+      else {
+        // a wire of a selected group drags the group; one wire on its own slides sideways
+        if (S.sel.wires.has(w.id) && isGroup()) startCompDrag(m.wx, m.wy);
+        else { S.sel.comps.clear(); S.sel.wires.clear(); S.sel.wires.add(w.id); startWireDrag(w, m.wx, m.wy); }
+      }
       updateInspector(); render(); return;
     }
-    if (!e.shiftKey) { S.sel.comps.clear(); S.sel.wires.clear(); }
+    if (!add) { S.sel.comps.clear(); S.sel.wires.clear(); }
     S.drag = { kind: "box", x0: m.wx, y0: m.wy, x1: m.wx, y1: m.wy };
     updateInspector(); render();
   }
@@ -959,13 +1017,31 @@
     const d = S.drag;
     S.drag = null;
     if (!d) return;
-    if ((d.kind === "comps" || d.kind === "wire") && d.moved) commit();
+    if (d.kind === "comps" && d.copied && d.comps0.every(o => { const c = S.comps.find(k => k.id === o.id); return c && c.x === o.x && c.y === o.y; }) && S.wires.every(w => !S.sel.wires.has(w.id) || d.wires0.some(o => o.id === w.id && o.x1 === w.x1 && o.y1 === w.y1))) {
+      // a copy dropped back onto the originals is no copy: it goes away
+      undoDrag(); setStatus("ok", "Copy dropped where it started: nothing copied"); render(); return;
+    }
+    if (d.kind === "comps" && d.toggle && !d.moved) {
+      // Shift/Ctrl+click without a drag: in or out of the selection
+      const t = d.toggle;
+      if (t.was) { if (t.comp) S.sel.comps.delete(t.comp); else S.sel.wires.delete(t.wire); }
+      updateInspector(); render(); return;
+    }
+    if ((d.kind === "comps" || d.kind === "wire") && d.moved) {
+      commit();
+      if (d.copied) setStatus("ok", `Copied ${d.copied} item${d.copied > 1 ? "s" : ""}: the copy is selected (Ctrl+Z takes it back)`);
+    }
     if (d.kind === "knob") { if (d.c.params.pos !== d.pos0) commit(); updateInspector(); }
     if (d.kind === "box") {
-      const x1 = Math.min(d.x0, d.x1), x2 = Math.max(d.x0, d.x1), y1 = Math.min(d.y0, d.y1), y2 = Math.max(d.y0, d.y1);
+      // dragged left to right: what lies wholly inside; right to left: everything the box touches
+      const x1 = Math.min(d.x0, d.x1), x2 = Math.max(d.x0, d.x1), y1 = Math.min(d.y0, d.y1), y2 = Math.max(d.y0, d.y1), crossing = d.x1 < d.x0;
+      const takes = (bx1, by1, bx2, by2) => (crossing ? !(bx2 < x1 || bx1 > x2 || by2 < y1 || by1 > y2) : bx1 >= x1 && bx2 <= x2 && by1 >= y1 && by2 <= y2);
       if (x2 - x1 > 2 || y2 - y1 > 2) {
-        S.comps.forEach(c => { const b = compBBox(c); if (b.x1 >= x1 && b.x2 <= x2 && b.y1 >= y1 && b.y2 <= y2) S.sel.comps.add(c.id); });
-        S.wires.forEach(w => { if (Math.min(w.x1, w.x2) >= x1 && Math.max(w.x1, w.x2) <= x2 && Math.min(w.y1, w.y2) >= y1 && Math.max(w.y1, w.y2) <= y2) S.sel.wires.add(w.id); });
+        // a sheet frame is taken only when the box holds all of it (a crossing box would catch it everywhere)
+        S.comps.forEach(c => { const b = compBBox(c); if (c.type === "frame" ? b.x1 >= x1 && b.x2 <= x2 && b.y1 >= y1 && b.y2 <= y2 : takes(b.x1, b.y1, b.x2, b.y2)) S.sel.comps.add(c.id); });
+        S.wires.forEach(w => { if (takes(Math.min(w.x1, w.x2), Math.min(w.y1, w.y2), Math.max(w.x1, w.x2), Math.max(w.y1, w.y2))) S.sel.wires.add(w.id); });
+        const n = S.sel.comps.size + S.sel.wires.size;
+        if (n > 1) setStatus("ok", `${S.sel.comps.size} part${S.sel.comps.size === 1 ? "" : "s"} and ${S.sel.wires.size} wire${S.sel.wires.size === 1 ? "" : "s"} selected: drag one to move them all, Shift+drag copies, Space turns, M mirrors, Del deletes`);
       }
       updateInspector();
     }
@@ -1076,7 +1152,17 @@
   const helpModal = () => document.getElementById("help-modal");
   const toggleHelp = () => { const m = helpModal(); m.hidden = !m.hidden; };
   const zoomBy = k => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, k);
+  // Esc while dragging: the parts (or the copy) go back where they were
+  function undoDrag() {
+    if (S.hIndex < 0) return;
+    const sc = [...S.sel.comps], sw = [...S.sel.wires];
+    restore(S.history[S.hIndex]);
+    sc.forEach(id => { if (S.comps.some(c => c.id === id)) S.sel.comps.add(id); });
+    sw.forEach(id => { if (S.wires.some(w => w.id === id)) S.sel.wires.add(id); });
+    updateInspector();
+  }
   function clearOrCancel() {
+    if (S.drag && (S.drag.kind === "comps" || S.drag.kind === "wire")) { const d = S.drag; S.drag = null; if (d.moved) undoDrag(); setStatus("ok", "Move cancelled"); render(); return; }
     if (S.wiring) finishWiring();
     else if (S.placing) { S.placing = null; setTool("select"); }
     else if (blocks.cancelPlace()) { /* the copy being placed is dropped */ }
@@ -1093,14 +1179,14 @@
     .add({ id: "modal-close", keys: ["Escape"], anyCtrl: true, inInputs: true, inControls: true, when: () => !!openModal(), run: () => { const m = openModal(), b = m.querySelector(".modal-actions [id$='-cancel'], .modal-actions [id$='-close']"); if (b) b.click(); else m.hidden = true; } })
     .add({ id: "diff-close", keys: ["Escape"], anyCtrl: true, when: () => !!S.revDiff, run: () => revisions.closeDiff() })
     .add({ id: "save-revision", keys: ["Ctrl+Alt+S"], prevent: true, when: () => !!revisions, run: () => revisions.quickSave(), help: "save a revision of the project (File ▾ → Revisions…)" })
-    .add({ id: "rotate", label: "Rotate", icon: ICONS.rotate, keys: ["Space", "R"], helpKeys: ["Space"], run: rotateSelection, help: "rotate the selection, the part being placed or the parts being dragged (a tap: Space held down while dragging pans; R also rotates)" })
-    .add({ id: "mirror", label: "Mirror left–right", icon: ICONS.mirror, keys: ["M"], run: mirrorSelection, help: "mirror left–right" })
+    .add({ id: "rotate", label: "Rotate", icon: ICONS.rotate, keys: ["Space", "R"], helpKeys: ["Space"], run: rotateSelection, help: "rotate the selection (a group turns about its middle with its wires), the part being placed or the parts being dragged (a tap: Space held down while dragging pans; R also rotates)" })
+    .add({ id: "mirror", label: "Mirror left–right", icon: ICONS.mirror, keys: ["M"], run: mirrorSelection, help: "mirror left–right (a group as one drawing, with its wires)" })
     .add({ id: "duplicate", label: "Duplicate", icon: ICONS.duplicate, keys: ["D", "Ctrl+D"], prevent: true, run: () => { if (copySelection()) paste(40, 40); }, help: "duplicate (also Ctrl+D)", helpKeys: ["D"] })
     .add({ id: "delete", label: "Delete", icon: ICONS.delete, keys: ["Delete", "Backspace"], anyCtrl: true, prevent: true, run: deleteSelection, help: "delete" })
     .add({ id: "wire", keys: ["W"], run: () => setTool(S.tool === "wire" ? "select" : "wire"), help: "wire tool" })
     .add({ id: "select", keys: ["V"], run: () => setTool("select"), help: "select tool" })
     .add({ id: "probe", keys: ["P"], run: () => { S.placing = null; S.wiring = null; setTool(S.tool === "probe" ? "select" : "probe"); }, help: "voltmeter probe: point at a wire or pin for its DC, AC and waveform; click to leave the probe there" })
-    .add({ id: "escape", keys: ["Escape"], anyCtrl: true, run: clearOrCancel, help: "cancel / clear the selection" })
+    .add({ id: "escape", keys: ["Escape"], anyCtrl: true, run: clearOrCancel, help: "cancel / clear the selection (while dragging: put it back)" })
     .add({ id: "sheet-prev", label: "Previous sheet", keys: ["PageUp"], prevent: true, when: () => frames().length > 1, run: () => stepSheet(-1), help: "previous sheet" })
     .add({ id: "sheet-next", label: "Next sheet", keys: ["PageDown"], prevent: true, when: () => frames().length > 1, run: () => stepSheet(1), help: "next sheet" })
     .add({ id: "fit", label: "Fit the sheet", keys: ["F"], run: () => fitCurrent(), help: "fit the sheet in use; again: all sheets" })

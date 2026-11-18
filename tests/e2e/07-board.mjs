@@ -418,6 +418,36 @@ import { readFile } from "node:fs/promises";
     const p1 = await part(); await bd.keyboard.press("Control+z"); const p2 = await part();
     check(p1.rot === ((p0.rot + 1) & 3) && Math.abs(p1.x - p0.x - 5.08) < 1e-3 && p2.rot === p0.rot && Math.abs(p2.x - p0.x) < 1e-3, `Space while dragging a part turns it; one Ctrl+Z takes back both (rot ${p0.rot} → ${p1.rot} → ${p2.rot})`);
   }
+  {
+    // Ctrl+click and Shift+click add to the selection; Shift+drag copies the selected vias and holes
+    // (parts come from the schematic, so a part is not copied); Esc during a drag puts things back
+    const o = await bd.evaluate(() => { const S = BoardApp.state, p = Object.values(S.board.parts).find(x => x.ref === "R2"); return [p.x, p.y]; });
+    const vx = o[0], vy = o[1] - 6.35;
+    await bd.evaluate(([vx, vy]) => { const S = BoardApp.state; S.board.vias.push({ x: vx, y: vy, drill: 0.8, pad: 1.6 }); S.board.holes.push({ x: vx + 10.16, y: vy, d: 3.2 }); S.sel = null; BoardApp.commit(); }, [vx, vy]);
+    const n0 = await bd.evaluate(() => [BoardApp.state.board.vias.length, BoardApp.state.board.holes.length]);
+    const v = await W(vx, vy), h = await W(vx + 10.16, vy), t = await W(vx + 5.08, vy - 5.08);
+    await bd.keyboard.down("Control"); await bd.mouse.click(v[0], v[1]); await bd.keyboard.up("Control");
+    await bd.keyboard.down("Shift"); await bd.mouse.click(h[0], h[1]); await bd.keyboard.up("Shift");
+    const ms = await bd.evaluate(() => { const s = BoardApp.state.sel; return s && s.kind === "multi" ? `${s.vias.length}v ${s.holes.length}h` : JSON.stringify(s); });
+    check(ms === "1v 1h", `Ctrl+click and Shift+click build a selection of a via and a hole (${ms})`);
+    await bd.keyboard.down("Shift"); await bd.mouse.move(v[0], v[1]); await bd.mouse.down(); await bd.mouse.move(t[0], t[1], { steps: 6 }); await bd.mouse.up(); await bd.keyboard.up("Shift");
+    const c = await bd.evaluate(() => { const S = BoardApp.state; return { v: S.board.vias.map(q => [q.x, q.y]), h: S.board.holes.map(q => [q.x, q.y]), sel: S.sel && S.sel.kind === "multi" ? S.sel.vias.concat(S.sel.holes) : [] }; });
+    const nv = c.v[c.v.length - 1], nh = c.h[c.h.length - 1];
+    check(c.v.length === n0[0] + 1 && c.h.length === n0[1] + 1 && c.v.some(q => Math.abs(q[0] - vx) < 1e-3 && Math.abs(q[1] - vy) < 1e-3) && Math.abs(nv[0] - vx - 5.08) < 1e-3 && Math.abs(nv[1] - vy + 5.08) < 1e-3 && Math.abs(nh[0] - vx - 15.24) < 1e-3 && c.sel.length === 2,
+      `Shift+drag copies the selected via and hole and moves the copy; the originals stay (copy at ${nv.map(q => q.toFixed(2))})`);
+    await bd.keyboard.press("Control+z");
+    check(await bd.evaluate(() => BoardApp.state.board.vias.length) === n0[0], "one Ctrl+Z takes the copy back");
+    // Shift+drag on a part alone: nothing is copied, the status line says why
+    const r = await W(o[0], o[1]), r1 = await W(o[0] + 10, o[1] + 10), np = await bd.evaluate(() => Object.keys(BoardApp.state.board.parts).length);
+    await bd.keyboard.press("Escape");
+    await bd.keyboard.down("Shift"); await bd.mouse.move(r[0], r[1] - 1); await bd.mouse.down(); await bd.mouse.move(r1[0], r1[1], { steps: 4 }); await bd.mouse.up(); await bd.keyboard.up("Shift");
+    check(await bd.evaluate(() => Object.keys(BoardApp.state.board.parts).length) === np && /schematic/.test(await bd.textContent("#st-msg")), "Shift+drag on a part copies nothing on the board and points to the schematic");
+    // Esc while dragging the via puts it back
+    await bd.mouse.move(v[0], v[1]); await bd.mouse.down(); await bd.mouse.move(t[0], t[1], { steps: 4 }); await bd.keyboard.press("Escape"); await bd.mouse.up();
+    const back = await bd.evaluate(([vx, vy]) => BoardApp.state.board.vias.some(q => Math.abs(q.x - vx) < 1e-3 && Math.abs(q.y - vy) < 1e-3), [vx, vy]);
+    check(back, "Esc while dragging a via puts it back");
+    await bd.evaluate(() => { const S = BoardApp.state; S.board.vias.pop(); S.board.holes.pop(); S.sel = null; BoardApp.commit(); });
+  }
 
   // star grounding from Design rules: the star point XG1 joins the board, the ground's ratsnest runs each return to it
   {

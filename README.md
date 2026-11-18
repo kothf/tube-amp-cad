@@ -52,7 +52,17 @@ Firefox is not tested.
   with a junction dot; plain crossings stay unconnected.
 - **Editing.**
   - Drag parts and their wires follow; drag a wire segment sideways to move
-    it.
+    it. <kbd>Esc</kbd> while dragging puts it back.
+  - **Group selection:** a box dragged over empty space takes what lies inside
+    it (left to right) or everything it touches (right to left);
+    <kbd>Shift</kbd>+click or <kbd>Ctrl</kbd>+click adds or takes out one part
+    or wire. Drag any selected item and the whole group moves; <kbd>Space</kbd>
+    turns it 90° about its middle and <kbd>M</kbd> mirrors it, wires included,
+    and wires to parts left out stay on their pins.
+  - **Shift+drag copies** (or Ctrl+drag): the selection is copied where it
+    stands and the copy follows the pointer, with letter codes of its own; the
+    originals stay. In the Board window Shift+drag copies tracks, vias, holes
+    and texts (parts come from the schematic).
   - <kbd>Space</kbd> rotates (also while placing or dragging a part; <kbd>R</kbd>
     works too), <kbd>M</kbd> mirrors left to right, <kbd>D</kbd>
     duplicates, <kbd>Del</kbd> deletes, with undo and redo.
@@ -986,7 +996,8 @@ the circuit file, so one file holds both.
   brings them all back.
 - **Several at once:** drag a box over empty space to select what lies inside
   it (left to right) or what it touches (right to left); <kbd>Shift</kbd>+click
-  adds or removes single things. Drag any selected item and everything
+  or <kbd>Ctrl</kbd>+click adds or removes single things, <kbd>Shift</kbd>+drag
+  copies the selected tracks, vias, holes and texts. Drag any selected item and everything
   selected moves. <kbd>Space</kbd> turns the group 90° about its middle, the
   arrows nudge it one grid step (<kbd>Shift</kbd>: ten). The inspector aligns
   the selected parts (left, centre, right, top, middle, bottom) or spreads
@@ -1283,6 +1294,8 @@ the circuit file, so one file holds both.
 | <kbd>+</kbd> / <kbd>−</kbd>, wheel | zoom; <kbd>Space</kbd> held while dragging, or middle-drag, pans |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> | undo / redo |
 | <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>V</kbd> / <kbd>A</kbd> | copy / paste / select all |
+| <kbd>Shift</kbd> or <kbd>Ctrl</kbd>+click / +drag | add to or take out of the selection / copy the selection and drag the copy |
+| <kbd>Esc</kbd> while dragging | put the parts back |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd> | save / save as / open |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | simulate until settled |
 | <kbd>F1</kbd> or <kbd>?</kbd> | help |
