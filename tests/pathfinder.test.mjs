@@ -176,3 +176,12 @@ test("4 and 6 layers: the grid router runs tracks on the inner signal layers, ne
   assert.ok(B.currentWidth(2, board.rules, board.stackup, "In1.Cu") > B.currentWidth(2, board.rules, board.stackup, "F.Cu"), "an inner layer needs more width for the same current");
   assert.ok(!r2.add.tracks.some(t => t.net === "C" && t.layer === "In1.Cu"), "net C keeps off the inner layer");
 });
+
+test("the same board routed twice gives the same copper (the price map carried from net to net loses nothing)", () => {
+  const once = () => { const { board, nl } = setup(NETLIST, AT), c0 = check(board, nl); const r = PF.route(board, c0.m, c0.conn, { clr: c0.clr, hv: c0.hv, netlist: nl, time: 1e9 }); return JSON.stringify([r.add, [...r.cut.tracks], [...r.cut.vias], r.open, r.conflicts]); };
+  const a = once(), b = once();
+  assert.equal(a, b);
+  // and on a tight board, where nets fight over the same cells for several passes
+  const tight = () => { const { board, nl } = setup(NETLIST, AT, 62, 50), c0 = check(board, nl); const r = PF.route(board, c0.m, c0.conn, { clr: c0.clr, hv: c0.hv, netlist: nl, time: 1e9 }); apply(board, r); const c1 = check(board, nl); return JSON.stringify([r.add, r.open, r.conflicts, c1.drc.length]); };
+  assert.equal(tight(), tight());
+});
