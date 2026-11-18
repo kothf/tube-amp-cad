@@ -2498,12 +2498,14 @@
         if (vc > 1.3 * v) issues.push(`${c.label} (${c.params.model}, ${v} V coil) has ${fmtEng(vc, "V", 2)} across its coil: more than 130 % of its rating, it overheats. Use a ${vc > 18 ? 24 : 12} V coil or a dropping resistor.`);
         // (a coil switched on and off within the cycle averages less: it does pull in)
         else if (!switching && vc > 0.2 * v && vc < m.op * v) issues.push(`${c.label} (${c.params.model}, ${v} V coil) has only ${fmtEng(vc, "V", 2)} across its coil: below its must-operate ${fmtEng(m.op * v, "V")}, it may not pull in.`);
-        // AC on a DC coil (both polarities across it): its current passes zero twice a cycle and the contacts chatter
+        // AC on a DC coil (both polarities across it): its current passes zero twice a cycle, so the
+        // armature buzzes; at mains frequency it holds through the zeros (its release time), slower it chatters
         const wa = netWave(T.pinNet.get(c.id + ":A1")), wb = netWave(T.pinNet.get(c.id + ":A2"));
-        if (switching && (wa || wb)) {
+        if (wa || wb) {
           let lo = Infinity, hi = -Infinity;
           for (let k = 0, n = (wa || wb).length; k < n; k++) { const d = (wa ? wa[k] : 0) - (wb ? wb[k] : 0); if (d < lo) lo = d; if (d > hi) hi = d; }
-          if (lo < -0.2 * v && hi > 0.2 * v) issues.push(`${c.label} (${c.params.model}) has AC across its DC coil and chatters: pulled in only ${Math.round(q * 100)} % of the time, its current falling below must-release near each zero crossing. Feed the coil from rectified, smoothed DC.`);
+          if (lo < -0.2 * v && hi > 0.2 * v) issues.push(switching ? `${c.label} (${c.params.model}) has AC across its DC coil and chatters: pulled in only ${Math.round(q * 100)} % of the time, its current falling below must-release near each zero crossing. Feed the coil from rectified, smoothed DC.`
+            : `${c.label} (${c.params.model}) has AC across its DC coil: ${q > 0.5 ? "it holds through the zero crossings, but its armature buzzes at twice the frequency" : "it does not pull in"}. Feed the coil from rectified, smoothed DC.`);
         }
       } else if (c.type === "vactrol") {
         const i = pinCurrent(c, "A");
@@ -3202,11 +3204,18 @@
           break;
         }
         case "RELAY": {
-          // the contacts as voltage-controlled switches on the coil's resistance (S+ − S−), with its hysteresis
-          const m = e.model, vt = (m.von + m.voff) / 2, vh = (m.von - m.voff) / 2;
-          lines.push(`* ${id}: relay contacts, pulled in above ${m.von} V on the coil, released below ${m.voff} V (one polarity in this model)`);
+          // the contacts as voltage-controlled switches with the relay's hysteresis, on its armature: a
+          // node that follows |coil current × R| up at once and down with the release time constant
+          // (a 1 F capacitor charged fast and discharged through tau), as the engine's ARM does
+          const m = e.model, vt = (m.von + m.voff) / 2, vh = (m.von - m.voff) / 2, arm = `${id}_arm`, u = `abs(V(${nd[0]},${nd[1]}))`;
+          lines.push(`* ${id}: relay contacts, pulled in above ${m.von} V across the coil's resistance, released below ${m.voff} V` + (m.tau ? `, the armature letting go with tau ${+m.tau.toPrecision(4)} s` : ""));
+          let cp = nd[0], cn = nd[1];
+          if (m.tau) {
+            lines.push(`B${arm} 0 ${arm} I=1e6*max(${u}-V(${arm}),0)+(${u}-V(${arm}))/${+m.tau.toPrecision(6)}`, `C${arm} ${arm} 0 1`, `R${arm} ${arm} 0 1e12`);
+            cp = arm; cn = "0";
+          }
           if (!models.has("SRELAY_" + id)) { models.add("SRELAY_" + id); lines.push(`.model SNO_${id} SW(VT=${vt} VH=${vh} RON=${m.ron} ROFF=${m.roff})`, `.model SNC_${id} SW(VT=${-vt} VH=${vh} RON=${m.ron} ROFF=${m.roff})`); }
-          for (let p = 2, k = 1; p + 2 < nd.length; p += 3, k++) lines.push(`S${id}_${k}NO ${nd[p]} ${nd[p + 2]} ${nd[0]} ${nd[1]} SNO_${id}`, `S${id}_${k}NC ${nd[p]} ${nd[p + 1]} ${nd[1]} ${nd[0]} SNC_${id}`);
+          for (let p = 2, k = 1; p + 2 < nd.length; p += 3, k++) lines.push(`S${id}_${k}NO ${nd[p]} ${nd[p + 2]} ${cp} ${cn} SNO_${id}`, `S${id}_${k}NC ${nd[p]} ${nd[p + 1]} ${cn} ${cp} SNC_${id}`);
           break;
         }
         case "LDR": {

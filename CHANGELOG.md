@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.236.0] - 2026-11-18
+
+Relays: the armature's release time.
+
+### Added
+- **The armature lets go after the datasheet's release time** (G5LE-1 5 ms, G5V-2 3 ms max). It follows the coil's current up at once (the coil's inductance already gives the operate time) and lags it down, so a transistor cutting the coil off with nothing across it opens the contacts 5 ms later (was at once), and over a freewheel diode a G5LE-1 drops out in 12.9 ms (was 10.0 ms). The inspector lists the release time.
+- **The SPICE export writes the armature** as a node (a 1 F capacitor charged at once and discharged through the release time constant) with the contacts' switches on it; ngspice on that export gives 6.01 ms to pull in and 12.88 ms to drop out, as the app.
+
+### Changed
+- **A DC coil on mains AC now holds** through the zero crossings, which last less than the release time; the inspector and Checks say its armature buzzes. At a few hertz it still chatters (12 V rms 5 Hz on a G5LE-1: pulled in about 80 % of the time).
+
+### Tests
+- `tests/switching.test.mjs`: pull-in and drop-out over a diode against ngspice on the SPICE export, the release time with a transistor and nothing across the coil, AC on the coil holding at 50 Hz and chattering at 5 Hz. Browser tests: the inspector and Checks for both.
+
 ## [3.235.0] - 2026-11-18
 
 Basic editing checked in the real app (place, wire, move, rotate, mirror, delete, undo and redo, copy and paste, zoom and pan, save and open, in the schematic and on the board), and group selection and copying with Shift made complete.

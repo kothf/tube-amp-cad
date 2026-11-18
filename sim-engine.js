@@ -697,7 +697,12 @@
     }
     return I;
   }
-  function relayMargins(e, x) { const v = Math.abs(vn(x, e.nodes[0]) - vn(x, e.nodes[1])), m = e.model; return [v - m.von, m.voff - v]; }
+  function relayMargins(e, x) { const v = e.arm !== undefined ? x[e.arm] : Math.abs(vn(x, e.nodes[0]) - vn(x, e.nodes[1])), m = e.model; return [v - m.von, m.voff - v]; }
+  // The armature (ARM, nodes S+, S− across the coil's resistance; e.arm its unknown, in volts of that
+  // drop): x − a·|v| = (1 − a)·x₋₁. It follows the coil's current up at once (a = 1: the coil's
+  // inductance already sets the operate time) and down with a = 1 − e^(−h/τ), the flux and the
+  // spring taking their time: from the rated current cut off it reaches must-release after the
+  // datasheet's release time (τ = t_rel / ln(rated / must-release)). At DC it is |v|.
   // the latched elements (555s, glow tubes, relays) through one interface: their margins, the state
   // they leave, and the margin whose crossing makes the flip to want. A glow tube and a relay have
   // one margin each way: [0] makes it flip on, [1] off
@@ -1286,6 +1291,9 @@
         }
       }
     });
+    // a relay with a release time (model.tau): its armature, an element of its own that follows the
+    // coil's current up at once and lags it down (relayArm), which the contacts' latch senses
+    els.filter(e => e.kind === "RELAY" && e.model.tau > 0).forEach(e => { e.arm = nUnk++; els.push({ kind: "ARM", nodes: e.nodes.slice(0, 2), arm: e.arm, model: { tau: e.model.tau } }); });
     // a 555's output and discharge pins: their transistors' currents level off a volt or so into
     // conduction, so far from the solution Newton sees no slope there and would throw the pin
     // anywhere; these nodes move at most 2 V an iteration, outside the common damping, and half as far
@@ -1791,6 +1799,15 @@
           const q = latchOf(e, x0), gon = 1 / e.model.ron, goff = 1 / e.model.roff;
           addAu(e.latch, e.latch, 1); b[e.latch] += q;
           for (let p = 2; p + 2 < nd.length; p += 3) { stampG(nd[p], nd[p + 1], q ? goff : gon); stampG(nd[p], nd[p + 2], q ? gon : goff); }
+          break;
+        }
+        case "ARM": {
+          const k = e.arm, v = vn(x, nd[0]) - vn(x, nd[1]), sg = v < 0 ? -1 : 1;
+          let a = 1, xp = 0;
+          if (!mode.dc) { xp = mode.prev[k]; if (Math.abs(v) < xp) a = 1 - Math.exp(-mode.h / e.model.tau); }
+          addAu(k, k, 1); b[k] += (1 - a) * xp;
+          if (nd[0] > 0) addAu(k, nd[0] - 1, -a * sg);
+          if (nd[1] > 0) addAu(k, nd[1] - 1, a * sg);
           break;
         }
         case "LDR": {
@@ -2505,7 +2522,7 @@
         // voltage source's current is no state (each step makes it anew), so it is neither moved nor compared
         const st = [];
         for (let i = 0; i < nodeCount - 1; i++) st.push(i);
-        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); else if (LATCHED.has(e.kind)) st.push(e.latch); else if (e.kind === "LDR") st.push(e.light); else if (e.kind === "TLINE") e.branches.forEach(b => st.push(b)); });
+        circ.els.forEach(e => { if (e.kind === "L") st.push(e.branch); else if (e.kind === "XFMR") e.branches.forEach(b => st.push(b)); else if (LATCHED.has(e.kind)) st.push(e.latch); else if (e.kind === "LDR") st.push(e.light); else if (e.kind === "ARM") st.push(e.arm); else if (e.kind === "TLINE") e.branches.forEach(b => st.push(b)); });
         // each part of the state weighed by its size over a period (a winding's current may pass zero
         // just as the period starts): one period run while the peaks are noted
         peak = new Float64Array(x.length);
@@ -3455,6 +3472,7 @@
           break;
         }
         // the cell at its operating point: its light does not follow an audio-rate signal
+        case "ARM": Gm[at(e.arm, e.arm)] = 1; break;
         case "LDR": Gm[at(e.light, e.light)] = 1; stamp2(addG, nd[0], nd[1], ldrG(e.model, x[e.light])[0]); break;
       }
     }

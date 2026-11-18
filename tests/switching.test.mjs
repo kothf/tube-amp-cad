@@ -1,8 +1,8 @@
 /**
  * Relays (sim-engine.js RELAY, cad-components.js relay), vactrols (LDR, vactrol), on–off and rotary
  * switches, and the instrument sources: a guitar pickup and a phono cartridge playing a record cut
- * with the RIAA curve. Timing against ngspice (a voltage-controlled switch on the coil's resistance:
- * 6.00 ms to pull in, 9.97 ms to drop out across a freewheel diode), the RIAA cut against the IEC
+ * with the RIAA curve. Timing against ngspice (voltage-controlled switches on the armature's node, the
+ * app's SPICE export: 6.01 ms to pull in, 12.88 ms to drop out across a freewheel diode), the RIAA cut against the IEC
  * curve, and their board footprints (node --test).
  */
 import { test } from "node:test";
@@ -47,7 +47,7 @@ test("relays: pulled in from the must-operate voltage up, at rest below it; the 
   }
 });
 
-test("relays: the coil's inductance delays pull-in to 60 % of the operate time; a freewheel diode slows the release (as ngspice)", () => {
+test("relays: the coil's inductance delays pull-in to 60 % of the operate time; a freewheel diode slows the release (as ngspice on the SPICE export)", () => {
   const gen = { id: "G", type: "siggen", params: { wave: "square", freq: 10, amp: 6, offset: 6, rs: 0.001 }, pins: { "+": 1, "-": 0 } };
   const diode = { type: "diode", params: {}, pins: { A: 0, K: 1 } };
   const r = E.simulate(circuit(relayRig("G5LE-1", "12", [gen, diode])), { budgetMs: 20000 });
@@ -61,27 +61,49 @@ test("relays: the coil's inductance delays pull-in to 60 % of the operate time; 
     if (fall >= 0 && open < 0 && no[i] < 2.5) open = i;
   }
   assert.ok(rise >= 0 && close > rise && fall > close && open > fall, "it pulls in and drops out");
-  // ngspice, the coil's R and L with a voltage-controlled switch (VT 5.1 V, VH 3.9 V) on its resistance
-  assert.ok(Math.abs((close - rise) * dt - 6.0e-3) <= dt, `pull-in ${(close - rise) * dt * 1e3} ms (ngspice 6.00 ms)`);
-  assert.ok(Math.abs((open - fall) * dt - 9.97e-3) <= dt, `drop-out ${(open - fall) * dt * 1e3} ms (ngspice 9.97 ms)`);
+  // ngspice on the app's SPICE export: the coil's R and L, the armature node (a 1 F capacitor charged
+  // fast, discharged through tau) and voltage-controlled switches (VT 5.1 V, VH 3.9 V) on it
+  assert.ok(Math.abs((close - rise) * dt - 6.01e-3) <= dt, `pull-in ${(close - rise) * dt * 1e3} ms (ngspice 6.01 ms)`);
+  assert.ok(Math.abs((open - fall) * dt - 12.88e-3) <= dt, `drop-out ${(open - fall) * dt * 1e3} ms (ngspice 12.88 ms)`);
 });
 
-test("relays: a DC coil on 50 Hz AC chatters; the run reports the share of the cycle it is pulled in and its state at each animation frame", () => {
-  // 12 V rms straight across a 12 V coil: its current passes zero twice a cycle and lags the voltage by
-  // the coil's L/R; it pulls in above 9 V's worth and lets go below 1.2 V's worth, each half-cycle
-  const gen = { id: "G", type: "siggen", params: { wave: "sine", freq: 50, amp: 12 * Math.SQRT2, rs: 0.1 }, pins: { "+": 1, "-": 0 } };
-  const r = E.simulate(circuit(relayRig("G5LE-1", "12", [gen])), { budgetMs: 20000 });
+test("relays: with nothing across the coil, a transistor cutting its current lets the contacts go after the datasheet's release time", () => {
+  for (const [model, m] of Object.entries(L.RELAYS)) {
+    // the coil from 12 V into a 2N3904's collector, its base from a 10 Hz square through 1 kΩ
+    const gen = { id: "G", type: "siggen", params: { wave: "square", freq: 10, amp: 2.5, offset: 2.5, rs: 0.001 }, pins: { "+": 5, "-": 0 } };
+    const r = E.simulate(circuit([vdc(12, 1), { id: "K", type: "relay", params: { model, v: "12" }, pins: { A1: 1, A2: 6, 11: 2, 12: 3, 14: 4 } }, vdc(5, 2), R(1e3, 3, 0), R(1e3, 4, 0), gen, R(1e3, 5, 7), { type: "npn", params: {}, pins: { C: 6, B: 7, E: 0 } }]), { budgetMs: 20000 });
+    assert.ok(r.ok, `${model}: ${r.error}`);
+    const g = r.tran.nodes[5], no = r.tran.nodes[4], dt = r.tran.dt;
+    let fall = -1, open = -1;
+    for (let i = 1; i < g.length; i++) {
+      if (fall < 0 && no[i] > 2.5 && g[i - 1] > 2.5 && g[i] <= 2.5) fall = i;
+      if (fall >= 0 && open < 0 && no[i] < 2.5) open = i;
+    }
+    assert.ok(fall >= 0 && open > fall, `${model}: it drops out`);
+    assert.ok(Math.abs((open - fall) * dt - m.trel) <= 1.5 * dt, `${model}: drop-out ${((open - fall) * dt * 1e3).toFixed(2)} ms (datasheet release time ${m.trel * 1e3} ms)`);
+    assert.ok(Math.max(...r.tran.nodes[6]) > 100, `${model}: and the coil kicks the collector far above the supply`);
+  }
+});
+
+test("relays: a DC coil on AC holds through the zero crossings at mains frequency and chatters at a few hertz; the run reports the share of the cycle pulled in and its state at each animation frame", () => {
+  // 12 V rms straight across a 12 V coil: its current passes zero twice a cycle. At 50 Hz it stays below
+  // must-release for well under the armature's release time; at 5 Hz for longer
+  const run = f => E.simulate(circuit(relayRig("G5LE-1", "12", [{ id: "G", type: "siggen", params: { wave: "sine", freq: f, amp: 12 * Math.SQRT2, rs: 0.1 }, pins: { "+": 1, "-": 0 } }])), { budgetMs: 20000 });
+  const r50 = run(50);
+  assert.ok(r50.ok, r50.error);
+  assert.equal(r50.dc.devices.K.main.q, 1, "50 Hz: it holds");
+  const r = run(5);
   assert.ok(r.ok, r.error);
   const q = r.dc.devices.K.main.q, no = r.tran.nodes[4], n = no.length - 1;
   const closed = Array.from(no.slice(0, n)).filter(v => v > 2.5).length / n;
-  assert.ok(q > 0.3 && q < 0.9, `pulled in part of the time: ${q}`);
+  assert.ok(q > 0.3 && q < 0.95, `5 Hz: pulled in part of the time: ${q}`);
   assert.ok(Math.abs(q - closed) < 0.02, `the share pulled in (${q}) is the share of the window its NO contact carries the 5 V (${closed})`);
   const F = r.tran.frames.relays;
   assert.deepEqual(F.ids, ["K"]);
   assert.equal(F.q.length, r.tran.frames.at.length, "a state at every frame");
-  const flips = F.q.filter((s, j) => j && s[0] !== F.q[j - 1][0]).length;
+  const flips = F.q.filter((st, j) => j && st[0] !== F.q[j - 1][0]).length;
   assert.ok(flips >= 2, `the contacts open and close within the frames' cycle (${flips} flips)`);
-  // on DC it stays put, and no frames say otherwise
+  // on DC it stays put
   const d = E.simulate(circuit(relayRig("G5LE-1", "12", [vdc(12, 1)])), { budgetMs: 5000 });
   assert.equal(d.dc.devices.K.main.q, 1);
 });
