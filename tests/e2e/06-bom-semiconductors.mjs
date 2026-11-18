@@ -505,8 +505,9 @@ import { readFile } from "node:fs/promises";
     const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
     check(/^\.model SNO_\S+ SW\(VT=5\.1 VH=3\.9 RON=0\.1 ROFF=10000000000\)$/m.test(sp) && /^S\S+_1NC /m.test(sp), "SPICE export: the relay's contacts as switches with its hysteresis");
     // the coil switched by a transistor with nothing across it: Checks asks for a diode. Then 12 V rms
-    // 50 Hz straight on the 12 V DC coil: it chatters (pulled in part of each cycle), the inspector and
-    // Checks say so, and under Animate the contacts open and close
+    // 5 Hz straight on the 12 V DC coil: it chatters (pulled in part of each cycle, its current below
+    // must-release longer than the armature's release time), the inspector and Checks say so, and under
+    // Animate the contacts open and close. At 50 Hz it holds, and Checks says it buzzes
     const build = ac => cad.evaluate(ac => {
       const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
       const pin = (c, p) => C.compPins(c).find(q => q.id === p), wire = (p, q, h) => C.lRoute(p.x, p.y, q.x, q.y, h).forEach(s => C.addSegment(...s));
@@ -516,14 +517,18 @@ import { readFile } from "node:fs/promises";
       rail(pin(K, "11"), 40);
       let R = at("resistor", { r: 1e3 }, 1, "1", pin(K, "14"), 0, -40); if (pin(R, "2").y > pin(R, "1").y) { S.comps.pop(); S.wires.pop(); R = at("resistor", { r: 1e3 }, 3, "1", pin(K, "14"), 0, -40); }
       gnd(pin(R, "2"), 0, -20);
-      if (ac) { const G = at("siggen", { wave: "sine", freq: 50, amp: 12 * Math.SQRT2, rs: 0.1 }, 0, "+", pin(K, "A1"), -60, -20); gnd(pin(G, "-"), 0, 20); gnd(pin(K, "A2"), 0, 20); }
+      if (ac) { const G = at("siggen", { wave: "sine", freq: ac, amp: 12 * Math.SQRT2, rs: 0.1 }, 0, "+", pin(K, "A1"), -60, -20); gnd(pin(G, "-"), 0, 20); gnd(pin(K, "A2"), 0, 20); }
       else { rail(pin(K, "A1"), -20); const Q = at("npn", {}, 0, "C", pin(K, "A2"), 0, 40); gnd(pin(Q, "E"), 0, 20); const RB = at("resistor", { r: 4700 }, 0, "2", pin(Q, "B"), -20, 0); rail(pin(RB, "1"), -20); }
       S.sel.comps.add(K.id); C.commit(); return K.id;
     }, ac);
     await build(false);
     await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /pulled in/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
     check((await cad.evaluate(() => TubeCAD.circuitIssues())).some(t => /K1 \(G5LE-1\) is switched by VT1 with nothing across its coil: .*Put a diode across the coil/.test(t)), "Checks: a transistor switching the coil with nothing across it");
-    const kid = await build(true);
+    await build(50);
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /AC rms/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+    const hold = await cad.evaluate(() => ({ insp: document.getElementById("insp-live").textContent.replace(/\s+/g, " "), issues: TubeCAD.circuitIssues() }));
+    check(/pulled in \(COM to NO\)/.test(hold.insp) && /armature holds through the zero crossings/.test(hold.insp) && hold.issues.some(t => /K1 \(G5LE-1\) has AC across its DC coil: it holds through the zero crossings, but its armature buzzes/.test(t)), `12 V rms 50 Hz on the coil: it holds (its release time spans the zero crossings), the inspector and Checks say it buzzes (${hold.insp.slice(0, 160)})`);
+    const kid = await build(5);
     await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /of the time/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
     const ch = await cad.evaluate(() => ({ insp: document.getElementById("insp-live").textContent.replace(/\s+/g, " "), issues: TubeCAD.circuitIssues() }));
     const share = +((/pulled in (\d+) % of the time/.exec(ch.insp) || [])[1] || 0);

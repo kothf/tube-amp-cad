@@ -1584,11 +1584,12 @@
   const riaaRec = f => riaaGain(f) / riaaGain(1000);
   // Relays (relay part): poles; coil power pw (W, so its resistance is V²/pw); must-operate and
   // must-release voltages as shares of the rated coil voltage; operate time (max); contact
-  // resistance (max). The coil's inductance is set so that its current reaches must-operate in 60 %
-  // of the operate time (the armature's travel takes the rest)
+  // resistance (max); release time (max, the coil cut off with nothing across it). The coil's
+  // inductance is set so that its current reaches must-operate in 60 % of the operate time (the
+  // armature's travel takes the rest); the armature lets go after the release time (sim-engine ARM)
   const RELAYS = {
-    "G5LE-1": { poles: 1, pw: 0.4, op: 0.75, rel: 0.1, top: 10e-3, ron: 0.1, use: "SPDT power relay, 10 A at 250 V AC" },
-    "G5V-2": { poles: 2, pw: 0.5, op: 0.75, rel: 0.05, top: 7e-3, ron: 0.05, use: "DPDT signal relay, 2 A at 30 V DC" }
+    "G5LE-1": { poles: 1, pw: 0.4, op: 0.75, rel: 0.1, top: 10e-3, trel: 5e-3, ron: 0.1, use: "SPDT power relay, 10 A at 250 V AC" },
+    "G5V-2": { poles: 2, pw: 0.5, op: 0.75, rel: 0.05, top: 7e-3, trel: 3e-3, ron: 0.05, use: "DPDT signal relay, 2 A at 30 V DC" }
   };
   const relayCoil = (m, v) => { const r = v * v / m.pw; return { r, l: r * 0.6 * m.top / Math.log(1 / (1 - m.op)) }; };
   // Vactrols (LED and CdS cell in one light-tight case; sim-engine.js LDR): the cell's typical
@@ -2256,8 +2257,8 @@
         { key: "v", label: "Coil voltage", kind: "select", options: [["5", "5 V DC"], ["12", "12 V DC"], ["24", "24 V DC"]] }],
       info: c => {
         const m = RELAYS[c.params.model] || RELAYS["G5LE-1"], v = +c.params.v || 12, k = relayCoil(m, v);
-        return `Omron ${c.params.model}, ${m.use}. Coil ${v} V: ${fmtEng(k.r, "Ω")}, ${fmtEng(v / k.r, "A")} (${fmtEng(m.pw, "W")}); it pulls in at ${fmtEng(m.op * v, "V")} (${m.op * 100} %) and drops out below ${fmtEng(m.rel * v, "V")} (${m.rel * 100} %), operate time ${fmtEng(m.top, "s")} max. ` +
-          `Contacts ${fmtEng(m.ron, "Ω")} closed. Simulated: the coil's resistance and inductance (${fmtEng(k.l, "H")}, so its current builds up as a real coil's does), the contacts switching on its current. Put a diode across the coil when a transistor drives it: the inductance kicks back when it lets go.`;
+        return `Omron ${c.params.model}, ${m.use}. Coil ${v} V: ${fmtEng(k.r, "Ω")}, ${fmtEng(v / k.r, "A")} (${fmtEng(m.pw, "W")}); it pulls in at ${fmtEng(m.op * v, "V")} (${m.op * 100} %) and drops out below ${fmtEng(m.rel * v, "V")} (${m.rel * 100} %), operate time ${fmtEng(m.top, "s")}, release time ${fmtEng(m.trel, "s")} max. ` +
+          `Contacts ${fmtEng(m.ron, "Ω")} closed. Simulated: the coil's resistance and inductance (${fmtEng(k.l, "H")}, so its current builds up as a real coil's does), the armature letting go its release time after the current is cut, and the contacts switching with it. Put a diode across the coil when a transistor drives it: the inductance kicks back when it lets go.`;
       },
       build: (c, net, alloc, out) => {
         const m = RELAYS[c.params.model] || RELAYS["G5LE-1"], k = relayCoil(m, +c.params.v || 12), mid = alloc(), nodes = [net("A1"), mid];
@@ -2265,7 +2266,7 @@
         out.push({ id: c.id + "#l", kind: "L", nodes: [mid, net("A2")], l: k.l });
         for (let p = 1; p <= m.poles; p++) nodes.push(net(p + "1"), net(p + "2"), net(p + "4"));
         const v = +c.params.v || 12;
-        out.push({ id: c.id, kind: "RELAY", nodes, model: { von: m.op * v, voff: m.rel * v, ron: m.ron, roff: 1e10 } });
+        out.push({ id: c.id, kind: "RELAY", nodes, model: { von: m.op * v, voff: m.rel * v, ron: m.ron, roff: 1e10, tau: m.trel / Math.log(1 / m.rel) } });
       }
     },
     // a vactrol: an LED (A, K) lighting a CdS cell (1, 2) in one sealed case (sim-engine.js LDR)
@@ -3721,7 +3722,8 @@
           + (() => {
             const va = R.vRms("A1", "A2"), ac = va !== null && isFinite(va) && va > 0.05 * v;
             return (ac ? R.kv("Coil voltage (AC rms)", fmtEng(va, "V", 2), va > Math.abs(vc) ? "warn" : "") : "")
-              + (ac && va > Math.abs(vc) && q !== null && q > 0.01 && q < 0.99 ? R.note("AC on a DC coil: its current falls below must-release near each zero crossing, so the contacts chatter. Feed the coil from rectified, smoothed DC. Animate shows the contacts moving.", "warn") : "");
+              + (ac && va > Math.abs(vc) ? R.note(q !== null && q > 0.01 && q < 0.99 ? "AC on a DC coil: its current falls below must-release near each zero crossing for longer than the armature's release time, so the contacts chatter. Feed the coil from rectified, smoothed DC. Animate shows the contacts moving."
+                : "AC on a DC coil: the armature holds through the zero crossings (its release time is longer than they last) but buzzes at twice the frequency. Feed the coil from rectified, smoothed DC.", "warn") : "");
           })();
       }
     },
