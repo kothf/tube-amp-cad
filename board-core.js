@@ -1363,6 +1363,16 @@
     const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
     return Math.hypot(px - ax - t * dx, py - ay - t * dy);
   }
+  // segDist(…) <= r, without the root wherever the squares already tell (all but a hair's breadth round r)
+  function segWithin(ax, ay, bx, by, px, py, r) {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+    const ex = px - ax - t * dx, ey = py - ay - t * dy, d2 = ex * ex + ey * ey, r2 = r * r;
+    if (r < 0) return false;
+    if (d2 < r2 * (1 - 1e-9)) return true;
+    if (d2 > r2 * (1 + 1e-9)) return false;
+    return Math.hypot(ex, ey) <= r;
+  }
   function segSeg(a, b) {   // distance between segments a=[x1,y1,x2,y2] and b
     const inter = (() => {
       const d = (a[2] - a[0]) * (b[3] - b[1]) - (a[3] - a[1]) * (b[2] - b[0]); if (!d) return false;
@@ -1394,6 +1404,23 @@
     return items;
   }
   const shareLayer = (a, b) => a.layers.some(l => b.layers.includes(l));
+  // The items' boxes, four numbers each (x1, y1, x2, y2): the capsule and, for a square pad, its rectangle.
+  // Two items are never nearer than their boxes (boxSep), so the checks that go through every pair
+  // work out the exact distance only for neighbours: the answers are the same, a board of a few
+  // hundred items is checked several times faster
+  function itemBoxes(items) {
+    const bb = new Float64Array(items.length * 4);
+    items.forEach((it, i) => {
+      const s = it.s, r = it.r; let x1 = Math.min(s[0], s[2]) - r, y1 = Math.min(s[1], s[3]) - r, x2 = Math.max(s[0], s[2]) + r, y2 = Math.max(s[1], s[3]) + r;
+      if (it.box) { x1 = Math.min(x1, it.box[0]); y1 = Math.min(y1, it.box[1]); x2 = Math.max(x2, it.box[2]); y2 = Math.max(y2, it.box[3]); }
+      bb[4 * i] = x1; bb[4 * i + 1] = y1; bb[4 * i + 2] = x2; bb[4 * i + 3] = y2;
+    });
+    return bb;
+  }
+  const boxSep = (bb, i, j) => Math.max(bb[4 * i] - bb[4 * j + 2], bb[4 * j] - bb[4 * i + 2], bb[4 * i + 1] - bb[4 * j + 3], bb[4 * j + 1] - bb[4 * i + 3]);
+  // how far box i is from the box x1..y2 (below zero when they overlap)
+  const boxOff = (bb, i, x1, y1, x2, y2) => Math.max(bb[4 * i] - x2, x1 - bb[4 * i + 2], bb[4 * i + 1] - y2, y1 - bb[4 * i + 3]);
+  const BOX_EPS = 1e-7;   // (rounding of the exact distances is a million times smaller)
   // distance from segment s to rectangle b = [x1, y1, x2, y2] (0 when it touches or is inside)
   function segBox(s, b) {
     const inb = (x, y) => x >= b[0] - 1e-9 && x <= b[2] + 1e-9 && y >= b[1] - 1e-9 && y <= b[3] + 1e-9;
@@ -1460,9 +1487,10 @@
   /** Copper connectivity: which items touch (union-find), what each cluster's nets are, the
       ratsnest (shortest links still missing per net), unrouted count and shorts */
   function connectivity(board, pads, fills, star) {
-    const items = copperItems(board, pads), n = items.length, par = items.map((_, i) => i);
+    const items = copperItems(board, pads), n = items.length, par = items.map((_, i) => i), bb = itemBoxes(items);
     const find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      if (boxSep(bb, i, j) > 1e-6 + BOX_EPS) continue;             // too far apart to touch
       const a = items[i], b = items[j];
       if (a.kind === "pad" && b.kind === "pad") continue;          // pads only join through copper
       if (shareLayer(a, b) && gap(a, b) <= 1e-6) par[find(i)] = find(j);
@@ -1581,10 +1609,10 @@
       } else if (op.t === "flash") {
         const { x, y, w, h } = op;
         if (op.shape === "R") cell(x - w / 2, y - h / 2, x + w / 2, y + h / 2, (px, py) => Math.abs(px - x) <= w / 2 && Math.abs(py - y) <= h / 2, v);
-        else { const r = Math.min(w, h) / 2, l = Math.max(w, h) / 2 - r, s = w >= h ? [x - l, y, x + l, y] : [x, y - l, x, y + l]; cell(x - w / 2, y - h / 2, x + w / 2, y + h / 2, (px, py) => segDist(s[0], s[1], s[2], s[3], px, py) <= r, v); }
+        else { const r = Math.min(w, h) / 2, l = Math.max(w, h) / 2 - r, s = w >= h ? [x - l, y, x + l, y] : [x, y - l, x, y + l]; cell(x - w / 2, y - h / 2, x + w / 2, y + h / 2, (px, py) => segWithin(s[0], s[1], s[2], s[3], px, py, r), v); }
       } else if (op.t === "line") {
         const r = op.w / 2;
-        for (let k = 0; k + 1 < op.pts.length; k++) { const [x1, y1] = op.pts[k], [x2, y2] = op.pts[k + 1]; cell(Math.min(x1, x2) - r, Math.min(y1, y2) - r, Math.max(x1, x2) + r, Math.max(y1, y2) + r, (px, py) => segDist(x1, y1, x2, y2, px, py) <= r, v); }
+        for (let k = 0; k + 1 < op.pts.length; k++) { const [x1, y1] = op.pts[k], [x2, y2] = op.pts[k + 1]; cell(Math.min(x1, x2) - r, Math.min(y1, y2) - r, Math.max(x1, x2) + r, Math.max(y1, y2) + r, (px, py) => segWithin(x1, y1, x2, y2, px, py, r), v); }
       }
     });
     return g;
@@ -1601,7 +1629,7 @@
       const stored = it.kind === "track" ? board.tracks[it.ti].net : it.kind === "via" ? board.vias[it.vi].net : it.kind === "hole" ? board.holes[it.hi].net : null;
       return stored && byName[stored] !== undefined ? byName[stored] : null;
     };
-    const nx = Math.max(1, Math.ceil(o.w / RES)), ny = Math.max(1, Math.ceil(o.h / RES)), CR = clearanceRules(board, model, hv, netlist);
+    const nx = Math.max(1, Math.ceil(o.w / RES)), ny = Math.max(1, Math.ceil(o.h / RES)), CR = clearanceRules(board, model, hv, netlist), bb = itemBoxes(conn.items);
     return zones.map((z, zi) => {
       const net = byName[z.net], L = z.layer, poly = zonePoly(board, z), zc = netRule(net, model.names, hv, R).clearance;
       const need = (n, it) => CR.need(net, n, null, it).c, gapT = z.gap > 0 ? z.gap : 0.5, spoke = z.spoke > 0 ? z.spoke : 0.8;
@@ -1622,11 +1650,11 @@
         const P2 = zonePoly(board, z2), c = need(byName[z2.net]);
         ops.push({ pol: "C", t: "region", pts: P2 }, { pol: "C", t: "line", w: +(2 * c).toFixed(4), pts: P2.concat([P2[0]]) });
       });
-      conn.items.forEach(it => {
+      conn.items.forEach((it, i) => {
         if (!it.layers.includes(L)) return;
         const n = netOf(it);
         if (net !== undefined && n === net) { if (it.kind === "pad" && z.thermal !== false) own.push(it); return; }
-        const c = need(n, it); others.push({ it, c });
+        const c = need(n, it); others.push({ it, c, i });
         if (near(it.s, it.r + c)) ops.push(itemOp("C", it, c));
       });
       const hcm = Math.max(zc, CR.toChassis(net).c);
@@ -1641,7 +1669,8 @@
         [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
           const len = (dx ? p.w : p.h) / 2 + gapT + spoke, s = [p.x, p.y, +(p.x + dx * len).toFixed(4), +(p.y + dy * len).toFixed(4)];
           if (!pip(s[2], s[3], poly)) return;
-          if (others.some(({ it: q, c }) => segItem(s, q) - spoke / 2 < c - 1e-6)) return;
+          const sx1 = Math.min(s[0], s[2]), sy1 = Math.min(s[1], s[3]), sx2 = Math.max(s[0], s[2]), sy2 = Math.max(s[1], s[3]);
+          if (others.some(({ it: q, c, i }) => boxOff(bb, i, sx1, sy1, sx2, sy2) - spoke / 2 <= c + BOX_EPS && segItem(s, q) - spoke / 2 < c - 1e-6)) return;
           if (npHoles(board, model).some(h => segDist(s[0], s[1], s[2], s[3], h.x, h.y) - spoke / 2 - h.d / 2 < (h.part ? zc : hcm) - 1e-6)) return;
           spokes.push({ pol: "D", t: "line", w: spoke, pts: [[s[0], s[1]], [s[2], s[3]]] });
         });
@@ -1649,11 +1678,17 @@
       ops.push(...spokes);
       // the pieces: flood fill the raster
       const g = rasterise(ops, nx, ny), lab = new Int32Array(nx * ny);
-      let pieces = 0; const stack = [];
+      let pieces = 0, top = 0; const stack = new Int32Array(nx * ny);
       for (let k = 0; k < g.length; k++) {
         if (!g[k] || lab[k]) continue;
-        lab[k] = ++pieces; stack.push(k);
-        while (stack.length) { const c = stack.pop(), i = c % nx, j = (c - i) / nx; [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]].forEach(([a, b]) => { if (a < 0 || b < 0 || a >= nx || b >= ny) return; const q = b * nx + a; if (g[q] && !lab[q]) { lab[q] = pieces; stack.push(q); } }); }
+        lab[k] = ++pieces; stack[top++] = k;
+        while (top) {
+          const c = stack[--top], i = c % nx;
+          if (i > 0 && g[c - 1] && !lab[c - 1]) { lab[c - 1] = pieces; stack[top++] = c - 1; }
+          if (i < nx - 1 && g[c + 1] && !lab[c + 1]) { lab[c + 1] = pieces; stack[top++] = c + 1; }
+          if (c >= nx && g[c - nx] && !lab[c - nx]) { lab[c - nx] = pieces; stack[top++] = c - nx; }
+          if (c + nx < g.length && g[c + nx] && !lab[c + nx]) { lab[c + nx] = pieces; stack[top++] = c + nx; }
+        }
       }
       const hit = Array.from({ length: pieces + 1 }, () => []);
       conn.items.forEach((it, idx) => {
@@ -1786,11 +1821,24 @@
     const out = [], R = board.rules, on = k => !R.checks || R.checks[k] !== false, items = conn.items, hv = hvNets || new Set(), o = board.outline;
     const cls = net => (net === null || net === "short" ? "Signal" : netClassOf(net, model.names, hv, R));
     const SP = socketPads(board, model), CR = clearanceRules(board, model, hv, netlist), vNote = (r, hvx) => (r.ipc ? ` (${Math.round(r.v)} V between them${r.why === "inductive" ? " at full drive" : ""}: IPC-2221B ${CR.table})` : hvx ? " (high voltage)" : "");
+    // the widest clearance any two of the board's nets need (or a rule area asks): pairs further apart
+    // than that are not looked at
+    const bb = itemBoxes(items);
+    let FAR = 0;
+    if (on("clearance")) {
+      const ns = [...new Set(items.map(it => it.net))];
+      ns.forEach(na => ns.forEach(nb => { FAR = Math.max(FAR, CR.need(na, nb).c); }));
+      ruleAreas(board).forEach(k => { if (k.rule.clearance > 0) FAR = Math.max(FAR, +k.rule.clearance); });
+    }
     if (on("clearance")) for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
       const a = items[i], b = items[j];
-      if (a.cluster === b.cluster || !shareLayer(a, b)) continue;
+      if (a.cluster === b.cluster) continue;
+      const sep = boxSep(bb, i, j);
+      if (sep > FAR + BOX_EPS || !shareLayer(a, b)) continue;
       if (a.kind === "pad" && b.kind === "pad" && a.pad.part === b.pad.part) continue;   // within a footprint: the maker's spacing
-      const ca = cls(a.net), cb = cls(b.net), g = gap(a, b), rq = CR.need(a.net, b.net, a, b);
+      const rq = CR.need(a.net, b.net, a, b);
+      if (sep > rq.c + BOX_EPS) continue;   // their boxes alone are further apart than they need be
+      const ca = cls(a.net), cb = cls(b.net), g = gap(a, b);
       let need = rq.c;
       if (g < need - 1e-6 && a.kind !== b.kind && (a.kind === "pad" || b.kind === "pad") && (a.kind === "track" || b.kind === "track")) {
         const [t, p] = a.kind === "track" ? [a, b] : [b, a], eg = entryGap(t.s, p, items);
@@ -1927,24 +1975,29 @@
       if (k.parts) onBoard.forEach(({ g, b }) => { if (polyHitsPoly(boxPoly(b), P)) out.push({ kind: "keepout", x: g.place.x, y: g.place.y, msg: `${g.ref} is in ${nm}` }); });
     });
     // silkscreen over pads (the maker clips it: a warning) — the reference and outlines of each part
+    // (each pad's capsule and its box, worked out once: a stroke is measured only against the pads beside it)
+    const caps = model.pads.map(pd => { const c = padCapsule(pd); return { s: c.s, r: c.r, x1: Math.min(c.s[0], c.s[2]) - c.r, y1: Math.min(c.s[1], c.s[3]) - c.r, x2: Math.max(c.s[0], c.s[2]) + c.r, y2: Math.max(c.s[1], c.s[3]) + c.r }; });
+    const strokeNear = (c, ax, ay, bx, by, hw) => { const m = hw + BOX_EPS; return Math.min(ax, bx) - c.x2 <= m && c.x1 - Math.max(ax, bx) <= m && Math.min(ay, by) - c.y2 <= m && c.y1 - Math.max(ay, by) <= m; };
     if (on("silk")) onBoard.forEach(({ g }) => {
-      const side = g.place.side || "F", hit = partSilk(g, false, board.outline, model.pads.filter(pd => !placedOff.has(pd.part))).find(op => op.pts.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && (op.ref || pd.part !== g.key) && onSide(pd, side) &&
-        segSeg([op.pts[k - 1][0], op.pts[k - 1][1], p[0], p[1]], padCapsule(pd).s) < padCapsule(pd).r + op.w / 2)));
+      const side = g.place.side || "F", hit = partSilk(g, false, board.outline, model.pads.filter(pd => !placedOff.has(pd.part))).find(op => op.pts.some((p, k) => k && model.pads.some((pd, pi) => !placedOff.has(pd.part) && (op.ref || pd.part !== g.key) && onSide(pd, side) && strokeNear(caps[pi], op.pts[k - 1][0], op.pts[k - 1][1], p[0], p[1], op.w / 2) &&
+        segSeg([op.pts[k - 1][0], op.pts[k - 1][1], p[0], p[1]], caps[pi].s) < caps[pi].r + op.w / 2)));
       if (hit) out.push({ kind: "silk", x: hit.pts[0][0], y: hit.pts[0][1], msg: `${g.ref}: ${hit.ref ? "its reference" : "silkscreen"} lies over a pad (${side === "B" ? "bottom" : "top"}); the maker clips it` });
     });
     if (on("silk")) (board.texts || []).filter(t => /SilkS$/.test(t.layer)).forEach(t => {
       const st = strokeText(t.text, t.x, t.y, t.size, t.rot, t.layer[0] === "B");
-      const over = st.lines.some(l => l.some((p, k) => k && model.pads.some(pd => !placedOff.has(pd.part) && onSide(pd, t.layer[0]) && segSeg([l[k - 1][0], l[k - 1][1], p[0], p[1]], padCapsule(pd).s) < padCapsule(pd).r + st.w / 2)));
+      const over = st.lines.some(l => l.some((p, k) => k && model.pads.some((pd, pi) => !placedOff.has(pd.part) && onSide(pd, t.layer[0]) && strokeNear(caps[pi], l[k - 1][0], l[k - 1][1], p[0], p[1], st.w / 2) && segSeg([l[k - 1][0], l[k - 1][1], p[0], p[1]], caps[pi].s) < caps[pi].r + st.w / 2)));
       if (over) out.push({ kind: "silk", x: t.x, y: t.y, msg: `The text "${t.text}" lies over a pad; the maker clips it` });
     });
     // track ends that touch nothing (other copper, or a pour of their net)
     if (on("dangling")) {
       const inPour = new Set(); (fills || []).forEach(f => f.links.forEach(l => l.forEach(i => inPour.add(i))));
+      const segAt = new Map(); items.forEach((it, i) => { if (it.kind === "track" && !segAt.has(it.ti + ":" + it.k)) segAt.set(it.ti + ":" + it.k, i); });
       board.tracks.forEach((t, ti) => {
         [t.pts[0], t.pts[t.pts.length - 1]].forEach(([x, y], end) => {
-          const mine = items.findIndex(it => it.kind === "track" && it.ti === ti && it.k === (end ? t.pts.length - 2 : 0));
+          const mine = segAt.has(ti + ":" + (end ? t.pts.length - 2 : 0)) ? segAt.get(ti + ":" + (end ? t.pts.length - 2 : 0)) : -1;
           if (inPour.has(mine)) return;
-          const touch = items.some(it => !(it.kind === "track" && it.ti === ti) && it.layers.includes(t.layer) && segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) <= it.r + t.w / 2 + 1e-6);
+          const rr = t.w / 2 + 1e-6 + BOX_EPS;
+          const touch = items.some((it, i) => boxOff(bb, i, x, y, x, y) <= rr && !(it.kind === "track" && it.ti === ti) && it.layers.includes(t.layer) && segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) <= it.r + t.w / 2 + 1e-6);
           if (!touch) out.push({ kind: "dangling", x, y, msg: `A track end on ${t.layer} is not connected` });
         });
       });
@@ -1972,8 +2025,9 @@
   function teardrops(board, conn, CR, model) {
     const out = [], items = conn.items, holes = npHoles(board, model);
     const ends = items.filter(it => (it.kind === "pad" && Math.abs(it.pad.w - it.pad.h) < 1e-6) || it.kind === "via");
+    const bb = itemBoxes(items), first = new Map(); items.forEach(it => { if (it.kind === "track" && !first.has(it.ti)) first.set(it.ti, it); });
     board.tracks.forEach((t, ti) => {
-      const tr = items.find(it => it.kind === "track" && it.ti === ti); if (!tr || t.pts.length < 2) return;
+      const tr = first.get(ti); if (!tr || t.pts.length < 2) return;
       const net = tr.net;
       [0, t.pts.length - 1].forEach(k => {
         const P = t.pts[k], Q = t.pts[k ? k - 1 : 1];
@@ -1988,10 +2042,13 @@
         const left = side(1), right = side(-1).reverse(), poly = [pt(0, 0)].concat(left, right);
         // keep the clearance to every other net's copper and to the mounting holes
         const edges = poly.map((a, i) => [a[0], a[1], poly[(i + 1) % poly.length][0], poly[(i + 1) % poly.length][1]]);
-        const bad = items.some(it => {
+        let px1 = Infinity, py1 = Infinity, px2 = -Infinity, py2 = -Infinity;
+        poly.forEach(q => { if (q[0] < px1) px1 = q[0]; if (q[0] > px2) px2 = q[0]; if (q[1] < py1) py1 = q[1]; if (q[1] > py2) py2 = q[1]; });
+        const bad = items.some((it, i) => {
           if (it.net === net && net !== null && net !== "short") return false;
           if (it === at || it === tr || !it.layers.includes(t.layer)) return false;
           const need = CR ? CR.need(net, it.net).c : board.rules.clearance;
+          if (boxOff(bb, i, px1, py1, px2, py2) > need + BOX_EPS) return false;   // nowhere near the teardrop
           return edges.some(e => segItem(e, it) < need - 1e-6);
         }) || holes.some(h => edges.some(e => segDist(e[0], e[1], e[2], e[3], h.x, h.y) - h.d / 2 < (CR ? CR.toChassis(net).c : board.rules.clearance) - 1e-6));
         if (!bad) out.push({ layer: t.layer, net, ti, pts: poly });
