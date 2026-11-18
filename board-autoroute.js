@@ -20,8 +20,63 @@
     // answering; where none starts (a page opened from a file), on the page, after a breath for the screen
     const VQ = (() => { const sc = [...document.scripts].find(s => /board-autoroute\.js/.test(s.src)); const q = sc && sc.src.split("?")[1]; return q ? "?" + q : ""; })();
     const off = { worker: null, ok: typeof Worker !== "undefined", seq: 0, wait: new Map(), on: new Map() };
+    // More workers beside that one (as many as the computer has cores to spare, three at most), for Design from
+    // scratch: its layouts are made side by side, and the first routing of each layout picked starts ahead
+    // of its turn. Every answer is the one the single worker would give (the steps are deterministic and get
+    // the same board); only the wait is shorter.
+    const SPARES = (() => { const n = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 1; return Math.max(0, Math.min(3, n - 1)); })();
+    const pool = { ws: [], q: [] }, ahead = new Map();
+    function poolPump() {
+      while (pool.q.length) {
+        let w = pool.ws.find(x => !x.job);
+        if (!w && pool.ws.length < SPARES) {
+          try { w = { worker: new Worker("board-worker.js" + VQ), job: null }; } catch (e) { w = null; }
+          if (w) {
+            const me = w;
+            me.worker.onmessage = e => {
+              const j = me.job; if (!j) return;
+              if (e.data.progress) { j.last = e.data.progress; if (j.on) j.on(e.data.progress); return; }
+              me.job = null;
+              if (e.data.error) j.rej(new Error(e.data.error)); else j.res(e.data.result);
+              poolPump();
+            };
+            me.worker.onerror = e => { if (e && e.preventDefault) e.preventDefault(); const j = me.job; me.job = null; pool.ws = pool.ws.filter(x => x !== me); me.worker.terminate(); if (j) j.rej(new Error("lost")); poolPump(); };
+            pool.ws.push(w);
+          }
+        }
+        if (!w) return;
+        const job = pool.q.shift(); w.job = job; w.worker.postMessage(job.msg); job.msg = null;
+      }
+    }
+    // a step on a spare worker, on the board as it is now: { promise, on, last } (null where there is none)
+    function offSpare(fn, rats, opts) {
+      if (!off.ok || !SPARES || typeof structuredClone !== "function") return null;
+      const job = { on: null, last: null };
+      // (copied now: the board goes on changing while the step waits its turn)
+      try { job.msg = structuredClone({ seq: 0, fn, board: S.board, model: S.model, conn: S.conn, rats, netlist: S.netlist, hv: S.hv, amps: S.amps, opts }); } catch (e) { return null; }
+      job.promise = new Promise((res, rej) => { job.res = res; job.rej = rej; });
+      job.promise.catch(() => {});
+      pool.q.push(job); poolPump();
+      return job;
+    }
+    // what the spare workers still do or wait to do is dropped (a worker in the middle of a step goes; the idle stay)
+    function poolStop() {
+      const jobs = pool.q.concat(pool.ws.map(w => w.job).filter(Boolean));
+      pool.ws.forEach(w => { if (w.job) w.worker.terminate(); }); pool.ws = pool.ws.filter(w => !w.job); pool.q = []; ahead.clear();
+      jobs.forEach(j => j.rej(new Error("stopped")));
+    }
+    const aheadKey = opts => JSON.stringify([S.board, opts]);
     // (onProgress: called with what the step says while it runs, the grid router's passes)
     function offPage(fn, rats, opts, onProgress) {
+      // the grid router's run on this very board, started ahead on a spare worker: its answer
+      if (fn === "pathfinder" && ahead.size) {
+        const k = aheadKey(opts), j = ahead.get(k);
+        if (j) {
+          ahead.delete(k);
+          if (onProgress) { j.on = onProgress; if (j.last) onProgress(j.last); }
+          return j.promise.catch(e => { if (e && e.message === "stopped") throw e; return offPage(fn, rats, opts, onProgress); });
+        }
+      }
       if (off.ok && !off.worker) {
         try {
           off.worker = new Worker("board-worker.js" + VQ);
@@ -43,6 +98,7 @@
     }
     // Stop: the step running off the page ends now (its worker goes; a new one starts for the next step)
     function offStop() {
+      poolStop();
       if (!off.worker) return;
       off.worker.terminate(); off.worker = null;
       const ws = [...off.wait.values()]; off.wait.clear(); off.on.clear(); ws.forEach(w => w({ error: "stopped" }));
@@ -502,12 +558,13 @@
         if (S.conn.unrouted) { msg(`Design from scratch: routing the board as it is first (${S.conn.unrouted} open)…`); clearStale(); await routePass(); }
         let best = JSON.stringify(S.board), bestScore = score(), won = "", broke = "", routed = 0;
         // many layouts, scored without routing
-        const made = [];
-        for (const c of cands) {
+        // (with workers to spare, all of them at once: each still gets the board as it is now)
+        const made = [], side = SPARES > 1 ? cands.map(c => offSpare("design", [], { keys, how: c.how, seed: c.seed })) : [];
+        for (const [ci, c] of cands.entries()) {
           if (router.stop) break;
           next(`layout ${made.length + 1} of ${cands.length}`); stage(c.how.what);
           msg(`Design from scratch: laying out the board ${c.how.what} (${made.length + 1} of ${cands.length})…`);
-          const r = await offPage("design", [], { keys, how: c.how, seed: c.seed }).catch(e => ({ failed: e.message }));
+          const r = await (side[ci] ? side[ci].promise.catch(e => { if (e && e.message === "stopped") throw e; return offPage("design", [], { keys, how: c.how, seed: c.seed }); }) : offPage("design", [], { keys, how: c.how, seed: c.seed })).catch(e => ({ failed: e.message }));
           if (r && r.places) made.push({ ...c, ...r });
         }
         if (!made.length) { if (before) commit(); msg(`Design from scratch: no layout fitted the board (${keys.length} parts); the parts stay where they were`); return { left: bestScore.un, won: "", tried: 0, moved: 0 }; }
@@ -520,14 +577,23 @@
         // while connections stay open, up to MORE of the next best are routed too
         const more = made.filter(c => !pick.includes(c)).slice(0, MORE);
         step = 1 + cands.length;
+        const lay = c => {
+          S.board = JSON.parse(start);
+          Object.entries(c.places).forEach(([k, p]) => { if (S.board.parts[k]) Object.assign(S.board.parts[k], p); });
+          S.board.tracks = S.board.tracks.filter(t => t.locked); S.board.vias = S.board.vias.filter(v => v.locked);
+          analyse(); clearStale();
+        };
+        // the grid router's first run on each layout picked starts now, on the spare workers: when the
+        // layout's turn comes its routes are there, or nearly (the same routes, as the board is the same)
+        if (SPARES && !viaFr() && !router.stop) {
+          const o = { fresh: false, time: 20000 };
+          for (const c of pick) { lay(c); analyse(); if (!finishable().length) continue; const j = offSpare("pathfinder", [], o); if (j) ahead.set(aheadKey(o), j); }
+        }
         for (const c of [...pick, ...more]) {
           if (router.stop) break;
           if (!pick.includes(c) && !bestScore.un) break;
           next(`routing layout ${routed + 1}${pick.includes(c) ? ` of ${pick.length}` : ", one more as connections are open"}`);
-          S.board = JSON.parse(start);
-          Object.entries(c.places).forEach(([k, p]) => { if (S.board.parts[k]) Object.assign(S.board.parts[k], p); });
-          S.board.tracks = S.board.tracks.filter(t => t.locked); S.board.vias = S.board.vias.filter(v => v.locked);
-          analyse(); clearStale(); render(); await breath();
+          lay(c); render(); await breath();
           msg(`Design from scratch: layout ${routed + 1} of ${pick.length + (routed >= pick.length ? more.length : 0)} (${c.how.what}${c.turned ? `, ${c.turned} turn${c.turned === 1 ? "" : "s"}` : ""}); ${who()} routes ${S.conn.unrouted} connection${S.conn.unrouted === 1 ? "" : "s"}…`);
           try { await routePass(); } catch (e) { broke = e.message; break; }
           routed++; await breath();
@@ -552,7 +618,7 @@
           (left ? `${left} connection${left === 1 ? "" : "s"} open${stuck}` : "everything routed") + (router.stop ? " (stopped)" : "") + (broke ? ` (Freerouting failed: ${broke})` : "") + (waiting.length ? `; ${S.model.parts.filter(g => waiting.includes(g.key)).map(g => g.ref).join(", ")} put on the board first, where ${waiting.length === 1 ? "it sits" : "they sit"} in the schematic` : "") + (changed ? "; Ctrl+Z takes it all back" : ""));
         return { left, won, tried: routed, made: made.length, moved };
       } catch (e) { S.board = JSON.parse(start); analyse(); msg(`Design from scratch failed: ${e.message}; the board is as it was`); router.up = false; pollRouter(); }
-      finally { router.busy = false; router.nudge = false; routerUi(); }
+      finally { poolStop(); router.busy = false; router.nudge = false; routerUi(); }
     }
     // Unroute: every track and via off the board (locked ones stay), one step to undo
     function unroute() {

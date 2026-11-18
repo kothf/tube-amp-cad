@@ -71,6 +71,8 @@ Firefox is not tested.
   speakers, and tube, transistor and resistor dissipation.
 - **Live or on demand.** The circuit re-simulates after every edit, or turn
   *Live* off and press *▶ Simulate* (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>).
+  - An edit that leaves the circuit electrically as it was (a part moved with
+    its wires, a label, a note) keeps the last run's result and runs nothing.
   - Either way, slow power supplies are run until they have fully settled.
   - The button shows the run's progress ("■ Stop · 48 %"); press it again to
     stop a long run.
@@ -967,7 +969,10 @@ the circuit file, so one file holds both.
   routed, the best routed one stays (the old layout included), and Finish
   routing's rounds work on what is left. The outline, holes, keep-outs,
   locked parts and locked copper hold throughout. A progress bar in the status
-  line shows the step and the time so far.
+  line shows the step and the time so far. With processor cores to spare the
+  layouts are made side by side and the routing of each layout picked starts
+  ahead of its turn, on up to three more workers: the same board in less than
+  half the time.
 - **Stitching vias**: a GND pad the pour cannot reach (shut in by other
   copper or a high-voltage pin's clearance) gets a short track on the other
   layer and a via down into the pour, tried nearest first and kept only if it

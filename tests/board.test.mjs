@@ -408,6 +408,21 @@ function analyse(board) {
   return { m, hv, c0, fills, conn: B.connectivity(board, m.pads, fills) };
 }
 
+test("the checks' shortcut hides nothing: no two copper items are nearer than their boxes, and segWithin is segDist <= r", () => {
+  const board = fabBoard();
+  board.tracks.push({ layer: "F.Cu", w: 0.6, pts: [[20, 20], [40, 40], [70, 40]] }, { layer: "B.Cu", w: 1, pts: [[60, 15], [60, 30]] });
+  board.vias.push({ x: 40, y: 40, drill: 0.4, pad: 0.9 });
+  const { conn } = analyse(board), items = conn.items, bb = B.itemBoxes(items);
+  assert.ok(items.length > 20);
+  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+    const g = B.itemGap(items[i], items[j]), sep = B.boxSep(bb, i, j);
+    assert.ok(sep <= g + 1e-9, `items ${i} and ${j}: boxes ${sep} apart, copper ${g}`);
+  }
+  // on a 0.25 mm grid round segments, radii that land exactly on cells
+  for (const s of [[0, 0, 3, 0], [1, 1, 4, 5], [2, 2, 2, 2], [0, 3, 3, 0]]) for (const r of [0, 0.25, 0.5, 1, 1.25, Math.SQRT2, 5]) for (let x = -2; x <= 6; x += 0.25) for (let y = -2; y <= 7; y += 0.25)
+    assert.equal(B.segWithin(s[0], s[1], s[2], s[3], x, y, r), B.segDist(s[0], s[1], s[2], s[3], x, y) <= r, `segment ${s} point ${x},${y} r ${r}`);
+});
+
 test("stroke font: centred text, rotation and mirror", () => {
   const t = B.strokeText("R1", 10, 20, 1.2, 0, false), xs = t.lines.flat().map(p => p[0]), ys = t.lines.flat().map(p => p[1]);
   assert.ok(Math.abs((Math.min(...xs) + Math.max(...xs)) / 2 - 10) < 0.15 && Math.abs((Math.min(...ys) + Math.max(...ys)) / 2 - 20) < 0.05, "centred");

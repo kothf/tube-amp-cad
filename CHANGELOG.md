@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.233.0] - 2026-11-18
+
+Speed: every engine of the app was profiled on the 20 examples and 13 test boards, and the slow ones made faster with the same answers as before (the same check messages, pours, routes and layouts, compared board by board).
+
+### Changed
+- **The board's check on every edit is about 5 times faster** (connectivity, teardrops, pours, the rule check: 450 ms → 85 ms on example 07, 250 ms → 35 ms on example 20; all 33 boards together 5.4 s → 0.9 s). Two copper items are never nearer than their bounding boxes, so the checks that go through every pair of items work out the exact distance only for neighbours; the widest clearance any two nets of the board need bounds how far apart a pair is still looked at. The pour's raster tells "within r" from the squares where they are not within a hair of each other, and its flood fill no longer makes four arrays a cell. Same messages, pours and ratsnest on every board.
+- **The grid router is 1.4 to 1.9 times faster on real boards** (Auto-route from bare: example 07 10.4 s → 6.7 s, example 20 6.8 s → 3.0 s in the Board window), with the same tracks and vias. The price map of other nets' copper is carried from one net to the next (each net's cells at its different distances lie inside one another, so only the rings between them come off or go on, and which net a cell's price is for is worked out only where a conflict asks); a state bettered after it went into the queue is not looked at twice; the search's state and its queue sit side by side in memory; a pad's entry cells keep the cells their tails are priced at; walls are stamped without a square root wherever the squares already tell.
+- **Design from scratch takes less than half the time** on a computer with cores to spare (example 14: 20 s → 8 s). Its nine layouts are made side by side, and the grid router's first run on each of the three layouts picked starts ahead of its turn, on up to three more background workers. Each step gets the same board and gives the same answer as before, so the board that comes out is the same.
+- **An edit that leaves the circuit electrically as it was no longer runs the simulation again**: a part moved with its wires, a label, a note or a sticker builds the very netlist of the last run, whose result is kept (on example 07 that was 2 s of work an edit). A quick run's unsettled result is still followed by the full run.
+- Measured and left as they were: the simulator's own solver (tuned in 3.205.0; its profile is flat, and keeping the history terms of a step from one Newton iteration to the next made no measurable difference), the 3D view and STEP export (2 to 35 ms a board), and the layouts themselves (0.5 to 1 s each, now side by side).
+
+### Tests
+- `tests/board.test.mjs`: no two copper items are nearer than their boxes, and the raster's shortcut agrees with the exact distance on every grid point; `tests/pathfinder.test.mjs`: the same board routed twice gives the same copper; e2e: moving the whole circuit keeps the simulation's result, changing a resistor runs it again.
+
 ## [3.232.0] - 2026-11-17
 
 ### Added

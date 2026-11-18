@@ -27,28 +27,29 @@
   const VIA_OFF_PAD = 0.15;
   const DI = [1, -1, 0, 0, 1, 1, -1, -1], DJ = [0, 0, 1, -1, 1, -1, 1, -1];
 
-  // a binary min-heap of integer keys by float priority
+  // a binary min-heap of integer keys by float priority (a key and its priority side by side in one buffer)
   function heap(cap) {
-    let key = new Int32Array(cap), pri = new Float64Array(cap), n = 0;
+    let buf = new ArrayBuffer(16 * cap), pri = new Float64Array(buf), key = new Int32Array(buf), n = 0;
     return {
       get size() { return n; },
       clear() { n = 0; },
       push(k, p) {
-        if (n === key.length) { const k2 = new Int32Array(n * 2), p2 = new Float64Array(n * 2); k2.set(key); p2.set(pri); key = k2; pri = p2; }
+        if (n === cap) { const b2 = new ArrayBuffer(32 * cap), p2 = new Float64Array(b2); p2.set(pri); cap *= 2; buf = b2; pri = p2; key = new Int32Array(b2); }
         let i = n++;
-        while (i > 0) { const up = (i - 1) >> 1; if (pri[up] <= p) break; key[i] = key[up]; pri[i] = pri[up]; i = up; }
-        key[i] = k; pri[i] = p;
+        while (i > 0) { const up = (i - 1) >> 1; if (pri[2 * up] <= p) break; key[4 * i + 2] = key[4 * up + 2]; pri[2 * i] = pri[2 * up]; i = up; }
+        key[4 * i + 2] = k; pri[2 * i] = p;
       },
       pop() {
-        const top = key[0], k = key[--n], p = pri[n];
+        const top = key[2], k = key[4 * --n + 2], p = pri[2 * n];
         let i = 0;
         for (;;) {
           let c = 2 * i + 1; if (c >= n) break;
-          if (c + 1 < n && pri[c + 1] < pri[c]) c++;
-          if (pri[c] >= p) break;
-          key[i] = key[c]; pri[i] = pri[c]; i = c;
+          if (c + 1 < n && pri[2 * c + 2] < pri[2 * c]) c++;
+          const pc = pri[2 * c];
+          if (pc >= p) break;
+          key[4 * i + 2] = key[4 * c + 2]; pri[2 * i] = pc; i = c;
         }
-        key[i] = k; pri[i] = p;
+        key[4 * i + 2] = k; pri[2 * i] = p;
         return top;
       }
     };
@@ -115,11 +116,26 @@
       const i1 = Math.max(0, Math.floor((Math.min(s[0], s[2]) - rad) / p)), i2 = Math.min(nx - 1, Math.ceil((Math.max(s[0], s[2]) + rad) / p));
       const j1 = Math.max(0, Math.floor((Math.min(s[1], s[3]) - rad) / p)), j2 = Math.min(ny - 1, Math.ceil((Math.max(s[1], s[3]) + rad) / p));
       const dx = s[2] - s[0], dy = s[3] - s[1], LL = dx * dx + dy * dy, r2 = rad * rad;
-      for (let j = j1; j <= j2; j++) for (let i = i1; i <= i2; i++) {
-        const x = i * p, y = j * p;
-        let t = LL > 0 ? ((x - s[0]) * dx + (y - s[1]) * dy) / LL : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
-        const ex = s[0] + t * dx - x, ey = s[1] + t * dy - y;
-        if (ex * ex + ey * ey < r2) fn(j * nx + i, x, y);
+      for (let j = j1; j <= j2; j++) {
+        const y = j * p;
+        // a slanting run's box is mostly empty: in each row only the cells beside the part of the run that
+        // passes within rad of the row are looked at (a cell more each side, against rounding)
+        let a1 = i1, a2 = i2;
+        if (dy !== 0 && dx !== 0) {
+          let t1 = (y - rad - s[1]) / dy, t2 = (y + rad - s[1]) / dy;
+          if (t1 > t2) { const q = t1; t1 = t2; t2 = q; }
+          t1 -= 1e-6; t2 += 1e-6;
+          if (t1 > 1 || t2 < 0) continue;
+          if (t1 < 0) t1 = 0; if (t2 > 1) t2 = 1;
+          const xa = s[0] + t1 * dx, xb = s[0] + t2 * dx;
+          a1 = Math.max(i1, Math.floor((Math.min(xa, xb) - rad) / p) - 1); a2 = Math.min(i2, Math.ceil((Math.max(xa, xb) + rad) / p) + 1);
+        }
+        for (let i = a1; i <= a2; i++) {
+          const x = i * p;
+          let t = LL > 0 ? ((x - s[0]) * dx + (y - s[1]) * dy) / LL : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const ex = s[0] + t * dx - x, ey = s[1] + t * dy - y;
+          if (ex * ex + ey * ey < r2) fn(j * nx + i, x, y);
+        }
       }
     }
     const li = l => L.indexOf(l);
@@ -142,21 +158,34 @@
         // distance from a cell to the item's copper edge: a square pad's corners reach past its capsule
         const ext = it.box ? Math.max(0, Math.hypot(it.pad.w, it.pad.h) / 2 - it.r) : 0;
         const dEdge = (x, y) => (it.box ? C.segBox([x, y, x, y], it.box) : C.segDist(it.s[0], it.s[1], it.s[2], it.s[3], x, y) - it.r);
+        // dEdge(x, y) >= lim, told from the squares wherever they are not within a hair of each other
+        const bx = it.box, is = it.s, sdx = is[2] - is[0], sdy = is[3] - is[1], sl2 = sdx * sdx + sdy * sdy, ir = it.r;
+        const clear = (x, y, lim) => {
+          let d2, thr;
+          if (bx) {
+            if (x >= bx[0] - 1e-9 && x <= bx[2] + 1e-9 && y >= bx[1] - 1e-9 && y <= bx[3] + 1e-9) return 0 >= lim;
+            const ex = Math.max(bx[0] - x, 0, x - bx[2]), ey = Math.max(bx[1] - y, 0, y - bx[3]); d2 = ex * ex + ey * ey; thr = lim;
+          } else {
+            const t = sl2 ? Math.max(0, Math.min(1, ((x - is[0]) * sdx + (y - is[1]) * sdy) / sl2)) : 0, ex = x - is[0] - t * sdx, ey = y - is[1] - t * sdy; d2 = ex * ex + ey * ey; thr = lim + ir;
+          }
+          if (thr > 0) { const t2 = thr * thr; if (d2 > t2 * (1 + 1e-9)) return true; if (d2 < t2 * (1 - 1e-9)) return false; }
+          return dEdge(x, y) >= lim;
+        };
         // no via in the net's own SMD pads (solder paste runs down the hole and the joint starves):
         // the track leaves the pad and drops through just beside it, the mask web between them intact
         if (net === r.id) {
-          if (it.kind === "pad" && it.pad.smd) stamp(it.s, it.r + ext + viaR + VIA_OFF_PAD + MARGIN, (c, x, y) => { if (dEdge(x, y) < viaR + VIA_OFF_PAD) V[c] = 1; });
+          if (it.kind === "pad" && it.pad.smd) stamp(it.s, it.r + ext + viaR + VIA_OFF_PAD + MARGIN, (c, x, y) => { if (!clear(x, y, viaR + VIA_OFF_PAD)) V[c] = 1; });
           return;
         }
         const g = need(r.id, net, null, it), sb = it.kind === "pad" ? SP.get(it.pad) : null, gs = sb ? Math.min(g, sb.gap - 0.02) : g;
         const ls = it.layers.map(li).filter(l => l >= 0), up = areas.filter(k => k.c > g + 1e-9 && k.ls.some(l => ls.includes(l))), gUp = up.length ? Math.max(...up.map(k => k.c)) : g;
         const gAt = (x, y) => (up.length ? Math.max(g, ...up.filter(k => C.pip(x, y, k.pts)).map(k => k.c)) : g);
         const mark = (rad, fn) => stamp(it.s, it.r + ext + rad + Math.max(g, gs, gUp), (c, x, y) => {
-          if (sb && gs < g && Math.hypot(x - sb.x, y - sb.y) <= sb.r) { if (dEdge(x, y) >= rad + gs) return; }
-          else if (dEdge(x, y) >= rad + gAt(x, y)) return;
+          if (sb && gs < g && Math.hypot(x - sb.x, y - sb.y) <= sb.r) { if (clear(x, y, rad + gs)) return; }
+          else if (clear(x, y, rad + gAt(x, y))) return;
           fn(c);
         });
-        mark(hw + MARGIN, c => ls.forEach(l => { T[l * N + c] = 1; }));
+        mark(hw + MARGIN, c => { for (let q = 0; q < ls.length; q++) T[ls[q] * N + c] = 1; });
         mark(viaR + MARGIN, c => { V[c] = 1; });
         // a socket pin lets passing copper as near as the pins' spacing, but the track into it runs to its
         // middle and keeps the full clearance: shut the ring round the middle that track would need
@@ -233,21 +262,36 @@
       return out;
     }
     // the price map for net r: per cell, how many other nets it would come too close to (and which one last)
-    const softT = new Uint8Array(NL * N), softV = new Uint8Array(N), whoT = new Int32Array(NL * N), whoV = new Int32Array(N), seenT = new Int32Array(NL * N), seenV = new Int32Array(N);
+    const softT = new Uint16Array(NL * N), softV = new Uint16Array(N), whoT = new Int32Array(NL * N), whoV = new Int32Array(N), seenT = new Int32Array(NL * N), seenV = new Int32Array(N);
     let token = 0;
     const netIds = [...nets.keys()], idx = new Map(netIds.map((n, i) => [n, i]));
     // (each net's cells at a given distance are kept until its copper changes: q.ver)
+    // Each net's lists at its different distances lie inside one another (a wider distance takes every cell
+    // of a narrower one), so each also keeps its ring: the cells it has over the next narrower list of the
+    // net (tE, vE: { e, cells, ring } in the net's chains, narrowest first). Going from one distance to
+    // another then touches only the rings between them (soft).
+    function chainAdd(chain, e, cells, seen, mine) {
+      // (seen holds the token mine at this list's cells)
+      let pos = 0; while (pos < chain.length && chain[pos].e <= e) pos++;
+      const S = chain[pos - 1], Bg = chain[pos], ent = { e, cells, ring: cells, chain };
+      if (Bg) { const out = [], c = Bg.cells; for (let k = 0; k < c.length; k++) if (seen[c[k]] !== mine) out.push(c[k]); Bg.ring = Int32Array.from(out); }
+      if (S) { const tok = ++token, out = [], c = S.cells; for (let k = 0; k < c.length; k++) seen[c[k]] = tok; for (let k = 0; k < cells.length; k++) if (seen[cells[k]] !== tok) out.push(cells[k]); ent.ring = Int32Array.from(out); }
+      chain.splice(pos, 0, ent);
+      return ent;
+    }
     function cellsNear(q, eT, eV) {
       const key = eT.toFixed(3) + "/" + eV.toFixed(3);
-      if (!q.near || q.near.ver !== q.ver) q.near = { ver: q.ver, m: new Map() };
+      if (!q.near || q.near.ver !== q.ver) q.near = { ver: q.ver, m: new Map(), cT: [], cV: [] };
       if (q.near.m.has(key)) return q.near.m.get(key);
       token++;
       const T = [], V = [];
       shapes(q).forEach(sh => {
-        stamp(sh.s, sh.r + eT, c => sh.ls.forEach(l => { const k = l * N + c; if (seenT[k] !== token) { seenT[k] = token; T.push(k); } }));
+        const ls = sh.ls, nl = ls.length;
+        stamp(sh.s, sh.r + eT, c => { for (let q = 0; q < nl; q++) { const k = ls[q] * N + c; if (seenT[k] !== token) { seenT[k] = token; T.push(k); } } });
         stamp(sh.s, sh.r + eV, c => { if (seenV[c] !== token) { seenV[c] = token; V.push(c); } });
       });
       const v = { T: Int32Array.from(T), V: Int32Array.from(V) }; q.near.m.set(key, v);
+      const mine = token; v.vE = chainAdd(q.near.cV, eV, v.V, seenV, mine); v.tE = chainAdd(q.near.cT, eT, v.T, seenT, mine);
       return v;
     }
     // grid nets kept from running alongside anode and heater nets (on either side of the board), as the check
@@ -262,19 +306,48 @@
     const pourLayer = new Map(); (board.zones || []).forEach(z => { const l = li(z.layer); if (l >= 0 && nameId.has(z.net)) pourLayer.set(l, nameId.get(z.net)); });
     const POUR = o.pour === undefined ? 1 : o.pour;
     const LIM = R.couplingGap > 0 ? R.couplingGap : 2, nearT = new Uint8Array(N), COUPLE = o.couple || 4;
+    // The map is kept from one net to the next: a net's cells stay counted while its copper and the distance
+    // asked of it are the same (stamped: net id -> its cells now in softT / softV), so going on to the next
+    // net takes off and puts on only what differs, not every net's cells again. Which net a cell's price is
+    // for (whoT, whoV: the last of them in the nets' order) is worked out only when a conflict asks (who()).
+    const stamped = new Map();
+    let whoOk = false, nearSet = false;
     function soft(r) {
-      softT.fill(0); softV.fill(0); nearT.fill(0);
+      whoOk = false;
+      if (nearSet) { nearT.fill(0); nearSet = false; }
       const hw = r.w / 2, other = victim.has(r.id) ? aggr : aggr.has(r.id) ? victim : null;
       if (other) nets.forEach(q => {
         if (q === r || !other.has(q.id)) return;
-        const c = cellsNear(q, hw + LIM, 0);
-        for (let k = 0; k < c.T.length; k++) nearT[c.T[k] % N] = 1;
+        const c = cellsNear(q, hw + LIM, 0).T;
+        for (let k = 0; k < c.length; k++) nearT[c[k] % N] = 1;
+        nearSet = true;
       });
       nets.forEach(q => {
-        if (q === r || (!q.keep.length && !q.paths.length)) return;
-        const g = need(r.id, q.id), qi = idx.get(q.id), c = cellsNear(q, hw + g + MARGIN, r.vr + g + MARGIN), tok = ++token;
-        for (let k = 0; k < c.T.length; k++) { const s = c.T[k]; seenT[s] = tok; if (softT[s] < 255) softT[s]++; whoT[s] = qi; }
-        for (let k = 0; k < c.V.length; k++) { const s = c.V[k]; seenV[s] = tok; if (softV[s] < 255) softV[s]++; whoV[s] = qi; }
+        let want = null;
+        if (q !== r && (q.keep.length || q.paths.length)) { const g = need(r.id, q.id); want = cellsNear(q, hw + g + MARGIN, r.vr + g + MARGIN); }
+        const have = stamped.get(q.id) || null;
+        if (want === have) return;
+        if (want) stamped.set(q.id, want); else stamped.delete(q.id);
+        if (have && want && have.tE.chain === want.tE.chain) { move(have.tE, want.tE, softT); move(have.vE, want.vE, softV); return; }
+        if (have) { const T = have.T, V = have.V; for (let k = 0; k < T.length; k++) softT[T[k]]--; for (let k = 0; k < V.length; k++) softV[V[k]]--; }
+        if (want) { const T = want.T, V = want.V; for (let k = 0; k < T.length; k++) softT[T[k]]++; for (let k = 0; k < V.length; k++) softV[V[k]]++; }
+      });
+    }
+    // from one of a net's lists to another of the same chain: the rings between them come off or go on
+    function move(a, b, cnt) {
+      if (a === b) return;
+      const ch = a.chain, ia = ch.indexOf(a), ib = ch.indexOf(b);
+      if (ib > ia) for (let i = ia + 1; i <= ib; i++) { const c = ch[i].ring; for (let k = 0; k < c.length; k++) cnt[c[k]]++; }
+      else for (let i = ib + 1; i <= ia; i++) { const c = ch[i].ring; for (let k = 0; k < c.length; k++) cnt[c[k]]--; }
+    }
+    function who() {
+      if (whoOk) return;
+      whoOk = true;
+      nets.forEach(q => {
+        const c = stamped.get(q.id); if (!c) return;
+        const qi = idx.get(q.id), T = c.T, V = c.V;
+        for (let k = 0; k < T.length; k++) whoT[T[k]] = qi;
+        for (let k = 0; k < V.length; k++) whoV[V[k]] = qi;
       });
     }
     // per-shape stamping counts a net once per shape, not per net: a net's two overlapping shapes count twice.
@@ -287,56 +360,81 @@
       if (!out.length) { const i = Math.min(nx - 1, Math.max(0, Math.round(it.s[0] / p))), j = Math.min(ny - 1, Math.max(0, Math.round(it.s[1] / p))); ls.forEach(l => out.push(l * N + j * nx + i)); }
       return out;
     }
-    const S2 = NL * N, SINK = S2, dist = new Float64Array(S2 + 1), from = new Int32Array(S2 + 1), stamp2 = new Int32Array(S2 + 1), goal = new Int32Array(S2 + 1), Q = heap(1 << 16);
+    const S2 = NL * N, SINK = S2, SB = new ArrayBuffer(16 * (S2 + 1)), SD = new Float64Array(SB), SI = new Int32Array(SB), goal = new Int32Array(S2 + 1), Q = heap(1 << 16);
     let run = 0;
     const VIA = o.viaCost || 3, BEND = 0.1;
     // A* from the tree's cells to any cell of the target group; returns the path (states, tree end first) or null
     // A* from the tree's cells to the target group's (a cell's start or finish cost: the tail to its pad);
     // returns the path (states, tree end first) or null
     function astar(r, H, tree, target, tb, pf) {
-      run++;
+      run += 2;   // (a state's mark: run when it is reached or bettered, run + 1 once its neighbours are looked at)
+      const run1 = run + 1;
       target.forEach((v, s) => { goal[s] = run; });
-      const hx = (s) => { const c = s % N, i = c % nx, j = (c - i) / nx, dx = Math.max(0, tb[0] - i, i - tb[2]), dy = Math.max(0, tb[1] - j, j - tb[3]); return p * (Math.max(dx, dy) + (SQ2 - 1) * Math.min(dx, dy)); };
+      const tb0 = tb[0], tb1 = tb[1], tb2 = tb[2], tb3 = tb[3], K2 = SQ2 - 1;
+      const hx = (s) => { const c = s % N, i = c % nx, j = (c - i) / nx, dx = Math.max(0, tb0 - i, i - tb2), dy = Math.max(0, tb1 - j, j - tb3); return p * (Math.max(dx, dy) + K2 * Math.min(dx, dy)); };
       Q.clear();
-      tree.forEach((v, s) => { if (stamp2[s] === run && dist[s] <= v.c) return; stamp2[s] = run; dist[s] = v.c; from[s] = -1; Q.push(s, v.c + hx(s)); });
+      tree.forEach((v, s) => { if ((SI[4 * s + 3] | 1) === run1 && SD[2 * s] <= v.c) return; SI[4 * s + 3] = run; SD[2 * s] = v.c; SI[4 * s + 2] = -1; Q.push(s, v.c + hx(s)); });
+      const HT = H.T, HV = H.V, term = r.term, pD = p * SQ2, bend = BEND * p, maxPops = 4 * S2;
+      // what a layer's pour adds for this net
+      const pm = new Float64Array(NL); for (let l = 0; l < NL; l++) pm[l] = pourLayer.has(l) && pourLayer.get(l) !== r.id ? POUR : 0;
       let found = -1, pops = 0;
       while (Q.size) {
         const s = Q.pop(); pops++;
-        if (s === SINK) { found = from[SINK]; break; }
-        const ds = dist[s];
-        if (goal[s] === run) { const nd = ds + target.get(s).c; if (stamp2[SINK] !== run || dist[SINK] > nd) { stamp2[SINK] = run; dist[SINK] = nd; from[SINK] = s; Q.push(SINK, nd); } }
-        const l = Math.floor(s / N), c = s - l * N, i = c % nx, j = (c - i) / nx;
-        const pr = from[s] >= 0 ? from[s] : -1, pdir = pr >= 0 && Math.floor(pr / N) === l ? s - pr : 0;
+        if (s === SINK) { found = SI[4 * SINK + 2]; break; }
+        // an entry left behind when its state was bettered, and that state already done at its best: looking
+        // at its neighbours again would change nothing
+        if (SI[4 * s + 3] === run1) { if (pops > maxPops) break; continue; }
+        SI[4 * s + 3] = run1;
+        const ds = SD[2 * s];
+        if (goal[s] === run) { const nd = ds + target.get(s).c; if (SI[4 * SINK + 3] !== run || SD[2 * SINK] > nd) { SI[4 * SINK + 3] = run; SD[2 * SINK] = nd; SI[4 * SINK + 2] = s; Q.push(SINK, nd); } }
+        const l = Math.floor(s / N), c = s - l * N, i = c % nx, j = (c - i) / nx, lN = l * N, pml = pm[l];
+        const pr = SI[4 * s + 2], pdir = pr >= 0 && Math.floor(pr / N) === l ? s - pr : 0;
         for (let d = 0; d < 8; d++) {
           const a = i + DI[d], b = j + DJ[d]; if (a < 0 || b < 0 || a >= nx || b >= ny) continue;
-          const c2 = b * nx + a, s2 = l * N + c2;
-          if (H.T[s2] && goal[s2] !== run && !r.term.has(s2)) continue;
-          const len = d < 4 ? p : p * SQ2, cost = len * (1 + histT[s2] + COUPLE * nearT[c2] + (pourLayer.has(l) && pourLayer.get(l) !== r.id ? POUR : 0)) * (1 + pf * softT[s2]) + (pdir && s2 - s !== pdir ? BEND * p : 0), nd = ds + cost;
-          if (stamp2[s2] === run && dist[s2] <= nd) continue;
-          stamp2[s2] = run; dist[s2] = nd; from[s2] = s; Q.push(s2, nd + hx(s2));
+          const c2 = b * nx + a, s2 = lN + c2;
+          if (HT[s2] && goal[s2] !== run && !term.has(s2)) continue;
+          const cost = (d < 4 ? p : pD) * (1 + histT[s2] + COUPLE * nearT[c2] + pml) * (1 + pf * softT[s2]) + (pdir && s2 - s !== pdir ? bend : 0), nd = ds + cost;
+          if ((SI[4 * s2 + 3] | 1) === run1 && SD[2 * s2] <= nd) continue;
+          const dx = Math.max(0, tb0 - a, a - tb2), dy = Math.max(0, tb1 - b, b - tb3);
+          SI[4 * s2 + 3] = run; SD[2 * s2] = nd; SI[4 * s2 + 2] = s; Q.push(s2, nd + p * (Math.max(dx, dy) + K2 * Math.min(dx, dy)));
         }
-        if (!H.V[c]) for (let l2 = 0; l2 < NL; l2++) {
-          if (l2 === l) continue;
-          const s2 = l2 * N + c, nd = ds + VIA * (1 + histV[c]) * (1 + pf * softV[c]);
-          if (H.T[s2] && goal[s2] !== run && !r.term.has(s2)) continue;
-          if (stamp2[s2] === run && dist[s2] <= nd) continue;
-          stamp2[s2] = run; dist[s2] = nd; from[s2] = s; Q.push(s2, nd + hx(s2));
+        if (!HV[c]) {
+          const vc = VIA * (1 + histV[c]) * (1 + pf * softV[c]), dx = Math.max(0, tb0 - i, i - tb2), dy = Math.max(0, tb1 - j, j - tb3), h = p * (Math.max(dx, dy) + K2 * Math.min(dx, dy));
+          for (let l2 = 0; l2 < NL; l2++) {
+            if (l2 === l) continue;
+            const s2 = l2 * N + c, nd = ds + vc;
+            if (HT[s2] && goal[s2] !== run && !term.has(s2)) continue;
+            if ((SI[4 * s2 + 3] | 1) === run1 && SD[2 * s2] <= nd) continue;
+            SI[4 * s2 + 3] = run; SD[2 * s2] = nd; SI[4 * s2 + 2] = s; Q.push(s2, nd + h);
+          }
         }
-        if (pops > 4 * S2) break;
+        if (pops > maxPops) break;
       }
       if (found < 0) return null;
-      const path = []; for (let s = found; s >= 0; s = from[s]) path.push(s);
+      const path = []; for (let s = found; s >= 0; s = SI[4 * s + 2]) path.push(s);
       return path.reverse();
     }
-    // what a tail costs: its length outside the pad, dearer where other nets are near
-    function tailCost(P, st, pf) {
-      const sg = tailSeg(P, st); if (!sg) return 0;
-      const l = Math.floor(st / N), len = Math.hypot(sg[2] - sg[0], sg[3] - sg[1]), n2 = Math.max(1, Math.ceil(len / (p / 2)));
-      let c = 0;
-      for (let k = 0; k < n2; k++) {
-        const i = Math.round((sg[0] + (sg[2] - sg[0]) * (k + 0.5) / n2) / p), j = Math.round((sg[1] + (sg[3] - sg[1]) * (k + 0.5) / n2) / p);
-        c += (len / n2) * (1 + (i >= 0 && j >= 0 && i < nx && j < ny ? pf * softT[l * N + j * nx + i] : 0));
+    // what a tail costs: its length outside the pad, dearer where other nets are near. The cells it is
+    // sampled at are the same every time, so they are kept per entry cell of a pad: { off, idx, w, none }
+    function tailSamples(P, e) {
+      const n = e.length, off = new Int32Array(n + 1), w = new Float64Array(n), none = new Uint8Array(n), idx = [];
+      for (let q = 0; q < n; q++) {
+        const st = e[q], sg = tailSeg(P, st);
+        if (!sg) { none[q] = 1; off[q + 1] = idx.length; continue; }
+        const l = Math.floor(st / N), len = Math.hypot(sg[2] - sg[0], sg[3] - sg[1]), n2 = Math.max(1, Math.ceil(len / (p / 2)));
+        for (let k = 0; k < n2; k++) {
+          const i = Math.round((sg[0] + (sg[2] - sg[0]) * (k + 0.5) / n2) / p), j = Math.round((sg[1] + (sg[3] - sg[1]) * (k + 0.5) / n2) / p);
+          idx.push(i >= 0 && j >= 0 && i < nx && j < ny ? l * N + j * nx + i : -1);
+        }
+        w[q] = len / n2; off[q + 1] = idx.length;
       }
+      return { off, idx: Int32Array.from(idx), w, none };
+    }
+    function tailCostAt(tl, q, st, pf) {
+      if (tl.none[q]) return 0;
+      const idx = tl.idx, wq = tl.w[q];
+      let c = 0;
+      for (let m = tl.off[q], e = tl.off[q + 1]; m < e; m++) { const k = idx[m]; c += wq * (1 + (k >= 0 ? pf * softT[k] : 0)); }
       return c * (1 + histT[st]);
     }
     const ENTRY = 5;
@@ -380,7 +478,7 @@
         const m = new Map(), put = (s2, c, P) => { const v = m.get(s2); if (!v || c < v.c) m.set(s2, { c, P }); };
         g.forEach(it => {
           const e = it.kind === "pad" ? entries(r, H, it) : [];
-          if (e.length) e.forEach(s2 => put(s2, tailCost(it, s2, pf), it));
+          if (e.length) { const tl = e.tail || (e.tail = tailSamples(it, e)); for (let q = 0; q < e.length; q++) put(e[q], tailCostAt(tl, q, e[q], pf), it); }
           else cellsOf(it, r.w).forEach(s2 => put(s2, 0, null));
         });
         return m;
@@ -415,10 +513,10 @@
       const hit = new Map();
       const note = (qi, x, y) => { n++; if (rip) { if (!hit.has(qi)) hit.set(qi, []); hit.get(qi).push([x, y]); } };
       r.paths.forEach(path => path.forEach((s, m) => {
-        if (softT[s]) { histT[s] += HINC; note(whoT[s], X(s % N), Y(s % N)); }
-        if (m && Math.floor(path[m - 1] / N) !== Math.floor(s / N) && softV[s % N]) { histV[s % N] += HINC; note(whoV[s % N], X(s % N), Y(s % N)); }
+        if (softT[s]) { who(); histT[s] += HINC; note(whoT[s], X(s % N), Y(s % N)); }
+        if (m && Math.floor(path[m - 1] / N) !== Math.floor(s / N) && softV[s % N]) { who(); histV[s % N] += HINC; note(whoV[s % N], X(s % N), Y(s % N)); }
       }));
-      r.paths.forEach(path => tails(path).forEach(([P, st]) => { const s2 = tailHitAt(P, st); if (s2 >= 0) { histT[st] += HINC; note(whoT[s2], X(s2 % N), Y(s2 % N)); } }));
+      r.paths.forEach(path => tails(path).forEach(([P, st]) => { const s2 = tailHitAt(P, st); if (s2 >= 0) { who(); histT[st] += HINC; note(whoT[s2], X(s2 % N), Y(s2 % N)); } }));
       // the keep copper of other nets a new route of this one runs over comes up (its net is joined again)
       if (rip) hit.forEach((pts, qi) => {
         const q = nets.get(netIds[qi]); if (!q || !q.keep.length) return;
@@ -457,7 +555,7 @@
         });
       });
       if (!worst) break;
-      if (o.debug) { const path = worst.r.paths[worst.pi]; soft(worst.r); const bad = path.filter(s => softT[s]).map(s => [X(s % N), Y(s % N), names[netIds[whoT[s]]]]); o.debug.push({ net: names[worst.r.id], n: worst.n, len: path.length, a: path.a && path.a.pad.ref + "-" + path.a.pad.num, b: path.b && path.b.pad.ref + "-" + path.b.pad.num, bad: bad.slice(0, 3), tails: tails(path).map(([P, st]) => tailHit(P, st)) }); }
+      if (o.debug) { const path = worst.r.paths[worst.pi]; soft(worst.r); who(); const bad = path.filter(s => softT[s]).map(s => [X(s % N), Y(s % N), names[netIds[whoT[s]]]]); o.debug.push({ net: names[worst.r.id], n: worst.n, len: path.length, a: path.a && path.a.pad.ref + "-" + path.a.pad.num, b: path.b && path.b.pad.ref + "-" + path.b.pad.num, bad: bad.slice(0, 3), tails: tails(path).map(([P, st]) => tailHit(P, st)) }); }
       worst.r.paths.splice(worst.pi, 1); worst.r.groupsLeft++; vias(worst.r);
     }
     // stairs pulled straight: on each layer a path's cells are joined again by one straight or 45° run, or a

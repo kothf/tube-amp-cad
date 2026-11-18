@@ -1,6 +1,26 @@
 // A ganged switch, a kenotron supply, a catalog power transformer, IEC sheets and designations
 import { cad, check, clickAt, toScreen } from "./harness.mjs";
 
+// --- An edit that leaves the circuit electrically as it was keeps the last run's result ---
+{
+  const r = await cad.evaluate(async () => {
+    const C = TubeCAD, S = C.state;
+    const settled = async () => { const t0 = performance.now(); while ((S.sim.busy || S.sim.pending || !S.sim.result) && performance.now() - t0 < 20000) await new Promise(q => setTimeout(q, 30)); };
+    const next = async s0 => { const t0 = performance.now(); while ((S.sim.seq === s0 || S.sim.busy) && performance.now() - t0 < 20000) await new Promise(q => setTimeout(q, 30)); await settled(); };
+    await C.openExample(C.EXAMPLES.find(e => /^02-/.test(e.file))); await new Promise(q => setTimeout(q, 400)); await settled();
+    const first = S.sim.result;
+    // the whole circuit moved two grid steps: the same netlist
+    let s0 = S.sim.seq;
+    S.comps.forEach(c => { c.x += 40; }); S.wires.forEach(w => { w.x1 += 40; w.x2 += 40; }); C.commit(); await next(s0);
+    const moved = S.sim.result;
+    // a resistor's value changed: a new run
+    s0 = S.sim.seq;
+    const res = S.comps.find(c => c.type === "resistor"); res.params.r *= 1.5; C.commit(); await next(s0);
+    return { ok: !!first, kept: moved === first, rerun: S.sim.result !== first && !!S.sim.result };
+  });
+  check(r.ok && r.kept && r.rerun, `moving the whole circuit keeps the simulation's result without running again; changing a resistor runs it again (${JSON.stringify(r)})`);
+}
+
 // --- 5. A ganged changeover switch, flipped with a double-click --------------
 {
   // two sections, S1.1 and S1.2, each choosing between two loads on its own 10 V supply
