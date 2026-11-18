@@ -2250,6 +2250,8 @@
         return pins;
       },
       value: c => `${c.params.model} ${c.params.v} V`,
+      // which of its elements a pin belongs to (build below): the coil's resistance, its inductance, the contacts
+      pinEl: pid => (pid === "A1" ? "#r" : pid === "A2" ? "#l" : ""),
       fields: [{ key: "model", label: "Type", kind: "select", options: () => Object.entries(RELAYS).map(([k, m]) => [k, `${k} · ${m.use}`]), wide: true },
         { key: "v", label: "Coil voltage", kind: "select", options: [["5", "5 V DC"], ["12", "12 V DC"], ["24", "24 V DC"]] }],
       info: c => {
@@ -3714,7 +3716,13 @@
       readout: (c, R) => {
         const d = R.r.dc.devices[c.id], q = d && d.main ? d.main.q : null, m = RELAYS[c.params.model] || RELAYS["G5LE-1"], v = +c.params.v || 12, k = relayCoil(m, v), vc = R.vAcross("A1", "A2");
         return R.kv("Contacts", q === null ? "—" : q > 0.99 ? "pulled in (COM to NO)" : q < 0.01 ? "at rest (COM to NC)" : `pulled in ${Math.round(q * 100)} % of the time`, q !== null && q > 0.01 && q < 0.99 ? "warn" : "")
-          + R.kv("Coil voltage (DC)", fmtEng(vc, "V", 2), Math.abs(vc) > 1.3 * v ? "bad" : "") + R.kv("Coil current", fmtEng(vc / k.r, "A", 2));
+          + R.kv("Coil voltage (DC)", fmtEng(vc, "V", 2), Math.abs(vc) > 1.3 * v ? "bad" : "") + R.kv("Coil current", fmtEng(vc / k.r, "A", 2))
+          // AC on the coil (a DC relay fed from a winding, or a ripply supply): it lets go near each zero crossing
+          + (() => {
+            const va = R.vRms("A1", "A2"), ac = va !== null && isFinite(va) && va > 0.05 * v;
+            return (ac ? R.kv("Coil voltage (AC rms)", fmtEng(va, "V", 2), va > Math.abs(vc) ? "warn" : "") : "")
+              + (ac && va > Math.abs(vc) && q !== null && q > 0.01 && q < 0.99 ? R.note("AC on a DC coil: its current falls below must-release near each zero crossing, so the contacts chatter. Feed the coil from rectified, smoothed DC. Animate shows the contacts moving.", "warn") : "");
+          })();
       }
     },
     vactrol: {

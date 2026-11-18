@@ -501,9 +501,39 @@ import { readFile } from "node:fs/promises";
     const vr = await cad.evaluate(i => { const C = TubeCAD, c = C.state.comps.find(k => k.id === i); return C.state.sim.result.dc.nodes[C.topo().pinNet.get(c.id + ":1")]; }, ids.R);
     check(Math.abs(vr - 5) < 0.01, `relay: pulled in, its NO contact feeds the load ${vr.toFixed(3)} V`);
     const bom = await cad.evaluate(() => TubeCAD.bomData().rows.map(r => `${r.refs} ${r.desc} ${r.value} ${r.rating}`).join(" | "));
-    check(/K1 Relay, SPDT Omron G5LE-1-12VDC SPDT power relay/.test(bom), `BOM: the relay (${bom})`);
+    check(/K1 Relay, SPDT Omron G5LE-1 DC12 SPDT power relay/.test(bom), `BOM: the relay (${bom})`);
     const sp = await cad.evaluate(() => TubeCAD.spiceNetlist());
     check(/^\.model SNO_\S+ SW\(VT=5\.1 VH=3\.9 RON=0\.1 ROFF=10000000000\)$/m.test(sp) && /^S\S+_1NC /m.test(sp), "SPICE export: the relay's contacts as switches with its hysteresis");
+    // the coil switched by a transistor with nothing across it: Checks asks for a diode. Then 12 V rms
+    // 50 Hz straight on the 12 V DC coil: it chatters (pulled in part of each cycle), the inspector and
+    // Checks say so, and under Animate the contacts open and close
+    const build = ac => cad.evaluate(ac => {
+      const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
+      const pin = (c, p) => C.compPins(c).find(q => q.id === p), wire = (p, q, h) => C.lRoute(p.x, p.y, q.x, q.y, h).forEach(s => C.addSegment(...s));
+      const at = (type, params, rot, pid, to, dx, dy) => { const c = C.makeComp(type, params, 0, 0, rot); const p = pin(c, pid); c.x = to.x + dx - p.x; c.y = to.y + dy - p.y; S.comps.push(c); wire(to, pin(c, pid), dx !== 0); return c; };
+      const rail = (to, dy) => at("rail", { name: "+12V", v: 12 }, 0, "1", to, 0, dy), gnd = (to, dx, dy) => at("ground", {}, 0, "G", to, dx, dy);
+      const K = C.makeComp("relay", { model: "G5LE-1", v: "12" }, 400, 300, 0); S.comps.push(K);
+      rail(pin(K, "11"), 40);
+      let R = at("resistor", { r: 1e3 }, 1, "1", pin(K, "14"), 0, -40); if (pin(R, "2").y > pin(R, "1").y) { S.comps.pop(); S.wires.pop(); R = at("resistor", { r: 1e3 }, 3, "1", pin(K, "14"), 0, -40); }
+      gnd(pin(R, "2"), 0, -20);
+      if (ac) { const G = at("siggen", { wave: "sine", freq: 50, amp: 12 * Math.SQRT2, rs: 0.1 }, 0, "+", pin(K, "A1"), -60, -20); gnd(pin(G, "-"), 0, 20); gnd(pin(K, "A2"), 0, 20); }
+      else { rail(pin(K, "A1"), -20); const Q = at("npn", {}, 0, "C", pin(K, "A2"), 0, 40); gnd(pin(Q, "E"), 0, 20); const RB = at("resistor", { r: 4700 }, 0, "2", pin(Q, "B"), -20, 0); rail(pin(RB, "1"), -20); }
+      S.sel.comps.add(K.id); C.commit(); return K.id;
+    }, ac);
+    await build(false);
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /pulled in/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+    check((await cad.evaluate(() => TubeCAD.circuitIssues())).some(t => /K1 \(G5LE-1\) is switched by VT1 with nothing across its coil: .*Put a diode across the coil/.test(t)), "Checks: a transistor switching the coil with nothing across it");
+    const kid = await build(true);
+    await cad.waitForFunction(() => !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && /of the time/.test(document.getElementById("insp-live").textContent), null, { timeout: 30000 });
+    const ch = await cad.evaluate(() => ({ insp: document.getElementById("insp-live").textContent.replace(/\s+/g, " "), issues: TubeCAD.circuitIssues() }));
+    const share = +((/pulled in (\d+) % of the time/.exec(ch.insp) || [])[1] || 0);
+    check(share > 30 && share < 90 && /Coil voltage \(AC rms\)\s*1[12]\.\d+V/.test(ch.insp) && /contacts chatter/.test(ch.insp), `a DC coil on AC: pulled in ${share} % of the time, its AC rms shown, chatter noted (${ch.insp.slice(0, 220)})`);
+    check(ch.issues.some(t => /K1 \(G5LE-1\) has AC across its DC coil and chatters/.test(t)), `Checks: the chattering relay (${ch.issues.join(" / ")})`);
+    await cad.evaluate(() => TubeCAD.setAnim(true));
+    const states = new Set();
+    for (let i = 0; i < 30 && states.size < 2; i++) { states.add(await cad.evaluate(id => TubeCAD.relayOn(TubeCAD.state.comps.find(c => c.id === id)), kid)); await cad.waitForTimeout(40); }
+    await cad.evaluate(() => TubeCAD.setAnim(false));
+    check(states.has(true) && states.has(false), "Animate: the chattering relay's contacts open and close with the cycle");
     const v = await cad.evaluate(() => {
       const C = TubeCAD, S = C.state; S.comps = []; S.wires = []; S.sel.comps.clear(); S.sel.wires.clear();
       const add = (type, params, x, y, rot) => { const c = C.makeComp(type, params, x, y, rot || 0); S.comps.push(c); return c; };

@@ -94,7 +94,10 @@
           if ((a.mode === "dc" ? dcI : a.pk) >= 1e-6) wires.set(w.id, a);
         }
       });
-      S.anim.data = { r, n, wires, nets, leds, eyes, lamps, nixies, meters, f: signalFreq() };
+      // each relay's state (1 pulled in) at the frames, as the run recorded it
+      const relays = new Map();
+      if (F.relays) F.relays.ids.forEach((id, j) => relays.set(id, F.relays.q.map(q => q[j])));
+      S.anim.data = { r, n, wires, nets, leds, eyes, lamps, nixies, meters, relays, f: signalFreq() };
       return S.anim.data;
     }
     // a quantity at the animation's phase, between its frames
@@ -181,6 +184,15 @@
       if (i === null || !isFinite(i)) return null;
       if (g.abs) i = Math.abs(i);
       return i > g.min ? Math.min(1, Math.sqrt(i / g.full)) : 0;
+    }
+    // whether a relay is pulled in now: under Animate at the cycle's phase (a coil on AC or on
+    // pulses moves its contacts within the cycle), else when the settled result has it in for more
+    // than half the time; null with nothing simulated
+    function relayOn(c) {
+      const d = cycle(), a = d && d.relays && d.relays.get(c.id);
+      if (a && a.length) return a[Math.floor(S.anim.phase * a.length) % a.length] > 0.5;
+      const m = S.sim.result && S.sim.result.dc && (S.sim.result.dc.devices[c.id] || {}).main;
+      return m ? m.q > 0.5 : null;
     }
     // a magic eye now: { shadow 0–1 (of 90°), glow 0–1 }, or null with nothing simulated
     function eyeLevel(c) {
@@ -312,6 +324,6 @@
       for (let i = 0; i <= 60; i++) { const px = sx + sw * i / 60, py = sy - 5 * Math.sin(2 * Math.PI * i / 60); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
       ctx.stroke(); ctx.fillStyle = "#ffd54f"; ctx.beginPath(); ctx.arc(sx + sw * ph, sy - 5 * Math.sin(2 * Math.PI * ph), 3, 0, Math.PI * 2); ctx.fill();
     }
-    return { animData, changed, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, heaterLevel, lampLevel, ledLevel, meterReading, needleLevel, nixieLevel, setAnim };
+    return { animData, changed, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, relayOn, heaterLevel, lampLevel, ledLevel, meterReading, needleLevel, nixieLevel, setAnim };
   };
 })(window);

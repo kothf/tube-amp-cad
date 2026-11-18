@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.234.0] - 2026-11-18
+## [3.235.0] - 2026-11-18
 
 Basic editing checked in the real app (place, wire, move, rotate, mirror, delete, undo and redo, copy and paste, zoom and pan, save and open, in the schematic and on the board), and group selection and copying with Shift made complete.
 
@@ -22,6 +22,23 @@ Basic editing checked in the real app (place, wire, move, rotate, mirror, delete
 
 ### Tests
 - e2e `01b-group-editing`: box inside and touching, Shift and Ctrl+click in and out, Shift+box, group drag with a wire stretching to a part left out, Shift+drag and Ctrl+drag copies (letter codes, own wire, one undo, dropped back = nothing), Esc during a drag, the group turned and mirrored with every connection kept, undo and redo, copy and paste and delete of a group. e2e `07-board`: Ctrl+click and Shift+click, Shift+drag copying a via and a hole, a part not copied, Esc during a drag.
+
+## [3.234.0] - 2026-11-18
+
+Relays tested in the app: a transistor-driven G5LE-1 and a G5V-2 (both poles, an audio signal through the contacts) on DC, pulses and AC, in Live, Transient and Animate, with their BOM rows, SPICE and KiCad exports and board footprints. Pull-in (6.1 ms) and drop-out over a diode (8.2 ms) read as before; these were wrong:
+
+### Fixed
+- **A coil on AC or pulses read "at rest"**: a run driven by a signal generator reported the relay at its operating point with the signal off, while its contacts were switching in the waveforms. It now reads the share of the cycle it is pulled in (*pulled in 61 % of the time* for 12 V rms 50 Hz on a 12 V G5LE-1) and the coil's AC rms.
+- **The contacts did not move under ∿ Animate**: they were drawn at the settled state. The run now records each relay's state at the animation's frames, and the contacts open and close with the cycle.
+- **The Transient tab refused every pin current of a part with more than two pins** (`I(Q1.C)`, `I(U1.3)`, `I(K1.A1)`: "has another pin on the same net"), comparing the pin with itself. A relay's coil pins now give the coil's current even when its common contact sits on the coil's supply.
+- **The BOM's relay part number** is Omron's ordering code, `G5LE-1 DC12` (was `G5LE-1-12VDC`, which no distributor lists).
+
+### Added
+- **Checks: a relay coil a transistor switches with nothing across it** (no diode, zener, varistor or RC snubber): its kick-back reached 3.9 kV on a 2N3904's collector in the transient.
+- **Checks: a DC coil with AC across it chatters**; the inspector notes it too. A coil switched by pulses no longer gets "it may not pull in" for its average voltage.
+
+### Tests
+- `tests/switching.test.mjs`: a DC coil on 50 Hz AC, the share of the cycle pulled in against its NO contact's waveform, and its state at every animation frame. Browser tests: the diode check, the chattering coil in the inspector, Checks and Animate, a multi-pin part's current in the Transient tab, the BOM's ordering code.
 
 ## [3.233.0] - 2026-11-18
 

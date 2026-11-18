@@ -2329,6 +2329,9 @@
     "Ways": "Положений",
     "Type": "Тип",
     "Coil voltage": "Напряжение обмотки",
+    "Contacts": "Контакты", "pulled in (COM to NO)": "притянуты (общий к НР)", "at rest (COM to NC)": "отпущены (общий к НЗ)",
+    "Coil voltage (DC)": "Напряжение обмотки (пост.)", "Coil voltage (AC rms)": "Напряжение обмотки (перем., СКЗ)", "Coil current": "Ток обмотки",
+    "AC on a DC coil: its current falls below must-release near each zero crossing, so the contacts chatter. Feed the coil from rectified, smoothed DC. Animate shows the contacts moving.": "Переменное напряжение на обмотке постоянного тока: у каждого перехода через ноль её ток падает ниже тока отпускания, и контакты дребезжат. Питайте обмотку выпрямленным сглаженным напряжением. Анимация показывает движение контактов.",
     "Driver": "Головка",
     "Re (voice coil, DC) (Ω)": "Re (катушка, пост.) (Ом)",
     "Le (voice coil) (H)": "Le (катушка) (Гн)",
@@ -2559,7 +2562,7 @@
   // an outline in words (board-outline.js describe): "round Ø60 mm", "custom shape 120 × 90 mm, 2 cut-outs", "100 × 60 mm, corners R5"
   const ruOutline = d => d.replace(/^round Ø([\d.]+) mm/, "круглая Ø$1 мм").replace(/^custom shape ([\d.]+ × [\d.]+) mm/, "своя форма $1 мм").replace(/^([\d.]+ × [\d.]+) mm/, "$1 мм").replace(/, corners R([\d.]+)/, ", углы R$1").replace(/, (\d+) cut-outs?/, ", вырезов: $1");
   const patterns = [
-    // group editing (3.234)
+    // group editing (3.235)
     [/^(\d+) parts? and (\d+) wires? selected: drag one to move them all, Shift\+drag copies, Space turns, M mirrors, Del deletes$/, "Выделено деталей: $1, проводов: $2. Потяните одну — двигается всё; Shift+перетаскивание копирует, Space поворачивает, M зеркалит, Del удаляет"],
     [/^Copied (\d+) items?(?:; (\d+) parts? not copied \(parts come from the schematic: copy them there\))?: the copy is selected \(Ctrl\+Z takes it back\)$/, (m, n, k) => `Скопировано: ${n}${k ? `; деталей не скопировано: ${k} (детали приходят из схемы, копируйте их там)` : ""}. Копия выделена (Ctrl+Z её убирает)`],
     // Settings (3.232)
@@ -2672,6 +2675,9 @@
     [/^(.+?) \((\S+)\): cathode warm-up τ = (\S+), 90 % of its emission at (\S+)(?:; overdrawn with a cold cathode (.+))?$/, (m, n, t, tau, w, c) => `${n} (${t}): прогрев катода τ = ${tau}, 90 % эмиссии к ${w}${c ? `; перегружена с холодным катодом ${c}` : ""}`],
     [/^Simulate the power-on transient in the CAD \(again while it runs: stop, keeping the record so far\)(?:\. Last run: (\S+) of circuit time in ([\d.]+) s; expect about ([\d.]+) s for (Auto \(as long as last time\)|\S+)( \(the circuit has changed since: a rough guide\))?|(\. The first run sets the estimate for the next))?$/,
       (m, a, b, c, d, ch, first) => `Рассчитать включение в САПР (повторно во время расчёта — остановить, сохранив рассчитанное)${a ? `. Прошлый прогон: ${a} времени схемы за ${b} с; ожидайте около ${c} с для ${d.startsWith("Auto") ? "«Авто» (как в прошлый раз)" : d}${ch ? " (схема с тех пор изменилась: оценка грубая)" : ""}` : first ? ". Первый прогон задаст оценку для следующих" : ""}`],
+    [/^pulled in (\d+) % of the time$/, "притянуты $1 % времени"],
+    [/^(\S+) \((\S+)\) is switched by (\S+) with nothing across its coil: when \3 turns off, the coil kicks back hundreds of volts at it\. Put a diode across the coil \(cathode to A1, the \+ end\), such as a 1N4148 or 1N4007\.$/, "$1 ($2) коммутируется $3, а параллельно обмотке ничего нет: когда $3 закрывается, обмотка бросает на него сотни вольт. Поставьте диод параллельно обмотке (катодом к A1, плюсу), например 1N4148 или 1N4007."],
+    [/^(\S+) \((\S+)\) has AC across its DC coil and chatters: pulled in only (\d+) % of the time, its current falling below must-release near each zero crossing\. Feed the coil from rectified, smoothed DC\.$/, "На обмотке постоянного тока $1 ($2) переменное напряжение, и реле дребезжит: притянуто лишь $3 % времени, у каждого перехода через ноль ток падает ниже тока отпускания. Питайте обмотку выпрямленным сглаженным напряжением."],
     [/^(Soft-start relay|NTC relay)$/, (m, w) => w === "NTC relay" ? "Реле NTC" : "Реле мягкого пуска"],
     [/^closes across the (inrush limiter|(\S+) soft-start resistor)$/, (m, w, r) => r ? `замыкает резистор мягкого пуска ${r}` : "замыкает ограничитель пускового тока"],
     [/^Soft start: the mains through (?:the circuit's NTC inrush limiter \(at its cold resistance\)|a (\S+) resistor) until a relay shorts it at (\S+)\.$/, (m, r, t) => `Мягкий пуск: сеть через ${r ? `резистор ${r}` : "NTC-ограничитель схемы (с сопротивлением в холодном состоянии)"}, пока реле не замкнёт его через ${t}.`],

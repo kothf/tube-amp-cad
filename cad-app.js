@@ -483,7 +483,7 @@
   }
 
   // AC animation (View ▾ → Animate): dots for each wire's current, a tint for each node's AC (cad-anim.js)
-  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, heaterLevel, lampLevel, ledLevel, meterReading, needleLevel, nixieLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
+  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, relayOn, heaterLevel, lampLevel, ledLevel, meterReading, needleLevel, nixieLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
 
   function limitRows(c) {
     return tubeLimits(c).filter(o => o.key !== "Vg2k").map(o => kv(o.label, `${o.value} · ${Math.round(o.share * 100)}% of ${o.lim}`, o.share > 1 ? "bad" : o.share > 0.85 ? "warn" : "")).join("");
@@ -1604,8 +1604,8 @@
     if (c.type === "meter" && live) c._needle = needleLevel(c);
     if (c.type === "eye" && live) c._eye = eyeLevel(c);
     if (c.type === "tube" && live) { const h = anodeHeat(c); if (h) c._hot = h.glow; c._heat = heaterLevel(c); }
-    // a relay drawn pulled in when the simulation (its settled average) has it so
-    if (c.type === "relay" && live && S.sim.result && S.sim.result.dc) { const d = (S.sim.result.dc.devices[c.id] || {}).main; c._on = !!(d && d.q > 0.5); }
+    // a relay drawn pulled in when the simulation has it so (under Animate, at the cycle's phase)
+    if (c.type === "relay" && live) c._on = !!relayOn(c);
     DRAW[c.type](ctx, c);
     delete c._sel; delete c._lit; delete c._on; delete c._eye; delete c._hot; delete c._heat; delete c._digit; delete c._needle;
     if (mirrored) { if (ownFill) ctx.fillText = prevFill; else delete ctx.fillText; }
@@ -2474,15 +2474,37 @@
         if (m && sp.i > m.imax) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(sp.i, "A", 2)} rms, more than its ${m.imax} A rating.`);
       }
     });
+    // a relay coil switched by a transistor needs something across it (a diode, a zener, a varistor
+    // or an RC snubber): when the transistor turns off, the coil's inductance kicks back hundreds of
+    // volts at it. Wiring alone tells, no simulation needed.
+    const SNUB = new Set(["diode", "zener", "led", "mov", "resistor", "capacitor", "electrolytic"]);
+    S.comps.forEach(c => {
+      if (c.type !== "relay") return;
+      const a = T.pinNet.get(c.id + ":A1"), b = T.pinNet.get(c.id + ":A2");
+      if (a === undefined || b === undefined || a === b) return;
+      const across = S.comps.some(k => k !== c && SNUB.has(k.type) && compPins(k).some(p => T.pinNet.get(k.id + ":" + p.id) === a) && compPins(k).some(p => T.pinNet.get(k.id + ":" + p.id) === b));
+      if (across) return;
+      const sw = S.comps.find(k => { const ids = compPins(k).map(p => p.id), out = ids.includes("B") && ids.includes("E") ? "C" : ids.includes("G") && ids.includes("S") ? "D" : null; return out && ids.includes(out) && [a, b].includes(T.pinNet.get(k.id + ":" + out)); });
+      if (sw) issues.push(`${c.label} (${c.params.model}) is switched by ${sw.label} with nothing across its coil: when ${sw.label} turns off, the coil kicks back hundreds of volts at it. Put a diode across the coil (cathode to A1, the + end), such as a 1N4148 or 1N4007.`);
+    });
     // relays: the coil's voltage near its rating (it may not pull in below 75 %, and it overheats well
-    // above); vactrols: the LED's current within its 40 mA
+    // above), and a DC coil on AC (it chatters); vactrols: the LED's current within its 40 mA
     S.comps.forEach(c => {
       if (!S.sim.result) return;
       if (c.type === "relay") {
         const v = +c.params.v || 12, vc = Math.abs(netDC(T.pinNet.get(c.id + ":A1")) - netDC(T.pinNet.get(c.id + ":A2"))), m = CadLib.RELAYS[c.params.model];
         if (!m || !isFinite(vc)) return;
+        const q = ((S.sim.result.dc.devices[c.id] || {}).main || {}).q, switching = q > 0.01 && q < 0.99;
         if (vc > 1.3 * v) issues.push(`${c.label} (${c.params.model}, ${v} V coil) has ${fmtEng(vc, "V", 2)} across its coil: more than 130 % of its rating, it overheats. Use a ${vc > 18 ? 24 : 12} V coil or a dropping resistor.`);
-        else if (vc > 0.2 * v && vc < m.op * v) issues.push(`${c.label} (${c.params.model}, ${v} V coil) has only ${fmtEng(vc, "V", 2)} across its coil: below its must-operate ${fmtEng(m.op * v, "V")}, it may not pull in.`);
+        // (a coil switched on and off within the cycle averages less: it does pull in)
+        else if (!switching && vc > 0.2 * v && vc < m.op * v) issues.push(`${c.label} (${c.params.model}, ${v} V coil) has only ${fmtEng(vc, "V", 2)} across its coil: below its must-operate ${fmtEng(m.op * v, "V")}, it may not pull in.`);
+        // AC on a DC coil (both polarities across it): its current passes zero twice a cycle and the contacts chatter
+        const wa = netWave(T.pinNet.get(c.id + ":A1")), wb = netWave(T.pinNet.get(c.id + ":A2"));
+        if (switching && (wa || wb)) {
+          let lo = Infinity, hi = -Infinity;
+          for (let k = 0, n = (wa || wb).length; k < n; k++) { const d = (wa ? wa[k] : 0) - (wb ? wb[k] : 0); if (d < lo) lo = d; if (d > hi) hi = d; }
+          if (lo < -0.2 * v && hi > 0.2 * v) issues.push(`${c.label} (${c.params.model}) has AC across its DC coil and chatters: pulled in only ${Math.round(q * 100)} % of the time, its current falling below must-release near each zero crossing. Feed the coil from rectified, smoothed DC.`);
+        }
       } else if (c.type === "vactrol") {
         const i = pinCurrent(c, "A");
         if (i !== null && i > 0.04) issues.push(`${c.label} (${c.params.model}) has ${fmtEng(i, "A", 2)} in its LED, more than the 40 mA it is rated for: raise its series resistor.`);
@@ -3518,6 +3540,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { library, addPart, blocks, hier, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, transient, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { library, addPart, blocks, hier, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, transient, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, relayOn, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
