@@ -406,6 +406,12 @@
     simButton();
     // the animation's frames over one period of the signal generator
     const g = S.comps.find(c => c.type === "siggen"), gf = g ? LIB.siggen.freqOf(g) : 0, options = Object.assign({}, RUN_OPTIONS[mode], gf > 0 ? { frameSpan: 1 / gf } : {});
+    // An edit that leaves the circuit electrically as it was (a part moved with its wires, a label, a note,
+    // a sticker) builds the very netlist of the last run: its result is the answer, without running again.
+    // (A quick run's unsettled result is not taken for a full run.)
+    const key = JSON.stringify([netlist, options.frameSpan || 0]), kept = S.sim.kept;
+    S.sim.runKey = key;
+    if (kept && kept.key === key && (mode === "live" || kept.full)) { setTimeout(() => onSimResult({ seq, result: kept.result }), 0); return; }
     if (pool.ok) simJob = pool.run({ netlist, options }, { urgent: true, onResult: result => { simJob = null; onSimResult({ seq, result }); }, onProgress: progress => onSimProgress({ seq, progress }) });
     else setTimeout(() => onSimResult({ seq, result: TubeSimEngine.simulate(netlist, options) }), 0);
   }
@@ -444,6 +450,7 @@
     {
       S.sim.result = result.ok ? result : null;
       S.sim.error = result.ok ? null : result.error;
+      S.sim.kept = result.ok ? { key: S.sim.runKey, result, full: (S.sim.kept && S.sim.kept.result === result && S.sim.kept.full) || S.sim.mode === "full" || !(result.tran && !result.tran.settled) } : null;
       // the engine names a part by its id: the sheet's label instead (a self-heated transistor's warnings)
       S.sim.warnings = (result.warnings || []).map(w => (/\bc\d+_\d+/.test(w) ? S.comps.reduce((t, c) => t.split(c.id).join(c.label), w) : w));
       S.sim.topo = S.sim.topoForRun;
