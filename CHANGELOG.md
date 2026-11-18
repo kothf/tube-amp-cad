@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.234.0] - 2026-11-18
+
+Basic editing checked in the real app (place, wire, move, rotate, mirror, delete, undo and redo, copy and paste, zoom and pan, save and open, in the schematic and on the board), and group selection and copying with Shift made complete.
+
+### Added
+- **Shift+drag copies** (Ctrl+drag too): in the schematic, hold Shift and drag a part or wire and a copy of the selection, with what you grabbed, follows the pointer while the originals stay. The copy gets letter codes of its own and the wires inside it, and stays selected; one Ctrl+Z takes it back, and a copy dropped back where it started is not added. On the board Shift+drag copies the selected tracks, vias, mounting holes and texts (parts come from the schematic, and the status line says so).
+- **Right-to-left selection box in the schematic**: dragged right to left the box takes everything it touches, left to right (as before) what lies wholly inside, as on the board. A sheet frame is taken only when the box holds all of it.
+- **Ctrl+click** adds a part or wire to the selection, or takes it out, like Shift+click (schematic and board); Ctrl with the box adds to the selection.
+- **Esc while dragging** puts the parts (or the copy) back where they were, in the schematic and on the board.
+
+### Fixed
+- **A selected group turns and mirrors as one drawing.** Space (or R) and M used to turn or flip each part of a selection where it stood, so the wires between them came apart. Now a group of two or more parts, or parts with wires, turns 90° about its middle and mirrors about it, the selected wires going round with it and the wires to parts left out stretching to stay on their pins. Space while dragging a group turns it the same way.
+- Dragging a wire that is part of a selected group moves the whole group; before, it slid that one wire sideways and dropped the rest of the selection.
+
+### Tests
+- e2e `01b-group-editing`: box inside and touching, Shift and Ctrl+click in and out, Shift+box, group drag with a wire stretching to a part left out, Shift+drag and Ctrl+drag copies (letter codes, own wire, one undo, dropped back = nothing), Esc during a drag, the group turned and mirrored with every connection kept, undo and redo, copy and paste and delete of a group. e2e `07-board`: Ctrl+click and Shift+click, Shift+drag copying a via and a hole, a part not copied, Esc during a drag.
+
 ## [3.233.0] - 2026-11-18
 
 Speed: every engine of the app was profiled on the 20 examples and 13 test boards, and the slow ones made faster with the same answers as before (the same check messages, pours, routes and layouts, compared board by board).
