@@ -1379,6 +1379,9 @@ In the Board window: <kbd>X</kbd> route, <kbd>V</kbd> via / switch the active la
   for a triode; input, Cg1a and output for a pentode. They come from the
   datasheets (RCA, Philips, Western Electric, GEC), a Soviet tube takes its
   Western analog's, and a tube with neither has typical values for its kind.
+  A rectifier has 5 pF from each anode to its cathode (estimated), which
+  also gives the transformer's leakage inductance a path when an anode
+  stops conducting.
   With them the Miller effect sets a stage's high-frequency corner, in the
   transient and in the frequency response alike.
 - **Frequency response (AC analysis).** Every device is linearized at the
