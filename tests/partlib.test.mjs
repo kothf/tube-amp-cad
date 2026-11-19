@@ -233,3 +233,28 @@ test("a package of several units is simulated: a model of one amplifier goes on 
   // without the supply unit on the sheet its pins are left open, not a crash
   const lone = []; L.LIB.part.build(a, pin => nets.a[pin], () => n++, lone, { first: true }); assert.ok(lone.some(e => /#open/.test(e.id)));
 });
+
+test("a ZIP of a KiCad library: every symbol library and footprint in it, whatever the folder, stored or deflated", async () => {
+  const { deflateRawSync, crc32 } = await import("node:zlib");
+  // a ZIP written here: local headers, the central directory and its end record
+  const zip = entries => {
+    const enc = new TextEncoder(), parts = [], dir = []; let at = 0;
+    entries.forEach(([name, text, deflate]) => {
+      const raw = enc.encode(text), data = deflate ? new Uint8Array(deflateRawSync(raw)) : raw, nm = enc.encode(name), h = new DataView(new ArrayBuffer(30)), d = new DataView(new ArrayBuffer(46));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(8, deflate ? 8 : 0, true); h.setUint32(14, crc32(raw), true); h.setUint32(18, data.length, true); h.setUint32(22, raw.length, true); h.setUint16(26, nm.length, true);
+      d.setUint32(0, 0x02014b50, true); d.setUint16(10, deflate ? 8 : 0, true); d.setUint32(16, crc32(raw), true); d.setUint32(20, data.length, true); d.setUint32(24, raw.length, true); d.setUint16(28, nm.length, true); d.setUint32(42, at, true);
+      parts.push(new Uint8Array(h.buffer), nm, data); dir.push(new Uint8Array(d.buffer), nm); at += 30 + nm.length + data.length;
+    });
+    const dl = dir.reduce((s, x) => s + x.length, 0), e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true); e.setUint32(12, dl, true); e.setUint32(16, at, true);
+    const all = [...parts, ...dir, new Uint8Array(e.buffer)], out = new Uint8Array(all.reduce((s, x) => s + x.length, 0)); let p = 0; all.forEach(x => { out.set(x, p); p += x.length; });
+    return out;
+  };
+  const bytes = zip([["mylib/symbols/testparts.kicad_sym", SYM, true], ["mylib/Package.pretty/DIP-8_TEST.kicad_mod", FP, false], ["mylib/README.md", "not a library file", true], ["__MACOSX/mylib/._x.kicad_mod", "junk", false]]);
+  const files = await P.unzip(bytes);
+  assert.deepEqual(files.map(f => f.name), ["testparts.kicad_sym", "DIP-8_TEST.kicad_mod"]);
+  assert.equal(files[0].text, SYM); assert.equal(files[1].text, FP);
+  assert.equal(P.symbols(files[0].text, files[0].name).length, 3); assert.equal(P.footprint(files[1].text, files[1].name).pads.length, 8);
+  assert.deepEqual(await P.unzip(bytes.buffer), files, "an ArrayBuffer is read as well");
+  await assert.rejects(P.unzip(new TextEncoder().encode("this is no archive at all")), /not a ZIP file/);
+});

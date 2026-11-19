@@ -1,0 +1,80 @@
+* Test models of this project's own (no maker's text): parts that are neither an op-amp nor a lone
+* transistor, written the ways makers write them: pins by number, by name, or told in a note.
+
+* a 5 V series regulator, pins by number and no word about them
+.SUBCKT TST7805 1 2 3
+R1 1 4 1k
+D1 2 4 DZ
+Q1 1 4 3 QN
+.MODEL DZ D(IS=1e-14 BV=5.6 IBV=1m RS=1)
+.MODEL QN NPN(BF=200 IS=1e-14)
+.ENDS
+
+* the same regulator, its pins named
+.SUBCKT TSTLDO OUT GND IN
+R1 IN 4 1k
+D1 GND 4 DZ
+Q1 IN 4 OUT QN
+.MODEL DZ D(IS=1e-14 BV=5.6 IBV=1m RS=1)
+.MODEL QN NPN(BF=200 IS=1e-14)
+.ENDS
+
+* an adjustable regulator, 1.25 V from ADJ to OUT; its pins are told in the note above it
+*                 ADJ OUT IN
+.SUBCKT TST317    1   2   3
+V1 5 1 1.25
+R0 3 1 100k
+E1 4 1 5 2 1000
+Q1 3 4 2 QN
+.MODEL QN NPN(BF=200 IS=1e-14)
+.ENDS
+
+* a 2.5 V shunt reference: reference, anode, cathode (by number)
+.SUBCKT TST431 1 2 3
+V1 4 2 2.5
+G1 5 2 1 4 10
+D1 3 5 DM
+R1 1 2 10Meg
+.MODEL DM D(IS=1e-12)
+.ENDS
+
+* an optocoupler: LED anode, LED cathode, emitter, collector (by number)
+.SUBCKT OPTOTEST 1 2 3 4
+R1 5 2 2
+D1 1 5 LD
+G1 4 6 5 2 1m
+Q1 4 6 3 QN
+.MODEL LD D(IS=1e-20)
+.MODEL QN NPN(BF=500 IS=1e-14)
+.ENDS
+
+* a comparator with an open collector, in the usual order: + - V+ V- OUT
+.SUBCKT TST393 1 2 3 4 5
+R0 3 4 100k
+G1 4 7 2 1 1m
+R1 7 4 10k
+D1 4 7 DM
+Q1 5 7 4 QN
+.MODEL DM D(IS=1e-12)
+.MODEL QN NPN(BF=200 IS=1e-14)
+.ENDS
+
+* the same comparator, its maker's own order: OUT V- + - V+
+.SUBCKT TST339 5 4 1 2 3
+R0 3 4 100k
+G1 4 7 2 1 1m
+R1 7 4 10k
+D1 4 7 DM
+Q1 5 7 4 QN
+.MODEL DM D(IS=1e-12)
+.MODEL QN NPN(BF=200 IS=1e-14)
+.ENDS
+
+* a zener diode as a lone model
+.MODEL BZXTEST D(IS=1e-14 BV=5.1 IBV=5m RS=2)
+
+* three pins that are no regulator and no reference: two resistors
+.SUBCKT TSTNET 1 2 3
+R1 1 2 1k
+R2 2 3 1k
+.ENDS

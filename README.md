@@ -350,12 +350,19 @@ model. *Parts library…* in the panel opens it.
   (an index of about 49,000 names ships with the app, `spice-index.json`; the
   one model's file is downloaded when you add the part). The drawing follows
   from what the model is; a dual or quad op-amp becomes a library part with a
-  unit per amplifier. A number the app has built in (2N3904, TL072, LM317T,
+  unit per amplifier. Regulators, shunt references, comparators, optocouplers
+  and zeners get their own drawings; which pin of such a model is which is
+  read from its pin names or its note, or found by trying the model in a small
+  test circuit every way round (*Pins of the model* shows it and lets you
+  change it). A number the app has built in (2N3904, TL072, LM317T,
   NE555P) is offered as the built-in part first. No model for the number: the dialog says so and takes
   the maker's file from you instead.
 
 - **From KiCad's libraries:** *Add from KiCad files…* reads symbol libraries
-  (`.kicad_sym`) and footprints (`.kicad_mod`), several at once. A symbol
+  (`.kicad_sym`) and footprints (`.kicad_mod`), several at once or as a ZIP;
+  *Add a folder…* takes a whole folder (a `.pretty` folder, or a library's
+  folder with everything in it), and files, folders and ZIPs can be dropped
+  on the dialog. A symbol
   library lists its symbols with a Find box; tick the ones to add. Derived
   symbols (`extends`) come with their parent's drawing.
 - **Drawn here:** *New part…* and *Edit drawing…* open the symbol editor:

@@ -110,6 +110,8 @@
     .addpart-f { display: grid; grid-template-columns: 170px 1fr; gap: 8px; align-items: center; margin: 5px 0; font-size: 12px; } .addpart-f span { color: var(--muted); }
     .addpart select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; font: inherit; min-width: 0; width: 100%; }
     .addpart-gap { flex: 1; } .addpart-check { margin: 0 0 4px 178px; }
+    .addpart-pins { margin: 6px 0; font-size: 12px; } .addpart-pins summary { cursor: pointer; color: var(--text); padding: 2px 0; } .addpart-pins .insp-help { margin: 4px 0; }
+    .addpart-pins .insp-help.warn { color: var(--warn, #d29922); } .addpart-note { overflow-wrap: anywhere; } #addpart-pinsok { margin: 4px 0; }
     #addpart-msg { min-height: 16px; } #addpart-msg.warn { color: var(--warn, #d29922); }
     .pal-none { color: var(--muted); font-size: 12px; margin: 10px 6px; }
     .pal-preview { flex: none; border-top: 1px solid var(--line); background: #0c121a; padding: 4px 10px 10px; max-height: 45%; overflow-y: auto; }
@@ -556,6 +558,7 @@
     .plib-fprow { display: flex; gap: 6px; min-width: 0; } .plib-fprow select { flex: 1; min-width: 0; }
     .plib { width: min(900px, 96vw); max-height: 92vh; display: flex; flex-direction: column; }
     .plib #plib-body { min-height: 0; overflow: auto; }
+    .plib.plib-drop { outline: 2px dashed var(--accent, #58a6ff); outline-offset: -6px; }
     .plib-bar { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 8px 0; }
     .plib-bar input[type=search] { flex: 1 1 140px; }
     .plib input[type=text], .plib input[type=search], .plib select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; min-width: 0; }

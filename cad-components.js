@@ -274,8 +274,8 @@
   }
   // a three-terminal regulator: the box with IN, OUT and ADJ / GND marked at their pins, the
   // marks upright however the part is turned
-  function drawReg(ctx, c) {
-    const m = REGS[c.params.model] || REGS.LM317, turn = -((c.rot || 0) & 3) * Math.PI / 2;
+  function drawReg(ctx, c, third) {
+    const m = third ? { adj: third === "ADJ" } : REGS[c.params.model] || REGS.LM317, turn = -((c.rot || 0) & 3) * Math.PI / 2;
     ctx.fillStyle = COL.fill; ctx.fillRect(-30, -20, 60, 40); ctx.strokeRect(-30, -20, 60, 40);
     line(ctx, [-40, 0, -30, 0]); line(ctx, [30, 0, 40, 0]); line(ctx, [0, 20, 0, 30]);
     ctx.font = "8px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textBaseline = "middle"; ctx.textAlign = "center";
@@ -1019,6 +1019,7 @@
     spice(ctx, c) {
       const sy = SPICE_SYMS[c.params.sym];
       if (sy && sy.bulk) { drawMos(ctx, { params: {} }, sy.bulk, true); return; }
+      if (sy && sy.own) { sy.own.draw(ctx, c); return; }
       if (sy) { DRAW[sy.type](ctx, { type: "spice", params: {}, rot: c.rot, label: c.label }); return; }
       const g = spiceBox(c), up = (t, x, y) => { ctx.save(); ctx.translate(x, y); if ((c.rot & 3) === 1 || (c.rot & 3) === 2) ctx.rotate(Math.PI); ctx.fillText(t, 0, 0); ctx.restore(); };
       ctx.fillStyle = COL.fill; ctx.fillRect(-g.hw, -g.hh, 2 * g.hw, 2 * g.hh); ctx.strokeRect(-g.hw, -g.hh, 2 * g.hw, 2 * g.hh);
@@ -1998,8 +1999,38 @@
     };
   }
 
+  // a comparator: the op-amp's box with the step of a comparator in place of ∞ (IEC 60617 S01248);
+  // gnd: the emitter of its open-collector output on a pin of its own (an LM311)
+  function drawComp(ctx, c, gnd) {
+    ctx.fillStyle = COL.fill; ctx.fillRect(-30, -30, 60, 60); ctx.strokeRect(-30, -30, 60, 60);
+    line(ctx, [-40, -10, -30, -10]); line(ctx, [-40, 10, -30, 10]); line(ctx, [30, 0, 40, 0]); line(ctx, [0, -40, 0, -30]); line(ctx, [0, 30, 0, 40]);
+    if (gnd) line(ctx, [20, 30, 20, 40]);
+    ctx.save(); ctx.lineWidth = 1.5; line(ctx, [-6, -22, 6, -16, -6, -10, -6, -22]); line(ctx, [10, -11, 15, -11, 15, -21, 20, -21]); ctx.restore();
+    ctx.font = "12px ui-monospace, monospace"; ctx.fillStyle = COL.value; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText("−", -26, -10); ctx.fillText("+", -26, 10);
+    ctx.font = "8px ui-monospace, monospace"; ctx.textAlign = "center";
+    ctx.fillText("V+", -10, -24); ctx.fillText("V−", -10, 24);
+    if (gnd) { ctx.font = "7px ui-monospace, monospace"; ctx.fillText("E", 20, 24); }
+  }
+  // an optocoupler (IEC 60617 S00691): the LED on the left, the phototransistor on the right, light
+  // arrows between them, in one case; base: the transistor's base on a pin of its own (a 4N25)
+  function drawOpto(ctx, c, base) {
+    ctx.save(); ctx.lineWidth = 1; ctx.strokeRect(-24, -22, 48, 44); ctx.restore();
+    line(ctx, [-30, -10, -14, -10, -14, -6]); line(ctx, [-30, 10, -14, 10, -14, 6]);
+    ctx.beginPath(); ctx.moveTo(-20, -6); ctx.lineTo(-8, -6); ctx.lineTo(-14, 5); ctx.closePath(); ctx.stroke(); line(ctx, [-20, 5, -8, 5]);
+    ctx.save(); ctx.lineWidth = 2.5; line(ctx, [8, -8, 8, 8]); ctx.restore();
+    line(ctx, [30, -10, 18, -10, 8, -3]); line(ctx, [8, 3, 18, 10, 30, 10]);
+    arrowHead(ctx, 18, 10, 10, 7, 5, 2.5);
+    if (base) line(ctx, [8, 0, 2, 0, 2, -16, 10, -16, 10, -30]);
+    ctx.lineWidth = 1.2;
+    [-4, 3].forEach(y => { line(ctx, [-5, y, base ? -1 : 3, y]); arrowHead(ctx, base ? 1 : 5, y, 1, 0, 4, 2); });
+  }
+
   // SPICE parts (LIB.spice): the symbols one can take, each with the pins of the part it is drawn
   // as, in the order models usually list them; "box" is a rectangle with every pin of the model
+  const COMP_PINS = [{ id: "-", x: -40, y: -10, name: "inverting input" }, { id: "+", x: -40, y: 10, name: "non-inverting input" }, { id: "OUT", x: 40, y: 0, name: "output" },
+    { id: "V+", x: 0, y: -40, name: "positive supply" }, { id: "V-", x: 0, y: 40, name: "negative supply" }, { id: "E", x: 20, y: 40, name: "output's emitter (its ground)" }];
+  const OPTO_PINS = [{ id: "A", x: -30, y: -10, name: "LED anode" }, { id: "K", x: -30, y: 10, name: "LED cathode" }, { id: "C", x: 30, y: -10, name: "collector" }, { id: "E", x: 30, y: 10, name: "emitter" }, { id: "B", x: 10, y: -30, name: "base" }];
   const SPICE_SYMS = {
     opamp: { type: "opamp", name: "Op-amp", pins: ["+", "-", "V+", "V-", "OUT"], prefix: "DA" },
     npn: { type: "npn", name: "NPN transistor", pins: ["C", "B", "E"], prefix: "VT" }, pnp: { type: "pnp", name: "PNP transistor", pins: ["C", "B", "E"], prefix: "VT" },
@@ -2007,7 +2038,20 @@
     // four terminals (a BSIM model's IC transistor): the bulk on its own pin
     nmos4: { type: "nmos", name: "N-channel MOSFET with bulk", pins: ["D", "G", "S", "B"], prefix: "VT", bulk: 1 }, pmos4: { type: "pmos", name: "P-channel MOSFET with bulk", pins: ["D", "G", "S", "B"], prefix: "VT", bulk: -1 },
     njf: { type: "njf", name: "N-channel JFET", pins: ["D", "G", "S"], prefix: "VT" }, pjf: { type: "pjf", name: "P-channel JFET", pins: ["D", "G", "S"], prefix: "VT" },
-    diode: { type: "diode", name: "Diode", pins: ["A", "K"], prefix: "VD" }
+    diode: { type: "diode", name: "Diode", pins: ["A", "K"], prefix: "VD" }, zener: { type: "zener", name: "Zener diode", pins: ["A", "K"], prefix: "VD" },
+    // the parts below have a drawing of their own (own: its box, its pins, how it is drawn); erc: whose pin roles they take (cad-erc.js)
+    // a three-terminal regulator: G its ground, or its ADJ pin (params.adj)
+    reg: { type: "reg", name: "Voltage regulator (3 pins)", pins: ["I", "G", "O"], prefix: "DA", erc: "reg",
+      own: { bbox: [-40, -20, 40, 30], pins: [{ id: "I", x: -40, y: 0, name: "input" }, { id: "O", x: 40, y: 0, name: "output" }, { id: "G", x: 0, y: 30, name: "ground or adjust" }], draw: (ctx, c) => drawReg(ctx, c, c.params.adj ? "ADJ" : "GND") } },
+    shunt: { type: "tl431", name: "Shunt reference (TL431 kind)", pins: ["K", "A", "R"], prefix: "DA" },
+    comp: { type: "opamp", name: "Comparator", pins: ["+", "-", "V+", "V-", "OUT"], prefix: "DA", erc: "opamp",
+      own: { bbox: [-40, -40, 40, 40], pins: COMP_PINS.slice(0, 5), draw: (ctx, c) => drawComp(ctx, c, false) } },
+    comp6: { type: "opamp", name: "Comparator with the output's emitter pin", pins: ["+", "-", "V+", "V-", "OUT", "E"], prefix: "DA", erc: "opamp",
+      own: { bbox: [-40, -40, 40, 40], pins: COMP_PINS, draw: (ctx, c) => drawComp(ctx, c, true) } },
+    opto: { type: "vactrol", name: "Optocoupler", pins: ["A", "K", "C", "E"], prefix: "U", erc: "npn",
+      own: { bbox: [-30, -24, 30, 24], pins: OPTO_PINS.slice(0, 4), draw: (ctx, c) => drawOpto(ctx, c, false) } },
+    optob: { type: "vactrol", name: "Optocoupler with a base pin", pins: ["A", "K", "C", "E", "B"], prefix: "U", erc: "npn",
+      own: { bbox: [-30, -30, 30, 24], pins: OPTO_PINS, draw: (ctx, c) => drawOpto(ctx, c, true) } }
   };
   // the symbol a lone device model takes (SpiceNet's kinds)
   const SPICE_KIND_SYM = { d: "diode", npn: "npn", pnp: "pnp", nmos: "nmos", pmos: "pmos", vdmos: "nmos", njf: "njf", pjf: "pjf" };
@@ -3488,16 +3532,20 @@
     // sym (SPICE_SYMS, else a box); map (per model pin: the symbol's pin it is, "0" ground, "" open)
     spice: {
       name: "SPICE part", prefix: "DA", prefixFor: c => (SPICE_SYMS[c.params.sym] || {}).prefix || "DA", group: "Integrated circuits",
-      bbox: c => { const sy = c && SPICE_SYMS[c.params.sym]; if (sy && sy.bulk) return [-30, -30, 30, 30]; if (sy) { const b = LIB[sy.type].bbox; return typeof b === "function" ? b() : b; } const g = spiceBox(c); return [-g.hw - 20, -g.hh, g.hw + 20, g.hh]; },
+      bbox: c => { const sy = c && SPICE_SYMS[c.params.sym]; if (sy && sy.bulk) return [-30, -30, 30, 30]; if (sy && sy.own) return sy.own.bbox.slice(); if (sy) { const b = LIB[sy.type].bbox; return typeof b === "function" ? b() : b; } const g = spiceBox(c); return [-g.hw - 20, -g.hh, g.hw + 20, g.hh]; },
       defaults: { name: "", text: "", sub: "", sym: "box", pinNames: ["1", "2", "3", "4"], map: ["1", "2", "3", "4"], pkg: "" },
-      pins: c => { const sy = c && SPICE_SYMS[c.params.sym]; return sy ? LIB[sy.type].pins({ params: {} }).filter(p => sy.pins.includes(p.id)).concat(sy.bulk ? [{ id: "B", x: 30, y: 0, name: "bulk" }] : []) : spiceBox(c).pins; },
+      pins: c => { const sy = c && SPICE_SYMS[c.params.sym]; return sy && sy.own ? sy.own.pins.map(p => ({ ...p })) : sy ? LIB[sy.type].pins({ params: {} }).filter(p => sy.pins.includes(p.id)).concat(sy.bulk ? [{ id: "B", x: 30, y: 0, name: "bulk" }] : []) : spiceBox(c).pins; },
       // the pads behind the pins: a box's in the model's pin order, 1 up
       pinNumbers: c => {
         const sym = c.params.sym;
         // an op-amp: the single op-amp's 8-pin case; a diode: the band's pad first; a transistor: the
         // footprint's own letters (null: board-core.js matches the pads by name)
         if (sym === "opamp") return { "+": "3", "-": "2", "V+": "7", "V-": "4", OUT: "6" };
-        if (sym === "diode") return { K: "1", A: "2" };
+        if (sym === "diode" || sym === "zener") return { K: "1", A: "2" };
+        // a comparator: the LM311's 8-pin case; an optocoupler: a DIP-4 (PC817), with a base pin a DIP-6 (4N25)
+        if (sym === "comp" || sym === "comp6") return { "+": "2", "-": "3", "V+": "8", "V-": "4", OUT: "7", E: "1" };
+        if (sym === "opto") return { A: "1", K: "2", E: "3", C: "4" };
+        if (sym === "optob") return { A: "1", K: "2", E: "4", C: "5", B: "6" };
         if (SPICE_SYMS[sym]) return null;
         return Object.fromEntries((c.params.pinNames || []).map((_, i) => [String(i + 1), String(i + 1)]));
       },

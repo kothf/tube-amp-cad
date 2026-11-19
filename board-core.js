@@ -832,7 +832,7 @@
     if ((m = /^CHOKE-EI(\d+)$/.exec(name)) && EI.includes(+m[1])) return ei(+m[1], "CHOKE");
     if ((m = /^SOCKET-([A-Z0-9]+)(-CAP)?\.([A-Z0-9-]+)$/.exec(name))) return gcBoard(m[3]) && gcBoard(m[3]).base === m[1] ? gcSocket(m[3], !!m[2]) : null;
     if ((m = /^SOCKET-([A-Z0-9]+)(-CAP)?$/.exec(name))) return /^\d+$/.test(m[1]) ? socket(null, +m[1], !!m[2]) : socket(m[1], 0, !!m[2]);
-    if ((m = /^DIP-(\d+)$/.exec(name)) && [8, 14, 16].includes(+m[1])) return dip(+m[1]);
+    if ((m = /^DIP-(\d+)$/.exec(name)) && [4, 6, 8, 14, 16].includes(+m[1])) return dip(+m[1]);
     if ((m = /^STAR-(M3|M4)$/.exec(name))) return starPoint(m[1]);
     if ((m = /^(CHIP|LED)-(\d{4})$/.exec(name)) && CHIPS[m[2]] && (m[1] === "CHIP" || ["0805", "1206"].includes(m[2]))) return chip(m[2], m[1] === "LED");
     if (SMD_DIODES[name]) return smdDiode(name);
@@ -876,6 +876,8 @@
 
   // Pin order of each transistor package, pad 1 first, from the maker's drawing. Parts marked
   // "verify" have pinouts that differ between makers: check the datasheet of the part you buy.
+  // a SPICE part drawn as a regulator: the orders of its pins the makers use (I input, G ground or adjust, O output)
+  const REG_ORDERS = ["IGO", "OGI", "GIO", "GOI"];
   const PINOUT = {
     "2N2222A": ["EBC"], "2N3904": ["EBC"], "BC107": ["EBC"], "BC547B": ["CBE"], "BC546B": ["CBE"], "BC549C": ["CBE"], "BD139": ["ECB"], "MPSA42": ["EBC"], "MJE340": ["ECB"],
     "2N2907A": ["EBC"], "2N3906": ["EBC"], "BC177": ["EBC"], "BC557B": ["CBE"], "BC556B": ["CBE"], "BC559C": ["CBE"], "BD140": ["ECB"], "MPSA92": ["EBC"], "MJE350": ["ECB"],
@@ -1021,8 +1023,11 @@
       case "spice": {
         const n = g.members[0].pins.length;
         switch (p.sym) {
-          case "opamp": return ["SOIC-8"];
-          case "diode": return ["SMA", "SMB", "SMC", "SOD-123", "SOD-323", "MINIMELF"];
+          case "opamp": case "comp": case "comp6": return ["SOIC-8"];
+          case "reg": return ["SOT-223", "DPAK", "D2PAK", "SOT-89"].flatMap(k => REG_ORDERS.map(o => `${k}-${o}`));
+          case "shunt": return ["SOT-23-KRA", "SOT-89-RAK"];
+          case "opto": case "optob": return [];
+          case "diode": case "zener": return ["SMA", "SMB", "SMC", "SOD-123", "SOD-323", "MINIMELF"];
           case "npn": case "pnp": return ["SOT-23-BEC"];
           case "nmos": case "pmos": return ["SOT-23-GSD"];
           case "njf": case "pjf": return ["SOT-23-DSG"];
@@ -1161,8 +1166,12 @@
       case "spice": {
         const cases = ["TO-92", "TO-18", "TO-126", "TO-220", "TO-247", "TO-3P", "TO-264"];
         switch (p.sym) {
-          case "opamp": return ["DIP-8", `WIRE-${wires}`];
-          case "diode": return [...diodes.slice(1), diodes[0], "DO-201AD", "TO-220-KA", "WIRE-2"];
+          case "opamp": case "comp": case "comp6": return ["DIP-8", `WIRE-${wires}`];
+          case "reg": return [...["TO-220", "TO-92"].flatMap(k => REG_ORDERS.map(o => `${k}-${o}`)), "WIRE-3"];
+          case "shunt": return ["TO-92-RAK", "TO-92-KAR", "WIRE-3"];
+          case "opto": return ["DIP-4", "WIRE-4"];
+          case "optob": return ["DIP-6", "WIRE-5"];
+          case "diode": case "zener": return [...diodes.slice(1), diodes[0], "DO-201AD", "TO-220-KA", "WIRE-2"];
           case "npn": case "pnp": return [...cases.map(k => `${k}-EBC`), ...cases.map(k => `${k}-ECB`), "WIRE-3"];
           case "nmos": case "pmos": return [...cases.slice(3).map(k => `${k}-GDS`), ...cases.slice(0, 3).map(k => `${k}-GDS`), "WIRE-3"];
           case "njf": case "pjf": return ["TO-92-DSG", "TO-92-DGS", "TO-92-SGD", "TO-18-DSG", "WIRE-3"];

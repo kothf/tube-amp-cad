@@ -1,8 +1,8 @@
 /* =============================================================================
    Add part…: a part by its maker's part number. Type the number, choose the package, place it.
    The model is found by spice-find.js in the public KiCad-Spice-Library and downloaded; the
-   drawing follows from what the model is (an op-amp, a transistor, a diode, else a box with the
-   model's pins); the package goes to the board with the part (params.part, as a looked-up part
+   drawing follows from what the model is (an op-amp, a transistor, a diode, a regulator, a reference,
+   a comparator, an optocoupler: spice-find.js recognise; else a box with the model's pins); the package goes to the board with the part (params.part, as a looked-up part
    number does). A dual or quad op-amp becomes a part of your library with a unit per amplifier
    (part-lib.js opampPackage) and all its units are placed together.
    Depends on: spice-find.js, spice-net.js, cad-components.js, board-core.js, mpn.js, part-lib.js
@@ -14,12 +14,21 @@
   const CASES = {
     bjt: { cases: ["TO-92", "TO-126", "TO-220", "TO-247", "TO-3P", "TO-264", "TO-18", "SOT-23"], orders: ["EBC", "ECB", "BCE", "CBE", "BEC"], smd: "BEC", words: { E: "emitter", B: "base", C: "collector" } },
     mos: { cases: ["TO-220", "TO-247", "TO-3P", "TO-264", "TO-92", "TO-126", "SOT-23"], orders: ["GDS", "SGD", "DGS", "GSD"], smd: "GSD", words: { G: "gate", D: "drain", S: "source" } },
-    jfet: { cases: ["TO-92", "TO-18", "SOT-23"], orders: ["DSG", "DGS", "SGD", "GSD"], smd: "DSG", words: { G: "gate", D: "drain", S: "source" } }
+    jfet: { cases: ["TO-92", "TO-18", "SOT-23"], orders: ["DSG", "DGS", "SGD", "GSD"], smd: "DSG", words: { G: "gate", D: "drain", S: "source" } },
+    // a regulator's third pin is its ground or its ADJ; a tabbed case's tab is its middle pin
+    reg: { cases: ["TO-220", "TO-92", "SOT-223", "DPAK", "D2PAK", "SOT-89"], orders: ["IGO", "OGI", "GIO", "GOI"], words: { I: "input", G: "ground or adjust", O: "output" } },
+    shunt: { cases: ["TO-92", "SOT-23", "SOT-89"], orders: ["RAK", "KAR", "KRA"], smd: "KRA", words: { K: "cathode", A: "anode", R: "reference" } }
   };
-  const FAMILY = { npn: "bjt", pnp: "bjt", nmos: "mos", pmos: "mos", njf: "jfet", pjf: "jfet" };
+  const FAMILY = { npn: "bjt", pnp: "bjt", nmos: "mos", pmos: "mos", njf: "jfet", pjf: "jfet", reg: "reg", shunt: "shunt" };
   /** The usual order of a transistor's pins in a case, from its number's family (to be checked against the datasheet) */
   function usualOrder(pn, family, pkg) {
     const n = String(pn || "").toUpperCase();
+    if (family === "reg") {
+      // 78xx: in, ground, out; 78Lxx: out, ground, in; 79xx: ground, in, out; an LM317 or a 1117: adjust, out, in; an LM337: adjust, in, out
+      if (/7[89]\d\d|7[89][LMST]\d\d/.test(n)) return /79/.test(n) ? "GIO" : /78L/.test(n) && pkg === "TO-92" ? "OGI" : "IGO";
+      return /337|137|237/.test(n) ? "GIO" : /294\d|295\d|293\d/.test(n) ? "IGO" : "GOI";
+    }
+    if (family === "shunt") return pkg === "SOT-23" ? "KRA" : "RAK";
     if (pkg === "SOT-23") return CASES[family].smd;
     if (family === "bjt") {
       if (/^TO-(220|247|3P|264)/.test(pkg)) return "BCE";
@@ -34,6 +43,9 @@
   function usualCase(pn, family) {
     const n = String(pn || "").toUpperCase();
     if (family === "diode") return /^(1N4148|1N914|1N4448|BA[STVWX]?\d|1N34|1N60|BZX|1N7\d\d|1N52\d\d)/.test(n) ? "DIODE-7.62" : /^(1N54\d\d|1N582\d|MUR4|UF54|FR30|SB[35]\d\d|MBR3|BY[25]\d\d)/.test(n) ? "DO-201AD" : "DIODE-10.16";
+    if (family === "reg") return /7[89]L\d\d|317L|337L|2950|2936/.test(n) ? "TO-92" : /1117|1086|2937|LD\d|AMS|SPX/.test(n) ? "SOT-223" : "TO-220";
+    if (family === "shunt") return "TO-92";
+    if (family === "comp" || family === "comp6") return "DIP-8";
     if (/^(MMB|BC8[0-6]\d|BSS|2N7002|AO3|SI23|IRLML|FMM|BF8)/.test(n)) return "SOT-23";
     if (family === "bjt") {
       if (/^(2N2222|2N2907|2N2219|2N2905|2N2369|2N930|BC10[7-9]|BC17[7-9]|BCY\d)/.test(n)) return "TO-18";
@@ -51,9 +63,11 @@
     return "TO-92";
   }
   const DIODE_NAMES = { "DIODE-7.62": "DO-35, small glass (7.62 mm between holes)", "DIODE-10.16": "DO-41 (10.16 mm between holes)", "DIODE-12.7": "DO-41 or DO-15 (12.7 mm between holes)", "DIODE-15.24": "DO-15 (15.24 mm between holes)", "DIODE-20.32": "Large axial (20.32 mm between holes)", "DO-201AD": "DO-201AD, 3 A axial", "TO-220-KA": "TO-220, two leads", "MINIMELF": "MiniMELF" };
-  /** How many amplifiers an op-amp's number usually means (the 072 of a TL072 a dual, the 074 a quad) */
-  function usualAmps(pn) {
+  /** How many amplifiers an op-amp's number usually means (the 072 of a TL072 a dual, the 074 a quad);
+      comp: a comparator's (an LM393 a dual, an LM339 a quad) */
+  function usualAmps(pn, comp) {
     const n = String(pn || "").toUpperCase();
+    if (comp === true) return /(339|239|139|2901|3302|374|3704)(?!\d)/.test(n) ? 4 : /(393|293|193|2903|319|372|3702)(?!\d)/.test(n) ? 2 : 1;
     if (/(0[678]4|LM324|LM2902|LM348|4134|LM837|MC3340[34]|TLC27[47]4|OPA4\d|AD8[46]4|LMV?324|TS9[12]4)/.test(n)) return 4;
     if (/(0[678]2|553[23]|LM358|LM2904|LM833|1458|4558|4560|4580|2068|2114|4562|LME497[12]0|OPA2\d|AD8[26]2|AD712|LF353|LF412|TLC27[27]2|MC33078|LM4562|RC4559|OP2[27]5|LT1057|TS9[12]2)/.test(n)) return 2;
     return 1;
@@ -128,19 +142,27 @@
       if (c.own) { st.model = { own: c.own }; st.sym = null; st.amps = 1; st.pkg = null; st.order = null; say("", ""); render(); return; }
       say("", `Downloading the model of ${c.name}…`);
       let m;
-      try { m = await F.get(st.ix, c); SN.flat(m.text, m.sub); }
+      try {
+        m = await F.get(st.ix, c); SN.flat(m.text, m.sub);
+        // what it is and which pin is which: a regulator or an optocoupler is tried in a test circuit, which takes a moment
+        if (m.kind === "subckt" && st && mine === st.busy) { say("", `Looking at the model of ${c.name}…`); await new Promise(r => setTimeout(r, 30)); }
+        m.is = F.recognise(m, st ? st.pn : "");
+      }
       catch (e) { if (st && mine === st.busy) { say("warn", `⚠ ${c.name}: ${e.message}.${st.list.length > 1 ? " Another of the list may work." : ""}`); render(); } return; }
       if (!st || mine !== st.busy) return;
-      st.model = m; st.sym = F.symFor(m); st.swap = st.sym === "diode" && m.pins.length === 2 && !root.CadLib.SPICE_KIND_SYM[m.kind] && backwards(m); st.amps = st.sym === "opamp" ? usualAmps(st.pn) : 1; st.pkg = null; st.order = null;
+      st.model = m; st.sym = m.is.sym; st.map = m.is.map.slice(); st.how = m.is.how; st.adj = !!m.is.adj;
+      st.swap = (st.sym === "diode" || st.sym === "zener") && m.pins.length === 2 && !root.CadLib.SPICE_KIND_SYM[m.kind] && backwards(m, st.sym);
+      if (st.swap) st.map.reverse();
+      st.amps = st.sym === "opamp" || st.sym === "comp" ? usualAmps(st.pn, st.sym === "comp") : 1; st.pkg = null; st.order = null;
       say("", ""); render();
     }
     // a diode written as a subcircuit: which of its two pins is the anode is found by trying it both ways
     // (a volt through 1 kΩ: the forward way drops less); true when the model's first pin is the cathode
-    function backwards(m) {
+    function backwards(m, sym) {
       const E = root.TubeSimEngine, def = root.CadLib.LIB.spice; if (!E || !E.simulate) return false;
       const drop = map => {
         try {
-          const c = { id: "t", type: "spice", label: "VD0", params: { name: m.sub, text: m.text, sub: m.sub, sym: "diode", pinNames: m.pins.slice(), map } }, els = [{ id: "v", kind: "V", nodes: [2, 0], v: 1 }, { id: "r", kind: "R", nodes: [2, 1], r: 1000 }];
+          const c = { id: "t", type: "spice", label: "VD0", params: { name: m.sub, text: m.text, sub: m.sub, sym: sym || "diode", pinNames: m.pins.slice(), map } }, els = [{ id: "v", kind: "V", nodes: [2, 0], v: 1 }, { id: "r", kind: "R", nodes: [2, 1], r: 1000 }];
           let n = 3; def.build(c, pin => (pin === "A" ? 1 : 0), () => n++, els);
           const r = E.simulate({ nodeCount: n, elements: els }, {}); return r && r.ok ? r.dc.nodes[1] : NaN;
         } catch (e) { return NaN; }
@@ -156,21 +178,21 @@
     }
     function packages() {
       const m = st.model, sym = st.sym, fam = FAMILY[sym], B = root.BoardCore;
-      if (fam) return CASES[fam].cases.filter(k => CASES[fam].orders.some(ord => B.footprint(`${k}-${ord}`))).map(k => ({ id: k, name: k + (k === "SOT-23" ? " (surface-mount)" : "") }));
-      if (sym === "opamp") return (st.amps >= 4 ? [["DIP-14", "DIP-14"], ["SOIC-14", "SOIC-14 (surface-mount)"]] : [["DIP-8", "DIP-8"], ["SOIC-8", "SOIC-8 (surface-mount)"]]).map(([id, name]) => ({ id, name }));
+      if (fam) return CASES[fam].cases.filter(k => CASES[fam].orders.some(ord => B.footprint(`${k}-${ord}`))).map(k => ({ id: k, name: k + (/^(SOT|DPAK|D2PAK)/.test(k) ? " (surface-mount)" : "") }));
+      if (sym === "opamp" || sym === "comp" || sym === "comp6") return (st.amps >= 4 ? [["DIP-14", "DIP-14"], ["SOIC-14", "SOIC-14 (surface-mount)"]] : [["DIP-8", "DIP-8"], ["SOIC-8", "SOIC-8 (surface-mount)"]]).map(([id, name]) => ({ id, name }));
       return boardOptions(sym, m.pins).map(n => ({ id: n, name: /^WIRE-/.test(n) ? `Wire pads (${n.slice(5)})` : (DIODE_NAMES[n] || n) + (B.isSmd && B.isSmd(n) ? " (surface-mount)" : "") }));
     }
     function orders() {
       const fam = FAMILY[st.sym], B = root.BoardCore; if (!fam) return [];
-      if (st.pkg === "SOT-23") return [CASES[fam].smd];
+      if (st.pkg === "SOT-23" && CASES[fam].smd) return [CASES[fam].smd];
       return CASES[fam].orders.filter(ord => B.footprint(`${st.pkg}-${ord}`));
     }
     function fpName() { return FAMILY[st.sym] ? `${st.pkg}-${st.order}` : st.pkg; }
     // what goes on the sheet: a SPICE part's params
     function spiceParams() {
       const m = st.model, S = root.CadLib.SPICE_SYMS[st.sym], N = root.PartNo, name = st.list[st.k].name;
-      const p = { name, text: m.text, sub: m.sub, sym: st.sym, pinNames: S ? m.pins.slice() : m.pins.map(x => String(x).toUpperCase()), map: S ? (st.swap ? F.mapFor(m, S.pins).reverse() : F.mapFor(m, S.pins)) : m.pins.map((_, i) => String(i + 1)) };
-      p.partno = st.pn;
+      const p = { name, text: m.text, sub: m.sub, sym: st.sym, pinNames: S ? m.pins.slice() : m.pins.map(x => String(x).toUpperCase()), map: S ? st.map.slice() : m.pins.map((_, i) => String(i + 1)) };
+      p.partno = st.pn; if (st.sym === "reg" && st.adj) p.adj = true;
       if (N && st.pkg) p.part = { no: N.norm(st.pn), maker: "", text: FAMILY[st.sym] ? st.pkg : (DIODE_NAMES[st.pkg] || st.pkg).replace(/^WIRE-(\d+)$/, "wire pads").replace(/ \(.*$/, "").replace(/,.*$/, ""), fp: fpName(), source: "Add part" };
       return p;
     }
@@ -196,28 +218,55 @@
       host.innerHTML = `<div class="addpart-found"><img id="addpart-pic" alt="" src="${o.thumb("spice", spiceParams(), 150, 110, true)}">
           <div><b>${esc(c.name)}</b><span>${esc(what)}</span>${c.why !== "exact" ? `<span>the nearest to ${esc(st.pn)}</span>` : ""}<span class="muted">${esc(src)}</span></div></div>
         ${pick}
+        ${st.sym === "comp" ? `<label class="addpart-f" title="How many comparators the package holds: an LM311 one, an LM393 two, an LM339 four"><span>Comparators in the package</span><select id="addpart-amps"><option value="1">One</option><option value="2">Two (dual)</option><option value="4">Four (quad)</option></select></label>` : ""}
         ${st.sym === "opamp" ? `<label class="addpart-f" title="How many amplifiers the package holds: a TL071 one, a TL072 two, a TL074 four"><span>Amplifiers in the package</span><select id="addpart-amps"><option value="1">One</option><option value="2">Two (dual)</option><option value="4">Four (quad)</option></select></label>` : ""}
         ${packs.length ? `<label class="addpart-f"><span>Package</span><select id="addpart-pkg">${packs.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>` : ""}
         ${fam && ords.length > 1 ? `<label class="addpart-f" title="Hold the part with its marking facing you and its legs down: the pins from left to right. The usual order for this kind of number is offered; the datasheet has the last word."><span>Pins, left to right</span><select id="addpart-order">${ords.map(x => `<option value="${x}">${x.split("").join(" ")}</option>`).join("")}</select></label><p class="insp-help addpart-check">${esc(words)}: check this against the datasheet, makers differ.</p>` : ""}
+        ${pinRows(S)}
         ${st.sym === "box" ? `<p class="insp-help">The pads take the model's pins in the model's order, pad 1 first: check them against the datasheet's pinout.</p>` : ""}
-        ${st.sym === "opamp" && st.amps > 1 ? `<p class="insp-help">It goes into your parts library and its ${st.amps} amplifiers and supply pins are placed together (DA1.1 … DA1.${st.amps + 1}).</p>` : ""}`;
+        ${(st.sym === "opamp" || st.sym === "comp") && st.amps > 1 ? `<p class="insp-help">It goes into your parts library and its ${st.amps} ${st.sym === "comp" ? "comparators" : "amplifiers"} and supply pins are placed together (DA1.1 … DA1.${st.amps + 1}).</p>` : ""}`;
+      host.querySelectorAll(".addpart-pin select").forEach((sel, i) => { sel.value = st.map[i] || ""; sel.onchange = () => { st.map[i] = sel.value; st.how = "set"; render(); }; });
+      const bad = S && pinsBad(S);
+      if ($("addpart-pinsok")) $("addpart-pinsok").onclick = () => { st.how = "set"; render(); };
       if (pick) { $("addpart-cand").value = String(st.k); $("addpart-cand").onchange = () => take(+$("addpart-cand").value); }
       if ($("addpart-amps")) { $("addpart-amps").value = String(st.amps); $("addpart-amps").onchange = () => { st.amps = +$("addpart-amps").value; st.pkg = null; render(); }; }
       if ($("addpart-pkg")) { $("addpart-pkg").value = st.pkg; $("addpart-pkg").onchange = () => { st.pkg = $("addpart-pkg").value; st.order = null; render(); }; }
       if ($("addpart-order")) { $("addpart-order").value = st.order; $("addpart-order").onchange = () => { st.order = $("addpart-order").value; render(); }; }
-      $("addpart-ok").disabled = false;
+      $("addpart-ok").disabled = !!bad || st.how === "ask";
+    }
+    // a pin of the symbol given to two pins of the model, or to none
+    function pinsBad(S) { return S.pins.find(id => st.map.filter(x => x === id).length !== 1) || ""; }
+    // which pin of the model is which, for the parts where that had to be found: how it was found, and the
+    // pins themselves to check or set (open when the app could not tell)
+    const HOW = {
+      names: "The pins are taken from the names in the maker's model.",
+      probe: "The model was tried in a test circuit every way round to find which pin is which.",
+      usual: "The pins are taken in the usual order of makers' models: non-inverting input, inverting input, V+, V−, output.",
+      set: "The pins as you set them.",
+      ask: "⚠ The app could not tell which pin of the model is which. Set them here from the model's note or the datasheet."
+    };
+    function pinRows(S) {
+      const m = st.model; if (!S || !S.own && st.sym !== "shunt" || !HOW[st.how]) return "";
+      const names = Object.fromEntries(root.CadLib.LIB.spice.pins({ params: { sym: st.sym } }).map(p => [p.id, p.name || p.id])), bad = pinsBad(S);
+      const comp = st.sym === "comp" || st.sym === "comp6" ? " A comparator's output is usually an open collector: it needs a resistor to the supply." : "";
+      return `<details class="addpart-pins" id="addpart-pins"${st.how === "ask" || st.how === "set" ? " open" : ""}><summary>Pins of the model</summary>
+        <p class="insp-help${st.how === "ask" ? " warn" : ""}" id="addpart-how">${esc(HOW[st.how])}${st.how === "usual" && st.sym === "comp6" ? " The sixth is the emitter of the output transistor (its ground)." : ""}${comp}</p>
+        ${m.hint ? `<p class="insp-help addpart-note">The model's note: ${esc(String(m.hint).replace(/[|\s]+/g, " ").trim().slice(0, 220))}</p>` : ""}
+        ${m.pins.map((p, i) => `<label class="addpart-f addpart-pin"><span>Pin ${i + 1} of the model${String(p) !== String(i + 1) ? ` (${esc(p)})` : ""}</span><select>${S.pins.map(id => `<option value="${esc(id)}">${esc(id)} · ${esc(names[id])}</option>`).join("")}<option value="">Not connected</option></select></label>`).join("")}
+        ${st.how === "ask" && !bad ? `<button class="btn" type="button" id="addpart-pinsok">These pins are right</button>` : ""}
+        ${bad ? `<p class="insp-help warn" id="addpart-pinbad">Give ${esc(bad)} (${esc(names[bad])}) to one pin of the model, and to one only.</p>` : ""}</details>`;
     }
     function done() {
       if (!st || !st.model) return;
-      const m = st.model, name = st.list[st.k].name, pn = st.pn;
+      const m = st.model, name = st.list[st.k].name, pn = st.pn, st0 = st.sym;
       if (m.own) { const prm = Object.assign({}, m.own.params, { partno: pn }); close(); o.place(m.own.type, prm); o.setStatus("ok", `${name}: click where it goes.`); return; }
-      if (st.sym === "opamp" && st.amps > 1) {
+      if ((st.sym === "opamp" || st.sym === "comp") && st.amps > 1) {
         // a dual or quad: a library part of several units, all of them placed at once
-        const made = root.PartLib.opampPackage(name, st.amps, /^SOIC/.test(st.pkg) ? "soic" : "dip", { text: m.text, sub: m.sub });
+        const made = root.PartLib.opampPackage(name, st.amps, /^SOIC/.test(st.pkg) ? "soic" : "dip", { text: m.text, sub: m.sub, order: st.map.slice() }, st.sym === "comp");
         const id = o.library.addPart(made.part, made.fp), units = st.amps + 1, prm = u => Object.assign(o.library.paramsOf(id, u), { partno: pn });
         const more = []; for (let u = 2; u <= units; u++) more.push({ params: prm(u), dx: u === units ? 200 : 0, dy: u === units ? 0 : (u - 1) * 120 });
         close(); o.place("part", prm(1), more);
-        o.setStatus("ok", `${name}: click where its amplifiers go; it is in My library now.`);
+        o.setStatus("ok", `${name}: click where its ${st0 === "comp" ? "comparators" : "amplifiers"} go; it is in My library now.`);
         return;
       }
       const p = spiceParams();

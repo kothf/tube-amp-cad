@@ -34,7 +34,7 @@
     reg: id => (id === "O" ? "out" : id === "I" ? "pwr" : "in"), tl431: id => (id === "R" ? "in" : "def"),
     vcvs: id => (/^C/.test(id) ? "in" : "src"), vccs: id => (/^C/.test(id) ? "in" : "def"),
     vdc: () => "src", battery: () => "src", rail: () => "src", mains: () => "src", siggen: () => "src", pickup: () => "src", phono: () => "src", isrc: () => "def",
-    spice: (id, p) => { const sy = SYM()[p.sym]; if (sy) return (ROLES[sy.type] || (() => "def"))(id, {}); return boxRole((p.pinNames || [])[+id - 1]); }
+    spice: (id, p) => { const sy = SYM()[p.sym]; if (sy) return (ROLES[sy.erc || sy.type] || (() => "def"))(id, {}); return boxRole((p.pinNames || [])[+id - 1]); }
   };
   // the pins DC passes between: groups of pin ids, or true for all of a part's pins
   const PASS = {

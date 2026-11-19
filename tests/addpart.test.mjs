@@ -125,3 +125,106 @@ test("LTspice's lateral PNP (LPNP) is read as a PNP, so a model that uses it is 
   assert.ok(flat, "flattened without an error");
   assert.deepEqual(["2N2222A", "BC108B", "2N2907A"].map(n => A.usualCase(n, "bjt")), ["TO-18", "TO-18", "TO-18"]);
 });
+
+// ---- regulators, references, comparators, optocouplers, zeners (spice-find.js recognise) ----
+const ODD = fixture("oddparts.lib");
+const is = (name, pn) => { const m = F.cut(ODD, name), r = F.recognise(m, pn || name); return Object.assign(r, { m }); };
+// the part's own pins wired into a circuit: node(symbol pin) → node number, els the rest; the DC node voltages
+const wired = (r, nodes, els) => {
+  const c = { id: "x", type: "spice", label: "DA1", params: { name: r.m.sub, text: r.m.text, sub: r.m.sub, sym: r.sym, pinNames: r.m.pins.slice(), map: r.map } }, all = els.slice();
+  let n = 1 + Math.max(...Object.values(nodes), ...els.flatMap(e => e.nodes));
+  L.LIB.spice.build(c, pin => nodes[pin] || 0, () => n++, all);
+  const dc = E.dcOperatingPoint(E.buildCircuit({ nodeCount: n, elements: all })); assert.ok(dc.ok, "the circuit solves");
+  return [0, ...dc.x];
+};
+const Vs = (id, a, v) => ({ id, kind: "V", nodes: [a, 0], v }), Rs = (id, a, b, r) => ({ id, kind: "R", nodes: [a, b], r });
+
+test("a part number's family: regulators, references, comparators, optocouplers and zeners are told from the rest", () => {
+  const fam = pn => F.family(pn, {});
+  assert.deepEqual(["LM7805CT", "UA78L05", "L7812CV", "LM7912", "LM317T", "LM337", "LD1117V33", "AMS1117-3.3", "LT1086", "LM2940T-5.0"].map(fam), Array(10).fill("reg"));
+  assert.deepEqual(["TL431ACLP", "TLV431", "LM336Z", "LM4040"].map(fam), Array(4).fill("shunt"));
+  assert.deepEqual(["LM393N", "LM339", "LM311P", "LM2903", "MAX907"].map(fam), Array(5).fill("comp"));
+  assert.deepEqual(["PC817", "4N25", "CNY17-3", "TLP521", "H11A1", "6N137"].map(fam), Array(6).fill("opto"));
+  assert.deepEqual(["BZX55C5V1", "1N4733A", "1N5231B", "MMSZ5231"].map(fam), Array(4).fill("zener"));
+  // numbers that only look alike are none of them
+  assert.deepEqual(["IRF340", "IRF7807", "MC34063", "NE5532", "TL072", "LM358", "LM324", "LM741", "2N3904", "1N4148", "1N4007", "BC337"].map(fam), Array(12).fill(""));
+  // the maker's note says it when the number does not
+  assert.equal(F.family("XYZ1", { hint: "5 V low-dropout voltage regulator" }), "reg"); assert.equal(F.family("XYZ1", { hint: "dual comparator" }), "comp");
+});
+
+test("a regulator with nameless pins is found by trying it in a test circuit, and then regulates on the sheet", () => {
+  const r = is("TST7805");
+  assert.equal(r.sym, "reg"); assert.equal(r.how, "probe"); assert.deepEqual(r.map, ["I", "G", "O"]); assert.equal(r.adj, false); assert.equal(r.sure, true);
+  const v = wired(r, { I: 1, O: 2 }, [Vs("v", 1, 12), Rs("l", 2, 0, 500)]);
+  assert.ok(Math.abs(v[2] - 5) < 0.2, `5 V out of 12 V (${v[2].toFixed(2)} V)`);
+  // every other way round fails the test
+  const others = [["I", "O", "G"], ["G", "I", "O"], ["G", "O", "I"], ["O", "I", "G"], ["O", "G", "I"]];
+  assert.deepEqual(others.map(map => F.behaves(r.m, "reg", map)), Array(5).fill(null));
+});
+
+test("pins that are named, or told in the note above the model, are taken from there and checked in the test circuit", () => {
+  const ldo = is("TSTLDO", "XLDO1");
+  assert.equal(ldo.sym, "reg"); assert.equal(ldo.how, "names"); assert.deepEqual(ldo.map, ["O", "G", "I"]);
+  const adj = is("TST317");
+  assert.equal(adj.how, "names"); assert.deepEqual(adj.map, ["G", "O", "I"], "ADJ OUT IN, as its note says"); assert.equal(adj.adj, true, "1.25 V with its third pin grounded: an adjustable one");
+  // with R1 = 240 Ω and R2 = 720 Ω it gives 1.25 V × 4
+  const v = wired(adj, { I: 1, O: 2, G: 3 }, [Vs("v", 1, 12), Rs("a", 2, 3, 240), Rs("b", 3, 0, 720)]);
+  assert.ok(Math.abs(v[2] - 5) < 0.1, `${v[2].toFixed(2)} V`);
+  // a note that is wrong does not pass the test circuit: the pins are found the long way
+  const lie = F.cut(ODD, "TST317"); lie.hint = "IN ADJ OUT";
+  const r = F.recognise(lie, "TST317"); assert.equal(r.how, "probe"); assert.deepEqual(r.map, ["G", "O", "I"]);
+});
+
+test("a shunt reference: reference, anode and cathode found; it holds 2.5 V", () => {
+  const r = is("TST431");
+  assert.equal(r.sym, "shunt"); assert.equal(r.how, "probe"); assert.deepEqual(r.map, ["R", "A", "K"]);
+  const v = wired(r, { K: 2, R: 2 }, [Vs("v", 1, 12), Rs("r", 1, 2, 1000)]);
+  assert.ok(Math.abs(v[2] - 2.5) < 0.05, `${v[2].toFixed(3)} V`);
+  assert.deepEqual(L.LIB.spice.pins({ params: { sym: "shunt" } }).map(p => p.id).sort(), ["A", "K", "R"]);
+});
+
+test("an optocoupler: the LED and the transistor found, and no current path between the two sides", () => {
+  const r = is("OPTOTEST");
+  assert.equal(r.sym, "opto"); assert.equal(r.how, "probe"); assert.deepEqual(r.map, ["A", "K", "E", "C"]);
+  const at = led => wired(r, { A: 2, C: 4 }, [Vs("v", 1, led), Rs("r", 1, 2, 330), Vs("s", 3, 5), Rs("l", 3, 4, 1000)])[4];
+  assert.ok(at(0) > 4.9 && at(5) < 1, `the collector falls from ${at(0).toFixed(2)} to ${at(5).toFixed(2)} V with the LED lit`);
+  assert.deepEqual(L.LIB.spice.pinNumbers({ params: { sym: "opto" } }), { A: "1", K: "2", E: "3", C: "4" });
+  assert.equal(L.LIB.spice.pins({ params: { sym: "optob" } }).length, 5);
+});
+
+test("a comparator: the usual order when the model works that way, else the order that does; duals and quads", () => {
+  const usual = is("TST393"), own = is("TST339");
+  assert.equal(usual.sym, "comp"); assert.equal(usual.how, "usual"); assert.deepEqual(usual.map, ["+", "-", "V+", "V-", "OUT"]);
+  assert.equal(own.how, "probe"); assert.deepEqual(own.map, ["OUT", "V-", "+", "-", "V+"]);
+  for (const r of [usual, own]) {
+    const out = vin => wired(r, { "+": 1, "-": 2, "V+": 3, "V-": 0, OUT: 4 }, [Vs("a", 1, vin), Vs("b", 2, 2.5), Vs("p", 3, 5), Rs("l", 3, 4, 10000)])[4];
+    assert.ok(out(3) > 4.5 && out(2) < 0.5, "high with + above −, low below");
+  }
+  assert.deepEqual(["LM393N", "LM2903", "LM339", "LM2901", "LM311"].map(n => A.usualAmps(n, true)), [2, 2, 4, 4, 1]);
+  // a quad comparator is pinned as the LM339, a dual as a dual op-amp; the model's own order is kept
+  const quad = P.opampPackage("TST339", 4, "dip", { text: own.m.text, sub: own.m.sub, order: own.map }, true).part, dual = P.opampPackage("TST393", 2, "dip", { text: usual.m.text, sub: usual.m.sub }, true).part;
+  assert.equal(quad.desc, "Quad comparator"); assert.deepEqual(quad.units.map(u => u.pins.map(p => p.num).join()), ["5,4,2", "7,6,1", "9,8,14", "11,10,13", "3,12"]);
+  assert.deepEqual(quad.spice.map, ["2", "12", "5", "4", "3"]); assert.deepEqual(dual.spice.map, ["3", "2", "8", "4", "1"]);
+  assert.ok(P.unitMaps(quad), "every comparator of the package gets the model");
+});
+
+test("a zener is drawn as one; what is none of these stays a box; a circuit of transistors is no Darlington", () => {
+  assert.equal(is("BZXTEST").sym, "zener"); assert.equal(is("BZXTEST", "D1").sym, "diode");
+  assert.equal(is("TSTNET").sym, "box");
+  const many = { kind: "subckt", pins: ["1", "2", "3"], text: ".SUBCKT X 1 2 3\nQ1 1 4 3 QA\nQ2 4 2 3 QA\nQ3 1 2 4 QA\nR1 1 4 1k\n.MODEL QA NPN BF=100\n.ENDS" };
+  assert.equal(F.symFor(many), "box");
+});
+
+test("the new drawings reach the board: cases and pin orders that exist, pads by the pins' letters", () => {
+  const fp = (sym, pins) => B.physicalParts({ parts: [{ id: "x", type: "spice", label: "DA1", params: { sym, pinNames: pins, map: [] }, pins: L.LIB.spice.pins({ params: { sym } }).map(p => ({ id: p.id, net: "n" + p.id })) }] })[0];
+  const reg = fp("reg", ["1", "2", "3"]);
+  assert.ok(reg.options.includes("TO-220-IGO") && reg.options.includes("TO-92-OGI") && reg.options.includes("TO-220-GOI"));
+  reg.options.forEach(n => assert.ok(B.footprint(n), n));
+  assert.deepEqual(B.footprint("TO-220-IGO").pads.map(p => p.name), ["I", "G", "O"]);
+  assert.equal(fp("opto", ["1", "2", "3", "4"]).options[0], "DIP-4"); assert.equal(B.footprint("DIP-4").pads.length, 4);
+  assert.equal(fp("optob", ["1", "2", "3", "4", "5"]).options[0], "DIP-6"); assert.equal(B.footprint("DIP-6").pads.length, 6);
+  assert.equal(fp("shunt", ["1", "2", "3"]).options[0], "TO-92-RAK"); assert.equal(fp("comp", ["1", "2", "3", "4", "5"]).options[0], "DIP-8");
+  assert.equal(fp("zener", ["1", "2"]).options[0], fp("diode", ["1", "2"]).options[0]);
+  assert.equal(A.usualCase("LM7805CT", "reg"), "TO-220"); assert.equal(A.usualCase("78L05", "reg"), "TO-92"); assert.equal(A.usualCase("LD1117V33", "reg"), "SOT-223");
+  assert.deepEqual([["LM7805", "TO-220"], ["78L05", "TO-92"], ["LM7912", "TO-220"], ["LM317T", "TO-220"], ["LM337T", "TO-220"]].map(([n, k]) => A.usualOrder(n, "reg", k)), ["IGO", "OGI", "GIO", "GOI", "GIO"]);
+});
