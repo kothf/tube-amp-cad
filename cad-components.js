@@ -2770,6 +2770,8 @@
           const P = (root.TubeSimEngine.RECTIFIER_PERVEANCE[t.commonName]) || 1e-3;
           out.push({ id: c.id, part: "a1", kind: "VDIODE", nodes: [net("A1"), net("K")], perveance: P, heat });
           out.push({ id: c.id, part: "a2", kind: "VDIODE", nodes: [net("A2"), net("K")], perveance: P, heat });
+          const C = t.caps && t.caps.rectifier;
+          if (C) out.push({ id: c.id + "#cak1", kind: "C", nodes: [net("A1"), net("K")], c: C.cak }, { id: c.id + "#cak2", kind: "C", nodes: [net("A2"), net("K")], c: C.cak });
         } else if ((c.params.connection || kind) === "pentode" && t.koren.Pentode) {
           out.push({ id: c.id, kind: "PENTODE", nodes: [net("A"), net("G1"), net("G2"), net("K")], model: t.koren.Pentode, heat });
           // interelectrode capacitances (tube-db.js TUBE_CAPS): input to the cathode, output from it

@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.238.0] - 2026-11-19
+
+### Fixed
+- Transient: example 07 (5Ц4С supply) stopped at its first step ("did not converge at t = 50 ns"; at 3.35 ms from zero or on a 20 ms run). Two causes: the mains sine starts at its peak while the operating point had it at 0 V, and the step control extrapolated across that jump; and a rectifier anode that stopped conducting left the transformer's leakage inductance nowhere to go. t = 0 is now a corner when a source starts away from its DC value, and each rectifier anode has 5 pF to its cathode (estimated). Example 07 runs 20 ms in under a second and matches ngspice within 1 %; all 20 examples run a 20 ms transient.
+
 ## [3.237.0] - 2026-11-19
 
 The other parts checked for the relays' bugs: what a part shows with a signal on, and the Transient tab's pin currents.

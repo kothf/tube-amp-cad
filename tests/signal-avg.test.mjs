@@ -89,3 +89,21 @@ test("a saturated op-amp's DC currents are its operating point's: its pins add u
     assert.ok(d.pd > 0.03 && d.pd < 0.3, `${model}: a sane dissipation saturated (${d.pd} W)`);
   }
 });
+
+test("free transient: a valve rectifier on mains, switched on at the sine's peak, runs from the start (example 07 stopped at 50 ns)", () => {
+  // mains → 373BX → 5Ц4С full-wave → 180 Ω per anode → 6.8 µF, choke 2.5 H, 220 µF: as example 07's supply
+  const net = circuit([
+    { id: "XS1", type: "mains", params: { vrms: 230, freq: "50", rs: 0.5 }, pins: { L: 1, N: 2 } },
+    { id: "T1", type: "ptx_cat", params: { model: "373BX", tap: "230", bias: "no" }, pins: { P1: 1, P2: 2, HT1: 3, CT: 0, HT2: 4 } },
+    R("R1", 180, 3, 5), R("R2", 180, 4, 6),
+    { id: "VL1", type: "tube", params: { tube: "5Ts4S" }, pins: { A1: 5, A2: 6, K: 7 } },
+    { id: "C1", type: "capacitor", params: { c: 6.8e-6 }, pins: { 1: 7, 2: 0 } },
+    { id: "L1", type: "inductor", params: { l: 2.5, dcr: 133 }, pins: { 1: 7, 2: 8 } },
+    { id: "C2", type: "capacitor", params: { c: 220e-6 }, pins: { 1: 8, 2: 0 } }, R("R3", 10e3, 8, 0)]);
+  assert.ok(net.elements.filter(e => e.kind === "C" && /^VL1#cak/.test(e.id)).length === 2, "each rectifier anode has its capacitance to the cathode");
+  const r = E.transient(net, { tStop: 20e-3 });
+  assert.ok(r.ok, r.error);
+  const v7 = r.nodes[7], at = t => v7[r.t.findIndex(x => x >= t - 1e-12)];
+  // switched on at the peak, the first capacitor charges through 180 Ω + the winding at once (ngspice with uic: 164 V at 1 ms)
+  assert.ok(at(1e-3) > 100 && at(2e-3) > 200, `the reservoir charges from the first half-cycle (${at(1e-3).toFixed(0)} V at 1 ms, ${at(2e-3).toFixed(0)} V at 2 ms)`);
+});

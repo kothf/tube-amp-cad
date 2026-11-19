@@ -1919,7 +1919,11 @@ var TUBE_CAPS = {
 // the same tube under another name
 var TUBE_CAPS_LIKE = { "6N8S": "6SN7GT", "6N9S": "6SL7GT", "6S4S": "2A3", "6P3S-E": "6L6GC", "6P6S": "6V6GT", "6P14P": "EL84", "6P14P-EV": "EL84", "6P27S": "EL34", "6CG7": "6SN7GT", "6AQ5A": "6V6GT", "KT66": "6L6GC" };
 TUBE_DATABASE.forEach(t => {
-  if (t.category === "rectifier" || !t.koren) return;
+  // a rectifier: each anode's capacitance to its cathode (rectifier datasheets seldom give it; a few
+  // pF, as a power triode's Cak). It also gives the transformer's leakage inductance somewhere to
+  // go when an anode stops conducting, as on the real tube, instead of a jump of the winding's voltage
+  if (t.category === "rectifier") { t.caps = { source: "typical for the kind (estimated)", estimated: true, rectifier: { cak: 5e-12 } }; return; }
+  if (!t.koren) return;
   const analogs = [TUBE_CAPS_LIKE[t.commonName]].concat((t.book && t.book.analogs) || []);
   let own = TUBE_CAPS[t.commonName], from = "";
   if (!own) { const a = analogs.find(n => n && TUBE_CAPS[n]); if (a) { own = TUBE_CAPS[a]; from = a; } }

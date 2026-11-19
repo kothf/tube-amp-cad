@@ -3184,6 +3184,12 @@
     let t = 0, h = Math.min(maxStep, tStop * 1e-5), steps = 0, rejected = 0, lastProg = 0, prevBreak = 0;
     let nb = nextBreak(0);
     h = Math.min(h, 0.1 * nb);
+    // a source whose waveform starts away from the value the operating point took (a mains sine
+    // switched on at its peak, a cosine): t = 0 is a corner, so the first step is a fresh start and
+    // the steps after it do not extrapolate the jump
+    const dcVal = e => e.kind === "VSRC" ? (e.dcValue !== undefined ? e.dcValue : (e.offset || 0)) : e.kind === "V" ? e.v : e.i;
+    const at0 = e => e.kind === "VSRC" ? waveValue(e, 0, 1) : srcAt(e.tw, 0);
+    let jump0 = !opts.uic && circ.els.some(e => (e.kind === "VSRC" || ((e.kind === "V" || e.kind === "I") && e.tw)) && Math.abs(at0(e) - dcVal(e)) > 1e-9 * (1 + Math.abs(dcVal(e))));
     if (tStart <= 0) keep(0, x, true);
     // one step from the last accepted state; a step timerStep cuts at a flip is a fresh start (Euler)
     // (linear capacitors and inductors trapezoidal from the slopes of the step before, the rest Gear-2)
@@ -3263,6 +3269,7 @@
       const ahead = lastErr > 0 && err > lastErr ? err * Math.min(4, err / lastErr) : err;
       const grow = hist.length < 2 ? 2 : Math.min(2, Math.max(0.5, 0.9 * Math.pow(Math.max(ahead, lastErr, lastErr2, 1e-6), -1 / 3)));
       lastErr2 = lastErr; lastErr = err;
+      if (jump0) { jump0 = false; corner = true; }
       if (corner || flipped || kicked) {
         // a fresh start past a corner (or a flip): a tenth of the shorter piece either side
         const nb2 = nextBreak(t);
