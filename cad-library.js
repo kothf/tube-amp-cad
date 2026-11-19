@@ -76,6 +76,47 @@
       if (r.notes.length) o.setStatus("warn", `Parts library: ${r.notes.join("; ")}`);
       return Object.assign(n, { offered: r.syms.length, notes: r.notes });
     }
+    // the most footprints taken in one go: KiCad's whole footprint library is some 14 000 files, far more than a
+    // browser's store should hold; a .pretty folder or a maker's ZIP is a few hundred at most
+    const MOST = 3000;
+    /** What a selection, a folder or a drop holds: [{ name, text }] of its .kicad_sym, .kicad_mod and library files,
+        those inside its ZIPs too. list: File objects (a folder's files come with their folders in webkitRelativePath);
+        picked: the files were chosen one by one, so a file of another name is taken for a library file of this app. */
+    async function gather(list, picked) {
+      const out = [], notes = []; let fps = 0, cut = 0;
+      const push = f => { if (/\.kicad_mod$/i.test(f.name) && ++fps > MOST) { cut++; return; } out.push(f); };
+      for (const f of list) {
+        const name = String(f.name || "");
+        if (/(^|\/)(__MACOSX|\.[^/]*)\//.test(f.webkitRelativePath || "") || /-backups\//.test(f.webkitRelativePath || "")) continue;
+        try {
+          if (/\.zip$/i.test(name)) (await P.unzip(await f.arrayBuffer())).forEach(push);
+          else if (picked || P.LIB_FILE.test(name) || /\.json$/i.test(name)) push({ name, text: await f.text() });
+        } catch (e) { notes.push(`${name}: ${e.message}`); }
+      }
+      if (cut) notes.push(`only the first ${MOST} footprints were taken (${cut} left out): add one .pretty folder at a time`);
+      return { files: out, notes };
+    }
+    /** Add what a selection, a folder or a drop holds (File objects); what: how to call it when it holds nothing of use */
+    async function addFrom(list, what, picked) {
+      list = [...list];
+      if (list.length > 20) o.setStatus("", `Parts library: reading ${list.length} files…`);
+      const g = await gather(list, picked);
+      if (!g.files.length) { o.setStatus("warn", g.notes.length ? `Parts library: ${g.notes.join("; ")}` : `Parts library: no KiCad symbol library (.kicad_sym) or footprint (.kicad_mod) in ${what}.`); return { parts: 0, footprints: 0, offered: 0, notes: g.notes }; }
+      const n = addFiles(g.files);
+      if (g.notes.length) { n.notes = n.notes.concat(g.notes); o.setStatus("warn", `Parts library: ${n.notes.join("; ")}`); }
+      render();
+      return n;
+    }
+    // the files of what was dropped: files themselves, and every file of the folders (and their folders)
+    async function dropped(dt) {
+      const entries = [...(dt.items || [])].map(i => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null)).filter(Boolean);
+      if (!entries.length) return [...(dt.files || [])];
+      const out = [], file = e => new Promise(res => e.file(res, () => res(null)));
+      const all = async r => { const got = []; for (;;) { const part = await new Promise(res => r.readEntries(res, () => res([]))); if (!part.length) return got; got.push(...part); } };
+      const walk = async e => { if (out.length > 20000) return; if (e.isFile) { if (P.LIB_FILE.test(e.name) || /\.(zip|json)$/i.test(e.name)) { const f = await file(e); if (f) out.push(f); } } else if (e.isDirectory && !/^(\.|__MACOSX)/.test(e.name) && !/-backups$/.test(e.name)) for (const c of await all(e.createReader())) await walk(c); };
+      for (const e of entries) await walk(e);
+      return out;
+    }
     function takeOffered(names) {
       if (!offer) return 0;
       const take = offer.syms.filter(s => names.has(s.name)), a = P.add(lib, take.map(s => s.read()), {});
@@ -89,13 +130,15 @@
       const m = document.createElement("div"); m.className = "modal"; m.id = "plib-modal"; m.hidden = true;
       m.innerHTML = `<div class="modal-box plib">
         <div class="insp-title">Parts library</div>
-        <p class="insp-help">Your own parts, kept in this browser: each is a drawing with pins, a footprint and, if you give it one, a SPICE model. Add symbols from KiCad's symbol libraries (<code>.kicad_sym</code>) and footprints from its footprint files (<code>.kicad_mod</code>; select all the files of a <code>.pretty</code> folder at once). A part placed on the sheet takes a copy of everything, so the circuit opens anywhere.</p>
+        <p class="insp-help">Your own parts, kept in this browser: each is a drawing with pins, a footprint and, if you give it one, a SPICE model. Add symbols from KiCad's symbol libraries (<code>.kicad_sym</code>) and footprints from its footprint files (<code>.kicad_mod</code>): pick the files, a whole folder (a <code>.pretty</code> folder, or a library's folder with everything in it) or a ZIP, or drop them here. A part placed on the sheet takes a copy of everything, so the circuit opens anywhere.</p>
         <div class="plib-bar">
-          <button class="btn active" id="plib-add" title="KiCad symbol libraries (.kicad_sym) and footprints (.kicad_mod), several at once">Add from KiCad files…</button>
+          <button class="btn active" id="plib-add" title="KiCad symbol libraries (.kicad_sym) and footprints (.kicad_mod), several at once, or a ZIP of them">Add from KiCad files…</button>
+          <button class="btn" id="plib-folder" title="A whole folder at once: a .pretty folder of footprints, or a library's folder with its symbol libraries and footprint folders inside">Add a folder…</button>
           <button class="btn" id="plib-new" title="A part you draw yourself: a box with its pins to start with, then lines, circles, text and pins">New part…</button>
           <button class="btn" id="plib-open" title="Add the parts of a library file saved here or by somebody else">Open a library file…</button>
           <button class="btn" id="plib-save" title="All the parts and footprints as one file, to keep or to pass on">Save as a file</button>
-          <input type="file" id="plib-file" multiple accept=".kicad_sym,.kicad_mod,.json,.tubelib" hidden>
+          <input type="file" id="plib-file" multiple accept=".kicad_sym,.kicad_mod,.json,.tubelib,.zip" hidden>
+          <input type="file" id="plib-dir" webkitdirectory multiple hidden>
           <span class="insp-help" id="plib-count"></span>
         </div>
         <div id="plib-body"></div>
@@ -104,12 +147,18 @@
       document.body.appendChild(m);
       $("plib-close").onclick = close;
       m.addEventListener("mousedown", e => { if (e.target === m) close(); });
-      $("plib-add").onclick = () => { $("plib-file").accept = ".kicad_sym,.kicad_mod"; $("plib-file").click(); };
+      $("plib-add").onclick = () => { $("plib-file").accept = ".kicad_sym,.kicad_mod,.zip"; $("plib-file").click(); };
+      $("plib-folder").onclick = () => $("plib-dir").click();
+      $("plib-dir").onchange = async e => { const list = [...e.target.files]; e.target.value = ""; await addFrom(list, "the folder"); };
+      // files, folders and ZIPs dropped on the dialog
+      const box = m.querySelector(".modal-box");
+      box.addEventListener("dragover", e => { if ([...(e.dataTransfer.types || [])].includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; box.classList.add("plib-drop"); } });
+      box.addEventListener("dragleave", e => { if (!box.contains(e.relatedTarget)) box.classList.remove("plib-drop"); });
+      box.addEventListener("drop", async e => { e.preventDefault(); e.stopPropagation(); box.classList.remove("plib-drop"); await addFrom(await dropped(e.dataTransfer), "what was dropped"); });
       $("plib-open").onclick = () => { $("plib-file").accept = ".json,.tubelib"; $("plib-file").click(); };
       $("plib-file").onchange = async e => {
-        const files = []; for (const f of e.target.files) files.push({ name: f.name, text: await f.text() });
-        e.target.value = "";
-        addFiles(files); render();
+        const list = [...e.target.files]; e.target.value = "";
+        await addFrom(list, "the files", true);
       };
       $("plib-new").onclick = () => {
         offer = null;
@@ -151,8 +200,8 @@
     function renderOffer() {
       const q = offer.find.toLowerCase().split(/\s+/).filter(Boolean), shown = offer.syms.filter(s => q.every(w => `${s.name} ${s.desc} ${s.keywords}`.toLowerCase().includes(w)));
       $("plib-body").innerHTML = `<div class="plib-offer">
-        <div class="plib-bar"><b>${offer.syms.length} symbols in the file: tick the ones to add</b><input type="search" id="plib-ofind" placeholder="Find…" value="${esc(offer.find)}">
-          <button class="btn active" id="plib-take">Add the ticked (${offer.ticked.size})</button><button class="btn" id="plib-all" title="Every symbol of the file">Add all ${offer.syms.length}</button><button class="btn" id="plib-skip">Cancel</button></div>
+        <div class="plib-bar"><b>${offer.syms.length} symbols found: tick the ones to add</b><input type="search" id="plib-ofind" placeholder="Find…" value="${esc(offer.find)}">
+          <button class="btn active" id="plib-take">Add the ticked (${offer.ticked.size})</button><button class="btn" id="plib-all" title="Every symbol found">Add all ${offer.syms.length}</button><button class="btn" id="plib-skip">Cancel</button></div>
         <div class="plib-olist">${shown.slice(0, 400).map(s => `<label><input type="checkbox" value="${esc(s.name)}" ${offer.ticked.has(s.name) ? "checked" : ""}><b>${esc(s.name)}</b><span>${esc(s.desc || "")}</span></label>`).join("") || `<p class="muted">Nothing found.</p>`}
         ${shown.length > 400 ? `<p class="muted">First 400 of ${shown.length}: type in Find to narrow it down.</p>` : ""}</div></div>`;
       const f = $("plib-ofind");
@@ -226,7 +275,7 @@
     return {
       // a part made elsewhere (Add part…): into the library with its footprint (one of that name already here stays); returns its id
       addPart(part, fp) { P.add(lib, [part], fp && !lib.footprints[fp.name] ? { [fp.name]: fp } : {}); const q = lib.parts.find(x => x.name.toLowerCase() === String(part.name).toLowerCase()); changed(); return q ? q.id : null; },
-      ready, open, close, entries, addFiles, draw, footprintOf, differs: params => P.differs(lib, params), refreshed: params => P.refreshed(lib, params), takeOffered: names => takeOffered(new Set(names)),
+      ready, open, close, entries, addFiles, addFrom, gather, draw, footprintOf, differs: params => P.differs(lib, params), refreshed: params => P.refreshed(lib, params), takeOffered: names => takeOffered(new Set(names)),
       get: () => lib, part: id => lib.parts.find(p => p.id === id) || null, paramsOf: (id, unit) => { const p = lib.parts.find(x => x.id === id); return p ? paramsOf(p, unit) : null; },
       offered: () => (offer ? offer.syms.map(s => s.name) : []),
       clear() { lib = P.empty(); sel = null; return changed(); }

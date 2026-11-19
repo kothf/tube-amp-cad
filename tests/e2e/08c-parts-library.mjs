@@ -293,4 +293,37 @@ import { fileURLToPath } from "node:url";
   await p2.evaluate(() => TubeCAD.library.clear());
   await p2.close();
   await cad.evaluate(() => TubeCAD.library.ready.then(() => TubeCAD.library.clear()));
+
+  // a whole library at once: a ZIP, a folder, a drop
+  const symText = await readFile(fx("testparts.kicad_sym"), "utf8"), fpText = await readFile(fx("DIP-8_TEST.kicad_mod"), "utf8");
+  const zip = Buffer.from(await cad.evaluate(([a, b]) => Array.from(BoardFab.zip({ "mylib/testparts.kicad_sym": a, "mylib/Package.pretty/DIP-8_TEST.kicad_mod": b, "mylib/README.txt": "no library file" })), [symText, fpText]));
+  await cad.click("#pal-library");
+  check(await cad.evaluate(() => !!document.getElementById("plib-folder") && document.getElementById("plib-dir").webkitdirectory === true), "the dialog has Add a folder…");
+  await cad.setInputFiles("#plib-file", { name: "mylib.zip", mimeType: "application/zip", buffer: zip });
+  await cad.waitForSelector(".plib-olist");
+  const zo = await cad.evaluate(() => ({ syms: [...document.querySelectorAll(".plib-olist input")].map(i => i.value).join(), fps: Object.keys(TubeCAD.library.get().footprints).join() }));
+  check(zo.syms === "TESTAMP,DUALAMP,DUALAMP-LN" && zo.fps === "DIP-8_TEST", "a ZIP of a library: its footprints are added and its symbols offered, whatever their folders");
+  await cad.click("#plib-all"); await cad.waitForSelector(".plib-grid");
+  check(await cad.evaluate(() => TubeCAD.library.get().parts.length === 3 && TubeCAD.library.get().parts.every(p => p.fp === "DIP-8_TEST" || p.units.length > 0)), "Add all takes every symbol");
+  await cad.evaluate(() => TubeCAD.library.clear());
+  // a folder: only its library files count
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises"), { tmpdir } = await import("node:os"), { join } = await import("node:path");
+  const dir = await mkdtemp(join(tmpdir(), "plib-")), full = join(dir, "mylib"), bare = join(dir, "bare");
+  await mkdir(join(full, "Package.pretty"), { recursive: true }); await mkdir(bare);
+  await writeFile(join(full, "testparts.kicad_sym"), symText); await writeFile(join(full, "Package.pretty", "DIP-8_TEST.kicad_mod"), fpText); await writeFile(join(full, "testamp.lib"), AMP); await writeFile(join(bare, "testamp.lib"), AMP);
+  await cad.setInputFiles("#plib-dir", full);
+  await cad.waitForSelector(".plib-olist");
+  check(await cad.evaluate(() => document.querySelectorAll(".plib-olist input").length === 3 && Object.keys(TubeCAD.library.get().footprints).length === 1), "a folder: the symbol libraries and footprints in it and in its folders are read, the other files left");
+  await cad.click("#plib-skip");
+  await cad.setInputFiles("#plib-dir", bare);
+  await cad.waitForFunction(() => /no KiCad symbol library/.test(document.getElementById("status-sim").textContent));
+  check(true, "a folder with nothing of use says so");
+  await rm(dir, { recursive: true, force: true });
+  // files dropped on the dialog
+  await cad.evaluate(() => TubeCAD.library.clear());
+  await cad.evaluate(([name, text]) => { const dt = new DataTransfer(); dt.items.add(new File([text], name)); document.querySelector("#plib-modal .modal-box").dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true })); }, ["DIP-8_TEST.kicad_mod", fpText]);
+  await cad.waitForFunction(() => Object.keys(TubeCAD.library.get().footprints).length === 1);
+  check(true, "a file dropped on the dialog is added");
+  await cad.click("#plib-close");
+  await cad.evaluate(() => TubeCAD.library.clear());
 }

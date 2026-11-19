@@ -301,18 +301,46 @@
       package's standard pins (dual: 1 out, 2 −, 3 +, 4 V−, 5 +, 6 −, 7 out, 8 V+; quad: V+ on 4, V− on 11),
       with a footprint of that many pads. spice: { text, sub } of ONE amplifier, its pins in the
       usual order (+, −, V+, V−, out). pkg: dip | soic. Returns { part, fp }. */
-  function opampPackage(name, amps, pkg, spice) {
-    const quad = amps >= 4, n = quad ? 14 : 8, vp = quad ? "4" : "8", vn = quad ? "11" : "4";
-    const PINS = quad ? [["3", "2", "1"], ["5", "6", "7"], ["10", "9", "8"], ["12", "13", "14"]] : [["3", "2", "1"], ["5", "6", "7"]];
+  function opampPackage(name, amps, pkg, spice, comp) {
+    const quad = amps >= 4, n = quad ? 14 : 8, vp = comp && quad ? "3" : quad ? "4" : "8", vn = comp && quad ? "12" : quad ? "11" : "4", what = comp ? "comparator" : "op-amp";
+    // a quad comparator is pinned as the LM339 is, not as a quad op-amp
+    const PINS = comp && quad ? [["5", "4", "2"], ["7", "6", "1"], ["9", "8", "14"], ["11", "10", "13"]] : quad ? [["3", "2", "1"], ["5", "6", "7"], ["10", "9", "8"], ["12", "13", "14"]] : [["3", "2", "1"], ["5", "6", "7"]];
     const pin = (num, nm, x, y, a) => ({ id: num, num, name: nm, x, y, a, l: 20 });
-    const units = PINS.map(([p, m, o]) => ({ g: [["p", 2, -40, -40, 40, 0, -40, 40, -40, -40], ["t", -30, -20, 10, "+"], ["t", -30, 20, 10, "−"]], pins: [pin(p, "+", -60, -20, 0), pin(m, "-", -60, 20, 0), pin(o, "", 60, 0, 180)], box: [0, 0, 0, 0], pm: 1 }));
+    const mark = comp ? [["p", 1.5, 0, 6, 6, 6, 6, -6, 12, -6]] : [];
+    const units = PINS.map(([p, m, o]) => ({ g: [["p", 2, -40, -40, 40, 0, -40, 40, -40, -40], ["t", -30, -20, 10, "+"], ["t", -30, 20, 10, "−"], ...mark], pins: [pin(p, "+", -60, -20, 0), pin(m, "-", -60, 20, 0), pin(o, "", 60, 0, 180)], box: [0, 0, 0, 0], pm: 1 }));
     units.push({ g: [["p", 2, -20, -20, 20, -20, 20, 20, -20, 20, -20, -20]], pins: [pin(vp, "V+", 0, -40, 270), pin(vn, "V-", 0, 40, 90)], box: [0, 0, 0, 0], pn: 3, pm: 1 });
     units.forEach(u => tidy(u));
     const fpName = `${pkg === "soic" ? "SOIC" : "DIP"}-${n}`, fp = fpPattern(pkg === "soic" ? "soic" : "dip", { n }, fpName);
-    fp.title = `${fpName}, ${quad ? "quad" : "dual"} op-amp`;
-    const part = { id: "", name: String(name), prefix: "DA", desc: `${quad ? "Quad" : "Dual"} op-amp`, keywords: "op-amp", datasheet: "", units, fp: fpName, fpHint: "", filters: "", src: "its part number" };
-    if (spice && spice.text) part.spice = { text: spice.text, sub: spice.sub, map: ["3", "2", vp, vn, "1"] };
+    fp.title = `${fpName}, ${quad ? "quad" : "dual"} ${what}`;
+    const part = { id: "", name: String(name), prefix: "DA", desc: `${quad ? "Quad" : "Dual"} ${what}`, keywords: what, datasheet: "", units, fp: fpName, fpHint: "", filters: "", src: "its part number" };
+    // the model's pins on the first unit's: in the usual order, or as `spice.order` names them (+ - V+ V- OUT)
+    const first = { "+": PINS[0][0], "-": PINS[0][1], "V+": vp, "V-": vn, OUT: PINS[0][2] };
+    if (spice && spice.text) part.spice = { text: spice.text, sub: spice.sub, map: (spice.order || ["+", "-", "V+", "V-", "OUT"]).map(k => first[k] || "") };
     return { part, fp };
+  }
+
+  /** The library files inside a ZIP (stored or deflated): [{ name, text }] of every .kicad_sym, .kicad_mod and
+      .tubelib in it, whatever its folder (a whole KiCad library, a .pretty folder, a maker's download) */
+  const LIB_FILE = /\.(kicad_sym|kicad_mod|tubelib)$/i;
+  async function unzip(buf) {
+    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf), dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), out = [];
+    let e = u8.length - 22;
+    while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+    if (e < 0) throw new Error("not a ZIP file");
+    let p = dv.getUint32(e + 16, true);
+    for (let n = dv.getUint16(e + 10, true); n > 0 && p + 46 <= u8.length && dv.getUint32(p, true) === 0x02014b50; n--) {
+      const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), at = dv.getUint32(p + 42, true);
+      const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nl));
+      p += 46 + nl + xl + cl;
+      if (!LIB_FILE.test(name) || /(^|\/)(__MACOSX|\.)/.test(name)) continue;
+      const start = at + 30 + dv.getUint16(at + 26, true) + dv.getUint16(at + 28, true), data = u8.subarray(start, start + size);
+      let text;
+      if (method === 0) text = new TextDecoder().decode(data);
+      else if (method === 8 && typeof DecompressionStream === "function") text = await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+      else throw new Error("this browser cannot unpack the ZIP: unpack it and add the folder");
+      out.push({ name: name.split("/").pop(), text });
+    }
+    return out;
   }
 
   /** The library as a file's text, and back (an error names what is wrong) */
@@ -330,5 +358,5 @@
   }
   function fromFile(text) { let d; try { d = JSON.parse(text); } catch (e) { throw new Error("not a parts library of this app"); } return check(d); }
 
-  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, unitMaps, differs, refreshed, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS, opampPackage };
+  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, unitMaps, differs, refreshed, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS, opampPackage, unzip, LIB_FILE };
 })(typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : globalThis);

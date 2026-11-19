@@ -6,6 +6,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.239.0] - 2026-11-19
+
+Add part… draws regulators, references, comparators and optocouplers as what they are, and the parts library takes a whole folder or a ZIP.
+
+### Added
+- **Add part…: regulators, shunt references, comparators, optocouplers and zeners have their own drawings** instead of a box. A 7805 or LM317 is the regulator box with IN, OUT and GND or ADJ; a TL431 the reference diode; an LM311, LM393 or LM339 a comparator; a 4N25 an optocoupler (with its base pin when the model has one); a BZX55 a zener.
+- **The program finds which pin of such a model is which.** Makers' models mostly number their pins. The pin names and the note above the model are read where they say it; otherwise the model is tried in a small test circuit every way round and the one way that behaves as the part should is taken (a regulator holds its output against line and load with only milliamps in its third pin; a reference holds 2.5 V stiffly and twice that on a divider; an optocoupler's collector falls with the LED lit and nothing passes between the sides; a comparator's output follows its inputs). Names and notes are checked in the same circuit, so a wrong note does not get through. Checked on about 100 regulator, reference and optocoupler models of the public library.
+- **Pins of the model** in the dialog shows how the pins were found and lets you change them; when the program cannot tell, it asks you to set them before the part is placed.
+- **Regulators and references choose a case and a pin order** like transistors (TO-220, TO-92, SOT-223, DPAK, D²PAK, SOT-89; the usual order for the number is offered: 7805 in-ground-out, 78L05 out-ground-in, 79xx ground-in-out, LM317 adjust-out-in). Optocouplers go into a DIP-4 or DIP-6 (new footprints), comparators into a DIP-8 or SOIC-8.
+- **Dual and quad comparators** become library parts with a unit per comparator, like op-amps; a quad is pinned as the LM339.
+- **Parts library: Add a folder…** takes a whole folder at once (a `.pretty` folder, or a library's folder with symbol libraries and footprint folders inside). **Add from KiCad files…** also takes a ZIP, and files, folders and ZIPs can be dropped on the dialog. At most 3000 footprints are taken in one go.
+
+### Fixed
+- A regulator or reference built of several transistors was drawn as one Darlington transistor; a subcircuit with more than two transistors is no longer taken for a transistor.
+
+### Tests
+- `tests/addpart.test.mjs`: families of part numbers, each new kind recognised from the project's own test models (`tests/fixtures/oddparts.lib`) and then simulated on its found pins, a wrong note caught, comparator packages, the footprints. `tests/partlib.test.mjs`: a ZIP of a library, stored and deflated. e2e 08c (ZIP, folder, drop) and 08d (the new parts through the dialog, setting the pins by hand).
+
 ## [3.238.0] - 2026-11-19
 
 ### Fixed
