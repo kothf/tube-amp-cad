@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.239.1] - 2026-11-19
+
+### Fixed
+- Tests: the browser check "opening a link over a circuit asks first" failed now and then in CI (three times since 8 November). The test page had restored the same circuit, and the link's fragment leaves the address before the design is unpacked, so the test's wait could end before the question was asked. It now waits for the design itself to be loaded. The app was right all along.
+
 ## [3.239.0] - 2026-11-19
 
 Add part… draws regulators, references, comparators and optocouplers as what they are, and the parts library takes a whole folder or a ZIP.
