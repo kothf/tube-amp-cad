@@ -268,7 +268,15 @@
         const v = r.pinI.vals[k];
         if (!y) y = Float64Array.from(v); else for (let i = 0; i < y.length; i++) y[i] += v[i];
       });
-      if (!y) throw new Error(`${desig(c)} is not in this run: run again`);
+      if (!y) {
+        // the part is in the run but nothing of it sits on this pin: an ideal input (a 555's trigger
+        // and threshold, a controlled source's control pins) draws no current
+        const own = id => { const s = String(id), h = s.indexOf("#"); return (h < 0 ? s : s.slice(0, h)) === c.id; };
+        if (r.pinI.ids.some(([id]) => own(id))) return new Float64Array(r.t.length);
+        // in the run's wiring but with no element: a connector (a terminal block, a jack, a header)
+        // only joins its nets
+        throw new Error(`${desig(c)} only joins its nets and carries no current of its own: plot the current of a part wired to it`);
+      }
       return y;
     }
     // the logic simulator's nets (result.digital): a logic IC's inputs and outputs and a SPICE part's

@@ -21,7 +21,7 @@
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   root.CadAnim = function (cad) {
-    const { S, buildNetlist, fmtEng, getCtx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents } = cad;
+    const { S, buildNetlist, fmtEng, getCtx, netAvg, netDC, pinMap, sigPinCurrent, pool, render, setStatus, signalFreq, stats, topo, wireCurrents } = cad;
     const REAL_S = 0.25, ANIM_DC_SPEED = 25;   // DC dots: units a second, about the AC dots' average
     // ANIM_S: how long a slowed-down cycle plays (Settings → Animate speed, 3 s unless changed)
     const animS = () => CadSettings.animSeconds();
@@ -180,7 +180,8 @@
       else if (d) { const a = d.leds.get(c.id); if (a) i = Math.max(...[0, 0.005, 0.01, 0.015].map(b => { const v = animAt(a, (S.anim.phase - b + 1) % 1); return g.abs ? Math.abs(v) : v; })); }
       // settled on AC, a neon by its average current either way (the frames' mean of its size)
       if (i === null && g.abs && S.sim.result) { const a = (animData() || { leds: new Map() }).leds.get(c.id); if (a) i = a.reduce((s, v) => s + Math.abs(v), 0) / a.length; }
-      if (i === null && S.sim.result) i = pinCurrent(c, g.pin || "A");
+      // (an LED a signal drives: its average over the cycle)
+      if (i === null && S.sim.result) i = sigPinCurrent(c, g.pin || "A");
       if (i === null || !isFinite(i)) return null;
       if (g.abs) i = Math.abs(i);
       return i > g.min ? Math.min(1, Math.sqrt(i / g.full)) : 0;
@@ -202,7 +203,8 @@
       if (P && P.ok) { const e = P.eyes.get(c.id); if (e && e.vt.length) { const j = Math.floor(P.t / P.dt); vt = at(e.vt, j); vp = at(e.vp, j); } }
       else if (d) { const e = d.eyes.get(c.id); if (e) { vt = animAt(e.vt, S.anim.phase); vp = animAt(e.vp, S.anim.phase); } }
       if (vt === null && S.sim.result) {
-        const T = S.sim.topo || topo(), v = pid => netDC(T.pinNet.get(c.id + ":" + pid)), k = v("K");
+        // (with a signal on, its average over the cycle: a rectified level on its grid)
+        const T = S.sim.topo || topo(), v = pid => netAvg(T.pinNet.get(c.id + ":" + pid)), k = v("K");
         if (k !== null && v("T") !== null && v("P") !== null) { vt = v("T") - k; vp = v("P") - k; }
       }
       return vt === null || !isFinite(vt) || !isFinite(vp) ? null : CadLib.eyeShadow(m, vt, vp);
@@ -236,7 +238,7 @@
       let cur = null;
       const d = cycle(), a = d && d.nixies.get(c.id);
       if (a) { const j = Math.floor(S.anim.phase * a.length) % a.length; cur = a[j]; }
-      else if (S.sim.result) cur = Array.from({ length: 10 }, (_, k) => { const v = pinCurrent(c, "K" + k); return v === null ? 0 : -v; });
+      else if (S.sim.result) cur = Array.from({ length: 10 }, (_, k) => { const v = sigPinCurrent(c, "K" + k); return v === null ? 0 : -v; });
       if (!cur) return null;
       let k = 0; cur.forEach((v, j) => { if (v > cur[k]) k = j; });
       return cur[k] > m.iext ? { digit: k, lit: Math.min(1, Math.sqrt(cur[k] / m.i)) } : { digit: null, lit: 0 };
@@ -257,7 +259,8 @@
         return (sa / len) * 1.1107 / m.vref;
       }
       if (a && d.f > 0 && cycleS(d) === 1 / d.f) return animAt(a, S.anim.phase) / m.ifs;
-      const i = pinCurrent(c, "+");
+      // the average current, with a signal on over its cycle (a rectifier meter on audio)
+      const i = sigPinCurrent(c, "+");
       return i === null ? null : i / m.ifs;
     }
     // the needle, moved towards the reading with a meter's ballistics while Animate runs (a second-

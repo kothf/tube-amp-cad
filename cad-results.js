@@ -53,6 +53,26 @@
       return map;
     }
     function pinCurrent(c, pid) { const m = pinCurrents(), v = m && m.get(c.id + ":" + pid); return v === undefined ? null : v; }
+    // With the signal on: a signal-driven run keeps its operating point as the DC values (the bias,
+    // as with no signal) and its averages over the cycle as result.sig; a run already averaged (on
+    // mains, a free-running 555) has them as its DC values. What a part that integrates its current
+    // sees: a meter's needle, an LED's or a rectifier's average current, a neon striking on the
+    // peaks, a battery's drain, a transistor's dissipation. Each falls back to the DC value.
+    function sigPinCurrent(c, pid) {
+      const r = S.sim.result; if (!r || !r.sig) return pinCurrent(c, pid);
+      if (!S.sim.pinSig || S.sim.pinSig.result !== r) S.sim.pinSig = { result: r, map: pinMap(r.sig.currents) };
+      const v = S.sim.pinSig.map.get(c.id + ":" + pid); return v === undefined ? null : v;
+    }
+    // a net's average over the cycle (the last sample repeats the first)
+    function netAvg(net) {
+      const r = S.sim.result, w = r && r.sig ? netWave(net) : null;
+      if (!w || w.length < 2) return netDC(net);
+      let s = 0; for (let k = 0; k < w.length - 1; k++) s += w[k]; return s / (w.length - 1);
+    }
+    // an element's state averaged over the cycle ({ main, … } as result.dc.devices has it)
+    function sigDevice(id) { const r = S.sim.result; return r ? (r.sig && r.sig.devices[id]) || r.dc.devices[id] || null : null; }
+    // whether the signal moves this part: its averaged value differs from the operating point's
+    const sigDiffers = (a, b, abs) => a !== null && b !== null && a !== undefined && b !== undefined && Math.abs(a - b) > Math.max(abs || 0, 0.02 * Math.max(Math.abs(a), Math.abs(b)));
     // DC current in each wire segment (wire id -> A, positive from (x1,y1) to (x2,y2)).
     // In the wiring of a net, a loose end whose pins draw a known current passes it on to
     // the next point, and so on inwards; segments stay unknown only in loops or between
@@ -266,6 +286,6 @@
       if (b && isFinite(b.rg) && b.rg > 0) add(`Grid circuit R (${fixed ? "fixed" : "cathode"} bias)`, b.rg, rgLim, "Ω", (v, m) => `has ${v} in its grid circuit, more than the ${m} allowed with ${fixed ? "fixed" : "cathode"} bias (the tube can run away as it warms)`);
       return out;
     }
-    return { acDigits, harmonics, netAC, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, resistorPower, semiData, signalFreq, speakerPower, speakerWave, stats, tubeData, tubeLimits, waveOf, wireCurrents };
+    return { acDigits, harmonics, netAC, netAvg, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, sigDevice, sigDiffers, sigPinCurrent, resistorPower, semiData, signalFreq, speakerPower, speakerWave, stats, tubeData, tubeLimits, waveOf, wireCurrents };
   };
 })(window);

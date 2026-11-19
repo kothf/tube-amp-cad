@@ -316,7 +316,7 @@
   const LIVE_KEY = "tubecad_live", LEGEND_KEY = "tubecad_legend";
 
   // What the CAD reads from the last result: node voltages, currents, power, tube data (cad-results.js)
-  const { acDigits, harmonics, netAC, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, resistorPower, semiData, signalFreq, speakerPower, speakerWave, stats, tubeData, tubeLimits, waveOf, wireCurrents } = CadResults({ S, buildNetlist, compPins, decimate, fmtEng, key, topo, tubeByName, tubeKind });
+  const { acDigits, harmonics, netAC, netAvg, netDC, netWave, oneCycle, otDcCurrent, pinCurrent, pinCurrents, pinMap, pinNetOf, sigDevice, sigDiffers, sigPinCurrent, resistorPower, semiData, signalFreq, speakerPower, speakerWave, stats, tubeData, tubeLimits, waveOf, wireCurrents } = CadResults({ S, buildNetlist, compPins, decimate, fmtEng, key, topo, tubeByName, tubeKind });
 
   // the selection as text, to tell whether it changed
   const selSig = () => [...S.sel.comps].sort().join(",") + "|" + [...S.sel.wires].sort().join(",");
@@ -483,7 +483,7 @@
   }
 
   // AC animation (View ▾ → Animate): dots for each wire's current, a tint for each node's AC (cad-anim.js)
-  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, relayOn, heaterLevel, lampLevel, ledLevel, meterReading, needleLevel, nixieLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netDC, pinCurrent, pinMap, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
+  const { animData, changed: animChanged, drawAnimDots, drawAnimHud, drawAnimTint, eyeLevel, relayOn, heaterLevel, lampLevel, ledLevel, meterReading, needleLevel, nixieLevel, setAnim } = CadAnim({ S, buildNetlist, fmtEng, getCtx: () => ctx, netAvg, netDC, pinCurrent, pinMap, sigPinCurrent, pool, render, setStatus, signalFreq, stats, topo, wireCurrents });
 
   function limitRows(c) {
     return tubeLimits(c).filter(o => o.key !== "Vg2k").map(o => kv(o.label, `${o.value} · ${Math.round(o.share * 100)}% of ${o.lim}`, o.share > 1 ? "bad" : o.share > 0.85 ? "warn" : "")).join("");
@@ -2282,7 +2282,14 @@
       railDevice: () => { const n = netOf("1"), k = S.comps.find(q => q.type === "rail" && pinNetOf(q, "1") === n && S.sim.result.dc.devices[q.id]); return k ? S.sim.result.dc.devices[k.id] : null; },
       tubeData: () => tubeData(c), tubeLimits: () => tubeLimits(c), limitRows: () => limitRows(c),
       seriesPart: () => seriesPart(c), resistorPower: () => resistorPower(c), speakerPower: () => speakerPower(c), otDcCurrent: () => otDcCurrent(c),
-      scopeChannels: () => scopeChannels(c), wave: pid => waveOf(c, pid), signalFreq, stats
+      scopeChannels: () => scopeChannels(c), wave: pid => waveOf(c, pid), signalFreq, stats,
+      // with the signal on (cad-results.js): averages over the cycle, or the DC values without a signal
+      sig: {
+        on: !!(S.sim.result && S.sim.result.sig),
+        pinCurrent: pid => sigPinCurrent(c, pid),
+        vAcross: (a, b) => { const va = netAvg(netOf(a)), vb = netAvg(netOf(b)); return va === null || vb === null ? null : va - vb; },
+        dev: id => sigDevice(id === undefined ? c.id : id), differs: sigDiffers
+      }
     };
   }
   function liveReadout(c) {
@@ -2351,6 +2358,10 @@
     return CadErc.check({ parts: S.comps.filter(c => !skip.has(c.type)).map(c => ({ label: c.label || LIB[c.type].name, type: c.type, params: c.params,
       pins: compPins(c).map(p => { const k = c.id + ":" + p.id; return { id: p.id, net: T.pinConnected.get(k) ? T.pinNet.get(k) : undefined }; }) })) });
   }
+  // a part's dissipation averaged with the signal on (-Infinity without a signal-driven run)
+  function sigPd(c) { const r = S.sim.result, d = r && r.sig && (r.sig.devices[c.id] || {}).main; return d && isFinite(d.pd) ? d.pd : -Infinity; }
+  // the worse of a pin's DC current and its average with the signal on
+  function worstPinCurrent(c, pid) { const a = pinCurrent(c, pid), b = sigPinCurrent(c, pid); return a === null ? b : b === null ? a : Math.abs(b) > Math.abs(a) ? b : a; }
   function circuitIssues() {
     const T = topo();
     const issues = [];
@@ -2410,7 +2421,10 @@
       const d = (S.sim.result.dc.devices[c.id] || {}).main, m = CadLib.semiTable(c.type)[c.params.model];
       if (!d || !m) return;
       const v = Math.abs(d.vce !== undefined ? d.vce : d.vds);
+      // its dissipation at rest, and with the signal on (a class-B output idles cool)
+      const ps = sigPd(c);
       if (d.pd > m.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}, more than its ${m.p} W rating.`);
+      else if (ps > m.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(ps, "W", 2)} on average with the signal on, more than its ${m.p} W rating.`);
       if (v > m.v) issues.push(`${c.label} (${c.params.model}) has ${v.toFixed(0)} V across it, more than its ${m.v} V rating.`);
     });
     S.comps.forEach(c => {
@@ -2426,7 +2440,8 @@
       if (!d || !m) return;
       if (d.vs > m.vmax) issues.push(`${c.label} (${c.params.model}) has ${d.vs.toFixed(1)} V between its supply pins, more than its ${m.vmax} V rating.`);
       else if (d.vs < m.vmin) issues.push(`${c.label} (${c.params.model}) has ${d.vs.toFixed(1)} V between its supply pins, less than the ${m.vmin} V it needs.`);
-      if (d.pd > m.pmax) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(d.pd, "W", 2)}, more than the ${m.pmax} W its package can${c.params.model === "LM386" ? "" : " on a large heatsink"}.`);
+      const pd = Math.max(d.pd, sigPd(c));
+      if (pd > m.pmax) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(pd, "W", 2)}${pd > d.pd ? " on average with the signal on" : ""}, more than the ${m.pmax} W its package can${c.params.model === "LM386" ? "" : " on a large heatsink"}.`);
       const mu = (S.sim.result.dc.devices[c.id + "#mute"] || {}).main;
       if (c.params.model === "LM3886" && mu && !(mu.i > 0.5e-3 || -mu.i > 0.5e-3)) issues.push(`${c.label} (LM3886) is muted: draw 0.5 mA or more from its mute pin (8), a resistor to V− (10 kΩ from −28 V).`);
     });
@@ -2456,11 +2471,24 @@
       let piv = null;
       if (wh && wl) { piv = -Infinity; for (let k = 0; k < wh.length; k++) piv = Math.max(piv, wh[k] - wl[k]); }
       else { const a = netDC(pinNetOf(c, hi)), b = netDC(pinNetOf(c, lo)); if (a !== null && b !== null) piv = a - b; }
-      const i = pinCurrent(c, c.type === "diode" ? "A" : "+"), iav = i === null ? null : Math.abs(i);
+      const i = worstPinCurrent(c, c.type === "diode" ? "A" : "+"), iav = i === null ? null : Math.abs(i);
       if (piv !== null && piv > m.v) issues.push(`${c.label} (${c.params.model}) sees ${piv.toFixed(0)} V in reverse, more than its ${m.v} V rating.`);
       if (iav !== null && iav > m.i) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(iav, "A", 2)} on average, more than its ${m.i} A rating.`);
     });
-    S.comps.forEach(c => { if (c.type !== "zener" || !S.sim.result) return; const z = CadLib.ZENERS[c.params.model], v = netDC(pinNetOf(c, "A")), w = netDC(pinNetOf(c, "K")), i = pinCurrent(c, "A"); if (z && v !== null && w !== null && i !== null && Math.abs((v - w) * i) > z.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(Math.abs((v - w) * i), "W", 2)}, more than its ${z.p} W rating.`); });
+    S.comps.forEach(c => {
+      if (c.type !== "zener" || !S.sim.result) return;
+      const z = CadLib.ZENERS[c.params.model], v = netDC(pinNetOf(c, "A")), w = netDC(pinNetOf(c, "K")), i = pinCurrent(c, "A");
+      // (with the signal on, a clipping zener: its elements' average power)
+      const r = S.sim.result, ps = r.sig ? ["", "#zz", "#bd", "#bv"].reduce((a, k) => a + (((r.sig.devices[c.id + k] || {}).main || {}).pd || 0), 0) : 0;
+      if (z && v !== null && w !== null && i !== null && Math.abs((v - w) * i) > z.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(Math.abs((v - w) * i), "W", 2)}, more than its ${z.p} W rating.`);
+      else if (z && ps > z.p) issues.push(`${c.label} (${c.params.model}) dissipates ${fmtEng(ps, "W", 2)} on average with the signal on, more than its ${z.p} W rating.`);
+    });
+    // LEDs: the average current, with the signal on too, within the maximum
+    S.comps.forEach(c => {
+      if (c.type !== "led" || !S.sim.result) return;
+      const l = CadLib.LEDS[c.params.color], i = worstPinCurrent(c, "A");
+      if (l && i !== null && i > l.i) issues.push(`${c.label} (LED, ${c.params.color}) carries ${fmtEng(i, "A", 2)} on average, more than its ${l.i * 1000} mA maximum: raise its series resistor.`);
+    });
     // fuses at 75 % of their rating or less (the makers' derating), inrush limiters within their current
     S.comps.forEach(c => {
       if ((c.type !== "fuse" && c.type !== "ntc") || !S.sim.result) return;
@@ -2508,7 +2536,7 @@
             : `${c.label} (${c.params.model}) has AC across its DC coil: ${q > 0.5 ? "it holds through the zero crossings, but its armature buzzes at twice the frequency" : "it does not pull in"}. Feed the coil from rectified, smoothed DC.`);
         }
       } else if (c.type === "vactrol") {
-        const i = pinCurrent(c, "A");
+        const i = worstPinCurrent(c, "A");
         if (i !== null && i > 0.04) issues.push(`${c.label} (${c.params.model}) has ${fmtEng(i, "A", 2)} in its LED, more than the 40 mA it is rated for: raise its series resistor.`);
       }
     });
@@ -2546,7 +2574,7 @@
       }
       if (c.type === "nixie") {
         const m = CadLib.NIXIES[c.params.model]; if (!m) return;
-        const ia = pinCurrent(c, "A");
+        const ia = worstPinCurrent(c, "A");
         if (ia !== null && ia > 2 * m.i) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(ia, "A", 2)}, over twice the ${fmtEng(m.i, "A")} a digit wants: raise its anode resistor.`);
       }
     });
@@ -2554,7 +2582,8 @@
     S.comps.forEach(c => {
       if (!S.sim.result) return;
       if (c.type === "neon") {
-        const m = CadLib.NEONS[c.params.model], i = pinCurrent(c, "A");
+        const r = S.sim.result, sd = id => (r.sig && (r.sig.devices[id] || {}).main) || null, a = sd(c.id), b = sd(c.id + "#rev");
+        const m = CadLib.NEONS[c.params.model], i = a && b ? Math.max(Math.abs(pinCurrent(c, "A") || 0), Math.abs(a.i || 0) + Math.abs(b.i || 0)) : pinCurrent(c, "A");
         if (m && i !== null && Math.abs(i) > 2 * m.i) issues.push(`${c.label} (${c.params.model}) carries ${fmtEng(Math.abs(i), "A", 2)}, more than twice its ${fmtEng(m.i, "A")} design current: it darkens and fails early. Raise its series resistor.`);
       }
       if (c.type === "eye") {
@@ -2829,7 +2858,7 @@
   const sweep = CadSweep({ S, buildNetlist, cmds, commit, desig, esc: escH, fmtEng, harmonics, measurements, parseEng: CadLib.parseEng, pool, scopeChannels, setStatus, signalFreq, speakerWave, topo, withResult });
   // Listen: the Listen tab (cad-listen.js)
   const listen = CadListen({ S, buildNetlist, cmds, desig, esc: escH, fmtEng, pool, setStatus, topo });
-  const { bomData, bomOpts, clearBomShown, exportBom, initBom, openKeyDialog, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); transient.render(); noise.render(); sweep.render(); listen.render(); tune.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
+  const { bomData, bomOpts, clearBomShown, exportBom, initBom, openKeyDialog, partStress, renderBom, toggleBom } = CadBom({ S, baseName, bind, cmds, renderChecks, renderTolerance: () => { tolerance.render(); power.render(); transient.render(); noise.render(); sweep.render(); listen.render(); tune.render(); }, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent, pinNetOf, sigDevice, sigPinCurrent, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf });
   // The AI assistant: the AI tab and the AI menu (cad-ai.js)
   const ai = CadAi({ S, VERSION, circuitIssues, commit, compPins, desig, fmtEng, harmonics, measurements, netAC, netDC, runSim, selectParts: selectFromBoard, setStatus, signalFreq, speakerWave, toggleBom, topo, tubeData, undo, whenSimulated });
   // Auto-tune: the Tune tab (cad-tune.js)

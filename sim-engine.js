@@ -2061,7 +2061,9 @@
   // ---------------------------------------------------------------------------
   // Device readouts at a solution (used for the tube viewer and inspector)
   // ---------------------------------------------------------------------------
-  function deviceState(e, x) {
+  // dc: x is a DC operating point, which has its op-amps without their current limits (newtonSolve's
+  // mode.dc): they are read so too, or a saturated one shows supply currents its solution never had
+  function deviceState(e, x, dc) {
     const v = e.nodes.map(k => vn(x, k));
     if (e.kind === "TRIODE") {
       const vak = v[0] - v[2], vgk = v[1] - v[2];
@@ -2089,7 +2091,7 @@
     if (e.kind === "OPAMP") {
       // vd: IN+ − IN−; iout: out of the output pin; pd: the power the package dissipates
       // clip: how far the output stage is driven past its limit (V; > 0.05 is clipping)
-      const I = Semi.opamp(v, e.model);
+      const I = Semi.opamp(v, e.model, !!dc);
       return { vd: v[0] - v[1], vout: v[2], vs: v[3] - v[4], iout: -I[2], iq: I[3], pd: I.reduce((s, i, k) => s + i * v[k], 0), clip: Semi.opampClip(v, e.model) };
     }
     // a regulator: input − output (its headroom), output above REF, the output current and the
@@ -2099,10 +2101,11 @@
       return { vin: p * (v[0] - v[2]), vout: p * (v[1] - v[2]), vio: p * (v[0] - v[1]), iout: -p * I[1], iin: p * I[0], pd: I.reduce((s, i, k) => s + i * v[k], 0) };
     }
     if (e.kind === "SHUNT") { const I = Semi.shunt(v, e.model); return { vka: v[0] - v[1], vref: v[2] - v[1], ik: I[0], pd: I.reduce((s, i, k) => s + i * v[k], 0) }; }
-    if (e.kind === "VDIODE") { const vd = v[0] - v[1]; return { vd, i: vdiodeI(e, vd) }; }
-    if (e.kind === "D") { const vd = v[0] - v[1]; return { vd, i: (e.is || 2.5e-9) * (Math.exp(Math.min(vd / ((e.n || 1.75) * 0.025852), 80)) - 1) }; }
-    if (e.kind === "R") { const vd = v[0] - v[1]; return { vd, i: vd / e.r }; }
-    if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") return { i: x[e.branch], vd: v[0] - v[1] };
+    if (e.kind === "VDIODE") { const vd = v[0] - v[1], i = vdiodeI(e, vd); return { vd, i, pd: vd * i }; }
+    if (e.kind === "D") { const vd = v[0] - v[1], i = (e.is || 2.5e-9) * (Math.exp(Math.min(vd / ((e.n || 1.75) * 0.025852), 80)) - 1); return { vd, i, pd: vd * i }; }
+    if (e.kind === "R") { const vd = v[0] - v[1]; return { vd, i: vd / e.r, pd: vd * vd / e.r }; }
+    // (pd: the power it takes in, a → b; a source delivering power has it negative)
+    if (e.kind === "V" || e.kind === "VSRC" || e.kind === "L") return { i: x[e.branch], vd: v[0] - v[1], pd: (v[0] - v[1]) * x[e.branch] };
     if (e.kind === "C") return { vd: v[0] - v[1] };
     // a transformer: its magnetising current, and with a saturating core the flux as a share of the knee
     if (e.kind === "XFMR") { const im = magCurrent(e, x); return e.sat ? { im, flux: (e.plays ? coreLam(e, im, playsOf(e, x)) : coreFlux(e, im))[0] / e.sat.ls } : { im }; }
@@ -2124,7 +2127,7 @@
 
   // Current flowing from each node into an element: [[node, i], ...]. Capacitors
   // carry none at DC and none on average over a settled window.
-  function terminalCurrents(e, x) {
+  function terminalCurrents(e, x, dc) {
     const nd = e.nodes, v = nd.map(k => vn(x, k)), two = i => [[nd[0], i], [nd[1], -i]];
     switch (e.kind) {
       case "R": return two((v[0] - v[1]) / Math.max(e.r, 1e-6));
@@ -2146,7 +2149,7 @@
       case "MOS4": return Semi.mosx(v, e.model).map((i, k) => [nd[k], i]);
       case "BSIM": return Semi.bsim(v, e).I.map((i, k) => [nd[k], i]);
       case "TIMER555": { const I = timerCurrents([v[0], v[2], v[6], v[7]], latchOf(e, x)); return [[nd[0], I[0]], [nd[2], I[1]], [nd[6], I[2]], [nd[7], I[3]]]; }
-      case "OPAMP": return Semi.opamp(v, e.model).map((i, k) => [nd[k], i]);
+      case "OPAMP": return Semi.opamp(v, e.model, !!dc).map((i, k) => [nd[k], i]);
       case "GLOW": return two(glowCurrents(v, e.model, latchOf(e, x))[0]);
       case "RELAY": return relayCurrents(v, e.model, latchOf(e, x)).map((i, k) => [nd[k], i]).slice(2);
       case "LDR": return two(ldrG(e.model, x[e.light])[0] * (v[0] - v[1]));
@@ -2157,11 +2160,11 @@
   }
   // flat list [id, node, i, ...] of the terminal currents of every element with an id;
   // called again with the same list, adds to it (for averaging over a window)
-  function currentsOf(circ, x, out) {
+  function currentsOf(circ, x, out, dc) {
     let k = 0;
     circ.els.forEach(e => {
       if (!e.id) return;
-      terminalCurrents(e, x).forEach(([node, i]) => {
+      terminalCurrents(e, x, dc).forEach(([node, i]) => {
         if (out.length <= k) out.push(e.id, node, 0);
         out[k + 2] += i; k += 3;
       });
@@ -2171,11 +2174,52 @@
 
   // the terminal currents at one instant of the transient, for the CAD's animation: as
   // currentsOf, and a capacitor's C·dV/dt from the step before (h seconds earlier)
-  function instantCurrents(circ, x, xp, h, vals) {
+  // rule (the free transient's step, as newtonSolve took it): { p2, w } Gear-2 with the state before
+  // xp and this step over the one before, { xd0 } trapezoidal from the slopes at xp (linear
+  // capacitors only, as the stamp has it); none: backward Euler. A capacitor's current is then the
+  // one the solver used, so a part's pin currents add up to zero (an op-amp's Miller capacitor)
+  function instantCurrents(circ, x, xp, h, vals, rule, dc) {
     let k = 0;
+    const capI = e => {
+      const nd = e.nodes, va = X => vn(X, nd[0]) - vn(X, nd[1]), q = X => chargeAt(e, va(X));
+      if (rule && rule.xd0 && !(e.junc || e.vdm)) return e.c * (2 * (va(x) - va(xp)) / h - va(rule.xd0));
+      if (rule && rule.p2) { const w = rule.w > 0 ? rule.w : 1; return ((1 + 2 * w) / (1 + w) * q(x) - (1 + w) * q(xp) + w * w / (1 + w) * q(rule.p2)) / h; }
+      return (q(x) - q(xp)) / h;
+    };
+    // the charges a device stores (a diode's TT, a BJT's TF and TR, Meyer's and BSIM's gate charges):
+    // their currents by the step's own Gear-2 (or backward Euler) rule, added to its pins', as the
+    // stamps have them, so a switch's storage time and a diode's reverse recovery show in I(Q1.C)
+    const P2 = rule && rule.p2 ? rule.p2 : null, w2 = P2 && rule.w > 0 ? rule.w : 1;
+    const A0 = P2 ? (1 + 2 * w2) / (1 + w2) : 1, A1 = P2 ? -(1 + w2) : -1, A2 = P2 ? w2 * w2 / (1 + w2) : 0;
+    const dqdt = f => (A0 * f(x) + A1 * f(xp) + (P2 ? A2 * f(P2) : 0)) / h;
+    const VV = (e, X) => e.nodes.map(n => vn(X, n));
+    const charged = e => {
+      if (dc || xp === x) return null;
+      if (e.kind === "D" && e.tt) {
+        const Is = e.is || 2.5e-9, nVt = (e.n || 1.75) * 0.025852, i = dqdt(X => e.tt * Is * (Math.exp(Math.min((vn(X, e.nodes[0]) - vn(X, e.nodes[1])) / nVt, 80)) - 1));
+        return [i, -i];
+      }
+      if (e.kind === "BJT" && (e.tf > 0 || e.tr > 0)) {
+        const f = dqdt(X => Semi.bjtCharges(VV(e, X), e.model, e.tf || 0, e.tr || 0)[0]), r = dqdt(X => Semi.bjtCharges(VV(e, X), e.model, e.tf || 0, e.tr || 0)[1]);
+        return [-r, f + r, -f];
+      }
+      if (e.kind === "MOS4" && e.model.p.cmey > 0) {
+        const nd = e.nodes, C0 = Semi.mosMeyer(VV(e, x), e.model), C1 = Semi.mosMeyer(VV(e, xp), e.model), out = [0, 0, 0, 0];
+        [2, 0, 3].forEach((o, j) => {
+          const c = (C0[j] + C1[j]) / 2; if (!(c > 0) || nd[o] === nd[1]) return;
+          const i = c * dqdt(X => vn(X, nd[1]) - vn(X, nd[o])); out[1] += i; out[o] -= i;
+        });
+        return out;
+      }
+      if (e.kind === "BSIM") { const n = e.nodes.length, Q = X => Semi.bsim(VV(e, X), e).Q, q0 = Q(x), q1 = Q(xp), q2 = P2 ? Q(P2) : null; return Array.from({ length: n }, (_, t) => (A0 * q0[t] + A1 * q1[t] + (q2 ? A2 * q2[t] : 0)) / h); }
+      return null;
+    };
     circ.els.forEach(e => {
       if (!e.id) return;
-      const tc = e.kind === "C" ? (() => { const nd = e.nodes, i = (chargeAt(e, vn(x, nd[0]) - vn(x, nd[1])) - chargeAt(e, vn(xp, nd[0]) - vn(xp, nd[1]))) / h; return [[nd[0], i], [nd[1], -i]]; })() : terminalCurrents(e, x);
+      const tc = e.kind === "C" ? (() => { const nd = e.nodes, i = capI(e); return [[nd[0], i], [nd[1], -i]]; })() : terminalCurrents(e, x, dc);
+      const q = charged(e);
+      // (these elements list their terminals in their nodes' order)
+      if (q) q.forEach((i, j) => { if (tc[j]) tc[j][1] += i; });
       tc.forEach(([, i]) => { vals[k++] = i; });
     });
     return vals;
@@ -2432,8 +2476,8 @@
       if (th.runaway) result.warnings.push(`Overheating: ${th.runaway.id.split("#")[0]} passes ${RUNAWAY} °C, held there (thermal runaway, its heat raising its current, or more dissipation than its cooling takes): more emitter resistance, the bias transistor on its heatsink, or a bigger heatsink`);
     }
     result.dc = { nodes: [0].concat(dc.x.slice(0, nodeCount - 1)), devices: {} };
-    circ.els.forEach(e => { if (e.id) result.dc.devices[e.id] = Object.assign(result.dc.devices[e.id] || {}, { [e.kind === "VDIODE" ? e.part || "d" : "main"]: deviceState(e, dc.x) }); });
-    result.dc.currents = currentsOf(circ, dc.x, []);
+    circ.els.forEach(e => { if (e.id) result.dc.devices[e.id] = Object.assign(result.dc.devices[e.id] || {}, { [e.kind === "VDIODE" ? e.part || "d" : "main"]: deviceState(e, dc.x, true) }); });
+    result.dc.currents = currentsOf(circ, dc.x, [], true);
     progress(0.05);
 
     // Time base from sources
@@ -2691,15 +2735,25 @@
     // (an op-amp's trace is its clip: how far past its output limit it is driven; a transistor's
     // its collector or drain current, in its own polarity: the curve tracer's load line)
     // a saturating transformer's trace is its core flux, as a share of the knee)
-    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP" || e.kind === "BJT" || e.kind === "MOS" || e.kind === "MOS4" || e.kind === "BSIM" || (e.kind === "XFMR" && e.sat));
+    const devIdx = circ.els.filter(e => e.kind === "TRIODE" || e.kind === "PENTODE" || e.kind === "VDIODE" || e.kind === "D" || e.kind === "OPAMP" || e.kind === "BJT" || e.kind === "MOS" || e.kind === "MOS4" || e.kind === "BSIM" || (e.kind === "XFMR" && e.sat) || e.kind === "LDR");
     const devTrace = {};
-    devIdx.forEach(e => { devTrace[e.id + (e.part ? "#" + e.part : "")] = { i: new Float32Array(nCap), ig2: e.kind === "PENTODE" ? new Float32Array(nCap) : null }; });
+    // (a vactrol's cell: its current, and its resistance as r)
+    devIdx.forEach(e => { devTrace[e.id + (e.part ? "#" + e.part : "")] = { i: new Float32Array(nCap), ig2: e.kind === "PENTODE" ? new Float32Array(nCap) : null, r: e.kind === "LDR" ? new Float32Array(nCap) : undefined }; });
     // A circuit run from AC (a rectified supply) has no true DC solution: the
     // DC pass above only estimates it (a power transformer's halves held at 0.95
     // of their peak) or, behind AC mains, starts it from zero. Then the reported
     // DC values are the averages over the settled capture window, what a meter
     // reads; the estimate is kept as dcEstimate.
     const averaged = fOsc > 0 || circ.els.some(e => e.dcValue !== undefined || e.acMains);
+    // a signal-driven run keeps its operating point as the DC values, but takes the same averages
+    // too (result.sig): what a part that integrates its current over the cycle sees with the
+    // signal on (a meter's needle, a rectifier's and an LED's average current, a neon that strikes on
+    // the peaks, a magic eye, a battery's drain, a transistor's dissipation)
+    const sigAvg = !averaged && nCap > 1;
+    // (of the elements' states only what the parts read with the signal on: the semiconductors' and
+    // ICs' dissipation, a latch's share of the time, a cell's resistance, a zener's own parts)
+    const SIG_KINDS = new Set(["BJT", "MOS", "MOS4", "BSIM", "OPAMP", "REG", "SHUNT", "TIMER555", "GLOW", "RELAY", "LDR", "D", "VDIODE"]);
+    const sigKeep = sigAvg ? circ.els.map(e => !!e.id && (SIG_KINDS.has(e.kind) || /#(zz|bv)$/.test(e.id))) : null;
     const nodeSum = new Float64Array(nodeCount), devSum = {}, curSum = [];
     // animation frames: every element's terminal currents at up to 120 instants over the window
     // (options.frameSpan: one signal period, so a slow signal in a long mains window still gets them all)
@@ -2722,16 +2776,17 @@
       if (frAt.has(k)) { frames.at.push(k); frames.cur.push(instantCurrents(circ, x, xPrev, h, new Float32Array(frames.layout.length / 3))); }
       xPrev = x;
       for (let i = 1; i < nodeCount; i++) nodes[i][k] = x[i - 1];
-      const acc = averaged && k < nCap - 1;   // the last sample repeats the first: one exact window
+      const acc = (averaged || sigAvg) && k < nCap - 1;   // the last sample repeats the first: one exact window
       if (acc) for (let i = 1; i < nodeCount; i++) nodeSum[i] += x[i - 1];
       devIdx.forEach(e => {
         const s = deviceState(e, x), tr = devTrace[e.id + (e.part ? "#" + e.part : "")];
         tr.i[k] = s.ia !== undefined ? s.ia : s.i !== undefined ? s.i : s.ic !== undefined ? s.ic : s.id !== undefined ? s.id : s.flux !== undefined ? s.flux : s.clip;
         if (tr.ig2) tr.ig2[k] = s.ig2;
+        if (tr.r) tr.r[k] = s.r;
       });
       if (acc) currentsOf(circ, x, curSum);
       if (acc) circ.els.forEach((e, j) => {
-        if (!e.id) return;
+        if (!e.id || (sigAvg && !sigKeep[j])) return;
         const s = deviceState(e, x), d = devSum[j] || (devSum[j] = { e, sum: {} });
         for (const f in s) if (typeof s[f] === "number") d.sum[f] = (d.sum[f] || 0) + s[f];
       });
@@ -2746,17 +2801,17 @@
       if ((s & 63) === 0 && settled) progress(0.88 + 0.12 * s / nCap);
     }
     result.tran = { dt: h, samples: nCap, nodes, devices: devTrace, periods, settled, fBase: fMin || fOsc, frames };
-    if (averaged && nCap > 1) {
+    if ((averaged || sigAvg) && nCap > 1) {
       const n = nCap - 1, avg = { nodes: Array.from(nodeSum, v => v / n), devices: {}, currents: curSum.map((v, k) => (k % 3 === 2 ? v / n : v)) };
       avg.nodes[0] = 0;
       Object.values(devSum).forEach(({ e, sum }) => {
         const m = {}; for (const f in sum) m[f] = sum[f] / n;
         avg.devices[e.id] = Object.assign(avg.devices[e.id] || {}, { [e.kind === "VDIODE" ? e.part || "d" : "main"]: m });
       });
-      result.dcEstimate = result.dc;
-      result.dc = avg;
-      result.dcAveraged = true;
-    } else if (relays.length && nCap > 1) {
+      if (averaged) { result.dcEstimate = result.dc; result.dc = avg; result.dcAveraged = true; }
+      else result.sig = avg;
+    }
+    if (!averaged && relays.length && nCap > 1) {
       // a signal-driven run keeps its operating point, but a relay that switched within the window
       // reports the share of it that it was pulled in (q between 0 and 1)
       relays.forEach((e, i) => {
@@ -3100,7 +3155,7 @@
     const maxValues = opts.maxValues > 0 ? opts.maxValues : 8e6;
     const cap = Math.max(1000, Math.floor(maxValues / Math.max(1, nRec)));
     let size = Math.min(cap, 4096), T = new Float64Array(size), X = Array.from({ length: nRec }, () => new Float32Array(size)), m = 0, stride = 1, skip = 0;
-    let curPrev = null, curH = 1;
+    let curPrev = null, curH = 1, curRule = null;
     const keep = (t, xs, force) => {
       if (t < tStart - 1e-12 * tStop) return;
       if (!force && ++skip < stride) return;
@@ -3117,7 +3172,7 @@
         }
       }
       T[m] = t; for (let k = 0; k < n; k++) X[k][m] = xs[k];
-      if (nI) { instantCurrents(circ, xs, curPrev || xs, curH, curVals); for (let k = 0; k < nI; k++) X[n + k][m] = curVals[k]; }
+      if (nI) { instantCurrents(circ, xs, curPrev || xs, curH, curVals, curRule, !curPrev && !opts.uic); for (let k = 0; k < nI; k++) X[n + k][m] = curVals[k]; }
       m++;
     };
     // self-heated transistors start at their ambient and warm through the run, as in startup()
@@ -3132,12 +3187,14 @@
     if (tStart <= 0) keep(0, x, true);
     // one step from the last accepted state; a step timerStep cuts at a flip is a fresh start (Euler)
     // (linear capacitors and inductors trapezoidal from the slopes of the step before, the rest Gear-2)
-    let trapUsed = false;
+    let trapUsed = false, lastSolve = null;
     const solve = (xp, tN, hs) => {
       const last = hist[hist.length - 1], before = hist.length > 1 ? hist[hist.length - 2] : null;
       const cont = xp === last[1] && Math.abs(tN - hs - last[0]) <= 1e-9 * hs, gear = cont && before;
       trapUsed = !!(cont && last[2]);
-      const r = newtonSolve(circ, xp, { h: hs, t: tN, prev: xp, prev2: gear ? before[1] : null, w: gear ? hs / (last[0] - before[0]) : 1, xdot: trapUsed ? last[2] : null }, { gmin: 1e-12 });
+      const md = { h: hs, t: tN, prev: xp, prev2: gear ? before[1] : null, w: gear ? hs / (last[0] - before[0]) : 1, xdot: trapUsed ? last[2] : null };
+      const r = newtonSolve(circ, xp, md, { gmin: 1e-12 });
+      lastSolve = r.ok ? { xp, tN, xn: r.x, rule: md.xdot || md.prev2 ? { xd0: md.xdot, p2: md.prev2, w: md.w } : null } : null;
       return r.ok ? r.x : null;
     };
     // the local error of a step to (tN, xn) against a quadratic through the three states before, in tolerances
@@ -3198,7 +3255,8 @@
       if (digFresh) { digFresh = false; kicked = dig.restart(t, x); }
       else if (dig) kicked = dig.advance(t, x);
       if (clock) clock(heatOf(hotB, x), hh);
-      curPrev = xp; curH = hh;
+      // (a step a latch's flip cut in pieces: its currents over the whole step, backward Euler)
+      curPrev = xp; curH = hh; curRule = lastSolve && lastSolve.xp === xp && lastSolve.xn === xn ? lastSolve.rule : null;
       keep(t, x, corner || t >= tStop * (1 - 1e-12));
       // (an error that dips where the third derivative crosses zero does not lengthen the step: the
       // larger of the last two steps' errors is the floor; a rising error is taken to go on rising)
@@ -3263,7 +3321,7 @@
       prev = x;
       for (let i = 0; i < nU; i++) X[i][k] = x[i];
       if (curK) {
-        const c = currentsOf(circ, x, []);
+        const c = currentsOf(circ, x, [], true);
         if (c.length === curIds.length) for (let j = 0; j < curK; j++) curV[j][k] = c[3 * j + 2];
       }
       if (opts.onProgress) opts.onProgress((k + 1) / N);
