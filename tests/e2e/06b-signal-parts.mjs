@@ -1,3 +1,4 @@
+// Runs last: it opens examples and leaves its own circuit behind, which the board part (07) must not inherit.
 // Parts a signal drives: what the inspector, Checks, the needles and lamps show with the signal on
 // (the averages over its cycle, not the operating point at rest); the Transient tab's pin currents
 // of ideal inputs and connectors
