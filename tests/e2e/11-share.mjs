@@ -40,9 +40,12 @@ import { cad, check, ctx, open } from "./harness.mjs";
   const openIn = async (p, hash) => {
     let asked = "";
     p.once("dialog", d => { asked = d.message(); d.accept().catch(() => {}); });
-    await p.evaluate(h => { location.hash = h; }, hash);
-    // the status line is soon overwritten by the simulation, so wait for the circuit itself
-    await p.waitForFunction(n => !location.hash && TubeCAD.state.comps.length === n, want.comps.length, { timeout: 30000 });
+    await p.evaluate(h => { window.__before = TubeCAD.state.comps; location.hash = h; }, hash);
+    // the status line is soon overwritten by the simulation, so wait for the circuit itself: the
+    // parts' list is a new one once the design is loaded. (The address loses its fragment before
+    // the design is unpacked, and a page that restored the same circuit has as many parts already:
+    // waiting for those alone could end before the question was asked)
+    await p.waitForFunction(n => !location.hash && TubeCAD.state.comps !== window.__before && TubeCAD.state.comps.length === n, want.comps.length, { timeout: 30000 });
     const got = await p.evaluate(() => { const d = JSON.parse(TubeCAD.circuitJSON()); return { comps: d.comps, wires: d.wires, board: JSON.stringify(d.board) }; });
     return { asked, same: isDeepStrictEqual(got.comps, want.comps) && isDeepStrictEqual(got.wires, want.wires), board: got.board === want.board, n: got.comps.length };
   };
