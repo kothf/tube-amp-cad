@@ -6,6 +6,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.242.0] - 2026-11-21
+
+The thermal map in the layout, in the check list, and capacitor life.
+
+### Added
+- **View ▾ → Thermal overlay** (Board): the board's estimated temperature over the copper of the
+  layout, for the side of the active layer, with its scale. It follows the board a moment after
+  each change.
+- **Thermal notes in the design rules check**, each at its place: the board hotter than 105 °C, a
+  part whose body or junction is over its rating, an electrolytic over its rated temperature or
+  with a life under 10 000 h. Limits in Design rules (Board temperature, max; Electrolytic life,
+  min); one switch for the check. With a simulation they replace the distance rule for
+  electrolytics near hot parts.
+- **Electrolytics: Rated temperature and Life at that temperature** (105 °C, 2000 h by default);
+  Look up fills both from DigiKey ("Operating Temperature", "Lifetime @ Temp."). The thermal map
+  estimates the life at the capacitor's temperature (doubling per 10 °C under the rating, at most
+  130 000 h): in the part's card, the checks and the export's `life_h`.
+
 ## [3.241.0] - 2026-11-21
 
 The thermal map as files for other programs.

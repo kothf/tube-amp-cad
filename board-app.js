@@ -161,7 +161,8 @@
     }
     S.conn = S.fills.some(f => !f.tear) ? B.connectivity(S.board, S.model.pads, S.fills, star) : c0;
     S.amps = B.netCurrents(S.netlist);
-    S.drc = B.drc(S.board, S.model, S.conn, S.hv, S.fills, S.netlist);
+    S.drcBase = B.drc(S.board, S.model, S.conn, S.hv, S.fills, S.netlist);
+    thermalNotes(); thermalLater();
   }
   function checkSync() {
     if (!S.netlist) return;
@@ -1657,10 +1658,10 @@
   // ---------------------------------------------------------------------------
   // Drawing (millimetres, scaled by the view)
   // ---------------------------------------------------------------------------
-  const NOTE = ["unplaced", "check", "class", "silk", "dangling", "stopper", "coupling", "heat", "support"];
+  const NOTE = ["unplaced", "check", "class", "silk", "dangling", "stopper", "coupling", "heat", "thermal", "support"];
   const errors = () => S.drc.filter(d => !NOTE.includes(d.kind)).length;
   // the drawing of the board: render() asks for a frame (board-draw.js)
-  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected, consDraw: (c, px, mark) => { cons.draw(c, px, mark); dimui.draw(c, px); sketch.draw(c, px); } });
+  const { attachCanvas, render } = BoardDraw({ $, B, COLORS, NOTE, S, classOf, errors, isSel, measureCard, measureResult, netOfTrack, partBox, routeTail, sheetPlace, snap, snapPoint, snapY, trackSelected, consDraw: (c, px, mark) => { thermal2dDraw(c); cons.draw(c, px, mark); dimui.draw(c, px); sketch.draw(c, px); } });
   // construction geometry: the Construct menu's tools, the HUD, tied holes (board-cons.js)
   const cons = BoardCons({ $, B, S, commit, msg, snap, esc, kv, analyse, snapPoint, setTool, render: () => render(), renderPanels: () => renderPanels(), canvas: () => canvas, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] });
   // driving dimensions: the Dimension tool, Align, enforcing them after each change (board-dimui.js)
@@ -1674,7 +1675,7 @@
   let draft = null;
   const CHECK_NAMES = { clearance: "Clearance", short: "Shorts", edge: "Board edge", unplaced: "Parts not placed", annular: "Annular rings", viapad: "Vias in SMD pads", drill: "Minimum drill", width: "Minimum track width", class: "Track width of the net class",
     current: "Track width for the current", courtyard: "Parts overlapping", height: "Part height under the lid", keepout: "Keep-out areas", silk: "Silkscreen over pads", dangling: "Unconnected track ends", holeedge: "Hole to the board edge", pinout: "Pinouts to check",
-    star: "Ground returns meet only at the star point", stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", support: "Mounting hole near each socket", length: "Lengths: pair skew and length groups" };
+    star: "Ground returns meet only at the star point", stopper: "Grid stoppers at the socket", coupling: "Grid tracks near anodes, heaters", heat: "Electrolytics near hot parts", thermal: "Thermal map: hot board, parts over their rating, capacitor life", support: "Mounting hole near each socket", length: "Lengths: pair skew and length groups" };
   // the side panels: parts list, inspector, rule check, layers (board-panels.js)
   const { renderLayers, renderNets, renderPanels } = BoardPanels({ $, B, cons, dimui, toggleMount, CHECK_NAMES, LAYER_INFO, NOTE, S, alignParts, boardShape, centerOn, centreOnSheet, classOf, commit, defaultNet, deleteSel, errors, esc, fit, groundPlane, highlightNet, isLocked, isSel, kv, lockSel, lockedNote, moveOnSheet, netName, netOfTrack, onBoardKeys, onSheet, openRules, openSetup, partPreview, pourAround, render, selItems, selectPart, setLayer, showY, trackWidth });
   function openRules() {
@@ -1985,6 +1986,60 @@
     $("th-amb").value = st.ambient; $("th-enc").value = st.enclosure; $("th-ori").value = st.orient; $("th-point").value = st.point; $("th-blend").value = TH.blend;
   }
   // a part's card under the pointer: its heat, where it goes, its temperature against its limit
+  // ---- the map in the layout: its findings in the check list, and the board's field over the copper.
+  // TH.chk is the result for the board as it is (TH.stale: an edit since); it is worked out a moment
+  // after the last edit, so drawing and dragging stay quick
+  let thTimer = 0;
+  const thermalWanted = () => !!(S.model && S.netlist && S.netlist.heat) && (S.thermal2d || S.board.rules.checks.thermal !== false);
+  function thermalNotes() {
+    const res = thermalWanted() && S.board.rules.checks.thermal !== false ? TH.chk : null;
+    // with a map, an electrolytic near a hot part is judged by its temperature and life, not by its distance
+    S.drc = res ? (S.drcBase || []).filter(d => d.kind !== "heat").concat(BoardThermal.checks(res, S.board.rules)) : (S.drcBase || []);
+  }
+  function thermalNow() {
+    thTimer = 0;
+    if (!thermalWanted()) { TH.chk = null; TH.img = null; thermalNotes(); return; }
+    TH.chk = BoardThermal.solve(S.board, S.model, S.netlist); if (!TH.chk.ok) TH.chk = null;
+    TH.stale = false; TH.img = null; thermalNotes(); renderPanels(); thermal2dLegend(); render();
+  }
+  function thermalLater() {
+    TH.stale = true; clearTimeout(thTimer);
+    if (!thermalWanted()) { TH.chk = null; TH.img = null; thTimer = 0; thermal2dLegend(); return; }
+    thTimer = setTimeout(thermalNow, TH.chk ? 1500 : 300);
+  }
+  // the board's own scale (the parts are not coloured in the layout): the ambient to the board's hottest point
+  const th2Range = r => { const lo = Math.floor(r.ambient / 5) * 5; return [lo, Math.max(lo + 10, Math.ceil(r.boardMax / 5) * 5)]; };
+  const th2Side = () => (S.layer === "B.Cu" ? "bottom" : "top");
+  function thermal2dDraw(c) {
+    const r = TH.chk; if (!S.thermal2d || !r) return;
+    const side = th2Side();
+    if (!TH.img || TH.img.side !== side) {
+      const a = side === "top" ? r.top : r.bottom, [lo, hi] = th2Range(r), f = document.createElement("canvas"); f.width = r.nx; f.height = r.ny;
+      const fx = f.getContext("2d"), img = fx.createImageData(r.nx, r.ny);
+      for (let k = 0; k < a.length; k++) { if (!Number.isFinite(a[k])) continue; const col = BoardThermal.color((a[k] - lo) / (hi - lo)); img.data[4 * k] = col[0] * 255; img.data[4 * k + 1] = col[1] * 255; img.data[4 * k + 2] = col[2] * 255; img.data[4 * k + 3] = 255; }
+      fx.putImageData(img, 0, 0); TH.img = { side, canvas: f };
+    }
+    c.save(); c.globalAlpha = 0.6; c.imageSmoothingEnabled = true; c.drawImage(TH.img.canvas, 0, 0, r.nx * r.step, r.ny * r.step); c.restore();
+  }
+  function thermal2dLegend() {
+    const box = $("th2d"); if (!box) return;
+    box.hidden = !S.thermal2d; if (!S.thermal2d) return;
+    const r = TH.chk, lg = $("th2d-legend"), x = lg.getContext("2d"); x.clearRect(0, 0, lg.width, lg.height);
+    if (!r) { $("th2d-sum").textContent = S.netlist && S.netlist.heat ? "Working out the thermal map…" : "Thermal overlay: run the simulation in the Circuit CAD first"; lg.hidden = true; return; }
+    lg.hidden = false;
+    const [lo, hi] = th2Range(r), h = lg.height - 8, w = 14;
+    for (let i = 0; i < h; i++) { const col = BoardThermal.color(1 - i / (h - 1)); x.fillStyle = `rgb(${col.map(v => Math.round(v * 255)).join(",")})`; x.fillRect(2, 4 + i, w, 1.5); }
+    x.fillStyle = "#c9d1d9"; x.font = "11px system-ui, sans-serif"; x.textBaseline = "middle";
+    for (let i = 0; i <= 4; i++) { const y = 4 + (h - 1) * i / 4; x.fillRect(2 + w, Math.round(y), 4, 1); x.fillText(`${Math.round(hi - (hi - lo) * i / 4)} °C`, 2 + w + 7, Math.min(h - 1, Math.max(9, y))); }
+    $("th2d-sum").innerHTML = `<div><b>Thermal overlay</b>, ${th2Side()} side</div><div>Board up to <b>${Math.round(r.boardMax)} °C</b> at ${r.ambient} °C</div><div>${thFmtW(r.total)} on the board</div><div class="help">An estimate, about ±15 °C</div>`;
+  }
+  function thermal2d(on) {
+    S.thermal2d = on === undefined ? !S.thermal2d : !!on; $("btn-thermal2d").classList.toggle("active", S.thermal2d);
+    if (S.thermal2d && !(S.netlist && S.netlist.heat)) msg("Thermal overlay: run the simulation in the Circuit CAD first: the map needs what each part dissipates");
+    else if (S.thermal2d) msg("Thermal overlay: the board's estimated temperature over the copper, for the side of the active layer; it follows the layout a moment after each change");
+    if (S.thermal2d && (!TH.chk || TH.stale)) thermalLater();
+    thermal2dLegend(); render(); return S.thermal2d;
+  }
   function thermalCard(e) {
     const card = $("th-card");
     if (!TH.on || !TH.res || !viewer || e.buttons) { card.hidden = true; return; }
@@ -1999,6 +2054,7 @@
     const lim = (t, l) => (l ? ` (limit ${l} °C${t > l ? ", over by " + Math.round(t - l) : ""})` : "");
     h += row(kind, `${Math.round(p.t)} °C` + (p.tj === undefined ? lim(p.t, p.limit) : ""), p.tj === undefined && p.limit && p.t > p.limit ? "over" : "");
     if (p.tj !== undefined) h += row("Junction", `${Math.round(p.tj)} °C` + lim(p.tj, p.limit), p.limit && p.tj > p.limit ? "over" : "");
+    if (p.life !== undefined) h += row("Life", `about ${BoardThermal.lifeText(p.life)} (${p.lifeRated} h at ${p.limit} °C)`, p.life < (S.board.rules.capLife > 0 ? S.board.rules.capLife : 10000) ? "over" : "");
     h += row("Mounted", mount);
     card.innerHTML = h; card.hidden = false;
     const vr = $("view3d").getBoundingClientRect(); card.style.left = Math.min(vr.width - 290, e.clientX - vr.left + 16) + "px"; card.style.top = Math.min(vr.height - 130, e.clientY - vr.top + 14) + "px";
@@ -2189,7 +2245,7 @@
     $("sheet-pick").onchange = e => { const [size, orient] = e.target.value.split(" "); setSheet(orient ? { size, orient } : { size }); if (size !== "none") fitSheet(); };
     $("btn-sheet-lock").onclick = () => lockSheet(!(S.board.sheet || {}).locked);
     gridUi(); document.querySelectorAll("[data-gs]").forEach(b => { b.onclick = () => setGridStyle(b.dataset.gs); });
-    $("btn-axes").classList.toggle("active", S.axes); $("btn-axes").onclick = () => setAxes(!S.axes); $("btn-undo").onclick = undo; $("btn-redo").onclick = redo;
+    $("btn-axes").classList.toggle("active", S.axes); $("btn-axes").onclick = () => setAxes(!S.axes); $("btn-thermal2d").onclick = () => thermal2d(); $("btn-undo").onclick = undo; $("btn-redo").onclick = redo;
     $("btn-sync").onclick = syncNow; $("banner-sync").onclick = syncNow;
     $("btn-setup").onclick = openSetup; $("btn-rules").onclick = openRules;
     $("rules-apply").onclick = applyRules; $("rules-cancel").onclick = () => { $("rules-modal").hidden = true; };
@@ -2255,7 +2311,7 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, thermal, thermalResult: () => TH.res, thermalPackage, exportThermal, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, thermal, thermalResult: () => TH.res, thermalPackage, exportThermal, thermal2d, thermalCheck: () => { clearTimeout(thTimer); thermalNow(); return TH.chk; }, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   const boot = () => { init(); early.splice(0).forEach(e => bc.onmessage(e)); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

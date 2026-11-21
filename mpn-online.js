@@ -50,7 +50,7 @@
     const pick = re => { const k = Object.keys(par).find(n => re.test(n)); return k ? par[k] : ""; };
     return { source: "DigiKey", maker: (p.Manufacturer && p.Manufacturer.Name) || "", series: p.Series && p.Series.Name && p.Series.Name !== "-" ? p.Series.Name : "", mpn: p.ManufacturerProductNumber || "",
       pkg: pick(/^Package \/ Case$/i), device: pick(/^Supplier Device Package$/i), size: pick(/^Size \/ Dimension$/i), height: pick(/^Height/i), lead: pick(/^Lead Spacing$/i),
-      mount: pick(/^Mounting Type$/i), power: pick(/^Power \(Watts\)$|^Power$/i), voltage: pick(/^Voltage - Rated$|^Voltage Rating/i), capacitance: pick(/^Capacitance$/i) };
+      mount: pick(/^Mounting Type$/i), power: pick(/^Power \(Watts\)$|^Power$/i), voltage: pick(/^Voltage - Rated$|^Voltage Rating/i), capacitance: pick(/^Capacitance$/i), temp: pick(/^Operating Temperature$/i), life: pick(/^Lifetime @ Temp/i) };
   }
   /** Look up part c (a schematic component, or several sharing a number): its params.part becomes
       what DigiKey says. Returns the PartNo result; throws with a message for the user. */
@@ -64,6 +64,8 @@
     const rec = root.PartNo.record(no, r, { source: "DigiKey", url: p.ProductUrl || "", specs });
     if (!r.known) rec.text = r.text;
     comps.forEach(k => { k.params.part = JSON.parse(JSON.stringify(rec)); });
+    // an electrolytic: its rated temperature and life go into its fields, for the board's thermal map
+    if (c.type === "electrolytic") { const cr = root.PartNo.capRating(specs); comps.forEach(k => { if (cr.temp) k.params.temp = cr.temp; if (cr.life) k.params.life = cr.life; }); }
     return r;
   }
   root.PartSearch = { ready, config, setConfig, lookUp, product, specsOf, KEY };

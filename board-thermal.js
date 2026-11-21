@@ -36,6 +36,8 @@
   const ONE_LEAD = new Set(["npn", "pnp", "nmos", "pmos", "njf", "pjf", "reg", "tl431", "chipamp", "opamp", "timer555", "logic"]);
   const TAB_CASE = /^TO-(126|220|247|3P|264)/;   // cases made to be bolted to a heatsink
   const SINK_WATTS = 2, SINK_RTH = 1.5;           // above this such a case is taken to be on a heatsink of 1.5 °C/W (the Cooling field's default)
+  // an electrolytic with nothing said of it: a 105 °C part of 2000 h, the common general-purpose grade
+  const CAP_TEMP = 105, CAP_LIFE = 2000, CAP_LIFE_MAX = 130000;
   // junction to case (°C/W) and the junction's limit, from the part's rated dissipation as the CAD's
   // transistors have it: a power part's rating is at a 25 °C case, rjc = (Tjmax − 25)/Ptot; a small
   // part's is in free air, about a third of that path inside the case
@@ -154,6 +156,8 @@
       });
       if (ONE_LEAD.has(g.type) && !smd && P.pads.length > 1) { const one = Math.max(...P.pads.map(q => q.G)) / P.pads.length; P.pads.forEach(q => { q.G = one; }); }
       P.jn = junction(g);
+      // an electrolytic: its rated temperature is its limit, its rated life halves with every 10 °C above it
+      if (g.type === "electrolytic") { const q = (g.members[0] && g.members[0].params) || {}; P.cap = { tr: +q.temp > 0 ? +q.temp : CAP_TEMP, l0: +q.life > 0 ? +q.life : CAP_LIFE }; }
       // a case made for a heatsink, dissipating more than it can in free air, with no cooling said: on a heatsink
       if (how === "auto" && s.ts === undefined && !smd && TAB_CASE.test(g.fp.name) && s.p >= SINK_WATTS) P.assumed = true;
       // a body lying on the board (within 1.5 mm): the air gap under it carries heat too
@@ -277,16 +281,52 @@
       let lim = LIMITS[p.type], tj = p.how === "auto" ? p.tj : undefined;   // cooled another way than the simulation had it: its junction from this map
       const tKind = p.bulb ? "bulb" : p.tj !== undefined || p.jn ? "case" : "body";
       if (p.jn) { if (tj === undefined) tj = t0 + p.p * p.jn.rjc; lim = p.jn.tjmax; }
+      const life = p.cap ? capLife(p.cap.l0, p.cap.tr, t0) : undefined; if (p.cap) lim = p.cap.tr;
       p.tj = tj;
       if (t0 > tMax) tMax = t0; if (t0 < tMin) tMin = t0;
       if (p.tj !== undefined && p.tj > tMax) tMax = p.tj;
-      return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: flow[i], toAir, toSink, byRadiation: rad[i], t: t0, tKind, tj: p.tj, ts: p.ts, limit: lim, assumed: !!p.assumed, mount, path: pw > 0.01 ? sh[0][0] : "air", box: p.box, back: p.back,
+      return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: flow[i], toAir, toSink, byRadiation: rad[i], t: t0, tKind, tj: p.tj, ts: p.ts, limit: lim, life, lifeRated: p.cap ? p.cap.l0 : undefined, assumed: !!p.assumed, mount, path: pw > 0.01 ? sh[0][0] : "air", box: p.box, back: p.back,
         tPads: p.pads.length ? p.pads.reduce((a, q) => a + (q.side === 2 ? (T[q.cell] + T[q.cell + n1]) / 2 : T[q.cell + q.side * n1]), 0) / p.pads.length : t0 };
     });
     return { ok: true, nx, ny, step, top, bottom, flux, thickness: t, emissivity: EPS, parts: res, ambient: Ta, tMin: Math.min(tMin, Ta), tMax, boardMax, hot, total, balance: total - out - res.filter(p => p.off).reduce((a, p) => a + p.p + p.heater, 0), iterations, settings: { ambient: Ta, enclosure: opts.enclosure, orient: opts.orient, point: opts.point } };
   }
 
   // the temperature of the board at a point (bilinear between cell centres; null off the board)
+  /** An electrolytic's life at t °C: its rated hours at its rated temperature, doubled for every 10 °C
+      under it (the makers' rule), and no more than 15 years of running however cool it is */
+  function capLife(l0, tr, t) { return Math.min(CAP_LIFE_MAX, l0 * Math.pow(2, (tr - t) / 10)); }
+
+  /** What the map says is wrong, as notes for the board's check list: [{ kind: "thermal", x, y, msg }].
+      rules: boardTmax (105 °C: FR-4 darkens and weakens above it), capLife (hours, 10 000) */
+  function checks(res, rules) {
+    const out = []; if (!res || !res.ok) return out;
+    const R = rules || {}, tb = R.boardTmax > 0 ? +R.boardTmax : 105, lifeMin = R.capLife > 0 ? +R.capLife : 10000, deg = v => Math.round(v) + " °C";
+    const on = res.parts.filter(p => p.box && p.t !== null), mid = p => [(p.box.x0 + p.box.x1) / 2, (p.box.y0 + p.box.y1) / 2];
+    const at0 = `at ${res.ambient} °C ambient`;
+    if (res.boardMax > tb && res.hot) {
+      // the part the hot spot is under or beside: the nearest one giving off heat
+      let near = null, nd = Infinity;
+      on.forEach(p => { if (p.p + p.heater < 0.05) return; const d = Math.hypot(Math.max(p.box.x0 - res.hot.x, 0, res.hot.x - p.box.x1), Math.max(p.box.y0 - res.hot.y, 0, res.hot.y - p.box.y1)); if (d < nd) { nd = d; near = p; } });
+      const by = near && nd < 15 ? (nd < 0.5 ? ` under ${near.ref}` : ` by ${near.ref}`) : "";
+      const cure = near && near.mount === "lying" ? `stand ${near.ref} off the board or on end, give its pads more copper` : "give the hot part more copper or a heatsink, or more room";
+      out.push({ kind: "thermal", x: res.hot.x, y: res.hot.y, msg: `The board reaches ${deg(res.boardMax)}${by} (${res.hot.side} side, ${at0}): FR-4 darkens and weakens above ${tb} °C; ${cure}` });
+    }
+    on.forEach(p => {
+      const [x, y] = mid(p);
+      if (p.life !== undefined) {
+        if (p.t > p.limit) out.push({ kind: "thermal", x, y, msg: `${p.ref} (electrolytic, rated ${p.limit} °C) sits at ${deg(p.t)} ${at0}: over its rating; move it away from the heat or fit a ${p.limit < 105 ? "105" : "125"} °C part` });
+        else if (p.life < lifeMin) out.push({ kind: "thermal", x, y, msg: `${p.ref} (electrolytic, ${p.lifeRated} h at ${p.limit} °C) sits at ${deg(p.t)} ${at0}: about ${lifeText(p.life)} of life, under ${lifeText(lifeMin)}; every 10 °C cooler doubles it` });
+        return;
+      }
+      if (!p.limit) return;
+      const t = p.tj !== undefined ? p.tj : p.t;
+      if (t > p.limit) out.push({ kind: "thermal", x, y, msg: `${p.ref}${p.value ? " (" + p.value + ")" : ""}: ${p.tj !== undefined ? "junction" : "body"} ${deg(t)} with ${fmtW(p.p + p.heater)} in it (${at0}), over its ${p.limit} °C${p.assumed ? " even on the assumed heatsink" : p.mount === "heatsink" || p.mount === "chassis" ? "" : p.tj !== undefined ? "; it needs a heatsink or more copper" : "; fit a larger part or share the heat between two"}` });
+    });
+    return out;
+  }
+  const fmtW = w => (w >= 1 ? +w.toFixed(1) + " W" : Math.round(w * 1000) + " mW");
+  const lifeText = h => (h >= CAP_LIFE_MAX ? "over 130 000 h" : h >= 10000 ? Math.round(h / 1000) * 1000 + " h" : Math.round(h / 100) * 100 + " h").replace(/(\d)(?=(\d{3})+ h)/g, "$1 ");
+
   function at(res, x, y, side) {
     if (!res || !res.ok) return null;
     const a = side === "bottom" ? res.bottom : res.top, fx = x / res.step - 0.5, fy = y / res.step - 0.5, i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
@@ -295,5 +335,5 @@
     return w > 1e-6 ? s / w : null;
   }
 
-  root.BoardThermal = { settings, sources, solve, at, color, DEFAULTS, ENCLOSURE, LIMITS };
+  root.BoardThermal = { settings, sources, solve, at, checks, capLife, lifeText, CAP_TEMP, CAP_LIFE, color, DEFAULTS, ENCLOSURE, LIMITS };
 })(typeof window !== "undefined" ? window : globalThis);

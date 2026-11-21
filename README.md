@@ -1272,6 +1272,12 @@ the circuit file, so one file holds both.
   air, the chassis). The board is solved as a plate in two copper sheets with
   the real copper coverage, natural convection and radiation: an estimate,
   about ±15 °C, for comparing layouts. Save PNG puts the scale in the picture.
+  **View ▾ → Thermal overlay** draws the board's field over the layout and
+  follows it as you move parts. The map's findings join the design rules
+  check as notes: the board past 105 °C, a part over its rating, an
+  electrolytic over its rated temperature or with a short life (each
+  electrolytic has a rated temperature and life, filled from DigiKey by its
+  part number; life doubles for every 10 °C under the rating).
 
   ![The thermal map of a stereo valve amplifier board: the output valves pale yellow near 200 °C, the cathode resistors red, the board warm round them](docs/board-thermal.png)
 - **Export:**

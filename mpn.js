@@ -190,6 +190,17 @@
     [/TO-?220/i, "TO-220"], [/TO-?92|TO-226/i, "TO-92"], [/TO-?126|TO-225/i, "TO-126"], [/TO-?247/i, "TO-247"], [/TO-?3P/i, "TO-3P"], [/TO-?264/i, "TO-264"], [/TO-?18|TO-206AA/i, "TO-18"],
     [/SOD-?123/i, "SOD-123"], [/SOD-?323/i, "SOD-323"], [/MiniMELF|SOD-?80|LL-?34/i, "MINIMELF"], [/DO-?214AC|\bSMA\b/i, "SMA"], [/DO-?214AA|\bSMB\b/i, "SMB"], [/DO-?214AB|\bSMC\b/i, "SMC"],
     [/DO-?35|DO-?204AH/i, "DIODE-7.62"], [/DO-?41|DO-?204AL/i, "DIODE-10.16"], [/DO-?201/i, "DO-201AD"]];
+  /** An electrolytic's rating from the database's texts: "-40°C ~ 105°C" and "2000 Hrs @ 105°C"
+      → { temp: 105, life: 2000 } (a key is missing when the text does not say) */
+  function capRating(sp) {
+    sp = sp || {}; const out = {};
+    const lf = /([\d.,]+)\s*(?:Hrs?|Hours?|h)\b\s*@\s*(-?\d+)\s*°?\s*C/i.exec(String(sp.life || ""));
+    if (lf) { const h = parseFloat(lf[1].replace(/,/g, "")); if (h > 0) out.life = h; out.temp = +lf[2]; }
+    const tm = (String(sp.temp || "").match(/-?\d+(?=\s*°?\s*C)/g) || []).map(Number);
+    if (out.temp === undefined && tm.length) out.temp = Math.max(...tm);
+    if (!(out.temp >= 60 && out.temp <= 200)) delete out.temp;
+    return out;
+  }
   function fromSpecs(sp, type, params) {
     sp = sp || {}; const p = params || {}, warn = [];
     const out = o => ({ maker: [sp.maker, sp.series].filter(Boolean).join(" "), warn, known: true, source: sp.source || "", ...o });
@@ -282,5 +293,5 @@
     return { maker: s.maker || "", text: s.text || "", fp: s.fp || null, pkg: s.pkg || null, body: s.body || null, warn, known: true, saved: true, source: s.source || "", url: s.url || "" };
   }
 
-  root.PartNo = { lookup, fromSpecs, record, resolve, keep, describe, mmOf, footprintFor, norm, writtenSize, axialPitch, CHIP_CODES };
+  root.PartNo = { lookup, fromSpecs, capRating, record, resolve, keep, describe, mmOf, footprintFor, norm, writtenSize, axialPitch, CHIP_CODES };
 })(typeof window !== "undefined" ? window : globalThis);

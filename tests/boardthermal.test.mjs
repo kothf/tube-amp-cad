@@ -131,3 +131,36 @@ test("every part of the library that goes on a board solves with 1 W in it: fini
   }
   assert.ok(n > 50, `${n} part types`);
 });
+
+test("an electrolytic's life doubles for every 10 °C under its rating, from its own two fields", () => {
+  near(T.capLife(2000, 105, 105), 2000, 1e-9, "at its rating"); near(T.capLife(2000, 105, 85), 8000, 1e-6, "20 °C under"); near(T.capLife(5000, 85, 95), 2500, 1e-6, "10 °C over");
+  assert.equal(T.capLife(10000, 105, 20), 130000, "no more than 15 years of running");
+  const cap = (id, label, params) => part(id, "electrolytic", label, params, { "+": 1, "-": 0 });
+  const s = setup(70, 50, [R("r1", "R1", "5"), cap("c1", "C1", {}), cap("c2", "C2", { temp: 85, life: 1000 })], { R1: { x: 35, y: 25 }, C1: { x: 35, y: 12 }, C2: { x: 35, y: 38 } }, { r1: 4 });
+  const r = run(s), c1 = of(r, "C1"), c2 = of(r, "C2");
+  assert.equal(c1.limit, 105); assert.equal(c1.lifeRated, 2000); assert.equal(c2.limit, 85); assert.equal(c2.lifeRated, 1000);
+  assert.ok(c1.t > r.ambient + 3, `the capacitor is warmed by the resistor beside it: ${c1.t}`);
+  near(c1.life, Math.min(130000, 2000 * 2 ** ((105 - c1.t) / 10)), 1e-6, "C1 life"); near(c2.life, 1000 * 2 ** ((85 - c2.t) / 10), 1e-6, "C2 life");
+  assert.equal(of(r, "R1").life, undefined);
+  assert.equal(T.lifeText(8300), "8 300 h"); assert.equal(T.lifeText(23400), "23 000 h"); assert.equal(T.lifeText(130000), "over 130 000 h");
+});
+
+test("the map's findings: a board past 105 °C, a part over its rating, an electrolytic with a short life; none on a cool board", () => {
+  const cap = (id, label, params) => part(id, "electrolytic", label, params, { "+": 1, "-": 0 });
+  const mk = w => setup(70, 50, [R("r1", "R1", "2"), cap("c1", "C1", { temp: 85, life: 1000 })], { R1: { x: 35, y: 25 }, C1: { x: 35, y: 15 } }, { r1: w });
+  const cool = run(mk(0.2));
+  assert.deepEqual(T.checks(cool, {}).filter(d => !/C1/.test(d.msg)), [], "0.2 W troubles nothing");
+  const hot = run(mk(4)), list = T.checks(hot, { capLife: 50000 });
+  assert.ok(list.every(d => d.kind === "thermal" && Number.isFinite(d.x) && Number.isFinite(d.y)));
+  const board = list.find(d => /^The board reaches/.test(d.msg)), res = list.find(d => /^R1/.test(d.msg)), c1 = list.find(d => /^C1/.test(d.msg));
+  assert.ok(hot.boardMax > 105 && board && /R1/.test(board.msg) && /105 °C/.test(board.msg), board && board.msg);
+  assert.ok(res && /body \d+ °C with 4 W in it/.test(res.msg) && /over its 155 °C/.test(res.msg), res && res.msg);
+  assert.ok(c1 && (/over its rating/.test(c1.msg) || /of life, under 50 000 h/.test(c1.msg)), c1 && c1.msg);
+  near(res.x, 35, 1, "the note sits on the part"); near(res.y, 25, 1, "the note sits on the part");
+  // the limits are the board's rules
+  assert.equal(T.checks(hot, { boardTmax: 400 }).some(d => /^The board/.test(d.msg)), false);
+  const mild = run(mk(0.2)), cm = of(mild, "C1");
+  assert.equal(T.checks(mild, { capLife: 100 }).some(d => /^C1/.test(d.msg)), false);
+  assert.equal(T.checks(mild, { capLife: cm.life * 2 }).some(d => /^C1/.test(d.msg)), true);
+  assert.deepEqual(T.checks({ ok: false }, {}), []);
+});

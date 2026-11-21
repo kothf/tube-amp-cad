@@ -97,3 +97,15 @@ test("a board with a shape of its own: no cells in a cut-out, walls round it", (
   const n = f => m.face.filter(v => v === f).length;
   assert.equal(n(1), res.nx * res.ny - 1); assert.equal(n(2), n(1)); assert.equal(n(3), 2 * (res.nx + res.ny) + 4);
 });
+
+test("an electrolytic's estimated life goes into the CSV and the manifest", () => {
+  const parts = [R("r1", "R1", "5", { 1: 1, 2: 2 }), part("c1", "electrolytic", "C1", {}, { "+": 1, "-": 0 })];
+  const netlist = { names: { 0: "GND" }, volts: {}, parts, heat: { r1: { p: 3 } } };
+  const board = B.newBoard(); board.outline = { w: 70, h: 50, r: 0 }; B.sync(board, netlist);
+  Object.values(board.parts).forEach(bp => Object.assign(bp, { R1: { x: 35, y: 25 }, C1: { x: 35, y: 12 } }[bp.ref]));
+  const model = B.model(board, netlist), res = T.solve(board, model, netlist), pk = X.pack(board, model, res, { name: "amp" });
+  const c = pk.manifest.parts.find(p => p.designator === "C1"), life = res.parts.find(p => p.ref === "C1").life;
+  assert.ok(life > 2000 && c.life_h === life && c.t_limit_C === 105, `${c.life_h} h`);
+  const head = X.COLUMNS, row = pk.files["amp-heat-sources.csv"].trim().split("\r\n").map(l => l.split(",")).find(l => l[1] === "C1");
+  assert.equal(+row[head.indexOf("life_h")], Math.round(life)); assert.equal(row[head.indexOf("t_limit_C")], "105");
+});
