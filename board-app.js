@@ -87,6 +87,7 @@
       analyse(); checkSync();
       if (m.replace || placed) fit();
       render(); renderPanels();
+      if (viewer && TH.on && !$("view3d").hidden) { clearTimeout(v3Timer); v3Timer = setTimeout(() => build3D(false), 300); }   // new dissipations: the thermal map follows
       S.cad = true; status("ok", linkText());
     } else if (m.type === "CAD_SELECT" && S.model) {
       // the schematic's selection: select the same part here (without echoing it back)
@@ -1223,6 +1224,7 @@
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
     if (!$("view3d").hidden) {
       if (e.key === "Escape" || e.code === "Digit3") { e.preventDefault(); close3D(); }
+      else if (e.code === "KeyT" && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); thermal(); }
       return;
     }
     if (MODALS.every(id => $(id).hidden) && sketch.onKey(e, /^Key[A-Z]$/.test(e.code || "") ? e.code.slice(3).toLowerCase() : String(e.key).toLowerCase())) return;   // the outline sketch takes the keyboard while it is open
@@ -1942,10 +1944,104 @@
     if (BoardOutline.isShape(o)) BoardOutline.polys(o, 0.02).slice(1).forEach(pl => { x.beginPath(); pl.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]))); x.closePath(); x.fill(); });
     return c;
   }
+  // ---- Thermal map: the 3D view coloured by the estimated temperatures (board-thermal.js) --------
+  // TH.res: the last solve; the settings live in the board document (S.board.thermal)
+  const TH = { on: false, res: null, blend: 0.3, boxes: [], byRef: new Map() };
+  const thRange = () => { const r = TH.res, hi = Math.max(r.boardMax, ...r.parts.map(p => (p.t === null ? -Infinity : p.t))); return [Math.floor(r.ambient / 5) * 5, Math.max(Math.floor(r.ambient / 5) * 5 + 10, Math.ceil(hi / 10) * 10)]; };
+  const thU = t => { const [lo, hi] = thRange(); return (t - lo) / (hi - lo); };
+  // a face of the board as the temperature field, the copper and silkscreen showing through
+  function thermalTexture(side) {
+    const base = boardTexture(side), r = TH.res, a = side === "top" ? r.top : r.bottom, o = S.board.outline, k = base.width / o.w;
+    const f = document.createElement("canvas"); f.width = r.nx; f.height = r.ny;
+    const fx = f.getContext("2d"), img = fx.createImageData(r.nx, r.ny), t = Float32Array.from(a);
+    // cells off the board take their neighbours' temperature, so the edge does not fade when the picture is stretched
+    for (let pass = 0; pass < 3; pass++) { const u = t.slice(); for (let j = 0; j < r.ny; j++) for (let i = 0; i < r.nx; i++) { const c = j * r.nx + i; if (Number.isFinite(u[c])) continue; let sum = 0, n = 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([di, dj]) => { const p = i + di, q = j + dj; if (p >= 0 && q >= 0 && p < r.nx && q < r.ny && Number.isFinite(u[q * r.nx + p])) { sum += u[q * r.nx + p]; n++; } }); if (n) t[c] = sum / n; } }
+    for (let c = 0; c < t.length; c++) { const col = BoardThermal.color(thU(Number.isFinite(t[c]) ? t[c] : r.ambient)); img.data[4 * c] = col[0] * 255; img.data[4 * c + 1] = col[1] * 255; img.data[4 * c + 2] = col[2] * 255; img.data[4 * c + 3] = 255; }
+    fx.putImageData(img, 0, 0);
+    const c = document.createElement("canvas"); c.width = base.width; c.height = base.height;
+    const x = c.getContext("2d"); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
+    // the field's cell centres sit half a cell in: stretch it so they land on their places
+    x.drawImage(f, 0, 0, r.nx, r.ny, 0, 0, r.nx * r.step * k, r.ny * r.step * k);
+    if (TH.blend > 0) { x.save(); x.globalAlpha = TH.blend; if ("filter" in x) x.filter = "grayscale(1) brightness(1.6)"; x.drawImage(base, 0, 0); x.restore(); }
+    x.globalCompositeOperation = "destination-in"; x.drawImage(base, 0, 0);     // the board's shape and holes
+    return c;
+  }
+  // the scale beside the view: colours with their temperatures
+  function drawLegend(x, x0, y0, h, ink) {
+    const [lo, hi] = thRange(), w = 16;
+    for (let i = 0; i < h; i++) { const c = BoardThermal.color(1 - i / (h - 1)); x.fillStyle = `rgb(${c.map(v => Math.round(v * 255)).join(",")})`; x.fillRect(x0, y0 + i, w, 1.5); }
+    x.strokeStyle = ink; x.lineWidth = 1; x.strokeRect(x0 + 0.5, y0 + 0.5, w - 1, h - 1);
+    x.fillStyle = ink; x.font = "11px system-ui, sans-serif"; x.textBaseline = "middle"; x.textAlign = "left";
+    const n = 5; for (let i = 0; i <= n; i++) { const t = hi - (hi - lo) * i / n, y = y0 + (h - 1) * i / n; x.fillRect(x0 + w, Math.round(y), 4, 1); x.fillText(`${Math.round(t)} °C`, x0 + w + 7, Math.min(y0 + h - 5, Math.max(y0 + 5, y))); }
+  }
+  const thFmtW = w => (Math.abs(w) >= 10 ? w.toFixed(1) : Math.abs(w) >= 0.1 ? w.toFixed(2) : (w * 1000).toFixed(0) + " m") + (Math.abs(w) >= 0.1 ? " W" : "W");
+  function thermalPanel() {
+    const r = TH.res, st = BoardThermal.settings(S.board), lg = $("th-legend"), x = lg.getContext("2d");
+    x.clearRect(0, 0, lg.width, lg.height); drawLegend(x, 2, 4, lg.height - 8, "#c9d1d9");
+    const hot = r.parts.filter(p => p.t !== null).sort((a, b) => b.t - a.t)[0], over = r.parts.filter(p => p.limit && (p.tj !== undefined ? p.tj : p.t) > p.limit);
+    $("th-sum").innerHTML = `<div>Heat on the board: <b>${thFmtW(r.total)}</b></div><div>Board, hottest: <b>${Math.round(r.boardMax)} °C</b></div>` +
+      (hot ? `<div>Hottest part: <b>${esc(hot.ref)} ${Math.round(hot.t)} °C</b></div>` : "") +
+      (over.length ? `<div class="over" style="color:#ff7b72">Over their limit: <b>${over.map(p => esc(p.ref)).join(", ")}</b></div>` : "");
+    $("th-amb").value = st.ambient; $("th-enc").value = st.enclosure; $("th-ori").value = st.orient; $("th-point").value = st.point; $("th-blend").value = TH.blend;
+  }
+  // a part's card under the pointer: its heat, where it goes, its temperature against its limit
+  function thermalCard(e) {
+    const card = $("th-card");
+    if (!TH.on || !TH.res || !viewer || e.buttons) { card.hidden = true; return; }
+    const rc = $("gl3d").getBoundingClientRect(), k = viewer.pick(e.clientX - rc.left, e.clientY - rc.top, TH.boxes.map(b => b.box)), p = k >= 0 ? TH.boxes[k].part : null;
+    if (!p) { card.hidden = true; return; }
+    const pw = p.p + p.heater, kind = { bulb: "Bulb", case: "Case", body: "Body" }[p.tKind] || "Body", row = (a, b, cls) => `<div${cls ? ` class="${cls}"` : ""}>${a}: <b>${b}</b></div>`;
+    const mount = { lying: "lying on the board", standing: "standing", smd: "surface mount", socket: "in its socket", heatsink: p.assumed ? "on a heatsink (assumed, 1.5 °C/W)" : "on a heatsink", upright: "upright", wired: "wired, off the board", tab: "bent over, its tab on the copper", chassis: "on the chassis" }[p.mount] || p.mount;
+    let h = `<div><b>${esc(p.ref)}</b> ${esc(p.value || "")}</div>`;
+    h += row("Heat", pw > 0.0005 ? thFmtW(pw) + (p.heater > 0 ? ` (heater ${thFmtW(p.heater)})` : "") : "none of its own");
+    if (pw > 0.0005) h += row("Goes", [["board", p.toBoard], ["air", p.toAir + p.byRadiation], ["heatsink", p.toSink]].filter(([, w]) => w > 0.005).map(([n, w]) => `${n} ${thFmtW(w)}`).join(" · ") || "air");
+    else if (p.toBoard < -0.005 || p.byRadiation < -0.005) h += row("Warmed by", [p.toBoard < -0.005 ? `the board ${thFmtW(-p.toBoard)}` : "", p.byRadiation < -0.005 ? `the valves ${thFmtW(-p.byRadiation)}` : ""].filter(Boolean).join(" · "));
+    const lim = (t, l) => (l ? ` (limit ${l} °C${t > l ? ", over by " + Math.round(t - l) : ""})` : "");
+    h += row(kind, `${Math.round(p.t)} °C` + (p.tj === undefined ? lim(p.t, p.limit) : ""), p.tj === undefined && p.limit && p.t > p.limit ? "over" : "");
+    if (p.tj !== undefined) h += row("Junction", `${Math.round(p.tj)} °C` + lim(p.tj, p.limit), p.limit && p.tj > p.limit ? "over" : "");
+    h += row("Mounted", mount);
+    card.innerHTML = h; card.hidden = false;
+    const vr = $("view3d").getBoundingClientRect(); card.style.left = Math.min(vr.width - 290, e.clientX - vr.left + 16) + "px"; card.style.top = Math.min(vr.height - 130, e.clientY - vr.top + 14) + "px";
+  }
+  /** the thermal map on or off (or as said); returns whether it is on */
+  function thermal(on) {
+    on = on === undefined ? !TH.on : !!on;
+    if (on && !(S.netlist && S.netlist.heat)) { msg("Thermal map: run the simulation in the Circuit CAD first: the map needs what each part dissipates"); on = false; }
+    TH.on = on; $("v3-thermal").classList.toggle("active", on); $("th-panel").hidden = !on; $("th-card").hidden = true;
+    if (!$("view3d").hidden) build3D(false);
+    if (on && TH.res && TH.res.ok) msg(`Thermal map: ${thFmtW(TH.res.total)} on the board, its hottest point ${Math.round(TH.res.boardMax)} °C at ${TH.res.ambient} °C ambient (an estimate, about ±15 °C)`);
+    return TH.on;
+  }
+  function thermalSet(k, v) { S.board.thermal = Object.assign(BoardThermal.settings(S.board), { [k]: v }); commit(); }
   function build3D(frame) {
     if (!viewer || !S.model) return;
     const sc = Board3D.scene(S.board, S.model, { tubes: $("v3-tubes").checked, parts: $("v3-parts").checked });
-    viewer.setScene([sc.board, ...sc.bodies], { top: boardTexture("top"), bottom: boardTexture("bottom") }, frame);
+    if (TH.on) {
+      TH.res = BoardThermal.solve(S.board, S.model, S.netlist);
+      if (!TH.res.ok) { TH.on = false; $("v3-thermal").classList.remove("active"); $("th-panel").hidden = true; msg("Thermal map: run the simulation in the Circuit CAD first: the map needs what each part dissipates"); }
+    }
+    if (!TH.on) { viewer.setScene([sc.board, ...sc.bodies], { top: boardTexture("top"), bottom: boardTexture("bottom") }, frame); return; }
+    const r = TH.res, byRef = new Map(r.parts.map(p => [p.ref, p])), LEAD = [0.8, 0.8, 0.82], isLead = c => Math.abs(c[0] - LEAD[0]) + Math.abs(c[1] - LEAD[1]) + Math.abs(c[2] - LEAD[2]) < 1e-6;
+    const col = t => BoardThermal.color(thU(t));
+    // every body in its part's colour (its leads at the temperature of its pads); the board's edge at the board's mean
+    let sum = 0, n = 0; for (const v of r.top) if (Number.isFinite(v)) { sum += v; n++; }
+    const solids = [{ ...sc.board, color: col(n ? sum / n : r.ambient) }, ...sc.bodies.map(s => { const p = byRef.get(s.ref); if (p && p.t !== null) return { ...s, alpha: 1, color: col(isLead(s.color) ? p.tPads : p.t) }; const v = s.verts, m = v.reduce((a, q) => [a[0] + q[0] / v.length, a[1] + q[1] / v.length], [0, 0]), tb = BoardThermal.at(r, m[0], -m[1], "top"); return { ...s, alpha: 1, color: col(tb === null ? r.ambient : tb) }; })];   // a part with no node of its own (a terminal, a wire pad): the board's temperature under it
+    const shown = new Set(sc.bodies.map(s => s.ref));
+    TH.boxes = r.parts.filter(p => p.box && shown.has(p.ref)).map(p => ({ part: p, box: { x0: p.box.x0, x1: p.box.x1, y0: -p.box.y1, y1: -p.box.y0, z0: p.box.z0, z1: p.box.z1 } }));
+    viewer.setScene(solids, { top: thermalTexture("top"), bottom: thermalTexture("bottom") }, frame, { flat: 0.6 });
+    thermalPanel();
+  }
+  // the 3D view as a picture; with the thermal map on, its scale and conditions drawn into it
+  function png3D() {
+    const url = viewer.png(); if (!TH.on || !TH.res || !TH.res.ok) return Promise.resolve(url);
+    return new Promise(done => { const im = new Image(); im.onload = () => {
+      const c = document.createElement("canvas"); c.width = im.width; c.height = im.height; const x = c.getContext("2d"), k = im.width / ($("gl3d").clientWidth || im.width), st = TH.res.settings;
+      x.drawImage(im, 0, 0); x.scale(k, k); x.fillStyle = "rgba(13,20,28,0.85)"; x.fillRect(8, 8, 250, 236);
+      drawLegend(x, 18, 18, 180, "#e6edf3");
+      x.fillStyle = "#e6edf3"; x.font = "11px system-ui, sans-serif"; x.textBaseline = "alphabetic";
+      [`Thermal map (estimate, about ±15 °C)`, `Ambient ${st.ambient} °C · ${{ open: "open frame", vented: "vented chassis", closed: "closed chassis" }[st.enclosure]}`, `${thFmtW(TH.res.total)} · ${st.point === "idle" ? "at idle" : "as simulated"}`].forEach((t, i) => x.fillText(t, 18, 214 + i * 13));
+      done(c.toDataURL("image/png"));
+    }; im.src = url; });
   }
   function open3D() {
     if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return; }
@@ -2108,7 +2204,14 @@
     $("ex-kicad").onclick = () => { list.hidden = true; exportKicad(); };
     $("btn-3d").onclick = () => ($("view3d").hidden ? open3D() : close3D());
     $("v3-close").onclick = close3D; $("v3-step").onclick = exportStep;
-    $("v3-png").onclick = () => { if (!viewer) return; const a = document.createElement("a"); a.href = viewer.png(); a.download = baseName() + "-3d.png"; a.click(); msg("Saved " + a.download); };
+    $("v3-png").onclick = () => { if (!viewer) return; png3D().then(url => { const a = document.createElement("a"); a.href = url; a.download = baseName() + (TH.on ? "-thermal.png" : "-3d.png"); a.click(); msg("Saved " + a.download); }); };
+    $("v3-thermal").onclick = () => thermal();
+    $("th-amb").onchange = () => { const v = parseFloat($("th-amb").value); if (isFinite(v)) thermalSet("ambient", Math.max(-20, Math.min(90, v))); };
+    $("th-enc").onchange = () => thermalSet("enclosure", $("th-enc").value);
+    $("th-ori").onchange = () => thermalSet("orient", $("th-ori").value);
+    $("th-point").onchange = () => thermalSet("point", $("th-point").value);
+    $("th-blend").oninput = () => { TH.blend = +$("th-blend").value; clearTimeout(v3Timer); v3Timer = setTimeout(() => build3D(false), 120); };
+    $("gl3d").addEventListener("mousemove", thermalCard); $("gl3d").addEventListener("mouseleave", () => { $("th-card").hidden = true; });
     document.querySelectorAll("[data-view]").forEach(b => { b.onclick = () => viewer && viewer.view(b.dataset.view); });
     ["v3-parts", "v3-tubes"].forEach(id => { $(id).onchange = () => build3D(false); });
     window.addEventListener("resize", () => { if (viewer && !$("view3d").hidden) viewer.draw(); });
@@ -2131,7 +2234,7 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, thermal, thermalResult: () => TH.res, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   const boot = () => { init(); early.splice(0).forEach(e => bc.onmessage(e)); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

@@ -646,6 +646,31 @@ import { readFile } from "node:fs/promises";
     await bd.click('[data-view="bottom"]'); await bd.locator("#gl3d").focus().catch(() => {}); await bd.keyboard.press("Escape");
     const back = await bd.evaluate(() => document.querySelector('.tools [data-tool="route"]').offsetParent !== null);
     check(v3.shown && v3.kinds === "bottom,glass,solid,top" && await bd.evaluate(() => document.getElementById("view3d").hidden) && back, `3D shows the board (textured top and bottom), the parts and the valves' glass (${v3.kinds}); Esc goes back to the layout`);
+    // the thermal map: needs the simulation's dissipations; colours the view, shows its scale and the part's card; T switches it
+    await cad.evaluate(() => TubeCAD.runSim("full"));
+    await bd.waitForFunction(() => BoardApp.state.netlist && BoardApp.state.netlist.heat && Object.keys(BoardApp.state.netlist.heat).length > 0, null, { timeout: 30000 }).catch(() => {});
+    const th = await bd.evaluate(() => {
+      const S = BoardApp.state, heat = S.netlist.heat; BoardApp.open3D();
+      S.netlist.heat = undefined; const refused = BoardApp.thermal(true) === false && document.getElementById("th-panel").hidden; S.netlist.heat = heat;
+      const on = BoardApp.thermal(true), r = BoardApp.thermalResult() || {}, v = BoardApp.viewer(), hot = (r.parts || []).filter(p => p.t !== null).sort((a, b) => b.t - a.t)[0];
+      return { refused, on, ok: r.ok, total: r.total, max: r.boardMax, amb: r.ambient, bal: r.balance, hot: hot && { ref: hot.ref, t: hot.t }, flat: v.flat, panel: !document.getElementById("th-panel").hidden, sum: document.getElementById("th-sum").textContent, active: document.getElementById("v3-thermal").classList.contains("active"), glass: v.batches.some(b => b.k === "glass") };
+    });
+    check(th.refused && th.on && th.ok && th.total > 0.5 && th.max > th.amb + 1 && th.max < 250 && Math.abs(th.bal) < 0.01 * th.total && th.hot && th.hot.t > th.max - 60 && th.panel && th.active && th.flat > 0 && !th.glass && /Heat on the board/.test(th.sum),
+      `the thermal map asks for a simulation first, then colours the 3D view: ${th.total && th.total.toFixed(1)} W, board up to ${th.max && th.max.toFixed(0)} °C at ${th.amb} °C, hottest part ${th.hot && th.hot.ref} ${th.hot && th.hot.t.toFixed(0)} °C`);
+    // the card of the part under the pointer; a warmer ambient is saved with the board and warms the map
+    const spot = await bd.evaluate(() => { const v = BoardApp.viewer(), r = BoardApp.thermalResult(), rc = document.getElementById("gl3d").getBoundingClientRect(), boxes = r.parts.map(p => p.box && { x0: p.box.x0, x1: p.box.x1, y0: -p.box.y1, y1: -p.box.y0, z0: p.box.z0, z1: p.box.z1 }); v.view("top"); for (let y = 70; y < rc.height - 10; y += 5) for (let x = 260; x < rc.width - 10; x += 5) { const k = v.pick(x, y, boxes); if (k >= 0 && r.parts[k].p > 0) return { x: rc.left + x, y: rc.top + y, ref: r.parts[k].ref }; } return null; });
+    if (spot) { await bd.mouse.move(spot.x, spot.y); await bd.mouse.move(spot.x + 1, spot.y + 1); await bd.waitForTimeout(150); }
+    const card = await bd.evaluate(() => (document.getElementById("th-card").hidden ? "" : document.getElementById("th-card").innerText));
+    check(spot && card.includes(spot.ref) && /Heat: /.test(card) && /°C/.test(card) && /Mounted: /.test(card), `hovering ${spot && spot.ref} in the thermal map shows its card (${card.replace(/\n/g, " | ").slice(0, 110)})`);
+    await bd.evaluate(() => { const el = document.getElementById("th-amb"); el.value = "55"; el.onchange(); });
+    await bd.waitForTimeout(700);
+    const th2 = await bd.evaluate(() => ({ amb: BoardApp.state.board.thermal && BoardApp.state.board.thermal.ambient, max: BoardApp.thermalResult().boardMax }));
+    await cad.waitForFunction(() => TubeCAD.state.board && TubeCAD.state.board.thermal && TubeCAD.state.board.thermal.ambient === 55, null, { timeout: 4000 }).catch(() => {});
+    check(th2.amb === 55 && th2.max > th.max + 8 && await cad.evaluate(() => !!(TubeCAD.state.board.thermal && TubeCAD.state.board.thermal.ambient === 55)), `55 °C ambient is kept with the board and warms the map (board up to ${th2.max.toFixed(0)} °C)`);
+    await bd.locator("#gl3d").focus().catch(() => {}); await bd.keyboard.press("t"); await bd.waitForTimeout(250);
+    const off = await bd.evaluate(() => ({ panel: document.getElementById("th-panel").hidden, glass: BoardApp.viewer().batches.some(b => b.k === "glass"), flat: BoardApp.viewer().flat }));
+    check(off.panel && off.glass && !off.flat, "T switches the thermal map off: the parts' own colours and the glass are back");
+    await bd.evaluate(() => { delete BoardApp.state.board.thermal; BoardApp.commit(); BoardApp.close3D(); });
   } else check(true, "this browser has no WebGL here: the 3D checks are skipped");
   await bd.click("#btn-export");
   const [stepDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-step")]);

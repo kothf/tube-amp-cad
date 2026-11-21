@@ -6,6 +6,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.240.0] - 2026-11-21
+
+A thermal map of the board in the 3D view.
+
+### Added
+- **Thermal map** (Board → 3D view → **Thermal**, or `T`): the board and every part are coloured by their estimated temperature, from what each part dissipates in the last simulation. Valves count their anode, screen and heater; resistors, transistors, regulators, ICs, diodes and Zeners what the simulator gives, averaged over the cycle when a signal or the mains runs. A scale, the total heat, the board's hottest point, the hottest part and the parts over their limit are shown beside the view.
+- **A card for the part under the pointer**: its heat, where it goes (into the board, to the air, to a heatsink), its body, case or bulb temperature, and for a semiconductor the junction temperature against its limit (Rth junction-to-case from the rated dissipation, (Tj max − 25 °C) / Ptot; a transistor with Cooling set keeps the simulation's own junction and heatsink temperatures).
+- **Conditions**, saved with the board: ambient (40 °C by default, a closed valve chassis; 25 °C for an open frame), chassis (open frame, vented, closed), how the board lies (parts up, parts down, upright), and heat as simulated or at idle. A slider lets the copper and silkscreen show through the colours.
+- **Heat paths by how a part sits**: a lying resistor through its two leads and the air gap under its body, a standing one through its short and long lead, SMD parts through their pads, valves by their bulb's radiation onto the board and the parts beside them. A TO-220, TO-247 or similar case dissipating 2 W or more is taken to be on a heatsink of 1.5 °C/W; the new **Heat path** field of such a part in the Board inspector sets a heatsink of its own °C/W, the tab bent over onto the board's copper (right-angle mounting), free air or the chassis.
+- **Save PNG** in the thermal map draws the scale, the ambient and the chassis into the picture (`…-thermal.png`).
+- The Circuit CAD sends every part's dissipation to the board with the netlist (`heat`).
+
+### How it is worked out
+- `board-thermal.js` (no DOM, tested in Node): the board as a plate in two sheets (top and bottom copper, the laminate between, the plated holes joining them) on a grid of about 1 mm, the copper's real coverage per cell, natural convection (by the face's orientation) and radiation from both faces; every part a node with its surface to the air and its leads or pads to the board; conjugate gradients, a second or less for a 230 × 130 mm board. An estimate, about ±15 °C: the air inside a chassis is not simulated.
+
+### Tests
+- `tests/boardthermal.test.mjs`: energy balance, the surface laws on an isothermal board, lying and standing resistors, a TO-220 on a heatsink, in free air and with its tab on the copper, a valve's heater and radiation, shaped boards, the colour scale. The browser tests open the thermal map on an example.
+
 ## [3.239.1] - 2026-11-19
 
 ### Fixed

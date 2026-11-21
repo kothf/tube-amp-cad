@@ -321,7 +321,7 @@
   // the selection as text, to tell whether it changed
   const selSig = () => [...S.sel.comps].sort().join(",") + "|" + [...S.sel.wires].sort().join(",");
   // The board window or tab, the netlist and board document it shares with the CAD, cross-probing (cad-board-link.js)
-  const { BOARD_KEY, boardNetlist, isBoardTab, probeBoard, scheduleBoardNetlist, selectFromBoard, selectNetFromBoard, sendBoardNetlist, setBoardTab, showBoard, storeBoard } = CadBoardLink({ S, VERSION, channel, compBBox, compPins, frames, getCanvas: () => canvas, netDC, netWave, pinCurrents, render, selSig, showFile, topo, updateInspector, usedCustomTubes });
+  const { BOARD_KEY, boardNetlist, isBoardTab, probeBoard, scheduleBoardNetlist, selectFromBoard, selectNetFromBoard, sendBoardNetlist, setBoardTab, showBoard, storeBoard } = CadBoardLink({ S, VERSION, channel, compBBox, compPins, frames, getCanvas: () => canvas, netDC, netWave, pinCurrents, render, resistorPower, selSig, tubeData, showFile, topo, updateInspector, usedCustomTubes });
   // KiCad export: schematic, board and project in one ZIP (cad-kicad.js, kicad-export.js)
   const { exportKicad, kicadFiles, fabZip, openKicad, openKicadDialog, isKicadFile } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo, showBoard, storeBoard, sendBoardNetlist,
     openDesign: (d, what, ask) => openDesign(d, what, ask), setName: n => { setCurFile(null, n); markClean(); } });

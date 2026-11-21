@@ -1255,6 +1255,25 @@ the circuit file, so one file holds both.
   slowly, and follows a footprint change.
 
   ![The board in 3D: two 12AX7 valves on their noval sockets, electrolytics, resistors and terminal blocks on a green board](docs/board-3d.png)
+- **Thermal map** (3D view → **Thermal**, `T`): the board and every part
+  coloured by their estimated temperature, from what each part dissipates in
+  the simulation (valves with their heaters, resistors, transistors,
+  regulators, ICs, diodes; averaged over the cycle with a signal or on the
+  mains). A scale, the total heat, the board's hottest point and the parts
+  over their limit; hover a part for its heat, where it goes (board, air,
+  heatsink), its body or bulb temperature and a semiconductor's junction
+  temperature against its limit. Ambient, chassis (open, vented, closed),
+  how the board lies and idle or signal heat are set beside the view and
+  saved with the board. How a part sits decides its heat path: lying or
+  standing resistors by their real leads, SMD parts by their pads, valves by
+  their bulb's radiation onto the board and the parts next to it; a TO-220
+  over 2 W is taken to be on a heatsink unless its **Heat path** says
+  otherwise (its own °C/W, its tab bent over onto the board's copper, free
+  air, the chassis). The board is solved as a plate in two copper sheets with
+  the real copper coverage, natural convection and radiation: an estimate,
+  about ±15 °C, for comparing layouts. Save PNG puts the scale in the picture.
+
+  ![The thermal map of a stereo valve amplifier board: the output valves pale yellow near 200 °C, the cathode resistors red, the board warm round them](docs/board-thermal.png)
 - **Export:**
   - **3D model (STEP)**, AP214, of the board (with its holes) and every part,
     in colour, for fitting the board into a chassis in FreeCAD, KiCad or any
