@@ -670,7 +670,17 @@ import { readFile } from "node:fs/promises";
     await bd.locator("#gl3d").focus().catch(() => {}); await bd.keyboard.press("t"); await bd.waitForTimeout(250);
     const off = await bd.evaluate(() => ({ panel: document.getElementById("th-panel").hidden, glass: BoardApp.viewer().batches.some(b => b.k === "glass"), flat: BoardApp.viewer().flat }));
     check(off.panel && off.glass && !off.flat, "T switches the thermal map off: the parts' own colours and the glass are back");
-    await bd.evaluate(() => { delete BoardApp.state.board.thermal; BoardApp.commit(); BoardApp.close3D(); });
+    // the thermal map as a package: Export ▾ → Thermal map turns Thermal mode back on and saves a ZIP whose manifest, mesh, CSV, picture and STEP agree
+    const [tzip] = await Promise.all([bd.waitForEvent("download"), bd.evaluate(() => document.getElementById("ex-thermal").click())]);
+    const tpk = await bd.evaluate(() => BoardApp.thermalPackage().then(pk => {
+      const m = pk.manifest, vtu = pk.files[m.files.mesh], csv = pk.files[m.files.sources], png = pk.files[m.files.picture], step = pk.files[m.files.step], r = BoardApp.thermalResult();
+      return { name: pk.name, names: Object.keys(pk.files), format: m.format, version: m.version, on: !document.getElementById("th-panel").hidden, points: m.mesh.points, declared: +(/NumberOfPoints="(\d+)"/.exec(vtu) || [])[1], rows: csv.trim().split("\r\n").length - 1, parts: m.parts.length,
+        hi: m.range_C[1], tMax: Math.max(...r.parts.filter(p => p.t !== null).map(p => p.t), r.boardMax), png: png && png[0] === 0x89 && png[1] === 0x50 && png.length, solids: m.parts.every(p => p.step_bodies.every(n => step.includes(`MANIFOLD_SOLID_BREP('${n}',`))), total: m.total_W, sum: m.parts.reduce((a, p) => a + p.p_total_W, 0) };
+    }));
+    check(tzip.suggestedFilename() === tpk.name && /-thermal\.zip$/.test(tpk.name) && tpk.on && tpk.format === "tubecad-thermal" && tpk.version === 1 && tpk.names.length === 6 && tpk.points === tpk.declared && tpk.points > 1000 && tpk.rows === tpk.parts && tpk.parts > 3
+      && Math.abs(tpk.hi - tpk.tMax) < 0.11 && tpk.png > 2000 && tpk.solids && Math.abs(tpk.total - tpk.sum) < 0.01,
+      `Export thermal map turns the map on and saves ${tzip.suggestedFilename()}: ${tpk.names.length} files, ${tpk.points} points up to ${tpk.hi} °C, ${tpk.parts} parts named as the STEP's solids, ${tpk.total && tpk.total.toFixed(1)} W`);
+    await bd.evaluate(() => { BoardApp.thermal(false); delete BoardApp.state.board.thermal; BoardApp.commit(); BoardApp.close3D(); });
   } else check(true, "this browser has no WebGL here: the 3D checks are skipped");
   await bd.click("#btn-export");
   const [stepDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-step")]);

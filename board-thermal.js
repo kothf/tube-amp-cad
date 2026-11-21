@@ -260,9 +260,9 @@
     }
 
     // ---- results
-    const top = new Float32Array(N).fill(NaN), bottom = new Float32Array(N).fill(NaN);
+    const top = new Float32Array(N).fill(NaN), bottom = new Float32Array(N).fill(NaN), flux = [new Float32Array(N), new Float32Array(N)];   // flux: W/m² leaving each face to the air
     let tMin = Infinity, tMax = -Infinity, hot = null, out = 0;
-    for (let c = 0; c < N; c++) { const a = idx[c]; if (a < 0) continue; top[c] = T[a]; bottom[c] = T[a + n1]; for (let s = 0; s < 2; s++) { const v = T[a + s * n1]; out += gA[a + s * n1] * (v - Ta); if (v < tMin) tMin = v; if (v > tMax) { tMax = v; hot = { x: (c % nx + 0.5) * step, y: (Math.floor(c / nx) + 0.5) * step, t: v, side: s ? "bottom" : "top" }; } } }
+    for (let c = 0; c < N; c++) { const a = idx[c]; if (a < 0) continue; top[c] = T[a]; bottom[c] = T[a + n1]; for (let s = 0; s < 2; s++) { const v = T[a + s * n1]; flux[s][c] = gA[a + s * n1] * (v - Ta) / cellA; out += gA[a + s * n1] * (v - Ta); if (v < tMin) tMin = v; if (v > tMax) { tMax = v; hot = { x: (c % nx + 0.5) * step, y: (Math.floor(c / nx) + 0.5) * step, t: v, side: s ? "bottom" : "top" }; } } }
     const boardMax = tMax;
     const flow = new Float64Array(n);     // heat leaving each part node by conduction into the board, and by radiation
     const rad = new Float64Array(n);
@@ -283,7 +283,7 @@
       return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: flow[i], toAir, toSink, byRadiation: rad[i], t: t0, tKind, tj: p.tj, ts: p.ts, limit: lim, assumed: !!p.assumed, mount, path: pw > 0.01 ? sh[0][0] : "air", box: p.box, back: p.back,
         tPads: p.pads.length ? p.pads.reduce((a, q) => a + (q.side === 2 ? (T[q.cell] + T[q.cell + n1]) / 2 : T[q.cell + q.side * n1]), 0) / p.pads.length : t0 };
     });
-    return { ok: true, nx, ny, step, top, bottom, parts: res, ambient: Ta, tMin: Math.min(tMin, Ta), tMax, boardMax, hot, total, balance: total - out - res.filter(p => p.off).reduce((a, p) => a + p.p + p.heater, 0), iterations, settings: { ambient: Ta, enclosure: opts.enclosure, orient: opts.orient, point: opts.point } };
+    return { ok: true, nx, ny, step, top, bottom, flux, thickness: t, emissivity: EPS, parts: res, ambient: Ta, tMin: Math.min(tMin, Ta), tMax, boardMax, hot, total, balance: total - out - res.filter(p => p.off).reduce((a, p) => a + p.p + p.heater, 0), iterations, settings: { ambient: Ta, enclosure: opts.enclosure, orient: opts.orient, point: opts.point } };
   }
 
   // the temperature of the board at a point (bilinear between cell centres; null off the board)
