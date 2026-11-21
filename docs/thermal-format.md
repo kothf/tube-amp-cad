@@ -68,7 +68,7 @@ STEP. (The layout's own y runs down: `y_step = -y_layout`.) Leads reach below z 
   is: `body`, `case`, `bulb`, or `board` (a part with no heat of its own takes the board's
   temperature under it). `t_junction_C` is given for semiconductors, `t_pads_C` is the board at
   the part's pads (its leads carry it in the mesh). `margin_C` = limit − junction (or body);
-  negative means over the limit. `assumed_heatsink`: the heatsink is the app's guess (a TO-220 or
+  negative means over the limit. `life_h` is an electrolytic's estimated life at `t_body_C` (rated life doubled per 10 °C under `t_limit_C`, at most 130000), null for other parts. `assumed_heatsink`: the heatsink is the app's guess (a TO-220 or
   larger case over 2 W with no cooling set).
 
 **Compatibility.** A reader refuses a `format` other than `tubecad-thermal`, accepts `version` 1

@@ -2222,10 +2222,12 @@
     },
     electrolytic: {
       name: "Electrolytic cap", prefix: "C", group: "Passive", bbox: [-20, -12, 20, 12],
-      defaults: { c: 47e-6, v: "" },
+      defaults: { c: 47e-6, v: "", temp: 105, life: 2000 },
       pins: () => [{ id: "+", x: -20, y: 0 }, { id: "-", x: 20, y: 0 }],
       value: c => fmtEng(c.params.c, "F") + (+c.params.v ? " " + c.params.v + "V" : ""),
-      fields: [{ key: "c", label: "Capacitance", unit: "F", kind: "eng" }, capRatingField([6.3, 10, 16, 25, 35, 50, 63, 100, 160, 200, 250, 350, 400, 450, 500, 550])],
+      fields: [{ key: "c", label: "Capacitance", unit: "F", kind: "eng" }, capRatingField([6.3, 10, 16, 25, 35, 50, 63, 100, 160, 200, 250, 350, 400, 450, 500, 550]),
+        { key: "temp", label: "Rated temperature", unit: "°C", kind: "number", min: 60, max: 200, dflt: 105 },
+        { key: "life", label: "Life at that temperature", unit: "h", kind: "number", min: 100, max: 100000, dflt: 2000 }],
       build: (c, net, alloc, out) => out.push({ id: c.id, kind: "C", nodes: [net("+"), net("-")], c: Math.max(c.params.c, 1e-15) })
     },
     inductor: {

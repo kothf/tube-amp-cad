@@ -681,6 +681,19 @@ import { readFile } from "node:fs/promises";
       && Math.abs(tpk.hi - tpk.tMax) < 0.11 && tpk.png > 2000 && tpk.solids && Math.abs(tpk.total - tpk.sum) < 0.01,
       `Export thermal map turns the map on and saves ${tzip.suggestedFilename()}: ${tpk.names.length} files, ${tpk.points} points up to ${tpk.hi} °C, ${tpk.parts} parts named as the STEP's solids, ${tpk.total && tpk.total.toFixed(1)} W`);
     await bd.evaluate(() => { BoardApp.thermal(false); delete BoardApp.state.board.thermal; BoardApp.commit(); BoardApp.close3D(); });
+    // the map in the layout: View ▾ → Thermal overlay shows its scale; its findings join the check list, by the board's own limit
+    const ov = await bd.evaluate(() => {
+      const S = BoardApp.state; document.getElementById("btn-thermal2d").click();
+      const r = BoardApp.thermalCheck(), box = document.getElementById("th2d"), base = S.drc.filter(d => d.kind === "thermal").length;
+      S.board.rules.boardTmax = Math.floor(r.boardMax) - 5; BoardApp.commit(); BoardApp.thermalCheck();
+      const notes = S.drc.filter(d => d.kind === "thermal"), heat = S.drc.filter(d => d.kind === "heat").length;
+      const out = { on: document.getElementById("btn-thermal2d").classList.contains("active"), legend: !box.hidden && /Thermal overlay/.test(box.textContent) && box.textContent.includes(Math.round(r.boardMax) + " °C"), base, notes: notes.map(d => d.msg), heat,
+        listed: [...document.querySelectorAll("#drc *")].some(el => /^The board reaches/.test(el.textContent)), max: r.boardMax, caps: r.parts.filter(p => p.life !== undefined).length };
+      delete S.board.rules.boardTmax; S.board.rules.boardTmax = 105; document.getElementById("btn-thermal2d").click(); BoardApp.commit();
+      return Object.assign(out, { off: box.hidden });
+    });
+    check(ov.on && ov.legend && ov.off && ov.heat === 0 && ov.notes.some(m => /^The board reaches \d+ °C/.test(m)) && ov.listed,
+      `Thermal overlay shows its scale in the layout (board up to ${ov.max && ov.max.toFixed(0)} °C); with the limit under that, the check list says "${(ov.notes[0] || "").slice(0, 60)}…"`);
   } else check(true, "this browser has no WebGL here: the 3D checks are skipped");
   await bd.click("#btn-export");
   const [stepDl] = await Promise.all([bd.waitForEvent("download"), bd.click("#ex-step")]);

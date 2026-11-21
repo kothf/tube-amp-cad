@@ -68,12 +68,12 @@
       lengths: [],                                                // length groups: { name, nets: [names], tol (mm), target (mm, 0: match the longest) }
       ipc: "B2",                                                  // clearance by voltage: IPC-2221B table B2 | B4 | A6 | off
       heaters: true, heater126: false, shields: true,             // heater wiring on the board; 12AX7-type heaters at 12.6 V; internal shields to GND
-      stopperMax: 10, couplingLen: 10, couplingGap: 2, heatGap: 10, hotWatts: 1, socketHole: 40,   // valve layout checks (mm, W)
+      stopperMax: 10, couplingLen: 10, couplingGap: 2, heatGap: 10, hotWatts: 1, socketHole: 40, boardTmax: 105, capLife: 10000,   // valve layout checks (mm, W)
       ground: "free",                                             // free | star (every ground return to the star point XG1)
       teardrops: true,                                            // copper fillets where tracks meet pads and vias
       socketBody: true,                                           // under a valve socket's body a track may pass its pins as close as they are to each other
       maxHeight: 0,                                               // the room under the enclosure's lid above the board's top (mm; 0: no limit)
-      checks: { star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, viapad: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, height: true, keepout: true, silk: true, dangling: true, holeedge: true, stopper: true, coupling: true, heat: true, support: true, length: true }
+      checks: { thermal: true, star: true, clearance: true, short: true, edge: true, unplaced: true, annular: true, viapad: true, drill: true, width: true, class: true, pinout: true, current: true, courtyard: true, height: true, keepout: true, silk: true, dangling: true, holeedge: true, stopper: true, coupling: true, heat: true, support: true, length: true }
     };
   }
   const CLASSES = ["Signal", "Power", "HV"];

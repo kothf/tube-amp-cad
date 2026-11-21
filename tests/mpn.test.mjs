@@ -223,3 +223,11 @@ test("an offline match is saved with the part too", () => {
   assert.equal(P.keep(c), false, "nothing to do while the number stays");
   c.params.partno = ""; assert.equal(P.keep(c), true); assert.equal(c.params.part, undefined);
 });
+
+test("an electrolytic's rated temperature and life are read from the database's texts", () => {
+  assert.deepEqual(P.capRating({ temp: "-40°C ~ 105°C", life: "2000 Hrs @ 105°C" }), { life: 2000, temp: 105 });
+  assert.deepEqual(P.capRating({ temp: "-25°C ~ 85°C", life: "" }), { temp: 85 });
+  assert.deepEqual(P.capRating({ temp: "-55°C ~ 125°C", life: "10,000 Hrs @ 125°C" }), { life: 10000, temp: 125 });
+  assert.deepEqual(P.capRating({ temp: "-", life: "-" }), {});
+  assert.deepEqual(P.capRating(null), {});
+});
