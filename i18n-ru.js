@@ -1307,6 +1307,29 @@
     "Side panels": "Боковые панели",
     "The board in 3D with its parts (3); export it as STEP": "Плата в 3D с деталями (3); экспорт в STEP",
     "3D view": "3D вид",
+    // thermal map (Board, 3D view)
+    "Thermal": "Тепло", "Temperature scale": "Шкала температур",
+    "Thermal map (T): the board and every part coloured by its estimated temperature, from what each part dissipates in the simulation. Hover a part for its heat, where it goes and its temperature against its limit": "Тепловая карта (T): плата и каждая деталь окрашены по расчётной температуре — по тому, что деталь рассеивает в симуляции. Наведите на деталь: её тепло, куда оно уходит и температура против предела",
+    "Ambient (°C)": "Воздух (°C)", "Chassis": "Шасси", "Board lies": "Плата лежит", "Heat": "Тепло", "Copper": "Медь",
+    "Open frame": "Открытая рама", "Vented chassis": "Шасси с вентиляцией", "Closed chassis": "Закрытое шасси",
+    "Flat, parts up": "Плашмя, деталями вверх", "Flat, parts down": "Плашмя, деталями вниз", "Upright": "Вертикально",
+    "As simulated": "Как в симуляции", "At idle": "В покое",
+    "An estimate, about ±15 °C: the air inside a chassis is not simulated.": "Оценка, около ±15 °C: воздух внутри корпуса не моделируется.",
+    "The air round the board: about 40 °C inside a closed valve chassis, 25 °C on an open frame": "Воздух вокруг платы: около 40 °C в закрытом ламповом корпусе, 25 °C на открытой раме",
+    "How freely the air moves: an open frame cools best, a closed chassis worst": "Насколько свободно движется воздух: открытая рама охлаждает лучше всего, закрытый корпус — хуже всего",
+    "How the board lies: a face looking up loses more heat than one looking down": "Как лежит плата: сторона, обращённая вверх, отдаёт больше тепла, чем обращённая вниз",
+    "As simulated: each part's heat averaged over the signal's cycle. At idle: at the operating point, without the signal": "Как в симуляции: тепло каждой детали, усреднённое за период сигнала. В покое: в рабочей точке, без сигнала",
+    "How much of the copper and silkscreen shows through the colours": "Насколько медь и шелкография просвечивают сквозь цвета",
+    "Heat on the board:": "Тепло на плате:", "Board, hottest:": "Плата, самое горячее:", "Hottest part:": "Самая горячая деталь:", "Over their limit:": "Выше предела:",
+    "Heat:": "Тепло:", "Goes:": "Уходит:", "Warmed by:": "Греется от:", "Body:": "Корпус детали:", "Bulb:": "Баллон:", "Case:": "Корпус:", "Junction:": "Переход:", "Mounted:": "Монтаж:",
+    "none of its own": "своего нет", "air": "воздух",
+    "lying on the board": "лежит на плате", "standing": "стоит", "surface mount": "поверхностный монтаж", "in its socket": "в панельке", "on a heatsink": "на радиаторе",
+    "on a heatsink (assumed, 1.5 °C/W)": "на радиаторе (принят, 1.5 °C/Вт)", "upright": "вертикально", "wired, off the board": "на проводах, вне платы", "bent over, its tab on the copper": "согнута, фланец на меди", "on the chassis": "на шасси",
+    "Thermal map: run the simulation in the Circuit CAD first: the map needs what each part dissipates": "Тепловая карта: сначала запустите симуляцию в редакторе схем — карте нужно знать, что рассеивает каждая деталь",
+    "Heat path": "Путь тепла", "Heatsink (°C/W)": "Радиатор (°C/Вт)",
+    "Auto (heatsink above 2 W)": "Авто (радиатор от 2 Вт)", "On a heatsink": "На радиаторе", "Tab on the board's copper": "Фланец на меди платы", "Free air, no heatsink": "На воздухе, без радиатора", "On the chassis": "На шасси",
+    "For the thermal map (3D view → Thermal). Auto: the Cooling set in the schematic, else a heatsink of 1.5 °C/W once the part dissipates 2 W or more. Tab on the board's copper: a part bent over (right-angle) with its tab soldered or bolted flat to the board": "Для тепловой карты (3D вид → Тепло). Авто: охлаждение, заданное в схеме, иначе радиатор 1.5 °C/Вт, если деталь рассеивает 2 Вт и больше. Фланец на меди платы: деталь согнута под прямым углом, её фланец припаян или привинчен к плате",
+    "The heatsink's thermal resistance to the air, for the thermal map": "Тепловое сопротивление радиатора к воздуху, для тепловой карты",
     "Fit the board (F); Shift+F or Shift+click": "Плата во весь экран (F); Shift+F или Shift+щелчок",
     "the whole drawing sheet": "весь лист чертежа",
     "Update from the schematic": "Обновить из схемы",
@@ -2576,6 +2599,12 @@
   // an outline in words (board-outline.js describe): "round Ø60 mm", "custom shape 120 × 90 mm, 2 cut-outs", "100 × 60 mm, corners R5"
   const ruOutline = d => d.replace(/^round Ø([\d.]+) mm/, "круглая Ø$1 мм").replace(/^custom shape ([\d.]+ × [\d.]+) mm/, "своя форма $1 мм").replace(/^([\d.]+ × [\d.]+) mm/, "$1 мм").replace(/, corners R([\d.]+)/, ", углы R$1").replace(/, (\d+) cut-outs?/, ", вырезов: $1");
   const patterns = [
+    // thermal map (3D view)
+    [/^(board|air|heatsink) (-?[\d.]+ m?W)$/, (m, k, w) => `${{ board: "плата", air: "воздух", heatsink: "радиатор" }[k]} ${w.replace("W", "Вт").replace("m", "м")}`],
+    [/^the (board|valves) (-?[\d.]+ m?W)$/, (m, k, w) => `${k === "board" ? "платы" : "ламп"} ${w.replace("W", "Вт").replace("m", "м")}`],
+    [/^(-?\d+) °C \(limit (\d+) °C(?:, over by (\d+))?\)$/, (m, t, l, o) => `${t} °C (предел ${l} °C${o ? `, выше на ${o}` : ""})`],
+    [/^(-?[\d.]+ m?W) \(heater (-?[\d.]+ m?W)\)$/, (m, a, b) => `${a.replace("W", "Вт").replace("m", "м")} (накал ${b.replace("W", "Вт").replace("m", "м")})`],
+    [/^Thermal map: (-?[\d.]+ m?W) on the board, its hottest point (-?\d+) °C at (-?[\d.]+) °C ambient \(an estimate, about ±15 °C\)$/, (m, w, t, a) => `Тепловая карта: ${w.replace("W", "Вт").replace("m", "м")} на плате, самая горячая точка ${t} °C при ${a} °C воздуха (оценка, около ±15 °C)`],
     // group editing (3.235)
     [/^(\d+) parts? and (\d+) wires? selected: drag one to move them all, Shift\+drag copies, Space turns, M mirrors, Del deletes$/, "Выделено деталей: $1, проводов: $2. Потяните одну — двигается всё; Shift+перетаскивание копирует, Space поворачивает, M зеркалит, Del удаляет"],
     [/^Copied (\d+) items?(?:; (\d+) parts? not copied \(parts come from the schematic: copy them there\))?: the copy is selected \(Ctrl\+Z takes it back\)$/, (m, n, k) => `Скопировано: ${n}${k ? `; деталей не скопировано: ${k} (детали приходят из схемы, копируйте их там)` : ""}. Копия выделена (Ctrl+Z её убирает)`],

@@ -156,6 +156,14 @@
     .bar3d { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; pointer-events: none; }
     .bar3d > * { pointer-events: auto; }
     .bar3d label { display: inline-flex; gap: 4px; align-items: center; margin-left: 8px; color: var(--muted); font-size: 12px; }
+    #th-panel { position: absolute; left: 8px; top: 48px; width: 232px; padding: 8px 10px; background: rgba(13, 20, 28, 0.92); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+    #th-panel[hidden], #th-card[hidden] { display: none; }
+    #th-panel .th-top { display: flex; gap: 8px; margin-bottom: 6px; } #th-sum { flex: 1; line-height: 1.45; } #th-sum b { color: var(--text, #e6edf3); }
+    #th-panel .th-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; color: var(--muted); } #th-panel .th-row span { flex: 0 0 84px; } #th-panel .th-row :is(input, select) { flex: 1; min-width: 0; }
+    #th-panel .help { margin: 6px 0 0; }
+    #th-panel .th-row :is(input[type=number], select) { background: #0d1117; color: var(--text, #e6edf3); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font: inherit; }
+    #th-card { position: absolute; z-index: 6; max-width: 280px; padding: 6px 9px; background: rgba(13, 20, 28, 0.95); border: 1px solid var(--accent); border-radius: 6px; font-size: 12px; line-height: 1.45; pointer-events: none; }
+    #th-card .over { color: #ff7b72; }
     .hint3d { position: absolute; bottom: 8px; left: 10px; color: var(--muted); font-size: 11px; pointer-events: none; }
     .preview3d { width: 100%; height: 190px; display: block; border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; background: #070b10; cursor: grab; }
     #status { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -432,10 +440,21 @@
         <div class="bar3d">
           <button class="btn" data-view="iso">Iso</button><button class="btn" data-view="top">Top</button><button class="btn" data-view="bottom">Bottom</button><button class="btn" data-view="front">Front</button><button class="btn" data-view="side">Side</button>
           <label><input type="checkbox" id="v3-parts" checked> Parts</label><label><input type="checkbox" id="v3-tubes" checked> Valves</label>
+          <button class="btn" id="v3-thermal" title="Thermal map (T): the board and every part coloured by its estimated temperature, from what each part dissipates in the simulation. Hover a part for its heat, where it goes and its temperature against its limit">Thermal<kbd class="tk">T</kbd></button>
           <span class="spacer"></span>
           <button class="btn" data-ico="image" id="v3-png">Save PNG</button><button class="btn" data-ico="cube" id="v3-step" title="The board and every part in colour, for a chassis CAD: round bodies, leads and holes as true cylinders and circles; faces with openings (a connector's mouth, sockets) keep their holes">Export STEP</button><button class="btn" id="v3-close" title="Back to the layout (Esc or 3)">✕ Layout</button>
         </div>
         <div class="hint3d">Drag: turn · right-drag or Shift+drag: move · wheel: zoom</div>
+        <div id="th-panel" hidden>
+          <div class="th-top"><canvas id="th-legend" width="74" height="210" aria-label="Temperature scale"></canvas><div id="th-sum"></div></div>
+          <label class="th-row" title="The air round the board: about 40 °C inside a closed valve chassis, 25 °C on an open frame"><span>Ambient (°C)</span><input id="th-amb" type="number" min="-20" max="90" step="1"></label>
+          <label class="th-row" title="How freely the air moves: an open frame cools best, a closed chassis worst"><span>Chassis</span><select id="th-enc"><option value="open">Open frame</option><option value="vented">Vented chassis</option><option value="closed">Closed chassis</option></select></label>
+          <label class="th-row" title="How the board lies: a face looking up loses more heat than one looking down"><span>Board lies</span><select id="th-ori"><option value="up">Flat, parts up</option><option value="down">Flat, parts down</option><option value="vertical">Upright</option></select></label>
+          <label class="th-row" title="As simulated: each part's heat averaged over the signal's cycle. At idle: at the operating point, without the signal"><span>Heat</span><select id="th-point"><option value="sim">As simulated</option><option value="idle">At idle</option></select></label>
+          <label class="th-row" title="How much of the copper and silkscreen shows through the colours"><span>Copper</span><input id="th-blend" type="range" min="0" max="0.8" step="0.05"></label>
+          <p class="help">An estimate, about ±15 °C: the air inside a chassis is not simulated.</p>
+        </div>
+        <div id="th-card" hidden></div>
       </div>
     </div>
     <aside class="col right">
@@ -734,6 +753,7 @@
   <script src="board-panel-ui.js?v=dev"></script>
   <script src="board-3d.js?v=dev"></script>
   <script src="board-3d-view.js?v=dev"></script>
+  <script src="board-thermal.js?v=dev"></script>
   <script src="board-measure.js?v=dev"></script>
   <script src="board-construct.js?v=dev"></script>
   <script src="board-cons.js?v=dev"></script>

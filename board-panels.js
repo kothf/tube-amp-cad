@@ -164,6 +164,13 @@
         h.appendChild(smdField([g]));
         const ff = field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.filter(n => B.isSmd(n) === smd).map(n => { const f = B.footprint(n); return [n, f ? `${n} — ${f.title.replace(/^(.{0,48}).*$/, "$1")}` : n]; })); ff.classList.add("wide"); h.appendChild(ff);
         const mf = mountField([g]); if (mf) h.appendChild(mf);
+        // the thermal map's heat path of a case made for a heatsink (a TO-220 standing, or bent over onto copper), or of an SMD power case
+        if (/^(TO-(126|220|247|3P|264)|D2PAK|DPAK|SOT-223)/.test(bp.fp)) {
+          const hp = field("Heat path", bp.heat || "auto", v => { if (v === "auto") { delete bp.heat; delete bp.rth; } else bp.heat = v; commit(); }, [["auto", "Auto (heatsink above 2 W)"], ["heatsink", "On a heatsink"], ["board", "Tab on the board's copper"], ["air", "Free air, no heatsink"], ["chassis", "On the chassis"]]);
+          hp.title = "For the thermal map (3D view → Thermal). Auto: the Cooling set in the schematic, else a heatsink of 1.5 °C/W once the part dissipates 2 W or more. Tab on the board's copper: a part bent over (right-angle) with its tab soldered or bolted flat to the board";
+          h.appendChild(hp);
+          if (bp.heat === "heatsink") { const hr = field("Heatsink (°C/W)", bp.rth > 0 ? bp.rth : 1.5, v => { if (v > 0) { bp.rth = v; commit(); } }); hr.title = "The heatsink's thermal resistance to the air, for the thermal map"; h.appendChild(hr); }
+        }
         partNoField(h, g, bp);
         partPreview(h, g);
         h.appendChild(field("X (mm)", +bp.x.toFixed(3), v => { bp.x = v; commit(); }));

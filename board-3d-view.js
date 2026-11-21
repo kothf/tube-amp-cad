@@ -11,13 +11,14 @@
   const VS = `attribute vec3 p; attribute vec3 n; attribute vec4 c; attribute vec2 uv;
     uniform mat4 mvp; varying vec3 vn; varying vec4 vc; varying vec2 vuv;
     void main() { vn = n; vc = c; vuv = uv; gl_Position = mvp * vec4(p, 1.0); }`;
-  const FS = `precision mediump float; uniform sampler2D tex; uniform float useTex; uniform vec3 eye;
+  const FS = `precision mediump float; uniform sampler2D tex; uniform float useTex; uniform float flatLight; uniform vec3 eye;
     varying vec3 vn; varying vec4 vc; varying vec2 vuv;
     void main() {
       vec3 N = normalize(vn);
       vec4 col = vc;
       if (useTex > 0.5) { vec4 t = texture2D(tex, vuv); if (t.a < 0.5) discard; col = vec4(t.rgb, 1.0); }
       float l = 0.38 + 0.55 * max(dot(N, normalize(vec3(0.35, -0.45, 0.82))), 0.0) + 0.22 * max(dot(N, normalize(vec3(-0.6, 0.5, 0.3))), 0.0);
+      l = mix(l, 1.0, flatLight);   // a colour scale (the thermal map) keeps its colours: little shading
       float rim = col.a < 0.99 ? 0.25 * pow(1.0 - abs(dot(N, normalize(eye))), 2.0) : 0.0;
       gl_FragColor = vec4(col.rgb * l + rim, max(col.a, rim));
     }`;
@@ -38,14 +39,16 @@
       this.gl = gl; if (!gl) return;
       const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
       const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr); gl.useProgram(pr);
-      this.pr = pr; this.loc = { p: gl.getAttribLocation(pr, "p"), n: gl.getAttribLocation(pr, "n"), c: gl.getAttribLocation(pr, "c"), uv: gl.getAttribLocation(pr, "uv"), mvp: gl.getUniformLocation(pr, "mvp"), useTex: gl.getUniformLocation(pr, "useTex"), eye: gl.getUniformLocation(pr, "eye"), tex: gl.getUniformLocation(pr, "tex") };
+      this.pr = pr; this.loc = { p: gl.getAttribLocation(pr, "p"), n: gl.getAttribLocation(pr, "n"), c: gl.getAttribLocation(pr, "c"), uv: gl.getAttribLocation(pr, "uv"), mvp: gl.getUniformLocation(pr, "mvp"), useTex: gl.getUniformLocation(pr, "useTex"), flat: gl.getUniformLocation(pr, "flatLight"), eye: gl.getUniformLocation(pr, "eye"), tex: gl.getUniformLocation(pr, "tex") };
       this.batches = []; this.cam = { yaw: -Math.PI / 2 - 0.5, pitch: 0.75, dist: 200, target: [0, 0, 0] }; this.spin = !!this.opts.spin;
       this.bind();
     }
     get ok() { return !!this.gl; }
     // solids -> batches: { buf, count, tex, glass }. textures: { top, bottom } canvases for the board's faces
-    setScene(solids, textures, frame) {
+    // opts.flat: 0–1, how much of the shading to drop (colours that are a scale)
+    setScene(solids, textures, frame, opts) {
       const gl = this.gl; if (!gl) return;
+      this.flat = (opts && opts.flat) || 0;
       this.batches.forEach(b => gl.deleteBuffer(b.buf)); (this.texs || []).forEach(t => gl.deleteTexture(t));
       this.batches = []; this.texs = [];
       const groups = { solid: [], glass: [], top: [], bottom: [] };
@@ -95,6 +98,7 @@
       gl.enable(gl.DEPTH_TEST);
       const e = this.eye(), up = Math.abs(Math.cos(this.cam.pitch)) < 0.01 ? [0, 1, 0] : [0, 0, 1];
       const mvp = mul(persp(0.6, W / H, Math.max(0.1, this.cam.dist / 200), this.cam.dist * 10), lookAt(e, this.cam.target, up));
+      gl.uniform1f(this.loc.flat, this.flat || 0);
       gl.uniformMatrix4fv(this.loc.mvp, false, new Float32Array(mvp)); gl.uniform3fv(this.loc.eye, new Float32Array(norm([e[0] - this.cam.target[0], e[1] - this.cam.target[1], e[2] - this.cam.target[2]])));
       const L = this.loc, order = ["solid", "top", "bottom", "glass"];
       order.forEach(k => this.batches.filter(b => b.k === k).forEach(b => {
@@ -128,6 +132,24 @@
       cv.addEventListener("wheel", e => { e.preventDefault(); this.cam.dist = Math.max(2, this.cam.dist * Math.exp(e.deltaY * 0.0012)); this.draw(); }, { passive: false });
       const tick = () => { if (this.spin && this.canvas.isConnected) { this.cam.yaw += 0.006; this.draw(); } this.raf = requestAnimationFrame(tick); };
       if (this.opts.spin) this.raf = requestAnimationFrame(tick);
+    }
+    // the box under a point of the canvas (CSS px): the index of the nearest of boxes
+    // [{ x0, y0, z0, x1, y1, z1 }] (world mm) the ray from the eye meets, or -1
+    pick(px, py, boxes) {
+      const cv = this.canvas, W = cv.clientWidth || 1, H = cv.clientHeight || 1, e = this.eye(), c = this.cam;
+      const f = norm([c.target[0] - e[0], c.target[1] - e[1], c.target[2] - e[2]]), up = Math.abs(Math.cos(c.pitch)) < 0.01 ? [0, 1, 0] : [0, 0, 1], r = norm(cross(f, up)), u = cross(r, f);
+      const th = Math.tan(0.3), nx = (2 * px / W - 1) * th * W / H, ny = (1 - 2 * py / H) * th, d = norm([f[0] + r[0] * nx + u[0] * ny, f[1] + r[1] * nx + u[1] * ny, f[2] + r[2] * nx + u[2] * ny]);
+      let best = -1, bt = Infinity;
+      boxes.forEach((b, k) => {
+        if (!b) return;
+        const lo = [b.x0, b.y0, b.z0], hi = [b.x1, b.y1, b.z1]; let t0 = 0, t1 = Infinity;
+        for (let a = 0; a < 3; a++) {
+          if (Math.abs(d[a]) < 1e-9) { if (e[a] < lo[a] || e[a] > hi[a]) return; continue; }
+          const p = (lo[a] - e[a]) / d[a], q = (hi[a] - e[a]) / d[a]; t0 = Math.max(t0, Math.min(p, q)); t1 = Math.min(t1, Math.max(p, q));
+        }
+        if (t0 <= t1 && t0 < bt) { bt = t0; best = k; }
+      });
+      return best;
     }
     png() { this.draw(); return this.canvas.toDataURL("image/png"); }
   }
