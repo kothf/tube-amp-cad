@@ -2043,6 +2043,26 @@
       done(c.toDataURL("image/png"));
     }; im.src = url; });
   }
+  // the thermal map as a package for other programs: the mesh with its temperatures (.vtu), the heat
+  // sources (CSV), the manifest, a README, the picture and the STEP of the same moment, in one ZIP.
+  // The 3D view is opened in Thermal mode first: what is exported is what is shown
+  function thermalPackage() {
+    if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return Promise.resolve(null); }
+    if (!(S.netlist && S.netlist.heat)) { msg("Thermal map: run the simulation in the Circuit CAD first: the map needs what each part dissipates"); return Promise.resolve(null); }
+    if ($("view3d").hidden) open3D();
+    if (viewer && !TH.on) thermal(true);
+    const res = TH.on && TH.res && TH.res.ok ? TH.res : BoardThermal.solve(S.board, S.model, S.netlist);
+    if (!res.ok) return Promise.resolve(null);
+    const name = baseName(), tubes = $("v3-tubes").checked, pic = viewer && TH.on;
+    const pk = BoardThermalExport.pack(S.board, S.model, res, { name, title: fabMeta().title, version: appVersion(), tubes, picture: !!pic, step: true });
+    const files = Object.assign({}, pk.files);
+    files[name + ".step"] = Board3D.step(Board3D.scene(S.board, S.model, { tubes }), { title: fabMeta().title, version: appVersion(), file: name + ".step" });
+    return (pic ? png3D() : Promise.resolve(null)).then(url => {
+      if (url) { const bin = atob(url.split(",")[1]), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); files[pk.manifest.files.picture] = u8; }
+      return { name: name + "-thermal.zip", files, manifest: pk.manifest };
+    });
+  }
+  function exportThermal() { return thermalPackage().then(pk => { if (pk) download(BoardFab.zip(pk.files), pk.name, "application/zip"); return pk; }); }
   function open3D() {
     if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return; }
     if (S.route) finishRoute();
@@ -2202,6 +2222,7 @@
     panelUi.init();
     $("ex-step").onclick = () => { list.hidden = true; exportStep(); };
     $("ex-kicad").onclick = () => { list.hidden = true; exportKicad(); };
+    $("ex-thermal").onclick = () => { list.hidden = true; exportThermal(); }; $("th-export").onclick = exportThermal;
     $("btn-3d").onclick = () => ($("view3d").hidden ? open3D() : close3D());
     $("v3-close").onclick = close3D; $("v3-step").onclick = exportStep;
     $("v3-png").onclick = () => { if (!viewer) return; png3D().then(url => { const a = document.createElement("a"); a.href = url; a.download = baseName() + (TH.on ? "-thermal.png" : "-3d.png"); a.click(); msg("Saved " + a.download); }); };
@@ -2234,7 +2255,7 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, thermal, thermalResult: () => TH.res, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, thermal, thermalResult: () => TH.res, thermalPackage, exportThermal, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   const boot = () => { init(); early.splice(0).forEach(e => bc.onmessage(e)); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

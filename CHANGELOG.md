@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.241.0] - 2026-11-21
+
+The thermal map as files for other programs.
+
+### Added
+- **Export thermal map (ZIP)**: under the scale of the 3D view's Thermal mode and in Export ▾. One
+  package in the frame of the STEP export: `<name>-thermal.vtu` (VTK XML UnstructuredGrid: the
+  board's faces and edge as quads at the solver's grid, every part's solids as triangles;
+  `Temperature_C` on the points, `PartId`, `Face`, `Power_W` and `HeatFlux_W_m2` on the cells),
+  `<name>-heat-sources.csv` (a row per part: the names of its STEP solids, box, volume, heat and
+  where it goes, body, junction and pad temperatures, limit, margin), `<name>-thermal.json` (the
+  manifest, format `tubecad-thermal` version 1, for a program that reads the package), the picture
+  with its scale, the STEP of the same moment and a README. `docs/thermal-format.md` describes the
+  format for readers. Checked with the VTK library on examples 07, 14 and 17.
+- The thermal result carries the heat flux of the board's faces.
+
 ## [3.240.0] - 2026-11-21
 
 A thermal map of the board in the 3D view.
