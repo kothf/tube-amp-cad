@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.246.0] - 2026-11-22
+## [3.248.0] - 2026-11-22
 
 Files for the board maker.
 
