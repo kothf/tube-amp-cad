@@ -70,9 +70,11 @@ import { cad, check, toScreen } from "./harness.mjs";
   await cad.keyboard.press("Escape");
 
   // a double-click on a wire labels it there, with the net's name
-  const w = await cad.evaluate(i => { const S = TubeCAD.state, T = TubeCAD.topo(), n = T.pinNet.get(i.r3 + ":1"); const ws = S.wires.filter(x => T.wireNet.get(x.id) === n && x.x1 === x.x2 && Math.abs(x.y2 - x.y1) >= 20); const x = ws[0]; return x && { x: x.x1, y: Math.min(x.y1, x.y2) + 10, n: S.comps.filter(c => c.type === "netlabel").length }; }, ids);
+  const w = await cad.evaluate(i => { const S = TubeCAD.state, T = TubeCAD.topo(), n = T.pinNet.get(i.r3 + ":1"); const ws = S.wires.filter(x => T.wireNet.get(x.id) === n && x.x1 === x.x2 && Math.abs(x.y2 - x.y1) >= 20); const x = ws.sort((a, b) => Math.abs(b.y2 - b.y1) - Math.abs(a.y2 - a.y1))[0]; return x && { x: x.x1, y: Math.round((x.y1 + x.y2) / 20) * 10, n: S.comps.filter(c => c.type === "netlabel").length }; }, ids);
   // the label tool put away (Esc) and the view settled before the double-click
   await cad.waitForFunction(() => !TubeCAD.state.placing && TubeCAD.state.tool === "select", null, { timeout: 3000 }).catch(() => {});
+  // close enough that the label and the resistor next to the wire are not under the pointer too
+  await cad.evaluate(p => { const v = TubeCAD.state.view, b = document.getElementById("cad").getBoundingClientRect(); v.scale = 1; v.ox = Math.round(b.width / 2 - p.x); v.oy = Math.round(b.height / 2 - p.y); TubeCAD.updateInspector(); }, w);
   await cad.waitForTimeout(200);
   const [wx, wy] = await toScreen(w.x, w.y);
   await cad.mouse.move(wx, wy);
