@@ -62,7 +62,7 @@ STEP. (The layout's own y runs down: `y_step = -y_layout`.) Leads reach below z 
   `step_bodies` are the names of its solids in the STEP (`MANIFOLD_SOLID_BREP('VL3-1', …)`).
   A part wired off the board has `off_board: true`, no solids, no box and no temperature.
 - `heat_path` is where most of the heat goes: `board`, `air`, `heatsink`, `chassis`.
-  `mount`: `lying`, `standing`, `upright`, `smd`, `socket`, `ra-on-copper` (a tab bent over onto
+  `mount`: `lying`, `raised` (lifted off the board on its leads), `standing`, `upright`, `smd`, `socket`, `ra-on-copper` (a tab bent over onto
   the board's copper), `on-heatsink`, `on-chassis`, `wired`.
 - `t_body_C` is the part's surface, the value its solids carry in the mesh; `t_kind` says what it
   is: `body`, `case`, `bulb`, or `board` (a part with no heat of its own takes the board's

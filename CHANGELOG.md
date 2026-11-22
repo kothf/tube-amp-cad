@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.243.0] - 2026-11-22
+
+Raise a hot resistor off the board.
+
+### Added
+- **Height above board (mm)** in the Board inspector for a lying axial
+  resistor or diode (AXIAL-/DIODE- footprints): the gap between the board and
+  the body, 0.4 mm usual, up to 15 mm. The thermal map counts the air under a
+  raised body (mount "raised" in the thermal export), and the 3D view, STEP
+  and the enclosure height check lift the body.
+- The thermal map's hot-board note now suggests raising the lying part it is
+  under (or standing it on end); its message and the new strings are in
+  Russian too.
+
+### Changed
+- Example 07: the 1 W cathode resistors R13 and R14 are raised 6 mm; the
+  board's hottest spot drops from about 112 °C to 104 °C and the hot-board
+  note is gone.
+
 ## [3.242.0] - 2026-11-21
 
 The thermal map in the layout, in the check list, and capacitor life.

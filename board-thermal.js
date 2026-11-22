@@ -135,10 +135,10 @@
       if (!sol || offBoard(g.fp.name) || !pads.length) { if (s.p + s.heater > 0.01) parts.push({ key: g.key, ref: g.ref, value: g.value, type: g.type, p: s.p, heater: s.heater, off: true, tj: s.tj, ts: s.ts, mount: "wired", path: "chassis" }); return; }
       const bb = bodyOf(sol), bulb = g.type === "tube" || g.type === "hgrect" || g.type === "gasreg" || g.type === "eye" ? bb.glass : null, b = bulb || bb.body, back = g.place.side === "B";
       const w = Math.max(0.5, b.x1 - b.x0), l = Math.max(0.5, b.y1 - b.y0), zb = back ? -b.z1 : b.z0 - t, hgt = Math.max(0.5, b.z1 - b.z0), gap = Math.max(0, zb);
-      const smd = pads.every(p => p.smd), vert = !!g.fp.vert;
+      const smd = pads.every(p => p.smd), vert = !!g.fp.vert, lifted = C.liftOf ? C.liftOf(g.place, g.fp.name) > 0 : false;
       // exposed surface (mm²): a bulb its cylinder and dome, another body its sides and top (and its underside when it stands clear)
       const area = bulb ? Math.PI * Math.min(w, l) * hgt + Math.PI * Math.min(w, l) * Math.min(w, l) / 4 : 2 * (w + l) * hgt + w * l * (gap > 1.5 ? 2 : 1);
-      const P = { key: g.key, ref: g.ref, value: g.value, type: g.type, p: s.p, heater: s.heater, tj: s.tj, ts: s.ts, sink: s.sink, how, rth: g.place.rth, back, smd, vert, bulb: !!bulb,
+      const P = { key: g.key, ref: g.ref, value: g.value, type: g.type, p: s.p, heater: s.heater, tj: s.tj, ts: s.ts, sink: s.sink, how, rth: g.place.rth, back, smd, vert, lifted, bulb: !!bulb,
         box: { x0: bb.all.x0, y0: bb.all.y0, z0: bb.all.z0, x1: bb.all.x1, y1: bb.all.y1, z1: bb.all.z1 }, body: b, w, l, hgt, gap, area, size: Math.max(hgt, Math.min(w, l)) / 1000, pads: [], under: [] };
       const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
       pads.forEach(p => {
@@ -275,7 +275,7 @@
       if (p.off) return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: 0, toAir: 0, toSink: p.p + p.heater, byRadiation: 0, t: null, tKind: null, tj: p.tj, ts: p.ts, mount: p.mount, path: p.path, box: null, off: true };
       const i = p.node, t0 = T[i], toSink = p.gSink ? p.gSink * (t0 - p.tSink) : 0, toAir = gA[i] * (t0 - Ta);
       out += toAir + toSink;
-      const mount = p.gSink ? (p.how === "chassis" ? "chassis" : "heatsink") : p.how === "board" ? "tab" : p.bulb ? "socket" : p.smd ? "smd" : p.vert ? "standing" : p.gap <= 1.5 && p.hgt < Math.max(p.w, p.l) ? "lying" : "upright";
+      const mount = p.gSink ? (p.how === "chassis" ? "chassis" : "heatsink") : p.how === "board" ? "tab" : p.bulb ? "socket" : p.smd ? "smd" : p.vert ? "standing" : p.lifted ? "raised" : p.gap <= 1.5 && p.hgt < Math.max(p.w, p.l) ? "lying" : "upright";
       const sh = [["board", flow[i]], ["air", toAir + rad[i]], [p.how === "chassis" ? "chassis" : "heatsink", toSink]].sort((a, b) => b[1] - a[1]);
       const pw = p.p + p.heater;
       let lim = LIMITS[p.type], tj = p.how === "auto" ? p.tj : undefined;   // cooled another way than the simulation had it: its junction from this map
@@ -308,7 +308,7 @@
       let near = null, nd = Infinity;
       on.forEach(p => { if (p.p + p.heater < 0.05) return; const d = Math.hypot(Math.max(p.box.x0 - res.hot.x, 0, res.hot.x - p.box.x1), Math.max(p.box.y0 - res.hot.y, 0, res.hot.y - p.box.y1)); if (d < nd) { nd = d; near = p; } });
       const by = near && nd < 15 ? (nd < 0.5 ? ` under ${near.ref}` : ` by ${near.ref}`) : "";
-      const cure = near && near.mount === "lying" ? `stand ${near.ref} off the board or on end, give its pads more copper` : "give the hot part more copper or a heatsink, or more room";
+      const cure = near && near.mount === "lying" ? `raise ${near.ref} off the board (its Height above board) or stand it on end` : near && near.mount === "raised" ? `raise ${near.ref} higher, or give it more room` : "give the hot part more copper or a heatsink, or more room";
       out.push({ kind: "thermal", x: res.hot.x, y: res.hot.y, msg: `The board reaches ${deg(res.boardMax)}${by} (${res.hot.side} side, ${at0}): FR-4 darkens and weakens above ${tb} °C; ${cure}` });
     }
     on.forEach(p => {

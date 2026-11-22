@@ -855,6 +855,11 @@ the circuit file, so one file holds both.
   lead sizes; the track ends on its pads follow. Set an enclosure height in
   Design rules and the check reports a part taller than it; the 3D view and
   STEP show the folded lead.
+- **Raised parts.** A lying axial resistor or diode has *Height above
+  board (mm)* in the inspector (0.4 mm usual, up to 15 mm). Raise a hot
+  resistor 5–10 mm on its leads and air flows under it: the thermal map, the
+  3D view, STEP and the enclosure height check follow. Example 07's 1 W
+  cathode resistors R13/R14 sit 6 mm up.
 - **SMD versions.** Tick *SMD* in the inspector to switch a part to its
   surface-mount footprint, or a whole selection at once (each part that has
   one):

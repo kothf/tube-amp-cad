@@ -191,7 +191,7 @@
       "      One row per part, the largest heat first. UTF-8, commas, dot decimals.",
       "        step_bodies       the names of the part's solids in the STEP file, separated by ;",
       "        heat_path         where most of its heat goes: board, air, heatsink, chassis",
-      "        mount             lying, standing, upright, smd, socket, ra-on-copper, on-heatsink, on-chassis, wired",
+      "        mount             lying, raised, standing, upright, smd, socket, ra-on-copper, on-heatsink, on-chassis, wired",
       "        x/y/z, dx/dy/dz   centre and size of its bounding box, mm; volume_mm3 of its solids",
       "        p_total_W         dissipation used = p_board_W + p_air_W + p_sink_W (where it went)",
       "        t_body_C          its surface: t_kind says body, case, bulb or board (a part with no heat of its own)",
