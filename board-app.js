@@ -2046,7 +2046,7 @@
     const rc = $("gl3d").getBoundingClientRect(), k = viewer.pick(e.clientX - rc.left, e.clientY - rc.top, TH.boxes.map(b => b.box)), p = k >= 0 ? TH.boxes[k].part : null;
     if (!p) { card.hidden = true; return; }
     const pw = p.p + p.heater, kind = { bulb: "Bulb", case: "Case", body: "Body" }[p.tKind] || "Body", row = (a, b, cls) => `<div${cls ? ` class="${cls}"` : ""}>${a}: <b>${b}</b></div>`;
-    const mount = { lying: "lying on the board", standing: "standing", smd: "surface mount", socket: "in its socket", heatsink: p.assumed ? "on a heatsink (assumed, 1.5 °C/W)" : "on a heatsink", upright: "upright", wired: "wired, off the board", tab: "bent over, its tab on the copper", chassis: "on the chassis" }[p.mount] || p.mount;
+    const mount = { lying: "lying on the board", raised: "raised off the board", standing: "standing", smd: "surface mount", socket: "in its socket", heatsink: p.assumed ? "on a heatsink (assumed, 1.5 °C/W)" : "on a heatsink", upright: "upright", wired: "wired, off the board", tab: "bent over, its tab on the copper", chassis: "on the chassis" }[p.mount] || p.mount;
     let h = `<div><b>${esc(p.ref)}</b> ${esc(p.value || "")}</div>`;
     h += row("Heat", pw > 0.0005 ? thFmtW(pw) + (p.heater > 0 ? ` (heater ${thFmtW(p.heater)})` : "") : "none of its own");
     if (pw > 0.0005) h += row("Goes", [["board", p.toBoard], ["air", p.toAir + p.byRadiation], ["heatsink", p.toSink]].filter(([, w]) => w > 0.005).map(([n, w]) => `${n} ${thFmtW(w)}`).join(" · ") || "air");

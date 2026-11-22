@@ -164,6 +164,7 @@
         h.appendChild(smdField([g]));
         const ff = field("Footprint", bp.fp, v => { bp.fp = v; commit(); }, g.options.filter(n => B.isSmd(n) === smd).map(n => { const f = B.footprint(n); return [n, f ? `${n} — ${f.title.replace(/^(.{0,48}).*$/, "$1")}` : n]; })); ff.classList.add("wide"); h.appendChild(ff);
         const mf = mountField([g]); if (mf) h.appendChild(mf);
+        if (B.canLift(bp.fp, bp)) { const lf = field("Height above board (mm)", +(+bp.lift > 0 ? +bp.lift : 0.4).toFixed(2), v => { if (v >= 0 && v <= 15) { if (v > 0.4 + 1e-9) bp.lift = +v; else delete bp.lift; commit(`${g.ref}: ${v > 0.4 + 1e-9 ? `raised ${v} mm off the board` : "lying on the board"}`); } }); lf.title = "The gap between the board and the lying body (0.4 mm usual). Raise a hot resistor 5–10 mm on its leads so air flows under it and the board under it stays cool: the 3D view, STEP, the height check and the thermal map follow"; h.appendChild(lf); }
         // the thermal map's heat path of a case made for a heatsink (a TO-220 standing, or bent over onto copper), or of an SMD power case
         if (/^(TO-(126|220|247|3P|264)|D2PAK|DPAK|SOT-223)/.test(bp.fp)) {
           const hp = field("Heat path", bp.heat || "auto", v => { if (v === "auto") { delete bp.heat; delete bp.rth; } else bp.heat = v; commit(); }, [["auto", "Auto (heatsink above 2 W)"], ["heatsink", "On a heatsink"], ["board", "Tab on the board's copper"], ["air", "Free air, no heatsink"], ["chassis", "On the chassis"]]);

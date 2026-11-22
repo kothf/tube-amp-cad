@@ -251,6 +251,10 @@
   // The courtyard grows with the height: a standing part soldered by hand or on a wave may lean
   // AXIAL_TILT degrees, so its top moves Z · tan(tilt) sideways.
   const AXIAL_TILT = 5, canStand = name => /^AXIAL-[\d.]+$/.test(String(name || ""));
+  // a lying axial part (resistor, diode) raised off the board on its leads, for air under a hot body:
+  // bp.lift mm between the board and the body (0 to 15; the usual 0.4 mm stand-off when not set)
+  const canLift = (name, bp) => /^(AXIAL|DIODE)-[\d.]+$/.test(String(name || "")) && !(bp && bp.mount === "V");
+  const liftOf = (bp, name) => (bp && canLift(name || bp.fp, bp) && +bp.lift > 0 ? Math.min(15, +bp.lift) : 0);
   const r2 = v => +(+v).toFixed(2);
   function axialStand(pitch, body) {
     const b = body || {}, L = b.l > 0 ? b.l : AXIAL[pitch][0], D = b.d > 0 ? b.d : AXIAL[pitch][1];
@@ -1961,8 +1965,8 @@
     }));
     // Z-axis: a top-side part taller than the room under the enclosure's lid (parts whose footprint knows its height)
     if (on("height") && R.maxHeight > 0) onBoard.forEach(({ g }) => {
-      const z = g.fp.zHeight; if (!(z > R.maxHeight + 1e-6) || (g.place.side || "F") !== "F") return;
-      out.push({ kind: "height", x: g.place.x, y: g.place.y, msg: `${g.ref} is ${z} mm tall${g.fp.mount === "V" ? " standing (L + R + 2d)" : ""}: over the ${R.maxHeight} mm enclosure height (Z-axis clearance)` });
+      const z = g.fp.zHeight > 0 ? +(g.fp.zHeight + liftOf(g.place, g.fp.name)).toFixed(2) : g.fp.zHeight; if (!(z > R.maxHeight + 1e-6) || (g.place.side || "F") !== "F") return;
+      out.push({ kind: "height", x: g.place.x, y: g.place.y, msg: `${g.ref} is ${z} mm tall${g.fp.mount === "V" ? " standing (L + R + 2d)" : liftOf(g.place, g.fp.name) ? ` raised ${liftOf(g.place, g.fp.name)} mm off the board` : ""}: over the ${R.maxHeight} mm enclosure height (Z-axis clearance)` });
     });
     // mounting holes under a part: the screw head, its washer and the standoff (Ø 7 mm for M3: the
     // hole's diameter plus 3.8 mm) need the board's surface free on both sides
@@ -2461,5 +2465,5 @@
     return { need, toChassis, ranges, table };
   }
 
-  root.BoardCore = { itemBoxes, boxSep, segWithin, registerFootprints, isCustom, gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, normaliseStackup, defaultRules, normaliseRules, ALLCU, LAYER_COUNTS, copperOf, innerOf, isPlane, routeLayers, layerName, CLASSES, classNames, userClasses, pairKey, netClassOf, classRule, netRule, pairOf, ruleAreas, areasOf, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
+  root.BoardCore = { canLift, liftOf, itemBoxes, boxSep, segWithin, registerFootprints, isCustom, gcFlange: flangeOutline, gcBoard, segBox, segItem, itemGap: gap, canStand, axialStand, mountedName, partFootprint, socketPads, underSocket, holeRing, npHoles, padCapsule, hotWhy, boxPoly, FPDATA: { BRIDGE_PINS, FUSES, AXIAL, BOX, ECAP_AXIAL, SNAPIN, POTS, SOCKETS, EI, XF, CHIPS, SMD_DIODES, SMD_ECAP, TABBED }, currentWidth, netCurrents, fmtA, partBox, partSilk, segInPoly, polyHitsPoly, koLayers, entryGap, anchoredOk, RES, GLYPHS, strokeText, fillZones, zonePoly, outlinePoly, rasterise, pip, flashOf, segSeg, teardrops, groundGroups, RETURNS, migrateNetNames, withHeaters, isHeaterNet, ipcClearance, IPC, netRanges, clearanceRules, DOC_VERSION, LAYERS, COPPER, SOCKETS, PINOUT, newBoard, normaliseBoard, normaliseStackup, defaultRules, normaliseRules, ALLCU, LAYER_COUNTS, copperOf, innerOf, isPlane, routeLayers, layerName, CLASSES, classNames, userClasses, pairKey, netClassOf, classRule, netRule, pairOf, ruleAreas, areasOf, netTable, edgeDist, cornerHoles, arrange, footprint, fpOptions, applyPartNumbers, smdOptions, isSmd, onSide, physicalParts, padMap, sync, place, model, connectivity, drc, hvNets, segDist, isOffboard };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -164,3 +164,18 @@ test("the map's findings: a board past 105 °C, a part over its rating, an elect
   assert.equal(T.checks(mild, { capLife: cm.life * 2 }).some(d => /^C1/.test(d.msg)), true);
   assert.deepEqual(T.checks({ ok: false }, {}), []);
 });
+
+test("a hot resistor raised off the board on its leads: the board under it cools, the 3D body and the height follow", () => {
+  const mk = lift => setup(70, 50, [R("r1", "R1", "5")], { R1: { x: 35, y: 25, ...(lift ? { lift } : {}) } }, { r1: 3 });
+  const flat = run(mk(0)), up = run(mk(6)), f = of(flat, "R1"), u = of(up, "R1");
+  assert.equal(f.mount, "lying"); assert.equal(u.mount, "raised");
+  assert.ok(up.boardMax < flat.boardMax - 5, `the board under it: ${flat.boardMax} → ${up.boardMax}`);
+  assert.ok(u.toBoard < f.toBoard * 0.75, `into the board: ${f.toBoard} → ${u.toBoard} W`);
+  // the body sits 6 mm up in 3D (and so in STEP), and the height check counts it
+  const s = mk(6), g = s.model.parts.find(q => q.ref === "R1"), sol = globalThis.Board3D.partBodies(g, 1.6, {}), z0 = Math.min(...sol.filter(q => q.color === globalThis.Board3D.COLORS.resistor).flatMap(q => q.verts.map(v => v[2])));
+  near(z0, 1.6 + 6, 0.01, "body underside");
+  assert.equal(B.liftOf(s.board.parts[g.key], g.fp.name), 6); assert.equal(B.liftOf({ fp: g.fp.name, lift: 40 }), 15);
+  assert.equal(B.liftOf({ fp: g.fp.name, lift: 6, mount: "V" }), 0, "a standing part has no lift");
+  s.board.rules.maxHeight = 12; const drc = B.drc(s.board, s.model, B.connectivity(s.board, s.model.pads, []), new Set(), [], s.netlist);
+  assert.ok(drc.some(d => d.kind === "height" && /raised 6 mm off the board/.test(d.msg)), drc.map(d => d.msg).join("; "));
+});

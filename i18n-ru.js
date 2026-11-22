@@ -1325,7 +1325,7 @@
     "Heat on the board:": "Тепло на плате:", "Board, hottest:": "Плата, самое горячее:", "Hottest part:": "Самая горячая деталь:", "Over their limit:": "Выше предела:",
     "Heat:": "Тепло:", "Goes:": "Уходит:", "Warmed by:": "Греется от:", "Body:": "Корпус детали:", "Bulb:": "Баллон:", "Case:": "Корпус:", "Junction:": "Переход:", "Mounted:": "Монтаж:",
     "none of its own": "своего нет", "air": "воздух",
-    "lying on the board": "лежит на плате", "standing": "стоит", "surface mount": "поверхностный монтаж", "in its socket": "в панельке", "on a heatsink": "на радиаторе",
+    "lying on the board": "лежит на плате", "raised off the board": "приподнят над платой", "Height above board (mm)": "Высота над платой (мм)", "The gap between the board and the lying body (0.4 mm usual). Raise a hot resistor 5–10 mm on its leads so air flows under it and the board under it stays cool: the 3D view, STEP, the height check and the thermal map follow": "Зазор между платой и лежащим корпусом (обычно 0.4 мм). Приподнимите горячий резистор на 5–10 мм на выводах, чтобы под ним шёл воздух и плата под ним оставалась холодной: 3D-вид, STEP, проверка высоты и тепловая карта это учитывают", "standing": "стоит", "surface mount": "поверхностный монтаж", "in its socket": "в панельке", "on a heatsink": "на радиаторе",
     "on a heatsink (assumed, 1.5 °C/W)": "на радиаторе (принят, 1.5 °C/Вт)", "upright": "вертикально", "wired, off the board": "на проводах, вне платы", "bent over, its tab on the copper": "согнута, фланец на меди", "on the chassis": "на шасси",
     "Thermal map: run the simulation in the Circuit CAD first: the map needs what each part dissipates": "Тепловая карта: сначала запустите симуляцию в редакторе схем — карте нужно знать, что рассеивает каждая деталь",
     "Heat path": "Путь тепла", "Heatsink (°C/W)": "Радиатор (°C/Вт)",
@@ -2703,7 +2703,14 @@
     [/^“(.+)” is in your library: Edit ▾ → Blocks… in any circuit places it\.$/, "«$1» в вашей библиотеке: Правка ▾ → Блоки… ставит его в любую схему."],
     [/^Part number for (.+)$/, "Номер детали для $1"],
     [/^Standing: lead spacing ([\d.]+) mm, height ([\d.]+) mm(?: \(enclosure ([\d.]+) mm\))?$/, (m, p, z, e) => `Стоя: шаг выводов ${p} мм, высота ${z} мм${e ? ` (корпус ${e} мм)` : ""}`],
-    [/^(\S+) is ([\d.]+) mm tall( standing \(L \+ R \+ 2d\))?: over the ([\d.]+) mm enclosure height \(Z-axis clearance\)$/, (m, r, z, st, e) => `${r} высотой ${z} мм${st ? " стоя (L + R + 2d)" : ""}: выше корпуса ${e} мм (зазор по оси Z)`],
+    [/^(\S+) is ([\d.]+) mm tall( standing \(L \+ R \+ 2d\))?(?: raised ([\d.]+) mm off the board)?: over the ([\d.]+) mm enclosure height \(Z-axis clearance\)$/, (m, r, z, st, up, e) => `${r} высотой ${z} мм${st ? " стоя (L + R + 2d)" : ""}${up ? `, приподнят на ${up} мм над платой` : ""}: выше корпуса ${e} мм (зазор по оси Z)`],
+    [/^(.+?): raised ([\d.]+) mm off the board$/, "$1: приподнят на $2 мм над платой"],
+    [/^(.+?): lying on the board$/, "$1: лежит на плате"],
+    [/^The board reaches (\d+) °C(?: (under|by) (\S+))? \((top|bottom) side, at ([\d.]+) °C ambient\): FR-4 darkens and weakens above ([\d.]+) °C; (.+)$/, (m, t, w, r, side, a, tb, cure) => {
+      const c = cure.match(/^raise (\S+) off the board \(its Height above board\) or stand it on end$/), h = cure.match(/^raise (\S+) higher, or give it more room$/);
+      const cr = c ? `приподнимите ${c[1]} над платой (поле «Высота над платой») или поставьте вертикально` : h ? `приподнимите ${h[1]} выше или дайте ему больше места` : "дайте горячей детали больше меди или радиатор, или больше места";
+      return `Плата нагревается до ${t} °C${r ? (w === "under" ? ` под ${r}` : ` рядом с ${r}`) : ""} (${side === "top" ? "верхняя" : "нижняя"} сторона, при ${a} °C вокруг): FR-4 темнеет и слабеет выше ${tb} °C; ${cr}`;
+    }],
     [/^(.+?): standing up \(vertical\)(?:, ([\d.]+) mm lead spacing, ([\d.]+) mm tall)?(?:; (\d+) track ends? followed the pads)?$/, (m, r, p, z, n) => `${r}: стоит вертикально${p ? `, шаг выводов ${p} мм, высота ${z} мм` : ""}${n ? `; концов дорожек за площадками: ${n}` : ""}`],
     [/^(.+?): lying down \(horizontal\)(?:; (\d+) track ends? followed the pads)?$/, (m, r, n) => `${r}: лежит горизонтально${n ? `; концов дорожек за площадками: ${n}` : ""}`],
     [/^(.+?): (standing|lying down)$/, (m, r, w) => `${r}: ${w === "standing" ? "стоя" : "лёжа"}`],

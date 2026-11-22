@@ -246,7 +246,7 @@
       arc(x1 + v.R, 180, 90); arc(x2 - v.R, 90, 0); path.push([x2, 0, -1.2 - t]);
       out.push(cylZ(x1, 0, v.D / 2, z0, zt, C.resistor, to), cylZ(x1, 0, r, -1.2 - t, z0 + 0.3, C.lead, to), wire(path.filter((p, k) => !k || Math.hypot(...sub(p, path[k - 1])) > 1e-3), r, C.lead, to));
     } else if ((m = /^(AXIAL|DIODE)-([\d.]+)$/.exec(name))) {
-      const L = bd.l > 0 ? bd.l : D.AXIAL[m[2]][0], Dm = bd.d > 0 ? bd.d : D.AXIAL[m[2]][1], h = +m[2] / 2, zc = Dm / 2 + 0.4;
+      const L = bd.l > 0 ? bd.l : D.AXIAL[m[2]][0], Dm = bd.d > 0 ? bd.d : D.AXIAL[m[2]][1], h = +m[2] / 2, zc = Dm / 2 + (B().liftOf(P, name) || 0.4);   // raised (bp.lift) or on the usual 0.4 mm stand-off
       out.push(cylX(0, zc, Dm / 2, -L / 2, L / 2, m[1] === "DIODE" ? C.diode : C.resistor, to));
       if (m[1] === "DIODE") out.push(cylX(0, zc, Dm / 2 + 0.05, -L / 2 + 0.1 * L, -L / 2 + 0.22 * L, C.band, to));
       [-1, 1].forEach(sg => { out.push(cylX(0, zc, lr, sg < 0 ? -h : L / 2, sg < 0 ? -L / 2 : h, C.lead, to)); lead(sg * h, 0, zc); });
