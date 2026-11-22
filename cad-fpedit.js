@@ -4,8 +4,9 @@
    a grid you choose; the usual packages made from a few numbers (rows, pitch, pad); a table of
    the pads. It edits a copy and hands it back on Save.
    A footprint: { name, title, pads: [{ num, x, y, shape: circle | rect, w, h, drill, smd, back }],
-     silk: [{ t: "line", x1, y1, x2, y2 } | { t: "circle", x, y, r }], holes: [{ x, y, d }], box }
-   Depends on: part-lib.js
+     silk: [{ t: "line", x1, y1, x2, y2 } | { t: "circle", x, y, r }], holes: [{ x, y, d }], box,
+     body3d (its 3D body: a box, a cylinder, the outline raised or a built-in package's body, board-3d.js) }
+   Depends on: part-lib.js, board-3d.js and board-3d-view.js (the 3D body and its preview; left out without them)
    ============================================================================= */
 (function (root) {
   "use strict";
@@ -33,6 +34,9 @@
           <div id="fped-props"></div>
           <div class="insp-sub">Pads</div>
           <div id="fped-pads"></div>
+          <details class="symed-box" id="fped-3d"><summary title="How the part looks in the board's 3D view and STEP file, and how tall it stands for the enclosure height check">3D body</summary>
+            <div id="fped-3dform"></div>
+            <canvas id="fped-3dview" class="fped-3dview" title="The part on a piece of board: drag to turn, wheel to zoom"></canvas></details>
           <details class="symed-box" id="fped-pat"><summary>Make a usual package</summary>
             <p class="insp-help">Rows of pads from a few numbers, in millimetres, centred, pad 1 at the top left and counted anticlockwise. This replaces the footprint.</p>
             <div id="fped-patform"></div>
@@ -53,9 +57,10 @@
     $("fped-gridsel").onchange = () => { st.grid = +$("fped-gridsel").value; render(); };
     $("fped-fit").onclick = () => { st.view = null; render(); };
     $("fped-centre").onclick = centre;
+    $("fped-3d").addEventListener("toggle", () => { if (st) bodyView(); });
     $("fped-name").oninput = () => { st.f.name = $("fped-name").value; check(); };
     $("fped-desc").oninput = () => { st.f.title = $("fped-desc").value; };
-    $("fped-make").onclick = () => { snapshot(); const f = root.PartLib.fpPattern(st.pat.kind, st.pat, st.f.name); f.title = st.f.title; st.f = f; st.sel = null; st.view = null; adopt(); render(); };
+    $("fped-make").onclick = () => { snapshot(); const f = root.PartLib.fpPattern(st.pat.kind, st.pat, st.f.name); f.title = st.f.title; st.f = f; st.f.body3d = defaultBody(f); st.sel = null; st.view = null; adopt(); render(); };
     const svg = $("fped-svg");
     svg.addEventListener("pointerdown", down); svg.addEventListener("pointermove", move); svg.addEventListener("pointerup", up); svg.addEventListener("dblclick", () => endLine());
     svg.addEventListener("wheel", wheel, { passive: false });
@@ -89,6 +94,7 @@
     if (!dx && !dy) return;
     snapshot();
     ["pad", "hole", "silk"].forEach(k => list(k).forEach((o, i) => shift({ k, i }, dx, dy)));
+    if (st.f.body3d) { st.f.body3d.x = r3((+st.f.body3d.x || 0) + dx); st.f.body3d.y = r3((+st.f.body3d.y || 0) + dy); }
     st.view = null; render();
   }
   // the pointer in millimetres: raw, and on the grid
@@ -202,7 +208,46 @@
     $("fped-undo").disabled = !st.undo.length; $("fped-del").disabled = !st.sel; $("fped-gridsel").value = String(st.grid);
     if (document.activeElement !== $("fped-name")) $("fped-name").value = f.name || "";
     if (document.activeElement !== $("fped-desc")) $("fped-desc").value = f.title || "";
-    props(); padTable(); patForm(); check();
+    props(); padTable(); patForm(); bodyForm(); bodyView(); check();
+  }
+  // ---- the 3D body (board-3d.js fp.body3d) ----
+  const D3 = () => root.Board3D;
+  function defaultBody(f) { return D3() ? D3().defaultBody({ ...f, name: "LIB:" + (f.name || "") }) : null; }
+  const SHAPES = [["box", "Box"], ["cylx", "Lying cylinder (axial)"], ["cylz", "Standing cylinder (radial can)"], ["outline", "Extruded outline (the silkscreen raised)"], ["pkg", "As a built-in package"], ["none", "No body (pads only)"]];
+  const BODY_FIELDS = { box: [["l", "Length", "Along x, mm"], ["w", "Width", "Along y, mm"], ["h", "Height", "Tall, mm"]], cylx: [["l", "Length", "The body along its axis (x before turning), mm"], ["d", "Diameter", "mm"]],
+    cylz: [["d", "Diameter", "mm"], ["h", "Height", "Tall, mm"]], outline: [["h", "Height", "Tall, mm"]], pkg: [], none: [] };
+  function bodyForm(force) {
+    const host = $("fped-3dform"); if (!host) return;
+    if (!D3()) { host.innerHTML = `<p class="insp-help">The 3D view is not loaded in this window.</p>`; return; }
+    if (!force && document.activeElement && host.contains(document.activeElement)) return;
+    const b = st.f.body3d = D3().bodyTidy(st.f.body3d) || defaultBody(st.f), D = D3();
+    const place = b.shape === "none" ? [] : [["x", "Move X", "Where its centre is, mm from the footprint's centre"], ["y", "Move Y", "mm, downwards"], ["z", "Above board", "How far the body stands off the board, mm"], ["rot", "Turn", "Degrees, anticlockwise seen from the top"]];
+    host.innerHTML = field("Shape", `<select id="fped-3dshape">${SHAPES.map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}</select>`, "Box: a moulded part; lying cylinder: a resistor or diode; standing cylinder: an electrolytic; extruded outline: the closed silkscreen outline raised to its height; built-in package: the body the app draws for that package")
+      + (b.shape === "pkg" ? field("Package", `<select id="fped-3dpkg">${D.BODY_PACKAGES.map(([n, k]) => `<option value="${esc(k)}">${esc(n)}</option>`).join("")}</select>`, "The body of this package as the app draws it for its own parts. Where its pins are not on your pads, straight leads go from your pads up to it.") : "")
+      + BODY_FIELDS[b.shape].concat(place).map(([k, n, t]) => field(n, `<input type="text" inputmode="decimal" id="fped-3d-${k}" value="${esc(b[k])}">`, t)).join("")
+      + (b.shape === "none" ? "" : field("Colour", `<select id="fped-3dcol"><option value="">${b.shape === "pkg" ? "The package's own" : "The shape's own"}</option>${Object.entries(D.BODY_COLORS).map(([k, v]) => `<option value="${k}">${esc(v[0])}</option>`).join("")}</select>`))
+      + `<button type="button" class="btn" id="fped-3ddef" title="Put back the body the app suggests for these pads">Suggest a body</button>`;
+    $("fped-3dshape").value = b.shape;
+    const set = (el, fn) => { if (el) el.onchange = () => { snapshot(); fn(el.value); st.f.body3d = D.bodyTidy(st.f.body3d); bodyForm(true); bodyView(); check(); }; };
+    set($("fped-3dshape"), v => {
+      // a new shape sized from the pads and outline, where it stands kept
+      const was = st.f.body3d, d = D.defaultBody({ ...st.f, name: "LIB:" + st.f.name }, v);
+      st.f.body3d = Object.assign(d, was.shape === "pkg" || was.shape === "none" ? {} : { x: was.x, y: was.y, rot: was.rot }, { z: v === "pkg" ? 0 : was.z }, was.color ? { color: was.color } : {});
+    });
+    if ($("fped-3dpkg")) { $("fped-3dpkg").value = b.pkg; set($("fped-3dpkg"), v => { st.f.body3d.pkg = v; }); }
+    if ($("fped-3dcol")) { $("fped-3dcol").value = b.color || ""; set($("fped-3dcol"), v => { if (v) st.f.body3d.color = v; else delete st.f.body3d.color; }); }
+    BODY_FIELDS[b.shape].concat(place).forEach(([k]) => set($("fped-3d-" + k), v => { st.f.body3d[k] = num(v); }));
+    $("fped-3ddef").onclick = () => { snapshot(); st.f.body3d = defaultBody(st.f); bodyForm(true); bodyView(); check(); };
+  }
+  let view3d = null;
+  function bodyView() {
+    const cv = $("fped-3dview");
+    if (!cv || !D3() || typeof root.Viewer3D === "undefined" || !$("fped-3d").open) return;
+    if (!view3d) { view3d = new root.Viewer3D(cv, { spin: false }); if (!view3d.ok) { view3d = null; cv.hidden = true; return; } }
+    const f = result();
+    if (!f.pads.length) return;
+    const g = { key: "fped", ref: "", type: "part", members: [], fp: { ...f, name: "LIB:" + f.name, custom: true }, place: { x: 0, y: 0, rot: 0, side: "F" } };
+    try { view3d.setScene(D3().preview(g, { tubes: false }), null, true); } catch (e) { /* a half-typed footprint: keep the last picture */ }
   }
   function field(label, html, tip) { return `<label class="symed-f"${tip ? ` title="${esc(tip)}"` : ""}><span>${label}</span>${html}</label>`; }
   const mm = (id, v) => `<input type="text" inputmode="decimal" id="${id}" value="${r3(v)}">`;
@@ -283,7 +328,11 @@
     return out;
   }
   function check() { const why = problems(), all = why.concat(notes()); $("fped-msg").textContent = all.length ? "⚠ " + all.join(". ") + "." : ""; $("fped-ok").disabled = !!why.length; $("fped-ok").title = why.join(". "); return !why.length; }
-  function result() { const f = clone(st.f); root.PartLib.fpTidy(f); return f; }
+  function result() {
+    const f = clone(st.f); root.PartLib.fpTidy(f);
+    if (D3()) { const b = D3().bodyTidy(f.body3d); if (b) f.body3d = b; else delete f.body3d; }
+    return f;
+  }
   function done() { if (!check()) return; const r = result(), cb = onDone; close(); if (cb) cb(r); }
   function close() { $("fped-modal").hidden = true; st = null; onDone = null; }
   /** Edit a footprint (a copy); cb(footprint) on Save.
@@ -298,6 +347,7 @@
       def: { kind: "tht", shape: "circle", w: 1.6, h: 1.6, drill: 0.8, hole: 3.2 },
       pat: Object.assign({ kind: pk }, P.PATTERNS[pk], pk === "two" ? {} : { n: Math.max(pk === "dip" ? 4 : 2, f.pads.length + (f.pads.length % 2)) }) };
     adopt();
+    if (!f.body3d) f.body3d = defaultBody(f);
     delete st.pat.name;
     onDone = cb;
     $("fped-title").textContent = `Footprint${o && o.used > 1 ? `: ${o.used} parts use it` : ""}`;

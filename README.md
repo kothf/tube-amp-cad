@@ -380,6 +380,13 @@ model. *Parts library…* in the panel opens it.
   Pad, Hole, Line, Rectangle and Circle tools, a grid from 2.54 to 0.1 mm,
   typed coordinates, a table of the pads, Undo, zoom. A pin left without a
   pad is named; every part that uses the footprint follows an edit.
+- **3D body of a footprint:** the editor's *3D body* section gives a drawn or
+  KiCad footprint a body: a box, a lying cylinder (axial), a standing cylinder
+  (radial can), the silkscreen outline raised, or a built-in package's body
+  (TO-92, TO-220, DIP, SOIC, SOT-23, D²PAK, chips, cans…), moved, raised,
+  turned and coloured, with a small 3D preview. It is saved with the footprint
+  and used by the 3D view, STEP, the enclosure height check and the thermal
+  map. A KiCad footprint with none gets a box over its F.Fab outline.
 - **SPICE model:** *Model…* sets a maker's `.SUBCKT` or `.MODEL` on the
   part's own pins; the part is then simulated as written (see the SPICE part
   above). Without a model it is left out of the simulation.
