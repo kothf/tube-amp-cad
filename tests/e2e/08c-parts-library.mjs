@@ -338,4 +338,27 @@ import { fileURLToPath } from "node:url";
   check(true, "a file dropped on the dialog is added");
   await cad.click("#plib-close");
   await cad.evaluate(() => TubeCAD.library.clear());
+
+  // Copy to My library: a built-in transistor from the inspector, then the part switched to the copy: the same answer
+  await cad.evaluate(() => { window.confirm = () => true; return TubeCAD.openExample(TubeCAD.EXAMPLES.find(e => /^01-/.test(e.file))); });
+  const simDone = () => cad.evaluate(async () => { const S = TubeCAD.state, t0 = performance.now(); await new Promise(q => setTimeout(q, 300)); while ((S.sim.busy || S.sim.pending || !S.sim.result) && performance.now() - t0 < 20000) await new Promise(q => setTimeout(q, 30)); });
+  await simDone();
+  const before = await cad.evaluate(() => { const S = TubeCAD.state, q = S.comps.find(c => c.type === "npn"); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(q.id); TubeCAD.updateInspector(); return { id: q.id, model: q.params.model, nodes: Array.from(S.sim.result.dc.nodes) }; });
+  await cad.click("#btn-lib-copy");
+  const lp = await cad.evaluate(() => { const p = TubeCAD.library.get().parts[0]; return p && { name: p.name, fp: p.fp, model: p.spice && p.spice.sub, g: p.units[0].g.length, body: (TubeCAD.library.get().footprints[p.fp] || {}).body3d }; });
+  check(lp && lp.name === before.model && lp.fp === "TO-92-EBC" && lp.model === before.model && lp.g > 3 && lp.body && lp.body.pkg === "TO-92-EBC", `Copy to My library: ${before.model} with the built-in drawing, its model, footprint and 3D body (${JSON.stringify(lp)})`);
+  await cad.evaluate(() => { TubeCAD.state.sim.result = null; });
+  await cad.click("#btn-lib-use");
+  await simDone();
+  const after = await cad.evaluate(id => { const S = TubeCAD.state, q = S.comps.find(c => c.id === id); return { type: q.type, nodes: Array.from(S.sim.result.dc.nodes) }; }, before.id);
+  const n = Math.min(before.nodes.length, after.nodes.length, 8), worst = Math.max(...before.nodes.slice(0, n).map((v, k) => Math.abs(v - after.nodes[k])));
+  check(after.type === "part" && worst < 1e-4, `Use the copy here: the part is the library copy and the circuit's voltages are the same (worst ${worst.toExponential(1)} V)`);
+  // the parts panel's preview has the same button
+  await cad.evaluate(() => TubeCAD.library.clear());
+  await cad.fill("#pal-search", "2N3906");
+  await cad.hover(".pal-item:visible >> nth=0");
+  await cad.click("#pal-copy");
+  check(await cad.evaluate(() => TubeCAD.library.get().parts.some(p => p.name === "2N3906" && /PNP/.test(p.spice.text))), "the parts panel's preview copies a part to My library too");
+  await cad.fill("#pal-search", "");
+  await cad.evaluate(() => TubeCAD.library.clear());
 }

@@ -119,6 +119,9 @@
     const u = Math.min(Math.max(1, unit || 1), part.units.length), fp = part.fp && lib.footprints[part.fp];
     const p = { name: part.name, value: part.name, prefix: part.prefix || "U", desc: part.desc || "", lib: part.id, unit: u, units: part.units.length, syms: clone(part.units), fp: fp ? Object.assign(clone(fp), { name: part.fp }) : null, text: "", sub: "", map: [] };
     if (part.datasheet) p.datasheet = part.datasheet;
+    if (part.rating) p.rating = part.rating;
+    // fields the part comes with (a copied transistor's case and Ptot for its Cooling)
+    if (part.set && typeof part.set === "object") Object.entries(part.set).forEach(([k, v]) => { if (p[k] === undefined) p[k] = v; });
     // the model and its pins as the library has them, whatever the unit: LIB.part works out the unit's share (unitMaps)
     if (part.spice && part.spice.text) { p.text = part.spice.text; p.sub = part.spice.sub; p.map = clone(part.spice.map || []); }
     return p;
@@ -319,6 +322,77 @@
     return { part, fp };
   }
 
+  // ---- a built-in part copied into the library (Copy to My library) ----
+  // the built-in tables a copy can be made from, the SPICE device each becomes and its pins in the model's order
+  const COPYABLE = { npn: ["BJTS", ["C", "B", "E"]], pnp: ["BJTS", ["C", "B", "E"]], nmos: ["MOSFETS", ["D", "G", "S"]], pmos: ["MOSFETS", ["D", "G", "S"]], njf: ["JFETS", ["D", "G", "S"]], pjf: ["JFETS", ["D", "G", "S"]], diode: ["DIODES", ["A", "K"]] };
+  const canCopy = (type, model) => !!(COPYABLE[type] && root.CadLib && root.CadLib[COPYABLE[type][0]] && root.CadLib[COPYABLE[type][0]][model]);
+  // a number as a SPICE model line has it: six figures, small and large ones with an exponent
+  const g6 = v => { const x = +v; return !x ? "0" : Math.abs(x) < 1e-3 || Math.abs(x) >= 1e6 ? x.toExponential(5).replace(/\.?0+e/, "e").replace("e+", "e") : String(+x.toPrecision(6)); };
+  /** The SPICE model a built-in part is simulated by, as a .MODEL line of its own name: the same law and
+      numbers the app's part has (junction capacitances constant, M=0, as the app's are; a germanium
+      part's leakage as ICBO, a parameter of this app's that other simulators ignore). null if none. */
+  function builtInModel(type, model) {
+    if (!canCopy(type, model)) return null;
+    const L = root.CadLib, m = L[COPYABLE[type][0]][model], name = String(model).replace(/[^A-Za-z0-9_.-]/g, "_");
+    let line;
+    if (type === "npn" || type === "pnp") {
+      line = `.MODEL ${name} ${type.toUpperCase()}(IS=${g6(m.is)} BF=${g6(m.bf)} BR=${g6(m.br || 1)} NF=1 VAF=${g6(m.vaf || 1e9)}${m.ikf ? ` IKF=${g6(m.ikf)}` : ""}${m.rb ? ` RB=${g6(m.rb)}` : ""}${m.re ? ` RE=${g6(m.re)}` : ""}`
+        + ` CJE=${g6(m.cbe || 0)} MJE=0 CJC=${g6(m.cbc || 0)} MJC=0 XTI=3 EG=${m.ge ? 0.67 : 1.11} XTB=1.5 TNOM=27${m.icbo ? ` ICBO=${g6(m.icbo)}` : ""})`;
+    } else if (type === "nmos" || type === "pmos") {
+      // the app's power MOSFET: the square law, a body diode (IS 1e-12, N 1.5), Cgs and Cgd constant: LTspice's VDMOS
+      line = `.MODEL ${name} VDMOS(${type === "pmos" ? "pchan " : ""}VTO=${g6(m.vto)} KP=${g6(m.kp)} LAMBDA=${g6(m.lambda || 0)} IS=1e-12 N=1.5 CGS=${g6(m.cgs || 0)} CGDMIN=${g6(m.cgd || 0)} KSUBTHRES=0.05)`;
+    } else if (type === "njf" || type === "pjf") {
+      line = `.MODEL ${name} ${type.toUpperCase()}(VTO=${g6(-Math.abs(m.vto))} BETA=${g6(m.beta)} LAMBDA=${g6(m.lambda || 0)} IS=${g6(m.is)} CGS=${g6(m.cgs || 0)} CGD=${g6(m.cgd || 0)} M=0)`;
+    } else {
+      line = `.MODEL ${name} D(IS=${g6(m.is)} N=${g6(m.n || 1)} RS=${g6(m.rs || 0)}${m.tt ? ` TT=${g6(m.tt)}` : ""} CJO=${g6(m.cj || 0)} M=0)`;
+    }
+    const note = `* ${model}: Tube Amp CAD's built-in part as a SPICE model (${m.use || ""})${m.icbo ? "; ICBO is the app's germanium leakage" : ""}`;
+    return { text: note + "\n" + line + "\n", sub: name };
+  }
+  /** A built-in transistor, MOSFET, JFET or diode as a library part: the same drawing (sym, the CAD's own,
+      else its pins on an empty drawing), the model above on its pins, its ratings, the board footprint
+      it gets (pads by its pinout) and that package's 3D body. Returns { part, fp } or null. */
+  function fromBuiltIn(type, model, sym, lib) {
+    if (!canCopy(type, model)) return null;
+    const L = root.CadLib, B = root.BoardCore, def = L.LIB[type], m = L[COPYABLE[type][0]][model], mod = builtInModel(type, model);
+    const pins = def.pins({ type, params: Object.assign({}, def.defaults, { model }) });
+    // the board footprint the built-in part takes first, its pads named by the pins
+    let fp = null, fpName = "", padOf = null;
+    if (B) {
+      const g = B.physicalParts({ parts: [{ id: "x", type, label: "X1", params: Object.assign({}, def.defaults, { model }), pins: pins.map((q, i) => ({ id: q.id, net: i + 1 })) }] })[0];
+      fpName = g && g.options && g.options[0];
+      const f = fpName && B.footprint(fpName, pins.map(q => q.id));
+      if (f) {
+        const silk = [];
+        (f.silk || []).forEach(t => {
+          if (t.t === "line") silk.push({ t: "line", x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2 });
+          else if (t.t === "circle") silk.push({ t: "circle", x: t.x, y: t.y, r: t.r });
+          else if (t.t === "rect") silk.push({ t: "line", x1: t.x, y1: t.y, x2: t.x + t.w, y2: t.y }, { t: "line", x1: t.x + t.w, y1: t.y, x2: t.x + t.w, y2: t.y + t.h }, { t: "line", x1: t.x + t.w, y1: t.y + t.h, x2: t.x, y2: t.y + t.h }, { t: "line", x1: t.x, y1: t.y + t.h, x2: t.x, y2: t.y });
+        });
+        fp = { name: fpName, title: `${f.title || fpName} (copied from the built-in ${model})`, pads: f.pads.map(q => Object.assign({ num: String(q.num), name: String(q.num), x: q.x, y: q.y, shape: q.shape, w: q.w, h: q.h, drill: q.drill || 0 }, q.smd ? { smd: true } : {})), silk, holes: (f.holes || []).map(h => ({ x: h.x, y: h.y, d: h.d })), box: [0, 0, 0, 0] };
+        fpTidy(fp);
+        fp.body3d = { shape: "pkg", pkg: fpName, x: 0, y: 0, z: 0, rot: 0 };
+        // a name another footprint of the library already has, with other pads: the copy gets its own
+        const same = (a, b) => JSON.stringify(a.pads) === JSON.stringify(b.pads);
+        if (lib && lib.footprints[fp.name] && !same(lib.footprints[fp.name], fp)) { let k = 2; while (lib.footprints[`${fpName}-${k}`] && !same(lib.footprints[`${fpName}-${k}`], fp)) k++; fp.name = `${fpName}-${k}`; }
+        // each pin on the pad the built-in footprint gives it
+        padOf = id => { const q = f.pads.find(x => x.name === id); return q ? String(q.num) : ""; };
+      }
+    }
+    const num = id => (padOf && padOf(id)) || String(pins.findIndex(q => q.id === id) + 1);
+    const unit = sym ? clone(sym) : { g: [], pins: [], box: [0, 0, 0, 0], pn: 0, pm: 0 };
+    unit.pins = pins.map(q => ({ id: q.id, num: num(q.id), name: q.name || q.id, x: q.x, y: q.y, a: 0, l: 0 }));
+    unit.pn = 0; unit.pm = 0;
+    tidy(unit);
+    const rating = type === "diode" ? `${m.v} V, ${m.i} A, ${m.pkg}` : L.semiRating(m);
+    const part = { id: "", name: String(model), prefix: def.prefix || "VT", desc: `${m.use ? m.use[0].toUpperCase() + m.use.slice(1) + ". " : ""}${rating}. Copied from the built-in ${model}.`, keywords: `${type} ${model}`, datasheet: "", units: [unit], fp: fp ? fp.name : "", fpHint: "", filters: "", src: `the built-in ${model}`,
+      // the model's pins (C B E, D G S, A K) on the drawing's: tidy() named those by their pad numbers
+      spice: { text: mod.text, sub: mod.sub, map: COPYABLE[type][1].map(r => { const k = pins.findIndex(q => q.id === r); return k >= 0 ? unit.pins[k].id : ""; }) }, rating, from: { type, model } };
+    // a BJT's case and Ptot for self-heating (the Cooling field), as the built-in part takes them
+    if (type === "npn" || type === "pnp") part.set = { tpkg: m.pkg, ptot: m.p };
+    return { part, fp };
+  }
+
   /** The library files inside a ZIP (stored or deflated): [{ name, text }] of every .kicad_sym, .kicad_mod and
       .tubelib in it, whatever its folder (a whole KiCad library, a .pretty folder, a maker's download) */
   const LIB_FILE = /\.(kicad_sym|kicad_mod|tubelib)$/i;
@@ -358,5 +432,5 @@
   }
   function fromFile(text) { let d; try { d = JSON.parse(text); } catch (e) { throw new Error("not a parts library of this app"); } return check(d); }
 
-  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, unitMaps, differs, refreshed, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS, opampPackage, unzip, LIB_FILE };
+  root.PartLib = { FORMAT, VERSION, empty, symbols, footprint, fits, best, unmatched, add, remove, unused, params, unitMaps, differs, refreshed, toFile, fromFile, check, prefixOf, glob, bounds, tidy, boxSymbol, pinList, pinEnd, blank, SIDE_ANGLE, ANGLE_SIDE, fpTidy, fpPattern, fpFor, fpStore, PATTERNS, opampPackage, unzip, LIB_FILE, COPYABLE, canCopy, builtInModel, fromBuiltIn };
 })(typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : globalThis);

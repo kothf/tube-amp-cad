@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.245.0] - 2026-11-22
+## [3.246.0] - 2026-11-22
 
 Net labels: name a wire, join wires by name on a sheet.
 
@@ -26,6 +26,28 @@ Net labels: name a wire, join wires by name on a sheet.
 - **KiCad import** brings local labels in as net labels (those a bus carries to another sheet, or
   that share a name with a hierarchical label, stay connectors). Checked against kicad-cli on KiCad's
   demo projects: the same results as before.
+
+## [3.245.0] - 2026-11-22
+
+Copy a built-in part to My library.
+
+### Added
+- **Copy to My library** for every built-in transistor, MOSFET, JFET and
+  diode (113 parts), in the part's properties and on the parts panel's
+  preview card. The copy keeps the built-in drawing and pin places, gets a
+  SPICE `.MODEL` written from the app's own numbers (BJT with XTI/EG/XTB, so
+  Temperature and Cooling work; germanium takes its 90 °C limit), the
+  ratings, the built-in footprint (pins on their pads) and its 3D body.
+  **Use the copy here** puts it in the selected part's place.
+- tests/copypart.test.mjs: every copy simulates as the built-in part, DC
+  within 0.01 % and AC within 0.01 dB from 100 Hz to 10 MHz, hot (60 °C) and
+  self-heating too.
+
+### Changed
+- SPICE VDMOS models read `KSUBTHRES` (the threshold knee's smoothing); BJT
+  models read the app's `ICBO`.
+- A footprint's 3D body may be any built-in package the app draws.
+- The SPICE part's Case list has TO-18, TO-5, TO-220F, TO-3P, TO-1, MP and SOT-9.
 
 ## [3.244.0] - 2026-11-22
 

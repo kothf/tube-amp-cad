@@ -2110,13 +2110,37 @@
     if (n) { S.topo = null; commit(); updateInspector(); }
     return n;
   }
+  // Copy to My library: a built-in transistor, MOSFET, JFET or diode as a library part (part-lib.js fromBuiltIn),
+  // its drawing the CAD's own; returns the library part's id
+  function builtInSymbol(type, model) {
+    if (!window.KicadExport) return null;
+    const rec = new KicadExport.ShapeCanvas([1, 0, 0, 1, 0, 0]), c = { id: "__copy", type, label: "", x: 0, y: 0, rot: 0, params: Object.assign({}, LIB[type].defaults, { model }) };
+    const keep = ctx; ctx = rec; S.printing = true;
+    try { drawBody(c, false, false); } finally { ctx = keep; S.printing = false; }
+    const r1 = v => Math.round(v * 10) / 10, g = [];
+    rec.shapes.forEach(sh => { if (sh.t === "circle") g.push(["c", sh.fill ? 1 : 0, r1(sh.x), r1(sh.y), r1(sh.r)]); else g.push(["p", sh.fill ? 1 : 0, ...sh.pts.flat().map(r1)]); });
+    rec.texts.forEach(t => g.push(["t", r1(t.x), r1(t.y), r1(t.size), t.text]));
+    return { g, pins: [], box: [0, 0, 0, 0], pn: 0, pm: 0 };
+  }
+  const copiedTo = new Map();   // a sheet part's id -> the library copy made of it
+  function copyToLibrary(type, model) {
+    const made = PartLib.fromBuiltIn(type, model, builtInSymbol(type, model), library.get());
+    if (!made) { setStatus("warn", `${model}: this part cannot be copied`); return null; }
+    let name = made.part.name;
+    // a library part of that name already: the copy is "2N3904 (2)"
+    for (let k = 2; library.get().parts.some(p => p.name.toLowerCase() === name.toLowerCase()); k++) name = `${made.part.name} (${k})`;
+    made.part.name = name;
+    const id = library.addPart(made.part, made.fp);
+    setStatus("ok", `${model} is in My library as ${name}: change its drawing, footprint, 3D body or model in Parts library…`);
+    return id;
+  }
   function buildPalette() {
     if (palette) { palette.rebuild(); return; }
     palette = CadPalette({
       host: document.getElementById("palette"),
       thumb: partThumb,
       pick: (e, el) => startPlacing(e.type, e.params, el),
-      library: () => library.entries(), openLibrary: () => library.open(), addPart: pn => addPart.open(pn),
+      library: () => library.entries(), openLibrary: () => library.open(), addPart: pn => addPart.open(pn), copyToLibrary,
       dragEnd: dropped => { if (!dropped && S.placing) { S.placing = null; setTool("select"); } }
     });
     // a part dragged from the panel: its ghost follows the pointer over the sheet, the drop places it
@@ -2300,6 +2324,28 @@
     // what the part library adds for this kind of part: a line of text, then a panel (cad-components.js)
     const info = def.info && def.info(c);
     if (info) { const p = document.createElement("p"); p.className = "insp-help"; p.textContent = info; host.appendChild(p); }
+    // a built-in transistor, MOSFET, JFET or diode: a copy of it into My library, and then this part on the copy
+    if (window.PartLib && PartLib.canCopy(c.type, c.params.model)) {
+      const p = document.createElement("p"); p.className = "insp-help"; p.id = "insp-lib-copy";
+      const b = document.createElement("button"); b.className = "btn"; b.id = "btn-lib-copy"; b.textContent = "Copy to My library";
+      b.title = "A copy of this part in My library: the same drawing, a SPICE model of the same numbers, its footprint and 3D body, to change as you like. This part stays as it is until you switch it.";
+      b.onclick = () => { const id = copyToLibrary(c.type, c.params.model); if (id) { copiedTo.set(c.id, id); updateInspector(); } };
+      // copied already (the library's change redraws this panel): the copy's name and the switch to it
+      const cid = copiedTo.get(c.id), cp = cid && library.part(cid);
+      if (cp) {
+        p.textContent = `Copied to My library as ${cp.name}. `;
+        const u = document.createElement("button"); u.className = "btn"; u.id = "btn-lib-use"; u.textContent = "Use the copy here";
+        u.title = "Put the library copy in this part's place: same label, same wires (its pins are where the built-in part's are)";
+        u.onclick = () => {
+          const prm = library.paramsOf(cid); if (!prm) return;
+          // the sheet's own fields (temperature, cooling, part number) go with it
+          ["temp", "thermal", "hsr", "partno"].forEach(k => { if (c.params[k] !== undefined && c.params[k] !== "") prm[k] = c.params[k]; });
+          c.type = "part"; c.params = prm; copiedTo.delete(c.id); commit(); updateInspector(); render();
+          setStatus("ok", `${c.label} now uses ${prm.name} from My library`);
+        };
+        p.appendChild(u); host.appendChild(p);
+      } else { p.appendChild(b); host.appendChild(p); }
+    }
     // a part from the user's library whose library part has changed since it was placed
     const old = c.type === "part" ? library.differs(c.params) : null;
     if (old && old.length) {

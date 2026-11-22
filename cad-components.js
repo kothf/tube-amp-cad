@@ -2096,7 +2096,7 @@
   const SPICE_THERM_FIELDS = [
     { key: "temp", label: "Temperature", unit: "°C", kind: "number", min: -40, max: 150, dflt: 25, when: c => !!spiceBjt(c) },
     { key: "thermal", label: "Cooling", kind: "select", options: [["", "Fixed temperature"], ["air", "Self-heating, free air"], ["hs1", "Self-heating, heatsink 1"], ["hs2", "Self-heating, heatsink 2"], ["hs3", "Self-heating, heatsink 3"], ["hs4", "Self-heating, heatsink 4"]], when: c => spiceBjt(c) === "lone" },
-    { key: "tpkg", label: "Case", kind: "select", options: [["TO-92", "TO-92"], ["TO-126", "TO-126"], ["TO-220", "TO-220"], ["TO-247", "TO-247"], ["TO-264", "TO-264"], ["TO-3", "TO-3"]], when: c => spiceBjt(c) === "lone" && !!c.params.thermal },
+    { key: "tpkg", label: "Case", kind: "select", options: [["TO-92", "TO-92"], ["TO-18", "TO-18"], ["TO-5", "TO-5"], ["TO-126", "TO-126"], ["TO-220", "TO-220"], ["TO-220F", "TO-220F"], ["TO-247", "TO-247"], ["TO-3P", "TO-3P"], ["TO-264", "TO-264"], ["TO-3", "TO-3"], ["TO-1", "TO-1"], ["MP", "MP"], ["SOT-9", "SOT-9"]], when: c => spiceBjt(c) === "lone" && !!c.params.thermal },
     { key: "ptot", label: "Ptot", unit: "W", kind: "number", min: 0.05, max: 1000, dflt: 0.625, when: c => spiceBjt(c) === "lone" && !!c.params.thermal },
     { key: "hsr", label: "Heatsink Rth", unit: "°C/W", kind: "number", min: 0.05, max: 100, dflt: 1.5, when: c => spiceBjt(c) === "lone" && /^hs/.test(c.params.thermal || "") }];
   // SN.build's temperature and self-heating for a SPICE part (nothing when it is at 25 °C and fixed)
@@ -2105,7 +2105,9 @@
     const ta = isFinite(p.temp) && p.temp !== "" && p.temp !== null ? +p.temp : 25, o = {};
     if (ta !== 25) o.temp = ta;
     if (kind === "lone" && p.thermal) {
-      const th = bjtThermal({ p: isFinite(p.ptot) && +p.ptot > 0 ? +p.ptot : 0.625, pkg: p.tpkg || "TO-92" });
+      // a germanium model (EG under 0.8 eV) takes germanium's 90 °C junction limit, as the built-in parts do
+      let ge = false; try { const b = root.SpiceNet.flat(p.text, p.sub).els.find(e => e.kind === "BJT"); ge = !!(b && b.tdata && b.tdata.eg < 0.8); } catch (e) { /* no model: silicon */ }
+      const th = bjtThermal({ p: isFinite(p.ptot) && +p.ptot > 0 ? +p.ptot : 0.625, pkg: p.tpkg || "TO-92", ge });
       o.temp = ta; o.therm = { ta, rjc: th.rjc, rca: th.rca, cc: th.cc, tjmax: th.tjmax, sink: /^hs/.test(p.thermal) ? p.thermal : "", rsa: isFinite(p.hsr) && p.hsr > 0 ? +p.hsr : 1.5, cs: 100 };
     }
     return o;
@@ -3607,7 +3609,7 @@
         { key: "model", label: "SPICE model", kind: "spice", wide: true, when: c => (c.params.syms || []).length <= 1 }].concat(SPICE_THERM_FIELDS),
       info: c => {
         const p = c.params, SN = root.SpiceNet, fp = p.fp ? `Footprint ${p.fp.name} (${p.fp.pads.length} pads).` : "No footprint of its own: the board gives it a row of pads; set one in the parts library.";
-        const head = `${p.name || "A part"} from your parts library${p.desc ? ": " + p.desc : ""}. ${fp} `;
+        const head = `${p.name || "A part"} from your parts library${p.desc ? ": " + p.desc : ""}. ${p.rating ? `Rated ${p.rating}. ` : ""}${fp} `;
         const many = (p.syms || []).length > 1, units = many ? "The units of one package share the designator (DA1.1, DA1.2). " : "";
         const m = partModel(c);
         if (many && !p.text) return head + units + "The part has no SPICE model, so it is left out of the simulation: set one in the parts library.";
