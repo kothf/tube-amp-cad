@@ -2447,7 +2447,7 @@
         u.onclick = () => {
           const prm = library.paramsOf(cid); if (!prm) return;
           // the sheet's own fields (temperature, cooling, part number) go with it
-          ["temp", "thermal", "hsr", "partno"].forEach(k => { if (c.params[k] !== undefined && c.params[k] !== "") prm[k] = c.params[k]; });
+          ["temp", "thermal", "hsr", "partno", "lcsc"].forEach(k => { if (c.params[k] !== undefined && c.params[k] !== "") prm[k] = c.params[k]; });
           c.type = "part"; c.params = prm; copiedTo.delete(c.id); commit(); updateInspector(); render();
           setStatus("ok", `${c.label} now uses ${prm.name} from My library`);
         };
@@ -2472,6 +2472,10 @@
       // a part with its own maker's number (an XT connector's order code) shows it until another is typed
       if (def.partNo && def.partNo(c)) { pnIn.placeholder = def.partNo(c); pnIn.title = "The maker's order code goes to the BOM unless you type another"; }
       host.appendChild(row("Part number (BOM)", pnIn));
+      // JLCPCB's stock number: the board maker's assembly BOM (Board ▾ Export → For the board maker…)
+      const lcIn = input("text", c.params.lcsc || "", v => { v = v.trim().toUpperCase(); if (v) c.params.lcsc = v; else delete c.params.lcsc; commit(); updateInspector(); });
+      lcIn.placeholder = "C…"; lcIn.title = "JLCPCB's stock number (C25804, from jlcpcb.com/parts or lcsc.com): the board maker export puts it in JLCPCB's assembly BOM so it takes exactly this part";
+      host.appendChild(row("LCSC #", lcIn));
       // what the number says the real part is: Board Design takes its footprint and size (mpn.js)
       const pn = window.PartNo && PartNo.resolve(c.params, c.type);
       if (pn) { const p = document.createElement("p"); p.className = "insp-help" + (pn.warn.length ? " warn" : pn.known ? " ok" : ""); p.textContent = PartNo.describe(pn) + pn.warn.map(w => " · " + w).join(""); host.appendChild(p); }

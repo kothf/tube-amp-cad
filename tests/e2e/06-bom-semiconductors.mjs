@@ -44,13 +44,17 @@ import { readFile } from "node:fs/promises";
 
   await cad.keyboard.press("Escape"); await cad.locator("#cad").focus(); await cad.keyboard.press("b");
   check(await cad.isVisible("#bom") && (await cad.locator("#bom-table tbody tr").count()) === bom.rows.length, "B opens the BOM panel under the schematic with every line");
-  const inp = cad.locator("#bom-table tr", { hasText: "R1-R4" }).locator("input");
+  const inp = cad.locator("#bom-table tr", { hasText: "R1-R4" }).locator("input:not(.bom-lcsc)");
   await inp.fill("Vishay MRS25 100K"); await inp.press("Enter");
   const pn = await cad.evaluate(() => TubeCAD.state.comps.filter(c => c.params.partno === "Vishay MRS25 100K").map(c => c.label).sort().join());
   check(pn === "R1,R2,R3,R4", `a part number typed in the BOM is stored on each part of the line (${pn})`);
+  const lc = cad.locator("#bom-table tr", { hasText: "R1-R4" }).locator("input.bom-lcsc");
+  await lc.fill("c25803"); await lc.press("Enter");
+  const lcsc = await cad.evaluate(() => TubeCAD.state.comps.filter(c => c.params.lcsc === "C25803").map(c => c.label).sort().join());
+  check(lcsc === "R1,R2,R3,R4" && await cad.evaluate(() => BomLib.COLUMNS.some(c => c.key === "lcsc")), `the BOM's LCSC # cell stores JLCPCB's number on each part of the line, in capitals (${lcsc})`);
   {
     // a maker's number the app knows: the Package column says what it is, amber where it disagrees
-    const typeNo = async (hasText, v) => { const i = cad.locator("#bom-table tr", { hasText }).locator("input"); await i.fill(v); await i.press("Enter"); };
+    const typeNo = async (hasText, v) => { const i = cad.locator("#bom-table tr", { hasText }).locator("input:not(.bom-lcsc)"); await i.fill(v); await i.press("Enter"); };
     await typeNo("100µF", "UKW1H101MPD"); await typeNo("R5, R7", "MFR-25FBF52-1K5");
     const cell = t => cad.locator("#bom-table tr", { hasText: t }).locator("td.bom-pkg");
     const r5 = await cell("R5, R7").textContent(), warn = await cell("R5, R7").evaluate(td => td.classList.contains("warn"));
@@ -232,7 +236,7 @@ import { readFile } from "node:fs/promises";
       const v0 = await vOf();
       await cad.locator("#inspector .row", { hasText: "Polarity" }).locator("select").selectOption("-");
       const v1 = await vOf(), shown = await cad.locator("#inspector .row", { hasText: "Voltage" }).locator("input").inputValue();
-      const volt = cad.locator("#inspector .row", { hasText: "Voltage" }).locator("input");
+      const volt = cad.locator("#inspector .row", { hasText: "Voltage" }).locator("input:not(.bom-lcsc)");
       await volt.fill("20"); await volt.press("Enter");
       const v2 = await vOf();
       await cad.locator("#inspector .row", { hasText: "Polarity" }).locator("select").selectOption("+");

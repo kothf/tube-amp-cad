@@ -2167,6 +2167,50 @@
   }
   const fabMeta = () => ({ base: baseName(), title: (S.netlist && (S.netlist.title || S.netlist.docno)) || baseName(), version: appVersion() });
   function exportGerber() { if (!fabReady("Gerber files")) return; download(BoardFab.zip(BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta())), baseName() + "-gerbers.zip", "application/zip"); }
+  // For the board maker… (board-maker.js): maker, assembly and files, kept with the board; the check
+  // against the maker's limits is a list of lines, each one showing its spot on the board
+  const MK = () => BoardMaker;
+  function makerOpts() {
+    const f = S.board.fab || {}, smd = S.model && S.model.parts.some(g => g.fp && g.fp.smd && g.place);
+    return { maker: MK().MAKERS[f.maker] ? f.maker : "jlcpcb", asm: ["none", "smd", "all"].includes(f.asm) ? f.asm : smd ? "smd" : "none", files: Array.isArray(f.files) ? f.files.filter(k => MK().FILES.includes(k)) : MK().FILES.slice() };
+  }
+  function openMaker() {
+    if (!S.model) { msg("Open the Circuit CAD first: the board needs its parts"); return; }
+    const o = makerOpts();
+    $("mk-maker").value = o.maker; $("mk-asm").value = o.asm;
+    document.querySelectorAll("#mk-files [data-mk]").forEach(el => { el.checked = o.files.includes(el.dataset.mk); });
+    makerUi(); $("maker-modal").hidden = false;
+  }
+  function makerRead() {
+    S.board.fab = { maker: $("mk-maker").value, asm: $("mk-asm").value, files: [...document.querySelectorAll("#mk-files [data-mk]:checked")].map(el => el.dataset.mk) };
+    return S.board.fab;
+  }
+  let mkCheck = null;
+  function makerUi() {
+    const o = makerRead(), M = MK().MAKERS[o.maker], L = MK().layersOf(S.board), lim = MK().limitsOf(o.maker, L);
+    const parts = MK().assembled(S.board, S.model, o.asm), lines = MK().bomLines(parts), noLcsc = o.maker === "jlcpcb" ? lines.filter(l => !l.lcsc).length : 0;
+    $("mk-note").textContent = `${M.note}.` + (o.asm === "none" ? "" : parts.length ? ` ${parts.length} part${parts.length > 1 ? "s" : ""} to assemble in ${lines.length} BOM line${lines.length > 1 ? "s" : ""}${noLcsc ? `, ${noLcsc} without an LCSC # (JLCPCB then matches by value and package; type the numbers in the schematic's BOM)` : ""}.` : " No part on the board is of that kind.");
+    mkCheck = MK().check(S.board, S.model, o.maker, S.drc);
+    const bad = mkCheck.items.filter(i => i.bad).length, warn = mkCheck.items.length - bad;
+    $("mk-sum").textContent = !lim ? "Generic: no maker's limits to check against; the board check holds it to your design rules." :
+      `${M.name}, ${L} layers: tracks and gaps from ${lim.track} mm, drills ${lim.drill}–${lim.maxDrill} mm, annular ring ${lim.ring} mm, holes ${lim.padHoleGap} mm apart, board up to ${lim.max[0]} × ${lim.max[1]} mm. ` +
+      (mkCheck.items.length ? `${bad ? `${bad} problem${bad > 1 ? "s" : ""}` : ""}${bad && warn ? " and " : ""}${warn ? `${warn} note${warn > 1 ? "s" : ""}` : ""}: click one to see it on the board.` : "The board is within them.");
+    $("mk-check").innerHTML = mkCheck.items.map((it, i) => `<button class="drc${it.bad ? "" : " check"}" data-i="${i}">${esc(it.msg)}</button>`).join("");
+    $("mk-check").querySelectorAll(".drc").forEach(b => { b.onclick = () => { const it = mkCheck.items[+b.dataset.i]; if (it.x === undefined) return; if (S.view.scale < 8) S.view.scale = 8; centerOn(it.x, it.y); }; });
+    $("mk-rules").disabled = !lim; $("mk-ok").disabled = !o.files.length;
+  }
+  function makerRules() {
+    const o = makerRead(), done = MK().useLimits(S.board.rules, o.maker, MK().layersOf(S.board));
+    if (done.length) { commit(`Design rules raised to ${MK().MAKERS[o.maker].name}'s limits: ${done.join(", ")}`); analyse(); } else msg(`The design rules are already within ${MK().MAKERS[o.maker].name}'s limits`);
+    makerUi();
+  }
+  function exportMaker() {
+    const o = makerRead();
+    if (!fabReady("Board maker files")) return;
+    const files = MK().makerFiles(S.board, S.model, { ...o, meta: fabMeta(), fills: S.fills, pdf: () => BoardFab.pdfPages(S.board, S.model, S.fills, ["assembly"], fabMeta()) });
+    $("maker-modal").hidden = true;
+    download(BoardFab.zip(files), `${baseName()}-${MK().MAKERS[o.maker].name}.zip`, "application/zip");
+  }
   // Print (Ctrl+P): the pages ticked in the Print dialog, through the browser's print dialog
   // (PdfExport.print), or saved as one PDF
   const PRINT_KEY = "tubecad_board_print";
@@ -2275,6 +2319,9 @@
     const list = $("export-menu").querySelector(".menu-list");
     $("ex-svg").onclick = () => { list.hidden = true; download(svgDoc(["F.Cu", "B.Cu", "F.SilkS", "Edge.Cuts"], false), baseName() + "-board.svg", "image/svg+xml"); };
     $("ex-gerber").onclick = () => { list.hidden = true; exportGerber(); };
+    $("ex-maker").onclick = () => { list.hidden = true; openMaker(); };
+    $("mk-maker").onchange = $("mk-asm").onchange = makerUi; document.querySelectorAll("#mk-files [data-mk]").forEach(el => { el.onchange = makerUi; });
+    $("mk-rules").onclick = makerRules; $("mk-ok").onclick = exportMaker; $("mk-cancel").onclick = () => { $("maker-modal").hidden = true; };
     panelUi.init();
     $("ex-step").onclick = () => { list.hidden = true; exportStep(); };
     $("ex-kicad").onclick = () => { list.hidden = true; exportKicad(); };
@@ -2311,7 +2358,7 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, thermal, thermalResult: () => TH.res, thermalPackage, exportThermal, thermal2d, thermalCheck: () => { clearTimeout(thTimer); thermalNow(); return TH.chk; }, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, thermal, thermalResult: () => TH.res, thermalPackage, exportThermal, thermal2d, thermalCheck: () => { clearTimeout(thTimer); thermalNow(); return TH.chk; }, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, openMaker, makerFiles: () => BoardMaker.makerFiles(S.board, S.model, { ...makerOpts(), meta: fabMeta(), fills: S.fills }), makerCheck: () => mkCheck, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   const boot = () => { init(); early.splice(0).forEach(e => bc.onmessage(e)); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

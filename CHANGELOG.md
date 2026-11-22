@@ -6,6 +6,34 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.248.0] - 2026-11-22
+
+Files for the board maker.
+
+### Added
+- Board **Export ▾ → For the board maker…**: one ZIP for JLCPCB, PCBWay or a
+  generic maker. Assembly: none, surface-mount parts, or surface-mount and
+  through-hole. Files: Gerbers under the maker's names (Protel extensions for
+  JLCPCB), drill files, the maker's BOM (JLCPCB: Comment, Designator,
+  Footprint, LCSC Part #; PCBWay: its turnkey columns) and placement file, an
+  IPC-D-356 netlist (317/327 records, CUST 0 units, NNAME aliases for long
+  nets), fab notes and the assembly drawing. The choice is kept with the board.
+- Placement rotations turned to the maker's zero: the app's SOT-23, SOT-223,
+  SOT-89 and DPAK footprints a quarter turn to KiCad's IPC-7351 zero, then
+  JLCPCB's own correction by package. A part's **Placement turn** (board
+  inspector) adds its own.
+- A check against the maker's published limits for the layer count (track
+  width, drills, annular rings, via sizes, hole-to-hole spacing, board size,
+  layer count, the board check's clearance problems), each line showing its
+  spot; **Use maker's limits** raises design rules that are below them.
+- **LCSC #** field on every part (inspector and BOM column, CSV/XLSX too).
+- tests/boardmaker.test.mjs: file names and columns, rotations, IPC-D-356
+  read back pad by pad against the board, the check and Use maker's limits.
+
+### Fixed
+- The plain Gerber ZIP's placement file gave SOT-23, SOT-223, SOT-89 and DPAK
+  parts a quarter turn off KiCad's zero.
+
 ## [3.247.0] - 2026-11-22
 
 Buses: a group of signals under one name, drawn and carried between sheets. LTspice import.
