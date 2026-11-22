@@ -73,6 +73,7 @@ import { cad, check, toScreen } from "./harness.mjs";
   const w = await cad.evaluate(i => { const S = TubeCAD.state, T = TubeCAD.topo(), n = T.pinNet.get(i.r3 + ":1"); const ws = S.wires.filter(x => T.wireNet.get(x.id) === n && x.x1 === x.x2 && Math.abs(x.y2 - x.y1) >= 20); const x = ws[0]; return x && { x: x.x1, y: Math.min(x.y1, x.y2) + 10, n: S.comps.filter(c => c.type === "netlabel").length }; }, ids);
   const [wx, wy] = await toScreen(w.x, w.y);
   await cad.mouse.dblclick(wx, wy);
+  await cad.waitForFunction(n0 => TubeCAD.state.comps.filter(c => c.type === "netlabel").length > n0, w.n, { timeout: 3000 }).catch(() => {});
   const dbl = await cad.evaluate(([i, n0]) => { const S = TubeCAD.state, T = TubeCAD.topo(), ls = S.comps.filter(c => c.type === "netlabel"); const c = ls[ls.length - 1]; return { n: ls.length - n0, name: c.params.name, same: T.pinNet.get(c.id + ":1") === T.pinNet.get(i.r3 + ":1") }; }, [ids, w.n]);
   check(dbl.n === 1 && dbl.name === "MID" && dbl.same, `a double-click on a wire puts a label on it there, named after its net (${dbl.name})`);
 
