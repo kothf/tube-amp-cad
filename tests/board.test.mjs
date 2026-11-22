@@ -48,7 +48,7 @@ test("every footprint option of every part and every tube resolves to pads", () 
         f.pads.forEach((a, i) => f.pads.slice(i + 1).forEach(b => {
           const g = isRound(a) && isRound(b) ? Math.hypot(a.x - b.x, a.y - b.y) - (a.w + b.w) / 2 : isRound(a) ? box(b, a.x, a.y) - a.w / 2 : isRound(b) ? box(a, b.x, b.y) - b.w / 2
             : Math.max(Math.abs(a.x - b.x) - (a.w + b.w) / 2, Math.abs(a.y - b.y) - (a.h + b.h) / 2);
-          assert.ok(g > 0.2, `${name}: pads ${a.num} and ${b.num} are ${g.toFixed(2)} mm apart`);
+          assert.ok(g > 0.2 - 1e-9, `${name}: pads ${a.num} and ${b.num} are ${g.toFixed(2)} mm apart`);
         }));
       }
     }

@@ -127,8 +127,8 @@ test("the footprint library, project, net classes and custom rules", () => {
   const dru = K.rules(board, m, hv, nl);
   assert.match(dru, /^\(version 1\)/);
   assert.match(dru, /\(rule "IPC-2221 GND to B\+, 300 V"\s+\(constraint clearance \(min 1\.25mm\)\)/);
-  // the TO-92's pins are closer than the low-voltage clearance: a rule inside its courtyard
-  assert.match(dru, /\(rule "VT1 pin spacing, [^"]*"\s+\(constraint clearance \(min 0\.2\d*mm\)\)\s+\(condition "A\.insideCourtyard\('VT1'\)/);
+  // the TO-92's pins (0.2 mm apart, written rounded down) are closer than the low-voltage clearance: a rule inside its courtyard
+  assert.match(dru, /\(rule "VT1 pin spacing, [^"]*"\s+\(constraint clearance \(min 0\.(?:19|2)\d*mm\)\)\s+\(condition "A\.insideCourtyard\('VT1'\)/);
   assert.match(dru, /\(rule "VT1 rings on a 1\.27 mm pitch"/);
 });
 
