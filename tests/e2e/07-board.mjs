@@ -600,6 +600,32 @@ import { readFile } from "node:fs/promises";
   check(/gerbers\.zip$/.test(zipDl.suggestedFilename()) && zipBuf.slice(0, 2).toString() === "PK" && zipNames.some(n => /-B_Cu\.gbr$/.test(n)) && zipNames.some(n => /-PTH\.drl$/.test(n)) && /G36\*/.test(zipBuf.toString("latin1")),
     `Export → Gerber + drill files gives ${zipDl.suggestedFilename()} with the copper, mask, silkscreen, outline and drill files (the pour as a region)`);
   check(/-prints\.pdf$/.test(pdfDl.suggestedFilename()) && pdfBuf.slice(0, 4).toString() === "%PDF" && /\/Count 4/.test(pdfBuf.toString("latin1")), `Export → Print set gives a four-page PDF (${pdfDl.suggestedFilename()})`);
+  // For the board maker…: JLCPCB's names, the check's lines show their spot, Use maker's limits, the ZIP
+  {
+    await bd.click("#btn-export"); await bd.click("#ex-maker");
+    await bd.selectOption("#mk-maker", "jlcpcb");
+    const ui = await bd.evaluate(() => ({ sum: document.getElementById("mk-sum").textContent, note: document.getElementById("mk-note").textContent, n: document.querySelectorAll("#mk-check .drc").length }));
+    check(/JLCPCB, 2 layers: tracks and gaps from 0\.1 mm/.test(ui.sum) && /Protel/.test(ui.note), `For the board maker…: JLCPCB's limits for a 2-layer board and its file names (${ui.sum.slice(0, 90)}…)`);
+    // a track thinner than JLCPCB makes: a line in the check that shows it on the board
+    await bd.evaluate(() => { const S = BoardApp.state; S.board.tracks.push({ layer: "B.Cu", w: 0.05, pts: [[12, 12], [18, 12]] }); });
+    await bd.selectOption("#mk-maker", "pcbway"); await bd.selectOption("#mk-maker", "jlcpcb");
+    const before = await bd.evaluate(() => [BoardApp.state.view.ox, BoardApp.state.view.oy].join());
+    const line = bd.locator("#mk-check .drc", { hasText: "Track 0.05 mm" });
+    await line.click();
+    const moved = await bd.evaluate(() => [BoardApp.state.view.ox, BoardApp.state.view.oy].join());
+    check(await line.count() === 1 && moved !== before, "the check names a track thinner than JLCPCB makes, and its line shows the spot");
+    await bd.evaluate(() => { const S = BoardApp.state; S.board.tracks.pop(); S.board.rules.clearance = 0.08; });
+    await bd.selectOption("#mk-asm", "none");
+    await bd.click("#mk-rules");
+    check(await bd.evaluate(() => BoardApp.state.board.rules.clearance) === 0.1, "Use maker's limits raises a gap rule below JLCPCB's to 0.1 mm");
+    await bd.evaluate(() => { BoardApp.state.board.rules.clearance = 0.4; BoardApp.analyse(); });
+    bd.once("dialog", d => d.accept().catch(() => {}));
+    const [mk] = await Promise.all([bd.waitForEvent("download"), bd.click("#mk-ok")]);
+    const buf = await readFile(await mk.path()), names = [...buf.toString("latin1").matchAll(/[\w.-]+\.(?:GTL|GBL|GKO|drl|ipc|txt|pdf)/g)].map(m => m[0]);
+    const ipc = await bd.evaluate(() => { const S = BoardApp.state, r = BoardMaker.readIpc356(BoardMaker.ipc356(S.board, S.model, {})); return [r.filter(x => x.ref !== "VIA").length, S.model.pads.filter(p => BoardFab.placedParts(S.board, S.model).has(p.part)).length]; });
+    check(/-JLCPCB\.zip$/.test(mk.suggestedFilename()) && ["GTL", "GBL", "GKO", "ipc", "pdf"].every(e => names.some(n => n.endsWith("." + e))) && ipc[0] === ipc[1] && await bd.evaluate(() => BoardApp.state.board.fab.maker === "jlcpcb"),
+      `Export ZIP: ${mk.suggestedFilename()} with Protel-named Gerbers, the drill files, the IPC-D-356 netlist (${ipc[0]} pads of ${ipc[1]}), the assembly PDF; the choice is kept with the board`);
+  }
   // Panel: 2 × 2 copies with mouse bites, then this board's own Gerber ZIP added as a second board;
   // V-score refuses the mix; the panel ZIP holds the panel's files with the bites and tooling holes
   {

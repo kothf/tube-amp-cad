@@ -178,6 +178,9 @@
         h.appendChild(field("Y (mm)", +showY(bp.y).toFixed(3), v => { bp.y = showY(v); commit(); }));
         h.appendChild(field("Rotation", bp.rot || 0, v => { bp.rot = +v; commit(); }, [["0", "0°"], ["1", "90°"], ["2", "180°"], ["3", "270°"]]));
         h.appendChild(field("Side", bp.side || "F", v => { bp.side = v; commit(); }, [["F", "Top"], ["B", "Bottom (mirrored)"]]));
+        // for the assembly house: a turn added in its placement file, where its library draws this part another way round
+        const rf = field("Placement turn", String(+bp.rotFix || 0), v => { if (+v) bp.rotFix = +v; else delete bp.rotFix; commit(`${g.ref}: ${+v ? `turned ${v}° more` : "no extra turn"} in the placement file`); }, [["0", "None"], ["90", "+90°"], ["180", "180°"], ["270", "−90°"]]);
+        rf.title = "Added to this part's rotation in the placement file of For the board maker… (Export ▾), on top of the maker's own correction by package: for a part the assembly house's preview shows turned"; h.appendChild(rf);
         dimInfo();
         h.appendChild(lockField(bp));
         // star grounding: which ground return this part's ground pads belong to

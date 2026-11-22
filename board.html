@@ -58,6 +58,7 @@
     .drc { display: block; width: 100%; text-align: left; background: none; border: 0; border-left: 3px solid var(--bad); padding: 3px 6px; margin: 3px 0; cursor: pointer; font-size: 12px; color: var(--text); }
     .drc.check, .drc.unplaced { border-left-color: var(--warn); }
     .drc:hover { background: var(--panel2); }
+    .mk-check { max-height: 230px; overflow: auto; }
     .tools { display: flex; gap: 2px; }
     .tools .btn { padding: 5px 8px; }
     .layer { display: grid; grid-template-columns: 16px 14px 1fr auto auto; align-items: center; gap: 6px; font-size: 12px; padding: 3px 4px; border-radius: 5px; border: 1px solid transparent; }
@@ -400,6 +401,7 @@
     <div class="menu" id="export-menu">
       <button class="btn" id="btn-export" aria-haspopup="true">Export ▾</button>
       <div class="menu-list right" hidden>
+        <button class="menu-item" data-ico="layers" id="ex-maker" title="One ZIP for JLCPCB, PCBWay or any maker: Gerbers and drill under its names, its BOM and placement files with rotations turned to its zero, an IPC-D-356 netlist, and a check against its limits">For the board maker…<small>JLCPCB, PCBWay: files, assembly, check</small></button>
         <button class="menu-item" data-ico="print" id="ex-print">Print…<small>layers 1:1, toner transfer · Ctrl+P</small></button>
         <div class="menu-sep"></div>
         <button class="menu-item" data-ico="layers" id="ex-gerber">Gerber + drill files (ZIP)<small>for the board maker</small></button>
@@ -635,6 +637,35 @@
     </div>
   </div>
 
+  <div class="modal" id="maker-modal" hidden>
+    <div class="modal-box dlg" style="width: min(640px, 96vw)">
+      <div class="insp-title">For the board maker</div>
+      <div class="grid2">
+        <div>
+          <div class="row" title="Whose file names and columns, whose rotations and limits"><span>Maker</span><select id="mk-maker"><option value="generic">Generic (KiCad names)</option><option value="jlcpcb">JLCPCB</option><option value="pcbway">PCBWay</option></select></div>
+          <div class="row" title="Which parts the maker solders: the BOM and placement files list only these"><span>Assembly</span><select id="mk-asm"><option value="none">None: the bare board</option><option value="smd">Surface-mount parts</option><option value="all">Surface-mount and through-hole</option></select></div>
+          <p class="help" id="mk-note"></p>
+        </div>
+        <div>
+          <h3>Files</h3>
+          <div class="checks" id="mk-files" style="grid-template-columns:1fr 1fr">
+            <label><input type="checkbox" data-mk="gerber"> Gerbers</label>
+            <label><input type="checkbox" data-mk="drill"> Drill files</label>
+            <label title="The assembled parts, one line per value and package, with the part number and LCSC #"><input type="checkbox" data-mk="bom"> BOM</label>
+            <label title="Where each assembled part goes: centre, rotation, side"><input type="checkbox" data-mk="cpl"> Placement</label>
+            <label title="The netlist for the bare-board electrical test: every pad and via with its net"><input type="checkbox" data-mk="ipc"> IPC-D-356</label>
+            <label><input type="checkbox" data-mk="readme"> Fab notes</label>
+            <label><input type="checkbox" data-mk="pdf"> Assembly PDF</label>
+          </div>
+        </div>
+      </div>
+      <h3>Check against the maker's limits</h3>
+      <p class="help" id="mk-sum"></p>
+      <div class="mk-check" id="mk-check"></div>
+      <div class="actions"><button class="btn" id="mk-rules" title="Raise each design rule that is below this maker's limit to it (track width, gap, edge, drill, ring, via): the board check then holds the board to what the maker can make. A rule already above stays">Use maker's limits</button><span class="spacer"></span><button class="btn" id="mk-cancel">Cancel</button><button class="btn active" id="mk-ok">Export ZIP</button></div>
+    </div>
+  </div>
+
   <div class="modal" id="print-modal" hidden>
     <div class="modal-box dlg" style="width: min(560px, 96vw)">
       <div class="insp-title">Print the board</div>
@@ -749,6 +780,7 @@
   <script src="board-outline.js?v=dev"></script>
   <script src="board-core.js?v=dev"></script>
   <script src="board-fab.js?v=dev"></script>
+  <script src="board-maker.js?v=dev"></script>
   <script src="kicad-export.js?v=dev"></script>
   <script src="board-route.js?v=dev"></script>
   <script src="board-sat.js?v=dev"></script>

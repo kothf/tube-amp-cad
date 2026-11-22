@@ -188,12 +188,14 @@
       cnt.title = bom.rows.length && simNote ? simNote[1] : "";
       if (!bom.rows.length) { table.innerHTML = `<tbody><tr><td class="bom-empty">No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.</td></tr></tbody>`; return; }
       const tip = { rating: "Ratings and data; a capacitor's voltage rating is the first standard one at or above 1.25 × its simulated peak voltage", sim: "Simulated worst case: dissipation (resistors, transistors, zeners), capacitor peak voltage, LED current", partno: "The manufacturer's part number (or your order number); saved with the circuit. A maker's number the app knows sets the part's board footprint, its silkscreen outline and its 3D body to the real part's size",
+        lcsc: "JLCPCB's stock number of the part (C25804), from jlcpcb.com/parts or lcsc.com: the For the board maker… export puts it in JLCPCB's BOM so its assembly takes exactly that part. Saved with the circuit",
         pkg: "What the part number says the real part is: package, body size, lead spacing (Board Design takes this footprint), and where it disagrees with the schematic" };
       table.innerHTML = `<thead><tr>${BomLib.COLUMNS.map(c => `<th${tip[c.key] ? ` title="${tip[c.key]}"` : ""}>${c.title}</th>`).join("")}</tr></thead><tbody>` +
         bom.rows.map((r, i) => `<tr data-i="${i}"${r.ids.some(id => S.sel.comps.has(id)) ? ' class="sel"' : ""}>
           <td class="n">${r.item}</td><td class="n">${r.qty}</td><td class="mono">${esc(r.refs)}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.value)}</td>
           <td>${esc(r.rating)}</td><td class="mono${r.warn ? " warn" : ""}">${esc(r.sim)}</td>
-          <td>${r.socket ? (r.partno ? `<span class="mono">${esc(r.partno)}</span> <a class="bom-src" href="${esc(r.url)}" target="_blank" rel="noopener" title="The socket's page at its shop (pick it in the valve's Tube socket field)">shop ↗</a>` : `<small class="muted" title="Pick the real socket in the valve's Tube socket field: its footprint and 3D model go to the board, its number here">no socket picked</small>`) : `<input type="text" value="${esc(r.partno)}" spellcheck="false" placeholder="maker's part no." aria-label="Part number for ${esc(r.refs)}">`}</td>${pkgCell(r, i)}</tr>`).join("") + "</tbody>";
+          <td>${r.socket ? (r.partno ? `<span class="mono">${esc(r.partno)}</span> <a class="bom-src" href="${esc(r.url)}" target="_blank" rel="noopener" title="The socket's page at its shop (pick it in the valve's Tube socket field)">shop ↗</a>` : `<small class="muted" title="Pick the real socket in the valve's Tube socket field: its footprint and 3D model go to the board, its number here">no socket picked</small>`) : `<input type="text" value="${esc(r.partno)}" spellcheck="false" placeholder="maker's part no." aria-label="Part number for ${esc(r.refs)}">`}</td>
+          <td>${r.socket ? "" : `<input type="text" class="bom-lcsc" data-k="lcsc" value="${esc(r.lcsc)}" spellcheck="false" placeholder="C…" aria-label="LCSC number for ${esc(r.refs)}">`}</td>${pkgCell(r, i)}</tr>`).join("") + "</tbody>";
       table.querySelectorAll("[data-look]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); lookUp([bom.rows[+b.dataset.look]]); }));
       const all = document.getElementById("btn-bom-lookall"), todo = bom.rows.filter(r => r.partno && !r.socket && !(r.mpn && r.mpn.source === "DigiKey"));
       if (all) { all.disabled = !todo.length; all.onclick = () => lookUp(todo); }
@@ -221,12 +223,12 @@
           const ids = r.socket ? S.comps.filter(c => c.type === "tube" && r.refList.includes(String(c.label || "").replace(/\.\d+$/, ""))).map(c => c.id) : r.ids;
           S.sel.comps = new Set(ids); S.sel.wires.clear(); updateInspector(); render();
         });
-        const inp = tr.querySelector("input");
-        if (inp) {
-          inp.addEventListener("change", () => { const v = inp.value.trim(); S.comps.forEach(c => { if (r.ids.includes(c.id)) c.params.partno = v; }); bomStale = false; inp.blur(); commit(); });
-          inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); else if (e.key === "Escape") { inp.value = r.partno; inp.blur(); } });
+        tr.querySelectorAll("input").forEach(inp => {
+          const k = inp.dataset.k || "partno", norm = v => (k === "lcsc" ? v.toUpperCase() : v);
+          inp.addEventListener("change", () => { const v = norm(inp.value.trim()); S.comps.forEach(c => { if (r.ids.includes(c.id)) { if (v) c.params[k] = v; else if (k === "lcsc") delete c.params.lcsc; else c.params[k] = ""; } }); bomStale = false; inp.blur(); commit(); });
+          inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); else if (e.key === "Escape") { inp.value = r[k]; inp.blur(); } });
           inp.addEventListener("blur", () => { if (bomStale) setTimeout(renderBom, 0); });
-        }
+        });
       });
     }
     // The panel under the sheet has tabs: the bill of materials, the Checks (renderChecks in

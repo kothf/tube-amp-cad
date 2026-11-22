@@ -9,7 +9,7 @@
   const COLUMNS = [
     { key: "item", title: "Item" }, { key: "qty", title: "Qty" }, { key: "refs", title: "Designators" },
     { key: "desc", title: "Description" }, { key: "value", title: "Value" }, { key: "rating", title: "Rating / data" },
-    { key: "sim", title: "Sim. max" }, { key: "partno", title: "Part number" }, { key: "pkg", title: "Package" }
+    { key: "sim", title: "Sim. max" }, { key: "partno", title: "Part number" }, { key: "lcsc", title: "LCSC #" }, { key: "pkg", title: "Package" }
   ];
   // parts without a designator (frame, note, ground, sheet connector) never appear;
   // sources and instruments only when asked for
@@ -161,8 +161,8 @@
       phys.get(k).members.push(c);
     });
     const lines = new Map();
-    const add = (key, ref, members, desc, value, rating, partno) => {
-      if (!lines.has(key)) lines.set(key, { refs: [], comps: [], desc, value, rating, partno });
+    const add = (key, ref, members, desc, value, rating, partno, lcsc) => {
+      if (!lines.has(key)) lines.set(key, { refs: [], comps: [], desc, value, rating, partno, lcsc: lcsc || "" });
       const L = lines.get(key);
       L.refs.push(ref); L.comps.push(...members);
     };
@@ -180,9 +180,11 @@
       }
       // the part's own maker's number (an XT connector's order code) unless one is typed in
       const def = root.CadLib.LIB[c.type], own = def && def.partNo, partno = String(c.params.partno || (own ? own(c) : "")).trim();
-      add([c.type, desc, value, rating, partno].join("\u0001"), ref, members, desc, value, rating, partno);
+      // JLCPCB's own stock number (C25804): the board maker's assembly matches the part exactly by it
+      const lcsc = String(c.params.lcsc || "").trim().toUpperCase(), key = [c.type, desc, value, rating, partno, lcsc].join("\u0001");
+      add(key, ref, members, desc, value, rating, partno, lcsc);
       // what the part number says the part is (mpn.js): its package and size, and where it disagrees with the schematic
-      const L = lines.get([c.type, desc, value, rating, partno].join("\u0001"));
+      const L = lines.get(key);
       if (partno && !L.mpn && root.PartNo) L.mpn = root.PartNo.resolve(c.params.partno ? c.params : { ...c.params, partno }, c.type);
       if (opts.sockets && c.type === "tube" && rating && !/wire leads/i.test(rating)) {
         const id = socketOf(members, bp), k = rating + "\u0001" + (id || "");
@@ -201,7 +203,7 @@
       const st = opts.stress ? L.comps.map(opts.stress).filter(Boolean) : [];
       const top = st.reduce((a, b) => (!a || b.v > a.v ? b : a), null), bad = st.find(x => x.warn);
       const pn = L.mpn, pkg = pn && pn.known ? root.PartNo.describe(pn) + (pn.warn.length ? " (" + pn.warn.join("; ") + ")" : "") : "";
-      return { qty: L.refs.length, refs: L.socket ? "" : compressRefs(L.refs), refList: L.refs, desc: L.desc, value: L.value, rating: L.rating, partno: L.partno, pkg, mpn: pn || null,
+      return { qty: L.refs.length, refs: L.socket ? "" : compressRefs(L.refs), refList: L.refs, desc: L.desc, value: L.value, rating: L.rating, partno: L.partno, lcsc: L.lcsc || "", pkg, mpn: pn || null,
         sim: top ? top.text + (bad ? " (" + (bad.note || "over rating") + ")" : "") : "", warn: !!bad, ids: L.comps.map(c => c.id), socket: !!L.socket,
         url: L.sock && root.TUBE_SOCKET_URL ? root.TUBE_SOCKET_URL(L.sock) : "" };
     });

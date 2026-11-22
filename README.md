@@ -580,6 +580,8 @@ the circuit that was on the sheet.
     on a line apart from the through-hole parts of the same value;
   - the simulated worst case: dissipation, capacitor peak voltage, LED
     current;
+  - an LCSC # (JLCPCB's stock number), saved with the circuit and written
+    into JLCPCB's assembly BOM by the board maker export;
   - a part number you can type in, saved with the circuit. A maker's number
     fills the *Package* column. *Look up* asks DigiKey's parts database
     (with your own free DigiKey API key, kept in your browser) for the
@@ -1315,6 +1317,15 @@ the circuit file, so one file holds both.
     so they stay smooth and a chassis CAD can snap to a hole's centre.
     Checked with OpenCascade: every solid valid, colours read.
     The part bodies are typical shapes and sizes, not a maker's model.
+  - **For the board maker…**: one ZIP for JLCPCB, PCBWay or a generic
+    maker, with assembly of none, the SMD parts, or SMD and through-hole:
+    Gerbers under the maker's names (Protel .GTL/.GBL… for JLCPCB), drill
+    files, the maker's BOM (JLCPCB with LCSC Part #) and placement file with
+    rotations turned to the maker's zero (package table, plus a per-part
+    *Placement turn*), an IPC-D-356 netlist, fab notes and the assembly PDF.
+    A check against the maker's published limits (tracks, drills, rings,
+    vias, hole spacing, board size, layers), each line showing its spot;
+    *Use maker's limits* raises the design rules to them.
   - **Gerber + drill files (ZIP)**, ready to upload to a board maker (JLCPCB,
     PCBWay, Aisler…): copper, solder mask and silkscreen of both sides, the
     outline (Gerber RS-274X with X2 attributes: every aperture says what it

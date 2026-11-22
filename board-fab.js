@@ -218,6 +218,9 @@
   /** The placement (pick-and-place) file, KiCad's CSV: every SMD part's reference, value,
       package, centre (mm, y up from the board's bottom left), rotation (counter-clockwise, degrees)
       and side */
+  // The app's SOT-23, SOT-223, SOT-89 and DPAK footprints have their pins at the bottom; KiCad's
+  // (the IPC-7351 zero) at the left: a placement file turns them a quarter to that zero
+  const APP_TO_IPC = [[/^SOT-(23|223|89)(-|$)/, 90], [/^D2?PAK(-|$)/, 90]];
   function placement(board, model, keep) {
     const H = board.outline.h, q = s => `"${String(s).replace(/"/g, "'")}"`, f4 = v => (+v).toFixed(4);
     const rows = model.parts.filter(g => (!keep || keep.has(g.key)) && g.fp && g.fp.smd && g.place).sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }));
@@ -226,7 +229,7 @@
       // pads' mean is off it on an SOT-23 or a D²PAK, whose pads are not symmetric
       const P = g.place, b = g.fp.pads, ext = (k, d) => [Math.min(...b.map(p => p[k] - p[d] / 2)), Math.max(...b.map(p => p[k] + p[d] / 2))];
       const [x0, x1] = ext("x", "w"), [y0, y1] = ext("y", "h"), [x, y] = B().place([(x0 + x1) / 2, (y0 + y1) / 2], P);
-      const rot = ((P.rot || 0) & 3) * 90, r = P.side === "B" ? (360 - rot) % 360 : rot;
+      const rot = (((P.rot || 0) & 3) * 90 + ((APP_TO_IPC.find(([re]) => re.test(String(g.fp.name).replace(/^(LIB|KICAD):/, ""))) || [null, 0])[1])) % 360, r = P.side === "B" ? (360 - rot) % 360 : rot;
       return [q(g.ref), q(ascii(g.value)), q(g.fp.name), f4(x), f4(H - y), f4(r), P.side === "B" ? "bottom" : "top"].join(",");
     })).join("\n") + "\n";
   }
@@ -362,5 +365,5 @@
     return PdfExport.buildPdf(sheets.map(() => page), draw, { title: `${title} — ${kind === "toner" ? "toner transfer" : "board prints"}` });
   }
 
-  root.BoardFab = { ascii, clipToConvex, layerOps, gerber, drills, excellon, fabFiles, placement, zip, crc32, paint, pdfPages, PRINTS, PRINT_SETS, pageFor, placedParts, partSilk };
+  root.BoardFab = { APP_TO_IPC, ascii, clipToConvex, layerOps, gerber, drills, excellon, fabFiles, placement, zip, crc32, paint, pdfPages, PRINTS, PRINT_SETS, pageFor, placedParts, partSilk };
 })(typeof window !== "undefined" ? window : globalThis);
