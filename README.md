@@ -387,6 +387,12 @@ model. *Parts library…* in the panel opens it.
   turned and coloured, with a small 3D preview. It is saved with the footprint
   and used by the 3D view, STEP, the enclosure height check and the thermal
   map. A KiCad footprint with none gets a box over its F.Fab outline.
+- **Copy to My library:** any built-in transistor, MOSFET, JFET or diode
+  becomes a library part (button in its properties or on the parts panel's
+  preview): the built-in drawing, a `.MODEL` of the same numbers with its
+  temperature terms, ratings, footprint and 3D body. Every copy is tested to
+  simulate as the built-in part (DC 0.01 %, AC 0.01 dB). *Use the copy here*
+  swaps the selected part for it.
 - **SPICE model:** *Model…* sets a maker's `.SUBCKT` or `.MODEL` on the
   part's own pins; the part is then simulated as written (see the SPICE part
   above). Without a model it is left out of the simulation.

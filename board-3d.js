@@ -326,7 +326,11 @@
     else if (b.shape === "cylx") Object.assign(o, { l: pos(b.l, 6, 0.1), d: pos(b.d, 2.5, 0.1) });
     else if (b.shape === "cylz") Object.assign(o, { d: pos(b.d, 5, 0.1), h: pos(b.h, 10, 0.05) });
     else if (b.shape === "outline") o.h = pos(b.h, 3, 0.05);
-    else if (b.shape === "pkg") { o.pkg = BODY_PACKAGES.some(p => p[1] === b.pkg) ? b.pkg : "TO-220-GDS"; }
+    else if (b.shape === "pkg") {
+      // one of the menu's, or any other footprint the app draws itself (a copied part's own, TO-92-CBE)
+      const known = BODY_PACKAGES.some(p => p[1] === b.pkg) || (typeof b.pkg === "string" && !/^(LIB|KICAD):/.test(b.pkg) && root.BoardCore && !root.BoardCore.isCustom(b.pkg) && !!root.BoardCore.footprint(b.pkg));
+      o.pkg = known ? b.pkg : "TO-220-GDS";
+    }
     if (b.color && BODY_COLORS[b.color]) o.color = b.color;
     return o;
   }
