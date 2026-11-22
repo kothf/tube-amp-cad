@@ -25,7 +25,8 @@
     // each net's name: GND, a connector's or rail's name, else N1, N2 … in the order parts use them
     function netNames(T) {
       const names = new Map([[0, "GND"]]);
-      S.comps.forEach(c => { if ((c.type === "offsheet" || c.type === "rail") && c.params.name) { const n = T.pinNet.get(c.id + ":1"); if (n !== undefined && !names.has(n)) names.set(n, String(c.params.name)); } });
+      // connectors and rails name their net first, then net labels
+      [["offsheet", "rail"], ["netlabel"]].forEach(types => S.comps.forEach(c => { if (types.includes(c.type) && c.params.name) { const n = T.pinNet.get(c.id + ":1"); if (n !== undefined && !names.has(n)) names.set(n, String(c.params.name)); } }));
       let k = 1;
       S.comps.forEach(c => compPins(c).forEach(p => { const n = T.pinNet.get(c.id + ":" + p.id); if (n !== undefined && !names.has(n)) names.set(n, "N" + k++); }));
       return names;
@@ -39,7 +40,7 @@
       if (!parts.length) return "The sheet is empty: there is no circuit yet.";
       out.push("Parts (designator, kind, values; pin=net):");
       parts.forEach(c => {
-        if (c.type === "ground" || c.type === "offsheet") return;
+        if (c.type === "ground" || c.type === "offsheet" || c.type === "netlabel") return;
         const vals = A.fields(c).map(fd => { const v = A.show(c, fd, !detail); return v === "" ? "" : detail ? `${fd.key}=${v}` : `${fd.label.toLowerCase()} ${v}`; }).filter(Boolean);
         const pins = compPins(c).map(p => `${p.id}=${names.get(T.pinNet.get(c.id + ":" + p.id)) || "open"}`);
         out.push(`- ${refOf(c)} ${LIB[c.type].name}${vals.length ? " [" + vals.join(", ") + "]" : ""}: ${pins.join(" ")}`);
@@ -67,7 +68,7 @@
       out.push("\nChecks (the app's rating and wiring checks): " + (issues.length ? "\n" + issues.map(i => "- " + i).join("\n") : "no problems found."));
       return out.join("\n");
     }
-    const refs = () => S.comps.filter(c => !isDoc(c) && c.type !== "ground" && c.type !== "offsheet").map(refOf).filter(t => t && t.length < 12);
+    const refs = () => S.comps.filter(c => !isDoc(c) && c.type !== "ground" && c.type !== "offsheet" && c.type !== "netlabel").map(refOf).filter(t => t && t.length < 12);
 
     // -------------------------------------------------------------------------
     // The manual, for how-to questions: help.html as plain text, fetched once

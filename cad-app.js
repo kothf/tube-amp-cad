@@ -61,7 +61,7 @@
   // Mirror: any part that can be rotated can also be flipped left to right (params.flip),
   // applied before the rotation. Parts added to the library get it automatically; a part
   // that does not rotate mirrors when its definition says so (mirror: true, the oscilloscope).
-  const canMirror = type => !!LIB[type] && (!LIB[type].noRotate || !!LIB[type].mirror);
+  const canMirror = type => !!LIB[type] && !LIB[type].noMirror && (!LIB[type].noRotate || !!LIB[type].mirror);
   const flipX = c => (c.params && c.params.flip === "yes" && canMirror(c.type) ? -1 : 1);
   function compPins(c) {
     const f = flipX(c);
@@ -105,6 +105,15 @@
     // sheet connectors and power rails with the same name are one net (as if wired)
     const byName = new Map();
     comps.forEach(c => { if (c.type !== "offsheet" && c.type !== "rail") return; const n = connName(c); if (!n) return; const r = find(key(c.x, c.y)); if (byName.has(n)) union(r, byName.get(n)); else byName.set(n, r); });
+    // net labels: the same name on the same sheet is one net (labelScope: the frame it lies in)
+    const frs = comps.filter(c => c.type === "frame").map(f => compBBox(f));
+    const byLabel = new Map(), labelKey = new Map(), labelCount = new Map();
+    comps.forEach(c => {
+      if (c.type !== "netlabel") return; const n = connName(c); if (!n) return;
+      const k = labelScope(c, frs) + "\u0001" + n, r = find(key(c.x, c.y));
+      labelKey.set(c.id, k); labelCount.set(k, (labelCount.get(k) || 0) + 1);
+      if (byLabel.has(k)) union(r, byLabel.get(k)); else byLabel.set(k, r);
+    });
     // hierarchy (cad-hier.js): a sheet's port joins the pin of its name on that instance's sheet symbol
     const byPort = (k, r) => { if (byName.has(k)) union(r, byName.get(k)); else byName.set(k, r); };
     comps.forEach(c => {
@@ -125,7 +134,7 @@
     comps.forEach(c => compPins(c).forEach(p => pinConnected.set(c.id + ":" + p.id, (degree.get(key(p.x, p.y)) || 0) > 1)));
     const junctions = [];
     degree.forEach((d, k) => { if (d >= 3) { const [x, y] = k.split(",").map(Number); junctions.push({ x, y }); } });
-    return { pinNet, wireNet, nodeCount: next, hasGround: groundRoot !== null, pinConnected, junctions, degree, pinAt };
+    return { pinNet, wireNet, nodeCount: next, hasGround: groundRoot !== null, pinConnected, junctions, degree, pinAt, labelKey, labelCount };
   }
   function topo() { if (!S.topo) S.topo = computeTopology(); return S.topo; }
   // the connections of a design as File › Save writes it (a revision): "partId:pinId" → net number,
@@ -137,6 +146,24 @@
     return { net: T.pinNet, pins };
   }
   const connName = c => String(c.params.name || "").trim().toUpperCase();
+  // the sheet a net label names its net on: the frame its point lies in (the first, when frames
+  // overlap), or "" on a circuit without frames; frs: the frames' boxes
+  function labelScope(c, frs) {
+    const i = frs.findIndex(b => c.x >= b.x1 && c.x <= b.x2 && c.y >= b.y1 && c.y <= b.y2);
+    return i < 0 ? "" : String(i);
+  }
+  // the name a net goes by: GND, its sheet connector's or power rail's name, else its net label's, else ""
+  function netName(net, T) {
+    if (net === undefined || net === null) return "";
+    if (net === 0 && T.hasGround) return "GND";
+    let lab = "";
+    for (const c of S.comps) {
+      if (c.type !== "offsheet" && c.type !== "rail" && c.type !== "netlabel") continue;
+      const n = String(c.params.name || "").trim(); if (!n || T.pinNet.get(c.id + ":1") !== net) continue;
+      if (c.type !== "netlabel") return n; if (!lab) lab = n;
+    }
+    return lab;
+  }
 
   // ---------------------------------------------------------------------------
   // Sheets: every drawing frame is a sheet, numbered left to right, then top to bottom
@@ -921,6 +948,13 @@
         S.placing.more.forEach((u, i) => { const k = makeComp(S.placing.type, u.params, gx + u.dx, gy + u.dy, 0); k.label = `${base}.${i + 2}`; S.comps.push(k); S.sel.comps.add(k.id); });
       }
       commit();
+      if (c.type === "netlabel") {
+        // the next label on the pointer counts on (Shift keeps placing); one label: type its name
+        lastLabel = c.params.name || lastLabel;
+        if (e.shiftKey) S.placing.params = Object.assign({}, S.placing.params, { name: nextLabelName() });
+        else { S.placing = null; setTool("select"); updateInspector(); focusLabelName(); }
+        return;
+      }
       if (!e.shiftKey) { S.placing = null; setTool("select"); }
       return;
     }
@@ -1057,6 +1091,8 @@
     // a switch, a push button or a selector moves on to its next position
     if (c && LIB[c.type].flip && !S.wiring) { setSwitch(c, LIB[c.type].flip(c)); updateInspector(); }
     if (c && c.type === "jack" && c.params.kind === "TS-SW" && !S.wiring) { c.params.plug = c.params.plug === "in" ? "out" : "in"; commit(); updateInspector(); }
+    // a double-click on a wire (not on a part) puts a net label on it there
+    if (!c && !S.wiring && !S.placing && S.tool === "select") { const w = hitWire(m.wx, m.wy); if (w && !isLocked(w)) labelWire(w, m.wx, m.wy); }
   }
   // Renumber reference designations (classic letter code + number: R, C, L, T,
   // VL ... as in ГОСТ 2.710) in reading order of the diagram: left to right,
@@ -1185,6 +1221,7 @@
     .add({ id: "delete", label: "Delete", icon: ICONS.delete, keys: ["Delete", "Backspace"], anyCtrl: true, prevent: true, run: deleteSelection, help: "delete" })
     .add({ id: "wire", keys: ["W"], run: () => setTool(S.tool === "wire" ? "select" : "wire"), help: "wire tool" })
     .add({ id: "select", keys: ["V"], run: () => setTool("select"), help: "select tool" })
+    .add({ id: "label", keys: ["L"], run: () => placeLabel(), help: "net label: names the wire you put it on; the same name on the sheet is one net (double-click a wire to label it)" })
     .add({ id: "probe", keys: ["P"], run: () => { S.placing = null; S.wiring = null; setTool(S.tool === "probe" ? "select" : "probe"); }, help: "voltmeter probe: point at a wire or pin for its DC, AC and waveform; click to leave the probe there" })
     .add({ id: "escape", keys: ["Escape"], anyCtrl: true, run: clearOrCancel, help: "cancel / clear the selection (while dragging: put it back)" })
     .add({ id: "sheet-prev", label: "Previous sheet", keys: ["PageUp"], prevent: true, when: () => frames().length > 1, run: () => stepSheet(-1), help: "previous sheet" })
@@ -1258,10 +1295,10 @@
     const pin = hitPin(m.wx, m.wy);
     let net, label = "", wireI = "";
     const T = S.sim.topo || topo();
-    if (pin) { net = T.pinNet.get(pin.c.id + ":" + pin.p.id); label = pin.c.type === "offsheet" ? `${pin.c.params.name || "connector"} (also at ${refText(connRefs(pin.c)) || "no other place"})` : pin.c.type === "rail" ? `${pin.c.params.name || "rail"} ${LIB.rail.value(pin.c)}` : `${pin.c.label || LIB[pin.c.type].name} ${pin.p.name || pin.p.id}`; }
+    if (pin) { net = T.pinNet.get(pin.c.id + ":" + pin.p.id); label = pin.c.type === "netlabel" ? `net ${pin.c.params.name || "(no name)"} (net label)` : pin.c.type === "offsheet" ? `${pin.c.params.name || "connector"} (also at ${refText(connRefs(pin.c)) || "no other place"})` : pin.c.type === "rail" ? `${pin.c.params.name || "rail"} ${LIB.rail.value(pin.c)}` : `${pin.c.label || LIB[pin.c.type].name} ${pin.p.name || pin.p.id}`; }
     else {
       const w = hitWire(m.wx, m.wy);
-      if (w) { net = (S.sim.topo || topo()).wireNet.get(w.id); label = "wire"; const wc = S.sim.result && wireCurrents(), i = wc ? wc.currents.get(w.id) : undefined; if (typeof i === "number") wireI = (isH(w) ? (i > 0 === w.x2 > w.x1 ? "→" : "←") : (i > 0 === w.y2 > w.y1 ? "↓" : "↑")) + fmtEng(Math.abs(i), "A", 2); }
+      if (w) { net = (S.sim.topo || topo()).wireNet.get(w.id); const nm = netName(net, S.sim.topo || topo()); label = nm ? `wire · net ${nm}` : "wire"; const wc = S.sim.result && wireCurrents(), i = wc ? wc.currents.get(w.id) : undefined; if (typeof i === "number") wireI = (isH(w) ? (i > 0 === w.x2 > w.x1 ? "→" : "←") : (i > 0 === w.y2 > w.y1 ? "↓" : "↑")) + fmtEng(Math.abs(i), "A", 2); }
     }
     let cursor = "";
     if (S.spaceDown) cursor = "grab";
@@ -1659,6 +1696,18 @@
       ctx.textAlign = "left"; void w;
       return;
     }
+    if (c.type === "netlabel") {
+      // the name upright above its point (left of it when turned to face left); one label alone
+      // is fine: it names the net (for the board, the probe, the exports)
+      const left = (c.rot & 3) === 2;
+      ctx.textAlign = left ? "right" : "left"; ctx.font = "bold 11px ui-monospace, Menlo, monospace";
+      ctx.fillStyle = sel ? COL.bodySel : COL.text;
+      ctx.fillText(c.params.name || "", c.x + (left ? -3 : 3), c.y - 5);
+      ctx.strokeStyle = sel ? COL.bodySel : COL.text; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(c.x, c.y - 4); ctx.stroke();
+      ctx.textAlign = "left";
+      return;
+    }
     if (c.type === "offsheet") {
       const d = [[1, 0], [0, 1], [-1, 0], [0, -1]][c.rot & 3], tx = c.x + d[0] * 26, ty = c.y + d[1] * 26;
       const refs = connRefs(c), align = d[0] > 0 ? "left" : d[0] < 0 ? "right" : "center";
@@ -1965,6 +2014,7 @@
     document.getElementById("btn-tool-select").classList.toggle("active", t === "select" && !S.placing);
     document.getElementById("btn-tool-wire").classList.toggle("active", t === "wire");
     document.getElementById("btn-tool-probe").classList.toggle("active", t === "probe");
+    const lb = document.getElementById("btn-tool-label"); if (lb) lb.classList.toggle("active", !!(S.placing && S.placing.type === "netlabel"));
     if (t !== "probe") S.probe.hover = null;
     document.querySelectorAll(".pal-item.active").forEach(el => { if (!S.placing) el.classList.remove("active"); });
     render();
@@ -1975,6 +2025,37 @@
     if (el.firstChild && el.firstChild.nodeType === 3 && !el.firstChild.nextSibling) { if (el.firstChild.nodeValue !== t) el.firstChild.nodeValue = t; } else el.textContent = t;
   }
 
+  // Net labels: L (or the Label button) puts one on the pointer with the next free name, the last
+  // name placed counted on (IN1 → IN2, as KiCad does); a double-click on a wire labels it there
+  let lastLabel = "";
+  function nextLabelName() {
+    const used = new Set(S.comps.filter(c => c.type === "netlabel").map(c => connName(c)));
+    const m = /^(.*?)(\d+)$/.exec(lastLabel);
+    if (lastLabel && !m) return lastLabel;
+    const base = m ? m[1] : "NET", from = m ? +m[2] + 1 : 1;
+    let k = from; while (used.has((base + k).toUpperCase())) k++;
+    return base + k;
+  }
+  function placeLabel() {
+    S.wiring = null;
+    startPlacing("netlabel", { name: nextLabelName() }, null);
+    setTool("label");
+  }
+  function labelWire(w, x, y) {
+    // the grid point of the wire nearest the click (wires run on the grid)
+    const px = isH(w) ? Math.max(Math.min(w.x1, w.x2), Math.min(Math.max(w.x1, w.x2), snap(x))) : w.x1;
+    const py = isH(w) ? w.y1 : Math.max(Math.min(w.y1, w.y2), Math.min(Math.max(w.y1, w.y2), snap(y)));
+    // the net's name if it has one already, else the next free one
+    const nm = netName(topo().wireNet.get(w.id), topo()) || nextLabelName();
+    const c = makeComp("netlabel", { name: nm }, px, py, 0);
+    S.comps.push(c); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id);
+    lastLabel = nm;
+    commit(); updateInspector(); focusLabelName();
+  }
+  // the inspector's name field, selected, to type the label's name straight away
+  function focusLabelName() {
+    setTimeout(() => { const el = document.querySelector("#inspector input[data-key='name']"); if (el) { el.focus(); el.select(); } }, 0);
+  }
   function startPlacing(type, params, el, more) {
     S.placing = { type, params: params || {}, rot: 0 };
     if (more && more.length) S.placing.more = more;
@@ -2170,7 +2251,8 @@
           c.params[f.key] = (f.as === "dbv" ? Math.pow(10, n / 20) : n) * crest; commit();
         });
       } else if (f.kind === "text") {
-        el = input("text", c.params[f.key] || "", v => { if (f.check && !f.check(v)) { flash(el); return; } c.params[f.key] = v; commit(); });
+        el = input("text", c.params[f.key] || "", v => { if (f.check && !f.check(v)) { flash(el); return; } c.params[f.key] = v; if (c.type === "netlabel") lastLabel = v.trim(); commit(); });
+        el.dataset.key = f.key;
         if (f.placeholder) el.placeholder = f.placeholder;
       } else if (f.kind === "number") {
         el = input("number", c.params[f.key] !== undefined ? c.params[f.key] : f.dflt, v => { const n = parseFloat(v); if (!isFinite(n)) { flash(el); return; } c.params[f.key] = Math.min(f.max !== undefined ? f.max : Infinity, Math.max(f.min !== undefined ? f.min : -Infinity, n)); commit(); });
@@ -2420,6 +2502,14 @@
     S.comps.forEach(c => { if (c.type === "scope") return; compPins(c).forEach(p => { if (!T.pinConnected.get(c.id + ":" + p.id)) { if (c.type === "opt_pp" && (p.id === "U1" || p.id === "U2")) return; if (c.type === "opamp" && (p.id === "1" || p.id === "8")) return; open.push(`${c.label || LIB[c.type].name}.${p.id}`); } }); });
     const lonely = S.comps.filter(c => c.type === "offsheet" && !connRefs(c).length && !S.comps.some(k => k !== c && (k.type === "offsheet" || k.type === "rail") && connName(k) === connName(c))).map(c => c.params.name || "(no name)");
     if (lonely.length) issues.push("Sheet connectors without a partner: " + lonely.join(", "));
+    // net labels: two names on one net, and a label named like a connector or rail it does not reach (a label stays on its sheet)
+    const labelsOn = new Map(), globalNet = new Map();
+    S.comps.forEach(c => { const n = String(c.params.name || "").trim(); if (!n) return; const net = T.pinNet.get(c.id + ":1"); if (c.type === "netlabel") { if (!labelsOn.has(net)) labelsOn.set(net, new Set()); labelsOn.get(net).add(n); } else if (c.type === "offsheet" || c.type === "rail") globalNet.set(n.toUpperCase(), net); });
+    const twoNames = [...labelsOn.values()].map(set => [...set].filter((t, i, a) => a.findIndex(u => u.toUpperCase() === t.toUpperCase()) === i)).filter(l => l.length > 1).map(l => l.join(" = "));
+    if (twoNames.length) issues.push("Net labels with two names on one net: " + twoNames.join("; "));
+    const apart = [];
+    labelsOn.forEach((set, net) => set.forEach(n => { const g = globalNet.get(n.toUpperCase()); if (g !== undefined && g !== net && !apart.includes(n)) apart.push(n); }));
+    if (apart.length) issues.push(`Net labels named like a sheet connector or power rail but not joined to it: ${apart.join(", ")} (a label reaches only its own sheet; use a Sheet connector)`);
     // power rails: one voltage per net, never on ground
     const railsOn = new Map();
     S.comps.forEach(c => { if (c.type !== "rail") return; const n = T.pinNet.get(c.id + ":1"); if (!railsOn.has(n)) railsOn.set(n, []); railsOn.get(n).push(c); });
@@ -3530,6 +3620,7 @@
     bind("btn-tool-select", () => { S.placing = null; setTool("select"); });
     bind("btn-tool-wire", () => { S.placing = null; setTool(S.tool === "wire" ? "select" : "wire"); });
     bind("btn-tool-probe", () => cmds.run("probe"));
+    bind("btn-tool-label", () => cmds.run("label"));
     // the ? button opens the Help menu; F1 and ? open the quick help straight away
     cmds.helpRows(document.getElementById("help-keys"));
     bind("menu-help-keys", () => cmds.run("help"));

@@ -610,6 +610,16 @@
     offsheet(ctx) {
       line(ctx, [0, 0, 8, 0]); line(ctx, [8, -6, 20, 0, 8, 6, 8, -6]);
     },
+    // net label (a local label, KiCad's "label"): names the wire it sits on, joining every label
+    // of that name on the same sheet; the app draws its tick and name upright (cad-app.js drawComp)
+    netlabel(ctx, c) {
+      // on the sheet the app draws it (upright whatever the turn); a picture of the part (the parts
+      // panel) shows its tick and name
+      if (!c || c.id !== "pal-thumb") return;
+      line(ctx, [0, 0, 0, -4]);
+      ctx.save(); ctx.font = "bold 11px ui-monospace, Menlo, monospace"; ctx.fillStyle = COL.text; ctx.textAlign = "left";
+      ctx.fillText(String(c.params.name || ""), 3, -5); ctx.restore();
+    },
     // jack socket: the sleeve's long contact, the tip's spring (and the ring's), the switch contact
     // under the tip that rests on it until a plug goes in; the body on the plug's side
     jack(ctx, c) {
@@ -3418,6 +3428,22 @@
       info: () => "Joins every sheet connector with the same signal name, on any sheet, as if wired. Use it to carry a supply rail or a signal to another sheet; the cross-reference next to it gives the sheet and grid zone of its partners (IEC 61082-1).",
       build: () => {}
     },
+    // Net label: names a net on its own sheet (frame). Every label of the same name on that
+    // sheet (and, on a hierarchical instance's sheet, that instance only) is one net, as if
+    // wired (computeTopology in cad-app.js). It does not join a sheet connector or power rail
+    // of the same name on purpose (KiCad's rule): those reach every sheet, a label only its own.
+    netlabel: {
+      name: "Net label", prefix: "", group: "Ground & connectors", noLabel: true, noMirror: true,
+      // the name is drawn upright above the point whichever way the label turns (left of it when
+      // turned to face left): the box before turning that ends up round it
+      bbox: c => { const L = 6 + 7 * Math.max(2, String(c.params.name || "").length); return [[-2, -14, L, 4], [-14, -L, 4, 2], [-2, -4, L, 14], [-4, -2, 14, L]][c.rot & 3]; },
+      defaults: { name: "NET1" },
+      pins: () => [{ id: "1", x: 0, y: 0 }],
+      value: c => c.params.name || "",
+      fields: [{ key: "name", label: "Net name", kind: "text" }],
+      info: () => "Names the wire it sits on. Every net label with the same name on this sheet is one net, as if wired, and the name is the net's name everywhere: the probe, the board, the design rules and the exports. A label reaches only its own sheet; use a Sheet connector to reach other sheets. Double-click a wire to label it; L places one.",
+      build: () => {}
+    },
     // Physical connectors: where wires from off the board land. They join their pins to nothing
     // else (a jack's switch excepted), so they cost the simulation nothing; on the board they are
     // pads in the maker's pattern.
@@ -3658,7 +3684,7 @@
       { sub: "Logic" }, ["logicsrc", null, "Clock or bit pattern"],
       { sub: "Instruments and records" }, ["pickup", null, "Guitar pickup, single coil"], ["pickup", { preset: "paf", r: 8e3, l: 4.4, c: 150e-12, amp: 0.3 }, "Guitar pickup, humbucker"], ["phono", null, "Phono cartridge, moving magnet"], ["phono", { preset: "dl103", mv: 0.3e-3, r: 40, l: 30e-6 }, "Phono cartridge, moving coil"],
       { sub: "Controlled sources" }, ["vcvs", null, "Voltage-controlled voltage (E)"], ["vccs", null, "Voltage-controlled current (G)"]] },
-    { group: "Ground & connectors", items: [["ground"], ["offsheet"], ["sheetsym", null, "Hierarchical sheet"], ["hport", null, "Sheet port (hierarchy)"],
+    { group: "Ground & connectors", items: [["ground"], ["netlabel"], ["offsheet"], ["sheetsym", null, "Hierarchical sheet"], ["hport", null, "Sheet port (hierarchy)"],
       { sub: "Connectors" }, ["jack", null, "Jack, 6.35 mm switched"], ["jack", { kind: "RCA" }, "RCA socket"], ["iec"], ["terminal"], ["header"], ["faston"],
       { sub: "Power connectors (XT)" }, ["xt", { model: "XT30PW-M" }, "XT30 male, PCB"], ["xt", { model: "XT30PW-F" }, "XT30 female, PCB"], ["xt", null, "XT60 male, PCB"], ["xt", { model: "XT60PW-F" }, "XT60 female, PCB"],
       ["xt", { model: "XT90PW-M" }, "XT90 male, PCB"], ["xt", { model: "XT90PW-F" }, "XT90 female, PCB"], ["xt", { model: "XT90S-F" }, "XT90-S female, anti-spark"]] },

@@ -340,7 +340,7 @@
     }
     const pcbName = pcbNames.find(n => rootName && stem(n) === stem(rootName)) || pcbNames[0] || null;
     const name = stem(proNames[0] || rootName || pcbName);
-    const comps = [], wires = [], report = { sheets: 0, parts: 0, own: 0, kept: 0, wires: 0, connectors: 0, notes, board: null, padNets: {}, pinMaps: [] };
+    const comps = [], wires = [], report = { sheets: 0, parts: 0, own: 0, kept: 0, wires: 0, connectors: 0, labels: 0, notes, board: null, padNets: {}, pinMaps: [] };
     let nid = 0;
     const id = p => `${p}${++nid}_k`;
     const addComp = (type, x, y, rot, params, label) => { const c = { id: id("c"), type, x, y, rot: rot & 3, params: params || {}, label: label || "" }; comps.push(c); return c; };
@@ -382,6 +382,9 @@
         ports.forEach(list => list.slice(1).forEach(v => v.forEach((k, n) => { if (list[0][n] !== undefined) par.set(find(k), find(list[0][n])); })));
         if (S.labels.some(l => /^\{.*\}$/.test(l.text.trim()))) note("Group buses ({…}) are not followed: join their signals by labels.");
       });
+      // a name joined to no other (no bus took it to another sheet or to a global label)
+      const roots = new Map(); par.forEach((_, k) => { const r = find(k); roots.set(r, (roots.get(r) || 0) + 1); });
+      const sole = k => (roots.get(find(k)) || 1) === 1;
       const globals = new Set();
       insts.forEach(I => { I.sch.labels.forEach(l => { if (l.kind === "global") globals.add(l.text.toUpperCase()); }); I.sch.symbols.forEach(s => { const lb = I.sch.libs.get(s.libName || s.libId); if (lb && (lb.power || /^#PWR/.test(s.props.Reference || ""))) { globals.add(String(s.props.Value || "").toUpperCase()); lb.units.forEach(u => u.pins.forEach(p => globals.add(p.name.toUpperCase()))); } }); });
       const ground = GROUNDS.find(g => globals.has(g)) || null;
@@ -554,6 +557,10 @@
           const rot = ({ 0: 0, 90: 3, 180: 2, 270: 1 })[((Math.round(l.a) % 360) + 360) % 360] || 0;
           if (vector(l.text) || /^\{.*\}$/.test(l.text.trim())) return;      // on a bus
           if (l.kind === "global") { if (ground && l.text.toUpperCase() === ground) addComp("ground", l.X, l.Y, 0); else conn(nameOf(GK(l.text)), l.X, l.Y, rot); }
+          // a local label is the app's own net label (its name joins only on this sheet, as in KiCad);
+          // one whose name a bus carries to another sheet, or that shares its name with a hierarchical
+          // label of the sheet, goes on as a connector of its net's name, so it still meets them
+          else if (l.kind === "local" && sole(LK(I.i, l.text)) && !S.labels.some(h => h.kind === "hier" && h.text.toUpperCase() === l.text.toUpperCase())) { report.labels++; addComp("netlabel", l.X, l.Y, rot, { name: l.text }); }
           else conn(nameOf(LK(I.i, l.text)), l.X, l.Y, rot);
         });
         // a sheet of the hierarchy: its pins as connectors to that sheet's labels

@@ -338,7 +338,7 @@
         ws.forEach(w => join(K(w.x1, w.y1), K(w.x2, w.y2)));
         cs.forEach(c => cad.compPins(c).forEach(p => find(K(p.x, p.y))));
         const T2 = new Map();
-        cs.forEach(c => { const p = cad.compPins(c)[0]; if (!p) return; if (c.type === "ground") T2.set(K(p.x, p.y), "\u0000gnd"); else if (c.type === "offsheet" && String(c.params.name || "").trim()) T2.set(K(p.x, p.y), "\u0000os:" + upName(c.params.name)); });
+        cs.forEach(c => { const p = cad.compPins(c)[0]; if (!p) return; if (c.type === "ground") T2.set(K(p.x, p.y), "\u0000gnd"); else if (c.type === "offsheet" && String(c.params.name || "").trim()) T2.set(K(p.x, p.y), "\u0000os:" + upName(c.params.name)); else if (c.type === "netlabel" && String(c.params.name || "").trim()) T2.set(K(p.x, p.y), "\u0000nl:" + upName(c.params.name)); });
         T2.forEach((t, k) => tag(k, t));
         return { root: (x, y) => find(K(x, y)), tags: (x, y) => { const r = find(K(x, y)); const out = new Set(); tags.forEach((v, k) => { if (find(k) === r) v.forEach(t => out.add(t)); }); return out; } };
       };
@@ -385,6 +385,7 @@
       // port names: the net's own name, else the pin it reaches inside, else P1, P2…
       const named = new Map();
       S.comps.forEach(c => { if ((c.type === "offsheet" || c.type === "rail") && String(c.params.name || "").trim()) named.set(T.pinNet.get(c.id + ":1"), String(c.params.name).trim()); });
+      S.comps.forEach(c => { const n = T.pinNet.get(c.id + ":1"); if (c.type === "netlabel" && String(c.params.name || "").trim() && !named.has(n)) named.set(n, String(c.params.name).trim()); });
       const used = new Set(), nameFor = (cr, k) => {
         let n = named.get(cr.net);
         if (!n) {

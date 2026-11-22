@@ -106,12 +106,20 @@
         });
         return { u, x, y, ref: { x: x + W / 2, y: y - 3.81, h: "center", v: "bottom" } };
       }
-      const libOfGroup = new Map(), firstOf = new Map(), globalNames = new Set();
+      const libOfGroup = new Map(), firstOf = new Map(), globalNames = new Set(), labelRename = {};
       let pwr = 0;
       S.comps.forEach(c => {
         const def = LIB[c.type]; if (!def || c.type === "frame") return;
         const b = compBBox(c), si = sheetIndex(sheets, (b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2), s = sheets[si], [x, y] = mm(s, c.x, c.y);
         if (c.type === "note") { const t = String(c.params.text || "").trim(); if (t) s.notes.push({ x, y, text: t, size: (+c.params.size || 12) * K.UNIT * 0.72 }); return; }
+        if (c.type === "netlabel") {
+          // a net label: KiCad's own local label, at its point (KiCad calls the net /<sheet>/<name>)
+          const nm = String(c.params.name || "").trim(); if (!nm) return;
+          s.labels.push({ x, y, text: nm, angle: [0, 270, 180, 90][c.rot & 3], global: false });
+          const net = T.pinNet.get(c.id + ":1");
+          if (M.names[net] === nm) labelRename[nm] = (multi ? "/" + s.name + "/" : "/") + nm;
+          return;
+        }
         const rec = drawn(c), pins = compPins(c), u = { shapes: rec.shapes, texts: rec.texts, pins: [] };
         const at = (px, py) => [(px - c.x) * K.UNIT, (py - c.y) * K.UNIT];
         if (c.type === "sheetsym") {
@@ -180,8 +188,8 @@
       // the nets the net classes name (power and high voltage): their board name on a label at one
       // of their pins, so the classes hold in KiCad. A label names a net on its own sheet only, so
       // KiCad calls it /<sheet>/<name> (/<name> on a single sheet): the board takes those names too
-      const R = side.board.rules, hvSet = BoardCore.hvNets(side.netlist.volts, R.hvVolts), named = new Set(), rename = {};
-      S.comps.forEach(c => { if (POWER.has(c.type)) compPins(c).forEach(p => named.add(T.pinNet.get(c.id + ":" + p.id))); });
+      const R = side.board.rules, hvSet = BoardCore.hvNets(side.netlist.volts, R.hvVolts), named = new Set(), rename = Object.assign({}, labelRename);
+      S.comps.forEach(c => { if (POWER.has(c.type) || c.type === "netlabel") compPins(c).forEach(p => named.add(T.pinNet.get(c.id + ":" + p.id))); });
       S.comps.forEach(c => {
         if (POWER.has(c.type) || !groupOf.has(c.id)) return;
         const b = compBBox(c), cx = (b.x1 + b.x2) / 2, cy = (b.y1 + b.y2) / 2, s = sheets[sheetIndex(sheets, cx, cy)];
@@ -290,7 +298,7 @@
       }
       const row = (k, v) => `<div class="kv"><span>${k}</span><b>${escH(v)}</b></div>`, b = r.board;
       m.querySelector("#kicad-body").innerHTML = `<p class="insp-help" data-i18n-skip>${escH(name)}</p>`
-        + row("Sheets", r.sheets) + row("Parts", r.parts) + row("As the app's own parts (simulated)", r.own) + row("Kept as drawn in KiCad", r.kept) + row("Wires", r.wires) + row("Net names (connectors)", r.connectors)
+        + row("Sheets", r.sheets) + row("Parts", r.parts) + row("As the app's own parts (simulated)", r.own) + row("Kept as drawn in KiCad", r.kept) + row("Wires", r.wires) + row("Net labels", r.labels || 0) + row("Net names (connectors)", r.connectors)
         + (b ? row("Board: footprints placed", b.parts) + row("Board: tracks", b.tracks) + row("Board: vias", b.vias) + row("Board: copper pours", b.zones) + row("Board: mounting holes", b.holes) : "")
         + (r.notes.length ? `<div class="insp-sub">To know</div><ul class="insp-help" style="margin: 4px 0 0; padding-left: 18px">${r.notes.map(n => `<li>${escH(n)}</li>`).join("")}</ul>` : "");
       m.querySelector("#kicad-board").hidden = !b;
