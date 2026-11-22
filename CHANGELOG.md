@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.244.0] - 2026-11-22
+## [3.245.0] - 2026-11-22
 
 Net labels: name a wire, join wires by name on a sheet.
 
@@ -26,6 +26,26 @@ Net labels: name a wire, join wires by name on a sheet.
 - **KiCad import** brings local labels in as net labels (those a bus carries to another sheet, or
   that share a name with a hierarchical label, stay connectors). Checked against kicad-cli on KiCad's
   demo projects: the same results as before.
+
+## [3.244.0] - 2026-11-22
+
+3D bodies for drawn and imported footprints.
+
+### Added
+- **3D body** section in the footprint editor: a box, a lying cylinder
+  (axial, leads bent into the pads on its axis), a standing cylinder (radial
+  can), the closed silkscreen outline raised, a built-in package's body
+  (TO-92, TO-220, TO-247, DIP, SOIC, SOT-23, D²PAK, chips, cans, bridges…), or
+  none; moved, raised, turned and coloured, with a small 3D preview that turns
+  with the mouse. A suggestion is filled in (DIP pads the DIP body, two
+  drilled pads a lying cylinder, else a block over the silkscreen) and
+  *Suggest a body* brings it back.
+- The body is saved with the footprint (My library, the circuit) and used by
+  the board's 3D view, STEP (true cylinders), the enclosure height check and
+  the thermal map. Drawn footprints were a grey 5 mm block before.
+- KiCad footprints keep their fabrication outline (F.Fab): one with no body
+  set shows a box over it, or a can where it is a circle, with its height for
+  the checks.
 
 ## [3.243.0] - 2026-11-22
 

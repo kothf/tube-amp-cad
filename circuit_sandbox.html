@@ -541,6 +541,7 @@
     #symed-msg { min-height: 16px; color: var(--warn, #d29922); }
     #fped-svg { width: 100%; height: min(56vh, 520px); background: #0b1a12; border: 1px solid var(--line); border-radius: 6px; touch-action: none; outline: none; --px: .05; }
     #fped-svg:focus-visible { border-color: var(--accent); }
+    .fped-3dview { width: 100%; height: 170px; display: block; border: 1px solid var(--line); border-radius: 6px; margin: 6px 0 2px; background: #070b10; cursor: grab; }
     #fped-svg[data-tool=select] [data-k] { cursor: move; } #fped-svg:not([data-tool=select]) { cursor: crosshair; }
     #fped-svg .dot { fill: #2f5540; } #fped-svg .axis { stroke: #2f5540; stroke-width: calc(var(--px) * 1px); fill: none; }
     #fped-svg .silk line, #fped-svg .silk circle { stroke: #e6edf3; stroke-width: .15; fill: none; stroke-linecap: round; }
@@ -1340,6 +1341,8 @@
   <script src="board-outline.js?v=dev"></script>
   <script src="board-core.js?v=dev"></script>
   <script src="board-fab.js?v=dev"></script>
+  <script src="board-3d.js?v=dev"></script>
+  <script src="board-3d-view.js?v=dev"></script>
   <script src="kicad-export.js?v=dev"></script>
   <script src="kicad-import.js?v=dev"></script>
   <script src="cad-kicad.js?v=dev"></script>
