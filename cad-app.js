@@ -28,6 +28,8 @@
     tool: "select",
     placing: null,        // { type, params, rot }
     wiring: null,         // { x, y } last committed point
+    busing: null,         // the bus being drawn (Bus tool): { segs: [[x1, y1, x2, y2]], x, y, hFirst }
+    unfold: null,         // Take a signal from a bus: { bus, name, x, y } (the point on the bus the wire starts from)
     drag: null,
     mouse: { sx: 0, sy: 0, wx: 0, wy: 0 },
     spaceDown: false,
@@ -116,9 +118,19 @@
     });
     // hierarchy (cad-hier.js): a sheet's port joins the pin of its name on that instance's sheet symbol
     const byPort = (k, r) => { if (byName.has(k)) union(r, byName.get(k)); else byName.set(k, r); };
+    // a port or pin with a bus's name (D[0..7]) carries each member: the member's net label on the
+    // port's sheet joins the one on the symbol's sheet (a member with no label there yet is held by name)
+    const labelNode = (pt, m) => { const k = labelScope(pt, frs) + "\u0001" + String(m).toUpperCase(); if (!byLabel.has(k)) byLabel.set(k, find("\u0002" + k)); return byLabel.get(k); };
+    const members = n => (CadLib.isBusName(n) ? CadLib.busMembers(n) : []);
     comps.forEach(c => {
-      if (c.type === "hport" && c.block) { const n = connName(c); if (n) byPort("\u0001" + c.block.i + "\u0001" + n, find(key(c.x, c.y))); }
-      else if (c.type === "sheetsym" && c.params.inst) compPins(c).forEach(p => byPort("\u0001" + c.params.inst + "\u0001" + String(p.id).trim().toUpperCase(), find(key(p.x, p.y))));
+      if (c.type === "hport" && c.block) {
+        const n = connName(c); if (!n) return;
+        byPort("\u0001" + c.block.i + "\u0001" + n, find(key(c.x, c.y)));
+        members(c.params.name).forEach(m => byPort("\u0001" + c.block.i + "\u0001\u0002" + m.toUpperCase(), labelNode(c, m)));
+      } else if (c.type === "sheetsym" && c.params.inst) compPins(c).forEach(p => {
+        byPort("\u0001" + c.params.inst + "\u0001" + String(p.id).trim().toUpperCase(), find(key(p.x, p.y)));
+        members(p.id).forEach(m => byPort("\u0001" + c.params.inst + "\u0001\u0002" + m.toUpperCase(), labelNode(p, m)));
+      });
     });
     if (groundRoot !== null) groundRoot = find(groundRoot);
     const netOfRoot = new Map();
@@ -350,7 +362,7 @@
   // The board window or tab, the netlist and board document it shares with the CAD, cross-probing (cad-board-link.js)
   const { BOARD_KEY, boardNetlist, isBoardTab, probeBoard, scheduleBoardNetlist, selectFromBoard, selectNetFromBoard, sendBoardNetlist, setBoardTab, showBoard, storeBoard } = CadBoardLink({ S, VERSION, channel, compBBox, compPins, frames, getCanvas: () => canvas, netDC, netWave, pinCurrents, render, resistorPower, selSig, tubeData, showFile, topo, updateInspector, usedCustomTubes });
   // KiCad export: schematic, board and project in one ZIP (cad-kicad.js, kicad-export.js)
-  const { exportKicad, kicadFiles, fabZip, openKicad, openKicadDialog, isKicadFile } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo, showBoard, storeBoard, sendBoardNetlist,
+  const { exportKicad, kicadFiles, fabZip, openKicad, openKicadDialog, isKicadFile, openLtspice, openLtspiceDialog, isLtspiceFile } = CadKicad({ S, VERSION, baseName, boardNetlist, compBBox, compPins, drawSymbol, frames, setStatus, topo, showBoard, storeBoard, sendBoardNetlist,
     openDesign: (d, what, ask) => openDesign(d, what, ask), setName: n => { setCurFile(null, n); markClean(); } });
   S.showLegend = (() => { try { return localStorage.getItem(LEGEND_KEY) !== "0"; } catch (e) { return true; } })();
   S.sim.live = (() => { try { return localStorage.getItem(LIVE_KEY) !== "0"; } catch (e) { return true; } })();
@@ -737,6 +749,7 @@
   }
   function isConnectionPoint(x, y) {
     if (S.wires.some(w => (w.x1 === x && w.y1 === y) || (w.x2 === x && w.y2 === y) || onSegInterior(w, x, y))) return true;
+    if (busAt(x, y)) return true;   // a wire may end on a bus (its entry is drawn)
     return S.comps.some(c => compPins(c).some(p => p.x === x && p.y === y));
   }
   // a sheet frame is locked unless unlocked in its inspector (older files have no setting: locked)
@@ -933,7 +946,7 @@
     if (e.button === 0 && !S.spaceDown) S.lastClick = { x: m.wx, y: m.wy };   // Fit picks the sheet clicked last
     if (e.button === 0) clearBomShown();   // a click on the sheet shows its selection in the BOM again
     if (e.button === 1 || (e.button === 0 && S.spaceDown)) { if (S.spaceDown) S.spacePanned = true; S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
-    if (e.button === 2) { if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else if (!blocks.cancelPlace()) openSheetMenu(e, m); return; }
+    if (e.button === 2) { if (S.busing) finishBus(); else if (S.unfold) { S.unfold = null; render(); } else if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else if (!blocks.cancelPlace()) openSheetMenu(e, m); return; }
     if (e.button !== 0) return;
     const gx = snap(m.wx), gy = snap(m.wy);
     if (S.placingBlock) { blocks.drop(m.wx, m.wy); return; }
@@ -959,6 +972,16 @@
       return;
     }
 
+    if (S.unfold) { dropUnfold(gx, gy); return; }
+    if (S.tool === "bus") {
+      const B = S.busing;
+      if (!B) { S.busing = { segs: [], x: gx, y: gy, hFirst: null }; render(); return; }
+      if (gx === B.x && gy === B.y) { finishBus(); return; }
+      lRoute(B.x, B.y, gx, gy, B.hFirst === null ? Math.abs(gx - B.x) >= Math.abs(gy - B.y) : B.hFirst).forEach(s => { if (s[0] !== s[2] || s[1] !== s[3]) B.segs.push(s); });
+      B.x = gx; B.y = gy; B.hFirst = null;
+      if (e.detail >= 2) finishBus(); else render();
+      return;
+    }
     if (S.wiring) {
       const pin = hitPin(m.wx, m.wy);
       const tx = pin ? pin.p.x : gx, ty = pin ? pin.p.y : gy;
@@ -1017,12 +1040,14 @@
       if (c) S.sel.comps.add(c.id); else S.sel.wires.add(w.id);
       updateInspector(); render();
     }
-    const item = id => { const k = cmds.get(id); return { label: k.label, key: k.keys[0], icon: k.icon, run: () => cmds.run(id) }; };
+    const item = id => { const k = cmds.get(id); return { label: k.label, key: (k.keys || [])[0], icon: k.icon, run: () => cmds.run(id) }; };
     const n = S.sel.comps.size + S.sel.wires.size;
     const items = c || w ? (c && c.type === "sheetsym" ? ["sheet-open", null] : []).concat(["rotate", "mirror", "duplicate", "delete", null, "copy", "paste", null, "block-make", "sheet-make"]).concat(c && blocks.member() ? ["block-select", "block-update", "block-detach"] : []).concat(hier.instOfComp(c) ? ["sheet-up"] : [])
       : ["paste", "select-all", null, "fit", "undo", "redo", null, "blocks"].concat((currentSheet() || {}).sheetOf ? ["sheet-up"] : []);
     const title = c ? (n > 1 ? `${n} selected` : desig(c) || LIB[c.type].name) : w ? (n > 1 ? `${n} selected` : "Wire") : "";
-    UiKit.contextMenu(items.map(id => (id ? item(id) : null)), e.clientX, e.clientY, title);
+    // a bus: take one of its signals (a wire from the bus with the member's label on the pointer)
+    const take = c && c.type === "bus" ? CadLib.busMembers(c.params.name).slice(0, 24).map(nm => ({ label: "Take a signal: " + nm, icon: ICONS.netlabel, run: () => startUnfold(c, nm, m.wx, m.wy) })) : [];
+    UiKit.contextMenu(take.concat(take.length ? [null] : [], items.map(id => (id ? item(id) : null))), e.clientX, e.clientY, title);
   }
   function onMouseMove(e) {
     const m = evPos(e);
@@ -1038,6 +1063,10 @@
     if (S.wiring && S.wiring.hFirst === null) {
       const dx = Math.abs(snap(m.wx) - S.wiring.x), dy = Math.abs(snap(m.wy) - S.wiring.y);
       if (dx + dy >= GRID) S.wiring.hFirst = dx >= dy;
+    }
+    if (S.busing && S.busing.hFirst === null) {
+      const dx = Math.abs(snap(m.wx) - S.busing.x), dy = Math.abs(snap(m.wy) - S.busing.y);
+      if (dx + dy >= GRID) S.busing.hFirst = dx >= dy;
     }
     updateHover(m);
     if (S.tool === "probe") {
@@ -1184,7 +1213,7 @@
   // toolbar and menu buttons bound to them and the help's Keyboard list all come from it.
   // A new command with a key and a help text shows up in the help by itself.
   const cmds = UiKit.commands();
-  const ICONS = Object.fromEntries(["rotate", "mirror", "delete", "duplicate", "undo", "redo", "copy", "paste", "select-all"].map(n => [n, Icons.svg(n)]));
+  const ICONS = Object.fromEntries(["netlabel", "rotate", "mirror", "delete", "duplicate", "undo", "redo", "copy", "paste", "select-all"].map(n => [n, Icons.svg(n)]));
   const helpModal = () => document.getElementById("help-modal");
   const toggleHelp = () => { const m = helpModal(); m.hidden = !m.hidden; };
   const zoomBy = k => zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, k);
@@ -1199,7 +1228,9 @@
   }
   function clearOrCancel() {
     if (S.drag && (S.drag.kind === "comps" || S.drag.kind === "wire")) { const d = S.drag; S.drag = null; if (d.moved) undoDrag(); setStatus("ok", "Move cancelled"); render(); return; }
-    if (S.wiring) finishWiring();
+    if (S.busing) finishBus();
+    else if (S.unfold) { S.unfold = null; render(); }
+    else if (S.wiring) finishWiring();
     else if (S.placing) { S.placing = null; setTool("select"); }
     else if (blocks.cancelPlace()) { /* the copy being placed is dropped */ }
     else if (S.probe.pin) { S.probe.pin = null; render(); }
@@ -1221,6 +1252,7 @@
     .add({ id: "delete", label: "Delete", icon: ICONS.delete, keys: ["Delete", "Backspace"], anyCtrl: true, prevent: true, run: deleteSelection, help: "delete" })
     .add({ id: "wire", keys: ["W"], run: () => setTool(S.tool === "wire" ? "select" : "wire"), help: "wire tool" })
     .add({ id: "select", keys: ["V"], run: () => setTool("select"), help: "select tool" })
+    .add({ id: "bus", keys: ["Shift+B"], run: () => { S.placing = null; S.wiring = null; S.unfold = null; setTool(S.tool === "bus" ? "select" : "bus"); }, help: "bus tool: draw a bus like a wire, name it D[0..7] or {L R GND}; right-click it → Take a signal" })
     .add({ id: "label", keys: ["L"], run: () => placeLabel(), help: "net label: names the wire you put it on; the same name on the sheet is one net (double-click a wire to label it)" })
     .add({ id: "probe", keys: ["P"], run: () => { S.placing = null; S.wiring = null; setTool(S.tool === "probe" ? "select" : "probe"); }, help: "voltmeter probe: point at a wire or pin for its DC, AC and waveform; click to leave the probe there" })
     .add({ id: "escape", keys: ["Escape"], anyCtrl: true, run: clearOrCancel, help: "cancel / clear the selection (while dragging: put it back)" })
@@ -1303,7 +1335,7 @@
     let cursor = "";
     if (S.spaceDown) cursor = "grab";
     else if (S.tool === "probe") cursor = "crosshair";
-    else if (S.placing || S.placingBlock || S.wiring || S.tool === "wire" || pin) cursor = "crosshair";
+    else if (S.placing || S.placingBlock || S.wiring || S.busing || S.unfold || S.tool === "wire" || S.tool === "bus" || pin) cursor = "crosshair";
     else if (S.anim.on && S.tool === "select" && hitComp(m.wx, m.wy) && (() => { const k = hitComp(m.wx, m.wy); return playKnob(k) || LIB[k.type].flip || (k.type === "jack" && k.params.kind === "TS-SW"); })()) { const k = hitComp(m.wx, m.wy); cursor = playKnob(k) ? (k.rot & 1 ? "ns-resize" : "ew-resize") : "pointer"; }
     else if (!pin) { const w = hitWire(m.wx, m.wy); if (w) cursor = isH(w) ? "ns-resize" : "ew-resize"; else if (hitComp(m.wx, m.wy)) cursor = "move"; }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
@@ -1454,6 +1486,22 @@
       ctx.setLineDash([]);
       ctx.fillStyle = "#00e5ff"; ctx.beginPath(); ctx.arc(S.wiring.x, S.wiring.y, 3.5, 0, Math.PI * 2); ctx.fill();
       if (isConnectionPoint(tx, ty)) { ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(tx, ty, 6, 0, Math.PI * 2); ctx.stroke(); }
+    }
+    // a bus being drawn, a signal being taken from a bus
+    if (S.busing) {
+      const B = S.busing, tx = snap(S.mouse.wx), ty = snap(S.mouse.wy), hFirst = B.hFirst === null ? Math.abs(tx - B.x) >= Math.abs(ty - B.y) : B.hFirst;
+      ctx.save(); ctx.strokeStyle = "#00e5ff"; ctx.lineCap = "round"; ctx.lineWidth = 5;
+      B.segs.forEach(s => { ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke(); });
+      ctx.setLineDash([8, 6]); lRoute(B.x, B.y, tx, ty, hFirst).forEach(s => { ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke(); });
+      ctx.restore();
+    }
+    if (S.unfold) {
+      const u = S.unfold, tx = snap(S.mouse.wx), ty = snap(S.mouse.wy);
+      ctx.save(); ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+      unfoldRoute(u, tx, ty).forEach(s => { ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke(); });
+      ctx.setLineDash([]); ctx.globalAlpha = 0.7;
+      drawComp({ id: "ghost", type: "netlabel", x: tx, y: ty, rot: tx < u.x ? 2 : 0, params: { name: u.name }, label: "" }, false, true);
+      ctx.restore();
     }
     // box selection
     if (S.drag && S.drag.kind === "box") {
@@ -1694,6 +1742,23 @@
       ctx.font = "10px ui-monospace, monospace"; ctx.fillStyle = COL.value;
       ctx.fillText(f ? `sheet ${sheetNo(f)} ↓` : "no sheet yet", c.x, c.y + h + 12);
       ctx.textAlign = "left"; void w;
+      return;
+    }
+    if (c.type === "bus") {
+      // the name over the start of its first segment; a 45° entry where a wire ends on it
+      const segs = busSegs(c), f = segs[0];
+      if (f) {
+        ctx.textAlign = "left"; ctx.font = "bold 11px ui-monospace, Menlo, monospace"; ctx.fillStyle = sel ? COL.bodySel : "#79c0ff";
+        ctx.fillText(c.params.name || "", Math.min(f[0], f[2]) + 4, Math.min(f[1], f[3]) - 6);
+      }
+      ctx.save(); ctx.strokeStyle = sel ? COL.bodySel : "#79c0ff"; ctx.lineWidth = 2; ctx.lineCap = "round";
+      S.wires.forEach(w => [[w.x1, w.y1, w.x2, w.y2], [w.x2, w.y2, w.x1, w.y1]].forEach(([x, y, ox, oy]) => {
+        const q = segs.find(s => onSeg(s, x, y)); if (!q) return;
+        // a short diagonal from the bus out along the wire's side
+        const h = q[1] === q[3], away = h ? Math.sign(oy - y) || 1 : Math.sign(ox - x) || 1;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(h ? x + 6 : x + 6 * away, h ? y + 6 * away : y + 6); ctx.stroke();
+      }));
+      ctx.restore();
       return;
     }
     if (c.type === "netlabel") {
@@ -2011,6 +2076,8 @@
   function setTool(t) {
     S.tool = t;
     if (t !== "wire") S.wiring = null;
+    if (t !== "bus") S.busing = null;
+    const bb = document.getElementById("btn-tool-bus"); if (bb) bb.classList.toggle("active", t === "bus");
     document.getElementById("btn-tool-select").classList.toggle("active", t === "select" && !S.placing);
     document.getElementById("btn-tool-wire").classList.toggle("active", t === "wire");
     document.getElementById("btn-tool-probe").classList.toggle("active", t === "probe");
@@ -2025,6 +2092,47 @@
     if (el.firstChild && el.firstChild.nodeType === 3 && !el.firstChild.nextSibling) { if (el.firstChild.nodeValue !== t) el.firstChild.nodeValue = t; } else el.textContent = t;
   }
 
+  // Buses. The Bus tool draws one like a wire (click the corners; a double-click, the right button
+  // or Esc ends it); its name is typed in the inspector. A wire ending on a bus gets its 45° entry
+  // drawn; right-click a bus → Take a signal puts a wire from the bus with a member's label on the pointer
+  const busSegs = b => (b.params.segs || []).map(q => [b.x + q[0], b.y + q[1], b.x + q[2], b.y + q[3]]);
+  const onSeg = (q, x, y) => (q[1] === q[3] ? y === q[1] && x >= Math.min(q[0], q[2]) && x <= Math.max(q[0], q[2]) : x === q[0] && y >= Math.min(q[1], q[3]) && y <= Math.max(q[1], q[3]));
+  const busAt = (x, y) => S.comps.find(c => c.type === "bus" && busSegs(c).some(q => onSeg(q, x, y))) || null;
+  function finishBus() {
+    const B = S.busing; S.busing = null;
+    if (B && B.segs.length) {
+      const [x0, y0] = B.segs[0], c = makeComp("bus", { name: lastBus || "D[0..7]", segs: B.segs.map(q => [q[0] - x0, q[1] - y0, q[2] - x0, q[3] - y0]) }, x0, y0, 0);
+      S.comps.push(c); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id);
+      commit(); setTool("select"); updateInspector(); focusLabelName();
+      return;
+    }
+    render();
+  }
+  let lastBus = "";
+  // the grid point of a bus nearest (x, y), and whether its segment there runs across
+  function busPoint(b, x, y) {
+    let best = null;
+    busSegs(b).forEach(q => {
+      const h = q[1] === q[3], px = h ? Math.max(Math.min(q[0], q[2]), Math.min(Math.max(q[0], q[2]), snap(x))) : q[0], py = h ? q[1] : Math.max(Math.min(q[1], q[3]), Math.min(Math.max(q[1], q[3]), snap(y)));
+      const d = Math.hypot(px - x, py - y); if (!best || d < best.d) best = { x: px, y: py, h, d };
+    });
+    return best;
+  }
+  function startUnfold(b, name, x, y) {
+    const p = busPoint(b, x, y); if (!p) return;
+    S.placing = null; S.wiring = null; S.unfold = { bus: b.id, name, x: p.x, y: p.y, h: p.h };
+    setTool("select"); canvas.focus(); render();
+  }
+  // where the wire of a signal taken from a bus runs: away from the bus first, then along
+  const unfoldRoute = (u, tx, ty) => lRoute(u.x, u.y, tx, ty, !u.h);
+  function dropUnfold(tx, ty) {
+    const u = S.unfold; S.unfold = null;
+    if (!u || (tx === u.x && ty === u.y)) { render(); return; }
+    unfoldRoute(u, tx, ty).forEach(s => addSegment(s[0], s[1], s[2], s[3]));
+    const left = tx < u.x, c = makeComp("netlabel", { name: u.name }, tx, ty, left ? 2 : 0);
+    S.comps.push(c); S.sel.comps.clear(); S.sel.wires.clear(); S.sel.comps.add(c.id);
+    commit(); updateInspector();
+  }
   // Net labels: L (or the Label button) puts one on the pointer with the next free name, the last
   // name placed counted on (IN1 → IN2, as KiCad does); a double-click on a wire labels it there
   let lastLabel = "";
@@ -2251,7 +2359,7 @@
           c.params[f.key] = (f.as === "dbv" ? Math.pow(10, n / 20) : n) * crest; commit();
         });
       } else if (f.kind === "text") {
-        el = input("text", c.params[f.key] || "", v => { if (f.check && !f.check(v)) { flash(el); return; } c.params[f.key] = v; if (c.type === "netlabel") lastLabel = v.trim(); commit(); });
+        el = input("text", c.params[f.key] || "", v => { if (f.check && !f.check(v)) { flash(el); return; } c.params[f.key] = v; if (c.type === "netlabel") lastLabel = v.trim(); if (c.type === "bus") lastBus = v.trim(); commit(); });
         el.dataset.key = f.key;
         if (f.placeholder) el.placeholder = f.placeholder;
       } else if (f.kind === "number") {
@@ -2509,6 +2617,19 @@
     if (twoNames.length) issues.push("Net labels with two names on one net: " + twoNames.join("; "));
     const apart = [];
     labelsOn.forEach((set, net) => set.forEach(n => { const g = globalNet.get(n.toUpperCase()); if (g !== undefined && g !== net && !apart.includes(n)) apart.push(n); }));
+    // buses: each wire leaving a bus needs a member's name, and the name must be one of the bus's
+    const unnamed = [], strangers = [];
+    S.comps.filter(c => c.type === "bus").forEach(b => {
+      const segs = busSegs(b), mem = new Set(CadLib.busMembers(b.params.name).map(t => t.toUpperCase()));
+      S.wires.forEach(w => {
+        if (![[w.x1, w.y1], [w.x2, w.y2]].some(([x, y]) => segs.some(q => onSeg(q, x, y)))) return;
+        const names = labelsOn.get(T.wireNet.get(w.id));
+        if (!names || !names.size) unnamed.push(b.params.name || "bus");
+        else names.forEach(n => { if (!mem.has(n.toUpperCase()) && !strangers.includes(n)) strangers.push(`${n} (on ${b.params.name || "a bus"})`); });
+      });
+    });
+    if (unnamed.length) issues.push(`Wires leaving a bus with no net label: ${unnamed.length} (${[...new Set(unnamed)].join(", ")}); label each with a member's name (right-click the bus → Take a signal)`);
+    if (strangers.length) issues.push("Net labels on a bus's wire that are not members of the bus: " + strangers.join(", "));
     if (apart.length) issues.push(`Net labels named like a sheet connector or power rail but not joined to it: ${apart.join(", ")} (a label reaches only its own sheet; use a Sheet connector)`);
     // power rails: one voltage per net, never on ground
     const railsOn = new Map();
@@ -3295,6 +3416,7 @@
   }
   function openFile(file, handle) {
     if (isKicadFile(file.name)) { openKicad([file]); return; }      // a KiCad schematic or board, or a ZIP of a project
+    if (isLtspiceFile(file.name)) { openLtspice([file]); return; }  // an LTspice schematic
     const rd = new FileReader();
     rd.onload = () => { if (openText(rd.result, file.name, handle)) recent.addFile(file.name, handle || null, rd.result); };
     rd.readAsText(file);
@@ -3308,7 +3430,7 @@
     try {
       // KiCad files picked here (under "All files"): the project's files together
       const files = await Promise.all(hs.map(h => h.getFile()));
-      if (files.some(f => isKicadFile(f.name))) openKicad(files); else openFile(files[0], hs[0]);
+      if (files.some(f => isKicadFile(f.name))) openKicad(files); else if (files.some(f => isLtspiceFile(f.name))) openLtspice(files); else openFile(files[0], hs[0]);
     } catch (err) { setStatus("error", "Could not open file: " + err.message); }
   }
 
@@ -3588,7 +3710,7 @@
     bind("btn-start-new", () => { closeStart(); openSheetDialog("new"); });
     bind("btn-start-open", () => { closeStart(); openDialog(); });
     document.getElementById("start-show").addEventListener("change", e => { try { localStorage.setItem(START_KEY, e.target.checked ? "1" : "0"); } catch (err) { /* private mode */ } });
-    document.getElementById("file-input").addEventListener("change", e => { const fl = [...e.target.files]; if (fl.some(f => isKicadFile(f.name))) openKicad(fl); else if (fl[0]) openFile(fl[0]); e.target.value = ""; });
+    document.getElementById("file-input").addEventListener("change", e => { const fl = [...e.target.files]; if (fl.some(f => isKicadFile(f.name))) openKicad(fl); else if (fl.some(f => isLtspiceFile(f.name))) openLtspice(fl); else if (fl[0]) openFile(fl[0]); e.target.value = ""; });
     bind("btn-save", saveFile);
     bind("btn-save-as", saveFileAs);
     bind("btn-save-cancel", () => { document.getElementById("save-modal").hidden = true; });
@@ -3621,6 +3743,7 @@
     bind("btn-tool-wire", () => { S.placing = null; setTool(S.tool === "wire" ? "select" : "wire"); });
     bind("btn-tool-probe", () => cmds.run("probe"));
     bind("btn-tool-label", () => cmds.run("label"));
+    bind("btn-tool-bus", () => cmds.run("bus"));
     // the ? button opens the Help menu; F1 and ? open the quick help straight away
     cmds.helpRows(document.getElementById("help-keys"));
     bind("menu-help-keys", () => cmds.run("help"));
@@ -3655,6 +3778,7 @@
     cmds.bind("btn-volts", "volts").bind("btn-amps", "amps").bind("btn-legend", "legend").bind("btn-anim", "anim");
     bind("btn-kicad", () => exportKicad());
     bind("btn-kicad-open", () => openKicadDialog());
+    bind("btn-ltspice-open", () => openLtspiceDialog());
     bind("btn-spice", () => { document.getElementById("spice-text").value = spiceNetlist(); document.getElementById("spice-modal").hidden = false; });
     bind("btn-spice-close", () => { document.getElementById("spice-modal").hidden = true; });
     bind("btn-spice-copy", () => { const t = document.getElementById("spice-text"); t.select(); try { navigator.clipboard.writeText(t.value); } catch (e) { document.execCommand("copy"); } });
@@ -3719,6 +3843,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { library, addPart, blocks, hier, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, transient, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, relayOn, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { library, addPart, blocks, hier, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, openLtspice, circuitIssues, erc, ai, tune, design, datasheet, tolerance, power, transient, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, relayOn, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

@@ -34,6 +34,39 @@ Files for the board maker.
 - The plain Gerber ZIP's placement file gave SOT-23, SOT-223, SOT-89 and DPAK
   parts a quarter turn off KiCad's zero.
 
+## [3.247.0] - 2026-11-22
+
+Buses: a group of signals under one name, drawn and carried between sheets. LTspice import.
+
+### Added
+- **Buses** (`Shift+B`, the new **Bus** button after Label): a thick line drawn like a wire, corner
+  by corner; a double-click or right-click ends it, selected, its name field ready. Names as in KiCad:
+  `D[0..7]` (also `D[7..0]`), `{L R GND}`, `IN{L R}` (IN.L, IN.R). The bus itself joins nothing: the
+  net labels on the wires leaving it do.
+- **Right-click a bus → Take a signal: D2** puts a wire from the bus on the pointer with that member's
+  net label at its end. A 45° entry is drawn wherever a wire leaves the bus.
+- **Sheet ports** and sheet-symbol pins named like a bus carry every member's label to and from the
+  sheet.
+- **Checks**: a wire leaving a bus with no net label, and a label on a bus's wire that is not one of
+  its members.
+- **KiCad export** writes KiCad's own bus and its name label; **KiCad import** now draws the buses it
+  finds, with their entries and names (it used to join their signals by name only).
+
+- **Open LTspice schematic…** (File ▾; File ▾ → Open… and dropping an `.asc` on the sheet work too):
+  an LTspice schematic as a circuit. Resistors, capacitors (polarised as electrolytics), inductors,
+  diodes, zeners, LEDs, transistors, MOSFETs, JFETs and DC / SINE / PULSE / PWL / EXP voltage sources
+  and DC current sources become the app's parts and simulate. Values as LTspice reads them (4k7,
+  2.2Meg, M is milli). A `.model` / `.subckt` in the schematic or in a model file opened with it is
+  used as written (a SPICE part). LTspice's own ICs, controlled and behavioural sources and switches
+  are kept as boxes with their pins (from the `.asy` opened with it, else from the wires ending by it).
+  Ground is ground, every other flag a net label; comments and commands go on the sheet as text.
+  Checked on 193 schematics from public repositories: every one keeps the nets of its `.asc`
+  (`tests/ltspice-field.mjs`).
+
+### Fixed
+- Right-clicking a part on the schematic threw an error and opened no menu (a menu command with no
+  shortcut key).
+
 ## [3.246.0] - 2026-11-22
 
 Net labels: name a wire, join wires by name on a sheet.

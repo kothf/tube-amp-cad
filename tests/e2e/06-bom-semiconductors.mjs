@@ -710,7 +710,7 @@ import { readFile } from "node:fs/promises";
     }
     return { bad, skip };
   });
-  check(!mall.bad.length && mall.skip.sort().join() === "frame,note,sheetsym", `Mirror flips the pins of every rotatable part, and the oscilloscope, left to right (${mall.bad.length ? "wrong: " + mall.bad.join(", ") : "all " + (await cad.evaluate(() => Object.keys(CadLib.LIB).length)) + " types checked"}; frame, notes and sheet symbols stay put)`);
+  check(!mall.bad.length && mall.skip.sort().join() === "bus,frame,note,sheetsym", `Mirror flips the pins of every rotatable part, and the oscilloscope, left to right (${mall.bad.length ? "wrong: " + mall.bad.join(", ") : "all " + (await cad.evaluate(() => Object.keys(CadLib.LIB).length)) + " types checked"}; frame, notes, sheet symbols and buses stay put)`);
   // the oscilloscope mirrored: its inputs on the right, the Mirror field in its inspector, the screen still upright (no rotation)
   const scm = await cad.evaluate(() => {
     const C = TubeCAD, S = C.state, c = C.makeComp("scope", {}, 5000, 5000, 0); S.comps.push(c);

@@ -14,7 +14,7 @@
       + "The user describes an amplifier or a stage; you design it as a netlist of the CAD's parts. The CAD draws it, simulates it and runs its Checks (each tube and transistor against its ratings, wiring problems), and may send the results back for a revision. "
       + "Design what a skilled builder would: proven topologies, bias points with margin inside the ratings, standard values. Keep it to what was asked; when the description leaves something open, choose sensibly and say so in the summary.\n\n";
     function system() {
-      return SYSTEM + AiDesign.rules() + "\n\n# The part library (type: name. Pins. Values)\n" + AiCircuit.catalogue({ skip: ["rail", "offsheet", "netlabel", "ground"] })
+      return SYSTEM + AiDesign.rules() + "\n\n# The part library (type: name. Pins. Values)\n" + AiCircuit.catalogue({ skip: ["rail", "offsheet", "netlabel", "bus", "ground"] })
         + "\nscope: Oscilloscope. Pins CH1 CH2 COM. Values: none needed."
         + "\n\n# Tubes in the library (name, kind, max anode voltage, max anode dissipation)\n" + AiCircuit.tubeList();
     }

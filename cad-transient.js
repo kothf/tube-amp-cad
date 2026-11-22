@@ -49,7 +49,7 @@
   function indexAt(t, x) { let lo = 0, hi = t.length; while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < x) lo = m + 1; else hi = m; } return lo; }
 
   const COLORS = ["#00e5ff", "#ffb300", "#c792ea", "#3fb950", "#ff6b81", "#82aaff", "#f78c6c", "#c3e88d"];
-  const SKIP = new Set(["frame", "note", "ground", "offsheet", "netlabel", "rail", "scope"]);
+  const SKIP = new Set(["frame", "note", "ground", "offsheet", "netlabel", "bus", "rail", "scope"]);
 
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   function CadTransient(cad) {
