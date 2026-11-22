@@ -18,7 +18,7 @@
     const BOARD_KEY = "tubecad_board_v1";
     S.board = null;
     function boardNetlist() {
-      const T = topo(), skip = new Set(["frame", "note", "ground", "offsheet", "hport", "sheetsym", "rail", "scope"]);
+      const T = topo(), skip = new Set(["frame", "note", "ground", "offsheet", "netlabel", "hport", "sheetsym", "rail", "scope"]);
       T0 = T;
       // DC current into each pin from the last result (the board sizes tracks by it)
       const PI = S.sim.result && S.sim.topo === T ? pinCurrents() : null;
@@ -26,6 +26,8 @@
         pins: compPins(c).map(p => { const k = c.id + ":" + p.id, i = PI && PI.get(k); return { id: p.id, name: p.name || p.id, net: T.pinNet.get(k), i: Number.isFinite(i) ? +i.toPrecision(4) : undefined }; }) }));
       const names = {};
       if (T.hasGround) names[0] = "GND";
+      // a net label names its net unless a sheet connector or rail of the net does
+      S.comps.forEach(c => { if (c.type === "netlabel" && String(c.params.name || "").trim()) { const n = T.pinNet.get(c.id + ":1"); if (n !== 0 && n !== undefined && !names[n]) names[n] = String(c.params.name).trim(); } });
       S.comps.forEach(c => { if ((c.type === "offsheet" || c.type === "rail") && String(c.params.name || "").trim()) { const n = T.pinNet.get(c.id + ":1"); if (n !== 0) names[n] = String(c.params.name).trim(); } });
       // DC level per net from the last result, for the high-voltage clearance rule
       const volts = {};

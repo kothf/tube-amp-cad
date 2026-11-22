@@ -49,7 +49,7 @@
   function indexAt(t, x) { let lo = 0, hi = t.length; while (lo < hi) { const m = (lo + hi) >> 1; if (t[m] < x) lo = m + 1; else hi = m; } return lo; }
 
   const COLORS = ["#00e5ff", "#ffb300", "#c792ea", "#3fb950", "#ff6b81", "#82aaff", "#f78c6c", "#c3e88d"];
-  const SKIP = new Set(["frame", "note", "ground", "offsheet", "rail", "scope"]);
+  const SKIP = new Set(["frame", "note", "ground", "offsheet", "netlabel", "rail", "scope"]);
 
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   function CadTransient(cad) {
@@ -72,13 +72,13 @@
     function netNames() {
       const T = topo(), byNet = new Map(), add = (net, name, kind) => {
         if (net === undefined || net === 0) return;
-        const cur = byNet.get(net), rank = { conn: 0, scope: 1, pin: 2 };
+        const cur = byNet.get(net), rank = { conn: 0, label: 1, scope: 2, pin: 3 };
         if (!cur || rank[kind] < rank[cur.kind]) byNet.set(net, { net, name, kind, alias: cur ? [cur.name].concat(cur.alias || []) : [] });
         else (cur.alias = cur.alias || []).push(name);
       };
       S.comps.forEach(c => {
         if (!LIB[c.type] || c.type === "frame" || c.type === "note" || c.type === "ground") return;
-        if (c.type === "offsheet" || c.type === "rail") { const n = String(c.params.name || "").trim(); if (n) add(T.pinNet.get(c.id + ":" + compPins(c)[0].id), n, "conn"); return; }
+        if (c.type === "offsheet" || c.type === "rail" || c.type === "netlabel") { const n = String(c.params.name || "").trim(); if (n) add(T.pinNet.get(c.id + ":" + compPins(c)[0].id), n, c.type === "netlabel" ? "label" : "conn"); return; }
         const d = desig(c);
         if (c.type === "scope") { compPins(c).forEach(p => { if (/^CH/i.test(p.id)) add(T.pinNet.get(c.id + ":" + p.id), `${d || "scope"} ${p.id}`, "scope"); }); return; }
         if (!d) return;

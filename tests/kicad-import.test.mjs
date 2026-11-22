@@ -74,7 +74,9 @@ test("a KiCad project opens as the circuit: parts, nets and names as KiCad has t
   assert.equal(by("U1").type, "kicad"); assert.equal(by("U1").params.value, "XYZ"); assert.equal(by("U1").params.footprint, "mylib:XYZ_SMD");
   assert.deepEqual(by("U1").params.sym.pins.map(p => [p.num, p.name]), [["1", "IN"], ["2", "OUT"]]);
   assert.equal(types("ground").length, 1);
-  assert.deepEqual(types("offsheet").map(c => c.params.name).sort(), ["OUT", "OUT", "SPK"]);
+  assert.deepEqual(types("offsheet").map(c => c.params.name).sort(), ["OUT", "OUT"]);
+  // a local label is a net label: its name joins only on its own sheet
+  assert.deepEqual(types("netlabel").map(c => c.params.name), ["SPK"]); assert.equal(report.labels, 1);
   assert.ok(types("note").some(c => c.params.text === "Gain stage"));
   const frame = types("frame")[0]; assert.equal(frame.params.title, "Fixture amplifier"); assert.equal(frame.params.rev, "B"); assert.equal(frame.params.owner, "Bench");
   // everything on the app's 10-unit grid, wires straight, inside the frame
@@ -101,7 +103,7 @@ test("its board comes with it: outline, footprints in place on their nets, track
   const N = nets(design), ids = new Map(); let k = 1;
   const net = key => { if (!ids.has(key)) ids.set(key, k++); return ids.get(key); };
   const g = design.comps.find(c => c.type === "ground"); ids.set(N.get(g.id + ":" + compPins(g)[0].id), 0);
-  const nl = { names: { 0: "GND" }, volts: {}, parts: design.comps.filter(c => !["frame", "note", "ground", "offsheet", "rail"].includes(c.type)).map(c => ({ id: c.id, type: c.type, label: c.label, params: Object.assign({}, L.LIB[c.type].defaults, c.params), pins: compPins(c).map(p => ({ id: p.id, net: net(N.get(c.id + ":" + p.id)) })) })) };
+  const nl = { names: { 0: "GND" }, volts: {}, parts: design.comps.filter(c => !["frame", "note", "ground", "offsheet", "netlabel", "rail"].includes(c.type)).map(c => ({ id: c.id, type: c.type, label: c.label, params: Object.assign({}, L.LIB[c.type].defaults, c.params), pins: compPins(c).map(p => ({ id: p.id, net: net(N.get(c.id + ":" + p.id)) })) })) };
   const m = B.model(board, nl), pad = (ref, num) => m.pads.find(p => p.ref === ref && String(p.num) === String(num));
   assert.equal(m.parts.filter(p => p.place).length, 3);
   const near = (p, x, y) => assert.ok(Math.hypot(p.x - x, p.y - y) < 0.01, `${p.ref}:${p.num} at ${p.x}, ${p.y}, not ${x}, ${y}`);
