@@ -695,7 +695,10 @@
     });
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity, crt = false;
     const add = (x, y) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); };
+    // the fabrication outline (F.Fab): the part's body seen from above, for its 3D box (board-3d.js defaultBody)
+    const fab = [Infinity, Infinity, -Infinity, -Infinity], fabLines = { n: 0, c: 0 }, fabAdd = (x, y) => { fab[0] = Math.min(fab[0], x); fab[1] = Math.min(fab[1], y); fab[2] = Math.max(fab[2], x); fab[3] = Math.max(fab[3], y); };
     f.gfx.forEach(g => {
+      if (/Fab$/.test(g.layer || "")) { fabLines[g.circle ? "c" : "n"]++; if (g.circle) { const [x, y] = loc(g.circle[0], g.circle[1]); fabAdd(x - g.circle[2], y - g.circle[2]); fabAdd(x + g.circle[2], y + g.circle[2]); } else (g.pts || []).forEach(p => fabAdd(...loc(p[0], p[1]))); return; }
       if (/CrtYd$/.test(g.layer || "")) { crt = true; g.pts.forEach(p => add(...loc(p[0], p[1]))); return; }
       if (!/SilkS$|Silkscreen$/.test(g.layer || "") || silk.length > 300) return;
       if (g.circle) { const [x, y] = loc(g.circle[0], g.circle[1]); silk.push({ t: "circle", x, y, r: r4(g.circle[2]) }); return; }
@@ -709,6 +712,7 @@
     if (!isFinite(x1)) { x1 = y1 = -1; x2 = y2 = 1; }
     const d = { name, title: (f.descr || f.lib.split(":").pop()).slice(0, 120) + " (from KiCad)", pads, silk, holes, box: [r4(x1), r4(y1), r4(x2), r4(y2)], custom: true };
     if (smd && n) d.smd = true;
+    if (fab[2] - fab[0] > 0.2 && fab[3] - fab[1] > 0.2) { d.fab = fab.map(r4); if (fabLines.c && !fabLines.n) d.fabRound = true; }
     return d;
   }
   // a board with no schematic: a box per footprint, each pad on a connector with its net's name

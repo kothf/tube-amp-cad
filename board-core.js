@@ -784,7 +784,13 @@
     if (fps && typeof fps === "object") Object.keys(fps).forEach(k => { const f = fps[k]; if (f && Array.isArray(f.pads) && Array.isArray(f.box)) CUSTOM.set(k, f); });
   }
   function footprint(name, pinNames, body) {
-    if (CUSTOM.has(name)) { const c = CUSTOM.get(name); return { ...c, name, title: c.title || name, silk: c.silk || [], holes: c.holes || [], custom: true }; }
+    if (CUSTOM.has(name)) {
+      const c = CUSTOM.get(name), f = { ...c, name, title: c.title || name, silk: c.silk || [], holes: c.holes || [], custom: true };
+      // its own 3D body (the footprint editor's, or a KiCad footprint's fabrication outline) tells how tall it stands
+      const z = (c.body3d || c.fab) && root.Board3D ? root.Board3D.bodyHeight(f) : 0;
+      if (z > 0) f.zHeight = z;
+      return f;
+    }
     const f = shape(name, pinNames, body);
     if (f && body && Object.keys(body).length) f.body = body;
     return f;

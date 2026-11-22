@@ -231,13 +231,164 @@
       contacts.forEach(p => out.push(cylZ(p.x, p.y, Math.min(p.drill * 0.42, rPin), -1.2 - t, 0.2, metal, to)));
     }
   }
+  // ---------------------------------------------------------------------------
+  // A footprint's own 3D body (fp.body3d, set in the footprint editor for a drawn or imported footprint):
+  //   { shape: box | cylx (a cylinder lying along x: axial) | cylz (standing: a radial can) |
+  //     outline (the silkscreen's closed outline raised) | pkg (a built-in package's body) | none,
+  //     l (along x), w (across), h (tall), d (a cylinder's diameter), pkg (a built-in footprint's name),
+  //     z (raised above the board), x, y (moved), rot (turned, degrees anticlockwise seen from the top),
+  //     color (a name of BODY_COLORS; none: the shape's own) }
+  // ---------------------------------------------------------------------------
+  const BODY_PACKAGES = [["TO-92", "TO-92-EBC"], ["TO-18 (metal can)", "TO-18-EBC"], ["TO-126", "TO-126-ECB"], ["TO-220", "TO-220-GDS"], ["TO-247", "TO-247-GDS"], ["TO-3P", "TO-3P-GDS"], ["TO-264", "TO-264-GDS"],
+    ["DIP-4", "DIP-4"], ["DIP-6", "DIP-6"], ["DIP-8", "DIP-8"], ["DIP-14", "DIP-14"], ["DIP-16", "DIP-16"], ["SOIC-8", "SOIC-8"], ["SOIC-14", "SOIC-14"], ["SOIC-16", "SOIC-16"],
+    ["SOT-23", "SOT-23-BEC"], ["SOT-89", "SOT-89-BCE"], ["SOT-223", "SOT-223-BCE"], ["DPAK", "DPAK-GDS"], ["D²PAK", "D2PAK-GDS"], ["0603 chip", "CHIP-0603"], ["0805 chip", "CHIP-0805"], ["1206 chip", "CHIP-1206"], ["2512 chip", "CHIP-2512"],
+    ["SMA diode", "SMA"], ["SMB diode", "SMB"], ["SMC diode", "SMC"], ["LED 3 mm", "LED-3MM"], ["LED 5 mm", "LED-5MM"],
+    ["Resistor, 10.16 mm", "AXIAL-10.16"], ["Resistor, 15.24 mm", "AXIAL-15.24"], ["Diode DO-41", "DIODE-10.16"], ["Diode DO-201AD", "DO-201AD"], ["Film box, 7.5 mm", "BOX-7.5"], ["Film box, 15 mm", "BOX-15"], ["Ceramic disc", "DISC-5.08"],
+    ["Can Ø 6.3 mm", "RADIAL-D6.3-P2.5"], ["Can Ø 10 mm", "RADIAL-D10-P5"], ["Can Ø 16 mm", "RADIAL-D16-P7.5"], ["Snap-in Ø 30 mm", "SNAPIN-D30"],
+    ["Bridge GBU", "BRIDGE-GBU"], ["Bridge KBU", "BRIDGE-KBU"], ["Bridge round (WOB)", "BRIDGE-WOB"], ["Relay G5LE", "RELAY-G5LE-1"], ["Trimmer 3296W", "TRIM-3296W"], ["Header 1×4", "HEADER-1x4"]];
+  const BODY_COLORS = { black: ["Black", C.black], grey: ["Grey", C.generic], blue: ["Light blue (resistor)", C.resistor], red: ["Red (film)", C.film], tan: ["Tan (ceramic)", C.chipCap], navy: ["Dark blue (can)", C.ecap],
+    metal: ["Metal", C.metal], green: ["Green", C.terminal], yellow: ["Yellow", C.xt], white: ["White", C.ceramic], brown: ["Brown", C.sockBrown] };
+  const BODY_SHAPES = ["box", "cylx", "cylz", "outline", "pkg", "none"];
+  const num0 = (v, d) => (isFinite(+v) && v !== "" && v !== null ? +v : d);
+  // the silkscreen lines joined into closed outlines; the largest one (footprint coordinates), else null
+  function outlineLoop(fp) {
+    const key = (x, y) => Math.round(x * 100) + "," + Math.round(y * 100), segs = (fp.silk || []).filter(g => g.t === "line"), ends = new Map(), used = new Set();
+    segs.forEach((s, i) => [key(s.x1, s.y1), key(s.x2, s.y2)].forEach(k => { if (!ends.has(k)) ends.set(k, []); ends.get(k).push(i); }));
+    let best = null, bestA = 0;
+    segs.forEach((s0, i0) => {
+      if (used.has(i0)) return;
+      const pts = [[s0.x1, s0.y1]], start = key(s0.x1, s0.y1);
+      let at = [s0.x2, s0.y2], i = i0; used.add(i0);
+      for (let n = 0; n < 400; n++) {
+        if (key(...at) === start) {
+          const a = Math.abs(pts.reduce((sum, p, k) => { const q = pts[(k + 1) % pts.length]; return sum + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
+          if (pts.length >= 3 && a > bestA) { bestA = a; best = pts.slice(); }
+          return;
+        }
+        pts.push(at);
+        const nx = (ends.get(key(...at)) || []).find(j => j !== i && !used.has(j));
+        if (nx === undefined) return;
+        used.add(nx); i = nx; const s = segs[nx];
+        at = key(s.x1, s.y1) === key(...at) ? [s.x2, s.y2] : [s.x1, s.y1];
+      }
+    });
+    if (best) return best;
+    const c = (fp.silk || []).filter(g => g.t === "circle").sort((a, b) => b.r - a.r)[0];
+    return c ? circle(c.r, sides(c.r)).map(([a, b]) => [c.x + a, c.y + b]) : null;
+  }
+  // the body's place seen from the top: the silkscreen's extent, else the outline box less its margin
+  function fpBounds(fp) {
+    const S = fp.silk || [];
+    if (S.length) {
+      const o = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity }, add = (x, y) => { o.x1 = Math.min(o.x1, x); o.y1 = Math.min(o.y1, y); o.x2 = Math.max(o.x2, x); o.y2 = Math.max(o.y2, y); };
+      S.forEach(g => { if (g.t === "line") { add(g.x1, g.y1); add(g.x2, g.y2); } else if (g.t === "circle") { add(g.x - g.r, g.y - g.r); add(g.x + g.r, g.y + g.r); } });
+      if (o.x2 - o.x1 > 0.5 && o.y2 - o.y1 > 0.5) return o;
+    }
+    const b = fp.box || [-1, -1, 1, 1]; return { x1: b[0] + 0.25, y1: b[1] + 0.25, x2: b[2] - 0.25, y2: b[3] - 0.25 };
+  }
+  /** The body a footprint gets when nothing is set: a KiCad footprint's fabrication outline as a box; the
+      usual packages (DIP, SOIC) from their pads; two drilled pads a resistor-like cylinder; else a block over the outline */
+  function defaultBody(fp, shape) {
+    const pads = (fp && fp.pads) || [], smd = pads.length > 0 && pads.every(p => p.smd), r2 = v => Math.round(v * 100) / 100;
+    if (shape) {
+      // a shape asked for, sized from the outline (the fabrication outline where there is one)
+      const bb = fp && Array.isArray(fp.fab) ? { x1: fp.fab[0], y1: fp.fab[1], x2: fp.fab[2], y2: fp.fab[3] } : fpBounds(fp || {}), l = r2(bb.x2 - bb.x1), w = r2(bb.y2 - bb.y1), at = { x: r2((bb.x1 + bb.x2) / 2), y: r2((bb.y1 + bb.y2) / 2), z: 0, rot: 0 };
+      if (shape === "box") return { shape, l, w, h: smd ? 1 : 5, ...at };
+      if (shape === "cylx") { const d = r2(Math.min(w, Math.max(1.8, l * 0.25))); return { shape, l: r2(Math.max(0.5, l * 0.6)), d, ...at, z: smd ? 0 : 0.4 }; }
+      if (shape === "cylz") { const d = r2(Math.min(l, w)); return { shape, d, h: r2(d * 1.6), ...at }; }
+      if (shape === "outline") return { shape, h: smd ? 1 : 5, x: 0, y: 0, z: 0, rot: 0 };
+      if (shape === "pkg") { const d = defaultBody(fp); return d.shape === "pkg" ? d : { shape, pkg: smd ? "SOIC-8" : "TO-220-GDS", ...at }; }
+      return { shape: "none", x: 0, y: 0, z: 0, rot: 0 };
+    }
+    if (fp && Array.isArray(fp.fab) && fp.fab[2] > fp.fab[0] && fp.fab[3] > fp.fab[1]) {
+      const [x1, y1, x2, y2] = fp.fab, m = /_H(\d+(?:\.\d+)?)mm/i.exec(fp.name || ""), l = x2 - x1, w = y2 - y1;
+      // a round outline (an electrolytic's can): a standing cylinder
+      if (fp.fabRound) return { shape: "cylz", d: r2(Math.min(l, w)), h: m ? +m[1] : r2(Math.min(l, w) * 1.6), x: r2((x1 + x2) / 2), y: r2((y1 + y2) / 2), z: 0, rot: 0 };
+      return { shape: "box", l: r2(l), w: r2(w), h: m ? +m[1] : r2(smd ? Math.min(2, Math.max(0.5, Math.min(l, w) * 0.4)) : Math.min(12, Math.max(2, Math.min(l, w) * 0.8))), x: r2((x1 + x2) / 2), y: r2((y1 + y2) / 2), z: 0, rot: 0 };
+    }
+    const xs = [...new Set(pads.map(p => Math.round(p.x * 100) / 100))].sort((a, b) => a - b), n = pads.length;
+    const pitchY = () => { const col = pads.filter(p => Math.abs(p.x - xs[0]) < 0.01).map(p => p.y).sort((a, b) => a - b); return col.length > 1 ? r2(col[1] - col[0]) : 0; };
+    if (!smd && xs.length === 2 && Math.abs(xs[1] - xs[0] - 7.62) < 0.05 && [4, 6, 8, 14, 16].includes(n) && Math.abs(pitchY() - 2.54) < 0.05) return { shape: "pkg", pkg: "DIP-" + n, x: r2((xs[0] + xs[1]) / 2), y: r2(pads.reduce((s, p) => s + p.y, 0) / n), z: 0, rot: 0 };
+    if (smd && xs.length === 2 && [8, 14, 16].includes(n) && Math.abs(pitchY() - 1.27) < 0.05 && xs[1] - xs[0] > 4 && xs[1] - xs[0] < 7) return { shape: "pkg", pkg: "SOIC-" + n, x: r2((xs[0] + xs[1]) / 2), y: r2(pads.reduce((s, p) => s + p.y, 0) / n), z: 0, rot: 0 };
+    if (!smd && n === 2) {
+      const [a, b] = pads, L = Math.hypot(b.x - a.x, b.y - a.y);
+      if (L > 4) return { shape: "cylx", l: r2(L * 0.62), d: r2(Math.min(8, Math.max(1.8, L * 0.25))), x: r2((a.x + b.x) / 2), y: r2((a.y + b.y) / 2), z: 0.4, rot: r2(-Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI) };
+    }
+    const b = fpBounds(fp);
+    return { shape: "box", l: r2(b.x2 - b.x1), w: r2(b.y2 - b.y1), h: smd ? 1 : 5, x: r2((b.x1 + b.x2) / 2), y: r2((b.y1 + b.y2) / 2), z: 0, rot: 0 };
+  }
+  /** A body put in order (numbers, a known shape and package); null for nothing usable */
+  function bodyTidy(b) {
+    if (!b || typeof b !== "object" || !BODY_SHAPES.includes(b.shape)) return null;
+    const r3 = v => Math.round(v * 1000) / 1000, pos = (v, d, lo) => Math.max(lo, r3(num0(v, d)));
+    const o = { shape: b.shape, x: r3(num0(b.x, 0)), y: r3(num0(b.y, 0)), z: Math.max(0, r3(num0(b.z, 0))), rot: r3(((num0(b.rot, 0) % 360) + 360) % 360) };
+    if (b.shape === "box") Object.assign(o, { l: pos(b.l, 5, 0.1), w: pos(b.w, 3, 0.1), h: pos(b.h, 3, 0.05) });
+    else if (b.shape === "cylx") Object.assign(o, { l: pos(b.l, 6, 0.1), d: pos(b.d, 2.5, 0.1) });
+    else if (b.shape === "cylz") Object.assign(o, { d: pos(b.d, 5, 0.1), h: pos(b.h, 10, 0.05) });
+    else if (b.shape === "outline") o.h = pos(b.h, 3, 0.05);
+    else if (b.shape === "pkg") { o.pkg = BODY_PACKAGES.some(p => p[1] === b.pkg) ? b.pkg : "TO-220-GDS"; }
+    if (b.color && BODY_COLORS[b.color]) o.color = b.color;
+    return o;
+  }
+  // the body of fp.body3d, into out; `to` maps footprint coordinates to the world, lead() draws a lead into a pad
+  function ownBody(g, t, opts, b, out, to, lead) {
+    const fp = g.fp, a = (b.rot || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), ox = b.x || 0, oy = b.y || 0, z0 = b.z || 0;
+    const pre = ([x, y, z]) => [ox + x * c + y * s, oy - x * s + y * c, z + z0], toB = p => to(pre(p));
+    const local = (x, y) => { const dx = x - ox, dy = y - oy; return [dx * c - dy * s, dx * s + dy * c]; };
+    const col = def => (b.color && BODY_COLORS[b.color] ? BODY_COLORS[b.color][1] : def);
+    const tht = (fp.pads || []).filter(p => !p.smd);
+    if (b.shape === "pkg") {
+      const P = root.BoardCore.footprint(b.pkg);
+      if (!P) return;
+      const sol = partBodies({ ...g, fp: P, place: g.place }, t, { ...opts, pre });
+      // the package's own leads where its pads are the footprint's; else straight leads up from each pad to the body
+      const match = P.pads.length === (fp.pads || []).length && P.pads.every(q => { const w = pre([q.x, q.y, 0]); return fp.pads.some(p => Math.hypot(p.x - w[0], p.y - w[1]) < 0.15); });
+      const keep = sol.filter(x => match || x.color !== C.lead);
+      if (b.color && BODY_COLORS[b.color]) keep.forEach(x => { if (x.color !== C.lead && !x.glass) x.color = BODY_COLORS[b.color][1]; });
+      out.push(...keep);
+      if (!match && tht.length) {
+        const zs = keep.flatMap(x => x.verts.map(v => (g.place.side === "B" ? -v[2] : v[2] - t)));
+        const top = zs.length ? Math.max(0.5, Math.min(...zs) + 0.3) : 1;
+        tht.forEach(p => lead(p.x, p.y, top));
+      }
+      return;
+    }
+    let zLead = z0 + 0.3;
+    if (b.shape === "box") out.push(box(-b.l / 2, -b.w / 2, b.l / 2, b.w / 2, 0, b.h, col(C.generic), toB));
+    else if (b.shape === "cylz") out.push(cylZ(0, 0, b.d / 2, 0, b.h, col(C.ecap), toB));
+    else if (b.shape === "outline") {
+      const loop = outlineLoop(fp), bb = fpBounds(fp), poly = loop || rect(bb.x1, bb.y1, bb.x2, bb.y2);
+      out.push(prism("z", poly, z0, z0 + b.h, col(C.generic), to));
+    } else if (b.shape === "cylx") {
+      const zc = b.d / 2, lr = 0.3; zLead = z0 + zc;
+      out.push(cylX(0, zc, b.d / 2, -b.l / 2, b.l / 2, col(C.resistor), toB));
+      // a lead from each end of the body out to a pad on its axis, bent down into it
+      tht.forEach(p => { const [u, v] = local(p.x, p.y); if (Math.abs(v) < b.d / 2 && Math.abs(u) > b.l / 2) out.push(cylX(v, zc, lr, u < 0 ? u : b.l / 2, u < 0 ? -b.l / 2 : u, C.lead, toB)); });
+    }
+    if (b.shape !== "none") tht.forEach(p => lead(p.x, p.y, zLead));
+    else tht.forEach(p => lead(p.x, p.y, 0.5));
+  }
+  /** How tall a footprint stands with its own body (fp.body3d, else the default of a KiCad footprint): mm above the board, or 0 */
+  function bodyHeight(fp) {
+    const b = fp && (bodyTidy(fp.body3d) || (Array.isArray(fp.fab) ? defaultBody(fp) : null));
+    if (!b || b.shape === "none") return 0;
+    if (b.shape === "box" || b.shape === "cylz" || b.shape === "outline") return +(b.z + b.h).toFixed(2);
+    if (b.shape === "cylx") return +(b.z + b.d).toFixed(2);
+    const t = 1.6, sol = partBodies({ ref: "", type: "part", fp: { ...fp, body3d: b }, place: { x: 0, y: 0, rot: 0, side: "F" } }, t, { tubes: false });
+    let z = 0; sol.forEach(x => x.verts.forEach(v => { z = Math.max(z, v[2] - t); }));
+    return +z.toFixed(2);
+  }
   function partBodies(g, t, opts) {
     const fp = g.fp, name = fp.name, P = g.place, out = [], side = P.side === "B" ? "B" : "F";
-    const to = ([x, y, z]) => { const [X, Y] = B().place([x, y], P); return [X, -Y, side === "B" ? -z : t + z]; };
+    const to0 = ([x, y, z]) => { const [X, Y] = B().place([x, y], P); return [X, -Y, side === "B" ? -z : t + z]; };
+    const to = opts && opts.pre ? p => to0(opts.pre(p)) : to0;
     const pads = fp.pads, lr = fp.body && fp.body.lead > 0 ? fp.body.lead / 2 : 0.3, lead = (x, y, ztop) => out.push(cylZ(x, y, lr, -1.2 - t, ztop, C.lead, to));
     const D = B().FPDATA, bd = fp.body || {};   // the real part's size (its part number, or set by hand)
     let m;
-    if (fp.vert) {
+    const own = fp.body3d ? bodyTidy(fp.body3d) : Array.isArray(fp.fab) && fp.custom ? defaultBody(fp) : null;
+    if (own) {
+      ownBody(g, t, opts || {}, own, out, to, lead);
+    } else if (fp.vert) {
       // standing up: the body on a lead-diameter stand-off over pad 1, its top lead bent (radius R) over
       // and down through pad 2; the bend's top at L + R + 2d, the Z-height the checks use
       const v = fp.vert, x1 = -v.P / 2, x2 = v.P / 2, r = v.d / 2, z0 = v.d, zt = z0 + v.L, zh = v.L + v.R + 1.5 * v.d, path = [[x1, 0, zt - 0.3]];
@@ -655,5 +806,5 @@
     if ((m = /^SNAPIN-D(\d+)$/.exec(n))) return { kind: "can", d: +m[1], h: SNAPIN_H[+m[1]] || +m[1] * 1.6 };
     return null;
   }
-  root.Board3D = { scene, step, partBodies, boardSolid, preview, standardBody, triangles, COLORS: C, TUBE };
+  root.Board3D = { scene, step, partBodies, boardSolid, preview, standardBody, triangles, COLORS: C, TUBE, BODY_PACKAGES, BODY_COLORS, BODY_SHAPES, defaultBody, bodyTidy, bodyHeight, outlineLoop };
 })(typeof window !== "undefined" ? window : globalThis);
