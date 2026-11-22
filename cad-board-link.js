@@ -18,7 +18,7 @@
     const BOARD_KEY = "tubecad_board_v1";
     S.board = null;
     function boardNetlist() {
-      const T = topo(), skip = new Set(["frame", "note", "ground", "offsheet", "netlabel", "hport", "sheetsym", "rail", "scope"]);
+      const T = topo(), skip = new Set(["frame", "note", "ground", "offsheet", "netlabel", "bus", "hport", "sheetsym", "rail", "scope"]);
       T0 = T;
       // DC current into each pin from the last result (the board sizes tracks by it)
       const PI = S.sim.result && S.sim.topo === T ? pinCurrents() : null;

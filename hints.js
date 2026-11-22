@@ -80,6 +80,8 @@
     isrc: "A constant DC current source with an output resistance: a quick stand-in for a transistor or MOSFET current source as a plate load, a long-tail or cathode current sink.",
     siggen: "A signal generator: sine, square, triangle or FM, or a pulse, PWL or exponential waveform for the Transient tab, with its own output impedance. The Bode plotter drives the circuit from it too.",
     ground: "The 0 V reference. Every circuit needs one.",
+    bus: "A bus: a group of signals drawn as one line, named D[0..7] or {L R GND}. Wires leaving it are joined by their net labels; right-click it to take a signal.",
+    "bus.name": "Which signals the bus carries: D[0..7] for D0…D7 (D[7..0] counts down), {SDA SCL} for a list, PRE{A B} for PRE.A and PRE.B. A Sheet port or sheet pin with the same name carries each of them to the other sheet.",
     netlabel: "A net label: names the wire it sits on. Labels with the same name on the same sheet are one net, as if wired; the name shows on the board, in the probe and in the exports.",
     offsheet: "A sheet connector: joins every connector with the same signal name, on this sheet and the others, without drawing the wire.",
     hport: "A port of a hierarchical sheet: the wire here leaves this sheet for the pin of the same name on the sheet's box on the sheet above, separately for each instance.",

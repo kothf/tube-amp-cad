@@ -13,6 +13,7 @@
     // CAD tools and view
     select: `<path d="M3.5 2l9 5.2-4.2 1.1-2 4z"/>`,
     wire: `<circle cx="2.8" cy="12.5" r="1.3"/><circle cx="13.2" cy="3.5" r="1.3"/><path d="M4.1 12.5H8V3.5h3.9"/>`,
+    bus: `<path d="M1.5 6h13" stroke-width="2.6"/><path d="M4 6l2.5 2.5V14M8.5 6 11 8.5V14"/>`,
     netlabel: `<path d="M1.5 13h13"/><path d="M3 13v-2.5"/><path d="M5.5 10 8 3l2.5 7M6.4 7.6h3.2"/>`,
     probe: `<path d="M11 1.5l3.5 3.5-6.5 6.5L4.5 8z"/><path d="M6.2 9.8 1.5 14.5"/><path d="M9 4.5l2.5 2.5"/>`,
     ruler: `<path d="M1.5 11 11 1.5l3.5 3.5L5 14.5z"/><path d="M4.5 8 6 9.5M6.8 5.7 8.3 7.2M9.1 3.4l1.5 1.5"/>`,

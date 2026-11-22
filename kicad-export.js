@@ -488,6 +488,7 @@
     const add = s => out.push("  " + s.replace(/\n/g, "\n  "));
     (sheet.junctions || []).forEach(([x, y]) => add(`(junction (at ${n(x)} ${n(y)}) (diameter 0) (color 0 0 0 0) (uuid ${uuid(opts.uuid + ":j:" + n(x) + ":" + n(y))}))`));
     (sheet.wires || []).forEach(([x1, y1, x2, y2], i) => add(`(wire (pts ${xy(x1, y1)} ${xy(x2, y2)}) (stroke (width 0) (type default)) (uuid ${uuid(opts.uuid + ":w:" + i)}))`));
+    (sheet.buses || []).forEach(([x1, y1, x2, y2], i) => add(`(bus (pts ${xy(x1, y1)} ${xy(x2, y2)}) (stroke (width 0) (type default)) (uuid ${uuid(opts.uuid + ":b:" + i)}))`));
     (sheet.notes || []).forEach((t, i) => add(`(text ${q(t.text)} (at ${n(t.x)} ${n(t.y)} 0) (effects (font (size ${n(t.size || 1.27)} ${n(t.size || 1.27)})) (justify left bottom)) (uuid ${uuid(opts.uuid + ":t:" + i)}))`));
     (sheet.labels || []).forEach((l, i) => {
       const a = ang(l.angle || 0), j = a === 180 ? "right" : "left";

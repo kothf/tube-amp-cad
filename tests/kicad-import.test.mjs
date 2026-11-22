@@ -103,7 +103,7 @@ test("its board comes with it: outline, footprints in place on their nets, track
   const N = nets(design), ids = new Map(); let k = 1;
   const net = key => { if (!ids.has(key)) ids.set(key, k++); return ids.get(key); };
   const g = design.comps.find(c => c.type === "ground"); ids.set(N.get(g.id + ":" + compPins(g)[0].id), 0);
-  const nl = { names: { 0: "GND" }, volts: {}, parts: design.comps.filter(c => !["frame", "note", "ground", "offsheet", "netlabel", "rail"].includes(c.type)).map(c => ({ id: c.id, type: c.type, label: c.label, params: Object.assign({}, L.LIB[c.type].defaults, c.params), pins: compPins(c).map(p => ({ id: p.id, net: net(N.get(c.id + ":" + p.id)) })) })) };
+  const nl = { names: { 0: "GND" }, volts: {}, parts: design.comps.filter(c => !["frame", "note", "ground", "offsheet", "netlabel", "bus", "rail"].includes(c.type)).map(c => ({ id: c.id, type: c.type, label: c.label, params: Object.assign({}, L.LIB[c.type].defaults, c.params), pins: compPins(c).map(p => ({ id: p.id, net: net(N.get(c.id + ":" + p.id)) })) })) };
   const m = B.model(board, nl), pad = (ref, num) => m.pads.find(p => p.ref === ref && String(p.num) === String(num));
   assert.equal(m.parts.filter(p => p.place).length, 3);
   const near = (p, x, y) => assert.ok(Math.hypot(p.x - x, p.y - y) < 0.01, `${p.ref}:${p.num} at ${p.x}, ${p.y}, not ${x}, ${y}`);

@@ -50,7 +50,7 @@
         if (text === lastText) { edited = 0; return false; }
         const prev = lastText ? JSON.parse(lastText) : null;
         const what = prev && cad.diff ? cad.diff(prev, d).text : "";
-        await tx("readwrite", st => st.add({ time: now(), name: cad.fileName() || "Untitled", text, size: text.length, what, parts: d.comps.filter(c => !["frame", "note", "ground", "offsheet", "netlabel", "hport", "sheetsym", "rail"].includes(c.type)).length }));
+        await tx("readwrite", st => st.add({ time: now(), name: cad.fileName() || "Untitled", text, size: text.length, what, parts: d.comps.filter(c => !["frame", "note", "ground", "offsheet", "netlabel", "bus", "hport", "sheetsym", "rail"].includes(c.type)).length }));
         lastText = text; edited = 0;
         // the oldest go past MAX
         const l = await all();
