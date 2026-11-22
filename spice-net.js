@@ -705,7 +705,9 @@
         const pol = m.type === "npn" ? 1 : -1, inf = v => (v > 0 && isFinite(v) ? v : undefined);
         const mdl = { pol, is: mp(m, "is", 1e-16, no) * area, bf: mp(m, "bf", 100, no), br: mp(m, "br", 1, no), nf: mp(m, "nf", 1, no), nr: mp(m, "nr", 1, no),
           vaf: inf(mp(m, "vaf|va", 0, no)) || 1e9, var: inf(mp(m, "var|vb", 0, no)), ikf: (inf(mp(m, "ikf|ik|jbf", 0, no)) || 0) * area || undefined,
-          ise: mp(m, "ise|c2", 0, no) * area || undefined, ne: mp(m, "ne", 1.5, no), isc: mp(m, "isc|c4", 0, no) * area || undefined, nc: mp(m, "nc", 2, no) };
+          ise: mp(m, "ise|c2", 0, no) * area || undefined, ne: mp(m, "ne", 1.5, no), isc: mp(m, "isc|c4", 0, no) * area || undefined, nc: mp(m, "nc", 2, no),
+          // ICBO: this app's own parameter (a germanium part's collector-base leakage, doubling every 10 °C); other simulators ignore it
+          icbo: mp(m, "icbo", 0, no) * area || undefined };
         Object.keys(mdl).forEach(k => { if (mdl[k] === undefined) delete mdl[k]; });
         const rb = mp(m, "rb", 0, no) / area, re = mp(m, "re", 0, no) / area, rc = mp(m, "rc", 0, no) / area;
         const c2 = series(nm + "#rc", c, rc), b2 = series(nm + "#rb", b, rb), e2 = series(nm + "#re", e, re);
@@ -766,7 +768,9 @@
         const d2 = series(nm + "#rd", d, mp(m, "rd", 0, no) / mult), s2 = series(nm + "#rs", s, mp(m, "rs", 0, no) / mult), g2 = series(nm + "#rg", g, mp(m, "rg", 0, no));
         if (vd) {
           const kp = mp(m, "kp", 2e-5, no) * mult, vto = mp(m, "vto|vt0", 0, no);
-          push({ name: nm, kind: "MOS", n: [d2, g2, s2], model: { pol, vto, kp, lambda: mp(m, "lambda", 0, no), s: FET_S } });
+          // KSUBTHRES (ngspice's and LTspice's sub-threshold smoothing, V): the knee vov = k·ln(1 + e^((vgs − vto)/k)), as the engine's
+          const ks = mp(m, "ksubthres", 0, no);
+          push({ name: nm, kind: "MOS", n: [d2, g2, s2], model: { pol, vto, kp, lambda: mp(m, "lambda", 0, no), s: ks > 0 ? ks : FET_S } });
           // the body diode and the capacitances of LTspice's VDMOS
           const is = mp(m, "is", 1e-14, no), bd = series(nm + "#rb", pol > 0 ? s2 : d2, mp(m, "rb", 0, no));
           push({ name: nm + "#body", kind: "D", n: pol > 0 ? [bd, d2] : [bd, s2], is, n_: mp(m, "n", 1, no), tt: mp(m, "tt", 0, no) || undefined });

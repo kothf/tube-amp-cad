@@ -23,7 +23,7 @@
   const GE_NOTE = "Germanium: VBE about 0.2 V, slow (low fT), with collector leakage that doubles every 10 °C. Pinouts of old cans vary: check the part you have.";
 
   function CadPalette(o) {
-    // o: { host, thumb(type, params, w, h) → data URL or "", pick(entry, el), dropAt(entry, event) }
+    // o: { host, thumb(type, params, w, h) → data URL or "", pick(entry, el), dropAt(entry, event), copyToLibrary(type, model) }
     const { LIB, PALETTE, fmtEng, parseEng, tubeKind } = root.CadLib;
     const L = root.CadLib, TUBES = () => root.TUBE_DATABASE || [];
     const st = { closed: { Transformers: true, Semiconductors: true, Instruments: true, Document: true, Tubes: true }, allTubes: false, fav: [], recent: [], preview: true };
@@ -253,6 +253,9 @@
     // ---------------------------------------------------------------------------------------
     // the preview card: the symbol drawn large, the name, the value, what it is, how to place it
     let shown = null;
+    // a built-in transistor, MOSFET, JFET or diode can be copied into My library (part-lib.js fromBuiltIn)
+    const modelOf = e => (e.params && e.params.model) || (LIB[e.type] && LIB[e.type].defaults && LIB[e.type].defaults.model);
+    const canCopy = e => !!(root.PartLib && root.PartLib.canCopy(e.type, modelOf(e)));
     function show(e) {
       shown = e || null;
       card.classList.toggle("folded", !st.preview);
@@ -265,8 +268,10 @@
         + `<div class="pal-pbox"><img alt="" src="${o.thumb(e.type, e.params, 200, 80, true)}"></div>`
         + `<div class="pal-pname"><b>${esc(e.label)}</b>${e.value ? `<em>${esc(e.value)}</em>` : ""}<button type="button" class="pal-fav${fav ? " on" : ""}" aria-pressed="${fav}" title="${fav ? "Remove from Favorites" : "Add to Favorites (or right-click the part)"}" aria-label="Favorite">${ico("star")}</button></div>`
         + `<div class="pal-pdesc" data-i18n-skip>${lines.map(l => `<p>${esc(l)}</p>`).join("")}</div>`
-        + `<p class="pal-phow"><span>${esc(HOW)}</span> <span>${esc(HOW_MORE)}</span></p>`;
+        + `<p class="pal-phow"><span>${esc(HOW)}</span> <span>${esc(HOW_MORE)}</span></p>`
+        + (o.copyToLibrary && canCopy(e) ? `<button type="button" class="btn pal-copy" id="pal-copy" title="A copy of this part in My library: the same drawing, a SPICE model of the same numbers, its footprint and 3D body, to change as you like. The built-in part stays as it is.">Copy to My library</button>` : "");
       card.querySelector(".pal-fav").addEventListener("click", () => toggleFav(e));
+      const cp = card.querySelector(".pal-copy"); if (cp) cp.addEventListener("click", () => o.copyToLibrary(e.type, modelOf(e)));
     }
     card.addEventListener("click", ev => {
       if (!ev.target.closest(".pal-ptoggle")) return;
