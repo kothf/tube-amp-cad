@@ -295,10 +295,12 @@
       [{ t: "circle", x: 0, y: 0, r: R }, { t: "line", x1: -D / 2 - 1.2, y1: -D / 2, x2: -D / 2 - 1.2, y2: -D / 2 + 2 }, { t: "line", x1: -D / 2 - 2.2, y1: -D / 2 + 1, x2: -D / 2 - 0.2, y2: -D / 2 + 1 }]);
   }
   // transistors: the order is the pins from pad 1 (e.g. "EBC"), as printed in the maker's drawing
-  // oval pads 1.05 × 1.5 mm (as in KiCad's TO-92_Inline): round 1.4 mm pads on the 1.27 mm pitch would overlap.
-  // pitchRing: the pitch leaves a 0.15 mm ring across the oval, so the annular-ring rule does not apply
+  // oval pads 1.07 × 1.5 mm, 0.7 mm holes: round 1.4 mm pads on the 1.27 mm pitch would overlap. KiCad's TO-92_Inline
+  // (1.05 mm, 0.75 mm holes) leaves a 0.15 mm ring across the oval, under JLCPCB's 0.18 mm for 2-layer boards; this leaves
+  // 0.185 mm and keeps 0.2 mm between the pads. A 0.7 mm hole takes the usual 0.45 × 0.4 mm lead (0.6 mm across).
+  // pitchRing: the pitch allows no wider ring, so the board's own annular-ring rule (0.3 mm) does not apply
   function to92(order) {
-    return fp(`TO-92-${order}`, `TO-92, pins ${order.split("").join("-")}`, [...order].map((n, i) => ({ ...pad(i + 1, (i - 1) * 1.27, 0, 1.05, 0.75, i ? "circle" : "rect", n), h: 1.5, pitchRing: true })),
+    return fp(`TO-92-${order}`, `TO-92, pins ${order.split("").join("-")}`, [...order].map((n, i) => ({ ...pad(i + 1, (i - 1) * 1.27, 0, 1.07, 0.7, i ? "circle" : "rect", n), h: 1.5, pitchRing: true })),
       [{ t: "line", x1: -2.4, y1: 1.6, x2: 2.4, y2: 1.6 }, { t: "circle", x: 0, y: 0, r: 2.5, from: 200, to: 340 }]);
   }
   // seen from the top, as the board is: the makers draw the cans from below, pin 1 at the left
@@ -1471,7 +1473,7 @@
     return best;
   }
 
-  /** Two tracks ending in neighbouring pads of one footprint (a TO-92's pins are 0.22 mm apart)
+  /** Two tracks ending in neighbouring pads of one footprint (a TO-92's pins are 0.2 mm apart)
       are as close as those pads where they enter them. Only the parts of the tracks outside their
       pads must keep the clearance; inside, the limit is the pads' own spacing. Returns { entry:
       the pads' gap, out: the distance between the tracks' centre lines outside their pads } when

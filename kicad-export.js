@@ -277,7 +277,7 @@
   /** The rules the net classes cannot hold, as KiCad custom rules (<name>.kicad_dru):
       clearance by the voltage between two nets (IPC-2221B, BoardCore.clearanceRules: a rule for
       each pair that needs more than its classes give), then each part's own pin spacing inside its
-      courtyard (a noval socket's pins are 1.3 mm apart whatever the voltage; a TO-92's 0.22 mm)
+      courtyard (a noval socket's pins are 1.3 mm apart whatever the voltage; a TO-92's 0.2 mm)
       and the thin rings of pins on a 1.27 mm pitch, as the Board window's own check allows them.
       rename: as for pcb */
   function rules(board, model, hv, netlist, rename) {

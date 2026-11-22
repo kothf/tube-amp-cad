@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.248.1] - 2026-11-22
+
+### Fixed
+- The built-in TO-92 footprints have 1.07 × 1.5 mm pads with 0.7 mm holes
+  (were 1.05 × 1.5 mm with 0.75 mm holes, as KiCad's TO-92_Inline): the ring
+  across the oval is 0.185 mm, so JLCPCB's 0.18 mm minimum for 2-layer boards
+  is met and For the board maker… no longer flags examples 01–03. The pads stay
+  0.2 mm apart; a 0.7 mm hole takes the usual 0.45 × 0.4 mm lead.
+
 ## [3.248.0] - 2026-11-22
 
 Files for the board maker.

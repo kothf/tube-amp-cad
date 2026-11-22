@@ -117,3 +117,13 @@ test("the check: limits per maker and layer count; thin tracks, small drills, cr
   assert.ok(done.includes("clearance") && done.includes("minDrill") && !done.includes("minTrack"), done.join());
   assert.equal(rules.clearance, 0.1); assert.equal(rules.minTrack, 0.3, "a rule above the limit stays");
 });
+
+test("the built-in TO-92 pads meet JLCPCB's 0.18 mm ring on 2 layers and stay 0.2 mm apart", () => {
+  const ring = M.MAKERS ? M.MAKERS.jlcpcb.limits(2).ring : 0.18;
+  for (const order of ["EBC", "CBE", "DSG", "RAK"]) {
+    const f = B.footprint(`TO-92-${order}`), pads = f.pads;
+    assert.equal(pads.length, 3);
+    pads.forEach(p => assert.ok((Math.min(p.w, p.h) - p.drill) / 2 >= ring - 1e-9, `TO-92-${order} pad ${p.num}: ring ${(Math.min(p.w, p.h) - p.drill) / 2}`));
+    for (let i = 1; i < 3; i++) assert.ok(Math.abs(pads[i].x - pads[i - 1].x) - (pads[i].w + pads[i - 1].w) / 2 >= 0.2 - 1e-9, `TO-92-${order}: pads ${i} and ${i + 1} too close`);
+  }
+});

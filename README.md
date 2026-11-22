@@ -846,7 +846,8 @@ the circuit file, so one file holds both.
   - connectors: Neutrik 6.35 mm jacks, terminal blocks, 2.54 mm pin headers,
     Faston tabs and Amass XT30 / XT60 / XT90 power connectors (right-angle and
     vertical, plated mounting tabs, 3D housing from the spec sheets);
-  - transistors in TO-92 (oval pads, as KiCad's TO-92_Inline), TO-18, TO-126,
+  - transistors in TO-92 (1.07 × 1.5 mm oval pads, 0.7 mm
+    holes: a 0.185 mm ring JLCPCB makes on 2 layers), TO-18, TO-126,
     TO-220, TO-247, TO-3P and TO-264 with each part's own pin order (pinouts
     that differ between makers are flagged); TO-3 power transistors get three
     wire pads, as the can sits on the chassis heatsink;
