@@ -561,6 +561,7 @@
     "Designator": "The part's reference designation: classic letter code and number (R1, C3, VL1.2), as in ГОСТ 2.710. Renumber designations (inspector, nothing selected) numbers every part in reading order.",
     "Mirror": "Mirror the symbol left to right, so a signal can come from the other side without crossing wires (M).",
     "Part number": "The part number to buy, for the bill of materials. Saved with the circuit.",
+    "LCSC #": "JLCPCB's stock number for the part (C25804, from jlcpcb.com/parts or lcsc.com). The board maker export puts it in JLCPCB's assembly BOM so it takes exactly this part. Saved with the circuit.",
     "Tube type": "The tube type. Ratings, pinout, heater and interelectrode capacitances come with it.",
     "Tube socket": "The real socket for this valve's base, from GoodComponent's range or a Soviet one (ПЛК, ПЛ, ПП; tec.org.ru). A PCB-mount one puts its own footprint on the board (its tails' circle, the flange's screw holes, its outline) and its 3D model under the valve; a chassis-mount one leaves the valve on wire pads. Its item number goes on the BOM's socket line. The sections of a dual valve share it: set it in one, the other follows.",
     // section titles
