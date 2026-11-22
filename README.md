@@ -551,6 +551,10 @@ the circuit that was on the sheet.
     they sit on: labels with the same name on the same sheet are one net, as
     in KiCad. The name shows over the wire, in the probe, on the board and in
     the exports; KiCad import brings local labels in as net labels.
+  - Buses (Shift+B) group signals under one name, D[0..7] or {L R GND}: draw
+    one like a wire, right-click it → Take a signal for a wire with that
+    member's label; sheet ports named like a bus carry every member. KiCad
+    export and import keep buses as KiCad's own.
   - Sheet connectors with the same signal name join their wires across
     sheets and show where their partners are, grouped by row: "A3,5 B2,5,8"
     (on several sheets "1/A3,5 2/C1,4"). A name used five times or more (B+,
@@ -721,6 +725,17 @@ the circuit that was on the sheet.
     its rules are set from the layout.
   - A project this program exported comes back as it was. A list says what
     came over and what to check.
+- **Open LTspice schematic.** *File ▾ → Open LTspice schematic…* opens an
+  LTspice `.asc` as a circuit here (with its own `.asy` symbols and model
+  files picked with it, if it has any).
+  - Resistors, capacitors, inductors, diodes, transistors, MOSFETs, JFETs
+    and DC / SINE / PULSE / PWL / EXP sources become the program's parts and
+    simulate; a `.model` or `.subckt` written in the schematic is used as
+    written (a SPICE part). LTspice's own ICs and controlled sources are kept
+    as boxes with their pins: wired, on the board, not simulated.
+  - Ground is ground, other flags net labels; comments and SPICE commands go
+    on the sheet as text. On 193 schematics from public repositories the nets
+    equal the `.asc`'s own pin for pin (`tests/ltspice-field.mjs`).
 - **Noise and hum.** *Analyze ▾ → Noise and hum* opens the *Noise* tab under
   the schematic: what the amplifier puts out with no signal:
   - thermal, tube (2.5/gm, pentode partition, 1/f), shot and FET channel

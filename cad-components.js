@@ -612,6 +612,15 @@
     },
     // net label (a local label, KiCad's "label"): names the wire it sits on, joining every label
     // of that name on the same sheet; the app draws its tick and name upright (cad-app.js drawComp)
+    // bus: its segments thick (relative to the part's point); its name is drawn upright by the app
+    bus(ctx, c) {
+      ctx.save(); ctx.lineWidth = Math.max(ctx.lineWidth * 2.6, 4); ctx.lineCap = "round"; ctx.lineJoin = "round";
+      (c.params.segs || []).forEach(s => line(ctx, s));
+      // bus entries brought from KiCad (diagonals to the wires' ends); the app draws its own at wires that end on the bus
+      ctx.lineWidth = Math.max(ctx.lineWidth / 2.6, 1.5); (c.params.entries || []).forEach(s => line(ctx, s));
+      if (c.id === "pal-thumb") { ctx.lineWidth = 1.5; [10, 30, 50].forEach(x => line(ctx, [x, 0, x + 8, -8, x + 8, -18])); }
+      ctx.restore();
+    },
     netlabel(ctx, c) {
       // on the sheet the app draws it (upright whatever the turn); a picture of the part (the parts
       // panel) shows its tick and name
@@ -1923,6 +1932,17 @@
     return { gm1, i1: m.sr * cc, r1: m.a0 / (gm1 * gm2 * r2), gm2, i2: 2e-3 * k, r2, rin: m.rin, ib: m.ib, ro: m.ro, isc: m.isc, isk: m.isk, dhi: m.dhi, dlo: m.dlo, iq: m.iq };
   }
   // the catalog of a transistor part type, and which types are transistors (FETs: Vds, Id, Vgs)
+  // A bus's members from its name, as KiCad reads them: D[0..7] → D0 … D7 (D[7..0] counts down),
+  // {SDA SCL} → SDA, SCL, a prefix before braces names each member PRE.SDA, members of a group may be
+  // vectors themselves ({D[0..3] CLK}); a plain name is a bus of one. Upper and lower case kept.
+  function busMembers(name) {
+    const t = String(name || "").trim();
+    const vec = s => { const m = /^(.*?)\[(\d+)\.\.(\d+)\]$/.exec(s.trim()); if (!m) return s.trim() ? [s.trim()] : []; const a = +m[2], b = +m[3], out = []; if (Math.abs(a - b) > 255) return []; for (let k = a; a <= b ? k <= b : k >= b; k += a <= b ? 1 : -1) out.push(m[1] + k); return out; };
+    const g = /^([^{}]*)\{([^{}]*)\}$/.exec(t);
+    if (g) { const pre = g[1].trim(); return g[2].split(/[\s,]+/).filter(Boolean).flatMap(vec).map(m => (pre ? pre + "." : "") + m); }
+    return vec(t);
+  }
+  const isBusName = n => busMembers(n).length > 1 || /\[\d+\.\.\d+\]|\{.*\}/.test(String(n || ""));
   const isTransistor = t => /^(npn|pnp|nmos|pmos|njf|pjf)$/.test(t), isFet = t => /^(nmos|pmos|njf|pjf)$/.test(t);
   const semiTable = t => (t === "npn" || t === "pnp" ? BJTS : t === "njf" || t === "pjf" ? JFETS : MOSFETS);
   const semiRating = m => `${m.v} V, ${m.i} A, ${m.p} W, ${m.pkg}`;
@@ -3428,6 +3448,33 @@
       info: () => "Joins every sheet connector with the same signal name, on any sheet, as if wired. Use it to carry a supply rail or a signal to another sheet; the cross-reference next to it gives the sheet and grid zone of its partners (IEC 61082-1).",
       build: () => {}
     },
+    // Bus: a group of signals drawn as one thick line, named after its members (D[0..7], {L R GND}).
+    // It joins nothing by itself: its members join by net labels of their names on the wires that
+    // leave it (on one sheet, labels of one name are one net anyway); a sheet port or a sheet
+    // symbol's pin with a bus name carries every member to the other sheet (computeTopology).
+    // segs: [[x1, y1, x2, y2]] relative to the part's point; drawn with the Bus tool.
+    bus: {
+      name: "Bus", prefix: "", group: "Ground & connectors", noLabel: true, noRotate: true, noMirror: true,
+      bbox: c => {
+        const s = c.params.segs || [], xs = s.flatMap(q => [q[0], q[2]]), ys = s.flatMap(q => [q[1], q[3]]);
+        if (!xs.length) return [-4, -4, 4, 4];
+        const x1 = Math.min(...xs), y1 = Math.min(...ys), L = 8 + 7 * String(c.params.name || "").length;
+        return [x1 - 4, y1 - 16, Math.max(Math.max(...xs) + 4, x1 + L), Math.max(...ys) + 4];
+      },
+      // on its line (within 5 units) or on its name, not anywhere in the box round an L-shaped bus
+      hit: (c, x, y) => {
+        const d = (q) => { const ax = c.x + q[0], ay = c.y + q[1], bx = c.x + q[2], by = c.y + q[3], dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0; return Math.hypot(x - ax - t * dx, y - ay - t * dy); };
+        const s = c.params.segs || []; if (s.some(q => d(q) <= 5)) return true;
+        const f = s[0]; if (!f) return false; const nx = c.x + Math.min(f[0], f[2]), ny = c.y + Math.min(f[1], f[3]);
+        return x >= nx && x <= nx + 8 + 7 * String(c.params.name || "").length && y >= ny - 16 && y <= ny;
+      },
+      defaults: { name: "D[0..7]", segs: [[0, 0, 100, 0]] },
+      pins: () => [],
+      value: c => c.params.name || "",
+      fields: [{ key: "name", label: "Bus name", kind: "text" }],
+      info: () => "A group of signals drawn as one line. Its name says which: D[0..7] for D0 to D7, {L R GND} for a list. A wire that ends on the bus gets its entry drawn; give the wire a net label with a member's name (right-click the bus → Take a signal does both). On one sheet labels of one name are one net anyway; a Sheet port and its sheet symbol's pin named like the bus carry every member to the other sheet.",
+      build: () => {}
+    },
     // Net label: names a net on its own sheet (frame). Every label of the same name on that
     // sheet (and, on a hierarchical instance's sheet, that instance only) is one net, as if
     // wired (computeTopology in cad-app.js). It does not join a sheet connector or power rail
@@ -3636,7 +3683,9 @@
       pinNumbers: c => Object.fromEntries(((c.params.sym && c.params.sym.pins) || []).map(p => [p.id, p.num || p.id])),
       value: c => c.params.value || "",
       fields: [{ key: "value", label: "Value", kind: "text" }, { key: "footprint", label: "Footprint (KiCad)", kind: "text", wide: true }, { key: "lib", label: "Symbol (KiCad)", kind: "text", wide: true }],
-      info: () => "Imported from KiCad as drawn there: the app has no part of its own for it, so it joins its nets on the sheet and on the board but is left out of the simulation. Replace it with a part from the panel to simulate it.",
+      info: c => (c && c.params.from === "LTspice"
+        ? "Imported from LTspice as a box with its pins: the app has no part of its own for it (an LTspice IC or a controlled source), so it joins its nets on the sheet and on the board but is left out of the simulation. Replace it with a part from the panel, or a SPICE part with its model, to simulate it."
+        : "Imported from KiCad as drawn there: the app has no part of its own for it, so it joins its nets on the sheet and on the board but is left out of the simulation. Replace it with a part from the panel to simulate it."),
       build: () => {}
     },
     scope: {
@@ -4215,5 +4264,5 @@
     return wrap;
   }
 
-  root.CadLib = { LOGIC_ICS, LOGIC_FAMS, logicGeom, logicPinIds, logicSpice, partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, lampGlowP, lampHeat, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, pwlPoints, genWave, genFreq, tubeByName, tubeKind, tubeWarmup };
+  root.CadLib = { busMembers, isBusName, LOGIC_ICS, LOGIC_FAMS, logicGeom, logicPinIds, logicSpice, partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, lampGlowP, lampHeat, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, pwlPoints, genWave, genFreq, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);

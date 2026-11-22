@@ -112,6 +112,13 @@
         const def = LIB[c.type]; if (!def || c.type === "frame") return;
         const b = compBBox(c), si = sheetIndex(sheets, (b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2), s = sheets[si], [x, y] = mm(s, c.x, c.y);
         if (c.type === "note") { const t = String(c.params.text || "").trim(); if (t) s.notes.push({ x, y, text: t, size: (+c.params.size || 12) * K.UNIT * 0.72 }); return; }
+        if (c.type === "bus") {
+          // a bus: KiCad's own bus segments, its name as a label on the first one (its members are joined by their labels)
+          const segs = (c.params.segs || []).map(q => [...mm(s, c.x + q[0], c.y + q[1]), ...mm(s, c.x + q[2], c.y + q[3])]);
+          (s.buses = s.buses || []).push(...segs);
+          const nm = String(c.params.name || "").trim(); if (nm && segs[0]) s.labels.push({ x: segs[0][0], y: segs[0][1], text: nm, angle: 0, global: false });
+          return;
+        }
         if (c.type === "netlabel") {
           // a net label: KiCad's own local label, at its point (KiCad calls the net /<sheet>/<name>)
           const nm = String(c.params.name || "").trim(); if (!nm) return;
@@ -286,6 +293,7 @@
     const escH = t => String(t).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
     // what came over, and what to look at
     function showReport(name, r) {
+      const lt = r.from === "LTspice";
       let m = document.getElementById("kicad-modal");
       if (!m) {
         m = document.createElement("div"); m.className = "modal"; m.id = "kicad-modal"; m.hidden = true;
@@ -297,8 +305,9 @@
         m.querySelector("#kicad-board").onclick = () => { m.hidden = true; cad.showBoard(); };
       }
       const row = (k, v) => `<div class="kv"><span>${k}</span><b>${escH(v)}</b></div>`, b = r.board;
+      m.querySelector("#kicad-title").textContent = lt ? "LTspice schematic opened" : "KiCad project opened";
       m.querySelector("#kicad-body").innerHTML = `<p class="insp-help" data-i18n-skip>${escH(name)}</p>`
-        + row("Sheets", r.sheets) + row("Parts", r.parts) + row("As the app's own parts (simulated)", r.own) + row("Kept as drawn in KiCad", r.kept) + row("Wires", r.wires) + row("Net labels", r.labels || 0) + row("Net names (connectors)", r.connectors)
+        + row("Sheets", r.sheets) + row("Parts", r.parts) + row("As the app's own parts (simulated)", r.own) + row(lt ? "Kept as a box with LTspice's pins" : "Kept as drawn in KiCad", r.kept) + (lt ? row("Using the schematic's own models", r.models || 0) : "") + row("Wires", r.wires) + row("Net labels", r.labels || 0) + row("Buses", r.buses || 0) + row("Net names (connectors)", r.connectors)
         + (b ? row("Board: footprints placed", b.parts) + row("Board: tracks", b.tracks) + row("Board: vias", b.vias) + row("Board: copper pours", b.zones) + row("Board: mounting holes", b.holes) : "")
         + (r.notes.length ? `<div class="insp-sub">To know</div><ul class="insp-help" style="margin: 4px 0 0; padding-left: 18px">${r.notes.map(n => `<li>${escH(n)}</li>`).join("")}</ul>` : "");
       m.querySelector("#kicad-board").hidden = !b;
@@ -332,6 +341,36 @@
         return res;
       } catch (err) { setStatus("error", "Could not open the KiCad project: " + err.message); return null; }
     }
+    // -------------------------------------------------------------------------
+    // Open LTspice schematic (File ▾): an .asc, with any .asy symbols and model files it uses picked
+    // with it (ltspice-import.js)
+    // -------------------------------------------------------------------------
+    const LT_FILE = /\.(asc|asy|lib|sub|mod|cir|inc|sp|spi|bjt|dio|mos|jft)$/i;
+    const isLtspiceFile = name => /\.asc$/i.test(String(name || ""));
+    /** Open an LTspice schematic (File objects: the .asc, and .asy / model files) as the circuit */
+    async function openLtspice(list) {
+      try {
+        const files = {};
+        for (const f of [...list]) if (LT_FILE.test(f.name)) files[f.name] = LtspiceImport.decode(await f.arrayBuffer());
+        if (!Object.keys(files).some(n => /\.asc$/i.test(n))) { setStatus("warn", "No LTspice schematic there: select the .asc file (with its .asy symbols and model files, if it has its own)"); return null; }
+        const res = LtspiceImport.importAsc(files);
+        if (!cad.openDesign(res.design, "LTspice schematic " + res.name, true)) return null;
+        cad.setName(res.name + ".json");
+        const r = res.report;
+        setStatus("ok", `Opened LTspice schematic ${res.name}: ${r.parts} parts, ${r.own} simulated as the app's own. Save keeps it as a Tube Amp CAD file`);
+        showReport(res.name, r);
+        return res;
+      } catch (err) { setStatus("error", "Could not open the LTspice schematic: " + err.message); return null; }
+    }
+    function openLtspiceDialog() {
+      let inp = document.getElementById("ltspice-input");
+      if (!inp) {
+        inp = document.createElement("input"); inp.type = "file"; inp.id = "ltspice-input"; inp.multiple = true; inp.hidden = true; inp.accept = ".asc,.asy,.lib,.sub,.mod,.cir,.inc";
+        inp.addEventListener("change", () => { if (inp.files.length) openLtspice(inp.files); inp.value = ""; });
+        document.body.appendChild(inp);
+      }
+      inp.click();
+    }
     function openKicadDialog() {
       let inp = document.getElementById("kicad-input");
       if (!inp) {
@@ -341,6 +380,6 @@
       }
       inp.click();
     }
-    return { exportKicad, kicadFiles, fabZip, openKicad, openKicadDialog, isKicadFile };
+    return { exportKicad, kicadFiles, fabZip, openKicad, openKicadDialog, isKicadFile, openLtspice, openLtspiceDialog, isLtspiceFile };
   };
 })(window);

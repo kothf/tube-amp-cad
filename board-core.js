@@ -932,7 +932,7 @@
   // (VL1.1 / VL1.2, SA1.1 / SA1.2) are one physical part with one footprint.
   // ---------------------------------------------------------------------------
   // not on the board: these, and the sources that stand for an instrument off it (a guitar's pickup, a turntable's cartridge)
-  const SKIP = new Set(["frame", "note", "ground", "offsheet", "netlabel", "hport", "sheetsym", "rail", "scope", "vcvs", "vccs", "pickup", "phono"]);
+  const SKIP = new Set(["frame", "note", "ground", "offsheet", "netlabel", "bus", "hport", "sheetsym", "rail", "scope", "vcvs", "vccs", "pickup", "phono"]);
   function physicalParts(netlist) {
     const L = root.CadLib, groups = new Map(), baseOf = p => { const lab = String(p.label || "").trim(), i = lab.lastIndexOf("."); return i > 0 ? lab.slice(0, i) : lab; };
     // a unit kept as KiCad drew it (a valve's heater, VL1.H) belongs to the part of its name

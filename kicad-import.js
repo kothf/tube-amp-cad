@@ -95,7 +95,8 @@
     const sch = { uuid: val(t, "uuid", ""), version: +val(t, "version", 0), generator: String(val(t, "generator", "")), libs,
       paper: { size: String(paper[1]), w: +paper[2] || 0, h: +paper[3] || 0, portrait: paper.includes("portrait") },
       title: { title: val(tb, "title", ""), date: val(tb, "date", ""), rev: val(tb, "rev", ""), company: val(tb, "company", ""), mark: (kids(tb, "comment").find(c => String(c[1]) === "9" && /^TubeAmpCAD /.test(String(c[2]))) || [])[2] },
-      symbols: [], wires: [], junctions: [], labels: [], sheets: [], texts: [], buses: [] };
+      symbols: [], wires: [], junctions: [], labels: [], sheets: [], texts: [], buses: [], entries: [] };
+    kids(t, "bus_entry").forEach(e => { const a = at(e), sz = kids(e, "size")[0] || []; sch.entries.push([a[0], a[1], a[0] + (+sz[1] || 0), a[1] + (+sz[2] || 0)]); });
     kids(t, "bus").forEach(e => { const p = xyList(e); for (let k = 0; k + 1 < p.length; k++) sch.buses.push([p[k][0], p[k][1], p[k + 1][0], p[k + 1][1]]); });
     kids(t, "symbol").forEach(e => {
       const [x, y, a] = at(e), props = {}, instances = [];
@@ -340,7 +341,7 @@
     }
     const pcbName = pcbNames.find(n => rootName && stem(n) === stem(rootName)) || pcbNames[0] || null;
     const name = stem(proNames[0] || rootName || pcbName);
-    const comps = [], wires = [], report = { sheets: 0, parts: 0, own: 0, kept: 0, wires: 0, connectors: 0, labels: 0, notes, board: null, padNets: {}, pinMaps: [] };
+    const comps = [], wires = [], report = { sheets: 0, parts: 0, own: 0, kept: 0, wires: 0, connectors: 0, labels: 0, buses: 0, notes, board: null, padNets: {}, pinMaps: [] };
     let nid = 0;
     const id = p => `${p}${++nid}_k`;
     const addComp = (type, x, y, rot, params, label) => { const c = { id: id("c"), type, x, y, rot: rot & 3, params: params || {}, label: label || "" }; comps.push(c); return c; };
@@ -571,7 +572,21 @@
           if (ci !== undefined) sh.pins.forEach(p => { if (vector(p.name)) return; const [x, y] = to(p.x, p.y), rot = Math.abs(p.x - sh.x) < 0.01 ? 0 : Math.abs(p.x - sh.x - sh.w) < 0.01 ? 2 : Math.abs(p.y - sh.y) < 0.01 ? 1 : 3; conn(nameOf(LK(ci, p.name)), x, y, rot); });
         });
         S.texts.forEach(t => { const [x, y] = to(t.x, t.y), h = own ? String(Math.round(t.size / (0.254 * 0.72))) : t.size * U >= 17 ? "20" : t.size * U >= 13 ? "14" : "12"; String(t.text).split(/\r?\n/).forEach((ln, k) => { if (ln.trim()) addComp("note", x, y + k * (+h + 4), 0, { text: ln, size: h }); }); });
-        if (S.buses.length) note("Buses are not drawn: their signals are joined by name, as the labels on their wires say.");
+        // the buses as the app's own (drawn, joining nothing: their signals are joined by name, as
+        // the labels on their wires say), one per group of touching segments, named by its bus label
+        if (S.buses.length) {
+          const eps = 0.02, on = (b, x, y) => Math.abs((b[2] - b[0]) * (y - b[1]) - (b[3] - b[1]) * (x - b[0])) < eps * (Math.hypot(b[2] - b[0], b[3] - b[1]) + eps) && x >= Math.min(b[0], b[2]) - eps && x <= Math.max(b[0], b[2]) + eps && y >= Math.min(b[1], b[3]) - eps && y <= Math.max(b[1], b[3]) + eps;
+          const g = S.buses.map((_, k) => k), gf = k => { while (g[k] !== k) k = g[k] = g[g[k]]; return k; };
+          S.buses.forEach((a, ia) => S.buses.forEach((b, ib) => { if (ia < ib && (on(b, a[0], a[1]) || on(b, a[2], a[3]) || on(a, b[0], b[1]) || on(a, b[2], b[3]))) g[gf(ia)] = gf(ib); }));
+          const groups = new Map(); S.buses.forEach((b, k) => { const r = gf(k); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(b); });
+          groups.forEach(list => {
+            const lab = S.labels.find(l => (vector(l.text) || /\{.*\}/.test(l.text)) && list.some(b => on(b, l.x, l.y)));
+            const pts = list.map(b => [...to(b[0], b[1]), ...to(b[2], b[3])]).filter(q => q[0] !== q[2] || q[1] !== q[3]); if (!pts.length) return;
+            const [x0, y0] = pts[0], ents = S.entries.filter(e => list.some(b => on(b, e[0], e[1]) || on(b, e[2], e[3]))).map(e => { const a = to(e[0], e[1]), b = to(e[2], e[3]); return [a[0] - x0, a[1] - y0, b[0] - x0, b[1] - y0]; });
+            addComp("bus", x0, y0, 0, { name: lab ? lab.text : "BUS", segs: pts.map(q => [q[0] - x0, q[1] - y0, q[2] - x0, q[3] - y0]), entries: ents });
+            report.buses++;
+          });
+        }
         ox += Math.ceil(((fwOwn || fw) + 240) / 10) * 10;
       });
       if (!ground && comps.some(c => c.type !== "frame")) note("No GND power symbol in the schematic: add a Ground symbol to the reference net before simulating.");

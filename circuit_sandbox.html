@@ -710,6 +710,7 @@
         <button class="menu-item" data-ico="sheet" role="menuitem" id="btn-add-sheet">Add sheet…<kbd>next sheet</kbd></button>
         <button class="menu-item" data-ico="open" role="menuitem" id="btn-open">Open…<kbd>Ctrl+O</kbd></button>
         <button class="menu-item" data-ico="chip" role="menuitem" id="btn-kicad-open" title="Open a KiCad schematic and board as a circuit: select the project's .kicad_sch files and its .kicad_pcb together (Ctrl+click), or a ZIP of the project's folder. Symbols the app has parts for become those parts and simulate; the others are kept as KiCad draws them">Open KiCad project…<kbd>.kicad_sch / _pcb</kbd></button>
+        <button class="menu-item" data-ico="chip" role="menuitem" id="btn-ltspice-open" title="Open an LTspice schematic (.asc) as a circuit; select its own .asy symbols and model files with it (Ctrl+click), if it has any. Resistors, capacitors, inductors, diodes, transistors and sources become the app's parts and simulate; a model written in the schematic is used as written; LTspice's own ICs are kept as boxes with their pins">Open LTspice schematic…<kbd>.asc</kbd></button>
         <button class="menu-item" data-ico="save" role="menuitem" id="btn-save">Save<kbd>Ctrl+S</kbd></button>
         <button class="menu-item" data-ico="save-as" role="menuitem" id="btn-save-as">Save as…<kbd>Ctrl+Shift+S</kbd></button>
         <button class="menu-item" data-ico="link" role="menuitem" id="btn-share" title="A link with the whole design packed into it: whoever opens it gets the same circuit">Share link…<kbd>copy URL</kbd></button>
@@ -767,7 +768,7 @@
         <button class="menu-item" data-ico="key" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
       </div>
     </div>
-    <input type="file" id="file-input" accept=".json,application/json,.kicad_sch,.kicad_pcb,.kicad_pro,.zip" multiple hidden>
+    <input type="file" id="file-input" accept=".json,application/json,.kicad_sch,.kicad_pcb,.kicad_pro,.zip,.asc" multiple hidden>
     <span class="sep"></span>
     <button class="btn ib" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.5 2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7"/></svg></button>
     <button class="btn ib" id="btn-redo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5l3 3-3 3"/><path d="M13.5 6.5h-7a4 4 0 0 0 0 8H9"/></svg></button>
@@ -776,6 +777,7 @@
       <button class="btn" data-ico="select" id="btn-tool-select" title="Select / move (V)"><span class="lbl">Select</span></button>
       <button class="btn" data-ico="wire" id="btn-tool-wire" title="Draw wires from anywhere (W)"><span class="lbl">Wire</span></button>
       <button class="btn" data-ico="netlabel" id="btn-tool-label" title="Net label (L): click a wire to name its net; every label with that name on this sheet is the same net, as if wired. Double-click a wire to label it there"><span class="lbl">Label</span></button>
+      <button class="btn" data-ico="bus" id="btn-tool-bus" title="Bus (Shift+B): draw a group of signals like a wire and name it D[0..7] or {L R GND}; wires leaving it take a member's net label. Right-click a bus → Take a signal"><span class="lbl">Bus</span></button>
       <button class="btn" data-ico="probe" id="btn-tool-probe" title="Voltmeter probe (P): point at a wire or pin to read its DC and AC voltage and see its waveform; click to leave the probe on that node (Esc removes it)"><span class="lbl">Probe</span></button>
     </div>
     <span class="sep"></span>
@@ -1345,6 +1347,7 @@
   <script src="board-3d-view.js?v=dev"></script>
   <script src="kicad-export.js?v=dev"></script>
   <script src="kicad-import.js?v=dev"></script>
+  <script src="ltspice-import.js?v=dev"></script>
   <script src="cad-kicad.js?v=dev"></script>
   <script src="cad-share.js?v=dev"></script>
   <script src="part-lib.js?v=dev"></script>
