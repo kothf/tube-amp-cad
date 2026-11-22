@@ -59,6 +59,8 @@ import { cad, check, toScreen } from "./harness.mjs";
   const spot = await cad.evaluate(i => { const f = TubeCAD.state.comps.find(c => c.id === i.f1); return { x: f.x + 800, y: f.y + 500 }; }, ids);
   const [sx, sy] = await toScreen(spot.x, spot.y);
   await cad.mouse.click(sx, sy);
+  // the name field takes focus a moment after the click
+  await cad.waitForFunction(() => document.activeElement && document.activeElement.dataset && document.activeElement.dataset.key === "name", null, { timeout: 3000 }).catch(() => {});
   const placed = await cad.evaluate(() => { const S = TubeCAD.state, c = S.comps.filter(k => k.type === "netlabel").pop(), a = document.activeElement; return { name: c.params.name, sel: S.sel.comps.has(c.id), focus: a && a.dataset && a.dataset.key, placing: !!S.placing }; });
   check(placed.name === "NET1" && placed.sel && placed.focus === "name" && !placed.placing, "a click places it, selected, its name field in the inspector focused for typing");
   await cad.keyboard.type("IN1"); await cad.keyboard.press("Enter");
