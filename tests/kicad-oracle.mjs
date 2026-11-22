@@ -31,9 +31,12 @@ export function nets(design) {
     (V.get(x) || []).forEach(w => { if (y > Math.min(w.y1, w.y2) && y < Math.max(w.y1, w.y2)) union(key(x, y), key(w.x1, w.y1)); });
   });
   let g = null; const names = new Map();
+  const frames = design.comps.filter(c => c.type === "frame").map(f => { const G = L.sheetGeom({ params: Object.assign({}, L.LIB.frame.defaults, f.params) }); return { x1: f.x, y1: f.y, x2: f.x + G.W, y2: f.y + G.H }; });
   design.comps.forEach(c => {
     if (c.type === "ground") { const p = compPins(c)[0], k = key(p.x, p.y); if (g === null) g = k; else union(k, g); }
     if (c.type === "offsheet" || c.type === "rail") { const n = String(c.params.name || "").trim().toUpperCase(), k = key(c.x, c.y); if (!n) return; if (names.has(n)) union(k, names.get(n)); else names.set(n, k); }
+    // a net label joins its name on its own sheet (frame) only, as in the app (computeTopology)
+    if (c.type === "netlabel") { const n = String(c.params.name || "").trim().toUpperCase(), k = key(c.x, c.y); if (!n) return; const s = "\u0001" + frames.findIndex(f => c.x >= f.x1 && c.x <= f.x2 && c.y >= f.y1 && c.y <= f.y2) + "\u0001" + n; if (names.has(s)) union(k, names.get(s)); else names.set(s, k); }
   });
   const out = new Map();
   design.comps.forEach(c => compPins(c).forEach(p => out.set(c.id + ":" + p.id, find(key(p.x, p.y)))));
@@ -56,7 +59,7 @@ if (process.argv[1] && process.argv[1].endsWith("kicad-oracle.mjs")) {
       const mine = new Map();      // "REF:num" → net id
       const refOf = c => String(c.label).replace(/\.(\d+|H)$/, "");
       design.comps.forEach(c => {
-        if (["frame", "note", "ground", "offsheet", "rail"].includes(c.type)) return;
+        if (["frame", "note", "ground", "offsheet", "netlabel", "rail"].includes(c.type)) return;
         if (c.type === "kicad") c.params.sym.pins.forEach(p => mine.set(refOf(c) + ":" + p.num, N.get(c.id + ":" + p.id)));
       });
       // parts of the app's own: by the pin map the report keeps
@@ -76,7 +79,7 @@ if (process.argv[1] && process.argv[1].endsWith("kicad-oracle.mjs")) {
       console.log(`${wrong ? "FAIL" : "ok  "} ${dir.split("/").pop()}/${base}: ${report.sheets} sheets, ${report.parts} parts (${report.own} own, ${report.kept} kept), ${knets.length} nets, ${checked} pins agree${wrong ? `, ${wrong} WRONG` : ""}${lost ? `, ${lost} pins of dropped units` : ""}${report.board ? `; board ${report.board.parts} parts, ${report.board.tracks} tracks` : ""} (${ms} ms)`);
       if (report.board) {
         // the board: every pad where KiCad has it, and on the net KiCad has it on
-        const B = globalThis.BoardCore, board = B.normaliseBoard(design.board), skip = new Set(["frame", "note", "ground", "offsheet", "rail", "scope"]);
+        const B = globalThis.BoardCore, board = B.normaliseBoard(design.board), skip = new Set(["frame", "note", "ground", "offsheet", "netlabel", "rail", "scope"]);
         const ids = new Map(); let nn = 1; const netNo = r => { if (!ids.has(r)) ids.set(r, nn++); return ids.get(r); };
         const gnd = design.comps.find(c => c.type === "ground"), g0 = gnd ? N.get(gnd.id + ":G") : null; if (g0 !== null) ids.set(g0, 0);
         const nl = { names: g0 !== null ? { 0: "GND" } : {}, parts: design.comps.filter(c => !skip.has(c.type)).map(c => ({ id: c.id, type: c.type, label: c.label, params: { ...L.LIB[c.type].defaults, ...c.params }, pins: compPins(c).map(p => ({ id: p.id, net: netNo(N.get(c.id + ":" + p.id)) })) })) };

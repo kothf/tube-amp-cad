@@ -6,6 +6,27 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.244.0] - 2026-11-22
+
+Net labels: name a wire, join wires by name on a sheet.
+
+### Added
+- **Net labels** (`L`, the new **Label** button after Wire, or Ground & connectors → Net label): a
+  label names the wire it sits on, and every label with the same name on the same sheet is one net,
+  as if wired. A label reaches only its own sheet (its drawing frame; on a hierarchical sheet, that
+  instance), as KiCad's local labels do; sheet connectors and power rails still reach every sheet.
+- **Double-click a wire** to put a label on it there, named after its net when it has a name.
+- A new label takes the next free name, counting on from the last one (IN1 → IN2); the inspector's
+  name field is ready for typing after a click. Shift keeps placing.
+- The name is the net's name everywhere: the status bar over a wire ("wire · net IN_L"), the probe,
+  the Transient tab's nets, the board (ratsnest, net list, design rules per net), the AI's view of the
+  circuit, KiCad export (as KiCad's own local labels). A sheet connector's or rail's name wins.
+- **Checks**: a label named like a sheet connector or rail it is not joined to, and one net with two
+  label names.
+- **KiCad import** brings local labels in as net labels (those a bus carries to another sheet, or
+  that share a name with a hierarchical label, stay connectors). Checked against kicad-cli on KiCad's
+  demo projects: the same results as before.
+
 ## [3.243.0] - 2026-11-22
 
 Raise a hot resistor off the board.
