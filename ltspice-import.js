@@ -147,12 +147,56 @@
 
   /** An LTspice schematic as a design. files: { name: text } (the .asc, and any .asy symbols or
       model files opened with it). Returns { design: { app, version, comps, wires }, name, report } */
+  // .param and .step: the parameters a schematic gives ({R} in a value), worked out to numbers.
+  // .step param X a b c (or list a b …, oct/dec param X a b n) gives X its first value.
+  const FUNCS = { sqrt: Math.sqrt, abs: Math.abs, exp: Math.exp, ln: Math.log, log: Math.log, log10: Math.log10, sin: Math.sin, cos: Math.cos, tan: Math.tan, atan: Math.atan, pow: Math.pow, pwr: (a, b) => Math.pow(Math.abs(a), b), min: Math.min, max: Math.max, int: Math.trunc, floor: Math.floor, ceil: Math.ceil, round: Math.round, pi: Math.PI };
+  function evalExpr(text, P) {
+    const toks = String(text).match(/\d+\.?\d*(?:e[+-]?\d+)?[a-zµμ]*\d*|\.\d+(?:e[+-]?\d+)?[a-zµμ]*|[a-z_][\w.]*|\*\*|[-+*/^(),]|\S/gi) || [];
+    const js = [];
+    for (const t of toks) {
+      if (/^[\d.]/.test(t)) { const v = ltValue(t); if (v === null) return null; js.push("(" + v + ")"); }
+      else if (/^[a-z_]/i.test(t)) {
+        const k = t.toLowerCase();
+        if (P.has(k)) js.push("(" + P.get(k) + ")");
+        else if (k === "pi") js.push("(" + Math.PI + ")");
+        else if (FUNCS[k]) js.push("F." + k);
+        else return null;
+      } else if (t === "^" || t === "**") js.push("**");
+      else if ("+-*/(),".includes(t)) js.push(t);
+      else return null;
+    }
+    try { const v = Function("F", "return (" + js.join(" ") + ");")(FUNCS); return Number.isFinite(v) ? v : null; } catch (e) { return null; }
+  }
+  function ascParams(texts) {
+    const P = new Map(), stepped = [];
+    const lines = texts.filter(t => t.directive).flatMap(t => t.text.split("\n"));
+    for (let pass = 0; pass < 4; pass++) lines.forEach(ln => {
+      const m = /^\s*\.param\s+(.*)$/i.exec(ln);
+      if (m) (m[1].match(/[a-z_][\w.]*\s*=\s*(?:\{[^}]*\}|'[^']*'|[^\s=]+(?:\s*[-+*/^]\s*[^\s=]+)*)/gi) || []).forEach(a => {
+        const [, k, e] = /^([a-z_][\w.]*)\s*=\s*(.*)$/i.exec(a), v = evalExpr(e.replace(/^[{']|[}']$/g, ""), P);
+        if (v !== null && !stepped.some(x => x.toLowerCase() === k.toLowerCase())) P.set(k.toLowerCase(), v);
+      });
+      const st = /^\s*\.step\s+(?:(?:oct|dec|lin)\s+)?param\s+([a-z_][\w.]*)\s+(?:list\s+)?(\S+)/i.exec(ln);
+      if (st && pass === 0) { const v = evalExpr(st[2], P); if (v !== null) { P.set(st[1].toLowerCase(), v); stepped.push(st[1]); } }
+    });
+    return { P, stepped };
+  }
+  // {expression} in a value as its number (left as written when it cannot be worked out)
+  const withParams = (text, P) => String(text).replace(/\{([^}]*)\}/g, (all, e) => { const v = evalExpr(e, P); return v === null ? all : String(+v.toPrecision(12)); });
+
+  // a transistor or diode with no value is LTspice's default model of its kind
+  const DEFAULT_MODEL = { npn: "NPN", npn2: "NPN", pnp: "PNP", pnp2: "PNP", diode: "D", schottky: "D", varactor: "D", tvsdiode: "D", zener: "D", njf: "NJF", pjf: "PJF" };
   function importAsc(files) {
     const L = root.CadLib, names = Object.keys(files || {});
     const ascName = names.find(n => /\.asc$/i.test(n));
     if (!ascName) throw new Error("no LTspice schematic (.asc) among the files");
     const A = readAsc(files[ascName]), name = ascName.split(/[\\/]/).pop().replace(/\.asc$/i, "");
     const notes = [], note = t => { if (!notes.includes(t)) notes.push(t); };
+    // the schematic's parameters put into its values ({R} → 4700)
+    const { P: params, stepped } = ascParams(A.texts);
+    const bare = [];
+    if (params.size) A.symbols.forEach(sy => ["Value", "Value2", "SpiceLine", "SpiceLine2"].forEach(k => { if (sy.attrs[k] !== undefined) sy.attrs[k] = withParams(sy.attrs[k], params); }));
+    if (stepped.length) note(`LTspice steps ${stepped.join(", ")} (.step): the first value is used here; run Analyze ▾ Parameter sweep for the others.`);
     const report = { sheets: 1, parts: 0, own: 0, kept: 0, wires: 0, labels: 0, buses: 0, connectors: 0, notes, board: null, from: "LTspice", models: 0 };
     const asys = new Map(); names.filter(n => /\.asy$/i.test(n)).forEach(n => { try { asys.set(base(n.replace(/\.asy$/i, "")), readAsy(files[n])); } catch (e) { note(`${n}: ${e.message}`); } });
     // the models the schematic carries (.model / .subckt in its text) and the model files opened with it
@@ -334,8 +378,10 @@
       }
       const devModel = (table, type, pinsInOrder) => {
         // a model the schematic carries wins (simulated as written), then the app's own part of that name
-        const m = findModel(value);
-        if (m && SF) { const c = spicePart(m, ref, pinsInOrder); if (c) { report.own++; return c; } }
+        // no value: LTspice's default model of that kind (NPN, D …: SPICE's default parameters)
+        const dflt = !value && SF && DEFAULT_MODEL[b];
+        const m = dflt ? (() => { try { return SF.cut(`.model ${dflt} ${dflt}()`, dflt); } catch (e) { return null; } })() : findModel(value);
+        if (m && SF) { const c = spicePart(m, ref, pinsInOrder); if (c) { report.own++; if (dflt) bare.push(ref); return c; } }
         const k = keyIn(table, value);
         if (!k) stood(`${value || "(no model)"}\n${L.LIB[type].defaults.model}`, ref);
         return null;
@@ -416,7 +462,7 @@
       if (t.directive) t.text.split("\n").forEach(ln => { const m = /^\s*\.(tran|ac|dc|op|noise|tf|step|param|meas|measure|four)\b/i.exec(ln); if (m) cmds.push(ln.trim()); });
     });
     if (cmds.length) note(`LTspice's commands are on the sheet as text (${cmds.slice(0, 3).join("; ")}${cmds.length > 3 ? " …" : ""}): run them from Simulate and Analyze here (Transient, Bode, DC sweep, measurements).`);
-    if (A.symbols.some(s => /\{[^}]*\}/.test(s.attrs.Value || ""))) note("Values written as {parameters} are not worked out: the parts that have one keep their default value.");
+    if (A.symbols.some(s => /\{[^}]*\}/.test(s.attrs.Value || ""))) note("Some values written as {expressions} could not be worked out from the schematic's .param lines: the parts that have one keep their default value.");
     if (A.drawn) note(`${A.drawn} line${A.drawn === 1 ? "" : "s"} and shape${A.drawn === 1 ? "" : "s"} drawn on the LTspice sheet are left out.`);
     if (A.buses) note("LTspice bus taps are left out: name the signals with net labels.");
     if (!A.flags.some(f => f.name === "0") && A.symbols.length) note("No ground (0) in the schematic: add a Ground symbol before simulating.");
@@ -425,6 +471,7 @@
       if (!k) note(`${few(refs)}: the value is not a number here, so the part has its default value: set it in the inspector.`);
       else { const [was, model] = k.split("\n"); note(`${few(refs)} (${was}): no model of this name in the schematic or the app, so ${refs.length > 1 ? "they simulate" : "it simulates"} as ${model}: pick the nearest type in the inspector, or open the model file with the schematic.`); }
     });
+    if (bare.length) { report.models -= bare.length; note(`${few(bare)}: no model named, so LTspice's default one of the kind (NPN, PNP, D, NJF: SPICE's default parameters), simulated as a SPICE part.`); }
     if (report.models) note(`${report.models} part${report.models > 1 ? "s use" : " uses"} the model written in the schematic or its model file, simulated as written (a SPICE part).`);
     if (report.kept) note(`${report.kept} part${report.kept > 1 ? "s" : ""} the app has no part for ${report.kept > 1 ? "are" : "is"} kept as a box with LTspice's pins: wired and on the board, but not simulated.`);
     return { design: { app: "TubeAmpCAD", version: 2, comps, wires }, name, report };

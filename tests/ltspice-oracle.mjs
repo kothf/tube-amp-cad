@@ -24,7 +24,8 @@ export function opCopy(text) {
   text.split(/\r?\n/).forEach(ln => {
     const m = /^(TEXT\s+-?\d+\s+-?\d+\s+\S+\s+\S+\s+)!(.*)$/.exec(ln);
     if (!m) { out.push(ln); return; }
-    const keep = m[2].split("\\n").filter(l => !ANALYSIS.test(l));
+    // a stepped parameter keeps its first value (as the import takes it)
+    const keep = m[2].split("\\n").map(l => { const st = /^\s*\.step\s+(?:(?:oct|dec|lin)\s+)?param\s+(\S+)\s+(?:list\s+)?(\S+)/i.exec(l); return st ? `.param ${st[1]}=${st[2]}` : l; }).filter(l => !ANALYSIS.test(l));
     if (keep.some(l => l.trim())) out.push(m[1] + "!" + keep.join("\\n"));
   });
   while (out.length && !out[out.length - 1].trim()) out.pop();
@@ -82,7 +83,10 @@ function appDC(design) {
   });
   const r = E.simulate({ nodeCount: n + 1, elements: els }, { budgetMs: 20000 });
   if (!r.ok) return { error: r.error || "no result" };
-  return { at: (c, pin) => { const k = node(N.get(c.id + ":" + pin)); return k === undefined ? undefined : r.dc.nodes[k]; } };
+  // a run with a time-dependent source reports averages as its DC; the operating point itself (the
+  // sources at t = 0, as LTspice's .op takes them) is kept as dcEstimate
+  const op = r.dcEstimate || r.dc;
+  return { at: (c, pin) => { const k = node(N.get(c.id + ":" + pin)); return k === undefined ? undefined : op.nodes[k]; } };
 }
 
 export function compare(ascText, netBuf, rawBuf) {
