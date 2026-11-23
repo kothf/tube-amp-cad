@@ -15,7 +15,7 @@ const LT = globalThis.LtspiceImport, L = globalThis.CadLib;
 // the LTspice pin each pin of the app's part stands for
 const BACK = { resistor: { 1: "A", 2: "B" }, capacitor: { 1: "A", 2: "B" }, inductor: { 1: "A", 2: "B" }, electrolytic: { "+": "A", "-": "B" },
   diode: { A: "+", K: "-" }, zener: { A: "+", K: "-" }, led: { A: "+", K: "-" }, vdc: { "+": "+", "-": "-" }, siggen: { "+": "+", "-": "-" }, isrc: { "+": "-", "-": "+" } };
-function ltPin(c, pid, symName) {
+export function ltPin(c, pid, symName) {
   if (BACK[c.type]) return BACK[c.type][pid];
   if (["npn", "pnp", "nmos", "pmos", "njf", "pjf"].includes(c.type)) return pid;
   if (c.type === "spice") { const order = (LT.SYMS[symName] || LT.SYMS[symName.split("\\").pop()] || []).map(p => p[0]), i = c.params.map.indexOf(pid); return order[i]; }
