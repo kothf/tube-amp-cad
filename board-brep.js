@@ -107,7 +107,6 @@
       const A = unit(g.a), X = unit(g.x), Y = cross(A, X);
       const at = ([u, v], w) => add(add(g.o, add(mul(X, u), mul(Y, v))), mul(A, w));
       const faces = [];
-      const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-9;
       // a full circle (one arc back to its start) goes in two halves
       const split = segs => segs.length === 1 && segs[0].c ? (s => { const p2 = [2 * s.c[0] - s.p[0], 2 * s.c[1] - s.p[1]]; return [s, { ...s, p: p2 }]; })(segs[0]) : segs;
       // one closed profile: its edges at both ends, and its side faces
