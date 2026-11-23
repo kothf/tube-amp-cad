@@ -1623,6 +1623,7 @@
     "JLCPCB's stock number (C25804, from jlcpcb.com/parts or lcsc.com): the board maker export puts it in JLCPCB's assembly BOM so it takes exactly this part": "Складской номер JLCPCB (C25804, с jlcpcb.com/parts или lcsc.com): экспорт для изготовителя кладёт его в перечень монтажа JLCPCB, чтобы взяли именно эту деталь",
     "JLCPCB's stock number of the part (C25804), from jlcpcb.com/parts or lcsc.com: the For the board maker… export puts it in JLCPCB's BOM so its assembly takes exactly that part. Saved with the circuit": "Складской номер детали у JLCPCB (C25804), с jlcpcb.com/parts или lcsc.com: экспорт «Для изготовителя плат…» кладёт его в перечень JLCPCB, чтобы монтаж взял именно эту деталь. Хранится со схемой",
     "Generic: no maker's limits to check against; the board check holds it to your design rules.": "Общий: пределов изготовителя для проверки нет; проверка платы держит её в ваших правилах проектирования.",
+    "KiCad's file names; placement rotations at the IPC-7351 zero (KiCad's)": "Имена файлов KiCad; повороты в файле расстановки от нуля IPC-7351 (как в KiCad)",
     "The board is within them.": "Плата в них укладывается.",
     "Print set (PDF)": "Комплект для печати (PDF)",
     "assembly, copper 1:1, drill map": "сборочный, медь 1:1, карта сверловки",
@@ -2664,6 +2665,63 @@
     "The board came without a schematic, so one was made for it: a box for each footprint, its pads on connectors named for their nets.": "Плата пришла без схемы, поэтому схема составлена по ней: прямоугольник на каждое посадочное место, его площадки на соединителях с именами цепей.",
     "The board has no outline (Edge.Cuts): a rectangle round its parts was drawn.": "У платы нет контура (Edge.Cuts): нарисован прямоугольник вокруг её деталей.",
     "The board's outline is not a plain rectangle: the rectangle round it was taken (cut-outs and slanted edges are not kept).": "Контур платы не простой прямоугольник: взят прямоугольник вокруг него (вырезы и наклонные края не сохраняются).",
+
+    // --- hints and tooltips the 3.243–3.251 audit found still in English ---------------------
+    // menu key hints and the Board keys list (<kbd>: exact entries only)
+    "examples": "примеры", "right-click": "правый щелчок", "rest the pointer": "задержите указатель",
+    "pour corners": "углы заливки", "drag on empty space": "тяните по пустому месту", "arrows": "стрелки",
+    "drag part": "тяните деталь", "drag edge": "тяните край", "drag": "тяните",
+    "offset: a board edge, keep-out edge or construction line, then the distance d": "смещение: край платы, край запретной зоны или вспомогательная линия, затем расстояние d",
+    "construction circle round a hole, pad or point (radius R)": "вспомогательная окружность вокруг отверстия, площадки или точки (радиус R)",
+    "reference point to place holes on (Δx Δy from what the pointer sticks to)": "опорная точка для отверстий (Δx Δy от того, к чему прилипает указатель)",
+    // quick help (F1)
+    "bus tool: draw a bus like a wire, name it D[0..7] or {L R GND}; right-click it → Take a signal": "шина: рисуйте её как провод, назовите D[0..7] или {L R GND}; правый щелчок по ней → Взять сигнал",
+    "net label: names the wire you put it on; the same name on the sheet is one net (double-click a wire to label it)": "метка цепи: называет провод, на который поставлена; одно имя на листе — одна цепь (двойной щелчок по проводу ставит метку)",
+    // CAD menus and panels
+    "Ticked: the board, the instruments and the manual open as tabs at the bottom of this window, and the tabs switch between them. Not ticked: each gets a window of its own (for a second monitor)": "Отмечено: плата, приборы и руководство открываются вкладками внизу этого окна, вкладки переключают их. Не отмечено: у каждого своё окно (для второго монитора)",
+    "The circuit run from its operating point (or from zero) for as long as you set, at the steps it needs: start-up, pulses and steps, oscillators, switching supplies; or a DC sweep of a supply, a part's value or the temperature. Any net, current or expression plotted, with measurements": "Схема, запущенная из рабочей точки (или с нуля) на заданное время с нужным ей шагом: включение, импульсы и ступеньки, генераторы, импульсные источники; или развёртка по постоянному току: источник, номинал детали или температура. Любая цепь, ток или выражение на графике, с измерениями",
+    "No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.": "Деталей пока нет. Поставьте резисторы, конденсаторы, лампы, трансформаторы… и они появятся здесь.",
+    "Not simulated yet.": "Ещё не рассчитано.", "Autosaved copies": "Автосохранённые копии",
+    "DC operating point": "рабочая точка по постоянному току", "saved": "сохранено",
+    "changes not saved (Ctrl+S)": "изменения не сохранены (Ctrl+S)",
+    "What DigiKey says about this part": "Что DigiKey пишет об этой детали",
+    "The socket's page at its shop (pick it in the valve's Tube socket field)": "Страница панельки в магазине (выбирается в поле «Ламповая панелька» у лампы)",
+    "Pick the real socket in the valve's Tube socket field: its footprint and 3D model go to the board, its number here": "Выберите настоящую панельку в поле «Ламповая панелька» у лампы: её посадочное место и 3D-модель уйдут на плату, её номер — сюда",
+    // Board: parts list, check names, rules, setup
+    "Place all on the board": "Поставить все на плату", "To place": "Поставить",
+    "Put the parts waiting below the board where they sit in the schematic (the schematic's extent mapped onto the board), each in the free spot nearest its place: a starting point that follows the signal": "Поставить детали, ждущие под платой, туда, где они стоят на схеме (поле схемы, перенесённое на плату), каждую на ближайшее свободное место: начальная расстановка, идущая по сигналу",
+    "Shorts": "Замыкания", "Board edge": "Край платы", "Parts not placed": "Детали не на плате", "Annular rings": "Пояски",
+    "Minimum drill": "Минимальное сверло", "Minimum track width": "Минимальная ширина дорожки",
+    "Track width of the net class": "Ширина дорожки класса цепей", "Track width for the current": "Ширина дорожки по току",
+    "Parts overlapping": "Детали перекрываются", "Silkscreen over pads": "Шелкография на площадках",
+    "Unconnected track ends": "Висящие концы дорожек", "Pinouts to check": "Цоколёвки проверить",
+    "Ground returns meet only at the star point": "Земляные возвраты сходятся только в звезде",
+    "Grid stoppers at the socket": "Антизвонные резисторы у панельки", "Grid tracks near anodes, heaters": "Сеточные дорожки рядом с анодами и накалом",
+    "Electrolytics near hot parts": "Электролиты рядом с горячими деталями", "Mounting hole near each socket": "Крепёжное отверстие у каждой панельки",
+    "To check": "Проверить",
+    "No mounting holes.": "Крепёжных отверстий нет.",
+    "Vias the routers drop on this class's nets": "Переходные отверстия, которые трассировщики ставят на цепях этого класса",
+    "The net's own track width; empty: its class's": "Своя ширина дорожки цепи; пусто — как у её класса",
+    "The net's own clearance to every other net; empty: its class's": "Свой зазор цепи до всех остальных; пусто — как у её класса",
+    "Track width of both nets (empty: their class's)": "Ширина дорожки обеих цепей (пусто — как у их класса)",
+    "Edge-to-edge gap between the two tracks": "Зазор между краями двух дорожек",
+    "How far the two routed lengths may differ (mm)": "На сколько могут различаться длины двух разведённых цепей (мм)",
+    "Differential impedance on the top layer for this width and gap (Board ▾ → Impedance calculator for other layers)": "Дифференциальное волновое сопротивление на верхнем слое при этих ширине и зазоре (для других слоёв: Плата ▾ → Калькулятор волнового сопротивления)",
+    "A differential pair: pick its two nets": "Дифференциальная пара: выберите две её цепи",
+    "The nets, separated by commas": "Цепи через запятую",
+    "How far a net may differ (mm)": "На сколько может отличаться длина цепи (мм)",
+    "A length every net should have (mm); empty: match the longest": "Длина, которая должна быть у каждой цепи (мм); пусто — по самой длинной",
+    "A group of nets whose lengths must match": "Группа цепей, длины которых должны совпадать",
+    "From the layer stack in Board setup (thickness, copper, εr, dielectrics): a track on an outer layer is a microstrip over the next layer, on an inner layer a stripline between its neighbours. Hammerstad-Jensen and IPC-2141A estimates, within a few per cent of a field solver; solder mask (2-3 Ω lower on outer layers) is not counted. For a controlled-impedance order, ask the fab for their stack-up and numbers.": "По стеку слоёв из настроек платы (толщина, медь, εr, диэлектрики): дорожка на внешнем слое — микрополосок над соседним слоем, на внутреннем — полосковая линия между соседями. Оценки Хаммерстада–Йенсена и IPC-2141A, в пределах нескольких процентов от полевого расчёта; паяльная маска (на внешних слоях на 2–3 Ом ниже) не учтена. Для заказа с контролем импеданса спросите у изготовителя его стек и числа.",
+    "Edge-to-edge gap of a differential pair; empty: a single track": "Зазор между краями дорожек дифференциальной пары; пусто — одиночная дорожка",
+    "Set the width for this single-ended impedance": "Подобрать ширину под это волновое сопротивление одиночной дорожки",
+    "Set the pair gap for this differential impedance at the width above": "Подобрать зазор пары под это дифференциальное сопротивление при ширине выше",
+    "2: top and bottom. 4 and 6: inner layers between them, each a signal layer (tracks) or a plane (one net's copper over the whole board, joined to its pins and vias)": "2: верх и низ. 4 и 6: внутренние слои между ними, каждый — сигнальный (дорожки) или полигон (медь одной цепи на всю плату, соединённая с её выводами и переходными отверстиями)",
+    "Inner layers are usually thinner copper; the current check widens tracks on them (IPC-2221: half the outer layer's current for the same width and rise)": "Медь внутренних слоёв обычно тоньше; проверка тока расширяет дорожки на них (IPC-2221: половина тока внешнего слоя при той же ширине и нагреве)",
+    "The dielectric's relative permittivity, for the impedance of tracks and pairs (FR4: 4.2-4.7; empty: 4.5)": "Относительная диэлектрическая проницаемость, для волнового сопротивления дорожек и пар (FR4: 4,2–4,7; пусто — 4,5)",
+    // Board: For the board maker…
+    "Protel file names (.GTL, .GBL…), BOM with LCSC Part #, CPL with JLCPCB's rotations": "Имена файлов Protel (.GTL, .GBL…), BOM с LCSC Part #, CPL с поворотами JLCPCB",
+    "KiCad's file names, BOM with maker and part number, centroid file": "Имена файлов KiCad, BOM с производителем и номером детали, файл координат",
   };
 
   // the board's edges and construction items named in the construction's own texts
@@ -3062,6 +3120,32 @@
     [/^\+ Add (\S+) by its part number…$/, "+ Добавить $1 по номеру детали…"],
     // the footprint editor (cad-fpedit.js)
     [/^Footprint: (\d+) parts use it$/, "Посадочное место: используется в деталях: $1"],
+
+    // --- the 3.243–3.251 audit -----------------------------------------------------------------
+    [/^LCSC number for (.+)$/, "Номер LCSC для $1"],
+    [/^Unit price for (.+)$/, "Цена шт. для $1"],
+    [/^(\d+) needed; (\d+) is the least DigiKey sells$/, "Нужно $1; DigiKey продаёт не меньше $2"],
+    [/^DigiKey (.*?), ([^,]+): (.+?); (?:(\d+) in stock|(none) in stock)\. Type your own unit price to use it instead; clear it to go back to DigiKey's$/,
+      (m, dk, at, br, n, none) => `DigiKey ${dk}, ${at}: ${br}; ${none ? "нет на складе" : `на складе ${n}`}. Введите свою цену штуки, чтобы считать по ней; очистите, чтобы вернуться к цене DigiKey`],
+    // a BOM line's kind with its SMD case: "Transistor, NPN, SMD SOT-23"
+    [/^(.+), SMD (\S+)$/, (m, a, pk) => Object.prototype.hasOwnProperty.call(text, a) ? `${text[a]}, SMD ${pk}` : null],
+    [/^Simulated in ([\d.]+ m?s)$/, "Рассчитано за $1"],
+    [/^Open file: (.+)$/, "Открытый файл: $1"],
+    [/^(\d+) connections? to route$/, (m, n) => `Осталось развести связей: ${n}`],
+    [/^Placed (\d+) parts below the board: drag them onto it, or Place all on the board$/, "Деталей под платой: $1; перетащите их на плату или нажмите «Поставить все на плату»"],
+    [/^Placed (\d+) parts where they sit in the schematic, so the signal runs across the board as on the sheet$/, "Деталей поставлено как на схеме: $1; сигнал идёт по плате так же, как по листу"],
+    [/^(\d+) parts? did not fit: make the board larger$/, "Не поместилось деталей: $1; увеличьте плату"],
+    [/^(\d+) thicknesses in mm, top first, separated by spaces \(prepreg and core as your fab lists them\); empty: the board's thickness shared out evenly$/, "$1 толщин в мм, сверху вниз, через пробел (препрег и ядро, как их указывает изготовитель); пусто — толщина платы делится поровну"],
+    [/^(.+) to (.+): clearance \(mm\); empty: the larger of the two classes'$/, "$1 — $2: зазор (мм); пусто — больший из двух классов"],
+    [/^(.+?), (\d) layers: tracks and gaps from ([\d.]+) mm, drills ([\d.]+)–([\d.]+) mm, annular ring ([\d.]+) mm, holes ([\d.]+) mm apart, board up to ([\d.]+) × ([\d.]+) mm\. (.*)$/,
+      (m, n, l, t, d0, d1, r, h, w, hh, rest) => `${n}, слоёв ${l}: дорожки и зазоры от ${t} мм, сверла ${d0}–${d1} мм, поясок ${r} мм, отверстия в ${h} мм друг от друга, плата до ${w} × ${hh} мм. ` +
+        (rest === "The board is within them." ? "Плата в них укладывается." : rest.replace(/^(?:(\d+) problems?)?(?: and )?(?:(\d+) notes?)?: click one to see it on the board\.$/, (x, b, w2) => [b ? `проблем: ${b}` : "", w2 ? `замечаний: ${w2}` : ""].filter(Boolean).join(" и ") + "; щёлкните, чтобы увидеть на плате."))],
+    [/^(Protel file names \(\.GTL, \.GBL…\), BOM with LCSC Part #, CPL with JLCPCB's rotations|KiCad's file names, BOM with maker and part number, centroid file|KiCad's file names; placement rotations at the IPC-7351 zero \(KiCad's\))\.(?: (\d+) parts? to assemble in (\d+) BOM lines?(?:, (\d+) without an LCSC # \(JLCPCB then matches by value and package; type the numbers in the schematic's BOM\))?\.| (No part on the board is of that kind\.))?$/,
+      (m, note, n, l, nl, none) => (text[note] || note) + "." + (none ? " На плате нет деталей такого монтажа." : n ? ` Деталей для монтажа: ${n}, строк BOM: ${l}${nl ? `, без LCSC #: ${nl} (тогда JLCPCB подбирает по номиналу и корпусу; номера вводятся в BOM схемы)` : ""}.` : "")],
+    // the thermal map's note on a part over its rating
+    [/^(\S+)(?: \((.+)\))?: (body|junction) (.+? °C) with (.+? W) in it \(at (.+?) °C ambient\), over its (\d+) °C(.*)$/,
+      (m, ref, val, k, t, w, amb, lim, rest) => `${ref}${val ? ` (${val})` : ""}: ${k === "body" ? "корпус" : "переход"} ${t} при ${w} в нём (при ${amb} °C вокруг), выше его ${lim} °C` +
+        ({ " even on the assumed heatsink": " даже на предполагаемом радиаторе", "; it needs a heatsink or more copper": "; нужен радиатор или больше меди", "; fit a larger part or share the heat between two": "; поставьте деталь крупнее или поделите тепло между двумя" }[rest] || rest)],
   ];
   root.I18N_RU = { text, patterns };
 })(window);

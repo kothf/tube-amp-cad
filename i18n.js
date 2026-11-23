@@ -26,6 +26,11 @@
     }
     return null;
   }
+  // the dictionary's own entry for a text, no patterns
+  function exact(text) {
+    const D = root.I18N_RU, key = text.replace(/\s+/g, " ").trim();
+    return D && key && Object.prototype.hasOwnProperty.call(D.text, key) ? D.text[key] : null;
+  }
   // the English of a Russian text the dictionary gave (exact entries only)
   let EN = null;
   function en(text) {
@@ -37,12 +42,14 @@
   const keepSpace = (orig, t) => orig.match(/^\s*/)[0] + t + orig.match(/\s*$/)[0];
 
   function doText(n) {
-    const p = n.parentNode; if (!p || /^(SCRIPT|STYLE|TEXTAREA|CODE|KBD)$/.test(p.nodeName) || p.closest && p.closest("[data-i18n-skip]")) return;
+    const p = n.parentNode; if (!p || /^(SCRIPT|STYLE|TEXTAREA|CODE)$/.test(p.nodeName) || p.closest && p.closest("[data-i18n-skip]")) return;
     const cur = n.nodeValue, had = origText.get(n);
     // the script changed it since: that is the new English
     const en = had && (cur === had.ru) ? had.en : cur;
     if (lang === "en") { if (had && cur === had.ru) n.nodeValue = had.en; origText.delete(n); return; }
-    const t = ru(en); if (t === null) { origText.delete(n); return; }
+    // a key cap (<kbd>): keys stay as they are; words (a menu item's "under the schematic", the
+    // keys list's "right-click") only by an exact dictionary entry, never by the patterns
+    const t = p.nodeName === "KBD" ? exact(en) : ru(en); if (t === null) { origText.delete(n); return; }
     const out = keepSpace(en, t); origText.set(n, { en, ru: out }); if (cur !== out) n.nodeValue = out;
   }
   function doAttrs(el) {
