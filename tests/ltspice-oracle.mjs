@@ -17,7 +17,8 @@ import { ltPin } from "./ltspice-field.mjs";
 const LT = globalThis.LtspiceImport, L = globalThis.CadLib, E = globalThis.TubeSimEngine;
 E.loadWasm(readFileSync(new URL("../sim-solver.wasm", import.meta.url)));
 
-const ANALYSIS = /^\s*\.(tran|ac|dc|noise|tf|op|step|four|meas|measure|wave|save|backanno|net|sens|pz|disto)\b/i;
+// (and .ic / .nodeset: the app's operating point has no initial conditions)
+const ANALYSIS = /^\s*\.(tran|ac|dc|noise|tf|op|step|four|meas|measure|wave|save|backanno|net|sens|pz|disto|ic|nodeset)\b/i;
 /** the schematic with .op as its only analysis */
 export function opCopy(text) {
   const out = [];
@@ -91,12 +92,9 @@ function appDC(design) {
 
 export function compare(ascText, netBuf, rawBuf) {
   const A = LT.readAsc(ascText), { design, report } = LT.importAsc({ "x.asc": ascText });
-  const raw = readRaw(rawBuf), net = readNet(netBuf);
-  if (!raw.size) return { skip: "no LTspice result" };
-  const sim = appDC(design);
-  if (sim.error) return { fail: "app: " + sim.error };
-  const sym = new Map(A.symbols.map(s => [s.attrs.InstName, s]));
-  const rows = [];
+  const net = readNet(netBuf), raw = rawBuf ? readRaw(rawBuf) : new Map(), N = nets(design);
+  // every pin of the app's circuit with the node LTspice's netlist gives it
+  const sym = new Map(A.symbols.map(s => [s.attrs.InstName, s])), pins = [];
   design.comps.forEach(c => {
     const s = c.label && sym.get(c.label); if (!s) return;
     const name = String(s.name).toLowerCase(), list = LT.SYMS[name] || LT.SYMS[name.split("\\").pop()]; if (!list) return;
@@ -104,13 +102,26 @@ export function compare(ascText, netBuf, rawBuf) {
     const nodes = net.get(up) || [...net.entries()].find(([k]) => k.slice(1) === up)?.[1]; if (!nodes) return;
     L.LIB[c.type].pins({ params: Object.assign({}, L.LIB[c.type].defaults, c.params), label: c.label }).forEach(p => {
       const ltp = ltPin(c, p.id, name), i = order.indexOf(ltp); if (i < 0 || !nodes[i]) return;
-      const nd = nodes[i].toLowerCase(), lt = nd === "0" ? 0 : raw.get(`v(${nd})`), app = sim.at(c, p.id);
-      if (lt === undefined || app === undefined || !Number.isFinite(lt)) return;
-      rows.push({ pin: c.label + "." + ltp, node: nd, lt, app });
+      pins.push({ c, id: p.id, pin: c.label + "." + ltp, node: nodes[i].toLowerCase(), appNet: N.get(c.id + ":" + p.id) });
     });
   });
+  // the nets: one app net for each LTspice node and the other way round
+  const netBad = [], byNode = new Map(), byNet = new Map();
+  pins.forEach(r => { if (!byNode.has(r.node)) byNode.set(r.node, new Set()); byNode.get(r.node).add(r.appNet); if (!byNet.has(r.appNet)) byNet.set(r.appNet, new Set()); byNet.get(r.appNet).add(r.node); });
+  byNode.forEach((v, nd) => { if (v.size > 1) netBad.push(`split: LTspice's ${nd} is ${v.size} nets here (${pins.filter(r => r.node === nd).map(r => r.pin).join(",")})`); });
+  byNet.forEach(v => { if (v.size > 1) netBad.push(`merged: ${[...v].join(" + ")}`); });
+  const base = { kept: report.kept, netPins: pins.length, netBad };
+  if (!raw.size) return Object.assign(base, { skip: "no LTspice result" });
+  const sim = appDC(design);
+  if (sim.error) return Object.assign(base, { fail: "app: " + sim.error });
+  const rows = [];
+  pins.forEach(r => {
+    const lt = r.node === "0" ? 0 : raw.get(`v(${r.node})`), app = sim.at(r.c, r.id);
+    if (lt === undefined || app === undefined || !Number.isFinite(lt)) return;
+    rows.push({ pin: r.pin, node: r.node, lt, app });
+  });
   const bad = rows.filter(r => !(Math.abs(r.app - r.lt) <= 0.01 * Math.max(Math.abs(r.app), Math.abs(r.lt)) + 0.01));
-  return { kept: report.kept, rows: rows.length, bad, worst: rows.reduce((w, r) => Math.max(w, Math.abs(r.app - r.lt)), 0) };
+  return Object.assign(base, { rows: rows.length, bad, worst: rows.reduce((w, r) => Math.max(w, Math.abs(r.app - r.lt)), 0) });
 }
 
 if (process.argv[1] && process.argv[1].endsWith("ltspice-oracle.mjs")) {
@@ -122,20 +133,21 @@ if (process.argv[1] && process.argv[1].endsWith("ltspice-oracle.mjs")) {
     console.log(`${files.length} schematics written to ${b} with .op as the analysis`);
   } else if (cmd === "compare") {
     const files = readdirSync(a).filter(f => /\.asc$/i.test(f)).sort((x, y) => x.localeCompare(y, "en", { numeric: true }));
-    const out = [], tally = { same: 0, differ: 0, fail: 0, skip: 0, kept: 0 };
+    const out = [], tally = { same: 0, differ: 0, fail: 0, skip: 0, kept: 0, netFiles: 0, netBad: 0 };
     for (const f of files) {
       const stem = join(a, basename(f, ".asc")), res = { file: f };
       try {
-        if (!existsSync(stem + ".net") || !existsSync(stem + ".raw")) Object.assign(res, { skip: "LTspice wrote no .net/.raw" });
-        else Object.assign(res, compare(LT.decode(readFileSync(join(a, f))), readFileSync(stem + ".net"), readFileSync(stem + ".raw")));
+        if (!existsSync(stem + ".net")) Object.assign(res, { skip: "LTspice wrote no .net" });
+        else Object.assign(res, compare(LT.decode(readFileSync(join(a, f))), readFileSync(stem + ".net"), existsSync(stem + ".raw") ? readFileSync(stem + ".raw") : null));
       } catch (e) { res.fail = e.stack.split("\n").slice(0, 3).join(" "); }
       const kind = res.skip ? "skip" : res.fail ? "fail" : res.kept ? "kept" : res.bad.length ? "differ" : "same";
       tally[kind]++; out.push(res);
+      if (res.netPins) { tally.netFiles++; if (res.netBad.length) { tally.netBad++; console.log("NETS", f, res.netBad.slice(0, 3).join(" | ")); } }
       if (kind === "differ") console.log("DIFFER", f, res.bad.slice(0, 4).map(r => `${r.pin} LT ${r.lt.toPrecision(4)} app ${r.app.toPrecision(4)}`).join(" | "));
       else if (kind === "fail") console.log("FAIL", f, res.fail);
       else if (kind === "skip") console.log("skip", f, res.skip);
     }
-    console.log(`${files.length} schematics: ${tally.same} same operating point, ${tally.differ} different, ${tally.fail} failed, ${tally.skip} left out, ${tally.kept} with parts kept as boxes (not compared)`);
+    console.log(`${files.length} schematics: ${tally.same} same operating point, ${tally.differ} different, ${tally.fail} failed, ${tally.skip} left out, ${tally.kept} with parts kept as boxes (not compared); nets checked against LTspice's netlist in ${tally.netFiles}: ${tally.netBad} differ`);
     if (b) writeFileSync(b, JSON.stringify(out, null, 1));
   } else console.log("node tests/ltspice-oracle.mjs prepare <asc folder> <out> | compare <out> [results.json]");
 }

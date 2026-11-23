@@ -138,9 +138,15 @@
     return null;
   }
 
+  // LTspice's library names whose part the app has under another name: the same die in another case
+  // or the same part without its gain group letter
+  const SAME = { "2N2222": "2N2222A", "PN2222A": "2N2222A", "MMBT2222A": "2N2222A", "2N2907": "2N2907A", "MMBT2907A": "2N2907A", "MMBT3904": "2N3904", "MMBT3906": "2N3906",
+    BC847B: "BC547B", BC846B: "BC546B", BC849C: "BC549C", BC850C: "BC549C", BC857B: "BC557B", BC856B: "BC556B", BC859C: "BC559C", BC860C: "BC559C",
+    "1N914": "1N4148", "1N4148W": "1N4148", "1N4148WS": "1N4148", "1N4448": "1N4148", LL4148: "1N4148" };
   const keyIn = (table, name) => {
     const n = String(name || "").trim().toUpperCase(); if (!n || !table) return null;
-    return Object.keys(table).find(k => k.toUpperCase() === n) || null;
+    const find = m => Object.keys(table).find(k => k.toUpperCase() === m) || null;
+    return find(n) || (SAME[n] ? find(SAME[n]) : null);
   };
   // the symbol's own name, without its folder, lower case: "Opamps\LT1001" → "lt1001"
   const base = n => String(n || "").split(/[\\/]/).pop().toLowerCase();
@@ -374,7 +380,9 @@
       }
       if ((b === "ind" || b === "ind2") && !asy) {
         const l = ltValue(value); if (!l) stood("", `${ref} "${value}"`);
-        return want("inductor", l ? { l } : {}, { 1: at("A"), 2: at("B") });
+        // LTspice's inductor has 1 mΩ in series unless its Rser says otherwise (the app's choke default is 100 Ω)
+        const rser = named(line, "Rser");
+        return want("inductor", Object.assign(l ? { l } : {}, { dcr: rser !== null && rser > 0 ? rser : 1e-3 }), { 1: at("A"), 2: at("B") });
       }
       const devModel = (table, type, pinsInOrder) => {
         // a model the schematic carries wins (simulated as written), then the app's own part of that name
@@ -383,7 +391,7 @@
         const m = dflt ? (() => { try { return SF.cut(`.model ${dflt} ${dflt}()`, dflt); } catch (e) { return null; } })() : findModel(value);
         if (m && SF) { const c = spicePart(m, ref, pinsInOrder); if (c) { report.own++; if (dflt) bare.push(ref); return c; } }
         const k = keyIn(table, value);
-        if (!k) stood(`${value || "(no model)"}\n${L.LIB[type].defaults.model}`, ref);
+        if (!k) stood(`${value || "(no model)"}\n${b === "schottky" ? "BAT85" : L.LIB[type].defaults.model}`, ref);
         return null;
       };
       if (["diode", "schottky", "zener", "led", "varactor", "tvsdiode"].includes(b) && !asy) {
@@ -391,7 +399,8 @@
         if (b === "led") return want("led", {}, t);
         const type = b === "zener" || keyIn(L.ZENERS, value) ? "zener" : "diode", table = type === "zener" ? L.ZENERS : L.DIODES;
         const c = devModel(table, type, [t.A, t.K]); if (c) return c;
-        return want(type, { model: keyIn(table, value) || L.LIB[type].defaults.model }, t);
+        // a Schottky the app has no model of stands in as a small Schottky, not as a rectifier
+        return want(type, { model: keyIn(table, value) || (b === "schottky" ? "BAT85" : L.LIB[type].defaults.model) }, t);
       }
       if (["npn", "pnp", "npn2", "pnp2"].includes(b) && !asy) {
         const t = { C: at("C"), B: at("B"), E: at("E") }, c = devModel(L.BJTS, b.slice(0, 3), [t.C, t.B, t.E]); if (c) return c;
