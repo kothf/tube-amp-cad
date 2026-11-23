@@ -6,6 +6,26 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.251.0] - 2026-11-23
+
+LTspice import checked against LTspice itself.
+
+### Added
+- `tests/ltspice-oracle.mjs` and `scripts/ltspice-oracle.sh`: each of the 193 public schematics
+  (`tests/fixtures/ltspice/corpus.txt`) run through LTspice 26 under Wine (`.op`) and through the app;
+  the nets are compared with LTspice's own netlist and the DC operating point pin by pin.
+  Result: nets equal in 163 of 164 netlists, operating point equal (1 % + 10 mV) in 37 of 53;
+  the rest are models the app lacks or names differently (LTspice's LED, 2N5484, 2N5550, BAT54 models),
+  bistables settling in the other state and nodes held only by leakage.
+- LTspice import works out `.param` values (`{R*2}` in a value) and gives a `.step param`'s first value.
+
+### Fixed
+- LTspice import: an inductor had the app's choke default of 100 Ω in series; now LTspice's 1 mΩ or its Rser.
+- LTspice import: a transistor, diode or JFET with no model named gets LTspice's default model
+  (NPN, PNP, D, NJF) instead of the app's default part.
+- LTspice import: LTspice library names the app has under another name come over as that part
+  (2N2222 → 2N2222A, BC847B → BC547B, 1N914 → 1N4148 …); an unknown Schottky stands in as BAT85, not 1N4007.
+
 ## [3.250.0] - 2026-11-23
 
 BOM prices and order files.

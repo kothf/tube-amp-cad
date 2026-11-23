@@ -92,3 +92,13 @@ test("it simulates: the divider, the emitter follower on the schematic's model, 
   assert.ok(v("MID") - ve > 0.55 && v("MID") - ve < 0.75, `VBE ${v("MID") - ve}`);
   assert.ok(Math.abs(v("IT") + 1) < 0.01, `IT ${v("IT")}`);
 });
+
+test(".param and .step: {expressions} in values worked out; a part with no model is LTspice's default one", () => {
+  const t = "Version 4\nSHEET 1 880 680\nSYMBOL res 0 0 R0\nSYMATTR InstName R1\nSYMATTR Value {Rb*2}\nSYMBOL res 96 0 R0\nSYMATTR InstName R2\nSYMATTR Value {X}\nSYMBOL npn 200 0 R0\nSYMATTR InstName Q1\n" +
+    "TEXT 0 200 Left 2 !.param Rb=2k2 Ra={Rb/2}\\n.step param X list 10 20 30\n";
+  const { design, report } = LT.importAsc({ "p.asc": t }), by = l => design.comps.find(c => c.label === l);
+  assert.equal(by("R1").params.r, 4400);
+  assert.equal(by("R2").params.r, 10);
+  assert.equal(by("Q1").type, "spice"); assert.match(by("Q1").params.text, /\.model NPN NPN/);
+  assert.ok(report.notes.some(n => /steps X/.test(n)) && report.notes.some(n => /Q1: no model named/.test(n)));
+});

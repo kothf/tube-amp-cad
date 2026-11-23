@@ -744,8 +744,12 @@ the circuit that was on the sheet.
     written (a SPICE part). LTspice's own ICs and controlled sources are kept
     as boxes with their pins: wired, on the board, not simulated.
   - Ground is ground, other flags net labels; comments and SPICE commands go
-    on the sheet as text. On 193 schematics from public repositories the nets
-    equal the `.asc`'s own pin for pin (`tests/ltspice-field.mjs`).
+    on the sheet as text. `.param` values are worked out (a `.step`ped one
+    takes its first value); a part with no model gets LTspice's default one.
+  - Checked against LTspice itself (`scripts/ltspice-oracle.sh`, LTspice under
+    Wine): on 193 public schematics the nets equal LTspice's own netlist in
+    163 of the 164 it netlists, and the DC operating point matches pin for pin
+    in 37 of 53 simulated by both; the rest differ by models the app lacks.
 - **Noise and hum.** *Analyze ▾ → Noise and hum* opens the *Noise* tab under
   the schematic: what the amplifier puts out with no signal:
   - thermal, tube (2.5/gm, pentode partition, 1/f), shot and FET channel
