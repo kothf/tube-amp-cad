@@ -72,6 +72,9 @@ async function readRaw(file) {
     const nums = text.slice(text.indexOf("Values:") + 7).trim().split(/\s+/).map(Number);
     for (let p = 0, i = 0; p < np; p++) { i++; for (let k = 0; k < nv; k++) data[k][p] = nums[i++]; }
   }
+  // a transient that starts saving later (tstart) is written from there: its Offset is that time
+  const offset = +((/Offset:\s*(\S+)/.exec(text) || [])[1] || 0);
+  if (offset) for (let p = 0; p < np; p++) data[0][p] += offset;
   return { names, data };
 }
 if (!LT) {

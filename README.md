@@ -1720,6 +1720,11 @@ npm run build:wasm  # sim-solver.wasm from wasm/solver.ts, after changing the so
   DC sweep against `.dc`), `tests/smps-ngspice.mjs` (buck, boost, flyback and
   class-D converters against `.tran`) and the speed benchmark below.
   CI runs it on each push and pull request.
+- `SIM=ltspice node tests/ngspice.mjs` makes the same example comparison
+  against LTspice (under Wine on Linux; `LTSPICE=` names `LTspice.exe`).
+  On 2026-11-23 with LTspice 26.1.1, 18 of the 20 examples agreed on every
+  node. The two that differ are the metronome and the tachometer, the same
+  two that are known to differ from ngspice.
 - `node tests/bench.mjs` (part of `npm run test:ngspice`) times the live run,
   the full run, the Bode sweep and the power-on run of every example, and
   counts the engine's work (Newton solves and iterations, model evaluations).
