@@ -93,6 +93,12 @@ test("the thermal study: every part's heat and shares, the map's conditions, the
   const r1 = l.parts.find(p => p.name === "R1"), p1 = res.parts.find(p => p.ref === "R1");
   assert.deepEqual(r1.comps, ["c_R1"]); assert.equal(r1.limit, 155); assert.ok(Math.abs(r1.board - p1.toBoard) < 1e-3 && r1.board > 0.3);
   assert.ok(l.parts.every(p => p.board >= 0 && p.sink >= 0));
+  // where R1's board share goes in: a disc on each of its pads, a rectangle under its lying body (board frame: y up)
+  const pads = setup().model.pads.filter(p => p.part === res.parts.find(q => q.ref === "R1").key);
+  assert.equal(r1.into.filter(q => q.disc).length, 2); assert.equal(r1.into.filter(q => q.rect).length, 1);
+  assert.ok(Math.abs(r1.into.reduce((s, q) => s + q.w, 0) - r1.board) < 1e-3, "the regions' watts add up to the board share");
+  for (const p of pads) assert.ok(r1.into.some(q => q.disc && Math.hypot(q.disc[0] - p.x, q.disc[1] + p.y) < 1e-6 && q.disc[2] > 0.5), `a disc on pad ${p.x}, ${p.y}`);
+  const rc = r1.into.find(q => q.rect).rect; assert.ok(rc[0] < 25 && rc[2] > 25 && rc[1] < -30 && rc[3] > -30, `under the body at 25, −30: ${rc}`);
   assert.deepEqual(st.supports.map(s => s.type), ["conv", "rad"]); assert.ok(st.supports.every(s => s.all));
   const bd = st.comps.c_board.board, m = bd.map;
   assert.equal(bd.t, board.stackup.thickness); assert.equal(bd.layers, 2); assert.deepEqual(m.labels, ["F.Cu", "B.Cu"]);

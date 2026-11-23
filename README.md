@@ -1322,7 +1322,9 @@ the circuit file, so one file holds both.
   over 2 W is taken to be on a heatsink unless its **Heat path** says
   otherwise (its own °C/W, its tab bent over onto the board's copper, free
   air, the chassis). The board is solved as a plate in two copper sheets with
-  the real copper coverage, natural convection and radiation: an estimate,
+  the real copper coverage, natural convection and radiation worked out face
+  by face as in MöbiusCAD (board faces and edges, every face of the parts'
+  3D bodies and leads), the leads as the 3D view draws them: an estimate,
   about ±15 °C, for comparing layouts. Save PNG puts the scale in the picture.
   **View ▾ → Thermal overlay** draws the board's field over the layout and
   follows it as you move parts. The map's findings join the design rules

@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.253.0] - 2026-11-23
+
+The board's thermal map and the MöbiusCAD study now work out heat to the air the same way.
+
+### Changed
+- Natural convection face by face as MöbiusCAD does it: each face of the board (faces, edges, hole
+  walls) and of every part's 3D bodies and leads by which way it looks and its size (C 1.32 up, 0.59
+  down with L = area / perimeter, 1.42 upright with L = its height); no floor or ceiling on h. A closed
+  chassis keeps 0.55 of free convection (was 0.6), as in MöbiusCAD.
+- A through-hole lead conducts by the lead the 3D view draws (its diameter, its length from the board to
+  the body), and its heat enters the board over the pad's copper instead of one cell.
+- The test board solved in MöbiusCAD now agrees with the map: see docs/mobiuscad-export.md.
+
 ## [3.252.0] - 2026-11-23
 
 The board goes to MöbiusCAD as part files and an assembly with its thermal study, in place of the
