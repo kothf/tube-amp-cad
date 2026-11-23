@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.253.1] - 2026-11-23
+
+### Fixed
+- docs/mobiuscad-export.md names the MöbiusCAD version that reads where a part's board share goes in
+  (`into`): 1.713.0, not 1.712.0. Checked there: the test board's parts agree within 0.6 °C.
+
 ## [3.253.0] - 2026-11-23
 
 The board's thermal map and the MöbiusCAD study now work out heat to the air the same way.
