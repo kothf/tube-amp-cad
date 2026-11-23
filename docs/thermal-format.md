@@ -11,6 +11,7 @@ board properly, or a CAD that wants to show the map on the STEP model.
 | `<name>-heat-sources.csv` | One row per part: heat, where it goes, temperatures. |
 | `<name>-thermal.png` | The 3D view with its scale (absent without WebGL). |
 | `<name>.step` | The board and the parts as solids, exported at the same moment. |
+| `gerbers/` | The Gerber (X2) and drill (Excellon) files of the same layout, as the board maker gets them. |
 | `README-thermal.txt` | The conditions and the units, for a person. |
 
 The numbers are an estimate, about ±15 °C (`accuracy_C`). The air inside a chassis is not
@@ -21,6 +22,10 @@ simulated.
 Millimetres, °C, W, W/m². x to the right, y up, z up from the board's bottom face. It is the frame
 of the STEP file, so a point has the same coordinates in the mesh, the CSV, the manifest and the
 STEP. (The layout's own y runs down: `y_step = -y_layout`.) Leads reach below z = 0.
+
+The Gerber and drill files keep their own origin, the board's bottom left (y up). Add
+`gerber_offset_mm` from the manifest to a Gerber point to put it in this frame:
+`x = x_gerber`, `y = y_gerber - board height`.
 
 ## The manifest
 
@@ -34,7 +39,9 @@ STEP. (The layout's own y runs down: `y_step = -y_layout`.) Leads reach below z 
   "units": { "length": "mm", "temperature": "C", "power": "W", "flux": "W/m2" },
   "frame": "same as the STEP export: x right, y up, z up from the board's bottom face",
   "files": { "manifest": "amp-thermal.json", "mesh": "amp-thermal.vtu", "sources": "amp-heat-sources.csv",
-             "readme": "README-thermal.txt", "picture": "amp-thermal.png", "step": "amp.step" },
+             "readme": "README-thermal.txt", "picture": "amp-thermal.png", "step": "amp.step",
+             "gerbers": ["gerbers/amp-F_Cu.gbr", "gerbers/amp-B_Cu.gbr", "...", "gerbers/amp-PTH.drl", "gerbers/amp-README.txt"] },
+  "gerber_offset_mm": [0, -105],
   "settings": { "ambient_C": 40, "enclosure": "closed", "orientation": "horizontal-up", "operating_point": "simulated",
                 "grid_mm": 1.3, "emissivity": 0.9, "board_thickness_mm": 1.6, "copper_um": 35, "layers": 2 },
   "board": { "size_mm": [170, 105], "hottest_C": 87.2, "hottest_at_mm": [113.1, -75.4, 1.6] },
@@ -56,6 +63,9 @@ STEP. (The layout's own y runs down: `y_step = -y_layout`.) Leads reach below z 
 - `enclosure`: `open`, `vented`, `closed`. `orientation`: `horizontal-up` (parts up),
   `horizontal-down`, `vertical`. `operating_point`: `simulated` (the signal's average where the run
   had a signal) or `idle`.
+- `files.gerbers` lists the Gerber, drill and placement files and their README, by their path in
+  the ZIP; with it comes `gerber_offset_mm`. Both are absent in a package made without them (an
+  older one, or a board that could not be plotted).
 - `range_C` is the lowest and highest `Temperature_C` of the mesh: the range for a colour scale.
 - `parts` holds every part drawn on the board or giving off heat, the largest heat first.
   `part_id` is the `PartId` of its cells in the mesh. `bbox_mm` is min x, y, z then max x, y, z.

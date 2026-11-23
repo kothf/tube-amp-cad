@@ -109,3 +109,21 @@ test("an electrolytic's estimated life goes into the CSV and the manifest", () =
   const head = X.COLUMNS, row = pk.files["amp-heat-sources.csv"].trim().split("\r\n").map(l => l.split(",")).find(l => l[1] === "C1");
   assert.equal(+row[head.indexOf("life_h")], Math.round(life)); assert.equal(row[head.indexOf("t_limit_C")], "105");
 });
+
+test("the Gerbers of the same layout go with it: listed in the manifest, with the offset that puts them in the STEP's frame", () => {
+  const { board, model, res } = setup(), F = globalThis.BoardFab;
+  const fab = F.fabFiles(board, model, null, { base: "amp", title: "Test amp" }), names = Object.keys(fab).map(f => "gerbers/" + f);
+  const pk = X.pack(board, model, res, { name: "amp", picture: true, step: true, gerbers: names }), m = pk.manifest;
+  assert.deepEqual(m.files.gerbers, names);
+  assert.ok(names.includes("gerbers/amp-F_Cu.gbr") && names.includes("gerbers/amp-Edge_Cuts.gbr") && names.includes("gerbers/amp-PTH.drl"), names.join(" "));
+  assert.deepEqual(m.gerber_offset_mm, [0, -60]);
+  assert.match(pk.files["README-thermal.txt"], /gerbers\/[\s\S]*gerber_offset_mm \(0, -60\)/);
+  // a pad's centre: Gerber (x, H - y) plus the offset is the STEP's (x, -y)
+  const g = model.parts.find(p => p.ref === "R1"), [px, py] = B.place([g.fp.pads[0].x, g.fp.pads[0].y], g.place);
+  const flash = new RegExp(`X${Math.round(px * 1e6)}Y${Math.round((60 - py) * 1e6)}D03`);
+  assert.match(fab["amp-F_Cu.gbr"], flash);
+  assert.ok(Math.abs((60 - py) + m.gerber_offset_mm[1] - -py) < 1e-9);
+  // without them: no list, no offset (version 1 readers already ignore unknown keys)
+  const plain = X.pack(board, model, res, { name: "amp" }).manifest;
+  assert.equal(plain.files.gerbers, undefined); assert.equal(plain.gerber_offset_mm, undefined);
+});

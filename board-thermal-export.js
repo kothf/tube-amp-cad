@@ -2,9 +2,10 @@
 
    BoardThermalExport.pack(board, model, result, opts) → { files, manifest, rows, mesh }
      result  BoardThermal.solve(...)'s, ok
-     opts    { name, title, version, date, tubes (the valves drawn, default true), picture, step }
+     opts    { name, title, version, date, tubes (the valves drawn, default true), picture, step,
+             gerbers (the names of the Gerber and drill files the caller adds, in gerbers/) }
      files   { "<name>-thermal.vtu", "<name>-heat-sources.csv", "<name>-thermal.json", "README-thermal.txt" }:
-             the texts of the package; the caller adds the picture and the STEP and zips them
+             the texts of the package; the caller adds the picture, the STEP and the Gerbers and zips them
 
    Everything is in the frame of the STEP export (Board3D.scene): millimetres, x to the right, y up
    (the layout's y turned over), z up from the board's bottom face, the same origin. The format
@@ -134,6 +135,7 @@
     const name = opts.name, st = result.settings, files = { manifest: `${name}-thermal.json`, mesh: `${name}-thermal.vtu`, sources: `${name}-heat-sources.csv`, readme: "README-thermal.txt" };
     if (opts.picture) files.picture = `${name}-thermal.png`;
     if (opts.step) files.step = `${name}.step`;
+    if (opts.gerbers && opts.gerbers.length) files.gerbers = opts.gerbers.slice();
     let lo = Infinity, hi = -Infinity; m.temp.forEach(v => { if (v < lo) lo = v; if (v > hi) hi = v; });
     const n1 = v => (v === null || v === undefined ? null : +(+v).toFixed(1)), n4 = v => +(+v).toFixed(4);
     return {
@@ -141,6 +143,8 @@
       units: { length: "mm", temperature: "C", power: "W", flux: "W/m2" },
       frame: "same as the STEP export: x right, y up, z up from the board's bottom face",
       files,
+      // Gerber and drill coordinates have their origin at the board's bottom left; add this to put them in the frame above
+      ...(files.gerbers ? { gerber_offset_mm: [0, -board.outline.h] } : {}),
       settings: { ambient_C: st.ambient, enclosure: st.enclosure, orientation: ORIENT[st.orient] || st.orient, operating_point: st.point === "idle" ? "idle" : "simulated", grid_mm: r3(result.step), emissivity: result.emissivity || 0.9, board_thickness_mm: result.thickness || board.stackup.thickness || 1.6, copper_um: board.stackup.copper || 35, layers: board.stackup.layers || 2 },
       board: { size_mm: [board.outline.w, board.outline.h], hottest_C: n1(result.boardMax), hottest_at_mm: result.hot ? [r2(result.hot.x), r2(-result.hot.y), result.hot.side === "bottom" ? 0 : result.thickness || 1.6] : null },
       accuracy_C: ACCURACY, range_C: [n1(lo), n1(hi)], total_W: n4(result.total),
@@ -204,6 +208,9 @@
       "      accept version 1, ignore keys and arrays you do not know.",
       ...(f.picture ? [`  ${f.picture}`, "      The 3D view with its scale."] : []),
       ...(f.step ? [`  ${f.step}`, "      The board and parts as solids (STEP AP214), exported at the same moment."] : []),
+      ...(f.gerbers ? ["  gerbers/", "      The copper, mask, silkscreen and outline (Gerber X2) and the drill files (Excellon) of the",
+        "      same layout, the files a board maker gets. Their origin is the board's bottom left: add",
+        `      gerber_offset_mm (0, ${man.gerber_offset_mm[1]}) to a Gerber point to put it in this frame.`] : []),
       "",
       "LOOKING AT IT",
       `  ParaView: File > Open ${f.mesh}, Apply, colour by Temperature_C. Threshold on PartId isolates a`,

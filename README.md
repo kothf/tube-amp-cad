@@ -1328,7 +1328,9 @@ the circuit file, so one file holds both.
     every part with the names of its STEP solids, its heat and where it goes,
     its temperatures and margin, for setting up a real FEM run on the STEP;
     `<name>-thermal.json` is the manifest for a program that reads the
-    package; plus the picture, the STEP and a README. The format is described
+    package; plus the picture, the STEP, the board's Gerber and drill files
+    in `gerbers/` (`gerber_offset_mm` in the manifest moves them into the
+    STEP's frame) and a README. The format is described
     in [docs/thermal-format.md](docs/thermal-format.md).
   - **3D model (STEP)**, AP214, of the board (with its holes) and every part,
     in colour, for fitting the board into a chassis in FreeCAD, KiCad or any
