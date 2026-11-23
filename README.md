@@ -590,6 +590,14 @@ the circuit that was on the sheet.
     current;
   - an LCSC # (JLCPCB's stock number), saved with the circuit and written
     into JLCPCB's assembly BOM by the board maker export;
+  - prices: *Look up* brings DigiKey's price breaks (the cut tape / bulk
+    packaging), the *Unit price* at the quantity bought for the *boards*
+    count, or your own price typed in; *Line total* (DigiKey's minimum order
+    when that is more) and the total for all the boards in the BOM's head and
+    exports; the currency is set in *DigiKey key…*;
+  - *Order → DigiKey* / *LCSC*: a CSV for DigiKey's BOM Manager or LCSC's BOM
+    Tool with the quantities for all the boards (DigiKey's number or the
+    maker's part number; LCSC's C number), lines without a number named;
   - a part number you can type in, saved with the circuit. A maker's number
     fills the *Package* column. *Look up* asks DigiKey's parts database
     (with your own free DigiKey API key, kept in your browser) for the

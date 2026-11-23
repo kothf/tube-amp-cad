@@ -9,7 +9,8 @@
   const COLUMNS = [
     { key: "item", title: "Item" }, { key: "qty", title: "Qty" }, { key: "refs", title: "Designators" },
     { key: "desc", title: "Description" }, { key: "value", title: "Value" }, { key: "rating", title: "Rating / data" },
-    { key: "sim", title: "Sim. max" }, { key: "partno", title: "Part number" }, { key: "lcsc", title: "LCSC #" }, { key: "pkg", title: "Package" }
+    { key: "sim", title: "Sim. max" }, { key: "partno", title: "Part number" }, { key: "lcsc", title: "LCSC #" }, { key: "pkg", title: "Package" },
+    { key: "price", title: "Unit price" }, { key: "total", title: "Line total" }
   ];
   // parts without a designator (frame, note, ground, sheet connector) never appear;
   // sources and instruments only when asked for
@@ -145,6 +146,7 @@
 
   /** Group parts into BOM lines.
       opts.bench: include sources and instruments; opts.sockets: add a socket line per tube base;
+      opts.boards: how many boards the prices are for; opts.currency: the user's own prices' currency;
       opts.board: the circuit's board document: a part with an SMD footprint there says so (and its
       package) in its description, so SMD and through-hole parts of one value get lines of their own;
       opts.stress(c) -> { v, text, warn, note } | null: the simulated worst case of one part. */
@@ -161,8 +163,8 @@
       phys.get(k).members.push(c);
     });
     const lines = new Map();
-    const add = (key, ref, members, desc, value, rating, partno, lcsc) => {
-      if (!lines.has(key)) lines.set(key, { refs: [], comps: [], desc, value, rating, partno, lcsc: lcsc || "" });
+    const add = (key, ref, members, desc, value, rating, partno, lcsc, own) => {
+      if (!lines.has(key)) lines.set(key, { refs: [], comps: [], desc, value, rating, partno, lcsc: lcsc || "", own: own || 0 });
       const L = lines.get(key);
       L.refs.push(ref); L.comps.push(...members);
     };
@@ -179,10 +181,11 @@
         if (st.length) rating = capRating(c.type, Math.max(...st.map(x => x.v)));
       }
       // the part's own maker's number (an XT connector's order code) unless one is typed in
-      const def = root.CadLib.LIB[c.type], own = def && def.partNo, partno = String(c.params.partno || (own ? own(c) : "")).trim();
+      const def = root.CadLib.LIB[c.type], ownNo = def && def.partNo, partno = String(c.params.partno || (ownNo ? ownNo(c) : "")).trim();
       // JLCPCB's own stock number (C25804): the board maker's assembly matches the part exactly by it
-      const lcsc = String(c.params.lcsc || "").trim().toUpperCase(), key = [c.type, desc, value, rating, partno, lcsc].join("\u0001");
-      add(key, ref, members, desc, value, rating, partno, lcsc);
+      const lcsc = String(c.params.lcsc || "").trim().toUpperCase(), own = +c.params.price > 0 ? +c.params.price : 0;
+      const key = [c.type, desc, value, rating, partno, lcsc, own].join("\u0001");
+      add(key, ref, members, desc, value, rating, partno, lcsc, own);
       // what the part number says the part is (mpn.js): its package and size, and where it disagrees with the schematic
       const L = lines.get(key);
       if (partno && !L.mpn && root.PartNo) L.mpn = root.PartNo.resolve(c.params.partno ? c.params : { ...c.params, partno }, c.type);
@@ -197,13 +200,19 @@
       lines.set("socket\u0001" + k, { refs, comps: [], desc: "Tube socket" + (s ? `, ${s.mat}, ${MOUNT[s.mount]}` : ""), value: rating,
         rating: (s ? `${root.tubeSocketName(s)}; ` : "") + "for " + compressRefs(refs.slice().sort(refCmp)), partno: s ? s.name || s.id : "", socket: true, sock: s || null });
     });
+    const boards = Math.max(1, Math.round(+opts.boards || 1)), cur = opts.currency || "USD";
     const rows = [...lines.values()].map(L => {
       L.refs.sort(refCmp);
       // the worst case of the line; a warning on any of its parts shows
       const st = opts.stress ? L.comps.map(opts.stress).filter(Boolean) : [];
       const top = st.reduce((a, b) => (!a || b.v > a.v ? b : a), null), bad = st.find(x => x.warn);
       const pn = L.mpn, pkg = pn && pn.known ? root.PartNo.describe(pn) + (pn.warn.length ? " (" + pn.warn.join("; ") + ")" : "") : "";
-      return { qty: L.refs.length, refs: L.socket ? "" : compressRefs(L.refs), refList: L.refs, desc: L.desc, value: L.value, rating: L.rating, partno: L.partno, lcsc: L.lcsc || "", pkg, mpn: pn || null,
+      // its price: the user's own unit price, else DigiKey's at the quantity bought for all the boards
+      const need = L.refs.length * boards, dkp = pn && pn.price, at = L.own ? { unit: L.own, buy: need, cost: L.own * need } : dkp ? priceAt(dkp, need) : null;
+      const pc = L.own ? cur : dkp ? dkp.cur : cur;
+      return { qty: L.refs.length, need, buy: at ? at.buy : need, unitPrice: at ? at.unit : null, lineCost: at ? at.cost : null, cur: pc, priceSrc: L.own ? "own" : at ? "DigiKey" : "", own: L.own,
+        dk: dkp ? dkp.dk || "" : "", price: at ? money(at.unit, pc, true) : "", total: at ? money(at.cost, pc) : "", maker: (pn && pn.maker) || "", mpnDesc: (pn && pn.desc) || "",
+        refs: L.socket ? "" : compressRefs(L.refs), refList: L.refs, desc: L.desc, value: L.value, rating: L.rating, partno: L.partno, lcsc: L.lcsc || "", pkg, mpn: pn || null,
         sim: top ? top.text + (bad ? " (" + (bad.note || "over rating") + ")" : "") : "", warn: !!bad, ids: L.comps.map(c => c.id), socket: !!L.socket,
         url: L.sock && root.TUBE_SOCKET_URL ? root.TUBE_SOCKET_URL(L.sock) : "" };
     });
@@ -211,6 +220,60 @@
     rows.sort((a, b) => (a.socket - b.socket) || refCmp(a.refList[0], b.refList[0]) || (a.value < b.value ? -1 : 1));
     rows.forEach((r, i) => { r.item = i + 1; });
     return rows;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Prices. price = { cur, breaks: [[qty, unit price]…], moq } (DigiKey's, mpn-online.js)
+  // ---------------------------------------------------------------------------
+  const SYM = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CNY: "¥" };
+  /** v in currency cur: "$0.105" (a unit price keeps small amounts' digits), "€12.40" */
+  function money(v, cur, unit) {
+    if (!(v >= 0)) return "";
+    const d = !unit || v >= 1 ? 2 : v >= 0.1 ? 3 : 4, n = v.toFixed(d), s = SYM[cur];
+    return s ? s + n : n + " " + (cur || "");
+  }
+  /** What n parts cost: at least the least amount sold (the first break, or the minimum order),
+      at the unit price of the largest break not above the amount bought. */
+  function priceAt(price, n) {
+    const br = (price && price.breaks) || [];
+    if (!br.length) return null;
+    const buy = Math.max(Math.ceil(n) || 0, +price.moq || 0, br[0][0]);
+    let unit = br[0][1];
+    br.forEach(([q, u]) => { if (q <= buy) unit = u; });
+    return { unit, buy, cost: unit * buy };
+  }
+  /** The bill's total, per currency, and how many lines have no price. "$12.40 + €3.10" */
+  function totals(rows) {
+    const by = {}; let unpriced = 0;
+    rows.forEach(r => { if (r.lineCost === null || r.lineCost === undefined) { if (!r.socket || r.partno) unpriced++; } else by[r.cur] = (by[r.cur] || 0) + r.lineCost; });
+    const text = Object.entries(by).map(([c, v]) => money(v, c)).join(" + ");
+    return { by, unpriced, priced: rows.length - unpriced, text };
+  }
+  const totalLine = bom => {
+    const t = totals(bom.rows), n = Math.max(1, +bom.boards || 1);
+    if (!t.text) return "";
+    return `Total ${t.text} for ${n} board${n === 1 ? "" : "s"}` + (t.unpriced ? ` (${t.unpriced} line${t.unpriced === 1 ? "" : "s"} without a price)` : "");
+  };
+
+  // Order files: the lines to buy for all the boards, in the columns DigiKey's BOM Manager (or its
+  // cart's Upload) and LCSC's BOM Tool read (both match the column names on upload). A line needs
+  // something the shop can find: DigiKey's own number or the maker's part number; LCSC's C number
+  // or the maker's part number. The rest are named in left.
+  const csvq = s => { s = String(s === undefined || s === null ? "" : s); return /[",\r\n]/.test(s) || /^\s|\s$/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  function toOrderCsv(bom, shop) {
+    const lines = [], left = [];
+    bom.rows.forEach(r => {
+      const refs = r.refs || compressRefs(r.refList || []), desc = r.mpnDesc || [r.desc, r.value].filter(Boolean).join(" ");
+      const ok = shop === "lcsc" ? r.lcsc || (r.partno && !r.socket) : r.dk || (r.partno && !r.socket);
+      if (!ok) { left.push(refs || r.desc); return; }
+      const qty = shop === "lcsc" ? r.need : r.buy;
+      // DigiKey keeps a Customer Reference of up to 48 characters on the order
+      if (shop === "lcsc") lines.push([qty, r.lcsc, r.lcsc && !r.partno ? "" : r.partno, r.maker, refs, desc, r.pkg ? r.pkg.split(",")[0] : ""]);
+      else lines.push([qty, r.dk, r.partno, r.maker, refs.length > 48 ? refs.slice(0, 47) + "…" : refs, desc]);
+    });
+    const head = shop === "lcsc" ? ["Quantity", "LCSC Part Number", "Manufacture Part Number", "Manufacturer", "Designator", "Description", "Package"]
+      : ["Quantity", "Digi-Key Part Number", "Manufacturer Part Number", "Manufacturer", "Customer Reference", "Description"];
+    return { csv: [head, ...lines].map(l => l.map(csvq).join(",")).join("\r\n") + "\r\n", lines: lines.length, left };
   }
 
   // ---------------------------------------------------------------------------
@@ -228,6 +291,7 @@
     out.push(line(COLUMNS.map(c => c.title)), w.map(n => "-".repeat(n)).join("  "));
     rows.forEach(r => out.push(line(COLUMNS.map(c => cell(r, c.key)))));
     out.push("", `${rows.length} lines, ${totalParts(rows)} parts`);
+    if (totalLine(bom)) out.push(totalLine(bom));
     return out.join("\r\n") + "\r\n";
   }
 
@@ -235,6 +299,7 @@
     const q = s => (/[",\r\n]/.test(s) || /^\s|\s$/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
     const out = [COLUMNS.map(c => q(c.title)).join(",")];
     bom.rows.forEach(r => out.push(COLUMNS.map(c => q(cell(r, c.key))).join(",")));
+    if (totalLine(bom)) out.push(COLUMNS.map(c => (c.key === "desc" ? q(totalLine(bom)) : c.key === "total" ? q(totals(bom.rows).text) : "")).join(","));
     return "﻿" + out.join("\r\n") + "\r\n";     // the BOM mark makes Excel read UTF-8 (Ω, µ)
   }
 
@@ -280,7 +345,9 @@
         return typeof v === "number" ? `<c r="${ref}" s="4"><v>${v}</v></c>` : strCell(ref, cell(r, c.key), c.key === "sim" && r.warn ? 5 : 4);
       }).join("") + `</row>`);
     });
-    const last = first + bom.rows.length, widths = [6, 6, 22, 34, 18, 30, 16, 22, 34];
+    const tl = totalLine(bom);
+    if (tl) rowsXml.push(`<row r="${first + bom.rows.length + 2}">${strCell("A" + (first + bom.rows.length + 2), tl, 1)}</row>`);
+    const last = first + bom.rows.length, widths = [6, 6, 22, 34, 18, 30, 16, 22, 12, 34, 11, 11];
     const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheetViews><sheetView workbookViewId="0"><pane ySplit="${first}" topLeftCell="A${first + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
@@ -322,8 +389,8 @@ ${bom.rows.length ? `<autoFilter ref="A${first}:${colName(COLUMNS.length - 1)}${
 
   // --- PDF: A4 landscape table in Courier, wrapped cells, header repeated per page ---
   function toPdf(bom) {
-    const W = 842, H = 595, M = 36, FS = 8, ADV = 0.6 * FS, LH = FS * 1.35;
-    const chars = [4, 4, 16, 28, 13, 26, 14, 18, 25], GAP = 2;          // column widths in characters
+    const W = 842, H = 595, M = 36, FS = 7.5, ADV = 0.6 * FS, LH = FS * 1.35;
+    const chars = [3, 4, 14, 24, 11, 22, 12, 15, 8, 18, 7, 8], GAP = 2;          // column widths in characters
     const xs = []; chars.reduce((x, n, i) => { xs[i] = x; return x + (n + GAP) * ADV; }, M);
     const wrap = (s, n) => {
       const out = []; let cur = "";
@@ -359,10 +426,10 @@ ${bom.rows.length ? `<autoFilter ref="A${first}:${colName(COLUMNS.length - 1)}${
         pc.beginPath(); pc.moveTo(M, y - 1.5); pc.lineTo(W - M, y - 1.5); pc.stroke();
       });
       pc.font = `${FS}px monospace`;
-      if (pi === pages.length - 1) pc.fillText(`${bom.rows.length} lines, ${totalParts(bom.rows)} parts`, M, Math.min(y + LH + 2, H - M - 2));
+      if (pi === pages.length - 1) pc.fillText(`${bom.rows.length} lines, ${totalParts(bom.rows)} parts` + (totalLine(bom) ? " · " + totalLine(bom) : ""), M, Math.min(y + LH + 2, H - M - 2));
       pc.textAlign = "right"; pc.fillText(`Tube Amp CAD · page ${pi + 1} of ${pages.length}`, W - M, H - M + 6); pc.textAlign = "left";
     }, { title: "Bill of materials" + (bom.title ? " - " + bom.title : "") });
   }
 
-  root.BomLib = { smdPackage, COLUMNS, build, describe, capRating, compressRefs, refCmp, toTxt, toCsv, toXlsx, toPdf, zip, crc32 };
+  root.BomLib = { smdPackage, COLUMNS, build, money, priceAt, totals, toOrderCsv, describe, capRating, compressRefs, refCmp, toTxt, toCsv, toXlsx, toPdf, zip, crc32 };
 })(typeof window !== "undefined" ? window : globalThis);

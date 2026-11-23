@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.250.0] - 2026-11-23
+
+BOM prices and order files.
+
+### Added
+- BOM prices: Look up also saves DigiKey's price breaks with the part (the
+  packaging sold in the smallest amounts, its DigiKey number, stock and date).
+  New *Unit price* (DigiKey's at the quantity bought, grey, or your own typed
+  in, saved with the circuit) and *Line total* columns, a *boards* count, and
+  the total for all the boards in the BOM's head and in the TXT, CSV, XLSX
+  and PDF exports. Look up all refreshes prices older than a week. DigiKey
+  key… has *Prices in* (USD, EUR, GBP, CAD, AUD, CHF, SEK, PLN, JPY, CNY).
+- BOM *Order → DigiKey / LCSC*: a CSV for DigiKey's BOM Manager or LCSC's BOM
+  Tool with the quantities for all the boards (at least DigiKey's minimum
+  order); lines without a number are named in the status line.
+
 ## [3.249.0] - 2026-11-23
 
 Gerbers in the thermal map package.

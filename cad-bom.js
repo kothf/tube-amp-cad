@@ -1,5 +1,6 @@
 /* The CAD's bill of materials panel under the schematic (B): the simulated stress per part
-   (Sim. max), the table with its part-number cells, and the TXT / CSV / XLSX / PDF exports
+   (Sim. max), the table with its part-number cells, prices (DigiKey's, or the user's own) for
+   the number of boards, the TXT / CSV / XLSX / PDF exports and the DigiKey / LCSC order files
    (bom.js builds and writes the lists). */
 (function (root) {
   "use strict";
@@ -7,7 +8,7 @@
   root.CadBom = function (cad) {
     const { S, baseName, bind, cmds, renderChecks, renderTolerance, commit, fmtEng, frames, netDC, otDcCurrent, pinCurrent: dcPinCurrent, pinNetOf, sigDevice, sigPinCurrent, render, resistorPower, seriesPart, setStatus, speakerPower, tubeByName, tubeData, tubeLimits, updateInspector, vRmsAcross, waveOf } = cad;
     const BOM_KEY = "tubecad_bom";
-    const bomOpts = { open: false, tab: "bom", sockets: true, bench: false, height: 0 };   // open, tab: the panel under the sheet and its tab
+    const bomOpts = { open: false, tab: "bom", sockets: true, bench: false, height: 0, boards: 1 };   // open, tab: the panel under the sheet and its tab
     try { Object.assign(bomOpts, JSON.parse(localStorage.getItem(BOM_KEY)) || {}); } catch (e) {}
     const saveBomOpts = () => { try { localStorage.setItem(BOM_KEY, JSON.stringify(bomOpts)); } catch (e) {} };
     let bomStale = false, bomSelShown = "", bomSelAt = null;
@@ -137,7 +138,8 @@
       const f = frames()[0], p = f ? f.params : {};
       // the values of the last simulation, taken when it finished: an edit since does not mix the
       // new part values with the old voltages
-      return { rows: BomLib.build(S.comps, { sockets: bomOpts.sockets, bench: bomOpts.bench, board: S.board, stress: c => (S.sim.stress && S.sim.stress.get(c.id)) || null }),
+      const boards = Math.max(1, Math.round(+bomOpts.boards || 1)), currency = window.PartSearch ? PartSearch.config().currency : "USD";
+      return { boards, rows: BomLib.build(S.comps, { sockets: bomOpts.sockets, bench: bomOpts.bench, board: S.board, boards, currency, stress: c => (S.sim.stress && S.sim.stress.get(c.id)) || null }),
         title: p.title || "", docno: p.docno || "", rev: p.rev || "", date: p.date || new Date().toISOString().slice(0, 10) };
     }
     const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -150,6 +152,17 @@
       if (!m) return `<td class="bom-pkg">${tail}</td>`;
       if (!m.known) return `<td class="bom-pkg muted">${esc(PartNo.describe(m))}${tail}</td>`;
       return `<td class="bom-pkg${m.warn.length ? " warn" : ""}">${esc(PartNo.describe(m))}${tail}${m.warn.map(w => `<br><small>⚠ ${esc(w)}</small>`).join("")}</td>`;
+    }
+    // The Unit price cell takes the user's own price (white); without one it shows DigiKey's at the
+    // quantity bought (grey), its price breaks in the hint. Line total: that price times what is bought.
+    function priceCells(r) {
+      const dk = r.mpn && r.mpn.price, money = (v, unit) => BomLib.money(v, dk ? dk.cur : r.cur, unit);
+      const breaks = dk ? dk.breaks.map(([q, u]) => `${q}+: ${money(u, true)}`).join(", ") : "";
+      const tip = (dk ? `DigiKey ${dk.dk || ""}${dk.pack ? ", " + dk.pack : ""}, ${dk.at}: ${breaks}${dk.stock ? `; ${dk.stock} in stock` : "; none in stock"}. ` : "") + "Type your own unit price to use it instead; clear it to go back to DigiKey's";
+      const ph = r.priceSrc === "DigiKey" ? r.price : "—";
+      const inp = r.socket && !r.partno ? "" : `<input type="text" class="bom-price" data-k="price" value="${r.own ? esc(r.own) : ""}" spellcheck="false" inputmode="decimal" placeholder="${esc(ph)}" title="${esc(tip)}" aria-label="Unit price for ${esc(r.refs)}">`;
+      const more = r.unitPrice !== null && r.buy > r.need ? ` title="${esc(`${r.need} needed; ${r.buy} is the least DigiKey sells`)}"` : "";
+      return `<td class="bom-pr">${inp}</td><td class="n mono"${more}>${esc(r.total)}${more ? " *" : ""}</td>`;
     }
     // Look up: one line's parts, or every line with a number not looked up yet. Without a key the
     // key dialog opens first.
@@ -167,10 +180,11 @@
       setStatus(bad.length ? "warn" : "ok", bad.length ? bad.join("; ") : `Found ${ok} part${ok === 1 ? "" : "s"} on DigiKey: their package and size go to Board Design`);
     }
     function openKeyDialog(then) {
-      const m = document.getElementById("dk-modal"), c = PartSearch.config();
+      const m = document.getElementById("dk-modal"), c = PartSearch.config(), cur = document.getElementById("dk-cur");
       document.getElementById("dk-id").value = c.clientId; document.getElementById("dk-secret").value = c.clientSecret;
+      if (cur) cur.value = c.currency;
       m.hidden = false; document.getElementById("dk-id").focus();
-      document.getElementById("btn-dk-save").onclick = () => { PartSearch.setConfig(document.getElementById("dk-id").value, document.getElementById("dk-secret").value); m.hidden = true; if (then && PartSearch.ready()) then(); };
+      document.getElementById("btn-dk-save").onclick = () => { PartSearch.setConfig(document.getElementById("dk-id").value, document.getElementById("dk-secret").value, cur ? cur.value : undefined); m.hidden = true; renderBom(); if (then && PartSearch.ready()) then(); };
       document.getElementById("btn-dk-cancel").onclick = () => { m.hidden = true; };
     }
     function renderBom() {
@@ -184,20 +198,25 @@
       const parts = bom.rows.reduce((n, r) => n + r.qty, 0);
       // short notes, so the dock's head keeps its width (and its lines) while a simulation runs
       const cnt = document.getElementById("bom-count"), simNote = !S.sim.result ? ["not simulated", "Simulate for the Sim. max column"] : S.sim.busy || S.sim.pending ? ["simulating…", "Sim. max shows the last simulation; a new one is running"] : null;
-      cnt.textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + (simNote ? " · " + simNote[0] : "") : "";
-      cnt.title = bom.rows.length && simNote ? simNote[1] : "";
+      const tot = BomLib.totals(bom.rows), money = tot.text ? ` · ${tot.text}` + (bom.boards > 1 ? ` for ${bom.boards} boards` : "") + (tot.unpriced ? ` (${tot.unpriced} unpriced)` : "") : "";
+      cnt.textContent = bom.rows.length ? `${bom.rows.length} lines · ${parts} parts` + money + (simNote ? " · " + simNote[0] : "") : "";
+      cnt.title = bom.rows.length ? [simNote ? simNote[1] : "", tot.text ? `What the parts cost for ${bom.boards} board${bom.boards === 1 ? "" : "s"}, at the quantity bought` + (tot.unpriced ? `; ${tot.unpriced} line${tot.unpriced === 1 ? " has" : "s have"} no price yet (Look up all, or type a price)` : "") : ""].filter(Boolean).join(". ") : "";
       if (!bom.rows.length) { table.innerHTML = `<tbody><tr><td class="bom-empty">No parts yet. Place resistors, capacitors, tubes, transformers… and they are listed here.</td></tr></tbody>`; return; }
       const tip = { rating: "Ratings and data; a capacitor's voltage rating is the first standard one at or above 1.25 × its simulated peak voltage", sim: "Simulated worst case: dissipation (resistors, transistors, zeners), capacitor peak voltage, LED current", partno: "The manufacturer's part number (or your order number); saved with the circuit. A maker's number the app knows sets the part's board footprint, its silkscreen outline and its 3D body to the real part's size",
         lcsc: "JLCPCB's stock number of the part (C25804), from jlcpcb.com/parts or lcsc.com: the For the board maker… export puts it in JLCPCB's BOM so its assembly takes exactly that part. Saved with the circuit",
-        pkg: "What the part number says the real part is: package, body size, lead spacing (Board Design takes this footprint), and where it disagrees with the schematic" };
+        pkg: "What the part number says the real part is: package, body size, lead spacing (Board Design takes this footprint), and where it disagrees with the schematic",
+        price: "The price of one part at the quantity bought for all the boards: DigiKey's (grey, from Look up, with its price breaks in the cell's hint) or your own typed in (saved with the circuit)",
+        total: "Unit price × the quantity bought: the line's parts times the boards, or DigiKey's minimum order when that is more (marked *)" };
       table.innerHTML = `<thead><tr>${BomLib.COLUMNS.map(c => `<th${tip[c.key] ? ` title="${tip[c.key]}"` : ""}>${c.title}</th>`).join("")}</tr></thead><tbody>` +
         bom.rows.map((r, i) => `<tr data-i="${i}"${r.ids.some(id => S.sel.comps.has(id)) ? ' class="sel"' : ""}>
           <td class="n">${r.item}</td><td class="n">${r.qty}</td><td class="mono">${esc(r.refs)}</td><td>${esc(r.desc)}</td><td class="mono">${esc(r.value)}</td>
           <td>${esc(r.rating)}</td><td class="mono${r.warn ? " warn" : ""}">${esc(r.sim)}</td>
           <td>${r.socket ? (r.partno ? `<span class="mono">${esc(r.partno)}</span> <a class="bom-src" href="${esc(r.url)}" target="_blank" rel="noopener" title="The socket's page at its shop (pick it in the valve's Tube socket field)">shop ↗</a>` : `<small class="muted" title="Pick the real socket in the valve's Tube socket field: its footprint and 3D model go to the board, its number here">no socket picked</small>`) : `<input type="text" value="${esc(r.partno)}" spellcheck="false" placeholder="maker's part no." aria-label="Part number for ${esc(r.refs)}">`}</td>
-          <td>${r.socket ? "" : `<input type="text" class="bom-lcsc" data-k="lcsc" value="${esc(r.lcsc)}" spellcheck="false" placeholder="C…" aria-label="LCSC number for ${esc(r.refs)}">`}</td>${pkgCell(r, i)}</tr>`).join("") + "</tbody>";
+          <td>${r.socket ? "" : `<input type="text" class="bom-lcsc" data-k="lcsc" value="${esc(r.lcsc)}" spellcheck="false" placeholder="C…" aria-label="LCSC number for ${esc(r.refs)}">`}</td>${pkgCell(r, i)}${priceCells(r)}</tr>`).join("") + "</tbody>";
       table.querySelectorAll("[data-look]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); lookUp([bom.rows[+b.dataset.look]]); }));
-      const all = document.getElementById("btn-bom-lookall"), todo = bom.rows.filter(r => r.partno && !r.socket && !(r.mpn && r.mpn.source === "DigiKey"));
+      // not looked up yet, looked up before prices were kept, or prices older than a week
+      const week = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+      const all = document.getElementById("btn-bom-lookall"), todo = bom.rows.filter(r => r.partno && !r.socket && !(r.mpn && r.mpn.source === "DigiKey" && r.mpn.price && r.mpn.price.at >= week));
       if (all) { all.disabled = !todo.length; all.onclick = () => lookUp(todo); }
       // a new selection on the sheet scrolls its line into view and flashes it
       const sel = [...S.sel.comps].sort().join(), first = table.querySelector("tbody tr.sel");
@@ -224,9 +243,11 @@
           S.sel.comps = new Set(ids); S.sel.wires.clear(); updateInspector(); render();
         });
         tr.querySelectorAll("input").forEach(inp => {
-          const k = inp.dataset.k || "partno", norm = v => (k === "lcsc" ? v.toUpperCase() : v);
-          inp.addEventListener("change", () => { const v = norm(inp.value.trim()); S.comps.forEach(c => { if (r.ids.includes(c.id)) { if (v) c.params[k] = v; else if (k === "lcsc") delete c.params.lcsc; else c.params[k] = ""; } }); bomStale = false; inp.blur(); commit(); });
-          inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); else if (e.key === "Escape") { inp.value = r[k]; inp.blur(); } });
+          const k = inp.dataset.k || "partno";
+          // a price: a number ("0,12" and "$0.12" too); cleared, or 0, goes back to DigiKey's
+          const norm = v => (k === "lcsc" ? v.toUpperCase() : k === "price" ? (+v.replace(",", ".").replace(/[^\d.eE+-]/g, "") > 0 ? +v.replace(",", ".").replace(/[^\d.eE+-]/g, "") : "") : v);
+          inp.addEventListener("change", () => { const v = norm(inp.value.trim()); S.comps.forEach(c => { if (r.ids.includes(c.id)) { if (v) c.params[k] = v; else if (k === "lcsc" || k === "price") delete c.params[k]; else c.params[k] = ""; } }); bomStale = false; inp.blur(); commit(); });
+          inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); else if (e.key === "Escape") { inp.value = k === "price" ? (r.own || "") : r[k]; inp.blur(); } });
           inp.addEventListener("blur", () => { if (bomStale) setTimeout(renderBom, 0); });
         });
       });
@@ -260,12 +281,25 @@
       setStatus("ok", `Saved ${name} (${bom.rows.length} lines, ${bom.rows.reduce((n, r) => n + r.qty, 0)} parts)`);
       return data;
     }
+    // the order file for DigiKey's BOM Manager or LCSC's BOM Tool: the lines to buy for all the boards
+    function exportOrder(shop) {
+      const bom = bomData(), o = BomLib.toOrderCsv(bom, shop), Shop = shop === "lcsc" ? "LCSC" : "DigiKey", name = `${baseName()}-order-${Shop}.csv`;
+      if (!o.lines) { setStatus("warn", shop === "lcsc" ? "Nothing to order from LCSC yet: type part numbers or LCSC numbers in the BOM" : "Nothing to order from DigiKey yet: type part numbers in the BOM (Look up adds DigiKey's own numbers)"); return o; }
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([o.csv], { type: "text/csv;charset=utf-8" }));
+      a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      const left = o.left.length ? `; left out, no number: ${o.left.join(", ")}` : "";
+      setStatus(o.left.length ? "warn" : "ok", `Saved ${name}: ${o.lines} line${o.lines === 1 ? "" : "s"} for ${bom.boards} board${bom.boards === 1 ? "" : "s"}, upload it at ${shop === "lcsc" ? "lcsc.com/bom" : "digikey.com/bom"}${left}`);
+      return o;
+    }
     function initBom() {
       const host = document.getElementById("bom"), center = document.getElementById("center");
       const setH = h => { bomOpts.height = h; host.style.setProperty("--bom-h", h + "px"); };
       if (bomOpts.height) setH(bomOpts.height);
       ["sockets", "bench"].forEach(k => { const el = document.getElementById("bom-" + k); el.checked = bomOpts[k]; el.addEventListener("change", () => { bomOpts[k] = el.checked; saveBomOpts(); renderBom(); }); });
       host.querySelectorAll("[data-bom]").forEach(b => b.addEventListener("click", () => exportBom(b.dataset.bom)));
+      host.querySelectorAll("[data-order]").forEach(b => b.addEventListener("click", () => exportOrder(b.dataset.order)));
+      const nb = document.getElementById("bom-boards");
+      if (nb) { nb.value = bomOpts.boards || 1; nb.addEventListener("change", () => { bomOpts.boards = Math.max(1, Math.min(100000, Math.round(+nb.value || 1))); nb.value = bomOpts.boards; saveBomOpts(); renderBom(); }); }
       bind("btn-bom-dkkey", () => window.PartSearch && openKeyDialog());
       cmds.bind("btn-bom", "bom"); bind("btn-bom-menu", () => toggleBom(true)); bind("btn-bom-close", () => showDock(null));
       host.querySelectorAll("[data-tab]").forEach(t => t.addEventListener("click", () => showDock(t.dataset.tab)));
@@ -278,6 +312,6 @@
       });
       if (bomOpts.open) showDock(bomOpts.tab); else showDock(null);
     }
-    return { bomData, bomOpts, clearBomShown, exportBom, initBom, lookUp, openKeyDialog, partStress, renderBom, toggleBom };
+    return { bomData, bomOpts, clearBomShown, exportBom, exportOrder, initBom, lookUp, openKeyDialog, partStress, renderBom, toggleBom };
   };
 })(window);
