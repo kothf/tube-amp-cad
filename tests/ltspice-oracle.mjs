@@ -65,7 +65,13 @@ export function readNet(buf) {
   const text = buf.length > 1 && buf[1] === 0 ? Buffer.from(buf).toString("utf16le") : Buffer.from(buf).toString("latin1");
   const lines = [], m = new Map();
   text.split(/\r?\n/).forEach(ln => { if (/^\+/.test(ln) && lines.length) lines[lines.length - 1] += " " + ln.slice(1); else lines.push(ln); });
-  lines.forEach(ln => { const t = ln.trim().split(/\s+/); if (t[0] && /^[A-Za-z]/.test(t[0])) m.set(t[0].toUpperCase(), t.slice(1)); });
+  // the top level only: not the elements inside a .subckt the netlist or its model text defines
+  let depth = 0;
+  lines.forEach(ln => {
+    const t = ln.trim().split(/\s+/);
+    if (/^\.subckt$/i.test(t[0])) depth++; else if (/^\.ends$/i.test(t[0])) depth = Math.max(0, depth - 1);
+    else if (!depth && t[0] && /^[A-Za-z]/.test(t[0]) && !m.has(t[0].toUpperCase())) m.set(t[0].toUpperCase(), t.slice(1));
+  });
   return m;
 }
 
