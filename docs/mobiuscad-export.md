@@ -36,7 +36,7 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   package" load with every part's dissipation (the map's operating point),
   its board/heatsink shares and path, where its board share goes in
   (`into`: a disc on each pad for its lead and a rectangle under the body for
-  the air gap, watts each, x/y in the board's frame; MöbiusCAD 1.712.0 and
+  the air gap, watts each, x/y in the board's frame; MöbiusCAD 1.713.0 and
   later inject there, older versions under the whole part), its limit, an electrolytic's rated life
   and a semiconductor's Rjc (the map's junction over its case); the package's
   split kept (each part's board share enters the board under it); the map's
