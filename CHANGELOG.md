@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Interface in Russian: the grey notes beside menu items (*under the schematic*, *what the colours
+  mean*, *ask anything* …) stayed English; they now follow the dictionary, while shortcut keys stay
+  keys. The Board window's keys list (*right-click*, *rest the pointer* …) likewise.
+- Russian for the hints and texts of the latest releases that were still English: the quick help's
+  Label and Bus lines, the BOM's LCSC # and Unit price cells and DigiKey price hints, SMD lines of the
+  BOM, the board's check names, net and class rules, differential pairs, length groups, layer stack
+  and impedance hints, *Place all on the board*, the routing count, *For the board maker…* notes and
+  limits, and the thermal map's note on a part over its rating.
+
 ## [3.251.0] - 2026-11-23
 
 LTspice import checked against LTspice itself.

@@ -27,6 +27,9 @@ import { U, browser, check, errors } from "./harness.mjs";
   check(/Тип лампы/.test(await p.evaluate(() => document.getElementById("inspector").innerText)), "an inspector drawn again after the switch is Russian as well");
   await p2.waitForFunction(() => document.documentElement.lang === "ru", null, { timeout: 5000 }).catch(() => {});
   check(await p2.evaluate(() => document.documentElement.lang === "ru" && /Файл ▾/.test(document.querySelector("header").innerText)), "another open window follows the language");
+  // a menu item's grey note (<kbd>) by the dictionary, its shortcut keys left as keys; the BOM's new cells' labels by pattern
+  const kb = await p.evaluate(() => ({ bom: document.querySelector("#btn-legend kbd").textContent, open: document.querySelector("#btn-open kbd") && document.querySelector("#btn-open kbd").textContent, ru: window.I18N_RU.patterns.some(([re]) => re.test("LCSC number for R1, R2")) }));
+  check(kb.bom === "что значат цвета" && kb.open === "Ctrl+O" && kb.ru, `the menus' grey notes are Russian too ("${kb.bom}"), their shortcut keys stay keys (${kb.open})`);
   check(await p.evaluate(() => document.querySelector('[data-lang="ru"]').getAttribute("aria-checked") === "true" && localStorage.getItem("tubecad_lang") === "ru"), "View ▾ shows Русский ticked, and the choice is kept in this browser");
 
   // a reload keeps it; View ▾ → English switches back, the texts exactly as before
