@@ -1333,17 +1333,21 @@ the circuit file, so one file holds both.
 
   ![The thermal map of a stereo valve amplifier board: the output valves pale yellow near 200 °C, the cathode resistors red, the board warm round them](docs/board-thermal.png)
 - **Export:**
-  - **Thermal map (ZIP)** (also the button under the thermal scale): the map
-    for other programs, in the STEP's frame. `<name>-thermal.vtu` is a VTK
-    mesh of the board's faces and every part with `Temperature_C` on its
-    points (ParaView, PyVista, FreeCAD FEM); `<name>-heat-sources.csv` lists
-    every part with the names of its STEP solids, its heat and where it goes,
-    its temperatures and margin, for setting up a real FEM run on the STEP;
-    `<name>-thermal.json` is the manifest for a program that reads the
-    package; plus the picture, the STEP, the board's Gerber and drill files
-    in `gerbers/` (`gerber_offset_mm` in the manifest moves them into the
-    STEP's frame) and a README. The format is described
-    in [docs/thermal-format.md](docs/thermal-format.md).
+  - **MöbiusCAD assembly…** (also **Export to MöbiusCAD** under the
+    thermal scale): the board and every part as MöbiusCAD files, to put the
+    board into a chassis or heatsink assembly there and simulate the whole
+    thing. Each part is its own `.mcadprt` with exact geometry and a
+    material per body (equal parts, such as every 12AX7 or every 1k ½ W
+    resistor, share one file); `<name>.mcadasm` places them and references
+    them by file (path and SHA-256, with a copy of each part inside as the
+    fallback), and carries a thermal study made from the thermal map: every
+    part's heat and where it goes, limits, electrolytic life, junctions, the
+    ambient, chassis and which way is down, convection and radiation, and
+    the board as "PCB (effective)" whose conductivity follows its copper
+    cell by cell. Chrome and Edge write into a folder you pick (exporting
+    again overwrites the same files, so the assemblies that use them follow);
+    **MöbiusCAD assembly (ZIP)** gives the same folder as one ZIP. Described
+    in [docs/mobiuscad-export.md](docs/mobiuscad-export.md).
   - **3D model (STEP)**, AP214, of the board (with its holes) and every part,
     in colour, for fitting the board into a chassis in FreeCAD, KiCad or any
     mechanical CAD. Round bodies, leads, the drilled holes and the board's

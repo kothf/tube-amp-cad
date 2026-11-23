@@ -2102,27 +2102,37 @@
   // the thermal map as a package for other programs: the mesh with its temperatures (.vtu), the heat
   // sources (CSV), the manifest, a README, the picture, the STEP and the Gerbers of the same moment, in one ZIP.
   // The 3D view is opened in Thermal mode first: what is exported is what is shown
-  function thermalPackage() {
-    if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return Promise.resolve(null); }
-    if (!(S.netlist && S.netlist.heat)) { msg("Thermal map: run the simulation in the Circuit CAD first: the map needs what each part dissipates"); return Promise.resolve(null); }
-    if ($("view3d").hidden) open3D();
-    if (viewer && !TH.on) thermal(true);
-    const res = TH.on && TH.res && TH.res.ok ? TH.res : BoardThermal.solve(S.board, S.model, S.netlist);
-    if (!res.ok) return Promise.resolve(null);
-    const name = baseName(), tubes = $("v3-tubes").checked, pic = viewer && TH.on;
-    // the Gerbers and drill files of the same layout (what the board maker gets), in gerbers/
-    let fab = {}; try { fab = BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()); } catch (e) { fab = {}; }
-    const gerbers = Object.keys(fab).map(f => "gerbers/" + f);
-    const pk = BoardThermalExport.pack(S.board, S.model, res, { name, title: fabMeta().title, version: appVersion(), tubes, picture: !!pic, step: true, gerbers });
-    const files = Object.assign({}, pk.files);
-    Object.entries(fab).forEach(([f, t]) => { files["gerbers/" + f] = t; });
-    files[name + ".step"] = Board3D.step(Board3D.scene(S.board, S.model, { tubes }), { title: fabMeta().title, version: appVersion(), file: name + ".step" });
-    return (pic ? png3D() : Promise.resolve(null)).then(url => {
-      if (url) { const bin = atob(url.split(",")[1]), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); files[pk.manifest.files.picture] = u8; }
-      return { name: name + "-thermal.zip", files, manifest: pk.manifest };
-    });
+  // MöbiusCAD: the board and every part as part files (equal parts share one) and an assembly that
+  // references them, with a thermal study made from the map (board-mcad.js). Chrome and Edge write the
+  // folder in place, so a second export overwrites the same files; the ZIP is the same folder to send.
+  function mcadPack() {
+    if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return null; }
+    const heat = !!(S.netlist && S.netlist.heat), res = heat ? (TH.on && TH.res && TH.res.ok ? TH.res : BoardThermal.solve(S.board, S.model, S.netlist)) : null;
+    const pk = BoardMcad.pack(S.board, S.model, res && res.ok ? res : null, { name: baseName(), title: fabMeta().title, version: appVersion(), tubes: $("v3-tubes").checked });
+    pk.study = !!(res && res.ok);
+    return pk;
   }
-  function exportThermal() { return thermalPackage().then(pk => { if (pk) download(BoardFab.zip(pk.files), pk.name, "application/zip"); return pk; }); }
+  function mcadSaved(pk, where) {
+    const n = Object.keys(pk.files).length - 1;
+    msg(`${where}: ${pk.name}.mcadasm with ${n} part file${n === 1 ? "" : "s"}${pk.study ? " and a thermal study" : "; no thermal study: run the simulation in the Circuit CAD first"}. Open the .mcadasm in MöbiusCAD`);
+  }
+  function exportMcadZip() {
+    const pk = mcadPack(); if (!pk) return null;
+    const files = {}; Object.entries(pk.files).forEach(([f, b]) => { files[pk.name + "/" + f] = b; });
+    download(BoardFab.zip(files), pk.name + "-mobiuscad.zip", "application/zip"); mcadSaved(pk, "Saved " + pk.name + "-mobiuscad.zip");
+    return pk;
+  }
+  async function exportMcad() {
+    if (typeof window.showDirectoryPicker !== "function") return exportMcadZip();
+    const pk = mcadPack(); if (!pk) return null;
+    let dir;
+    try { dir = await window.showDirectoryPicker({ id: "tubecad-mcad", mode: "readwrite" }); } catch (e) { return null; }   // cancelled
+    try {
+      for (const [f, b] of Object.entries(pk.files)) { const w = await (await dir.getFileHandle(f, { create: true })).createWritable(); await w.write(b); await w.close(); }
+    } catch (e) { msg("Could not write the folder (" + (e && e.message || e) + "): saving a ZIP instead"); return exportMcadZip(); }
+    mcadSaved(pk, "Written to " + dir.name);
+    return pk;
+  }
   function open3D() {
     if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return; }
     if (S.route) finishRoute();
@@ -2329,7 +2339,7 @@
     panelUi.init();
     $("ex-step").onclick = () => { list.hidden = true; exportStep(); };
     $("ex-kicad").onclick = () => { list.hidden = true; exportKicad(); };
-    $("ex-thermal").onclick = () => { list.hidden = true; exportThermal(); }; $("th-export").onclick = exportThermal;
+    $("ex-mcad").onclick = () => { list.hidden = true; exportMcad(); }; $("ex-mcad-zip").onclick = () => { list.hidden = true; exportMcadZip(); }; $("th-export").onclick = () => exportMcad();
     $("btn-3d").onclick = () => ($("view3d").hidden ? open3D() : close3D());
     $("v3-close").onclick = close3D; $("v3-step").onclick = exportStep;
     $("v3-png").onclick = () => { if (!viewer) return; png3D().then(url => { const a = document.createElement("a"); a.href = url; a.download = baseName() + (TH.on ? "-thermal.png" : "-3d.png"); a.click(); msg("Saved " + a.download); }); };
@@ -2362,7 +2372,7 @@
     routerUi(); pollRouter();
     renderPanels(); fit(); hello();
   }
-  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, thermal, thermalResult: () => TH.res, thermalPackage, exportThermal, thermal2d, thermalCheck: () => { clearTimeout(thTimer); thermalNow(); return TH.chk; }, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, openMaker, makerFiles: () => BoardMaker.makerFiles(S.board, S.model, { ...makerOpts(), meta: fabMeta(), fills: S.fills }), makerCheck: () => mkCheck, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
+  window.BoardApp = { panel: panelUi, replicateLayout, addMeander, routePartner, lengthTarget, cons, dimui, sketch, applyOutline, toggleMount, exportKicad, autoRoute, rearrange, routeNudge, unroute, clearStale, router, open3D, close3D, thermal, thermalResult: () => TH.res, mcadPack, exportMcad, exportMcadZip, thermal2d, thermalCheck: () => { clearTimeout(thTimer); thermalNow(); return TH.chk; }, exportStep, viewer: () => viewer, preview: () => pv, state: S, analyse, commit, groundPlane, highlightNet, selectConnected, exportGerber, openMaker, makerFiles: () => BoardMaker.makerFiles(S.board, S.model, { ...makerOpts(), meta: fabMeta(), fills: S.fills }), makerCheck: () => mkCheck, exportPdf, openPrint, runPrint, setPrintPages, printPages, printSel: () => printSel.slice(), fabFiles: () => BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()), routeCheck, syncNow, fit, fitSheet, sheetPlace, setSheet, lockSheet, onSheet, moveOnSheet, centreOnSheet, snapPoint, setTool, setLayer, undo, redo, svgDoc, openRules, openSetup, toWorld, toScreen: (x, y) => [x * S.view.scale + S.view.ox, y * S.view.scale + S.view.oy] };
   const boot = () => { init(); early.splice(0).forEach(e => bc.onmessage(e)); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
 })();

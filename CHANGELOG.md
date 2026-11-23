@@ -6,6 +6,28 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.252.0] - 2026-11-23
+
+The board goes to MöbiusCAD as part files and an assembly with its thermal study, in place of the
+thermal map ZIP.
+
+### Added
+- **Export ▾ → MöbiusCAD assembly…** (and **Export to MöbiusCAD** under the 3D view's thermal scale):
+  the board and every part as MöbiusCAD files, laid out as MöbiusCAD's assemblies that reference part
+  files expect. Each distinct part is its own `.mcadprt` with exact geometry (planes and cylinders) and
+  a material per body (leads copper, bulbs glass, cans aluminium, resistors alumina); equal parts share
+  one file. `<name>.mcadasm` places them and links them by path and SHA-256, with a copy of each part
+  as the fallback, and carries a thermal study made from the thermal map: every part's heat and where
+  it goes, limits, electrolytic life, junctions, the ambient, chassis and which way is down,
+  convection and radiation, and the board's copper cell by cell. Chrome and Edge write into a folder
+  you pick, and exporting again overwrites the same files; **MöbiusCAD assembly (ZIP)** gives the same
+  folder as one ZIP. Checked with MöbiusCAD's own reader and kernel, and solved there.
+
+### Removed
+- The thermal map ZIP (.vtu, heat CSV, manifest, STEP, Gerbers) and `docs/thermal-format.md`; the
+  MöbiusCAD export replaces it. The STEP, the Gerbers and the 3D view's picture are still exported on
+  their own.
+
 ## [3.251.1] - 2026-11-23
 
 Hints and texts of the latest releases in Russian.
