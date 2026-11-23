@@ -57,10 +57,13 @@ test("a small board all copper is nearly isothermal, at the temperature its own 
   const r = run(s, { ambient: 25, enclosure: "open", orient: "vertical" }), p = of(r, "R1");
   let lo = Infinity, hi = -Infinity; for (const v of r.top) if (Number.isFinite(v)) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
   assert.ok(hi - lo < 0.25 * (hi - 25), `spread ${hi - lo} of a rise ${hi - 25}`);
-  // what the two faces lose at their mean temperature: h = 1.42·(ΔT/L)^¼ + ε·σ·(T²+Ta²)(T+Ta), over 2 × 4 cm²
+  // what it loses at its mean temperature, face by face as MöbiusCAD has it: the two upright faces and the two upright
+  // edges h = 1.42·(ΔT/0.02)^¼, the top edge 1.32·(ΔT/L)^¼ and the bottom one 0.59·(ΔT/L)^¼ (L = area/perimeter, at
+  // least 1 mm), and radiation ε·σ·(T²+Ta²)(T+Ta) from the two faces
   let sum = 0, cnt = 0; for (const a of [r.top, r.bottom]) for (const v of a) if (Number.isFinite(v)) { sum += v; cnt++; }
-  const Tm = sum / cnt, dT = Tm - 25, x = Tm + 273.15, y = 298.15, h = 1.42 * Math.pow(dT / 0.02, 0.25) + 0.9 * 5.670374e-8 * (x * x + y * y) * (x + y);
-  near(h * 2 * 4e-4 * dT, p.toBoard, 0.08 * p.toBoard, "the board's loss is what the part put into it");
+  const Tm = sum / cnt, dT = Tm - 25, x = Tm + 273.15, y = 298.15, q = Math.pow(dT, 0.25), t = s.board.stackup.thickness * 1e-3;
+  const conv = 1.42 * q / Math.pow(0.02, 0.25) * (2 * 4e-4 + 2 * 0.02 * t) + (1.32 + 0.59) * q / Math.pow(1e-3, 0.25) * 0.02 * t;
+  near(conv * dT + 0.9 * 5.670374e-8 * (x * x + y * y) * (x + y) * 2 * 4e-4 * dT, p.toBoard, 0.05 * p.toBoard, "the board's loss is what the part put into it");
 });
 
 test("a resistor lying on the board and one standing on it: the same heat, different paths", () => {
@@ -169,7 +172,9 @@ test("a hot resistor raised off the board on its leads: the board under it cools
   const mk = lift => setup(70, 50, [R("r1", "R1", "5")], { R1: { x: 35, y: 25, ...(lift ? { lift } : {}) } }, { r1: 3 });
   const flat = run(mk(0)), up = run(mk(6)), f = of(flat, "R1"), u = of(up, "R1");
   assert.equal(f.mount, "lying"); assert.equal(u.mount, "raised");
-  assert.ok(up.boardMax < flat.boardMax - 5, `the board under it: ${flat.boardMax} → ${up.boardMax}`);
+  // under the body (the pads still take what the leads bring, a little less)
+  const mid = r => T.at(r, 35, 25, "top");
+  assert.ok(mid(up) < mid(flat) - 30 && up.boardMax <= flat.boardMax, `the board under it: ${mid(flat)} → ${mid(up)}, hottest ${flat.boardMax} → ${up.boardMax}`);
   assert.ok(u.toBoard < f.toBoard * 0.75, `into the board: ${f.toBoard} → ${u.toBoard} W`);
   // the body sits 6 mm up in 3D (and so in STEP), and the height check counts it
   const s = mk(6), g = s.model.parts.find(q => q.ref === "R1"), sol = globalThis.Board3D.partBodies(g, 1.6, {}), z0 = Math.min(...sol.filter(q => q.color === globalThis.Board3D.COLORS.resistor).flatMap(q => q.verts.map(v => v[2])));

@@ -41,6 +41,17 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   and radiation on every open surface; and the board's copper stack with its
   copper map: each layer's share of every cell of the map's grid and the
   plated barrels, so the board's conductivity follows its copper.
+- **The same physics on both sides.** The map in Tube Amp CAD works out
+  natural convection the way the study does in MöbiusCAD (its `naturalH`):
+  face by face, h = C·(ΔT/L)^¼ with C 1.32 for a face looking up and 0.59
+  looking down (L = area / perimeter), 1.42 for an upright face (L = its
+  height), times the chassis factor (open 1, vented 0.8, closed 0.55), over
+  the same faces the export writes: the board's faces, edges and hole walls
+  and every face of each part's bodies and leads. Radiation is ε 0.9 from
+  every face to the ambient. The package's split is always kept: a part's
+  board share (through its leads, as the 3D view draws them, and the air gap
+  under its body) is a heat into the board, since MöbiusCAD does not mesh
+  the solder joints or the air.
 
 Chrome and Edge write the folder in place (a folder picker). Other browsers,
 and the ZIP command, download `<name>-mobiuscad.zip` holding the folder.

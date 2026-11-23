@@ -13,11 +13,14 @@
    - each sheet conducts by its copper (390 W/m·K × thickness × the share of the cell it covers; inner
      layers shared between the two sheets) and half the laminate (0.3 W/m·K); the sheets couple
      through the laminate and through every plated hole and its lead;
-   - both faces lose heat to the air: natural convection of a plate, h = C·(ΔT/L)^¼ (C 1.32 facing up,
-     0.59 facing down, 1.42 upright; less in a vented or closed chassis) and radiation (ε 0.9);
-   - a part's body is one node: its heat leaves to the air from its surface (convection and
-     radiation), into the board through its leads (copper of the lead's section over its length from
-     the body to the pad) or its SMD pads, and through the air gap under a body lying on the board;
+   - every surface loses heat to the air by natural convection worked out face by face as MöbiusCAD does
+     it (its naturalH): h = C·(ΔT/L)^¼ with C 1.32 facing up and 0.59 facing down (L = the face's area
+     over its perimeter), 1.42 upright (L = its height), times 1, 0.8 or 0.55 in the open, a vented or a
+     closed chassis; and by radiation (ε 0.9). The board's faces, edges and hole walls count, and every
+     face of a part's 3D solids, its leads too;
+   - a part's body is one node: its heat leaves to the air from those faces, into the board through its
+     leads (the 3D view's lead: its section over its length from the board to the body, spread over the
+     pad's copper) or its SMD pads, and through the air gap under a body lying on the board;
    - a valve's bulb radiates onto the board round it (a line source on its axis: half of what it
      radiates sideways falls on an endless plane) and onto the parts standing next to it;
    - a transistor the engine heats itself (its Cooling field) keeps the engine's junction and heatsink
@@ -29,7 +32,7 @@
   const B = () => root.BoardCore;
   const K_CU = 390, K_FR4 = 0.3, K_LEAD = 300, K_PIN = 30, K_AIR = 0.03, SIGMA = 5.670374e-8, EPS = 0.9;
   const SMD_G = 0.004;          // W/K per mm² of soldered SMD pad (a 2512's pads: about 26 K/W; a D2PAK's tab: 3 K/W)
-  const ENCLOSURE = { open: 1, vented: 0.8, closed: 0.6 };   // how much of free convection is left inside a chassis
+  const ENCLOSURE = { open: 1, vented: 0.8, closed: 0.55 };   // how much of free convection is left inside a chassis (MöbiusCAD's factors)
   const LIMITS = { resistor: 155 };   // °C at the body (a metal film or wirewound resistor's full-derating point)
   const DEFAULTS = { ambient: 40, enclosure: "closed", orient: "up", point: "sim" };
   // semiconductors: the die sits on one lead (its frame); the others reach it by bond wires only
@@ -53,6 +56,100 @@
     return { rjc: pt > 1 ? rth : rth / 3, tjmax };
   }
   const settings = board => Object.assign({}, DEFAULTS, (board && board.thermal) || {});
+
+  /** Which way is down in the board's frame (x right, y up, z up from its bottom face), as the MöbiusCAD
+      study has it: lying with its parts up = −z, parts down = +z, upright = down its shorter edge. */
+  function down(board, orient) {
+    if (orient === "down") return [0, 0, 1];
+    if (orient === "vertical") return board.outline.h <= board.outline.w ? [0, -1, 0] : [-1, 0, 0];
+    return [0, 0, -1];
+  }
+
+  // ---- natural convection, face by face, the way MöbiusCAD works it out (its naturalH, FR-TBC-004):
+  // h = C·(ΔT/L)^¼ (L in m) for each point of a face by the way the point's normal looks: up (within 45°)
+  // C 1.32 and L = the face's area / perimeter, down 0.59 with the same L, otherwise upright 1.42 and
+  // L = the face's height (its extent along down); L at least 1 mm; a face cooler than the air acts as a
+  // warm one turned over. The faces are those the export writes (board-brep.js): a polyhedron's planar
+  // faces; a round solid's two ends, a plane per line and a cylinder per arc of its profile (a full
+  // circle in two halves). Each face adds C·A/L^¼ (W/K^1.25, A in mm²) to `hot` or `cold`.
+  const NAT_UP = Math.SQRT1_2;
+  const v3 = { sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] };
+  const unit3 = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  function filmTerm(up, lv, lh) {
+    const [C, L] = up > NAT_UP ? [1.32, lh] : up < -NAT_UP ? [0.59, lh] : [1.42, lv];
+    return 1e-6 * C / Math.pow(Math.max(L, 1) * 1e-3, 0.25);
+  }
+  // one face: its area (mm²), perimeter, height along down, and its normals with their shares of the area
+  function addFace(f, area, per, lv, normals, dn) {
+    if (!(area > 0)) return;
+    const lh = per > 0 ? area / per : Math.sqrt(area);
+    let hot = 0, cold = 0;
+    normals.forEach(([n, w]) => { const up = -v3.dot(n, dn); hot += w * filmTerm(up, lv, lh); cold += w * filmTerm(-up, lv, lh); });
+    f.hot += hot * area; f.cold += cold * area; f.area += area;
+    if (f.faces) f.faces.push({ n: normals[0][0], area, hot: hot * area, cold: cold * area });
+  }
+  const extent = (pts, dn) => { let lo = Infinity, hi = -Infinity; pts.forEach(p => { const d = v3.dot(p, dn); lo = Math.min(lo, d); hi = Math.max(hi, d); }); return hi - lo; };
+  function polyFaces(s, dn, f) {
+    s.faces.forEach(fc => {
+      const n = unit3(fc.n);
+      let a2 = 0, per = 0; const pts = [];
+      fc.loops.forEach(loop => {
+        let nx = 0, ny = 0, nz = 0;
+        loop.forEach((vi, k) => {
+          const p = s.verts[vi], q = s.verts[loop[(k + 1) % loop.length]];
+          nx += (p[1] - q[1]) * (p[2] + q[2]); ny += (p[2] - q[2]) * (p[0] + q[0]); nz += (p[0] - q[0]) * (p[1] + q[1]);
+          per += Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]); pts.push(p);
+        });
+        a2 += nx * n[0] + ny * n[1] + nz * n[2];
+      });
+      addFace(f, Math.abs(a2) / 2, per, extent(pts, dn), [[n, 1]], dn);
+    });
+  }
+  function roundFaces(g, dn, f) {
+    const A = unit3(g.a), X = unit3(g.x), Y = v3.cross(A, X);
+    const at = ([u, v], w) => [g.o[0] + X[0] * u + Y[0] * v + A[0] * w, g.o[1] + X[1] * u + Y[1] * v + A[1] * w, g.o[2] + X[2] * u + Y[2] * v + A[2] * w];
+    const split = segs => segs.length === 1 && segs[0].c ? [segs[0], { ...segs[0], p: [2 * segs[0].c[0] - segs[0].p[0], 2 * segs[0].c[1] - segs[0].p[1]] }] : segs;
+    let capArea = 0, capPer = 0; const capPts = [];
+    const ring = (segs0, hole) => {
+      const segs = split(segs0), n = segs.length; let a2 = 0;
+      segs.forEach((s, i) => {
+        const q = segs[(i + 1) % n].p;
+        if (s.c) {
+          const a0 = Math.atan2(s.p[1] - s.c[1], s.p[0] - s.c[0]), a1 = Math.atan2(q[1] - s.c[1], q[0] - s.c[0]);
+          let th = s.cw ? a0 - a1 : a1 - a0;
+          while (th <= 1e-9) th += 2 * Math.PI;
+          const K = Math.max(4, Math.ceil(th / (Math.PI / 48))), sg = s.cw ? -1 : 1, out = !!s.cw === !!hole ? 1 : -1, normals = [], pts = [];
+          for (let k = 0; k <= K; k++) {
+            const ang = a0 + sg * th * k / K, c = Math.cos(ang), sn = Math.sin(ang), uv = [s.c[0] + s.r * c, s.c[1] + s.r * sn];
+            pts.push(at(uv, 0), at(uv, g.h)); capPts.push(at(uv, 0), at(uv, g.h));
+            if (k < K) { const am = a0 + sg * th * (k + 0.5) / K, d = [X[0] * Math.cos(am) + Y[0] * Math.sin(am), X[1] * Math.cos(am) + Y[1] * Math.sin(am), X[2] * Math.cos(am) + Y[2] * Math.sin(am)]; normals.push([[d[0] * out, d[1] * out, d[2] * out], 1 / K]); }
+          }
+          // the profile's area: the chord's shoelace term plus the segment between chord and arc
+          a2 += s.p[0] * q[1] - q[0] * s.p[1] + sg * s.r * s.r * (th - Math.sin(th));
+          capPer += s.r * th;
+          addFace(f, s.r * th * g.h, 2 * s.r * th + 2 * g.h, extent(pts, dn), normals, dn);
+        } else {
+          const len = Math.hypot(q[0] - s.p[0], q[1] - s.p[1]), d = unit3(v3.sub(at(q, 0), at(s.p, 0))), nrm = hole ? v3.cross(A, d) : v3.cross(d, A);
+          a2 += s.p[0] * q[1] - q[0] * s.p[1]; capPer += len;
+          const pts = [at(s.p, 0), at(s.p, g.h), at(q, 0), at(q, g.h)]; capPts.push(...pts);
+          addFace(f, len * g.h, 2 * (len + g.h), extent(pts, dn), [[nrm, 1]], dn);
+        }
+      });
+      capArea += (hole ? -1 : 1) * Math.abs(a2) / 2;
+    };
+    ring(g.outer, false);
+    (g.holes || []).forEach(h => ring(h.segs || [{ p: [h.c[0] + h.r, h.c[1]], c: h.c, r: h.r }], true));
+    const bot = capPts.filter((_, i) => i % 2 === 0), top = capPts.filter((_, i) => i % 2 === 1);
+    addFace(f, capArea, capPer, extent(bot, dn), [[[-A[0], -A[1], -A[2]], 1]], dn);
+    addFace(f, capArea, capPer, extent(top, dn), [[A, 1]], dn);
+  }
+  /** The film terms of some solids (Board3D's): { hot, cold } W/K^1.25 (h·A = enclosure × term × ΔT^¼), area mm²;
+      with `faces` true also each face's own. */
+  function films(solids, dn, faces) {
+    const f = { hot: 0, cold: 0, area: 0, faces: faces ? [] : null };
+    solids.forEach(s => (s.round ? roundFaces(s.round, dn, f) : polyFaces(s, dn, f)));
+    return f;
+  }
 
   // inferno-like colour scale (matplotlib's inferno at nine stops)
   const STOPS = [[0, 0, 4], [31, 12, 72], [85, 15, 109], [136, 34, 106], [186, 54, 85], [227, 89, 51], [249, 140, 10], [249, 201, 50], [252, 255, 164]];
@@ -86,6 +183,19 @@
     const all = box(), body = box(), glass = box();
     solids.forEach(s => { grow(all, s); if (!sameColor(s.color, LEAD)) grow(body, s); if (s.alpha < 1) grow(glass, s); });
     return { all, body: body.n ? body : all, glass: glass.n ? glass : null };
+  }
+
+  // a through-hole lead as the 3D view draws it (a round wire up from the pad, and the piece over to the
+  // body where one starts at its top): its radius and length from the board's face to the body, mm
+  function leadOf(solids, pad, t, back) {
+    const R = solids.filter(s => s.round && sameColor(s.color, LEAD) && s.round.outer.length === 1 && s.round.outer[0].c);
+    const ends = s => { const g = s.round, a = unit3(g.a); return [g.o, [g.o[0] + a[0] * g.h, g.o[1] + a[1] * g.h, g.o[2] + a[2] * g.h]]; };
+    const up = R.find(s => { const g = s.round; return Math.abs(unit3(g.a)[2]) > 0.99 && Math.hypot(g.o[0] - pad.x, g.o[1] + pad.y) < 0.05; });
+    if (!up) return null;
+    const r = up.round.outer[0].r, [e0, e1] = ends(up), tip = back ? (e0[2] < e1[2] ? e0 : e1) : (e0[2] > e1[2] ? e0 : e1);
+    let len = back ? -tip[2] : tip[2] - t;
+    R.forEach(s => { if (s === up) return; const [a, b] = ends(s); if ([a, b].some(e => Math.hypot(e[0] - tip[0], e[1] - tip[1], e[2] - tip[2]) < r + 0.05)) len += s.round.h; });
+    return { r, len };
   }
 
   function solve(board, model, netlist, opts) {
@@ -123,7 +233,7 @@
     for (let c = 0; c < N; c++) { gs[0][c] += gFr; gs[1][c] += gFr; }
 
     // ---- the parts: bodies, heat, how each sits on the board
-    const scene = root.Board3D ? root.Board3D.scene(board, model, { tubes: true }) : { bodies: [] };
+    const scene = root.Board3D ? root.Board3D.scene(board, model, { tubes: true }) : { bodies: [] }, dn = down(board, opts.orient);
     const byRef = new Map(); scene.bodies.forEach(s => { if (!byRef.has(s.ref)) byRef.set(s.ref, []); byRef.get(s.ref).push(s); });
     const src = sources(model, netlist, opts.point), padsOf = new Map();
     (model.pads || []).forEach(p => { if (!padsOf.has(p.part)) padsOf.set(p.part, []); padsOf.get(p.part).push(p); });
@@ -139,12 +249,15 @@
       // exposed surface (mm²): a bulb its cylinder and dome, another body its sides and top (and its underside when it stands clear)
       const area = bulb ? Math.PI * Math.min(w, l) * hgt + Math.PI * Math.min(w, l) * Math.min(w, l) / 4 : 2 * (w + l) * hgt + w * l * (gap > 1.5 ? 2 : 1);
       const P = { key: g.key, ref: g.ref, value: g.value, type: g.type, p: s.p, heater: s.heater, tj: s.tj, ts: s.ts, sink: s.sink, how, rth: g.place.rth, back, smd, vert, lifted, bulb: !!bulb,
-        box: { x0: bb.all.x0, y0: bb.all.y0, z0: bb.all.z0, x1: bb.all.x1, y1: bb.all.y1, z1: bb.all.z1 }, body: b, w, l, hgt, gap, area, size: Math.max(hgt, Math.min(w, l)) / 1000, pads: [], under: [] };
+        box: { x0: bb.all.x0, y0: bb.all.y0, z0: bb.all.z0, x1: bb.all.x1, y1: bb.all.y1, z1: bb.all.z1 }, body: b, w, l, hgt, gap, area, film: null, pads: [], under: [] };
+      // to the air: every face of every solid of the part, its leads too, as MöbiusCAD has them
+      if (sol.every(x => x.verts && x.faces)) { const f = films(sol, dn); if (f.area > 0) { P.film = f; P.area = f.area; } }
       const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
       pads.forEach(p => {
-        const cell = cellNear(p.x, p.y); let G;
+        const cell = cellNear(p.x, p.y); let G, lw;
         if (p.smd) G = Math.min(1, (p.w || 1) * (p.h || p.w || 1) * SMD_G);
         else if (bulb) G = K_PIN * 0.8e-6 / 12e-3;     // a valve's pin through its socket: thin, long, a poor conductor
+        else if ((lw = leadOf(sol, p, t, back))) G = K_LEAD * Math.PI * lw.r * lw.r * 1e-6 / (Math.max(0.5, lw.len) * 1e-3);
         else {
           const d = Math.max(0.4, (p.drill || 0.9) - 0.3), A = Math.PI * d * d / 4 * 1e-6;
           // the lead's length from the body to the pad: sideways from the body's box, down its stand-off
@@ -152,7 +265,10 @@
           if (vert) len = Math.hypot(p.x - cx, p.y - cy) < 0.6 ? g.fp.vert.d + 1 : g.fp.vert.L + g.fp.vert.P + g.fp.vert.d;   // standing: the body on pad 1, its top lead over and down to pad 2
           G = K_LEAD * A / (len * 1e-3);
         }
-        P.pads.push({ cell, G, side: p.smd ? (p.layers[0] === "B.Cu" ? 1 : 0) : 2 });
+        // the heat goes in over the pad's copper, not at one point: every cell under the pad takes its share
+        const cells = []; for (let y = p.y - (p.h || p.w || 1.6) / 2 + step / 2; y < p.y + (p.h || p.w || 1.6) / 2; y += step) for (let x = p.x - (p.w || 1.6) / 2 + step / 2; x < p.x + (p.w || 1.6) / 2; x += step) { const c = cellOf(x, y); if (c >= 0 && !cells.includes(c)) cells.push(c); }
+        if (!cells.length) cells.push(cell);
+        P.pads.push({ cell, cells, G, side: p.smd ? (p.layers[0] === "B.Cu" ? 1 : 0) : 2 });
       });
       if (ONE_LEAD.has(g.type) && !smd && P.pads.length > 1) { const one = Math.max(...P.pads.map(q => q.G)) / P.pads.length; P.pads.forEach(q => { q.G = one; }); }
       P.jn = junction(g);
@@ -190,7 +306,7 @@
     (model.pads || []).forEach(p => { if (!p.smd && p.drill > 0) barrel(p.x, p.y, p.drill); });
     (board.vias || []).forEach(v => { const c = cellNear(v.x, v.y); if (c >= 0) E.push(c, c + n1, K_CU * Math.PI * (v.drill || 0.8) * 1e-3 * 25e-6 / (t * 1e-3)); });
     on.forEach(p => {
-      p.pads.forEach(q => { if (q.side === 2) { E.push(p.node, q.cell, q.G / 2); E.push(p.node, q.cell + n1, q.G / 2); } else E.push(p.node, q.cell + q.side * n1, q.G); });
+      p.pads.forEach(q => q.cells.forEach(c => { const g = q.G / q.cells.length; if (q.side === 2) { E.push(p.node, c, g / 2); E.push(p.node, c + n1, g / 2); } else E.push(p.node, c + q.side * n1, g); }));
       p.under.forEach(q => E.push(p.node, q.cell + (p.back ? n1 : 0), q.G));
     });
     const nFixed = E.length / 3;
@@ -214,8 +330,20 @@
     });
 
     // ---- solve: the film coefficients depend on the temperatures, so a few passes
-    const T = new Float64Array(n).fill(Ta + 20), enc = ENCLOSURE[opts.enclosure] || 1, Lb = Math.max(0.02, Math.min(o.w, o.h) / 1000), cellA = step * step * 1e-6;
-    const Cface = opts.orient === "vertical" ? [1.42, 1.42] : opts.orient === "down" ? [0.59, 1.32] : [1.32, 0.59];
+    const T = new Float64Array(n).fill(Ta + 20), enc = ENCLOSURE[opts.enclosure] || 1, cellA = step * step * 1e-6;
+    // the board's faces to the air (per mm² of each sheet): its top and bottom faces by their own sizes, the
+    // edges and hole walls shared over both sheets
+    const bf = scene.board ? films([scene.board], dn, true) : null, sheetF = [{ hot: 0, cold: 0 }, { hot: 0, cold: 0 }];
+    if (bf) {
+      const side = { hot: 0, cold: 0 }, fa = [0, 0];
+      bf.faces.forEach(q => { const s = q.n[2] > 0.99 ? 0 : q.n[2] < -0.99 ? 1 : -1; const to = s < 0 ? side : sheetF[s]; to.hot += q.hot; to.cold += q.cold; if (s >= 0) fa[s] += q.area; });
+      for (let s = 0; s < 2; s++) { const a = fa[s] || n1 * step * step; sheetF[s].hot = (sheetF[s].hot + side.hot / 2) / a; sheetF[s].cold = (sheetF[s].cold + side.cold / 2) / a; }
+    } else {
+      const lh = o.w * o.h / (2 * (o.w + o.h)), up = -dn[2];
+      for (let s = 0; s < 2; s++) { const u = s ? -up : up; sheetF[s].hot = filmTerm(u, Math.max(1, t), lh); sheetF[s].cold = filmTerm(-u, Math.max(1, t), lh); }
+    }
+    const nat = (F, dT) => enc * (dT >= 0 ? F.hot : F.cold) * Math.pow(Math.max(Math.abs(dT), 0.05), 0.25);
+    const cellMm2 = step * step;
     const hRad = (a, b) => { const x = a + 273.15, y = b + 273.15; return SIGMA * (x * x + y * y) * (x + y); };
     const gA = new Float64Array(n), tA = new Float64Array(n), diag = new Float64Array(n), rhs = new Float64Array(n);
     // the edges as arrays: the fixed ones (conduction), then the bulbs' radiation (its conductance set in each pass)
@@ -229,12 +357,13 @@
     for (let pass = 0; pass < 8; pass++) {
       Tprev.set(T);
       // surfaces to the air
-      for (let s = 0; s < 2; s++) for (let a = 0; a < n1; a++) { const i = a + s * n1, dT = Math.max(1, Math.abs(T[i] - Ta)); gA[i] = (Math.max(1.5, Cface[s] * Math.pow(dT / Lb, 0.25)) * enc + EPS * hRad(T[i], Ta)) * cellA; tA[i] = Ta; }
+      for (let s = 0; s < 2; s++) for (let a = 0; a < n1; a++) { const i = a + s * n1; gA[i] = nat(sheetF[s], T[i] - Ta) * cellMm2 + EPS * hRad(T[i], Ta) * cellA; tA[i] = Ta; }
       on.forEach((p, kp) => {
-        const i = p.node, dT = Math.max(1, Math.abs(T[i] - Ta)), hc = Math.min(30, Math.max(3, 1.32 * Math.pow(dT / p.size, 0.25))) * enc, hr = EPS * hRad(T[i], Ta), A = p.area * 1e-6;
+        const i = p.node, dT = T[i] - Ta, hr = EPS * hRad(T[i], Ta), A = p.area * 1e-6;
+        const gc = p.film ? nat(p.film, dT) : enc * filmTerm(1, p.hgt, Math.min(p.w, p.l)) * p.area * Math.pow(Math.max(Math.abs(dT), 0.05), 0.25);
         p.hr = hr * A;
         const fOut = fOutOf[kp];
-        gA[i] = (hc + hr * Math.max(0.3, 1 - fOut)) * A; tA[i] = Ta; p.gSink = 0;
+        gA[i] = gc + hr * A * Math.max(0.3, 1 - fOut); tA[i] = Ta; p.gSink = 0;
         // on a heatsink: the engine's heatsink temperature through the insulator (0.5 K/W); set by hand: its Rth to the air
         if (p.ts !== undefined && p.how === "auto") { p.gSink = 2; p.tSink = p.ts; }
         else if (p.how === "heatsink" || p.assumed) { p.gSink = 1 / ((+p.rth > 0 ? +p.rth : SINK_RTH) + 0.5); p.tSink = Ta; }
@@ -335,5 +464,5 @@
     return w > 1e-6 ? s / w : null;
   }
 
-  root.BoardThermal = { settings, sources, solve, at, checks, capLife, lifeText, CAP_TEMP, CAP_LIFE, color, DEFAULTS, ENCLOSURE, LIMITS };
+  root.BoardThermal = { settings, down, films, sources, solve, at, checks, capLife, lifeText, CAP_TEMP, CAP_LIFE, color, DEFAULTS, ENCLOSURE, LIMITS };
 })(typeof window !== "undefined" ? window : globalThis);

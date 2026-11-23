@@ -154,6 +154,7 @@
 
   /** Which way is down (MöbiusCAD's boardDown): lying with its parts up = −z; parts down = +z; upright = down its shorter edge */
   function down(board, orient) {
+    if (root.BoardThermal && root.BoardThermal.down) return root.BoardThermal.down(board, orient);
     if (orient === "down") return [0, 0, 1];
     if (orient === "vertical") return board.outline.h <= board.outline.w ? [0, -1, 0] : [-1, 0, 0];
     return [0, 0, -1];
