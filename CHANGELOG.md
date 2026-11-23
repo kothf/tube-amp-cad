@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.249.0] - 2026-11-23
+
+Gerbers in the thermal map package.
+
+### Added
+- **Thermal map (ZIP)** now carries the board's Gerber and drill files (the
+  same ones the board maker gets) in `gerbers/`. The manifest lists them in
+  `files.gerbers` and gives `gerber_offset_mm` (0, −board height), which moves
+  a Gerber point (origin bottom left) into the STEP's frame. Format
+  `tubecad-thermal` stays version 1: both keys are new and optional.
+
 ## [3.248.1] - 2026-11-22
 
 ### Fixed

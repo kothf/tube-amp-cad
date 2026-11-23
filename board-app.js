@@ -2100,7 +2100,7 @@
     }; im.src = url; });
   }
   // the thermal map as a package for other programs: the mesh with its temperatures (.vtu), the heat
-  // sources (CSV), the manifest, a README, the picture and the STEP of the same moment, in one ZIP.
+  // sources (CSV), the manifest, a README, the picture, the STEP and the Gerbers of the same moment, in one ZIP.
   // The 3D view is opened in Thermal mode first: what is exported is what is shown
   function thermalPackage() {
     if (!S.model) { msg("The board needs its parts: open the Circuit CAD first"); return Promise.resolve(null); }
@@ -2110,8 +2110,12 @@
     const res = TH.on && TH.res && TH.res.ok ? TH.res : BoardThermal.solve(S.board, S.model, S.netlist);
     if (!res.ok) return Promise.resolve(null);
     const name = baseName(), tubes = $("v3-tubes").checked, pic = viewer && TH.on;
-    const pk = BoardThermalExport.pack(S.board, S.model, res, { name, title: fabMeta().title, version: appVersion(), tubes, picture: !!pic, step: true });
+    // the Gerbers and drill files of the same layout (what the board maker gets), in gerbers/
+    let fab = {}; try { fab = BoardFab.fabFiles(S.board, S.model, S.fills, fabMeta()); } catch (e) { fab = {}; }
+    const gerbers = Object.keys(fab).map(f => "gerbers/" + f);
+    const pk = BoardThermalExport.pack(S.board, S.model, res, { name, title: fabMeta().title, version: appVersion(), tubes, picture: !!pic, step: true, gerbers });
     const files = Object.assign({}, pk.files);
+    Object.entries(fab).forEach(([f, t]) => { files["gerbers/" + f] = t; });
     files[name + ".step"] = Board3D.step(Board3D.scene(S.board, S.model, { tubes }), { title: fabMeta().title, version: appVersion(), file: name + ".step" });
     return (pic ? png3D() : Promise.resolve(null)).then(url => {
       if (url) { const bin = atob(url.split(",")[1]), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); files[pk.manifest.files.picture] = u8; }
