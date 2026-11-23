@@ -268,7 +268,7 @@
         // the heat goes in over the pad's copper, not at one point: every cell under the pad takes its share
         const cells = []; for (let y = p.y - (p.h || p.w || 1.6) / 2 + step / 2; y < p.y + (p.h || p.w || 1.6) / 2; y += step) for (let x = p.x - (p.w || 1.6) / 2 + step / 2; x < p.x + (p.w || 1.6) / 2; x += step) { const c = cellOf(x, y); if (c >= 0 && !cells.includes(c)) cells.push(c); }
         if (!cells.length) cells.push(cell);
-        P.pads.push({ cell, cells, G, side: p.smd ? (p.layers[0] === "B.Cu" ? 1 : 0) : 2 });
+        P.pads.push({ x: p.x, y: p.y, r: Math.max(p.w || 1.6, p.h || p.w || 1.6) / 2, cell, cells, G, side: p.smd ? (p.layers[0] === "B.Cu" ? 1 : 0) : 2 });
       });
       if (ONE_LEAD.has(g.type) && !smd && P.pads.length > 1) { const one = Math.max(...P.pads.map(q => q.G)) / P.pads.length; P.pads.forEach(q => { q.G = one; }); }
       P.jn = junction(g);
@@ -282,7 +282,7 @@
         const ex = how === "board" ? Math.max(0, hgt - w) / 2 : 0, ey = how === "board" ? Math.max(0, hgt - l) / 2 : 0;
         const cells = new Set(); for (let y = b.y0 - ey + step / 2; y < b.y1 + ey + step / 2; y += step) for (let x = b.x0 - ex + step / 2; x < b.x1 + ex + step / 2; x += step) { const c = cellOf(x, y); if (c >= 0) cells.add(c); }
         const Gt = (gap <= 1.5 && !smd ? K_AIR * w * l * 1e-6 / ((gap + 0.5) * 1e-3) : 0) + (how === "board" ? 1 / 1.5 : 0);
-        if (cells.size && Gt > 0) cells.forEach(c => P.under.push({ cell: c, G: Gt / cells.size }));
+        if (cells.size && Gt > 0) { cells.forEach(c => P.under.push({ cell: c, G: Gt / cells.size })); P.underRect = [b.x0 - ex, b.y0 - ey, b.x1 + ex, b.y1 + ey]; }
       }
       parts.push(P);
     });
@@ -400,6 +400,15 @@
     const flow = new Float64Array(n);     // heat leaving each part node by conduction into the board, and by radiation
     const rad = new Float64Array(n);
     for (let k = 0; k < nAll; k++) { const i = ei[k], j = ej[k], f = eg[k] * (T[i] - T[j]); if (i >= 2 * n1) (k < nFixed ? flow : rad)[i] += f; if (j >= 2 * n1) (k < nFixed ? flow : rad)[j] -= f; }
+    // where a part's board share goes in (MöbiusCAD's PackageHeat.into): a disc per pad, a rectangle under the
+    // body, W each; in the board's frame (x right, y up: the layout's y turned over)
+    const intoOf = (p, t0) => {
+      const sheetT = (c, side) => (side === 2 ? (T[c] + T[c + n1]) / 2 : T[c + side * n1]), out = [];
+      p.pads.forEach(q => { const w = q.cells.reduce((a, c) => a + q.G / q.cells.length * (t0 - sheetT(c, q.side)), 0); if (w > 1e-4) out.push({ disc: [q.x, -q.y, q.r], w }); });
+      const wu = p.under.reduce((a, q) => a + q.G * (t0 - T[q.cell + (p.back ? n1 : 0)]), 0), u = p.underRect;
+      if (u && wu > 1e-4) out.push({ rect: [u[0], -u[3], u[2], -u[1]], w: wu });
+      return out;
+    };
     const res = parts.map(p => {
       if (p.off) return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: 0, toAir: 0, toSink: p.p + p.heater, byRadiation: 0, t: null, tKind: null, tj: p.tj, ts: p.ts, mount: p.mount, path: p.path, box: null, off: true };
       const i = p.node, t0 = T[i], toSink = p.gSink ? p.gSink * (t0 - p.tSink) : 0, toAir = gA[i] * (t0 - Ta);
@@ -415,7 +424,7 @@
       if (t0 > tMax) tMax = t0; if (t0 < tMin) tMin = t0;
       if (p.tj !== undefined && p.tj > tMax) tMax = p.tj;
       return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: flow[i], toAir, toSink, byRadiation: rad[i], t: t0, tKind, tj: p.tj, ts: p.ts, limit: lim, life, lifeRated: p.cap ? p.cap.l0 : undefined, assumed: !!p.assumed, mount, path: pw > 0.01 ? sh[0][0] : "air", box: p.box, back: p.back,
-        tPads: p.pads.length ? p.pads.reduce((a, q) => a + (q.side === 2 ? (T[q.cell] + T[q.cell + n1]) / 2 : T[q.cell + q.side * n1]), 0) / p.pads.length : t0 };
+        tPads: p.pads.length ? p.pads.reduce((a, q) => a + (q.side === 2 ? (T[q.cell] + T[q.cell + n1]) / 2 : T[q.cell + q.side * n1]), 0) / p.pads.length : t0, into: intoOf(p, t0) };
     });
     return { ok: true, nx, ny, step, top, bottom, flux, copper: CU.map(Lr => ({ layer: Lr, cover: cover.get(Lr) })), thickness: t, emissivity: EPS, parts: res, ambient: Ta, tMin: Math.min(tMin, Ta), tMax, boardMax, hot, total, balance: total - out - res.filter(p => p.off).reduce((a, p) => a + p.p + p.heater, 0), iterations, settings: { ambient: Ta, enclosure: opts.enclosure, orient: opts.orient, point: opts.point } };
   }

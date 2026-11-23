@@ -145,6 +145,11 @@
       if (p.limit !== undefined) row.limit = p.limit;
       if (p.lifeRated !== undefined) { row.life = p.lifeRated; row.elyt = true; }
       if (!p.off) { row.board = r4(Math.max(0, p.toBoard || 0)); row.sink = r4(Math.max(0, p.toSink || 0)); row.path = p.path === "chassis" || p.path === "heatsink" || p.path === "air" ? p.path : "board"; }
+      // where the board share goes in: a disc per pad (the lead), a rectangle under the body (the air gap)
+      if (!p.off && row.board > 0 && p.into && p.into.length) {
+        const r3 = v => +(+v).toFixed(3);
+        row.into = p.into.map(q => (q.disc ? { disc: q.disc.map(r3), w: r4(q.w) } : { rect: q.rect.map(r3), w: r4(q.w) }));
+      }
       // a semiconductor: the limit is its junction's; Rjc from the map's junction over its case
       if (p.tj !== undefined && p.tj !== null && p.t !== null && p.t !== undefined && p.p > 0.01) { row.junction = true; row.rjc = Math.max(0, +((p.tj - p.t) / p.p).toFixed(3)); }
       out.push(row);
