@@ -14,7 +14,7 @@ export WINEDEBUG=-all
 mkdir -p "$W/asc"
 n=0
 grep -v '^#' tests/fixtures/ltspice/corpus.txt | while read -r p; do
-  n=$((n + 1)); [ -s "$W/asc/f$n.asc" ] || curl -sfL -o "$W/asc/f$n.asc" "https://raw.githubusercontent.com/$p" || echo "download failed: $p"
+  n=$((n + 1)); [ -s "$W/asc/f$n.asc" ] || curl -sfL -o "$W/asc/f$n.asc" "https://raw.githubusercontent.com/${p// /%20}" || echo "download failed: $p"
 done
 node tests/ltspice-oracle.mjs prepare "$W/asc" "$W/op"
 cd "$W/op"
