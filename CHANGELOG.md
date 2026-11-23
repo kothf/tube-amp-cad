@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.251.1] - 2026-11-23
+
+Hints and texts of the latest releases in Russian.
+
 ### Fixed
 - Interface in Russian: the grey notes beside menu items (*under the schematic*, *what the colours
   mean*, *ask anything* …) stayed English; they now follow the dictionary, while shortcut keys stay
