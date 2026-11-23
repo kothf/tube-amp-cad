@@ -696,17 +696,19 @@ import { readFile } from "node:fs/promises";
     await bd.locator("#gl3d").focus().catch(() => {}); await bd.keyboard.press("t"); await bd.waitForTimeout(250);
     const off = await bd.evaluate(() => ({ panel: document.getElementById("th-panel").hidden, glass: BoardApp.viewer().batches.some(b => b.k === "glass"), flat: BoardApp.viewer().flat }));
     check(off.panel && off.glass && !off.flat, "T switches the thermal map off: the parts' own colours and the glass are back");
-    // the thermal map as a package: Export ▾ → Thermal map turns Thermal mode back on and saves a ZIP whose manifest, mesh, CSV, picture, STEP and Gerbers agree
-    const [tzip] = await Promise.all([bd.waitForEvent("download"), bd.evaluate(() => document.getElementById("ex-thermal").click())]);
-    const tpk = await bd.evaluate(() => BoardApp.thermalPackage().then(pk => {
-      const m = pk.manifest, vtu = pk.files[m.files.mesh], csv = pk.files[m.files.sources], png = pk.files[m.files.picture], step = pk.files[m.files.step], r = BoardApp.thermalResult();
-      return { name: pk.name, names: Object.keys(pk.files), format: m.format, version: m.version, on: !document.getElementById("th-panel").hidden, points: m.mesh.points, declared: +(/NumberOfPoints="(\d+)"/.exec(vtu) || [])[1], rows: csv.trim().split("\r\n").length - 1, parts: m.parts.length,
-        hi: m.range_C[1], tMax: Math.max(...r.parts.filter(p => p.t !== null).map(p => p.t), r.boardMax), png: png && png[0] === 0x89 && png[1] === 0x50 && png.length, solids: m.parts.every(p => p.step_bodies.every(n => step.includes(`MANIFOLD_SOLID_BREP('${n}',`))), total: m.total_W, sum: m.parts.reduce((a, p) => a + p.p_total_W, 0),
-        gerbers: (m.files.gerbers || []).length, gerbersIn: (m.files.gerbers || []).every(f => typeof pk.files[f] === "string" && pk.files[f].length > 0), copper: (m.files.gerbers || []).some(f => /F_Cu\.gbr$/.test(f) && /^%TF\.FileFunction,Copper/m.test(pk.files[f])), drill: (m.files.gerbers || []).some(f => /PTH\.drl$/.test(f)), off: m.gerber_offset_mm, h: BoardApp.state.board.outline.h };
-    }));
-    check(tzip.suggestedFilename() === tpk.name && /-thermal\.zip$/.test(tpk.name) && tpk.on && tpk.format === "tubecad-thermal" && tpk.version === 1 && tpk.names.length === 6 + tpk.gerbers && tpk.gerbers >= 8 && tpk.gerbersIn && tpk.copper && tpk.drill && tpk.off && tpk.off[0] === 0 && tpk.off[1] === -tpk.h && tpk.points === tpk.declared && tpk.points > 1000 && tpk.rows === tpk.parts && tpk.parts > 3
-      && Math.abs(tpk.hi - tpk.tMax) < 0.11 && tpk.png > 2000 && tpk.solids && Math.abs(tpk.total - tpk.sum) < 0.01,
-      `Export thermal map turns the map on and saves ${tzip.suggestedFilename()}: ${tpk.names.length} files (${tpk.gerbers} Gerber/drill in gerbers/), ${tpk.points} points up to ${tpk.hi} °C, ${tpk.parts} parts named as the STEP's solids, ${tpk.total && tpk.total.toFixed(1)} W`);
+    // the board for MöbiusCAD: Export ▾ → MöbiusCAD assembly (ZIP) saves the folder: a part file per drawing (equal parts share one),
+    // the assembly linking them by path and SHA-256, and a thermal study with every part's heat and the board's copper map
+    const [mzip] = await Promise.all([bd.waitForEvent("download"), bd.evaluate(() => document.getElementById("ex-mcad-zip").click())]);
+    const mpk = await bd.evaluate(() => {
+      const pk = BoardApp.mcadPack(), a = pk.asm, st = a.studies && a.studies[0], l = st && st.loads[0], r = BoardApp.thermalResult();
+      const refs = new Set(a.components.slice(1).map(c => c.name)), shared = pk.parts.filter(p => p.refs.length > 1).length;
+      return { name: pk.name, files: Object.keys(pk.files).length, comps: a.components.length, parts: Object.keys(a.parts).length, shared,
+        linked: Object.values(a.parts).every(p => pk.files[p.link.path] && p.link.hash === BoardMcad.sha256(pk.files[p.link.path])),
+        heat: l ? l.parts.reduce((s, p) => s + p.p, 0) : 0, total: r ? r.parts.reduce((s, p) => s + p.p + p.heater, 0) : -1, onComps: l ? l.parts.every(p => p.comps.every(id => a.components.some(c => c.id === id))) && l.parts.filter(p => p.p > 0.05 && p.comps.length).length > 0 : false,
+        map: !!(st && st.comps.c_board.board.map && st.comps.c_board.board.map.cov.length >= 2), placed: [...refs].every(ref => BoardApp.state.model.parts.some(g => g.ref === ref)), mats: Object.values(a.parts).every(p => Object.values(p.doc.bodies).every(b => b.material && b.material.k > 0)) };
+    });
+    check(mzip.suggestedFilename() === mpk.name + "-mobiuscad.zip" && mpk.files === mpk.parts + 1 && mpk.comps > mpk.parts && mpk.shared > 0 && mpk.linked && mpk.placed && mpk.onComps && mpk.map && mpk.mats && Math.abs(mpk.heat - mpk.total) < 0.05,
+      `Export ▾ → MöbiusCAD assembly (ZIP) saves ${mzip.suggestedFilename()}: ${mpk.comps} components from ${mpk.parts} part files (${mpk.shared} shared by equal parts), every link's hash right, a thermal study of ${mpk.heat.toFixed(1)} W (map ${mpk.total.toFixed(1)} W) with the board's copper map ${JSON.stringify({ linked: mpk.linked, placed: mpk.placed, onComps: mpk.onComps, map: mpk.map, mats: mpk.mats })}`);
     await bd.evaluate(() => { BoardApp.thermal(false); delete BoardApp.state.board.thermal; BoardApp.commit(); BoardApp.close3D(); });
     // the map in the layout: View ▾ → Thermal overlay shows its scale; its findings join the check list, by the board's own limit
     const ov = await bd.evaluate(() => {
