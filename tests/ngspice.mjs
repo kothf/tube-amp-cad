@@ -17,6 +17,9 @@
  *
  *   node tests/ngspice.mjs [root]        # needs ngspice on the PATH (apt install ngspice)
  *
+ * SIM=ltspice runs the same comparison against LTspice instead (under Wine on Linux, or
+ * LTspice.exe itself on Windows; LTSPICE= names LTspice.exe, WINE= the wine binary or "" for none).
+ *
  * Set CHROMIUM_PATH to use a specific browser binary, NGSPICE to the ngspice
  * binary, KEEP=dir to keep the netlists and ngspice's output, ONLY=07 to run the examples
  * whose file name has that in it.
@@ -25,7 +28,7 @@ import { createServer } from "node:http";
 import { readFile, writeFile, mkdtemp, rm, mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { tmpdir, cpus } from "node:os";
-import { extname, join, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { chromium } from "playwright";
 
 const root = resolve(process.argv[2] || ".");
@@ -42,7 +45,36 @@ const server = createServer(async (req, res) => {
 // ngspice in batch mode; its output as text (it exits non-zero on a netlist it cannot run)
 const ngspice = file => new Promise(done => execFile(NGSPICE, ["-b", file], { maxBuffer: 1 << 28, timeout: 600000 },
   (err, stdout, stderr) => done({ err, out: stdout + stderr })));
-{
+// or LTspice (SIM=ltspice): batch mode writes <file>.raw and <file>.log next to the netlist
+const LT = process.env.SIM === "ltspice", NAME = LT ? "LTspice" : "ngspice";
+const LTSPICE = process.env.LTSPICE || join(process.env.WINEPREFIX || join(process.env.HOME || "", ".wine"), "drive_c/Program Files/ADI/LTspice/LTspice.exe");
+const WINE = process.env.WINE !== undefined ? process.env.WINE : process.platform === "win32" ? "" : "wine";
+const ltspice = file => new Promise(done => execFile(WINE || LTSPICE, (WINE ? [LTSPICE] : []).concat(["-b", basename(file)]), { cwd: dirname(file), timeout: 900000, env: Object.assign({}, process.env, { WINEDEBUG: "-all" }) },
+  async err => { let log = ""; try { log = await readFile(file.replace(/\.cir$/, ".log"), "latin1"); } catch { /* none */ } log = log.replace(/\0/g, ""); done({ err, out: log }); }));
+// LTspice's .raw (binary or ASCII, UTF-16 header): { names (lower case), data: [Float64Array per variable] }
+async function readRaw(file) {
+  const buf = await readFile(file), u16 = buf[1] === 0, text = buf.toString(u16 ? "utf16le" : "latin1");
+  const head = text.slice(0, Math.max(text.indexOf("Binary:"), text.indexOf("Values:")) + 8).split(/\n/);
+  const nv = +/No\. Variables:\s*(\d+)/.exec(text)[1], np = +/No\. Points:\s*(\d+)/.exec(text)[1];
+  const at = head.findIndex(l => /^Variables:/.test(l)), names = head.slice(at + 1, at + 1 + nv).map(l => l.trim().split(/\s+/)[1].toLowerCase());
+  const data = names.map(() => new Float64Array(np));
+  if (text.includes("Binary:")) {
+    const off = (text.indexOf("Binary:") + 8) * (u16 ? 2 : 1), d = buf.subarray(off), per = d.length / np;
+    const dbl = per >= 8 * nv;              // all doubles (.op, or numdgt > 6), else time a double and the rest floats
+    for (let p = 0; p < np; p++) {
+      let o = p * per;
+      for (let k = 0; k < nv; k++) {
+        if (dbl || k === 0) { data[k][p] = d.readDoubleLE(o); o += 8; } else { data[k][p] = d.readFloatLE(o); o += 4; }
+      }
+      data[0][p] = Math.abs(data[0][p]);
+    }
+  } else {
+    const nums = text.slice(text.indexOf("Values:") + 7).trim().split(/\s+/).map(Number);
+    for (let p = 0, i = 0; p < np; p++) { i++; for (let k = 0; k < nv; k++) data[k][p] = nums[i++]; }
+  }
+  return { names, data };
+}
+if (!LT) {
   const v = await ngspice("-v");
   if (v.err && !/ngspice/i.test(v.out)) { console.log(`ngspice not found (${NGSPICE}): install it (apt install ngspice) or set NGSPICE`); process.exit(1); }
 }
@@ -55,7 +87,7 @@ page.on("dialog", d => d.accept());          // "Open the example? It replaces t
 await page.goto(`http://localhost:${server.address().port}/circuit_sandbox.html`);
 await page.waitForFunction(() => window.TubeCAD);
 
-const work = process.env.KEEP ? resolve(process.env.KEEP) : await mkdtemp(join(tmpdir(), "ngspice-"));
+const work = process.env.KEEP ? resolve(process.env.KEEP) : await mkdtemp(join(tmpdir(), LT ? "ltspice-" : "ngspice-"));
 await mkdir(work, { recursive: true });
 
 // Tolerances. The export carries the CAD's own models (Koren tubes as B sources,
@@ -101,7 +133,7 @@ const KNOWN = {
 
 // The CAD runs the examples one after another (one page); each one's ngspice runs go on in the
 // background meanwhile, as many at once as the machine has processors, so the slow transients overlap
-const slots = Math.max(1, Math.min(8, cpus().length)), pending = [];
+const slots = Math.max(1, Math.min(LT ? 4 : 8, cpus().length)), pending = [];
 let running = 0; const queue = [];
 const slot = () => (running < slots ? (running++, Promise.resolve()) : new Promise(r => queue.push(r)));
 const free = () => { const next = queue.shift(); if (next) next(); else running--; };
@@ -135,7 +167,14 @@ async function compareOne(ex, app) {
   const body = app.spice.replace(/^\.tran .*$/m, "").replace(/^\.end\s*$/m, "");
   const nodes = [...new Set([...app.spice.matchAll(/\bN(\d+)\b/g)].map(m => +m[1]))].sort((a, b) => a - b);
   const rows = [];
-  if (!app.averaged) {
+  if (!app.averaged && LT) {
+    const op = join(work, `${name}.op.cir`);
+    await writeFile(op, `${body}\n.op\n.end\n`);
+    const r = await ltspice(op);
+    let raw = null; try { raw = await readRaw(op.replace(/\.cir$/, ".raw")); } catch { /* reported below */ }
+    if (!raw) return { ex, error: `LTspice .op: ${(r.out.match(/^.*(error|fail|unknown|not found).*$/im) || [r.out.slice(0, 300)])[0]}` };
+    for (const n of nodes) { const k = raw.names.indexOf(`v(n${n})`); if (k >= 0) rows.push({ what: "DC", node: n, app: app.dc[n], ng: raw.data[k][0], tol: TOL.dc }); }
+  } else if (!app.averaged) {
     const op = join(work, `${name}.op.cir`);
     await writeFile(op, `${body}\n.control\nop\nprint ${nodes.map(n => `v(n${n})`).join(" ")}\n.endc\n.end\n`);
     const r = await ngspice(op);
@@ -149,15 +188,37 @@ async function compareOne(ex, app) {
   // its operating point would take the mains at t = 0, its peak, as DC through the primary
   const settle = app.averaged ? 8 : 1, step = app.dt, stop = settle + app.window;
   const tran = join(work, `${name}.tran.cir`), data = join(work, `${name}.tran.txt`);
+  let head, cols;
+  if (LT) {
+    // LTspice: no compression of the waveform, the nodes only, then resampled on the CAD's steps
+    await writeFile(tran, `${body}\n.options plotwinsize=0 numdgt=15\n.save ${nodes.map(n => `V(n${n})`).join(" ")}\n.tran 0 ${stop} ${settle} ${step}${app.averaged ? " uic" : ""}\n.end\n`);
+    const r = await ltspice(tran);
+    let raw = null; try { raw = await readRaw(tran.replace(/\.cir$/, ".raw")); } catch { /* reported below */ }
+    if (!raw || raw.data[0].length < 3) return { ex, error: `LTspice tran: ${(r.out.match(/^.*(error|fail|unknown|not found).*$/im) || [r.out.slice(-300)])[0]}` };
+    const t = raw.data[0], count = Math.round(app.window / step) + 1;
+    head = []; cols = [];
+    raw.names.forEach((nm, k) => {
+      const m = /^v\(n(\d+)\)$/.exec(nm); if (!m) return;
+      const v = raw.data[k], out = []; let j = 0;
+      for (let i = 0; i < count; i++) {
+        const ti = settle + i * step;
+        while (j < t.length - 2 && t[j + 1] < ti) j++;
+        const f = t[j + 1] > t[j] ? Math.min(1, Math.max(0, (ti - t[j]) / (t[j + 1] - t[j]))) : 0;
+        out.push(v[j] + (v[j + 1] - v[j]) * f);
+      }
+      head.push(+m[1]); cols.push(out);
+    });
+  } else {
   await writeFile(tran, `${body}\n.options interp\n.control\nset wr_singlescale\nset wr_vecnames\noption numdgt=9\ntran ${step} ${stop} ${settle} ${step}${app.averaged ? " uic" : ""}\nlinearize\nwrdata ${data} ${nodes.map(n => `v(n${n})`).join(" ")}\n.endc\n.end\n`);
   const r = await ngspice(tran);
   let txt = "";
   try { txt = await readFile(data, "utf8"); } catch { /* reported below */ }
   const lines = txt.trim().split("\n");
   if (lines.length < 3) return { ex, error: `ngspice tran: ${(r.out.match(/^.*error.*$/im) || [r.out.slice(-300)])[0]}` };
-  const head = lines[0].trim().split(/\s+/).slice(1).map(h => +h.match(/n(\d+)/)[1]);
-  const cols = head.map(() => []);
+  head = lines[0].trim().split(/\s+/).slice(1).map(h => +h.match(/n(\d+)/)[1]);
+  cols = head.map(() => []);
   for (const l of lines.slice(1)) { const f = l.trim().split(/\s+/); head.forEach((_, k) => cols[k].push(+f[k + 1])); }
+  }
   let osc = null;
   head.forEach((n, k) => {
     if (!app.waves[n]) return;
@@ -178,24 +239,24 @@ for (const r of results) {
   console.log(`\n${r.ex.title} (${r.ex.file})`);
   if (r.skipped) { console.log(`  SKIP ${r.skipped}`); continue; }
   if (r.error) { console.log(`  FAIL ${r.error}`); failed++; continue; }
-  const bad = r.rows.filter(x => !within(x)), known = KNOWN[r.ex.file];
+  const bad = r.rows.filter(x => !within(x)), known = LT ? null : KNOWN[r.ex.file];
   if (known) {
     console.log(bad.length ? `  KNOWN ${bad.length} of ${r.rows.length} comparisons differ: ${known}` : "  FAIL known to differ, and now agrees: remove it from KNOWN");
     if (!bad.length) failed++;
-    bad.forEach(x => console.log(`    ${x.what} N${x.node}: CAD ${fmt(x.app)} ${x.unit || "V"}, ngspice ${fmt(x.ng)} ${x.unit || "V"} (limit ±${fmt(limit(x))} ${x.unit || "V"})`));
+    bad.forEach(x => console.log(`    ${x.what} N${x.node}: CAD ${fmt(x.app)} ${x.unit || "V"}, ${NAME} ${fmt(x.ng)} ${x.unit || "V"} (limit ±${fmt(limit(x))} ${x.unit || "V"})`));
     continue;
   }
   compared += r.rows.length; failed += bad.length;
   const worst = kind => {
     const rs = r.rows.filter(x => x.what === kind); if (!rs.length) return;
     const w = rs.reduce((a, x) => (Math.abs(x.app - x.ng) / limit(x) > Math.abs(a.app - a.ng) / limit(a) ? x : a));
-    console.log(`  ${rs.every(within) ? "PASS" : "FAIL"} ${kind}: ${rs.length} nodes, closest to its limit N${w.node}: CAD ${fmt(w.app)} ${w.unit || "V"}, ngspice ${fmt(w.ng)} ${w.unit || "V"}`);
+    console.log(`  ${rs.every(within) ? "PASS" : "FAIL"} ${kind}: ${rs.length} nodes, closest to its limit N${w.node}: CAD ${fmt(w.app)} ${w.unit || "V"}, ${NAME} ${fmt(w.ng)} ${w.unit || "V"}`);
   };
   ["DC", "DC avg", "AC rms", "period"].forEach(worst);
-  (process.env.VERBOSE ? r.rows : bad).forEach(x => console.log(`    ${x.what} N${x.node}: CAD ${fmt(x.app)} ${x.unit || "V"}, ngspice ${fmt(x.ng)} ${x.unit || "V"} (limit ±${fmt(limit(x))} ${x.unit || "V"})`));
+  (process.env.VERBOSE ? r.rows : bad).forEach(x => console.log(`    ${x.what} N${x.node}: CAD ${fmt(x.app)} ${x.unit || "V"}, ${NAME} ${fmt(x.ng)} ${x.unit || "V"} (limit ±${fmt(limit(x))} ${x.unit || "V"})`));
 }
 if (errors.length) console.log(`\npage errors: ${errors.slice(0, 3).join(" | ")}`);
-const skipped = results.filter(r => r.skipped).length, nKnown = results.filter(r => KNOWN[r.ex.file] && !r.skipped && !r.error).length;
+const skipped = results.filter(r => r.skipped).length, nKnown = results.filter(r => !LT && KNOWN[r.ex.file] && !r.skipped && !r.error).length;
 console.log(failed || errors.length ? `\n${failed} comparison(s) failed` : `\nAll ${compared} comparisons passed (${results.length - skipped - nKnown} examples${skipped ? `, ${skipped} skipped` : ""}${nKnown ? `, ${nKnown} known to differ` : ""})`);
 await browser.close();
 server.close();
