@@ -44,7 +44,7 @@ import { readFile } from "node:fs/promises";
 
   await cad.keyboard.press("Escape"); await cad.locator("#cad").focus(); await cad.keyboard.press("b");
   check(await cad.isVisible("#bom") && (await cad.locator("#bom-table tbody tr").count()) === bom.rows.length, "B opens the BOM panel under the schematic with every line");
-  const inp = cad.locator("#bom-table tr", { hasText: "R1-R4" }).locator("input:not(.bom-lcsc)");
+  const inp = cad.locator("#bom-table tr", { hasText: "R1-R4" }).locator("input:not(.bom-lcsc):not(.bom-price)");
   await inp.fill("Vishay MRS25 100K"); await inp.press("Enter");
   const pn = await cad.evaluate(() => TubeCAD.state.comps.filter(c => c.params.partno === "Vishay MRS25 100K").map(c => c.label).sort().join());
   check(pn === "R1,R2,R3,R4", `a part number typed in the BOM is stored on each part of the line (${pn})`);
@@ -54,7 +54,7 @@ import { readFile } from "node:fs/promises";
   check(lcsc === "R1,R2,R3,R4" && await cad.evaluate(() => BomLib.COLUMNS.some(c => c.key === "lcsc")), `the BOM's LCSC # cell stores JLCPCB's number on each part of the line, in capitals (${lcsc})`);
   {
     // a maker's number the app knows: the Package column says what it is, amber where it disagrees
-    const typeNo = async (hasText, v) => { const i = cad.locator("#bom-table tr", { hasText }).locator("input:not(.bom-lcsc)"); await i.fill(v); await i.press("Enter"); };
+    const typeNo = async (hasText, v) => { const i = cad.locator("#bom-table tr", { hasText }).locator("input:not(.bom-lcsc):not(.bom-price)"); await i.fill(v); await i.press("Enter"); };
     await typeNo("100µF", "UKW1H101MPD"); await typeNo("R5, R7", "MFR-25FBF52-1K5");
     const cell = t => cad.locator("#bom-table tr", { hasText: t }).locator("td.bom-pkg");
     const r5 = await cell("R5, R7").textContent(), warn = await cell("R5, R7").evaluate(td => td.classList.contains("warn"));
@@ -88,7 +88,7 @@ import { readFile } from "node:fs/promises";
   {
     // a part clicked on the sheet brings its line into view in a short, scrolled-away list
     // about 85 px of list under the dock's head, however many lines its tabs and tools wrap to
-    await cad.evaluate(() => { const bom = document.getElementById("bom"); bom.style.setProperty("--bom-h", (bom.querySelector(".bom-head").offsetHeight + 84) + "px"); TubeCAD.fitView(); });
+    await cad.evaluate(() => { const bom = document.getElementById("bom"); bom.style.setProperty("--bom-h", (bom.querySelector(".bom-head").offsetHeight + 110) + "px"); TubeCAD.fitView(); });
     // the dock's new height resizes the canvas a frame or two later and the view follows it:
     // wait until the canvas and the view hold still, or the click lands beside T1
     await cad.waitForFunction(() => new Promise(res => {
@@ -109,6 +109,23 @@ import { readFile } from "node:fs/promises";
     });
     check(/125ESE/.test(vis.text) && vis.scrolled && vis.inView, `selecting T1 on the sheet scrolls the BOM to its highlighted line (${vis.why})`);
     await cad.evaluate(() => document.getElementById("bom").style.removeProperty("--bom-h"));
+  }
+  {
+    // an own unit price, the boards count, the total in the head and the order files
+    const pr = cad.locator("#bom-table tr", { hasText: "R1-R4" }).locator("input.bom-price");
+    await pr.fill("0,25"); await pr.press("Enter");
+    await cad.fill("#bom-boards", "3"); await cad.press("#bom-boards", "Enter");
+    const own = await cad.evaluate(() => TubeCAD.state.comps.filter(c => c.params.price === 0.25).length);
+    const head = await cad.locator("#bom-count").textContent(), line = await cad.locator("#bom-table tr", { hasText: "R1-R4" }).locator("td").last().textContent();
+    check(own === 4 && /\$3\.00 for 3 boards/.test(head) && line.trim() === "$3.00", `a unit price typed in the BOM is kept on the parts; 4 × 3 boards × $0.25 in the line and the head (${head} | ${line})`);
+    const [dl] = await Promise.all([cad.waitForEvent("download"), cad.click('#bom [data-order="digikey"]')]);
+    const order = (await readFile(await dl.path())).toString("utf8");
+    check(dl.suggestedFilename() === "TA-001-order-DigiKey.csv" && order.startsWith("Quantity,Digi-Key Part Number,Manufacturer Part Number") && order.includes("12,,Vishay MRS25 100K,") && order.includes("6,,MFR-25FBF52-1K5,"), `DigiKey order file: the quantities for 3 boards by part number (${order.split("\r\n").slice(0, 4).join(" | ")})`);
+    const [dl2] = await Promise.all([cad.waitForEvent("download"), cad.click('#bom [data-order="lcsc"]')]);
+    const lo = (await readFile(await dl2.path())).toString("utf8");
+    check(/^12,C25803,Vishay MRS25 100K,/m.test(lo), "LCSC order file: the LCSC number with the quantity");
+    await pr.fill(""); await pr.press("Enter");
+    await cad.fill("#bom-boards", "1"); await cad.press("#bom-boards", "Enter");
   }
   await cad.check("#bom-bench");
   check(await cad.locator("#bom-table tr", { hasText: "DC supply" }).count() === 1, "Sources & instruments adds the bench supply");

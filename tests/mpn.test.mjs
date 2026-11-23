@@ -213,7 +213,7 @@ test("the BOM's Package column says what the number is, and where it disagrees",
   assert.match(c1.pkg, /Nichicon UKW · radial Ø8 × 12\.5 mm.*100 µF part, the schematic has 47 µF/);
   assert.match(r1.pkg, /^Yageo MFR-25 · axial Ø2\.4 × 6\.3 mm/);
   assert.equal(c2.pkg, "");
-  assert.ok(BOM.toCsv({ rows, title: "", docno: "", rev: "", date: "" }).split("\r\n")[0].endsWith(",Package"));
+  assert.ok(BOM.toCsv({ rows, title: "", docno: "", rev: "", date: "" }).split("\r\n")[0].endsWith(",Package,Unit price,Line total"));
 });
 
 test("an offline match is saved with the part too", () => {
@@ -230,4 +230,47 @@ test("an electrolytic's rated temperature and life are read from the database's 
   assert.deepEqual(P.capRating({ temp: "-55°C ~ 125°C", life: "10,000 Hrs @ 125°C" }), { life: 10000, temp: 125 });
   assert.deepEqual(P.capRating({ temp: "-", life: "-" }), {});
   assert.deepEqual(P.capRating(null), {});
+});
+
+test("prices: DigiKey's breaks saved with the part, the BOM's line totals for the boards, the order files", async () => {
+  globalThis.localStorage = (() => { const m = {}; return { getItem: k => m[k] ?? null, setItem: (k, v) => { m[k] = String(v); } }; })();
+  PS.setConfig("id", "secret", "EUR");
+  assert.equal(PS.config().currency, "EUR");
+  const variations = [
+    { DigiKeyProductNumber: "UKW1H101MPD-TR", PackageType: { Name: "Tape & Reel (TR)" }, MinimumOrderQuantity: 2000, StandardPricing: [{ BreakQuantity: 2000, UnitPrice: 0.05 }] },
+    { DigiKeyProductNumber: "493-1234-ND", PackageType: { Name: "Bulk" }, MinimumOrderQuantity: 1, QuantityAvailableforPackageType: 900,
+      StandardPricing: [{ BreakQuantity: 10, UnitPrice: 0.21 }, { BreakQuantity: 1, UnitPrice: 0.3 }, { BreakQuantity: 100, UnitPrice: 0.12 }] }];
+  const f = fakeDigiKey({ UKW1H101MPD: { ManufacturerProductNumber: "UKW1H101MPD", Manufacturer: { Name: "Nichicon" }, Series: { Name: "UKW" }, Description: { ProductDescription: "CAP ALUM 100UF 20% 50V RADIAL" }, ProductVariations: variations, Parameters: params(dk.ukw) } });
+  const loc = [];
+  const f2 = async (url, opts) => { if (opts && opts.headers && opts.headers["X-DIGIKEY-Locale-Currency"]) loc.push(opts.headers["X-DIGIKEY-Locale-Currency"] + "/" + opts.headers["X-DIGIKEY-Locale-Site"]); return f(url, opts); };
+  const c = { type: "electrolytic", params: { c: 100e-6, v: 50, partno: "UKW1H101MPD" } };
+  await PS.lookUp(c, f2);
+  assert.equal(loc[0], "EUR/DE", "asks DigiKey's site for the currency");
+  // cut tape / bulk over the 2000-piece reel, breaks in order
+  assert.deepEqual(c.params.part.price, { cur: "EUR", breaks: [[1, 0.3], [10, 0.21], [100, 0.12]], moq: 1, dk: "493-1234-ND", pack: "Bulk", stock: 900, at: c.params.part.price.at });
+  assert.equal(c.params.part.desc, "CAP ALUM 100UF 20% 50V RADIAL");
+  assert.deepEqual(BOM.priceAt(c.params.part.price, 4), { unit: 0.3, buy: 4, cost: 0.3 * 4 });
+  assert.equal(BOM.priceAt(c.params.part.price, 12).unit, 0.21);
+  assert.deepEqual(BOM.priceAt({ breaks: [[10, 0.5]], moq: 10 }, 3), { unit: 0.5, buy: 10, cost: 5 }, "less than the least sold buys the least sold");
+  assert.equal(BOM.money(0.0123, "USD", true), "$0.0123"); assert.equal(BOM.money(12.4, "EUR"), "€12.40"); assert.equal(BOM.money(3, "PLN"), "3.00 PLN");
+  // three of them on the circuit, an own price on a resistor, a part without a price
+  const part = JSON.parse(JSON.stringify(c.params.part));
+  const comps = netlist({ c1: "UKW1H101MPD", r1: "MFR-25FBF52-10K" }).parts.map(p => ({ ...p, params: { ...p.params, ...(p.id === "c1" ? { c: 100e-6, v: 50, part, lcsc: "C12345" } : p.id === "r1" ? { price: 0.1 } : {}) } }));
+  const rows = BOM.build(comps, { boards: 5, currency: "EUR" });
+  const c1 = rows.find(r => r.refs === "C1"), r1 = rows.find(r => r.refs === "R1");
+  assert.equal(c1.need, 5); assert.equal(c1.unitPrice, 0.3); assert.equal(c1.price, "€0.300"); assert.equal(c1.total, "€1.50"); assert.equal(c1.dk, "493-1234-ND");
+  assert.equal(r1.priceSrc, "own"); assert.equal(r1.total, "€0.50");
+  const t = BOM.totals(rows);
+  assert.equal(t.text, "€2.00"); assert.ok(t.unpriced >= 1);
+  const bom = { rows, boards: 5, title: "", docno: "", rev: "", date: "" };
+  assert.match(BOM.toTxt(bom), /Total €2\.00 for 5 boards \(\d+ lines? without a price\)/);
+  // orders: DigiKey's number for the capacitor, the maker's number for the resistor, the rest named as left out
+  const dko = BOM.toOrderCsv(bom, "digikey"), dl = dko.csv.split("\r\n");
+  assert.equal(dl[0], "Quantity,Digi-Key Part Number,Manufacturer Part Number,Manufacturer,Customer Reference,Description");
+  assert.ok(dl.includes("5,493-1234-ND,UKW1H101MPD,Nichicon UKW,C1,CAP ALUM 100UF 20% 50V RADIAL"), dko.csv);
+  assert.ok(dl.some(l => /^5,,MFR-25FBF52-10K,/.test(l)));
+  assert.equal(dko.lines, 2); assert.ok(dko.left.length >= 1);
+  const lo = BOM.toOrderCsv(bom, "lcsc"), ll = lo.csv.split("\r\n");
+  assert.equal(ll[0], "Quantity,LCSC Part Number,Manufacture Part Number,Manufacturer,Designator,Description,Package");
+  assert.ok(ll.some(l => l.startsWith("5,C12345,UKW1H101MPD,")), lo.csv);
 });

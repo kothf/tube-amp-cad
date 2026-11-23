@@ -375,7 +375,7 @@
     "Plate curves with this circuit's operating point": "Анодные характеристики с рабочей точкой этой схемы", "Board Design: lay out the PCB of this circuit (Alt+B)": "Разводка платы этой схемы (Alt+B)",
     "Every feature, part, value and coefficient explained, with a design cookbook": "Каждая функция, деталь, параметр и коэффициент с пояснением и рецептами проектирования",
     // --- help card, tooltips of the panels and dialogs --------------------------------------
-    "Look up asks DigiKey's product database for a part's package, body size, height and lead spacing. It needs your own free key: sign in at": "«Найти» запрашивает в базе DigiKey корпус детали, размеры, высоту и шаг выводов. Нужен ваш собственный бесплатный ключ: войдите на",
+    "Look up asks DigiKey's product database for a part's package, body size, height and lead spacing, and its price breaks for the BOM's prices and the order file. It needs your own free key: sign in at": "«Найти» запрашивает в базе DigiKey корпус детали, размеры, высоту и шаг выводов, а также ценовые ступени для цен перечня и файла заказа. Нужен ваш собственный бесплатный ключ: войдите на",
     ", create an organisation and a production app with": ", создайте организацию и рабочее приложение с",
     ", and copy its Client ID and Client Secret here (1,000 look-ups a day). They stay in this browser only; the circuit file keeps what was found, not the key.": ", и скопируйте сюда его Client ID и Client Secret (1000 запросов в день). Они хранятся только в этом браузере; в файл схемы попадает найденное, а не ключ.",
     "Place:": "Установка:",
@@ -469,7 +469,17 @@
     "The AI assistant: ask about this circuit or the app (your own Claude, ChatGPT or Gemini key)": "ИИ-помощник: вопросы об этой схеме или программе (ваш ключ Claude, ChatGPT или Gemini)",
     "One socket line per tube base": "Одна строка ламповых панелей на каждый цоколь",
     "DC supplies, signal generators, mains and oscilloscopes": "Источники постоянного тока, генераторы сигнала, сеть и осциллографы",
-    "Look every part number not looked up yet up on DigiKey": "Найти на DigiKey все ещё не найденные номера деталей",
+    "Look every part number up on DigiKey that has no price yet (or one older than a week): package, size and price breaks": "Найти на DigiKey все номера деталей без цены (или с ценой старше недели): корпус, размеры и ценовые ступени",
+    "Unit price": "Цена шт.", "Line total": "Сумма", "boards": "плат", "Order": "Заказ", "Prices in": "Цены в",
+    "How many boards to buy parts for: the prices, the total and the order files count the parts of all of them": "На сколько плат покупать детали: цены, итог и файлы заказа считают детали всех плат",
+    "CSV for DigiKey's BOM Manager (digikey.com/bom): quantity for all the boards, DigiKey's number, maker's part number, designators": "CSV для BOM Manager DigiKey (digikey.com/bom): количество на все платы, номер DigiKey, номер производителя, обозначения",
+    "CSV for LCSC's BOM Tool (lcsc.com/bom): quantity for all the boards, LCSC number, maker's part number, designators": "CSV для BOM Tool LCSC (lcsc.com/bom): количество на все платы, номер LCSC, номер производителя, обозначения",
+    "The currency DigiKey quotes the BOM's prices in (from its site for that currency); Look up all again after a change": "Валюта, в которой DigiKey называет цены перечня (с его сайта для этой валюты); после смены нажмите «Найти все» снова",
+    "The price of one part at the quantity bought for all the boards": "Цена одной детали при количестве, покупаемом на все платы",
+    "DigiKey's (grey, from Look up, with its price breaks in the cell's hint) or your own typed in (saved with the circuit)": "цена DigiKey (серым, от «Найти», ценовые ступени в подсказке ячейки) или ваша, введённая вручную (сохраняется со схемой)",
+    "Unit price × the quantity bought": "Цена шт. × покупаемое количество",
+    "the line's parts times the boards, or DigiKey's minimum order when that is more (marked *)": "детали строки, умноженные на число плат, или минимальный заказ DigiKey, если он больше (помечено *)",
+    "Type your own unit price to use it instead; clear it to go back to DigiKey's": "Введите свою цену штуки, чтобы считать по ней; очистите, чтобы вернуться к цене DigiKey",
     "Your DigiKey API key, for Look up": "Ваш API-ключ DigiKey для поиска",
     "Simulations with varied parts, after the one as drawn": "Расчёты с разбросом деталей, после расчёта по чертежу",
     "Every resistor and pot: normally distributed, the tolerance as 2σ": "Все резисторы и потенциометры: нормальное распределение, допуск как 2σ",
@@ -2719,6 +2729,10 @@
   // an outline in words (board-outline.js describe): "round Ø60 mm", "custom shape 120 × 90 mm, 2 cut-outs", "100 × 60 mm, corners R5"
   const ruOutline = d => d.replace(/^round Ø([\d.]+) mm/, "круглая Ø$1 мм").replace(/^custom shape ([\d.]+ × [\d.]+) mm/, "своя форма $1 мм").replace(/^([\d.]+ × [\d.]+) mm/, "$1 мм").replace(/, corners R([\d.]+)/, ", углы R$1").replace(/, (\d+) cut-outs?/, ", вырезов: $1");
   const patterns = [
+    // the BOM's head: "26 lines · 42 parts · $0.66 for 3 boards (22 unpriced)"
+    [/^(\d+) lines$/, "строк: $1"], [/^(\d+) parts$/, "деталей: $1"],
+    [/^(\S+(?: [A-Z]{3})?(?: \+ \S+(?: [A-Z]{3})?)*?)(?: for (\d+) boards)?(?: \((\d+) unpriced\))$/, (m, t, b, u) => t + (b ? `, плат: ${b}` : "") + ` (без цены: ${u})`],
+    [/^(\S+(?: [A-Z]{3})?(?: \+ \S+(?: [A-Z]{3})?)*?) for (\d+) boards$/, "$1, плат: $2"],
     // thermal map (3D view)
     [/^, (top|bottom) side$/, (m, k) => `, ${k === "top" ? "верхняя" : "нижняя"} сторона`],
     [/^at (-?[\d.]+) °C$/, "при $1 °C"],
