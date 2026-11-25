@@ -1324,7 +1324,10 @@ the circuit file, so one file holds both.
   air, the chassis). The board is solved as a plate in two copper sheets with
   the real copper coverage, natural convection and radiation worked out face
   by face as in MöbiusCAD (board faces and edges, every face of the parts'
-  3D bodies and leads), the leads as the 3D view draws them: an estimate,
+  3D bodies and leads), each 3D body with its material (conductivity,
+  density, heat capacity, emissivity: a part radiates by its own surfaces,
+  leads conduct as copper, 385 W/m·K, the values the MöbiusCAD export
+  writes), the leads as the 3D view draws them: an estimate,
   about ±15 °C, for comparing layouts. Save PNG puts the scale in the picture.
   **View ▾ → Thermal overlay** draws the board's field over the layout and
   follows it as you move parts. The map's findings join the design rules
@@ -1339,7 +1342,8 @@ the circuit file, so one file holds both.
     thermal scale): the board and every part as MöbiusCAD files, to put the
     board into a chassis or heatsink assembly there and simulate the whole
     thing. Each part is its own `.mcadprt` with exact geometry and a
-    material per body (equal parts, such as every 12AX7 or every 1k ½ W
+    material per body with its conductivity, density, heat capacity and
+    emissivity (equal parts, such as every 12AX7 or every 1k ½ W
     resistor, share one file); `<name>.mcadasm` places them and references
     them by file (path and SHA-256, with a copy of each part inside as the
     fallback), and carries a thermal study made from the thermal map: every

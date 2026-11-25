@@ -16,7 +16,7 @@
    - every surface loses heat to the air by natural convection worked out face by face as MöbiusCAD does
      it (its naturalH): h = C·(ΔT/L)^¼ with C 1.32 facing up and 0.59 facing down (L = the face's area
      over its perimeter), 1.42 upright (L = its height), times 1, 0.8 or 0.55 in the open, a vented or a
-     closed chassis; and by radiation (ε 0.9). The board's faces, edges and hole walls count, and every
+     closed chassis; and by radiation (ε 0.9 for the board, each solid its own material's for a part). The board's faces, edges and hole walls count, and every
      face of a part's 3D solids, its leads too;
    - a part's body is one node: its heat leaves to the air from those faces, into the board through its
      leads (the 3D view's lead: its section over its length from the board to the body, spread over the
@@ -30,7 +30,11 @@
 (function (root) {
   "use strict";
   const B = () => root.BoardCore;
-  const K_CU = 390, K_FR4 = 0.3, K_LEAD = 300, K_PIN = 30, K_AIR = 0.03, SIGMA = 5.670374e-8, EPS = 0.9;
+  const K_CU = 390, K_FR4 = 0.3, K_PIN = 30, K_AIR = 0.03, SIGMA = 5.670374e-8, EPS = 0.9;
+  // a lead's conductivity and a solid's emissivity from its 3D material (Board3D's MATERIALS, the export's too)
+  const MAT = () => (root.Board3D && root.Board3D.MATERIALS) || null;
+  const kLead = () => { const M = MAT(); return M && M.lead ? M.lead.k : 385; };
+  const emisOf = (s, type) => { const M = MAT(), B3 = root.Board3D; if (!M) return EPS; const key = s.mat && M[s.mat] ? s.mat : B3.matKey ? B3.matKey(s.color, type) : null; return key && M[key] && M[key].emis > 0 ? M[key].emis : EPS; };
   const SMD_G = 0.004;          // W/K per mm² of soldered SMD pad (a 2512's pads: about 26 K/W; a D2PAK's tab: 3 K/W)
   const ENCLOSURE = { open: 1, vented: 0.8, closed: 0.55 };   // how much of free convection is left inside a chassis (MöbiusCAD's factors)
   const LIMITS = { resistor: 155 };   // °C at the body (a metal film or wirewound resistor's full-derating point)
@@ -249,21 +253,25 @@
       // exposed surface (mm²): a bulb its cylinder and dome, another body its sides and top (and its underside when it stands clear)
       const area = bulb ? Math.PI * Math.min(w, l) * hgt + Math.PI * Math.min(w, l) * Math.min(w, l) / 4 : 2 * (w + l) * hgt + w * l * (gap > 1.5 ? 2 : 1);
       const P = { key: g.key, ref: g.ref, value: g.value, type: g.type, p: s.p, heater: s.heater, tj: s.tj, ts: s.ts, sink: s.sink, how, rth: g.place.rth, back, smd, vert, lifted, bulb: !!bulb,
-        box: { x0: bb.all.x0, y0: bb.all.y0, z0: bb.all.z0, x1: bb.all.x1, y1: bb.all.y1, z1: bb.all.z1 }, body: b, w, l, hgt, gap, area, film: null, pads: [], under: [] };
+        box: { x0: bb.all.x0, y0: bb.all.y0, z0: bb.all.z0, x1: bb.all.x1, y1: bb.all.y1, z1: bb.all.z1 }, body: b, w, l, hgt, gap, area, film: null, emis: EPS, pads: [], under: [] };
       // to the air: every face of every solid of the part, its leads too, as MöbiusCAD has them
-      if (sol.every(x => x.verts && x.faces)) { const f = films(sol, dn); if (f.area > 0) { P.film = f; P.area = f.area; } }
+      if (sol.every(x => x.verts && x.faces)) {
+        const f = films(sol, dn); if (f.area > 0) { P.film = f; P.area = f.area; }
+        // radiation: each solid's own emissivity (its material), weighted by its area
+        let eA = 0, aA = 0; sol.forEach(x => { const a = films([x], dn).area; eA += a * emisOf(x, g.type); aA += a; }); if (aA > 0) P.emis = eA / aA;
+      }
       const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
       pads.forEach(p => {
         const cell = cellNear(p.x, p.y); let G, lw;
         if (p.smd) G = Math.min(1, (p.w || 1) * (p.h || p.w || 1) * SMD_G);
         else if (bulb) G = K_PIN * 0.8e-6 / 12e-3;     // a valve's pin through its socket: thin, long, a poor conductor
-        else if ((lw = leadOf(sol, p, t, back))) G = K_LEAD * Math.PI * lw.r * lw.r * 1e-6 / (Math.max(0.5, lw.len) * 1e-3);
+        else if ((lw = leadOf(sol, p, t, back))) G = kLead() * Math.PI * lw.r * lw.r * 1e-6 / (Math.max(0.5, lw.len) * 1e-3);
         else {
           const d = Math.max(0.4, (p.drill || 0.9) - 0.3), A = Math.PI * d * d / 4 * 1e-6;
           // the lead's length from the body to the pad: sideways from the body's box, down its stand-off
           let len = Math.max(0, Math.max(b.x0 - p.x, p.x - b.x1)) + Math.max(0, Math.max(b.y0 - p.y, p.y - b.y1)) + gap + 1;
           if (vert) len = Math.hypot(p.x - cx, p.y - cy) < 0.6 ? g.fp.vert.d + 1 : g.fp.vert.L + g.fp.vert.P + g.fp.vert.d;   // standing: the body on pad 1, its top lead over and down to pad 2
-          G = K_LEAD * A / (len * 1e-3);
+          G = kLead() * A / (len * 1e-3);
         }
         // the heat goes in over the pad's copper, not at one point: every cell under the pad takes its share
         const cells = []; for (let y = p.y - (p.h || p.w || 1.6) / 2 + step / 2; y < p.y + (p.h || p.w || 1.6) / 2; y += step) for (let x = p.x - (p.w || 1.6) / 2 + step / 2; x < p.x + (p.w || 1.6) / 2; x += step) { const c = cellOf(x, y); if (c >= 0 && !cells.includes(c)) cells.push(c); }
@@ -302,7 +310,7 @@
       E.push(a, a + n1, K_FR4 * step * step * 1e-6 / (t * 1e-3));
     }
     // plated holes: the barrel (25 µm of copper) and the lead in it join the two sheets
-    const barrel = (x, y, d) => { const c = cellNear(x, y); if (c >= 0) E.push(c, c + n1, K_CU * Math.PI * d * 1e-3 * 25e-6 / (t * 1e-3) + K_LEAD * Math.PI * d * d / 4 * 1e-6 * 0.5 / (t * 1e-3)); };
+    const barrel = (x, y, d) => { const c = cellNear(x, y); if (c >= 0) E.push(c, c + n1, K_CU * Math.PI * d * 1e-3 * 25e-6 / (t * 1e-3) + kLead() * Math.PI * d * d / 4 * 1e-6 * 0.5 / (t * 1e-3)); };
     (model.pads || []).forEach(p => { if (!p.smd && p.drill > 0) barrel(p.x, p.y, p.drill); });
     (board.vias || []).forEach(v => { const c = cellNear(v.x, v.y); if (c >= 0) E.push(c, c + n1, K_CU * Math.PI * (v.drill || 0.8) * 1e-3 * 25e-6 / (t * 1e-3)); });
     on.forEach(p => {
@@ -359,7 +367,7 @@
       // surfaces to the air
       for (let s = 0; s < 2; s++) for (let a = 0; a < n1; a++) { const i = a + s * n1; gA[i] = nat(sheetF[s], T[i] - Ta) * cellMm2 + EPS * hRad(T[i], Ta) * cellA; tA[i] = Ta; }
       on.forEach((p, kp) => {
-        const i = p.node, dT = T[i] - Ta, hr = EPS * hRad(T[i], Ta), A = p.area * 1e-6;
+        const i = p.node, dT = T[i] - Ta, hr = (p.emis || EPS) * hRad(T[i], Ta), A = p.area * 1e-6;
         const gc = p.film ? nat(p.film, dT) : enc * filmTerm(1, p.hgt, Math.min(p.w, p.l)) * p.area * Math.pow(Math.max(Math.abs(dT), 0.05), 0.25);
         p.hr = hr * A;
         const fOut = fOutOf[kp];

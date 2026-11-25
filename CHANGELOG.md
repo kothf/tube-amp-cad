@@ -6,6 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.254.0] - 2026-11-25
+
+### Added
+- **Every 3D body has a material.** Conductivity, density, heat capacity and emissivity on each solid
+  (`Board3D.MATERIALS`): tinned copper leads, nickel-plated copper tabs (TO-126/220/247/3P/264, DPAK,
+  SOT-223), Kovar TO-18 cans, glass bulbs, sleeved aluminium cans with a bare top, steel cores,
+  lacquered alumina resistors, epoxy packages and so on.
+- The MöbiusCAD export writes these materials with `k`, `density`, `cp` and `emis`, and the board's
+  material carries emissivity 0.9.
+
+### Changed
+- The thermal map radiates each part by the emissivity of its own surfaces (area-weighted over its
+  solids) instead of 0.9 for everything: bright metal and bare aluminium radiate less.
+- Leads conduct as tinned copper, 385 W/m·K (was 300), the same value the export writes.
+
 ## [3.253.2] - 2026-11-25
 
 ### Fixed

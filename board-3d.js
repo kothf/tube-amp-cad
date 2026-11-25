@@ -20,6 +20,48 @@
     wireRed: [0.8, 0.12, 0.1], wireBlack: [0.08, 0.08, 0.08], generic: [0.55, 0.55, 0.58], chipCap: [0.66, 0.52, 0.34], glassRed: [0.7, 0.2, 0.15],
     sockBrown: [0.45, 0.33, 0.25], sockTan: [0.72, 0.62, 0.52], xt: [0.96, 0.74, 0.12], gold: [0.85, 0.68, 0.3]
   };
+  // ---------------------------------------------------------------------------
+  // What each body is made of, for the thermal map and the export to MöbiusCAD: k W/(m·K), density
+  // g/cm³, cp J/(kg·K), emis = emissivity of its surface (bare metal low, paint, lacquer, sleeves,
+  // epoxy and glass high). Handbook values (Incropera; Vishay/Nexperia package notes for the
+  // moulding compound, tinned leads and plated tabs).
+  // ---------------------------------------------------------------------------
+  const MATERIALS = {
+    lead: { name: "Tinned copper", k: 385, density: 8.9, cp: 385, emis: 0.3, cat: "copper" },
+    tab: { name: "Copper, nickel-plated", k: 390, density: 8.9, cp: 385, emis: 0.15, cat: "copper" },
+    copper: { name: "Copper", k: 391, density: 8.96, cp: 385, emis: 0.3, cat: "copper" },
+    winding: { name: "Enamelled copper", k: 391, density: 8.96, cp: 385, emis: 0.9, cat: "copper" },
+    gold: { name: "Brass, gold-plated", k: 110, density: 8.5, cp: 380, emis: 0.05, cat: "copper" },
+    metal: { name: "Steel, nickel-plated", k: 50, density: 7.85, cp: 460, emis: 0.12, cat: "steel" },
+    kovar: { name: "Kovar, nickel-plated", k: 17, density: 8.36, cp: 440, emis: 0.12, cat: "steel" },
+    plate: { name: "Nickel, carbonised", k: 70, density: 8.9, cp: 445, emis: 0.85, cat: "other" },
+    core: { name: "Electrical steel, varnished", k: 30, density: 7.65, cp: 450, emis: 0.85, cat: "steel" },
+    can: { name: "Aluminium can, sleeved", k: 167, density: 2.7, cp: 896, emis: 0.9, cat: "aluminium" },
+    alBare: { name: "Aluminium, bare", k: 167, density: 2.7, cp: 896, emis: 0.1, cat: "aluminium" },
+    glass: { name: "Glass (borosilicate 3.3)", k: 1.2, density: 2.23, cp: 830, emis: 0.92, cat: "ceramic" },
+    alumina: { name: "Alumina, lacquered", k: 30, density: 3.9, cp: 880, emis: 0.9, cat: "ceramic" },
+    ceramic: { name: "Steatite", k: 2.5, density: 2.7, cp: 830, emis: 0.9, cat: "ceramic" },
+    bakelite: { name: "Bakelite", k: 0.2, density: 1.3, cp: 1500, emis: 0.9, cat: "plastic" },
+    epoxy: { name: "Epoxy moulding compound", k: 0.7, density: 1.9, cp: 900, emis: 0.9, cat: "plastic" },
+    clearEpoxy: { name: "Epoxy, clear", k: 0.2, density: 1.15, cp: 1100, emis: 0.9, cat: "plastic" },
+    film: { name: "Polypropylene film in epoxy", k: 0.25, density: 1.1, cp: 1700, emis: 0.9, cat: "plastic" },
+    silicon: { name: "Silicon", k: 148, density: 2.33, cp: 705, emis: 0.6, cat: "other" },
+    plastic: { name: "Nylon PA66-GF30", k: 0.35, density: 1.36, cp: 1500, emis: 0.9, cat: "plastic" },
+    pvc: { name: "PVC insulation", k: 0.19, density: 1.4, cp: 1000, emis: 0.9, cat: "plastic" }
+  };
+  // a body's material where its drawing says none: by its colour, else by the part's type
+  const MAT_BY_COLOR = [["lead", "lead"], ["metal", "metal"], ["getter", "metal"], ["plate", "plate"], ["gold", "gold"], ["coil", "winding"],
+    ["glass", "glass"], ["glassRed", "glass"], ["neon", "glass"], ["ecap", "can"], ["snapin", "can"], ["ecapTop", "alBare"], ["core", "core"],
+    ["ceramic", "ceramic"], ["disc", "ceramic"], ["chipCap", "ceramic"], ["sockBrown", "bakelite"], ["sockTan", "bakelite"], ["bakelite", "bakelite"],
+    ["film", "film"], ["led", "clearEpoxy"], ["wireRed", "pvc"], ["wireBlack", "pvc"], ["resistor", "alumina"]];
+  function matKey(color, type) {
+    const hit = color && MAT_BY_COLOR.find(([c]) => { const v = C[c]; return v && Math.abs(v[0] - color[0]) + Math.abs(v[1] - color[1]) + Math.abs(v[2] - color[2]) < 1e-6; });
+    if (hit) return hit[1];
+    if (/^(resistor|rheostat|wirewound)/.test(type || "")) return "alumina";
+    if (color && Math.abs(color[0] - C.black[0]) + Math.abs(color[1] - C.black[1]) + Math.abs(color[2] - C.black[2]) < 1e-6) return "epoxy";
+    return "plastic";
+  }
+
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const avg = pts => { const s = [0, 0, 0]; pts.forEach(p => { s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; }); return s.map(v => v / pts.length); };
   function newell(V, loop) { const n = [0, 0, 0]; for (let i = 0; i < loop.length; i++) { const a = V[loop[i]], b = V[loop[(i + 1) % loop.length]]; n[0] += (a[1] - b[1]) * (a[2] + b[2]); n[1] += (a[2] - b[2]) * (a[0] + b[0]); n[2] += (a[0] - b[0]) * (a[1] + b[1]); } return n; }
@@ -422,7 +464,7 @@
       out.push(prism("z", arc, 2, 6.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 2));
     } else if ((m = /^TO-18-/.exec(name))) {
       // the tab beside pin 1, at the lower right seen from the top
-      out.push(cylZ(0, 0, 2.75, 1.5, 1.9, C.metal, to), cylZ(0, 0, 2.35, 1.9, 6.6, C.metal, to), box(1.8, 1.8, 2.6, 2.6, 1.5, 1.9, C.metal, to)); pads.forEach(p => lead(p.x, p.y, 1.5));
+      out.push(cylZ(0, 0, 2.75, 1.5, 1.9, C.metal, to, { mat: "kovar" }), cylZ(0, 0, 2.35, 1.9, 6.6, C.metal, to, { mat: "kovar" }), box(1.8, 1.8, 2.6, 2.6, 1.5, 1.9, C.metal, to, { mat: "kovar" })); pads.forEach(p => lead(p.x, p.y, 1.5));
     } else if ((m = /^(TO-1|TO-5|MP)-/.exec(name))) {
       // germanium cans: TO-1 tall and slim, TO-5 low and wide, the USSR MP can on its flange
       const r = fp.silk.find(t => t.t === "circle").r, H = { "TO-1": 9, "TO-5": 6.4, MP: 9.5 }[m[1]];
@@ -432,7 +474,7 @@
     } else if ((m = /^TO-(126|220|247|3P|264)-/.exec(name))) {
       const r = fp.silk.find(s => s.t === "rect"), tab = m[1] !== "126", H = { 126: 11, 220: 9.2, 247: 20.5, "3P": 20, 264: 26 }[m[1]], zb = 2.5;
       out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, zb, zb + H, C.black, to));
-      if (tab) out.push(box(r.x, r.y, r.x + r.w, r.y + 1.3, zb, zb + H + (m[1] === "220" ? 6.3 : 0.1), C.metal, to));
+      if (tab) out.push(box(r.x, r.y, r.x + r.w, r.y + 1.3, zb, zb + H + (m[1] === "220" ? 6.3 : 0.1), C.metal, to, { mat: "tab" }));
       pads.forEach(p => { lead(p.x, p.y, 1.2); out.push(cylY(p.x, 1.2, 0.3, Math.min(p.y, r.y + r.h / 2), Math.max(p.y, r.y + r.h / 2), C.lead, to)); out.push(cylZ(p.x, r.y + r.h / 2, 0.3, 1.2, zb, C.lead, to)); });
     } else if ((m = /^LED-(\d)MM$/.exec(name))) {
       const r = +m[1] / 2, H = m[1] === "5" ? 8.6 : 5.3, col = C.led;
@@ -564,7 +606,7 @@
       const b = fp.box; out.push(box(b[0], b[1], b[2], b[3], 0, 5, C.generic, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
     }
     const res = out.filter(Boolean);
-    res.forEach((s, i) => { s.ref = g.ref; s.name = `${g.ref}${res.length > 1 ? "-" + (i + 1) : ""}`; });
+    res.forEach((s, i) => { s.ref = g.ref; s.name = `${g.ref}${res.length > 1 ? "-" + (i + 1) : ""}`; if (!s.mat || !MATERIALS[s.mat]) s.mat = matKey(s.color, g.type); });
     return res;
   }
 
@@ -597,7 +639,7 @@
       const T = D.TABBED[m[1]], [L, W, H] = T.body, yb = T.py - T.ph / 2 - 0.3, y0 = yb - W;
       out.push(box(-L / 2, y0, L / 2, yb, 0.1, H, C.black, to));
       // the tab, soldered flat under and behind the body; the leads out of the body's front
-      out.push(box(-T.tw / 2 + 0.3, T.ty - T.th / 2 + 0.2, T.tw / 2 - 0.3, Math.min(yb, Math.max(T.ty + T.th / 2 - 0.2, y0 + 0.5)), 0, 0.15, C.metal, to));
+      out.push(box(-T.tw / 2 + 0.3, T.ty - T.th / 2 + 0.2, T.tw / 2 - 0.3, Math.min(yb, Math.max(T.ty + T.th / 2 - 0.2, y0 + 0.5)), 0, 0.15, C.metal, to, { mat: "tab" }));
       pads.slice(0, T.pins).forEach(p => out.push(box(p.x - 0.3, yb, p.x + 0.3, p.y + T.ph / 2 - 0.3, 0, 0.15, C.lead, to)));
     } else if ((m = /^SOIC-(\d+)$/.exec(name))) {
       const n = +m[1], L = (n / 2 - 1) * 1.27 + 1.1 + 0.6;
@@ -810,5 +852,5 @@
     if ((m = /^SNAPIN-D(\d+)$/.exec(n))) return { kind: "can", d: +m[1], h: SNAPIN_H[+m[1]] || +m[1] * 1.6 };
     return null;
   }
-  root.Board3D = { scene, step, partBodies, boardSolid, preview, standardBody, triangles, COLORS: C, TUBE, BODY_PACKAGES, BODY_COLORS, BODY_SHAPES, defaultBody, bodyTidy, bodyHeight, outlineLoop };
+  root.Board3D = { scene, step, MATERIALS, matKey, partBodies, boardSolid, preview, standardBody, triangles, COLORS: C, TUBE, BODY_PACKAGES, BODY_COLORS, BODY_SHAPES, defaultBody, bodyTidy, bodyHeight, outlineLoop };
 })(typeof window !== "undefined" ? window : globalThis);

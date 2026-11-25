@@ -20,8 +20,12 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   (a second drawing under one name gets ` (2)`). Every solid is its own
   Imported feature, with BREP text written by `board-brep.js` (exact planes
   and cylinders), so every solid is its own body with its own material in
-  `bodies`: leads and metal copper, bulbs glass, electrolytic cans aluminium,
-  cores steel, resistors alumina, other bodies glass-filled nylon. A part is
+  `bodies`: leads tinned copper, tabs nickel-plated copper, TO-18 cans
+  Kovar, bulbs glass, electrolytic cans aluminium (sleeved, the bare top
+  apart), cores steel, resistors lacquered alumina, packages epoxy, other
+  bodies glass-filled nylon. Each material carries `k` (W/m·K), `density`
+  (g/cm³), `cp` (J/kg·K) and `emis` (0–1); they come from the 3D view's own
+  table (`Board3D.MATERIALS`), the one the thermal map uses. A part is
   drawn in its footprint's own frame and placed by its component's transform,
   so equal parts (every 12AX7, every 1k 5 W resistor) share one file.
 - **The board** is one part in the frame of the STEP export: millimetres,
@@ -50,8 +54,9 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   looking down (L = area / perimeter), 1.42 for an upright face (L = its
   height), times the chassis factor (open 1, vented 0.8, closed 0.55), over
   the same faces the export writes: the board's faces, edges and hole walls
-  and every face of each part's bodies and leads. Radiation is ε 0.9 from
-  every face to the ambient. The package's split is always kept: a part's
+  and every face of each part's bodies and leads. Radiation goes from every
+  face to the ambient at its body's emissivity (the board 0.9), and a lead
+  conducts at its material's k (tinned copper, 385 W/m·K) in both apps. The package's split is always kept: a part's
   board share (through its leads, as the 3D view draws them, and the air gap
   under its body) is a heat into the board, since MöbiusCAD does not mesh
   the solder joints or the air.

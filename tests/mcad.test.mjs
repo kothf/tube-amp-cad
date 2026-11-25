@@ -53,10 +53,10 @@ test("the folder: an assembly and a part file per drawing, equal parts sharing o
     assert.equal(r.manifest.kind, "part"); assert.deepEqual(r.doc, p.doc, `${p.file}: the fallback copy is the file's document`);
     assert.ok(p.doc.features.length > 0 && p.doc.features.every((f, i) => f.type === "import" && f.id === `b${i + 1}` && /^CASCADE Topology V3/m.test(f.brep)));
     assert.deepEqual(Object.keys(p.doc.bodies), p.doc.features.map(f => f.id));
-    assert.ok(Object.values(p.doc.bodies).every(b => b.material && b.material.name && b.material.density > 0 && (b.material.k > 0)));
+    assert.ok(Object.values(p.doc.bodies).every(b => b.material && b.material.name && b.material.density > 0 && b.material.k > 0 && b.material.cp > 0 && b.material.emis > 0 && b.material.emis <= 1));
   }
   const res = Object.values(a.doc.parts).find(p => p.name === "1kΩ 5W AXIAL-30.48").doc;
-  assert.deepEqual(Object.values(res.bodies).map(b => [b.name, b.material.name]), [["Body", "Alumina 99.5 %"], ["Lead 1", "Copper"], ["Lead 2", "Copper"], ["Lead 3", "Copper"], ["Lead 4", "Copper"]]);
+  assert.deepEqual(Object.values(res.bodies).map(b => [b.name, b.material.name]), [["Body", "Alumina, lacquered"], ["Lead 1", "Tinned copper"], ["Lead 2", "Tinned copper"], ["Lead 3", "Tinned copper"], ["Lead 4", "Tinned copper"]]);
   assert.equal(Object.values(a.doc.parts).find(p => p.name === "Test amp board").doc.material.name, "PCB (effective)");
 });
 
