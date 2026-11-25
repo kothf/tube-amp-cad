@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.255.0] - 2026-11-25
+
+### Changed
+- **A part's bodies as nodes in the thermal map.** Bodies that conduct very differently are a node each,
+  joined where they touch (contact area through half of each body): a TO-220's copper tab and its epoxy
+  moulding, an electrolytic's can and its bare top. The moulding now runs cooler than the tab, so less
+  heat leaves through it: a TO-220 at 1.5 W in free air reads 172 °C at the junction (was 162 °C);
+  MöbiusCAD gives 176 °C on the same board.
+- A TO-220's tab is drawn as the part behind the moulding and the mounting part above it, so the face
+  under the moulding is not cooled.
+- A body that touches nothing of the hot one (a valve's socket under its bulb) no longer cools it.
+
 ## [3.254.0] - 2026-11-25
 
 ### Added

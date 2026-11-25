@@ -18,7 +18,7 @@
      over its perimeter), 1.42 upright (L = its height), times 1, 0.8 or 0.55 in the open, a vented or a
      closed chassis; and by radiation (ε 0.9 for the board, each solid its own material's for a part). The board's faces, edges and hole walls count, and every
      face of a part's 3D solids, its leads too;
-   - a part's body is one node: its heat leaves to the air from those faces, into the board through its
+   - a part's body is a node (a TO-220's tab and its moulding one each, joined where they touch): its heat leaves to the air from those faces, into the board through its
      leads (the 3D view's lead: its section over its length from the board to the body, spread over the
      pad's copper) or its SMD pads, and through the air gap under a body lying on the board;
    - a valve's bulb radiates onto the board round it (a line source on its axis: half of what it
@@ -195,6 +195,49 @@
     return { all, body: body.n ? body : all, glass: glass.n ? glass : null };
   }
 
+  // the box round a solid in the board frame
+  const aabb = s => { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; s.verts.forEach(v => { for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], v[k]); hi[k] = Math.max(hi[k], v[k]); } }); return { lo, hi }; };
+  /** conductance (W/K) between two sets of solids where they touch: each touching pair of boxes by the area
+      they share, through half of each body's thickness at its own conductivity */
+  function contactG(as, bs) {
+    // the heat crosses half of each body as a whole (a moulding split round its die is one body)
+    const M = MAT(), whole = xs => { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; xs.forEach(x => { const q = aabb(x); for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], q.lo[k]); hi[k] = Math.max(hi[k], q.hi[k]); } }); return { lo, hi }; };
+    const WA = whole(as), WB = whole(bs); let G = 0;
+    as.forEach(a => bs.forEach(b => {
+      const A = aabb(a), B2 = aabb(b), ka = M && M[a.mat] ? M[a.mat].k : 1, kb = M && M[b.mat] ? M[b.mat].k : 1;
+      for (let d = 0; d < 3; d++) {
+        const gap = Math.max(A.lo[d], B2.lo[d]) - Math.min(A.hi[d], B2.hi[d]); if (Math.abs(gap) > 0.05) continue;
+        let area = 1; for (let e = 0; e < 3; e++) if (e !== d) area *= Math.max(0, Math.min(A.hi[e], B2.hi[e]) - Math.max(A.lo[e], B2.lo[e]));
+        if (area <= 0) continue;
+        const la = Math.min(5, (WA.hi[d] - WA.lo[d]) / 2), lb = Math.min(5, (WB.hi[d] - WB.lo[d]) / 2);
+        G += area * 1e-6 / (la * 1e-3 / ka + lb * 1e-3 / kb); break;
+      }
+    }));
+    return G;
+  }
+  /** a part's bodies as nodes: the main one (where its heat is made, or what its die or winding sits in:
+      a tab, a can, a bulb) with its leads, and each other body of a very different conductivity joined to it
+      where they touch (a body touching nothing of the main one, such as a valve's socket under its bulb, has
+      no heat of the part to give off and is left out) */
+  function bodyNodes(sol, type, bulb) {
+    const M = MAT(), groups = new Map(), leads = [];
+    sol.forEach(x => {
+      if (x.inner) return;
+      if (x.mat === "lead" || x.mat === "gold") { leads.push(x); return; }
+      const k = M && M[x.mat] ? M[x.mat].k : 1, key = x.node || (bulb && x.glass ? "bulb" : k >= 10 ? x.mat : "low");
+      if (!groups.has(key)) groups.set(key, []); groups.get(key).push(x);
+    });
+    if (groups.size < 2) return { main: sol.filter(x => !x.inner), extra: [] };
+    const area = xs => xs.reduce((a, x) => { const { lo, hi } = aabb(x), e = [0, 1, 2].map(k => hi[k] - lo[k]); return a + 2 * (e[0] * e[1] + e[1] * e[2] + e[0] * e[2]); }, 0);
+    let mainKey = null;
+    for (const [k, xs] of groups) if (xs.some(x => x.main)) mainKey = k;
+    if (!mainKey && bulb && groups.has("bulb")) mainKey = "bulb";
+    if (!mainKey) { let best = -1; for (const [k, xs] of groups) if (xs.some(x => x.heat) && area(xs) > best) { best = area(xs); mainKey = k; } }
+    if (!mainKey) mainKey = groups.keys().next().value;
+    const main = groups.get(mainKey), extra = [];
+    for (const [k, xs] of groups) if (k !== mainKey) { const G = contactG(xs, main); if (G > 1e-6) extra.push({ key: k, solids: xs, G }); }
+    return { main: main.concat(leads), extra };
+  }
   // a through-hole lead as the 3D view draws it (a round wire up from the pad, and the piece over to the
   // body where one starts at its top): its radius and length from the board's face to the body, mm
   function leadOf(solids, pad, t, back) {
@@ -260,11 +303,13 @@
       const area = bulb ? Math.PI * Math.min(w, l) * hgt + Math.PI * Math.min(w, l) * Math.min(w, l) / 4 : 2 * (w + l) * hgt + w * l * (gap > 1.5 ? 2 : 1);
       const P = { key: g.key, ref: g.ref, value: g.value, type: g.type, p: s.p, heater: s.heater, tj: s.tj, ts: s.ts, sink: s.sink, how, rth: g.place.rth, back, smd, vert, lifted, bulb: !!bulb,
         box: { x0: bb.all.x0, y0: bb.all.y0, z0: bb.all.z0, x1: bb.all.x1, y1: bb.all.y1, z1: bb.all.z1 }, body: b, w, l, hgt, gap, area, film: null, emis: EPS, pads: [], under: [] };
-      // to the air: every face of every solid of the part, its leads too, as MöbiusCAD has them
+      // to the air: every face of every solid of the part, its leads too, as MöbiusCAD has them; a part of
+      // bodies that conduct very differently (a TO-220's copper tab and its epoxy) is a node for each, joined
+      // where they touch, so the moulding runs cooler than the tab as it does
       if (sol.every(x => x.verts && x.faces)) {
-        const f = films(sol, dn); if (f.area > 0) { P.film = f; P.area = f.area; }
-        // radiation: each solid's own emissivity (its material), weighted by its area
-        let eA = 0, aA = 0; sol.forEach(x => { const a = films([x], dn).area; eA += a * emisOf(x, g.type); aA += a; }); if (aA > 0) P.emis = eA / aA;
+        const own = bodyNodes(sol, g.type, !!bulb), surf = xs => { const f = films(xs, dn); let eA = 0; xs.forEach(x => { eA += films([x], dn).area * emisOf(x, g.type); }); return { f, emis: f.area > 0 ? eA / f.area : EPS }; };
+        const m = surf(own.main); if (m.f.area > 0) { P.film = m.f; P.area = m.f.area; P.emis = m.emis; }
+        P.extra = own.extra.map(x => { const e = surf(x.solids); return { key: x.key, film: e.f, area: e.f.area, emis: e.emis, G: x.G }; }).filter(x => x.area > 0);
       }
       const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
       pads.forEach(p => {
@@ -311,7 +356,9 @@
     const total = parts.reduce((a, p) => a + p.p + p.heater, 0);
 
     // ---- unknowns: the top sheet's cells, the bottom sheet's, the parts' bodies
-    const n = 2 * n1 + on.length, Q = new Float64Array(n);
+    let nb = 2 * n1 + on.length;
+    on.forEach(p => (p.extra || []).forEach(x => { x.node = nb++; }));
+    const n = nb, Q = new Float64Array(n);
     on.forEach((p, k) => { p.node = 2 * n1 + k; Q[p.node] = p.p + p.heater; });
     // fixed edges (conduction): [i, j, g]
     const E = [];
@@ -329,6 +376,7 @@
     on.forEach(p => {
       p.pads.forEach(q => q.cells.forEach(c => { const g = q.G / q.cells.length; if (q.side === 2) { E.push(p.node, c, g / 2); E.push(p.node, c + n1, g / 2); } else E.push(p.node, c + q.side * n1, g); }));
       p.under.forEach(q => E.push(p.node, q.cell + (p.back ? n1 : 0), q.G));
+      (p.extra || []).forEach(x => E.push(p.node, x.node, x.G));
     });
     const nFixed = E.length / 3;
     // radiation of the bulbs onto the board and the parts next to them: [bulb node, other, share of the bulb's radiation]
@@ -389,6 +437,7 @@
         if (p.ts !== undefined && p.how === "auto") { p.gSink = 2; p.tSink = p.ts; }
         else if (p.how === "heatsink" || p.assumed) { p.gSink = 1 / ((+p.rth > 0 ? +p.rth : SINK_RTH) + 0.5); p.tSink = Ta; }
         else if (p.how === "chassis") { p.gSink = 1; p.tSink = Ta; }
+        (p.extra || []).forEach(x => { const dx = T[x.node] - Ta; gA[x.node] = nat(x.film, dx) + x.emis * hRad(T[x.node], Ta) * x.area * 1e-6; tA[x.node] = Ta; });
       });
       for (let k = 0; k < nR; k++) eg[nFixed + k] = on[R[3 * k] - 2 * n1].hr * R[3 * k + 2];
       for (let i = 0; i < n; i++) { diag[i] = gA[i]; rhs[i] = Q[i] + gA[i] * tA[i]; }
@@ -420,7 +469,7 @@
     const boardMax = tMax;
     const flow = new Float64Array(n);     // heat leaving each part node by conduction into the board, and by radiation
     const rad = new Float64Array(n);
-    for (let k = 0; k < nAll; k++) { const i = ei[k], j = ej[k], f = eg[k] * (T[i] - T[j]); if (i >= 2 * n1) (k < nFixed ? flow : rad)[i] += f; if (j >= 2 * n1) (k < nFixed ? flow : rad)[j] -= f; }
+    for (let k = 0; k < nAll; k++) { const i = ei[k], j = ej[k], f = eg[k] * (T[i] - T[j]); if (k < nFixed && i >= 2 * n1 && j >= 2 * n1) continue; if (i >= 2 * n1) (k < nFixed ? flow : rad)[i] += f; if (j >= 2 * n1) (k < nFixed ? flow : rad)[j] -= f; }
     // where a part's board share goes in (MöbiusCAD's PackageHeat.into): a disc per pad, a rectangle under the
     // body, W each; in the board's frame (x right, y up: the layout's y turned over)
     const intoOf = (p, t0) => {
@@ -432,7 +481,7 @@
     };
     const res = parts.map(p => {
       if (p.off) return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: 0, toAir: 0, toSink: p.p + p.heater, byRadiation: 0, t: null, tKind: null, tj: p.tj, ts: p.ts, mount: p.mount, path: p.path, box: null, off: true };
-      const i = p.node, t0 = T[i], toSink = p.gSink ? p.gSink * (t0 - p.tSink) : 0, toAir = gA[i] * (t0 - Ta);
+      const i = p.node, t0 = T[i], toSink = p.gSink ? p.gSink * (t0 - p.tSink) : 0, toAir = gA[i] * (t0 - Ta) + (p.extra || []).reduce((a, x) => a + gA[x.node] * (T[x.node] - Ta), 0);
       out += toAir + toSink;
       const mount = p.gSink ? (p.how === "chassis" ? "chassis" : "heatsink") : p.how === "board" ? "tab" : p.bulb ? "socket" : p.smd ? "smd" : p.vert ? "standing" : p.lifted ? "raised" : p.gap <= 1.5 && p.hgt < Math.max(p.w, p.l) ? "lying" : "upright";
       const sh = [["board", flow[i]], ["air", toAir + rad[i]], [p.how === "chassis" ? "chassis" : "heatsink", toSink]].sort((a, b) => b[1] - a[1]);
@@ -448,7 +497,7 @@
       if (t0 > tMax) tMax = t0; if (t0 < tMin) tMin = t0;
       if (p.tj !== undefined && p.tj > tMax) tMax = p.tj;
       if (tCore !== undefined && tCore > tMax) tMax = tCore;
-      return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: flow[i], toAir, toSink, byRadiation: rad[i], t: t0, tKind, tj: p.tj, rjc, tCore, ts: p.ts, limit: lim, life, lifeRated: p.cap ? p.cap.l0 : undefined, assumed: !!p.assumed, mount, path: pw > 0.01 ? sh[0][0] : "air", box: p.box, back: p.back,
+      return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: flow[i], toAir, toSink, byRadiation: rad[i], t: t0, tKind, tj: p.tj, rjc, tCore, bodies: (p.extra || []).length ? (p.extra || []).map(x => ({ key: x.key, t: T[x.node] })) : undefined, ts: p.ts, limit: lim, life, lifeRated: p.cap ? p.cap.l0 : undefined, assumed: !!p.assumed, mount, path: pw > 0.01 ? sh[0][0] : "air", box: p.box, back: p.back,
         tPads: p.pads.length ? p.pads.reduce((a, q) => a + (q.side === 2 ? (T[q.cell] + T[q.cell + n1]) / 2 : T[q.cell + q.side * n1]), 0) / p.pads.length : t0, into: intoOf(p, t0) };
     });
     return { ok: true, nx, ny, step, top, bottom, flux, copper: CU.map(Lr => ({ layer: Lr, cover: cover.get(Lr) })), thickness: t, emissivity: EPS, parts: res, ambient: Ta, tMin: Math.min(tMin, Ta), tMax, boardMax, hot, total, balance: total - out - res.filter(p => p.off).reduce((a, p) => a + p.p + p.heater, 0), iterations, settings: { ambient: Ta, enclosure: opts.enclosure, orient: opts.orient, point: opts.point } };

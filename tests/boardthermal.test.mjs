@@ -197,6 +197,9 @@ test("inner bodies: a die on the tab sized to the datasheet's Rjc, an electrolyt
   for (const a of [die[0], tab, ...mould]) for (const b of [die[0], tab, ...mould]) if (a !== b) assert.ok(!inside(a, b), "no two bodies overlap");
   const side = Math.sqrt([0, 1, 2].map(k => Math.max(...die[0].verts.map(v => v[k])) - Math.min(...die[0].verts.map(v => v[k]))).sort((x, y) => x - y).slice(1).reduce((x, y) => x * y));
   near(D3.dieR(side), (150 - 25) / L.MOSFETS.IRF540.p, 0.01, "the die's Rjc is the datasheet's");
+  // in free air the epoxy is its own node, joined to the tab where they touch: it runs cooler than the tab
+  const fa = setup(80, 60, [part("q1", "nmos", "VT1", { model: "IRF540" }, { D: 1, G: 2, S: 0 })], { VT1: { x: 40, y: 30, heat: "air" } }, { q1: 1.5 }), qa = of(run(fa), "VT1");
+  assert.equal(qa.bodies.length, 1); assert.ok(qa.bodies[0].t < qa.t - 5 && qa.bodies[0].t > 40, `moulding ${qa.bodies[0].t} °C, tab ${qa.t} °C`);
   const f = T.films(sol, [0, 0, -1]);
   assert.ok(f.area < T.films(sol.filter(x => !x.inner).map(x => ({ ...x, cover: undefined })), [0, 0, -1]).area, "faces between the bodies are not open to the air");
   // a radial electrolytic: the can round the winding and the bung, the core makes the heat; the map's core is hotter than the can

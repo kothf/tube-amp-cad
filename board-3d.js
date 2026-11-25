@@ -251,7 +251,7 @@
   // an electrolytic: the can (sleeved, or bare for an SMD part) round its winding, the rubber bung under it
   function ecapBody(r, z0, z1, col, mat, to) {
     const t = Math.min(0.4, r * 0.1), ri = r - t, zb = Math.min(z0 + 1, (z0 + z1) / 2);
-    return [tubeZ(0, 0, r, ri, z0, z1, col, to, { mat, cover: ["holes"] }), cylZ(0, 0, ri, z0, zb, C.bung, to, { mat: "rubber", inner: true }), cylZ(0, 0, ri, zb, z1, C.ecore, to, CORE)];
+    return [tubeZ(0, 0, r, ri, z0, z1, col, to, { mat, cover: ["holes"], main: true }), cylZ(0, 0, ri, z0, zb, C.bung, to, { mat: "rubber", inner: true }), cylZ(0, 0, ri, zb, z1, C.ecore, to, CORE)];
   }
 
   // ---------------------------------------------------------------------------
@@ -536,7 +536,10 @@
       const tb = tab ? 1.3 : 0.5, dw = dieSide(g, { 126: 2, 220: 3, 247: 5, "3P": 5, 264: 6 }[m[1]], Math.min(r.w - 1, H - 1)), dx = r.x + r.w / 2, dz = zb + H * 0.45;
       const die = [dx - dw / 2, r.y + tb, dz - dw / 2, dx + dw / 2, r.y + tb + DIE_T, dz + dw / 2];
       out.push(...boxAround([r.x, r.y + tb, zb, r.x + r.w, r.y + r.h, zb + H], die, C.black, to, null, ["y1"]));
-      out.push(box(r.x, r.y, r.x + r.w, r.y + tb, zb, zb + H + (m[1] === "220" ? 6.3 : tab ? 0.1 : 0), C.metal, to, { mat: "tab" }));
+      // the tab: behind the moulding (its front against it), and a TO-220's mounting part standing above it
+      const up = m[1] === "220" ? 6.3 : 0;
+      out.push(box(r.x, r.y, r.x + r.w, r.y + tb, zb, zb + H, C.metal, to, { mat: "tab", main: true, cover: up ? ["y2", "z2"] : ["y2"] }));
+      if (up) out.push(box(r.x, r.y, r.x + r.w, r.y + tb, zb + H, zb + H + up, C.metal, to, { mat: "tab", main: true, cover: ["z1"] }));
       out.push(box(die[0], die[1], die[3], die[4], die[2], die[5], C.die, to, DIE));
       pads.forEach(p => { lead(p.x, p.y, 1.2); out.push(cylY(p.x, 1.2, 0.3, Math.min(p.y, r.y + r.h / 2), Math.max(p.y, r.y + r.h / 2), C.lead, to)); out.push(cylZ(p.x, r.y + r.h / 2, 0.3, 1.2, zb, C.lead, to)); });
     } else if ((m = /^LED-(\d)MM$/.exec(name))) {
@@ -708,7 +711,7 @@
       const die = dw > 0.3 ? [-dw / 2, cy - dw / 2, 0.15, dw / 2, cy + dw / 2, 0.15 + DIE_T] : null;
       if (die) out.push(...boxAround([-L / 2, y0, 0.15, L / 2, yb, H], die, C.black, to, null, ["z1"]));
       else out.push(box(-L / 2, y0, L / 2, yb, 0.15, H, C.black, to, { cover: ["z1"] }));
-      out.push(box(-T.tw / 2 + 0.3, ty0, T.tw / 2 - 0.3, ty1, 0, 0.15, C.metal, to, { mat: "tab" }));
+      out.push(box(-T.tw / 2 + 0.3, ty0, T.tw / 2 - 0.3, ty1, 0, 0.15, C.metal, to, { mat: "tab", main: true }));
       if (die) out.push(box(die[0], die[1], die[3], die[4], die[2], die[5], C.die, to, DIE));
       pads.slice(0, T.pins).forEach(p => out.push(box(p.x - 0.3, yb, p.x + 0.3, p.y + T.ph / 2 - 0.3, 0, 0.15, C.lead, to)));
     } else if ((m = /^SOIC-(\d+)$/.exec(name))) {

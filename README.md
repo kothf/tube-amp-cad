@@ -1330,7 +1330,8 @@ the circuit file, so one file holds both.
   writes; inside, a power transistor's silicon die on its tab, sized to
   the datasheet's junction-to-case resistance, gives its junction, and an
   electrolytic's wound core in its can gives the core temperature its life
-  is worked out from), the leads as the 3D view draws them: an estimate,
+  is worked out from; a TO-220's tab and its moulding are separate nodes
+  joined where they touch), the leads as the 3D view draws them: an estimate,
   about ±15 °C, for comparing layouts. Save PNG puts the scale in the picture.
   **View ▾ → Thermal overlay** draws the board's field over the layout and
   follows it as you move parts. The map's findings join the design rules
