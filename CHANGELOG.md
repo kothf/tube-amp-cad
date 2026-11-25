@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.258.0] - 2026-11-25
+
+### Changed
+- **The lead frame reaches its lead.** In TO-92, SOT-23, SOIC and DIP the copper lead frame now runs
+  from the paddle under the die out to the frame's own lead (TO-92 the middle lead up inside the body,
+  SOT-23 the lone lead, SOIC and DIP the lead nearest the middle), and the leads of a DIP or SOIC go up
+  beside the body to the paddle's height as in the real part. Before, the leads stopped short of the
+  body, so a 3D solver had the die's heat cross the epoxy to reach the board. Against MöbiusCAD 1.758.0
+  (0.3 W TO-92 in free air on the test board) the junction is now 114 °C here and 112 °C there (it was
+  158 °C there); DIP-8 at 0.2 W 60 °C against 65 °C; the thermal map itself hardly moves.
+
 ## [3.257.0] - 2026-11-25
 
 ### Added

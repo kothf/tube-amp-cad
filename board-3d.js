@@ -243,17 +243,37 @@
       sol.cover = FACE_KEYS.filter(k => !on[k] || (against || []).includes(k));
       out.push(sol);
     };
-    add([X1, Y1, Z1, X2, Y2, ins[0][2]]);
-    ins.forEach(([x1, y1, z1, x2, y2, z2], k) => {
-      add([X1, Y1, z1, X2, y1, z2]); add([X1, y2, z1, X2, Y2, z2]); add([X1, y1, z1, x1, y2, z2]); add([x2, y1, z1, X2, y2, z2]);
-      add([X1, Y1, z2, X2, Y2, k + 1 < ins.length ? ins[k + 1][2] : Z2]);
+    // a layer is one box, or several of the same height (a paddle and the lead-frame finger off it): the
+    // shell round them cut on the grid of their edges, cells merged along x
+    const layer = L => (Array.isArray(L[0]) ? L : [L]), z1Of = L => layer(L)[0][2];
+    add([X1, Y1, Z1, X2, Y2, z1Of(ins[0])]);
+    ins.forEach((L, k) => {
+      const bs = layer(L), z1 = bs[0][2], z2 = bs[0][5];
+      if (bs.length === 1) { const [x1, y1, , x2, y2] = bs[0]; add([X1, Y1, z1, X2, y1, z2]); add([X1, y2, z1, X2, Y2, z2]); add([X1, y1, z1, x1, y2, z2]); add([x2, y1, z1, X2, y2, z2]); }
+      else {
+        const cut = (i, lo, hi) => [...new Set([lo, hi, ...bs.flatMap(b => [b[i], b[i + 3]]).map(v => Math.min(hi, Math.max(lo, v)))])].sort((a, b) => a - b);
+        const xs = cut(0, X1, X2), ys = cut(1, Y1, Y2), inside = (x, y) => bs.some(b => x > b[0] && x < b[3] && y > b[1] && y < b[4]);
+        for (let j = 0; j + 1 < ys.length; j++) {
+          let start = null;
+          for (let i = 0; i <= xs.length - 1; i++) {
+            const free = i + 1 < xs.length && !inside((xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2);
+            if (free && start === null) start = xs[i];
+            if (!free && start !== null) { add([start, ys[j], z1, xs[i], ys[j + 1], z2]); start = null; }
+          }
+        }
+      }
+      add([X1, Y1, z2, X2, Y2, k + 1 < ins.length ? z1Of(ins[k + 1]) : Z2]);
     });
     return out;
   }
   /** a moulded package with a copper paddle and the die on it inside: [paddle, die] boxes stacked up z */
-  function moulded(o, pw, pl, pz, dw, to, against) {
+  // finger: [x1, y1, x2, y2] of the lead-frame strip from the paddle out to the moulding's side, where the
+  // frame's own lead leaves the body (the die's heat reaches the board down copper, as in the real part)
+  function moulded(o, pw, pl, pz, dw, to, against, finger) {
     const cx = (o[0] + o[3]) / 2, cy = (o[1] + o[4]) / 2, pad = [cx - pw / 2, cy - pl / 2, pz, cx + pw / 2, cy + pl / 2, pz + 0.15], die = [cx - dw / 2, cy - dw / 2, pz + 0.15, cx + dw / 2, cy + dw / 2, pz + 0.15 + DIE_T];
-    return [...boxStack(o, [pad, die], C.black, to, null, against), box(pad[0], pad[1], pad[3], pad[4], pad[2], pad[5], C.metal, to, { mat: "frame", main: true, inner: true }), box(die[0], die[1], die[3], die[4], die[2], die[5], C.die, to, DIE)];
+    const fb = finger ? [finger[0], finger[1], pz, finger[2], finger[3], pz + 0.15] : null, FR = { mat: "frame", main: true, inner: true };
+    return [...boxStack(o, [fb ? [pad, fb] : pad, die], C.black, to, null, against), box(pad[0], pad[1], pad[3], pad[4], pad[2], pad[5], C.metal, to, FR),
+      ...(fb ? [box(fb[0], fb[1], fb[3], fb[4], fb[2], fb[5], C.metal, to, FR)] : []), box(die[0], die[1], die[3], die[4], die[2], die[5], C.die, to, DIE)];
   }
   /** a metal can (TO-18, TO-5…): its header, the die on it, the gas sealed round it, the can's wall and top
       (the gas is a body, so nothing takes the inside of the can for a surface open to the air) */
@@ -560,7 +580,9 @@
       const arc = Array.from({ length: 13 }, (_, k) => { const a = Math.PI + Math.PI * k / 12; return [2.4 * Math.cos(a), 1.6 + 2.4 * Math.sin(a) * 1.15]; });
       const za = 3.4, zb = 4.4, yp = 0.4, hole = [[-0.6, yp], [0.6, yp], [0.6, yp + 0.2 + DIE_T], [-0.6, yp + 0.2 + DIE_T]];
       const mid = holedPrism("z", arc, [hole], za, zb, C.black, to); mid.cover = ["z1", "z2", "holes"];
-      out.push(prism("z", arc, 2, za, C.black, to, { cover: ["z2"] }), mid, prism("z", arc, zb, 6.8, C.black, to, { cover: ["z1"] }),
+      // the middle lead runs on up inside the lower band as the frame's own lead, to the paddle
+      const low = holedPrism("z", arc, [[[-0.3, -0.3], [0.3, -0.3], [0.3, yp + 0.2], [-0.3, yp + 0.2]]], 2, za, C.black, to); low.cover = ["z2", "holes"];
+      out.push(low, mid, prism("z", arc, zb, 6.8, C.black, to, { cover: ["z1"] }), box(-0.3, -0.3, 0.3, yp + 0.2, 2, za, C.metal, to, { mat: "frame", main: true, inner: true }),
         box(-0.6, yp, 0.6, yp + 0.2, za, zb, C.metal, to, { mat: "frame", main: true, inner: true }), box(-0.6, yp + 0.2, 0.6, yp + 0.2 + DIE_T, za, zb, C.die, to, DIE));
       pads.forEach(p => lead(p.x, p.y, 2));
     } else if ((m = /^TO-18-/.exec(name))) {
@@ -705,7 +727,10 @@
     } else if (/^DIP-\d+$/.test(name)) {
       // the moulded body (7.62 mm row pitch: 6.35 mm wide, 3.3 mm thick) standing on its leads
       const r = fp.silk.find(q => q.t === "rect");
-      out.push(...moulded([-3.2, r.y, 0.5, 3.2, r.y + r.h, 3.8], 3, Math.min(r.h - 2, 5), 1.9, Math.min(2, r.h - 3), to)); pads.forEach(p => lead(p.x, p.y, 1));
+      // each lead up beside the body and in at the paddle's height; the frame's own lead (the one nearest the middle) joined to the paddle by its finger
+      const cy = r.y + r.h / 2, pz = 1.9, fl = pads.filter(p => p.x > 0).sort((a, b) => Math.abs(a.y - cy) - Math.abs(b.y - cy))[0];
+      out.push(...moulded([-3.2, r.y, 0.5, 3.2, r.y + r.h, 3.8], 3, Math.min(r.h - 2, 5), pz, Math.min(2, r.h - 3), to, null, fl ? [1.5, fl.y - 0.25, 3.2, fl.y + 0.25] : null));
+      pads.forEach(p => { const sg = Math.sign(p.x); lead(p.x, p.y, 1); out.push(box(Math.min(p.x - 0.3, p.x + 0.3), p.y - 0.25, Math.max(p.x - 0.3, p.x + 0.3), p.y + 0.25, 1, pz + 0.15, C.lead, to), box(Math.min(sg * 3.2, p.x - sg * 0.3), p.y - 0.25, Math.max(sg * 3.2, p.x - sg * 0.3), p.y + 0.25, pz, pz + 0.15, C.lead, to)); });
     } else if (fp.smd) {
       smdBody(g, fp, out, to);
     } else if (/^WIRE-/.test(name)) {
@@ -743,8 +768,10 @@
       out.push(...ecapBody(r, 1, H - 0.3, C.metal, "alBare", to), box(-b, -b, b, b, 0, 1, C.black, to, { cover: ["z2"] }), cylZ(0, 0, r * 0.94, H - 0.3, H, C.ecapTop, to, { cover: ["z1"] }));
       pads.forEach(p => out.push(box(p.x - Math.sign(p.x) * 0.3 - 0.6, -0.35, p.x - Math.sign(p.x) * 0.3 + 0.6, 0.35, 0, 0.1, C.lead, to)));
     } else if ((m = /^SOT-23-/.exec(name))) {
-      out.push(...moulded([-1.45, -0.65, 0.1, 1.45, 0.65, 1.0], 1.2, 0.8, 0.4, 0.5, to));
-      pads.forEach(p => out.push(box(p.x - 0.2, Math.min(p.y, Math.sign(p.y) * 0.65), p.x + 0.2, Math.max(p.y, Math.sign(p.y) * 0.65), 0, 0.12, C.lead, to)));
+      // the lone lead's side carries the paddle (the collector, the drain): its finger out to that lead
+      const up = pads.filter(p => p.y < 0), fl = up.length === 1 ? up[0] : pads.filter(p => p.y > 0)[0], fs = fl ? Math.sign(fl.y) : 1;
+      out.push(...moulded([-1.45, -0.65, 0.1, 1.45, 0.65, 1.0], 1.2, 0.8, 0.4, 0.5, to, null, fl ? [fl.x - 0.2, fs < 0 ? -0.65 : 0.4, fl.x + 0.2, fs < 0 ? -0.4 : 0.65] : null));
+      pads.forEach(p => { const sg = Math.sign(p.y); out.push(box(p.x - 0.2, Math.min(p.y, sg * 0.65), p.x + 0.2, Math.max(p.y, sg * 0.65), 0, 0.12, C.lead, to), box(p.x - 0.2, Math.min(sg * 0.65, sg * 0.85), p.x + 0.2, Math.max(sg * 0.65, sg * 0.85), 0.12, 0.55, C.lead, to)); });
     } else if ((m = /^(SOT-89|SOT-223|DPAK|D2PAK)-/.exec(name))) {
       const T = D.TABBED[m[1]], [L, W, H] = T.body, yb = T.py - T.ph / 2 - 0.3, y0 = yb - W;
       // the tab, soldered flat under and behind the body, the die on it inside the moulding; the leads out of the body's front
@@ -758,8 +785,10 @@
       pads.slice(0, T.pins).forEach(p => out.push(box(p.x - 0.3, yb, p.x + 0.3, p.y + T.ph / 2 - 0.3, 0, 0.15, C.lead, to)));
     } else if ((m = /^SOIC-(\d+)$/.exec(name))) {
       const n = +m[1], L = (n / 2 - 1) * 1.27 + 1.1 + 0.6;
-      out.push(...moulded([-1.95, -L / 2, 0.15, 1.95, L / 2, 1.6], 2.4, Math.min(L - 0.8, 3), 0.6, Math.min(1.6, L - 1.2), to));
-      pads.forEach(p => out.push(box(Math.min(p.x, Math.sign(p.x) * 1.95), p.y - 0.2, Math.max(p.x, Math.sign(p.x) * 1.95) - Math.sign(p.x) * 0.2, p.y + 0.2, 0, 0.15, C.lead, to)));
+      const fl = pads.filter(p => p.x > 0).sort((a, b) => Math.abs(a.y) - Math.abs(b.y))[0];
+      out.push(...moulded([-1.95, -L / 2, 0.15, 1.95, L / 2, 1.6], 2.4, Math.min(L - 0.8, 3), 0.6, Math.min(1.6, L - 1.2), to, null, fl ? [1.2, fl.y - 0.2, 1.95, fl.y + 0.2] : null));
+      // gull-wing leads: the foot on the pad, up beside the body to the paddle's height (the frame's own lead meets its finger there)
+      pads.forEach(p => { const sg = Math.sign(p.x); out.push(box(Math.min(p.x, sg * 1.95), p.y - 0.2, Math.max(p.x, sg * 1.95) - sg * 0.2, p.y + 0.2, 0, 0.15, C.lead, to), box(Math.min(sg * 1.95, sg * 2.15), p.y - 0.2, Math.max(sg * 1.95, sg * 2.15), p.y + 0.2, 0.15, 0.75, C.lead, to)); });
     } else if (name === "TRIM-TC33") {
       out.push(box(-1.9, -1.8, 1.9, 1.8, 0, 1.2, C.trim, to), cylZ(0, 0, 1.2, 1.2, 1.9, C.ceramic, to));
     } else {
