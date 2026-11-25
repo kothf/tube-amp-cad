@@ -30,6 +30,7 @@
   const MATERIALS = {
     lead: { name: "Tinned copper", k: 385, density: 8.9, cp: 385, emis: 0.3, cat: "copper" },
     tab: { name: "Copper, nickel-plated", k: 390, density: 8.9, cp: 385, emis: 0.15, cat: "copper" },
+    frame: { name: "Copper lead frame", k: 390, density: 8.9, cp: 385, emis: 0.3, cat: "copper" },
     copper: { name: "Copper", k: 391, density: 8.96, cp: 385, emis: 0.3, cat: "copper" },
     winding: { name: "Enamelled copper", k: 391, density: 8.96, cp: 385, emis: 0.9, cat: "copper" },
     gold: { name: "Brass, gold-plated", k: 110, density: 8.5, cp: 380, emis: 0.05, cat: "copper" },
@@ -52,6 +53,7 @@
     // inside an electrolytic: the wound foil and paper soaked in electrolyte (one isotropic value: across the
     // layers it is lower, along them far higher), and the rubber bung its leads come out through
     ecore: { name: "Wound foil and paper, electrolyte-soaked", k: 1.0, density: 1.3, cp: 1800, emis: 0.9, cat: "other" },
+    gas: { name: "Dry nitrogen (sealed in the can)", k: 0.026, density: 0.00115, cp: 1040, emis: 0.9, cat: "other" },
     rubber: { name: "EPDM rubber", k: 0.25, density: 1.2, cp: 1900, emis: 0.9, cat: "plastic" }
   };
   // a body's material where its drawing says none: by its colour, else by the part's type
@@ -125,7 +127,7 @@
         F.push(face(V, [q], k ? out.map(c => -c) : out));       // a hole's walls face into the hole
       }
     });
-    return { color, alpha: 1, verts: V, faces: F };
+    return { color, alpha: 1, verts: V, faces: F, holeFaces: [2 + outer.length, F.length] };
   }
   /** A face as triangles (index triples into V), for the 3D view: a fan when it is one convex loop,
       else its holes bridged into the outer loop and the result cut into ears */
@@ -220,22 +222,54 @@
     return out;
   }
   /** an upright tube (an electrolytic's can round its winding): outer radius r, bore ri, true shape for STEP */
-  function tubeZ(u, v, r, ri, a1, a2, color, to, ex) {
-    const n = sides(r), s = holedPrism("z", circle(r, n).map(([a, b]) => [u + a, v + b]), [circle(ri, n).map(([a, b]) => [u + a, v + b])], a1, a2, color, to);
+  function tube(axis, u, v, r, ri, a1, a2, color, to, ex) {
+    const n = sides(r), s = holedPrism(axis, circle(r, n).map(([a, b]) => [u + a, v + b]), [circle(ri, n).map(([a, b]) => [u + a, v + b])], a1, a2, color, to);
     Object.assign(s, ex || {});
-    const c1 = to([u, v, a1]), c2 = to([u, v, a2]), A = unit(sub(c2, c1));
-    s.round = { o: c1, a: A, x: unit(sub(to([u + r, v, a1]), c1)), h: Math.hypot(...sub(c2, c1)), outer: [{ c: [0, 0], r, p: [r, 0] }], holes: [{ c: [0, 0], r: ri }] };
+    const P = (p, q, w) => (axis === "z" ? [p, q, w] : axis === "x" ? [w, p, q] : [p, w, q]);
+    const c1 = to(P(u, v, a1)), c2 = to(P(u, v, a2)), A = unit(sub(c2, c1));
+    s.round = { o: c1, a: A, x: unit(sub(to(P(u + r, v, a1)), c1)), h: Math.hypot(...sub(c2, c1)), outer: [{ c: [0, 0], r, p: [r, 0] }], holes: [{ c: [0, 0], r: ri }] };
     const radial = p => { const d = sub(p, c1), k = dot(d, A); return unit(sub(d, A.map(c => c * k))); };
     s.faces.forEach((f, i) => { if (i > 1) f.vn = f.loops[0].map(k => radial(s.verts[k]).map(c => (i < 2 + n ? c : -c))); });
     return s;
+  }
+  const tubeZ = (u, v, r, ri, a1, a2, color, to, ex) => tube("z", u, v, r, ri, a1, a2, color, to, ex);
+  /** a box round boxes stacked up z inside it (a lead-frame paddle, the die on it): the shell as boxes in
+      bands, none overlapping the inner ones or each other; faces inside covered as in boxAround */
+  function boxStack(o, ins, color, to, ex, against) {
+    const [X1, Y1, Z1, X2, Y2, Z2] = o, out = [];
+    const add = b => {
+      if (b[3] - b[0] < 0.02 || b[4] - b[1] < 0.02 || b[5] - b[2] < 0.02) return;
+      const sol = box(b[0], b[1], b[3], b[4], b[2], b[5], color, to, ex), on = { x1: b[0] === X1, x2: b[3] === X2, y1: b[1] === Y1, y2: b[4] === Y2, z1: b[2] === Z1, z2: b[5] === Z2 };
+      sol.cover = FACE_KEYS.filter(k => !on[k] || (against || []).includes(k));
+      out.push(sol);
+    };
+    add([X1, Y1, Z1, X2, Y2, ins[0][2]]);
+    ins.forEach(([x1, y1, z1, x2, y2, z2], k) => {
+      add([X1, Y1, z1, X2, y1, z2]); add([X1, y2, z1, X2, Y2, z2]); add([X1, y1, z1, x1, y2, z2]); add([x2, y1, z1, X2, y2, z2]);
+      add([X1, Y1, z2, X2, Y2, k + 1 < ins.length ? ins[k + 1][2] : Z2]);
+    });
+    return out;
+  }
+  /** a moulded package with a copper paddle and the die on it inside: [paddle, die] boxes stacked up z */
+  function moulded(o, pw, pl, pz, dw, to, against) {
+    const cx = (o[0] + o[3]) / 2, cy = (o[1] + o[4]) / 2, pad = [cx - pw / 2, cy - pl / 2, pz, cx + pw / 2, cy + pl / 2, pz + 0.15], die = [cx - dw / 2, cy - dw / 2, pz + 0.15, cx + dw / 2, cy + dw / 2, pz + 0.15 + DIE_T];
+    return [...boxStack(o, [pad, die], C.black, to, null, against), box(pad[0], pad[1], pad[3], pad[4], pad[2], pad[5], C.metal, to, { mat: "frame", main: true, inner: true }), box(die[0], die[1], die[3], die[4], die[2], die[5], C.die, to, DIE)];
+  }
+  /** a metal can (TO-18, TO-5…): its header, the die on it, the gas sealed round it, the can's wall and top
+      (the gas is a body, so nothing takes the inside of the can for a surface open to the air) */
+  function canBody(r, rh, z0, zh, z1, mat, to, dw) {
+    const t = Math.min(0.3, r * 0.1), ri = r - t, n = sides(ri), GAS = { mat: "gas", inner: true };
+    const ring = holedPrism("z", circle(ri, n), [rect(-dw / 2, -dw / 2, dw / 2, dw / 2)], zh, zh + DIE_T, C.glass, to); Object.assign(ring, GAS, { alpha: 0 });
+    return [cylZ(0, 0, rh, z0, zh, C.metal, to, { mat, main: true, cover: ["z2"] }), tubeZ(0, 0, r, ri, zh, z1 - t, C.metal, to, { mat, cover: ["holes"] }), cylZ(0, 0, r, z1 - t, z1, C.metal, to, { mat, cover: ["z1"] }),
+      box(-dw / 2, -dw / 2, dw / 2, dw / 2, zh, zh + DIE_T, C.die, to, DIE), ring, cylZ(0, 0, ri, zh + DIE_T, z1 - t, C.glass, to, { ...GAS, alpha: 0 })];
   }
   // the inner bodies where a part makes its heat: a die on its tab, a wound electrolytic core
   const DIE = { mat: "silicon", inner: true, heat: true }, DIE_T = 0.25, CORE = { mat: "ecore", inner: true, heat: true };
   /** junction to case (°C/W) of a square die of side a (mm) soldered on a copper tab: through the silicon,
       25 µm of solder (50 W/m·K) and the spreading into the tab (a disc of the die's area on a thick plate) */
-  function dieR(a) {
+  function dieR(a, k) {
     const A = a * a * 1e-6, re = a / Math.sqrt(Math.PI) * 1e-3;
-    return DIE_T * 1e-3 / (MATERIALS.silicon.k * A) + 25e-6 / (50 * A) + 1 / (4 * MATERIALS.tab.k * re);
+    return DIE_T * 1e-3 / (MATERIALS.silicon.k * A) + 25e-6 / (50 * A) + 1 / (4 * (k || MATERIALS.tab.k) * re);
   }
   /** the die's side (mm): sized so its junction to case is the part's datasheet one (the thermal map's Rjc), within
       what fits on the tab; with no rating known, the case's usual die */
@@ -516,19 +550,27 @@
       pads.forEach(p => lead(p.x, p.y, 0.5));
     } else if ((m = /^ECAP-AXIAL-([\d.]+)$/.exec(name))) {
       const [L, Dm] = D.ECAP_AXIAL[m[1]], h = +m[1] / 2, zc = Dm / 2 + 0.4;
-      out.push(cylX(0, zc, Dm / 2, -L / 2, L / 2, C.ecap, to));
+      // the can round its winding, closed at one end, the rubber bung in the other
+      const r = Dm / 2, t = Math.min(0.4, r * 0.1), ri = r - t;
+      out.push(tube("x", 0, zc, r, ri, -L / 2 + t, L / 2, C.ecap, to, { mat: "can", cover: ["holes"], main: true }), cylX(0, zc, r, -L / 2, -L / 2 + t, C.ecap, to, { mat: "can", cover: ["z2"] }),
+        cylX(0, zc, ri, -L / 2 + t, L / 2 - 1, C.ecore, to, CORE), cylX(0, zc, ri, L / 2 - 1, L / 2, C.bung, to, { mat: "rubber", inner: true }));
       [-1, 1].forEach(sg => { out.push(cylX(0, zc, 0.4, sg < 0 ? -h : L / 2, sg < 0 ? -L / 2 : h, C.lead, to)); lead(sg * h, 0, zc); });
     } else if ((m = /^TO-92-/.exec(name))) {
+      // the moulding in three bands, the middle one round the lead-frame paddle and the die on it (toward the flat face)
       const arc = Array.from({ length: 13 }, (_, k) => { const a = Math.PI + Math.PI * k / 12; return [2.4 * Math.cos(a), 1.6 + 2.4 * Math.sin(a) * 1.15]; });
-      out.push(prism("z", arc, 2, 6.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 2));
+      const za = 3.4, zb = 4.4, yp = 0.4, hole = [[-0.6, yp], [0.6, yp], [0.6, yp + 0.2 + DIE_T], [-0.6, yp + 0.2 + DIE_T]];
+      const mid = holedPrism("z", arc, [hole], za, zb, C.black, to); mid.cover = ["z1", "z2", "holes"];
+      out.push(prism("z", arc, 2, za, C.black, to, { cover: ["z2"] }), mid, prism("z", arc, zb, 6.8, C.black, to, { cover: ["z1"] }),
+        box(-0.6, yp, 0.6, yp + 0.2, za, zb, C.metal, to, { mat: "frame", main: true, inner: true }), box(-0.6, yp + 0.2, 0.6, yp + 0.2 + DIE_T, za, zb, C.die, to, DIE));
+      pads.forEach(p => lead(p.x, p.y, 2));
     } else if ((m = /^TO-18-/.exec(name))) {
       // the tab beside pin 1, at the lower right seen from the top
-      out.push(cylZ(0, 0, 2.75, 1.5, 1.9, C.metal, to, { mat: "kovar" }), cylZ(0, 0, 2.35, 1.9, 6.6, C.metal, to, { mat: "kovar" }), box(1.8, 1.8, 2.6, 2.6, 1.5, 1.9, C.metal, to, { mat: "kovar" })); pads.forEach(p => lead(p.x, p.y, 1.5));
+      out.push(...canBody(2.35, 2.75, 1.5, 1.9, 6.6, "kovar", to, 0.6), box(1.8, 1.8, 2.6, 2.6, 1.5, 1.9, C.metal, to, { mat: "kovar" })); pads.forEach(p => lead(p.x, p.y, 1.5));
     } else if ((m = /^(TO-1|TO-5|MP)-/.exec(name))) {
       // germanium cans: TO-1 tall and slim, TO-5 low and wide, the USSR MP can on its flange
       const r = fp.silk.find(t => t.t === "circle").r, H = { "TO-1": 9, "TO-5": 6.4, MP: 9.5 }[m[1]];
-      if (m[1] === "MP") out.push(cylZ(0, 0, r, 1.5, 2.1, C.metal, to), cylZ(0, 0, r * 0.68, 2.1, 1.5 + H, C.metal, to));
-      else out.push(cylZ(0, 0, r, 1.5, 2, C.metal, to), cylZ(0, 0, r * 0.88, 2, 1.5 + H, C.metal, to), box(r * 0.62, r * 0.62, r * 0.62 + 0.8, r * 0.62 + 0.8, 1.5, 2, C.metal, to));
+      if (m[1] === "MP") out.push(...canBody(r * 0.68, r, 1.5, 2.1, 1.5 + H, "metal", to, 1.2));
+      else out.push(...canBody(r * 0.88, r, 1.5, 2, 1.5 + H, "metal", to, 1.2), box(r * 0.62, r * 0.62, r * 0.62 + 0.8, r * 0.62 + 0.8, 1.5, 2, C.metal, to));
       pads.forEach(p => lead(p.x, p.y, 1.5));
     } else if ((m = /^TO-(126|220|247|3P|264)-/.exec(name))) {
       const r = fp.silk.find(s => s.t === "rect"), tab = m[1] !== "126", H = { 126: 11, 220: 9.2, 247: 20.5, "3P": 20, 264: 26 }[m[1]], zb = 2.5;
@@ -663,7 +705,7 @@
     } else if (/^DIP-\d+$/.test(name)) {
       // the moulded body (7.62 mm row pitch: 6.35 mm wide, 3.3 mm thick) standing on its leads
       const r = fp.silk.find(q => q.t === "rect");
-      out.push(box(-3.2, r.y, 3.2, r.y + r.h, 0.5, 3.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 1));
+      out.push(...moulded([-3.2, r.y, 0.5, 3.2, r.y + r.h, 3.8], 3, Math.min(r.h - 2, 5), 1.9, Math.min(2, r.h - 3), to)); pads.forEach(p => lead(p.x, p.y, 1));
     } else if (fp.smd) {
       smdBody(g, fp, out, to);
     } else if (/^WIRE-/.test(name)) {
@@ -701,7 +743,7 @@
       out.push(...ecapBody(r, 1, H - 0.3, C.metal, "alBare", to), box(-b, -b, b, b, 0, 1, C.black, to, { cover: ["z2"] }), cylZ(0, 0, r * 0.94, H - 0.3, H, C.ecapTop, to, { cover: ["z1"] }));
       pads.forEach(p => out.push(box(p.x - Math.sign(p.x) * 0.3 - 0.6, -0.35, p.x - Math.sign(p.x) * 0.3 + 0.6, 0.35, 0, 0.1, C.lead, to)));
     } else if ((m = /^SOT-23-/.exec(name))) {
-      out.push(box(-1.45, -0.65, 1.45, 0.65, 0.1, 1.0, C.black, to));
+      out.push(...moulded([-1.45, -0.65, 0.1, 1.45, 0.65, 1.0], 1.2, 0.8, 0.4, 0.5, to));
       pads.forEach(p => out.push(box(p.x - 0.2, Math.min(p.y, Math.sign(p.y) * 0.65), p.x + 0.2, Math.max(p.y, Math.sign(p.y) * 0.65), 0, 0.12, C.lead, to)));
     } else if ((m = /^(SOT-89|SOT-223|DPAK|D2PAK)-/.exec(name))) {
       const T = D.TABBED[m[1]], [L, W, H] = T.body, yb = T.py - T.ph / 2 - 0.3, y0 = yb - W;
@@ -716,7 +758,7 @@
       pads.slice(0, T.pins).forEach(p => out.push(box(p.x - 0.3, yb, p.x + 0.3, p.y + T.ph / 2 - 0.3, 0, 0.15, C.lead, to)));
     } else if ((m = /^SOIC-(\d+)$/.exec(name))) {
       const n = +m[1], L = (n / 2 - 1) * 1.27 + 1.1 + 0.6;
-      out.push(box(-1.95, -L / 2, 1.95, L / 2, 0.15, 1.6, C.black, to));
+      out.push(...moulded([-1.95, -L / 2, 0.15, 1.95, L / 2, 1.6], 2.4, Math.min(L - 0.8, 3), 0.6, Math.min(1.6, L - 1.2), to));
       pads.forEach(p => out.push(box(Math.min(p.x, Math.sign(p.x) * 1.95), p.y - 0.2, Math.max(p.x, Math.sign(p.x) * 1.95) - Math.sign(p.x) * 0.2, p.y + 0.2, 0, 0.15, C.lead, to)));
     } else if (name === "TRIM-TC33") {
       out.push(box(-1.9, -1.8, 1.9, 1.8, 0, 1.2, C.trim, to), cylZ(0, 0, 1.2, 1.2, 1.9, C.ceramic, to));

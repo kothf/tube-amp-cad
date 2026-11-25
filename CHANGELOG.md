@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.256.0] - 2026-11-25
+
+### Added
+- **More parts modelled inside.** TO-92, SOT-23, SOIC and DIP: a copper lead-frame paddle with the die
+  on it inside the moulding (the moulding in pieces round them, nothing overlapping). Metal cans
+  (TO-18, TO-1, TO-5, MP): hollow, the die on the header. Axial electrolytics: a can round a wound
+  core, a rubber bung. The MöbiusCAD export names them Frame, Die, Core and Bung.
+
+### Changed
+- The thermal map joins a part's bodies by the faces that lie on each other (a paddle in its
+  moulding, a body on another's face), and a paddle buried in its moulding spreads its heat out
+  through the moulding all round it; the paddle (or a can's header) is the case node, the die's
+  junction over it.
+
 ## [3.255.0] - 2026-11-25
 
 ### Changed
