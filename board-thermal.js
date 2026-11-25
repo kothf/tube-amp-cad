@@ -95,7 +95,12 @@
   const extent = (pts, dn) => { let lo = Infinity, hi = -Infinity; pts.forEach(p => { const d = v3.dot(p, dn); lo = Math.min(lo, d); hi = Math.max(hi, d); }); return hi - lo; };
   const FACE_KEYS = ["z1", "z2", "y1", "x2", "y2", "x1"];   // a box's faces in Board3D's prism order (its solids' `cover`)
   function polyFaces(s, dn, f) {
-    const hid = s.cover && s.faces.length === 6 ? new Set(s.cover.map(k => FACE_KEYS.indexOf(k))) : null;
+    // a box's faces by name; another prism's ends (z1, z2) and a holed prism's hole walls
+    let hid = null;
+    if (s.cover) {
+      hid = new Set(s.cover.map(k => FACE_KEYS.indexOf(k)).filter(i => i >= 0 && (s.faces.length === 6 || i < 2)));
+      if (s.cover.includes("holes") && s.holeFaces) for (let i = s.holeFaces[0]; i < s.holeFaces[1]; i++) hid.add(i);
+    }
     s.faces.forEach((fc, i) => {
       if (hid && hid.has(i)) return;        // against another body of the part, not open to the air
       const n = unit3(fc.n);
@@ -197,14 +202,38 @@
 
   // the box round a solid in the board frame
   const aabb = s => { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; s.verts.forEach(v => { for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], v[k]); hi[k] = Math.max(hi[k], v[k]); } }); return { lo, hi }; };
+  // a planar face's area, centroid and a point-in-face test (outer loop less its holes), in its own plane
+  function faceGeo(s, f) {
+    const n = unit3(f.n), d = [0, 1, 2].reduce((m, k) => (Math.abs(n[k]) > Math.abs(n[m]) ? k : m), 0), iu = (d + 1) % 3, iv = (d + 2) % 3;
+    const ring = l => l.map(i => [s.verts[i][iu], s.verts[i][iv]]);
+    const shoe = r => r.reduce((a, p, i) => { const q = r[(i + 1) % r.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0) / 2;
+    const rings = f.loops.map(ring), area = Math.abs(shoe(rings[0])) - rings.slice(1).reduce((a, r) => a + Math.abs(shoe(r)), 0);
+    const pts = f.loops[0].map(i => s.verts[i]), c = [0, 1, 2].map(k => pts.reduce((a, p) => a + p[k], 0) / pts.length);
+    const inRing = (r, u, v) => { let ins = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [x1, y1] = r[i], [x2, y2] = r[j]; if ((y1 > v) !== (y2 > v) && u < (x2 - x1) * (v - y1) / (y2 - y1) + x1) ins = !ins; } return ins; };
+    return { n, area: Math.abs(area), c, p0: pts[0], has: p => inRing(rings[0], p[iu], p[iv]) && !rings.slice(1).some(r => inRing(r, p[iu], p[iv])) };
+  }
+  /** the faces of two solids that lie on each other: [area mm², normal] each */
+  function faceContact(a, b) {
+    if (!a.faces || !b.faces) return [];
+    const ga = a.faces.map(f => faceGeo(a, f)), gb = b.faces.map(f => faceGeo(b, f)), out = [];
+    ga.forEach(f => gb.forEach(g => {
+      if (v3.dot(f.n, g.n) > -0.999 || Math.abs(v3.dot(v3.sub(f.c, g.p0), g.n)) > 0.02) return;
+      if (g.has(f.c)) out.push([Math.min(f.area, g.area), f.n]); else if (f.has(g.c)) out.push([Math.min(f.area, g.area), f.n]);
+    }));
+    return out;
+  }
   /** conductance (W/K) between two sets of solids where they touch: each touching pair of boxes by the area
       they share, through half of each body's thickness at its own conductivity */
   function contactG(as, bs) {
     // the heat crosses half of each body as a whole (a moulding split round its die is one body)
     const M = MAT(), whole = xs => { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; xs.forEach(x => { const q = aabb(x); for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], q.lo[k]); hi[k] = Math.max(hi[k], q.hi[k]); } }); return { lo, hi }; };
     const WA = whole(as), WB = whole(bs); let G = 0;
+    const across = n => { const d = [0, 1, 2].reduce((m, k) => (Math.abs(n[k]) > Math.abs(n[m]) ? k : m), 0); return [Math.min(5, (WA.hi[d] - WA.lo[d]) / 2), Math.min(5, (WB.hi[d] - WB.lo[d]) / 2)]; };
     as.forEach(a => bs.forEach(b => {
       const A = aabb(a), B2 = aabb(b), ka = M && M[a.mat] ? M[a.mat].k : 1, kb = M && M[b.mat] ? M[b.mat].k : 1;
+      // faces lying on each other (a paddle in the hole through its moulding, a body on another's face)
+      const fc = faceContact(a, b);
+      if (fc.length) { fc.forEach(([area, n]) => { const [la, lb] = across(n); G += area * 1e-6 / (la * 1e-3 / ka + lb * 1e-3 / kb); }); return; }
       for (let d = 0; d < 3; d++) {
         const gap = Math.max(A.lo[d], B2.lo[d]) - Math.min(A.hi[d], B2.hi[d]); if (Math.abs(gap) > 0.05) continue;
         let area = 1; for (let e = 0; e < 3; e++) if (e !== d) area *= Math.max(0, Math.min(A.hi[e], B2.hi[e]) - Math.max(A.lo[e], B2.lo[e]));
@@ -222,12 +251,12 @@
   function bodyNodes(sol, type, bulb) {
     const M = MAT(), groups = new Map(), leads = [];
     sol.forEach(x => {
-      if (x.inner) return;
+      if (x.inner && !x.main) return;      // a body inside (a die, a winding); a lead-frame paddle inside its moulding still carries the part
       if (x.mat === "lead" || x.mat === "gold") { leads.push(x); return; }
       const k = M && M[x.mat] ? M[x.mat].k : 1, key = x.node || (bulb && x.glass ? "bulb" : k >= 10 ? x.mat : "low");
       if (!groups.has(key)) groups.set(key, []); groups.get(key).push(x);
     });
-    if (groups.size < 2) return { main: sol.filter(x => !x.inner), extra: [] };
+    if (groups.size < 2) return { main: sol.filter(x => !x.inner || x.main), extra: [] };
     const area = xs => xs.reduce((a, x) => { const { lo, hi } = aabb(x), e = [0, 1, 2].map(k => hi[k] - lo[k]); return a + 2 * (e[0] * e[1] + e[1] * e[2] + e[0] * e[2]); }, 0);
     let mainKey = null;
     for (const [k, xs] of groups) if (xs.some(x => x.main)) mainKey = k;
@@ -235,7 +264,20 @@
     if (!mainKey) { let best = -1; for (const [k, xs] of groups) if (xs.some(x => x.heat) && area(xs) > best) { best = area(xs); mainKey = k; } }
     if (!mainKey) mainKey = groups.keys().next().value;
     const main = groups.get(mainKey), extra = [];
-    for (const [k, xs] of groups) if (k !== mainKey) { const G = contactG(xs, main); if (G > 1e-6) extra.push({ key: k, solids: xs, G }); }
+    // a lead-frame paddle inside its moulding: the heat spreads out through the moulding all round it (the paddle
+    // and its die in contact with it, out to the moulding's open surface): k·√(Ai·Ao)/t
+    const embedded = main.every(x => x.inner), core = embedded ? main.concat(sol.filter(x => x.inner && x.heat)) : null;
+    for (const [k, xs] of groups) if (k !== mainKey) {
+      let G = contactG(xs, main);
+      if (embedded) {
+        const Ai = core.reduce((a, c) => a + xs.reduce((u, x) => u + faceContact(c, x).reduce((w, [ar]) => w + ar, 0), 0), 0), Ao = films(xs, [0, 0, -1]).area;
+        const W = xs.map(aabb).reduce((w, q) => ({ lo: w.lo.map((v, i) => Math.min(v, q.lo[i])), hi: w.hi.map((v, i) => Math.max(v, q.hi[i])) })), I = core.map(aabb).reduce((w, q) => ({ lo: w.lo.map((v, i) => Math.min(v, q.lo[i])), hi: w.hi.map((v, i) => Math.max(v, q.hi[i])) }));
+        const tt = Math.max(0.3, Math.min(...[0, 1, 2].map(i => (W.hi[i] - W.lo[i] - (I.hi[i] - I.lo[i])) / 2)));
+        const kx = M && M[xs[0].mat] ? M[xs[0].mat].k : 1;
+        if (Ai > 0 && Ao > 0) G = Math.max(G, kx * Math.sqrt(Ai * Ao) * 1e-3 / tt);
+      }
+      if (G > 1e-6) extra.push({ key: k, solids: xs, G });
+    }
     return { main: main.concat(leads), extra };
   }
   // a through-hole lead as the 3D view draws it (a round wire up from the pad, and the piece over to the
@@ -336,7 +378,7 @@
       // heat evenly: the axis is P / (4π·k·L) over the can)
       const M = MAT(), ext = x => { const e = [0, 1, 2].map(k => Math.max(...x.verts.map(v => v[k])) - Math.min(...x.verts.map(v => v[k]))).sort((a, b) => a - b); return e; };
       const dieS = M && sol.find(x => x.mat === "silicon" && x.heat), coreS = M && sol.find(x => x.mat === "ecore" && x.round);
-      if (dieS) { const [, a, b] = ext(dieS); P.rDie = root.Board3D.dieR(Math.sqrt(a * b)); }
+      if (dieS) { const [, a, b] = ext(dieS), base = sol.find(x => x.main && M[x.mat]); P.rDie = root.Board3D.dieR(Math.sqrt(a * b), base ? M[base.mat].k : undefined); }
       if (coreS) P.gCore = 4 * Math.PI * M.ecore.k * coreS.round.h * 1e-3;
       // an electrolytic: its rated temperature is its limit, its rated life halves with every 10 °C above it
       if (g.type === "electrolytic") { const q = (g.members[0] && g.members[0].params) || {}; P.cap = { tr: +q.temp > 0 ? +q.temp : CAP_TEMP, l0: +q.life > 0 ? +q.life : CAP_LIFE }; }

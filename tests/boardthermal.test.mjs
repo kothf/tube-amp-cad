@@ -212,3 +212,25 @@ test("inner bodies: a die on the tab sized to the datasheet's Rjc, an electrolyt
   near(c.tCore, c.t + 0.5 / (4 * Math.PI * M.ecore.k * core.round.h * 1e-3), 1e-6, "the core: P / (4π·k·L) over the can");
   near(c.life, Math.min(130000, 2000 * 2 ** ((105 - c.tCore) / 10)), 1e-6, "life from the core");
 });
+
+test("small packages, metal cans and axial electrolytics are modelled inside too: a paddle and die, a die on the header, a core", () => {
+  const D3 = globalThis.Board3D;
+  const bodiesOf = (name, pins) => D3.partBodies({ ref: "X1", type: "npn", members: [], fp: B.footprint(name, pins), place: { x: 50, y: 40, rot: 0, side: "F" } }, 1.6, {});
+  for (const [name, pins] of [["TO-92-EBC", ["E", "B", "C"]], ["SOT-23-BEC", ["B", "E", "C"]], ["DIP-8", ["1", "2", "3", "4", "5", "6", "7", "8"]], ["SOIC-8", ["1", "2", "3", "4", "5", "6", "7", "8"]]]) {
+    const sol = bodiesOf(name, pins), die = sol.filter(x => x.mat === "silicon"), frame = sol.filter(x => x.mat === "frame");
+    assert.equal(die.length, 1, name); assert.equal(frame.length, 1, name);
+    assert.ok(die[0].heat && die[0].inner && frame[0].main && frame[0].inner, name);
+    assert.ok(sol.filter(x => x.mat === "epoxy").length >= 3, `${name}: the moulding in pieces round them`);
+  }
+  for (const [name, pins] of [["TO-18-EBC", ["E", "B", "C"]], ["TO-5-EBC", ["E", "B", "C"]]]) {
+    const sol = bodiesOf(name, pins), head = sol.find(x => x.main);
+    assert.ok(head && sol.some(x => x.mat === "silicon" && x.heat) && sol.some(x => x.round && x.round.holes && x.round.holes.length), `${name}: a header, a die and a hollow can`);
+  }
+  const ax = bodiesOf("ECAP-AXIAL-25.4", ["+", "-"]);
+  assert.ok(ax.some(x => x.mat === "ecore" && x.heat) && ax.some(x => x.mat === "rubber") && ax.some(x => x.main && x.round.holes.length), "an axial electrolytic: can, core, bung");
+  // on a board: a TO-92's paddle is the case node, its moulding cooler, its junction a little over the paddle
+  const q = part("q1", "npn", "VT1", {}, { C: 1, B: 2, E: 0 }), s = setup(60, 40, [q], { VT1: { x: 30, y: 20 } }, { q1: 0.3 }), r = of(run(s), "VT1");
+  assert.match(s.model.parts[0].fp.name, /^TO-92/);
+  assert.ok(r.bodies && r.bodies[0].t < r.t && r.bodies[0].t > r.t - 30, `moulding ${r.bodies && r.bodies[0].t}, paddle ${r.t}`);
+  assert.ok(r.tj > r.t && r.tj < r.t + 5, `junction ${r.tj} over the paddle ${r.t}`);
+});
