@@ -54,7 +54,7 @@
     const pick = re => { const k = Object.keys(par).find(n => re.test(n)); return k ? par[k] : ""; };
     return { source: "DigiKey", maker: (p.Manufacturer && p.Manufacturer.Name) || "", series: p.Series && p.Series.Name && p.Series.Name !== "-" ? p.Series.Name : "", mpn: p.ManufacturerProductNumber || "",
       pkg: pick(/^Package \/ Case$/i), device: pick(/^Supplier Device Package$/i), size: pick(/^Size \/ Dimension$/i), height: pick(/^Height/i), lead: pick(/^Lead Spacing$/i),
-      mount: pick(/^Mounting Type$/i), power: pick(/^Power \(Watts\)$|^Power$/i), voltage: pick(/^Voltage - Rated$|^Voltage Rating/i), capacitance: pick(/^Capacitance$/i), temp: pick(/^Operating Temperature$/i), life: pick(/^Lifetime @ Temp/i) };
+      mount: pick(/^Mounting Type$/i), power: pick(/^Power \(Watts\)$|^Power$/i), pmax: pick(/^Power - Max$|^Power Dissipation \(Max\)$|^Power - Rated$/i), rth: pick(/^Thermal Resistance/i), voltage: pick(/^Voltage - Rated$|^Voltage Rating/i), capacitance: pick(/^Capacitance$/i), temp: pick(/^Operating Temperature$/i), life: pick(/^Lifetime @ Temp/i) };
   }
   /** DigiKey's prices for the product: the packaging sold in the smallest amounts (cut tape, bulk,
       tube; not full reels, nor Digi-Reel with its reeling fee), its price breaks [[qty, unit price]],
@@ -93,6 +93,13 @@
     comps.forEach(k => { k.params.part = JSON.parse(JSON.stringify(rec)); });
     // an electrolytic: its rated temperature and life go into its fields, for the board's thermal map
     if (c.type === "electrolytic") { const cr = root.PartNo.capRating(specs); comps.forEach(k => { if (cr.temp) k.params.temp = cr.temp; if (cr.life) k.params.life = cr.life; }); }
+    // a SPICE or library part (a semiconductor added by its number): the maker's junction data for the
+    // board's thermal map, unless its fields were typed in by hand
+    if (c.type === "spice" || c.type === "part") {
+      const k0 = c.params, fp = (k0.part && (k0.part.fp || k0.part.pkg)) || (k0.fp && k0.fp.name) || "", j = root.PartNo.thermal(specs, fp), typ = root.PartNo.typicalThermal(fp);
+      const own = k0.rjc !== undefined && !/^(DigiKey|typical)/.test(k0.tsrc || "");
+      if (j && !own) comps.forEach(k => { k.params.ptot = j.ptot || (typ && typ.ptot) || k.params.ptot; k.params.rjc = j.rjc || (typ && typ.rjc) || k.params.rjc; k.params.tjmax = j.tjmax; k.params.tsrc = "DigiKey"; });
+    }
     return r;
   }
   root.PartSearch = { ready, config, setConfig, lookUp, product, specsOf, pricingOf, CURRENCIES, KEY };

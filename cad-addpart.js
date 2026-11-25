@@ -132,9 +132,34 @@
       try { ix = await F.load(o.index); } catch (e) { failed = e.message; }
       if (!st || mine !== st.busy) return;
       if (!ix && !own) { say("warn", `⚠ The list of models could not be read (${failed}). Check the connection and try again.`); return; }
+      dkLookUp(pn);
       st.ix = ix; st.list = (own ? [{ name: own.key, kind: "own", own, why: own.key.toUpperCase() === F.norm(pn) ? "exact" : "base", file: "" }] : []).concat(ix ? F.candidates(ix, pn, 12) : []);
       if (!st.list.length) { say("warn", `No model of ${pn} in the library. If you have the maker's model file, press “I have the model file…”; the part number may also be spelled differently there (try it without its last letters).`); return; }
       await take(0);
+    }
+    // the maker's junction data from DigiKey (with the user's key): Ptot, Rθjc, Tjmax; the dialog shows
+    // them and the part takes them (else the package's typical values)
+    function dkLookUp(pn) {
+      const S = root.PartSearch, N = root.PartNo; st.dk = null;
+      if (!S || !S.ready() || !N || !N.thermal) return;
+      const at = st;
+      S.product(pn).then(p => { if (st !== at || st.pn !== pn) return; st.dk = p ? S.specsOf(p) : false; if (st.model && !st.model.own) render(); })
+        .catch(() => { if (st === at && st.pn === pn) { st.dk = false; if (st.model && !st.model.own) render(); } });
+    }
+    /** The junction the part takes: { ptot, rjc, tjmax, src } from DigiKey's specs, what they leave out
+        typical for the package; null for a package with no die in it */
+    function junction() {
+      const N = root.PartNo; if (!N || !N.typicalThermal || !st.pkg) return null;
+      const fp = fpName(), typ = N.typicalThermal(fp), dk = st.dk ? N.thermal(st.dk, fp) : null;
+      if (!typ && !dk) return null;
+      const t = typ || {}, d = dk || {};
+      return { ptot: d.ptot || t.ptot, rjc: d.rjc || t.rjc, tjmax: d.tjmax || t.tjmax || 150, src: dk ? "DigiKey" + (dk.ptot && dk.rjc ? "" : ", the rest " + (t.src || "typical")) : t.src };
+    }
+    function junctionLine() {
+      const j = junction(); if (!j) return "";
+      const fm = v => (v >= 10 ? String(Math.round(v)) : String(+(+v).toPrecision(3)));
+      const why = st.dk === null && root.PartSearch && root.PartSearch.ready() ? " Asking DigiKey…" : j.src === (root.PartNo.typicalThermal(fpName()) || {}).src && !(root.PartSearch && root.PartSearch.ready()) ? " With a DigiKey key (BOM ▸ DigiKey key…) the maker's values are taken." : "";
+      return `<p class="insp-help" id="addpart-junction" title="For the board's thermal map: the die inside the package is sized to Rθjc and the junction is checked against Tjmax. The part's fields keep them; type the datasheet's values over them if they differ.">Junction: Ptot ${fm(j.ptot)} W, Rθjc ${fm(j.rjc)} °C/W, Tjmax ${Math.round(j.tjmax)} °C (${esc(j.src)}).${why}</p>`;
     }
     // download candidate k and show what it is
     async function take(k) {
@@ -193,6 +218,7 @@
       const m = st.model, S = root.CadLib.SPICE_SYMS[st.sym], N = root.PartNo, name = st.list[st.k].name;
       const p = { name, text: m.text, sub: m.sub, sym: st.sym, pinNames: S ? m.pins.slice() : m.pins.map(x => String(x).toUpperCase()), map: S ? st.map.slice() : m.pins.map((_, i) => String(i + 1)) };
       p.partno = st.pn; if (st.sym === "reg" && st.adj) p.adj = true;
+      const j = junction(); if (j) { p.ptot = j.ptot; p.rjc = j.rjc; p.tjmax = j.tjmax; p.tsrc = j.src; }
       if (N && st.pkg) p.part = { no: N.norm(st.pn), maker: "", text: FAMILY[st.sym] ? st.pkg : (DIODE_NAMES[st.pkg] || st.pkg).replace(/^WIRE-(\d+)$/, "wire pads").replace(/ \(.*$/, "").replace(/,.*$/, ""), fp: fpName(), source: "Add part" };
       return p;
     }
@@ -222,6 +248,7 @@
         ${st.sym === "opamp" ? `<label class="addpart-f" title="How many amplifiers the package holds: a TL071 one, a TL072 two, a TL074 four"><span>Amplifiers in the package</span><select id="addpart-amps"><option value="1">One</option><option value="2">Two (dual)</option><option value="4">Four (quad)</option></select></label>` : ""}
         ${packs.length ? `<label class="addpart-f"><span>Package</span><select id="addpart-pkg">${packs.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select></label>` : ""}
         ${fam && ords.length > 1 ? `<label class="addpart-f" title="Hold the part with its marking facing you and its legs down: the pins from left to right. The usual order for this kind of number is offered; the datasheet has the last word."><span>Pins, left to right</span><select id="addpart-order">${ords.map(x => `<option value="${x}">${x.split("").join(" ")}</option>`).join("")}</select></label><p class="insp-help addpart-check">${esc(words)}: check this against the datasheet, makers differ.</p>` : ""}
+        ${junctionLine()}
         ${pinRows(S)}
         ${st.sym === "box" ? `<p class="insp-help">The pads take the model's pins in the model's order, pad 1 first: check them against the datasheet's pinout.</p>` : ""}
         ${(st.sym === "opamp" || st.sym === "comp") && st.amps > 1 ? `<p class="insp-help">It goes into your parts library and its ${st.amps} ${st.sym === "comp" ? "comparators" : "amplifiers"} and supply pins are placed together (DA1.1 … DA1.${st.amps + 1}).</p>` : ""}`;
@@ -263,7 +290,7 @@
       if ((st.sym === "opamp" || st.sym === "comp") && st.amps > 1) {
         // a dual or quad: a library part of several units, all of them placed at once
         const made = root.PartLib.opampPackage(name, st.amps, /^SOIC/.test(st.pkg) ? "soic" : "dip", { text: m.text, sub: m.sub, order: st.map.slice() }, st.sym === "comp");
-        const id = o.library.addPart(made.part, made.fp), units = st.amps + 1, prm = u => Object.assign(o.library.paramsOf(id, u), { partno: pn });
+        const id = o.library.addPart(made.part, made.fp), units = st.amps + 1, j = junction(), prm = u => Object.assign(o.library.paramsOf(id, u), { partno: pn }, j ? { ptot: j.ptot, rjc: j.rjc, tjmax: j.tjmax, tsrc: j.src } : {});
         const more = []; for (let u = 2; u <= units; u++) more.push({ params: prm(u), dx: u === units ? 200 : 0, dy: u === units ? 0 : (u - 1) * 120 });
         close(); o.place("part", prm(1), more);
         o.setStatus("ok", `${name}: click where its ${st0 === "comp" ? "comparators" : "amplifiers"} go; it is in My library now.`);
