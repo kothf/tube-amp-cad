@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-outline.js", "board-core.js", "board-fab.js", "board-3d.js", "board-thermal.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+for (const f of ["tube-db.js", "sim-engine.js", "spice-model.js", "spice-net.js", "cad-components.js", "mpn.js", "board-outline.js", "board-core.js", "board-fab.js", "board-3d.js", "board-thermal.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
 const B = globalThis.BoardCore, L = globalThis.CadLib, T = globalThis.BoardThermal;
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} vs ${b} ± ${tol}`);
 const part = (id, type, label, params, pins) => ({ id, type, label, params: Object.assign({}, L.LIB[type].defaults, params), pins: Object.entries(pins).map(([pid, net]) => ({ id: pid, net })) });
@@ -233,4 +233,19 @@ test("small packages, metal cans and axial electrolytics are modelled inside too
   assert.match(s.model.parts[0].fp.name, /^TO-92/);
   assert.ok(r.bodies && r.bodies[0].t < r.t && r.bodies[0].t > r.t - 30, `moulding ${r.bodies && r.bodies[0].t}, paddle ${r.t}`);
   assert.ok(r.tj > r.t && r.tj < r.t + 5, `junction ${r.tj} over the paddle ${r.t}`);
+});
+
+test("a part added by its part number: its die sized to its own Rθjc (DigiKey's or typical for the package), the junction checked against its Tjmax", () => {
+  const D3 = globalThis.Board3D;
+  const sp = (rj, extra) => Object.assign({}, L.LIB.spice.defaults, { name: "IRFZ44N", sym: "nmos", text: ".MODEL IRFZ44N NMOS(VTO=3 KP=20)", sub: "", pinNames: ["D", "G", "S"], map: ["D", "G", "S"],
+    partno: "IRFZ44N", part: { no: "IRFZ44N", text: "TO-220", fp: "TO-220-GDS", source: "Add part" } }, rj, extra);
+  const mk = prm => setup(80, 60, [{ id: "q1", type: "spice", label: "VT1", params: prm, pins: [{ id: "D", net: 1 }, { id: "G", net: 2 }, { id: "S", net: 0 }] }], { VT1: { x: 40, y: 30, heat: "air" } }, { q1: 1.5 });
+  const dieOf = s => { const g = s.model.parts.find(x => x.ref === "VT1"), d = D3.partBodies(g, 1.6, {}).find(x => x.mat === "silicon");
+    return D3.dieR(Math.sqrt([0, 1, 2].map(k => Math.max(...d.verts.map(v => v[k])) - Math.min(...d.verts.map(v => v[k]))).sort((x, y) => x - y).slice(1).reduce((x, y) => x * y))); };
+  const own = mk(sp({ ptot: 94, rjc: 1.6, tjmax: 175, tsrc: "DigiKey" })), r = of(run(own), "VT1");
+  near(dieOf(own), 1.6, 0.01, "the die's Rθjc is the part's");
+  near(r.rjc, 1.6, 0.01, "the map's"); near(r.tj, r.t + 1.5 * r.rjc, 1e-6, "tj"); assert.equal(r.limit, 175);
+  // a part saved before it had the fields: typical for its package
+  const old = mk(sp({})), ro = of(run(old), "VT1");
+  near(dieOf(old), 2, 0.01, "typical TO-220"); assert.equal(ro.limit, 150);
 });

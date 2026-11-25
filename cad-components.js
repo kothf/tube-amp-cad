@@ -2113,11 +2113,24 @@
   }
   // the fields that set a SPICE part's transistors' temperature, and a lone one's cooling (its
   // package and Ptot give its thermal path, as the CAD's own transistors' do)
+  // A SPICE or library part in a package (one added by its part number, or with a footprint of its
+  // own): its junction for the board's thermal map, { ptot, rjc, tjmax, src }: what its fields say
+  // (Add part… fills them from DigiKey or the package's typical values), the rest typical for the package
+  function junctionData(c) {
+    const p = c && c.params, N = root.PartNo; if (!p || !N || !N.typicalThermal) return null;
+    const fp = (p.part && (p.part.fp || p.part.pkg)) || (p.fp && p.fp.name) || "", typ = N.typicalThermal(fp);
+    const own = k => (isFinite(p[k]) && p[k] !== "" && p[k] !== null && +p[k] > 0 ? +p[k] : undefined);
+    if (!typ && own("rjc") === undefined) return null;
+    const t = typ || { ptot: 1, rjc: 50, tjmax: 150 };
+    return { ptot: own("ptot") ?? t.ptot, rjc: own("rjc") ?? t.rjc, tjmax: own("tjmax") ?? t.tjmax, src: p.tsrc || (own("rjc") !== undefined ? "" : t.src || "") };
+  }
   const SPICE_THERM_FIELDS = [
     { key: "temp", label: "Temperature", unit: "°C", kind: "number", min: -40, max: 150, dflt: 25, when: c => !!spiceBjt(c) },
     { key: "thermal", label: "Cooling", kind: "select", options: [["", "Fixed temperature"], ["air", "Self-heating, free air"], ["hs1", "Self-heating, heatsink 1"], ["hs2", "Self-heating, heatsink 2"], ["hs3", "Self-heating, heatsink 3"], ["hs4", "Self-heating, heatsink 4"]], when: c => spiceBjt(c) === "lone" },
     { key: "tpkg", label: "Case", kind: "select", options: [["TO-92", "TO-92"], ["TO-18", "TO-18"], ["TO-5", "TO-5"], ["TO-126", "TO-126"], ["TO-220", "TO-220"], ["TO-220F", "TO-220F"], ["TO-247", "TO-247"], ["TO-3P", "TO-3P"], ["TO-264", "TO-264"], ["TO-3", "TO-3"], ["TO-1", "TO-1"], ["MP", "MP"], ["SOT-9", "SOT-9"]], when: c => spiceBjt(c) === "lone" && !!c.params.thermal },
-    { key: "ptot", label: "Ptot", unit: "W", kind: "number", min: 0.05, max: 1000, dflt: 0.625, when: c => spiceBjt(c) === "lone" && !!c.params.thermal },
+    { key: "ptot", label: "Ptot", unit: "W", kind: "number", typed: "tsrc", min: 0.01, max: 1000, dflt: c => (junctionData(c) || {}).ptot || 0.625, when: c => spiceBjt(c) === "lone" && !!c.params.thermal || !!junctionData(c) },
+    { key: "rjc", label: "Rθjc", unit: "°C/W", kind: "number", typed: "tsrc", min: 0.05, max: 500, dflt: c => (junctionData(c) || {}).rjc, when: c => !!junctionData(c) },
+    { key: "tjmax", label: "Tjmax", unit: "°C", kind: "number", typed: "tsrc", min: 85, max: 250, dflt: c => (junctionData(c) || {}).tjmax, when: c => !!junctionData(c) },
     { key: "hsr", label: "Heatsink Rth", unit: "°C/W", kind: "number", min: 0.05, max: 100, dflt: 1.5, when: c => spiceBjt(c) === "lone" && /^hs/.test(c.params.thermal || "") }];
   // SN.build's temperature and self-heating for a SPICE part (nothing when it is at 25 °C and fixed)
   function spiceTherm(c) {
@@ -4264,5 +4277,10 @@
     return wrap;
   }
 
-  root.CadLib = { busMembers, isBusName, LOGIC_ICS, LOGIC_FAMS, logicGeom, logicPinIds, logicSpice, partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, lampGlowP, lampHeat, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, pwlPoints, genWave, genFreq, tubeByName, tubeKind, tubeWarmup };
+  // a packaged SPICE or library part's info ends with its junction, for the board's thermal map
+  ["spice", "part"].forEach(k => {
+    const info = LIB[k].info, fm = v => (v >= 10 ? String(Math.round(v)) : String(+(+v).toPrecision(3)));
+    LIB[k].info = c => { const t = info(c), j = junctionData(c); return j ? `${String(t).trim()} Junction for the board's thermal map: Ptot ${fm(j.ptot)} W, Rθjc ${fm(j.rjc)} °C/W, Tjmax ${Math.round(j.tjmax)} °C${j.src ? ` (${j.src})` : " (as typed)"}.` : t; };
+  });
+  root.CadLib = { junctionData, busMembers, isBusName, LOGIC_ICS, LOGIC_FAMS, logicGeom, logicPinIds, logicSpice, partSym, SPICE_SYMS, SPICE_KIND_SYM, spiceBox, spiceElements, socketOptions, anodeTemp, CHIPAMPS, NEONS, EYES, eyeShadow, eyeShadowText, HGRECTS, LAMPS, lampLaw, lampGlow, lampGlowP, lampHeat, BATTERIES, batteryState, METER_FS, meterModel, NIXIES, PICKUPS, CARTRIDGES, RIAA_T, riaaRec, RELAYS, relayCoil, VACTROLS, vactrolModel, GASREGS, ITX_PRESETS, DIODES, BRIDGES, NTCS, ntcLaw, MOVS, movModel, FUSE_RATINGS, fuseCold, JACKS, XTS, JFETS, REGS, regModel, SHUNTS, semiTable, isFet, isTransistor, bjtAt, SPEAKER_PRESETS, speakerTS, speakerZ, FLIP_FIELD, LIB, DRAW, COL, PALETTE, SHEETS, sheetGeom, MM, POWER_TX, powerTx, OUTPUT_TX, OPT_SE, OPT_PP, optModel, BJTS, MOSFETS, ZENERS, LEDS, OPAMPS, opampModel, semiRating, parseEng, fmtEng, pwlPoints, genWave, genFreq, tubeByName, tubeKind, tubeWarmup };
 })(globalThis);

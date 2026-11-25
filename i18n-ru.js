@@ -3,6 +3,13 @@
    translated. Patterns cover texts with numbers in them. */
 (function (root) {
   "use strict";
+  // a packaged part's junction line (cad-components.js info, cad-addpart.js): "Junction for the board's
+  // thermal map: Ptot 94 W, Rθjc 1.6 °C/W, Tjmax 175 °C (DigiKey)." and what follows it
+  function ruJunction(t) {
+    const src = x => x.replace(/^as typed$/, "введено вручную").replace(/^typical for /, "типично для ").replace(/^DigiKey, the rest typical for (.+)$/, "DigiKey, остальное типично для $1");
+    return String(t).replace(/ ?Junction for the board's thermal map: Ptot (\S+) W, Rθjc (\S+) °C\/W, Tjmax (\S+) °C \((.+?)\)\.( Asking DigiKey…)?( With a DigiKey key \(BOM ▸ DigiKey key…\) the maker's values are taken\.)?/,
+      (m, p, r, t2, s2, ask, key) => ` Переход для теплового расчёта платы: Ptot ${p} Вт, Rθjc ${r} °C/Вт, Tjmax ${t2} °C (${src(s2)}).${ask ? " Спрашиваю DigiKey…" : ""}${key ? " С ключом DigiKey (BOM ▸ DigiKey key…) берутся данные производителя." : ""}`);
+  }
   const text = {
     // --- toolbar and menus --------------------------------------------------------------------
     "Schematic": "Схема", "Board": "Плата", "Untitled": "Без имени",
@@ -1407,7 +1414,7 @@
     "As simulated: each part's heat averaged over the signal's cycle. At idle: at the operating point, without the signal": "Как в симуляции: тепло каждой детали, усреднённое за период сигнала. В покое: в рабочей точке, без сигнала",
     "How much of the copper and silkscreen shows through the colours": "Насколько медь и шелкография просвечивают сквозь цвета",
     "Heat on the board:": "Тепло на плате:", "Board, hottest:": "Плата, самое горячее:", "Hottest part:": "Самая горячая деталь:", "Over their limit:": "Выше предела:",
-    "Heat:": "Тепло:", "Goes:": "Уходит:", "Warmed by:": "Греется от:", "Body:": "Корпус детали:", "Bulb:": "Баллон:", "Case:": "Корпус:", "Junction:": "Переход:", "Core:": "Сердцевина:", "Mounted:": "Монтаж:",
+    "Heat:": "Тепло:", "Goes:": "Уходит:", "Warmed by:": "Греется от:", "Body:": "Корпус детали:", "Bulb:": "Баллон:", "Case:": "Корпус:", "Junction:": "Переход:", "For the board's thermal map: the die inside the package is sized to Rθjc and the junction is checked against Tjmax. The part's fields keep them; type the datasheet's values over them if they differ.": "Для теплового расчёта платы: кристалл внутри корпуса делается по Rθjc, переход проверяется по Tjmax. Значения хранятся в полях детали; впишите значения из даташита, если они другие.", "Core:": "Сердцевина:", "Mounted:": "Монтаж:",
     "none of its own": "своего нет", "air": "воздух",
     "lying on the board": "лежит на плате", "raised off the board": "приподнят над платой", "Height above board (mm)": "Высота над платой (мм)", "The gap between the board and the lying body (0.4 mm usual). Raise a hot resistor 5–10 mm on its leads so air flows under it and the board under it stays cool: the 3D view, STEP, the height check and the thermal map follow": "Зазор между платой и лежащим корпусом (обычно 0.4 мм). Приподнимите горячий резистор на 5–10 мм на выводах, чтобы под ним шёл воздух и плата под ним оставалась холодной: 3D-вид, STEP, проверка высоты и тепловая карта это учитывают", "standing": "стоит", "surface mount": "поверхностный монтаж", "in its socket": "в панельке", "on a heatsink": "на радиаторе",
     "on a heatsink (assumed, 1.5 °C/W)": "на радиаторе (принят, 1.5 °C/Вт)", "upright": "вертикально", "wired, off the board": "на проводах, вне платы", "bent over, its tab on the copper": "согнута, фланец на меди", "on the chassis": "на шасси",
@@ -3041,7 +3048,7 @@
     [/^(\S+): its supply pins (\S+) and (\S+) are on one net, so it has no supply\.$/, "$1: выводы питания $2 и $3 на одной цепи, питания нет."],
     [/^(\S+) is shorted: both its terminals are on one net\.$/, "$1 закорочен: оба вывода на одной цепи."],
     // SPICE parts (cad-components.js LIB.spice, spice-part.js, the checks)
-    [/^SPICE (subcircuit|model) (\S+), simulated as written: (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `SPICE-${k === "model" ? "модель" : "подсхема"} ${n}, считается как написана: элементов ${e}, узлов ${nd}.${rest.replace(/ Its MOSFETs run Berkeley's (BSIM\d)(?: and (BSIM\d))? model, as ngspice does\./, (x, a, b) => ` Её МОП-транзисторы считаются по берклиевской модели ${a}${b ? " и " + b : ""}, как в ngspice.`)}`],
+    [/^SPICE (subcircuit|model) (\S+), simulated as written: (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `SPICE-${k === "model" ? "модель" : "подсхема"} ${n}, считается как написана: элементов ${e}, узлов ${nd}.${ruJunction(rest).replace(/ Its MOSFETs run Berkeley's (BSIM\d)(?: and (BSIM\d))? model, as ngspice does\./, (x, a, b) => ` Её МОП-транзисторы считаются по берклиевской модели ${a}${b ? " и " + b : ""}, как в ngspice.`)}`],
     [/^(Subcircuit|Model) (\S+): (\d+) elements? on (\d+) nodes\.(.*)$/, (m, k, n, e, nd, rest) => `${k === "Model" ? "Модель" : "Подсхема"} ${n}: элементов ${e}, узлов ${nd}.${rest ? " Пять выводов: принята за ОУ в обычном порядке (неинвертирующий вход, инвертирующий вход, V+, V−, выход); сверьте с комментарием модели." : ""}`],
     [/^The model cannot be simulated: (.+)\. The part is left out of the simulation\.$/, "Модель нельзя посчитать: $1. Деталь исключена из расчёта."],
     [/^(\S+) has no SPICE model yet \(select it, then Model…\): it is left out of the simulation\.$/, "У $1 пока нет SPICE-модели (выделите деталь и нажмите «Модель…»): она исключена из расчёта."],
@@ -3093,6 +3100,7 @@
     [/^(.+): updated from the library(?: \((\d+) units\))?$/, (m, a, n) => `${a}: обновлено из библиотеки${n ? ` (частей: ${n})` : ""}`],
     [/^Its (.+) in your parts library (?:has|have) changed since it was placed\.$/, (m, a) => `В вашей библиотеке с тех пор, как деталь поставлена, изменились: ${a.replace("drawing", "рисунок").replace("footprint", "посадочное место").replace("SPICE model", "SPICE-модель").replace("name", "имя").replace(" and ", ", ")}.`],
     // Add part… (cad-addpart.js, spice-find.js)
+    [/^Junction: (Ptot .+)$/, (m, a) => ruJunction(" Junction for the board's thermal map: " + a).trim()],
     [/^⚠ The list of models could not be read \((.+)\)\. Check the connection and try again\.$/, "⚠ Список моделей не прочитан. Проверьте соединение и попробуйте ещё раз."],
     [/^No model of (.+) in the library\. If you have the maker's model file, press “I have the model file…”; the part number may also be spelled differently there \(try it without its last letters\)\.$/, "Модели $1 в библиотеке нет. Если у вас есть файл модели от производителя, нажмите «У меня есть файл модели…»; номер там может быть записан иначе (попробуйте без последних букв)."],
     [/^Downloading the model of (.+)…$/, "Загружаю модель $1…"],

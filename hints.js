@@ -417,6 +417,8 @@
     "IG max": "Maximum forward gate current of the JFET.",
     "V(BR)GSS": "Gate–source breakdown voltage of the JFET.",
     "Ptot": "Total power rating at 25 °C (case for power parts, free air for small ones).",
+    "Rθjc": "Junction to case (°C/W): the board's thermal map sizes the die inside the package to it and adds P × Rθjc to the case temperature. Add part… fills it from DigiKey (with your key) or typical for the package; type the datasheet's value over it.",
+    "Tjmax": "The junction's limit (°C): the thermal map flags the part when its junction passes it. From DigiKey's operating range (TJ) when it gives one, else 150 °C.",
     "Package": "The transistor's case; the pin order is the maker's drawing.",
     "IS": "Gummel-Poon saturation current: sets VBE at a given current. Fitted to the datasheet's typical VBE curve.",
     "BF": "Forward current gain of the model (the ideal hFE before the high-current fall-off).",

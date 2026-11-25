@@ -293,5 +293,50 @@
     return { maker: s.maker || "", text: s.text || "", fp: s.fp || null, pkg: s.pkg || null, body: s.body || null, warn, known: true, saved: true, source: s.source || "", url: s.url || "", price: s.price || null, desc: s.desc || "" };
   }
 
-  root.PartNo = { lookup, fromSpecs, capRating, record, resolve, keep, describe, mmOf, footprintFor, norm, writtenSize, axialPitch, CHIP_CODES };
+  // ---------------------------------------------------------------------------
+  // A semiconductor's junction: its rated dissipation Ptot (W), its junction-to-case resistance
+  // Rθjc (°C/W) and its junction limit Tjmax (°C), for the board's thermal map (the die inside
+  // the package is sized to Rθjc, the junction is checked against Tjmax).
+  // THERMAL_PKG: typical values of a package, used when the maker's data is not at hand
+  // [footprint name pattern, Rθjc, Ptot, what]. A power case's Ptot is at a 25 °C case
+  // (Rθjc = (Tjmax − 25)/Ptot); a small one's in free air.
+  const THERMAL_PKG = [
+    [/^TO-92/, 83, 0.625, "TO-92"], [/^TO-18/, 83, 0.5, "TO-18"], [/^TO-(5|39)\b/, 35, 1, "TO-5"], [/^TO-1\b/, 100, 0.2, "TO-1"], [/^MP\b/, 60, 0.3, "MP"],
+    [/^TO-126/, 10, 12.5, "TO-126"], [/^TO-220F/, 4, 30, "TO-220F"], [/^TO-220/, 2, 62.5, "TO-220"], [/^TO-247/, 0.8, 150, "TO-247"], [/^TO-3P/, 0.8, 150, "TO-3P"], [/^TO-264/, 0.4, 300, "TO-264"], [/^TO-3\b/, 1, 125, "TO-3"],
+    [/^SOT-23/, 100, 0.35, "SOT-23"], [/^SOT-89/, 40, 1, "SOT-89"], [/^SOT-223/, 20, 2, "SOT-223"], [/^DPAK/, 3, 40, "DPAK"], [/^D2PAK/, 1.5, 80, "D²PAK"],
+    [/^SOIC-8\b/, 40, 0.8, "SOIC-8"], [/^SOIC/, 35, 1, "SOIC"], [/^DIP-[468]\b/, 45, 1, "DIP-8"], [/^DIP/, 40, 1.2, "DIP"],
+    [/^SMA\b/, 30, 1, "SMA"], [/^SMB\b/, 20, 1.5, "SMB"], [/^SMC\b/, 15, 3, "SMC"], [/^SOD-123/, 150, 0.4, "SOD-123"], [/^SOD-323/, 200, 0.2, "SOD-323"], [/^MINIMELF/, 150, 0.5, "MiniMELF"],
+    [/^DIODE-7\.62/, 100, 0.5, "DO-35"], [/^DIODE-10\.16/, 20, 1, "DO-41"], [/^DO-201/, 10, 3, "DO-201AD"]];
+  const TJMAX = 150;
+  /** Typical junction data for a footprint name ("TO-220-GDS", "SOIC-8"): { ptot, rjc, tjmax, src }, or null */
+  function typicalThermal(fp) {
+    const n = String(fp || "").toUpperCase().replace(/^LIB:/, "").replace("D²PAK", "D2PAK"), k = THERMAL_PKG.find(([re]) => re.test(n));
+    return k ? { rjc: k[1], ptot: k[2], tjmax: TJMAX, src: "typical for " + k[3] } : null;
+  }
+  // "625 mW", "50W (Tc)", "2.5W (Ta), 150W (Tc)" → [{ w, at: "c" | "a" | "" }]
+  function wattsOf(t) {
+    const out = [], re = /([\d.]+)\s*(m?)W\b\s*(?:\((T[ac])\))?/gi; let m;
+    while ((m = re.exec(String(t || "")))) { const w = +m[1] * (m[2] ? 1e-3 : 1); if (w > 0) out.push({ w, at: m[3] ? m[3][1].toLowerCase() : "" }); }
+    return out;
+  }
+  /** Junction data from a database's words (DigiKey's specs: pmax "Power - Max" / "Power Dissipation
+      (Max)", temp "Operating Temperature" with (TJ), rth "Thermal Resistance"): { ptot, rjc, tjmax,
+      src } with what it says, the rest from the law the app's own transistors follow: a power rating
+      at a 25 °C case gives Rθjc = (Tjmax − 25)/Ptot, a free-air one about a third of that path. null
+      when it says nothing of the power or the junction. */
+  function thermal(sp, fp) {
+    sp = sp || {};
+    const W = wattsOf(sp.pmax || sp.power), tc = W.find(x => x.at === "c"), pick = tc || W.slice().sort((a, b) => b.w - a.w)[0];
+    const tj = /TJ/i.test(String(sp.temp || "")) ? (String(sp.temp).match(/-?\d+(?=\s*°?\s*C)/g) || []).map(Number) : [];
+    const tjmax = tj.length && Math.max(...tj) >= 85 && Math.max(...tj) <= 250 ? Math.max(...tj) : null;
+    const rm = /([\d.]+)\s*°?\s*C\s*\/\s*W/i.exec(String(sp.rth || "")), rth = rm && /jc|junction.{0,12}case/i.test(String(sp.rth)) ? +rm[1] : null;
+    if (!pick && !tjmax && !rth) return null;
+    const typ = typicalThermal(fp), T = tjmax || TJMAX, ptot = pick ? pick.w : typ ? typ.ptot : null;
+    let rjc = rth;
+    if (!(rjc > 0) && ptot > 0) { const r = (T - 25) / ptot; rjc = pick && pick.at === "c" || !(pick && pick.at === "a") && ptot > 1 ? r : r / 3; }
+    if (!(rjc > 0) && typ) rjc = typ.rjc;
+    return { ptot: ptot ? +ptot.toPrecision(3) : null, rjc: rjc ? +rjc.toPrecision(3) : null, tjmax: T, src: "DigiKey" };
+  }
+
+  root.PartNo = { lookup, fromSpecs, capRating, record, resolve, keep, describe, mmOf, footprintFor, norm, writtenSize, axialPitch, CHIP_CODES, thermal, typicalThermal, THERMAL_PKG };
 })(typeof window !== "undefined" ? window : globalThis);

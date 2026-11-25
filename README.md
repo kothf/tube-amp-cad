@@ -1332,7 +1332,9 @@ the circuit file, so one file holds both.
   electrolytic's wound core in its can gives the core temperature its life
   is worked out from; small packages (TO-92, SOT-23, SOIC, DIP) have a
   lead-frame paddle and die inside, metal cans a die on the header, axial
-  electrolytics a core; a TO-220's tab and its moulding are separate nodes
+  electrolytics a core; a part added by its part number gets its die sized
+  to its own Rθjc and its junction checked against its Tjmax, filled from
+  DigiKey with your key, else typical for the package; a TO-220's tab and its moulding are separate nodes
   joined where they touch), the leads as the 3D view draws them: an estimate,
   about ±15 °C, for comparing layouts. Save PNG puts the scale in the picture.
   **View ▾ → Thermal overlay** draws the board's field over the layout and

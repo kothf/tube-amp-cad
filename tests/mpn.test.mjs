@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
 for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "mpn.js", "mpn-online.js", "board-core.js", "board-3d.js", "pdf-export.js", "bom.js"]) runInThisContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), { filename: f });
+const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what || ""}: ${a} vs ${b} ± ${tol}`);
 const P = globalThis.PartNo, PS = globalThis.PartSearch, B = globalThis.BoardCore, L = globalThis.CadLib, D3 = globalThis.Board3D, BOM = globalThis.BomLib;
 const look = (pn, type, params) => P.lookup(pn, type, params || {});
 
@@ -273,4 +274,29 @@ test("prices: DigiKey's breaks saved with the part, the BOM's line totals for th
   const lo = BOM.toOrderCsv(bom, "lcsc"), ll = lo.csv.split("\r\n");
   assert.equal(ll[0], "Quantity,LCSC Part Number,Manufacture Part Number,Manufacturer,Designator,Description,Package");
   assert.ok(ll.some(l => l.startsWith("5,C12345,UKW1H101MPD,")), lo.csv);
+});
+
+test("a semiconductor's junction: typical for its package, else from DigiKey's power and junction temperature; Look up fills a SPICE part's fields", async () => {
+  // typical values by package (a power case's Ptot at a 25 °C case, a small one's in free air)
+  assert.deepEqual(P.typicalThermal("TO-220-GDS"), { rjc: 2, ptot: 62.5, tjmax: 150, src: "typical for TO-220" });
+  assert.equal(P.typicalThermal("SOIC-8").rjc, 40); assert.equal(P.typicalThermal("D²PAK-GDS").rjc, 1.5); assert.equal(P.typicalThermal("CHIP-0805"), null);
+  // a MOSFET: the case rating (Tc) is taken over the free-air one, Tjmax from the (TJ) range
+  assert.deepEqual(P.thermal({ pmax: "3.8W (Ta), 94W (Tc)", temp: "-55°C ~ 175°C (TJ)" }, "TO-220-GDS"), { ptot: 94, rjc: 1.6, tjmax: 175, src: "DigiKey" });
+  // a small transistor: free air, a third of the path inside the case, as the app's own transistors
+  near(P.thermal({ pmax: "625 mW", temp: "-55°C ~ 150°C (TJ)" }, "TO-92-EBC").rjc, 125 / 0.625 / 3, 0.1);
+  // the datasheet's own Rθjc when the database gives it; nothing said of the junction: null
+  assert.equal(P.thermal({ pmax: "50 W", rth: "1.25°C/W (Junction to Case)" }, "TO-220-GDS").rjc, 1.25);
+  assert.equal(P.thermal({ temp: "0°C ~ 70°C (TA)" }, "DIP-8"), null);
+  // Look up on a SPICE part added by its number: its fields take DigiKey's values; typed ones stay
+  const f = fakeDigiKey({ IRFZ44N: { ManufacturerProductNumber: "IRFZ44N", Manufacturer: { Name: "Infineon" }, Parameters: [{ ParameterText: "Package / Case", ValueText: "TO-220-3" }, { ParameterText: "Power Dissipation (Max)", ValueText: "3.8W (Ta), 94W (Tc)" }, { ParameterText: "Operating Temperature", ValueText: "-55°C ~ 175°C (TJ)" }] } });
+  PS.setConfig("id", "secret");
+  const q = { type: "spice", params: { partno: "IRFZ44N", part: { no: "IRFZ44N", fp: "TO-220-GDS" }, rjc: 2, ptot: 62.5, tjmax: 150, tsrc: "typical for TO-220" } };
+  await PS.lookUp(q, f);
+  assert.deepEqual([q.params.ptot, q.params.rjc, q.params.tjmax, q.params.tsrc], [94, 1.6, 175, "DigiKey"]);
+  const typed = { type: "spice", params: { partno: "IRFZ44N", part: { no: "IRFZ44N", fp: "TO-220-GDS" }, rjc: 1.1 } };
+  await PS.lookUp(typed, f); assert.equal(typed.params.rjc, 1.1);
+  // the inspector: the fields show what the thermal map takes
+  const j = L.junctionData({ params: { part: { fp: "TO-220-GDS" }, rjc: 1.1 } });
+  assert.deepEqual(j, { ptot: 62.5, rjc: 1.1, tjmax: 150, src: "" });
+  assert.equal(L.junctionData({ params: { part: { fp: "CHIP-0805" } } }), null);
 });

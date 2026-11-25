@@ -50,6 +50,9 @@
   // part's is in free air, about a third of that path inside the case
   function junction(g) {
     const L = root.CadLib, p = (g.members && g.members[0] && g.members[0].params) || {}; if (!L || !g.members) return null;
+    // a SPICE or library part in a package: its own fields (Ptot, Rθjc, Tjmax: from DigiKey when it was
+    // added by its number, else typical for the package)
+    if ((g.type === "spice" || g.type === "part") && L.junctionData) { const j = L.junctionData(g.members[0]); return j && j.rjc > 0 ? { rjc: j.rjc, tjmax: j.tjmax || 150, src: j.src } : null; }
     let m = null, pt = 0;
     if (ONE_LEAD.has(g.type) && L.semiTable && L.isTransistor && L.isTransistor(g.type)) { m = (L.semiTable(g.type) || {})[p.model]; pt = m && m.p; }
     else if (g.type === "reg") { m = (L.REGS || {})[p.model]; pt = m && m.p; }

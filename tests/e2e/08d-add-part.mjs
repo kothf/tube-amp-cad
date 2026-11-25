@@ -26,10 +26,13 @@ import { fileURLToPath } from "node:url";
   await cad.selectOption("#addpart-pkg", "TO-220");
   check(await cad.evaluate(() => document.getElementById("addpart-order").value) === "BCE", "another case brings its own usual pin order");
   await cad.selectOption("#addpart-pkg", "TO-92"); await cad.selectOption("#addpart-order", "CBE");
+  const jl = await cad.evaluate(() => (document.getElementById("addpart-junction") || {}).textContent || "");
+  check(/Rθjc 83 °C\/W, Tjmax 150 °C \(typical for TO-92\)/.test(jl), `the junction for the thermal map is shown, typical for the case without a DigiKey key (${jl})`);
   await cad.click("#addpart-ok");
   await clickAt(300, 200); await cad.keyboard.press("Escape");
   let s = await state(); const t = s.comps.find(c => c.type === "spice");
   check(!!t && t.params.partno === "qtest" && t.params.part.fp === "TO-92-CBE" && t.params.sub.toUpperCase() === "QTEST" && t.params.part.text === "TO-92" && /QTEST/.test(t.params.text) && !/DTEST/.test(t.params.text), "Place on the sheet puts it there with its model, part number and package");
+  check(t.params.rjc === 83 && t.params.tjmax === 150 && t.params.ptot === 0.625 && /typical for TO-92/.test(t.params.tsrc), "and with its junction (Ptot, Rθjc, Tjmax) for the thermal map");
   const g = await cad.evaluate(() => BoardCore.physicalParts(TubeCAD.boardNetlist()).find(x => x.type === "spice").defaultFp);
   check(g === "TO-92-CBE", `the board takes the chosen package (${g})`);
 
@@ -45,6 +48,7 @@ import { fileURLToPath } from "node:url";
   check(units.length === 3 && /\.1$/.test(units[0]) && /\.3$/.test(units[2]) && units.every(u => u.split(".")[0] === units[0].split(".")[0]), `a dual: both amplifiers and the supply unit are placed together (${units.join(", ")})`);
   check(lib.n === 1 && lib.name === "TESTAMP" && lib.fp === "SOIC-8" && lib.model && lib.pal, "and the part is in My library with its footprint and model");
   const pk = await cad.evaluate(() => { const g = BoardCore.physicalParts(TubeCAD.boardNetlist()).find(x => x.type === "part"); return { fp: g.defaultFp, members: g.members.length }; });
+  check(s.comps.filter(c => c.type === "part").every(c => c.params.rjc === 40 && c.params.tjmax === 150), "every unit of the package carries its junction (typical for SOIC-8)");
   check(pk.fp === "LIB:SOIC-8" && pk.members === 3, `one package on the board for its units (${pk.fp})`);
 
   // a number the app has a part of its own for: that part is offered first

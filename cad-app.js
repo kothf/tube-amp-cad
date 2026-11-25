@@ -2363,7 +2363,7 @@
         el.dataset.key = f.key;
         if (f.placeholder) el.placeholder = f.placeholder;
       } else if (f.kind === "number") {
-        el = input("number", c.params[f.key] !== undefined ? c.params[f.key] : f.dflt, v => { const n = parseFloat(v); if (!isFinite(n)) { flash(el); return; } c.params[f.key] = Math.min(f.max !== undefined ? f.max : Infinity, Math.max(f.min !== undefined ? f.min : -Infinity, n)); commit(); });
+        el = input("number", c.params[f.key] !== undefined ? c.params[f.key] : typeof f.dflt === "function" ? f.dflt(c) : f.dflt, v => { const n = parseFloat(v); if (!isFinite(n)) { flash(el); return; } c.params[f.key] = Math.min(f.max !== undefined ? f.max : Infinity, Math.max(f.min !== undefined ? f.min : -Infinity, n)); if (f.typed) delete c.params[f.typed]; commit(); });
       } else if (f.kind === "select") {
         el = document.createElement("select");
         // an option's third element puts it under that heading (<optgroup>), in the order the headings come

@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.257.0] - 2026-11-25
+
+### Added
+- **A part added by its part number has its junction.** Add part… shows and stores Ptot, Rθjc and
+  Tjmax for a semiconductor in a package: from DigiKey with your key (its power rating, a Tc one
+  first, and its TJ range; Rθjc = (Tjmax − 25)/Ptot as the app's own transistors, a free-air rating a
+  third of that), else typical for the package (a small table by package, not by part). They are
+  fields of the part (SPICE and library parts, each unit of a dual or quad), with hints; typing over
+  them keeps your values, and Look up in the BOM fills them from DigiKey otherwise. The board's
+  thermal map sizes the die inside the package to that Rθjc and checks the junction against that
+  Tjmax, and the MöbiusCAD export carries them (the die, and the limit row). Parts saved before
+  take the package's typical values.
+
 ## [3.256.0] - 2026-11-25
 
 ### Added
