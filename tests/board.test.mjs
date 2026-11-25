@@ -709,7 +709,8 @@ test("STEP: AP214 header, one solid per body, every reference defined, colours",
   // body, per drilled hole and per board corner; nothing round left as a many-sided polygon
   const round = sc.bodies.filter(b => b.round).length, holes = sc.board.round.holes.length;
   assert.ok(round > 20 && holes > 20, `${round} round bodies, ${holes} holes`);
-  assert.equal((txt.match(/CYLINDRICAL_SURFACE\(/g) || []).length, round + holes + 4);
+  const bores = sc.bodies.reduce((n, b) => n + (b.round && b.round.holes ? b.round.holes.length : 0), 0);   // an electrolytic's can round its winding
+  assert.equal((txt.match(/CYLINDRICAL_SURFACE\(/g) || []).length, round + bores + holes + 4);
   assert.equal((txt.match(/ADVANCED_FACE\(/g) || []).length - (txt.match(/CYLINDRICAL_SURFACE\(/g) || []).length,
     2 * round + 2 + 4 + sc.bodies.filter(b => !b.round).reduce((a, b) => a + b.faces.length, 0), "a round body: its side and two ends");
   assert.ok(sc.bodies.filter(b => b.round).every(b => b.faces.slice(2).every(f => f.vn && f.vn.length === 4)), "round sides shade smooth in the 3D view");

@@ -5,7 +5,7 @@
      settings(board) -> { ambient °C, enclosure: "open" | "vented" | "closed", orient: "up" | "down" | "vertical", point: "sim" | "idle" }
      sources(model, netlist, point) -> Map(part key -> { p W, heater W, tj, ts, sink })
      solve(board, model, netlist, opts) -> { ok, why?, nx, ny, step, top, bottom (Float32Array °C, NaN off the board),
-        parts: [{ key, ref, value, type, p, heater, toBoard, toAir, toSink, byRadiation, t, tKind, tj, ts, limit, mount, path, box }],
+        parts: [{ key, ref, value, type, p, heater, toBoard, toAir, toSink, byRadiation, t, tKind, tj, rjc (junction over case, °C/W), tCore (an electrolytic's core), ts, limit, mount, path, box }],
         ambient, tMin, tMax, hot: { x, y, t, side }, total W, balance (W in − W out), iterations }
      at(result, x, y, side) -> °C at a board point (bilinear), or null off the board
      color(u) -> [r, g, b] 0–1 for u 0–1 (an inferno-like scale: dark = cold, pale yellow = hot)
@@ -49,7 +49,7 @@
   // transistors have it: a power part's rating is at a 25 °C case, rjc = (Tjmax − 25)/Ptot; a small
   // part's is in free air, about a third of that path inside the case
   function junction(g) {
-    const L = root.CadLib, p = g.members[0].params || {}; if (!L) return null;
+    const L = root.CadLib, p = (g.members && g.members[0] && g.members[0].params) || {}; if (!L || !g.members) return null;
     let m = null, pt = 0;
     if (ONE_LEAD.has(g.type) && L.semiTable && L.isTransistor && L.isTransistor(g.type)) { m = (L.semiTable(g.type) || {})[p.model]; pt = m && m.p; }
     else if (g.type === "reg") { m = (L.REGS || {})[p.model]; pt = m && m.p; }
@@ -93,8 +93,11 @@
     if (f.faces) f.faces.push({ n: normals[0][0], area, hot: hot * area, cold: cold * area });
   }
   const extent = (pts, dn) => { let lo = Infinity, hi = -Infinity; pts.forEach(p => { const d = v3.dot(p, dn); lo = Math.min(lo, d); hi = Math.max(hi, d); }); return hi - lo; };
+  const FACE_KEYS = ["z1", "z2", "y1", "x2", "y2", "x1"];   // a box's faces in Board3D's prism order (its solids' `cover`)
   function polyFaces(s, dn, f) {
-    s.faces.forEach(fc => {
+    const hid = s.cover && s.faces.length === 6 ? new Set(s.cover.map(k => FACE_KEYS.indexOf(k))) : null;
+    s.faces.forEach((fc, i) => {
+      if (hid && hid.has(i)) return;        // against another body of the part, not open to the air
       const n = unit3(fc.n);
       let a2 = 0, per = 0; const pts = [];
       fc.loops.forEach(loop => {
@@ -109,12 +112,14 @@
       addFace(f, Math.abs(a2) / 2, per, extent(pts, dn), [[n, 1]], dn);
     });
   }
-  function roundFaces(g, dn, f) {
+  function roundFaces(g, dn, f, cover) {
+    const cv = new Set(cover || []);
     const A = unit3(g.a), X = unit3(g.x), Y = v3.cross(A, X);
     const at = ([u, v], w) => [g.o[0] + X[0] * u + Y[0] * v + A[0] * w, g.o[1] + X[1] * u + Y[1] * v + A[1] * w, g.o[2] + X[2] * u + Y[2] * v + A[2] * w];
     const split = segs => segs.length === 1 && segs[0].c ? [segs[0], { ...segs[0], p: [2 * segs[0].c[0] - segs[0].p[0], 2 * segs[0].c[1] - segs[0].p[1]] }] : segs;
     let capArea = 0, capPer = 0; const capPts = [];
     const ring = (segs0, hole) => {
+      const hid = cv.has(hole ? "holes" : "side");
       const segs = split(segs0), n = segs.length; let a2 = 0;
       segs.forEach((s, i) => {
         const q = segs[(i + 1) % n].p;
@@ -131,12 +136,12 @@
           // the profile's area: the chord's shoelace term plus the segment between chord and arc
           a2 += s.p[0] * q[1] - q[0] * s.p[1] + sg * s.r * s.r * (th - Math.sin(th));
           capPer += s.r * th;
-          addFace(f, s.r * th * g.h, 2 * s.r * th + 2 * g.h, extent(pts, dn), normals, dn);
+          if (!hid) addFace(f, s.r * th * g.h, 2 * s.r * th + 2 * g.h, extent(pts, dn), normals, dn);
         } else {
           const len = Math.hypot(q[0] - s.p[0], q[1] - s.p[1]), d = unit3(v3.sub(at(q, 0), at(s.p, 0))), nrm = hole ? v3.cross(A, d) : v3.cross(d, A);
           a2 += s.p[0] * q[1] - q[0] * s.p[1]; capPer += len;
           const pts = [at(s.p, 0), at(s.p, g.h), at(q, 0), at(q, g.h)]; capPts.push(...pts);
-          addFace(f, len * g.h, 2 * (len + g.h), extent(pts, dn), [[nrm, 1]], dn);
+          if (!hid) addFace(f, len * g.h, 2 * (len + g.h), extent(pts, dn), [[nrm, 1]], dn);
         }
       });
       capArea += (hole ? -1 : 1) * Math.abs(a2) / 2;
@@ -144,14 +149,15 @@
     ring(g.outer, false);
     (g.holes || []).forEach(h => ring(h.segs || [{ p: [h.c[0] + h.r, h.c[1]], c: h.c, r: h.r }], true));
     const bot = capPts.filter((_, i) => i % 2 === 0), top = capPts.filter((_, i) => i % 2 === 1);
-    addFace(f, capArea, capPer, extent(bot, dn), [[[-A[0], -A[1], -A[2]], 1]], dn);
-    addFace(f, capArea, capPer, extent(top, dn), [[A, 1]], dn);
+    if (!cv.has("z1")) addFace(f, capArea, capPer, extent(bot, dn), [[[-A[0], -A[1], -A[2]], 1]], dn);
+    if (!cv.has("z2")) addFace(f, capArea, capPer, extent(top, dn), [[A, 1]], dn);
   }
   /** The film terms of some solids (Board3D's): { hot, cold } W/K^1.25 (h·A = enclosure × term × ΔT^¼), area mm²;
       with `faces` true also each face's own. */
   function films(solids, dn, faces) {
     const f = { hot: 0, cold: 0, area: 0, faces: faces ? [] : null };
-    solids.forEach(s => (s.round ? roundFaces(s.round, dn, f) : polyFaces(s, dn, f)));
+    // a body inside the part (a die, a winding) has no face to the air
+    solids.forEach(s => { if (!s.inner) (s.round ? roundFaces(s.round, dn, f, s.cover) : polyFaces(s, dn, f)); });
     return f;
   }
 
@@ -280,6 +286,13 @@
       });
       if (ONE_LEAD.has(g.type) && !smd && P.pads.length > 1) { const one = Math.max(...P.pads.map(q => q.G)) / P.pads.length; P.pads.forEach(q => { q.G = one; }); }
       P.jn = junction(g);
+      // the bodies inside: a die makes the junction (through the silicon, its solder and the spreading into
+      // the tab under it, a node on the case), an electrolytic's winding its core (a long cylinder making its
+      // heat evenly: the axis is P / (4π·k·L) over the can)
+      const M = MAT(), ext = x => { const e = [0, 1, 2].map(k => Math.max(...x.verts.map(v => v[k])) - Math.min(...x.verts.map(v => v[k]))).sort((a, b) => a - b); return e; };
+      const dieS = M && sol.find(x => x.mat === "silicon" && x.heat), coreS = M && sol.find(x => x.mat === "ecore" && x.round);
+      if (dieS) { const [, a, b] = ext(dieS); P.rDie = root.Board3D.dieR(Math.sqrt(a * b)); }
+      if (coreS) P.gCore = 4 * Math.PI * M.ecore.k * coreS.round.h * 1e-3;
       // an electrolytic: its rated temperature is its limit, its rated life halves with every 10 °C above it
       if (g.type === "electrolytic") { const q = (g.members[0] && g.members[0].params) || {}; P.cap = { tr: +q.temp > 0 ? +q.temp : CAP_TEMP, l0: +q.life > 0 ? +q.life : CAP_LIFE }; }
       // a case made for a heatsink, dissipating more than it can in free air, with no cooling said: on a heatsink
@@ -425,13 +438,17 @@
       const sh = [["board", flow[i]], ["air", toAir + rad[i]], [p.how === "chassis" ? "chassis" : "heatsink", toSink]].sort((a, b) => b[1] - a[1]);
       const pw = p.p + p.heater;
       let lim = LIMITS[p.type], tj = p.how === "auto" ? p.tj : undefined;   // cooled another way than the simulation had it: its junction from this map
-      const tKind = p.bulb ? "bulb" : p.tj !== undefined || p.jn ? "case" : "body";
-      if (p.jn) { if (tj === undefined) tj = t0 + p.p * p.jn.rjc; lim = p.jn.tjmax; }
-      const life = p.cap ? capLife(p.cap.l0, p.cap.tr, t0) : undefined; if (p.cap) lim = p.cap.tr;
+      const tKind = p.bulb ? "bulb" : p.tj !== undefined || p.jn || p.rDie !== undefined ? "case" : "body";
+      const rjc = p.rDie !== undefined ? p.rDie : p.jn ? p.jn.rjc : undefined;
+      if (rjc !== undefined && tj === undefined && (p.jn || p.p > 0.01)) tj = t0 + p.p * rjc;
+      if (p.jn) lim = p.jn.tjmax;
+      const tCore = p.gCore ? t0 + p.p / p.gCore : undefined;
+      const life = p.cap ? capLife(p.cap.l0, p.cap.tr, tCore !== undefined ? tCore : t0) : undefined; if (p.cap) lim = p.cap.tr;
       p.tj = tj;
       if (t0 > tMax) tMax = t0; if (t0 < tMin) tMin = t0;
       if (p.tj !== undefined && p.tj > tMax) tMax = p.tj;
-      return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: flow[i], toAir, toSink, byRadiation: rad[i], t: t0, tKind, tj: p.tj, ts: p.ts, limit: lim, life, lifeRated: p.cap ? p.cap.l0 : undefined, assumed: !!p.assumed, mount, path: pw > 0.01 ? sh[0][0] : "air", box: p.box, back: p.back,
+      if (tCore !== undefined && tCore > tMax) tMax = tCore;
+      return { key: p.key, ref: p.ref, value: p.value, type: p.type, p: p.p, heater: p.heater, toBoard: flow[i], toAir, toSink, byRadiation: rad[i], t: t0, tKind, tj: p.tj, rjc, tCore, ts: p.ts, limit: lim, life, lifeRated: p.cap ? p.cap.l0 : undefined, assumed: !!p.assumed, mount, path: pw > 0.01 ? sh[0][0] : "air", box: p.box, back: p.back,
         tPads: p.pads.length ? p.pads.reduce((a, q) => a + (q.side === 2 ? (T[q.cell] + T[q.cell + n1]) / 2 : T[q.cell + q.side * n1]), 0) / p.pads.length : t0, into: intoOf(p, t0) };
     });
     return { ok: true, nx, ny, step, top, bottom, flux, copper: CU.map(Lr => ({ layer: Lr, cover: cover.get(Lr) })), thickness: t, emissivity: EPS, parts: res, ambient: Ta, tMin: Math.min(tMin, Ta), tMax, boardMax, hot, total, balance: total - out - res.filter(p => p.off).reduce((a, p) => a + p.p + p.heater, 0), iterations, settings: { ambient: Ta, enclosure: opts.enclosure, orient: opts.orient, point: opts.point } };
@@ -460,8 +477,9 @@
     on.forEach(p => {
       const [x, y] = mid(p);
       if (p.life !== undefined) {
-        if (p.t > p.limit) out.push({ kind: "thermal", x, y, msg: `${p.ref} (electrolytic, rated ${p.limit} °C) sits at ${deg(p.t)} ${at0}: over its rating; move it away from the heat or fit a ${p.limit < 105 ? "105" : "125"} °C part` });
-        else if (p.life < lifeMin) out.push({ kind: "thermal", x, y, msg: `${p.ref} (electrolytic, ${p.lifeRated} h at ${p.limit} °C) sits at ${deg(p.t)} ${at0}: about ${lifeText(p.life)} of life, under ${lifeText(lifeMin)}; every 10 °C cooler doubles it` });
+        const tc = p.tCore !== undefined ? p.tCore : p.t, where = p.tCore !== undefined ? "its core reaches" : "sits at";
+        if (tc > p.limit) out.push({ kind: "thermal", x, y, msg: `${p.ref} (electrolytic, rated ${p.limit} °C) ${where} ${deg(tc)} ${at0}: over its rating; move it away from the heat or fit a ${p.limit < 105 ? "105" : "125"} °C part` });
+        else if (p.life < lifeMin) out.push({ kind: "thermal", x, y, msg: `${p.ref} (electrolytic, ${p.lifeRated} h at ${p.limit} °C) ${where} ${deg(tc)} ${at0}: about ${lifeText(p.life)} of life, under ${lifeText(lifeMin)}; every 10 °C cooler doubles it` });
         return;
       }
       if (!p.limit) return;
@@ -481,5 +499,5 @@
     return w > 1e-6 ? s / w : null;
   }
 
-  root.BoardThermal = { settings, down, films, sources, solve, at, checks, capLife, lifeText, CAP_TEMP, CAP_LIFE, color, DEFAULTS, ENCLOSURE, LIMITS };
+  root.BoardThermal = { settings, down, films, junction, sources, solve, at, checks, capLife, lifeText, CAP_TEMP, CAP_LIFE, color, DEFAULTS, ENCLOSURE, LIMITS };
 })(typeof window !== "undefined" ? window : globalThis);

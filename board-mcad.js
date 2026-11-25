@@ -86,7 +86,8 @@
   /** A body's name inside its part */
   function bodyName(s, i, leads) {
     const C = B3().COLORS, c = s.color || [0, 0, 0], lead = Math.abs(c[0] - C.lead[0]) + Math.abs(c[1] - C.lead[1]) + Math.abs(c[2] - C.lead[2]) < 1e-6;
-    return lead ? `Lead ${++leads.n}` : i ? `Body ${i + 1}` : "Body";
+    const own = { silicon: "Die", ecore: "Core", rubber: "Bung", tab: "Tab" }[s.mat];
+    return lead ? `Lead ${++leads.n}` : own && i ? own : i ? `Body ${i + 1}` : "Body";
   }
 
   /** A part document of solids (one Imported feature each, so every solid is a body with its own material) */
@@ -121,7 +122,7 @@
   }
 
   /** The study's "Heat from package" rows from the map's parts */
-  function heatRows(res, compsOf) {
+  function heatRows(res, compsOf, bodiesOf) {
     const out = [];
     (res ? res.parts : []).forEach((p, i) => {
       const w = (p.p || 0) + (p.heater || 0), comps = compsOf(p.ref);
@@ -130,6 +131,8 @@
       if (p.off) row.off = true;
       if (p.limit !== undefined) row.limit = p.limit;
       if (p.lifeRated !== undefined) { row.life = p.lifeRated; row.elyt = true; }
+      // the bodies the part makes its heat in (its die, winding, bulb, resistive body), by name in its part file
+      const hb = bodiesOf ? bodiesOf(p.ref) : null; if (hb && hb.length) row.bodies = hb;
       if (!p.off) { row.board = r4(Math.max(0, p.toBoard || 0)); row.sink = r4(Math.max(0, p.toSink || 0)); row.path = p.path === "chassis" || p.path === "heatsink" || p.path === "air" ? p.path : "board"; }
       // where the board share goes in: a disc per pad (the lead), a rectangle under the body (the air gap)
       if (!p.off && row.board > 0 && p.into && p.into.length) {
@@ -204,7 +207,7 @@
         id: "st1", name: "Thermal 1", kind: "thermal", auto: true,
         settings: { passes: 3, energyTol: 1, ambient: res.ambient, ...(["open", "vented", "closed"].includes(st.enclosure) ? { enclosure: st.enclosure } : {}), down: down(board, st.orient) },
         comps: { c_board: { board: Object.assign({}, stack, { t }, map ? { map } : {}) } },
-        loads: [{ id: "l1", name: "Heat from package 1", type: "pkgheat", faces: [], parts: heatRows(res, ref => compsOf.get(ref) || []), board: "c_board", split: true }],
+        loads: [{ id: "l1", name: "Heat from package 1", type: "pkgheat", faces: [], parts: heatRows(res, ref => compsOf.get(ref) || [], ref => { const x = insts.find(q => q.ref === ref); return x ? x.grp.names.filter((_, i) => x.grp.solids[i].heat) : null; }), board: "c_board", split: true }],
         supports: [{ id: "s1", name: "Convection 1", type: "conv", faces: [], all: true, natural: true, h: 8 }, { id: "s2", name: "Radiation 1", type: "rad", faces: [], all: true, emis }]
       });
     }

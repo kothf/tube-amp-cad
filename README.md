@@ -1327,7 +1327,10 @@ the circuit file, so one file holds both.
   3D bodies and leads), each 3D body with its material (conductivity,
   density, heat capacity, emissivity: a part radiates by its own surfaces,
   leads conduct as copper, 385 W/m·K, the values the MöbiusCAD export
-  writes), the leads as the 3D view draws them: an estimate,
+  writes; inside, a power transistor's silicon die on its tab, sized to
+  the datasheet's junction-to-case resistance, gives its junction, and an
+  electrolytic's wound core in its can gives the core temperature its life
+  is worked out from), the leads as the 3D view draws them: an estimate,
   about ±15 °C, for comparing layouts. Save PNG puts the scale in the picture.
   **View ▾ → Thermal overlay** draws the board's field over the layout and
   follows it as you move parts. The map's findings join the design rules
@@ -1343,7 +1346,8 @@ the circuit file, so one file holds both.
     board into a chassis or heatsink assembly there and simulate the whole
     thing. Each part is its own `.mcadprt` with exact geometry and a
     material per body with its conductivity, density, heat capacity and
-    emissivity (equal parts, such as every 12AX7 or every 1k ½ W
+    emissivity, the die and an electrolytic's core inside, and the bodies
+    each part makes its heat in for the thermal study (equal parts, such as every 12AX7 or every 1k ½ W
     resistor, share one file); `<name>.mcadasm` places them and references
     them by file (path and SHA-256, with a copy of each part inside as the
     fallback), and carries a thermal study made from the thermal map: every

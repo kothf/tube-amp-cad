@@ -91,6 +91,7 @@ test("the thermal study: every part's heat and shares, the map's conditions, the
   const total = l.parts.reduce((s, p) => s + p.p, 0);
   assert.ok(Math.abs(total - 5.1) < 1e-6, `${total} W`);
   const r1 = l.parts.find(p => p.name === "R1"), p1 = res.parts.find(p => p.ref === "R1");
+  assert.deepEqual(r1.bodies, ["Body"], "a resistor makes its heat in its body, not its leads");
   assert.deepEqual(r1.comps, ["c_R1"]); assert.equal(r1.limit, 155); assert.ok(Math.abs(r1.board - p1.toBoard) < 1e-3 && r1.board > 0.3);
   assert.ok(l.parts.every(p => p.board >= 0 && p.sink >= 0));
   // where R1's board share goes in: a disc on each of its pads, a rectangle under its lying body (board frame: y up)

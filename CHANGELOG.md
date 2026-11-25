@@ -13,13 +13,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
   (`Board3D.MATERIALS`): tinned copper leads, nickel-plated copper tabs (TO-126/220/247/3P/264, DPAK,
   SOT-223), Kovar TO-18 cans, glass bulbs, sleeved aluminium cans with a bare top, steel cores,
   lacquered alumina resistors, epoxy packages and so on.
-- The MöbiusCAD export writes these materials with `k`, `density`, `cp` and `emis`, and the board's
-  material carries emissivity 0.9.
+- **Parts modelled inside.** A power semiconductor in TO-126, TO-220, TO-247, TO-3P, TO-264, SOT-89,
+  SOT-223, DPAK or D2PAK has a silicon die soldered on its copper tab, sized so its junction to case
+  (silicon, solder, spreading into the tab) is the datasheet's; its moulding is split round it so no
+  bodies overlap. An electrolytic (radial, snap-in, SMD) is a can round a wound core over a rubber bung.
+- The thermal map works the junction out from the die and an electrolytic's **core** temperature from
+  its winding (P / 4π·k·L over the can); the core sets the electrolytic's life and its rating check, and
+  the 3D card shows it.
+- The MöbiusCAD export writes these materials with `k`, `density`, `cp` and `emis` (the board's
+  emissivity 0.9), names the inner bodies Die, Tab, Core and Bung, and lists each part's heat bodies
+  (`bodies` on the "Heat from package" rows: the die, the core, a valve's bulb, otherwise every body but
+  the leads).
 
 ### Changed
 - The thermal map radiates each part by the emissivity of its own surfaces (area-weighted over its
   solids) instead of 0.9 for everything: bright metal and bare aluminium radiate less.
 - Leads conduct as tinned copper, 385 W/m·K (was 300), the same value the export writes.
+- Faces where two bodies of a part touch are no longer cooled in the map; a valve's plate and getter,
+  inside the bulb, no longer count as open surface.
+- A transformer's winding sits beside its core instead of through it.
 
 ## [3.253.2] - 2026-11-25
 
