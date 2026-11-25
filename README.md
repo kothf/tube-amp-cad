@@ -1743,7 +1743,10 @@ npm run build:wasm  # sim-solver.wasm from wasm/solver.ts, after changing the so
   suites in WebKit, Safari's engine, after `npx playwright install webkit`.
 
 Pages load their scripts with `?v=dev`. Packaging stamps the release version
-into every asset URL, so browsers and CDNs never mix two versions.
+into every asset URL, so browsers and CDNs never mix two versions. The app shows
+that version (`dev` from the source) under its name in the toolbar, or at the
+right end of the status bar when the window is too narrow for it there
+(below 1560 px, 1760 px in Russian); the board shows it in its status bar.
 
 ### Releasing
 

@@ -615,7 +615,10 @@
     @media (max-width: 1240px) { #btn-lang { display: none; } }   /* the language is in View ▾ too */
     /* Russian words are longer: the toolbar gives way sooner to stay on one row */
     @media (max-width: 1760px) { html[lang=ru] .doc-switch .ds-lbl, html[lang=ru] .brand-ver { display: none; } }
-    @media (max-width: 1560px) { .brand-ver { display: none; } }   /* the release number gives way first (Help ▾ → About names it) */
+    @media (max-width: 1560px) { .brand-ver { display: none; } }   /* the release number moves from the toolbar to the right end of the status bar */
+    .status-ver { display: none; margin-left: auto; font: 400 11px ui-monospace, Menlo, monospace; color: var(--muted); white-space: nowrap; }
+    @media (max-width: 1560px) { .status-ver:not(:empty) { display: inline; } }
+    @media (max-width: 1760px) { html[lang=ru] .status-ver:not(:empty) { display: inline; } }
     @media (max-width: 1440px) { html[lang=ru] header .btn { padding: 5px 7px; } html[lang=ru] header { gap: 4px; } html[lang=ru] .sep { margin: 0 2px; } }
     @media (max-width: 1320px) { html[lang=ru] #btn-lang { display: none; } }
     @media (max-width: 1650px) { .wide-lbl { display: none; } }
@@ -968,6 +971,7 @@
   <footer>
     <span id="status-sim" class="sim-status idle">Ready</span>
     <span id="status-hover"></span>
+    <span id="status-ver" class="status-ver" title="Tube Amp CAD release (Help ▾ → About)"></span>
   </footer>
 
   <div class="modal" id="settings-modal" hidden>

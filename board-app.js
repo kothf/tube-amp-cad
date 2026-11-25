@@ -2328,6 +2328,8 @@
     $("holes-clear").onclick = () => { setupHoles = []; holesNow(); };
     $("btn-cad").onclick = () => ToolWindows.open("circuit_sandbox.html");
     $("btn-help").onclick = () => { $("help-modal").hidden = false; }; $("btn-help-close").onclick = () => { $("help-modal").hidden = true; };
+    // the release at the right end of the status bar ("?v=3.72.0" is stamped by npm run package, the source says "dev")
+    { const v = appVersion(); $("st-ver").textContent = v === "dev" ? "dev" : "v" + v; }
     // the toolbar's menus (one open at a time; ticks keep it open) and the state of their ticks
     UiKit.menus(document.querySelector("header"));
     const list = $("export-menu").querySelector(".menu-list");

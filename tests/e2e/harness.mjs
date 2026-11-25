@@ -52,7 +52,12 @@ export const open = async (name, page) => {
 export const cad = await open("cad", "circuit_sandbox.html");
 await cad.waitForFunction(() => window.TubeCAD);
 { const ver = await cad.textContent("#app-version"), pkg = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")).version;
-  check(ver === "dev" || ver === "v" + pkg, `the version under the name (${ver}) is "dev" in the source, v${pkg} in the package`); }
+  check(ver === "dev" || ver === "v" + pkg, `the version under the name (${ver}) is "dev" in the source, v${pkg} in the package`); 
+  // always on screen: under the name when wide, at the status bar's right end when the toolbar needs the room
+  const vp = cad.viewportSize(), shown = async () => cad.evaluate(() => ["app-version", "status-ver"].filter(id => { const e = document.getElementById(id); return e.offsetWidth > 0 && e.textContent; }));
+  const wide = (await cad.setViewportSize({ width: 1900, height: 1000 }), await shown()), narrow = (await cad.setViewportSize({ width: 1200, height: 900 }), await shown());
+  if (vp) await cad.setViewportSize(vp);
+  check(wide.join() === "app-version" && narrow.join() === "status-ver", `the version shows once at every width (1900 px: ${wide}, 1200 px: ${narrow})`); }
 await cad.evaluate(() => { const S = TubeCAD.state; S.comps = []; S.wires = []; S.view = { scale: 1, ox: 0, oy: 0 }; TubeCAD.commit(); });
 export const box = await cad.locator("#cad").boundingBox();
 export const toScreen = (x, y) => cad.evaluate(([x, y]) => { const v = TubeCAD.state.view; return [x * v.scale + v.ox, y * v.scale + v.oy]; }, [x, y]).then(([sx, sy]) => [box.x + sx, box.y + sy]);
