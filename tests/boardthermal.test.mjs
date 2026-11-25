@@ -172,9 +172,9 @@ test("a hot resistor raised off the board on its leads: the board under it cools
   const mk = lift => setup(70, 50, [R("r1", "R1", "5")], { R1: { x: 35, y: 25, ...(lift ? { lift } : {}) } }, { r1: 3 });
   const flat = run(mk(0)), up = run(mk(6)), f = of(flat, "R1"), u = of(up, "R1");
   assert.equal(f.mount, "lying"); assert.equal(u.mount, "raised");
-  // under the body (the pads still take what the leads bring, a little less)
+  // under the body; the hottest spot is then at the pads, which take what the copper leads (385 W/m·K) bring: about the same
   const mid = r => T.at(r, 35, 25, "top");
-  assert.ok(mid(up) < mid(flat) - 30 && up.boardMax <= flat.boardMax, `the board under it: ${mid(flat)} → ${mid(up)}, hottest ${flat.boardMax} → ${up.boardMax}`);
+  assert.ok(mid(up) < mid(flat) - 30 && up.boardMax <= flat.boardMax + 5, `the board under it: ${mid(flat)} → ${mid(up)}, hottest ${flat.boardMax} → ${up.boardMax}`);
   assert.ok(u.toBoard < f.toBoard * 0.75, `into the board: ${f.toBoard} → ${u.toBoard} W`);
   // the body sits 6 mm up in 3D (and so in STEP), and the height check counts it
   const s = mk(6), g = s.model.parts.find(q => q.ref === "R1"), sol = globalThis.Board3D.partBodies(g, 1.6, {}), z0 = Math.min(...sol.filter(q => q.color === globalThis.Board3D.COLORS.resistor).flatMap(q => q.verts.map(v => v[2])));
@@ -183,4 +183,29 @@ test("a hot resistor raised off the board on its leads: the board under it cools
   assert.equal(B.liftOf({ fp: g.fp.name, lift: 6, mount: "V" }), 0, "a standing part has no lift");
   s.board.rules.maxHeight = 12; const drc = B.drc(s.board, s.model, B.connectivity(s.board, s.model.pads, []), new Set(), [], s.netlist);
   assert.ok(drc.some(d => d.kind === "height" && /raised 6 mm off the board/.test(d.msg)), drc.map(d => d.msg).join("; "));
+});
+
+test("inner bodies: a die on the tab sized to the datasheet's Rjc, an electrolytic's winding in its can; nothing overlaps, covered faces are not cooled", () => {
+  const D3 = globalThis.Board3D, M = D3.MATERIALS;
+  const inside = (a, b) => { const bx = s => [0, 1, 2].map(k => [Math.min(...s.verts.map(v => v[k])), Math.max(...s.verts.map(v => v[k]))]); const A = bx(a), B2 = bx(b); return A.every(([lo, hi], k) => Math.min(hi, B2[k][1]) - Math.max(lo, B2[k][0]) > 1e-6); };
+  // a TO-220 MOSFET: moulding, tab and die apart, the die inside, its junction to case the datasheet's
+  const q = part("q1", "nmos", "VT1", { model: "IRF540" }, { D: 1, G: 2, S: 0 });
+  const s = setup(80, 60, [q], { VT1: { x: 40, y: 30 } }, { q1: 5 }), g = s.model.parts.find(x => x.ref === "VT1"), sol = D3.partBodies(g, 1.6, {});
+  const die = sol.filter(x => x.mat === "silicon"), tab = sol.find(x => x.mat === "tab"), mould = sol.filter(x => x.mat === "epoxy");
+  assert.equal(die.length, 1); assert.ok(die[0].inner && die[0].heat && tab && mould.length >= 4);
+  assert.ok(sol.filter(x => x.heat).every(x => x === die[0]), "the die alone makes the heat");
+  for (const a of [die[0], tab, ...mould]) for (const b of [die[0], tab, ...mould]) if (a !== b) assert.ok(!inside(a, b), "no two bodies overlap");
+  const side = Math.sqrt([0, 1, 2].map(k => Math.max(...die[0].verts.map(v => v[k])) - Math.min(...die[0].verts.map(v => v[k]))).sort((x, y) => x - y).slice(1).reduce((x, y) => x * y));
+  near(D3.dieR(side), (150 - 25) / L.MOSFETS.IRF540.p, 0.01, "the die's Rjc is the datasheet's");
+  const f = T.films(sol, [0, 0, -1]);
+  assert.ok(f.area < T.films(sol.filter(x => !x.inner).map(x => ({ ...x, cover: undefined })), [0, 0, -1]).area, "faces between the bodies are not open to the air");
+  // a radial electrolytic: the can round the winding and the bung, the core makes the heat; the map's core is hotter than the can
+  const cap = part("c1", "electrolytic", "C1", {}, { "+": 1, "-": 0 });
+  const sc = setup(70, 50, [cap], { C1: { x: 35, y: 25 } }, { c1: 0.5 }), gc = sc.model.parts.find(x => x.ref === "C1"), cs = D3.partBodies(gc, 1.6, {});
+  const can = cs.find(x => x.round && x.round.holes && x.round.holes.length), core = cs.find(x => x.mat === "ecore");
+  assert.ok(can && core && core.inner && core.heat && cs.some(x => x.mat === "rubber"));
+  near(can.round.holes[0].r, core.round.outer[0].r, 1e-9, "the winding fills the can's bore");
+  const c = of(run(sc), "C1");
+  near(c.tCore, c.t + 0.5 / (4 * Math.PI * M.ecore.k * core.round.h * 1e-3), 1e-6, "the core: P / (4π·k·L) over the can");
+  near(c.life, Math.min(130000, 2000 * 2 ** ((105 - c.tCore) / 10)), 1e-6, "life from the core");
 });

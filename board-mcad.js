@@ -23,32 +23,18 @@
   const SCHEMA = 1, FORMAT = "mobiuscad";
   const B3 = () => root.Board3D, BR = () => root.BoardBrep, BC = () => root.BoardCore;
 
-  // ---- materials: MöbiusCAD's library entries (name and properties as its toRef writes them)
-  const MAT = {
-    alumina: { name: "Alumina 99.5 %", density: 3.9, cat: "ceramic", E: 370, nu: 0.22, su: 262, k: 30, cp: 880, alpha: 8.2, color: "#eceae4" },
-    aluminium: { name: "Aluminium 6061", density: 2.7, cat: "aluminium", E: 68.9, nu: 0.33, sy: 276, su: 310, k: 167, cp: 896, alpha: 23.6, color: "#c9ced6" },
-    glass: { name: "Glass (borosilicate 3.3)", density: 2.23, cat: "ceramic", E: 64, nu: 0.2, k: 1.2, cp: 830, alpha: 3.3, color: "#dcecee" },
-    plastic: { name: "Nylon PA66-GF30", density: 1.36, cat: "plastic", E: 10, nu: 0.35, su: 190, k: 0.35, cp: 1500, alpha: 25, color: "#3a3d42" },
-    copper: { name: "Copper", density: 8.96, cat: "copper", E: 117, nu: 0.34, sy: 69, su: 220, k: 391, cp: 385, alpha: 17, color: "#b87333" },
-    steel: { name: "Steel (carbon)", density: 7.85, cat: "steel", E: 210, nu: 0.3, sy: 235, su: 360, k: 54, cp: 461, alpha: 12, color: "#8d9299" }
-  };
   const BOARD_MATERIAL = "PCB (effective)", K_CU = 390, K_FR4 = 0.3;
-  /** What a body is made of: by its colour (leads, cans, glass…), else by its part */
-  function materialOf(color, type) {
-    const C = B3().COLORS, is = c => c && Math.abs(c[0] - color[0]) + Math.abs(c[1] - color[1]) + Math.abs(c[2] - color[2]) < 1e-6;
-    if (["lead", "metal", "getter", "plate", "gold", "coil"].some(k => is(C[k]))) return MAT.copper;
-    if (["glass", "glassRed", "neon"].some(k => is(C[k]))) return MAT.glass;
-    if (["ecap", "ecapTop", "snapin"].some(k => is(C[k]))) return MAT.aluminium;
-    if (is(C.core)) return MAT.steel;
-    if (["ceramic", "disc", "chipCap"].some(k => is(C[k]))) return MAT.alumina;
-    if (/^(resistor|rheostat|wirewound)/.test(type || "")) return MAT.alumina;
-    return MAT.plastic;
+  /** What a body is made of, as MöbiusCAD keeps it (MatRef): the 3D model's own material (Board3D.MATERIALS), its
+      emissivity too, so both apps take the same properties */
+  function materialOf(solidOrColor, type) {
+    const M = B3().MATERIALS, key = solidOrColor && solidOrColor.mat && M[solidOrColor.mat] ? solidOrColor.mat : B3().matKey(Array.isArray(solidOrColor) ? solidOrColor : solidOrColor && solidOrColor.color, type), m = M[key];
+    return { name: m.name, density: m.density, cat: m.cat, k: m.k, cp: m.cp, emis: m.emis };
   }
   /** The board's effective material (MöbiusCAD's boardConductivity): copper layers in parallel along it */
   function boardMaterial(t, s) {
     const cu = Math.min(Math.max(t, 1e-6), s.layers * s.copper * 1e-3), full = Math.min(1, Math.max(0, s.cover)), share = (cu * full) / Math.max(t, 1e-6);
     const along = K_FR4 * (1 - share) + K_CU * share, density = 1.85 * (1 - share) + 8.96 * share, cp = (1.85 * (1 - share) * 1100 + 8.96 * share * 385) / density;
-    return { name: BOARD_MATERIAL, density: Math.round(density * 1000) / 1000, k: Math.round(along * 100) / 100, cp: Math.round(cp) };
+    return { name: BOARD_MATERIAL, density: Math.round(density * 1000) / 1000, k: Math.round(along * 100) / 100, cp: Math.round(cp), emis: 0.9 };
   }
 
   // ---- SHA-256 (hex) of bytes: the hash a link carries
@@ -100,7 +86,8 @@
   /** A body's name inside its part */
   function bodyName(s, i, leads) {
     const C = B3().COLORS, c = s.color || [0, 0, 0], lead = Math.abs(c[0] - C.lead[0]) + Math.abs(c[1] - C.lead[1]) + Math.abs(c[2] - C.lead[2]) < 1e-6;
-    return lead ? `Lead ${++leads.n}` : i ? `Body ${i + 1}` : "Body";
+    const own = { silicon: "Die", ecore: "Core", rubber: "Bung", tab: "Tab" }[s.mat];
+    return lead ? `Lead ${++leads.n}` : own && i ? own : i ? `Body ${i + 1}` : "Body";
   }
 
   /** A part document of solids (one Imported feature each, so every solid is a body with its own material) */
@@ -135,7 +122,7 @@
   }
 
   /** The study's "Heat from package" rows from the map's parts */
-  function heatRows(res, compsOf) {
+  function heatRows(res, compsOf, bodiesOf) {
     const out = [];
     (res ? res.parts : []).forEach((p, i) => {
       const w = (p.p || 0) + (p.heater || 0), comps = compsOf(p.ref);
@@ -144,6 +131,8 @@
       if (p.off) row.off = true;
       if (p.limit !== undefined) row.limit = p.limit;
       if (p.lifeRated !== undefined) { row.life = p.lifeRated; row.elyt = true; }
+      // the bodies the part makes its heat in (its die, winding, bulb, resistive body), by name in its part file
+      const hb = bodiesOf ? bodiesOf(p.ref) : null; if (hb && hb.length) row.bodies = hb;
       if (!p.off) { row.board = r4(Math.max(0, p.toBoard || 0)); row.sink = r4(Math.max(0, p.toSink || 0)); row.path = p.path === "chassis" || p.path === "heatsink" || p.path === "air" ? p.path : "board"; }
       // where the board share goes in: a disc per pad (the lead), a rectangle under the body (the air gap)
       if (!p.off && row.board > 0 && p.into && p.into.length) {
@@ -177,7 +166,7 @@
       const P0 = Object.assign({}, g.place, { x: 0, y: 0, rot: 0 });
       const solids = B3().partBodies(Object.assign({}, g, { place: P0 }), t, { tubes: opts.tubes !== false });
       if (!solids.length) return;
-      const leads = { n: 0 }, names = solids.map((s, i) => bodyName(s, i, leads)), mats = solids.map(s => materialOf(s.color || [0, 0, 0], g.type));
+      const leads = { n: 0 }, names = solids.map((s, i) => bodyName(s, i, leads)), mats = solids.map(s => materialOf(s, g.type));
       const breps = solids.map(s => BR().write([s])), key = breps.join("\u0001") + JSON.stringify([solids.map(s => s.color), mats.map(m => m.name)]);
       if (!groups.has(key)) groups.set(key, { label: fileSafe([g.value, g.fp.name].filter(Boolean).join(" ")), solids, mats, names, refs: [] });
       const grp = groups.get(key);
@@ -218,7 +207,7 @@
         id: "st1", name: "Thermal 1", kind: "thermal", auto: true,
         settings: { passes: 3, energyTol: 1, ambient: res.ambient, ...(["open", "vented", "closed"].includes(st.enclosure) ? { enclosure: st.enclosure } : {}), down: down(board, st.orient) },
         comps: { c_board: { board: Object.assign({}, stack, { t }, map ? { map } : {}) } },
-        loads: [{ id: "l1", name: "Heat from package 1", type: "pkgheat", faces: [], parts: heatRows(res, ref => compsOf.get(ref) || []), board: "c_board", split: true }],
+        loads: [{ id: "l1", name: "Heat from package 1", type: "pkgheat", faces: [], parts: heatRows(res, ref => compsOf.get(ref) || [], ref => { const x = insts.find(q => q.ref === ref); return x ? x.grp.names.filter((_, i) => x.grp.solids[i].heat) : null; }), board: "c_board", split: true }],
         supports: [{ id: "s1", name: "Convection 1", type: "conv", faces: [], all: true, natural: true, h: 8 }, { id: "s2", name: "Radiation 1", type: "rad", faces: [], all: true, emis }]
       });
     }
@@ -227,5 +216,5 @@
     return { files, asm, parts: sorted.map(g => ({ name: g.name, refs: g.refs })), name: fileSafe(opts.name) };
   }
 
-  root.BoardMcad = { pack, sha256, materialOf, boardMaterial, copperMap, placement, MAT };
+  root.BoardMcad = { pack, sha256, materialOf, boardMaterial, copperMap, placement };
 })(typeof window !== "undefined" ? window : globalThis);

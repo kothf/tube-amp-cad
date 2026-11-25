@@ -1979,7 +1979,7 @@
   function thermalPanel() {
     const r = TH.res, st = BoardThermal.settings(S.board), lg = $("th-legend"), x = lg.getContext("2d");
     x.clearRect(0, 0, lg.width, lg.height); drawLegend(x, 2, 4, lg.height - 8, "#c9d1d9");
-    const hot = r.parts.filter(p => p.t !== null).sort((a, b) => b.t - a.t)[0], over = r.parts.filter(p => p.limit && (p.tj !== undefined ? p.tj : p.t) > p.limit);
+    const hot = r.parts.filter(p => p.t !== null).sort((a, b) => b.t - a.t)[0], over = r.parts.filter(p => p.limit && (p.tj !== undefined ? p.tj : p.tCore !== undefined ? p.tCore : p.t) > p.limit);
     $("th-sum").innerHTML = `<div>Heat on the board: <b>${thFmtW(r.total)}</b></div><div>Board, hottest: <b>${Math.round(r.boardMax)} °C</b></div>` +
       (hot ? `<div>Hottest part: <b>${esc(hot.ref)} ${Math.round(hot.t)} °C</b></div>` : "") +
       (over.length ? `<div class="over" style="color:#ff7b72">Over their limit: <b>${over.map(p => esc(p.ref)).join(", ")}</b></div>` : "");
@@ -2052,8 +2052,10 @@
     if (pw > 0.0005) h += row("Goes", [["board", p.toBoard], ["air", p.toAir + p.byRadiation], ["heatsink", p.toSink]].filter(([, w]) => w > 0.005).map(([n, w]) => `${n} ${thFmtW(w)}`).join(" · ") || "air");
     else if (p.toBoard < -0.005 || p.byRadiation < -0.005) h += row("Warmed by", [p.toBoard < -0.005 ? `the board ${thFmtW(-p.toBoard)}` : "", p.byRadiation < -0.005 ? `the valves ${thFmtW(-p.byRadiation)}` : ""].filter(Boolean).join(" · "));
     const lim = (t, l) => (l ? ` (limit ${l} °C${t > l ? ", over by " + Math.round(t - l) : ""})` : "");
-    h += row(kind, `${Math.round(p.t)} °C` + (p.tj === undefined ? lim(p.t, p.limit) : ""), p.tj === undefined && p.limit && p.t > p.limit ? "over" : "");
+    const own = p.tj === undefined && p.tCore === undefined;   // the limit is the junction's or the core's where it has one
+    h += row(kind, `${Math.round(p.t)} °C` + (own ? lim(p.t, p.limit) : ""), own && p.limit && p.t > p.limit ? "over" : "");
     if (p.tj !== undefined) h += row("Junction", `${Math.round(p.tj)} °C` + lim(p.tj, p.limit), p.limit && p.tj > p.limit ? "over" : "");
+    if (p.tCore !== undefined) h += row("Core", `${Math.round(p.tCore)} °C` + lim(p.tCore, p.limit), p.limit && p.tCore > p.limit ? "over" : "");
     if (p.life !== undefined) h += row("Life", `about ${BoardThermal.lifeText(p.life)} (${p.lifeRated} h at ${p.limit} °C)`, p.life < (S.board.rules.capLife > 0 ? S.board.rules.capLife : 10000) ? "over" : "");
     h += row("Mounted", mount);
     card.innerHTML = h; card.hidden = false;

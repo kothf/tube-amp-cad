@@ -18,8 +18,55 @@
     glass: [0.78, 0.88, 0.95], neon: [1, 0.62, 0.42], plate: [0.3, 0.3, 0.32], getter: [0.62, 0.62, 0.66], ceramic: [0.9, 0.87, 0.78], bakelite: [0.16, 0.13, 0.11], core: [0.36, 0.36, 0.39],
     coil: [0.86, 0.55, 0.2], terminal: [0.1, 0.55, 0.28], jack: [0.15, 0.15, 0.16], pot: [0.25, 0.27, 0.32], trim: [0.2, 0.35, 0.75], led: [0.9, 0.15, 0.1],
     wireRed: [0.8, 0.12, 0.1], wireBlack: [0.08, 0.08, 0.08], generic: [0.55, 0.55, 0.58], chipCap: [0.66, 0.52, 0.34], glassRed: [0.7, 0.2, 0.15],
-    sockBrown: [0.45, 0.33, 0.25], sockTan: [0.72, 0.62, 0.52], xt: [0.96, 0.74, 0.12], gold: [0.85, 0.68, 0.3]
+    sockBrown: [0.45, 0.33, 0.25], sockTan: [0.72, 0.62, 0.52], xt: [0.96, 0.74, 0.12], gold: [0.85, 0.68, 0.3],
+    die: [0.32, 0.34, 0.42], ecore: [0.62, 0.6, 0.52], bung: [0.1, 0.1, 0.1]
   };
+  // ---------------------------------------------------------------------------
+  // What each body is made of, for the thermal map and the export to MöbiusCAD: k W/(m·K), density
+  // g/cm³, cp J/(kg·K), emis = emissivity of its surface (bare metal low, paint, lacquer, sleeves,
+  // epoxy and glass high). Handbook values (Incropera; Vishay/Nexperia package notes for the
+  // moulding compound, tinned leads and plated tabs).
+  // ---------------------------------------------------------------------------
+  const MATERIALS = {
+    lead: { name: "Tinned copper", k: 385, density: 8.9, cp: 385, emis: 0.3, cat: "copper" },
+    tab: { name: "Copper, nickel-plated", k: 390, density: 8.9, cp: 385, emis: 0.15, cat: "copper" },
+    copper: { name: "Copper", k: 391, density: 8.96, cp: 385, emis: 0.3, cat: "copper" },
+    winding: { name: "Enamelled copper", k: 391, density: 8.96, cp: 385, emis: 0.9, cat: "copper" },
+    gold: { name: "Brass, gold-plated", k: 110, density: 8.5, cp: 380, emis: 0.05, cat: "copper" },
+    metal: { name: "Steel, nickel-plated", k: 50, density: 7.85, cp: 460, emis: 0.12, cat: "steel" },
+    kovar: { name: "Kovar, nickel-plated", k: 17, density: 8.36, cp: 440, emis: 0.12, cat: "steel" },
+    plate: { name: "Nickel, carbonised", k: 70, density: 8.9, cp: 445, emis: 0.85, cat: "other" },
+    core: { name: "Electrical steel, varnished", k: 30, density: 7.65, cp: 450, emis: 0.85, cat: "steel" },
+    can: { name: "Aluminium can, sleeved", k: 167, density: 2.7, cp: 896, emis: 0.9, cat: "aluminium" },
+    alBare: { name: "Aluminium, bare", k: 167, density: 2.7, cp: 896, emis: 0.1, cat: "aluminium" },
+    glass: { name: "Glass (borosilicate 3.3)", k: 1.2, density: 2.23, cp: 830, emis: 0.92, cat: "ceramic" },
+    alumina: { name: "Alumina, lacquered", k: 30, density: 3.9, cp: 880, emis: 0.9, cat: "ceramic" },
+    ceramic: { name: "Steatite", k: 2.5, density: 2.7, cp: 830, emis: 0.9, cat: "ceramic" },
+    bakelite: { name: "Bakelite", k: 0.2, density: 1.3, cp: 1500, emis: 0.9, cat: "plastic" },
+    epoxy: { name: "Epoxy moulding compound", k: 0.7, density: 1.9, cp: 900, emis: 0.9, cat: "plastic" },
+    clearEpoxy: { name: "Epoxy, clear", k: 0.2, density: 1.15, cp: 1100, emis: 0.9, cat: "plastic" },
+    film: { name: "Polypropylene film in epoxy", k: 0.25, density: 1.1, cp: 1700, emis: 0.9, cat: "plastic" },
+    silicon: { name: "Silicon", k: 148, density: 2.33, cp: 705, emis: 0.6, cat: "other" },
+    plastic: { name: "Nylon PA66-GF30", k: 0.35, density: 1.36, cp: 1500, emis: 0.9, cat: "plastic" },
+    pvc: { name: "PVC insulation", k: 0.19, density: 1.4, cp: 1000, emis: 0.9, cat: "plastic" },
+    // inside an electrolytic: the wound foil and paper soaked in electrolyte (one isotropic value: across the
+    // layers it is lower, along them far higher), and the rubber bung its leads come out through
+    ecore: { name: "Wound foil and paper, electrolyte-soaked", k: 1.0, density: 1.3, cp: 1800, emis: 0.9, cat: "other" },
+    rubber: { name: "EPDM rubber", k: 0.25, density: 1.2, cp: 1900, emis: 0.9, cat: "plastic" }
+  };
+  // a body's material where its drawing says none: by its colour, else by the part's type
+  const MAT_BY_COLOR = [["lead", "lead"], ["metal", "metal"], ["getter", "metal"], ["plate", "plate"], ["gold", "gold"], ["coil", "winding"],
+    ["glass", "glass"], ["glassRed", "glass"], ["neon", "glass"], ["ecap", "can"], ["snapin", "can"], ["ecapTop", "alBare"], ["core", "core"],
+    ["ceramic", "ceramic"], ["disc", "ceramic"], ["chipCap", "ceramic"], ["sockBrown", "bakelite"], ["sockTan", "bakelite"], ["bakelite", "bakelite"],
+    ["film", "film"], ["led", "clearEpoxy"], ["wireRed", "pvc"], ["wireBlack", "pvc"], ["resistor", "alumina"]];
+  function matKey(color, type) {
+    const hit = color && MAT_BY_COLOR.find(([c]) => { const v = C[c]; return v && Math.abs(v[0] - color[0]) + Math.abs(v[1] - color[1]) + Math.abs(v[2] - color[2]) < 1e-6; });
+    if (hit) return hit[1];
+    if (/^(resistor|rheostat|wirewound)/.test(type || "")) return "alumina";
+    if (color && Math.abs(color[0] - C.black[0]) + Math.abs(color[1] - C.black[1]) + Math.abs(color[2] - C.black[2]) < 1e-6) return "epoxy";
+    return "plastic";
+  }
+
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const avg = pts => { const s = [0, 0, 0]; pts.forEach(p => { s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; }); return s.map(v => v / pts.length); };
   function newell(V, loop) { const n = [0, 0, 0]; for (let i = 0; i < loop.length; i++) { const a = V[loop[i]], b = V[loop[(i + 1) % loop.length]]; n[0] += (a[1] - b[1]) * (a[2] + b[2]); n[1] += (a[2] - b[2]) * (a[0] + b[0]); n[2] += (a[0] - b[0]) * (a[1] + b[1]); } return n; }
@@ -152,6 +199,60 @@
   const cylZ = (x, y, r, z1, z2, color, to, ex) => cyl("z", x, y, r, z1, z2, color, to, ex);
   const cylX = (y, z, r, x1, x2, color, to, ex) => cyl("x", y, z, r, x1, x2, color, to, ex);
   const cylY = (x, z, r, y1, y2, color, to, ex) => cyl("y", x, z, r, y1, y2, color, to, ex);
+  // a box's faces in prism order (bottom, top, then the sides from its first corner), by name; a solid's
+  // `cover` lists the faces that lie against another body of the part (not open to the air): for a box
+  // these names, for a round solid z1 / z2 (its end caps), side and holes
+  const FACE_KEYS = ["z1", "z2", "y1", "x2", "y2", "x1"];
+  /** a box round an inner box (a die in its moulding): the shell as up to six boxes that do not overlap it
+      or each other; faces against the inner box or one another are covered, and so are the outer box's
+      faces named in `against` (where it sits on a tab or the board) */
+  function boxAround(o, i, color, to, ex, against) {
+    const [X1, Y1, Z1, X2, Y2, Z2] = o, [x1, y1, z1, x2, y2, z2] = i, out = [];
+    const add = b => {
+      if (b[3] - b[0] < 0.02 || b[4] - b[1] < 0.02 || b[5] - b[2] < 0.02) return;
+      const sol = box(b[0], b[1], b[3], b[4], b[2], b[5], color, to, ex), on = { x1: b[0] === X1, x2: b[3] === X2, y1: b[1] === Y1, y2: b[4] === Y2, z1: b[2] === Z1, z2: b[5] === Z2 };
+      sol.cover = FACE_KEYS.filter(k => !on[k] || (against || []).includes(k));
+      out.push(sol);
+    };
+    add([X1, Y1, Z1, X2, Y2, z1]); add([X1, Y1, z2, X2, Y2, Z2]);
+    add([X1, Y1, z1, X2, y1, z2]); add([X1, y2, z1, X2, Y2, z2]);
+    add([X1, y1, z1, x1, y2, z2]); add([x2, y1, z1, X2, y2, z2]);
+    return out;
+  }
+  /** an upright tube (an electrolytic's can round its winding): outer radius r, bore ri, true shape for STEP */
+  function tubeZ(u, v, r, ri, a1, a2, color, to, ex) {
+    const n = sides(r), s = holedPrism("z", circle(r, n).map(([a, b]) => [u + a, v + b]), [circle(ri, n).map(([a, b]) => [u + a, v + b])], a1, a2, color, to);
+    Object.assign(s, ex || {});
+    const c1 = to([u, v, a1]), c2 = to([u, v, a2]), A = unit(sub(c2, c1));
+    s.round = { o: c1, a: A, x: unit(sub(to([u + r, v, a1]), c1)), h: Math.hypot(...sub(c2, c1)), outer: [{ c: [0, 0], r, p: [r, 0] }], holes: [{ c: [0, 0], r: ri }] };
+    const radial = p => { const d = sub(p, c1), k = dot(d, A); return unit(sub(d, A.map(c => c * k))); };
+    s.faces.forEach((f, i) => { if (i > 1) f.vn = f.loops[0].map(k => radial(s.verts[k]).map(c => (i < 2 + n ? c : -c))); });
+    return s;
+  }
+  // the inner bodies where a part makes its heat: a die on its tab, a wound electrolytic core
+  const DIE = { mat: "silicon", inner: true, heat: true }, DIE_T = 0.25, CORE = { mat: "ecore", inner: true, heat: true };
+  /** junction to case (°C/W) of a square die of side a (mm) soldered on a copper tab: through the silicon,
+      25 µm of solder (50 W/m·K) and the spreading into the tab (a disc of the die's area on a thick plate) */
+  function dieR(a) {
+    const A = a * a * 1e-6, re = a / Math.sqrt(Math.PI) * 1e-3;
+    return DIE_T * 1e-3 / (MATERIALS.silicon.k * A) + 25e-6 / (50 * A) + 1 / (4 * MATERIALS.tab.k * re);
+  }
+  /** the die's side (mm): sized so its junction to case is the part's datasheet one (the thermal map's Rjc), within
+      what fits on the tab; with no rating known, the case's usual die */
+  function dieSide(g, usual, most) {
+    const T = root.BoardThermal, j = T && T.junction ? T.junction(g) : null;
+    if (!j || !(j.rjc > 0)) return Math.min(usual, most);
+    let lo = 0.4, hi = most;
+    if (dieR(hi) >= j.rjc) return hi;
+    if (dieR(lo) <= j.rjc) return lo;
+    for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (dieR(m) > j.rjc) lo = m; else hi = m; }
+    return (lo + hi) / 2;
+  }
+  // an electrolytic: the can (sleeved, or bare for an SMD part) round its winding, the rubber bung under it
+  function ecapBody(r, z0, z1, col, mat, to) {
+    const t = Math.min(0.4, r * 0.1), ri = r - t, zb = Math.min(z0 + 1, (z0 + z1) / 2);
+    return [tubeZ(0, 0, r, ri, z0, z1, col, to, { mat, cover: ["holes"] }), cylZ(0, 0, ri, z0, zb, C.bung, to, { mat: "rubber", inner: true }), cylZ(0, 0, ri, zb, z1, C.ecore, to, CORE)];
+  }
 
   // ---------------------------------------------------------------------------
   // A part's body, from its footprint (typical sizes: a model of the part, not its datasheet)
@@ -411,7 +512,7 @@
       const r = bd.d > 0 ? bd.d / 2 : (+m[1] + 3.2) / 2, zc = r + 2; out.push(cylY(0, zc, r, -1, 1, C.disc, to)); pads.forEach(p => lead(p.x, p.y, zc - r * 0.5));
     } else if ((m = /^RADIAL-D([\d.]+)-P([\d.]+)$/.exec(name)) || (m = /^SNAPIN-D(\d+)$/.exec(name))) {
       const d = bd.d > 0 ? bd.d : +m[1], H = bd.h > 0 ? bd.h : (/^SNAPIN/.test(name) ? SNAPIN_H : RADIAL_H)[+m[1]] || d * 1.6, r = d / 2;
-      out.push(cylZ(0, 0, r, 0.3, H - 0.4, /^SNAPIN/.test(name) ? C.snapin : C.ecap, to), cylZ(0, 0, r * 0.92, H - 0.4, H, C.ecapTop, to));
+      out.push(...ecapBody(r, 0.3, H - 0.4, /^SNAPIN/.test(name) ? C.snapin : C.ecap, "can", to), cylZ(0, 0, r * 0.92, H - 0.4, H, C.ecapTop, to, { cover: ["z1"] }));
       pads.forEach(p => lead(p.x, p.y, 0.5));
     } else if ((m = /^ECAP-AXIAL-([\d.]+)$/.exec(name))) {
       const [L, Dm] = D.ECAP_AXIAL[m[1]], h = +m[1] / 2, zc = Dm / 2 + 0.4;
@@ -422,7 +523,7 @@
       out.push(prism("z", arc, 2, 6.8, C.black, to)); pads.forEach(p => lead(p.x, p.y, 2));
     } else if ((m = /^TO-18-/.exec(name))) {
       // the tab beside pin 1, at the lower right seen from the top
-      out.push(cylZ(0, 0, 2.75, 1.5, 1.9, C.metal, to), cylZ(0, 0, 2.35, 1.9, 6.6, C.metal, to), box(1.8, 1.8, 2.6, 2.6, 1.5, 1.9, C.metal, to)); pads.forEach(p => lead(p.x, p.y, 1.5));
+      out.push(cylZ(0, 0, 2.75, 1.5, 1.9, C.metal, to, { mat: "kovar" }), cylZ(0, 0, 2.35, 1.9, 6.6, C.metal, to, { mat: "kovar" }), box(1.8, 1.8, 2.6, 2.6, 1.5, 1.9, C.metal, to, { mat: "kovar" })); pads.forEach(p => lead(p.x, p.y, 1.5));
     } else if ((m = /^(TO-1|TO-5|MP)-/.exec(name))) {
       // germanium cans: TO-1 tall and slim, TO-5 low and wide, the USSR MP can on its flange
       const r = fp.silk.find(t => t.t === "circle").r, H = { "TO-1": 9, "TO-5": 6.4, MP: 9.5 }[m[1]];
@@ -431,8 +532,12 @@
       pads.forEach(p => lead(p.x, p.y, 1.5));
     } else if ((m = /^TO-(126|220|247|3P|264)-/.exec(name))) {
       const r = fp.silk.find(s => s.t === "rect"), tab = m[1] !== "126", H = { 126: 11, 220: 9.2, 247: 20.5, "3P": 20, 264: 26 }[m[1]], zb = 2.5;
-      out.push(box(r.x, r.y, r.x + r.w, r.y + r.h, zb, zb + H, C.black, to));
-      if (tab) out.push(box(r.x, r.y, r.x + r.w, r.y + 1.3, zb, zb + H + (m[1] === "220" ? 6.3 : 0.1), C.metal, to));
+      // the moulding in front of the copper tab (TO-126: its frame, bare on the back), the die soldered on the tab inside it
+      const tb = tab ? 1.3 : 0.5, dw = dieSide(g, { 126: 2, 220: 3, 247: 5, "3P": 5, 264: 6 }[m[1]], Math.min(r.w - 1, H - 1)), dx = r.x + r.w / 2, dz = zb + H * 0.45;
+      const die = [dx - dw / 2, r.y + tb, dz - dw / 2, dx + dw / 2, r.y + tb + DIE_T, dz + dw / 2];
+      out.push(...boxAround([r.x, r.y + tb, zb, r.x + r.w, r.y + r.h, zb + H], die, C.black, to, null, ["y1"]));
+      out.push(box(r.x, r.y, r.x + r.w, r.y + tb, zb, zb + H + (m[1] === "220" ? 6.3 : tab ? 0.1 : 0), C.metal, to, { mat: "tab" }));
+      out.push(box(die[0], die[1], die[3], die[4], die[2], die[5], C.die, to, DIE));
       pads.forEach(p => { lead(p.x, p.y, 1.2); out.push(cylY(p.x, 1.2, 0.3, Math.min(p.y, r.y + r.h / 2), Math.max(p.y, r.y + r.h / 2), C.lead, to)); out.push(cylZ(p.x, r.y + r.h / 2, 0.3, 1.2, zb, C.lead, to)); });
     } else if ((m = /^LED-(\d)MM$/.exec(name))) {
       const r = +m[1] / 2, H = m[1] === "5" ? 8.6 : 5.3, col = C.led;
@@ -472,14 +577,14 @@
       if (opts.tubes !== false) {
         const rr = td / 2;
         if (m[2]) out.push(cylZ(0, 0, Math.min(4.5, rr * 0.3), zs + th, zs + th + 6, C.metal, to));   // the top cap
-        out.push(cylZ(0, 0, rr, zs + 0.15, zs + th * 0.86, C.glass, to, { alpha: 0.3, glass: true }), cylZ(0, 0, rr * 0.82, zs + th * 0.86, zs + th * 0.95, C.glass, to, { alpha: 0.3, glass: true }),
-          cylZ(0, 0, rr * 0.45, zs + th * 0.95, zs + th, C.glass, to, { alpha: 0.3, glass: true }),
+        out.push(cylZ(0, 0, rr, zs + 0.15, zs + th * 0.86, C.glass, to, { alpha: 0.3, glass: true, heat: true }), cylZ(0, 0, rr * 0.82, zs + th * 0.86, zs + th * 0.95, C.glass, to, { alpha: 0.3, glass: true, heat: true }),
+          cylZ(0, 0, rr * 0.45, zs + th * 0.95, zs + th, C.glass, to, { alpha: 0.3, glass: true, heat: true }),
           box(-rr * 0.55, -rr * 0.25, rr * 0.55, rr * 0.25, zs + th * 0.2, zs + th * 0.7, C.plate, to, { inner: true }),
           cylZ(0, 0, rr * 0.6, zs + th * 0.8, zs + th * 0.82, C.getter, to, { inner: true }));
       }
     } else if ((m = /^(?:XFMR-EI(\d+)-\w+|CHOKE-EI(\d+))$/.exec(name))) {
       const s = +(m[1] || m[2]), W = s, Dd = Math.round(s * 0.85), H = s * 0.82;
-      out.push(box(-W / 2, -Dd * 0.27, W / 2, Dd * 0.27, 0, H, C.core, to), box(-W * 0.31, -Dd / 2 + 1.5, W * 0.31, Dd / 2 - 1.5, H * 0.14, H * 0.86, C.coil, to));
+      out.push(box(-W / 2, -Dd * 0.27, W / 2, Dd * 0.27, 0, H, C.core, to), box(-W * 0.31, -Dd / 2 + 1.5, W * 0.31, -Dd * 0.27, H * 0.14, H * 0.86, C.coil, to, { cover: ["y2"] }), box(-W * 0.31, Dd * 0.27, W * 0.31, Dd / 2 - 1.5, H * 0.14, H * 0.86, C.coil, to, { cover: ["y1"] }));
       pads.forEach(p => lead(p.x, p.y, 0.5));
     } else if ((m = /^TERM-([\d.]+)-(\d+)$/.exec(name))) {
       const p0 = +m[1], n = +m[2], W = n * p0, Hh = p0 >= 7 ? 10 : 8, Z = p0 >= 7 ? 12 : 10;
@@ -564,7 +669,9 @@
       const b = fp.box; out.push(box(b[0], b[1], b[2], b[3], 0, 5, C.generic, to)); pads.forEach(p => lead(p.x, p.y, 0.5));
     }
     const res = out.filter(Boolean);
-    res.forEach((s, i) => { s.ref = g.ref; s.name = `${g.ref}${res.length > 1 ? "-" + (i + 1) : ""}`; });
+    res.forEach((s, i) => { s.ref = g.ref; s.name = `${g.ref}${res.length > 1 ? "-" + (i + 1) : ""}`; if (!s.mat || !MATERIALS[s.mat]) s.mat = matKey(s.color, g.type); });
+    // where the part makes its heat: its die, winding or bulb where drawn, else every body but its leads and pins
+    if (!res.some(s => s.heat)) res.forEach(s => { if (s.mat !== "lead" && s.mat !== "gold" && !s.inner) s.heat = true; });
     return res;
   }
 
@@ -588,16 +695,21 @@
       }
     } else if ((m = /^CP-SMD-D([\d.]+)$/.exec(name))) {
       const d = +m[1], H = D.SMD_ECAP[m[1]][3], b = d / 2 + 0.15, r = d / 2;
-      out.push(box(-b, -b, b, b, 0, 1, C.black, to), cylZ(0, 0, r, 1, H - 0.3, C.metal, to), cylZ(0, 0, r * 0.94, H - 0.3, H, C.ecapTop, to));
+      out.push(...ecapBody(r, 1, H - 0.3, C.metal, "alBare", to), box(-b, -b, b, b, 0, 1, C.black, to, { cover: ["z2"] }), cylZ(0, 0, r * 0.94, H - 0.3, H, C.ecapTop, to, { cover: ["z1"] }));
       pads.forEach(p => out.push(box(p.x - Math.sign(p.x) * 0.3 - 0.6, -0.35, p.x - Math.sign(p.x) * 0.3 + 0.6, 0.35, 0, 0.1, C.lead, to)));
     } else if ((m = /^SOT-23-/.exec(name))) {
       out.push(box(-1.45, -0.65, 1.45, 0.65, 0.1, 1.0, C.black, to));
       pads.forEach(p => out.push(box(p.x - 0.2, Math.min(p.y, Math.sign(p.y) * 0.65), p.x + 0.2, Math.max(p.y, Math.sign(p.y) * 0.65), 0, 0.12, C.lead, to)));
     } else if ((m = /^(SOT-89|SOT-223|DPAK|D2PAK)-/.exec(name))) {
       const T = D.TABBED[m[1]], [L, W, H] = T.body, yb = T.py - T.ph / 2 - 0.3, y0 = yb - W;
-      out.push(box(-L / 2, y0, L / 2, yb, 0.1, H, C.black, to));
-      // the tab, soldered flat under and behind the body; the leads out of the body's front
-      out.push(box(-T.tw / 2 + 0.3, T.ty - T.th / 2 + 0.2, T.tw / 2 - 0.3, Math.min(yb, Math.max(T.ty + T.th / 2 - 0.2, y0 + 0.5)), 0, 0.15, C.metal, to));
+      // the tab, soldered flat under and behind the body, the die on it inside the moulding; the leads out of the body's front
+      const ty0 = T.ty - T.th / 2 + 0.2, ty1 = Math.min(yb, Math.max(T.ty + T.th / 2 - 0.2, y0 + 0.5)), a = Math.max(y0, ty0), b = Math.min(yb, ty1);
+      const most = Math.min(b - a - 0.4, T.tw - 1, L - 0.6), dw = most > 0.4 ? dieSide(g, { "SOT-89": 1.2, "SOT-223": 1.8, DPAK: 2.5, D2PAK: 3.5 }[m[1]], most) : 0, cy = (a + b) / 2;
+      const die = dw > 0.3 ? [-dw / 2, cy - dw / 2, 0.15, dw / 2, cy + dw / 2, 0.15 + DIE_T] : null;
+      if (die) out.push(...boxAround([-L / 2, y0, 0.15, L / 2, yb, H], die, C.black, to, null, ["z1"]));
+      else out.push(box(-L / 2, y0, L / 2, yb, 0.15, H, C.black, to, { cover: ["z1"] }));
+      out.push(box(-T.tw / 2 + 0.3, ty0, T.tw / 2 - 0.3, ty1, 0, 0.15, C.metal, to, { mat: "tab" }));
+      if (die) out.push(box(die[0], die[1], die[3], die[4], die[2], die[5], C.die, to, DIE));
       pads.slice(0, T.pins).forEach(p => out.push(box(p.x - 0.3, yb, p.x + 0.3, p.y + T.ph / 2 - 0.3, 0, 0.15, C.lead, to)));
     } else if ((m = /^SOIC-(\d+)$/.exec(name))) {
       const n = +m[1], L = (n / 2 - 1) * 1.27 + 1.1 + 0.6;
@@ -810,5 +922,5 @@
     if ((m = /^SNAPIN-D(\d+)$/.exec(n))) return { kind: "can", d: +m[1], h: SNAPIN_H[+m[1]] || +m[1] * 1.6 };
     return null;
   }
-  root.Board3D = { scene, step, partBodies, boardSolid, preview, standardBody, triangles, COLORS: C, TUBE, BODY_PACKAGES, BODY_COLORS, BODY_SHAPES, defaultBody, bodyTidy, bodyHeight, outlineLoop };
+  root.Board3D = { scene, step, MATERIALS, matKey, FACE_KEYS, dieR, partBodies, boardSolid, preview, standardBody, triangles, COLORS: C, TUBE, BODY_PACKAGES, BODY_COLORS, BODY_SHAPES, defaultBody, bodyTidy, bodyHeight, outlineLoop };
 })(typeof window !== "undefined" ? window : globalThis);
