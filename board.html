@@ -89,6 +89,7 @@
     .cls-HV { color: var(--bad); } .cls-Power { color: var(--warn); } .cls-Signal { color: var(--text); }
     .pads { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); max-height: 180px; overflow-y: auto; }
     .pads div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dashed #1a2433; }
+    .st-ver { margin-left: auto; font: 400 11px ui-monospace, Menlo, monospace; color: var(--muted); white-space: nowrap; }
     footer { display: flex; gap: 16px; align-items: center; padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; min-height: 26px; }
     footer span { white-space: nowrap; }
     #st-msg { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }   /* a long message ends in "…", it never widens the window */
@@ -481,6 +482,7 @@
     <span id="st-rats"></span>
     <span id="st-drc"></span>
     <span id="st-pos"></span>
+    <span id="st-ver" class="st-ver" title="Tube Amp CAD release (Help ▾ → About)"></span>
   </footer>
 
   <div class="modal" id="help-modal" hidden>

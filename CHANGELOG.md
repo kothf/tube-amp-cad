@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.253.2] - 2026-11-25
+
+### Fixed
+- **The release number is back on screen.** Since 3.247.0 it left the toolbar below 1560 px
+  (1760 px in Russian) to keep the toolbar on one row, and was then only in Help ▾ → About.
+  It now moves to the right end of the status bar at those widths, so it is always visible.
+  The board shows it at the right end of its status bar too.
+
 ## [3.253.1] - 2026-11-23
 
 ### Fixed
