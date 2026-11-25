@@ -593,5 +593,5 @@
     return w > 1e-6 ? s / w : null;
   }
 
-  root.BoardThermal = { settings, down, films, junction, sources, solve, at, checks, capLife, lifeText, CAP_TEMP, CAP_LIFE, color, DEFAULTS, ENCLOSURE, LIMITS };
+  root.BoardThermal = { settings, down, films, faceContact, junction, sources, solve, at, checks, capLife, lifeText, CAP_TEMP, CAP_LIFE, color, DEFAULTS, ENCLOSURE, LIMITS };
 })(typeof window !== "undefined" ? window : globalThis);

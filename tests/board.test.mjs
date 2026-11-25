@@ -1134,8 +1134,9 @@ test("an NE555 goes on a DIP-8: pin n on pad n, pin 1 square at the top left, th
   for (const [pin, net] of Object.entries(nets)) assert.equal(m.pads.find(p => p.ref === "DA1" && p.num === pin).net, net, `pin ${pin}`);
   // in 3D: the moulding (in pieces round the lead-frame paddle and the die on it) and a lead for every pin
   const g3 = m.parts.find(q => q.ref === "DA1"), bodies = globalThis.Board3D.partBodies(g3, 1.6, {});
-  assert.equal(bodies.filter(b => b.mat === "lead").length, 8);
-  assert.equal(bodies.filter(b => b.mat === "silicon").length, 1); assert.equal(bodies.filter(b => b.mat === "frame").length, 1);
+  // (each lead up from its hole, up beside the body and in at the paddle's height)
+  assert.equal(bodies.filter(b => b.mat === "lead").length, 8 * 3);
+  assert.equal(bodies.filter(b => b.mat === "silicon").length, 1); assert.equal(bodies.filter(b => b.mat === "frame").length, 2, "the paddle and the finger out to its lead");
 });
 
 test("a part's own unplated holes (a jack's locating pegs): placed with the part, drilled NPTH, kept clear by pours and tracks, through the 3D board", () => {

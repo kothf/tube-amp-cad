@@ -1331,7 +1331,7 @@ the circuit file, so one file holds both.
   the datasheet's junction-to-case resistance, gives its junction, and an
   electrolytic's wound core in its can gives the core temperature its life
   is worked out from; small packages (TO-92, SOT-23, SOIC, DIP) have a
-  lead-frame paddle and die inside, metal cans a die on the header, axial
+  lead-frame paddle and die inside, the frame joined to its own lead, metal cans a die on the header, axial
   electrolytics a core; a part added by its part number gets its die sized
   to its own Rθjc and its junction checked against its Tjmax, filled from
   DigiKey with your key, else typical for the package; a TO-220's tab and its moulding are separate nodes

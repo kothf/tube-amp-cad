@@ -218,8 +218,12 @@ test("small packages, metal cans and axial electrolytics are modelled inside too
   const bodiesOf = (name, pins) => D3.partBodies({ ref: "X1", type: "npn", members: [], fp: B.footprint(name, pins), place: { x: 50, y: 40, rot: 0, side: "F" } }, 1.6, {});
   for (const [name, pins] of [["TO-92-EBC", ["E", "B", "C"]], ["SOT-23-BEC", ["B", "E", "C"]], ["DIP-8", ["1", "2", "3", "4", "5", "6", "7", "8"]], ["SOIC-8", ["1", "2", "3", "4", "5", "6", "7", "8"]]]) {
     const sol = bodiesOf(name, pins), die = sol.filter(x => x.mat === "silicon"), frame = sol.filter(x => x.mat === "frame");
-    assert.equal(die.length, 1, name); assert.equal(frame.length, 1, name);
-    assert.ok(die[0].heat && die[0].inner && frame[0].main && frame[0].inner, name);
+    assert.equal(die.length, 1, name); assert.equal(frame.length, 2, `${name}: the paddle and the frame's own lead inside`);
+    assert.ok(die[0].heat && die[0].inner && frame.every(f => f.main && f.inner), name);
+    // the frame reaches a lead: copper all the way from the die to the board, as in the real part
+    const leads = sol.filter(x => x.mat === "lead");
+    assert.ok(frame.some(f => leads.some(l => T.faceContact(f, l).length)), `${name}: the frame touches its lead`);
+    assert.ok(frame.some(f => T.faceContact(f, die[0]).length), `${name}: the die sits on the paddle`);
     assert.ok(sol.filter(x => x.mat === "epoxy").length >= 3, `${name}: the moulding in pieces round them`);
   }
   for (const [name, pins] of [["TO-18-EBC", ["E", "B", "C"]], ["TO-5-EBC", ["E", "B", "C"]]]) {
