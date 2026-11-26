@@ -19,7 +19,8 @@
     function system() {
       return SYSTEM + AiDesign.rules() + "\n\n# The part library (type: name. Pins. Values)\n" + AiCircuit.catalogue({ skip: ["rail", "offsheet", "netlabel", "bus", "ground"] })
         + "\nscope: Oscilloscope. Pins CH1 CH2 COM. Values: none needed."
-        + "\n\n# Tubes in the library (name, kind, max anode voltage, max anode dissipation)\n" + AiCircuit.tubeList();
+        + "\n\n# Tubes in the library (name, kind, max anode voltage, max anode dissipation)\n" + AiCircuit.tubeList()
+        + (root.AiSkill ? root.AiSkill.pack("design") : "");
     }
 
     // drawing while the answer is written: the parts complete so far, laid out and shown on the

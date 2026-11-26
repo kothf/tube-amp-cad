@@ -95,7 +95,7 @@
         setStatus(G.checks.length || G.stress.some(s => s.warn) ? "warn" : "ok", `Design review: ${G.margins.filter(m => m.pct >= 85).length} quantities at 85 % of a rating or more, ${G.checks.length} in the Checks`);
         if (!AiClient.ready(AiClient.load())) { ai.add({ kind: "note", text: "Add an AI key (AI settings…) and the AI also writes the review from this sheet: the findings in priority order, each with its part and number, and value changes you can apply." }); return; }
         const prompt = `The circuit, with each part's editable values as key=value:\n${ai.describe(true)}\n\nWhat the CAD measured:\n${sheetText(G)}\n\nReview this design.`;
-        const text = await ai.call({ system: SYSTEM, messages: [{ role: "user", text: prompt }], maxTokens: 16000 }, "Design review");
+        const text = await ai.call({ system: SYSTEM + (root.AiSkill ? root.AiSkill.pack("review", S.comps) : ""), messages: [{ role: "user", text: prompt }], maxTokens: 16000 }, "Design review");
         const j = AiClient.extractJson(text);
         const findings = (Array.isArray(j.findings) ? j.findings : []).map(f => ({ level: /^(critical|warning|advice)$/.test(f.level) ? f.level : "advice", part: String(f.part || ""), title: String(f.title || ""), detail: String(f.detail || "") }));
         const order = { critical: 0, warning: 1, advice: 2 };

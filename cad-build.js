@@ -87,7 +87,7 @@
         ai.add({ kind: "card", html: sheetHTML(G) + `<div class="ai-row"><button class="btn" data-act="bg-print" data-arg="${k}">Print the sheet</button></div>` });
         if (root.AiClient && root.AiClient.ready(root.AiClient.load())) {
           const sheet = (G.pts.map(p => `${p.label}: ${fmtEng(p.v, "V", 3)}`).join("; ")) + `\nHeaters: ${G.heaters.map(h => `${h.ref} ${h.tube} ${h.vh} V ${h.ih} A`).join(", ") || "none"}\nStored charge: ${G.bleed.map(b => `${b.ref} ${fmtEng(b.cap, "F")} at ${fmtEng(b.v, "V")}, bleeder ${b.bleeder || "none"}`).join("; ") || "none above 50 V"}\nPower from the supply ≈ ${fmtEng(G.total, "W")}`;
-          const text = await ai.call({ system: SYSTEM, messages: [{ role: "user", text: `The circuit:\n${ai.describe(false)}\n\nThe power-up sheet:\n${sheet}` }], maxTokens: 16000 }, "Build guide", true);
+          const text = await ai.call({ system: SYSTEM + (root.AiSkill ? root.AiSkill.pack("build", S.comps) : ""), messages: [{ role: "user", text: `The circuit:\n${ai.describe(false)}\n\nThe power-up sheet:\n${sheet}` }], maxTokens: 16000 }, "Build guide", true);
           ai.add({ kind: "answer", text });
         } else ai.add({ kind: "note", text: "Add an AI key (AI settings…) and the AI also writes the build notes for this circuit: the order to build and test it in, its layout, and what to watch for at the first switch-on." });
         setStatus("ok", `Build guide: ${G.pts.length} test points with the voltages to expect. Print the sheet for the bench.`);

@@ -6,6 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Design knowledge for the AI: our own circuit and PCB design skill.** The AI features now carry the app's
+  own design rules in their prompts: how to design and the margins a careful builder keeps on every part; tube
+  stages (load lines, bias, heater-to-cathode voltage, grid-leak limits, followers, SRPP, phase splitters, SE and
+  PP output stages, rectifiers); transistor stages and power amplifiers (bias spreader, idle current, SOA, Zobel);
+  op-amp circuits, filters, RIAA, tone stacks; power supplies (fuses, rectifiers, filters, bleeders, heaters,
+  linear and switching regulators); the 555, logic and mixed-signal circuits; feedback and stability; grounding,
+  hum and PCB layout (clearance by voltage, track width for current, heater pairs, stoppers at the socket, heat
+  around electrolytics). Design from a description, Edit by command, Fix the checks, Design review, the build
+  guide, Substitutes, Find a fault, Voicing and the Assistant each get the sections that fit the circuit on the
+  sheet. View ▾ → Settings… → AI → Design knowledge in AI prompts turns it off for shorter prompts.
+- The same knowledge is a Claude Code skill in the repository (`.claude/skills/circuit-design`), compiled into
+  `ai-skill.js` by `scripts/build-ai-skill.mjs` (a test fails when they differ). `scripts/design-check.mjs` draws
+  a design netlist in the CAD, simulates it and prints the Checks, ERC and operating points.
+
 ## [3.266.0] - 2026-11-26
 
 ### Added

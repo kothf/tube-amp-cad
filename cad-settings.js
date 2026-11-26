@@ -10,6 +10,7 @@
    - Start-up and view: the language, the start screen, Live, windows as tabs, the legend; these
      are the same switches the menus have, gathered here.
    - Board: the units the measure tool shows (mm or mil).
+   - AI: Design knowledge in AI prompts (ai-skill.js, the circuit-design skill) on or off.
    - Keys: the AI key and the DigiKey key, each opened in its own dialog.
    localStorage tubecad_settings holds this module's own values; the start-up switches keep the
    keys they always had (tubecad_lang, tubecad_start, tubecad_live, tubecad_tabs, tubecad_legend,
@@ -17,7 +18,7 @@
 (function (root) {
   "use strict";
   const KEY = "tubecad_settings";
-  const DEFAULTS = { animations: true, animS: 3, liveS: 2.5, author: "", owner: "", size: "A3", orient: "landscape", mains: "230/50" };
+  const DEFAULTS = { animations: true, aiKnowledge: true, animS: 3, liveS: 2.5, author: "", owner: "", size: "A3", orient: "landscape", mains: "230/50" };
   const MAINS = [["230/50", "230 V 50 Hz (Europe, Israel, Asia)"], ["220/50", "220 V 50 Hz (Russia, CIS, China)"], ["240/50", "240 V 50 Hz (UK, Australia)"], ["120/60", "120 V 60 Hz (North America)"], ["100/50", "100 V 50 Hz (East Japan)"], ["100/60", "100 V 60 Hz (West Japan)"]];
   const ANIM_S = [1, 2, 3, 5, 10], LIVE_S = [1, 2.5, 5, 10], SIZES = ["A4", "A3", "A2", "A1"];
   let prefs = load();
@@ -74,6 +75,7 @@
   function refresh() {
     if (!modal || modal.hidden) return;
     $("set-animations").checked = animations();
+    $("set-ai-knowledge").checked = prefs.aiKnowledge !== false;
     $("set-anim-s").value = String(prefs.animS);
     $("set-live-s").value = String(prefs.liveS);
     if (document.activeElement !== $("set-author")) $("set-author").value = prefs.author;
@@ -100,6 +102,7 @@
     opts("set-mains", MAINS);
     const on = (id, ev, f) => $(id).addEventListener(ev, f);
     on("set-animations", "change", e => setAnimations(e.target.checked));
+    on("set-ai-knowledge", "change", e => set("aiKnowledge", !!e.target.checked));
     on("set-anim-s", "change", e => set("animS", +e.target.value));
     on("set-live-s", "change", e => set("liveS", +e.target.value));
     on("set-author", "input", e => set("author", e.target.value.trim()));

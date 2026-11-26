@@ -35,6 +35,7 @@ import { cad, check } from "./harness.mjs";
   await cad.waitForFunction(() => TubeCAD.state.design && !TubeCAD.state.design.busy && /12AX7 gain stage/.test(document.getElementById("ai-log").innerText), null, { timeout: 90000 });
   const sys = sent[0].system[0].text, first = sent[0].messages[0].content[0].text;
   check(/pins maps EVERY pin/.test(sys) && /resistor: Resistor\. Pins 1 2/.test(sys) && /12AX7 \(triode/.test(sys) && /A 12AX7 gain stage on 250 V/.test(first), "the request carries the rules, the part library, the tubes and the description");
+  check(/# Design knowledge/.test(sys) && /# Tube circuits/.test(sys) && /# Power supplies/.test(sys) && /# 555, logic/.test(sys) && !/# Grounding, hum and board layout/.test(sys), "and the design knowledge for every kind of circuit (ai-skill.js), without the board's");
   check(sent.length === 2 && /VL1 has no pin X/.test(sent[1].messages[2].content[0].text), "a design the CAD cannot use goes back once with its problems");
   const r = await cad.evaluate(() => { const S = TubeCAD.state, vl = S.comps.find(c => c.label === "VL1"), m = TubeCAD.measurements().find(x => x.label === "VL1 Ia");
     return { n: S.comps.filter(c => !["frame", "ground", "rail", "offsheet"].includes(c.type)).length, frame: S.comps.filter(c => c.type === "frame").map(c => c.params.size + " " + c.params.title).join(), tube: vl && vl.params.tube, ia: m && m.v, log: document.getElementById("ai-log").innerText }; });

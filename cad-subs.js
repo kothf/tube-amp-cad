@@ -143,7 +143,7 @@
       const table = [line(`${was} (as drawn)`, "—", base)].concat(rows.map(r => line(r.x.name, FIT[r.x.fit] + (r.x.vh ? `, heater ${r.x.vh} V ${r.x.ih} A` : "") + (r.x.an ? ", listed analog" : "") + (r.x.use ? `, ${r.x.use}` : ""), r.m))).join("\n");
       try {
         U.busy = true;
-        const text = await ai.call({ system: SYSTEM, messages: [{ role: "user", text: `The circuit:\n${ai.describe(false)}\n\nThe part: ${was} (${parts.map(desig).join(", ")})\nThe simulated substitutes:\n${table}` }], maxTokens: 16000 }, "Substitutes", true);
+        const text = await ai.call({ system: SYSTEM + (root.AiSkill ? root.AiSkill.pack("subs", S.comps) : ""), messages: [{ role: "user", text: `The circuit:\n${ai.describe(false)}\n\nThe part: ${was} (${parts.map(desig).join(", ")})\nThe simulated substitutes:\n${table}` }], maxTokens: 16000 }, "Substitutes", true);
         ai.add({ kind: "answer", text });
       } catch (e) { ai.fail(e); } finally { U.busy = false; ai.render(); }
     }

@@ -277,6 +277,15 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
       `Settings → Part animations: the lit lamp ${lit} bright, ${plain} with animations off (kept: ${stored}), ${back} on again`);
   }
   {
+    // Settings → AI → Design knowledge in AI prompts: the AI features' prompts carry the design knowledge, or not
+    await cad.click("#btn-view"); await cad.click("#menu-settings");
+    const on = await cad.isChecked("#set-ai-knowledge"), withIt = await cad.evaluate(() => AiSkill.pack("review", [{ type: "tube" }]).length);
+    await cad.uncheck("#set-ai-knowledge");
+    const off = await cad.evaluate(() => [AiSkill.pack("review", [{ type: "tube" }]).length, CadSettings.get("aiKnowledge")]);
+    await cad.check("#set-ai-knowledge"); await cad.click("#btn-settings-close");
+    check(on && withIt > 10000 && off[0] === 0 && off[1] === false && await cad.evaluate(() => CadSettings.get("aiKnowledge")), `Settings → Design knowledge in AI prompts: ${withIt} characters of design knowledge in a review's prompt, none when off`);
+  }
+  {
     // Settings → New circuits, Animate speed, Live time limit, Board units: new parts and sheets take them, placed ones keep theirs
     await cad.click("#btn-view"); await cad.click("#menu-settings");
     await cad.fill("#set-author", "A. Tester"); await cad.selectOption("#set-mains", "120/60"); await cad.selectOption("#set-size", "A4");

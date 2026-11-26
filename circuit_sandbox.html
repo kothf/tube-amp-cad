@@ -1056,6 +1056,8 @@
         <div class="new-form set-form">
           <span title="The units the Board window's measure tool shows">Measure units</span><select id="set-units"><option value="mm">mm</option><option value="mil">mil</option><option value="in">inch</option></select>
         </div>
+        <div class="set-head">AI</div>
+        <label class="set-row" title="On: the AI features get the app's design knowledge (tube, transistor, op-amp, power-supply, logic and board-layout rules) with each question. Off: shorter, cheaper prompts"><input type="checkbox" id="set-ai-knowledge"><span><b>Design knowledge in AI prompts</b><small>Design from a description, Edit by command, Fix the checks, Design review, Build and power-up guide, Substitutes, Find a fault, Voicing and the assistant get the design rules of the circuit's kinds (ratings margins, bias, supplies, feedback and stability, grounding and board layout) in their prompts. The AI designs closer to what a careful builder would; each question costs a few thousand tokens more.</small></span></label>
         <div class="set-head">Keys</div>
         <div class="new-form set-form">
           <span title="Your API key for Claude, ChatGPT or Gemini, for the AI menu (kept in this browser only)">AI</span><span class="set-pair"><span id="set-ai-state" class="set-state"></span><button class="btn" id="btn-set-ai" title="Open AI settings: provider, key and model">Edit…</button></span>
@@ -1504,6 +1506,7 @@
   <script src="cad-rev-dialog.js?v=dev"></script>
   <script src="ai-client.js?v=dev"></script>
   <script src="ai-circuit.js?v=dev"></script>
+  <script src="ai-skill.js?v=dev"></script>
   <script src="cad-ai.js?v=dev"></script>
   <script src="cad-tune.js?v=dev"></script>
   <script src="ai-design.js?v=dev"></script>
