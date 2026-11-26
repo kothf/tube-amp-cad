@@ -249,6 +249,25 @@ test("small packages, metal cans and axial electrolytics are modelled inside too
     const sol = bodiesOf(name, pins), head = sol.find(x => x.main);
     assert.ok(head && sol.some(x => x.mat === "silicon" && x.heat) && sol.some(x => x.round && x.round.holes && x.round.holes.length), `${name}: a header, a die and a hollow can`);
   }
+  // a TO-18 with a rating: the die sits on an attach layer that makes its junction to case the datasheet's (a small
+  // die on a kovar header alone conducts better than the rating says, so MöbiusCAD ran the junction cooler)
+  {
+    const q = part("q1", "npn", "VT1", { model: "BC107" }, { C: 1, B: 2, E: 0 }), s = setup(60, 40, [q], { VT1: { x: 30, y: 20 } }, { q1: 0.2 });
+    const g = s.model.parts.find(x => x.ref === "VT1"), sol = D3.partBodies(g, 1.6, {}), j = T.junction(g);
+    assert.match(g.fp.name, /^TO-18/);
+    const box = x => [0, 1, 2].map(k => Math.max(...x.verts.map(v => v[k])) - Math.min(...x.verts.map(v => v[k])));
+    const die = sol.find(x => x.mat === "silicon"), at = sol.find(x => x.mat === "attach"), a = box(die)[0], ta = at ? box(at)[2] : 0;
+    assert.ok(at && at.inner && !at.heat && T.faceContact(at, die).length && T.faceContact(at, sol.find(x => x.main)).length, "the attach layer between the die and the header");
+    near(D3.dieR(a, D3.MATERIALS.kovar.k) + ta * 1e-3 / (D3.MATERIALS.attach.k * a * a * 1e-6), j.rjc, 0.01, "die, attach and header spreading give the datasheet's Rjc");
+    // with no rating there is nothing to match: no attach layer
+    assert.ok(!bodiesOf("TO-18-EBC", ["E", "B", "C"]).some(x => x.mat === "attach"));
+  }
+  // SOT-223/DPAK: the frame runs on under the moulding to carry the die, which sits on it
+  for (const name of ["SOT-89-BCE", "SOT-223-BCE", "DPAK-GDS", "D2PAK-GDS"]) {
+    const fp = B.footprint(name, ["B", "C", "E"]);
+    const sol = D3.partBodies({ ref: "X1", type: "npn", members: [], fp, place: { x: 50, y: 40, rot: 0, side: "F" } }, 1.6, {}), die = sol.find(x => x.mat === "silicon");
+    assert.ok(die && die.heat && sol.some(x => x.mat === "tab" && T.faceContact(x, die).length), `${name}: the die on the frame`);
+  }
   const ax = bodiesOf("ECAP-AXIAL-25.4", ["+", "-"]);
   assert.ok(ax.some(x => x.mat === "ecore" && x.heat) && ax.some(x => x.mat === "rubber") && ax.some(x => x.main && x.round.holes.length), "an axial electrolytic: can, core, bung");
   // on a board: a TO-92's paddle is the case node, its moulding cooler, its junction a little over the paddle

@@ -86,7 +86,7 @@
   /** A body's name inside its part */
   function bodyName(s, i, leads) {
     const C = B3().COLORS, c = s.color || [0, 0, 0], lead = Math.abs(c[0] - C.lead[0]) + Math.abs(c[1] - C.lead[1]) + Math.abs(c[2] - C.lead[2]) < 1e-6;
-    const own = { silicon: "Die", ecore: "Core", rubber: "Bung", tab: "Tab", frame: "Frame" }[s.mat];
+    const own = { silicon: "Die", attach: "Die attach", ecore: "Core", rubber: "Bung", tab: "Tab", frame: "Frame" }[s.mat];
     if (s.solder) return `Solder ${++leads.s}`;
     return lead ? `Lead ${++leads.n}` : own && i ? own : i ? `Body ${i + 1}` : "Body";
   }
