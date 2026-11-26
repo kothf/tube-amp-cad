@@ -374,7 +374,13 @@
         if (!cells.length) cells.push(cell);
         P.pads.push({ x: p.x, y: p.y, r: Math.max(p.w || 1.6, p.h || p.w || 1.6) / 2, cell, cells, G, side: p.smd ? (p.layers[0] === "B.Cu" ? 1 : 0) : 2 });
       });
-      if (ONE_LEAD.has(g.type) && !smd && P.pads.length > 1) { const one = Math.max(...P.pads.map(q => q.G)) / P.pads.length; P.pads.forEach(q => { q.G = one; }); }
+      if (ONE_LEAD.has(g.type) && !smd && P.pads.length > 1) {
+        // one lead's copper carries the heat: a tab case's own lead (it meets the tab in the 3D model, the
+        // others end in the moulding) takes it all, so its pad is where the heat enters the board, as in MöbiusCAD
+        const one = Math.max(...P.pads.map(q => q.G)), tl = sol.find(x => x.tabLead && x.round);
+        const own = tl ? P.pads.reduce((a, q) => (Math.hypot(q.x - tl.round.o[0], q.y + tl.round.o[1]) < Math.hypot(a.x - tl.round.o[0], a.y + tl.round.o[1]) ? q : a), P.pads[0]) : null;
+        P.pads.forEach(q => { q.G = own ? (q === own ? one : 0) : one / P.pads.length; });
+      }
       P.jn = junction(g);
       // the bodies inside: a die makes the junction (through the silicon, its solder and the spreading into
       // the tab under it, a node on the case), an electrolytic's winding its core (a long cylinder making its

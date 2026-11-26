@@ -696,19 +696,20 @@ import { readFile } from "node:fs/promises";
     await bd.locator("#gl3d").focus().catch(() => {}); await bd.keyboard.press("t"); await bd.waitForTimeout(250);
     const off = await bd.evaluate(() => ({ panel: document.getElementById("th-panel").hidden, glass: BoardApp.viewer().batches.some(b => b.k === "glass"), flat: BoardApp.viewer().flat }));
     check(off.panel && off.glass && !off.flat, "T switches the thermal map off: the parts' own colours and the glass are back");
-    // the board for MöbiusCAD: Export ▾ → MöbiusCAD assembly (ZIP) saves the folder: a part file per drawing (equal parts share one),
+    // the board for MöbiusCAD: Export ▾ → MöbiusCAD assembly (ZIP) saves the folder: a part file per drawing (equal parts of one value share one),
     // the assembly linking them by path and SHA-256, and a thermal study with every part's heat and the board's copper map
     const [mzip] = await Promise.all([bd.waitForEvent("download"), bd.evaluate(() => document.getElementById("ex-mcad-zip").click())]);
     const mpk = await bd.evaluate(() => {
       const pk = BoardApp.mcadPack(), a = pk.asm, st = a.studies && a.studies[0], l = st && st.loads[0], r = BoardApp.thermalResult();
-      const refs = new Set(a.components.slice(1).map(c => c.name)), shared = pk.parts.filter(p => p.refs.length > 1).length;
-      return { name: pk.name, files: Object.keys(pk.files).length, comps: a.components.length, parts: Object.keys(a.parts).length, shared,
+      const refs = new Set(a.components.slice(1).map(c => c.name)), shared = pk.parts.filter(p => p.refs.length > 1).length,
+        valOf = ref => (BoardApp.state.model.parts.find(g => g.ref === ref) || {}).value || "", sameValue = pk.parts.every(p => p.refs.every(ref => valOf(ref) === valOf(p.refs[0])));
+      return { name: pk.name, files: Object.keys(pk.files).length, comps: a.components.length, parts: Object.keys(a.parts).length, shared, sameValue,
         linked: Object.values(a.parts).every(p => pk.files[p.link.path] && p.link.hash === BoardMcad.sha256(pk.files[p.link.path])),
         heat: l ? l.parts.reduce((s, p) => s + p.p, 0) : 0, total: r ? r.parts.reduce((s, p) => s + p.p + p.heater, 0) : -1, onComps: l ? l.parts.every(p => p.comps.every(id => a.components.some(c => c.id === id))) && l.parts.filter(p => p.p > 0.05 && p.comps.length).length > 0 : false,
         map: !!(st && st.comps.c_board.board.map && st.comps.c_board.board.map.cov.length >= 2), placed: [...refs].every(ref => BoardApp.state.model.parts.some(g => g.ref === ref)), mats: Object.values(a.parts).every(p => Object.values(p.doc.bodies).every(b => b.material && b.material.k > 0)) };
     });
-    check(mzip.suggestedFilename() === mpk.name + "-mobiuscad.zip" && mpk.files === mpk.parts + 1 && mpk.comps > mpk.parts && mpk.shared > 0 && mpk.linked && mpk.placed && mpk.onComps && mpk.map && mpk.mats && Math.abs(mpk.heat - mpk.total) < 0.05,
-      `Export ▾ → MöbiusCAD assembly (ZIP) saves ${mzip.suggestedFilename()}: ${mpk.comps} components from ${mpk.parts} part files (${mpk.shared} shared by equal parts), every link's hash right, a thermal study of ${mpk.heat.toFixed(1)} W (map ${mpk.total.toFixed(1)} W) with the board's copper map ${JSON.stringify({ linked: mpk.linked, placed: mpk.placed, onComps: mpk.onComps, map: mpk.map, mats: mpk.mats })}`);
+    check(mzip.suggestedFilename() === mpk.name + "-mobiuscad.zip" && mpk.files === mpk.parts + 1 && mpk.comps >= mpk.parts && mpk.sameValue && mpk.linked && mpk.placed && mpk.onComps && mpk.map && mpk.mats && Math.abs(mpk.heat - mpk.total) < 0.05,
+      `Export ▾ → MöbiusCAD assembly (ZIP) saves ${mzip.suggestedFilename()}: ${mpk.comps} components from ${mpk.parts} part files (${mpk.shared} shared by equal parts of one value), every link's hash right, a thermal study of ${mpk.heat.toFixed(1)} W (map ${mpk.total.toFixed(1)} W) with the board's copper map ${JSON.stringify({ linked: mpk.linked, placed: mpk.placed, onComps: mpk.onComps, map: mpk.map, mats: mpk.mats })}`);
     await bd.evaluate(() => { BoardApp.thermal(false); delete BoardApp.state.board.thermal; BoardApp.commit(); BoardApp.close3D(); });
     // the map in the layout: View ▾ → Thermal overlay shows its scale; its findings join the check list, by the board's own limit
     const ov = await bd.evaluate(() => {
