@@ -50,16 +50,16 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   document as a fallback copy. Names stay the same from one export to the
   next, so writing the folder again overwrites the same files.
 - **The thermal study** ("Thermal 1", needs a simulation): a "Heat from
-  package" load with every part's dissipation (the map's operating point),
-  its board/heatsink shares and path, where its board share goes in
-  (`into`: a disc on each pad for its lead and a rectangle under the body for
-  the air gap, watts each, x/y in the board's frame; MöbiusCAD 1.713.0 and
-  later inject there, older versions under the whole part), its limit, an electrolytic's rated life
+  package" load with every part's dissipation (the map's operating point)
+  and only that: no `board`, `sink`, `path`, `into` or `split` (since
+  3.260.0), so MöbiusCAD treats each part as a plain heat source and finds
+  every path itself, through the solder joints into the board, by
+  convection and radiation, and into any heatsink or chassis put in the
+  assembly there; its limit, an electrolytic's rated life
   and a semiconductor's Rjc (the map's junction over its case); `bodies`:
   the names of the bodies in the part's file that make its heat (the die,
   the core, a valve's bulb, otherwise every body but the leads), so
-  MöbiusCAD can inject the heat there and read the junction off the die; the package's
-  split kept (each part's board share enters the board under it); the map's
+  MöbiusCAD can inject the heat there and read the junction off the die; the map's
   ambient, chassis (open, vented, closed) and which way is down; convection
   and radiation on every open surface; and the board's copper stack with its
   copper map: each layer's share of every cell of the map's grid and the
@@ -72,10 +72,16 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   the same faces the export writes: the board's faces, edges and hole walls
   and every face of each part's bodies and leads. Radiation goes from every
   face to the ambient at its body's emissivity (the board 0.9), and a lead
-  conducts at its material's k (tinned copper, 385 W/m·K) in both apps. The package's split is always kept: a part's
-  board share (through its leads, as the 3D view draws them, and the air gap
-  under its body) is a heat into the board, since MöbiusCAD does not mesh
-  the solder joints or the air.
+  conducts at its material's k (tinned copper, 385 W/m·K) in both apps.
+- **Solder joints** (since 3.260.0): every lead standing in a drilled pad
+  gets two "Solder n" bodies in its part file (Solder SAC305, k 58 W/m·K):
+  a tube filling the hole from the lead to the hole wall through the board,
+  and a fillet 0.4 mm thick under the board on the pad (at least 0.25 mm
+  past the hole). They touch the lead, the hole wall and the board's bottom
+  face, so the lead's heat reaches the board by conduction and no fixed
+  board share is needed. What MöbiusCAD does not mesh is the air under a
+  part, so a body lying close to the board (a 5–10 W resistor) reads about
+  10 % hotter there than on the map, which conducts across that gap.
 
 Chrome and Edge write the folder in place (a folder picker). Other browsers,
 and the ZIP command, download `<name>-mobiuscad.zip` holding the folder.

@@ -6,6 +6,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.260.0] - 2026-11-26
+
+### Changed
+- **The MöbiusCAD export carries only each part's heat; MöbiusCAD finds the paths.** The study's
+  "Heat from package" load no longer has the map's board, heatsink and chassis shares or its Heat
+  path: each part is a plain heat source in its die, core, bulb or body, and MöbiusCAD works out where
+  the heat goes, into the board, out by air, and into whatever heatsink or chassis you put in the
+  assembly there. Before, a heatsink added in MöbiusCAD to a board exported "in free air" left the
+  fixed board share in place: the board stayed hot and the part's bodies went far below the ambient.
+  On examples 05, 04 and 18 the junctions now read 66, 70 and 85–87 °C with modelled heatsinks, the
+  same as an export made "On a heatsink" before, without setting anything in Tube Amp CAD; in free
+  air they agree with the map within 1–8 % (field test).
+
+### Added
+- **Solder joints in the MöbiusCAD export.** Every lead in a drilled pad gets a solder fill from the
+  lead to the hole wall and a fillet under the board on the pad (SAC305, 58 W/m·K), so the lead's heat
+  reaches the board by conduction, as it does on the real board.
+
 ## [3.259.0] - 2026-11-26
 
 ### Fixed

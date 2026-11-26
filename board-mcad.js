@@ -87,6 +87,7 @@
   function bodyName(s, i, leads) {
     const C = B3().COLORS, c = s.color || [0, 0, 0], lead = Math.abs(c[0] - C.lead[0]) + Math.abs(c[1] - C.lead[1]) + Math.abs(c[2] - C.lead[2]) < 1e-6;
     const own = { silicon: "Die", ecore: "Core", rubber: "Bung", tab: "Tab", frame: "Frame" }[s.mat];
+    if (s.solder) return `Solder ${++leads.s}`;
     return lead ? `Lead ${++leads.n}` : own && i ? own : i ? `Body ${i + 1}` : "Body";
   }
 
@@ -133,12 +134,8 @@
       if (p.lifeRated !== undefined) { row.life = p.lifeRated; row.elyt = true; }
       // the bodies the part makes its heat in (its die, winding, bulb, resistive body), by name in its part file
       const hb = bodiesOf ? bodiesOf(p.ref) : null; if (hb && hb.length) row.bodies = hb;
-      if (!p.off) { row.board = r4(Math.max(0, p.toBoard || 0)); row.sink = r4(Math.max(0, p.toSink || 0)); row.path = p.path === "chassis" || p.path === "heatsink" || p.path === "air" ? p.path : "board"; }
-      // where the board share goes in: a disc per pad (the lead), a rectangle under the body (the air gap)
-      if (!p.off && row.board > 0 && p.into && p.into.length) {
-        const r3 = v => +(+v).toFixed(3);
-        row.into = p.into.map(q => (q.disc ? { disc: q.disc.map(r3), w: r4(q.w) } : { rect: q.rect.map(r3), w: r4(q.w) }));
-      }
+      // only the heat: no board, heatsink or chassis shares. MöbiusCAD finds every path itself, through the solder
+      // joints into the board, by air, and into whatever heatsink or chassis is put in the assembly there
       // a semiconductor: the limit is its junction's; Rjc from the map's junction over its case
       if (p.tj !== undefined && p.tj !== null && p.t !== null && p.t !== undefined && p.p > 0.01) { row.junction = true; row.rjc = Math.max(0, +((p.tj - p.t) / p.p).toFixed(3)); }
       out.push(row);
@@ -164,9 +161,11 @@
     model.parts.forEach(g => {
       if (!g.place || !g.fp || !keep.has(g.key)) return;
       const P0 = Object.assign({}, g.place, { x: 0, y: 0, rot: 0 });
-      const solids = B3().partBodies(Object.assign({}, g, { place: P0 }), t, { tubes: opts.tubes !== false });
-      if (!solids.length) return;
-      const leads = { n: 0 }, names = solids.map((s, i) => bodyName(s, i, leads)), mats = solids.map(s => materialOf(s, g.type));
+      const drawn = B3().partBodies(Object.assign({}, g, { place: P0 }), t, { tubes: opts.tubes !== false });
+      if (!drawn.length) return;
+      // with its solder joints: the lead meets the hole wall and the pad, so the heat reaches the board by conduction
+      const solids = drawn.concat(B3().solderJoints(Object.assign({}, g, { place: P0 }), drawn, t));
+      const leads = { n: 0, s: 0 }, names = solids.map((s, i) => bodyName(s, i, leads)), mats = solids.map(s => materialOf(s, g.type));
       // equal parts share one file: the same drawing and the same value (an IRF9540 drawn as an IRF540 is still its own part, so
       // MöbiusCAD's tree and BOM name it right)
       const breps = solids.map(s => BR().write([s])), key = breps.join("\u0001") + JSON.stringify([solids.map(s => s.color), mats.map(m => m.name), g.value || ""]);
@@ -209,7 +208,7 @@
         id: "st1", name: "Thermal 1", kind: "thermal", auto: true,
         settings: { passes: 3, energyTol: 1, ambient: res.ambient, ...(["open", "vented", "closed"].includes(st.enclosure) ? { enclosure: st.enclosure } : {}), down: down(board, st.orient) },
         comps: { c_board: { board: Object.assign({}, stack, { t }, map ? { map } : {}) } },
-        loads: [{ id: "l1", name: "Heat from package 1", type: "pkgheat", faces: [], parts: heatRows(res, ref => compsOf.get(ref) || [], ref => { const x = insts.find(q => q.ref === ref); return x ? x.grp.names.filter((_, i) => x.grp.solids[i].heat) : null; }), board: "c_board", split: true }],
+        loads: [{ id: "l1", name: "Heat from package 1", type: "pkgheat", faces: [], parts: heatRows(res, ref => compsOf.get(ref) || [], ref => { const x = insts.find(q => q.ref === ref); return x ? x.grp.names.filter((_, i) => x.grp.solids[i].heat) : null; }) }],
         supports: [{ id: "s1", name: "Convection 1", type: "conv", faces: [], all: true, natural: true, h: 8 }, { id: "s2", name: "Radiation 1", type: "rad", faces: [], all: true, emis }]
       });
     }

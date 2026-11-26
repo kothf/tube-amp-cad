@@ -56,7 +56,8 @@ test("the folder: an assembly and a part file per drawing, equal parts sharing o
     assert.ok(Object.values(p.doc.bodies).every(b => b.material && b.material.name && b.material.density > 0 && b.material.k > 0 && b.material.cp > 0 && b.material.emis > 0 && b.material.emis <= 1));
   }
   const res = Object.values(a.doc.parts).find(p => p.name === "1kΩ 5W AXIAL-30.48").doc;
-  assert.deepEqual(Object.values(res.bodies).map(b => [b.name, b.material.name]), [["Body", "Alumina, lacquered"], ["Lead 1", "Tinned copper"], ["Lead 2", "Tinned copper"], ["Lead 3", "Tinned copper"], ["Lead 4", "Tinned copper"]]);
+  assert.deepEqual(Object.values(res.bodies).map(b => [b.name, b.material.name]), [["Body", "Alumina, lacquered"], ["Lead 1", "Tinned copper"], ["Lead 2", "Tinned copper"], ["Lead 3", "Tinned copper"], ["Lead 4", "Tinned copper"],
+    ["Solder 1", "Solder (SAC305)"], ["Solder 2", "Solder (SAC305)"], ["Solder 3", "Solder (SAC305)"], ["Solder 4", "Solder (SAC305)"]]);
   assert.equal(Object.values(a.doc.parts).find(p => p.name === "Test amp board").doc.material.name, "PCB (effective)");
 });
 
@@ -91,23 +92,18 @@ test("every part lands where the 3D scene (and the STEP) draws it", () => {
   assert.equal(pk.asm.parts.p_board.doc.features[0].brep, BR.write([sc.board]));
 });
 
-test("the thermal study: every part's heat and shares, the map's conditions, the board's copper cell by cell", () => {
+test("the thermal study: every part's heat (no shares), the map's conditions, the board's copper cell by cell", () => {
   const { pk, res, board } = setup(), st = pk.asm.studies[0], l = st.loads[0];
   assert.equal(st.kind, "thermal"); assert.equal(st.name, "Thermal 1");
   assert.equal(st.settings.ambient, res.ambient); assert.equal(st.settings.enclosure, "closed"); assert.deepEqual(st.settings.down, [0, 0, -1]);
-  assert.equal(l.type, "pkgheat"); assert.equal(l.board, "c_board"); assert.equal(l.split, true);
+  // only the heat: no board/heatsink/chassis shares, so MöbiusCAD finds every path itself (through the solder joints)
+  assert.equal(l.type, "pkgheat"); assert.equal(l.board, undefined); assert.equal(l.split, undefined);
   const total = l.parts.reduce((s, p) => s + p.p, 0);
   assert.ok(Math.abs(total - 5.1) < 1e-6, `${total} W`);
-  const r1 = l.parts.find(p => p.name === "R1"), p1 = res.parts.find(p => p.ref === "R1");
+  const r1 = l.parts.find(p => p.name === "R1");
   assert.deepEqual(r1.bodies, ["Body"], "a resistor makes its heat in its body, not its leads");
-  assert.deepEqual(r1.comps, ["c_R1"]); assert.equal(r1.limit, 155); assert.ok(Math.abs(r1.board - p1.toBoard) < 1e-3 && r1.board > 0.3);
-  assert.ok(l.parts.every(p => p.board >= 0 && p.sink >= 0));
-  // where R1's board share goes in: a disc on each of its pads, a rectangle under its lying body (board frame: y up)
-  const pads = setup().model.pads.filter(p => p.part === res.parts.find(q => q.ref === "R1").key);
-  assert.equal(r1.into.filter(q => q.disc).length, 2); assert.equal(r1.into.filter(q => q.rect).length, 1);
-  assert.ok(Math.abs(r1.into.reduce((s, q) => s + q.w, 0) - r1.board) < 1e-3, "the regions' watts add up to the board share");
-  for (const p of pads) assert.ok(r1.into.some(q => q.disc && Math.hypot(q.disc[0] - p.x, q.disc[1] + p.y) < 1e-6 && q.disc[2] > 0.5), `a disc on pad ${p.x}, ${p.y}`);
-  const rc = r1.into.find(q => q.rect).rect; assert.ok(rc[0] < 25 && rc[2] > 25 && rc[1] < -30 && rc[3] > -30, `under the body at 25, −30: ${rc}`);
+  assert.deepEqual(r1.comps, ["c_R1"]); assert.equal(r1.limit, 155);
+  assert.ok(l.parts.every(p => p.board === undefined && p.sink === undefined && p.path === undefined && p.into === undefined));
   assert.deepEqual(st.supports.map(s => s.type), ["conv", "rad"]); assert.ok(st.supports.every(s => s.all));
   const bd = st.comps.c_board.board, m = bd.map;
   assert.equal(bd.t, board.stackup.thickness); assert.equal(bd.layers, 2); assert.deepEqual(m.labels, ["F.Cu", "B.Cu"]);
@@ -127,4 +123,23 @@ test("names and ids stay the same from one export to the next; no simulation = g
   assert.deepEqual(Object.values(a.asm.parts).map(p => p.doc.id), Object.values(b.asm.parts).map(p => p.doc.id));
   const s = setup(), bare = M.pack(s.board, s.model, null, { name: "amp" });
   assert.equal(bare.asm.studies, undefined); assert.equal(Object.keys(bare.files).length, 5);
+});
+
+test("solder joints: each lead meets its hole wall and its pad, so the heat reaches the board by conduction", () => {
+  const { pk, board, model } = setup(), t = board.stackup.thickness || 1.6;
+  const doc = Object.values(pk.asm.parts).find(p => p.name === "1kΩ 5W AXIAL-30.48").doc;
+  const g = model.parts.find(q => q.ref === "R1"), P0 = Object.assign({}, g.place, { x: 0, y: 0, rot: 0 }), gg = Object.assign({}, g, { place: P0 });
+  const drawn = B3.partBodies(gg, t, {}), joints = B3.solderJoints(gg, drawn, t);
+  assert.equal(joints.length, 2 * g.fp.pads.length, "a barrel and a fillet per drilled pad");
+  for (const p of g.fp.pads) {
+    const here = joints.filter(j => Math.hypot(j.round.o[0] - p.x, j.round.o[1] + p.y) < 1e-6);
+    const lead = drawn.find(s => s.round && Math.hypot(s.round.o[0] - p.x, s.round.o[1] + p.y) < 0.02 && Math.abs(Math.abs(s.round.a[2]) - 1) < 1e-6);
+    assert.equal(here.length, 2);
+    const barrel = here.find(j => Math.abs(j.round.h - t) < 1e-6), fillet = here.find(j => j !== barrel);
+    assert.ok(barrel && Math.abs(barrel.round.outer[0].r - p.drill / 2) < 1e-6, "the barrel fills the hole to its wall");
+    assert.ok(Math.abs(barrel.round.holes[0].r - lead.round.outer[0].r) < 1e-6, "round the lead, touching it");
+    assert.ok(Math.abs(barrel.round.o[2]) < 1e-6 && fillet.round.o[2] < 0 && Math.abs(fillet.round.o[2] + fillet.round.h) < 1e-6, "the fillet sits under the board on the pad");
+    assert.ok(fillet.round.outer[0].r > p.drill / 2, "the fillet covers the pad round the hole");
+  }
+  assert.equal(Object.values(doc.bodies).filter(b => /^Solder/.test(b.name)).length, 4);
 });
