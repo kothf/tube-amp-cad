@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.270.1] - 2026-11-26
+
+### Fixed
+- **Browsers no longer fill a saved login into the parts search.** Vivaldi (and other Chromium browsers) put a
+  saved site user name such as "admin" in the parts panel's search box, taking it for a login next to the API key
+  fields. The DigiKey and AI key fields now sit in their own forms with `autocomplete="new-password"`, and every
+  text, search and number field in the CAD and Board (also fields added later), the curve tracer's tube search,
+  the manual's search boxes and the project manager's dialogs gets `autocomplete="off"` and the ignore marks of
+  LastPass, 1Password, Bitwarden and Dashlane (`UiKit.noAutofill`). Manual (EN and RU) 18.1 says so.
+
 ## [3.270.0] - 2026-11-26
 
 ### Added

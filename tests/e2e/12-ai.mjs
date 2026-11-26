@@ -109,3 +109,32 @@ import { cad, check } from "./harness.mjs";
   await cad.evaluate(() => localStorage.removeItem("tubecad_ai"));
   await cad.unrouteAll({ behavior: "ignoreErrors" });
 }
+
+{
+  // browser password managers keep out of the app's fields (Vivaldi put a saved login's "admin"
+  // into the parts search): key fields in their own forms, every text field marked
+  const r = await cad.evaluate(() => {
+    const ins = [...document.querySelectorAll("input")].filter(i => ["text", "search", "number", "password"].includes(i.type));
+    const pw = ins.filter(i => i.type === "password");
+    const s = document.getElementById("pal-search");
+    const extra = document.createElement("input"); extra.type = "text"; document.body.appendChild(extra);
+    return new Promise(res => setTimeout(() => {
+      const out = {
+        pw: pw.length, pwInForm: pw.every(i => i.form && i.form.classList.contains("key-form") && i.autocomplete === "new-password"),
+        search: !s.form && s.getAttribute("autocomplete") === "off" && s.dataset.lpignore === "true" && s.hasAttribute("data-1p-ignore"),
+        unmarked: ins.filter(i => !i.hasAttribute("data-lpignore") || !i.getAttribute("autocomplete") || i.getAttribute("autocomplete") === "on").map(i => i.id || i.className),
+        later: extra.getAttribute("autocomplete") === "off" && extra.dataset.lpignore === "true",
+      };
+      extra.remove(); res(out);
+    }, 50));
+  });
+  check(r.pw >= 2 && r.pwInForm, `key fields sit in their own forms with autocomplete=new-password (${r.pw})`);
+  check(r.search, "the parts search is outside any form and marked for password managers to skip");
+  check(r.unmarked.length === 0, `every text field is marked against autofill (${r.unmarked.join(", ") || "all"})`);
+  check(r.later, "a field added later is marked too");
+  // Enter in a key form does not reload the page
+  await cad.evaluate(() => { window.__noReload = 1; document.getElementById("ai-modal").hidden = false; });
+  await cad.focus("#ai-model"); await cad.keyboard.press("Enter"); await cad.waitForTimeout(200);
+  check(await cad.evaluate(() => window.__noReload === 1), "Enter in the AI settings keeps the page");
+  await cad.evaluate(() => { document.getElementById("ai-modal").hidden = true; });
+}

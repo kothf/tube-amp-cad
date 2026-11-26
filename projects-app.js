@@ -244,7 +244,7 @@
   function ask({ title, text, fields = [], ok, danger }) {
     const m = $("ask"), body = $("ask-fields");
     $("ask-title").textContent = title; $("ask-text").textContent = text || ""; $("ask-text").hidden = !text;
-    body.innerHTML = fields.map((f, i) => `<label>${esc(f.label)}${f.options ? `<select data-i="${i}">${f.options.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</select>` : f.long ? `<textarea data-i="${i}" rows="3">${esc(f.value || "")}</textarea>` : `<input type="text" data-i="${i}" value="${esc(f.value || "")}"${f.list ? ` list="ask-list-${i}"` : ""} placeholder="${esc(f.placeholder || "")}">`}${f.list ? `<datalist id="ask-list-${i}">${f.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>` : ""}</label>`).join("");
+    body.innerHTML = fields.map((f, i) => `<label>${esc(f.label)}${f.options ? `<select data-i="${i}">${f.options.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("")}</select>` : f.long ? `<textarea data-i="${i}" rows="3">${esc(f.value || "")}</textarea>` : `<input type="text" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" data-i="${i}" value="${esc(f.value || "")}"${f.list ? ` list="ask-list-${i}"` : ""} placeholder="${esc(f.placeholder || "")}">`}${f.list ? `<datalist id="ask-list-${i}">${f.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>` : ""}</label>`).join("");
     const okBtn = $("ask-ok"); okBtn.textContent = ok; okBtn.classList.toggle("danger-fill", !!danger);
     m.hidden = false;
     (body.querySelector("input, textarea, select") || okBtn).focus();

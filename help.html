@@ -103,7 +103,7 @@
 <div class="layout">
 <nav id="toc" aria-label="Contents">
   <div class="brand"><span>⚡ <b>Tube Amp</b> CAD · Manual</span><button class="lang" id="lang-switch" data-to="ru" title="Руководство на русском (the interface switches to Russian too)" aria-label="Руководство на русском">RU</button></div>
-  <input id="q" type="search" placeholder="Search the manual…  (/)" aria-label="Search the manual">
+  <input id="q" type="search" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" placeholder="Search the manual…  (/)" aria-label="Search the manual">
   <button class="menu-toggle" id="toc-toggle">Contents ▾</button>
   <div class="count" id="q-count"></div>
   <ol id="toc-list"></ol>
@@ -318,7 +318,7 @@
 
 <h3 id="tubes">5.2 The tube library</h3>
 <p>110 tubes: the Soviet receiving tubes from Katsnelson &amp; Larionov, «Отечественные приёмно-усилительные лампы и их зарубежные аналоги» (1981), and Western tubes from their makers' datasheets. Each has its Koren model fitted to datasheet operating points, its ratings, its socket and pinout, its heater, and its interelectrode capacitances. Search or sort the table:</p>
-<input id="tube-q" type="search" placeholder="Filter tubes: EL84, triode, Octal, 6Н…" style="width:100%;max-width:420px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font:inherit;margin:4px 0 8px">
+<input id="tube-q" type="search" autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" placeholder="Filter tubes: EL84, triode, Octal, 6Н…" style="width:100%;max-width:420px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font:inherit;margin:4px 0 8px">
 <div class="tubes-wrap"><table id="tube-table"></table></div>
 <p class="opts">Ratings shown blank are not given by the source and are not checked. Capacitances in pF: triode Cgk / Cga / Cak; pentode Cin / Cg1a / Cout. "≈" marks typical values for the kind of tube where no datasheet value exists.</p>
 
@@ -1009,6 +1009,7 @@ Ig    = 2 · Vgeff^1.5 / kg1 / (1 + 40 · √(Vacc / (µ · Vgeff)))      Vacc =
 <p>The AI features use <b>your own API key</b> for <b>Claude</b> (Anthropic), <b>ChatGPT</b> (OpenAI) or <b>Gemini</b> (Google), or any other model with an OpenAI-compatible API under <b>Other</b> (see <a href="#ai-compat">Other models</a> below). Open <span class="ui">AI ▾ → AI settings…</span>, pick the provider, paste the key (the <b>Get a key</b> link goes to the provider's key page) and choose a model. <b>Test</b> sends a one-word question to check them; <b>Load list</b> asks the provider which models your key can use, so a new model can be picked as soon as it is out. Each provider keeps its own key and model, and the one ticked when you press <b>Save</b> is used.</p>
 <ul>
   <li>The key is stored in this browser only (like the DigiKey key) and is sent only to its provider, straight from the page: there is no server of ours in between. <b>Forget keys</b> removes them all.</li>
+  <li>The browser's password manager leaves the key fields and the app's search boxes alone: a saved site login is not filled into the parts search, and a saved password is not put in a key field. If an add-on manager still offers to fill one, dismiss it; nothing in the app is a login.</li>
   <li>With each question the circuit described above goes to the provider; the How-to questions also send this manual. Nothing is sent until you ask.</li>
   <li>The provider bills your account for what you ask. A question about a large circuit with the manual is about 30 000 tokens in; Claude keeps the manual in its prompt cache between questions, which makes the next ones cheaper.</li>
   <li>The defaults are each provider's strongest everyday model (Claude Opus 5.5, GPT-6.1 Sol, Gemini 3.1 Pro). The cheaper ones (Claude Haiku 5.5, GPT-6 Luna, Gemini 3.5 Flash-Lite) answer faster and are fine for questions about the app.</li>
