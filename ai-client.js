@@ -190,7 +190,7 @@
       if (!j) throw AiError(`${PROVIDERS[p].name} sent an answer that is not JSON`);
       out = parse(p, j);
     }
-    if (!out.text) throw AiError(`${PROVIDERS[p].name} sent an empty answer`);
+    if (!out.text) throw AiError(out.cut ? `${PROVIDERS[p].name} used the whole length limit on thinking and wrote no answer. Try again, or pick a model that thinks less (AI settings…).` : `${PROVIDERS[p].name} sent an empty answer`);
     return out.cut ? out.text + "\n\n(The answer was cut short at its length limit.)" : out.text;
   }
 

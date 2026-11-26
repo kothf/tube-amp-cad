@@ -11,7 +11,7 @@
 import { browser, check, errors, failures, server } from "./e2e/harness.mjs";
 
 // the parts run in this order, each on the state the one before left (one browser, one CAD page)
-const PARTS = ["01-editing", "01b-group-editing", "02-instruments", "03-circuits", "04-windows", "04b-window-tabs", "05-sheets-files", "05b-blocks", "05c-hier", "05d-labels", "06-bom-semiconductors", "07-board", "08-ratings-spice-examples", "08b-spice-part", "08c-parts-library", "08d-add-part", "09-tolerance-ui", "10-analysis", "10b-logic", "11-share", "16-revisions", "12-ai", "12b-faults", "12c-review", "12d-picture", "12e-semifit", "12f-why", "12g-voicing", "12h-build", "13-tune", "14-design", "15-datasheet", "16b-language", "06b-signal-parts"];
+const PARTS = ["01-editing", "01b-group-editing", "02-instruments", "03-circuits", "04-windows", "04b-window-tabs", "05-sheets-files", "05b-blocks", "05c-hier", "05d-labels", "06-bom-semiconductors", "07-board", "08-ratings-spice-examples", "08b-spice-part", "08c-parts-library", "08d-add-part", "09-tolerance-ui", "10-analysis", "10b-logic", "11-share", "16-revisions", "12-ai", "12b-faults", "12c-review", "12d-picture", "12e-semifit", "12f-why", "12g-voicing", "12h-build", "12i-subs", "12j-edit", "13-tune", "14-design", "15-datasheet", "16b-language", "06b-signal-parts"];
 const only = (process.env.E2E_PARTS || "").split(",").map(x => x.trim()).filter(Boolean);
 for (const p of PARTS.filter(p => !only.length || only.some(o => p.startsWith(o)))) await import(`./e2e/${p}.mjs`);
 

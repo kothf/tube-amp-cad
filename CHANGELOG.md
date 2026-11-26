@@ -6,6 +6,31 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.266.0] - 2026-11-26
+
+### Added
+- **AI ▾ → Edit by command…: a change said in words, made in place.** "Replace the 12AX7s with 12AT7s and
+  re-bias them", "add a 1 kΩ grid stopper in front of VL2", "bypass the first stage's cathode resistor". The AI
+  answers with edits against the circuit's designators and nets (set a value, delete a part, move a pin to another
+  net, add parts with the nets of their pins); the CAD checks each and makes them on the sheet as one step to undo,
+  keeping your drawing: added parts go in the first empty place on the sheet with stubs to ground or sheet
+  connectors named after their nets (an unnamed net gets a connector of its name at one of its pins), deleted
+  parts take their dangling wires with them, and what changed is selected. Then it simulates and compares the
+  Checks with before. Unlike the Assistant's redraw, the rest of the schematic stays where it is.
+- **AI ▾ → Substitutes for the selected part: what else fits, simulated in place.** Select a tube or a
+  transistor. The CAD takes the library's parts of the same kind (a dual triode for a dual triode, an output
+  pentode for an output pentode, an NPN for an NPN rated for the voltage), ranks them by closeness (µ and current
+  for triodes, rated dissipation for output tubes, hFE or threshold and power for transistors), by how they fit
+  (plugs in, the socket rewired, another socket; the handbook's analogs first) and by the heater, then simulates
+  the circuit with each in place of every part of that type. The table lists the current, the dissipation
+  against the rating, the output and its THD beside the circuit as drawn; Use puts one in as one step to undo.
+  With an AI key, the AI also says what to re-bias for each, the sound builders report and which to avoid.
+
+### Fixed
+- **AI answers of the build guide, substitutes, voicing, Edit by command and the datasheet fit came back empty
+  with models that always think (Claude Opus 5.5)**: the thinking used up the length limit before any answer was
+  written. These calls now allow 16000 tokens, and if a model still thinks to the limit the log says so plainly.
+
 ## [3.265.0] - 2026-11-26
 
 ### Added
