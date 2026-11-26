@@ -1074,11 +1074,11 @@
     <div class="modal-box" style="width: min(520px, 94vw)">
       <div class="insp-title">DigiKey API key</div>
       <p class="insp-help">Look up asks DigiKey's product database for a part's package, body size, height and lead spacing, and its price breaks for the BOM's prices and the order file. It needs your own free key: sign in at <a href="https://developer.digikey.com/" target="_blank" rel="noopener">developer.digikey.com</a>, create an organisation and a production app with <b>Product Information V4</b>, and copy its Client ID and Client Secret here (1,000 look-ups a day). They stay in this browser only; the circuit file keeps what was found, not the key.</p>
-      <div class="new-form">
-        <span>Client ID</span><input type="text" id="dk-id" spellcheck="false" autocomplete="off">
-        <span>Client Secret</span><input type="password" id="dk-secret" spellcheck="false" autocomplete="off">
+      <form class="new-form key-form" autocomplete="off">
+        <span>Client ID</span><input type="text" id="dk-id" spellcheck="false" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
+        <span>Client Secret</span><input type="password" id="dk-secret" spellcheck="false" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
         <span>Prices in</span><select id="dk-cur" title="The currency DigiKey quotes the BOM's prices in (from its site for that currency); Look up all again after a change"><option>USD</option><option>EUR</option><option>GBP</option><option>CAD</option><option>AUD</option><option>CHF</option><option>SEK</option><option>PLN</option><option>JPY</option><option>CNY</option></select>
-      </div>
+      </form>
       <div class="modal-actions">
         <button class="btn" id="btn-dk-cancel">Cancel</button>
         <button class="btn active" id="btn-dk-save">Save</button>
@@ -1092,12 +1092,12 @@
       <div class="seg-group ai-providers" id="ai-providers" role="group" aria-label="Provider">
         <button class="btn" data-p="anthropic" title="Anthropic's Claude">Claude</button><button class="btn" data-p="openai" title="OpenAI's GPT models">ChatGPT</button><button class="btn" data-p="gemini" title="Google's Gemini">Gemini</button><button class="btn" data-p="compat" title="Any other model with an OpenAI-compatible API: OpenRouter, DeepSeek, Mistral, Groq, xAI, Together, or a model on your computer in Ollama or LM Studio">Other</button>
       </div>
-      <div class="new-form ai-form">
-        <span class="ai-compat" hidden>Base URL</span><span class="ai-keyrow ai-compat" hidden><input type="text" id="ai-base" list="ai-services" spellcheck="false" autocomplete="off" placeholder="https://openrouter.ai/api/v1" title="The address of the service's OpenAI-compatible API, usually ending in /v1. Pick a known service from the list or type any address"><datalist id="ai-services"></datalist></span>
-        <span>API key</span><span class="ai-keyrow"><input type="password" id="ai-key" spellcheck="false" autocomplete="off"><label title="Show the key"><input type="checkbox" id="ai-show-key"> show</label></span>
+      <form class="new-form ai-form key-form" autocomplete="off">
+        <span class="ai-compat" hidden>Base URL</span><span class="ai-keyrow ai-compat" hidden><input type="text" id="ai-base" list="ai-services" spellcheck="false" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" placeholder="https://openrouter.ai/api/v1" title="The address of the service's OpenAI-compatible API, usually ending in /v1. Pick a known service from the list or type any address"><datalist id="ai-services"></datalist></span>
+        <span>API key</span><span class="ai-keyrow"><input type="password" id="ai-key" spellcheck="false" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"><label title="Show the key"><input type="checkbox" id="ai-show-key"> show</label></span>
         <span></span><a id="ai-key-link" href="#" target="_blank" rel="noopener">Get a key ↗</a>
-        <span>Model</span><span class="ai-keyrow"><input type="text" id="ai-model" list="ai-models" spellcheck="false" autocomplete="off"><datalist id="ai-models"></datalist><button class="btn" id="btn-ai-list" title="Ask the provider which models this key can use">Load list</button></span>
-      </div>
+        <span>Model</span><span class="ai-keyrow"><input type="text" id="ai-model" list="ai-models" spellcheck="false" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"><datalist id="ai-models"></datalist><button type="button" class="btn" id="btn-ai-list" title="Ask the provider which models this key can use">Load list</button></span>
+      </form>
       <p class="insp-help ai-compat" id="ai-compat-note" hidden>Any service with an OpenAI-compatible API (Chat Completions). Every AI feature works with it; a strong model gives the best designs, and Design from a description, Schematic from a picture and the datasheet readers need one that writes long JSON answers (pictures and PDFs need a model that reads them). A model on your computer needs no key, but its server must allow this page: in Ollama set OLLAMA_ORIGINS to this site's address, in LM Studio switch on Enable CORS. See the manual.</p>
       <p class="insp-help" id="ai-test-out"></p>
       <div class="modal-actions">

@@ -20,7 +20,15 @@
      is the tick of a menu item and the lamp of a switch. cmds.helpRows(host) writes the "Keyboard" list of the help from the
      commands' help texts, so it cannot drift from the shortcuts; cmds.menuItems(host, ids) fills
      a menu with commands (icon, label, key).
-   UiKit.contextMenu(items, x, y, title): a right-click menu (UiKit.closeContextMenu() closes it). */
+   UiKit.contextMenu(items, x, y, title): a right-click menu (UiKit.closeContextMenu() closes it).
+   UiKit.noAutofill(el): keeps browser password managers and form fillers out of a field. The
+     app has no logins, yet a saved site login (Vivaldi/Chrome put "admin" in the parts search)
+     lands in any text box that looks like a user name. Every text, search and number field gets
+     autocomplete="off" (unless it names a purpose) and the ignore marks of LastPass, 1Password,
+     Bitwarden and Dashlane; key fields (type password) get autocomplete="new-password" so a saved
+     password is never filled in. Applied to the whole page at start and to fields added later.
+     The API key fields sit in their own <form class="key-form">, so Chromium does not pair them
+     with a search box elsewhere on the page as a login; such forms never submit. */
 (function (root) {
   "use strict";
 
@@ -138,7 +146,28 @@
     const first = el.querySelector(".menu-item:not(:disabled)"); if (first) first.focus({ preventScroll: true });
     return el;
   }
+  const FILL_TYPES = new Set(["text", "search", "number", "email", "url", "tel", "password", ""]);
+  function noAutofill(el) {
+    if (!el || el.tagName !== "INPUT" || !FILL_TYPES.has((el.getAttribute("type") || "").toLowerCase())) return;
+    if (el.type === "password") el.setAttribute("autocomplete", "new-password");
+    else if (!el.hasAttribute("autocomplete") || el.getAttribute("autocomplete") === "on") el.setAttribute("autocomplete", "off");
+    for (const a of ["data-lpignore", "data-1p-ignore", "data-bwignore"]) if (!el.hasAttribute(a)) el.setAttribute(a, "true");
+    if (!el.hasAttribute("data-form-type")) el.setAttribute("data-form-type", "other");
+  }
+  function noAutofillIn(node) {
+    if (!node || node.nodeType !== 1) return;
+    noAutofill(node);
+    if (node.querySelectorAll) for (const el of node.querySelectorAll("input")) noAutofill(el);
+  }
   if (typeof document !== "undefined") {
+    const sweep = () => {
+      noAutofillIn(document.body);
+      new MutationObserver(list => { for (const m of list) for (const n of m.addedNodes) noAutofillIn(n); })
+        .observe(document.body, { childList: true, subtree: true });
+    };
+    if (document.body) sweep(); else document.addEventListener("DOMContentLoaded", sweep);
+    // the key forms are there only to keep password managers apart; Enter must not reload the page
+    document.addEventListener("submit", e => { if (e.target.closest && e.target.closest(".key-form")) e.preventDefault(); }, true);
     document.addEventListener("mousedown", e => { if (ctxEl && !ctxEl.contains(e.target)) closeContextMenu(); }, true);
     // Esc closes the menu and goes no further (it would also clear the selection)
     document.addEventListener("keydown", e => { if (ctxEl && e.key === "Escape") { closeContextMenu(); e.stopPropagation(); e.preventDefault(); } });
@@ -146,5 +175,5 @@
     document.addEventListener("wheel", e => { if (ctxEl && !ctxEl.contains(e.target)) closeContextMenu(); }, { passive: true, capture: true });
   }
 
-  root.UiKit = { menus, commands, parseKey, contextMenu, closeContextMenu };
+  root.UiKit = { menus, commands, parseKey, contextMenu, closeContextMenu, noAutofill };
 })(typeof window !== "undefined" ? window : globalThis);
