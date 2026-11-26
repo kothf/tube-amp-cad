@@ -1,9 +1,8 @@
 /* The design assistant's drawing (no DOM, Node-testable): a circuit the model describes as a
-   netlist (parts with values, and the net each pin is on) turned into a schematic the CAD can
-   simulate. Connectivity never depends on wires crossing the right way: every pin gets a short
-   stub ending in a ground symbol, a power-rail symbol (a supply net) or a sheet connector named
-   after its net (every other net), and connectors of one name are one net. Parts stand in
-   columns in signal order: the generator first, then each part one net further along. */
+   netlist (parts with values, the net each pin is on, the block each part belongs to) turned
+   into a schematic the CAD can simulate, drawn as a person draws one (sch-layout.js): parts in
+   signal order joined by real wires, supplies as rail symbols, one ground line, labels only
+   where a wire would run far. */
 (function (root) {
   "use strict";
   const L = () => root.CadLib;
@@ -57,6 +56,7 @@
   function layout(checked, opts) {
     opts = opts || {};
     const out = root.SchLayout.draw(checked, { prev: opts.prev, effort: opts.effort });
+    // (out.places: where each part went, for the next drawing of a design in progress)
     // the extent: parts, their text and the wires
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
     const grow = (a, b, c, d) => { x1 = Math.min(x1, a); y1 = Math.min(y1, b); x2 = Math.max(x2, c); y2 = Math.max(y2, d); };
@@ -91,12 +91,13 @@
   function rules() {
     return "Answer with JSON only, no prose around it:\n"
       + '{"title": "short title", "rails": {"B+": 300}, '
-      + '"parts": [{"ref": "R1", "type": "resistor", "values": {"r": "100k", "w": "0.5"}, "pins": {"1": "IN", "2": "GND"}}], '
+      + '"parts": [{"ref": "R1", "type": "resistor", "block": "Input stage", "values": {"r": "100k", "w": "0.5"}, "pins": {"1": "IN", "2": "GND"}}], '
       + '"summary": "what you designed and the key numbers you expect (B+, bias, gain, power)"}\n'
       + "Rules:\n"
       + "- Keep the keys in this order (title, rails, parts, summary) and the parts in signal order, input first: the CAD draws each part on the sheet as soon as it arrives.\n"
       + "- type is one of the library's part types below; values use only that type's value keys, with SI prefixes (100k, 47u, 2.2M) or one of the listed options; a tube's values are {\"tube\": \"EL84\"} plus \"connection\": \"triode\" for a pentode wired as a triode.\n"
-      + "- pins maps EVERY pin id of the part to a net name. Pins on the same net are connected. GND is ground. Use short net names (IN, G1, A1, K1, OUT, B+, B2).\n"
+      + "- pins maps EVERY pin id of the part to a net name. Pins on the same net are connected. GND is ground. Use short net names that say what the net is (IN, G1, A1, K1, OUT, FB, B+, B2): a net between parts far apart on the drawing (a feedback loop, a probe) is shown as two labels with its name.\n"
+      + "- block names the functional block a part belongs to (\"Input stage\", \"Driver\", \"Phase splitter\", \"Output stage\", \"Power supply\"). List the parts block by block, in signal order. The CAD draws it as a person would: the blocks left to right, each stage in a column (the load above the tube or transistor, the cathode or emitter parts below it), joined by wires, supplies as rail symbols on top and one ground line along the bottom. Do not add net labels, rails or ground symbols as parts.\n"
       + "- A DC supply is a net listed in rails with its voltage (an ideal source to ground, e.g. \"B+\": 300); use rails for every supply voltage instead of drawing a mains supply unless a supply is asked for.\n"
       + "- Put a signal generator (siggen) at the input with its + pin on the input net and - on GND, at a realistic level (amp is the peak in volts), and the load at the output (a speaker for a power amplifier, a resistor or the next stage's grid resistor for a preamp). Add an oscilloscope (scope, pins CH1 CH2 COM) with CH1 on the input, CH2 on the output and COM on GND.\n"
       + "- One tube part is one tube section: a 12AX7 with both triodes used is two parts (refs VL1.1 and VL1.2). Heaters are not drawn.\n"

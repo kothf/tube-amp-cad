@@ -138,7 +138,7 @@
     const fixed = parts.map(p => INSTR.test(p.type));
 
     const pinAt = (i, id, o = O[i], x = X[i], y = Y[i]) => { const q = pinIndex[i][o].get(id); return q ? { x: x + q.x, y: y + q.y, dx: q.dx, dy: q.dy } : null; };
-    const W = { len: 1, bend: 45, back: 90, side: 40, gndSide: 60, gndUp: 160, overlap: 4000, overlapA: 3, flow: 2, size: 0.35 };
+    const W = { len: 1, bend: 45, jog: 120, back: 90, side: 40, gndSide: 160, gndUp: 320, overlap: 4000, overlapA: 3, flow: 5, size: 0.35 };
     // a net's cost: its spanning tree between pins (manhattan), a bend where two pins are not in
     // line, a pin whose wire would have to turn back
     function netCost(k, ov) {
@@ -157,14 +157,24 @@
     function edge(a, b) {
       const vx = b.x - a.x, vy = b.y - a.y;
       let c = W.len * (Math.abs(vx) + Math.abs(vy));
-      if (vx !== 0 && vy !== 0) c += W.bend;
+      if (vx !== 0 && vy !== 0) { c += W.bend; if (Math.min(Math.abs(vx), Math.abs(vy)) <= 20) c += W.jog; }
       c += face(a, vx, vy) + face(b, -vx, -vy);
       if (a.i !== b.i && order[a.i] !== order[b.i]) { const [l, r] = order[a.i] < order[b.i] ? [a, b] : [b, a]; if (r.x < l.x - 20) c += W.flow * (l.x - r.x); }
       return c;
     }
     // a part's own cost: ground pins face down, rail pins up
+    // turns people rarely draw: a tube or transistor mirrored or upside down, a source upside
+    // down, a coupling part (signal on both ends) standing up
+    const turnCost = parts.map((p, i) => turns[i].map(([r, f], o) => {
+      if (!o) return 0;
+      if (p.type === "tube" || /^(opamp|chipamp|logic)$/.test(p.type)) return 150;
+      if (L().isTransistor(p.type)) return (f ? 60 : 0) + (r === 2 ? 120 : 0);
+      if (SOURCES.test(p.type) || SUPPLIES.test(p.type) || p.type === "speaker") return 200;
+      if (pinIds[i].length === 2 && pinIds[i].every(id => kinds.get(p.pins[id]) === "sig")) return (r & 1) ? 40 : 0;
+      return 60;
+    }));
     function partCost(i, o) {
-      let c = 0;
+      let c = turnCost[i][o];
       shapes[i][o].pins.forEach(q => {
         const kd = kinds.get(parts[i].pins[q.id]);
         if (kd === "gnd" || kd === "neg") c += q.dy > 0 ? 0 : q.dy < 0 ? W.gndUp : W.gndSide;
@@ -184,7 +194,10 @@
       });
       return r;
     }));
+    const roomBox = rooms.map(list => list.map(rs => rs.reduce((u, r) => [Math.min(u[0], r[0]), Math.min(u[1], r[1]), Math.max(u[2], r[2]), Math.max(u[3], r[3])], [Infinity, Infinity, -Infinity, -Infinity])));
     function overlap(i, oi, xi, yi, j) {
+      const ua = roomBox[i][oi], ub = roomBox[j][O[j]];
+      if (ua[2] + xi <= ub[0] + X[j] || ub[2] + X[j] <= ua[0] + xi || ua[3] + yi <= ub[1] + Y[j] || ub[3] + Y[j] <= ua[1] + yi) return 0;
       let c = 0;
       const A = rooms[i][oi], B = rooms[j][O[j]];
       for (const a of A) for (const b of B) {
@@ -204,8 +217,55 @@
       const w = x2 - x1, h = y2 - y1;
       return W.size * (w + h) + (h > 0.8 * w ? 0.6 * (h - 0.8 * w) : 0);
     }
-    const nc = netList.map((nt, k) => netCost(k));
     const movable = []; for (let i = 0; i < n; i++) if (!fixed[i]) movable.push(i);
+    if (!prev) build();
+    const nc = netList.map((nt, k) => netCost(k));
+    // the start, built as a person draws: the devices (tubes, transistors, ICs) and the input in
+    // columns in signal order, then the other parts one at a time, the one with most wires to
+    // what is drawn first, each at its best place in line with a pin it is wired to
+    function build() {
+      const anchor = i => pinIds[i].length !== 2 || SOURCES.test(parts[i].type);
+      const placed = new Array(n).fill(false);
+      const anchors = movable.filter(anchor).sort((a, b) => order[a] - order[b] || a - b);
+      const rk = [...new Set(anchors.map(i => order[i]))].sort((a, b) => a - b), colN = new Map();
+      anchors.forEach(i => { const c = rk.indexOf(order[i]), k = colN.get(c) || 0; colN.set(c, k + 1); X[i] = c * 260; Y[i] = k * 260; O[i] = 0; placed[i] = true; });
+      const score = (i, o, x, y) => {
+        let c = partCost(i, o);
+        netsOfPart[i].forEach(kk => netList[kk].pins.forEach(a => {
+          if (a.i !== i) return;
+          const pa = pinAt(i, a.id, o, x, y); let bestE = Infinity;
+          netList[kk].pins.forEach(b => { if (b.i === i || !placed[b.i]) return; const pb = Object.assign(pinAt(b.i, b.id), { i: b.i }); bestE = Math.min(bestE, edge(Object.assign(pa, { i }), pb)); });
+          if (bestE < Infinity) c += bestE;
+        }));
+        for (const j of movable) if (j !== i && placed[j]) c += overlap(i, o, x, y, j);
+        return c;
+      };
+      for (;;) {
+        let pick = -1, links = -1;
+        movable.forEach(i => { if (placed[i]) return; let l = 0; netsOfPart[i].forEach(kk => netList[kk].pins.forEach(b => { if (b.i !== i && placed[b.i]) l++; })); if (l > links || (l === links && order[i] < order[pick])) { links = l; pick = i; } });
+        if (pick < 0) break;
+        const i = pick;
+        let best = null;
+        for (let o = 0; o < turns[i].length; o++) {
+          const cand = [];
+          netsOfPart[i].forEach(kk => netList[kk].pins.forEach(a => {
+            if (a.i !== i) return; const pa = pinIndex[i][o].get(a.id);
+            netList[kk].pins.forEach(b => {
+              if (b.i === i || !placed[b.i]) return; const pb = pinAt(b.i, b.id);
+              for (const k of [20, 40, 60, 80, 120]) {
+                // in front of the placed pin, the part's own pin facing it
+                cand.push([pb.x + pb.dx * k - pa.x, pb.y + pb.dy * k - pa.y]);
+                // beside it, in line across
+                cand.push([pb.x - pa.x + k, pb.y - pa.y], [pb.x - pa.x - k, pb.y - pa.y], [pb.x - pa.x, pb.y - pa.y + k], [pb.x - pa.x, pb.y - pa.y - k]);
+              }
+            });
+          }));
+          if (!cand.length) { let mx = 0, my = 0; movable.forEach(j => { if (placed[j]) { mx = Math.max(mx, X[j] + 200); my = Math.max(my, Y[j]); } }); cand.push([mx, 0]); }
+          cand.forEach(([x0, y0]) => { const x = snap(x0), y = snap(y0), c = score(i, o, x, y); if (!best || c < best.c) best = { c, o, x, y }; });
+        }
+        X[i] = best.x; Y[i] = best.y; O[i] = best.o; placed[i] = true;
+      }
+    }
     function delta(i, o, x, y) {
       const ov = { i, o, x, y };
       let d = 0;
@@ -218,8 +278,13 @@
     }
     function apply(i, o, x, y, newNc) { O[i] = o; X[i] = x; Y[i] = y; netsOfPart[i].forEach((k, t) => { nc[k] = newNc[t]; }); }
 
+    function groupOf(i) {
+      const g = [i], seen = new Set(g);
+      for (let t = 0; t < g.length && g.length < 6; t++) netsOfPart[g[t]].forEach(kk => { if (netList[kk].pins.length > 4) return; netList[kk].pins.forEach(b => { if (!seen.has(b.i) && !fixed[b.i] && pinIds[b.i].length === 2 && g.length < 6) { seen.add(b.i); g.push(b.i); } }); });
+      return g;
+    }
     const iters = movable.length < 2 ? 0 : Math.round((opts.effort || 1) * Math.min(70000, 1800 * movable.length));
-    let T = opts.t0 || 400;
+    let T = opts.t0 || (prev ? 60 : 150);
     const Tend = 1.5, k = iters ? Math.pow(Tend / T, 1 / iters) : 1;
     const step = () => { const r = rand(); return (r < 0.5 ? 1 : r < 0.8 ? 3 : 10) * (rand() < 0.5 ? -1 : 1) * G * (1 + Math.floor(rand() * 3)); };
     for (let it = 0; it < iters; it++, T *= k) {
@@ -251,13 +316,51 @@
           }
         }
         continue;
+      } else if (r < 0.7) {
+        // move a little group: the part and the two-pin parts hanging off it (a cathode resistor
+        // with its bypass capacitor, a divider)
+        const grp = groupOf(i), dx = rand() < 0.5 ? step() : 0, dy = dx ? 0 : step();
+        const save = grp.map(j => ({ j, o: O[j], x: X[j], y: Y[j], nc: netsOfPart[j].map(kk => nc[kk]) }));
+        let sum = 0;
+        for (const j of grp) { const a = delta(j, O[j], snap(X[j] + dx), snap(Y[j] + dy)); sum += a.d; apply(j, O[j], snap(X[j] + dx), snap(Y[j] + dy), a.newNc); }
+        if (!(sum <= 0 || rand() < Math.exp(-sum / T))) for (let t = save.length - 1; t >= 0; t--) { const v = save[t]; O[v.j] = v.o; X[v.j] = v.x; Y[v.j] = v.y; netsOfPart[v.j].forEach((kk, q) => { nc[kk] = v.nc[q]; }); }
+        continue;
       } else { if (rand() < 0.5) x += step(); else y += step(); }
       x = snap(x); y = snap(y);
       if (o === O[i] && x === X[i] && y === Y[i]) continue;
       const { d, newNc } = delta(i, o, x, y);
       if (d <= 0 || rand() < Math.exp(-d / T)) apply(i, o, x, y, newNc);
     }
-    return parts.map((p, i) => ({ x: X[i], y: Y[i], o: O[i], rot: turns[i][O[i]][0], flip: turns[i][O[i]][1], shape: shapes[i][O[i]] }));
+    // polish: each part in turn tries every turn at every place that lines one of its pins up
+    // with a pin it is wired to (and a step either way), keeping the best; until nothing improves
+    for (let round = 0; round < 4; round++) {
+      let better = false;
+      for (const i of movable) {
+        let bestD = -1e-6, bestM = null;
+        for (let o = 0; o < turns[i].length; o++) {
+          const cand = [[X[i], Y[i]]];
+          netsOfPart[i].forEach(kk => {
+            const nt = netList[kk];
+            nt.pins.forEach(a => { if (a.i !== i) return; const pa = pinIndex[i][o].get(a.id); nt.pins.forEach(b => { if (b.i === i) return; const pb = pinAt(b.i, b.id); cand.push([pb.x - pa.x, Y[i]], [X[i], pb.y - pa.y], [pb.x - pa.x, pb.y - pa.y + pb.dy * 60 - pa.dy * 0], [pb.x - pa.x + pb.dx * 60, pb.y - pa.y]); }); });
+          });
+          for (const [x0, y0] of cand) {
+            const x = snap(x0), y = snap(y0);
+            if (o === O[i] && x === X[i] && y === Y[i]) continue;
+            const { d, newNc } = delta(i, o, x, y);
+            if (d < bestD) { bestD = d; bestM = { o, x, y, newNc }; }
+          }
+        }
+        if (bestM) { apply(i, bestM.o, bestM.x, bestM.y, bestM.newNc); better = true; }
+      }
+      if (!better) break;
+    }
+    let total = 0;
+    nc.forEach(c => { total += c; });
+    movable.forEach(i => { total += partCost(i, O[i]); movable.forEach(j => { if (j > i) total += overlap(i, O[i], X[i], Y[i], j); }); });
+    total += sizeCost(null);
+    const res = parts.map((p, i) => ({ x: X[i], y: Y[i], o: O[i], rot: turns[i][O[i]][0], flip: turns[i][O[i]][1], shape: shapes[i][O[i]] }));
+    res.cost = total;
+    return res;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -370,7 +473,11 @@
     const kinds = new Map();
     users.forEach((cnt, net) => kinds.set(net, net === "GND" ? "gnd" : rails.has(net) ? (rails.get(net) < 0 ? "neg" : "rail") : "sig"));
     const seed = hash(parts.map(p => p.ref + ":" + p.type + ":" + Object.entries(p.pins).map(e => e.join("=")).join(",")).join(";"));
-    const at = place(parts, kinds, { seed: seed + attempt * 7919, prev: opts.prev, effort: opts.effort, t0: opts.prev ? 60 : undefined });
+    let at = null;
+    for (let r = 0; r < (opts.prev ? 1 : 3); r++) {
+      const a = place(parts, kinds, { seed: seed + attempt * 7919 + r * 104729, prev: opts.prev, effort: opts.effort, t0: undefined });
+      if (!at || a.cost < at.cost) at = a;
+    }
     const out = { comps: [], wires: [], places: {}, labels: [], open: [] };
 
     // the oscilloscope (instruments) beside the drawing, at its top right
@@ -530,6 +637,7 @@
       });
       if (!best) return false;
       if (best.st) lay(g, id, best.st, out.wires);
+      if (!best.st) { const c0 = g.at(best.x, best.y); g.node[c0] = id; g.deg[c0] = 3; }
       addComp("netlabel", { name: net }, best.x, best.y, best.d); g.rect(g.text, best.lb, 1);
       return true;
     }
