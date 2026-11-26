@@ -41,8 +41,11 @@
       // a pentode's control grid is G1, a triode's G: either name is taken for the other
       if (type === "tube" && ids.includes("G1") && pins.G !== undefined && pins.G1 === undefined) { pins.G1 = pins.G; delete pins.G; }
       if (type === "tube" && ids.includes("G") && pins.G1 !== undefined && pins.G === undefined) { pins.G = pins.G1; delete pins.G1; }
+      const nc = new Set();
       Object.keys(pins).forEach(id => { if (!ids.includes(id)) { problems.push(`${ref} has no pin ${id} (its pins: ${ids.join(" ")})`); delete pins[id]; } });
-      ids.forEach(id => { if (pins[id] === undefined || pins[id] === null || String(pins[id]).trim() === "") { if (!(type === "opamp" && (id === "1" || id === "8")) && type !== "scope") problems.push(`${ref} pin ${id} is not connected`); delete pins[id]; } else pins[id] = isGnd(pins[id]) ? "GND" : String(pins[id]).trim(); });
+      // a pin left unused on purpose (a transformer's centre tap, a spare contact): "NC", not drawn
+      ids.forEach(id => { if (/^(nc|n\/c|none|unused|-)$/i.test(String(pins[id] === undefined || pins[id] === null ? "" : pins[id]).trim())) { delete pins[id]; nc.add(id); } });
+      ids.forEach(id => { if (nc.has(id)) return; if (pins[id] === undefined || pins[id] === null || String(pins[id]).trim() === "") { if (!(type === "opamp" && (id === "1" || id === "8")) && type !== "scope") problems.push(`${ref} pin ${id} is not connected`); delete pins[id]; } else pins[id] = isGnd(pins[id]) ? "GND" : String(pins[id]).trim(); });
       parts.push(Object.assign({ ref, type, params: c.params, pins }, p.block ? { block: String(p.block).slice(0, 40) } : {}));
     });
     Object.entries((design && design.rails) || {}).forEach(([net, v]) => { const x = L().parseEng(String(v)); if (isFinite(x)) rails.set(String(net), x); });
@@ -97,7 +100,7 @@
       + "Rules:\n"
       + "- Keep the keys in this order (title, rails, parts, summary) and the parts in signal order, input first: the CAD draws each part on the sheet as soon as it arrives.\n"
       + "- type is one of the library's part types below; values use only that type's value keys, with SI prefixes (100k, 47u, 2.2M) or one of the listed options; a tube's values are {\"tube\": \"EL84\"} plus \"connection\": \"triode\" for a pentode wired as a triode.\n"
-      + "- pins maps EVERY pin id of the part to a net name. Pins on the same net are connected. GND is ground. Use short net names that say what the net is (IN, G1, A1, K1, OUT, FB, B+, B2): a net between parts far apart on the drawing (a feedback loop, a probe) is shown as two labels with its name.\n"
+      + "- pins maps EVERY pin id of the part to a net name. Pins on the same net are connected. GND is ground. A pin left unused on purpose (a transformer's centre tap, a spare relay contact) is \"NC\": it is drawn unconnected. Use short net names that say what the net is (IN, G1, A1, K1, OUT, FB, B+, B2): a net between parts far apart on the drawing (a feedback loop, a probe) is shown as two labels with its name.\n"
       + "- block names the functional block a part belongs to (\"Input stage\", \"Driver\", \"Phase splitter\", \"Output stage\", \"Power supply\"). List the parts block by block, in signal order. The CAD draws it as a person would: the blocks left to right, each stage in a column (the load above the tube or transistor, the cathode or emitter parts below it), joined by wires, supplies as rail symbols on top and one ground line along the bottom. Do not add net labels, rails or ground symbols as parts.\n"
       + "- A DC supply is a net listed in rails with its voltage (an ideal source to ground, e.g. \"B+\": 300); use rails for every supply voltage instead of drawing a mains supply unless a supply is asked for.\n"
       + "- Put a signal generator (siggen) at the input with its + pin on the input net and - on GND, at a realistic level (amp is the peak in volts), and the load at the output (a speaker for a power amplifier, a resistor or the next stage's grid resistor for a preamp). Add an oscilloscope (scope, pins CH1 CH2 COM) with CH1 on the input, CH2 on the output and COM on GND.\n"
