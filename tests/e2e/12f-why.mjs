@@ -15,7 +15,8 @@ import { cad, check } from "./harness.mjs";
     await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^06-/.test(x.file))));
     await cad.waitForFunction(() => TubeCAD.state.comps.some(k => k.label === "VL2") && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result, null, { timeout: 60000 });
   }
-  await cad.evaluate(() => TubeCAD.toggleBom(true, "tolerance"));
+  // a tab with nothing run: earlier parts may have left a tolerance run in the tab, so it is emptied here
+  await cad.evaluate(() => { TubeCAD.toggleBom(true, "tolerance"); document.getElementById("tol-pane").innerHTML = ""; });
   check(await cad.evaluate(() => !document.getElementById("btn-ai-why").closest(".bom-tools").hidden), "Why? is on the result tabs");
   await cad.click("#btn-ai-why");
   check(await cad.evaluate(() => /run it first/.test(document.getElementById("status-sim").innerText)) && !sent.length, "a tab with nothing run yet asks for a run first and sends nothing");

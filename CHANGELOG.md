@@ -9,6 +9,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [3.265.0] - 2026-11-26
 
 ### Added
+- **AI ▾ → Build and power-up guide: the first switch-on, planned from the simulation.** The voltage to expect at
+  every test point (each tube's and transistor's pins, the supply nodes) with a band to accept (±10 % and half a volt
+  on a pin, ±5 % on a supply node), the heater load per voltage, the power drawn from the supply and, with mains
+  parts, a fuse size; every filter capacitor above 50 V with its stored energy and how long its bleeder takes to
+  bring it below 30 V (or a warning when it has none); and the steps of a safe first power-up: current-limited
+  (dim-bulb or variac), heaters first, then B+, then signal into a dummy load. Print the sheet opens it on a page
+  of its own with a column for your readings. With an AI key, the AI also writes the build notes for this circuit:
+  the order to build and test it in, its layout (grounds, heater wiring, lead dress) and what to watch for.
 - **AI ▾ → Transistor or diode from a datasheet…: a SPICE model of a part the library lacks.** Pick a bipolar
   transistor's, MOSFET's, JFET's, diode's or zener's datasheet (PDF or a picture of its pages). The AI reads its
   kind, pins, ratings, typical values and points along its typical graphs; the CAD fits the model itself, on the

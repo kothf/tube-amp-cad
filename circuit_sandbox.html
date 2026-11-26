@@ -377,6 +377,9 @@
     .fault-wrap { overflow-x: auto; } .fault-table td.fault-ok { color: var(--ok); } .fault-table tr.fault-nominal td { color: var(--muted); } .fault-table th { white-space: nowrap; } .fault-good { color: var(--ok); } .fault-fair { color: var(--warn); } .fault-poor { color: var(--muted); }
     .pic-row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; } .pic-body { flex: 1; min-width: 260px; }
     #voice-text { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+    .bg-steps { margin: 4px 0 8px; padding-left: 20px; } #ai-log .warn { color: var(--warn, #d29922); }
+    .bg-steps li { margin: 3px 0; }
+    .bg-table .bg-blank { min-width: 64px; }
     .voice-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 4px; }
     .sf-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin: 6px 0; }
     .sf-chart .sf-pt { fill: var(--amber); } .sf-q.sf-good { color: #3fb950; } .sf-q.sf-fair { color: var(--warn); } .sf-q.sf-poor { color: var(--bad); }
@@ -793,6 +796,7 @@
         <button class="menu-item" data-ico="bulb" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
         <button class="menu-item" data-ico="checks" role="menuitem" id="menu-ai-review" title="Every margin, stress, ripple and power-on surge the CAD measures in one sheet; the AI reviews the design from it, in priority order, with fixes you can apply">Design review<kbd>before you build</kbd></button>
         <button class="menu-item" data-ico="listen" role="menuitem" id="menu-ai-voice" title="Say how it should sound (warmer, less fizz, more headroom): the AI proposes value changes to the tone-shaping parts, and Listen plays the circuit before and after">Voicing…<kbd>how it sounds</kbd></button>
+        <button class="menu-item" data-ico="checks" role="menuitem" id="menu-ai-build" title="The first switch-on, planned from the simulation: the voltage to expect at every test point with a band to accept, the heater load, the stored charge and a safe power-up order, as a sheet to print; with an AI key, build notes for this circuit">Build and power-up guide<kbd>first switch-on</kbd></button>
         <button class="menu-item" data-ico="probe" role="menuitem" id="menu-ai-fault" title="Type the voltages you measured on the built amplifier: the CAD simulates the common faults and ranks them, and the AI writes the diagnosis">Find a fault…<kbd>from readings</kbd></button>
         <button class="menu-item" data-ico="wrench" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
         <button class="menu-item" data-ico="datasheet" role="menuitem" id="menu-ai-datasheet" title="A tube's datasheet (PDF) read by the AI: ratings, pinout and a Koren model fitted to its plate curves, for review">Tube from a datasheet…<kbd>PDF → model</kbd></button>
@@ -967,6 +971,7 @@
                 <button class="menu-item" data-ico="image" role="menuitem" id="btn-ai-picture" title="Draw the schematic in a photo or scan (uses your AI key)">Schematic from a picture…</button>
                 <button class="menu-item" data-ico="checks" role="menuitem" id="btn-ai-review" title="Review the design before it is built: margins, stress, ripple, power-on surge; with an AI key, the findings in priority order">Design review</button>
                 <button class="menu-item" data-ico="listen" role="menuitem" id="btn-ai-voice" title="Say how it should sound; the AI proposes value changes, and Listen plays before and after (uses your AI key)">Voicing…</button>
+                <button class="menu-item" data-ico="checks" role="menuitem" id="btn-ai-build" title="The voltages to expect at every test point, the stored charge and a safe first power-up, as a sheet to print">Build and power-up guide</button>
                 <button class="menu-item" data-ico="probe" role="menuitem" id="btn-ai-fault" title="Find what is wrong with the built amplifier from the voltages you measured on it">Find a fault…</button>
               </div>
             </div>
@@ -1495,6 +1500,7 @@
   <script src="semi-fit.js?v=dev"></script>
   <script src="cad-semifit.js?v=dev"></script>
   <script src="cad-voicing.js?v=dev"></script>
+  <script src="cad-build.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>
