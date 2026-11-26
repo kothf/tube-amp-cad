@@ -219,7 +219,7 @@
       if (L.next) lines.push(`\nThe unmeasured test point where these faults differ most: ${L.next.point.label} (${L.next.values.map(fmtV).join(", ")}).`);
       const prompt = `The circuit:\n${ai.describe(false)}\n\n${lines.join("\n")}\n\nWhat is most likely wrong, and what should I check?`;
       try {
-        const text = await ai.call({ system: SYSTEM, messages: [{ role: "user", text: prompt }] }, "Fault finder", true);
+        const text = await ai.call({ system: SYSTEM + (root.AiSkill ? root.AiSkill.pack("faults", S.comps) : ""), messages: [{ role: "user", text: prompt }] }, "Fault finder", true);
         ai.add({ kind: "answer", text });
       } catch (e) { ai.fail(e); }
     }

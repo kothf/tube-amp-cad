@@ -36,7 +36,8 @@
       + "- Every tube and transistor must stay within its ratings; use parts from the library only. Do not touch parts the request does not need.\n";
     function system() {
       return SYSTEM + "\n# The part library (type: name. Pins. Values)\n" + A.catalogue({ skip: ["rail", "offsheet", "netlabel", "bus", "ground"] })
-        + "\n\n# Tubes in the library (name, kind, max anode voltage, max anode dissipation)\n" + A.tubeList();
+        + "\n\n# Tubes in the library (name, kind, max anode voltage, max anode dissipation)\n" + A.tubeList()
+        + (root.AiSkill ? root.AiSkill.pack("edit", S.comps) : "");
     }
 
     // ---- the sheet's geometry: where a stub may go ----

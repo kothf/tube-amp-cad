@@ -165,7 +165,7 @@
       const msgs = history(prompt);
       add({ kind: "user", text: shown || question, prompt: question });
       try {
-        const system = SYSTEM + "\n\n# The manual (help.html)\n" + await manual();
+        const system = SYSTEM + (root.AiSkill ? root.AiSkill.pack("assistant", S.comps) : "") + "\n\n# The manual (help.html)\n" + await manual();
         const text = await call({ system, messages: msgs }, shown || "Assistant", true);
         // asked to draw: the assistant hands the job to Design, which draws it on the sheet
         const d = DRAW_RX.exec(text);
@@ -209,7 +209,7 @@
       const prompt = `The circuit, with each part's editable values as key=value:\n${describe(true)}\n\nPropose the value changes that fix these Checks.`;
       add({ kind: "user", text: `Fix the checks (${issues.length})`, prompt: "Fix the checks." });
       try {
-        const text = await call({ system: FIX_SYSTEM, messages: [{ role: "user", text: prompt }] }, "Fix the checks");
+        const text = await call({ system: FIX_SYSTEM + (root.AiSkill ? root.AiSkill.pack("fix", S.comps) : ""), messages: [{ role: "user", text: prompt }] }, "Fix the checks");
         const j = AiClient.extractJson(text);
         const fixes = (Array.isArray(j.fixes) ? j.fixes : []).map(f => Object.assign({ part: String(f.part || ""), field: String(f.field || ""), value: f.value, why: String(f.why || "") }, check(f)));
         add({ kind: "fixes", summary: String(j.summary || ""), fixes, before: issues });

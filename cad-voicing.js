@@ -38,7 +38,7 @@
       ai.add({ kind: "user", text: `Voicing: ${want}`, prompt: want });
       try {
         const prompt = `The circuit on the sheet now (each part's values with their keys):\n${ai.describe(true)}${colour()}\n\nHow it should sound: ${want}`;
-        const text = await ai.call({ system: SYSTEM, messages: [{ role: "user", text: prompt }], maxTokens: 16000 }, "Voicing", true);
+        const text = await ai.call({ system: SYSTEM + (root.AiSkill ? root.AiSkill.pack("voicing", S.comps) : ""), messages: [{ role: "user", text: prompt }], maxTokens: 16000 }, "Voicing", true);
         const j = root.AiClient.extractJson(text);
         const fixes = (Array.isArray(j.fixes) ? j.fixes : []).map(f => Object.assign({ part: String(f.part || ""), field: String(f.field || ""), value: f.value, why: String(f.why || "") }, ai.check(f)));
         const entry = ai.add({ kind: "fixes", summary: String(j.summary || ""), fixes, before: circuitIssues() });
