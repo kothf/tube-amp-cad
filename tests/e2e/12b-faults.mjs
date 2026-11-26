@@ -52,4 +52,8 @@ import { cad, check } from "./harness.mjs";
   check(!!p && /VL1\.2 cathode: measured 30\d/.test(p) && /1\. R9 open circuit/.test(p) && /lethal charge/.test(JSON.stringify(sent[0].system)), "the AI is sent each reading against the circuit as drawn and the ranked faults, and writes the diagnosis");
   await cad.evaluate(() => localStorage.removeItem("tubecad_ai"));
   await cad.unrouteAll({ behavior: "ignoreErrors" });
+  // the parts after this one start from example 06, simulated, as 12-ai leaves it
+  cad.once("dialog", d => d.accept().catch(() => {}));
+  await cad.evaluate(() => TubeCAD.openExample(TubeCAD.EXAMPLES.find(x => /^06-/.test(x.file))));
+  await cad.waitForFunction(() => TubeCAD.state.comps.some(k => k.label === "BA1") && !TubeCAD.state.sim.busy && TubeCAD.state.sim.result && TubeCAD.state.sim.topo === TubeCAD.state.topo, null, { timeout: 60000 });
 }
