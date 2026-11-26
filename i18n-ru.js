@@ -379,6 +379,32 @@
     "The AI marked nothing as unsure; still compare the values with the picture before you trust the simulation.": "ИИ ничего не отметил как сомнительное; всё равно сверьте номиналы с картинкой, прежде чем доверять расчёту.",
     "Simulated: the Checks find no problems.": "Рассчитано: проверки не нашли проблем.",
     "Every pin ends in a ground, a supply rail or a sheet connector named after its net: drag the parts and draw wires to make it look like the original. Ctrl+Z brings back the circuit you had before.": "Каждый вывод заканчивается землёй, шиной питания или соединителем листа с именем своей цепи: перетащите детали и проведите провода, чтобы схема выглядела как оригинал. Ctrl+Z возвращает прежнюю схему.",
+    // --- AI ▾ → Voicing ---
+    "Voicing…": "Звучание…", "Voicing": "Звучание", "how it sounds": "как звучит", "Before": "До", "Ask": "Спросить",
+    "Say how it should sound (warmer, less fizz, more headroom): the AI proposes value changes to the tone-shaping parts, and Listen plays the circuit before and after": "Скажите, как должно звучать (теплее, меньше песка, больше запаса): ИИ предложит замены номиналов в деталях, формирующих звук, а «Прослушать» сыграет схему до и после",
+    "Say how it should sound; the AI proposes value changes, and Listen plays before and after (uses your AI key)": "Скажите, как должно звучать; ИИ предложит замены номиналов, а «Прослушать» сыграет до и после (нужен ключ ИИ)",
+    "e.g. warmer and darker, less fizz when it breaks up, a little more bass": "например: теплее и темнее, меньше песка при перегрузе, чуть больше баса",
+    "Warmer": "Теплее", "Brighter": "Ярче", "More bass": "Больше баса", "Tighter low end": "Собраннее низ", "Less fizz": "Меньше песка", "Earlier breakup": "Раньше перегруз", "More headroom": "Больше запаса", "More mids": "Больше середины",
+    "Hear before and after": "Послушать до и после",
+    "Hear it through the circuit as it was before the changes (kept by Voicing)": "Послушать через схему, какой она была до изменений (сохранено «Звучанием»)",
+    "Voicing: rendering the circuit as it is (Before)…": "Звучание: расчёт схемы как есть (До)…",
+    "Voicing: rendering the circuit with the changes…": "Звучание: расчёт схемы с изменениями…",
+    "Voicing: before and after rendered. ▶ Play in the Listen tab, then switch Before and B · Circuit as it plays.": "Звучание: до и после рассчитаны. ▶ во вкладке «Прослушать», затем переключайте «До» и «B · Схема» во время воспроизведения.",
+    // --- Why? on the result tabs ---
+    "Why?": "Почему?",
+    "Ask the AI why this result is what it is: what in the circuit causes it and what would change it (uses your AI key)": "Спросить ИИ, почему результат именно такой: что в схеме его определяет и что его изменит (нужен ключ ИИ)",
+    // --- AI ▾ → Transistor or diode from a datasheet ---
+    "Transistor or diode from a datasheet…": "Транзистор или диод по даташиту…",
+    "Transistor or diode from a datasheet": "Транзистор или диод по даташиту",
+    "PDF → .MODEL": "PDF → .MODEL",
+    "A transistor's, MOSFET's, JFET's or diode's datasheet (PDF or a picture of its pages) read by the AI: a SPICE model fitted to its typical curves and shown against them, ready to place": "Даташит транзистора, МОП-транзистора, полевого транзистора или диода (PDF или картинка страниц) читает ИИ: SPICE-модель подгоняется под его типовые кривые и показывается рядом с ними, готовая к установке",
+    "Pick the datasheet of a bipolar transistor, a MOSFET, a JFET, a diode or a zener (a PDF, or a picture of its pages). The AI reads its pins, ratings and points along its typical curves; a SPICE model is fitted to them and shown against the points. Review it in the AI tab, then place it on the sheet. The file goes to your AI provider; uses your AI key.": "Выберите даташит биполярного транзистора, МОП-транзистора, полевого транзистора с p-n переходом, диода или стабилитрона (PDF или картинку его страниц). ИИ читает выводы, предельные значения и точки типовых кривых; под них подгоняется SPICE-модель и показывается рядом с точками. Проверьте её во вкладке ИИ, затем поставьте на лист. Файл уходит вашему поставщику ИИ; нужен ваш ключ ИИ.",
+    "optional: when the datasheet covers several": "необязательно: если даташит описывает несколько",
+    "The AI was unsure of:": "ИИ не был уверен в:",
+    "The model": "Модель",
+    "Copy the model": "Скопировать модель",
+    "Check the pins and ratings against the datasheet before you build with it: they were read by the AI. The model is fitted to typical values; your part will differ by its spread.": "Сверьте выводы и предельные значения с даташитом, прежде чем собирать: их читал ИИ. Модель подогнана под типовые значения; ваша деталь отличается своим разбросом.",
+    "The browser did not let the model be copied: open The model and select it.": "Браузер не дал скопировать модель: раскройте «Модель» и выделите её.",
     // --- dialogs ------------------------------------------------------------------------------
     "Cancel": "Отмена", "Close": "Закрыть", "Create": "Создать", "Overwrite": "Перезаписать", "Test": "Проверить", "Design": "Спроектировать",
     "DigiKey API key": "Ключ API DigiKey", "AI settings": "Настройки ИИ", "API key": "Ключ API", "show": "показать", "Get a key ↗": "Получить ключ ↗",
@@ -2894,6 +2920,13 @@
   // an outline in words (board-outline.js describe): "round Ø60 mm", "custom shape 120 × 90 mm, 2 cut-outs", "100 × 60 mm, corners R5"
   const ruOutline = d => d.replace(/^round Ø([\d.]+) mm/, "круглая Ø$1 мм").replace(/^custom shape ([\d.]+ × [\d.]+) mm/, "своя форма $1 мм").replace(/^([\d.]+ × [\d.]+) mm/, "$1 мм").replace(/, corners R([\d.]+)/, ", углы R$1").replace(/, (\d+) cut-outs?/, ", вырезов: $1");
   const patterns = [
+    [/^Voicing: (\d+) value changes? proposed\. Apply them in the AI tab, or hear before and after\.$/, "Звучание: предложено замен номиналов: $1. Примените их во вкладке ИИ или послушайте до и после."], [/^Voicing: (.+)$/, "Звучание: $1"],
+    [/^Before · (.+) · peak (.+)$/, (m, a, b) => `До · ${a === "before the voicing changes" ? "до изменений звучания" : a} · пик ${b}`],
+    [/^Why\? · (.+)$/, (m, t) => `Почему? · ${{ Checks: "Проверки", Tolerance: "Допуски", "Power sweep": "Мощность", "Noise and hum": "Шум и фон", "Parameter sweep": "Перебор", Transient: "Переходный процесс", Listen: "Прослушать" }[t] || t}`],
+    [/^(.+): run it first \(▶ Run\), then ask why\.$/, "$1: сначала запустите расчёт (▶ Пуск), потом спросите почему."],
+    [/^Transistor or diode from a datasheet: (.+)$/, "Транзистор или диод по даташиту: $1"], [/^Place (.+) on the sheet$/, "Поставить $1 на лист"],
+    [/^(.+)'s model copied$/, "Модель $1 скопирована"],
+    [/^Datasheet import: (.+) \((.+)\), model fitted \((good|fair|poor)\)\. Review it in the AI tab\.$/, (m, n, k, q) => `Импорт даташита: ${n}, модель подогнана (${{ good: "хорошо", fair: "средне", poor: "плохо" }[q]}). Проверьте её во вкладке ИИ.`],
     // the fault finder (AI ▾ → Find a fault…) and the design review
     [/^(\d+) parts read\.$/, "Прочитано деталей: $1."], [/^Schematic from a picture: (.+)$/, "Схема по картинке: $1"],
     [/^Power-on \((.+?)(, cathodes warming)?\)$/, (m, t, w) => `Включение (${t}${w ? ", катоды прогреваются" : ""})`],

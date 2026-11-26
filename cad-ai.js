@@ -175,6 +175,26 @@
     }
     const explain = () => ask("Explain this circuit for someone who builds amplifiers: first in two or three sentences what it is and what it does, then stage by stage (input, gain stages, phase splitter, output, power supply, feedback, whatever it has) what each part is for and why it has its value. Use the simulated voltages and the operating points to say how each stage is biased and how hard it works. End with anything that looks unusual or worth checking.", "Explain my circuit");
 
+    // Why?: the result in the panel's open tab explained, with the circuit: what causes it and what would change it
+    const WHY = {
+      checks: ["Checks", "The Checks list these problems. For each, explain why it happens in this circuit (which parts, voltages and currents cause it) and what would cure it, most serious first."],
+      tolerance: ["Tolerance", "Explain these tolerance results: which parts' spread moves the results most and why, whether the spread is acceptable for this kind of circuit, and how the design could be made less sensitive."],
+      power: ["Power sweep", "Explain this power sweep: what limits the output power, where the distortion comes from at low and at high levels (which stage clips or runs out of current first, which harmonics and why), and what would give more clean power."],
+      noise: ["Noise and hum", "Explain these noise and hum results: which source dominates and why (the stage, the part or the supply behind it), whether the signal-to-noise ratio is good for this kind of circuit, and what would lower the noise or hum most."],
+      sweep: ["Parameter sweep", "Explain this parameter sweep: why the results change the way they do as the value is stepped, and which value is the best compromise and why."],
+      transient: ["Transient", "Explain what this transient run shows: why the waveforms and measurements are as they are, and anything in them that looks wrong or worth checking."],
+      listen: ["Listen", "Explain what this render says about how the circuit sounds: how hard it is driven, its distortion and compression, and what in the circuit causes them."]
+    };
+    const WHY_PANE = { checks: "checks-pane", tolerance: "tol-pane", power: "pw-pane", noise: "nz-pane", sweep: "sw-pane", transient: "tr-pane", listen: "ls-pane" };
+    function why(tab) {
+      tab = tab || (document.querySelector(".dock-tab[aria-selected=true]") || { dataset: {} }).dataset.tab;
+      const w = WHY[tab], pane = $(WHY_PANE[tab]);
+      if (!w || !pane) return;
+      const text = String(pane.innerText || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+      if (!text || (tab !== "checks" && !pane.querySelector("svg, table, canvas"))) { setStatus("warn", `${w[0]}: run it first (▶ Run), then ask why.`); return; }
+      return ask(`${w[1]} Use the numbers, and name the parts by their designators.\n\nThe ${w[0]} tab shows:\n${text.slice(0, 8000)}`, `Why? · ${w[0]}`);
+    }
+
     // Fix the checks: value changes that cure the Checks, as cards with Apply
     const FIX_SYSTEM = "You are an expert amplifier designer working inside Tube Amp CAD. The app's Checks list each part beyond its rating and each wiring problem. "
       + "Propose the smallest set of value changes to existing parts that cures them, keeping the circuit's purpose (gain, output power, bias class). Use standard values (E12/E24 resistors, common capacitors and voltage ratings) and only the value keys and options listed for each part. "
@@ -342,7 +362,7 @@
       const send = () => { const q = input.value; if (!q.trim() || AI.busy) return; input.value = ""; ask(q); };
       bind("btn-ai-send", send);
       input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
-      bind("btn-ai-explain", explain); bind("btn-ai-fix", fixChecks);
+      bind("btn-ai-explain", explain); bind("btn-ai-fix", fixChecks); bind("btn-ai-why", () => why());
       // the tab's More ▾: the other AI tools, one button wide so the tab's tools stay on one row
       const more = $("ai-more-menu"); if (more && root.UiKit) UiKit.menus(more.parentElement);
       bind("ai-who", openSettings); bind("btn-ai-clear", () => { if (AI.busy && AI.busy.ctl) AI.busy.ctl.abort(); AI.log = []; render(); });
@@ -362,7 +382,7 @@
     const cardActs = {};
     function cardAction(name, fn) { cardActs[name] = fn; }
 
-    return { init, render, ask, explain, fixChecks, apply, check, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf, progress, stop, setDrawer: fn => { drawer = fn; } };
+    return { init, render, ask, explain, why, fixChecks, apply, check, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf, progress, stop, setDrawer: fn => { drawer = fn; } };
   }
   root.CadAi = CadAi;
 })(window);

@@ -6,6 +6,33 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.265.0] - 2026-11-26
+
+### Added
+- **AI ▾ → Transistor or diode from a datasheet…: a SPICE model of a part the library lacks.** Pick a bipolar
+  transistor's, MOSFET's, JFET's, diode's or zener's datasheet (PDF or a picture of its pages). The AI reads its
+  kind, pins, ratings, typical values and points along its typical graphs; the CAD fits the model itself, on the
+  simulator's own device laws: Gummel–Poon NPN/PNP (IS, BF, IKF, ISE, NE, RE, VAF, RC, CJE, CJC, TF from hFE and VBE
+  against IC, the output curves, VCE(sat), Cib, Cob, fT), LTspice's VDMOS (VTO, KP, KSUBTHRES, RS from the transfer
+  curve and threshold, RD from RDS(on), the capacitances and the body diode), NJF/PJF (VTO, BETA from IDSS, VGS(off)
+  and the transfer curve) or a diode (IS, N, RS from the forward curve; BV, IBV, NBV from VZ and ZZ; CJO, TT).
+  Limits without a typical value are taken as the usual typical part and said so (a normalized hFE curve scaled to
+  the middle of the hFE spread, RDS(on) as 0.8 of its maximum, the middle of a Vth, IDSS or VGS(off) range). The card
+  shows the model's curves against the datasheet's points with the fit's quality and what the AI was unsure of;
+  Place puts it on the sheet as a SPICE part with its ratings and, where the app has its case with those pins, its
+  footprint. Tested on onsemi's 2N3904 and Infineon's IRF540N datasheets.
+- **AI ▾ → Voicing…: the sound asked in words, heard before and after.** Say how the amplifier should sound
+  ("warmer and darker", "less fizz when it breaks up", "more clean headroom"; buttons add the usual words). The AI
+  gets the circuit and the harmonics of its output and proposes the fewest value changes to the tone-shaping parts
+  (tone stack, coupling and bypass capacitors, cathode and anode resistors, feedback, bright caps, supply sag), each
+  with its effect on the sound and the number that moves, checked against the parts and ready to apply. Hear before
+  and after renders the Listen clip as the circuit is, keeps it as Before, applies the changes and renders again:
+  Listen gets a Before strip and button beside A · Input and B · Circuit, switchable as it plays.
+- **Why? on the result tabs.** The Checks, Tolerance, Power, Noise, Sweep, Transient and Listen tabs have a Why?
+  button at the right: what the tab shows goes to the AI with the circuit, and the answer, in the AI tab, says what
+  causes the result (the parts, the stage, the supply), whether it is good for this kind of circuit and what would
+  change it; on the Checks, why each problem happens and what cures it. A tab with nothing run yet asks for a run.
+
 ## [3.264.0] - 2026-11-26
 
 ### Added

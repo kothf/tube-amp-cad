@@ -265,7 +265,7 @@
         t.classList.toggle("active", on); t.setAttribute("aria-selected", String(on));
         document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
       });
-      host.querySelectorAll(".bom-tools").forEach(el => { el.hidden = el.dataset.for !== bomOpts.tab; });
+      host.querySelectorAll(".bom-tools").forEach(el => { el.hidden = !el.dataset.for.split(" ").includes(bomOpts.tab); });
       cmds.sync(); renderBom(); renderChecks(); renderTolerance(); render();
     }
     function toggleBom(on, tab = "bom") {
