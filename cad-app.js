@@ -3183,6 +3183,8 @@
   const faults = CadFaults({ S, buildNetlist, commit, compPins, desig, fmtEng, pool, setStatus, topo, tubeByName, tubeKind });
   const build = CadBuild({ S, compPins, desig, faults, fmtEng, powerTotals, runSim, setStatus, topo, tubeByName, whenSimulated });
   const tune = CadTune({ S, buildNetlist, cmds, commit, compPins, desig, esc: escH, fmtEng, harmonics, measurements, pool, scopeChannels, setStatus, signalFreq, speakerWave, toggleBom, topo, withResult });
+  const subs = CadSubs({ S, buildNetlist, commit, desig, fmtEng, pool, quantities: () => tune.quantities(), runSim, setStatus, topo, tubeByName, tubeKind, withResult });
+  const edit = CadEdit({ S, addSegment, circuitIssues, commit, compBBox, compPins, makeComp, render, runSim, selectParts: selectFromBoard, setStatus, topo, whenSimulated });
   // PDF / PNG export and printing (cad-export.js)
   const { expOpts, exportPDF, initExport, openExportDialog, openPrintDialog, printPages, prnOpts, renderPNG, runExport, runPrint } = CadExport({ S, baseName, bind, bomData, compBBox, currentSheet, drawSheet, frames, setStatus, sheetNo });
   // The file this circuit came from or was last saved to. With the File System Access API
@@ -3837,6 +3839,8 @@
     semifit.init(ai);
     voicing.init(ai);
     build.init(ai);
+    subs.init(ai);
+    edit.init(ai);
     review.init(ai);
     picture.init(ai);
     cmds.bind("btn-board-tab", "board-tab");
@@ -3888,6 +3892,6 @@
   }
 
   // Exposed for tests and the other windows
-  window.TubeCAD = { library, addPart, placeDesign, blocks, hier, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, openLtspice, circuitIssues, erc, ai, tune, design, datasheet, faults, review, picture, semifit, voicing, build, tolerance, power, transient, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, relayOn, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, exportOrder, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
+  window.TubeCAD = { library, addPart, placeDesign, blocks, hier, recent: () => recent, openText, openStart, kicadFiles, exportKicad, openKicad, openLtspice, circuitIssues, erc, ai, tune, design, datasheet, faults, review, picture, semifit, voicing, build, subs, edit, tolerance, power, transient, noise, listen, sweep, probeAt, probeRead, measurements, anim: () => ({ on: S.anim.on, phase: S.anim.phase, data: animData(), power: S.anim.power }), ledLevel, relayOn, eyeLevel, heaterLevel, lampLevel, meterReading, needleLevel, nixieLevel, setAnim, legend: () => legendBox, state: S, updateInspector, circuitJSON, EXAMPLES, openExample, shareLink, openSharedLink, openDesign, revisions: () => revisions, showDiff, focusDiff, thumbnail, boardNetlist, storeBoard, fitStart, stickerReport, mirrorSelection, renderPNG, openExportDialog, runExport, exportOptions: expOpts, openPrintDialog, runPrint, printPages, printOptions: prnOpts, isLocked, deleteSelection, currentSheet, stepSheet, viewedSheet, pinCurrents, wireCurrents, bomData, exportBom, exportOrder, toggleBom, runOptions: RUN_OPTIONS, newCircuit, addSheet, resistorPower, frames, zoneOf, connRefs, refText, isRail, fitSheet, exportPDF, saveFile, renumber, desig, runTransient, stopTransient, commit, setSwitch, setLive, undo, redo, fitView, buildNetlist, topo: () => topo(), makeComp, compPins, addSegment, lRoute, runSim, spiceNetlist, buildSummary, tubeData, normalizeWires, netsOf, perfMetrics, releasePackage, autosave: () => autosave };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

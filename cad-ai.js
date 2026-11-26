@@ -382,7 +382,7 @@
     const cardActs = {};
     function cardAction(name, fn) { cardActs[name] = fn; }
 
-    return { init, render, ask, explain, why, fixChecks, apply, check, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf, progress, stop, setDrawer: fn => { drawer = fn; } };
+    return { init, render, ask, explain, why, fixChecks, apply, check, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf, netNames: () => netNames(topo()), progress, stop, setDrawer: fn => { drawer = fn; } };
   }
   root.CadAi = CadAi;
 })(window);

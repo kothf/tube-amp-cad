@@ -21,7 +21,7 @@
       ai.add({ kind: "user", text: `Transistor or diode from a datasheet: ${file.name}`, prompt: "Read this datasheet." });
       try {
         const f = await root.CadPicture.readFile(file, 2400);
-        const text = await ai.call({ system: SF().SYSTEM, maxTokens: 8000,
+        const text = await ai.call({ system: SF().SYSTEM, maxTokens: 16000,
           messages: [{ role: "user", text: `Read this datasheet (${file.name}).${name ? ` The part is the ${name}.` : ""}`, files: [{ name: file.name, mime: f.mime, data: f.data }] }] }, "Datasheet import");
         const j = root.AiClient.extractJson(text);
         if (name) j.name = name;

@@ -792,10 +792,12 @@
       <div class="menu-list" role="menu" hidden>
         <button class="menu-item" data-ico="chat" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
         <button class="menu-item" data-ico="sparkle" role="menuitem" id="menu-ai-design" title="Describe an amplifier; the AI designs it, the CAD draws it as a person would (stages joined by wires, supplies on top, ground at the bottom) and simulates it, and the Checks go back for revisions">Design from a description…<kbd>new circuit</kbd></button>
+        <button class="menu-item" data-ico="pen" role="menuitem" id="menu-ai-edit" title="Say what to change (replace tubes and re-bias, add a grid stopper, bypass a cathode): the AI's edits are made in place, keeping your drawing, as one step to undo">Edit by command…<kbd>change in words</kbd></button>
         <button class="menu-item" data-ico="image" role="menuitem" id="menu-ai-picture" title="A photo or scan of a schematic (a magazine page, a hand drawing, a PDF) read by the AI, drawn on a new sheet and simulated, with the values it was unsure of marked for you to check">Schematic from a picture…<kbd>photo → circuit</kbd></button>
         <button class="menu-item" data-ico="bulb" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
         <button class="menu-item" data-ico="checks" role="menuitem" id="menu-ai-review" title="Every margin, stress, ripple and power-on surge the CAD measures in one sheet; the AI reviews the design from it, in priority order, with fixes you can apply">Design review<kbd>before you build</kbd></button>
         <button class="menu-item" data-ico="listen" role="menuitem" id="menu-ai-voice" title="Say how it should sound (warmer, less fizz, more headroom): the AI proposes value changes to the tone-shaping parts, and Listen plays the circuit before and after">Voicing…<kbd>how it sounds</kbd></button>
+        <button class="menu-item" data-ico="pal-tube" role="menuitem" id="menu-ai-subs" title="Select a tube or a transistor: the library's parts of the same kind that could take its place, each simulated in the circuit (bias, stress, output, THD) and ready to use; with an AI key, what to re-bias and how they sound">Substitutes for the selected part<kbd>what else fits</kbd></button>
         <button class="menu-item" data-ico="checks" role="menuitem" id="menu-ai-build" title="The first switch-on, planned from the simulation: the voltage to expect at every test point with a band to accept, the heater load, the stored charge and a safe power-up order, as a sheet to print; with an AI key, build notes for this circuit">Build and power-up guide<kbd>first switch-on</kbd></button>
         <button class="menu-item" data-ico="probe" role="menuitem" id="menu-ai-fault" title="Type the voltages you measured on the built amplifier: the CAD simulates the common faults and ranks them, and the AI writes the diagnosis">Find a fault…<kbd>from readings</kbd></button>
         <button class="menu-item" data-ico="wrench" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
@@ -968,9 +970,11 @@
             <div class="menu" id="ai-more-menu">
               <button class="btn" id="btn-ai-more" title="The other AI tools">More ▾</button>
               <div class="menu-list" role="menu" hidden>
+                <button class="menu-item" data-ico="pen" role="menuitem" id="btn-ai-edit" title="Say what to change; the AI's edits are made in place, as one step to undo (uses your AI key)">Edit by command…</button>
                 <button class="menu-item" data-ico="image" role="menuitem" id="btn-ai-picture" title="Draw the schematic in a photo or scan (uses your AI key)">Schematic from a picture…</button>
                 <button class="menu-item" data-ico="checks" role="menuitem" id="btn-ai-review" title="Review the design before it is built: margins, stress, ripple, power-on surge; with an AI key, the findings in priority order">Design review</button>
                 <button class="menu-item" data-ico="listen" role="menuitem" id="btn-ai-voice" title="Say how it should sound; the AI proposes value changes, and Listen plays before and after (uses your AI key)">Voicing…</button>
+                <button class="menu-item" data-ico="pal-tube" role="menuitem" id="btn-ai-subs" title="What else fits in place of the selected tube or transistor, each simulated in the circuit">Substitutes for the selected part</button>
                 <button class="menu-item" data-ico="checks" role="menuitem" id="btn-ai-build" title="The voltages to expect at every test point, the stored charge and a safe first power-up, as a sheet to print">Build and power-up guide</button>
                 <button class="menu-item" data-ico="probe" role="menuitem" id="btn-ai-fault" title="Find what is wrong with the built amplifier from the voltages you measured on it">Find a fault…</button>
               </div>
@@ -1112,6 +1116,19 @@
         <span class="spacer"></span>
         <button class="btn" id="btn-design-cancel">Cancel</button>
         <button class="btn active" id="btn-design-go" title="Ctrl+Enter">Design</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="edit-modal" hidden>
+    <div class="modal-box" style="width: min(620px, 94vw)">
+      <div class="insp-title">Edit by command</div>
+      <p class="insp-help">Say what to change in the circuit on the sheet. The AI answers with edits (values set, parts deleted or added, pins moved to another net), the CAD makes them in place as one step (Ctrl+Z takes it back), keeps your drawing, selects what changed and simulates the circuit. Uses your AI key.</p>
+      <textarea id="edit-text" class="ai-design-text" rows="4" placeholder="e.g. Replace the 12AX7s with 12AT7s and re-bias them"></textarea>
+      <div class="ai-chips" id="edit-chips"></div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="btn" id="btn-edit-cancel">Cancel</button>
+        <button class="btn active" id="btn-edit-go" title="Ctrl+Enter">Edit</button>
       </div>
     </div>
   </div>
@@ -1502,6 +1519,8 @@
   <script src="cad-semifit.js?v=dev"></script>
   <script src="cad-voicing.js?v=dev"></script>
   <script src="cad-build.js?v=dev"></script>
+  <script src="cad-subs.js?v=dev"></script>
+  <script src="cad-edit.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>

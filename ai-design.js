@@ -52,10 +52,11 @@
   // the schematic: { comps: [{ type, params, x, y, rot, label }], wires: [{ x1, y1, x2, y2 }], frame: { size, orient } }
   // drawn the way a person draws one (sch-layout.js): parts in signal order joined by wires,
   // ground and supplies as symbols, labels only for long connections; opts.prev: the places of
-  // a drawing in progress (the parts drawn so far stay where they are)
+  // a drawing in progress (the parts drawn so far stay where they are); opts.external: nets already
+  // on the sheet (parts added to a drawing), each pin on one ends in a sheet connector of its name
   function layout(checked, opts) {
     opts = opts || {};
-    const out = root.SchLayout.draw(checked, { prev: opts.prev, effort: opts.effort });
+    const out = root.SchLayout.draw(checked, { prev: opts.prev, effort: opts.effort, external: opts.external });
     // (out.places: where each part went, for the next drawing of a design in progress)
     // the extent: parts, their text and the wires
     let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;

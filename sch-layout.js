@@ -189,7 +189,8 @@
       if (s.text) r.push(s.text);
       s.pins.forEach(q => {
         const kd = kinds.get(p.pins[q.id]);
-        if (kd === "gnd" || kd === "rail" || kd === "neg") { const ex = q.x + q.dx * 20, ey = q.y + q.dy * 20; r.push([Math.min(q.x, ex) - 14, Math.min(q.y, ey) - (kd === "rail" ? 30 : 0), Math.max(q.x, ex) + 14, Math.max(q.y, ey) + (kd === "gnd" ? 22 : kd === "neg" ? 30 : 0)]); }
+        if (kd === "ext") { const ex = q.x + q.dx * 60, ey = q.y + q.dy * 60; r.push([Math.min(q.x, ex) - 10, Math.min(q.y, ey) - 12, Math.max(q.x, ex) + 10, Math.max(q.y, ey) + 12]); }
+        else if (kd === "gnd" || kd === "rail" || kd === "neg") { const ex = q.x + q.dx * 20, ey = q.y + q.dy * 20; r.push([Math.min(q.x, ex) - 14, Math.min(q.y, ey) - (kd === "rail" ? 30 : 0), Math.max(q.x, ex) + 14, Math.max(q.y, ey) + (kd === "gnd" ? 22 : kd === "neg" ? 30 : 0)]); }
         else r.push([q.x + Math.min(0, q.dx * 10) - 2, q.y + Math.min(0, q.dy * 10) - 2, q.x + Math.max(0, q.dx * 10) + 2, q.y + Math.max(0, q.dy * 10) + 2]);
       });
       return r;
@@ -471,7 +472,8 @@
     const users = new Map();
     parts.forEach(p => Object.values(p.pins).forEach(net => users.set(net, (users.get(net) || 0) + 1)));
     const kinds = new Map();
-    users.forEach((cnt, net) => kinds.set(net, net === "GND" ? "gnd" : rails.has(net) ? (rails.get(net) < 0 ? "neg" : "rail") : "sig"));
+    const ext = opts.external || new Set();
+    users.forEach((cnt, net) => kinds.set(net, net === "GND" ? "gnd" : rails.has(net) ? (rails.get(net) < 0 ? "neg" : "rail") : ext.has(net) ? "ext" : "sig"));
     const seed = hash(parts.map(p => p.ref + ":" + p.type + ":" + Object.entries(p.pins).map(e => e.join("=")).join(",")).join(";"));
     let at = null;
     for (let r = 0; r < (opts.prev ? 1 : 3); r++) {
@@ -510,6 +512,8 @@
     const block = r => { for (let y = Math.ceil(r[1] / G) * G; y <= r[3]; y += G) for (let x = Math.ceil(r[0] / G) * G; x <= r[2]; x += G) { const c = g.at(x, y); if (c >= 0 && g.pin[c] < 0 && g.res[c] === -1 && g.node[c] < 0 && g.h[c] < 0 && g.v[c] < 0) g.body[c] = 1; } };
 
     const textW = name => 7 * String(name).length + 6;
+    // a sheet connector's room: its flag and name the way it points, the partners' places under the name
+    const connBox = (x, y, dx, dy, name) => { const w = 34 + textW(name); return dx > 0 ? [x + 2, y - 12, x + w, y + 22] : dx < 0 ? [x - w, y - 12, x - 2, y + 22] : dy < 0 ? [x - w / 2, y - 60, x + w / 2, y - 2] : [x - w / 2, y + 2, x + w / 2, y + 60]; };
     const labelBox = (x, y, rot, name) => (rot === 2 ? [x - 3 - textW(name), y - 16, x, y - 2] : [x, y - 16, x + 3 + textW(name), y - 2]);
     const boxFree = (r, okText) => { for (let y = Math.ceil(r[1] / G) * G; y <= r[3]; y += G) for (let x = Math.ceil(r[0] / G) * G; x <= r[2]; x += G) { const c = g.at(x, y); if (c < 0 || g.body[c] || (!okText && g.text[c]) || g.pin[c] >= 0 || g.res[c] !== -1 || g.node[c] >= 0 || g.h[c] >= 0) return false; } return true; };
     // a ground or rail symbol on a pin: a short stub the way the pin faces, turning toward the
@@ -589,6 +593,10 @@
       gndPins.filter(q => !drops.includes(q)).forEach(q => symbolAt(q, "GND", "ground", [0, 1], {}));
     } else gndPins.forEach(q => symbolAt(q, "GND", "ground", [0, 1], {}));
 
+    // nets that are already on the sheet (an edit adding parts to a drawing): a sheet connector of
+    // the net's name at each pin
+    parts.forEach((p, i) => pinsOf[i].forEach(q => { if (kinds.get(q.net) === "ext") pinLabel(q, q.net, "offsheet"); }));
+
     // signal nets: each pin wired to the nearest part of its net already drawn, nets with the
     // shortest wiring first; a connection that would be long or tangled becomes two labels
     const tree = new Map();                                       // net → Set(cells)
@@ -603,14 +611,18 @@
     sigNets.sort((a, b) => a.est - b.est || (a.net < b.net ? -1 : 1));
     const labelled = new Set(), needLabel = new Set();
     // a label at a pin: a short stub the way the pin faces, the label at its end
-    function pinLabel(q, net) {
-      const id = idOf(net), rot = dirIdx(q.dx, q.dy);
+    function pinLabel(q, net, type) {
+      const id = idOf(net), rot = dirIdx(q.dx, q.dy), off = type === "offsheet";
       for (const okText of [false, true]) for (const len of [20, 30, 40, 60, 80]) {
         const ex = q.x + q.dx * len, ey = q.y + q.dy * len, cells = pathCells([[q.x, q.y], [ex, ey]]);
-        const lb = labelBox(ex, ey, rot, net);
-        if (clear(cells, id, okText) && boxFree(lb, okText)) { lay(g, id, cells, out.wires); addComp("netlabel", { name: net }, ex, ey, rot); g.rect(g.text, lb, 1); return true; }
+        const lb = off ? connBox(ex, ey, q.dx, q.dy, net) : labelBox(ex, ey, rot, net);
+        if (clear(cells, id, okText) && boxFree(lb, okText)) { lay(g, id, cells, out.wires); addComp(off ? "offsheet" : "netlabel", { name: net }, ex, ey, rot); g.rect(g.text, lb, 1); return true; }
       }
-      return false;
+      if (!off) return false;
+      // a connector must go somewhere: on the shortest stub
+      const ex = q.x + q.dx * 20, ey = q.y + q.dy * 20;
+      lay(g, id, pathCells([[q.x, q.y], [ex, ey]]), out.wires); addComp("offsheet", { name: net }, ex, ey, rot);
+      return true;
     }
     // a label on a net's drawn wiring: on a level wire with room over it, or on a stub off a wire
     function treeLabel(net, cells, okText) {
