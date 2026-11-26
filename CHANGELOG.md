@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.270.0] - 2026-11-26
+
+### Added
+- **Any LLM through an OpenAI-compatible API.** AI settings has a fourth provider, **Other**: pick a service for
+  the base URL (OpenRouter, DeepSeek, Mistral, Groq, xAI Grok, Together, Ollama, LM Studio) or type any address,
+  paste its key (optional; a local server needs none), type the model or press Load list, and every AI feature
+  uses it: the assistant, Draw it for me and live drawing, Design from a description, Edit by command, Fix the
+  checks, Design review, Find a fault, Voicing, Substitutes, the build guide, Auto-tune goals in words and the
+  design knowledge. Requests go to `<base>/chat/completions` (streamed); a server that refuses streaming or the
+  length limit gets one plain retry; a reasoning model's `<think>` text is left out; pictures and PDFs go as
+  image and file parts, with an error that names a text-only model. Errors for a local server explain CORS
+  (OLLAMA_ORIGINS, LM Studio's Enable CORS). Manual (EN and RU) section 18.1 "Other models", README, hover hints
+  and Russian strings updated.
+
 ## [3.269.0] - 2026-11-26
 
 ### Added

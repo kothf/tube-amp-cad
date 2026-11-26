@@ -125,8 +125,11 @@ Firefox is not tested.
 
   It is searchable.
 - **AI assistant** (AI ▾ and the AI tab under the schematic), with your own
-  key for Claude, ChatGPT or Gemini, kept in the browser and sent only to
-  that provider:
+  key for Claude, ChatGPT or Gemini, or any model with an OpenAI-compatible
+  API (OpenRouter, DeepSeek, Mistral, Groq, xAI, Together, or a local Ollama
+  or LM Studio, which needs no key: allow the page with OLLAMA_ORIGINS or
+  LM Studio's Enable CORS), kept in the browser and sent only to that
+  provider:
   - ask about the circuit or the app; the model sees the parts, nets,
     simulated voltages, operating points and Checks, and the manual;
   - *Design from a description*: the model designs the circuit, the CAD

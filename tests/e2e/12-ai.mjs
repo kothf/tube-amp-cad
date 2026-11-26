@@ -76,6 +76,34 @@ import { cad, check } from "./harness.mjs";
   await cad.click("#btn-ai-explain");
   await cad.waitForFunction(() => document.querySelectorAll(".ai-msg.answer").length >= 3);
   check(/gemini-3\.1-pro-preview:streamGenerateContent\?alt=sse$/.test(sent[0].url) && sent[0].headers["x-goog-api-key"] === "AIza-test" && /stage by stage/.test(JSON.stringify(sent[0].body.contents)), "Explain asks Gemini with its key");
+
+  // Other (OpenAI-compatible): a local Ollama, no key; Load list, Test, Save, then Explain streamed
+  await cad.route("http://localhost:11434/v1/**", async route => {
+    const url = route.request().url(), h = { "access-control-allow-origin": "*" };
+    if (/\/models$/.test(url)) return route.fulfill({ status: 200, contentType: "application/json", headers: h, body: JSON.stringify({ object: "list", data: [{ id: "qwen3:32b" }, { id: "llama3.3:70b" }] }) });
+    const body = JSON.parse(route.request().postData() || "{}");
+    sent.push({ provider: "compat", url, headers: route.request().headers(), body });
+    const text = /Reply with the single word/.test(JSON.stringify(body)) ? "ready" : "<think>let me see</think>## Input stage\nVL1.1 amplifies.";
+    const sse = [text.slice(0, 9), text.slice(9)].map((t, i) => `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: t }, finish_reason: i ? "stop" : null }] })}\n\n`).join("") + "data: [DONE]\n\n";
+    await route.fulfill({ status: 200, contentType: "text/event-stream", headers: h, body: sse });
+  });
+  sent.length = 0;
+  await cad.click("#ai-who");
+  await cad.click('#ai-providers [data-p="compat"]');
+  check(await cad.evaluate(() => !document.getElementById("ai-base").closest(".ai-compat").hidden && !document.getElementById("ai-compat-note").hidden && document.querySelectorAll("#ai-services option").length >= 8), "Other shows the base URL with the known services and the note");
+  await cad.fill("#ai-base", "http://localhost:11434/v1");
+  await cad.click("#btn-ai-list");
+  await cad.waitForFunction(() => /2 models/.test(document.getElementById("ai-test-out").textContent));
+  await cad.fill("#ai-model", "qwen3:32b");
+  await cad.click("#btn-ai-test");
+  await cad.waitForFunction(() => /answered: ready/.test(document.getElementById("ai-test-out").textContent));
+  check(sent[0].url === "http://localhost:11434/v1/chat/completions" && !sent[0].headers.authorization && sent[0].body.model === "qwen3:32b", "Test asks the local server's Chat Completions without a key");
+  await cad.click("#btn-ai-save");
+  check(await cad.evaluate(() => /Ollama · qwen3:32b/.test(document.getElementById("ai-who").textContent)), "the tab shows Ollama · qwen3:32b");
+  sent.length = 0;
+  await cad.click("#btn-ai-explain");
+  await cad.waitForFunction(() => /VL1.1 amplifies/.test([...document.querySelectorAll(".ai-msg.answer")].pop().innerText));
+  check(sent[0].body.stream === true && sent[0].body.messages[0].role === "system" && /stage by stage/.test(JSON.stringify(sent[0].body.messages)) && !(await cad.evaluate(() => /let me see/.test(document.getElementById("ai-log").innerText))), "Explain streams from the OpenAI-compatible model and leaves its thinking out");
   await cad.click("#btn-ai-clear");
   check(await cad.evaluate(() => !TubeCAD.state.ai.log.length && !!document.querySelector(".ai-chips")), "Clear starts a new conversation");
   await cad.evaluate(() => localStorage.removeItem("tubecad_ai"));

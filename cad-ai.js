@@ -1,5 +1,5 @@
 /* The AI assistant, the AI tab under the schematic and the AI ▾ menu: a conversation about the
-   circuit on the sheet and about the app, with the user's own key for Claude, ChatGPT or Gemini
+   circuit on the sheet and about the app, with the user's own key for Claude, ChatGPT, Gemini or any OpenAI-compatible model
    (ai-client.js; AI settings… holds the keys, in this browser only).
    - Ask: any question; the circuit (parts, nets, the simulated operating point and Checks) goes
      with it, and the manual (help.html) is the model's reference for how-to questions.
@@ -270,11 +270,11 @@
     function render() {
       const log = $("ai-log"); if (!log) return;
       AI.cfg = AiClient.load();
-      const who = $("ai-who"); if (who) { who.textContent = AiClient.ready(AI.cfg) ? AiClient.label(AI.cfg) : "No API key"; who.classList.toggle("warn", !AiClient.ready(AI.cfg)); }
+      const who = $("ai-who"); if (who) { who.textContent = AiClient.ready(AI.cfg) ? AiClient.label(AI.cfg) : AI.cfg.provider === "compat" ? "No model set" : "No API key"; who.classList.toggle("warn", !AiClient.ready(AI.cfg)); }
       let h = AI.log.map(entryHTML).join("");
       if (!AI.log.length) {
         h = `<div class="ai-msg note"><b>AI assistant.</b> Ask about the circuit on the sheet or how to do something in the app. It sees the parts, the simulated voltages, the operating points and the Checks.`
-          + (AiClient.ready(AI.cfg) ? "" : ` It needs your own API key for Claude, ChatGPT or Gemini: <a href="#" data-settings="1">AI settings…</a>`) + `</div>`
+          + (AiClient.ready(AI.cfg) ? "" : ` It needs your own API key for Claude, ChatGPT or Gemini, or any OpenAI-compatible model (OpenRouter, DeepSeek, Mistral, Groq, a local Ollama): <a href="#" data-settings="1">AI settings…</a>`) + `</div>`
           + `<div class="ai-chips">${["Explain my circuit", "Fix the checks", "Why does the output stage run so hot?", "How do I measure the output power at 1 % THD?", "How do I add a second sheet?"].map(q => `<button class="btn ai-chip" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>`;
       }
       if (AI.busy) h += (AI.busy.partial ? `<div class="ai-msg answer ai-partial">${A.markdown(AI.busy.partial, AI.busy.refs || (AI.busy.refs = refs()))}</div>` : "")
@@ -313,15 +313,28 @@
     }
     function settingsTab(p) {
       draft.provider = p;
-      const P = AiClient.PROVIDERS[p];
+      const P = AiClient.PROVIDERS[p], compat = p === "compat";
       document.querySelectorAll("#ai-providers [data-p]").forEach(b => b.classList.toggle("active", b.dataset.p === p));
+      document.querySelectorAll("#ai-modal .ai-compat").forEach(el => { el.hidden = !compat; });
       $("ai-key").value = draft.keys[p]; $("ai-key").placeholder = P.keyHint;
-      $("ai-key-link").href = P.keyUrl; $("ai-key-link").textContent = `Get a ${P.name} key ↗`;
+      if (compat) { $("ai-base").value = draft.baseUrl || ""; $("ai-services").innerHTML = AiClient.SERVICES.map(x => `<option value="${esc(x[1])}">${esc(x[0])}</option>`).join(""); }
+      keyLink();
+      $("ai-model").placeholder = compat ? "the model's name, e.g. deepseek/deepseek-chat or qwen3:32b" : "";
       const list = $("ai-models"); list.innerHTML = P.models.map(m => `<option value="${m[0]}">${esc(m[1])}</option>`).join("");
       $("ai-model").value = draft.models[p];
       $("ai-test-out").textContent = ""; $("ai-test-out").className = "insp-help";
     }
-    function readDraft() { draft.keys[draft.provider] = $("ai-key").value.trim(); draft.models[draft.provider] = $("ai-model").value.trim() || AiClient.defaultModel(draft.provider); }
+    // the "Get a key" link: the provider's key page, or the chosen service's (none for a local server)
+    function keyLink() {
+      const p = draft.provider, a = $("ai-key-link");
+      if (p !== "compat") { const P = AiClient.PROVIDERS[p]; a.hidden = false; a.href = P.keyUrl; a.textContent = `Get a ${P.name} key ↗`; return; }
+      const base = AiClient.cleanBase($("ai-base").value), s = AiClient.SERVICES.find(x => x[1] === base);
+      a.hidden = !(s && s[2]); if (s && s[2]) { a.href = s[2]; a.textContent = `Get a key at ${s[0]} ↗`; }
+    }
+    function readDraft() {
+      draft.keys[draft.provider] = $("ai-key").value.trim(); draft.models[draft.provider] = $("ai-model").value.trim() || AiClient.defaultModel(draft.provider);
+      if (draft.provider === "compat") draft.baseUrl = AiClient.cleanBase($("ai-base").value);
+    }
     async function testKey() {
       readDraft();
       const out = $("ai-test-out"); out.className = "insp-help"; out.textContent = "Asking…";
@@ -333,10 +346,11 @@
     async function loadModels() {
       readDraft();
       const out = $("ai-test-out"), p = draft.provider;
-      if (!draft.keys[p]) { out.className = "insp-help warn"; out.textContent = "Paste the key first: the list comes from the provider."; return; }
+      if (p === "compat" && !draft.baseUrl) { out.className = "insp-help warn"; out.textContent = "Pick a service or type its base URL first: the list comes from it."; return; }
+      if (p !== "compat" && !draft.keys[p]) { out.className = "insp-help warn"; out.textContent = "Paste the key first: the list comes from the provider."; return; }
       out.className = "insp-help"; out.textContent = "Loading the models this key can use…";
       try {
-        const ids = await AiClient.listModels(p, draft.keys[p]);
+        const ids = await AiClient.listModels(p, draft.keys[p], null, draft.baseUrl);
         const known = new Map(AiClient.PROVIDERS[p].models);
         $("ai-models").innerHTML = ids.map(id => `<option value="${esc(id)}">${esc(known.get(id) || id)}</option>`).join("");
         out.className = "insp-help ok"; out.textContent = `✓ ${ids.length} models: pick one in the Model box (type to filter).`;
@@ -347,12 +361,12 @@
       if (!AiClient.save(draft)) { $("ai-test-out").className = "insp-help warn"; $("ai-test-out").textContent = "⚠ This browser does not let the page store anything (private mode?): the key cannot be kept."; return; }
       $("ai-modal").hidden = true; AI.cfg = AiClient.load();
       AI.log = AI.log.filter(m => m.kind !== "setup");
-      setStatus("ok", AiClient.ready(AI.cfg) ? `AI: ${AiClient.label(AI.cfg)}` : "AI settings saved (no key for the chosen provider yet)");
+      setStatus("ok", AiClient.ready(AI.cfg) ? `AI: ${AiClient.label(AI.cfg)}` : AI.cfg.provider === "compat" ? "AI settings saved (the OpenAI-compatible model needs a base URL and a model name)" : "AI settings saved (no key for the chosen provider yet)");
       render();
     }
     function forgetKeys() {
       if (!confirm("Forget every AI key stored in this browser?")) return;
-      draft = AiClient.normalise({ provider: draft.provider, models: draft.models }); AiClient.save(draft); settingsTab(draft.provider); AI.cfg = AiClient.load(); render();
+      draft = AiClient.normalise({ provider: draft.provider, models: draft.models, baseUrl: draft.baseUrl }); AiClient.save(draft); settingsTab(draft.provider); AI.cfg = AiClient.load(); render();
     }
 
     function init() {
@@ -372,6 +386,7 @@
       document.querySelectorAll("#ai-providers [data-p]").forEach(b => b.addEventListener("click", () => { readDraft(); settingsTab(b.dataset.p); }));
       bind("btn-ai-test", testKey); bind("btn-ai-list", loadModels); bind("btn-ai-save", saveSettings); bind("btn-ai-forget", forgetKeys);
       bind("btn-ai-cancel", () => { $("ai-modal").hidden = true; });
+      $("ai-base").addEventListener("input", keyLink);
       $("ai-show-key").addEventListener("change", e => { $("ai-key").type = e.target.checked ? "text" : "password"; });
       $("ai-modal").addEventListener("keydown", e => { if (e.key === "Escape") $("ai-modal").hidden = true; });
       render();
