@@ -118,6 +118,9 @@
       if (!l.trim()) { i++; continue; }
       const para = [];
       while (i < lines.length && lines[i].trim() && !/^(```|#{1,4}\s|\s*([-*•]|\d+[.)])\s+|\s*\|)/.test(lines[i])) para.push(lines[i++]);
+      // a line none of the above took (a table row cut off, "| a | b" without its closing bar) is a paragraph of its own:
+      // without this the loop would stand still on it and the page would hang
+      if (!para.length) para.push(lines[i++]);
       out.push(`<p>${inline(para.join(" "), refRx)}</p>`);
     }
     return out.join("");

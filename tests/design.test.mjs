@@ -75,3 +75,22 @@ test("layout: every pin ends in a ground, a rail or a connector named after its 
   // the B+ net is drawn as rail symbols with the voltage
   assert.ok(out.comps.some(k => k.type === "rail" && k.params.name === "B+" && k.params.v === 250));
 });
+
+test("partial: the parts complete so far, while the answer is written, cut anywhere", () => {
+  const d = stage(); d.rails = { "B+": 250 }; d.summary = "one stage {with braces} and \"quotes\"";
+  const full = "```json\n" + JSON.stringify({ title: 'A "q" stage', rails: d.rails, parts: d.parts, summary: d.summary }, null, 1) + "\n```";
+  let last = -1;
+  for (let n = 0; n <= full.length; n++) {
+    const r = D.partial(full.slice(0, n));
+    assert.ok(r.parts.length >= last, "parts only grow");
+    last = r.parts.length;
+    r.parts.forEach((p, k) => assert.deepEqual(p, d.parts[k]));
+  }
+  const r = D.partial(full);
+  assert.equal(r.title, 'A "q" stage'); assert.deepEqual(r.rails, { "B+": 250 }); assert.equal(r.parts.length, d.parts.length); assert.ok(r.done);
+  // drawn as it comes: the first parts already make a schematic
+  const half = D.partial(full.slice(0, full.indexOf('"R2"')));
+  const out = D.layout(D.check({ parts: half.parts, rails: half.rails }), { title: half.title });
+  assert.ok(out.comps.some(c => c.label === "VL1") && !out.comps.some(c => c.label === "R2"));
+  assert.deepEqual(D.partial("no json here").parts, []);
+});

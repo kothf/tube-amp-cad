@@ -120,10 +120,11 @@
   // the prompt's rules for a design, with the library: what the model must answer
   function rules() {
     return "Answer with JSON only, no prose around it:\n"
-      + '{"title": "short title", "summary": "what you designed and the key numbers you expect (B+, bias, gain, power)", '
+      + '{"title": "short title", "rails": {"B+": 300}, '
       + '"parts": [{"ref": "R1", "type": "resistor", "values": {"r": "100k", "w": "0.5"}, "pins": {"1": "IN", "2": "GND"}}], '
-      + '"rails": {"B+": 300}}\n'
+      + '"summary": "what you designed and the key numbers you expect (B+, bias, gain, power)"}\n'
       + "Rules:\n"
+      + "- Keep the keys in this order (title, rails, parts, summary) and the parts in signal order, input first: the CAD draws each part on the sheet as soon as it arrives.\n"
       + "- type is one of the library's part types below; values use only that type's value keys, with SI prefixes (100k, 47u, 2.2M) or one of the listed options; a tube's values are {\"tube\": \"EL84\"} plus \"connection\": \"triode\" for a pentode wired as a triode.\n"
       + "- pins maps EVERY pin id of the part to a net name. Pins on the same net are connected. GND is ground. Use short net names (IN, G1, A1, K1, OUT, B+, B2).\n"
       + "- A DC supply is a net listed in rails with its voltage (an ideal source to ground, e.g. \"B+\": 300); use rails for every supply voltage instead of drawing a mains supply unless a supply is asked for.\n"
@@ -133,5 +134,53 @@
       + "- Prefer proven textbook topologies and standard values (E12/E24).";
   }
 
-  root.AiDesign = { check, layout, rules, isGnd };
+  // a design while it is being written: the title, the rails and the parts complete so far, read
+  // from the start of the JSON (the rest may be cut anywhere: in a string, a number, a part)
+  function partial(text) {
+    text = String(text || "");
+    const out = { title: "", rails: {}, parts: [] };
+    const start = text.indexOf("{"); if (start < 0) return out;
+    const stack = [];        // "{" or "[" with the key it is the value of, at depth 1
+    let inStr = false, esc = false, strAt = -1, key = null, expectKey = false, lastStr = null, valAt = -1;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') {
+          inStr = false;
+          if (stack.length === 1) {
+            let s = null; try { s = JSON.parse(text.slice(strAt, i + 1)); } catch (e) { s = null; }
+            if (expectKey) { lastStr = s; } else if (key === "title" && typeof s === "string") out.title = s;
+          }
+        }
+        continue;
+      }
+      if (ch === '"') { inStr = true; strAt = i; continue; }
+      if (ch === "{" || ch === "[") {
+        stack.push({ ch, key: stack.length === 1 ? key : null, at: i });
+        if (stack.length === 1) expectKey = true;
+        if (stack.length === 3 && stack[1].key === "parts" && stack[1].ch === "[" && ch === "{") valAt = i;
+        continue;
+      }
+      if (ch === "}" || ch === "]") {
+        const top = stack.pop(); if (!top) break;
+        if (stack.length === 2 && stack[1].key === "parts" && top.ch === "{" && valAt >= 0) {
+          try { out.parts.push(JSON.parse(text.slice(valAt, i + 1))); } catch (e) { /* not a part */ }
+          valAt = -1;
+        } else if (stack.length === 1 && top.key === "rails" && top.ch === "{") {
+          try { out.rails = JSON.parse(text.slice(top.at, i + 1)) || {}; } catch (e) { /* not rails */ }
+        }
+        if (!stack.length) { out.done = true; break; }
+        continue;
+      }
+      if (stack.length === 1) {
+        if (ch === ":" && expectKey) { key = lastStr; expectKey = false; }
+        else if (ch === ",") expectKey = true;
+      }
+    }
+    return out;
+  }
+
+  root.AiDesign = { check, layout, rules, isGnd, partial };
 })(typeof window !== "undefined" ? window : globalThis);
