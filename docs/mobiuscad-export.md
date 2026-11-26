@@ -63,11 +63,16 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   and a semiconductor's Rjc (the map's junction over its case); `bodies`:
   the names of the bodies in the part's file that make its heat (the die,
   the core, a valve's bulb, otherwise every body but the leads), so
-  MöbiusCAD can inject the heat there and read the junction off the die; the map's
-  ambient, chassis (open, vented, closed) and which way is down; convection
-  and radiation on every open surface; and the board's copper stack with its
+  MöbiusCAD can inject the heat there and read the junction off the die;
+  and the board's copper stack with its
   copper map: each layer's share of every cell of the map's grid and the
   plated barrels, so the board's conductivity follows its copper.
+- **No surroundings** (since 3.262.0): the ambient, the chassis (open,
+  vented, closed), which way is down and the cooling (convection and
+  radiation) are not written: they belong to the assembly the board goes
+  into. The study has no supports, so MöbiusCAD (1.762.0 and later) shows
+  **Add surroundings** under Cooling: still air and radiation on every open
+  surface in one click, then the ambient and enclosure beside it.
 - **The same physics on both sides.** The map in Tube Amp CAD works out
   natural convection the way the study does in MöbiusCAD (its `naturalH`):
   face by face, h = C·(ΔT/L)^¼ with C 1.32 for a face looking up and 0.59
@@ -83,9 +88,8 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   and a fillet 0.4 mm thick under the board on the pad (at least 0.25 mm
   past the hole). They touch the lead, the hole wall and the board's bottom
   face, so the lead's heat reaches the board by conduction and no fixed
-  board share is needed. What MöbiusCAD does not mesh is the air under a
-  part, so a body lying close to the board (a 5–10 W resistor) reads about
-  10 % hotter there than on the map, which conducts across that gap.
+  board share is needed. Since MöbiusCAD 1.761.0 the still air under a part
+  lying close to the board conducts too (gaps up to 2 mm), as on the map.
 
 Chrome and Edge write the folder in place (a folder picker). Other browsers,
 and the ZIP command, download `<name>-mobiuscad.zip` holding the folder.

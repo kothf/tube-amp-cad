@@ -25,10 +25,10 @@
 
     // drawing while the answer is written: the parts complete so far, laid out and shown on the
     // sheet a few times a second (only when a new part has arrived)
-    const L = { text: "", n: -1, timer: 0, what: "" };
+    const L = { text: "", n: -1, timer: 0, what: "", prev: null };
     const bar = (text) => { const b = $("design-live"); if (!b) return; b.hidden = text === null; if (text !== null) $("design-live-text").textContent = text; };
     function live(what) {
-      L.text = ""; L.n = -1; L.what = what; clearTimeout(L.timer); L.timer = 0;
+      L.text = ""; L.n = -1; L.what = what; L.prev = null; clearTimeout(L.timer); L.timer = 0;
       bar(`${what}: waiting for the AI…`);
       return t => { L.text = t; if (!L.timer) L.timer = setTimeout(drawLive, 250); };
     }
@@ -41,7 +41,10 @@
         let checked = null;
         try { checked = AiDesign.check({ parts: pd.parts, rails: pd.rails }); } catch (e) { checked = null; }
         if (checked && checked.parts.length) {
-          previewDesign(AiDesign.layout(checked, { title: pd.title || "AI design" }));
+          // the parts drawn so far stay where they are; the new ones find their places
+          const out = AiDesign.layout(checked, { title: pd.title || "AI design", prev: L.prev, effort: 0.3 });
+          L.prev = out.places;
+          previewDesign(out);
           D.live = true;
         }
       }
@@ -101,7 +104,7 @@
           issues = await place(j, checked);
         }
         ai.add({ kind: "answer", text: `## ${j.title || "Design"}\n${j.summary || ""}\n\n` + (issues.length ? `The Checks still list ${issues.length} problem${issues.length === 1 ? "" : "s"}${round ? ` after ${round} revision${round === 1 ? "" : "s"}` : ""}:\n${issues.map(i => "- " + i).join("\n")}\n\n**Fix the checks** or Auto-tune can take it from here.` : `Simulated: the Checks find no problems${round ? ` (after ${round} revision${round === 1 ? "" : "s"})` : ""}.`)
-          + "\n\nThe drawing is a starting point: each pin ends in a ground, a supply rail or a sheet connector named after its net. Read the operating points before you build it." });
+          + "\n\nThe drawing is a starting point: parts are joined by wires in signal order, with supplies as rail symbols, one ground line and labels only for far connections. Read the operating points before you build it." });
         ai.add({ kind: "note", text: round ? `Ctrl+Z steps back through the ${round + 1} versions to the circuit you had before.` : "Ctrl+Z brings back the circuit you had before." });
         setStatus(issues.length ? "warn" : "ok", `Design: ${j.title || ""} · ${checked.parts.length} parts · ${issues.length ? issues.length + " problems in the Checks" : "no problems in the Checks"}`);
       } catch (e) {

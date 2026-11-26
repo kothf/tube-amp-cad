@@ -131,7 +131,11 @@ Firefox is not tested.
     simulated voltages, operating points and Checks, and the manual;
   - *Design from a description*: the model designs the circuit, the CAD
     draws it on the sheet live, part by part while the answer is written
-    (Stop or Esc puts the old circuit back), simulates it and sends the
+    (Stop or Esc puts the old circuit back), the way a person draws a
+    schematic: stages left to right in columns joined by straight wires
+    with few bends,
+    supplies as rail symbols on top, one ground line along the bottom, net
+    labels only for far connections and the scope, simulates it and sends the
     Checks back for revisions; asking the assistant to "draw me …" or to
     add a stage to the sheet's circuit draws it the same way;
   - *Tube from a datasheet*: a PDF read into ratings, pinout and a Koren
@@ -1411,10 +1415,11 @@ the circuit file, so one file holds both.
     pad so the lead's heat reaches the board by conduction, and carries a
     thermal study made from the thermal map: every part's heat and only the
     heat (MöbiusCAD finds its paths itself: into the board through the
-    joints, by air, and into any heatsink or chassis added there), limits, electrolytic life, junctions, the
-    ambient, chassis and which way is down, convection and radiation, and
+    joints, by air, and into any heatsink or chassis added there), limits, electrolytic life, junctions, and
     the board as "PCB (effective)" whose conductivity follows its copper
-    cell by cell. Chrome and Edge write into a folder you pick (exporting
+    cell by cell. The surroundings (ambient, chassis, which way is down,
+    convection and radiation) are set in MöbiusCAD, whose study offers
+    **Add surroundings** in one click. Chrome and Edge write into a folder you pick (exporting
     again overwrites the same files, so the assemblies that use them follow);
     **MöbiusCAD assembly (ZIP)** gives the same folder as one ZIP. Described
     in [docs/mobiuscad-export.md](docs/mobiuscad-export.md).

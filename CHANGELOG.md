@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.269.0] - 2026-11-26
+
 ### Added
 - **Design knowledge for the AI: our own circuit and PCB design skill.** The AI features now carry the app's
   own design rules in their prompts: how to design and the margins a careful builder keeps on every part; tube
@@ -20,6 +22,36 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - The same knowledge is a Claude Code skill in the repository (`.claude/skills/circuit-design`), compiled into
   `ai-skill.js` by `scripts/build-ai-skill.mjs` (a test fails when they differ). `scripts/design-check.mjs` draws
   a design netlist in the CAD, simulates it and prints the Checks, ERC and operating points.
+
+## [3.268.0] - 2026-11-26
+
+### Changed
+- **AI drawings look drawn by a person.** Design from a description ("Draw me…"), Schematic from a picture and the
+  parts Edit by command adds are no longer every part on its own with a connector on each pin. A new layout
+  (sch-layout.js) places and wires the netlist the way schematics are drawn by hand: signal left to right, the
+  blocks the AI names (input stage, driver, output stage, power supply) in order; each stage in a column with its
+  load above the tube or transistor and the cathode or emitter parts below it, lined up so wires run straight;
+  coupling parts lying flat, parts to a supply or ground standing up; real wires that never run through a part,
+  over another net's pin, along another wire or over a part's name, with T-junctions and few crossings; supplies as
+  rail symbols on top (a negative supply below), one ground line along the bottom with one ground symbol; net
+  labels only for far connections (a feedback loop) and the oscilloscope's probes. Placement is annealing with a
+  polish pass, seeded from the netlist, so the same circuit always draws the same; routing is A* on the 10-unit
+  grid. Every pin is joined exactly as in the netlist (checked on all 20 examples redrawn from their netlists).
+  The live drawing keeps the parts already drawn in place while the AI writes the rest.
+- Wires with fewer steps: the router pays more for a bend, and a wire that steps aside a little (two bends close
+  together) is straightened by moving the part at its end, alone or with the parts hanging off it, in line and
+  wiring again (on the 20 examples: 61 % fewer small steps, a third fewer bends, no more labels).
+- The design prompt asks for a block per part and net names that say what the net is.
+
+## [3.267.0] - 2026-11-26
+
+### Changed
+- **The MöbiusCAD export carries the heat sources only, not the surroundings.** The ambient, the chassis (open,
+  vented, closed), which way is down and the cooling (convection and radiation on every open surface) depend on
+  where the board ends up, so they are no longer written into the study: set them in MöbiusCAD, whose study now
+  offers **Add surroundings** under Cooling (still air and radiation on every open surface in one click; MöbiusCAD
+  1.762.0). Parts, materials, the dies and cores, the solder joints, every part's heat, limits, junctions and the
+  board's copper map are exported as before. The map in Tube Amp CAD keeps its own ambient and chassis settings.
 
 ## [3.266.0] - 2026-11-26
 

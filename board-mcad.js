@@ -13,11 +13,11 @@
    placed by a rigid transform, so every 12AX7 or 1k resistor shares one part file. The board is one part
    in the frame of the STEP export (mm, x right, y up, z up from the board's bottom face).
 
-   Thermal study ("Thermal 1"): MöbiusCAD's "Heat from package" load with every part's dissipation and
-   where it goes (board, air, heatsink), limits, an electrolytic's rated life and a semiconductor's
-   junction (Rjc from this map), the ambient, enclosure and which way is down, convection and radiation
-   on every open surface, and the board as a "PCB (effective)" body whose conductivity follows its copper
-   cell by cell (the same grid the map was solved on). */
+   Thermal study ("Thermal 1"): MöbiusCAD's "Heat from package" load with every part's dissipation,
+   limits, an electrolytic's rated life and a semiconductor's junction (Rjc from this map), and the
+   board as a "PCB (effective)" body whose conductivity follows its copper cell by cell (the same grid
+   the map was solved on). Heat sources only: no ambient, enclosure, way down or cooling, since those
+   belong to the chassis the board goes into; MöbiusCAD offers "Add surroundings" for them (1.762.0). */
 (function (root) {
   "use strict";
   const SCHEMA = 1, FORMAT = "mobiuscad";
@@ -143,14 +143,6 @@
     return out;
   }
 
-  /** Which way is down (MöbiusCAD's boardDown): lying with its parts up = −z; parts down = +z; upright = down its shorter edge */
-  function down(board, orient) {
-    if (root.BoardThermal && root.BoardThermal.down) return root.BoardThermal.down(board, orient);
-    if (orient === "down") return [0, 0, 1];
-    if (orient === "vertical") return board.outline.h <= board.outline.w ? [0, -1, 0] : [-1, 0, 0];
-    return [0, 0, -1];
-  }
-
   function pack(board, model, res, opts) {
     opts = Object.assign({ name: "board", tubes: true }, opts || {});
     const date = opts.date || new Date(), app = "Tube Amp CAD" + (opts.version ? " " + opts.version : ""), design = opts.title || opts.name;
@@ -203,13 +195,13 @@
     // ---- the thermal study
     const studies = [];
     if (res && res.ok) {
-      const st = res.settings || {}, emis = res.emissivity > 0 && res.emissivity <= 1 ? res.emissivity : 0.9;
+      // heat sources only: the surroundings (ambient, enclosure, way down, cooling) are set in MöbiusCAD
       studies.push({
         id: "st1", name: "Thermal 1", kind: "thermal", auto: true,
-        settings: { passes: 3, energyTol: 1, ambient: res.ambient, ...(["open", "vented", "closed"].includes(st.enclosure) ? { enclosure: st.enclosure } : {}), down: down(board, st.orient) },
+        settings: { passes: 3, energyTol: 1 },
         comps: { c_board: { board: Object.assign({}, stack, { t }, map ? { map } : {}) } },
         loads: [{ id: "l1", name: "Heat from package 1", type: "pkgheat", faces: [], parts: heatRows(res, ref => compsOf.get(ref) || [], ref => { const x = insts.find(q => q.ref === ref); return x ? x.grp.names.filter((_, i) => x.grp.solids[i].heat) : null; }) }],
-        supports: [{ id: "s1", name: "Convection 1", type: "conv", faces: [], all: true, natural: true, h: 8 }, { id: "s2", name: "Radiation 1", type: "rad", faces: [], all: true, emis }]
+        supports: []
       });
     }
     const asm = { schema: SCHEMA, kind: "assembly", id: "a_tc_" + sha256(utf8(design)).slice(0, 16), name: design, units: { length: "mm", decimals: 2 }, components, parts: asmParts, ...(studies.length ? { studies } : {}) };

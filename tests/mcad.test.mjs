@@ -92,10 +92,11 @@ test("every part lands where the 3D scene (and the STEP) draws it", () => {
   assert.equal(pk.asm.parts.p_board.doc.features[0].brep, BR.write([sc.board]));
 });
 
-test("the thermal study: every part's heat (no shares), the map's conditions, the board's copper cell by cell", () => {
+test("the thermal study: every part's heat (no shares), no surroundings, the board's copper cell by cell", () => {
   const { pk, res, board } = setup(), st = pk.asm.studies[0], l = st.loads[0];
   assert.equal(st.kind, "thermal"); assert.equal(st.name, "Thermal 1");
-  assert.equal(st.settings.ambient, res.ambient); assert.equal(st.settings.enclosure, "closed"); assert.deepEqual(st.settings.down, [0, 0, -1]);
+  // heat sources only: ambient, enclosure, way down and cooling are MöbiusCAD's (its Add surroundings)
+  assert.equal(st.settings.ambient, undefined); assert.equal(st.settings.enclosure, undefined); assert.equal(st.settings.down, undefined);
   // only the heat: no board/heatsink/chassis shares, so MöbiusCAD finds every path itself (through the solder joints)
   assert.equal(l.type, "pkgheat"); assert.equal(l.board, undefined); assert.equal(l.split, undefined);
   const total = l.parts.reduce((s, p) => s + p.p, 0);
@@ -104,7 +105,7 @@ test("the thermal study: every part's heat (no shares), the map's conditions, th
   assert.deepEqual(r1.bodies, ["Body"], "a resistor makes its heat in its body, not its leads");
   assert.deepEqual(r1.comps, ["c_R1"]); assert.equal(r1.limit, 155);
   assert.ok(l.parts.every(p => p.board === undefined && p.sink === undefined && p.path === undefined && p.into === undefined));
-  assert.deepEqual(st.supports.map(s => s.type), ["conv", "rad"]); assert.ok(st.supports.every(s => s.all));
+  assert.deepEqual(st.supports, []);
   const bd = st.comps.c_board.board, m = bd.map;
   assert.equal(bd.t, board.stackup.thickness); assert.equal(bd.layers, 2); assert.deepEqual(m.labels, ["F.Cu", "B.Cu"]);
   assert.equal(m.nu, res.nx); assert.equal(m.nv, res.ny); assert.equal(m.cell, res.step); assert.equal(Buffer.from(m.cov[0], "base64").length, m.nu * m.nv);
