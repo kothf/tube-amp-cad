@@ -363,6 +363,12 @@
     .ai-who { font-size: 12px; } .ai-who.warn { color: var(--warn); }
     .ai-providers { margin: 6px 0 10px; } .ai-providers .btn { min-width: 90px; }
     .new-form.ai-form { grid-template-columns: 70px 1fr; }
+    .fault-scroll { max-height: min(52vh, 460px); overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
+    .fault-entry { width: 100%; border-collapse: collapse; font-size: 12px; } .fault-entry th { position: sticky; top: 0; background: var(--panel2); color: var(--muted); font-weight: 600; text-align: left; }
+    .fault-entry th, .fault-entry td { padding: 3px 8px; border-bottom: 1px solid var(--line); } .fault-entry td.n { text-align: right; white-space: nowrap; }
+    .fault-in { width: 90px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: 12px ui-monospace, Menlo, monospace; text-align: right; }
+    .fault-in:focus { outline: none; border-color: var(--accent); } .fault-in.bad { border-color: var(--bad); }
+    .fault-wrap { overflow-x: auto; } .fault-table td.fault-ok { color: var(--ok); } .fault-table tr.fault-nominal td { color: var(--muted); } .fault-table th { white-space: nowrap; } .fault-good { color: var(--ok); } .fault-fair { color: var(--warn); } .fault-poor { color: var(--muted); }
     .ai-design-text { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; resize: vertical; margin-bottom: 8px; }
     #design-chips { margin-bottom: 8px; }
     .ds-table td:first-child { color: var(--muted); white-space: nowrap; } .ds-chart { max-width: 460px; margin: 8px 0; }
@@ -767,6 +773,7 @@
         <button class="menu-item" data-ico="chat" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
         <button class="menu-item" data-ico="sparkle" role="menuitem" id="menu-ai-design" title="Describe an amplifier; the AI designs it, the CAD draws and simulates it, and the Checks go back for revisions">Design from a description…<kbd>new circuit</kbd></button>
         <button class="menu-item" data-ico="bulb" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
+        <button class="menu-item" data-ico="probe" role="menuitem" id="menu-ai-fault" title="Type the voltages you measured on the built amplifier: the CAD simulates the common faults and ranks them, and the AI writes the diagnosis">Find a fault…<kbd>from readings</kbd></button>
         <button class="menu-item" data-ico="wrench" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
         <button class="menu-item" data-ico="datasheet" role="menuitem" id="menu-ai-datasheet" title="A tube's datasheet (PDF) read by the AI: ratings, pinout and a Koren model fitted to its plate curves, for review">Tube from a datasheet…<kbd>PDF → model</kbd></button>
         <button class="menu-item" data-ico="target" role="menuitem" id="menu-ai-tune" title="Part values changed until the simulated circuit meets your goals; works without a key">Auto-tune<kbd>reach a goal</kbd></button>
@@ -932,6 +939,7 @@
           <span class="bom-tools" data-for="ai">
             <button class="btn" id="btn-ai-explain" title="What the circuit is and what each stage and part does">Explain circuit</button>
             <button class="btn" id="btn-ai-fix" title="The Checks list turned into value changes you can apply">Fix checks</button>
+            <button class="btn" id="btn-ai-fault" title="Find what is wrong with the built amplifier from the voltages you measured on it">Find a fault</button>
           </span>
           <span class="spacer"></span>
           <span class="bom-tools" data-for="bom">
@@ -1066,6 +1074,20 @@
         <span class="spacer"></span>
         <button class="btn" id="btn-design-cancel">Cancel</button>
         <button class="btn active" id="btn-design-go" title="Ctrl+Enter">Design</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="fault-modal" hidden>
+    <div class="modal-box" style="width: min(620px, 94vw)">
+      <div class="insp-title">Find a fault</div>
+      <p class="insp-help">Type the DC voltages you measured on the built amplifier, to ground, at idle (no signal). Leave the points you did not measure empty. The CAD simulates the circuit as drawn and once with each common fault (a resistor open or drifted, a capacitor shorted or leaky, a tube weak or dead, a transistor or diode failed) and ranks the faults by how well they match. With an AI key the AI writes the diagnosis. The readings are saved with the circuit.</p>
+      <div class="fault-scroll"><table class="fault-entry"><thead><tr><th>Test point</th><th title="The circuit as drawn, from the last simulation">Simulated</th><th>Measured</th></tr></thead><tbody id="fault-rows"></tbody></table></div>
+      <p class="insp-help" id="fault-out"></p>
+      <div class="modal-actions">
+        <button class="btn" id="btn-fault-clear" title="Empty every reading in the list">Clear readings</button>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-fault-cancel">Cancel</button>
+        <button class="btn active" id="btn-fault-go" title="Ctrl+Enter">Find the fault</button>
       </div>
     </div>
   </div>
@@ -1385,6 +1407,8 @@
   <script src="cad-design.js?v=dev"></script>
   <script src="ai-datasheet.js?v=dev"></script>
   <script src="cad-datasheet.js?v=dev"></script>
+  <script src="faults.js?v=dev"></script>
+  <script src="cad-faults.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>
