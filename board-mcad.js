@@ -167,7 +167,9 @@
       const solids = B3().partBodies(Object.assign({}, g, { place: P0 }), t, { tubes: opts.tubes !== false });
       if (!solids.length) return;
       const leads = { n: 0 }, names = solids.map((s, i) => bodyName(s, i, leads)), mats = solids.map(s => materialOf(s, g.type));
-      const breps = solids.map(s => BR().write([s])), key = breps.join("\u0001") + JSON.stringify([solids.map(s => s.color), mats.map(m => m.name)]);
+      // equal parts share one file: the same drawing and the same value (an IRF9540 drawn as an IRF540 is still its own part, so
+      // MöbiusCAD's tree and BOM name it right)
+      const breps = solids.map(s => BR().write([s])), key = breps.join("\u0001") + JSON.stringify([solids.map(s => s.color), mats.map(m => m.name), g.value || ""]);
       if (!groups.has(key)) groups.set(key, { label: fileSafe([g.value, g.fp.name].filter(Boolean).join(" ")), solids, mats, names, refs: [] });
       const grp = groups.get(key);
       grp.refs.push(g.ref);

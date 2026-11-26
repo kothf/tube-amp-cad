@@ -185,6 +185,25 @@ test("a hot resistor raised off the board on its leads: the board under it cools
   assert.ok(drc.some(d => d.kind === "height" && /raised 6 mm off the board/.test(d.msg)), drc.map(d => d.msg).join("; "));
 });
 
+test("a tab case's middle lead is the tab's own: it meets the tab, and the board takes the part's heat at its pad", () => {
+  const D3 = globalThis.Board3D;
+  for (const [type, model, fp] of [["nmos", "IRF540", "TO-220-GDS"], ["npn", "TIP41C", "TO-247-BCE"]]) {
+    const pins = type === "nmos" ? { D: 1, G: 2, S: 0 } : { C: 1, B: 2, E: 0 };
+    const s = setup(80, 60, [part("q1", type, "VT1", { model }, pins)], { VT1: { x: 40, y: 30, heat: "air" } }, { q1: 1.5 }, b => { Object.values(b.parts)[0].fp = fp; });
+    const g = s.model.parts.find(x => x.ref === "VT1"), sol = D3.partBodies(g, 1.6, {}), tab = sol.find(x => x.mat === "tab"), tl = sol.filter(x => x.tabLead);
+    assert.equal(g.fp.name, fp); assert.equal(tl.length, 1, `${fp}: one lead is the tab's`);
+    // the lead's top end lies on the tab's bottom face, inside its outline
+    const top = tl[0].round.o.map((v, k) => v + tl[0].round.a[k] * tl[0].round.h), lo = k => Math.min(...tab.verts.map(v => v[k])), hi = k => Math.max(...tab.verts.map(v => v[k]));
+    near(Math.max(top[2], tl[0].round.o[2]), lo(2), 1e-6, `${fp}: the lead reaches the tab's underside`);
+    assert.ok(top[0] > lo(0) && top[0] < hi(0) && top[1] > lo(1) && top[1] < hi(1), `${fp}: under the tab`);
+    const r = of(run(s), "VT1"), discs = (r.into || []).filter(q => q.disc);
+    assert.ok(r.toBoard > 0.2, `${fp}: into the board ${r.toBoard} W`);
+    // its board share enters at one pad, the tab lead's (the middle one), not shared by all three
+    assert.equal(discs.length, 1, `${fp}: ${JSON.stringify(r.into)}`);
+    near(discs[0].disc[0], g.place.x, 0.01, `${fp}: at the middle pad`);
+  }
+});
+
 test("inner bodies: a die on the tab sized to the datasheet's Rjc, an electrolytic's winding in its can; nothing overlaps, covered faces are not cooled", () => {
   const D3 = globalThis.Board3D, M = D3.MATERIALS;
   const inside = (a, b) => { const bx = s => [0, 1, 2].map(k => [Math.min(...s.verts.map(v => v[k])), Math.max(...s.verts.map(v => v[k]))]); const A = bx(a), B2 = bx(b); return A.every(([lo, hi], k) => Math.min(hi, B2[k][1]) - Math.max(lo, B2[k][0]) > 1e-6); };

@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.259.0] - 2026-11-26
+
+### Fixed
+- **A power transistor's middle lead meets its tab.** In TO-126, TO-220, TO-247, TO-3P and TO-264 the
+  middle lead (drain, collector) is one piece of copper with the tab, but the 3D model ended all three
+  leads in the epoxy moulding. MöbiusCAD, which solves the real geometry, then had the board's share of
+  the heat cross the epoxy: an IRF9540 in free air on example 05 read 189 °C there against 165 °C on
+  the thermal map, and its leads ran below the ambient. The middle lead now rises under the tab and
+  joins it, and the map puts the board's share of a tab case's heat into the board at that lead's pad
+  (as a 3D solver finds it), so the pad there runs a few degrees hotter than before. Example 05 now
+  reads 176 °C in MöbiusCAD and 171 °C on the map; with a modelled heatsink the junctions agree within
+  2 °C (field test on three example boards).
+- **A part drawn like another but of another value has its own MöbiusCAD part file.** The export
+  shared one file between parts drawn alike, so example 05's IRF9540 went out as an "IRF540
+  TO-220-GDS" part and MöbiusCAD's tree and BOM named it so. Equal parts (the same drawing and the same
+  value) still share one file.
+
 ## [3.258.0] - 2026-11-25
 
 ### Changed

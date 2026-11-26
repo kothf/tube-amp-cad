@@ -605,7 +605,10 @@
       out.push(box(r.x, r.y, r.x + r.w, r.y + tb, zb, zb + H, C.metal, to, { mat: "tab", main: true, cover: up ? ["y2", "z2"] : ["y2"] }));
       if (up) out.push(box(r.x, r.y, r.x + r.w, r.y + tb, zb + H, zb + H + up, C.metal, to, { mat: "tab", main: true, cover: ["z1"] }));
       out.push(box(die[0], die[1], die[3], die[4], die[2], die[5], C.die, to, DIE));
-      pads.forEach(p => { lead(p.x, p.y, 1.2); out.push(cylY(p.x, 1.2, 0.3, Math.min(p.y, r.y + r.h / 2), Math.max(p.y, r.y + r.h / 2), C.lead, to)); out.push(cylZ(p.x, r.y + r.h / 2, 0.3, 1.2, zb, C.lead, to)); });
+      // the middle lead is the tab's own (drain, collector: one piece of copper with it), so it rises under the tab and
+      // meets it; the others end in the moulding, joined to the die only by bond wires
+      const mid = pads.reduce((a, p) => (Math.abs(p.x - dx) < Math.abs(a.x - dx) ? p : a), pads[0]);
+      pads.forEach(p => { const yl = p === mid ? r.y + tb / 2 : r.y + r.h / 2; lead(p.x, p.y, 1.2); out.push(cylY(p.x, 1.2, 0.3, Math.min(p.y, yl), Math.max(p.y, yl), C.lead, to)); out.push(cylZ(p.x, yl, 0.3, 1.2, zb, C.lead, to, p === mid ? { tabLead: true } : undefined)); });
     } else if ((m = /^LED-(\d)MM$/.exec(name))) {
       const r = +m[1] / 2, H = m[1] === "5" ? 8.6 : 5.3, col = C.led;
       out.push(cylZ(0, 0, r + 0.4, 1.5, 2.5, col, to, { alpha: 0.75 }), cylZ(0, 0, r, 2.5, 1.5 + H - r * 0.6, col, to, { alpha: 0.75 }), cylZ(0, 0, r * 0.7, 1.5 + H - r * 0.6, 1.5 + H - r * 0.2, col, to, { alpha: 0.75 }), cylZ(0, 0, r * 0.35, 1.5 + H - r * 0.2, 1.5 + H, col, to, { alpha: 0.75 }));

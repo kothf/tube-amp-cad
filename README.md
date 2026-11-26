@@ -1328,7 +1328,8 @@ the circuit file, so one file holds both.
   density, heat capacity, emissivity: a part radiates by its own surfaces,
   leads conduct as copper, 385 W/m·K, the values the MöbiusCAD export
   writes; inside, a power transistor's silicon die on its tab, sized to
-  the datasheet's junction-to-case resistance, gives its junction, and an
+  the datasheet's junction-to-case resistance, gives its junction (its
+  middle lead joined to the tab, so the board takes its heat at that pad), and an
   electrolytic's wound core in its can gives the core temperature its life
   is worked out from; small packages (TO-92, SOT-23, SOIC, DIP) have a
   lead-frame paddle and die inside, the frame joined to its own lead, metal cans a die on the header, axial
@@ -1353,7 +1354,7 @@ the circuit file, so one file holds both.
     material per body with its conductivity, density, heat capacity and
     emissivity, the die and an electrolytic's core inside, and the bodies
     each part makes its heat in for the thermal study (equal parts, such as every 12AX7 or every 1k ½ W
-    resistor, share one file); `<name>.mcadasm` places them and references
+    resistor, share one file; a part drawn alike but of another value gets its own); `<name>.mcadasm` places them and references
     them by file (path and SHA-256, with a copy of each part inside as the
     fallback), and carries a thermal study made from the thermal map: every
     part's heat and where it goes, limits, electrolytic life, junctions, the

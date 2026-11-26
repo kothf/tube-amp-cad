@@ -28,6 +28,7 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   table (`Board3D.MATERIALS`), the one the thermal map uses. Inside the
   parts: a power semiconductor in TO-126/220/247/3P/264, SOT-89, SOT-223,
   DPAK or D2PAK has a body "Die" (silicon, 0.25 mm thick) on its "Tab",
+  with its middle lead (drain, collector) joined to the tab as in the real part,
   sized so its junction to case (through the silicon, 25 µm of solder and
   the spreading into the tab) is the datasheet's, and its moulding is split
   into boxes round it so no two bodies overlap; an electrolytic (radial,
@@ -38,7 +39,8 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   TO-5, MP) is hollow with the "Die" on its header; a transformer's winding sits beside its
   core, not through it. A part is
   drawn in its footprint's own frame and placed by its component's transform,
-  so equal parts (every 12AX7, every 1k 5 W resistor) share one file.
+  so equal parts (every 12AX7, every 1k 5 W resistor) share one file; a part drawn the same but of
+  another value (an IRF9540 beside an IRF540) gets its own.
 - **The board** is one part in the frame of the STEP export: millimetres,
   x right, y up, z up from the board's bottom face. Its material is
   "PCB (effective)" (copper layers in parallel along it).

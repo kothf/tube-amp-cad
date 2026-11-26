@@ -9,8 +9,8 @@ for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "board-outl
 const B = globalThis.BoardCore, L = globalThis.CadLib, T = globalThis.BoardThermal, M = globalThis.BoardMcad, B3 = globalThis.Board3D, BR = globalThis.BoardBrep;
 const part = (id, type, label, params, pins) => ({ id, type, label, params: Object.assign({}, L.LIB[type].defaults, params), pins: Object.entries(pins).map(([pid, net]) => ({ id: pid, net })) });
 const R = (id, label, w, pins) => part(id, "resistor", label, { r: 1000, w }, pins);
-function setup(date) {
-  const parts = [R("r1", "R1", "5", { 1: 1, 2: 2 }), R("r2", "R2", "5", { 1: 2, 2: 3 }), R("r3", "R3", "0.25", { 1: 3, 2: 0 }), part("c1", "capacitor", "C1", { c: 100e-6 }, { 1: 3, 2: 0 })];
+function setup(date, r2) {
+  const parts = [R("r1", "R1", "5", { 1: 1, 2: 2 }), Object.assign(R("r2", "R2", "5", { 1: 2, 2: 3 }), r2 ? { params: Object.assign({}, L.LIB.resistor.defaults, { r: r2, w: "5" }) } : {}), R("r3", "R3", "0.25", { 1: 3, 2: 0 }), part("c1", "capacitor", "C1", { c: 100e-6 }, { 1: 3, 2: 0 })];
   const netlist = { names: { 0: "GND" }, volts: {}, parts, heat: { r1: { p: 3 }, r2: { p: 2 }, r3: { p: 0.1 } } };
   const board = B.newBoard(); board.outline = { w: 100, h: 60, r: 3 };
   B.sync(board, netlist);
@@ -58,6 +58,14 @@ test("the folder: an assembly and a part file per drawing, equal parts sharing o
   const res = Object.values(a.doc.parts).find(p => p.name === "1kΩ 5W AXIAL-30.48").doc;
   assert.deepEqual(Object.values(res.bodies).map(b => [b.name, b.material.name]), [["Body", "Alumina, lacquered"], ["Lead 1", "Tinned copper"], ["Lead 2", "Tinned copper"], ["Lead 3", "Tinned copper"], ["Lead 4", "Tinned copper"]]);
   assert.equal(Object.values(a.doc.parts).find(p => p.name === "Test amp board").doc.material.name, "PCB (effective)");
+});
+
+test("parts drawn alike but of other values get files of their own, named by their value", () => {
+  const { pk } = setup(undefined, 2200), a = read(pk.files["amp.mcadasm"]);
+  const r1 = a.doc.components.find(c => c.name === "R1"), r2 = a.doc.components.find(c => c.name === "R2");
+  assert.notEqual(r1.part, r2.part, "R2 (2.2k) does not share R1's (1k) file");
+  assert.match(a.doc.parts[r2.part].name, /^2\.2kΩ 5W AXIAL-30\.48$/);
+  assert.match(a.doc.parts[r1.part].name, /^1kΩ 5W AXIAL-30\.48$/);
 });
 
 test("every part lands where the 3D scene (and the STEP) draws it", () => {
