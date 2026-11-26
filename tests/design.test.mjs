@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { runInThisContext } from "node:vm";
 
 globalThis.window = globalThis;
-for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "ai-circuit.js", "ai-design.js"]) runInThisContext(readFileSync(new URL("../" + f, import.meta.url), "utf8"), { filename: f });
+for (const f of ["tube-db.js", "sim-engine.js", "cad-components.js", "ai-circuit.js", "sch-layout.js", "ai-design.js"]) runInThisContext(readFileSync(new URL("../" + f, import.meta.url), "utf8"), { filename: f });
 const { AiDesign: D, CadLib } = globalThis;
 
 const stage = () => ({
