@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.267.0] - 2026-11-26
+
+### Changed
+- **The MöbiusCAD export carries the heat sources only, not the surroundings.** The ambient, the chassis (open,
+  vented, closed), which way is down and the cooling (convection and radiation on every open surface) depend on
+  where the board ends up, so they are no longer written into the study: set them in MöbiusCAD, whose study now
+  offers **Add surroundings** under Cooling (still air and radiation on every open surface in one click; MöbiusCAD
+  1.762.0). Parts, materials, the dies and cores, the solder joints, every part's heat, limits, junctions and the
+  board's copper map are exported as before. The map in Tube Amp CAD keeps its own ambient and chassis settings.
+
 ## [3.266.0] - 2026-11-26
 
 ### Added
