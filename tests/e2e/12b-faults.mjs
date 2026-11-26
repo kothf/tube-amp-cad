@@ -43,7 +43,7 @@ import { cad, check } from "./harness.mjs";
 
   // with a key: the AI gets the readings and the ranking, and writes the diagnosis
   await cad.evaluate(() => localStorage.setItem("tubecad_ai", JSON.stringify({ provider: "anthropic", keys: { anthropic: "sk-ant-test" } })));
-  await cad.click("#btn-ai-fault");
+  await cad.click("#btn-ai-more"); await cad.click("#btn-ai-fault");   // the AI tab's More ▾
   await cad.waitForSelector("#fault-modal:not([hidden])");
   check(await cad.evaluate(() => document.getElementById("fault-in-0").value !== ""), "the dialog opens with the readings typed before");
   await cad.click("#btn-fault-go");

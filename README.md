@@ -143,7 +143,14 @@ Firefox is not tested.
     the CAD simulates every common fault (resistors open or drifted,
     capacitors shorted or leaky, tubes weak or dead, transistors and diodes
     failed) and ranks them against the readings, names the point to measure
-    next, and the AI writes the diagnosis (the ranking needs no key).
+    next, and the AI writes the diagnosis (the ranking needs no key);
+  - *Design review*: every margin to a rating, each part's stress, the
+    supply ripple, the power-on surge and the Checks in one sheet (no key
+    needed), and the AI's review of it: findings critical first, each with
+    its part and number, and value changes to apply;
+  - *Schematic from a picture*: a photo or scan (magazine page, hand
+    drawing, PDF) read by the AI, drawn and simulated, with the values it
+    was unsure of listed beside the picture to check.
 - **Auto-tune** (the Tune tab, no key needed): set goals such as "10 W at
   ≤ 1 % THD" and the values that may change; an optimizer tries values, the
   simulator judges each, and the best are rounded to E24/E12. *AI start*
