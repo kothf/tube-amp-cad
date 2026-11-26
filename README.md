@@ -138,7 +138,12 @@ Firefox is not tested.
     model fitted to its plate curves, reviewed before it joins the library;
   - *Explain my circuit*, stage by stage;
   - *Fix the checks*: value changes checked against the parts, applied with
-    one click, re-simulated and compared.
+    one click, re-simulated and compared;
+  - *Find a fault*: type the DC voltages measured on the built amplifier;
+    the CAD simulates every common fault (resistors open or drifted,
+    capacitors shorted or leaky, tubes weak or dead, transistors and diodes
+    failed) and ranks them against the readings, names the point to measure
+    next, and the AI writes the diagnosis (the ranking needs no key).
 - **Auto-tune** (the Tune tab, no key needed): set goals such as "10 W at
   ≤ 1 % THD" and the values that may change; an optimizer tries values, the
   simulator judges each, and the best are rounded to E24/E12. *AI start*

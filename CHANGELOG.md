@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.263.0] - 2026-11-26
+
+### Added
+- **AI ▾ → Find a fault…: what is wrong with the amplifier you built.** Type the DC voltages measured on the real
+  amplifier at idle (the dialog lists each tube's and transistor's pins and the supply nodes, with the simulated value
+  beside each; the readings are saved with the circuit). The CAD simulates the circuit as drawn and once with each
+  common fault (every resistor open or drifted to twice its value, every capacitor shorted or leaky, every
+  electrolytic dried out, every tube weak or dead, a rectifier worn, every transistor and diode shorted or open, every
+  choke open) on all the simulator's workers, ranks the faults by how well they match the readings (within 5 % + 0.2 V
+  is a match) and names the test point to measure next, where the leading faults disagree most. No key is needed for
+  that; with an AI key the AI also writes the diagnosis: the likely fault and why, what else reads the same, how to
+  confirm it with the power off. Example 14 with R9 open: R9 open ranks first from six readings in about a second.
+
 ## [3.262.0] - 2026-11-26
 
 ### Added
