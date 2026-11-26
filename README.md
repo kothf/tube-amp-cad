@@ -1405,10 +1405,11 @@ the circuit file, so one file holds both.
     pad so the lead's heat reaches the board by conduction, and carries a
     thermal study made from the thermal map: every part's heat and only the
     heat (MöbiusCAD finds its paths itself: into the board through the
-    joints, by air, and into any heatsink or chassis added there), limits, electrolytic life, junctions, the
-    ambient, chassis and which way is down, convection and radiation, and
+    joints, by air, and into any heatsink or chassis added there), limits, electrolytic life, junctions, and
     the board as "PCB (effective)" whose conductivity follows its copper
-    cell by cell. Chrome and Edge write into a folder you pick (exporting
+    cell by cell. The surroundings (ambient, chassis, which way is down,
+    convection and radiation) are set in MöbiusCAD, whose study offers
+    **Add surroundings** in one click. Chrome and Edge write into a folder you pick (exporting
     again overwrites the same files, so the assemblies that use them follow);
     **MöbiusCAD assembly (ZIP)** gives the same folder as one ZIP. Described
     in [docs/mobiuscad-export.md](docs/mobiuscad-export.md).

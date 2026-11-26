@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.267.0] - 2026-11-26
+## [3.268.0] - 2026-11-26
 
 ### Changed
 - **AI drawings look drawn by a person.** Design from a description ("Draw me…"), Schematic from a picture and the
@@ -22,6 +22,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
   grid. Every pin is joined exactly as in the netlist (checked on all 20 examples redrawn from their netlists).
   The live drawing keeps the parts already drawn in place while the AI writes the rest.
 - The design prompt asks for a block per part and net names that say what the net is.
+
+## [3.267.0] - 2026-11-26
+
+### Changed
+- **The MöbiusCAD export carries the heat sources only, not the surroundings.** The ambient, the chassis (open,
+  vented, closed), which way is down and the cooling (convection and radiation on every open surface) depend on
+  where the board ends up, so they are no longer written into the study: set them in MöbiusCAD, whose study now
+  offers **Add surroundings** under Cooling (still air and radiation on every open surface in one click; MöbiusCAD
+  1.762.0). Parts, materials, the dies and cores, the solder joints, every part's heat, limits, junctions and the
+  board's copper map are exported as before. The map in Tube Amp CAD keeps its own ambient and chassis settings.
 
 ## [3.266.0] - 2026-11-26
 
