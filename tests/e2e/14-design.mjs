@@ -37,7 +37,7 @@ import { cad, check } from "./harness.mjs";
   check(/pins maps EVERY pin/.test(sys) && /resistor: Resistor\. Pins 1 2/.test(sys) && /12AX7 \(triode/.test(sys) && /A 12AX7 gain stage on 250 V/.test(first), "the request carries the rules, the part library, the tubes and the description");
   check(sent.length === 2 && /VL1 has no pin X/.test(sent[1].messages[2].content[0].text), "a design the CAD cannot use goes back once with its problems");
   const r = await cad.evaluate(() => { const S = TubeCAD.state, vl = S.comps.find(c => c.label === "VL1"), m = TubeCAD.measurements().find(x => x.label === "VL1 Ia");
-    return { n: S.comps.filter(c => !["frame", "ground", "rail", "offsheet"].includes(c.type)).length, frame: S.comps.filter(c => c.type === "frame").map(c => c.params.size + " " + c.params.title).join(), tube: vl && vl.params.tube, ia: m && m.v, log: document.getElementById("ai-log").innerText }; });
+    return { n: S.comps.filter(c => !["frame", "ground", "rail", "offsheet", "netlabel"].includes(c.type)).length, frame: S.comps.filter(c => c.type === "frame").map(c => c.params.size + " " + c.params.title).join(), tube: vl && vl.params.tube, ia: m && m.v, log: document.getElementById("ai-log").innerText }; });
   check(r.n === 10 && r.frame === "A3 12AX7 gain stage" && r.tube === "12AX7", `the design is drawn on a new A3 sheet (${r.n} parts, ${r.frame})`);
   check(r.ia > 0.5e-3 && r.ia < 2e-3 && /Checks find no problems/.test(r.log), `and simulated: VL1 draws ${(r.ia * 1000).toFixed(2)} mA, no problems in the Checks`);
   await cad.evaluate(() => TubeCAD.undo());
