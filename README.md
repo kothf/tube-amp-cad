@@ -131,7 +131,10 @@ Firefox is not tested.
     simulated voltages, operating points and Checks, and the manual;
   - *Design from a description*: the model designs the circuit, the CAD
     draws it on the sheet live, part by part while the answer is written
-    (Stop or Esc puts the old circuit back), simulates it and sends the
+    (Stop or Esc puts the old circuit back), the way a person draws a
+    schematic: stages left to right in columns joined by real wires,
+    supplies as rail symbols on top, one ground line along the bottom, net
+    labels only for far connections and the scope, simulates it and sends the
     Checks back for revisions; asking the assistant to "draw me …" or to
     add a stage to the sheet's circuit draws it the same way;
   - *Tube from a datasheet*: a PDF read into ratings, pinout and a Koren
