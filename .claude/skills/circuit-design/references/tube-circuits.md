@@ -33,6 +33,11 @@
 - Output transformer load always connected: an open secondary under drive flashes over the transformer and the sockets. Add a fixed load resistor 47–100 Ω across the secondary or a switching jack.
 - Directly heated triodes (2A3, 300B, 45): filament as the cathode; use DC filament supplies or a humdinger pot; filament return to the bias resistor at the centre tap.
 
+## Output transformers in this app (wiring and phase)
+- Push-pull `opt_pp` pins run along the primary P1 – U1 – CT – U2 – P2. CT goes to B+; P1 to the anode of one output tube and P2 to the other; U1 feeds the screen (through its screen stopper) of the tube on P1, U2 the screen of the tube on P2. Never join a UL tap to CT or B+, and never cross them (U1 to the P2 tube): that unbalances the stage and the tubes run away. For plain pentode or tetrode operation leave U1/U2 unconnected and feed both screens from a separate, lower supply node.
+- Phase: with S1 grounded, the voltage at S2 is in phase with the anode on P2 and opposite to the anode on P1 (example 14 wires its feedback this way). Global feedback to the first stage's cathode must be in phase with the input there, so count the inversions: a grounded-cathode stage inverts (grid → anode); a cathodyne's anode inverts and its cathode does not; in a long-tailed pair the driven grid's own anode inverts and the other anode does not; each output tube inverts grid → anode. Choose S1/S2 (or which splitter output drives which tube) from that count, so the loop is negative the first time.
+- Single-ended `opt_se`/`opt_cat`: P1 to B+, P2 to the anode, S1/S2 to the speaker.
+
 ## Rectifiers and regulators (tube)
 - Tube rectifiers (5U4G, 5Y3, GZ34/5AR4, EZ81, 6X4, 5Ts3S): obey the datasheet's maximum first-filter capacitor (GZ34 60 µF) and minimum plate resistance per anode; the drop under load is 15–60 V (GZ34 lowest, 5Y3/5U4 highest). They warm up slowly, so B+ comes up gently.
 - Gas regulators (0A2 150 V, 0B2 108 V, 0D3 150 V, 0C3 105 V): 5–30 mA, series resistor sized so current stays in range at both load extremes; no capacitor > 0.1 µF directly across them (relaxation oscillation).
