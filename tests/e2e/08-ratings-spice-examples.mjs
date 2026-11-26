@@ -279,9 +279,9 @@ check(missing.length === 0, `every asset loads${missing.length ? `: ${missing.sl
   {
     // Settings → AI → Design knowledge in AI prompts: the AI features' prompts carry the design knowledge, or not
     await cad.click("#btn-view"); await cad.click("#menu-settings");
-    const on = await cad.isChecked("#set-ai-knowledge"), withIt = await cad.evaluate(() => AiSkill.pack("review", [{ type: "tube" }]).length);
+    const on = await cad.isChecked("#set-ai-knowledge"), withIt = await cad.evaluate(() => window.AiSkill.pack("review", [{ type: "tube" }]).length);
     await cad.uncheck("#set-ai-knowledge");
-    const off = await cad.evaluate(() => [AiSkill.pack("review", [{ type: "tube" }]).length, CadSettings.get("aiKnowledge")]);
+    const off = await cad.evaluate(() => [window.AiSkill.pack("review", [{ type: "tube" }]).length, CadSettings.get("aiKnowledge")]);
     await cad.check("#set-ai-knowledge"); await cad.click("#btn-settings-close");
     check(on && withIt > 10000 && off[0] === 0 && off[1] === false && await cad.evaluate(() => CadSettings.get("aiKnowledge")), `Settings → Design knowledge in AI prompts: ${withIt} characters of design knowledge in a review's prompt, none when off`);
   }
