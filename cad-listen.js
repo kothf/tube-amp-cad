@@ -144,7 +144,9 @@
     // file: the decoded recording { name, chs, seconds }; radio: the last piece of the broadcast
     // { name, chs, seconds, at (time caught) }; tuning: the radio being read { abort, n, want }; job: the render under way; take: the last
     // render { inp: [ch], out: [ch], peak (V), label, seconds, ms }; ab: which one is heard
-    const L = S.listen = { seq: 0, file: null, radio: null, tuning: null, job: null, take: null, error: null, stale: false, ab: "out", playing: false, opts };
+    // before: a render kept to compare with (voicing: the circuit before its changes) { out, peak, rms, label, source, seconds, note };
+    // done: called once when the render under way ends (ok or not), for a caller that waits on it
+    const L = S.listen = { seq: 0, file: null, radio: null, tuning: null, job: null, take: null, before: null, error: null, stale: false, ab: "out", playing: false, opts, done: null };
     let jobs = [], ac = null, play = null;
     const SOURCES = { siggen: "amp", pickup: "amp", phono: "mv" };
     const sources = () => S.comps.filter(c => SOURCES[c.type]);
@@ -204,23 +206,25 @@
       if (aborted) setStatus("idle", "Listen: stopped");
       else if (err) { L.error = `Could not reach ${RADIO.name} (${err.message || err}): check the internet connection, or try again in a minute.`; setStatus("error", "Listen: " + L.error); }
       else { setStatus("ok", `Listen: ${fmtEng(L.radio.seconds, "s")} of ${RADIO.name} caught at ${hhmm(L.radio.at)}`); if (then) then(true); }
+      if (aborted || err) ended(false);
       syncTools(); render(); cmds.sync();
     }
     function stop() {
       if (L.tuning) L.tuning.abort();
       jobs.forEach(j => j.cancel()); jobs = [];
       if (L.job) { L.job = null; L.seq++; setStatus("idle", "Listen: stopped"); render(); cmds.sync(); }
+      ended(false);
     }
     // tuned: the radio was just caught (play what came, however long)
     function run(tuned) {
-      stop(); halt();
+      const waiting = L.done; L.done = null; stop(); halt(); L.done = waiting;
       const T = topo(), o = pick(), tuneIn = opts.src === "radio" && tuned !== true && (!L.radio || L.radio.seconds < Math.min(30, opts.len) + 0.5), chs = tuneIn ? null : clip();
       L.error = !S.comps.length ? "Empty sheet" : !T.hasGround ? "Add a ground symbol to simulate"
         : !sources().length ? "The recording drives the circuit's signal generator (or guitar pickup, or phono cartridge): place one at the input."
         : !o ? "Nothing to hear: place a speaker as the load, or an oscilloscope on the output."
         : tuneIn ? null
         : !chs ? (opts.src === "file" ? (L.file ? "The excerpt is empty: check From and Length." : "Open a WAV or MP3 file first.") : "No clip") : null;
-      if (L.error) { render(); return; }
+      if (L.error) { render(); ended(false); return; }
       if (tuneIn) { tune(run); return; }
       const base = buildNetlist(), gains = 10 ** (opts.level / 20);
       const ids = new Set(sources().map(c => c.id)), gens = base.elements.filter(e => e.kind === "VSRC" && ids.has(e.id));
@@ -235,13 +239,13 @@
         setStatus("busy", job.phase === "settle" ? "Listen: settling the circuit with the generators silent…" : `Listen: playing ${fmtEng(total / RATE, "s")} of ${srcName()} through the circuit on ${ps.length} core${ps.length > 1 ? "s" : ""} · ${Math.floor(f * 100)} %`, f);
         renderStrips();
       };
-      const fail = err => { if (L.seq !== seq) return; jobs.forEach(j => j.cancel()); jobs = []; L.job = null; L.error = err; setStatus("error", "Listen: " + err); render(); cmds.sync(); };
+      const fail = err => { if (L.seq !== seq) return; jobs.forEach(j => j.cancel()); jobs = []; L.job = null; L.error = err; setStatus("error", "Listen: " + err); render(); cmds.sync(); ended(false); };
       const finish = () => {
         jobs = []; L.job = null;
         const out = o.probes.map((_, j) => highpass(stitch(ps, job.parts.map(p => p[j]), total, fade), RATE, 3));
         L.take = { inp: chs, out, peak: peakOf(out), rms: rmsOf(out), label: o.label, source: srcName(), seconds: total / RATE, ms: Date.now() - job.t0, cores: ps.length, vin: gens.length ? gens[0].amp * gains : 0 };
         setStatus("ok", `Listen: ${fmtEng(total / RATE, "s")} rendered in ${fmtEng(L.take.ms / 1000, "s")} · output peak ${fmtEng(L.take.peak, "V")}`);
-        render(); cmds.sync();
+        render(); cmds.sync(); ended(true);
       };
       const piece = (j, warm) => {
         const p = ps[j], len = Math.min(total, p.to + (j < ps.length - 1 ? fade : 0)) - p.start;
@@ -269,6 +273,17 @@
       render(); cmds.sync(); progress();
       jobs = [runJob({ netlist: silent, options: RUN }, { onResult: go, onProgress: f => { if (L.seq === seq) { job.settle = f; progress(); } }, high: true })];
     }
+    function ended(ok) { const f = L.done; L.done = null; if (f) f(ok); }
+    // a render that can be waited on: true when it finished, false when it failed or was stopped
+    function renderNow() { if (L.done) ended(false); return new Promise(ok => { run(); if (L.job || L.tuning) L.done = ok; else ok(!!L.take && !L.error); }); }
+    // the last render kept as Before, to compare with the next (A/B/C: input, before, circuit now)
+    function keepBefore(note) {
+      const t = L.take; if (!t) return false;
+      L.before = { out: t.out, peak: t.peak, rms: t.rms, label: t.label, source: t.source, seconds: t.seconds, note: note || "" };
+      render(); return true;
+    }
+    // the kept Before plays with the take when both are of the same clip
+    const beforeOk = () => !!(L.before && L.take && L.before.seconds === L.take.seconds && L.before.source === L.take.source && L.before.out[0].length === L.take.out[0].length);
     // a job on the engine's pool, or on the page where no worker can start
     function runJob(msg, o) {
       if (pool.ok) return pool.run(msg, o);
@@ -291,7 +306,7 @@
     }
     function halt() {
       if (!play) return;
-      try { play.a.stop(); play.b.stop(); } catch (e) {}
+      try { play.a.stop(); play.b.stop(); if (play.c) play.c.stop(); } catch (e) {}
       play = null; L.playing = false; renderTransport();
     }
     function start(at) {
@@ -301,16 +316,19 @@
       if (ac.state === "suspended") ac.resume();
       const { ki, ko } = scales(t), master = ac.createGain(); master.gain.value = opts.volume; master.connect(ac.destination);
       const mk = (chs, k, on) => { const s = ac.createBufferSource(), g = ac.createGain(); s.buffer = buffer(chs, k); s.loop = opts.loop; g.gain.value = on ? 1 : 0; s.connect(g); g.connect(master); return { s, g }; };
+      if (L.ab === "before" && !beforeOk()) L.ab = "out";
       const a = mk(t.inp, ki, L.ab === "in"), b = mk(t.out, ko, L.ab === "out");
+      // Before at the same loudness as the input too (or at its own peak)
+      const B = beforeOk() ? L.before : null, kb = B ? (opts.match && B.rms > 0 ? Math.min(ki * rmsOf(t.inp) / B.rms, 0.98 / (B.peak || 1)) : 0.9 / (B.peak || 1)) : 0, c = B ? mk(B.out, kb, L.ab === "before") : null;
       const off = Math.max(0, Math.min(t.seconds - 0.01, at || 0)), when = ac.currentTime + 0.03;
-      a.s.start(when, off); b.s.start(when, off);
-      play = { a: a.s, b: b.s, ga: a.g.gain, gb: b.g.gain, master, when, off, len: t.seconds };
+      a.s.start(when, off); b.s.start(when, off); if (c) c.s.start(when, off);
+      play = { a: a.s, b: b.s, c: c && c.s, ga: a.g.gain, gb: b.g.gain, gc: c && c.g.gain, master, when, off, len: t.seconds };
       b.s.onended = () => { if (play && play.b === b.s) { play = null; L.playing = false; renderTransport(); } };
       L.playing = true; renderTransport(); tick();
     }
     function setAB(v) {
       L.ab = v;
-      if (play) { const now = ac.currentTime; play.ga.setTargetAtTime(v === "in" ? 1 : 0, now, 0.008); play.gb.setTargetAtTime(v === "out" ? 1 : 0, now, 0.008); }
+      if (play) { const now = ac.currentTime; play.ga.setTargetAtTime(v === "in" ? 1 : 0, now, 0.008); play.gb.setTargetAtTime(v === "out" ? 1 : 0, now, 0.008); if (play.gc) play.gc.setTargetAtTime(v === "before" ? 1 : 0, now, 0.008); }
       renderTransport();
     }
     const position = () => { if (!play) return null; const e = ac.currentTime - play.when + play.off; return e < 0 ? play.off : opts.loop ? e % play.len : Math.min(e, play.len); };
@@ -374,11 +392,13 @@
       const outLabel = j ? `Output · rendering ${Math.floor((0.05 + 0.95 * j.f.reduce((s, v) => s + v, 0) / j.ps.length) * 100)} %` : t ? `Output · ${t.label} · peak ${fmtEng(t.peak, "V")}` : "Output";
       strip(document.getElementById("ls-cv-in"), t ? t.inp : null, "#ffd54f", inLabel, L.ab === "in", null);
       strip(document.getElementById("ls-cv-out"), j ? null : t ? t.out : null, "#00e5ff", outLabel, L.ab === "out", j && j.phase === "play" ? j : null);
+      const cb = document.getElementById("ls-cv-before");
+      if (cb) { cb.hidden = !beforeOk() && !(L.before && j); if (!cb.hidden) strip(cb, L.before.out, "#c792ea", `Before · ${L.before.note || "the circuit as it was"} · peak ${fmtEng(L.before.peak, "V")}`, L.ab === "before", null); }
     }
     function renderTransport() {
       const host = document.getElementById("ls-pane"); if (!host) return;
       const pb = host.querySelector("#ls-play"); if (pb) { pb.textContent = L.playing ? "■ Stop" : "▶ Play"; pb.disabled = !L.take; }
-      host.querySelectorAll("[data-ab]").forEach(b => { const on = b.dataset.ab === L.ab; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
+      host.querySelectorAll("[data-ab]").forEach(b => { const on = b.dataset.ab === L.ab; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); if (b.dataset.ab === "before") b.hidden = !beforeOk(); });
       const sv = host.querySelector("#ls-save"); if (sv) sv.disabled = !L.take;
     }
     function syncTools() {
@@ -408,14 +428,14 @@
           <div class="ls-transport">
             <button class="btn ls-play" id="ls-play" title="Play the input and the circuit's output together; A and B pick which one you hear">▶ Play</button>
             <div class="seg-group ls-ab" role="group" aria-label="Which one you hear">
-              <button class="btn" data-ab="in" title="Hear the recording as it goes in">A · Input</button><button class="btn" data-ab="out" title="Hear it through the circuit">B · Circuit</button>
+              <button class="btn" data-ab="in" title="Hear the recording as it goes in">A · Input</button><button class="btn" data-ab="before" title="Hear it through the circuit as it was before the changes (kept by Voicing)" hidden>Before</button><button class="btn" data-ab="out" title="Hear it through the circuit">B · Circuit</button>
             </div>
             <label title="Play over and over"><input type="checkbox" id="ls-loop"> Loop</label>
             <label title="The output played as loud as the input, so A/B compares the sound, not the level"><input type="checkbox" id="ls-match"> Match loudness</label>
             <label class="ls-vol" title="Playback volume">Volume <input type="range" id="ls-vol" min="0" max="1" step="0.01"></label>
             <button class="btn" id="ls-save" title="Save the circuit's output as a WAV file (16-bit, normalised to its peak)">Save WAV</button>
           </div>
-          <div class="ls-strips"><canvas id="ls-cv-in" title="Click to play from here"></canvas><canvas id="ls-cv-out" title="Click to play from here"></canvas></div>
+          <div class="ls-strips"><canvas id="ls-cv-in" title="Click to play from here"></canvas><canvas id="ls-cv-before" title="Click to play from here" hidden></canvas><canvas id="ls-cv-out" title="Click to play from here"></canvas></div>
         </div>`;
         host.querySelector("#ls-play").addEventListener("click", () => (L.playing ? halt() : start(0)));
         host.querySelectorAll("[data-ab]").forEach(b => b.addEventListener("click", () => setAB(b.dataset.ab)));
@@ -425,9 +445,9 @@
         mt.addEventListener("change", () => { opts.match = mt.checked; save(); if (play) start(position()); });
         vol.addEventListener("input", () => { opts.volume = +vol.value; save(); if (play) play.master.gain.setTargetAtTime(opts.volume, ac.currentTime, 0.01); });
         host.querySelector("#ls-save").addEventListener("click", saveWav);
-        ["ls-cv-in", "ls-cv-out"].forEach(id => host.querySelector("#" + id).addEventListener("click", e => {
+        ["ls-cv-in", "ls-cv-before", "ls-cv-out"].forEach(id => host.querySelector("#" + id).addEventListener("click", e => {
           if (!L.take) return;
-          const r = e.currentTarget.getBoundingClientRect(); setAB(id === "ls-cv-in" ? "in" : "out"); start((e.clientX - r.left) / r.width * L.take.seconds);
+          const r = e.currentTarget.getBoundingClientRect(); setAB(id === "ls-cv-in" ? "in" : id === "ls-cv-before" ? "before" : "out"); start((e.clientX - r.left) / r.width * L.take.seconds);
         }));
       }
       const note = host.querySelector("#ls-note");
@@ -436,6 +456,7 @@
       note.textContent = L.error ? L.error : L.stale ? "The circuit changed since this render: press ▶ Render again."
         : L.tuning ? `Tuning in to ${RADIO.name}: a few seconds of the live broadcast are caught, then played through the circuit.`
         : L.job ? "Rendering: the circuit settles with the generators silent, then the clip plays through it, a piece per core."
+          : t && beforeOk() ? `Before and after: ${L.before.note || "the circuit as it was"} against the circuit now. Play, then switch Before and B · Circuit as it plays (A is the input).`
           : t ? `${fmtEng(t.seconds, "s")} of ${t.source} rendered in ${fmtEng(t.ms / 1000, "s")} on ${t.cores} core${t.cores > 1 ? "s" : ""}. Output ${t.label}: peak ${fmtEng(t.peak, "V")}, ${fmtEng(t.rms, "Vrms")}. Click a strip to play from there; A/B switches as it plays.`
             : "Pick a recording (a guitar riff made here, the generator's own tone, your WAV or MP3 file, or 70s rock live from the radio) and press ▶ Render: it drives the signal generator, and you hear the speaker.";
       renderTransport(); renderStrips();
@@ -467,7 +488,7 @@
       root.addEventListener("resize", () => renderStrips());
       render();
     }
-    return { changed, init, render, run, stop, start, halt, setAB, openFile, outputs, position: () => position() };
+    return { changed, init, render, run, renderNow, keepBefore, dropBefore: () => { L.before = null; if (L.ab === "before") L.ab = "out"; render(); }, stop, start, halt, setAB, openFile, outputs, position: () => position() };
   }
   CadListen.RATE = RATE; CadListen.pieces = pieces; CadListen.stitch = stitch; CadListen.highpass = highpass; CadListen.wav = wav; CadListen.tone = tone; CadListen.riff = riff; CadListen.RADIO = RADIO; CadListen.grab = grab;
   root.CadListen = CadListen;

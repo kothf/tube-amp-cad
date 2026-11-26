@@ -376,6 +376,14 @@
     .fault-in:focus { outline: none; border-color: var(--accent); } .fault-in.bad { border-color: var(--bad); }
     .fault-wrap { overflow-x: auto; } .fault-table td.fault-ok { color: var(--ok); } .fault-table tr.fault-nominal td { color: var(--muted); } .fault-table th { white-space: nowrap; } .fault-good { color: var(--ok); } .fault-fair { color: var(--warn); } .fault-poor { color: var(--muted); }
     .pic-row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; } .pic-body { flex: 1; min-width: 260px; }
+    #voice-text { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+    .bg-steps { margin: 4px 0 8px; padding-left: 20px; } #ai-log .warn { color: var(--warn, #d29922); }
+    .bg-steps li { margin: 3px 0; }
+    .bg-table .bg-blank { min-width: 64px; }
+    .voice-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 4px; }
+    .sf-charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin: 6px 0; }
+    .sf-chart .sf-pt { fill: var(--amber); } .sf-q.sf-good { color: #3fb950; } .sf-q.sf-fair { color: var(--warn); } .sf-q.sf-poor { color: var(--bad); }
+    .sf-model pre { white-space: pre-wrap; font-size: 11px; margin: 4px 0; }
     .pic-thumb { max-width: 240px; max-height: 240px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
     .pic-preview { display: block; max-width: 100%; max-height: 220px; margin: 8px auto; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
     .rv-ok { color: var(--ok); } .rv-warn { color: var(--warn); } .rv-bad { color: var(--bad); }
@@ -391,6 +399,7 @@
     .tune-left { flex: 1 1 420px; min-width: 320px; font-size: 12px; } .tune-right { flex: 1 1 380px; min-width: 300px; font-size: 12px; }
     .tune-sec { font-weight: 600; margin: 8px 0 4px; } .tune-sec .muted { font-weight: 400; margin-left: 6px; }
     .tune-row { display: flex; gap: 6px; align-items: center; margin: 3px 0; flex-wrap: wrap; }
+    .tune-words { display: flex; gap: 6px; margin: 2px 0 8px; } .tune-words input { flex: 1 1 auto; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
     .tune-name { min-width: 150px; font-family: ui-monospace, Menlo, monospace; }
     .tune-x { padding: 1px 7px; font-size: 11px; } .tune-empty { margin: 2px 0 4px; }
     .tune-check { display: flex; gap: 6px; align-items: center; color: var(--muted); margin: 6px 0; cursor: pointer; }
@@ -786,9 +795,12 @@
         <button class="menu-item" data-ico="image" role="menuitem" id="menu-ai-picture" title="A photo or scan of a schematic (a magazine page, a hand drawing, a PDF) read by the AI, drawn on a new sheet and simulated, with the values it was unsure of marked for you to check">Schematic from a picture…<kbd>photo → circuit</kbd></button>
         <button class="menu-item" data-ico="bulb" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
         <button class="menu-item" data-ico="checks" role="menuitem" id="menu-ai-review" title="Every margin, stress, ripple and power-on surge the CAD measures in one sheet; the AI reviews the design from it, in priority order, with fixes you can apply">Design review<kbd>before you build</kbd></button>
+        <button class="menu-item" data-ico="listen" role="menuitem" id="menu-ai-voice" title="Say how it should sound (warmer, less fizz, more headroom): the AI proposes value changes to the tone-shaping parts, and Listen plays the circuit before and after">Voicing…<kbd>how it sounds</kbd></button>
+        <button class="menu-item" data-ico="checks" role="menuitem" id="menu-ai-build" title="The first switch-on, planned from the simulation: the voltage to expect at every test point with a band to accept, the heater load, the stored charge and a safe power-up order, as a sheet to print; with an AI key, build notes for this circuit">Build and power-up guide<kbd>first switch-on</kbd></button>
         <button class="menu-item" data-ico="probe" role="menuitem" id="menu-ai-fault" title="Type the voltages you measured on the built amplifier: the CAD simulates the common faults and ranks them, and the AI writes the diagnosis">Find a fault…<kbd>from readings</kbd></button>
         <button class="menu-item" data-ico="wrench" role="menuitem" id="menu-ai-fix" title="The Checks list turned into value changes you can apply, each verified by the simulator">Fix the checks<kbd>value changes</kbd></button>
         <button class="menu-item" data-ico="datasheet" role="menuitem" id="menu-ai-datasheet" title="A tube's datasheet (PDF) read by the AI: ratings, pinout and a Koren model fitted to its plate curves, for review">Tube from a datasheet…<kbd>PDF → model</kbd></button>
+        <button class="menu-item" data-ico="datasheet" role="menuitem" id="menu-ai-semi" title="A transistor's, MOSFET's, JFET's or diode's datasheet (PDF or a picture of its pages) read by the AI: a SPICE model fitted to its typical curves and shown against them, ready to place">Transistor or diode from a datasheet…<kbd>PDF → .MODEL</kbd></button>
         <button class="menu-item" data-ico="target" role="menuitem" id="menu-ai-tune" title="Part values changed until the simulated circuit meets your goals; works without a key">Auto-tune<kbd>reach a goal</kbd></button>
         <div class="menu-sep"></div>
         <button class="menu-item" data-ico="key" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
@@ -958,11 +970,16 @@
               <div class="menu-list" role="menu" hidden>
                 <button class="menu-item" data-ico="image" role="menuitem" id="btn-ai-picture" title="Draw the schematic in a photo or scan (uses your AI key)">Schematic from a picture…</button>
                 <button class="menu-item" data-ico="checks" role="menuitem" id="btn-ai-review" title="Review the design before it is built: margins, stress, ripple, power-on surge; with an AI key, the findings in priority order">Design review</button>
+                <button class="menu-item" data-ico="listen" role="menuitem" id="btn-ai-voice" title="Say how it should sound; the AI proposes value changes, and Listen plays before and after (uses your AI key)">Voicing…</button>
+                <button class="menu-item" data-ico="checks" role="menuitem" id="btn-ai-build" title="The voltages to expect at every test point, the stored charge and a safe first power-up, as a sheet to print">Build and power-up guide</button>
                 <button class="menu-item" data-ico="probe" role="menuitem" id="btn-ai-fault" title="Find what is wrong with the built amplifier from the voltages you measured on it">Find a fault…</button>
               </div>
             </div>
           </span>
           <span class="spacer"></span>
+          <span class="bom-tools" data-for="checks tolerance power noise sweep transient listen" hidden>
+            <button class="btn" id="btn-ai-why" data-ico="sparkle" title="Ask the AI why this result is what it is: what in the circuit causes it and what would change it (uses your AI key)">Why?</button>
+          </span>
           <span class="bom-tools" data-for="bom">
             <span class="muted">Export</span>
             <button class="btn" data-bom="txt" title="Plain-text table">TXT</button>
@@ -1142,6 +1159,36 @@
         <span class="spacer"></span>
         <button class="btn" id="btn-sheet-cancel">Cancel</button>
         <button class="btn active" id="btn-sheet-go">Read datasheet</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="voice-modal" hidden>
+    <div class="modal-box" style="width: min(560px, 94vw)">
+      <div class="insp-title">Voicing</div>
+      <p class="insp-help">Say how the amplifier should sound. The AI proposes value changes to its tone-shaping parts (tone stack, coupling and bypass capacitors, cathode resistors, feedback, bright caps, supply sag), each with what it does to the sound; apply them, or press <b>Hear before and after</b> on the answer to play the circuit as it is and with the changes in the Listen tab. Uses your AI key.</p>
+      <textarea id="voice-text" rows="3" placeholder="e.g. warmer and darker, less fizz when it breaks up, a little more bass"></textarea>
+      <div class="voice-chips">
+        <button class="btn ai-chip" data-voice="warmer">Warmer</button><button class="btn ai-chip" data-voice="brighter">Brighter</button><button class="btn ai-chip" data-voice="more bass">More bass</button><button class="btn ai-chip" data-voice="tighter low end">Tighter low end</button><button class="btn ai-chip" data-voice="less fizz when it distorts">Less fizz</button><button class="btn ai-chip" data-voice="breaks up earlier">Earlier breakup</button><button class="btn ai-chip" data-voice="more clean headroom">More headroom</button><button class="btn ai-chip" data-voice="more mids">More mids</button>
+      </div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="btn" id="btn-voice-cancel">Cancel</button>
+        <button class="btn active" id="btn-voice-go">Ask</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="semi-modal" hidden>
+    <div class="modal-box" style="width: min(560px, 94vw)">
+      <div class="insp-title">Transistor or diode from a datasheet</div>
+      <p class="insp-help">Pick the datasheet of a bipolar transistor, a MOSFET, a JFET, a diode or a zener (a PDF, or a picture of its pages). The AI reads its pins, ratings and points along its typical curves; a SPICE model is fitted to them and shown against the points. Review it in the AI tab, then place it on the sheet. The file goes to your AI provider; uses your AI key.</p>
+      <div class="new-form">
+        <span>Datasheet</span><input type="file" id="semi-file" accept="application/pdf,.pdf,image/*">
+        <span>Part number</span><input type="text" id="semi-name" placeholder="optional: when the datasheet covers several">
+      </div>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="btn" id="btn-semi-cancel">Cancel</button>
+        <button class="btn active" id="btn-semi-go">Read datasheet</button>
       </div>
     </div>
   </div>
@@ -1450,6 +1497,10 @@
   <script src="cad-faults.js?v=dev"></script>
   <script src="cad-review.js?v=dev"></script>
   <script src="cad-picture.js?v=dev"></script>
+  <script src="semi-fit.js?v=dev"></script>
+  <script src="cad-semifit.js?v=dev"></script>
+  <script src="cad-voicing.js?v=dev"></script>
+  <script src="cad-build.js?v=dev"></script>
   <script src="cad-app.js?v=dev"></script>
 </body>
 </html>

@@ -67,6 +67,20 @@ import { cad, check } from "./harness.mjs";
   await cad.waitForFunction(() => /Values to change/.test(document.getElementById("ai-log").innerText));
   const ai = await cad.evaluate(() => ({ vars: TubeCAD.tune.state.vars.map(v => `${TubeCAD.state.comps.find(c => c.id === v.id).label} ${v.lo} ${v.hi}`), r10: TubeCAD.state.comps.find(c => c.label === "R10").params.r, log: document.getElementById("ai-log").innerText, tab: !document.getElementById("tune-pane").hidden }));
   check(ai.vars.join() === "R10 500 3000" && ai.r10 === 1200 && /Left out.*R99/.test(ai.log) && ai.tab, `AI start sets the variables and the start, and leaves out parts that don't exist (${ai.vars.join()})`);
-  await cad.evaluate(() => { TubeCAD.undo(); localStorage.removeItem("tubecad_ai"); TubeCAD.tune.state.goals = []; TubeCAD.tune.state.vars = []; TubeCAD.tune.state.run = null; TubeCAD.tune.render(); });
+  await cad.evaluate(() => TubeCAD.undo());
+
+  // goals in words: the AI gets what the CAD measures and turns the words into goals from that list
+  const sent = [];
+  const keys = await cad.evaluate(() => { const ba = TubeCAD.state.comps.find(c => c.label === "BA1"); return { p: ba.id + ":p", thd: ba.id + ":thd" }; });
+  await cad.unrouteAll({ behavior: "ignoreErrors" });
+  await cad.route("https://api.anthropic.com/**", route => { sent.push(route.request().postData()); return route.fulfill({ status: 200, contentType: "application/json", headers: { "access-control-allow-origin": "*" },
+    body: JSON.stringify({ content: [{ type: "text", text: JSON.stringify({ note: "Power at low distortion.", goals: [{ key: keys.p, op: ">=", target: 12 }, { key: keys.thd, op: "≤", target: "2" }, { key: "nope", op: ">=", target: 1 }], ratings: true, variables: [{ part: "R10", field: "r", min: "500", max: "3k" }] }) }], stop_reason: "end_turn" }) }); });
+  await cad.evaluate(() => TubeCAD.toggleBom(true, "tune"));
+  await cad.fill("#tune-words", "12 W into the speaker under 2 % THD");
+  await cad.press("#tune-words", "Enter");
+  await cad.waitForFunction(() => /Goals:\s*\n?- /.test(document.getElementById("ai-log").innerText) || TubeCAD.tune.state.goals.length === 2, null, { timeout: 60000 });
+  const w = await cad.evaluate(() => ({ goals: TubeCAD.tune.state.goals.map(g => `${g.op} ${g.target}`), vars: TubeCAD.tune.state.vars.length, log: document.getElementById("ai-log").innerText }));
+  check(/What the CAD measures/.test(sent[0]) && /12 W into the speaker under 2 % THD/.test(sent[0]) && w.goals.join() === ">= 12,<= 2" && w.vars === 1 && /left out \(not measured\): nope/.test(w.log), `goals in words become the tab's goals from what the CAD measures (${w.goals.join(", ")}), with the values to change`);
+  await cad.evaluate(() => { localStorage.removeItem("tubecad_ai"); TubeCAD.tune.state.goals = []; TubeCAD.tune.state.vars = []; TubeCAD.tune.state.run = null; TubeCAD.tune.render(); });
   await cad.unrouteAll({ behavior: "ignoreErrors" });
 }

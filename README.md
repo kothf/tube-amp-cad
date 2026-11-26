@@ -150,11 +150,28 @@ Firefox is not tested.
     its part and number, and value changes to apply;
   - *Schematic from a picture*: a photo or scan (magazine page, hand
     drawing, PDF) read by the AI, drawn and simulated, with the values it
-    was unsure of listed beside the picture to check.
+    was unsure of listed beside the picture to check;
+  - *Why?* on the result tabs (Checks, Tolerance, Power, Noise, Sweep,
+    Transient, Listen): the result and the circuit go to the AI, which says
+    what causes it and what would change it;
+  - *Build and power-up guide*: the voltage to expect at every test point
+    with a band to accept, the heater load, the stored charge and a safe
+    first switch-on, as a sheet to print; with a key, build notes for the
+    circuit (build order, grounds, heater wiring, what to watch for);
+  - *Voicing*: say how it should sound ("warmer, less fizz"); the AI
+    proposes value changes to the tone-shaping parts, and *Hear before and
+    after* plays the Listen clip through the circuit as it was and with the
+    changes, switchable as it plays;
+  - *Transistor or diode from a datasheet*: the AI reads a BJT's, MOSFET's,
+    JFET's, diode's or zener's datasheet (pins, ratings, points along its
+    typical curves); the CAD fits a SPICE `.MODEL` to them (Gummel–Poon,
+    VDMOS, JFET, diode) and shows its curves against the points, ready to
+    place as a SPICE part with its footprint.
 - **Auto-tune** (the Tune tab, no key needed): set goals such as "10 W at
   ≤ 1 % THD" and the values that may change; an optimizer tries values, the
   simulator judges each, and the best are rounded to E24/E12. *AI start*
-  lets the model pick the values and ranges. With no goals yet, one button
+  lets the model pick the values and ranges; *goals in words* ("12 W under
+  2 % THD") lets it set the goals too. With no goals yet, one button
   adds the usual pair: the speaker's power a quarter above what it gives now,
   at ≤ 1 % THD.
 - **Layout.**
