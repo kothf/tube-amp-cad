@@ -158,6 +158,14 @@ Firefox is not tested.
     with a band to accept, the heater load, the stored charge and a safe
     first switch-on, as a sheet to print; with a key, build notes for the
     circuit (build order, grounds, heater wiring, what to watch for);
+  - *Edit by command*: say the change ("replace the 12AX7s with 12AT7s and
+    re-bias", "add a grid stopper on VL2"); the AI's edits are made in place,
+    keeping the drawing, as one step to undo, and the changed parts are
+    selected;
+  - *Substitutes for the selected part*: the library's tubes or transistors
+    that could take its place, each simulated in the circuit (bias, stress
+    against the rating, output, THD) and ready to use; with a key, what to
+    re-bias and how they are said to sound;
   - *Voicing*: say how it should sound ("warmer, less fizz"); the AI
     proposes value changes to the tone-shaping parts, and *Hear before and
     after* plays the Listen clip through the circuit as it was and with the
