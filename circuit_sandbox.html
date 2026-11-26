@@ -344,7 +344,13 @@
     .ai-msg.answer { background: var(--panel2); border: 1px solid var(--line); }
     .ai-msg.note { color: var(--muted); border: 1px dashed var(--line); }
     .ai-msg.error { color: var(--bad); border: 1px solid #5a2a2a; background: #1d1214; }
-    .ai-msg.busy { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .ai-msg.busy { color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .ai-busy-t { font-variant-numeric: tabular-nums; }
+    .ai-busy-note { flex-basis: 100%; font-size: 12px; }
+    .ai-busy-note:empty { display: none; }
+    #design-live { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--accent); box-shadow: 0 4px 16px rgba(0,0,0,.35); color: var(--text); font-size: 13px; max-width: calc(100% - 32px); }
+    #design-live[hidden] { display: none; }
+    #design-live .dl-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ai-msg p { margin: 4px 0; } .ai-msg h4 { margin: 8px 0 4px; font-size: 13px; color: var(--accent); }
     .ai-msg ul, .ai-msg ol { margin: 4px 0; padding-left: 20px; } .ai-msg li { margin: 2px 0; }
     .ai-msg code, .ai-msg pre { font: 12px ui-monospace, Menlo, monospace; background: var(--bg); border-radius: 4px; padding: 0 4px; }
@@ -836,6 +842,7 @@
     <nav id="palette" aria-label="Parts"></nav>
     <div id="center">
       <div id="stage"><canvas id="cad" aria-label="Schematic"></canvas>
+        <div id="design-live" role="status" aria-live="polite" hidden><span class="ai-dots"></span><span class="dl-text" id="design-live-text"></span><button class="btn" id="btn-design-stop" title="Stop the AI and bring back the circuit you had (Esc)">Stop</button></div>
         <div id="rev-diff-bar" role="toolbar" aria-label="Compare with a revision" hidden></div>
         <div id="hscroll" hidden>
           <button class="hs-btn" id="hs-prev" title="Previous sheet (Page Up)" aria-label="Previous sheet">&#x2039;</button>
@@ -961,7 +968,7 @@
         <div class="bom-scroll" id="tune-pane" role="tabpanel" hidden></div>
         <div class="ai-pane" id="ai-pane" role="tabpanel" hidden>
           <div class="ai-log" id="ai-log" aria-live="polite"></div>
-          <div class="ai-ask"><textarea id="ai-input" rows="2" placeholder="Ask about this circuit or how to do something in the app…  (Enter sends, Shift+Enter: new line)"></textarea><button class="btn primary" id="btn-ai-send">Send</button></div>
+          <div class="ai-ask"><textarea id="ai-input" rows="2" placeholder="Ask about this circuit or how to do something in the app, or say “draw me …”  (Enter sends, Shift+Enter: new line)"></textarea><button class="btn primary" id="btn-ai-send">Send</button></div>
         </div>
       </section>
     </div>
@@ -1058,7 +1065,7 @@
   <div class="modal" id="design-modal" hidden>
     <div class="modal-box" style="width: min(620px, 94vw)">
       <div class="insp-title">Design from a description</div>
-      <p class="insp-help">Describe the amplifier or stage: tubes, output power, load, supply, gain, anything you care about. The AI designs it from the library's parts, the CAD draws it on a new sheet and simulates it, and if the Checks find problems they go back to the AI for a revision. It replaces the circuit on the sheet (Ctrl+Z brings it back). Uses your AI key.</p>
+      <p class="insp-help">Describe the amplifier or stage: tubes, output power, load, supply, gain, anything you care about. The AI designs it from the library's parts, the CAD draws it on a new sheet while the AI writes it (Stop or Esc puts your circuit back) and simulates it, and if the Checks find problems they go back to the AI for a revision. It replaces the circuit on the sheet (Ctrl+Z brings it back). Uses your AI key.</p>
       <textarea id="design-text" class="ai-design-text" rows="5" placeholder="e.g. A single-ended EL84 amplifier, about 4 W into 8 Ω, with a 12AX7 driver and 300 V B+"></textarea>
       <div class="ai-chips" id="design-chips"></div>
       <label class="tune-check"><input type="checkbox" id="design-revise" checked> Send the Checks back for up to two revisions</label>

@@ -165,3 +165,10 @@ test("markdown: structure kept, HTML escaped, part designators linked", () => {
   assert.match(h, /<td>R30<\/td>/);   // R30 is not R3
   assert.match(A.markdown("```\nx<y\n```"), /<pre>x&lt;y<\/pre>/);
 });
+
+test("markdown: a half-written table row never hangs (the answer is drawn while it is written)", () => {
+  const t0 = Date.now();
+  const html = globalThis.AiCircuit.markdown("Parts:\n| R1 | 100k\n| C1 | 22u |\n|---");
+  assert.ok(Date.now() - t0 < 500);
+  assert.match(html, /\| R1 \| 100k/);
+});

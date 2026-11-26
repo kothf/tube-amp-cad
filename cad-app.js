@@ -946,6 +946,8 @@
     if (e.button === 0 && !S.spaceDown) S.lastClick = { x: m.wx, y: m.wy };   // Fit picks the sheet clicked last
     if (e.button === 0) clearBomShown();   // a click on the sheet shows its selection in the BOM again
     if (e.button === 1 || (e.button === 0 && S.spaceDown)) { if (S.spaceDown) S.spacePanned = true; S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
+    // the AI is drawing on the sheet: the view pans and zooms, nothing else
+    if (S.design && S.design.live) { if (e.button === 0) S.drag = { kind: "pan", sx: m.sx, sy: m.sy, ox: S.view.ox, oy: S.view.oy }; e.preventDefault(); return; }
     if (e.button === 2) { if (S.busing) finishBus(); else if (S.unfold) { S.unfold = null; render(); } else if (S.wiring) finishWiring(); else if (S.placing) { S.placing = null; setTool("select"); } else if (!blocks.cancelPlace()) openSheetMenu(e, m); return; }
     if (e.button !== 0) return;
     const gx = snap(m.wx), gy = snap(m.wy);
@@ -1112,6 +1114,7 @@
   }
 
   function onDblClick(e) {
+    if (S.design && S.design.live) return;
     const m = evPos(e);
     const c = hitComp(m.wx, m.wy);
     if (c && c.type === "scope" && !S.wiring) ToolWindows.open("oscilloscope.html", { scope: c.id });
@@ -1303,6 +1306,11 @@
 
   function onKeyDown(e) {
     const tag = (e.target.tagName || "").toUpperCase(), typing = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
+    // the AI is drawing on the sheet: no edits until it is done; Esc stops it
+    if (S.design && S.design.busy && !typing && !inDialog(e)) {
+      if (e.key === "Escape") { e.preventDefault(); design.stop(); return; }
+      if (S.design.live && !/^F\d+$/.test(e.key)) { e.preventDefault(); return; }
+    }
     // Space rotates: at once while placing or dragging parts; otherwise on letting go of a tap, since
     // Space held down while dragging the sheet pans it. Never a page scroll or a click on a focused button.
     if (e.key === " ") {
@@ -3141,7 +3149,27 @@
     commit(); fitStart();
     sendBoardNetlist(true);
   }
-  const design = CadDesign({ S, circuitIssues, placeDesign, runSim, setStatus, whenSimulated });
+  // the design while the AI writes it: drawn on the sheet as a preview (no undo step, not simulated,
+  // not sent to the board); the view fits again only when the drawing needs a bigger sheet
+  let previewSize = null;
+  function previewDesign(out) {
+    const f = makeComp("frame", { size: out.frame.size, orient: out.frame.orient, title: out.frame.title, date: new Date().toISOString().slice(0, 10) }, 0, 0, 0);
+    S.comps = [f]; S.wires = []; S.blocks = [];
+    out.comps.forEach(o => {
+      const c = makeComp(o.type, o.params, o.x, o.y, o.rot);
+      c.params = Object.assign({}, LIB[o.type].defaults, o.params);
+      if (o.label) c.label = o.label;
+      S.comps.push(c);
+    });
+    out.wires.forEach(w => addSegment(w.x1, w.y1, w.x2, w.y2));
+    normalizeWires(); S.topo = null;
+    S.sel.comps.clear(); S.sel.wires.clear();
+    if (previewSize !== out.frame.size) { previewSize = out.frame.size; fitStart(); }
+    render();
+  }
+  // stopped: the sheet as it was (the last undo step)
+  function endPreview() { previewSize = null; restore(S.history[S.hIndex]); fitStart(); render(); }
+  const design = CadDesign({ S, circuitIssues, placeDesign: out => { previewSize = null; placeDesign(out); }, previewDesign, endPreview, runSim, setStatus, whenSimulated });
   const datasheet = CadDatasheet({ S, buildPalette, setStatus });
   const tune = CadTune({ S, buildNetlist, cmds, commit, compPins, desig, esc: escH, fmtEng, harmonics, measurements, pool, scopeChannels, setStatus, signalFreq, speakerWave, toggleBom, topo, withResult });
   // PDF / PNG export and printing (cad-export.js)

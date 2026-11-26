@@ -1,12 +1,15 @@
 /* AI ▾ → Design from a description: the model answers with a netlist (ai-design.js checks it and
    draws it), the CAD puts it on a new sheet and simulates it, and the Checks go back to the
-   model for up to two revisions. Needs the user's AI key (cad-ai.js). */
+   model for up to two revisions. Needs the user's AI key (cad-ai.js).
+   The answer is drawn while it is written: each part goes on the sheet as soon as the model has
+   finished writing it (a preview, not an undo step), with a bar over the sheet and Stop. Asking
+   the assistant to draw something ("draw me a 2A3 amp") lands here too. */
 (function (root) {
   "use strict";
   // cad: what this part of the CAD needs from cad-app.js; returns what cad-app.js uses of it
   function CadDesign(cad) {
-    const { S, circuitIssues, placeDesign, runSim, setStatus, whenSimulated } = cad;
-    const D = S.design = { busy: false, rounds: 2 };
+    const { S, circuitIssues, placeDesign, previewDesign, endPreview, runSim, setStatus, whenSimulated } = cad;
+    const D = S.design = { busy: false, rounds: 2, live: false };
     const $ = id => document.getElementById(id);
     let ai = null;
 
@@ -19,14 +22,43 @@
         + "\n\n# Tubes in the library (name, kind, max anode voltage, max anode dissipation)\n" + AiCircuit.tubeList();
     }
 
+    // drawing while the answer is written: the parts complete so far, laid out and shown on the
+    // sheet a few times a second (only when a new part has arrived)
+    const L = { text: "", n: -1, timer: 0, what: "" };
+    const bar = (text) => { const b = $("design-live"); if (!b) return; b.hidden = text === null; if (text !== null) $("design-live-text").textContent = text; };
+    function live(what) {
+      L.text = ""; L.n = -1; L.what = what; clearTimeout(L.timer); L.timer = 0;
+      bar(`${what}: waiting for the AI…`);
+      return t => { L.text = t; if (!L.timer) L.timer = setTimeout(drawLive, 250); };
+    }
+    function drawLive() {
+      L.timer = 0;
+      if (!D.busy) return;
+      const pd = AiDesign.partial(L.text), kb = (L.text.length / 1000).toFixed(1);
+      if (pd.parts.length !== L.n) {
+        L.n = pd.parts.length;
+        let checked = null;
+        try { checked = AiDesign.check({ parts: pd.parts, rails: pd.rails }); } catch (e) { checked = null; }
+        if (checked && checked.parts.length) {
+          previewDesign(AiDesign.layout(checked, { title: pd.title || "AI design" }));
+          D.live = true;
+        }
+      }
+      const text = L.n > 0 ? `${L.what}: drawing ${pd.title ? "“" + pd.title + "” · " : ""}${L.n} part${L.n === 1 ? "" : "s"} so far` : `${L.what}: the AI is writing (${kb} kB)…`;
+      bar(text); ai.progress(text);
+      setStatus("busy", text + "…");
+    }
+    function liveDone() { clearTimeout(L.timer); L.timer = 0; D.live = false; bar(null); }
+    function stop() { ai.stop(); }
+
     // the answer: checked, and the problems sent back once for a corrected answer
     async function getDesign(msgs, what) {
-      let text = await ai.call({ system: system(), messages: msgs, maxTokens: 24000 }, what);
+      let text = await ai.call({ system: system(), messages: msgs, maxTokens: 24000 }, what, live(what));
       let j = AiClient.extractJson(text), checked = AiDesign.check(j);
       if (checked.problems.length) {
         msgs.push({ role: "assistant", text }, { role: "user", text: `The CAD could not use this as it is:\n${checked.problems.map(p => "- " + p).join("\n")}\n\nAnswer with the whole design again as JSON, corrected.` });
         ai.add({ kind: "note", text: `The design has ${checked.problems.length} problem${checked.problems.length === 1 ? "" : "s"} (${checked.problems.slice(0, 3).join("; ")}${checked.problems.length > 3 ? " …" : ""}): asking for a corrected one.` });
-        text = await ai.call({ system: system(), messages: msgs, maxTokens: 24000 }, what);
+        text = await ai.call({ system: system(), messages: msgs, maxTokens: 24000 }, `${what} · corrected`, live(`${what} · corrected`));
         j = AiClient.extractJson(text); checked = AiDesign.check(j);
       }
       msgs.push({ role: "assistant", text });
@@ -36,20 +68,24 @@
     // on the sheet (one undo step), simulated; the Checks after
     async function place(j, checked) {
       const out = AiDesign.layout(checked, { title: j.title || "AI design" });
+      liveDone();
       placeDesign(out);
       if (!S.sim.live) runSim("live");
       await whenSimulated();
       return circuitIssues();
     }
 
-    async function design(text, rounds) {
+    // opts.edit: a change to the circuit on the sheet (the assistant was asked for one): the sheet's
+    // circuit goes with the request and the answer is the whole circuit with the change
+    async function design(text, rounds, opts) {
+      opts = opts || {};
       text = String(text || "").trim();
       if (!text || D.busy || !ai) return;
       ai.show();
-      if (S.comps.some(c => c.type !== "frame") && !confirm("Design a new circuit?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back.")) return;
+      if (S.comps.some(c => c.type !== "frame") && !confirm(opts.edit ? "Redraw the circuit with this change?\n\n" + text + "\n\nThe AI draws the whole circuit again on a new sheet. Ctrl+Z brings back the circuit you have now." : "Design a new circuit?\n\nIt replaces the circuit on the sheet. Ctrl+Z brings the circuit back.")) { ai.add({ kind: "note", text: "Not drawn: the circuit on the sheet is kept." }); return; }
       D.busy = true;
-      ai.add({ kind: "user", text: `Design: ${text}`, prompt: `Design: ${text}` });
-      const msgs = [{ role: "user", text: `Design this:\n${text}` }];
+      if (opts.asked === undefined) ai.add({ kind: "user", text: `Design: ${text}`, prompt: `Design: ${text}` });
+      const msgs = [{ role: "user", text: opts.edit ? `The circuit on the sheet now, each part with its values as key=value:\n${ai.describe(true)}\n\nDraw it again with this change, keeping everything else as it is:\n${text}` : `Design this:\n${text}` }];
       try {
         let { j, checked } = await getDesign(msgs, "Design");
         ai.add({ kind: "note", text: `**${j.title || "Design"}**: ${checked.parts.length} parts. Drawing and simulating…` });
@@ -67,8 +103,12 @@
           + "\n\nThe drawing is a starting point: each pin ends in a ground, a supply rail or a sheet connector named after its net. Read the operating points before you build it." });
         ai.add({ kind: "note", text: round ? `Ctrl+Z steps back through the ${round + 1} versions to the circuit you had before.` : "Ctrl+Z brings back the circuit you had before." });
         setStatus(issues.length ? "warn" : "ok", `Design: ${j.title || ""} · ${checked.parts.length} parts · ${issues.length ? issues.length + " problems in the Checks" : "no problems in the Checks"}`);
-      } catch (e) { ai.fail(e); }
-      finally { D.busy = false; ai.render(); }
+      } catch (e) {
+        // stopped or failed while drawing: the sheet goes back to the circuit it had (the last round drawn, in a revision)
+        if (D.live) { endPreview(); ai.add({ kind: "note", text: "The sheet is back as it was before the AI started drawing." }); }
+        ai.fail(e);
+      }
+      finally { liveDone(); D.busy = false; ai.render(); }
     }
 
     // the dialog: a description, examples to start from, how many revisions
@@ -89,13 +129,15 @@
     }
     function init(aiApi) {
       ai = aiApi;
+      ai.setDrawer((text, o) => design(text, D.rounds, o));
       const bind = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };
       bind("menu-ai-design", open); bind("btn-ai-design", open);
       bind("btn-design-go", go); bind("btn-design-cancel", () => { $("design-modal").hidden = true; });
+      bind("btn-design-stop", stop);
       const chips = $("design-chips"); if (chips) chips.addEventListener("click", e => { const b = e.target.closest(".ai-chip"); if (b) { $("design-text").value = b.textContent; $("design-text").focus(); } });
       const m = $("design-modal"); if (m) m.addEventListener("keydown", e => { if (e.key === "Escape") m.hidden = true; else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) go(); });
     }
-    return { init, open, design, system };
+    return { init, open, design, system, stop };
   }
   root.CadDesign = CadDesign;
 })(window);

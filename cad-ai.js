@@ -93,7 +93,11 @@
       + "You help the user understand and improve the circuit on their sheet and use the app. Each question comes with the current circuit: its parts with designators and values, which net each pin is on, "
       + "the simulated DC and AC voltages, each tube's and transistor's operating point against its ratings, and the app's Checks. Refer to parts by their designators (R7, VL1.1) and give values with units. "
       + "Be practical and concise: short paragraphs and lists, no filler. When a number comes from the simulation say so; when the simulation is missing, say what to do (add a ground, press Simulate). "
-      + "For questions about using the app, rely on the manual below and name the exact menus, buttons and keys; do not invent features the manual does not describe.";
+      + "For questions about using the app, rely on the manual below and name the exact menus, buttons and keys; do not invent features the manual does not describe.\n\n"
+      + "The app draws circuits itself. When the user asks you to draw, design, build, create or make a circuit, stage or amplifier, never write steps for doing it by hand: answer with exactly one line, "
+      + "[[DRAW]] followed by a complete description of the circuit to draw (tubes, supply, load, power, gain, what the user asked for), and nothing else. "
+      + "When the user asks to change the circuit on the sheet by adding, removing or replacing stages or parts, answer with exactly one line, [[EDIT]] followed by the change to make, and nothing else. "
+      + "The app then designs the circuit, draws it on the sheet and simulates it. Questions, explanations and small value changes are answered in prose as usual.";
 
     // -------------------------------------------------------------------------
     // Conversation
@@ -102,18 +106,43 @@
     function show() { toggleBom(true, "ai"); }
     // a request to the provider in use; the Stop button aborts it
     // (live: the answer is prose, shown while it is written)
-    let paint = 0;
+    // (live as a function: it gets the answer so far instead, e.g. the design drawn while it is written)
+    let paint = 0, tick = 0;
     async function call(req, what, live) {
       AI.cfg = AiClient.load();
-      if (live) req = Object.assign({}, req, { onText: t => { if (!AI.busy) return; AI.busy.partial = t; if (!paint) paint = setTimeout(() => { paint = 0; render(); }, 120); } });
+      if (typeof live === "function") req = Object.assign({}, req, { onText: t => { if (AI.busy) live(t); } });
+      else if (live) req = Object.assign({}, req, { onText: t => { if (!AI.busy) return; AI.busy.partial = hidden(t) ? "" : t; if (!paint) paint = setTimeout(paintPartial, 200); } });
       if (needKey()) throw Object.assign(new Error("no key"), { quiet: true });
       const ctl = typeof AbortController === "function" ? new AbortController() : null;
       AI.busy = { what, ctl, t0: Date.now() }; render();
+      // the seconds tick in the busy line: the page is alive while the model thinks
+      clearInterval(tick); tick = setInterval(() => { const el = document.querySelector("#ai-log .ai-busy-t"); if (el && AI.busy) el.textContent = Math.round((Date.now() - AI.busy.t0) / 1000) + " s"; }, 1000);
       setStatus("busy", `${what} · asking ${AiClient.label(AI.cfg)}…`);
       try { const text = await AiClient.chat(AI.cfg, req, null, ctl && ctl.signal); setStatus("ok", `${what}: answered by ${AiClient.label(AI.cfg)} in ${((Date.now() - AI.busy.t0) / 1000).toFixed(1)} s`); return text; }
       catch (e) { if (e.name === "AbortError") { setStatus("idle", `${what}: stopped`); throw Object.assign(new Error("stopped"), { quiet: true }); } setStatus("error", `${what}: ${e.message}`); throw e; }
-      finally { AI.busy = null; render(); }
+      finally { AI.busy = null; clearInterval(tick); clearTimeout(paint); paint = 0; render(); }
     }
+    // the answer written so far: only its own block is drawn again, not the whole conversation
+    function paintPartial() {
+      paint = 0; if (!AI.busy) return;
+      const log = $("ai-log"), el = log && log.querySelector(".ai-partial");
+      if (!el || !AI.busy.partial) { render(); return; }
+      const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+      el.innerHTML = A.markdown(AI.busy.partial, AI.busy.refs || (AI.busy.refs = refs()));
+      const w = log.querySelector(".ai-busy-verb"); if (w) w.textContent = "writing";
+      if (atEnd) log.scrollTop = log.scrollHeight;
+    }
+    // a line under the busy one: what the request is doing now (drawing 12 parts…)
+    function progress(text) {
+      if (!AI.busy) return;
+      AI.busy.note = text;
+      const el = document.querySelector("#ai-log .ai-busy-note"); if (el) el.textContent = text; else render();
+    }
+    function stop() { if (AI.busy && AI.busy.ctl) AI.busy.ctl.abort(); }
+    // an answer that asks the CAD to draw: not shown as prose
+    const DRAW_RX = /^\s*\[\[(DRAW|EDIT)\]\]\s*([\s\S]*)$/;
+    const hidden = t => /^\s*\[\[?/.test(t) && (DRAW_RX.test(t) || /^\s*\[\[?[A-Z]{0,4}$/.test(t));
+    let drawer = null;   // cad-design.js: draws what the assistant was asked to draw
     // no key for the provider in use: say how to add one (true), before anything is asked
     function needKey() {
       AI.cfg = AiClient.load();
@@ -138,6 +167,9 @@
       try {
         const system = SYSTEM + "\n\n# The manual (help.html)\n" + await manual();
         const text = await call({ system, messages: msgs }, shown || "Assistant", true);
+        // asked to draw: the assistant hands the job to Design, which draws it on the sheet
+        const d = DRAW_RX.exec(text);
+        if (d && drawer) { add({ kind: "note", text: `Drawing it on the sheet: ${d[2].trim()}` }); await drawer(d[2].trim(), { edit: d[1] === "EDIT", asked: question }); return; }
         add({ kind: "answer", text });
       } catch (e) { fail(e); }
     }
@@ -225,8 +257,9 @@
           + (AiClient.ready(AI.cfg) ? "" : ` It needs your own API key for Claude, ChatGPT or Gemini: <a href="#" data-settings="1">AI settings…</a>`) + `</div>`
           + `<div class="ai-chips">${["Explain my circuit", "Fix the checks", "Why does the output stage run so hot?", "How do I measure the output power at 1 % THD?", "How do I add a second sheet?"].map(q => `<button class="btn ai-chip" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>`;
       }
-      if (AI.busy) h += (AI.busy.partial ? `<div class="ai-msg answer">${A.markdown(AI.busy.partial, refs())}</div>` : "")
-        + `<div class="ai-msg busy"><span class="ai-dots"></span> ${esc(AI.busy.what)} · ${esc(AiClient.label(AI.cfg))} is ${AI.busy.partial ? "writing" : "thinking"}… <button class="btn" id="btn-ai-stop">Stop</button></div>`;
+      if (AI.busy) h += (AI.busy.partial ? `<div class="ai-msg answer ai-partial">${A.markdown(AI.busy.partial, AI.busy.refs || (AI.busy.refs = refs()))}</div>` : "")
+        + `<div class="ai-msg busy"><span class="ai-dots"></span> ${esc(AI.busy.what)} · ${esc(AiClient.label(AI.cfg))} is <span class="ai-busy-verb">${AI.busy.partial ? "writing" : "thinking"}</span>… <span class="ai-busy-t">${Math.round((Date.now() - AI.busy.t0) / 1000)} s</span> <button class="btn" id="btn-ai-stop" title="Stop the request (Esc on the sheet while a design is drawn)">Stop</button>`
+        + `<div class="ai-busy-note">${esc(AI.busy.note || "")}</div></div>`;
       log.innerHTML = h;
       log.scrollTop = log.scrollHeight;
       const send = $("btn-ai-send"); if (send) send.disabled = !!AI.busy;
@@ -327,7 +360,7 @@
     const cardActs = {};
     function cardAction(name, fn) { cardActs[name] = fn; }
 
-    return { init, render, ask, explain, fixChecks, apply, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf };
+    return { init, render, ask, explain, fixChecks, apply, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf, progress, stop, setDrawer: fn => { drawer = fn; } };
   }
   root.CadAi = CadAi;
 })(window);
