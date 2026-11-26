@@ -130,7 +130,10 @@ Firefox is not tested.
   - ask about the circuit or the app; the model sees the parts, nets,
     simulated voltages, operating points and Checks, and the manual;
   - *Design from a description*: the model designs the circuit, the CAD
-    draws and simulates it and sends the Checks back for revisions;
+    draws it on the sheet live, part by part while the answer is written
+    (Stop or Esc puts the old circuit back), simulates it and sends the
+    Checks back for revisions; asking the assistant to "draw me …" or to
+    add a stage to the sheet's circuit draws it the same way;
   - *Tube from a datasheet*: a PDF read into ratings, pinout and a Koren
     model fitted to its plate curves, reviewed before it joins the library;
   - *Explain my circuit*, stage by stage;

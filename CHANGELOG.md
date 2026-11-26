@@ -6,7 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [3.262.0] - 2026-11-26
+## [3.263.0] - 2026-11-26
 
 ### Added
 - **AI ▾ → Find a fault…: what is wrong with the amplifier you built.** Type the DC voltages measured on the real
@@ -18,6 +18,27 @@ and the project uses [Semantic Versioning](https://semver.org/).
   is a match) and names the test point to measure next, where the leading faults disagree most. No key is needed for
   that; with an AI key the AI also writes the diagnosis: the likely fault and why, what else reads the same, how to
   confirm it with the power off. Example 14 with R9 open: R9 open ranks first from six readings in about a second.
+
+## [3.262.0] - 2026-11-26
+
+### Added
+- **The AI draws its design on the sheet live.** AI ▾ → Design from a description puts each part on
+  the sheet as soon as the model has finished writing it, instead of a blank wait and a finished
+  drawing at the end. A bar over the sheet says what is happening ("Design: drawing “SE 2A3” · 14
+  parts so far") with a Stop button, the AI tab counts the seconds while the model thinks, and the
+  sheet only pans and zooms while it is drawn. Stop or Esc abandons the request and puts back the
+  circuit you had. The model is asked to write the parts in signal order, rails first.
+- **"Draw me …" in the AI tab draws.** Asking the assistant to draw, design or build a circuit no
+  longer gets a page of instructions: the assistant hands the request to Design, which draws it on
+  the sheet. Asking for a change to the sheet's circuit ("add a 12AU7 cathode follower output")
+  draws the circuit again with the change, from the sheet's own parts and values.
+
+### Fixed
+- **The app froze while an AI answer was written.** A table row cut off mid-line (or a row written
+  without its closing bar) made the answer formatter loop forever, filling memory until the page
+  hung; streamed answers hit it whenever the model wrote a table. Such a line is now shown as text.
+  Answers being written also redraw only their own block, not the whole conversation, four times a
+  second.
 
 ## [3.261.0] - 2026-11-26
 

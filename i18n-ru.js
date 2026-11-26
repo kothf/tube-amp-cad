@@ -340,8 +340,8 @@
     "The AI features use your own API key. Pick a provider, paste its key and choose a model. The key is kept in this browser only and is sent only to that provider; the circuit you ask about goes with each question. The provider bills your account for what you ask. Auto-tune works without a key.":
       "ИИ-функции работают с вашим собственным ключом API. Выберите провайдера, вставьте ключ и выберите модель. Ключ хранится только в этом браузере и отправляется только этому провайдеру; схема, о которой вы спрашиваете, уходит вместе с вопросом. Провайдер выставляет счёт на ваш аккаунт. Автоподбор работает без ключа.",
     "Design from a description": "Схема по описанию",
-    "Describe the amplifier or stage: tubes, output power, load, supply, gain, anything you care about. The AI designs it from the library's parts, the CAD draws it on a new sheet and simulates it, and if the Checks find problems they go back to the AI for a revision. It replaces the circuit on the sheet (Ctrl+Z brings it back). Uses your AI key.":
-      "Опишите усилитель или каскад: лампы, выходную мощность, нагрузку, питание, усиление — всё, что важно. ИИ спроектирует его из деталей библиотеки, САПР нарисует его на новом листе и рассчитает, а если проверки найдут проблемы, они уйдут ИИ на доработку. Схема на листе заменяется (Ctrl+Z вернёт её). Использует ваш ключ ИИ.",
+    "Describe the amplifier or stage: tubes, output power, load, supply, gain, anything you care about. The AI designs it from the library's parts, the CAD draws it on a new sheet while the AI writes it (Stop or Esc puts your circuit back) and simulates it, and if the Checks find problems they go back to the AI for a revision. It replaces the circuit on the sheet (Ctrl+Z brings it back). Uses your AI key.":
+      "Опишите усилитель или каскад: лампы, выходную мощность, нагрузку, питание, усиление — всё, что важно. ИИ спроектирует его из деталей библиотеки, САПР нарисует его на новом листе прямо по ходу ответа ИИ (Стоп или Esc возвращает вашу схему) и рассчитает, а если проверки найдут проблемы, они уйдут ИИ на доработку. Схема на листе заменяется (Ctrl+Z вернёт её). Использует ваш ключ ИИ.",
     "Send the Checks back for up to two revisions": "Отправлять проверки на доработку (до двух раз)",
     "Tube from a datasheet": "Лампа по даташиту", "Datasheet": "Даташит", "Tube name": "Название лампы", "Read datasheet": "Прочитать даташит",
     "Pick a tube's datasheet (PDF). The AI reads its ratings, heater, pinout and points along the plate curves; a Koren model is fitted to the points and shown against them. Review it in the AI tab, then add the tube to the library. The PDF goes to your AI provider; uses your AI key.":
@@ -578,7 +578,7 @@
     "Excel workbook": "Книга Excel",
     "A4 landscape": "A4 альбомная",
     "The AI provider and model in use: change them in AI settings": "Используемые провайдер ИИ и модель: меняются в настройках ИИ",
-    "Ask about this circuit or how to do something in the app… (Enter sends, Shift+Enter: new line)": "Спросите об этой схеме или о том, как что-то сделать в программе… (Enter — отправить, Shift+Enter — новая строка)",
+    "Ask about this circuit or how to do something in the app, or say “draw me …”  (Enter sends, Shift+Enter: new line)": "Спросите об этой схеме или о том, как что-то сделать в программе, или скажите «нарисуй …» (Enter — отправить, Shift+Enter — новая строка)",
     "Anthropic's Claude": "Claude от Anthropic",
     "OpenAI's GPT models": "Модели GPT от OpenAI",
     "Google's Gemini": "Gemini от Google",
@@ -1998,6 +1998,8 @@
     "Layers": "Слои",
     "Ratsnest": "Связи",
     "Stop": "Стоп",
+    "Stop the AI and bring back the circuit you had (Esc)": "Остановить ИИ и вернуть прежнюю схему (Esc)",
+    "Stop the request (Esc on the sheet while a design is drawn)": "Остановить запрос (Esc на листе, пока рисуется проект)",
     "Clearances": "Зазоры",
     "Tracks": "Дорожки",
     "Pads": "Площадки",
@@ -3216,6 +3218,11 @@
     [/^(\S+)(?: \((.+)\))?: (body|junction) (.+? °C) with (.+? W) in it \(at (.+?) °C ambient\), over its (\d+) °C(.*)$/,
       (m, ref, val, k, t, w, amb, lim, rest) => `${ref}${val ? ` (${val})` : ""}: ${k === "body" ? "корпус" : "переход"} ${t} при ${w} в нём (при ${amb} °C вокруг), выше его ${lim} °C` +
         ({ " even on the assumed heatsink": " даже на предполагаемом радиаторе", "; it needs a heatsink or more copper": "; нужен радиатор или больше меди", "; fit a larger part or share the heat between two": "; поставьте деталь крупнее или поделите тепло между двумя" }[rest] || rest)],
+    // the bar over the sheet while the AI draws a design
+    [/^(Design(?: · revision \d| · corrected)*(?: · corrected)?): drawing (?:“(.+)” · )?(\d+) parts? so far$/, (m, w, t, n) => `${ruDesignWhat(w)}: рисую ${t ? `«${t}» · ` : ""}деталей пока ${n}`],
+    [/^(Design(?: · revision \d| · corrected)*): the AI is writing \(([\d.]+) kB\)…$/, (m, w, kb) => `${ruDesignWhat(w)}: ИИ пишет (${kb} КБ)…`],
+    [/^(Design(?: · revision \d| · corrected)*): waiting for the AI…$/, (m, w) => `${ruDesignWhat(w)}: ждём ИИ…`],
   ];
+  function ruDesignWhat(w) { return w.replace(/^Design/, "Проект").replace(/ · revision (\d)/, " · доработка $1").replace(/ · corrected/, " · исправленный"); }
   root.I18N_RU = { text, patterns };
 })(window);
