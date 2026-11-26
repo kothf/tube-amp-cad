@@ -48,6 +48,7 @@
     clearEpoxy: { name: "Epoxy, clear", k: 0.2, density: 1.15, cp: 1100, emis: 0.9, cat: "plastic" },
     film: { name: "Polypropylene film in epoxy", k: 0.25, density: 1.1, cp: 1700, emis: 0.9, cat: "plastic" },
     silicon: { name: "Silicon", k: 148, density: 2.33, cp: 705, emis: 0.6, cat: "other" },
+    solder: { name: "Solder (SAC305)", k: 58, density: 7.4, cp: 232, emis: 0.1, cat: "other" },
     plastic: { name: "Nylon PA66-GF30", k: 0.35, density: 1.36, cp: 1500, emis: 0.9, cat: "plastic" },
     pvc: { name: "PVC insulation", k: 0.19, density: 1.4, cp: 1000, emis: 0.9, cat: "plastic" },
     // inside an electrolytic: the wound foil and paper soaked in electrolyte (one isotropic value: across the
@@ -537,6 +538,30 @@
     let z = 0; sol.forEach(x => x.verts.forEach(v => { z = Math.max(z, v[2] - t); }));
     return +z.toFixed(2);
   }
+  /** The solder joints of a part drawn by partBodies at the origin (place 0, 0, rot 0, side F): for each drilled pad
+      with a lead in it, the solder filling the hole round the lead (from the board's bottom, z 0, to its top, z t) and
+      the fillet under the board on the pad. They join the lead to the hole wall and the pad, so a tool that finds its own
+      heat paths (MöbiusCAD) gets the lead's heat into the board by conduction. In that frame a pad (x, y) is at (x, −y). */
+  function solderJoints(g, solids, t) {
+    const out = [], pads = (g.fp && g.fp.pads) || [], fillet = 0.4;
+    pads.forEach(p => {
+      if (p.smd || !(p.drill > 0)) return;
+      const X = p.x, Y = -p.y, rh = p.drill / 2;
+      // the lead standing in this hole: a round solid along z, centred on the pad, reaching under the board
+      let ri = 0;
+      solids.forEach(s => {
+        const r = s.round; if (!r || Math.abs(Math.abs(r.a[2]) - 1) > 1e-6 || r.holes && r.holes.length) return;
+        if (Math.hypot(r.o[0] - X, r.o[1] - Y) > 0.02) return;
+        const z0 = Math.min(r.o[2], r.o[2] + r.a[2] * r.h), z1 = Math.max(r.o[2], r.o[2] + r.a[2] * r.h);
+        if (z0 < -0.01 && z1 > t - 0.01) ri = Math.max(ri, r.outer[0].r);
+      });
+      if (!(ri > 0) || ri > rh - 0.02) return;
+      const rp = Math.max(rh + 0.25, Math.min(p.w || 0, p.h || 0) / 2), id = { mat: "solder", solder: true };
+      out.push(tube("z", X, Y, rh, ri, 0, t, C.lead, q => q, Object.assign({}, id)));
+      out.push(tube("z", X, Y, rp, ri, -fillet, 0, C.lead, q => q, Object.assign({}, id)));
+    });
+    return out;
+  }
   function partBodies(g, t, opts) {
     const fp = g.fp, name = fp.name, P = g.place, out = [], side = P.side === "B" ? "B" : "F";
     const to0 = ([x, y, z]) => { const [X, Y] = B().place([x, y], P); return [X, -Y, side === "B" ? -z : t + z]; };
@@ -999,5 +1024,5 @@
     if ((m = /^SNAPIN-D(\d+)$/.exec(n))) return { kind: "can", d: +m[1], h: SNAPIN_H[+m[1]] || +m[1] * 1.6 };
     return null;
   }
-  root.Board3D = { scene, step, MATERIALS, matKey, FACE_KEYS, dieR, partBodies, boardSolid, preview, standardBody, triangles, COLORS: C, TUBE, BODY_PACKAGES, BODY_COLORS, BODY_SHAPES, defaultBody, bodyTidy, bodyHeight, outlineLoop };
+  root.Board3D = { scene, step, MATERIALS, matKey, FACE_KEYS, dieR, partBodies, solderJoints, boardSolid, preview, standardBody, triangles, COLORS: C, TUBE, BODY_PACKAGES, BODY_COLORS, BODY_SHAPES, defaultBody, bodyTidy, bodyHeight, outlineLoop };
 })(typeof window !== "undefined" ? window : globalThis);
