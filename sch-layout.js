@@ -398,20 +398,25 @@
   }
 
   // the cheapest way from a pin (leaving the way it faces) to any cell of its net already drawn
-  function search(g, net, start, sd, isTarget, limit) {
-    const COST = { step: 1, bend: 6, cross: 14, text: 25, near: 1, beside: 3, four: 40 };
+  function search(g, net, start, sd, isTarget, limit, tgt) {
+    const COST = { step: 1, bend: 60, cross: 14, text: 25, near: 1, beside: 3, four: 40 };
     const N = g.N, best = new Float64Array(N * 4).fill(Infinity), prev = new Int32Array(N * 4).fill(-1);
     // binary heap of [f, state]
     const heap = [], push = (f, s) => { heap.push([f, s]); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
     const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
-    const s0 = start * 4 + sd; best[s0] = 0; push(0, s0);
     const W = g.W, step = [1, W, -1, -W];
+    // A*: the steps to the box round what is drawn of the net is the least a way can still cost
+    let bx1 = Infinity, by1 = Infinity, bx2 = -Infinity, by2 = -Infinity;
+    (tgt || []).forEach(c => { const x = c % W, y = (c - x) / W; bx1 = Math.min(bx1, x); bx2 = Math.max(bx2, x); by1 = Math.min(by1, y); by2 = Math.max(by2, y); });
+    const hOf = tgt && tgt.length ? c => { const x = c % W, y = (c - x) / W; return Math.max(0, bx1 - x, x - bx2) + Math.max(0, by1 - y, y - by2); } : () => 0;
+    const s0 = start * 4 + sd; best[s0] = 0; push(hOf(start), s0);
     const near = c => { for (let d = 0; d < 4; d++) { const e = c + step[d]; if (e >= 0 && e < N && g.body[e]) return true; } return false; };
     let pops = 0;
     while (heap.length) {
-      const [, s] = pop(), c = s >> 2, d = s & 3, gc = best[s];
+      const [f, s] = pop(), c = s >> 2, d = s & 3, gc = best[s];
       if (++pops > 400000) break;
-      if (gc > limit) break;
+      if (f > limit + 4 * COST.bend) break;
+      if (f > gc + hOf(c)) continue;
       if (c !== start && isTarget(c)) {
         const cells = []; let t = s; while (t >= 0) { cells.push(t >> 2); t = prev[t]; }
         return { cells: cells.reverse(), cost: gc };
@@ -444,7 +449,7 @@
           if ((s1 >= 0 && along[s1] >= 0 && along[s1] !== net) || (s2 < N && along[s2] >= 0 && along[s2] !== net)) cost += COST.beside;
         }
         const s2i = c2 * 4 + d2, ng = gc + cost;
-        if (ng < best[s2i]) { best[s2i] = ng; prev[s2i] = s; push(ng, s2i); }
+        if (ng < best[s2i]) { best[s2i] = ng; prev[s2i] = s; push(ng + hOf(c2), s2i); }
       }
     }
     return null;
@@ -480,6 +485,11 @@
       const a = place(parts, kinds, { seed: seed + attempt * 7919 + r * 104729, prev: opts.prev, effort: opts.effort, t0: undefined });
       if (!at || a.cost < at.cost) at = a;
     }
+    const out0 = route(at);
+    return opts.prev ? out0 : straighten(parts, at, out0, route);
+
+    // the wires, symbols and labels for the parts where they stand
+    function route(at) {
     const out = { comps: [], wires: [], places: {}, labels: [], open: [] };
 
     // the oscilloscope (instruments) beside the drawing, at its top right
@@ -668,13 +678,13 @@
         const pts = [...cells].map(c => g.xy(c));
         wired.forEach((q, t) => { const d = Math.min(...pts.map(([x, y]) => Math.abs(x - q.x) + Math.abs(y - q.y))); if (d < bd) { bd = d; k = t; } });
         const q = wired.splice(k, 1)[0], start = g.at(q.x, q.y);
-        const r = bd > LONG ? null : search(g, id, start, dirIdx(q.dx, q.dy), isTarget, Math.max(120, (bd / G) * 3 + 60));
+        const r = bd > LONG ? null : search(g, id, start, dirIdx(q.dx, q.dy), isTarget, Math.max(120, (bd / G) * 3 + 60), [...cells]);
         const crosses = r ? r.cells.filter(c => (g.h[c] >= 0 && g.h[c] !== id) || (g.v[c] >= 0 && g.v[c] !== id)).length : 0;
         if (r && r.cells.length * G <= LONG && crosses <= 3) { lay(g, id, r.cells, out.wires); r.cells.forEach(c => cells.add(c)); continue; }
         // two labels: one on what is drawn of the net (once), one at the pin
         if ((labelled.has(sn.net) || hangLabel(sn, cells)) && pinLabel(q, sn.net)) { needLabel.add(sn.net); continue; }
         // no room for labels: a wire however long
-        const r2 = search(g, id, start, dirIdx(q.dx, q.dy), isTarget, Infinity);
+        const r2 = search(g, id, start, dirIdx(q.dx, q.dy), isTarget, Infinity, [...cells]);
         if (r2) { lay(g, id, r2.cells, out.wires); r2.cells.forEach(c => cells.add(c)); } else out.open.push(sn.net);
       }
       // instruments' pins: always a label
@@ -696,6 +706,68 @@
       addComp(p.type, params, at[i].x, at[i].y, at[i].rot, p.ref);
       out.places[p.ref] = { x: at[i].x, y: at[i].y, o: at[i].o };
     });
+    return out;
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Straight wires: a wire that steps aside a little on its way (two bends close together) is
+  // straightened by moving the part at one end of it in line, and the drawing is wired again; a
+  // move is kept when the drawing has fewer bends and no more labels, crossings or open nets
+  // ---------------------------------------------------------------------------------------------
+  function shapeOf(o) {
+    const out = { bends: 0, jogs: [], cross: 0 }, deg = new Map(), k = (x, y) => x + "," + y;
+    const add = (x, y, d, w) => { let e = deg.get(k(x, y)); if (!e) deg.set(k(x, y), e = { h: [], v: [] }); e[d].push(w); };
+    o.wires.forEach(w => { const d = w.y1 === w.y2 ? "h" : "v"; add(w.x1, w.y1, d, w); add(w.x2, w.y2, d, w); });
+    const pins = new Map();
+    o.comps.forEach((c, n) => { if (!c.label) return; const s = shape({ type: c.type, params: c.params, ref: c.label }, c.rot, c.params.flip === "yes"); s.pins.forEach(q => pins.set(k(c.x + q.x, c.y + q.y), c.label)); });
+    const corner = (x, y) => { const e = deg.get(k(x, y)); return e && e.h.length === 1 && e.v.length === 1 && !pins.has(k(x, y)) ? e : null; };
+    deg.forEach((e, key) => { const [x, y] = key.split(",").map(Number); if (corner(x, y)) out.bends++; });
+    o.wires.forEach(w => {
+      const L = Math.abs(w.x2 - w.x1) + Math.abs(w.y2 - w.y1), a = corner(w.x1, w.y1), b = corner(w.x2, w.y2);
+      if (L > 60 || !a || !b) return;
+      // the wires leaving the two bends, and the pins they end on
+      const vert = w.x1 === w.x2, other = (e, x, y) => { const u = (vert ? e.h : e.v)[0]; return u.x1 === x && u.y1 === y ? [u.x2, u.y2] : [u.x1, u.y1]; };
+      const ea = other(a, w.x1, w.y1), eb = other(b, w.x2, w.y2);
+      out.jogs.push({ dx: vert ? 0 : w.x2 - w.x1, dy: vert ? w.y2 - w.y1 : 0, a: pins.get(k(ea[0], ea[1])), b: pins.get(k(eb[0], eb[1])) });
+    });
+    const H = o.wires.filter(w => w.y1 === w.y2), V = o.wires.filter(w => w.x1 === w.x2 && w.y1 !== w.y2);
+    H.forEach(h => V.forEach(v => { if (v.x1 > Math.min(h.x1, h.x2) && v.x1 < Math.max(h.x1, h.x2) && h.y1 > Math.min(v.y1, v.y2) && h.y1 < Math.max(v.y1, v.y2)) out.cross++; }));
+    return out;
+  }
+  function straighten(parts, at, out, route) {
+    const users = new Map(); parts.forEach(p => Object.values(p.pins).forEach(n => users.set(n, (users.get(n) || 0) + 1)));
+    const ix = new Map(parts.map((p, i) => [p.ref, i]));
+    const room = (i, x, y) => { const s = at[i].shape, r = [s.box].concat(s.text ? [s.text] : []); return r.map(b => [x + b[0] - 10, y + b[1] - 10, x + b[2] + 10, y + b[3] + 10]); };
+    const hits = (A, B) => A.some(a => B.some(b => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]));
+    const score = (o, f) => o.open.length * 1e5 + o.labels.length * 400 + f.cross * 60 + f.bends * 25 + f.jogs.length * 40;
+    let f = shapeOf(out), best = score(out, f), tries = 0;
+    // each try wires the whole drawing again: fewer on a big circuit
+    const maxTries = Math.max(24, Math.min(80, Math.round(1800 / Math.max(1, parts.length))));
+    const tried = new Set();
+    for (let round = 0; round < 40 && f.jogs.length && tries < maxTries; round++) {
+      let moved = false;
+      for (const j of f.jogs) {
+        for (const [ref, sg] of [[j.a, 1], [j.b, -1]]) {
+          const i = ix.get(ref); if (i === undefined || INSTR.test(parts[i].type)) continue;
+          // the part alone, or with the two-pin parts hanging off it (they keep their wires straight)
+          const hang = parts.map((p, m) => m).filter(m => m !== i && !INSTR.test(parts[m].type) && Object.keys(parts[m].pins).length === 2 && Object.values(parts[m].pins).some(n => n !== "GND" && users.get(n) <= 3 && Object.values(parts[i].pins).includes(n)));
+          for (const grp of hang.length ? [[i], [i].concat(hang)] : [[i]]) {
+            const key = grp.join("+") + ":" + (at[i].x + sg * j.dx) + "," + (at[i].y + sg * j.dy);
+            if (tried.has(key) || tries >= maxTries) continue; tried.add(key);
+            const inG = new Set(grp);
+            if (grp.some(m => { const r = room(m, at[m].x + sg * j.dx, at[m].y + sg * j.dy); return parts.some((p, q) => !inG.has(q) && !INSTR.test(p.type) && hits(r, room(q, at[q].x, at[q].y))); })) continue;
+            grp.forEach(m => { at[m].x += sg * j.dx; at[m].y += sg * j.dy; }); tries++;
+            const o2 = route(at), f2 = shapeOf(o2), s2 = score(o2, f2);
+            if (s2 < best && o2.open.length <= out.open.length && o2.labels.length <= out.labels.length) { out = o2; f = f2; best = s2; moved = true; break; }
+            grp.forEach(m => { at[m].x -= sg * j.dx; at[m].y -= sg * j.dy; });
+          }
+          if (moved) break;
+        }
+        if (moved || tries >= maxTries) break;
+      }
+      if (!moved) break;
+    }
     return out;
   }
 

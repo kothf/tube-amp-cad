@@ -132,7 +132,8 @@ Firefox is not tested.
   - *Design from a description*: the model designs the circuit, the CAD
     draws it on the sheet live, part by part while the answer is written
     (Stop or Esc puts the old circuit back), the way a person draws a
-    schematic: stages left to right in columns joined by real wires,
+    schematic: stages left to right in columns joined by straight wires
+    with few bends,
     supplies as rail symbols on top, one ground line along the bottom, net
     labels only for far connections and the scope, simulates it and sends the
     Checks back for revisions; asking the assistant to "draw me …" or to

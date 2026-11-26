@@ -21,6 +21,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   polish pass, seeded from the netlist, so the same circuit always draws the same; routing is A* on the 10-unit
   grid. Every pin is joined exactly as in the netlist (checked on all 20 examples redrawn from their netlists).
   The live drawing keeps the parts already drawn in place while the AI writes the rest.
+- Wires with fewer steps: the router pays more for a bend, and a wire that steps aside a little (two bends close
+  together) is straightened by moving the part at its end, alone or with the parts hanging off it, in line and
+  wiring again (on the 20 examples: 61 % fewer small steps, a third fewer bends, no more labels).
 - The design prompt asks for a block per part and net names that say what the net is.
 
 ## [3.267.0] - 2026-11-26
