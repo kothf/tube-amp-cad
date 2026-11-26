@@ -26,6 +26,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
   against the rating, the output and its THD beside the circuit as drawn; Use puts one in as one step to undo.
   With an AI key, the AI also says what to re-bias for each, the sound builders report and which to avoid.
 
+### Fixed
+- **AI answers of the build guide, substitutes, voicing, Edit by command and the datasheet fit came back empty
+  with models that always think (Claude Opus 5.5)**: the thinking used up the length limit before any answer was
+  written. These calls now allow 16000 tokens, and if a model still thinks to the limit the log says so plainly.
+
 ## [3.265.0] - 2026-11-26
 
 ### Added

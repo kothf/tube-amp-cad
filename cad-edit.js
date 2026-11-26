@@ -220,7 +220,7 @@
       ai.add({ kind: "user", text: `Edit: ${text}`, prompt: `Edit: ${text}` });
       try {
         const before = circuitIssues();
-        const answer = await ai.call({ system: system(), messages: [{ role: "user", text: `The circuit on the sheet now:\n${ai.describe(true)}\n\nThe change: ${text}` }], maxTokens: 6000 }, "Edit", true);
+        const answer = await ai.call({ system: system(), messages: [{ role: "user", text: `The circuit on the sheet now:\n${ai.describe(true)}\n\nThe change: ${text}` }], maxTokens: 16000 }, "Edit", true);
         const j = root.AiClient.extractJson(answer);
         if (!j || !Array.isArray(j.edits)) throw new Error("The answer has no list of edits.");
         const r = make(j);
