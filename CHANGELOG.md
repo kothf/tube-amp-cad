@@ -6,6 +6,24 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.264.0] - 2026-11-26
+
+### Added
+- **AI ▾ → Design review: the design checked before it is built.** The CAD simulates the circuit (and, for a
+  circuit run from the mains, the power-on transient with the cathodes warming) and lays out what it measured in
+  one sheet, no key needed: every tube's and transistor's voltage, current and dissipation as a percentage of its
+  rating, the parts past their ratings, the ripple on every supply node, the power-on warnings and the Checks.
+  With an AI key the AI reviews the circuit and that sheet as an experienced engineer would: a verdict, findings
+  marked Critical, Warning or Advice with the part and the number behind each, and value changes checked against
+  the parts, ready to apply as Fix the checks has them.
+- **AI ▾ → Schematic from a picture…: a photo or scan of a schematic drawn and simulated.** A magazine page, a hand
+  drawing or a PDF page (chosen, dropped or pasted, with notes if the picture leaves something out) is transcribed
+  by the AI part by part as drawn, in any notation (4k7, 0,1 мк, 6Н2П), checked against the library, drawn on a new
+  sheet and simulated. The card shows the picture beside a table of every value or connection the AI could not read
+  for sure, what it added so the circuit simulates (a generator, a load, a scope) and the Checks. Ctrl+Z puts back
+  the circuit you had.
+- The AI tab's More ▾ holds Schematic from a picture, Design review and Find a fault.
+
 ## [3.263.0] - 2026-11-26
 
 ### Added

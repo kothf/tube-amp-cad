@@ -343,6 +343,8 @@
       bind("btn-ai-send", send);
       input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
       bind("btn-ai-explain", explain); bind("btn-ai-fix", fixChecks);
+      // the tab's More ▾: the other AI tools, one button wide so the tab's tools stay on one row
+      const more = $("ai-more-menu"); if (more && root.UiKit) UiKit.menus(more.parentElement);
       bind("ai-who", openSettings); bind("btn-ai-clear", () => { if (AI.busy && AI.busy.ctl) AI.busy.ctl.abort(); AI.log = []; render(); });
       const tuneTab = () => toggleBom(true, "tune");
       bind("menu-ai-tune", tuneTab);
@@ -360,7 +362,7 @@
     const cardActs = {};
     function cardAction(name, fn) { cardActs[name] = fn; }
 
-    return { init, render, ask, explain, fixChecks, apply, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf, progress, stop, setDrawer: fn => { drawer = fn; } };
+    return { init, render, ask, explain, fixChecks, apply, check, describe, openSettings, show, call, add, fail, addAction, cardAction, refOf, progress, stop, setDrawer: fn => { drawer = fn; } };
   }
   root.CadAi = CadAi;
 })(window);
