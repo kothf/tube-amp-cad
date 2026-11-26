@@ -791,7 +791,7 @@
       <button class="btn" id="btn-ai" aria-haspopup="true" aria-expanded="false" title="AI: ask about the circuit, explain it, fix the checks, design and tune (your own Claude, ChatGPT or Gemini key)">AI ▾</button>
       <div class="menu-list" role="menu" hidden>
         <button class="menu-item" data-ico="chat" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
-        <button class="menu-item" data-ico="sparkle" role="menuitem" id="menu-ai-design" title="Describe an amplifier; the AI designs it, the CAD draws and simulates it, and the Checks go back for revisions">Design from a description…<kbd>new circuit</kbd></button>
+        <button class="menu-item" data-ico="sparkle" role="menuitem" id="menu-ai-design" title="Describe an amplifier; the AI designs it, the CAD draws it as a person would (stages joined by wires, supplies on top, ground at the bottom) and simulates it, and the Checks go back for revisions">Design from a description…<kbd>new circuit</kbd></button>
         <button class="menu-item" data-ico="pen" role="menuitem" id="menu-ai-edit" title="Say what to change (replace tubes and re-bias, add a grid stopper, bypass a cathode): the AI's edits are made in place, keeping your drawing, as one step to undo">Edit by command…<kbd>change in words</kbd></button>
         <button class="menu-item" data-ico="image" role="menuitem" id="menu-ai-picture" title="A photo or scan of a schematic (a magazine page, a hand drawing, a PDF) read by the AI, drawn on a new sheet and simulated, with the values it was unsure of marked for you to check">Schematic from a picture…<kbd>photo → circuit</kbd></button>
         <button class="menu-item" data-ico="bulb" role="menuitem" id="menu-ai-explain" title="What the circuit is and what each stage and part does">Explain my circuit<kbd>stage by stage</kbd></button>
@@ -1108,7 +1108,7 @@
   <div class="modal" id="design-modal" hidden>
     <div class="modal-box" style="width: min(620px, 94vw)">
       <div class="insp-title">Design from a description</div>
-      <p class="insp-help">Describe the amplifier or stage: tubes, output power, load, supply, gain, anything you care about. The AI designs it from the library's parts, the CAD draws it on a new sheet while the AI writes it (Stop or Esc puts your circuit back) and simulates it, and if the Checks find problems they go back to the AI for a revision. It replaces the circuit on the sheet (Ctrl+Z brings it back). Uses your AI key.</p>
+      <p class="insp-help">Describe the amplifier or stage: tubes, output power, load, supply, gain, anything you care about. The AI designs it from the library's parts, the CAD draws it on a new sheet while the AI writes it, the way a person draws a schematic: stages left to right joined by wires, supplies on top, one ground line (Stop or Esc puts your circuit back), and simulates it, and if the Checks find problems they go back to the AI for a revision. It replaces the circuit on the sheet (Ctrl+Z brings it back). Uses your AI key.</p>
       <textarea id="design-text" class="ai-design-text" rows="5" placeholder="e.g. A single-ended EL84 amplifier, about 4 W into 8 Ω, with a 12AX7 driver and 300 V B+"></textarea>
       <div class="ai-chips" id="design-chips"></div>
       <label class="tune-check"><input type="checkbox" id="design-revise" checked> Send the Checks back for up to two revisions</label>
@@ -1506,6 +1506,7 @@
   <script src="ai-circuit.js?v=dev"></script>
   <script src="cad-ai.js?v=dev"></script>
   <script src="cad-tune.js?v=dev"></script>
+  <script src="sch-layout.js?v=dev"></script>
   <script src="ai-design.js?v=dev"></script>
   <script src="cad-design.js?v=dev"></script>
   <script src="ai-datasheet.js?v=dev"></script>

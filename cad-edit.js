@@ -176,7 +176,10 @@
         const bad = [...want].filter(n => !ensureName(n, N, added, log));
         bad.forEach(n => skipped.push(`net ${n}: no free place for a connector, so its new pins end in a connector of their own`));
         if (ok.length) {
-          const out = root.AiDesign.layout({ parts: ok, rails: new Map() });
+          // drawn as a person draws (wires between the new parts); a net that is on the sheet already,
+          // or that only one new pin is on, ends in a connector of its name at each pin
+          const uses = new Map(); ok.forEach(p => Object.values(p.pins).forEach(n => uses.set(n, (uses.get(n) || 0) + 1)));
+          const out = root.AiDesign.layout({ parts: ok, rails: new Map() }, { external: new Set([...want].filter(n => String(n).toUpperCase() !== "GND" && (N.byName.has(String(n).toUpperCase()) || uses.get(n) < 2))) });
           const xs = out.comps.map(o => o.x).concat(out.wires.flatMap(w => [w.x1, w.x2])), ys = out.comps.map(o => o.y).concat(out.wires.flatMap(w => [w.y1, w.y2]));
           const [ox, oy] = room(Math.min(...xs) - 60, Math.min(...ys) - 30, Math.max(...xs) + 60, Math.max(...ys) + 30);
           const labels = new Set(S.comps.map(c => c.label));
