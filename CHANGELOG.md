@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.261.0] - 2026-11-26
+
+### Fixed
+- **MöbiusCAD export: SMD power parts ran 30 K hot in MöbiusCAD.** In SOT-89, SOT-223, DPAK and D2PAK the tab's frame
+  stopped half a millimetre under the moulding, so the die sat in epoxy and its heat crossed the plastic to reach the
+  tab (example 18's BD139s: 99–105 °C in MöbiusCAD against 65–74 °C). The frame now runs on under the moulding past its
+  middle, with the die on it, as in the real part.
+- **MöbiusCAD export: a metal can's junction (TO-18, TO-1, TO-5, MP) read about 10 K cooler in MöbiusCAD** than the
+  thermal map, because a small die on a kovar header alone conducts better than the datasheet's junction to case.
+  The die now sits on a die-attach layer (silver epoxy, 2 W/m·K) as thick as makes the junction to case the
+  datasheet's; with no rating there is none. Its body is named "Die attach".
+- Together with MöbiusCAD 1.761.0, where still air conducts across gaps up to 2 mm, a power resistor lying over the
+  board now reads within 4 % of the map's temperature rise in MöbiusCAD (was 13 % hot).
+
 ## [3.260.0] - 2026-11-26
 
 ### Changed

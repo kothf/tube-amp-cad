@@ -36,7 +36,11 @@ The layout follows MöbiusCAD's plan for assemblies that reference part files:
   k 1 W/m·K) over a "Bung" (rubber), an axial one the same lying down; a
   TO-92, SOT-23, SOIC or DIP has a "Frame" (the copper lead-frame paddle)
   with the "Die" on it inside its moulding, and a metal can (TO-18, TO-1,
-  TO-5, MP) is hollow with the "Die" on its header; a transformer's winding sits beside its
+  TO-5, MP) is hollow with the "Die" on its header, on a "Die attach" layer
+  (silver epoxy, k 2 W/m·K) as thick as makes the junction to case the
+  datasheet's (none when the part has no rating; since 3.261.0). In
+  SOT-89/SOT-223/DPAK/D2PAK the tab's frame runs on under the moulding past
+  its middle, so the die sits on copper, not epoxy (3.261.0); a transformer's winding sits beside its
   core, not through it. A part is
   drawn in its footprint's own frame and placed by its component's transform,
   so equal parts (every 12AX7, every 1k 5 W resistor) share one file; a part drawn the same but of

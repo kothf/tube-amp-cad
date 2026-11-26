@@ -47,6 +47,7 @@
     epoxy: { name: "Epoxy moulding compound", k: 0.7, density: 1.9, cp: 900, emis: 0.9, cat: "plastic" },
     clearEpoxy: { name: "Epoxy, clear", k: 0.2, density: 1.15, cp: 1100, emis: 0.9, cat: "plastic" },
     film: { name: "Polypropylene film in epoxy", k: 0.25, density: 1.1, cp: 1700, emis: 0.9, cat: "plastic" },
+    attach: { name: "Die attach (silver epoxy)", k: 2, density: 3.2, cp: 600, emis: 0.9, cat: "other" },
     silicon: { name: "Silicon", k: 148, density: 2.33, cp: 705, emis: 0.6, cat: "other" },
     solder: { name: "Solder (SAC305)", k: 58, density: 7.4, cp: 232, emis: 0.1, cat: "other" },
     plastic: { name: "Nylon PA66-GF30", k: 0.35, density: 1.36, cp: 1500, emis: 0.9, cat: "plastic" },
@@ -278,14 +279,28 @@
   }
   /** a metal can (TO-18, TO-5…): its header, the die on it, the gas sealed round it, the can's wall and top
       (the gas is a body, so nothing takes the inside of the can for a surface open to the air) */
-  function canBody(r, rh, z0, zh, z1, mat, to, dw) {
+  function canBody(r, rh, z0, zh, z1, mat, to, dw, g) {
     const t = Math.min(0.3, r * 0.1), ri = r - t, n = sides(ri), GAS = { mat: "gas", inner: true };
-    const ring = holedPrism("z", circle(ri, n), [rect(-dw / 2, -dw / 2, dw / 2, dw / 2)], zh, zh + DIE_T, C.glass, to); Object.assign(ring, GAS, { alpha: 0 });
-    return [cylZ(0, 0, rh, z0, zh, C.metal, to, { mat, main: true, cover: ["z2"] }), tubeZ(0, 0, r, ri, zh, z1 - t, C.metal, to, { mat, cover: ["holes"] }), cylZ(0, 0, r, z1 - t, z1, C.metal, to, { mat, cover: ["z1"] }),
-      box(-dw / 2, -dw / 2, dw / 2, dw / 2, zh, zh + DIE_T, C.die, to, DIE), ring, cylZ(0, 0, ri, zh + DIE_T, z1 - t, C.glass, to, { ...GAS, alpha: 0 })];
+    // the die sits on its attach layer, as thick as makes the junction to case the part's datasheet one (FR-TBRD-003):
+    // a small die on a steel header alone conducts better than the rating says
+    const ta = attachT(g, dw, MATERIALS[mat] && MATERIALS[mat].k), zd = zh + ta;
+    const ring = holedPrism("z", circle(ri, n), [rect(-dw / 2, -dw / 2, dw / 2, dw / 2)], zh, zd + DIE_T, C.glass, to); Object.assign(ring, GAS, { alpha: 0 });
+    const out = [cylZ(0, 0, rh, z0, zh, C.metal, to, { mat, main: true, cover: ["z2"] }), tubeZ(0, 0, r, ri, zh, z1 - t, C.metal, to, { mat, cover: ["holes"] }), cylZ(0, 0, r, z1 - t, z1, C.metal, to, { mat, cover: ["z1"] }),
+      box(-dw / 2, -dw / 2, dw / 2, dw / 2, zd, zd + DIE_T, C.die, to, DIE), ring, cylZ(0, 0, ri, zd + DIE_T, z1 - t, C.glass, to, { ...GAS, alpha: 0 })];
+    if (ta > 0) out.push(box(-dw / 2, -dw / 2, dw / 2, dw / 2, zh, zd, C.die, to, ATTACH));
+    return out;
+  }
+  /** the die attach layer's thickness (mm) under a die of side a on a header of conductivity k: what the datasheet's
+      junction to case asks for beyond the die and the spreading into the header (0 with no rating, at most 0.5) */
+  function attachT(g, a, k) {
+    const T = root.BoardThermal, j = g && T && T.junction ? T.junction(g) : null;
+    if (!j || !(j.rjc > 0)) return 0;
+    const more = j.rjc - dieR(a, k);
+    if (!(more > 0)) return 0;
+    return Math.min(0.5, Math.max(0.005, more * MATERIALS.attach.k * a * a * 1e-6 * 1e3));
   }
   // the inner bodies where a part makes its heat: a die on its tab, a wound electrolytic core
-  const DIE = { mat: "silicon", inner: true, heat: true }, DIE_T = 0.25, CORE = { mat: "ecore", inner: true, heat: true };
+  const DIE = { mat: "silicon", inner: true, heat: true }, ATTACH = { mat: "attach", inner: true }, DIE_T = 0.25, CORE = { mat: "ecore", inner: true, heat: true };
   /** junction to case (°C/W) of a square die of side a (mm) soldered on a copper tab: through the silicon,
       25 µm of solder (50 W/m·K) and the spreading into the tab (a disc of the die's area on a thick plate) */
   function dieR(a, k) {
@@ -612,12 +627,12 @@
       pads.forEach(p => lead(p.x, p.y, 2));
     } else if ((m = /^TO-18-/.exec(name))) {
       // the tab beside pin 1, at the lower right seen from the top
-      out.push(...canBody(2.35, 2.75, 1.5, 1.9, 6.6, "kovar", to, 0.6), box(1.8, 1.8, 2.6, 2.6, 1.5, 1.9, C.metal, to, { mat: "kovar" })); pads.forEach(p => lead(p.x, p.y, 1.5));
+      out.push(...canBody(2.35, 2.75, 1.5, 1.9, 6.6, "kovar", to, 0.6, g), box(1.8, 1.8, 2.6, 2.6, 1.5, 1.9, C.metal, to, { mat: "kovar" })); pads.forEach(p => lead(p.x, p.y, 1.5));
     } else if ((m = /^(TO-1|TO-5|MP)-/.exec(name))) {
       // germanium cans: TO-1 tall and slim, TO-5 low and wide, the USSR MP can on its flange
       const r = fp.silk.find(t => t.t === "circle").r, H = { "TO-1": 9, "TO-5": 6.4, MP: 9.5 }[m[1]];
-      if (m[1] === "MP") out.push(...canBody(r * 0.68, r, 1.5, 2.1, 1.5 + H, "metal", to, 1.2));
-      else out.push(...canBody(r * 0.88, r, 1.5, 2, 1.5 + H, "metal", to, 1.2), box(r * 0.62, r * 0.62, r * 0.62 + 0.8, r * 0.62 + 0.8, 1.5, 2, C.metal, to));
+      if (m[1] === "MP") out.push(...canBody(r * 0.68, r, 1.5, 2.1, 1.5 + H, "metal", to, 1.2, g));
+      else out.push(...canBody(r * 0.88, r, 1.5, 2, 1.5 + H, "metal", to, 1.2, g), box(r * 0.62, r * 0.62, r * 0.62 + 0.8, r * 0.62 + 0.8, 1.5, 2, C.metal, to));
       pads.forEach(p => lead(p.x, p.y, 1.5));
     } else if ((m = /^TO-(126|220|247|3P|264)-/.exec(name))) {
       const r = fp.silk.find(s => s.t === "rect"), tab = m[1] !== "126", H = { 126: 11, 220: 9.2, 247: 20.5, "3P": 20, 264: 26 }[m[1]], zb = 2.5;
@@ -803,7 +818,9 @@
     } else if ((m = /^(SOT-89|SOT-223|DPAK|D2PAK)-/.exec(name))) {
       const T = D.TABBED[m[1]], [L, W, H] = T.body, yb = T.py - T.ph / 2 - 0.3, y0 = yb - W;
       // the tab, soldered flat under and behind the body, the die on it inside the moulding; the leads out of the body's front
-      const ty0 = T.ty - T.th / 2 + 0.2, ty1 = Math.min(yb, Math.max(T.ty + T.th / 2 - 0.2, y0 + 0.5)), a = Math.max(y0, ty0), b = Math.min(yb, ty1);
+      // the frame runs on under the moulding past its middle (it carries the die there), so the die's heat reaches the
+      // soldered tab and the board through copper, as in the real part, not through the epoxy
+      const ty0 = T.ty - T.th / 2 + 0.2, ty1 = Math.min(yb - 0.5, Math.max(T.ty + T.th / 2 - 0.2, (y0 + yb) / 2 + 0.9)), a = Math.max(y0, ty0), b = Math.min(yb, ty1);
       const most = Math.min(b - a - 0.4, T.tw - 1, L - 0.6), dw = most > 0.4 ? dieSide(g, { "SOT-89": 1.2, "SOT-223": 1.8, DPAK: 2.5, D2PAK: 3.5 }[m[1]], most) : 0, cy = (a + b) / 2;
       const die = dw > 0.3 ? [-dw / 2, cy - dw / 2, 0.15, dw / 2, cy + dw / 2, 0.15 + DIE_T] : null;
       if (die) out.push(...boxAround([-L / 2, y0, 0.15, L / 2, yb, H], die, C.black, to, null, ["z1"]));

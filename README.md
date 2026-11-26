@@ -1356,7 +1356,9 @@ the circuit file, so one file holds both.
     each part makes its heat in for the thermal study (equal parts, such as every 12AX7 or every 1k ½ W
     resistor, share one file; a part drawn alike but of another value gets its own); `<name>.mcadasm` places them and references
     them by file (path and SHA-256, with a copy of each part inside as the
-    fallback), with solder joints round every lead in its hole and on its
+    fallback; a metal can's die sits on a die-attach layer sized to the
+    datasheet's junction to case, an SMD power part's die on its tab frame),
+    with solder joints round every lead in its hole and on its
     pad so the lead's heat reaches the board by conduction, and carries a
     thermal study made from the thermal map: every part's heat and only the
     heat (MöbiusCAD finds its paths itself: into the board through the
