@@ -28,6 +28,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   with its effect on the sound and the number that moves, checked against the parts and ready to apply. Hear before
   and after renders the Listen clip as the circuit is, keeps it as Before, applies the changes and renders again:
   Listen gets a Before strip and button beside A · Input and B · Circuit, switchable as it plays.
+- **Auto-tune goals in words.** A box at the top of the Tune tab: say what you want ("12 W into the speaker under 2 %
+  THD, VL2 below its rating") and Set goals (or Enter). The AI gets the list of everything the CAD measures, turns
+  the words into goals from it (keys checked, anything it cannot measure left out and said), sets the ratings switch
+  and picks the values to change with their ranges, as AI start does.
 - **Why? on the result tabs.** The Checks, Tolerance, Power, Noise, Sweep, Transient and Listen tabs have a Why?
   button at the right: what the tab shows goes to the AI with the circuit, and the answer, in the AI tab, says what
   causes the result (the parts, the stage, the supply), whether it is good for this kind of circuit and what would

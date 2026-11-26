@@ -326,7 +326,8 @@
       // no goal yet: offer the usual one, more power from the first speaker at no more than 1 % THD
       const sg = startGoals(qs);
       const none = sg ? `<div class="tune-row"><button class="btn" id="btn-tune-goals" title="Adds both goals; change the numbers as you like">+ ${esc(sg.p.label)} ≥ ${esc(fmtEng(sg.w, "W"))} at ${esc(sg.t.label)} ≤ 1 %</button></div>` : `<div class="muted tune-empty">No goal yet.</div>`;
-      let left = `<div class="tune-sec">Goals <span class="muted">what the circuit should reach</span></div>${goals || none}`
+      const words = `<div class="tune-words"><input type="text" id="tune-words" placeholder="Say it in words: 12 W into the speaker under 2 % THD, VL2 below its rating" value="${esc(T.words || "")}" title="What you want from the circuit, in your own words: the AI turns it into the goals below and picks the values to change (uses your AI key)"><button class="btn" id="btn-tune-words" title="Turn the words into goals and values to change (uses your AI key)">Set goals</button></div>`;
+      let left = words + `<div class="tune-sec">Goals <span class="muted">what the circuit should reach</span></div>${goals || none}`
         + `<div class="tune-row"><select class="tol-sel" id="tune-add-g"><option value="">+ Goal…</option>${qOpts("")}</select></div>`
         + `<label class="tune-check"><input type="checkbox" id="tune-ratings"${T.ratings ? " checked" : ""}> Keep every tube and transistor within its ratings</label>`
         + `<div class="tune-sec">Values to change <span class="muted">and the range each may take</span></div>${vars || `<div class="muted tune-empty">None yet.</div>`}`
@@ -375,6 +376,7 @@
       else if (t.id === "btn-tune-suggest") suggest();
       else if (t.id === "btn-tune-goals") { const sg = startGoals(quantities()); if (sg) { T.goals.push({ key: sg.p.key, op: ">=", target: sg.w }, { key: sg.t.key, op: "<=", target: 1 }); render(); } }
       else if (t.id === "btn-tune-apply") apply();
+      else if (t.id === "btn-tune-words") { const w = $("tune-words"); if (w) aiGoals(w.value); }
     }
 
     // AI start: the model picks the values to vary, their ranges and where to begin (cad-ai.js)
@@ -389,9 +391,16 @@
       ai.add({ kind: "user", text: "Auto-tune: AI start", prompt: "Auto-tune: AI start" });
       try {
         const text = await ai.call({ system: AI_SYSTEM, messages: [{ role: "user", text: `The circuit, with each part's editable values as key=value:\n${ai.describe(true)}\n\nThe goals:\n${goals}${T.ratings ? "\nEvery tube and transistor must stay within its ratings." : ""}\n\nWhich values should the optimizer vary, over what ranges, and from where?` }] }, "Auto-tune: AI start");
-        const j = AiClient.extractJson(text), used = [], bad = [];
-        const keep = T.vars; T.vars = [];
-        (Array.isArray(j.variables) ? j.variables : []).forEach(x => {
+        const j = AiClient.extractJson(text), r = takeVars(j.variables);
+        ai.add({ kind: "answer", text: (j.note ? j.note + "\n\n" : "") + r.text });
+        cad.toggleBom(true, "tune"); render();
+      } catch (e) { ai.fail(e); }
+    }
+    // the AI's values to vary: each checked against the parts, its range taken and its start set on the sheet
+    function takeVars(list) {
+      const used = [], bad = [];
+      const keep = T.vars; T.vars = [];
+      (Array.isArray(list) ? list : []).forEach(x => {
           const c = S.comps.find(k => ai.refOf(k) === String(x.part) || k.label === String(x.part)), k = c && knobs().find(q => q.id === c.id && q.key === String(x.field));
           const lo = CadLib.parseEng(String(x.min)), hi = CadLib.parseEng(String(x.max)), st = CadLib.parseEng(String(x.start));
           if (!k || !isFinite(lo) || !isFinite(hi) || lo >= hi) { bad.push(`${x.part} ${x.field}`); return; }
@@ -399,22 +408,58 @@
           if (isFinite(st)) { const t = Object.assign({ type: c.type, params: Object.assign({}, c.params) }); if (A.setValue(t, k.key, Math.max(lo, Math.min(hi, st))).ok) c.params[k.key] = t.params[k.key]; }
           used.push(`${k.label} ${fmtEng(lo, k.unit)}…${fmtEng(hi, k.unit)}${isFinite(st) ? `, from ${fmtEng(Math.max(lo, Math.min(hi, st)), k.unit)}` : ""}`);
         });
-        if (!T.vars.length) T.vars = keep; else commit();
-        ai.add({ kind: "answer", text: (j.note ? j.note + "\n\n" : "") + (used.length ? "Values to change:\n" + used.map(u => "- " + u).join("\n") + "\n\nThe starting values are set on the sheet (Ctrl+Z takes them back). Press **▶ Tune** in the Tune tab." : "No usable values in the answer.") + (bad.length ? `\n\nLeft out (not in the circuit): ${bad.join(", ")}` : "") });
+      if (!T.vars.length) T.vars = keep; else commit();
+      return { n: used.length, text: (used.length ? "Values to change:\n" + used.map(u => "- " + u).join("\n") + "\n\nThe starting values are set on the sheet (Ctrl+Z takes them back). Press **▶ Tune** in the Tune tab." : "No usable values in the answer.") + (bad.length ? `\n\nLeft out (not in the circuit): ${bad.join(", ")}` : "") };
+    }
+
+    // Goals in words: "12 W into the speaker under 2 % THD, VL2 below its rating" turned into the tab's goals
+    // (from the list of what the CAD measures) and the values to change, by the AI
+    const WORDS_SYSTEM = "You turn what the user wants from the simulated circuit, said in words, into goals for the optimizer inside Tube Amp CAD, and pick the values it should vary. "
+      + "Goals: only from the list of measured quantities given (use their keys exactly), each with an operator (>=, <= or =) and a target in the quantity's unit; a plain number, no prefix. Read loose words sensibly: \"clean\" for an amplifier output means THD at most 1 %, \"about\" means =, a power \"at\" a distortion means both goals. "
+      + "Values to vary: usually 2 to 6 part values most likely to reach the goals (bias resistors, loads, feedback resistors, the generator's level when the goal is an output power at a distortion), each with a realistic range and a starting value; only parts and value keys listed in the circuit. "
+      + 'Answer with JSON only: {"note": "one or two sentences: how you read the request and the strategy", "goals": [{"key": "…", "op": ">=", "target": 12}], "ratings": true, "variables": [{"part": "R10", "field": "r", "min": "500", "max": "3k", "start": "1.2k"}], "unclear": "what you could not turn into a goal, or empty"}';
+    async function aiGoals(words) {
+      words = String(words || "").trim();
+      if (!ai || !words) return;
+      T.words = words;
+      const qs = quantities().filter(q => q.v !== undefined && isFinite(q.v));
+      if (!qs.length) { T.error = "Nothing is measured yet: simulate the circuit first (▶ Simulate), then say the goals."; render(); return; }
+      ai.show();
+      ai.add({ kind: "user", text: `Auto-tune goals: ${words}`, prompt: words });
+      try {
+        const list = qs.map(q => `${q.key} | ${q.label} | now ${fmtEng(q.v, q.unit, 3)}${q.max ? ` (rating ${fmtEng(q.max, q.unit, 3)})` : ""} | unit ${q.unit || "-"}`).join("\n");
+        const text = await ai.call({ system: WORDS_SYSTEM, messages: [{ role: "user", text: `The circuit, with each part's editable values as key=value:\n${ai.describe(true)}\n\nWhat the CAD measures (key | what | now | unit):\n${list}\n\nWhat the user wants: ${words}` }] }, "Auto-tune: goals in words");
+        const j = AiClient.extractJson(text), goals = [], bad = [];
+        (Array.isArray(j.goals) ? j.goals : []).forEach(g => {
+          const q = qs.find(x => x.key === String(g.key)), op = { ">=": ">=", "≥": ">=", "<=": "<=", "≤": "<=", "=": "=", "==": "=" }[String(g.op).trim()], t = typeof g.target === "number" ? g.target : CadLib.parseEng(String(g.target));
+          if (!q || !op || !isFinite(t)) { bad.push(String(g.key)); return; }
+          goals.push({ key: q.key, op, target: t });
+        });
+        if (!goals.length) { ai.add({ kind: "error", text: "No goal could be made from that: say it with a quantity the CAD measures (an output power, a THD, a tube's current or dissipation)." + (j.unclear ? ` The AI: ${j.unclear}` : "") }); return; }
+        T.goals = goals; T.error = null;
+        if (j.ratings !== undefined) T.ratings = !!j.ratings;
+        const v = takeVars(j.variables);
+        const gl = goals.map(g => { const q = qs.find(x => x.key === g.key); return `- ${q.label} ${{ ">=": "≥", "<=": "≤", "=": "=" }[g.op]} ${fmtEng(g.target, q.unit)} (now ${fmtEng(q.v, q.unit, 3)})`; }).join("\n");
+        ai.add({ kind: "answer", text: (j.note ? j.note + "\n\n" : "") + "Goals:\n" + gl + (T.ratings ? "\n- every tube and transistor within its ratings" : "") + "\n\n" + v.text + (bad.length ? `\n\nGoals left out (not measured): ${bad.join(", ")}` : "") + (j.unclear ? `\n\nNot turned into a goal: ${j.unclear}` : "") });
         cad.toggleBom(true, "tune"); render();
+        setStatus("ok", `Auto-tune: ${goals.length} goal${goals.length === 1 ? "" : "s"} and ${v.n} value${v.n === 1 ? "" : "s"} to change set from your words. Press ▶ Tune.`);
       } catch (e) { ai.fail(e); }
     }
 
     function init(aiApi) {
       ai = aiApi || null;
       const host = $("tune-pane");
-      if (host) { host.addEventListener("change", onInput); host.addEventListener("click", onClick); }
+      if (host) {
+        host.addEventListener("change", onInput); host.addEventListener("click", onClick);
+        host.addEventListener("keydown", e => { if (e.target.id === "tune-words" && e.key === "Enter") { e.preventDefault(); aiGoals(e.target.value); } });
+        host.addEventListener("input", e => { if (e.target.id === "tune-words") T.words = e.target.value; });
+      }
       const btn = $("btn-tune-run"); if (btn) btn.addEventListener("click", () => (T.job ? stop() : run()));
       const bud = $("tune-budget"); if (bud) bud.addEventListener("change", () => { const v = Math.round(+bud.value); if (v >= 10 && v <= 2000) T.budget = v; bud.value = T.budget; });
       const as = $("btn-tune-ai"); if (as) as.addEventListener("click", aiStart);
       render();
     }
-    return { init, render, run, stop, apply, changed, suggest, addVar, quantities, knobs, aiStart, state: T };
+    return { init, render, run, stop, apply, changed, suggest, addVar, quantities, knobs, aiStart, aiGoals, state: T };
   }
   CadTune.Optimizer = Optimizer; CadTune.nearest = nearest; CadTune.cost = cost; CadTune.met = met;
   root.CadTune = CadTune;

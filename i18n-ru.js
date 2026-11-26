@@ -379,6 +379,12 @@
     "The AI marked nothing as unsure; still compare the values with the picture before you trust the simulation.": "ИИ ничего не отметил как сомнительное; всё равно сверьте номиналы с картинкой, прежде чем доверять расчёту.",
     "Simulated: the Checks find no problems.": "Рассчитано: проверки не нашли проблем.",
     "Every pin ends in a ground, a supply rail or a sheet connector named after its net: drag the parts and draw wires to make it look like the original. Ctrl+Z brings back the circuit you had before.": "Каждый вывод заканчивается землёй, шиной питания или соединителем листа с именем своей цепи: перетащите детали и проведите провода, чтобы схема выглядела как оригинал. Ctrl+Z возвращает прежнюю схему.",
+    // --- Auto-tune: goals in words ---
+    "Set goals": "Задать цели",
+    "Say it in words: 12 W into the speaker under 2 % THD, VL2 below its rating": "Скажите словами: 12 Вт на динамике при КНИ до 2 %, VL2 в пределах допустимого",
+    "What you want from the circuit, in your own words: the AI turns it into the goals below and picks the values to change (uses your AI key)": "Что нужно от схемы, своими словами: ИИ превратит это в цели ниже и выберет значения для изменения (нужен ключ ИИ)",
+    "Turn the words into goals and values to change (uses your AI key)": "Превратить слова в цели и значения для изменения (нужен ключ ИИ)",
+    "Nothing is measured yet: simulate the circuit first (▶ Simulate), then say the goals.": "Пока ничего не измерено: сначала рассчитайте схему (▶ Расчёт), потом задайте цели.",
     // --- AI ▾ → Voicing ---
     "Voicing…": "Звучание…", "Voicing": "Звучание", "how it sounds": "как звучит", "Before": "До", "Ask": "Спросить",
     "Say how it should sound (warmer, less fizz, more headroom): the AI proposes value changes to the tone-shaping parts, and Listen plays the circuit before and after": "Скажите, как должно звучать (теплее, меньше песка, больше запаса): ИИ предложит замены номиналов в деталях, формирующих звук, а «Прослушать» сыграет схему до и после",
@@ -2920,6 +2926,8 @@
   // an outline in words (board-outline.js describe): "round Ø60 mm", "custom shape 120 × 90 mm, 2 cut-outs", "100 × 60 mm, corners R5"
   const ruOutline = d => d.replace(/^round Ø([\d.]+) mm/, "круглая Ø$1 мм").replace(/^custom shape ([\d.]+ × [\d.]+) mm/, "своя форма $1 мм").replace(/^([\d.]+ × [\d.]+) mm/, "$1 мм").replace(/, corners R([\d.]+)/, ", углы R$1").replace(/, (\d+) cut-outs?/, ", вырезов: $1");
   const patterns = [
+    [/^Auto-tune goals: (.+)$/, "Цели подбора: $1"],
+    [/^Auto-tune: (\d+) goals? and (\d+) values? to change set from your words\. Press ▶ Tune\.$/, "Подбор: из ваших слов заданы цели ($1) и значения для изменения ($2). Нажмите ▶ Подобрать."],
     [/^Voicing: (\d+) value changes? proposed\. Apply them in the AI tab, or hear before and after\.$/, "Звучание: предложено замен номиналов: $1. Примените их во вкладке ИИ или послушайте до и после."], [/^Voicing: (.+)$/, "Звучание: $1"],
     [/^Before · (.+) · peak (.+)$/, (m, a, b) => `До · ${a === "before the voicing changes" ? "до изменений звучания" : a} · пик ${b}`],
     [/^Why\? · (.+)$/, (m, t) => `Почему? · ${{ Checks: "Проверки", Tolerance: "Допуски", "Power sweep": "Мощность", "Noise and hum": "Шум и фон", "Parameter sweep": "Перебор", Transient: "Переходный процесс", Listen: "Прослушать" }[t] || t}`],

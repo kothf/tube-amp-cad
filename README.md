@@ -166,7 +166,8 @@ Firefox is not tested.
 - **Auto-tune** (the Tune tab, no key needed): set goals such as "10 W at
   ≤ 1 % THD" and the values that may change; an optimizer tries values, the
   simulator judges each, and the best are rounded to E24/E12. *AI start*
-  lets the model pick the values and ranges. With no goals yet, one button
+  lets the model pick the values and ranges; *goals in words* ("12 W under
+  2 % THD") lets it set the goals too. With no goals yet, one button
   adds the usual pair: the speaker's power a quarter above what it gives now,
   at ≤ 1 % THD.
 - **Layout.**
