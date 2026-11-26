@@ -116,6 +116,63 @@ test("Load list: each provider's model list, chat models only", async () => {
   assert.deepEqual(await C.listModels("gemini", "k", reply(200, { models: [{ name: "models/gemini-3.8-flash", supportedGenerationMethods: ["generateContent"] }, { name: "models/embedding-001", supportedGenerationMethods: ["embedContent"] }] })), ["gemini-3.8-flash"]);
 });
 
+test("OpenAI-compatible: base URL, optional key, Chat Completions request and answers", async () => {
+  const s = store();
+  const cfg = C.load(s);
+  cfg.provider = "compat"; cfg.baseUrl = " https://openrouter.ai/api/v1/ "; cfg.models.compat = "deepseek/deepseek-chat";
+  C.save(cfg, s);
+  const back = C.load(s);
+  assert.equal(back.baseUrl, "https://openrouter.ai/api/v1");
+  assert.ok(C.ready(back), "a base URL and a model are enough (a local server needs no key)");
+  assert.equal(C.label(back), "OpenRouter · deepseek/deepseek-chat");
+  assert.ok(!C.ready(C.normalise({ provider: "compat", baseUrl: "http://localhost:11434/v1" })), "no model yet");
+  assert.equal(C.serviceName("http://192.168.1.5:8080/v1"), "192.168.1.5:8080");
+  assert.ok(C.isLocal("http://localhost:11434/v1") && !C.isLocal("https://api.groq.com/openai/v1"));
+  assert.equal(C.cleanBase("http://localhost:1234/v1/chat/completions"), "http://localhost:1234/v1");
+
+  const img = { name: "a.png", mime: "image/png", data: "iVBO" };
+  const { url, init } = C.build("compat", "m", "", { system: "sys", stream: true, messages: [{ role: "user", text: "q" }, { role: "assistant", text: "a" }, { role: "user", text: "look", files: [img, pdf] }] }, "http://localhost:11434/v1");
+  const b = JSON.parse(init.body);
+  assert.equal(url, "http://localhost:11434/v1/chat/completions");
+  assert.ok(!("authorization" in init.headers), "no key, no header");
+  assert.deepEqual(b.messages[0], { role: "system", content: "sys" });
+  assert.equal(b.messages[1].content, "q", "plain text content without files");
+  assert.equal(b.messages[2].content, "a");
+  assert.deepEqual(b.messages[3].content[0], { type: "image_url", image_url: { url: "data:image/png;base64,iVBO" } });
+  assert.equal(b.messages[3].content[1].type, "file");
+  assert.equal(b.stream, true); assert.equal(b.max_tokens, 16000);
+  assert.equal(C.build("compat", "m", "sk-or", { messages: [{ role: "user", text: "q" }] }, "https://openrouter.ai/api/v1").init.headers.authorization, "Bearer sk-or");
+
+  const ok = C.normalise({ provider: "compat", baseUrl: "https://api.deepseek.com/v1", models: { compat: "deepseek-reasoner" } });
+  const q = { messages: [{ role: "user", text: "q" }] };
+  assert.equal(await C.chat(ok, q, reply(200, { choices: [{ message: { content: "<think>hmm</think>\nHello" }, finish_reason: "stop" }] })), "Hello", "thinking left out");
+  assert.match(await C.chat(ok, q, reply(200, { choices: [{ message: { content: "long" }, finish_reason: "length" }] })), /cut short/);
+  // streamed
+  const enc = new TextEncoder().encode(["<thi", "nk>x</think>He", "llo"].map((t, i) => `data: ${JSON.stringify({ choices: [{ delta: { content: t }, finish_reason: i === 2 ? "stop" : null }] })}\n\n`).join("") + "data: [DONE]\n\n");
+  const partial = [];
+  const sse = async () => { let k = 0; return { ok: true, status: 200, headers: { get: () => "text/event-stream" }, body: { getReader: () => ({ read: async () => (k++ ? { done: true } : { done: false, value: enc }) }) } }; };
+  assert.equal(await C.chat(ok, Object.assign({ onText: t => partial.push(t) }, q), sse), "Hello");
+  assert.ok(partial.every(t => !/think/.test(t)), "the live text never shows the thinking");
+  // a server that refuses stream / max_tokens gets one plain try
+  const seen = [];
+  const picky = async (u, i) => { const body = JSON.parse(i.body); seen.push(body); return body.stream ? { ok: false, status: 400, json: async () => ({ error: { message: "stream not supported" } }) } : { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "fine" } }] }) }; };
+  assert.equal(await C.chat(ok, q, picky), "fine");
+  assert.equal(seen.length, 2); assert.ok(!("max_tokens" in seen[1]) && !seen[1].stream);
+  // a picture to a text-only model: the error says so
+  const blind = async () => ({ ok: false, status: 400, json: async () => ({ error: { message: "image input not supported" } }) });
+  await assert.rejects(C.chat(ok, { messages: [{ role: "user", text: "q", files: [img] }] }, blind), /may not read pictures or PDFs/);
+  // no model, no base URL, unreachable local server
+  await assert.rejects(C.chat(C.normalise({ provider: "compat" }), q, reply(200, {})), /No base URL/);
+  await assert.rejects(C.chat(C.normalise({ provider: "compat", baseUrl: "http://localhost:11434/v1" }), q, reply(200, {})), /No model chosen/);
+  const local = C.normalise({ provider: "compat", baseUrl: "http://localhost:11434/v1", models: { compat: "llama3.3" } });
+  await assert.rejects(C.chat(local, q, async () => { throw new TypeError("Failed to fetch"); }), /OLLAMA_ORIGINS.*Enable CORS/);
+  await assert.rejects(C.chat(local, q, reply(404, { error: { message: "model not found" } })), /Check the base URL/);
+  // Load list
+  let asked = null;
+  assert.deepEqual(await C.listModels("compat", "", async (u, i) => { asked = { u, i }; return { ok: true, status: 200, json: async () => ({ data: [{ id: "qwen3" }, { id: "llama3.3" }] }) }; }, "http://localhost:11434/v1/"), ["llama3.3", "qwen3"]);
+  assert.equal(asked.u, "http://localhost:11434/v1/models"); assert.deepEqual(asked.i.headers, {});
+});
+
 test("extractJson: plain, fenced or wrapped in prose", () => {
   assert.deepEqual(C.extractJson('{"a":1}'), { a: 1 });
   assert.deepEqual(C.extractJson('Here:\n```json\n{"fixes":[]}\n```'), { fixes: [] });

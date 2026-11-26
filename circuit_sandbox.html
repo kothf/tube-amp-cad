@@ -788,7 +788,7 @@
       <div class="menu-list" role="menu" hidden></div>
     </div>
     <div class="menu" id="ai-menu">
-      <button class="btn" id="btn-ai" aria-haspopup="true" aria-expanded="false" title="AI: ask about the circuit, explain it, fix the checks, design and tune (your own Claude, ChatGPT or Gemini key)">AI ▾</button>
+      <button class="btn" id="btn-ai" aria-haspopup="true" aria-expanded="false" title="AI: ask about the circuit, explain it, fix the checks, design and tune (your own key for Claude, ChatGPT, Gemini or any OpenAI-compatible model)">AI ▾</button>
       <div class="menu-list" role="menu" hidden>
         <button class="menu-item" data-ico="chat" role="menuitem" id="menu-ai-chat" title="A conversation about this circuit and the app, under the schematic">Assistant<kbd>ask anything</kbd></button>
         <button class="menu-item" data-ico="sparkle" role="menuitem" id="menu-ai-design" title="Describe an amplifier; the AI designs it, the CAD draws it as a person would (stages joined by wires, supplies on top, ground at the bottom) and simulates it, and the Checks go back for revisions">Design from a description…<kbd>new circuit</kbd></button>
@@ -805,7 +805,7 @@
         <button class="menu-item" data-ico="datasheet" role="menuitem" id="menu-ai-semi" title="A transistor's, MOSFET's, JFET's or diode's datasheet (PDF or a picture of its pages) read by the AI: a SPICE model fitted to its typical curves and shown against them, ready to place">Transistor or diode from a datasheet…<kbd>PDF → .MODEL</kbd></button>
         <button class="menu-item" data-ico="target" role="menuitem" id="menu-ai-tune" title="Part values changed until the simulated circuit meets your goals; works without a key">Auto-tune<kbd>reach a goal</kbd></button>
         <div class="menu-sep"></div>
-        <button class="menu-item" data-ico="key" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT or Gemini (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
+        <button class="menu-item" data-ico="key" role="menuitem" id="menu-ai-settings" title="Your API key and model for Claude, ChatGPT, Gemini or any OpenAI-compatible model (kept in this browser only)">AI settings…<kbd>keys, model</kbd></button>
       </div>
     </div>
     <input type="file" id="file-input" accept=".json,application/json,.kicad_sch,.kicad_pcb,.kicad_pro,.zip,.asc" multiple hidden>
@@ -891,7 +891,7 @@
             <button class="dock-tab" role="tab" data-tab="transient" aria-controls="tr-pane" title="The circuit run from its operating point (or from zero) for as long as you set: start-up, pulses, oscillators, switching supplies">Transient</button>
             <button class="dock-tab" role="tab" data-tab="listen" aria-controls="ls-pane" title="Hear a recording played through the circuit">Listen</button>
             <button class="dock-tab" role="tab" data-tab="tune" aria-controls="tune-pane" title="Auto-tune: part values changed until the simulated circuit meets your goals (no AI key needed)">Tune</button>
-            <button class="dock-tab" role="tab" data-tab="ai" aria-controls="ai-pane" title="The AI assistant: ask about this circuit or the app (your own Claude, ChatGPT or Gemini key)">AI</button>
+            <button class="dock-tab" role="tab" data-tab="ai" aria-controls="ai-pane" title="The AI assistant: ask about this circuit or the app (your own key for Claude, ChatGPT, Gemini or any OpenAI-compatible model)">AI</button>
           </div>
           <span class="bom-tools" data-for="bom">
             <span id="bom-count" class="muted"></span>
@@ -1060,7 +1060,7 @@
         <label class="set-row" title="On: the AI features get the app's design knowledge (tube, transistor, op-amp, power-supply, logic and board-layout rules) with each question. Off: shorter, cheaper prompts"><input type="checkbox" id="set-ai-knowledge"><span><b>Design knowledge in AI prompts</b><small>Design from a description, Edit by command, Fix the checks, Design review, Build and power-up guide, Substitutes, Find a fault, Voicing and the assistant get the design rules of the circuit's kinds (ratings margins, bias, supplies, feedback and stability, grounding and board layout) in their prompts. The AI designs closer to what a careful builder would; each question costs a few thousand tokens more.</small></span></label>
         <div class="set-head">Keys</div>
         <div class="new-form set-form">
-          <span title="Your API key for Claude, ChatGPT or Gemini, for the AI menu (kept in this browser only)">AI</span><span class="set-pair"><span id="set-ai-state" class="set-state"></span><button class="btn" id="btn-set-ai" title="Open AI settings: provider, key and model">Edit…</button></span>
+          <span title="Your API key for Claude, ChatGPT, Gemini or any OpenAI-compatible model, for the AI menu (kept in this browser only)">AI</span><span class="set-pair"><span id="set-ai-state" class="set-state"></span><button class="btn" id="btn-set-ai" title="Open AI settings: provider, key and model">Edit…</button></span>
           <span title="Your DigiKey API key, for looking up part numbers in the bill of materials (kept in this browser only)">DigiKey</span><span class="set-pair"><span id="set-dk-state" class="set-state"></span><button class="btn" id="btn-set-dk" title="Open the DigiKey key dialog">Edit…</button></span>
         </div>
       </div>
@@ -1090,13 +1090,15 @@
       <div class="insp-title">AI settings</div>
       <p class="insp-help">The AI features use your own API key. Pick a provider, paste its key and choose a model. The key is kept in this browser only and is sent only to that provider; the circuit you ask about goes with each question. The provider bills your account for what you ask. Auto-tune works without a key.</p>
       <div class="seg-group ai-providers" id="ai-providers" role="group" aria-label="Provider">
-        <button class="btn" data-p="anthropic" title="Anthropic's Claude">Claude</button><button class="btn" data-p="openai" title="OpenAI's GPT models">ChatGPT</button><button class="btn" data-p="gemini" title="Google's Gemini">Gemini</button>
+        <button class="btn" data-p="anthropic" title="Anthropic's Claude">Claude</button><button class="btn" data-p="openai" title="OpenAI's GPT models">ChatGPT</button><button class="btn" data-p="gemini" title="Google's Gemini">Gemini</button><button class="btn" data-p="compat" title="Any other model with an OpenAI-compatible API: OpenRouter, DeepSeek, Mistral, Groq, xAI, Together, or a model on your computer in Ollama or LM Studio">Other</button>
       </div>
       <div class="new-form ai-form">
+        <span class="ai-compat" hidden>Base URL</span><span class="ai-keyrow ai-compat" hidden><input type="text" id="ai-base" list="ai-services" spellcheck="false" autocomplete="off" placeholder="https://openrouter.ai/api/v1" title="The address of the service's OpenAI-compatible API, usually ending in /v1. Pick a known service from the list or type any address"><datalist id="ai-services"></datalist></span>
         <span>API key</span><span class="ai-keyrow"><input type="password" id="ai-key" spellcheck="false" autocomplete="off"><label title="Show the key"><input type="checkbox" id="ai-show-key"> show</label></span>
         <span></span><a id="ai-key-link" href="#" target="_blank" rel="noopener">Get a key ↗</a>
         <span>Model</span><span class="ai-keyrow"><input type="text" id="ai-model" list="ai-models" spellcheck="false" autocomplete="off"><datalist id="ai-models"></datalist><button class="btn" id="btn-ai-list" title="Ask the provider which models this key can use">Load list</button></span>
       </div>
+      <p class="insp-help ai-compat" id="ai-compat-note" hidden>Any service with an OpenAI-compatible API (Chat Completions). Every AI feature works with it; a strong model gives the best designs, and Design from a description, Schematic from a picture and the datasheet readers need one that writes long JSON answers (pictures and PDFs need a model that reads them). A model on your computer needs no key, but its server must allow this page: in Ollama set OLLAMA_ORIGINS to this site's address, in LM Studio switch on Enable CORS. See the manual.</p>
       <p class="insp-help" id="ai-test-out"></p>
       <div class="modal-actions">
         <button class="btn" id="btn-ai-forget" title="Remove every AI key from this browser">Forget keys</button>
